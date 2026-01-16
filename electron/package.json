@@ -1,0 +1,23 @@
+{
+  "name": "koma-electron",
+  "version": "1.0.0",
+  "description": "Koma Studio Electron Main Process",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w",
+    "start": "electron dist/main.js",
+    "dev": "tsc && electron dist/main.js"
+  },
+  "dependencies": {
+    "archiver": "^7.0.1",
+    "electron-store": "^11.0.2",
+    "extract-zip": "^2.0.1"
+  },
+  "devDependencies": {
+    "@types/archiver": "^6.0.3",
+    "@types/node": "^22.14.0",
+    "electron": "^39.2.7",
+    "typescript": "~5.8.2"
+  }
+}

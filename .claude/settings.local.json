@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(openspec list:*)",
+      "Bash(openspec validate:*)",
+      "Bash(npx openspec validate:*)",
+      "Bash(npx openspec new:*)",
+      "Bash(npx openspec --help:*)",
+      "Bash(New-Item -ItemType Directory -Path \"E:\\\\Workspace\\\\2025\\\\代码备份\\\\Koma\\\\openspec\\\\changes\\\\add-comfyui-mapping\\\\specs\\\\comfyui\" -Force)",
+      "Bash(npx openspec:*)",
+      "Bash(npm install:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npm run build:*)",
+      "mcp__context7__resolve-library-id",
+      "mcp__context7__query-docs",
+      "Bash(Get-ChildItem -Path E:Workspace2025代码备份Komaelectron -Recurse -Name)",
+      "Bash(Select-Object -First 20)",
+      "Bash(dir /b \"E:\\\\Workspace\\\\2025\\\\代码备份\\\\Koma\")",
+      "Bash(npm run dev:*)",
+      "Bash(dir /s /b \"E:\\\\Workspace\\\\2025\\\\代码备份\\\\CcClip-master\")"
+    ]
+  }
+}

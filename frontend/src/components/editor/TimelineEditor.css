@@ -1,0 +1,237 @@
+/* Timeline Editor Styles */
+
+.timelineContainer {
+  display: flex;
+  flex-direction: column;
+  background: #18181b;
+  border-radius: 8px;
+  overflow: hidden;
+  height: 100%;
+}
+
+.timelineToolbar {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  border-bottom: 1px solid #27272a;
+  gap: 8px;
+}
+
+.timelineSpacer {
+  flex: 1;
+}
+
+.timelineScaleLabel {
+  font-size: 12px;
+  color: #a1a1aa;
+  min-width: 50px;
+  text-align: center;
+}
+
+.timelineBody {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+.trackHeaders {
+  width: 180px;
+  flex-shrink: 0;
+  border-right: 1px solid #27272a;
+  background: #0f0f11;
+}
+
+.trackHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 8px;
+  border-bottom: 1px solid #27272a;
+}
+
+.trackName {
+  font-size: 12px;
+  color: #d4d4d8;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trackControls {
+  display: flex;
+  gap: 2px;
+}
+
+.timelineArea {
+  flex: 1;
+  overflow: auto;
+  position: relative;
+}
+
+.timelineRuler {
+  height: 24px;
+  background: #0f0f11;
+  border-bottom: 1px solid #27272a;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  cursor: pointer;
+}
+
+.rulerMark {
+  position: absolute;
+  border-left: 1px solid #3f3f46;
+  height: 100%;
+  padding-left: 4px;
+  font-size: 10px;
+  color: #71717a;
+}
+
+.timelineTracks {
+  position: relative;
+}
+
+.timelineTrack {
+  position: relative;
+  border-bottom: 1px solid #27272a;
+  background: #18181b;
+}
+
+.timelineClip {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  border-radius: 4px;
+  display: flex;
+  cursor: pointer;
+  transition: background-color 0.1s;
+}
+
+.timelineClip:hover {
+  filter: brightness(1.1);
+}
+
+.timelineClip.selected {
+  box-shadow: 0 0 0 2px #10b981;
+}
+
+.clipTrimHandle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 6px;
+  cursor: ew-resize;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 4px 0 0 4px;
+}
+
+.clipTrimHandle.right {
+  left: auto;
+  right: 0;
+  border-radius: 0 4px 4px 0;
+}
+
+.clipTrimHandle:hover {
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.clipContent {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  cursor: grab;
+  overflow: hidden;
+}
+
+.clipContent:active {
+  cursor: grabbing;
+}
+
+.clipName {
+  font-size: 11px;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.timelinePlayhead {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: #ef4444;
+  z-index: 20;
+  pointer-events: none;
+}
+
+.timelinePlayhead::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -5px;
+  width: 12px;
+  height: 12px;
+  background: #ef4444;
+  clip-path: polygon(50% 100%, 0 0, 100% 0);
+}
+
+.timelineEmpty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+  color: #71717a;
+}
+
+/* Clip type colors */
+.clipVideo {
+  background-color: #3b82f6;
+}
+
+.clipAudio {
+  background-color: #22c55e;
+}
+
+.clipImage {
+  background-color: #8b5cf6;
+}
+
+.clipSubtitle {
+  background-color: #f59e0b;
+}
+
+/* Scrollbar styling */
+.timelineArea::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.timelineArea::-webkit-scrollbar-track {
+  background: #18181b;
+}
+
+.timelineArea::-webkit-scrollbar-thumb {
+  background: #3f3f46;
+  border-radius: 4px;
+}
+
+.timelineArea::-webkit-scrollbar-thumb:hover {
+  background: #52525b;
+}
+
+/* Track visibility states */
+.trackHidden {
+  opacity: 0.5;
+}
+
+.trackLocked {
+  pointer-events: none;
+}
+
+.trackLocked .timelineClip {
+  cursor: not-allowed;
+}

@@ -1,0 +1,158 @@
+/* AssetManager Styles */
+
+.assetManagerContainer {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 16px;
+  background: #121212;
+  overflow: hidden;
+}
+
+.assetManagerContainer .ant-tabs {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.assetManagerContainer .ant-tabs-content-holder {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 0;
+}
+
+.assetImageContainer {
+  position: relative;
+  overflow: hidden;
+}
+
+.assetImageContainer img {
+  transition: transform 0.3s ease, opacity 0.3s ease;
+  opacity: 0.9;
+}
+
+.assetImageContainer:hover img {
+  transform: scale(1.05);
+  opacity: 1;
+}
+
+.assetOverlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.3);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.assetImageContainer:hover .assetOverlay {
+  opacity: 1;
+}
+
+.assetRoleTag {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+}
+
+.assetTimeTag {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.propContainer {
+  background: #1a1a1a;
+}
+
+.assetTitle {
+  font-weight: 600;
+  font-size: 13px;
+  color: #e4e4e7;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.assetDesc {
+  font-size: 11px;
+  color: #71717a;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.assetAddCard {
+  height: 100%;
+  min-height: 160px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px dashed #27272a !important;
+  background: #1a1a1a !important;
+}
+
+.assetAddCard:hover {
+  border-color: #3f3f46 !important;
+  background: #202020 !important;
+}
+
+.assetAddContent {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: #52525b;
+  padding: 32px;
+}
+
+.assetAddCard:hover .assetAddContent {
+  color: #a1a1aa;
+}
+
+.assetFooter {
+  padding: 16px 0;
+  display: flex;
+  justify-content: flex-end;
+  border-top: 1px solid #27272a;
+  margin-top: auto;
+}
+
+.assetNextBtn {
+  height: 48px;
+  font-size: 16px;
+  font-weight: 600;
+  padding: 0 32px;
+}
+
+/* Card hover effects */
+.assetManagerContainer .ant-card {
+  background: #18181b;
+  border-color: #27272a;
+  transition: border-color 0.2s ease;
+}
+
+.assetManagerContainer .ant-card:hover {
+  border-color: #10b981;
+}
+
+.assetManagerContainer .ant-card-body {
+  background: #18181b;
+}
+
+.assetManagerContainer .ant-card-meta-title {
+  color: #e4e4e7;
+}
+
+.assetManagerContainer .ant-card-meta-description {
+  color: #71717a;
+}

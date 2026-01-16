@@ -1,0 +1,334 @@
+/* Storyboard Styles */
+
+.storyboardContainer {
+  display: flex;
+  height: 100%;
+  background: #0f0f0f;
+}
+
+.storyboardMain {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.storyboardHeader {
+  height: 56px;
+  border-bottom: 1px solid #27272a;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+  background: #141414;
+}
+
+.headerStat {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #71717a;
+}
+
+.storyboardList {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px;
+  background: #0a0a0a;
+}
+
+.storyboardList > div {
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+/* 镜头卡片 */
+.shotCard {
+  position: relative;
+  display: flex;
+  gap: 16px;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid #27272a;
+  background: #141414;
+  margin-bottom: 16px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.shotCard:hover {
+  background: #1a1a1a;
+  border-color: #3f3f46;
+}
+
+.shotCard.selected {
+  background: #1a1a1a;
+  border-color: rgba(16, 185, 129, 0.6);
+  box-shadow: 0 0 0 1px rgba(16, 185, 129, 0.2);
+}
+
+.shotIndex {
+  position: absolute;
+  left: -12px;
+  top: 16px;
+  z-index: 10;
+}
+
+.shotIndex .ant-badge-count {
+  background: #27272a;
+  color: #a1a1aa;
+  border: 1px solid #3f3f46;
+  font-size: 10px;
+  min-width: 24px;
+  height: 24px;
+  line-height: 24px;
+  border-radius: 50%;
+}
+
+/* 缩略图区域 */
+.shotThumbnail {
+  width: 192px;
+  flex-shrink: 0;
+  position: relative;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #000;
+}
+
+.shotThumbnail .ant-image {
+  display: block;
+}
+
+.shotThumbnail img {
+  width: 100%;
+  aspect-ratio: 16/9;
+  object-fit: cover;
+  opacity: 0.85;
+  transition: opacity 0.2s ease;
+}
+
+.shotCard:hover .shotThumbnail img {
+  opacity: 1;
+}
+
+.thumbnailOverlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.4);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.shotCard:hover .thumbnailOverlay {
+  opacity: 1;
+}
+
+.playIcon {
+  font-size: 40px;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.durationTag {
+  position: absolute;
+  bottom: 4px;
+  right: 4px;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(4px);
+  border: none;
+  color: #fff;
+  font-size: 10px;
+  font-family: monospace;
+}
+
+.shotTypeTag {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #d4d4d8;
+  font-size: 10px;
+  font-weight: bold;
+  text-transform: uppercase;
+}
+
+/* 内容区 */
+.shotContent {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.scriptContent {
+  color: #e4e4e7 !important;
+  font-weight: 500;
+  font-size: 15px;
+  margin-bottom: 8px !important;
+}
+
+.shotCard:hover .scriptContent {
+  color: #10b981 !important;
+}
+
+.shotDescription {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  background: #0f0f0f;
+  padding: 8px;
+  border-radius: 4px;
+  border: 1px solid rgba(39, 39, 42, 0.5);
+  margin-bottom: 8px;
+}
+
+.shotDescription .anticon {
+  color: #52525b;
+  margin-top: 3px;
+  flex-shrink: 0;
+}
+
+.descText {
+  font-size: 12px !important;
+  color: #71717a !important;
+  margin: 0 !important;
+  line-height: 1.5 !important;
+}
+
+.shotFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: auto;
+}
+
+/* 右侧面板 */
+.directorPanel {
+  width: 320px;
+  border-left: 1px solid #27272a;
+  background: #141414;
+  display: flex;
+  flex-direction: column;
+  box-shadow: -8px 0 24px rgba(0, 0, 0, 0.3);
+}
+
+.panelHeader {
+  height: 56px;
+  border-bottom: 1px solid #27272a;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 16px;
+  background: #181818;
+}
+
+.panelContent {
+  flex: 1;
+  padding: 20px;
+  overflow-y: auto;
+}
+
+.panelContent .ant-form-item-label > label {
+  color: #71717a;
+  font-size: 11px;
+  font-weight: bold;
+  text-transform: uppercase;
+}
+
+.engineCard {
+  background: #1e1e1e !important;
+  border-color: rgba(16, 185, 129, 0.4) !important;
+}
+
+.engineInfo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.engineIcon {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-weight: bold;
+  font-size: 11px;
+  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
+}
+
+.statusBadge {
+  margin-left: auto;
+}
+
+.statusBadge .ant-badge-status-dot {
+  box-shadow: 0 0 8px rgba(34, 197, 94, 0.8);
+}
+
+.promptTextarea {
+  width: 100%;
+  background: #0f0f0f;
+  border: 1px solid #3f3f46;
+  border-radius: 8px;
+  padding: 12px;
+  color: #d4d4d8;
+  font-size: 13px;
+  line-height: 1.5;
+  resize: none;
+  transition: border-color 0.2s ease;
+}
+
+.promptTextarea:focus {
+  outline: none;
+  border-color: #10b981;
+  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2);
+}
+
+.panelActions {
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid #27272a;
+}
+
+.panelEmpty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: #52525b;
+  padding: 24px;
+  text-align: center;
+}
+
+/* Antd 覆盖 */
+.storyboardContainer .ant-segmented {
+  background: #1e1e1e;
+}
+
+.storyboardContainer .ant-segmented-item {
+  color: #a1a1aa;
+}
+
+.storyboardContainer .ant-segmented-item-selected {
+  background: #10b981;
+  color: #fff;
+}
+
+.storyboardContainer .ant-select-selector {
+  background: #1e1e1e !important;
+  border-color: #3f3f46 !important;
+}
+
+.storyboardContainer .ant-select-selection-item {
+  color: #d4d4d8 !important;
+}
