@@ -10,7 +10,7 @@ import { ModelFactory } from './services/ModelFactory';
 import { CreateProjectModal } from './components/CreateProjectModal';
 import { WindowControls } from './components/WindowControls';
 import { useProjects } from './hooks/useProjects';
-import { Menu, Avatar, Tooltip, Button, Tag, message, Spin } from 'antd';
+import { Menu, Avatar, Tooltip, Button, Tag, Spin, App as AntApp } from 'antd';
 import {
   AppstoreOutlined,
   SettingOutlined,
@@ -122,7 +122,10 @@ function formatTimeAgo(timestamp: number): string {
   return '刚刚';
 }
 
-const App: React.FC = () => {
+const AppContent: React.FC = () => {
+  // 使用 Ant Design App hook 获取 message
+  const { message } = AntApp.useApp();
+
   // 开发模式检测: URL 参数 ?dev=video 直接进入剪辑页面
   const urlParams = new URLSearchParams(window.location.search);
   const devMode = urlParams.get('dev');
@@ -445,7 +448,9 @@ const App: React.FC = () => {
             {view === 'projects' && (
                 projectsLoading ? (
                   <div className="flex h-full items-center justify-center">
-                    <Spin size="large" tip="加载项目列表..." />
+                    <Spin size="large" tip="加载项目列表...">
+                      <div className="p-12" />
+                    </Spin>
                   </div>
                 ) : (
                   <ProjectList
@@ -647,6 +652,15 @@ const App: React.FC = () => {
       />
 
     </div>
+  );
+};
+
+// 外层包装组件，提供 Ant Design App 上下文
+const App: React.FC = () => {
+  return (
+    <AntApp>
+      <AppContent />
+    </AntApp>
   );
 };
 

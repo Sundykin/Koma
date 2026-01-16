@@ -55,7 +55,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ isOpen, 
       cancelText="取消"
       width={600}
       centered
-      destroyOnClose
+      destroyOnHidden
     >
       <Form
         form={form}

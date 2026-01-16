@@ -521,7 +521,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
           </Button>
 
           {/* 自定义渠道管理 */}
-          <Divider orientation="left">自定义 OpenAI 兼容渠道</Divider>
+          <Divider titlePlacement="start">自定义 OpenAI 兼容渠道</Divider>
           {customChannels.length === 0 ? (
             <Empty
               image={Empty.PRESENTED_IMAGE_SIMPLE}

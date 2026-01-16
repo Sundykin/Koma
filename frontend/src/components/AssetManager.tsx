@@ -67,7 +67,7 @@ export const AssetManager: React.FC<AssetManagerProps> = ({ characters, scenes, 
                 </div>
               </div>
             }
-            bodyStyle={{ padding: '8px 12px' }}
+            styles={{ body: { padding: '8px 12px' } }}
           >
             <Card.Meta
               title={<span className="assetTitle">{char.name}</span>}
@@ -115,7 +115,7 @@ export const AssetManager: React.FC<AssetManagerProps> = ({ characters, scenes, 
                 </div>
               </div>
             }
-            bodyStyle={{ padding: '8px 12px' }}
+            styles={{ body: { padding: '8px 12px' } }}
           >
             <Card.Meta
               title={<span className="assetTitle">{scene.name}</span>}
@@ -161,7 +161,7 @@ export const AssetManager: React.FC<AssetManagerProps> = ({ characters, scenes, 
                 </div>
               </div>
             }
-            bodyStyle={{ padding: '8px 12px' }}
+            styles={{ body: { padding: '8px 12px' } }}
           >
             <Card.Meta
               title={
