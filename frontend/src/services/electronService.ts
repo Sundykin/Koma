@@ -4,6 +4,18 @@
  */
 
 // 类型定义
+export interface ProjectMeta {
+  id: string;
+  title: string;
+  genre: string;
+  mode: 'drama' | 'narration';
+  status?: 'script' | 'storyboard' | 'generating' | 'completed';
+  thumbnail?: string;
+  episodes?: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
 interface ElectronAPI {
   window: {
     minimize: () => Promise<void>;
@@ -35,12 +47,15 @@ interface ElectronAPI {
     getVersion: () => Promise<string>;
   };
   project: {
-    list: () => Promise<any[]>;
-    create: (meta: any) => Promise<any>;
-    load: (projectId: string) => Promise<any>;
+    list: () => Promise<ProjectMeta[]>;
+    create: (meta: ProjectMeta) => Promise<ProjectMeta>;
+    load: (projectId: string) => Promise<ProjectMeta>;
     save: (projectId: string, data: any) => Promise<{ success: boolean }>;
+    update: (projectId: string, updates: Partial<ProjectMeta>) => Promise<ProjectMeta>;
+    remove: (projectId: string) => Promise<{ success: boolean }>;
+    rebuildIndex: () => Promise<any>;
     export: (projectId: string, destPath: string, options?: ExportOptions) => Promise<{ success: boolean; path: string }>;
-    import: (zipPath: string, newProjectId?: string) => Promise<{ success: boolean; projectId: string; meta: any }>;
+    import: (zipPath: string, newProjectId?: string) => Promise<{ success: boolean; projectId: string; meta: ProjectMeta }>;
   };
 }
 
@@ -283,6 +298,65 @@ export const appGetVersion = async (): Promise<string> => {
   return '0.0.0';
 };
 
+// ========== 项目 CRUD ==========
+
+export const projectList = async (): Promise<ProjectMeta[]> => {
+  const api = getElectronAPI();
+  if (api) {
+    return await api.project.list();
+  }
+  // 浏览器 fallback: 返回空列表
+  return [];
+};
+
+export const projectCreate = async (meta: ProjectMeta): Promise<ProjectMeta> => {
+  const api = getElectronAPI();
+  if (api) {
+    return await api.project.create(meta);
+  }
+  throw new Error('Project creation not available in browser');
+};
+
+export const projectLoad = async (projectId: string): Promise<ProjectMeta> => {
+  const api = getElectronAPI();
+  if (api) {
+    return await api.project.load(projectId);
+  }
+  throw new Error('Project loading not available in browser');
+};
+
+export const projectSave = async (projectId: string, data: any): Promise<{ success: boolean }> => {
+  const api = getElectronAPI();
+  if (api) {
+    return await api.project.save(projectId, data);
+  }
+  throw new Error('Project save not available in browser');
+};
+
+export const projectUpdate = async (projectId: string, updates: Partial<ProjectMeta>): Promise<ProjectMeta> => {
+  const api = getElectronAPI();
+  if (api) {
+    return await api.project.update(projectId, updates);
+  }
+  throw new Error('Project update not available in browser');
+};
+
+export const projectDelete = async (projectId: string): Promise<{ success: boolean }> => {
+  const api = getElectronAPI();
+  if (api) {
+    return await api.project.remove(projectId);
+  }
+  throw new Error('Project deletion not available in browser');
+};
+
+export const projectRebuildIndex = async (): Promise<any> => {
+  const api = getElectronAPI();
+  if (api) {
+    return await api.project.rebuildIndex();
+  }
+  throw new Error('Project index rebuild not available in browser');
+};
+
 // ========== 项目导入导出 ==========
 
 export const projectExport = async (
@@ -341,6 +415,13 @@ export const electronService = {
     getVersion: appGetVersion,
   },
   project: {
+    list: projectList,
+    create: projectCreate,
+    load: projectLoad,
+    save: projectSave,
+    update: projectUpdate,
+    remove: projectDelete,
+    rebuildIndex: projectRebuildIndex,
     export: projectExport,
     import: projectImport,
   },

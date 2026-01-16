@@ -3,7 +3,7 @@
  */
 import { BaseController } from './base';
 import { services } from '../service';
-import type { ProjectMeta, ExportOptions } from '../service/project';
+import type { ProjectMeta, ExportOptions, ProjectsIndex } from '../service/project';
 
 export class ProjectController extends BaseController {
   async list(): Promise<ProjectMeta[]> {
@@ -20,6 +20,18 @@ export class ProjectController extends BaseController {
 
   async save(args: { projectId: string; data: any }): Promise<{ success: boolean }> {
     return services.project.saveProject(args.projectId, args.data);
+  }
+
+  async update(args: { projectId: string; updates: Partial<ProjectMeta> }): Promise<ProjectMeta> {
+    return services.project.updateProject(args.projectId, args.updates);
+  }
+
+  async delete(args: { projectId: string }): Promise<{ success: boolean }> {
+    return services.project.deleteProject(args.projectId);
+  }
+
+  async rebuildIndex(): Promise<ProjectsIndex> {
+    return services.project.rebuildIndex();
   }
 
   async export(args: {

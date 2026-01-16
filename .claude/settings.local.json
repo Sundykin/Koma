@@ -17,7 +17,9 @@
       "Bash(Select-Object -First 20)",
       "Bash(dir /b \"E:\\\\Workspace\\\\2025\\\\代码备份\\\\Koma\")",
       "Bash(npm run dev:*)",
-      "Bash(dir /s /b \"E:\\\\Workspace\\\\2025\\\\代码备份\\\\CcClip-master\")"
+      "Bash(dir /s /b \"E:\\\\Workspace\\\\2025\\\\代码备份\\\\CcClip-master\")",
+      "Bash(openspec show:*)",
+      "Bash(timeout /t 5 /nobreak)"
     ]
   }
 }

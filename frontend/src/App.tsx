@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Project, ScriptAnalysisResult, EditorStep, AppSettings } from './types';
 import { ProjectList } from './components/ProjectList';
 import { AssetManager } from './components/AssetManager';
@@ -9,7 +9,8 @@ import { StepNavigator } from './components/StepNavigator';
 import { ModelFactory } from './services/ModelFactory';
 import { CreateProjectModal } from './components/CreateProjectModal';
 import { WindowControls } from './components/WindowControls';
-import { Menu, Avatar, Tooltip, Button, Tag } from 'antd';
+import { useProjects } from './hooks/useProjects';
+import { Menu, Avatar, Tooltip, Button, Tag, message, Spin } from 'antd';
 import {
   AppstoreOutlined,
   SettingOutlined,
@@ -33,29 +34,38 @@ import {
   FileText
 } from 'lucide-react';
 
-// --- 模拟数据 (MOCK DATA) ---
-const MOCK_PROJECTS: Project[] = [
-  { 
-    id: 'p1', 
-    title: '废弃医院的回声', 
-    genre: '恐怖/悬疑', 
-    mode: 'drama',
-    episodes: 12, 
-    lastEdited: '2小时前', 
-    thumbnail: 'https://picsum.photos/seed/horror/600/338', 
-    status: 'storyboard' 
-  },
-  { 
-    id: 'p2', 
-    title: '总裁的契约娇妻', 
-    genre: '都市/言情', 
-    mode: 'drama',
-    episodes: 50, 
-    lastEdited: '1天前', 
-    thumbnail: 'https://picsum.photos/seed/romance/600/338', 
-    status: 'script' 
-  },
-];
+// 开发测试用模拟数据
+const DEV_TEST_PROJECT: Project = {
+  id: 'dev-test',
+  title: '废弃医院的回声',
+  genre: '恐怖/悬疑',
+  mode: 'drama',
+  episodes: 12,
+  lastEdited: '测试项目',
+  thumbnail: 'https://picsum.photos/seed/horror/600/338',
+  status: 'storyboard'
+};
+
+const DEV_TEST_ANALYSIS: ScriptAnalysisResult = {
+  characters: [
+    { id: 'c1', name: '叶青凡', age: '28', role: 'protagonist', description: '沉稳冷静的调查员', appearance: '黑发，深邃眼神', avatarUrl: '' },
+    { id: 'c2', name: '鬼护士', age: '?', role: 'antagonist', description: '神秘的医院幽灵', appearance: '白色护士服，无面孔', avatarUrl: '' },
+  ],
+  scenes: [
+    { id: 's1', name: '废弃医院走廊', location: '废弃医院', time: 'night', mood: '阴森紧张', description: '昏暗的走廊，墙壁剥落' },
+  ],
+  props: [
+    { id: 'pr1', name: '手电筒', type: '道具', description: '发出微弱光芒的老旧手电' },
+    { id: 'pr2', name: '手术刀', type: '武器', description: '生锈的手术刀' },
+  ],
+  shots: [
+    { id: 'shot1', scriptContent: '走廊里死一般的寂静', shotType: 'wide', cameraMovement: 'static', duration: 3, description: 'Wide shot of dark hospital corridor', characters: ['c1'], dialogue: '', emotion: '紧张' },
+    { id: 'shot2', scriptContent: '叶青凡站在铁门前', shotType: 'medium', cameraMovement: 'tracking', duration: 4, description: 'Medium shot of Ye Qingfan holding flashlight', characters: ['c1'], dialogue: '比我记忆中更黑了', emotion: '警觉' },
+    { id: 'shot3', scriptContent: '铁门发出刺耳的摩擦声', shotType: 'close-up', cameraMovement: 'zoom-in', duration: 2, description: 'Close-up of rusty iron door opening', characters: [], dialogue: '', emotion: '悬疑' },
+    { id: 'shot4', scriptContent: '鬼护士背对窗户站立', shotType: 'wide', cameraMovement: 'static', duration: 4, description: 'Wide shot of ghost nurse silhouette against window', characters: ['c2'], dialogue: '', emotion: '恐怖' },
+    { id: 'shot5', scriptContent: '鬼护士转身，脸上没有五官', shotType: 'close-up', cameraMovement: 'zoom-in', duration: 3, description: 'Close-up of faceless ghost nurse turning', characters: ['c2'], dialogue: '', emotion: '惊悚' },
+  ],
+};
 
 const DEFAULT_SCRIPT = `# 第一场：废弃医院 - 夜
 [氛围: 阴森, 紧张]
@@ -97,53 +107,70 @@ const DEFAULT_SETTINGS: AppSettings = {
   }
 };
 
+// 时间格式化工具函数
+function formatTimeAgo(timestamp: number): string {
+  const now = Date.now();
+  const diff = now - timestamp;
+  const seconds = Math.floor(diff / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const hours = Math.floor(minutes / 60);
+  const days = Math.floor(hours / 24);
+
+  if (days > 0) return `${days}天前`;
+  if (hours > 0) return `${hours}小时前`;
+  if (minutes > 0) return `${minutes}分钟前`;
+  return '刚刚';
+}
+
 const App: React.FC = () => {
   // 开发模式检测: URL 参数 ?dev=video 直接进入剪辑页面
   const urlParams = new URLSearchParams(window.location.search);
   const devMode = urlParams.get('dev');
   const isVideoDevMode = devMode === 'video';
 
+  // 项目管理 Hook
+  const {
+    projects,
+    loading: projectsLoading,
+    error: projectsError,
+    createProject: createProjectAPI,
+    deleteProject: deleteProjectAPI,
+    updateProject: updateProjectAPI,
+  } = useProjects();
+
   const [view, setView] = useState<'projects' | 'editor' | 'settings'>(isVideoDevMode ? 'editor' : 'projects');
   const [activeProject, setActiveProject] = useState<Project | null>(
-    isVideoDevMode ? MOCK_PROJECTS[0] : null
+    isVideoDevMode ? DEV_TEST_PROJECT : null
   );
   const [editorStep, setEditorStep] = useState<EditorStep>(isVideoDevMode ? 'video' : 'script');
   const [appSettings, setAppSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
-  
+
   // 弹窗状态
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
   // 剧本相关状态
   const [scriptText, setScriptText] = useState(DEFAULT_SCRIPT);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  
+
   // 项目数据状态
   const [analysisData, setAnalysisData] = useState<ScriptAnalysisResult | null>(
-    // 开发模式下提供模拟数据
-    isVideoDevMode ? {
-      characters: [
-        { id: 'c1', name: '叶青凡', age: '28', role: 'protagonist', description: '沉稳冷静的调查员', appearance: '黑发，深邃眼神', avatarUrl: '' },
-        { id: 'c2', name: '鬼护士', age: '?', role: 'antagonist', description: '神秘的医院幽灵', appearance: '白色护士服，无面孔', avatarUrl: '' },
-      ],
-      scenes: [
-        { id: 's1', name: '废弃医院走廊', location: '废弃医院', time: 'night', mood: '阴森紧张', description: '昏暗的走廊，墙壁剥落' },
-      ],
-      props: [
-        { id: 'pr1', name: '手电筒', type: '道具', description: '发出微弱光芒的老旧手电' },
-        { id: 'pr2', name: '手术刀', type: '武器', description: '生锈的手术刀' },
-      ],
-      shots: [
-        { id: 'shot1', scriptContent: '走廊里死一般的寂静', shotType: 'wide', cameraMovement: 'static', duration: 3, description: 'Wide shot of dark hospital corridor', characters: ['c1'], dialogue: '', emotion: '紧张' },
-        { id: 'shot2', scriptContent: '叶青凡站在铁门前', shotType: 'medium', cameraMovement: 'tracking', duration: 4, description: 'Medium shot of Ye Qingfan holding flashlight', characters: ['c1'], dialogue: '比我记忆中更黑了', emotion: '警觉' },
-        { id: 'shot3', scriptContent: '铁门发出刺耳的摩擦声', shotType: 'close-up', cameraMovement: 'zoom-in', duration: 2, description: 'Close-up of rusty iron door opening', characters: [], dialogue: '', emotion: '悬疑' },
-        { id: 'shot4', scriptContent: '鬼护士背对窗户站立', shotType: 'wide', cameraMovement: 'static', duration: 4, description: 'Wide shot of ghost nurse silhouette against window', characters: ['c2'], dialogue: '', emotion: '恐怖' },
-        { id: 'shot5', scriptContent: '鬼护士转身，脸上没有五官', shotType: 'close-up', cameraMovement: 'zoom-in', duration: 3, description: 'Close-up of faceless ghost nurse turning', characters: ['c2'], dialogue: '', emotion: '惊悚' },
-      ],
-    } : null
+    isVideoDevMode ? DEV_TEST_ANALYSIS : null
   );
 
   // 侧边栏折叠逻辑：在 editor 模式下折叠
   const isSidebarCollapsed = view === 'editor';
+
+  // 将 ProjectMeta 转换为 Project 显示格式
+  const displayProjects: Project[] = projects.map(p => ({
+    id: p.id,
+    title: p.title,
+    genre: p.genre,
+    mode: p.mode,
+    episodes: p.episodes || 1,
+    lastEdited: formatTimeAgo(p.updatedAt),
+    thumbnail: p.thumbnail || `https://picsum.photos/seed/${p.id}/600/338`,
+    status: p.status || 'script',
+  }));
 
   // 打开创建项目弹窗
   const handleOpenCreateModal = () => {
@@ -152,69 +179,69 @@ const App: React.FC = () => {
 
   // 进入剪辑测试模式（开发用）
   const handleEnterVideoTest = () => {
-    setActiveProject(MOCK_PROJECTS[0]);
-    setAnalysisData({
-      characters: [
-        { id: 'c1', name: '叶青凡', age: '28', role: 'protagonist', description: '沉稳冷静的调查员', appearance: '黑发，深邃眼神', avatarUrl: '' },
-        { id: 'c2', name: '鬼护士', age: '?', role: 'antagonist', description: '神秘的医院幽灵', appearance: '白色护士服，无面孔', avatarUrl: '' },
-      ],
-      scenes: [
-        { id: 's1', name: '废弃医院走廊', location: '废弃医院', time: 'night', mood: '阴森紧张', description: '昏暗的走廊，墙壁剥落' },
-      ],
-      props: [
-        { id: 'pr1', name: '手电筒', type: '道具', description: '发出微弱光芒的老旧手电' },
-        { id: 'pr2', name: '手术刀', type: '武器', description: '生锈的手术刀' },
-      ],
-      shots: [
-        { id: 'shot1', scriptContent: '走廊里死一般的寂静', shotType: 'wide', cameraMovement: 'static', duration: 3, description: 'Wide shot of dark hospital corridor', characters: ['c1'], dialogue: '', emotion: '紧张' },
-        { id: 'shot2', scriptContent: '叶青凡站在铁门前', shotType: 'medium', cameraMovement: 'tracking', duration: 4, description: 'Medium shot of Ye Qingfan holding flashlight', characters: ['c1'], dialogue: '比我记忆中更黑了', emotion: '警觉' },
-        { id: 'shot3', scriptContent: '铁门发出刺耳的摩擦声', shotType: 'close-up', cameraMovement: 'zoom-in', duration: 2, description: 'Close-up of rusty iron door opening', characters: [], dialogue: '', emotion: '悬疑' },
-        { id: 'shot4', scriptContent: '鬼护士背对窗户站立', shotType: 'wide', cameraMovement: 'static', duration: 4, description: 'Wide shot of ghost nurse silhouette against window', characters: ['c2'], dialogue: '', emotion: '恐怖' },
-        { id: 'shot5', scriptContent: '鬼护士转身，脸上没有五官', shotType: 'close-up', cameraMovement: 'zoom-in', duration: 3, description: 'Close-up of faceless ghost nurse turning', characters: ['c2'], dialogue: '', emotion: '惊悚' },
-      ],
-    });
+    setActiveProject(DEV_TEST_PROJECT);
+    setAnalysisData(DEV_TEST_ANALYSIS);
     setEditorStep('video');
     setView('editor');
   };
 
   // 处理项目创建 (从弹窗回调)
-  const handleCreateProject = (data: { title: string; mode: 'drama' | 'narration'; script: string }) => {
-    const newProject: Project = {
-        id: `p${Date.now()}`,
+  const handleCreateProject = async (data: { title: string; mode: 'drama' | 'narration'; script: string }) => {
+    try {
+      const created = await createProjectAPI({
         title: data.title,
-        genre: data.mode === 'drama' ? '剧情' : '解说', // 暂时根据模式映射题材
         mode: data.mode,
-        episodes: 1,
+        genre: data.mode === 'drama' ? '剧情' : '解说',
+      });
+
+      const newProject: Project = {
+        id: created.id,
+        title: created.title,
+        genre: created.genre,
+        mode: created.mode,
+        episodes: created.episodes || 1,
         lastEdited: '刚刚',
-        thumbnail: `https://picsum.photos/seed/${Date.now()}/600/338`,
-        status: 'script'
-    };
+        thumbnail: created.thumbnail || `https://picsum.photos/seed/${created.id}/600/338`,
+        status: created.status || 'script'
+      };
 
-    // 如果用户输入了剧本，则使用用户剧本；否则置空或使用默认
-    if (data.script.trim()) {
+      if (data.script.trim()) {
         setScriptText(data.script);
-    } else {
-        setScriptText(''); 
-    }
+      } else {
+        setScriptText('');
+      }
 
-    setActiveProject(newProject);
-    setView('editor');
-    setEditorStep('script');
-    setAnalysisData(null); 
-    
-    setIsCreateModalOpen(false); // 关闭弹窗
+      setActiveProject(newProject);
+      setView('editor');
+      setEditorStep('script');
+      setAnalysisData(null);
+      setIsCreateModalOpen(false);
+      message.success('项目创建成功');
+    } catch (err: any) {
+      message.error(err.message || '创建项目失败');
+    }
   };
 
   // 选择已有项目
   const handleSelectProject = (id: string) => {
-    const proj = MOCK_PROJECTS.find(p => p.id === id);
+    const proj = displayProjects.find(p => p.id === id);
     if (proj) {
-        setActiveProject(proj);
-        setView('editor');
-        setEditorStep(proj.status === 'storyboard' ? 'storyboard' : 'script');
-        // 如果是已有项目，这里应该加载该项目的剧本，这里为了演示简单处理：
-        if (proj.id === 'p1') setScriptText(DEFAULT_SCRIPT);
-        else setScriptText('');
+      setActiveProject(proj);
+      setView('editor');
+      setEditorStep(proj.status === 'storyboard' ? 'storyboard' : 'script');
+      // TODO: 加载项目的剧本数据
+      setScriptText('');
+      setAnalysisData(null);
+    }
+  };
+
+  // 删除项目
+  const handleDeleteProject = async (id: string) => {
+    try {
+      await deleteProjectAPI(id);
+      message.success('项目已删除');
+    } catch (err: any) {
+      message.error(err.message || '删除项目失败');
     }
   };
 
@@ -416,11 +443,18 @@ const App: React.FC = () => {
         {/* 主内容区域 */}
         <main className="flex-1 overflow-hidden relative bg-[#0f0f0f]">
             {view === 'projects' && (
-                <ProjectList 
-                    projects={MOCK_PROJECTS} 
-                    onSelectProject={handleSelectProject} 
+                projectsLoading ? (
+                  <div className="flex h-full items-center justify-center">
+                    <Spin size="large" tip="加载项目列表..." />
+                  </div>
+                ) : (
+                  <ProjectList
+                    projects={displayProjects}
+                    onSelectProject={handleSelectProject}
                     onCreateProject={handleOpenCreateModal}
-                />
+                    onDeleteProject={handleDeleteProject}
+                  />
+                )
             )}
 
             {view === 'settings' && (

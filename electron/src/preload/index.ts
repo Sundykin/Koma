@@ -72,6 +72,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     create: (meta: any) => ipcRenderer.invoke('controller', 'controller.project.create', meta),
     load: (projectId: string) => ipcRenderer.invoke('controller', 'controller.project.load', { projectId }),
     save: (projectId: string, data: any) => ipcRenderer.invoke('controller', 'controller.project.save', { projectId, data }),
+    update: (projectId: string, updates: any) => ipcRenderer.invoke('controller', 'controller.project.update', { projectId, updates }),
+    remove: (projectId: string) => ipcRenderer.invoke('controller', 'controller.project.delete', { projectId }),
+    rebuildIndex: () => ipcRenderer.invoke('controller', 'controller.project.rebuildIndex'),
     export: (projectId: string, destPath: string, options?: any) =>
       ipcRenderer.invoke('controller', 'controller.project.export', { projectId, destPath, options }),
     import: (zipPath: string, newProjectId?: string) =>
