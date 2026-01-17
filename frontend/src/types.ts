@@ -28,6 +28,29 @@ export interface Episode {
   status: 'draft' | 'script' | 'storyboard' | 'generating' | 'completed';
   createdAt: number;
   updatedAt: number;
+  // 分集解析数据引用（实际数据存储在 episodes/{id}/analysis.json）
+  hasAnalysis?: boolean;
+}
+
+// 分集解析结果（存储在 episodes/{id}/analysis.json）
+export interface EpisodeAnalysis {
+  episodeId: string;
+  // 引用项目级资产（ID 引用，非复制）
+  characterRefs: string[];
+  sceneRefs: string[];
+  propRefs: string[];
+  // 分集特有的分镜
+  shots: Shot[];
+  createdAt: number;
+  updatedAt: number;
+}
+
+// 资产引用追踪
+export interface EpisodeRef {
+  episodeId: string;
+  episodeName: string;
+  firstAppearance: boolean;
+  shotIds?: string[];
 }
 
 // 主题预设接口
@@ -59,6 +82,9 @@ export interface Character {
   };
   previewVideoPath?: string;  // 预览视频路径
   sora2CharacterId?: string;  // 角色提取API返回的ID
+  // 分集引用追踪
+  episodeRefs?: EpisodeRef[];
+  fingerprint?: string;       // 资产指纹（用于去重）
 }
 
 // 场景接口定义
@@ -70,6 +96,9 @@ export interface Scene {
   mood: string;        // 氛围/情绪
   description: string; // 场景视觉描述
   imagePath?: string;  // 场景预览图路径
+  // 分集引用追踪
+  episodeRefs?: EpisodeRef[];
+  fingerprint?: string;
 }
 
 // 道具接口定义
@@ -79,6 +108,9 @@ export interface Prop {
   type: string;        // 道具类型 (如：武器、日常、关键线索)
   description: string; // 视觉描述
   imagePath?: string;  // 道具参考图路径
+  // 分集引用追踪
+  episodeRefs?: EpisodeRef[];
+  fingerprint?: string;
 }
 
 // 分镜/镜头接口定义

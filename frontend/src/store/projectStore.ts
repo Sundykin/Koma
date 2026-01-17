@@ -14,6 +14,7 @@ import type {
   ShotVersion,
   Track,
   Episode,
+  EpisodeAnalysis,
   Prop,
 } from '../types';
 
@@ -642,6 +643,81 @@ export async function listEpisodes(projectId: string): Promise<Episode[]> {
     return episodes.sort((a, b) => a.number - b.number);
   } catch {
     return [];
+  }
+}
+
+// ========== 分集解析结果存储 ==========
+
+export async function saveEpisodeAnalysis(
+  projectId: string,
+  episodeId: string,
+  analysis: Omit<EpisodeAnalysis, 'episodeId' | 'createdAt' | 'updatedAt'>
+): Promise<EpisodeAnalysis> {
+  if (!electronService.isElectron()) {
+    throw new Error('仅支持 Electron 环境');
+  }
+
+  const projectPath = await getProjectPath(projectId);
+  const episodePath = `${projectPath}/episodes/${episodeId}`;
+  const now = Date.now();
+
+  // 检查是否已有解析结果
+  const existing = await loadEpisodeAnalysis(projectId, episodeId);
+  const result: EpisodeAnalysis = {
+    episodeId,
+    characterRefs: analysis.characterRefs,
+    sceneRefs: analysis.sceneRefs,
+    propRefs: analysis.propRefs,
+    shots: analysis.shots,
+    createdAt: existing?.createdAt || now,
+    updatedAt: now,
+  };
+
+  await electronService.fs.writeFile(
+    `${episodePath}/analysis.json`,
+    JSON.stringify(result, null, 2)
+  );
+
+  // 更新分集元数据
+  await saveEpisode(projectId, episodeId, { hasAnalysis: true });
+
+  return result;
+}
+
+export async function loadEpisodeAnalysis(
+  projectId: string,
+  episodeId: string
+): Promise<EpisodeAnalysis | null> {
+  if (!electronService.isElectron()) return null;
+
+  try {
+    const projectPath = await getProjectPath(projectId);
+    const data = await electronService.fs.readFile(
+      `${projectPath}/episodes/${episodeId}/analysis.json`
+    );
+    return JSON.parse(data);
+  } catch {
+    return null;
+  }
+}
+
+export async function deleteEpisodeAnalysis(
+  projectId: string,
+  episodeId: string
+): Promise<boolean> {
+  if (!electronService.isElectron()) return false;
+
+  try {
+    const projectPath = await getProjectPath(projectId);
+    const filePath = `${projectPath}/episodes/${episodeId}/analysis.json`;
+    const exists = await electronService.fs.exists(filePath);
+    if (exists) {
+      await electronService.fs.remove(filePath);
+      await saveEpisode(projectId, episodeId, { hasAnalysis: false });
+    }
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -1345,3 +1421,186 @@ export async function saveShots(projectId: string, shots: Shot[]): Promise<void>
     JSON.stringify(shots, null, 2)
   );
 }
+
+// ========== 资产引用管理 ==========
+
+import type { EpisodeRef } from '../types';
+
+// 计算资产指纹（用于去重）
+export function calculateAssetFingerprint(asset: { name: string; description?: string; type?: string }): string {
+  const normalizeText = (text: string): string => {
+    return text.toLowerCase().replace(/[\s\p{P}]/gu, '').trim();
+  };
+
+  const features = [
+    normalizeText(asset.name),
+    asset.description ? normalizeText(asset.description) : '',
+    asset.type || ''
+  ].filter(Boolean);
+
+  // 简单哈希
+  let hash = 0;
+  const str = features.join('|');
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash;
+  }
+  return Math.abs(hash).toString(16);
+}
+
+// 添加分集引用到角色
+export async function addCharacterEpisodeRef(
+  projectId: string,
+  characterId: string,
+  episodeRef: EpisodeRef
+): Promise<void> {
+  const characters = await loadCharacters(projectId);
+  const character = characters.find(c => c.id === characterId);
+  if (!character) return;
+
+  if (!character.episodeRefs) {
+    character.episodeRefs = [];
+  }
+
+  // 检查是否已存在
+  const exists = character.episodeRefs.some(r => r.episodeId === episodeRef.episodeId);
+  if (!exists) {
+    character.episodeRefs.push(episodeRef);
+    await saveCharacters(projectId, characters);
+  }
+}
+
+// 移除分集引用
+export async function removeCharacterEpisodeRef(
+  projectId: string,
+  characterId: string,
+  episodeId: string
+): Promise<void> {
+  const characters = await loadCharacters(projectId);
+  const character = characters.find(c => c.id === characterId);
+  if (!character || !character.episodeRefs) return;
+
+  character.episodeRefs = character.episodeRefs.filter(r => r.episodeId !== episodeId);
+  await saveCharacters(projectId, characters);
+}
+
+// 添加分集引用到场景
+export async function addSceneEpisodeRef(
+  projectId: string,
+  sceneId: string,
+  episodeRef: EpisodeRef
+): Promise<void> {
+  const scenes = await loadScenes(projectId);
+  const scene = scenes.find(s => s.id === sceneId);
+  if (!scene) return;
+
+  if (!scene.episodeRefs) {
+    scene.episodeRefs = [];
+  }
+
+  const exists = scene.episodeRefs.some(r => r.episodeId === episodeRef.episodeId);
+  if (!exists) {
+    scene.episodeRefs.push(episodeRef);
+    await saveScenes(projectId, scenes);
+  }
+}
+
+// 移除场景分集引用
+export async function removeSceneEpisodeRef(
+  projectId: string,
+  sceneId: string,
+  episodeId: string
+): Promise<void> {
+  const scenes = await loadScenes(projectId);
+  const scene = scenes.find(s => s.id === sceneId);
+  if (!scene || !scene.episodeRefs) return;
+
+  scene.episodeRefs = scene.episodeRefs.filter(r => r.episodeId !== episodeId);
+  await saveScenes(projectId, scenes);
+}
+
+// 添加分集引用到道具
+export async function addPropEpisodeRef(
+  projectId: string,
+  propId: string,
+  episodeRef: EpisodeRef
+): Promise<void> {
+  const props = await loadProps(projectId);
+  const prop = props.find(p => p.id === propId);
+  if (!prop) return;
+
+  if (!prop.episodeRefs) {
+    prop.episodeRefs = [];
+  }
+
+  const exists = prop.episodeRefs.some(r => r.episodeId === episodeRef.episodeId);
+  if (!exists) {
+    prop.episodeRefs.push(episodeRef);
+    await saveProps(projectId, props);
+  }
+}
+
+// 移除道具分集引用
+export async function removePropEpisodeRef(
+  projectId: string,
+  propId: string,
+  episodeId: string
+): Promise<void> {
+  const props = await loadProps(projectId);
+  const prop = props.find(p => p.id === propId);
+  if (!prop || !prop.episodeRefs) return;
+
+  prop.episodeRefs = prop.episodeRefs.filter(r => r.episodeId !== episodeId);
+  await saveProps(projectId, props);
+}
+
+// 按名称查找匹配的角色
+export async function findCharacterByName(
+  projectId: string,
+  name: string
+): Promise<Character | null> {
+  const characters = await loadCharacters(projectId);
+  const normalized = name.toLowerCase().trim();
+  return characters.find(c => c.name.toLowerCase().trim() === normalized) || null;
+}
+
+// 按名称查找匹配的场景
+export async function findSceneByName(
+  projectId: string,
+  name: string
+): Promise<Scene | null> {
+  const scenes = await loadScenes(projectId);
+  const normalized = name.toLowerCase().trim();
+  return scenes.find(s => s.name.toLowerCase().trim() === normalized) || null;
+}
+
+// 按名称查找匹配的道具
+export async function findPropByName(
+  projectId: string,
+  name: string
+): Promise<Prop | null> {
+  const props = await loadProps(projectId);
+  const normalized = name.toLowerCase().trim();
+  return props.find(p => p.name.toLowerCase().trim() === normalized) || null;
+}
+
+// 获取未被任何分集引用的资产
+export async function getOrphanedAssets(projectId: string): Promise<{
+  characters: Character[];
+  scenes: Scene[];
+  props: Prop[];
+}> {
+  const [characters, scenes, props] = await Promise.all([
+    loadCharacters(projectId),
+    loadScenes(projectId),
+    loadProps(projectId),
+  ]);
+
+  return {
+    characters: characters.filter(c => !c.episodeRefs || c.episodeRefs.length === 0),
+    scenes: scenes.filter(s => !s.episodeRefs || s.episodeRefs.length === 0),
+    props: props.filter(p => !p.episodeRefs || p.episodeRefs.length === 0),
+  };
+}
+

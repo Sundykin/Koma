@@ -6,7 +6,6 @@ import React, { useState, useEffect } from 'react';
 import { Modal, Form, Input, Divider, App, Tabs } from 'antd';
 import type { Project } from '../types';
 import { ProjectMediaSelector } from './ProjectMediaSelector';
-import { EpisodeManager } from './EpisodeManager';
 import { ThemeSelector } from './ThemeSelector';
 
 interface ProjectSettingsModalProps {
@@ -119,13 +118,6 @@ export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({
           />
         </>
       ),
-    },
-    {
-      key: 'episodes',
-      label: '分集管理',
-      children: project ? (
-        <EpisodeManager projectId={project.id} />
-      ) : null,
     },
   ];
 

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Project, ScriptAnalysisResult, EditorStep, AppSettings } from './types';
+import { Project, ScriptAnalysisResult, EditorStep, AppSettings, Episode } from './types';
 import { ProjectList } from './components/ProjectList';
+import { ProjectOverview } from './components/ProjectOverview';
 import { AssetManager } from './components/AssetManager';
 import { Storyboard } from './components/Storyboard';
 import { VideoEditor } from './components/editor';
@@ -32,7 +33,8 @@ import {
   Scissors,
   Bold, Italic, AlignLeft, AlignCenter, AlignRight,
   Type, User, MessageSquare, MapPin, Loader2,
-  FileText
+  FileText,
+  FolderOpen
 } from 'lucide-react';
 
 // 开发测试用模拟数据
@@ -126,11 +128,12 @@ const AppContent: React.FC = () => {
     updateProject: updateProjectAPI,
   } = useProjects();
 
-  const [view, setView] = useState<'projects' | 'editor' | 'settings'>(isVideoDevMode ? 'editor' : 'projects');
+  const [view, setView] = useState<'projects' | 'overview' | 'editor' | 'settings'>(isVideoDevMode ? 'editor' : 'projects');
   const [activeProject, setActiveProject] = useState<Project | null>(
     isVideoDevMode ? DEV_TEST_PROJECT : null
   );
   const [editorStep, setEditorStep] = useState<EditorStep>(isVideoDevMode ? 'video' : 'script');
+  const [activeEpisode, setActiveEpisode] = useState<Episode | null>(null);
   const [appSettings, setAppSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
 
   // 弹窗状态
@@ -147,8 +150,8 @@ const AppContent: React.FC = () => {
     isVideoDevMode ? DEV_TEST_ANALYSIS : null
   );
 
-  // 侧边栏折叠逻辑：在 editor 模式下折叠
-  const isSidebarCollapsed = view === 'editor';
+  // 侧边栏折叠逻辑：在 editor 和 overview 模式下折叠
+  const isSidebarCollapsed = view === 'editor' || view === 'overview';
 
   // 将 ProjectMeta 转换为 Project 显示格式
   const displayProjects: Project[] = projects.map(p => ({
@@ -212,17 +215,27 @@ const AppContent: React.FC = () => {
     }
   };
 
-  // 选择已有项目
+  // 选择已有项目 - 进入项目概览
   const handleSelectProject = (id: string) => {
     const proj = displayProjects.find(p => p.id === id);
     if (proj) {
       setActiveProject(proj);
-      setView('editor');
-      setEditorStep(proj.status === 'storyboard' ? 'storyboard' : 'script');
-      // TODO: 加载项目的剧本数据
+      setActiveEpisode(null);
+      setView('overview');
+      // 重置编辑器状态
       setScriptText('');
       setAnalysisData(null);
     }
+  };
+
+  // 从项目概览进入分集创作
+  const handleEnterEpisode = (episode: Episode) => {
+    setActiveEpisode(episode);
+    setView('editor');
+    setEditorStep('script');
+    // 加载分集剧本
+    setScriptText(episode.scriptText || '');
+    setAnalysisData(null);
   };
 
   // 删除项目
@@ -322,8 +335,10 @@ const AppContent: React.FC = () => {
         onClick={({ key }) => {
           if (key === 'video-test') {
             handleEnterVideoTest();
+          } else if (key === 'overview' || key === 'editor') {
+            // 这些是项目内视图，保持不变
           } else {
-            setView(key as 'projects' | 'editor' | 'settings');
+            setView(key as 'projects' | 'settings');
           }
         }}
         style={{
@@ -337,13 +352,26 @@ const AppContent: React.FC = () => {
             icon: <AppstoreOutlined />,
             label: '项目管理',
           },
-          // 编辑中显示当前项目
+          // 项目概览视图
+          ...(view === 'overview' && activeProject && !isSidebarCollapsed
+            ? [
+                {
+                  key: 'overview',
+                  icon: <FolderOpen size={16} />,
+                  label: `概览: ${activeProject.title}`,
+                  disabled: true,
+                },
+              ]
+            : []),
+          // 编辑中显示当前项目和分集
           ...(view === 'editor' && activeProject && !isSidebarCollapsed
             ? [
                 {
                   key: 'editor',
                   icon: <FileText size={16} />,
-                  label: `编辑: ${activeProject.title}`,
+                  label: activeEpisode
+                    ? `编辑: ${activeProject.title} - 第${activeEpisode.number}集`
+                    : `编辑: ${activeProject.title}`,
                   disabled: true,
                 },
               ]
@@ -405,11 +433,30 @@ const AppContent: React.FC = () => {
                         <Home className="w-4 h-4 mr-2" />
                         <span className="hidden sm:inline">首页</span>
                     </button>
-                    {view === 'editor' && activeProject && (
+                    {/* 项目概览视图面包屑 */}
+                    {view === 'overview' && activeProject && (
                         <>
                             <ChevronRight className="w-4 h-4 mx-2 text-gray-600" />
                             <span className="text-white font-bold">{activeProject.title}</span>
-                            <span className="ml-2 text-xs bg-gray-800 border border-gray-700 text-gray-300 px-2 py-0.5 rounded shadow-sm">{activeProject.episodes} 集</span>
+                            <span className="ml-2 text-xs bg-gray-800 border border-gray-700 text-gray-300 px-2 py-0.5 rounded shadow-sm">概览</span>
+                        </>
+                    )}
+                    {/* 编辑视图面包屑 */}
+                    {view === 'editor' && activeProject && (
+                        <>
+                            <ChevronRight className="w-4 h-4 mx-2 text-gray-600" />
+                            <button
+                              onClick={() => setView('overview')}
+                              className="hover:text-white transition-colors"
+                            >
+                              {activeProject.title}
+                            </button>
+                            {activeEpisode && (
+                              <>
+                                <ChevronRight className="w-4 h-4 mx-2 text-gray-600" />
+                                <span className="text-white font-bold">第 {activeEpisode.number} 集</span>
+                              </>
+                            )}
                             {activeProject.mode === 'narration' && (
                                 <span className="ml-2 text-[10px] bg-blue-900/30 text-blue-300 border border-blue-800/50 px-1.5 py-0.5 rounded uppercase font-bold tracking-wide">旁白解说</span>
                             )}
@@ -422,18 +469,22 @@ const AppContent: React.FC = () => {
                         </>
                     )}
                 </div>
-                
-                {view === 'editor' && (
+
+                {(view === 'editor' || view === 'overview') && (
                     <div className="flex gap-3">
                         <Button icon={<SettingOutlined />} onClick={() => setIsProjectSettingsOpen(true)}>
                             项目设置
                         </Button>
-                        <Button icon={<SaveOutlined />}>
-                            保存草稿
-                        </Button>
-                        <Button type="primary" icon={<ExportOutlined />}>
-                            导出工程
-                        </Button>
+                        {view === 'editor' && (
+                          <>
+                            <Button icon={<SaveOutlined />}>
+                                保存草稿
+                            </Button>
+                            <Button type="primary" icon={<ExportOutlined />}>
+                                导出工程
+                            </Button>
+                          </>
+                        )}
                     </div>
                 )}
             </div>
@@ -464,9 +515,19 @@ const AppContent: React.FC = () => {
             )}
 
             {view === 'settings' && (
-                <SettingsPage 
-                    settings={appSettings} 
-                    onSave={setAppSettings} 
+                <SettingsPage
+                    settings={appSettings}
+                    onSave={setAppSettings}
+                />
+            )}
+
+            {/* 项目概览视图 */}
+            {view === 'overview' && activeProject && (
+                <ProjectOverview
+                  project={activeProject}
+                  onEnterEpisode={handleEnterEpisode}
+                  onOpenSettings={() => setIsProjectSettingsOpen(true)}
+                  onProjectUpdate={(updates) => setActiveProject({ ...activeProject, ...updates })}
                 />
             )}
 

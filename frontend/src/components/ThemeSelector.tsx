@@ -1,9 +1,10 @@
 /**
- * 主题选择器
+ * 主题选择器（暗色系）
  * 选择项目的视觉风格主题
  */
 import React, { useState, useCallback } from 'react';
 import { THEME_PRESETS, type ThemePreset } from '../config/themePresets';
+import { Check } from 'lucide-react';
 
 interface ThemeSelectorProps {
   value?: string;
@@ -34,112 +35,87 @@ export const ThemeSelector: React.FC<ThemeSelectorProps> = ({
     onChange(undefined, text);
   }, [onChange]);
 
-  const containerStyle: React.CSSProperties = {
-    padding: '16px',
-  };
-
-  const gridStyle: React.CSSProperties = {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))',
-    gap: '12px',
-    marginBottom: '16px',
-  };
-
-  const cardStyle = (isSelected: boolean): React.CSSProperties => ({
-    padding: '12px',
-    borderRadius: '8px',
-    border: isSelected ? '2px solid var(--color-primary, #1976d2)' : '2px solid #ddd',
-    backgroundColor: isSelected ? 'rgba(25, 118, 210, 0.05)' : 'white',
-    cursor: 'pointer',
-    transition: 'all 0.2s',
-  });
-
-  const titleStyle: React.CSSProperties = {
-    fontWeight: 'bold',
-    fontSize: '14px',
-    marginBottom: '4px',
-  };
-
-  const descStyle: React.CSSProperties = {
-    fontSize: '12px',
-    color: '#666',
-    marginBottom: '8px',
-  };
-
-  const prefixStyle: React.CSSProperties = {
-    fontSize: '10px',
-    color: '#999',
-    padding: '4px 8px',
-    backgroundColor: '#f5f5f5',
-    borderRadius: '4px',
-    fontFamily: 'monospace',
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-  };
-
-  const customInputStyle: React.CSSProperties = {
-    width: '100%',
-    minHeight: '80px',
-    padding: '8px',
-    fontSize: '14px',
-    border: '1px solid #ddd',
-    borderRadius: '4px',
-    resize: 'vertical',
-    fontFamily: 'inherit',
-  };
-
   return (
-    <div style={containerStyle}>
-      <h4 style={{ marginTop: 0, marginBottom: '12px' }}>选择主题风格</h4>
+    <div className="p-4">
+      <h4 className="text-gray-300 text-sm font-medium mb-3">选择主题风格</h4>
 
-      <div style={gridStyle}>
-        {THEME_PRESETS.map(theme => (
-          <div
-            key={theme.id}
-            style={cardStyle(value === theme.id && !isCustom)}
-            onClick={() => handleThemeSelect(theme.id)}
-          >
-            <div style={titleStyle}>{theme.name}</div>
-            <div style={descStyle}>{theme.description}</div>
-            <div style={prefixStyle} title={theme.ttiStylePrefix}>
-              {theme.ttiStylePrefix}
+      <div className="grid grid-cols-2 gap-3 mb-4">
+        {THEME_PRESETS.map(theme => {
+          const isSelected = value === theme.id && !isCustom;
+          return (
+            <div
+              key={theme.id}
+              className={`
+                relative p-3 rounded-lg cursor-pointer transition-all
+                ${isSelected
+                  ? 'bg-[#1a1a1a] border-2 border-green-500'
+                  : 'bg-[#1a1a1a] border-2 border-gray-800 hover:border-gray-600'
+                }
+              `}
+              onClick={() => handleThemeSelect(theme.id)}
+            >
+              {isSelected && (
+                <div className="absolute top-2 right-2 w-5 h-5 bg-green-500 rounded-full flex items-center justify-center">
+                  <Check className="w-3 h-3 text-white" />
+                </div>
+              )}
+              <div className="text-sm font-medium text-gray-200 mb-1">{theme.name}</div>
+              <div className="text-xs text-gray-500 mb-2">{theme.description}</div>
+              <div
+                className="text-[10px] text-gray-600 px-2 py-1 bg-[#0f0f0f] rounded font-mono truncate"
+                title={theme.ttiStylePrefix}
+              >
+                {theme.ttiStylePrefix}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
 
         {/* 自定义选项 */}
         <div
-          style={cardStyle(isCustom)}
+          className={`
+            relative p-3 rounded-lg cursor-pointer transition-all
+            ${isCustom
+              ? 'bg-[#1a1a1a] border-2 border-green-500'
+              : 'bg-[#1a1a1a] border-2 border-gray-800 hover:border-gray-600'
+            }
+          `}
           onClick={handleCustomToggle}
         >
-          <div style={titleStyle}>自定义</div>
-          <div style={descStyle}>输入自己的风格描述</div>
-          <div style={prefixStyle}>Custom style...</div>
+          {isCustom && (
+            <div className="absolute top-2 right-2 w-5 h-5 bg-green-500 rounded-full flex items-center justify-center">
+              <Check className="w-3 h-3 text-white" />
+            </div>
+          )}
+          <div className="text-sm font-medium text-gray-200 mb-1">自定义</div>
+          <div className="text-xs text-gray-500 mb-2">输入自己的风格描述</div>
+          <div className="text-[10px] text-gray-600 px-2 py-1 bg-[#0f0f0f] rounded font-mono">
+            Custom style...
+          </div>
         </div>
       </div>
 
       {isCustom && (
-        <div>
-          <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>
+        <div className="mt-4">
+          <label className="block text-xs text-gray-400 mb-2 font-medium">
             自定义风格描述 (英文)
           </label>
           <textarea
-            style={customInputStyle}
+            className="w-full min-h-[80px] p-3 text-sm bg-[#0f0f0f] border border-gray-700 rounded-lg text-gray-300 placeholder-gray-600 resize-y focus:outline-none focus:border-green-600 transition-colors"
             placeholder="e.g., watercolor painting style, soft colors, dreamy atmosphere..."
             value={customText}
             onChange={e => handleCustomChange(e.target.value)}
           />
-          <div style={{ fontSize: '12px', color: '#666', marginTop: '4px' }}>
+          <div className="text-[11px] text-gray-600 mt-2">
             这段描述会作为前缀添加到所有图片生成的 prompt 中
           </div>
         </div>
       )}
 
       {value && !isCustom && (
-        <div style={{ marginTop: '12px', padding: '12px', backgroundColor: '#f0f7ff', borderRadius: '8px' }}>
-          <div style={{ fontSize: '12px', fontWeight: 'bold', marginBottom: '4px' }}>当前选择</div>
-          <div style={{ fontSize: '14px' }}>
+        <div className="mt-4 p-3 bg-[#1a1a1a] border border-green-900/50 rounded-lg">
+          <div className="text-[11px] text-green-500 font-medium mb-1">当前选择</div>
+          <div className="text-sm text-gray-300">
             {THEME_PRESETS.find(t => t.id === value)?.name || value}
           </div>
         </div>

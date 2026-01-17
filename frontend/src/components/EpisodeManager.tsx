@@ -2,7 +2,7 @@
  * 分集管理组件
  * 支持分集列表展示、增删改、LLM 自动分割
  */
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, forwardRef, useImperativeHandle } from 'react';
 import {
   Button,
   List,
@@ -17,6 +17,7 @@ import {
   Spin,
   App,
   Popconfirm,
+  Tooltip,
 } from 'antd';
 import {
   PlusOutlined,
@@ -24,6 +25,7 @@ import {
   EditOutlined,
   ThunderboltOutlined,
   HolderOutlined,
+  PlayCircleOutlined,
 } from '@ant-design/icons';
 import type { Episode } from '../types';
 import { createEpisode, saveEpisode, deleteEpisode, listEpisodes } from '../store/projectStore';
@@ -38,6 +40,10 @@ interface EpisodeManagerProps {
   fullScript?: string;
   onEpisodeSelect?: (episode: Episode) => void;
   selectedEpisodeId?: string;
+}
+
+export interface EpisodeManagerRef {
+  refresh: () => void;
 }
 
 // 分集状态标签颜色
@@ -57,12 +63,12 @@ const statusLabels: Record<Episode['status'], string> = {
   completed: '已完成',
 };
 
-export const EpisodeManager: React.FC<EpisodeManagerProps> = ({
+export const EpisodeManager = forwardRef<EpisodeManagerRef, EpisodeManagerProps>(({
   projectId,
   fullScript,
   onEpisodeSelect,
   selectedEpisodeId,
-}) => {
+}, ref) => {
   const { message } = App.useApp();
   const [form] = Form.useForm();
   const [episodes, setEpisodes] = useState<Episode[]>([]);
@@ -89,6 +95,11 @@ export const EpisodeManager: React.FC<EpisodeManagerProps> = ({
   useEffect(() => {
     loadEpisodes();
   }, [loadEpisodes]);
+
+  // 暴露 refresh 方法给父组件
+  useImperativeHandle(ref, () => ({
+    refresh: loadEpisodes,
+  }), [loadEpisodes]);
 
   // 添加分集
   const handleAddEpisode = async () => {
@@ -271,10 +282,24 @@ ${fullScript}
             <List.Item
               style={{
                 cursor: 'pointer',
-                background: selectedEpisodeId === episode.id ? '#f0f5ff' : undefined,
+                background: selectedEpisodeId === episode.id ? 'rgba(16, 185, 129, 0.1)' : undefined,
+                borderLeft: selectedEpisodeId === episode.id ? '3px solid #10b981' : '3px solid transparent',
               }}
               onClick={() => onEpisodeSelect?.(episode)}
               actions={[
+                <Tooltip title="进入创作" key="enter">
+                  <Button
+                    type="primary"
+                    size="small"
+                    icon={<PlayCircleOutlined />}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onEpisodeSelect?.(episode);
+                    }}
+                  >
+                    创作
+                  </Button>
+                </Tooltip>,
                 <Button
                   key="edit"
                   type="text"
@@ -372,6 +397,8 @@ ${fullScript}
       </Modal>
     </div>
   );
-};
+});
+
+EpisodeManager.displayName = 'EpisodeManager';
 
 export default EpisodeManager;
