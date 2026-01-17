@@ -119,7 +119,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ isOpen, 
               </Button>
             </div>
           }
-          labelCol={{ style: { width: '100%' } }}
+          labelCol={{ span: 24 }}
         >
           <Input.TextArea
             placeholder='请输入剧本,将为你自动分集 (文本请用"第n章/集"分割)'

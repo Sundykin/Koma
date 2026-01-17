@@ -281,3 +281,15 @@ TBD - created by archiving change add-antd-timeline-editor. Update Purpose after
 - **AND** 自动回退到使用全局默认配置
 - **AND** 显示提示告知用户
 
+### Requirement: AppSettings Structure
+系统 SHALL 使用统一的应用设置结构。
+
+#### Scenario: 设置字段
+- **WHEN** 加载 AppSettings 时
+- **THEN** 包含以下媒体配置数组：
+  - llmConfigs: LLMModelConfig[]
+  - ttiConfigs: TTIConfig[]
+  - itvConfigs: ITVConfig[]
+  - ttsConfigs: TTSConfig[]
+- **AND** 兼容处理旧版单配置字段
+

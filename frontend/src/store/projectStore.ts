@@ -13,6 +13,8 @@ import type {
   ShotMeta,
   ShotVersion,
   Track,
+  Episode,
+  Prop,
 } from '../types';
 
 import {
@@ -505,6 +507,264 @@ export async function saveShotVersion(
   );
 
   return shotVersion;
+}
+
+// ========== 分集管理 ==========
+
+export async function createEpisode(
+  projectId: string,
+  episode: Omit<Episode, 'id' | 'projectId' | 'createdAt' | 'updatedAt'>
+): Promise<Episode> {
+  if (!electronService.isElectron()) {
+    throw new Error('仅支持 Electron 环境');
+  }
+
+  const episodeId = uuidv4();
+  const now = Date.now();
+  const projectPath = await getProjectPath(projectId);
+  const episodePath = `${projectPath}/episodes/${episodeId}`;
+
+  await electronService.fs.mkdir(episodePath);
+  await electronService.fs.mkdir(`${episodePath}/assets`);
+
+  const newEpisode: Episode = {
+    id: episodeId,
+    projectId,
+    number: episode.number,
+    title: episode.title,
+    scriptText: episode.scriptText,
+    status: episode.status || 'draft',
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  await electronService.fs.writeFile(
+    `${episodePath}/meta.json`,
+    JSON.stringify(newEpisode, null, 2)
+  );
+
+  if (episode.scriptText) {
+    await electronService.fs.writeFile(
+      `${episodePath}/script.txt`,
+      episode.scriptText
+    );
+  }
+
+  return newEpisode;
+}
+
+export async function loadEpisode(
+  projectId: string,
+  episodeId: string
+): Promise<Episode | null> {
+  if (!electronService.isElectron()) return null;
+
+  try {
+    const projectPath = await getProjectPath(projectId);
+    const data = await electronService.fs.readFile(
+      `${projectPath}/episodes/${episodeId}/meta.json`
+    );
+    return JSON.parse(data);
+  } catch {
+    return null;
+  }
+}
+
+export async function saveEpisode(
+  projectId: string,
+  episodeId: string,
+  updates: Partial<Episode>
+): Promise<Episode | null> {
+  if (!electronService.isElectron()) return null;
+
+  const episode = await loadEpisode(projectId, episodeId);
+  if (!episode) return null;
+
+  const projectPath = await getProjectPath(projectId);
+  const episodePath = `${projectPath}/episodes/${episodeId}`;
+
+  const updatedEpisode: Episode = {
+    ...episode,
+    ...updates,
+    updatedAt: Date.now(),
+  };
+
+  await electronService.fs.writeFile(
+    `${episodePath}/meta.json`,
+    JSON.stringify(updatedEpisode, null, 2)
+  );
+
+  if (updates.scriptText !== undefined) {
+    await electronService.fs.writeFile(
+      `${episodePath}/script.txt`,
+      updates.scriptText || ''
+    );
+  }
+
+  return updatedEpisode;
+}
+
+export async function deleteEpisode(
+  projectId: string,
+  episodeId: string
+): Promise<boolean> {
+  if (!electronService.isElectron()) return false;
+
+  try {
+    const projectPath = await getProjectPath(projectId);
+    await electronService.fs.remove(`${projectPath}/episodes/${episodeId}`);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function listEpisodes(projectId: string): Promise<Episode[]> {
+  if (!electronService.isElectron()) return [];
+
+  try {
+    const projectPath = await getProjectPath(projectId);
+    const episodesPath = `${projectPath}/episodes`;
+
+    const exists = await electronService.fs.exists(episodesPath);
+    if (!exists) return [];
+
+    const dirs = await electronService.fs.readdir(episodesPath);
+    const episodes: Episode[] = [];
+
+    for (const dir of dirs) {
+      const episode = await loadEpisode(projectId, dir);
+      if (episode) {
+        episodes.push(episode);
+      }
+    }
+
+    return episodes.sort((a, b) => a.number - b.number);
+  } catch {
+    return [];
+  }
+}
+
+// ========== 角色资产存储 ==========
+
+export async function saveCharacterCostumePhoto(
+  projectId: string,
+  characterId: string,
+  imagePath: string
+): Promise<string> {
+  if (!electronService.isElectron()) {
+    throw new Error('仅支持 Electron 环境');
+  }
+
+  const projectPath = await getProjectPath(projectId);
+  const assetDir = `${projectPath}/assets/characters/${characterId}`;
+  await electronService.fs.mkdir(assetDir);
+
+  const destPath = `${assetDir}/costume.png`;
+  await electronService.fs.copy(imagePath, destPath);
+
+  return destPath;
+}
+
+export async function saveCharacterThreeView(
+  projectId: string,
+  characterId: string,
+  view: 'front' | 'side' | 'back',
+  imagePath: string
+): Promise<string> {
+  if (!electronService.isElectron()) {
+    throw new Error('仅支持 Electron 环境');
+  }
+
+  const projectPath = await getProjectPath(projectId);
+  const assetDir = `${projectPath}/assets/characters/${characterId}/three-view`;
+  await electronService.fs.mkdir(assetDir);
+
+  const destPath = `${assetDir}/${view}.png`;
+  await electronService.fs.copy(imagePath, destPath);
+
+  return destPath;
+}
+
+export async function saveCharacterPreviewVideo(
+  projectId: string,
+  characterId: string,
+  videoPath: string
+): Promise<string> {
+  if (!electronService.isElectron()) {
+    throw new Error('仅支持 Electron 环境');
+  }
+
+  const projectPath = await getProjectPath(projectId);
+  const assetDir = `${projectPath}/assets/characters/${characterId}`;
+  await electronService.fs.mkdir(assetDir);
+
+  const destPath = `${assetDir}/preview.mp4`;
+  await electronService.fs.copy(videoPath, destPath);
+
+  return destPath;
+}
+
+// ========== 场景/道具资产存储 ==========
+
+export async function saveSceneImage(
+  projectId: string,
+  sceneId: string,
+  imagePath: string
+): Promise<string> {
+  if (!electronService.isElectron()) {
+    throw new Error('仅支持 Electron 环境');
+  }
+
+  const projectPath = await getProjectPath(projectId);
+  const assetDir = `${projectPath}/assets/scenes/${sceneId}`;
+  await electronService.fs.mkdir(assetDir);
+
+  const destPath = `${assetDir}/preview.png`;
+  await electronService.fs.copy(imagePath, destPath);
+
+  return destPath;
+}
+
+export async function savePropImage(
+  projectId: string,
+  propId: string,
+  imagePath: string
+): Promise<string> {
+  if (!electronService.isElectron()) {
+    throw new Error('仅支持 Electron 环境');
+  }
+
+  const projectPath = await getProjectPath(projectId);
+  const assetDir = `${projectPath}/assets/props/${propId}`;
+  await electronService.fs.mkdir(assetDir);
+
+  const destPath = `${assetDir}/reference.png`;
+  await electronService.fs.copy(imagePath, destPath);
+
+  return destPath;
+}
+
+// 加载道具数据
+export async function loadProps(projectId: string): Promise<Prop[]> {
+  if (!electronService.isElectron()) return [];
+  try {
+    const projectPath = await getProjectPath(projectId);
+    const data = await electronService.fs.readFile(`${projectPath}/props.json`);
+    return JSON.parse(data);
+  } catch {
+    return [];
+  }
+}
+
+// 保存道具数据
+export async function saveProps(projectId: string, props: Prop[]): Promise<void> {
+  if (!electronService.isElectron()) return;
+  const projectPath = await getProjectPath(projectId);
+  await electronService.fs.writeFile(
+    `${projectPath}/props.json`,
+    JSON.stringify(props, null, 2)
+  );
 }
 
 export async function loadShotMeta(

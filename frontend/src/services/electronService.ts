@@ -29,11 +29,11 @@ interface ElectronAPI {
     saveFile: (options?: SaveFileOptions) => Promise<SaveDialogResult>;
   };
   fs: {
-    readFile: (path: string) => Promise<string>;
+    readFile: (path: string) => Promise<string | { content: string }>;
     writeFile: (path: string, data: string) => Promise<void>;
-    exists: (path: string) => Promise<boolean>;
+    exists: (path: string) => Promise<boolean | { exists: boolean }>;
     mkdir: (path: string) => Promise<void>;
-    readdir: (path: string) => Promise<string[]>;
+    readdir: (path: string) => Promise<string[] | { files: string[] }>;
     stat: (path: string) => Promise<FileStat>;
     remove: (path: string) => Promise<void>;
     copy: (src: string, dest: string) => Promise<void>;
@@ -43,8 +43,8 @@ interface ElectronAPI {
     showItemInFolder: (path: string) => Promise<void>;
   };
   app: {
-    getPath: (name: string) => Promise<string>;
-    getVersion: () => Promise<string>;
+    getPath: (name: string) => Promise<string | { path: string }>;
+    getVersion: () => Promise<string | { version: string }>;
   };
   project: {
     list: () => Promise<ProjectMeta[]>;
@@ -62,11 +62,13 @@ interface ElectronAPI {
 interface OpenFileOptions {
   filters?: { name: string; extensions: string[] }[];
   multiple?: boolean;
+  title?: string;
 }
 
 interface SaveFileOptions {
   defaultPath?: string;
   filters?: { name: string; extensions: string[] }[];
+  title?: string;
 }
 
 interface OpenDialogResult {
@@ -271,6 +273,25 @@ export const fsCopy = async (src: string, dest: string): Promise<void> => {
   }
 };
 
+// 写入二进制文件（用于下载的图片/视频）
+export const fsWriteFileBuffer = async (
+  path: string,
+  buffer: Uint8Array
+): Promise<void> => {
+  const api = getElectronAPI();
+  if (api) {
+    // 将 Uint8Array 转换为 base64 字符串传递
+    const base64 = btoa(
+      Array.from(buffer)
+        .map((b) => String.fromCharCode(b))
+        .join('')
+    );
+    await api.fs.writeFile(path, base64);
+    return;
+  }
+  throw new Error('File system not available in browser');
+};
+
 // ========== Shell ==========
 
 export const shellOpenExternal = async (url: string): Promise<void> => {
@@ -316,6 +337,33 @@ export const appGetVersion = async (): Promise<string> => {
       : (result as string);
   }
   return '0.0.0';
+};
+
+// 获取存储根路径
+export const getStoragePath = async (): Promise<string> => {
+  const api = getElectronAPI();
+  if (api) {
+    const userData = await api.app.getPath('userData');
+    const path = typeof userData === 'object' && userData !== null && 'path' in userData
+      ? (userData as { path: string }).path
+      : (userData as string);
+    return `${path}/storage`;
+  }
+  return '';
+};
+
+// 获取机器唯一标识
+export const getMachineId = async (): Promise<string> => {
+  const api = getElectronAPI();
+  if (api) {
+    const userData = await api.app.getPath('userData');
+    const path = typeof userData === 'object' && userData !== null && 'path' in userData
+      ? (userData as { path: string }).path
+      : (userData as string);
+    // 使用 userData 路径作为基础生成一个稳定的标识
+    return btoa(path).slice(0, 32);
+  }
+  return 'browser-instance';
 };
 
 // ========== 项目 CRUD ==========
@@ -419,6 +467,7 @@ export const electronService = {
   fs: {
     readFile: fsReadFile,
     writeFile: fsWriteFile,
+    writeFileBuffer: fsWriteFileBuffer,
     exists: fsExists,
     mkdir: fsMkdir,
     readdir: fsReaddir,
@@ -434,6 +483,8 @@ export const electronService = {
     getPath: appGetPath,
     getVersion: appGetVersion,
   },
+  getStoragePath,
+  getMachineId,
   project: {
     list: projectList,
     create: projectCreate,

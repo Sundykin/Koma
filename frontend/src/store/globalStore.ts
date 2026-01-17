@@ -4,7 +4,6 @@
  */
 import { electronService } from '../services/electronService';
 import { getStorageConfig, initStorageConfig } from './storageConfig';
-import { encryptSettings, decryptSettings } from './encryption';
 import type {
   AppSettings,
   RecentProject,
@@ -61,22 +60,13 @@ export const LLM_CHANNEL_PRESETS: LLMChannelPreset[] = [
 // ========== TTI 厂商预设 ==========
 
 export const TTI_PRESETS: ProviderPreset[] = [
-  { id: 'comfyui', name: 'ComfyUI (本地)', baseUrl: 'http://127.0.0.1:8188' },
-  { id: 'jimeng', name: '即梦 AI', baseUrl: 'https://jimeng.jianying.com' },
-  { id: 'qwen-image', name: '通义万相', baseUrl: 'https://dashscope.aliyuncs.com', models: ['wanx-v1', 'wanx2.1-t2i-turbo'] },
-  { id: 'midjourney', name: 'Midjourney', baseUrl: 'https://api.midjourney.com' },
-  { id: 'dall-e', name: 'DALL-E 3', baseUrl: 'https://api.openai.com/v1', models: ['dall-e-3', 'dall-e-2'] },
-  { id: 'flux', name: 'Flux (Replicate)', baseUrl: 'https://api.replicate.com/v1', models: ['flux-1.1-pro', 'flux-schnell'] },
+  { id: 'nano-banana', name: 'Nano-Banana（官方）', baseUrl: 'http://ai.hsxbk.top', models: ['gemini-2.5-pro-image-preview', 'gemini-3-pro-image-preview'] },
 ];
 
 // ========== ITV 厂商预设 ==========
 
 export const ITV_PRESETS: ProviderPreset[] = [
-  { id: 'runway', name: 'Runway Gen-3', baseUrl: 'https://api.runwayml.com' },
-  { id: 'kling', name: '可灵 AI', baseUrl: 'https://api.klingai.com' },
-  { id: 'pika', name: 'Pika Labs', baseUrl: 'https://api.pika.art' },
-  { id: 'minimax', name: 'MiniMax 海螺', baseUrl: 'https://api.minimax.chat' },
-  { id: 'comfyui-animatediff', name: 'ComfyUI AnimateDiff', baseUrl: 'http://127.0.0.1:8188' },
+  { id: 'sora2', name: 'Sora2（官方）', baseUrl: 'http://ai.hsxbk.top', models: ['sora-2'] },
 ];
 
 // ========== TTS 厂商预设 ==========
@@ -103,17 +93,42 @@ function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
+// 迁移旧的加密数据格式（清除无法解密的加密对象）
+function migrateEncryptedData<T>(data: T): T {
+  if (Array.isArray(data)) {
+    return data.map(item => migrateEncryptedData(item)) as T;
+  }
+  if (data && typeof data === 'object') {
+    const result = { ...data } as Record<string, any>;
+    for (const key of Object.keys(result)) {
+      const value = result[key];
+      // 检测旧的加密格式 { encrypted: true, data, iv, salt }
+      if (value && typeof value === 'object' && value.encrypted === true) {
+        result[key] = ''; // 清空加密数据，需要用户重新输入
+        console.log(`[migrateEncryptedData] cleared encrypted field: ${key}`);
+      } else if (value && typeof value === 'object') {
+        result[key] = migrateEncryptedData(value);
+      }
+    }
+    return result as T;
+  }
+  return data;
+}
+
 export async function loadSettings(): Promise<AppSettings> {
+  console.log('[loadSettings] isElectron:', electronService.isElectron());
+
   if (!electronService.isElectron()) {
     try {
       const data = localStorage.getItem('koma_settings');
       if (data) {
-        const parsed = JSON.parse(data);
-        const decrypted = await decryptSettings(parsed);
-        return { ...DEFAULT_SETTINGS, ...decrypted };
+        let parsed = JSON.parse(data);
+        // 迁移旧的加密数据
+        parsed = migrateEncryptedData(parsed);
+        return { ...DEFAULT_SETTINGS, ...parsed };
       }
-    } catch {
-      // ignore
+    } catch (err) {
+      console.error('[loadSettings] error:', err);
     }
     return DEFAULT_SETTINGS;
   }
@@ -123,9 +138,10 @@ export async function loadSettings(): Promise<AppSettings> {
     const exists = await electronService.fs.exists(path);
     if (exists) {
       const data = await electronService.fs.readFile(path);
-      const parsed = JSON.parse(data);
-      const decrypted = await decryptSettings(parsed);
-      return { ...DEFAULT_SETTINGS, ...decrypted };
+      let parsed = JSON.parse(data);
+      // 迁移旧的加密数据
+      parsed = migrateEncryptedData(parsed);
+      return { ...DEFAULT_SETTINGS, ...parsed };
     }
   } catch (err) {
     console.error('[loadSettings] error:', err);
@@ -134,15 +150,13 @@ export async function loadSettings(): Promise<AppSettings> {
 }
 
 export async function saveSettings(settings: AppSettings): Promise<void> {
-  const encrypted = await encryptSettings(settings);
-
   if (!electronService.isElectron()) {
-    localStorage.setItem('koma_settings', JSON.stringify(encrypted));
+    localStorage.setItem('koma_settings', JSON.stringify(settings));
     return;
   }
 
   const path = await getGlobalPath('settings.json');
-  await electronService.fs.writeFile(path, JSON.stringify(encrypted, null, 2));
+  await electronService.fs.writeFile(path, JSON.stringify(settings, null, 2));
 }
 
 // ========== LLM 配置 CRUD ==========

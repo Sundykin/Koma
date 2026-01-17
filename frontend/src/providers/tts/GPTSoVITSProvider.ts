@@ -71,9 +71,9 @@ export class GPTSoVITSProvider implements TTSProvider {
     // GPT-SoVITS 使用参考音频作为音色
     // 返回预设的本地音色列表
     return [
-      { id: '', name: '默认音色', language: 'zh', gender: 'unknown' },
-      { id: 'reference_1.wav', name: '参考音色 1', language: 'zh', gender: 'unknown' },
-      { id: 'reference_2.wav', name: '参考音色 2', language: 'zh', gender: 'unknown' },
+      { id: '', name: '默认音色', language: 'zh', gender: 'unknown', provider: 'gpt-sovits' },
+      { id: 'reference_1.wav', name: '参考音色 1', language: 'zh', gender: 'unknown', provider: 'gpt-sovits' },
+      { id: 'reference_2.wav', name: '参考音色 2', language: 'zh', gender: 'unknown', provider: 'gpt-sovits' },
     ];
   }
 }

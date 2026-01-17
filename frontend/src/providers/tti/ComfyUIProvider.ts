@@ -1,16 +1,14 @@
 /**
- * ComfyUI Provider (占位实现)
- * Phase 2 将实现完整对接
+ * ComfyUI TTI Provider
  */
-import type { ModelConfig, ScriptAnalysisResult } from '../types';
-import type { LLMProvider, TTIProvider, ImageResult, TTIOptions } from './types';
+import type { TTIModelConfig } from '../../types';
+import type { TTIProvider, ImageResult, TTIOptions } from './types';
 
-// ComfyUI TTI Provider
-export class ComfyUITTIProvider implements TTIProvider {
+export class ComfyUIProvider implements TTIProvider {
   type = 'comfyui';
-  config: ModelConfig;
+  config: TTIModelConfig;
 
-  constructor(config: ModelConfig) {
+  constructor(config: TTIModelConfig) {
     this.config = config;
   }
 
@@ -33,10 +31,10 @@ export class ComfyUITTIProvider implements TTIProvider {
     prompt: string,
     options?: TTIOptions
   ): Promise<ImageResult> {
-    // TODO: Phase 2 实现
+    // TODO: 实现完整对接
     // 需要：工作流 JSON 解析、节点映射、WebSocket 进度监控
-    throw new Error('ComfyUI integration not implemented yet (Phase 2)');
+    throw new Error('ComfyUI integration not fully implemented yet');
   }
 }
 
-export default ComfyUITTIProvider;
+export default ComfyUIProvider;

@@ -105,6 +105,7 @@ export class PikaProvider implements ITVProvider {
     }
 
     return {
+      taskId,
       status,
       progress: data.progress || 0,
       resultUrl: data.output_url || data.video_url,

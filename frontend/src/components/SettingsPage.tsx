@@ -373,7 +373,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
               <Statistic
                 title="存储位置"
                 value={storagePath || '~/.koma'}
-                styles={{ content: { fontSize: 14, fontFamily: 'monospace' } }}
+                valueStyle={{ fontSize: 14, fontFamily: 'monospace' }}
               />
             </Col>
             <Col span={12}>
@@ -423,7 +423,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
             自定义 AI 功能使用的 Prompt 模板，支持变量替换。
           </p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {Object.values(promptTemplates).map((template) => (
+            {(Object.values(promptTemplates) as PromptTemplate[]).map((template) => (
               <Card key={template.id} size="small">
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                   <div style={{ flex: 1 }}>

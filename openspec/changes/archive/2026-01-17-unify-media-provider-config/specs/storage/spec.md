@@ -36,7 +36,7 @@
 - **THEN** 自动转换为 ttsConfigs 数组的第一项
 - **AND** 设置 isDefault 为 true
 
-## MODIFIED Requirements
+## ADDED Requirements
 
 ### Requirement: AppSettings Structure
 系统 SHALL 使用统一的应用设置结构。

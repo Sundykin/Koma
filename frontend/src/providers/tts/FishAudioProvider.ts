@@ -103,6 +103,7 @@ export class FishAudioProvider implements TTSProvider {
         name: item.title || item.name || item._id,
         language: item.languages?.[0] || 'zh',
         gender: item.gender || 'unknown',
+        provider: 'fish-audio' as const,
         previewUrl: item.cover_image,
       }));
     } catch {
@@ -112,7 +113,7 @@ export class FishAudioProvider implements TTSProvider {
 
   private getDefaultVoices(): Voice[] {
     return [
-      { id: 'default', name: '默认音色', language: 'zh', gender: 'female' },
+      { id: 'default', name: '默认音色', language: 'zh', gender: 'female', provider: 'fish-audio' },
     ];
   }
 }

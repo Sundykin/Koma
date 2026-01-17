@@ -88,14 +88,20 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
     description: '将剧本拆解为分镜列表',
     template: `你是一个专业的分镜师，请将以下剧本拆解为分镜列表。
 
+已知角色：{{characters}}
+已知场景：{{scenes}}
+已知道具：{{props}}
+
 剧本：
 {{script}}
 
 要求：
-1. 每个分镜包含：镜头编号、画面描述、对话/旁白、时长建议、镜头运动
-2. 画面描述应具体，方便 AI 生图理解
-3. 镜头运动可选：固定、推进、拉远、左移、右移、上移、下移、环绕
-4. 时长建议以秒为单位
+1. 按剧情顺序拆解为若干分镜
+2. 每个分镜应该是一个完整的画面
+3. 为每个分镜生成AI图片生成用的prompt（英文，详细描述画面内容、角色姿态、场景细节、光影氛围）
+4. 合理分配镜头类型和运镜方式（static/pan/zoom-in/tracking）
+5. 建议时长通常为2-5秒
+6. 关联相关角色和道具
 
 请以 JSON 格式输出分镜列表：
 
@@ -103,18 +109,21 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
 {
   "shots": [
     {
-      "id": "shot_001",
-      "description": "画面描述，用于 AI 生图",
-      "dialogue": "对话或旁白内容",
+      "scriptContent": "对应的剧本原文片段",
+      "shotType": "close-up/medium/wide/extreme-wide",
+      "cameraMovement": "static/pan/zoom-in/tracking",
       "duration": 3,
-      "cameraMovement": "镜头运动类型",
-      "notes": "其他备注"
+      "description": "画面描述，用于 AI 生图（英文）",
+      "dialogue": "对话或旁白内容",
+      "characters": ["出场角色名称"],
+      "emotion": "情绪标签",
+      "props": ["出现的道具"]
     }
   ]
 }
 \`\`\`
 `,
-    variables: ['script'],
+    variables: ['script', 'characters', 'scenes', 'props'],
     isCustom: false,
   },
 

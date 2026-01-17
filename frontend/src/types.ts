@@ -12,6 +12,32 @@ export interface Project {
   ttiConfigId?: string;  // 关联的 TTI 配置 ID
   itvConfigId?: string;  // 关联的 ITV 配置 ID
   ttsConfigId?: string;  // 关联的 TTS 配置 ID
+  // 新增字段
+  theme?: string;           // 主题风格 ID
+  stylePrompt?: string;     // 自定义风格描述
+  episodeCount?: number;    // 实际分集数（用于分集管理）
+}
+
+// 分集接口定义
+export interface Episode {
+  id: string;
+  projectId: string;
+  number: number;           // 集数编号
+  title: string;            // 分集标题
+  scriptText?: string;      // 本集剧本
+  status: 'draft' | 'script' | 'storyboard' | 'generating' | 'completed';
+  createdAt: number;
+  updatedAt: number;
+}
+
+// 主题预设接口
+export interface ThemePreset {
+  id: string;
+  name: string;
+  description: string;
+  ttiStylePrefix: string;   // TTI 提示词风格前缀
+  llmPromptSuffix: string;  // LLM 提示词风格后缀
+  previewImage?: string;    // 预览图
 }
 
 // 角色接口定义
@@ -24,6 +50,15 @@ export interface Character {
   appearance: string;  // AI生成的外貌描述（用于绘图）
   avatarUrl?: string;  // 头像URL
   voiceId?: string;    // TTS 音色 ID
+  // 新增资产字段
+  costumePhotoPath?: string;  // 定妆照路径
+  threeViewPaths?: {          // 三视图路径
+    front?: string;
+    side?: string;
+    back?: string;
+  };
+  previewVideoPath?: string;  // 预览视频路径
+  sora2CharacterId?: string;  // 角色提取API返回的ID
 }
 
 // 场景接口定义
@@ -34,6 +69,7 @@ export interface Scene {
   time: 'day' | 'night' | 'twilight'; // 白天 |夜晚 | 黄昏
   mood: string;        // 氛围/情绪
   description: string; // 场景视觉描述
+  imagePath?: string;  // 场景预览图路径
 }
 
 // 道具接口定义
@@ -42,6 +78,7 @@ export interface Prop {
   name: string;
   type: string;        // 道具类型 (如：武器、日常、关键线索)
   description: string; // 视觉描述
+  imagePath?: string;  // 道具参考图路径
 }
 
 // 分镜/镜头接口定义
@@ -77,8 +114,8 @@ export type EditorStep = 'script' | 'assets' | 'storyboard' | 'video';
 
 export type ModelProviderType = 'gemini' | 'openai' | 'runway' | 'midjourney' | 'comfyui';
 export type LLMProviderType = 'openai' | 'gemini' | 'openai-compatible';
-export type TTIProviderType = 'comfyui' | 'jimeng' | 'qwen-image' | 'midjourney' | 'dall-e' | 'flux';
-export type ITVProviderType = 'runway' | 'kling' | 'pika' | 'minimax' | 'comfyui-animatediff';
+export type TTIProviderType = 'comfyui' | 'jimeng' | 'qwen-image' | 'midjourney' | 'dall-e' | 'flux' | 'nano-banana';
+export type ITVProviderType = 'runway' | 'kling' | 'pika' | 'minimax' | 'comfyui-animatediff' | 'sora2';
 export type TTSProviderType = 'edge-tts' | 'openai-tts' | 'fish-audio' | 'gpt-sovits' | 'doubao-tts';
 
 // 通用媒体配置基类
@@ -349,7 +386,7 @@ export interface Voice {
   id: string;
   name: string;
   language: string;
-  gender: 'male' | 'female' | 'neutral';
+  gender: 'male' | 'female' | 'neutral' | 'unknown';
   provider: TTSProviderType;
   previewUrl?: string;
 }
@@ -363,7 +400,8 @@ export interface TTSOptions {
 export interface AudioResult {
   path: string;
   duration: number;
-  sampleRate: number;
+  sampleRate?: number;
+  format?: string;  // 音频格式，如 'mp3', 'wav'
 }
 
 // ========== ITV 类型 ==========
@@ -377,6 +415,12 @@ export interface ITVOptions {
   motionPrompt?: string;  // 运动描述
   startFrame?: string;    // 首帧图片路径
   endFrame?: string;      // 尾帧图片路径
+  aspectRatio?: string;   // 宽高比 16:9, 9:16, 1:1
+  // ComfyUI AnimateDiff 扩展
+  negativePrompt?: string;
+  width?: number;
+  height?: number;
+  seed?: number;
 }
 
 export interface VideoResult {
@@ -393,5 +437,41 @@ export interface ProgressInfo {
   progress: number;
   estimatedTime?: number;
   resultUrl?: string;
+  error?: string;
+}
+
+// ========== 异步任务类型 ==========
+
+export type AsyncTaskType = 'tti' | 'itv' | 'tts' | 'character-extraction';
+export type AsyncTaskStatus = 'pending' | 'processing' | 'completed' | 'failed';
+export type AsyncTaskTargetType = 'character' | 'scene' | 'prop' | 'shot';
+
+export interface AsyncTask {
+  id: string;
+  projectId: string;
+  type: AsyncTaskType;
+  targetType: AsyncTaskTargetType;
+  targetId: string;
+  targetName?: string;        // 用于显示通知
+  remoteTaskId: string;       // 远程API返回的任务ID
+  status: AsyncTaskStatus;
+  progress: number;
+  resultUrl?: string;
+  localPath?: string;
+  error?: string;
+  retryCount: number;
+  maxRetries: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+// ========== 保存状态类型 ==========
+
+export type SaveStatus = 'saved' | 'saving' | 'dirty' | 'error';
+
+export interface ProjectSaveState {
+  projectId: string;
+  status: SaveStatus;
+  lastSavedAt?: number;
   error?: string;
 }

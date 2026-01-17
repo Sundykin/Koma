@@ -5,6 +5,7 @@
 import type { Character, Scene, Prop, Shot, LLMModelConfig, ScriptAnalysisResult } from '../types';
 import { createLLMProvider } from '../providers';
 import { getActiveLLMConfig } from '../store/globalStore';
+import { getPromptTemplate, fillTemplate } from '../store/promptTemplates';
 
 // 解析阶段
 export type AnalysisStage = 'characters' | 'scenes' | 'props' | 'shots';
@@ -110,54 +111,9 @@ const SHOTS_SCHEMA = {
   required: ['shots'],
 };
 
-// Prompt 模板
+// System Prompt 基础指令
 const SYSTEM_PROMPT_BASE = `你是一个专业的影视编剧和分镜师。你的任务是分析用户提供的剧本，提取关键信息。
 请严格按照要求的 JSON 格式输出，不要输出任何其他内容。`;
-
-const CHARACTER_EXTRACTION_PROMPT = `分析以下剧本，提取所有角色信息。
-要求：
-1. 识别所有出现的角色（包括有台词和无台词的）
-2. 根据剧情判断角色定位（主角/反派/配角）
-3. 为每个角色生成简短的人物小传
-4. 为每个角色生成适合AI绘图的外貌描述（英文，包含年龄、性别、外貌特征、服装等）
-
-剧本内容：
-{{script}}`;
-
-const SCENE_EXTRACTION_PROMPT = `分析以下剧本，提取所有场景信息。
-要求：
-1. 识别所有出现的场景/地点
-2. 判断每个场景的时间（白天/夜晚/黄昏）
-3. 描述每个场景的氛围
-4. 为每个场景生成适合AI绘图的环境描述（英文，包含建筑、环境、光线、氛围等）
-
-剧本内容：
-{{script}}`;
-
-const PROPS_EXTRACTION_PROMPT = `分析以下剧本，提取重要道具信息。
-要求：
-1. 识别剧情中的关键道具（武器、工具、重要物品等）
-2. 不要提取太普通的日常物品，除非它在剧情中有重要作用
-3. 为每个道具生成适合AI绘图的描述（英文）
-
-剧本内容：
-{{script}}`;
-
-const SHOTS_GENERATION_PROMPT = `将以下剧本拆解为分镜列表。
-已知角色：{{characters}}
-已知场景：{{scenes}}
-已知道具：{{props}}
-
-要求：
-1. 按剧情顺序拆解为若干分镜
-2. 每个分镜应该是一个完整的画面
-3. 为每个分镜生成AI图片生成用的prompt（英文，详细描述画面内容、角色姿态、场景细节、光影氛围）
-4. 合理分配镜头类型和运镜方式
-5. 建议时长通常为2-5秒
-6. 关联相关角色和道具
-
-剧本内容：
-{{script}}`;
 
 export class ScriptAnalysisService {
   private llmConfig: LLMModelConfig | null = null;
@@ -217,7 +173,8 @@ export class ScriptAnalysisService {
     this.reportProgress('characters', 'running', '正在分析角色...');
 
     try {
-      const prompt = CHARACTER_EXTRACTION_PROMPT.replace('{{script}}', script);
+      const template = await getPromptTemplate('character_extraction');
+      const prompt = fillTemplate(template.template, { script });
       const result = await this.callLLM(prompt, CHARACTERS_SCHEMA);
       const parsed = this.parseJSON<{ characters: any[] }>(result);
 
@@ -243,7 +200,8 @@ export class ScriptAnalysisService {
     this.reportProgress('scenes', 'running', '正在分析场景...');
 
     try {
-      const prompt = SCENE_EXTRACTION_PROMPT.replace('{{script}}', script);
+      const template = await getPromptTemplate('scene_extraction');
+      const prompt = fillTemplate(template.template, { script });
       const result = await this.callLLM(prompt, SCENES_SCHEMA);
       const parsed = this.parseJSON<{ scenes: any[] }>(result);
 
@@ -269,7 +227,8 @@ export class ScriptAnalysisService {
     this.reportProgress('props', 'running', '正在分析道具...');
 
     try {
-      const prompt = PROPS_EXTRACTION_PROMPT.replace('{{script}}', script);
+      const template = await getPromptTemplate('prop_extraction');
+      const prompt = fillTemplate(template.template, { script });
       const result = await this.callLLM(prompt, PROPS_SCHEMA);
       const parsed = this.parseJSON<{ props: any[] }>(result);
 
@@ -298,11 +257,13 @@ export class ScriptAnalysisService {
     this.reportProgress('shots', 'running', '正在生成分镜...');
 
     try {
-      const prompt = SHOTS_GENERATION_PROMPT
-        .replace('{{script}}', script)
-        .replace('{{characters}}', characters.map(c => c.name).join(', '))
-        .replace('{{scenes}}', scenes.map(s => s.name).join(', '))
-        .replace('{{props}}', props.map(p => p.name).join(', '));
+      const template = await getPromptTemplate('shot_breakdown');
+      const prompt = fillTemplate(template.template, {
+        script,
+        characters: characters.map(c => c.name).join(', '),
+        scenes: scenes.map(s => s.name).join(', '),
+        props: props.map(p => p.name).join(', '),
+      });
 
       const result = await this.callLLM(prompt, SHOTS_SCHEMA);
       const parsed = this.parseJSON<{ shots: any[] }>(result);

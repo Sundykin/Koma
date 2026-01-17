@@ -20,7 +20,11 @@
       "Bash(dir /s /b \"E:\\\\Workspace\\\\2025\\\\代码备份\\\\CcClip-master\")",
       "Bash(openspec show:*)",
       "Bash(timeout /t 5 /nobreak)",
-      "Bash(openspec archive add-project-crud:*)"
+      "Bash(openspec archive add-project-crud:*)",
+      "Bash(npm ls:*)",
+      "Bash(npm run lint)",
+      "Bash(wc:*)",
+      "Skill(openspec:apply)"
     ]
   }
 }

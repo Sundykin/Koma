@@ -12,7 +12,10 @@ const DEFAULT_FOLDER_NAME = '.koma';
 export async function getDefaultStoragePath(): Promise<string> {
   if (electronService.isElectron()) {
     const home = await electronService.app.getPath('home');
-    return `${home}/${DEFAULT_FOLDER_NAME}`;
+    console.log('[getDefaultStoragePath] home:', home);
+    const path = `${home}/${DEFAULT_FOLDER_NAME}`;
+    console.log('[getDefaultStoragePath] path:', path);
+    return path;
   }
   // 浏览器环境：使用 IndexedDB 或 localStorage（返回空路径表示内存存储）
   return '';
@@ -54,9 +57,11 @@ export function setStorageConfig(config: StorageConfig): void {
 // 初始化存储配置
 export async function initStorageConfig(): Promise<StorageConfig> {
   let config = getStorageConfig();
+  console.log('[initStorageConfig] cached config:', config);
 
   if (!config) {
     const rootPath = await getDefaultStoragePath();
+    console.log('[initStorageConfig] rootPath:', rootPath);
     config = {
       rootPath,
       version: STORAGE_VERSION,
@@ -69,6 +74,7 @@ export async function initStorageConfig(): Promise<StorageConfig> {
     await electronService.fs.mkdir(config.rootPath);
   }
 
+  console.log('[initStorageConfig] final config:', config);
   return config;
 }
 

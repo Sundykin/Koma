@@ -1,8 +1,8 @@
 /**
  * OpenAI LLM Provider
  */
-import type { ModelConfig, ScriptAnalysisResult } from '../types';
-import type { LLMProvider } from './types';
+import type { ModelConfig } from '../../types';
+import type { LLMProvider, ChatMessage } from './types';
 
 export class OpenAIProvider implements LLMProvider {
   type = 'openai';
@@ -40,6 +40,26 @@ export class OpenAIProvider implements LLMProvider {
     }
     messages.push({ role: 'user', content: prompt });
 
+    const response = await fetch(
+      `${this.config.baseUrl || 'https://api.openai.com/v1'}/chat/completions`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${this.config.apiKey}`,
+        },
+        body: JSON.stringify({
+          model: this.config.modelName || 'gpt-4',
+          messages,
+        }),
+      }
+    );
+
+    const data = await response.json();
+    return data.choices?.[0]?.message?.content || '';
+  }
+
+  async chat(messages: ChatMessage[]): Promise<string> {
     const response = await fetch(
       `${this.config.baseUrl || 'https://api.openai.com/v1'}/chat/completions`,
       {

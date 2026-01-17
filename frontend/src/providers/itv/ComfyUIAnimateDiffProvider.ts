@@ -194,6 +194,7 @@ export class ComfyUIAnimateDiffProvider implements ITVProvider {
 
     if (!response.ok) {
       return {
+        taskId,
         status: 'processing',
         progress: 0,
       };
@@ -204,6 +205,7 @@ export class ComfyUIAnimateDiffProvider implements ITVProvider {
 
     if (!result) {
       return {
+        taskId,
         status: 'queued',
         progress: 0,
       };
@@ -228,6 +230,7 @@ export class ComfyUIAnimateDiffProvider implements ITVProvider {
       }
 
       return {
+        taskId,
         status: 'completed',
         progress: 100,
         resultUrl: videoUrl,
@@ -236,6 +239,7 @@ export class ComfyUIAnimateDiffProvider implements ITVProvider {
 
     if (result.status?.status_str === 'error') {
       return {
+        taskId,
         status: 'failed',
         progress: 0,
         error: result.status.messages?.[0]?.[1] || '生成失败',
@@ -247,6 +251,7 @@ export class ComfyUIAnimateDiffProvider implements ITVProvider {
     const progress = executing ? 50 : 10;
 
     return {
+      taskId,
       status: 'processing',
       progress,
     };

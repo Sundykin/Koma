@@ -2,8 +2,8 @@
  * Gemini LLM Provider
  */
 import { GoogleGenAI, Type, Schema } from '@google/genai';
-import type { ModelConfig, ScriptAnalysisResult } from '../types';
-import type { LLMProvider } from './types';
+import type { ModelConfig, ScriptAnalysisResult } from '../../types';
+import type { LLMProvider, ChatMessage } from './types';
 
 // 剧本分析 Schema
 const analysisSchema: Schema = {
@@ -123,6 +123,25 @@ export class GeminiProvider implements LLMProvider {
     const response = await ai.models.generateContent({
       model: this.config.modelName || 'gemini-2.0-flash',
       contents: systemPrompt ? `${systemPrompt}\n\n${prompt}` : prompt,
+    });
+    return response.text || '';
+  }
+
+  async chat(messages: ChatMessage[]): Promise<string> {
+    const ai = this.getAI();
+    // 将 messages 转换为 Gemini 格式
+    const contents = messages.map(m => ({
+      role: m.role === 'assistant' ? 'model' : 'user',
+      parts: [{ text: m.content }],
+    }));
+    // 提取 system prompt
+    const systemMessage = messages.find(m => m.role === 'system');
+    const systemInstruction = systemMessage?.content;
+
+    const response = await ai.models.generateContent({
+      model: this.config.modelName || 'gemini-2.0-flash',
+      contents: contents.filter(c => c.role !== 'system'),
+      config: systemInstruction ? { systemInstruction } : undefined,
     });
     return response.text || '';
   }
