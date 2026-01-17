@@ -5,7 +5,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import { electronService } from '../services/electronService';
 import { getStorageConfig, initStorageConfig } from './storageConfig';
-import { addRecentProject } from './globalStore';
+import { addRecentProject, getDefaultLLMConfig } from './globalStore';
 import type {
   ProjectMeta,
   Timeline,
@@ -40,10 +40,18 @@ async function getProjectPath(projectId: string): Promise<string> {
 export async function createProject(
   title: string,
   genre: string,
-  mode: 'drama' | 'narration'
+  mode: 'drama' | 'narration',
+  llmConfigId?: string
 ): Promise<ProjectMeta> {
   const projectId = uuidv4();
   const now = Date.now();
+
+  // 如果没有指定 llmConfigId，尝试获取默认配置
+  let finalLLMConfigId = llmConfigId;
+  if (!finalLLMConfigId) {
+    const defaultConfig = await getDefaultLLMConfig();
+    finalLLMConfigId = defaultConfig?.id;
+  }
 
   const project: ProjectMeta = {
     id: projectId,
@@ -52,6 +60,7 @@ export async function createProject(
     mode,
     createdAt: now,
     updatedAt: now,
+    llmConfigId: finalLLMConfigId,
   };
 
   if (electronService.isElectron()) {
@@ -163,6 +172,19 @@ export async function saveProject(project: ProjectMeta): Promise<void> {
     `${projectPath}/project.json`,
     JSON.stringify(project, null, 2)
   );
+}
+
+// 更新项目的 LLM 配置
+export async function updateProjectLLMConfig(
+  projectId: string,
+  llmConfigId: string | null
+): Promise<ProjectMeta | null> {
+  const project = await loadProject(projectId);
+  if (!project) return null;
+
+  project.llmConfigId = llmConfigId || undefined;
+  await saveProject(project);
+  return project;
 }
 
 export async function deleteProject(projectId: string): Promise<void> {
@@ -846,6 +868,7 @@ export default {
   loadProject,
   saveProject,
   deleteProject,
+  updateProjectLLMConfig,
   loadTimeline,
   saveTimeline,
   importAsset,

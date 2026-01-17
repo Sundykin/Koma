@@ -21,11 +21,25 @@ export async function getDefaultStoragePath(): Promise<string> {
 // 存储配置 key（使用 localStorage 存储，因为这是系统级配置）
 const STORAGE_CONFIG_KEY = 'koma_storage_config';
 
+// 检查路径是否有效（不包含 [object Object] 等无效字符串）
+function isValidPath(path: string | undefined): boolean {
+  if (!path || typeof path !== 'string') return false;
+  if (path.includes('[object Object]') || path.includes('[object ')) return false;
+  return true;
+}
+
 export function getStorageConfig(): StorageConfig | null {
   try {
     const data = localStorage.getItem(STORAGE_CONFIG_KEY);
     if (data) {
-      return JSON.parse(data) as StorageConfig;
+      const config = JSON.parse(data) as StorageConfig;
+      // 验证路径有效性
+      if (!isValidPath(config.rootPath)) {
+        // 路径无效，清除缓存
+        localStorage.removeItem(STORAGE_CONFIG_KEY);
+        return null;
+      }
+      return config;
     }
   } catch {
     // ignore

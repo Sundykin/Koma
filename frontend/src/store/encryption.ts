@@ -117,19 +117,32 @@ export async function decryptApiKey(encryptedValue: EncryptedValue): Promise<str
  * 加密所有 apiKey 字段
  */
 export async function encryptSettings<T extends Record<string, any>>(settings: T): Promise<T> {
+  // 处理数组
+  if (Array.isArray(settings)) {
+    const result = [] as any;
+    for (let i = 0; i < settings.length; i++) {
+      const item = settings[i];
+      if (item && typeof item === 'object') {
+        result.push(await encryptSettings(item));
+      } else {
+        result.push(item);
+      }
+    }
+    return result as T;
+  }
+
   const result = { ...settings };
 
   for (const key of Object.keys(result)) {
     const value = result[key];
 
-    // 递归处理嵌套对象
-    if (value && typeof value === 'object' && !isEncryptedValue(value)) {
-      result[key] = await encryptSettings(value);
-    }
-
     // 加密 apiKey 字段
     if (key === 'apiKey' && typeof value === 'string' && value.length > 0) {
       result[key] = await encryptApiKey(value) as any;
+    }
+    // 递归处理嵌套对象和数组
+    else if (value && typeof value === 'object' && !isEncryptedValue(value)) {
+      result[key] = await encryptSettings(value);
     }
   }
 
@@ -141,6 +154,20 @@ export async function encryptSettings<T extends Record<string, any>>(settings: T
  * 解密所有加密的 apiKey 字段
  */
 export async function decryptSettings<T extends Record<string, any>>(settings: T): Promise<T> {
+  // 处理数组
+  if (Array.isArray(settings)) {
+    const result = [] as any;
+    for (let i = 0; i < settings.length; i++) {
+      const item = settings[i];
+      if (item && typeof item === 'object') {
+        result.push(await decryptSettings(item));
+      } else {
+        result.push(item);
+      }
+    }
+    return result as T;
+  }
+
   const result = { ...settings };
 
   for (const key of Object.keys(result)) {
@@ -155,7 +182,7 @@ export async function decryptSettings<T extends Record<string, any>>(settings: T
         result[key] = '' as any;
       }
     }
-    // 递归处理嵌套对象
+    // 递归处理嵌套对象和数组
     else if (value && typeof value === 'object') {
       result[key] = await decryptSettings(value);
     }

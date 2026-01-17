@@ -26,44 +26,28 @@ TBD - created by archiving change add-antd-timeline-editor. Update Purpose after
 ### Requirement: Project Storage Structure
 系统 SHALL 为每个项目创建独立的存储目录。
 
-#### Scenario: 项目目录结构
-- **WHEN** 创建新项目时
-- **THEN** 在 `{storageRoot}/projects/{projectId}/` 创建以下结构：
-```
-{projectId}/
-├── project.json          # 项目元数据
-├── timeline.json         # 时间线数据
-├── assets/
-│   ├── images/           # 图片素材
-│   ├── videos/           # 视频素材
-│   ├── audio/            # 音频素材
-│   └── fonts/            # 字体文件
-├── shots/
-│   └── {shotId}/
-│       ├── shot.json     # 分镜元数据
-│       ├── versions/     # 历史版本
-│       │   ├── v1/
-│       │   │   ├── image.png
-│       │   │   ├── video.mp4
-│       │   │   └── audio.mp3
-│       │   └── v2/
-│       └── current/      # 当前使用版本（符号链接或复制）
-├── cache/
-│   ├── thumbnails/       # 缩略图缓存
-│   ├── waveforms/        # 音频波形缓存
-│   └── previews/         # 预览帧缓存
-├── exports/              # 导出文件
-└── temp/                 # 临时文件（启动时清理）
-```
-
-#### Scenario: 项目元数据文件
-- **WHEN** 保存项目时
+#### Scenario: 项目完整数据文件 (project.json)
+- **WHEN** 保存项目完整数据时
 - **THEN** project.json 包含：
+  - 剧本文本 (scriptText)
+  - 角色列表 (characters)
+  - 场景列表 (scenes)
+  - 道具列表 (props)
+  - 分镜列表 (shots)
+  - 项目级设置 (settings)
+  - **llmConfigId**: 关联的 LLM 配置 ID（可选，null 表示使用全局默认）
+- **AND** 此文件在打开项目时加载
+
+#### Scenario: 项目元数据文件 (meta.json)
+- **WHEN** 保存项目元数据时
+- **THEN** meta.json 包含：
   - id, title, genre, mode
+  - status: 'script' | 'storyboard' | 'generating' | 'completed'
+  - thumbnail: 项目封面路径
+  - episodes: 集数
   - createdAt, updatedAt
-  - characters, scenes, props 引用
-  - settings (项目级模型配置覆盖)
-- **AND** 使用 JSON Schema 验证结构
+  - **llmConfigId**: 关联的 LLM 配置 ID（可选）
+- **AND** 此文件用于快速列表显示，不包含完整项目数据
 
 ### Requirement: Asset Storage Management
 系统 SHALL 管理素材文件的存储和引用。
@@ -162,7 +146,7 @@ TBD - created by archiving change add-antd-timeline-editor. Update Purpose after
 - **THEN** 在 `{storageRoot}/` 下维护：
 ```
 {storageRoot}/
-├── settings.json         # 全局设置（模型配置、主题、快捷键等）
+├── settings.json         # 全局设置（模型配置列表、主题、快捷键等）
 ├── recent-projects.json  # 最近项目列表
 ├── model-presets/        # 模型预设导出
 │   └── {presetName}.json
@@ -171,11 +155,40 @@ TBD - created by archiving change add-antd-timeline-editor. Update Purpose after
     └── {date}.log
 ```
 
+#### Scenario: LLM 配置存储结构
+- **WHEN** 存储 LLM 配置时
+- **THEN** settings.json 中使用以下结构：
+```json
+{
+  "llmConfigs": [
+    {
+      "id": "uuid",
+      "name": "DeepSeek Chat",
+      "provider": "openai-compatible",
+      "baseUrl": "https://api.deepseek.com/v1",
+      "apiKey": "encrypted:xxx",
+      "modelName": "deepseek-chat",
+      "isDefault": true,
+      "createdAt": 1234567890,
+      "updatedAt": 1234567890
+    }
+  ],
+  "defaultLLMConfigId": "uuid"
+}
+```
+- **AND** apiKey 字段使用加密存储
+
 #### Scenario: 设置加密
 - **WHEN** 存储敏感信息（API Key）
 - **THEN** 使用 AES-256-GCM 加密
 - **AND** 密钥派生自机器唯一标识
-- **AND** 加密字段标记为 `encrypted: true`
+- **AND** 加密字段值以 `encrypted:` 前缀标识
+
+#### Scenario: 旧配置迁移
+- **WHEN** 检测到旧的单模型配置格式（llm 字段为对象）
+- **THEN** 自动迁移为新的数组格式
+- **AND** 原配置作为第一个配置项且设为默认
+- **AND** 备份原 settings.json 为 settings.json.bak
 
 ### Requirement: Storage Migration
 系统 SHALL 支持存储格式迁移。
@@ -198,4 +211,73 @@ TBD - created by archiving change add-antd-timeline-editor. Update Purpose after
 - **THEN** 打包整个项目目录为 .koma.zip
 - **AND** 包含所有素材和生成文件
 - **AND** 可选择排除缓存和临时文件
+
+### Requirement: Projects Index File
+系统 SHALL 维护一个项目索引文件以提升列表性能。
+
+#### Scenario: 索引文件结构
+- **WHEN** 系统需要列出项目时
+- **THEN** 读取 `{storageRoot}/projects-index.json`
+- **AND** 索引包含所有项目的摘要信息（id, title, genre, mode, status, thumbnail, createdAt, updatedAt）
+- **AND** 避免遍历项目目录读取每个 meta.json
+
+#### Scenario: 索引同步 - 创建
+- **WHEN** 创建新项目时
+- **THEN** 在项目目录创建 meta.json 后
+- **AND** 同步在索引文件中添加该项目条目
+
+#### Scenario: 索引同步 - 更新
+- **WHEN** 更新项目元数据时
+- **THEN** 更新项目目录下的 meta.json
+- **AND** 同步更新索引文件中对应条目
+
+#### Scenario: 索引同步 - 删除
+- **WHEN** 删除项目时
+- **THEN** 删除项目目录
+- **AND** 从索引文件中移除对应条目
+
+#### Scenario: 索引重建
+- **WHEN** 索引文件损坏或缺失
+- **THEN** 系统遍历 `projects/` 目录
+- **AND** 读取每个项目的 meta.json
+- **AND** 重建完整的索引文件
+
+### Requirement: Project Delete Operation
+系统 SHALL 支持完整删除项目。
+
+#### Scenario: 删除项目
+- **WHEN** 用户确认删除某个项目
+- **THEN** 递归删除 `{storageRoot}/projects/{projectId}/` 整个目录
+- **AND** 从 `projects-index.json` 移除该项目
+- **AND** 从 `recent-projects.json` 移除该项目（如果存在）
+
+#### Scenario: 删除确认
+- **WHEN** 用户点击删除按钮
+- **THEN** 显示确认对话框
+- **AND** 警告此操作不可恢复
+- **AND** 显示项目名称以防误删
+
+### Requirement: Project LLM Configuration
+系统 SHALL 支持项目级别的 LLM 模型配置。
+
+#### Scenario: 新建项目默认配置
+- **WHEN** 创建新项目时
+- **THEN** 自动关联全局默认 LLM 配置
+- **AND** 如果没有全局默认配置，llmConfigId 为 null
+
+#### Scenario: 切换项目模型
+- **WHEN** 用户在项目设置中选择不同的 LLM 模型
+- **THEN** 更新项目的 llmConfigId
+- **AND** 后续该项目的 LLM 调用使用新选择的模型
+
+#### Scenario: 使用全局默认
+- **WHEN** 用户选择「使用全局默认」选项
+- **THEN** 将 llmConfigId 设为 null
+- **AND** 项目将动态使用当前的全局默认配置
+
+#### Scenario: 引用的配置被删除
+- **WHEN** 项目引用的 LLM 配置被删除
+- **THEN** 系统检测到无效引用
+- **AND** 自动回退到使用全局默认配置
+- **AND** 显示提示告知用户
 

@@ -8,7 +8,9 @@ import { SettingsPage } from './components/SettingsPage';
 import { StepNavigator } from './components/StepNavigator';
 import { ModelFactory } from './services/ModelFactory';
 import { CreateProjectModal } from './components/CreateProjectModal';
+import { ProjectSettingsModal } from './components/ProjectSettingsModal';
 import { WindowControls } from './components/WindowControls';
+import { ScriptAnalysisWizard } from './components/ScriptAnalysisWizard';
 import { useProjects } from './hooks/useProjects';
 import { Menu, Avatar, Tooltip, Button, Tag, Spin, App as AntApp } from 'antd';
 import {
@@ -85,11 +87,7 @@ const DEFAULT_SCRIPT = `# 第一场：废弃医院 - 夜
 
 // 默认设置
 const DEFAULT_SETTINGS: AppSettings = {
-  llm: {
-    provider: 'gemini',
-    apiKey: process.env.API_KEY || '', 
-    modelName: 'gemini-3-flash-preview'
-  },
+  llmConfigs: [],
   tti: {
     provider: 'midjourney',
     apiKey: '',
@@ -150,10 +148,12 @@ const AppContent: React.FC = () => {
 
   // 弹窗状态
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isProjectSettingsOpen, setIsProjectSettingsOpen] = useState(false);
 
   // 剧本相关状态
   const [scriptText, setScriptText] = useState(DEFAULT_SCRIPT);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [analysisWizardVisible, setAnalysisWizardVisible] = useState(false);
 
   // 项目数据状态
   const [analysisData, setAnalysisData] = useState<ScriptAnalysisResult | null>(
@@ -248,22 +248,33 @@ const AppContent: React.FC = () => {
     }
   };
 
-  // 处理剧本分析（使用模型工厂）
-  const handleAnalyze = async () => {
-    if (!scriptText.trim()) return;
-    setIsAnalyzing(true);
+  // 保存项目设置
+  const handleProjectSettingsSave = async (updates: Partial<Project>) => {
+    if (!activeProject) return;
     try {
-        const llmProvider = ModelFactory.createLLMProvider(appSettings);
-        const result = await llmProvider.analyzeScript(scriptText);
-        
-        setAnalysisData(result);
-        setEditorStep('assets'); 
-    } catch (e: any) {
-        console.error(e);
-        alert(`分析失败: ${e.message || '未知错误'}。请在设置中检查 API Key。`);
-    } finally {
-        setIsAnalyzing(false);
+      await updateProjectAPI(activeProject.id, updates);
+      setActiveProject({ ...activeProject, ...updates });
+      message.success('项目设置已保存');
+    } catch (err: any) {
+      message.error(err.message || '保存失败');
     }
+  };
+
+  // 处理剧本分析（打开解析向导）
+  const handleAnalyze = async () => {
+    if (!scriptText.trim()) {
+      message.warning('请先输入剧本内容');
+      return;
+    }
+    setAnalysisWizardVisible(true);
+  };
+
+  // 解析完成回调
+  const handleAnalysisComplete = (result: ScriptAnalysisResult) => {
+    setAnalysisData(result);
+    setAnalysisWizardVisible(false);
+    setEditorStep('assets');
+    message.success('剧本解析完成');
   };
 
   // --- 辅助组件：剧本工具栏 ---
@@ -427,6 +438,9 @@ const AppContent: React.FC = () => {
                 
                 {view === 'editor' && (
                     <div className="flex gap-3">
+                        <Button icon={<SettingOutlined />} onClick={() => setIsProjectSettingsOpen(true)}>
+                            项目设置
+                        </Button>
                         <Button icon={<SaveOutlined />}>
                             保存草稿
                         </Button>
@@ -509,7 +523,9 @@ const AppContent: React.FC = () => {
                                         <div className="flex items-center gap-3">
                                              <span className="text-xs text-gray-500 bg-gray-900 px-3 py-1.5 rounded-lg border border-gray-800 flex items-center gap-2">
                                                 <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
-                                                模型: <span className="text-blue-400 font-mono font-bold">{appSettings.llm.provider}</span>
+                                                模型: <span className="text-blue-400 font-mono font-bold">
+                                                  {appSettings.llmConfigs.find(c => c.isDefault)?.name || appSettings.llmConfigs[0]?.name || '未配置'}
+                                                </span>
                                             </span>
                                         </div>
 
@@ -645,10 +661,31 @@ const AppContent: React.FC = () => {
       </div>
 
       {/* 创建项目弹窗 */}
-      <CreateProjectModal 
+      <CreateProjectModal
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
         onCreate={handleCreateProject}
+      />
+
+      {/* 项目设置弹窗 */}
+      <ProjectSettingsModal
+        project={activeProject}
+        open={isProjectSettingsOpen}
+        onClose={() => setIsProjectSettingsOpen(false)}
+        onSave={handleProjectSettingsSave}
+        onGoToGlobalSettings={() => {
+          setIsProjectSettingsOpen(false);
+          setView('settings');
+        }}
+      />
+
+      {/* 剧本解析向导 */}
+      <ScriptAnalysisWizard
+        visible={analysisWizardVisible}
+        script={scriptText}
+        projectLLMConfigId={activeProject?.llmConfigId}
+        onCancel={() => setAnalysisWizardVisible(false)}
+        onComplete={handleAnalysisComplete}
       />
 
     </div>

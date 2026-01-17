@@ -8,6 +8,10 @@ export interface Project {
   lastEdited: string;// 最后编辑时间
   thumbnail: string; // 封面图
   status: 'script' | 'storyboard' | 'generating' | 'completed'; // 项目状态
+  llmConfigId?: string;  // 关联的 LLM 配置 ID
+  ttiConfigId?: string;  // 关联的 TTI 配置 ID
+  itvConfigId?: string;  // 关联的 ITV 配置 ID
+  ttsConfigId?: string;  // 关联的 TTS 配置 ID
 }
 
 // 角色接口定义
@@ -72,10 +76,78 @@ export type EditorStep = 'script' | 'assets' | 'storyboard' | 'video';
 // ========== 模型设置相关类型 ==========
 
 export type ModelProviderType = 'gemini' | 'openai' | 'custom' | 'runway' | 'midjourney' | 'comfyui';
-export type TTSProviderType = 'edge-tts' | 'openai-tts' | 'fish-audio' | 'gpt-sovits';
-export type ITVProviderType = 'runway' | 'kling' | 'pika' | 'sora2' | 'comfyui-animatediff';
+export type LLMProviderType = 'openai' | 'gemini' | 'openai-compatible';
+export type TTIProviderType = 'comfyui' | 'jimeng' | 'qwen-image' | 'midjourney' | 'dall-e' | 'flux';
+export type ITVProviderType = 'runway' | 'kling' | 'pika' | 'minimax' | 'comfyui-animatediff';
+export type TTSProviderType = 'edge-tts' | 'openai-tts' | 'fish-audio' | 'gpt-sovits' | 'doubao-tts';
 
-// 自定义 OpenAI 兼容渠道
+// 通用媒体配置基类
+export interface MediaProviderConfig {
+  id: string;
+  name: string;
+  apiKey?: string;
+  baseUrl?: string;
+  isDefault: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+// TTI 配置（文生图）
+export interface TTIModelConfig extends MediaProviderConfig {
+  provider: TTIProviderType;
+  workflowPath?: string;           // ComfyUI 工作流文件路径
+  workflowMapping?: Record<string, string>; // 节点映射 { prompt: "node_id", negative: "node_id", ... }
+  modelName?: string;
+  defaultSize?: string;            // "1024x1024"
+  defaultSteps?: number;
+}
+
+// ITV 配置（图生视频）
+export interface ITVModelConfig extends MediaProviderConfig {
+  provider: ITVProviderType;
+  workflowPath?: string;           // ComfyUI AnimateDiff 工作流
+  workflowMapping?: Record<string, string>;
+  defaultDuration?: number;        // 默认时长（秒）
+  defaultResolution?: string;      // "1280x720"
+}
+
+// TTS 配置（语音合成）
+export interface TTSModelConfig extends MediaProviderConfig {
+  provider: TTSProviderType;
+  defaultVoice?: string;
+  defaultSpeed?: number;           // 0.5-2.0
+}
+
+// 厂商预设
+export interface ProviderPreset {
+  id: string;
+  name: string;
+  baseUrl?: string;
+  models?: string[];
+}
+
+// LLM 模型配置（新版，支持多模型管理）
+export interface LLMModelConfig {
+  id: string;
+  name: string;                              // 用户自定义名称
+  provider: LLMProviderType;
+  baseUrl?: string;                          // API 地址，openai-compatible 必填
+  apiKey: string;
+  modelName: string;                         // 模型名称
+  isDefault: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+// OpenAI 兼容渠道预设
+export interface LLMChannelPreset {
+  id: string;
+  name: string;
+  baseUrl: string;
+  models: string[];
+}
+
+// 自定义 OpenAI 兼容渠道（旧版，保留兼容）
 export interface CustomLLMChannel {
   id: string;
   name: string;           // 渠道显示名称
@@ -110,11 +182,15 @@ export interface ITVConfig {
 }
 
 export interface AppSettings {
-  llm: ModelConfig;      // 剧本大模型配置
-  tti: ModelConfig;      // 文生图配置 (Text to Image)
-  itv: ITVConfig;        // 图生视频配置 (Image to Video)
-  tts: TTSConfig;        // 语音合成配置
-  customChannels?: CustomLLMChannel[];  // 自定义 OpenAI 兼容渠道列表
+  llm?: ModelConfig;               // 旧版剧本大模型配置（兼容迁移）
+  llmConfigs: LLMModelConfig[];    // 新版多模型配置列表
+  tti?: ModelConfig;               // 旧版文生图配置（兼容迁移）
+  ttiConfigs: TTIModelConfig[];    // 新版多 TTI 配置列表
+  itv?: ITVConfig;                 // 旧版图生视频配置（兼容迁移）
+  itvConfigs: ITVModelConfig[];    // 新版多 ITV 配置列表
+  tts?: TTSConfig;                 // 旧版语音合成配置（兼容迁移）
+  ttsConfigs: TTSModelConfig[];    // 新版多 TTS 配置列表
+  customChannels?: CustomLLMChannel[];  // 自定义 OpenAI 兼容渠道列表（旧版，保留兼容）
 }
 
 // ========== 时间线相关类型 ==========
@@ -241,6 +317,10 @@ export interface ProjectMeta {
   createdAt: number;
   updatedAt: number;
   thumbnailPath?: string;
+  llmConfigId?: string;   // 关联的 LLM 配置 ID，null/undefined 表示使用默认
+  ttiConfigId?: string;   // 关联的 TTI 配置 ID
+  itvConfigId?: string;   // 关联的 ITV 配置 ID
+  ttsConfigId?: string;   // 关联的 TTS 配置 ID
 }
 
 export interface RecentProject {

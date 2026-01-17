@@ -197,7 +197,11 @@ export const saveFileDialog = async (
 export const fsReadFile = async (path: string): Promise<string> => {
   const api = getElectronAPI();
   if (api) {
-    return await api.fs.readFile(path);
+    const result = await api.fs.readFile(path);
+    // Controller 返回 { content: string }，需要解包
+    return typeof result === 'object' && result !== null && 'content' in result
+      ? (result as { content: string }).content
+      : (result as string);
   }
   throw new Error('File system not available in browser');
 };
@@ -217,7 +221,11 @@ export const fsWriteFile = async (
 export const fsExists = async (path: string): Promise<boolean> => {
   const api = getElectronAPI();
   if (api) {
-    return await api.fs.exists(path);
+    const result = await api.fs.exists(path);
+    // Controller 返回 { exists: boolean }，需要解包
+    return typeof result === 'object' && result !== null && 'exists' in result
+      ? (result as { exists: boolean }).exists
+      : Boolean(result);
   }
   return false;
 };
@@ -232,7 +240,11 @@ export const fsMkdir = async (path: string): Promise<void> => {
 export const fsReaddir = async (path: string): Promise<string[]> => {
   const api = getElectronAPI();
   if (api) {
-    return await api.fs.readdir(path);
+    const result = await api.fs.readdir(path);
+    // Controller 返回 { files: string[] }，需要解包
+    return typeof result === 'object' && result !== null && 'files' in result
+      ? (result as { files: string[] }).files
+      : (result as string[]);
   }
   return [];
 };
@@ -284,7 +296,11 @@ export const appGetPath = async (
 ): Promise<string> => {
   const api = getElectronAPI();
   if (api) {
-    return await api.app.getPath(name);
+    const result = await api.app.getPath(name);
+    // Controller 返回 { path: string }，需要解包
+    return typeof result === 'object' && result !== null && 'path' in result
+      ? (result as { path: string }).path
+      : (result as string);
   }
   // 浏览器 fallback
   return '';
@@ -293,7 +309,11 @@ export const appGetPath = async (
 export const appGetVersion = async (): Promise<string> => {
   const api = getElectronAPI();
   if (api) {
-    return await api.app.getVersion();
+    const result = await api.app.getVersion();
+    // Controller 返回 { version: string }，需要解包
+    return typeof result === 'object' && result !== null && 'version' in result
+      ? (result as { version: string }).version
+      : (result as string);
   }
   return '0.0.0';
 };

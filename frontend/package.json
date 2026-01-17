@@ -12,7 +12,7 @@
     "@ant-design/cssinjs": "^2.0.3",
     "@ant-design/icons": "^6.1.0",
     "@google/genai": "^1.36.0",
-    "antd": "^6.2.0",
+    "antd": "^5.29.3",
     "crypto-js": "^4.2.0",
     "lucide-react": "^0.562.0",
     "react": "^19.2.3",

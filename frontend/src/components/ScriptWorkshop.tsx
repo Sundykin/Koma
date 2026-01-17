@@ -8,10 +8,9 @@ import {
   Input,
   Button,
   Space,
-  message,
+  App,
   Modal,
   Upload,
-  List,
   Typography,
   Tooltip,
   Dropdown,
@@ -62,6 +61,7 @@ export const ScriptWorkshop: React.FC<ScriptWorkshopProps> = ({
   onPolishScript,
   onGenerateScript,
 }) => {
+  const { message } = App.useApp();
   const [script, setScript] = useState(initialScript);
   const [versions, setVersions] = useState<ScriptVersion[]>([]);
   const [historyVisible, setHistoryVisible] = useState(false);
@@ -322,37 +322,30 @@ export const ScriptWorkshop: React.FC<ScriptWorkshopProps> = ({
         onCancel={() => setHistoryVisible(false)}
         footer={null}
         width={600}
+        maskClosable={false}
       >
         {versions.length === 0 ? (
           <div style={{ textAlign: 'center', padding: 40, color: '#888' }}>
             暂无历史版本
           </div>
         ) : (
-          <List
-            dataSource={versions}
-            renderItem={(version) => (
-              <List.Item
-                actions={[
-                  <Button
-                    key="restore"
-                    type="link"
-                    onClick={() => handleRestoreVersion(version)}
-                  >
-                    恢复
-                  </Button>,
-                ]}
-              >
-                <List.Item.Meta
-                  title={new Date(version.timestamp).toLocaleString()}
-                  description={
-                    <Text type="secondary" ellipsis>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 400, overflowY: 'auto' }}>
+            {versions.map((version) => (
+              <Card key={version.id} size="small">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <div style={{ fontWeight: 500 }}>{new Date(version.timestamp).toLocaleString()}</div>
+                    <Text type="secondary" ellipsis style={{ maxWidth: 400 }}>
                       {version.description || version.content.slice(0, 100)}
                     </Text>
-                  }
-                />
-              </List.Item>
-            )}
-          />
+                  </div>
+                  <Button type="link" onClick={() => handleRestoreVersion(version)}>
+                    恢复
+                  </Button>
+                </div>
+              </Card>
+            ))}
+          </div>
         )}
       </Modal>
 
@@ -365,6 +358,7 @@ export const ScriptWorkshop: React.FC<ScriptWorkshopProps> = ({
         okText="生成"
         cancelText="取消"
         confirmLoading={generating}
+        maskClosable={false}
       >
         <div style={{ marginBottom: 16 }}>
           <div style={{ marginBottom: 8 }}>创意/灵感</div>
