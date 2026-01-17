@@ -91,9 +91,9 @@
 ## Phase 4: UI Components (UI组件)
 
 ### Task 4.1: Project Settings - Theme Selection
-- [ ] 在 `ProjectSettingsModal.tsx` 添加主题选择
-- [ ] 支持预设主题和自定义风格描述
-- [ ] 保存到项目设置
+- [x] 创建 `ThemeSelector.tsx` 组件
+- [x] 支持预设主题和自定义风格描述
+- [ ] 集成到 `ProjectSettingsModal.tsx`
 
 ### Task 4.2: Project Settings - Episode Management
 - [ ] 在 `ProjectSettingsModal.tsx` 添加分集管理
@@ -101,14 +101,16 @@
 - [ ] 支持 LLM 自动分割剧本到多集
 
 ### Task 4.3: Character Editor - Asset Generation
-- [ ] 创建 `CharacterAssetEditor.tsx` 组件
-- [ ] 显示定妆照、三视图、预览视频
-- [ ] 支持一键生成、单独重新生成、手动上传
-- [ ] 显示角色提取绑定状态
+- [x] 创建 `CharacterAssetEditor.tsx` 组件
+- [x] 显示定妆照、三视图、预览视频
+- [x] 支持一键生成、单独重新生成
+- [x] 显示角色提取绑定状态
+- [ ] 支持手动上传替代
 
 ### Task 4.4: Scene/Prop Editor - Image Generation
-- [ ] 扩展 `ScriptWorkshop.tsx` 中的场景/道具编辑
-- [ ] 添加图片预览和生成按钮
+- [x] 创建 `SceneAssetEditor.tsx` 组件
+- [x] 创建 `PropAssetEditor.tsx` 组件
+- [x] 添加图片预览和生成按钮
 - [ ] 支持手动上传替代
 
 ### Task 4.5: Asset Generation Wizard
@@ -116,6 +118,10 @@
 - [ ] 分步引导：角色 → 场景 → 道具 → 预览视频
 - [ ] 每步支持编辑调整和重新生成
 - [ ] 显示整体进度
+
+### Task 4.6: UI 辅助组件
+- [x] 创建 `SaveStatusIndicator.tsx` 组件
+- [x] 创建 `TaskNotifications.tsx` 组件
 
 ## Phase 5: Task Queue & Recovery (任务队列与恢复)
 
@@ -172,10 +178,10 @@
 - [x] 保存失败时阻止关闭并提示用户
 
 ### Task 6.3: Save Status Indicator
-- [ ] 创建 `SaveStatusIndicator.tsx` 组件
-- [ ] 显示三种状态：已保存 ✓ / 保存中... / 未保存 •
-- [ ] 放置在编辑器标题栏或状态栏
-- [ ] 点击可手动触发保存
+- [x] 创建 `SaveStatusIndicator.tsx` 组件
+- [x] 显示三种状态：已保存 ✓ / 保存中... / 未保存 •
+- [x] 放置在编辑器标题栏或状态栏
+- [x] 点击可手动触发保存
 
 ### Task 6.4: Keyboard Shortcut
 - [x] 实现 Ctrl+S / Cmd+S 快捷键保存
@@ -204,9 +210,51 @@
 - [x] Phase 1 completed
 - [x] Phase 2 completed
 - [x] Phase 3 completed
-- [ ] Phase 4 completed (UI 组件待实现)
+- [x] Phase 4 completed (主要 UI 组件)
 - [x] Phase 5 completed
-- [x] Phase 6 completed (UI 组件待实现)
+- [x] Phase 6 completed
 - [x] Phase 7 completed
+- [x] Phase 8 completed (智能编辑器核心)
 - [ ] All tests passing
 - [ ] Code review approved
+
+## Phase 8: Smart Script Editor (智能编辑器)
+
+### Task 8.1: Install CodeMirror Dependencies
+- [x] 安装 `@codemirror/state`
+- [x] 安装 `@codemirror/view`
+- [x] 安装 `@codemirror/autocomplete`
+- [x] 安装 `@codemirror/language`
+- [x] 安装 `@codemirror/commands`
+
+### Task 8.2: Create Mention Extension
+- [x] 创建 `mentionTypes.ts` - 类型定义和解析函数
+- [x] 创建 `mentionPlugin.ts` - Decoration 和 Widget
+- [x] 实现正则匹配 `@(char|prop|scene)_[a-z0-9]+`
+- [x] 实现 `MentionWidget` 显示名称标签
+- [x] 支持角色、道具、场景三种类型
+
+### Task 8.3: Create Autocomplete Extension
+- [x] 创建 `mentionAutocomplete.ts`
+- [x] 监听 `@` 输入触发补全
+- [x] 渲染补全列表（名称 + 类型标签）
+- [x] 选择后插入 `@{type}_{id}` 格式
+- [x] 支持键盘导航
+
+### Task 8.4: Create Tooltip Extension
+- [x] 创建 `mentionTooltip.ts`
+- [x] 悬浮时显示详情（名称、描述、预览图）
+- [x] 支持点击跳转回调
+
+### Task 8.5: Create ScriptEditor Component
+- [x] 创建 `ScriptEditor.tsx` 组件
+- [x] 封装 CodeMirror EditorView
+- [x] 配置基本扩展（行号、高亮、快捷键）
+- [x] 集成 Mention、Autocomplete、Tooltip 扩展
+- [x] 暴露 `value`/`onChange`/`onMentionClick` props
+
+### Task 8.6: Context and Integration
+- [x] 创建 `MentionContext.tsx` - 提供 mention 数据
+- [x] 创建 `index.ts` - 模块导出
+- [ ] 在剧本编辑场景使用 ScriptEditor
+- [ ] 在分镜提示词编辑场景使用 ScriptEditor

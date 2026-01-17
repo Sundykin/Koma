@@ -69,6 +69,15 @@
 - 任务状态变更时给出相应提示（Toast通知）
 - 支持手动重试失败的任务
 
+### R11: Smart Script Editor (智能剧本编辑器)
+- 引入 CodeMirror 6 作为剧本和提示词编辑器
+- 支持 `@角色名` 或 `@道具名` 智能引用（Mention 功能）
+- 编辑器中显示为可读名称标签，但实际存储为 `@id` 形式
+- 悬浮时显示角色/道具详情（Tooltip）
+- 点击可跳转到对应角色/道具详情页
+- 输入 `@` 时自动弹出补全列表
+- 支持语法高亮和基本编辑功能
+
 ## Affected Specs
 - storage/spec.md - 新增资产存储结构
 - script-processing/spec.md - 新增分集拆分流程
@@ -144,6 +153,21 @@ interface AsyncTask {
 3. 长时间操作（生成任务）期间定时保存（每30秒）
 4. 保存失败时显示错误提示并保留内存数据
 
+### D8: CodeMirror Mention Implementation
+智能引用实现方案：
+1. **存储格式**: 实际文本存储为 `@char_123` 或 `@prop_456`
+2. **显示格式**: 通过 CodeMirror Decoration.replace 将 ID 替换为名称标签 Widget
+3. **输入流程**:
+   - 用户输入 `@` 触发自动补全
+   - 补全列表显示角色/道具名称和预览
+   - 选择后插入 `@{type}_{id}` 格式
+   - Decoration 自动将其渲染为可读标签
+4. **交互行为**:
+   - 悬浮：显示详情 Tooltip（名称、描述、预览图）
+   - 点击：触发 onMentionClick 回调，可跳转到详情
+   - 删除：整个 mention 作为原子单位删除
+5. **数据获取**: 编辑器通过 `doc.toString()` 获取原始 ID 格式文本
+
 ## Implementation Plan
 
 ### Phase 1: Data Structure (数据结构)
@@ -181,6 +205,14 @@ interface AsyncTask {
 1. 实现数据变更监听和防抖保存
 2. 实现应用关闭/切换项目时的保存钩子
 3. 实现保存状态指示器（已保存/保存中/未保存）
+
+### Phase 8: Smart Script Editor (智能编辑器)
+1. 安装 CodeMirror 6 依赖
+2. 创建 Mention 扩展（匹配、装饰、Widget）
+3. 创建自动补全扩展（@触发、列表渲染）
+4. 创建 Tooltip 扩展（悬浮详情）
+5. 封装 ScriptEditor 组件
+6. 集成到剧本编辑和提示词编辑场景
 
 ## Tasks
 See tasks.md for detailed implementation tasks.

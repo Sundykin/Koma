@@ -1,0 +1,122 @@
+/**
+ * CodeMirror Mention 自动补全
+ * 输入 @ 时触发补全列表
+ */
+import {
+  autocompletion,
+  CompletionContext,
+  CompletionResult,
+  Completion,
+} from '@codemirror/autocomplete';
+import type { MentionItem, MentionType } from './mentionTypes';
+import { createMentionString } from './mentionTypes';
+
+// Mention 数据源类型
+export type MentionDataSource = () => MentionItem[];
+
+/**
+ * 创建 Mention 补全源
+ */
+function createMentionCompletions(
+  dataSource: MentionDataSource
+): (context: CompletionContext) => CompletionResult | null {
+  return (context: CompletionContext): CompletionResult | null => {
+    // 检查是否在 @ 后面
+    const word = context.matchBefore(/@\w*/);
+    if (!word) return null;
+
+    // 如果只输入了 @，显示所有选项
+    // 如果输入了 @xxx，过滤匹配的选项
+    const query = word.text.slice(1).toLowerCase();
+    const items = dataSource();
+
+    const options: Completion[] = items
+      .filter((item) => {
+        if (!query) return true;
+        return (
+          item.name.toLowerCase().includes(query) ||
+          item.type.includes(query)
+        );
+      })
+      .map((item) => ({
+        label: item.name,
+        type: item.type === 'char' ? 'variable' : item.type === 'prop' ? 'property' : 'class',
+        detail: getTypeLabel(item.type),
+        info: item.description,
+        apply: (view, completion, from, to) => {
+          // 插入 @type_id 格式
+          const mentionStr = createMentionString(item.type, item.id);
+          view.dispatch({
+            changes: { from, to, insert: mentionStr + ' ' },
+            selection: { anchor: from + mentionStr.length + 1 },
+          });
+        },
+        boost: item.type === 'char' ? 2 : item.type === 'scene' ? 1 : 0,
+      }));
+
+    return {
+      from: word.from,
+      options,
+      validFor: /^@?\w*$/,
+    };
+  };
+}
+
+function getTypeLabel(type: MentionType): string {
+  switch (type) {
+    case 'char':
+      return '角色';
+    case 'prop':
+      return '道具';
+    case 'scene':
+      return '场景';
+    default:
+      return '';
+  }
+}
+
+/**
+ * 创建 Mention 自动补全扩展
+ */
+export function createMentionAutocomplete(dataSource: MentionDataSource) {
+  return autocompletion({
+    override: [createMentionCompletions(dataSource)],
+    activateOnTyping: true,
+    maxRenderedOptions: 20,
+    icons: true,
+  });
+}
+
+/**
+ * 补全列表自定义样式
+ */
+export const autocompleteTheme = `
+.cm-tooltip-autocomplete {
+  min-width: 200px;
+  max-width: 400px;
+}
+
+.cm-tooltip-autocomplete ul {
+  max-height: 300px;
+}
+
+.cm-tooltip-autocomplete li {
+  padding: 4px 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cm-tooltip-autocomplete li[aria-selected] {
+  background-color: #e3f2fd;
+}
+
+.cm-completionLabel {
+  flex: 1;
+}
+
+.cm-completionDetail {
+  font-size: 0.85em;
+  color: #666;
+}
+`;
