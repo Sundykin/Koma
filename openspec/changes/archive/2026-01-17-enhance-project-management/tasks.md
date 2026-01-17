@@ -93,31 +93,31 @@
 ### Task 4.1: Project Settings - Theme Selection
 - [x] 创建 `ThemeSelector.tsx` 组件
 - [x] 支持预设主题和自定义风格描述
-- [ ] 集成到 `ProjectSettingsModal.tsx`
+- [x] 集成到 `ProjectSettingsModal.tsx`
 
 ### Task 4.2: Project Settings - Episode Management
-- [ ] 在 `ProjectSettingsModal.tsx` 添加分集管理
-- [ ] 显示分集列表，支持添加/删除/编辑
-- [ ] 支持 LLM 自动分割剧本到多集
+- [x] 在 `ProjectSettingsModal.tsx` 添加分集管理
+- [x] 显示分集列表，支持添加/删除/编辑
+- [x] 支持 LLM 自动分割剧本到多集
 
 ### Task 4.3: Character Editor - Asset Generation
 - [x] 创建 `CharacterAssetEditor.tsx` 组件
 - [x] 显示定妆照、三视图、预览视频
 - [x] 支持一键生成、单独重新生成
 - [x] 显示角色提取绑定状态
-- [ ] 支持手动上传替代
+- [x] 支持手动上传替代
 
 ### Task 4.4: Scene/Prop Editor - Image Generation
 - [x] 创建 `SceneAssetEditor.tsx` 组件
 - [x] 创建 `PropAssetEditor.tsx` 组件
 - [x] 添加图片预览和生成按钮
-- [ ] 支持手动上传替代
+- [x] 支持手动上传替代
 
 ### Task 4.5: Asset Generation Wizard
-- [ ] 创建 `AssetGenerationWizard.tsx` 组件
-- [ ] 分步引导：角色 → 场景 → 道具 → 预览视频
-- [ ] 每步支持编辑调整和重新生成
-- [ ] 显示整体进度
+- [x] 创建 `AssetGenerationWizard.tsx` 组件
+- [x] 分步引导：角色 → 场景 → 道具 → 预览视频
+- [x] 每步支持编辑调整和重新生成
+- [x] 显示整体进度
 
 ### Task 4.6: UI 辅助组件
 - [x] 创建 `SaveStatusIndicator.tsx` 组件
@@ -156,7 +156,7 @@
 - [x] 任务开始时显示 "正在生成 XXX..."
 - [x] 任务完成时显示 "XXX 生成成功"
 - [x] 任务失败时显示 "XXX 生成失败: 错误原因"
-- [ ] 支持点击通知跳转到对应资产
+- [x] 支持点击通知跳转到对应资产
 
 ### Task 5.5: Task Retry Logic
 - [x] 实现 `retryTask(projectId, taskId)` - 重试失败任务
@@ -210,7 +210,7 @@
 - [x] Phase 1 completed
 - [x] Phase 2 completed
 - [x] Phase 3 completed
-- [x] Phase 4 completed (主要 UI 组件)
+- [x] Phase 4 completed
 - [x] Phase 5 completed
 - [x] Phase 6 completed
 - [x] Phase 7 completed

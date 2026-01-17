@@ -10,6 +10,13 @@ import { getPromptTemplate, fillTemplate } from '../store/promptTemplates';
 // 解析阶段
 export type AnalysisStage = 'characters' | 'scenes' | 'props' | 'shots';
 
+// 分集上下文
+export interface EpisodeContext {
+  episodeId: string;
+  episodeName?: string;
+  episodeScript: string;
+}
+
 // 解析进度回调
 export interface AnalysisProgress {
   stage: AnalysisStage;
@@ -22,6 +29,7 @@ export interface StageResult<T> {
   success: boolean;
   data?: T;
   error?: string;
+  episodeId?: string; // 如果是分集模式，标记所属分集
 }
 
 // JSON Schema 定义
@@ -118,9 +126,24 @@ const SYSTEM_PROMPT_BASE = `你是一个专业的影视编剧和分镜师。你�
 export class ScriptAnalysisService {
   private llmConfig: LLMModelConfig | null = null;
   private onProgress?: (progress: AnalysisProgress) => void;
+  private episodeContext?: EpisodeContext;
 
-  constructor(options?: { onProgress?: (progress: AnalysisProgress) => void }) {
+  constructor(options?: {
+    onProgress?: (progress: AnalysisProgress) => void;
+    episodeContext?: EpisodeContext;
+  }) {
     this.onProgress = options?.onProgress;
+    this.episodeContext = options?.episodeContext;
+  }
+
+  // 设置分集上下文
+  setEpisodeContext(context?: EpisodeContext) {
+    this.episodeContext = context;
+  }
+
+  // 获取当前使用的剧本（优先分集剧本）
+  private getScript(script: string): string {
+    return this.episodeContext?.episodeScript || script;
   }
 
   // 设置 LLM 配置
@@ -170,11 +193,15 @@ export class ScriptAnalysisService {
 
   // 提取角色
   async extractCharacters(script: string): Promise<StageResult<Character[]>> {
-    this.reportProgress('characters', 'running', '正在分析角色...');
+    const effectiveScript = this.getScript(script);
+    const modeHint = this.episodeContext
+      ? `（分集模式：${this.episodeContext.episodeName || this.episodeContext.episodeId}）`
+      : '';
+    this.reportProgress('characters', 'running', `正在分析角色...${modeHint}`);
 
     try {
       const template = await getPromptTemplate('character_extraction');
-      const prompt = fillTemplate(template.template, { script });
+      const prompt = fillTemplate(template.template, { script: effectiveScript });
       const result = await this.callLLM(prompt, CHARACTERS_SCHEMA);
       const parsed = this.parseJSON<{ characters: any[] }>(result);
 
@@ -185,10 +212,11 @@ export class ScriptAnalysisService {
         role: c.role || 'supporting',
         description: c.description,
         appearance: c.appearance,
+        episodeId: this.episodeContext?.episodeId,
       }));
 
       this.reportProgress('characters', 'completed', `识别到 ${characters.length} 个角色`);
-      return { success: true, data: characters };
+      return { success: true, data: characters, episodeId: this.episodeContext?.episodeId };
     } catch (error: any) {
       this.reportProgress('characters', 'failed', error.message);
       return { success: false, error: error.message };
@@ -197,11 +225,15 @@ export class ScriptAnalysisService {
 
   // 提取场景
   async extractScenes(script: string): Promise<StageResult<Scene[]>> {
-    this.reportProgress('scenes', 'running', '正在分析场景...');
+    const effectiveScript = this.getScript(script);
+    const modeHint = this.episodeContext
+      ? `（分集模式：${this.episodeContext.episodeName || this.episodeContext.episodeId}）`
+      : '';
+    this.reportProgress('scenes', 'running', `正在分析场景...${modeHint}`);
 
     try {
       const template = await getPromptTemplate('scene_extraction');
-      const prompt = fillTemplate(template.template, { script });
+      const prompt = fillTemplate(template.template, { script: effectiveScript });
       const result = await this.callLLM(prompt, SCENES_SCHEMA);
       const parsed = this.parseJSON<{ scenes: any[] }>(result);
 
@@ -212,10 +244,11 @@ export class ScriptAnalysisService {
         time: s.time || 'day',
         mood: s.mood,
         description: s.description,
+        episodeId: this.episodeContext?.episodeId,
       }));
 
       this.reportProgress('scenes', 'completed', `识别到 ${scenes.length} 个场景`);
-      return { success: true, data: scenes };
+      return { success: true, data: scenes, episodeId: this.episodeContext?.episodeId };
     } catch (error: any) {
       this.reportProgress('scenes', 'failed', error.message);
       return { success: false, error: error.message };
@@ -224,11 +257,15 @@ export class ScriptAnalysisService {
 
   // 提取道具
   async extractProps(script: string): Promise<StageResult<Prop[]>> {
-    this.reportProgress('props', 'running', '正在分析道具...');
+    const effectiveScript = this.getScript(script);
+    const modeHint = this.episodeContext
+      ? `（分集模式：${this.episodeContext.episodeName || this.episodeContext.episodeId}）`
+      : '';
+    this.reportProgress('props', 'running', `正在分析道具...${modeHint}`);
 
     try {
       const template = await getPromptTemplate('prop_extraction');
-      const prompt = fillTemplate(template.template, { script });
+      const prompt = fillTemplate(template.template, { script: effectiveScript });
       const result = await this.callLLM(prompt, PROPS_SCHEMA);
       const parsed = this.parseJSON<{ props: any[] }>(result);
 
@@ -237,10 +274,11 @@ export class ScriptAnalysisService {
         name: p.name,
         type: p.type,
         description: p.description,
+        episodeId: this.episodeContext?.episodeId,
       }));
 
       this.reportProgress('props', 'completed', `识别到 ${props.length} 个道具`);
-      return { success: true, data: props };
+      return { success: true, data: props, episodeId: this.episodeContext?.episodeId };
     } catch (error: any) {
       this.reportProgress('props', 'failed', error.message);
       return { success: false, error: error.message };
@@ -254,12 +292,16 @@ export class ScriptAnalysisService {
     scenes: Scene[],
     props: Prop[]
   ): Promise<StageResult<Shot[]>> {
-    this.reportProgress('shots', 'running', '正在生成分镜...');
+    const effectiveScript = this.getScript(script);
+    const modeHint = this.episodeContext
+      ? `（分集模式：${this.episodeContext.episodeName || this.episodeContext.episodeId}）`
+      : '';
+    this.reportProgress('shots', 'running', `正在生成分镜...${modeHint}`);
 
     try {
       const template = await getPromptTemplate('shot_breakdown');
       const prompt = fillTemplate(template.template, {
-        script,
+        script: effectiveScript,
         characters: characters.map(c => c.name).join(', '),
         scenes: scenes.map(s => s.name).join(', '),
         props: props.map(p => p.name).join(', '),
@@ -284,10 +326,11 @@ export class ScriptAnalysisService {
         emotion: s.emotion || '',
         props: (s.props || []).map((name: string) => propNameToId.get(name) || name),
         confirmed: false,
+        episodeId: this.episodeContext?.episodeId,
       }));
 
       this.reportProgress('shots', 'completed', `生成 ${shots.length} 个分镜`);
-      return { success: true, data: shots };
+      return { success: true, data: shots, episodeId: this.episodeContext?.episodeId };
     } catch (error: any) {
       this.reportProgress('shots', 'failed', error.message);
       return { success: false, error: error.message };
@@ -336,7 +379,8 @@ export class ScriptAnalysisService {
 
 // 便捷函数：创建服务实例
 export function createScriptAnalysisService(
-  onProgress?: (progress: AnalysisProgress) => void
+  onProgress?: (progress: AnalysisProgress) => void,
+  episodeContext?: EpisodeContext
 ): ScriptAnalysisService {
-  return new ScriptAnalysisService({ onProgress });
+  return new ScriptAnalysisService({ onProgress, episodeContext });
 }

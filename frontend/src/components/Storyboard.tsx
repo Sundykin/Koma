@@ -13,6 +13,7 @@ import {
   Badge,
   Statistic,
   message,
+  Input,
 } from 'antd';
 import {
   PlayCircleOutlined,
@@ -27,14 +28,18 @@ import {
   SendOutlined,
 } from '@ant-design/icons';
 import type { Shot, Character, AppSettings } from '../types';
+import { ScriptEditor } from '../editor';
+import type { MentionItem } from '../editor';
 import './Storyboard.css';
 
 const { Text, Paragraph } = Typography;
+const { TextArea } = Input;
 
 interface StoryboardProps {
   shots: Shot[];
   characters: Character[];
   settings: AppSettings;
+  mentionItems?: MentionItem[];
   onShotUpdate?: (updatedShot: Shot) => void;
   onConfirmedShotsToTimeline?: (shots: Shot[]) => void;
 }
@@ -43,6 +48,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
   shots,
   characters,
   settings,
+  mentionItems = [],
   onShotUpdate,
   onConfirmedShotsToTimeline,
 }) => {
@@ -266,10 +272,17 @@ export const Storyboard: React.FC<StoryboardProps> = ({
               </Form.Item>
 
               <Form.Item label="画面提示词 (Prompt)">
-                <textarea
-                  className="promptTextarea"
-                  defaultValue={selectedShot.description}
-                  rows={4}
+                <ScriptEditor
+                  value={selectedShot.description}
+                  onChange={(value) => {
+                    if (onShotUpdate) {
+                      onShotUpdate({ ...selectedShot, description: value });
+                    }
+                  }}
+                  placeholder="描述画面内容，可使用 @ 引用角色或道具"
+                  mentionItems={mentionItems}
+                  minHeight="100px"
+                  maxHeight="150px"
                 />
               </Form.Item>
 

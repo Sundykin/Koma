@@ -2,15 +2,20 @@
  * 任务通知组件
  * 显示任务状态通知
  */
-import React from 'react';
+import React, { useState } from 'react';
 import { useTaskNotifications, type TaskNotification } from '../hooks/useTaskNotifications';
 
 interface NotificationItemProps {
   notification: TaskNotification;
   onClose: () => void;
+  onNavigate?: (notification: TaskNotification) => void;
 }
 
-const NotificationItem: React.FC<NotificationItemProps> = ({ notification, onClose }) => {
+const NotificationItem: React.FC<NotificationItemProps> = ({ notification, onClose, onNavigate }) => {
+  const [retrying, setRetrying] = useState(false);
+  const isClickable = !!(notification.onClick || notification.targetId);
+  const hasRetry = notification.type === 'error' && !!notification.onRetry;
+
   const getBackgroundColor = () => {
     switch (notification.type) {
       case 'success':
@@ -53,6 +58,31 @@ const NotificationItem: React.FC<NotificationItemProps> = ({ notification, onClo
     }
   };
 
+  const handleClick = () => {
+    if (notification.onClick) {
+      notification.onClick();
+      onClose();
+    } else if (onNavigate && notification.targetId) {
+      onNavigate(notification);
+      onClose();
+    }
+  };
+
+  const handleRetry = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!notification.onRetry || retrying) return;
+
+    setRetrying(true);
+    try {
+      await notification.onRetry();
+      onClose();
+    } catch {
+      // 重试失败，保持通知可见
+    } finally {
+      setRetrying(false);
+    }
+  };
+
   const itemStyle: React.CSSProperties = {
     display: 'flex',
     alignItems: 'flex-start',
@@ -63,6 +93,8 @@ const NotificationItem: React.FC<NotificationItemProps> = ({ notification, onClo
     borderRadius: '4px',
     boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
     animation: 'slideIn 0.3s ease',
+    cursor: isClickable ? 'pointer' : 'default',
+    transition: 'transform 0.2s',
   };
 
   const iconStyle: React.CSSProperties = {
@@ -80,10 +112,31 @@ const NotificationItem: React.FC<NotificationItemProps> = ({ notification, onClo
     flexShrink: 0,
   };
 
-  const messageStyle: React.CSSProperties = {
+  const contentStyle: React.CSSProperties = {
     flex: 1,
     fontSize: '14px',
     lineHeight: '1.4',
+  };
+
+  const messageStyle: React.CSSProperties = {
+    marginBottom: isClickable ? '4px' : 0,
+  };
+
+  const hintStyle: React.CSSProperties = {
+    fontSize: '12px',
+    color: '#666',
+  };
+
+  const retryButtonStyle: React.CSSProperties = {
+    marginTop: '8px',
+    padding: '4px 12px',
+    fontSize: '12px',
+    backgroundColor: '#f44336',
+    color: 'white',
+    border: 'none',
+    borderRadius: '4px',
+    cursor: retrying ? 'not-allowed' : 'pointer',
+    opacity: retrying ? 0.7 : 1,
   };
 
   const closeStyle: React.CSSProperties = {
@@ -96,19 +149,53 @@ const NotificationItem: React.FC<NotificationItemProps> = ({ notification, onClo
   };
 
   return (
-    <div style={itemStyle}>
+    <div
+      style={itemStyle}
+      onClick={isClickable ? handleClick : undefined}
+      onMouseEnter={(e) => {
+        if (isClickable) {
+          (e.currentTarget as HTMLElement).style.transform = 'translateX(-4px)';
+        }
+      }}
+      onMouseLeave={(e) => {
+        (e.currentTarget as HTMLElement).style.transform = 'translateX(0)';
+      }}
+    >
       <div style={iconStyle}>{getIcon()}</div>
-      <div style={messageStyle}>{notification.message}</div>
-      <span style={closeStyle} onClick={onClose}>×</span>
+      <div style={contentStyle}>
+        <div style={messageStyle}>{notification.message}</div>
+        {isClickable && (
+          <div style={hintStyle}>点击查看详情 →</div>
+        )}
+        {hasRetry && (
+          <button
+            style={retryButtonStyle}
+            onClick={handleRetry}
+            disabled={retrying}
+          >
+            {retrying ? '重试中...' : '重试'}
+          </button>
+        )}
+      </div>
+      <span
+        style={closeStyle}
+        onClick={(e) => {
+          e.stopPropagation();
+          onClose();
+        }}
+      >
+        ×
+      </span>
     </div>
   );
 };
 
 interface TaskNotificationsProps {
   className?: string;
+  onNavigate?: (notification: TaskNotification) => void;
 }
 
-export const TaskNotifications: React.FC<TaskNotificationsProps> = ({ className }) => {
+export const TaskNotifications: React.FC<TaskNotificationsProps> = ({ className, onNavigate }) => {
   const { notifications, removeNotification } = useTaskNotifications();
 
   if (notifications.length === 0) {
@@ -146,6 +233,7 @@ export const TaskNotifications: React.FC<TaskNotificationsProps> = ({ className 
           key={notification.id}
           notification={notification}
           onClose={() => removeNotification(notification.id)}
+          onNavigate={onNavigate}
         />
       ))}
     </div>

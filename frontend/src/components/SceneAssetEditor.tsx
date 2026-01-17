@@ -5,6 +5,8 @@
 import React, { useState, useCallback } from 'react';
 import type { Scene } from '../types';
 import { generateSceneImage } from '../workflow/scenePropAssetWorkflow';
+import { openFileDialog, fsCopy, fsMkdir, fsExists } from '../services/electronService';
+import { getStorageConfig, initStorageConfig } from '../store/storageConfig';
 
 interface SceneAssetEditorProps {
   projectId: string;
@@ -56,6 +58,28 @@ export const SceneAssetEditor: React.FC<SceneAssetEditorProps> = ({
     }
   }, [projectId, scene, theme, stylePrompt, ttiConfigId, onUpdate]);
 
+  // 上传场景图片
+  const handleUpload = useCallback(async () => {
+    try {
+      const result = await openFileDialog({
+        filters: [{ name: '图片', extensions: ['png', 'jpg', 'jpeg', 'webp'] }],
+        title: '选择场景预览图',
+      });
+      if (result.canceled || !result.filePaths[0]) return;
+
+      const config = getStorageConfig() || (await initStorageConfig());
+      const basePath = `${config.rootPath}/projects/${projectId}/assets/scenes/${scene.id}`;
+      if (!(await fsExists(basePath))) {
+        await fsMkdir(basePath);
+      }
+      const destPath = `${basePath}/preview.png`;
+      await fsCopy(result.filePaths[0], destPath);
+      onUpdate({ imagePath: destPath });
+    } catch (err: any) {
+      setError(`上传失败: ${err.message}`);
+    }
+  }, [projectId, scene.id, onUpdate]);
+
   const containerStyle: React.CSSProperties = {
     padding: '12px',
     backgroundColor: 'var(--bg-secondary, #f5f5f5)',
@@ -96,6 +120,14 @@ export const SceneAssetEditor: React.FC<SceneAssetEditorProps> = ({
     color: 'white',
   };
 
+  const uploadButtonStyle: React.CSSProperties = {
+    ...buttonStyle,
+    backgroundColor: 'transparent',
+    color: 'var(--color-primary, #1976d2)',
+    border: '1px solid var(--color-primary, #1976d2)',
+    marginLeft: '4px',
+  };
+
   const infoStyle: React.CSSProperties = {
     marginTop: '8px',
     fontSize: '12px',
@@ -109,13 +141,22 @@ export const SceneAssetEditor: React.FC<SceneAssetEditorProps> = ({
           <strong>{scene.name}</strong>
           <div style={{ fontSize: '12px', color: '#666' }}>{scene.location}</div>
         </div>
-        <button
-          style={buttonStyle}
-          onClick={handleGenerate}
-          disabled={loading}
-        >
-          {loading ? '生成中...' : scene.imagePath ? '重新生成' : '生成预览图'}
-        </button>
+        <div style={{ display: 'flex' }}>
+          <button
+            style={buttonStyle}
+            onClick={handleGenerate}
+            disabled={loading}
+          >
+            {loading ? '生成中...' : scene.imagePath ? '重新生成' : '生成'}
+          </button>
+          <button
+            style={uploadButtonStyle}
+            onClick={handleUpload}
+            disabled={loading}
+          >
+            上传
+          </button>
+        </div>
       </div>
 
       {loading && (

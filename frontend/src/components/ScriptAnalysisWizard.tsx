@@ -27,6 +27,7 @@ import {
   EditOutlined,
   LoadingOutlined,
   CloseCircleOutlined,
+  PictureOutlined,
 } from '@ant-design/icons';
 import type { Character, Scene, Prop, Shot } from '../types';
 import {
@@ -50,6 +51,7 @@ interface ScriptAnalysisWizardProps {
     props: Prop[];
     shots: Shot[];
   }) => void;
+  onGenerateCharacterAssets?: (characters: Character[]) => void;
 }
 
 type StepStatus = 'wait' | 'process' | 'finish' | 'error';
@@ -65,6 +67,7 @@ export const ScriptAnalysisWizard: React.FC<ScriptAnalysisWizardProps> = ({
   projectLLMConfigId,
   onCancel,
   onComplete,
+  onGenerateCharacterAssets,
 }) => {
   const [currentStep, setCurrentStep] = useState(0);
   const [analyzing, setAnalyzing] = useState(false);
@@ -321,16 +324,29 @@ export const ScriptAnalysisWizard: React.FC<ScriptAnalysisWizardProps> = ({
 
   const renderCharactersList = () => (
     <div>
-      <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between' }}>
+      <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Text strong>识别到 {characters.length} 个角色</Text>
-        <Button
-          size="small"
-          icon={<ReloadOutlined />}
-          onClick={() => regenerateStep(0)}
-          disabled={analyzing}
-        >
-          重新生成
-        </Button>
+        <Space>
+          {onGenerateCharacterAssets && characters.length > 0 && (
+            <Button
+              size="small"
+              icon={<PictureOutlined />}
+              onClick={() => onGenerateCharacterAssets(characters)}
+              type="primary"
+              ghost
+            >
+              生成定妆照
+            </Button>
+          )}
+          <Button
+            size="small"
+            icon={<ReloadOutlined />}
+            onClick={() => regenerateStep(0)}
+            disabled={analyzing}
+          >
+            重新生成
+          </Button>
+        </Space>
       </div>
       <Row gutter={[16, 16]}>
         {characters.map((char: Character, index: number) => (

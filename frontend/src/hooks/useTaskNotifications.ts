@@ -5,13 +5,29 @@
 import { useEffect, useState, useCallback } from 'react';
 import { onTaskRecovery } from '../store/projectOpenService';
 import { subscribeSaveState } from '../store/autoSaveService';
-import type { ProjectSaveState } from '../types';
+import type { ProjectSaveState, AsyncTaskTargetType } from '../types';
 
 export interface TaskNotification {
   id: string;
   type: 'info' | 'success' | 'error' | 'warning';
   message: string;
   timestamp: number;
+  // 可选的跳转信息
+  targetType?: AsyncTaskTargetType;
+  targetId?: string;
+  projectId?: string;
+  onClick?: () => void;
+  // 重试回调（仅用于失败任务）
+  onRetry?: () => void | Promise<void>;
+}
+
+export interface AddNotificationOptions {
+  targetType?: AsyncTaskTargetType;
+  targetId?: string;
+  projectId?: string;
+  onClick?: () => void;
+  onRetry?: () => void | Promise<void>;
+  duration?: number; // 自动消失时间，默认 5000ms，0 表示不自动消失
 }
 
 /**
@@ -22,19 +38,31 @@ export function useTaskNotifications() {
   const [saveState, setSaveState] = useState<ProjectSaveState | null>(null);
 
   // 添加通知
-  const addNotification = useCallback((type: TaskNotification['type'], message: string) => {
+  const addNotification = useCallback((
+    type: TaskNotification['type'],
+    message: string,
+    options?: AddNotificationOptions
+  ) => {
     const notification: TaskNotification = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
       type,
       message,
       timestamp: Date.now(),
+      targetType: options?.targetType,
+      targetId: options?.targetId,
+      projectId: options?.projectId,
+      onClick: options?.onClick,
+      onRetry: options?.onRetry,
     };
     setNotifications(prev => [...prev, notification]);
 
-    // 5 秒后自动移除
-    setTimeout(() => {
-      setNotifications(prev => prev.filter(n => n.id !== notification.id));
-    }, 5000);
+    // 自动移除（默认 5 秒）
+    const duration = options?.duration ?? 5000;
+    if (duration > 0) {
+      setTimeout(() => {
+        setNotifications(prev => prev.filter(n => n.id !== notification.id));
+      }, duration);
+    }
   }, []);
 
   // 移除通知

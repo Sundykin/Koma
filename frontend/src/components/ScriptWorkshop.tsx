@@ -2,7 +2,7 @@
  * 剧本工作室组件
  * 剧本编辑、导入、版本历史管理
  */
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Card,
   Input,
@@ -31,6 +31,8 @@ import {
   DownOutlined,
 } from '@ant-design/icons';
 import { electronService } from '../services/electronService';
+import { ScriptEditor } from '../editor';
+import type { MentionItem } from '../editor';
 
 const { TextArea } = Input;
 const { Text, Title } = Typography;
@@ -45,21 +47,25 @@ export interface ScriptVersion {
 interface ScriptWorkshopProps {
   projectId: string;
   initialScript?: string;
+  mentionItems?: MentionItem[];
   onScriptChange?: (script: string) => void;
   onGenerateShots?: (script: string) => void;
   onExtractEntities?: (script: string, type: 'character' | 'scene' | 'prop') => void;
   onPolishScript?: (script: string) => void;
   onGenerateScript?: (idea: string, style: string, duration: string) => void;
+  onMentionClick?: (item: MentionItem) => void;
 }
 
 export const ScriptWorkshop: React.FC<ScriptWorkshopProps> = ({
   projectId,
   initialScript = '',
+  mentionItems = [],
   onScriptChange,
   onGenerateShots,
   onExtractEntities,
   onPolishScript,
   onGenerateScript,
+  onMentionClick,
 }) => {
   const { message } = App.useApp();
   const [script, setScript] = useState(initialScript);
@@ -298,21 +304,17 @@ export const ScriptWorkshop: React.FC<ScriptWorkshopProps> = ({
         </Space>
       }
       style={{ height: '100%' }}
-      bodyStyle={{ height: 'calc(100% - 57px)', padding: 0 }}
+      styles={{ body: { height: 'calc(100% - 57px)', padding: 0 } }}
     >
-      <TextArea
+      <ScriptEditor
         value={script}
-        onChange={(e) => handleScriptChange(e.target.value)}
-        placeholder="在此输入或粘贴剧本内容...\n\n提示：\n- 使用 ## 标记场景\n- 使用 **角色名**：标记对话\n- 使用 （括号）标记动作指示"
-        style={{
-          height: '100%',
-          resize: 'none',
-          border: 'none',
-          borderRadius: 0,
-          fontSize: 14,
-          lineHeight: 1.8,
-          fontFamily: 'system-ui, -apple-system, sans-serif',
-        }}
+        onChange={handleScriptChange}
+        placeholder="在此输入或粘贴剧本内容...\n\n提示：\n- 使用 @ 可以引用角色、道具或场景\n- 使用 ## 标记场景\n- 使用 **角色名**：标记对话"
+        mentionItems={mentionItems}
+        onMentionClick={onMentionClick}
+        minHeight="100%"
+        maxHeight="100%"
+        style={{ height: '100%' }}
       />
 
       {/* 版本历史 Modal */}

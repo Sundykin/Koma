@@ -10,6 +10,8 @@ import {
   generateCharacterPreviewVideo,
   extractAndBindCharacter,
 } from '../workflow/characterAssetWorkflow';
+import { electronService, openFileDialog, fsCopy, fsMkdir, fsExists } from '../services/electronService';
+import { getStorageConfig, initStorageConfig } from '../store/storageConfig';
 
 interface CharacterAssetEditorProps {
   projectId: string;
@@ -162,6 +164,75 @@ export const CharacterAssetEditor: React.FC<CharacterAssetEditorProps> = ({
     }
   }, [handleGenerateCostume, handleGenerateThreeView, handleGenerateVideo, character.costumePhotoPath]);
 
+  // 获取资产目录路径
+  const getAssetPath = useCallback(async (subPath: string) => {
+    const config = getStorageConfig() || (await initStorageConfig());
+    const basePath = `${config.rootPath}/projects/${projectId}/assets/characters/${character.id}`;
+    const fullPath = `${basePath}/${subPath}`;
+    // 确保目录存在
+    const dir = fullPath.substring(0, fullPath.lastIndexOf('/'));
+    if (!(await fsExists(dir))) {
+      await fsMkdir(dir);
+    }
+    return fullPath;
+  }, [projectId, character.id]);
+
+  // 上传定妆照
+  const handleUploadCostume = useCallback(async () => {
+    try {
+      const result = await openFileDialog({
+        filters: [{ name: '图片', extensions: ['png', 'jpg', 'jpeg', 'webp'] }],
+        title: '选择定妆照',
+      });
+      if (result.canceled || !result.filePaths[0]) return;
+
+      const destPath = await getAssetPath('costume.png');
+      await fsCopy(result.filePaths[0], destPath);
+      onUpdate({ costumePhotoPath: destPath });
+    } catch (err: any) {
+      setError(`上传失败: ${err.message}`);
+    }
+  }, [getAssetPath, onUpdate]);
+
+  // 上传三视图
+  const handleUploadThreeView = useCallback(async (view: 'front' | 'side' | 'back') => {
+    try {
+      const result = await openFileDialog({
+        filters: [{ name: '图片', extensions: ['png', 'jpg', 'jpeg', 'webp'] }],
+        title: `选择${view === 'front' ? '正面' : view === 'side' ? '侧面' : '背面'}视图`,
+      });
+      if (result.canceled || !result.filePaths[0]) return;
+
+      const destPath = await getAssetPath(`three-view/${view}.png`);
+      await fsCopy(result.filePaths[0], destPath);
+      onUpdate({
+        threeViewPaths: {
+          ...character.threeViewPaths,
+          [view]: destPath,
+        },
+      });
+    } catch (err: any) {
+      setError(`上传失败: ${err.message}`);
+    }
+  }, [getAssetPath, onUpdate, character.threeViewPaths]);
+
+  // 上传预览视频
+  const handleUploadVideo = useCallback(async () => {
+    try {
+      const result = await openFileDialog({
+        filters: [{ name: '视频', extensions: ['mp4', 'webm', 'mov'] }],
+        title: '选择预览视频',
+      });
+      if (result.canceled || !result.filePaths[0]) return;
+
+      const destPath = await getAssetPath('preview.mp4');
+      await fsCopy(result.filePaths[0], destPath);
+      onUpdate({ previewVideoPath: destPath });
+    } catch (err: any) {
+      setError(`上传失败: ${err.message}`);
+    }
+  }, [getAssetPath, onUpdate]);
+
   const containerStyle: React.CSSProperties = {
     padding: '16px',
     backgroundColor: 'var(--bg-secondary, #f5f5f5)',
@@ -205,6 +276,21 @@ export const CharacterAssetEditor: React.FC<CharacterAssetEditorProps> = ({
     borderRadius: '4px',
     backgroundColor: 'var(--color-primary, #1976d2)',
     color: 'white',
+  };
+
+  const uploadButtonStyle: React.CSSProperties = {
+    ...buttonStyle,
+    backgroundColor: 'transparent',
+    color: 'var(--color-primary, #1976d2)',
+    border: '1px solid var(--color-primary, #1976d2)',
+    marginLeft: '4px',
+  };
+
+  const buttonGroupStyle: React.CSSProperties = {
+    display: 'flex',
+    gap: '4px',
+    justifyContent: 'center',
+    flexWrap: 'wrap',
   };
 
   const isLoading = loading !== null;
@@ -256,24 +342,33 @@ export const CharacterAssetEditor: React.FC<CharacterAssetEditorProps> = ({
               未生成
             </div>
           )}
-          <button
-            style={buttonStyle}
-            onClick={handleGenerateCostume}
-            disabled={isLoading}
-          >
-            {character.costumePhotoPath ? '重新生成' : '生成定妆照'}
-          </button>
+          <div style={buttonGroupStyle}>
+            <button
+              style={buttonStyle}
+              onClick={handleGenerateCostume}
+              disabled={isLoading}
+            >
+              {character.costumePhotoPath ? '重新生成' : '生成'}
+            </button>
+            <button
+              style={uploadButtonStyle}
+              onClick={handleUploadCostume}
+              disabled={isLoading}
+            >
+              上传
+            </button>
+          </div>
         </div>
 
         {/* 三视图 */}
         <div style={assetCardStyle}>
           <h4 style={{ margin: '0 0 8px 0', fontSize: '14px' }}>三视图</h4>
           <div style={{ display: 'flex', gap: '4px' }}>
-            {['front', 'side', 'back'].map(view => (
+            {(['front', 'side', 'back'] as const).map(view => (
               <div key={view} style={{ flex: 1, textAlign: 'center' }}>
-                {character.threeViewPaths?.[view as 'front' | 'side' | 'back'] ? (
+                {character.threeViewPaths?.[view] ? (
                   <img
-                    src={character.threeViewPaths[view as 'front' | 'side' | 'back']}
+                    src={character.threeViewPaths[view]}
                     alt={view}
                     style={{ ...imageStyle, height: '80px' }}
                   />
@@ -282,6 +377,14 @@ export const CharacterAssetEditor: React.FC<CharacterAssetEditorProps> = ({
                     {view === 'front' ? '正面' : view === 'side' ? '侧面' : '背面'}
                   </div>
                 )}
+                <button
+                  style={{ ...uploadButtonStyle, marginTop: '4px', padding: '2px 6px', fontSize: '10px' }}
+                  onClick={() => handleUploadThreeView(view)}
+                  disabled={isLoading}
+                  title={`上传${view === 'front' ? '正面' : view === 'side' ? '侧面' : '背面'}`}
+                >
+                  上传
+                </button>
               </div>
             ))}
           </div>
@@ -290,7 +393,7 @@ export const CharacterAssetEditor: React.FC<CharacterAssetEditorProps> = ({
             onClick={handleGenerateThreeView}
             disabled={isLoading}
           >
-            生成三视图
+            一键生成
           </button>
         </div>
 
@@ -308,13 +411,22 @@ export const CharacterAssetEditor: React.FC<CharacterAssetEditorProps> = ({
               未生成
             </div>
           )}
-          <button
-            style={buttonStyle}
-            onClick={handleGenerateVideo}
-            disabled={isLoading || !character.costumePhotoPath}
-          >
-            生成预览视频
-          </button>
+          <div style={buttonGroupStyle}>
+            <button
+              style={buttonStyle}
+              onClick={handleGenerateVideo}
+              disabled={isLoading || !character.costumePhotoPath}
+            >
+              {character.previewVideoPath ? '重新生成' : '生成'}
+            </button>
+            <button
+              style={uploadButtonStyle}
+              onClick={handleUploadVideo}
+              disabled={isLoading}
+            >
+              上传
+            </button>
+          </div>
         </div>
 
         {/* 角色提取 */}
