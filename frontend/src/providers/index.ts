@@ -7,7 +7,6 @@ import type {
   ModelConfig,
   TTSConfig,
   ITVConfig,
-  CustomLLMChannel,
   LLMModelConfig,
   TTIModelConfig,
   ITVModelConfig,
@@ -26,32 +25,12 @@ import {
 
 // ========== LLM Provider 工厂 ==========
 
-export function createLLMProvider(
-  config: ModelConfig,
-  customChannels?: CustomLLMChannel[]
-): LLMProvider {
+export function createLLMProvider(config: ModelConfig): LLMProvider {
   switch (config.provider) {
     case 'gemini':
       return new GeminiProvider(config);
     case 'openai':
       return new OpenAIProvider(config);
-    case 'custom': {
-      // 使用自定义渠道
-      if (!config.channelId || !customChannels) {
-        throw new Error('Custom provider requires channelId and customChannels');
-      }
-      const channel = customChannels.find(c => c.id === config.channelId);
-      if (!channel) {
-        throw new Error(`Custom channel not found: ${config.channelId}`);
-      }
-      // 使用 OpenAI 兼容接口
-      return new OpenAIProvider({
-        ...config,
-        apiKey: channel.apiKey,
-        baseUrl: channel.baseUrl,
-        modelName: config.modelName || channel.defaultModel || 'gpt-4',
-      });
-    }
     default:
       throw new Error(`Unknown LLM provider: ${config.provider}`);
   }
@@ -126,26 +105,15 @@ export interface ValidationResult {
 }
 
 // 校验 LLM 配置
-export function validateLLMConfig(
-  config: ModelConfig,
-  customChannels?: CustomLLMChannel[]
-): ValidationResult {
+export function validateLLMConfig(config: ModelConfig): ValidationResult {
   const errors: string[] = [];
 
   if (!config.provider) {
     errors.push('未选择 Provider');
   }
 
-  if (config.provider === 'custom') {
-    if (!config.channelId) {
-      errors.push('未选择自定义渠道');
-    } else if (!customChannels?.find(c => c.id === config.channelId)) {
-      errors.push('选择的渠道不存在');
-    }
-  } else {
-    if (!config.apiKey || config.apiKey.trim() === '') {
-      errors.push('API Key 不能为空');
-    }
+  if (!config.apiKey || config.apiKey.trim() === '') {
+    errors.push('API Key 不能为空');
   }
 
   if (!config.modelName || config.modelName.trim() === '') {
@@ -269,11 +237,10 @@ export function validateAllSettings(
 // ========== 连接测试函数 ==========
 
 export async function testLLMConnection(
-  config: ModelConfig,
-  customChannels?: CustomLLMChannel[]
+  config: ModelConfig
 ): Promise<{ success: boolean; message: string }> {
   try {
-    const provider = createLLMProvider(config, customChannels);
+    const provider = createLLMProvider(config);
     if (!provider.validate()) {
       return { success: false, message: '配置校验失败' };
     }

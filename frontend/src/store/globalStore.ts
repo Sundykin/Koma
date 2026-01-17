@@ -103,103 +103,6 @@ function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
-// 旧配置迁移逻辑
-function migrateOldSettings(settings: any): AppSettings {
-  const migrated: AppSettings = {
-    ...DEFAULT_SETTINGS,
-    llmConfigs: settings.llmConfigs || [],
-    ttiConfigs: settings.ttiConfigs || [],
-    itvConfigs: settings.itvConfigs || [],
-    ttsConfigs: settings.ttsConfigs || [],
-  };
-
-  // 迁移旧版 LLM 配置
-  if (!migrated.llmConfigs.length && settings.llm && settings.llm.apiKey) {
-    const oldConfig = settings.llm;
-    migrated.llmConfigs.push({
-      id: generateId(),
-      name: oldConfig.provider === 'gemini' ? 'Gemini' : 'OpenAI',
-      provider: oldConfig.provider === 'gemini' ? 'gemini' : 'openai',
-      baseUrl: oldConfig.baseUrl,
-      apiKey: oldConfig.apiKey,
-      modelName: oldConfig.modelName || 'gemini-2.0-flash',
-      isDefault: true,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    });
-  }
-
-  // 迁移旧的 customChannels 到 llmConfigs
-  if (settings.customChannels && Array.isArray(settings.customChannels)) {
-    for (const channel of settings.customChannels) {
-      if (channel.apiKey) {
-        migrated.llmConfigs.push({
-          id: generateId(),
-          name: channel.name || '自定义渠道',
-          provider: 'openai-compatible',
-          baseUrl: channel.baseUrl,
-          apiKey: channel.apiKey,
-          modelName: channel.defaultModel || '',
-          isDefault: migrated.llmConfigs.length === 0,
-          createdAt: channel.createdAt || Date.now(),
-          updatedAt: Date.now(),
-        });
-      }
-    }
-  }
-
-  // 迁移旧版 TTI 配置
-  if (!migrated.ttiConfigs.length && settings.tti && settings.tti.provider) {
-    const old = settings.tti;
-    migrated.ttiConfigs.push({
-      id: generateId(),
-      name: TTI_PRESETS.find(p => p.id === old.provider)?.name || old.provider,
-      provider: old.provider as any,
-      apiKey: old.apiKey,
-      baseUrl: old.baseUrl,
-      modelName: old.modelName,
-      isDefault: true,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    });
-  }
-
-  // 迁移旧版 ITV 配置
-  if (!migrated.itvConfigs.length && settings.itv && settings.itv.provider) {
-    const old = settings.itv;
-    migrated.itvConfigs.push({
-      id: generateId(),
-      name: ITV_PRESETS.find(p => p.id === old.provider)?.name || old.provider,
-      provider: old.provider as any,
-      apiKey: old.apiKey,
-      baseUrl: old.baseUrl,
-      defaultDuration: old.defaultDuration,
-      defaultResolution: old.defaultResolution,
-      isDefault: true,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    });
-  }
-
-  // 迁移旧版 TTS 配置
-  if (!migrated.ttsConfigs.length && settings.tts && settings.tts.provider) {
-    const old = settings.tts;
-    migrated.ttsConfigs.push({
-      id: generateId(),
-      name: TTS_PRESETS.find(p => p.id === old.provider)?.name || old.provider,
-      provider: old.provider as any,
-      apiKey: old.apiKey,
-      baseUrl: old.baseUrl,
-      defaultVoice: old.defaultVoice,
-      isDefault: true,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    });
-  }
-
-  return migrated;
-}
-
 export async function loadSettings(): Promise<AppSettings> {
   if (!electronService.isElectron()) {
     try {
@@ -207,7 +110,7 @@ export async function loadSettings(): Promise<AppSettings> {
       if (data) {
         const parsed = JSON.parse(data);
         const decrypted = await decryptSettings(parsed);
-        return migrateOldSettings({ ...DEFAULT_SETTINGS, ...decrypted });
+        return { ...DEFAULT_SETTINGS, ...decrypted };
       }
     } catch {
       // ignore
@@ -222,7 +125,7 @@ export async function loadSettings(): Promise<AppSettings> {
       const data = await electronService.fs.readFile(path);
       const parsed = JSON.parse(data);
       const decrypted = await decryptSettings(parsed);
-      return migrateOldSettings({ ...DEFAULT_SETTINGS, ...decrypted });
+      return { ...DEFAULT_SETTINGS, ...decrypted };
     }
   } catch (err) {
     console.error('[loadSettings] error:', err);

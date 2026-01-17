@@ -3,7 +3,7 @@
  * 完整的 Shot 渲染流程：图片 -> TTS -> 视频
  */
 import type { Shot, AppSettings, ShotVersion } from '../types';
-import { createTTIProvider, createTTSProvider, createITVProvider } from '../providers';
+import { getProjectTTIProvider, getProjectTTSProvider, getProjectITVProvider } from '../providers';
 import { saveShotVersion, loadShotMeta } from '../store/projectStore';
 import { createLogger } from '../store/logger';
 
@@ -12,7 +12,11 @@ const logger = createLogger('ShotRender');
 interface ShotRenderParams {
   projectId: string;
   shot: Shot;
-  settings: AppSettings;
+  projectConfigIds?: {
+    ttiConfigId?: string;
+    itvConfigId?: string;
+    ttsConfigId?: string;
+  };
 }
 
 interface ShotRenderResult {
@@ -25,8 +29,12 @@ interface ShotRenderResult {
 interface BatchRenderParams {
   projectId: string;
   shots: Shot[];
-  settings: AppSettings;
-  concurrency?: number; // 并发数，默认 1
+  projectConfigIds?: {
+    ttiConfigId?: string;
+    itvConfigId?: string;
+    ttsConfigId?: string;
+  };
+  concurrency?: number;
 }
 
 interface BatchRenderResult {
@@ -43,19 +51,23 @@ export async function shotRenderWorkflow(
   params: ShotRenderParams,
   onProgress: (progress: number, step?: string) => void
 ): Promise<ShotRenderResult> {
-  const { projectId, shot, settings } = params;
+  const { projectId, shot, projectConfigIds } = params;
 
   logger.info(`开始渲染分镜 ${shot.id}`);
 
   let imagePath: string | undefined;
   let audioPath: string | undefined;
   let videoPath: string | undefined;
+  let itvProviderName = 'unknown';
 
   try {
     // 步骤1: 生成图片 (0-30%)
     onProgress(0, '生成图片...');
     try {
-      const ttiProvider = createTTIProvider(settings.tti);
+      const ttiProvider = await getProjectTTIProvider(projectConfigIds?.ttiConfigId);
+      if (!ttiProvider) {
+        throw new Error('未配置 TTI 服务');
+      }
       const imageResult = await ttiProvider.generateImage(shot.description, {
         width: 1280,
         height: 720,
@@ -72,9 +84,12 @@ export async function shotRenderWorkflow(
     if (shot.dialogue) {
       onProgress(30, '生成语音...');
       try {
-        const ttsProvider = createTTSProvider(settings.tts);
+        const ttsProvider = await getProjectTTSProvider(projectConfigIds?.ttsConfigId);
+        if (!ttsProvider) {
+          throw new Error('未配置 TTS 服务');
+        }
         const voices = await ttsProvider.getVoices();
-        const voiceId = settings.tts.defaultVoice || voices[0]?.id;
+        const voiceId = voices[0]?.id;
 
         const audioResult = await ttsProvider.synthesize(shot.dialogue, voiceId!, {
           rate: 1.0,
@@ -95,7 +110,12 @@ export async function shotRenderWorkflow(
     if (imagePath) {
       onProgress(50, '生成视频...');
       try {
-        const itvProvider = createITVProvider(settings.itv);
+        const itvProvider = await getProjectITVProvider(projectConfigIds?.itvConfigId);
+        if (!itvProvider) {
+          throw new Error('未配置 ITV 服务');
+        }
+        itvProviderName = itvProvider.config?.provider || 'unknown';
+
         const taskId = await itvProvider.submitTask(imagePath, {
           duration: shot.duration,
           motionPrompt: shot.cameraMovement,
@@ -136,7 +156,7 @@ export async function shotRenderWorkflow(
       audioPath,
       prompt: shot.description,
       seed: shot.seed || Math.floor(Math.random() * 1000000),
-      model: settings.itv.provider,
+      model: itvProviderName,
     });
 
     logger.info(`分镜 ${shot.id} 渲染完成，版本 ${version.version}`);

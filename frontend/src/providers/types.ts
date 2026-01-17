@@ -23,7 +23,6 @@ export interface LLMProvider {
   validate(): boolean;
   testConnection(): Promise<boolean>;
   generateText(prompt: string, systemPrompt?: string): Promise<string>;
-  analyzeScript(script: string): Promise<ScriptAnalysisResult>;
   chat?(messages: { role: string; content: string }[]): Promise<string>;
 }
 

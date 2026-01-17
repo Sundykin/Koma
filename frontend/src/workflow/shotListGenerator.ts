@@ -3,7 +3,7 @@
  * 从剧本文本自动生成分镜脚本
  */
 import type { Shot, Character, Scene, AppSettings, ScriptAnalysisResult } from '../types';
-import { createLLMProvider } from '../providers';
+import { getProjectLLMProvider } from '../providers';
 import { getPromptTemplate, fillTemplate } from '../store/promptTemplates';
 
 interface ShotListParams {
@@ -21,9 +21,12 @@ export async function generateShotList(
   params: ShotListParams,
   onProgress: (progress: number, step?: string) => void
 ): Promise<Shot[]> {
-  const { settings, scriptText, characters, scenes } = params;
+  const { scriptText, characters, scenes } = params;
 
-  const provider = createLLMProvider(settings.llm, settings.customChannels || []);
+  const provider = await getProjectLLMProvider();
+  if (!provider) {
+    throw new Error('未配置 LLM 模型');
+  }
 
   // 加载 Prompt 模板
   const template = await getPromptTemplate('shot_breakdown');

@@ -48,6 +48,9 @@ export const Storyboard: React.FC<StoryboardProps> = ({
 }) => {
   const [selectedShotId, setSelectedShotId] = useState<string | null>(shots[0]?.id || null);
 
+  // 获取默认 ITV 配置
+  const defaultITVConfig = settings.itvConfigs?.find(c => c.isDefault) || settings.itvConfigs?.[0];
+
   const selectedShot = shots.find(s => s.id === selectedShotId);
   const confirmedShots = shots.filter(s => s.confirmed);
   const confirmedCount = confirmedShots.length;
@@ -243,18 +246,18 @@ export const Storyboard: React.FC<StoryboardProps> = ({
                 <Card size="small" className="engineCard">
                   <div className="engineInfo">
                     <div className="engineIcon">
-                      {settings.itv.provider.substring(0, 2).toUpperCase()}
+                      {defaultITVConfig?.provider?.substring(0, 2).toUpperCase() || 'N/A'}
                     </div>
                     <div>
                       <Text strong style={{ textTransform: 'capitalize' }}>
-                        {settings.itv.provider}
+                        {defaultITVConfig?.provider || '未配置'}
                       </Text>
                       <br />
                       <Text type="secondary" code style={{ fontSize: 10 }}>
-                        {settings.itv.modelName}
+                        {defaultITVConfig?.name || '-'}
                       </Text>
                     </div>
-                    <Badge status="success" className="statusBadge" />
+                    <Badge status={defaultITVConfig ? "success" : "default"} className="statusBadge" />
                   </div>
                   <Text type="secondary" style={{ fontSize: 10 }}>
                     使用全局设置中配置的模型进行生成。

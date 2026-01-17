@@ -6,7 +6,6 @@ import { Storyboard } from './components/Storyboard';
 import { VideoEditor } from './components/editor';
 import { SettingsPage } from './components/SettingsPage';
 import { StepNavigator } from './components/StepNavigator';
-import { ModelFactory } from './services/ModelFactory';
 import { CreateProjectModal } from './components/CreateProjectModal';
 import { ProjectSettingsModal } from './components/ProjectSettingsModal';
 import { WindowControls } from './components/WindowControls';
@@ -88,21 +87,9 @@ const DEFAULT_SCRIPT = `# 第一场：废弃医院 - 夜
 // 默认设置
 const DEFAULT_SETTINGS: AppSettings = {
   llmConfigs: [],
-  tti: {
-    provider: 'midjourney',
-    apiKey: '',
-    modelName: 'v6.0'
-  },
-  itv: {
-    provider: 'runway',
-    apiKey: '',
-    defaultDuration: 5,
-    defaultResolution: '1280x720'
-  },
-  tts: {
-    provider: 'edge-tts',
-    defaultVoice: 'zh-CN-XiaoxiaoNeural'
-  }
+  ttiConfigs: [],
+  itvConfigs: [],
+  ttsConfigs: [],
 };
 
 // 时间格式化工具函数

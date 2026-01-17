@@ -3,7 +3,7 @@
  * 从剧本中自动提取角色、场景、道具
  */
 import type { AppSettings, Character, Scene } from '../types';
-import { createLLMProvider } from '../providers';
+import { getProjectLLMProvider } from '../providers';
 import { getPromptTemplate, fillTemplate } from '../store/promptTemplates';
 
 // 道具接口
@@ -31,7 +31,10 @@ export async function extractCharacters(
   script: string,
   onProgress?: (progress: number, step?: string) => void
 ): Promise<Character[]> {
-  const provider = createLLMProvider(settings.llm, settings.customChannels || []);
+  const provider = await getProjectLLMProvider();
+  if (!provider) {
+    throw new Error('未配置 LLM 模型');
+  }
 
   onProgress?.(5, '加载 Prompt 模板...');
   const template = await getPromptTemplate('character_extraction');
@@ -76,7 +79,10 @@ export async function extractScenes(
   script: string,
   onProgress?: (progress: number, step?: string) => void
 ): Promise<Scene[]> {
-  const provider = createLLMProvider(settings.llm, settings.customChannels || []);
+  const provider = await getProjectLLMProvider();
+  if (!provider) {
+    throw new Error('未配置 LLM 模型');
+  }
 
   onProgress?.(5, '加载 Prompt 模板...');
   const template = await getPromptTemplate('scene_extraction');
@@ -121,7 +127,10 @@ export async function extractProps(
   script: string,
   onProgress?: (progress: number, step?: string) => void
 ): Promise<Prop[]> {
-  const provider = createLLMProvider(settings.llm, settings.customChannels || []);
+  const provider = await getProjectLLMProvider();
+  if (!provider) {
+    throw new Error('未配置 LLM 模型');
+  }
 
   onProgress?.(5, '加载 Prompt 模板...');
   const template = await getPromptTemplate('prop_extraction');

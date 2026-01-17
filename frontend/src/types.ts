@@ -75,7 +75,7 @@ export type EditorStep = 'script' | 'assets' | 'storyboard' | 'video';
 
 // ========== 模型设置相关类型 ==========
 
-export type ModelProviderType = 'gemini' | 'openai' | 'custom' | 'runway' | 'midjourney' | 'comfyui';
+export type ModelProviderType = 'gemini' | 'openai' | 'runway' | 'midjourney' | 'comfyui';
 export type LLMProviderType = 'openai' | 'gemini' | 'openai-compatible';
 export type TTIProviderType = 'comfyui' | 'jimeng' | 'qwen-image' | 'midjourney' | 'dall-e' | 'flux';
 export type ITVProviderType = 'runway' | 'kling' | 'pika' | 'minimax' | 'comfyui-animatediff';
@@ -147,23 +147,12 @@ export interface LLMChannelPreset {
   models: string[];
 }
 
-// 自定义 OpenAI 兼容渠道（旧版，保留兼容）
-export interface CustomLLMChannel {
-  id: string;
-  name: string;           // 渠道显示名称
-  baseUrl: string;        // API 基础地址
-  apiKey: string;         // API Key
-  defaultModel?: string;  // 默认模型名称
-  models?: string[];      // 可用模型列表
-  createdAt: number;
-}
 
 export interface ModelConfig {
   provider: ModelProviderType;
   apiKey: string;
-  baseUrl?: string;       // 可选，用于自定义代理地址
-  modelName: string;      // 例如 'gpt-4', 'gemini-1.5-pro'
-  channelId?: string;     // 当 provider 为 'custom' 时，指向自定义渠道
+  baseUrl?: string;
+  modelName: string;
 }
 
 export interface TTSConfig {
@@ -182,15 +171,10 @@ export interface ITVConfig {
 }
 
 export interface AppSettings {
-  llm?: ModelConfig;               // 旧版剧本大模型配置（兼容迁移）
-  llmConfigs: LLMModelConfig[];    // 新版多模型配置列表
-  tti?: ModelConfig;               // 旧版文生图配置（兼容迁移）
-  ttiConfigs: TTIModelConfig[];    // 新版多 TTI 配置列表
-  itv?: ITVConfig;                 // 旧版图生视频配置（兼容迁移）
-  itvConfigs: ITVModelConfig[];    // 新版多 ITV 配置列表
-  tts?: TTSConfig;                 // 旧版语音合成配置（兼容迁移）
-  ttsConfigs: TTSModelConfig[];    // 新版多 TTS 配置列表
-  customChannels?: CustomLLMChannel[];  // 自定义 OpenAI 兼容渠道列表（旧版，保留兼容）
+  llmConfigs: LLMModelConfig[];
+  ttiConfigs: TTIModelConfig[];
+  itvConfigs: ITVModelConfig[];
+  ttsConfigs: TTSModelConfig[];
 }
 
 // ========== 时间线相关类型 ==========

@@ -126,43 +126,6 @@ export class GeminiProvider implements LLMProvider {
     });
     return response.text || '';
   }
-
-  async analyzeScript(script: string): Promise<ScriptAnalysisResult> {
-    const ai = this.getAI();
-
-    const prompt = `
-      你是一位专业的电影导演和剧本分析 AI。
-      请分析以下短剧剧本片段。
-      1. 提取所有角色，并生成详细的视觉外貌描述（appearance），用于后续 AI 绘图。
-      2. 提取所有场景（包含地点、氛围）。
-      3. 提取剧本中出现的重要道具（Props），如：武器、信物、车辆、特殊物品等。
-      4. 将剧本拆解为独立的分镜镜头（Storyboard）。
-
-      对于每个镜头，建议最佳的拍摄角度（shotType）、运镜方式（cameraMovement）以及用于视频生成模型的视觉描述（description）。
-      同时提取台词（dialogue）和情绪（emotion）。
-
-      请注意：
-      - 所有返回的文本内容（如名称、描述）必须是简体中文。
-      - description 字段应为一段详细的画面描述，适合作为视频生成模型的 Prompt。
-
-      剧本内容:
-      ${script}
-    `;
-
-    const response = await ai.models.generateContent({
-      model: this.config.modelName || 'gemini-2.0-flash',
-      contents: prompt,
-      config: {
-        responseMimeType: 'application/json',
-        responseSchema: analysisSchema,
-      },
-    });
-
-    if (response.text) {
-      return JSON.parse(response.text) as ScriptAnalysisResult;
-    }
-    throw new Error('No response from Gemini');
-  }
 }
 
 export default GeminiProvider;

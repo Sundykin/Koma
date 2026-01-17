@@ -2,8 +2,8 @@
  * AI 剧本生成器
  * 使用 LLM 生成完整剧本
  */
-import type { AppSettings, Character, Scene, CustomLLMChannel } from '../types';
-import { createLLMProvider } from '../providers';
+import type { AppSettings, Character, Scene } from '../types';
+import { getProjectLLMProvider } from '../providers';
 import { getPromptTemplate, fillTemplate } from '../store/promptTemplates';
 
 interface ScriptGeneratorParams {
@@ -38,8 +38,11 @@ export async function generateScriptFromIdea(
   params: ScriptFromIdeaParams,
   onProgress: (progress: number, step?: string) => void
 ): Promise<string> {
-  const { settings, idea, style, duration } = params;
-  const provider = createLLMProvider(settings.llm, settings.customChannels || []);
+  const { idea, style, duration } = params;
+  const provider = await getProjectLLMProvider();
+  if (!provider) {
+    throw new Error('未配置 LLM 模型');
+  }
 
   onProgress(5, '加载 Prompt 模板...');
   const template = await getPromptTemplate('script_generation');
@@ -68,7 +71,10 @@ export async function polishScript(
   requirements: string = '使语言更加生动，对话更自然',
   onProgress: (progress: number, step?: string) => void
 ): Promise<string> {
-  const provider = createLLMProvider(settings.llm, settings.customChannels || []);
+  const provider = await getProjectLLMProvider();
+  if (!provider) {
+    throw new Error('未配置 LLM 模型');
+  }
 
   onProgress(5, '加载 Prompt 模板...');
   const template = await getPromptTemplate('script_polish');
@@ -94,9 +100,12 @@ export async function generateScript(
   params: ScriptGeneratorParams,
   onProgress: (progress: number, step?: string) => void
 ): Promise<GeneratedScript> {
-  const { settings, topic, genre, characters, scenes, episodeCount = 1 } = params;
+  const { topic, genre, characters, scenes, episodeCount = 1 } = params;
 
-  const provider = createLLMProvider(settings.llm, settings.customChannels || []);
+  const provider = await getProjectLLMProvider();
+  if (!provider) {
+    throw new Error('未配置 LLM 模型');
+  }
 
   // 构建角色描述
   const characterDesc = characters?.length

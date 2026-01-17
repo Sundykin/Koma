@@ -2,8 +2,8 @@
  * TTS 服务层
  * 角色音色绑定、多角色对话合成、缓存、后处理
  */
-import type { TTSConfig, AudioResult, Character, AppSettings } from '../../types';
-import { createTTSProvider } from './index';
+import type { AudioResult, Character } from '../../types';
+import { getProjectTTSProvider } from '../index';
 import { electronService } from '../../services/electronService';
 
 // TTS 缓存条目
@@ -184,15 +184,15 @@ class CharacterVoiceManager {
 export class TTSService {
   private cacheManager = new TTSCacheManager();
   private voiceManager = new CharacterVoiceManager();
-  private settings: AppSettings | null = null;
+  private ttsConfigId?: string;
 
-  async init(projectId: string, settings: AppSettings): Promise<void> {
-    this.settings = settings;
+  async init(projectId: string, ttsConfigId?: string): Promise<void> {
+    this.ttsConfigId = ttsConfigId;
     await this.cacheManager.init(projectId);
   }
 
-  setSettings(settings: AppSettings): void {
-    this.settings = settings;
+  setTTSConfigId(ttsConfigId?: string): void {
+    this.ttsConfigId = ttsConfigId;
   }
 
   loadCharacterVoices(characters: Character[]): void {
@@ -211,12 +211,12 @@ export class TTSService {
     voiceId?: string,
     useCache = true
   ): Promise<AudioResult> {
-    if (!this.settings) {
-      throw new Error('TTS 服务未初始化');
+    const provider = await getProjectTTSProvider(this.ttsConfigId);
+    if (!provider) {
+      throw new Error('未配置 TTS 服务');
     }
 
-    const provider = createTTSProvider(this.settings.tts);
-    const effectiveVoiceId = voiceId || this.settings.tts.defaultVoice || 'default';
+    const effectiveVoiceId = voiceId || provider.config?.defaultVoice || 'default';
 
     // 检查缓存
     if (useCache) {
@@ -248,18 +248,19 @@ export class TTSService {
     segments: DialogueSegment[],
     onProgress?: (progress: number, segment: number) => void
   ): Promise<SynthesizedDialogue> {
-    if (!this.settings) {
-      throw new Error('TTS 服务未初始化');
+    const provider = await getProjectTTSProvider(this.ttsConfigId);
+    if (!provider) {
+      throw new Error('未配置 TTS 服务');
     }
 
     const results: SynthesizedDialogue['segments'] = [];
     let currentTime = 0;
-    const silenceGap = 0.3; // 角色之间的静音间隔(秒)
+    const silenceGap = 0.3;
 
     for (let i = 0; i < segments.length; i++) {
       const segment = segments[i];
       const voiceId = this.voiceManager.getVoice(segment.characterId) ||
-                      this.settings.tts.defaultVoice;
+                      provider.config?.defaultVoice;
 
       onProgress?.(Math.round((i / segments.length) * 100), i);
 
