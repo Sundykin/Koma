@@ -14,6 +14,14 @@ export interface ProjectMeta {
   episodes?: number;
   createdAt: number;
   updatedAt: number;
+  // 媒体配置
+  llmConfigId?: string;
+  ttiConfigId?: string;
+  itvConfigId?: string;
+  ttsConfigId?: string;
+  // 主题风格
+  theme?: string;
+  stylePrompt?: string;
 }
 
 interface ElectronAPI {
@@ -30,7 +38,8 @@ interface ElectronAPI {
   };
   fs: {
     readFile: (path: string) => Promise<string | { content: string }>;
-    writeFile: (path: string, data: string) => Promise<void>;
+    writeFile: (path: string, data: string, binary?: boolean) => Promise<void>;
+    downloadFile: (url: string, destPath: string) => Promise<{ success: boolean; size: number }>;
     exists: (path: string) => Promise<boolean | { exists: boolean }>;
     mkdir: (path: string) => Promise<void>;
     readdir: (path: string) => Promise<string[] | { files: string[] }>;
@@ -273,6 +282,18 @@ export const fsCopy = async (src: string, dest: string): Promise<void> => {
   }
 };
 
+// 从 URL 下载文件到本地（绕过 CORS）
+export const fsDownloadFile = async (
+  url: string,
+  destPath: string
+): Promise<{ success: boolean; size: number }> => {
+  const api = getElectronAPI();
+  if (api) {
+    return await api.fs.downloadFile(url, destPath);
+  }
+  throw new Error('File download not available in browser');
+};
+
 // 写入二进制文件（用于下载的图片/视频）
 export const fsWriteFileBuffer = async (
   path: string,
@@ -286,7 +307,8 @@ export const fsWriteFileBuffer = async (
         .map((b) => String.fromCharCode(b))
         .join('')
     );
-    await api.fs.writeFile(path, base64);
+    console.log('[fsWriteFileBuffer] 写入文件:', path, '大小:', buffer.byteLength, 'base64长度:', base64.length);
+    await api.fs.writeFile(path, base64, true); // binary: true
     return;
   }
   throw new Error('File system not available in browser');
@@ -467,13 +489,30 @@ export const electronService = {
   fs: {
     readFile: fsReadFile,
     writeFile: fsWriteFile,
-    writeFileBuffer: fsWriteFileBuffer,
     exists: fsExists,
     mkdir: fsMkdir,
     readdir: fsReaddir,
     stat: fsStat,
     remove: fsRemove,
     copy: fsCopy,
+    downloadFile: fsDownloadFile,
+    writeFileBuffer: fsWriteFileBuffer,
+    // 将本地文件路径转换为可用的 URL
+    toLocalUrl: (filePath: string): string => {
+      if (!filePath) return '';
+      // 浏览器模式直接返回（应该是网络 URL）
+      if (!isElectron()) return filePath;
+      // 如果已经是 URL，直接返回
+      if (filePath.startsWith('http://') || filePath.startsWith('https://') || filePath.startsWith('koma-local://')) {
+        return filePath;
+      }
+      // 将本地路径转换为 koma-local:// 协议
+      // Windows 路径需要处理反斜杠，并对整个路径进行 URL 编码
+      const normalizedPath = filePath.replace(/\\/g, '/');
+      // 对路径进行编码，但保留斜杠
+      const encodedPath = normalizedPath.split('/').map(segment => encodeURIComponent(segment)).join('/');
+      return `koma-local:///${encodedPath}`;
+    },
   },
   shell: {
     openExternal: shellOpenExternal,

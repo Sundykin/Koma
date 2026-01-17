@@ -156,3 +156,53 @@
 .assetManagerContainer .ant-card-meta-description {
   color: #71717a;
 }
+
+/* SVG 占位图样式 */
+.assetPlaceholder {
+  width: 100%;
+  aspect-ratio: 1/1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.assetPlaceholder svg {
+  width: 100%;
+  height: 100%;
+}
+
+.assetPlaceholderWrap {
+  cursor: pointer;
+  transition: opacity 0.2s ease;
+}
+
+.assetPlaceholderWrap:hover {
+  opacity: 0.8;
+}
+
+/* 生成中覆盖层 */
+.assetGeneratingOverlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(4px);
+  z-index: 10;
+}
+
+.assetGeneratingText {
+  color: #52c41a;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* 道具类型标签 */
+.assetPropTag {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+}

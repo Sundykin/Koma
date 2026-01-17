@@ -3,7 +3,7 @@
  * 基于 CodeMirror 6，支持 @mention 智能引用
  */
 import React, { useEffect, useRef, useCallback, useMemo } from 'react';
-import { EditorState, Extension } from '@codemirror/state';
+import { EditorState, Extension, Compartment } from '@codemirror/state';
 import { EditorView, keymap, lineNumbers, highlightActiveLine } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { createMentionPlugin, mentionTheme, type MentionClickHandler } from './mentionPlugin';
@@ -21,6 +21,9 @@ export interface ScriptEditorProps {
   // Mention 相关
   mentionItems?: MentionItem[];
   onMentionClick?: MentionClickHandler;
+  // 样式选项
+  showLineNumbers?: boolean;
+  darkTheme?: boolean;
   // 样式
   className?: string;
   style?: React.CSSProperties;
@@ -38,12 +41,16 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
   maxHeight = '400px',
   mentionItems = [],
   onMentionClick,
+  showLineNumbers = true,
+  darkTheme = false,
   className,
   style,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const onChangeRef = useRef(onChange);
+  // 用于动态更新 mention 相关扩展的 Compartment
+  const mentionCompartmentRef = useRef(new Compartment());
 
   // 更新 onChange 引用
   useEffect(() => {
@@ -65,21 +72,26 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
     return mentionItems;
   }, [mentionItems]);
 
-  // 创建扩展
-  const extensions = useMemo((): Extension[] => {
-    const exts: Extension[] = [
-      // 基础功能
-      lineNumbers(),
-      highlightActiveLine(),
-      history(),
-      keymap.of([...defaultKeymap, ...historyKeymap]),
-
-      // Mention 功能
+  // 创建 mention 扩展（可动态更新）
+  const mentionExtensions = useMemo((): Extension[] => {
+    return [
       createMentionPlugin(mentionResolver, onMentionClick),
       createMentionAutocomplete(mentionDataSource),
       createMentionTooltip(mentionResolver),
       mentionTheme,
       tooltipTheme,
+    ];
+  }, [mentionResolver, mentionDataSource, onMentionClick]);
+
+  // 创建基础扩展（不变的部分）
+  const baseExtensions = useMemo((): Extension[] => {
+    const exts: Extension[] = [
+      // 基础功能
+      highlightActiveLine(),
+      history(),
+      keymap.of([...defaultKeymap, ...historyKeymap]),
+      // 自动换行
+      EditorView.lineWrapping,
 
       // 文档变更监听
       EditorView.updateListener.of((update) => {
@@ -95,29 +107,50 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
           minHeight,
           maxHeight,
           overflow: 'auto',
-          border: '1px solid #ddd',
+          border: darkTheme ? '1px solid #3f3f46' : '1px solid #ddd',
           borderRadius: '8px',
           fontFamily: 'system-ui, -apple-system, sans-serif',
-          fontSize: '14px',
+          fontSize: '13px',
           lineHeight: '1.6',
+          backgroundColor: darkTheme ? '#1a1a1a' : '#fff',
         },
         '.cm-scroller': {
           overflow: 'auto',
         },
         '.cm-content': {
           padding: '12px',
+          color: darkTheme ? '#e4e4e7' : '#333',
+          caretColor: darkTheme ? '#10b981' : '#1976d2',
         },
         '.cm-line': {
-          padding: '0 4px',
+          padding: '2px 4px',
         },
         '&.cm-focused': {
           outline: 'none',
-          borderColor: '#1976d2',
-          boxShadow: '0 0 0 2px rgba(25, 118, 210, 0.2)',
+          borderColor: darkTheme ? '#10b981' : '#1976d2',
+          boxShadow: darkTheme
+            ? '0 0 0 2px rgba(16, 185, 129, 0.2)'
+            : '0 0 0 2px rgba(25, 118, 210, 0.2)',
         },
         '.cm-gutters': {
-          backgroundColor: '#f5f5f5',
-          borderRight: '1px solid #ddd',
+          backgroundColor: darkTheme ? '#141414' : '#f5f5f5',
+          borderRight: darkTheme ? '1px solid #27272a' : '1px solid #ddd',
+          color: darkTheme ? '#52525b' : '#999',
+        },
+        '.cm-activeLineGutter': {
+          backgroundColor: darkTheme ? '#1f1f1f' : '#e8e8e8',
+        },
+        '.cm-activeLine': {
+          backgroundColor: darkTheme ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)',
+        },
+        '.cm-selectionBackground': {
+          backgroundColor: darkTheme ? 'rgba(16, 185, 129, 0.2) !important' : 'rgba(25, 118, 210, 0.2) !important',
+        },
+        '&.cm-focused .cm-selectionBackground': {
+          backgroundColor: darkTheme ? 'rgba(16, 185, 129, 0.3) !important' : 'rgba(25, 118, 210, 0.3) !important',
+        },
+        '.cm-cursor': {
+          borderLeftColor: darkTheme ? '#10b981' : '#1976d2',
         },
       }),
 
@@ -127,22 +160,32 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
       }),
     ];
 
+    // 行号
+    if (showLineNumbers) {
+      exts.unshift(lineNumbers());
+    }
+
     // 只读模式
     if (readOnly) {
       exts.push(EditorState.readOnly.of(true));
     }
 
     return exts;
-  }, [mentionResolver, mentionDataSource, onMentionClick, minHeight, maxHeight, placeholder, readOnly]);
+  }, [minHeight, maxHeight, placeholder, readOnly, showLineNumbers, darkTheme]);
 
   // 初始化编辑器
   useEffect(() => {
     if (!containerRef.current) return;
 
+    const mentionCompartment = mentionCompartmentRef.current;
+
     // 创建编辑器
     const state = EditorState.create({
       doc: value,
-      extensions,
+      extensions: [
+        ...baseExtensions,
+        mentionCompartment.of(mentionExtensions),
+      ],
     });
 
     const view = new EditorView({
@@ -175,16 +218,16 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
     }
   }, [value]);
 
-  // 更新扩展（当 mentionItems 变化时）
+  // 更新 mention 扩展（当 mentionItems 变化时）
   useEffect(() => {
     const view = viewRef.current;
     if (!view) return;
 
-    // 重新配置编辑器
+    const mentionCompartment = mentionCompartmentRef.current;
     view.dispatch({
-      effects: EditorView.reconfigure.of(extensions),
+      effects: mentionCompartment.reconfigure(mentionExtensions),
     });
-  }, [extensions]);
+  }, [mentionExtensions]);
 
   const containerStyle: React.CSSProperties = {
     position: 'relative',
@@ -205,7 +248,7 @@ const placeholderStyle = document.createElement('style');
 placeholderStyle.textContent = `
 .cm-content[data-placeholder]:empty::before {
   content: attr(data-placeholder);
-  color: #999;
+  color: #71717a;
   pointer-events: none;
   position: absolute;
   white-space: pre-wrap;

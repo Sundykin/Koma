@@ -10,8 +10,11 @@ import { StepNavigator } from './components/StepNavigator';
 import { CreateProjectModal } from './components/CreateProjectModal';
 import { ProjectSettingsModal } from './components/ProjectSettingsModal';
 import { WindowControls } from './components/WindowControls';
-import { ScriptAnalysisWizard } from './components/ScriptAnalysisWizard';
+import { TaskStatusBar } from './components/TaskStatusBar';
 import { useProjects } from './hooks/useProjects';
+import { TaskManager } from './services/TaskManager';
+import { startBackgroundAnalysis } from './services/ScriptAnalysisService';
+import { loadCharacters, loadScenes, loadProps, loadShots } from './store/projectStore';
 import { Menu, Avatar, Tooltip, Button, Tag, Spin, App as AntApp } from 'antd';
 import {
   AppstoreOutlined,
@@ -143,12 +146,72 @@ const AppContent: React.FC = () => {
   // 剧本相关状态
   const [scriptText, setScriptText] = useState(DEFAULT_SCRIPT);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [analysisWizardVisible, setAnalysisWizardVisible] = useState(false);
 
   // 项目数据状态
   const [analysisData, setAnalysisData] = useState<ScriptAnalysisResult | null>(
     isVideoDevMode ? DEV_TEST_ANALYSIS : null
   );
+
+  // 初始化 TaskManager
+  useEffect(() => {
+    if (activeProject) {
+      TaskManager.initialize(activeProject.id);
+    }
+    return () => {
+      TaskManager.dispose();
+    };
+  }, [activeProject?.id]);
+
+  // 从存储加载分析数据
+  const loadAnalysisData = useCallback(async (projectId: string) => {
+    try {
+      const [characters, scenes, props, shots] = await Promise.all([
+        loadCharacters(projectId),
+        loadScenes(projectId),
+        loadProps(projectId),
+        loadShots(projectId),
+      ]);
+
+      // 只有在有数据时才更新状态
+      if (characters.length > 0 || scenes.length > 0 || shots.length > 0) {
+        setAnalysisData({
+          characters,
+          scenes,
+          props,
+          shots,
+        });
+        console.log('[App] 加载分析数据:', { characters: characters.length, scenes: scenes.length, props: props.length, shots: shots.length });
+      }
+    } catch (err) {
+      console.error('[App] 加载分析数据失败:', err);
+    }
+  }, []);
+
+  // 监听任务完成事件，实现自动跳转
+  useEffect(() => {
+    if (!activeProject) return;
+
+    const unsubscribe = TaskManager.addListener((task) => {
+      if (task.projectId !== activeProject.id) return;
+
+      // 剧本解析完成后自动跳转到资产管理步骤，并重新加载数据
+      if (task.type === 'script-analysis' && task.status === 'completed') {
+        message.success('剧本解析完成，正在跳转到资产管理...');
+        // 重新加载分析数据
+        loadAnalysisData(activeProject.id);
+        setEditorStep('assets');
+      }
+    });
+
+    return () => unsubscribe();
+  }, [activeProject?.id, message, loadAnalysisData]);
+
+  // 进入编辑器视图时加载已保存的分析数据
+  useEffect(() => {
+    if (view === 'editor' && activeProject && !isVideoDevMode) {
+      loadAnalysisData(activeProject.id);
+    }
+  }, [view, activeProject?.id, isVideoDevMode, loadAnalysisData]);
 
   // 侧边栏折叠逻辑：在 editor 和 overview 模式下折叠
   const isSidebarCollapsed = view === 'editor' || view === 'overview';
@@ -163,6 +226,14 @@ const AppContent: React.FC = () => {
     lastEdited: formatTimeAgo(p.updatedAt),
     thumbnail: p.thumbnail || `https://picsum.photos/seed/${p.id}/600/338`,
     status: p.status || 'script',
+    // 媒体配置
+    llmConfigId: p.llmConfigId,
+    ttiConfigId: p.ttiConfigId,
+    itvConfigId: p.itvConfigId,
+    ttsConfigId: p.ttsConfigId,
+    // 主题风格
+    theme: p.theme,
+    stylePrompt: p.stylePrompt,
   }));
 
   // 打开创建项目弹窗
@@ -179,12 +250,14 @@ const AppContent: React.FC = () => {
   };
 
   // 处理项目创建 (从弹窗回调)
-  const handleCreateProject = async (data: { title: string; mode: 'drama' | 'narration'; script: string }) => {
+  const handleCreateProject = async (data: { title: string; mode: 'drama' | 'narration'; script: string; theme?: string; stylePrompt?: string }) => {
     try {
       const created = await createProjectAPI({
         title: data.title,
         mode: data.mode,
         genre: data.mode === 'drama' ? '剧情' : '解说',
+        theme: data.theme,
+        stylePrompt: data.stylePrompt,
       });
 
       const newProject: Project = {
@@ -195,18 +268,15 @@ const AppContent: React.FC = () => {
         episodes: created.episodes || 1,
         lastEdited: '刚刚',
         thumbnail: created.thumbnail || `https://picsum.photos/seed/${created.id}/600/338`,
-        status: created.status || 'script'
+        status: created.status || 'script',
+        theme: created.theme,
+        stylePrompt: created.stylePrompt,
       };
 
-      if (data.script.trim()) {
-        setScriptText(data.script);
-      } else {
-        setScriptText('');
-      }
-
       setActiveProject(newProject);
-      setView('editor');
-      setEditorStep('script');
+      setActiveEpisode(null);
+      setView('overview');
+      setScriptText('');
       setAnalysisData(null);
       setIsCreateModalOpen(false);
       message.success('项目创建成功');
@@ -260,21 +330,36 @@ const AppContent: React.FC = () => {
     }
   };
 
-  // 处理剧本分析（打开解析向导）
+  // 处理剧本分析（启动后台任务）
   const handleAnalyze = async () => {
     if (!scriptText.trim()) {
       message.warning('请先输入剧本内容');
       return;
     }
-    setAnalysisWizardVisible(true);
-  };
+    if (!activeProject) {
+      message.warning('请先选择项目');
+      return;
+    }
+    if (!activeEpisode) {
+      message.warning('请先选择分集');
+      return;
+    }
 
-  // 解析完成回调
-  const handleAnalysisComplete = (result: ScriptAnalysisResult) => {
-    setAnalysisData(result);
-    setAnalysisWizardVisible(false);
-    setEditorStep('assets');
-    message.success('剧本解析完成');
+    try {
+      setIsAnalyzing(true);
+      await startBackgroundAnalysis(
+        activeProject.id,
+        activeEpisode.id,
+        activeEpisode.title || `第${activeEpisode.number}集`,
+        scriptText,
+        activeProject.llmConfigId
+      );
+      message.success('解析任务已启动，可在状态栏查看进度');
+    } catch (err: any) {
+      message.error(err.message || '启动解析失败');
+    } finally {
+      setIsAnalyzing(false);
+    }
   };
 
   // --- 辅助组件：剧本工具栏 ---
@@ -470,28 +555,27 @@ const AppContent: React.FC = () => {
                     )}
                 </div>
 
-                {(view === 'editor' || view === 'overview') && (
+                {view === 'editor' && (
                     <div className="flex gap-3">
                         <Button icon={<SettingOutlined />} onClick={() => setIsProjectSettingsOpen(true)}>
                             项目设置
                         </Button>
-                        {view === 'editor' && (
-                          <>
-                            <Button icon={<SaveOutlined />}>
-                                保存草稿
-                            </Button>
-                            <Button type="primary" icon={<ExportOutlined />}>
-                                导出工程
-                            </Button>
-                          </>
-                        )}
+                        <Button icon={<SaveOutlined />}>
+                            保存草稿
+                        </Button>
+                        <Button type="primary" icon={<ExportOutlined />}>
+                            导出工程
+                        </Button>
                     </div>
                 )}
             </div>
 
             {/* 下层：步骤导航 (仅在编辑器模式显示) */}
             {view === 'editor' && (
-                <StepNavigator currentStep={editorStep} onStepChange={setEditorStep} />
+                <>
+                  <StepNavigator currentStep={editorStep} onStepChange={setEditorStep} />
+                  {activeProject && <TaskStatusBar projectId={activeProject.id} />}
+                </>
             )}
         </header>
 
@@ -655,35 +739,45 @@ const AppContent: React.FC = () => {
 
                     {/* 资产管理视图 (主体管理) */}
                     {editorStep === 'assets' && (
-                        analysisData ? (
-                            <AssetManager 
-                                characters={analysisData.characters} 
-                                scenes={analysisData.scenes} 
-                                props={analysisData.props}
+                        activeProject ? (
+                            <AssetManager
+                                projectId={activeProject.id}
+                                ttiConfigId={activeProject.ttiConfigId}
+                                episodeId={activeEpisode?.id}
+                                episodeName={activeEpisode?.title || (activeEpisode ? `第${activeEpisode.number}集` : undefined)}
+                                script={scriptText}
+                                llmConfigId={activeProject.llmConfigId}
+                                characters={analysisData?.characters}
+                                scenes={analysisData?.scenes}
+                                props={analysisData?.props}
                                 onNext={() => setEditorStep('storyboard')}
                             />
                         ) : (
                             <div className="flex h-full items-center justify-center text-gray-500 flex-col gap-4">
                                 <Users className="w-16 h-16 opacity-10" />
-                                <p>请先分析剧本以生成角色和场景资产。</p>
-                                <Button type="link" onClick={() => setEditorStep('script')}>返回剧本</Button>
+                                <p>请先选择项目。</p>
+                                <Button type="link" onClick={() => setView('projects')}>返回项目列表</Button>
                             </div>
                         )
                     )}
 
                     {/* 分镜视图 */}
                     {editorStep === 'storyboard' && (
-                         analysisData ? (
-                            <Storyboard 
-                                shots={analysisData.shots} 
-                                characters={analysisData.characters} 
+                        activeProject ? (
+                            <Storyboard
+                                projectId={activeProject.id}
+                                episodeId={activeEpisode?.id}
+                                episodeName={activeEpisode?.title || (activeEpisode ? `第${activeEpisode.number}集` : undefined)}
+                                script={scriptText}
+                                llmConfigId={activeProject.llmConfigId}
+                                ttiConfigId={activeProject.ttiConfigId}
                                 settings={appSettings}
                             />
                         ) : (
                              <div className="flex h-full items-center justify-center text-gray-500 flex-col gap-4">
                                 <Clapperboard className="w-16 h-16 opacity-10" />
-                                <p>请先分析剧本以生成分镜脚本。</p>
-                                <Button type="link" onClick={() => setEditorStep('script')}>返回剧本</Button>
+                                <p>请先选择项目。</p>
+                                <Button type="link" onClick={() => setView('projects')}>返回项目列表</Button>
                             </div>
                         )
                     )}
@@ -725,15 +819,6 @@ const AppContent: React.FC = () => {
           setIsProjectSettingsOpen(false);
           setView('settings');
         }}
-      />
-
-      {/* 剧本解析向导 */}
-      <ScriptAnalysisWizard
-        visible={analysisWizardVisible}
-        script={scriptText}
-        projectLLMConfigId={activeProject?.llmConfigId}
-        onCancel={() => setAnalysisWizardVisible(false)}
-        onComplete={handleAnalysisComplete}
       />
 
     </div>

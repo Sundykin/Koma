@@ -1,11 +1,22 @@
 /**
  * 剧本解析服务
- * 使用 LLM 分析剧本，提取角色、场景、道具和分镜
+ * 使用 LLM 分析剧本，提取角色、场景、道具
+ * 分镜生成由 ShotAnalysisService 单独处理
  */
 import type { Character, Scene, Prop, Shot, LLMModelConfig, ScriptAnalysisResult } from '../types';
 import { createLLMProvider } from '../providers';
 import { getActiveLLMConfig } from '../store/globalStore';
 import { getPromptTemplate, fillTemplate } from '../store/promptTemplates';
+import { TaskManager, Task } from './TaskManager';
+import {
+  saveCharacters,
+  saveScenes,
+  saveProps,
+  saveEpisodeAnalysis,
+  loadCharacters,
+  loadScenes,
+  loadProps,
+} from '../store/projectStore';
 
 // 解析阶段
 export type AnalysisStage = 'characters' | 'scenes' | 'props' | 'shots';
@@ -357,22 +368,12 @@ export class ScriptAnalysisService {
       return null;
     }
 
-    // 生成分镜
-    const shotsResult = await this.generateShots(
-      script,
-      charResult.data,
-      sceneResult.data,
-      propsResult.data
-    );
-    if (!shotsResult.success || !shotsResult.data) {
-      return null;
-    }
-
+    // 注意：分镜生成已独立为单独步骤，不在此处执行
     return {
       characters: charResult.data,
       scenes: sceneResult.data,
       props: propsResult.data,
-      shots: shotsResult.data,
+      shots: [], // 分镜由 ShotAnalysisService 单独生成
     };
   }
 }
@@ -383,4 +384,168 @@ export function createScriptAnalysisService(
   episodeContext?: EpisodeContext
 ): ScriptAnalysisService {
   return new ScriptAnalysisService({ onProgress, episodeContext });
+}
+
+/**
+ * 后台解析任务服务
+ * 封装 ScriptAnalysisService，支持任务管理和持久化
+ */
+export class BackgroundAnalysisService {
+  private projectId: string;
+  private task: Task | null = null;
+
+  constructor(projectId: string) {
+    this.projectId = projectId;
+  }
+
+  /**
+   * 启动后台解析任务
+   */
+  async startAnalysis(
+    episodeId: string,
+    episodeName: string,
+    script: string,
+    llmConfigId?: string
+  ): Promise<Task> {
+    // 创建任务
+    this.task = TaskManager.createTask({
+      projectId: this.projectId,
+      type: 'script-analysis',
+      targetType: 'episode',
+      targetId: episodeId,
+      targetName: episodeName,
+    });
+
+    // 更新为运行中
+    TaskManager.updateTask(this.task.id, { status: 'running', progress: 0 });
+
+    // 异步执行解析
+    this.runAnalysis(episodeId, episodeName, script, llmConfigId);
+
+    return this.task;
+  }
+
+  /**
+   * 执行解析流程
+   */
+  private async runAnalysis(
+    episodeId: string,
+    episodeName: string,
+    script: string,
+    llmConfigId?: string
+  ): Promise<void> {
+    if (!this.task) return;
+
+    const taskId = this.task.id;
+
+    try {
+      // 创建解析服务
+      const service = new ScriptAnalysisService({
+        onProgress: (progress) => {
+          // 映射阶段到进度百分比
+          const stageProgress: Record<AnalysisStage, number> = {
+            characters: 25,
+            scenes: 50,
+            props: 100,
+          };
+          const baseProgress = stageProgress[progress.stage] - 33;
+          const currentProgress = progress.status === 'completed'
+            ? stageProgress[progress.stage]
+            : baseProgress + 15;
+
+          TaskManager.updateTask(taskId, { progress: currentProgress });
+        },
+        episodeContext: {
+          episodeId,
+          episodeName,
+          episodeScript: script,
+        },
+      });
+
+      // 设置 LLM 配置
+      const hasConfig = await service.setLLMConfig(llmConfigId);
+      if (!hasConfig) {
+        throw new Error('未配置 LLM 模型，请先在设置中添加');
+      }
+
+      // 加载已有资产用于匹配
+      const existingChars = await loadCharacters(this.projectId);
+      const existingScenes = await loadScenes(this.projectId);
+      const existingProps = await loadProps(this.projectId);
+
+      // 执行解析
+      const result = await service.analyzeScript(script);
+
+      if (!result) {
+        throw new Error('解析失败，请检查剧本内容');
+      }
+
+      // 合并去重角色
+      const mergedChars = this.mergeAssets(existingChars, result.characters, 'name');
+      const mergedScenes = this.mergeAssets(existingScenes, result.scenes, 'name');
+      const mergedProps = this.mergeAssets(existingProps, result.props, 'name');
+
+      // 保存资产到项目存储（分镜由独立步骤生成）
+      await saveCharacters(this.projectId, mergedChars);
+      await saveScenes(this.projectId, mergedScenes);
+      await saveProps(this.projectId, mergedProps);
+
+      // 保存分集解析结果（不含分镜）
+      await saveEpisodeAnalysis(this.projectId, episodeId, {
+        characterRefs: result.characters.map(c => c.id),
+        sceneRefs: result.scenes.map(s => s.id),
+        propRefs: result.props.map(p => p.id),
+        shots: [], // 分镜由 ShotAnalysisService 单独生成
+      });
+
+      // 更新任务完成
+      TaskManager.updateTask(taskId, {
+        status: 'completed',
+        progress: 100,
+        result: {
+          charactersCount: result.characters.length,
+          scenesCount: result.scenes.length,
+          propsCount: result.props.length,
+        },
+      });
+    } catch (error: any) {
+      TaskManager.updateTask(taskId, {
+        status: 'failed',
+        error: error.message || '解析失败',
+      });
+    }
+  }
+
+  /**
+   * 合并资产，按名称去重
+   */
+  private mergeAssets<T extends { id: string; name: string }>(
+    existing: T[],
+    newItems: T[],
+    key: keyof T
+  ): T[] {
+    const existingMap = new Map(existing.map(item => [item[key], item]));
+
+    for (const item of newItems) {
+      if (!existingMap.has(item[key])) {
+        existingMap.set(item[key], item);
+      }
+    }
+
+    return Array.from(existingMap.values());
+  }
+}
+
+/**
+ * 便捷函数：启动后台解析
+ */
+export async function startBackgroundAnalysis(
+  projectId: string,
+  episodeId: string,
+  episodeName: string,
+  script: string,
+  llmConfigId?: string
+): Promise<Task> {
+  const service = new BackgroundAnalysisService(projectId);
+  return service.startAnalysis(episodeId, episodeName, script, llmConfigId);
 }

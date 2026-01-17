@@ -24,7 +24,8 @@
       "Bash(npm ls:*)",
       "Bash(npm run lint)",
       "Bash(wc:*)",
-      "Skill(openspec:apply)"
+      "Skill(openspec:apply)",
+      "Bash(npm run type-check:*)"
     ]
   }
 }

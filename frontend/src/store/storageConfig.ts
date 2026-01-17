@@ -24,10 +24,18 @@ export async function getDefaultStoragePath(): Promise<string> {
 // 存储配置 key（使用 localStorage 存储，因为这是系统级配置）
 const STORAGE_CONFIG_KEY = 'koma_storage_config';
 
-// 检查路径是否有效（不包含 [object Object] 等无效字符串）
+// 检查路径是否有效（不包含 [object Object] 等无效字符串，且必须是绝对路径）
 function isValidPath(path: string | undefined): boolean {
   if (!path || typeof path !== 'string') return false;
   if (path.includes('[object Object]') || path.includes('[object ')) return false;
+  // Windows 绝对路径检查：必须以盘符开头 (如 C:\)
+  if (typeof window !== 'undefined' && navigator.platform.toLowerCase().includes('win')) {
+    if (!/^[A-Za-z]:/.test(path)) return false;
+  }
+  // Unix/Mac 绝对路径检查：必须以 / 开头
+  if (typeof window !== 'undefined' && !navigator.platform.toLowerCase().includes('win')) {
+    if (!path.startsWith('/')) return false;
+  }
   return true;
 }
 

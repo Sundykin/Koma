@@ -46,9 +46,12 @@ export interface ScriptVersion {
 
 interface ScriptWorkshopProps {
   projectId: string;
+  episodeId?: string;
+  episodeName?: string;
   initialScript?: string;
   mentionItems?: MentionItem[];
   onScriptChange?: (script: string) => void;
+  onStartAnalysis?: (script: string) => void;
   onGenerateShots?: (script: string) => void;
   onExtractEntities?: (script: string, type: 'character' | 'scene' | 'prop') => void;
   onPolishScript?: (script: string) => void;
@@ -58,9 +61,12 @@ interface ScriptWorkshopProps {
 
 export const ScriptWorkshop: React.FC<ScriptWorkshopProps> = ({
   projectId,
+  episodeId,
+  episodeName,
   initialScript = '',
   mentionItems = [],
   onScriptChange,
+  onStartAnalysis,
   onGenerateShots,
   onExtractEntities,
   onPolishScript,
@@ -234,14 +240,6 @@ export const ScriptWorkshop: React.FC<ScriptWorkshopProps> = ({
     },
     { type: 'divider' },
     {
-      key: 'shots',
-      icon: <ScissorOutlined />,
-      label: '拆解为分镜',
-      disabled: !script.trim(),
-      onClick: () => onGenerateShots?.(script),
-    },
-    { type: 'divider' },
-    {
       key: 'characters',
       icon: <TeamOutlined />,
       label: '提取角色',
@@ -296,9 +294,18 @@ export const ScriptWorkshop: React.FC<ScriptWorkshopProps> = ({
           <Button icon={<HistoryOutlined />} onClick={() => setHistoryVisible(true)}>
             历史
           </Button>
+          <Divider type="vertical" />
+          <Button
+            type="primary"
+            icon={<ScissorOutlined />}
+            disabled={!script.trim()}
+            onClick={() => onStartAnalysis?.(script)}
+          >
+            AI 解析
+          </Button>
           <Dropdown menu={{ items: aiMenuItems }}>
-            <Button type="primary" icon={<RobotOutlined />}>
-              AI 功能 <DownOutlined />
+            <Button icon={<RobotOutlined />}>
+              更多 <DownOutlined />
             </Button>
           </Dropdown>
         </Space>

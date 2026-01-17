@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Modal, Form, Input, Radio, Button, message, Space, Tooltip } from 'antd';
 import {
   SoundOutlined,
@@ -6,15 +6,25 @@ import {
   BulbOutlined,
   QuestionCircleOutlined,
 } from '@ant-design/icons';
+import { Check } from 'lucide-react';
+import { THEME_PRESETS } from '../config/themePresets';
 
 interface CreateProjectModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onCreate: (data: { title: string; mode: 'drama' | 'narration'; script: string }) => void;
+  onCreate: (data: {
+    title: string;
+    mode: 'drama' | 'narration';
+    script: string;
+    theme?: string;
+    stylePrompt?: string;
+  }) => void;
 }
 
 export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ isOpen, onClose, onCreate }) => {
   const [form] = Form.useForm();
+  const [selectedTheme, setSelectedTheme] = useState<string>('realistic');
+  const [customStyle, setCustomStyle] = useState('');
 
   const handleCreate = async () => {
     try {
@@ -22,9 +32,13 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ isOpen, 
       onCreate({
         title: values.title,
         mode: values.mode || 'drama',
-        script: values.script || ''
+        script: values.script || '',
+        theme: selectedTheme !== 'custom' ? selectedTheme : undefined,
+        stylePrompt: selectedTheme === 'custom' ? customStyle : undefined,
       });
       form.resetFields();
+      setSelectedTheme('realistic');
+      setCustomStyle('');
     } catch {
       // 验证失败
     }
@@ -45,6 +59,9 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ isOpen, 
     message.success('剧本已生成');
   };
 
+  // 过滤掉 custom 选项，单独处理
+  const presetThemes = THEME_PRESETS.filter(t => t.id !== 'custom');
+
   return (
     <Modal
       title="创建项目"
@@ -53,7 +70,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ isOpen, 
       onOk={handleCreate}
       okText="立即创建"
       cancelText="取消"
-      width={600}
+      width={680}
       centered
       maskClosable={false}
       destroyOnHidden
@@ -77,7 +94,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ isOpen, 
             <Space direction="vertical" style={{ width: '100%' }} size="middle">
               <Radio.Button
                 value="drama"
-                style={{ width: '100%', height: 56, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                style={{ width: '100%', height: 48, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
               >
                 <Space>
                   <AppstoreOutlined />
@@ -89,7 +106,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ isOpen, 
               </Radio.Button>
               <Radio.Button
                 value="narration"
-                style={{ width: '100%', height: 56, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                style={{ width: '100%', height: 48, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
               >
                 <Space>
                   <SoundOutlined />
@@ -101,6 +118,69 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ isOpen, 
               </Radio.Button>
             </Space>
           </Radio.Group>
+        </Form.Item>
+
+        {/* 视觉风格选择 */}
+        <Form.Item label="视觉风格">
+          <div className="grid grid-cols-4 gap-2">
+            {presetThemes.map(theme => {
+              const isSelected = selectedTheme === theme.id;
+              return (
+                <div
+                  key={theme.id}
+                  className={`
+                    relative p-2 rounded-lg cursor-pointer transition-all text-center
+                    ${isSelected
+                      ? 'bg-[#1a2e1a] border-2 border-green-500'
+                      : 'bg-[#1a1a1a] border-2 border-gray-700 hover:border-gray-500'
+                    }
+                  `}
+                  onClick={() => setSelectedTheme(theme.id)}
+                >
+                  {isSelected && (
+                    <div className="absolute top-1 right-1 w-4 h-4 bg-green-500 rounded-full flex items-center justify-center">
+                      <Check className="w-2.5 h-2.5 text-white" />
+                    </div>
+                  )}
+                  <div className="text-xs font-medium text-gray-200">{theme.name}</div>
+                </div>
+              );
+            })}
+            {/* 自定义选项 */}
+            <div
+              className={`
+                relative p-2 rounded-lg cursor-pointer transition-all text-center
+                ${selectedTheme === 'custom'
+                  ? 'bg-[#1a2e1a] border-2 border-green-500'
+                  : 'bg-[#1a1a1a] border-2 border-gray-700 hover:border-gray-500'
+                }
+              `}
+              onClick={() => setSelectedTheme('custom')}
+            >
+              {selectedTheme === 'custom' && (
+                <div className="absolute top-1 right-1 w-4 h-4 bg-green-500 rounded-full flex items-center justify-center">
+                  <Check className="w-2.5 h-2.5 text-white" />
+                </div>
+              )}
+              <div className="text-xs font-medium text-gray-200">自定义</div>
+            </div>
+          </div>
+
+          {selectedTheme === 'custom' && (
+            <Input.TextArea
+              className="mt-2"
+              placeholder="输入自定义风格描述 (英文)，如: watercolor painting style, soft colors..."
+              value={customStyle}
+              onChange={e => setCustomStyle(e.target.value)}
+              rows={2}
+            />
+          )}
+
+          {selectedTheme && selectedTheme !== 'custom' && (
+            <div className="mt-2 text-xs text-gray-500">
+              {THEME_PRESETS.find(t => t.id === selectedTheme)?.description}
+            </div>
+          )}
         </Form.Item>
 
         <Form.Item
@@ -123,7 +203,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ isOpen, 
         >
           <Input.TextArea
             placeholder='请输入剧本,将为你自动分集 (文本请用"第n章/集"分割)'
-            rows={5}
+            rows={4}
             showCount
             maxLength={50000}
           />

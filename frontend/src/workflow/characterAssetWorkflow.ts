@@ -304,9 +304,12 @@ export async function extractAndBindCharacter(
   }
 }
 
-// ========== 辅助函数 ==========
+// ========== 提示词生成函数（导出供UI预览） ==========
 
-function buildCostumePhotoPrompt(character: Character, stylePrefix: string): string {
+/**
+ * 构建定妆照提示词
+ */
+export function buildCostumePhotoPrompt(character: Character, stylePrefix: string): string {
   const parts = [
     stylePrefix,
     'full body character portrait',
@@ -319,7 +322,10 @@ function buildCostumePhotoPrompt(character: Character, stylePrefix: string): str
   return parts.filter(Boolean).join(', ');
 }
 
-function buildThreeViewPrompt(
+/**
+ * 构建三视图提示词
+ */
+export function buildThreeViewPrompt(
   character: Character,
   view: 'front' | 'side' | 'back',
   stylePrefix: string
@@ -341,6 +347,25 @@ function buildThreeViewPrompt(
   ];
   return parts.filter(Boolean).join(', ');
 }
+
+/**
+ * 获取角色的完整提示词（便捷函数）
+ * 如果角色有自定义提示词则优先使用，否则自动生成
+ */
+export function getCharacterPrompt(
+  character: Character,
+  theme?: string,
+  stylePrompt?: string
+): string {
+  // 优先使用自定义提示词
+  if (character.customPrompt) {
+    return character.customPrompt;
+  }
+  const stylePrefix = getThemeStylePrefix(theme, stylePrompt);
+  return buildCostumePhotoPrompt(character, stylePrefix);
+}
+
+// ========== 辅助函数 ==========
 
 async function updateCharacterAsset(
   projectId: string,

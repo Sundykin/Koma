@@ -1,8 +1,9 @@
 /**
  * Electron-Egg 主进程入口 (TypeScript)
  */
-import { app, BrowserWindow, ipcMain, IpcMainInvokeEvent } from 'electron';
+import { app, BrowserWindow, ipcMain, IpcMainInvokeEvent, protocol } from 'electron';
 import * as path from 'path';
+import * as fs from 'fs';
 import { controllers } from './controller';
 import { services } from './service';
 import config from './config';
@@ -10,6 +11,50 @@ import config from './config';
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 
 let mainWindow: BrowserWindow | null = null;
+
+// MIME 类型映射
+const mimeTypes: Record<string, string> = {
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
+  '.svg': 'image/svg+xml',
+  '.mp4': 'video/mp4',
+  '.webm': 'video/webm',
+  '.mp3': 'audio/mpeg',
+  '.wav': 'audio/wav',
+};
+
+// 注册自定义协议用于加载本地文件
+function registerLocalProtocol(): void {
+  protocol.handle('koma-local', async (request) => {
+    try {
+      const url = new URL(request.url);
+      // pathname 会是 /C%3A/Users/... 格式
+      let filePath = decodeURIComponent(url.pathname);
+      // 移除开头的斜杠（Windows 路径不需要）
+      if (filePath.startsWith('/')) {
+        filePath = filePath.slice(1);
+      }
+
+      console.log('[koma-local] Loading:', filePath);
+
+      // 读取文件
+      const buffer = await fs.promises.readFile(filePath);
+      const ext = path.extname(filePath).toLowerCase();
+      const mimeType = mimeTypes[ext] || 'application/octet-stream';
+
+      return new Response(buffer, {
+        status: 200,
+        headers: { 'Content-Type': mimeType },
+      });
+    } catch (err: any) {
+      console.error('[koma-local] Error loading file:', err.message);
+      return new Response('File not found', { status: 404 });
+    }
+  });
+}
 
 function createWindow(): void {
   const { window: winConfig } = config;
@@ -77,7 +122,8 @@ function registerIpcRoutes(): void {
   ipcMain.handle('dialog:saveFile', (event, options) => controllers.dialog.saveFile(options, event));
 
   ipcMain.handle('fs:readFile', (_, filePath) => controllers.fs.readFile({ filePath }));
-  ipcMain.handle('fs:writeFile', (_, filePath, data) => controllers.fs.writeFile({ filePath, data }));
+  ipcMain.handle('fs:writeFile', (_, filePath, data, binary) => controllers.fs.writeFile({ filePath, data, binary }));
+  ipcMain.handle('fs:downloadFile', (_, url, destPath) => controllers.fs.downloadFile({ url, destPath }));
   ipcMain.handle('fs:exists', (_, filePath) => controllers.fs.exists({ filePath }));
   ipcMain.handle('fs:mkdir', (_, dirPath) => controllers.fs.mkdir({ dirPath }));
   ipcMain.handle('fs:readdir', (_, dirPath) => controllers.fs.readdir({ dirPath }));
@@ -100,6 +146,7 @@ async function initServices(): Promise<void> {
 }
 
 app.whenReady().then(async () => {
+  registerLocalProtocol();
   await initServices();
   registerIpcRoutes();
   createWindow();

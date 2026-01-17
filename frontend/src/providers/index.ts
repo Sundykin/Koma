@@ -25,6 +25,7 @@ import type { LLMProvider } from './llm/types';
 import { createTTIProvider, ComfyUIProvider } from './tti';
 import type { TTIProvider, ImageResult, TTIOptions } from './tti/types';
 import type { TTSProvider, AudioResult, TTSOptions } from './tts/types';
+import { createITVProvider as createITVProviderFromConfig } from './itv';
 import type { ITVProvider, ProgressInfo, ITVOptions } from './itv/types';
 
 // 重新导出子目录内容
@@ -33,6 +34,7 @@ export type { LLMProvider, ChatMessage } from './llm/types';
 export { createTTIProvider, ComfyUIProvider } from './tti';
 export type { TTIProvider, ImageResult, TTIOptions } from './tti/types';
 export type { TTSProvider, AudioResult, TTSOptions } from './tts/types';
+export { createITVProvider as createITVProviderFromConfig } from './itv';
 export type { ITVProvider, ProgressInfo, ITVOptions } from './itv/types';
 
 // ========== TTS Provider 工厂 ==========
@@ -48,20 +50,8 @@ export function createTTSProvider(config: TTSConfig): TTSProvider {
   }
 }
 
-// ========== ITV Provider 工厂 ==========
-
-export function createITVProvider(config: ITVConfig): ITVProvider {
-  switch (config.provider) {
-    case 'runway':
-      throw new Error('Runway provider not implemented yet');
-    case 'kling':
-      throw new Error('Kling provider not implemented yet');
-    case 'comfyui-animatediff':
-      throw new Error('ComfyUI AnimateDiff provider not implemented yet');
-    default:
-      throw new Error(`Unknown ITV provider: ${config.provider}`);
-  }
-}
+// ========== ITV Provider 工厂（使用 itv/index.ts 中的实现） ==========
+// createITVProviderFromConfig 已从 './itv' 导入
 
 // ========== 从 AppSettings 创建 Provider ==========
 
@@ -225,7 +215,7 @@ export async function getProjectTTIProvider(projectTTIConfigId?: string): Promis
 export async function getProjectITVProvider(projectITVConfigId?: string): Promise<ITVProvider | null> {
   const config = await getActiveITVConfig(projectITVConfigId);
   if (!config) return null;
-  return createITVProvider({
+  return createITVProviderFromConfig({
     provider: config.provider as any,
     apiKey: config.apiKey,
     baseUrl: config.baseUrl,

@@ -20,6 +20,8 @@ export interface CreateProjectData {
   title: string;
   mode: 'drama' | 'narration';
   genre?: string;
+  theme?: string;
+  stylePrompt?: string;
 }
 
 export function useProjects(): UseProjectsResult {
@@ -59,6 +61,8 @@ export function useProjects(): UseProjectsResult {
       episodes: 1,
       createdAt: now,
       updatedAt: now,
+      theme: data.theme,
+      stylePrompt: data.stylePrompt,
     };
 
     if (isElectron()) {

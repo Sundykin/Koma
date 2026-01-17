@@ -52,7 +52,7 @@ export interface ManjuShot {
   sceneId?: string;
   scriptContent: string;
   shotType: 'close-up' | 'medium' | 'wide' | 'extreme-wide';
-  cameraMovement: 'static' | 'pan' | 'zoom-in' | 'tracking';
+  cameraMovement: 'static' | 'pan' | 'zoom-in' | 'tracking' | 'handheld';
   duration: number;
   prompt: string;
   characterIds: string[];

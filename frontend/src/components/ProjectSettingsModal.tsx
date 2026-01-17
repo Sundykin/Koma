@@ -3,10 +3,9 @@
  * 允许编辑项目信息和媒体配置
  */
 import React, { useState, useEffect } from 'react';
-import { Modal, Form, Input, Divider, App, Tabs } from 'antd';
+import { Modal, Form, Input, App, Tabs } from 'antd';
 import type { Project } from '../types';
 import { ProjectMediaSelector } from './ProjectMediaSelector';
-import { ThemeSelector } from './ThemeSelector';
 
 interface ProjectSettingsModalProps {
   project: Project | null;
@@ -32,10 +31,6 @@ export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({
     itvConfigId?: string;
     ttsConfigId?: string;
   }>({});
-  const [themeConfig, setThemeConfig] = useState<{
-    theme?: string;
-    stylePrompt?: string;
-  }>({});
 
   useEffect(() => {
     if (project && open) {
@@ -49,10 +44,6 @@ export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({
         itvConfigId: project.itvConfigId,
         ttsConfigId: project.ttsConfigId,
       });
-      setThemeConfig({
-        theme: project.theme,
-        stylePrompt: project.stylePrompt,
-      });
     }
   }, [project, open, form]);
 
@@ -63,7 +54,6 @@ export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({
         title: values.title,
         genre: values.genre,
         ...mediaConfigs,
-        ...themeConfig,
       });
       message.success('项目设置已保存');
       onClose();
@@ -75,7 +65,7 @@ export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({
   const tabItems = [
     {
       key: 'basic',
-      label: '基本设置',
+      label: '基本信息',
       children: (
         <Form form={form} layout="vertical">
           <Form.Item
@@ -89,14 +79,6 @@ export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({
           <Form.Item name="genre" label="题材类型">
             <Input placeholder="如: 悬疑、爱情、科幻" />
           </Form.Item>
-
-          <Divider>主题风格</Divider>
-
-          <ThemeSelector
-            value={themeConfig.theme}
-            customStyle={themeConfig.stylePrompt}
-            onChange={(theme, stylePrompt) => setThemeConfig({ theme, stylePrompt })}
-          />
         </Form>
       ),
     },
@@ -129,7 +111,7 @@ export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({
       onCancel={onClose}
       okText="保存"
       cancelText="取消"
-      width={680}
+      width={600}
       maskClosable={false}
       destroyOnHidden
     >

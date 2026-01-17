@@ -51,7 +51,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   fs: {
     readFile: (path: string) => ipcRenderer.invoke('fs:readFile', path),
-    writeFile: (path: string, data: string) => ipcRenderer.invoke('fs:writeFile', path, data),
+    writeFile: (path: string, data: string, binary?: boolean) => ipcRenderer.invoke('fs:writeFile', path, data, binary),
+    downloadFile: (url: string, destPath: string) => ipcRenderer.invoke('fs:downloadFile', url, destPath),
     exists: (path: string) => ipcRenderer.invoke('fs:exists', path),
     mkdir: (path: string) => ipcRenderer.invoke('fs:mkdir', path),
     readdir: (path: string) => ipcRenderer.invoke('fs:readdir', path),

@@ -2,6 +2,8 @@
  * 文件系统控制器
  */
 import * as fs from 'fs';
+import * as https from 'https';
+import * as http from 'http';
 import { BaseController } from './base';
 
 export class FsController extends BaseController {
@@ -10,9 +12,68 @@ export class FsController extends BaseController {
     return { content };
   }
 
-  async writeFile(args: { filePath: string; data: string; encoding?: BufferEncoding }) {
-    await fs.promises.writeFile(args.filePath, args.data, args.encoding || 'utf-8');
+  async writeFile(args: { filePath: string; data: string; encoding?: BufferEncoding; binary?: boolean }) {
+    console.log('[FsController:writeFile] path:', args.filePath, 'binary:', args.binary, 'dataLen:', args.data?.length);
+    if (args.binary) {
+      // binary 模式：data 是 base64 编码的二进制数据
+      const buffer = Buffer.from(args.data, 'base64');
+      console.log('[FsController:writeFile] 解码后 buffer 大小:', buffer.length);
+      await fs.promises.writeFile(args.filePath, buffer);
+    } else {
+      await fs.promises.writeFile(args.filePath, args.data, args.encoding || 'utf-8');
+    }
     return { success: true };
+  }
+
+  // 从 URL 下载文件到本地（绕过 CORS）
+  async downloadFile(args: { url: string; destPath: string }): Promise<{ success: boolean; size: number }> {
+    console.log('[FsController:downloadFile] url:', args.url);
+    console.log('[FsController:downloadFile] destPath:', args.destPath);
+
+    return new Promise((resolve, reject) => {
+      const protocol = args.url.startsWith('https') ? https : http;
+
+      protocol.get(args.url, (response) => {
+        // 处理重定向
+        if (response.statusCode === 301 || response.statusCode === 302) {
+          const redirectUrl = response.headers.location;
+          if (redirectUrl) {
+            console.log('[FsController:downloadFile] 重定向到:', redirectUrl);
+            this.downloadFile({ url: redirectUrl, destPath: args.destPath })
+              .then(resolve)
+              .catch(reject);
+            return;
+          }
+        }
+
+        if (response.statusCode !== 200) {
+          reject(new Error(`下载失败: HTTP ${response.statusCode}`));
+          return;
+        }
+
+        const fileStream = fs.createWriteStream(args.destPath);
+        let downloadedSize = 0;
+
+        response.on('data', (chunk) => {
+          downloadedSize += chunk.length;
+        });
+
+        response.pipe(fileStream);
+
+        fileStream.on('finish', () => {
+          fileStream.close();
+          console.log('[FsController:downloadFile] 下载完成，大小:', downloadedSize);
+          resolve({ success: true, size: downloadedSize });
+        });
+
+        fileStream.on('error', (err) => {
+          fs.unlink(args.destPath, () => {}); // 删除不完整的文件
+          reject(err);
+        });
+      }).on('error', (err) => {
+        reject(err);
+      });
+    });
   }
 
   async exists(args: { filePath: string }) {

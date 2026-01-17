@@ -82,6 +82,7 @@ export interface Character {
   };
   previewVideoPath?: string;  // 预览视频路径
   sora2CharacterId?: string;  // 角色提取API返回的ID
+  customPrompt?: string;      // 用户自定义生成提示词
   // 分集引用追踪
   episodeRefs?: EpisodeRef[];
   fingerprint?: string;       // 资产指纹（用于去重）
@@ -118,10 +119,11 @@ export interface Shot {
   id: string;
   scriptContent: string; // 对应的剧本原文
   shotType: 'close-up' | 'medium' | 'wide' | 'extreme-wide'; // 特写 | 中景 | 全景 | 大全景
-  cameraMovement: 'static' | 'pan' | 'zoom-in' | 'tracking'; // 固定 | 摇镜 | 推镜 | 跟随
+  cameraMovement: 'static' | 'pan' | 'zoom-in' | 'tracking' | 'handheld'; // 固定 | 摇镜 | 推镜 | 跟随 | 手持
   duration: number;      // 持续时长(秒)
   description: string;   // 视频生成模型的提示词 (Prompt)
-  imageUrl?: string;     // 预览图或生成图
+  imageUrl?: string;     // 预览图或生成图（远程URL）
+  imagePath?: string;    // 本地图片路径
   characters: string[];  // 涉及的角色ID
   dialogue?: string;     // 台词（用于 TTS）
   emotion?: string;      // 情绪标签
@@ -374,6 +376,8 @@ export interface ProjectMeta {
   ttiConfigId?: string;   // 关联的 TTI 配置 ID
   itvConfigId?: string;   // 关联的 ITV 配置 ID
   ttsConfigId?: string;   // 关联的 TTS 配置 ID
+  theme?: string;         // 主题风格 ID
+  stylePrompt?: string;   // 自定义风格描述
 }
 
 export interface RecentProject {

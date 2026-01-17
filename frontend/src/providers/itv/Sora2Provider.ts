@@ -19,7 +19,7 @@ interface Sora2CreateResponse {
 
 interface Sora2TaskResponse {
   id: string;
-  state: 'running' | 'succeeded' | 'failed';
+  state: 'running' | 'succeeded' | 'failed' | 'error';
   data: any;
   progress: number;
   create_time: number;
@@ -134,6 +134,7 @@ export class Sora2Provider implements ITVProvider {
       'running': 'processing',
       'succeeded': 'completed',
       'failed': 'failed',
+      'error': 'failed',
     };
 
     const result: ProgressInfo = {
@@ -147,7 +148,7 @@ export class Sora2Provider implements ITVProvider {
       result.resultUrl = data.data.url || data.data.video_url || data.data;
     }
 
-    if (data.state === 'failed') {
+    if (data.state === 'failed' || data.state === 'error') {
       result.error = data.message || '任务失败';
     }
 
