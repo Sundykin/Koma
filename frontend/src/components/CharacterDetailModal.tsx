@@ -39,11 +39,9 @@ import {
 import type { Character } from '../types';
 import {
   generateCostumePhoto,
-  generateThreeView,
   generateCharacterPreviewVideo,
   extractAndBindCharacter,
   getCharacterPrompt,
-  buildThreeViewPrompt,
 } from '../workflow/characterAssetWorkflow';
 import { getThemeStylePrefix } from '../config/themePresets';
 import { electronService, openFileDialog, fsCopy, fsMkdir, fsExists } from '../services/electronService';
@@ -66,7 +64,7 @@ interface CharacterDetailModalProps {
   onDelete: (characterId: string) => void;
 }
 
-type GeneratingType = 'costume' | 'threeView' | 'video' | 'extract' | null;
+type GeneratingType = 'costume' | 'video' | 'extract' | null;
 
 export const CharacterDetailModal: React.FC<CharacterDetailModalProps> = ({
   open,
@@ -189,7 +187,11 @@ export const CharacterDetailModal: React.FC<CharacterDetailModalProps> = ({
       });
 
       if (result.success && result.path) {
-        const updated = { ...editedCharacter, costumePhotoPath: result.path };
+        const updated = {
+          ...editedCharacter,
+          costumePhotoPath: result.path,
+          costumePhotoUrl: result.url,
+        };
         setEditedCharacter(updated);
         onUpdate(updated);
         message.success('定妆照生成完成');
@@ -235,81 +237,6 @@ export const CharacterDetailModal: React.FC<CharacterDetailModalProps> = ({
     }
   }, [editedCharacter, getAssetPath, projectId, onUpdate, message]);
 
-  // 生成三视图
-  const handleGenerateThreeView = useCallback(async () => {
-    if (!editedCharacter) return;
-
-    setGenerating('threeView');
-    setProgress(0);
-
-    try {
-      const result = await generateThreeView({
-        projectId,
-        character: editedCharacter,
-        theme,
-        stylePrompt,
-        ttiConfigId,
-        onProgress: (p, step) => {
-          setProgress(p);
-          setProgressStep(step);
-        },
-      });
-
-      if (result.success && result.paths) {
-        const updated = { ...editedCharacter, threeViewPaths: result.paths };
-        setEditedCharacter(updated);
-        onUpdate(updated);
-        message.success('三视图生成完成');
-      } else {
-        message.error(result.error || '生成失败');
-      }
-    } catch (err: any) {
-      message.error(err.message || '生成失败');
-    } finally {
-      setGenerating(null);
-    }
-  }, [editedCharacter, projectId, theme, stylePrompt, ttiConfigId, onUpdate, message]);
-
-  // 上传单个视图
-  const handleUploadView = useCallback(async (view: 'front' | 'side' | 'back') => {
-    if (!editedCharacter) return;
-
-    const viewLabels = { front: '正面', side: '侧面', back: '背面' };
-
-    try {
-      const result = await openFileDialog({
-        filters: [{ name: '图片', extensions: ['png', 'jpg', 'jpeg', 'webp'] }],
-        title: `选择${viewLabels[view]}视图`,
-      });
-      if (result.canceled || !result.filePaths[0]) return;
-
-      const destPath = await getAssetPath(`three-view/${view}.png`);
-      await fsCopy(result.filePaths[0], destPath);
-
-      const updated: Character = {
-        ...editedCharacter,
-        threeViewPaths: {
-          ...editedCharacter.threeViewPaths,
-          [view]: destPath,
-        },
-      };
-      setEditedCharacter(updated);
-      onUpdate(updated);
-
-      // 同步保存
-      const characters = await loadCharacters(projectId);
-      const index = characters.findIndex(c => c.id === editedCharacter.id);
-      if (index !== -1) {
-        characters[index] = updated;
-        await saveCharacters(projectId, characters);
-      }
-
-      message.success('上传成功');
-    } catch (err: any) {
-      message.error(`上传失败: ${err.message}`);
-    }
-  }, [editedCharacter, getAssetPath, projectId, onUpdate, message]);
-
   // 生成预览视频
   const handleGenerateVideo = useCallback(async () => {
     if (!editedCharacter) return;
@@ -334,7 +261,12 @@ export const CharacterDetailModal: React.FC<CharacterDetailModalProps> = ({
       });
 
       if (result.success && result.path) {
-        const updated = { ...editedCharacter, previewVideoPath: result.path };
+        // 同时更新视频路径和任务 ID（任务 ID 用于后续角色提取）
+        const updated = {
+          ...editedCharacter,
+          previewVideoPath: result.path,
+          previewVideoTaskId: result.taskId,
+        };
         setEditedCharacter(updated);
         onUpdate(updated);
         message.success('预览视频生成完成');
@@ -485,13 +417,13 @@ export const CharacterDetailModal: React.FC<CharacterDetailModalProps> = ({
         )}
 
         <Row gutter={24}>
-          {/* 左侧：定妆照 */}
-          <Col span={8}>
+          {/* 左侧：定妆照（三视图） */}
+          <Col span={10}>
             <div style={{ marginBottom: 16 }}>
-              <Text strong style={{ display: 'block', marginBottom: 8 }}>定妆照</Text>
+              <Text strong style={{ display: 'block', marginBottom: 8 }}>定妆照（三视图）</Text>
               <div
                 style={{
-                  aspectRatio: '2/3',
+                  aspectRatio: '3/2',
                   background: '#1a1a1a',
                   borderRadius: 8,
                   overflow: 'hidden',
@@ -506,10 +438,10 @@ export const CharacterDetailModal: React.FC<CharacterDetailModalProps> = ({
                   <img
                     src={toLocalUrl(editedCharacter.costumePhotoPath)}
                     alt="定妆照"
-                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                    style={{ width: '100%', height: '100%', objectFit: 'contain' }}
                   />
                 ) : (
-                  <Text type="secondary">未生成</Text>
+                  <Text type="secondary">未生成（正面/侧面/背面）</Text>
                 )}
               </div>
               <Space style={{ marginTop: 8, width: '100%' }} wrap>
@@ -528,7 +460,7 @@ export const CharacterDetailModal: React.FC<CharacterDetailModalProps> = ({
           </Col>
 
           {/* 右侧：基础信息 */}
-          <Col span={16}>
+          <Col span={14}>
             <Form form={form} layout="vertical" size="small">
               <Row gutter={16}>
                 <Col span={12}>
@@ -601,66 +533,6 @@ export const CharacterDetailModal: React.FC<CharacterDetailModalProps> = ({
               使用自定义提示词 · <a onClick={() => setCustomPrompt('')}>恢复自动</a>
             </Text>
           )}
-        </div>
-
-        <Divider />
-
-        {/* 三视图 */}
-        <div style={{ marginBottom: 16 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-            <Text strong>三视图</Text>
-            <Button
-              icon={generating === 'threeView' ? <LoadingOutlined /> : <ThunderboltOutlined />}
-              onClick={handleGenerateThreeView}
-              disabled={generating !== null}
-              size="small"
-            >
-              一键生成
-            </Button>
-          </div>
-          <Row gutter={12}>
-            {(['front', 'side', 'back'] as const).map(view => {
-              const viewLabels = { front: '正面', side: '侧面', back: '背面' };
-              const path = editedCharacter.threeViewPaths?.[view];
-              return (
-                <Col span={8} key={view}>
-                  <div
-                    style={{
-                      aspectRatio: '2/3',
-                      background: '#1a1a1a',
-                      borderRadius: 8,
-                      overflow: 'hidden',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      cursor: path ? 'pointer' : 'default',
-                      marginBottom: 8,
-                    }}
-                    onClick={() => path && setPreviewImage(toLocalUrl(path))}
-                  >
-                    {path ? (
-                      <img
-                        src={toLocalUrl(path)}
-                        alt={viewLabels[view]}
-                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                      />
-                    ) : (
-                      <Text type="secondary">{viewLabels[view]}</Text>
-                    )}
-                  </div>
-                  <Button
-                    size="small"
-                    block
-                    icon={<UploadOutlined />}
-                    onClick={() => handleUploadView(view)}
-                    disabled={generating !== null}
-                  >
-                    上传{viewLabels[view]}
-                  </Button>
-                </Col>
-              );
-            })}
-          </Row>
         </div>
 
         <Divider />

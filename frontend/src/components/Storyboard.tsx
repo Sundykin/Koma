@@ -18,6 +18,7 @@ import {
   Popconfirm,
   Spin,
   Empty,
+  Progress,
 } from 'antd';
 import {
   PlayCircleOutlined,
@@ -37,9 +38,10 @@ import {
   RobotOutlined,
   ExpandOutlined,
 } from '@ant-design/icons';
-import type { Shot, Character, Scene, AppSettings, ITVModelConfig } from '../types';
-import { loadShots, saveShots, loadCharacters, loadScenes } from '../store/projectStore';
+import type { Shot, Character, Scene, Prop, AppSettings, ITVModelConfig } from '../types';
+import { loadEpisodeShots, saveEpisodeShots, loadCharacters, loadScenes, loadProps } from '../store/projectStore';
 import { generateShotImage, batchGenerateShotImages } from '../services/ShotGenerationService';
+import { shotRenderWorkflow, batchRenderShots } from '../workflow/shotRenderWorkflow';
 import { startShotAnalysis } from '../services/ShotAnalysisService';
 import { TaskManager } from '../services/TaskManager';
 import { electronService } from '../services/electronService';
@@ -87,12 +89,14 @@ interface ShotCardProps {
   index: number;
   isSelected: boolean;
   isGenerating: boolean;
+  isRendering: boolean;
   characters: Character[];
   onSelect: (id: string) => void;
   onToggleConfirm: (shot: Shot) => void;
   onEdit: (shot: Shot) => void;
   onDelete: (id: string) => void;
   onGenerateImage: (id: string) => void;
+  onRenderVideo: (id: string) => void;
 }
 
 const ShotCard = memo<ShotCardProps>(({
@@ -100,12 +104,14 @@ const ShotCard = memo<ShotCardProps>(({
   index,
   isSelected,
   isGenerating,
+  isRendering,
   characters,
   onSelect,
   onToggleConfirm,
   onEdit,
   onDelete,
   onGenerateImage,
+  onRenderVideo,
 }) => {
   const imageUrl = shot.imagePath
     ? electronService.fs.toLocalUrl(shot.imagePath)
@@ -177,8 +183,17 @@ const ShotCard = memo<ShotCardProps>(({
                 type="text"
                 size="small"
                 icon={isGenerating ? <LoadingOutlined /> : <ThunderboltOutlined />}
-                disabled={isGenerating}
+                disabled={isGenerating || isRendering}
                 onClick={(e) => { e.stopPropagation(); onGenerateImage(shot.id); }}
+              />
+            </Tooltip>
+            <Tooltip title="渲染视频（图片+语音+视频）">
+              <Button
+                type="text"
+                size="small"
+                icon={isRendering ? <LoadingOutlined /> : <VideoCameraOutlined />}
+                disabled={isGenerating || isRendering}
+                onClick={(e) => { e.stopPropagation(); onRenderVideo(shot.id); }}
               />
             </Tooltip>
             <Tooltip title={shot.confirmed ? '取消确认' : '确认此分镜'}>
@@ -227,10 +242,14 @@ interface DirectorPanelProps {
   itvConfig: ITVModelConfig | undefined;
   mentionItems: MentionItem[];
   isGenerating: boolean;
+  isRendering: boolean;
+  renderProgress: number;
+  renderStep: string;
   onDescriptionChange: (shotId: string, description: string) => void;
   onShotTypeChange: (shotId: string, shotType: Shot['shotType']) => void;
   onCameraMovementChange: (shotId: string, movement: Shot['cameraMovement']) => void;
   onGenerateImage: (shotId: string) => void;
+  onRenderVideo: (shotId: string) => void;
   onExpandEditor: () => void;
 }
 
@@ -239,10 +258,14 @@ const DirectorPanel = memo<DirectorPanelProps>(({
   itvConfig,
   mentionItems,
   isGenerating,
+  isRendering,
+  renderProgress,
+  renderStep,
   onDescriptionChange,
   onShotTypeChange,
   onCameraMovementChange,
   onGenerateImage,
+  onRenderVideo,
   onExpandEditor,
 }) => {
   // 稳定的 onChange 回调
@@ -269,6 +292,12 @@ const DirectorPanel = memo<DirectorPanelProps>(({
       onGenerateImage(shot.id);
     }
   }, [shot?.id, onGenerateImage]);
+
+  const handleRenderVideo = useCallback(() => {
+    if (shot) {
+      onRenderVideo(shot.id);
+    }
+  }, [shot?.id, onRenderVideo]);
 
   return (
     <div className="directorPanel">
@@ -351,18 +380,43 @@ const DirectorPanel = memo<DirectorPanelProps>(({
           </Form>
 
           <div className="panelActions">
-            <Button
-              type="primary"
-              size="large"
-              icon={isGenerating ? <LoadingOutlined /> : <CaretRightOutlined />}
-              disabled={isGenerating}
-              onClick={handleGenerate}
-              block
-            >
-              {isGenerating ? '生成中...' : '生成此镜头 (Render)'}
-            </Button>
+            {/* 渲染进度 */}
+            {isRendering && (
+              <div style={{ marginBottom: 12 }}>
+                <Progress
+                  percent={Math.round(renderProgress)}
+                  size="small"
+                  status="active"
+                  strokeColor="#10b981"
+                />
+                <Text type="secondary" style={{ fontSize: 11, display: 'block', textAlign: 'center' }}>
+                  {renderStep || '准备中...'}
+                </Text>
+              </div>
+            )}
+            <Space direction="vertical" style={{ width: '100%' }}>
+              <Button
+                type="default"
+                icon={isGenerating ? <LoadingOutlined /> : <ThunderboltOutlined />}
+                disabled={isGenerating || isRendering}
+                onClick={handleGenerate}
+                block
+              >
+                {isGenerating ? '生成中...' : '仅生成图片'}
+              </Button>
+              <Button
+                type="primary"
+                size="large"
+                icon={isRendering ? <LoadingOutlined /> : <VideoCameraOutlined />}
+                disabled={isGenerating || isRendering}
+                onClick={handleRenderVideo}
+                block
+              >
+                {isRendering ? '渲染中...' : '渲染此镜头 (图片+语音+视频)'}
+              </Button>
+            </Space>
             <Text type="secondary" style={{ fontSize: 10, display: 'block', textAlign: 'center', marginTop: 8 }}>
-              预计消耗 40 Tokens
+              完整渲染包含图片生成、语音合成和视频生成
             </Text>
           </div>
         </div>
@@ -406,9 +460,13 @@ export const Storyboard: React.FC<StoryboardProps> = ({
   const [shots, setShots] = useState<Shot[]>([]);
   const [characters, setCharacters] = useState<Character[]>([]);
   const [scenes, setScenes] = useState<Scene[]>([]);
+  const [props, setProps] = useState<Prop[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedShotId, setSelectedShotId] = useState<string | null>(null);
   const [generatingShots, setGeneratingShots] = useState<Set<string>>(new Set());
+  const [renderingShots, setRenderingShots] = useState<Set<string>>(new Set());
+  const [renderProgress, setRenderProgress] = useState(0);
+  const [renderStep, setRenderStep] = useState('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
 
   // 编辑弹窗
@@ -437,30 +495,89 @@ export const Storyboard: React.FC<StoryboardProps> = ({
   const confirmedCount = confirmedShots.length;
   const totalDuration = useMemo(() => shots.reduce((acc, s) => acc + s.duration, 0), [shots]);
 
+  // 实际使用的 mentionItems：优先使用外部传入的，如果为空则从本地数据构建
+  const actualMentionItems: MentionItem[] = useMemo(() => {
+    if (mentionItems.length > 0) return mentionItems;
+
+    // 从本地加载的数据构建
+    const items: MentionItem[] = [];
+
+    // 角色
+    characters.forEach(char => {
+      items.push({
+        id: char.id,
+        type: 'char' as const,
+        name: char.name,
+        description: char.description,
+        previewImage: char.costumePhotoPath,
+        sora2CharacterId: char.sora2CharacterId,
+      });
+    });
+
+    // 场景
+    scenes.forEach(scene => {
+      items.push({
+        id: scene.id,
+        type: 'scene' as const,
+        name: scene.name,
+        description: scene.description,
+        previewImage: scene.imagePath,  // Scene 用 imagePath
+      });
+    });
+
+    // 道具
+    props.forEach(prop => {
+      items.push({
+        id: prop.id,
+        type: 'prop' as const,
+        name: prop.name,
+        description: prop.description,
+        previewImage: prop.imagePath,  // Prop 用 imagePath
+      });
+    });
+
+    console.log('[Storyboard] 构建 mentionItems:', {
+      characters: characters.length,
+      scenes: scenes.length,
+      props: props.length,
+      total: items.length,
+    });
+
+    return items;
+  }, [mentionItems, characters, scenes, props]);
+
   // 加载数据
   const loadData = useCallback(async () => {
     if (!projectId) return;
 
     setLoading(true);
     try {
-      const [loadedShots, loadedCharacters, loadedScenes] = await Promise.all([
-        loadShots(projectId),
+      // 分镜从分集级加载（如果有 episodeId）
+      const loadedShots = episodeId
+        ? await loadEpisodeShots(projectId, episodeId)
+        : [];
+
+      const [loadedCharacters, loadedScenes, loadedProps] = await Promise.all([
         loadCharacters(projectId),
         loadScenes(projectId),
+        loadProps(projectId),
       ]);
 
       setShots(loadedShots);
       setCharacters(loadedCharacters);
       setScenes(loadedScenes);
+      setProps(loadedProps);
 
       if (loadedShots.length > 0 && !selectedShotId) {
         setSelectedShotId(loadedShots[0].id);
       }
 
       console.log('[Storyboard] 加载数据:', {
+        episodeId,
         shots: loadedShots.length,
         characters: loadedCharacters.length,
         scenes: loadedScenes.length,
+        props: loadedProps.length,
       });
     } catch (err) {
       console.error('[Storyboard] 加载失败:', err);
@@ -468,7 +585,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     } finally {
       setLoading(false);
     }
-  }, [projectId]);
+  }, [projectId, episodeId]);
 
   useEffect(() => {
     loadData();
@@ -513,15 +630,19 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     return () => unsubscribe();
   }, [projectId, loadData]);
 
-  // 保存分镜数据
+  // 保存分镜数据（保存到分集级）
   const saveAllShots = useCallback(async (updatedShots: Shot[]) => {
+    if (!episodeId) {
+      message.warning('未选择分集，无法保存分镜');
+      return;
+    }
     try {
-      await saveShots(projectId, updatedShots);
+      await saveEpisodeShots(projectId, episodeId, updatedShots);
       setShots(updatedShots);
     } catch (err) {
       message.error('保存失败');
     }
-  }, [projectId]);
+  }, [projectId, episodeId]);
 
   // ============ 回调函数 (稳定化) ============
 
@@ -552,9 +673,13 @@ export const Storyboard: React.FC<StoryboardProps> = ({
   }, [shots, saveAllShots, selectedShotId]);
 
   const handleGenerateShotImage = useCallback(async (shotId: string) => {
+    if (!episodeId) {
+      message.warning('未选择分集');
+      return;
+    }
     setGeneratingShots(prev => new Set(prev).add(shotId));
     try {
-      await generateShotImage(projectId, shotId, characters, scenes, ttiConfigId);
+      await generateShotImage(projectId, episodeId, shotId, characters, scenes, ttiConfigId);
       message.info('分镜图片生成任务已启动');
     } catch (err: any) {
       message.error(err.message || '启动生成失败');
@@ -564,7 +689,52 @@ export const Storyboard: React.FC<StoryboardProps> = ({
         return next;
       });
     }
-  }, [projectId, characters, scenes, ttiConfigId]);
+  }, [projectId, episodeId, characters, scenes, ttiConfigId]);
+
+  // 渲染完整分镜（图片 + 语音 + 视频）
+  const handleRenderShotVideo = useCallback(async (shotId: string) => {
+    const shot = shots.find(s => s.id === shotId);
+    if (!shot) return;
+
+    setRenderingShots(prev => new Set(prev).add(shotId));
+    setRenderProgress(0);
+    setRenderStep('准备渲染...');
+
+    try {
+      const result = await shotRenderWorkflow(
+        {
+          projectId,
+          shot,
+          projectConfigIds: {
+            ttiConfigId,
+            itvConfigId: settings.itvConfigs?.find(c => c.isDefault)?.id,
+            ttsConfigId: settings.ttsConfigs?.find(c => c.isDefault)?.id,
+          },
+        },
+        (progress, step) => {
+          setRenderProgress(progress);
+          setRenderStep(step || '');
+        }
+      );
+
+      if (result.success) {
+        message.success('分镜渲染完成');
+        loadData(); // 重新加载数据以显示新版本
+      } else {
+        message.error(result.error || '渲染失败');
+      }
+    } catch (err: any) {
+      message.error(err.message || '渲染失败');
+    } finally {
+      setRenderingShots(prev => {
+        const next = new Set(prev);
+        next.delete(shotId);
+        return next;
+      });
+      setRenderProgress(0);
+      setRenderStep('');
+    }
+  }, [projectId, shots, ttiConfigId, settings.itvConfigs, settings.ttsConfigs, loadData]);
 
   // 导演面板专用回调
   const handleDescriptionChange = useCallback((shotId: string, description: string) => {
@@ -676,6 +846,10 @@ export const Storyboard: React.FC<StoryboardProps> = ({
   }, [editFormData, editingShot, shots, saveAllShots]);
 
   const handleBatchGenerate = useCallback(async () => {
+    if (!episodeId) {
+      message.warning('未选择分集');
+      return;
+    }
     const unconfirmedShots = shots.filter(s => !s.imagePath);
     if (unconfirmedShots.length === 0) {
       message.info('所有分镜都已有图片');
@@ -686,13 +860,54 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     setGeneratingShots(new Set(shotIds));
 
     try {
-      await batchGenerateShotImages(projectId, shotIds, characters, scenes, ttiConfigId);
+      await batchGenerateShotImages(projectId, episodeId, shotIds, characters, scenes, ttiConfigId);
       message.info(`已启动 ${shotIds.length} 个分镜的图片生成任务`);
     } catch (err: any) {
       message.error(err.message || '批量生成启动失败');
       setGeneratingShots(new Set());
     }
-  }, [projectId, shots, characters, scenes, ttiConfigId]);
+  }, [projectId, episodeId, shots, characters, scenes, ttiConfigId]);
+
+  // 批量渲染视频（完整流程）
+  const handleBatchRenderVideos = useCallback(async () => {
+    const confirmedToRender = shots.filter(s => s.confirmed);
+    if (confirmedToRender.length === 0) {
+      message.warning('请先确认要渲染的分镜');
+      return;
+    }
+
+    const shotIds = confirmedToRender.map(s => s.id);
+    setRenderingShots(new Set(shotIds));
+    setRenderProgress(0);
+    setRenderStep('准备批量渲染...');
+
+    try {
+      const result = await batchRenderShots(
+        {
+          projectId,
+          shots: confirmedToRender,
+          projectConfigIds: {
+            ttiConfigId,
+            itvConfigId: settings.itvConfigs?.find(c => c.isDefault)?.id,
+            ttsConfigId: settings.ttsConfigs?.find(c => c.isDefault)?.id,
+          },
+        },
+        (overall, current) => {
+          setRenderProgress(overall);
+          setRenderStep(`${current.step || ''} (${current.shotId})`);
+        }
+      );
+
+      message.success(`批量渲染完成: ${result.success} 成功, ${result.failed} 失败`);
+      loadData();
+    } catch (err: any) {
+      message.error(err.message || '批量渲染失败');
+    } finally {
+      setRenderingShots(new Set());
+      setRenderProgress(0);
+      setRenderStep('');
+    }
+  }, [projectId, shots, ttiConfigId, settings.itvConfigs, settings.ttsConfigs, loadData]);
 
   const handleSendToTimeline = useCallback(() => {
     if (confirmedCount === 0) {
@@ -740,7 +955,18 @@ export const Storyboard: React.FC<StoryboardProps> = ({
           <Space>
             <Button icon={<PlusOutlined />} onClick={handleAddShot}>添加分镜</Button>
             <Button icon={<ReloadOutlined />} onClick={loadData}>刷新</Button>
-            <Button icon={<ThunderboltOutlined />} onClick={handleBatchGenerate}>批量渲染</Button>
+            <Tooltip title="仅生成图片（无图片的分镜）">
+              <Button icon={<ThunderboltOutlined />} onClick={handleBatchGenerate}>批量图片</Button>
+            </Tooltip>
+            <Tooltip title="完整渲染已确认分镜（图片+语音+视频）">
+              <Button
+                icon={<VideoCameraOutlined />}
+                onClick={handleBatchRenderVideos}
+                disabled={confirmedCount === 0 || renderingShots.size > 0}
+              >
+                批量渲染 ({confirmedCount})
+              </Button>
+            </Tooltip>
             <Button
               icon={<SendOutlined />}
               disabled={confirmedCount === 0}
@@ -792,12 +1018,14 @@ export const Storyboard: React.FC<StoryboardProps> = ({
                 index={index}
                 isSelected={selectedShotId === shot.id}
                 isGenerating={generatingShots.has(shot.id)}
+                isRendering={renderingShots.has(shot.id)}
                 characters={characters}
                 onSelect={handleSelectShot}
                 onToggleConfirm={handleToggleConfirm}
                 onEdit={handleEditShot}
                 onDelete={handleDeleteShot}
                 onGenerateImage={handleGenerateShotImage}
+                onRenderVideo={handleRenderShotVideo}
               />
             ))
           )}
@@ -808,12 +1036,16 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       <DirectorPanel
         shot={selectedShot}
         itvConfig={defaultITVConfig}
-        mentionItems={mentionItems}
+        mentionItems={actualMentionItems}
         isGenerating={selectedShot ? generatingShots.has(selectedShot.id) : false}
+        isRendering={selectedShot ? renderingShots.has(selectedShot.id) : false}
+        renderProgress={renderProgress}
+        renderStep={renderStep}
         onDescriptionChange={handleDescriptionChange}
         onShotTypeChange={handleShotTypeChange}
         onCameraMovementChange={handleCameraMovementChange}
         onGenerateImage={handleGenerateShotImage}
+        onRenderVideo={handleRenderShotVideo}
         onExpandEditor={handleExpandEditor}
       />
 
@@ -832,7 +1064,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
           value={expandEditorValue}
           onChange={setExpandEditorValue}
           placeholder="详细描述画面内容，可使用 @ 引用角色或道具"
-          mentionItems={mentionItems}
+          mentionItems={actualMentionItems}
           minHeight="300px"
           maxHeight="500px"
           showLineNumbers={false}
@@ -865,7 +1097,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
               value={editFormData.description || ''}
               onChange={(value) => setEditFormData(prev => ({ ...prev, description: value }))}
               placeholder="描述这个镜头的画面，可使用 @ 引用角色或道具"
-              mentionItems={mentionItems}
+              mentionItems={actualMentionItems}
               minHeight="120px"
               maxHeight="200px"
               showLineNumbers={false}

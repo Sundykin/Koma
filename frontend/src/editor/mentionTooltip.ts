@@ -5,6 +5,7 @@
 import { EditorView, hoverTooltip, Tooltip } from '@codemirror/view';
 import type { MentionItem, MentionType } from './mentionTypes';
 import { MENTION_REGEX } from './mentionTypes';
+import { electronService } from '../services/electronService';
 
 // Mention 解析器
 export type MentionResolver = (type: MentionType, id: string) => MentionItem | undefined;
@@ -92,7 +93,8 @@ function createTooltipDOM(item: MentionItem): { dom: HTMLElement } {
   // 预览图
   if (item.previewImage) {
     const img = document.createElement('img');
-    img.src = item.previewImage;
+    // 使用 electronService 转换本地路径
+    img.src = electronService.fs.toLocalUrl(item.previewImage);
     img.alt = item.name;
     img.style.cssText = `
       width: 100%;
@@ -101,6 +103,9 @@ function createTooltipDOM(item: MentionItem): { dom: HTMLElement } {
       border-radius: 4px;
       margin-bottom: 8px;
     `;
+    img.onerror = () => {
+      img.style.display = 'none';
+    };
     container.appendChild(img);
   }
 

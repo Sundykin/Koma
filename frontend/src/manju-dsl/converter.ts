@@ -59,7 +59,7 @@ function toManjuCharacter(c: Character): ManjuCharacter {
     description: c.description,
     appearance: c.appearance,
     voiceId: c.voiceId,
-    avatar: c.avatarUrl,
+    avatar: c.costumePhotoPath,
   };
 }
 
@@ -171,7 +171,7 @@ function fromManjuCharacter(c: ManjuCharacter): Character {
     description: c.description,
     appearance: c.appearance,
     voiceId: c.voiceId,
-    avatarUrl: c.avatar,
+    costumePhotoPath: c.avatar,
   };
 }
 

@@ -15,6 +15,7 @@ export interface DownloadResult {
 
 /**
  * 下载远程资产到本地
+ * 通过 IPC 在主进程下载，绕过 CORS 限制
  */
 export async function downloadRemoteAsset(
   url: string,
@@ -31,19 +32,14 @@ export async function downloadRemoteAsset(
     const dir = localPath.substring(0, localPath.lastIndexOf('/'));
     await electronService.fs.mkdir(dir);
 
-    // 使用 fetch 下载
-    const response = await fetch(url);
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    // 通过 IPC 调用主进程下载，绕过 CORS
+    const result = await electronService.fs.downloadFile(url, localPath);
+
+    if (!result.success) {
+      throw new Error('下载失败');
     }
 
-    const arrayBuffer = await response.arrayBuffer();
-    const buffer = new Uint8Array(arrayBuffer);
-
-    // 写入文件
-    await electronService.fs.writeFileBuffer(localPath, buffer);
-
-    logger.info(`下载完成: ${localPath}`);
+    logger.info(`下载完成: ${localPath}, 大小: ${result.size} bytes`);
     return { success: true, localPath };
   } catch (err: any) {
     logger.error(`下载失败: ${url}`, { error: err.message });

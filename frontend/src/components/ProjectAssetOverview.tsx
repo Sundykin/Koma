@@ -25,6 +25,7 @@ import {
 import { Users, MapPin, Package } from 'lucide-react';
 import type { Character, Scene, Prop, EpisodeRef } from '../types';
 import { loadCharacters, loadScenes, loadProps, getOrphanedAssets } from '../store/projectStore';
+import { electronService } from '../services/electronService';
 
 const { Paragraph } = Typography;
 
@@ -98,7 +99,7 @@ export const ProjectAssetOverview: React.FC<ProjectAssetOverviewProps> = ({
         avatar={
           <Avatar
             size="small"
-            src={character.avatarUrl}
+            src={character.costumePhotoPath ? electronService.fs.toLocalUrl(character.costumePhotoPath) : undefined}
             icon={<UserOutlined />}
             style={{ backgroundColor: '#10b981' }}
           />

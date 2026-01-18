@@ -35,7 +35,6 @@ import type { Character, Scene, Prop, Project } from '../types';
 import { loadCharacters, loadScenes, loadProps } from '../store/projectStore';
 import {
   generateCostumePhoto,
-  generateThreeView,
   generateCharacterPreviewVideo,
   extractAndBindCharacter,
 } from '../workflow/characterAssetWorkflow';

@@ -8,6 +8,7 @@ import {
   CompletionResult,
   Completion,
 } from '@codemirror/autocomplete';
+import { EditorView } from '@codemirror/view';
 import type { MentionItem, MentionType } from './mentionTypes';
 import { createMentionString } from './mentionTypes';
 
@@ -30,6 +31,13 @@ function createMentionCompletions(
     const query = word.text.slice(1).toLowerCase();
     const items = dataSource();
 
+    console.log('[MentionAutocomplete] 触发补全:', {
+      word: word.text,
+      query,
+      itemCount: items.length,
+      items: items.map(i => i.name),
+    });
+
     const options: Completion[] = items
       .filter((item) => {
         if (!query) return true;
@@ -41,7 +49,7 @@ function createMentionCompletions(
       .map((item) => ({
         label: item.name,
         type: item.type === 'char' ? 'variable' : item.type === 'prop' ? 'property' : 'class',
-        detail: getTypeLabel(item.type),
+        detail: getTypeLabel(item.type, item.sora2CharacterId),
         info: item.description,
         apply: (view, completion, from, to) => {
           // 插入 @type_id 格式
@@ -54,18 +62,28 @@ function createMentionCompletions(
         boost: item.type === 'char' ? 2 : item.type === 'scene' ? 1 : 0,
       }));
 
-    return {
+    console.log('[MentionAutocomplete] 返回 options:', options.length, options);
+
+    if (options.length === 0) {
+      return null;
+    }
+
+    const result: CompletionResult = {
       from: word.from,
+      to: word.to,  // 添加结束位置
       options,
-      validFor: /^@?\w*$/,
+      filter: false,  // 禁用内置过滤，我们自己处理
     };
+    console.log('[MentionAutocomplete] CompletionResult:', result);
+    return result;
   };
 }
 
-function getTypeLabel(type: MentionType): string {
+function getTypeLabel(type: MentionType, sora2Id?: string): string {
+  const prefix = sora2Id ? '🎬 ' : '';
   switch (type) {
     case 'char':
-      return '角色';
+      return prefix + '角色';
     case 'prop':
       return '道具';
     case 'scene':
@@ -84,39 +102,58 @@ export function createMentionAutocomplete(dataSource: MentionDataSource) {
     activateOnTyping: true,
     maxRenderedOptions: 20,
     icons: true,
+    closeOnBlur: false,  // 防止失焦关闭
   });
 }
 
 /**
- * 补全列表自定义样式
+ * 补全列表自定义样式 (EditorView.theme)
  */
-export const autocompleteTheme = `
-.cm-tooltip-autocomplete {
-  min-width: 200px;
-  max-width: 400px;
-}
-
-.cm-tooltip-autocomplete ul {
-  max-height: 300px;
-}
-
-.cm-tooltip-autocomplete li {
-  padding: 4px 8px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.cm-tooltip-autocomplete li[aria-selected] {
-  background-color: #e3f2fd;
-}
-
-.cm-completionLabel {
-  flex: 1;
-}
-
-.cm-completionDetail {
-  font-size: 0.85em;
-  color: #666;
-}
-`;
+export const autocompleteTheme = EditorView.theme({
+  '.cm-tooltip': {
+    zIndex: '99999 !important',
+  },
+  '.cm-tooltip-autocomplete': {
+    minWidth: '220px',
+    maxWidth: '400px',
+    zIndex: '99999 !important',
+    background: '#1f1f23 !important',
+    border: '1px solid #10b981 !important',
+    borderRadius: '8px',
+    boxShadow: '0 8px 24px rgba(0, 0, 0, 0.6)',
+    overflow: 'hidden',
+  },
+  '.cm-tooltip-autocomplete ul': {
+    maxHeight: '300px',
+    padding: '4px 0',
+    margin: '0',
+    listStyle: 'none',
+  },
+  '.cm-tooltip-autocomplete li': {
+    padding: '8px 12px !important',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    color: '#e4e4e7 !important',
+    cursor: 'pointer',
+  },
+  '.cm-tooltip-autocomplete li[aria-selected]': {
+    backgroundColor: '#10b981 !important',
+    color: '#fff !important',
+  },
+  '.cm-completionLabel': {
+    flex: '1',
+    fontWeight: '500',
+  },
+  '.cm-completionDetail': {
+    fontSize: '0.85em',
+    color: '#a1a1aa',
+    marginLeft: 'auto',
+  },
+  '.cm-tooltip-autocomplete li[aria-selected] .cm-completionDetail': {
+    color: 'rgba(255, 255, 255, 0.8)',
+  },
+  '.cm-completionIcon': {
+    opacity: '0.7',
+  },
+});

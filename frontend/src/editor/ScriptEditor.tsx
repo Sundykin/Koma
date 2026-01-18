@@ -3,11 +3,12 @@
  * 基于 CodeMirror 6，支持 @mention 智能引用
  */
 import React, { useEffect, useRef, useCallback, useMemo } from 'react';
-import { EditorState, Extension, Compartment } from '@codemirror/state';
-import { EditorView, keymap, lineNumbers, highlightActiveLine } from '@codemirror/view';
+import { EditorState, Extension, Compartment, Prec } from '@codemirror/state';
+import { EditorView, keymap, lineNumbers, highlightActiveLine, tooltips } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
-import { createMentionPlugin, mentionTheme, type MentionClickHandler } from './mentionPlugin';
-import { createMentionAutocomplete, type MentionDataSource } from './mentionAutocomplete';
+import { completionKeymap } from '@codemirror/autocomplete';
+import { createMentionPlugin, createMentionAtomicDelete, mentionTheme, type MentionClickHandler } from './mentionPlugin';
+import { createMentionAutocomplete, autocompleteTheme, type MentionDataSource } from './mentionAutocomplete';
 import { createMentionTooltip, tooltipTheme } from './mentionTooltip';
 import type { MentionItem, MentionType } from './mentionTypes';
 
@@ -78,8 +79,10 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
       createMentionPlugin(mentionResolver, onMentionClick),
       createMentionAutocomplete(mentionDataSource),
       createMentionTooltip(mentionResolver),
+      Prec.highest(createMentionAtomicDelete()),  // 最高优先级，确保在 defaultKeymap 之前处理
       mentionTheme,
       tooltipTheme,
+      autocompleteTheme,
     ];
   }, [mentionResolver, mentionDataSource, onMentionClick]);
 
@@ -89,9 +92,12 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
       // 基础功能
       highlightActiveLine(),
       history(),
-      keymap.of([...defaultKeymap, ...historyKeymap]),
+      keymap.of([...defaultKeymap, ...historyKeymap, ...completionKeymap]),
       // 自动换行
       EditorView.lineWrapping,
+
+      // tooltip 渲染到 body，避免被 overflow 裁剪
+      tooltips({ parent: document.body }),
 
       // 文档变更监听
       EditorView.updateListener.of((update) => {

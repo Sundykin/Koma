@@ -1,6 +1,7 @@
 /**
  * CodeMirror Mention 装饰器插件
  * 将 @type_id 格式的文本替换为可读的名称标签
+ * 支持原子删除（整体删除 mention）
  */
 import {
   Decoration,
@@ -9,10 +10,11 @@ import {
   ViewPlugin,
   ViewUpdate,
   WidgetType,
+  keymap,
 } from '@codemirror/view';
-import { RangeSetBuilder } from '@codemirror/state';
+import { RangeSetBuilder, EditorSelection } from '@codemirror/state';
 import type { MentionItem, MentionType, ParsedMention } from './mentionTypes';
-import { parseMentions } from './mentionTypes';
+import { parseMentions, MENTION_REGEX } from './mentionTypes';
 
 // Mention 数据解析器类型
 export type MentionResolver = (type: MentionType, id: string) => MentionItem | undefined;
@@ -167,3 +169,100 @@ export const mentionTheme = EditorView.baseTheme({
     color: '#2e7d32',
   },
 });
+
+/**
+ * 查找位置所在的 mention 范围
+ */
+function findMentionAt(text: string, pos: number): { from: number; to: number } | null {
+  const mentions = parseMentions(text);
+  for (const m of mentions) {
+    // 如果光标在 mention 范围内（包括边界）
+    if (pos >= m.from && pos <= m.to) {
+      return { from: m.from, to: m.to };
+    }
+  }
+  return null;
+}
+
+/**
+ * 原子删除 - Backspace 处理
+ */
+function atomicBackspace(view: EditorView): boolean {
+  const { state } = view;
+  const { selection } = state;
+
+  // 只处理单光标（非选区）情况
+  if (!selection.main.empty) {
+    return false;
+  }
+
+  const pos = selection.main.head;
+  const text = state.doc.toString();
+
+  // 检查光标前面是否有 mention
+  // 尝试找光标位置和前一个位置的 mention
+  let mention = findMentionAt(text, pos - 1);
+  if (!mention && pos > 0) {
+    mention = findMentionAt(text, pos);
+    // 只有当光标正好在 mention 末尾时才处理
+    if (mention && mention.to !== pos) {
+      mention = null;
+    }
+  }
+
+  if (mention) {
+    view.dispatch({
+      changes: { from: mention.from, to: mention.to },
+      selection: EditorSelection.cursor(mention.from),
+    });
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * 原子删除 - Delete 处理
+ */
+function atomicDelete(view: EditorView): boolean {
+  const { state } = view;
+  const { selection } = state;
+
+  // 只处理单光标（非选区）情况
+  if (!selection.main.empty) {
+    return false;
+  }
+
+  const pos = selection.main.head;
+  const text = state.doc.toString();
+
+  // 检查光标位置是否在 mention 内或开头
+  const mention = findMentionAt(text, pos);
+
+  if (mention) {
+    view.dispatch({
+      changes: { from: mention.from, to: mention.to },
+      selection: EditorSelection.cursor(mention.from),
+    });
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * 创建原子删除扩展
+ * 当光标在 mention 内部或边界时，整体删除 mention
+ */
+export function createMentionAtomicDelete() {
+  return keymap.of([
+    {
+      key: 'Backspace',
+      run: atomicBackspace,
+    },
+    {
+      key: 'Delete',
+      run: atomicDelete,
+    },
+  ]);
+}

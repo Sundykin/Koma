@@ -12,7 +12,7 @@ import {
   loadCharacters,
   loadScenes,
   loadProps,
-  saveShots,
+  saveEpisodeShots,
   loadEpisode,
 } from '../store/projectStore';
 
@@ -183,9 +183,9 @@ export class ShotAnalysisService {
 
       TaskManager.updateTask(taskId, { progress: 85 });
 
-      // 保存分镜
-      await saveShots(this.projectId, shots);
-      console.log('[ShotAnalysis] 分镜已保存:', shots.length);
+      // 保存分镜到分集
+      await saveEpisodeShots(this.projectId, episodeId, shots);
+      console.log('[ShotAnalysis] 分镜已保存到分集:', episodeId, shots.length);
 
       TaskManager.updateTask(taskId, {
         status: 'completed',

@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { Tabs, Button, Card, Tag, Image, Empty, Modal, Row, Col, Tooltip, App, Spin, Progress } from 'antd';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { Tabs, Button, Card, Tag, Image, Empty, Modal, Row, Col, Tooltip, App, Spin, Progress, Switch, Space } from 'antd';
 import {
   UserOutlined,
   EnvironmentOutlined,
@@ -11,11 +11,13 @@ import {
   LoadingOutlined,
   PictureOutlined,
   ReloadOutlined,
+  FilterOutlined,
 } from '@ant-design/icons';
 import { Sparkles, RefreshCw } from 'lucide-react';
-import type { Character, Scene, Prop } from '../types';
-import { loadCharacters, loadScenes, loadProps, saveCharacters } from '../store/projectStore';
-import { generateCharacterImage, generateSceneImage, generatePropImage } from '../services/AssetGenerationService';
+import type { Character, Scene, Prop, EpisodeAnalysis } from '../types';
+import { loadCharacters, loadScenes, loadProps, saveCharacters, loadEpisodeAnalysis } from '../store/projectStore';
+import { generateSceneImage, generatePropImage } from '../services/AssetGenerationService';
+import { generateCostumePhoto } from '../workflow/characterAssetWorkflow';
 import { startShotAnalysis } from '../services/ShotAnalysisService';
 import { TaskManager, Task } from '../services/TaskManager';
 import { electronService } from '../services/electronService';
@@ -123,6 +125,29 @@ export const AssetManager: React.FC<AssetManagerProps> = ({
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
+  // 分集筛选状态
+  const [showCurrentEpisodeOnly, setShowCurrentEpisodeOnly] = useState(true);
+  const [episodeAnalysis, setEpisodeAnalysis] = useState<EpisodeAnalysis | null>(null);
+
+  // 筛选后的资产列表
+  const filteredCharacters = useMemo(() => {
+    if (!showCurrentEpisodeOnly || !episodeAnalysis) return characters;
+    const refs = new Set(episodeAnalysis.characterRefs);
+    return characters.filter(c => refs.has(c.id));
+  }, [characters, showCurrentEpisodeOnly, episodeAnalysis]);
+
+  const filteredScenes = useMemo(() => {
+    if (!showCurrentEpisodeOnly || !episodeAnalysis) return scenes;
+    const refs = new Set(episodeAnalysis.sceneRefs);
+    return scenes.filter(s => refs.has(s.id));
+  }, [scenes, showCurrentEpisodeOnly, episodeAnalysis]);
+
+  const filteredProps = useMemo(() => {
+    if (!showCurrentEpisodeOnly || !episodeAnalysis) return props;
+    const refs = new Set(episodeAnalysis.propRefs);
+    return props.filter(p => refs.has(p.id));
+  }, [props, showCurrentEpisodeOnly, episodeAnalysis]);
+
   // 点击下一步时自动触发分镜生成
   const handleNextAndGenerateShots = async () => {
     if (!episodeId || !script) {
@@ -163,12 +188,18 @@ export const AssetManager: React.FC<AssetManagerProps> = ({
       setCharacters(chars);
       setScenes(scns);
       setProps(prps);
+
+      // 加载分集分析数据（如果有 episodeId）
+      if (episodeId) {
+        const analysis = await loadEpisodeAnalysis(projectId, episodeId);
+        setEpisodeAnalysis(analysis);
+      }
     } catch (err) {
       console.error('加载资产失败:', err);
     } finally {
       setLoading(false);
     }
-  }, [projectId]);
+  }, [projectId, episodeId]);
 
   // 加载资产和恢复运行中的任务状态
   useEffect(() => {
@@ -218,12 +249,41 @@ export const AssetManager: React.FC<AssetManagerProps> = ({
   const isGenerating = (id: string) => generatingTasks.has(id);
   const getProgress = (id: string) => generatingTasks.get(id)?.progress;
 
-  // 生成角色定妆照
+  // 生成角色定妆照（使用三视图模板）
   const handleGenerateCharacter = async (characterId: string) => {
     if (isGenerating(characterId)) return;
+    const character = characters.find(c => c.id === characterId);
+    if (!character) return;
+
     try {
       setGeneratingTasks(prev => new Map(prev).set(characterId, { progress: 0 }));
-      await generateCharacterImage(projectId, characterId, ttiConfigId);
+      const result = await generateCostumePhoto({
+        projectId,
+        character,
+        theme,
+        stylePrompt,
+        ttiConfigId,
+        onProgress: (progress, step) => {
+          setGeneratingTasks(prev => {
+            const next = new Map(prev);
+            next.set(characterId, { progress });
+            return next;
+          });
+        },
+      });
+
+      setGeneratingTasks(prev => {
+        const next = new Map(prev);
+        next.delete(characterId);
+        return next;
+      });
+
+      if (result.success) {
+        await loadAssets();
+        message.success('定妆照生成完成');
+      } else {
+        message.error(result.error || '生成失败');
+      }
     } catch (err: any) {
       message.error(err.message || '启动生成失败');
       setGeneratingTasks(prev => {
@@ -309,12 +369,11 @@ export const AssetManager: React.FC<AssetManagerProps> = ({
   // 角色网格
   const renderCharacters = () => (
     <Row gutter={[16, 16]}>
-      {characters.map((char) => {
+      {filteredCharacters.map((char) => {
         const generating = isGenerating(char.id);
         const progress = getProgress(char.id);
-        const hasImage = !!char.costumePhotoPath || !!char.avatarUrl;
-        const rawPath = char.costumePhotoPath || char.avatarUrl;
-        const imageUrl = rawPath ? electronService.fs.toLocalUrl(rawPath) : null;
+        const hasImage = !!char.costumePhotoPath;
+        const imageUrl = hasImage ? electronService.fs.toLocalUrl(char.costumePhotoPath!) : null;
 
         return (
           <Col key={char.id} xs={12} sm={8} md={6} lg={4} xl={3}>
@@ -392,7 +451,7 @@ export const AssetManager: React.FC<AssetManagerProps> = ({
   // 场景网格
   const renderScenes = () => (
     <Row gutter={[16, 16]}>
-      {scenes.map((scene) => {
+      {filteredScenes.map((scene) => {
         const generating = isGenerating(scene.id);
         const progress = getProgress(scene.id);
         const hasImage = !!scene.imagePath;
@@ -472,7 +531,7 @@ export const AssetManager: React.FC<AssetManagerProps> = ({
   // 道具网格
   const renderProps = () => (
     <Row gutter={[16, 16]}>
-      {props.length > 0 ? props.map((prop) => {
+      {filteredProps.length > 0 ? filteredProps.map((prop) => {
         const generating = isGenerating(prop.id);
         const progress = getProgress(prop.id);
         const hasImage = !!prop.imagePath;
@@ -564,9 +623,23 @@ export const AssetManager: React.FC<AssetManagerProps> = ({
       <Tabs
         items={tabItems}
         tabBarExtraContent={
-          <Tooltip title="批量生成素材">
-            <Button icon={<ThunderboltOutlined />}>批量生成</Button>
-          </Tooltip>
+          <Space>
+            {episodeId && (
+              <Space size="small">
+                <FilterOutlined />
+                <span style={{ fontSize: 12, color: '#a1a1aa' }}>仅当前分集</span>
+                <Switch
+                  size="small"
+                  checked={showCurrentEpisodeOnly}
+                  onChange={setShowCurrentEpisodeOnly}
+                  disabled={!episodeAnalysis}
+                />
+              </Space>
+            )}
+            <Tooltip title="批量生成素材">
+              <Button icon={<ThunderboltOutlined />}>批量生成</Button>
+            </Tooltip>
+          </Space>
         }
       />
 

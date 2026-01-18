@@ -71,16 +71,12 @@ export interface Character {
   role: 'protagonist' | 'antagonist' | 'supporting'; // 主角 | 反派 | 配角
   description: string; // 人物小传
   appearance: string;  // AI生成的外貌描述（用于绘图）
-  avatarUrl?: string;  // 头像URL
   voiceId?: string;    // TTS 音色 ID
-  // 新增资产字段
-  costumePhotoPath?: string;  // 定妆照路径
-  threeViewPaths?: {          // 三视图路径
-    front?: string;
-    side?: string;
-    back?: string;
-  };
+  // 资产字段
+  costumePhotoPath?: string;  // 定妆照本地路径
+  costumePhotoUrl?: string;   // 定妆照远程URL（用于 Sora2 等需要远程URL的服务）
   previewVideoPath?: string;  // 预览视频路径
+  previewVideoTaskId?: string; // 预览视频的生成任务ID（用于角色提取API）
   sora2CharacterId?: string;  // 角色提取API返回的ID
   customPrompt?: string;      // 用户自定义生成提示词
   // 分集引用追踪
@@ -393,6 +389,8 @@ export interface ShotVersion {
   imagePath?: string;
   videoPath?: string;
   audioPath?: string;
+  remoteImageUrl?: string;   // 原始远程图片 URL
+  remoteVideoUrl?: string;   // 原始远程视频 URL
   prompt: string;
   seed: number;
   model: string;

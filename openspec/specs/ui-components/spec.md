@@ -255,3 +255,16 @@ TBD - created by archiving change add-antd-timeline-editor. Update Purpose after
 - **THEN** 使用 ScriptEditor 组件
 - **AND** 提供适合提示词的编辑体验
 
+### Requirement: Character Detail Modal
+系统 SHALL 提供角色详情编辑弹窗。
+
+#### Scenario: 定妆照显示
+- **WHEN** 打开角色详情弹窗
+- **THEN** 显示完整定妆照（包含三视图）
+- **AND** 不再显示三视图分别编辑区域
+
+#### Scenario: 提示词编辑
+- **WHEN** 用户编辑角色生成提示词
+- **THEN** 只允许编辑外貌描述部分
+- **AND** 显示完整模板预览（只读）
+

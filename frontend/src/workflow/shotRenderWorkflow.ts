@@ -8,6 +8,8 @@ import { saveShotVersion, loadShotMeta, loadCharacters, loadProject } from '../s
 import { createTask, updateTask, markTaskCompleted, markTaskFailed } from '../store/taskQueueStore';
 import { getThemeStylePrefix } from '../config/themePresets';
 import { createLogger } from '../store/logger';
+import { logTTICall, logITVCall, logTTSCall } from '../store/aiCallLogger';
+import { getPromptTemplate, fillTemplate } from '../store/promptTemplates';
 
 const logger = createLogger('ShotRender');
 
@@ -63,8 +65,10 @@ export async function shotRenderWorkflow(
   logger.info(`开始渲染分镜 ${shot.id}`);
 
   let imagePath: string | undefined;
+  let remoteImageUrl: string | undefined;  // 远程图片 URL，用于 ITV 调用
   let audioPath: string | undefined;
   let videoPath: string | undefined;
+  let remoteVideoUrl: string | undefined;  // 远程视频 URL
   let itvProviderName = 'unknown';
 
   // 加载项目配置和角色数据（用于构建增强 prompt）
@@ -83,8 +87,21 @@ export async function shotRenderWorkflow(
     // 忽略加载失败
   }
 
-  // 构建增强的 prompt
-  const enhancedPrompt = buildEnhancedPrompt(shot, characters, projectTheme, projectStyle);
+  // 构建增强的 prompt（从配置化模板读取）
+  const stylePrefix = getThemeStylePrefix(projectTheme, projectStyle);
+  let enhancedPrompt: string;
+  try {
+    const template = await getPromptTemplate('tti_shot_image');
+    enhancedPrompt = fillTemplate(template.template, {
+      stylePrefix: stylePrefix || '',
+      description: shot.description || '',
+      shotType: shot.shotType || 'medium',
+      emotion: shot.emotion || '',
+    });
+  } catch {
+    // 回退到硬编码模板
+    enhancedPrompt = buildEnhancedPrompt(shot, characters, projectTheme, projectStyle);
+  }
 
   try {
     // 步骤1: 生成图片 (0-30%)
@@ -108,6 +125,14 @@ export async function shotRenderWorkflow(
         maxRetries: 3,
       });
 
+      // 打印完整提示词日志
+      logTTICall(
+        ttiProvider.config?.name || 'TTI',
+        enhancedPrompt,
+        { width: 1280, height: 720 },
+        { projectId, targetId: shot.id, targetName: `分镜图: ${shot.id}` }
+      );
+
       const imageResult = await ttiProvider.generateImage(enhancedPrompt, {
         width: 1280,
         height: 720,
@@ -125,6 +150,8 @@ export async function shotRenderWorkflow(
             onProgress(progress.progress * 0.3, `图片生成中 ${progress.progress}%`);
           }
           if (progress.status === 'completed' && progress.resultUrl) {
+            // 保存远程 URL 用于 ITV 调用
+            remoteImageUrl = progress.resultUrl;
             imagePath = progress.resultUrl;
             await markTaskCompleted(projectId, ttiTask.id, progress.resultUrl, imagePath);
           } else {
@@ -133,7 +160,9 @@ export async function shotRenderWorkflow(
           }
         }
       } else {
+        // 同步返回的可能是本地路径，需要检查是否有远程 URL
         imagePath = imageResult.path;
+        remoteImageUrl = imageResult.url || imageResult.path;  // 优先使用 url 字段
         await markTaskCompleted(projectId, ttiTask.id, imageResult.path, imagePath);
       }
       logger.info(`图片生成完成: ${imagePath}`);
@@ -154,6 +183,15 @@ export async function shotRenderWorkflow(
         const voices = await ttsProvider.listVoices();
         const voiceId = voices[0]?.id;
 
+        // 打印 TTS 调用日志
+        logTTSCall(
+          ttsProvider.config?.name || 'TTS',
+          shot.dialogue,
+          voiceId!,
+          { rate: 1.0, pitch: 1.0 },
+          { projectId, targetId: shot.id, targetName: `分镜语音: ${shot.id}` }
+        );
+
         const audioResult = await ttsProvider.synthesize(shot.dialogue, voiceId!, {
           rate: 1.0,
           pitch: 1.0,
@@ -170,7 +208,7 @@ export async function shotRenderWorkflow(
     }
 
     // 步骤3: 生成视频 (50-95%)
-    if (imagePath) {
+    if (remoteImageUrl) {
       onProgress(50, '生成视频...');
       try {
         const itvProvider = await getProjectITVProvider(projectConfigIds?.itvConfigId);
@@ -178,6 +216,12 @@ export async function shotRenderWorkflow(
           throw new Error('未配置 ITV 服务');
         }
         itvProviderName = itvProvider.config?.provider || 'unknown';
+
+        // 检查是否是远程 URL
+        if (!remoteImageUrl.startsWith('http://') && !remoteImageUrl.startsWith('https://')) {
+          logger.warn('图片不是远程 URL，跳过视频生成');
+          throw new Error('视频生成需要远程图片 URL，当前图片是本地文件');
+        }
 
         // 创建 ITV 任务记录
         const itvTask = await createTask(projectId, {
@@ -194,8 +238,19 @@ export async function shotRenderWorkflow(
 
         // 构建视频生成的 prompt，支持 @sora2CharacterId 引用
         const videoPrompt = buildVideoPrompt(shot, characters);
+        logger.info(`视频生成 prompt: ${videoPrompt}`);
+        logger.info(`使用远程图片 URL: ${remoteImageUrl}`);
 
-        const taskId = await itvProvider.generate(imagePath, videoPrompt, {
+        // 打印 ITV 调用日志
+        logITVCall(
+          itvProvider.config?.name || 'ITV',
+          remoteImageUrl,
+          videoPrompt,
+          { duration: shot.duration, motionPrompt: shot.cameraMovement },
+          { projectId, targetId: shot.id, targetName: `分镜视频: ${shot.id}` }
+        );
+
+        const taskId = await itvProvider.generate(remoteImageUrl, videoPrompt, {
           duration: shot.duration,
           motionPrompt: shot.cameraMovement,
         });
@@ -214,6 +269,7 @@ export async function shotRenderWorkflow(
 
           if (videoProgress.status === 'completed' && videoProgress.resultUrl) {
             videoPath = videoProgress.resultUrl;
+            remoteVideoUrl = videoProgress.resultUrl;  // 保存远程 URL
             await markTaskCompleted(projectId, itvTask.id, videoProgress.resultUrl, videoPath);
             logger.info(`视频生成完成: ${videoPath}`);
             onProgress(95, '视频生成完成');
@@ -239,6 +295,8 @@ export async function shotRenderWorkflow(
       imagePath,
       videoPath,
       audioPath,
+      remoteImageUrl,
+      remoteVideoUrl,
       prompt: enhancedPrompt,
       seed: shot.seed || Math.floor(Math.random() * 1000000),
       model: itvProviderName,
@@ -313,11 +371,11 @@ export async function batchRenderShots(
   };
 }
 
-// ========== 辅助函数 ==========
+// ========== 辅助函数（硬编码默认模板，作为 fallback）==========
 
 /**
- * 构建增强的图片生成 prompt
- * 添加主题风格前缀
+ * 构建增强的图片生成 prompt（硬编码默认模板）
+ * 注意：实际生成时优先使用 promptTemplates 中的 tti_shot_image 模板
  */
 function buildEnhancedPrompt(
   shot: Shot,
@@ -332,10 +390,24 @@ function buildEnhancedPrompt(
 
 /**
  * 构建视频生成 prompt
- * 支持 @sora2CharacterId 引用
+ * 使用分镜描述，支持 @sora2CharacterId 引用
  */
 function buildVideoPrompt(shot: Shot, characters: Character[]): string {
-  let prompt = shot.cameraMovement || shot.description || '';
+  // 使用 description 作为主要提示词
+  let prompt = shot.description || '';
+
+  // 添加运镜描述
+  if (shot.cameraMovement && shot.cameraMovement !== 'static') {
+    const cameraDesc: Record<string, string> = {
+      'pan': 'camera panning horizontally',
+      'zoom-in': 'camera slowly zooming in',
+      'tracking': 'camera tracking the subject',
+      'handheld': 'handheld camera movement',
+    };
+    if (cameraDesc[shot.cameraMovement]) {
+      prompt = `${prompt}, ${cameraDesc[shot.cameraMovement]}`;
+    }
+  }
 
   // 查找 prompt 中的角色名称，替换为 @sora2CharacterId
   for (const char of characters) {

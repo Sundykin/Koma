@@ -168,9 +168,10 @@ async function processCompletedTask(
     // 更新任务状态
     await markTaskCompleted(projectId, task.id, resultUrl, downloadResult.localPath);
 
-    // 回调通知
+    // 回调通知 - 附加 resultUrl 到 task 对象
     if (callbacks?.onTaskCompleted && downloadResult.localPath) {
-      await callbacks.onTaskCompleted(task, downloadResult.localPath);
+      const taskWithUrl = { ...task, resultUrl };
+      await callbacks.onTaskCompleted(taskWithUrl, downloadResult.localPath);
     }
 
     logger.info(`任务 ${task.id} 完成并下载到 ${downloadResult.localPath}`);

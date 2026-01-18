@@ -478,21 +478,37 @@ export async function saveShotVersion(
     audioPath: version.audioPath
       ? `${versionPath}/audio.mp3`
       : undefined,
+    remoteImageUrl: version.remoteImageUrl,
+    remoteVideoUrl: version.remoteVideoUrl,
     prompt: version.prompt,
     seed: version.seed,
     model: version.model,
     createdAt: Date.now(),
   };
 
-  // 复制文件到版本目录
+  // 复制或下载文件到版本目录
+  const isRemoteUrl = (path: string) => path.startsWith('http://') || path.startsWith('https://');
+
   if (version.imagePath) {
-    await electronService.fs.copy(version.imagePath, shotVersion.imagePath!);
+    if (isRemoteUrl(version.imagePath)) {
+      await electronService.fs.downloadFile(version.imagePath, shotVersion.imagePath!);
+    } else {
+      await electronService.fs.copy(version.imagePath, shotVersion.imagePath!);
+    }
   }
   if (version.videoPath) {
-    await electronService.fs.copy(version.videoPath, shotVersion.videoPath!);
+    if (isRemoteUrl(version.videoPath)) {
+      await electronService.fs.downloadFile(version.videoPath, shotVersion.videoPath!);
+    } else {
+      await electronService.fs.copy(version.videoPath, shotVersion.videoPath!);
+    }
   }
   if (version.audioPath) {
-    await electronService.fs.copy(version.audioPath, shotVersion.audioPath!);
+    if (isRemoteUrl(version.audioPath)) {
+      await electronService.fs.downloadFile(version.audioPath, shotVersion.audioPath!);
+    } else {
+      await electronService.fs.copy(version.audioPath, shotVersion.audioPath!);
+    }
   }
 
   // 更新元数据
@@ -701,6 +717,59 @@ export async function loadEpisodeAnalysis(
   }
 }
 
+/**
+ * 从分集加载分镜（从 analysis.json 中读取）
+ */
+export async function loadEpisodeShots(
+  projectId: string,
+  episodeId: string
+): Promise<Shot[]> {
+  const analysis = await loadEpisodeAnalysis(projectId, episodeId);
+  return analysis?.shots || [];
+}
+
+/**
+ * 保存分镜到分集（更新 analysis.json 中的 shots 字段）
+ */
+export async function saveEpisodeShots(
+  projectId: string,
+  episodeId: string,
+  shots: Shot[]
+): Promise<void> {
+  if (!electronService.isElectron()) return;
+
+  const projectPath = await getProjectPath(projectId);
+  const episodePath = `${projectPath}/episodes/${episodeId}`;
+  const now = Date.now();
+
+  // 加载或创建分集分析数据
+  let analysis = await loadEpisodeAnalysis(projectId, episodeId);
+  if (!analysis) {
+    analysis = {
+      episodeId,
+      characterRefs: [],
+      sceneRefs: [],
+      propRefs: [],
+      shots: [],
+      createdAt: now,
+      updatedAt: now,
+    };
+  }
+
+  // 更新分镜数据
+  analysis.shots = shots;
+  analysis.updatedAt = now;
+
+  await electronService.fs.mkdir(episodePath);
+  await electronService.fs.writeFile(
+    `${episodePath}/analysis.json`,
+    JSON.stringify(analysis, null, 2)
+  );
+
+  // 标记分集有分析数据
+  await saveEpisode(projectId, episodeId, { hasAnalysis: true });
+}
+
 export async function deleteEpisodeAnalysis(
   projectId: string,
   episodeId: string
@@ -737,26 +806,6 @@ export async function saveCharacterCostumePhoto(
   await electronService.fs.mkdir(assetDir);
 
   const destPath = `${assetDir}/costume.png`;
-  await electronService.fs.copy(imagePath, destPath);
-
-  return destPath;
-}
-
-export async function saveCharacterThreeView(
-  projectId: string,
-  characterId: string,
-  view: 'front' | 'side' | 'back',
-  imagePath: string
-): Promise<string> {
-  if (!electronService.isElectron()) {
-    throw new Error('仅支持 Electron 环境');
-  }
-
-  const projectPath = await getProjectPath(projectId);
-  const assetDir = `${projectPath}/assets/characters/${characterId}/three-view`;
-  await electronService.fs.mkdir(assetDir);
-
-  const destPath = `${assetDir}/${view}.png`;
   await electronService.fs.copy(imagePath, destPath);
 
   return destPath;
@@ -1400,12 +1449,16 @@ export async function saveScenes(projectId: string, scenes: Scene[]): Promise<vo
   );
 }
 
-// 加载分镜数据
+// 加载分镜数据（项目级，已废弃，仅用于向后兼容）
 export async function loadShots(projectId: string): Promise<Shot[]> {
   if (!electronService.isElectron()) return [];
   try {
     const projectPath = await getProjectPath(projectId);
-    const data = await electronService.fs.readFile(`${projectPath}/shots.json`);
+    const filePath = `${projectPath}/shots.json`;
+    // 先检查文件是否存在
+    const exists = await electronService.fs.exists(filePath);
+    if (!exists) return [];
+    const data = await electronService.fs.readFile(filePath);
     return JSON.parse(data);
   } catch {
     return [];

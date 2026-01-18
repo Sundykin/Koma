@@ -164,7 +164,7 @@ export function exportToManjuDSL(
     description: c.description,
     appearance: c.appearance,
     voiceId: c.voiceId,
-    avatar: c.avatarUrl,
+    avatar: c.costumePhotoPath,
   }));
 
   // 转换场景
@@ -275,7 +275,7 @@ export function importFromManjuDSL(manju: ManjuProject): ImportedProjectData {
     description: c.description,
     appearance: c.appearance,
     voiceId: c.voiceId,
-    avatarUrl: c.avatar,
+    costumePhotoPath: c.avatar,
   }));
 
   // 转换场景

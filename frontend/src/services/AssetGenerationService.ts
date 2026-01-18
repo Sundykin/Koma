@@ -1,6 +1,10 @@
 /**
  * 资产图片生成服务
  * 使用 TTI 生成角色定妆照、场景图、道具图
+ *
+ * @deprecated 角色定妆照生成请使用 characterAssetWorkflow.generateCostumePhoto()
+ * 该函数使用统一的三视图模板和项目风格配置
+ * 场景/道具生成请使用 scenePropAssetWorkflow
  */
 import { TaskManager, Task } from './TaskManager';
 import { getActiveTTIConfig } from '../store/globalStore';

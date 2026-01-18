@@ -4,21 +4,29 @@
  */
 import { TaskManager, Task } from './TaskManager';
 import { getActiveTTIConfig } from '../store/globalStore';
-import { loadShots, saveShots } from '../store/projectStore';
+import { loadEpisodeShots, saveEpisodeShots } from '../store/projectStore';
 import type { Shot, TTIModelConfig, Character, Scene } from '../types';
 import { createTTIProvider, TTIProvider } from '../providers';
 import { getStorageConfig, initStorageConfig } from '../store/storageConfig';
 import { electronService } from './electronService';
+import { getThemeStylePrefix } from '../config/themePresets';
+import { logTTICall } from '../store/aiCallLogger';
 
 const POLL_INTERVAL = 3000;
 const MAX_POLL_TIME = 5 * 60 * 1000;
 
 export class ShotGenerationService {
   private projectId: string;
+  private episodeId: string;
   private ttiConfig: TTIModelConfig | null = null;
+  private theme?: string;
+  private stylePrompt?: string;
 
-  constructor(projectId: string) {
+  constructor(projectId: string, episodeId: string, options?: { theme?: string; stylePrompt?: string }) {
     this.projectId = projectId;
+    this.episodeId = episodeId;
+    this.theme = options?.theme;
+    this.stylePrompt = options?.stylePrompt;
   }
 
   async setTTIConfig(configId?: string): Promise<boolean> {
@@ -35,7 +43,7 @@ export class ShotGenerationService {
     scenes: Scene[],
     configId?: string
   ): Promise<Task> {
-    const shots = await loadShots(this.projectId);
+    const shots = await loadEpisodeShots(this.projectId, this.episodeId);
     const shot = shots.find(s => s.id === shotId);
     if (!shot) {
       throw new Error('分镜不存在');
@@ -93,7 +101,14 @@ export class ShotGenerationService {
 
       // 构建提示词
       const prompt = this.buildShotPrompt(shot, characters, scenes);
-      console.log('[ShotGen] Prompt:', prompt);
+
+      // 打印完整提示词日志
+      logTTICall(
+        this.ttiConfig?.name || 'TTI',
+        prompt,
+        { width: 1280, height: 720 },
+        { projectId: this.projectId, targetId: shot.id, targetName: `分镜: ${shot.id}` }
+      );
 
       TaskManager.updateTask(taskId, { progress: 20 });
 
@@ -115,11 +130,11 @@ export class ShotGenerationService {
       TaskManager.updateTask(taskId, { progress: 90 });
 
       // 更新分镜记录
-      const shots = await loadShots(this.projectId);
+      const shots = await loadEpisodeShots(this.projectId, this.episodeId);
       const updatedShots = shots.map(s =>
         s.id === shot.id ? { ...s, imagePath } : s
       );
-      await saveShots(this.projectId, updatedShots);
+      await saveEpisodeShots(this.projectId, this.episodeId, updatedShots);
       console.log('[ShotGen] 分镜记录已更新');
 
       TaskManager.updateTask(taskId, {
@@ -139,9 +154,16 @@ export class ShotGenerationService {
 
   /**
    * 构建分镜提示词
+   * 自动应用项目风格前缀
    */
   private buildShotPrompt(shot: Shot, characters: Character[], scenes: Scene[]): string {
     const parts: string[] = [];
+
+    // 添加风格前缀
+    const stylePrefix = getThemeStylePrefix(this.theme, this.stylePrompt);
+    if (stylePrefix) {
+      parts.push(stylePrefix.replace(/,\s*$/, '')); // 移除末尾逗号
+    }
 
     // 基础描述
     if (shot.description) {
@@ -268,12 +290,14 @@ export class ShotGenerationService {
  */
 export async function generateShotImage(
   projectId: string,
+  episodeId: string,
   shotId: string,
   characters: Character[],
   scenes: Scene[],
-  configId?: string
+  configId?: string,
+  styleOptions?: { theme?: string; stylePrompt?: string }
 ): Promise<Task> {
-  const service = new ShotGenerationService(projectId);
+  const service = new ShotGenerationService(projectId, episodeId, styleOptions);
   return service.generateShotImage(shotId, characters, scenes, configId);
 }
 
@@ -282,11 +306,13 @@ export async function generateShotImage(
  */
 export async function batchGenerateShotImages(
   projectId: string,
+  episodeId: string,
   shotIds: string[],
   characters: Character[],
   scenes: Scene[],
-  configId?: string
+  configId?: string,
+  styleOptions?: { theme?: string; stylePrompt?: string }
 ): Promise<Task[]> {
-  const service = new ShotGenerationService(projectId);
+  const service = new ShotGenerationService(projectId, episodeId, styleOptions);
   return service.batchGenerateShotImages(shotIds, characters, scenes, configId);
 }

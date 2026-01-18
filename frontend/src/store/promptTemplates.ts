@@ -14,7 +14,12 @@ export type PromptTemplateType =
   | 'scene_extraction'       // 场景提取
   | 'prop_extraction'        // 道具提取
   | 'tti_prompt'             // TTI Prompt 生成
-  | 'dialogue_generation';   // 对话生成
+  | 'dialogue_generation'    // 对话生成
+  // TTI 图片生成模板
+  | 'tti_character_costume'  // 角色定妆照（三视图）
+  | 'tti_scene_preview'      // 场景预览图
+  | 'tti_prop_reference'     // 道具参考图
+  | 'tti_shot_image';        // 分镜图片
 
 // Prompt 模板接口
 export interface PromptTemplate {
@@ -259,6 +264,44 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
 （情绪/动作提示）
 `,
     variables: ['scene', 'characters', 'plot', 'style'],
+    isCustom: false,
+  },
+
+  // ========== TTI 图片生成模板 ==========
+
+  tti_character_costume: {
+    id: 'tti_character_costume',
+    name: '角色定妆照（三视图）',
+    description: '生成角色三视图定妆照',
+    template: '{{stylePrefix}}, character turnaround sheet, white background, front view | side view | back view, three poses in one image, character design reference sheet, full body, standing pose, {{appearance}}',
+    variables: ['stylePrefix', 'appearance'],
+    isCustom: false,
+  },
+
+  tti_scene_preview: {
+    id: 'tti_scene_preview',
+    name: '场景预览图',
+    description: '生成场景参考图',
+    template: '{{stylePrefix}}, environment concept art, wide shot, establishing shot, {{description}}, {{location}}, {{time}}, {{mood}} atmosphere, detailed background, cinematic composition',
+    variables: ['stylePrefix', 'description', 'location', 'time', 'mood'],
+    isCustom: false,
+  },
+
+  tti_prop_reference: {
+    id: 'tti_prop_reference',
+    name: '道具参考图',
+    description: '生成道具参考图',
+    template: '{{stylePrefix}}, prop design, item illustration, centered composition, white background, studio lighting, {{description}}, {{type}} item, detailed rendering, clean presentation',
+    variables: ['stylePrefix', 'description', 'type'],
+    isCustom: false,
+  },
+
+  tti_shot_image: {
+    id: 'tti_shot_image',
+    name: '分镜图片',
+    description: '生成分镜预览图',
+    template: '{{stylePrefix}}, {{description}}, {{shotType}}, {{emotion}} mood, cinematic lighting, high quality, 4k, detailed',
+    variables: ['stylePrefix', 'description', 'shotType', 'emotion'],
     isCustom: false,
   },
 };

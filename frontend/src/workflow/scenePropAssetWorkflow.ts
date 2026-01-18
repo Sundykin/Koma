@@ -16,6 +16,8 @@ import {
 import { getStorageConfig, initStorageConfig } from '../store/storageConfig';
 import { getThemeStylePrefix } from '../config/themePresets';
 import { createLogger } from '../store/logger';
+import { logTTICall } from '../store/aiCallLogger';
+import { getPromptTemplate, fillTemplate } from '../store/promptTemplates';
 
 const logger = createLogger('ScenePropAsset');
 
@@ -46,9 +48,22 @@ export async function generateSceneImage(
       throw new Error('未配置 TTI 服务');
     }
 
-    // 构建提示词
+    // 构建提示词（从配置化模板读取）
     const stylePrefix = getThemeStylePrefix(theme, stylePrompt);
-    const prompt = buildScenePrompt(scene, stylePrefix);
+    let prompt: string;
+    try {
+      const template = await getPromptTemplate('tti_scene_preview');
+      prompt = fillTemplate(template.template, {
+        stylePrefix: stylePrefix || '',
+        description: scene.description || '',
+        location: scene.location || '',
+        time: scene.time || 'day',
+        mood: scene.mood || '',
+      });
+    } catch {
+      // 回退到硬编码模板
+      prompt = buildScenePrompt(scene, stylePrefix);
+    }
 
     // 创建任务记录
     const task = await createTask(projectId, {
@@ -64,6 +79,14 @@ export async function generateSceneImage(
     });
 
     onProgress?.(10, '调用 TTI 服务...');
+
+    // 打印完整提示词日志
+    logTTICall(
+      ttiProvider.config?.name || 'TTI',
+      prompt,
+      { width: 1920, height: 1080 },
+      { projectId, targetId: scene.id, targetName: `场景: ${scene.name}` }
+    );
 
     const result = await ttiProvider.generateImage(prompt, {
       width: 1920,
@@ -171,9 +194,20 @@ export async function generatePropImage(
       throw new Error('未配置 TTI 服务');
     }
 
-    // 构建提示词
+    // 构建提示词（从配置化模板读取）
     const stylePrefix = getThemeStylePrefix(theme, stylePrompt);
-    const prompt = buildPropPrompt(prop, stylePrefix);
+    let prompt: string;
+    try {
+      const template = await getPromptTemplate('tti_prop_reference');
+      prompt = fillTemplate(template.template, {
+        stylePrefix: stylePrefix || '',
+        description: prop.description || '',
+        type: prop.type || '',
+      });
+    } catch {
+      // 回退到硬编码模板
+      prompt = buildPropPrompt(prop, stylePrefix);
+    }
 
     // 创建任务记录
     const task = await createTask(projectId, {
@@ -189,6 +223,14 @@ export async function generatePropImage(
     });
 
     onProgress?.(10, '调用 TTI 服务...');
+
+    // 打印完整提示词日志
+    logTTICall(
+      ttiProvider.config?.name || 'TTI',
+      prompt,
+      { width: 1024, height: 1024 },
+      { projectId, targetId: prop.id, targetName: `道具: ${prop.name}` }
+    );
 
     const result = await ttiProvider.generateImage(prompt, {
       width: 1024,
@@ -277,8 +319,12 @@ export async function generateAllPropImages(
   return { success, failed, results };
 }
 
-// ========== 辅助函数 ==========
+// ========== 辅助函数（硬编码默认模板，作为 fallback）==========
 
+/**
+ * 构建场景提示词（硬编码默认模板）
+ * 注意：实际生成时优先使用 promptTemplates 中的 tti_scene_preview 模板
+ */
 function buildScenePrompt(scene: Scene, stylePrefix: string): string {
   const timeDescriptions = {
     day: 'daytime, bright natural lighting',
@@ -301,6 +347,10 @@ function buildScenePrompt(scene: Scene, stylePrefix: string): string {
   return parts.filter(Boolean).join(', ');
 }
 
+/**
+ * 构建道具提示词（硬编码默认模板）
+ * 注意：实际生成时优先使用 promptTemplates 中的 tti_prop_reference 模板
+ */
 function buildPropPrompt(prop: Prop, stylePrefix: string): string {
   const parts = [
     stylePrefix,

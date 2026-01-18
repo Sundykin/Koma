@@ -12,6 +12,7 @@ export interface MentionItem {
   name: string;
   description?: string;
   previewImage?: string;
+  sora2CharacterId?: string;  // Sora2 角色 ID（用于视频生成时的角色绑定）
 }
 
 // 解析后的 Mention

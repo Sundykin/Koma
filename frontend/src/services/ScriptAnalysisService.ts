@@ -7,6 +7,7 @@ import type { Character, Scene, Prop, Shot, LLMModelConfig, ScriptAnalysisResult
 import { createLLMProvider } from '../providers';
 import { getActiveLLMConfig } from '../store/globalStore';
 import { getPromptTemplate, fillTemplate } from '../store/promptTemplates';
+import { logLLMCall } from '../store/aiCallLogger';
 import { TaskManager, Task } from './TaskManager';
 import {
   saveCharacters,
@@ -183,6 +184,14 @@ export class ScriptAnalysisService {
 
     // 构建带 JSON Schema 约束的 prompt
     const fullPrompt = `${prompt}\n\n请严格按以下 JSON Schema 格式输出：\n${JSON.stringify(schema, null, 2)}`;
+
+    // 打印 LLM 调用日志
+    logLLMCall(
+      this.llmConfig.name || 'LLM',
+      fullPrompt,
+      SYSTEM_PROMPT_BASE,
+      { targetName: '剧本解析' }
+    );
 
     const result = await provider.generateText(fullPrompt, SYSTEM_PROMPT_BASE);
     return result;

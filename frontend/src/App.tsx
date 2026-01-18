@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Project, ScriptAnalysisResult, EditorStep, AppSettings, Episode } from './types';
 import { ProjectList } from './components/ProjectList';
 import { ProjectOverview } from './components/ProjectOverview';
 import { AssetManager } from './components/AssetManager';
 import { Storyboard } from './components/Storyboard';
+import type { MentionItem } from './editor';
 import { VideoEditor } from './components/editor';
 import { SettingsPage } from './components/SettingsPage';
 import { StepNavigator } from './components/StepNavigator';
@@ -54,8 +55,8 @@ const DEV_TEST_PROJECT: Project = {
 
 const DEV_TEST_ANALYSIS: ScriptAnalysisResult = {
   characters: [
-    { id: 'c1', name: '叶青凡', age: '28', role: 'protagonist', description: '沉稳冷静的调查员', appearance: '黑发，深邃眼神', avatarUrl: '' },
-    { id: 'c2', name: '鬼护士', age: '?', role: 'antagonist', description: '神秘的医院幽灵', appearance: '白色护士服，无面孔', avatarUrl: '' },
+    { id: 'c1', name: '叶青凡', age: '28', role: 'protagonist', description: '沉稳冷静的调查员', appearance: '黑发，深邃眼神' },
+    { id: 'c2', name: '鬼护士', age: '?', role: 'antagonist', description: '神秘的医院幽灵', appearance: '白色护士服，无面孔' },
   ],
   scenes: [
     { id: 's1', name: '废弃医院走廊', location: '废弃医院', time: 'night', mood: '阴森紧张', description: '昏暗的走廊，墙壁剥落' },
@@ -186,6 +187,19 @@ const AppContent: React.FC = () => {
       console.error('[App] 加载分析数据失败:', err);
     }
   }, []);
+
+  // 从角色数据构建 mentionItems（用于编辑器的 @ 补全）
+  const mentionItems: MentionItem[] = useMemo(() => {
+    if (!analysisData?.characters) return [];
+    return analysisData.characters.map(char => ({
+      id: char.id,
+      type: 'char' as const,
+      name: char.name,
+      description: char.description,
+      previewImage: char.costumePhotoPath,
+      sora2CharacterId: char.sora2CharacterId,
+    }));
+  }, [analysisData?.characters]);
 
   // 监听任务完成事件，实现自动跳转
   useEffect(() => {
@@ -772,6 +786,7 @@ const AppContent: React.FC = () => {
                                 llmConfigId={activeProject.llmConfigId}
                                 ttiConfigId={activeProject.ttiConfigId}
                                 settings={appSettings}
+                                mentionItems={mentionItems}
                             />
                         ) : (
                              <div className="flex h-full items-center justify-center text-gray-500 flex-col gap-4">

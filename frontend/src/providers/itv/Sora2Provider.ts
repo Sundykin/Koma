@@ -144,8 +144,13 @@ export class Sora2Provider implements ITVProvider {
     };
 
     if (data.state === 'succeeded' && data.data) {
-      // 视频 URL 可能在 data.url 或 data.video_url 中
-      result.resultUrl = data.data.url || data.data.video_url || data.data;
+      // 视频 URL 可能在多种位置
+      const videoData = data.data;
+      result.resultUrl =
+        videoData.url ||
+        videoData.video_url ||
+        (videoData.videos?.[0]?.url) ||  // Sora2 返回格式: { videos: [{ url: "..." }] }
+        (typeof videoData === 'string' ? videoData : undefined);
     }
 
     if (data.state === 'failed' || data.state === 'error') {
@@ -161,18 +166,22 @@ export class Sora2Provider implements ITVProvider {
 
   /**
    * 角色提取 API
-   * 从视频中提取角色，返回角色ID用于后续视频生成时引用
-   * @param videoPath 视频 URL 或本地路径
+   * 从视频生成任务中提取角色，返回角色ID用于后续视频生成时引用
+   * @param taskId 视频生成任务的 ID（由 generate() 返回）
+   * @param timestamps 可选，指定提取时间段，格式 "开始秒,结束秒"（如 "3,6"）
    * @returns 角色 ID（用于在 prompt 中通过 @角色ID 引用）
    */
-  async extractCharacter(videoPath: string): Promise<string> {
+  async extractCharacter(taskId: string, timestamps?: string): Promise<string> {
     if (!this.validate()) {
       throw new Error('API Key 未配置');
     }
 
-    const body = {
-      video_url: videoPath,
+    const body: Record<string, string> = {
+      from_task: taskId,
     };
+    if (timestamps) {
+      body.timestamps = timestamps;
+    }
 
     const response = await fetch(`${this.getBaseUrl()}/v1/characters`, {
       method: 'POST',
@@ -186,7 +195,6 @@ export class Sora2Provider implements ITVProvider {
     }
 
     const data = await response.json();
-    // 返回角色ID
     return data.id || data.character_id || data.data?.id;
   }
 }
