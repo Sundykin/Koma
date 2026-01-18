@@ -134,20 +134,9 @@ export class ShotAnalysisService {
         baseUrl: this.llmConfig!.baseUrl,
         modelName: this.llmConfig!.modelName,
       });
-      // 分镜拆解只生成结构，不生成提示词
-      const systemPrompt = `你是一个专业的影视分镜师。你的任务是根据剧本内容，结合给定的角色、场景和道具，生成分镜结构。
-每个分镜应该包含：
-- scriptContent: 对应的剧本原文
-- shotType: 景别（close-up特写/medium中景/wide全景/extreme-wide大全景）
-- cameraMovement: 运镜方式（static固定/pan摇镜/zoom-in推镜/tracking跟随/handheld手持）
-- duration: 预估时长（秒）
-- characters: 出现的角色名列表
-- dialogue: 角色台词（如有）
-- emotion: 画面情绪氛围
-- props: 出现的道具名列表
-
-注意：不需要生成画面描述(description)提示词，这将在后续步骤由用户手动触发生成。
-请确保分镜覆盖剧本的所有重要内容。`;
+      // 获取系统提示词模板
+      const systemPromptTemplate = await getPromptTemplate('shot_breakdown_system');
+      const systemPrompt = systemPromptTemplate.template;
 
       const result = await provider.chat([
         { role: 'system', content: systemPrompt },

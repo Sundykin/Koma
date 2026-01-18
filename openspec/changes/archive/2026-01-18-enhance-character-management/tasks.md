@@ -66,19 +66,19 @@
 - [x] 生成完成后刷新列表
 - [x] 删除后刷新列表
 
-## Phase 5: 场景/道具对齐（可选）
+## Phase 5: 场景/道具对齐（延期）
 
 ### Task 5.1: 场景详情弹窗
-- [ ] 创建 `SceneDetailModal.tsx`（与角色类似）
+- [ ] 创建 `SceneDetailModal.tsx`（与角色类似）- 延期至后续提案
 
 ### Task 5.2: 道具详情弹窗
-- [ ] 创建 `PropDetailModal.tsx`（与角色类似）
+- [ ] 创建 `PropDetailModal.tsx`（与角色类似）- 延期至后续提案
 
 ## Checklist
 - [x] Phase 1 completed
 - [x] Phase 2 completed
 - [x] Phase 3 completed
 - [x] Phase 4 completed
-- [ ] Phase 5 completed (optional)
+- [x] Phase 5 deferred (optional, out of scope)
 - [x] 构建通过
-- [ ] 手动测试通过
+- [x] 手动测试通过

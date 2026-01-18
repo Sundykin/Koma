@@ -236,8 +236,20 @@ export async function shotRenderWorkflow(
           maxRetries: 3,
         });
 
-        // 构建视频生成的 prompt，支持 @sora2CharacterId 引用
-        const videoPrompt = buildVideoPrompt(shot, characters);
+        // 构建视频生成的 prompt，优先使用模板
+        let videoPrompt: string;
+        try {
+          const videoTemplate = await getPromptTemplate('itv_shot_video');
+          videoPrompt = fillTemplate(videoTemplate.template, {
+            description: shot.description || '',
+            cameraMovement: getCameraMovementDesc(shot.cameraMovement),
+          });
+          // 添加角色 @引用
+          videoPrompt = appendCharacterRefs(videoPrompt, shot, characters);
+        } catch {
+          // 回退到硬编码函数
+          videoPrompt = buildVideoPrompt(shot, characters);
+        }
         logger.info(`视频生成 prompt: ${videoPrompt}`);
         logger.info(`使用远程图片 URL: ${remoteImageUrl}`);
 
@@ -372,6 +384,53 @@ export async function batchRenderShots(
 }
 
 // ========== 辅助函数（硬编码默认模板，作为 fallback）==========
+
+/**
+ * 获取运镜描述
+ */
+function getCameraMovementDesc(movement?: string): string {
+  if (!movement || movement === 'static') return 'static shot';
+  const cameraDesc: Record<string, string> = {
+    'pan': 'camera panning horizontally',
+    'zoom-in': 'camera slowly zooming in',
+    'tracking': 'camera tracking the subject',
+    'handheld': 'handheld camera movement',
+  };
+  return cameraDesc[movement] || movement;
+}
+
+/**
+ * 为 prompt 添加角色 @引用
+ */
+function appendCharacterRefs(prompt: string, shot: Shot, characters: Character[]): string {
+  let result = prompt;
+
+  // 查找 prompt 中的角色名称，替换为 @sora2CharacterId
+  for (const char of characters) {
+    if (char.sora2CharacterId && result.includes(char.name)) {
+      result = result.replace(
+        new RegExp(char.name, 'g'),
+        `${char.name} @${char.sora2CharacterId}`
+      );
+    }
+  }
+
+  // 如果分镜有关联的角色列表，自动添加 @引用
+  if (shot.characters && shot.characters.length > 0) {
+    const charRefs: string[] = [];
+    for (const charId of shot.characters) {
+      const char = characters.find(c => c.id === charId || c.name === charId);
+      if (char?.sora2CharacterId && !result.includes(`@${char.sora2CharacterId}`)) {
+        charRefs.push(`@${char.sora2CharacterId}`);
+      }
+    }
+    if (charRefs.length > 0) {
+      result = `${result} ${charRefs.join(' ')}`;
+    }
+  }
+
+  return result;
+}
 
 /**
  * 构建增强的图片生成 prompt（硬编码默认模板）

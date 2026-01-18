@@ -114,13 +114,8 @@ export class ShotPromptService {
       modelName: this.llmConfig!.modelName,
     });
 
-    const systemPrompt = `你是一个专业的视频提示词生成专家。你的任务是为视频生成模型编写高质量的英文提示词。
-要求：
-1. 提示词必须是英文
-2. 如果有角色引用，使用 @角色ID 格式（如 @abc123）
-3. 包含运镜描述和景别描述
-4. 描述要具体、生动，包含动作、光影、氛围
-5. 直接输出提示词，不要有任何前缀或解释`;
+    const systemPromptTemplate = await getPromptTemplate('shot_prompt_system');
+    const systemPrompt = systemPromptTemplate.template;
 
     const result = await provider.chat([
       { role: 'system', content: systemPrompt },

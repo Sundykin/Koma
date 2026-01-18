@@ -423,11 +423,59 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
             自定义 AI 功能使用的 Prompt 模板，支持变量替换。
           </p>
 
-          {/* LLM 模板（剧本解析等） */}
-          <Divider orientation="left" style={{ margin: '16px 0 8px' }}>LLM 模板（剧本解析）</Divider>
+          {/* 系统提示模板 */}
+          <Divider orientation="left" style={{ margin: '16px 0 8px' }}>系统提示 (System Prompts)</Divider>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {(Object.values(promptTemplates) as PromptTemplate[])
-              .filter(t => !t.id.startsWith('tti_'))
+              .filter(t => t.id.endsWith('_system'))
+              .map((template) => (
+              <Card key={template.id} size="small">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 500, marginBottom: 4 }}>
+                      {template.name}
+                      {template.isCustom && (
+                        <span style={{ marginLeft: 8, color: '#1890ff', fontSize: 12 }}>
+                          (已自定义)
+                        </span>
+                      )}
+                    </div>
+                    <div style={{ color: '#888', fontSize: 13 }}>
+                      {template.description}
+                    </div>
+                  </div>
+                  <Space>
+                    <Button
+                      type="link"
+                      size="small"
+                      icon={<EditOutlined />}
+                      onClick={() => handleEditTemplate(template)}
+                    >
+                      编辑
+                    </Button>
+                    {template.isCustom && (
+                      <Popconfirm
+                        title="确定重置为默认模板？"
+                        onConfirm={() => handleResetTemplate(template.id)}
+                        okText="重置"
+                        cancelText="取消"
+                      >
+                        <Button type="link" size="small" icon={<ReloadOutlined />} danger>
+                          重置
+                        </Button>
+                      </Popconfirm>
+                    )}
+                  </Space>
+                </div>
+              </Card>
+            ))}
+          </div>
+
+          {/* LLM 模板（剧本解析等） */}
+          <Divider orientation="left" style={{ margin: '24px 0 8px' }}>LLM 任务模板</Divider>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {(Object.values(promptTemplates) as PromptTemplate[])
+              .filter(t => !t.id.startsWith('tti_') && !t.id.startsWith('itv_') && !t.id.endsWith('_system'))
               .map((template) => (
               <Card key={template.id} size="small">
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
@@ -444,7 +492,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                       {template.description}
                       <br />
                       <span style={{ fontSize: 12 }}>
-                        变量: {template.variables.map(v => `{{${v}}}`).join(', ')}
+                        变量: {template.variables.map(v => `{{${v}}}`).join(', ') || '无'}
                       </span>
                     </div>
                   </div>

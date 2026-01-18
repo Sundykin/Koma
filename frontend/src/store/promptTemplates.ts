@@ -7,23 +7,28 @@ import { getStorageConfig, initStorageConfig } from './storageConfig';
 
 // Prompt 模板类型
 export type PromptTemplateType =
-  | 'script_generation'      // 剧本生成
-  | 'script_polish'          // 剧本润色
-  | 'shot_breakdown'         // 分镜拆解
-  | 'shot_prompt_generation' // 分镜提示词生成
-  | 'character_extraction'   // 角色提取
-  | 'scene_extraction'       // 场景提取
-  | 'prop_extraction'        // 道具提取
-  | 'tti_prompt'             // TTI Prompt 生成
-  | 'dialogue_generation'    // 对话生成
+  // 系统提示模板（System Prompt）
+  | 'shot_prompt_system'       // 分镜提示词生成的系统提示
+  | 'shot_breakdown_system'    // 分镜拆解的系统提示
+  | 'script_analysis_system'   // 剧本解析的系统提示
+  // LLM 任务模板
+  | 'script_generation'        // 剧本生成
+  | 'script_polish'            // 剧本润色
+  | 'shot_breakdown'           // 分镜拆解
+  | 'shot_prompt_generation'   // 分镜提示词生成
+  | 'character_extraction'     // 角色提取
+  | 'character_design'         // 角色视觉设计
+  | 'scene_extraction'         // 场景提取
+  | 'prop_extraction'          // 道具提取
+  | 'dialogue_generation'      // 对话生成（保留备用）
   // TTI 图片生成模板
-  | 'tti_character_costume'  // 角色定妆照（三视图）
-  | 'tti_scene_preview'      // 场景预览图
-  | 'tti_prop_reference'     // 道具参考图
-  | 'tti_shot_image'         // 分镜图片
+  | 'tti_character_costume'    // 角色定妆照（三视图）
+  | 'tti_scene_preview'        // 场景预览图
+  | 'tti_prop_reference'       // 道具参考图
+  | 'tti_shot_image'           // 分镜图片
   // ITV 视频生成模板
-  | 'itv_shot_video'         // 分镜视频
-  | 'itv_character_motion';  // 角色动态视频
+  | 'itv_shot_video'           // 分镜视频
+  | 'itv_character_motion';    // 角色动态视频
 
 // Prompt 模板接口
 export interface PromptTemplate {
@@ -38,6 +43,61 @@ export interface PromptTemplate {
 // ========== 默认模板 ==========
 
 const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
+  // ========== 系统提示模板 ==========
+
+  shot_prompt_system: {
+    id: 'shot_prompt_system',
+    name: '分镜提示词系统提示',
+    description: '生成分镜提示词时的系统角色定义',
+    template: `你是一个专业的视频提示词生成专家。你的任务是为视频生成模型编写高质量的中文提示词。
+
+要求：
+1. 提示词使用中文描述
+2. 如果有角色引用，使用 @角色ID 格式（如 @abc123）
+3. 包含运镜描述和景别描述
+4. 描述要具体、生动，包含动作、光影、氛围
+5. 直接输出提示词，不要有任何前缀或解释`,
+    variables: [],
+    isCustom: false,
+  },
+
+  shot_breakdown_system: {
+    id: 'shot_breakdown_system',
+    name: '分镜拆解系统提示',
+    description: '分镜拆解时的系统角色定义',
+    template: `你是一个专业的影视分镜师。你的任务是根据剧本内容，结合给定的角色、场景和道具，生成分镜结构。
+
+每个分镜应该包含：
+- scriptContent: 对应的剧本原文
+- shotType: 景别（close-up特写/medium中景/wide全景/extreme-wide大全景）
+- cameraMovement: 运镜方式（static固定/pan摇镜/zoom-in推镜/tracking跟随/handheld手持）
+- duration: 预估时长（秒），控制在10秒以内
+- characters: 出现的角色名列表
+- dialogue: 角色台词，格式为"角色名（情绪）：台词内容"
+- emotion: 画面情绪氛围
+- props: 出现的道具名列表
+
+【情绪词列表】
+高兴、愤怒、悲伤、恐惧、反感、低落、惊讶、自然、急切、平静、激动、呵斥、关心、严肃
+
+注意：不需要生成画面描述(description)提示词，这将在后续步骤生成。
+请确保分镜覆盖剧本的所有重要内容。`,
+    variables: [],
+    isCustom: false,
+  },
+
+  script_analysis_system: {
+    id: 'script_analysis_system',
+    name: '剧本解析系统提示',
+    description: '剧本解析时的系统角色定义',
+    template: `你是一个专业的影视编剧和分镜师。你的任务是分析用户提供的剧本，提取关键信息。
+请严格按照要求的 JSON 格式输出，不要输出任何其他内容。`,
+    variables: [],
+    isCustom: false,
+  },
+
+  // ========== LLM 任务模板 ==========
+
   script_generation: {
     id: 'script_generation',
     name: '剧本生成',
@@ -95,7 +155,13 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
     id: 'shot_breakdown',
     name: '分镜拆解',
     description: '将剧本拆解为分镜结构（不含提示词）',
-    template: `你是一个专业的分镜师，请将以下剧本拆解为分镜列表。
+    template: `你是一位专业的分镜师。请将以下剧本拆解为分镜列表。
+
+【时长要求】
+每个镜头控制在10秒以内。
+
+【情绪词列表】
+高兴、愤怒、悲伤、恐惧、反感、低落、惊讶、自然、急切、平静、激动、呵斥、关心、严肃
 
 已知角色：{{characters}}
 已知场景：{{scenes}}
@@ -103,14 +169,6 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
 
 剧本：
 {{script}}
-
-要求：
-1. 按剧情顺序拆解为若干分镜
-2. 每个分镜应该是一个完整的画面
-3. 合理分配镜头类型和运镜方式（static/pan/zoom-in/tracking）
-4. 建议时长通常为2-5秒
-5. 关联相关角色和道具
-6. 注意：不需要生成提示词(description)，留空即可
 
 请以 JSON 格式输出分镜列表：
 
@@ -120,9 +178,9 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
     {
       "scriptContent": "对应的剧本原文片段",
       "shotType": "close-up/medium/wide/extreme-wide",
-      "cameraMovement": "static/pan/zoom-in/tracking",
-      "duration": 3,
-      "dialogue": "对话或旁白内容",
+      "cameraMovement": "static/pan/zoom-in/tracking/handheld",
+      "duration": 5,
+      "dialogue": "角色名（情绪）：\"台词内容\"",
       "characters": ["出场角色名称"],
       "emotion": "情绪标签",
       "props": ["出现的道具"]
@@ -147,11 +205,12 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
 风格前缀：{{stylePrefix}}
 
 要求：
-1. 使用英文输出
+1. 使用中文输出
 2. 为每个角色添加 @角色ID 引用格式（角色引用列表见下方）
 3. 使用以下运镜关键字之一：{{cameraOptions}}
 4. 使用以下景别关键字之一：{{shotTypeOptions}}
 5. 描述画面动作、光影、氛围
+6. 包含详尽的画面描述、景别与运镜设计
 
 可用角色引用：
 {{characterRefs}}
@@ -168,6 +227,16 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
     description: '从剧本中提取角色信息',
     template: `分析以下剧本，提取所有角色信息。
 
+【核心任务】
+分析剧本文本，为所有角色设计视觉形象方案。必须提取剧本中出现的所有人物角色，无论是主角、配角还是仅有少量描述的次要角色。
+
+【描述要求】
+1. 外貌描述必须是纯粹的视觉元素：脸型、瞳色、发型发色、服装配饰
+2. 服装描述需包含【颜色】、【款式】、【材质】三个维度
+3. 严禁使用性格、情绪、气质等抽象词汇
+4. 严禁使用"好看的"、"普通的"等模糊词
+5. 输出为中文描述
+
 剧本：
 {{script}}
 
@@ -178,7 +247,7 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
   "characters": [
     {
       "name": "角色名称",
-      "description": "角色外貌和性格描述，用于 AI 生图保持一致性",
+      "description": "角色人物小传",
       "role": "main/supporting/minor",
       "traits": ["特征1", "特征2"],
       "voiceType": "声音类型建议（如：温柔女声、沉稳男声）"
@@ -188,6 +257,38 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
 \`\`\`
 `,
     variables: ['script'],
+    isCustom: false,
+  },
+
+  character_design: {
+    id: 'character_design',
+    name: '角色视觉设计',
+    description: '为角色设计视觉形象（参考专业设计师方案）',
+    template: `你是一名顶尖的角色概念设计师，专为小说进行视觉化开发。
+
+【核心任务】
+为角色设计视觉形象方案，建立基准形象（日常/标志性穿着），并补充特殊场景下的着装。
+
+【红线规则】
+1. 严禁任何形式的暴露或性暗示着装
+2. 严禁非视觉元素（性格、情绪等抽象词汇）
+3. 严禁动作与环境描述，仅描述外观本身
+
+【描述模板】
+姓名(性别)年龄，[脸型]，[眼型/瞳色]，[发型]，[发色]，[服装与配饰描述]。
+
+【服装描述要求】
+必须包含【颜色】、【款式】、【材质】三个维度。
+禁止使用"职业套装"、"休闲服"等模糊词汇。
+
+角色信息：{{character}}
+剧本上下文：{{context}}
+
+请输出该角色的视觉形象描述，格式如下：
+基准形象：[完整的外观描述]
+场景1（如有）：[该场景下的服装变化]
+`,
+    variables: ['character', 'context'],
     isCustom: false,
   },
 
@@ -207,7 +308,7 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
   "scenes": [
     {
       "name": "场景名称",
-      "description": "场景详细描述，用于 AI 生图保持一致性",
+      "description": "场景详细描述，用于 AI 生图保持一致性，中文描述",
       "time": "时间（白天/夜晚/黄昏等）",
       "weather": "天气",
       "mood": "氛围（温馨/紧张/神秘等）",
@@ -237,7 +338,7 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
   "props": [
     {
       "name": "道具名称",
-      "description": "道具详细描述",
+      "description": "道具详细描述，中文描述",
       "importance": "high/medium/low",
       "scenes": ["出现的场景列表"]
     }
@@ -249,33 +350,10 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
     isCustom: false,
   },
 
-  tti_prompt: {
-    id: 'tti_prompt',
-    name: 'TTI Prompt 生成',
-    description: '为分镜生成 AI 绘图 Prompt',
-    template: `根据以下分镜信息，生成适合 AI 绘图的英文 Prompt。
-
-分镜描述：{{description}}
-角色信息：{{characters}}
-场景信息：{{scene}}
-风格要求：{{style}}
-
-要求：
-1. 使用英文输出
-2. Prompt 应详细描述画面构图、光线、色调
-3. 包含必要的风格标签（如 cinematic, masterpiece 等）
-4. 控制在 200 词以内
-
-请直接输出 Prompt，无需其他说明。
-`,
-    variables: ['description', 'characters', 'scene', 'style'],
-    isCustom: false,
-  },
-
   dialogue_generation: {
     id: 'dialogue_generation',
     name: '对话生成',
-    description: '为分镜生成角色对话',
+    description: '为分镜生成角色对话（保留备用）',
     template: `根据以下场景和角色信息，生成自然的对话。
 
 场景描述：{{scene}}

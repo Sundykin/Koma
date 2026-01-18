@@ -169,7 +169,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ isOpen, 
           {selectedTheme === 'custom' && (
             <Input.TextArea
               className="mt-2"
-              placeholder="输入自定义风格描述 (英文)，如: watercolor painting style, soft colors..."
+              placeholder="输入自定义风格描述，如: 水彩画风格，柔和色彩..."
               value={customStyle}
               onChange={e => setCustomStyle(e.target.value)}
               rows={2}

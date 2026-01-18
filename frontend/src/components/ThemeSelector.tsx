@@ -98,7 +98,7 @@ export const ThemeSelector: React.FC<ThemeSelectorProps> = ({
       {isCustom && (
         <div className="mt-4">
           <label className="block text-xs text-gray-400 mb-2 font-medium">
-            自定义风格描述 (英文)
+            自定义风格描述
           </label>
           <textarea
             className="w-full min-h-[80px] p-3 text-sm bg-[#0f0f0f] border border-gray-700 rounded-lg text-gray-300 placeholder-gray-600 resize-y focus:outline-none focus:border-green-600 transition-colors"

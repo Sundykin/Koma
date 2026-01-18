@@ -57,7 +57,7 @@ const CHARACTERS_SCHEMA = {
           age: { type: 'string', description: '年龄描述' },
           role: { type: 'string', enum: ['protagonist', 'antagonist', 'supporting'], description: '角色定位' },
           description: { type: 'string', description: '人物小传' },
-          appearance: { type: 'string', description: 'AI绘图用的外貌描述，英文' },
+          appearance: { type: 'string', description: 'AI绘图用的外貌描述，中文' },
         },
         required: ['name', 'role', 'description', 'appearance'],
       },
@@ -78,7 +78,7 @@ const SCENES_SCHEMA = {
           location: { type: 'string', description: '地点' },
           time: { type: 'string', enum: ['day', 'night', 'twilight'], description: '时间' },
           mood: { type: 'string', description: '氛围情绪' },
-          description: { type: 'string', description: 'AI绘图用的场景描述，英文' },
+          description: { type: 'string', description: 'AI绘图用的场景描述，中文' },
         },
         required: ['name', 'location', 'time', 'mood', 'description'],
       },
@@ -97,7 +97,7 @@ const PROPS_SCHEMA = {
         properties: {
           name: { type: 'string', description: '道具名称' },
           type: { type: 'string', description: '道具类型' },
-          description: { type: 'string', description: 'AI绘图用的道具描述，英文' },
+          description: { type: 'string', description: 'AI绘图用的道具描述，中文' },
         },
         required: ['name', 'type', 'description'],
       },
@@ -118,7 +118,7 @@ const SHOTS_SCHEMA = {
           shotType: { type: 'string', enum: ['close-up', 'medium', 'wide', 'extreme-wide'] },
           cameraMovement: { type: 'string', enum: ['static', 'pan', 'zoom-in', 'tracking'] },
           duration: { type: 'number', description: '建议时长秒数' },
-          description: { type: 'string', description: '画面描述，用于生成图片的prompt，英文' },
+          description: { type: 'string', description: '画面描述，用于生成图片的prompt，中文' },
           characters: { type: 'array', items: { type: 'string' }, description: '出场角色名称列表' },
           dialogue: { type: 'string', description: '台词' },
           emotion: { type: 'string', description: '情绪标签' },
@@ -130,10 +130,6 @@ const SHOTS_SCHEMA = {
   },
   required: ['shots'],
 };
-
-// System Prompt 基础指令
-const SYSTEM_PROMPT_BASE = `你是一个专业的影视编剧和分镜师。你的任务是分析用户提供的剧本，提取关键信息。
-请严格按照要求的 JSON 格式输出，不要输出任何其他内容。`;
 
 export class ScriptAnalysisService {
   private llmConfig: LLMModelConfig | null = null;
@@ -182,6 +178,10 @@ export class ScriptAnalysisService {
       modelName: this.llmConfig.modelName,
     });
 
+    // 获取系统提示词模板
+    const systemPromptTemplate = await getPromptTemplate('script_analysis_system');
+    const systemPrompt = systemPromptTemplate.template;
+
     // 构建带 JSON Schema 约束的 prompt
     const fullPrompt = `${prompt}\n\n请严格按以下 JSON Schema 格式输出：\n${JSON.stringify(schema, null, 2)}`;
 
@@ -189,11 +189,11 @@ export class ScriptAnalysisService {
     logLLMCall(
       this.llmConfig.name || 'LLM',
       fullPrompt,
-      SYSTEM_PROMPT_BASE,
+      systemPrompt,
       { targetName: '剧本解析' }
     );
 
-    const result = await provider.generateText(fullPrompt, SYSTEM_PROMPT_BASE);
+    const result = await provider.generateText(fullPrompt, systemPrompt);
     return result;
   }
 
