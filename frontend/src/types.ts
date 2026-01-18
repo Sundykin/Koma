@@ -119,6 +119,16 @@ export interface Prop {
   fingerprint?: string;
 }
 
+// 分镜视频版本
+export interface ShotVideo {
+  path: string;
+  thumbnailPath?: string;
+  prompt?: string;
+  seed?: number;
+  model?: string;
+  createdAt: number;
+}
+
 // 分镜/镜头接口定义
 export interface Shot {
   id: string;
@@ -128,14 +138,18 @@ export interface Shot {
   duration: number;      // 持续时长(秒)
   description?: string;  // 视频生成模型的提示词 (Prompt)，分镜拆解后可手动生成
   imageUrl?: string;     // 预览图或生成图（远程URL）
-  imagePath?: string;    // 本地图片路径
+  imagePath?: string;    // 当前选中的本地图片路径
+  imagePaths?: string[]; // 所有候选图片列表
+  currentImageIndex?: number; // 当前选中的图片索引
   characters: string[];  // 涉及的角色ID
   dialogue?: string;     // 台词（用于 TTS）
   emotion?: string;      // 情绪标签
   props?: string[];      // 涉及的道具ID
   confirmed?: boolean;   // 是否已确认（用于入轨）
   seed?: number;         // 生成种子（用于复现）
-  currentVersion?: number; // 当前版本号
+  currentVersion?: number; // 当前版本号（兼容旧数据）
+  videos?: ShotVideo[];  // 视频版本列表
+  currentVideoIndex?: number; // 当前选中的视频索引
 }
 
 // 剧本分析结果接口

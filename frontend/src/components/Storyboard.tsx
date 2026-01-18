@@ -18,7 +18,7 @@ import {
   LoadingOutlined,
   RobotOutlined,
 } from '@ant-design/icons';
-import type { Shot, Character, Scene, Prop, AppSettings } from '../types';
+import type { Shot, Character, Scene, Prop, AppSettings, ShotVideo } from '../types';
 import { loadEpisodeShots, saveEpisodeShots, loadCharacters, loadScenes, loadProps } from '../store/projectStore';
 import { generateShotImage, batchGenerateShotImages } from '../services/ShotGenerationService';
 import { shotRenderWorkflow, batchRenderShots } from '../workflow/shotRenderWorkflow';
@@ -42,12 +42,27 @@ const SHOT_TYPE_OPTIONS = [
 ];
 
 const CAMERA_OPTIONS = [
-  { label: '📷 固定镜头', value: 'static' },
-  { label: '↔️ 水平摇镜', value: 'pan' },
-  { label: '🏃 跟随镜头', value: 'tracking' },
-  { label: '🔍 缓慢推镜', value: 'zoom-in' },
-  { label: '👋 手持晃动', value: 'handheld' },
+  { label: '固定镜头', value: 'static' },
+  { label: '水平摇镜', value: 'pan' },
+  { label: '跟随镜头', value: 'tracking' },
+  { label: '缓慢推镜', value: 'zoom-in' },
+  { label: '手持晃动', value: 'handheld' },
 ];
+
+// 合并两个分镜
+function mergeShots(target: Shot, source: Shot): Shot {
+  return {
+    ...target,
+    scriptContent: [target.scriptContent, source.scriptContent].filter(Boolean).join('\n'),
+    description: [target.description, source.description].filter(Boolean).join('\n\n'),
+    duration: target.duration + source.duration,
+    characters: [...new Set([...target.characters, ...source.characters])],
+    dialogue: [target.dialogue, source.dialogue].filter(Boolean).join('\n'),
+    props: [...new Set([...(target.props || []), ...(source.props || [])])],
+    imagePaths: [...(target.imagePaths || []), ...(source.imagePaths || [])],
+    videos: [...(target.videos || []), ...(source.videos || [])],
+  };
+}
 
 // ============ 主组件 ============
 interface StoryboardProps {
@@ -91,14 +106,10 @@ export const Storyboard: React.FC<StoryboardProps> = ({
   const [editingShot, setEditingShot] = useState<Shot | null>(null);
   const [editFormData, setEditFormData] = useState<Partial<Shot>>({});
 
-  // 实际使用的 mentionItems：优先使用外部传入的，如果为空则从本地数据构建
+  // 实际使用的 mentionItems
   const actualMentionItems: MentionItem[] = useMemo(() => {
     if (mentionItems.length > 0) return mentionItems;
-
-    // 从本地加载的数据构建
     const items: MentionItem[] = [];
-
-    // 角色
     characters.forEach(char => {
       items.push({
         id: char.id,
@@ -109,68 +120,42 @@ export const Storyboard: React.FC<StoryboardProps> = ({
         sora2CharacterId: char.sora2CharacterId,
       });
     });
-
-    // 场景
     scenes.forEach(scene => {
       items.push({
         id: scene.id,
         type: 'scene' as const,
         name: scene.name,
         description: scene.description,
-        previewImage: scene.imagePath,  // Scene 用 imagePath
+        previewImage: scene.imagePath,
       });
     });
-
-    // 道具
     props.forEach(prop => {
       items.push({
         id: prop.id,
         type: 'prop' as const,
         name: prop.name,
         description: prop.description,
-        previewImage: prop.imagePath,  // Prop 用 imagePath
+        previewImage: prop.imagePath,
       });
     });
-
-    console.log('[Storyboard] 构建 mentionItems:', {
-      characters: characters.length,
-      scenes: scenes.length,
-      props: props.length,
-      total: items.length,
-    });
-
     return items;
   }, [mentionItems, characters, scenes, props]);
 
   // 加载数据
   const loadData = useCallback(async () => {
     if (!projectId) return;
-
     setLoading(true);
     try {
-      // 分镜从分集级加载（如果有 episodeId）
-      const loadedShots = episodeId
-        ? await loadEpisodeShots(projectId, episodeId)
-        : [];
-
+      const loadedShots = episodeId ? await loadEpisodeShots(projectId, episodeId) : [];
       const [loadedCharacters, loadedScenes, loadedProps] = await Promise.all([
         loadCharacters(projectId),
         loadScenes(projectId),
         loadProps(projectId),
       ]);
-
       setShots(loadedShots);
       setCharacters(loadedCharacters);
       setScenes(loadedScenes);
       setProps(loadedProps);
-
-      console.log('[Storyboard] 加载数据:', {
-        episodeId,
-        shots: loadedShots.length,
-        characters: loadedCharacters.length,
-        scenes: loadedScenes.length,
-        props: loadedProps.length,
-      });
     } catch (err) {
       console.error('[Storyboard] 加载失败:', err);
       message.error('加载分镜数据失败');
@@ -187,7 +172,6 @@ export const Storyboard: React.FC<StoryboardProps> = ({
   useEffect(() => {
     const unsubscribe = TaskManager.addListener((task) => {
       if (task.projectId !== projectId) return;
-
       if (task.type === 'shot-generation') {
         if (task.status === 'completed') {
           message.success(`分镜图片生成完成`);
@@ -206,7 +190,6 @@ export const Storyboard: React.FC<StoryboardProps> = ({
           });
         }
       }
-
       if (task.type === 'shot-analysis') {
         if (task.status === 'completed') {
           message.success(`AI 分镜生成完成，共 ${task.result?.shotsCount || 0} 个分镜`);
@@ -218,11 +201,10 @@ export const Storyboard: React.FC<StoryboardProps> = ({
         }
       }
     });
-
     return () => unsubscribe();
   }, [projectId, loadData]);
 
-  // 保存分镜数据（保存到分集级）
+  // 保存分镜数据
   const saveAllShots = useCallback(async (updatedShots: Shot[]) => {
     if (!episodeId) {
       message.warning('未选择分集，无法保存分镜');
@@ -236,7 +218,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     }
   }, [projectId, episodeId]);
 
-  // ============ 回调函数 (稳定化) ============
+  // ============ 回调函数 ============
 
   const handleToggleConfirm = useCallback(async (shot: Shot) => {
     const updatedShots = shots.map(s =>
@@ -249,6 +231,22 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     const updatedShots = shots.filter(s => s.id !== shotId);
     await saveAllShots(updatedShots);
     message.success('分镜已删除');
+  }, [shots, saveAllShots]);
+
+  // 批量删除
+  const handleBatchDelete = useCallback(async (shotIds: string[]) => {
+    const updatedShots = shots.filter(s => !shotIds.includes(s.id));
+    await saveAllShots(updatedShots);
+    message.success(`已删除 ${shotIds.length} 个分镜`);
+  }, [shots, saveAllShots]);
+
+  // 批量确认/取消确认
+  const handleBatchConfirm = useCallback(async (shotIds: string[], confirm: boolean) => {
+    const updatedShots = shots.map(s =>
+      shotIds.includes(s.id) ? { ...s, confirmed: confirm } : s
+    );
+    await saveAllShots(updatedShots);
+    message.success(confirm ? `已确认 ${shotIds.length} 个分镜` : `已取消确认 ${shotIds.length} 个分镜`);
   }, [shots, saveAllShots]);
 
   const handleGenerateShotImage = useCallback(async (shotId: string) => {
@@ -270,15 +268,13 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     }
   }, [projectId, episodeId, characters, scenes, ttiConfigId]);
 
-  // 渲染完整分镜（图片 + 语音 + 视频）
+  // 渲染视频
   const handleRenderShotVideo = useCallback(async (shotId: string) => {
     const shot = shots.find(s => s.id === shotId);
     if (!shot) return;
-
     setRenderingShots(prev => new Set(prev).add(shotId));
     setRenderProgress(0);
     setRenderStep('准备渲染...');
-
     try {
       const result = await shotRenderWorkflow(
         {
@@ -295,10 +291,9 @@ export const Storyboard: React.FC<StoryboardProps> = ({
           setRenderStep(step || '');
         }
       );
-
       if (result.success) {
         message.success('分镜渲染完成');
-        loadData(); // 重新加载数据以显示新版本
+        loadData();
       } else {
         message.error(result.error || '渲染失败');
       }
@@ -315,6 +310,14 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     }
   }, [projectId, shots, ttiConfigId, settings.itvConfigs, settings.ttsConfigs, loadData]);
 
+  // 剧本内容变更
+  const handleScriptChange = useCallback((shotId: string, scriptContent: string) => {
+    const updatedShots = shots.map(s =>
+      s.id === shotId ? { ...s, scriptContent } : s
+    );
+    saveAllShots(updatedShots);
+  }, [shots, saveAllShots]);
+
   // 提示词变更
   const handleDescriptionChange = useCallback((shotId: string, description: string) => {
     const updatedShots = shots.map(s =>
@@ -323,15 +326,74 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     saveAllShots(updatedShots);
   }, [shots, saveAllShots]);
 
-  // 参考图变更
-  const handleImageChange = useCallback((shotId: string, imagePath: string | undefined) => {
+  // 多图片变更
+  const handleImagesChange = useCallback((shotId: string, imagePaths: string[], currentImageIndex: number) => {
     const updatedShots = shots.map(s =>
-      s.id === shotId ? { ...s, imagePath } : s
+      s.id === shotId ? {
+        ...s,
+        imagePaths,
+        currentImageIndex,
+        imagePath: imagePaths[currentImageIndex] || undefined,
+      } : s
     );
     saveAllShots(updatedShots);
   }, [shots, saveAllShots]);
 
-  // 生成单条提示词
+  // 多视频变更
+  const handleVideosChange = useCallback((shotId: string, videos: ShotVideo[], currentVideoIndex: number) => {
+    const updatedShots = shots.map(s =>
+      s.id === shotId ? { ...s, videos, currentVideoIndex } : s
+    );
+    saveAllShots(updatedShots);
+  }, [shots, saveAllShots]);
+
+  // 向上合并
+  const handleMergeUp = useCallback(async (shotId: string) => {
+    const index = shots.findIndex(s => s.id === shotId);
+    if (index <= 0) return;
+    const target = shots[index - 1];
+    const source = shots[index];
+    const merged = mergeShots(target, source);
+    const updatedShots = shots.filter((_, i) => i !== index).map((s, i) =>
+      i === index - 1 ? merged : s
+    );
+    await saveAllShots(updatedShots);
+    message.success('分镜已向上合并');
+  }, [shots, saveAllShots]);
+
+  // 向下合并
+  const handleMergeDown = useCallback(async (shotId: string) => {
+    const index = shots.findIndex(s => s.id === shotId);
+    if (index < 0 || index >= shots.length - 1) return;
+    const target = shots[index];
+    const source = shots[index + 1];
+    const merged = mergeShots(target, source);
+    const updatedShots = shots.filter((_, i) => i !== index + 1).map((s, i) =>
+      i === index ? merged : s
+    );
+    await saveAllShots(updatedShots);
+    message.success('分镜已向下合并');
+  }, [shots, saveAllShots]);
+
+  // 上移
+  const handleMoveUp = useCallback(async (shotId: string) => {
+    const index = shots.findIndex(s => s.id === shotId);
+    if (index <= 0) return;
+    const updatedShots = [...shots];
+    [updatedShots[index - 1], updatedShots[index]] = [updatedShots[index], updatedShots[index - 1]];
+    await saveAllShots(updatedShots);
+  }, [shots, saveAllShots]);
+
+  // 下移
+  const handleMoveDown = useCallback(async (shotId: string) => {
+    const index = shots.findIndex(s => s.id === shotId);
+    if (index < 0 || index >= shots.length - 1) return;
+    const updatedShots = [...shots];
+    [updatedShots[index], updatedShots[index + 1]] = [updatedShots[index + 1], updatedShots[index]];
+    await saveAllShots(updatedShots);
+  }, [shots, saveAllShots]);
+
+  // 生成提示词
   const handleGenerateShotPrompt = useCallback(async (shotId: string) => {
     if (!episodeId) {
       message.warning('未选择分集');
@@ -339,7 +401,6 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     }
     const shot = shots.find(s => s.id === shotId);
     if (!shot) return;
-
     setGeneratingPrompts(prev => new Set(prev).add(shotId));
     try {
       const result = await generateShotPrompt(
@@ -350,7 +411,6 @@ export const Storyboard: React.FC<StoryboardProps> = ({
         llmConfigId
       );
       if (result.success) {
-        // 更新本地状态
         setShots(prev => prev.map(s => s.id === shotId ? { ...s, description: result.prompt } : s));
         message.success('提示词生成完成');
       } else {
@@ -378,11 +438,9 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       message.info('所有分镜都已有提示词');
       return;
     }
-
     const shotIds = shotsWithoutPrompt.map(s => s.id);
     setGeneratingPrompts(new Set(shotIds));
     setBatchProgress({ current: 0, total: shotsWithoutPrompt.length, step: '准备生成...' });
-
     try {
       const results = await batchGenerateShotPrompts(
         projectId,
@@ -392,13 +450,11 @@ export const Storyboard: React.FC<StoryboardProps> = ({
         (current, total, result) => {
           setBatchProgress({ current, total, step: `生成中 ${current}/${total}` });
           if (result.success) {
-            // 更新本地状态
             setShots(prev => prev.map(s => s.id === result.shotId ? { ...s, description: result.prompt } : s));
           }
         },
         llmConfigId
       );
-
       const successCount = results.filter(r => r.success).length;
       message.success(`提示词生成完成: ${successCount}/${results.length} 成功`);
     } catch (err: any) {
@@ -431,16 +487,9 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       message.warning('缺少分集信息或剧本内容');
       return;
     }
-
     setIsAnalyzing(true);
     try {
-      await startShotAnalysis(
-        projectId,
-        episodeId,
-        episodeName || `分集 ${episodeId}`,
-        script,
-        llmConfigId
-      );
+      await startShotAnalysis(projectId, episodeId, episodeName || `分集 ${episodeId}`, script, llmConfigId);
       message.info('AI 分镜生成任务已启动，可在状态栏查看进度');
     } catch (err: any) {
       message.error(err.message || '启动生成失败');
@@ -457,15 +506,9 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       message.warning('请输入画面描述');
       return;
     }
-
-    const updatedShot: Shot = {
-      ...editingShot!,
-      ...editFormData,
-    } as Shot;
-
+    const updatedShot: Shot = { ...editingShot!, ...editFormData } as Shot;
     const isNew = !shots.find(s => s.id === editingShot!.id);
     let updatedShots: Shot[];
-
     if (isNew) {
       updatedShots = [...shots, updatedShot];
       message.success('分镜已添加');
@@ -473,7 +516,6 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       updatedShots = shots.map(s => s.id === updatedShot.id ? updatedShot : s);
       message.success('分镜已更新');
     }
-
     await saveAllShots(updatedShots);
     setEditModalOpen(false);
     setEditingShot(null);
@@ -485,15 +527,13 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       message.warning('未选择分集');
       return;
     }
-    const unconfirmedShots = shots.filter(s => !s.imagePath);
+    const unconfirmedShots = shots.filter(s => !s.imagePath && !(s.imagePaths?.length));
     if (unconfirmedShots.length === 0) {
       message.info('所有分镜都已有图片');
       return;
     }
-
     const shotIds = unconfirmedShots.map(s => s.id);
     setGeneratingShots(new Set(shotIds));
-
     try {
       await batchGenerateShotImages(projectId, episodeId, shotIds, characters, scenes, ttiConfigId);
       message.info(`已启动 ${shotIds.length} 个分镜的图片生成任务`);
@@ -503,19 +543,16 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     }
   }, [projectId, episodeId, shots, characters, scenes, ttiConfigId]);
 
-  // 批量渲染视频（完整流程）
   const handleBatchRenderVideos = useCallback(async () => {
     const confirmedToRender = shots.filter(s => s.confirmed);
     if (confirmedToRender.length === 0) {
       message.warning('请先确认要渲染的分镜');
       return;
     }
-
     const shotIds = confirmedToRender.map(s => s.id);
     setRenderingShots(new Set(shotIds));
     setRenderProgress(0);
     setRenderStep('准备批量渲染...');
-
     try {
       const result = await batchRenderShots(
         {
@@ -532,7 +569,6 @@ export const Storyboard: React.FC<StoryboardProps> = ({
           setRenderStep(`${current.step || ''} (${current.shotId})`);
         }
       );
-
       message.success(`批量渲染完成: ${result.success} 成功, ${result.failed} 失败`);
       loadData();
     } catch (err: any) {
@@ -600,8 +636,10 @@ export const Storyboard: React.FC<StoryboardProps> = ({
           generatingImages={generatingShots}
           generatingVideos={renderingShots}
           batchProgress={batchProgress}
+          onScriptChange={handleScriptChange}
           onPromptChange={handleDescriptionChange}
-          onImageChange={handleImageChange}
+          onImagesChange={handleImagesChange}
+          onVideosChange={handleVideosChange}
           onGeneratePrompt={handleGenerateShotPrompt}
           onBatchGeneratePrompts={handleBatchGeneratePrompts}
           onGenerateImage={handleGenerateShotImage}
@@ -610,6 +648,12 @@ export const Storyboard: React.FC<StoryboardProps> = ({
           onBatchGenerateVideos={handleBatchRenderVideos}
           onToggleConfirm={handleToggleConfirm}
           onDelete={handleDeleteShot}
+          onBatchDelete={handleBatchDelete}
+          onBatchConfirm={handleBatchConfirm}
+          onMergeUp={handleMergeUp}
+          onMergeDown={handleMergeDown}
+          onMoveUp={handleMoveUp}
+          onMoveDown={handleMoveDown}
           onAddShot={handleAddShot}
         />
       )}

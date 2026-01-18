@@ -1,0 +1,109 @@
+/* VideoCardGrid 多视频卡片网格样式 */
+
+.videoCardGrid {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.videoCards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.videoCard {
+  width: 60px;
+  height: 40px;
+  border-radius: 4px;
+  overflow: hidden;
+  cursor: pointer;
+  position: relative;
+  border: 2px solid transparent;
+  background: #1a1a1a;
+  transition: border-color 0.2s;
+}
+
+.videoCard:hover {
+  border-color: #3f3f46;
+}
+
+.videoCard.selected {
+  border-color: #10b981;
+}
+
+.videoCard img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.videoCard .videoPlaceholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #52525b;
+  font-size: 18px;
+}
+
+.videoCard .versionLabel {
+  position: absolute;
+  bottom: 2px;
+  left: 2px;
+  font-size: 9px;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.6);
+  padding: 0 4px;
+  border-radius: 2px;
+}
+
+.videoCard .selectedIcon {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  color: #10b981;
+  font-size: 12px;
+  background: rgba(0, 0, 0, 0.6);
+  border-radius: 50%;
+}
+
+.videoCard .cardOverlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.videoCard:hover .cardOverlay {
+  opacity: 1;
+}
+
+.videoCard .overlayBtn {
+  color: #fff;
+  padding: 2px;
+}
+
+.videoCard.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed #3f3f46;
+  color: #52525b;
+  gap: 2px;
+  cursor: default;
+}
+
+.videoCardGrid .generateBtn {
+  align-self: flex-start;
+  font-size: 11px;
+  padding: 0 6px;
+  height: 22px;
+}
