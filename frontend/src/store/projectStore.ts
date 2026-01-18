@@ -770,6 +770,26 @@ export async function saveEpisodeShots(
   await saveEpisode(projectId, episodeId, { hasAnalysis: true });
 }
 
+/**
+ * 更新单个分镜
+ */
+export async function updateShot(
+  projectId: string,
+  episodeId: string,
+  shotId: string,
+  updates: Partial<Shot>
+): Promise<Shot | null> {
+  const shots = await loadShots(projectId, episodeId);
+  const index = shots.findIndex(s => s.id === shotId);
+  if (index === -1) return null;
+
+  const updatedShot = { ...shots[index], ...updates };
+  shots[index] = updatedShot;
+  await saveEpisodeShots(projectId, episodeId, shots);
+
+  return updatedShot;
+}
+
 export async function deleteEpisodeAnalysis(
   projectId: string,
   episodeId: string

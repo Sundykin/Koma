@@ -418,7 +418,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
         </span>
       ),
       children: (
-        <div style={{ padding: 16 }}>
+        <div style={{ padding: 16, maxHeight: 'calc(100vh - 280px)', overflowY: 'auto' }}>
           <p style={{ marginBottom: 16, color: '#888' }}>
             自定义 AI 功能使用的 Prompt 模板，支持变量替换。
           </p>
@@ -480,6 +480,58 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {(Object.values(promptTemplates) as PromptTemplate[])
               .filter(t => t.id.startsWith('tti_'))
+              .map((template) => (
+              <Card key={template.id} size="small">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 500, marginBottom: 4 }}>
+                      {template.name}
+                      {template.isCustom && (
+                        <span style={{ marginLeft: 8, color: '#1890ff', fontSize: 12 }}>
+                          (已自定义)
+                        </span>
+                      )}
+                    </div>
+                    <div style={{ color: '#888', fontSize: 13 }}>
+                      {template.description}
+                      <br />
+                      <span style={{ fontSize: 12 }}>
+                        变量: {template.variables.map(v => `{{${v}}}`).join(', ')}
+                      </span>
+                    </div>
+                  </div>
+                  <Space>
+                    <Button
+                      type="link"
+                      size="small"
+                      icon={<EditOutlined />}
+                      onClick={() => handleEditTemplate(template)}
+                    >
+                      编辑
+                    </Button>
+                    {template.isCustom && (
+                      <Popconfirm
+                        title="确定重置为默认模板？"
+                        onConfirm={() => handleResetTemplate(template.id)}
+                        okText="重置"
+                        cancelText="取消"
+                      >
+                        <Button type="link" size="small" icon={<ReloadOutlined />} danger>
+                          重置
+                        </Button>
+                      </Popconfirm>
+                    )}
+                  </Space>
+                </div>
+              </Card>
+            ))}
+          </div>
+
+          {/* ITV 模板（视频生成） */}
+          <Divider orientation="left" style={{ margin: '24px 0 8px' }}>ITV 模板（视频生成）</Divider>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {(Object.values(promptTemplates) as PromptTemplate[])
+              .filter(t => t.id.startsWith('itv_'))
               .map((template) => (
               <Card key={template.id} size="small">
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>

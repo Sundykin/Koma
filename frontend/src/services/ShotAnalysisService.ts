@@ -16,7 +16,7 @@ import {
   loadEpisode,
 } from '../store/projectStore';
 
-// 分镜 JSON Schema
+// 分镜 JSON Schema（不含 description，后续手动生成提示词）
 const SHOTS_SCHEMA = {
   type: 'object',
   properties: {
@@ -29,13 +29,12 @@ const SHOTS_SCHEMA = {
           shotType: { type: 'string', enum: ['close-up', 'medium', 'wide', 'extreme-wide'] },
           cameraMovement: { type: 'string', enum: ['static', 'pan', 'zoom-in', 'tracking', 'handheld'] },
           duration: { type: 'number', description: '持续时长(秒)' },
-          description: { type: 'string', description: '画面描述/提示词' },
           characters: { type: 'array', items: { type: 'string' }, description: '涉及的角色名' },
           dialogue: { type: 'string', description: '台词' },
           emotion: { type: 'string', description: '情绪氛围' },
           props: { type: 'array', items: { type: 'string' }, description: '涉及的道具名' },
         },
-        required: ['scriptContent', 'shotType', 'description'],
+        required: ['scriptContent', 'shotType'],
       },
     },
   },
@@ -135,19 +134,20 @@ export class ShotAnalysisService {
         baseUrl: this.llmConfig!.baseUrl,
         modelName: this.llmConfig!.modelName,
       });
-      const systemPrompt = `你是一个专业的影视分镜师。你的任务是根据剧本内容，结合给定的角色、场景和道具，生成详细的分镜脚本。
+      // 分镜拆解只生成结构，不生成提示词
+      const systemPrompt = `你是一个专业的影视分镜师。你的任务是根据剧本内容，结合给定的角色、场景和道具，生成分镜结构。
 每个分镜应该包含：
 - scriptContent: 对应的剧本原文
 - shotType: 景别（close-up特写/medium中景/wide全景/extreme-wide大全景）
 - cameraMovement: 运镜方式（static固定/pan摇镜/zoom-in推镜/tracking跟随/handheld手持）
 - duration: 预估时长（秒）
-- description: 详细的画面描述，用于生成图片的提示词
 - characters: 出现的角色名列表
 - dialogue: 角色台词（如有）
 - emotion: 画面情绪氛围
 - props: 出现的道具名列表
 
-请确保分镜覆盖剧本的所有重要内容，每个分镜的描述要详细具体。`;
+注意：不需要生成画面描述(description)提示词，这将在后续步骤由用户手动触发生成。
+请确保分镜覆盖剧本的所有重要内容。`;
 
       const result = await provider.chat([
         { role: 'system', content: systemPrompt },
@@ -166,13 +166,14 @@ export class ShotAnalysisService {
       const charNameToId = new Map(characters.map(c => [c.name, c.id]));
       const propNameToId = new Map(props.map(p => [p.name, p.id]));
 
+      // 分镜拆解时 description 为 undefined，后续手动生成
       const shots: Shot[] = parsed.shots.map((s, index) => ({
         id: `shot_${Date.now()}_${index}`,
         scriptContent: s.scriptContent || '',
         shotType: s.shotType || 'medium',
         cameraMovement: s.cameraMovement || 'static',
         duration: s.duration || 3,
-        description: s.description || '',
+        description: undefined,  // 后续手动生成提示词
         characters: (s.characters || []).map((name: string) => charNameToId.get(name) || name),
         dialogue: s.dialogue || '',
         emotion: s.emotion || '',

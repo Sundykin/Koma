@@ -1,0 +1,235 @@
+/* ShotListEditor 分镜列表编辑器样式 */
+
+.shotListEditor {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: #0f0f0f;
+}
+
+/* 顶部工具栏 */
+.shotListToolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  background: #141414;
+  border-bottom: 1px solid #27272a;
+}
+
+.toolbarStats {
+  font-size: 12px;
+}
+
+/* 批量进度条 */
+.batchProgressBar {
+  padding: 8px 16px;
+  background: #1a1a1a;
+  border-bottom: 1px solid #27272a;
+}
+
+/* 表头 */
+.shotListHeader {
+  display: flex;
+  align-items: center;
+  padding: 8px 16px;
+  background: #1a1a1a;
+  border-bottom: 1px solid #27272a;
+  font-size: 12px;
+  color: #71717a;
+  font-weight: 500;
+}
+
+.headerCol {
+  flex-shrink: 0;
+}
+
+.headerIndex {
+  width: 48px;
+  text-align: center;
+}
+
+.headerScript {
+  width: 200px;
+  padding-left: 8px;
+}
+
+.headerPrompt {
+  flex: 1;
+  padding: 0 8px;
+}
+
+.headerImage {
+  width: 120px;
+  text-align: center;
+}
+
+.headerVideo {
+  width: 100px;
+  text-align: center;
+}
+
+.headerActions {
+  width: 80px;
+  text-align: center;
+}
+
+/* 分镜列表主体 */
+.shotListBody {
+  flex: 1;
+  overflow-y: auto;
+}
+
+/* 空列表 */
+.emptyList {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+  color: #71717a;
+}
+
+/* 单行分镜 */
+.shotRow {
+  display: flex;
+  align-items: stretch;
+  padding: 12px 16px;
+  border-bottom: 1px solid #27272a;
+  transition: background-color 0.2s;
+}
+
+.shotRow:hover {
+  background: #1a1a1a;
+}
+
+/* 序号列 */
+.shotRowIndex {
+  width: 48px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.indexNumber {
+  font-size: 14px;
+  font-weight: 600;
+  color: #a1a1aa;
+}
+
+.confirmedIcon {
+  color: #52c41a;
+  font-size: 14px;
+}
+
+/* 剧本文案列 */
+.shotRowScript {
+  width: 200px;
+  padding: 0 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.scriptText {
+  font-size: 13px;
+  color: #e4e4e7;
+  margin: 0;
+  line-height: 1.5;
+}
+
+.shotMeta {
+  margin-top: 4px;
+}
+
+.shotMeta .ant-tag {
+  font-size: 10px;
+  padding: 0 4px;
+  line-height: 16px;
+  margin-right: 4px;
+}
+
+/* 提示词编辑器列 */
+.shotRowPrompt {
+  flex: 1;
+  padding: 0 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.promptEditor {
+  flex: 1;
+}
+
+.promptEditor .cm-editor {
+  font-size: 12px !important;
+}
+
+.promptGenBtn {
+  font-size: 11px;
+  align-self: flex-start;
+  padding: 0 8px;
+  height: 22px;
+}
+
+/* 参考图列 */
+.shotRowImage {
+  width: 120px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.noImage {
+  width: 80px;
+  height: 45px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: #1a1a1a;
+  border: 1px dashed #3f3f46;
+  border-radius: 4px;
+  color: #52525b;
+  font-size: 10px;
+  gap: 2px;
+}
+
+.noImage .anticon {
+  font-size: 16px;
+}
+
+/* 视频版本列 */
+.shotRowVideo {
+  width: 100px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.videoVersions {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+/* 操作列 */
+.shotRowActions {
+  width: 80px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  flex-shrink: 0;
+}

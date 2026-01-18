@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Project, ScriptAnalysisResult, EditorStep, AppSettings, Episode } from './types';
+import { Project, ScriptAnalysisResult, EditorStep, AppSettings, Episode, EpisodeStepProgress } from './types';
 import { ProjectList } from './components/ProjectList';
 import { ProjectOverview } from './components/ProjectOverview';
 import { AssetManager } from './components/AssetManager';
 import { Storyboard } from './components/Storyboard';
 import type { MentionItem } from './editor';
+import { ScriptEditor } from './editor';
 import { VideoEditor } from './components/editor';
 import { SettingsPage } from './components/SettingsPage';
 import { StepNavigator } from './components/StepNavigator';
@@ -15,7 +16,7 @@ import { TaskStatusBar } from './components/TaskStatusBar';
 import { useProjects } from './hooks/useProjects';
 import { TaskManager } from './services/TaskManager';
 import { startBackgroundAnalysis } from './services/ScriptAnalysisService';
-import { loadCharacters, loadScenes, loadProps, loadShots } from './store/projectStore';
+import { loadCharacters, loadScenes, loadProps, loadShots, saveEpisode } from './store/projectStore';
 import { Menu, Avatar, Tooltip, Button, Tag, Spin, App as AntApp } from 'antd';
 import {
   AppstoreOutlined,
@@ -138,6 +139,12 @@ const AppContent: React.FC = () => {
   );
   const [editorStep, setEditorStep] = useState<EditorStep>(isVideoDevMode ? 'video' : 'script');
   const [activeEpisode, setActiveEpisode] = useState<Episode | null>(null);
+  const [stepProgress, setStepProgress] = useState<EpisodeStepProgress>({
+    script: 'pending',
+    assets: 'pending',
+    storyboard: 'pending',
+    video: 'pending',
+  });
   const [appSettings, setAppSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
 
   // 弹窗状态
@@ -211,6 +218,16 @@ const AppContent: React.FC = () => {
       // 剧本解析完成后自动跳转到资产管理步骤，并重新加载数据
       if (task.type === 'script-analysis' && task.status === 'completed') {
         message.success('剧本解析完成，正在跳转到资产管理...');
+        // 标记剧本步骤为完成并持久化
+        setStepProgress(prev => {
+          const updated = { ...prev, script: 'completed' };
+          if (activeProject && activeEpisode) {
+            setActiveEpisode({ ...activeEpisode, stepProgress: updated });
+            saveEpisode(activeProject.id, activeEpisode.id, { stepProgress: updated })
+              .catch(err => console.error('[App] 保存步骤进度失败:', err));
+          }
+          return updated;
+        });
         // 重新加载分析数据
         loadAnalysisData(activeProject.id);
         setEditorStep('assets');
@@ -218,7 +235,7 @@ const AppContent: React.FC = () => {
     });
 
     return () => unsubscribe();
-  }, [activeProject?.id, message, loadAnalysisData]);
+  }, [activeProject?.id, activeEpisode, message, loadAnalysisData]);
 
   // 进入编辑器视图时加载已保存的分析数据
   useEffect(() => {
@@ -316,11 +333,50 @@ const AppContent: React.FC = () => {
   const handleEnterEpisode = (episode: Episode) => {
     setActiveEpisode(episode);
     setView('editor');
-    setEditorStep('script');
+    // 加载分集的步骤进度，如果没有则使用默认值
+    const defaultProgress: EpisodeStepProgress = {
+      script: 'pending',
+      assets: 'pending',
+      storyboard: 'pending',
+      video: 'pending',
+    };
+    setStepProgress(episode.stepProgress || defaultProgress);
+    // 根据步骤进度决定初始步骤：从第一个未完成的步骤开始
+    const steps: EditorStep[] = ['script', 'assets', 'storyboard', 'video'];
+    const progress = episode.stepProgress || defaultProgress;
+    const firstPending = steps.find(s => progress[s] === 'pending') || 'script';
+    setEditorStep(firstPending);
     // 加载分集剧本
     setScriptText(episode.scriptText || '');
     setAnalysisData(null);
   };
+
+  // 标记步骤为完成
+  const markStepCompleted = useCallback((step: EditorStep) => {
+    setStepProgress(prev => {
+      const updated = { ...prev, [step]: 'completed' as const };
+      // 同步更新到 activeEpisode 并持久化
+      if (activeProject && activeEpisode) {
+        setActiveEpisode({ ...activeEpisode, stepProgress: updated });
+        saveEpisode(activeProject.id, activeEpisode.id, { stepProgress: updated })
+          .catch(err => console.error('[App] 保存步骤进度失败:', err));
+      }
+      return updated;
+    });
+  }, [activeProject, activeEpisode]);
+
+  // 处理步骤切换（带完成标记）
+  const handleStepChangeWithMark = useCallback((targetStep: EditorStep) => {
+    const stepOrder: EditorStep[] = ['script', 'assets', 'storyboard', 'video'];
+    const currentIndex = stepOrder.indexOf(editorStep);
+    const targetIndex = stepOrder.indexOf(targetStep);
+
+    // 如果是向后跳转，标记当前步骤为完成
+    if (targetIndex > currentIndex) {
+      markStepCompleted(editorStep);
+    }
+    setEditorStep(targetStep);
+  }, [editorStep, markStepCompleted]);
 
   // 删除项目
   const handleDeleteProject = async (id: string) => {
@@ -375,36 +431,6 @@ const AppContent: React.FC = () => {
       setIsAnalyzing(false);
     }
   };
-
-  // --- 辅助组件：剧本工具栏 ---
-  const ScriptToolbar = () => (
-    <div className="flex items-center justify-between p-2 bg-[#1a1a1a] border-b border-gray-800 rounded-t-xl select-none">
-        <div className="flex items-center gap-1">
-            <button className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors" title="粗体">
-                <Bold className="w-4 h-4" />
-            </button>
-            <button className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors" title="斜体">
-                <Italic className="w-4 h-4" />
-            </button>
-            <div className="w-[1px] h-4 bg-gray-700 mx-1"></div>
-            <button className="flex items-center gap-1 px-2 py-1.5 text-xs font-medium text-gray-300 hover:bg-gray-700 rounded transition-colors">
-                <MapPin className="w-3 h-3 text-purple-400" /> 场景
-            </button>
-            <button className="flex items-center gap-1 px-2 py-1.5 text-xs font-medium text-gray-300 hover:bg-gray-700 rounded transition-colors">
-                <User className="w-3 h-3 text-blue-400" /> 角色
-            </button>
-            <button className="flex items-center gap-1 px-2 py-1.5 text-xs font-medium text-gray-300 hover:bg-gray-700 rounded transition-colors">
-                <MessageSquare className="w-3 h-3 text-green-400" /> 台词
-            </button>
-            <button className="flex items-center gap-1 px-2 py-1.5 text-xs font-medium text-gray-300 hover:bg-gray-700 rounded transition-colors">
-                <Type className="w-3 h-3 text-orange-400" /> 动作
-            </button>
-        </div>
-        <div className="flex items-center gap-1 text-xs text-gray-500 font-mono">
-            {scriptText.length} 字符
-        </div>
-    </div>
-  );
 
   // --- 渲染辅助函数 ---
 
@@ -587,7 +613,40 @@ const AppContent: React.FC = () => {
             {/* 下层：步骤导航 (仅在编辑器模式显示) */}
             {view === 'editor' && (
                 <>
-                  <StepNavigator currentStep={editorStep} onStepChange={setEditorStep} />
+                  <StepNavigator
+                    currentStep={editorStep}
+                    onStepChange={setEditorStep}
+                    stepProgress={stepProgress}
+                    actionButton={
+                      editorStep === 'script' ? (
+                        <Button
+                          type="primary"
+                          icon={isAnalyzing ? <LoadingOutlined /> : <ThunderboltOutlined />}
+                          onClick={handleAnalyze}
+                          disabled={isAnalyzing || !scriptText.trim()}
+                          className="bg-green-600 hover:bg-green-500 border-none"
+                        >
+                          {isAnalyzing ? '解析中...' : '开始智能解析'}
+                        </Button>
+                      ) : editorStep === 'assets' ? (
+                        <Button
+                          type="primary"
+                          onClick={() => handleStepChangeWithMark('storyboard')}
+                          className="bg-green-600 hover:bg-green-500 border-none"
+                        >
+                          下一步：AI分镜
+                        </Button>
+                      ) : editorStep === 'storyboard' ? (
+                        <Button
+                          type="primary"
+                          onClick={() => handleStepChangeWithMark('video')}
+                          className="bg-green-600 hover:bg-green-500 border-none"
+                        >
+                          下一步：后期剪辑
+                        </Button>
+                      ) : null
+                    }
+                  />
                   {activeProject && <TaskStatusBar projectId={activeProject.id} />}
                 </>
             )}
@@ -634,57 +693,31 @@ const AppContent: React.FC = () => {
                     {/* 剧本编辑器视图 */}
                     {editorStep === 'script' && (
                         <div className="flex h-full">
-                            {/* 编辑器主体 */}
-                            <div className="flex-1 overflow-y-auto">
-                                <div className="h-full flex flex-col px-4 py-6 lg:px-[100px] lg:py-8 transition-all duration-300">
-                                    <h2 className="text-xl font-bold mb-4 text-gray-200 flex items-center gap-2">
-                                        <FileText className="w-5 h-5 text-green-500" />
-                                        剧本创作
-                                    </h2>
-                                    
-                                    {/* 编辑器容器 */}
-                                    <div className="flex-1 bg-[#1a1a1a] rounded-xl border border-gray-800 shadow-xl flex flex-col overflow-hidden focus-within:border-green-600/50 transition-colors">
-                                        <ScriptToolbar />
-                                        
-                                        <div className="flex-1 flex relative">
-                                            {/* 行号模拟 (Visual only) */}
-                                            <div className="w-10 bg-[#161616] border-r border-gray-800 pt-6 text-right pr-2 text-gray-600 font-mono text-sm select-none hidden sm:block">
-                                                {Array.from({length: 20}).map((_, i) => (
-                                                    <div key={i} className="leading-relaxed">{i + 1}</div>
-                                                ))}
-                                            </div>
+                            {/* 编辑器主体 - 填满整个左侧空间 */}
+                            <div className="flex-1 flex flex-col p-4">
+                                {/* 编辑器容器 */}
+                                <div className="flex-1 flex flex-col overflow-hidden">
+                                    <ScriptEditor
+                                        value={scriptText}
+                                        onChange={setScriptText}
+                                        placeholder="在此开始创作... (支持直接粘贴小说或剧本，使用 @ 引用角色、场景、道具)"
+                                        mentionItems={mentionItems}
+                                        minHeight="100%"
+                                        maxHeight="100%"
+                                        showLineNumbers={true}
+                                        darkTheme={true}
+                                        style={{ height: '100%', flex: 1 }}
+                                    />
+                                </div>
 
-                                            <textarea 
-                                                value={scriptText}
-                                                onChange={(e) => setScriptText(e.target.value)}
-                                                className="flex-1 bg-[#1a1a1a] p-6 text-gray-300 focus:outline-none resize-none font-serif leading-relaxed text-lg placeholder-gray-700 selection:bg-green-500/30"
-                                                placeholder="在此开始创作... (支持直接粘贴小说或剧本)"
-                                                spellCheck={false}
-                                            />
-                                        </div>
-                                    </div>
-
-                                    {/* 底部操作区 */}
-                                    <div className="mt-6 flex justify-between items-center">
-                                        <div className="flex items-center gap-3">
-                                             <span className="text-xs text-gray-500 bg-gray-900 px-3 py-1.5 rounded-lg border border-gray-800 flex items-center gap-2">
-                                                <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
-                                                模型: <span className="text-blue-400 font-mono font-bold">
-                                                  {appSettings.llmConfigs.find(c => c.isDefault)?.name || appSettings.llmConfigs[0]?.name || '未配置'}
-                                                </span>
-                                            </span>
-                                        </div>
-
-                                        <Button
-                                            type="primary"
-                                            size="large"
-                                            onClick={handleAnalyze}
-                                            loading={isAnalyzing}
-                                            icon={isAnalyzing ? <LoadingOutlined /> : <ThunderboltOutlined />}
-                                        >
-                                            {isAnalyzing ? 'AI 深度解析中...' : '开始智能拆解剧本'}
-                                        </Button>
-                                    </div>
+                                {/* 底部状态栏 */}
+                                <div className="mt-3 flex justify-between items-center text-xs text-gray-500">
+                                    <span className="flex items-center gap-2">
+                                        <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+                                        {scriptText.length} 字符 | 模型: <span className="text-blue-400 font-mono">
+                                          {appSettings.llmConfigs.find(c => c.isDefault)?.name || appSettings.llmConfigs[0]?.name || '未配置'}
+                                        </span>
+                                    </span>
                                 </div>
                             </div>
 

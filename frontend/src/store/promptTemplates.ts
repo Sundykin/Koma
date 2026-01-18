@@ -10,6 +10,7 @@ export type PromptTemplateType =
   | 'script_generation'      // 剧本生成
   | 'script_polish'          // 剧本润色
   | 'shot_breakdown'         // 分镜拆解
+  | 'shot_prompt_generation' // 分镜提示词生成
   | 'character_extraction'   // 角色提取
   | 'scene_extraction'       // 场景提取
   | 'prop_extraction'        // 道具提取
@@ -19,7 +20,10 @@ export type PromptTemplateType =
   | 'tti_character_costume'  // 角色定妆照（三视图）
   | 'tti_scene_preview'      // 场景预览图
   | 'tti_prop_reference'     // 道具参考图
-  | 'tti_shot_image';        // 分镜图片
+  | 'tti_shot_image'         // 分镜图片
+  // ITV 视频生成模板
+  | 'itv_shot_video'         // 分镜视频
+  | 'itv_character_motion';  // 角色动态视频
 
 // Prompt 模板接口
 export interface PromptTemplate {
@@ -90,7 +94,7 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
   shot_breakdown: {
     id: 'shot_breakdown',
     name: '分镜拆解',
-    description: '将剧本拆解为分镜列表',
+    description: '将剧本拆解为分镜结构（不含提示词）',
     template: `你是一个专业的分镜师，请将以下剧本拆解为分镜列表。
 
 已知角色：{{characters}}
@@ -103,10 +107,10 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
 要求：
 1. 按剧情顺序拆解为若干分镜
 2. 每个分镜应该是一个完整的画面
-3. 为每个分镜生成AI图片生成用的prompt（英文，详细描述画面内容、角色姿态、场景细节、光影氛围）
-4. 合理分配镜头类型和运镜方式（static/pan/zoom-in/tracking）
-5. 建议时长通常为2-5秒
-6. 关联相关角色和道具
+3. 合理分配镜头类型和运镜方式（static/pan/zoom-in/tracking）
+4. 建议时长通常为2-5秒
+5. 关联相关角色和道具
+6. 注意：不需要生成提示词(description)，留空即可
 
 请以 JSON 格式输出分镜列表：
 
@@ -118,7 +122,6 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
       "shotType": "close-up/medium/wide/extreme-wide",
       "cameraMovement": "static/pan/zoom-in/tracking",
       "duration": 3,
-      "description": "画面描述，用于 AI 生图（英文）",
       "dialogue": "对话或旁白内容",
       "characters": ["出场角色名称"],
       "emotion": "情绪标签",
@@ -129,6 +132,33 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
 \`\`\`
 `,
     variables: ['script', 'characters', 'scenes', 'props'],
+    isCustom: false,
+  },
+
+  shot_prompt_generation: {
+    id: 'shot_prompt_generation',
+    name: '分镜提示词生成',
+    description: '为分镜生成视频/图片提示词',
+    template: `根据以下分镜信息生成视频/图片生成提示词。
+
+剧本内容：{{scriptContent}}
+出场角色：{{characters}}
+情绪氛围：{{emotion}}
+风格前缀：{{stylePrefix}}
+
+要求：
+1. 使用英文输出
+2. 为每个角色添加 @角色ID 引用格式（角色引用列表见下方）
+3. 使用以下运镜关键字之一：{{cameraOptions}}
+4. 使用以下景别关键字之一：{{shotTypeOptions}}
+5. 描述画面动作、光影、氛围
+
+可用角色引用：
+{{characterRefs}}
+
+输出格式：直接输出提示词，无需其他说明
+`,
+    variables: ['scriptContent', 'characters', 'emotion', 'stylePrefix', 'cameraOptions', 'shotTypeOptions', 'characterRefs'],
     isCustom: false,
   },
 
@@ -302,6 +332,26 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
     description: '生成分镜预览图',
     template: '{{stylePrefix}}, {{description}}, {{shotType}}, {{emotion}} mood, cinematic lighting, high quality, 4k, detailed',
     variables: ['stylePrefix', 'description', 'shotType', 'emotion'],
+    isCustom: false,
+  },
+
+  // ========== ITV 视频生成模板 ==========
+
+  itv_shot_video: {
+    id: 'itv_shot_video',
+    name: '分镜视频',
+    description: '生成分镜动态视频',
+    template: '{{description}}, {{cameraMovement}}, smooth motion, cinematic, high quality video',
+    variables: ['description', 'cameraMovement'],
+    isCustom: false,
+  },
+
+  itv_character_motion: {
+    id: 'itv_character_motion',
+    name: '角色动态视频',
+    description: '生成角色动态展示视频',
+    template: '{{characterName}} {{action}}, {{stylePrefix}}, smooth animation, character showcase, professional quality',
+    variables: ['characterName', 'action', 'stylePrefix'],
     isCustom: false,
   },
 };

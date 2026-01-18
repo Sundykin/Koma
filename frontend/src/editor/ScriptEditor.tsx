@@ -10,6 +10,7 @@ import { completionKeymap } from '@codemirror/autocomplete';
 import { createMentionPlugin, createMentionAtomicDelete, mentionTheme, type MentionClickHandler } from './mentionPlugin';
 import { createMentionAutocomplete, autocompleteTheme, type MentionDataSource } from './mentionAutocomplete';
 import { createMentionTooltip, tooltipTheme } from './mentionTooltip';
+import { createKeywordHighlightPlugin, keywordHighlightTheme } from './keywordHighlightPlugin';
 import type { MentionItem, MentionType } from './mentionTypes';
 
 export interface ScriptEditorProps {
@@ -22,6 +23,8 @@ export interface ScriptEditorProps {
   // Mention 相关
   mentionItems?: MentionItem[];
   onMentionClick?: MentionClickHandler;
+  // 关键字高亮（运镜/景别）
+  enableKeywordHighlight?: boolean;
   // 样式选项
   showLineNumbers?: boolean;
   darkTheme?: boolean;
@@ -42,6 +45,7 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
   maxHeight = '400px',
   mentionItems = [],
   onMentionClick,
+  enableKeywordHighlight = false,
   showLineNumbers = true,
   darkTheme = false,
   className,
@@ -75,7 +79,7 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
 
   // 创建 mention 扩展（可动态更新）
   const mentionExtensions = useMemo((): Extension[] => {
-    return [
+    const exts: Extension[] = [
       createMentionPlugin(mentionResolver, onMentionClick),
       createMentionAutocomplete(mentionDataSource),
       createMentionTooltip(mentionResolver),
@@ -84,7 +88,15 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
       tooltipTheme,
       autocompleteTheme,
     ];
-  }, [mentionResolver, mentionDataSource, onMentionClick]);
+
+    // 关键字高亮（运镜/景别）
+    if (enableKeywordHighlight) {
+      exts.push(createKeywordHighlightPlugin());
+      exts.push(keywordHighlightTheme);
+    }
+
+    return exts;
+  }, [mentionResolver, mentionDataSource, onMentionClick, enableKeywordHighlight]);
 
   // 创建基础扩展（不变的部分）
   const baseExtensions = useMemo((): Extension[] => {

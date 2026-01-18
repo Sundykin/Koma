@@ -1,72 +1,38 @@
-import React, { useState, useEffect, useCallback, useMemo, memo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import {
-  Card,
   Button,
   Space,
-  Tag,
   Segmented,
   Select,
-  Tooltip,
   Typography,
-  Image,
-  Form,
-  Badge,
   message,
   Input,
   Modal,
-  Popconfirm,
+  Form,
   Spin,
   Empty,
-  Progress,
 } from 'antd';
 import {
-  PlayCircleOutlined,
-  VideoCameraOutlined,
-  SettingOutlined,
-  ThunderboltOutlined,
-  CameraOutlined,
-  CaretRightOutlined,
-  CheckCircleOutlined,
-  CheckCircleFilled,
-  SendOutlined,
   PlusOutlined,
-  DeleteOutlined,
-  EditOutlined,
-  ReloadOutlined,
   LoadingOutlined,
   RobotOutlined,
-  ExpandOutlined,
 } from '@ant-design/icons';
-import type { Shot, Character, Scene, Prop, AppSettings, ITVModelConfig } from '../types';
+import type { Shot, Character, Scene, Prop, AppSettings } from '../types';
 import { loadEpisodeShots, saveEpisodeShots, loadCharacters, loadScenes, loadProps } from '../store/projectStore';
 import { generateShotImage, batchGenerateShotImages } from '../services/ShotGenerationService';
 import { shotRenderWorkflow, batchRenderShots } from '../workflow/shotRenderWorkflow';
 import { startShotAnalysis } from '../services/ShotAnalysisService';
+import { generateShotPrompt, batchGenerateShotPrompts } from '../services/ShotPromptService';
 import { TaskManager } from '../services/TaskManager';
-import { electronService } from '../services/electronService';
 import { ScriptEditor } from '../editor';
 import type { MentionItem } from '../editor';
+import { ShotListEditor } from './ShotListEditor';
 import './Storyboard.css';
+import './ShotListEditor.css';
 
-const { Text, Paragraph } = Typography;
+const { Text } = Typography;
 const { TextArea } = Input;
-
-// 常量配置
-const SHOT_TYPE_MAP: Record<string, string> = {
-  'close-up': '特写',
-  'medium': '中景',
-  'wide': '全景',
-  'extreme-wide': '大全景'
-};
-
-const CAMERA_MOVEMENT_MAP: Record<string, string> = {
-  'static': '固定',
-  'pan': '摇镜',
-  'zoom-in': '推镜',
-  'tracking': '跟随',
-  'handheld': '手持'
-};
 
 const SHOT_TYPE_OPTIONS = [
   { label: 'CU', value: 'close-up' },
@@ -82,356 +48,6 @@ const CAMERA_OPTIONS = [
   { label: '🔍 缓慢推镜', value: 'zoom-in' },
   { label: '👋 手持晃动', value: 'handheld' },
 ];
-
-// ============ 分镜卡片组件 (memo) ============
-interface ShotCardProps {
-  shot: Shot;
-  index: number;
-  isSelected: boolean;
-  isGenerating: boolean;
-  isRendering: boolean;
-  characters: Character[];
-  onSelect: (id: string) => void;
-  onToggleConfirm: (shot: Shot) => void;
-  onEdit: (shot: Shot) => void;
-  onDelete: (id: string) => void;
-  onGenerateImage: (id: string) => void;
-  onRenderVideo: (id: string) => void;
-}
-
-const ShotCard = memo<ShotCardProps>(({
-  shot,
-  index,
-  isSelected,
-  isGenerating,
-  isRendering,
-  characters,
-  onSelect,
-  onToggleConfirm,
-  onEdit,
-  onDelete,
-  onGenerateImage,
-  onRenderVideo,
-}) => {
-  const imageUrl = shot.imagePath
-    ? electronService.fs.toLocalUrl(shot.imagePath)
-    : `https://picsum.photos/seed/${shot.id}/300/169`;
-
-  return (
-    <div
-      className={`shotCard ${isSelected ? 'selected' : ''} ${shot.confirmed ? 'confirmed' : ''}`}
-      onClick={() => onSelect(shot.id)}
-    >
-      <Badge count={index + 1} className="shotIndex" />
-      {shot.confirmed && (
-        <CheckCircleFilled className="confirmedBadge" style={{ color: '#52c41a', position: 'absolute', top: 8, right: 8, fontSize: 18, zIndex: 10 }} />
-      )}
-
-      {/* 缩略图 */}
-      <div className="shotThumbnail">
-        {isGenerating ? (
-          <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#1a1a1a' }}>
-            <Spin indicator={<LoadingOutlined style={{ fontSize: 24 }} spin />} />
-          </div>
-        ) : (
-          <Image
-            src={imageUrl}
-            alt="Storyboard thumbnail"
-            preview={!!shot.imagePath}
-            fallback="https://picsum.photos/seed/fallback/300/169"
-          />
-        )}
-        <div className="thumbnailOverlay">
-          <PlayCircleOutlined className="playIcon" />
-        </div>
-        <Tag className="durationTag">{shot.duration}s</Tag>
-        <Tag className="shotTypeTag">{SHOT_TYPE_MAP[shot.shotType] || shot.shotType}</Tag>
-        {!shot.imagePath && !isGenerating && (
-          <Tag className="noImageTag" color="warning">无图</Tag>
-        )}
-      </div>
-
-      {/* 内容区 */}
-      <div className="shotContent">
-        <Paragraph className="scriptContent" ellipsis={{ rows: 1 }}>
-          "{shot.scriptContent || '(无剧本内容)'}"
-        </Paragraph>
-
-        <div className="shotDescription">
-          <CameraOutlined />
-          <Paragraph ellipsis={{ rows: 2 }} className="descText">
-            {shot.description || '(无描述)'}
-          </Paragraph>
-        </div>
-
-        <div className="shotFooter">
-          <Space size={4} wrap>
-            {shot.cameraMovement !== 'static' && (
-              <Tag color="purple">
-                {CAMERA_MOVEMENT_MAP[shot.cameraMovement] || shot.cameraMovement}
-              </Tag>
-            )}
-            {shot.characters?.map(charId => {
-              const char = characters.find(c => c.id === charId);
-              return char ? <Tag key={charId} color="blue">{char.name}</Tag> : null;
-            })}
-          </Space>
-
-          <Space size={4}>
-            <Tooltip title="生成图片">
-              <Button
-                type="text"
-                size="small"
-                icon={isGenerating ? <LoadingOutlined /> : <ThunderboltOutlined />}
-                disabled={isGenerating || isRendering}
-                onClick={(e) => { e.stopPropagation(); onGenerateImage(shot.id); }}
-              />
-            </Tooltip>
-            <Tooltip title="渲染视频（图片+语音+视频）">
-              <Button
-                type="text"
-                size="small"
-                icon={isRendering ? <LoadingOutlined /> : <VideoCameraOutlined />}
-                disabled={isGenerating || isRendering}
-                onClick={(e) => { e.stopPropagation(); onRenderVideo(shot.id); }}
-              />
-            </Tooltip>
-            <Tooltip title={shot.confirmed ? '取消确认' : '确认此分镜'}>
-              <Button
-                type="text"
-                size="small"
-                icon={shot.confirmed ? <CheckCircleFilled style={{ color: '#52c41a' }} /> : <CheckCircleOutlined />}
-                onClick={(e) => { e.stopPropagation(); onToggleConfirm(shot); }}
-              />
-            </Tooltip>
-            <Tooltip title="编辑">
-              <Button
-                type="text"
-                size="small"
-                icon={<EditOutlined />}
-                onClick={(e) => { e.stopPropagation(); onEdit(shot); }}
-              />
-            </Tooltip>
-            <Popconfirm
-              title="确定删除此分镜？"
-              onConfirm={(e) => { e?.stopPropagation(); onDelete(shot.id); }}
-              onCancel={(e) => e?.stopPropagation()}
-            >
-              <Tooltip title="删除">
-                <Button
-                  type="text"
-                  size="small"
-                  danger
-                  icon={<DeleteOutlined />}
-                  onClick={(e) => e.stopPropagation()}
-                />
-              </Tooltip>
-            </Popconfirm>
-          </Space>
-        </div>
-      </div>
-    </div>
-  );
-});
-
-ShotCard.displayName = 'ShotCard';
-
-// ============ 导演控制面板组件 (memo) ============
-interface DirectorPanelProps {
-  shot: Shot | null;
-  itvConfig: ITVModelConfig | undefined;
-  mentionItems: MentionItem[];
-  isGenerating: boolean;
-  isRendering: boolean;
-  renderProgress: number;
-  renderStep: string;
-  onDescriptionChange: (shotId: string, description: string) => void;
-  onShotTypeChange: (shotId: string, shotType: Shot['shotType']) => void;
-  onCameraMovementChange: (shotId: string, movement: Shot['cameraMovement']) => void;
-  onGenerateImage: (shotId: string) => void;
-  onRenderVideo: (shotId: string) => void;
-  onExpandEditor: () => void;
-}
-
-const DirectorPanel = memo<DirectorPanelProps>(({
-  shot,
-  itvConfig,
-  mentionItems,
-  isGenerating,
-  isRendering,
-  renderProgress,
-  renderStep,
-  onDescriptionChange,
-  onShotTypeChange,
-  onCameraMovementChange,
-  onGenerateImage,
-  onRenderVideo,
-  onExpandEditor,
-}) => {
-  // 稳定的 onChange 回调
-  const handleDescriptionChange = useCallback((value: string) => {
-    if (shot) {
-      onDescriptionChange(shot.id, value);
-    }
-  }, [shot?.id, onDescriptionChange]);
-
-  const handleShotTypeChange = useCallback((value: string | number) => {
-    if (shot) {
-      onShotTypeChange(shot.id, value as Shot['shotType']);
-    }
-  }, [shot?.id, onShotTypeChange]);
-
-  const handleCameraChange = useCallback((value: Shot['cameraMovement']) => {
-    if (shot) {
-      onCameraMovementChange(shot.id, value);
-    }
-  }, [shot?.id, onCameraMovementChange]);
-
-  const handleGenerate = useCallback(() => {
-    if (shot) {
-      onGenerateImage(shot.id);
-    }
-  }, [shot?.id, onGenerateImage]);
-
-  const handleRenderVideo = useCallback(() => {
-    if (shot) {
-      onRenderVideo(shot.id);
-    }
-  }, [shot?.id, onRenderVideo]);
-
-  return (
-    <div className="directorPanel">
-      <div className="panelHeader">
-        <SettingOutlined style={{ color: '#10b981' }} />
-        <Text strong>AI 导演控制台</Text>
-      </div>
-
-      {shot ? (
-        <div className="panelContent">
-          <Form layout="vertical">
-            <Form.Item label="视频生成引擎 (Global)">
-              <Card size="small" className="engineCard">
-                <div className="engineInfo">
-                  <div className="engineIcon">
-                    {itvConfig?.provider?.substring(0, 2).toUpperCase() || 'N/A'}
-                  </div>
-                  <div>
-                    <Text strong style={{ textTransform: 'capitalize' }}>
-                      {itvConfig?.provider || '未配置'}
-                    </Text>
-                    <br />
-                    <Text type="secondary" code style={{ fontSize: 10 }}>
-                      {itvConfig?.name || '-'}
-                    </Text>
-                  </div>
-                  <Badge status={itvConfig ? "success" : "default"} className="statusBadge" />
-                </div>
-                <Text type="secondary" style={{ fontSize: 10 }}>
-                  使用全局设置中配置的模型进行生成。
-                </Text>
-              </Card>
-            </Form.Item>
-
-            <Form.Item
-              label={
-                <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}>
-                  <span>画面提示词 (Prompt)</span>
-                  <Tooltip title="放大编辑">
-                    <Button
-                      type="text"
-                      size="small"
-                      icon={<ExpandOutlined />}
-                      onClick={onExpandEditor}
-                      style={{ marginRight: -8 }}
-                    />
-                  </Tooltip>
-                </div>
-              }
-            >
-              <ScriptEditor
-                value={shot.description}
-                onChange={handleDescriptionChange}
-                placeholder="描述画面内容，可使用 @ 引用角色或道具"
-                mentionItems={mentionItems}
-                minHeight="120px"
-                maxHeight="180px"
-                showLineNumbers={false}
-                darkTheme={true}
-              />
-            </Form.Item>
-
-            <Form.Item label="景别 (Shot Size)">
-              <Segmented
-                options={SHOT_TYPE_OPTIONS}
-                value={shot.shotType}
-                onChange={handleShotTypeChange}
-                block
-              />
-            </Form.Item>
-
-            <Form.Item label="运镜 (Movement)">
-              <Select
-                options={CAMERA_OPTIONS}
-                value={shot.cameraMovement}
-                onChange={handleCameraChange}
-                style={{ width: '100%' }}
-              />
-            </Form.Item>
-          </Form>
-
-          <div className="panelActions">
-            {/* 渲染进度 */}
-            {isRendering && (
-              <div style={{ marginBottom: 12 }}>
-                <Progress
-                  percent={Math.round(renderProgress)}
-                  size="small"
-                  status="active"
-                  strokeColor="#10b981"
-                />
-                <Text type="secondary" style={{ fontSize: 11, display: 'block', textAlign: 'center' }}>
-                  {renderStep || '准备中...'}
-                </Text>
-              </div>
-            )}
-            <Space direction="vertical" style={{ width: '100%' }}>
-              <Button
-                type="default"
-                icon={isGenerating ? <LoadingOutlined /> : <ThunderboltOutlined />}
-                disabled={isGenerating || isRendering}
-                onClick={handleGenerate}
-                block
-              >
-                {isGenerating ? '生成中...' : '仅生成图片'}
-              </Button>
-              <Button
-                type="primary"
-                size="large"
-                icon={isRendering ? <LoadingOutlined /> : <VideoCameraOutlined />}
-                disabled={isGenerating || isRendering}
-                onClick={handleRenderVideo}
-                block
-              >
-                {isRendering ? '渲染中...' : '渲染此镜头 (图片+语音+视频)'}
-              </Button>
-            </Space>
-            <Text type="secondary" style={{ fontSize: 10, display: 'block', textAlign: 'center', marginTop: 8 }}>
-              完整渲染包含图片生成、语音合成和视频生成
-            </Text>
-          </div>
-        </div>
-      ) : (
-        <div className="panelEmpty">
-          <SettingOutlined style={{ fontSize: 48, opacity: 0.1 }} />
-          <Text>请选择一个分镜</Text>
-          <Text type="secondary" style={{ fontSize: 12 }}>以配置详细的导演参数</Text>
-        </div>
-      )}
-    </div>
-  );
-});
-
-DirectorPanel.displayName = 'DirectorPanel';
 
 // ============ 主组件 ============
 interface StoryboardProps {
@@ -462,38 +78,18 @@ export const Storyboard: React.FC<StoryboardProps> = ({
   const [scenes, setScenes] = useState<Scene[]>([]);
   const [props, setProps] = useState<Prop[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedShotId, setSelectedShotId] = useState<string | null>(null);
   const [generatingShots, setGeneratingShots] = useState<Set<string>>(new Set());
+  const [generatingPrompts, setGeneratingPrompts] = useState<Set<string>>(new Set());
   const [renderingShots, setRenderingShots] = useState<Set<string>>(new Set());
   const [renderProgress, setRenderProgress] = useState(0);
   const [renderStep, setRenderStep] = useState('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [batchProgress, setBatchProgress] = useState<{ current: number; total: number; step?: string } | undefined>();
 
   // 编辑弹窗
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editingShot, setEditingShot] = useState<Shot | null>(null);
   const [editFormData, setEditFormData] = useState<Partial<Shot>>({});
-
-  // 放大编辑器弹窗
-  const [expandEditorOpen, setExpandEditorOpen] = useState(false);
-  const [expandEditorValue, setExpandEditorValue] = useState('');
-
-  // 获取默认 ITV 配置
-  const defaultITVConfig = useMemo(() =>
-    settings.itvConfigs?.find(c => c.isDefault) || settings.itvConfigs?.[0],
-    [settings.itvConfigs]
-  );
-
-  // 选中的分镜
-  const selectedShot = useMemo(() =>
-    shots.find(s => s.id === selectedShotId) || null,
-    [shots, selectedShotId]
-  );
-
-  // 已确认的分镜
-  const confirmedShots = useMemo(() => shots.filter(s => s.confirmed), [shots]);
-  const confirmedCount = confirmedShots.length;
-  const totalDuration = useMemo(() => shots.reduce((acc, s) => acc + s.duration, 0), [shots]);
 
   // 实际使用的 mentionItems：优先使用外部传入的，如果为空则从本地数据构建
   const actualMentionItems: MentionItem[] = useMemo(() => {
@@ -567,10 +163,6 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       setCharacters(loadedCharacters);
       setScenes(loadedScenes);
       setProps(loadedProps);
-
-      if (loadedShots.length > 0 && !selectedShotId) {
-        setSelectedShotId(loadedShots[0].id);
-      }
 
       console.log('[Storyboard] 加载数据:', {
         episodeId,
@@ -646,10 +238,6 @@ export const Storyboard: React.FC<StoryboardProps> = ({
 
   // ============ 回调函数 (稳定化) ============
 
-  const handleSelectShot = useCallback((id: string) => {
-    setSelectedShotId(id);
-  }, []);
-
   const handleToggleConfirm = useCallback(async (shot: Shot) => {
     const updatedShots = shots.map(s =>
       s.id === shot.id ? { ...s, confirmed: !s.confirmed } : s
@@ -657,20 +245,11 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     await saveAllShots(updatedShots);
   }, [shots, saveAllShots]);
 
-  const handleEditShot = useCallback((shot: Shot) => {
-    setEditingShot(shot);
-    setEditFormData({ ...shot });
-    setEditModalOpen(true);
-  }, []);
-
   const handleDeleteShot = useCallback(async (shotId: string) => {
     const updatedShots = shots.filter(s => s.id !== shotId);
     await saveAllShots(updatedShots);
-    if (selectedShotId === shotId) {
-      setSelectedShotId(updatedShots[0]?.id || null);
-    }
     message.success('分镜已删除');
-  }, [shots, saveAllShots, selectedShotId]);
+  }, [shots, saveAllShots]);
 
   const handleGenerateShotImage = useCallback(async (shotId: string) => {
     if (!episodeId) {
@@ -736,7 +315,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     }
   }, [projectId, shots, ttiConfigId, settings.itvConfigs, settings.ttsConfigs, loadData]);
 
-  // 导演面板专用回调
+  // 提示词变更
   const handleDescriptionChange = useCallback((shotId: string, description: string) => {
     const updatedShots = shots.map(s =>
       s.id === shotId ? { ...s, description } : s
@@ -744,34 +323,91 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     saveAllShots(updatedShots);
   }, [shots, saveAllShots]);
 
-  const handleShotTypeChange = useCallback((shotId: string, shotType: Shot['shotType']) => {
+  // 参考图变更
+  const handleImageChange = useCallback((shotId: string, imagePath: string | undefined) => {
     const updatedShots = shots.map(s =>
-      s.id === shotId ? { ...s, shotType } : s
+      s.id === shotId ? { ...s, imagePath } : s
     );
     saveAllShots(updatedShots);
   }, [shots, saveAllShots]);
 
-  const handleCameraMovementChange = useCallback((shotId: string, cameraMovement: Shot['cameraMovement']) => {
-    const updatedShots = shots.map(s =>
-      s.id === shotId ? { ...s, cameraMovement } : s
-    );
-    saveAllShots(updatedShots);
-  }, [shots, saveAllShots]);
-
-  // 放大编辑器
-  const handleExpandEditor = useCallback(() => {
-    if (selectedShot) {
-      setExpandEditorValue(selectedShot.description);
-      setExpandEditorOpen(true);
+  // 生成单条提示词
+  const handleGenerateShotPrompt = useCallback(async (shotId: string) => {
+    if (!episodeId) {
+      message.warning('未选择分集');
+      return;
     }
-  }, [selectedShot]);
+    const shot = shots.find(s => s.id === shotId);
+    if (!shot) return;
 
-  const handleExpandEditorSave = useCallback(() => {
-    if (selectedShot) {
-      handleDescriptionChange(selectedShot.id, expandEditorValue);
-      setExpandEditorOpen(false);
+    setGeneratingPrompts(prev => new Set(prev).add(shotId));
+    try {
+      const result = await generateShotPrompt(
+        projectId,
+        episodeId,
+        shot,
+        settings.stylePrompts?.find(p => p.isDefault)?.prompt || '',
+        llmConfigId
+      );
+      if (result.success) {
+        // 更新本地状态
+        setShots(prev => prev.map(s => s.id === shotId ? { ...s, description: result.prompt } : s));
+        message.success('提示词生成完成');
+      } else {
+        message.error(result.error || '生成失败');
+      }
+    } catch (err: any) {
+      message.error(err.message || '生成失败');
+    } finally {
+      setGeneratingPrompts(prev => {
+        const next = new Set(prev);
+        next.delete(shotId);
+        return next;
+      });
     }
-  }, [selectedShot, expandEditorValue, handleDescriptionChange]);
+  }, [projectId, episodeId, shots, llmConfigId, settings.stylePrompts]);
+
+  // 批量生成提示词
+  const handleBatchGeneratePrompts = useCallback(async () => {
+    if (!episodeId) {
+      message.warning('未选择分集');
+      return;
+    }
+    const shotsWithoutPrompt = shots.filter(s => !s.description?.trim());
+    if (shotsWithoutPrompt.length === 0) {
+      message.info('所有分镜都已有提示词');
+      return;
+    }
+
+    const shotIds = shotsWithoutPrompt.map(s => s.id);
+    setGeneratingPrompts(new Set(shotIds));
+    setBatchProgress({ current: 0, total: shotsWithoutPrompt.length, step: '准备生成...' });
+
+    try {
+      const results = await batchGenerateShotPrompts(
+        projectId,
+        episodeId,
+        shotsWithoutPrompt,
+        settings.stylePrompts?.find(p => p.isDefault)?.prompt || '',
+        (current, total, result) => {
+          setBatchProgress({ current, total, step: `生成中 ${current}/${total}` });
+          if (result.success) {
+            // 更新本地状态
+            setShots(prev => prev.map(s => s.id === result.shotId ? { ...s, description: result.prompt } : s));
+          }
+        },
+        llmConfigId
+      );
+
+      const successCount = results.filter(r => r.success).length;
+      message.success(`提示词生成完成: ${successCount}/${results.length} 成功`);
+    } catch (err: any) {
+      message.error(err.message || '批量生成失败');
+    } finally {
+      setGeneratingPrompts(new Set());
+      setBatchProgress(undefined);
+    }
+  }, [projectId, episodeId, shots, llmConfigId, settings.stylePrompts]);
 
   const handleAddShot = useCallback(() => {
     const newShot: Shot = {
@@ -842,7 +478,6 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     setEditModalOpen(false);
     setEditingShot(null);
     setEditFormData({});
-    setSelectedShotId(updatedShot.id);
   }, [editFormData, editingShot, shots, saveAllShots]);
 
   const handleBatchGenerate = useCallback(async () => {
@@ -909,17 +544,6 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     }
   }, [projectId, shots, ttiConfigId, settings.itvConfigs, settings.ttsConfigs, loadData]);
 
-  const handleSendToTimeline = useCallback(() => {
-    if (confirmedCount === 0) {
-      message.warning('请先确认至少一个分镜');
-      return;
-    }
-    if (onConfirmedShotsToTimeline) {
-      onConfirmedShotsToTimeline(confirmedShots);
-      message.success(`${confirmedCount} 个分镜已入轨`);
-    }
-  }, [confirmedCount, confirmedShots, onConfirmedShotsToTimeline]);
-
   // ============ 渲染 ============
 
   if (loading) {
@@ -932,145 +556,63 @@ export const Storyboard: React.FC<StoryboardProps> = ({
 
   return (
     <div className="storyboardContainer">
-      {/* 左侧：分镜列表 */}
-      <div className="storyboardMain">
-        {/* 顶部统计栏 */}
-        <div className="storyboardHeader">
-          <Space size="large">
-            <div className="headerStat">
-              <VideoCameraOutlined />
-              <Text strong style={{ color: '#fff' }}>{shots.length}</Text>
-              <Text type="secondary">Shots</Text>
-            </div>
-            <div className="headerStat">
-              <CheckCircleOutlined style={{ color: confirmedCount > 0 ? '#52c41a' : undefined }} />
-              <Text strong style={{ color: confirmedCount > 0 ? '#52c41a' : '#fff' }}>{confirmedCount}</Text>
-              <Text type="secondary">已确认</Text>
-            </div>
-            <div className="headerStat">
-              <Text strong style={{ color: '#fff' }}>{totalDuration}s</Text>
-              <Text type="secondary">Duration</Text>
-            </div>
-          </Space>
-          <Space>
-            <Button icon={<PlusOutlined />} onClick={handleAddShot}>添加分镜</Button>
-            <Button icon={<ReloadOutlined />} onClick={loadData}>刷新</Button>
-            <Tooltip title="仅生成图片（无图片的分镜）">
-              <Button icon={<ThunderboltOutlined />} onClick={handleBatchGenerate}>批量图片</Button>
-            </Tooltip>
-            <Tooltip title="完整渲染已确认分镜（图片+语音+视频）">
-              <Button
-                icon={<VideoCameraOutlined />}
-                onClick={handleBatchRenderVideos}
-                disabled={confirmedCount === 0 || renderingShots.size > 0}
-              >
-                批量渲染 ({confirmedCount})
-              </Button>
-            </Tooltip>
-            <Button
-              icon={<SendOutlined />}
-              disabled={confirmedCount === 0}
-              onClick={handleSendToTimeline}
-            >
-              入轨 ({confirmedCount})
-            </Button>
-            <Button type="primary" icon={<PlayCircleOutlined />}>预览整片</Button>
-          </Space>
-        </div>
-
-        {/* 镜头卡片列表 */}
-        <div className="storyboardList">
-          {shots.length === 0 ? (
-            <Empty
-              description={isAnalyzing ? "AI 正在生成分镜..." : "暂无分镜数据"}
-              style={{ margin: '100px auto' }}
-            >
-              {isAnalyzing ? (
-                <Spin indicator={<LoadingOutlined style={{ fontSize: 24 }} spin />} />
-              ) : (
-                <Space direction="vertical" size="middle">
-                  {script && episodeId && (
-                    <Button
-                      type="primary"
-                      size="large"
-                      icon={<RobotOutlined />}
-                      onClick={handleGenerateAIShots}
-                    >
-                      AI 智能生成分镜
-                    </Button>
-                  )}
-                  <Button icon={<PlusOutlined />} onClick={handleAddShot}>
-                    手动添加分镜
+      {shots.length === 0 ? (
+        <div className="storyboardEmpty">
+          <Empty
+            description={isAnalyzing ? "AI 正在生成分镜..." : "暂无分镜数据"}
+            style={{ margin: '100px auto' }}
+          >
+            {isAnalyzing ? (
+              <Spin indicator={<LoadingOutlined style={{ fontSize: 24 }} spin />} />
+            ) : (
+              <Space direction="vertical" size="middle">
+                {script && episodeId && (
+                  <Button
+                    type="primary"
+                    size="large"
+                    icon={<RobotOutlined />}
+                    onClick={handleGenerateAIShots}
+                  >
+                    AI 智能生成分镜
                   </Button>
-                  {!script && (
-                    <Text type="secondary" style={{ fontSize: 12 }}>
-                      提示：需要先在剧本步骤输入内容才能���用 AI 生成
-                    </Text>
-                  )}
-                </Space>
-              )}
-            </Empty>
-          ) : (
-            shots.map((shot, index) => (
-              <ShotCard
-                key={shot.id}
-                shot={shot}
-                index={index}
-                isSelected={selectedShotId === shot.id}
-                isGenerating={generatingShots.has(shot.id)}
-                isRendering={renderingShots.has(shot.id)}
-                characters={characters}
-                onSelect={handleSelectShot}
-                onToggleConfirm={handleToggleConfirm}
-                onEdit={handleEditShot}
-                onDelete={handleDeleteShot}
-                onGenerateImage={handleGenerateShotImage}
-                onRenderVideo={handleRenderShotVideo}
-              />
-            ))
-          )}
+                )}
+                <Button icon={<PlusOutlined />} onClick={handleAddShot}>
+                  手动添加分镜
+                </Button>
+                {!script && (
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    提示：需要先在剧本步骤输入内容才能使用 AI 生成
+                  </Text>
+                )}
+              </Space>
+            )}
+          </Empty>
         </div>
-      </div>
-
-      {/* 右侧：AI 导演控制面板 */}
-      <DirectorPanel
-        shot={selectedShot}
-        itvConfig={defaultITVConfig}
-        mentionItems={actualMentionItems}
-        isGenerating={selectedShot ? generatingShots.has(selectedShot.id) : false}
-        isRendering={selectedShot ? renderingShots.has(selectedShot.id) : false}
-        renderProgress={renderProgress}
-        renderStep={renderStep}
-        onDescriptionChange={handleDescriptionChange}
-        onShotTypeChange={handleShotTypeChange}
-        onCameraMovementChange={handleCameraMovementChange}
-        onGenerateImage={handleGenerateShotImage}
-        onRenderVideo={handleRenderShotVideo}
-        onExpandEditor={handleExpandEditor}
-      />
-
-      {/* 放大编辑器弹窗 */}
-      <Modal
-        title="编辑画面提示词"
-        open={expandEditorOpen}
-        onCancel={() => setExpandEditorOpen(false)}
-        onOk={handleExpandEditorSave}
-        okText="保存"
-        cancelText="取消"
-        width={800}
-        centered
-      >
-        <ScriptEditor
-          value={expandEditorValue}
-          onChange={setExpandEditorValue}
-          placeholder="详细描述画面内容，可使用 @ 引用角色或道具"
+      ) : (
+        <ShotListEditor
+          projectId={projectId}
+          shots={shots}
+          characters={characters}
+          scenes={scenes}
+          props={props}
           mentionItems={actualMentionItems}
-          minHeight="300px"
-          maxHeight="500px"
-          showLineNumbers={false}
-          darkTheme={true}
+          generatingPrompts={generatingPrompts}
+          generatingImages={generatingShots}
+          generatingVideos={renderingShots}
+          batchProgress={batchProgress}
+          onPromptChange={handleDescriptionChange}
+          onImageChange={handleImageChange}
+          onGeneratePrompt={handleGenerateShotPrompt}
+          onBatchGeneratePrompts={handleBatchGeneratePrompts}
+          onGenerateImage={handleGenerateShotImage}
+          onBatchGenerateImages={handleBatchGenerate}
+          onGenerateVideo={handleRenderShotVideo}
+          onBatchGenerateVideos={handleBatchRenderVideos}
+          onToggleConfirm={handleToggleConfirm}
+          onDelete={handleDeleteShot}
+          onAddShot={handleAddShot}
         />
-      </Modal>
+      )}
 
       {/* 编辑/添加分镜弹窗 */}
       <Modal

@@ -18,6 +18,14 @@ export interface Project {
   episodeCount?: number;    // 实际分集数（用于分集管理）
 }
 
+// 分集步骤进度
+export interface EpisodeStepProgress {
+  script: 'pending' | 'completed';
+  assets: 'pending' | 'completed';
+  storyboard: 'pending' | 'completed';
+  video: 'pending' | 'completed';
+}
+
 // 分集接口定义
 export interface Episode {
   id: string;
@@ -26,6 +34,7 @@ export interface Episode {
   title: string;            // 分集标题
   scriptText?: string;      // 本集剧本
   status: 'draft' | 'script' | 'storyboard' | 'generating' | 'completed';
+  stepProgress?: EpisodeStepProgress;  // 各步骤完成状态
   createdAt: number;
   updatedAt: number;
   // 分集解析数据引用（实际数据存储在 episodes/{id}/analysis.json）
@@ -117,7 +126,7 @@ export interface Shot {
   shotType: 'close-up' | 'medium' | 'wide' | 'extreme-wide'; // 特写 | 中景 | 全景 | 大全景
   cameraMovement: 'static' | 'pan' | 'zoom-in' | 'tracking' | 'handheld'; // 固定 | 摇镜 | 推镜 | 跟随 | 手持
   duration: number;      // 持续时长(秒)
-  description: string;   // 视频生成模型的提示词 (Prompt)
+  description?: string;  // 视频生成模型的提示词 (Prompt)，分镜拆解后可手动生成
   imageUrl?: string;     // 预览图或生成图（远程URL）
   imagePath?: string;    // 本地图片路径
   characters: string[];  // 涉及的角色ID

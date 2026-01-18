@@ -1,82 +1,135 @@
-import React from 'react';
-import { EditorStep } from '../types';
-import { FileText, Users, Clapperboard, Scissors, Check } from 'lucide-react';
+import React, { ReactNode } from 'react';
+import { EditorStep, EpisodeStepProgress } from '../types';
+import { FileText, Users, Clapperboard, Scissors, Check, Lock } from 'lucide-react';
+import { Tooltip } from 'antd';
 
 interface StepNavigatorProps {
   currentStep: EditorStep;
   onStepChange: (step: EditorStep) => void;
+  stepProgress?: EpisodeStepProgress;  // 各步骤完成状态
+  actionButton?: ReactNode;  // 当前步骤的操作按钮
 }
 
-export const StepNavigator: React.FC<StepNavigatorProps> = ({ currentStep, onStepChange }) => {
-  const steps: { id: EditorStep; label: string; subLabel: string; icon: any }[] = [
-    { id: 'script', label: '剧本解析', subLabel: 'Script Parsing', icon: FileText },
-    { id: 'assets', label: '角色场景', subLabel: 'Assets Gen', icon: Users },
-    { id: 'storyboard', label: 'AI分镜', subLabel: 'Storyboard', icon: Clapperboard },
-    { id: 'video', label: '后期剪辑', subLabel: 'Editing', icon: Scissors },
+// 默认步骤进度（全部未开始）
+const defaultStepProgress: EpisodeStepProgress = {
+  script: 'pending',
+  assets: 'pending',
+  storyboard: 'pending',
+  video: 'pending',
+};
+
+export const StepNavigator: React.FC<StepNavigatorProps> = ({
+  currentStep,
+  onStepChange,
+  stepProgress = defaultStepProgress,
+  actionButton,
+}) => {
+  const steps: { id: EditorStep; label: string; icon: any }[] = [
+    { id: 'script', label: '剧本解析', icon: FileText },
+    { id: 'assets', label: '角色场景', icon: Users },
+    { id: 'storyboard', label: 'AI分镜', icon: Clapperboard },
+    { id: 'video', label: '后期剪辑', icon: Scissors },
   ];
 
-  const stepOrder = ['script', 'assets', 'storyboard', 'video'];
+  const stepOrder: EditorStep[] = ['script', 'assets', 'storyboard', 'video'];
   const currentIndex = stepOrder.indexOf(currentStep);
 
+  // 判断步骤是否可点击：当前步骤或已完成的步骤可点击
+  const isStepClickable = (stepId: EditorStep, index: number): boolean => {
+    if (stepId === currentStep) return true;  // 当前步骤可点击
+    if (stepProgress[stepId] === 'completed') return true;  // 已完成的步骤可点击
+    // 检查前一个步骤是否完成（允许进入下一步）
+    if (index > 0) {
+      const prevStep = stepOrder[index - 1];
+      if (stepProgress[prevStep] === 'completed') return true;
+    }
+    return false;
+  };
+
+  const handleStepClick = (step: EditorStep, index: number) => {
+    if (isStepClickable(step, index)) {
+      onStepChange(step);
+    }
+  };
+
   return (
-    <div className="w-full bg-[#141414] border-b border-gray-800 shadow-xl z-30">
-        <div className="flex items-center justify-center w-full max-w-5xl mx-auto py-8 px-4">
-        {steps.map((step, index) => {
+    <div className="w-full bg-[#141414] border-b border-gray-800 shadow-lg z-30">
+      <div className="flex items-center justify-between w-full max-w-5xl mx-auto py-3 px-4">
+        {/* 步骤条 */}
+        <div className="flex items-center flex-1">
+          {steps.map((step, index) => {
             const isActive = step.id === currentStep;
-            const isCompleted = index < currentIndex;
-            const isFuture = index > currentIndex;
-            
-            return (
-            <React.Fragment key={step.id}>
-                {/* 步骤节点 */}
-                <div 
-                onClick={() => onStepChange(step.id)}
-                className={`flex flex-col items-center gap-3 cursor-pointer group relative z-10 w-24 select-none ${isFuture ? 'cursor-not-allowed opacity-50' : ''}`}
+            const isCompleted = stepProgress[step.id] === 'completed';
+            const clickable = isStepClickable(step.id, index);
+            const isLocked = !clickable && !isActive;
+
+            const stepNode = (
+              <div
+                onClick={() => handleStepClick(step.id, index)}
+                className={`flex items-center gap-2 group relative z-10 select-none transition-opacity ${
+                  clickable ? 'cursor-pointer' : 'cursor-not-allowed'
+                } ${isLocked ? 'opacity-40' : ''}`}
+              >
+                <div
+                  className={`w-8 h-8 rounded-full flex items-center justify-center border-2 transition-all duration-300 ${
+                    isActive
+                      ? 'bg-green-600 border-green-500 text-white scale-105'
+                      : isCompleted
+                      ? 'bg-[#1a1a1a] border-green-600 text-green-500'
+                      : 'bg-[#0f0f0f] border-gray-700 text-gray-600'
+                  }`}
                 >
-                <div 
-                    className={`w-14 h-14 rounded-full flex items-center justify-center border-[3px] transition-all duration-500 shadow-2xl ${
-                    isActive 
-                        ? 'bg-green-600 border-green-500 text-white shadow-green-900/50 scale-110' 
-                        : isCompleted 
-                        ? 'bg-[#1a1a1a] border-green-600 text-green-500' 
-                        : 'bg-[#0f0f0f] border-gray-700 text-gray-600'
-                    }`}
-                >
-                    {isCompleted ? <Check className="w-7 h-7 stroke-[3px]" /> : <step.icon className="w-6 h-6" />}
-                </div>
-                
-                <div className="text-center flex flex-col">
-                    <span 
-                        className={`text-sm font-bold tracking-wide transition-colors duration-300 ${
-                        isActive ? 'text-white' : isCompleted ? 'text-green-500' : 'text-gray-500'
-                        }`}
-                    >
-                        {step.label}
-                    </span>
-                    <span className="text-[10px] uppercase font-mono text-gray-600 mt-0.5 tracking-wider">
-                        {step.subLabel}
-                    </span>
+                  {isCompleted && !isActive ? (
+                    <Check className="w-4 h-4 stroke-[3px]" />
+                  ) : isLocked ? (
+                    <Lock className="w-3 h-3" />
+                  ) : (
+                    <step.icon className="w-4 h-4" />
+                  )}
                 </div>
 
-                {/* 激活状态下的底部光晕点缀 */}
-                {isActive && (
-                    <div className="absolute -bottom-10 w-16 h-1 bg-green-500 rounded-full blur-[2px]"></div>
-                )}
-                </div>
-
-                {/* 连接线 (最后一个节点不需要) */}
-                {index < steps.length - 1 && (
-                <div className="flex-1 h-[3px] mx-4 -mt-10 bg-gray-800 relative rounded-full overflow-hidden">
-                    <div 
-                    className={`absolute top-0 left-0 h-full bg-green-600 transition-all duration-700 ease-in-out`}
-                    style={{ width: index < currentIndex ? '100%' : '0%' }}
-                    />
-                </div>
-                )}
-            </React.Fragment>
+                <span
+                  className={`text-sm font-medium transition-colors duration-300 ${
+                    isActive ? 'text-white' : isCompleted ? 'text-green-500' : 'text-gray-500'
+                  }`}
+                >
+                  {step.label}
+                </span>
+              </div>
             );
-        })}
+
+            return (
+              <React.Fragment key={step.id}>
+                {/* 步骤节点 */}
+                {isLocked ? (
+                  <Tooltip title="请先完成前置步骤" placement="bottom">
+                    {stepNode}
+                  </Tooltip>
+                ) : (
+                  stepNode
+                )}
+
+                {/* 连接线 */}
+                {index < steps.length - 1 && (
+                  <div className="flex-1 h-[2px] mx-3 bg-gray-800 relative rounded-full overflow-hidden min-w-[40px]">
+                    <div
+                      className="absolute top-0 left-0 h-full bg-green-600 transition-all duration-500 ease-in-out"
+                      style={{ width: stepProgress[step.id] === 'completed' ? '100%' : '0%' }}
+                    />
+                  </div>
+                )}
+              </React.Fragment>
+            );
+          })}
         </div>
+
+        {/* 操作按钮区域 */}
+        {actionButton && (
+          <div className="ml-4 flex-shrink-0">
+            {actionButton}
+          </div>
+        )}
+      </div>
     </div>
   );
 };
