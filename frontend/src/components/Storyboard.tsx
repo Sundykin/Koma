@@ -291,11 +291,35 @@ export const Storyboard: React.FC<StoryboardProps> = ({
           setRenderStep(step || '');
         }
       );
-      if (result.success) {
+      if (result.success && result.version) {
+        // 更新 shot 的 videos 字段
+        const newVideo: ShotVideo = {
+          path: result.version.videoPath || result.version.remoteVideoUrl || '',
+          thumbnailPath: result.version.imagePath,
+          prompt: result.version.prompt,
+          seed: result.version.seed,
+          model: result.version.model,
+          createdAt: result.version.createdAt || Date.now(),
+        };
+        const existingVideos = shot.videos || [];
+        const updatedShots = shots.map(s =>
+          s.id === shotId ? {
+            ...s,
+            videos: [...existingVideos, newVideo],
+            currentVideoIndex: existingVideos.length,
+            // 同时更新图片（如果有）
+            ...(result.version.imagePath ? {
+              imagePaths: [...(s.imagePaths || []), result.version.imagePath],
+              currentImageIndex: (s.imagePaths || []).length,
+              imagePath: result.version.imagePath,
+            } : {}),
+          } : s
+        );
+        await saveAllShots(updatedShots);
         message.success('分镜渲染完成');
-        loadData();
       } else {
         message.error(result.error || '渲染失败');
+        loadData();
       }
     } catch (err: any) {
       message.error(err.message || '渲染失败');
@@ -308,7 +332,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       setRenderProgress(0);
       setRenderStep('');
     }
-  }, [projectId, shots, ttiConfigId, settings.itvConfigs, settings.ttsConfigs, loadData]);
+  }, [projectId, shots, ttiConfigId, settings.itvConfigs, settings.ttsConfigs, saveAllShots, loadData]);
 
   // 剧本内容变更
   const handleScriptChange = useCallback((shotId: string, scriptContent: string) => {
@@ -427,15 +451,19 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     }
   }, [projectId, episodeId, shots, llmConfigId, settings.stylePrompts]);
 
-  // 批量生成提示词
-  const handleBatchGeneratePrompts = useCallback(async () => {
+  // 批量生成提示词（跳过已有提示词的）
+  const handleBatchGeneratePrompts = useCallback(async (targetShotIds?: string[]) => {
     if (!episodeId) {
       message.warning('未选择分集');
       return;
     }
-    const shotsWithoutPrompt = shots.filter(s => !s.description?.trim());
+    // 如果指定了 shotIds，则只处理这些分镜中没有提示词的
+    const baseShots = targetShotIds
+      ? shots.filter(s => targetShotIds.includes(s.id))
+      : shots;
+    const shotsWithoutPrompt = baseShots.filter(s => !s.description?.trim());
     if (shotsWithoutPrompt.length === 0) {
-      message.info('所有分镜都已有提示词');
+      message.info('所选分镜都已有提示词');
       return;
     }
     const shotIds = shotsWithoutPrompt.map(s => s.id);
@@ -465,22 +493,84 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     }
   }, [projectId, episodeId, shots, llmConfigId, settings.stylePrompts]);
 
-  const handleAddShot = useCallback(() => {
-    const newShot: Shot = {
-      id: uuidv4(),
-      scriptContent: '',
-      shotType: 'medium',
-      cameraMovement: 'static',
-      duration: 3,
-      description: '',
-      characters: [],
-      dialogue: '',
-      emotion: '',
-    };
-    setEditingShot(newShot);
-    setEditFormData({ ...newShot });
-    setEditModalOpen(true);
-  }, []);
+  // 批量重新生成提示词（强制重新生成已有提示词的）
+  const handleBatchReGeneratePrompts = useCallback(async (targetShotIds?: string[]) => {
+    if (!episodeId) {
+      message.warning('未选择分集');
+      return;
+    }
+    const baseShots = targetShotIds
+      ? shots.filter(s => targetShotIds.includes(s.id))
+      : shots;
+    const shotsWithPrompt = baseShots.filter(s => s.description?.trim());
+    if (shotsWithPrompt.length === 0) {
+      message.info('所选分镜都没有提示词');
+      return;
+    }
+    const shotIds = shotsWithPrompt.map(s => s.id);
+    setGeneratingPrompts(new Set(shotIds));
+    setBatchProgress({ current: 0, total: shotsWithPrompt.length, step: '准备重新生成...' });
+    try {
+      const results = await batchGenerateShotPrompts(
+        projectId,
+        episodeId,
+        shotsWithPrompt,
+        settings.stylePrompts?.find(p => p.isDefault)?.prompt || '',
+        (current, total, result) => {
+          setBatchProgress({ current, total, step: `重新生成中 ${current}/${total}` });
+          if (result.success) {
+            setShots(prev => prev.map(s => s.id === result.shotId ? { ...s, description: result.prompt } : s));
+          }
+        },
+        llmConfigId
+      );
+      const successCount = results.filter(r => r.success).length;
+      message.success(`提示词重新生成完成: ${successCount}/${results.length} 成功`);
+    } catch (err: any) {
+      message.error(err.message || '批量重新生成失败');
+    } finally {
+      setGeneratingPrompts(new Set());
+      setBatchProgress(undefined);
+    }
+  }, [projectId, episodeId, shots, llmConfigId, settings.stylePrompts]);
+
+  // 创建新分镜
+  const createNewShot = useCallback((): Shot => ({
+    id: uuidv4(),
+    scriptContent: '',
+    shotType: 'medium',
+    cameraMovement: 'static',
+    duration: 3,
+    description: '',
+    characters: [],
+    dialogue: '',
+    emotion: '',
+  }), []);
+
+  // 在末尾添加分镜
+  const handleAddShot = useCallback(async () => {
+    const newShot = createNewShot();
+    const updatedShots = [...shots, newShot];
+    await saveAllShots(updatedShots);
+  }, [shots, saveAllShots, createNewShot]);
+
+  // 在指定位置上方插入
+  const handleInsertAbove = useCallback(async (shotId: string) => {
+    const index = shots.findIndex(s => s.id === shotId);
+    if (index < 0) return;
+    const newShot = createNewShot();
+    const updatedShots = [...shots.slice(0, index), newShot, ...shots.slice(index)];
+    await saveAllShots(updatedShots);
+  }, [shots, saveAllShots, createNewShot]);
+
+  // 在指定位置下方插入
+  const handleInsertBelow = useCallback(async (shotId: string) => {
+    const index = shots.findIndex(s => s.id === shotId);
+    if (index < 0) return;
+    const newShot = createNewShot();
+    const updatedShots = [...shots.slice(0, index + 1), newShot, ...shots.slice(index + 1)];
+    await saveAllShots(updatedShots);
+  }, [shots, saveAllShots, createNewShot]);
 
   const handleGenerateAIShots = useCallback(async () => {
     if (!episodeId || !script) {
@@ -522,17 +612,21 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     setEditFormData({});
   }, [editFormData, editingShot, shots, saveAllShots]);
 
-  const handleBatchGenerate = useCallback(async () => {
+  // 批量生成图片（跳过已有图片的）
+  const handleBatchGenerate = useCallback(async (targetShotIds?: string[]) => {
     if (!episodeId) {
       message.warning('未选择分集');
       return;
     }
-    const unconfirmedShots = shots.filter(s => !s.imagePath && !(s.imagePaths?.length));
-    if (unconfirmedShots.length === 0) {
-      message.info('所有分镜都已有图片');
+    const baseShots = targetShotIds
+      ? shots.filter(s => targetShotIds.includes(s.id))
+      : shots;
+    const shotsWithoutImage = baseShots.filter(s => !s.imagePath && !(s.imagePaths?.length));
+    if (shotsWithoutImage.length === 0) {
+      message.info('所选分镜都已有图片');
       return;
     }
-    const shotIds = unconfirmedShots.map(s => s.id);
+    const shotIds = shotsWithoutImage.map(s => s.id);
     setGeneratingShots(new Set(shotIds));
     try {
       await batchGenerateShotImages(projectId, episodeId, shotIds, characters, scenes, ttiConfigId);
@@ -543,8 +637,37 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     }
   }, [projectId, episodeId, shots, characters, scenes, ttiConfigId]);
 
-  const handleBatchRenderVideos = useCallback(async () => {
-    const confirmedToRender = shots.filter(s => s.confirmed);
+  // 批量重新生成图片（强制重新生成已有图片的）
+  const handleBatchReGenerateImages = useCallback(async (targetShotIds?: string[]) => {
+    if (!episodeId) {
+      message.warning('未选择分集');
+      return;
+    }
+    const baseShots = targetShotIds
+      ? shots.filter(s => targetShotIds.includes(s.id))
+      : shots;
+    const shotsWithImage = baseShots.filter(s => s.imagePath || (s.imagePaths?.length));
+    if (shotsWithImage.length === 0) {
+      message.info('所选分镜都没有图片');
+      return;
+    }
+    const shotIds = shotsWithImage.map(s => s.id);
+    setGeneratingShots(new Set(shotIds));
+    try {
+      await batchGenerateShotImages(projectId, episodeId, shotIds, characters, scenes, ttiConfigId);
+      message.info(`已启动 ${shotIds.length} 个分镜的图片重新生成任务`);
+    } catch (err: any) {
+      message.error(err.message || '批量重新生成启动失败');
+      setGeneratingShots(new Set());
+    }
+  }, [projectId, episodeId, shots, characters, scenes, ttiConfigId]);
+
+  // 批量渲染视频（已确认的）
+  const handleBatchRenderVideos = useCallback(async (targetShotIds?: string[]) => {
+    const baseShots = targetShotIds
+      ? shots.filter(s => targetShotIds.includes(s.id))
+      : shots;
+    const confirmedToRender = baseShots.filter(s => s.confirmed);
     if (confirmedToRender.length === 0) {
       message.warning('请先确认要渲染的分镜');
       return;
@@ -569,8 +692,34 @@ export const Storyboard: React.FC<StoryboardProps> = ({
           setRenderStep(`${current.step || ''} (${current.shotId})`);
         }
       );
+      // 更新所有成功渲染的 shot 的 videos 字段
+      const updatedShots = shots.map(s => {
+        const renderResult = result.results.find(r => r.shotId === s.id && r.success && r.version);
+        if (renderResult && renderResult.version) {
+          const newVideo: ShotVideo = {
+            path: renderResult.version.videoPath || renderResult.version.remoteVideoUrl || '',
+            thumbnailPath: renderResult.version.imagePath,
+            prompt: renderResult.version.prompt,
+            seed: renderResult.version.seed,
+            model: renderResult.version.model,
+            createdAt: renderResult.version.createdAt || Date.now(),
+          };
+          const existingVideos = s.videos || [];
+          return {
+            ...s,
+            videos: [...existingVideos, newVideo],
+            currentVideoIndex: existingVideos.length,
+            ...(renderResult.version.imagePath ? {
+              imagePaths: [...(s.imagePaths || []), renderResult.version.imagePath],
+              currentImageIndex: (s.imagePaths || []).length,
+              imagePath: renderResult.version.imagePath,
+            } : {}),
+          };
+        }
+        return s;
+      });
+      await saveAllShots(updatedShots);
       message.success(`批量渲染完成: ${result.success} 成功, ${result.failed} 失败`);
-      loadData();
     } catch (err: any) {
       message.error(err.message || '批量渲染失败');
     } finally {
@@ -578,7 +727,74 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       setRenderProgress(0);
       setRenderStep('');
     }
-  }, [projectId, shots, ttiConfigId, settings.itvConfigs, settings.ttsConfigs, loadData]);
+  }, [projectId, shots, ttiConfigId, settings.itvConfigs, settings.ttsConfigs, saveAllShots]);
+
+  // 批量重新生成视频（已有视频的）
+  const handleBatchReGenerateVideos = useCallback(async (targetShotIds?: string[]) => {
+    const baseShots = targetShotIds
+      ? shots.filter(s => targetShotIds.includes(s.id))
+      : shots;
+    const shotsWithVideo = baseShots.filter(s => (s.videos?.length || 0) > 0);
+    if (shotsWithVideo.length === 0) {
+      message.info('所选分镜都没有视频');
+      return;
+    }
+    const shotIds = shotsWithVideo.map(s => s.id);
+    setRenderingShots(new Set(shotIds));
+    setRenderProgress(0);
+    setRenderStep('准备批量重新渲染...');
+    try {
+      const result = await batchRenderShots(
+        {
+          projectId,
+          shots: shotsWithVideo,
+          projectConfigIds: {
+            ttiConfigId,
+            itvConfigId: settings.itvConfigs?.find(c => c.isDefault)?.id,
+            ttsConfigId: settings.ttsConfigs?.find(c => c.isDefault)?.id,
+          },
+        },
+        (overall, current) => {
+          setRenderProgress(overall);
+          setRenderStep(`${current.step || ''} (${current.shotId})`);
+        }
+      );
+      // 更新所有成功渲染的 shot 的 videos 字段
+      const updatedShots = shots.map(s => {
+        const renderResult = result.results.find(r => r.shotId === s.id && r.success && r.version);
+        if (renderResult && renderResult.version) {
+          const newVideo: ShotVideo = {
+            path: renderResult.version.videoPath || renderResult.version.remoteVideoUrl || '',
+            thumbnailPath: renderResult.version.imagePath,
+            prompt: renderResult.version.prompt,
+            seed: renderResult.version.seed,
+            model: renderResult.version.model,
+            createdAt: renderResult.version.createdAt || Date.now(),
+          };
+          const existingVideos = s.videos || [];
+          return {
+            ...s,
+            videos: [...existingVideos, newVideo],
+            currentVideoIndex: existingVideos.length,
+            ...(renderResult.version.imagePath ? {
+              imagePaths: [...(s.imagePaths || []), renderResult.version.imagePath],
+              currentImageIndex: (s.imagePaths || []).length,
+              imagePath: renderResult.version.imagePath,
+            } : {}),
+          };
+        }
+        return s;
+      });
+      await saveAllShots(updatedShots);
+      message.success(`批量重新渲染完成: ${result.success} 成功, ${result.failed} 失败`);
+    } catch (err: any) {
+      message.error(err.message || '批量重新渲染失败');
+    } finally {
+      setRenderingShots(new Set());
+      setRenderProgress(0);
+      setRenderStep('');
+    }
+  }, [projectId, shots, ttiConfigId, settings.itvConfigs, settings.ttsConfigs, saveAllShots]);
 
   // ============ 渲染 ============
 
@@ -642,10 +858,13 @@ export const Storyboard: React.FC<StoryboardProps> = ({
           onVideosChange={handleVideosChange}
           onGeneratePrompt={handleGenerateShotPrompt}
           onBatchGeneratePrompts={handleBatchGeneratePrompts}
+          onBatchReGeneratePrompts={handleBatchReGeneratePrompts}
           onGenerateImage={handleGenerateShotImage}
           onBatchGenerateImages={handleBatchGenerate}
+          onBatchReGenerateImages={handleBatchReGenerateImages}
           onGenerateVideo={handleRenderShotVideo}
           onBatchGenerateVideos={handleBatchRenderVideos}
+          onBatchReGenerateVideos={handleBatchReGenerateVideos}
           onToggleConfirm={handleToggleConfirm}
           onDelete={handleDeleteShot}
           onBatchDelete={handleBatchDelete}
@@ -655,6 +874,8 @@ export const Storyboard: React.FC<StoryboardProps> = ({
           onMoveUp={handleMoveUp}
           onMoveDown={handleMoveDown}
           onAddShot={handleAddShot}
+          onInsertAbove={handleInsertAbove}
+          onInsertBelow={handleInsertBelow}
         />
       )}
 

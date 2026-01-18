@@ -53,34 +53,36 @@
   justify-content: center;
 }
 
-.headerActions {
-  width: 48px;
+.headerIndex {
+  width: 40px;
   text-align: center;
 }
 
-.headerIndex {
-  width: 48px;
+.headerActions {
+  width: 76px;
   text-align: center;
 }
 
 .headerScript {
-  width: 240px;
+  flex: 1;
+  min-width: 160px;
   padding-left: 8px;
 }
 
 .headerPrompt {
-  width: 280px;
+  flex: 1;
+  min-width: 200px;
   padding: 0 8px;
 }
 
 .headerImage {
-  width: 200px;
-  text-align: center;
+  width: 220px;
+  padding: 0 8px;
 }
 
 .headerVideo {
-  width: 180px;
-  text-align: center;
+  width: 220px;
+  padding: 0 8px;
 }
 
 /* 分镜列表主体 */
@@ -103,7 +105,7 @@
 .shotRow {
   display: flex;
   align-items: stretch;
-  min-height: 180px;
+  min-height: 160px;
   padding: 12px 16px;
   border-bottom: 1px solid #27272a;
   transition: background-color 0.2s;
@@ -114,7 +116,7 @@
 }
 
 .shotRow.selected {
-  background: rgba(16, 185, 129, 0.05);
+  background: rgba(16, 185, 129, 0.08);
 }
 
 /* 复选框列 */
@@ -123,27 +125,16 @@
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  padding-top: 4px;
-  flex-shrink: 0;
-}
-
-/* 操作列 */
-.shotRowActions {
-  width: 48px;
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  padding-top: 4px;
+  padding-top: 8px;
   flex-shrink: 0;
 }
 
 /* 序号列 */
 .shotRowIndex {
-  width: 48px;
+  width: 40px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: flex-start;
   padding-top: 8px;
   gap: 4px;
   flex-shrink: 0;
@@ -160,14 +151,44 @@
   font-size: 14px;
 }
 
+/* 操作列 - 放在左侧，紧凑两列布局 */
+.shotRowActions {
+  width: 76px;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 4px;
+  padding: 4px;
+  align-content: start;
+  flex-shrink: 0;
+}
+
+.actionBtn {
+  font-size: 11px;
+  width: 32px;
+  height: 26px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.actionBtn.confirmBtn {
+  color: #52c41a;
+  border-color: #52c41a;
+}
+
+.actionBtn.dangerBtn {
+  color: #ff4d4f;
+}
+
 /* 剧本文案列 */
 .shotRowScript {
-  width: 240px;
+  flex: 1;
+  min-width: 160px;
   padding: 0 8px;
   display: flex;
   flex-direction: column;
   gap: 8px;
-  flex-shrink: 0;
 }
 
 .scriptTextarea {
@@ -175,7 +196,9 @@
   background: #1a1a1a !important;
   border-color: #27272a !important;
   color: #e4e4e7 !important;
-  resize: none;
+  resize: none !important;
+  height: 120px !important;
+  overflow-y: auto !important;
 }
 
 .scriptTextarea:hover,
@@ -184,7 +207,7 @@
 }
 
 .shotMeta {
-  margin-top: 4px;
+  flex-shrink: 0;
 }
 
 .shotMeta .ant-tag {
@@ -196,20 +219,53 @@
 
 /* 提示词编辑器列 */
 .shotRowPrompt {
-  width: 280px;
+  flex: 1;
+  min-width: 200px;
   padding: 0 8px;
   display: flex;
   flex-direction: column;
   gap: 4px;
-  flex-shrink: 0;
 }
 
-.promptEditor {
+.promptEditorWrapper {
   flex: 1;
+  display: flex;
+  flex-direction: column;
+  height: 120px;
+  max-height: 120px;
 }
 
-.promptEditor .cm-editor {
+.promptEditorWrapper .cm-editor {
+  height: 100% !important;
   font-size: 12px !important;
+  background: #1a1a1a !important;
+}
+
+/* 统一提示词编辑器背景色 */
+.promptEditorWrapper .cm-activeLine {
+  background: transparent !important;
+}
+
+.promptEditorWrapper .cm-activeLineGutter {
+  background: transparent !important;
+}
+
+.promptEditorWrapper .cm-gutters {
+  display: none !important;
+}
+
+.promptEditorWrapper .cm-content {
+  padding: 8px 12px;
+  min-height: 100px;
+}
+
+.promptEditorWrapper .cm-scroller {
+  overflow: auto !important;
+}
+
+/* 点击整个区域可聚焦 */
+.promptEditorWrapper .cm-editor .cm-scroller {
+  cursor: text;
 }
 
 .promptGenBtn {
@@ -217,22 +273,27 @@
   align-self: flex-start;
   padding: 0 8px;
   height: 22px;
+  flex-shrink: 0;
 }
 
 /* 参考图列 */
 .shotRowImage {
-  width: 200px;
+  width: 220px;
+  height: 140px;
   padding: 0 8px;
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
+  overflow: hidden;
 }
 
 /* 视频列 */
 .shotRowVideo {
-  width: 180px;
+  width: 220px;
+  height: 140px;
   padding: 0 8px;
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
+  overflow: hidden;
 }

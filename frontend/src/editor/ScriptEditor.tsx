@@ -122,9 +122,9 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
       // 编辑器样式
       EditorView.theme({
         '&': {
-          minHeight,
+          height: minHeight,
           maxHeight,
-          overflow: 'auto',
+          overflow: 'hidden',
           border: darkTheme ? '1px solid #3f3f46' : '1px solid #ddd',
           borderRadius: '8px',
           fontFamily: 'system-ui, -apple-system, sans-serif',
@@ -134,6 +134,8 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
         },
         '.cm-scroller': {
           overflow: 'auto',
+          height: '100%',
+          cursor: 'text',
         },
         '.cm-content': {
           padding: '12px',
@@ -156,10 +158,10 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
           color: darkTheme ? '#52525b' : '#999',
         },
         '.cm-activeLineGutter': {
-          backgroundColor: darkTheme ? '#1f1f1f' : '#e8e8e8',
+          backgroundColor: 'transparent',
         },
         '.cm-activeLine': {
-          backgroundColor: darkTheme ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)',
+          backgroundColor: 'transparent',
         },
         '.cm-selectionBackground': {
           backgroundColor: darkTheme ? 'rgba(16, 185, 129, 0.2) !important' : 'rgba(25, 118, 210, 0.2) !important',
@@ -247,8 +249,23 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
     });
   }, [mentionExtensions]);
 
+  // 点击容器时聚焦编辑器
+  const handleContainerClick = useCallback((e: React.MouseEvent) => {
+    const view = viewRef.current;
+    if (!view) return;
+    // 如果点击的是编辑器内容区域外（但在容器内），聚焦编辑器
+    if (e.target === containerRef.current) {
+      view.focus();
+      // 将光标移到末尾
+      view.dispatch({
+        selection: { anchor: view.state.doc.length },
+      });
+    }
+  }, []);
+
   const containerStyle: React.CSSProperties = {
     position: 'relative',
+    cursor: 'text',
     ...style,
   };
 
@@ -257,6 +274,7 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
       ref={containerRef}
       className={className}
       style={containerStyle}
+      onClick={handleContainerClick}
     />
   );
 };

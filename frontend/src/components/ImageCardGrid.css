@@ -4,17 +4,22 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
+  height: 100%;
+  overflow: hidden;
 }
 
 .imageCards {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+  flex: 1;
+  overflow-y: auto;
+  align-content: flex-start;
 }
 
 .imageCard {
-  width: 60px;
-  height: 40px;
+  width: 80px;
+  height: 56px;
   border-radius: 4px;
   overflow: hidden;
   cursor: pointer;

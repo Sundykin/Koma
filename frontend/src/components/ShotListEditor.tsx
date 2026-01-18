@@ -12,10 +12,8 @@ import {
   Progress,
   Popconfirm,
   Checkbox,
-  Dropdown,
   Input,
 } from 'antd';
-import type { MenuProps } from 'antd';
 import {
   ThunderboltOutlined,
   VideoCameraOutlined,
@@ -25,10 +23,12 @@ import {
   CheckCircleOutlined,
   DeleteOutlined,
   PlusOutlined,
-  MoreOutlined,
   ArrowUpOutlined,
   ArrowDownOutlined,
   MergeCellsOutlined,
+  ReloadOutlined,
+  InsertRowAboveOutlined,
+  InsertRowBelowOutlined,
 } from '@ant-design/icons';
 import type { Shot, Character, Scene, Prop, ShotVideo } from '../types';
 import { ScriptEditor } from '../editor';
@@ -72,7 +72,7 @@ interface ShotRowProps {
   isGeneratingPrompt: boolean;
   isGeneratingImage: boolean;
   isGeneratingVideo: boolean;
-  onSelectChange: (selected: boolean) => void;
+  onSelectChange: (shotId: string, selected: boolean) => void;
   onScriptChange: (shotId: string, script: string) => void;
   onPromptChange: (shotId: string, description: string) => void;
   onImagesChange: (shotId: string, images: string[], selectedIndex: number) => void;
@@ -86,6 +86,25 @@ interface ShotRowProps {
   onMergeDown: (shotId: string) => void;
   onMoveUp: (shotId: string) => void;
   onMoveDown: (shotId: string) => void;
+  onInsertAbove: (shotId: string) => void;
+  onInsertBelow: (shotId: string) => void;
+}
+
+// 自定义 memo 比较函数，只比较数据相关的 props，忽略回调函数
+function shotRowPropsAreEqual(prevProps: ShotRowProps, nextProps: ShotRowProps): boolean {
+  return (
+    prevProps.shot === nextProps.shot &&
+    prevProps.index === nextProps.index &&
+    prevProps.totalCount === nextProps.totalCount &&
+    prevProps.isSelected === nextProps.isSelected &&
+    prevProps.isGeneratingPrompt === nextProps.isGeneratingPrompt &&
+    prevProps.isGeneratingImage === nextProps.isGeneratingImage &&
+    prevProps.isGeneratingVideo === nextProps.isGeneratingVideo &&
+    prevProps.characters === nextProps.characters &&
+    prevProps.scenes === nextProps.scenes &&
+    prevProps.props === nextProps.props &&
+    prevProps.mentionItems === nextProps.mentionItems
+  );
 }
 
 const ShotRow = memo<ShotRowProps>(({
@@ -115,6 +134,8 @@ const ShotRow = memo<ShotRowProps>(({
   onMergeDown,
   onMoveUp,
   onMoveDown,
+  onInsertAbove,
+  onInsertBelow,
 }) => {
   const characterNames = useMemo(() => {
     return shot.characters?.map(charId => {
@@ -138,58 +159,9 @@ const ShotRow = memo<ShotRowProps>(({
     return [];
   }, [shot.imagePaths, shot.imagePath]);
 
-  // 视频列表
   const videos = shot.videos || [];
 
-  // 行操作菜单
-  const actionMenuItems: MenuProps['items'] = [
-    {
-      key: 'confirm',
-      icon: shot.confirmed ? <CheckCircleFilled style={{ color: '#52c41a' }} /> : <CheckCircleOutlined />,
-      label: shot.confirmed ? '取消确认' : '确认',
-      onClick: () => onToggleConfirm(shot),
-    },
-    { type: 'divider' },
-    {
-      key: 'mergeUp',
-      icon: <MergeCellsOutlined />,
-      label: '向上合并',
-      disabled: isFirst,
-      onClick: () => onMergeUp(shot.id),
-    },
-    {
-      key: 'mergeDown',
-      icon: <MergeCellsOutlined style={{ transform: 'rotate(180deg)' }} />,
-      label: '向下合并',
-      disabled: isLast,
-      onClick: () => onMergeDown(shot.id),
-    },
-    { type: 'divider' },
-    {
-      key: 'moveUp',
-      icon: <ArrowUpOutlined />,
-      label: '上移',
-      disabled: isFirst,
-      onClick: () => onMoveUp(shot.id),
-    },
-    {
-      key: 'moveDown',
-      icon: <ArrowDownOutlined />,
-      label: '下移',
-      disabled: isLast,
-      onClick: () => onMoveDown(shot.id),
-    },
-    { type: 'divider' },
-    {
-      key: 'delete',
-      icon: <DeleteOutlined />,
-      label: '删除',
-      danger: true,
-      onClick: () => onDelete(shot.id),
-    },
-  ];
-
-  // 图片选择/添加/删除
+  // 图片操作
   const handleImageSelect = (idx: number) => {
     onImagesChange(shot.id, images, idx);
   };
@@ -203,7 +175,7 @@ const ShotRow = memo<ShotRowProps>(({
     onImagesChange(shot.id, newImages, Math.max(0, newSelectedIdx));
   };
 
-  // 视频选择/删除
+  // 视频操作
   const handleVideoSelect = (idx: number) => {
     onVideosChange(shot.id, videos, idx);
   };
@@ -219,15 +191,8 @@ const ShotRow = memo<ShotRowProps>(({
       <div className="shotRowCheckbox">
         <Checkbox
           checked={isSelected}
-          onChange={(e) => onSelectChange(e.target.checked)}
+          onChange={(e) => onSelectChange(shot.id, e.target.checked)}
         />
-      </div>
-
-      {/* 操作菜单 */}
-      <div className="shotRowActions">
-        <Dropdown menu={{ items: actionMenuItems }} trigger={['click']} placement="bottomLeft">
-          <Button type="text" size="small" icon={<MoreOutlined />} />
-        </Dropdown>
       </div>
 
       {/* 序号 */}
@@ -236,13 +201,87 @@ const ShotRow = memo<ShotRowProps>(({
         {shot.confirmed && <CheckCircleFilled className="confirmedIcon" />}
       </div>
 
-      {/* 剧本文案（可编辑） */}
+      {/* 操作 - 放在左侧，紧凑布局 */}
+      <div className="shotRowActions">
+        <Tooltip title={shot.confirmed ? '取消确认' : '确认'}>
+          <Button
+            size="small"
+            type={shot.confirmed ? 'primary' : 'default'}
+            icon={shot.confirmed ? <CheckCircleFilled /> : <CheckCircleOutlined />}
+            onClick={() => onToggleConfirm(shot)}
+            className="actionBtn"
+          />
+        </Tooltip>
+        <Tooltip title="上方插入">
+          <Button
+            size="small"
+            icon={<InsertRowAboveOutlined />}
+            onClick={() => onInsertAbove(shot.id)}
+            className="actionBtn"
+          />
+        </Tooltip>
+        <Tooltip title="下方插入">
+          <Button
+            size="small"
+            icon={<InsertRowBelowOutlined />}
+            onClick={() => onInsertBelow(shot.id)}
+            className="actionBtn"
+          />
+        </Tooltip>
+        <Tooltip title="上移">
+          <Button
+            size="small"
+            icon={<ArrowUpOutlined />}
+            disabled={isFirst}
+            onClick={() => onMoveUp(shot.id)}
+            className="actionBtn"
+          />
+        </Tooltip>
+        <Tooltip title="下移">
+          <Button
+            size="small"
+            icon={<ArrowDownOutlined />}
+            disabled={isLast}
+            onClick={() => onMoveDown(shot.id)}
+            className="actionBtn"
+          />
+        </Tooltip>
+        <Tooltip title="向上合并">
+          <Button
+            size="small"
+            icon={<MergeCellsOutlined />}
+            disabled={isFirst}
+            onClick={() => onMergeUp(shot.id)}
+            className="actionBtn"
+          />
+        </Tooltip>
+        <Tooltip title="向下合并">
+          <Button
+            size="small"
+            icon={<MergeCellsOutlined style={{ transform: 'rotate(180deg)' }} />}
+            disabled={isLast}
+            onClick={() => onMergeDown(shot.id)}
+            className="actionBtn"
+          />
+        </Tooltip>
+        <Popconfirm title="确定删除？" onConfirm={() => onDelete(shot.id)}>
+          <Tooltip title="删除">
+            <Button
+              size="small"
+              danger
+              icon={<DeleteOutlined />}
+              className="actionBtn"
+            />
+          </Tooltip>
+        </Popconfirm>
+      </div>
+
+      {/* 剧本文案 */}
       <div className="shotRowScript">
         <TextArea
           value={shot.scriptContent || ''}
           onChange={(e) => onScriptChange(shot.id, e.target.value)}
           placeholder="剧本内容..."
-          autoSize={{ minRows: 2, maxRows: 6 }}
           className="scriptTextarea"
         />
         <Space size={4} wrap className="shotMeta">
@@ -259,34 +298,32 @@ const ShotRow = memo<ShotRowProps>(({
 
       {/* 提示词编辑器 */}
       <div className="shotRowPrompt">
-        <div className="promptEditor">
+        <div className="promptEditorWrapper">
           <ScriptEditor
             value={shot.description || ''}
             onChange={(value) => onPromptChange(shot.id, value)}
-            placeholder={hasPrompt ? '' : '点击 AI生成 或手动输入提示词...'}
+            placeholder={hasPrompt ? '' : '输入提示词...'}
             mentionItems={mentionItems}
             enableKeywordHighlight={true}
             minHeight="120px"
-            maxHeight="160px"
+            maxHeight="120px"
             showLineNumbers={false}
             darkTheme={true}
           />
         </div>
-        <Tooltip title="AI 生成提示词">
-          <Button
-            type="text"
-            size="small"
-            icon={isGeneratingPrompt ? <LoadingOutlined /> : <RobotOutlined />}
-            disabled={isGeneratingPrompt}
-            onClick={() => onGeneratePrompt(shot.id)}
-            className="promptGenBtn"
-          >
-            {hasPrompt ? '重新生成' : 'AI生成'}
-          </Button>
-        </Tooltip>
+        <Button
+          type="text"
+          size="small"
+          icon={isGeneratingPrompt ? <LoadingOutlined /> : <RobotOutlined />}
+          disabled={isGeneratingPrompt}
+          onClick={() => onGeneratePrompt(shot.id)}
+          className="promptGenBtn"
+        >
+          {hasPrompt ? '重新生成' : 'AI生成'}
+        </Button>
       </div>
 
-      {/* 参考图（多图卡片） */}
+      {/* 参考图 */}
       <div className="shotRowImage">
         <ImageCardGrid
           images={images}
@@ -303,7 +340,7 @@ const ShotRow = memo<ShotRowProps>(({
         />
       </div>
 
-      {/* 视频（多版本卡片） */}
+      {/* 视频 */}
       <div className="shotRowVideo">
         <VideoCardGrid
           videos={videos}
@@ -317,7 +354,7 @@ const ShotRow = memo<ShotRowProps>(({
       </div>
     </div>
   );
-});
+}, shotRowPropsAreEqual);
 
 ShotRow.displayName = 'ShotRow';
 
@@ -338,11 +375,14 @@ export interface ShotListEditorProps {
   onImagesChange: (shotId: string, images: string[], selectedIndex: number) => void;
   onVideosChange: (shotId: string, videos: ShotVideo[], selectedIndex: number) => void;
   onGeneratePrompt: (shotId: string) => void;
-  onBatchGeneratePrompts: () => void;
+  onBatchGeneratePrompts: (shotIds?: string[]) => void;
+  onBatchReGeneratePrompts: (shotIds?: string[]) => void;
   onGenerateImage: (shotId: string) => void;
-  onBatchGenerateImages: () => void;
+  onBatchGenerateImages: (shotIds?: string[]) => void;
+  onBatchReGenerateImages: (shotIds?: string[]) => void;
   onGenerateVideo: (shotId: string) => void;
-  onBatchGenerateVideos: () => void;
+  onBatchGenerateVideos: (shotIds?: string[]) => void;
+  onBatchReGenerateVideos: (shotIds?: string[]) => void;
   onToggleConfirm: (shot: Shot) => void;
   onDelete: (shotId: string) => void;
   onBatchDelete: (shotIds: string[]) => void;
@@ -352,6 +392,8 @@ export interface ShotListEditorProps {
   onMoveUp: (shotId: string) => void;
   onMoveDown: (shotId: string) => void;
   onAddShot: () => void;
+  onInsertAbove: (shotId: string) => void;
+  onInsertBelow: (shotId: string) => void;
 }
 
 export const ShotListEditor: React.FC<ShotListEditorProps> = ({
@@ -371,10 +413,13 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
   onVideosChange,
   onGeneratePrompt,
   onBatchGeneratePrompts,
+  onBatchReGeneratePrompts,
   onGenerateImage,
   onBatchGenerateImages,
+  onBatchReGenerateImages,
   onGenerateVideo,
   onBatchGenerateVideos,
+  onBatchReGenerateVideos,
   onToggleConfirm,
   onDelete,
   onBatchDelete,
@@ -384,6 +429,8 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
   onMoveUp,
   onMoveDown,
   onAddShot,
+  onInsertAbove,
+  onInsertBelow,
 }) => {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
@@ -397,9 +444,26 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
     return { total, withPrompt, withImage, withVideo, confirmed };
   }, [shots]);
 
-  const noPromptCount = stats.total - stats.withPrompt;
-  const noImageCount = stats.total - stats.withImage;
+  // 选中项统计
+  const selectedStats = useMemo(() => {
+    const selectedShots = shots.filter(s => selectedIds.has(s.id));
+    const total = selectedShots.length;
+    const withPrompt = selectedShots.filter(s => s.description?.trim()).length;
+    const withImage = selectedShots.filter(s => (s.imagePaths?.length || 0) > 0 || s.imagePath).length;
+    const withVideo = selectedShots.filter(s => (s.videos?.length || 0) > 0).length;
+    return {
+      total,
+      noPrompt: total - withPrompt,
+      noImage: total - withImage,
+      noVideo: total - withVideo,
+      withPrompt,
+      withImage,
+      withVideo,
+    };
+  }, [shots, selectedIds]);
+
   const selectedCount = selectedIds.size;
+  const hasSelected = selectedCount > 0;
 
   // 全选
   const handleSelectAll = useCallback((checked: boolean) => {
@@ -434,47 +498,103 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
     onBatchConfirm(Array.from(selectedIds), confirm);
   }, [selectedIds, onBatchConfirm]);
 
+  // 批量生成提示词（选中项或全部）
+  const handleBatchPrompts = useCallback(() => {
+    onBatchGeneratePrompts(hasSelected ? Array.from(selectedIds) : undefined);
+  }, [hasSelected, selectedIds, onBatchGeneratePrompts]);
+
+  // 批量重新生成提示词
+  const handleBatchRePrompts = useCallback(() => {
+    onBatchReGeneratePrompts(hasSelected ? Array.from(selectedIds) : undefined);
+  }, [hasSelected, selectedIds, onBatchReGeneratePrompts]);
+
+  // 批量生成图片
+  const handleBatchImages = useCallback(() => {
+    onBatchGenerateImages(hasSelected ? Array.from(selectedIds) : undefined);
+  }, [hasSelected, selectedIds, onBatchGenerateImages]);
+
+  // 批量重新生成图片
+  const handleBatchReImages = useCallback(() => {
+    onBatchReGenerateImages(hasSelected ? Array.from(selectedIds) : undefined);
+  }, [hasSelected, selectedIds, onBatchReGenerateImages]);
+
+  // 批量生成视频
+  const handleBatchVideos = useCallback(() => {
+    onBatchGenerateVideos(hasSelected ? Array.from(selectedIds) : undefined);
+  }, [hasSelected, selectedIds, onBatchGenerateVideos]);
+
+  // 批量重新生成视频
+  const handleBatchReVideos = useCallback(() => {
+    onBatchReGenerateVideos(hasSelected ? Array.from(selectedIds) : undefined);
+  }, [hasSelected, selectedIds, onBatchReGenerateVideos]);
+
   const isAllSelected = shots.length > 0 && selectedIds.size === shots.length;
   const isIndeterminate = selectedIds.size > 0 && selectedIds.size < shots.length;
+
+  // 计算显示的数量
+  const promptCount = hasSelected ? selectedStats.noPrompt : (stats.total - stats.withPrompt);
+  const imageCount = hasSelected ? selectedStats.noImage : (stats.total - stats.withImage);
+  const videoCount = hasSelected ? selectedStats.total : stats.confirmed;
 
   return (
     <div className="shotListEditor">
       {/* 顶部工具栏 */}
       <div className="shotListToolbar">
-        <Space>
+        <Space wrap>
           <Button
             icon={<RobotOutlined />}
-            disabled={noPromptCount === 0 || generatingPrompts.size > 0}
-            onClick={onBatchGeneratePrompts}
+            disabled={!hasSelected || selectedStats.noPrompt === 0 || generatingPrompts.size > 0}
+            onClick={handleBatchPrompts}
           >
-            批量生成提示词 ({noPromptCount})
+            批量生成提示词 ({selectedStats.noPrompt})
+          </Button>
+          <Button
+            icon={<ReloadOutlined />}
+            disabled={!hasSelected || selectedStats.withPrompt === 0 || generatingPrompts.size > 0}
+            onClick={handleBatchRePrompts}
+          >
+            重新生成提示词 ({selectedStats.withPrompt})
           </Button>
           <Button
             icon={<ThunderboltOutlined />}
-            disabled={noImageCount === 0 || generatingImages.size > 0}
-            onClick={onBatchGenerateImages}
+            disabled={!hasSelected || selectedStats.noImage === 0 || generatingImages.size > 0}
+            onClick={handleBatchImages}
           >
-            批量生成图片 ({noImageCount})
+            批量生成图片 ({selectedStats.noImage})
+          </Button>
+          <Button
+            icon={<ReloadOutlined />}
+            disabled={!hasSelected || selectedStats.withImage === 0 || generatingImages.size > 0}
+            onClick={handleBatchReImages}
+          >
+            重新生成图片 ({selectedStats.withImage})
           </Button>
           <Button
             icon={<VideoCameraOutlined />}
-            disabled={stats.confirmed === 0 || generatingVideos.size > 0}
-            onClick={onBatchGenerateVideos}
+            disabled={!hasSelected || selectedStats.total === 0 || generatingVideos.size > 0}
+            onClick={handleBatchVideos}
           >
-            批量生成视频 ({stats.confirmed})
+            批量生成视频 ({selectedStats.total})
+          </Button>
+          <Button
+            icon={<ReloadOutlined />}
+            disabled={!hasSelected || selectedStats.withVideo === 0 || generatingVideos.size > 0}
+            onClick={handleBatchReVideos}
+          >
+            重新生成视频 ({selectedStats.withVideo})
           </Button>
           <Button icon={<PlusOutlined />} onClick={onAddShot}>
-            添加分镜
+            添加
           </Button>
         </Space>
 
-        {/* 批量操作 */}
-        {selectedCount > 0 && (
+        {/* 选中时显示批量操作 */}
+        {hasSelected && (
           <Space style={{ marginLeft: 16 }}>
             <Text type="secondary">已选 {selectedCount} 项</Text>
             <Button size="small" onClick={() => handleBatchConfirm(true)}>批量确认</Button>
             <Button size="small" onClick={() => handleBatchConfirm(false)}>取消确认</Button>
-            <Popconfirm title={`确定删除 ${selectedCount} 个分镜？`} onConfirm={handleBatchDelete}>
+            <Popconfirm title={`删除 ${selectedCount} 个分镜？`} onConfirm={handleBatchDelete}>
               <Button size="small" danger>批量删除</Button>
             </Popconfirm>
           </Space>
@@ -514,8 +634,8 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
             onChange={(e) => handleSelectAll(e.target.checked)}
           />
         </div>
-        <div className="headerCol headerActions">操作</div>
         <div className="headerCol headerIndex">#</div>
+        <div className="headerCol headerActions">操作</div>
         <div className="headerCol headerScript">剧本文案</div>
         <div className="headerCol headerPrompt">提示词</div>
         <div className="headerCol headerImage">参考图</div>
@@ -547,7 +667,7 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
               isGeneratingPrompt={generatingPrompts.has(shot.id)}
               isGeneratingImage={generatingImages.has(shot.id)}
               isGeneratingVideo={generatingVideos.has(shot.id)}
-              onSelectChange={(selected) => handleSelectChange(shot.id, selected)}
+              onSelectChange={handleSelectChange}
               onScriptChange={onScriptChange}
               onPromptChange={onPromptChange}
               onImagesChange={onImagesChange}
@@ -561,6 +681,8 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
               onMergeDown={onMergeDown}
               onMoveUp={onMoveUp}
               onMoveDown={onMoveDown}
+              onInsertAbove={onInsertAbove}
+              onInsertBelow={onInsertBelow}
             />
           ))
         )}
