@@ -67,21 +67,22 @@ export const ImageCardGrid: React.FC<ImageCardGridProps> = ({
     }
   }, [onAdd]);
 
-  // 从资产选择
+  // 从资产选择（优先使用远程URL）
   const handleSelectAsset = useCallback((type: 'character' | 'scene' | 'prop', assetId: string) => {
-    let imagePath: string | undefined;
+    let imageUrl: string | undefined;
     if (type === 'character') {
       const char = characters.find(c => c.id === assetId);
-      imagePath = char?.costumePhotoPath;
+      // 优先使用远程URL
+      imageUrl = char?.costumePhotoUrl || char?.costumePhotoPath;
     } else if (type === 'scene') {
       const scene = scenes.find(s => s.id === assetId);
-      imagePath = scene?.imagePath;
+      imageUrl = scene?.imagePath; // Scene 暂时只有 imagePath
     } else {
       const prop = propsList.find(p => p.id === assetId);
-      imagePath = prop?.imagePath;
+      imageUrl = prop?.imagePath; // Prop 暂时只有 imagePath
     }
-    if (imagePath) {
-      onAdd(imagePath);
+    if (imageUrl) {
+      onAdd(imageUrl);
     } else {
       message.warning('该资产没有图片');
     }

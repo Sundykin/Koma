@@ -33,7 +33,7 @@ async function getProjectsRoot(): Promise<string> {
   return `${config.rootPath}/projects`;
 }
 
-async function getProjectPath(projectId: string): Promise<string> {
+export async function getProjectPath(projectId: string): Promise<string> {
   const root = await getProjectsRoot();
   return `${root}/${projectId}`;
 }

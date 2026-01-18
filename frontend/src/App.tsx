@@ -244,6 +244,18 @@ const AppContent: React.FC = () => {
     }
   }, [view, activeProject?.id, isVideoDevMode, loadAnalysisData]);
 
+  // 切换到视频编辑步骤时重新加载 shots（获取最新视频数据）
+  useEffect(() => {
+    if (editorStep === 'video' && activeProject && !isVideoDevMode) {
+      loadShots(activeProject.id).then(shots => {
+        if (shots.length > 0) {
+          setAnalysisData(prev => prev ? { ...prev, shots } : null);
+          console.log('[App] Loaded shots for video editor:', shots.length, 'shots');
+        }
+      });
+    }
+  }, [editorStep, activeProject?.id, isVideoDevMode]);
+
   // 侧边栏折叠逻辑：在 editor 和 overview 模式下折叠
   const isSidebarCollapsed = view === 'editor' || view === 'overview';
 
@@ -833,8 +845,9 @@ const AppContent: React.FC = () => {
                     {/* 剪辑视图 */}
                     {editorStep === 'video' && (
                          analysisData ? (
-                            <VideoEditor 
-                                shots={analysisData.shots} 
+                            <VideoEditor
+                                projectId={activeProject?.id}
+                                shots={analysisData.shots}
                             />
                         ) : (
                              <div className="flex h-full items-center justify-center text-gray-500 flex-col gap-4">

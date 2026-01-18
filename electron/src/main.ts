@@ -26,7 +26,7 @@ const mimeTypes: Record<string, string> = {
   '.wav': 'audio/wav',
 };
 
-// 注册自定义协议用于加载本地文件
+// 注册自定义协议用于加载本地文件（支持 Range 请求）
 function registerLocalProtocol(): void {
   protocol.handle('koma-local', async (request) => {
     try {
@@ -38,19 +38,57 @@ function registerLocalProtocol(): void {
         filePath = filePath.slice(1);
       }
 
-      console.log('[koma-local] Loading:', filePath);
-
-      // 读取文件
-      const buffer = await fs.promises.readFile(filePath);
+      // 获取文件信息
+      const stat = await fs.promises.stat(filePath);
+      const fileSize = stat.size;
       const ext = path.extname(filePath).toLowerCase();
       const mimeType = mimeTypes[ext] || 'application/octet-stream';
 
+      // 检查是否有 Range 请求（视频播放必需）
+      const rangeHeader = request.headers.get('range');
+
+      if (rangeHeader) {
+        // 解析 Range 头，格式: bytes=start-end
+        const match = rangeHeader.match(/bytes=(\d*)-(\d*)/);
+        if (match) {
+          const start = match[1] ? parseInt(match[1], 10) : 0;
+          const end = match[2] ? parseInt(match[2], 10) : fileSize - 1;
+          const chunkSize = end - start + 1;
+
+          console.log('[koma-local] Range:', filePath, `${start}-${end}/${fileSize}`);
+
+          // 读取指定范围的数据
+          const fd = await fs.promises.open(filePath, 'r');
+          const buffer = Buffer.alloc(chunkSize);
+          await fd.read(buffer, 0, chunkSize, start);
+          await fd.close();
+
+          return new Response(buffer, {
+            status: 206,
+            headers: {
+              'Content-Type': mimeType,
+              'Content-Length': String(chunkSize),
+              'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+              'Accept-Ranges': 'bytes',
+            },
+          });
+        }
+      }
+
+      // 普通请求，返回整个文件
+      console.log('[koma-local] Full:', filePath);
+      const buffer = await fs.promises.readFile(filePath);
+
       return new Response(buffer, {
         status: 200,
-        headers: { 'Content-Type': mimeType },
+        headers: {
+          'Content-Type': mimeType,
+          'Content-Length': String(fileSize),
+          'Accept-Ranges': 'bytes',
+        },
       });
     } catch (err: any) {
-      console.error('[koma-local] Error loading file:', err.message);
+      console.error('[koma-local] Error:', err.message);
       return new Response('File not found', { status: 404 });
     }
   });
@@ -151,6 +189,8 @@ async function initServices(): Promise<void> {
   await services.project.init(
     storageRoot ? path.join(app.getPath('home'), storageRoot) : null
   );
+  // 初始化 FFmpeg 服务
+  await services.ffmpeg.init();
 }
 
 app.whenReady().then(async () => {

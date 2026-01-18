@@ -129,13 +129,23 @@ export class ShotGenerationService {
 
       TaskManager.updateTask(taskId, { progress: 90 });
 
-      // 更新分镜记录
+      // 更新分镜记录（同时保存远程URL和本地路径）
       const shots = await loadEpisodeShots(this.projectId, this.episodeId);
-      const updatedShots = shots.map(s =>
-        s.id === shot.id ? { ...s, imagePath } : s
-      );
+      const updatedShots = shots.map(s => {
+        if (s.id !== shot.id) return s;
+        // 将新图片添加到 imagePaths 列表，同时保存远程 URL
+        const existingPaths = s.imagePaths || [];
+        const newImagePaths = [...existingPaths, imageUrl]; // 使用远程URL
+        return {
+          ...s,
+          imagePath,
+          imageUrl, // 保存远程URL
+          imagePaths: newImagePaths,
+          currentImageIndex: newImagePaths.length - 1, // 选中新生成的图片
+        };
+      });
       await saveEpisodeShots(this.projectId, this.episodeId, updatedShots);
-      console.log('[ShotGen] 分镜记录已更新');
+      console.log('[ShotGen] 分镜记录已更新，远程URL:', imageUrl);
 
       TaskManager.updateTask(taskId, {
         status: 'completed',

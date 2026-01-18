@@ -1,148 +1,213 @@
 /**
  * 视频编辑器主组件
- * 整合 Player、Timeline、Sidebar 实现完整编辑流程
+ * 整合 EnhancedPlayer、EnhancedTimeline、Sidebar 实现完整编辑流程
  */
-import React, { useState, useCallback, useMemo } from 'react';
-import { Shot, Timeline as TimelineType, Track, Clip, Asset, MediaType, Keyframe } from '../../types';
+import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import { message } from 'antd';
+import type { Shot, Asset, MediaType, Clip, Timeline as TimelineType, Track } from '../../types';
+import type { Resource } from '../../types/resource';
 import { Player } from './Player';
-import { Timeline } from './Timeline';
+import { EnhancedTimeline } from './Timeline/EnhancedTimeline';
 import { Sidebar } from './Sidebar';
-import { v4 as uuid } from 'uuid';
+import { useTrackStore } from '../../store/trackStore';
+import { useResourceStore } from '../../store/resourceStore';
+import { getProjectPath } from '../../store/projectStore';
 
 interface VideoEditorProps {
+  projectId?: string;
   shots: Shot[];
+  onShotsChange?: (shots: Shot[]) => void;
 }
 
-export const VideoEditor: React.FC<VideoEditorProps> = ({ shots }) => {
-  // 从 shots 转换为 Timeline 数据结构
-  const initialTimeline = useMemo((): TimelineType => {
-    // 创建视频轨道
-    const videoTrack: Track = {
-      id: 'video-main',
-      name: '视频轨道',
-      type: 'video',
-      muted: false,
-      locked: false,
-      visible: true,
-      height: 60,
-      clips: shots.map((shot, idx) => {
-        const startTime = shots.slice(0, idx).reduce((acc, s) => acc + s.duration * 1000, 0);
-        return {
-          id: `clip-${shot.id}`,
-          trackId: 'video-main',
-          type: 'video' as MediaType,
-          name: `镜头 ${idx + 1}`,
-          startTime,
-          duration: shot.duration * 1000,
-          sourcePath: shot.imageUrl || `https://picsum.photos/seed/${shot.id}/800/450`,
-          position: { x: 0, y: 0 },
-          scale: 1,
-          rotation: 0,
-          opacity: 1,
-          keyframes: [],
-        };
-      }),
+export const VideoEditor: React.FC<VideoEditorProps> = ({ projectId, shots }) => {
+  const [initialized, setInitialized] = useState(false);
+  const [draggingResource, setDraggingResource] = useState<Resource | null>(null);
+  const initRef = useRef(false);
+  const shotsRef = useRef(shots);
+  shotsRef.current = shots;
+
+  // Track store - 使用 selector 避免不必要的重渲染
+  const config = useTrackStore(state => state.config);
+  const tracks = useTrackStore(state => state.tracks);
+  const currentTime = useTrackStore(state => state.currentTime);
+  const setCurrentTime = useTrackStore(state => state.setCurrentTime);
+  const setPlaying = useTrackStore(state => state.setPlaying);
+  const getDuration = useTrackStore(state => state.getDuration);
+
+  // Resource store
+  const initResourceStore = useResourceStore(state => state.init);
+
+  // 初始化
+  useEffect(() => {
+    if (initRef.current) return;
+    initRef.current = true;
+
+    const initStores = async () => {
+      console.log('[VideoEditor] Initializing stores...');
+
+      // 获取 store 方法
+      const trackStore = useTrackStore.getState();
+
+      // 初始化 track store
+      trackStore.init({ fps: 30, width: 1920, height: 1080 });
+
+      // 初始化 resource store（需要项目路径）
+      if (projectId) {
+        try {
+          const projectPath = await getProjectPath(projectId);
+          initResourceStore(projectId, projectPath);
+          console.log('[VideoEditor] Resource store initialized with path:', projectPath);
+        } catch (err) {
+          console.warn('[VideoEditor] Failed to get project path:', err);
+        }
+      }
+
+      // 添加默认轨道
+      const videoTrack = trackStore.addTrack('video', '视频轨道');
+      const audioTrack = trackStore.addTrack('audio', '音频轨道');
+      const textTrack = trackStore.addTrack('text', '字幕轨道');
+
+      console.log('[VideoEditor] Created tracks:', { videoTrack: videoTrack?.id, audioTrack: audioTrack?.id, textTrack: textTrack?.id });
+
+      // 导入 shots 中的视频素材
+      const currentShots = shotsRef.current;
+      if (currentShots.length > 0 && videoTrack) {
+        console.log('[VideoEditor] Importing', currentShots.length, 'shots to timeline');
+
+        let currentFrame = 0;
+        const fps = 30;
+
+        for (const shot of currentShots) {
+          const duration = shot.duration * 1000;
+          const durationFrames = Math.round(duration / (1000 / fps));
+
+          // 获取视频路径
+          const currentVideo = shot.videos?.[shot.currentVideoIndex || 0];
+          const mediaPath = currentVideo?.path || shot.imagePath || shot.imageUrl;
+          const mediaType = currentVideo?.path ? 'video' : 'image';
+
+          console.log('[VideoEditor] Shot', shot.id, ':', { mediaPath, mediaType, duration });
+
+          if (mediaPath) {
+            trackStore.addItemFromResource(
+              videoTrack.id,
+              {
+                id: `shot-${shot.id}`,
+                type: mediaType,
+                name: shot.scriptContent?.slice(0, 20) || `镜头 ${shot.id}`,
+                path: mediaPath,
+                duration,
+                thumbnailPath: currentVideo?.thumbnailPath || shot.imagePath || shot.imageUrl,
+              },
+              currentFrame
+            );
+          }
+
+          if (shot.dialogue && textTrack) {
+            trackStore.addItemFromResource(
+              textTrack.id,
+              {
+                id: `subtitle-${shot.id}`,
+                type: 'text',
+                name: shot.dialogue.slice(0, 10),
+                path: '',
+                duration,
+              },
+              currentFrame
+            );
+          }
+
+          currentFrame += durationFrames;
+        }
+
+        console.log('[VideoEditor] Import complete, total frames:', currentFrame);
+      } else {
+        console.log('[VideoEditor] No shots to import or no video track');
+      }
+
+      setInitialized(true);
     };
 
-    // 创建音频轨道（带台词的 shot）
-    const audioClips: Clip[] = shots
-      .filter((shot) => shot.dialogue)
-      .map((shot, idx) => {
-        const startTime = shots.slice(0, shots.indexOf(shot)).reduce((acc, s) => acc + s.duration * 1000, 0);
-        return {
-          id: `audio-${shot.id}`,
-          trackId: 'audio-main',
-          type: 'audio' as MediaType,
-          name: shot.dialogue?.slice(0, 10) || `音频 ${idx + 1}`,
-          startTime,
-          duration: shot.duration * 1000,
-          sourcePath: '',
-          position: { x: 0, y: 0 },
-          scale: 1,
-          rotation: 0,
-          opacity: 1,
-          keyframes: [],
-        };
-      });
+    initStores();
+  }, [projectId, initResourceStore]);
 
-    const audioTrack: Track = {
-      id: 'audio-main',
-      name: '音频轨道',
-      type: 'audio',
-      muted: false,
-      locked: false,
-      visible: true,
-      height: 40,
-      clips: audioClips,
-    };
+  // 从 shots 生成素材列表（兼容旧 API）
+  const assets = useMemo((): Asset[] => {
+    return shots.map((shot) => {
+      const currentVideo = shot.videos?.[shot.currentVideoIndex || 0];
+      const mediaPath = currentVideo?.path || shot.imagePath || shot.imageUrl;
+      return {
+        id: `asset-${shot.id}`,
+        name: shot.scriptContent?.slice(0, 20) || `镜头素材`,
+        type: (currentVideo?.path ? 'video' : 'image') as MediaType,
+        path: mediaPath || `https://picsum.photos/seed/${shot.id}/800/450`,
+        thumbnailPath: currentVideo?.thumbnailPath || shot.imagePath || shot.imageUrl || `https://picsum.photos/seed/${shot.id}/160/90`,
+        duration: shot.duration * 1000,
+        size: 0,
+        createdAt: Date.now(),
+        refCount: 0,
+      };
+    });
+  }, [shots]);
 
-    // 字幕轨道
-    const subtitleClips: Clip[] = shots
-      .filter((shot) => shot.dialogue)
-      .map((shot, idx) => {
-        const startTime = shots.slice(0, shots.indexOf(shot)).reduce((acc, s) => acc + s.duration * 1000, 0);
-        return {
-          id: `subtitle-${shot.id}`,
-          trackId: 'subtitle-main',
-          type: 'subtitle' as MediaType,
-          name: shot.dialogue?.slice(0, 10) || '',
-          startTime,
-          duration: shot.duration * 1000,
-          sourcePath: '',
-          text: shot.dialogue,
-          fontSize: 32,
-          fontColor: '#ffffff',
-          position: { x: 0, y: 0 },
-          scale: 1,
-          rotation: 0,
-          opacity: 1,
-          keyframes: [],
-        };
-      });
-
-    const subtitleTrack: Track = {
-      id: 'subtitle-main',
-      name: '字幕轨道',
-      type: 'subtitle',
-      muted: false,
-      locked: false,
-      visible: true,
-      height: 40,
-      clips: subtitleClips,
-    };
-
-    const totalDuration = shots.reduce((acc, shot) => acc + shot.duration * 1000, 0);
+  // 创建兼容的 Timeline 对象（用于 Player）
+  const timeline = useMemo((): TimelineType => {
+    const duration = getDuration();
+    const durationMs = duration * (1000 / config.fps);
 
     return {
       id: 'timeline-main',
-      duration: totalDuration || 30000,
-      tracks: [videoTrack, audioTrack, subtitleTrack],
-      fps: 30,
-      resolution: { width: 1920, height: 1080 },
+      duration: durationMs || 30000,
+      tracks: tracks.map(track => ({
+        id: track.id,
+        name: track.name,
+        type: track.type === 'text' ? 'subtitle' : track.type,
+        muted: track.muted,
+        locked: track.locked,
+        visible: track.visible,
+        height: track.height,
+        clips: track.items.map(item => {
+          const sourcePath = 'source' in item ? (item as any).source : '';
+          const hasTransform = item.type === 'video' || item.type === 'image';
+          const x = hasTransform ? (item as any).x || 0 : 0;
+          const y = hasTransform ? (item as any).y || 0 : 0;
+          const scale = hasTransform ? (item as any).scale || 1 : 1;
+          const rotation = hasTransform ? (item as any).rotation || 0 : 0;
+          const opacity = hasTransform ? ((item as any).opacity ?? 1) : 1;
+          const keyframes = 'keyframes' in item ? (item as any).keyframes : [];
+
+          return {
+            id: item.id,
+            trackId: track.id,
+            type: (item.type === 'text' ? 'subtitle' : item.type) as MediaType,
+            name: item.name,
+            startTime: item.start * (1000 / config.fps),
+            duration: (item.end - item.start) * (1000 / config.fps),
+            sourcePath,
+            position: { x, y },
+            scale,
+            rotation,
+            opacity,
+            keyframes: keyframes?.map((kf: any) => ({
+              id: kf.id,
+              time: kf.time,
+              property: Object.keys(kf).find(k => !['id', 'time', 'easing'].includes(k)) || 'opacity',
+              value: kf.opacity ?? kf.scale ?? kf.x ?? kf.y ?? kf.rotation ?? 1,
+              easing: kf.easing,
+            })) || [],
+            text: item.type === 'text' ? (item as any).content : undefined,
+            fontSize: item.type === 'text' ? (item as any).fontSize : undefined,
+            fontColor: item.type === 'text' ? (item as any).fontColor : undefined,
+          };
+        }),
+      })) as Track[],
+      fps: config.fps,
+      resolution: { width: config.width, height: config.height },
     };
-  }, [shots]);
+  }, [tracks, config, getDuration]);
 
-  const [timeline, setTimeline] = useState<TimelineType>(initialTimeline);
-  const [currentTime, setCurrentTime] = useState(0);
+  // 当前选中的 Clip（用于 Sidebar）
   const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
-  const [isPlaying, setIsPlaying] = useState(false);
-
-  // 从 shots 生成素材列表
-  const assets = useMemo((): Asset[] => {
-    return shots.map((shot) => ({
-      id: `asset-${shot.id}`,
-      name: shot.scriptContent.slice(0, 20) || `镜头素材`,
-      type: 'video' as MediaType,
-      path: shot.imageUrl || `https://picsum.photos/seed/${shot.id}/800/450`,
-      thumbnailPath: shot.imageUrl || `https://picsum.photos/seed/${shot.id}/160/90`,
-      duration: shot.duration * 1000,
-      size: 0,
-      createdAt: Date.now(),
-      refCount: 0,
-    }));
-  }, [shots]);
-
-  // 获取选中的 Clip
   const selectedClip = useMemo(() => {
     if (!selectedClipId) return null;
     for (const track of timeline.tracks) {
@@ -152,180 +217,42 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({ shots }) => {
     return null;
   }, [selectedClipId, timeline]);
 
-  // 更新 Clip
+  // 更新 Clip（兼容旧 API）
   const handleClipChange = useCallback((updatedClip: Clip) => {
-    setTimeline((prev) => ({
-      ...prev,
-      tracks: prev.tracks.map((track) => ({
-        ...track,
-        clips: track.clips.map((c) => (c.id === updatedClip.id ? updatedClip : c)),
-      })),
-    }));
-  }, []);
-
-  // 添加 Clip 到指定轨道
-  const handleAddClip = useCallback((trackId: string, clip: Omit<Clip, 'id' | 'trackId'>) => {
-    const newClip: Clip = {
-      ...clip,
-      id: uuid(),
-      trackId,
-    };
-    setTimeline((prev) => ({
-      ...prev,
-      tracks: prev.tracks.map((track) =>
-        track.id === trackId
-          ? { ...track, clips: [...track.clips, newClip].sort((a, b) => a.startTime - b.startTime) }
-          : track
-      ),
-    }));
-    return newClip.id;
-  }, []);
-
-  // 移动 Clip（修改起始时间或移动到其他轨道）
-  const handleMoveClip = useCallback((clipId: string, newStartTime: number, newTrackId?: string) => {
-    setTimeline((prev) => {
-      let movedClip: Clip | null = null;
-      // 先找到并移除 clip
-      const tracksWithoutClip = prev.tracks.map((track) => {
-        const clip = track.clips.find((c) => c.id === clipId);
-        if (clip) {
-          movedClip = { ...clip, startTime: newStartTime, trackId: newTrackId || clip.trackId };
-          return { ...track, clips: track.clips.filter((c) => c.id !== clipId) };
-        }
-        return track;
+    const trackStore = useTrackStore.getState();
+    const track = tracks.find(t => t.items.some(i => i.id === updatedClip.id));
+    if (track) {
+      trackStore.updateItem(track.id, updatedClip.id, {
+        x: updatedClip.position.x,
+        y: updatedClip.position.y,
+        scale: updatedClip.scale,
+        rotation: updatedClip.rotation,
+        opacity: updatedClip.opacity,
       });
-      if (!movedClip) return prev;
-      // 添加到目标轨道
-      const targetTrackId = newTrackId || movedClip.trackId;
-      return {
-        ...prev,
-        tracks: tracksWithoutClip.map((track) =>
-          track.id === targetTrackId
-            ? { ...track, clips: [...track.clips, movedClip!].sort((a, b) => a.startTime - b.startTime) }
-            : track
-        ),
-      };
-    });
-  }, []);
-
-  // 删除 Clip
-  const handleDeleteClip = useCallback((clipId: string) => {
-    setTimeline((prev) => ({
-      ...prev,
-      tracks: prev.tracks.map((track) => ({
-        ...track,
-        clips: track.clips.filter((c) => c.id !== clipId),
-      })),
-    }));
-    if (selectedClipId === clipId) {
-      setSelectedClipId(null);
     }
-  }, [selectedClipId]);
+  }, [tracks]);
 
-  // 添加关键帧
-  const handleAddKeyframe = useCallback((clipId: string, keyframe: Omit<Keyframe, 'id'>) => {
-    const newKeyframe: Keyframe = { ...keyframe, id: uuid() };
-    setTimeline((prev) => ({
-      ...prev,
-      tracks: prev.tracks.map((track) => ({
-        ...track,
-        clips: track.clips.map((c) =>
-          c.id === clipId
-            ? { ...c, keyframes: [...c.keyframes, newKeyframe].sort((a, b) => a.time - b.time) }
-            : c
-        ),
-      })),
-    }));
-    return newKeyframe.id;
-  }, []);
-
-  // 更新关键帧
-  const handleUpdateKeyframe = useCallback((clipId: string, keyframeId: string, updates: Partial<Keyframe>) => {
-    setTimeline((prev) => ({
-      ...prev,
-      tracks: prev.tracks.map((track) => ({
-        ...track,
-        clips: track.clips.map((c) =>
-          c.id === clipId
-            ? {
-                ...c,
-                keyframes: c.keyframes.map((kf) =>
-                  kf.id === keyframeId ? { ...kf, ...updates } : kf
-                ),
-              }
-            : c
-        ),
-      })),
-    }));
-  }, []);
-
-  // 删除关键帧
-  const handleDeleteKeyframe = useCallback((clipId: string, keyframeId: string) => {
-    setTimeline((prev) => ({
-      ...prev,
-      tracks: prev.tracks.map((track) => ({
-        ...track,
-        clips: track.clips.map((c) =>
-          c.id === clipId
-            ? { ...c, keyframes: c.keyframes.filter((kf) => kf.id !== keyframeId) }
-            : c
-        ),
-      })),
-    }));
-  }, []);
-
-  // 插入轨道
-  const handleInsertTrack = useCallback((track: Omit<Track, 'id' | 'clips'>, index?: number) => {
-    const newTrack: Track = { ...track, id: uuid(), clips: [] };
-    setTimeline((prev) => {
-      const newTracks = [...prev.tracks];
-      if (index !== undefined && index >= 0 && index <= newTracks.length) {
-        newTracks.splice(index, 0, newTrack);
-      } else {
-        newTracks.push(newTrack);
-      }
-      return { ...prev, tracks: newTracks };
-    });
-    return newTrack.id;
-  }, []);
-
-  // 删除轨道
-  const handleDeleteTrack = useCallback((trackId: string) => {
-    setTimeline((prev) => ({
-      ...prev,
-      tracks: prev.tracks.filter((t) => t.id !== trackId),
-    }));
-  }, []);
-
-  // 更新轨道属性
-  const handleUpdateTrack = useCallback((trackId: string, updates: Partial<Track>) => {
-    setTimeline((prev) => ({
-      ...prev,
-      tracks: prev.tracks.map((t) => (t.id === trackId ? { ...t, ...updates } : t)),
-    }));
-  }, []);
-
-  // 导出入口
-  const handleExport = useCallback(() => {
-    // TODO: 实现导出逻辑，将 timeline 数据传递给导出模块
-    console.log('导出工程:', timeline);
-  }, [timeline]);
-
-  // 素材拖拽开始
+  // 素材拖拽开始（旧 API）
   const handleAssetDragStart = useCallback((asset: Asset) => {
-    // 实际应用中应实现拖拽放入轨道逻辑
-    console.log('拖拽素材:', asset.name);
+    console.log('[VideoEditor] Legacy drag start:', asset.name);
+  }, []);
+
+  // 资源拖拽开始（新 API）
+  const handleResourceDragStart = useCallback((resource: Resource) => {
+    console.log('[VideoEditor] Resource drag start:', resource.name);
+    setDraggingResource(resource);
   }, []);
 
   // 播放时间变化
   const handleTimeChange = useCallback((time: number) => {
-    setCurrentTime(time);
-  }, []);
+    const frame = Math.round(time / (1000 / config.fps));
+    setCurrentTime(frame);
+  }, [config.fps, setCurrentTime]);
 
   // 播放状态变化
   const handlePlayStateChange = useCallback((playing: boolean) => {
-    setIsPlaying(playing);
-  }, []);
+    setPlaying(playing);
+  }, [setPlaying]);
 
   return (
     <div style={styles.container}>
@@ -344,18 +271,15 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({ shots }) => {
           timeline={timeline}
           onClipChange={handleClipChange}
           onAssetDragStart={handleAssetDragStart}
+          onResourceDragStart={handleResourceDragStart}
         />
       </div>
 
-      {/* 下半部分：时间线 */}
+      {/* 下半部分：增强版时间线 */}
       <div style={styles.lower}>
-        <Timeline
-          timeline={timeline}
-          currentTime={currentTime}
-          selectedClipId={selectedClipId}
-          onTimelineChange={setTimeline}
+        <EnhancedTimeline
           onTimeChange={handleTimeChange}
-          onClipSelect={setSelectedClipId}
+          draggingResource={draggingResource}
         />
       </div>
     </div>
@@ -382,7 +306,7 @@ const styles: Record<string, React.CSSProperties> = {
     padding: 16,
   },
   lower: {
-    height: 280,
+    height: 300,
     minHeight: 200,
   },
 };

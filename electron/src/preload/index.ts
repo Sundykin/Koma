@@ -81,4 +81,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
     import: (zipPath: string, newProjectId?: string) =>
       ipcRenderer.invoke('controller', 'controller.project.import', { zipPath, newProjectId }),
   },
+  ffmpeg: {
+    isAvailable: () => ipcRenderer.invoke('controller', 'controller.ffmpeg.isAvailable'),
+    getInfo: (input: string) => ipcRenderer.invoke('controller', 'controller.ffmpeg.getInfo', { input }),
+    extractFrames: (options: any) => ipcRenderer.invoke('controller', 'controller.ffmpeg.extractFrames', options),
+    waveform: (options: any) => ipcRenderer.invoke('controller', 'controller.ffmpeg.waveform', options),
+    splitAudio: (input: string, output: string) =>
+      ipcRenderer.invoke('controller', 'controller.ffmpeg.splitAudio', { input, output }),
+    getCacheDir: (subDir?: string) => ipcRenderer.invoke('controller', 'controller.ffmpeg.getCacheDir', { subDir }),
+    clearCache: (subDir?: string) => ipcRenderer.invoke('controller', 'controller.ffmpeg.clearCache', { subDir }),
+    cancelTask: () => ipcRenderer.invoke('controller', 'controller.ffmpeg.cancelTask'),
+    clearQueue: () => ipcRenderer.invoke('controller', 'controller.ffmpeg.clearQueue'),
+  },
 });
