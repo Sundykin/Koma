@@ -8,13 +8,18 @@ import { Track, Clip, Asset, MediaType, EasingType, Keyframe } from '../../types
 import { SimpleTimeline } from './SimpleTimeline';
 import { SimplePlayer } from './SimplePlayer';
 import { SimplePropertiesPanel } from './SimplePropertiesPanel';
+import { SimpleAssetPanel } from './SimpleAssetPanel';
+import { useAssets } from './useAssets';
 import { addKeyframe, updateKeyframe, removeKeyframe } from '../../engine/simpleKeyframe';
+import { findNextAvailablePosition } from '../../utils/trackCollision';
 import { electronService } from '../../services/electronService';
 import type { Shot } from '../../types';
 
 interface SimpleEditorProps {
   shots?: Shot[];
   onShotsChange?: (shots: Shot[]) => void;
+  projectId?: string;
+  episodeId?: string;
 }
 
 const generateId = () => `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -69,13 +74,19 @@ function shotsToTracks(shots: Shot[]): Track[] {
   return [videoTrack, audioTrack, textTrack].filter(t => t.clips.length > 0 || t.isMainTrack);
 }
 
-export const SimpleEditor: React.FC<SimpleEditorProps> = ({ shots = [] }) => {
+export const SimpleEditor: React.FC<SimpleEditorProps> = ({ shots = [], projectId, episodeId }) => {
   const [tracks, setTracks] = useState<Track[]>(() => shotsToTracks(shots));
   const [currentTime, setCurrentTime] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
   const [selectedKeyframeId, setSelectedKeyframeId] = useState<string | null>(null);
   const [draggingAsset, setDraggingAsset] = useState<Asset | null>(null);
+
+  // 素材库
+  const { assets: assetItems } = useAssets({
+    projectId: projectId || '',
+    episodeId: episodeId || '',
+  });
 
   // 获取选中的 Clip
   const selectedClip = useMemo(() => {
@@ -87,15 +98,18 @@ export const SimpleEditor: React.FC<SimpleEditorProps> = ({ shots = [] }) => {
     return null;
   }, [tracks, selectedClipId]);
 
-  // 计算总时长
+  // 计算总时长（基于实际内容）
   const duration = useMemo(() => {
     let maxEnd = 0;
+    let hasClips = false;
     for (const track of tracks) {
       for (const clip of track.clips) {
+        hasClips = true;
         maxEnd = Math.max(maxEnd, clip.start + clip.duration);
       }
     }
-    return Math.max(maxEnd, 10);
+    // 没有素材时返回最小时长，有素材时返回实际内容时长
+    return hasClips ? maxEnd : 1;
   }, [tracks]);
 
   // 当 shots 变化时更新轨道
@@ -110,12 +124,19 @@ export const SimpleEditor: React.FC<SimpleEditorProps> = ({ shots = [] }) => {
   }, []);
 
   const handleSeek = useCallback((time: number) => {
-    setCurrentTime(time);
-  }, []);
+    // 限制 seek 不超过内容时长
+    setCurrentTime(Math.min(Math.max(0, time), duration));
+  }, [duration]);
 
   const handleTimeUpdate = useCallback((time: number) => {
-    setCurrentTime(time);
-  }, []);
+    // 播放到末尾时停止
+    if (time >= duration) {
+      setCurrentTime(duration);
+      setIsPlaying(false);
+    } else {
+      setCurrentTime(time);
+    }
+  }, [duration]);
 
   const handleSelectClip = useCallback((id: string | null) => {
     setSelectedClipId(id);
@@ -154,21 +175,29 @@ export const SimpleEditor: React.FC<SimpleEditorProps> = ({ shots = [] }) => {
   }, []);
 
   const handleAssetDrop = useCallback((asset: Asset, time: number, trackId?: string) => {
-    const newClip: Clip = {
-      id: generateId(),
-      assetId: asset.id,
-      trackId: trackId || '',
-      start: time,
-      duration: asset.duration,
-      offset: 0,
-      name: asset.name,
-      type: asset.type,
-      src: asset.src,
-      x: 0, y: 0, scale: 1, rotation: 0, opacity: 1,
-    };
-
     setTracks(prev => {
-      if (trackId) {
+      // 找到目标轨道
+      let targetTrack = trackId ? prev.find(t => t.id === trackId) : null;
+      const trackType = asset.type === MediaType.AUDIO ? 'audio' : asset.type === MediaType.TEXT ? 'text' : 'video';
+
+      // 使用碰撞检测找到安全的起始位置
+      const existingClips = targetTrack?.clips || [];
+      const safeStart = findNextAvailablePosition(existingClips, asset.duration, Math.max(0, time));
+
+      const newClip: Clip = {
+        id: generateId(),
+        assetId: asset.id,
+        trackId: trackId || '',
+        start: safeStart,
+        duration: asset.duration,
+        offset: 0,
+        name: asset.name,
+        type: asset.type,
+        src: asset.src,
+        x: 0, y: 0, scale: 1, rotation: 0, opacity: 1,
+      };
+
+      if (trackId && targetTrack) {
         return prev.map(track =>
           track.id === trackId
             ? { ...track, clips: [...track.clips, { ...newClip, trackId }] }
@@ -176,11 +205,12 @@ export const SimpleEditor: React.FC<SimpleEditorProps> = ({ shots = [] }) => {
         );
       }
 
-      const trackType = asset.type === MediaType.AUDIO ? 'audio' : asset.type === MediaType.TEXT ? 'text' : 'video';
+      // 创建新轨道
+      const newTrackId = generateId();
       const newTrack: Track = {
-        id: generateId(),
+        id: newTrackId,
         type: trackType,
-        clips: [{ ...newClip, trackId: generateId() }],
+        clips: [{ ...newClip, trackId: newTrackId }],
         order: prev.length,
       };
       return [...prev, newTrack];
@@ -274,8 +304,16 @@ export const SimpleEditor: React.FC<SimpleEditorProps> = ({ shots = [] }) => {
 
   return (
     <div style={styles.container}>
-      {/* 上半部分：播放器 + 属性面板 */}
+      {/* 上半部分：素材面板 + 播放器 + 属性面板 */}
       <div style={styles.upper}>
+        {/* 素材面板 */}
+        <div style={styles.assetPanel}>
+          <SimpleAssetPanel
+            assets={assetItems}
+            onDragStart={setDraggingAsset}
+            onDragEnd={() => setDraggingAsset(null)}
+          />
+        </div>
         <SimplePlayer
           tracks={tracks}
           currentTime={currentTime}
@@ -335,6 +373,12 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     minHeight: 0,
     borderBottom: '1px solid #27272a',
+  },
+  assetPanel: {
+    width: 280,
+    minWidth: 220,
+    borderRight: '1px solid #27272a',
+    overflow: 'hidden',
   },
   lower: {
     height: 300,

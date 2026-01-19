@@ -4,6 +4,7 @@
  */
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { Track, Clip, Asset, MediaType, Keyframe, EasingType, InsertPosition } from '../../types/editor';
+import { toKomaLocalUrl } from '../../utils/urlUtils';
 import {
   Play, Pause, Film, Music, Type, Trash2, Copy
 } from 'lucide-react';
@@ -93,12 +94,25 @@ const Filmstrip: React.FC<{ clip: Clip }> = ({ clip }) => {
   const frameWidth = CLIP_HEIGHT * frameAspectRatio;
   const totalWidth = clip.duration * PIXELS_PER_SECOND;
   const frameCount = Math.max(1, Math.ceil(totalWidth / frameWidth));
+  const mediaSrc = toKomaLocalUrl(clip.src);
 
   return (
     <div className="flex h-full w-full pointer-events-none select-none overflow-hidden bg-blue-900/20">
       {Array.from({ length: frameCount }).map((_, i) => (
-        <div key={i} className="flex-shrink-0 h-full border-r border-white/20 relative bg-black/20" style={{ width: frameWidth }}>
-          <img src={clip.src} className="w-full h-full object-cover opacity-90" alt="" draggable={false} />
+        <div key={i} className="flex-shrink-0 h-full border-r border-white/20 relative bg-zinc-800" style={{ width: frameWidth }}>
+          <img
+            src={mediaSrc}
+            className="w-full h-full object-cover opacity-90"
+            alt=""
+            draggable={false}
+            onError={(e) => {
+              // 图片加载失败时显示占位背景
+              const target = e.target as HTMLImageElement;
+              target.style.opacity = '0';
+            }}
+          />
+          {/* 占位背景（当图片加载失败时可见） */}
+          <div className="absolute inset-0 bg-gradient-to-br from-blue-900/30 to-blue-800/20 -z-10" />
         </div>
       ))}
       <span className="absolute top-1 left-2 text-[10px] text-white font-medium truncate px-1 drop-shadow-md z-10 bg-black/40 rounded">

@@ -86,3 +86,40 @@ export interface InsertPosition {
   referenceOrder: number;
   position: 'above' | 'below';
 }
+
+// 时间线持久化数据
+export interface TimelineData {
+  version: number;
+  tracks: Track[];
+  createdAt: number;
+  updatedAt: number;
+}
+
+// 素材来源类型
+export type AssetSource = 'shot' | 'character' | 'scene' | 'prop' | 'upload';
+
+// 素材面板用的素材项
+export interface AssetItem {
+  id: string;
+  name: string;
+  type: 'video' | 'image' | 'audio' | 'text';
+  src: string;
+  thumbnailSrc?: string;
+  duration: number;
+  source: AssetSource;
+  metadata?: {
+    shotId?: string;
+    characterId?: string;
+    sceneId?: string;
+    propId?: string;
+  };
+}
+
+// 帧缓存元数据
+export interface FrameCacheMeta {
+  videoPath: string;
+  videoHash: string;
+  frameCount: number;
+  framePaths: string[];
+  createdAt: number;
+}

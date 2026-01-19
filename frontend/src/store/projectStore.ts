@@ -25,6 +25,7 @@ import {
   type ManjuProject,
 } from '../manju-dsl/protocol';
 import type { Character, Scene, Shot } from '../types';
+import type { TimelineData } from '../types/editor';
 
 // ========== 路径工具 ==========
 
@@ -771,6 +772,51 @@ export async function saveEpisodeShots(
 }
 
 /**
+ * 加载分集时间线数据
+ */
+export async function loadEpisodeTimeline(
+  projectId: string,
+  episodeId: string
+): Promise<TimelineData | null> {
+  if (!electronService.isElectron()) return null;
+
+  const projectPath = await getProjectPath(projectId);
+  const timelinePath = `${projectPath}/episodes/${episodeId}/timeline.json`;
+
+  try {
+    const content = await electronService.fs.readFile(timelinePath);
+    return JSON.parse(content) as TimelineData;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 保存分集时间线数据
+ */
+export async function saveEpisodeTimeline(
+  projectId: string,
+  episodeId: string,
+  data: Omit<TimelineData, 'updatedAt'>
+): Promise<void> {
+  if (!electronService.isElectron()) return;
+
+  const projectPath = await getProjectPath(projectId);
+  const episodePath = `${projectPath}/episodes/${episodeId}`;
+
+  const timelineData: TimelineData = {
+    ...data,
+    updatedAt: Date.now(),
+  };
+
+  await electronService.fs.mkdir(episodePath);
+  await electronService.fs.writeFile(
+    `${episodePath}/timeline.json`,
+    JSON.stringify(timelineData, null, 2)
+  );
+}
+
+/**
  * 更新单个分镜
  */
 export async function updateShot(
@@ -779,7 +825,7 @@ export async function updateShot(
   shotId: string,
   updates: Partial<Shot>
 ): Promise<Shot | null> {
-  const shots = await loadShots(projectId, episodeId);
+  const shots = await loadEpisodeShots(projectId, episodeId);
   const index = shots.findIndex(s => s.id === shotId);
   if (index === -1) return null;
 

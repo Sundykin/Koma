@@ -856,6 +856,8 @@ const AppContent: React.FC = () => {
                          analysisData ? (
                             <SimpleEditor
                                 shots={analysisData.shots}
+                                projectId={activeProject?.id}
+                                episodeId={activeEpisode?.id}
                             />
                         ) : (
                              <div className="flex h-full items-center justify-center text-gray-500 flex-col gap-4">
