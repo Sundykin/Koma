@@ -427,12 +427,13 @@
   position: absolute;
   inset: 0;
   pointer-events: none;
+  /* 更细、更淡的网格线 */
   background-image: repeating-linear-gradient(
     90deg,
     transparent,
-    transparent 29px,
-    #27272a 29px,
-    #27272a 30px
+    transparent 59px,
+    rgba(255, 255, 255, 0.03) 59px,
+    rgba(255, 255, 255, 0.03) 60px
   );
 }
 

@@ -357,11 +357,17 @@ export function EnhancedTimeline({ onTimeChange, draggingResource }: EnhancedTim
     selectItem(trackId, itemId);
   }, [tracks, currentTime, selectItem]);
 
-  // 拖拽处理
+  // 拖拽处理（使用 requestAnimationFrame 节流）
   useEffect(() => {
     if (!isDragging || !dragState) return;
 
-    const handleMouseMove = (e: MouseEvent) => {
+    let rafId: number | null = null;
+    let latestMouseEvent: MouseEvent | null = null;
+
+    const performDrag = () => {
+      if (!latestMouseEvent || !dragState) return;
+
+      const e = latestMouseEvent;
       const deltaX = e.clientX - dragState.startX;
       const deltaFrames = pixelToFrame(deltaX);
 
@@ -385,7 +391,6 @@ export function EnhancedTimeline({ onTimeChange, draggingResource }: EnhancedTim
         const newStart = Math.max(0, dragState.originalStart + deltaFrames);
         if (newStart < dragState.originalEnd - 1) {
           trimItemStart(dragState.trackId, dragState.itemId, newStart);
-          // 显示时间提示
           setTrimTooltip({
             visible: true,
             x: e.clientX,
@@ -397,7 +402,6 @@ export function EnhancedTimeline({ onTimeChange, draggingResource }: EnhancedTim
         const newEnd = dragState.originalEnd + deltaFrames;
         if (newEnd > dragState.originalStart + 1) {
           trimItemEnd(dragState.trackId, dragState.itemId, newEnd);
-          // 显示时间提示
           setTrimTooltip({
             visible: true,
             x: e.clientX,
@@ -406,9 +410,21 @@ export function EnhancedTimeline({ onTimeChange, draggingResource }: EnhancedTim
           });
         }
       }
+
+      rafId = null;
+    };
+
+    const handleMouseMove = (e: MouseEvent) => {
+      latestMouseEvent = e;
+      if (rafId === null) {
+        rafId = requestAnimationFrame(performDrag);
+      }
     };
 
     const handleMouseUp = () => {
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+      }
       setIsDragging(false);
       setDragState(null);
       setTrimTooltip({ visible: false, x: 0, y: 0, time: '' });
@@ -419,6 +435,9 @@ export function EnhancedTimeline({ onTimeChange, draggingResource }: EnhancedTim
     document.addEventListener('mouseup', handleMouseUp);
 
     return () => {
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+      }
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
     };

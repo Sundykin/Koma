@@ -339,13 +339,16 @@ export const useTrackStore = create<TrackState & TrackActions>((set, get) => ({
       case 'video':
         item = createVideoTrackItem(
           nanoid(),
-          resource.name,
-          actualStart,
-          actualEnd,
+          resource.path,  // source: 视频文件路径
           frameCount,
-          resource.path,
-          resource.id
+          fps,
+          resource.width || 1920,
+          resource.height || 1080,
+          actualStart
         );
+        // 设置名称和封面
+        (item as VideoTrackItem).name = resource.name;
+        (item as VideoTrackItem).resourceId = resource.id;
         if (resource.thumbnailPath) {
           (item as VideoTrackItem).cover = resource.thumbnailPath;
         }
@@ -354,13 +357,14 @@ export const useTrackStore = create<TrackState & TrackActions>((set, get) => ({
       case 'audio':
         item = createAudioTrackItem(
           nanoid(),
-          resource.name,
-          actualStart,
-          actualEnd,
-          frameCount,
-          resource.path,
-          resource.id
+          resource.path,  // source: 音频文件路径
+          resource.duration || 5000,  // 毫秒
+          fps,
+          actualStart
         );
+        // 设置名称
+        (item as AudioTrackItem).name = resource.name;
+        (item as AudioTrackItem).resourceId = resource.id;
         if (resource.waveformPath) {
           (item as AudioTrackItem).waveform = resource.waveformPath;
         }
@@ -369,13 +373,16 @@ export const useTrackStore = create<TrackState & TrackActions>((set, get) => ({
       case 'image':
         item = createImageTrackItem(
           nanoid(),
-          resource.name,
-          actualStart,
-          actualEnd,
-          frameCount,
-          resource.path,
-          resource.id
+          resource.path,  // source: 图片文件路径
+          resource.width || 1920,
+          resource.height || 1080,
+          fps,
+          resource.duration || 3000,  // 毫秒
+          actualStart
         );
+        // 设置名称
+        (item as ImageTrackItem).name = resource.name;
+        (item as ImageTrackItem).resourceId = resource.id;
         break;
 
       default:
@@ -440,12 +447,27 @@ export const useTrackStore = create<TrackState & TrackActions>((set, get) => ({
     const item = get().getItem(trackId, itemId);
     if (!item) return;
 
-    // 计算新的 offsetR
+    // 基本检查
+    if (newEnd <= item.start) return;
+
+    // 图片类型可以无限拉长
+    if (item.type === 'image') {
+      // 更新 end 和 frameCount
+      const newDuration = newEnd - item.start;
+      get().updateItem(trackId, itemId, {
+        end: newEnd,
+        frameCount: newDuration,
+        offsetR: 0,
+      });
+      return;
+    }
+
+    // 视频/音频类型需要检查边界
     const endDiff = item.end - newEnd;
     const newOffsetR = item.offsetR + endDiff;
 
-    // 检查边界
-    if (newOffsetR < 0 || newEnd <= item.start) return;
+    // 检查边界（不能超出源素材长度）
+    if (newOffsetR < 0) return;
 
     get().updateItem(trackId, itemId, {
       end: newEnd,

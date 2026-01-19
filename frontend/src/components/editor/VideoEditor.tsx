@@ -23,8 +23,6 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({ projectId, shots }) =>
   const [initialized, setInitialized] = useState(false);
   const [draggingResource, setDraggingResource] = useState<Resource | null>(null);
   const initRef = useRef(false);
-  const shotsRef = useRef(shots);
-  shotsRef.current = shots;
 
   // Track store - 使用 selector 避免不必要的重渲染
   const config = useTrackStore(state => state.config);
@@ -69,67 +67,88 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({ projectId, shots }) =>
 
       console.log('[VideoEditor] Created tracks:', { videoTrack: videoTrack?.id, audioTrack: audioTrack?.id, textTrack: textTrack?.id });
 
-      // 导入 shots 中的视频素材
-      const currentShots = shotsRef.current;
-      if (currentShots.length > 0 && videoTrack) {
-        console.log('[VideoEditor] Importing', currentShots.length, 'shots to timeline');
-
-        let currentFrame = 0;
-        const fps = 30;
-
-        for (const shot of currentShots) {
-          const duration = shot.duration * 1000;
-          const durationFrames = Math.round(duration / (1000 / fps));
-
-          // 获取视频路径
-          const currentVideo = shot.videos?.[shot.currentVideoIndex || 0];
-          const mediaPath = currentVideo?.path || shot.imagePath || shot.imageUrl;
-          const mediaType = currentVideo?.path ? 'video' : 'image';
-
-          console.log('[VideoEditor] Shot', shot.id, ':', { mediaPath, mediaType, duration });
-
-          if (mediaPath) {
-            trackStore.addItemFromResource(
-              videoTrack.id,
-              {
-                id: `shot-${shot.id}`,
-                type: mediaType,
-                name: shot.scriptContent?.slice(0, 20) || `镜头 ${shot.id}`,
-                path: mediaPath,
-                duration,
-                thumbnailPath: currentVideo?.thumbnailPath || shot.imagePath || shot.imageUrl,
-              },
-              currentFrame
-            );
-          }
-
-          if (shot.dialogue && textTrack) {
-            trackStore.addItemFromResource(
-              textTrack.id,
-              {
-                id: `subtitle-${shot.id}`,
-                type: 'text',
-                name: shot.dialogue.slice(0, 10),
-                path: '',
-                duration,
-              },
-              currentFrame
-            );
-          }
-
-          currentFrame += durationFrames;
-        }
-
-        console.log('[VideoEditor] Import complete, total frames:', currentFrame);
-      } else {
-        console.log('[VideoEditor] No shots to import or no video track');
-      }
-
       setInitialized(true);
     };
 
     initStores();
   }, [projectId, initResourceStore]);
+
+  // 当 shots 变化时导入到轨道
+  useEffect(() => {
+    if (!initialized || shots.length === 0) {
+      console.log('[VideoEditor] Skip import: initialized=', initialized, 'shots=', shots.length);
+      return;
+    }
+
+    const trackStore = useTrackStore.getState();
+    const videoTrack = trackStore.tracks.find(t => t.type === 'video');
+    const textTrack = trackStore.tracks.find(t => t.type === 'text');
+
+    if (!videoTrack) {
+      console.log('[VideoEditor] No video track found');
+      return;
+    }
+
+    // 清空现有 items
+    videoTrack.items.forEach(item => {
+      trackStore.removeItem(videoTrack.id, item.id);
+    });
+    if (textTrack) {
+      textTrack.items.forEach(item => {
+        trackStore.removeItem(textTrack.id, item.id);
+      });
+    }
+
+    console.log('[VideoEditor] Importing', shots.length, 'shots to timeline');
+
+    let currentFrame = 0;
+    const fps = 30;
+
+    for (const shot of shots) {
+      const duration = shot.duration * 1000;
+      const durationFrames = Math.round(duration / (1000 / fps));
+
+      // 获取视频路径
+      const currentVideo = shot.videos?.[shot.currentVideoIndex || 0];
+      const mediaPath = currentVideo?.path || shot.imagePath || shot.imageUrl;
+      const mediaType = currentVideo?.path ? 'video' : 'image';
+
+      console.log('[VideoEditor] Shot', shot.id, ':', { mediaPath, mediaType, duration });
+
+      if (mediaPath) {
+        trackStore.addItemFromResource(
+          videoTrack.id,
+          {
+            id: `shot-${shot.id}`,
+            type: mediaType,
+            name: shot.scriptContent?.slice(0, 20) || `镜头 ${shot.id}`,
+            path: mediaPath,
+            duration,
+            thumbnailPath: currentVideo?.thumbnailPath || shot.imagePath || shot.imageUrl,
+          },
+          currentFrame
+        );
+      }
+
+      if (shot.dialogue && textTrack) {
+        trackStore.addItemFromResource(
+          textTrack.id,
+          {
+            id: `subtitle-${shot.id}`,
+            type: 'text',
+            name: shot.dialogue.slice(0, 10),
+            path: '',
+            duration,
+          },
+          currentFrame
+        );
+      }
+
+      currentFrame += durationFrames;
+    }
+
+    console.log('[VideoEditor] Import complete, total frames:', currentFrame);
+  }, [initialized, shots]);
 
   // 从 shots 生成素材列表（兼容旧 API）
   const assets = useMemo((): Asset[] => {

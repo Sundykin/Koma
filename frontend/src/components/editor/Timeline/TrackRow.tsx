@@ -1,7 +1,7 @@
 /**
  * 轨道行组件
  */
-import React from 'react';
+import React, { memo, useCallback } from 'react';
 import type { TrackLine, TrackItem } from '../../../types/track';
 import ClipItem from './ClipItem';
 
@@ -26,7 +26,7 @@ interface TrackRowProps {
   dropPreview?: DropPreview | null;
 }
 
-export function TrackRow({
+export const TrackRow = memo(function TrackRow({
   track,
   scale,
   fps,
@@ -39,20 +39,20 @@ export function TrackRow({
   onDragLeave,
   dropPreview,
 }: TrackRowProps) {
-  const handleDragOver = (e: React.DragEvent) => {
+  const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'copy';
     onDragOver?.(e);
-  };
+  }, [onDragOver]);
 
-  const handleDragLeave = (e: React.DragEvent) => {
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
     onDragLeave?.(e);
-  };
+  }, [onDragLeave]);
 
-  const handleDrop = (e: React.DragEvent) => {
+  const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     onDrop?.(e);
-  };
+  }, [onDrop]);
 
   // 根据类型获取预览颜色
   const getPreviewColor = (type: string) => {
@@ -100,6 +100,6 @@ export function TrackRow({
       <div className="trackGrid" />
     </div>
   );
-}
+});
 
 export default TrackRow;

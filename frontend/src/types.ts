@@ -101,7 +101,8 @@ export interface Scene {
   time: 'day' | 'night' | 'twilight'; // 白天 |夜晚 | 黄昏
   mood: string;        // 氛围/情绪
   description: string; // 场景视觉描述
-  imagePath?: string;  // 场景预览图路径
+  imagePath?: string;  // 场景预览图本地路径
+  imageUrl?: string;   // 场景预览图远程URL
   // 分集引用追踪
   episodeRefs?: EpisodeRef[];
   fingerprint?: string;
@@ -113,7 +114,8 @@ export interface Prop {
   name: string;
   type: string;        // 道具类型 (如：武器、日常、关键线索)
   description: string; // 视觉描述
-  imagePath?: string;  // 道具参考图路径
+  imagePath?: string;  // 道具参考图本地路径
+  imageUrl?: string;   // 道具参考图远程URL
   // 分集引用追踪
   episodeRefs?: EpisodeRef[];
   fingerprint?: string;

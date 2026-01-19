@@ -205,7 +205,7 @@ export class AssetGenerationService {
 
       const scenes = await loadScenes(this.projectId);
       const updatedScenes = scenes.map(s =>
-        s.id === scene.id ? { ...s, imagePath } : s
+        s.id === scene.id ? { ...s, imagePath, imageUrl } : s
       );
       await saveScenes(this.projectId, updatedScenes);
 
@@ -255,7 +255,7 @@ export class AssetGenerationService {
 
       const props = await loadProps(this.projectId);
       const updatedProps = props.map(p =>
-        p.id === prop.id ? { ...p, imagePath } : p
+        p.id === prop.id ? { ...p, imagePath, imageUrl } : p
       );
       await saveProps(this.projectId, updatedProps);
 

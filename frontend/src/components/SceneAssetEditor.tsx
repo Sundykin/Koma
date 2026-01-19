@@ -47,7 +47,8 @@ export const SceneAssetEditor: React.FC<SceneAssetEditorProps> = ({
       });
 
       if (result.success && result.path) {
-        onUpdate({ imagePath: result.path });
+        // 同时保存本地路径和远程URL
+        onUpdate({ imagePath: result.path, imageUrl: (result as any).url });
       } else {
         setError(result.error || '生成失败');
       }

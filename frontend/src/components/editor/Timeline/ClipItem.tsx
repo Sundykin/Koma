@@ -1,7 +1,7 @@
 /**
  * 片段项组件
  */
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback, useMemo, memo } from 'react';
 import type { TrackItem, TrackKeyframe, VideoTrackItem, AudioTrackItem } from '../../../types/track';
 import FilmstripRenderer from './FilmstripRenderer';
 import WaveformRenderer from './WaveformRenderer';
@@ -15,7 +15,17 @@ interface ClipItemProps {
   onDragStart: (type: 'move' | 'trim-start' | 'trim-end', e: React.MouseEvent) => void;
 }
 
-export function ClipItem({
+// 比较函数，只有关键属性变化才重渲染
+function arePropsEqual(prevProps: ClipItemProps, nextProps: ClipItemProps): boolean {
+  return (
+    prevProps.item === nextProps.item &&
+    prevProps.scale === nextProps.scale &&
+    prevProps.selected === nextProps.selected &&
+    prevProps.fps === nextProps.fps
+  );
+}
+
+export const ClipItem = memo(function ClipItem({
   item,
   scale,
   selected,
@@ -186,6 +196,6 @@ export function ClipItem({
       />
     </div>
   );
-}
+}, arePropsEqual);
 
 export default ClipItem;

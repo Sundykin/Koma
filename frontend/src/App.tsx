@@ -16,7 +16,7 @@ import { TaskStatusBar } from './components/TaskStatusBar';
 import { useProjects } from './hooks/useProjects';
 import { TaskManager } from './services/TaskManager';
 import { startBackgroundAnalysis } from './services/ScriptAnalysisService';
-import { loadCharacters, loadScenes, loadProps, loadShots, saveEpisode } from './store/projectStore';
+import { loadCharacters, loadScenes, loadProps, loadShots, loadEpisodeShots, saveEpisode } from './store/projectStore';
 import { Menu, Avatar, Tooltip, Button, Tag, Spin, App as AntApp } from 'antd';
 import {
   AppstoreOutlined,
@@ -246,15 +246,24 @@ const AppContent: React.FC = () => {
 
   // 切换到视频编辑步骤时重新加载 shots（获取最新视频数据）
   useEffect(() => {
-    if (editorStep === 'video' && activeProject && !isVideoDevMode) {
-      loadShots(activeProject.id).then(shots => {
+    if (editorStep === 'video' && activeProject && activeEpisode && !isVideoDevMode) {
+      // 使用分集级别的加载函数
+      loadEpisodeShots(activeProject.id, activeEpisode.id).then(shots => {
         if (shots.length > 0) {
-          setAnalysisData(prev => prev ? { ...prev, shots } : null);
-          console.log('[App] Loaded shots for video editor:', shots.length, 'shots');
+          // 即使 prev 为 null 也要设置 shots
+          setAnalysisData(prev => ({
+            characters: prev?.characters || [],
+            scenes: prev?.scenes || [],
+            props: prev?.props || [],
+            shots,
+          }));
+          console.log('[App] Loaded episode shots for video editor:', shots.length, 'shots');
+        } else {
+          console.log('[App] No shots found for episode:', activeEpisode.id);
         }
       });
     }
-  }, [editorStep, activeProject?.id, isVideoDevMode]);
+  }, [editorStep, activeProject?.id, activeEpisode?.id, isVideoDevMode]);
 
   // 侧边栏折叠逻辑：在 editor 和 overview 模式下折叠
   const isSidebarCollapsed = view === 'editor' || view === 'overview';

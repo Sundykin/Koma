@@ -4,6 +4,7 @@
  */
 import type { Clip, Track, Timeline } from '../types';
 import { getInterpolatedValues } from './keyframe';
+import { electronService } from '../services/electronService';
 
 export class VideoRenderer {
   private canvas: HTMLCanvasElement;
@@ -32,33 +33,47 @@ export class VideoRenderer {
    * 预加载媒体资源
    */
   async preloadMedia(sourcePath: string): Promise<void> {
+    if (!sourcePath) return;
     if (this.mediaCache.has(sourcePath)) {
       return;
     }
 
     return new Promise((resolve, reject) => {
+      // 去掉查询参数后判断文件类型
+      const pathWithoutQuery = sourcePath.split('?')[0];
       const isVideo =
-        sourcePath.endsWith('.mp4') ||
-        sourcePath.endsWith('.webm') ||
-        sourcePath.endsWith('.mov');
+        pathWithoutQuery.endsWith('.mp4') ||
+        pathWithoutQuery.endsWith('.webm') ||
+        pathWithoutQuery.endsWith('.mov');
+
+      // 转换为可用的 URL（本地路径需要使用 koma-local:// 协议）
+      const mediaUrl = electronService.fs.toLocalUrl(sourcePath);
 
       if (isVideo) {
         const video = document.createElement('video');
-        video.src = sourcePath;
+        video.crossOrigin = 'anonymous';
+        video.src = mediaUrl;
         video.preload = 'auto';
         video.onloadeddata = () => {
           this.mediaCache.set(sourcePath, video);
           resolve();
         };
-        video.onerror = reject;
+        video.onerror = (e) => {
+          console.warn('[VideoRenderer] Failed to load video:', sourcePath, e);
+          resolve(); // 不阻塞其他资源加载
+        };
       } else {
         const img = new Image();
-        img.src = sourcePath;
+        img.crossOrigin = 'anonymous';
+        img.src = mediaUrl;
         img.onload = () => {
           this.mediaCache.set(sourcePath, img);
           resolve();
         };
-        img.onerror = reject;
+        img.onerror = (e) => {
+          console.warn('[VideoRenderer] Failed to load image:', sourcePath, e);
+          resolve(); // 不阻塞其他资源加载
+        };
       }
     });
   }

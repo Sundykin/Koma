@@ -110,23 +110,32 @@ export async function generateSceneImage(
 
         if (downloadResult.success && downloadResult.localPath) {
           await markTaskCompleted(projectId, task.id, progress.resultUrl, downloadResult.localPath);
-          await updateSceneAsset(projectId, scene.id, { imagePath: downloadResult.localPath });
+          // 同时保存本地路径和远程URL
+          await updateSceneAsset(projectId, scene.id, {
+            imagePath: downloadResult.localPath,
+            imageUrl: progress.resultUrl,
+          });
           onProgress?.(100, '完成');
-          return { success: true, path: downloadResult.localPath };
+          return { success: true, path: downloadResult.localPath, url: progress.resultUrl };
         }
       }
 
       await markTaskFailed(projectId, task.id, progress.error || '生成失败');
       return { success: false, error: progress.error || '生成失败' };
     } else if (typeof result !== 'string') {
-      // 同步模式
+      // 同步模式 - result 可能包含 url
       onProgress?.(90, '保存场景图...');
       const localPath = await saveSceneImage(projectId, scene.id, result.path);
+      const remoteUrl = result.url || result.path;
       await markTaskCompleted(projectId, task.id, result.path, localPath);
-      await updateSceneAsset(projectId, scene.id, { imagePath: localPath });
+      // 同时保存本地路径和远程URL
+      await updateSceneAsset(projectId, scene.id, {
+        imagePath: localPath,
+        imageUrl: remoteUrl,
+      });
 
       onProgress?.(100, '完成');
-      return { success: true, path: localPath };
+      return { success: true, path: localPath, url: remoteUrl };
     }
 
     return { success: false, error: '未知错误' };
@@ -254,23 +263,32 @@ export async function generatePropImage(
 
         if (downloadResult.success && downloadResult.localPath) {
           await markTaskCompleted(projectId, task.id, progress.resultUrl, downloadResult.localPath);
-          await updatePropAsset(projectId, prop.id, { imagePath: downloadResult.localPath });
+          // 同时保存本地路径和远程URL
+          await updatePropAsset(projectId, prop.id, {
+            imagePath: downloadResult.localPath,
+            imageUrl: progress.resultUrl,
+          });
           onProgress?.(100, '完成');
-          return { success: true, path: downloadResult.localPath };
+          return { success: true, path: downloadResult.localPath, url: progress.resultUrl };
         }
       }
 
       await markTaskFailed(projectId, task.id, progress.error || '生成失败');
       return { success: false, error: progress.error || '生成失败' };
     } else if (typeof result !== 'string') {
-      // 同步模式
+      // 同步模式 - result 可能包含 url
       onProgress?.(90, '保存道具图...');
       const localPath = await savePropImage(projectId, prop.id, result.path);
+      const remoteUrl = result.url || result.path;
       await markTaskCompleted(projectId, task.id, result.path, localPath);
-      await updatePropAsset(projectId, prop.id, { imagePath: localPath });
+      // 同时保存本地路径和远程URL
+      await updatePropAsset(projectId, prop.id, {
+        imagePath: localPath,
+        imageUrl: remoteUrl,
+      });
 
       onProgress?.(100, '完成');
-      return { success: true, path: localPath };
+      return { success: true, path: localPath, url: remoteUrl };
     }
 
     return { success: false, error: '未知错误' };

@@ -76,10 +76,12 @@ export const ImageCardGrid: React.FC<ImageCardGridProps> = ({
       imageUrl = char?.costumePhotoUrl || char?.costumePhotoPath;
     } else if (type === 'scene') {
       const scene = scenes.find(s => s.id === assetId);
-      imageUrl = scene?.imagePath; // Scene 暂时只有 imagePath
+      // 优先使用远程URL
+      imageUrl = scene?.imageUrl || scene?.imagePath;
     } else {
       const prop = propsList.find(p => p.id === assetId);
-      imageUrl = prop?.imagePath; // Prop 暂时只有 imagePath
+      // 优先使用远程URL
+      imageUrl = prop?.imageUrl || prop?.imagePath;
     }
     if (imageUrl) {
       onAdd(imageUrl);
