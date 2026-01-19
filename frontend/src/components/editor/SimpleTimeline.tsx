@@ -7,7 +7,8 @@ import { Track, Clip, Asset, MediaType, Keyframe, EasingType, InsertPosition } f
 import { toKomaLocalUrl } from '../../utils/urlUtils';
 import { useVideoFramesBatch } from './useVideoFrames';
 import {
-  Play, Pause, Film, Music, Type, Trash2, Copy
+  Play, Pause, Film, Music, Type, Trash2, Copy, ZoomIn, ZoomOut, Magnet,
+  Volume2, VolumeX, Eye, EyeOff, Pencil, Check, X
 } from 'lucide-react';
 
 interface TimelineProps {
@@ -31,6 +32,7 @@ interface TimelineProps {
   togglePlay: () => void;
   onDeleteTrack: (trackId: string) => void;
   draggingAsset: Asset | null;
+  onExport?: () => void;
 }
 
 // 缓动选项
@@ -54,12 +56,35 @@ interface ContextMenuState {
   clipLocalTime?: number;
 }
 
-const PIXELS_PER_SECOND = 20;
+// 基础常量
+const BASE_PIXELS_PER_SECOND = 20;
 const TRACK_HEIGHT = 80;
 const CLIP_HEIGHT = 64;
 const RULER_HEIGHT = 32;
 const HEADER_WIDTH = 200;
 const DRAG_THRESHOLD = 5;
+
+// 缩放配置
+const ZOOM_MIN = 0.1;
+const ZOOM_MAX = 5;
+const ZOOM_STEP = 0.1;
+const ZOOM_PRESETS = [0.25, 0.5, 1, 2, 3];
+
+// 吸附配置
+const SNAP_THRESHOLD = 8; // 像素距离阈值
+const SNAP_TARGETS = ['playhead', 'clipStart', 'clipEnd'] as const;
+type SnapTarget = typeof SNAP_TARGETS[number];
+
+// 计算动态刻度间隔
+const getMarkerInterval = (pixelsPerSecond: number): number => {
+  // 根据缩放级别自动调整刻度间隔
+  if (pixelsPerSecond >= 100) return 1;    // 每秒一个
+  if (pixelsPerSecond >= 50) return 2;     // 每2秒
+  if (pixelsPerSecond >= 20) return 5;     // 每5秒
+  if (pixelsPerSecond >= 10) return 10;    // 每10秒
+  if (pixelsPerSecond >= 5) return 30;     // 每30秒
+  return 60;                                // 每分钟
+};
 
 const formatTime = (seconds: number): string => {
   const m = Math.floor(seconds / 60);
@@ -69,7 +94,7 @@ const formatTime = (seconds: number): string => {
 };
 
 // Filmstrip 组件
-const Filmstrip: React.FC<{ clip: Clip; frames?: string[] }> = ({ clip, frames }) => {
+const Filmstrip: React.FC<{ clip: Clip; frames?: string[]; pixelsPerSecond: number }> = ({ clip, frames, pixelsPerSecond }) => {
   if (clip.type === MediaType.TEXT) {
     return (
       <div className="w-full h-full flex items-center px-2 pointer-events-none overflow-hidden bg-purple-900/40">
@@ -93,7 +118,7 @@ const Filmstrip: React.FC<{ clip: Clip; frames?: string[] }> = ({ clip, frames }
 
   const frameAspectRatio = 16 / 9;
   const frameWidth = CLIP_HEIGHT * frameAspectRatio;
-  const totalWidth = clip.duration * PIXELS_PER_SECOND;
+  const totalWidth = clip.duration * pixelsPerSecond;
   const frameCount = Math.max(1, Math.ceil(totalWidth / frameWidth));
 
   const hasFrames = frames && frames.length > 0;
@@ -102,7 +127,7 @@ const Filmstrip: React.FC<{ clip: Clip; frames?: string[] }> = ({ clip, frames }
   // 帧提取的帧率（与 useVideoFrames 中一致，默认 1fps）
   const extractFps = 1;
   // 每个显示格子对应的时间跨度（秒）
-  const timePerFrame = frameWidth / PIXELS_PER_SECOND;
+  const timePerFrame = frameWidth / pixelsPerSecond;
 
   return (
     <div className="flex h-full w-full pointer-events-none select-none overflow-hidden bg-blue-900/20">
@@ -160,10 +185,20 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
   isPlaying,
   togglePlay,
   onDeleteTrack,
-  draggingAsset
+  draggingAsset,
+  onExport
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const rulerRef = useRef<HTMLDivElement>(null);
+
+  // 缩放与吸附状态
+  const [zoom, setZoom] = useState(1);
+  const [snapEnabled, setSnapEnabled] = useState(true);
+  const [snapLine, setSnapLine] = useState<{ x: number; type: SnapTarget } | null>(null);
+
+  // 动态计算每秒像素数
+  const pixelsPerSecond = BASE_PIXELS_PER_SECOND * zoom;
+  const markerInterval = getMarkerInterval(pixelsPerSecond);
 
   const [isDraggingPlayhead, setIsDraggingPlayhead] = useState(false);
   const playheadDragStart = useRef<{ startX: number; startTime: number } | null>(null);
@@ -203,7 +238,22 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
     return Math.max(max, trackMax);
   }, 0);
   const totalSeconds = Math.max(duration, maxClipEndTime + 10, 60);
-  const totalWidth = totalSeconds * PIXELS_PER_SECOND;
+  const totalWidth = totalSeconds * pixelsPerSecond;
+
+  // 收集所有吸附点（用于拖拽时的吸附）
+  const snapPoints = useMemo(() => {
+    const points: Array<{ time: number; type: SnapTarget }> = [];
+    // 播放头位置
+    points.push({ time: currentTime, type: 'playhead' });
+    // 所有片段的起止点
+    tracks.forEach(track => {
+      track.clips.forEach(clip => {
+        points.push({ time: clip.start, type: 'clipStart' });
+        points.push({ time: clip.start + clip.duration, type: 'clipEnd' });
+      });
+    });
+    return points;
+  }, [tracks, currentTime]);
 
   // 收集所有视频片段用于帧提取
   const videoClips = useMemo(() => {
@@ -257,7 +307,50 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
 
   // 计算实际的播放头 X 坐标
   const scrollLeft = containerRef.current?.scrollLeft || 0;
-  const playheadX = playheadPositionRef.current.viewportX + currentTime * PIXELS_PER_SECOND - scrollLeft;
+  const playheadX = playheadPositionRef.current.viewportX + currentTime * pixelsPerSecond - scrollLeft;
+
+  // 吸附检测函数
+  const findSnapPoint = useCallback((time: number, excludeClipId?: string): { time: number; type: SnapTarget } | null => {
+    if (!snapEnabled) return null;
+
+    for (const point of snapPoints) {
+      const pixelDiff = Math.abs((point.time - time) * pixelsPerSecond);
+      if (pixelDiff < SNAP_THRESHOLD) {
+        return point;
+      }
+    }
+    return null;
+  }, [snapEnabled, snapPoints, pixelsPerSecond]);
+
+  // 缩放控制
+  const handleZoomIn = useCallback(() => {
+    setZoom(z => Math.min(ZOOM_MAX, z + ZOOM_STEP));
+  }, []);
+
+  const handleZoomOut = useCallback(() => {
+    setZoom(z => Math.max(ZOOM_MIN, z - ZOOM_STEP));
+  }, []);
+
+  const handleZoomPreset = useCallback((preset: number) => {
+    setZoom(preset);
+  }, []);
+
+  // Ctrl+滚轮缩放
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const handleWheel = (e: WheelEvent) => {
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        const delta = e.deltaY > 0 ? -ZOOM_STEP : ZOOM_STEP;
+        setZoom(z => Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, z + delta)));
+      }
+    };
+
+    container.addEventListener('wheel', handleWheel, { passive: false });
+    return () => container.removeEventListener('wheel', handleWheel);
+  }, []);
 
   // 播放头拖拽
   const handlePlayheadMouseDown = useCallback((e: React.MouseEvent) => {
@@ -273,7 +366,7 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
     const handleMouseMove = (e: MouseEvent) => {
       if (!playheadDragStart.current) return;
       const deltaX = e.clientX - playheadDragStart.current.startX;
-      const deltaSeconds = deltaX / PIXELS_PER_SECOND;
+      const deltaSeconds = deltaX / pixelsPerSecond;
       const newTime = Math.max(0, Math.min(totalSeconds, playheadDragStart.current.startTime + deltaSeconds));
       onSeek(newTime);
     };
@@ -289,7 +382,7 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [isDraggingPlayhead, onSeek, totalSeconds]);
+  }, [isDraggingPlayhead, onSeek, totalSeconds, pixelsPerSecond]);
 
   // 片段拖拽/缩放
   useEffect(() => {
@@ -320,8 +413,30 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
         } : null);
 
         if (shouldDrag && foundTrackId) {
-          const deltaSeconds = deltaX / PIXELS_PER_SECOND;
-          const newStart = Math.max(0, dragState.originalStart + deltaSeconds);
+          const deltaSeconds = deltaX / pixelsPerSecond;
+          let newStart = Math.max(0, dragState.originalStart + deltaSeconds);
+
+          // 吸附检测
+          if (snapEnabled) {
+            const clipEnd = newStart + dragState.clip.duration;
+
+            // 检查片段起点吸附
+            const startSnap = findSnapPoint(newStart, dragState.clipId);
+            if (startSnap) {
+              newStart = startSnap.time;
+              setSnapLine({ x: newStart * pixelsPerSecond, type: startSnap.type });
+            } else {
+              // 检查片段终点吸附
+              const endSnap = findSnapPoint(clipEnd, dragState.clipId);
+              if (endSnap) {
+                newStart = endSnap.time - dragState.clip.duration;
+                setSnapLine({ x: endSnap.time * pixelsPerSecond, type: endSnap.type });
+              } else {
+                setSnapLine(null);
+              }
+            }
+          }
+
           onMoveClip(dragState.clipId, newStart, foundTrackId);
         }
       };
@@ -329,6 +444,7 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
       const handleMouseUp = () => {
         setDragState(null);
         setHighlightedTrackId(null);
+        setSnapLine(null);
       };
 
       window.addEventListener('mousemove', handleMouseMove);
@@ -342,7 +458,7 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
     if (resizeState) {
       const handleResizeMove = (e: MouseEvent) => {
         const deltaX = e.clientX - resizeState.startX;
-        const deltaSeconds = deltaX / PIXELS_PER_SECOND;
+        const deltaSeconds = deltaX / pixelsPerSecond;
 
         // 图片/文本类型可以无限拉长，视频/音频受源素材时长限制
         const hasSourceLimit = resizeState.clipType === MediaType.VIDEO || resizeState.clipType === MediaType.AUDIO;
@@ -388,7 +504,7 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
         window.removeEventListener('mouseup', handleResizeUp);
       };
     }
-  }, [dragState, resizeState, onUpdateClip, onMoveClip]);
+  }, [dragState, resizeState, onUpdateClip, onMoveClip, pixelsPerSecond, snapEnabled, findSnapPoint]);
 
   const handleClipMouseDown = (e: React.MouseEvent, clip: Clip) => {
     if (e.button !== 0) return;
@@ -454,7 +570,7 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
       const asset = JSON.parse(json) as Asset;
       const containerRect = containerRef.current.getBoundingClientRect();
       const dropX = e.clientX - containerRect.left + containerRef.current.scrollLeft - HEADER_WIDTH;
-      const time = Math.max(0, dropX / PIXELS_PER_SECOND);
+      const time = Math.max(0, dropX / pixelsPerSecond);
       onAssetDrop(asset, time, trackId);
     } catch (err) {
       console.error("Drop failed", err);
@@ -479,7 +595,7 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
 
     const scrollLeft = containerRef.current?.scrollLeft || 0;
     const clickX = e.clientX - containerRect.left + scrollLeft - HEADER_WIDTH;
-    const clickTime = clickX / PIXELS_PER_SECOND;
+    const clickTime = clickX / pixelsPerSecond;
     const clipLocalTime = Math.max(0, Math.min(clip.duration, clickTime - clip.start));
 
     onSelectClip(clip.id);
@@ -490,7 +606,7 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
       clipId: clip.id,
       clipLocalTime
     });
-  }, [onSelectClip]);
+  }, [onSelectClip, pixelsPerSecond]);
 
   // 关键帧右键菜单
   const handleKeyframeContextMenu = useCallback((e: React.MouseEvent, clipId: string, keyframe: Keyframe) => {
@@ -515,16 +631,31 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
     return () => window.removeEventListener('click', handleClick);
   }, [contextMenu, closeContextMenu]);
 
-  // 生成刻度
-  const markers = [];
-  for (let i = 0; i < totalSeconds; i += 5) {
-    markers.push(
-      <div key={i} className="absolute top-0 h-full flex flex-col justify-end pb-1 select-none pointer-events-none" style={{ left: i * PIXELS_PER_SECOND }}>
-        <div className="h-3 border-l border-zinc-500" />
-        <span className="text-[10px] text-zinc-500 pl-1 whitespace-nowrap">{formatTime(i)}</span>
-      </div>
-    );
-  }
+  // 生成刻度（动态间隔）
+  const markers = useMemo(() => {
+    const result = [];
+    for (let i = 0; i < totalSeconds; i += markerInterval) {
+      result.push(
+        <div key={i} className="absolute top-0 h-full flex flex-col justify-end pb-1 select-none pointer-events-none" style={{ left: i * pixelsPerSecond }}>
+          <div className="h-3 border-l border-zinc-500" />
+          <span className="text-[10px] text-zinc-500 pl-1 whitespace-nowrap">{formatTime(i)}</span>
+        </div>
+      );
+      // 添加中间小刻度
+      if (markerInterval >= 5) {
+        for (let j = 1; j < markerInterval && i + j < totalSeconds; j++) {
+          if (j === markerInterval / 2) {
+            result.push(
+              <div key={`${i}-${j}`} className="absolute top-0 h-full flex flex-col justify-end pb-1 select-none pointer-events-none" style={{ left: (i + j) * pixelsPerSecond }}>
+                <div className="h-2 border-l border-zinc-700" />
+              </div>
+            );
+          }
+        }
+      }
+    }
+    return result;
+  }, [totalSeconds, markerInterval, pixelsPerSecond]);
 
   return (
     <div className="flex flex-col h-full bg-[#18181b] border-t border-[#27272a] select-none">
@@ -538,8 +669,83 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
           <span className="text-xs text-zinc-600">/</span>
           <span className="text-xs font-mono text-zinc-500">{formatTime(duration)}</span>
         </div>
-        <div className="flex gap-2 text-zinc-400">
-          <span className="text-xs">{tracks.length} 轨道</span>
+
+        {/* 缩放和吸附控件 */}
+        <div className="flex items-center gap-3">
+          {/* 吸附开关 */}
+          <button
+            onClick={() => setSnapEnabled(!snapEnabled)}
+            className={`flex items-center gap-1.5 px-2 py-1 rounded text-xs transition-colors ${
+              snapEnabled
+                ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/50'
+                : 'bg-zinc-800 text-zinc-500 hover:text-zinc-300'
+            }`}
+            title="吸附对齐"
+          >
+            <Magnet size={12} />
+            <span>吸附</span>
+          </button>
+
+          {/* 缩放控件 */}
+          <div className="flex items-center gap-1 bg-zinc-800 rounded px-1">
+            <button
+              onClick={handleZoomOut}
+              className="p-1 text-zinc-400 hover:text-white transition-colors"
+              title="缩小"
+            >
+              <ZoomOut size={14} />
+            </button>
+
+            {/* 缩放滑块 */}
+            <input
+              type="range"
+              min={ZOOM_MIN}
+              max={ZOOM_MAX}
+              step={ZOOM_STEP}
+              value={zoom}
+              onChange={(e) => setZoom(parseFloat(e.target.value))}
+              className="w-20 h-1 accent-cyan-500 cursor-pointer"
+            />
+
+            <button
+              onClick={handleZoomIn}
+              className="p-1 text-zinc-400 hover:text-white transition-colors"
+              title="放大"
+            >
+              <ZoomIn size={14} />
+            </button>
+
+            <span className="text-xs text-zinc-400 w-10 text-center">{Math.round(zoom * 100)}%</span>
+          </div>
+
+          {/* 缩放预设 */}
+          <div className="flex gap-0.5">
+            {ZOOM_PRESETS.map(preset => (
+              <button
+                key={preset}
+                onClick={() => handleZoomPreset(preset)}
+                className={`px-1.5 py-0.5 text-[10px] rounded transition-colors ${
+                  Math.abs(zoom - preset) < 0.05
+                    ? 'bg-cyan-500/30 text-cyan-300'
+                    : 'bg-zinc-800 text-zinc-500 hover:text-zinc-300'
+                }`}
+              >
+                {preset}x
+              </button>
+            ))}
+          </div>
+
+          <span className="text-xs text-zinc-400">{tracks.length} 轨道</span>
+
+          {/* 导出按钮 */}
+          {onExport && (
+            <button
+              onClick={onExport}
+              className="ml-2 px-3 py-1 bg-cyan-600 hover:bg-cyan-500 text-white text-xs rounded transition-colors"
+            >
+              导出
+            </button>
+          )}
         </div>
       </div>
 
@@ -557,7 +763,7 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
             <div className="relative flex-1 h-full" style={{ width: totalWidth }}>
               {markers}
               {/* 播放头手柄 */}
-              <div className="absolute top-0 z-50" style={{ left: currentTime * PIXELS_PER_SECOND }}>
+              <div className="absolute top-0 z-50" style={{ left: currentTime * pixelsPerSecond }}>
                 <div
                   className={`absolute top-0 left-0 -translate-x-1/2 transition-transform ${isDraggingPlayhead ? 'scale-110 cursor-grabbing' : 'hover:scale-105 cursor-grab'}`}
                   onMouseDown={handlePlayheadMouseDown}
@@ -613,16 +819,16 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
                       ${selectedClipId === clip.id ? 'border-cyan-400 ring-2 ring-cyan-500/20 z-10' : 'border-transparent hover:border-zinc-500 z-0'}
                       ${dragState?.clipId === clip.id ? 'cursor-grabbing opacity-90 shadow-xl' : 'cursor-grab'}
                     `}
-                    style={{ left: clip.start * PIXELS_PER_SECOND, width: clip.duration * PIXELS_PER_SECOND }}
+                    style={{ left: clip.start * pixelsPerSecond, width: clip.duration * pixelsPerSecond }}
                   >
-                    <Filmstrip clip={clip} frames={frameMap.get(clip.id)?.frames} />
+                    <Filmstrip clip={clip} frames={frameMap.get(clip.id)?.frames} pixelsPerSecond={pixelsPerSecond} />
 
                     {/* 关键帧标记 */}
                     {clip.keyframes?.map(kf => (
                       <div
                         key={kf.id}
                         className={`absolute top-1/2 -translate-x-1/2 -translate-y-1/2 w-3 h-3 cursor-pointer z-30 ${selectedKeyframeId === kf.id ? 'scale-125' : 'hover:scale-110'}`}
-                        style={{ left: kf.time * PIXELS_PER_SECOND }}
+                        style={{ left: kf.time * pixelsPerSecond }}
                         onClick={(e) => {
                           e.stopPropagation();
                           onSelectKeyframe?.(clip.id, kf.id);
@@ -672,6 +878,24 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
             bottom: 0,
             width: 1,
             transform: 'translateX(-50%)',
+          }}
+        />
+      )}
+
+      {/* 吸附对齐线 */}
+      {snapLine && playheadPositionRef.current.lineTop > 0 && (
+        <div
+          className="fixed pointer-events-none z-30"
+          style={{
+            left: playheadPositionRef.current.viewportX + snapLine.x - (containerRef.current?.scrollLeft || 0),
+            top: playheadPositionRef.current.lineTop,
+            bottom: 0,
+            width: 2,
+            transform: 'translateX(-50%)',
+            background: snapLine.type === 'playhead'
+              ? 'linear-gradient(to bottom, #22d3ee, #22d3ee 4px, transparent 4px, transparent 8px)'
+              : 'linear-gradient(to bottom, #a855f7, #a855f7 4px, transparent 4px, transparent 8px)',
+            backgroundSize: '2px 8px',
           }}
         />
       )}

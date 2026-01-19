@@ -1,11 +1,23 @@
 /**
  * 属性编辑面板
- * 迁移自 electron-egg
+ * 迁移自 electron-egg，支持字幕编辑
  */
 import React, { useMemo } from 'react';
 import { Clip, Keyframe, AnimatableProperty, MediaType } from '../../types/editor';
 import { getAnimatedProperties, hasKeyframes, getKeyframeAtTime } from '../../engine/simpleKeyframe';
-import { Trash2 } from 'lucide-react';
+import { Trash2, Type } from 'lucide-react';
+
+// 预设字体
+const FONT_FAMILIES = [
+  { label: '默认', value: 'Arial, sans-serif' },
+  { label: '黑体', value: 'SimHei, sans-serif' },
+  { label: '宋体', value: 'SimSun, serif' },
+  { label: '微软雅黑', value: 'Microsoft YaHei, sans-serif' },
+  { label: '楷体', value: 'KaiTi, serif' },
+];
+
+// 预设字号
+const FONT_SIZES = [24, 32, 40, 48, 56, 64, 72, 96];
 
 interface PropertiesPanelProps {
   selectedClip: Clip | null;
@@ -71,6 +83,8 @@ export const SimplePropertiesPanel: React.FC<PropertiesPanelProps> = ({
     );
   }
 
+  // 是否为字幕/文本片段
+  const isTextClip = selectedClip.type === MediaType.TEXT;
   // 仅视频/图片支持关键帧
   const supportsKeyframes = selectedClip.type === MediaType.VIDEO || selectedClip.type === MediaType.IMAGE;
 
@@ -81,13 +95,16 @@ export const SimplePropertiesPanel: React.FC<PropertiesPanelProps> = ({
       if (keyframeAtCurrentTime) {
         onUpdateKeyframe(selectedClip.id, keyframeAtCurrentTime.id, { [property]: value });
       } else {
-        // 自动打帧时需要先创建关键帧，然后更新属性
         onAddKeyframe(selectedClip.id, clipLocalTime);
-        // 属性会在下一帧更新
       }
     } else {
       onUpdateClip(selectedClip.id, { [property]: value });
     }
+  };
+
+  // 字幕属性更新
+  const handleTextUpdate = (updates: Partial<Clip>) => {
+    onUpdateClip(selectedClip.id, updates);
   };
 
   return (
@@ -102,6 +119,135 @@ export const SimplePropertiesPanel: React.FC<PropertiesPanelProps> = ({
           <Trash2 size={14} />
         </button>
       </div>
+
+      {/* 字幕编辑区 */}
+      {isTextClip && (
+        <div className="p-3 border-b border-[#27272a] space-y-3">
+          <div className="flex items-center gap-2">
+            <Type size={14} className="text-cyan-400" />
+            <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-wider">字幕</h4>
+          </div>
+
+          {/* 字幕文本 */}
+          <div className="space-y-1">
+            <label className="text-xs text-zinc-400">文本内容</label>
+            <textarea
+              value={selectedClip.text || selectedClip.src || ''}
+              onChange={(e) => handleTextUpdate({ text: e.target.value, src: e.target.value })}
+              placeholder="输入字幕内容..."
+              rows={3}
+              className="w-full bg-[#27272a] border border-zinc-700 rounded px-2 py-1.5 text-xs focus:border-cyan-500 outline-none resize-none"
+            />
+          </div>
+
+          {/* 字体选择 */}
+          <div className="grid grid-cols-2 gap-2">
+            <div className="space-y-1">
+              <label className="text-xs text-zinc-400">字体</label>
+              <select
+                value={selectedClip.fontFamily || 'Arial, sans-serif'}
+                onChange={(e) => handleTextUpdate({ fontFamily: e.target.value })}
+                className="w-full bg-[#27272a] border border-zinc-700 rounded px-2 py-1 text-xs focus:border-cyan-500 outline-none"
+              >
+                {FONT_FAMILIES.map(f => (
+                  <option key={f.value} value={f.value}>{f.label}</option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs text-zinc-400">字号</label>
+              <select
+                value={selectedClip.fontSize || 48}
+                onChange={(e) => handleTextUpdate({ fontSize: parseInt(e.target.value) })}
+                className="w-full bg-[#27272a] border border-zinc-700 rounded px-2 py-1 text-xs focus:border-cyan-500 outline-none"
+              >
+                {FONT_SIZES.map(s => (
+                  <option key={s} value={s}>{s}px</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* 颜色选择 */}
+          <div className="grid grid-cols-2 gap-2">
+            <div className="space-y-1">
+              <label className="text-xs text-zinc-400">文字颜色</label>
+              <div className="flex items-center gap-1">
+                <input
+                  type="color"
+                  value={selectedClip.fontColor || '#FFFFFF'}
+                  onChange={(e) => handleTextUpdate({ fontColor: e.target.value })}
+                  className="w-8 h-6 rounded cursor-pointer border-0"
+                />
+                <input
+                  type="text"
+                  value={selectedClip.fontColor || '#FFFFFF'}
+                  onChange={(e) => handleTextUpdate({ fontColor: e.target.value })}
+                  className="flex-1 bg-[#27272a] border border-zinc-700 rounded px-2 py-1 text-xs focus:border-cyan-500 outline-none"
+                />
+              </div>
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs text-zinc-400">背景颜色</label>
+              <div className="flex items-center gap-1">
+                <input
+                  type="color"
+                  value={selectedClip.backgroundColor || '#000000'}
+                  onChange={(e) => handleTextUpdate({ backgroundColor: e.target.value })}
+                  className="w-8 h-6 rounded cursor-pointer border-0"
+                />
+                <button
+                  onClick={() => handleTextUpdate({ backgroundColor: undefined })}
+                  className="px-1.5 py-0.5 text-xs bg-zinc-700 rounded hover:bg-zinc-600"
+                  title="清除背景"
+                >
+                  ×
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* 位置预设 */}
+          <div className="space-y-1">
+            <label className="text-xs text-zinc-400">位置</label>
+            <div className="flex gap-1">
+              {(['top', 'center', 'bottom'] as const).map(pos => (
+                <button
+                  key={pos}
+                  onClick={() => handleTextUpdate({ textPosition: pos })}
+                  className={`flex-1 px-2 py-1 text-xs rounded transition-colors ${
+                    (selectedClip.textPosition || 'bottom') === pos
+                      ? 'bg-cyan-500/30 text-cyan-300 border border-cyan-500/50'
+                      : 'bg-zinc-700 text-zinc-400 hover:bg-zinc-600'
+                  }`}
+                >
+                  {pos === 'top' ? '顶部' : pos === 'center' ? '居中' : '底部'}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* 对齐方式 */}
+          <div className="space-y-1">
+            <label className="text-xs text-zinc-400">对齐</label>
+            <div className="flex gap-1">
+              {(['left', 'center', 'right'] as const).map(align => (
+                <button
+                  key={align}
+                  onClick={() => handleTextUpdate({ textAlign: align })}
+                  className={`flex-1 px-2 py-1 text-xs rounded transition-colors ${
+                    (selectedClip.textAlign || 'center') === align
+                      ? 'bg-cyan-500/30 text-cyan-300 border border-cyan-500/50'
+                      : 'bg-zinc-700 text-zinc-400 hover:bg-zinc-600'
+                  }`}
+                >
+                  {align === 'left' ? '左' : align === 'center' ? '中' : '右'}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 关键帧控制 */}
       {supportsKeyframes && (

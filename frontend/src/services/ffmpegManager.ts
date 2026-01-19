@@ -49,6 +49,26 @@ export interface ResourceProcessResult {
   audioPath?: string;      // 分离后的音频路径
 }
 
+// 视频合成选项
+export interface ComposeVideoOptions {
+  framePattern: string;    // 帧文件模式，如 '/tmp/frame_%05d.png'
+  fps: number;
+  width: number;
+  height: number;
+  format: 'mp4' | 'webm' | 'gif';
+  videoBitrate: number;    // kbps
+  audioBitrate: number;    // kbps
+  audioTracks: Array<{
+    src: string;
+    start: number;
+    duration: number;
+    offset: number;
+    volume: number;
+  }>;
+  outputPath: string;
+  onProgress?: (percent: number) => void;
+}
+
 // 获取 FFmpeg API
 const getFFmpegAPI = (): any => {
   if (isElectron() && (window as any).electronAPI?.ffmpeg) {
@@ -314,6 +334,59 @@ class FFmpegManager {
     const api = getFFmpegAPI();
     if (api) {
       await api.clearQueue();
+    }
+  }
+
+  /**
+   * 合成视频（图片序列 + 音频 -> 视频文件）
+   */
+  async composeVideo(options: ComposeVideoOptions): Promise<string> {
+    const api = getFFmpegAPI();
+    if (!api) {
+      throw new Error('FFmpeg not available');
+    }
+
+    return await api.composeVideo(options);
+  }
+
+  /**
+   * 获取临时目录
+   */
+  async getTempDir(): Promise<string> {
+    const api = getFFmpegAPI();
+    if (api) {
+      return await api.getTempDir();
+    }
+    return '/tmp/koma-export';
+  }
+
+  /**
+   * 确保目录存在
+   */
+  async ensureDir(dirPath: string): Promise<void> {
+    const api = getFFmpegAPI();
+    if (api) {
+      await api.ensureDir(dirPath);
+    }
+  }
+
+  /**
+   * 保存帧图片
+   */
+  async saveFrame(filePath: string, dataUrl: string): Promise<void> {
+    const api = getFFmpegAPI();
+    if (api) {
+      await api.saveFrame(filePath, dataUrl);
+    }
+  }
+
+  /**
+   * 清理临时目录
+   */
+  async cleanupTemp(tempDir: string): Promise<void> {
+    const api = getFFmpegAPI();
+    if (api) {
+      await api.cleanupTemp(tempDir);
     }
   }
 }

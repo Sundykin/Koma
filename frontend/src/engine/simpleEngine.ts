@@ -132,6 +132,7 @@ export class SimpleVideoRenderer {
   private isRendering: boolean = false;
   private width: number = 1920;
   private height: number = 1080;
+  private audioController: SimpleAudioController | null = null;
 
   constructor(engine: SimpleMediaEngine, canvas: HTMLCanvasElement) {
     this.engine = engine;
@@ -139,6 +140,11 @@ export class SimpleVideoRenderer {
     this.ctx = canvas.getContext('2d')!;
     this.setupCanvas();
     this.setupEngineListeners();
+  }
+
+  // 设置音频控制器引用，用于共享视频元素
+  setAudioController(controller: SimpleAudioController): void {
+    this.audioController = controller;
   }
 
   private setupCanvas(): void {
@@ -190,12 +196,27 @@ export class SimpleVideoRenderer {
       video.crossOrigin = 'anonymous';
       video.src = mediaSrc;
       video.preload = 'auto';
-      video.muted = true;
+      video.muted = false; // 不静音，声音由这个元素播放
+      video.playsInline = true;
       const cache: MediaCache = { type: 'video', element: video, isReady: false };
-      video.onloadeddata = () => { cache.isReady = true; this.renderFrame(); };
+      video.onloadeddata = () => {
+        cache.isReady = true;
+        // 将视频元素共享给音频控制器
+        this.audioController?.shareVideoElement(clip.id, video);
+        this.renderFrame();
+      };
       video.onerror = () => { console.warn('[SimpleRenderer] Failed to load video:', mediaSrc); };
       this.mediaCache.set(clip.id, cache);
     }
+  }
+
+  // 获取视频元素（供外部使用）
+  getVideoElement(clipId: string): HTMLVideoElement | null {
+    const cache = this.mediaCache.get(clipId);
+    if (cache?.type === 'video') {
+      return cache.element as HTMLVideoElement;
+    }
+    return null;
   }
 
   private startRenderLoop(): void {
@@ -209,6 +230,7 @@ export class SimpleVideoRenderer {
       cancelAnimationFrame(this.rafId);
       this.rafId = null;
     }
+    // 暂停所有视频
     this.mediaCache.forEach(cache => {
       if (cache.type === 'video') (cache.element as HTMLVideoElement).pause();
     });
@@ -230,17 +252,21 @@ export class SimpleVideoRenderer {
   }
 
   private getVisibleClips(time: number): Clip[] {
-    const visible: { clip: Clip; order: number }[] = [];
+    const visible: { clip: Clip; order: number; trackHidden: boolean }[] = [];
     this.tracks.forEach(track => {
       track.clips.forEach(clip => {
         if (time >= clip.start && time < clip.start + clip.duration) {
           if (clip.type === MediaType.VIDEO || clip.type === MediaType.IMAGE || clip.type === MediaType.TEXT) {
-            visible.push({ clip, order: track.order ?? 0 });
+            visible.push({ clip, order: track.order ?? 0, trackHidden: !!track.hidden });
           }
         }
       });
     });
-    return visible.sort((a, b) => a.order - b.order).map(v => v.clip);
+    // 过滤掉隐藏轨道的素材
+    return visible
+      .filter(v => !v.trackHidden)
+      .sort((a, b) => a.order - b.order)
+      .map(v => v.clip);
   }
 
   private renderClip(clip: Clip, currentTime: number): void {
@@ -260,13 +286,7 @@ export class SimpleVideoRenderer {
     this.ctx.globalAlpha = props.opacity;
 
     if (clip.type === MediaType.TEXT) {
-      this.ctx.font = 'bold 72px Arial, sans-serif';
-      this.ctx.fillStyle = '#fff';
-      this.ctx.textAlign = 'center';
-      this.ctx.textBaseline = 'middle';
-      this.ctx.shadowColor = 'rgba(0,0,0,0.5)';
-      this.ctx.shadowBlur = 10;
-      this.ctx.fillText(clip.src, 0, 0);
+      this.renderText(clip, props);
     } else {
       const cache = this.mediaCache.get(clip.id);
       if (cache?.isReady) {
@@ -274,10 +294,15 @@ export class SimpleVideoRenderer {
         if (cache.type === 'video') {
           const video = source as HTMLVideoElement;
           const clipTime = currentTime - clip.start + clip.offset;
-          if (Math.abs(video.currentTime - clipTime) > 0.1) video.currentTime = clipTime;
+          // 只在差距较大时才 seek，避免频繁 seek 导致卡顿
+          if (Math.abs(video.currentTime - clipTime) > 0.15) {
+            video.currentTime = clipTime;
+          }
           if (this.engine.isPlaying && video.paused) {
             video.playbackRate = this.engine.playRate;
             video.play().catch(() => {});
+          } else if (!this.engine.isPlaying && !video.paused) {
+            video.pause();
           }
         }
         const sourceWidth = source.width || (source as HTMLVideoElement).videoWidth || this.width;
@@ -299,6 +324,103 @@ export class SimpleVideoRenderer {
     this.ctx.restore();
   }
 
+  // 渲染字幕/文本
+  private renderText(clip: Clip, props: { x: number; y: number; scale: number; rotation: number; opacity: number }): void {
+    const text = clip.text || clip.src || '';
+    if (!text) return;
+
+    // 字幕样式
+    const fontSize = clip.fontSize || 48;
+    const fontFamily = clip.fontFamily || 'Arial, sans-serif';
+    const fontColor = clip.fontColor || '#FFFFFF';
+    const backgroundColor = clip.backgroundColor;
+    const textPosition = clip.textPosition || 'bottom';
+    const textAlign = clip.textAlign || 'center';
+
+    // 先重置变换，字幕使用绝对定位
+    this.ctx.restore();
+    this.ctx.save();
+    this.ctx.globalAlpha = props.opacity;
+
+    // 设置字体
+    this.ctx.font = `bold ${fontSize}px ${fontFamily}`;
+    this.ctx.textAlign = textAlign;
+    this.ctx.textBaseline = 'middle';
+
+    // 计算文本宽度和位置
+    const lines = text.split('\n');
+    const lineHeight = fontSize * 1.3;
+    const totalHeight = lines.length * lineHeight;
+
+    // 根据 textPosition 计算 Y 坐标
+    let baseY: number;
+    switch (textPosition) {
+      case 'top':
+        baseY = totalHeight / 2 + 50;
+        break;
+      case 'center':
+        baseY = this.height / 2;
+        break;
+      case 'bottom':
+      default:
+        baseY = this.height - totalHeight / 2 - 50;
+        break;
+    }
+
+    // 根据 textAlign 计算 X 坐标
+    let baseX: number;
+    switch (textAlign) {
+      case 'left':
+        baseX = 50 + props.x;
+        break;
+      case 'right':
+        baseX = this.width - 50 + props.x;
+        break;
+      case 'center':
+      default:
+        baseX = this.width / 2 + props.x;
+        break;
+    }
+
+    baseY += props.y;
+
+    // 绘制每行文本
+    lines.forEach((line, i) => {
+      const lineY = baseY + (i - (lines.length - 1) / 2) * lineHeight;
+
+      // 绘制背景
+      if (backgroundColor) {
+        const metrics = this.ctx.measureText(line);
+        const padding = 10;
+        const bgWidth = metrics.width + padding * 2;
+        const bgHeight = lineHeight;
+
+        let bgX = baseX - bgWidth / 2;
+        if (textAlign === 'left') bgX = baseX - padding;
+        if (textAlign === 'right') bgX = baseX - bgWidth + padding;
+
+        this.ctx.fillStyle = backgroundColor;
+        this.ctx.fillRect(bgX, lineY - bgHeight / 2, bgWidth, bgHeight);
+      }
+
+      // 绘制文字阴影
+      this.ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
+      this.ctx.shadowBlur = 4;
+      this.ctx.shadowOffsetX = 2;
+      this.ctx.shadowOffsetY = 2;
+
+      // 绘制文字
+      this.ctx.fillStyle = fontColor;
+      this.ctx.fillText(line, baseX, lineY);
+    });
+
+    // 清除阴影
+    this.ctx.shadowColor = 'transparent';
+    this.ctx.shadowBlur = 0;
+    this.ctx.shadowOffsetX = 0;
+    this.ctx.shadowOffsetY = 0;
+  }
+
   destroy(): void {
     this.stopRenderLoop();
     this.mediaCache.forEach(cache => {
@@ -309,16 +431,22 @@ export class SimpleVideoRenderer {
 }
 
 // ========== AudioController ==========
-interface AudioInstance {
-  element: HTMLAudioElement;
+// 媒体元素实例（支持音频和视频的声音）
+interface MediaInstance {
+  element: HTMLAudioElement | HTMLVideoElement;
   clip: Clip;
   isReady: boolean;
+  type: 'audio' | 'video';
+  isShared?: boolean; // 是否是共享的视频元素
 }
 
 export class SimpleAudioController {
   private engine: SimpleMediaEngine;
-  private audioMap: Map<string, AudioInstance> = new Map();
+  private mediaMap: Map<string, MediaInstance> = new Map();
   private masterVolume: number = 1;
+  private mutedClips: Set<string> = new Set();
+  private mutedTracks: Set<string> = new Set();
+  private tracks: Track[] = [];
 
   constructor(engine: SimpleMediaEngine) {
     this.engine = engine;
@@ -333,46 +461,157 @@ export class SimpleAudioController {
     this.engine.on('rateChange', (e) => this.onRateChange(e.rate!));
   }
 
-  loadClip(clip: Clip): void {
-    if (clip.type !== MediaType.AUDIO) return;
-    if (this.audioMap.has(clip.id)) return;
+  // 设置轨道数据（用于检查轨道静音状态）
+  setTracks(tracks: Track[]): void {
+    this.tracks = tracks;
+    // 更新轨道静音状态
+    this.mutedTracks.clear();
+    tracks.forEach(track => {
+      if (track.muted) {
+        this.mutedTracks.add(track.id);
+      }
+    });
+  }
 
-    // 直接转换为 koma-local:// 协议
-    const audioSrc = clip.src.startsWith('http://') || clip.src.startsWith('https://') || clip.src.startsWith('koma-local://')
+  // 接收共享的视频元素（由 VideoRenderer 调用）
+  shareVideoElement(clipId: string, video: HTMLVideoElement): void {
+    // 查找对应的 clip
+    let targetClip: Clip | null = null;
+    for (const track of this.tracks) {
+      const clip = track.clips.find(c => c.id === clipId);
+      if (clip) {
+        targetClip = clip;
+        break;
+      }
+    }
+    if (!targetClip) return;
+
+    // 如果已存在非共享的实例，先清理
+    const existing = this.mediaMap.get(clipId);
+    if (existing && !existing.isShared) {
+      existing.element.pause();
+      existing.element.src = '';
+    }
+
+    // 设置为共享实例
+    this.mediaMap.set(clipId, {
+      element: video,
+      clip: targetClip,
+      isReady: true,
+      type: 'video',
+      isShared: true,
+    });
+  }
+
+  // 加载片段（支持音频和视频）
+  loadClip(clip: Clip): void {
+    if (clip.type !== MediaType.AUDIO && clip.type !== MediaType.VIDEO) return;
+
+    // 视频由 VideoRenderer 共享，这里只处理纯音频
+    if (clip.type === MediaType.VIDEO) {
+      // 视频元素会通过 shareVideoElement 方法共享过来
+      return;
+    }
+
+    if (this.mediaMap.has(clip.id)) return;
+
+    // 转换为 koma-local:// 协议
+    const mediaSrc = clip.src.startsWith('http://') || clip.src.startsWith('https://') || clip.src.startsWith('koma-local://')
       ? clip.src
       : `koma-local:///${clip.src.replace(/\\/g, '/')}`;
 
     const audio = new Audio();
-    audio.src = audioSrc;
+    audio.src = mediaSrc;
     audio.preload = 'auto';
-    audio.volume = this.masterVolume * clip.opacity;
+    audio.volume = this.masterVolume * (clip.opacity ?? 1);
 
-    const instance: AudioInstance = { element: audio, clip, isReady: false };
+    const instance: MediaInstance = { element: audio, clip, isReady: false, type: 'audio' };
     audio.addEventListener('canplaythrough', () => { instance.isReady = true; });
-    audio.onerror = () => { console.warn('[SimpleAudio] Failed to load:', audioSrc); };
-    this.audioMap.set(clip.id, instance);
+    audio.onerror = () => { console.warn('[SimpleAudio] Failed to load audio:', mediaSrc); };
+    this.mediaMap.set(clip.id, instance);
+  }
+
+  // 设置片段音量
+  setVolume(clipId: string, volume: number): void {
+    const instance = this.mediaMap.get(clipId);
+    if (instance) {
+      instance.element.volume = Math.max(0, Math.min(1, volume * this.masterVolume));
+    }
+  }
+
+  // 设置片段静音
+  setMuted(clipId: string, muted: boolean): void {
+    if (muted) {
+      this.mutedClips.add(clipId);
+    } else {
+      this.mutedClips.delete(clipId);
+    }
+    const instance = this.mediaMap.get(clipId);
+    if (instance) {
+      instance.element.muted = muted;
+    }
+  }
+
+  // 设置轨道静音
+  setTrackMuted(trackId: string, muted: boolean): void {
+    if (muted) {
+      this.mutedTracks.add(trackId);
+    } else {
+      this.mutedTracks.delete(trackId);
+    }
+    // 更新该轨道所有片段的静音状态
+    this.mediaMap.forEach(instance => {
+      if (instance.clip.trackId === trackId) {
+        instance.element.muted = muted || this.mutedClips.has(instance.clip.id);
+      }
+    });
+  }
+
+  // 设置主音量
+  setMasterVolume(volume: number): void {
+    this.masterVolume = Math.max(0, Math.min(1, volume));
+    this.mediaMap.forEach(instance => {
+      const clipVolume = instance.clip.opacity ?? 1;
+      instance.element.volume = this.masterVolume * clipVolume;
+    });
+  }
+
+  // 获取视频元素（供 VideoRenderer 同步使用）
+  getVideoElement(clipId: string): HTMLVideoElement | null {
+    const instance = this.mediaMap.get(clipId);
+    if (instance && instance.type === 'video') {
+      return instance.element as HTMLVideoElement;
+    }
+    return null;
   }
 
   private onEnginePlay(): void {
     const currentTime = this.engine.time;
-    this.audioMap.forEach(instance => {
+    this.mediaMap.forEach(instance => {
       if (this.isClipActive(instance.clip, currentTime)) {
-        this.playAudio(instance, currentTime);
+        this.playMedia(instance, currentTime);
       }
     });
   }
 
   private onEnginePause(): void {
-    this.audioMap.forEach(instance => instance.element.pause());
+    this.mediaMap.forEach(instance => {
+      // 共享的视频元素由 VideoRenderer 控制
+      if (!instance.isShared) {
+        instance.element.pause();
+      }
+    });
   }
 
   private onEngineSeek(): void {
     const currentTime = this.engine.time;
-    this.audioMap.forEach(instance => {
+    this.mediaMap.forEach(instance => {
       if (this.isClipActive(instance.clip, currentTime)) {
-        this.syncAudioTime(instance, currentTime);
-        if (this.engine.isPlaying) instance.element.play().catch(() => {});
-      } else {
+        this.syncMediaTime(instance, currentTime);
+        if (this.engine.isPlaying && !instance.isShared) {
+          instance.element.play().catch(() => {});
+        }
+      } else if (!instance.isShared) {
         instance.element.pause();
       }
     });
@@ -380,49 +619,86 @@ export class SimpleAudioController {
 
   private onTimeUpdate(): void {
     const currentTime = this.engine.time;
-    this.audioMap.forEach(instance => {
+    this.mediaMap.forEach(instance => {
       const isActive = this.isClipActive(instance.clip, currentTime);
       const isPlaying = !instance.element.paused;
 
-      if (isActive && !isPlaying && this.engine.isPlaying) {
-        this.playAudio(instance, currentTime);
-      } else if (!isActive && isPlaying) {
+      // 检查轨道和片段是否被静音
+      const isMuted = this.isClipMuted(instance.clip);
+      instance.element.muted = isMuted;
+
+      if (isActive && !isPlaying && this.engine.isPlaying && !isMuted) {
+        this.playMedia(instance, currentTime);
+      } else if (!isActive && isPlaying && !instance.isShared) {
         instance.element.pause();
       }
     });
   }
 
   private onRateChange(rate: number): void {
-    this.audioMap.forEach(instance => { instance.element.playbackRate = rate; });
+    this.mediaMap.forEach(instance => { instance.element.playbackRate = rate; });
   }
 
   private isClipActive(clip: Clip, time: number): boolean {
     return time >= clip.start && time < clip.start + clip.duration;
   }
 
-  private playAudio(instance: AudioInstance, currentTime: number): void {
-    if (!instance.isReady) return;
-    this.syncAudioTime(instance, currentTime);
-    instance.element.playbackRate = this.engine.playRate;
-    instance.element.play().catch(() => {});
+  private isClipMuted(clip: Clip): boolean {
+    return this.mutedClips.has(clip.id) || this.mutedTracks.has(clip.trackId);
   }
 
-  private syncAudioTime(instance: AudioInstance, currentTime: number): void {
+  private playMedia(instance: MediaInstance, currentTime: number): void {
+    if (!instance.isReady) return;
+    if (this.isClipMuted(instance.clip)) return;
+
+    this.syncMediaTime(instance, currentTime);
+    instance.element.playbackRate = this.engine.playRate;
+    // 共享的视频元素由 VideoRenderer 控制播放
+    if (!instance.isShared) {
+      instance.element.play().catch(() => {});
+    }
+  }
+
+  private syncMediaTime(instance: MediaInstance, currentTime: number): void {
     const clipTime = currentTime - instance.clip.start + instance.clip.offset;
-    const audioDuration = instance.element.duration || 0;
-    if (audioDuration > 0) {
-      const seekTime = clipTime % audioDuration;
+    let mediaDuration: number;
+
+    if (instance.type === 'video') {
+      mediaDuration = (instance.element as HTMLVideoElement).duration || 0;
+    } else {
+      mediaDuration = (instance.element as HTMLAudioElement).duration || 0;
+    }
+
+    if (mediaDuration > 0) {
+      const seekTime = Math.min(clipTime, mediaDuration);
       if (Math.abs(instance.element.currentTime - seekTime) > 0.1) {
         instance.element.currentTime = seekTime;
       }
     }
   }
 
+  // 清除特定片段
+  removeClip(clipId: string): void {
+    const instance = this.mediaMap.get(clipId);
+    if (instance) {
+      if (!instance.isShared) {
+        instance.element.pause();
+        instance.element.src = '';
+      }
+      this.mediaMap.delete(clipId);
+      this.mutedClips.delete(clipId);
+    }
+  }
+
   destroy(): void {
-    this.audioMap.forEach(instance => {
-      instance.element.pause();
-      instance.element.src = '';
+    this.mediaMap.forEach(instance => {
+      if (!instance.isShared) {
+        instance.element.pause();
+        instance.element.src = '';
+      }
     });
-    this.audioMap.clear();
+    this.mediaMap.clear();
+    this.mutedClips.clear();
+    this.mutedTracks.clear();
   }
 }

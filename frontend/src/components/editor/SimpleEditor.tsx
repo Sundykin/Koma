@@ -9,11 +9,13 @@ import { SimpleTimeline } from './SimpleTimeline';
 import { SimplePlayer } from './SimplePlayer';
 import { SimplePropertiesPanel } from './SimplePropertiesPanel';
 import { SimpleAssetPanel } from './SimpleAssetPanel';
+import { SimpleExportDialog } from './SimpleExportDialog';
 import { useAssets } from './useAssets';
 import { addKeyframe, updateKeyframe, removeKeyframe } from '../../engine/simpleKeyframe';
 import { findNextAvailablePosition } from '../../utils/trackCollision';
 import { electronService } from '../../services/electronService';
-import { saveEpisodeTimeline } from '../../store/projectStore';
+import { saveEpisodeTimeline, loadEpisodeTimeline } from '../../store/projectStore';
+import { uploadFiles } from '../../services/uploadService';
 import type { Shot } from '../../types';
 
 interface SimpleEditorProps {
@@ -77,18 +79,61 @@ function shotsToTracks(shots: Shot[]): Track[] {
 }
 
 export const SimpleEditor: React.FC<SimpleEditorProps> = ({ shots = [], projectId, episodeId }) => {
-  const [tracks, setTracks] = useState<Track[]>(() => shotsToTracks(shots));
+  const [tracks, setTracks] = useState<Track[]>([]);
   const [currentTime, setCurrentTime] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
   const [selectedKeyframeId, setSelectedKeyframeId] = useState<string | null>(null);
   const [draggingAsset, setDraggingAsset] = useState<Asset | null>(null);
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
+  const [isLoadingTimeline, setIsLoadingTimeline] = useState(true);
+  const timelineCreatedAtRef = useRef<number>(Date.now());
 
   // 素材库
-  const { assets: assetItems } = useAssets({
+  const { assets: assetItems, addUploadedAsset } = useAssets({
     projectId: projectId || '',
     episodeId: episodeId || '',
   });
+
+  // 处理文件上传
+  const handleUpload = useCallback(async (files: File[]) => {
+    if (!projectId) {
+      message.warning('请先创建项目');
+      return;
+    }
+
+    message.loading({ content: `正在上传 ${files.length} 个文件...`, key: 'upload' });
+
+    try {
+      const results = await uploadFiles(files, projectId, episodeId, (current, total) => {
+        message.loading({ content: `上传中 ${current}/${total}...`, key: 'upload' });
+      });
+
+      let successCount = 0;
+      let failCount = 0;
+
+      for (const result of results) {
+        if (result.success && result.asset) {
+          addUploadedAsset(result.asset);
+          successCount++;
+        } else {
+          failCount++;
+          console.warn('[Upload] 上传失败:', result.error);
+        }
+      }
+
+      if (successCount > 0 && failCount === 0) {
+        message.success({ content: `成功上传 ${successCount} 个文件`, key: 'upload' });
+      } else if (successCount > 0 && failCount > 0) {
+        message.warning({ content: `上传完成：${successCount} 成功，${failCount} 失败`, key: 'upload' });
+      } else {
+        message.error({ content: '上传失败', key: 'upload' });
+      }
+    } catch (err) {
+      console.error('[Upload] 上传出错:', err);
+      message.error({ content: '上传出错', key: 'upload' });
+    }
+  }, [projectId, episodeId, addUploadedAsset]);
 
   // 获取选中的 Clip
   const selectedClip = useMemo(() => {
@@ -114,13 +159,50 @@ export const SimpleEditor: React.FC<SimpleEditorProps> = ({ shots = [], projectI
     return hasClips ? maxEnd : 1;
   }, [tracks]);
 
+  // 加载已保存的时间线
+  useEffect(() => {
+    const loadTimeline = async () => {
+      if (!projectId || !episodeId) {
+        // 没有 projectId 或 episodeId，使用 shots 初始化
+        if (shots.length > 0) {
+          setTracks(shotsToTracks(shots));
+        }
+        setIsLoadingTimeline(false);
+        return;
+      }
+
+      setIsLoadingTimeline(true);
+      try {
+        const savedData = await loadEpisodeTimeline(projectId, episodeId);
+        if (savedData && savedData.tracks && savedData.tracks.length > 0) {
+          setTracks(savedData.tracks);
+          timelineCreatedAtRef.current = savedData.createdAt || Date.now();
+          console.log('[SimpleEditor] 已加载保存的时间线');
+        } else if (shots.length > 0) {
+          // 没有已保存的数据，使用 shots 初始化
+          setTracks(shotsToTracks(shots));
+          timelineCreatedAtRef.current = Date.now();
+        }
+      } catch (err) {
+        console.error('[SimpleEditor] 加载时间线失败:', err);
+        if (shots.length > 0) {
+          setTracks(shotsToTracks(shots));
+        }
+      } finally {
+        setIsLoadingTimeline(false);
+      }
+    };
+
+    loadTimeline();
+  }, [projectId, episodeId]); // 仅在 projectId/episodeId 变化时加载
+
   // 自动保存（防抖 1 秒）
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isFirstRender = useRef(true);
 
   useEffect(() => {
-    // 跳过首次渲染
-    if (isFirstRender.current) {
+    // 跳过首次渲染和加载中状态
+    if (isFirstRender.current || isLoadingTimeline) {
       isFirstRender.current = false;
       return;
     }
@@ -137,8 +219,9 @@ export const SimpleEditor: React.FC<SimpleEditorProps> = ({ shots = [], projectI
     saveTimeoutRef.current = setTimeout(async () => {
       try {
         await saveEpisodeTimeline(projectId, episodeId, {
+          version: 1,
           tracks,
-          duration,
+          createdAt: timelineCreatedAtRef.current,
         });
         console.log('[SimpleEditor] 自动保存成功');
       } catch (err) {
@@ -151,14 +234,7 @@ export const SimpleEditor: React.FC<SimpleEditorProps> = ({ shots = [], projectI
         clearTimeout(saveTimeoutRef.current);
       }
     };
-  }, [tracks, duration, projectId, episodeId]);
-
-  // 当 shots 变化时更新轨道
-  useEffect(() => {
-    if (shots.length > 0) {
-      setTracks(shotsToTracks(shots));
-    }
-  }, [shots]);
+  }, [tracks, projectId, episodeId, isLoadingTimeline]);
 
   const togglePlay = useCallback(() => {
     setIsPlaying(prev => !prev);
@@ -354,6 +430,7 @@ export const SimpleEditor: React.FC<SimpleEditorProps> = ({ shots = [], projectI
             assets={assetItems}
             onDragStart={setDraggingAsset}
             onDragEnd={() => setDraggingAsset(null)}
+            onUpload={handleUpload}
           />
         </div>
         <SimplePlayer
@@ -361,7 +438,9 @@ export const SimpleEditor: React.FC<SimpleEditorProps> = ({ shots = [], projectI
           currentTime={currentTime}
           duration={duration}
           isPlaying={isPlaying}
+          selectedClipId={selectedClipId}
           onTimeUpdate={handleTimeUpdate}
+          onUpdateClip={handleUpdateClip}
         />
         <SimplePropertiesPanel
           selectedClip={selectedClip}
@@ -397,8 +476,17 @@ export const SimpleEditor: React.FC<SimpleEditorProps> = ({ shots = [], projectI
           togglePlay={togglePlay}
           onDeleteTrack={handleDeleteTrack}
           draggingAsset={draggingAsset}
+          onExport={() => setExportDialogOpen(true)}
         />
       </div>
+
+      {/* 导出对话框 */}
+      <SimpleExportDialog
+        open={exportDialogOpen}
+        onClose={() => setExportDialogOpen(false)}
+        tracks={tracks}
+        duration={duration}
+      />
     </div>
   );
 };

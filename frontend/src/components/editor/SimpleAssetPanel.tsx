@@ -1,18 +1,21 @@
 /**
  * 素材面板组件
- * 仿照剪映/CapCut风格，支持分类浏览、拖拽到时间线
+ * 仿照剪映/CapCut风格，支持分类浏览、拖拽到时间线、素材上传
  */
-import React, { useState, useMemo } from 'react';
-import { Film, Image, Music, Type, Upload, FolderOpen, Search } from 'lucide-react';
+import React, { useState, useMemo, useRef, useCallback } from 'react';
+import { Film, Image, Music, Type, Upload, FolderOpen, Search, Plus } from 'lucide-react';
 import { MediaType } from '../../types/editor';
 import type { AssetItem, AssetSource, Asset } from '../../types/editor';
 import { toKomaLocalUrl } from '../../utils/urlUtils';
+import { isElectron } from '../../services/electronService';
+import { message } from 'antd';
 
 interface AssetPanelProps {
   assets: AssetItem[];
   onDragStart: (asset: Asset) => void;
   onDragEnd: () => void;
-  onUpload?: () => void;
+  onUpload?: (files: File[]) => void;
+  onAddAsset?: (asset: AssetItem) => void;
 }
 
 type FilterTab = 'all' | 'video' | 'image' | 'audio';
@@ -148,9 +151,85 @@ export const SimpleAssetPanel: React.FC<AssetPanelProps> = ({
   onDragStart,
   onDragEnd,
   onUpload,
+  onAddAsset,
 }) => {
   const [activeTab, setActiveTab] = useState<FilterTab>('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [isDragOver, setIsDragOver] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // 支持的文件类型
+  const SUPPORTED_TYPES = {
+    video: ['.mp4', '.webm', '.mov', '.avi', '.mkv'],
+    image: ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'],
+    audio: ['.mp3', '.wav', '.ogg', '.m4a', '.aac'],
+  };
+
+  const acceptString = [...SUPPORTED_TYPES.video, ...SUPPORTED_TYPES.image, ...SUPPORTED_TYPES.audio].join(',');
+
+  // 获取文件类型
+  const getFileType = useCallback((file: File): 'video' | 'image' | 'audio' | null => {
+    const ext = '.' + file.name.split('.').pop()?.toLowerCase();
+    if (SUPPORTED_TYPES.video.includes(ext)) return 'video';
+    if (SUPPORTED_TYPES.image.includes(ext)) return 'image';
+    if (SUPPORTED_TYPES.audio.includes(ext)) return 'audio';
+    return null;
+  }, []);
+
+  // 处理文件选择
+  const handleFileSelect = useCallback(async (files: FileList | File[]) => {
+    const validFiles: File[] = [];
+
+    for (const file of Array.from(files)) {
+      const type = getFileType(file);
+      if (type) {
+        validFiles.push(file);
+      } else {
+        message.warning(`不支持的文件类型: ${file.name}`);
+      }
+    }
+
+    if (validFiles.length > 0 && onUpload) {
+      onUpload(validFiles);
+    }
+  }, [getFileType, onUpload]);
+
+  // 点击上传按钮
+  const handleUploadClick = useCallback(() => {
+    fileInputRef.current?.click();
+  }, []);
+
+  // 文件输入变化
+  const handleFileInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      handleFileSelect(e.target.files);
+      e.target.value = ''; // 清空以允许重复选择同一文件
+    }
+  }, [handleFileSelect]);
+
+  // 拖放事件
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+
+    const files = e.dataTransfer.files;
+    if (files.length > 0) {
+      handleFileSelect(files);
+    }
+  }, [handleFileSelect]);
 
   // 过滤素材
   const filteredAssets = useMemo(() => {
@@ -182,20 +261,33 @@ export const SimpleAssetPanel: React.FC<AssetPanelProps> = ({
   }), [assets]);
 
   return (
-    <div className="flex flex-col h-full bg-zinc-900 text-white">
+    <div
+      className={`flex flex-col h-full bg-zinc-900 text-white ${isDragOver ? 'ring-2 ring-blue-500 ring-inset' : ''}`}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
+      {/* 隐藏的文件输入 */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept={acceptString}
+        multiple
+        onChange={handleFileInputChange}
+        className="hidden"
+      />
+
       {/* 头部 */}
       <div className="p-3 border-b border-zinc-700">
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-sm font-medium">素材库</h3>
-          {onUpload && (
-            <button
-              onClick={onUpload}
-              className="flex items-center gap-1 px-2 py-1 text-xs bg-blue-600 hover:bg-blue-500 rounded transition-colors"
-            >
-              <Upload className="w-3 h-3" />
-              上传
-            </button>
-          )}
+          <button
+            onClick={handleUploadClick}
+            className="flex items-center gap-1 px-2 py-1 text-xs bg-blue-600 hover:bg-blue-500 rounded transition-colors"
+          >
+            <Upload className="w-3 h-3" />
+            上传
+          </button>
         </div>
 
         {/* 搜索框 */}
@@ -231,12 +323,22 @@ export const SimpleAssetPanel: React.FC<AssetPanelProps> = ({
       </div>
 
       {/* 素材网格 */}
-      <div className="flex-1 overflow-y-auto p-2">
+      <div className="flex-1 overflow-y-auto p-2 relative">
+        {/* 拖放遮罩 */}
+        {isDragOver && (
+          <div className="absolute inset-0 bg-blue-500/20 flex items-center justify-center z-10 border-2 border-dashed border-blue-400 rounded m-2">
+            <div className="text-center">
+              <Plus className="w-8 h-8 text-blue-400 mx-auto mb-2" />
+              <p className="text-sm text-blue-300">释放以上传文件</p>
+            </div>
+          </div>
+        )}
+
         {filteredAssets.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-zinc-500">
             <FolderOpen className="w-12 h-12 mb-2 opacity-50" />
             <p className="text-sm">暂无素材</p>
-            <p className="text-xs mt-1">从分镜生成或上传素材</p>
+            <p className="text-xs mt-1">拖拽文件或点击上传</p>
           </div>
         ) : (
           <div className="grid grid-cols-2 gap-2">
