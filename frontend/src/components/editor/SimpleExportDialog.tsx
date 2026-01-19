@@ -7,7 +7,7 @@ import { Modal, Form, Select, InputNumber, Input, Button, Progress, Space, Radio
 import { ExportOutlined, FolderOutlined } from '@ant-design/icons';
 import { Track } from '../../types/editor';
 import { SimpleExportRenderer, SimpleExportConfig, SimpleExportProgress } from '../../services/simpleExportRenderer';
-import { saveFileDialog, selectDirectory, isElectron, writeFile, createDirectory } from '../../services/electronService';
+import { saveFileDialog, selectDirectory, isElectron, writeFile, createDirectory, fsCopy, fsExists } from '../../services/electronService';
 import { exporterRegistry, type DraftExportOptions } from '../../services/draftExport';
 import type { JianyingDraftContent, JianyingDraftMetaInfo } from '../../types/jianying';
 
@@ -182,7 +182,6 @@ export function SimpleExportDialog({ open, onClose, tracks, duration, canvasSize
       const result = await exporter.export(tracks, options, canvasSize);
 
       if (result.success) {
-        // 写入文件
         const exportResult = result as typeof result & {
           draftContent: JianyingDraftContent;
           draftMetaInfo: JianyingDraftMetaInfo;
@@ -190,6 +189,50 @@ export function SimpleExportDialog({ open, onClose, tracks, duration, canvasSize
 
         // 创建草稿目录
         await createDirectory(draftFolderPath);
+
+        // 如果需要复制素材
+        if (values.copyMaterials) {
+          const materialsDir = `${draftFolderPath}/materials`;
+          await createDirectory(materialsDir);
+
+          // 收集所有素材路径并复制
+          const materials = exportResult.draftContent.materials;
+          const pathMap = new Map<string, string>(); // 原路径 -> 新路径
+
+          // 复制视频/图片素材
+          for (const video of materials.videos || []) {
+            if (video.path && !video.path.startsWith('http')) {
+              const fileName = video.path.split(/[/\\]/).pop() || `video_${video.id}`;
+              const newPath = `${materialsDir}/${fileName}`;
+              try {
+                if (await fsExists(video.path)) {
+                  await fsCopy(video.path, newPath);
+                  pathMap.set(video.path, newPath);
+                  video.path = newPath;
+                }
+              } catch (e) {
+                console.warn(`复制素材失败: ${video.path}`, e);
+              }
+            }
+          }
+
+          // 复制音频素材
+          for (const audio of materials.audios || []) {
+            if (audio.path && !audio.path.startsWith('http')) {
+              const fileName = audio.path.split(/[/\\]/).pop() || `audio_${audio.id}`;
+              const newPath = `${materialsDir}/${fileName}`;
+              try {
+                if (await fsExists(audio.path)) {
+                  await fsCopy(audio.path, newPath);
+                  pathMap.set(audio.path, newPath);
+                  audio.path = newPath;
+                }
+              } catch (e) {
+                console.warn(`复制素材失败: ${audio.path}`, e);
+              }
+            }
+          }
+        }
 
         // 写入 draft_content.json
         await writeFile(
@@ -208,6 +251,7 @@ export function SimpleExportDialog({ open, onClose, tracks, duration, canvasSize
           content: (
             <div>
               <p>草稿已保存到: {draftFolderPath}</p>
+              {values.copyMaterials && <p style={{ color: '#52c41a' }}>素材已复制到草稿目录</p>}
               {result.warnings && result.warnings.length > 0 && (
                 <div style={{ marginTop: 8, color: '#faad14' }}>
                   <p>警告:</p>
@@ -421,7 +465,7 @@ export function SimpleExportDialog({ open, onClose, tracks, duration, canvasSize
                 format: 'jianying',
                 projectName: `导出_${new Date().toLocaleDateString()}`,
                 outputPath: '',
-                copyMaterials: false,
+                copyMaterials: true,
               }}
             >
               {/* 格式选择 */}
@@ -466,7 +510,7 @@ export function SimpleExportDialog({ open, onClose, tracks, duration, canvasSize
 
               {/* 复制素材选项 */}
               <Form.Item name="copyMaterials" valuePropName="checked">
-                <Checkbox>复制素材文件到草稿目录</Checkbox>
+                <Checkbox>复制素材到草稿目录（推荐，防止原素材被删除导致草稿失效）</Checkbox>
               </Form.Item>
 
               {/* 项目信息 */}
