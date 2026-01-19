@@ -2,7 +2,7 @@
  * 胶片缩略图渲染器
  * 用于在时间线片段上显示视频帧缩略图
  */
-import React, { useEffect, useState, useMemo, useRef } from 'react';
+import React, { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import { ffmpegManager } from '../../../services/ffmpegManager';
 
 interface FilmstripRendererProps {
@@ -16,6 +16,9 @@ interface FilmstripRendererProps {
   offsetL?: number;         // 左侧裁切帧数
   scale: number;            // 缩放比例（像素/帧）
 }
+
+// 帧缓存：source + resourceId → frames
+const frameCache = new Map<string, string[]>();
 
 export function FilmstripRenderer({
   source,
@@ -32,28 +35,36 @@ export function FilmstripRenderer({
   const [loading, setLoading] = useState(true);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // 计算需要显示的帧数（每秒抽 1 帧作为缩略图）
+  // 计算需要显示的帧数
   const duration = (endFrame - startFrame) / fps;
-  const frameCount = Math.max(1, Math.ceil(duration));
   const thumbWidth = Math.max(40, height * 16 / 9);
 
-  // 加载帧
+  // 缓存 key
+  const cacheKey = `${resourceId}:${source}`;
+
+  // 加载帧 - 只依赖 source 和 resourceId，不依赖 duration
   useEffect(() => {
     if (!source) return;
+
+    // 检查缓存
+    const cached = frameCache.get(cacheKey);
+    if (cached) {
+      setFrames(cached);
+      setLoading(false);
+      return;
+    }
 
     const loadFrames = async () => {
       setLoading(true);
       try {
-        // 计算实际的时间范围（考虑 offsetL）
-        const startTime = offsetL / fps;
-        const endTime = startTime + duration;
-
+        // 加载整个资源的帧（范围扩大以支持裁剪）
         const loadedFrames = await ffmpegManager.getFrames(
           source,
           resourceId,
-          [startTime, endTime]
+          [0, 60]  // 加载前 60 秒的帧
         );
 
+        frameCache.set(cacheKey, loadedFrames);
         setFrames(loadedFrames);
       } catch (err) {
         console.warn('[FilmstripRenderer] Failed to load frames:', err);
@@ -64,18 +75,23 @@ export function FilmstripRenderer({
     };
 
     loadFrames();
-  }, [source, resourceId, offsetL, duration, fps]);
+  }, [source, resourceId, cacheKey]);
 
-  // 计算每个缩略图的位置
+  // 计算每个缩略图的位置 - 使用缓存的帧
   const thumbnails = useMemo(() => {
     if (frames.length === 0) return [];
 
     const result: { src: string; left: number; width: number }[] = [];
     const visibleCount = Math.ceil(width / thumbWidth);
-    const framesPerThumb = Math.max(1, Math.floor(frames.length / visibleCount));
 
-    for (let i = 0; i < visibleCount && i * framesPerThumb < frames.length; i++) {
-      const frameIndex = Math.min(i * framesPerThumb, frames.length - 1);
+    // 根据 offsetL 计算起始帧索引
+    const startFrameIndex = Math.floor(offsetL / fps);
+    const framesPerThumb = Math.max(1, Math.floor(duration));
+
+    for (let i = 0; i < visibleCount; i++) {
+      const frameIndex = Math.min(startFrameIndex + i * framesPerThumb, frames.length - 1);
+      if (frameIndex < 0 || frameIndex >= frames.length) continue;
+
       result.push({
         src: frames[frameIndex],
         left: i * thumbWidth,
@@ -84,7 +100,7 @@ export function FilmstripRenderer({
     }
 
     return result;
-  }, [frames, width, thumbWidth]);
+  }, [frames, width, thumbWidth, offsetL, fps, duration]);
 
   if (loading && frames.length === 0) {
     return (

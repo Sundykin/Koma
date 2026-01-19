@@ -1,6 +1,7 @@
 /**
  * 增强版时间线组件
  * 基于 trackStore 的多轨道编辑器
+ * 性能优化：使用 selector 精确订阅状态，避免不必要的重渲染
  */
 import React, { useRef, useState, useCallback, useEffect, useMemo } from 'react';
 import { Button, Tooltip, Dropdown, message } from 'antd';
@@ -14,7 +15,7 @@ import {
 } from '@ant-design/icons';
 import { useTrackStore } from '../../../store/trackStore';
 import { snapEngine } from '../../../engine/SnapEngine';
-import type { TrackType, TrackItem } from '../../../types/track';
+import type { TrackType, TrackItem, EasingType, TrackLine } from '../../../types/track';
 import type { Resource } from '../../../types/resource';
 import TimelineRuler from './TimelineRuler';
 import TrackHeader from './TrackHeader';
@@ -31,52 +32,66 @@ interface EnhancedTimelineProps {
 const MIN_SCALE = 0.5;   // 最小缩放：0.5 像素/帧
 const MAX_SCALE = 20;    // 最大缩放：20 像素/帧
 const DEFAULT_TRACK_HEIGHT = 60;
+const DRAG_THRESHOLD = 5; // 拖拽阈值：5像素
+
+// 浅比较轨道数组（只比较 id 和 items 长度）
+const tracksShallowEqual = (a: TrackLine[], b: TrackLine[]) => {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i].id !== b[i].id || a[i].items.length !== b[i].items.length) return false;
+  }
+  return true;
+};
 
 export function EnhancedTimeline({ onTimeChange, draggingResource }: EnhancedTimelineProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const trackAreaRef = useRef<HTMLDivElement>(null);
 
-  // Store 状态
-  const {
-    config,
-    tracks,
-    selectedTrackId,
-    selectedItemId,
-    currentTime,
-    scale,
-    scrollLeft,
-    isPlaying,
-    snapEnabled,
-    setScale,
-    setScrollLeft,
-    setCurrentTime,
-    selectTrack,
-    selectItem,
-    addTrack,
-    removeTrack,
-    updateTrack,
-    removeItem,
-    moveItem,
-    trimItemStart,
-    trimItemEnd,
-    splitItem,
-    getDuration,
-    getTracksSorted,
-    updateSnapPoints,
-    addItemFromResource,
-  } = useTrackStore();
+  // 使用 selector 精确订阅状态，避免不必要的重渲染
+  const config = useTrackStore(state => state.config);
+  const tracks = useTrackStore(state => state.tracks);
+  const selectedTrackId = useTrackStore(state => state.selectedTrackId);
+  const selectedItemId = useTrackStore(state => state.selectedItemId);
+  const currentTime = useTrackStore(state => state.currentTime);
+  const scale = useTrackStore(state => state.scale);
+  const scrollLeft = useTrackStore(state => state.scrollLeft);
+  const isPlaying = useTrackStore(state => state.isPlaying);
+  const snapEnabled = useTrackStore(state => state.snapEnabled);
+
+  // 方法只获取一次（不会触发重渲染）
+  const storeActions = useRef(useTrackStore.getState());
+
+  // 缓存排序后的轨道
+  const sortedTracks = useMemo(() => {
+    return [...tracks].sort((a, b) => b.order - a.order);
+  }, [tracks]);
+
+  // 缓存总时长
+  const duration = useMemo(() => {
+    let maxEnd = 0;
+    for (const track of tracks) {
+      for (const item of track.items) {
+        if (item.end > maxEnd) {
+          maxEnd = item.end;
+        }
+      }
+    }
+    return maxEnd;
+  }, [tracks]);
 
   // 本地状态
   const [containerWidth, setContainerWidth] = useState(800);
-  const [isDragging, setIsDragging] = useState(false);
+  const [selectedKeyframeId, setSelectedKeyframeId] = useState<string | null>(null);
   const [dragState, setDragState] = useState<{
     trackId: string;
     itemId: string;
     type: 'move' | 'trim-start' | 'trim-end';
     startX: number;
+    startY: number;
     startFrame: number;
     originalStart: number;
     originalEnd: number;
+    isDragging: boolean;  // 超过阈值才为 true
   } | null>(null);
   // 裁剪时间提示
   const [trimTooltip, setTrimTooltip] = useState<{
@@ -101,11 +116,7 @@ export function EnhancedTimeline({ onTimeChange, draggingResource }: EnhancedTim
   } | null>(null);
 
   // 计算时间线宽度
-  const duration = getDuration();
   const timelineWidth = Math.max(duration * scale, containerWidth);
-
-  // 排序后的轨道（按 order 从高到低）
-  const sortedTracks = getTracksSorted();
 
   // 帧 <-> 像素转换
   const frameToPixel = useCallback((frame: number) => frame * scale, [scale]);
@@ -135,17 +146,16 @@ export function EnhancedTimeline({ onTimeChange, draggingResource }: EnhancedTim
     return () => observer.disconnect();
   }, []);
 
-  // 更新吸附点
+  // 更新吸附点（只在 tracks 结构变化时重算，移除 currentTime 依赖）
   useEffect(() => {
-    updateSnapPoints();
+    storeActions.current.updateSnapPoints();
     snapEngine.setOptions({ scale, enabled: snapEnabled });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tracks, currentTime, scale, snapEnabled]);
+  }, [tracks.length, scale, snapEnabled]);
 
   // 缩放控制
   const handleZoom = useCallback((delta: number) => {
-    setScale(Math.max(MIN_SCALE, Math.min(MAX_SCALE, scale + delta)));
-  }, [scale, setScale]);
+    storeActions.current.setScale(Math.max(MIN_SCALE, Math.min(MAX_SCALE, scale + delta)));
+  }, [scale]);
 
   // 滚轮缩放
   const handleWheel = useCallback((e: React.WheelEvent) => {
@@ -158,49 +168,49 @@ export function EnhancedTimeline({ onTimeChange, draggingResource }: EnhancedTim
   // 时间标尺点击
   const handleRulerClick = useCallback((time: number) => {
     const frame = Math.round(time / (1000 / config.fps));
-    setCurrentTime(frame);
+    storeActions.current.setCurrentTime(frame);
     onTimeChange?.(time);
-  }, [config.fps, setCurrentTime, onTimeChange]);
+  }, [config.fps, onTimeChange]);
 
   // 添加轨道
   const handleAddTrack = useCallback((type: TrackType) => {
-    addTrack(type);
+    storeActions.current.addTrack(type);
     message.success(`已添加${type === 'video' ? '视频' : type === 'audio' ? '音频' : '文本'}轨道`);
-  }, [addTrack]);
+  }, []);
 
   // 删除轨道
   const handleDeleteTrack = useCallback((trackId: string) => {
-    removeTrack(trackId);
-  }, [removeTrack]);
+    storeActions.current.removeTrack(trackId);
+  }, []);
 
   // 切换轨道静音
   const handleToggleMute = useCallback((trackId: string) => {
     const track = tracks.find(t => t.id === trackId);
     if (track) {
-      updateTrack(trackId, { muted: !track.muted });
+      storeActions.current.updateTrack(trackId, { muted: !track.muted });
     }
-  }, [tracks, updateTrack]);
+  }, [tracks]);
 
   // 切换轨道锁定
   const handleToggleLock = useCallback((trackId: string) => {
     const track = tracks.find(t => t.id === trackId);
     if (track) {
-      updateTrack(trackId, { locked: !track.locked });
+      storeActions.current.updateTrack(trackId, { locked: !track.locked });
     }
-  }, [tracks, updateTrack]);
+  }, [tracks]);
 
   // 切换轨道可见性
   const handleToggleVisible = useCallback((trackId: string) => {
     const track = tracks.find(t => t.id === trackId);
     if (track) {
-      updateTrack(trackId, { visible: !track.visible });
+      storeActions.current.updateTrack(trackId, { visible: !track.visible });
     }
-  }, [tracks, updateTrack]);
+  }, [tracks]);
 
   // 选择轨道项
   const handleItemSelect = useCallback((trackId: string, itemId: string) => {
-    selectItem(trackId, itemId);
-  }, [selectItem]);
+    storeActions.current.selectItem(trackId, itemId);
+  }, []);
 
   // 处理资源拖放到轨道
   const handleTrackDrop = useCallback((trackId: string, e: React.DragEvent) => {
@@ -254,7 +264,7 @@ export function EnhancedTimeline({ onTimeChange, draggingResource }: EnhancedTim
     }
 
     // 创建轨道项
-    const item = addItemFromResource(
+    const item = storeActions.current.addItemFromResource(
       trackId,
       {
         id: resourceData.id,
@@ -271,13 +281,13 @@ export function EnhancedTimeline({ onTimeChange, draggingResource }: EnhancedTim
     );
 
     if (item) {
-      selectItem(trackId, item.id);
+      storeActions.current.selectItem(trackId, item.id);
       message.success(`已添加: ${resourceData.name}`);
     }
 
     // 清除预览
     setDropPreview(null);
-  }, [tracks, scrollLeft, pixelToFrame, addItemFromResource, selectItem, draggingResource]);
+  }, [tracks, scrollLeft, pixelToFrame, draggingResource]);
 
   // 处理拖拽经过轨道（显示预览）
   const handleTrackDragOver = useCallback((trackId: string, e: React.DragEvent) => {
@@ -330,7 +340,7 @@ export function EnhancedTimeline({ onTimeChange, draggingResource }: EnhancedTim
     }
   }, [dropPreview]);
 
-  // 开始拖拽
+  // 开始拖拽（初始化 isDragging 为 false）
   const handleItemDragStart = useCallback((
     trackId: string,
     itemId: string,
@@ -343,39 +353,58 @@ export function EnhancedTimeline({ onTimeChange, draggingResource }: EnhancedTim
     const item = track?.items.find(i => i.id === itemId);
     if (!item) return;
 
-    setIsDragging(true);
     setDragState({
       trackId,
       itemId,
       type,
       startX: e.clientX,
+      startY: e.clientY,
       startFrame: currentTime,
       originalStart: item.start,
       originalEnd: item.end,
+      isDragging: false,  // 初始为 false，超过阈值后才设为 true
     });
 
-    selectItem(trackId, itemId);
-  }, [tracks, currentTime, selectItem]);
+    storeActions.current.selectItem(trackId, itemId);
+  }, [tracks, currentTime]);
 
   // 拖拽处理（使用 requestAnimationFrame 节流）
+  // 依赖只使用 dragState?.itemId 避免频繁重绑定
   useEffect(() => {
-    if (!isDragging || !dragState) return;
+    if (!dragState) return;
 
     let rafId: number | null = null;
     let latestMouseEvent: MouseEvent | null = null;
+    let currentDragState = dragState;
 
     const performDrag = () => {
-      if (!latestMouseEvent || !dragState) return;
+      if (!latestMouseEvent || !currentDragState) return;
 
       const e = latestMouseEvent;
-      const deltaX = e.clientX - dragState.startX;
-      const deltaFrames = pixelToFrame(deltaX);
+      const dx = e.clientX - currentDragState.startX;
+      const dy = e.clientY - currentDragState.startY;
+      const distance = Math.sqrt(dx * dx + dy * dy);
 
-      if (dragState.type === 'move') {
-        const newStart = Math.max(0, dragState.originalStart + deltaFrames);
+      // 检测是否超过拖拽阈值
+      if (!currentDragState.isDragging && distance >= DRAG_THRESHOLD) {
+        currentDragState = { ...currentDragState, isDragging: true };
+        setDragState(currentDragState);
+      }
+
+      // 只在 isDragging 为 true 时执行拖拽逻辑
+      if (!currentDragState.isDragging) {
+        rafId = null;
+        return;
+      }
+
+      const deltaX = e.clientX - currentDragState.startX;
+      const deltaFrames = Math.round(deltaX / scale);
+
+      if (currentDragState.type === 'move') {
+        const newStart = Math.max(0, currentDragState.originalStart + deltaFrames);
         // 尝试吸附
-        const snapResult = snapEngine.findSnapPosition(newStart, dragState.itemId);
-        moveItem(dragState.trackId, dragState.itemId, snapResult.snapped ? snapResult.position : newStart);
+        const snapResult = snapEngine.findSnapPosition(newStart, currentDragState.itemId);
+        storeActions.current.moveItem(currentDragState.trackId, currentDragState.itemId, snapResult.snapped ? snapResult.position : newStart);
 
         // 显示吸附线
         if (snapResult.snapped && snapResult.snapPoint) {
@@ -387,10 +416,10 @@ export function EnhancedTimeline({ onTimeChange, draggingResource }: EnhancedTim
         } else {
           setSnapLine(null);
         }
-      } else if (dragState.type === 'trim-start') {
-        const newStart = Math.max(0, dragState.originalStart + deltaFrames);
-        if (newStart < dragState.originalEnd - 1) {
-          trimItemStart(dragState.trackId, dragState.itemId, newStart);
+      } else if (currentDragState.type === 'trim-start') {
+        const newStart = Math.max(0, currentDragState.originalStart + deltaFrames);
+        if (newStart < currentDragState.originalEnd - 1) {
+          storeActions.current.trimItemStart(currentDragState.trackId, currentDragState.itemId, newStart);
           setTrimTooltip({
             visible: true,
             x: e.clientX,
@@ -398,10 +427,10 @@ export function EnhancedTimeline({ onTimeChange, draggingResource }: EnhancedTim
             time: formatFrameTime(newStart),
           });
         }
-      } else if (dragState.type === 'trim-end') {
-        const newEnd = dragState.originalEnd + deltaFrames;
-        if (newEnd > dragState.originalStart + 1) {
-          trimItemEnd(dragState.trackId, dragState.itemId, newEnd);
+      } else if (currentDragState.type === 'trim-end') {
+        const newEnd = currentDragState.originalEnd + deltaFrames;
+        if (newEnd > currentDragState.originalStart + 1) {
+          storeActions.current.trimItemEnd(currentDragState.trackId, currentDragState.itemId, newEnd);
           setTrimTooltip({
             visible: true,
             x: e.clientX,
@@ -425,43 +454,77 @@ export function EnhancedTimeline({ onTimeChange, draggingResource }: EnhancedTim
       if (rafId !== null) {
         cancelAnimationFrame(rafId);
       }
-      setIsDragging(false);
       setDragState(null);
       setTrimTooltip({ visible: false, x: 0, y: 0, time: '' });
       setSnapLine(null);
     };
 
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
 
     return () => {
       if (rafId !== null) {
         cancelAnimationFrame(rafId);
       }
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [isDragging, dragState, pixelToFrame, moveItem, trimItemStart, trimItemEnd, formatFrameTime]);
+  }, [dragState?.itemId, scale, formatFrameTime]);
 
   // 删除选中的片段
   const handleDeleteSelected = useCallback(() => {
     if (selectedTrackId && selectedItemId) {
-      removeItem(selectedTrackId, selectedItemId);
+      storeActions.current.removeItem(selectedTrackId, selectedItemId);
     }
-  }, [selectedTrackId, selectedItemId, removeItem]);
+  }, [selectedTrackId, selectedItemId]);
 
   // 分割选中的片段
   const handleSplitSelected = useCallback(() => {
     if (selectedTrackId && selectedItemId) {
-      splitItem(selectedTrackId, selectedItemId, currentTime);
+      storeActions.current.splitItem(selectedTrackId, selectedItemId, currentTime);
     }
-  }, [selectedTrackId, selectedItemId, currentTime, splitItem]);
+  }, [selectedTrackId, selectedItemId, currentTime]);
 
   // 播放头拖拽
   const handlePlayheadDrag = useCallback((deltaX: number) => {
     const deltaFrames = pixelToFrame(deltaX);
-    setCurrentTime(Math.max(0, currentTime + deltaFrames));
-  }, [currentTime, pixelToFrame, setCurrentTime]);
+    storeActions.current.setCurrentTime(Math.max(0, currentTime + deltaFrames));
+  }, [currentTime, pixelToFrame]);
+
+  // 关键帧选择
+  const handleKeyframeSelect = useCallback((itemId: string, keyframeId: string) => {
+    setSelectedKeyframeId(keyframeId);
+  }, []);
+
+  // 关键帧时间变更
+  const handleKeyframeTimeChange = useCallback((itemId: string, keyframeId: string, newTime: number) => {
+    if (selectedTrackId) {
+      storeActions.current.updateKeyframeTimeInItem(selectedTrackId, itemId, keyframeId, newTime);
+    }
+  }, [selectedTrackId]);
+
+  // 关键帧删除
+  const handleKeyframeDelete = useCallback((itemId: string, keyframeId: string) => {
+    if (selectedTrackId) {
+      storeActions.current.removeKeyframeFromItem(selectedTrackId, itemId, keyframeId);
+      if (selectedKeyframeId === keyframeId) {
+        setSelectedKeyframeId(null);
+      }
+    }
+  }, [selectedTrackId, selectedKeyframeId]);
+
+  // 关键帧复制（暂时只打印）
+  const handleKeyframeCopy = useCallback((itemId: string, keyframeId: string) => {
+    // TODO: 实现关键帧复制到剪贴板
+    message.info('关键帧复制功能开发中');
+  }, []);
+
+  // 关键帧缓动变更
+  const handleKeyframeEasingChange = useCallback((itemId: string, keyframeId: string, easing: EasingType) => {
+    if (selectedTrackId) {
+      storeActions.current.updateKeyframeEasingInItem(selectedTrackId, itemId, keyframeId, easing);
+    }
+  }, [selectedTrackId]);
 
   // 键盘快捷键
   useEffect(() => {
@@ -487,17 +550,17 @@ export function EnhancedTimeline({ onTimeChange, draggingResource }: EnhancedTim
           handleZoom(-1);
           break;
         case 'ArrowLeft':
-          setCurrentTime(Math.max(0, currentTime - 1));
+          storeActions.current.setCurrentTime(Math.max(0, currentTime - 1));
           break;
         case 'ArrowRight':
-          setCurrentTime(currentTime + 1);
+          storeActions.current.setCurrentTime(currentTime + 1);
           break;
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleDeleteSelected, handleSplitSelected, handleZoom, currentTime, setCurrentTime]);
+  }, [handleDeleteSelected, handleSplitSelected, handleZoom, currentTime]);
 
   // 计算轨道总高度
   const totalTrackHeight = sortedTracks.reduce((sum, t) => sum + t.height, 0);
@@ -552,7 +615,7 @@ export function EnhancedTimeline({ onTimeChange, draggingResource }: EnhancedTim
             size="small"
             onClick={() => {
               if (duration > 0) {
-                setScale(containerWidth / duration);
+                storeActions.current.setScale(containerWidth / duration);
               }
             }}
           />
@@ -569,7 +632,7 @@ export function EnhancedTimeline({ onTimeChange, draggingResource }: EnhancedTim
               key={track.id}
               track={track}
               selected={track.id === selectedTrackId}
-              onSelect={() => selectTrack(track.id)}
+              onSelect={() => storeActions.current.selectTrack(track.id)}
               onToggleMute={() => handleToggleMute(track.id)}
               onToggleLock={() => handleToggleLock(track.id)}
               onToggleVisible={() => handleToggleVisible(track.id)}
@@ -582,7 +645,7 @@ export function EnhancedTimeline({ onTimeChange, draggingResource }: EnhancedTim
         <div
           ref={trackAreaRef}
           className="timelineScrollArea"
-          onScroll={(e) => setScrollLeft((e.target as HTMLDivElement).scrollLeft)}
+          onScroll={(e) => storeActions.current.setScrollLeft((e.target as HTMLDivElement).scrollLeft)}
         >
           {/* 时间刻度尺 */}
           <TimelineRuler
@@ -603,8 +666,14 @@ export function EnhancedTimeline({ onTimeChange, draggingResource }: EnhancedTim
                 fps={config.fps}
                 width={timelineWidth}
                 selectedItemId={selectedItemId}
+                selectedKeyframeId={track.id === selectedTrackId ? selectedKeyframeId : null}
                 onItemSelect={(itemId) => handleItemSelect(track.id, itemId)}
                 onItemDragStart={(trackId, itemId, type, e) => handleItemDragStart(trackId, itemId, type, e)}
+                onKeyframeSelect={handleKeyframeSelect}
+                onKeyframeTimeChange={handleKeyframeTimeChange}
+                onKeyframeDelete={handleKeyframeDelete}
+                onKeyframeCopy={handleKeyframeCopy}
+                onKeyframeEasingChange={handleKeyframeEasingChange}
                 onDrop={(e) => handleTrackDrop(track.id, e)}
                 onDragOver={(e) => handleTrackDragOver(track.id, e)}
                 onDragLeave={(e) => handleTrackDragLeave(track.id, e)}

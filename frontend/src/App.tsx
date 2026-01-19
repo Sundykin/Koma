@@ -6,7 +6,7 @@ import { AssetManager } from './components/AssetManager';
 import { Storyboard } from './components/Storyboard';
 import type { MentionItem } from './editor';
 import { ScriptEditor } from './editor';
-import { VideoEditor } from './components/editor';
+import { SimpleEditor } from './components/editor';
 import { SettingsPage } from './components/SettingsPage';
 import { StepNavigator } from './components/StepNavigator';
 import { CreateProjectModal } from './components/CreateProjectModal';
@@ -854,8 +854,7 @@ const AppContent: React.FC = () => {
                     {/* 剪辑视图 */}
                     {editorStep === 'video' && (
                          analysisData ? (
-                            <VideoEditor
-                                projectId={activeProject?.id}
+                            <SimpleEditor
                                 shots={analysisData.shots}
                             />
                         ) : (

@@ -10,7 +10,8 @@ import {
   KeyOutlined,
 } from '@ant-design/icons';
 import { useTrackStore } from '../../store/trackStore';
-import type { TrackKeyframe, EasingType, TrackItem } from '../../types/track';
+import { EasingType } from '../../types/track';
+import type { TrackKeyframe, TrackItem } from '../../types/track';
 import { nanoid } from 'nanoid';
 
 interface KeyframeEditorProps {
@@ -19,13 +20,13 @@ interface KeyframeEditorProps {
 }
 
 const EASING_OPTIONS: { value: EasingType; label: string }[] = [
-  { value: 'linear', label: '线性' },
-  { value: 'ease-in', label: '缓入' },
-  { value: 'ease-out', label: '缓出' },
-  { value: 'ease-in-out', label: '缓入缓出' },
-  { value: 'ease-in-cubic', label: '立方缓入' },
-  { value: 'ease-out-cubic', label: '立方缓出' },
-  { value: 'ease-in-out-cubic', label: '立方缓入缓出' },
+  { value: EasingType.LINEAR, label: '线性' },
+  { value: EasingType.EASE_IN, label: '缓入' },
+  { value: EasingType.EASE_OUT, label: '缓出' },
+  { value: EasingType.EASE_IN_OUT, label: '缓入缓出' },
+  { value: EasingType.EASE_IN_CUBIC, label: '立方缓入' },
+  { value: EasingType.EASE_OUT_CUBIC, label: '立方缓出' },
+  { value: EasingType.EASE_IN_OUT_CUBIC, label: '立方缓入缓出' },
 ];
 
 const PROPERTIES = [
@@ -75,7 +76,7 @@ export function KeyframeEditor({ trackId, itemId }: KeyframeEditorProps) {
       rotation: (item as any).rotation ?? 0,
       opacity: (item as any).opacity ?? 1,
       volume: (item as any).volume ?? 1,
-      easing: 'ease-in-out',
+      easing: EasingType.EASE_IN_OUT,
     };
 
     addKeyframe(trackId, itemId, newKeyframe);

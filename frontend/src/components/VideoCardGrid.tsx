@@ -136,7 +136,7 @@ export const VideoCardGrid: React.FC<VideoCardGridProps> = ({
         footer={null}
         width={720}
         centered
-        destroyOnClose
+        destroyOnHidden
       >
         <video
           src={previewUrl}

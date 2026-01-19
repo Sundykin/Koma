@@ -2,7 +2,7 @@
  * 轨道行组件
  */
 import React, { memo, useCallback } from 'react';
-import type { TrackLine, TrackItem } from '../../../types/track';
+import type { TrackLine, TrackItem, EasingType } from '../../../types/track';
 import ClipItem from './ClipItem';
 
 interface DropPreview {
@@ -18,12 +18,55 @@ interface TrackRowProps {
   fps: number;
   width: number;
   selectedItemId: string | null;
+  selectedKeyframeId?: string | null;
   onItemSelect: (itemId: string) => void;
   onItemDragStart: (trackId: string, itemId: string, type: 'move' | 'trim-start' | 'trim-end', e: React.MouseEvent) => void;
+  onKeyframeSelect?: (itemId: string, keyframeId: string) => void;
+  onKeyframeTimeChange?: (itemId: string, keyframeId: string, newTime: number) => void;
+  onKeyframeDelete?: (itemId: string, keyframeId: string) => void;
+  onKeyframeCopy?: (itemId: string, keyframeId: string) => void;
+  onKeyframeEasingChange?: (itemId: string, keyframeId: string, easing: EasingType) => void;
   onDrop?: (e: React.DragEvent) => void;
   onDragOver?: (e: React.DragEvent) => void;
   onDragLeave?: (e: React.DragEvent) => void;
   dropPreview?: DropPreview | null;
+}
+
+// 自定义比较函数
+function areTrackRowPropsEqual(prevProps: TrackRowProps, nextProps: TrackRowProps): boolean {
+  // 基础属性
+  if (prevProps.scale !== nextProps.scale) return false;
+  if (prevProps.fps !== nextProps.fps) return false;
+  if (prevProps.width !== nextProps.width) return false;
+  if (prevProps.selectedItemId !== nextProps.selectedItemId) return false;
+  if (prevProps.selectedKeyframeId !== nextProps.selectedKeyframeId) return false;
+
+  // track 关键属性比较
+  const prevTrack = prevProps.track;
+  const nextTrack = nextProps.track;
+  if (prevTrack.id !== nextTrack.id) return false;
+  if (prevTrack.visible !== nextTrack.visible) return false;
+  if (prevTrack.locked !== nextTrack.locked) return false;
+  if (prevTrack.height !== nextTrack.height) return false;
+  if (prevTrack.items.length !== nextTrack.items.length) return false;
+
+  // items 变化检测（比较关键属性）
+  for (let i = 0; i < prevTrack.items.length; i++) {
+    const prev = prevTrack.items[i];
+    const next = nextTrack.items[i];
+    if (prev.id !== next.id ||
+        prev.start !== next.start ||
+        prev.end !== next.end) {
+      return false;
+    }
+  }
+
+  // dropPreview 比较
+  if (prevProps.dropPreview?.visible !== nextProps.dropPreview?.visible) return false;
+  if (prevProps.dropPreview?.startFrame !== nextProps.dropPreview?.startFrame) return false;
+
+  // 回调函数不比较（假设稳定）
+  return true;
 }
 
 export const TrackRow = memo(function TrackRow({
@@ -32,8 +75,14 @@ export const TrackRow = memo(function TrackRow({
   fps,
   width,
   selectedItemId,
+  selectedKeyframeId,
   onItemSelect,
   onItemDragStart,
+  onKeyframeSelect,
+  onKeyframeTimeChange,
+  onKeyframeDelete,
+  onKeyframeCopy,
+  onKeyframeEasingChange,
   onDrop,
   onDragOver,
   onDragLeave,
@@ -68,6 +117,7 @@ export const TrackRow = memo(function TrackRow({
     <div
       className={`trackRow ${!track.visible ? 'hidden' : ''} ${track.locked ? 'locked' : ''}`}
       style={{ height: track.height, width }}
+      data-track-id={track.id}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
@@ -79,8 +129,14 @@ export const TrackRow = memo(function TrackRow({
           scale={scale}
           fps={fps}
           selected={item.id === selectedItemId}
+          selectedKeyframeId={item.id === selectedItemId ? selectedKeyframeId : null}
           onSelect={() => onItemSelect(item.id)}
           onDragStart={(type, e) => onItemDragStart(track.id, item.id, type, e)}
+          onKeyframeSelect={(kfId) => onKeyframeSelect?.(item.id, kfId)}
+          onKeyframeTimeChange={(kfId, newTime) => onKeyframeTimeChange?.(item.id, kfId, newTime)}
+          onKeyframeDelete={(kfId) => onKeyframeDelete?.(item.id, kfId)}
+          onKeyframeCopy={(kfId) => onKeyframeCopy?.(item.id, kfId)}
+          onKeyframeEasingChange={(kfId, easing) => onKeyframeEasingChange?.(item.id, kfId, easing)}
         />
       ))}
 
@@ -100,6 +156,6 @@ export const TrackRow = memo(function TrackRow({
       <div className="trackGrid" />
     </div>
   );
-});
+}, areTrackRowPropsEqual);
 
 export default TrackRow;

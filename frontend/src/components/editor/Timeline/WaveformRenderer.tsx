@@ -2,7 +2,7 @@
  * 波形渲染器
  * 用于在时间线片段上显示音频波形
  */
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { ffmpegManager } from '../../../services/ffmpegManager';
 
 interface WaveformRendererProps {
@@ -17,6 +17,11 @@ interface WaveformRendererProps {
   color?: string;           // 波形颜色
 }
 
+// 波形图缓存：resourceId → waveformPath
+const waveformCache = new Map<string, string>();
+// 图片缓存：waveformPath → HTMLImageElement
+const imageCache = new Map<string, HTMLImageElement>();
+
 export function WaveformRenderer({
   source,
   resourceId,
@@ -30,16 +35,26 @@ export function WaveformRenderer({
 }: WaveformRendererProps) {
   const [waveformPath, setWaveformPath] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [waveformImage, setWaveformImage] = useState<HTMLImageElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  // 加载波形图
+  // 加载波形图 - 只依赖 source 和 resourceId
   useEffect(() => {
     if (!source) return;
+
+    // 检查缓存
+    const cached = waveformCache.get(resourceId);
+    if (cached) {
+      setWaveformPath(cached);
+      setLoading(false);
+      return;
+    }
 
     const loadWaveform = async () => {
       setLoading(true);
       try {
         const path = await ffmpegManager.getWaveform(source, resourceId);
+        waveformCache.set(resourceId, path);
         setWaveformPath(path);
       } catch (err) {
         console.warn('[WaveformRenderer] Failed to load waveform:', err);
@@ -52,35 +67,46 @@ export function WaveformRenderer({
     loadWaveform();
   }, [source, resourceId]);
 
-  // 绘制波形
-  const drawWaveform = useCallback(() => {
-    if (!canvasRef.current || !waveformPath) return;
+  // 加载波形图片并缓存
+  useEffect(() => {
+    if (!waveformPath) return;
+
+    // 检查图片缓存
+    const cachedImg = imageCache.get(waveformPath);
+    if (cachedImg) {
+      setWaveformImage(cachedImg);
+      return;
+    }
+
+    const img = new Image();
+    img.onload = () => {
+      imageCache.set(waveformPath, img);
+      setWaveformImage(img);
+    };
+    img.src = `koma-local:///${waveformPath.replace(/\\/g, '/')}`;
+  }, [waveformPath]);
+
+  // 绘制波形 - 使用缓存的图片
+  useEffect(() => {
+    if (!canvasRef.current || !waveformImage) return;
 
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const img = new Image();
-    img.onload = () => {
-      // 计算裁切区域
-      const duration = (endFrame - startFrame) / fps;
-      const totalDuration = img.width;  // 假设波形图宽度与时长成比例
-      const clipStart = (offsetL / fps / totalDuration) * img.width;
-      const clipWidth = (duration / totalDuration) * img.width;
+    // 计算裁切区域
+    const duration = (endFrame - startFrame) / fps;
+    const totalDuration = waveformImage.width;
+    const clipStart = (offsetL / fps / totalDuration) * waveformImage.width;
+    const clipWidth = (duration / totalDuration) * waveformImage.width;
 
-      ctx.clearRect(0, 0, width, height);
-      ctx.drawImage(
-        img,
-        clipStart, 0, clipWidth, img.height,
-        0, 0, width, height
-      );
-    };
-    img.src = `koma-local:///${waveformPath.replace(/\\/g, '/')}`;
-  }, [waveformPath, width, height, startFrame, endFrame, fps, offsetL]);
-
-  useEffect(() => {
-    drawWaveform();
-  }, [drawWaveform]);
+    ctx.clearRect(0, 0, width, height);
+    ctx.drawImage(
+      waveformImage,
+      clipStart, 0, clipWidth, waveformImage.height,
+      0, 0, width, height
+    );
+  }, [waveformImage, width, height, startFrame, endFrame, fps, offsetL]);
 
   if (loading && !waveformPath) {
     return (

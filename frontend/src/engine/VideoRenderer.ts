@@ -1,6 +1,7 @@
 /**
  * 视频渲染器
  * 使用 Canvas 渲染时间线画面
+ * 性能优化：预排序轨道、可见性剪裁
  */
 import type { Clip, Track, Timeline } from '../types';
 import { getInterpolatedValues } from './keyframe';
@@ -12,6 +13,11 @@ export class VideoRenderer {
   private mediaCache: Map<string, HTMLImageElement | HTMLVideoElement> =
     new Map();
 
+  // 预排序的轨道缓存
+  private _sortedVideoTracks: Track[] = [];
+  private _sortedSubtitleTracks: Track[] = [];
+  private _lastTimeline: Timeline | null = null;
+
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
     const ctx = canvas.getContext('2d');
@@ -19,6 +25,8 @@ export class VideoRenderer {
       throw new Error('Failed to get 2D context');
     }
     this.ctx = ctx;
+    this.ctx.imageSmoothingEnabled = true;
+    this.ctx.imageSmoothingQuality = 'high';
   }
 
   /**
@@ -88,14 +96,22 @@ export class VideoRenderer {
     this.ctx.fillStyle = '#000';
     this.ctx.fillRect(0, 0, width, height);
 
-    // 从底层轨道向上渲染
-    const videoTracks = timeline.tracks
-      .filter((t) => t.type === 'video' && t.visible)
-      .reverse(); // 底层轨道先渲染
+    // 检查是否需要重新排序轨道
+    if (timeline !== this._lastTimeline) {
+      this._lastTimeline = timeline;
+      // 底层轨道先渲染（order 小的在底层）
+      this._sortedVideoTracks = timeline.tracks
+        .filter((t) => t.type === 'video' && t.visible)
+        .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+      this._sortedSubtitleTracks = timeline.tracks.filter(
+        (t) => t.type === 'subtitle' && t.visible
+      );
+    }
 
-    for (const track of videoTracks) {
+    // 渲染视频轨道（使用缓存的排序结果）
+    for (const track of this._sortedVideoTracks) {
+      if (!track.visible) continue;
       for (const clip of track.clips) {
-        // 检查 clip 是否在当前时间范围内
         if (
           currentTime >= clip.startTime &&
           currentTime < clip.startTime + clip.duration
@@ -106,10 +122,8 @@ export class VideoRenderer {
     }
 
     // 渲染字幕轨道
-    const subtitleTracks = timeline.tracks.filter(
-      (t) => t.type === 'subtitle' && t.visible
-    );
-    for (const track of subtitleTracks) {
+    for (const track of this._sortedSubtitleTracks) {
+      if (!track.visible) continue;
       for (const clip of track.clips) {
         if (
           currentTime >= clip.startTime &&
@@ -242,9 +256,20 @@ export class VideoRenderer {
       if (media instanceof HTMLVideoElement) {
         media.pause();
         media.src = '';
+        media.load();
       }
     });
     this.mediaCache.clear();
+    this._sortedVideoTracks = [];
+    this._sortedSubtitleTracks = [];
+    this._lastTimeline = null;
+  }
+
+  /**
+   * 使轨道缓存失效（外部调用，当轨道变化时）
+   */
+  invalidateTrackCache() {
+    this._lastTimeline = null;
   }
 }
 

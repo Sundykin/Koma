@@ -35,6 +35,7 @@ export class PlaybackEngine {
   private config: PlaybackConfig = { fps: 30, width: 1920, height: 1080 };
 
   private tracks: TrackLine[] = [];
+  private _sortedTracks: TrackLine[] = [];  // 预排序的轨道缓存
   private mediaCache: MediaCache = {
     video: new Map(),
     audio: new Map(),
@@ -46,6 +47,17 @@ export class PlaybackEngine {
   private animationFrameId: number | null = null;
   private lastFrameTime = 0;
   private frameInterval = 1000 / 30;
+
+  // 时长缓存
+  private _cachedDuration: number | null = null;
+  private _durationDirty = true;
+
+  // 时间同步容差（秒）
+  private static readonly SYNC_TOLERANCE = 0.1;
+
+  // 状态更新节流
+  private _lastEmitTime = 0;
+  private static readonly EMIT_INTERVAL = 16;  // ~60fps
 
   private callbacks: Set<PlaybackCallback> = new Set();
   private audioContext: AudioContext | null = null;
@@ -96,6 +108,9 @@ export class PlaybackEngine {
    */
   async loadTracks(tracks: TrackLine[]): Promise<void> {
     this.tracks = tracks;
+    this._durationDirty = true;
+    // 预排序轨道（按 order 从低到高）
+    this._sortedTracks = [...tracks].sort((a, b) => a.order - b.order);
 
     // 预加载所有媒体
     for (const track of tracks) {
@@ -185,7 +200,9 @@ export class PlaybackEngine {
 
     this.isPlaying = true;
     this.lastFrameTime = performance.now();
-    this.scheduleNextFrame();
+    this._lastEmitTime = 0;  // 重置节流计时
+    // 启动 RAF 循环
+    this.animationFrameId = requestAnimationFrame(this._tick);
     this.emitState();
   }
 
@@ -216,11 +233,20 @@ export class PlaybackEngine {
   }
 
   /**
-   * 跳转到指定帧
+   * 跳转到指定帧（带容差检测）
    */
   seekFrame(frame: number) {
     const duration = this.getDuration();
-    this.currentFrame = Math.max(0, Math.min(frame, duration));
+    const targetFrame = Math.max(0, Math.min(frame, duration));
+
+    // 容差检测：小于 SYNC_TOLERANCE 秒的差异不触发 seek
+    const currentTimeS = this.currentFrame / this.config.fps;
+    const targetTimeS = targetFrame / this.config.fps;
+    if (Math.abs(currentTimeS - targetTimeS) < PlaybackEngine.SYNC_TOLERANCE) {
+      return;
+    }
+
+    this.currentFrame = targetFrame;
     this.syncAudio();
     this.render();
     this.emitState();
@@ -249,9 +275,13 @@ export class PlaybackEngine {
   }
 
   /**
-   * 获取总时长（帧）
+   * 获取总时长（帧）- 使用缓存
    */
   getDuration(): number {
+    if (!this._durationDirty && this._cachedDuration !== null) {
+      return this._cachedDuration;
+    }
+
     let maxEnd = 0;
     for (const track of this.tracks) {
       for (const item of track.items) {
@@ -260,7 +290,17 @@ export class PlaybackEngine {
         }
       }
     }
+
+    this._cachedDuration = maxEnd;
+    this._durationDirty = false;
     return maxEnd;
+  }
+
+  /**
+   * 使时长缓存失效（外部调用）
+   */
+  invalidateDuration() {
+    this._durationDirty = true;
   }
 
   /**
@@ -288,6 +328,22 @@ export class PlaybackEngine {
   }
 
   /**
+   * 获取当前时间可见的片段
+   */
+  private getVisibleItems(frame: number): { item: TrackItem; track: TrackLine }[] {
+    const visible: { item: TrackItem; track: TrackLine }[] = [];
+    for (const track of this._sortedTracks) {
+      if (!track.visible) continue;
+      for (const item of track.items) {
+        if (frame >= item.start && frame < item.end) {
+          visible.push({ item, track });
+        }
+      }
+    }
+    return visible;
+  }
+
+  /**
    * 渲染当前帧
    */
   render() {
@@ -297,20 +353,10 @@ export class PlaybackEngine {
     this.ctx.fillStyle = '#000';
     this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
-    // 按 order 从低到高渲染（底层先渲染）
-    const sortedTracks = [...this.tracks].sort((a, b) => a.order - b.order);
-
-    for (const track of sortedTracks) {
-      if (!track.visible) continue;
-
-      for (const item of track.items) {
-        // 检查是否在当前帧范围内
-        if (this.currentFrame < item.start || this.currentFrame >= item.end) {
-          continue;
-        }
-
-        this.renderItem(item);
-      }
+    // 只渲染可见片段（已按 order 排序）
+    const visibleItems = this.getVisibleItems(this.currentFrame);
+    for (const { item } of visibleItems) {
+      this.renderItem(item);
     }
   }
 
@@ -423,36 +469,40 @@ export class PlaybackEngine {
   }
 
   /**
-   * 调度下一帧
+   * RAF 播放循环（箭头函数保持 this 上下文）
    */
-  private scheduleNextFrame() {
-    this.animationFrameId = requestAnimationFrame((timestamp) => {
-      if (!this.isPlaying) return;
+  private _tick = (timestamp: number): void => {
+    if (!this.isPlaying) return;
 
-      // 计算经过的帧数
-      const elapsed = timestamp - this.lastFrameTime;
-      const framesToAdvance = Math.floor(elapsed / this.frameInterval);
+    // 计算经过的时间
+    const elapsed = timestamp - this.lastFrameTime;
+    const framesToAdvance = Math.floor(elapsed / this.frameInterval);
 
-      if (framesToAdvance > 0) {
-        this.lastFrameTime = timestamp - (elapsed % this.frameInterval);
-        this.currentFrame += framesToAdvance;
+    if (framesToAdvance > 0) {
+      this.lastFrameTime = timestamp - (elapsed % this.frameInterval);
+      this.currentFrame += framesToAdvance;
 
-        // 检查是否播放结束
-        const duration = this.getDuration();
-        if (this.currentFrame >= duration) {
-          this.currentFrame = duration;
-          this.pause();
-          return;
-        }
-
-        // 渲染
-        this.render();
-        this.emitState();
+      // 检查是否播放结束
+      const duration = this.getDuration();
+      if (this.currentFrame >= duration) {
+        this.currentFrame = duration;
+        this.pause();
+        return;
       }
 
-      this.scheduleNextFrame();
-    });
-  }
+      // 渲染
+      this.render();
+
+      // 节流状态更新
+      if (timestamp - this._lastEmitTime >= PlaybackEngine.EMIT_INTERVAL) {
+        this._lastEmitTime = timestamp;
+        this.emitState();
+      }
+    }
+
+    // 继续下一帧（非递归，单次请求）
+    this.animationFrameId = requestAnimationFrame(this._tick);
+  };
 
   /**
    * 发送状态

@@ -244,7 +244,7 @@ export const VideoVersionList: React.FC<VideoVersionListProps> = ({
           footer={null}
           width={720}
           centered
-          destroyOnClose
+          destroyOnHidden
         >
           <video
             src={previewUrl}
@@ -328,7 +328,7 @@ export const VideoVersionList: React.FC<VideoVersionListProps> = ({
         footer={null}
         width={720}
         centered
-        destroyOnClose
+        destroyOnHidden
       >
         <video
           src={previewUrl}

@@ -13,6 +13,8 @@ import {
   ImageTrackItem,
   TextTrackItem,
   TrackKeyframe,
+  TransformProperties,
+  EasingType,
   TimelineConfig,
   TrackAction,
   TrackActionType,
@@ -28,9 +30,19 @@ import {
   DEFAULT_CANVAS_WIDTH,
   DEFAULT_CANVAS_HEIGHT,
   DEFAULT_TRACK_HEIGHT,
+  DEFAULT_TRANSFORM,
   msToFrame,
   frameToMs,
 } from '../types/track';
+import {
+  addKeyframe as addKf,
+  removeKeyframe as removeKf,
+  updateKeyframeTime,
+  updateKeyframeEasing,
+  updateKeyframeProperties,
+  autoKeyframe,
+  getAnimatedProperties,
+} from '../engine/keyframe';
 
 // Store 状态
 interface TrackState {
@@ -138,10 +150,19 @@ interface TrackActions {
   findSnapPosition: (position: number) => number | null;
   setSnapEnabled: (enabled: boolean) => void;
 
-  // 关键帧
+  // 关键帧操作
   addKeyframe: (trackId: string, itemId: string, keyframe: TrackKeyframe) => void;
   removeKeyframe: (trackId: string, itemId: string, keyframeId: string) => void;
   updateKeyframe: (trackId: string, itemId: string, keyframeId: string, updates: Partial<TrackKeyframe>) => void;
+
+  // 新增：增强的关键帧操作
+  addKeyframeToItem: (trackId: string, itemId: string, time: number, properties?: TransformProperties) => TrackKeyframe | null;
+  removeKeyframeFromItem: (trackId: string, itemId: string, keyframeId: string) => void;
+  updateKeyframeInItem: (trackId: string, itemId: string, keyframeId: string, updates: Partial<TrackKeyframe>) => void;
+  updateItemTransform: (trackId: string, itemId: string, property: keyof TransformProperties, value: number, autoKey?: boolean) => void;
+  updateKeyframeTimeInItem: (trackId: string, itemId: string, keyframeId: string, newTime: number) => void;
+  updateKeyframeEasingInItem: (trackId: string, itemId: string, keyframeId: string, easing: EasingType) => void;
+  getAnimatedPropertiesAtTime: (trackId: string, itemId: string, time: number) => TransformProperties | null;
 
   // 撤销/重做
   undo: () => void;
@@ -290,7 +311,7 @@ export const useTrackStore = create<TrackState & TrackActions>((set, get) => ({
           ? {
               ...t,
               items: t.items.map((i) =>
-                i.id === itemId ? { ...i, ...updates } : i
+                i.id === itemId ? ({ ...i, ...updates } as TrackItem) : i
               ),
             }
           : t
@@ -650,7 +671,7 @@ export const useTrackStore = create<TrackState & TrackActions>((set, get) => ({
     set({ snapEnabled: enabled });
   },
 
-  // 添加关键帧
+  // 添加关键帧（原有方法，保留兼容性）
   addKeyframe: (trackId, itemId, keyframe) => {
     const item = get().getItem(trackId, itemId) as any;
     if (!item) return;
@@ -661,7 +682,7 @@ export const useTrackStore = create<TrackState & TrackActions>((set, get) => ({
     });
   },
 
-  // 删除关键帧
+  // 删除关键帧（原有方法，保留兼容性）
   removeKeyframe: (trackId, itemId, keyframeId) => {
     const item = get().getItem(trackId, itemId) as any;
     if (!item?.keyframes) return;
@@ -669,9 +690,14 @@ export const useTrackStore = create<TrackState & TrackActions>((set, get) => ({
     get().updateItem(trackId, itemId, {
       keyframes: item.keyframes.filter((k: TrackKeyframe) => k.id !== keyframeId),
     });
+
+    // 如果删除的是选中的关键帧，清除选中状态
+    if (get().selectedKeyframeId === keyframeId) {
+      set({ selectedKeyframeId: null });
+    }
   },
 
-  // 更新关键帧
+  // 更新关键帧（原有方法，保留兼容性）
   updateKeyframe: (trackId, itemId, keyframeId, updates) => {
     const item = get().getItem(trackId, itemId) as any;
     if (!item?.keyframes) return;
@@ -681,6 +707,121 @@ export const useTrackStore = create<TrackState & TrackActions>((set, get) => ({
         k.id === keyframeId ? { ...k, ...updates } : k
       ),
     });
+  },
+
+  // 新增：在指定时间添加关键帧
+  addKeyframeToItem: (trackId, itemId, time, properties) => {
+    const item = get().getItem(trackId, itemId) as any;
+    if (!item) return null;
+
+    // 获取默认属性或使用传入的属性
+    const defaults: TransformProperties = {
+      x: item.x ?? 0,
+      y: item.y ?? 0,
+      scale: item.scale ?? 1,
+      rotation: item.rotation ?? 0,
+      opacity: item.opacity ?? 1,
+    };
+
+    const props = properties || getAnimatedProperties(item.keyframes, time, defaults);
+    const newKeyframes = addKf(item.keyframes, time, props);
+
+    get().updateItem(trackId, itemId, { keyframes: newKeyframes });
+
+    // 返回新添加的关键帧
+    return newKeyframes.find(kf => kf.time === time) || null;
+  },
+
+  // 新增：删除关键帧
+  removeKeyframeFromItem: (trackId, itemId, keyframeId) => {
+    const item = get().getItem(trackId, itemId) as any;
+    if (!item?.keyframes) return;
+
+    const newKeyframes = removeKf(item.keyframes, keyframeId);
+    get().updateItem(trackId, itemId, { keyframes: newKeyframes });
+
+    if (get().selectedKeyframeId === keyframeId) {
+      set({ selectedKeyframeId: null });
+    }
+  },
+
+  // 新增：更新关键帧属性
+  updateKeyframeInItem: (trackId, itemId, keyframeId, updates) => {
+    const item = get().getItem(trackId, itemId) as any;
+    if (!item?.keyframes) return;
+
+    const newKeyframes = updateKeyframeProperties(
+      item.keyframes,
+      keyframeId,
+      updates as Partial<TransformProperties>
+    );
+    get().updateItem(trackId, itemId, { keyframes: newKeyframes });
+  },
+
+  // 新增：更新轨道项变换属性（支持自动打帧）
+  updateItemTransform: (trackId, itemId, property, value, autoKey = false) => {
+    const item = get().getItem(trackId, itemId) as any;
+    if (!item) return;
+
+    // 更新基础属性
+    get().updateItem(trackId, itemId, { [property]: value });
+
+    // 如果启用自动打帧且已有关键帧
+    if (autoKey && item.keyframes && item.keyframes.length > 0) {
+      const currentTime = get().currentTime;
+      const localTime = currentTime - item.start;
+
+      // 只在片段范围内自动打帧
+      if (localTime >= 0 && localTime <= item.end - item.start) {
+        const defaults: TransformProperties = {
+          x: item.x ?? 0,
+          y: item.y ?? 0,
+          scale: item.scale ?? 1,
+          rotation: item.rotation ?? 0,
+          opacity: item.opacity ?? 1,
+        };
+
+        const newKeyframes = autoKeyframe(item.keyframes, localTime, property, value, defaults);
+        get().updateItem(trackId, itemId, { keyframes: newKeyframes });
+      }
+    }
+  },
+
+  // 新增：更新关键帧时间
+  updateKeyframeTimeInItem: (trackId, itemId, keyframeId, newTime) => {
+    const item = get().getItem(trackId, itemId) as any;
+    if (!item?.keyframes) return;
+
+    // 边界检测
+    const clampedTime = Math.max(0, Math.min(item.end - item.start, newTime));
+    const newKeyframes = updateKeyframeTime(item.keyframes, keyframeId, clampedTime);
+    get().updateItem(trackId, itemId, { keyframes: newKeyframes });
+  },
+
+  // 新增：更新关键帧缓动
+  updateKeyframeEasingInItem: (trackId, itemId, keyframeId, easing) => {
+    const item = get().getItem(trackId, itemId) as any;
+    if (!item?.keyframes) return;
+
+    const newKeyframes = updateKeyframeEasing(item.keyframes, keyframeId, easing);
+    get().updateItem(trackId, itemId, { keyframes: newKeyframes });
+  },
+
+  // 新增：获取指定时间的动画属性
+  getAnimatedPropertiesAtTime: (trackId, itemId, time) => {
+    const item = get().getItem(trackId, itemId) as any;
+    if (!item) return null;
+
+    const localTime = time - item.start;
+    const defaults: TransformProperties = {
+      x: item.x ?? 0,
+      y: item.y ?? 0,
+      scale: item.scale ?? 1,
+      rotation: item.rotation ?? 0,
+      opacity: item.opacity ?? 1,
+    };
+
+    return getAnimatedProperties(item.keyframes, localTime, defaults);
   },
 
   // 撤销

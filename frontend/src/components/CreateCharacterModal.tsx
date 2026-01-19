@@ -86,7 +86,7 @@ export const CreateCharacterModal: React.FC<CreateCharacterModalProps> = ({
       okText="创建"
       cancelText="取消"
       confirmLoading={loading}
-      destroyOnClose
+      destroyOnHidden
     >
       <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
         <Form.Item

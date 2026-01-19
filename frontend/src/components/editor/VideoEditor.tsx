@@ -24,13 +24,26 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({ projectId, shots }) =>
   const [draggingResource, setDraggingResource] = useState<Resource | null>(null);
   const initRef = useRef(false);
 
-  // Track store - 使用 selector 避免不必要的重渲染
+  // Track store - 使用 selector 精确订阅状态
   const config = useTrackStore(state => state.config);
   const tracks = useTrackStore(state => state.tracks);
   const currentTime = useTrackStore(state => state.currentTime);
-  const setCurrentTime = useTrackStore(state => state.setCurrentTime);
-  const setPlaying = useTrackStore(state => state.setPlaying);
-  const getDuration = useTrackStore(state => state.getDuration);
+
+  // 方法只获取一次
+  const storeActions = useRef(useTrackStore.getState());
+
+  // 缓存总时长
+  const duration = useMemo(() => {
+    let maxEnd = 0;
+    for (const track of tracks) {
+      for (const item of track.items) {
+        if (item.end > maxEnd) {
+          maxEnd = item.end;
+        }
+      }
+    }
+    return maxEnd;
+  }, [tracks]);
 
   // Resource store
   const initResourceStore = useResourceStore(state => state.init);
@@ -171,7 +184,6 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({ projectId, shots }) =>
 
   // 创建兼容的 Timeline 对象（用于 Player）
   const timeline = useMemo((): TimelineType => {
-    const duration = getDuration();
     const durationMs = duration * (1000 / config.fps);
 
     return {
@@ -223,7 +235,7 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({ projectId, shots }) =>
       fps: config.fps,
       resolution: { width: config.width, height: config.height },
     };
-  }, [tracks, config, getDuration]);
+  }, [tracks, config, duration]);
 
   // 当前选中的 Clip（用于 Sidebar）
   const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
@@ -265,13 +277,13 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({ projectId, shots }) =>
   // 播放时间变化
   const handleTimeChange = useCallback((time: number) => {
     const frame = Math.round(time / (1000 / config.fps));
-    setCurrentTime(frame);
-  }, [config.fps, setCurrentTime]);
+    storeActions.current.setCurrentTime(frame);
+  }, [config.fps]);
 
   // 播放状态变化
   const handlePlayStateChange = useCallback((playing: boolean) => {
-    setPlaying(playing);
-  }, [setPlaying]);
+    storeActions.current.setPlaying(playing);
+  }, []);
 
   return (
     <div style={styles.container}>

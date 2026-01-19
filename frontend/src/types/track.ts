@@ -6,26 +6,47 @@
 // 轨道类型
 export type TrackType = 'video' | 'audio' | 'image' | 'text' | 'subtitle';
 
-// 缓动类型
-export type EasingType =
-  | 'linear'
-  | 'ease-in'
-  | 'ease-out'
-  | 'ease-in-out'
-  | 'ease-in-cubic'
-  | 'ease-out-cubic'
-  | 'ease-in-out-cubic';
+// 缓动类型枚举
+export enum EasingType {
+  LINEAR = 'linear',
+  EASE_IN = 'ease-in',
+  EASE_OUT = 'ease-out',
+  EASE_IN_OUT = 'ease-in-out',
+  EASE_IN_CUBIC = 'ease-in-cubic',
+  EASE_OUT_CUBIC = 'ease-out-cubic',
+  EASE_IN_OUT_CUBIC = 'ease-in-out-cubic',
+}
 
-// 关键帧
+// 变换属性类型
+export interface TransformProperties {
+  x: number;
+  y: number;
+  scale: number;
+  rotation: number;
+  opacity: number;
+}
+
+// 默认变换属性
+export const DEFAULT_TRANSFORM: TransformProperties = {
+  x: 0,
+  y: 0,
+  scale: 1,
+  rotation: 0,
+  opacity: 1,
+};
+
+// 关键帧（完整属性快照模式）
 export interface TrackKeyframe {
   id: string;
-  time: number;           // 相对于片段起点的时间（毫秒）
-  x?: number;
-  y?: number;
-  scale?: number;
-  rotation?: number;
-  opacity?: number;
+  time: number;           // 相对于片段起点的时间（帧）
+  // 完整属性快照
+  x: number;
+  y: number;
+  scale: number;
+  rotation: number;
+  opacity: number;
   volume?: number;        // 音频专用
+  // 缓动（应用于到下一个关键帧的过渡）
   easing: EasingType;
 }
 

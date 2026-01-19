@@ -27,7 +27,14 @@
       "Skill(openspec:apply)",
       "Bash(npm run type-check:*)",
       "Bash(del \"E:\\\\Workspace\\\\2025\\\\代码备份\\\\Koma\\\\frontend\\\\src\\\\components\\\\CharacterAssetEditor.tsx\")",
-      "Skill(openspec:proposal)"
+      "Skill(openspec:proposal)",
+      "Bash(dir \"E:\\\\Workspace\\\\2025\\\\代码备份\\\\electron-egg\")",
+      "Bash(dir \"E:\\\\Workspace\\\\2025\\\\代码备份\\\\electron-egg\\\\frontend\\\\src\")",
+      "Bash(echo:*)",
+      "Bash(del \"E:\\\\Workspace\\\\2025\\\\代码备份\\\\Koma\\\\frontend\\\\src\\\\components\\\\editor\\\\PropertiesPanel.tsx\")",
+      "Bash(ls \"E:\\\\Workspace\\\\2025\\\\代码备份\\\\Koma\\\\frontend\\\\src\\\\components\\\\editor\\\\Timeline\"\" | grep -i \"context|menu|right \")",
+      "Bash(ls:*)",
+      "mcp__ide__getDiagnostics"
     ]
   }
 }

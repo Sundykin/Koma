@@ -26,7 +26,7 @@ import type { Resource, ResourceType } from '../../types/resource';
 import { formatFileSize, formatDuration } from '../../types/resource';
 import { useResourceStore } from '../../store/resourceStore';
 import { openFileDialog } from '../../services/electronService';
-import PropertiesPanel from './PropertiesPanel';
+import { PropertiesPanel } from './PropertiesPanel/index';
 
 interface SidebarProps {
   assets: Asset[];
@@ -77,13 +77,7 @@ export function Sidebar({
                 <SettingOutlined /> 属性
               </span>
             ),
-            children: (
-              <PropertiesPanel
-                clip={selectedClip}
-                timeline={timeline}
-                onChange={onClipChange}
-              />
-            ),
+            children: <PropertiesPanel />,
           },
         ]}
       />

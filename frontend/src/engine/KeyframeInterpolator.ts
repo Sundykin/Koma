@@ -2,37 +2,18 @@
  * 关键帧插值器
  * 用于计算关键帧动画的当前值
  */
-import type { TrackKeyframe, EasingType } from '../types/track';
+import type { TrackKeyframe, TransformProperties } from '../types/track';
+import { EasingType, DEFAULT_TRANSFORM } from '../types/track';
+import { easingFunctions, getAnimatedProperties } from './keyframe';
 
-// 缓动函数映射
-const easingFunctions: Record<EasingType, (t: number) => number> = {
-  'linear': (t) => t,
-  'ease-in': (t) => t * t,
-  'ease-out': (t) => t * (2 - t),
-  'ease-in-out': (t) => (t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t),
-  'ease-in-cubic': (t) => t * t * t,
-  'ease-out-cubic': (t) => 1 - Math.pow(1 - t, 3),
-  'ease-in-out-cubic': (t) =>
-    t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2,
-};
-
-// 关键帧属性类型
-export interface KeyframeValues {
-  x: number;
-  y: number;
-  scale: number;
-  rotation: number;
-  opacity: number;
+// 关键帧属性类型（包含音频专用属性）
+export interface KeyframeValues extends TransformProperties {
   volume: number;
 }
 
 // 默认值
 export const DEFAULT_KEYFRAME_VALUES: KeyframeValues = {
-  x: 0,
-  y: 0,
-  scale: 1,
-  rotation: 0,
-  opacity: 1,
+  ...DEFAULT_TRANSFORM,
   volume: 1,
 };
 
@@ -43,7 +24,7 @@ export class KeyframeInterpolator {
   /**
    * 计算指定时间的所有属性值
    * @param keyframes 关键帧数组
-   * @param time 当前时间（毫秒，相对于片段起点）
+   * @param time 当前时间（帧，相对于片段起点）
    * @param defaults 默认值
    */
   static interpolate(
@@ -51,87 +32,79 @@ export class KeyframeInterpolator {
     time: number,
     defaults: Partial<KeyframeValues> = {}
   ): KeyframeValues {
-    const values: KeyframeValues = { ...DEFAULT_KEYFRAME_VALUES, ...defaults };
+    const baseDefaults: TransformProperties = {
+      x: defaults.x ?? DEFAULT_TRANSFORM.x,
+      y: defaults.y ?? DEFAULT_TRANSFORM.y,
+      scale: defaults.scale ?? DEFAULT_TRANSFORM.scale,
+      rotation: defaults.rotation ?? DEFAULT_TRANSFORM.rotation,
+      opacity: defaults.opacity ?? DEFAULT_TRANSFORM.opacity,
+    };
 
-    if (!keyframes || keyframes.length === 0) {
-      return values;
+    const props = getAnimatedProperties(keyframes, time, baseDefaults);
+
+    // 处理音量插值
+    let volume = defaults.volume ?? 1;
+    if (keyframes && keyframes.length > 0) {
+      volume = this.interpolateVolume(keyframes, time, volume);
     }
 
-    // 按时间排序
-    const sortedKfs = [...keyframes].sort((a, b) => a.time - b.time);
-
-    // 为每个属性计算插值
-    const properties: (keyof KeyframeValues)[] = ['x', 'y', 'scale', 'rotation', 'opacity', 'volume'];
-
-    for (const prop of properties) {
-      values[prop] = this.interpolateProperty(sortedKfs, prop, time, values[prop]);
-    }
-
-    return values;
+    return {
+      ...props,
+      volume,
+    };
   }
 
   /**
-   * 计算单个属性的插值
+   * 计算音量插值
    */
-  private static interpolateProperty(
+  private static interpolateVolume(
     keyframes: TrackKeyframe[],
-    property: keyof KeyframeValues,
     time: number,
-    defaultValue: number
+    defaultVolume: number
   ): number {
-    // 过滤出有该属性值的关键帧
-    const kfsWithProperty = keyframes.filter((kf) => kf[property] !== undefined);
+    const kfsWithVolume = keyframes.filter((kf) => kf.volume !== undefined);
 
-    if (kfsWithProperty.length === 0) {
-      return defaultValue;
+    if (kfsWithVolume.length === 0) {
+      return defaultVolume;
     }
 
+    const sorted = [...kfsWithVolume].sort((a, b) => a.time - b.time);
+
     // 在第一个关键帧之前
-    if (time <= kfsWithProperty[0].time) {
-      return kfsWithProperty[0][property]!;
+    if (time <= sorted[0].time) {
+      return sorted[0].volume!;
     }
 
     // 在最后一个关键帧之后
-    const lastKf = kfsWithProperty[kfsWithProperty.length - 1];
-    if (time >= lastKf.time) {
-      return lastKf[property]!;
+    const last = sorted[sorted.length - 1];
+    if (time >= last.time) {
+      return last.volume!;
     }
 
     // 找到前后关键帧
-    let prevKf: TrackKeyframe | null = null;
-    let nextKf: TrackKeyframe | null = null;
+    for (let i = 0; i < sorted.length - 1; i++) {
+      if (sorted[i].time <= time && sorted[i + 1].time > time) {
+        const prevKf = sorted[i];
+        const nextKf = sorted[i + 1];
 
-    for (let i = 0; i < kfsWithProperty.length - 1; i++) {
-      if (kfsWithProperty[i].time <= time && kfsWithProperty[i + 1].time > time) {
-        prevKf = kfsWithProperty[i];
-        nextKf = kfsWithProperty[i + 1];
-        break;
+        const duration = nextKf.time - prevKf.time;
+        const elapsed = time - prevKf.time;
+        const progress = duration > 0 ? elapsed / duration : 0;
+
+        const easingFn = easingFunctions[prevKf.easing] || easingFunctions.linear;
+        const easedProgress = easingFn(progress);
+
+        return prevKf.volume! + (nextKf.volume! - prevKf.volume!) * easedProgress;
       }
     }
 
-    if (!prevKf || !nextKf) {
-      return defaultValue;
-    }
-
-    // 计算插值进度
-    const duration = nextKf.time - prevKf.time;
-    const elapsed = time - prevKf.time;
-    const progress = duration > 0 ? elapsed / duration : 0;
-
-    // 应用缓动函数（使用下一个关键帧的缓动）
-    const easingFn = easingFunctions[nextKf.easing] || easingFunctions.linear;
-    const easedProgress = easingFn(progress);
-
-    // 线性插值
-    const startValue = prevKf[property]!;
-    const endValue = nextKf[property]!;
-    return startValue + (endValue - startValue) * easedProgress;
+    return defaultVolume;
   }
 
   /**
    * 在指定时间是否有关键帧
    */
-  static hasKeyframeAt(keyframes: TrackKeyframe[], time: number, threshold = 50): TrackKeyframe | null {
+  static hasKeyframeAt(keyframes: TrackKeyframe[], time: number, threshold = 1): TrackKeyframe | null {
     if (!keyframes) return null;
     return keyframes.find((kf) => Math.abs(kf.time - time) < threshold) || null;
   }
