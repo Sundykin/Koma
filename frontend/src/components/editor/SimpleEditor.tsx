@@ -47,6 +47,7 @@ function shotsToTracks(shots: Shot[]): Track[] {
         start: currentTime,
         duration: shotDuration,
         offset: 0,
+        sourceDuration: shotDuration, // 源素材时长
         name: shot.scriptContent?.slice(0, 20) || `镜头 ${shot.id}`,
         type: mediaType,
         src: mediaPath,
@@ -231,6 +232,7 @@ export const SimpleEditor: React.FC<SimpleEditorProps> = ({ shots = [], projectI
         start: safeStart,
         duration: asset.duration,
         offset: 0,
+        sourceDuration: asset.duration, // 设置源素材时长
         name: asset.name,
         type: asset.type,
         src: asset.src,

@@ -192,6 +192,9 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
     startX: number;
     originalStart: number;
     originalDuration: number;
+    originalOffset: number;
+    sourceDuration: number; // 源素材总时长，用于边界限制
+    clipType: MediaType;    // 片段类型
   } | null>(null);
 
   // 计算时间轴总长度
@@ -341,16 +344,39 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
         const deltaX = e.clientX - resizeState.startX;
         const deltaSeconds = deltaX / PIXELS_PER_SECOND;
 
+        // 图片/文本类型可以无限拉长，视频/音频受源素材时长限制
+        const hasSourceLimit = resizeState.clipType === MediaType.VIDEO || resizeState.clipType === MediaType.AUDIO;
+        const maxAvailable = hasSourceLimit ? resizeState.sourceDuration : Infinity;
+
         if (resizeState.edge === 'end') {
-          const newDuration = Math.max(0.1, resizeState.originalDuration + deltaSeconds);
+          // 向右拉长：检查不超过源素材剩余长度
+          // 可用的最大时长 = sourceDuration - offset
+          const maxDuration = hasSourceLimit
+            ? maxAvailable - resizeState.originalOffset
+            : Infinity;
+          const newDuration = Math.max(0.1, Math.min(maxDuration, resizeState.originalDuration + deltaSeconds));
           onUpdateClip(resizeState.clipId, { duration: newDuration });
         } else {
+          // 向左拉长：检查不超过 offset（不能小于 0）
           let newStart = resizeState.originalStart + deltaSeconds;
-          if (newStart < 0) newStart = 0;
           const endTime = resizeState.originalStart + resizeState.originalDuration;
+
+          // 计算对应的新 offset
+          const newOffset = resizeState.originalOffset + (newStart - resizeState.originalStart);
+
+          // 边界检查
+          if (newStart < 0) newStart = 0;
           if (newStart > endTime - 0.1) newStart = endTime - 0.1;
+
+          // 对于视频/音频，检查 offset 不能小于 0
+          if (hasSourceLimit && newOffset < 0) {
+            // 限制 newStart，使 offset 刚好为 0
+            newStart = resizeState.originalStart - resizeState.originalOffset;
+          }
+
           const newDuration = endTime - newStart;
-          onUpdateClip(resizeState.clipId, { start: newStart, duration: newDuration });
+          const finalOffset = Math.max(0, resizeState.originalOffset + (newStart - resizeState.originalStart));
+          onUpdateClip(resizeState.clipId, { start: newStart, duration: newDuration, offset: finalOffset });
         }
       };
       const handleResizeUp = () => setResizeState(null);
@@ -387,12 +413,25 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
 
   const handleResizeMouseDown = (e: React.MouseEvent, clip: Clip, edge: 'start' | 'end') => {
     e.stopPropagation();
+    // 获取源素材时长：优先使用 clip.sourceDuration，否则用当前 duration + offset 作为估算
+    const sourceDuration = clip.sourceDuration ?? (clip.duration + clip.offset);
+    console.log('[Resize] 开始:', {
+      clipId: clip.id,
+      type: clip.type,
+      duration: clip.duration,
+      offset: clip.offset,
+      sourceDuration,
+      edge
+    });
     setResizeState({
       clipId: clip.id,
       edge,
       startX: e.clientX,
       originalStart: clip.start,
-      originalDuration: clip.duration
+      originalDuration: clip.duration,
+      originalOffset: clip.offset,
+      sourceDuration,
+      clipType: clip.type
     });
   };
 

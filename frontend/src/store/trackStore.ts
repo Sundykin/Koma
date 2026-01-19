@@ -445,7 +445,7 @@ export const useTrackStore = create<TrackState & TrackActions>((set, get) => ({
     }
   },
 
-  // 裁剪开始
+  // 裁剪开始（向右缩短或向左恢复）
   trimItemStart: (trackId, itemId, newStart) => {
     const item = get().getItem(trackId, itemId);
     if (!item) return;
@@ -454,8 +454,17 @@ export const useTrackStore = create<TrackState & TrackActions>((set, get) => ({
     const startDiff = newStart - item.start;
     const newOffsetL = item.offsetL + startDiff;
 
-    // 检查边界
+    // 边界检查：
+    // 1. newOffsetL >= 0：不能向左拉超出源素材开头
+    // 2. newStart < item.end：至少保留 1 帧
+    // 3. 对于视频/音频：newOffsetL + offsetR < frameCount，确保不超出源素材总长度
     if (newOffsetL < 0 || newStart >= item.end) return;
+
+    // 视频/音频额外检查：确保显示的部分不超过源素材长度
+    if ((item.type === 'video' || item.type === 'audio') &&
+        newOffsetL + item.offsetR >= item.frameCount) {
+      return;
+    }
 
     get().updateItem(trackId, itemId, {
       start: newStart,
@@ -463,17 +472,16 @@ export const useTrackStore = create<TrackState & TrackActions>((set, get) => ({
     });
   },
 
-  // 裁剪结束
+  // 裁剪结束（向左缩短或向右恢复）
   trimItemEnd: (trackId, itemId, newEnd) => {
     const item = get().getItem(trackId, itemId);
     if (!item) return;
 
-    // 基本检查
+    // 基本检查：至少保留 1 帧
     if (newEnd <= item.start) return;
 
     // 图片类型可以无限拉长
     if (item.type === 'image') {
-      // 更新 end 和 frameCount
       const newDuration = newEnd - item.start;
       get().updateItem(trackId, itemId, {
         end: newEnd,
@@ -487,8 +495,11 @@ export const useTrackStore = create<TrackState & TrackActions>((set, get) => ({
     const endDiff = item.end - newEnd;
     const newOffsetR = item.offsetR + endDiff;
 
-    // 检查边界（不能超出源素材长度）
+    // 边界检查：
+    // 1. newOffsetR >= 0：不能向右拉超出源素材结尾
+    // 2. offsetL + newOffsetR < frameCount：确保显示的部分不超过源素材长度
     if (newOffsetR < 0) return;
+    if (item.offsetL + newOffsetR >= item.frameCount) return;
 
     get().updateItem(trackId, itemId, {
       end: newEnd,

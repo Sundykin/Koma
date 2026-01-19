@@ -92,6 +92,9 @@ export function EnhancedTimeline({ onTimeChange, draggingResource }: EnhancedTim
     originalStart: number;
     originalEnd: number;
     isDragging: boolean;  // 超过阈值才为 true
+    // 边界限制（在拖拽开始时计算）
+    minStart: number;     // trim-start 时的最小值
+    maxEnd: number;       // trim-end 时的最大值
   } | null>(null);
   // 裁剪时间提示
   const [trimTooltip, setTrimTooltip] = useState<{
@@ -353,6 +356,29 @@ export function EnhancedTimeline({ onTimeChange, draggingResource }: EnhancedTim
     const item = track?.items.find(i => i.id === itemId);
     if (!item) return;
 
+    // 在拖拽开始时计算边界限制
+    let minStart = 0;
+    let maxEnd = Infinity;
+
+    if (item.type === 'video' || item.type === 'audio') {
+      // trim-start: 最小 start = 当前 start - offsetL（恢复到 offsetL=0）
+      minStart = item.start - item.offsetL;
+      // trim-end: 最大 end = start + (frameCount - offsetL)
+      // 即：显示的部分最多是 frameCount - offsetL 帧
+      maxEnd = item.start + (item.frameCount - item.offsetL);
+    }
+
+    console.log('[Trim] 边界计算:', {
+      type: item.type,
+      frameCount: item.frameCount,
+      offsetL: item.offsetL,
+      offsetR: item.offsetR,
+      start: item.start,
+      end: item.end,
+      minStart,
+      maxEnd,
+    });
+
     setDragState({
       trackId,
       itemId,
@@ -362,7 +388,9 @@ export function EnhancedTimeline({ onTimeChange, draggingResource }: EnhancedTim
       startFrame: currentTime,
       originalStart: item.start,
       originalEnd: item.end,
-      isDragging: false,  // 初始为 false，超过阈值后才设为 true
+      isDragging: false,
+      minStart,
+      maxEnd,
     });
 
     storeActions.current.selectItem(trackId, itemId);
@@ -417,7 +445,9 @@ export function EnhancedTimeline({ onTimeChange, draggingResource }: EnhancedTim
           setSnapLine(null);
         }
       } else if (currentDragState.type === 'trim-start') {
-        const newStart = Math.max(0, currentDragState.originalStart + deltaFrames);
+        // 使用拖拽开始时计算的 minStart 边界
+        const rawNewStart = currentDragState.originalStart + deltaFrames;
+        const newStart = Math.max(currentDragState.minStart, Math.max(0, rawNewStart));
         if (newStart < currentDragState.originalEnd - 1) {
           storeActions.current.trimItemStart(currentDragState.trackId, currentDragState.itemId, newStart);
           setTrimTooltip({
@@ -428,7 +458,9 @@ export function EnhancedTimeline({ onTimeChange, draggingResource }: EnhancedTim
           });
         }
       } else if (currentDragState.type === 'trim-end') {
-        const newEnd = currentDragState.originalEnd + deltaFrames;
+        // 使用拖拽开始时计算的 maxEnd 边界
+        const rawNewEnd = currentDragState.originalEnd + deltaFrames;
+        const newEnd = Math.min(currentDragState.maxEnd, rawNewEnd);
         if (newEnd > currentDragState.originalStart + 1) {
           storeActions.current.trimItemEnd(currentDragState.trackId, currentDragState.itemId, newEnd);
           setTrimTooltip({

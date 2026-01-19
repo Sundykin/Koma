@@ -51,7 +51,8 @@ export interface Clip {
   trackId: string;
   start: number;    // 时间轴上的起始时间（秒）
   duration: number; // 片段时长（秒）
-  offset: number;   // 媒体内部偏移
+  offset: number;   // 媒体内部偏移（从源素材第几秒开始）
+  sourceDuration?: number; // 源素材总时长（秒），用于限制 trim 范围
   name: string;
   type: MediaType;
   src: string;
