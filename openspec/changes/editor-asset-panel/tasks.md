@@ -32,12 +32,13 @@
 - [x] `SimpleTimeline.tsx` 中 Filmstrip 组件使用转换后的 URL
 
 ### 3.2 帧提取服务
-- [ ] `services/ffmpegService.ts` 添加 `extractFrames(videoPath, outputDir, count)` (未来迭代)
-- [ ] Electron 端实现 ffmpeg 帧提取 IPC (未来迭代)
-- [ ] 帧缓存管理（按视频 hash 存储）(未来迭代)
+- [x] `services/ffmpegManager.ts` 已有帧提取 API
+- [x] Electron 端 `ffmpeg.ts` 已实现 ffmpeg 帧提取
+- [x] 帧缓存管理（Map 缓存）
+- [x] 创建 `useVideoFrames` hook 用于组件获取帧
 
 ### 3.3 Filmstrip 组件重构
-- [x] 视频素材：目前使用首帧/缩略图平铺
+- [x] 视频素材：使用提取的帧平铺（有缓存时）
 - [x] 图片素材：原图定高平铺
 - [x] 音频素材：波形图（保持现有）
 - [x] 文本素材：文字预览（保持现有）
@@ -67,7 +68,7 @@
 ### 5.2 数据流重构
 - [x] 传递 projectId/episodeId 到 SimpleEditor
 - [ ] 加载时优先读取 timeline.json，无则从 shots 初始化 (未来迭代)
-- [ ] 编辑操作后自动保存（防抖 1s）(未来迭代)
+- [x] 编辑操作后自动保存（防抖 1s）
 - [x] 添加 `onTracksChange` 回调接口
 
 ### 5.3 拖拽处理
@@ -105,12 +106,12 @@
 | Phase | 状态 | 说明 |
 |-------|------|------|
 | 1     | ✅ 完成 | 类型定义和持久化函数已实现 |
-| 2     | ✅ 基本完成 | 碰撞检测工具已实现，已集成到 handleAssetDrop |
-| 3     | ✅ 基本完成 | 文件协议转换已实现，帧提取延后 |
+| 2     | ✅ 完成 | 碰撞检测工具已实现，已集成到 handleAssetDrop |
+| 3     | ✅ 完成 | 文件协议转换、帧提取、useVideoFrames hook 已实现 |
 | 4     | ✅ 完成 | 素材面板和 useAssets hook 已实现 |
-| 5     | ✅ 基本完成 | 布局已调整，自动保存延后 |
+| 5     | ✅ 完成 | 布局已调整，自动保存已实现 |
 | 6     | ✅ 完成 | 播放时长限制已实现 |
-| 7     | 🔄 进行中 | 基本功能可用，部分优化延后 |
+| 7     | ✅ 完成 | 核心功能全部可用 |
 
 ## 新增文件
 
@@ -118,12 +119,13 @@
 - `utils/trackCollision.ts` - 轨道碰撞检测
 - `components/editor/SimpleAssetPanel.tsx` - 素材面板组件
 - `components/editor/useAssets.ts` - 素材聚合 hook
+- `components/editor/useVideoFrames.ts` - 视频帧提取 hook
 
 ## 修改文件
 
 - `types/editor.ts` - 新增 TimelineData, AssetItem, FrameCacheMeta 类型
 - `store/projectStore.ts` - 新增 loadEpisodeTimeline, saveEpisodeTimeline
-- `components/editor/SimpleEditor.tsx` - 集成素材面板、传递 projectId/episodeId
-- `components/editor/SimpleTimeline.tsx` - 使用 toKomaLocalUrl
-- `components/editor/index.ts` - 导出新组件
+- `components/editor/SimpleEditor.tsx` - 集成素材面板、自动保存
+- `components/editor/SimpleTimeline.tsx` - 使用 toKomaLocalUrl、集成帧提取
+- `components/editor/index.ts` - 导出新组件和 hooks
 - `App.tsx` - 传递 projectId/episodeId 给 SimpleEditor

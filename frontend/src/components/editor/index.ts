@@ -13,3 +13,4 @@ export { SimpleTimeline } from './SimpleTimeline';
 export { SimplePlayer } from './SimplePlayer';
 export { SimpleAssetPanel } from './SimpleAssetPanel';
 export { useAssets } from './useAssets';
+export { useVideoFrames, useVideoFramesBatch, clearFrameCache } from './useVideoFrames';

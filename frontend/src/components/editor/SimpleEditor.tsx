@@ -2,7 +2,7 @@
  * 简洁版视频编辑器
  * 迁移自 electron-egg，完整功能版
  */
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { message } from 'antd';
 import { Track, Clip, Asset, MediaType, EasingType, Keyframe } from '../../types/editor';
 import { SimpleTimeline } from './SimpleTimeline';
@@ -13,6 +13,7 @@ import { useAssets } from './useAssets';
 import { addKeyframe, updateKeyframe, removeKeyframe } from '../../engine/simpleKeyframe';
 import { findNextAvailablePosition } from '../../utils/trackCollision';
 import { electronService } from '../../services/electronService';
+import { saveEpisodeTimeline } from '../../store/projectStore';
 import type { Shot } from '../../types';
 
 interface SimpleEditorProps {
@@ -111,6 +112,45 @@ export const SimpleEditor: React.FC<SimpleEditorProps> = ({ shots = [], projectI
     // 没有素材时返回最小时长，有素材时返回实际内容时长
     return hasClips ? maxEnd : 1;
   }, [tracks]);
+
+  // 自动保存（防抖 1 秒）
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const isFirstRender = useRef(true);
+
+  useEffect(() => {
+    // 跳过首次渲染
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
+
+    // 没有 projectId 或 episodeId 时不保存
+    if (!projectId || !episodeId) return;
+
+    // 清除之前的定时器
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+
+    // 设置防抖保存
+    saveTimeoutRef.current = setTimeout(async () => {
+      try {
+        await saveEpisodeTimeline(projectId, episodeId, {
+          tracks,
+          duration,
+        });
+        console.log('[SimpleEditor] 自动保存成功');
+      } catch (err) {
+        console.error('[SimpleEditor] 自动保存失败:', err);
+      }
+    }, 1000);
+
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+    };
+  }, [tracks, duration, projectId, episodeId]);
 
   // 当 shots 变化时更新轨道
   useEffect(() => {

@@ -2,9 +2,10 @@
  * 简洁版时间线组件
  * 迁移自 electron-egg，高性能拖拽
  */
-import React, { useRef, useState, useEffect, useCallback } from 'react';
+import React, { useRef, useState, useEffect, useCallback, useMemo } from 'react';
 import { Track, Clip, Asset, MediaType, Keyframe, EasingType, InsertPosition } from '../../types/editor';
 import { toKomaLocalUrl } from '../../utils/urlUtils';
+import { useVideoFramesBatch } from './useVideoFrames';
 import {
   Play, Pause, Film, Music, Type, Trash2, Copy
 } from 'lucide-react';
@@ -68,7 +69,7 @@ const formatTime = (seconds: number): string => {
 };
 
 // Filmstrip 组件
-const Filmstrip: React.FC<{ clip: Clip }> = ({ clip }) => {
+const Filmstrip: React.FC<{ clip: Clip; frames?: string[] }> = ({ clip, frames }) => {
   if (clip.type === MediaType.TEXT) {
     return (
       <div className="w-full h-full flex items-center px-2 pointer-events-none overflow-hidden bg-purple-900/40">
@@ -94,27 +95,44 @@ const Filmstrip: React.FC<{ clip: Clip }> = ({ clip }) => {
   const frameWidth = CLIP_HEIGHT * frameAspectRatio;
   const totalWidth = clip.duration * PIXELS_PER_SECOND;
   const frameCount = Math.max(1, Math.ceil(totalWidth / frameWidth));
-  const mediaSrc = toKomaLocalUrl(clip.src);
+
+  const hasFrames = frames && frames.length > 0;
+  const fallbackSrc = toKomaLocalUrl(clip.src);
+
+  // 帧提取的帧率（与 useVideoFrames 中一致，默认 1fps）
+  const extractFps = 1;
+  // 每个显示格子对应的时间跨度（秒）
+  const timePerFrame = frameWidth / PIXELS_PER_SECOND;
 
   return (
     <div className="flex h-full w-full pointer-events-none select-none overflow-hidden bg-blue-900/20">
-      {Array.from({ length: frameCount }).map((_, i) => (
-        <div key={i} className="flex-shrink-0 h-full border-r border-white/20 relative bg-zinc-800" style={{ width: frameWidth }}>
-          <img
-            src={mediaSrc}
-            className="w-full h-full object-cover opacity-90"
-            alt=""
-            draggable={false}
-            onError={(e) => {
-              // 图片加载失败时显示占位背景
-              const target = e.target as HTMLImageElement;
-              target.style.opacity = '0';
-            }}
-          />
-          {/* 占位背景（当图片加载失败时可见） */}
-          <div className="absolute inset-0 bg-gradient-to-br from-blue-900/30 to-blue-800/20 -z-10" />
-        </div>
-      ))}
+      {Array.from({ length: frameCount }).map((_, i) => {
+        // 计算该位置对应的片段内时间（秒）
+        const positionTime = i * timePerFrame;
+        // 根据时间计算应显示的帧索引
+        let frameIndex = Math.floor(positionTime * extractFps);
+        // 确保不越界
+        if (hasFrames) {
+          frameIndex = Math.min(frameIndex, frames.length - 1);
+        }
+        const frameSrc = hasFrames ? frames[frameIndex] : fallbackSrc;
+
+        return (
+          <div key={i} className="flex-shrink-0 h-full border-r border-white/20 relative bg-zinc-800" style={{ width: frameWidth }}>
+            <img
+              src={frameSrc}
+              className="w-full h-full object-cover opacity-90"
+              alt=""
+              draggable={false}
+              onError={(e) => {
+                const target = e.target as HTMLImageElement;
+                target.style.opacity = '0';
+              }}
+            />
+            <div className="absolute inset-0 bg-gradient-to-br from-blue-900/30 to-blue-800/20 -z-10" />
+          </div>
+        );
+      })}
       <span className="absolute top-1 left-2 text-[10px] text-white font-medium truncate px-1 drop-shadow-md z-10 bg-black/40 rounded">
         {clip.name}
       </span>
@@ -183,6 +201,22 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
   }, 0);
   const totalSeconds = Math.max(duration, maxClipEndTime + 10, 60);
   const totalWidth = totalSeconds * PIXELS_PER_SECOND;
+
+  // 收集所有视频片段用于帧提取
+  const videoClips = useMemo(() => {
+    const clips: Array<{ id: string; src: string; type: string }> = [];
+    for (const track of tracks) {
+      for (const clip of track.clips) {
+        if (clip.type === MediaType.VIDEO || clip.type === MediaType.IMAGE) {
+          clips.push({ id: clip.id, src: clip.src, type: clip.type === MediaType.VIDEO ? 'video' : 'image' });
+        }
+      }
+    }
+    return clips;
+  }, [tracks]);
+
+  // 批量获取视频帧
+  const frameMap = useVideoFramesBatch(videoClips);
 
   // 播放头位置 - 用 ref 避免状态更新循环
   const playheadPositionRef = useRef({ viewportX: 0, lineTop: 0 });
@@ -542,7 +576,7 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
                     `}
                     style={{ left: clip.start * PIXELS_PER_SECOND, width: clip.duration * PIXELS_PER_SECOND }}
                   >
-                    <Filmstrip clip={clip} />
+                    <Filmstrip clip={clip} frames={frameMap.get(clip.id)?.frames} />
 
                     {/* 关键帧标记 */}
                     {clip.keyframes?.map(kf => (
