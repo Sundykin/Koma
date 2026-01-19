@@ -1,12 +1,15 @@
 /**
  * SimpleEditor 导出对话框
+ * 支持视频导出和草稿导出（剪映等）
  */
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { Modal, Form, Select, InputNumber, Input, Button, Progress, Space, Radio, message } from 'antd';
+import { Modal, Form, Select, InputNumber, Input, Button, Progress, Space, Radio, message, Segmented, Checkbox } from 'antd';
 import { ExportOutlined, FolderOutlined } from '@ant-design/icons';
 import { Track } from '../../types/editor';
 import { SimpleExportRenderer, SimpleExportConfig, SimpleExportProgress } from '../../services/simpleExportRenderer';
-import { saveFileDialog, isElectron } from '../../services/electronService';
+import { saveFileDialog, selectDirectory, isElectron, writeFile, createDirectory } from '../../services/electronService';
+import { exporterRegistry, type DraftExportOptions } from '../../services/draftExport';
+import type { JianyingDraftContent, JianyingDraftMetaInfo } from '../../types/jianying';
 
 interface SimpleExportDialogProps {
   open: boolean;
@@ -15,6 +18,8 @@ interface SimpleExportDialogProps {
   duration: number;
   canvasSize: { width: number; height: number };
 }
+
+type ExportType = 'video' | 'draft';
 
 const FORMAT_OPTIONS = [
   { value: 'mp4', label: 'MP4 (H.264)' },
@@ -44,9 +49,14 @@ const FPS_OPTIONS = [
 
 export function SimpleExportDialog({ open, onClose, tracks, duration, canvasSize }: SimpleExportDialogProps) {
   const [form] = Form.useForm();
+  const [draftForm] = Form.useForm();
+  const [exportType, setExportType] = useState<ExportType>('video');
   const [exporting, setExporting] = useState(false);
   const [progress, setProgress] = useState<SimpleExportProgress | null>(null);
   const exporterRef = useRef<SimpleExportRenderer | null>(null);
+
+  // 获取可用的草稿导出器
+  const draftExporters = exporterRegistry.getAll();
 
   // 同步 canvasSize 到表单
   useEffect(() => {
@@ -78,7 +88,21 @@ export function SimpleExportDialog({ open, onClose, tracks, duration, canvasSize
     }
   }, [form]);
 
-  const handleExport = useCallback(async () => {
+  const handleSelectDraftOutput = useCallback(async () => {
+    try {
+      const result = await selectDirectory({
+        title: '选择草稿保存目录',
+      });
+
+      if (result && !result.canceled && result.filePaths?.[0]) {
+        draftForm.setFieldValue('outputPath', result.filePaths[0]);
+      }
+    } catch (err) {
+      console.error('[SimpleExportDialog] Select draft output failed:', err);
+    }
+  }, [draftForm]);
+
+  const handleVideoExport = useCallback(async () => {
     try {
       const values = await form.validateFields();
 
@@ -130,6 +154,99 @@ export function SimpleExportDialog({ open, onClose, tracks, duration, canvasSize
     }
   }, [form, tracks, duration, onClose]);
 
+  const handleDraftExport = useCallback(async () => {
+    try {
+      const values = await draftForm.validateFields();
+
+      if (!isElectron()) {
+        message.error('导出功能需要在桌面应用中使用');
+        return;
+      }
+
+      const exporter = exporterRegistry.get(values.format);
+      if (!exporter) {
+        message.error('未找到对应的导出器');
+        return;
+      }
+
+      setExporting(true);
+
+      const draftFolderPath = `${values.outputPath}/${values.projectName}`;
+      const options: DraftExportOptions = {
+        outputPath: draftFolderPath,
+        projectName: values.projectName,
+        fps: 30,
+        copyMaterials: values.copyMaterials || false,
+      };
+
+      const result = await exporter.export(tracks, options, canvasSize);
+
+      if (result.success) {
+        // 写入文件
+        const exportResult = result as typeof result & {
+          draftContent: JianyingDraftContent;
+          draftMetaInfo: JianyingDraftMetaInfo;
+        };
+
+        // 创建草稿目录
+        await createDirectory(draftFolderPath);
+
+        // 写入 draft_content.json
+        await writeFile(
+          `${draftFolderPath}/draft_content.json`,
+          JSON.stringify(exportResult.draftContent, null, 2)
+        );
+
+        // 写入 draft_meta_info.json
+        await writeFile(
+          `${draftFolderPath}/draft_meta_info.json`,
+          JSON.stringify(exportResult.draftMetaInfo, null, 2)
+        );
+
+        Modal.success({
+          title: '导出完成',
+          content: (
+            <div>
+              <p>草稿已保存到: {draftFolderPath}</p>
+              {result.warnings && result.warnings.length > 0 && (
+                <div style={{ marginTop: 8, color: '#faad14' }}>
+                  <p>警告:</p>
+                  <ul>
+                    {result.warnings.map((w, i) => (
+                      <li key={i}>{w}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          ),
+        });
+
+        onClose();
+      } else {
+        Modal.error({
+          title: '导出失败',
+          content: result.error,
+        });
+      }
+    } catch (err) {
+      Modal.error({
+        title: '导出失败',
+        content: (err as Error).message,
+      });
+    } finally {
+      setExporting(false);
+    }
+  }, [draftForm, tracks, canvasSize, onClose]);
+
+  const handleExport = useCallback(() => {
+    if (exportType === 'video') {
+      handleVideoExport();
+    } else {
+      handleDraftExport();
+    }
+  }, [exportType, handleVideoExport, handleDraftExport]);
+
   const handleCancel = useCallback(() => {
     if (exporting) {
       exporterRef.current?.abort();
@@ -147,11 +264,11 @@ export function SimpleExportDialog({ open, onClose, tracks, duration, canvasSize
 
   return (
     <Modal
-      title="导出视频"
+      title="导出"
       open={open}
       onCancel={handleCancel}
       footer={null}
-      width={500}
+      width={520}
       maskClosable={!exporting}
       closable={!exporting}
     >
@@ -179,108 +296,193 @@ export function SimpleExportDialog({ open, onClose, tracks, duration, canvasSize
           </Button>
         </div>
       ) : (
-        <Form
-          form={form}
-          layout="vertical"
-          initialValues={{
-            width: 1920,
-            height: 1080,
-            fps: 30,
-            format: 'mp4',
-            quality: 'medium',
-            videoBitrate: 5000,
-            audioBitrate: 192,
-            outputPath: '',
-          }}
-        >
-          {/* 分辨率预设 */}
-          <Form.Item label="分辨率预设">
-            <Radio.Group
-              buttonStyle="solid"
-              onChange={(e) => {
-                const preset = RESOLUTION_PRESETS.find(
-                  (p) => `${p.width}x${p.height}` === e.target.value
-                );
-                if (preset) handleResolutionPreset(preset);
-              }}
-              defaultValue="1920x1080"
-            >
-              {RESOLUTION_PRESETS.map((p) => (
-                <Radio.Button key={`${p.width}x${p.height}`} value={`${p.width}x${p.height}`}>
-                  {p.label}
-                </Radio.Button>
-              ))}
-            </Radio.Group>
-          </Form.Item>
-
-          {/* 自定义分辨率 */}
-          <Space>
-            <Form.Item name="width" label="宽度" rules={[{ required: true }]}>
-              <InputNumber min={320} max={7680} step={2} addonAfter="px" />
-            </Form.Item>
-            <Form.Item name="height" label="高度" rules={[{ required: true }]}>
-              <InputNumber min={240} max={4320} step={2} addonAfter="px" />
-            </Form.Item>
-            <Form.Item name="fps" label="帧率" rules={[{ required: true }]}>
-              <Select options={FPS_OPTIONS} style={{ width: 130 }} />
-            </Form.Item>
-          </Space>
-
-          {/* 格式和质量 */}
-          <Space style={{ width: '100%' }}>
-            <Form.Item name="format" label="格式" rules={[{ required: true }]}>
-              <Select options={FORMAT_OPTIONS} style={{ width: 150 }} />
-            </Form.Item>
-            <Form.Item name="quality" label="质量" rules={[{ required: true }]}>
-              <Select options={QUALITY_OPTIONS} style={{ width: 200 }} />
-            </Form.Item>
-          </Space>
-
-          {/* 自定义码率 */}
-          <Form.Item noStyle shouldUpdate={(prev, curr) => prev.quality !== curr.quality}>
-            {({ getFieldValue }) =>
-              getFieldValue('quality') === 'custom' ? (
-                <Space>
-                  <Form.Item name="videoBitrate" label="视频码率">
-                    <InputNumber min={500} max={50000} addonAfter="kbps" />
-                  </Form.Item>
-                  <Form.Item name="audioBitrate" label="音频码率">
-                    <InputNumber min={64} max={512} addonAfter="kbps" />
-                  </Form.Item>
-                </Space>
-              ) : null
-            }
-          </Form.Item>
-
-          {/* 输出路径 */}
-          <Form.Item
-            name="outputPath"
-            label="保存位置"
-            rules={[{ required: true, message: '请选择保存位置' }]}
-          >
-            <Input
-              placeholder="点击选择保存位置"
-              readOnly
-              addonAfter={
-                <Button
-                  type="text"
-                  icon={<FolderOutlined />}
-                  onClick={handleSelectOutput}
-                  style={{ margin: -8 }}
-                />
-              }
+        <>
+          {/* 导出类型选择 */}
+          <div style={styles.typeSelector}>
+            <Segmented
+              value={exportType}
+              onChange={(v) => setExportType(v as ExportType)}
+              options={[
+                { label: '视频导出', value: 'video' },
+                { label: '草稿导出', value: 'draft' },
+              ]}
+              block
             />
-          </Form.Item>
-
-          {/* 视频信息 */}
-          <div style={styles.infoBox}>
-            <p>时长: {duration.toFixed(1)} 秒</p>
-            <p>轨道: {tracks.length} 个</p>
-            <p>预计帧数: {Math.ceil(duration * (form.getFieldValue('fps') || 30))} 帧</p>
           </div>
 
+          {exportType === 'video' ? (
+            // 视频导出表单
+            <Form
+              form={form}
+              layout="vertical"
+              initialValues={{
+                width: 1920,
+                height: 1080,
+                fps: 30,
+                format: 'mp4',
+                quality: 'medium',
+                videoBitrate: 5000,
+                audioBitrate: 192,
+                outputPath: '',
+              }}
+            >
+              {/* 分辨率预设 */}
+              <Form.Item label="分辨率预设">
+                <Radio.Group
+                  buttonStyle="solid"
+                  onChange={(e) => {
+                    const preset = RESOLUTION_PRESETS.find(
+                      (p) => `${p.width}x${p.height}` === e.target.value
+                    );
+                    if (preset) handleResolutionPreset(preset);
+                  }}
+                  defaultValue="1920x1080"
+                >
+                  {RESOLUTION_PRESETS.map((p) => (
+                    <Radio.Button key={`${p.width}x${p.height}`} value={`${p.width}x${p.height}`}>
+                      {p.label}
+                    </Radio.Button>
+                  ))}
+                </Radio.Group>
+              </Form.Item>
+
+              {/* 自定义分辨率 */}
+              <Space>
+                <Form.Item name="width" label="宽度" rules={[{ required: true }]}>
+                  <InputNumber min={320} max={7680} step={2} addonAfter="px" />
+                </Form.Item>
+                <Form.Item name="height" label="高度" rules={[{ required: true }]}>
+                  <InputNumber min={240} max={4320} step={2} addonAfter="px" />
+                </Form.Item>
+                <Form.Item name="fps" label="帧率" rules={[{ required: true }]}>
+                  <Select options={FPS_OPTIONS} style={{ width: 130 }} />
+                </Form.Item>
+              </Space>
+
+              {/* 格式和质量 */}
+              <Space style={{ width: '100%' }}>
+                <Form.Item name="format" label="格式" rules={[{ required: true }]}>
+                  <Select options={FORMAT_OPTIONS} style={{ width: 150 }} />
+                </Form.Item>
+                <Form.Item name="quality" label="质量" rules={[{ required: true }]}>
+                  <Select options={QUALITY_OPTIONS} style={{ width: 200 }} />
+                </Form.Item>
+              </Space>
+
+              {/* 自定义码率 */}
+              <Form.Item noStyle shouldUpdate={(prev, curr) => prev.quality !== curr.quality}>
+                {({ getFieldValue }) =>
+                  getFieldValue('quality') === 'custom' ? (
+                    <Space>
+                      <Form.Item name="videoBitrate" label="视频码率">
+                        <InputNumber min={500} max={50000} addonAfter="kbps" />
+                      </Form.Item>
+                      <Form.Item name="audioBitrate" label="音频码率">
+                        <InputNumber min={64} max={512} addonAfter="kbps" />
+                      </Form.Item>
+                    </Space>
+                  ) : null
+                }
+              </Form.Item>
+
+              {/* 输出路径 */}
+              <Form.Item
+                name="outputPath"
+                label="保存位置"
+                rules={[{ required: true, message: '请选择保存位置' }]}
+              >
+                <Input
+                  placeholder="点击选择保存位置"
+                  readOnly
+                  addonAfter={
+                    <Button
+                      type="text"
+                      icon={<FolderOutlined />}
+                      onClick={handleSelectOutput}
+                      style={{ margin: -8 }}
+                    />
+                  }
+                />
+              </Form.Item>
+
+              {/* 视频信息 */}
+              <div style={styles.infoBox}>
+                <p>时长: {duration.toFixed(1)} 秒</p>
+                <p>轨道: {tracks.length} 个</p>
+                <p>预计帧数: {Math.ceil(duration * (form.getFieldValue('fps') || 30))} 帧</p>
+              </div>
+            </Form>
+          ) : (
+            // 草稿导出表单
+            <Form
+              form={draftForm}
+              layout="vertical"
+              initialValues={{
+                format: 'jianying',
+                projectName: `导出_${new Date().toLocaleDateString()}`,
+                outputPath: '',
+                copyMaterials: false,
+              }}
+            >
+              {/* 格式选择 */}
+              <Form.Item name="format" label="导出格式" rules={[{ required: true }]}>
+                <Select style={{ width: '100%' }}>
+                  {draftExporters.map((exp) => (
+                    <Select.Option key={exp.format} value={exp.format}>
+                      {exp.displayName}
+                    </Select.Option>
+                  ))}
+                </Select>
+              </Form.Item>
+
+              {/* 草稿名称 */}
+              <Form.Item
+                name="projectName"
+                label="草稿名称"
+                rules={[{ required: true, message: '请输入草稿名称' }]}
+              >
+                <Input placeholder="输入草稿名称" />
+              </Form.Item>
+
+              {/* 输出目录 */}
+              <Form.Item
+                name="outputPath"
+                label="保存目录"
+                rules={[{ required: true, message: '请选择保存目录' }]}
+              >
+                <Input
+                  placeholder="点击选择保存目录"
+                  readOnly
+                  addonAfter={
+                    <Button
+                      type="text"
+                      icon={<FolderOutlined />}
+                      onClick={handleSelectDraftOutput}
+                      style={{ margin: -8 }}
+                    />
+                  }
+                />
+              </Form.Item>
+
+              {/* 复制素材选项 */}
+              <Form.Item name="copyMaterials" valuePropName="checked">
+                <Checkbox>复制素材文件到草稿目录</Checkbox>
+              </Form.Item>
+
+              {/* 项目信息 */}
+              <div style={styles.infoBox}>
+                <p>时长: {duration.toFixed(1)} 秒</p>
+                <p>轨道: {tracks.length} 个</p>
+                <p>画布尺寸: {canvasSize.width} × {canvasSize.height}</p>
+                <p style={{ color: '#faad14', marginTop: 8 }}>
+                  提示: 草稿导出后可在对应软件中打开并继续编辑
+                </p>
+              </div>
+            </Form>
+          )}
+
           {/* 导出按钮 */}
-          <Form.Item>
+          <div style={styles.footer}>
             <Space>
               <Button onClick={onClose}>取消</Button>
               <Button
@@ -291,8 +493,8 @@ export function SimpleExportDialog({ open, onClose, tracks, duration, canvasSize
                 开始导出
               </Button>
             </Space>
-          </Form.Item>
-        </Form>
+          </div>
+        </>
       )}
     </Modal>
   );
@@ -311,6 +513,9 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 12,
     color: '#71717a',
   },
+  typeSelector: {
+    marginBottom: 20,
+  },
   infoBox: {
     background: '#27272a',
     borderRadius: 8,
@@ -318,6 +523,11 @@ const styles: Record<string, React.CSSProperties> = {
     marginBottom: 16,
     fontSize: 12,
     color: '#a1a1aa',
+  },
+  footer: {
+    display: 'flex',
+    justifyContent: 'flex-end',
+    marginTop: 16,
   },
 };
 

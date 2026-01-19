@@ -60,6 +60,8 @@ function assetItemToAsset(item: AssetItem): Asset {
     thumbnail: item.thumbnailSrc,
     name: item.name,
     duration: item.duration,
+    width: item.width,
+    height: item.height,
   };
 }
 

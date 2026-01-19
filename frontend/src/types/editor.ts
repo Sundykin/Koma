@@ -43,6 +43,8 @@ export interface Asset {
   thumbnail?: string;
   name: string;
   duration: number; // in seconds
+  width?: number;   // 素材宽度（像素）
+  height?: number;  // 素材高度（像素）
 }
 
 export interface Clip {
@@ -53,6 +55,8 @@ export interface Clip {
   duration: number; // 片段时长（秒）
   offset: number;   // 媒体内部偏移（从源素材第几秒开始）
   sourceDuration?: number; // 源素材总时长（秒），用于限制 trim 范围
+  sourceWidth?: number;    // 源素材宽度（像素）
+  sourceHeight?: number;   // 源素材高度（像素）
   name: string;
   type: MediaType;
   src: string;
@@ -118,6 +122,8 @@ export interface AssetItem {
   src: string;
   thumbnailSrc?: string;
   duration: number;
+  width?: number;   // 素材宽度（像素）
+  height?: number;  // 素材高度（像素）
   source: AssetSource;
   metadata?: {
     shotId?: string;

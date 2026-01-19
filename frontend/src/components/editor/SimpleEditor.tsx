@@ -315,7 +315,9 @@ export const SimpleEditor: React.FC<SimpleEditorProps> = ({ shots = [], projectI
         start: safeStart,
         duration: asset.duration,
         offset: 0,
-        sourceDuration: asset.duration, // 设置源素材时长
+        sourceDuration: asset.duration,
+        sourceWidth: asset.width,
+        sourceHeight: asset.height,
         name: asset.name,
         type: asset.type,
         src: asset.src,

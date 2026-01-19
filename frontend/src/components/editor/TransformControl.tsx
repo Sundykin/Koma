@@ -10,6 +10,9 @@ interface TransformControlProps {
   y: number;
   scale: number;
   rotation: number;
+  // 素材原始尺寸（用于计算 contain 后的实际显示尺寸）
+  sourceWidth: number;
+  sourceHeight: number;
   // 预览区域尺寸（像素）
   previewWidth: number;
   previewHeight: number;
@@ -40,6 +43,8 @@ export const TransformControl: React.FC<TransformControlProps> = ({
   y,
   scale,
   rotation,
+  sourceWidth,
+  sourceHeight,
   previewWidth,
   previewHeight,
   canvasWidth,
@@ -68,18 +73,30 @@ export const TransformControl: React.FC<TransformControlProps> = ({
   onRotateRef.current = onRotate;
   onTransformEndRef.current = onTransformEnd;
 
-  // 坐标转换比例（画布坐标 -> 预览区像素）
-  const scaleRatioX = previewWidth / canvasWidth;
-  const scaleRatioY = previewHeight / canvasHeight;
+  // 坐标转换比例
+  const scaleRatio = previewWidth / canvasWidth;
 
-  // 计算素材在预览区的实际显示尺寸
-  // 假设素材默认充满画布（contain 模式），然后乘以 scale
-  const baseWidth = previewWidth * scale;
-  const baseHeight = previewHeight * scale;
+  // 计算素材在画布中的实际显示尺寸（contain 模式）
+  const sourceAspect = sourceWidth / sourceHeight;
+  const canvasAspect = canvasWidth / canvasHeight;
+  let contentWidth: number, contentHeight: number;
+  if (sourceAspect > canvasAspect) {
+    // 素材更宽，宽度撑满画布
+    contentWidth = canvasWidth;
+    contentHeight = canvasWidth / sourceAspect;
+  } else {
+    // 素材更高，高度撑满画布
+    contentHeight = canvasHeight;
+    contentWidth = canvasHeight * sourceAspect;
+  }
 
-  // 计算控制框位置（预览区中心 + 偏移转换为预览区像素）
-  const centerX = previewWidth / 2 + x * scaleRatioX;
-  const centerY = previewHeight / 2 + y * scaleRatioY;
+  // 应用 scale 并转换到预览区像素
+  const baseWidth = contentWidth * scale * scaleRatio;
+  const baseHeight = contentHeight * scale * scaleRatio;
+
+  // 控制框位置 = 预览区中心 + 偏移
+  const centerX = previewWidth / 2 + x * scaleRatio;
+  const centerY = previewHeight / 2 + y * scaleRatio;
   const boxLeft = centerX - baseWidth / 2;
   const boxTop = centerY - baseHeight / 2;
 

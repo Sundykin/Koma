@@ -79,15 +79,11 @@ export const SimplePlayer: React.FC<PlayerProps> = ({
   const [previewSize, setPreviewSize] = useState({ width: 0, height: 0 });
   const previewSizeRef = useRef(previewSize);
   previewSizeRef.current = previewSize;
-  const canvasSizeRef = useRef({ width: 1920, height: 1080 });
 
   // 画布尺寸（使用 props 的 aspectRatio）
   const canvasSize = useMemo(() => getCanvasSize(aspectRatio), [aspectRatio]);
-
-  // 同步 canvasSize 到 ref
-  useEffect(() => {
-    canvasSizeRef.current = canvasSize;
-  }, [canvasSize]);
+  const canvasSizeRef = useRef(canvasSize);
+  canvasSizeRef.current = canvasSize; // 直接同步更新
 
   // 获取选中的可视素材
   const selectedClip = useMemo(() => {
@@ -193,6 +189,17 @@ export const SimplePlayer: React.FC<PlayerProps> = ({
     return () => observer.disconnect();
   }, []);
 
+  // 画布比例变化时，延迟一帧后更新预览尺寸（等待 CSS 生效）
+  useEffect(() => {
+    const timer = requestAnimationFrame(() => {
+      if (previewRef.current) {
+        const rect = previewRef.current.getBoundingClientRect();
+        setPreviewSize({ width: rect.width, height: rect.height });
+      }
+    });
+    return () => cancelAnimationFrame(timer);
+  }, [canvasSize]);
+
   // 更新 duration
   useEffect(() => {
     if (engineRef.current) {
@@ -250,8 +257,9 @@ export const SimplePlayer: React.FC<PlayerProps> = ({
     if (!clip || !updateClip || preview.width === 0) return;
 
     // 屏幕像素 -> 画布坐标
-    const canvasDeltaX = screenDeltaX * (canvas.width / preview.width);
-    const canvasDeltaY = screenDeltaY * (canvas.height / preview.height);
+    const scaleRatio = preview.width / canvas.width;
+    const canvasDeltaX = screenDeltaX / scaleRatio;
+    const canvasDeltaY = screenDeltaY / scaleRatio;
     const newX = initialX + canvasDeltaX;
     const newY = initialY + canvasDeltaY;
 
@@ -363,6 +371,8 @@ export const SimplePlayer: React.FC<PlayerProps> = ({
               y={animatedProps.y}
               scale={animatedProps.scale}
               rotation={animatedProps.rotation}
+              sourceWidth={selectedClip.sourceWidth || canvasSize.width}
+              sourceHeight={selectedClip.sourceHeight || canvasSize.height}
               previewWidth={previewSize.width}
               previewHeight={previewSize.height}
               canvasWidth={canvasSize.width}

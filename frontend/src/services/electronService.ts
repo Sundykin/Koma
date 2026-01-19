@@ -316,6 +316,14 @@ export const fsWriteFileBuffer = async (
 
 // ========== Shell ==========
 
+// 别名导出，便于在组件中使用
+export const selectDirectory = async (options?: { title?: string }): Promise<OpenDialogResult> => {
+  return openDirectoryDialog();
+};
+
+export const writeFile = fsWriteFile;
+export const createDirectory = fsMkdir;
+
 export const shellOpenExternal = async (url: string): Promise<void> => {
   const api = getElectronAPI();
   if (api) {

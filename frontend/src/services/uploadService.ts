@@ -74,11 +74,15 @@ export async function uploadFile(
       // 获取媒体信息
       let duration = type === 'image' ? 3 : 0; // 图片默认 3 秒
       let thumbnailSrc = result.path;
+      let width: number | undefined;
+      let height: number | undefined;
 
       if (type === 'video' || type === 'audio') {
         try {
           const mediaInfo = await ffmpegManager.getMediaInfo(result.path);
           duration = mediaInfo.duration / 1000; // 转换为秒
+          width = mediaInfo.width;
+          height = mediaInfo.height;
 
           // 视频生成缩略图
           if (type === 'video' && mediaInfo.hasVideo) {
@@ -97,6 +101,15 @@ export async function uploadFile(
           console.warn('[UploadService] Failed to get media info:', err);
           duration = 10; // 默认 10 秒
         }
+      } else if (type === 'image') {
+        // 获取图片尺寸
+        try {
+          const dims = await getImageDimensions(result.path);
+          width = dims.width;
+          height = dims.height;
+        } catch (err) {
+          console.warn('[UploadService] Failed to get image dimensions:', err);
+        }
       }
 
       const asset: AssetItem = {
@@ -106,6 +119,8 @@ export async function uploadFile(
         src: result.path,
         thumbnailSrc,
         duration,
+        width,
+        height,
         source: 'upload' as AssetSource,
       };
 
@@ -115,11 +130,20 @@ export async function uploadFile(
     // 浏览器环境（开发模式）- 使用 Blob URL
     const blobUrl = URL.createObjectURL(file);
     let duration = type === 'image' ? 3 : 0;
+    let width: number | undefined;
+    let height: number | undefined;
 
     if (type === 'video') {
-      duration = await getVideoDuration(blobUrl);
+      const info = await getVideoDurationAndSize(blobUrl);
+      duration = info.duration;
+      width = info.width;
+      height = info.height;
     } else if (type === 'audio') {
       duration = await getAudioDuration(blobUrl);
+    } else if (type === 'image') {
+      const dims = await getImageDimensionsFromUrl(blobUrl);
+      width = dims.width;
+      height = dims.height;
     }
 
     const asset: AssetItem = {
@@ -129,6 +153,8 @@ export async function uploadFile(
       src: blobUrl,
       thumbnailSrc: type === 'video' || type === 'image' ? blobUrl : undefined,
       duration,
+      width,
+      height,
       source: 'upload' as AssetSource,
     };
 
@@ -172,6 +198,46 @@ function getVideoDuration(src: string): Promise<number> {
     };
     video.src = src;
   });
+}
+
+// 获取视频时长和尺寸
+function getVideoDurationAndSize(src: string): Promise<{ duration: number; width: number; height: number }> {
+  return new Promise((resolve) => {
+    const video = document.createElement('video');
+    video.preload = 'metadata';
+    video.onloadedmetadata = () => {
+      resolve({
+        duration: video.duration || 10,
+        width: video.videoWidth || 1920,
+        height: video.videoHeight || 1080,
+      });
+    };
+    video.onerror = () => {
+      resolve({ duration: 10, width: 1920, height: 1080 });
+    };
+    video.src = src;
+  });
+}
+
+// 获取图片尺寸（从 URL）
+function getImageDimensionsFromUrl(src: string): Promise<{ width: number; height: number }> {
+  return new Promise((resolve) => {
+    const img = new window.Image();
+    img.onload = () => {
+      resolve({ width: img.naturalWidth || 1920, height: img.naturalHeight || 1080 });
+    };
+    img.onerror = () => {
+      resolve({ width: 1920, height: 1080 });
+    };
+    img.src = src;
+  });
+}
+
+// 获取图片尺寸（Electron 环境，使用 koma-local 协议）
+function getImageDimensions(path: string): Promise<{ width: number; height: number }> {
+  // 转换为可加载的 URL
+  const url = path.startsWith('koma-local://') ? path : `koma-local://${path.replace(/\\/g, '/')}`;
+  return getImageDimensionsFromUrl(url);
 }
 
 // 获取音频时长
