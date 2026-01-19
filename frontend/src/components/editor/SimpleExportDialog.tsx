@@ -1,7 +1,7 @@
 /**
  * SimpleEditor 导出对话框
  */
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { Modal, Form, Select, InputNumber, Input, Button, Progress, Space, Radio, message } from 'antd';
 import { ExportOutlined, FolderOutlined } from '@ant-design/icons';
 import { Track } from '../../types/editor';
@@ -13,6 +13,7 @@ interface SimpleExportDialogProps {
   onClose: () => void;
   tracks: Track[];
   duration: number;
+  canvasSize: { width: number; height: number };
 }
 
 const FORMAT_OPTIONS = [
@@ -41,11 +42,21 @@ const FPS_OPTIONS = [
   { value: 60, label: '60 fps (流畅)' },
 ];
 
-export function SimpleExportDialog({ open, onClose, tracks, duration }: SimpleExportDialogProps) {
+export function SimpleExportDialog({ open, onClose, tracks, duration, canvasSize }: SimpleExportDialogProps) {
   const [form] = Form.useForm();
   const [exporting, setExporting] = useState(false);
   const [progress, setProgress] = useState<SimpleExportProgress | null>(null);
   const exporterRef = useRef<SimpleExportRenderer | null>(null);
+
+  // 同步 canvasSize 到表单
+  useEffect(() => {
+    if (open) {
+      form.setFieldsValue({
+        width: canvasSize.width,
+        height: canvasSize.height,
+      });
+    }
+  }, [open, canvasSize, form]);
 
   const handleSelectOutput = useCallback(async () => {
     try {

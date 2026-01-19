@@ -6,6 +6,7 @@ import React, { useRef, useState, useEffect, useCallback, useMemo } from 'react'
 import { Track, Clip, Asset, MediaType, Keyframe, EasingType, InsertPosition } from '../../types/editor';
 import { toKomaLocalUrl } from '../../utils/urlUtils';
 import { useVideoFramesBatch } from './useVideoFrames';
+import { hasCollision } from '../../utils/trackCollision';
 import {
   Play, Pause, Film, Music, Type, Trash2, Copy, ZoomIn, ZoomOut, Magnet,
   Volume2, VolumeX, Eye, EyeOff, Pencil, Check, X
@@ -31,6 +32,7 @@ interface TimelineProps {
   isPlaying: boolean;
   togglePlay: () => void;
   onDeleteTrack: (trackId: string) => void;
+  onUpdateTrack?: (trackId: string, updates: Partial<Track>) => void;
   draggingAsset: Asset | null;
   onExport?: () => void;
 }
@@ -185,6 +187,7 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
   isPlaying,
   togglePlay,
   onDeleteTrack,
+  onUpdateTrack,
   draggingAsset,
   onExport
 }) => {
@@ -205,6 +208,8 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
   const [highlightedTrackId, setHighlightedTrackId] = useState<string | null>(null);
   const [mousePos, setMousePos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+  const [editingTrackId, setEditingTrackId] = useState<string | null>(null);
+  const [editingTrackName, setEditingTrackName] = useState('');
 
   // 片段拖拽状态
   const [dragState, setDragState] = useState<{
@@ -218,6 +223,7 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
     currentY: number;
     isDragging: boolean;
     currentTrackId: string | null;
+    hasCollision: boolean; // 是否与其他片段碰撞
   } | null>(null);
 
   // 片段缩放状态
@@ -404,14 +410,6 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
           }
         }
 
-        setDragState(prev => prev ? {
-          ...prev,
-          currentX: e.clientX,
-          currentY: e.clientY,
-          isDragging: shouldDrag,
-          currentTrackId: foundTrackId
-        } : null);
-
         if (shouldDrag && foundTrackId) {
           const deltaSeconds = deltaX / pixelsPerSecond;
           let newStart = Math.max(0, dragState.originalStart + deltaSeconds);
@@ -437,11 +435,39 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
             }
           }
 
+          // 碰撞检测
+          const targetTrack = tracks.find(t => t.id === foundTrackId);
+          const targetClips = targetTrack?.clips.filter(c => c.id !== dragState.clipId) || [];
+          const tempClip = { id: dragState.clipId, start: newStart, duration: dragState.clip.duration };
+          const collision = hasCollision(tempClip, targetClips);
+
+          setDragState(prev => prev ? {
+            ...prev,
+            currentX: e.clientX,
+            currentY: e.clientY,
+            isDragging: shouldDrag,
+            currentTrackId: foundTrackId,
+            hasCollision: collision
+          } : null);
+
+          // 不管是否碰撞都更新位置（实时显示预览），释放时再处理
           onMoveClip(dragState.clipId, newStart, foundTrackId);
+        } else {
+          setDragState(prev => prev ? {
+            ...prev,
+            currentX: e.clientX,
+            currentY: e.clientY,
+            isDragging: shouldDrag,
+            currentTrackId: foundTrackId
+          } : null);
         }
       };
 
       const handleMouseUp = () => {
+        // 如果有碰撞，回退到原位置
+        if (dragState.hasCollision && dragState.isDragging) {
+          onMoveClip(dragState.clipId, dragState.originalStart, dragState.originalTrackId);
+        }
         setDragState(null);
         setHighlightedTrackId(null);
         setSnapLine(null);
@@ -504,7 +530,7 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
         window.removeEventListener('mouseup', handleResizeUp);
       };
     }
-  }, [dragState, resizeState, onUpdateClip, onMoveClip, pixelsPerSecond, snapEnabled, findSnapPoint]);
+  }, [dragState, resizeState, onUpdateClip, onMoveClip, pixelsPerSecond, snapEnabled, findSnapPoint, tracks]);
 
   const handleClipMouseDown = (e: React.MouseEvent, clip: Clip) => {
     if (e.button !== 0) return;
@@ -523,7 +549,8 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
       currentX: e.clientX,
       currentY: e.clientY,
       isDragging: false,
-      currentTrackId: clip.trackId
+      currentTrackId: clip.trackId,
+      hasCollision: false
     });
   };
 
@@ -790,21 +817,81 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
             >
               {/* 轨道头部 */}
               <div className="sticky left-0 w-[200px] flex-shrink-0 bg-[#18181b] border-r border-[#27272a] z-20 flex flex-col justify-center px-3">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2 text-zinc-400 text-xs font-medium">
-                    {track.type === 'video' && <Film size={14} className="text-blue-400" />}
-                    {track.type === 'audio' && <Music size={14} className="text-green-400" />}
-                    {track.type === 'text' && <Type size={14} className="text-purple-400" />}
-                    <span className="truncate">{track.isMainTrack ? '主轨道' : `${track.type.toUpperCase()} ${index + 1}`}</span>
+                <div className="flex items-center justify-between gap-1">
+                  <div className="flex items-center gap-2 text-zinc-400 text-xs font-medium flex-1 min-w-0">
+                    {track.type === 'video' && <Film size={14} className="text-blue-400 flex-shrink-0" />}
+                    {track.type === 'audio' && <Music size={14} className="text-green-400 flex-shrink-0" />}
+                    {track.type === 'text' && <Type size={14} className="text-purple-400 flex-shrink-0" />}
+                    {editingTrackId === track.id ? (
+                      <input
+                        type="text"
+                        value={editingTrackName}
+                        onChange={(e) => setEditingTrackName(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            onUpdateTrack?.(track.id, { name: editingTrackName });
+                            setEditingTrackId(null);
+                          } else if (e.key === 'Escape') {
+                            setEditingTrackId(null);
+                          }
+                        }}
+                        onBlur={() => {
+                          onUpdateTrack?.(track.id, { name: editingTrackName });
+                          setEditingTrackId(null);
+                        }}
+                        autoFocus
+                        className="bg-zinc-700 text-zinc-200 text-xs px-1 py-0.5 rounded w-full outline-none border border-cyan-500"
+                      />
+                    ) : (
+                      <span
+                        className="truncate cursor-pointer hover:text-zinc-200"
+                        onDoubleClick={() => {
+                          if (onUpdateTrack) {
+                            setEditingTrackId(track.id);
+                            setEditingTrackName(track.name || (track.isMainTrack ? '主轨道' : `${track.type.toUpperCase()} ${index + 1}`));
+                          }
+                        }}
+                      >
+                        {track.name || (track.isMainTrack ? '主轨道' : `${track.type.toUpperCase()} ${index + 1}`)}
+                      </span>
+                    )}
                   </div>
-                  {!track.isMainTrack && (
-                    <button
-                      onClick={() => onDeleteTrack(track.id)}
-                      className="opacity-0 group-hover/track:opacity-100 text-red-400 hover:text-red-300 p-1 rounded"
-                    >
-                      <Trash2 size={12} />
-                    </button>
-                  )}
+                  <div className="flex items-center gap-0.5">
+                    {/* 静音按钮 - 视频和音频轨道 */}
+                    {(track.type === 'video' || track.type === 'audio') && onUpdateTrack && (
+                      <button
+                        onClick={() => onUpdateTrack(track.id, { muted: !track.muted })}
+                        className={`p-1 rounded transition-colors ${
+                          track.muted ? 'text-red-400 bg-red-500/20' : 'text-zinc-500 hover:text-zinc-300'
+                        }`}
+                        title={track.muted ? '取消静音' : '静音'}
+                      >
+                        {track.muted ? <VolumeX size={12} /> : <Volume2 size={12} />}
+                      </button>
+                    )}
+                    {/* 隐藏按钮 - 非主轨道 */}
+                    {!track.isMainTrack && onUpdateTrack && (
+                      <button
+                        onClick={() => onUpdateTrack(track.id, { hidden: !track.hidden })}
+                        className={`p-1 rounded transition-colors ${
+                          track.hidden ? 'text-orange-400 bg-orange-500/20' : 'text-zinc-500 hover:text-zinc-300'
+                        }`}
+                        title={track.hidden ? '显示轨道' : '隐藏轨道'}
+                      >
+                        {track.hidden ? <EyeOff size={12} /> : <Eye size={12} />}
+                      </button>
+                    )}
+                    {/* 删除按钮 - 非主轨道 */}
+                    {!track.isMainTrack && (
+                      <button
+                        onClick={() => onDeleteTrack(track.id)}
+                        className="opacity-0 group-hover/track:opacity-100 text-red-400 hover:text-red-300 p-1 rounded"
+                        title="删除轨道"
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -818,6 +905,7 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
                     className={`absolute top-2 bottom-2 rounded-md overflow-hidden transition-shadow border shadow-sm group/clip select-none
                       ${selectedClipId === clip.id ? 'border-cyan-400 ring-2 ring-cyan-500/20 z-10' : 'border-transparent hover:border-zinc-500 z-0'}
                       ${dragState?.clipId === clip.id ? 'cursor-grabbing opacity-90 shadow-xl' : 'cursor-grab'}
+                      ${dragState?.clipId === clip.id && dragState.hasCollision ? 'border-red-500 ring-2 ring-red-500/50' : ''}
                     `}
                     style={{ left: clip.start * pixelsPerSecond, width: clip.duration * pixelsPerSecond }}
                   >

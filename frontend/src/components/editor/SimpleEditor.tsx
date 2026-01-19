@@ -6,12 +6,12 @@ import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react'
 import { message } from 'antd';
 import { Track, Clip, Asset, MediaType, EasingType, Keyframe } from '../../types/editor';
 import { SimpleTimeline } from './SimpleTimeline';
-import { SimplePlayer } from './SimplePlayer';
+import { SimplePlayer, AspectRatio, getCanvasSize } from './SimplePlayer';
 import { SimplePropertiesPanel } from './SimplePropertiesPanel';
 import { SimpleAssetPanel } from './SimpleAssetPanel';
 import { SimpleExportDialog } from './SimpleExportDialog';
 import { useAssets } from './useAssets';
-import { addKeyframe, updateKeyframe, removeKeyframe } from '../../engine/simpleKeyframe';
+import { addKeyframe, updateKeyframe, removeKeyframe, getKeyframeAtTime, getAnimatedProperties } from '../../engine/simpleKeyframe';
 import { findNextAvailablePosition } from '../../utils/trackCollision';
 import { electronService } from '../../services/electronService';
 import { saveEpisodeTimeline, loadEpisodeTimeline } from '../../store/projectStore';
@@ -86,6 +86,7 @@ export const SimpleEditor: React.FC<SimpleEditorProps> = ({ shots = [], projectI
   const [selectedKeyframeId, setSelectedKeyframeId] = useState<string | null>(null);
   const [draggingAsset, setDraggingAsset] = useState<Asset | null>(null);
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
+  const [aspectRatio, setAspectRatio] = useState<AspectRatio>('16:9');
   const [isLoadingTimeline, setIsLoadingTimeline] = useState(true);
   const timelineCreatedAtRef = useRef<number>(Date.now());
 
@@ -291,6 +292,12 @@ export const SimpleEditor: React.FC<SimpleEditorProps> = ({ shots = [], projectI
     });
   }, []);
 
+  const handleUpdateTrack = useCallback((trackId: string, updates: Partial<Track>) => {
+    setTracks(prev => prev.map(track =>
+      track.id === trackId ? { ...track, ...updates } : track
+    ));
+  }, []);
+
   const handleAssetDrop = useCallback((asset: Asset, time: number, trackId?: string) => {
     setTracks(prev => {
       // 找到目标轨道
@@ -420,6 +427,27 @@ export const SimpleEditor: React.FC<SimpleEditorProps> = ({ shots = [], projectI
     handleUpdateKeyframe(clipId, keyframeId, { easing });
   }, [handleUpdateKeyframe]);
 
+  // 自动打帧（画布变换时调用）
+  const handleAutoKeyframe = useCallback((clipId: string, clipLocalTime: number, updates: Partial<Clip>) => {
+    setTracks(prev => prev.map(track => ({
+      ...track,
+      clips: track.clips.map(clip => {
+        if (clip.id !== clipId) return clip;
+
+        // 检查当前时间是否已有关键帧
+        const existingKf = getKeyframeAtTime(clip, clipLocalTime, 0.01);
+        if (existingKf) {
+          // 更新已有关键帧
+          return updateKeyframe(clip, existingKf.id, updates);
+        } else {
+          // 创建新关键帧，使用当前插值属性作为基础
+          const currentProps = getAnimatedProperties(clip, clipLocalTime);
+          return addKeyframe(clip, clipLocalTime, { ...currentProps, ...updates });
+        }
+      })
+    })));
+  }, []);
+
   return (
     <div style={styles.container}>
       {/* 上半部分：素材面板 + 播放器 + 属性面板 */}
@@ -441,6 +469,9 @@ export const SimpleEditor: React.FC<SimpleEditorProps> = ({ shots = [], projectI
           selectedClipId={selectedClipId}
           onTimeUpdate={handleTimeUpdate}
           onUpdateClip={handleUpdateClip}
+          onAutoKeyframe={handleAutoKeyframe}
+          aspectRatio={aspectRatio}
+          onAspectRatioChange={setAspectRatio}
         />
         <SimplePropertiesPanel
           selectedClip={selectedClip}
@@ -475,6 +506,7 @@ export const SimpleEditor: React.FC<SimpleEditorProps> = ({ shots = [], projectI
           isPlaying={isPlaying}
           togglePlay={togglePlay}
           onDeleteTrack={handleDeleteTrack}
+          onUpdateTrack={handleUpdateTrack}
           draggingAsset={draggingAsset}
           onExport={() => setExportDialogOpen(true)}
         />
@@ -486,6 +518,7 @@ export const SimpleEditor: React.FC<SimpleEditorProps> = ({ shots = [], projectI
         onClose={() => setExportDialogOpen(false)}
         tracks={tracks}
         duration={duration}
+        canvasSize={getCanvasSize(aspectRatio)}
       />
     </div>
   );
