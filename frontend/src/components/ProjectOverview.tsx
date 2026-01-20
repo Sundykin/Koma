@@ -11,19 +11,23 @@ import {
   Input,
   Tag,
   App,
+  Modal,
 } from 'antd';
 import {
   SettingOutlined,
   EditOutlined,
   ThunderboltOutlined,
+  HighlightOutlined,
 } from '@ant-design/icons';
 import { Film, FolderOpen, Upload, Palette } from 'lucide-react';
-import type { Project, Episode } from '../types';
+import type { Project, Episode, AppSettings } from '../types';
 import { EpisodeManager, EpisodeManagerRef } from './EpisodeManager';
 import { EpisodeSplitWizard } from './EpisodeSplitWizard';
 import { ProjectAssetOverview } from './ProjectAssetOverview';
 import { saveProject, loadProject } from '../store/projectStore';
 import { THEME_PRESETS } from '../config/themePresets';
+import { ScriptEditor } from '../editor';
+import { generateRandomScript, polishScript } from '../workflow/scriptGenerator';
 
 const { Title, Text } = Typography;
 
@@ -44,9 +48,14 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleValue, setTitleValue] = useState(project.title);
   const [fullScript, setFullScript] = useState('');
-  const [showScriptImport, setShowScriptImport] = useState(false);
   const [splitWizardVisible, setSplitWizardVisible] = useState(false);
   const episodeManagerRef = useRef<EpisodeManagerRef>(null);
+
+  // 剧本导入弹窗状态
+  const [scriptImportVisible, setScriptImportVisible] = useState(false);
+  const [tempScript, setTempScript] = useState('');
+  const [randomGenerating, setRandomGenerating] = useState(false);
+  const [polishing, setPolishing] = useState(false);
 
   // 保存标题
   const handleSaveTitle = useCallback(async () => {
@@ -74,11 +83,62 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
   // AI 分集完成后刷新列表
   const handleSplitComplete = useCallback((episodes: Episode[]) => {
     setSplitWizardVisible(false);
-    setShowScriptImport(false);
     setFullScript('');
     episodeManagerRef.current?.refresh();
     message.success(`成功创建 ${episodes.length} 个分集`);
   }, [message]);
+
+  // 打开剧本导入弹窗
+  const openScriptImport = () => {
+    setTempScript(fullScript);
+    setScriptImportVisible(true);
+  };
+
+  // 确认剧本导入
+  const confirmScriptImport = () => {
+    setFullScript(tempScript);
+    setScriptImportVisible(false);
+    if (tempScript.trim()) {
+      setSplitWizardVisible(true);
+    }
+  };
+
+  // 随机生成剧本
+  const handleRandomGenerate = async () => {
+    setRandomGenerating(true);
+    try {
+      const script = await generateRandomScript('3');
+      setTempScript(script);
+      message.success('剧本随机生成成功！');
+    } catch (err: any) {
+      message.error(`生成失败: ${err.message}`);
+    } finally {
+      setRandomGenerating(false);
+    }
+  };
+
+  // AI 润色剧本
+  const handlePolish = async () => {
+    if (!tempScript.trim()) {
+      message.warning('请先输入或生成剧本');
+      return;
+    }
+    setPolishing(true);
+    try {
+      const polishedScript = await polishScript(
+        {} as AppSettings,
+        tempScript,
+        '使语言更加生动，对话更自然，情节更紧凑',
+        () => {}
+      );
+      setTempScript(polishedScript);
+      message.success('剧本润色完成！');
+    } catch (err: any) {
+      message.error(`润色失败: ${err.message}`);
+    } finally {
+      setPolishing(false);
+    }
+  };
 
   // 获取当前主题信息
   const currentTheme = project.theme
@@ -145,7 +205,7 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
                 <Button
                   size="small"
                   icon={<Upload className="w-3 h-3" />}
-                  onClick={() => setShowScriptImport(!showScriptImport)}
+                  onClick={openScriptImport}
                 >
                   导入剧本
                 </Button>
@@ -155,34 +215,6 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
               headStyle={{ borderBottom: '1px solid #333', flexShrink: 0 }}
               bodyStyle={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}
             >
-              {/* 剧本导入区 */}
-              {showScriptImport && (
-                <div className="flex-shrink-0 mb-3 p-3 bg-[#1a1a1a] rounded-lg border border-gray-800">
-                  <Text type="secondary" className="block mb-2 text-xs">
-                    粘贴完整剧本，可使用 AI 自动分集
-                  </Text>
-                  <Input.TextArea
-                    value={fullScript}
-                    onChange={e => setFullScript(e.target.value)}
-                    placeholder="在此粘贴完整剧本内容..."
-                    rows={4}
-                    style={{ background: '#0f0f0f', borderColor: '#333' }}
-                  />
-                  {fullScript.trim() && (
-                    <div className="mt-2 flex justify-end">
-                      <Button
-                        type="primary"
-                        size="small"
-                        icon={<ThunderboltOutlined />}
-                        onClick={() => setSplitWizardVisible(true)}
-                      >
-                        AI 自动分集
-                      </Button>
-                    </div>
-                  )}
-                </div>
-              )}
-
               {/* 分集列表 - 内部滚动 */}
               <div className="flex-1 overflow-y-auto">
                 <EpisodeManager
@@ -201,6 +233,56 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
           </div>
         </div>
       </div>
+
+      {/* 剧本导入弹窗 */}
+      <Modal
+        title="导入剧本"
+        open={scriptImportVisible}
+        onCancel={() => setScriptImportVisible(false)}
+        onOk={confirmScriptImport}
+        okText="AI 自动分集"
+        okButtonProps={{ disabled: !tempScript.trim(), icon: <ThunderboltOutlined /> }}
+        cancelText="取消"
+        width={900}
+        centered
+        maskClosable={false}
+        styles={{ body: { padding: '12px 24px' } }}
+      >
+        <div style={{ marginBottom: 12 }}>
+          <Space>
+            <Button
+              icon={<ThunderboltOutlined />}
+              loading={randomGenerating}
+              onClick={handleRandomGenerate}
+            >
+              随机生成
+            </Button>
+            <Button
+              icon={<HighlightOutlined />}
+              loading={polishing}
+              onClick={handlePolish}
+              disabled={!tempScript.trim()}
+            >
+              AI 润色
+            </Button>
+          </Space>
+          <Text type="secondary" className="ml-4 text-xs">
+            输入剧本后点击"AI 自动分集"，系统将智能拆分为多个分集
+          </Text>
+        </div>
+        <ScriptEditor
+          value={tempScript}
+          onChange={setTempScript}
+          placeholder={`在此输入或粘贴完整剧本内容...
+
+提示：
+- 使用 ## 标记场景
+- 使用 **角色名**：标记对话
+- 文本请用"第n章/集"分割，系统将自动识别分集`}
+          minHeight="400px"
+          maxHeight="500px"
+        />
+      </Modal>
 
       {/* AI 分集向导 */}
       <EpisodeSplitWizard

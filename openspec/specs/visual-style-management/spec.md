@@ -1,7 +1,8 @@
-# Spec Delta: visual-style-management
+# visual-style-management Specification
 
-## ADDED Requirements
-
+## Purpose
+TBD - created by archiving change fix-ai-and-visual-style. Update Purpose after archive.
+## Requirements
 ### Requirement: Custom Theme Preset Management
 系统 SHALL 允许用户在全局设置中管理自定义视觉风格预设。
 
@@ -65,8 +66,6 @@
 - **Then** 下拉列表 MUST 包含自定义预设
 - **And** 自定义预设 SHALL 显示在系统预设前面
 
-## MODIFIED Requirements
-
 ### Requirement: Theme Presets Loading
 主题预设加载逻辑 MUST 支持异步加载自定义预设。
 
@@ -78,6 +77,3 @@
 - **And** 列表 MUST 包含用户自定义预设
 - **And** 自定义预设 SHALL 在前
 
-## Related Capabilities
-- ui-components
-- storage

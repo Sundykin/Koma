@@ -302,7 +302,7 @@ const AppContent: React.FC = () => {
   };
 
   // 处理项目创建 (从弹窗回调)
-  const handleCreateProject = async (data: { title: string; mode: 'drama' | 'narration'; script: string; theme?: string; stylePrompt?: string }) => {
+  const handleCreateProject = async (data: { title: string; mode: 'drama' | 'narration'; theme?: string; stylePrompt?: string }) => {
     try {
       const created = await createProjectAPI({
         title: data.title,

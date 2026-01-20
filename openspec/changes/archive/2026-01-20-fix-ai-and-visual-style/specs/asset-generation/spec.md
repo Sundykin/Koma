@@ -1,6 +1,6 @@
 # Spec Delta: asset-generation
 
-## MODIFIED Requirements
+## ADDED Requirements
 
 ### Requirement: Consistent Style Prefix Application
 所有TTI/ITV生成调用 MUST 统一应用项目的视觉风格前缀。
@@ -44,8 +44,6 @@
 - **When** 生成分镜提示词
 - **Then** 系统 MUST 使用传入的 stylePrefix
 - **And** 系统 SHALL 不从项目配置读取
-
-## ADDED Requirements
 
 ### Requirement: Shot Image Generation Workflow
 系统 SHALL 提供分镜图片生成工作流。

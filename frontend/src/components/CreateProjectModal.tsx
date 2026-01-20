@@ -1,9 +1,8 @@
 import React, { useState } from 'react';
-import { Modal, Form, Input, Radio, Button, message, Space, Tooltip } from 'antd';
+import { Modal, Form, Input, Radio, Space, Tooltip } from 'antd';
 import {
   SoundOutlined,
   AppstoreOutlined,
-  BulbOutlined,
   QuestionCircleOutlined,
 } from '@ant-design/icons';
 import { Check } from 'lucide-react';
@@ -15,7 +14,6 @@ interface CreateProjectModalProps {
   onCreate: (data: {
     title: string;
     mode: 'drama' | 'narration';
-    script: string;
     theme?: string;
     stylePrompt?: string;
   }) => void;
@@ -32,7 +30,6 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ isOpen, 
       onCreate({
         title: values.title,
         mode: values.mode || 'drama',
-        script: values.script || '',
         theme: selectedTheme !== 'custom' ? selectedTheme : undefined,
         stylePrompt: selectedTheme === 'custom' ? customStyle : undefined,
       });
@@ -42,21 +39,6 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ isOpen, 
     } catch {
       // 验证失败
     }
-  };
-
-  const generateRandomScript = () => {
-    form.setFieldValue('script', `# 第一集:AI 随机生成的奇幻开端
-
-[场景:云端之上]
-
-主角睁开眼,发现自己正漂浮在云海之中。
-
-主角
-(惊讶)
-"这是哪里?"
-
-突然,一道金光划破天际...`);
-    message.success('剧本已生成');
   };
 
   // 过滤掉 custom 选项，单独处理
@@ -78,7 +60,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ isOpen, 
       <Form
         form={form}
         layout="vertical"
-        initialValues={{ mode: 'drama', script: '' }}
+        initialValues={{ mode: 'drama' }}
         style={{ marginTop: 16 }}
       >
         <Form.Item
@@ -181,32 +163,6 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ isOpen, 
               {THEME_PRESETS.find(t => t.id === selectedTheme)?.description}
             </div>
           )}
-        </Form.Item>
-
-        <Form.Item
-          name="script"
-          label={
-            <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}>
-              <span>剧本导入 <span style={{ color: '#666', fontWeight: 'normal' }}>(选填)</span></span>
-              <Button
-                type="link"
-                size="small"
-                icon={<BulbOutlined />}
-                onClick={generateRandomScript}
-                style={{ padding: 0, height: 'auto' }}
-              >
-                AI随机生成剧本
-              </Button>
-            </div>
-          }
-          labelCol={{ span: 24 }}
-        >
-          <Input.TextArea
-            placeholder='请输入剧本,将为你自动分集 (文本请用"第n章/集"分割)'
-            rows={4}
-            showCount
-            maxLength={50000}
-          />
         </Form.Item>
       </Form>
     </Modal>
