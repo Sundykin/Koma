@@ -1,5 +1,32 @@
 @import "tailwindcss";
 
+/* ========================================
+   Design System: Cinematic Studio Theme
+   Color Palette: Zinc + Emerald
+   ======================================== */
+
+@theme {
+  /* 背景层级 */
+  --color-bg-app: #09090b;        /* zinc-950 - 最深背景 */
+  --color-bg-surface: #18181b;    /* zinc-900 - 侧边栏/表面 */
+  --color-bg-elevated: #27272a;   /* zinc-800 - 悬浮/弹窗 */
+  --color-bg-card: #18181b;       /* zinc-900 - 卡片背景 */
+
+  /* 边框 */
+  --color-border: #3f3f46;        /* zinc-700 - 主边框 */
+  --color-border-subtle: #27272a; /* zinc-800 - 次级边框 */
+
+  /* 文字 */
+  --color-text-primary: #f4f4f5;  /* zinc-100 */
+  --color-text-secondary: #a1a1aa; /* zinc-400 */
+  --color-text-muted: #52525b;    /* zinc-600 */
+
+  /* 主题色 */
+  --color-accent: #10b981;        /* emerald-500 */
+  --color-accent-hover: #059669;  /* emerald-600 */
+  --color-accent-glow: rgba(16, 185, 129, 0.2);
+}
+
 /* 基础样式 */
 html, body, #root {
   height: 100%;
@@ -8,25 +35,25 @@ html, body, #root {
 }
 
 body {
-  background-color: #09090b;
-  color: #e4e4e7;
+  background-color: var(--color-bg-app);
+  color: var(--color-text-primary);
   overflow: hidden;
 }
 
-/* 滚动条样式 */
+/* 滚动条样式 - Zinc 色调 */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: #18181b;
+  background: var(--color-bg-surface);
 }
 ::-webkit-scrollbar-thumb {
-  background: #3f3f46;
+  background: var(--color-border);
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #52525b;
+  background: #52525b; /* zinc-600 */
 }
 
 /* Electron 拖拽区域 */
@@ -35,4 +62,15 @@ body {
 }
 .no-drag {
   -webkit-app-region: no-drag;
+}
+
+/* 键盘焦点样式 - 无障碍 */
+:focus-visible {
+  outline: 2px solid var(--color-accent-glow);
+  outline-offset: 2px;
+}
+
+/* 全局过渡优化 */
+* {
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
 }

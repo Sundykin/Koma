@@ -147,12 +147,12 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
   const themeDisplay = currentTheme?.name || project.stylePrompt || '未设置';
 
   return (
-    <div className="h-full flex flex-col bg-[#0f0f0f] overflow-hidden">
+    <div className="h-full flex flex-col bg-zinc-950 overflow-hidden">
       {/* 顶部标题栏 - 固定高度 */}
-      <div className="flex-shrink-0 px-6 py-4 border-b border-gray-800">
+      <div className="flex-shrink-0 px-6 py-4 border-b border-zinc-800">
         <div className="flex items-center justify-between max-w-7xl mx-auto">
           <div className="flex items-center gap-4">
-            <div className="w-10 h-10 bg-gradient-to-br from-green-600 to-green-800 rounded-lg flex items-center justify-center">
+            <div className="w-10 h-10 bg-gradient-to-br from-emerald-600 to-emerald-800 rounded-lg flex items-center justify-center shadow-lg shadow-emerald-900/30">
               <Film className="w-5 h-5 text-white" />
             </div>
             <div>
@@ -173,7 +173,7 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
                   <Title level={4} style={{ margin: 0, color: '#fff' }}>
                     {project.title}
                   </Title>
-                  <EditOutlined className="text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+                  <EditOutlined className="text-zinc-500 opacity-0 group-hover:opacity-100 transition-opacity" />
                 </div>
               )}
               <Space size={6} className="mt-1">
@@ -197,7 +197,7 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
             <Card
               title={
                 <div className="flex items-center gap-2">
-                  <FolderOpen className="w-4 h-4 text-green-500" />
+                  <FolderOpen className="w-4 h-4 text-emerald-500" />
                   <span>分集管理</span>
                 </div>
               }
@@ -211,8 +211,8 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
                 </Button>
               }
               className="flex-1 flex flex-col"
-              style={{ background: '#141414', border: '1px solid #333' }}
-              headStyle={{ borderBottom: '1px solid #333', flexShrink: 0 }}
+              style={{ background: '#18181b', border: '1px solid #27272a' }}
+              headStyle={{ borderBottom: '1px solid #27272a', flexShrink: 0 }}
               bodyStyle={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}
             >
               {/* 分集列表 - 内部滚动 */}

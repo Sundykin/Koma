@@ -459,11 +459,11 @@ const AppContent: React.FC = () => {
     <div
       className={`${
         isSidebarCollapsed ? 'w-16' : 'w-64'
-      } bg-[#141414] border-r border-gray-800 flex flex-col h-full z-40 transition-all duration-300 ease-in-out`}
+      } bg-zinc-900 border-r border-zinc-800 flex flex-col h-full z-40 transition-all duration-300 ease-in-out`}
     >
       {/* Logo 区域 */}
-      <div className="h-16 w-full flex items-center justify-center border-b border-gray-800 relative px-3">
-        <div className="w-8 h-8 bg-green-600 rounded-lg flex items-center justify-center text-white font-bold text-lg shrink-0 shadow-lg shadow-green-900/30">
+      <div className="h-16 w-full flex items-center justify-center border-b border-zinc-800 relative px-3">
+        <div className="w-8 h-8 bg-emerald-600 rounded-lg flex items-center justify-center text-white font-bold text-lg shrink-0 shadow-lg shadow-emerald-900/30">
           A
         </div>
         <span
@@ -539,7 +539,7 @@ const AppContent: React.FC = () => {
 
       {/* 底部用户区 */}
       <div
-        className={`p-4 border-t border-gray-800 flex items-center ${isSidebarCollapsed ? 'justify-center' : 'gap-3'}`}
+        className={`p-4 border-t border-zinc-800 flex items-center ${isSidebarCollapsed ? 'justify-center' : 'gap-3'}`}
       >
         <Tooltip title={isSidebarCollapsed ? 'Studio User' : ''} placement="right">
           <Avatar
@@ -562,7 +562,7 @@ const AppContent: React.FC = () => {
   );
 
   return (
-    <div className="flex flex-col h-screen bg-[#0f0f0f] text-gray-100 font-sans selection:bg-green-500/30">
+    <div className="flex flex-col h-screen bg-zinc-950 text-zinc-100 font-sans selection:bg-emerald-500/30">
       {/* 自定义标题栏 */}
       <WindowControls />
 
@@ -571,10 +571,10 @@ const AppContent: React.FC = () => {
 
       <div className="flex-1 flex flex-col min-w-0 transition-all duration-300">
         {/* 顶部标题栏 */}
-        <header className="h-auto border-b border-gray-800 flex flex-col bg-[#141414] shrink-0 z-30">
+        <header className="h-auto border-b border-zinc-800 flex flex-col bg-zinc-900/80 backdrop-blur-md shrink-0 z-30">
             {/* 上层：导航与操作 */}
-            <div className="h-16 flex items-center justify-between px-6 border-b border-gray-800/50">
-                 <div className="flex items-center text-sm text-gray-400">
+            <div className="h-16 flex items-center justify-between px-6 border-b border-zinc-800/50">
+                 <div className="flex items-center text-sm text-zinc-400">
                     <button onClick={() => setView('projects')} className="hover:text-white transition-colors flex items-center">
                         <Home className="w-4 h-4 mr-2" />
                         <span className="hidden sm:inline">首页</span>
@@ -582,15 +582,15 @@ const AppContent: React.FC = () => {
                     {/* 项目概览视图面包屑 */}
                     {view === 'overview' && activeProject && (
                         <>
-                            <ChevronRight className="w-4 h-4 mx-2 text-gray-600" />
+                            <ChevronRight className="w-4 h-4 mx-2 text-zinc-600" />
                             <span className="text-white font-bold">{activeProject.title}</span>
-                            <span className="ml-2 text-xs bg-gray-800 border border-gray-700 text-gray-300 px-2 py-0.5 rounded shadow-sm">概览</span>
+                            <span className="ml-2 text-xs bg-zinc-800 border border-zinc-700 text-zinc-300 px-2 py-0.5 rounded shadow-sm">概览</span>
                         </>
                     )}
                     {/* 编辑视图面包屑 */}
                     {view === 'editor' && activeProject && (
                         <>
-                            <ChevronRight className="w-4 h-4 mx-2 text-gray-600" />
+                            <ChevronRight className="w-4 h-4 mx-2 text-zinc-600" />
                             <button
                               onClick={() => setView('overview')}
                               className="hover:text-white transition-colors"
@@ -599,7 +599,7 @@ const AppContent: React.FC = () => {
                             </button>
                             {activeEpisode && (
                               <>
-                                <ChevronRight className="w-4 h-4 mx-2 text-gray-600" />
+                                <ChevronRight className="w-4 h-4 mx-2 text-zinc-600" />
                                 <span className="text-white font-bold">第 {activeEpisode.number} 集</span>
                               </>
                             )}
@@ -674,7 +674,7 @@ const AppContent: React.FC = () => {
         </header>
 
         {/* 主内容区域 */}
-        <main className="flex-1 overflow-hidden relative bg-[#0f0f0f]">
+        <main className="flex-1 overflow-hidden relative bg-zinc-950">
             {view === 'projects' && (
                 projectsLoading ? (
                   <div className="flex h-full items-center justify-center">
@@ -743,29 +743,29 @@ const AppContent: React.FC = () => {
                             </div>
 
                             {/* 分析结果侧边栏 */}
-                            <div className={`w-80 border-l border-gray-800 bg-[#121212] flex flex-col transition-all ${analysisData ? 'translate-x-0' : 'translate-x-full hidden xl:flex'}`}>
-                                <div className="p-5 border-b border-gray-800 bg-[#141414]">
-                                    <h3 className="font-bold text-gray-300 text-sm uppercase tracking-wider flex items-center gap-2">
+                            <div className={`w-80 border-l border-zinc-800 bg-zinc-900 flex flex-col transition-all ${analysisData ? 'translate-x-0' : 'translate-x-full hidden xl:flex'}`}>
+                                <div className="p-5 border-b border-zinc-800 bg-zinc-900">
+                                    <h3 className="font-bold text-zinc-300 text-sm uppercase tracking-wider flex items-center gap-2">
                                         <LayoutDashboard className="w-4 h-4 text-purple-500" />
                                         智能分析概览
                                     </h3>
                                 </div>
-                                
+
                                 {analysisData ? (
                                     <div className="flex-1 overflow-y-auto p-5 space-y-6">
                                         {/* 角色卡片 */}
                                         <div className="space-y-3">
-                                            <div className="flex justify-between items-center text-xs text-gray-500 font-bold uppercase">
+                                            <div className="flex justify-between items-center text-xs text-zinc-500 font-bold uppercase">
                                                 <span>核心角色</span>
                                                 <span className="bg-blue-900/30 text-blue-400 px-2 py-0.5 rounded-full">{analysisData.characters.length}</span>
                                             </div>
                                             <div className="grid grid-cols-2 gap-2">
                                                 {analysisData.characters.map(c => (
-                                                    <div key={c.id} className="bg-[#1a1a1a] p-2 rounded border border-gray-800 flex items-center gap-2">
-                                                        <div className="w-8 h-8 rounded-full bg-gray-800 flex items-center justify-center text-xs font-bold text-gray-500">
+                                                    <div key={c.id} className="bg-zinc-800 p-2 rounded border border-zinc-700 flex items-center gap-2">
+                                                        <div className="w-8 h-8 rounded-full bg-zinc-700 flex items-center justify-center text-xs font-bold text-zinc-400">
                                                             {c.name.charAt(0)}
                                                         </div>
-                                                        <span className="text-sm text-gray-300 truncate">{c.name}</span>
+                                                        <span className="text-sm text-zinc-300 truncate">{c.name}</span>
                                                     </div>
                                                 ))}
                                             </div>
@@ -773,16 +773,16 @@ const AppContent: React.FC = () => {
 
                                         {/* 场景列表 */}
                                         <div className="space-y-3">
-                                            <div className="flex justify-between items-center text-xs text-gray-500 font-bold uppercase">
+                                            <div className="flex justify-between items-center text-xs text-zinc-500 font-bold uppercase">
                                                 <span>场景列表</span>
                                                 <span className="bg-purple-900/30 text-purple-400 px-2 py-0.5 rounded-full">{analysisData.scenes.length}</span>
                                             </div>
                                             <div className="space-y-2">
                                                 {analysisData.scenes.map(s => (
-                                                    <div key={s.id} className="text-xs bg-[#1a1a1a] p-3 rounded border border-gray-800 flex flex-col gap-1 hover:border-purple-500/30 transition-colors">
-                                                        <span className="text-gray-300 font-bold">{s.name}</span>
+                                                    <div key={s.id} className="text-xs bg-zinc-800 p-3 rounded border border-zinc-700 flex flex-col gap-1 hover:border-purple-500/30 transition-colors">
+                                                        <span className="text-zinc-300 font-bold">{s.name}</span>
                                                         <div className="flex items-center justify-between">
-                                                             <span className="text-gray-500">{s.time === 'day' ? '☀️ 日' : '🌙 夜'}</span>
+                                                             <span className="text-zinc-500">{s.time === 'day' ? '☀️ 日' : '🌙 夜'}</span>
                                                              <span className="text-purple-400/80">{s.mood}</span>
                                                         </div>
                                                     </div>
@@ -791,16 +791,17 @@ const AppContent: React.FC = () => {
                                         </div>
                                     </div>
                                 ) : (
-                                    <div className="flex-1 flex flex-col items-center justify-center text-gray-600 p-8 text-center space-y-4">
-                                        <div className="w-16 h-16 rounded-full bg-[#1a1a1a] flex items-center justify-center border border-gray-800">
+                                    <div className="flex-1 flex flex-col items-center justify-center text-zinc-600 p-8 text-center space-y-4">
+                                        <div className="w-16 h-16 rounded-full bg-zinc-800 flex items-center justify-center border border-zinc-700">
                                             <Sparkles className="w-8 h-8 opacity-20" />
                                         </div>
                                         <div>
-                                            <p className="text-sm font-medium text-gray-400">等待分析</p>
+                                            <p className="text-sm font-medium text-zinc-400">等待分析</p>
                                             <p className="text-xs mt-1">输入剧本并点击下方按钮，AI 将自动提取角色与分镜。</p>
                                         </div>
                                     </div>
                                 )}
+
                             </div>
                         </div>
                     )}

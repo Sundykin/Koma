@@ -53,7 +53,7 @@ export const StepNavigator: React.FC<StepNavigatorProps> = ({
   };
 
   return (
-    <div className="w-full bg-[#141414] border-b border-gray-800 shadow-lg z-30">
+    <div className="w-full bg-zinc-900 border-b border-zinc-800 shadow-lg z-30">
       <div className="flex items-center justify-between w-full max-w-5xl mx-auto py-3 px-4">
         {/* 步骤条 */}
         <div className="flex items-center flex-1">
@@ -73,10 +73,10 @@ export const StepNavigator: React.FC<StepNavigatorProps> = ({
                 <div
                   className={`w-8 h-8 rounded-full flex items-center justify-center border-2 transition-all duration-300 ${
                     isActive
-                      ? 'bg-green-600 border-green-500 text-white scale-105'
+                      ? 'bg-emerald-600 border-emerald-500 text-white scale-105 ring-4 ring-emerald-500/20'
                       : isCompleted
-                      ? 'bg-[#1a1a1a] border-green-600 text-green-500'
-                      : 'bg-[#0f0f0f] border-gray-700 text-gray-600'
+                      ? 'bg-zinc-900 border-emerald-600 text-emerald-500'
+                      : 'bg-zinc-950 border-zinc-700 text-zinc-600'
                   }`}
                 >
                   {isCompleted && !isActive ? (
