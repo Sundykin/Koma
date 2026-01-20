@@ -55,15 +55,16 @@ export function SimpleExportDialog({ open, onClose, tracks, duration, canvasSize
   const [progress, setProgress] = useState<SimpleExportProgress | null>(null);
   const exporterRef = useRef<SimpleExportRenderer | null>(null);
 
+  // 路径状态（用于显示）
+  const [videoOutputPath, setVideoOutputPath] = useState('');
+  const [draftOutputPath, setDraftOutputPath] = useState('');
+
   // 获取可用的草稿导出器
   const draftExporters = exporterRegistry.getAll();
 
   // 同步 canvasSize 到视频表单，并重置草稿表单
   useEffect(() => {
     if (open) {
-      console.log('[SimpleExportDialog] Dialog opened, resetting forms');
-      console.log('[SimpleExportDialog] draftExporters:', draftExporters);
-
       videoForm.setFieldsValue({
         width: canvasSize.width,
         height: canvasSize.height,
@@ -71,8 +72,6 @@ export function SimpleExportDialog({ open, onClose, tracks, duration, canvasSize
 
       // 重置草稿表单默认值
       const defaultDraftFormat = draftExporters[0]?.format || 'jianying';
-      console.log('[SimpleExportDialog] Setting default draftFormat:', defaultDraftFormat);
-
       draftForm.setFieldsValue({
         draftFormat: defaultDraftFormat,
         projectName: `导出_${new Date().toLocaleDateString()}`,
@@ -80,11 +79,11 @@ export function SimpleExportDialog({ open, onClose, tracks, duration, canvasSize
         copyMaterials: true,
       });
 
-      setTimeout(() => {
-        console.log('[SimpleExportDialog] After reset, draftForm values:', draftForm.getFieldsValue());
-      }, 100);
+      // 重置路径状态
+      setVideoOutputPath('');
+      setDraftOutputPath('');
     }
-  }, [open, canvasSize, videoForm, draftForm, draftExporters]);
+  }, [open]);
 
   // 选择视频输出路径
   const handleSelectVideoOutput = useCallback(async () => {
@@ -101,6 +100,7 @@ export function SimpleExportDialog({ open, onClose, tracks, duration, canvasSize
 
       if (!result.canceled && result.filePath) {
         videoForm.setFieldsValue({ videoOutputPath: result.filePath });
+        setVideoOutputPath(result.filePath);
       }
     } catch (err) {
       console.error('[SimpleExportDialog] Select output failed:', err);
@@ -111,20 +111,11 @@ export function SimpleExportDialog({ open, onClose, tracks, duration, canvasSize
   const handleSelectDraftOutput = useCallback(async () => {
     try {
       const result = await openDirectoryDialog();
-      console.log('[SimpleExportDialog] openDirectoryDialog result:', result);
 
       if (result && !result.canceled && result.filePaths && result.filePaths.length > 0) {
         const selectedPath = result.filePaths[0];
-        console.log('[SimpleExportDialog] Setting draftOutputPath to:', selectedPath);
-        console.log('[SimpleExportDialog] draftForm instance:', draftForm);
-        console.log('[SimpleExportDialog] Before setFieldsValue, current values:', draftForm.getFieldsValue());
-
         draftForm.setFieldsValue({ draftOutputPath: selectedPath });
-
-        // 强制触发更新
-        setTimeout(() => {
-          console.log('[SimpleExportDialog] After setFieldsValue, current values:', draftForm.getFieldsValue());
-        }, 100);
+        setDraftOutputPath(selectedPath);
       }
     } catch (err) {
       console.error('[SimpleExportDialog] Select draft output failed:', err);
@@ -457,30 +448,22 @@ export function SimpleExportDialog({ open, onClose, tracks, duration, canvasSize
               </Form.Item>
 
               {/* 输出路径 */}
-              <Form.Item
-                label="保存位置"
-                required
-                shouldUpdate={(prev, curr) => prev.videoOutputPath !== curr.videoOutputPath}
-              >
-                {() => (
-                  <>
-                    <Space.Compact style={{ width: '100%' }}>
-                      <Input
-                        placeholder="点击选择保存位置"
-                        readOnly
-                        value={videoForm.getFieldValue('videoOutputPath') || ''}
-                        style={{ flex: 1 }}
-                      />
-                      <Button
-                        icon={<FolderOutlined />}
-                        onClick={handleSelectVideoOutput}
-                      />
-                    </Space.Compact>
-                    <Form.Item name="videoOutputPath" hidden noStyle rules={[{ required: true, message: '请选择保存位置' }]}>
-                      <Input />
-                    </Form.Item>
-                  </>
-                )}
+              <Form.Item label="保存位置" required>
+                <Space.Compact style={{ width: '100%' }}>
+                  <Input
+                    placeholder="点击选择保存位置"
+                    readOnly
+                    value={videoOutputPath}
+                    style={{ flex: 1 }}
+                  />
+                  <Button
+                    icon={<FolderOutlined />}
+                    onClick={handleSelectVideoOutput}
+                  />
+                </Space.Compact>
+                <Form.Item name="videoOutputPath" hidden noStyle rules={[{ required: true, message: '请选择保存位置' }]}>
+                  <Input />
+                </Form.Item>
               </Form.Item>
 
               {/* 视频信息 */}
@@ -525,30 +508,22 @@ export function SimpleExportDialog({ open, onClose, tracks, duration, canvasSize
               </Form.Item>
 
               {/* 输出目录 */}
-              <Form.Item
-                label="保存目录"
-                required
-                shouldUpdate={(prev, curr) => prev.draftOutputPath !== curr.draftOutputPath}
-              >
-                {() => (
-                  <>
-                    <Space.Compact style={{ width: '100%' }}>
-                      <Input
-                        placeholder="点击选择保存目录"
-                        readOnly
-                        value={draftForm.getFieldValue('draftOutputPath') || ''}
-                        style={{ flex: 1 }}
-                      />
-                      <Button
-                        icon={<FolderOutlined />}
-                        onClick={handleSelectDraftOutput}
-                      />
-                    </Space.Compact>
-                    <Form.Item name="draftOutputPath" hidden noStyle rules={[{ required: true, message: '请选择保存目录' }]}>
-                      <Input />
-                    </Form.Item>
-                  </>
-                )}
+              <Form.Item label="保存目录" required>
+                <Space.Compact style={{ width: '100%' }}>
+                  <Input
+                    placeholder="点击选择保存目录"
+                    readOnly
+                    value={draftOutputPath}
+                    style={{ flex: 1 }}
+                  />
+                  <Button
+                    icon={<FolderOutlined />}
+                    onClick={handleSelectDraftOutput}
+                  />
+                </Space.Compact>
+                <Form.Item name="draftOutputPath" hidden noStyle rules={[{ required: true, message: '请选择保存目录' }]}>
+                  <Input />
+                </Form.Item>
               </Form.Item>
 
               {/* 复制素材选项 */}
