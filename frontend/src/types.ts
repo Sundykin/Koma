@@ -267,6 +267,7 @@ export interface AppSettings {
   ttiConfigs: TTIModelConfig[];
   itvConfigs: ITVModelConfig[];
   ttsConfigs: TTSModelConfig[];
+  customThemePresets?: ThemePreset[];  // 用户自定义视觉风格预设
 }
 
 // ========== 时间线相关类型 ==========

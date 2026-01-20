@@ -34,6 +34,27 @@ export {
   MICROSECONDS_PER_SECOND,
 } from './JianyingCoordinateTransformer';
 
+// 剪映工具函数
+export {
+  secondsToMicroseconds,
+  pixelToHalfCanvas,
+  buildKeyframeLists,
+  buildFilter,
+  buildAnimations,
+  buildAudioFade,
+  buildMask,
+  buildTransition,
+} from './jianyingUtils';
+
+// 兼容性检测
+export {
+  checkExportCompatibility,
+  getCompatibilityWarning,
+  type CompatibilityReport,
+  type AdvancedFeature,
+  type FeatureSupport,
+} from './exportCapabilityChecker';
+
 // 初始化：注册所有导出器
 import { exporterRegistry } from './ExporterRegistry';
 import { JianyingExporter } from './JianyingExporter';

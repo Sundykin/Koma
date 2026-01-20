@@ -14,7 +14,7 @@ import {
   loadCharacters,
 } from '../store/projectStore';
 import { getStorageConfig, initStorageConfig } from '../store/storageConfig';
-import { getThemeStylePrefix } from '../config/themePresets';
+import { getThemeStylePrefix, getThemeStylePrefixAsync } from '../config/themePresets';
 import { createLogger } from '../store/logger';
 import { logTTICall, logITVCall } from '../store/aiCallLogger';
 import { getPromptTemplate, fillTemplate, getDefaultTemplate } from '../store/promptTemplates';
@@ -50,7 +50,7 @@ export async function generateCostumePhoto(
     }
 
     // 构建提示词（从配置化模板读取）
-    const stylePrefix = getThemeStylePrefix(theme, stylePrompt);
+    const stylePrefix = await getThemeStylePrefixAsync(theme, stylePrompt);
     let prompt: string;
     try {
       const template = await getPromptTemplate('tti_character_costume');

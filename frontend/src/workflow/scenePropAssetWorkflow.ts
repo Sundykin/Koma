@@ -14,7 +14,7 @@ import {
   loadProps,
 } from '../store/projectStore';
 import { getStorageConfig, initStorageConfig } from '../store/storageConfig';
-import { getThemeStylePrefix } from '../config/themePresets';
+import { getThemeStylePrefix, getThemeStylePrefixAsync } from '../config/themePresets';
 import { createLogger } from '../store/logger';
 import { logTTICall } from '../store/aiCallLogger';
 import { getPromptTemplate, fillTemplate } from '../store/promptTemplates';
@@ -49,7 +49,7 @@ export async function generateSceneImage(
     }
 
     // 构建提示词（从配置化模板读取）
-    const stylePrefix = getThemeStylePrefix(theme, stylePrompt);
+    const stylePrefix = await getThemeStylePrefixAsync(theme, stylePrompt);
     let prompt: string;
     try {
       const template = await getPromptTemplate('tti_scene_preview');
@@ -204,7 +204,7 @@ export async function generatePropImage(
     }
 
     // 构建提示词（从配置化模板读取）
-    const stylePrefix = getThemeStylePrefix(theme, stylePrompt);
+    const stylePrefix = await getThemeStylePrefixAsync(theme, stylePrompt);
     let prompt: string;
     try {
       const template = await getPromptTemplate('tti_prop_reference');

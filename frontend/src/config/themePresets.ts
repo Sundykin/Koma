@@ -3,6 +3,7 @@
  * 用于项目风格选择，影响 LLM 创作和 TTI 生成
  */
 import type { ThemePreset } from '../types';
+import { getCustomThemePresets } from '../store/globalStore';
 
 export const THEME_PRESETS: ThemePreset[] = [
   {
@@ -80,5 +81,52 @@ export function getThemeLLMSuffix(themeId?: string, customStylePrompt?: string):
     return customStylePrompt || '';
   }
   const theme = getThemePreset(themeId);
+  return theme?.llmPromptSuffix || '';
+}
+
+// ========== 异步函数（支持自定义预设） ==========
+
+/**
+ * 获取所有主题预设（包括用户自定义）
+ * 自定义预设排在前面，系统预设在后（排除 'custom' 选项）
+ */
+export async function getAllThemePresets(): Promise<ThemePreset[]> {
+  const customPresets = await getCustomThemePresets();
+  const systemPresets = THEME_PRESETS.filter(t => t.id !== 'custom');
+  return [...customPresets, ...systemPresets];
+}
+
+/**
+ * 异步获取主题预设（支持自定义预设查找）
+ */
+export async function getThemePresetAsync(themeId: string): Promise<ThemePreset | undefined> {
+  // 先查系统预设
+  const systemTheme = THEME_PRESETS.find(t => t.id === themeId);
+  if (systemTheme) return systemTheme;
+
+  // 再查自定义预设
+  const customPresets = await getCustomThemePresets();
+  return customPresets.find(t => t.id === themeId);
+}
+
+/**
+ * 异步获取风格前缀（支持自定义预设）
+ */
+export async function getThemeStylePrefixAsync(themeId?: string, customStylePrompt?: string): Promise<string> {
+  if (!themeId || themeId === 'custom') {
+    return customStylePrompt ? `${customStylePrompt}, ` : '';
+  }
+  const theme = await getThemePresetAsync(themeId);
+  return theme?.ttiStylePrefix || '';
+}
+
+/**
+ * 异步获取 LLM 后缀（支持自定义预设）
+ */
+export async function getThemeLLMSuffixAsync(themeId?: string, customStylePrompt?: string): Promise<string> {
+  if (!themeId || themeId === 'custom') {
+    return customStylePrompt || '';
+  }
+  const theme = await getThemePresetAsync(themeId);
   return theme?.llmPromptSuffix || '';
 }

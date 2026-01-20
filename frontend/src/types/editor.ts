@@ -76,6 +76,13 @@ export interface Clip {
   backgroundColor?: string; // 背景色 (可选)
   textPosition?: 'top' | 'center' | 'bottom'; // 预设位置
   textAlign?: 'left' | 'center' | 'right';    // 文本对齐
+  // ========== 剪映高级属性 ==========
+  jianyingKeyframeTracks?: JianyingKeyframeTrack[]; // 剪映关键帧轨道
+  filter?: ClipFilter;           // 滤镜
+  animations?: ClipAnimation[];  // 动画（入场/出场/组合）
+  audioFade?: AudioFade;         // 音频淡入淡出（仅音频片段）
+  mask?: ClipMask;               // 蒙版
+  transition?: ClipTransition;   // 转场（应用到前一个片段）
 }
 
 export interface Track {
@@ -141,3 +148,77 @@ export interface FrameCacheMeta {
   framePaths: string[];
   createdAt: number;
 }
+
+// ========== 剪映高级属性类型 ==========
+
+// 剪映关键帧属性类型
+export type JianyingKeyframeProperty =
+  | 'position_x' | 'position_y'
+  | 'rotation'
+  | 'scale_x' | 'scale_y' | 'uniform_scale'
+  | 'alpha'
+  | 'saturation' | 'contrast' | 'brightness'
+  | 'volume';
+
+// 剪映关键帧
+export interface JianyingKeyframe {
+  time: number;           // 时间点（秒）
+  value: number;          // 属性值
+  curveType?: 'Line' | 'Bezier';  // 插值类型，默认 Line
+}
+
+// 剪映关键帧轨道
+export interface JianyingKeyframeTrack {
+  property: JianyingKeyframeProperty;
+  keyframes: JianyingKeyframe[];
+}
+
+// 滤镜定义
+export interface ClipFilter {
+  id: string;             // 滤镜效果 ID
+  name: string;           // 显示名称
+  resourceId?: string;    // 剪映资源 ID
+  intensity: number;      // 强度 0-100
+}
+
+// 动画类型
+export type ClipAnimationType = 'in' | 'out' | 'group';
+
+// 动画定义
+export interface ClipAnimation {
+  type: ClipAnimationType;
+  effectId: string;       // 动画效果 ID
+  name?: string;          // 显示名称
+  duration: number;       // 持续时间（秒）
+}
+
+// 音频淡入淡出
+export interface AudioFade {
+  fadeIn: number;         // 淡入时长（秒）
+  fadeOut: number;        // 淡出时长（秒）
+}
+
+// 蒙版类型
+export type MaskType = 'linear' | 'mirror' | 'circle' | 'rectangle' | 'heart' | 'star';
+
+// 蒙版定义
+export interface ClipMask {
+  type: MaskType;
+  centerX?: number;       // 中心 X（相对于素材，0 为中心）
+  centerY?: number;       // 中心 Y（相对于素材，0 为中心）
+  size?: number;          // 主要尺寸（0-1，相对于素材高度）
+  width?: number;         // 宽度（仅矩形蒙版）
+  rotation?: number;      // 旋转角度
+  feather?: number;       // 羽化 0-100
+  invert?: boolean;       // 是否反转
+  roundCorner?: number;   // 圆角（仅矩形蒙版，0-100）
+}
+
+// 转场定义
+export interface ClipTransition {
+  effectId: string;       // 转场效果 ID
+  name?: string;          // 显示名称
+  resourceId?: string;    // 剪映资源 ID
+  duration: number;       // 持续时间（秒）
+}
+

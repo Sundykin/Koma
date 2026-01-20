@@ -29,6 +29,7 @@ import {
   EnvironmentOutlined,
   AppstoreOutlined,
   DownOutlined,
+  ThunderboltOutlined,
 } from '@ant-design/icons';
 import { electronService } from '../services/electronService';
 import { ScriptEditor } from '../editor';
@@ -56,6 +57,7 @@ interface ScriptWorkshopProps {
   onExtractEntities?: (script: string, type: 'character' | 'scene' | 'prop') => void;
   onPolishScript?: (script: string) => void;
   onGenerateScript?: (idea: string, style: string, duration: string) => void;
+  onRandomGenerate?: (duration: string) => Promise<string>;
   onMentionClick?: (item: MentionItem) => void;
 }
 
@@ -71,6 +73,7 @@ export const ScriptWorkshop: React.FC<ScriptWorkshopProps> = ({
   onExtractEntities,
   onPolishScript,
   onGenerateScript,
+  onRandomGenerate,
   onMentionClick,
 }) => {
   const { message } = App.useApp();
@@ -79,6 +82,7 @@ export const ScriptWorkshop: React.FC<ScriptWorkshopProps> = ({
   const [historyVisible, setHistoryVisible] = useState(false);
   const [generateModalVisible, setGenerateModalVisible] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [randomGenerating, setRandomGenerating] = useState(false);
   const [idea, setIdea] = useState('');
   const [style, setStyle] = useState('治愈');
   const [duration, setDuration] = useState('3');
@@ -226,6 +230,13 @@ export const ScriptWorkshop: React.FC<ScriptWorkshopProps> = ({
   // AI 功能菜单
   const aiMenuItems: MenuProps['items'] = [
     {
+      key: 'random',
+      icon: <ThunderboltOutlined />,
+      label: randomGenerating ? '正在随机生成...' : '随机生成剧本',
+      disabled: randomGenerating || !onRandomGenerate,
+      onClick: handleRandomGenerate,
+    },
+    {
       key: 'generate',
       icon: <RobotOutlined />,
       label: '从创意生成剧本',
@@ -274,6 +285,27 @@ export const ScriptWorkshop: React.FC<ScriptWorkshopProps> = ({
       setIdea('');
     } finally {
       setGenerating(false);
+    }
+  };
+
+  // 随机生成剧本
+  const handleRandomGenerate = async () => {
+    if (!onRandomGenerate) {
+      message.warning('随机生成功能未配置');
+      return;
+    }
+    setRandomGenerating(true);
+    try {
+      const generatedScript = await onRandomGenerate(duration);
+      if (generatedScript) {
+        handleScriptChange(generatedScript);
+        await saveVersion(generatedScript, 'AI 随机生成');
+        message.success('剧本随机生成成功！');
+      }
+    } catch (err: any) {
+      message.error(`生成失败: ${err.message}`);
+    } finally {
+      setRandomGenerating(false);
     }
   };
 

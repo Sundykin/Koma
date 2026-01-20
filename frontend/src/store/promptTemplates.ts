@@ -12,6 +12,7 @@ export type PromptTemplateType =
   | 'shot_breakdown_system'    // 分镜拆解的系统提示
   | 'script_analysis_system'   // 剧本解析的系统提示
   // LLM 任务模板
+  | 'random_idea_generation'   // 随机创意生成
   | 'script_generation'        // 剧本生成
   | 'script_polish'            // 剧本润色
   | 'shot_breakdown'           // 分镜拆解
@@ -97,6 +98,31 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
   },
 
   // ========== LLM 任务模板 ==========
+
+  random_idea_generation: {
+    id: 'random_idea_generation',
+    name: '随机创意生成',
+    description: '生成随机的剧本创意',
+    template: `你是一个创意编剧。请随机生成一个短视频剧本创意。
+
+要求：
+1. 创意要新颖有趣，适合短视频形式（1-5分钟）
+2. 包含明确的主题、类型和情感基调
+3. 简要描述核心冲突或亮点
+4. 每次生成都要有变化，不要重复
+
+请以 JSON 格式输出：
+\`\`\`json
+{
+  "topic": "故事主题/概念（一句话）",
+  "style": "风格类型（如：治愈、搞笑、悬疑、科幻等）",
+  "keyElements": ["关键元素1", "关键元素2", "关键元素3"],
+  "logline": "一句话剧情简介"
+}
+\`\`\``,
+    variables: [],
+    isCustom: false,
+  },
 
   script_generation: {
     id: 'script_generation',
@@ -419,8 +445,8 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
     id: 'itv_shot_video',
     name: '分镜视频',
     description: '生成分镜动态视频',
-    template: '{{description}}, {{cameraMovement}}, smooth motion, cinematic, high quality video',
-    variables: ['description', 'cameraMovement'],
+    template: '{{stylePrefix}}{{description}}, {{cameraMovement}}, smooth motion, cinematic, high quality video',
+    variables: ['stylePrefix', 'description', 'cameraMovement'],
     isCustom: false,
   },
 

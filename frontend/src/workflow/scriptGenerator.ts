@@ -31,6 +31,82 @@ interface ScriptFromIdeaParams {
   duration: string;
 }
 
+// 随机创意接口
+interface RandomIdea {
+  topic: string;
+  style: string;
+  keyElements: string[];
+  logline: string;
+}
+
+/**
+ * 生成随机创意
+ */
+export async function generateRandomIdea(
+  onProgress?: (progress: number, step?: string) => void
+): Promise<RandomIdea> {
+  const provider = await getProjectLLMProvider();
+  if (!provider) {
+    throw new Error('未配置 LLM 模型');
+  }
+
+  onProgress?.(5, '加载 Prompt 模板...');
+  const template = await getPromptTemplate('random_idea_generation');
+
+  onProgress?.(20, '正在生成随机创意...');
+  const response = await provider.chat([
+    { role: 'user', content: template.template },
+  ]);
+
+  onProgress?.(80, '解析创意...');
+
+  // 解析返回的 JSON
+  const jsonMatch = response.match(/```json\s*([\s\S]*?)\s*```/) ||
+                    response.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) {
+    throw new Error('无法解析创意格式');
+  }
+
+  const jsonStr = jsonMatch[1] || jsonMatch[0];
+  const idea: RandomIdea = JSON.parse(jsonStr);
+
+  onProgress?.(100, '创意生成完成');
+  return idea;
+}
+
+/**
+ * 随机生成剧本（先生成创意再生成剧本）
+ */
+export async function generateRandomScript(
+  duration: string = '3',
+  onProgress?: (progress: number, step?: string) => void
+): Promise<string> {
+  // 第一步：生成随机创意
+  onProgress?.(5, '正在生成随机创意...');
+  const idea = await generateRandomIdea((p, s) => {
+    onProgress?.(5 + p * 0.3, s);
+  });
+
+  // 第二步：基于创意生成剧本
+  onProgress?.(40, '正在基于创意生成剧本...');
+  const ideaText = `${idea.logline}\n关键元素: ${idea.keyElements.join(', ')}`;
+
+  const script = await generateScriptFromIdea(
+    {
+      settings: {} as AppSettings,
+      idea: ideaText,
+      style: idea.style,
+      duration,
+    },
+    (p, s) => {
+      onProgress?.(40 + p * 0.6, s);
+    }
+  );
+
+  onProgress?.(100, '剧本生成完成');
+  return script;
+}
+
 /**
  * 从创意生成剧本（使用 Prompt 模板）
  */
@@ -177,5 +253,7 @@ ${sceneDesc}
 export default {
   generateScript,
   generateScriptFromIdea,
+  generateRandomIdea,
+  generateRandomScript,
   polishScript,
 };

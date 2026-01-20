@@ -33,6 +33,14 @@ import {
   generateHexId,
   isVideoFile,
 } from './coordinateTransform';
+import {
+  buildKeyframeLists,
+  buildFilter,
+  buildAnimations,
+  buildAudioFade,
+  buildMask,
+  buildTransition,
+} from './jianyingUtils';
 
 // 导入模板 JSON
 import draftContentTemplate from './templates/draft_content_template.json';
@@ -120,7 +128,7 @@ export class JianyingExporter implements DraftExporter {
     const draftId = generateUUID();
 
     // 提取素材和转换轨道
-    const { materials, speedMaterials } = this.extractMaterials(
+    const { materials, speedMaterials, clipMaterialRefs } = this.extractMaterials(
       tracks,
       canvasSize,
       warnings
@@ -128,7 +136,8 @@ export class JianyingExporter implements DraftExporter {
     const jianyingTracks = this.convertTracks(
       tracks,
       canvasSize,
-      speedMaterials
+      speedMaterials,
+      clipMaterialRefs
     );
 
     // 计算总时长 (微秒)
@@ -226,20 +235,28 @@ export class JianyingExporter implements DraftExporter {
     tracks: Track[],
     canvasSize: CanvasSize,
     warnings: string[]
-  ): { materials: JianyingMaterials; speedMaterials: Map<string, JianyingSpeed> } {
+  ): { materials: JianyingMaterials; speedMaterials: Map<string, JianyingSpeed>; clipMaterialRefs: Map<string, string[]> } {
     const videos: JianyingVideoMaterial[] = [];
     const audios: JianyingAudioMaterial[] = [];
     const texts: JianyingTextMaterial[] = [];
     const speedMaterials = new Map<string, JianyingSpeed>();
+
+    // 高级属性素材
+    const filters: any[] = [];
+    const masks: any[] = [];
+    const audioFades: any[] = [];
+    const materialAnimations: any[] = [];
+    const transitions: any[] = [];
+
+    // 每个片段的额外素材引用
+    const clipMaterialRefs = new Map<string, string[]>();
 
     const processedMaterialIds = new Set<string>();
 
     for (const track of tracks) {
       for (const clip of track.clips) {
         const materialId = clip.assetId || clip.id;
-
-        if (processedMaterialIds.has(materialId)) continue;
-        processedMaterialIds.add(materialId);
+        const extraRefs: string[] = [];
 
         // 为每个片段创建速度素材
         const speedId = generateHexId();
@@ -250,6 +267,58 @@ export class JianyingExporter implements DraftExporter {
           mode: 0,
           curve_speed: null,
         });
+        extraRefs.push(speedId);
+
+        // 处理高级属性
+        // 滤镜
+        if (clip.filter) {
+          const filterMaterial = buildFilter(clip.filter);
+          if (filterMaterial) {
+            filters.push(filterMaterial);
+            extraRefs.push(filterMaterial.id);
+          }
+        }
+
+        // 蒙版
+        if (clip.mask) {
+          const maskMaterial = buildMask(clip.mask);
+          if (maskMaterial) {
+            masks.push(maskMaterial);
+            extraRefs.push(maskMaterial.id);
+          }
+        }
+
+        // 音频淡入淡出
+        if (clip.audioFade) {
+          const fadeMaterial = buildAudioFade(clip.audioFade);
+          if (fadeMaterial) {
+            audioFades.push(fadeMaterial);
+            extraRefs.push(fadeMaterial.id);
+          }
+        }
+
+        // 动画
+        if (clip.animations && clip.animations.length > 0) {
+          const animMaterial = buildAnimations(clip.animations);
+          if (animMaterial) {
+            materialAnimations.push(animMaterial);
+            extraRefs.push(animMaterial.anim_id);
+          }
+        }
+
+        // 转场
+        if (clip.transition) {
+          const transitionMaterial = buildTransition(clip.transition);
+          if (transitionMaterial) {
+            transitions.push(transitionMaterial);
+            extraRefs.push(transitionMaterial.id);
+          }
+        }
+
+        clipMaterialRefs.set(clip.id, extraRefs);
+
+        if (processedMaterialIds.has(materialId)) continue;
+        processedMaterialIds.add(materialId);
 
         if (clip.type === 'VIDEO' || clip.type === 'IMAGE') {
           const isVideo = clip.type === 'VIDEO' || isVideoFile(clip.src);
@@ -301,18 +370,18 @@ export class JianyingExporter implements DraftExporter {
       }
     }
 
-    // 构建素材对象，保留必要的空数组
+    // 构建素材对象，包含高级属性素材
     const materials: JianyingMaterials = {
       videos,
       audios,
       texts,
       speeds: Array.from(speedMaterials.values()),
       stickers: [],
-      effects: [],
-      transitions: [],
+      effects: filters,
+      transitions,
       canvases: [],
-      audio_fades: [],
-      material_animations: [],
+      audio_fades: audioFades,
+      material_animations: materialAnimations,
       video_effects: [],
       ai_translates: [],
       audio_balances: [],
@@ -331,7 +400,7 @@ export class JianyingExporter implements DraftExporter {
       log_color_wheels: [],
       loudnesses: [],
       manual_deformations: [],
-      masks: [],
+      masks,
       material_colors: [],
       multi_language_refs: [],
       placeholders: [],
@@ -350,7 +419,7 @@ export class JianyingExporter implements DraftExporter {
       vocal_separations: [],
     };
 
-    return { materials, speedMaterials };
+    return { materials, speedMaterials, clipMaterialRefs };
   }
 
   /**
@@ -359,12 +428,13 @@ export class JianyingExporter implements DraftExporter {
   private convertTracks(
     tracks: Track[],
     canvasSize: CanvasSize,
-    speedMaterials: Map<string, JianyingSpeed>
+    speedMaterials: Map<string, JianyingSpeed>,
+    clipMaterialRefs: Map<string, string[]>
   ): JianyingTrack[] {
     return tracks.map((track) => {
       const jianyingType = this.mapTrackType(track.type);
       const segments = track.clips.map((clip) =>
-        this.convertClip(clip, canvasSize, speedMaterials.get(clip.id))
+        this.convertClip(clip, canvasSize, speedMaterials.get(clip.id), clipMaterialRefs.get(clip.id))
       );
 
       return {
@@ -385,7 +455,8 @@ export class JianyingExporter implements DraftExporter {
   private convertClip(
     clip: Clip,
     canvasSize: CanvasSize,
-    speedMaterial?: JianyingSpeed
+    speedMaterial?: JianyingSpeed,
+    extraMaterialRefsList?: string[]
   ): JianyingSegment {
     const segmentId = generateHexId();
     const materialId = clip.assetId || clip.id;
@@ -419,10 +490,11 @@ export class JianyingExporter implements DraftExporter {
       duration: this.transformer.transformTime(clip.duration),
     };
 
-    const extraMaterialRefs: string[] = [];
-    if (speedMaterial) {
-      extraMaterialRefs.push(speedMaterial.id);
-    }
+    // 使用预先收集的素材引用列表
+    const extraMaterialRefs: string[] = extraMaterialRefsList || [];
+
+    // 构建关键帧
+    const commonKeyframes = buildKeyframeLists(clip.jianyingKeyframeTracks);
 
     return {
       id: segmentId,
@@ -446,7 +518,7 @@ export class JianyingExporter implements DraftExporter {
       track_render_index: 0,
       visible: true,
       render_index: 0,
-      common_keyframes: [],
+      common_keyframes: commonKeyframes,
       keyframe_refs: [],
       uniform_scale: { on: true, value: 1.0 },
       hdr_settings: { intensity: 1.0, mode: 1, nits: 1000 },

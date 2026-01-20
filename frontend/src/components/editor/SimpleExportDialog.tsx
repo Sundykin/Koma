@@ -2,13 +2,14 @@
  * SimpleEditor 导出对话框
  * 支持视频导出和草稿导出（剪映等）
  */
-import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { Modal, Form, Select, InputNumber, Input, Button, Progress, Space, Radio, message, Segmented, Checkbox } from 'antd';
-import { ExportOutlined, FolderOutlined } from '@ant-design/icons';
+import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import { Modal, Form, Select, InputNumber, Input, Button, Progress, Space, Radio, message, Segmented, Checkbox, Alert } from 'antd';
+import { ExportOutlined, FolderOutlined, WarningOutlined } from '@ant-design/icons';
 import { Track } from '../../types/editor';
 import { SimpleExportRenderer, SimpleExportConfig, SimpleExportProgress } from '../../services/simpleExportRenderer';
 import { saveFileDialog, openDirectoryDialog, isElectron, writeFile, createDirectory, fsCopy, fsExists } from '../../services/electronService';
 import { exporterRegistry, type DraftExportOptions } from '../../services/draftExport';
+import { checkExportCompatibility, type CompatibilityReport } from '../../services/draftExport/exportCapabilityChecker';
 import type { JianyingDraftContent, JianyingDraftMetaInfo } from '../../types/jianying';
 
 interface SimpleExportDialogProps {
@@ -62,6 +63,9 @@ export function SimpleExportDialog({ open, onClose, tracks, duration, canvasSize
   // 获取可用的草稿导出器
   const draftExporters = exporterRegistry.getAll();
 
+  // 检测高级特性兼容性
+  const compatibilityReport = useMemo(() => checkExportCompatibility(tracks), [tracks]);
+
   // 同步 canvasSize 到视频表单，并重置草稿表单
   useEffect(() => {
     if (open) {
@@ -77,6 +81,7 @@ export function SimpleExportDialog({ open, onClose, tracks, duration, canvasSize
         projectName: `导出_${new Date().toLocaleDateString()}`,
         draftOutputPath: '',
         copyMaterials: true,
+        createSubfolder: false,
       });
 
       // 重置路径状态
@@ -193,7 +198,10 @@ export function SimpleExportDialog({ open, onClose, tracks, duration, canvasSize
 
       setExporting(true);
 
-      const draftFolderPath = `${values.draftOutputPath}/${values.projectName}`;
+      // 根据选项决定草稿目录路径
+      const draftFolderPath = values.createSubfolder
+        ? `${values.draftOutputPath}/${values.projectName}`
+        : values.draftOutputPath;
       const options: DraftExportOptions = {
         outputPath: draftFolderPath,
         projectName: values.projectName,
@@ -209,8 +217,10 @@ export function SimpleExportDialog({ open, onClose, tracks, duration, canvasSize
           draftMetaInfo: JianyingDraftMetaInfo;
         };
 
-        // 创建草稿目录
-        await createDirectory(draftFolderPath);
+        // 只在创建子目录选项开启时创建目录
+        if (values.createSubfolder) {
+          await createDirectory(draftFolderPath);
+        }
 
         // 如果需要复制素材
         if (values.copyMaterials) {
@@ -466,6 +476,30 @@ export function SimpleExportDialog({ open, onClose, tracks, duration, canvasSize
                 </Form.Item>
               </Form.Item>
 
+              {/* 高级特性兼容性提示 */}
+              {compatibilityReport.jianyingOnlyFeatures.length > 0 && (
+                <Alert
+                  type="warning"
+                  showIcon
+                  icon={<WarningOutlined />}
+                  message="部分效果无法原生导出"
+                  description={
+                    <div>
+                      <p>项目使用了以下仅剪映支持的特性：</p>
+                      <ul style={{ margin: '4px 0', paddingLeft: 20 }}>
+                        {compatibilityReport.featureDetails.map((detail) => (
+                          <li key={detail.feature}>
+                            {detail.name}（{detail.clipCount} 个片段）
+                          </li>
+                        ))}
+                      </ul>
+                      <p style={{ marginTop: 8 }}>建议使用「草稿导出」以保留这些效果。</p>
+                    </div>
+                  }
+                  style={{ marginBottom: 16 }}
+                />
+              )}
+
               {/* 视频信息 */}
               <div style={styles.infoBox}>
                 <p>时长: {duration.toFixed(1)} 秒</p>
@@ -485,6 +519,7 @@ export function SimpleExportDialog({ open, onClose, tracks, duration, canvasSize
                 projectName: `导出_${new Date().toLocaleDateString()}`,
                 draftOutputPath: '',
                 copyMaterials: true,
+                createSubfolder: false,
               }}
             >
               {/* 格式选择 */}
@@ -524,6 +559,11 @@ export function SimpleExportDialog({ open, onClose, tracks, duration, canvasSize
                 <Form.Item name="draftOutputPath" hidden noStyle rules={[{ required: true, message: '请选择保存目录' }]}>
                   <Input />
                 </Form.Item>
+              </Form.Item>
+
+              {/* 创建子目录选项 */}
+              <Form.Item name="createSubfolder" valuePropName="checked">
+                <Checkbox>创建以草稿名称命名的子目录</Checkbox>
               </Form.Item>
 
               {/* 复制素材选项 */}

@@ -9,6 +9,7 @@ import { createTask, updateTask, markTaskCompleted, markTaskFailed } from '../st
 import { createLogger } from '../store/logger';
 import { logITVCall, logTTSCall } from '../store/aiCallLogger';
 import { getPromptTemplate, fillTemplate } from '../store/promptTemplates';
+import { getThemeStylePrefixAsync } from '../config/themePresets';
 
 const logger = createLogger('ShotRender');
 
@@ -86,7 +87,7 @@ export async function shotRenderWorkflow(
   params: ShotRenderParams,
   onProgress: (progress: number, step?: string) => void
 ): Promise<ShotRenderResult> {
-  const { projectId, shot, projectConfigIds } = params;
+  const { projectId, shot, projectConfigIds, theme, stylePrompt } = params;
 
   logger.info(`开始生成分镜视频 ${shot.id}`);
 
@@ -163,17 +164,21 @@ export async function shotRenderWorkflow(
       maxRetries: 3,
     });
 
+    // 获取视觉风格前缀（支持自定义预设）
+    const stylePrefix = await getThemeStylePrefixAsync(theme, stylePrompt);
+
     // 构建视频 prompt
     let videoPrompt: string;
     try {
       const videoTemplate = await getPromptTemplate('itv_shot_video');
       videoPrompt = fillTemplate(videoTemplate.template, {
+        stylePrefix: stylePrefix || '',
         description: shot.description || '',
         cameraMovement: getCameraMovementDesc(shot.cameraMovement),
       });
       videoPrompt = appendCharacterRefs(videoPrompt, shot, characters);
     } catch {
-      videoPrompt = buildVideoPrompt(shot, characters);
+      videoPrompt = buildVideoPrompt(shot, characters, stylePrefix);
     }
 
     logger.info(`视频 prompt: ${videoPrompt}`);
@@ -340,8 +345,8 @@ function appendCharacterRefs(prompt: string, shot: Shot, characters: Character[]
   return result;
 }
 
-function buildVideoPrompt(shot: Shot, characters: Character[]): string {
-  let prompt = shot.description || '';
+function buildVideoPrompt(shot: Shot, characters: Character[], stylePrefix?: string): string {
+  let prompt = stylePrefix ? `${stylePrefix}${shot.description || ''}` : (shot.description || '');
 
   if (shot.cameraMovement && shot.cameraMovement !== 'static') {
     const cameraDesc: Record<string, string> = {

@@ -36,6 +36,7 @@ import {
   EditOutlined,
   FileTextOutlined,
   ReloadOutlined,
+  BgColorsOutlined,
 } from '@ant-design/icons';
 import type { AppSettings, TTSProviderType, ITVProviderType } from '../types';
 import { loadSettings, saveSettings } from '../store/globalStore';
@@ -58,6 +59,7 @@ import { LLMConfigManager } from './LLMConfigManager';
 import { TTIConfigManager } from './TTIConfigManager';
 import { ITVConfigManager } from './ITVConfigManager';
 import { TTSConfigManager } from './TTSConfigManager';
+import { VisualStyleManager } from './VisualStyleManager';
 
 interface SettingsPageProps {
   settings: AppSettings;
@@ -356,6 +358,19 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
       children: (
         <div style={{ padding: 16 }}>
           <TTSConfigManager onConfigChange={handleConfigChange} />
+        </div>
+      ),
+    },
+    {
+      key: 'visual-style',
+      label: (
+        <span>
+          <BgColorsOutlined /> 视觉风格
+        </span>
+      ),
+      children: (
+        <div style={{ padding: 16 }}>
+          <VisualStyleManager onStyleChange={handleConfigChange} />
         </div>
       ),
     },
