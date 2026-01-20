@@ -90,7 +90,7 @@ export const StepNavigator: React.FC<StepNavigatorProps> = ({
 
                 <span
                   className={`text-sm font-medium transition-colors duration-300 ${
-                    isActive ? 'text-white' : isCompleted ? 'text-green-500' : 'text-gray-500'
+                    isActive ? 'text-white' : isCompleted ? 'text-emerald-500' : 'text-zinc-500'
                   }`}
                 >
                   {step.label}

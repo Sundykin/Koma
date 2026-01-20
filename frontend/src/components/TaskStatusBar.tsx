@@ -41,7 +41,7 @@ const getStatusIcon = (status: TaskStatus) => {
     case 'running':
       return <Loader2 className="w-4 h-4 animate-spin text-blue-400" />;
     case 'completed':
-      return <CheckCircle2 className="w-4 h-4 text-green-500" />;
+      return <CheckCircle2 className="w-4 h-4 text-emerald-500" />;
     case 'failed':
       return <XCircle className="w-4 h-4 text-red-500" />;
   }
@@ -101,16 +101,16 @@ export const TaskStatusBar: React.FC<TaskStatusBarProps> = ({
   const mainTask = runningTasks[0];
 
   return (
-    <div className="bg-[#1a1a1a] border-b border-gray-800">
+    <div className="bg-zinc-900 border-b border-zinc-800">
       {/* 主状态条 */}
       {mainTask ? (
         <div
-          className="px-4 py-2 flex items-center justify-between cursor-pointer hover:bg-[#222]"
+          className="px-4 py-2 flex items-center justify-between cursor-pointer hover:bg-zinc-800"
           onClick={() => setExpanded(!expanded)}
         >
           <div className="flex items-center gap-3 flex-1 min-w-0">
             {getStatusIcon(mainTask.status)}
-            <Text className="text-gray-300 truncate">
+            <Text className="text-zinc-300 truncate">
               {getTaskTypeLabel(mainTask.type)}
               {mainTask.targetName && `: ${mainTask.targetName}`}
             </Text>
@@ -122,49 +122,49 @@ export const TaskStatusBar: React.FC<TaskStatusBarProps> = ({
               className="flex-1 max-w-[200px]"
               strokeColor="#10b981"
             />
-            <Text className="text-gray-500 text-xs">{mainTask.progress}%</Text>
+            <Text className="text-zinc-500 text-xs">{mainTask.progress}%</Text>
           </div>
           <div className="flex items-center gap-2">
             {runningTasks.length > 1 && (
               <Tag color="blue">+{runningTasks.length - 1} 任务</Tag>
             )}
             {expanded ? (
-              <ChevronUp className="w-4 h-4 text-gray-500" />
+              <ChevronUp className="w-4 h-4 text-zinc-500" />
             ) : (
-              <ChevronDown className="w-4 h-4 text-gray-500" />
+              <ChevronDown className="w-4 h-4 text-zinc-500" />
             )}
           </div>
         </div>
       ) : recentTasks.length > 0 ? (
         <div
-          className="px-4 py-2 flex items-center justify-between cursor-pointer hover:bg-[#222]"
+          className="px-4 py-2 flex items-center justify-between cursor-pointer hover:bg-zinc-800"
           onClick={() => setExpanded(!expanded)}
         >
           <div className="flex items-center gap-2">
-            <CheckCircle2 className="w-4 h-4 text-green-500" />
-            <Text className="text-gray-400 text-sm">
+            <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+            <Text className="text-zinc-400 text-sm">
               最近完成 {recentTasks.length} 个任务
             </Text>
           </div>
           {expanded ? (
-            <ChevronUp className="w-4 h-4 text-gray-500" />
+            <ChevronUp className="w-4 h-4 text-zinc-500" />
           ) : (
-            <ChevronDown className="w-4 h-4 text-gray-500" />
+            <ChevronDown className="w-4 h-4 text-zinc-500" />
           )}
         </div>
       ) : null}
 
       {/* 展开的任务列表 */}
       {expanded && (
-        <div className="px-4 py-2 border-t border-gray-800 max-h-[200px] overflow-y-auto">
+        <div className="px-4 py-2 border-t border-zinc-800 max-h-[200px] overflow-y-auto">
           {runningTasks.length > 0 && (
             <div className="mb-3">
-              <Text className="text-xs text-gray-500 uppercase">运行中</Text>
+              <Text className="text-xs text-zinc-500 uppercase">运行中</Text>
               <div className="mt-1 space-y-2">
                 {runningTasks.map(task => (
                   <div key={task.id} className="flex items-center gap-2 py-1">
                     {getStatusIcon(task.status)}
-                    <Text className="text-gray-300 text-sm flex-1 truncate">
+                    <Text className="text-zinc-300 text-sm flex-1 truncate">
                       {getTaskTypeLabel(task.type)}
                       {task.targetName && `: ${task.targetName}`}
                     </Text>
@@ -175,7 +175,7 @@ export const TaskStatusBar: React.FC<TaskStatusBarProps> = ({
                       className="w-20"
                       strokeColor="#10b981"
                     />
-                    <Text className="text-gray-500 text-xs w-8">{task.progress}%</Text>
+                    <Text className="text-zinc-500 text-xs w-8">{task.progress}%</Text>
                   </div>
                 ))}
               </div>
@@ -184,12 +184,12 @@ export const TaskStatusBar: React.FC<TaskStatusBarProps> = ({
 
           {recentTasks.length > 0 && (
             <div>
-              <Text className="text-xs text-gray-500 uppercase">最近完成</Text>
+              <Text className="text-xs text-zinc-500 uppercase">最近完成</Text>
               <div className="mt-1 space-y-1">
                 {recentTasks.map(task => (
                   <div key={task.id} className="flex items-center gap-2 py-1">
                     {getStatusIcon(task.status)}
-                    <Text className={`text-sm flex-1 truncate ${task.status === 'failed' ? 'text-red-400' : 'text-gray-400'}`}>
+                    <Text className={`text-sm flex-1 truncate ${task.status === 'failed' ? 'text-red-400' : 'text-zinc-400'}`}>
                       {getTaskTypeLabel(task.type)}
                       {task.targetName && `: ${task.targetName}`}
                     </Text>

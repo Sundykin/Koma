@@ -555,7 +555,7 @@ const AppContent: React.FC = () => {
           className={`transition-all duration-300 ${isSidebarCollapsed ? 'w-0 opacity-0 hidden' : 'w-auto opacity-100'}`}
         >
           <div className="text-sm font-medium text-white whitespace-nowrap">Studio User</div>
-          <div className="text-xs text-gray-500 whitespace-nowrap">专业版会员</div>
+          <div className="text-xs text-zinc-500 whitespace-nowrap">专业版会员</div>
         </div>
       </div>
     </div>
@@ -732,7 +732,7 @@ const AppContent: React.FC = () => {
                                 </div>
 
                                 {/* 底部状态栏 */}
-                                <div className="mt-3 flex justify-between items-center text-xs text-gray-500">
+                                <div className="mt-3 flex justify-between items-center text-xs text-zinc-500">
                                     <span className="flex items-center gap-2">
                                         <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
                                         {scriptText.length} 字符 | 模型: <span className="text-blue-400 font-mono">
@@ -822,7 +822,7 @@ const AppContent: React.FC = () => {
                                 onNext={() => setEditorStep('storyboard')}
                             />
                         ) : (
-                            <div className="flex h-full items-center justify-center text-gray-500 flex-col gap-4">
+                            <div className="flex h-full items-center justify-center text-zinc-500 flex-col gap-4">
                                 <Users className="w-16 h-16 opacity-10" />
                                 <p>请先选择项目。</p>
                                 <Button type="link" onClick={() => setView('projects')}>返回项目列表</Button>
@@ -844,7 +844,7 @@ const AppContent: React.FC = () => {
                                 mentionItems={mentionItems}
                             />
                         ) : (
-                             <div className="flex h-full items-center justify-center text-gray-500 flex-col gap-4">
+                             <div className="flex h-full items-center justify-center text-zinc-500 flex-col gap-4">
                                 <Clapperboard className="w-16 h-16 opacity-10" />
                                 <p>请先选择项目。</p>
                                 <Button type="link" onClick={() => setView('projects')}>返回项目列表</Button>
@@ -861,7 +861,7 @@ const AppContent: React.FC = () => {
                                 episodeId={activeEpisode?.id}
                             />
                         ) : (
-                             <div className="flex h-full items-center justify-center text-gray-500 flex-col gap-4">
+                             <div className="flex h-full items-center justify-center text-zinc-500 flex-col gap-4">
                                 <Scissors className="w-16 h-16 opacity-10" />
                                 <p>需完成分镜生成后才能进入剪辑环节。</p>
                                 <Button type="link" onClick={() => setEditorStep('script')}>返回剧本</Button>

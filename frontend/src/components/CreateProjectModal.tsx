@@ -113,18 +113,18 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ isOpen, 
                   className={`
                     relative p-2 rounded-lg cursor-pointer transition-all text-center
                     ${isSelected
-                      ? 'bg-[#1a2e1a] border-2 border-green-500'
-                      : 'bg-[#1a1a1a] border-2 border-gray-700 hover:border-gray-500'
+                      ? 'bg-emerald-900/30 border-2 border-emerald-500'
+                      : 'bg-zinc-800 border-2 border-zinc-700 hover:border-zinc-500'
                     }
                   `}
                   onClick={() => setSelectedTheme(theme.id)}
                 >
                   {isSelected && (
-                    <div className="absolute top-1 right-1 w-4 h-4 bg-green-500 rounded-full flex items-center justify-center">
+                    <div className="absolute top-1 right-1 w-4 h-4 bg-emerald-500 rounded-full flex items-center justify-center">
                       <Check className="w-2.5 h-2.5 text-white" />
                     </div>
                   )}
-                  <div className="text-xs font-medium text-gray-200">{theme.name}</div>
+                  <div className="text-xs font-medium text-zinc-200">{theme.name}</div>
                 </div>
               );
             })}
@@ -133,18 +133,18 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ isOpen, 
               className={`
                 relative p-2 rounded-lg cursor-pointer transition-all text-center
                 ${selectedTheme === 'custom'
-                  ? 'bg-[#1a2e1a] border-2 border-green-500'
-                  : 'bg-[#1a1a1a] border-2 border-gray-700 hover:border-gray-500'
+                  ? 'bg-emerald-900/30 border-2 border-emerald-500'
+                  : 'bg-zinc-800 border-2 border-zinc-700 hover:border-zinc-500'
                 }
               `}
               onClick={() => setSelectedTheme('custom')}
             >
               {selectedTheme === 'custom' && (
-                <div className="absolute top-1 right-1 w-4 h-4 bg-green-500 rounded-full flex items-center justify-center">
+                <div className="absolute top-1 right-1 w-4 h-4 bg-emerald-500 rounded-full flex items-center justify-center">
                   <Check className="w-2.5 h-2.5 text-white" />
                 </div>
               )}
-              <div className="text-xs font-medium text-gray-200">自定义</div>
+              <div className="text-xs font-medium text-zinc-200">自定义</div>
             </div>
           </div>
 
@@ -159,7 +159,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ isOpen, 
           )}
 
           {selectedTheme && selectedTheme !== 'custom' && (
-            <div className="mt-2 text-xs text-gray-500">
+            <div className="mt-2 text-xs text-zinc-500">
               {THEME_PRESETS.find(t => t.id === selectedTheme)?.description}
             </div>
           )}

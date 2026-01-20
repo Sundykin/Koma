@@ -5,7 +5,7 @@
   flex-direction: column;
   height: 100%;
   padding: 16px;
-  background: #121212;
+  background: #18181b;
   overflow: hidden;
 }
 
@@ -70,7 +70,7 @@
 }
 
 .propContainer {
-  background: #1a1a1a;
+  background: #18181b;
 }
 
 .assetTitle {
@@ -97,12 +97,12 @@
   align-items: center;
   justify-content: center;
   border: 2px dashed #27272a !important;
-  background: #1a1a1a !important;
+  background: #18181b !important;
 }
 
 .assetAddCard:hover {
   border-color: #3f3f46 !important;
-  background: #202020 !important;
+  background: #27272a !important;
 }
 
 .assetAddContent {
@@ -195,7 +195,7 @@
 }
 
 .assetGeneratingText {
-  color: #52c41a;
+  color: #10b981;
   font-size: 12px;
   font-weight: 500;
 }
