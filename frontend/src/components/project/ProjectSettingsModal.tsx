@@ -55,7 +55,7 @@ export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({
         genre: values.genre,
         ...mediaConfigs,
       });
-      message.success('项目设置已保存');
+      // message.success('项目设置已保存');
       onClose();
     } catch (err) {
       // 验证失败

@@ -388,7 +388,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
               <Statistic
                 title="存储位置"
                 value={storagePath || '~/.koma'}
-                valueStyle={{ fontSize: 14, fontFamily: 'monospace' }}
+                styles={{ content: { fontSize: 14, fontFamily: 'monospace' } }}
               />
             </Col>
             <Col span={12}>
@@ -439,7 +439,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
           </p>
 
           {/* 系统提示模板 */}
-          <Divider orientation="left" style={{ margin: '16px 0 8px' }}>系统提示 (System Prompts)</Divider>
+          <Divider titlePlacement="left" style={{ margin: '16px 0 8px' }}>系统提示 (System Prompts)</Divider>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {(Object.values(promptTemplates) as PromptTemplate[])
               .filter(t => t.id.endsWith('_system'))
@@ -487,7 +487,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
           </div>
 
           {/* LLM 模板（剧本解析等） */}
-          <Divider orientation="left" style={{ margin: '24px 0 8px' }}>LLM 任务模板</Divider>
+          <Divider titlePlacement="left" style={{ margin: '24px 0 8px' }}>LLM 任务模板</Divider>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {(Object.values(promptTemplates) as PromptTemplate[])
               .filter(t => !t.id.startsWith('tti_') && !t.id.startsWith('itv_') && !t.id.endsWith('_system'))
@@ -539,7 +539,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
           </div>
 
           {/* TTI 模板（图片生成） */}
-          <Divider orientation="left" style={{ margin: '24px 0 8px' }}>TTI 模板（图片生成）</Divider>
+          <Divider titlePlacement="left" style={{ margin: '24px 0 8px' }}>TTI 模板（图片生成）</Divider>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {(Object.values(promptTemplates) as PromptTemplate[])
               .filter(t => t.id.startsWith('tti_'))
@@ -591,7 +591,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
           </div>
 
           {/* ITV 模板（视频生成） */}
-          <Divider orientation="left" style={{ margin: '24px 0 8px' }}>ITV 模板（视频生成）</Divider>
+          <Divider titlePlacement="left" style={{ margin: '24px 0 8px' }}>ITV 模板（视频生成）</Divider>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {(Object.values(promptTemplates) as PromptTemplate[])
               .filter(t => t.id.startsWith('itv_'))
