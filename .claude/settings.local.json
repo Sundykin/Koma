@@ -35,7 +35,9 @@
       "Bash(ls \"E:\\\\Workspace\\\\2025\\\\代码备份\\\\Koma\\\\frontend\\\\src\\\\components\\\\editor\\\\Timeline\"\" | grep -i \"context|menu|right \")",
       "Bash(ls:*)",
       "mcp__ide__getDiagnostics",
-      "Bash(openspec archive:*)"
+      "Bash(openspec archive:*)",
+      "Bash(git mv:*)",
+      "Bash(find:*)"
     ]
   }
 }
