@@ -70,7 +70,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
   settings,
   onSave,
 }) => {
-  const { message } = App.useApp();
+  const { message, modal } = App.useApp();
   const [form] = Form.useForm();
   const [activeTab, setActiveTab] = useState('llm');
   const [saving, setSaving] = useState(false);
@@ -145,7 +145,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
     if (result.filePaths && result.filePaths.length > 0) {
       const newPath = result.filePaths[0];
 
-      Modal.confirm({
+      modal.confirm({
         title: '修改存储位置',
         content: (
           <div>
@@ -179,7 +179,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
 
   // 清理缓存
   const handleClearCache = async () => {
-    Modal.confirm({
+    modal.confirm({
       title: '确认清理缓存',
       content: '这将清理所有项目的缓存文件（缩略图、波形、预览帧），不会影响素材和项目数据。',
       okText: '清理',

@@ -8,7 +8,7 @@ import { MediaType } from '../../types/editor';
 import type { AssetItem, AssetSource, Asset } from '../../types/editor';
 import { toKomaLocalUrl } from '../../utils/urlUtils';
 import { isElectron } from '../../services/electronService';
-import { message } from 'antd';
+import { App } from 'antd';
 
 interface AssetPanelProps {
   assets: AssetItem[];
@@ -155,6 +155,7 @@ export const SimpleAssetPanel: React.FC<AssetPanelProps> = ({
   onUpload,
   onAddAsset,
 }) => {
+  const { message } = App.useApp();
   const [activeTab, setActiveTab] = useState<FilterTab>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [isDragOver, setIsDragOver] = useState(false);

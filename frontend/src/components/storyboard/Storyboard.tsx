@@ -6,12 +6,12 @@ import {
   Segmented,
   Select,
   Typography,
-  message,
   Input,
   Modal,
   Form,
   Spin,
   Empty,
+  App,
 } from 'antd';
 import {
   PlusOutlined,
@@ -88,6 +88,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
   mentionItems = [],
   onConfirmedShotsToTimeline,
 }) => {
+  const { message } = App.useApp();
   const [shots, setShots] = useState<Shot[]>([]);
   const [characters, setCharacters] = useState<Character[]>([]);
   const [scenes, setScenes] = useState<Scene[]>([]);

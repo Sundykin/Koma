@@ -3,7 +3,7 @@
  * 支持多图选择、添加、删除、预览
  */
 import React, { useState, useCallback } from 'react';
-import { Button, Dropdown, Image, Tooltip, message, Space, Typography } from 'antd';
+import { Button, Dropdown, Image, Tooltip, Space, Typography, App } from 'antd';
 import type { MenuProps } from 'antd';
 import {
   PlusOutlined,
@@ -49,6 +49,7 @@ export const ImageCardGrid: React.FC<ImageCardGridProps> = ({
   scenes = [],
   props: propsList = [],
 }) => {
+  const { message } = App.useApp();
   const [previewVisible, setPreviewVisible] = useState(false);
   const [previewIndex, setPreviewIndex] = useState(0);
 

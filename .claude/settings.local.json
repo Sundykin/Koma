@@ -38,7 +38,8 @@
       "Bash(openspec archive:*)",
       "Bash(git mv:*)",
       "Bash(find:*)",
-      "Bash(npm info antd:*)"
+      "Bash(npm info antd:*)",
+      "WebFetch(domain:ant.design)"
     ]
   }
 }

@@ -4,7 +4,7 @@
  */
 import { useEffect, useCallback } from 'react';
 import { useTrackStore } from '../store/trackStore';
-import { message } from 'antd';
+import { App } from 'antd';
 
 export interface ShortcutAction {
   key: string;
@@ -17,6 +17,7 @@ export interface ShortcutAction {
 
 // 快捷键配置
 export function useEditorShortcuts() {
+  const { message } = App.useApp();
   const {
     selectedTrackId,
     selectedItemId,

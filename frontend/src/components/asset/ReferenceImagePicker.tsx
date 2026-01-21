@@ -3,7 +3,7 @@
  * 支持从资产选择、本地上传、拖拽上传
  */
 import React, { useState, useCallback, useRef } from 'react';
-import { Dropdown, Button, Image, Upload, message, Space, Typography, Divider, Tooltip } from 'antd';
+import { Dropdown, Button, Image, Upload, Space, Typography, Divider, Tooltip, App } from 'antd';
 import type { MenuProps, UploadProps } from 'antd';
 import {
   PictureOutlined,
@@ -42,6 +42,7 @@ export const ReferenceImagePicker: React.FC<ReferenceImagePickerProps> = ({
   size = 'default',
   placeholder = '选择参考图',
 }) => {
+  const { message } = App.useApp();
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [previewVisible, setPreviewVisible] = useState(false);

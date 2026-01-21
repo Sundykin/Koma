@@ -3,7 +3,7 @@
  * 迁移自 electron-egg，完整功能版
  */
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
-import { message } from 'antd';
+import { App } from 'antd';
 import { Track, Clip, Asset, MediaType, EasingType, Keyframe } from '../../types/editor';
 import { SimpleTimeline } from './SimpleTimeline';
 import { SimplePlayer, AspectRatio, getCanvasSize } from './SimplePlayer';
@@ -79,6 +79,7 @@ function shotsToTracks(shots: Shot[]): Track[] {
 }
 
 export const SimpleEditor: React.FC<SimpleEditorProps> = ({ shots = [], projectId, episodeId }) => {
+  const { message } = App.useApp();
   const [tracks, setTracks] = useState<Track[]>([]);
   const [currentTime, setCurrentTime] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);

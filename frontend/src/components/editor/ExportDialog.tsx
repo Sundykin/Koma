@@ -2,7 +2,7 @@
  * 导出对话框组件
  */
 import React, { useState, useCallback, useRef } from 'react';
-import { Modal, Form, Select, InputNumber, Input, Button, Progress, Space, Radio } from 'antd';
+import { Modal, Form, Select, InputNumber, Input, Button, Progress, Space, Radio, App } from 'antd';
 import { ExportOutlined, FolderOutlined } from '@ant-design/icons';
 import { useTrackStore } from '../../store/trackStore';
 import { ExportRenderer, ExportConfig, ExportProgress } from '../../services/exportRenderer';
@@ -34,6 +34,7 @@ const RESOLUTION_PRESETS = [
 ];
 
 export function ExportDialog({ open, onClose }: ExportDialogProps) {
+  const { modal } = App.useApp();
   const { tracks, config: timelineConfig } = useTrackStore();
 
   const [form] = Form.useForm();
@@ -90,7 +91,7 @@ export function ExportDialog({ open, onClose }: ExportDialogProps) {
       await exporter.export(tracks);
 
       // 导出完成
-      Modal.success({
+      modal.success({
         title: '导出完成',
         content: `视频已保存到: ${config.outputPath}`,
       });
@@ -98,7 +99,7 @@ export function ExportDialog({ open, onClose }: ExportDialogProps) {
       onClose();
     } catch (err) {
       if ((err as Error).message !== 'Export aborted') {
-        Modal.error({
+        modal.error({
           title: '导出失败',
           content: (err as Error).message,
         });

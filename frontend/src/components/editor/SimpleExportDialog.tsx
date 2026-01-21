@@ -3,7 +3,7 @@
  * 支持视频导出和草稿导出（剪映等）
  */
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
-import { Modal, Form, Select, InputNumber, Input, Button, Progress, Space, Radio, message, Segmented, Checkbox, Alert } from 'antd';
+import { Modal, Form, Select, InputNumber, Input, Button, Progress, Space, Radio, Segmented, Checkbox, Alert, App } from 'antd';
 import { ExportOutlined, FolderOutlined, WarningOutlined } from '@ant-design/icons';
 import { Track } from '../../types/editor';
 import { SimpleExportRenderer, SimpleExportConfig, SimpleExportProgress } from '../../services/simpleExportRenderer';
@@ -49,6 +49,7 @@ const FPS_OPTIONS = [
 ];
 
 export function SimpleExportDialog({ open, onClose, tracks, duration, canvasSize }: SimpleExportDialogProps) {
+  const { message, modal } = App.useApp();
   const [videoForm] = Form.useForm();
   const [draftForm] = Form.useForm();
   const [exportType, setExportType] = useState<ExportType>('video');
@@ -160,7 +161,7 @@ export function SimpleExportDialog({ open, onClose, tracks, duration, canvasSize
 
       await exporter.export(tracks, duration);
 
-      Modal.success({
+      modal.success({
         title: '导出完成',
         content: `视频已保存到: ${config.outputPath}`,
       });
@@ -168,7 +169,7 @@ export function SimpleExportDialog({ open, onClose, tracks, duration, canvasSize
       onClose();
     } catch (err) {
       if ((err as Error).message !== 'Export aborted') {
-        Modal.error({
+        modal.error({
           title: '导出失败',
           content: (err as Error).message,
         });
@@ -274,7 +275,7 @@ export function SimpleExportDialog({ open, onClose, tracks, duration, canvasSize
           JSON.stringify(exportResult.draftMetaInfo, null, 2)
         );
 
-        Modal.success({
+        modal.success({
           title: '导出完成',
           content: (
             <div>
@@ -296,13 +297,13 @@ export function SimpleExportDialog({ open, onClose, tracks, duration, canvasSize
 
         onClose();
       } else {
-        Modal.error({
+        modal.error({
           title: '导出失败',
           content: result.error,
         });
       }
     } catch (err) {
-      Modal.error({
+      modal.error({
         title: '导出失败',
         content: (err as Error).message,
       });
