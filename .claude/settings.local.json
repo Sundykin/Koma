@@ -37,7 +37,8 @@
       "mcp__ide__getDiagnostics",
       "Bash(openspec archive:*)",
       "Bash(git mv:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(npm info antd:*)"
     ]
   }
 }

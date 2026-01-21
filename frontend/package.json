@@ -17,7 +17,7 @@
     "@codemirror/state": "^6.5.4",
     "@codemirror/view": "^6.39.11",
     "@google/genai": "^1.36.0",
-    "antd": "^5.29.3",
+    "antd": "^6.2.1",
     "codemirror": "^6.0.2",
     "crypto-js": "^4.2.0",
     "lucide-react": "^0.562.0",
