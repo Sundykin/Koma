@@ -6,7 +6,7 @@
 
 ---
 
-## MODIFIED Requirements
+## ADDED Requirements
 
 ### Requirement: Message API 使用方式
 
@@ -64,26 +64,11 @@
 
 ### Requirement: Hook 中使用消息 API
 
-自定义 hook 需要使用消息 API 时，**MUST** 通过参数注入方式获取实例。
+自定义 hook 需要使用消息 API 时，**SHALL** 直接调用 `App.useApp()` hook 获取实例（hook 可以调用其他 hook）。
 
 #### Scenario: Hook 显示操作反馈
 
 **Given** 自定义 hook 执行某些操作需要反馈
-**When** hook 被组件调用时
-**Then** 组件通过参数传入 message 实例
-**And** hook 使用传入的实例显示消息
-
----
-
-## REMOVED Requirements
-
-### Requirement: 静态方法直接导入
-
-不再支持从 antd 直接导入 message、Modal.confirm 等静态方法。
-
-#### Scenario: 尝试使用静态导入
-
-**Given** 代码中存在 `import { message } from 'antd'`
-**When** 使用 `message.success()` 等方法
-**Then** 应迁移为 `App.useApp().message.success()`
-**And** 移除静态导入语句
+**When** hook 内部需要显示消息
+**Then** hook 内直接调用 `App.useApp()` 获取 message 实例
+**And** 使用获取的实例显示消息
