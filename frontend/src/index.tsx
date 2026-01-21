@@ -49,8 +49,8 @@ const darkTheme = {
     },
     Menu: {
       colorBgContainer: 'transparent',
-      colorItemBgSelected: 'rgba(16, 185, 129, 0.1)',
-      colorItemTextSelected: '#10b981',
+      itemSelectedBg: 'rgba(16, 185, 129, 0.1)',
+      itemSelectedColor: '#10b981',
     },
   },
 };

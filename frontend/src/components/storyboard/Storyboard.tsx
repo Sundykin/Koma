@@ -802,7 +802,9 @@ export const Storyboard: React.FC<StoryboardProps> = ({
   if (loading) {
     return (
       <div className="storyboardContainer" style={{ justifyContent: 'center', alignItems: 'center' }}>
-        <Spin size="large" tip="加载分镜数据..." />
+        <Spin size="large" tip="加载分镜数据...">
+          <div style={{ padding: 50 }} />
+        </Spin>
       </div>
     );
   }
@@ -818,7 +820,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
             {isAnalyzing ? (
               <Spin indicator={<LoadingOutlined style={{ fontSize: 24 }} spin />} />
             ) : (
-              <Space direction="vertical" size="middle">
+              <Space orientation="vertical" size="middle">
                 {script && episodeId && (
                   <Button
                     type="primary"

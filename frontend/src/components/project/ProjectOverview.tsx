@@ -212,8 +212,10 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
               }
               className="flex-1 flex flex-col"
               style={{ background: '#18181b', border: '1px solid #27272a' }}
-              headStyle={{ borderBottom: '1px solid #27272a', flexShrink: 0 }}
-              bodyStyle={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}
+              styles={{
+                header: { borderBottom: '1px solid #27272a', flexShrink: 0 },
+                body: { flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' },
+              }}
             >
               {/* 分集列表 - 内部滚动 */}
               <div className="flex-1 overflow-y-auto">
