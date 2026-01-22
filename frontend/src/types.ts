@@ -116,6 +116,11 @@ export interface Prop {
   description: string; // 视觉描述
   imagePath?: string;  // 道具参考图本地路径
   imageUrl?: string;   // 道具参考图远程URL
+  // Sora2 绑定相关
+  previewVideoPath?: string;   // 预览视频路径
+  previewVideoTaskId?: string; // 预览视频生成任务 ID
+  sora2PropId?: string;        // Sora2 道具 ID（用于视频生成时的道具绑定）
+  customPrompt?: string;       // 用户自定义生成提示词
   // 分集引用追踪
   episodeRefs?: EpisodeRef[];
   fingerprint?: string;

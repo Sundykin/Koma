@@ -22,12 +22,13 @@ import type { Shot, Character, Scene, Prop, AppSettings, ShotVideo } from '../..
 import { loadEpisodeShots, saveEpisodeShots, loadCharacters, loadScenes, loadProps } from '../../store/projectStore';
 import { generateShotImage, batchGenerateShotImages } from '../../services/ShotGenerationService';
 import { shotRenderWorkflow, batchRenderShots } from '../../workflow/shotRenderWorkflow';
-import { startShotAnalysis } from '../../services/ShotAnalysisService';
+import { startShotAnalysis, type PresetAssets } from '../../services/ShotAnalysisService';
 import { generateShotPrompt, batchGenerateShotPrompts } from '../../services/ShotPromptService';
 import { TaskManager } from '../../services/TaskManager';
 import { ScriptEditor } from '../../editor';
 import type { MentionItem } from '../../editor';
 import { ShotListEditor } from './ShotListEditor';
+import { ShotAssetPresetModal } from './ShotAssetPresetModal';
 import './Storyboard.css';
 import './ShotListEditor.css';
 
@@ -102,25 +103,35 @@ export const Storyboard: React.FC<StoryboardProps> = ({
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [batchProgress, setBatchProgress] = useState<{ current: number; total: number; step?: string } | undefined>();
 
+  // 预选资产弹窗
+  const [presetModalOpen, setPresetModalOpen] = useState(false);
+  const [presetAssets, setPresetAssets] = useState<PresetAssets | null>(null);
+
   // 编辑弹窗
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editingShot, setEditingShot] = useState<Shot | null>(null);
   const [editFormData, setEditFormData] = useState<Partial<Shot>>({});
 
   // 实际使用的 mentionItems
+  // 只有已绑定 Sora2 的角色/道具才能在编辑器中被 @ 引用
   const actualMentionItems: MentionItem[] = useMemo(() => {
     if (mentionItems.length > 0) return mentionItems;
     const items: MentionItem[] = [];
-    characters.forEach(char => {
-      items.push({
-        id: char.id,
-        type: 'char' as const,
-        name: char.name,
-        description: char.description,
-        previewImage: char.costumePhotoPath,
-        sora2CharacterId: char.sora2CharacterId,
+
+    // 只添加已绑定 Sora2 的角色，使用 sora2CharacterId 作为 mention ID
+    characters
+      .filter(char => char.sora2CharacterId)
+      .forEach(char => {
+        items.push({
+          id: char.sora2CharacterId!,  // 使用 Sora2 ID 避免 @char_char_xxx 重复
+          type: 'char' as const,
+          name: char.name,
+          description: char.description,
+          previewImage: char.costumePhotoPath,
+        });
       });
-    });
+
+    // 场景不需要 Sora2 绑定，保持使用自定义 ID
     scenes.forEach(scene => {
       items.push({
         id: scene.id,
@@ -130,15 +141,20 @@ export const Storyboard: React.FC<StoryboardProps> = ({
         previewImage: scene.imagePath,
       });
     });
-    props.forEach(prop => {
-      items.push({
-        id: prop.id,
-        type: 'prop' as const,
-        name: prop.name,
-        description: prop.description,
-        previewImage: prop.imagePath,
+
+    // 只添加已绑定 Sora2 的道具，使用 sora2PropId 作为 mention ID
+    props
+      .filter(prop => prop.sora2PropId)
+      .forEach(prop => {
+        items.push({
+          id: prop.sora2PropId!,  // 使用 Sora2 ID
+          type: 'prop' as const,
+          name: prop.name,
+          description: prop.description,
+          previewImage: prop.imagePath,
+        });
       });
-    });
+
     return items;
   }, [mentionItems, characters, scenes, props]);
 
@@ -573,20 +589,58 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     await saveAllShots(updatedShots);
   }, [shots, saveAllShots, createNewShot]);
 
-  const handleGenerateAIShots = useCallback(async () => {
+  // 打开预选资产弹窗
+  const handleOpenPresetModal = useCallback(() => {
     if (!episodeId || !script) {
       message.warning('缺少分集信息或剧本内容');
       return;
     }
+    setPresetModalOpen(true);
+  }, [episodeId, script, message]);
+
+  // 预选资产确认后执行 AI 分镜生成
+  const handlePresetConfirm = useCallback(async (assets: PresetAssets) => {
+    setPresetModalOpen(false);
+    setPresetAssets(assets);
     setIsAnalyzing(true);
     try {
-      await startShotAnalysis(projectId, episodeId, episodeName || `分集 ${episodeId}`, script, llmConfigId);
+      await startShotAnalysis(
+        projectId,
+        episodeId!,
+        episodeName || `分集 ${episodeId}`,
+        script!,
+        llmConfigId,
+        assets  // 传递预选资产
+      );
       message.info('AI 分镜生成任务已启动，可在状态栏查看进度');
     } catch (err: any) {
       message.error(err.message || '启动生成失败');
       setIsAnalyzing(false);
     }
-  }, [projectId, episodeId, episodeName, script, llmConfigId]);
+  }, [projectId, episodeId, episodeName, script, llmConfigId, message]);
+
+  const handleGenerateAIShots = useCallback(async () => {
+    if (!episodeId || !script) {
+      message.warning('缺少分集信息或剧本内容');
+      return;
+    }
+    // 检查是否有已绑定 Sora2 的资产，如有则打开预选对话框
+    const hasBoundCharacters = characters.some(c => c.sora2CharacterId);
+    const hasBoundProps = props.some(p => p.sora2PropId);
+    if (hasBoundCharacters || hasBoundProps) {
+      setPresetModalOpen(true);
+    } else {
+      // 无已绑定资产，直接生成
+      setIsAnalyzing(true);
+      try {
+        await startShotAnalysis(projectId, episodeId, episodeName || `分集 ${episodeId}`, script, llmConfigId);
+        message.info('AI 分镜生成任务已启动，可在状态栏查看进度');
+      } catch (err: any) {
+        message.error(err.message || '启动生成失败');
+        setIsAnalyzing(false);
+      }
+    }
+  }, [projectId, episodeId, episodeName, script, llmConfigId, characters, props, message]);
 
   const handleSaveEdit = useCallback(async () => {
     if (!editFormData.scriptContent?.trim()) {
@@ -963,6 +1017,15 @@ export const Storyboard: React.FC<StoryboardProps> = ({
           </Form.Item>
         </Form>
       </Modal>
+
+      {/* 预选资产弹窗 */}
+      <ShotAssetPresetModal
+        open={presetModalOpen}
+        characters={characters}
+        props={props}
+        onConfirm={handlePresetConfirm}
+        onCancel={() => setPresetModalOpen(false)}
+      />
     </div>
   );
 };

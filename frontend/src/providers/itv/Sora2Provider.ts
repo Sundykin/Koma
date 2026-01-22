@@ -197,4 +197,38 @@ export class Sora2Provider implements ITVProvider {
     const data = await response.json();
     return data.id || data.character_id || data.data?.id;
   }
+
+  /**
+   * 道具提取 API
+   * 从视频生成任务中提取道具，返回道具ID用于后续视频生成时引用
+   * @param taskId 视频生成任务的 ID（由 generate() 返回）
+   * @param timestamps 可选，指定提取时间段，格式 "开始秒,结束秒"（如 "3,6"）
+   * @returns 道具 ID（用于在 prompt 中通过 @道具ID 引用）
+   */
+  async extractProp(taskId: string, timestamps?: string): Promise<string> {
+    if (!this.validate()) {
+      throw new Error('API Key 未配置');
+    }
+
+    const body: Record<string, string> = {
+      from_task: taskId,
+    };
+    if (timestamps) {
+      body.timestamps = timestamps;
+    }
+
+    const response = await fetch(`${this.getBaseUrl()}/v1/props`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`道具提取失败: ${errorText}`);
+    }
+
+    const data = await response.json();
+    return data.id || data.prop_id || data.data?.id;
+  }
 }

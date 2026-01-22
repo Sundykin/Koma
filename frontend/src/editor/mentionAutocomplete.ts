@@ -49,7 +49,7 @@ function createMentionCompletions(
       .map((item) => ({
         label: item.name,
         type: item.type === 'char' ? 'variable' : item.type === 'prop' ? 'property' : 'class',
-        detail: getTypeLabel(item.type, item.sora2CharacterId),
+        detail: getTypeLabel(item.type),
         info: item.description,
         apply: (view, completion, from, to) => {
           // 插入 @type_id 格式
@@ -79,13 +79,13 @@ function createMentionCompletions(
   };
 }
 
-function getTypeLabel(type: MentionType, sora2Id?: string): string {
-  const prefix = sora2Id ? '🎬 ' : '';
+// 所有显示在列表中的角色/道具都已绑定 Sora2，统一显示标记
+function getTypeLabel(type: MentionType): string {
   switch (type) {
     case 'char':
-      return prefix + '角色';
+      return '🎬 角色';
     case 'prop':
-      return '道具';
+      return '🎬 道具';
     case 'scene':
       return '场景';
     default:

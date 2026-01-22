@@ -24,6 +24,8 @@ export interface ITVProvider {
   cancelTask?(taskId: string): Promise<void>;
   // 角色提取（Sora2 专有功能）
   extractCharacter?(taskId: string, timestamps?: string): Promise<string>;
+  // 道具提取（Sora2 专有功能）
+  extractProp?(taskId: string, timestamps?: string): Promise<string>;
 }
 
 export { ITVConfig, ITVOptions, VideoResult, ProgressInfo };

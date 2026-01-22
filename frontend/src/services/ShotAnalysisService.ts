@@ -16,6 +16,12 @@ import {
   loadEpisode,
 } from '../store/projectStore';
 
+// 预选资产类型
+export interface PresetAssets {
+  characterIds: string[];
+  propIds: string[];
+}
+
 // 分镜 JSON Schema（不含 description，后续手动生成提示词）
 const SHOTS_SCHEMA = {
   type: 'object',
@@ -44,6 +50,7 @@ const SHOTS_SCHEMA = {
 export class ShotAnalysisService {
   private projectId: string;
   private llmConfig: LLMModelConfig | null = null;
+  private presetAssets: PresetAssets | null = null;
 
   constructor(projectId: string) {
     this.projectId = projectId;
@@ -59,13 +66,17 @@ export class ShotAnalysisService {
 
   /**
    * 启动分镜生成任务
+   * @param presetAssets 预选资产，用于优先匹配
    */
   async startShotAnalysis(
     episodeId: string,
     episodeName: string,
     script: string,
-    llmConfigId?: string
+    llmConfigId?: string,
+    presetAssets?: PresetAssets
   ): Promise<Task> {
+    this.presetAssets = presetAssets || null;
+
     const task = TaskManager.createTask({
       projectId: this.projectId,
       type: 'shot-analysis',
@@ -152,8 +163,27 @@ export class ShotAnalysisService {
       console.log('[ShotAnalysis] 解析结果:', parsed.shots?.length, '个分镜');
 
       // 将角色名/道具名映射到 ID
-      const charNameToId = new Map(characters.map(c => [c.name, c.id]));
-      const propNameToId = new Map(props.map(p => [p.name, p.id]));
+      // 优先使用预选资产的 Sora2 ID，其次使用已绑定的 Sora2 ID，最后使用自定义 ID
+      const presetCharacterIds = new Set(this.presetAssets?.characterIds || []);
+      const presetPropIds = new Set(this.presetAssets?.propIds || []);
+
+      const charNameToId = new Map(characters.map(c => {
+        // 如果角色有 Sora2 ID 且在预选列表中，优先使用
+        if (c.sora2CharacterId && presetCharacterIds.has(c.sora2CharacterId)) {
+          return [c.name, c.sora2CharacterId];
+        }
+        // 否则使用 Sora2 ID 或自定义 ID
+        return [c.name, c.sora2CharacterId || c.id];
+      }));
+
+      const propNameToId = new Map(props.map(p => {
+        // 如果道具有 Sora2 ID 且在预选列表中，优先使用
+        if (p.sora2PropId && presetPropIds.has(p.sora2PropId)) {
+          return [p.name, p.sora2PropId];
+        }
+        // 否则使用 Sora2 ID 或自定义 ID
+        return [p.name, p.sora2PropId || p.id];
+      }));
 
       // 分镜拆解时 description 为 undefined，后续手动生成
       const shots: Shot[] = parsed.shots.map((s, index) => ({
@@ -223,8 +253,9 @@ export async function startShotAnalysis(
   episodeId: string,
   episodeName: string,
   script: string,
-  llmConfigId?: string
+  llmConfigId?: string,
+  presetAssets?: PresetAssets
 ): Promise<Task> {
   const service = new ShotAnalysisService(projectId);
-  return service.startShotAnalysis(episodeId, episodeName, script, llmConfigId);
+  return service.startShotAnalysis(episodeId, episodeName, script, llmConfigId, presetAssets);
 }

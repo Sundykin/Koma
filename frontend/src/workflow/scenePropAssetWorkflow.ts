@@ -2,8 +2,8 @@
  * 场景/道具资产生成工作流
  */
 import type { Scene, Prop } from '../types';
-import { getProjectTTIProvider } from '../providers';
-import { createTask, markTaskCompleted, markTaskFailed } from '../store/taskQueueStore';
+import { getProjectTTIProvider, getProjectITVProvider } from '../providers';
+import { createTask, updateTask, markTaskCompleted, markTaskFailed } from '../store/taskQueueStore';
 import { downloadRemoteAsset } from '../store/assetDownloadService';
 import {
   saveSceneImage,
@@ -16,7 +16,7 @@ import {
 import { getStorageConfig, initStorageConfig } from '../store/storageConfig';
 import { getThemeStylePrefix, getThemeStylePrefixAsync } from '../config/themePresets';
 import { createLogger } from '../store/logger';
-import { logTTICall } from '../store/aiCallLogger';
+import { logTTICall, logITVCall } from '../store/aiCallLogger';
 import { getPromptTemplate, fillTemplate } from '../store/promptTemplates';
 
 const logger = createLogger('ScenePropAsset');
@@ -335,6 +335,155 @@ export async function generateAllPropImages(
   }
 
   return { success, failed, results };
+}
+
+// ========== 道具预览视频生成 ==========
+
+interface PropVideoOptions {
+  projectId: string;
+  prop: Prop;
+  itvConfigId?: string;
+  onProgress?: (progress: number, step: string) => void;
+}
+
+/**
+ * 生成道具预览视频
+ * 使用道具图片 + ITV 服务生成短视频
+ */
+export async function generatePropPreviewVideo(
+  options: PropVideoOptions
+): Promise<{ success: boolean; path?: string; taskId?: string; error?: string }> {
+  const { projectId, prop, itvConfigId, onProgress } = options;
+
+  logger.info(`开始生成道具预览视频: ${prop.name}`);
+  onProgress?.(0, '准备生成预览视频...');
+
+  // 优先使用远程 URL
+  const imageSource = prop.imageUrl || prop.imagePath;
+  if (!imageSource) {
+    return { success: false, error: '请先生成道具参考图' };
+  }
+
+  if (!prop.imageUrl) {
+    logger.warn(`道具 ${prop.name} 没有远程图片 URL，将使用本地路径。某些服务（如 Sora2）可能需要远程 URL。`);
+  }
+
+  try {
+    const itvProvider = await getProjectITVProvider(itvConfigId);
+    if (!itvProvider) {
+      throw new Error('未配置 ITV 服务');
+    }
+
+    // 创建任务记录
+    const task = await createTask(projectId, {
+      projectId,
+      type: 'itv',
+      targetType: 'prop',
+      targetId: prop.id,
+      targetName: `${prop.name} 预览视频`,
+      remoteTaskId: '',
+      status: 'pending',
+      progress: 0,
+      maxRetries: 3,
+    });
+
+    onProgress?.(10, '调用 ITV 服务...');
+
+    // 构建道具视频提示词
+    const prompt = prop.customPrompt || `${prop.name} prop showcase, rotating slowly, detailed view, studio lighting`;
+
+    logITVCall(
+      itvProvider.config?.name || 'ITV',
+      imageSource,
+      prompt,
+      { duration: 4, aspectRatio: '1:1' },
+      { projectId, targetId: prop.id, targetName: `${prop.name} 预览视频` }
+    );
+
+    const taskId = await itvProvider.generate(imageSource, prompt, {
+      duration: 4,
+      aspectRatio: '1:1', // 道具用正方形视频
+    });
+
+    if (typeof taskId === 'string' && itvProvider.checkProgress) {
+      await updateTask(projectId, task.id, { remoteTaskId: taskId, status: 'processing' });
+
+      // 轮询等待完成
+      let progress = await itvProvider.checkProgress(taskId);
+      while (progress.status === 'queued' || progress.status === 'processing') {
+        await sleep(3000);
+        progress = await itvProvider.checkProgress(taskId);
+        onProgress?.(10 + progress.progress * 0.8, `生成中 ${progress.progress}%`);
+      }
+
+      if (progress.status === 'completed' && progress.resultUrl) {
+        onProgress?.(90, '下载视频...');
+        const config = getStorageConfig() || (await initStorageConfig());
+        const localPath = `${config.rootPath}/projects/${projectId}/assets/props/${prop.id}/preview.mp4`;
+        const downloadResult = await downloadRemoteAsset(progress.resultUrl, localPath);
+
+        if (downloadResult.success && downloadResult.localPath) {
+          await markTaskCompleted(projectId, task.id, progress.resultUrl, downloadResult.localPath);
+          await updatePropAsset(projectId, prop.id, {
+            previewVideoPath: downloadResult.localPath,
+            previewVideoTaskId: taskId,
+          });
+          onProgress?.(100, '完成');
+          return { success: true, path: downloadResult.localPath, taskId };
+        }
+      }
+
+      await markTaskFailed(projectId, task.id, progress.error || '生成失败');
+      return { success: false, error: progress.error || '生成失败' };
+    }
+
+    return { success: false, error: 'ITV Provider 不支持异步任务' };
+  } catch (err: any) {
+    logger.error(`生成道具预览视频失败: ${prop.name}`, { error: err.message });
+    return { success: false, error: err.message };
+  }
+}
+
+/**
+ * 调用道具提取API绑定道具
+ * 需要先生成预览视频并保存任务 ID
+ */
+export async function extractAndBindProp(
+  projectId: string,
+  prop: Prop,
+  itvConfigId?: string
+): Promise<{ success: boolean; propId?: string; error?: string }> {
+  logger.info(`开始提取道具: ${prop.name}`);
+
+  // 检查是否有视频生成任务 ID
+  if (!prop.previewVideoTaskId) {
+    if (prop.previewVideoPath) {
+      return { success: false, error: '请重新生成预览视频（需要保存任务ID用于道具提取）' };
+    }
+    return { success: false, error: '请先生成预览视频' };
+  }
+
+  try {
+    const itvProvider = await getProjectITVProvider(itvConfigId);
+    if (!itvProvider) {
+      throw new Error('未配置 ITV 服务');
+    }
+
+    // 检查是否支持道具提取
+    if (!itvProvider.extractProp) {
+      return { success: false, error: 'ITV Provider 不支持道具提取' };
+    }
+
+    // 使用任务 ID 调用道具提取 API
+    const sora2PropId = await itvProvider.extractProp(prop.previewVideoTaskId);
+    await updatePropAsset(projectId, prop.id, { sora2PropId });
+
+    logger.info(`道具提取成功: ${prop.name} -> ${sora2PropId}`);
+    return { success: true, propId: sora2PropId };
+  } catch (err: any) {
+    logger.error(`道具提取失败: ${prop.name}`, { error: err.message });
+    return { success: false, error: err.message };
+  }
 }
 
 // ========== 辅助函数（硬编码默认模板，作为 fallback）==========
