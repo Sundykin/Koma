@@ -39,7 +39,10 @@
       "Bash(git mv:*)",
       "Bash(find:*)",
       "Bash(npm info antd:*)",
-      "WebFetch(domain:ant.design)"
+      "WebFetch(domain:ant.design)",
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "Bash(npm info:*)"
     ]
   }
 }

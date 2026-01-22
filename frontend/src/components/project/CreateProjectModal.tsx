@@ -73,7 +73,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ isOpen, 
 
         <Form.Item name="mode" label="叙事模式">
           <Radio.Group buttonStyle="solid" style={{ width: '100%' }}>
-            <Space direction="vertical" style={{ width: '100%' }} size="middle">
+            <Space orientation="vertical" style={{ width: '100%' }} size="middle">
               <Radio.Button
                 value="drama"
                 style={{ width: '100%', height: 48, display: 'flex', alignItems: 'center', justifyContent: 'center' }}

@@ -92,7 +92,7 @@ export const ProjectLLMSelector: React.FC<ProjectLLMSelectorProps> = ({
 
   return (
     <div>
-      <Space direction="vertical" style={{ width: '100%' }} size="small">
+      <Space orientation="vertical" style={{ width: '100%' }} size="small">
         <Select
           style={{ width: '100%' }}
           loading={loading}

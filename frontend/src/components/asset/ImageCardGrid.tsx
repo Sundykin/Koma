@@ -211,8 +211,8 @@ export const ImageCardGrid: React.FC<ImageCardGridProps> = ({
       {/* 图片预览 */}
       <Image.PreviewGroup
         preview={{
-          visible: previewVisible,
-          onVisibleChange: setPreviewVisible,
+          open: previewVisible,
+          onOpenChange: setPreviewVisible,
           current: previewIndex,
         }}
       >

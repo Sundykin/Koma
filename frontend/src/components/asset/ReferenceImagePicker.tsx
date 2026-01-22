@@ -286,8 +286,8 @@ export const ReferenceImagePicker: React.FC<ReferenceImagePickerProps> = ({
             height={height}
             style={{ objectFit: 'cover' }}
             preview={{
-              visible: previewVisible,
-              onVisibleChange: setPreviewVisible,
+              open: previewVisible,
+              onOpenChange: setPreviewVisible,
               mask: false,
             }}
           />

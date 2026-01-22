@@ -11,7 +11,7 @@ import {
   Radio,
   Space,
   Typography,
-  List,
+  Flex,
   Spin,
   Card,
   App,
@@ -181,7 +181,7 @@ export const EpisodeSplitWizard: React.FC<EpisodeSplitWizardProps> = ({
               value={splitStrategy}
               onChange={(e) => setSplitStrategy(e.target.value)}
             >
-              <Space direction="vertical">
+              <Space orientation="vertical">
                 <Radio value="auto">智能分析（推荐）</Radio>
                 <Radio value="scene">按场景分割</Radio>
                 <Radio value="chapter">按章节分割</Radio>
@@ -237,32 +237,23 @@ export const EpisodeSplitWizard: React.FC<EpisodeSplitWizardProps> = ({
             <Text strong>分集预览 ({splitResults.length} 集)</Text>
           </div>
 
-          <List
-            bordered
-            dataSource={splitResults}
-            style={{ maxHeight: 300, overflow: 'auto' }}
-            renderItem={(item, index) => (
-              <List.Item>
-                <List.Item.Meta
-                  avatar={
-                    <div className="w-8 h-8 bg-green-100 text-green-600 rounded-full flex items-center justify-center font-bold">
-                      {index + 1}
-                    </div>
-                  }
-                  title={item.title}
-                  description={
-                    <>
-                      <Text type="secondary">{item.summary}</Text>
-                      <br />
-                      <Text type="secondary" className="text-xs">
-                        {item.scriptText.length} 字符
-                      </Text>
-                    </>
-                  }
-                />
-              </List.Item>
-            )}
-          />
+          <Flex vertical gap={8} style={{ maxHeight: 300, overflow: 'auto', border: '1px solid #303030', borderRadius: 8 }}>
+            {splitResults.map((item, index) => (
+              <div key={index} style={{ padding: '12px 16px', borderBottom: '1px solid #303030', display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+                <div className="w-8 h-8 bg-green-100 text-green-600 rounded-full flex items-center justify-center font-bold" style={{ flexShrink: 0 }}>
+                  {index + 1}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 500 }}>{item.title}</div>
+                  <Text type="secondary">{item.summary}</Text>
+                  <br />
+                  <Text type="secondary" className="text-xs">
+                    {item.scriptText.length} 字符
+                  </Text>
+                </div>
+              </div>
+            ))}
+          </Flex>
 
           <div className="flex justify-end gap-3 pt-4">
             <Button onClick={() => setStep('config')}>

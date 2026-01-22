@@ -8,7 +8,7 @@ import {
   Steps,
   Button,
   Card,
-  List,
+  Flex,
   Avatar,
   Progress,
   Typography,
@@ -369,41 +369,25 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
       null;
 
     return (
-      <List.Item
-        actions={[
-          item.status === 'failed' && (
-            <Button
-              key="retry"
-              type="link"
-              icon={<ReloadOutlined />}
-              onClick={() => toggleSelect(type, item.id)}
-            >
-              重试
-            </Button>
-          ),
-        ].filter(Boolean)}
-      >
-        <List.Item.Meta
-          avatar={
-            <Checkbox
-              checked={item.selected}
-              onChange={() => toggleSelect(type, item.id)}
-              disabled={generating || item.status === 'generating'}
-            />
-          }
-          title={
-            <Space>
-              {item.name}
-              {statusIcon}
-              {item.status === 'generating' && (
-                <Text type="secondary">{item.progress}%</Text>
-              )}
-            </Space>
-          }
-          description={item.error && <Text type="danger">{item.error}</Text>}
+      <div key={item.id} style={{ display: 'flex', alignItems: 'center', padding: '12px 0', borderBottom: '1px solid #303030' }}>
+        <Checkbox
+          checked={item.selected}
+          onChange={() => toggleSelect(type, item.id)}
+          disabled={generating || item.status === 'generating'}
+          style={{ marginRight: 12 }}
         />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <Space>
+            {item.name}
+            {statusIcon}
+            {item.status === 'generating' && (
+              <Text type="secondary">{item.progress}%</Text>
+            )}
+          </Space>
+          {item.error && <div><Text type="danger">{item.error}</Text></div>}
+        </div>
         {item.imagePath && (
-          <div style={{ width: 60, height: 60 }}>
+          <div style={{ width: 60, height: 60, marginLeft: 12 }}>
             {type === 'videos' ? (
               <video
                 src={item.imagePath}
@@ -418,7 +402,17 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
             )}
           </div>
         )}
-      </List.Item>
+        {item.status === 'failed' && (
+          <Button
+            type="link"
+            icon={<ReloadOutlined />}
+            onClick={() => toggleSelect(type, item.id)}
+            style={{ marginLeft: 8 }}
+          >
+            重试
+          </Button>
+        )}
+      </div>
     );
   };
 
@@ -446,7 +440,7 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
 
           {generating && (
             <Card size="small" style={{ marginBottom: 16 }}>
-              <Space direction="vertical" style={{ width: '100%' }}>
+              <Space orientation="vertical" style={{ width: '100%' }}>
                 <Text>正在生成: {currentItem}</Text>
                 <Progress percent={Math.round(overallProgress)} status="active" />
               </Space>
@@ -478,7 +472,7 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
                 </Button>
               </Space>
             }
-            bodyStyle={{ maxHeight: 360, overflow: 'auto' }}
+            styles={{ body: { maxHeight: 360, overflow: 'auto' } }}
           >
             {currentList.length === 0 ? (
               <Result
@@ -487,10 +481,9 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
                 subTitle={`请先在剧本分析中提取${stepConfig[currentStep].title.replace(/预览图|参考图|定妆照|视频/g, '')}`}
               />
             ) : (
-              <List
-                dataSource={currentList}
-                renderItem={(item) => renderListItem(item, stepConfig[currentStep].key as WizardStep)}
-              />
+              <Flex vertical>
+                {currentList.map((item) => renderListItem(item, stepConfig[currentStep].key as WizardStep))}
+              </Flex>
             )}
           </Card>
 

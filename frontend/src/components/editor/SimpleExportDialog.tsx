@@ -57,6 +57,9 @@ export function SimpleExportDialog({ open, onClose, tracks, duration, canvasSize
   const [progress, setProgress] = useState<SimpleExportProgress | null>(null);
   const exporterRef = useRef<SimpleExportRenderer | null>(null);
 
+  // 监听 fps 字段变化
+  const fpsValue = Form.useWatch('fps', videoForm) ?? 30;
+
   // 路径状态（用于显示）
   const [videoOutputPath, setVideoOutputPath] = useState('');
   const [draftOutputPath, setDraftOutputPath] = useState('');
@@ -505,7 +508,7 @@ export function SimpleExportDialog({ open, onClose, tracks, duration, canvasSize
               <div style={styles.infoBox}>
                 <p>时长: {duration.toFixed(1)} 秒</p>
                 <p>轨道: {tracks.length} 个</p>
-                <p>预计帧数: {Math.ceil(duration * (videoForm.getFieldValue('fps') || 30))} 帧</p>
+                <p>预计帧数: {Math.ceil(duration * fpsValue)} 帧</p>
               </div>
             </Form>
           </div>

@@ -6,7 +6,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   Card,
   Tabs,
-  List,
+  Flex,
   Avatar,
   Tag,
   Space,
@@ -89,73 +89,61 @@ export const ProjectAssetOverview: React.FC<ProjectAssetOverviewProps> = ({
   };
 
   const renderCharacterItem = (character: Character) => (
-    <List.Item
+    <div
       key={character.id}
       className="cursor-pointer hover:bg-gray-800 transition-colors rounded px-2 py-1"
-      style={{ padding: '6px 8px' }}
+      style={{ padding: '6px 8px', display: 'flex', alignItems: 'center', gap: 8 }}
       onClick={() => onAssetClick?.(character.id, 'character')}
     >
-      <List.Item.Meta
-        avatar={
-          <Avatar
-            size="small"
-            src={character.costumePhotoPath ? electronService.fs.toLocalUrl(character.costumePhotoPath) : undefined}
-            icon={<UserOutlined />}
-            style={{ backgroundColor: '#10b981' }}
-          />
-        }
-        title={
-          <span className="text-white text-sm">{character.name}</span>
-        }
-        description={renderEpisodeRefs(character.episodeRefs)}
+      <Avatar
+        size="small"
+        src={character.costumePhotoPath ? electronService.fs.toLocalUrl(character.costumePhotoPath) : undefined}
+        icon={<UserOutlined />}
+        style={{ backgroundColor: '#10b981' }}
       />
-    </List.Item>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <span className="text-white text-sm">{character.name}</span>
+        {renderEpisodeRefs(character.episodeRefs)}
+      </div>
+    </div>
   );
 
   const renderSceneItem = (scene: Scene) => (
-    <List.Item
+    <div
       key={scene.id}
       className="cursor-pointer hover:bg-gray-800 transition-colors rounded px-2 py-1"
-      style={{ padding: '6px 8px' }}
+      style={{ padding: '6px 8px', display: 'flex', alignItems: 'center', gap: 8 }}
       onClick={() => onAssetClick?.(scene.id, 'scene')}
     >
-      <List.Item.Meta
-        avatar={
-          <Avatar
-            size="small"
-            icon={<EnvironmentOutlined />}
-            style={{ backgroundColor: '#8b5cf6' }}
-          />
-        }
-        title={
-          <span className="text-white text-sm">{scene.name}</span>
-        }
-        description={renderEpisodeRefs(scene.episodeRefs)}
+      <Avatar
+        size="small"
+        icon={<EnvironmentOutlined />}
+        style={{ backgroundColor: '#8b5cf6' }}
       />
-    </List.Item>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <span className="text-white text-sm">{scene.name}</span>
+        {renderEpisodeRefs(scene.episodeRefs)}
+      </div>
+    </div>
   );
 
   const renderPropItem = (prop: Prop) => (
-    <List.Item
+    <div
       key={prop.id}
       className="cursor-pointer hover:bg-gray-800 transition-colors rounded px-2 py-1"
-      style={{ padding: '6px 8px' }}
+      style={{ padding: '6px 8px', display: 'flex', alignItems: 'center', gap: 8 }}
       onClick={() => onAssetClick?.(prop.id, 'prop')}
     >
-      <List.Item.Meta
-        avatar={
-          <Avatar
-            size="small"
-            icon={<GiftOutlined />}
-            style={{ backgroundColor: '#f59e0b' }}
-          />
-        }
-        title={
-          <span className="text-white text-sm">{prop.name}</span>
-        }
-        description={renderEpisodeRefs(prop.episodeRefs)}
+      <Avatar
+        size="small"
+        icon={<GiftOutlined />}
+        style={{ backgroundColor: '#f59e0b' }}
       />
-    </List.Item>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <span className="text-white text-sm">{prop.name}</span>
+        {renderEpisodeRefs(prop.episodeRefs)}
+      </div>
+    </div>
   );
 
   if (loading) {
@@ -163,7 +151,7 @@ export const ProjectAssetOverview: React.FC<ProjectAssetOverviewProps> = ({
       <Card
         className="h-full flex flex-col"
         style={{ background: '#141414', border: '1px solid #333' }}
-        bodyStyle={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+        styles={{ body: { flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' } }}
       >
         <Spin />
       </Card>
@@ -192,8 +180,10 @@ export const ProjectAssetOverview: React.FC<ProjectAssetOverviewProps> = ({
       }
       className="h-full flex flex-col"
       style={{ background: '#141414', border: '1px solid #333' }}
-      headStyle={{ borderBottom: '1px solid #333', flexShrink: 0 }}
-      bodyStyle={{ flex: 1, overflow: 'hidden', padding: 0, display: 'flex', flexDirection: 'column' }}
+      styles={{
+        header: { borderBottom: '1px solid #333', flexShrink: 0 },
+        body: { flex: 1, overflow: 'hidden', padding: 0, display: 'flex', flexDirection: 'column' },
+      }}
     >
       <Tabs
         defaultActiveKey="characters"
@@ -215,11 +205,9 @@ export const ProjectAssetOverview: React.FC<ProjectAssetOverviewProps> = ({
                 {characters.length === 0 ? (
                   <Empty description="暂无角色" className="py-4" />
                 ) : (
-                  <List
-                    dataSource={characters}
-                    renderItem={renderCharacterItem}
-                    split={false}
-                  />
+                  <Flex vertical>
+                    {characters.map(renderCharacterItem)}
+                  </Flex>
                 )}
               </div>
             ),
@@ -237,11 +225,9 @@ export const ProjectAssetOverview: React.FC<ProjectAssetOverviewProps> = ({
                 {scenes.length === 0 ? (
                   <Empty description="暂无场景" className="py-4" />
                 ) : (
-                  <List
-                    dataSource={scenes}
-                    renderItem={renderSceneItem}
-                    split={false}
-                  />
+                  <Flex vertical>
+                    {scenes.map(renderSceneItem)}
+                  </Flex>
                 )}
               </div>
             ),
@@ -259,11 +245,9 @@ export const ProjectAssetOverview: React.FC<ProjectAssetOverviewProps> = ({
                 {props.length === 0 ? (
                   <Empty description="暂无道具" className="py-4" />
                 ) : (
-                  <List
-                    dataSource={props}
-                    renderItem={renderPropItem}
-                    split={false}
-                  />
+                  <Flex vertical>
+                    {props.map(renderPropItem)}
+                  </Flex>
                 )}
               </div>
             ),

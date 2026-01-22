@@ -5,7 +5,7 @@
 import React, { useState, useEffect, useCallback, forwardRef, useImperativeHandle } from 'react';
 import {
   Button,
-  List,
+  Flex,
   Modal,
   Form,
   Input,
@@ -275,19 +275,36 @@ ${fullScript}
       ) : episodes.length === 0 ? (
         <Empty description='暂无分集，点击"添加分集"创建' />
       ) : (
-        <List
-          bordered
-          dataSource={episodes}
-          renderItem={(episode) => (
-            <List.Item
+        <Flex vertical gap={8} style={{ border: '1px solid #303030', borderRadius: 8 }}>
+          {episodes.map((episode) => (
+            <div
+              key={episode.id}
               style={{
                 cursor: 'pointer',
+                padding: '12px 16px',
                 background: selectedEpisodeId === episode.id ? 'rgba(16, 185, 129, 0.1)' : undefined,
                 borderLeft: selectedEpisodeId === episode.id ? '3px solid #10b981' : '3px solid transparent',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                borderBottom: '1px solid #303030',
               }}
               onClick={() => onEpisodeSelect?.(episode)}
-              actions={[
-                <Tooltip title="进入创作" key="enter">
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, minWidth: 0 }}>
+                <HolderOutlined style={{ color: '#ccc', cursor: 'grab' }} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <Space>
+                    <span>第 {episode.number} 集: {episode.title}</span>
+                    <Tag color={statusColors[episode.status]}>{statusLabels[episode.status]}</Tag>
+                  </Space>
+                  <Paragraph ellipsis={{ rows: 1 }} style={{ marginBottom: 0, color: '#888', marginTop: 4 }}>
+                    {episode.scriptText || '暂无剧本内容'}
+                  </Paragraph>
+                </div>
+              </div>
+              <Space>
+                <Tooltip title="进入创作">
                   <Button
                     type="primary"
                     size="small"
@@ -299,18 +316,16 @@ ${fullScript}
                   >
                     创作
                   </Button>
-                </Tooltip>,
+                </Tooltip>
                 <Button
-                  key="edit"
                   type="text"
                   icon={<EditOutlined />}
                   onClick={(e) => {
                     e.stopPropagation();
                     handleEditClick(episode);
                   }}
-                />,
+                />
                 <Popconfirm
-                  key="delete"
                   title="确定删除此分集？"
                   onConfirm={(e) => {
                     e?.stopPropagation();
@@ -324,26 +339,11 @@ ${fullScript}
                     icon={<DeleteOutlined />}
                     onClick={(e) => e.stopPropagation()}
                   />
-                </Popconfirm>,
-              ]}
-            >
-              <List.Item.Meta
-                avatar={<HolderOutlined style={{ color: '#ccc', cursor: 'grab' }} />}
-                title={
-                  <Space>
-                    <span>第 {episode.number} 集: {episode.title}</span>
-                    <Tag color={statusColors[episode.status]}>{statusLabels[episode.status]}</Tag>
-                  </Space>
-                }
-                description={
-                  <Paragraph ellipsis={{ rows: 1 }} style={{ marginBottom: 0, color: '#888' }}>
-                    {episode.scriptText || '暂无剧本内容'}
-                  </Paragraph>
-                }
-              />
-            </List.Item>
-          )}
-        />
+                </Popconfirm>
+              </Space>
+            </div>
+          ))}
+        </Flex>
       )}
 
       {/* 编辑对话框 */}

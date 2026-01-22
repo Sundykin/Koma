@@ -5,7 +5,7 @@
 import React, { useState, useCallback } from 'react';
 import {
   Modal,
-  List,
+  Flex,
   Radio,
   Button,
   Tag,
@@ -139,92 +139,87 @@ export const AssetMatchConfirm: React.FC<AssetMatchConfirmProps> = ({
       </div>
 
       {/* 匹配列表 */}
-      <List
-        bordered
-        dataSource={matches}
-        style={{ maxHeight: 400, overflow: 'auto' }}
-        renderItem={(match, idx) => {
+      <Flex vertical style={{ maxHeight: 400, overflow: 'auto', border: '1px solid #303030', borderRadius: 8 }}>
+        {matches.map((match, idx) => {
           const key = `${idx}-${match.candidate.name}`;
           const decision = decisions[key];
           const potentialMatches = getPotentialMatches(match.candidate);
 
           return (
-            <List.Item>
-              <div style={{ width: '100%' }}>
-                <div className="flex items-center justify-between mb-2">
-                  <Space>
-                    <Text strong>{match.candidate.name}</Text>
-                    {match.candidate.type && (
-                      <Tag>{match.candidate.type}</Tag>
-                    )}
-                  </Space>
-                  {match.type === 'existing' && (
-                    <Tag color={match.confidence >= 0.9 ? 'green' : 'orange'}>
-                      置信度 {Math.round(match.confidence * 100)}%
-                    </Tag>
+            <div key={key} style={{ padding: '12px 16px', borderBottom: '1px solid #303030' }}>
+              <div className="flex items-center justify-between mb-2">
+                <Space>
+                  <Text strong>{match.candidate.name}</Text>
+                  {match.candidate.type && (
+                    <Tag>{match.candidate.type}</Tag>
                   )}
-                </div>
-
-                {match.candidate.description && (
-                  <Paragraph
-                    ellipsis={{ rows: 1 }}
-                    type="secondary"
-                    style={{ marginBottom: 8, fontSize: 12 }}
-                  >
-                    {match.candidate.description}
-                  </Paragraph>
-                )}
-
-                <Radio.Group
-                  value={decision?.action}
-                  onChange={(e) => {
-                    if (e.target.value === 'create') {
-                      handleDecisionChange(key, 'create', undefined, match.candidate);
-                    }
-                  }}
-                  size="small"
-                >
-                  <Radio value="create">
-                    <PlusOutlined /> 新建资产
-                  </Radio>
-                  {match.type === 'existing' && match.assetId && (
-                    <Radio
-                      value="link"
-                      onClick={() => handleDecisionChange(key, 'link', match.assetId, match.candidate)}
-                    >
-                      <LinkOutlined /> 链接到「{match.reason}」
-                    </Radio>
-                  )}
-                </Radio.Group>
-
-                {/* 如果原本判断为新建，但用户可能想手动链接到其他资产 */}
-                {match.type === 'new' && potentialMatches.length > 0 && (
-                  <div className="mt-2">
-                    <Text type="secondary" className="text-xs">
-                      或手动链接到：
-                    </Text>
-                    <div className="flex flex-wrap gap-1 mt-1">
-                      {potentialMatches.slice(0, 5).map(pm => (
-                        <Tag
-                          key={pm.id}
-                          className="cursor-pointer"
-                          onClick={() => handleDecisionChange(key, 'link', pm.id, match.candidate)}
-                          color={decision?.linkedAssetId === pm.id ? 'green' : 'default'}
-                        >
-                          {pm.name}
-                        </Tag>
-                      ))}
-                      {potentialMatches.length > 5 && (
-                        <Tag>+{potentialMatches.length - 5} 更多</Tag>
-                      )}
-                    </div>
-                  </div>
+                </Space>
+                {match.type === 'existing' && (
+                  <Tag color={match.confidence >= 0.9 ? 'green' : 'orange'}>
+                    置信度 {Math.round(match.confidence * 100)}%
+                  </Tag>
                 )}
               </div>
-            </List.Item>
+
+              {match.candidate.description && (
+                <Paragraph
+                  ellipsis={{ rows: 1 }}
+                  type="secondary"
+                  style={{ marginBottom: 8, fontSize: 12 }}
+                >
+                  {match.candidate.description}
+                </Paragraph>
+              )}
+
+              <Radio.Group
+                value={decision?.action}
+                onChange={(e) => {
+                  if (e.target.value === 'create') {
+                    handleDecisionChange(key, 'create', undefined, match.candidate);
+                  }
+                }}
+                size="small"
+              >
+                <Radio value="create">
+                  <PlusOutlined /> 新建资产
+                </Radio>
+                {match.type === 'existing' && match.assetId && (
+                  <Radio
+                    value="link"
+                    onClick={() => handleDecisionChange(key, 'link', match.assetId, match.candidate)}
+                  >
+                    <LinkOutlined /> 链接到「{match.reason}」
+                  </Radio>
+                )}
+              </Radio.Group>
+
+              {/* 如果原本判断为新建，但用户可能想手动链接到其他资产 */}
+              {match.type === 'new' && potentialMatches.length > 0 && (
+                <div className="mt-2">
+                  <Text type="secondary" className="text-xs">
+                    或手动链接到：
+                  </Text>
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {potentialMatches.slice(0, 5).map(pm => (
+                      <Tag
+                        key={pm.id}
+                        className="cursor-pointer"
+                        onClick={() => handleDecisionChange(key, 'link', pm.id, match.candidate)}
+                        color={decision?.linkedAssetId === pm.id ? 'green' : 'default'}
+                      >
+                        {pm.name}
+                      </Tag>
+                    ))}
+                    {potentialMatches.length > 5 && (
+                      <Tag>+{potentialMatches.length - 5} 更多</Tag>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
           );
-        }}
-      />
+        })}
+      </Flex>
     </Modal>
   );
 };
