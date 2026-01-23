@@ -20,23 +20,18 @@ import {
 } from 'antd';
 import {
   SaveOutlined,
-  KeyOutlined,
-  ApiOutlined,
-  SoundOutlined,
-  VideoCameraOutlined,
-  PictureOutlined,
+  ExperimentOutlined,
   FolderOutlined,
   DeleteOutlined,
-  ExperimentOutlined,
-  CheckCircleOutlined,
-  LoadingOutlined,
   ImportOutlined,
   ExportOutlined,
-  PlusOutlined,
   EditOutlined,
   FileTextOutlined,
   ReloadOutlined,
   BgColorsOutlined,
+  PictureOutlined,
+  VideoCameraOutlined,
+  SoundOutlined,
 } from '@ant-design/icons';
 import type { AppSettings, TTSProviderType, ITVProviderType } from '../../types';
 import { loadSettings, saveSettings } from '../../store/globalStore';
@@ -60,15 +55,6 @@ import { TTIConfigManager } from './TTIConfigManager';
 import { ITVConfigManager } from './ITVConfigManager';
 import { TTSConfigManager } from './TTSConfigManager';
 import { VisualStyleManager } from './VisualStyleManager';
-import { CustomChannelManager } from './CustomChannelManager';
-import type { ChannelConfig } from '../../providers/channel/types';
-import {
-  getCustomChannels,
-  addCustomChannel,
-  updateCustomChannel,
-  deleteCustomChannel,
-  testCustomChannel,
-} from '../../store/globalStore';
 
 interface SettingsPageProps {
   settings: AppSettings;
@@ -93,8 +79,6 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
   const [templateModalVisible, setTemplateModalVisible] = useState(false);
   const [templateContent, setTemplateContent] = useState('');
 
-  // 自定义渠道状态
-  const [customChannels, setCustomChannels] = useState<ChannelConfig[]>([]);
 
   useEffect(() => {
     form.setFieldsValue(flattenSettings(settings));
@@ -113,10 +97,6 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
     loadPromptTemplates().then(setPromptTemplates);
   }, []);
 
-  // 加载自定义渠道
-  useEffect(() => {
-    getCustomChannels().then(setCustomChannels);
-  }, []);
 
   // ========== Prompt 模板管理 ==========
 
@@ -325,30 +305,6 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
     onSave(newSettings);
   };
 
-  // ========== 自定义渠道管理 ==========
-
-  const handleAddChannel = async (config: ChannelConfig) => {
-    await addCustomChannel(config);
-    const channels = await getCustomChannels();
-    setCustomChannels(channels);
-  };
-
-  const handleUpdateChannel = async (id: string, config: Partial<ChannelConfig>) => {
-    await updateCustomChannel(id, config);
-    const channels = await getCustomChannels();
-    setCustomChannels(channels);
-  };
-
-  const handleDeleteChannel = async (id: string) => {
-    await deleteCustomChannel(id);
-    const channels = await getCustomChannels();
-    setCustomChannels(channels);
-  };
-
-  const handleTestChannel = async (config: ChannelConfig): Promise<boolean> => {
-    return await testCustomChannel(config);
-  };
-
   const tabItems = [
     {
       key: 'llm',
@@ -412,25 +368,6 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
       children: (
         <div style={{ padding: 16 }}>
           <VisualStyleManager onStyleChange={handleConfigChange} />
-        </div>
-      ),
-    },
-    {
-      key: 'custom-channels',
-      label: (
-        <span>
-          <ApiOutlined /> 自定义渠道
-        </span>
-      ),
-      children: (
-        <div style={{ padding: 16 }}>
-          <CustomChannelManager
-            channels={customChannels}
-            onAdd={handleAddChannel}
-            onUpdate={handleUpdateChannel}
-            onDelete={handleDeleteChannel}
-            onTest={handleTestChannel}
-          />
         </div>
       ),
     },
@@ -707,7 +644,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
   ];
 
   return (
-    <div style={{ maxWidth: 900, margin: '0 auto', padding: 24 }}>
+    <div style={{ maxWidth: 1200, margin: '0 auto', padding: 24 }}>
       <div
         style={{
           display: 'flex',

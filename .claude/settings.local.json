@@ -42,7 +42,8 @@
       "WebFetch(domain:ant.design)",
       "WebSearch",
       "WebFetch(domain:github.com)",
-      "Bash(npm info:*)"
+      "Bash(npm info:*)",
+      "Bash(dir:*)"
     ]
   }
 }

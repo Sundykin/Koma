@@ -15,7 +15,8 @@ import type {
   ProviderPreset,
   ThemePreset,
 } from '../types';
-import type { ChannelConfig } from '../providers/channel/types';
+import type { ChannelConfig, UnifiedChannelConfig, ChannelCapability } from '../providers/channel/types';
+import { hasChannelCapability } from '../providers/channel/types';
 
 // ========== 路径工具 ==========
 
@@ -808,6 +809,133 @@ export async function testCustomChannel(config: ChannelConfig): Promise<boolean>
     return true;
   } catch (err) {
     console.error('[testCustomChannel] error:', err);
+    return false;
+  }
+}
+
+// ========== 统一渠道配置 CRUD（新版） ==========
+
+// 获取统一渠道列表
+export async function getUnifiedChannels(): Promise<UnifiedChannelConfig[]> {
+  const settings = await loadSettings();
+  return settings.unifiedChannels || [];
+}
+
+// 按能力筛选渠道
+export async function getUnifiedChannelsByCapability(
+  capability: ChannelCapability
+): Promise<UnifiedChannelConfig[]> {
+  const channels = await getUnifiedChannels();
+  return channels.filter(c => c.enabled && hasChannelCapability(c, capability));
+}
+
+// 添加统一渠道
+export async function addUnifiedChannel(
+  config: Omit<UnifiedChannelConfig, 'id' | 'createdAt' | 'updatedAt'>
+): Promise<UnifiedChannelConfig> {
+  const settings = await loadSettings();
+  if (!settings.unifiedChannels) {
+    settings.unifiedChannels = [];
+  }
+
+  const now = Date.now();
+  const newConfig: UnifiedChannelConfig = {
+    ...config,
+    id: `unified_${now}_${Math.random().toString(36).slice(2, 9)}`,
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  settings.unifiedChannels.push(newConfig);
+  await saveSettings(settings);
+  return newConfig;
+}
+
+// 更新统一渠道
+export async function updateUnifiedChannel(
+  id: string,
+  updates: Partial<Omit<UnifiedChannelConfig, 'id' | 'createdAt'>>
+): Promise<UnifiedChannelConfig | null> {
+  const settings = await loadSettings();
+  if (!settings.unifiedChannels) return null;
+
+  const index = settings.unifiedChannels.findIndex(c => c.id === id);
+  if (index === -1) return null;
+
+  settings.unifiedChannels[index] = {
+    ...settings.unifiedChannels[index],
+    ...updates,
+    id,
+    updatedAt: Date.now(),
+  };
+  await saveSettings(settings);
+  return settings.unifiedChannels[index];
+}
+
+// 删除统一渠道
+export async function deleteUnifiedChannel(id: string): Promise<boolean> {
+  const settings = await loadSettings();
+  if (!settings.unifiedChannels) return false;
+
+  const index = settings.unifiedChannels.findIndex(c => c.id === id);
+  if (index === -1) return false;
+
+  settings.unifiedChannels.splice(index, 1);
+  await saveSettings(settings);
+  return true;
+}
+
+// 测试统一渠道连接
+export async function testUnifiedChannel(
+  config: UnifiedChannelConfig,
+  capability?: ChannelCapability
+): Promise<boolean> {
+  try {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+
+    if (config.auth.type === 'bearer') {
+      headers['Authorization'] = `Bearer ${config.auth.keyValue}`;
+    } else if (config.auth.type === 'header' && config.auth.keyName) {
+      headers[config.auth.keyName] = config.auth.keyValue;
+    }
+
+    // 选择测试用的接口
+    let pair = config.itv || config.tti || config.characterExtract || config.remix;
+    if (capability) {
+      switch (capability) {
+        case 'tti': pair = config.tti; break;
+        case 'itv': pair = config.itv; break;
+        case 'character-extract': pair = config.characterExtract; break;
+        case 'remix': pair = config.remix; break;
+      }
+    }
+
+    if (!pair) {
+      console.warn('[testUnifiedChannel] no endpoint pair found');
+      return false;
+    }
+
+    let testUrl = pair.generate.url;
+    if (testUrl.includes('{{baseUrl}}')) {
+      testUrl = testUrl.replace('{{baseUrl}}', config.baseUrl);
+    }
+
+    if (config.auth.type === 'query' && config.auth.keyName) {
+      const separator = testUrl.includes('?') ? '&' : '?';
+      testUrl = `${testUrl}${separator}${config.auth.keyName}=${encodeURIComponent(config.auth.keyValue)}`;
+    }
+
+    const response = await fetch(testUrl, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({}),
+    });
+
+    return response.status !== 401 && response.status !== 403;
+  } catch (err) {
+    console.error('[testUnifiedChannel] error:', err);
     return false;
   }
 }

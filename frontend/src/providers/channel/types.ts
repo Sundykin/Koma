@@ -153,3 +153,62 @@ export interface ChannelValidationResult {
   errors: string[];
   warnings: string[];
 }
+
+// ============ 统一渠道配置（新版） ============
+
+// 接口对（生成+查询）
+export interface EndpointPair {
+  generate: GenerateEndpointConfig;
+  query: QueryEndpointConfig;
+}
+
+// 渠道能力类型
+export type ChannelCapability = 'tti' | 'itv' | 'character-extract' | 'remix';
+
+// 统一渠道配置
+export interface UnifiedChannelConfig {
+  id: string;
+  name: string;
+  description?: string;
+  baseUrl: string;
+
+  // 鉴权配置
+  auth: AuthConfig;
+
+  // 能力接口配置（按需定义）
+  tti?: EndpointPair;              // 文生图
+  itv?: EndpointPair;              // 图生视频
+  characterExtract?: EndpointPair; // 角色提取
+  remix?: EndpointPair;            // 视频混音
+
+  // 轮询配置
+  polling: PollingConfig;
+
+  // 是否启用
+  enabled: boolean;
+
+  // 元数据
+  createdAt: number;
+  updatedAt: number;
+}
+
+// 获取渠道能力列表
+export function getChannelCapabilities(config: UnifiedChannelConfig): ChannelCapability[] {
+  const caps: ChannelCapability[] = [];
+  if (config.tti) caps.push('tti');
+  if (config.itv) caps.push('itv');
+  if (config.characterExtract) caps.push('character-extract');
+  if (config.remix) caps.push('remix');
+  return caps;
+}
+
+// 检查渠道是否具有指定能力
+export function hasChannelCapability(config: UnifiedChannelConfig, capability: ChannelCapability): boolean {
+  switch (capability) {
+    case 'tti': return !!config.tti;
+    case 'itv': return !!config.itv;
+    case 'character-extract': return !!config.characterExtract;
+    case 'remix': return !!config.remix;
+    default: return false;
+  }
+}
