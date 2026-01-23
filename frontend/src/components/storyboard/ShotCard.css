@@ -1,0 +1,158 @@
+.shot-card {
+  background: #18181b;
+  border: 1px solid #27272a;
+  border-radius: 8px;
+  margin-bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  transition: all 0.2s ease;
+}
+
+.shot-card:hover {
+  background: #202023;
+  border-color: #3f3f46;
+}
+
+.shot-card.selected {
+  background: rgba(16, 185, 129, 0.05);
+  border-color: rgba(16, 185, 129, 0.4);
+}
+
+.shot-card.confirmed {
+  border-left: 4px solid #10b981;
+}
+
+/* Header */
+.shot-card-header {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  border-bottom: 1px solid #27272a;
+  gap: 12px;
+}
+
+.shot-card-index {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 60px;
+}
+
+.index-number {
+  font-weight: 600;
+  color: #a1a1aa;
+}
+
+.confirmed-icon {
+  color: #10b981;
+}
+
+.shot-card-meta {
+  flex: 1;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.shot-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Body */
+.shot-card-body {
+  display: grid;
+  grid-template-columns: 2fr 3fr 4fr;
+  gap: 1px;
+  background: #27272a; /* Grid lines color */
+}
+
+.shot-column {
+  background: #18181b;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.shot-card:hover .shot-column {
+  background: #202023;
+}
+
+.shot-card.selected .shot-column {
+  background: transparent; /* Allow card bg to show */
+}
+
+.column-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.column-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #71717a;
+  text-transform: uppercase;
+}
+
+/* Script Column */
+.script-textarea {
+  background: #09090b !important;
+  border-color: #27272a !important;
+  color: #e4e4e7 !important;
+  font-size: 14px !important;
+  line-height: 1.6 !important;
+  flex: 1;
+  resize: vertical;
+}
+
+.script-textarea:focus {
+  border-color: #3f3f46 !important;
+}
+
+/* Prompt Column */
+.prompt-editor-container {
+  flex: 1;
+  height: 200px; /* Fixed height for now */
+  border: 1px solid #27272a;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #09090b;
+}
+
+.prompt-editor-container .cm-editor {
+  height: 100%;
+}
+
+/* Media Column */
+.media-column {
+  padding: 0;
+  display: grid;
+  grid-template-rows: 1fr 1fr;
+  gap: 1px;
+  background: #27272a;
+}
+
+.media-section {
+  background: #18181b;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.shot-card:hover .media-section {
+  background: #202023;
+}
+
+.shot-card.selected .media-section {
+  background: transparent;
+}
+
+.media-grid-wrapper {
+  flex: 1;
+  min-height: 100px;
+}

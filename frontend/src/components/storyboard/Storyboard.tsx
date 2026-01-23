@@ -27,6 +27,7 @@ import { generateShotPrompt, batchGenerateShotPrompts } from '../../services/Sho
 import { TaskManager } from '../../services/TaskManager';
 import { ScriptEditor } from '../../editor';
 import type { MentionItem } from '../../editor';
+import { StoryboardLayout } from './StoryboardLayout';
 import { ShotListEditor } from './ShotListEditor';
 import { ShotAssetPresetModal } from './ShotAssetPresetModal';
 import './Storyboard.css';
