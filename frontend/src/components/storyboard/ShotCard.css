@@ -63,7 +63,7 @@
 /* Body */
 .shot-card-body {
   display: grid;
-  grid-template-columns: 2fr 3fr 4fr;
+  grid-template-columns: minmax(200px, 3fr) minmax(240px, 4fr) minmax(280px, 4fr);
   gap: 1px;
   background: #27272a; /* Grid lines color */
 }
@@ -116,7 +116,8 @@
 /* Prompt Column */
 .prompt-editor-container {
   flex: 1;
-  height: 200px; /* Fixed height for now */
+  min-height: 150px;
+  max-height: 300px;
   border: 1px solid #27272a;
   border-radius: 6px;
   overflow: hidden;

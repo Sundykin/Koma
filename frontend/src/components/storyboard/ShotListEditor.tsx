@@ -259,22 +259,20 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
           </div>
         )}
 
-        {/* 表头 */}
-        <div className="shotListHeader">
-          <div className="headerCol headerCheckbox">
+        {/* 全选区域 */}
+        {shots.length > 0 && (
+          <div className="selectAllRow">
             <Checkbox
               checked={isAllSelected}
               indeterminate={isIndeterminate}
               onChange={(e) => handleSelectAll(e.target.checked)}
-            />
+            >
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                {isAllSelected ? '取消全选' : '全选'} ({shots.length})
+              </Text>
+            </Checkbox>
           </div>
-          <div className="headerCol headerIndex">#</div>
-          <div className="headerCol headerActions">操作</div>
-          <div className="headerCol headerScript">剧本文案</div>
-          <div className="headerCol headerPrompt">提示词</div>
-          <div className="headerCol headerImage">参考图</div>
-          <div className="headerCol headerVideo">视频</div>
-        </div>
+        )}
 
         {/* 分镜列表 */}
         <div className="shotListBody">

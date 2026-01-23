@@ -7,6 +7,7 @@ import {
   Tooltip,
   Button,
   Popconfirm,
+  Input,
 } from 'antd';
 import {
   DeleteOutlined,
@@ -25,7 +26,8 @@ import { ImageCardGrid } from '../asset/ImageCardGrid';
 import { VideoCardGrid } from '../asset/VideoCardGrid';
 import './ShotCard.css';
 
-const { Text, TextArea } = Typography;
+const { Text } = Typography;
+const { TextArea } = Input;
 
 // 景别映射
 const SHOT_TYPE_MAP: Record<string, string> = {

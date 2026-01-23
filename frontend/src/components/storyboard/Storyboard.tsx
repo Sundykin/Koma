@@ -875,7 +875,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
             {isAnalyzing ? (
               <Spin indicator={<LoadingOutlined style={{ fontSize: 24 }} spin />} />
             ) : (
-              <Space orientation="vertical" size="middle">
+              <Space direction="vertical" size="middle">
                 {script && episodeId && (
                   <Button
                     type="primary"

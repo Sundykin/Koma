@@ -430,13 +430,13 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
         </span>
       ),
       children: (
-        <div style={{ padding: 16, maxHeight: 'calc(100vh - 280px)', overflowY: 'auto' }}>
+        <div style={{ padding: 16, flex: 1, overflowY: 'auto' }}>
           <p style={{ marginBottom: 16, color: '#888' }}>
             自定义 AI 功能使用的 Prompt 模板，支持变量替换。
           </p>
 
           {/* 系统提示模板 */}
-          <Divider titlePlacement="left" style={{ margin: '16px 0 8px' }}>系统提示 (System Prompts)</Divider>
+          <Divider orientation="left" style={{ margin: '16px 0 8px' }}>系统提示 (System Prompts)</Divider>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {(Object.values(promptTemplates) as PromptTemplate[])
               .filter(t => t.id.endsWith('_system'))
@@ -484,7 +484,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
           </div>
 
           {/* LLM 模板（剧本解析等） */}
-          <Divider titlePlacement="left" style={{ margin: '24px 0 8px' }}>LLM 任务模板</Divider>
+          <Divider orientation="left" style={{ margin: '24px 0 8px' }}>LLM 任务模板</Divider>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {(Object.values(promptTemplates) as PromptTemplate[])
               .filter(t => !t.id.startsWith('tti_') && !t.id.startsWith('itv_') && !t.id.endsWith('_system'))
@@ -536,7 +536,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
           </div>
 
           {/* TTI 模板（图片生成） */}
-          <Divider titlePlacement="left" style={{ margin: '24px 0 8px' }}>TTI 模板（图片生成）</Divider>
+          <Divider orientation="left" style={{ margin: '24px 0 8px' }}>TTI 模板（图片生成）</Divider>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {(Object.values(promptTemplates) as PromptTemplate[])
               .filter(t => t.id.startsWith('tti_'))
@@ -588,7 +588,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
           </div>
 
           {/* ITV 模板（视频生成） */}
-          <Divider titlePlacement="left" style={{ margin: '24px 0 8px' }}>ITV 模板（视频生成）</Divider>
+          <Divider orientation="left" style={{ margin: '24px 0 8px' }}>ITV 模板（视频生成）</Divider>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {(Object.values(promptTemplates) as PromptTemplate[])
               .filter(t => t.id.startsWith('itv_'))

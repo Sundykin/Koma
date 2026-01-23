@@ -532,23 +532,23 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     flexDirection: 'column',
     height: '100%',
-    background: '#0f0f0f',
+    background: 'var(--bg-base, #0f0f0f)',
   },
   upper: {
     flex: 1,
     display: 'flex',
-    minHeight: 0,
-    borderBottom: '1px solid #27272a',
+    minHeight: 300,
+    borderBottom: '1px solid var(--border-default, #27272a)',
   },
   assetPanel: {
-    width: 280,
-    minWidth: 220,
-    borderRight: '1px solid #27272a',
+    width: 'clamp(220px, 20vw, 320px)',
+    flexShrink: 0,
+    borderRight: '1px solid var(--border-default, #27272a)',
     overflow: 'hidden',
   },
   lower: {
-    height: 300,
-    minHeight: 200,
+    height: 'clamp(200px, 30vh, 400px)',
+    flexShrink: 0,
   },
 };
 

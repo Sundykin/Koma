@@ -11,10 +11,12 @@
   --color-bg-surface: #18181b;    /* zinc-900 - 侧边栏/表面 */
   --color-bg-elevated: #27272a;   /* zinc-800 - 悬浮/弹窗 */
   --color-bg-card: #18181b;       /* zinc-900 - 卡片背景 */
+  --color-bg-hover: #3f3f46;      /* zinc-700 - 悬停背景 */
 
   /* 边框 */
   --color-border: #3f3f46;        /* zinc-700 - 主边框 */
   --color-border-subtle: #27272a; /* zinc-800 - 次级边框 */
+  --color-border-focus: #10b981;  /* emerald-500 - 焦点边框 */
 
   /* 文字 */
   --color-text-primary: #f4f4f5;  /* zinc-100 */
@@ -25,6 +27,29 @@
   --color-accent: #10b981;        /* emerald-500 */
   --color-accent-hover: #059669;  /* emerald-600 */
   --color-accent-glow: rgba(16, 185, 129, 0.2);
+
+  /* 间距系统 */
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 12px;
+  --space-lg: 16px;
+  --space-xl: 24px;
+}
+
+/* 兼容变量别名 (供内联样式使用) */
+:root {
+  --bg-base: var(--color-bg-app);
+  --bg-raised: var(--color-bg-card);
+  --bg-surface: var(--color-bg-elevated);
+  --bg-hover: var(--color-bg-hover);
+  --border-default: var(--color-border-subtle);
+  --border-hover: var(--color-border);
+  --border-focus: var(--color-border-focus);
+  --text-primary: var(--color-text-primary);
+  --text-secondary: var(--color-text-secondary);
+  --text-muted: var(--color-text-muted);
+  --accent: var(--color-accent);
+  --accent-hover: var(--color-accent-hover);
 }
 
 /* 基础样式 */
