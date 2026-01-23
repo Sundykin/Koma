@@ -174,7 +174,7 @@ export type EditorStep = 'script' | 'assets' | 'storyboard' | 'video';
 
 export type ModelProviderType = 'gemini' | 'openai' | 'runway' | 'midjourney' | 'comfyui';
 export type LLMProviderType = 'openai' | 'gemini' | 'openai-compatible';
-export type TTIProviderType = 'comfyui' | 'jimeng' | 'qwen-image' | 'midjourney' | 'dall-e' | 'flux' | 'nano-banana';
+export type TTIProviderType = 'comfyui' | 'jimeng' | 'qwen-image' | 'midjourney' | 'dall-e' | 'flux' | 'nano-banana' | 'gemini-3-pro';
 export type ITVProviderType = 'runway' | 'kling' | 'pika' | 'minimax' | 'comfyui-animatediff' | 'sora2';
 export type TTSProviderType = 'edge-tts' | 'openai-tts' | 'fish-audio' | 'gpt-sovits' | 'doubao-tts';
 
@@ -273,6 +273,7 @@ export interface AppSettings {
   itvConfigs: ITVModelConfig[];
   ttsConfigs: TTSModelConfig[];
   customThemePresets?: ThemePreset[];  // 用户自定义视觉风格预设
+  customChannels?: import('./providers/channel/types').ChannelConfig[];  // 用户自定义渠道配置
 }
 
 // ========== 时间线相关类型 ==========

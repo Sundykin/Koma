@@ -270,13 +270,16 @@ export async function generateCharacterPreviewVideo(
 /**
  * 调用角色提取API绑定角色
  * 需要先生成预览视频并保存任务 ID
+ * 支持异步轮询模式
  */
 export async function extractAndBindCharacter(
   projectId: string,
   character: Character,
-  itvConfigId?: string
+  itvConfigId?: string,
+  onProgress?: (progress: number, step: string) => void
 ): Promise<{ success: boolean; characterId?: string; error?: string }> {
   logger.info(`开始提取角色: ${character.name}`);
+  onProgress?.(0, '准备角色提取...');
 
   // 检查是否有视频生成任务 ID（角色提取 API 需要使用 from_task 参数）
   if (!character.previewVideoTaskId) {
@@ -298,12 +301,60 @@ export async function extractAndBindCharacter(
       return { success: false, error: 'ITV Provider 不支持角色提取' };
     }
 
-    // 使用任务 ID 调用角色提取 API
-    const sora2CharacterId = await itvProvider.extractCharacter(character.previewVideoTaskId);
-    await updateCharacterAsset(projectId, character.id, { sora2CharacterId });
+    onProgress?.(10, '调用角色提取 API...');
 
-    logger.info(`角色提取成功: ${character.name} -> ${sora2CharacterId}`);
-    return { success: true, characterId: sora2CharacterId };
+    // 使用任务 ID 调用角色提取 API
+    const extractTaskId = await itvProvider.extractCharacter({
+      fromTask: character.previewVideoTaskId,
+      timestamps: '1,3', // 默认取 1-3 秒的画面
+    });
+
+    // 检查是否支持角色提取状态轮询
+    if (itvProvider.checkCharacterProgress) {
+      onProgress?.(20, '等待角色提取完成...');
+
+      // 轮询等待完成
+      let progress = await itvProvider.checkCharacterProgress(extractTaskId);
+      let pollCount = 0;
+      const maxPolls = 60; // 最大轮询 60 次（约 3 分钟）
+
+      while ((progress.status === 'queued' || progress.status === 'processing') && pollCount < maxPolls) {
+        await sleep(3000);
+        progress = await itvProvider.checkCharacterProgress(extractTaskId);
+        pollCount++;
+        const progressPercent = 20 + Math.min(progress.progress, 100) * 0.7;
+        onProgress?.(progressPercent, `提取中 ${progress.progress}%`);
+      }
+
+      if (progress.status === 'completed' && progress.characters && progress.characters.length > 0) {
+        // 取第一个提取的角色
+        const extractedChar = progress.characters[0];
+        const sora2CharacterId = extractedChar.id;
+
+        await updateCharacterAsset(projectId, character.id, { sora2CharacterId });
+        onProgress?.(100, '角色提取完成');
+
+        logger.info(`角色提取成功: ${character.name} -> ${sora2CharacterId}`);
+        return { success: true, characterId: sora2CharacterId };
+      }
+
+      if (progress.status === 'failed') {
+        return { success: false, error: progress.error || '角色提取失败' };
+      }
+
+      if (pollCount >= maxPolls) {
+        return { success: false, error: '角色提取超时' };
+      }
+
+      return { success: false, error: '未能提取到角色' };
+    } else {
+      // 不支持轮询，直接返回任务 ID 作为角色 ID（兼容旧模式）
+      await updateCharacterAsset(projectId, character.id, { sora2CharacterId: extractTaskId });
+      onProgress?.(100, '完成');
+
+      logger.info(`角色提取成功: ${character.name} -> ${extractTaskId}`);
+      return { success: true, characterId: extractTaskId };
+    }
   } catch (err: any) {
     logger.error(`角色提取失败: ${character.name}`, { error: err.message });
     return { success: false, error: err.message };

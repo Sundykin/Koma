@@ -92,8 +92,22 @@ interface ShotRowProps {
 
 // 自定义 memo 比较函数，只比较数据相关的 props，忽略回调函数
 function shotRowPropsAreEqual(prevProps: ShotRowProps, nextProps: ShotRowProps): boolean {
+  const prevShot = prevProps.shot;
+  const nextShot = nextProps.shot;
+
+  // 比较 shot 的关键字段而非引用，避免异步更新后视频等字段变化未触发重渲染
+  const shotEqual =
+    prevShot.id === nextShot.id &&
+    prevShot.description === nextShot.description &&
+    prevShot.scriptContent === nextShot.scriptContent &&
+    prevShot.confirmed === nextShot.confirmed &&
+    prevShot.currentImageIndex === nextShot.currentImageIndex &&
+    prevShot.currentVideoIndex === nextShot.currentVideoIndex &&
+    (prevShot.imagePaths?.length || 0) === (nextShot.imagePaths?.length || 0) &&
+    (prevShot.videos?.length || 0) === (nextShot.videos?.length || 0);
+
   return (
-    prevProps.shot === nextProps.shot &&
+    shotEqual &&
     prevProps.index === nextProps.index &&
     prevProps.totalCount === nextProps.totalCount &&
     prevProps.isSelected === nextProps.isSelected &&

@@ -6,3 +6,4 @@ export { TTSConfigManager } from './TTSConfigManager';
 export { VisualStyleManager } from './VisualStyleManager';
 export { ThemeSelector } from './ThemeSelector';
 export { WorkflowUploader } from './WorkflowUploader';
+export { CustomChannelManager } from './CustomChannelManager';

@@ -15,6 +15,7 @@ import type {
   ProviderPreset,
   ThemePreset,
 } from '../types';
+import type { ChannelConfig } from '../providers/channel/types';
 
 // ========== 路径工具 ==========
 
@@ -62,12 +63,13 @@ export const LLM_CHANNEL_PRESETS: LLMChannelPreset[] = [
 
 export const TTI_PRESETS: ProviderPreset[] = [
   { id: 'nano-banana', name: 'Nano-Banana（官方）', baseUrl: 'http://ai.hsxbk.top', models: ['gemini-2.5-pro-image-preview', 'gemini-3-pro-image-preview'] },
+  { id: 'gemini-3-pro', name: 'Gemini-3-Pro (toapis)', baseUrl: 'https://toapis.com', models: ['gemini-3-pro-image-preview'] },
 ];
 
 // ========== ITV 厂商预设 ==========
 
 export const ITV_PRESETS: ProviderPreset[] = [
-  { id: 'sora2', name: 'Sora2（官方）', baseUrl: 'http://ai.hsxbk.top', models: ['sora-2'] },
+  { id: 'sora2', name: 'Sora2（官方）', baseUrl: 'https://toapis.com', models: ['sora-2', 'sora-2-pro'] },
 ];
 
 // ========== TTS 厂商预设 ==========
@@ -705,6 +707,111 @@ export async function deleteCustomThemePreset(id: string): Promise<boolean> {
   return true;
 }
 
+// ========== 自定义渠道配置 CRUD ==========
+
+export async function getCustomChannels(): Promise<ChannelConfig[]> {
+  const settings = await loadSettings();
+  return settings.customChannels || [];
+}
+
+export async function addCustomChannel(config: ChannelConfig): Promise<ChannelConfig> {
+  const settings = await loadSettings();
+  if (!settings.customChannels) {
+    settings.customChannels = [];
+  }
+
+  // 确保 ID 唯一
+  if (settings.customChannels.find(c => c.id === config.id)) {
+    config.id = `channel_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+  }
+
+  config.createdAt = config.createdAt || Date.now();
+  config.updatedAt = Date.now();
+
+  settings.customChannels.push(config);
+  await saveSettings(settings);
+  return config;
+}
+
+export async function updateCustomChannel(
+  id: string,
+  updates: Partial<ChannelConfig>
+): Promise<ChannelConfig | null> {
+  const settings = await loadSettings();
+  if (!settings.customChannels) return null;
+
+  const index = settings.customChannels.findIndex(c => c.id === id);
+  if (index === -1) return null;
+
+  settings.customChannels[index] = {
+    ...settings.customChannels[index],
+    ...updates,
+    id, // 确保 ID 不变
+    updatedAt: Date.now(),
+  };
+  await saveSettings(settings);
+  return settings.customChannels[index];
+}
+
+export async function deleteCustomChannel(id: string): Promise<boolean> {
+  const settings = await loadSettings();
+  if (!settings.customChannels) return false;
+
+  const index = settings.customChannels.findIndex(c => c.id === id);
+  if (index === -1) return false;
+
+  settings.customChannels.splice(index, 1);
+  await saveSettings(settings);
+  return true;
+}
+
+// 测试自定义渠道连接
+export async function testCustomChannel(config: ChannelConfig): Promise<boolean> {
+  try {
+    // 构建鉴权头
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+
+    if (config.auth.type === 'bearer') {
+      headers['Authorization'] = `Bearer ${config.auth.keyValue}`;
+    } else if (config.auth.type === 'header' && config.auth.keyName) {
+      headers[config.auth.keyName] = config.auth.keyValue;
+    }
+
+    // 构建测试 URL（使用生成接口的 URL 做 OPTIONS 或 HEAD 请求）
+    let testUrl = config.generate.url;
+    if (testUrl.includes('{{baseUrl}}')) {
+      testUrl = testUrl.replace('{{baseUrl}}', config.baseUrl);
+    }
+
+    // 添加 query 参数鉴权
+    if (config.auth.type === 'query' && config.auth.keyName) {
+      const separator = testUrl.includes('?') ? '&' : '?';
+      testUrl = `${testUrl}${separator}${config.auth.keyName}=${encodeURIComponent(config.auth.keyValue)}`;
+    }
+
+    // 使用 fetch 发送测试请求（发送一个空的 POST 来验证鉴权是否正确）
+    // 注意：这里会返回 4xx 错误是正常的（因为没有有效参数），关键是看是否是 401/403
+    const response = await fetch(testUrl, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({}),
+    });
+
+    // 401/403 表示鉴权失败
+    if (response.status === 401 || response.status === 403) {
+      return false;
+    }
+
+    // 其他状态码（包括 400 等业务错误）认为连接成功（鉴权通过）
+    return true;
+  } catch (err) {
+    console.error('[testCustomChannel] error:', err);
+    return false;
+  }
+}
+
 export default {
   loadSettings,
   saveSettings,
@@ -756,4 +863,10 @@ export default {
   addCustomThemePreset,
   updateCustomThemePreset,
   deleteCustomThemePreset,
+  // 自定义渠道配置
+  getCustomChannels,
+  addCustomChannel,
+  updateCustomChannel,
+  deleteCustomChannel,
+  testCustomChannel,
 };

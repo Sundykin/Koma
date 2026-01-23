@@ -189,6 +189,8 @@ export const TTIConfigManager: React.FC<TTIConfigManagerProps> = ({ onConfigChan
       case 'qwen-image': return 'purple';
       case 'jimeng': return 'magenta';
       case 'flux': return 'cyan';
+      case 'nano-banana': return 'geekblue';
+      case 'gemini-3-pro': return 'volcano';
       default: return 'default';
     }
   };

@@ -283,7 +283,15 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
     setProgressStep('提取角色中...');
 
     try {
-      const result = await extractAndBindCharacter(projectId, editedCharacter, itvConfigId);
+      const result = await extractAndBindCharacter(
+        projectId,
+        editedCharacter,
+        itvConfigId,
+        (p, step) => {
+          setProgress(p);
+          setProgressStep(step);
+        }
+      );
 
       if (result.success && result.characterId) {
         const updated = { ...editedCharacter, sora2CharacterId: result.characterId };
