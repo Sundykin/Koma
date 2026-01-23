@@ -4,6 +4,7 @@ import { ProjectList, ProjectOverview, CreateProjectModal, ProjectSettingsModal 
 import type { MentionItem } from './editor';
 import { SettingsPage } from './components/settings';
 import { WindowControls } from './components/common';
+import { ErrorBoundary } from './components/common';
 import { Sidebar } from './components/common/Sidebar';
 import { Header } from './components/common/Header';
 import { EditorView } from './components/editor/EditorView';
@@ -328,9 +329,11 @@ const AppContent: React.FC = () => {
 
 const App: React.FC = () => {
   return (
-    <AntApp>
-      <AppContent />
-    </AntApp>
+    <ErrorBoundary>
+      <AntApp>
+        <AppContent />
+      </AntApp>
+    </ErrorBoundary>
   );
 };
 

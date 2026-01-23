@@ -1,25 +1,15 @@
 /**
- * 全局存储
- * 管理全局设置、最近项目、模型预设
- *
- * 注意：此文件已重构为重新导出 settings 模块
- * 实际实现已迁移到 store/settings/ 目录
+ * Settings Store 统一导出
  */
 
-// 重新导出 settings 模块的所有内容
+// 核心
+export { loadSettings, saveSettings, generateId, getGlobalPath, DEFAULT_SETTINGS } from './core';
+
+// 预设常量
+export { LLM_CHANNEL_PRESETS, TTI_PRESETS, ITV_PRESETS, TTS_PRESETS } from './presets';
+
+// LLM 配置
 export {
-  // 核心
-  loadSettings,
-  saveSettings,
-  generateId,
-  getGlobalPath,
-  DEFAULT_SETTINGS,
-  // 预设常量
-  LLM_CHANNEL_PRESETS,
-  TTI_PRESETS,
-  ITV_PRESETS,
-  TTS_PRESETS,
-  // LLM 配置
   addLLMConfig,
   updateLLMConfig,
   deleteLLMConfig,
@@ -27,7 +17,11 @@ export {
   getDefaultLLMConfig,
   getLLMConfigById,
   getActiveLLMConfig,
-  // TTI 配置
+} from './llmConfig';
+
+// 媒体配置 (TTI/ITV/TTS)
+export {
+  // TTI
   addTTIConfig,
   updateTTIConfig,
   deleteTTIConfig,
@@ -35,7 +29,7 @@ export {
   getDefaultTTIConfig,
   getTTIConfigById,
   getActiveTTIConfig,
-  // ITV 配置
+  // ITV
   addITVConfig,
   updateITVConfig,
   deleteITVConfig,
@@ -43,7 +37,7 @@ export {
   getDefaultITVConfig,
   getITVConfigById,
   getActiveITVConfig,
-  // TTS 配置
+  // TTS
   addTTSConfig,
   updateTTSConfig,
   deleteTTSConfig,
@@ -51,33 +45,45 @@ export {
   getDefaultTTSConfig,
   getTTSConfigById,
   getActiveTTSConfig,
-  // 最近项目
+} from './mediaConfig';
+
+// 最近项目
+export {
   loadRecentProjects,
   saveRecentProjects,
   addRecentProject,
   removeRecentProject,
-  // 模型预设
+} from './recentProjects';
+
+// 模型预设
+export {
   loadPresets,
   savePreset,
   deletePreset,
-  // 视觉风格预设
+} from './modelPresets';
+export type { ModelPreset } from './modelPresets';
+
+// 视觉风格预设
+export {
   getCustomThemePresets,
   addCustomThemePreset,
   updateCustomThemePreset,
   deleteCustomThemePreset,
-  // 渠道配置
+} from './themePresets';
+
+// 渠道配置
+export {
+  // 自定义渠道
   getCustomChannels,
   addCustomChannel,
   updateCustomChannel,
   deleteCustomChannel,
   testCustomChannel,
+  // 统一渠道
   getUnifiedChannels,
   getUnifiedChannelsByCapability,
   addUnifiedChannel,
   updateUnifiedChannel,
   deleteUnifiedChannel,
   testUnifiedChannel,
-} from './settings';
-
-// 重新导出类型（用于外部引用）
-export type { ModelPreset } from './settings';
+} from './channelConfig';

@@ -43,7 +43,8 @@
       "WebSearch",
       "WebFetch(domain:github.com)",
       "Bash(npm info:*)",
-      "Bash(dir:*)"
+      "Bash(dir:*)",
+      "Bash(npm test:*)"
     ]
   }
 }

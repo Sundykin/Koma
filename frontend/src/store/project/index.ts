@@ -1,14 +1,9 @@
 /**
- * 项目存储
- * 管理项目数据、时间线、素材、分镜版本
- *
- * 注意：此文件已重构为重新导出 project 模块
- * 实际实现已迁移到 store/project/ 目录
+ * Project Store 统一导出
  */
 
-// 重新导出 project 模块的所有内容
+// 核心
 export {
-  // 核心
   getProjectsRoot,
   getProjectPath,
   createProject,
@@ -17,10 +12,16 @@ export {
   updateProjectLLMConfig,
   deleteProject,
   listProjects,
-  // 时间线
+} from './core';
+
+// 时间线
+export {
   loadTimeline,
   saveTimeline,
-  // 素材管理
+} from './timeline';
+
+// 素材管理
+export {
   importAsset,
   loadAssets,
   findDuplicateAsset,
@@ -28,18 +29,27 @@ export {
   decrementAssetRef,
   getUnusedAssets,
   cleanUnusedAssets,
-  // 分镜版本
+} from './assets';
+
+// 分镜版本
+export {
   saveShotVersion,
   loadShotMeta,
   listShots,
   getShotVersionHistory,
-  // 分集管理
+} from './shots';
+
+// 分集管理
+export {
   createEpisode,
   loadEpisode,
   saveEpisode,
   deleteEpisode,
   listEpisodes,
-  // 分集解析结果
+} from './episodes';
+
+// 分集解析结果
+export {
   saveEpisodeAnalysis,
   loadEpisodeAnalysis,
   loadEpisodeShots,
@@ -48,7 +58,10 @@ export {
   saveEpisodeTimeline,
   updateShot,
   deleteEpisodeAnalysis,
-  // 角色/场景/道具存储
+} from './analysis';
+
+// 角色/场景/道具存储
+export {
   saveCharacterCostumePhoto,
   saveCharacterPreviewVideo,
   saveSceneImage,
@@ -57,14 +70,20 @@ export {
   saveProps,
   switchShotVersion,
   deleteShotVersion,
-  // 实体加载/保存
+} from './assetStorage';
+
+// 实体加载/保存
+export {
   loadCharacters,
   saveCharacters,
   loadScenes,
   saveScenes,
   loadShots,
   saveShots,
-  // 资产引用
+} from './entities';
+
+// 资产引用
+export {
   calculateAssetFingerprint,
   addCharacterEpisodeRef,
   removeCharacterEpisodeRef,
@@ -76,7 +95,11 @@ export {
   findSceneByName,
   findPropByName,
   getOrphanedAssets,
-  // 缓存管理
+} from './refs';
+
+// 缓存管理
+export type { CacheStats } from './cache';
+export {
   getCacheStats,
   saveThumbnail,
   getThumbnail,
@@ -87,15 +110,19 @@ export {
   clearCacheByType,
   clearCache,
   clearTemp,
-  // 临时文件
+} from './cache';
+
+// 临时文件
+export {
   createTempFile,
   cleanAllTempOnStartup,
-  // Manju-DSL
+} from './temp';
+
+// Manju-DSL
+export {
   saveProjectAsManju,
   loadProjectFromManju,
   exportProjectToManjuFile,
   importProjectFromManjuFile,
-} from './project';
-
-// 重新导出类型
-export type { CacheStats, ManjuProject } from './project';
+} from './manju';
+export type { ManjuProject } from '../../manju-dsl/protocol';

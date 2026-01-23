@@ -5,3 +5,4 @@ export { TaskStatusBar } from './TaskStatusBar';
 export { StepNavigator } from './StepNavigator';
 export { SaveStatusIndicator } from './SaveStatusIndicator';
 export { TaskNotifications } from './TaskNotifications';
+export { ErrorBoundary } from './ErrorBoundary';
