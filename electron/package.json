@@ -10,11 +10,13 @@
     "dev": "tsc && electron dist/main.js"
   },
   "dependencies": {
+    "adm-zip": "^0.5.16",
     "archiver": "^7.0.1",
     "electron-store": "^11.0.2",
     "extract-zip": "^2.0.1"
   },
   "devDependencies": {
+    "@types/adm-zip": "^0.5.7",
     "@types/archiver": "^6.0.3",
     "@types/node": "^22.14.0",
     "electron": "^39.2.7",

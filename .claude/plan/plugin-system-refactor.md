@@ -2,17 +2,17 @@
 
 > 基于多模型协作规划（Codex + Gemini + Claude）
 > 方案 B: 配置服务集中化 + 动态插件系统
-> **状态：Phase 1-4 完成，Phase 5-6 待实施**
+> **状态：Phase 1-6 完成（集成测试待运行时验证）**
 
 ---
 
 ## 需求总览
 
 1. ✅ **移除历史兼容代码** - 完全删除 normalize* 函数及迁移逻辑
-2. ⏳ **LLM 渠道简化** - 仅保留 3 种类型：openai-compatible, gemini, claude
+2. ✅ **LLM 渠道简化** - 仅保留 3 种类型：openai-compatible, gemini, claude
 3. ✅ **动态插件系统** - 支持界面导入、热加载、全局插件（独立菜单+页面）
-4. ⏳ **提示词模板系统** - 全局 Registry + 覆盖机制
-5. ⏳ **全局设置优化** - Settings Portal 侧边栏布局
+4. ✅ **提示词模板系统** - 全局 Registry + 覆盖机制（PromptStudio 编辑器）
+5. ✅ **全局设置优化** - Settings Portal 侧边栏布局
 
 ---
 
@@ -41,15 +41,15 @@
 14. ✅ **P4.3** 修改 main.ts 注册 IPC
 15. ✅ **P4.4** 修改 preload.ts 暴露 API
 
-### Phase 5: 设置系统重构 ⏳ 待实施
-16. ⏳ **P5.1** Settings Portal 布局
-17. ⏳ **P5.2** LLM Protocol+Preset 表单
-18. ⏳ **P5.3** PromptStudio 编辑器
+### Phase 5: 设置系统重构 ✅ 完成
+16. ✅ **P5.1** Settings Portal 布局 - 从 Tab 改为 Sidebar + Menu
+17. ✅ **P5.2** LLM Protocol+Preset 表单 - 简化为 3 种类型 + ClaudeProvider
+18. ✅ **P5.3** PromptStudio 编辑器 - Master-Detail 布局，支持搜索和变量高亮
 
-### Phase 6: 测试与文档 ⏳ 待实施
-19. ⏳ **P6.1** 编写示例插件
-20. ⏳ **P6.2** 插件开发文档
-21. ⏳ **P6.3** 集成测试
+### Phase 6: 测试与文档 ✅ 完成
+19. ✅ **P6.1** 编写示例插件 - `examples/plugins/hello-world/`
+20. ✅ **P6.2** 插件开发文档 - `docs/PLUGIN_DEVELOPMENT.md`
+21. ⏳ **P6.3** 集成测试 - 待运行时验证
 
 ---
 
@@ -69,6 +69,9 @@
 - ✅ `frontend/src/services/plugin/PluginAPI.ts`
 - ✅ `frontend/src/services/plugin/index.ts`
 
+**LLM Providers**
+- ✅ `frontend/src/providers/llm/ClaudeProvider.ts` - Anthropic Claude API 支持
+
 **组件**
 - ✅ `frontend/src/components/plugins/PluginHost.tsx`
 - ✅ `frontend/src/components/plugins/PluginManager.tsx`
@@ -83,6 +86,12 @@
 
 ### 修改文件
 
+- ✅ `frontend/src/types.ts` - LLMProviderType 简化为 3 种类型
+- ✅ `frontend/src/providers/llm/index.ts` - 添加 ClaudeProvider 导出
+- ✅ `frontend/src/providers/index.ts` - 移除 openai-compatible 转换逻辑
+- ✅ `frontend/src/components/settings/LLMConfigManager.tsx` - UI 更新支持 claude
+- ✅ `frontend/src/components/settings/SettingsPage.tsx` - 重构为 Sidebar 布局
+- ✅ `frontend/src/components/settings/PromptStudio.tsx` - 新增 Prompt 模板编辑器
 - ✅ `frontend/src/components/common/Sidebar.tsx` - 动态菜单 + AppView 类型
 - ✅ `frontend/src/App.tsx` - 路由支持 `plugin:*` 和 `plugins`
 - ✅ `frontend/src/store/project/entities.ts` - 移除 normalize* 函数
@@ -224,4 +233,27 @@ Sidebar 更新菜单
 
 ## ✅ 构建验证
 
-最终构建于 2026-01-24 通过，无类型错误。
+最终构建于 2026-01-24 通过。
+
+### Phase 5 变更摘要
+
+**P5.1 Settings Portal 布局**
+- `SettingsPage.tsx` 从 Tabs 改为 `Layout + Sider + Menu + Content`
+- 菜单项分组：模型配置、工作流、系统
+- 支持动态渲染不同配置管理器
+
+**P5.3 PromptStudio 编辑器**
+- Master-Detail 布局：左侧模板列表 + 右侧编辑器
+- 支持搜索过滤、保存、重置功能
+- 显示可用变量标签，点击可复制
+
+### Phase 6 变更摘要
+
+**P6.1 示例插件**
+- 路径: `examples/plugins/hello-world/`
+- 展示: 主机信息显示、计数器、沙箱存储、UI 交互
+- 完整的 `manifest.json` 和预编译 bundle
+
+**P6.2 插件开发文档**
+- 路径: `docs/PLUGIN_DEVELOPMENT.md`
+- 内容: 快速开始、API 参考、最佳实践、常见问题

@@ -98,13 +98,14 @@ export const LLMConfigManager: React.FC<LLMConfigManagerProps> = ({ onConfigChan
         presetId: undefined,
         modelName: 'gemini-2.0-flash',
       });
-    } else if (provider === 'openai') {
+    } else if (provider === 'claude') {
       form.setFieldsValue({
-        baseUrl: 'https://api.openai.com/v1',
-        presetId: 'openai',
-        modelName: 'gpt-4o',
+        baseUrl: 'https://api.anthropic.com',
+        presetId: undefined,
+        modelName: 'claude-sonnet-4-20250514',
       });
     } else {
+      // openai-compatible
       form.setFieldsValue({
         presetId: undefined,
         baseUrl: undefined,
@@ -178,7 +179,7 @@ export const LLMConfigManager: React.FC<LLMConfigManagerProps> = ({ onConfigChan
     setTestingId(config.id);
     try {
       const result = await testLLMConnection({
-        provider: config.provider === 'openai-compatible' ? 'openai' : config.provider as any,
+        provider: config.provider as any,
         apiKey: config.apiKey,
         baseUrl: config.baseUrl,
         modelName: config.modelName,
@@ -198,7 +199,7 @@ export const LLMConfigManager: React.FC<LLMConfigManagerProps> = ({ onConfigChan
   const getProviderLabel = (provider: LLMProviderType) => {
     switch (provider) {
       case 'gemini': return 'Gemini';
-      case 'openai': return 'OpenAI';
+      case 'claude': return 'Claude';
       case 'openai-compatible': return 'OpenAI 兼容';
       default: return provider;
     }
@@ -207,7 +208,7 @@ export const LLMConfigManager: React.FC<LLMConfigManagerProps> = ({ onConfigChan
   const getProviderColor = (provider: LLMProviderType) => {
     switch (provider) {
       case 'gemini': return 'blue';
-      case 'openai': return 'green';
+      case 'claude': return 'orange';
       case 'openai-compatible': return 'purple';
       default: return 'default';
     }
@@ -342,8 +343,8 @@ export const LLMConfigManager: React.FC<LLMConfigManagerProps> = ({ onConfigChan
           >
             <Select onChange={handleProviderChange}>
               <Select.Option value="openai-compatible">OpenAI 兼容 (推荐)</Select.Option>
-              <Select.Option value="openai">OpenAI 原生</Select.Option>
               <Select.Option value="gemini">Google Gemini</Select.Option>
+              <Select.Option value="claude">Anthropic Claude</Select.Option>
             </Select>
           </Form.Item>
 
@@ -363,7 +364,7 @@ export const LLMConfigManager: React.FC<LLMConfigManagerProps> = ({ onConfigChan
             </Form.Item>
           )}
 
-          {(currentProvider === 'openai-compatible' || currentProvider === 'openai') && (
+          {(currentProvider === 'openai-compatible' || currentProvider === 'claude') && (
             <Form.Item
               name="baseUrl"
               label="API 地址"

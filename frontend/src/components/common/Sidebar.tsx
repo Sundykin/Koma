@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Menu, Avatar, Tooltip } from 'antd';
 import {
   AppstoreOutlined,
@@ -30,8 +30,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onViewChange,
   onEnterVideoTest,
 }) => {
-  // 获取已启用的全局插件
-  const globalPlugins = usePluginStore(state => state.getGlobalPlugins());
+  // 订阅 plugins 数组（稳定引用）
+  const plugins = usePluginStore(state => state.plugins);
+
+  // 使用 useMemo 过滤全局插件，避免每次渲染创建新数组
+  const globalPlugins = useMemo(
+    () => plugins.filter(p => p.category === 'global' && p.isEnabled),
+    [plugins]
+  );
 
   // 构建动态插件菜单项
   const pluginMenuItems = globalPlugins

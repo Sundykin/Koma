@@ -46,8 +46,8 @@ export interface InstallResult {
 }
 
 class PluginService {
-  private pluginsDir: string = '';
-  private stagingDir: string = '';
+  pluginsDir: string = '';
+  stagingDir: string = '';
 
   async init(): Promise<void> {
     const userDataPath = app.getPath('userData');
@@ -302,7 +302,7 @@ class PluginService {
   }
 
   // 辅助方法
-  private async fileExists(filePath: string): Promise<boolean> {
+  async fileExists(filePath: string): Promise<boolean> {
     try {
       await fs.access(filePath);
       return true;
@@ -311,7 +311,7 @@ class PluginService {
     }
   }
 
-  private async cleanup(dirPath: string): Promise<void> {
+  async cleanup(dirPath: string): Promise<void> {
     try {
       await fs.rm(dirPath, { recursive: true });
     } catch {
@@ -319,7 +319,7 @@ class PluginService {
     }
   }
 
-  private async copyDir(src: string, dest: string): Promise<void> {
+  async copyDir(src: string, dest: string): Promise<void> {
     await fs.mkdir(dest, { recursive: true });
     const entries = await fs.readdir(src, { withFileTypes: true });
 

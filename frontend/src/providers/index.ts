@@ -20,7 +20,7 @@ import {
 } from '../store/globalStore';
 
 // 从子目录导入类型和工厂
-import { createLLMProvider, GeminiProvider, OpenAIProvider } from './llm';
+import { createLLMProvider, GeminiProvider, OpenAIProvider, ClaudeProvider } from './llm';
 import type { LLMProvider } from './llm/types';
 import { createTTIProvider, ComfyUIProvider } from './tti';
 import type { TTIProvider, ImageResult, TTIOptions } from './tti/types';
@@ -29,7 +29,7 @@ import { createITVProvider as createITVProviderFromConfig } from './itv';
 import type { ITVProvider, ProgressInfo, ITVOptions } from './itv/types';
 
 // 重新导出子目录内容
-export { createLLMProvider, GeminiProvider, OpenAIProvider } from './llm';
+export { createLLMProvider, GeminiProvider, OpenAIProvider, ClaudeProvider } from './llm';
 export type { LLMProvider, ChatMessage } from './llm/types';
 export { createTTIProvider, ComfyUIProvider } from './tti';
 export type { TTIProvider, ImageResult, TTIOptions } from './tti/types';
@@ -60,7 +60,7 @@ export function createProvidersFromSettings(settings: AppSettings) {
 
   return {
     llm: defaultLLMConfig ? createLLMProvider({
-      provider: defaultLLMConfig.provider === 'openai-compatible' ? 'openai' : defaultLLMConfig.provider as any,
+      provider: defaultLLMConfig.provider as any,
       apiKey: defaultLLMConfig.apiKey,
       baseUrl: defaultLLMConfig.baseUrl,
       modelName: defaultLLMConfig.modelName,
@@ -121,7 +121,7 @@ export function validateAllSettings(settings: AppSettings): {
   const defaultLLMConfig = settings.llmConfigs?.find(c => c.isDefault) || settings.llmConfigs?.[0];
   const llmResult: ValidationResult = defaultLLMConfig
     ? validateLLMConfig({
-        provider: defaultLLMConfig.provider === 'openai-compatible' ? 'openai' : defaultLLMConfig.provider as any,
+        provider: defaultLLMConfig.provider as any,
         apiKey: defaultLLMConfig.apiKey,
         baseUrl: defaultLLMConfig.baseUrl,
         modelName: defaultLLMConfig.modelName,
@@ -187,9 +187,8 @@ export async function testTTIConnection(config: TTIModelConfig): Promise<{ succe
 // ========== 项目级 Provider 工厂 ==========
 
 export function createLLMProviderFromConfig(config: LLMModelConfig): LLMProvider {
-  const providerType = config.provider === 'openai-compatible' ? 'openai' : config.provider;
   return createLLMProvider({
-    provider: providerType as any,
+    provider: config.provider as any,
     apiKey: config.apiKey,
     baseUrl: config.baseUrl,
     modelName: config.modelName,

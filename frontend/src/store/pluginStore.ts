@@ -153,17 +153,23 @@ export const usePluginStore = create<PluginState>()(
   )
 );
 
-// 辅助 hooks
+// 辅助 hooks（直接使用 state.plugins 进行过滤，避免调用方法导致无限循环）
 export function useGlobalPlugins() {
-  return usePluginStore(state => state.getGlobalPlugins());
+  return usePluginStore(state =>
+    state.plugins.filter(p => p.category === 'global' && p.isEnabled)
+  );
 }
 
 export function useProviderPlugins() {
-  return usePluginStore(state => state.getProviderPlugins());
+  return usePluginStore(state =>
+    state.plugins.filter(p => p.category === 'provider' && p.isEnabled)
+  );
 }
 
 export function useToolPlugins() {
-  return usePluginStore(state => state.getToolPlugins());
+  return usePluginStore(state =>
+    state.plugins.filter(p => p.category === 'tool' && p.isEnabled)
+  );
 }
 
 export function usePluginRuntimeState(pluginId: string) {
