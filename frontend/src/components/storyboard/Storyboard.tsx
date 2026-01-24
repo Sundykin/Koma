@@ -28,6 +28,7 @@ import { TaskManager } from '../../services/TaskManager';
 import { ScriptEditor } from '../../editor';
 import type { MentionItem } from '../../editor';
 import { StoryboardLayout } from './StoryboardLayout';
+import { StoryboardStudio } from './StoryboardStudio';
 import { ShotListEditor } from './ShotListEditor';
 import { ShotAssetPresetModal } from './ShotAssetPresetModal';
 import './Storyboard.css';
@@ -112,6 +113,14 @@ export const Storyboard: React.FC<StoryboardProps> = ({
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editingShot, setEditingShot] = useState<Shot | null>(null);
   const [editFormData, setEditFormData] = useState<Partial<Shot>>({});
+
+  // 舞台区激活的分镜
+  const [activeShotId, setActiveShotId] = useState<string | null>(null);
+
+  // 获取当前激活的分镜对象
+  const activeShot = useMemo(() =>
+    shots.find(s => s.id === activeShotId) || null
+  , [shots, activeShotId]);
 
   // 实际使用的 mentionItems
   // 只有已绑定 Sora2 的角色/道具才能在编辑器中被 @ 引用
@@ -377,10 +386,26 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     saveAllShots(updatedShots);
   }, [shots, saveAllShots]);
 
-  // 提示词变更
-  const handleDescriptionChange = useCallback((shotId: string, description: string) => {
+  // 文生图提示词变更
+  const handleImagePromptChange = useCallback((shotId: string, imagePrompt: string) => {
     const updatedShots = shots.map(s =>
-      s.id === shotId ? { ...s, description } : s
+      s.id === shotId ? { ...s, imagePrompt } : s
+    );
+    saveAllShots(updatedShots);
+  }, [shots, saveAllShots]);
+
+  // 图生视频提示词变更
+  const handleVideoPromptChange = useCallback((shotId: string, videoPrompt: string) => {
+    const updatedShots = shots.map(s =>
+      s.id === shotId ? { ...s, videoPrompt } : s
+    );
+    saveAllShots(updatedShots);
+  }, [shots, saveAllShots]);
+
+  // 角色变更
+  const handleCharactersChange = useCallback((shotId: string, characterIds: string[]) => {
+    const updatedShots = shots.map(s =>
+      s.id === shotId ? { ...s, characters: characterIds } : s
     );
     saveAllShots(updatedShots);
   }, [shots, saveAllShots]);
@@ -470,7 +495,11 @@ export const Storyboard: React.FC<StoryboardProps> = ({
         llmConfigId
       );
       if (result.success) {
-        setShots(prev => prev.map(s => s.id === shotId ? { ...s, description: result.prompt } : s));
+        setShots(prev => prev.map(s => s.id === shotId ? {
+          ...s,
+          imagePrompt: result.imagePrompt,
+          videoPrompt: result.videoPrompt,
+        } : s));
         message.success('提示词生成完成');
       } else {
         message.error(result.error || '生成失败');
@@ -492,11 +521,11 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       message.warning('未选择分集');
       return;
     }
-    // 如果指定了 shotIds，则只处理这些分镜中没有提示词的
+    // 如果指定了 shotIds，则只处理这些分镜中缺少提示词的
     const baseShots = targetShotIds
       ? shots.filter(s => targetShotIds.includes(s.id))
       : shots;
-    const shotsWithoutPrompt = baseShots.filter(s => !s.description?.trim());
+    const shotsWithoutPrompt = baseShots.filter(s => !s.imagePrompt?.trim() || !s.videoPrompt?.trim());
     if (shotsWithoutPrompt.length === 0) {
       message.info('所选分镜都已有提示词');
       return;
@@ -513,7 +542,11 @@ export const Storyboard: React.FC<StoryboardProps> = ({
         (current, total, result) => {
           setBatchProgress({ current, total, step: `生成中 ${current}/${total}` });
           if (result.success) {
-            setShots(prev => prev.map(s => s.id === result.shotId ? { ...s, description: result.prompt } : s));
+            setShots(prev => prev.map(s => s.id === result.shotId ? {
+              ...s,
+              imagePrompt: result.imagePrompt,
+              videoPrompt: result.videoPrompt,
+            } : s));
           }
         },
         llmConfigId
@@ -537,7 +570,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     const baseShots = targetShotIds
       ? shots.filter(s => targetShotIds.includes(s.id))
       : shots;
-    const shotsWithPrompt = baseShots.filter(s => s.description?.trim());
+    const shotsWithPrompt = baseShots.filter(s => s.imagePrompt?.trim() || s.videoPrompt?.trim());
     if (shotsWithPrompt.length === 0) {
       message.info('所选分镜都没有提示词');
       return;
@@ -554,7 +587,11 @@ export const Storyboard: React.FC<StoryboardProps> = ({
         (current, total, result) => {
           setBatchProgress({ current, total, step: `重新生成中 ${current}/${total}` });
           if (result.success) {
-            setShots(prev => prev.map(s => s.id === result.shotId ? { ...s, description: result.prompt } : s));
+            setShots(prev => prev.map(s => s.id === result.shotId ? {
+              ...s,
+              imagePrompt: result.imagePrompt,
+              videoPrompt: result.videoPrompt,
+            } : s));
           }
         },
         llmConfigId
@@ -916,42 +953,53 @@ export const Storyboard: React.FC<StoryboardProps> = ({
           </Empty>
         </div>
       ) : (
-        <ShotListEditor
-          projectId={projectId}
-          shots={shots}
+        <StoryboardStudio
+          selectedShot={activeShot}
           characters={characters}
           scenes={scenes}
-          props={props}
-          mentionItems={actualMentionItems}
-          generatingPrompts={generatingPrompts}
-          generatingImages={generatingShots}
-          generatingVideos={renderingShots}
-          batchProgress={batchProgress}
-          onScriptChange={handleScriptChange}
-          onPromptChange={handleDescriptionChange}
-          onImagesChange={handleImagesChange}
-          onVideosChange={handleVideosChange}
-          onGeneratePrompt={handleGenerateShotPrompt}
-          onBatchGeneratePrompts={handleBatchGeneratePrompts}
-          onBatchReGeneratePrompts={handleBatchReGeneratePrompts}
-          onGenerateImage={handleGenerateShotImage}
-          onBatchGenerateImages={handleBatchGenerate}
-          onBatchReGenerateImages={handleBatchReGenerateImages}
-          onGenerateVideo={handleRenderShotVideo}
-          onBatchGenerateVideos={handleBatchRenderVideos}
-          onBatchReGenerateVideos={handleBatchReGenerateVideos}
-          onToggleConfirm={handleToggleConfirm}
-          onDelete={handleDeleteShot}
-          onBatchDelete={handleBatchDelete}
-          onBatchConfirm={handleBatchConfirm}
-          onMergeUp={handleMergeUp}
-          onMergeDown={handleMergeDown}
-          onMoveUp={handleMoveUp}
-          onMoveDown={handleMoveDown}
-          onAddShot={handleAddShot}
-          onInsertAbove={handleInsertAbove}
-          onInsertBelow={handleInsertBelow}
-        />
+          onShotSelect={setActiveShotId}
+        >
+          <ShotListEditor
+            projectId={projectId}
+            shots={shots}
+            characters={characters}
+            scenes={scenes}
+            props={props}
+            mentionItems={actualMentionItems}
+            generatingPrompts={generatingPrompts}
+            generatingImages={generatingShots}
+            generatingVideos={renderingShots}
+            batchProgress={batchProgress}
+            activeShotId={activeShotId}
+            onActiveShotChange={setActiveShotId}
+            onScriptChange={handleScriptChange}
+            onImagePromptChange={handleImagePromptChange}
+            onVideoPromptChange={handleVideoPromptChange}
+            onCharactersChange={handleCharactersChange}
+            onImagesChange={handleImagesChange}
+            onVideosChange={handleVideosChange}
+            onGeneratePrompt={handleGenerateShotPrompt}
+            onBatchGeneratePrompts={handleBatchGeneratePrompts}
+            onBatchReGeneratePrompts={handleBatchReGeneratePrompts}
+            onGenerateImage={handleGenerateShotImage}
+            onBatchGenerateImages={handleBatchGenerate}
+            onBatchReGenerateImages={handleBatchReGenerateImages}
+            onGenerateVideo={handleRenderShotVideo}
+            onBatchGenerateVideos={handleBatchRenderVideos}
+            onBatchReGenerateVideos={handleBatchReGenerateVideos}
+            onToggleConfirm={handleToggleConfirm}
+            onDelete={handleDeleteShot}
+            onBatchDelete={handleBatchDelete}
+            onBatchConfirm={handleBatchConfirm}
+            onMergeUp={handleMergeUp}
+            onMergeDown={handleMergeDown}
+            onMoveUp={handleMoveUp}
+            onMoveDown={handleMoveDown}
+            onAddShot={handleAddShot}
+            onInsertAbove={handleInsertAbove}
+            onInsertBelow={handleInsertBelow}
+          />
+        </StoryboardStudio>
       )}
 
       {/* 编辑/添加分镜弹窗 */}

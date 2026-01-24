@@ -161,16 +161,18 @@ export const EditorView: React.FC<EditorViewProps> = ({
       {/* 分镜视图 */}
       {editorStep === 'storyboard' && (
         activeProject ? (
-          <Storyboard
-            projectId={activeProject.id}
-            episodeId={activeEpisode?.id}
-            episodeName={activeEpisode?.title || (activeEpisode ? `第${activeEpisode.number}集` : undefined)}
-            script={scriptText}
-            llmConfigId={activeProject.llmConfigId}
-            ttiConfigId={activeProject.ttiConfigId}
-            settings={appSettings}
-            mentionItems={mentionItems}
-          />
+          <div className="absolute inset-0">
+            <Storyboard
+              projectId={activeProject.id}
+              episodeId={activeEpisode?.id}
+              episodeName={activeEpisode?.title || (activeEpisode ? `第${activeEpisode.number}集` : undefined)}
+              script={scriptText}
+              llmConfigId={activeProject.llmConfigId}
+              ttiConfigId={activeProject.ttiConfigId}
+              settings={appSettings}
+              mentionItems={mentionItems}
+            />
+          </div>
         ) : (
           <div className="flex h-full items-center justify-center text-zinc-500 flex-col gap-4">
             <Clapperboard className="w-16 h-16 opacity-10" />

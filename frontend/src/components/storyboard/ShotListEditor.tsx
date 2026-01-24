@@ -54,8 +54,13 @@ export interface ShotListEditorProps {
   generatingImages: Set<string>;
   generatingVideos: Set<string>;
   batchProgress?: { current: number; total: number; step?: string };
+  // 舞台激活相关
+  activeShotId?: string | null;
+  onActiveShotChange?: (shotId: string | null) => void;
   onScriptChange: (shotId: string, script: string) => void;
-  onPromptChange: (shotId: string, description: string) => void;
+  onImagePromptChange: (shotId: string, imagePrompt: string) => void;
+  onVideoPromptChange: (shotId: string, videoPrompt: string) => void;
+  onCharactersChange: (shotId: string, characterIds: string[]) => void;
   onImagesChange: (shotId: string, images: string[], selectedIndex: number) => void;
   onVideosChange: (shotId: string, videos: ShotVideo[], selectedIndex: number) => void;
   onGeneratePrompt: (shotId: string) => void;
@@ -91,8 +96,12 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
   generatingImages,
   generatingVideos,
   batchProgress,
+  activeShotId,
+  onActiveShotChange,
   onScriptChange,
-  onPromptChange,
+  onImagePromptChange,
+  onVideoPromptChange,
+  onCharactersChange,
   onImagesChange,
   onVideosChange,
   onGeneratePrompt,
@@ -121,18 +130,18 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
   // 统计
   const stats = useMemo(() => {
     const total = shots.length;
-    const withPrompt = shots.filter(s => s.description?.trim()).length;
+    const withPrompt = shots.filter(s => s.imagePrompt?.trim() || s.videoPrompt?.trim()).length;
     const withImage = shots.filter(s => (s.imagePaths?.length || 0) > 0 || s.imagePath).length;
     const withVideo = shots.filter(s => (s.videos?.length || 0) > 0).length;
     const confirmed = shots.filter(s => s.confirmed).length;
     return { total, withPrompt, withImage, withVideo, confirmed };
   }, [shots]);
 
-  // 选中项统计
+  // 选中项���计
   const selectedStats = useMemo(() => {
     const selectedShots = shots.filter(s => selectedIds.has(s.id));
     const total = selectedShots.length;
-    const withPrompt = selectedShots.filter(s => s.description?.trim()).length;
+    const withPrompt = selectedShots.filter(s => s.imagePrompt?.trim() || s.videoPrompt?.trim()).length;
     const withImage = selectedShots.filter(s => (s.imagePaths?.length || 0) > 0 || s.imagePath).length;
     const withVideo = selectedShots.filter(s => (s.videos?.length || 0) > 0).length;
     return {
@@ -296,12 +305,16 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
                   props={props}
                   mentionItems={mentionItems}
                   isSelected={selectedIds.has(shot.id)}
+                  isActive={activeShotId === shot.id}
                   isGeneratingPrompt={generatingPrompts.has(shot.id)}
                   isGeneratingImage={generatingImages.has(shot.id)}
                   isGeneratingVideo={generatingVideos.has(shot.id)}
                   onSelectChange={handleSelectChange}
+                  onActivate={onActiveShotChange}
                   onScriptChange={onScriptChange}
-                  onPromptChange={onPromptChange}
+                  onImagePromptChange={onImagePromptChange}
+                  onVideoPromptChange={onVideoPromptChange}
+                  onCharactersChange={onCharactersChange}
                   onImagesChange={onImagesChange}
                   onVideosChange={onVideosChange}
                   onGeneratePrompt={onGeneratePrompt}

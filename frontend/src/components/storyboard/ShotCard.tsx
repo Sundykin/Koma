@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useCallback } from 'react';
 import {
   Space,
   Tag,
@@ -8,6 +8,7 @@ import {
   Button,
   Popconfirm,
   Input,
+  Select,
 } from 'antd';
 import {
   DeleteOutlined,
@@ -55,12 +56,16 @@ export interface ShotCardProps {
   props: Prop[];
   mentionItems: MentionItem[];
   isSelected: boolean;
+  isActive?: boolean;
   isGeneratingPrompt: boolean;
   isGeneratingImage: boolean;
   isGeneratingVideo: boolean;
   onSelectChange: (shotId: string, selected: boolean) => void;
+  onActivate?: (shotId: string | null) => void;
   onScriptChange: (shotId: string, script: string) => void;
-  onPromptChange: (shotId: string, description: string) => void;
+  onImagePromptChange: (shotId: string, imagePrompt: string) => void;
+  onVideoPromptChange: (shotId: string, videoPrompt: string) => void;
+  onCharactersChange: (shotId: string, characterIds: string[]) => void;
   onImagesChange: (shotId: string, images: string[], selectedIndex: number) => void;
   onVideosChange: (shotId: string, videos: ShotVideo[], selectedIndex: number) => void;
   onGeneratePrompt: (shotId: string) => void;
@@ -85,12 +90,16 @@ export const ShotCard: React.FC<ShotCardProps> = ({
   props,
   mentionItems,
   isSelected,
+  isActive,
   isGeneratingPrompt,
   isGeneratingImage,
   isGeneratingVideo,
   onSelectChange,
+  onActivate,
   onScriptChange,
-  onPromptChange,
+  onImagePromptChange,
+  onVideoPromptChange,
+  onCharactersChange,
   onImagesChange,
   onVideosChange,
   onGeneratePrompt,
@@ -105,16 +114,21 @@ export const ShotCard: React.FC<ShotCardProps> = ({
   onInsertAbove,
   onInsertBelow,
 }) => {
-  const characterNames = useMemo(() => {
-    return shot.characters?.map(charId => {
-      const char = characters.find(c => c.id === charId);
-      return char?.name || charId;
-    }) || [];
-  }, [shot.characters, characters]);
-
-  const hasPrompt = !!shot.description?.trim();
+  // 检查是否有提示词（兼容新旧字段）
+  const hasImagePrompt = !!(shot.imagePrompt?.trim() || shot.description?.trim());
+  const hasVideoPrompt = !!shot.videoPrompt?.trim();
+  const hasPrompt = hasImagePrompt || hasVideoPrompt;
   const isFirst = index === 0;
   const isLast = index === totalCount - 1;
+
+  // 点击卡片激活舞台预览
+  const handleCardClick = useCallback((e: React.MouseEvent) => {
+    // 只在点击卡片背景时激活，不影响内部控件
+    if ((e.target as HTMLElement).closest('.ant-btn, .ant-checkbox, .ant-input, .ant-select, .ant-tabs, .cm-editor')) {
+      return;
+    }
+    onActivate?.(shot.id);
+  }, [shot.id, onActivate]);
 
   // 图片列表
   const images = useMemo(() => {
@@ -154,7 +168,10 @@ export const ShotCard: React.FC<ShotCardProps> = ({
   };
 
   return (
-    <div className={`shot-card ${isSelected ? 'selected' : ''} ${shot.confirmed ? 'confirmed' : ''}`}>
+    <div
+      className={`shot-card ${isSelected ? 'selected' : ''} ${shot.confirmed ? 'confirmed' : ''} ${isActive ? 'active' : ''}`}
+      onClick={handleCardClick}
+    >
       {/* 头部：序号、操作、元数据 */}
       <div className="shot-card-header">
         <div className="shot-card-index">
@@ -172,9 +189,19 @@ export const ShotCard: React.FC<ShotCardProps> = ({
             <Tag color="purple">{CAMERA_MOVEMENT_MAP[shot.cameraMovement]}</Tag>
           )}
           <Tag>{shot.duration}s</Tag>
-          {characterNames.map(name => (
-            <Tag key={name} color="cyan">{name}</Tag>
-          ))}
+          <Select
+            mode="multiple"
+            size="small"
+            placeholder="选择角色"
+            value={shot.characters || []}
+            onChange={(value) => onCharactersChange(shot.id, value)}
+            className="character-select"
+            maxTagCount={2}
+            options={characters.map(c => ({
+              value: c.id,
+              label: c.name,
+            }))}
+          />
         </div>
 
         <div className="shot-card-actions">
@@ -247,7 +274,7 @@ export const ShotCard: React.FC<ShotCardProps> = ({
         </div>
       </div>
 
-      {/* 主体内容：三列布局 (Script, Prompt, Media) */}
+      {/* 主体内容：四列布局 (剧本 | 文生图提示词+参考图 | 图生视频提示词+视频) */}
       <div className="shot-card-body">
         {/* 1. 剧本列 */}
         <div className="shot-column script-column">
@@ -261,10 +288,10 @@ export const ShotCard: React.FC<ShotCardProps> = ({
           />
         </div>
 
-        {/* 2. 提示词列 */}
+        {/* 2. 文生图提示词列 */}
         <div className="shot-column prompt-column">
           <div className="column-header">
-            <div className="column-label">提示词</div>
+            <div className="column-label">文生图提示词</div>
             <Button
               type="link"
               size="small"
@@ -272,14 +299,14 @@ export const ShotCard: React.FC<ShotCardProps> = ({
               disabled={isGeneratingPrompt}
               loading={isGeneratingPrompt}
             >
-              {hasPrompt ? '重新生成' : 'AI生成'}
+              {hasImagePrompt ? '重新生成' : 'AI生成'}
             </Button>
           </div>
           <div className="prompt-editor-container">
             <ScriptEditor
-              value={shot.description || ''}
-              onChange={(value) => onPromptChange(shot.id, value)}
-              placeholder={hasPrompt ? '' : '输入提示词...'}
+              value={shot.imagePrompt || shot.description || ''}
+              onChange={(value) => onImagePromptChange(shot.id, value)}
+              placeholder="输入文生图提示词..."
               mentionItems={mentionItems}
               enableKeywordHighlight={true}
               minHeight="100%"
@@ -290,60 +317,88 @@ export const ShotCard: React.FC<ShotCardProps> = ({
           </div>
         </div>
 
-        {/* 3. 媒体列 (图片 & 视频) */}
+        {/* 3. 参考图列 */}
         <div className="shot-column media-column">
-          <div className="media-section image-section">
-            <div className="column-header">
-              <div className="column-label">参考图</div>
-              <Button
-                type="link"
-                size="small"
-                onClick={() => onGenerateImage(shot.id)}
-                disabled={!hasPrompt || isGeneratingImage}
-                loading={isGeneratingImage}
-              >
-                生成
-              </Button>
-            </div>
-            <div className="media-grid-wrapper">
-              <ImageCardGrid
-                images={images}
-                selectedIndex={shot.currentImageIndex || 0}
-                onSelect={handleImageSelect}
-                onAdd={handleImageAdd}
-                onDelete={handleImageDelete}
-                isGenerating={isGeneratingImage}
-                disabled={!hasPrompt}
-                characters={characters}
-                scenes={scenes}
-                props={props}
-              />
-            </div>
+          <div className="column-header">
+            <div className="column-label">参考图</div>
+            <Button
+              type="link"
+              size="small"
+              onClick={() => onGenerateImage(shot.id)}
+              disabled={!hasImagePrompt || isGeneratingImage}
+              loading={isGeneratingImage}
+            >
+              生成
+            </Button>
           </div>
+          <div className="media-grid-wrapper">
+            <ImageCardGrid
+              images={images}
+              selectedIndex={shot.currentImageIndex || 0}
+              onSelect={handleImageSelect}
+              onAdd={handleImageAdd}
+              onDelete={handleImageDelete}
+              isGenerating={isGeneratingImage}
+              disabled={!hasImagePrompt}
+              characters={characters}
+              scenes={scenes}
+              props={props}
+            />
+          </div>
+        </div>
 
-          <div className="media-section video-section">
-            <div className="column-header">
-              <div className="column-label">视频</div>
-              <Button
-                type="link"
-                size="small"
-                onClick={() => onGenerateVideo(shot.id)}
-                disabled={images.length === 0 || isGeneratingVideo}
-                loading={isGeneratingVideo}
-              >
-                生成
-              </Button>
-            </div>
-            <div className="media-grid-wrapper">
-              <VideoCardGrid
-                videos={videos}
-                selectedIndex={shot.currentVideoIndex || 0}
-                onSelect={handleVideoSelect}
-                onDelete={handleVideoDelete}
-                isGenerating={isGeneratingVideo}
-                disabled={images.length === 0}
-              />
-            </div>
+        {/* 4. 图生视频提示词列 */}
+        <div className="shot-column prompt-column">
+          <div className="column-header">
+            <div className="column-label">图生视频提示词</div>
+            <Button
+              type="link"
+              size="small"
+              onClick={() => onGeneratePrompt(shot.id)}
+              disabled={isGeneratingPrompt}
+              loading={isGeneratingPrompt}
+            >
+              {hasVideoPrompt ? '重新生成' : 'AI生成'}
+            </Button>
+          </div>
+          <div className="prompt-editor-container">
+            <ScriptEditor
+              value={shot.videoPrompt || ''}
+              onChange={(value) => onVideoPromptChange(shot.id, value)}
+              placeholder="输入图生视频提示词..."
+              mentionItems={mentionItems}
+              enableKeywordHighlight={true}
+              minHeight="100%"
+              maxHeight="100%"
+              showLineNumbers={false}
+              darkTheme={true}
+            />
+          </div>
+        </div>
+
+        {/* 5. 视频列 */}
+        <div className="shot-column media-column">
+          <div className="column-header">
+            <div className="column-label">视频</div>
+            <Button
+              type="link"
+              size="small"
+              onClick={() => onGenerateVideo(shot.id)}
+              disabled={images.length === 0 || isGeneratingVideo}
+              loading={isGeneratingVideo}
+            >
+              生成
+            </Button>
+          </div>
+          <div className="media-grid-wrapper">
+            <VideoCardGrid
+              videos={videos}
+              selectedIndex={shot.currentVideoIndex || 0}
+              onSelect={handleVideoSelect}
+              onDelete={handleVideoDelete}
+              isGenerating={isGeneratingVideo}
+              disabled={images.length === 0}
+            />
           </div>
         </div>
       </div>

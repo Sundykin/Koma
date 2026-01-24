@@ -2,7 +2,7 @@
   background: #18181b;
   border: 1px solid #27272a;
   border-radius: 8px;
-  margin-bottom: 16px;
+  margin-bottom: 0;
   display: flex;
   flex-direction: column;
   transition: all 0.2s ease;
@@ -20,6 +20,12 @@
 
 .shot-card.confirmed {
   border-left: 4px solid #10b981;
+}
+
+.shot-card.active {
+  background: rgba(59, 130, 246, 0.08);
+  border-color: rgba(59, 130, 246, 0.5);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
 }
 
 /* Header */
@@ -52,6 +58,7 @@
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+  align-items: center;
 }
 
 .shot-card-actions {
@@ -60,12 +67,17 @@
   gap: 4px;
 }
 
-/* Body */
+/* Body - 五列布局 */
 .shot-card-body {
   display: grid;
-  grid-template-columns: minmax(220px, 2fr) minmax(300px, 3fr) minmax(320px, 3fr);
+  grid-template-columns:
+    minmax(180px, 1.5fr)  /* 剧本 */
+    minmax(200px, 2fr)    /* 文生图提示词 */
+    minmax(140px, 1.2fr)  /* 参考图 */
+    minmax(200px, 2fr)    /* 图生视频提示词 */
+    minmax(140px, 1.2fr); /* 视频 */
   gap: 1px;
-  background: #27272a; /* Grid lines color */
+  background: #27272a;
 }
 
 .shot-column {
@@ -81,7 +93,7 @@
 }
 
 .shot-card.selected .shot-column {
-  background: transparent; /* Allow card bg to show */
+  background: transparent;
 }
 
 .column-header {
@@ -96,15 +108,20 @@
   font-weight: 600;
   color: #71717a;
   text-transform: uppercase;
+  white-space: nowrap;
 }
 
 /* Script Column */
+.script-column {
+  min-width: 180px;
+}
+
 .script-textarea {
   background: #09090b !important;
   border-color: #27272a !important;
   color: #e4e4e7 !important;
-  font-size: 14px !important;
-  line-height: 1.6 !important;
+  font-size: 13px !important;
+  line-height: 1.5 !important;
   flex: 1;
   resize: vertical;
 }
@@ -114,10 +131,14 @@
 }
 
 /* Prompt Column */
+.prompt-column {
+  min-width: 200px;
+}
+
 .prompt-editor-container {
   flex: 1;
-  min-height: 150px;
-  max-height: 300px;
+  min-height: 120px;
+  max-height: 200px;
   border: 1px solid #27272a;
   border-radius: 6px;
   overflow: hidden;
@@ -130,30 +151,31 @@
 
 /* Media Column */
 .media-column {
-  padding: 0;
-  display: grid;
-  grid-template-rows: 1fr 1fr;
-  gap: 1px;
-  background: #27272a;
-}
-
-.media-section {
-  background: #18181b;
+  min-width: 140px;
   padding: 12px;
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 
-.shot-card:hover .media-section {
-  background: #202023;
-}
-
-.shot-card.selected .media-section {
-  background: transparent;
-}
-
 .media-grid-wrapper {
   flex: 1;
-  min-height: 100px;
+  min-height: 80px;
+}
+
+/* Character Select */
+.character-select {
+  min-width: 120px;
+  max-width: 200px;
+}
+
+.character-select .ant-select-selector {
+  background: #27272a !important;
+  border-color: #3f3f46 !important;
+}
+
+.character-select .ant-select-selection-item {
+  background: #3b82f6 !important;
+  border-color: #3b82f6 !important;
+  color: #fff !important;
 }

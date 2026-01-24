@@ -63,7 +63,14 @@ export async function loadEpisodeShots(
   episodeId: string
 ): Promise<Shot[]> {
   const analysis = await loadEpisodeAnalysis(projectId, episodeId);
-  return analysis?.shots || [];
+  const shots = analysis?.shots || [];
+
+  // 运行时兼容：旧数据只有 description，需要回填到 imagePrompt/videoPrompt
+  return shots.map(shot => ({
+    ...shot,
+    imagePrompt: shot.imagePrompt || shot.description || '',
+    videoPrompt: shot.videoPrompt || shot.description || '',
+  }));
 }
 
 export async function saveEpisodeShots(

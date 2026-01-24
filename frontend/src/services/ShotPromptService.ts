@@ -85,18 +85,32 @@ export class ShotPromptService {
   }
 
   /**
-   * 生成双提示词（图片 + 视频）
+   * 生成双提示词（图片 + 视频），支持按需生成
+   * @param generateFlags 指定生成哪些类型，默认生成缺失的
    */
   async generateDualShotPrompts(
     shot: Shot,
     characters: Character[],
-    stylePrefix: string = ''
+    stylePrefix: string = '',
+    generateFlags?: { image?: boolean; video?: boolean }
   ): Promise<{ imagePrompt: string; videoPrompt: string }> {
     if (!this.llmConfig) {
       const hasConfig = await this.setLLMConfig();
       if (!hasConfig) {
         throw new Error('未配置 LLM 模型，请先在设置中添加');
       }
+    }
+
+    // 确定需要生成哪些类型
+    const needImage = generateFlags?.image ?? !shot.imagePrompt?.trim();
+    const needVideo = generateFlags?.video ?? !shot.videoPrompt?.trim();
+
+    // 如果都不需要生成，直接返回现有值
+    if (!needImage && !needVideo) {
+      return {
+        imagePrompt: shot.imagePrompt || '',
+        videoPrompt: shot.videoPrompt || '',
+      };
     }
 
     // 过滤出该分镜关联的角色
@@ -107,11 +121,20 @@ export class ShotPromptService {
       .map(c => `${c.name}: @${c.sora2CharacterId || c.id}`)
       .join('\n');
 
-    // 并行生成图片和视频提示词
-    const [imagePrompt, videoPrompt] = await Promise.all([
-      this.generatePromptByType('image', shot, shotCharacters, characterRefs, stylePrefix),
-      this.generatePromptByType('video', shot, shotCharacters, characterRefs, stylePrefix),
-    ]);
+    // 按需并行生成
+    const promises: Promise<string>[] = [];
+    if (needImage) {
+      promises.push(this.generatePromptByType('image', shot, shotCharacters, characterRefs, stylePrefix));
+    }
+    if (needVideo) {
+      promises.push(this.generatePromptByType('video', shot, shotCharacters, characterRefs, stylePrefix));
+    }
+
+    const results = await Promise.all(promises);
+
+    let resultIndex = 0;
+    const imagePrompt = needImage ? results[resultIndex++] : (shot.imagePrompt || '');
+    const videoPrompt = needVideo ? results[resultIndex++] : (shot.videoPrompt || '');
 
     return { imagePrompt, videoPrompt };
   }
@@ -173,6 +196,7 @@ export class ShotPromptService {
 
   /**
    * 批量生成分镜提示词（双提示词版本）
+   * 支持按需生成：只生成缺失的提示词类型
    */
   async batchGenerateShotPrompts(
     shots: Shot[],
@@ -182,12 +206,13 @@ export class ShotPromptService {
     const characters = await loadCharacters(this.projectId);
     const results: PromptGenerationResult[] = [];
 
-    // 过滤出没有提示词的分镜
-    const shotsToGenerate = shots.filter(s => !s.imagePrompt && !s.videoPrompt);
+    // 过滤出至少缺少一种提示词的分镜
+    const shotsToGenerate = shots.filter(s => !s.imagePrompt?.trim() || !s.videoPrompt?.trim());
 
     for (let i = 0; i < shotsToGenerate.length; i++) {
       const shot = shotsToGenerate[i];
       try {
+        // generateDualShotPrompts 会自动检测并只生成缺失的类型
         const { imagePrompt, videoPrompt } = await this.generateDualShotPrompts(shot, characters, stylePrefix);
 
         // 保存双提示词到数据库

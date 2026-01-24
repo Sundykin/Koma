@@ -70,6 +70,7 @@ export const StoryboardStudio: React.FC<StoryboardStudioProps> = ({
       style={{
         display: 'flex',
         flexDirection: 'column',
+        width: '100%',
         height: '100%',
         background: '#09090b',
         overflow: 'hidden',
