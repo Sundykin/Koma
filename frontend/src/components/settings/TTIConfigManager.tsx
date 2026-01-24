@@ -513,8 +513,9 @@ export const TTIConfigManager: React.FC<TTIConfigManagerProps> = ({ onConfigChan
         width={520}
         maskClosable={false}
         destroyOnHidden
+        className="dark-modal"
       >
-        <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
+        <Form form={form} layout="vertical" className="mt-4">
           <Form.Item
             name="provider"
             label="服务商"
@@ -608,8 +609,9 @@ export const TTIConfigManager: React.FC<TTIConfigManagerProps> = ({ onConfigChan
         width={700}
         maskClosable={false}
         destroyOnHidden
+        className="dark-modal"
       >
-        <Form form={channelForm} layout="vertical" style={{ marginTop: 16 }}>
+        <Form form={channelForm} layout="vertical" className="mt-4">
           <Form.Item
             name="channelName"
             label="渠道名称"
@@ -648,11 +650,11 @@ export const TTIConfigManager: React.FC<TTIConfigManagerProps> = ({ onConfigChan
             </Col>
           </Row>
 
-          <Divider>接口配置</Divider>
+          <Divider className="!border-zinc-600">接口配置</Divider>
 
           {/* 生成接口 */}
-          <div style={{ background: '#fafafa', padding: 12, borderRadius: 4, marginBottom: 12 }}>
-            <div style={{ fontWeight: 500, marginBottom: 8 }}>生成接口</div>
+          <div className="bg-zinc-800 p-3 rounded border border-zinc-700 mb-3">
+            <div className="font-medium mb-2 text-zinc-200">生成接口</div>
             <Row gutter={16}>
               <Col span={18}>
                 <Form.Item
@@ -677,7 +679,7 @@ export const TTIConfigManager: React.FC<TTIConfigManagerProps> = ({ onConfigChan
               label="请求体模板"
               initialValue='{"model": "{{model}}", "prompt": "{{prompt}}", "n": 1, "size": "{{size}}"}'
             >
-              <Input.TextArea rows={3} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+              <Input.TextArea rows={3} className="!font-mono !text-xs" />
             </Form.Item>
             <Form.Item name="ttiGenerateTaskIdPath" label="TaskId 路径" initialValue="$.id">
               <Input placeholder="$.id" />
@@ -685,8 +687,8 @@ export const TTIConfigManager: React.FC<TTIConfigManagerProps> = ({ onConfigChan
           </div>
 
           {/* 查询接口 */}
-          <div style={{ background: '#fafafa', padding: 12, borderRadius: 4, marginBottom: 12 }}>
-            <div style={{ fontWeight: 500, marginBottom: 8 }}>查询接口</div>
+          <div className="bg-zinc-800 p-3 rounded border border-zinc-700 mb-3">
+            <div className="font-medium mb-2 text-zinc-200">查询接口</div>
             <Row gutter={16}>
               <Col span={18}>
                 <Form.Item
@@ -720,7 +722,7 @@ export const TTIConfigManager: React.FC<TTIConfigManagerProps> = ({ onConfigChan
             </Row>
           </div>
 
-          <Divider>轮询配置</Divider>
+          <Divider className="!border-zinc-600">轮询配置</Divider>
           <Row gutter={16}>
             <Col span={8}>
               <Form.Item name="channelPollingInterval" label="轮询间隔(ms)" initialValue={3000}>

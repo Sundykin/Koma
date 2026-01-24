@@ -456,13 +456,22 @@ export class BackgroundAnalysisService {
             characters: 25,
             scenes: 50,
             props: 100,
+            shots: 100,
           };
           const baseProgress = stageProgress[progress.stage] - 33;
           const currentProgress = progress.status === 'completed'
             ? stageProgress[progress.stage]
             : baseProgress + 15;
 
-          TaskManager.updateTask(taskId, { progress: currentProgress });
+          // 更新任务进度和当前阶段信息
+          TaskManager.updateTask(taskId, {
+            progress: currentProgress,
+            result: {
+              currentStage: progress.stage,
+              stageStatus: progress.status,
+              stageMessage: progress.message,
+            },
+          });
         },
         episodeContext: {
           episodeId,

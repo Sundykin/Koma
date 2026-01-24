@@ -18,8 +18,8 @@ import {
   LoadingOutlined,
   RobotOutlined,
 } from '@ant-design/icons';
-import type { Shot, Character, Scene, Prop, AppSettings, ShotVideo } from '../../types';
-import { loadEpisodeShots, saveEpisodeShots, loadCharacters, loadScenes, loadProps } from '../../store/projectStore';
+import type { Shot, Character, Scene, Prop, AppSettings, ShotVideo, EpisodeAnalysis } from '../../types';
+import { loadEpisodeShots, saveEpisodeShots, loadCharacters, loadScenes, loadProps, loadEpisodeAnalysis } from '../../store/projectStore';
 import { generateShotImage, batchGenerateShotImages } from '../../services/ShotGenerationService';
 import { shotRenderWorkflow, batchRenderShots } from '../../workflow/shotRenderWorkflow';
 import { startShotAnalysis, type PresetAssets } from '../../services/ShotAnalysisService';
@@ -165,15 +165,32 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     setLoading(true);
     try {
       const loadedShots = episodeId ? await loadEpisodeShots(projectId, episodeId) : [];
-      const [loadedCharacters, loadedScenes, loadedProps] = await Promise.all([
+      const [loadedCharacters, loadedScenes, loadedProps, episodeAnalysis] = await Promise.all([
         loadCharacters(projectId),
         loadScenes(projectId),
         loadProps(projectId),
+        episodeId ? loadEpisodeAnalysis(projectId, episodeId) : Promise.resolve(null),
       ]);
+
+      // 根据分集分析结果筛选资产
+      let filteredCharacters = loadedCharacters;
+      let filteredScenes = loadedScenes;
+      let filteredProps = loadedProps;
+
+      if (episodeAnalysis) {
+        const charRefs = new Set(episodeAnalysis.characterRefs);
+        const sceneRefs = new Set(episodeAnalysis.sceneRefs);
+        const propRefs = new Set(episodeAnalysis.propRefs);
+
+        filteredCharacters = loadedCharacters.filter(c => charRefs.has(c.id));
+        filteredScenes = loadedScenes.filter(s => sceneRefs.has(s.id));
+        filteredProps = loadedProps.filter(p => propRefs.has(p.id));
+      }
+
       setShots(loadedShots);
-      setCharacters(loadedCharacters);
-      setScenes(loadedScenes);
-      setProps(loadedProps);
+      setCharacters(filteredCharacters);
+      setScenes(filteredScenes);
+      setProps(filteredProps);
     } catch (err) {
       console.error('[Storyboard] 加载失败:', err);
       message.error('加载分镜数据失败');

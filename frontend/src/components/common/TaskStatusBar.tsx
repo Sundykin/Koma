@@ -110,10 +110,17 @@ export const TaskStatusBar: React.FC<TaskStatusBarProps> = ({
         >
           <div className="flex items-center gap-3 flex-1 min-w-0">
             {getStatusIcon(mainTask.status)}
-            <Text className="text-zinc-300 truncate">
-              {getTaskTypeLabel(mainTask.type)}
-              {mainTask.targetName && `: ${mainTask.targetName}`}
-            </Text>
+            <div className="flex flex-col min-w-0">
+              <Text className="text-zinc-300 truncate">
+                {getTaskTypeLabel(mainTask.type)}
+                {mainTask.targetName && `: ${mainTask.targetName}`}
+              </Text>
+              {mainTask.result?.stageMessage && (
+                <Text className="text-zinc-500 text-xs truncate">
+                  {mainTask.result.stageMessage}
+                </Text>
+              )}
+            </div>
             <Progress
               percent={mainTask.progress}
               size="small"
@@ -164,10 +171,17 @@ export const TaskStatusBar: React.FC<TaskStatusBarProps> = ({
                 {runningTasks.map(task => (
                   <div key={task.id} className="flex items-center gap-2 py-1">
                     {getStatusIcon(task.status)}
-                    <Text className="text-zinc-300 text-sm flex-1 truncate">
-                      {getTaskTypeLabel(task.type)}
-                      {task.targetName && `: ${task.targetName}`}
-                    </Text>
+                    <div className="flex flex-col flex-1 min-w-0">
+                      <Text className="text-zinc-300 text-sm truncate">
+                        {getTaskTypeLabel(task.type)}
+                        {task.targetName && `: ${task.targetName}`}
+                      </Text>
+                      {task.result?.stageMessage && (
+                        <Text className="text-zinc-500 text-xs truncate">
+                          {task.result.stageMessage}
+                        </Text>
+                      )}
+                    </div>
                     <Progress
                       percent={task.progress}
                       size="small"

@@ -331,8 +331,8 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
 
   // 渲染接口配置表单
   const renderEndpointForm = (label: string, prefix: string) => (
-    <div style={{ background: '#fafafa', padding: 12, borderRadius: 4, marginBottom: 12 }}>
-      <div style={{ fontWeight: 500, marginBottom: 8 }}>{label}</div>
+    <div className="bg-zinc-800 p-3 rounded border border-zinc-700 mb-3">
+      <div className="font-medium mb-2 text-zinc-200">{label}</div>
       <Row gutter={16}>
         <Col span={18}>
           <Form.Item
@@ -357,12 +357,12 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
         label="请求体模板"
         initialValue='{"model": "{{model}}", "prompt": "{{prompt}}", "image_urls": ["{{imageUrl}}"]}'
       >
-        <Input.TextArea rows={3} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+        <Input.TextArea rows={3} className="!font-mono !text-xs" />
       </Form.Item>
       <Form.Item name={`${prefix}GenerateTaskIdPath`} label="TaskId 路径" initialValue="$.id">
         <Input placeholder="$.id" />
       </Form.Item>
-      <Divider style={{ margin: '12px 0' }} />
+      <Divider className="!my-3 !border-zinc-600" />
       <Row gutter={16}>
         <Col span={18}>
           <Form.Item
@@ -587,8 +587,9 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
         width={520}
         maskClosable={false}
         destroyOnHidden
+        className="dark-modal"
       >
-        <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
+        <Form form={form} layout="vertical" className="mt-4">
           <Form.Item
             name="provider"
             label="服务商"
@@ -660,8 +661,9 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
         width={700}
         maskClosable={false}
         destroyOnHidden
+        className="dark-modal"
       >
-        <Form form={channelForm} layout="vertical" style={{ marginTop: 16 }}>
+        <Form form={channelForm} layout="vertical" className="mt-4">
           <Form.Item
             name="channelName"
             label="渠道名称"
@@ -700,7 +702,7 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
             </Col>
           </Row>
 
-          <Divider>渠道能力</Divider>
+          <Divider className="!border-zinc-600">渠道能力</Divider>
           <Form.Item label="支持的能力（仅显示勾选了图生视频的渠道）">
             <Space>
               <Checkbox
@@ -747,7 +749,7 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
           {channelCapabilities.includes('character-extract') && renderEndpointForm('角色提取', 'characterExtract')}
           {channelCapabilities.includes('remix') && renderEndpointForm('视频混音', 'remix')}
 
-          <Divider>轮询配置</Divider>
+          <Divider className="!border-zinc-600">轮询配置</Divider>
           <Row gutter={16}>
             <Col span={8}>
               <Form.Item name="channelPollingInterval" label="轮询间隔(ms)" initialValue={5000}>
