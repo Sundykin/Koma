@@ -97,40 +97,36 @@ export const PromptStudio: React.FC = () => {
   const selectedTemplate = templates[selectedId as PromptTemplateType];
 
   return (
-    <div style={{ display: 'flex', height: '100%', border: '1px solid #e8e8e8', borderRadius: 8, overflow: 'hidden' }}>
+    <div className="flex h-full border border-zinc-700 rounded-lg overflow-hidden">
       {/* 左侧模板列表 */}
-      <div style={{ width: 320, borderRight: '1px solid #e8e8e8', background: '#fafafa', display: 'flex', flexDirection: 'column' }}>
-        <div style={{ padding: 16, borderBottom: '1px solid #e8e8e8', background: '#fff' }}>
+      <div className="w-80 border-r border-zinc-700 bg-zinc-900 flex flex-col">
+        <div className="p-4 border-b border-zinc-700 bg-zinc-800">
           <Search
             placeholder="搜索模板..."
             allowClear
             onChange={e => setSearchText(e.target.value)}
-            prefix={<SearchOutlined style={{ color: '#999' }} />}
+            prefix={<SearchOutlined className="text-zinc-500" />}
           />
         </div>
-        <div style={{ flex: 1, overflowY: 'auto', padding: 8 }}>
+        <div className="flex-1 overflow-y-auto p-2">
           <List
             dataSource={filteredTemplates}
             renderItem={item => (
               <div
                 onClick={() => setSelectedId(item.id)}
-                style={{
-                  padding: 12,
-                  marginBottom: 8,
-                  borderRadius: 8,
-                  cursor: 'pointer',
-                  transition: 'all 0.2s',
-                  border: selectedId === item.id ? '1px solid #1890ff' : '1px solid transparent',
-                  background: selectedId === item.id ? '#e6f7ff' : '#fff',
-                }}
+                className={`p-3 mb-2 rounded-lg cursor-pointer transition-all border ${
+                  selectedId === item.id
+                    ? 'border-emerald-600 bg-emerald-900/30'
+                    : 'border-transparent bg-zinc-800 hover:bg-zinc-700'
+                }`}
               >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                  <span style={{ fontWeight: 500, color: selectedId === item.id ? '#1890ff' : '#333' }}>
+                <div className="flex justify-between items-center mb-1">
+                  <span className={`font-medium ${selectedId === item.id ? 'text-emerald-400' : 'text-zinc-200'}`}>
                     {item.name}
                   </span>
-                  {item.isCustom && <Badge color="blue" />}
+                  {item.isCustom && <Badge color="green" />}
                 </div>
-                <div style={{ fontSize: 12, color: '#888', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <div className="text-xs text-zinc-500 overflow-hidden text-ellipsis whitespace-nowrap">
                   {item.description}
                 </div>
               </div>
@@ -140,17 +136,17 @@ export const PromptStudio: React.FC = () => {
       </div>
 
       {/* 右侧编辑器 */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: '#fff', minWidth: 0 }}>
+      <div className="flex-1 flex flex-col bg-zinc-950 min-w-0">
         {selectedTemplate ? (
           <>
-            <div style={{ padding: 16, borderBottom: '1px solid #e8e8e8', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#fafafa' }}>
+            <div className="p-4 border-b border-zinc-700 flex justify-between items-center bg-zinc-900">
               <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <Title level={5} style={{ margin: 0 }}>{selectedTemplate.name}</Title>
-                  {selectedTemplate.isCustom && <Tag color="blue">已修改</Tag>}
+                <div className="flex items-center gap-2">
+                  <Title level={5} className="!m-0 !text-zinc-100">{selectedTemplate.name}</Title>
+                  {selectedTemplate.isCustom && <Tag color="green">已修改</Tag>}
                   {hasUnsavedChanges && <Tag color="warning">未保存</Tag>}
                 </div>
-                <Text type="secondary" style={{ fontSize: 12 }}>{selectedTemplate.description}</Text>
+                <Text className="text-xs !text-zinc-500">{selectedTemplate.description}</Text>
               </div>
               <Space>
                 {selectedTemplate.isCustom && (
@@ -169,37 +165,36 @@ export const PromptStudio: React.FC = () => {
               </Space>
             </div>
 
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-              <div style={{ flex: 1, position: 'relative' }}>
+            <div className="flex-1 flex flex-col overflow-hidden">
+              <div className="flex-1 relative">
                 <TextArea
                   value={editingContent}
                   onChange={handleContentChange}
+                  className="!bg-zinc-900 !text-zinc-200 !border-none"
                   style={{
                     fontFamily: "'Fira Code', 'Menlo', 'Monaco', 'Courier New', monospace",
                     fontSize: 14,
                     lineHeight: 1.6,
                     resize: 'none',
-                    border: 'none',
                     height: '100%',
                     padding: 16,
-                    background: '#fafafa',
                   }}
                   spellCheck={false}
                 />
               </div>
 
               {selectedTemplate.variables.length > 0 && (
-                <div style={{ padding: 12, background: '#e6f7ff', borderTop: '1px solid #91d5ff', flexShrink: 0 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                    <CodeOutlined style={{ color: '#1890ff' }} />
-                    <Text strong style={{ fontSize: 12, color: '#1890ff', textTransform: 'uppercase' }}>可用变量</Text>
+                <div className="p-3 bg-emerald-900/20 border-t border-emerald-800/50 shrink-0">
+                  <div className="flex items-center gap-2 mb-2">
+                    <CodeOutlined className="text-emerald-500" />
+                    <Text strong className="text-xs !text-emerald-500 uppercase">可用变量</Text>
                   </div>
                   <Space size={[4, 8]} wrap>
                     {selectedTemplate.variables.map(v => (
                       <Tooltip title={`点击复制 {{${v}}}`} key={v}>
                         <Tag
-                          color="blue"
-                          style={{ fontFamily: 'monospace', cursor: 'pointer', margin: 0, marginRight: 8 }}
+                          color="green"
+                          className="font-mono cursor-pointer !m-0 !mr-2"
                           onClick={() => {
                             navigator.clipboard.writeText(`{{${v}}}`);
                             message.success('已复制');
@@ -215,7 +210,7 @@ export const PromptStudio: React.FC = () => {
             </div>
           </>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#999' }}>
+          <div className="flex flex-col items-center justify-center h-full text-zinc-500">
             <Empty description="请从左侧选择一个模板" />
           </div>
         )}
