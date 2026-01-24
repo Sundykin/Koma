@@ -53,8 +53,6 @@ const AppContent: React.FC = () => {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisData, setAnalysisData] = useState<ScriptAnalysisResult | null>(isVideoDevMode ? DEV_TEST_ANALYSIS : null);
 
-  const isSidebarCollapsed = view === 'editor' || view === 'overview' || view.startsWith('plugin:');
-
   // 初始化 TaskManager
   useEffect(() => {
     if (activeProject) {
@@ -256,7 +254,6 @@ const AppContent: React.FC = () => {
           view={view}
           activeProject={activeProject}
           activeEpisode={activeEpisode}
-          isSidebarCollapsed={isSidebarCollapsed}
           onViewChange={setView}
           onEnterVideoTest={handleEnterVideoTest}
         />

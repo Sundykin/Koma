@@ -274,24 +274,25 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
   };
 
   return (
-    <Layout style={{ height: '100%', background: '#fff' }}>
-      <Sider width={240} theme="light" style={{ borderRight: '1px solid #f0f0f0' }}>
-        <div style={{ padding: '24px 24px 8px' }}>
-          <Title level={4} style={{ margin: 0 }}>全局设置</Title>
-          <Text type="secondary" style={{ fontSize: 12 }}>System Settings</Text>
+    <Layout className="h-full bg-zinc-950">
+      <Sider width={240} theme="dark" className="!bg-zinc-900 border-r border-zinc-800">
+        <div className="px-6 pt-6 pb-2">
+          <Title level={4} className="!m-0 !text-white">全局设置</Title>
+          <Text className="text-xs !text-zinc-500">System Settings</Text>
         </div>
         <Menu
           mode="inline"
+          theme="dark"
           selectedKeys={[activeSection]}
-          style={{ borderRight: 0 }}
+          className="!bg-zinc-900 !border-r-0"
           items={menuItems}
           onClick={({ key }) => setActiveSection(key)}
         />
       </Sider>
 
-      <Content style={{ height: '100%', overflow: 'hidden', display: 'flex', flexDirection: 'column', background: '#fafafa' }}>
-        <div style={{ height: 56, background: '#fff', borderBottom: '1px solid #f0f0f0', padding: '0 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
-          <span style={{ fontWeight: 500, fontSize: 16, color: '#333' }}>
+      <Content className="h-full overflow-hidden flex flex-col bg-zinc-950">
+        <div className="h-14 bg-zinc-900 border-b border-zinc-800 px-6 flex items-center justify-between shrink-0">
+          <span className="font-medium text-base text-zinc-100">
             {getCurrentLabel()}
           </span>
 
@@ -307,12 +308,12 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
           )}
         </div>
 
-        <div style={{ flex: 1, overflow: 'auto', padding: 24 }}>
+        <div className="flex-1 overflow-auto p-6">
           <Form
             form={form}
             layout="vertical"
             initialValues={flattenSettings(settings)}
-            style={{ height: '100%' }}
+            className="h-full"
           >
             {renderContent()}
           </Form>

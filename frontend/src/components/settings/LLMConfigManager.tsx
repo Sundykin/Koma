@@ -94,9 +94,9 @@ export const LLMConfigManager: React.FC<LLMConfigManagerProps> = ({ onConfigChan
   const handleProviderChange = (provider: LLMProviderType) => {
     if (provider === 'gemini') {
       form.setFieldsValue({
-        baseUrl: undefined,
         presetId: undefined,
         modelName: 'gemini-2.0-flash',
+        // 保留 baseUrl 供代理使用
       });
     } else if (provider === 'claude') {
       form.setFieldsValue({
@@ -364,15 +364,36 @@ export const LLMConfigManager: React.FC<LLMConfigManagerProps> = ({ onConfigChan
             </Form.Item>
           )}
 
-          {(currentProvider === 'openai-compatible' || currentProvider === 'claude') && (
-            <Form.Item
-              name="baseUrl"
-              label="API 地址"
-              rules={[{ required: currentProvider === 'openai-compatible', message: '请输入 API 地址' }]}
-            >
-              <Input prefix={<ApiOutlined />} placeholder="https://api.deepseek.com/v1" />
-            </Form.Item>
-          )}
+          <Form.Item
+            name="baseUrl"
+            label={
+              <span>
+                API 地址
+                {currentProvider !== 'openai-compatible' && (
+                  <span style={{ color: '#666', marginLeft: 8, fontSize: 12 }}>(可选，用于代理)</span>
+                )}
+              </span>
+            }
+            rules={[{ required: currentProvider === 'openai-compatible', message: '请输入 API 地址' }]}
+            extra={
+              currentProvider === 'gemini'
+                ? '留空使用官方地址 generativelanguage.googleapis.com'
+                : currentProvider === 'claude'
+                ? '留空使用官方地址 api.anthropic.com'
+                : undefined
+            }
+          >
+            <Input
+              prefix={<ApiOutlined />}
+              placeholder={
+                currentProvider === 'gemini'
+                  ? 'https://your-proxy.com/v1beta 或留空'
+                  : currentProvider === 'claude'
+                  ? 'https://api.anthropic.com 或代理地址'
+                  : 'https://api.deepseek.com/v1'
+              }
+            />
+          </Form.Item>
 
           <Form.Item
             name="modelName"

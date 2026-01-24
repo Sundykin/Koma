@@ -226,7 +226,7 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
               ),
               children: (
                 <div className="h-full flex flex-col p-4">
-                  <div className="max-w-5xl mx-auto w-full flex-1 flex flex-col min-h-0">
+                  <div className="w-full flex-1 flex flex-col min-h-0">
                     <div className="flex justify-between items-center mb-4">
                       <div className="flex items-center gap-2 text-zinc-400">
                         <FolderOpen className="w-4 h-4" />
@@ -262,9 +262,7 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
               ),
               children: (
                 <div className="h-full overflow-y-auto p-4">
-                  <div className="max-w-5xl mx-auto">
-                    <ProjectAssetOverview projectId={project.id} />
-                  </div>
+                  <ProjectAssetOverview projectId={project.id} />
                 </div>
               ),
             },
@@ -278,7 +276,7 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
               ),
               children: (
                 <div className="h-full overflow-y-auto p-4">
-                  <div className="max-w-3xl mx-auto">
+                  <div className="max-w-4xl">
                     <Card
                       title="媒体模型配置"
                       className="bg-zinc-900 border-zinc-800"
