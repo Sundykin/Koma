@@ -167,18 +167,25 @@ export async function shotRenderWorkflow(
     // 获取视觉风格前缀（支持自定义预设）
     const stylePrefix = await getThemeStylePrefixAsync(theme, stylePrompt);
 
-    // 构建视频 prompt
+    // 构建视频 prompt：优先使用 shot.videoPrompt
     let videoPrompt: string;
-    try {
-      const videoTemplate = await getPromptTemplate('itv_shot_video');
-      videoPrompt = fillTemplate(videoTemplate.template, {
-        stylePrefix: stylePrefix || '',
-        description: shot.description || '',
-        cameraMovement: getCameraMovementDesc(shot.cameraMovement),
-      });
+    if (shot.videoPrompt) {
+      // 使用专用视频提示词
+      videoPrompt = stylePrefix ? `${stylePrefix}${shot.videoPrompt}` : shot.videoPrompt;
       videoPrompt = appendCharacterRefs(videoPrompt, shot, characters);
-    } catch {
-      videoPrompt = buildVideoPrompt(shot, characters, stylePrefix);
+    } else {
+      // 回退到旧逻辑
+      try {
+        const videoTemplate = await getPromptTemplate('itv_shot_video');
+        videoPrompt = fillTemplate(videoTemplate.template, {
+          stylePrefix: stylePrefix || '',
+          description: shot.description || '',
+          cameraMovement: getCameraMovementDesc(shot.cameraMovement),
+        });
+        videoPrompt = appendCharacterRefs(videoPrompt, shot, characters);
+      } catch {
+        videoPrompt = buildVideoPrompt(shot, characters, stylePrefix);
+      }
     }
 
     logger.info(`视频 prompt: ${videoPrompt}`);

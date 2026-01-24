@@ -48,7 +48,8 @@ export interface PromptGenerationContext {
 
 export interface PromptGenerationResult {
   shotId: string;
-  prompt: string;
+  imagePrompt: string;
+  videoPrompt: string;
   success: boolean;
   error?: string;
 }
@@ -72,13 +73,25 @@ export class ShotPromptService {
   }
 
   /**
-   * 生成单条分镜提示词
+   * 生成单条分镜提示词（返回单一提示词，用于兼容）
    */
   async generateShotPrompt(
     shot: Shot,
     characters: Character[],
     stylePrefix: string = ''
   ): Promise<string> {
+    const result = await this.generateDualShotPrompts(shot, characters, stylePrefix);
+    return result.imagePrompt; // 兼容旧接口，返回图片提示词
+  }
+
+  /**
+   * 生成双提示词（图片 + 视频）
+   */
+  async generateDualShotPrompts(
+    shot: Shot,
+    characters: Character[],
+    stylePrefix: string = ''
+  ): Promise<{ imagePrompt: string; videoPrompt: string }> {
     if (!this.llmConfig) {
       const hasConfig = await this.setLLMConfig();
       if (!hasConfig) {
@@ -94,8 +107,35 @@ export class ShotPromptService {
       .map(c => `${c.name}: @${c.sora2CharacterId || c.id}`)
       .join('\n');
 
-    // 获取模板
-    const template = await getPromptTemplate('shot_prompt_generation');
+    // 并行生成图片和视频提示词
+    const [imagePrompt, videoPrompt] = await Promise.all([
+      this.generatePromptByType('image', shot, shotCharacters, characterRefs, stylePrefix),
+      this.generatePromptByType('video', shot, shotCharacters, characterRefs, stylePrefix),
+    ]);
+
+    return { imagePrompt, videoPrompt };
+  }
+
+  /**
+   * 按类型生成提示词
+   */
+  private async generatePromptByType(
+    type: 'image' | 'video',
+    shot: Shot,
+    shotCharacters: Character[],
+    characterRefs: string,
+    stylePrefix: string
+  ): Promise<string> {
+    // 根据类型选择不同模板
+    const templateKey = type === 'image' ? 'shot_image_prompt_generation' : 'shot_video_prompt_generation';
+    let template;
+    try {
+      template = await getPromptTemplate(templateKey);
+    } catch {
+      // 回退到通用模板
+      template = await getPromptTemplate('shot_prompt_generation');
+    }
+
     const prompt = fillTemplate(template.template, {
       scriptContent: shot.scriptContent,
       characters: shotCharacters.map(c => c.name).join(', ') || '无',
@@ -104,9 +144,9 @@ export class ShotPromptService {
       cameraOptions: CAMERA_OPTIONS.join(', '),
       shotTypeOptions: SHOT_TYPE_OPTIONS.join(', '),
       characterRefs: characterRefs || '无角色引用',
+      promptType: type === 'image' ? '静态图片' : '动态视频',
     });
 
-    // 调用 LLM
     const provider = createLLMProvider({
       provider: this.llmConfig!.provider === 'openai-compatible' ? 'openai' : this.llmConfig!.provider as any,
       apiKey: this.llmConfig!.apiKey,
@@ -122,7 +162,7 @@ export class ShotPromptService {
       { role: 'user', content: prompt },
     ]);
 
-    // 清理结果（移除可能的引号包围）
+    // 清理结果
     let cleanedResult = result.trim();
     if (cleanedResult.startsWith('"') && cleanedResult.endsWith('"')) {
       cleanedResult = cleanedResult.slice(1, -1);
@@ -132,41 +172,42 @@ export class ShotPromptService {
   }
 
   /**
-   * 批量生成分镜提示词
+   * 批量生成分镜提示词（双提示词版本）
    */
   async batchGenerateShotPrompts(
     shots: Shot[],
     stylePrefix: string = '',
     onProgress?: (current: number, total: number, result: PromptGenerationResult) => void
   ): Promise<PromptGenerationResult[]> {
-    // 加载角色数据
     const characters = await loadCharacters(this.projectId);
     const results: PromptGenerationResult[] = [];
 
     // 过滤出没有提示词的分镜
-    const shotsToGenerate = shots.filter(s => !s.description);
+    const shotsToGenerate = shots.filter(s => !s.imagePrompt && !s.videoPrompt);
 
     for (let i = 0; i < shotsToGenerate.length; i++) {
       const shot = shotsToGenerate[i];
       try {
-        const prompt = await this.generateShotPrompt(shot, characters, stylePrefix);
+        const { imagePrompt, videoPrompt } = await this.generateDualShotPrompts(shot, characters, stylePrefix);
 
-        // 保存到数据库
-        await updateShot(this.projectId, this.episodeId, shot.id, { description: prompt });
+        // 保存双提示词到数据库
+        await updateShot(this.projectId, this.episodeId, shot.id, { imagePrompt, videoPrompt });
 
         const result: PromptGenerationResult = {
           shotId: shot.id,
-          prompt,
+          imagePrompt,
+          videoPrompt,
           success: true,
         };
         results.push(result);
         onProgress?.(i + 1, shotsToGenerate.length, result);
 
-        console.log(`[ShotPrompt] 生成提示词 ${i + 1}/${shotsToGenerate.length}:`, shot.id);
+        console.log(`[ShotPrompt] 生成双提示词 ${i + 1}/${shotsToGenerate.length}:`, shot.id);
       } catch (error: any) {
         const result: PromptGenerationResult = {
           shotId: shot.id,
-          prompt: '',
+          imagePrompt: '',
+          videoPrompt: '',
           success: false,
           error: error.message,
         };
@@ -180,7 +221,7 @@ export class ShotPromptService {
   }
 
   /**
-   * 生成单条分镜提示词并保存
+   * 生成单条分镜提示词并保存（双提示词版本）
    */
   async generateAndSaveShotPrompt(
     shot: Shot,
@@ -188,20 +229,22 @@ export class ShotPromptService {
   ): Promise<PromptGenerationResult> {
     try {
       const characters = await loadCharacters(this.projectId);
-      const prompt = await this.generateShotPrompt(shot, characters, stylePrefix);
+      const { imagePrompt, videoPrompt } = await this.generateDualShotPrompts(shot, characters, stylePrefix);
 
-      // 保存到数据库
-      await updateShot(this.projectId, this.episodeId, shot.id, { description: prompt });
+      // 保存双提示词到数据库
+      await updateShot(this.projectId, this.episodeId, shot.id, { imagePrompt, videoPrompt });
 
       return {
         shotId: shot.id,
-        prompt,
+        imagePrompt,
+        videoPrompt,
         success: true,
       };
     } catch (error: any) {
       return {
         shotId: shot.id,
-        prompt: '',
+        imagePrompt: '',
+        videoPrompt: '',
         success: false,
         error: error.message,
       };

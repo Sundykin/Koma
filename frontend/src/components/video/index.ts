@@ -3,3 +3,6 @@
  */
 export { VideoRemixModal } from './VideoRemixModal';
 export type { RemixModalProps } from './VideoRemixModal';
+
+export { StagePlayer } from './StagePlayer';
+export type { default as StagePlayerProps } from './StagePlayer';

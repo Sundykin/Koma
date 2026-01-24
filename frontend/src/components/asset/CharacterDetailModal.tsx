@@ -36,7 +36,7 @@ import {
   ReloadOutlined,
   LinkOutlined,
 } from '@ant-design/icons';
-import type { Character } from '../../types';
+import type { Character, AssetTimestampRange } from '../../types';
 import {
   generateCostumePhoto,
   generateCharacterPreviewVideo,
@@ -459,7 +459,7 @@ export const CharacterDetailModal: React.FC<CharacterDetailModalProps> = ({
             </div>
           </Col>
 
-          {/* 右侧：基础信息 */}
+          {/* 右侧：基础信息（精简版） */}
           <Col span={14}>
             <Form form={form} layout="vertical" size="small">
               <Row gutter={16}>
@@ -474,66 +474,40 @@ export const CharacterDetailModal: React.FC<CharacterDetailModalProps> = ({
                   </Form.Item>
                 </Col>
               </Row>
-              <Form.Item name="age" label="年龄">
-                <Input placeholder="如：28岁" />
-              </Form.Item>
-              <Form.Item name="description" label="人物描述">
-                <TextArea rows={2} placeholder="人物性格、背景..." />
-              </Form.Item>
-              <Form.Item name="appearance" label="外貌描述（用于AI生成）">
-                <TextArea rows={2} placeholder="如：黑发，深邃眼神，身穿西装..." />
-              </Form.Item>
             </Form>
+
+            {/* 提示词编辑（核心字段） */}
+            <div style={{ marginTop: 16 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <Text strong style={{ fontSize: 13 }}>生成提示词</Text>
+                <Button
+                  type="text"
+                  size="small"
+                  icon={isPromptEditing ? <CheckCircleOutlined /> : <EditOutlined />}
+                  onClick={() => setIsPromptEditing(!isPromptEditing)}
+                >
+                  {isPromptEditing ? '完成' : '编辑'}
+                </Button>
+              </div>
+              <TextArea
+                value={customPrompt || autoPrompt}
+                onChange={(e) => setCustomPrompt(e.target.value)}
+                rows={4}
+                placeholder="描述角色外貌、服装、特征..."
+                disabled={!isPromptEditing}
+                style={{
+                  background: isPromptEditing ? '#09090b' : '#1a1a1a',
+                  borderColor: isPromptEditing ? '#3f3f46' : '#27272a',
+                }}
+              />
+              {customPrompt && (
+                <Text type="secondary" style={{ fontSize: 11, marginTop: 4, display: 'block' }}>
+                  使用自定义提示词 · <a onClick={() => setCustomPrompt('')}>恢复自动</a>
+                </Text>
+              )}
+            </div>
           </Col>
         </Row>
-
-        <Divider />
-
-        {/* 提示词预览/编辑 */}
-        <div style={{ marginBottom: 16 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-            <Text strong>生成提示词</Text>
-            <Button
-              type="text"
-              size="small"
-              icon={isPromptEditing ? <CheckCircleOutlined /> : <EditOutlined />}
-              onClick={() => {
-                if (isPromptEditing && !customPrompt) {
-                  setCustomPrompt('');
-                }
-                setIsPromptEditing(!isPromptEditing);
-              }}
-            >
-              {isPromptEditing ? '完成' : '编辑'}
-            </Button>
-          </div>
-          {isPromptEditing ? (
-            <TextArea
-              value={customPrompt}
-              onChange={(e) => setCustomPrompt(e.target.value)}
-              rows={3}
-              placeholder="输入自定义提示词，留空使用自动生成"
-            />
-          ) : (
-            <div
-              style={{
-                padding: 12,
-                background: '#1a1a1a',
-                borderRadius: 8,
-                fontSize: 12,
-                color: '#a1a1aa',
-                lineHeight: 1.6,
-              }}
-            >
-              {currentPrompt || '(无提示词)'}
-            </div>
-          )}
-          {customPrompt && (
-            <Text type="secondary" style={{ fontSize: 11, marginTop: 4, display: 'block' }}>
-              使用自定义提示词 · <a onClick={() => setCustomPrompt('')}>恢复自动</a>
-            </Text>
-          )}
-        </div>
 
         <Divider />
 
@@ -584,27 +558,74 @@ export const CharacterDetailModal: React.FC<CharacterDetailModalProps> = ({
                 padding: 16,
                 background: '#1a1a1a',
                 borderRadius: 8,
-                minHeight: 120,
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
+                minHeight: 100,
               }}
             >
               {editedCharacter.sora2CharacterId ? (
-                <>
+                <div style={{ textAlign: 'center' }}>
                   <CheckCircleOutlined style={{ fontSize: 24, color: '#52c41a', marginBottom: 8 }} />
-                  <Text type="success">已绑定</Text>
-                  <Text type="secondary" style={{ fontSize: 10, wordBreak: 'break-all', marginTop: 4 }}>
+                  <div><Text type="success">已绑定</Text></div>
+                  <Text type="secondary" style={{ fontSize: 10, wordBreak: 'break-all' }}>
                     {editedCharacter.sora2CharacterId}
                   </Text>
-                </>
+                </div>
               ) : (
-                <>
+                <div style={{ textAlign: 'center' }}>
                   <LinkOutlined style={{ fontSize: 24, color: '#52525b', marginBottom: 8 }} />
-                  <Text type="secondary">未绑定</Text>
-                </>
+                  <div><Text type="secondary">未绑定</Text></div>
+                </div>
               )}
+
+              {/* 提取时间范围设置 */}
+              <div style={{ marginTop: 12, padding: '8px 0', borderTop: '1px solid #27272a' }}>
+                <Text type="secondary" style={{ fontSize: 11, display: 'block', marginBottom: 8 }}>
+                  提取时间范围（秒）
+                </Text>
+                <Space size="small">
+                  <Input
+                    type="number"
+                    size="small"
+                    style={{ width: 60 }}
+                    min={0}
+                    max={10}
+                    step={0.5}
+                    placeholder="起始"
+                    value={editedCharacter.timestampRange?.start ?? 1}
+                    onChange={(e) => {
+                      const start = parseFloat(e.target.value) || 0;
+                      const currentEnd = editedCharacter.timestampRange?.end ?? 3;
+                      setEditedCharacter(prev => prev ? {
+                        ...prev,
+                        timestampRange: { start, end: Math.max(currentEnd, start + 0.5) }
+                      } : null);
+                    }}
+                  />
+                  <Text type="secondary">-</Text>
+                  <Input
+                    type="number"
+                    size="small"
+                    style={{ width: 60 }}
+                    min={0}
+                    max={10}
+                    step={0.5}
+                    placeholder="结束"
+                    value={editedCharacter.timestampRange?.end ?? 3}
+                    onChange={(e) => {
+                      const end = parseFloat(e.target.value) || 3;
+                      const start = editedCharacter.timestampRange?.start ?? 1;
+                      if (end - start > 3) {
+                        message.warning('时间范围不能超过3秒');
+                        return;
+                      }
+                      setEditedCharacter(prev => prev ? {
+                        ...prev,
+                        timestampRange: { start, end }
+                      } : null);
+                    }}
+                  />
+                  <Text type="secondary" style={{ fontSize: 11 }}>最多3秒</Text>
+                </Space>
+              </div>
             </div>
             <Button
               block

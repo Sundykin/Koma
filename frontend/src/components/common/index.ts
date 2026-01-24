@@ -6,3 +6,4 @@ export { StepNavigator } from './StepNavigator';
 export { SaveStatusIndicator } from './SaveStatusIndicator';
 export { TaskNotifications } from './TaskNotifications';
 export { ErrorBoundary } from './ErrorBoundary';
+export { SharedConfigLayout } from './SharedConfigLayout';

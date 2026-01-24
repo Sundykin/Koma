@@ -63,7 +63,7 @@
 /* Body */
 .shot-card-body {
   display: grid;
-  grid-template-columns: minmax(200px, 3fr) minmax(240px, 4fr) minmax(280px, 4fr);
+  grid-template-columns: minmax(220px, 2fr) minmax(300px, 3fr) minmax(320px, 3fr);
   gap: 1px;
   background: #27272a; /* Grid lines color */
 }

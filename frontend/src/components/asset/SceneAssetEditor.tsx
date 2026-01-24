@@ -1,12 +1,17 @@
 /**
  * 场景资产编辑器
- * 显示和管理场景的预览图
+ * 简化版：只显示名称、预览图和提示词
  */
 import React, { useState, useCallback } from 'react';
+import { Button, Input, Space, Progress, Typography, App } from 'antd';
+import { ThunderboltOutlined, UploadOutlined, EditOutlined, CheckOutlined, LoadingOutlined } from '@ant-design/icons';
 import type { Scene } from '../../types';
-import { generateSceneImage } from '../../workflow/scenePropAssetWorkflow';
-import { openFileDialog, fsCopy, fsMkdir, fsExists } from '../../services/electronService';
+import { generateSceneImage, getScenePrompt } from '../../workflow/scenePropAssetWorkflow';
+import { openFileDialog, fsCopy, fsMkdir, fsExists, electronService } from '../../services/electronService';
 import { getStorageConfig, initStorageConfig } from '../../store/storageConfig';
+
+const { TextArea } = Input;
+const { Text } = Typography;
 
 interface SceneAssetEditorProps {
   projectId: string;
@@ -25,19 +30,26 @@ export const SceneAssetEditor: React.FC<SceneAssetEditorProps> = ({
   ttiConfigId,
   onUpdate,
 }) => {
+  const { message } = App.useApp();
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState({ value: 0, step: '' });
-  const [error, setError] = useState<string | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [customPrompt, setCustomPrompt] = useState(scene.customPrompt || '');
+
+  // 自动生成的提示词
+  const autoPrompt = getScenePrompt(scene, theme, stylePrompt);
+  const currentPrompt = scene.customPrompt || autoPrompt;
 
   const handleGenerate = useCallback(async () => {
     setLoading(true);
-    setError(null);
     setProgress({ value: 0, step: '准备中...' });
 
     try {
+      // 使用自定义提示词
+      const sceneWithPrompt = { ...scene, customPrompt: customPrompt || undefined };
       const result = await generateSceneImage({
         projectId,
-        scene,
+        scene: sceneWithPrompt,
         theme,
         stylePrompt,
         ttiConfigId,
@@ -47,19 +59,18 @@ export const SceneAssetEditor: React.FC<SceneAssetEditorProps> = ({
       });
 
       if (result.success && result.path) {
-        // 同时保存本地路径和远程URL
-        onUpdate({ imagePath: result.path, imageUrl: (result as any).url });
+        onUpdate({ imagePath: result.path, imageUrl: (result as any).url, customPrompt: customPrompt || undefined });
+        message.success('场景图生成完成');
       } else {
-        setError(result.error || '生成失败');
+        message.error(result.error || '生成失败');
       }
     } catch (err: any) {
-      setError(err.message);
+      message.error(err.message);
     } finally {
       setLoading(false);
     }
-  }, [projectId, scene, theme, stylePrompt, ttiConfigId, onUpdate]);
+  }, [projectId, scene, theme, stylePrompt, ttiConfigId, customPrompt, onUpdate, message]);
 
-  // 上传场景图片
   const handleUpload = useCallback(async () => {
     try {
       const result = await openFileDialog({
@@ -76,122 +87,109 @@ export const SceneAssetEditor: React.FC<SceneAssetEditorProps> = ({
       const destPath = `${basePath}/preview.png`;
       await fsCopy(result.filePaths[0], destPath);
       onUpdate({ imagePath: destPath });
+      message.success('上传成功');
     } catch (err: any) {
-      setError(`上传失败: ${err.message}`);
+      message.error(`上传失败: ${err.message}`);
     }
-  }, [projectId, scene.id, onUpdate]);
+  }, [projectId, scene.id, onUpdate, message]);
 
-  const containerStyle: React.CSSProperties = {
-    padding: '12px',
-    backgroundColor: 'var(--bg-secondary, #f5f5f5)',
-    borderRadius: '8px',
+  const handleSavePrompt = () => {
+    onUpdate({ customPrompt: customPrompt || undefined });
+    setIsEditing(false);
+    message.success('提示词已保存');
   };
 
-  const headerStyle: React.CSSProperties = {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: '12px',
-  };
-
-  const imageContainerStyle: React.CSSProperties = {
-    width: '100%',
-    height: '200px',
-    backgroundColor: '#ddd',
-    borderRadius: '4px',
-    overflow: 'hidden',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-  };
-
-  const imageStyle: React.CSSProperties = {
-    width: '100%',
-    height: '100%',
-    objectFit: 'cover',
-  };
-
-  const buttonStyle: React.CSSProperties = {
-    padding: '6px 12px',
-    fontSize: '12px',
-    cursor: loading ? 'not-allowed' : 'pointer',
-    border: 'none',
-    borderRadius: '4px',
-    backgroundColor: loading ? '#ccc' : 'var(--color-primary, #1976d2)',
-    color: 'white',
-  };
-
-  const uploadButtonStyle: React.CSSProperties = {
-    ...buttonStyle,
-    backgroundColor: 'transparent',
-    color: 'var(--color-primary, #1976d2)',
-    border: '1px solid var(--color-primary, #1976d2)',
-    marginLeft: '4px',
-  };
-
-  const infoStyle: React.CSSProperties = {
-    marginTop: '8px',
-    fontSize: '12px',
-    color: '#666',
-  };
+  const toLocalUrl = (path?: string) => path ? electronService.fs.toLocalUrl(path) : '';
 
   return (
-    <div style={containerStyle}>
-      <div style={headerStyle}>
-        <div>
-          <strong>{scene.name}</strong>
-          <div style={{ fontSize: '12px', color: '#666' }}>{scene.location}</div>
-        </div>
-        <div style={{ display: 'flex' }}>
-          <button
-            style={buttonStyle}
+    <div
+      style={{
+        padding: 12,
+        background: '#1a1a1a',
+        borderRadius: 8,
+        border: '1px solid #27272a',
+      }}
+    >
+      {/* 头部：名称 + 操作按钮 */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+        <Text strong style={{ fontSize: 14 }}>{scene.name}</Text>
+        <Space size="small">
+          <Button
+            size="small"
+            icon={loading ? <LoadingOutlined /> : <ThunderboltOutlined />}
             onClick={handleGenerate}
             disabled={loading}
           >
-            {loading ? '生成中...' : scene.imagePath ? '重新生成' : '生成'}
-          </button>
-          <button
-            style={uploadButtonStyle}
-            onClick={handleUpload}
-            disabled={loading}
-          >
+            {scene.imagePath ? '重新生成' : '生成'}
+          </Button>
+          <Button size="small" icon={<UploadOutlined />} onClick={handleUpload} disabled={loading}>
             上传
-          </button>
-        </div>
+          </Button>
+        </Space>
       </div>
 
+      {/* 进度条 */}
       {loading && (
-        <div style={{ marginBottom: '8px' }}>
-          <div style={{ fontSize: '12px', marginBottom: '4px' }}>{progress.step}</div>
-          <div style={{ height: '4px', backgroundColor: '#ddd', borderRadius: '2px' }}>
-            <div
-              style={{
-                height: '100%',
-                width: `${progress.value}%`,
-                backgroundColor: 'var(--color-primary, #1976d2)',
-                borderRadius: '2px',
-                transition: 'width 0.3s',
-              }}
-            />
-          </div>
+        <div style={{ marginBottom: 12 }}>
+          <Text type="secondary" style={{ fontSize: 12 }}>{progress.step}</Text>
+          <Progress percent={Math.round(progress.value)} size="small" strokeColor="#52c41a" />
         </div>
       )}
 
-      {error && (
-        <div style={{ color: 'red', fontSize: '12px', marginBottom: '8px' }}>{error}</div>
-      )}
-
-      <div style={imageContainerStyle}>
+      {/* 预览图 */}
+      <div
+        style={{
+          aspectRatio: '16/9',
+          background: '#09090b',
+          borderRadius: 6,
+          overflow: 'hidden',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          marginBottom: 12,
+        }}
+      >
         {scene.imagePath ? (
-          <img src={scene.imagePath} alt={scene.name} style={imageStyle} />
+          <img
+            src={toLocalUrl(scene.imagePath)}
+            alt={scene.name}
+            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+          />
         ) : (
-          <span style={{ color: '#999' }}>未生成预览图</span>
+          <Text type="secondary">未生成预览图</Text>
         )}
       </div>
 
-      <div style={infoStyle}>
-        <div>时间: {scene.time === 'day' ? '白天' : scene.time === 'night' ? '夜晚' : '黄昏'}</div>
-        {scene.mood && <div>氛围: {scene.mood}</div>}
+      {/* 提示词编辑 */}
+      <div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+          <Text type="secondary" style={{ fontSize: 11 }}>生成提示词</Text>
+          <Button
+            type="text"
+            size="small"
+            icon={isEditing ? <CheckOutlined /> : <EditOutlined />}
+            onClick={isEditing ? handleSavePrompt : () => setIsEditing(true)}
+          >
+            {isEditing ? '保存' : '编辑'}
+          </Button>
+        </div>
+        <TextArea
+          value={isEditing ? customPrompt : currentPrompt}
+          onChange={(e) => setCustomPrompt(e.target.value)}
+          rows={2}
+          placeholder="描述场景..."
+          disabled={!isEditing}
+          style={{
+            background: isEditing ? '#09090b' : '#141414',
+            borderColor: isEditing ? '#3f3f46' : '#27272a',
+            fontSize: 12,
+          }}
+        />
+        {scene.customPrompt && (
+          <Text type="secondary" style={{ fontSize: 10, marginTop: 4, display: 'block' }}>
+            使用自定义提示词 · <a onClick={() => { setCustomPrompt(''); onUpdate({ customPrompt: undefined }); }}>恢复自动</a>
+          </Text>
+        )}
       </div>
     </div>
   );

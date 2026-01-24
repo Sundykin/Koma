@@ -21,6 +21,64 @@ import { getPromptTemplate, fillTemplate } from '../store/promptTemplates';
 
 const logger = createLogger('ScenePropAsset');
 
+// ========== 提示词获取（供外部组件使用）==========
+
+/**
+ * 获取场景的自动生成提示词（用于预览显示）
+ */
+export function getScenePrompt(scene: Scene, theme?: string, stylePrompt?: string): string {
+  const stylePrefix = getThemeStylePrefix(theme) || stylePrompt || '';
+  if (scene.customPrompt) return scene.customPrompt;
+  return buildScenePromptInternal(scene, stylePrefix);
+}
+
+/**
+ * 获取道具的自动生成提示词（用于预览显示）
+ */
+export function getPropPrompt(prop: Prop, theme?: string, stylePrompt?: string): string {
+  const stylePrefix = getThemeStylePrefix(theme) || stylePrompt || '';
+  if (prop.customPrompt) return prop.customPrompt;
+  return buildPropPromptInternal(prop, stylePrefix);
+}
+
+// 内部构建函数（同步版本）
+function buildScenePromptInternal(scene: Scene, stylePrefix: string): string {
+  const timeDescriptions: Record<string, string> = {
+    day: 'daytime, bright natural lighting',
+    night: 'nighttime, moonlight, artificial lights',
+    twilight: 'twilight, golden hour, warm lighting',
+  };
+  const parts = [
+    stylePrefix,
+    'environment concept art',
+    'wide shot',
+    'establishing shot',
+    scene.description,
+    scene.location,
+    scene.time ? timeDescriptions[scene.time] : '',
+    scene.mood ? `${scene.mood} atmosphere` : '',
+    'detailed background',
+    'cinematic composition',
+  ];
+  return parts.filter(Boolean).join(', ');
+}
+
+function buildPropPromptInternal(prop: Prop, stylePrefix: string): string {
+  const parts = [
+    stylePrefix,
+    'prop design',
+    'item illustration',
+    'centered composition',
+    'white background',
+    'studio lighting',
+    prop.description,
+    prop.type ? `${prop.type} item` : '',
+    'detailed rendering',
+    'clean presentation',
+  ];
+  return parts.filter(Boolean).join(', ');
+}
+
 interface GenerateOptions {
   projectId: string;
   theme?: string;
@@ -493,25 +551,7 @@ export async function extractAndBindProp(
  * 注意：实际生成时优先使用 promptTemplates 中的 tti_scene_preview 模板
  */
 function buildScenePrompt(scene: Scene, stylePrefix: string): string {
-  const timeDescriptions = {
-    day: 'daytime, bright natural lighting',
-    night: 'nighttime, moonlight, artificial lights',
-    twilight: 'twilight, golden hour, warm lighting',
-  };
-
-  const parts = [
-    stylePrefix,
-    'environment concept art',
-    'wide shot',
-    'establishing shot',
-    scene.description,
-    scene.location,
-    timeDescriptions[scene.time],
-    scene.mood ? `${scene.mood} atmosphere` : '',
-    'detailed background',
-    'cinematic composition',
-  ];
-  return parts.filter(Boolean).join(', ');
+  return buildScenePromptInternal(scene, stylePrefix);
 }
 
 /**
@@ -519,19 +559,7 @@ function buildScenePrompt(scene: Scene, stylePrefix: string): string {
  * 注意：实际生成时优先使用 promptTemplates 中的 tti_prop_reference 模板
  */
 function buildPropPrompt(prop: Prop, stylePrefix: string): string {
-  const parts = [
-    stylePrefix,
-    'prop design',
-    'item illustration',
-    'centered composition',
-    'white background',
-    'studio lighting',
-    prop.description,
-    prop.type ? `${prop.type} item` : '',
-    'detailed rendering',
-    'clean presentation',
-  ];
-  return parts.filter(Boolean).join(', ');
+  return buildPropPromptInternal(prop, stylePrefix);
 }
 
 async function updateSceneAsset(

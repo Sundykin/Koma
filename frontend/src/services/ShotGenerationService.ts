@@ -164,15 +164,25 @@ export class ShotGenerationService {
 
   /**
    * 构建分镜提示词
-   * 自动应用项目风格前缀
+   * 优先使用 imagePrompt，回退到 description
    */
   private buildShotPrompt(shot: Shot, characters: Character[], scenes: Scene[]): string {
+    // 优先使用专用图片提示词
+    if (shot.imagePrompt) {
+      const stylePrefix = getThemeStylePrefix(this.theme, this.stylePrompt);
+      if (stylePrefix) {
+        return `${stylePrefix.replace(/,\s*$/, '')}, ${shot.imagePrompt}`;
+      }
+      return shot.imagePrompt;
+    }
+
+    // 回退到旧逻辑（兼容旧数据）
     const parts: string[] = [];
 
     // 添加风格前缀
     const stylePrefix = getThemeStylePrefix(this.theme, this.stylePrompt);
     if (stylePrefix) {
-      parts.push(stylePrefix.replace(/,\s*$/, '')); // 移除末尾逗号
+      parts.push(stylePrefix.replace(/,\s*$/, ''));
     }
 
     // 基础描述

@@ -72,14 +72,20 @@ export interface ThemePreset {
   previewImage?: string;    // 预览图
 }
 
+// 资产时间戳范围（用于 Sora2 角色提取）
+export interface AssetTimestampRange {
+  start: number; // 起始时间（秒）
+  end: number;   // 结束时间（秒），与 start 间隔不超过 3 秒
+}
+
 // 角色接口定义
 export interface Character {
   id: string;
   name: string;
-  age: string;
+  age?: string;        // 可选，简化后的字段
   role: 'protagonist' | 'antagonist' | 'supporting'; // 主角 | 反派 | 配角
-  description: string; // 人物小传
-  appearance: string;  // AI生成的外貌描述（用于绘图）
+  description?: string; // 人物小传（可选）
+  appearance?: string;  // AI生成的外貌描述（可选，用于绘图）
   voiceId?: string;    // TTS 音色 ID
   // 资产字段
   costumePhotoPath?: string;  // 定妆照本地路径
@@ -88,6 +94,7 @@ export interface Character {
   previewVideoTaskId?: string; // 预览视频的生成任务ID（用于角色提取API）
   sora2CharacterId?: string;  // 角色提取API返回的ID
   customPrompt?: string;      // 用户自定义生成提示词
+  timestampRange?: AssetTimestampRange; // Sora2 提取时间范围
   // 分集引用追踪
   episodeRefs?: EpisodeRef[];
   fingerprint?: string;       // 资产指纹（用于去重）
@@ -97,12 +104,13 @@ export interface Character {
 export interface Scene {
   id: string;
   name: string;
-  location: string;
-  time: 'day' | 'night' | 'twilight'; // 白天 |夜晚 | 黄昏
-  mood: string;        // 氛围/情绪
-  description: string; // 场景视觉描述
+  location?: string;  // 可选，简化后的字段
+  time?: 'day' | 'night' | 'twilight'; // 可选
+  mood?: string;        // 氛围/情绪（可选）
+  description?: string; // 场景视觉描述（可选）
   imagePath?: string;  // 场景预览图本地路径
   imageUrl?: string;   // 场景预览图远程URL
+  customPrompt?: string; // 用户自定义生成提示词
   // 分集引用追踪
   episodeRefs?: EpisodeRef[];
   fingerprint?: string;
@@ -112,15 +120,16 @@ export interface Scene {
 export interface Prop {
   id: string;
   name: string;
-  type: string;        // 道具类型 (如：武器、日常、关键线索)
-  description: string; // 视觉描述
+  type?: string;        // 道具类型（可选）
+  description?: string; // 视觉描述（可选）
   imagePath?: string;  // 道具参考图本地路径
   imageUrl?: string;   // 道具参考图远程URL
   // Sora2 绑定相关
   previewVideoPath?: string;   // 预览视频路径
   previewVideoTaskId?: string; // 预览视频生成任务 ID
-  sora2PropId?: string;        // Sora2 道具 ID（用于视频生成时的道具绑定）
+  sora2PropId?: string;        // Sora2 道具 ID
   customPrompt?: string;       // 用户自定义生成提示词
+  timestampRange?: AssetTimestampRange; // Sora2 提取时间范围
   // 分集引用追踪
   episodeRefs?: EpisodeRef[];
   fingerprint?: string;
@@ -129,6 +138,7 @@ export interface Prop {
 // 分镜视频版本
 export interface ShotVideo {
   path: string;
+  url?: string;        // 远程URL
   thumbnailPath?: string;
   prompt?: string;
   seed?: number;
@@ -143,12 +153,18 @@ export interface Shot {
   shotType: 'close-up' | 'medium' | 'wide' | 'extreme-wide'; // 特写 | 中景 | 全景 | 大全景
   cameraMovement: 'static' | 'pan' | 'zoom-in' | 'tracking' | 'handheld'; // 固定 | 摇镜 | 推镜 | 跟随 | 手持
   duration: number;      // 持续时长(秒)
-  description?: string;  // 视频生成模型的提示词 (Prompt)，分镜拆解后可手动生成
+  // 双提示词字段
+  description?: string;  // 通用提示词（兼容旧数据）
+  imagePrompt?: string;  // 图片生成提示词
+  videoPrompt?: string;  // 视频生成提示词
+  // 图片相关
   imageUrl?: string;     // 预览图或生成图（远程URL）
   imagePath?: string;    // 当前选中的本地图片路径
   imagePaths?: string[]; // 所有候选图片列表
   currentImageIndex?: number; // 当前选中的图片索引
+  // 关联资产
   characters: string[];  // 涉及的角色ID
+  scenes?: string[];     // 涉及的场景ID
   dialogue?: string;     // 台词（用于 TTS）
   emotion?: string;      // 情绪标签
   props?: string[];      // 涉及的道具ID
@@ -156,7 +172,8 @@ export interface Shot {
   seed?: number;         // 生成种子（用于复现）
   currentVersion?: number; // 当前版本号（兼容旧数据）
   videos?: ShotVideo[];  // 视频版本列表
-  currentVideoIndex?: number; // 当前选中的视频索引
+  currentVideoIndex?: number;    // 当前选中的视频索引
+  selectedVideoIndex?: number;   // 别名（兼容）
 }
 
 // 剧本分析结果接口

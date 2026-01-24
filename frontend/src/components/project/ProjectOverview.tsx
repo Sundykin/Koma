@@ -1,6 +1,6 @@
 /**
  * 项目概览页面
- * 固定布局，分集和资产内部滚动
+ * Tab 布局：剧本/分集 | 项目资产 | 项目设置
  */
 import React, { useState, useCallback, useRef } from 'react';
 import {
@@ -12,18 +12,19 @@ import {
   Tag,
   App,
   Modal,
+  Tabs,
 } from 'antd';
 import {
-  SettingOutlined,
   EditOutlined,
   ThunderboltOutlined,
   HighlightOutlined,
 } from '@ant-design/icons';
-import { Film, FolderOpen, Upload, Palette } from 'lucide-react';
+import { Film, FolderOpen, Upload, Palette, Settings, Package } from 'lucide-react';
 import type { Project, Episode, AppSettings } from '../../types';
 import { EpisodeManager, EpisodeManagerRef } from './EpisodeManager';
 import { EpisodeSplitWizard } from './EpisodeSplitWizard';
 import { ProjectAssetOverview } from './ProjectAssetOverview';
+import { ProjectMediaSelector } from './ProjectMediaSelector';
 import { saveProject, loadProject } from '../../store/projectStore';
 import { THEME_PRESETS } from '../../config/themePresets';
 import { ScriptEditor } from '../../editor';
@@ -34,14 +35,12 @@ const { Title, Text } = Typography;
 interface ProjectOverviewProps {
   project: Project;
   onEnterEpisode: (episode: Episode) => void;
-  onOpenSettings: () => void;
   onProjectUpdate: (updates: Partial<Project>) => void;
 }
 
 export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
   project,
   onEnterEpisode,
-  onOpenSettings,
   onProjectUpdate,
 }) => {
   const { message } = App.useApp();
@@ -50,6 +49,7 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
   const [fullScript, setFullScript] = useState('');
   const [splitWizardVisible, setSplitWizardVisible] = useState(false);
   const episodeManagerRef = useRef<EpisodeManagerRef>(null);
+  const [activeTab, setActiveTab] = useState('episodes');
 
   // 剧本导入弹窗状态
   const [scriptImportVisible, setScriptImportVisible] = useState(false);
@@ -140,6 +140,26 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
     }
   };
 
+  // 更新项目配置
+  const handleConfigUpdate = useCallback(async (configs: {
+    llmConfigId?: string;
+    ttiConfigId?: string;
+    itvConfigId?: string;
+    ttsConfigId?: string;
+  }) => {
+    try {
+      const projectMeta = await loadProject(project.id);
+      if (projectMeta) {
+        Object.assign(projectMeta, configs);
+        await saveProject(projectMeta);
+        onProjectUpdate(configs);
+        message.success('项目配置已更新');
+      }
+    } catch (err: any) {
+      message.error(`配置更新失败: ${err.message}`);
+    }
+  }, [project.id, onProjectUpdate, message]);
+
   // 获取当前主题信息
   const currentTheme = project.theme
     ? THEME_PRESETS.find(t => t.id === project.theme)
@@ -148,7 +168,7 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
 
   return (
     <div className="h-full flex flex-col bg-zinc-950 overflow-hidden">
-      {/* 顶部标题栏 - 固定高度 */}
+      {/* 顶部标题栏 */}
       <div className="flex-shrink-0 px-6 py-4 border-b border-zinc-800">
         <div className="flex items-center justify-between max-w-7xl mx-auto">
           <div className="flex items-center gap-4">
@@ -183,57 +203,104 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
               </Space>
             </div>
           </div>
-          <Button icon={<SettingOutlined />} onClick={onOpenSettings}>
-            项目设置
-          </Button>
         </div>
       </div>
 
-      {/* 主内容区 - 两栏布局 */}
-      <div className="flex-1 overflow-hidden p-4">
-        <div className="h-full max-w-7xl mx-auto grid grid-cols-2 gap-4">
-          {/* 左侧：分集管理 */}
-          <div className="flex flex-col min-h-0">
-            <Card
-              title={
-                <div className="flex items-center gap-2">
-                  <FolderOpen className="w-4 h-4 text-emerald-500" />
-                  <span>分集管理</span>
+      {/* 主内容区 - Tab 布局 */}
+      <div className="flex-1 overflow-hidden">
+        <Tabs
+          activeKey={activeTab}
+          onChange={setActiveTab}
+          centered
+          size="large"
+          className="h-full projectOverviewTabs"
+          style={{ height: '100%' }}
+          items={[
+            {
+              key: 'episodes',
+              label: (
+                <span className="flex items-center gap-2">
+                  <FolderOpen className="w-4 h-4" />
+                  剧本/分集
+                </span>
+              ),
+              children: (
+                <div className="h-full flex flex-col p-4">
+                  <div className="max-w-5xl mx-auto w-full flex-1 flex flex-col min-h-0">
+                    <div className="flex justify-between items-center mb-4">
+                      <div className="flex items-center gap-2 text-zinc-400">
+                        <FolderOpen className="w-4 h-4" />
+                        <span>分集管理</span>
+                      </div>
+                      <Button
+                        type="primary"
+                        icon={<Upload className="w-4 h-4" />}
+                        onClick={openScriptImport}
+                      >
+                        导入剧本
+                      </Button>
+                    </div>
+                    <div className="flex-1 overflow-y-auto bg-zinc-900 rounded-lg border border-zinc-800 p-4">
+                      <EpisodeManager
+                        ref={episodeManagerRef}
+                        projectId={project.id}
+                        fullScript={fullScript || undefined}
+                        onEpisodeSelect={handleEpisodeSelect}
+                      />
+                    </div>
+                  </div>
                 </div>
-              }
-              extra={
-                <Button
-                  size="small"
-                  icon={<Upload className="w-3 h-3" />}
-                  onClick={openScriptImport}
-                >
-                  导入剧本
-                </Button>
-              }
-              className="flex-1 flex flex-col"
-              style={{ background: '#18181b', border: '1px solid #27272a' }}
-              styles={{
-                header: { borderBottom: '1px solid #27272a', flexShrink: 0 },
-                body: { flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' },
-              }}
-            >
-              {/* 分集列表 - 内部滚动 */}
-              <div className="flex-1 overflow-y-auto">
-                <EpisodeManager
-                  ref={episodeManagerRef}
-                  projectId={project.id}
-                  fullScript={fullScript || undefined}
-                  onEpisodeSelect={handleEpisodeSelect}
-                />
-              </div>
-            </Card>
-          </div>
-
-          {/* 右侧：资产总览 */}
-          <div className="flex flex-col min-h-0">
-            <ProjectAssetOverview projectId={project.id} />
-          </div>
-        </div>
+              ),
+            },
+            {
+              key: 'assets',
+              label: (
+                <span className="flex items-center gap-2">
+                  <Package className="w-4 h-4" />
+                  项目资产
+                </span>
+              ),
+              children: (
+                <div className="h-full overflow-y-auto p-4">
+                  <div className="max-w-5xl mx-auto">
+                    <ProjectAssetOverview projectId={project.id} />
+                  </div>
+                </div>
+              ),
+            },
+            {
+              key: 'settings',
+              label: (
+                <span className="flex items-center gap-2">
+                  <Settings className="w-4 h-4" />
+                  项目设置
+                </span>
+              ),
+              children: (
+                <div className="h-full overflow-y-auto p-4">
+                  <div className="max-w-3xl mx-auto">
+                    <Card
+                      title="媒体模型配置"
+                      className="bg-zinc-900 border-zinc-800"
+                      styles={{ header: { borderBottom: '1px solid #27272a' } }}
+                    >
+                      <div className="mb-4 text-zinc-500 text-sm">
+                        选择此项目使用的媒体生成服务，留空则使用全局默认配置。
+                      </div>
+                      <ProjectMediaSelector
+                        llmConfigId={project.llmConfigId}
+                        ttiConfigId={project.ttiConfigId}
+                        itvConfigId={project.itvConfigId}
+                        ttsConfigId={project.ttsConfigId}
+                        onChange={handleConfigUpdate}
+                      />
+                    </Card>
+                  </div>
+                </div>
+              ),
+            },
+          ]}
+        />
       </div>
 
       {/* 剧本导入弹窗 */}
@@ -294,6 +361,15 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
         onCancel={() => setSplitWizardVisible(false)}
         onComplete={handleSplitComplete}
       />
+
+      <style>{`
+        .projectOverviewTabs .ant-tabs-content {
+          height: calc(100% - 46px);
+        }
+        .projectOverviewTabs .ant-tabs-tabpane {
+          height: 100%;
+        }
+      `}</style>
     </div>
   );
 };

@@ -44,7 +44,9 @@
       "WebFetch(domain:github.com)",
       "Bash(npm info:*)",
       "Bash(dir:*)",
-      "Bash(npm test:*)"
+      "Bash(npm test:*)",
+      "mcp__ace-tool__enhance_prompt",
+      "mcp__ace-tool__search_context"
     ]
   }
 }

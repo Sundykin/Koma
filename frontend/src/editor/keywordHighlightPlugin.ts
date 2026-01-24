@@ -11,8 +11,8 @@ import {
 } from '@codemirror/view';
 import { RangeSetBuilder } from '@codemirror/state';
 
-// 运镜关键字（紫色高亮）
-export const CAMERA_KEYWORDS = [
+// 运镜关键字 - 英文（紫色高亮）
+export const CAMERA_KEYWORDS_EN = [
   'static shot',
   'pan left',
   'pan right',
@@ -35,8 +35,20 @@ export const CAMERA_KEYWORDS = [
   'steadicam',
 ];
 
-// 景别关键字（蓝色高亮）
-export const SHOT_TYPE_KEYWORDS = [
+// 运镜关键字 - 中文（紫色高亮）
+export const CAMERA_KEYWORDS_ZH = [
+  '推镜头', '拉镜头', '摇镜头', '移镜头', '跟镜头', '升镜头', '降镜头', '甩镜头',
+  '镜头推进', '镜头拉远', '镜头上摇', '镜头下摇', '镜头左摇', '镜头右摇',
+  '横摇', '纵摇', '环绕', '跟拍', '手持', '稳定器',
+  '推', '拉', '摇', '移', '跟', '升', '降', '甩',
+  '缓推', '缓拉', '快推', '快拉',
+];
+
+// 合并运镜关键字
+export const CAMERA_KEYWORDS = [...CAMERA_KEYWORDS_EN, ...CAMERA_KEYWORDS_ZH];
+
+// 景别关键字 - 英文（蓝色高亮）
+export const SHOT_TYPE_KEYWORDS_EN = [
   'extreme close-up',
   'close-up',
   'medium close-up',
@@ -57,12 +69,49 @@ export const SHOT_TYPE_KEYWORDS = [
   'high angle',
 ];
 
-// 构建正则表达式（忽略大小写）
+// 景别关键字 - 中文（蓝色高亮）
+export const SHOT_TYPE_KEYWORDS_ZH = [
+  '特写', '大特写', '近景', '中近景', '中景', '中远景', '远景', '大远景',
+  '全景', '半身', '全身', '过肩镜头', '双人镜头', '群戏',
+  '俯视', '仰视', '平视', '鸟瞰', '低角度', '高角度',
+  '主观镜头', '客观镜头', '空镜头',
+];
+
+// 合并景别关键字
+export const SHOT_TYPE_KEYWORDS = [...SHOT_TYPE_KEYWORDS_EN, ...SHOT_TYPE_KEYWORDS_ZH];
+
+// 构建正则表达式（支持中英文）
 function buildKeywordRegex(keywords: string[]): RegExp {
   // 按长度降序排列，优先匹配长关键字
   const sorted = [...keywords].sort((a, b) => b.length - a.length);
-  const pattern = sorted.map(k => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
-  return new RegExp(`\\b(${pattern})\\b`, 'gi');
+
+  // 分离中文和英文关键字
+  const zhKeywords: string[] = [];
+  const enKeywords: string[] = [];
+
+  for (const k of sorted) {
+    const escaped = k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    // 检测是否包含中文字符
+    if (/[\u4e00-\u9fa5]/.test(k)) {
+      zhKeywords.push(escaped);
+    } else {
+      enKeywords.push(escaped);
+    }
+  }
+
+  const patterns: string[] = [];
+
+  // 英文使用词边界
+  if (enKeywords.length > 0) {
+    patterns.push(`\\b(${enKeywords.join('|')})\\b`);
+  }
+
+  // 中文直接匹配（不需要词边界）
+  if (zhKeywords.length > 0) {
+    patterns.push(`(${zhKeywords.join('|')})`);
+  }
+
+  return new RegExp(patterns.join('|'), 'gi');
 }
 
 const cameraRegex = buildKeywordRegex(CAMERA_KEYWORDS);

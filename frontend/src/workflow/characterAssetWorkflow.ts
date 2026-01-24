@@ -303,10 +303,21 @@ export async function extractAndBindCharacter(
 
     onProgress?.(10, '调用角色提取 API...');
 
+    // 获取用户设置的时间范围，默认 1-3 秒
+    let timestamps = '1,3';
+    if (character.timestampRange) {
+      const { start, end } = character.timestampRange;
+      // 验证时间范围不超过 3 秒
+      if (end - start > 3) {
+        return { success: false, error: '提取时间范围不能超过3秒' };
+      }
+      timestamps = `${start},${end}`;
+    }
+
     // 使用任务 ID 调用角色提取 API
     const extractTaskId = await itvProvider.extractCharacter({
       fromTask: character.previewVideoTaskId,
-      timestamps: '1,3', // 默认取 1-3 秒的画面
+      timestamps,
     });
 
     // 检查是否支持角色提取状态轮询
