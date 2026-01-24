@@ -326,8 +326,15 @@ export const LLMConfigManager: React.FC<LLMConfigManagerProps> = ({ onConfigChan
         width={500}
         maskClosable={false}
         destroyOnHidden
+        className="dark-modal"
+        styles={{
+          header: { background: '#18181b', borderBottom: '1px solid #3f3f46' },
+          body: { background: '#18181b' },
+          footer: { background: '#18181b', borderTop: '1px solid #3f3f46' },
+          content: { background: '#18181b' },
+        }}
       >
-        <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
+        <Form form={form} layout="vertical" className="mt-4">
           <Form.Item
             name="name"
             label="配置名称"
@@ -370,7 +377,7 @@ export const LLMConfigManager: React.FC<LLMConfigManagerProps> = ({ onConfigChan
               <span>
                 API 地址
                 {currentProvider !== 'openai-compatible' && (
-                  <span style={{ color: '#666', marginLeft: 8, fontSize: 12 }}>(可选，用于代理)</span>
+                  <span className="text-zinc-500 ml-2 text-xs">(可选，用于代理)</span>
                 )}
               </span>
             }

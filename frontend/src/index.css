@@ -99,3 +99,86 @@ body {
 * {
   transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
 }
+
+/* ========================================
+   Antd 深色主题覆盖
+   ======================================== */
+
+/* 深色 Modal */
+.dark-modal .ant-modal-content {
+  background: var(--color-bg-surface) !important;
+  border: 1px solid var(--color-border);
+}
+.dark-modal .ant-modal-header {
+  background: var(--color-bg-surface) !important;
+  border-bottom: 1px solid var(--color-border) !important;
+}
+.dark-modal .ant-modal-title {
+  color: var(--color-text-primary) !important;
+}
+.dark-modal .ant-modal-close {
+  color: var(--color-text-secondary) !important;
+}
+.dark-modal .ant-modal-close:hover {
+  color: var(--color-text-primary) !important;
+  background: var(--color-bg-hover) !important;
+}
+.dark-modal .ant-modal-body {
+  background: var(--color-bg-surface) !important;
+}
+.dark-modal .ant-modal-footer {
+  background: var(--color-bg-surface) !important;
+  border-top: 1px solid var(--color-border) !important;
+}
+
+/* 深色 Modal 内的 Form */
+.dark-modal .ant-form-item-label > label {
+  color: var(--color-text-primary) !important;
+}
+.dark-modal .ant-form-item-explain {
+  color: var(--color-text-secondary) !important;
+}
+.dark-modal .ant-input,
+.dark-modal .ant-input-password,
+.dark-modal .ant-select-selector,
+.dark-modal .ant-input-affix-wrapper {
+  background: var(--color-bg-elevated) !important;
+  border-color: var(--color-border) !important;
+  color: var(--color-text-primary) !important;
+}
+.dark-modal .ant-input::placeholder,
+.dark-modal .ant-input-password input::placeholder {
+  color: var(--color-text-muted) !important;
+}
+.dark-modal .ant-input:hover,
+.dark-modal .ant-input-password:hover,
+.dark-modal .ant-select-selector:hover,
+.dark-modal .ant-input-affix-wrapper:hover {
+  border-color: var(--color-accent) !important;
+}
+.dark-modal .ant-input:focus,
+.dark-modal .ant-input-focused,
+.dark-modal .ant-input-affix-wrapper-focused {
+  border-color: var(--color-accent) !important;
+  box-shadow: 0 0 0 2px var(--color-accent-glow) !important;
+}
+.dark-modal .ant-select-dropdown {
+  background: var(--color-bg-elevated) !important;
+  border: 1px solid var(--color-border) !important;
+}
+.dark-modal .ant-select-item {
+  color: var(--color-text-primary) !important;
+}
+.dark-modal .ant-select-item-option-selected {
+  background: var(--color-accent-glow) !important;
+}
+.dark-modal .ant-select-item-option-active {
+  background: var(--color-bg-hover) !important;
+}
+.dark-modal .ant-select-selection-item {
+  color: var(--color-text-primary) !important;
+}
+.dark-modal .ant-select-arrow,
+.dark-modal .ant-input-prefix {
+  color: var(--color-text-secondary) !important;
+}

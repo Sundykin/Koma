@@ -37,6 +37,7 @@ import { ITVConfigManager } from './ITVConfigManager';
 import { TTSConfigManager } from './TTSConfigManager';
 import { VisualStyleManager } from './VisualStyleManager';
 import { PromptStudio } from './PromptStudio';
+import { PluginManager } from '../plugins';
 
 const { Sider, Content } = Layout;
 const { Title, Text } = Typography;
@@ -253,13 +254,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
           </div>
         );
       case 'system-plugins':
-        return (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#999', padding: 48 }}>
-            <ApiOutlined style={{ fontSize: 48, marginBottom: 16, opacity: 0.5 }} />
-            <Title level={4} style={{ color: '#999' }}>插件系统开发中</Title>
-            <Text type="secondary">支持导入自定义插件以扩展系统功能</Text>
-          </div>
-        );
+        return <PluginManager />;
       default:
         return null;
     }
