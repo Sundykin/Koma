@@ -182,6 +182,13 @@ function registerIpcRoutes(): void {
 
   ipcMain.handle('app:getPath', (_, name) => controllers.app.getPath({ name }));
   ipcMain.handle('app:getVersion', () => controllers.app.getVersion());
+
+  // 插件管理
+  ipcMain.handle('plugin:validate', (_, zipPath) => controllers.plugin.validate({ zipPath }));
+  ipcMain.handle('plugin:install', (_, { zipPath, manifest }) => controllers.plugin.install({ zipPath, manifest }));
+  ipcMain.handle('plugin:uninstall', (_, pluginPath) => controllers.plugin.uninstall({ pluginPath }));
+  ipcMain.handle('plugin:list', () => controllers.plugin.list({}));
+  ipcMain.handle('plugin:openFolder', (_, pluginPath) => controllers.plugin.openFolder({ pluginPath }));
 }
 
 async function initServices(): Promise<void> {
@@ -191,6 +198,8 @@ async function initServices(): Promise<void> {
   );
   // 初始化 FFmpeg 服务
   await services.ffmpeg.init();
+  // 初始化插件服务
+  await services.plugin.init();
 }
 
 app.whenReady().then(async () => {

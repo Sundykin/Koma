@@ -4,16 +4,21 @@ import {
   AppstoreOutlined,
   SettingOutlined,
   UserOutlined,
+  AppstoreAddOutlined,
 } from '@ant-design/icons';
 import { Scissors, FileText, FolderOpen } from 'lucide-react';
 import { Project, Episode } from '../../types';
+import { usePluginStore } from '../../store/pluginStore';
+
+// 视图类型：支持插件路由
+export type AppView = 'projects' | 'overview' | 'editor' | 'settings' | 'plugins' | `plugin:${string}`;
 
 interface SidebarProps {
-  view: 'projects' | 'overview' | 'editor' | 'settings';
+  view: AppView;
   activeProject: Project | null;
   activeEpisode: Episode | null;
   isSidebarCollapsed: boolean;
-  onViewChange: (view: 'projects' | 'settings') => void;
+  onViewChange: (view: AppView) => void;
   onEnterVideoTest: () => void;
 }
 
@@ -25,6 +30,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onViewChange,
   onEnterVideoTest,
 }) => {
+  // 获取已启用的全局插件
+  const globalPlugins = usePluginStore(state => state.getGlobalPlugins());
+
+  // 构建动态插件菜单项
+  const pluginMenuItems = globalPlugins
+    .sort((a, b) => (a.globalMeta?.navigation?.order || 50) - (b.globalMeta?.navigation?.order || 50))
+    .map(plugin => ({
+      key: `plugin:${plugin.id}`,
+      icon: <AppstoreAddOutlined />, // TODO: 支持自定义图标
+      label: plugin.globalMeta?.navigation?.label || plugin.name,
+    }));
+
   return (
     <div
       className={`${
@@ -54,7 +71,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           } else if (key === 'overview' || key === 'editor') {
             // 这些是项目内视图，保持不变
           } else {
-            onViewChange(key as 'projects' | 'settings');
+            onViewChange(key as AppView);
           }
         }}
         style={{
@@ -98,7 +115,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
             icon: <Scissors size={16} />,
             label: '剪辑测试',
           },
+          // 动态插件菜单
+          ...(pluginMenuItems.length > 0
+            ? [
+                { type: 'divider' as const },
+                ...pluginMenuItems,
+              ]
+            : []),
           { type: 'divider' as const },
+          {
+            key: 'plugins',
+            icon: <AppstoreAddOutlined />,
+            label: '插件管理',
+          },
           {
             key: 'settings',
             icon: <SettingOutlined />,

@@ -5,9 +5,10 @@ import type { MentionItem } from './editor';
 import { SettingsPage } from './components/settings';
 import { WindowControls } from './components/common';
 import { ErrorBoundary } from './components/common';
-import { Sidebar } from './components/common/Sidebar';
+import { Sidebar, type AppView } from './components/common/Sidebar';
 import { Header } from './components/common/Header';
 import { EditorView } from './components/editor/EditorView';
+import { PluginManager, PluginHost } from './components/plugins';
 import { useProjects } from './hooks/useProjects';
 import { TaskManager } from './services/TaskManager';
 import { startBackgroundAnalysis } from './services/ScriptAnalysisService';
@@ -38,7 +39,7 @@ const AppContent: React.FC = () => {
     updateProject: updateProjectAPI,
   } = useProjects();
 
-  const [view, setView] = useState<'projects' | 'overview' | 'editor' | 'settings'>(isVideoDevMode ? 'editor' : 'projects');
+  const [view, setView] = useState<AppView>(isVideoDevMode ? 'editor' : 'projects');
   const [activeProject, setActiveProject] = useState<Project | null>(isVideoDevMode ? DEV_TEST_PROJECT : null);
   const [editorStep, setEditorStep] = useState<EditorStep>(isVideoDevMode ? 'video' : 'script');
   const [activeEpisode, setActiveEpisode] = useState<Episode | null>(null);
@@ -52,7 +53,7 @@ const AppContent: React.FC = () => {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisData, setAnalysisData] = useState<ScriptAnalysisResult | null>(isVideoDevMode ? DEV_TEST_ANALYSIS : null);
 
-  const isSidebarCollapsed = view === 'editor' || view === 'overview';
+  const isSidebarCollapsed = view === 'editor' || view === 'overview' || view.startsWith('plugin:');
 
   // 初始化 TaskManager
   useEffect(() => {
@@ -290,6 +291,10 @@ const AppContent: React.FC = () => {
               )
             )}
             {view === 'settings' && <SettingsPage settings={appSettings} onSave={setAppSettings} />}
+            {view === 'plugins' && <PluginManager />}
+            {view.startsWith('plugin:') && (
+              <PluginHost pluginId={view.replace('plugin:', '')} />
+            )}
             {view === 'overview' && activeProject && (
               <ProjectOverview
                 project={activeProject}

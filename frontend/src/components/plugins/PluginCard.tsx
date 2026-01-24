@@ -1,0 +1,121 @@
+/**
+ * 插件卡片组件
+ */
+import React from 'react';
+import { Card, Switch, Button, Tag, Space, Typography, Dropdown } from 'antd';
+import type { MenuProps } from 'antd';
+import {
+  SettingOutlined,
+  DeleteOutlined,
+  FolderOpenOutlined,
+  MoreOutlined,
+  GlobalOutlined,
+  ApiOutlined,
+  ToolOutlined,
+} from '@ant-design/icons';
+import type { InstalledPlugin } from '../../types/plugin';
+
+const { Text, Paragraph } = Typography;
+
+interface PluginCardProps {
+  plugin: InstalledPlugin;
+  onToggle: (id: string, enabled: boolean) => void;
+  onRemove: (id: string) => void;
+  onOpenFolder?: (id: string) => void;
+}
+
+const categoryIcons = {
+  global: <GlobalOutlined />,
+  provider: <ApiOutlined />,
+  tool: <ToolOutlined />,
+};
+
+const categoryLabels = {
+  global: '全局插件',
+  provider: '服务提供',
+  tool: '工具',
+};
+
+const categoryColors = {
+  global: 'purple',
+  provider: 'blue',
+  tool: 'green',
+} as const;
+
+export const PluginCard: React.FC<PluginCardProps> = ({
+  plugin,
+  onToggle,
+  onRemove,
+  onOpenFolder,
+}) => {
+  const menuItems: MenuProps['items'] = [
+    {
+      key: 'folder',
+      icon: <FolderOpenOutlined />,
+      label: '打开插件目录',
+      onClick: () => onOpenFolder?.(plugin.id),
+    },
+    { type: 'divider' },
+    {
+      key: 'remove',
+      icon: <DeleteOutlined />,
+      label: '卸载插件',
+      danger: true,
+      onClick: () => onRemove(plugin.id),
+    },
+  ];
+
+  return (
+    <Card
+      size="small"
+      className={`plugin-card ${!plugin.isEnabled ? 'opacity-60' : ''}`}
+      styles={{ body: { padding: '12px 16px' } }}
+    >
+      <div className="flex items-start justify-between">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-1">
+            <Text strong className="truncate">{plugin.name}</Text>
+            <Tag
+              icon={categoryIcons[plugin.category]}
+              color={categoryColors[plugin.category]}
+              className="text-xs"
+            >
+              {categoryLabels[plugin.category]}
+            </Tag>
+          </div>
+
+          <Paragraph
+            type="secondary"
+            className="text-xs mb-2 !mb-1"
+            ellipsis={{ rows: 2 }}
+          >
+            {plugin.description || '暂无描述'}
+          </Paragraph>
+
+          <div className="flex items-center gap-2 text-xs text-gray-400">
+            <span>v{plugin.version}</span>
+            {plugin.author && (
+              <>
+                <span>·</span>
+                <span>{plugin.author.name}</span>
+              </>
+            )}
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 ml-3">
+          <Switch
+            size="small"
+            checked={plugin.isEnabled}
+            onChange={(checked) => onToggle(plugin.id, checked)}
+          />
+          <Dropdown menu={{ items: menuItems }} trigger={['click']}>
+            <Button type="text" size="small" icon={<MoreOutlined />} />
+          </Dropdown>
+        </div>
+      </div>
+    </Card>
+  );
+};
+
+export default PluginCard;

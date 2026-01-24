@@ -93,4 +93,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     cancelTask: () => ipcRenderer.invoke('controller', 'controller.ffmpeg.cancelTask'),
     clearQueue: () => ipcRenderer.invoke('controller', 'controller.ffmpeg.clearQueue'),
   },
+  plugin: {
+    validate: (zipPath: string) => ipcRenderer.invoke('plugin:validate', zipPath),
+    install: (zipPath: string, manifest: any) => ipcRenderer.invoke('plugin:install', { zipPath, manifest }),
+    uninstall: (pluginPath: string) => ipcRenderer.invoke('plugin:uninstall', pluginPath),
+    list: () => ipcRenderer.invoke('plugin:list'),
+    openFolder: (pluginPath: string) => ipcRenderer.invoke('plugin:openFolder', pluginPath),
+  },
 });
