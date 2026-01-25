@@ -1,11 +1,13 @@
 .shot-card {
+  position: relative;
   background: #18181b;
   border: 1px solid #27272a;
   border-radius: 8px;
-  margin-bottom: 0;
+  margin-bottom: 4px;
   display: flex;
   flex-direction: column;
   transition: all 0.2s ease;
+  overflow: hidden;
 }
 
 .shot-card:hover {
@@ -94,6 +96,24 @@
   padding: 8px !important;
   font-family: 'JetBrains Mono', monospace;
   font-size: 13px;
+}
+
+/* Shot Prompt Editor - 紧凑模式 */
+.shot-prompt-editor .cm-editor {
+  height: 100% !important;
+  background-color: transparent !important;
+}
+
+.shot-prompt-editor .cm-scroller {
+  padding: 4px 6px !important;
+}
+
+.shot-prompt-editor .cm-content {
+  padding: 0 !important;
+}
+
+.shot-prompt-editor .cm-line {
+  padding: 0 !important;
 }
 
 /* Custom Scrollbar for columns */
