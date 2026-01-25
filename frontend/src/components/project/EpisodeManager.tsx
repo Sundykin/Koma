@@ -279,46 +279,55 @@ ${fullScript}
           {episodes.map((episode) => (
             <div
               key={episode.id}
-              style={{
-                cursor: 'pointer',
-                padding: '12px 16px',
-                background: selectedEpisodeId === episode.id ? 'rgba(16, 185, 129, 0.1)' : undefined,
-                borderLeft: selectedEpisodeId === episode.id ? '3px solid #10b981' : '3px solid transparent',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                borderBottom: '1px solid #303030',
-              }}
+              role="button"
+              tabIndex={0}
+              className={`group flex items-center justify-between px-4 py-3 border-b border-zinc-800 cursor-pointer transition-colors hover:bg-zinc-800/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/50 ${
+                selectedEpisodeId === episode.id
+                  ? 'bg-emerald-500/10 border-l-[3px] border-l-emerald-500'
+                  : 'border-l-[3px] border-l-transparent'
+              }`}
               onClick={() => onEpisodeSelect?.(episode)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  onEpisodeSelect?.(episode);
+                }
+              }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, minWidth: 0 }}>
-                <HolderOutlined style={{ color: '#ccc', cursor: 'grab' }} />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <Space>
-                    <span>第 {episode.number} 集: {episode.title}</span>
-                    <Tag color={statusColors[episode.status]}>{statusLabels[episode.status]}</Tag>
-                  </Space>
-                  <Paragraph ellipsis={{ rows: 1 }} style={{ marginBottom: 0, color: '#888', marginTop: 4 }}>
+              <div className="flex items-center gap-3 flex-1 min-w-0">
+                <HolderOutlined className="text-zinc-600 cursor-grab opacity-0 group-hover:opacity-100 transition-opacity" />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-sm font-medium text-zinc-200">
+                      第 {episode.number} 集: {episode.title}
+                    </span>
+                    <Tag className="m-0" color={statusColors[episode.status]} bordered={false}>
+                      {statusLabels[episode.status]}
+                    </Tag>
+                  </div>
+                  <div className="text-xs text-zinc-500 truncate pr-4">
                     {episode.scriptText || '暂无剧本内容'}
-                  </Paragraph>
+                  </div>
                 </div>
               </div>
-              <Space>
+              
+              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity duration-200">
                 <Tooltip title="进入创作">
                   <Button
                     type="primary"
                     size="small"
+                    ghost
                     icon={<PlayCircleOutlined />}
                     onClick={(e) => {
                       e.stopPropagation();
                       onEpisodeSelect?.(episode);
                     }}
-                  >
-                    创作
-                  </Button>
+                  />
                 </Tooltip>
                 <Button
                   type="text"
+                  size="small"
+                  className="text-zinc-400 hover:text-white"
                   icon={<EditOutlined />}
                   onClick={(e) => {
                     e.stopPropagation();
@@ -336,11 +345,12 @@ ${fullScript}
                   <Button
                     type="text"
                     danger
+                    size="small"
                     icon={<DeleteOutlined />}
                     onClick={(e) => e.stopPropagation()}
                   />
                 </Popconfirm>
-              </Space>
+              </div>
             </div>
           ))}
         </Flex>

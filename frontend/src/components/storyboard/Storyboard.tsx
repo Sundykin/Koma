@@ -410,6 +410,22 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     saveAllShots(updatedShots);
   }, [shots, saveAllShots]);
 
+  // 场景变更
+  const handleScenesChange = useCallback((shotId: string, sceneIds: string[]) => {
+    const updatedShots = shots.map(s =>
+      s.id === shotId ? { ...s, scenes: sceneIds } : s
+    );
+    saveAllShots(updatedShots);
+  }, [shots, saveAllShots]);
+
+  // 参考图变更
+  const handleReferenceImagesChange = useCallback((shotId: string, referenceImages: string[], selectedReferenceIndex: number) => {
+    const updatedShots = shots.map(s =>
+      s.id === shotId ? { ...s, referenceImages, selectedReferenceIndex } : s
+    );
+    saveAllShots(updatedShots);
+  }, [shots, saveAllShots]);
+
   // 多图片变更
   const handleImagesChange = useCallback((shotId: string, imagePaths: string[], currentImageIndex: number) => {
     const updatedShots = shots.map(s =>
@@ -976,6 +992,8 @@ export const Storyboard: React.FC<StoryboardProps> = ({
             onImagePromptChange={handleImagePromptChange}
             onVideoPromptChange={handleVideoPromptChange}
             onCharactersChange={handleCharactersChange}
+            onScenesChange={handleScenesChange}
+            onReferenceImagesChange={handleReferenceImagesChange}
             onImagesChange={handleImagesChange}
             onVideosChange={handleVideosChange}
             onGeneratePrompt={handleGenerateShotPrompt}

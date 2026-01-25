@@ -236,7 +236,7 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
         {/* 左栏：分集导航 */}
         <div
           className={`border-r border-zinc-800 bg-zinc-900/30 flex flex-col transition-all duration-300 ${
-            leftCollapsed ? 'w-0 overflow-hidden' : 'w-80'
+            leftCollapsed ? 'w-0 overflow-hidden' : 'w-[400px]'
           }`}
         >
           <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
@@ -273,7 +273,7 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
         )}
 
         {/* 中栏：主内容区 */}
-        <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        <div className="flex-1 flex flex-col min-w-[400px] overflow-hidden">
           <div className="flex-1 flex items-center justify-center p-8">
             <div className="text-center max-w-md">
               <div className="w-20 h-20 mx-auto mb-6 rounded-2xl bg-zinc-800/50 flex items-center justify-center">

@@ -34,6 +34,7 @@ export interface ImageCardGridProps {
   characters?: Character[];
   scenes?: Scene[];
   props?: Prop[];
+  compact?: boolean;  // 紧凑模式，用于分镜卡片
 }
 
 export const ImageCardGrid: React.FC<ImageCardGridProps> = ({

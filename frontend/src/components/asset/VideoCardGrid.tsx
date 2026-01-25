@@ -25,6 +25,7 @@ export interface VideoCardGridProps {
   onGenerate?: () => void;
   isGenerating?: boolean;
   disabled?: boolean;
+  compact?: boolean;  // 紧凑模式，用于分镜卡片
 }
 
 export const VideoCardGrid: React.FC<VideoCardGridProps> = ({

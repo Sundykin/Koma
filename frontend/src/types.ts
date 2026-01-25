@@ -169,14 +169,17 @@ export interface Shot {
   description?: string;  // 通用提示词（兼容旧数据）
   imagePrompt?: string;  // 图片生成提示词
   videoPrompt?: string;  // 视频生成提示词
-  // 图片相关
+  // 参考图（用于文生图输入）
+  referenceImages?: string[];        // 参考图列表（区别于生成结果 imagePaths）
+  selectedReferenceIndex?: number;   // 当前选中的参考图索引
+  // 生成结果图片
   imageUrl?: string;     // 预览图或生成图（远程URL）
   imagePath?: string;    // 当前选中的本地图片路径
-  imagePaths?: string[]; // 所有候选图片列表
+  imagePaths?: string[]; // 所有生成的候选图片列表
   currentImageIndex?: number; // 当前选中的图片索引
   // 关联资产
   characters: string[];  // 涉及的角色ID
-  scenes?: string[];     // 涉及的场景ID
+  scenes?: string[];     // 涉及的场景ID（可在 UI 中编辑）
   dialogue?: string;     // 台词（用于 TTS）
   emotion?: string;      // 情绪标签
   props?: string[];      // 涉及的道具ID

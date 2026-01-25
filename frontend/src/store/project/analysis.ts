@@ -65,11 +65,17 @@ export async function loadEpisodeShots(
   const analysis = await loadEpisodeAnalysis(projectId, episodeId);
   const shots = analysis?.shots || [];
 
-  // 运行时兼容：旧数据只有 description，需要回填到 imagePrompt/videoPrompt
+  // 运行时兼容：旧数据迁移 + 新字段默认值
   return shots.map(shot => ({
     ...shot,
+    // 提示词兼容
     imagePrompt: shot.imagePrompt || shot.description || '',
     videoPrompt: shot.videoPrompt || shot.description || '',
+    // 参考图默认值
+    referenceImages: Array.isArray(shot.referenceImages) ? shot.referenceImages : [],
+    selectedReferenceIndex: typeof shot.selectedReferenceIndex === 'number' ? shot.selectedReferenceIndex : 0,
+    // 场景默认值
+    scenes: Array.isArray(shot.scenes) ? shot.scenes : [],
   }));
 }
 
