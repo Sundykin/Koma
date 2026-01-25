@@ -1,0 +1,19 @@
+{
+  "name": "koma-plugin-vectorengine-provider",
+  "version": "1.0.0",
+  "description": "Koma Plugin - VectorEngine Video Generation Provider",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "esbuild src/index.tsx --bundle --format=iife --global-name=__KOMA_PLUGIN_com_koma_vectorengine_provider__ --outfile=dist/ui/main.js --external:react --external:antd",
+    "build:watch": "esbuild src/index.tsx --bundle --format=iife --global-name=__KOMA_PLUGIN_com_koma_vectorengine_provider__ --outfile=dist/ui/main.js --external:react --external:antd --watch",
+    "zip": "cd .. && powershell Compress-Archive -Path vectorengine-provider/manifest.json,vectorengine-provider/dist,vectorengine-provider/README.md -DestinationPath vectorengine-provider.zip -Force"
+  },
+  "peerDependencies": {
+    "react": "^18.0.0",
+    "antd": "^5.0.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.19.0",
+    "typescript": "^5.0.0"
+  }
+}

@@ -111,10 +111,7 @@ export const PluginImporter: React.FC<PluginImporterProps> = ({ onImportSuccess 
   // 从文件夹导入（开发模式）
   const handleImportFromFolder = useCallback(async () => {
     try {
-      const result = await electronService.dialog.showOpenDialog({
-        title: '选择插件目录',
-        properties: ['openDirectory'],
-      });
+      const result = await electronService.dialog.openDirectory();
 
       if (result.canceled || !result.filePaths?.[0]) return;
 

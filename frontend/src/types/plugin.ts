@@ -49,8 +49,10 @@ export interface GlobalPluginMeta {
 
 // Provider 插件元数据
 export interface ProviderPluginMeta {
-  providerType: 'tti' | 'itv' | 'tts' | 'llm';
-  supportedActions: string[];    // 支持的操作
+  channelType: 'tti' | 'itv' | 'tts' | 'llm';  // 主渠道类型
+  capabilities: string[];     // 支持的能力列表，如 ['itv', 'character-extract']
+  configPanel?: boolean;      // 是否有自定义配置面板
+  supportedActions?: string[];  // 支持的操作 (兼容旧字段)
 }
 
 // 工具插件元数据

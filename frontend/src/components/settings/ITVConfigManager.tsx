@@ -31,6 +31,7 @@ import {
   LoadingOutlined,
   VideoCameraOutlined,
   SettingOutlined,
+  AppstoreOutlined,
 } from '@ant-design/icons';
 import type { ITVModelConfig, ITVProviderType } from '../../types';
 import type { UnifiedChannelConfig, ChannelCapability } from '../../providers/channel/types';
@@ -49,6 +50,9 @@ import {
 } from '../../store/globalStore';
 import { UNIFIED_CHANNEL_TEMPLATES } from '../../providers/channel';
 import { getChannelCapabilities } from '../../providers/channel/types';
+import { usePluginStore } from '../../store/pluginStore';
+import type { InstalledPlugin } from '../../types/plugin';
+import { ProviderPluginModal } from '../plugins/ProviderPluginModal';
 
 interface ITVConfigManagerProps {
   onConfigChange?: () => void;
@@ -69,6 +73,12 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
   // 自定义渠道能力选择
   const [channelCapabilities, setChannelCapabilities] = useState<ChannelCapability[]>(['itv']);
 
+  // Provider 插件相关状态
+  const plugins = usePluginStore(state => state.plugins);
+  const [providerPlugins, setProviderPlugins] = useState<InstalledPlugin[]>([]);
+  const [pluginModalVisible, setPluginModalVisible] = useState(false);
+  const [activePluginId, setActivePluginId] = useState<string>('');
+
   const loadConfigs = async () => {
     setLoading(true);
     try {
@@ -80,6 +90,34 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
     } finally {
       setLoading(false);
     }
+  };
+
+  // 过滤出具有 ITV 能力的 provider 插件
+  useEffect(() => {
+    const itvPlugins = plugins.filter(p =>
+      p.category === 'provider' &&
+      p.isEnabled &&
+      p.providerMeta?.capabilities?.includes('itv')
+    );
+    setProviderPlugins(itvPlugins);
+  }, [plugins]);
+
+  // 打开插件配置弹窗
+  const openPluginModal = (pluginId: string) => {
+    setActivePluginId(pluginId);
+    setPluginModalVisible(true);
+  };
+
+  // 关闭插件配置弹窗
+  const closePluginModal = () => {
+    setPluginModalVisible(false);
+    setActivePluginId('');
+  };
+
+  // 插件配置保存后刷新渠道列表
+  const handlePluginConfigSaved = async () => {
+    await loadConfigs();
+    onConfigChange?.();
   };
 
   useEffect(() => {
@@ -406,6 +444,9 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
             {unifiedChannels.length > 0 && (
               <span>，<strong>{unifiedChannels.length}</strong> 个自定义渠道</span>
             )}
+            {providerPlugins.length > 0 && (
+              <span>，<strong>{providerPlugins.length}</strong> 个插件渠道</span>
+            )}
           </span>
         </div>
         <Space>
@@ -422,7 +463,7 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
         <div style={{ textAlign: 'center', padding: 40 }}>
           <Spin />
         </div>
-      ) : configs.length === 0 && unifiedChannels.length === 0 ? (
+      ) : configs.length === 0 && unifiedChannels.length === 0 && providerPlugins.length === 0 ? (
         <Empty
           image={Empty.PRESENTED_IMAGE_SIMPLE}
           description="还没有配置任何图生视频服务"
@@ -574,8 +615,57 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
               </Card>
             </Col>
           ))}
+
+          {/* Provider 插件渠道卡片 */}
+          {providerPlugins.map((plugin) => (
+            <Col key={plugin.id} xs={24} sm={12}>
+              <Card
+                size="small"
+                title={
+                  <Space>
+                    <AppstoreOutlined />
+                    <span>{plugin.name}</span>
+                    <Tag color="blue">插件</Tag>
+                    {plugin.providerMeta?.capabilities?.map(cap => (
+                      <Tag key={cap} color="geekblue">{cap}</Tag>
+                    ))}
+                  </Space>
+                }
+                extra={
+                  plugin.entry.frontend && plugin.providerMeta?.configPanel && (
+                    <Tooltip title="配置">
+                      <Button
+                        type="text"
+                        size="small"
+                        icon={<SettingOutlined />}
+                        onClick={() => openPluginModal(plugin.id)}
+                      />
+                    </Tooltip>
+                  )
+                }
+              >
+                <div style={{ fontSize: 13, color: '#666' }}>
+                  {plugin.description && <div>{plugin.description}</div>}
+                  <div style={{ marginTop: 4 }}>
+                    <strong>版本:</strong> {plugin.version}
+                  </div>
+                  <div style={{ marginTop: 4 }}>
+                    <strong>作者:</strong> {typeof plugin.author === 'string' ? plugin.author : plugin.author?.name || '未知'}
+                  </div>
+                </div>
+              </Card>
+            </Col>
+          ))}
         </Row>
       )}
+
+      {/* Provider 插件配置弹窗 */}
+      <ProviderPluginModal
+        visible={pluginModalVisible}
+        pluginId={activePluginId}
+        onClose={closePluginModal}
+        onConfigSaved={handlePluginConfigSaved}
+      />
 
       <Modal
         title={editingConfig ? '编辑图生视频配置' : '添加图生视频配置'}

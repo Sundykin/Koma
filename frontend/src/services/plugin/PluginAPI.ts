@@ -216,14 +216,142 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
     // ========== Channels ==========
     channels: {
       async register(config: PluginChannelConfig) {
-        // Provider 插件注册渠道
+        // 验证权限
+        const result = validateOperation(plugin, 'channels.register', 'network:external');
+        if (!result.allowed) {
+          throw new Error(result.reason);
+        }
+
         console.log(`[PluginAPI] 插件 ${pluginId} 注册渠道:`, config);
-        // TODO: 实现渠道注册逻辑
+
+        // 导入渠道配置模块
+        const { addUnifiedChannel, getUnifiedChannels } = await import('../../store/settings/channelConfig');
+
+        // 检查是否已存在同名渠道
+        const existing = await getUnifiedChannels();
+        const existingChannel = existing.find(c => c.name === config.name || c.id === `plugin_${pluginId}_${config.id}`);
+
+        if (existingChannel) {
+          // 更新已存在的渠道
+          const { updateUnifiedChannel } = await import('../../store/settings/channelConfig');
+          await updateUnifiedChannel(existingChannel.id, {
+            name: config.name,
+            description: `由插件 ${plugin.name} 提供`,
+            baseUrl: config.config?.baseUrl || 'https://api.example.com',
+            auth: {
+              type: 'bearer',
+              keyValue: config.config?.apiKey || '',
+            },
+            itv: config.type === 'itv' ? {
+              generate: {
+                url: '{{baseUrl}}/v1/video/create',
+                method: 'POST',
+                bodyTemplate: JSON.stringify({
+                  images: '{{imageUrls}}',
+                  model: '{{model}}',
+                  orientation: '{{orientation}}',
+                  prompt: '{{prompt}}',
+                  size: '{{size}}',
+                  duration: '{{duration}}',
+                  watermark: '{{watermark}}',
+                }),
+                responseMapping: { taskId: '$.id' },
+              },
+              query: {
+                url: '{{baseUrl}}/v1/video/query?id={{taskId}}',
+                method: 'GET',
+                responseMapping: {
+                  status: '$.status',
+                  progress: '$.detail.pending_info.progress_pct',
+                  resultUrl: '$.video_url',
+                  error: '$.detail.failure_reason',
+                },
+                statusMapping: {
+                  pending: ['pending', 'queued'],
+                  processing: ['processing', 'in_progress'],
+                  completed: ['completed', 'succeeded'],
+                  failed: ['failed', 'error'],
+                },
+              },
+            } : undefined,
+            polling: {
+              interval: 5000,
+              maxDuration: 600000,
+              initialDelay: 3000,
+            },
+            enabled: true,
+          });
+          console.log(`[PluginAPI] 渠道已更新: ${existingChannel.id}`);
+        } else {
+          // 添加新渠道
+          const newChannel = await addUnifiedChannel({
+            name: config.name,
+            description: `由插件 ${plugin.name} 提供`,
+            baseUrl: config.config?.baseUrl || 'https://api.example.com',
+            auth: {
+              type: 'bearer',
+              keyValue: config.config?.apiKey || '',
+            },
+            itv: config.type === 'itv' ? {
+              generate: {
+                url: '{{baseUrl}}/v1/video/create',
+                method: 'POST',
+                bodyTemplate: JSON.stringify({
+                  images: '{{imageUrls}}',
+                  model: '{{model}}',
+                  orientation: '{{orientation}}',
+                  prompt: '{{prompt}}',
+                  size: '{{size}}',
+                  duration: '{{duration}}',
+                  watermark: '{{watermark}}',
+                }),
+                responseMapping: { taskId: '$.id' },
+              },
+              query: {
+                url: '{{baseUrl}}/v1/video/query?id={{taskId}}',
+                method: 'GET',
+                responseMapping: {
+                  status: '$.status',
+                  progress: '$.detail.pending_info.progress_pct',
+                  resultUrl: '$.video_url',
+                  error: '$.detail.failure_reason',
+                },
+                statusMapping: {
+                  pending: ['pending', 'queued'],
+                  processing: ['processing', 'in_progress'],
+                  completed: ['completed', 'succeeded'],
+                  failed: ['failed', 'error'],
+                },
+              },
+            } : undefined,
+            polling: {
+              interval: 5000,
+              maxDuration: 600000,
+              initialDelay: 3000,
+            },
+            enabled: true,
+          });
+          console.log(`[PluginAPI] 渠道已注册: ${newChannel.id}`);
+        }
+
+        // 触发事件通知 UI 刷新
+        emitPluginEvent('channelRegistered', { pluginId, channelId: config.id });
       },
 
       async test(channelId: string): Promise<ChannelTestResult> {
-        // TODO: 实现渠道测试
-        return { success: true, latency: 100 };
+        const { getUnifiedChannels, testUnifiedChannel } = await import('../../store/settings/channelConfig');
+        const channels = await getUnifiedChannels();
+        const channel = channels.find(c => c.id === channelId);
+
+        if (!channel) {
+          return { success: false, latency: 0, error: '渠道不存在' };
+        }
+
+        const start = Date.now();
+        const success = await testUnifiedChannel(channel);
+        const latency = Date.now() - start;
+
+        return { success, latency, error: success ? undefined : '连接测试失败' };
       },
 
       async invoke(channelId: string, action: string, params: any) {
