@@ -1,6 +1,7 @@
 /**
  * 插件 API 实现
  * 为插件提供系统能力访问
+ * 重构版：支持 Provider 类注入
  */
 import type {
   PluginAPI,
@@ -19,12 +20,24 @@ import type {
 import { validateOperation, validateStoragePath, createSandboxedFetch, hasScope } from './PluginSandbox';
 import { electronService } from '../electronService';
 import { message, Modal } from 'antd';
+import {
+  registerProvider,
+  unregisterProvider,
+  listProviders,
+  type ProviderDefinition,
+  type ChannelKind,
+  type ProviderContext,
+} from '../../providers/registry';
+import { addChannelConfig, deleteChannelsByPlugin } from '../../store/settings/channelConfig';
 
 // 事件监听器
 const eventListeners = new Map<string, Map<string, Set<Function>>>();
 
 // 动态菜单项
 const dynamicMenuItems = new Map<string, MenuItem[]>();
+
+// 插件注册的 Provider 类型（用于卸载时清理）
+const pluginProviderTypes = new Map<string, string[]>();
 
 /**
  * 创建插件专用的 API 实例
@@ -213,146 +226,147 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
       },
     },
 
-    // ========== Channels ==========
+    // ========== Channels (重构版：Provider 注入) ==========
     channels: {
-      async register(config: PluginChannelConfig) {
+      /**
+       * 注册 Provider（新 API）
+       * 插件通过此方法注册自定义 Provider 类
+       */
+      async registerProvider(def: ProviderDefinition<any>) {
         // 验证权限
-        const result = validateOperation(plugin, 'channels.register', 'network:external');
+        const result = validateOperation(plugin, 'channels.registerProvider', 'network:external');
         if (!result.allowed) {
           throw new Error(result.reason);
         }
 
-        console.log(`[PluginAPI] 插件 ${pluginId} 注册渠道:`, config);
+        console.log(`[PluginAPI] 插件 ${pluginId} 注册 Provider:`, def.type);
 
-        // 导入渠道配置模块
-        const { addUnifiedChannel, getUnifiedChannels } = await import('../../store/settings/channelConfig');
+        // 添加 pluginId 标识
+        def.pluginId = pluginId;
 
-        // 检查是否已存在同名渠道
-        const existing = await getUnifiedChannels();
-        const existingChannel = existing.find(c => c.name === config.name || c.id === `plugin_${pluginId}_${config.id}`);
+        // 注册到 Registry
+        registerProvider(def);
 
-        if (existingChannel) {
-          // 更新已存在的渠道
-          const { updateUnifiedChannel } = await import('../../store/settings/channelConfig');
-          await updateUnifiedChannel(existingChannel.id, {
-            name: config.name,
-            description: `由插件 ${plugin.name} 提供`,
-            baseUrl: config.config?.baseUrl || 'https://api.example.com',
-            auth: {
-              type: 'bearer',
-              keyValue: config.config?.apiKey || '',
-            },
-            itv: config.type === 'itv' ? {
-              generate: {
-                url: '{{baseUrl}}/v1/video/create',
-                method: 'POST',
-                bodyTemplate: JSON.stringify({
-                  images: '{{imageUrls}}',
-                  model: '{{model}}',
-                  orientation: '{{orientation}}',
-                  prompt: '{{prompt}}',
-                  size: '{{size}}',
-                  duration: '{{duration}}',
-                  watermark: '{{watermark}}',
-                }),
-                responseMapping: { taskId: '$.id' },
-              },
-              query: {
-                url: '{{baseUrl}}/v1/video/query?id={{taskId}}',
-                method: 'GET',
-                responseMapping: {
-                  status: '$.status',
-                  progress: '$.detail.pending_info.progress_pct',
-                  resultUrl: '$.video_url',
-                  error: '$.detail.failure_reason',
-                },
-                statusMapping: {
-                  pending: ['pending', 'queued'],
-                  processing: ['processing', 'in_progress'],
-                  completed: ['completed', 'succeeded'],
-                  failed: ['failed', 'error'],
-                },
-              },
-            } : undefined,
-            polling: {
-              interval: 5000,
-              maxDuration: 600000,
-              initialDelay: 3000,
-            },
+        // 记录 Provider 类型（卸载时清理）
+        if (!pluginProviderTypes.has(pluginId)) {
+          pluginProviderTypes.set(pluginId, []);
+        }
+        pluginProviderTypes.get(pluginId)!.push(def.type);
+
+        // 创建对应的渠道配置（失败时回滚）
+        try {
+          await addChannelConfig({
+            name: def.name,
+            description: def.description,
+            providerType: def.type,
+            providerConfig: def.defaultConfig || {},
+            capabilities: def.capabilities || [def.kind],
+            polling: def.polling,
             enabled: true,
+            source: 'plugin',
+            pluginId,
           });
-          console.log(`[PluginAPI] 渠道已更新: ${existingChannel.id}`);
-        } else {
-          // 添加新渠道
-          const newChannel = await addUnifiedChannel({
-            name: config.name,
-            description: `由插件 ${plugin.name} 提供`,
-            baseUrl: config.config?.baseUrl || 'https://api.example.com',
-            auth: {
-              type: 'bearer',
-              keyValue: config.config?.apiKey || '',
-            },
-            itv: config.type === 'itv' ? {
-              generate: {
-                url: '{{baseUrl}}/v1/video/create',
-                method: 'POST',
-                bodyTemplate: JSON.stringify({
-                  images: '{{imageUrls}}',
-                  model: '{{model}}',
-                  orientation: '{{orientation}}',
-                  prompt: '{{prompt}}',
-                  size: '{{size}}',
-                  duration: '{{duration}}',
-                  watermark: '{{watermark}}',
-                }),
-                responseMapping: { taskId: '$.id' },
-              },
-              query: {
-                url: '{{baseUrl}}/v1/video/query?id={{taskId}}',
-                method: 'GET',
-                responseMapping: {
-                  status: '$.status',
-                  progress: '$.detail.pending_info.progress_pct',
-                  resultUrl: '$.video_url',
-                  error: '$.detail.failure_reason',
-                },
-                statusMapping: {
-                  pending: ['pending', 'queued'],
-                  processing: ['processing', 'in_progress'],
-                  completed: ['completed', 'succeeded'],
-                  failed: ['failed', 'error'],
-                },
-              },
-            } : undefined,
-            polling: {
-              interval: 5000,
-              maxDuration: 600000,
-              initialDelay: 3000,
-            },
-            enabled: true,
-          });
-          console.log(`[PluginAPI] 渠道已注册: ${newChannel.id}`);
+        } catch (err) {
+          // 回滚：移除已注册的 Provider
+          unregisterProvider(def.kind, def.type);
+          const types = pluginProviderTypes.get(pluginId);
+          if (types) {
+            const idx = types.indexOf(def.type);
+            if (idx >= 0) types.splice(idx, 1);
+          }
+          throw err;
         }
 
         // 触发事件通知 UI 刷新
-        emitPluginEvent('channelRegistered', { pluginId, channelId: config.id });
+        emitPluginEvent('providerRegistered', { pluginId, providerType: def.type });
+      },
+
+      /**
+       * 反注册 Provider
+       */
+      async unregisterProvider(type: string) {
+        const def = listProviders().find(p => p.type === type);
+        if (def && def.pluginId === pluginId) {
+          unregisterProvider(def.kind, type);
+
+          // 从记录中移除
+          const types = pluginProviderTypes.get(pluginId);
+          if (types) {
+            const idx = types.indexOf(type);
+            if (idx >= 0) types.splice(idx, 1);
+          }
+
+          // 清理对应的渠道配置
+          const { deleteChannelByProviderType } = await import('../../store/settings/channelConfig');
+          await deleteChannelByProviderType(type, pluginId);
+        }
+      },
+
+      /**
+       * 列出所有 Provider
+       */
+      async listProviders(kind?: ChannelKind) {
+        return listProviders(kind);
+      },
+
+      /**
+       * 测试 Provider
+       */
+      async testProvider(type: string, config: Record<string, any>): Promise<ChannelTestResult> {
+        const { createProviderInstance } = await import('../../providers/registry');
+        const start = Date.now();
+
+        try {
+          const provider = createProviderInstance<{ testConnection?: () => Promise<boolean> }>(type, config, {
+            sandboxedFetch: createSandboxedFetch(plugin),
+            pluginId,
+          });
+
+          if (typeof provider.testConnection === 'function') {
+            const success = await provider.testConnection();
+            return {
+              success,
+              latency: Date.now() - start,
+              error: success ? undefined : '连接测试失败',
+            };
+          }
+
+          return {
+            success: true,
+            latency: Date.now() - start,
+          };
+        } catch (err: any) {
+          return {
+            success: false,
+            latency: Date.now() - start,
+            error: err.message,
+          };
+        }
+      },
+
+      // ========== 兼容旧 API（已废弃） ==========
+
+      /**
+       * @deprecated 使用 registerProvider 代替
+       */
+      async register(config: PluginChannelConfig) {
+        console.warn('[PluginAPI] channels.register 已废弃，请使用 channels.registerProvider');
+        // 不再支持旧 API
+        throw new Error('channels.register 已废弃，请使用 channels.registerProvider');
       },
 
       async test(channelId: string): Promise<ChannelTestResult> {
-        const { getUnifiedChannels, testUnifiedChannel } = await import('../../store/settings/channelConfig');
-        const channels = await getUnifiedChannels();
-        const channel = channels.find(c => c.id === channelId);
+        const { getChannelConfigs } = await import('../../store/settings/channelConfig');
+        const configs = await getChannelConfigs();
+        const config = configs.find(c => c.id === channelId);
 
-        if (!channel) {
+        if (!config) {
           return { success: false, latency: 0, error: '渠道不存在' };
         }
 
-        const start = Date.now();
-        const success = await testUnifiedChannel(channel);
-        const latency = Date.now() - start;
-
-        return { success, latency, error: success ? undefined : '连接测试失败' };
+        return this.testProvider(config.providerType, config.providerConfig);
       },
+
 
       async invoke(channelId: string, action: string, params: any) {
         // TODO: 实现渠道调用
@@ -498,8 +512,21 @@ export function getPluginMenuItems(pluginId: string): MenuItem[] {
 
 /**
  * 清理插件的所有资源
+ * 包括事件监听、菜单项、Provider 注册
  */
-export function cleanupPluginResources(pluginId: string): void {
+export async function cleanupPluginResources(pluginId: string): Promise<void> {
   eventListeners.delete(pluginId);
   dynamicMenuItems.delete(pluginId);
+
+  // 清理 Provider 注册
+  const { unregisterProvidersByPlugin } = await import('../../providers/registry');
+  unregisterProvidersByPlugin(pluginId);
+
+  // 清理插件的渠道配置
+  await deleteChannelsByPlugin(pluginId);
+
+  // 清理记录
+  pluginProviderTypes.delete(pluginId);
+
+  console.log(`[PluginAPI] 已清理插件 ${pluginId} 的所有资源`);
 }

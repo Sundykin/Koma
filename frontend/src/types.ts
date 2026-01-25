@@ -305,8 +305,10 @@ export interface AppSettings {
   itvConfigs: ITVModelConfig[];
   ttsConfigs: TTSModelConfig[];
   customThemePresets?: ThemePreset[];  // 用户自定义视觉风格预设
-  customChannels?: import('./providers/channel/types').ChannelConfig[];  // 旧版自定义渠道配置（已废弃，迁移用）
-  unifiedChannels?: import('./providers/channel/types').UnifiedChannelConfig[];  // 统一渠道配置
+  channelConfigs?: import('./providers/channel/types').ChannelConfig[];  // 渠道配置（Provider 注入版）
+  // @deprecated 以下字段已废弃，迁移后删除
+  customChannels?: import('./providers/channel/types').ChannelConfig[];  // 旧版自定义渠道配置
+  unifiedChannels?: import('./providers/channel/types').UnifiedChannelConfig[];  // 旧版统一渠道配置
   channelMigrationVersion?: number;  // 迁移版本标记
 }
 

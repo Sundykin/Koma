@@ -65,18 +65,14 @@ export {
   addCustomThemePreset,
   updateCustomThemePreset,
   deleteCustomThemePreset,
-  // 渠道配置
-  getCustomChannels,
-  addCustomChannel,
-  updateCustomChannel,
-  deleteCustomChannel,
-  testCustomChannel,
-  getUnifiedChannels,
-  getUnifiedChannelsByCapability,
-  addUnifiedChannel,
-  updateUnifiedChannel,
-  deleteUnifiedChannel,
-  testUnifiedChannel,
+  // 渠道配置（重构版）
+  getChannelConfigs,
+  getChannelsByCapability,
+  addChannelConfig,
+  updateChannelConfig,
+  deleteChannelConfig,
+  deleteChannelsByPlugin,
+  cleanupLegacyConfigs,
 } from './settings';
 
 // 重新导出类型（用于外部引用）

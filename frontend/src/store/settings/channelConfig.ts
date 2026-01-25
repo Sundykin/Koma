@@ -1,218 +1,154 @@
 /**
- * 渠道配置 CRUD（自定义渠道 + 统一渠道）
+ * 渠道配置存储
+ * 重构版：移除模板配置，改为 Provider 注入
  */
 import { loadSettings, saveSettings } from './core';
-import type { ChannelConfig, UnifiedChannelConfig, ChannelCapability } from '../../providers/channel/types';
+import type { ChannelConfig, ChannelCapability } from '../../providers/channel/types';
 import { hasChannelCapability } from '../../providers/channel/types';
 
-// ========== 自定义渠道配置 ==========
+// ========== 渠道配置 CRUD ==========
 
-export async function getCustomChannels(): Promise<ChannelConfig[]> {
+/**
+ * 获取所有渠道配置
+ */
+export async function getChannelConfigs(): Promise<ChannelConfig[]> {
   const settings = await loadSettings();
-  return settings.customChannels || [];
+  return settings.channelConfigs || [];
 }
 
-export async function addCustomChannel(config: ChannelConfig): Promise<ChannelConfig> {
-  const settings = await loadSettings();
-  if (!settings.customChannels) {
-    settings.customChannels = [];
-  }
-
-  if (settings.customChannels.find(c => c.id === config.id)) {
-    config.id = `channel_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
-  }
-
-  config.createdAt = config.createdAt || Date.now();
-  config.updatedAt = Date.now();
-
-  settings.customChannels.push(config);
-  await saveSettings(settings);
-  return config;
-}
-
-export async function updateCustomChannel(
-  id: string,
-  updates: Partial<ChannelConfig>
-): Promise<ChannelConfig | null> {
-  const settings = await loadSettings();
-  if (!settings.customChannels) return null;
-
-  const index = settings.customChannels.findIndex(c => c.id === id);
-  if (index === -1) return null;
-
-  settings.customChannels[index] = {
-    ...settings.customChannels[index],
-    ...updates,
-    id,
-    updatedAt: Date.now(),
-  };
-  await saveSettings(settings);
-  return settings.customChannels[index];
-}
-
-export async function deleteCustomChannel(id: string): Promise<boolean> {
-  const settings = await loadSettings();
-  if (!settings.customChannels) return false;
-
-  const index = settings.customChannels.findIndex(c => c.id === id);
-  if (index === -1) return false;
-
-  settings.customChannels.splice(index, 1);
-  await saveSettings(settings);
-  return true;
-}
-
-export async function testCustomChannel(config: ChannelConfig): Promise<boolean> {
-  try {
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-    };
-
-    if (config.auth.type === 'bearer') {
-      headers['Authorization'] = `Bearer ${config.auth.keyValue}`;
-    } else if (config.auth.type === 'header' && config.auth.keyName) {
-      headers[config.auth.keyName] = config.auth.keyValue;
-    }
-
-    let testUrl = config.generate.url;
-    if (testUrl.includes('{{baseUrl}}')) {
-      testUrl = testUrl.replace('{{baseUrl}}', config.baseUrl);
-    }
-
-    if (config.auth.type === 'query' && config.auth.keyName) {
-      const separator = testUrl.includes('?') ? '&' : '?';
-      testUrl = `${testUrl}${separator}${config.auth.keyName}=${encodeURIComponent(config.auth.keyValue)}`;
-    }
-
-    const response = await fetch(testUrl, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({}),
-    });
-
-    return response.status !== 401 && response.status !== 403;
-  } catch (err) {
-    console.error('[testCustomChannel] error:', err);
-    return false;
-  }
-}
-
-// ========== 统一渠道配置 ==========
-
-export async function getUnifiedChannels(): Promise<UnifiedChannelConfig[]> {
-  const settings = await loadSettings();
-  return settings.unifiedChannels || [];
-}
-
-export async function getUnifiedChannelsByCapability(
+/**
+ * 按能力获取渠道配置
+ */
+export async function getChannelsByCapability(
   capability: ChannelCapability
-): Promise<UnifiedChannelConfig[]> {
-  const channels = await getUnifiedChannels();
-  return channels.filter(c => c.enabled && hasChannelCapability(c, capability));
+): Promise<ChannelConfig[]> {
+  const configs = await getChannelConfigs();
+  return configs.filter(c => c.enabled && hasChannelCapability(c, capability));
 }
 
-export async function addUnifiedChannel(
-  config: Omit<UnifiedChannelConfig, 'id' | 'createdAt' | 'updatedAt'>
-): Promise<UnifiedChannelConfig> {
+/**
+ * 添加渠道配置
+ */
+export async function addChannelConfig(
+  config: Omit<ChannelConfig, 'id' | 'createdAt' | 'updatedAt'>
+): Promise<ChannelConfig> {
   const settings = await loadSettings();
-  if (!settings.unifiedChannels) {
-    settings.unifiedChannels = [];
+  if (!settings.channelConfigs) {
+    settings.channelConfigs = [];
   }
 
   const now = Date.now();
-  const newConfig: UnifiedChannelConfig = {
+  const newConfig: ChannelConfig = {
     ...config,
-    id: `unified_${now}_${Math.random().toString(36).slice(2, 9)}`,
+    id: `channel_${now}_${Math.random().toString(36).slice(2, 9)}`,
     createdAt: now,
     updatedAt: now,
   };
 
-  settings.unifiedChannels.push(newConfig);
+  settings.channelConfigs.push(newConfig);
   await saveSettings(settings);
   return newConfig;
 }
 
-export async function updateUnifiedChannel(
+/**
+ * 更新渠道配置
+ */
+export async function updateChannelConfig(
   id: string,
-  updates: Partial<Omit<UnifiedChannelConfig, 'id' | 'createdAt'>>
-): Promise<UnifiedChannelConfig | null> {
+  updates: Partial<Omit<ChannelConfig, 'id' | 'createdAt'>>
+): Promise<ChannelConfig | null> {
   const settings = await loadSettings();
-  if (!settings.unifiedChannels) return null;
+  if (!settings.channelConfigs) return null;
 
-  const index = settings.unifiedChannels.findIndex(c => c.id === id);
+  const index = settings.channelConfigs.findIndex(c => c.id === id);
   if (index === -1) return null;
 
-  settings.unifiedChannels[index] = {
-    ...settings.unifiedChannels[index],
+  settings.channelConfigs[index] = {
+    ...settings.channelConfigs[index],
     ...updates,
     id,
     updatedAt: Date.now(),
   };
   await saveSettings(settings);
-  return settings.unifiedChannels[index];
+  return settings.channelConfigs[index];
 }
 
-export async function deleteUnifiedChannel(id: string): Promise<boolean> {
+/**
+ * 删除渠道配置
+ */
+export async function deleteChannelConfig(id: string): Promise<boolean> {
   const settings = await loadSettings();
-  if (!settings.unifiedChannels) return false;
+  if (!settings.channelConfigs) return false;
 
-  const index = settings.unifiedChannels.findIndex(c => c.id === id);
+  const index = settings.channelConfigs.findIndex(c => c.id === id);
   if (index === -1) return false;
 
-  settings.unifiedChannels.splice(index, 1);
+  settings.channelConfigs.splice(index, 1);
   await saveSettings(settings);
   return true;
 }
 
-export async function testUnifiedChannel(
-  config: UnifiedChannelConfig,
-  capability?: ChannelCapability
-): Promise<boolean> {
-  try {
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-    };
+/**
+ * 删除插件的所有渠道配置
+ */
+export async function deleteChannelsByPlugin(pluginId: string): Promise<number> {
+  const settings = await loadSettings();
+  if (!settings.channelConfigs) return 0;
 
-    if (config.auth.type === 'bearer') {
-      headers['Authorization'] = `Bearer ${config.auth.keyValue}`;
-    } else if (config.auth.type === 'header' && config.auth.keyName) {
-      headers[config.auth.keyName] = config.auth.keyValue;
-    }
+  const before = settings.channelConfigs.length;
+  settings.channelConfigs = settings.channelConfigs.filter(c => c.pluginId !== pluginId);
+  const deleted = before - settings.channelConfigs.length;
 
-    let pair = config.itv || config.tti || config.characterExtract || config.remix;
-    if (capability) {
-      switch (capability) {
-        case 'tti': pair = config.tti; break;
-        case 'itv': pair = config.itv; break;
-        case 'character-extract': pair = config.characterExtract; break;
-        case 'remix': pair = config.remix; break;
-      }
-    }
-
-    if (!pair) {
-      console.warn('[testUnifiedChannel] no endpoint pair found');
-      return false;
-    }
-
-    let testUrl = pair.generate.url;
-    if (testUrl.includes('{{baseUrl}}')) {
-      testUrl = testUrl.replace('{{baseUrl}}', config.baseUrl);
-    }
-
-    if (config.auth.type === 'query' && config.auth.keyName) {
-      const separator = testUrl.includes('?') ? '&' : '?';
-      testUrl = `${testUrl}${separator}${config.auth.keyName}=${encodeURIComponent(config.auth.keyValue)}`;
-    }
-
-    const response = await fetch(testUrl, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({}),
-    });
-
-    return response.status !== 401 && response.status !== 403;
-  } catch (err) {
-    console.error('[testUnifiedChannel] error:', err);
-    return false;
+  if (deleted > 0) {
+    await saveSettings(settings);
   }
+  return deleted;
+}
+
+/**
+ * 按 Provider 类型删除渠道配置（用于 unregisterProvider 清理）
+ */
+export async function deleteChannelByProviderType(
+  providerType: string,
+  pluginId: string
+): Promise<boolean> {
+  const settings = await loadSettings();
+  if (!settings.channelConfigs) return false;
+
+  const index = settings.channelConfigs.findIndex(
+    c => c.providerType === providerType && c.pluginId === pluginId
+  );
+  if (index === -1) return false;
+
+  settings.channelConfigs.splice(index, 1);
+  await saveSettings(settings);
+  return true;
+}
+
+// ========== 迁移：删除旧配置 ==========
+
+/**
+ * 清理旧版配置数据
+ * 删除 customChannels 和 unifiedChannels
+ */
+export async function cleanupLegacyConfigs(): Promise<{
+  customChannelsDeleted: number;
+  unifiedChannelsDeleted: number;
+}> {
+  const settings = await loadSettings();
+  const result = {
+    customChannelsDeleted: settings.customChannels?.length || 0,
+    unifiedChannelsDeleted: settings.unifiedChannels?.length || 0,
+  };
+
+  // 删除旧配置
+  delete settings.customChannels;
+  delete settings.unifiedChannels;
+
+  if (result.customChannelsDeleted > 0 || result.unifiedChannelsDeleted > 0) {
+    await saveSettings(settings);
+    console.log('[channelConfig] 已清理旧版配置:', result);
+  }
+
+  return result;
 }

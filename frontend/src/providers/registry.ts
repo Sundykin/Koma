@@ -1,0 +1,154 @@
+/**
+ * Provider 注册表
+ * 统一管理内置和插件 Provider
+ */
+import type { ProgressInfo } from '../types';
+import type { PollingConfig } from './polling';
+
+// 重新导出 PollingConfig 和 DEFAULT_POLLING_CONFIG
+export type { PollingConfig } from './polling';
+export { DEFAULT_POLLING_CONFIG } from './polling';
+
+// 渠道类型
+export type ChannelKind = 'tti' | 'itv';
+
+// 渠道能力
+export type ChannelCapability = 'tti' | 'itv' | 'character-extract' | 'remix';
+
+// Provider 上下文
+export interface ProviderContext {
+  pluginId?: string;
+  sandboxedFetch: typeof fetch;
+  logger?: {
+    info(...args: any[]): void;
+    warn(...args: any[]): void;
+    error(...args: any[]): void;
+  };
+}
+
+// Provider 定义
+export interface ProviderDefinition<T> {
+  type: string;              // 唯一标识，如 'sora2', 'vectorengine'
+  kind: ChannelKind;         // 'tti' | 'itv'
+  name: string;              // 显示名称
+  description?: string;      // 描述
+  factory: (config: Record<string, any>, ctx: ProviderContext) => T;
+  capabilities?: ChannelCapability[];
+  pluginId?: string;         // 关联插件 ID
+  configSchema?: Record<string, any>;  // JSON Schema for UI
+  defaultConfig?: Record<string, any>;
+  polling?: PollingConfig;
+}
+
+// 注册表接口
+export interface IProviderRegistry<T> {
+  register(def: ProviderDefinition<T>): void;
+  unregister(type: string): void;
+  unregisterByPlugin(pluginId: string): void;
+  get(type: string): ProviderDefinition<T> | undefined;
+  list(kind?: ChannelKind): ProviderDefinition<T>[];
+  has(type: string): boolean;
+}
+
+// 注册表实现
+class ProviderRegistryImpl<T> implements IProviderRegistry<T> {
+  private providers = new Map<string, ProviderDefinition<T>>();
+
+  register(def: ProviderDefinition<T>): void {
+    const existing = this.providers.get(def.type);
+    if (existing && existing.pluginId !== def.pluginId) {
+      throw new Error(`Provider type "${def.type}" already registered by ${existing.pluginId || 'built-in'}`);
+    }
+    this.providers.set(def.type, def);
+  }
+
+  unregister(type: string): void {
+    this.providers.delete(type);
+  }
+
+  unregisterByPlugin(pluginId: string): void {
+    for (const [type, def] of this.providers.entries()) {
+      if (def.pluginId === pluginId) {
+        this.providers.delete(type);
+      }
+    }
+  }
+
+  get(type: string): ProviderDefinition<T> | undefined {
+    return this.providers.get(type);
+  }
+
+  list(kind?: ChannelKind): ProviderDefinition<T>[] {
+    const all = Array.from(this.providers.values());
+    if (kind) {
+      return all.filter(def => def.kind === kind);
+    }
+    return all;
+  }
+
+  has(type: string): boolean {
+    return this.providers.has(type);
+  }
+}
+
+// 全局注册表实例
+export const ttiRegistry = new ProviderRegistryImpl<any>();
+export const itvRegistry = new ProviderRegistryImpl<any>();
+
+// 获取注册表
+export function getRegistry(kind: ChannelKind): IProviderRegistry<any> {
+  return kind === 'tti' ? ttiRegistry : itvRegistry;
+}
+
+// 注册 Provider（通用入口）
+export function registerProvider(def: ProviderDefinition<any>): void {
+  const registry = getRegistry(def.kind);
+  registry.register(def);
+}
+
+// 反注册 Provider
+export function unregisterProvider(kind: ChannelKind, type: string): void {
+  const registry = getRegistry(kind);
+  registry.unregister(type);
+}
+
+// 反注册插件的所有 Provider
+export function unregisterProvidersByPlugin(pluginId: string): void {
+  ttiRegistry.unregisterByPlugin(pluginId);
+  itvRegistry.unregisterByPlugin(pluginId);
+}
+
+// 列出所有 Provider
+export function listProviders(kind?: ChannelKind): ProviderDefinition<any>[] {
+  if (kind) {
+    return getRegistry(kind).list();
+  }
+  return [...ttiRegistry.list(), ...itvRegistry.list()];
+}
+
+// 创建 Provider 实例
+export function createProviderInstance<T>(
+  type: string,
+  config: Record<string, any>,
+  ctx?: Partial<ProviderContext>
+): T {
+  // 先查 TTI，再查 ITV
+  let def = ttiRegistry.get(type) || itvRegistry.get(type);
+  if (!def) {
+    throw new Error(`Provider type "${type}" not found`);
+  }
+
+  // 插件 Provider 必须提供 sandboxedFetch，内置 Provider 可以使用全局 fetch
+  const isPluginProvider = !!def.pluginId;
+  if (isPluginProvider && !ctx?.sandboxedFetch) {
+    throw new Error(`Plugin provider "${type}" requires sandboxedFetch in context`);
+  }
+
+  const fullCtx: ProviderContext = {
+    sandboxedFetch: ctx?.sandboxedFetch || fetch,
+    pluginId: ctx?.pluginId || def.pluginId,
+    logger: ctx?.logger || console,
+  };
+
+  return def.factory(config, fullCtx);
+}

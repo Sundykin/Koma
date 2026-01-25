@@ -223,8 +223,27 @@ export interface PluginAPI {
     override(payload: PromptOverride): Promise<void>;
   };
 
-  // 渠道管理
+  // 渠道管理（重构版：Provider 注入）
   channels: {
+    /**
+     * 注册 Provider（新 API）
+     */
+    registerProvider(def: any): Promise<void>;
+    /**
+     * 反注册 Provider
+     */
+    unregisterProvider(type: string): Promise<void>;
+    /**
+     * 列出所有 Provider
+     */
+    listProviders(kind?: string): Promise<any[]>;
+    /**
+     * 测试 Provider
+     */
+    testProvider(type: string, config: Record<string, any>): Promise<ChannelTestResult>;
+    /**
+     * @deprecated 使用 registerProvider 代替
+     */
     register(config: PluginChannelConfig): Promise<void>;
     test(channelId: string): Promise<ChannelTestResult>;
     invoke(channelId: string, action: string, params: any): Promise<any>;
