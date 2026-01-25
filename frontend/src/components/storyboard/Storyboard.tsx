@@ -426,6 +426,14 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     saveAllShots(updatedShots);
   }, [shots, saveAllShots]);
 
+  // 道具变更
+  const handlePropsChange = useCallback((shotId: string, propIds: string[]) => {
+    const updatedShots = shots.map(s =>
+      s.id === shotId ? { ...s, props: propIds } : s
+    );
+    saveAllShots(updatedShots);
+  }, [shots, saveAllShots]);
+
   // 多图片变更
   const handleImagesChange = useCallback((shotId: string, imagePaths: string[], currentImageIndex: number) => {
     const updatedShots = shots.map(s =>
@@ -969,12 +977,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
           </Empty>
         </div>
       ) : (
-        <StoryboardStudio
-          selectedShot={activeShot}
-          characters={characters}
-          scenes={scenes}
-          onShotSelect={setActiveShotId}
-        >
+        <StoryboardStudio>
           <ShotListEditor
             projectId={projectId}
             shots={shots}
@@ -993,6 +996,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
             onVideoPromptChange={handleVideoPromptChange}
             onCharactersChange={handleCharactersChange}
             onScenesChange={handleScenesChange}
+            onPropsChange={handlePropsChange}
             onReferenceImagesChange={handleReferenceImagesChange}
             onImagesChange={handleImagesChange}
             onVideosChange={handleVideosChange}
