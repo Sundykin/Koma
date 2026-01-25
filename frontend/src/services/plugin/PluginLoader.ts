@@ -92,6 +92,30 @@ export async function loadPluginComponent(plugin: InstalledPlugin): Promise<Plug
     return null;
   }
 
+  return loadPluginModule(plugin);
+}
+
+/**
+ * 加载 Provider 插件（provider 类型，用于注册渠道）
+ */
+export async function loadProviderPlugin(plugin: InstalledPlugin): Promise<PluginExports | null> {
+  if (plugin.category !== 'provider' || !plugin.entry.frontend) {
+    console.warn(`[PluginLoader] 插件 ${plugin.id} 不是 provider 类型或无前端入口`);
+    return null;
+  }
+
+  return loadPluginModule(plugin);
+}
+
+/**
+ * 通用插件模块加载（支持 global 和 provider 类型）
+ */
+async function loadPluginModule(plugin: InstalledPlugin): Promise<PluginExports | null> {
+  if (!plugin.entry.frontend) {
+    console.warn(`[PluginLoader] 插件 ${plugin.id} 无前端入口`);
+    return null;
+  }
+
   // 检查缓存
   if (loadedModules.has(plugin.id)) {
     return loadedModules.get(plugin.id)!;
@@ -138,8 +162,16 @@ export async function loadPluginComponent(plugin: InstalledPlugin): Promise<Plug
  * 加载 UMD/IIFE 模块
  */
 async function loadUMDModule(path: string, pluginId: string): Promise<any> {
-  // 在 Electron 环境中使用 file:// 协议
-  const fileUrl = path.startsWith('file://') ? path : `file://${path.replace(/\\/g, '/')}`;
+  // 使用 koma-local:// 自定义协议加载本地文件（绕过 file:// 安全限制）
+  // 路径需要编码，避免 C: 被解析为协议
+  let normalizedPath = path.replace(/\\/g, '/');
+  // 移除路径中的 /./
+  normalizedPath = normalizedPath.replace(/\/\.\//g, '/');
+  // 对路径进行编码（保留斜杠）
+  const encodedPath = normalizedPath.split('/').map(segment => encodeURIComponent(segment)).join('/');
+  const fileUrl = `koma-local:///${encodedPath}`;
+
+  console.log(`[PluginLoader] 加载插件脚本: ${fileUrl}`);
 
   // 创建 script 标签动态加载
   return new Promise((resolve, reject) => {
@@ -153,7 +185,12 @@ async function loadUMDModule(path: string, pluginId: string): Promise<any> {
     script.onload = () => {
       const module = (window as any)[globalKey];
       if (module) {
-        delete (window as any)[globalKey];
+        // 尝试删除全局变量，忽略失败（某些情况下不可删除）
+        try {
+          delete (window as any)[globalKey];
+        } catch (e) {
+          // 忽略删除失败
+        }
         resolve(module);
       } else {
         reject(new Error(`插件 ${pluginId} 未正确导出到 window.${globalKey}`));
@@ -185,6 +222,11 @@ export function unloadPlugin(pluginId: string): void {
 
   loadedModules.delete(pluginId);
   usePluginStore.getState().clearRuntimeState(pluginId);
+
+  // 清除初始化状态
+  import('./PluginInitializer').then(({ clearPluginInitialized }) => {
+    clearPluginInitialized(pluginId);
+  });
 }
 
 /**

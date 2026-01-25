@@ -8,6 +8,7 @@ import { ReloadOutlined } from '@ant-design/icons';
 import type { InstalledPlugin, PluginExports, PluginAPI } from '../../types/plugin';
 import { loadPluginComponent, unloadPlugin } from '../../services/plugin/PluginLoader';
 import { createPluginAPI } from '../../services/plugin/PluginAPI';
+import { isPluginInitialized } from '../../services/plugin/PluginInitializer';
 import { usePluginStore, usePluginRuntimeState } from '../../store/pluginStore';
 
 interface PluginHostProps {
@@ -98,8 +99,8 @@ export const PluginHost: React.FC<PluginHostProps> = ({ pluginId }) => {
         const pluginApi = createPluginAPI(plugin);
         setApi(pluginApi);
 
-        // 调用 onActivate
-        if (exports.onActivate) {
+        // 调用 onActivate（如果尚未初始化）
+        if (exports.onActivate && !isPluginInitialized(pluginId)) {
           await exports.onActivate(pluginApi);
         }
 

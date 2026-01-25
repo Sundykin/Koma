@@ -72,6 +72,9 @@ export {
   updateChannelConfig,
   deleteChannelConfig,
   deleteChannelsByPlugin,
+  setDefaultChannelConfig,
+  getDefaultChannelConfig,
+  cleanupDuplicateChannels,
   cleanupLegacyConfigs,
 } from './settings';
 

@@ -1,6 +1,7 @@
 /**
  * 项目级媒体配置选择器
  * 允许在项目设置中选择使用哪个 TTI/ITV/TTS/LLM 配置
+ * 支持内置配置和插件渠道
  */
 import React, { useState, useEffect } from 'react';
 import { Select, Space, Tag, Tooltip, Button } from 'antd';
@@ -10,6 +11,7 @@ import {
   SoundOutlined,
   ExperimentOutlined,
   SettingOutlined,
+  AppstoreOutlined,
 } from '@ant-design/icons';
 import type {
   LLMModelConfig,
@@ -17,7 +19,17 @@ import type {
   ITVModelConfig,
   TTSModelConfig,
 } from '../../types';
-import { loadSettings } from '../../store/globalStore';
+import type { ChannelConfig } from '../../providers/channel/types';
+import { loadSettings, getChannelConfigs } from '../../store/globalStore';
+
+// 统一的配置项接口
+interface UnifiedConfigOption {
+  id: string;
+  name: string;
+  isDefault?: boolean;
+  source: 'builtin' | 'plugin';
+  providerType?: string;
+}
 
 interface ProjectMediaSelectorProps {
   llmConfigId?: string;
@@ -42,8 +54,8 @@ export const ProjectMediaSelector: React.FC<ProjectMediaSelectorProps> = ({
   onGoToSettings,
 }) => {
   const [llmConfigs, setLLMConfigs] = useState<LLMModelConfig[]>([]);
-  const [ttiConfigs, setTTIConfigs] = useState<TTIModelConfig[]>([]);
-  const [itvConfigs, setITVConfigs] = useState<ITVModelConfig[]>([]);
+  const [ttiOptions, setTTIOptions] = useState<UnifiedConfigOption[]>([]);
+  const [itvOptions, setITVOptions] = useState<UnifiedConfigOption[]>([]);
   const [ttsConfigs, setTTSConfigs] = useState<TTSModelConfig[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -55,10 +67,48 @@ export const ProjectMediaSelector: React.FC<ProjectMediaSelectorProps> = ({
     setLoading(true);
     try {
       const settings = await loadSettings();
+      const channelConfigs = await getChannelConfigs();
+
       setLLMConfigs(settings.llmConfigs || []);
-      setTTIConfigs(settings.ttiConfigs || []);
-      setITVConfigs(settings.itvConfigs || []);
       setTTSConfigs(settings.ttsConfigs || []);
+
+      // 合并内置 TTI 配置和插件渠道
+      const builtinTTI: UnifiedConfigOption[] = (settings.ttiConfigs || []).map(c => ({
+        id: c.id,
+        name: c.name,
+        isDefault: c.isDefault,
+        source: 'builtin' as const,
+        providerType: c.provider,
+      }));
+      const pluginTTI: UnifiedConfigOption[] = channelConfigs
+        .filter(c => c.source === 'plugin' && c.enabled && c.capabilities.includes('tti'))
+        .map(c => ({
+          id: c.id,
+          name: c.name,
+          isDefault: c.isDefault,
+          source: 'plugin' as const,
+          providerType: c.providerType,
+        }));
+      setTTIOptions([...builtinTTI, ...pluginTTI]);
+
+      // 合并内置 ITV 配置和插件渠道
+      const builtinITV: UnifiedConfigOption[] = (settings.itvConfigs || []).map(c => ({
+        id: c.id,
+        name: c.name,
+        isDefault: c.isDefault,
+        source: 'builtin' as const,
+        providerType: c.provider,
+      }));
+      const pluginITV: UnifiedConfigOption[] = channelConfigs
+        .filter(c => c.source === 'plugin' && c.enabled && c.capabilities.includes('itv'))
+        .map(c => ({
+          id: c.id,
+          name: c.name,
+          isDefault: c.isDefault,
+          source: 'plugin' as const,
+          providerType: c.providerType,
+        }));
+      setITVOptions([...builtinITV, ...pluginITV]);
     } finally {
       setLoading(false);
     }
@@ -69,11 +119,31 @@ export const ProjectMediaSelector: React.FC<ProjectMediaSelectorProps> = ({
     return defaultConfig ? `使用全局默认 (${defaultConfig.name})` : '使用全局默认';
   };
 
-  const renderConfigOption = (config: { id: string; name: string; isDefault?: boolean }) => (
+  const renderLLMOption = (config: LLMModelConfig) => (
     <Select.Option key={config.id} value={config.id}>
       <Space>
         {config.name}
         {config.isDefault && <Tag color="gold" style={{ marginLeft: 4 }}>默认</Tag>}
+      </Space>
+    </Select.Option>
+  );
+
+  const renderTTSOption = (config: TTSModelConfig) => (
+    <Select.Option key={config.id} value={config.id}>
+      <Space>
+        {config.name}
+        {config.isDefault && <Tag color="gold" style={{ marginLeft: 4 }}>默认</Tag>}
+      </Space>
+    </Select.Option>
+  );
+
+  const renderUnifiedOption = (option: UnifiedConfigOption) => (
+    <Select.Option key={option.id} value={option.id}>
+      <Space>
+        {option.source === 'plugin' && <AppstoreOutlined style={{ color: '#1890ff' }} />}
+        {option.name}
+        {option.source === 'plugin' && <Tag color="blue" style={{ marginLeft: 4 }}>插件</Tag>}
+        {option.isDefault && <Tag color="gold" style={{ marginLeft: 4 }}>默认</Tag>}
       </Space>
     </Select.Option>
   );
@@ -98,51 +168,51 @@ export const ProjectMediaSelector: React.FC<ProjectMediaSelectorProps> = ({
           loading={loading}
           disabled={llmConfigs.length === 0}
         >
-          {llmConfigs.map(renderConfigOption)}
+          {llmConfigs.map(renderLLMOption)}
         </Select>
       </div>
 
-      {/* TTI 配置选择 */}
+      {/* TTI 配置选择（包含插件渠道） */}
       <div>
         <div style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
           <PictureOutlined />
           <span style={{ fontWeight: 500 }}>文生图 (TTI)</span>
-          {ttiConfigs.length === 0 && (
+          {ttiOptions.length === 0 && (
             <Tag color="orange">未配置</Tag>
           )}
         </div>
         <Select
           value={ttiConfigId || undefined}
           onChange={(value) => onChange({ llmConfigId, ttiConfigId: value, itvConfigId, ttsConfigId })}
-          placeholder={getDefaultLabel(ttiConfigs)}
+          placeholder={getDefaultLabel(ttiOptions)}
           allowClear
           style={{ width: '100%' }}
           loading={loading}
-          disabled={ttiConfigs.length === 0}
+          disabled={ttiOptions.length === 0}
         >
-          {ttiConfigs.map(renderConfigOption)}
+          {ttiOptions.map(renderUnifiedOption)}
         </Select>
       </div>
 
-      {/* ITV 配置选择 */}
+      {/* ITV 配置选择（包含插件渠道） */}
       <div>
         <div style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
           <VideoCameraOutlined />
           <span style={{ fontWeight: 500 }}>图生视频 (ITV)</span>
-          {itvConfigs.length === 0 && (
+          {itvOptions.length === 0 && (
             <Tag color="orange">未配置</Tag>
           )}
         </div>
         <Select
           value={itvConfigId || undefined}
           onChange={(value) => onChange({ llmConfigId, ttiConfigId, itvConfigId: value, ttsConfigId })}
-          placeholder={getDefaultLabel(itvConfigs)}
+          placeholder={getDefaultLabel(itvOptions)}
           allowClear
           style={{ width: '100%' }}
           loading={loading}
-          disabled={itvConfigs.length === 0}
+          disabled={itvOptions.length === 0}
         >
-          {itvConfigs.map(renderConfigOption)}
+          {itvOptions.map(renderUnifiedOption)}
         </Select>
       </div>
 
@@ -164,7 +234,7 @@ export const ProjectMediaSelector: React.FC<ProjectMediaSelectorProps> = ({
           loading={loading}
           disabled={ttsConfigs.length === 0}
         >
-          {ttsConfigs.map(renderConfigOption)}
+          {ttsConfigs.map(renderTTSOption)}
         </Select>
       </div>
 

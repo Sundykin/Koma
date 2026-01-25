@@ -106,6 +106,42 @@ export async function deleteChannelsByPlugin(pluginId: string): Promise<number> 
 }
 
 /**
+ * 设置指定能力的默认渠道
+ * 会清除同能力的其他渠道的默认状态
+ */
+export async function setDefaultChannelConfig(
+  id: string,
+  capability: ChannelCapability
+): Promise<boolean> {
+  const settings = await loadSettings();
+  if (!settings.channelConfigs) return false;
+
+  const target = settings.channelConfigs.find(c => c.id === id);
+  if (!target || !target.capabilities.includes(capability)) return false;
+
+  // 清除同能力其他渠道的默认状态
+  settings.channelConfigs = settings.channelConfigs.map(c => {
+    if (c.capabilities.includes(capability)) {
+      return { ...c, isDefault: c.id === id, updatedAt: c.id === id ? Date.now() : c.updatedAt };
+    }
+    return c;
+  });
+
+  await saveSettings(settings);
+  return true;
+}
+
+/**
+ * 获取指定能力的默认渠道
+ */
+export async function getDefaultChannelConfig(
+  capability: ChannelCapability
+): Promise<ChannelConfig | null> {
+  const configs = await getChannelsByCapability(capability);
+  return configs.find(c => c.isDefault) || configs[0] || null;
+}
+
+/**
  * 按 Provider 类型删除渠道配置（用于 unregisterProvider 清理）
  */
 export async function deleteChannelByProviderType(
@@ -126,6 +162,38 @@ export async function deleteChannelByProviderType(
 }
 
 // ========== 迁移：删除旧配置 ==========
+
+/**
+ * 清理重复的渠道配置
+ * 保留每个 (providerType, pluginId) 组合的最新一条
+ */
+export async function cleanupDuplicateChannels(): Promise<number> {
+  const settings = await loadSettings();
+  if (!settings.channelConfigs || settings.channelConfigs.length === 0) return 0;
+
+  const seen = new Map<string, ChannelConfig>();
+  const toRemove: string[] = [];
+
+  // 按 updatedAt 降序排列，保留最新的
+  const sorted = [...settings.channelConfigs].sort((a, b) => b.updatedAt - a.updatedAt);
+
+  for (const config of sorted) {
+    const key = `${config.providerType}:${config.pluginId || 'builtin'}`;
+    if (seen.has(key)) {
+      toRemove.push(config.id);
+    } else {
+      seen.set(key, config);
+    }
+  }
+
+  if (toRemove.length > 0) {
+    settings.channelConfigs = settings.channelConfigs.filter(c => !toRemove.includes(c.id));
+    await saveSettings(settings);
+    console.log(`[channelConfig] 已清理 ${toRemove.length} 条重复渠道配置`);
+  }
+
+  return toRemove.length;
+}
 
 /**
  * 清理旧版配置数据

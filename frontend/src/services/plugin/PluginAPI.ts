@@ -239,7 +239,7 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
           throw new Error(result.reason);
         }
 
-        console.log(`[PluginAPI] 插件 ${pluginId} 注册 Provider:`, def.type);
+        console.log(`[PluginAPI] 插件 ${pluginId} 注册 Provider:`, def.type, 'kind:', def.kind, 'capabilities:', def.capabilities);
 
         // 添加 pluginId 标识
         def.pluginId = pluginId;
@@ -253,9 +253,34 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
         }
         pluginProviderTypes.get(pluginId)!.push(def.type);
 
+        // 检查是否已存在渠道配置（避免重复创建）
+        const { getChannelConfigs } = await import('../../store/settings/channelConfig');
+        const existingConfigs = await getChannelConfigs();
+        console.log(`[PluginAPI] 现有渠道配置数量:`, existingConfigs.length);
+        const existingChannel = existingConfigs.find(
+          c => c.providerType === def.type && c.pluginId === pluginId
+        );
+
+        if (existingChannel) {
+          console.log(`[PluginAPI] 渠道配置已存在，更新属性:`, def.type, existingChannel.id);
+          // 更新已存在配置的属性（确保 capabilities 等字段正确）
+          const { updateChannelConfig } = await import('../../store/settings/channelConfig');
+          await updateChannelConfig(existingChannel.id, {
+            name: def.name,
+            description: def.description,
+            capabilities: def.capabilities || [def.kind],
+            polling: def.polling,
+            enabled: true,
+          });
+          // 触发事件通知 UI 刷新
+          emitPluginEvent('providerRegistered', { pluginId, providerType: def.type });
+          return;
+        }
+
         // 创建对应的渠道配置（失败时回滚）
+        console.log(`[PluginAPI] 创建新渠道配置:`, def.type, 'capabilities:', def.capabilities || [def.kind]);
         try {
-          await addChannelConfig({
+          const newConfig = await addChannelConfig({
             name: def.name,
             description: def.description,
             providerType: def.type,
@@ -266,7 +291,9 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
             source: 'plugin',
             pluginId,
           });
+          console.log(`[PluginAPI] 渠道配置创建成功:`, newConfig.id);
         } catch (err) {
+          console.error(`[PluginAPI] 渠道配置创建失败:`, err);
           // 回滚：移除已注册的 Provider
           unregisterProvider(def.kind, def.type);
           const types = pluginProviderTypes.get(pluginId);
@@ -392,6 +419,13 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
           throw new Error(validation.error);
         }
 
+        // 确保目录存在
+        const dir = validation.fullPath!.replace(/\\/g, '/').split('/').slice(0, -1).join('/');
+        const dirExists = await electronService.fs.exists(dir);
+        if (!dirExists) {
+          await electronService.fs.mkdir(dir);
+        }
+
         const text = new TextDecoder().decode(data);
         await electronService.fs.writeFile(validation.fullPath!, text);
       },
@@ -402,7 +436,7 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
           throw new Error(validation.error);
         }
 
-        await electronService.fs.deleteFile(validation.fullPath!);
+        await electronService.fs.remove(validation.fullPath!);
       },
 
       async listFiles(dir: string): Promise<string[]> {
@@ -411,7 +445,13 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
           throw new Error(validation.error);
         }
 
-        return electronService.fs.readDir(validation.fullPath!);
+        // 检查目录是否存在
+        const exists = await electronService.fs.exists(validation.fullPath!);
+        if (!exists) {
+          return [];
+        }
+
+        return electronService.fs.readdir(validation.fullPath!);
       },
 
       async openDialog(options: DialogOptions): Promise<string[]> {

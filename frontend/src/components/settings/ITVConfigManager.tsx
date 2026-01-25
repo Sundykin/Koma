@@ -39,11 +39,10 @@ import {
   updateITVConfig,
   deleteITVConfig,
   setDefaultITVConfig,
+  setDefaultChannelConfig,
   ITV_PRESETS,
 } from '../../store/globalStore';
-import { getChannelConfigs } from '../../store/settings/channelConfig';
-import { usePluginStore } from '../../store/pluginStore';
-import type { InstalledPlugin } from '../../types/plugin';
+import { getChannelConfigs, updateChannelConfig } from '../../store/settings/channelConfig';
 import { ProviderPluginModal } from '../plugins/ProviderPluginModal';
 
 interface ITVConfigManagerProps {
@@ -60,9 +59,7 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
   const [testingId, setTestingId] = useState<string | null>(null);
   const [form] = Form.useForm();
 
-  // Provider 插件相关状态
-  const plugins = usePluginStore(state => state.plugins);
-  const [providerPlugins, setProviderPlugins] = useState<InstalledPlugin[]>([]);
+  // 插件配置弹窗状态
   const [pluginModalVisible, setPluginModalVisible] = useState(false);
   const [activePluginId, setActivePluginId] = useState<string>('');
 
@@ -73,25 +70,19 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
       setConfigs(settings.itvConfigs || []);
       // 加载插件注册的渠道配置
       const channels = await getChannelConfigs();
-      setPluginChannels(channels.filter(c =>
+      console.log('[ITVConfigManager] 所有渠道配置:', channels);
+      console.log('[ITVConfigManager] 所有渠道的 capabilities:', channels.map(c => ({ id: c.id, name: c.name, source: c.source, enabled: c.enabled, capabilities: c.capabilities })));
+      const filtered = channels.filter(c =>
         c.source === 'plugin' &&
         c.enabled &&
         c.capabilities.includes('itv')
-      ));
+      );
+      console.log('[ITVConfigManager] 过滤后的 ITV 插件渠道:', filtered);
+      setPluginChannels(filtered);
     } finally {
       setLoading(false);
     }
   };
-
-  // 过滤出具有 ITV 能力的 provider 插件
-  useEffect(() => {
-    const itvPlugins = plugins.filter(p =>
-      p.category === 'provider' &&
-      p.isEnabled &&
-      p.providerMeta?.capabilities?.includes('itv')
-    );
-    setProviderPlugins(itvPlugins);
-  }, [plugins]);
 
   // 打开插件配置弹窗
   const openPluginModal = (pluginId: string) => {
@@ -184,9 +175,36 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
     }
   };
 
+  // 设置内置配置为默认（同时清除插件渠道的默认状态）
   const handleSetDefault = async (id: string) => {
     try {
+      // 清除所有插件渠道的默认状态
+      for (const channel of pluginChannels) {
+        if (channel.isDefault) {
+          await updateChannelConfig(channel.id, { isDefault: false });
+        }
+      }
+      // 设置内置配置为默认
       await setDefaultITVConfig(id);
+      message.success('已设为默认');
+      await loadConfigs();
+      onConfigChange?.();
+    } catch (err: any) {
+      message.error(`设置失败: ${err.message}`);
+    }
+  };
+
+  // 设置插件渠道为默认（同时清除内置配置的默认状态）
+  const handleSetChannelDefault = async (id: string) => {
+    try {
+      // 清除所有内置配置的默认状态
+      for (const config of configs) {
+        if (config.isDefault) {
+          await updateITVConfig(config.id, { isDefault: false });
+        }
+      }
+      // 设置插件渠道为默认
+      await setDefaultChannelConfig(id, 'itv');
       message.success('已设为默认');
       await loadConfigs();
       onConfigChange?.();
@@ -247,7 +265,7 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
         <div style={{ textAlign: 'center', padding: 40 }}>
           <Spin />
         </div>
-      ) : configs.length === 0 && pluginChannels.length === 0 && providerPlugins.length === 0 ? (
+      ) : configs.length === 0 && pluginChannels.length === 0 ? (
         <Empty
           image={Empty.PRESENTED_IMAGE_SIMPLE}
           description="还没有配置任何图生视频服务"
@@ -337,12 +355,19 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
                 size="small"
                 title={
                   <Space>
+                    {channel.isDefault ? (
+                      <StarFilled style={{ color: '#faad14' }} />
+                    ) : (
+                      <Tooltip title="设为默认">
+                        <StarOutlined
+                          style={{ cursor: 'pointer', color: '#d9d9d9' }}
+                          onClick={() => handleSetChannelDefault(channel.id)}
+                        />
+                      </Tooltip>
+                    )}
                     <AppstoreOutlined />
                     <span>{channel.name}</span>
                     <Tag color="blue">插件</Tag>
-                    {channel.capabilities.map(cap => (
-                      <Tag key={cap} color="geekblue">{cap}</Tag>
-                    ))}
                   </Space>
                 }
                 extra={
@@ -362,47 +387,6 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
                   {channel.description && <div>{channel.description}</div>}
                   <div style={{ marginTop: 4 }}>
                     <strong>Provider:</strong> {channel.providerType}
-                  </div>
-                </div>
-              </Card>
-            </Col>
-          ))}
-
-          {/* Provider 插件渠道卡片（旧版兼容） */}
-          {providerPlugins.map((plugin) => (
-            <Col key={plugin.id} xs={24} sm={12}>
-              <Card
-                size="small"
-                title={
-                  <Space>
-                    <AppstoreOutlined />
-                    <span>{plugin.name}</span>
-                    <Tag color="blue">插件</Tag>
-                    {plugin.providerMeta?.capabilities?.map(cap => (
-                      <Tag key={cap} color="geekblue">{cap}</Tag>
-                    ))}
-                  </Space>
-                }
-                extra={
-                  plugin.entry.frontend && plugin.providerMeta?.configPanel && (
-                    <Tooltip title="配置">
-                      <Button
-                        type="text"
-                        size="small"
-                        icon={<SettingOutlined />}
-                        onClick={() => openPluginModal(plugin.id)}
-                      />
-                    </Tooltip>
-                  )
-                }
-              >
-                <div style={{ fontSize: 13, color: '#666' }}>
-                  {plugin.description && <div>{plugin.description}</div>}
-                  <div style={{ marginTop: 4 }}>
-                    <strong>版本:</strong> {plugin.version}
-                  </div>
-                  <div style={{ marginTop: 4 }}>
-                    <strong>作者:</strong> {typeof plugin.author === 'string' ? plugin.author : plugin.author?.name || '未知'}
                   </div>
                 </div>
               </Card>

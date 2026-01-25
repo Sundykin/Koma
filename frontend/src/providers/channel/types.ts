@@ -56,6 +56,9 @@ export interface ChannelConfig {
   // 是否启用
   enabled: boolean;
 
+  // 是否为默认渠道（按能力分组）
+  isDefault?: boolean;
+
   // 来源标识
   source: 'builtin' | 'plugin';
   pluginId?: string;

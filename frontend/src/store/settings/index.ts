@@ -80,5 +80,8 @@ export {
   deleteChannelConfig,
   deleteChannelsByPlugin,
   deleteChannelByProviderType,
+  setDefaultChannelConfig,
+  getDefaultChannelConfig,
+  cleanupDuplicateChannels,
   cleanupLegacyConfigs,
 } from './channelConfig';

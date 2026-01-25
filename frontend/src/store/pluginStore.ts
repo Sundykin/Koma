@@ -153,6 +153,30 @@ export const usePluginStore = create<PluginState>()(
   )
 );
 
+// 等待 persist 数据恢复完成
+let rehydrateResolve: (() => void) | null = null;
+const rehydratePromise = new Promise<void>((resolve) => {
+  rehydrateResolve = resolve;
+});
+
+// 监听 rehydrate 完成
+usePluginStore.persist.onFinishHydration(() => {
+  console.log('[PluginStore] persist 数据恢复完成');
+  rehydrateResolve?.();
+});
+
+// 如果已经 rehydrate 完成，立即 resolve
+if (usePluginStore.persist.hasHydrated()) {
+  rehydrateResolve?.();
+}
+
+/**
+ * 等待 pluginStore 数据恢复完成
+ */
+export function waitForPluginStoreRehydration(): Promise<void> {
+  return rehydratePromise;
+}
+
 // 辅助 hooks（直接使用 state.plugins 进行过滤，避免调用方法导致无限循环）
 export function useGlobalPlugins() {
   return usePluginStore(state =>
