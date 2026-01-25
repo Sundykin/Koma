@@ -122,18 +122,18 @@ export const analyzeScript = async (scriptText: string): Promise<ScriptAnalysisR
     // 降级处理：如果 API 失败，返回中文模拟数据用于演示
     return {
       characters: [
-        { id: 'c1', name: '叶青凡', age: '25', role: 'protagonist', description: '性格冷漠，身世神秘', appearance: '年轻男性，棱角分明，穿着一件破旧的黑色卫衣，眼神锐利，东方面孔。' },
-        { id: 'c2', name: '鬼护士', age: '未知', role: 'antagonist', description: '恐怖，灵体状态', appearance: '半透明的身影，穿着破烂的50年代护士服，脸部被阴影遮挡，手中拿着生锈的针筒。' }
+        { id: 'c1', name: '叶青凡', role: 'protagonist', prompt: '25岁年轻男性，棱角分明，穿着一件破旧的黑色卫衣，眼神锐利，东方面孔。性格冷漠，身世神秘。' },
+        { id: 'c2', name: '鬼护士', role: 'antagonist', prompt: '半透明的身影，穿着破烂的50年代护士服，脸部被阴影遮挡，手中拿着生锈的针筒。恐怖，灵体状态。' }
       ],
       scenes: [
-        { id: 's1', name: '废弃医院走廊', location: '医院', time: 'night', mood: '阴森，寒冷', description: '墙皮剥落，灯光闪烁不定，地面满是灰尘和医疗垃圾，色调偏冷青色。' }
+        { id: 's1', name: '废弃医院走廊', prompt: 'Location: 医院\nTime: night\nMood: 阴森，寒冷\n墙皮剥落，灯光闪烁不定，地面满是灰尘和医疗垃圾，色调偏冷青色。' }
       ],
       props: [
-        { id: 'p1', name: '生锈的针筒', type: '武器', description: '一支旧式玻璃针筒，针头生锈，里面残留着不明红色液体。' }
+        { id: 'p1', name: '生锈的针筒', prompt: 'Type: 武器\n一支旧式玻璃针筒，针头生锈，里面残留着不明红色液体。' }
       ],
       shots: [
         { id: 'sh1', scriptContent: '叶青凡缓缓推开大门。', shotType: 'medium', cameraMovement: 'tracking', duration: 3, description: '中景镜头，背面视角，叶青凡推开一扇生锈厚重的铁门。前方是漆黑的走廊，光线昏暗。', characters: ['c1'] },
-        { id: 'sh2', scriptContent: '“这里果然不干净。”', shotType: 'close-up', cameraMovement: 'static', duration: 2, description: '特写镜头，叶青凡的脸部，可以看到呼出的白气，眼神充满警惕。', characters: ['c1'] }
+        { id: 'sh2', scriptContent: '"这里果然不干净。"', shotType: 'close-up', cameraMovement: 'static', duration: 2, description: '特写镜头，叶青凡的脸部，可以看到呼出的白气，眼神充满警惕。', characters: ['c1'] }
       ]
     };
   }

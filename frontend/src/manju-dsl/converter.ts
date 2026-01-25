@@ -163,22 +163,38 @@ export function fromManjuProject(data: ManjuProject): ImportResult {
 }
 
 function fromManjuCharacter(c: ManjuCharacter): Character {
+  // 从旧字段构建 prompt
+  const promptParts: string[] = [];
+  if (c.appearance) promptParts.push(c.appearance);
+  if (c.description) promptParts.push(c.description);
+
   return {
     id: c.id,
     name: c.name,
-    age: '',
     role: c.role,
-    description: c.description,
-    appearance: c.appearance,
+    prompt: promptParts.join('\n') || '',
     voiceId: c.voiceId,
     costumePhotoPath: c.avatar,
+    // 保留旧字段用于兼容
+    age: '',
+    description: c.description,
+    appearance: c.appearance,
   };
 }
 
 function fromManjuScene(s: ManjuScene): Scene {
+  // 从旧字段构建 prompt
+  const promptParts: string[] = [];
+  if (s.location) promptParts.push(`Location: ${s.location}`);
+  if (s.time) promptParts.push(`Time: ${s.time}`);
+  if (s.mood) promptParts.push(`Mood: ${s.mood}`);
+  if (s.description) promptParts.push(s.description);
+
   return {
     id: s.id,
     name: s.name,
+    prompt: promptParts.join('\n') || '',
+    // 保留旧字段用于兼容
     location: s.location,
     time: s.time,
     mood: s.mood,

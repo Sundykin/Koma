@@ -1,15 +1,12 @@
-/**
- * 资产列表面板
- * 显示角色/场景/道具列表，支持选择和新建
- */
 import React, { useState } from 'react';
-import { Tabs, Button, Image, Typography, Empty } from 'antd';
+import { Tabs, Button, Image, Typography, Empty, Tooltip } from 'antd';
 import {
   UserOutlined,
   EnvironmentOutlined,
   InboxOutlined,
   PlusOutlined,
   CheckCircleOutlined,
+  InfoCircleOutlined,
 } from '@ant-design/icons';
 import { v4 as uuidv4 } from 'uuid';
 import type { Character, Scene, Prop } from '../../types';
@@ -53,8 +50,7 @@ export const AssetListPanel: React.FC<AssetListPanelProps> = ({
       id: uuidv4(),
       name: '新角色',
       role: 'supporting',
-      description: '',
-      appearance: '',
+      prompt: '',  // 统一使用 prompt 字段
     };
     const allChars = await loadCharacters(projectId);
     await saveCharacters(projectId, [...allChars, newChar]);
@@ -66,10 +62,7 @@ export const AssetListPanel: React.FC<AssetListPanelProps> = ({
     const newScene: Scene = {
       id: uuidv4(),
       name: '新场景',
-      location: '',
-      time: 'day',
-      mood: '',
-      description: '',
+      prompt: '',  // 统一使用 prompt 字段
     };
     const allScenes = await loadScenes(projectId);
     await saveScenes(projectId, [...allScenes, newScene]);
@@ -81,128 +74,186 @@ export const AssetListPanel: React.FC<AssetListPanelProps> = ({
     const newProp: Prop = {
       id: uuidv4(),
       name: '新道具',
-      type: '其他',
-      description: '',
+      prompt: '',  // 统一使用 prompt 字段
     };
     const allProps = await loadProps(projectId);
     await saveProps(projectId, [...allProps, newProp]);
     onCreateProp(newProp);
   };
 
-  // 资产列表项
-  const renderAssetItem = (
+  // 资产卡片项
+  const renderAssetCard = (
     id: string,
     name: string,
     imagePath?: string,
     isBound?: boolean,
-    subtitle?: string
+    subtitle?: string,
+    extraInfo?: string
   ) => {
     const isSelected = selectedId === id;
     return (
       <div
         key={id}
-        className={`assetListItem ${isSelected ? 'selected' : ''}`}
+        className={`relative group cursor-pointer border border-zinc-800 rounded-lg overflow-hidden bg-zinc-900 transition-all hover:border-zinc-600 ${
+          isSelected ? 'ring-2 ring-emerald-500 border-transparent' : ''
+        }`}
         onClick={() => onSelect(selectedType, id)}
       >
-        <div className="assetListItemThumb">
+        {/* 图片区域 - 16:9 比例 */}
+        <div className="aspect-video w-full bg-zinc-950 relative overflow-hidden">
           {imagePath ? (
-            <Image
+            <img
               src={toLocalUrl(imagePath)}
               alt={name}
-              preview={false}
-              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+              className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
             />
           ) : (
-            <div className="assetListItemNoImage">
-              {selectedType === 'character' && <UserOutlined />}
-              {selectedType === 'scene' && <EnvironmentOutlined />}
-              {selectedType === 'prop' && <InboxOutlined />}
+            <div className="w-full h-full flex items-center justify-center text-zinc-700 bg-zinc-900">
+              {selectedType === 'character' && <UserOutlined style={{ fontSize: 24 }} />}
+              {selectedType === 'scene' && <EnvironmentOutlined style={{ fontSize: 24 }} />}
+              {selectedType === 'prop' && <InboxOutlined style={{ fontSize: 24 }} />}
+            </div>
+          )}
+          
+          {/* 绑定状态角标 */}
+          {isBound && (
+            <div className="absolute top-1 right-1 bg-emerald-500/90 text-white rounded-full p-0.5 shadow-sm">
+              <CheckCircleOutlined style={{ fontSize: 12 }} />
+            </div>
+          )}
+          
+          {/* 悬浮信息 */}
+          {extraInfo && (
+            <div className="absolute bottom-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity">
+              <Tooltip title={extraInfo}>
+                <InfoCircleOutlined className="text-zinc-300 bg-black/50 rounded-full p-1 text-xs" />
+              </Tooltip>
             </div>
           )}
         </div>
-        <div className="assetListItemInfo">
-          <Text className="assetListItemName" ellipsis>{name}</Text>
-          {subtitle && <Text className="assetListItemSub" type="secondary" ellipsis>{subtitle}</Text>}
+
+        {/* 信息区域 */}
+        <div className="p-2">
+          <div className="flex items-center justify-between gap-1">
+            <Text className="text-zinc-200 text-sm font-medium truncate flex-1" ellipsis={{ tooltip: name }}>
+              {name}
+            </Text>
+          </div>
+          {subtitle && (
+            <Text className="text-zinc-500 text-xs block truncate mt-0.5">
+              {subtitle}
+            </Text>
+          )}
         </div>
-        {isBound && (
-          <CheckCircleOutlined className="assetListItemBound" />
-        )}
       </div>
     );
   };
 
-  // 角色列表
+  // 角色列表 - 网格布局
   const renderCharacters = () => (
-    <div className="assetListContent">
-      {characters.length > 0 ? (
-        characters.map(char => renderAssetItem(
-          char.id,
-          char.name,
-          char.costumePhotoPath,
-          !!char.sora2CharacterId,
-          char.role === 'protagonist' ? '主角' : char.role === 'antagonist' ? '反派' : '配角'
-        ))
-      ) : (
-        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无角色" />
-      )}
-      <Button
-        type="dashed"
-        icon={<PlusOutlined />}
-        className="assetListAddBtn"
-        onClick={handleCreateCharacter}
-      >
-        新建角色
-      </Button>
+    <div className="h-full flex flex-col">
+      <div className="p-2 border-b border-zinc-800 flex justify-between items-center bg-zinc-900/50">
+        <span className="text-xs text-zinc-500">共 {characters.length} 个角色</span>
+        <Button
+          type="primary"
+          size="small"
+          icon={<PlusOutlined />}
+          onClick={handleCreateCharacter}
+          ghost
+        >
+          新建
+        </Button>
+      </div>
+      <div className="flex-1 overflow-y-auto p-2 custom-scrollbar">
+        {characters.length > 0 ? (
+          <div className="grid grid-cols-2 gap-2">
+            {characters.map(char => renderAssetCard(
+              char.id,
+              char.name,
+              char.costumePhotoPath,
+              !!char.sora2CharacterId,
+              char.role === 'protagonist' ? '主角' : char.role === 'antagonist' ? '反派' : '配角',
+              char.description
+            ))}
+          </div>
+        ) : (
+          <div className="h-full flex items-center justify-center">
+            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无角色" />
+          </div>
+        )}
+      </div>
     </div>
   );
 
   // 场景列表
   const renderScenes = () => (
-    <div className="assetListContent">
-      {scenes.length > 0 ? (
-        scenes.map(scene => renderAssetItem(
-          scene.id,
-          scene.name,
-          scene.imagePath,
-          false,
-          scene.location
-        ))
-      ) : (
-        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无场景" />
-      )}
-      <Button
-        type="dashed"
-        icon={<PlusOutlined />}
-        className="assetListAddBtn"
-        onClick={handleCreateScene}
-      >
-        新建场景
-      </Button>
+    <div className="h-full flex flex-col">
+      <div className="p-2 border-b border-zinc-800 flex justify-between items-center bg-zinc-900/50">
+        <span className="text-xs text-zinc-500">共 {scenes.length} 个场景</span>
+        <Button
+          type="primary"
+          size="small"
+          icon={<PlusOutlined />}
+          onClick={handleCreateScene}
+          ghost
+        >
+          新建
+        </Button>
+      </div>
+      <div className="flex-1 overflow-y-auto p-2 custom-scrollbar">
+        {scenes.length > 0 ? (
+          <div className="grid grid-cols-2 gap-2">
+            {scenes.map(scene => renderAssetCard(
+              scene.id,
+              scene.name,
+              scene.imagePath,
+              false,
+              scene.location,
+              scene.description
+            ))}
+          </div>
+        ) : (
+          <div className="h-full flex items-center justify-center">
+            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无场景" />
+          </div>
+        )}
+      </div>
     </div>
   );
 
   // 道具列表
   const renderProps = () => (
-    <div className="assetListContent">
-      {props.length > 0 ? (
-        props.map(prop => renderAssetItem(
-          prop.id,
-          prop.name,
-          prop.imagePath,
-          !!prop.sora2PropId,
-          prop.type
-        ))
-      ) : (
-        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无道具" />
-      )}
-      <Button
-        type="dashed"
-        icon={<PlusOutlined />}
-        className="assetListAddBtn"
-        onClick={handleCreateProp}
-      >
-        新建道具
-      </Button>
+    <div className="h-full flex flex-col">
+      <div className="p-2 border-b border-zinc-800 flex justify-between items-center bg-zinc-900/50">
+        <span className="text-xs text-zinc-500">共 {props.length} 个道具</span>
+        <Button
+          type="primary"
+          size="small"
+          icon={<PlusOutlined />}
+          onClick={handleCreateProp}
+          ghost
+        >
+          新建
+        </Button>
+      </div>
+      <div className="flex-1 overflow-y-auto p-2 custom-scrollbar">
+        {props.length > 0 ? (
+          <div className="grid grid-cols-2 gap-2">
+            {props.map(prop => renderAssetCard(
+              prop.id,
+              prop.name,
+              prop.imagePath,
+              !!prop.sora2PropId,
+              prop.type,
+              prop.description
+            ))}
+          </div>
+        ) : (
+          <div className="h-full flex items-center justify-center">
+            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无道具" />
+          </div>
+        )}
+      </div>
     </div>
   );
 
@@ -225,7 +276,7 @@ export const AssetListPanel: React.FC<AssetListPanelProps> = ({
   ];
 
   return (
-    <div className="assetListPanel">
+    <div className="h-full flex flex-col bg-zinc-950">
       <Tabs
         activeKey={selectedType}
         onChange={(key) => {
@@ -233,7 +284,32 @@ export const AssetListPanel: React.FC<AssetListPanelProps> = ({
         }}
         items={tabItems}
         size="small"
+        className="asset-panel-tabs h-full"
+        type="card"
+        tabBarStyle={{ margin: 0, padding: '4px 4px 0', background: '#18181b', borderBottom: '1px solid #27272a' }}
       />
+      <style>{`
+        .asset-panel-tabs .ant-tabs-content {
+          height: calc(100% - 38px);
+        }
+        .asset-panel-tabs .ant-tabs-tabpane {
+          height: 100%;
+        }
+        /* 自定义滚动条 */
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: #3f3f46;
+          border-radius: 2px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: #52525b;
+        }
+      `}</style>
     </div>
   );
 };

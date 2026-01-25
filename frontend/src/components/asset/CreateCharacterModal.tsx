@@ -36,9 +36,7 @@ export const CreateCharacterModal: React.FC<CreateCharacterModalProps> = ({
         id: uuidv4(),
         name: values.name,
         role: values.role || 'supporting',
-        age: values.age || '',
-        description: values.description || '',
-        appearance: values.appearance || '',
+        prompt: values.prompt || '',  // 统一使用 prompt 字段
       };
 
       // 保存到存储

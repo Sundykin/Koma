@@ -1,6 +1,6 @@
 /**
  * 项目概览页面
- * Tab 布局：剧本/分集 | 项目资产 | 项目设置
+ * 三栏式工作台布局：左侧分集导航 | 中间内容区 | 右侧资产面板
  */
 import React, { useState, useCallback, useRef } from 'react';
 import {
@@ -12,14 +12,18 @@ import {
   Tag,
   App,
   Modal,
-  Tabs,
+  Drawer,
+  Tooltip,
 } from 'antd';
 import {
   EditOutlined,
   ThunderboltOutlined,
   HighlightOutlined,
+  SettingOutlined,
+  MenuFoldOutlined,
+  MenuUnfoldOutlined,
 } from '@ant-design/icons';
-import { Film, FolderOpen, Upload, Palette, Settings, Package } from 'lucide-react';
+import { Film, Upload, Palette, Package, ChevronLeft, ChevronRight } from 'lucide-react';
 import type { Project, Episode, AppSettings } from '../../types';
 import { EpisodeManager, EpisodeManagerRef } from './EpisodeManager';
 import { EpisodeSplitWizard } from './EpisodeSplitWizard';
@@ -49,7 +53,13 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
   const [fullScript, setFullScript] = useState('');
   const [splitWizardVisible, setSplitWizardVisible] = useState(false);
   const episodeManagerRef = useRef<EpisodeManagerRef>(null);
-  const [activeTab, setActiveTab] = useState('episodes');
+
+  // 面板折叠状态
+  const [leftCollapsed, setLeftCollapsed] = useState(false);
+  const [rightCollapsed, setRightCollapsed] = useState(false);
+
+  // 设置抽屉
+  const [settingsDrawerOpen, setSettingsDrawerOpen] = useState(false);
 
   // 剧本导入弹窗状态
   const [scriptImportVisible, setScriptImportVisible] = useState(false);
@@ -169,8 +179,8 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
   return (
     <div className="h-full flex flex-col bg-zinc-950 overflow-hidden">
       {/* 顶部标题栏 */}
-      <div className="flex-shrink-0 px-6 py-4 border-b border-zinc-800">
-        <div className="flex items-center justify-between max-w-7xl mx-auto">
+      <div className="flex-shrink-0 px-6 py-3 border-b border-zinc-800 bg-zinc-900/50">
+        <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
             <div className="w-10 h-10 bg-gradient-to-br from-emerald-600 to-emerald-800 rounded-lg flex items-center justify-center shadow-lg shadow-emerald-900/30">
               <Film className="w-5 h-5 text-white" />
@@ -203,103 +213,156 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
               </Space>
             </div>
           </div>
+          {/* 右侧操作 */}
+          <div className="flex items-center gap-2">
+            <Button
+              icon={<Upload className="w-4 h-4" />}
+              onClick={openScriptImport}
+            >
+              导入剧本
+            </Button>
+            <Tooltip title="项目设置">
+              <Button
+                icon={<SettingOutlined />}
+                onClick={() => setSettingsDrawerOpen(true)}
+              />
+            </Tooltip>
+          </div>
         </div>
       </div>
 
-      {/* 主内容区 - Tab 布局 */}
-      <div className="flex-1 overflow-hidden">
-        <Tabs
-          activeKey={activeTab}
-          onChange={setActiveTab}
-          centered
-          size="large"
-          className="h-full projectOverviewTabs"
-          style={{ height: '100%' }}
-          items={[
-            {
-              key: 'episodes',
-              label: (
-                <span className="flex items-center gap-2">
-                  <FolderOpen className="w-4 h-4" />
-                  剧本/分集
-                </span>
-              ),
-              children: (
-                <div className="h-full flex flex-col p-4">
-                  <div className="w-full flex-1 flex flex-col min-h-0">
-                    <div className="flex justify-between items-center mb-4">
-                      <div className="flex items-center gap-2 text-zinc-400">
-                        <FolderOpen className="w-4 h-4" />
-                        <span>分集管理</span>
-                      </div>
-                      <Button
-                        type="primary"
-                        icon={<Upload className="w-4 h-4" />}
-                        onClick={openScriptImport}
-                      >
-                        导入剧本
-                      </Button>
-                    </div>
-                    <div className="flex-1 overflow-y-auto bg-zinc-900 rounded-lg border border-zinc-800 p-4">
-                      <EpisodeManager
-                        ref={episodeManagerRef}
-                        projectId={project.id}
-                        fullScript={fullScript || undefined}
-                        onEpisodeSelect={handleEpisodeSelect}
-                      />
-                    </div>
-                  </div>
-                </div>
-              ),
-            },
-            {
-              key: 'assets',
-              label: (
-                <span className="flex items-center gap-2">
-                  <Package className="w-4 h-4" />
-                  项目资产
-                </span>
-              ),
-              children: (
-                <div className="h-full overflow-y-auto p-4">
-                  <ProjectAssetOverview projectId={project.id} />
-                </div>
-              ),
-            },
-            {
-              key: 'settings',
-              label: (
-                <span className="flex items-center gap-2">
-                  <Settings className="w-4 h-4" />
-                  项目设置
-                </span>
-              ),
-              children: (
-                <div className="h-full overflow-y-auto p-4">
-                  <div className="max-w-4xl">
-                    <Card
-                      title="媒体模型配置"
-                      className="bg-zinc-900 border-zinc-800"
-                      styles={{ header: { borderBottom: '1px solid #27272a' } }}
-                    >
-                      <div className="mb-4 text-zinc-500 text-sm">
-                        选择此项目使用的媒体生成服务，留空则使用全局默认配置。
-                      </div>
-                      <ProjectMediaSelector
-                        llmConfigId={project.llmConfigId}
-                        ttiConfigId={project.ttiConfigId}
-                        itvConfigId={project.itvConfigId}
-                        ttsConfigId={project.ttsConfigId}
-                        onChange={handleConfigUpdate}
-                      />
-                    </Card>
-                  </div>
-                </div>
-              ),
-            },
-          ]}
-        />
+      {/* 三栏式主内容区 */}
+      <div className="flex-1 flex overflow-hidden">
+        {/* 左栏：分集导航 */}
+        <div
+          className={`border-r border-zinc-800 bg-zinc-900/30 flex flex-col transition-all duration-300 ${
+            leftCollapsed ? 'w-0 overflow-hidden' : 'w-80'
+          }`}
+        >
+          <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
+            <span className="text-sm font-medium text-zinc-400">分集管理</span>
+            <Button
+              type="text"
+              size="small"
+              icon={<MenuFoldOutlined />}
+              onClick={() => setLeftCollapsed(true)}
+              className="text-zinc-500 hover:text-white"
+            />
+          </div>
+          <div className="flex-1 overflow-y-auto p-3">
+            <EpisodeManager
+              ref={episodeManagerRef}
+              projectId={project.id}
+              fullScript={fullScript || undefined}
+              onEpisodeSelect={handleEpisodeSelect}
+            />
+          </div>
+        </div>
+
+        {/* 左栏折叠按钮 */}
+        {leftCollapsed && (
+          <div className="flex items-center border-r border-zinc-800">
+            <Button
+              type="text"
+              size="small"
+              icon={<ChevronRight className="w-4 h-4" />}
+              onClick={() => setLeftCollapsed(false)}
+              className="h-full px-1 text-zinc-500 hover:text-white hover:bg-zinc-800"
+            />
+          </div>
+        )}
+
+        {/* 中栏：主内容区 */}
+        <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+          <div className="flex-1 flex items-center justify-center p-8">
+            <div className="text-center max-w-md">
+              <div className="w-20 h-20 mx-auto mb-6 rounded-2xl bg-zinc-800/50 flex items-center justify-center">
+                <Film className="w-10 h-10 text-zinc-600" />
+              </div>
+              <h2 className="text-xl font-semibold text-zinc-300 mb-2">选择或创建分集开始创作</h2>
+              <p className="text-zinc-500 mb-6">
+                从左侧选择一个分集进入编辑，或导入剧本自动拆分分集
+              </p>
+              <Space>
+                <Button
+                  type="primary"
+                  icon={<Upload className="w-4 h-4" />}
+                  onClick={openScriptImport}
+                  size="large"
+                >
+                  导入剧本
+                </Button>
+              </Space>
+            </div>
+          </div>
+        </div>
+
+        {/* 右栏折叠按钮 */}
+        {rightCollapsed && (
+          <div className="flex items-center border-l border-zinc-800">
+            <Button
+              type="text"
+              size="small"
+              icon={<ChevronLeft className="w-4 h-4" />}
+              onClick={() => setRightCollapsed(false)}
+              className="h-full px-1 text-zinc-500 hover:text-white hover:bg-zinc-800"
+            />
+          </div>
+        )}
+
+        {/* 右栏：资产面板 */}
+        <div
+          className={`border-l border-zinc-800 bg-zinc-900/30 flex flex-col transition-all duration-300 ${
+            rightCollapsed ? 'w-0 overflow-hidden' : 'w-[380px]'
+          }`}
+        >
+          <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
+            <span className="text-sm font-medium text-zinc-400 flex items-center gap-2">
+              <Package className="w-4 h-4" />
+              项目资产
+            </span>
+            <Button
+              type="text"
+              size="small"
+              icon={<MenuUnfoldOutlined />}
+              onClick={() => setRightCollapsed(true)}
+              className="text-zinc-500 hover:text-white"
+            />
+          </div>
+          <div className="flex-1 overflow-hidden">
+            <ProjectAssetOverview projectId={project.id} />
+          </div>
+        </div>
       </div>
+
+      {/* 项目设置抽屉 */}
+      <Drawer
+        title="项目设置"
+        placement="right"
+        width={480}
+        onClose={() => setSettingsDrawerOpen(false)}
+        open={settingsDrawerOpen}
+        styles={{ body: { padding: 0 } }}
+      >
+        <div className="p-6">
+          <Card
+            title="媒体模型配置"
+            className="bg-zinc-900 border-zinc-800"
+            styles={{ header: { borderBottom: '1px solid #27272a' } }}
+          >
+            <div className="mb-4 text-zinc-500 text-sm">
+              选择此项目使用的媒体生成服务，留空则使用全局默认配置。
+            </div>
+            <ProjectMediaSelector
+              llmConfigId={project.llmConfigId}
+              ttiConfigId={project.ttiConfigId}
+              itvConfigId={project.itvConfigId}
+              ttsConfigId={project.ttsConfigId}
+              onChange={handleConfigUpdate}
+            />
+          </Card>
+        </div>
+      </Drawer>
 
       {/* 剧本导入弹窗 */}
       <Modal
@@ -359,15 +422,6 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
         onCancel={() => setSplitWizardVisible(false)}
         onComplete={handleSplitComplete}
       />
-
-      <style>{`
-        .projectOverviewTabs .ant-tabs-content {
-          height: calc(100% - 46px);
-        }
-        .projectOverviewTabs .ant-tabs-tabpane {
-          height: 100%;
-        }
-      `}</style>
     </div>
   );
 };

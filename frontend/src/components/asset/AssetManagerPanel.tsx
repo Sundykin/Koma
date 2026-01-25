@@ -267,6 +267,7 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
       <div className="assetDetailSection">
         {selectedType === 'character' && selectedCharacter && (
           <CharacterDetailPanel
+            key={selectedCharacter.id}
             character={selectedCharacter}
             projectId={projectId}
             theme={theme}
@@ -279,6 +280,7 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
         )}
         {selectedType === 'scene' && selectedScene && (
           <SceneDetailPanel
+            key={selectedScene.id}
             scene={selectedScene}
             projectId={projectId}
             theme={theme}
@@ -290,6 +292,7 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
         )}
         {selectedType === 'prop' && selectedProp && (
           <PropDetailPanel
+            key={selectedProp.id}
             prop={selectedProp}
             projectId={projectId}
             theme={theme}

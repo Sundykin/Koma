@@ -1,27 +1,24 @@
 /**
- * 道具详情面板
- * 内嵌式面板，无弹窗
+ * 道具详情面板 - Creator Layout
+ * 左侧输入控制区 + 右侧画布预览区
  */
 import React, { useState, useCallback, useEffect } from 'react';
 import {
   Form,
   Input,
-  Select,
   Button,
   Space,
   Progress,
-  Spin,
   App,
-  Row,
-  Col,
-  Divider,
   Typography,
   Popconfirm,
   Modal,
+  Segmented,
+  Tooltip,
+  Tag,
 } from 'antd';
 import {
   InboxOutlined,
-  EditOutlined,
   SaveOutlined,
   DeleteOutlined,
   UploadOutlined,
@@ -30,6 +27,7 @@ import {
   CheckCircleOutlined,
   LoadingOutlined,
   LinkOutlined,
+  ExpandOutlined,
 } from '@ant-design/icons';
 import type { Prop } from '../../types';
 import {
@@ -56,6 +54,7 @@ interface PropDetailPanelProps {
 }
 
 type GeneratingType = 'image' | 'video' | 'extract' | null;
+type ViewMode = 'image' | 'video';
 
 export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
   prop,
@@ -71,25 +70,34 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
   const [form] = Form.useForm();
 
   const [editedProp, setEditedProp] = useState<Prop>(prop);
-  const [isPromptEditing, setIsPromptEditing] = useState(false);
-  const [customPrompt, setCustomPrompt] = useState('');
-
+  const [viewMode, setViewMode] = useState<ViewMode>('image');
   const [generating, setGenerating] = useState<GeneratingType>(null);
   const [progress, setProgress] = useState(0);
   const [progressStep, setProgressStep] = useState('');
-
   const [previewImage, setPreviewImage] = useState<string | null>(null);
 
+  // 初始化
   useEffect(() => {
-    setEditedProp(prop);
+    let initialPrompt = prop.prompt || prop.customPrompt || '';
+    if (!initialPrompt) {
+      const parts = [];
+      if (prop.type) parts.push(`Type: ${prop.type}`);
+      if (prop.description) parts.push(prop.description);
+      initialPrompt = parts.join('\n');
+    }
+
+    setEditedProp({ ...prop, prompt: initialPrompt });
     form.setFieldsValue({
       name: prop.name,
-      type: prop.type,
-      description: prop.description,
+      prompt: initialPrompt,
     });
-    setCustomPrompt(prop.customPrompt || '');
-    setIsPromptEditing(false);
   }, [prop, form]);
+
+  // 自动切换视图模式
+  useEffect(() => {
+    if (generating === 'image') setViewMode('image');
+    else if (generating === 'video') setViewMode('video');
+  }, [generating]);
 
   const getAssetPath = useCallback(async (subPath: string) => {
     const config = getStorageConfig() || (await initStorageConfig());
@@ -108,7 +116,7 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
       const updatedProp: Prop = {
         ...editedProp,
         ...values,
-        customPrompt: customPrompt || undefined,
+        prompt: values.prompt,
       };
 
       const props = await loadProps(projectId);
@@ -124,16 +132,19 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
     } catch (err: any) {
       message.error(err.message || '保存失败');
     }
-  }, [editedProp, form, customPrompt, projectId, onUpdate, message]);
+  }, [editedProp, form, projectId, onUpdate, message]);
 
   const handleGenerateImage = useCallback(async () => {
     setGenerating('image');
     setProgress(0);
 
     try {
+      const currentValues = await form.getFieldsValue();
+      const propWithPrompt = { ...editedProp, ...currentValues };
+
       const result = await generatePropImage({
         projectId,
-        prop: { ...editedProp, customPrompt: customPrompt || undefined },
+        prop: propWithPrompt,
         theme,
         stylePrompt,
         ttiConfigId,
@@ -146,10 +157,19 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
       if (result.success && result.path) {
         const updated = {
           ...editedProp,
+          ...currentValues,
           imagePath: result.path,
         };
         setEditedProp(updated);
         onUpdate(updated);
+
+        const props = await loadProps(projectId);
+        const index = props.findIndex(p => p.id === updated.id);
+        if (index !== -1) {
+          props[index] = updated;
+          await saveProps(projectId, props);
+        }
+
         message.success('道具图片生成完成');
       } else {
         message.error(result.error || '生成失败');
@@ -159,7 +179,7 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
     } finally {
       setGenerating(null);
     }
-  }, [editedProp, projectId, theme, stylePrompt, ttiConfigId, customPrompt, onUpdate, message]);
+  }, [editedProp, projectId, theme, stylePrompt, ttiConfigId, form, onUpdate, message]);
 
   const handleUploadImage = useCallback(async () => {
     try {
@@ -217,6 +237,14 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
         };
         setEditedProp(updated);
         onUpdate(updated);
+
+        const props = await loadProps(projectId);
+        const index = props.findIndex(p => p.id === updated.id);
+        if (index !== -1) {
+          props[index] = updated;
+          await saveProps(projectId, props);
+        }
+
         message.success('预览视频生成完成');
       } else {
         message.error(result.error || '生成失败');
@@ -298,201 +326,188 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
 
   const toLocalUrl = (path?: string) => path ? electronService.fs.toLocalUrl(path) : '';
 
-  const typeOptions = [
-    { value: '武器', label: '武器' },
-    { value: '日常', label: '日常' },
-    { value: '关键线索', label: '关键线索' },
-    { value: '其他', label: '其他' },
-  ];
-
-  const currentPrompt = customPrompt || editedProp.description || '';
-
   return (
     <div className="assetDetailPanel">
-      <div className="assetDetailHeader">
-        <Space>
-          <InboxOutlined />
-          <Text strong>{editedProp.name}</Text>
-        </Space>
-        <Space>
-          <Popconfirm
-            title="确定删除此道具？"
-            description="删除后无法恢复"
-            onConfirm={handleDelete}
-            okText="删除"
-            cancelText="取消"
-            okButtonProps={{ danger: true }}
-          >
-            <Button danger size="small" icon={<DeleteOutlined />}>删除</Button>
-          </Popconfirm>
-          <Button type="primary" size="small" icon={<SaveOutlined />} onClick={handleSave}>
-            保存
-          </Button>
-        </Space>
-      </div>
-
-      <div className="assetDetailBody">
-        {generating && (
-          <div className="assetDetailProgress">
-            <Space>
-              <Spin indicator={<LoadingOutlined spin />} size="small" />
-              <Text>{progressStep}</Text>
-            </Space>
-            <Progress percent={Math.round(progress)} strokeColor="#52c41a" size="small" />
-          </div>
-        )}
-
-        <Row gutter={24}>
-          <Col span={10}>
-            <Text strong className="assetDetailLabel">道具图片</Text>
-            <div
-              className="assetDetailImage"
-              style={{ aspectRatio: '1/1' }}
-              onClick={() => editedProp.imagePath && setPreviewImage(toLocalUrl(editedProp.imagePath))}
+      {/* 左侧 Sidebar */}
+      <div className="creatorSidebar">
+        <div className="creatorSidebarHeader">
+          <Space>
+            <InboxOutlined />
+            <Text strong style={{ fontSize: 16 }}>{editedProp.name}</Text>
+          </Space>
+          <Space>
+            <Tooltip title="保存">
+              <Button type="text" size="small" icon={<SaveOutlined />} onClick={handleSave} />
+            </Tooltip>
+            <Popconfirm
+              title="确定删除此道具？"
+              description="删除后无法恢复"
+              onConfirm={handleDelete}
+              okButtonProps={{ danger: true }}
             >
-              {editedProp.imagePath ? (
-                <img src={toLocalUrl(editedProp.imagePath)} alt="道具图" style={{ objectFit: 'contain', padding: 8 }} />
-              ) : (
-                <Text type="secondary">未生成</Text>
-              )}
-            </div>
-            <Space className="assetDetailActions">
-              <Button
-                size="small"
-                icon={generating === 'image' ? <LoadingOutlined /> : <ThunderboltOutlined />}
-                onClick={handleGenerateImage}
-                disabled={generating !== null}
-              >
-                {editedProp.imagePath ? '重新生成' : '生成'}
-              </Button>
-              <Button size="small" icon={<UploadOutlined />} onClick={handleUploadImage} disabled={generating !== null}>
-                上传
-              </Button>
-            </Space>
-          </Col>
-
-          <Col span={14}>
-            <Form form={form} layout="vertical" size="small">
-              <Row gutter={16}>
-                <Col span={12}>
-                  <Form.Item name="name" label="名称" rules={[{ required: true, message: '请输入名称' }]}>
-                    <Input />
-                  </Form.Item>
-                </Col>
-                <Col span={12}>
-                  <Form.Item name="type" label="道具类型">
-                    <Select options={typeOptions} />
-                  </Form.Item>
-                </Col>
-              </Row>
-              <Form.Item name="description" label="道具描述（用于AI生成）">
-                <TextArea rows={3} placeholder="如：古老的怀表，金色外壳，雕刻精美..." />
-              </Form.Item>
-            </Form>
-          </Col>
-        </Row>
-
-        <Divider />
-
-        <div className="assetDetailSection">
-          <div className="assetDetailSectionHeader">
-            <Text strong>生成提示词</Text>
-            <Button
-              type="text"
-              size="small"
-              icon={isPromptEditing ? <CheckCircleOutlined /> : <EditOutlined />}
-              onClick={() => setIsPromptEditing(!isPromptEditing)}
-            >
-              {isPromptEditing ? '完成' : '编辑'}
-            </Button>
-          </div>
-          {isPromptEditing ? (
-            <TextArea
-              value={customPrompt}
-              onChange={(e) => setCustomPrompt(e.target.value)}
-              rows={3}
-              placeholder="输入自定义提示词，留空使用自动生成"
-            />
-          ) : (
-            <div className="assetDetailPrompt">
-              {currentPrompt || '(无提示词)'}
-            </div>
-          )}
-          {customPrompt && (
-            <Text type="secondary" className="assetDetailPromptHint">
-              使用自定义提示词 · <a onClick={() => setCustomPrompt('')}>恢复自动</a>
-            </Text>
-          )}
+              <Tooltip title="删除">
+                <Button type="text" danger size="small" icon={<DeleteOutlined />} />
+              </Tooltip>
+            </Popconfirm>
+          </Space>
         </div>
 
-        <Divider />
+        <div className="creatorSidebarContent">
+          <Form form={form} layout="vertical" size="small">
+            <Form.Item name="name" label="名称" rules={[{ required: true, message: '请输入名称' }]}>
+              <Input />
+            </Form.Item>
 
-        <Row gutter={24}>
-          <Col span={12}>
-            <Text strong className="assetDetailLabel">预览视频</Text>
-            <div className="assetDetailVideo">
-              {editedProp.previewVideoPath ? (
-                <video src={toLocalUrl(editedProp.previewVideoPath)} controls />
-              ) : (
-                <Text type="secondary">未生成</Text>
-              )}
-            </div>
-            <Space className="assetDetailActions">
-              <Button
-                size="small"
-                icon={generating === 'video' ? <LoadingOutlined /> : <PlayCircleOutlined />}
-                onClick={handleGenerateVideo}
-                disabled={generating !== null || !editedProp.imagePath}
-              >
-                {editedProp.previewVideoPath ? '重新生成' : '生成'}
-              </Button>
-              <Button size="small" icon={<UploadOutlined />} onClick={handleUploadVideo} disabled={generating !== null}>
-                上传
-              </Button>
-            </Space>
-          </Col>
+            <Form.Item name="prompt" label="视觉描述 Prompt">
+              <TextArea
+                autoSize={{ minRows: 10, maxRows: 18 }}
+                placeholder="在此输入详细的道具视觉描述..."
+              />
+            </Form.Item>
+          </Form>
 
-          <Col span={12}>
-            <Text strong className="assetDetailLabel">Sora2 道具绑定</Text>
-            <div className="assetDetailBinding">
-              {editedProp.sora2PropId ? (
-                <>
-                  <CheckCircleOutlined className="bindingIconSuccess" />
-                  <Text type="success">已绑定</Text>
-                  <Text type="secondary" className="bindingId">{editedProp.sora2PropId}</Text>
-                </>
-              ) : (
-                <>
-                  <LinkOutlined className="bindingIconPending" />
-                  <Text type="secondary">未绑定</Text>
-                </>
-              )}
-            </div>
+          {/* 生成操作区 */}
+          <div className="creatorSidebarActions">
+            {generating && (
+              <div className="creatorProgress">
+                <div className="creatorProgressHeader">
+                  <Space>
+                    <LoadingOutlined />
+                    <Text style={{ fontSize: 12 }}>{progressStep}</Text>
+                  </Space>
+                  <Text type="secondary" style={{ fontSize: 12 }}>{Math.round(progress)}%</Text>
+                </div>
+                <Progress percent={Math.round(progress)} strokeColor="#52c41a" size="small" showInfo={false} />
+              </div>
+            )}
+
             <Button
+              type={!editedProp.imagePath ? 'primary' : 'default'}
               block
-              size="small"
-              icon={generating === 'extract' ? <LoadingOutlined /> : <LinkOutlined />}
-              onClick={handleExtractProp}
-              disabled={generating !== null || !editedProp.previewVideoPath}
+              icon={<ThunderboltOutlined />}
+              onClick={handleGenerateImage}
+              loading={generating === 'image'}
+              disabled={generating !== null}
             >
-              {editedProp.sora2PropId ? '重新提取' : '提取道具'}
+              生成道具图片
             </Button>
-            <Text type="secondary" className="assetDetailHint">
-              需要先生成预览视频才能提取
-            </Text>
-          </Col>
-        </Row>
+
+            <Button
+              type={editedProp.imagePath && !editedProp.previewVideoPath ? 'primary' : 'default'}
+              block
+              icon={<PlayCircleOutlined />}
+              onClick={handleGenerateVideo}
+              loading={generating === 'video'}
+              disabled={generating !== null || !editedProp.imagePath}
+            >
+              生成预览视频
+            </Button>
+          </div>
+        </div>
       </div>
 
+      {/* 右侧 Canvas */}
+      <div className="creatorCanvas">
+        <div className="creatorCanvasToolbar">
+          <Segmented
+            value={viewMode}
+            onChange={(val) => setViewMode(val as ViewMode)}
+            options={[
+              { label: '道具图片', value: 'image', icon: <InboxOutlined /> },
+              { label: '预览视频', value: 'video', icon: <PlayCircleOutlined /> },
+            ]}
+          />
+
+          <Space>
+            {editedProp.sora2PropId ? (
+              <Tag color="success" icon={<CheckCircleOutlined />}>
+                已绑定: {editedProp.sora2PropId.substring(0, 8)}...
+              </Tag>
+            ) : (
+              <Button
+                size="small"
+                type="primary"
+                ghost
+                icon={<LinkOutlined />}
+                loading={generating === 'extract'}
+                onClick={handleExtractProp}
+                disabled={!editedProp.previewVideoPath || generating !== null}
+              >
+                提取并绑定道具
+              </Button>
+            )}
+
+            <div className="toolbarDivider" />
+
+            <Tooltip title={viewMode === 'image' ? '上传道具图片' : '上传视频'}>
+              <Button
+                type="text"
+                icon={<UploadOutlined />}
+                onClick={viewMode === 'image' ? handleUploadImage : handleUploadVideo}
+                aria-label={viewMode === 'image' ? '上传道具图片' : '上传视频'}
+              />
+            </Tooltip>
+            <Tooltip title="放大预览">
+              <Button
+                type="text"
+                icon={<ExpandOutlined />}
+                onClick={() => {
+                  if (viewMode === 'image' && editedProp.imagePath) {
+                    setPreviewImage(toLocalUrl(editedProp.imagePath));
+                  }
+                }}
+                disabled={viewMode === 'video' || !editedProp.imagePath}
+                aria-label="放大预览"
+              />
+            </Tooltip>
+          </Space>
+        </div>
+
+        <div className="creatorCanvasBody">
+          {viewMode === 'image' ? (
+            <div className="creatorMediaViewer">
+              {editedProp.imagePath ? (
+                <img src={toLocalUrl(editedProp.imagePath)} alt="道具图" />
+              ) : (
+                <div className="creatorMediaPlaceholder">
+                  <InboxOutlined />
+                  <div>暂无道具图片</div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="creatorMediaViewer">
+              {editedProp.previewVideoPath ? (
+                <video src={toLocalUrl(editedProp.previewVideoPath)} controls autoPlay loop />
+              ) : (
+                <div className="creatorMediaPlaceholder">
+                  <PlayCircleOutlined />
+                  <div>暂无预览视频</div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* 大图预览 Modal */}
       <Modal
         open={!!previewImage}
         onCancel={() => setPreviewImage(null)}
         footer={null}
         centered
         width="auto"
-        styles={{ body: { padding: 0 } }}
+        styles={{ body: { padding: 0 }, content: { background: 'transparent', boxShadow: 'none' } }}
+        closeIcon={null}
       >
-        {previewImage && <img src={previewImage} alt="Preview" style={{ maxWidth: '90vw', maxHeight: '85vh' }} />}
+        {previewImage && (
+          <img
+            src={previewImage}
+            alt="Preview"
+            style={{ maxWidth: '95vw', maxHeight: '95vh', cursor: 'pointer' }}
+            onClick={() => setPreviewImage(null)}
+          />
+        )}
       </Modal>
     </div>
   );

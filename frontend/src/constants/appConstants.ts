@@ -14,15 +14,15 @@ export const DEV_TEST_PROJECT: Project = {
 
 export const DEV_TEST_ANALYSIS: ScriptAnalysisResult = {
   characters: [
-    { id: 'c1', name: '叶青凡', age: '28', role: 'protagonist', description: '沉稳冷静的调查员', appearance: '黑发，深邃眼神' },
-    { id: 'c2', name: '鬼护士', age: '?', role: 'antagonist', description: '神秘的医院幽灵', appearance: '白色护士服，无面孔' },
+    { id: 'c1', name: '叶青凡', role: 'protagonist', prompt: '28岁男性调查员，沉稳冷静，黑发，深邃眼神' },
+    { id: 'c2', name: '鬼护士', role: 'antagonist', prompt: '神秘的医院幽灵，白色护士服，无面孔' },
   ],
   scenes: [
-    { id: 's1', name: '废弃医院走廊', location: '废弃医院', time: 'night', mood: '阴森紧张', description: '昏暗的走廊，墙壁剥落' },
+    { id: 's1', name: '废弃医院走廊', prompt: 'Location: 废弃医院\nTime: night\nMood: 阴森紧张\n昏暗的走廊，墙壁剥落' },
   ],
   props: [
-    { id: 'pr1', name: '手电筒', type: '道具', description: '发出微弱光芒的老旧手电' },
-    { id: 'pr2', name: '手术刀', type: '武器', description: '生锈的手术刀' },
+    { id: 'pr1', name: '手电筒', prompt: 'Type: 道具\n发出微弱光芒的老旧手电' },
+    { id: 'pr2', name: '手术刀', prompt: 'Type: 武器\n生锈的手术刀' },
   ],
   shots: [
     { id: 'shot1', scriptContent: '走廊里死一般的寂静', shotType: 'wide', cameraMovement: 'static', duration: 3, description: 'Wide shot of dark hospital corridor', characters: ['c1'], dialogue: '', emotion: '紧张' },

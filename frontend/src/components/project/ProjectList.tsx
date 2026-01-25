@@ -72,7 +72,7 @@ export const ProjectList: React.FC<ProjectListProps> = ({
     <div className="flex flex-col h-full bg-zinc-950 overflow-y-auto">
       {/* 紧凑头部 */}
       <div className="sticky top-0 z-20 bg-zinc-950/95 backdrop-blur border-b border-zinc-800 px-6 py-3">
-        <div className="max-w-6xl mx-auto w-full flex items-center justify-between gap-4">
+        <div className="w-full flex items-center justify-between gap-4">
           {/* 左侧：标题 */}
           <h1 className="text-xl font-bold text-white whitespace-nowrap">我的项目</h1>
 
@@ -120,7 +120,7 @@ export const ProjectList: React.FC<ProjectListProps> = ({
 
       {/* 内容区域 */}
       <div className="flex-1 p-6">
-        <div className="max-w-6xl mx-auto w-full">
+        <div className="w-full px-6">
           {/* 空状态：没有任何项目 */}
           {hasNoProjects && (
             <div className="flex flex-col items-center justify-center py-20">
@@ -153,7 +153,7 @@ export const ProjectList: React.FC<ProjectListProps> = ({
 
           {/* 项目列表 */}
           {filteredProjects.length > 0 && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 3xl:grid-cols-6 gap-6">
               {filteredProjects.map((project) => {
                 const StatusIcon = statusConfig[project.status]?.icon || FileText;
                 const statusCfg = statusConfig[project.status];

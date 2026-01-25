@@ -274,131 +274,152 @@ export const ShotCard: React.FC<ShotCardProps> = ({
         </div>
       </div>
 
-      {/* 主体内容：四列布局 (剧本 | 文生图提示词+参考图 | 图生视频提示词+视频) */}
-      <div className="shot-card-body">
-        {/* 1. 剧本列 */}
-        <div className="shot-column script-column">
-          <div className="column-label">剧本内容</div>
+      {/* 主体内容：三列分组布局 (剧本 | 图片工作流 | 视频工作流) */}
+      <div className="flex items-stretch min-h-[350px] border-t border-zinc-800 bg-zinc-950">
+        
+        {/* 1. 剧本内容 (30%) */}
+        <div className="flex-[3] min-w-[200px] border-r border-zinc-800 flex flex-col">
+          <div className="px-3 py-2 text-xs font-medium text-zinc-500 bg-zinc-900/50 border-b border-zinc-800">
+            剧本内容
+          </div>
           <TextArea
             value={shot.scriptContent || ''}
             onChange={(e) => onScriptChange(shot.id, e.target.value)}
             placeholder="剧本内容..."
-            autoSize={{ minRows: 4, maxRows: 8 }}
-            className="script-textarea"
+            className="flex-1 w-full bg-transparent border-none resize-none p-3 text-sm focus:ring-0 placeholder-zinc-700"
+            style={{ minHeight: 0 }}
           />
         </div>
 
-        {/* 2. 文生图提示词列 */}
-        <div className="shot-column prompt-column">
-          <div className="column-header">
-            <div className="column-label">文生图提示词</div>
-            <Button
-              type="link"
-              size="small"
-              onClick={() => onGeneratePrompt(shot.id)}
-              disabled={isGeneratingPrompt}
-              loading={isGeneratingPrompt}
-            >
-              {hasImagePrompt ? '重新生成' : 'AI生成'}
-            </Button>
+        {/* 2. 图片工作流 (35%) - 垂直布局 */}
+        <div className="flex-[4] min-w-[260px] border-r border-zinc-800 flex flex-col">
+          {/* 上半部分：提示词 (35%) */}
+          <div className="h-[35%] min-h-[140px] flex flex-col border-b border-zinc-800 relative group/prompt">
+            <div className="px-3 py-2 flex items-center justify-between text-xs font-medium text-zinc-500 bg-zinc-900/50 border-b border-zinc-800">
+              <span>文生图提示词</span>
+              <Button
+                type="link"
+                size="small"
+                className="p-0 h-auto text-xs opacity-0 group-hover/prompt:opacity-100 transition-opacity"
+                onClick={() => onGeneratePrompt(shot.id)}
+                disabled={isGeneratingPrompt}
+                loading={isGeneratingPrompt}
+              >
+                {hasImagePrompt ? '重新生成' : 'AI生成'}
+              </Button>
+            </div>
+            <div className="flex-1 relative min-h-0">
+              <div className="absolute inset-0">
+                <ScriptEditor
+                  value={shot.imagePrompt || shot.description || ''}
+                  onChange={(value) => onImagePromptChange(shot.id, value)}
+                  placeholder="输入文生图提示词..."
+                  mentionItems={mentionItems}
+                  enableKeywordHighlight={true}
+                  minHeight="100%"
+                  maxHeight="100%"
+                  showLineNumbers={false}
+                  darkTheme={true}
+                  style={{ height: '100%' }}
+                />
+              </div>
+            </div>
           </div>
-          <div className="prompt-editor-container">
-            <ScriptEditor
-              value={shot.imagePrompt || shot.description || ''}
-              onChange={(value) => onImagePromptChange(shot.id, value)}
-              placeholder="输入文生图提示词..."
-              mentionItems={mentionItems}
-              enableKeywordHighlight={true}
-              minHeight="100%"
-              maxHeight="100%"
-              showLineNumbers={false}
-              darkTheme={true}
-            />
+
+          {/* 下半部分：结果 (65%) */}
+          <div className="flex-1 flex flex-col min-h-0 bg-zinc-900/20">
+            <div className="px-3 py-2 flex items-center justify-between text-xs font-medium text-zinc-500 bg-zinc-900/50 border-b border-zinc-800">
+              <span>参考图</span>
+              <Button
+                type="link"
+                size="small"
+                className="p-0 h-auto text-xs"
+                onClick={() => onGenerateImage(shot.id)}
+                disabled={!hasImagePrompt || isGeneratingImage}
+                loading={isGeneratingImage}
+              >
+                生成
+              </Button>
+            </div>
+            <div className="flex-1 p-2 min-h-0 overflow-y-auto custom-scrollbar">
+              <ImageCardGrid
+                images={images}
+                selectedIndex={shot.currentImageIndex || 0}
+                onSelect={handleImageSelect}
+                onAdd={handleImageAdd}
+                onDelete={handleImageDelete}
+                isGenerating={isGeneratingImage}
+                disabled={!hasImagePrompt}
+                characters={characters}
+                scenes={scenes}
+                props={props}
+                compact
+              />
+            </div>
           </div>
         </div>
 
-        {/* 3. 参考图列 */}
-        <div className="shot-column media-column">
-          <div className="column-header">
-            <div className="column-label">参考图</div>
-            <Button
-              type="link"
-              size="small"
-              onClick={() => onGenerateImage(shot.id)}
-              disabled={!hasImagePrompt || isGeneratingImage}
-              loading={isGeneratingImage}
-            >
-              生成
-            </Button>
+        {/* 3. 视频工作流 (35%) - 垂直布局 */}
+        <div className="flex-[4] min-w-[260px] flex flex-col">
+          {/* 上半部分：提示词 (35%) */}
+          <div className="h-[35%] min-h-[140px] flex flex-col border-b border-zinc-800 relative group/video-prompt">
+            <div className="px-3 py-2 flex items-center justify-between text-xs font-medium text-zinc-500 bg-zinc-900/50 border-b border-zinc-800">
+              <span>图生视频提示词</span>
+              <Button
+                type="link"
+                size="small"
+                className="p-0 h-auto text-xs opacity-0 group-hover/video-prompt:opacity-100 transition-opacity"
+                onClick={() => onGeneratePrompt(shot.id)}
+                disabled={isGeneratingPrompt}
+                loading={isGeneratingPrompt}
+              >
+                {hasVideoPrompt ? '重新生成' : 'AI生成'}
+              </Button>
+            </div>
+            <div className="flex-1 relative min-h-0">
+              <div className="absolute inset-0">
+                <ScriptEditor
+                  value={shot.videoPrompt || ''}
+                  onChange={(value) => onVideoPromptChange(shot.id, value)}
+                  placeholder="输入图生视频提示词..."
+                  mentionItems={mentionItems}
+                  enableKeywordHighlight={true}
+                  minHeight="100%"
+                  maxHeight="100%"
+                  showLineNumbers={false}
+                  darkTheme={true}
+                  style={{ height: '100%' }}
+                />
+              </div>
+            </div>
           </div>
-          <div className="media-grid-wrapper">
-            <ImageCardGrid
-              images={images}
-              selectedIndex={shot.currentImageIndex || 0}
-              onSelect={handleImageSelect}
-              onAdd={handleImageAdd}
-              onDelete={handleImageDelete}
-              isGenerating={isGeneratingImage}
-              disabled={!hasImagePrompt}
-              characters={characters}
-              scenes={scenes}
-              props={props}
-            />
-          </div>
-        </div>
 
-        {/* 4. 图生视频提示词列 */}
-        <div className="shot-column prompt-column">
-          <div className="column-header">
-            <div className="column-label">图生视频提示词</div>
-            <Button
-              type="link"
-              size="small"
-              onClick={() => onGeneratePrompt(shot.id)}
-              disabled={isGeneratingPrompt}
-              loading={isGeneratingPrompt}
-            >
-              {hasVideoPrompt ? '重新生成' : 'AI生成'}
-            </Button>
-          </div>
-          <div className="prompt-editor-container">
-            <ScriptEditor
-              value={shot.videoPrompt || ''}
-              onChange={(value) => onVideoPromptChange(shot.id, value)}
-              placeholder="输入图生视频提示词..."
-              mentionItems={mentionItems}
-              enableKeywordHighlight={true}
-              minHeight="100%"
-              maxHeight="100%"
-              showLineNumbers={false}
-              darkTheme={true}
-            />
-          </div>
-        </div>
-
-        {/* 5. 视频列 */}
-        <div className="shot-column media-column">
-          <div className="column-header">
-            <div className="column-label">视频</div>
-            <Button
-              type="link"
-              size="small"
-              onClick={() => onGenerateVideo(shot.id)}
-              disabled={images.length === 0 || isGeneratingVideo}
-              loading={isGeneratingVideo}
-            >
-              生成
-            </Button>
-          </div>
-          <div className="media-grid-wrapper">
-            <VideoCardGrid
-              videos={videos}
-              selectedIndex={shot.currentVideoIndex || 0}
-              onSelect={handleVideoSelect}
-              onDelete={handleVideoDelete}
-              isGenerating={isGeneratingVideo}
-              disabled={images.length === 0}
-            />
+          {/* 下半部分：结果 (65%) */}
+          <div className="flex-1 flex flex-col min-h-0 bg-zinc-900/20">
+            <div className="px-3 py-2 flex items-center justify-between text-xs font-medium text-zinc-500 bg-zinc-900/50 border-b border-zinc-800">
+              <span>视频结果</span>
+              <Button
+                type="link"
+                size="small"
+                className="p-0 h-auto text-xs"
+                onClick={() => onGenerateVideo(shot.id)}
+                disabled={images.length === 0 || isGeneratingVideo}
+                loading={isGeneratingVideo}
+              >
+                生成
+              </Button>
+            </div>
+            <div className="flex-1 p-2 min-h-0 overflow-y-auto custom-scrollbar">
+              <VideoCardGrid
+                videos={videos}
+                selectedIndex={shot.currentVideoIndex || 0}
+                onSelect={handleVideoSelect}
+                onDelete={handleVideoDelete}
+                isGenerating={isGeneratingVideo}
+                disabled={images.length === 0}
+                compact
+              />
+            </div>
           </div>
         </div>
       </div>

@@ -82,10 +82,14 @@ export interface AssetTimestampRange {
 export interface Character {
   id: string;
   name: string;
-  age?: string;        // 可选，简化后的字段
   role: 'protagonist' | 'antagonist' | 'supporting'; // 主角 | 反派 | 配角
-  description?: string; // 人物小传（可选）
-  appearance?: string;  // AI生成的外貌描述（可选，用于绘图）
+  prompt: string;      // 核心提示词（整合了原有的 description, appearance 等）
+  
+  // 旧字段（保留用于兼容，但UI上将不再显示）
+  age?: string;
+  description?: string; 
+  appearance?: string;
+  
   voiceId?: string;    // TTS 音色 ID
   // 资产字段
   costumePhotoPath?: string;  // 定妆照本地路径
@@ -93,7 +97,7 @@ export interface Character {
   previewVideoPath?: string;  // 预览视频路径
   previewVideoTaskId?: string; // 预览视频的生成任务ID（用于角色提取API）
   sora2CharacterId?: string;  // 角色提取API返回的ID
-  customPrompt?: string;      // 用户自定义生成提示词
+  customPrompt?: string;      // 用户自定义生成提示词 (Deprecated: use prompt instead)
   timestampRange?: AssetTimestampRange; // Sora2 提取时间范围
   // 分集引用追踪
   episodeRefs?: EpisodeRef[];
@@ -104,13 +108,17 @@ export interface Character {
 export interface Scene {
   id: string;
   name: string;
-  location?: string;  // 可选，简化后的字段
-  time?: 'day' | 'night' | 'twilight'; // 可选
-  mood?: string;        // 氛围/情绪（可选）
-  description?: string; // 场景视觉描述（可选）
+  prompt: string;     // 核心提示词
+  
+  // 旧字段（保留用于兼容）
+  location?: string;
+  time?: 'day' | 'night' | 'twilight'; 
+  mood?: string;
+  description?: string;
+  
   imagePath?: string;  // 场景预览图本地路径
   imageUrl?: string;   // 场景预览图远程URL
-  customPrompt?: string; // 用户自定义生成提示词
+  customPrompt?: string; // (Deprecated: use prompt instead)
   // 分集引用追踪
   episodeRefs?: EpisodeRef[];
   fingerprint?: string;
@@ -120,15 +128,19 @@ export interface Scene {
 export interface Prop {
   id: string;
   name: string;
-  type?: string;        // 道具类型（可选）
-  description?: string; // 视觉描述（可选）
+  prompt: string;     // 核心提示词
+  
+  // 旧字段（保留用于兼容）
+  type?: string;
+  description?: string;
+  
   imagePath?: string;  // 道具参考图本地路径
   imageUrl?: string;   // 道具参考图远程URL
   // Sora2 绑定相关
   previewVideoPath?: string;   // 预览视频路径
   previewVideoTaskId?: string; // 预览视频生成任务 ID
   sora2PropId?: string;        // Sora2 道具 ID
-  customPrompt?: string;       // 用户自定义生成提示词
+  customPrompt?: string;       // (Deprecated: use prompt instead)
   timestampRange?: AssetTimestampRange; // Sora2 提取时间范围
   // 分集引用追踪
   episodeRefs?: EpisodeRef[];

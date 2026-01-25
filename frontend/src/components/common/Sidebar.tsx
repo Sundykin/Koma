@@ -1,12 +1,7 @@
 import React, { useMemo } from 'react';
-import { Menu, Avatar, Tooltip } from 'antd';
-import {
-  AppstoreOutlined,
-  SettingOutlined,
-  UserOutlined,
-  AppstoreAddOutlined,
-} from '@ant-design/icons';
-import { Scissors } from 'lucide-react';
+import { Avatar, Tooltip } from 'antd';
+import { UserOutlined } from '@ant-design/icons';
+import { LayoutGrid, Scissors, Settings, Puzzle } from 'lucide-react';
 import { Project, Episode } from '../../types';
 import { usePluginStore } from '../../store/pluginStore';
 
@@ -21,6 +16,39 @@ interface SidebarProps {
   onEnterVideoTest: () => void;
 }
 
+// 导航项组件
+interface NavItemProps {
+  active: boolean;
+  icon: React.ReactNode;
+  label: string;
+  onClick: () => void;
+}
+
+const NavItem: React.FC<NavItemProps> = ({ active, icon, label, onClick }) => (
+  <Tooltip title={label} placement="right">
+    <button
+      onClick={onClick}
+      className={`relative w-full flex justify-center py-2.5 cursor-pointer transition-colors ${
+        active ? 'text-emerald-400' : 'text-zinc-500 hover:text-zinc-300'
+      }`}
+    >
+      {/* 左侧激活指示条 */}
+      {active && (
+        <div
+          className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 bg-emerald-500 rounded-r-md"
+          style={{ boxShadow: '0 0 12px rgba(16,185,129,0.5)' }}
+        />
+      )}
+      {/* 图标容器 */}
+      <div className={`p-2.5 rounded-xl transition-all ${
+        active ? 'bg-emerald-400/10' : 'hover:bg-zinc-800'
+      }`}>
+        {icon}
+      </div>
+    </button>
+  </Tooltip>
+);
+
 export const Sidebar: React.FC<SidebarProps> = ({
   view,
   activeProject,
@@ -28,85 +56,131 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onViewChange,
   onEnterVideoTest,
 }) => {
-  // 订阅 plugins 数组（稳定引用）
   const plugins = usePluginStore(state => state.plugins);
 
-  // 使用 useMemo 过滤全局插件，避免每次渲染创建新数组
   const globalPlugins = useMemo(
     () => plugins.filter(p => p.category === 'global' && p.isEnabled),
     [plugins]
   );
 
-  // 构建动态插件菜单项
-  const pluginMenuItems = globalPlugins
+  // 主导航项
+  const mainNavItems = [
+    { key: 'projects', icon: <LayoutGrid size={22} />, label: '项目管理' },
+  ];
+
+  // 工具导航项
+  const toolNavItems = [
+    { key: 'video-test', icon: <Scissors size={22} />, label: '剪辑测试', isAction: true },
+  ];
+
+  // 插件导航项
+  const pluginNavItems = globalPlugins
     .sort((a, b) => (a.globalMeta?.navigation?.order || 50) - (b.globalMeta?.navigation?.order || 50))
     .map(plugin => ({
       key: `plugin:${plugin.id}`,
-      icon: <AppstoreAddOutlined />,
+      icon: <Puzzle size={22} />,
       label: plugin.globalMeta?.navigation?.label || plugin.name,
     }));
 
+  // 底部导航项
+  const bottomNavItems = [
+    { key: 'settings', icon: <Settings size={22} />, label: '全局设置' },
+  ];
+
+  const handleNavClick = (key: string, isAction?: boolean) => {
+    if (key === 'video-test') {
+      onEnterVideoTest();
+    } else {
+      onViewChange(key as AppView);
+    }
+  };
+
   return (
-    <div className="w-16 bg-zinc-900 border-r border-zinc-800 flex flex-col h-full z-40 shrink-0">
+    <div className="w-20 bg-zinc-950 border-r border-zinc-800 flex flex-col h-full z-40 shrink-0">
       {/* Logo 区域 */}
-      <div className="h-16 w-full flex items-center justify-center border-b border-zinc-800">
-        <div className="w-8 h-8 bg-emerald-600 rounded-lg flex items-center justify-center text-white font-bold text-lg shadow-lg shadow-emerald-900/30">
-          A
+      <div className="h-14 w-full flex items-center justify-center">
+        <div className="w-10 h-10 bg-gradient-to-br from-emerald-500 to-emerald-700 rounded-xl flex items-center justify-center text-white font-bold text-lg shadow-lg shadow-emerald-900/40">
+          K
         </div>
       </div>
 
-      {/* Antd Menu 导航 - 永久收起 */}
-      <Menu
-        mode="inline"
-        inlineCollapsed={true}
-        selectedKeys={[view]}
-        onClick={({ key }) => {
-          if (key === 'video-test') {
-            onEnterVideoTest();
-          } else {
-            onViewChange(key as AppView);
-          }
-        }}
-        style={{
-          flex: 1,
-          background: 'transparent',
-          borderRight: 'none',
-        }}
-        items={[
-          {
-            key: 'projects',
-            icon: <AppstoreOutlined />,
-            label: '项目管理',
-          },
-          { type: 'divider' as const },
-          {
-            key: 'video-test',
-            icon: <Scissors size={16} />,
-            label: '剪辑测试',
-          },
-          // 动态插件菜单
-          ...(pluginMenuItems.length > 0
-            ? [
-                { type: 'divider' as const },
-                ...pluginMenuItems,
-              ]
-            : []),
-          { type: 'divider' as const },
-          {
-            key: 'settings',
-            icon: <SettingOutlined />,
-            label: '全局设置',
-          },
-        ]}
-      />
+      {/* 主导航区 */}
+      <nav className="flex-1 flex flex-col py-2">
+        {/* 主导航 */}
+        <div className="space-y-1">
+          {mainNavItems.map(item => (
+            <NavItem
+              key={item.key}
+              active={view === item.key}
+              icon={item.icon}
+              label={item.label}
+              onClick={() => handleNavClick(item.key)}
+            />
+          ))}
+        </div>
+
+        {/* 分隔线 */}
+        <div className="mx-4 my-3 border-t border-zinc-800" />
+
+        {/* 工具导航 */}
+        <div className="space-y-1">
+          {toolNavItems.map(item => (
+            <NavItem
+              key={item.key}
+              active={view === item.key}
+              icon={item.icon}
+              label={item.label}
+              onClick={() => handleNavClick(item.key, item.isAction)}
+            />
+          ))}
+        </div>
+
+        {/* 插件导航 */}
+        {pluginNavItems.length > 0 && (
+          <>
+            <div className="mx-4 my-3 border-t border-zinc-800" />
+            <div className="space-y-1">
+              {pluginNavItems.map(item => (
+                <NavItem
+                  key={item.key}
+                  active={view === item.key}
+                  icon={item.icon}
+                  label={item.label}
+                  onClick={() => handleNavClick(item.key)}
+                />
+              ))}
+            </div>
+          </>
+        )}
+
+        {/* 弹性空间 */}
+        <div className="flex-1" />
+
+        {/* 分隔线 */}
+        <div className="mx-4 my-3 border-t border-zinc-800" />
+
+        {/* 底部导航 */}
+        <div className="space-y-1">
+          {bottomNavItems.map(item => (
+            <NavItem
+              key={item.key}
+              active={view === item.key}
+              icon={item.icon}
+              label={item.label}
+              onClick={() => handleNavClick(item.key)}
+            />
+          ))}
+        </div>
+      </nav>
 
       {/* 底部用户区 */}
-      <div className="p-4 border-t border-zinc-800 flex items-center justify-center">
+      <div className="p-3 border-t border-zinc-800 flex items-center justify-center">
         <Tooltip title="Studio User" placement="right">
           <Avatar
-            size={32}
+            size={36}
             style={{
-              background: 'linear-gradient(to top right, #8b5cf6, #3b82f6)',
+              background: 'linear-gradient(135deg, #8b5cf6, #3b82f6)',
+              cursor: 'pointer',
             }}
             icon={<UserOutlined />}
           />

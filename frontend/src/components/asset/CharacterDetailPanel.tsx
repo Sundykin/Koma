@@ -1,8 +1,8 @@
 /**
- * 角色详情面板
- * 内嵌式面板，无弹窗
+ * 角色详情面板 - Creator Layout
+ * 左侧输入控制区 + 右侧画布预览区
  */
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   Form,
   Input,
@@ -10,18 +10,18 @@ import {
   Button,
   Space,
   Progress,
-  Spin,
   App,
   Row,
   Col,
-  Divider,
   Typography,
   Popconfirm,
   Modal,
+  Segmented,
+  Tooltip,
+  Tag,
 } from 'antd';
 import {
   UserOutlined,
-  EditOutlined,
   SaveOutlined,
   DeleteOutlined,
   UploadOutlined,
@@ -30,13 +30,13 @@ import {
   CheckCircleOutlined,
   LoadingOutlined,
   LinkOutlined,
+  ExpandOutlined,
 } from '@ant-design/icons';
 import type { Character } from '../../types';
 import {
   generateCostumePhoto,
   generateCharacterPreviewVideo,
   extractAndBindCharacter,
-  getCharacterPrompt,
 } from '../../workflow/characterAssetWorkflow';
 import { electronService, openFileDialog, fsCopy, fsMkdir, fsExists } from '../../services/electronService';
 import { getStorageConfig, initStorageConfig } from '../../store/storageConfig';
@@ -57,6 +57,7 @@ interface CharacterDetailPanelProps {
 }
 
 type GeneratingType = 'costume' | 'video' | 'extract' | null;
+type ViewMode = 'costume' | 'video';
 
 export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
   character,
@@ -72,38 +73,36 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
   const [form] = Form.useForm();
 
   const [editedCharacter, setEditedCharacter] = useState<Character>(character);
-  const [isPromptEditing, setIsPromptEditing] = useState(false);
-  const [customPrompt, setCustomPrompt] = useState('');
-
+  const [viewMode, setViewMode] = useState<ViewMode>('costume');
   const [generating, setGenerating] = useState<GeneratingType>(null);
   const [progress, setProgress] = useState(0);
   const [progressStep, setProgressStep] = useState('');
-
   const [previewImage, setPreviewImage] = useState<string | null>(null);
 
-  // 角色变化时更新
+  // 初始化
   useEffect(() => {
-    setEditedCharacter(character);
+    let initialPrompt = character.prompt || character.customPrompt || '';
+    if (!initialPrompt) {
+      const parts = [];
+      if (character.age) parts.push(`Age: ${character.age}`);
+      if (character.appearance) parts.push(character.appearance);
+      if (character.description) parts.push(character.description);
+      initialPrompt = parts.join('\n');
+    }
+
+    setEditedCharacter({ ...character, prompt: initialPrompt });
     form.setFieldsValue({
       name: character.name,
       role: character.role,
-      age: character.age,
-      description: character.description,
-      appearance: character.appearance,
+      prompt: initialPrompt,
     });
-    setCustomPrompt(character.customPrompt || '');
-    setIsPromptEditing(false);
   }, [character, form]);
 
-  const autoPrompt = useMemo(() => {
-    return getCharacterPrompt(
-      { ...editedCharacter, customPrompt: undefined },
-      theme,
-      stylePrompt
-    );
-  }, [editedCharacter, theme, stylePrompt]);
-
-  const currentPrompt = customPrompt || autoPrompt;
+  // 自动切换视图模式
+  useEffect(() => {
+    if (generating === 'costume') setViewMode('costume');
+    else if (generating === 'video') setViewMode('video');
+  }, [generating]);
 
   const getAssetPath = useCallback(async (subPath: string) => {
     const config = getStorageConfig() || (await initStorageConfig());
@@ -122,7 +121,7 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
       const updatedCharacter: Character = {
         ...editedCharacter,
         ...values,
-        customPrompt: customPrompt || undefined,
+        prompt: values.prompt,
       };
 
       const characters = await loadCharacters(projectId);
@@ -138,14 +137,16 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
     } catch (err: any) {
       message.error(err.message || '保存失败');
     }
-  }, [editedCharacter, form, customPrompt, projectId, onUpdate, message]);
+  }, [editedCharacter, form, projectId, onUpdate, message]);
 
   const handleGenerateCostume = useCallback(async () => {
     setGenerating('costume');
     setProgress(0);
 
     try {
-      const charWithPrompt = { ...editedCharacter, customPrompt: customPrompt || undefined };
+      const currentValues = await form.getFieldsValue();
+      const charWithPrompt = { ...editedCharacter, ...currentValues };
+
       const result = await generateCostumePhoto({
         projectId,
         character: charWithPrompt,
@@ -161,11 +162,18 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
       if (result.success && result.path) {
         const updated = {
           ...editedCharacter,
+          ...currentValues,
           costumePhotoPath: result.path,
           costumePhotoUrl: result.url,
         };
         setEditedCharacter(updated);
         onUpdate(updated);
+        const characters = await loadCharacters(projectId);
+        const index = characters.findIndex(c => c.id === updated.id);
+        if (index !== -1) {
+          characters[index] = updated;
+          await saveCharacters(projectId, characters);
+        }
         message.success('定妆照生成完成');
       } else {
         message.error(result.error || '生成失败');
@@ -175,7 +183,7 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
     } finally {
       setGenerating(null);
     }
-  }, [editedCharacter, projectId, theme, stylePrompt, ttiConfigId, customPrompt, onUpdate, message]);
+  }, [editedCharacter, projectId, theme, stylePrompt, ttiConfigId, form, onUpdate, message]);
 
   const handleUploadCostume = useCallback(async () => {
     try {
@@ -233,6 +241,12 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
         };
         setEditedCharacter(updated);
         onUpdate(updated);
+        const characters = await loadCharacters(projectId);
+        const index = characters.findIndex(c => c.id === updated.id);
+        if (index !== -1) {
+          characters[index] = updated;
+          await saveCharacters(projectId, characters);
+        }
         message.success('预览视频生成完成');
       } else {
         message.error(result.error || '生成失败');
@@ -330,196 +344,195 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
 
   return (
     <div className="assetDetailPanel">
-      <div className="assetDetailHeader">
-        <Space>
-          <UserOutlined />
-          <Text strong>{editedCharacter.name}</Text>
-        </Space>
-        <Space>
-          <Popconfirm
-            title="确定删除此角色？"
-            description="删除后无法恢复"
-            onConfirm={handleDelete}
-            okText="删除"
-            cancelText="取消"
-            okButtonProps={{ danger: true }}
-          >
-            <Button danger size="small" icon={<DeleteOutlined />}>删除</Button>
-          </Popconfirm>
-          <Button type="primary" size="small" icon={<SaveOutlined />} onClick={handleSave}>
-            保存
-          </Button>
-        </Space>
+      {/* 左侧 Sidebar */}
+      <div className="creatorSidebar">
+        <div className="creatorSidebarHeader">
+          <Space>
+            <UserOutlined />
+            <Text strong style={{ fontSize: 16 }}>{editedCharacter.name}</Text>
+          </Space>
+          <Space>
+            <Tooltip title="保存">
+              <Button type="text" size="small" icon={<SaveOutlined />} onClick={handleSave} />
+            </Tooltip>
+            <Popconfirm
+              title="确定删除此角色？"
+              description="删除后无法恢复"
+              onConfirm={handleDelete}
+              okButtonProps={{ danger: true }}
+            >
+              <Tooltip title="删除">
+                <Button type="text" danger size="small" icon={<DeleteOutlined />} />
+              </Tooltip>
+            </Popconfirm>
+          </Space>
+        </div>
+
+        <div className="creatorSidebarContent">
+          <Form form={form} layout="vertical" size="small">
+            <Row gutter={12}>
+              <Col span={16}>
+                <Form.Item name="name" label="名称" rules={[{ required: true, message: '请输入名称' }]}>
+                  <Input />
+                </Form.Item>
+              </Col>
+              <Col span={8}>
+                <Form.Item name="role" label="类型">
+                  <Select options={roleOptions} />
+                </Form.Item>
+              </Col>
+            </Row>
+
+            <Form.Item name="prompt" label="视觉描述 Prompt">
+              <TextArea
+                autoSize={{ minRows: 10, maxRows: 18 }}
+                placeholder="在此输入详细的角色视觉描述..."
+              />
+            </Form.Item>
+          </Form>
+
+          {/* 生成操作区 */}
+          <div className="creatorSidebarActions">
+            {generating && (
+              <div className="creatorProgress">
+                <div className="creatorProgressHeader">
+                  <Space>
+                    <LoadingOutlined />
+                    <Text style={{ fontSize: 12 }}>{progressStep}</Text>
+                  </Space>
+                  <Text type="secondary" style={{ fontSize: 12 }}>{Math.round(progress)}%</Text>
+                </div>
+                <Progress percent={Math.round(progress)} strokeColor="#52c41a" size="small" showInfo={false} />
+              </div>
+            )}
+
+            <Button
+              type={!editedCharacter.costumePhotoPath ? 'primary' : 'default'}
+              block
+              icon={<ThunderboltOutlined />}
+              onClick={handleGenerateCostume}
+              loading={generating === 'costume'}
+              disabled={generating !== null}
+            >
+              生成定妆照 (三视图)
+            </Button>
+
+            <Button
+              type={editedCharacter.costumePhotoPath && !editedCharacter.previewVideoPath ? 'primary' : 'default'}
+              block
+              icon={<PlayCircleOutlined />}
+              onClick={handleGenerateVideo}
+              loading={generating === 'video'}
+              disabled={generating !== null || !editedCharacter.costumePhotoPath}
+            >
+              生成预览视频
+            </Button>
+          </div>
+        </div>
       </div>
 
-      <div className="assetDetailBody">
-        {generating && (
-          <div className="assetDetailProgress">
-            <Space>
-              <Spin indicator={<LoadingOutlined spin />} size="small" />
-              <Text>{progressStep}</Text>
-            </Space>
-            <Progress percent={Math.round(progress)} strokeColor="#52c41a" size="small" />
-          </div>
-        )}
+      {/* 右侧 Canvas */}
+      <div className="creatorCanvas">
+        <div className="creatorCanvasToolbar">
+          <Segmented
+            value={viewMode}
+            onChange={(val) => setViewMode(val as ViewMode)}
+            options={[
+              { label: '定妆照', value: 'costume', icon: <UserOutlined /> },
+              { label: '预览视频', value: 'video', icon: <PlayCircleOutlined /> },
+            ]}
+          />
 
-        <Row gutter={24}>
-          <Col span={10}>
-            <Text strong className="assetDetailLabel">定妆照（三视图）</Text>
-            <div
-              className="assetDetailImage"
-              style={{ aspectRatio: '3/2' }}
-              onClick={() => editedCharacter.costumePhotoPath && setPreviewImage(toLocalUrl(editedCharacter.costumePhotoPath))}
-            >
+          <Space>
+            {editedCharacter.sora2CharacterId ? (
+              <Tag color="success" icon={<CheckCircleOutlined />}>
+                已绑定: {editedCharacter.sora2CharacterId.substring(0, 8)}...
+              </Tag>
+            ) : (
+              <Button
+                size="small"
+                type="primary"
+                ghost
+                icon={<LinkOutlined />}
+                loading={generating === 'extract'}
+                onClick={handleExtractCharacter}
+                disabled={!editedCharacter.previewVideoPath || generating !== null}
+              >
+                提取并绑定角色
+              </Button>
+            )}
+
+            <div className="toolbarDivider" />
+
+            <Tooltip title={viewMode === 'costume' ? '上传定妆照' : '上传视频'}>
+              <Button
+                type="text"
+                icon={<UploadOutlined />}
+                onClick={viewMode === 'costume' ? handleUploadCostume : handleUploadVideo}
+                aria-label={viewMode === 'costume' ? '上传定妆照' : '上传视频'}
+              />
+            </Tooltip>
+            <Tooltip title="放大预览">
+              <Button
+                type="text"
+                icon={<ExpandOutlined />}
+                onClick={() => {
+                  if (viewMode === 'costume' && editedCharacter.costumePhotoPath) {
+                    setPreviewImage(toLocalUrl(editedCharacter.costumePhotoPath));
+                  }
+                }}
+                disabled={viewMode === 'video' || !editedCharacter.costumePhotoPath}
+                aria-label="放大预览"
+              />
+            </Tooltip>
+          </Space>
+        </div>
+
+        <div className="creatorCanvasBody">
+          {viewMode === 'costume' ? (
+            <div className="creatorMediaViewer">
               {editedCharacter.costumePhotoPath ? (
                 <img src={toLocalUrl(editedCharacter.costumePhotoPath)} alt="定妆照" />
               ) : (
-                <Text type="secondary">未生成</Text>
+                <div className="creatorMediaPlaceholder">
+                  <UserOutlined />
+                  <div>暂无定妆照</div>
+                </div>
               )}
             </div>
-            <Space className="assetDetailActions">
-              <Button
-                size="small"
-                icon={generating === 'costume' ? <LoadingOutlined /> : <ThunderboltOutlined />}
-                onClick={handleGenerateCostume}
-                disabled={generating !== null}
-              >
-                {editedCharacter.costumePhotoPath ? '重新生成' : '生成'}
-              </Button>
-              <Button size="small" icon={<UploadOutlined />} onClick={handleUploadCostume} disabled={generating !== null}>
-                上传
-              </Button>
-            </Space>
-          </Col>
-
-          <Col span={14}>
-            <Form form={form} layout="vertical" size="small">
-              <Row gutter={16}>
-                <Col span={12}>
-                  <Form.Item name="name" label="名称" rules={[{ required: true, message: '请输入名称' }]}>
-                    <Input />
-                  </Form.Item>
-                </Col>
-                <Col span={12}>
-                  <Form.Item name="role" label="角色类型">
-                    <Select options={roleOptions} />
-                  </Form.Item>
-                </Col>
-              </Row>
-              <Form.Item name="age" label="年龄">
-                <Input placeholder="如：28岁" />
-              </Form.Item>
-              <Form.Item name="description" label="人物描述">
-                <TextArea rows={2} placeholder="人物性格、背景..." />
-              </Form.Item>
-              <Form.Item name="appearance" label="外貌描述（用于AI生成）">
-                <TextArea rows={2} placeholder="如：黑发，深邃眼神，身穿西装..." />
-              </Form.Item>
-            </Form>
-          </Col>
-        </Row>
-
-        <Divider />
-
-        <div className="assetDetailSection">
-          <div className="assetDetailSectionHeader">
-            <Text strong>生成提示词</Text>
-            <Button
-              type="text"
-              size="small"
-              icon={isPromptEditing ? <CheckCircleOutlined /> : <EditOutlined />}
-              onClick={() => setIsPromptEditing(!isPromptEditing)}
-            >
-              {isPromptEditing ? '完成' : '编辑'}
-            </Button>
-          </div>
-          {isPromptEditing ? (
-            <TextArea
-              value={customPrompt}
-              onChange={(e) => setCustomPrompt(e.target.value)}
-              rows={3}
-              placeholder="输入自定义提示词，留空使用自动生成"
-            />
           ) : (
-            <div className="assetDetailPrompt">
-              {currentPrompt || '(无提示词)'}
+            <div className="creatorMediaViewer">
+              {editedCharacter.previewVideoPath ? (
+                <video src={toLocalUrl(editedCharacter.previewVideoPath)} controls autoPlay loop />
+              ) : (
+                <div className="creatorMediaPlaceholder">
+                  <PlayCircleOutlined />
+                  <div>暂无预览视频</div>
+                </div>
+              )}
             </div>
-          )}
-          {customPrompt && (
-            <Text type="secondary" className="assetDetailPromptHint">
-              使用自定义提示词 · <a onClick={() => setCustomPrompt('')}>恢复自动</a>
-            </Text>
           )}
         </div>
-
-        <Divider />
-
-        <Row gutter={24}>
-          <Col span={12}>
-            <Text strong className="assetDetailLabel">预览视频</Text>
-            <div className="assetDetailVideo">
-              {editedCharacter.previewVideoPath ? (
-                <video src={toLocalUrl(editedCharacter.previewVideoPath)} controls />
-              ) : (
-                <Text type="secondary">未生成</Text>
-              )}
-            </div>
-            <Space className="assetDetailActions">
-              <Button
-                size="small"
-                icon={generating === 'video' ? <LoadingOutlined /> : <PlayCircleOutlined />}
-                onClick={handleGenerateVideo}
-                disabled={generating !== null || !editedCharacter.costumePhotoPath}
-              >
-                {editedCharacter.previewVideoPath ? '重新生成' : '生成'}
-              </Button>
-              <Button size="small" icon={<UploadOutlined />} onClick={handleUploadVideo} disabled={generating !== null}>
-                上传
-              </Button>
-            </Space>
-          </Col>
-
-          <Col span={12}>
-            <Text strong className="assetDetailLabel">Sora2 角色绑定</Text>
-            <div className="assetDetailBinding">
-              {editedCharacter.sora2CharacterId ? (
-                <>
-                  <CheckCircleOutlined className="bindingIconSuccess" />
-                  <Text type="success">已绑定</Text>
-                  <Text type="secondary" className="bindingId">{editedCharacter.sora2CharacterId}</Text>
-                </>
-              ) : (
-                <>
-                  <LinkOutlined className="bindingIconPending" />
-                  <Text type="secondary">未绑定</Text>
-                </>
-              )}
-            </div>
-            <Button
-              block
-              size="small"
-              icon={generating === 'extract' ? <LoadingOutlined /> : <LinkOutlined />}
-              onClick={handleExtractCharacter}
-              disabled={generating !== null || !editedCharacter.previewVideoPath}
-            >
-              {editedCharacter.sora2CharacterId ? '重新提取' : '提取角色'}
-            </Button>
-            <Text type="secondary" className="assetDetailHint">
-              需要先生成预览视频才能提取
-            </Text>
-          </Col>
-        </Row>
       </div>
 
+      {/* 大图预览 Modal */}
       <Modal
         open={!!previewImage}
         onCancel={() => setPreviewImage(null)}
         footer={null}
         centered
         width="auto"
-        styles={{ body: { padding: 0 } }}
+        styles={{ body: { padding: 0 }, content: { background: 'transparent', boxShadow: 'none' } }}
+        closeIcon={null}
       >
-        {previewImage && <img src={previewImage} alt="Preview" style={{ maxWidth: '90vw', maxHeight: '85vh' }} />}
+        {previewImage && (
+          <img
+            src={previewImage}
+            alt="Preview"
+            style={{ maxWidth: '95vw', maxHeight: '95vh', cursor: 'pointer' }}
+            onClick={() => setPreviewImage(null)}
+          />
+        )}
       </Modal>
     </div>
   );

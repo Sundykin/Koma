@@ -267,26 +267,42 @@ export function importFromManjuDSL(manju: ManjuProject): ImportedProjectData {
   };
 
   // 转换角色
-  const characters: Character[] = manju.characters.map((c) => ({
-    id: c.id,
-    name: c.name,
-    age: '', // Manju-DSL 没有 age 字段
-    role: c.role,
-    description: c.description,
-    appearance: c.appearance,
-    voiceId: c.voiceId,
-    costumePhotoPath: c.avatar,
-  }));
+  const characters: Character[] = manju.characters.map((c) => {
+    const promptParts: string[] = [];
+    if (c.appearance) promptParts.push(c.appearance);
+    if (c.description) promptParts.push(c.description);
+    return {
+      id: c.id,
+      name: c.name,
+      role: c.role,
+      prompt: promptParts.join('\n') || '',
+      voiceId: c.voiceId,
+      costumePhotoPath: c.avatar,
+      // 保留旧字段用于兼容
+      age: '',
+      description: c.description,
+      appearance: c.appearance,
+    };
+  });
 
   // 转换场景
-  const scenes: Scene[] = manju.scenes.map((s) => ({
-    id: s.id,
-    name: s.name,
-    location: s.location,
-    time: s.time,
-    mood: s.mood,
-    description: s.description,
-  }));
+  const scenes: Scene[] = manju.scenes.map((s) => {
+    const promptParts: string[] = [];
+    if (s.location) promptParts.push(`Location: ${s.location}`);
+    if (s.time) promptParts.push(`Time: ${s.time}`);
+    if (s.mood) promptParts.push(`Mood: ${s.mood}`);
+    if (s.description) promptParts.push(s.description);
+    return {
+      id: s.id,
+      name: s.name,
+      prompt: promptParts.join('\n') || '',
+      // 保留旧字段用于兼容
+      location: s.location,
+      time: s.time,
+      mood: s.mood,
+      description: s.description,
+    };
+  });
 
   // 转换分镜
   const shots: Shot[] = manju.shots.map((s) => ({
