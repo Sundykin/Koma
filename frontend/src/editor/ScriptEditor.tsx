@@ -56,8 +56,8 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
   const onChangeRef = useRef(onChange);
   // 用于动态更新 mention 相关扩展的 Compartment
   const mentionCompartmentRef = useRef(new Compartment());
-  // 标记是否是内部更新，避免循环
-  const isInternalUpdateRef = useRef(false);
+  // 记录最后一次从编辑器输出的值，用于避免循环更新
+  const lastOutputRef = useRef(value);
 
   // 更新 onChange 引用
   useEffect(() => {
@@ -116,14 +116,10 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
       // 文档变更监听
       EditorView.updateListener.of((update) => {
         if (update.docChanged && onChangeRef.current) {
-          // 标记为内部更新
-          isInternalUpdateRef.current = true;
           const newValue = update.state.doc.toString();
+          // 记录输出的值，用于在 value 同步 effect 中判断是否需要跳过
+          lastOutputRef.current = newValue;
           onChangeRef.current(newValue);
-          // 异步重置标记，确保 value 同步 effect 不会重复 dispatch
-          requestAnimationFrame(() => {
-            isInternalUpdateRef.current = false;
-          });
         }
       }),
 
@@ -234,11 +230,13 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
     const view = viewRef.current;
     if (!view) return;
 
-    // 如果是内部更新触发的 value 变化，跳过同步
-    if (isInternalUpdateRef.current) return;
+    // 如果编辑器有焦点，说明用户正在输入，不强制同步外部值
+    // 避免快速输入时因 React 异步更新导致的竞态条件
+    if (view.hasFocus) return;
 
     const currentValue = view.state.doc.toString();
     if (currentValue !== value) {
+      lastOutputRef.current = value;
       view.dispatch({
         changes: {
           from: 0,
