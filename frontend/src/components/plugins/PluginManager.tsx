@@ -2,7 +2,7 @@
  * 插件管理页面
  */
 import React, { useState } from 'react';
-import { Tabs, Empty, Input, Space, Select, Modal, message } from 'antd';
+import { Tabs, Empty, Input, Select, Modal, message } from 'antd';
 import { SearchOutlined } from '@ant-design/icons';
 import type { InstalledPlugin, PluginCategory } from '../../types/plugin';
 import { usePluginStore } from '../../store/pluginStore';
@@ -11,8 +11,6 @@ import { PluginImporter } from './PluginImporter';
 import { unloadPlugin } from '../../services/plugin/PluginLoader';
 import { cleanupPluginResources } from '../../services/plugin/PluginAPI';
 import { electronService } from '../../services/electronService';
-
-const { TabPane } = Tabs;
 
 export const PluginManager: React.FC = () => {
   const [searchText, setSearchText] = useState('');
@@ -85,72 +83,80 @@ export const PluginManager: React.FC = () => {
     console.log('[PluginManager] 插件导入成功:', pluginId);
   };
 
+  // 已安装插件列表内容
+  const installedContent = (
+    <>
+      {/* 搜索和筛选 */}
+      <div className="mb-4 flex gap-3">
+        <Input
+          placeholder="搜索插件..."
+          prefix={<SearchOutlined className="text-gray-400" />}
+          value={searchText}
+          onChange={e => setSearchText(e.target.value)}
+          style={{ width: 240 }}
+          allowClear
+        />
+        <Select
+          value={categoryFilter}
+          onChange={setCategoryFilter}
+          style={{ width: 140 }}
+          options={[
+            { value: 'all', label: '全部类型' },
+            { value: 'global', label: '全局插件' },
+            { value: 'provider', label: '服务提供' },
+            { value: 'tool', label: '工具' },
+          ]}
+        />
+      </div>
+
+      {/* 插件列表 */}
+      {filteredPlugins.length === 0 ? (
+        <Empty
+          description={searchText ? '未找到匹配的插件' : '暂无已安装的插件'}
+          className="my-12"
+        />
+      ) : (
+        <div className="grid gap-3">
+          {filteredPlugins.map(plugin => (
+            <PluginCard
+              key={plugin.id}
+              plugin={plugin}
+              onToggle={handleToggle}
+              onRemove={handleRemove}
+              onOpenFolder={handleOpenFolder}
+            />
+          ))}
+        </div>
+      )}
+    </>
+  );
+
+  // 导入插件内容
+  const importContent = (
+    <div className="max-w-md mx-auto py-8">
+      <PluginImporter onImportSuccess={handleImportSuccess} />
+
+      <div className="mt-8 p-4 bg-gray-50 rounded-lg">
+        <h4 className="font-medium mb-2">插件开发说明</h4>
+        <ul className="text-sm text-gray-500 space-y-1">
+          <li>• 插件包必须包含 <code>manifest.json</code> 清单文件</li>
+          <li>• 全局插件需要导出 React 组件作为 default</li>
+          <li>• 开发模式可直接从文件夹导入，方便调试</li>
+          <li>• 查看文档了解 manifest 规范和 API 接口</li>
+        </ul>
+      </div>
+    </div>
+  );
+
+  const tabItems = [
+    { key: 'installed', label: '已安装', children: installedContent },
+    { key: 'import', label: '导入插件', children: importContent },
+  ];
+
   return (
     <div className="plugin-manager p-6 h-full overflow-auto">
       <h2 className="text-xl font-semibold mb-4">插件管理</h2>
-
-      <Tabs defaultActiveKey="installed">
-        <TabPane tab="已安装" key="installed">
-          {/* 搜索和筛选 */}
-          <div className="mb-4 flex gap-3">
-            <Input
-              placeholder="搜索插件..."
-              prefix={<SearchOutlined className="text-gray-400" />}
-              value={searchText}
-              onChange={e => setSearchText(e.target.value)}
-              style={{ width: 240 }}
-              allowClear
-            />
-            <Select
-              value={categoryFilter}
-              onChange={setCategoryFilter}
-              style={{ width: 140 }}
-              options={[
-                { value: 'all', label: '全部类型' },
-                { value: 'global', label: '全局插件' },
-                { value: 'provider', label: '服务提供' },
-                { value: 'tool', label: '工具' },
-              ]}
-            />
-          </div>
-
-          {/* 插件列表 */}
-          {filteredPlugins.length === 0 ? (
-            <Empty
-              description={searchText ? '未找到匹配的插件' : '暂无已安装的插件'}
-              className="my-12"
-            />
-          ) : (
-            <div className="grid gap-3">
-              {filteredPlugins.map(plugin => (
-                <PluginCard
-                  key={plugin.id}
-                  plugin={plugin}
-                  onToggle={handleToggle}
-                  onRemove={handleRemove}
-                  onOpenFolder={handleOpenFolder}
-                />
-              ))}
-            </div>
-          )}
-        </TabPane>
-
-        <TabPane tab="导入插件" key="import">
-          <div className="max-w-md mx-auto py-8">
-            <PluginImporter onImportSuccess={handleImportSuccess} />
-
-            <div className="mt-8 p-4 bg-gray-50 rounded-lg">
-              <h4 className="font-medium mb-2">插件开发说明</h4>
-              <ul className="text-sm text-gray-500 space-y-1">
-                <li>• 插件包必须包含 <code>manifest.json</code> 清单文件</li>
-                <li>• 全局插件需要导出 React 组件作为 default</li>
-                <li>• 开发模式可直接从文件夹导入，方便调试</li>
-                <li>• 查看文档了解 manifest 规范和 API 接口</li>
-              </ul>
-            </div>
-          </div>
-        </TabPane>
-      </Tabs>
+      <Tabs defaultActiveKey="installed" items={tabItems} />
     </div>
   );
 };

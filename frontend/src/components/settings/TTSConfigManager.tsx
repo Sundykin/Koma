@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Card,
   Row,
@@ -37,8 +37,8 @@ import {
   updateTTSConfig,
   deleteTTSConfig,
   setDefaultTTSConfig,
-  TTS_PRESETS,
 } from '../../store/globalStore';
+import { listProviders, type ProviderDefinition } from '../../providers/registry';
 
 interface TTSConfigManagerProps {
   onConfigChange?: () => void;
@@ -52,6 +52,11 @@ export const TTSConfigManager: React.FC<TTSConfigManagerProps> = ({ onConfigChan
   const [editingConfig, setEditingConfig] = useState<TTSModelConfig | null>(null);
   const [testingId, setTestingId] = useState<string | null>(null);
   const [form] = Form.useForm();
+
+  // 从 Registry 获取可用的 TTS Provider
+  const availableProviders = useMemo(() => {
+    return listProviders('tts');
+  }, []);
 
   const loadConfigs = async () => {
     setLoading(true);
@@ -85,12 +90,21 @@ export const TTSConfigManager: React.FC<TTSConfigManagerProps> = ({ onConfigChan
     setModalVisible(true);
   };
 
-  const handlePresetChange = (provider: TTSProviderType) => {
-    const preset = TTS_PRESETS.find(p => p.id === provider);
-    if (preset) {
+  const handlePresetChange = (providerType: TTSProviderType) => {
+    const provider = availableProviders.find(p => p.type === providerType);
+    if (provider) {
+      // 从 configSchema 的 default 值填充表单
+      const defaults: Record<string, any> = {};
+      if (provider.configSchema?.properties) {
+        for (const [key, field] of Object.entries(provider.configSchema.properties)) {
+          if ((field as any).default !== undefined) {
+            defaults[key] = (field as any).default;
+          }
+        }
+      }
       form.setFieldsValue({
-        name: form.getFieldValue('name') || preset.name,
-        baseUrl: preset.baseUrl,
+        name: form.getFieldValue('name') || provider.name,
+        ...defaults,
       });
     }
   };
@@ -160,9 +174,9 @@ export const TTSConfigManager: React.FC<TTSConfigManagerProps> = ({ onConfigChan
     }
   };
 
-  const getProviderLabel = (provider: TTSProviderType) => {
-    const preset = TTS_PRESETS.find(p => p.id === provider);
-    return preset?.name || provider;
+  const getProviderLabel = (providerType: TTSProviderType) => {
+    const provider = availableProviders.find(p => p.type === providerType);
+    return provider?.name || providerType;
   };
 
   const getProviderColor = (provider: TTSProviderType) => {
@@ -172,13 +186,81 @@ export const TTSConfigManager: React.FC<TTSConfigManagerProps> = ({ onConfigChan
       case 'doubao-tts': return 'purple';
       case 'fish-audio': return 'cyan';
       case 'gpt-sovits': return 'orange';
-      default: return 'default';
+      default: return 'default'; // 插件 Provider
     }
   };
 
   const currentProvider = Form.useWatch('provider', form);
-  const needApiKey = currentProvider && currentProvider !== 'edge-tts' && currentProvider !== 'gpt-sovits';
-  const needBaseUrl = currentProvider && currentProvider !== 'edge-tts';
+  const currentProviderDef = useMemo(() => {
+    return availableProviders.find(p => p.type === currentProvider);
+  }, [currentProvider, availableProviders]);
+
+  // 根据 configSchema 判断字段需求
+  const needApiKey = useMemo(() => {
+    if (!currentProviderDef?.configSchema?.properties) return false;
+    const apiKeyField = currentProviderDef.configSchema.properties.apiKey;
+    return !!apiKeyField;
+  }, [currentProviderDef]);
+
+  const needBaseUrl = useMemo(() => {
+    if (!currentProviderDef?.configSchema?.properties) return false;
+    const baseUrlField = currentProviderDef.configSchema.properties.baseUrl;
+    return !!baseUrlField;
+  }, [currentProviderDef]);
+
+  const isApiKeyRequired = useMemo(() => {
+    if (!currentProviderDef?.configSchema) return false;
+    return currentProviderDef.configSchema.required?.includes('apiKey') || false;
+  }, [currentProviderDef]);
+
+  // 渲染动态表单字段（基于 configSchema）
+  const renderDynamicFields = () => {
+    if (!currentProviderDef?.configSchema?.properties) {
+      // 无 schema，显示基础字段
+      return (
+        <>
+          <Form.Item name="apiKey" label="API Key">
+            <Input.Password prefix={<KeyOutlined />} placeholder="输入 API Key" />
+          </Form.Item>
+          <Form.Item name="baseUrl" label="API 地址">
+            <Input prefix={<ApiOutlined />} placeholder="输入 API 地址" />
+          </Form.Item>
+        </>
+      );
+    }
+
+    const fields: React.ReactNode[] = [];
+    const props = currentProviderDef.configSchema.properties;
+
+    // apiKey 和 baseUrl 优先渲染
+    if (props.apiKey) {
+      fields.push(
+        <Form.Item
+          key="apiKey"
+          name="apiKey"
+          label={props.apiKey.title || 'API Key'}
+          rules={[{ required: isApiKeyRequired, message: `请输入 ${props.apiKey.title || 'API Key'}` }]}
+        >
+          <Input.Password prefix={<KeyOutlined />} placeholder={`输入 ${props.apiKey.title || 'API Key'}`} />
+        </Form.Item>
+      );
+    }
+
+    if (props.baseUrl) {
+      fields.push(
+        <Form.Item
+          key="baseUrl"
+          name="baseUrl"
+          label={props.baseUrl.title || 'API 地址'}
+          rules={[{ required: currentProviderDef.configSchema.required?.includes('baseUrl'), message: '请输入 API 地址' }]}
+        >
+          <Input prefix={<ApiOutlined />} placeholder={props.baseUrl.default || '输入 API 地址'} />
+        </Form.Item>
+      );
+    }
+
+    return fields;
+  };
 
   return (
     <div>
@@ -299,9 +381,12 @@ export const TTSConfigManager: React.FC<TTSConfigManagerProps> = ({ onConfigChan
             rules={[{ required: true, message: '请选择服务商' }]}
           >
             <Select placeholder="选择语音合成服务商" onChange={handlePresetChange}>
-              {TTS_PRESETS.map(preset => (
-                <Select.Option key={preset.id} value={preset.id}>
-                  {preset.name}
+              {availableProviders.map(provider => (
+                <Select.Option key={provider.type} value={provider.type}>
+                  <Space>
+                    <span>{provider.name}</span>
+                    {provider.pluginId && <Tag size="small">插件</Tag>}
+                  </Space>
                 </Select.Option>
               ))}
             </Select>
@@ -315,25 +400,7 @@ export const TTSConfigManager: React.FC<TTSConfigManagerProps> = ({ onConfigChan
             <Input placeholder="如: 我的 Fish Audio" />
           </Form.Item>
 
-          {needApiKey && (
-            <Form.Item
-              name="apiKey"
-              label="API Key"
-              rules={[{ required: needApiKey, message: '请输入 API Key' }]}
-            >
-              <Input.Password prefix={<KeyOutlined />} placeholder="输入 API Key" />
-            </Form.Item>
-          )}
-
-          {needBaseUrl && (
-            <Form.Item
-              name="baseUrl"
-              label="API 地址"
-              rules={[{ required: needBaseUrl, message: '请输入 API 地址' }]}
-            >
-              <Input prefix={<ApiOutlined />} placeholder="如: https://api.fish.audio" />
-            </Form.Item>
-          )}
+          {renderDynamicFields()}
 
           <Row gutter={16}>
             <Col span={12}>

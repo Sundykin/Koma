@@ -2,7 +2,50 @@
  * 媒体配置 CRUD (TTI/ITV/TTS)
  */
 import { loadSettings, saveSettings, generateId } from './core';
-import type { TTIModelConfig, ITVModelConfig, TTSModelConfig } from '../../types';
+import type { TTIModelConfig, ITVModelConfig, TTSModelConfig, ResolvedTTIConfig, ResolvedITVConfig } from '../../types';
+import type { ChannelConfig } from '../../providers/channel/types';
+import { getDefaultChannelConfig, getChannelConfigs } from './channelConfig';
+import { hasChannelCapability } from '../../providers/channel/types';
+
+// ========== 辅助函数：配置解析 ==========
+
+function resolveBuiltinTTIConfig(config: TTIModelConfig): ResolvedTTIConfig {
+  return { ...config, source: 'builtin' };
+}
+
+function resolveBuiltinITVConfig(config: ITVModelConfig): ResolvedITVConfig {
+  return { ...config, source: 'builtin' };
+}
+
+function resolveChannelTTIConfig(channel: ChannelConfig): ResolvedTTIConfig {
+  // 先展开 providerConfig，再覆盖元数据字段，确保元数据不被覆盖
+  return {
+    ...channel.providerConfig,
+    id: channel.id,
+    name: channel.name,
+    provider: channel.providerType as any,
+    isDefault: channel.isDefault || false,
+    createdAt: channel.createdAt,
+    updatedAt: channel.updatedAt,
+    source: 'channel',
+    channelConfig: channel,
+  };
+}
+
+function resolveChannelITVConfig(channel: ChannelConfig): ResolvedITVConfig {
+  // 先展开 providerConfig，再覆盖元数据字段，确保元数据不被覆盖
+  return {
+    ...channel.providerConfig,
+    id: channel.id,
+    name: channel.name,
+    provider: channel.providerType as any,
+    isDefault: channel.isDefault || false,
+    createdAt: channel.createdAt,
+    updatedAt: channel.updatedAt,
+    source: 'channel',
+    channelConfig: channel,
+  };
+}
 
 // ========== TTI 配置 ==========
 
@@ -87,12 +130,43 @@ export async function getTTIConfigById(id: string): Promise<TTIModelConfig | nul
   return settings.ttiConfigs.find(c => c.id === id) || null;
 }
 
-export async function getActiveTTIConfig(projectConfigId?: string): Promise<TTIModelConfig | null> {
+export async function getActiveTTIConfig(projectConfigId?: string): Promise<ResolvedTTIConfig | null> {
+  const settings = await loadSettings();
+  const channels = settings.channelConfigs || [];
+  const ttiChannels = channels.filter(c => c.enabled && hasChannelCapability(c, 'tti'));
+
+  // 1. 指定了 ID
   if (projectConfigId) {
-    const config = await getTTIConfigById(projectConfigId);
-    if (config) return config;
+    // 先查内置
+    const config = settings.ttiConfigs.find(c => c.id === projectConfigId);
+    if (config) return resolveBuiltinTTIConfig(config);
+
+    // 再查插件渠道（必须启用）
+    const channel = ttiChannels.find(c => c.id === projectConfigId);
+    if (channel) {
+      return resolveChannelTTIConfig(channel);
+    }
   }
-  return getDefaultTTIConfig();
+
+  // 2. 未指定 ID，查找默认配置
+  // 优先查插件渠道中明确设为默认的（isDefault === true）
+  const defaultChannel = ttiChannels.find(c => c.isDefault === true);
+  if (defaultChannel) {
+    return resolveChannelTTIConfig(defaultChannel);
+  }
+
+  // 再查内置默认
+  const builtinDefault = settings.ttiConfigs.find(c => c.isDefault) || settings.ttiConfigs[0];
+  if (builtinDefault) {
+    return resolveBuiltinTTIConfig(builtinDefault);
+  }
+
+  // 最后回退到第一个启用的插件渠道
+  if (ttiChannels.length > 0) {
+    return resolveChannelTTIConfig(ttiChannels[0]);
+  }
+
+  return null;
 }
 
 // ========== ITV 配置 ==========
@@ -178,12 +252,43 @@ export async function getITVConfigById(id: string): Promise<ITVModelConfig | nul
   return settings.itvConfigs.find(c => c.id === id) || null;
 }
 
-export async function getActiveITVConfig(projectConfigId?: string): Promise<ITVModelConfig | null> {
+export async function getActiveITVConfig(projectConfigId?: string): Promise<ResolvedITVConfig | null> {
+  const settings = await loadSettings();
+  const channels = settings.channelConfigs || [];
+  const itvChannels = channels.filter(c => c.enabled && hasChannelCapability(c, 'itv'));
+
+  // 1. 指定了 ID
   if (projectConfigId) {
-    const config = await getITVConfigById(projectConfigId);
-    if (config) return config;
+    // 先查内置
+    const config = settings.itvConfigs.find(c => c.id === projectConfigId);
+    if (config) return resolveBuiltinITVConfig(config);
+
+    // 再查插件渠道（必须启用）
+    const channel = itvChannels.find(c => c.id === projectConfigId);
+    if (channel) {
+      return resolveChannelITVConfig(channel);
+    }
   }
-  return getDefaultITVConfig();
+
+  // 2. 未指定 ID，查找默认配置
+  // 优先查插件渠道中明确设为默认的（isDefault === true）
+  const defaultChannel = itvChannels.find(c => c.isDefault === true);
+  if (defaultChannel) {
+    return resolveChannelITVConfig(defaultChannel);
+  }
+
+  // 再查内置默认
+  const builtinDefault = settings.itvConfigs.find(c => c.isDefault) || settings.itvConfigs[0];
+  if (builtinDefault) {
+    return resolveBuiltinITVConfig(builtinDefault);
+  }
+
+  // 最后回退到第一个启用的插件渠道
+  if (itvChannels.length > 0) {
+    return resolveChannelITVConfig(itvChannels[0]);
+  }
+
+  return null;
 }
 
 // ========== TTS 配置 ==========

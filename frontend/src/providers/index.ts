@@ -11,47 +11,57 @@ import type {
   TTIModelConfig,
   ITVModelConfig,
   TTSModelConfig,
+  ResolvedTTIConfig,
+  ResolvedITVConfig,
+  ResolvedTTSConfig,
 } from '../types';
+import type { ChannelConfig } from './channel/types';
 import {
   getActiveLLMConfig,
   getActiveTTIConfig,
   getActiveITVConfig,
   getActiveTTSConfig,
 } from '../store/globalStore';
+import { createProviderInstance, type ChannelKind } from './registry';
+import { usePluginStore } from '../store/pluginStore';
+import { createSandboxedFetch } from '../services/plugin/PluginSandbox';
 
 // 从子目录导入类型和工厂
 import { createLLMProvider, GeminiProvider, OpenAIProvider, ClaudeProvider } from './llm';
 import type { LLMProvider } from './llm/types';
 import { createTTIProvider, ComfyUIProvider } from './tti';
 import type { TTIProvider, ImageResult, TTIOptions } from './tti/types';
+import { createTTSProvider } from './tts';
 import type { TTSProvider, AudioResult, TTSOptions } from './tts/types';
 import { createITVProvider as createITVProviderFromConfig } from './itv';
 import type { ITVProvider, ProgressInfo, ITVOptions } from './itv/types';
+
+// 重新导出 ProviderManager
+export { providerManager, ProviderManager, type ProviderKindMap } from './manager';
+
+// 重新导出 Registry
+export {
+  type ChannelKind,
+  type ChannelCapability,
+  type ProviderDefinition,
+  type ProviderContext,
+  listProviders,
+  registerProvider,
+  unregisterProvider,
+  ttiRegistry,
+  itvRegistry,
+  ttsRegistry,
+} from './registry';
 
 // 重新导出子目录内容
 export { createLLMProvider, GeminiProvider, OpenAIProvider, ClaudeProvider } from './llm';
 export type { LLMProvider, ChatMessage } from './llm/types';
 export { createTTIProvider, ComfyUIProvider } from './tti';
 export type { TTIProvider, ImageResult, TTIOptions } from './tti/types';
+export { createTTSProvider } from './tts';
 export type { TTSProvider, AudioResult, TTSOptions } from './tts/types';
 export { createITVProvider as createITVProviderFromConfig } from './itv';
 export type { ITVProvider, ProgressInfo, ITVOptions } from './itv/types';
-
-// ========== TTS Provider 工厂 ==========
-
-export function createTTSProvider(config: TTSConfig): TTSProvider {
-  switch (config.provider) {
-    case 'edge-tts':
-      throw new Error('Edge TTS provider not implemented yet');
-    case 'openai-tts':
-      throw new Error('OpenAI TTS provider not implemented yet');
-    default:
-      throw new Error(`Unknown TTS provider: ${config.provider}`);
-  }
-}
-
-// ========== ITV Provider 工厂（使用 itv/index.ts 中的实现） ==========
-// createITVProviderFromConfig 已从 './itv' 导入
 
 // ========== 从 AppSettings 创建 Provider ==========
 
@@ -199,6 +209,67 @@ export function createTTIProviderFromConfig(config: TTIModelConfig): TTIProvider
   return createTTIProvider(config);
 }
 
+export function createTTSProviderFromConfig(config: TTSModelConfig): TTSProvider {
+  return createTTSProvider({
+    provider: config.provider,
+    apiKey: config.apiKey,
+    baseUrl: config.baseUrl,
+    defaultVoice: config.defaultVoice,
+  });
+}
+
+// ========== 插件渠道 Provider 创建 ==========
+
+/**
+ * 为插件渠道创建 Provider 上下文
+ */
+function createChannelProviderContext(channelConfig: ChannelConfig) {
+  if (channelConfig.source === 'plugin') {
+    if (!channelConfig.pluginId) {
+      console.error(`[Provider] 插件渠道 ${channelConfig.name} 缺少 pluginId`);
+      return null;
+    }
+
+    const plugin = usePluginStore.getState().getPlugin(channelConfig.pluginId);
+    if (!plugin) {
+      console.warn(`[Provider] 插件 ${channelConfig.pluginId} 未找到`);
+      return null;
+    }
+    if (!plugin.isEnabled) {
+      console.warn(`[Provider] 插件 ${channelConfig.pluginId} 已禁用`);
+      return null;
+    }
+
+    return {
+      sandboxedFetch: createSandboxedFetch(plugin),
+      pluginId: plugin.id,
+      logger: console,
+    };
+  }
+
+  return { sandboxedFetch: fetch, logger: console };
+}
+
+/**
+ * 从插件渠道配置创建 Provider 实例
+ */
+function createChannelProvider<T>(channelConfig: ChannelConfig, kind: ChannelKind): T | null {
+  const context = createChannelProviderContext(channelConfig);
+  if (!context) return null;
+
+  try {
+    return createProviderInstance<T>(
+      kind,
+      channelConfig.providerType,
+      channelConfig.providerConfig,
+      context
+    );
+  } catch (err: any) {
+    console.error(`[Provider] 创建插件 Provider 失败:`, err.message);
+    return null;
+  }
+}
+
 export async function getProjectLLMProvider(projectLLMConfigId?: string): Promise<LLMProvider | null> {
   const config = await getActiveLLMConfig(projectLLMConfigId);
   if (!config) return null;
@@ -208,12 +279,26 @@ export async function getProjectLLMProvider(projectLLMConfigId?: string): Promis
 export async function getProjectTTIProvider(projectTTIConfigId?: string): Promise<TTIProvider | null> {
   const config = await getActiveTTIConfig(projectTTIConfigId);
   if (!config) return null;
+
+  if (config.source === 'channel') {
+    console.log(`[Provider] 使用插件渠道 TTI: ${config.name} (${config.channelConfig.providerType})`);
+    return createChannelProvider<TTIProvider>(config.channelConfig, 'tti');
+  }
+
+  console.log(`[Provider] 使用内置 TTI: ${config.name} (${config.provider})`);
   return createTTIProviderFromConfig(config);
 }
 
 export async function getProjectITVProvider(projectITVConfigId?: string): Promise<ITVProvider | null> {
   const config = await getActiveITVConfig(projectITVConfigId);
   if (!config) return null;
+
+  if (config.source === 'channel') {
+    console.log(`[Provider] 使用插件渠道 ITV: ${config.name} (${config.channelConfig.providerType})`);
+    return createChannelProvider<ITVProvider>(config.channelConfig, 'itv');
+  }
+
+  console.log(`[Provider] 使用内置 ITV: ${config.name} (${config.provider})`);
   return createITVProviderFromConfig({
     provider: config.provider as any,
     apiKey: config.apiKey,
@@ -226,12 +311,18 @@ export async function getProjectITVProvider(projectITVConfigId?: string): Promis
 export async function getProjectTTSProvider(projectTTSConfigId?: string): Promise<TTSProvider | null> {
   const config = await getActiveTTSConfig(projectTTSConfigId);
   if (!config) return null;
-  return createTTSProvider({
-    provider: config.provider,
-    apiKey: config.apiKey,
-    baseUrl: config.baseUrl,
-    defaultVoice: config.defaultVoice,
-  });
+
+  // 支持插件渠道（如果有）
+  if ('source' in config && config.source === 'channel') {
+    const resolvedConfig = config as ResolvedTTSConfig;
+    if (resolvedConfig.source === 'channel') {
+      console.log(`[Provider] 使用插件渠道 TTS: ${resolvedConfig.name} (${resolvedConfig.channelConfig.providerType})`);
+      return createChannelProvider<TTSProvider>(resolvedConfig.channelConfig, 'tts');
+    }
+  }
+
+  console.log(`[Provider] 使用内置 TTS: ${config.name} (${config.provider})`);
+  return createTTSProviderFromConfig(config);
 }
 
 export async function getProjectProviders(project: {

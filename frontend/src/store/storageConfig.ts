@@ -2,7 +2,7 @@
  * 存储根目录配置
  * 管理存储路径、验证和迁移
  */
-import { electronService } from '../services/electronService';
+import { electronService, normalizePath } from '../services/electronService';
 import type { StorageConfig } from '../types';
 
 const STORAGE_VERSION = 1;
@@ -44,6 +44,8 @@ export function getStorageConfig(): StorageConfig | null {
     const data = localStorage.getItem(STORAGE_CONFIG_KEY);
     if (data) {
       const config = JSON.parse(data) as StorageConfig;
+      // 统一路径斜杠
+      config.rootPath = normalizePath(config.rootPath);
       // 验证路径有效性
       if (!isValidPath(config.rootPath)) {
         // 路径无效，清除缓存
@@ -59,7 +61,12 @@ export function getStorageConfig(): StorageConfig | null {
 }
 
 export function setStorageConfig(config: StorageConfig): void {
-  localStorage.setItem(STORAGE_CONFIG_KEY, JSON.stringify(config));
+  // 统一路径斜杠
+  const normalizedConfig = {
+    ...config,
+    rootPath: normalizePath(config.rootPath),
+  };
+  localStorage.setItem(STORAGE_CONFIG_KEY, JSON.stringify(normalizedConfig));
 }
 
 // 初始化存储配置

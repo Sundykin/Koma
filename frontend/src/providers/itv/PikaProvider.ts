@@ -8,7 +8,7 @@ import type {
   VideoResult,
   ProgressInfo,
 } from '../../types';
-import type { ITVProvider } from './types';
+import type { ITVProvider, ITVGenerateInput } from './types';
 
 export class PikaProvider implements ITVProvider {
   type = 'pika' as const;
@@ -41,22 +41,22 @@ export class PikaProvider implements ITVProvider {
     }
   }
 
-  async generate(
-    imagePath: string,
-    prompt: string,
-    options?: ITVOptions
-  ): Promise<string> {
+  async generateVideo(input: ITVGenerateInput): Promise<VideoResult> {
     if (!this.validate()) {
       throw new Error('Pika API Key 未配置');
     }
+
+    const { imageUrl, prompt, options } = input;
 
     // Pika API 提交生成任务
     const formData = new FormData();
 
     // 读取图片文件
-    const imageResponse = await fetch(imagePath);
-    const imageBlob = await imageResponse.blob();
-    formData.append('image', imageBlob, 'input.png');
+    if (imageUrl) {
+      const imageResponse = await fetch(imageUrl);
+      const imageBlob = await imageResponse.blob();
+      formData.append('image', imageBlob, 'input.png');
+    }
     formData.append('prompt', prompt);
     formData.append('duration', String(options?.duration || this.config.defaultDuration || 4));
 
@@ -78,7 +78,34 @@ export class PikaProvider implements ITVProvider {
     }
 
     const data = await response.json();
-    return data.task_id || data.id;
+    const taskId = data.task_id || data.id;
+
+    // 轮询等待完成
+    const pollingConfig = this.polling;
+    const startTime = Date.now();
+
+    while (Date.now() - startTime < pollingConfig.maxDuration) {
+      const progress = await this.checkProgress(taskId);
+
+      if (progress.status === 'completed' && progress.resultUrl) {
+        return {
+          url: progress.resultUrl,
+          path: progress.resultUrl,
+          duration: options?.duration || 4,
+          width: 1280,
+          height: 720,
+          fps: 24,
+        };
+      }
+
+      if (progress.status === 'failed') {
+        throw new Error(progress.error || '视频生成失败');
+      }
+
+      await this.delay(pollingConfig.interval);
+    }
+
+    throw new Error('视频生成超时');
   }
 
   async checkProgress(taskId: string): Promise<ProgressInfo> {
@@ -120,5 +147,16 @@ export class PikaProvider implements ITVProvider {
         Authorization: `Bearer ${this.config.apiKey}`,
       },
     });
+  }
+
+  private get polling() {
+    return {
+      interval: 3000,
+      maxDuration: 300000,
+    };
+  }
+
+  private delay(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
   }
 }

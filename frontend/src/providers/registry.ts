@@ -10,10 +10,10 @@ export type { PollingConfig } from './polling';
 export { DEFAULT_POLLING_CONFIG } from './polling';
 
 // 渠道类型
-export type ChannelKind = 'tti' | 'itv';
+export type ChannelKind = 'tti' | 'itv' | 'tts';
 
 // 渠道能力
-export type ChannelCapability = 'tti' | 'itv' | 'character-extract' | 'remix';
+export type ChannelCapability = 'tti' | 'itv' | 'tts' | 'character-extract' | 'remix';
 
 // Provider 上下文
 export interface ProviderContext {
@@ -94,10 +94,15 @@ class ProviderRegistryImpl<T> implements IProviderRegistry<T> {
 // 全局注册表实例
 export const ttiRegistry = new ProviderRegistryImpl<any>();
 export const itvRegistry = new ProviderRegistryImpl<any>();
+export const ttsRegistry = new ProviderRegistryImpl<any>();
 
 // 获取注册表
 export function getRegistry(kind: ChannelKind): IProviderRegistry<any> {
-  return kind === 'tti' ? ttiRegistry : itvRegistry;
+  switch (kind) {
+    case 'tti': return ttiRegistry;
+    case 'itv': return itvRegistry;
+    case 'tts': return ttsRegistry;
+  }
 }
 
 // 注册 Provider（通用入口）
@@ -116,6 +121,7 @@ export function unregisterProvider(kind: ChannelKind, type: string): void {
 export function unregisterProvidersByPlugin(pluginId: string): void {
   ttiRegistry.unregisterByPlugin(pluginId);
   itvRegistry.unregisterByPlugin(pluginId);
+  ttsRegistry.unregisterByPlugin(pluginId);
 }
 
 // 列出所有 Provider
@@ -123,19 +129,21 @@ export function listProviders(kind?: ChannelKind): ProviderDefinition<any>[] {
   if (kind) {
     return getRegistry(kind).list();
   }
-  return [...ttiRegistry.list(), ...itvRegistry.list()];
+  return [...ttiRegistry.list(), ...itvRegistry.list(), ...ttsRegistry.list()];
 }
 
-// 创建 Provider 实例
+// 创建 Provider 实例（强制要求 kind）
 export function createProviderInstance<T>(
+  kind: ChannelKind,
   type: string,
   config: Record<string, any>,
   ctx?: Partial<ProviderContext>
 ): T {
-  // 先查 TTI，再查 ITV
-  let def = ttiRegistry.get(type) || itvRegistry.get(type);
+  const registry = getRegistry(kind);
+  const def = registry.get(type);
+
   if (!def) {
-    throw new Error(`Provider type "${type}" not found`);
+    throw new Error(`Provider type "${type}" not found in ${kind} registry`);
   }
 
   // 插件 Provider 必须提供 sandboxedFetch，内置 Provider 可以使用全局 fetch

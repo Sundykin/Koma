@@ -157,20 +157,19 @@ export class Sora2Provider implements ITVProvider {
   }
 
   /**
-   * 创建视频生成任务
-   * @param imagePath 图片 URL（图生视频）或空字符串（文生视频）
-   * @param prompt 提示词
-   * @param options 扩展选项
-   * @returns taskId 用于轮询结果
+   * 生成视频（统一接口）
+   * 提交任务后内部轮询等待完成
    */
-  async generate(
-    imagePath: string,
-    prompt: string,
-    options?: Sora2Options
-  ): Promise<string> {
+  async generateVideo(input: {
+    imageUrl?: string;
+    prompt: string;
+    options?: Sora2Options;
+  }): Promise<{ url: string; path: string; duration: number; width: number; height: number; fps: number; taskId?: string }> {
     if (!this.validate()) {
       throw new Error('API Key 未配置');
     }
+
+    const { imageUrl, prompt, options } = input;
 
     const body: Record<string, any> = {
       model: options?.model || 'sora-2',
@@ -180,8 +179,8 @@ export class Sora2Provider implements ITVProvider {
     };
 
     // 图生视频
-    if (imagePath) {
-      body.image_urls = [imagePath];
+    if (imageUrl) {
+      body.image_urls = [imageUrl];
     }
 
     // 元数据
@@ -252,7 +251,52 @@ export class Sora2Provider implements ITVProvider {
     }
 
     const data: Sora2CreateResponse = await response.json();
-    return data.id;
+    const taskId = data.id;
+
+    // 轮询等待完成
+    const pollingConfig = this.polling;
+    const startTime = Date.now();
+
+    // 初始延迟
+    if (pollingConfig.initialDelay) {
+      await this.delay(pollingConfig.initialDelay);
+    }
+
+    while (Date.now() - startTime < pollingConfig.maxDuration) {
+      const progress = await this.checkProgress(taskId);
+
+      if (progress.status === 'completed' && progress.resultUrl) {
+        return {
+          url: progress.resultUrl,
+          path: progress.resultUrl,
+          duration: options?.duration || 10,
+          width: 1920,
+          height: 1080,
+          fps: 24,
+          taskId,
+        };
+      }
+
+      if (progress.status === 'failed') {
+        throw new Error(progress.error || '视频生成失败');
+      }
+
+      await this.delay(pollingConfig.interval);
+    }
+
+    throw new Error('视频生成超时');
+  }
+
+  private get polling() {
+    return {
+      interval: 5000,
+      maxDuration: 600000,
+      initialDelay: 3000,
+    };
+  }
+
+  private delay(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
   }
 
   /**

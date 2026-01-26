@@ -2,7 +2,7 @@
  * Runway Gen-3 Provider
  */
 import type { ITVConfig, ITVOptions, VideoResult, ProgressInfo } from '../../types';
-import type { ITVProvider } from './types';
+import type { ITVProvider, ITVGenerateInput } from './types';
 
 export class RunwayProvider implements ITVProvider {
   type: 'runway' = 'runway';
@@ -21,15 +21,9 @@ export class RunwayProvider implements ITVProvider {
     return this.validate();
   }
 
-  async generate(
-    imagePath: string,
-    prompt: string,
-    options?: ITVOptions
-  ): Promise<string> {
-    // Runway API 是异步的，返回 taskId
+  async generateVideo(input: ITVGenerateInput): Promise<VideoResult> {
     // TODO: 实现 Runway Gen-3 API 调用
     // 参考: https://docs.runwayml.com/
-
     throw new Error('Runway provider not implemented yet');
   }
 

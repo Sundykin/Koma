@@ -41,6 +41,7 @@ import {
 import { electronService, openFileDialog, fsCopy, fsMkdir, fsExists } from '../../services/electronService';
 import { getStorageConfig, initStorageConfig } from '../../store/storageConfig';
 import { saveCharacters, loadCharacters } from '../../store/projectStore';
+import { useActiveConfig } from '../../hooks/useActiveConfig';
 
 const { TextArea } = Input;
 const { Text } = Typography;
@@ -71,6 +72,9 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
 }) => {
   const { message } = App.useApp();
   const [form] = Form.useForm();
+  
+  const { config: activeTTI } = useActiveConfig('tti', ttiConfigId);
+  const { config: activeITV } = useActiveConfig('itv', itvConfigId);
 
   const [editedCharacter, setEditedCharacter] = useState<Character>(character);
   const [viewMode, setViewMode] = useState<ViewMode>('costume');
@@ -406,27 +410,31 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
               </div>
             )}
 
-            <Button
-              type={!editedCharacter.costumePhotoPath ? 'primary' : 'default'}
-              block
-              icon={<ThunderboltOutlined />}
-              onClick={handleGenerateCostume}
-              loading={generating === 'costume'}
-              disabled={generating !== null}
-            >
-              生成定妆照 (三视图)
-            </Button>
+            <Tooltip title={activeTTI ? `使用服务: ${activeTTI.name}` : '未配置生成服务'}>
+              <Button
+                type={!editedCharacter.costumePhotoPath ? 'primary' : 'default'}
+                block
+                icon={<ThunderboltOutlined />}
+                onClick={handleGenerateCostume}
+                loading={generating === 'costume'}
+                disabled={generating !== null}
+              >
+                生成定妆照 (三视图)
+              </Button>
+            </Tooltip>
 
-            <Button
-              type={editedCharacter.costumePhotoPath && !editedCharacter.previewVideoPath ? 'primary' : 'default'}
-              block
-              icon={<PlayCircleOutlined />}
-              onClick={handleGenerateVideo}
-              loading={generating === 'video'}
-              disabled={generating !== null || !editedCharacter.costumePhotoPath}
-            >
-              生成预览视频
-            </Button>
+            <Tooltip title={activeITV ? `使用服务: ${activeITV.name}` : '未配置视频服务'}>
+              <Button
+                type={editedCharacter.costumePhotoPath && !editedCharacter.previewVideoPath ? 'primary' : 'default'}
+                block
+                icon={<PlayCircleOutlined />}
+                onClick={handleGenerateVideo}
+                loading={generating === 'video'}
+                disabled={generating !== null || !editedCharacter.costumePhotoPath}
+              >
+                生成预览视频
+              </Button>
+            </Tooltip>
           </div>
         </div>
       </div>

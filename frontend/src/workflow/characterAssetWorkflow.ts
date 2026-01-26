@@ -4,7 +4,7 @@
  */
 import type { Character, AsyncTask } from '../types';
 import { getProjectTTIProvider, getProjectITVProvider } from '../providers';
-import { createTask, updateTask, markTaskCompleted, markTaskFailed } from '../store/taskQueueStore';
+import { createTask, markTaskCompleted, markTaskFailed } from '../store/taskQueueStore';
 import { pollTaskUntilComplete, registerProgressChecker } from '../store/taskRecoveryService';
 import { downloadRemoteAsset } from '../store/assetDownloadService';
 import {
@@ -222,45 +222,35 @@ export async function generateCharacterPreviewVideo(
       { projectId, targetId: character.id, targetName: `${character.name} 预览视频` }
     );
 
-    const taskId = await itvProvider.generate(imageSource, prompt, {
-      duration: 4,
-      aspectRatio: '9:16',
+    // 调用 ITV Provider 生成视频
+    const result = await itvProvider.generateVideo({
+      imageUrl: imageSource,
+      prompt,
+      options: { duration: 4, aspectRatio: '9:16' },
     });
 
-    if (typeof taskId === 'string' && itvProvider.checkProgress) {
-      await updateTask(projectId, task.id, { remoteTaskId: taskId, status: 'processing' });
+    if (result.url || (result as any).path) {
+      const videoUrl = result.url || (result as any).path;
+      const videoTaskId = (result as any).taskId;
 
-      // 轮询等待完成
-      let progress = await itvProvider.checkProgress(taskId);
-      while (progress.status === 'queued' || progress.status === 'processing') {
-        await sleep(3000);
-        progress = await itvProvider.checkProgress(taskId);
-        onProgress?.(10 + progress.progress * 0.8, `生成中 ${progress.progress}%`);
+      onProgress?.(90, '下载视频...');
+      const config = getStorageConfig() || (await initStorageConfig());
+      const localPath = `${config.rootPath}/projects/${projectId}/assets/characters/${character.id}/preview.mp4`;
+      const downloadResult = await downloadRemoteAsset(videoUrl, localPath);
+
+      if (downloadResult.success && downloadResult.localPath) {
+        await markTaskCompleted(projectId, task.id, videoUrl, downloadResult.localPath);
+        await updateCharacterAsset(projectId, character.id, {
+          previewVideoPath: downloadResult.localPath,
+          previewVideoTaskId: videoTaskId,
+        });
+        onProgress?.(100, '完成');
+        return { success: true, path: downloadResult.localPath, taskId: videoTaskId };
       }
-
-      if (progress.status === 'completed' && progress.resultUrl) {
-        onProgress?.(90, '下载视频...');
-        const config = getStorageConfig() || (await initStorageConfig());
-        const localPath = `${config.rootPath}/projects/${projectId}/assets/characters/${character.id}/preview.mp4`;
-        const downloadResult = await downloadRemoteAsset(progress.resultUrl, localPath);
-
-        if (downloadResult.success && downloadResult.localPath) {
-          await markTaskCompleted(projectId, task.id, progress.resultUrl, downloadResult.localPath);
-          // 同时保存视频路径和任务 ID（用于后续角色提取 API）
-          await updateCharacterAsset(projectId, character.id, {
-            previewVideoPath: downloadResult.localPath,
-            previewVideoTaskId: taskId,
-          });
-          onProgress?.(100, '完成');
-          return { success: true, path: downloadResult.localPath, taskId };
-        }
-      }
-
-      await markTaskFailed(projectId, task.id, progress.error || '生成失败');
-      return { success: false, error: progress.error || '生成失败' };
+      return { success: false, error: '下载视频失败' };
     }
 
-    return { success: false, error: 'ITV Provider 不支持异步任务' };
+    return { success: false, error: '视频生成失败：未返回有效结果' };
   } catch (err: any) {
     logger.error(`生成预览视频失败: ${character.name}`, { error: err.message });
     return { success: false, error: err.message };

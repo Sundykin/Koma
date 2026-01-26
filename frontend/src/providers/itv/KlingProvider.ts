@@ -2,7 +2,7 @@
  * Kling (可灵) Provider
  */
 import type { ITVConfig, ITVOptions, VideoResult, ProgressInfo } from '../../types';
-import type { ITVProvider } from './types';
+import type { ITVProvider, ITVGenerateInput } from './types';
 
 export class KlingProvider implements ITVProvider {
   type: 'kling' = 'kling';
@@ -20,14 +20,9 @@ export class KlingProvider implements ITVProvider {
     return this.validate();
   }
 
-  async generate(
-    imagePath: string,
-    prompt: string,
-    options?: ITVOptions
-  ): Promise<string> {
+  async generateVideo(input: ITVGenerateInput): Promise<VideoResult> {
     // TODO: 实现可灵 API 调用
     // 可灵特性：首尾帧控制、运动控制
-
     throw new Error('Kling provider not implemented yet');
   }
 

@@ -8,7 +8,7 @@ import type {
   VideoResult,
   ProgressInfo,
 } from '../../types';
-import type { ITVProvider } from './types';
+import type { ITVProvider, ITVGenerateInput } from './types';
 
 // AnimateDiff 工作流配置
 interface AnimateDiffWorkflow {
@@ -139,12 +139,9 @@ export class ComfyUIAnimateDiffProvider implements ITVProvider {
     };
   }
 
-  async generate(
-    imagePath: string,
-    prompt: string,
-    options?: ITVOptions
-  ): Promise<string> {
+  async generateVideo(input: ITVGenerateInput): Promise<VideoResult> {
     const baseUrl = this.getBaseUrl();
+    const { imageUrl, prompt, options } = input;
 
     // 构建工作流参数
     const duration = options?.duration || this.config.defaultDuration || 4;
@@ -162,7 +159,7 @@ export class ComfyUIAnimateDiffProvider implements ITVProvider {
       frames,
       fps,
       motion_module: 'mm_sd_v15_v2.ckpt',
-      image: await this.imageToBase64(imagePath),
+      image: imageUrl ? await this.imageToBase64(imageUrl) : undefined,
     });
 
     // 提交任务到 ComfyUI
@@ -183,7 +180,34 @@ export class ComfyUIAnimateDiffProvider implements ITVProvider {
     }
 
     const data = await response.json();
-    return data.prompt_id;
+    const taskId = data.prompt_id;
+
+    // 轮询等待完成
+    const pollingConfig = this.polling;
+    const startTime = Date.now();
+
+    while (Date.now() - startTime < pollingConfig.maxDuration) {
+      const progress = await this.checkProgress(taskId);
+
+      if (progress.status === 'completed' && progress.resultUrl) {
+        return {
+          url: progress.resultUrl,
+          path: progress.resultUrl,
+          duration,
+          width: options?.width || 512,
+          height: options?.height || 512,
+          fps,
+        };
+      }
+
+      if (progress.status === 'failed') {
+        throw new Error(progress.error || '视频生成失败');
+      }
+
+      await this.delay(pollingConfig.interval);
+    }
+
+    throw new Error('视频生成超时');
   }
 
   async checkProgress(taskId: string): Promise<ProgressInfo> {
@@ -262,5 +286,16 @@ export class ComfyUIAnimateDiffProvider implements ITVProvider {
     await fetch(`${baseUrl}/interrupt`, {
       method: 'POST',
     });
+  }
+
+  private get polling() {
+    return {
+      interval: 2000,
+      maxDuration: 300000,
+    };
+  }
+
+  private delay(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
   }
 }

@@ -184,8 +184,12 @@ export async function listProjects(): Promise<ProjectMeta[]> {
     const projects: ProjectMeta[] = [];
 
     for (const entry of entries) {
+      const projectFile = `${root}/${entry}/project.json`;
+      const exists = await electronService.fs.exists(projectFile);
+      if (!exists) continue;
+
       try {
-        const data = await electronService.fs.readFile(`${root}/${entry}/project.json`);
+        const data = await electronService.fs.readFile(projectFile);
         projects.push(JSON.parse(data));
       } catch {
         // skip invalid projects

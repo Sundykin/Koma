@@ -29,6 +29,7 @@ import { generateSceneImage } from '../../workflow/scenePropAssetWorkflow';
 import { electronService, openFileDialog, fsCopy, fsMkdir, fsExists } from '../../services/electronService';
 import { getStorageConfig, initStorageConfig } from '../../store/storageConfig';
 import { saveScenes, loadScenes } from '../../store/projectStore';
+import { useActiveConfig } from '../../hooks/useActiveConfig';
 
 const { TextArea } = Input;
 const { Text } = Typography;
@@ -54,6 +55,8 @@ export const SceneDetailPanel: React.FC<SceneDetailPanelProps> = ({
 }) => {
   const { message } = App.useApp();
   const [form] = Form.useForm();
+
+  const { config: activeTTI } = useActiveConfig('tti', ttiConfigId);
 
   const [editedScene, setEditedScene] = useState<Scene>(scene);
   const [generating, setGenerating] = useState(false);
@@ -249,16 +252,18 @@ export const SceneDetailPanel: React.FC<SceneDetailPanelProps> = ({
               </div>
             )}
 
-            <Button
-              type={!editedScene.imagePath ? 'primary' : 'default'}
-              block
-              icon={<ThunderboltOutlined />}
-              onClick={handleGenerateImage}
-              loading={generating}
-              disabled={generating}
-            >
-              {editedScene.imagePath ? '重新生成场景图' : '生成场景图'}
-            </Button>
+            <Tooltip title={activeTTI ? `使用服务: ${activeTTI.name}` : '未配置生成服务'}>
+              <Button
+                type={!editedScene.imagePath ? 'primary' : 'default'}
+                block
+                icon={<ThunderboltOutlined />}
+                onClick={handleGenerateImage}
+                loading={generating}
+                disabled={generating}
+              >
+                {editedScene.imagePath ? '重新生成场景图' : '生成场景图'}
+              </Button>
+            </Tooltip>
           </div>
         </div>
       </div>

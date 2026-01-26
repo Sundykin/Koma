@@ -337,14 +337,14 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
       },
 
       /**
-       * 测试 Provider
+       * 测试 Provider（需要指定 kind）
        */
-      async testProvider(type: string, config: Record<string, any>): Promise<ChannelTestResult> {
+      async testProvider(kind: ChannelKind, type: string, config: Record<string, any>): Promise<ChannelTestResult> {
         const { createProviderInstance } = await import('../../providers/registry');
         const start = Date.now();
 
         try {
-          const provider = createProviderInstance<{ testConnection?: () => Promise<boolean> }>(type, config, {
+          const provider = createProviderInstance<{ testConnection?: () => Promise<boolean> }>(kind, type, config, {
             sandboxedFetch: createSandboxedFetch(plugin),
             pluginId,
           });
@@ -391,7 +391,12 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
           return { success: false, latency: 0, error: '渠道不存在' };
         }
 
-        return this.testProvider(config.providerType, config.providerConfig);
+        // 从 capabilities 推断 kind
+        const kind: ChannelKind = config.capabilities?.includes('tts') ? 'tts'
+          : config.capabilities?.includes('itv') ? 'itv'
+          : 'tti';
+
+        return this.testProvider(kind, config.providerType, config.providerConfig);
       },
 
 

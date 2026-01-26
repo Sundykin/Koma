@@ -30,7 +30,7 @@ import {
   getStorageConfig,
   updateStoragePath,
 } from '../../store/storageConfig';
-import { electronService } from '../../services/electronService';
+import { electronService, normalizePath } from '../../services/electronService';
 import { LLMConfigManager } from './LLMConfigManager';
 import { TTIConfigManager } from './TTIConfigManager';
 import { ITVConfigManager } from './ITVConfigManager';
@@ -63,12 +63,38 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
     form.setFieldsValue(flattenSettings(settings));
   }, [settings, form]);
 
+  // 计算存储空间大小
+  const calcStorageSize = async (path?: string) => {
+    const targetPath = path || getStorageConfig()?.rootPath;
+    if (!targetPath || !electronService.isElectron()) {
+      setStorageSize('N/A');
+      return;
+    }
+    setStorageSize('计算中...');
+    try {
+      const size = await electronService.fs.dirSize(targetPath);
+      setStorageSize(formatBytes(size));
+    } catch {
+      setStorageSize('计算失败');
+    }
+  };
+
   useEffect(() => {
     const config = getStorageConfig();
     if (config) {
-      setStoragePath(config.rootPath || '~/.koma');
+      setStoragePath(normalizePath(config.rootPath) || '~/.koma');
     }
+    calcStorageSize();
   }, []);
+
+  // 格式化字节大小
+  const formatBytes = (bytes: number): string => {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  };
 
   const handleChangeStoragePath = async () => {
     if (!electronService.isElectron()) {
@@ -78,7 +104,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
 
     const result = await electronService.dialog.openDirectory();
     if (result.filePaths && result.filePaths.length > 0) {
-      const newPath = result.filePaths[0];
+      const newPath = result.filePaths[0]; // 已经被 normalizePath 处理过
 
       modal.confirm({
         title: '修改存储位置',
@@ -94,6 +120,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
           try {
             await updateStoragePath(newPath, true);
             setStoragePath(newPath);
+            calcStorageSize(newPath);
             message.success('存储位置已修改并迁移数据');
           } catch (err: any) {
             message.error(`迁移失败: ${err.message}`);
@@ -103,6 +130,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
           try {
             await updateStoragePath(newPath, false);
             setStoragePath(newPath);
+            calcStorageSize(newPath);
             message.success('存储位置已修改');
           } catch (err: any) {
             message.error(`修改失败: ${err.message}`);

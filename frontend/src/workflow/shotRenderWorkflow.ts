@@ -199,34 +199,22 @@ export async function shotRenderWorkflow(
       { projectId, targetId: shot.id, targetName: `分镜视频: ${shot.id}` }
     );
 
-    // 调用 ITV 生成视频（参考图片可选）
-    const taskId = await itvProvider.generate(referenceImageUrl || '', videoPrompt, {
-      duration: shot.duration,
-      motionPrompt: shot.cameraMovement,
+    // 调用 ITV Provider 生成视频
+    const result = await itvProvider.generateVideo({
+      imageUrl: referenceImageUrl || '',
+      prompt: videoPrompt,
+      options: { duration: shot.duration, motionPrompt: shot.cameraMovement },
     });
 
-    // 轮询进度
-    if (typeof taskId === 'string' && itvProvider.checkProgress) {
-      await updateTask(projectId, itvTask.id, { remoteTaskId: taskId, status: 'processing' });
-
-      let videoProgress = await itvProvider.checkProgress(taskId);
-      while (videoProgress.status === 'processing' || videoProgress.status === 'queued') {
-        await sleep(2000);
-        videoProgress = await itvProvider.checkProgress(taskId);
-        const p = 20 + (videoProgress.progress || 0) * 0.75;
-        onProgress(p, `视频生成中 ${Math.round(videoProgress.progress || 0)}%`);
-      }
-
-      if (videoProgress.status === 'completed' && videoProgress.resultUrl) {
-        videoPath = videoProgress.resultUrl;
-        remoteVideoUrl = videoProgress.resultUrl;
-        await markTaskCompleted(projectId, itvTask.id, videoProgress.resultUrl, videoPath);
-        logger.info(`视频生成完成: ${videoPath}`);
-        onProgress(95, '视频生成完成');
-      } else {
-        await markTaskFailed(projectId, itvTask.id, videoProgress.error || '视频生成失败');
-        throw new Error(videoProgress.error || '视频生成失败');
-      }
+    if (result.url || (result as any).path) {
+      videoPath = result.url || (result as any).path;
+      remoteVideoUrl = videoPath;
+      const taskId = (result as any).taskId;
+      await markTaskCompleted(projectId, itvTask.id, videoPath!, videoPath!);
+      logger.info(`视频生成完成: ${videoPath}`);
+      onProgress(95, '视频生成完成');
+    } else {
+      throw new Error('视频生成失败：未返回有效结果');
     }
 
     // 步骤3: 保存版本

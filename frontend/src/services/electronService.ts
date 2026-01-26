@@ -108,6 +108,12 @@ export const isElectron = (): boolean => {
   return typeof window !== 'undefined' && 'electronAPI' in window;
 };
 
+// 统一路径斜杠为 /（跨平台兼容）
+export const normalizePath = (path: string): string => {
+  if (!path) return path;
+  return path.replace(/\\/g, '/');
+};
+
 // 获取 Electron API（如果可用）
 const getElectronAPI = (): ElectronAPI | null => {
   if (isElectron()) {
@@ -188,7 +194,12 @@ export const openFileDialog = async (
 export const openDirectoryDialog = async (): Promise<OpenDialogResult> => {
   const api = getElectronAPI();
   if (api) {
-    return await api.dialog.openDirectory();
+    const result = await api.dialog.openDirectory();
+    // 统一路径斜杠
+    return {
+      ...result,
+      filePaths: result.filePaths.map(normalizePath),
+    };
   }
   return { canceled: true, filePaths: [] };
 };
@@ -282,6 +293,31 @@ export const fsCopy = async (src: string, dest: string): Promise<void> => {
   }
 };
 
+// 递归计算目录大小
+export const fsDirSize = async (dirPath: string): Promise<number> => {
+  const api = getElectronAPI();
+  if (!api) return 0;
+
+  let totalSize = 0;
+  try {
+    const entries = await fsReaddir(dirPath);
+    for (const entry of entries) {
+      const fullPath = `${dirPath}/${entry}`;
+      const stat = await fsStat(fullPath);
+      if (stat) {
+        if (stat.isDirectory) {
+          totalSize += await fsDirSize(fullPath);
+        } else {
+          totalSize += stat.size;
+        }
+      }
+    }
+  } catch {
+    // 忽略读取错误
+  }
+  return totalSize;
+};
+
 // 从 URL 下载文件到本地（绕过 CORS）
 export const fsDownloadFile = async (
   url: string,
@@ -340,6 +376,17 @@ export const shellShowItemInFolder = async (path: string): Promise<void> => {
   }
 };
 
+// 用系统默认程序打开路径（文件夹会在资源管理器中打开）
+export const shellOpenPath = async (path: string): Promise<void> => {
+  const api = getElectronAPI();
+  if (api && (api.shell as any).openPath) {
+    await (api.shell as any).openPath(path);
+  } else {
+    // fallback: 使用 showItemInFolder
+    await shellShowItemInFolder(path);
+  }
+};
+
 // ========== App ==========
 
 export const appGetPath = async (
@@ -349,9 +396,10 @@ export const appGetPath = async (
   if (api) {
     const result = await api.app.getPath(name);
     // Controller 返回 { path: string }，需要解包
-    return typeof result === 'object' && result !== null && 'path' in result
+    const path = typeof result === 'object' && result !== null && 'path' in result
       ? (result as { path: string }).path
       : (result as string);
+    return normalizePath(path);
   }
   // 浏览器 fallback
   return '';
@@ -505,6 +553,7 @@ export const electronService = {
     copy: fsCopy,
     downloadFile: fsDownloadFile,
     writeFileBuffer: fsWriteFileBuffer,
+    dirSize: fsDirSize,
     // 将本地文件路径转换为可用的 URL
     toLocalUrl: (filePath: string): string => {
       if (!filePath) return '';
@@ -525,6 +574,7 @@ export const electronService = {
   shell: {
     openExternal: shellOpenExternal,
     showItemInFolder: shellShowItemInFolder,
+    openPath: shellOpenPath,
   },
   app: {
     getPath: appGetPath,

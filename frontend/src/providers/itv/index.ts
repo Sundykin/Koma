@@ -87,28 +87,13 @@ function registerBuiltinProviders() {
 registerBuiltinProviders();
 
 /**
- * 创建 ITV Provider（兼容旧 API）
+ * 创建 ITV Provider
+ * 从 Registry 获取，不再使用 switch-case
  */
 export function createITVProvider(config: ITVConfig): ITVProvider {
-  // 优先从 Registry 获取
   const def = itvRegistry.get(config.provider);
-  if (def) {
-    return def.factory(config, { sandboxedFetch: fetch });
+  if (!def) {
+    throw new Error(`Unknown ITV provider: ${config.provider}`);
   }
-
-  // 兼容旧代码
-  switch (config.provider) {
-    case 'runway':
-      return new RunwayProvider(config);
-    case 'kling':
-      return new KlingProvider(config);
-    case 'pika':
-      return new PikaProvider(config);
-    case 'sora2':
-      return new Sora2Provider(config);
-    case 'comfyui-animatediff':
-      return new ComfyUIAnimateDiffProvider(config);
-    default:
-      throw new Error(`Unknown ITV provider: ${config.provider}`);
-  }
+  return def.factory(config, { sandboxedFetch: fetch });
 }

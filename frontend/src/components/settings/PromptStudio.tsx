@@ -2,7 +2,6 @@ import React, { useState, useEffect, useMemo } from 'react';
 import {
   App,
   Input,
-  List,
   Button,
   Tag,
   Typography,
@@ -109,29 +108,27 @@ export const PromptStudio: React.FC = () => {
           />
         </div>
         <div className="flex-1 overflow-y-auto p-2">
-          <List
-            dataSource={filteredTemplates}
-            renderItem={item => (
-              <div
-                onClick={() => setSelectedId(item.id)}
-                className={`p-3 mb-2 rounded-lg cursor-pointer transition-all border ${
-                  selectedId === item.id
-                    ? 'border-emerald-600 bg-emerald-900/30'
-                    : 'border-transparent bg-zinc-800 hover:bg-zinc-700'
-                }`}
-              >
-                <div className="flex justify-between items-center mb-1">
-                  <span className={`font-medium ${selectedId === item.id ? 'text-emerald-400' : 'text-zinc-200'}`}>
-                    {item.name}
-                  </span>
-                  {item.isCustom && <Badge color="green" />}
-                </div>
-                <div className="text-xs text-zinc-500 overflow-hidden text-ellipsis whitespace-nowrap">
-                  {item.description}
-                </div>
+          {filteredTemplates.map(item => (
+            <div
+              key={item.id}
+              onClick={() => setSelectedId(item.id)}
+              className={`p-3 mb-2 rounded-lg cursor-pointer transition-all border ${
+                selectedId === item.id
+                  ? 'border-emerald-600 bg-emerald-900/30'
+                  : 'border-transparent bg-zinc-800 hover:bg-zinc-700'
+              }`}
+            >
+              <div className="flex justify-between items-center mb-1">
+                <span className={`font-medium ${selectedId === item.id ? 'text-emerald-400' : 'text-zinc-200'}`}>
+                  {item.name}
+                </span>
+                {item.isCustom && <Badge color="green" />}
               </div>
-            )}
-          />
+              <div className="text-xs text-zinc-500 overflow-hidden text-ellipsis whitespace-nowrap">
+                {item.description}
+              </div>
+            </div>
+          ))}
         </div>
       </div>
 

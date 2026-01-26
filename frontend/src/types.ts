@@ -206,9 +206,16 @@ export type EditorStep = 'script' | 'assets' | 'storyboard' | 'video';
 
 export type ModelProviderType = 'gemini' | 'openai' | 'openai-compatible' | 'claude' | 'runway' | 'midjourney' | 'comfyui';
 export type LLMProviderType = 'openai-compatible' | 'gemini' | 'claude';
-export type TTIProviderType = 'comfyui' | 'jimeng' | 'qwen-image' | 'midjourney' | 'dall-e' | 'flux' | 'nano-banana' | 'gemini-3-pro';
-export type ITVProviderType = 'runway' | 'kling' | 'pika' | 'minimax' | 'comfyui-animatediff' | 'sora2';
-export type TTSProviderType = 'edge-tts' | 'openai-tts' | 'fish-audio' | 'gpt-sovits' | 'doubao-tts';
+// 扩展支持插件动态类型
+export type TTIProviderType =
+  | 'comfyui' | 'jimeng' | 'qwen-image' | 'midjourney' | 'dall-e' | 'flux' | 'nano-banana' | 'gemini-3-pro'
+  | (string & { __ttiPlugin?: never });
+export type ITVProviderType =
+  | 'runway' | 'kling' | 'pika' | 'minimax' | 'comfyui-animatediff' | 'sora2'
+  | (string & { __itvPlugin?: never });
+export type TTSProviderType =
+  | 'edge-tts' | 'openai-tts' | 'fish-audio' | 'gpt-sovits' | 'doubao-tts'
+  | (string & { __ttsPlugin?: never });
 
 // 通用媒体配置基类
 export interface MediaProviderConfig {
@@ -239,6 +246,19 @@ export interface ITVModelConfig extends MediaProviderConfig {
   defaultDuration?: number;        // 默认时长（秒）
   defaultResolution?: string;      // "1280x720"
 }
+
+// 解析后的配置类型（区分内置和插件渠道）
+export type ResolvedTTIConfig =
+  | (TTIModelConfig & { source: 'builtin' })
+  | (TTIModelConfig & { source: 'channel'; channelConfig: import('./providers/channel/types').ChannelConfig });
+
+export type ResolvedITVConfig =
+  | (ITVModelConfig & { source: 'builtin' })
+  | (ITVModelConfig & { source: 'channel'; channelConfig: import('./providers/channel/types').ChannelConfig });
+
+export type ResolvedTTSConfig =
+  | (TTSModelConfig & { source: 'builtin' })
+  | (TTSModelConfig & { source: 'channel'; channelConfig: import('./providers/channel/types').ChannelConfig });
 
 // TTS 配置（语音合成）
 export interface TTSModelConfig extends MediaProviderConfig {

@@ -38,6 +38,7 @@ import {
 import { electronService, openFileDialog, fsCopy, fsMkdir, fsExists } from '../../services/electronService';
 import { getStorageConfig, initStorageConfig } from '../../store/storageConfig';
 import { saveProps, loadProps } from '../../store/projectStore';
+import { useActiveConfig } from '../../hooks/useActiveConfig';
 
 const { TextArea } = Input;
 const { Text } = Typography;
@@ -68,6 +69,9 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
 }) => {
   const { message } = App.useApp();
   const [form] = Form.useForm();
+  
+  const { config: activeTTI } = useActiveConfig('tti', ttiConfigId);
+  const { config: activeITV } = useActiveConfig('itv', itvConfigId);
 
   const [editedProp, setEditedProp] = useState<Prop>(prop);
   const [viewMode, setViewMode] = useState<ViewMode>('image');
@@ -381,27 +385,31 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
               </div>
             )}
 
-            <Button
-              type={!editedProp.imagePath ? 'primary' : 'default'}
-              block
-              icon={<ThunderboltOutlined />}
-              onClick={handleGenerateImage}
-              loading={generating === 'image'}
-              disabled={generating !== null}
-            >
-              生成道具图片
-            </Button>
+            <Tooltip title={activeTTI ? `使用服务: ${activeTTI.name}` : '未配置生成服务'}>
+              <Button
+                type={!editedProp.imagePath ? 'primary' : 'default'}
+                block
+                icon={<ThunderboltOutlined />}
+                onClick={handleGenerateImage}
+                loading={generating === 'image'}
+                disabled={generating !== null}
+              >
+                {editedProp.imagePath ? '重新生成参考图' : '生成参考图'}
+              </Button>
+            </Tooltip>
 
-            <Button
-              type={editedProp.imagePath && !editedProp.previewVideoPath ? 'primary' : 'default'}
-              block
-              icon={<PlayCircleOutlined />}
-              onClick={handleGenerateVideo}
-              loading={generating === 'video'}
-              disabled={generating !== null || !editedProp.imagePath}
-            >
-              生成预览视频
-            </Button>
+            <Tooltip title={activeITV ? `使用服务: ${activeITV.name}` : '未配置视频服务'}>
+              <Button
+                type={editedProp.imagePath && !editedProp.previewVideoPath ? 'primary' : 'default'}
+                block
+                icon={<PlayCircleOutlined />}
+                onClick={handleGenerateVideo}
+                loading={generating === 'video'}
+                disabled={generating !== null || !editedProp.imagePath}
+              >
+                生成预览视频
+              </Button>
+            </Tooltip>
           </div>
         </div>
       </div>

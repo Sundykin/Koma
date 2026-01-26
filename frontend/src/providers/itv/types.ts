@@ -46,10 +46,9 @@ export interface ITVGenerateInput {
 /**
  * ITV Provider 接口
  *
- * 统一同步/异步模式：
- * - generateVideo(): 统一返回 Promise<VideoResult>，内部处理轮询
- * - 如需进度回调，使用 generateVideoWithProgress()
- * - 旧的 generate() 方法保持兼容
+ * 统一接口规范：
+ * - generateVideo(): 必需，统一返回 Promise<VideoResult>，内部处理轮询
+ * - checkProgress(): 异步 Provider 必需，用于查询任务进度
  */
 export interface ITVProvider {
   type: ITVProviderType;
@@ -59,37 +58,19 @@ export interface ITVProvider {
   validate(): boolean;
   testConnection(): Promise<boolean>;
 
-  // ========== 核心方法（统一 Promise 返回） ==========
+  // ========== 核心方法（必需） ==========
 
   /**
-   * 生成视频（统一接口，可选实现）
+   * 生成视频（统一接口）
    * 无论底层是同步还是异步，都返回最终结果
-   * 如果未实现，调用方应使用 generate() + checkProgress() + pollTask()
+   * 异步 Provider 内部需自行处理轮询
    */
-  generateVideo?(input: ITVGenerateInput): Promise<VideoResult>;
+  generateVideo(input: ITVGenerateInput): Promise<VideoResult>;
+
+  // ========== 进度查询（异步 Provider 必需） ==========
 
   /**
-   * 生成视频（带进度回调）
-   */
-  generateVideoWithProgress?(
-    input: ITVGenerateInput,
-    onProgress?: (progress: ProgressInfo) => void
-  ): Promise<VideoResult>;
-
-  // ========== 底层方法（兼容现有实现） ==========
-
-  /**
-   * 提交任务（现有 Provider 实现）
-   * 返回 VideoResult 或 taskId（string）
-   */
-  generate?(
-    imagePath: string,
-    prompt: string,
-    options?: ITVOptions
-  ): Promise<VideoResult | string>;
-
-  /**
-   * 查询进度（异步 Provider 实现）
+   * 查询进度
    */
   checkProgress?(taskId: string): Promise<ProgressInfo>;
 
@@ -97,6 +78,14 @@ export interface ITVProvider {
    * 取消任务
    */
   cancelTask?(taskId: string): Promise<void>;
+
+  /**
+   * 生成视频（带进度回调，可选）
+   */
+  generateVideoWithProgress?(
+    input: ITVGenerateInput,
+    onProgress?: (progress: ProgressInfo) => void
+  ): Promise<VideoResult>;
 
   /**
    * 轮询配置
