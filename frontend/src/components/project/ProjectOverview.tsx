@@ -339,7 +339,7 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
       <Drawer
         title="项目设置"
         placement="right"
-        width={480}
+        size="large"
         onClose={() => setSettingsDrawerOpen(false)}
         open={settingsDrawerOpen}
         styles={{ body: { padding: 0 } }}

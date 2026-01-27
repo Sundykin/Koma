@@ -301,7 +301,7 @@ ${fullScript}
                     <span className="text-sm font-medium text-zinc-200">
                       第 {episode.number} 集: {episode.title}
                     </span>
-                    <Tag className="m-0" color={statusColors[episode.status]} bordered={false}>
+                    <Tag className="m-0" color={statusColors[episode.status]} variant="filled">
                       {statusLabels[episode.status]}
                     </Tag>
                   </div>
