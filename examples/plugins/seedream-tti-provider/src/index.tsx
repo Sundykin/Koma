@@ -60,7 +60,9 @@ interface PluginAPI {
     registerProvider(def: ProviderDefinition): Promise<void>;
     unregisterProvider(type: string): Promise<void>;
     listProviders(kind?: string): Promise<ProviderDefinition[]>;
-    testProvider(type: string, config: Record<string, any>): Promise<{ success: boolean; latency: number; error?: string }>;
+    testProvider(kind: string, type: string, config: Record<string, any>): Promise<{ success: boolean; latency: number; error?: string }>;
+    updateProviderConfig(type: string, config: Record<string, any>): Promise<void>;
+    getProviderConfig(type: string): Promise<Record<string, any> | null>;
   };
   ui: {
     showMessage(type: 'success' | 'error' | 'info' | 'warning', content: string): void;
@@ -353,16 +355,14 @@ function SeedreamProvider({ api }: SeedreamProviderProps) {
   useEffect(() => {
     async function loadConfig() {
       try {
-        const files = await api.storage.listFiles('/');
-        if (files.includes('config.json')) {
-          const data = await api.storage.readFile('/config.json');
-          const text = new TextDecoder().decode(data);
-          const saved = JSON.parse(text);
-          const merged = { ...DEFAULT_CONFIG, ...saved };
+        // 从 providerConfig 读取配置
+        const providerConfig = await api.channels.getProviderConfig('seedream-tti');
+        if (providerConfig && Object.keys(providerConfig).length > 0) {
+          const merged = { ...DEFAULT_CONFIG, ...providerConfig };
           setConfig(merged);
           form.setFieldsValue(merged);
 
-          if (saved.apiKey) {
+          if (merged.apiKey) {
             testConnection(merged);
           }
         }
@@ -386,7 +386,7 @@ function SeedreamProvider({ api }: SeedreamProviderProps) {
     setConnectionStatus('testing');
     setConnectionError('');
 
-    const result = await api.channels.testProvider('seedream-tti', testConfig);
+    const result = await api.channels.testProvider('tti', 'seedream-tti', testConfig);
 
     if (result.success) {
       setConnectionStatus('success');
@@ -403,8 +403,8 @@ function SeedreamProvider({ api }: SeedreamProviderProps) {
       const values = await form.validateFields();
       setSaving(true);
 
-      const data = new TextEncoder().encode(JSON.stringify(values));
-      await api.storage.writeFile('/config.json', data.buffer);
+      // 保存到 providerConfig（新方式）
+      await api.channels.updateProviderConfig('seedream-tti', values);
       setConfig(values);
 
       await testConnection(values);

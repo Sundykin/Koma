@@ -19,7 +19,6 @@
     "network:external"
   ],
   "entry": {
-    "backend": "./dist/main.js",
     "frontend": "./dist/ui/main.js"
   },
   "providerMeta": {

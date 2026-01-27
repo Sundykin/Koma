@@ -270,34 +270,15 @@ function VectorEngineProvider({ api }: VectorEngineProviderProps) {
   useEffect(() => {
     async function loadConfig() {
       try {
-        // 优先从 channelConfig.providerConfig 读取（Provider 运行时使用的配置）
+        // 从 providerConfig 读取配置
         const providerConfig = await api.channels.getProviderConfig('vectorengine');
-        if (providerConfig && providerConfig.apiKey) {
+        if (providerConfig && Object.keys(providerConfig).length > 0) {
           const saved = { ...DEFAULT_CONFIG, ...providerConfig };
           setConfig(saved);
           form.setFieldsValue(saved);
 
           if (saved.apiKey) {
             testConnection(saved);
-          }
-          setLoading(false);
-          return;
-        }
-
-        // 兼容：从插件存储读取旧配置并迁移
-        const files = await api.storage.listFiles('/');
-        if (files.includes('config.json')) {
-          const data = await api.storage.readFile('/config.json');
-          const text = new TextDecoder().decode(data);
-          const saved = JSON.parse(text);
-          const mergedConfig = { ...DEFAULT_CONFIG, ...saved };
-          setConfig(mergedConfig);
-          form.setFieldsValue(mergedConfig);
-
-          // 迁移：同步到 channelConfig.providerConfig
-          if (saved.apiKey) {
-            await api.channels.updateProviderConfig('vectorengine', mergedConfig);
-            testConnection(mergedConfig);
           }
         }
       } catch (err) {
@@ -337,12 +318,8 @@ function VectorEngineProvider({ api }: VectorEngineProviderProps) {
       const values = await form.validateFields();
       setSaving(true);
 
-      // 同步到 channelConfig.providerConfig（Provider 运行时使用的配置）
+      // 保存到 providerConfig（新方式）
       await api.channels.updateProviderConfig('vectorengine', values);
-
-      // 同时保存到插件存储（备份）
-      const data = new TextEncoder().encode(JSON.stringify(values));
-      await api.storage.writeFile('/config.json', data.buffer);
       setConfig(values);
 
       // 测试连接

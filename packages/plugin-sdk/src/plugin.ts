@@ -1,6 +1,7 @@
 /**
  * 插件系统类型定义
  */
+import type { ComponentType } from 'react';
 
 // 插件分类
 export type PluginCategory = 'provider' | 'global' | 'tool';
@@ -38,30 +39,30 @@ export interface PluginEntry {
 
 // 全局插件导航配置
 export interface GlobalPluginNavigation {
-  icon: string;      // 图标名称 (mdi:xxx 或 antd icon)
-  label: string;     // 显示文本
-  order?: number;    // 排序权重，越小越靠前
+  icon: string;
+  label: string;
+  order?: number;
 }
 
 // 全局插件元数据
 export interface GlobalPluginMeta {
-  entryRoute: string;            // 路由路径，如 /plugins/com.example.my-plugin
+  entryRoute: string;
   navigation: GlobalPluginNavigation;
 }
 
 // Provider 插件元数据
 export interface ProviderPluginMeta {
-  channelType: 'tti' | 'itv' | 'tts' | 'llm';  // 主渠道类型
-  capabilities: string[];     // 支持的能力列表，如 ['itv', 'character-extract']
-  configPanel?: boolean;      // 是否有自定义配置面板
-  supportedActions?: string[];  // 支持的操作 (兼容旧字段)
+  channelType: 'tti' | 'itv' | 'tts' | 'llm';
+  capabilities: string[];
+  configPanel?: boolean;
+  supportedActions?: string[];
 }
 
 // 工具插件元数据
 export interface ToolPluginMeta {
-  menuLabel: string;             // 工具菜单显示名称
+  menuLabel: string;
   menuIcon?: string;
-  shortcut?: string;             // 快捷键
+  shortcut?: string;
 }
 
 // 自定义面板定义
@@ -72,38 +73,36 @@ export interface CustomPanelDefinition {
     method: 'GET' | 'POST';
     path: string;
   };
-  component?: string;            // 组件名称
+  component?: string;
 }
 
 // 插件清单 (manifest.json)
 export interface PluginManifest {
-  id: string;                    // 唯一标识，如 com.example.my-plugin
-  name: string;                  // 显示名称
-  version: string;               // 语义版本
+  id: string;
+  name: string;
+  version: string;
   description?: string;
   author?: PluginAuthor;
-  icon?: string;                 // 图标路径 (相对于插件根目录)
+  icon?: string;
 
   category: PluginCategory;
   engine: PluginEngine;
   scopes: PluginScope[];
   entry: PluginEntry;
 
-  // 按分类的元数据
   globalMeta?: GlobalPluginMeta;
   providerMeta?: ProviderPluginMeta;
   toolMeta?: ToolPluginMeta;
 
-  // 自定义面板
   panels?: CustomPanelDefinition[];
 }
 
 // 已安装的插件
 export interface InstalledPlugin extends PluginManifest {
-  rootPath: string;              // 插件安装路径
-  isEnabled: boolean;            // 是否启用
-  installedAt: number;           // 安装时间戳
-  lastUpdatedAt?: number;        // 最后更新时间
+  rootPath: string;
+  isEnabled: boolean;
+  installedAt: number;
+  lastUpdatedAt?: number;
 }
 
 // 插件加载状态
@@ -114,7 +113,7 @@ export interface PluginRuntimeState {
   id: string;
   status: PluginLoadStatus;
   error?: string;
-  component?: React.ComponentType<{ api: PluginAPI }>;
+  component?: ComponentType<{ api: PluginAPI }>;
 }
 
 // ========== Plugin API ==========
@@ -181,7 +180,7 @@ export interface DialogOptions {
 // 模态框选项
 export interface ModalOptions {
   title: string;
-  content: React.ReactNode | string;
+  content: any;
   okText?: string;
   cancelText?: string;
   width?: number;
@@ -197,7 +196,6 @@ export interface MenuItem {
 
 // 插件 API 接口
 export interface PluginAPI {
-  // 核心功能
   core: {
     getVersion(): Promise<string>;
     getHostInfo(): Promise<HostInfo>;
@@ -205,45 +203,34 @@ export interface PluginAPI {
     off(event: string, handler: Function): void;
   };
 
-  // 设置访问
   settings: {
     get(keys?: string[]): Promise<Record<string, any>>;
     set(patch: Record<string, any>): Promise<void>;
   };
 
-  // 项目访问
   projects: {
     list(filter?: ProjectFilter): Promise<PluginProject[]>;
     get(projectId: string): Promise<PluginProject>;
     update(projectId: string, mutation: Partial<PluginProject>): Promise<void>;
   };
 
-  // 提示词系统
   prompts: {
     getTemplate(id: string): Promise<PluginPromptTemplate>;
     listTemplates(): Promise<PluginPromptTemplate[]>;
     override(payload: PromptOverride): Promise<void>;
   };
 
-  // 渠道管理（Provider 注入）
   channels: {
-    /** 注册 Provider */
     registerProvider(def: any): Promise<void>;
-    /** 反注册 Provider */
     unregisterProvider(type: string): Promise<void>;
-    /** 更新 Provider 配置 */
     updateProviderConfig(type: string, config: Record<string, any>): Promise<void>;
-    /** 获取 Provider 配置 */
     getProviderConfig(type: string): Promise<Record<string, any> | null>;
-    /** 列出所有 Provider */
     listProviders(kind?: string): Promise<any[]>;
-    /** 测试 Provider */
     testProvider(kind: string, type: string, config: Record<string, any>): Promise<ChannelTestResult>;
     test(channelId: string): Promise<ChannelTestResult>;
     invoke(channelId: string, action: string, params: any): Promise<any>;
   };
 
-  // 存储 (沙箱内)
   storage: {
     readFile(path: string): Promise<ArrayBuffer>;
     writeFile(path: string, data: ArrayBuffer): Promise<void>;
@@ -252,7 +239,6 @@ export interface PluginAPI {
     openDialog(options: DialogOptions): Promise<string[]>;
   };
 
-  // UI 交互
   ui: {
     showMessage(type: 'success' | 'error' | 'info' | 'warning', content: string): void;
     showModal(options: ModalOptions): Promise<boolean>;
@@ -263,7 +249,7 @@ export interface PluginAPI {
 
 // 插件导出接口
 export interface PluginExports {
-  default: React.ComponentType<{ api: PluginAPI }>;
+  default: ComponentType<{ api: PluginAPI }>;
   onActivate?: (api: PluginAPI) => void | Promise<void>;
   onDeactivate?: () => void | Promise<void>;
 }

@@ -419,17 +419,6 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
         }
       },
 
-      // ========== 兼容旧 API（已废弃） ==========
-
-      /**
-       * @deprecated 使用 registerProvider 代替
-       */
-      async register(config: PluginChannelConfig) {
-        console.warn('[PluginAPI] channels.register 已废弃，请使用 channels.registerProvider');
-        // 不再支持旧 API
-        throw new Error('channels.register 已废弃，请使用 channels.registerProvider');
-      },
-
       async test(channelId: string): Promise<ChannelTestResult> {
         const { getChannelConfigs } = await import('../../store/settings/channelConfig');
         const configs = await getChannelConfigs();

@@ -54,8 +54,12 @@ export function validateManifest(manifest: any): PluginValidationResult {
     errors.push('global 类型插件必须提供 entry.frontend');
   }
 
-  if (manifest.category === 'provider' && !manifest.entry?.backend) {
-    errors.push('provider 类型插件必须提供 entry.backend');
+  // provider 类型插件必须提供前端入口（UI 或 frontend）
+  if (manifest.category === 'provider') {
+    const hasFrontendEntry = manifest.entry?.frontend || manifest.entry?.ui || manifest.entry?.logic;
+    if (!hasFrontendEntry) {
+      errors.push('provider 类型插件必须提供 entry.frontend、entry.ui 或 entry.logic');
+    }
   }
 
   // 验证 scopes
@@ -99,8 +103,15 @@ export async function loadPluginComponent(plugin: InstalledPlugin): Promise<Plug
  * 加载 Provider 插件（provider 类型，用于注册渠道）
  */
 export async function loadProviderPlugin(plugin: InstalledPlugin): Promise<PluginExports | null> {
-  if (plugin.category !== 'provider' || !plugin.entry.frontend) {
-    console.warn(`[PluginLoader] 插件 ${plugin.id} 不是 provider 类型或无前端入口`);
+  if (plugin.category !== 'provider') {
+    console.warn(`[PluginLoader] 插件 ${plugin.id} 不是 provider 类型`);
+    return null;
+  }
+
+  // 优先使用 frontend 入口（兼容旧插件）
+  const entryFile = plugin.entry.frontend || plugin.entry.logic || plugin.entry.ui;
+  if (!entryFile) {
+    console.warn(`[PluginLoader] 插件 ${plugin.id} 无可用入口`);
     return null;
   }
 
@@ -108,11 +119,58 @@ export async function loadProviderPlugin(plugin: InstalledPlugin): Promise<Plugi
 }
 
 /**
+ * 加载插件逻辑入口（不加载 UI，用于后台任务场景）
+ * 优先加载 entry.logic，降级到 entry.frontend
+ */
+export async function loadPluginLogic(plugin: InstalledPlugin): Promise<PluginExports | null> {
+  // 优先使用 logic 入口
+  const logicEntry = plugin.entry.logic || plugin.entry.frontend;
+  if (!logicEntry) {
+    console.warn(`[PluginLoader] 插件 ${plugin.id} 无逻辑入口`);
+    return null;
+  }
+
+  // 检查缓存
+  if (loadedModules.has(plugin.id)) {
+    return loadedModules.get(plugin.id)!;
+  }
+
+  const store = usePluginStore.getState();
+  store.setRuntimeState(plugin.id, { status: 'loading' });
+
+  try {
+    const entryPath = `${plugin.rootPath}/${logicEntry}`;
+    const module = await loadUMDModule(entryPath, plugin.id);
+
+    if (!module) {
+      throw new Error('插件模块加载失败');
+    }
+
+    const exports: PluginExports = {
+      default: module.default,
+      onActivate: module.onActivate,
+      onDeactivate: module.onDeactivate,
+    };
+
+    loadedModules.set(plugin.id, exports);
+    store.setRuntimeState(plugin.id, { status: 'loaded', component: exports.default });
+
+    return exports;
+  } catch (error: any) {
+    console.error(`[PluginLoader] 加载插件逻辑 ${plugin.id} 失败:`, error);
+    store.setRuntimeState(plugin.id, { status: 'error', error: error.message });
+    return null;
+  }
+}
+
+/**
  * 通用插件模块加载（支持 global 和 provider 类型）
  */
 async function loadPluginModule(plugin: InstalledPlugin): Promise<PluginExports | null> {
-  if (!plugin.entry.frontend) {
-    console.warn(`[PluginLoader] 插件 ${plugin.id} 无前端入口`);
+  // 支持多种入口配置
+  const entryFile = plugin.entry.frontend || plugin.entry.ui || plugin.entry.logic;
+  if (!entryFile) {
+    console.warn(`[PluginLoader] 插件 ${plugin.id} 无可用入口`);
     return null;
   }
 
@@ -126,7 +184,7 @@ async function loadPluginModule(plugin: InstalledPlugin): Promise<PluginExports 
 
   try {
     // 构建入口文件路径
-    const entryPath = `${plugin.rootPath}/${plugin.entry.frontend}`;
+    const entryPath = `${plugin.rootPath}/${entryFile}`;
 
     // 如果是 HTML 文件，需要从中提取 JS
     if (entryPath.endsWith('.html')) {
