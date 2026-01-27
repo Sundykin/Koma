@@ -39,7 +39,9 @@ interface PluginAPI {
     registerProvider(def: ProviderDefinition): Promise<void>;
     unregisterProvider(type: string): Promise<void>;
     listProviders(kind?: string): Promise<ProviderDefinition[]>;
-    testProvider(type: string, config: Record<string, any>): Promise<{ success: boolean; latency: number; error?: string }>;
+    testProvider(kind: string, type: string, config: Record<string, any>): Promise<{ success: boolean; latency: number; error?: string }>;
+    updateProviderConfig(type: string, config: Record<string, any>): Promise<void>;
+    getProviderConfig(type: string): Promise<Record<string, any> | null>;
   };
   ui: {
     showMessage(type: 'success' | 'error' | 'info' | 'warning', content: string): void;
@@ -268,16 +270,34 @@ function VectorEngineProvider({ api }: VectorEngineProviderProps) {
   useEffect(() => {
     async function loadConfig() {
       try {
+        // 优先从 channelConfig.providerConfig 读取（Provider 运行时使用的配置）
+        const providerConfig = await api.channels.getProviderConfig('vectorengine');
+        if (providerConfig && providerConfig.apiKey) {
+          const saved = { ...DEFAULT_CONFIG, ...providerConfig };
+          setConfig(saved);
+          form.setFieldsValue(saved);
+
+          if (saved.apiKey) {
+            testConnection(saved);
+          }
+          setLoading(false);
+          return;
+        }
+
+        // 兼容：从插件存储读取旧配置并迁移
         const files = await api.storage.listFiles('/');
         if (files.includes('config.json')) {
           const data = await api.storage.readFile('/config.json');
           const text = new TextDecoder().decode(data);
           const saved = JSON.parse(text);
-          setConfig({ ...DEFAULT_CONFIG, ...saved });
-          form.setFieldsValue({ ...DEFAULT_CONFIG, ...saved });
+          const mergedConfig = { ...DEFAULT_CONFIG, ...saved };
+          setConfig(mergedConfig);
+          form.setFieldsValue(mergedConfig);
 
+          // 迁移：同步到 channelConfig.providerConfig
           if (saved.apiKey) {
-            testConnection(saved);
+            await api.channels.updateProviderConfig('vectorengine', mergedConfig);
+            testConnection(mergedConfig);
           }
         }
       } catch (err) {
@@ -300,7 +320,7 @@ function VectorEngineProvider({ api }: VectorEngineProviderProps) {
     setConnectionStatus('testing');
     setConnectionError('');
 
-    const result = await api.channels.testProvider('vectorengine', testConfig);
+    const result = await api.channels.testProvider('itv', 'vectorengine', testConfig);
 
     if (result.success) {
       setConnectionStatus('success');
@@ -317,7 +337,10 @@ function VectorEngineProvider({ api }: VectorEngineProviderProps) {
       const values = await form.validateFields();
       setSaving(true);
 
-      // 保存到存储
+      // 同步到 channelConfig.providerConfig（Provider 运行时使用的配置）
+      await api.channels.updateProviderConfig('vectorengine', values);
+
+      // 同时保存到插件存储（备份）
       const data = new TextEncoder().encode(JSON.stringify(values));
       await api.storage.writeFile('/config.json', data.buffer);
       setConfig(values);

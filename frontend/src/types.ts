@@ -313,6 +313,7 @@ export interface TTSConfig {
 
 export interface ITVConfig {
   provider: ITVProviderType;
+  name?: string;
   apiKey?: string;
   baseUrl?: string;
   defaultDuration?: number;  // 默认视频时长（秒）
@@ -546,11 +547,13 @@ export interface ITVOptions {
 }
 
 export interface VideoResult {
+  url: string;
   path: string;
   duration: number;
   width: number;
   height: number;
   fps: number;
+  taskId?: string;
 }
 
 export interface ProgressInfo {

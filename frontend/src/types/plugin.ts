@@ -234,13 +234,23 @@ export interface PluginAPI {
      */
     unregisterProvider(type: string): Promise<void>;
     /**
+     * 更新 Provider 配置
+     * 插件 UI 保存配置后调用此方法同步到 channelConfig.providerConfig
+     */
+    updateProviderConfig(type: string, config: Record<string, any>): Promise<void>;
+    /**
+     * 获取 Provider 配置
+     * 从 channelConfig.providerConfig 读取配置
+     */
+    getProviderConfig(type: string): Promise<Record<string, any> | null>;
+    /**
      * 列出所有 Provider
      */
     listProviders(kind?: string): Promise<any[]>;
     /**
      * 测试 Provider
      */
-    testProvider(type: string, config: Record<string, any>): Promise<ChannelTestResult>;
+    testProvider(kind: string, type: string, config: Record<string, any>): Promise<ChannelTestResult>;
     /**
      * @deprecated 使用 registerProvider 代替
      */

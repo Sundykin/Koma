@@ -330,6 +330,54 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
       },
 
       /**
+       * 更新 Provider 配置
+       * 插件 UI 保存配置后调用此方法同步到 channelConfig.providerConfig
+       */
+      async updateProviderConfig(type: string, config: Record<string, any>) {
+        const result = validateOperation(plugin, 'channels.updateProviderConfig', 'network:external');
+        if (!result.allowed) {
+          throw new Error(result.reason);
+        }
+
+        // 查找该插件对应的渠道配置
+        const { getChannelConfigs, updateChannelConfig } = await import('../../store/settings/channelConfig');
+        const configs = await getChannelConfigs();
+        const channelConfig = configs.find(
+          c => c.providerType === type && c.pluginId === pluginId
+        );
+
+        if (!channelConfig) {
+          console.warn(`[PluginAPI] 渠道配置不存在: ${type}`);
+          return;
+        }
+
+        // 更新 providerConfig
+        await updateChannelConfig(channelConfig.id, {
+          providerConfig: config,
+        });
+
+        console.log(`[PluginAPI] 已更新渠道配置: ${type}`, config);
+      },
+
+      /**
+       * 获取 Provider 配置
+       * 从 channelConfig.providerConfig 读取配置
+       */
+      async getProviderConfig(type: string): Promise<Record<string, any> | null> {
+        const { getChannelConfigs } = await import('../../store/settings/channelConfig');
+        const configs = await getChannelConfigs();
+        const channelConfig = configs.find(
+          c => c.providerType === type && c.pluginId === pluginId
+        );
+
+        if (!channelConfig) {
+          return null;
+        }
+
+        return channelConfig.providerConfig || {};
+      },
+
+      /**
        * 列出所有 Provider
        */
       async listProviders(kind?: ChannelKind) {

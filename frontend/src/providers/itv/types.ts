@@ -8,7 +8,6 @@ import type {
   ProgressInfo,
   ITVProviderType,
 } from '../../types';
-import type { PollingConfig } from '../registry';
 
 // 角色提取参数
 export interface CharacterExtractionParams {
@@ -86,11 +85,6 @@ export interface ITVProvider {
     input: ITVGenerateInput,
     onProgress?: (progress: ProgressInfo) => void
   ): Promise<VideoResult>;
-
-  /**
-   * 轮询配置
-   */
-  polling?: PollingConfig;
 
   // ========== 扩展功能（Sora2 等特定 Provider） ==========
 
