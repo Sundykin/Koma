@@ -10,6 +10,7 @@ import { PluginCard } from './PluginCard';
 import { PluginImporter } from './PluginImporter';
 import { unloadPlugin } from '../../services/plugin/PluginLoader';
 import { cleanupPluginResources } from '../../services/plugin/PluginAPI';
+import { initializePlugin } from '../../services/plugin/PluginInitializer';
 import { electronService } from '../../services/electronService';
 
 export const PluginManager: React.FC = () => {
@@ -30,12 +31,24 @@ export const PluginManager: React.FC = () => {
   });
 
   // 切换启用状态
-  const handleToggle = (id: string, enabled: boolean) => {
+  const handleToggle = async (id: string, enabled: boolean) => {
     togglePlugin(id, enabled);
-    if (!enabled) {
+    if (enabled) {
+      // 启用时重新初始化插件（从 store 获取最新状态）
+      const plugin = usePluginStore.getState().getPlugin(id);
+      if (plugin) {
+        const success = await initializePlugin(plugin);
+        if (success) {
+          message.success('插件已启用');
+        } else {
+          message.warning('插件已启用，但初始化失败');
+        }
+      }
+    } else {
       unloadPlugin(id);
+      cleanupPluginResources(id);
+      message.success('插件已禁用');
     }
-    message.success(enabled ? '插件已启用' : '插件已禁用');
   };
 
   // 卸载插件

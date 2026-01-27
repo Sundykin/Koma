@@ -16,7 +16,7 @@ export const pluginController = {
    * 安装插件
    */
   async install(
-    { zipPath, manifest }: { zipPath: string; manifest: any },
+    { zipPath, manifest, stagingId }: { zipPath: string; manifest: any; stagingId?: string },
     event?: IpcMainInvokeEvent
   ) {
     // 如果是文件夹路径（开发模式）
@@ -24,7 +24,7 @@ export const pluginController = {
     if (isFolder) {
       return pluginService.installFromFolder(zipPath, manifest);
     }
-    return pluginService.install(zipPath, manifest);
+    return pluginService.install(zipPath, manifest, stagingId);
   },
 
   /**

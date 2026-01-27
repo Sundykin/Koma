@@ -7,6 +7,7 @@ import type { UploadProps } from 'antd';
 import { InboxOutlined, FolderAddOutlined } from '@ant-design/icons';
 import type { PluginManifest, PluginValidationResult } from '../../types/plugin';
 import { validateManifest } from '../../services/plugin/PluginLoader';
+import { initializePlugin } from '../../services/plugin/PluginInitializer';
 import { PluginPermissions } from './PluginPermissions';
 import { usePluginStore } from '../../store/pluginStore';
 import { electronService } from '../../services/electronService';
@@ -23,6 +24,7 @@ export const PluginImporter: React.FC<PluginImporterProps> = ({ onImportSuccess 
     visible: boolean;
     manifest: PluginManifest | null;
     zipPath: string;
+    stagingId?: string; // 用于复用 validate 的解压结果
   }>({ visible: false, manifest: null, zipPath: '' });
 
   const registerPlugin = usePluginStore(state => state.registerPlugin);
@@ -66,6 +68,7 @@ export const PluginImporter: React.FC<PluginImporterProps> = ({ onImportSuccess 
         visible: true,
         manifest: result.manifest,
         zipPath: filePath,
+        stagingId: result.stagingId, // 保存 stagingId 供安装时复用
       });
 
     } catch (err: any) {
@@ -80,22 +83,41 @@ export const PluginImporter: React.FC<PluginImporterProps> = ({ onImportSuccess 
 
   // 确认安装
   const handleConfirmInstall = useCallback(async () => {
-    const { manifest, zipPath } = permissionModal;
+    const { manifest, zipPath, stagingId } = permissionModal;
     if (!manifest) return;
 
     setLoading(true);
 
     try {
-      // 调用主进程安装插件
+      // 调用主进程安装插件（传递 stagingId 复用解压结果）
       const installResult = await electronService.ipc.invoke('plugin:install', {
         zipPath,
         manifest,
+        stagingId,
       });
 
       if (installResult.success) {
         // 注册到 store
         registerPlugin(manifest, installResult.rootPath);
-        message.success(`插件 "${manifest.name}" 安装成功`);
+        
+        // 立即初始化插件（使其 Provider 生效）
+        const installedPlugin = usePluginStore.getState().getPlugin(manifest.id);
+        if (installedPlugin) {
+          try {
+            const initSuccess = await initializePlugin(installedPlugin);
+            if (initSuccess) {
+              message.success(`插件 "${manifest.name}" 安装并就绪`);
+            } else {
+              message.warning(`插件 "${manifest.name}" 安装成功，但初始化失败`);
+            }
+          } catch (initErr) {
+            console.error('[PluginImporter] 初始化异常:', initErr);
+            message.warning(`插件 "${manifest.name}" 初始化异常`);
+          }
+        } else {
+          message.success(`插件 "${manifest.name}" 安装成功`);
+        }
+
         onImportSuccess?.(manifest.id);
       } else {
         throw new Error(installResult.error);

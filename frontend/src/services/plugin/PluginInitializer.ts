@@ -13,7 +13,7 @@ const initializedPlugins = new Set<string>();
 /**
  * 初始化单个插件（调用 onActivate）
  */
-async function initializePlugin(plugin: InstalledPlugin): Promise<boolean> {
+export async function initializePlugin(plugin: InstalledPlugin): Promise<boolean> {
   if (initializedPlugins.has(plugin.id)) {
     console.log(`[PluginInitializer] 插件 ${plugin.id} 已初始化，跳过`);
     return true;
