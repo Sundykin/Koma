@@ -9,10 +9,11 @@
     "zip": "cd .. && powershell Compress-Archive -Path vectorengine-provider/manifest.json,vectorengine-provider/dist,vectorengine-provider/README.md -DestinationPath vectorengine-provider.zip -Force"
   },
   "peerDependencies": {
-    "react": "^18.0.0",
+    "react": "^19.0.0",
     "antd": "^5.0.0"
   },
   "devDependencies": {
+    "@komastudio/plugin-sdk": "^1.0.3",
     "esbuild": "^0.19.0",
     "typescript": "^5.0.0"
   }

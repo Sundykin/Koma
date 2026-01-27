@@ -1,68 +1,25 @@
 /**
  * VectorEngine Provider 插件
- * 重构版：使用 Provider 类注入方式
+ * 使用 @komastudio/plugin-sdk 开发
  */
 
-const React = (window as any).React;
+import type { PluginAPI, ProviderDefinition, ProviderContext } from '@komastudio/plugin-sdk';
+import '@komastudio/plugin-sdk';
+
+const React = window.React;
 const { useState, useEffect, useCallback } = React;
 const {
   Card, Button, Form, Input, Select, Switch, Space, Typography,
-  Divider, Tag, Spin, Alert, Tooltip, Row, Col, Statistic,
-} = (window as any).antd;
+  Divider, Tag, Spin, Alert, Row, Col, Statistic,
+} = window.antd;
+const Icons = window['@ant-design/icons'] || {};
 const {
   CheckCircleOutlined, CloseCircleOutlined, LoadingOutlined,
   ApiOutlined, VideoCameraOutlined, SettingOutlined,
-  SaveOutlined, ReloadOutlined, LinkOutlined,
-} = (window as any)['@ant-design/icons'] || {};
+  SaveOutlined, ReloadOutlined,
+} = Icons;
 
 const { Title, Text, Paragraph } = Typography;
-
-// 类型定义
-interface PluginAPI {
-  core: {
-    getVersion(): Promise<string>;
-    getHostInfo(): Promise<{ appVersion: string; platform: string; electronVersion: string }>;
-    on(event: string, handler: Function): void;
-    off(event: string, handler: Function): void;
-  };
-  settings: {
-    get(keys?: string[]): Promise<Record<string, any>>;
-    set(values: Record<string, any>): Promise<void>;
-  };
-  storage: {
-    readFile(path: string): Promise<ArrayBuffer>;
-    writeFile(path: string, data: ArrayBuffer): Promise<void>;
-    listFiles(dir: string): Promise<string[]>;
-    deleteFile(path: string): Promise<void>;
-  };
-  channels: {
-    registerProvider(def: ProviderDefinition): Promise<void>;
-    unregisterProvider(type: string): Promise<void>;
-    listProviders(kind?: string): Promise<ProviderDefinition[]>;
-    testProvider(kind: string, type: string, config: Record<string, any>): Promise<{ success: boolean; latency: number; error?: string }>;
-    updateProviderConfig(type: string, config: Record<string, any>): Promise<void>;
-    getProviderConfig(type: string): Promise<Record<string, any> | null>;
-  };
-  ui: {
-    showMessage(type: 'success' | 'error' | 'info' | 'warning', content: string): void;
-    showModal(options: { title: string; content: any }): Promise<boolean>;
-  };
-}
-
-interface ProviderDefinition {
-  type: string;
-  kind: 'tti' | 'itv';
-  name: string;
-  description?: string;
-  factory: (config: Record<string, any>, ctx: any) => any;
-  capabilities?: string[];
-  defaultConfig?: Record<string, any>;
-  polling?: {
-    interval: number;
-    maxDuration: number;
-    initialDelay?: number;
-  };
-}
 
 interface VectorEngineConfig {
   apiKey: string;
@@ -74,7 +31,6 @@ interface VectorEngineConfig {
   watermark: boolean;
 }
 
-// 默认配置
 const DEFAULT_CONFIG: VectorEngineConfig = {
   apiKey: '',
   baseUrl: 'https://api.vectorengine.ai',
@@ -85,7 +41,6 @@ const DEFAULT_CONFIG: VectorEngineConfig = {
   watermark: true,
 };
 
-// 选项
 const MODEL_OPTIONS = [
   { value: 'sora-2-all', label: 'Sora 2 All (推荐)' },
   { value: 'sora-2', label: 'Sora 2' },
@@ -113,9 +68,9 @@ const DURATION_OPTIONS = [
 class VectorEngineITVProvider {
   type = 'vectorengine';
   config: VectorEngineConfig;
-  ctx: any;
+  ctx: ProviderContext;
 
-  constructor(config: Record<string, any>, ctx: any) {
+  constructor(config: Record<string, any>, ctx: ProviderContext) {
     this.config = { ...DEFAULT_CONFIG, ...config };
     this.ctx = ctx;
   }
@@ -130,9 +85,7 @@ class VectorEngineITVProvider {
         `${this.config.baseUrl}/v1/video/query?id=test`,
         {
           method: 'GET',
-          headers: {
-            'Authorization': `Bearer ${this.config.apiKey}`,
-          },
+          headers: { 'Authorization': `Bearer ${this.config.apiKey}` },
         }
       );
       return response.status !== 401 && response.status !== 403;
@@ -144,7 +97,6 @@ class VectorEngineITVProvider {
   async generateVideo(input: { imageUrl?: string; prompt: string; options?: any }): Promise<any> {
     const { prompt, imageUrl, options } = input;
 
-    // 提交任务
     const response = await this.ctx.sandboxedFetch(
       `${this.config.baseUrl}/v1/video/create`,
       {
@@ -172,7 +124,6 @@ class VectorEngineITVProvider {
     const data = await response.json();
     const taskId = data.id;
 
-    // 轮询等待完成
     const polling = this.polling;
     const startTime = Date.now();
 
@@ -184,10 +135,7 @@ class VectorEngineITVProvider {
       const progress = await this.checkProgress(taskId);
 
       if (progress.status === 'completed') {
-        return {
-          url: progress.resultUrl,
-          taskId,
-        };
+        return { url: progress.resultUrl, taskId };
       }
 
       if (progress.status === 'failed') {
@@ -205,9 +153,7 @@ class VectorEngineITVProvider {
       `${this.config.baseUrl}/v1/video/query?id=${taskId}`,
       {
         method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${this.config.apiKey}`,
-        },
+        headers: { 'Authorization': `Bearer ${this.config.apiKey}` },
       }
     );
 
@@ -266,11 +212,9 @@ function VectorEngineProvider({ api }: VectorEngineProviderProps) {
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('idle');
   const [connectionError, setConnectionError] = useState<string>('');
 
-  // 加载配置
   useEffect(() => {
     async function loadConfig() {
       try {
-        // 从 providerConfig 读取配置
         const providerConfig = await api.channels.getProviderConfig('vectorengine');
         if (providerConfig && Object.keys(providerConfig).length > 0) {
           const saved = { ...DEFAULT_CONFIG, ...providerConfig };
@@ -290,7 +234,6 @@ function VectorEngineProvider({ api }: VectorEngineProviderProps) {
     loadConfig();
   }, [api, form]);
 
-  // 测试连接
   const testConnection = useCallback(async (cfg?: VectorEngineConfig) => {
     const testConfig = cfg || config;
     if (!testConfig.apiKey) {
@@ -312,17 +255,13 @@ function VectorEngineProvider({ api }: VectorEngineProviderProps) {
     }
   }, [config, api]);
 
-  // 保存配置
   const handleSave = useCallback(async () => {
     try {
       const values = await form.validateFields();
       setSaving(true);
 
-      // 保存到 providerConfig（新方式）
       await api.channels.updateProviderConfig('vectorengine', values);
       setConfig(values);
-
-      // 测试连接
       await testConnection(values);
 
       api.ui.showMessage('success', '配置已保存');
@@ -333,7 +272,6 @@ function VectorEngineProvider({ api }: VectorEngineProviderProps) {
     }
   }, [form, api, testConnection]);
 
-  // 重置配置
   const handleReset = useCallback(() => {
     form.setFieldsValue(DEFAULT_CONFIG);
     setConfig(DEFAULT_CONFIG);
@@ -371,7 +309,6 @@ function VectorEngineProvider({ api }: VectorEngineProviderProps) {
 
     React.createElement(Divider),
 
-    // 连接状态卡片
     React.createElement(Card, { size: 'small', style: { marginBottom: 16 } },
       React.createElement(Row, { gutter: 16 },
         React.createElement(Col, { span: 8 },
@@ -406,7 +343,6 @@ function VectorEngineProvider({ api }: VectorEngineProviderProps) {
       showIcon: true,
     }),
 
-    // 配置表单
     React.createElement(Card, {
       title: React.createElement(Space, null,
         React.createElement(SettingOutlined),
@@ -491,8 +427,7 @@ function VectorEngineProvider({ api }: VectorEngineProviderProps) {
 async function onActivate(api: PluginAPI) {
   console.log('[VectorEngine] 插件已激活');
 
-  // 注册 Provider
-  await api.channels.registerProvider({
+  const providerDef: ProviderDefinition = {
     type: 'vectorengine',
     kind: 'itv',
     name: 'VectorEngine (Sora-2)',
@@ -505,8 +440,9 @@ async function onActivate(api: PluginAPI) {
       maxDuration: 600000,
       initialDelay: 3000,
     },
-  });
+  };
 
+  await api.channels.registerProvider(providerDef);
   console.log('[VectorEngine] Provider 已注册');
 }
 
@@ -514,11 +450,9 @@ function onDeactivate() {
   console.log('[VectorEngine] 插件已停用');
 }
 
-// 导出
 export default VectorEngineProvider;
 export { onActivate, onDeactivate };
 
-// UMD 全局导出
 (window as any).__KOMA_PLUGIN_com_koma_vectorengine_provider__ = {
   default: VectorEngineProvider,
   onActivate,

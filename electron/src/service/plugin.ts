@@ -60,6 +60,22 @@ class PluginService {
   }
 
   /**
+   * 强制删除目录（带重试机制，解决 Windows ENOTEMPTY 问题）
+   */
+  async forceRemoveDir(dirPath: string, maxRetries = 3): Promise<void> {
+    for (let i = 0; i < maxRetries; i++) {
+      try {
+        await fs.rm(dirPath, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+        return;
+      } catch (err: any) {
+        if (i === maxRetries - 1) throw err;
+        // 等待一段时间后重试，让文件句柄释放
+        await new Promise(resolve => setTimeout(resolve, 200 * (i + 1)));
+      }
+    }
+  }
+
+  /**
    * 验证插件包
    */
   async validate(zipPath: string): Promise<ValidationResult> {
@@ -181,7 +197,7 @@ class PluginService {
 
       // 如果已存在，先删除
       if (await this.fileExists(pluginDir)) {
-        await fs.rm(pluginDir, { recursive: true });
+        await this.forceRemoveDir(pluginDir);
       }
 
       // 创建目录
@@ -233,7 +249,7 @@ class PluginService {
 
       // 如果已存在，先删除
       if (await this.fileExists(pluginDir)) {
-        await fs.rm(pluginDir, { recursive: true });
+        await this.forceRemoveDir(pluginDir);
       }
 
       // 创建符号链接（开发模式）或复制
@@ -266,7 +282,7 @@ class PluginService {
   async uninstall(pluginPath: string): Promise<{ success: boolean; error?: string }> {
     try {
       if (await this.fileExists(pluginPath)) {
-        await fs.rm(pluginPath, { recursive: true });
+        await this.forceRemoveDir(pluginPath);
       }
       return { success: true };
     } catch (err: any) {
@@ -313,7 +329,7 @@ class PluginService {
 
   async cleanup(dirPath: string): Promise<void> {
     try {
-      await fs.rm(dirPath, { recursive: true });
+      await this.forceRemoveDir(dirPath);
     } catch {
       // 忽略
     }

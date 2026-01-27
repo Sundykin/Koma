@@ -4,81 +4,25 @@
  * API: doubao-seedream-4-0-250828
  */
 
-const React = (window as any).React;
+import type { PluginAPI, ProviderDefinition, ProviderContext } from '@komastudio/plugin-sdk';
+import '@komastudio/plugin-sdk';
+
+const React = window.React;
 const { useState, useEffect, useCallback } = React;
 const {
-  Card,
-  Button,
-  Form,
-  Input,
-  Select,
-  Switch,
-  Space,
-  Typography,
-  Divider,
-  Tag,
-  Spin,
-  Alert,
-  Row,
-  Col,
-  Statistic,
-  InputNumber,
-} = (window as any).antd;
+  Card, Button, Form, Input, Select, Switch, Space, Typography,
+  Divider, Tag, Spin, Alert, Row, Col, Statistic, InputNumber,
+} = window.antd;
+const Icons = window['@ant-design/icons'] || {};
 const {
-  CheckCircleOutlined,
-  CloseCircleOutlined,
-  LoadingOutlined,
-  ApiOutlined,
-  PictureOutlined,
-  SettingOutlined,
-  SaveOutlined,
-  ReloadOutlined,
-} = (window as any)['@ant-design/icons'] || {};
+  CheckCircleOutlined, CloseCircleOutlined, LoadingOutlined,
+  ApiOutlined, PictureOutlined, SettingOutlined,
+  SaveOutlined, ReloadOutlined,
+} = Icons;
 
 const { Title, Text, Paragraph } = Typography;
 
 // ========== 类型定义 ==========
-
-interface PluginAPI {
-  core: {
-    getVersion(): Promise<string>;
-    getHostInfo(): Promise<{ appVersion: string; platform: string; electronVersion: string }>;
-    on(event: string, handler: Function): void;
-    off(event: string, handler: Function): void;
-  };
-  settings: {
-    get(keys?: string[]): Promise<Record<string, any>>;
-    set(values: Record<string, any>): Promise<void>;
-  };
-  storage: {
-    readFile(path: string): Promise<ArrayBuffer>;
-    writeFile(path: string, data: ArrayBuffer): Promise<void>;
-    listFiles(dir: string): Promise<string[]>;
-    deleteFile(path: string): Promise<void>;
-  };
-  channels: {
-    registerProvider(def: ProviderDefinition): Promise<void>;
-    unregisterProvider(type: string): Promise<void>;
-    listProviders(kind?: string): Promise<ProviderDefinition[]>;
-    testProvider(kind: string, type: string, config: Record<string, any>): Promise<{ success: boolean; latency: number; error?: string }>;
-    updateProviderConfig(type: string, config: Record<string, any>): Promise<void>;
-    getProviderConfig(type: string): Promise<Record<string, any> | null>;
-  };
-  ui: {
-    showMessage(type: 'success' | 'error' | 'info' | 'warning', content: string): void;
-    showModal(options: { title: string; content: any }): Promise<boolean>;
-  };
-}
-
-interface ProviderDefinition {
-  type: string;
-  kind: 'tti' | 'itv';
-  name: string;
-  description?: string;
-  factory: (config: Record<string, any>, ctx: any) => any;
-  capabilities?: string[];
-  defaultConfig?: Record<string, any>;
-}
 
 interface SeedreamConfig {
   apiKey: string;
@@ -125,7 +69,6 @@ const SIZE_PRESETS = [
   { value: 'custom', label: '自定义尺寸...' },
 ];
 
-// 尺寸约束
 const MIN_DIMENSION = 1024;
 const MAX_DIMENSION = 4096;
 const MIN_ASPECT_RATIO = 1 / 16;
@@ -133,23 +76,19 @@ const MAX_ASPECT_RATIO = 16;
 
 // ========== 工具函数 ==========
 
-// 规范化 Base URL（移除尾部斜杠）
 function normalizeBaseUrl(baseUrl: string): string {
   return baseUrl.trim().replace(/\/+$/, '');
 }
 
-// 规范化 API Key（处理 Bearer 前缀）
 function normalizeApiKey(apiKey: string): string {
   const trimmed = apiKey.trim();
   if (!trimmed) return '';
-  // 如果已有 Bearer 前缀，直接返回
   if (trimmed.toLowerCase().startsWith('bearer ')) {
     return trimmed;
   }
   return trimmed;
 }
 
-// 获取 Authorization 头
 function getAuthorizationHeader(apiKey: string): string {
   const normalized = normalizeApiKey(apiKey);
   if (!normalized) return '';
@@ -159,7 +98,6 @@ function getAuthorizationHeader(apiKey: string): string {
   return `Bearer ${normalized}`;
 }
 
-// 规范化尺寸（确保在有效范围内）
 function normalizeDimensions(width: number, height: number): { width: number; height: number } {
   if (!Number.isFinite(width) || !Number.isFinite(height)) {
     return { width: 2048, height: 2048 };
@@ -167,7 +105,6 @@ function normalizeDimensions(width: number, height: number): { width: number; he
   const safeWidth = Math.min(MAX_DIMENSION, Math.max(MIN_DIMENSION, Math.round(width)));
   const safeHeight = Math.min(MAX_DIMENSION, Math.max(MIN_DIMENSION, Math.round(height)));
   const ratio = safeWidth / safeHeight;
-  // 检查宽高比
   if (ratio < MIN_ASPECT_RATIO || ratio > MAX_ASPECT_RATIO) {
     return { width: 2048, height: 2048 };
   }
@@ -175,7 +112,6 @@ function normalizeDimensions(width: number, height: number): { width: number; he
 }
 
 function resolveSize(config: SeedreamConfig, options?: SeedreamOptions): { size: string; width: number; height: number } {
-  // 优先使用 options 中的尺寸
   if (options?.width && options?.height) {
     const normalized = normalizeDimensions(options.width, options.height);
     return {
@@ -189,7 +125,6 @@ function resolveSize(config: SeedreamConfig, options?: SeedreamOptions): { size:
     if (preset && preset.width) {
       return { size: options.imageSize, width: preset.width, height: preset.height! };
     }
-    // 尝试解析 WxH 格式
     const match = options.imageSize.match(/^(\d+)x(\d+)$/i);
     if (match) {
       const normalized = normalizeDimensions(Number(match[1]), Number(match[2]));
@@ -197,7 +132,6 @@ function resolveSize(config: SeedreamConfig, options?: SeedreamOptions): { size:
     }
   }
 
-  // 使用配置中的尺寸
   if (config.sizeMode === 'custom') {
     const normalized = normalizeDimensions(config.customWidth, config.customHeight);
     return {
@@ -220,9 +154,9 @@ function resolveSize(config: SeedreamConfig, options?: SeedreamOptions): { size:
 class SeedreamTTIProvider {
   type = 'seedream-tti';
   config: SeedreamConfig;
-  ctx: any;
+  ctx: ProviderContext;
 
-  constructor(config: Record<string, any>, ctx: any) {
+  constructor(config: Record<string, any>, ctx: ProviderContext) {
     this.config = { ...DEFAULT_CONFIG, ...config };
     this.ctx = ctx;
   }
@@ -265,7 +199,6 @@ class SeedreamTTIProvider {
           }),
         }
       );
-      // 401/403 表示认证失败，其他 4xx/5xx 也视为失败
       if (response.status === 401 || response.status === 403) return false;
       return response.ok;
     } catch {
@@ -294,7 +227,6 @@ class SeedreamTTIProvider {
       watermark: this.config.watermark,
     };
 
-    // 图生图：添加参考图
     if (imageInput) {
       body.image = imageInput;
     }
@@ -320,7 +252,6 @@ class SeedreamTTIProvider {
     const imageUrl = data?.data?.[0]?.url;
 
     if (!imageUrl) {
-      // 尝试提取 API 错误信息
       const apiError = data?.error?.message || data?.error || data?.message;
       if (apiError) {
         throw new Error(`图像生成失败: ${apiError}`);
@@ -348,14 +279,11 @@ function SeedreamProvider({ api }: SeedreamProviderProps) {
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('idle');
   const [connectionError, setConnectionError] = useState<string>('');
 
-  // 监听尺寸模式变化
   const sizeMode = Form.useWatch('sizeMode', form);
 
-  // 加载配置
   useEffect(() => {
     async function loadConfig() {
       try {
-        // 从 providerConfig 读取配置
         const providerConfig = await api.channels.getProviderConfig('seedream-tti');
         if (providerConfig && Object.keys(providerConfig).length > 0) {
           const merged = { ...DEFAULT_CONFIG, ...providerConfig };
@@ -375,7 +303,6 @@ function SeedreamProvider({ api }: SeedreamProviderProps) {
     loadConfig();
   }, [api, form]);
 
-  // 测试连接
   const testConnection = useCallback(async (cfg?: SeedreamConfig) => {
     const testConfig = cfg || config;
     if (!testConfig.apiKey) {
@@ -397,13 +324,11 @@ function SeedreamProvider({ api }: SeedreamProviderProps) {
     }
   }, [config, api]);
 
-  // 保存配置
   const handleSave = useCallback(async () => {
     try {
       const values = await form.validateFields();
       setSaving(true);
 
-      // 保存到 providerConfig（新方式）
       await api.channels.updateProviderConfig('seedream-tti', values);
       setConfig(values);
 
@@ -416,7 +341,6 @@ function SeedreamProvider({ api }: SeedreamProviderProps) {
     }
   }, [form, api, testConnection]);
 
-  // 重置配置
   const handleReset = useCallback(() => {
     form.setFieldsValue(DEFAULT_CONFIG);
     setConfig(DEFAULT_CONFIG);
@@ -424,7 +348,6 @@ function SeedreamProvider({ api }: SeedreamProviderProps) {
     setConnectionError('');
   }, [form]);
 
-  // 尺寸预设变更
   const handleSizePresetChange = useCallback((value: string) => {
     if (value === 'custom') {
       form.setFieldsValue({ sizeMode: 'custom' });
@@ -460,7 +383,6 @@ function SeedreamProvider({ api }: SeedreamProviderProps) {
   };
 
   return React.createElement('div', { style: { padding: 24, maxWidth: 800 } },
-    // 标题
     React.createElement(Title, { level: 3 },
       React.createElement(PictureOutlined, { style: { marginRight: 8 } }),
       'Seedream 文生图服务'
@@ -471,7 +393,6 @@ function SeedreamProvider({ api }: SeedreamProviderProps) {
 
     React.createElement(Divider),
 
-    // 连接状态卡片
     React.createElement(Card, { size: 'small', style: { marginBottom: 16 } },
       React.createElement(Row, { gutter: 16 },
         React.createElement(Col, { span: 8 },
@@ -498,7 +419,6 @@ function SeedreamProvider({ api }: SeedreamProviderProps) {
       )
     ),
 
-    // 错误提示
     connectionError && React.createElement(Alert, {
       type: 'error',
       message: '连接失败',
@@ -507,7 +427,6 @@ function SeedreamProvider({ api }: SeedreamProviderProps) {
       showIcon: true,
     }),
 
-    // 配置表单
     React.createElement(Card, {
       title: React.createElement(Space, null,
         React.createElement(SettingOutlined),
@@ -515,7 +434,6 @@ function SeedreamProvider({ api }: SeedreamProviderProps) {
       ),
     },
       React.createElement(Form, { form, layout: 'vertical', initialValues: config },
-        // API Key
         React.createElement(Form.Item, {
           name: 'apiKey',
           label: 'API Key',
@@ -524,7 +442,6 @@ function SeedreamProvider({ api }: SeedreamProviderProps) {
           React.createElement(Input.Password, { placeholder: 'Bearer YOUR_API_KEY', size: 'large' })
         ),
 
-        // Base URL
         React.createElement(Form.Item, {
           name: 'baseUrl',
           label: '服务地址',
@@ -535,10 +452,8 @@ function SeedreamProvider({ api }: SeedreamProviderProps) {
 
         React.createElement(Divider, { orientation: 'left' }, '默认参数'),
 
-        // 尺寸选择
         React.createElement(Form.Item, { label: '默认尺寸' },
           React.createElement(Space, { direction: 'vertical', style: { width: '100%' } },
-            // 预设选择
             React.createElement(Form.Item, { name: 'sizePreset', noStyle: true },
               React.createElement(Select, {
                 style: { width: '100%' },
@@ -546,7 +461,6 @@ function SeedreamProvider({ api }: SeedreamProviderProps) {
                 onChange: handleSizePresetChange,
               })
             ),
-            // 自定义尺寸输入
             sizeMode === 'custom' && React.createElement(Space, null,
               React.createElement(Form.Item, { name: 'customWidth', noStyle: true },
                 React.createElement(InputNumber, {
@@ -568,14 +482,12 @@ function SeedreamProvider({ api }: SeedreamProviderProps) {
                 })
               )
             ),
-            // 隐藏的 sizeMode 字段
             React.createElement(Form.Item, { name: 'sizeMode', hidden: true },
               React.createElement(Input)
             )
           )
         ),
 
-        // 水印开关
         React.createElement(Form.Item, {
           name: 'watermark',
           label: '水印',
@@ -587,7 +499,6 @@ function SeedreamProvider({ api }: SeedreamProviderProps) {
 
         React.createElement(Divider),
 
-        // 操作按钮
         React.createElement(Space, null,
           React.createElement(Button, {
             type: 'primary',
@@ -615,8 +526,7 @@ function SeedreamProvider({ api }: SeedreamProviderProps) {
 async function onActivate(api: PluginAPI) {
   console.log('[Seedream] 插件已激活');
 
-  // 注册 Provider
-  await api.channels.registerProvider({
+  const providerDef: ProviderDefinition = {
     type: 'seedream-tti',
     kind: 'tti',
     name: 'Seedream 文生图',
@@ -624,8 +534,9 @@ async function onActivate(api: PluginAPI) {
     factory: (config, ctx) => new SeedreamTTIProvider(config, ctx),
     capabilities: ['tti'],
     defaultConfig: DEFAULT_CONFIG,
-  });
+  };
 
+  await api.channels.registerProvider(providerDef);
   console.log('[Seedream] Provider 已注册');
 }
 
@@ -633,12 +544,9 @@ function onDeactivate() {
   console.log('[Seedream] 插件已停用');
 }
 
-// ========== 导出 ==========
-
 export default SeedreamProvider;
 export { onActivate, onDeactivate };
 
-// UMD 全局导出
 (window as any).__KOMA_PLUGIN_com_koma_seedream_tti_provider__ = {
   default: SeedreamProvider,
   onActivate,

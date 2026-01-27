@@ -7,10 +7,11 @@
     "build": "esbuild src/index.tsx --bundle --format=iife --global-name=__KOMA_PLUGIN_com_koma_hello_world__ --outfile=dist/ui/main.js --external:react --external:antd"
   },
   "peerDependencies": {
-    "react": "^18.0.0",
+    "react": "^19.0.0",
     "antd": "^5.0.0"
   },
   "devDependencies": {
+    "@komastudio/plugin-sdk": "^1.0.3",
     "esbuild": "^0.19.0",
     "typescript": "^5.0.0"
   }
