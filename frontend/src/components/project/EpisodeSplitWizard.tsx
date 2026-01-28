@@ -1,6 +1,6 @@
 /**
- * 分集向导组件
- * 支持 AI 自动分析剧本并创建分集
+ * 剧集向导组件
+ * 支持 AI 自动分析剧本并创建剧集
  */
 import React, { useState, useCallback } from 'react';
 import {
@@ -88,7 +88,7 @@ export const EpisodeSplitWizard: React.FC<EpisodeSplitWizardProps> = ({
     }
   }, [script, targetCount, splitStrategy, message]);
 
-  // 创建分集
+  // 创建剧集
   const handleCreateEpisodes = useCallback(async () => {
     if (splitResults.length === 0) return;
 
@@ -108,7 +108,7 @@ export const EpisodeSplitWizard: React.FC<EpisodeSplitWizardProps> = ({
         createdEpisodes.push(episode);
       }
 
-      message.success(`成功创建 ${createdEpisodes.length} 个分集`);
+      message.success(`成功创建 ${createdEpisodes.length} 个剧集`);
       onComplete(createdEpisodes);
     } catch (err: any) {
       message.error(`创建失败: ${err.message}`);
@@ -140,7 +140,7 @@ export const EpisodeSplitWizard: React.FC<EpisodeSplitWizardProps> = ({
 
   return (
     <Modal
-      title="AI 自动分集"
+      title="AI 自动剧集"
       open={visible}
       onCancel={handleCancel}
       footer={null}
@@ -234,7 +234,7 @@ export const EpisodeSplitWizard: React.FC<EpisodeSplitWizardProps> = ({
           )}
 
           <div>
-            <Text strong>分集预览 ({splitResults.length} 集)</Text>
+            <Text strong>剧集预览 ({splitResults.length} 集)</Text>
           </div>
 
           <Flex vertical gap={8} style={{ maxHeight: 300, overflow: 'auto', border: '1px solid #303030', borderRadius: 8 }}>
@@ -264,7 +264,7 @@ export const EpisodeSplitWizard: React.FC<EpisodeSplitWizardProps> = ({
               icon={<CheckCircleOutlined />}
               onClick={handleCreateEpisodes}
             >
-              确认创建分集
+              确认创建剧集
             </Button>
           </div>
         </div>
@@ -275,7 +275,7 @@ export const EpisodeSplitWizard: React.FC<EpisodeSplitWizardProps> = ({
         <div className="py-12 text-center">
           <Spin size="large" />
           <div className="mt-4">
-            <Text>正在创建分集...</Text>
+            <Text>正在创建剧集...</Text>
           </div>
         </div>
       )}

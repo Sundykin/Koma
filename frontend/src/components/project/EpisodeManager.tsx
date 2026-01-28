@@ -1,6 +1,6 @@
 /**
- * 分集管理组件
- * 支持分集列表展示、增删改、LLM 自动分割
+ * 剧集管理组件
+ * 支持剧集列表展示、增删改、LLM 自动分割
  */
 import React, { useState, useEffect, useCallback, forwardRef, useImperativeHandle } from 'react';
 import {
@@ -46,7 +46,7 @@ export interface EpisodeManagerRef {
   refresh: () => void;
 }
 
-// 分集状态标签颜色
+// 剧集状态标签颜色
 const statusColors: Record<Episode['status'], string> = {
   draft: 'default',
   script: 'processing',
@@ -79,7 +79,7 @@ export const EpisodeManager = forwardRef<EpisodeManagerRef, EpisodeManagerProps>
   const [splitting, setSplitting] = useState(false);
   const [splitCount, setSplitCount] = useState(3);
 
-  // 加载分集列表
+  // 加载剧集列表
   const loadEpisodes = useCallback(async () => {
     setLoading(true);
     try {
@@ -101,7 +101,7 @@ export const EpisodeManager = forwardRef<EpisodeManagerRef, EpisodeManagerProps>
     refresh: loadEpisodes,
   }), [loadEpisodes]);
 
-  // 添加分集
+  // 添加剧集
   const handleAddEpisode = async () => {
     const nextNumber = episodes.length + 1;
     try {
@@ -111,7 +111,7 @@ export const EpisodeManager = forwardRef<EpisodeManagerRef, EpisodeManagerProps>
         status: 'draft',
       });
       setEpisodes([...episodes, newEpisode]);
-      message.success('分集已添加');
+      message.success('剧集已添加');
     } catch (err: any) {
       message.error(err.message);
     }
@@ -143,14 +143,14 @@ export const EpisodeManager = forwardRef<EpisodeManagerRef, EpisodeManagerProps>
       }
       setEditDialogOpen(false);
       setEditingEpisode(null);
-      message.success('分集已保存');
+      message.success('剧集已保存');
     } catch (err: any) {
       if (err.errorFields) return; // 表单验证失败
       message.error(err.message);
     }
   };
 
-  // 删除分集
+  // 删除剧集
   const handleDeleteEpisode = async (episodeId: string) => {
     try {
       await deleteEpisode(projectId, episodeId);
@@ -162,7 +162,7 @@ export const EpisodeManager = forwardRef<EpisodeManagerRef, EpisodeManagerProps>
       for (const ep of renumbered) {
         await saveEpisode(projectId, ep.id, { number: ep.number });
       }
-      message.success('分集已删除');
+      message.success('剧集已删除');
     } catch (err: any) {
       message.error(err.message);
     }
@@ -214,7 +214,7 @@ ${fullScript}
       const jsonStr = (jsonMatch[1] || result).trim().replace(/^[^{]*/, '').replace(/[^}]*$/, '');
       const parsed = JSON.parse(jsonStr) as { episodes: { title: string; scriptText: string }[] };
 
-      // 清空现有分集并创建新分集
+      // 清空现有剧集并创建新剧集
       for (const ep of episodes) {
         await deleteEpisode(projectId, ep.id);
       }
@@ -245,7 +245,7 @@ ${fullScript}
     <div>
       {/* 标题栏 */}
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-        <Text strong style={{ fontSize: 16 }}>分集管理</Text>
+        <Text strong style={{ fontSize: 16 }}>剧集管理</Text>
         <Space>
           {fullScript && (
             <Button
@@ -262,18 +262,18 @@ ${fullScript}
             onClick={handleAddEpisode}
             size="small"
           >
-            添加分集
+            添加剧集
           </Button>
         </Space>
       </div>
 
-      {/* 分集列表 */}
+      {/* 剧集列表 */}
       {loading ? (
         <div style={{ textAlign: 'center', padding: 40 }}>
           <Spin />
         </div>
       ) : episodes.length === 0 ? (
-        <Empty description='暂无分集，点击"添加分集"创建' />
+        <Empty description='暂无剧集，点击"添加剧集"创建' />
       ) : (
         <Flex vertical gap={8} style={{ border: '1px solid #303030', borderRadius: 8 }}>
           {episodes.map((episode) => (
@@ -335,7 +335,7 @@ ${fullScript}
                   }}
                 />
                 <Popconfirm
-                  title="确定删除此分集？"
+                  title="确定删除此剧集？"
                   onConfirm={(e) => {
                     e?.stopPropagation();
                     handleDeleteEpisode(episode.id);
@@ -358,7 +358,7 @@ ${fullScript}
 
       {/* 编辑对话框 */}
       <Modal
-        title={`编辑分集 - 第 ${editingEpisode?.number} 集`}
+        title={`编辑剧集 - 第 ${editingEpisode?.number} 集`}
         open={editDialogOpen}
         onOk={handleSaveEdit}
         onCancel={() => setEditDialogOpen(false)}
@@ -369,12 +369,12 @@ ${fullScript}
         <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
           <Form.Item
             name="title"
-            label="分集标题"
-            rules={[{ required: true, message: '请输入分集标题' }]}
+            label="剧集标题"
+            rules={[{ required: true, message: '请输入剧集标题' }]}
           >
-            <Input placeholder="请输入分集标题" />
+            <Input placeholder="请输入剧集标题" />
           </Form.Item>
-          <Form.Item name="scriptText" label="分集剧本">
+          <Form.Item name="scriptText" label="剧集剧本">
             <TextArea rows={12} placeholder="输入本集剧本内容..." />
           </Form.Item>
         </Form>
@@ -393,7 +393,7 @@ ${fullScript}
         maskClosable={!splitting}
       >
         <Paragraph type="secondary" style={{ marginBottom: 16 }}>
-          使用 AI 自动将完整剧本分割成多集。现有分集将被替换。
+          使用 AI 自动将完整剧本分割成多集。现有剧集将被替换。
         </Paragraph>
         <Form.Item label="分割成几集">
           <InputNumber

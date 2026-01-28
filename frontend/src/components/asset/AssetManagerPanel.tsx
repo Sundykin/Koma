@@ -64,7 +64,7 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
   const [selectedType, setSelectedType] = useState<AssetType>('character');
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  // 分集筛选
+  // 剧集筛选
   const [showCurrentEpisodeOnly, setShowCurrentEpisodeOnly] = useState(true);
   const [episodeAnalysis, setEpisodeAnalysis] = useState<EpisodeAnalysis | null>(null);
 
@@ -199,7 +199,7 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
   // 下一步
   const handleNextAndGenerateShots = async () => {
     if (!episodeId || !script) {
-      message.warning('缺少分集或剧本信息，跳过分镜生成');
+      message.warning('缺少剧集或剧本信息，跳过分镜生成');
       onNext();
       return;
     }
@@ -209,7 +209,7 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
       await startShotAnalysis(
         projectId,
         episodeId,
-        episodeName || `分集 ${episodeId}`,
+        episodeName || `剧集 ${episodeId}`,
         script,
         llmConfigId
       );
@@ -251,7 +251,7 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
           <div className="assetListFilter">
             <Space size="small">
               <FilterOutlined />
-              <span>仅当前分集</span>
+              <span>仅当前剧集</span>
               <Switch
                 size="small"
                 checked={showCurrentEpisodeOnly}

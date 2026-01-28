@@ -19,7 +19,7 @@ store/
 │   └── settingsStore.ts  # 配置：LLM、TTI、ITV、TTS
 ├── project/
 │   ├── projectStore.ts   # 项目元数据
-│   ├── episodeStore.ts   # 分集管理
+│   ├── episodeStore.ts   # 剧集管理
 │   └── assetStore.ts     # 资产：角色、场景、道具
 └── index.ts              # 统一导出
 ```

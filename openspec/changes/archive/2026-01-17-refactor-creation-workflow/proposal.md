@@ -28,7 +28,7 @@
 
 ### 4. 资产数据持久化修复
 - 解析完成后将角色、场景、道具保存到项目 `characters.json`、`scenes.json`、`props.json`
-- 分集解析结果保存到 `episodes/{id}/analysis.json`
+- 剧集解析结果保存到 `episodes/{id}/analysis.json`
 
 ### 5. 资产生成功能
 - 角色定妆照生成（TTI）

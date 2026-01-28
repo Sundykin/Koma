@@ -1,5 +1,5 @@
 /**
- * 分集管理
+ * 剧集管理
  */
 import { v4 as uuidv4 } from 'uuid';
 import { electronService } from '../../services/electronService';

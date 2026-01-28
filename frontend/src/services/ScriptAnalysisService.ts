@@ -22,7 +22,7 @@ import {
 // 解析阶段
 export type AnalysisStage = 'characters' | 'scenes' | 'props' | 'shots';
 
-// 分集上下文
+// 剧集上下文
 export interface EpisodeContext {
   episodeId: string;
   episodeName?: string;
@@ -41,7 +41,7 @@ export interface StageResult<T> {
   success: boolean;
   data?: T;
   error?: string;
-  episodeId?: string; // 如果是分集模式，标记所属分集
+  episodeId?: string; // 如果是剧集模式，标记所属剧集
 }
 
 // JSON Schema 定义
@@ -144,12 +144,12 @@ export class ScriptAnalysisService {
     this.episodeContext = options?.episodeContext;
   }
 
-  // 设置分集上下文
+  // 设置剧集上下文
   setEpisodeContext(context?: EpisodeContext) {
     this.episodeContext = context;
   }
 
-  // 获取当前使用的剧本（优先分集剧本）
+  // 获取当前使用的剧本（优先剧集剧本）
   private getScript(script: string): string {
     return this.episodeContext?.episodeScript || script;
   }
@@ -215,7 +215,7 @@ export class ScriptAnalysisService {
   async extractCharacters(script: string): Promise<StageResult<Character[]>> {
     const effectiveScript = this.getScript(script);
     const modeHint = this.episodeContext
-      ? `（分集模式：${this.episodeContext.episodeName || this.episodeContext.episodeId}）`
+      ? `（剧集模式：${this.episodeContext.episodeName || this.episodeContext.episodeId}）`
       : '';
     this.reportProgress('characters', 'running', `正在分析角色...${modeHint}`);
 
@@ -247,7 +247,7 @@ export class ScriptAnalysisService {
   async extractScenes(script: string): Promise<StageResult<Scene[]>> {
     const effectiveScript = this.getScript(script);
     const modeHint = this.episodeContext
-      ? `（分集模式：${this.episodeContext.episodeName || this.episodeContext.episodeId}）`
+      ? `（剧集模式：${this.episodeContext.episodeName || this.episodeContext.episodeId}）`
       : '';
     this.reportProgress('scenes', 'running', `正在分析场景...${modeHint}`);
 
@@ -279,7 +279,7 @@ export class ScriptAnalysisService {
   async extractProps(script: string): Promise<StageResult<Prop[]>> {
     const effectiveScript = this.getScript(script);
     const modeHint = this.episodeContext
-      ? `（分集模式：${this.episodeContext.episodeName || this.episodeContext.episodeId}）`
+      ? `（剧集模式：${this.episodeContext.episodeName || this.episodeContext.episodeId}）`
       : '';
     this.reportProgress('props', 'running', `正在分析道具...${modeHint}`);
 
@@ -314,7 +314,7 @@ export class ScriptAnalysisService {
   ): Promise<StageResult<Shot[]>> {
     const effectiveScript = this.getScript(script);
     const modeHint = this.episodeContext
-      ? `（分集模式：${this.episodeContext.episodeName || this.episodeContext.episodeId}）`
+      ? `（剧集模式：${this.episodeContext.episodeName || this.episodeContext.episodeId}）`
       : '';
     this.reportProgress('shots', 'running', `正在生成分镜...${modeHint}`);
 
@@ -514,7 +514,7 @@ export class BackgroundAnalysisService {
       const sceneNameToId = new Map(mergedScenes.map(s => [s.name, s.id]));
       const propNameToId = new Map(mergedProps.map(p => [p.name, p.id]));
 
-      // 保存分集解析结果（使用合并后的正确 ID）
+      // 保存剧集解析结果（使用合并后的正确 ID）
       await saveEpisodeAnalysis(this.projectId, episodeId, {
         characterRefs: result.characters.map(c => charNameToId.get(c.name) || c.id),
         sceneRefs: result.scenes.map(s => sceneNameToId.get(s.name) || s.id),

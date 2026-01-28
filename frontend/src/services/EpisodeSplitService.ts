@@ -1,6 +1,6 @@
 /**
- * AI 自动分集服务
- * 支持将完整剧本智能拆分为多个分集
+ * AI 自动剧集服务
+ * 支持将完整剧本智能拆分为多个剧集
  */
 import type { LLMModelConfig, Episode } from '../types';
 import { createLLMProvider } from '../providers';
@@ -140,12 +140,12 @@ export class EpisodeSplitService {
     this.aborted = true;
   }
 
-  // 分析剧本，返回建议的分集方案
+  // 分析剧本，返回建议的剧集方案
   async analyzeScript(script: string, options: SplitOptions): Promise<SplitAnalysis> {
     this.aborted = false;
     this.contextManager.clear();
 
-    const systemPrompt = `��是一个专业的影视编剧，擅长分析剧本结构和规划分集。
+    const systemPrompt = `��是一个专业的影视编剧，擅长分析剧本结构和规划剧集。
 分析时请考虑：
 1. 故事弧线的完整性
 2. 情节的自然过渡点
@@ -154,14 +154,14 @@ export class EpisodeSplitService {
 
     this.contextManager.addMessage({ role: 'system', content: systemPrompt });
 
-    const userPrompt = `请分析以下剧本的结构，建议如何分集。
+    const userPrompt = `请分析以下剧本的结构，建议如何剧集。
 
 剧本内容：
 ${script.slice(0, 30000)}${script.length > 30000 ? '\n...(剧本过长已截断)' : ''}
 
 要求：
 ${options.targetEpisodeCount ? `- 目标分成 ${options.targetEpisodeCount} 集` : '- 根据剧情自动判断合适的集数'}
-- 分集策略: ${options.splitStrategy === 'scene' ? '按场景分割' : options.splitStrategy === 'chapter' ? '按章节分割' : '智能分析'}
+- 剧集策略: ${options.splitStrategy === 'scene' ? '按场景分割' : options.splitStrategy === 'chapter' ? '按章节分割' : '智能分析'}
 
 请以 JSON 格式输出分析结果：
 {
@@ -196,7 +196,7 @@ ${options.targetEpisodeCount ? `- 目标分成 ${options.targetEpisodeCount} 集
     }
   }
 
-  // 执行分集
+  // 执行剧集
   async splitScript(script: string, suggestedCount: number): Promise<SplitResult[]> {
     if (this.aborted) return [];
 

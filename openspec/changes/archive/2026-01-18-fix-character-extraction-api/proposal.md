@@ -1,7 +1,7 @@
 # Proposal: 修复角色提取 API 使用方式
 
 ## Summary
-当前角色提取实现使用了错误的 API 参数。根据 `视频文档.md`，Sora2 角色提取 API 应使用 `from_task`（视频生成任务ID）而非 `video_url`。同时分集详情页显示的资产未按分集正确过滤。
+当前角色提取实现使用了错误的 API 参数。根据 `视频文档.md`，Sora2 角色提取 API 应使用 `from_task`（视频生成任务ID）而非 `video_url`。同时剧集详情页显示的资产未按剧集正确过滤。
 
 ## Problem Statement
 1. **角色提取 API 参数错误**：
@@ -13,9 +13,9 @@
    - 角色预览视频生成后，未保存生成任务的 ID
    - 后续角色提取无法获取正确的任务 ID
 
-3. **分集详情资产显示问题**（次要）：
-   - 分集详情页未正确过滤按分集关联的角色/场景资产
-   - 导致所有分集显示相同的资产列表
+3. **剧集详情资产显示问题**（次要）：
+   - 剧集详情页未正确过滤按剧集关联的角色/场景资产
+   - 导致所有剧集显示相同的资产列表
 
 ## Proposed Solution
 
@@ -28,8 +28,8 @@
 2. 修改 `generateCharacterPreviewVideo()` 保存任务 ID
 3. 修改 `extractAndBindCharacter()` 使用任务 ID
 
-### Phase 3: 分集资产过滤（可选）
-1. 修复分集详情页资产显示逻辑
+### Phase 3: 剧集资产过滤（可选）
+1. 修复剧集详情页资产显示逻辑
 2. 根据 `EpisodeAnalysis.characterRefs` 过滤角色列表
 
 ## Success Criteria

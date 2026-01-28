@@ -15,10 +15,10 @@ export interface Project {
   // 新增字段
   theme?: string;           // 主题风格 ID
   stylePrompt?: string;     // 自定义风格描述
-  episodeCount?: number;    // 实际分集数（用于分集管理）
+  episodeCount?: number;    // 实际剧集数（用于剧集管理）
 }
 
-// 分集步骤进度
+// 剧集步骤进度
 export interface EpisodeStepProgress {
   script: 'pending' | 'completed';
   assets: 'pending' | 'completed';
@@ -26,29 +26,29 @@ export interface EpisodeStepProgress {
   video: 'pending' | 'completed';
 }
 
-// 分集接口定义
+// 剧集接口定义
 export interface Episode {
   id: string;
   projectId: string;
   number: number;           // 集数编号
-  title: string;            // 分集标题
+  title: string;            // 剧集标题
   scriptText?: string;      // 本集剧本
   status: 'draft' | 'script' | 'storyboard' | 'generating' | 'completed';
   stepProgress?: EpisodeStepProgress;  // 各步骤完成状态
   createdAt: number;
   updatedAt: number;
-  // 分集解析数据引用（实际数据存储在 episodes/{id}/analysis.json）
+  // 剧集解析数据引用（实际数据存储在 episodes/{id}/analysis.json）
   hasAnalysis?: boolean;
 }
 
-// 分集解析结果（存储在 episodes/{id}/analysis.json）
+// 剧集解析结果（存储在 episodes/{id}/analysis.json）
 export interface EpisodeAnalysis {
   episodeId: string;
   // 引用项目级资产（ID 引用，非复制）
   characterRefs: string[];
   sceneRefs: string[];
   propRefs: string[];
-  // 分集特有的分镜
+  // 剧集特有的分镜
   shots: Shot[];
   createdAt: number;
   updatedAt: number;
@@ -99,7 +99,7 @@ export interface Character {
   sora2CharacterId?: string;  // 角色提取API返回的ID
   customPrompt?: string;      // 用户自定义生成提示词 (Deprecated: use prompt instead)
   timestampRange?: AssetTimestampRange; // Sora2 提取时间范围
-  // 分集引用追踪
+  // 剧集引用追踪
   episodeRefs?: EpisodeRef[];
   fingerprint?: string;       // 资产指纹（用于去重）
 }
@@ -119,7 +119,7 @@ export interface Scene {
   imagePath?: string;  // 场景预览图本地路径
   imageUrl?: string;   // 场景预览图远程URL
   customPrompt?: string; // (Deprecated: use prompt instead)
-  // 分集引用追踪
+  // 剧集引用追踪
   episodeRefs?: EpisodeRef[];
   fingerprint?: string;
 }
@@ -142,7 +142,7 @@ export interface Prop {
   sora2PropId?: string;        // Sora2 道具 ID
   customPrompt?: string;       // (Deprecated: use prompt instead)
   timestampRange?: AssetTimestampRange; // Sora2 提取时间范围
-  // 分集引用追踪
+  // 剧集引用追踪
   episodeRefs?: EpisodeRef[];
   fingerprint?: string;
 }

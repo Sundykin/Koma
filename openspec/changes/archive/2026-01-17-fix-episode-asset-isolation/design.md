@@ -2,11 +2,11 @@
 
 ## Architecture
 
-### 1. 分集资产筛选
+### 1. 剧集资产筛选
 
 ```
 AssetManager
-├── props: episodeId (当前分集)
+├── props: episodeId (当前剧集)
 ├── state: showAllAssets (是否显示全部)
 └── 筛选逻辑:
     if (showAllAssets) {
@@ -18,8 +18,8 @@ AssetManager
 ```
 
 **UI 变更：**
-- 顶部添加 Switch：「仅显示当前分集资产」（默认开启）
-- 未关联资产显示为灰色，可点击添加到当前分集
+- 顶部添加 Switch：「仅显示当前剧集资产」（默认开启）
+- 未关联资产显示为灰色，可点击添加到当前剧集
 
 ### 2. 角色定妆照提示词模板
 

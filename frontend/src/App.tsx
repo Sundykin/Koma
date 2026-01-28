@@ -234,7 +234,7 @@ const AppContent: React.FC = () => {
   const handleAnalyze = async () => {
     if (!scriptText.trim()) { message.warning('请先输入剧本内容'); return; }
     if (!activeProject) { message.warning('请先选择项目'); return; }
-    if (!activeEpisode) { message.warning('请先选择分集'); return; }
+    if (!activeEpisode) { message.warning('请先选择剧集'); return; }
     try {
       setIsAnalyzing(true);
       await startBackgroundAnalysis(activeProject.id, activeEpisode.id, activeEpisode.title || `第${activeEpisode.number}集`, scriptText, activeProject.llmConfigId);

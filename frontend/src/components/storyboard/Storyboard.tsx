@@ -183,7 +183,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
         episodeId ? loadEpisodeAnalysis(projectId, episodeId) : Promise.resolve(null),
       ]);
 
-      // 根据分集分析结果筛选资产
+      // 根据剧集分析结果筛选资产
       let filteredCharacters = loadedCharacters;
       let filteredScenes = loadedScenes;
       let filteredProps = loadedProps;
@@ -253,7 +253,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
   // 保存分镜数据
   const saveAllShots = useCallback(async (updatedShots: Shot[]) => {
     if (!episodeId) {
-      message.warning('未选择分集，无法保存分镜');
+      message.warning('未选择剧集，无法保存分镜');
       return;
     }
     try {
@@ -297,7 +297,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
 
   const handleGenerateShotImage = useCallback(async (shotId: string) => {
     if (!episodeId) {
-      message.warning('未选择分集');
+      message.warning('未选择剧集');
       return;
     }
     setGeneratingShots(prev => new Set(prev).add(shotId));
@@ -506,7 +506,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
   // 生成图片提示词（首次生成）
   const handleGenerateImagePrompt = useCallback(async (shotId: string) => {
     if (!episodeId) {
-      message.warning('未选择分集');
+      message.warning('未选择剧集');
       return;
     }
     const shot = shots.find(s => s.id === shotId);
@@ -544,7 +544,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
   // 生成视频提示词（首次生成）
   const handleGenerateVideoPrompt = useCallback(async (shotId: string) => {
     if (!episodeId) {
-      message.warning('未选择分集');
+      message.warning('未选择剧集');
       return;
     }
     const shot = shots.find(s => s.id === shotId);
@@ -582,7 +582,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
   // 优化图片提示词（强制重新生成）
   const handleOptimizeImagePrompt = useCallback(async (shotId: string, _currentPrompt: string) => {
     if (!episodeId) {
-      message.warning('未选择分集');
+      message.warning('未选择剧集');
       return;
     }
     const shot = shots.find(s => s.id === shotId);
@@ -621,7 +621,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
   // 优化视频提示词（强制重新生成）
   const handleOptimizeVideoPrompt = useCallback(async (shotId: string, _currentPrompt: string) => {
     if (!episodeId) {
-      message.warning('未选择分集');
+      message.warning('未选择剧集');
       return;
     }
     const shot = shots.find(s => s.id === shotId);
@@ -660,7 +660,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
   // 批量生成提示词（跳过已有提示词的）
   const handleBatchGeneratePrompts = useCallback(async (targetShotIds?: string[]) => {
     if (!episodeId) {
-      message.warning('未选择分集');
+      message.warning('未选择剧集');
       return;
     }
     // 如果指定了 shotIds，则只处理这些分镜中缺少提示词的
@@ -708,7 +708,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
   // 批量重新生成提示词（强制重新生成已有提示词的）
   const handleBatchReGeneratePrompts = useCallback(async (targetShotIds?: string[]) => {
     if (!episodeId) {
-      message.warning('未选择分集');
+      message.warning('未选择剧集');
       return;
     }
     const baseShots = targetShotIds
@@ -793,7 +793,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
   // 打开预选资产弹窗
   const handleOpenPresetModal = useCallback(() => {
     if (!episodeId || !script) {
-      message.warning('缺少分集信息或剧本内容');
+      message.warning('缺少剧集信息或剧本内容');
       return;
     }
     setPresetModalOpen(true);
@@ -808,7 +808,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       await startShotAnalysis(
         projectId,
         episodeId!,
-        episodeName || `分集 ${episodeId}`,
+        episodeName || `剧集 ${episodeId}`,
         script!,
         llmConfigId,
         assets  // 传递预选资产
@@ -822,7 +822,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
 
   const handleGenerateAIShots = useCallback(async () => {
     if (!episodeId || !script) {
-      message.warning('缺少分集信息或剧本内容');
+      message.warning('缺少剧集信息或剧本内容');
       return;
     }
     // 检查是否有已绑定 Sora2 的资产，如有则打开预选对话框
@@ -834,7 +834,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       // 无已绑定资产，直接生成
       setIsAnalyzing(true);
       try {
-        await startShotAnalysis(projectId, episodeId, episodeName || `分集 ${episodeId}`, script, llmConfigId);
+        await startShotAnalysis(projectId, episodeId, episodeName || `剧集 ${episodeId}`, script, llmConfigId);
         message.info('AI 分镜生成任务已启动，可在状态栏查看进度');
       } catch (err: any) {
         message.error(err.message || '启动生成失败');
@@ -871,7 +871,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
   // 批量生成图片（跳过已有图片的）
   const handleBatchGenerate = useCallback(async (targetShotIds?: string[]) => {
     if (!episodeId) {
-      message.warning('未选择分集');
+      message.warning('未选择剧集');
       return;
     }
     const baseShots = targetShotIds
@@ -896,7 +896,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
   // 批量重新生成图片（强制重新生成已有图片的）
   const handleBatchReGenerateImages = useCallback(async (targetShotIds?: string[]) => {
     if (!episodeId) {
-      message.warning('未选择分集');
+      message.warning('未选择剧集');
       return;
     }
     const baseShots = targetShotIds

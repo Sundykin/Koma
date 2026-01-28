@@ -33,13 +33,13 @@ export {
   loadShotMeta,
   listShots,
   getShotVersionHistory,
-  // 分集管理
+  // 剧集管理
   createEpisode,
   loadEpisode,
   saveEpisode,
   deleteEpisode,
   listEpisodes,
-  // 分集解析结果
+  // 剧集解析结果
   saveEpisodeAnalysis,
   loadEpisodeAnalysis,
   loadEpisodeShots,

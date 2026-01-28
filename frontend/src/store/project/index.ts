@@ -39,7 +39,7 @@ export {
   getShotVersionHistory,
 } from './shots';
 
-// 分集管理
+// 剧集管理
 export {
   createEpisode,
   loadEpisode,
@@ -48,7 +48,7 @@ export {
   listEpisodes,
 } from './episodes';
 
-// 分集解析结果
+// 剧集解析结果
 export {
   saveEpisodeAnalysis,
   loadEpisodeAnalysis,

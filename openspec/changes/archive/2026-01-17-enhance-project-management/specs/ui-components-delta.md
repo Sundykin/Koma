@@ -18,29 +18,29 @@
 - **AND** 描述将追加到 TTI 提示词
 
 ### Requirement: Episode Management UI
-系统 SHALL 提供分集管理界面。
+系统 SHALL 提供剧集管理界面。
 
-#### Scenario: 分集列表显示
-- **WHEN** 项目有多个分集
-- **THEN** 显示分集列表（编号、标题、状态）
-- **AND** 支持点击切换当前编辑的分集
+#### Scenario: 剧集列表显示
+- **WHEN** 项目有多个剧集
+- **THEN** 显示剧集列表（编号、标题、状态）
+- **AND** 支持点击切换当前编辑的剧集
 - **AND** 支持拖拽调整顺序
 
-#### Scenario: 添加分集
-- **WHEN** 用户点击「添加分集」
-- **THEN** 创建新分集
+#### Scenario: 添加剧集
+- **WHEN** 用户点击「添加剧集」
+- **THEN** 创建新剧集
 - **AND** 自动编号
-- **AND** 进入分集编辑状态
+- **AND** 进入剧集编辑状态
 
-#### Scenario: 删除分集
-- **WHEN** 用户删除分集
+#### Scenario: 删除剧集
+- **WHEN** 用户删除剧集
 - **THEN** 显示确认对话框
-- **AND** 删除后重新编号剩余分集
+- **AND** 删除后重新编号剩余剧集
 
-#### Scenario: 自动分集按钮
+#### Scenario: 自动剧集按钮
 - **WHEN** 剧本字数超过阈值
-- **THEN** 显示「LLM 自动分集」按钮
-- **AND** 点击后调用分集服务
+- **THEN** 显示「LLM 自动剧集」按钮
+- **AND** 点击后调用剧集服务
 
 ### Requirement: Character Asset Editor UI
 系统 SHALL 提供角色资产编辑界面。

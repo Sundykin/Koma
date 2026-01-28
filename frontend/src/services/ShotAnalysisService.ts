@@ -203,9 +203,9 @@ export class ShotAnalysisService {
 
       TaskManager.updateTask(taskId, { progress: 85 });
 
-      // 保存分镜到分集
+      // 保存分镜到剧集
       await saveEpisodeShots(this.projectId, episodeId, shots);
-      console.log('[ShotAnalysis] 分镜已保存到分集:', episodeId, shots.length);
+      console.log('[ShotAnalysis] 分镜已保存到剧集:', episodeId, shots.length);
 
       TaskManager.updateTask(taskId, {
         status: 'completed',

@@ -3,26 +3,26 @@
 ## ADDED Requirements
 
 ### Requirement: Episode Storage Structure
-系统 SHALL 支持分集存储结构。
+系统 SHALL 支持剧集存储结构。
 
-#### Scenario: 分集目录结构
-- **WHEN** 项目启用分集管理
+#### Scenario: 剧集目录结构
+- **WHEN** 项目启用剧集管理
 - **THEN** 创建 `episodes/` 子目录
 - **AND** 每集独立存储：
 ```
 projects/{id}/episodes/{episodeId}/
-├── meta.json           # 分集元数据
+├── meta.json           # 剧集元数据
 ├── script.txt          # 本集剧本
 ├── shots.json          # 本集分镜列表
 └── assets/             # 本集专属资产
 ```
 
-#### Scenario: 分集元数据
-- **WHEN** 保存分集元数据
+#### Scenario: 剧集元数据
+- **WHEN** 保存剧集元数据
 - **THEN** meta.json 包含：
-  - id: 分集ID
+  - id: 剧集ID
   - number: 集数编号
-  - title: 分集标题
+  - title: 剧集标题
   - status: 状态
   - createdAt, updatedAt
 
@@ -97,7 +97,7 @@ assets/characters/{characterId}/
 - **THEN** project.json 包含：
   - theme: 预设主题ID
   - stylePrompt: 自定义风格描述
-  - episodeCount: 分集数量
+  - episodeCount: 剧集数量
 
 ### Requirement: Async Task Queue Storage
 系统 SHALL 持久化异步任务队列。

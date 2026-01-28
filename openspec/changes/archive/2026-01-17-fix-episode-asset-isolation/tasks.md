@@ -34,15 +34,15 @@
 - [x] 定妆照显示调整为横版（包含三视图）
 - [x] 提示词编辑保留原有功能
 
-### Task 3.2: AssetManager 分集筛选
+### Task 3.2: AssetManager 剧集筛选
 - [x] 添加 `episodeId` prop（已存在）
 - [x] 添加 `showCurrentEpisodeOnly` state 和 Switch
-- [x] 加载当前分集的 `EpisodeAnalysis`
+- [x] 加载当前剧集的 `EpisodeAnalysis`
 - [x] 筛选 characters/scenes/props 只显示关联的
 
 ### Task 3.3: App.tsx 传递 episodeId
 - [x] 确保 AssetManager 接收当前 episodeId（已实现）
-- [x] 切换分集时刷新资产列表
+- [x] 切换剧集时刷新资产列表
 
 ## Phase 4: 清理
 

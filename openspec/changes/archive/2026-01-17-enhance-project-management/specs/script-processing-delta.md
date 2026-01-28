@@ -3,22 +3,22 @@
 ## ADDED Requirements
 
 ### Requirement: Episode Auto-Split
-系统 SHALL 支持 LLM 自动分集。
+系统 SHALL 支持 LLM 自动剧集。
 
-#### Scenario: 自动分集
-- **WHEN** 用户触发「自动分集」且剧本字数超过阈值
+#### Scenario: 自动剧集
+- **WHEN** 用户触发「自动剧集」且剧本字数超过阈值
 - **THEN** 系统调用 LLM 分析剧本结构
 - **AND** 根据项目设置的集数自动划分边界
-- **AND** 返回分集建议列表
+- **AND** 返回剧集建议列表
 
-#### Scenario: 分集建议预览
-- **WHEN** LLM 返回分集建议
+#### Scenario: 剧集建议预览
+- **WHEN** LLM 返回剧集建议
 - **THEN** 显示每集的起止位置和摘要
-- **AND** 用户可手动调整分集边界
-- **AND** 确认后创建分集结构
+- **AND** 用户可手动调整剧集边界
+- **AND** 确认后创建剧集结构
 
-#### Scenario: 手动分集
-- **WHEN** 用户选择手动分集
+#### Scenario: 手动剧集
+- **WHEN** 用户选择手动剧集
 - **THEN** 提供拖拽界面划分剧本段落
 - **AND** 支持预览每集内容
 

@@ -1,6 +1,6 @@
 /**
  * 项目概览页面
- * 三栏式工作台布局：左侧分集导航 | 中间内容区 | 右侧资产面板
+ * 三栏式工作台布局：左侧剧集导航 | 中间内容区 | 右侧资产面板
  */
 import React, { useState, useCallback, useRef } from 'react';
 import {
@@ -85,17 +85,17 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
     setEditingTitle(false);
   }, [titleValue, project, onProjectUpdate, message]);
 
-  // 处理分集选择进入创作
+  // 处理剧集选择进入创作
   const handleEpisodeSelect = useCallback((episode: Episode) => {
     onEnterEpisode(episode);
   }, [onEnterEpisode]);
 
-  // AI 分集完成后刷新列表
+  // AI 剧集完成后刷新列表
   const handleSplitComplete = useCallback((episodes: Episode[]) => {
     setSplitWizardVisible(false);
     setFullScript('');
     episodeManagerRef.current?.refresh();
-    message.success(`成功创建 ${episodes.length} 个分集`);
+    message.success(`成功创建 ${episodes.length} 个剧集`);
   }, [message]);
 
   // 打开剧本导入弹窗
@@ -233,14 +233,14 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
 
       {/* 三栏式主内容区 */}
       <div className="flex-1 flex overflow-hidden">
-        {/* 左栏：分集导航 */}
+        {/* 左栏：剧集导航 */}
         <div
           className={`border-r border-zinc-800 bg-zinc-900/30 flex flex-col transition-all duration-300 ${
             leftCollapsed ? 'w-0 overflow-hidden' : 'w-[400px]'
           }`}
         >
           <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
-            <span className="text-sm font-medium text-zinc-400">分集管理</span>
+            <span className="text-sm font-medium text-zinc-400">剧集管理</span>
             <Button
               type="text"
               size="small"
@@ -279,9 +279,9 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
               <div className="w-20 h-20 mx-auto mb-6 rounded-2xl bg-zinc-800/50 flex items-center justify-center">
                 <Film className="w-10 h-10 text-zinc-600" />
               </div>
-              <h2 className="text-xl font-semibold text-zinc-300 mb-2">选择或创建分集开始创作</h2>
+              <h2 className="text-xl font-semibold text-zinc-300 mb-2">选择或创建剧集开始创作</h2>
               <p className="text-zinc-500 mb-6">
-                从左侧选择一个分集进入编辑，或导入剧本自动拆分分集
+                从左侧选择一个剧集进入编辑，或导入剧本自动拆分剧集
               </p>
               <Space>
                 <Button
@@ -370,7 +370,7 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
         open={scriptImportVisible}
         onCancel={() => setScriptImportVisible(false)}
         onOk={confirmScriptImport}
-        okText="AI 自动分集"
+        okText="AI 自动剧集"
         okButtonProps={{ disabled: !tempScript.trim(), icon: <ThunderboltOutlined /> }}
         cancelText="取消"
         width={900}
@@ -397,7 +397,7 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
             </Button>
           </Space>
           <Text type="secondary" className="ml-4 text-xs">
-            输入剧本后点击"AI 自动分集"，系统将智能拆分为多个分集
+            输入剧本后点击"AI 自动剧集"，系统将智能拆分为多个剧集
           </Text>
         </div>
         <ScriptEditor
@@ -408,13 +408,13 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
 提示：
 - 使用 ## 标记场景
 - 使用 **角色名**：标记对话
-- 文本请用"第n章/集"分割，系统将自动识别分集`}
+- 文本请用"第n章/集"分割，系统将自动识别剧集`}
           minHeight="400px"
           maxHeight="500px"
         />
       </Modal>
 
-      {/* AI 分集向导 */}
+      {/* AI 剧集向导 */}
       <EpisodeSplitWizard
         visible={splitWizardVisible}
         projectId={project.id}

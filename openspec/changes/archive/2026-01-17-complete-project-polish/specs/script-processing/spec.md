@@ -1,15 +1,15 @@
 ## ADDED Requirements
 
-### Requirement: 分集拆分模式
-ScriptAnalysisService SHALL 支持分集拆分模式，允许按单集或全剧本两种方式进行剧本分析。
+### Requirement: 剧集拆分模式
+ScriptAnalysisService SHALL 支持剧集拆分模式，允许按单集或全剧本两种方式进行剧本分析。
 
 #### Scenario: 单集分析模式
 - **WHEN** 提供 episodeId 和 episodeScript 参数
-- **THEN** 仅分析指定分集的内容
-- **AND** 提取结果标记为属于该分集
+- **THEN** 仅分析指定剧集的内容
+- **AND** 提取结果标记为属于该剧集
 
 #### Scenario: 全剧本分析模式
-- **WHEN** 未提供分集参数
+- **WHEN** 未提供剧集参数
 - **THEN** 分析完整剧本内容
 - **AND** 提取所有角色、场景、道具
 

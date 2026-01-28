@@ -1,5 +1,5 @@
 /**
- * 分集解析结果存储
+ * 剧集解析结果存储
  */
 import { electronService } from '../../services/electronService';
 import type { EpisodeAnalysis, Shot } from '../../types';

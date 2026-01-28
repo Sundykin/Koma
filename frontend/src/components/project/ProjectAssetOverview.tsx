@@ -170,7 +170,7 @@ export const ProjectAssetOverview: React.FC<ProjectAssetOverviewProps> = ({
             <Badge count={totalAssets} style={{ backgroundColor: '#10b981' }} />
           </div>
           {orphanedCount > 0 && (
-            <Tooltip title="有未被任何分集引用的资产">
+            <Tooltip title="有未被任何剧集引用的资产">
               <Tag color="warning" icon={<LinkOutlined />} style={{ fontSize: 10 }}>
                 {orphanedCount} 未用
               </Tag>

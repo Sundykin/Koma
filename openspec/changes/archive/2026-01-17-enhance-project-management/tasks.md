@@ -6,7 +6,7 @@
 - [x] 在 `types.ts` 扩展 `Project` 接口：
   - `theme?: string` - 主题风格
   - `stylePrompt?: string` - 自定义风格描述
-  - `episodeCount?: number` - 实际分集数
+  - `episodeCount?: number` - 实际剧集数
 - [x] 创建 `Episode` 接口
 - [x] 创建 `ThemePreset` 接口
 
@@ -36,7 +36,7 @@
 - [x] 返回本地路径
 
 ### Task 2.2: Episode Storage
-- [x] 在 `projectStore.ts` 添加分集相关函数：
+- [x] 在 `projectStore.ts` 添加剧集相关函数：
   - `createEpisode(projectId, episode)`
   - `loadEpisode(projectId, episodeId)`
   - `saveEpisode(projectId, episodeId, data)`
@@ -96,8 +96,8 @@
 - [x] 集成到 `ProjectSettingsModal.tsx`
 
 ### Task 4.2: Project Settings - Episode Management
-- [x] 在 `ProjectSettingsModal.tsx` 添加分集管理
-- [x] 显示分集列表，支持添加/删除/编辑
+- [x] 在 `ProjectSettingsModal.tsx` 添加剧集管理
+- [x] 显示剧集列表，支持添加/删除/编辑
 - [x] 支持 LLM 自动分割剧本到多集
 
 ### Task 4.3: Character Editor - Asset Generation
@@ -197,7 +197,7 @@
 
 ### Task 7.2: Script Analysis Integration
 - [ ] 更新 `ScriptAnalysisService.ts`
-- [ ] 支持分集拆分模式
+- [ ] 支持剧集拆分模式
 - [ ] 在角色提取后提供生成定妆照入口
 
 ### Task 7.3: Project Open Hook

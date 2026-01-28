@@ -14,7 +14,7 @@ App Container
         └── Workspace Container
             ├── View: Projects → Project List (Fluid Grid)
             └── View: Editor → Studio Workspace (3-Column)
-                ├── Left Panel (260px): 分集列表 + 设置入口
+                ├── Left Panel (260px): 剧集列表 + 设置入口
                 ├── Center Stage (flex-1): 剧本/分镜编辑器
                 └── Right Panel (380px): 资产面板
 ```
@@ -30,7 +30,7 @@ App Container
 ### 工作台三栏布局
 | 区域 | 宽度 | 内容 | 响应式 |
 |------|------|------|--------|
-| 左栏 | 260px | 分集列表、设置入口 | 可折叠 |
+| 左栏 | 260px | 剧集列表、设置入口 | 可折叠 |
 | 中栏 | flex-1 | 剧本/分镜编辑器 | 自适应 |
 | 右栏 | 380px | 资产面板 | 可折叠 |
 

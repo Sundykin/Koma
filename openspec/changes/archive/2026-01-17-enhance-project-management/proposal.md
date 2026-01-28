@@ -1,11 +1,11 @@
 # Proposal: enhance-project-management
 
 ## Summary
-增强项目管理功能，支持分集管理、风格主题选择、角色定妆照/三视图生成、场景/道具图片生成、角色预览视频生成、角色提取API绑定，以及所有远程API输出的本地持久化存储。
+增强项目管理功能，支持剧集管理、风格主题选择、角色定妆照/三视图生成、场景/道具图片生成、角色预览视频生成、角色提取API绑定，以及所有远程API输出的本地持久化存储。
 
 ## Motivation
 当前项目管理功能过于简单：
-1. 项目基础信息不足，缺少分集管理和风格主题选择
+1. 项目基础信息不足，缺少剧集管理和风格主题选择
 2. 角色/场景/道具没有预览图片生成能力
 3. 角色没有预览视频生成和角色提取API绑定
 4. 远程API返回的图片/视频没有本地持久化
@@ -13,10 +13,10 @@
 
 ## Requirements
 
-### R1: Episode Management (分集管理)
+### R1: Episode Management (剧集管理)
 - 项目支持多集管理，每集有独立的剧本、分镜、资产
 - LLM 可根据项目集数自动分割剧本
-- 支持手动调整分集边界
+- 支持手动调整剧集边界
 
 ### R2: Style Theme Selection (风格主题选择)
 - 项目级别的风格/主题选择（影响 LLM 创作和 TTI 生成）
@@ -80,7 +80,7 @@
 
 ## Affected Specs
 - storage/spec.md - 新增资产存储结构
-- script-processing/spec.md - 新增分集拆分流程
+- script-processing/spec.md - 新增剧集拆分流程
 - ui-components/spec.md - 新增资产管理UI
 
 ## Design Decisions
@@ -178,8 +178,8 @@ interface AsyncTask {
 
 ### Phase 2: Storage Layer (存储层)
 1. 实现资产下载和本地存储函数
-2. 实现分集存储结构
-3. 更新 projectStore 支持分集CRUD
+2. 实现剧集存储结构
+3. 更新 projectStore 支持剧集CRUD
 
 ### Phase 3: Asset Generation (资产生成)
 1. 实现角色定妆照生成流程
@@ -189,7 +189,7 @@ interface AsyncTask {
 5. 实现角色提取API调用
 
 ### Phase 4: UI Components (UI组件)
-1. 项目设置页新增分集管理、主题选择
+1. 项目设置页新增剧集管理、主题选择
 2. 角色编辑页新增定妆照/三视图/预览视频
 3. 场景/道具编辑页新增图片生成
 4. 分步生成向导组件

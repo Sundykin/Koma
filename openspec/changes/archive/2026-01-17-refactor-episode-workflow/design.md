@@ -1,4 +1,4 @@
-# Design: 重构项目入口和分集驱动的创作流程
+# Design: 重构项目入口和剧集驱动的创作流程
 
 ## 1. 数据架构设计
 
@@ -25,17 +25,17 @@ Project (项目)
 │           ├── metadata.json (name, description, episodeRefs[])
 │           └── images/
 │
-├── episodes/ (分集数据)
+├── episodes/ (剧集数据)
 │   └── {episodeId}/
 │       ├── metadata.json (name, order, status, scriptHash)
-│       ├── script.md (分集剧本)
+│       ├── script.md (剧集剧本)
 │       ├── analysis.json (解析结果: characterRefs[], sceneRefs[], propRefs[])
 │       ├── shots/ (分镜数据)
 │       │   └── shots.json
 │       └── timeline/ (剪辑时间线)
 │           └── timeline.json
 │
-└── fullScript.md (完整剧本 - 用于 AI 分集)
+└── fullScript.md (完整剧本 - 用于 AI 剧集)
 ```
 
 ### 1.2 资产引用机制
@@ -48,7 +48,7 @@ interface AssetMetadata {
   description: string;
   // ... 其他字段
 
-  // 新增：分集引用追踪
+  // 新增：剧集引用追踪
   episodeRefs: EpisodeRef[];
 
   // 新增：资产指纹（用于去重）
@@ -62,7 +62,7 @@ interface EpisodeRef {
   shotIds?: string[];        // 具体出现的分镜
 }
 
-// 分集解析结果
+// 剧集解析结果
 interface EpisodeAnalysis {
   episodeId: string;
 
@@ -71,29 +71,29 @@ interface EpisodeAnalysis {
   sceneRefs: AssetReference[];
   propRefs: AssetReference[];
 
-  // 分集独有数据
+  // 剧集独有数据
   shots: Shot[];
 }
 
 interface AssetReference {
   assetId: string;
   assetType: 'character' | 'scene' | 'prop';
-  localOverrides?: Partial<AssetMetadata>;  // 分集特定的覆盖（如角色在某集的特殊造型）
+  localOverrides?: Partial<AssetMetadata>;  // 剧集特定的覆盖（如角色在某集的特殊造型）
 }
 ```
 
 ### 1.3 数据流向
 
 ```
-1. 剧本输入 → 全局剧本或分集剧本
-2. AI 分集 → 拆分为多个 Episode
+1. 剧本输入 → 全局剧本或剧集剧本
+2. AI 剧集 → 拆分为多个 Episode
 3. 角色/场景/道具提取 → 写入项目级 assets/
 4. 分镜生成 → 写入 episodes/{id}/shots/
 5. 资产生成 → 更新 assets/{type}/{id}/images/
 6. 剪辑导出 → 读取 episodes/{id}/timeline/
 ```
 
-## 2. AI 自动分集服务
+## 2. AI 自动剧集服务
 
 ### 2.1 服务架构
 
@@ -102,10 +102,10 @@ interface EpisodeSplitService {
   // 初始化，传入 LLM 配置
   constructor(llmConfig: LLMModelConfig);
 
-  // 分析剧本，返回建议的分集方案
+  // 分析剧本，返回建议的剧集方案
   analyzeScript(script: string, options: SplitOptions): Promise<SplitAnalysis>;
 
-  // 执行分集
+  // 执行剧集
   splitScript(script: string, plan: SplitPlan): Promise<Episode[]>;
 
   // 中断当前操作
@@ -115,7 +115,7 @@ interface EpisodeSplitService {
 interface SplitOptions {
   targetEpisodeCount?: number;      // 目标集数（可选）
   maxEpisodeDuration?: number;      // 单集最大时长（分钟）
-  splitStrategy: 'auto' | 'scene' | 'chapter';  // 分集策略
+  splitStrategy: 'auto' | 'scene' | 'chapter';  // 剧集策略
 }
 
 interface SplitAnalysis {
@@ -169,10 +169,10 @@ interface CompressionStrategy {
 ```
 第1轮：整体分析
   输入：完整剧本
-  输出：剧情结构分析、建议分集数、分割点建议
+  输出：剧情结构分析、建议剧集数、分割点建议
 
-第2轮：确认分集方案
-  输入：用户调整后的分集方案
+第2轮：确认剧集方案
+  输入：用户调整后的剧集方案
   输出：每集的摘要和主要内容
 
 第3轮+：逐集处理（循环）
@@ -313,13 +313,13 @@ function normalizeText(text: string): string {
 用户选择：
 A. 从头开始
    → 直接进入项目设置
-   → 手动创建分集
+   → 手动创建剧集
 
 B. 导入剧本
    → 上传完整剧本
-   → AI 分析并建议分集
-   → 用户确认分集方案
-   → 批量创建分集
+   → AI 分析并建议剧集
+   → 用户确认剧集方案
+   → 批量创建剧集
 ```
 
 ### 5.2 创作工作流模式
@@ -334,7 +334,7 @@ B. 导入剧本
 │   ├── 场景卡片墙
 │   └── 道具卡片墙
 │
-└── 分集列表区
+└── 剧集列表区
     └── 每集卡片显示：
         - 集名、状态（草稿/剧本/分镜/生成中/完成）
         - 进度条
@@ -352,11 +352,11 @@ B. 导入剧本
 ```
 全局资产管理（设置页或项目概览）
 ├── 查看所有资产
-├── 按分集筛选
+├── 按剧集筛选
 ├── 批量生成（如"为所有缺少定妆照的角色生成"）
 └── 清理未引用资产
 
-分集内资产管理
+剧集内资产管理
 ├── 查看本集使用的资产
 ├── 添加引用（从项目资产库选择）
 ├── 新建资产（自动加入项目资产库）
@@ -372,7 +372,7 @@ interface GlobalStore {
   // 当前项目
   currentProjectId: string | null;
 
-  // 当前分集
+  // 当前剧集
   currentEpisodeId: string | null;
 
   // 项目级资产缓存
@@ -382,12 +382,12 @@ interface GlobalStore {
     props: Map<string, Prop>;
   };
 
-  // 分集列表缓存
+  // 剧集列表缓存
   episodes: Map<string, Episode>;
 }
 ```
 
-### 6.2 分集状态
+### 6.2 剧集状态
 
 ```typescript
 interface EpisodeState {
