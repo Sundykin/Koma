@@ -1,6 +1,6 @@
 /**
  * 智能剧本编辑器组件
- * 基于 CodeMirror 6，支持 @mention 智能引用
+ * 基于 CodeMirror 6，支持 @mention 智能引用和 /命令 运镜快捷输入
  */
 import React, { useEffect, useRef, useCallback, useMemo } from 'react';
 import { EditorState, Extension, Compartment, Prec } from '@codemirror/state';
@@ -8,10 +8,11 @@ import { EditorView, keymap, lineNumbers, highlightActiveLine, tooltips } from '
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { completionKeymap } from '@codemirror/autocomplete';
 import { createMentionPlugin, createMentionAtomicDelete, mentionTheme, type MentionClickHandler } from './mentionPlugin';
-import { createMentionAutocomplete, autocompleteTheme, type MentionDataSource } from './mentionAutocomplete';
 import { createMentionTooltip, tooltipTheme } from './mentionTooltip';
-import { createKeywordHighlightPlugin, keywordHighlightTheme } from './keywordHighlightPlugin';
+import { createCombinedAutocomplete, combinedAutocompleteTheme } from './combinedAutocomplete';
+import { createKeywordHighlightPlugin, createKeywordTooltip, createKeywordAtomicDelete, keywordHighlightTheme } from './keywordHighlightPlugin';
 import type { MentionItem, MentionType } from './mentionTypes';
+import { normalizeMentionId } from './mentionTypes';
 
 export interface ScriptEditorProps {
   value: string;
@@ -23,8 +24,8 @@ export interface ScriptEditorProps {
   // Mention 相关
   mentionItems?: MentionItem[];
   onMentionClick?: MentionClickHandler;
-  // 关键字高亮（运镜/景别）
-  enableKeywordHighlight?: boolean;
+  // 运镜/景别功能：/ 快捷输入 + 关键字高亮
+  enableCameraCommands?: boolean;
   // 样式选项
   showLineNumbers?: boolean;
   darkTheme?: boolean;
@@ -39,13 +40,13 @@ export interface ScriptEditorProps {
 export const ScriptEditor: React.FC<ScriptEditorProps> = ({
   value,
   onChange,
-  placeholder = '开始编写剧本...\n使用 @ 可以引用角色、道具或场景',
+  placeholder = '开始编写剧本...\n使用 @ 引用角色/道具/场景，使用 / 快速输入运镜方式',
   readOnly = false,
   minHeight = '200px',
   maxHeight = '400px',
   mentionItems = [],
   onMentionClick,
-  enableKeywordHighlight = false,
+  enableCameraCommands = true,
   showLineNumbers = true,
   darkTheme = false,
   className,
@@ -64,41 +65,50 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
     onChangeRef.current = onChange;
   }, [onChange]);
 
-  // Mention 解析器
+  // Mention 解析器 - 支持 ID 规范化匹配
   const mentionResolver = useCallback(
     (type: MentionType, id: string): MentionItem | undefined => {
-      return mentionItems.find(
-        (item) => item.type === type && item.id === id
-      );
+      // 规范化查找的 ID
+      const normalizedSearchId = normalizeMentionId(type, id);
+      return mentionItems.find((item) => {
+        if (item.type !== type) return false;
+        // 规范化 item 的 ID 进行比较
+        const normalizedItemId = normalizeMentionId(type, item.id);
+        return normalizedItemId === normalizedSearchId || item.id === id;
+      });
     },
     [mentionItems]
   );
 
   // Mention 数据源
-  const mentionDataSource: MentionDataSource = useCallback(() => {
+  const mentionDataSource = useCallback(() => {
     return mentionItems;
   }, [mentionItems]);
 
-  // 创建 mention 扩展（可动态更新）
-  const mentionExtensions = useMemo((): Extension[] => {
+  // 创建编辑器扩展（可动态更新）
+  const editorExtensions = useMemo((): Extension[] => {
     const exts: Extension[] = [
+      // Mention 插件
       createMentionPlugin(mentionResolver, onMentionClick),
-      createMentionAutocomplete(mentionDataSource),
       createMentionTooltip(mentionResolver),
-      Prec.highest(createMentionAtomicDelete()),  // 最高优先级，确保在 defaultKeymap 之前处理
+      Prec.highest(createMentionAtomicDelete()),
       mentionTheme,
       tooltipTheme,
-      autocompleteTheme,
+      // 组合自动补全（@ mention + / 运镜快捷输入）
+      createCombinedAutocomplete(mentionDataSource),
+      combinedAutocompleteTheme,
     ];
 
-    // 关键字高亮（运镜/景别）
-    if (enableKeywordHighlight) {
+    // 运镜/景别功能：高亮 + 悬浮提示 + 原子删除
+    if (enableCameraCommands) {
       exts.push(createKeywordHighlightPlugin());
+      exts.push(createKeywordTooltip());
+      exts.push(Prec.high(createKeywordAtomicDelete()));
       exts.push(keywordHighlightTheme);
     }
 
     return exts;
-  }, [mentionResolver, mentionDataSource, onMentionClick, enableKeywordHighlight]);
+  }, [mentionResolver, mentionDataSource, onMentionClick, enableCameraCommands]);
 
   // 创建基础扩展（不变的部分）
   const baseExtensions = useMemo((): Extension[] => {
@@ -201,14 +211,14 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
   useEffect(() => {
     if (!containerRef.current) return;
 
-    const mentionCompartment = mentionCompartmentRef.current;
+    const extensionCompartment = mentionCompartmentRef.current;
 
     // 创建编辑器
     const state = EditorState.create({
       doc: value,
       extensions: [
         ...baseExtensions,
-        mentionCompartment.of(mentionExtensions),
+        extensionCompartment.of(editorExtensions),
       ],
     });
 
@@ -247,16 +257,16 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
     }
   }, [value]);
 
-  // 更新 mention 扩展（当 mentionItems 变化时）
+  // 更新扩展（当 mentionItems 等变化时）
   useEffect(() => {
     const view = viewRef.current;
     if (!view) return;
 
-    const mentionCompartment = mentionCompartmentRef.current;
+    const extensionCompartment = mentionCompartmentRef.current;
     view.dispatch({
-      effects: mentionCompartment.reconfigure(mentionExtensions),
+      effects: extensionCompartment.reconfigure(editorExtensions),
     });
-  }, [mentionExtensions]);
+  }, [editorExtensions]);
 
   // 点击容器时聚焦编辑器
   const handleContainerClick = useCallback((e: React.MouseEvent) => {

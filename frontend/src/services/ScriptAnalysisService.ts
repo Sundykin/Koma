@@ -498,7 +498,7 @@ export class BackgroundAnalysisService {
         throw new Error('解析失败，请检查剧本内容');
       }
 
-      // 合并去重角色
+      // 合并去重角色（按名称匹配，保留已有资产的 ID）
       const mergedChars = this.mergeAssets(existingChars, result.characters, 'name');
       const mergedScenes = this.mergeAssets(existingScenes, result.scenes, 'name');
       const mergedProps = this.mergeAssets(existingProps, result.props, 'name');
@@ -508,11 +508,17 @@ export class BackgroundAnalysisService {
       await saveScenes(this.projectId, mergedScenes);
       await saveProps(this.projectId, mergedProps);
 
-      // 保存分集解析结果（不含分镜）
+      // 获取本次解析结果对应的实际 ID（考虑合并后的 ID 映射）
+      // 如果名称已存在，使用已有资产的 ID；否则使用新生成的 ID
+      const charNameToId = new Map(mergedChars.map(c => [c.name, c.id]));
+      const sceneNameToId = new Map(mergedScenes.map(s => [s.name, s.id]));
+      const propNameToId = new Map(mergedProps.map(p => [p.name, p.id]));
+
+      // 保存分集解析结果（使用合并后的正确 ID）
       await saveEpisodeAnalysis(this.projectId, episodeId, {
-        characterRefs: result.characters.map(c => c.id),
-        sceneRefs: result.scenes.map(s => s.id),
-        propRefs: result.props.map(p => p.id),
+        characterRefs: result.characters.map(c => charNameToId.get(c.name) || c.id),
+        sceneRefs: result.scenes.map(s => sceneNameToId.get(s.name) || s.id),
+        propRefs: result.props.map(p => propNameToId.get(p.name) || p.id),
         shots: [], // 分镜由 ShotAnalysisService 单独生成
       });
 

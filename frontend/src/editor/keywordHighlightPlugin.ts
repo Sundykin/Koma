@@ -1,6 +1,7 @@
 /**
  * 关键字高亮装饰器插件
  * 用于高亮提示词中的运镜和景别关键字
+ * 支持悬浮弹窗和原子删除
  */
 import {
   Decoration,
@@ -8,91 +9,46 @@ import {
   EditorView,
   ViewPlugin,
   ViewUpdate,
+  hoverTooltip,
+  keymap,
 } from '@codemirror/view';
-import { RangeSetBuilder } from '@codemirror/state';
+import { RangeSetBuilder, EditorSelection } from '@codemirror/state';
+import { ALL_COMMANDS, type CameraCommand } from './cameraCommandTypes';
 
-// 运镜关键字 - 英文（紫色高亮）
-export const CAMERA_KEYWORDS_EN = [
-  'static shot',
-  'pan left',
-  'pan right',
-  'pan',
-  'tilt up',
-  'tilt down',
-  'tilt',
-  'zoom in',
-  'zoom out',
-  'zoom',
-  'tracking shot',
-  'tracking',
-  'dolly shot',
-  'dolly',
-  'crane shot',
-  'crane',
-  'handheld',
-  'push in',
-  'pull out',
-  'steadicam',
-];
+// 构建关键字到命令的映射
+interface KeywordInfo {
+  keyword: string;
+  command: CameraCommand;
+}
 
-// 运镜关键字 - 中文（紫色高亮）
-export const CAMERA_KEYWORDS_ZH = [
-  '推镜头', '拉镜头', '摇镜头', '移镜头', '跟镜头', '升镜头', '降镜头', '甩镜头',
-  '镜头推进', '镜头拉远', '镜头上摇', '镜头下摇', '镜头左摇', '镜头右摇',
-  '横摇', '纵摇', '环绕', '跟拍', '手持', '稳定器',
-  '推', '拉', '摇', '移', '跟', '升', '降', '甩',
-  '缓推', '缓拉', '快推', '快拉',
-];
+function buildKeywordMap(): KeywordInfo[] {
+  const result: KeywordInfo[] = [];
 
-// 合并运镜关键字
-export const CAMERA_KEYWORDS = [...CAMERA_KEYWORDS_EN, ...CAMERA_KEYWORDS_ZH];
+  for (const cmd of ALL_COMMANDS) {
+    result.push({ keyword: cmd.nameZh, command: cmd });
+    result.push({ keyword: cmd.nameEn, command: cmd });
+    if (cmd.aliases) {
+      for (const alias of cmd.aliases) {
+        result.push({ keyword: alias, command: cmd });
+      }
+    }
+  }
 
-// 景别关键字 - 英文（蓝色高亮）
-export const SHOT_TYPE_KEYWORDS_EN = [
-  'extreme close-up',
-  'close-up',
-  'medium close-up',
-  'medium shot',
-  'medium wide shot',
-  'wide shot',
-  'extreme wide shot',
-  'establishing shot',
-  'full shot',
-  'over-the-shoulder shot',
-  'over the shoulder',
-  'two-shot',
-  'point of view',
-  'pov shot',
-  'aerial shot',
-  'birds eye view',
-  'low angle',
-  'high angle',
-];
+  // 按长度降序排列
+  result.sort((a, b) => b.keyword.length - a.keyword.length);
+  return result;
+}
 
-// 景别关键字 - 中文（蓝色高亮）
-export const SHOT_TYPE_KEYWORDS_ZH = [
-  '特写', '大特写', '近景', '中近景', '中景', '中远景', '远景', '大远景',
-  '全景', '半身', '全身', '过肩镜头', '双人镜头', '群戏',
-  '俯视', '仰视', '平视', '鸟瞰', '低角度', '高角度',
-  '主观镜头', '客观镜头', '空镜头',
-];
+const KEYWORD_MAP = buildKeywordMap();
 
-// 合并景别关键字
-export const SHOT_TYPE_KEYWORDS = [...SHOT_TYPE_KEYWORDS_EN, ...SHOT_TYPE_KEYWORDS_ZH];
-
-// 构建正则表达式（支持中英文）
-function buildKeywordRegex(keywords: string[]): RegExp {
-  // 按长度降序排列，优先匹配长关键字
-  const sorted = [...keywords].sort((a, b) => b.length - a.length);
-
-  // 分离中文和英文关键字
+// 构建正则表达式
+function buildKeywordRegex(): RegExp {
   const zhKeywords: string[] = [];
   const enKeywords: string[] = [];
 
-  for (const k of sorted) {
-    const escaped = k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    // 检测是否包含中文字符
-    if (/[\u4e00-\u9fa5]/.test(k)) {
+  for (const { keyword } of KEYWORD_MAP) {
+    const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    if (/[\u4e00-\u9fa5]/.test(keyword)) {
       zhKeywords.push(escaped);
     } else {
       enKeywords.push(escaped);
@@ -100,13 +56,9 @@ function buildKeywordRegex(keywords: string[]): RegExp {
   }
 
   const patterns: string[] = [];
-
-  // 英文使用词边界
   if (enKeywords.length > 0) {
     patterns.push(`\\b(${enKeywords.join('|')})\\b`);
   }
-
-  // 中文直接匹配（不需要词边界）
   if (zhKeywords.length > 0) {
     patterns.push(`(${zhKeywords.join('|')})`);
   }
@@ -114,74 +66,83 @@ function buildKeywordRegex(keywords: string[]): RegExp {
   return new RegExp(patterns.join('|'), 'gi');
 }
 
-const cameraRegex = buildKeywordRegex(CAMERA_KEYWORDS);
-const shotTypeRegex = buildKeywordRegex(SHOT_TYPE_KEYWORDS);
+const keywordRegex = buildKeywordRegex();
 
-// 装饰样式
-const cameraDecoration = Decoration.mark({
-  class: 'keyword-camera',
-  attributes: {
-    style: 'background-color: rgba(147, 51, 234, 0.2); color: #a78bfa; border-radius: 2px; padding: 0 2px;',
-  },
-});
-
-const shotTypeDecoration = Decoration.mark({
-  class: 'keyword-shot-type',
-  attributes: {
-    style: 'background-color: rgba(59, 130, 246, 0.2); color: #60a5fa; border-radius: 2px; padding: 0 2px;',
-  },
-});
-
-/**
- * 构建关键字装饰
- */
-function buildKeywordDecorations(view: EditorView): DecorationSet {
-  const builder = new RangeSetBuilder<Decoration>();
-  const doc = view.state.doc;
-  const text = doc.toString();
-
-  // 收集所有匹配
-  interface Match {
-    from: number;
-    to: number;
-    decoration: Decoration;
+// 查找命令信息
+function findCommand(matchedText: string): CameraCommand | undefined {
+  const lower = matchedText.toLowerCase();
+  for (const { keyword, command } of KEYWORD_MAP) {
+    if (keyword.toLowerCase() === lower) {
+      return command;
+    }
   }
-  const matches: Match[] = [];
+  return undefined;
+}
 
-  // 匹配运镜关键字
+// 解析文本中的所有关键字匹配
+interface KeywordMatch {
+  from: number;
+  to: number;
+  text: string;
+  command: CameraCommand;
+}
+
+function parseKeywords(text: string): KeywordMatch[] {
+  const matches: KeywordMatch[] = [];
+  keywordRegex.lastIndex = 0;
   let match;
-  cameraRegex.lastIndex = 0;
-  while ((match = cameraRegex.exec(text)) !== null) {
-    matches.push({
-      from: match.index,
-      to: match.index + match[0].length,
-      decoration: cameraDecoration,
-    });
-  }
 
-  // 匹配景别关键字
-  shotTypeRegex.lastIndex = 0;
-  while ((match = shotTypeRegex.exec(text)) !== null) {
-    // 检查是否与已有匹配重叠
-    const overlaps = matches.some(
-      m => (match!.index >= m.from && match!.index < m.to) ||
-           (match!.index + match![0].length > m.from && match!.index + match![0].length <= m.to)
-    );
-    if (!overlaps) {
-      matches.push({
-        from: match.index,
-        to: match.index + match[0].length,
-        decoration: shotTypeDecoration,
-      });
+  while ((match = keywordRegex.exec(text)) !== null) {
+    const matchedText = match[0];
+    const command = findCommand(matchedText);
+
+    if (command) {
+      const from = match.index;
+      const to = match.index + matchedText.length;
+
+      // 检查重叠
+      const overlaps = matches.some(
+        m => (from >= m.from && from < m.to) || (to > m.from && to <= m.to) ||
+             (from <= m.from && to >= m.to)
+      );
+
+      if (!overlaps) {
+        matches.push({ from, to, text: matchedText, command });
+      }
     }
   }
 
-  // 按位置排序
   matches.sort((a, b) => a.from - b.from);
+  return matches;
+}
 
-  // 添加装饰
+// 查找位置所在的关键字
+function findKeywordAt(text: string, pos: number): KeywordMatch | null {
+  const matches = parseKeywords(text);
   for (const m of matches) {
-    builder.add(m.from, m.to, m.decoration);
+    if (pos >= m.from && pos <= m.to) {
+      return m;
+    }
+  }
+  return null;
+}
+
+// 创建装饰
+function createDecoration(command: CameraCommand): Decoration {
+  const isCamera = command.category === 'camera';
+  return Decoration.mark({
+    class: isCamera ? 'keyword-camera' : 'keyword-shot-type',
+  });
+}
+
+// 构建装饰集
+function buildKeywordDecorations(view: EditorView): DecorationSet {
+  const builder = new RangeSetBuilder<Decoration>();
+  const text = view.state.doc.toString();
+  const matches = parseKeywords(text);
+
+  for (const m of matches) {
+    builder.add(m.from, m.to, createDecoration(m.command));
   }
 
   return builder.finish();
@@ -212,19 +173,184 @@ export function createKeywordHighlightPlugin() {
 }
 
 /**
+ * 创建关键字悬浮提示
+ */
+export function createKeywordTooltip() {
+  return hoverTooltip((view, pos, side) => {
+    const text = view.state.doc.toString();
+    const match = findKeywordAt(text, pos);
+
+    if (!match) return null;
+
+    return {
+      pos: match.from,
+      end: match.to,
+      above: true,
+      create: () => createTooltipDOM(match.command, match.text),
+    };
+  });
+}
+
+// 创建 Tooltip DOM
+function createTooltipDOM(command: CameraCommand, matchedText: string): { dom: HTMLElement } {
+  const isCamera = command.category === 'camera';
+
+  const container = document.createElement('div');
+  container.className = 'keyword-tooltip';
+  container.style.cssText = `
+    padding: 10px 14px;
+    max-width: 280px;
+    font-size: 13px;
+    background: #1f1f23;
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+    border: 1px solid ${isCamera ? 'rgba(147, 51, 234, 0.5)' : 'rgba(59, 130, 246, 0.5)'};
+  `;
+
+  // 头部
+  const header = document.createElement('div');
+  header.style.cssText = `
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+  `;
+
+  const typeTag = document.createElement('span');
+  typeTag.textContent = isCamera ? '运镜' : '景别';
+  typeTag.style.cssText = `
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 500;
+    background: ${isCamera ? 'rgba(147, 51, 234, 0.2)' : 'rgba(59, 130, 246, 0.2)'};
+    color: ${isCamera ? '#a78bfa' : '#60a5fa'};
+  `;
+
+  const name = document.createElement('span');
+  name.textContent = command.nameZh;
+  name.style.cssText = `
+    font-weight: 600;
+    color: #e4e4e7;
+  `;
+
+  const enName = document.createElement('span');
+  enName.textContent = command.nameEn;
+  enName.style.cssText = `
+    color: #71717a;
+    font-size: 12px;
+    margin-left: auto;
+  `;
+
+  header.appendChild(typeTag);
+  header.appendChild(name);
+  header.appendChild(enName);
+  container.appendChild(header);
+
+  // 描述
+  const desc = document.createElement('div');
+  desc.textContent = command.description;
+  desc.style.cssText = `
+    color: #a1a1aa;
+    font-size: 12px;
+    line-height: 1.5;
+  `;
+  container.appendChild(desc);
+
+  return { dom: container };
+}
+
+/**
+ * 原子删除 - Backspace
+ */
+function atomicBackspace(view: EditorView): boolean {
+  const { state } = view;
+  const { selection } = state;
+
+  if (!selection.main.empty) return false;
+
+  const pos = selection.main.head;
+  const text = state.doc.toString();
+
+  // 检查光标前一位或当前位置是否在关键字内
+  let match = findKeywordAt(text, pos - 1);
+  if (!match) {
+    match = findKeywordAt(text, pos);
+    if (match && match.to !== pos) {
+      match = null;
+    }
+  }
+
+  if (match) {
+    view.dispatch({
+      changes: { from: match.from, to: match.to },
+      selection: EditorSelection.cursor(match.from),
+    });
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * 原子删除 - Delete
+ */
+function atomicDelete(view: EditorView): boolean {
+  const { state } = view;
+  const { selection } = state;
+
+  if (!selection.main.empty) return false;
+
+  const pos = selection.main.head;
+  const text = state.doc.toString();
+  const match = findKeywordAt(text, pos);
+
+  if (match) {
+    view.dispatch({
+      changes: { from: match.from, to: match.to },
+      selection: EditorSelection.cursor(match.from),
+    });
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * 创建关键字原子删除扩展
+ */
+export function createKeywordAtomicDelete() {
+  return keymap.of([
+    { key: 'Backspace', run: atomicBackspace },
+    { key: 'Delete', run: atomicDelete },
+  ]);
+}
+
+/**
  * 关键字高亮主题样式
  */
 export const keywordHighlightTheme = EditorView.baseTheme({
   '.keyword-camera': {
     backgroundColor: 'rgba(147, 51, 234, 0.2)',
     color: '#a78bfa',
-    borderRadius: '2px',
-    padding: '0 2px',
+    borderRadius: '3px',
+    padding: '1px 3px',
   },
   '.keyword-shot-type': {
     backgroundColor: 'rgba(59, 130, 246, 0.2)',
     color: '#60a5fa',
-    borderRadius: '2px',
-    padding: '0 2px',
+    borderRadius: '3px',
+    padding: '1px 3px',
+  },
+  '.keyword-tooltip': {
+    fontFamily: 'system-ui, -apple-system, sans-serif',
   },
 });
+
+// 兼容旧导出
+export const CAMERA_KEYWORDS_EN = ALL_COMMANDS.filter(c => c.category === 'camera').map(c => c.nameEn);
+export const CAMERA_KEYWORDS_ZH = ALL_COMMANDS.filter(c => c.category === 'camera').map(c => c.nameZh);
+export const CAMERA_KEYWORDS = [...CAMERA_KEYWORDS_EN, ...CAMERA_KEYWORDS_ZH];
+export const SHOT_TYPE_KEYWORDS_EN = ALL_COMMANDS.filter(c => c.category === 'shot').map(c => c.nameEn);
+export const SHOT_TYPE_KEYWORDS_ZH = ALL_COMMANDS.filter(c => c.category === 'shot').map(c => c.nameZh);
+export const SHOT_TYPE_KEYWORDS = [...SHOT_TYPE_KEYWORDS_EN, ...SHOT_TYPE_KEYWORDS_ZH];

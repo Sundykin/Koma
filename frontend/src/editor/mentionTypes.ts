@@ -51,20 +51,47 @@ export function parseMentions(text: string): ParsedMention[] {
 }
 
 /**
+ * 规范化 Mention ID，去除重复前缀
+ * 例如: normalizeMentionId('char', 'char_abc') => 'abc'
+ */
+export function normalizeMentionId(type: MentionType, id: string): string {
+  const prefix = `${type}_`;
+  // 如果 ID 以 type_ 开头，去除前缀
+  if (id.startsWith(prefix)) {
+    return id.slice(prefix.length);
+  }
+  return id;
+}
+
+/**
  * 生成 Mention 字符串
  * @param type - 类型 (char/prop/scene)
  * @param id - 对于角色/道具应使用 Sora2 ID，对于场景使用自定义 ID
  * @returns 格式为 @type_id 的字符串，如 @char_sora2xxx
  */
 export function createMentionString(type: MentionType, id: string): string {
-  return `@${type}_${id}`;
+  // 先规范化 ID，避免双前缀
+  const normalizedId = normalizeMentionId(type, id);
+  return `@${type}_${normalizedId}`;
 }
 
 /**
  * 从 ID 解析 Mention 类型
+ * 支持容错解析双前缀格式 @char_char_xxx
  */
 export function parseMentionId(mentionStr: string): { type: MentionType; id: string } | null {
+  // 先尝试标准格式
   const match = mentionStr.match(/@(char|prop|scene)_([a-zA-Z0-9_-]+)/);
   if (!match) return null;
-  return { type: match[1] as MentionType, id: match[2] };
+
+  const type = match[1] as MentionType;
+  let id = match[2];
+
+  // 容错处理：如果 ID 以 type_ 开头（双前缀），去除
+  const prefix = `${type}_`;
+  if (id.startsWith(prefix)) {
+    id = id.slice(prefix.length);
+  }
+
+  return { type, id };
 }

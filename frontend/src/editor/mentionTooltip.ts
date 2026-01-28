@@ -123,7 +123,7 @@ function createTooltipDOM(item: MentionItem): { dom: HTMLElement } {
 
   // ID
   const idText = document.createElement('div');
-  idText.textContent = `ID: ${item.type}_${item.id}`;
+  idText.textContent = `ID: ${item.id}`;
   idText.style.cssText = `
     margin-top: 8px;
     font-size: 11px;

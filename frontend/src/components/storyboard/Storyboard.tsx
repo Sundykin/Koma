@@ -98,7 +98,9 @@ export const Storyboard: React.FC<StoryboardProps> = ({
   const [props, setProps] = useState<Prop[]>([]);
   const [loading, setLoading] = useState(true);
   const [generatingShots, setGeneratingShots] = useState<Set<string>>(new Set());
-  const [generatingPrompts, setGeneratingPrompts] = useState<Set<string>>(new Set());
+  // 状态拆分：图片/视频提示词独立追踪
+  const [generatingImagePrompts, setGeneratingImagePrompts] = useState<Set<string>>(new Set());
+  const [generatingVideoPrompts, setGeneratingVideoPrompts] = useState<Set<string>>(new Set());
   const [renderingShots, setRenderingShots] = useState<Set<string>>(new Set());
   const [renderProgress, setRenderProgress] = useState(0);
   const [renderStep, setRenderStep] = useState('');
@@ -501,37 +503,153 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     await saveAllShots(updatedShots);
   }, [shots, saveAllShots]);
 
-  // 生成提示词
-  const handleGenerateShotPrompt = useCallback(async (shotId: string) => {
+  // 生成图片提示词（首次生成）
+  const handleGenerateImagePrompt = useCallback(async (shotId: string) => {
     if (!episodeId) {
       message.warning('未选择分集');
       return;
     }
     const shot = shots.find(s => s.id === shotId);
     if (!shot) return;
-    setGeneratingPrompts(prev => new Set(prev).add(shotId));
+    setGeneratingImagePrompts(prev => new Set(prev).add(shotId));
     try {
       const result = await generateShotPrompt(
         projectId,
         episodeId,
         shot,
         settings.stylePrompts?.find(p => p.isDefault)?.prompt || '',
-        llmConfigId
+        llmConfigId,
+        { image: true, video: false }  // 只生成图片提示词
       );
       if (result.success) {
         setShots(prev => prev.map(s => s.id === shotId ? {
           ...s,
           imagePrompt: result.imagePrompt,
-          videoPrompt: result.videoPrompt,
         } : s));
-        message.success('提示词生成完成');
+        message.success('图片提示词生成完成');
       } else {
         message.error(result.error || '生成失败');
       }
     } catch (err: any) {
       message.error(err.message || '生成失败');
     } finally {
-      setGeneratingPrompts(prev => {
+      setGeneratingImagePrompts(prev => {
+        const next = new Set(prev);
+        next.delete(shotId);
+        return next;
+      });
+    }
+  }, [projectId, episodeId, shots, llmConfigId, settings.stylePrompts]);
+
+  // 生成视频提示词（首次生成）
+  const handleGenerateVideoPrompt = useCallback(async (shotId: string) => {
+    if (!episodeId) {
+      message.warning('未选择分集');
+      return;
+    }
+    const shot = shots.find(s => s.id === shotId);
+    if (!shot) return;
+    setGeneratingVideoPrompts(prev => new Set(prev).add(shotId));
+    try {
+      const result = await generateShotPrompt(
+        projectId,
+        episodeId,
+        shot,
+        settings.stylePrompts?.find(p => p.isDefault)?.prompt || '',
+        llmConfigId,
+        { image: false, video: true }  // 只生成视频提示词
+      );
+      if (result.success) {
+        setShots(prev => prev.map(s => s.id === shotId ? {
+          ...s,
+          videoPrompt: result.videoPrompt,
+        } : s));
+        message.success('视频提示词生成完成');
+      } else {
+        message.error(result.error || '生成失败');
+      }
+    } catch (err: any) {
+      message.error(err.message || '生成失败');
+    } finally {
+      setGeneratingVideoPrompts(prev => {
+        const next = new Set(prev);
+        next.delete(shotId);
+        return next;
+      });
+    }
+  }, [projectId, episodeId, shots, llmConfigId, settings.stylePrompts]);
+
+  // 优化图片提示词（强制重新生成）
+  const handleOptimizeImagePrompt = useCallback(async (shotId: string, _currentPrompt: string) => {
+    if (!episodeId) {
+      message.warning('未选择分集');
+      return;
+    }
+    const shot = shots.find(s => s.id === shotId);
+    if (!shot) return;
+    setGeneratingImagePrompts(prev => new Set(prev).add(shotId));
+    try {
+      const result = await generateShotPrompt(
+        projectId,
+        episodeId,
+        shot,
+        settings.stylePrompts?.find(p => p.isDefault)?.prompt || '',
+        llmConfigId,
+        { image: true, video: false },
+        { force: true }  // 强制重新生成
+      );
+      if (result.success) {
+        setShots(prev => prev.map(s => s.id === shotId ? {
+          ...s,
+          imagePrompt: result.imagePrompt,
+        } : s));
+        message.success('图片提示词优化完成');
+      } else {
+        message.error(result.error || '优化失败');
+      }
+    } catch (err: any) {
+      message.error(err.message || '优化失败');
+    } finally {
+      setGeneratingImagePrompts(prev => {
+        const next = new Set(prev);
+        next.delete(shotId);
+        return next;
+      });
+    }
+  }, [projectId, episodeId, shots, llmConfigId, settings.stylePrompts]);
+
+  // 优化视频提示词（强制重新生成）
+  const handleOptimizeVideoPrompt = useCallback(async (shotId: string, _currentPrompt: string) => {
+    if (!episodeId) {
+      message.warning('未选择分集');
+      return;
+    }
+    const shot = shots.find(s => s.id === shotId);
+    if (!shot) return;
+    setGeneratingVideoPrompts(prev => new Set(prev).add(shotId));
+    try {
+      const result = await generateShotPrompt(
+        projectId,
+        episodeId,
+        shot,
+        settings.stylePrompts?.find(p => p.isDefault)?.prompt || '',
+        llmConfigId,
+        { image: false, video: true },
+        { force: true }  // 强制重新生成
+      );
+      if (result.success) {
+        setShots(prev => prev.map(s => s.id === shotId ? {
+          ...s,
+          videoPrompt: result.videoPrompt,
+        } : s));
+        message.success('视频提示词优化完成');
+      } else {
+        message.error(result.error || '优化失败');
+      }
+    } catch (err: any) {
+      message.error(err.message || '优化失败');
+    } finally {
+      setGeneratingVideoPrompts(prev => {
         const next = new Set(prev);
         next.delete(shotId);
         return next;
@@ -555,7 +673,8 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       return;
     }
     const shotIds = shotsWithoutPrompt.map(s => s.id);
-    setGeneratingPrompts(new Set(shotIds));
+    setGeneratingImagePrompts(new Set(shotIds));
+    setGeneratingVideoPrompts(new Set(shotIds));
     setBatchProgress({ current: 0, total: shotsWithoutPrompt.length, step: '准备生成...' });
     try {
       const results = await batchGenerateShotPrompts(
@@ -580,7 +699,8 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     } catch (err: any) {
       message.error(err.message || '批量生成失败');
     } finally {
-      setGeneratingPrompts(new Set());
+      setGeneratingImagePrompts(new Set());
+      setGeneratingVideoPrompts(new Set());
       setBatchProgress(undefined);
     }
   }, [projectId, episodeId, shots, llmConfigId, settings.stylePrompts]);
@@ -600,7 +720,8 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       return;
     }
     const shotIds = shotsWithPrompt.map(s => s.id);
-    setGeneratingPrompts(new Set(shotIds));
+    setGeneratingImagePrompts(new Set(shotIds));
+    setGeneratingVideoPrompts(new Set(shotIds));
     setBatchProgress({ current: 0, total: shotsWithPrompt.length, step: '准备重新生成...' });
     try {
       const results = await batchGenerateShotPrompts(
@@ -625,7 +746,8 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     } catch (err: any) {
       message.error(err.message || '批量重新生成失败');
     } finally {
-      setGeneratingPrompts(new Set());
+      setGeneratingImagePrompts(new Set());
+      setGeneratingVideoPrompts(new Set());
       setBatchProgress(undefined);
     }
   }, [projectId, episodeId, shots, llmConfigId, settings.stylePrompts]);
@@ -985,7 +1107,8 @@ export const Storyboard: React.FC<StoryboardProps> = ({
             scenes={scenes}
             props={props}
             mentionItems={actualMentionItems}
-            generatingPrompts={generatingPrompts}
+            generatingImagePrompts={generatingImagePrompts}
+            generatingVideoPrompts={generatingVideoPrompts}
             generatingImages={generatingShots}
             generatingVideos={renderingShots}
             batchProgress={batchProgress}
@@ -1000,7 +1123,10 @@ export const Storyboard: React.FC<StoryboardProps> = ({
             onReferenceImagesChange={handleReferenceImagesChange}
             onImagesChange={handleImagesChange}
             onVideosChange={handleVideosChange}
-            onGeneratePrompt={handleGenerateShotPrompt}
+            onGenerateImagePrompt={handleGenerateImagePrompt}
+            onGenerateVideoPrompt={handleGenerateVideoPrompt}
+            onOptimizeImagePrompt={handleOptimizeImagePrompt}
+            onOptimizeVideoPrompt={handleOptimizeVideoPrompt}
             onBatchGeneratePrompts={handleBatchGeneratePrompts}
             onBatchReGeneratePrompts={handleBatchReGeneratePrompts}
             onGenerateImage={handleGenerateShotImage}

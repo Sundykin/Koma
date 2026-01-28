@@ -50,7 +50,9 @@ export interface ShotCardProps {
   mentionItems: MentionItem[];
   isSelected: boolean;
   isActive?: boolean;
-  isGeneratingPrompt: boolean;
+  // 状态拆分：图片/视频提示词生成分离
+  isGeneratingImagePrompt: boolean;
+  isGeneratingVideoPrompt: boolean;
   isGeneratingImage: boolean;
   isGeneratingVideo: boolean;
   onSelectChange: (shotId: string, selected: boolean) => void;
@@ -64,7 +66,11 @@ export interface ShotCardProps {
   onReferenceImagesChange?: (shotId: string, images: string[], selectedIndex: number) => void;
   onImagesChange: (shotId: string, images: string[], selectedIndex: number) => void;
   onVideosChange: (shotId: string, videos: ShotVideo[], selectedIndex: number) => void;
-  onGeneratePrompt: (shotId: string) => void;
+  // 回调拆分：生成 vs 优化，图片 vs 视频
+  onGenerateImagePrompt: (shotId: string) => void;
+  onGenerateVideoPrompt: (shotId: string) => void;
+  onOptimizeImagePrompt: (shotId: string, currentPrompt: string) => void;
+  onOptimizeVideoPrompt: (shotId: string, currentPrompt: string) => void;
   onGenerateImage: (shotId: string) => void;
   onGenerateVideo: (shotId: string) => void;
   onToggleConfirm: (shot: Shot) => void;
@@ -87,7 +93,8 @@ export const ShotCard: React.FC<ShotCardProps> = ({
   mentionItems,
   isSelected,
   isActive,
-  isGeneratingPrompt,
+  isGeneratingImagePrompt,
+  isGeneratingVideoPrompt,
   isGeneratingImage,
   isGeneratingVideo,
   onSelectChange,
@@ -101,7 +108,10 @@ export const ShotCard: React.FC<ShotCardProps> = ({
   onReferenceImagesChange,
   onImagesChange,
   onVideosChange,
-  onGeneratePrompt,
+  onGenerateImagePrompt,
+  onGenerateVideoPrompt,
+  onOptimizeImagePrompt,
+  onOptimizeVideoPrompt,
   onGenerateImage,
   onGenerateVideo,
   onToggleConfirm,
@@ -126,6 +136,24 @@ export const ShotCard: React.FC<ShotCardProps> = ({
   );
   const isFirst = index === 0;
   const isLast = index === totalCount - 1;
+
+  // 图片提示词按钮点击处理
+  const handleImagePromptClick = useCallback(() => {
+    if (hasImagePrompt) {
+      onOptimizeImagePrompt(shot.id, shot.imagePrompt || shot.description || '');
+    } else {
+      onGenerateImagePrompt(shot.id);
+    }
+  }, [shot.id, shot.imagePrompt, shot.description, hasImagePrompt, onOptimizeImagePrompt, onGenerateImagePrompt]);
+
+  // 视频提示词按钮点击处理
+  const handleVideoPromptClick = useCallback(() => {
+    if (hasVideoPrompt) {
+      onOptimizeVideoPrompt(shot.id, shot.videoPrompt || '');
+    } else {
+      onGenerateVideoPrompt(shot.id);
+    }
+  }, [shot.id, shot.videoPrompt, hasVideoPrompt, onOptimizeVideoPrompt, onGenerateVideoPrompt]);
 
   const handleCardClick = useCallback((e: React.MouseEvent) => {
     if ((e.target as HTMLElement).closest('.ant-btn, .ant-checkbox, .ant-input, .ant-select, .ant-tabs, .cm-editor, .ant-modal, .ant-popover')) {
@@ -285,7 +313,7 @@ export const ShotCard: React.FC<ShotCardProps> = ({
               onChange={(value) => onImagePromptChange(shot.id, value)}
               placeholder="画面描述提示词..."
               mentionItems={mentionItems}
-              enableKeywordHighlight={true}
+              enableCameraCommands={true}
               showLineNumbers={false}
               darkTheme={true}
               style={{ height: '100%' }}
@@ -296,10 +324,10 @@ export const ShotCard: React.FC<ShotCardProps> = ({
               {/* AI生成按钮 - 蓝色文字无边框 */}
               <button
                 className="text-blue-400 hover:text-blue-300 text-[11px] font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-                onClick={() => onGeneratePrompt(shot.id)}
-                disabled={isGeneratingPrompt}
+                onClick={handleImagePromptClick}
+                disabled={isGeneratingImagePrompt}
               >
-                {isGeneratingPrompt ? '生成中...' : (hasImagePrompt ? '优化' : 'AI生成')}
+                {isGeneratingImagePrompt ? '生成中...' : (hasImagePrompt ? '优化' : 'AI生成')}
               </button>
               {/* 参考图 */}
               {referenceImages.map((img, idx) => (
@@ -373,7 +401,7 @@ export const ShotCard: React.FC<ShotCardProps> = ({
               onChange={(value) => onVideoPromptChange(shot.id, value)}
               placeholder="运动/转场描述..."
               mentionItems={mentionItems}
-              enableKeywordHighlight={true}
+              enableCameraCommands={true}
               showLineNumbers={false}
               darkTheme={true}
               style={{ height: '100%' }}
@@ -383,10 +411,10 @@ export const ShotCard: React.FC<ShotCardProps> = ({
             <div className="absolute right-2 bottom-2">
               <button
                 className="text-blue-400 hover:text-blue-300 text-[11px] font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-                onClick={() => onGeneratePrompt(shot.id)}
-                disabled={isGeneratingPrompt}
+                onClick={handleVideoPromptClick}
+                disabled={isGeneratingVideoPrompt}
               >
-                {isGeneratingPrompt ? '生成中...' : (hasVideoPrompt ? '优化' : 'AI生成')}
+                {isGeneratingVideoPrompt ? '生成中...' : (hasVideoPrompt ? '优化' : 'AI生成')}
               </button>
             </div>
           </div>

@@ -16,7 +16,9 @@ export type PromptTemplateType =
   | 'script_generation'        // 剧本生成
   | 'script_polish'            // 剧本润色
   | 'shot_breakdown'           // 分镜拆解
-  | 'shot_prompt_generation'   // 分镜提示词生成
+  | 'shot_prompt_generation'   // 分镜提示词生成（通用）
+  | 'shot_image_prompt_generation' // 分镜图片提示词生成
+  | 'shot_video_prompt_generation' // 分镜视频提示词生成
   | 'character_extraction'     // 角色提取
   | 'character_design'         // 角色视觉设计
   | 'scene_extraction'         // 场景提取
@@ -237,6 +239,63 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
 4. 使用以下景别关键字之一：{{shotTypeOptions}}
 5. 描述画面动作、光影、氛围
 6. 包含详尽的画面描述、景别与运镜设计
+
+可用角色引用：
+{{characterRefs}}
+
+输出格式：直接输出提示词，无需其他说明
+`,
+    variables: ['scriptContent', 'characters', 'emotion', 'stylePrefix', 'cameraOptions', 'shotTypeOptions', 'characterRefs'],
+    isCustom: false,
+  },
+
+  shot_image_prompt_generation: {
+    id: 'shot_image_prompt_generation',
+    name: '分镜图片提示词生成',
+    description: '为分镜生成静态图片提示词',
+    template: `根据以下分镜信息生成图片生成提示词。
+
+剧本内容：{{scriptContent}}
+出场角色：{{characters}}
+情绪氛围：{{emotion}}
+风格前缀：{{stylePrefix}}
+
+要求：
+1. 使用中文输出
+2. 为每个角色添加 @角色ID 引用格式（角色引用列表见下方）
+3. 使用以下景别关键字之一：{{shotTypeOptions}}
+4. 重点描述画面构图、人物姿态、光影效果
+5. 强调静态画面的视觉冲击力和情绪表达
+6. 包含背景环境、色调氛围描述
+
+可用角色引用：
+{{characterRefs}}
+
+输出格式：直接输出提示词，无需其他说明
+`,
+    variables: ['scriptContent', 'characters', 'emotion', 'stylePrefix', 'shotTypeOptions', 'characterRefs'],
+    isCustom: false,
+  },
+
+  shot_video_prompt_generation: {
+    id: 'shot_video_prompt_generation',
+    name: '分镜视频提示词生成',
+    description: '为分镜生成动态视频提示词',
+    template: `根据以下分镜信息生成视频生成提示词。
+
+剧本内容：{{scriptContent}}
+出场角色：{{characters}}
+情绪氛围：{{emotion}}
+风格前缀：{{stylePrefix}}
+
+要求：
+1. 使用中文输出
+2. 为每个角色添加 @角色ID 引用格式（角色引用列表见下方）
+3. 使用以下运镜关键字之一：{{cameraOptions}}
+4. 使用以下景别关键字之一：{{shotTypeOptions}}
+5. 重点描述动作流程、运动轨迹、镜头变化
+6. 强调动态连贯性和时间节奏
+7. 包含转场效果和动态氛围描述
 
 可用角色引用：
 {{characterRefs}}

@@ -1,12 +1,14 @@
 /**
  * 分镜提示词生成服务
  * 独立于分镜拆解，支持单条和批量生成
+ * v2: 支持 force 强制重新生成，分离 image/video 任务
  */
 import type { Shot, Character, Scene, LLMModelConfig } from '../types';
 import { createLLMProvider } from '../providers';
 import { getActiveLLMConfig } from '../store/globalStore';
-import { getPromptTemplate, fillTemplate } from '../store/promptTemplates';
+import { getPromptTemplate, fillTemplate, type PromptTemplateType } from '../store/promptTemplates';
 import { loadCharacters, loadScenes, updateShot } from '../store/projectStore';
+import { TaskManager } from './TaskManager';
 
 // 运镜关键字
 export const CAMERA_OPTIONS = [
@@ -87,12 +89,14 @@ export class ShotPromptService {
   /**
    * 生成双提示词（图片 + 视频），支持按需生成
    * @param generateFlags 指定生成哪些类型，默认生成缺失的
+   * @param options.force 强制重新生成（用于"优化"功能）
    */
   async generateDualShotPrompts(
     shot: Shot,
     characters: Character[],
     stylePrefix: string = '',
-    generateFlags?: { image?: boolean; video?: boolean }
+    generateFlags?: { image?: boolean; video?: boolean },
+    options?: { force?: boolean }
   ): Promise<{ imagePrompt: string; videoPrompt: string }> {
     if (!this.llmConfig) {
       const hasConfig = await this.setLLMConfig();
@@ -101,9 +105,16 @@ export class ShotPromptService {
       }
     }
 
+    const force = options?.force ?? false;
+
     // 确定需要生成哪些类型
-    const needImage = generateFlags?.image ?? !shot.imagePrompt?.trim();
-    const needVideo = generateFlags?.video ?? !shot.videoPrompt?.trim();
+    // force 模式下，按 generateFlags 指定的类型强制生成
+    const needImage = force
+      ? (generateFlags?.image ?? true)
+      : (generateFlags?.image ?? !shot.imagePrompt?.trim());
+    const needVideo = force
+      ? (generateFlags?.video ?? true)
+      : (generateFlags?.video ?? !shot.videoPrompt?.trim());
 
     // 如果都不需要生成，直接返回现有值
     if (!needImage && !needVideo) {
@@ -149,14 +160,15 @@ export class ShotPromptService {
     characterRefs: string,
     stylePrefix: string
   ): Promise<string> {
-    // 根据类型选择不同模板
-    const templateKey = type === 'image' ? 'shot_image_prompt_generation' : 'shot_video_prompt_generation';
-    let template;
-    try {
-      template = await getPromptTemplate(templateKey);
-    } catch {
+    // 根据类型选择专用模板，回退到通用模板
+    const templateKey: PromptTemplateType = type === 'image' ? 'shot_image_prompt_generation' : 'shot_video_prompt_generation';
+    let template = await getPromptTemplate(templateKey);
+    if (!template) {
       // 回退到通用模板
       template = await getPromptTemplate('shot_prompt_generation');
+    }
+    if (!template) {
+      throw new Error(`未找到分镜提示词模板 ${templateKey} 或 shot_prompt_generation`);
     }
 
     const prompt = fillTemplate(template.template, {
@@ -178,7 +190,7 @@ export class ShotPromptService {
     });
 
     const systemPromptTemplate = await getPromptTemplate('shot_prompt_system');
-    const systemPrompt = systemPromptTemplate.template;
+    const systemPrompt = systemPromptTemplate?.template || '你是一个专业的视频提示词生成专家。';
 
     const result = await provider.chat([
       { role: 'system', content: systemPrompt },
@@ -247,17 +259,37 @@ export class ShotPromptService {
 
   /**
    * 生成单条分镜提示词并保存（双提示词版本）
+   * @param generateFlags 指定生成哪些类型
+   * @param options.force 强制重新生成
    */
   async generateAndSaveShotPrompt(
     shot: Shot,
-    stylePrefix: string = ''
+    stylePrefix: string = '',
+    generateFlags?: { image?: boolean; video?: boolean },
+    options?: { force?: boolean }
   ): Promise<PromptGenerationResult> {
     try {
       const characters = await loadCharacters(this.projectId);
-      const { imagePrompt, videoPrompt } = await this.generateDualShotPrompts(shot, characters, stylePrefix);
+      const { imagePrompt, videoPrompt } = await this.generateDualShotPrompts(
+        shot,
+        characters,
+        stylePrefix,
+        generateFlags,
+        options
+      );
 
-      // 保存双提示词到数据库
-      await updateShot(this.projectId, this.episodeId, shot.id, { imagePrompt, videoPrompt });
+      // 只更新实际生成的字段
+      const updates: Partial<Shot> = {};
+      if (generateFlags?.image !== false && (options?.force || !shot.imagePrompt?.trim())) {
+        updates.imagePrompt = imagePrompt;
+      }
+      if (generateFlags?.video !== false && (options?.force || !shot.videoPrompt?.trim())) {
+        updates.videoPrompt = videoPrompt;
+      }
+
+      if (Object.keys(updates).length > 0) {
+        await updateShot(this.projectId, this.episodeId, shot.id, updates);
+      }
 
       return {
         shotId: shot.id,
@@ -279,19 +311,23 @@ export class ShotPromptService {
 
 /**
  * 便捷函数：为单个分镜生成提示词
+ * @param generateFlags 指定生成哪些类型 { image?: boolean; video?: boolean }
+ * @param options.force 强制重新生成（用于"优化"功能）
  */
 export async function generateShotPrompt(
   projectId: string,
   episodeId: string,
   shot: Shot,
   stylePrefix?: string,
-  llmConfigId?: string
+  llmConfigId?: string,
+  generateFlags?: { image?: boolean; video?: boolean },
+  options?: { force?: boolean }
 ): Promise<PromptGenerationResult> {
   const service = new ShotPromptService(projectId, episodeId);
   if (llmConfigId) {
     await service.setLLMConfig(llmConfigId);
   }
-  return service.generateAndSaveShotPrompt(shot, stylePrefix);
+  return service.generateAndSaveShotPrompt(shot, stylePrefix, generateFlags, options);
 }
 
 /**

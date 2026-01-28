@@ -194,6 +194,110 @@ class VectorEngineITVProvider {
   private delay(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
   }
+
+  /**
+   * 角色提取 - 从视频中提取角色
+   */
+  async extractCharacter(params: {
+    url?: string;
+    fromTask?: string;
+    timestamps: string;
+    model?: string;
+  }): Promise<string> {
+    if (!params.url && !params.fromTask) {
+      throw new Error('必须提供 url 或 fromTask 参数');
+    }
+
+    const body: Record<string, any> = {
+      timestamps: params.timestamps,
+    };
+
+    if (params.url) {
+      body.url = params.url;
+    } else if (params.fromTask) {
+      body.from_task = params.fromTask;
+    }
+
+    const response = await this.ctx.sandboxedFetch(
+      `${this.config.baseUrl}/sora/v1/characters`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.config.apiKey}`,
+        },
+        body: JSON.stringify(body),
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`角色提取失败: ${errorText}`);
+    }
+
+    const data = await response.json();
+    return data.id;
+  }
+
+  /**
+   * 查询角色提取任务状态
+   */
+  async checkCharacterProgress(taskId: string): Promise<any> {
+    const response = await this.ctx.sandboxedFetch(
+      `${this.config.baseUrl}/sora/v1/characters/${taskId}`,
+      {
+        method: 'GET',
+        headers: { 'Authorization': `Bearer ${this.config.apiKey}` },
+      }
+    );
+
+    if (!response.ok) {
+      return {
+        taskId,
+        status: 'failed',
+        progress: 0,
+        error: '查询失败',
+      };
+    }
+
+    const data = await response.json();
+
+    const statusMap: Record<string, string> = {
+      'pending': 'queued',
+      'queued': 'queued',
+      'processing': 'processing',
+      'in_progress': 'processing',
+      'completed': 'completed',
+      'succeeded': 'completed',
+      'failed': 'failed',
+      'error': 'failed',
+    };
+
+    const result: any = {
+      taskId,
+      status: statusMap[data.status] || 'processing',
+      progress: data.progress || 0,
+    };
+
+    // 提取完成时返回角色列表
+    if (data.status === 'completed' || data.status === 'succeeded') {
+      if (data.characters || data.result?.characters || data.data?.characters) {
+        const chars = data.characters || data.result?.characters || data.data?.characters;
+        result.characters = chars.map((c: any) => ({
+          id: c.id,
+          username: c.username || c.name,
+          displayName: c.display_name || c.displayName,
+          avatarUrl: c.avatar_url || c.avatarUrl,
+        }));
+      }
+    }
+
+    if (data.error) {
+      result.error = data.error.message || data.error;
+    }
+
+    return result;
+  }
 }
 
 // ========== UI 组件 ==========

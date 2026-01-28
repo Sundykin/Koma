@@ -37,7 +37,6 @@ class MentionWidget extends WidgetType {
     const span = document.createElement('span');
     span.className = `mention-widget mention-${this.mention.type}`;
     span.textContent = `@${this.mention.name}`;
-    span.title = this.mention.description || this.mention.name;
 
     // 样式
     span.style.cssText = `

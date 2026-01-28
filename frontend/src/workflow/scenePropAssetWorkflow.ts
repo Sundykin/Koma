@@ -181,11 +181,32 @@ export async function generateSceneImage(
       await markTaskFailed(projectId, task.id, progress.error || '生成失败');
       return { success: false, error: progress.error || '生成失败' };
     } else if (typeof result !== 'string') {
-      // 同步模式 - result 可能包含 url
+      // 同步模式 - result 可能包含 url 或本地路径
       onProgress?.(90, '保存场景图...');
-      const localPath = await saveSceneImage(projectId, scene.id, result.path);
-      const remoteUrl = result.url || result.path;
-      await markTaskCompleted(projectId, task.id, result.path, localPath);
+
+      const resultPath = result.path || result.url;
+      const isRemoteUrl = resultPath?.startsWith('http://') || resultPath?.startsWith('https://');
+
+      let localPath: string;
+      let remoteUrl: string | undefined;
+
+      if (isRemoteUrl) {
+        // 远程 URL，需要下载
+        remoteUrl = resultPath;
+        const config = getStorageConfig() || (await initStorageConfig());
+        const targetPath = `${config.rootPath}/projects/${projectId}/assets/scenes/${scene.id}/preview.png`;
+        const downloadResult = await downloadRemoteAsset(remoteUrl, targetPath);
+        if (!downloadResult.success || !downloadResult.localPath) {
+          throw new Error('下载图片失败');
+        }
+        localPath = downloadResult.localPath;
+      } else {
+        // 本地路径
+        localPath = await saveSceneImage(projectId, scene.id, resultPath);
+        remoteUrl = result.url;
+      }
+
+      await markTaskCompleted(projectId, task.id, resultPath, localPath);
       // 同时保存本地路径和远程URL
       await updateSceneAsset(projectId, scene.id, {
         imagePath: localPath,
@@ -334,11 +355,32 @@ export async function generatePropImage(
       await markTaskFailed(projectId, task.id, progress.error || '生成失败');
       return { success: false, error: progress.error || '生成失败' };
     } else if (typeof result !== 'string') {
-      // 同步模式 - result 可能包含 url
+      // 同步模式 - result 可能包含 url 或本地路径
       onProgress?.(90, '保存道具图...');
-      const localPath = await savePropImage(projectId, prop.id, result.path);
-      const remoteUrl = result.url || result.path;
-      await markTaskCompleted(projectId, task.id, result.path, localPath);
+
+      const resultPath = result.path || result.url;
+      const isRemoteUrl = resultPath?.startsWith('http://') || resultPath?.startsWith('https://');
+
+      let localPath: string;
+      let remoteUrl: string | undefined;
+
+      if (isRemoteUrl) {
+        // 远程 URL，需要下载
+        remoteUrl = resultPath;
+        const config = getStorageConfig() || (await initStorageConfig());
+        const targetPath = `${config.rootPath}/projects/${projectId}/assets/props/${prop.id}/reference.png`;
+        const downloadResult = await downloadRemoteAsset(remoteUrl, targetPath);
+        if (!downloadResult.success || !downloadResult.localPath) {
+          throw new Error('下载图片失败');
+        }
+        localPath = downloadResult.localPath;
+      } else {
+        // 本地路径
+        localPath = await savePropImage(projectId, prop.id, resultPath);
+        remoteUrl = result.url;
+      }
+
+      await markTaskCompleted(projectId, task.id, resultPath, localPath);
       // 同时保存本地路径和远程URL
       await updatePropAsset(projectId, prop.id, {
         imagePath: localPath,

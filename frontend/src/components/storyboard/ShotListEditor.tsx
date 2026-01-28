@@ -20,7 +20,9 @@ export interface ShotListEditorProps {
   scenes: Scene[];
   props: Prop[];
   mentionItems: MentionItem[];
-  generatingPrompts: Set<string>;
+  // 状态拆分：图片/视频提示词独立
+  generatingImagePrompts: Set<string>;
+  generatingVideoPrompts: Set<string>;
   generatingImages: Set<string>;
   generatingVideos: Set<string>;
   batchProgress?: { current: number; total: number; step?: string };
@@ -35,7 +37,11 @@ export interface ShotListEditorProps {
   onReferenceImagesChange?: (shotId: string, images: string[], selectedIndex: number) => void;
   onImagesChange: (shotId: string, images: string[], selectedIndex: number) => void;
   onVideosChange: (shotId: string, videos: ShotVideo[], selectedIndex: number) => void;
-  onGeneratePrompt: (shotId: string) => void;
+  // 回调拆分：生成 vs 优化，图片 vs 视频
+  onGenerateImagePrompt: (shotId: string) => void;
+  onGenerateVideoPrompt: (shotId: string) => void;
+  onOptimizeImagePrompt: (shotId: string, currentPrompt: string) => void;
+  onOptimizeVideoPrompt: (shotId: string, currentPrompt: string) => void;
   onBatchGeneratePrompts: (shotIds?: string[]) => void;
   onBatchReGeneratePrompts: (shotIds?: string[]) => void;
   onGenerateImage: (shotId: string) => void;
@@ -64,7 +70,8 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
   scenes,
   props,
   mentionItems,
-  generatingPrompts,
+  generatingImagePrompts,
+  generatingVideoPrompts,
   generatingImages,
   generatingVideos,
   batchProgress,
@@ -79,7 +86,10 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
   onReferenceImagesChange,
   onImagesChange,
   onVideosChange,
-  onGeneratePrompt,
+  onGenerateImagePrompt,
+  onGenerateVideoPrompt,
+  onOptimizeImagePrompt,
+  onOptimizeVideoPrompt,
   onBatchGeneratePrompts,
   onBatchReGeneratePrompts,
   onGenerateImage,
@@ -204,7 +214,7 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
                 selectedCount={selectedCount}
                 isAllSelected={isAllSelected}
                 isIndeterminate={isIndeterminate}
-                generatingPrompts={generatingPrompts.size > 0}
+                generatingPrompts={generatingImagePrompts.size > 0 || generatingVideoPrompts.size > 0}
                 generatingImages={generatingImages.size > 0}
                 generatingVideos={generatingVideos.size > 0}
                 onSelectAll={handleSelectAll}
@@ -232,7 +242,8 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
                   mentionItems={mentionItems}
                   isSelected={selectedIds.has(shot.id)}
                   isActive={activeShotId === shot.id}
-                  isGeneratingPrompt={generatingPrompts.has(shot.id)}
+                  isGeneratingImagePrompt={generatingImagePrompts.has(shot.id)}
+                  isGeneratingVideoPrompt={generatingVideoPrompts.has(shot.id)}
                   isGeneratingImage={generatingImages.has(shot.id)}
                   isGeneratingVideo={generatingVideos.has(shot.id)}
                   onSelectChange={handleSelectChange}
@@ -246,7 +257,10 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
                   onReferenceImagesChange={onReferenceImagesChange}
                   onImagesChange={onImagesChange}
                   onVideosChange={onVideosChange}
-                  onGeneratePrompt={onGeneratePrompt}
+                  onGenerateImagePrompt={onGenerateImagePrompt}
+                  onGenerateVideoPrompt={onGenerateVideoPrompt}
+                  onOptimizeImagePrompt={onOptimizeImagePrompt}
+                  onOptimizeVideoPrompt={onOptimizeVideoPrompt}
                   onGenerateImage={onGenerateImage}
                   onGenerateVideo={onGenerateVideo}
                   onToggleConfirm={onToggleConfirm}
