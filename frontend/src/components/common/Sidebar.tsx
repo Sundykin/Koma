@@ -96,7 +96,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   };
 
   return (
-    <div className="w-20 bg-zinc-950 border-r border-zinc-800 flex flex-col h-full z-40 shrink-0">
+    <div className="w-[var(--sidebar-width)] bg-zinc-950 border-r border-zinc-800 flex flex-col h-full z-40 shrink-0">
       {/* Logo 区域 */}
       <div className="h-14 w-full flex items-center justify-center">
         <div className="w-10 h-10 bg-gradient-to-br from-emerald-500 to-emerald-700 rounded-xl flex items-center justify-center text-white font-bold text-lg shadow-lg shadow-emerald-900/40">

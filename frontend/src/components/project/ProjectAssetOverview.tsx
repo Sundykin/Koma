@@ -3,31 +3,11 @@
  * 显示项目中所有角色、场景、道具及其跨集使用情况
  */
 import React, { useState, useEffect, useCallback } from 'react';
-import {
-  Card,
-  Tabs,
-  Flex,
-  Avatar,
-  Tag,
-  Space,
-  Typography,
-  Empty,
-  Spin,
-  Tooltip,
-  Badge,
-} from 'antd';
-import {
-  UserOutlined,
-  EnvironmentOutlined,
-  GiftOutlined,
-  LinkOutlined,
-} from '@ant-design/icons';
-import { Users, MapPin, Package } from 'lucide-react';
+import { Tabs, Avatar, Tag, Empty, Spin, Tooltip } from 'antd';
+import { User, MapPin, Box, Link } from 'lucide-react';
 import type { Character, Scene, Prop, EpisodeRef } from '../../types';
 import { loadCharacters, loadScenes, loadProps, getOrphanedAssets } from '../../store/projectStore';
 import { electronService } from '../../services/electronService';
-
-const { Paragraph } = Typography;
 
 interface ProjectAssetOverviewProps {
   projectId: string;
@@ -66,148 +46,111 @@ export const ProjectAssetOverview: React.FC<ProjectAssetOverviewProps> = ({
     }
   }, [projectId]);
 
-  useEffect(() => {
-    loadAssets();
-  }, [loadAssets]);
+  useEffect(() => { loadAssets(); }, [loadAssets]);
 
   const renderEpisodeRefs = (refs?: EpisodeRef[]) => {
     if (!refs || refs.length === 0) {
-      return <Tag color="default" style={{ fontSize: 10 }}>未使用</Tag>;
+      return <span className="text-[10px] px-1.5 py-0.5 bg-zinc-800 text-zinc-500 rounded">未使用</span>;
     }
     return (
-      <Space size={2} wrap>
+      <div className="flex items-center gap-1 flex-wrap">
         {refs.slice(0, 2).map((ref, idx) => (
           <Tooltip key={idx} title={ref.firstAppearance ? '首次出现' : '复用'}>
-            <Tag color={ref.firstAppearance ? 'green' : 'blue'} style={{ fontSize: 10 }}>
-              {ref.episodeName || `第${idx + 1}集`}
-            </Tag>
+            <span className={`text-[10px] px-1.5 py-0.5 rounded ${
+              ref.firstAppearance
+                ? 'bg-emerald-900/50 text-emerald-400'
+                : 'bg-blue-900/50 text-blue-400'
+            }`}>
+              {ref.episodeName || `E${idx + 1}`}
+            </span>
           </Tooltip>
         ))}
-        {refs.length > 2 && <Tag style={{ fontSize: 10 }}>+{refs.length - 2}</Tag>}
-      </Space>
+        {refs.length > 2 && (
+          <span className="text-[10px] px-1.5 py-0.5 bg-zinc-800 text-zinc-400 rounded">
+            +{refs.length - 2}
+          </span>
+        )}
+      </div>
     );
   };
 
-  const renderCharacterItem = (character: Character) => (
-    <div
-      key={character.id}
-      className="cursor-pointer hover:bg-gray-800 transition-colors rounded px-2 py-1"
-      style={{ padding: '6px 8px', display: 'flex', alignItems: 'center', gap: 8 }}
-      onClick={() => onAssetClick?.(character.id, 'character')}
-    >
-      <Avatar
-        size="small"
-        src={character.costumePhotoPath ? electronService.fs.toLocalUrl(character.costumePhotoPath) : undefined}
-        icon={<UserOutlined />}
-        style={{ backgroundColor: '#10b981' }}
-      />
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <span className="text-white text-sm">{character.name}</span>
-        {renderEpisodeRefs(character.episodeRefs)}
-      </div>
-    </div>
-  );
-
-  const renderSceneItem = (scene: Scene) => (
-    <div
-      key={scene.id}
-      className="cursor-pointer hover:bg-gray-800 transition-colors rounded px-2 py-1"
-      style={{ padding: '6px 8px', display: 'flex', alignItems: 'center', gap: 8 }}
-      onClick={() => onAssetClick?.(scene.id, 'scene')}
-    >
-      <Avatar
-        size="small"
-        icon={<EnvironmentOutlined />}
-        style={{ backgroundColor: '#8b5cf6' }}
-      />
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <span className="text-white text-sm">{scene.name}</span>
-        {renderEpisodeRefs(scene.episodeRefs)}
-      </div>
-    </div>
-  );
-
-  const renderPropItem = (prop: Prop) => (
-    <div
-      key={prop.id}
-      className="cursor-pointer hover:bg-gray-800 transition-colors rounded px-2 py-1"
-      style={{ padding: '6px 8px', display: 'flex', alignItems: 'center', gap: 8 }}
-      onClick={() => onAssetClick?.(prop.id, 'prop')}
-    >
-      <Avatar
-        size="small"
-        icon={<GiftOutlined />}
-        style={{ backgroundColor: '#f59e0b' }}
-      />
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <span className="text-white text-sm">{prop.name}</span>
-        {renderEpisodeRefs(prop.episodeRefs)}
-      </div>
-    </div>
-  );
-
   if (loading) {
     return (
-      <Card
-        className="h-full flex flex-col"
-        style={{ background: '#141414', border: '1px solid #333' }}
-        styles={{ body: { flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' } }}
-      >
+      <div className="h-full flex items-center justify-center">
         <Spin />
-      </Card>
+      </div>
     );
   }
 
   const totalAssets = characters.length + scenes.length + props.length;
 
   return (
-    <Card
-      title={
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Package className="w-4 h-4 text-yellow-500" />
-            <span>项目资产</span>
-            <Badge count={totalAssets} style={{ backgroundColor: '#10b981' }} />
+    <div className="h-full flex flex-col">
+      {/* 统计栏 */}
+      <div className="px-4 py-3 border-b border-zinc-800/80">
+        <div className="grid grid-cols-3 gap-2">
+          <div className="text-center">
+            <div className="text-lg font-semibold text-zinc-200">{characters.length}</div>
+            <div className="text-[10px] text-zinc-500">角色</div>
           </div>
-          {orphanedCount > 0 && (
-            <Tooltip title="有未被任何剧集引用的资产">
-              <Tag color="warning" icon={<LinkOutlined />} style={{ fontSize: 10 }}>
-                {orphanedCount} 未用
-              </Tag>
-            </Tooltip>
-          )}
+          <div className="text-center">
+            <div className="text-lg font-semibold text-zinc-200">{scenes.length}</div>
+            <div className="text-[10px] text-zinc-500">场景</div>
+          </div>
+          <div className="text-center">
+            <div className="text-lg font-semibold text-zinc-200">{props.length}</div>
+            <div className="text-[10px] text-zinc-500">道具</div>
+          </div>
         </div>
-      }
-      className="h-full flex flex-col"
-      style={{ background: '#141414', border: '1px solid #333' }}
-      styles={{
-        header: { borderBottom: '1px solid #333', flexShrink: 0 },
-        body: { flex: 1, overflow: 'hidden', padding: 0, display: 'flex', flexDirection: 'column' },
-      }}
-    >
+        {orphanedCount > 0 && (
+          <div className="mt-2 flex items-center justify-center gap-1 text-[10px] text-orange-400">
+            <Link className="w-3 h-3" />
+            {orphanedCount} 个未使用
+          </div>
+        )}
+      </div>
+
+      {/* Tab 内容 */}
       <Tabs
         defaultActiveKey="characters"
         centered
         size="small"
-        className="h-full flex flex-col"
-        style={{ height: '100%' }}
+        className="flex-1 overflow-hidden [&_.ant-tabs-content]:h-full [&_.ant-tabs-tabpane]:h-full"
         items={[
           {
             key: 'characters',
             label: (
-              <span className="text-xs">
-                <Users className="w-3 h-3 inline-block mr-1" />
-                角色({characters.length})
+              <span className="flex items-center gap-1 text-xs">
+                <User className="w-3 h-3" />
+                角色
               </span>
             ),
             children: (
-              <div className="flex-1 overflow-y-auto px-2" style={{ maxHeight: 'calc(100% - 46px)' }}>
+              <div className="h-full overflow-y-auto p-2">
                 {characters.length === 0 ? (
-                  <Empty description="暂无角色" className="py-4" />
+                  <Empty description="暂无角色" className="py-6" imageStyle={{ height: 40 }} />
                 ) : (
-                  <Flex vertical>
-                    {characters.map(renderCharacterItem)}
-                  </Flex>
+                  <div className="flex flex-col gap-1">
+                    {characters.map((char) => (
+                      <div
+                        key={char.id}
+                        onClick={() => onAssetClick?.(char.id, 'character')}
+                        className="flex items-center gap-3 p-2 rounded-lg cursor-pointer hover:bg-zinc-800/50 transition-colors"
+                      >
+                        <Avatar
+                          size={32}
+                          src={char.costumePhotoPath ? electronService.fs.toLocalUrl(char.costumePhotoPath) : undefined}
+                          className="bg-emerald-600 flex-shrink-0"
+                        >
+                          {char.name.charAt(0)}
+                        </Avatar>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm text-zinc-200 truncate">{char.name}</div>
+                          {renderEpisodeRefs(char.episodeRefs)}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 )}
               </div>
             ),
@@ -215,19 +158,33 @@ export const ProjectAssetOverview: React.FC<ProjectAssetOverviewProps> = ({
           {
             key: 'scenes',
             label: (
-              <span className="text-xs">
-                <MapPin className="w-3 h-3 inline-block mr-1" />
-                场景({scenes.length})
+              <span className="flex items-center gap-1 text-xs">
+                <MapPin className="w-3 h-3" />
+                场景
               </span>
             ),
             children: (
-              <div className="flex-1 overflow-y-auto px-2" style={{ maxHeight: 'calc(100% - 46px)' }}>
+              <div className="h-full overflow-y-auto p-2">
                 {scenes.length === 0 ? (
-                  <Empty description="暂无场景" className="py-4" />
+                  <Empty description="暂无场景" className="py-6" imageStyle={{ height: 40 }} />
                 ) : (
-                  <Flex vertical>
-                    {scenes.map(renderSceneItem)}
-                  </Flex>
+                  <div className="flex flex-col gap-1">
+                    {scenes.map((scene) => (
+                      <div
+                        key={scene.id}
+                        onClick={() => onAssetClick?.(scene.id, 'scene')}
+                        className="flex items-center gap-3 p-2 rounded-lg cursor-pointer hover:bg-zinc-800/50 transition-colors"
+                      >
+                        <Avatar size={32} className="bg-purple-600 flex-shrink-0">
+                          <MapPin className="w-4 h-4" />
+                        </Avatar>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm text-zinc-200 truncate">{scene.name}</div>
+                          {renderEpisodeRefs(scene.episodeRefs)}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 )}
               </div>
             ),
@@ -235,26 +192,40 @@ export const ProjectAssetOverview: React.FC<ProjectAssetOverviewProps> = ({
           {
             key: 'props',
             label: (
-              <span className="text-xs">
-                <Package className="w-3 h-3 inline-block mr-1" />
-                道具({props.length})
+              <span className="flex items-center gap-1 text-xs">
+                <Box className="w-3 h-3" />
+                道具
               </span>
             ),
             children: (
-              <div className="flex-1 overflow-y-auto px-2" style={{ maxHeight: 'calc(100% - 46px)' }}>
+              <div className="h-full overflow-y-auto p-2">
                 {props.length === 0 ? (
-                  <Empty description="暂无道具" className="py-4" />
+                  <Empty description="暂无道具" className="py-6" imageStyle={{ height: 40 }} />
                 ) : (
-                  <Flex vertical>
-                    {props.map(renderPropItem)}
-                  </Flex>
+                  <div className="flex flex-col gap-1">
+                    {props.map((prop) => (
+                      <div
+                        key={prop.id}
+                        onClick={() => onAssetClick?.(prop.id, 'prop')}
+                        className="flex items-center gap-3 p-2 rounded-lg cursor-pointer hover:bg-zinc-800/50 transition-colors"
+                      >
+                        <Avatar size={32} className="bg-amber-600 flex-shrink-0">
+                          <Box className="w-4 h-4" />
+                        </Avatar>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm text-zinc-200 truncate">{prop.name}</div>
+                          {renderEpisodeRefs(prop.episodeRefs)}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 )}
               </div>
             ),
           },
         ]}
       />
-    </Card>
+    </div>
   );
 };
 

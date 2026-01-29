@@ -18,9 +18,8 @@ export interface Project {
   episodeCount?: number;    // 实际剧集数（用于剧集管理）
 }
 
-// 剧集步骤进度
+// 剧集步骤进度 (3步流程: assets → storyboard → video)
 export interface EpisodeStepProgress {
-  script: 'pending' | 'completed';
   assets: 'pending' | 'completed';
   storyboard: 'pending' | 'completed';
   video: 'pending' | 'completed';
@@ -199,8 +198,8 @@ export interface ScriptAnalysisResult {
   shots: Shot[];
 }
 
-// 编辑器当前的步骤状态
-export type EditorStep = 'script' | 'assets' | 'storyboard' | 'video';
+// 编辑器当前的步骤状态 (3步流程)
+export type EditorStep = 'assets' | 'storyboard' | 'video';
 
 // ========== 模型设置相关类型 ==========
 

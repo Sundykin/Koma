@@ -19,7 +19,7 @@
   border-right: 1px solid #27272a;
   display: flex;
   flex-direction: column;
-  background: #0a0a0a;
+  background: #09090b;
   overflow: hidden; /* Internal scrolling handled by children */
 }
 
@@ -99,7 +99,7 @@
   border-radius: 8px;
   cursor: pointer;
   transition: background 0.2s;
-  background: #1f1f23;
+  background: #18181b;
   border: 1px solid transparent;
 }
 
@@ -180,7 +180,7 @@
 
 /* ============ Asset Detail Panel (Creator Layout) ============ */
 .assetDetailPanel {
-  background: #141414;
+  background: #09090b;
   display: flex;
   flex-direction: row;
   height: 100%;
@@ -196,18 +196,18 @@
   min-width: 380px;
   display: flex;
   flex-direction: column;
-  background: #1f1f1f;
-  border-right: 1px solid #303030;
+  background: #18181b;
+  border-right: 1px solid #27272a;
   z-index: 2;
 }
 
 .creatorSidebarHeader {
   padding: 16px 20px;
-  border-bottom: 1px solid #303030;
+  border-bottom: 1px solid #27272a;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: #1f1f1f;
+  background: #18181b;
 }
 
 .creatorSidebarContent {
@@ -223,13 +223,13 @@
 .creatorSidebarActions {
   position: sticky;
   bottom: 0;
-  background: #1f1f1f;
+  background: #18181b;
   display: flex;
   flex-direction: column;
   gap: 12px;
   padding: 16px 20px 20px;
   margin: 0 -20px;
-  border-top: 1px solid #303030;
+  border-top: 1px solid #27272a;
   z-index: 5;
 }
 
@@ -249,9 +249,9 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: rgba(31, 31, 31, 0.9);
+  background: rgba(24, 24, 27, 0.9);
   backdrop-filter: blur(12px);
-  border-bottom: 1px solid #303030;
+  border-bottom: 1px solid #27272a;
   position: absolute;
   top: 0;
   left: 0;
@@ -302,9 +302,9 @@
 /* --- Progress in Sidebar --- */
 .creatorProgress {
   padding: 12px;
-  background: #262626;
+  background: #27272a;
   border-radius: 6px;
-  border: 1px solid #303030;
+  border: 1px solid #3f3f46;
 }
 
 .creatorProgressHeader {
@@ -326,8 +326,8 @@
 
 /* --- Sidebar Form Overrides --- */
 .creatorSidebarContent textarea {
-  background-color: #141414 !important;
-  border-color: #424242 !important;
+  background-color: #09090b !important;
+  border-color: #3f3f46 !important;
   font-family: 'Menlo', 'Monaco', 'Consolas', monospace;
   font-size: 13px;
   line-height: 1.5;
@@ -342,7 +342,7 @@
 .toolbarDivider {
   width: 1px;
   height: 20px;
-  background: #424242;
+  background: #3f3f46;
   margin: 0 12px;
 }
 

@@ -34,6 +34,11 @@
   --space-md: 12px;
   --space-lg: 16px;
   --space-xl: 24px;
+
+  /* 布局尺寸 */
+  --sidebar-width: 72px;
+  --header-height: 56px;
+  --header-height-lg: 64px;
 }
 
 /* 兼容变量别名 (供内联样式使用) */
@@ -182,3 +187,24 @@ body {
 .dark-modal .ant-input-prefix {
   color: var(--color-text-secondary) !important;
 }
+
+/* ========================================
+   浏览器自动填充样式修复
+   ======================================== */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0 1000px var(--color-bg-elevated) inset !important;
+  -webkit-text-fill-color: var(--color-text-primary) !important;
+  caret-color: var(--color-text-primary) !important;
+  transition: background-color 5000s ease-in-out 0s;
+}
+
+/* Skeleton 骨架屏深色优化 */
+.ant-skeleton .ant-skeleton-content .ant-skeleton-title,
+.ant-skeleton .ant-skeleton-content .ant-skeleton-paragraph > li {
+  background: linear-gradient(90deg, #27272a 25%, #3f3f46 50%, #27272a 75%);
+  background-size: 200% 100%;
+}
+

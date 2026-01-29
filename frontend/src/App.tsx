@@ -5,13 +5,12 @@ import type { MentionItem } from './editor';
 import { SettingsPage } from './components/settings';
 import { WindowControls } from './components/common';
 import { ErrorBoundary } from './components/common';
+import { TaskStatusBar } from './components/common/TaskStatusBar';
 import { Sidebar, type AppView } from './components/common/Sidebar';
-import { Header } from './components/common/Header';
 import { EditorView } from './components/editor/EditorView';
 import { PluginManager, PluginHost } from './components/plugins';
 import { useProjects } from './hooks/useProjects';
 import { TaskManager } from './services/TaskManager';
-import { startBackgroundAnalysis } from './services/ScriptAnalysisService';
 import { loadCharacters, loadScenes, loadProps, loadShots, loadEpisodeShots, saveEpisode } from './store/projectStore';
 import { Spin, App as AntApp } from 'antd';
 import {
@@ -41,16 +40,15 @@ const AppContent: React.FC = () => {
 
   const [view, setView] = useState<AppView>(isVideoDevMode ? 'editor' : 'projects');
   const [activeProject, setActiveProject] = useState<Project | null>(isVideoDevMode ? DEV_TEST_PROJECT : null);
-  const [editorStep, setEditorStep] = useState<EditorStep>(isVideoDevMode ? 'video' : 'script');
+  const [editorStep, setEditorStep] = useState<EditorStep>(isVideoDevMode ? 'video' : 'assets');
   const [activeEpisode, setActiveEpisode] = useState<Episode | null>(null);
   const [stepProgress, setStepProgress] = useState<EpisodeStepProgress>({
-    script: 'pending', assets: 'pending', storyboard: 'pending', video: 'pending',
+    assets: 'pending', storyboard: 'pending', video: 'pending',
   });
   const [appSettings, setAppSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isProjectSettingsOpen, setIsProjectSettingsOpen] = useState(false);
   const [scriptText, setScriptText] = useState(DEFAULT_SCRIPT);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisData, setAnalysisData] = useState<ScriptAnalysisResult | null>(isVideoDevMode ? DEV_TEST_ANALYSIS : null);
 
   // 初始化 TaskManager
@@ -91,21 +89,12 @@ const AppContent: React.FC = () => {
     const unsubscribe = TaskManager.addListener((task) => {
       if (task.projectId !== activeProject.id) return;
       if (task.type === 'script-analysis' && task.status === 'completed') {
-        message.success('剧本解析完成，正在跳转到资产管理...');
-        setStepProgress(prev => {
-          const updated = { ...prev, script: 'completed' };
-          if (activeProject && activeEpisode) {
-            setActiveEpisode({ ...activeEpisode, stepProgress: updated });
-            saveEpisode(activeProject.id, activeEpisode.id, { stepProgress: updated }).catch(console.error);
-          }
-          return updated;
-        });
+        message.success('剧本解析完成');
         loadAnalysisData(activeProject.id);
-        setEditorStep('assets');
       }
     });
     return () => unsubscribe();
-  }, [activeProject?.id, activeEpisode, message, loadAnalysisData]);
+  }, [activeProject?.id, message, loadAnalysisData]);
 
   // 进入编辑器视图时加载数据
   useEffect(() => {
@@ -180,11 +169,11 @@ const AppContent: React.FC = () => {
   const handleEnterEpisode = (episode: Episode) => {
     setActiveEpisode(episode);
     setView('editor');
-    const defaultProgress: EpisodeStepProgress = { script: 'pending', assets: 'pending', storyboard: 'pending', video: 'pending' };
-    setStepProgress(episode.stepProgress || defaultProgress);
-    const steps: EditorStep[] = ['script', 'assets', 'storyboard', 'video'];
+    const defaultProgress: EpisodeStepProgress = { assets: 'pending', storyboard: 'pending', video: 'pending' };
     const progress = episode.stepProgress || defaultProgress;
-    const firstPending = steps.find(s => progress[s] === 'pending') || 'script';
+    setStepProgress(progress);
+    const steps: EditorStep[] = ['assets', 'storyboard', 'video'];
+    const firstPending = steps.find(s => progress[s] === 'pending') || 'assets';
     setEditorStep(firstPending);
     setScriptText(episode.scriptText || '');
     setAnalysisData(null);
@@ -202,7 +191,7 @@ const AppContent: React.FC = () => {
   }, [activeProject, activeEpisode]);
 
   const handleStepChangeWithMark = useCallback((targetStep: EditorStep) => {
-    const stepOrder: EditorStep[] = ['script', 'assets', 'storyboard', 'video'];
+    const stepOrder: EditorStep[] = ['assets', 'storyboard', 'video'];
     const currentIndex = stepOrder.indexOf(editorStep);
     const targetIndex = stepOrder.indexOf(targetStep);
     if (targetIndex > currentIndex) {
@@ -231,21 +220,6 @@ const AppContent: React.FC = () => {
     }
   };
 
-  const handleAnalyze = async () => {
-    if (!scriptText.trim()) { message.warning('请先输入剧本内容'); return; }
-    if (!activeProject) { message.warning('请先选择项目'); return; }
-    if (!activeEpisode) { message.warning('请先选择剧集'); return; }
-    try {
-      setIsAnalyzing(true);
-      await startBackgroundAnalysis(activeProject.id, activeEpisode.id, activeEpisode.title || `第${activeEpisode.number}集`, scriptText, activeProject.llmConfigId);
-      message.success('解析任务已启动，可在状态栏查看进度');
-    } catch (err: any) {
-      message.error(err.message || '启动解析失败');
-    } finally {
-      setIsAnalyzing(false);
-    }
-  };
-
   return (
     <div className="flex flex-col h-screen bg-zinc-950 text-zinc-100 font-sans selection:bg-emerald-500/30">
       <WindowControls />
@@ -258,20 +232,6 @@ const AppContent: React.FC = () => {
           onEnterVideoTest={handleEnterVideoTest}
         />
         <div className="flex-1 flex flex-col min-w-0 transition-all duration-300">
-          <Header
-            view={view}
-            activeProject={activeProject}
-            activeEpisode={activeEpisode}
-            editorStep={editorStep}
-            stepProgress={stepProgress}
-            isAnalyzing={isAnalyzing}
-            scriptText={scriptText}
-            onViewChange={setView}
-            onStepChange={setEditorStep}
-            onStepChangeWithMark={handleStepChangeWithMark}
-            onOpenProjectSettings={() => setIsProjectSettingsOpen(true)}
-            onAnalyze={handleAnalyze}
-          />
           <main className="flex-1 overflow-hidden relative bg-zinc-950">
             {view === 'projects' && (
               projectsLoading ? (
@@ -296,7 +256,6 @@ const AppContent: React.FC = () => {
               <ProjectOverview
                 project={activeProject}
                 onEnterEpisode={handleEnterEpisode}
-                onOpenSettings={() => setIsProjectSettingsOpen(true)}
                 onProjectUpdate={(updates) => setActiveProject({ ...activeProject, ...updates })}
               />
             )}
@@ -305,13 +264,15 @@ const AppContent: React.FC = () => {
                 activeProject={activeProject}
                 activeEpisode={activeEpisode}
                 editorStep={editorStep}
+                stepProgress={stepProgress}
                 scriptText={scriptText}
                 analysisData={analysisData}
                 appSettings={appSettings}
                 mentionItems={mentionItems}
-                onScriptChange={setScriptText}
                 onStepChange={setEditorStep}
+                onStepChangeWithMark={handleStepChangeWithMark}
                 onViewChange={setView}
+                onOpenProjectSettings={() => setIsProjectSettingsOpen(true)}
               />
             )}
           </main>
@@ -325,6 +286,8 @@ const AppContent: React.FC = () => {
         onSave={handleProjectSettingsSave}
         onGoToGlobalSettings={() => { setIsProjectSettingsOpen(false); setView('settings'); }}
       />
+      {/* 全局任务状态悬浮通知 */}
+      {activeProject && <TaskStatusBar projectId={activeProject.id} />}
     </div>
   );
 };

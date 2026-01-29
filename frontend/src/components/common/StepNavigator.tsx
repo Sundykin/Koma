@@ -1,44 +1,38 @@
 import React, { ReactNode } from 'react';
 import { EditorStep, EpisodeStepProgress } from '../../types';
-import { FileText, Users, Clapperboard, Scissors, Check, Lock } from 'lucide-react';
+import { Users, Clapperboard, Scissors, Check, Lock } from 'lucide-react';
 import { Tooltip } from 'antd';
 
 interface StepNavigatorProps {
   currentStep: EditorStep;
   onStepChange: (step: EditorStep) => void;
-  stepProgress?: EpisodeStepProgress;  // 各步骤完成状态
-  actionButton?: ReactNode;  // 当前步骤的操作按钮
+  stepProgress?: EpisodeStepProgress;
+  actionButton?: ReactNode;
 }
 
-// 默认步骤进度（全部未开始）
-const defaultStepProgress: EpisodeStepProgress = {
-  script: 'pending',
-  assets: 'pending',
-  storyboard: 'pending',
-  video: 'pending',
+const defaultProgress: EpisodeStepProgress = {
+  assets: 'pending', storyboard: 'pending', video: 'pending',
 };
 
 export const StepNavigator: React.FC<StepNavigatorProps> = ({
   currentStep,
   onStepChange,
-  stepProgress = defaultStepProgress,
+  stepProgress = defaultProgress,
   actionButton,
 }) => {
   const steps: { id: EditorStep; label: string; icon: any }[] = [
-    { id: 'script', label: '剧本解析', icon: FileText },
     { id: 'assets', label: '角色场景', icon: Users },
     { id: 'storyboard', label: 'AI分镜', icon: Clapperboard },
     { id: 'video', label: '后期剪辑', icon: Scissors },
   ];
 
-  const stepOrder: EditorStep[] = ['script', 'assets', 'storyboard', 'video'];
+  const stepOrder: EditorStep[] = ['assets', 'storyboard', 'video'];
   const currentIndex = stepOrder.indexOf(currentStep);
 
-  // 判断步骤是否可点击：当前步骤或已完成的步骤可点击
+  // 判断步骤是否可点击
   const isStepClickable = (stepId: EditorStep, index: number): boolean => {
-    if (stepId === currentStep) return true;  // 当前步骤可点击
-    if (stepProgress[stepId] === 'completed') return true;  // 已完成的步骤可点击
-    // 检查前一个步骤是否完成（允许进入下一步）
+    if (stepId === currentStep) return true;
+    if (stepProgress[stepId] === 'completed') return true;
     if (index > 0) {
       const prevStep = stepOrder[index - 1];
       if (stepProgress[prevStep] === 'completed') return true;
@@ -111,9 +105,9 @@ export const StepNavigator: React.FC<StepNavigatorProps> = ({
 
                 {/* 连接线 */}
                 {index < steps.length - 1 && (
-                  <div className="flex-1 h-[2px] mx-3 bg-gray-800 relative rounded-full overflow-hidden min-w-[40px]">
+                  <div className="flex-1 h-[2px] mx-3 bg-zinc-800 relative rounded-full overflow-hidden min-w-[40px]">
                     <div
-                      className="absolute top-0 left-0 h-full bg-green-600 transition-all duration-500 ease-in-out"
+                      className="absolute top-0 left-0 h-full bg-emerald-600 transition-all duration-500 ease-in-out"
                       style={{ width: stepProgress[step.id] === 'completed' ? '100%' : '0%' }}
                     />
                   </div>

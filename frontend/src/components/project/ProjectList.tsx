@@ -162,7 +162,7 @@ export const ProjectList: React.FC<ProjectListProps> = ({
                   <div
                     key={project.id}
                     onClick={() => onSelectProject(project.id)}
-                    className="group bg-zinc-900 rounded-lg border border-zinc-800 hover:border-zinc-600 p-4 cursor-pointer transition-all hover:bg-zinc-800/50"
+                    className="group bg-zinc-900 rounded-xl border border-zinc-800 hover:border-emerald-500/40 p-4 cursor-pointer transition-all hover:shadow-lg hover:shadow-emerald-500/5"
                   >
                     {/* 顶部：状态和操作 */}
                     <div className="flex items-center justify-between mb-3">
