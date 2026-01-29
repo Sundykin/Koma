@@ -295,7 +295,12 @@ export const SceneDetailPanel: React.FC<SceneDetailPanelProps> = ({
         <div className="creatorCanvasBody">
           <div className="creatorMediaViewer">
             {editedScene.imagePath ? (
-              <img src={toLocalUrl(editedScene.imagePath)} alt="场景图" />
+              <img
+                  src={toLocalUrl(editedScene.imagePath)}
+                  alt="场景图"
+                  style={{ cursor: 'pointer' }}
+                  onDoubleClick={() => setPreviewImage(toLocalUrl(editedScene.imagePath))}
+                />
             ) : (
               <div className="creatorMediaPlaceholder">
                 <EnvironmentOutlined />

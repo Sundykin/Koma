@@ -216,7 +216,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
 
   // 监听任务完成事件
   useEffect(() => {
-    const unsubscribe = TaskManager.addListener((task) => {
+    const unsubscribe = TaskManager.addListener(async (task) => {
       if (task.projectId !== projectId) return;
       if (task.type === 'shot-generation') {
         if (task.status === 'completed') {
@@ -226,7 +226,18 @@ export const Storyboard: React.FC<StoryboardProps> = ({
             next.delete(task.targetId!);
             return next;
           });
-          loadData();
+          // 只更新对应的 shot，避免整个列表重新加载
+          if (task.targetId && episodeId) {
+            try {
+              const latestShots = await loadEpisodeShots(projectId, episodeId);
+              const updatedShot = latestShots.find(s => s.id === task.targetId);
+              if (updatedShot) {
+                setShots(prev => prev.map(s => s.id === task.targetId ? updatedShot : s));
+              }
+            } catch (err) {
+              console.error('[Storyboard] 更新 shot 失败:', err);
+            }
+          }
         } else if (task.status === 'failed') {
           message.error(`分镜图片生成失败: ${task.error}`);
           setGeneratingShots(prev => {
@@ -248,7 +259,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       }
     });
     return () => unsubscribe();
-  }, [projectId, loadData]);
+  }, [projectId, episodeId, loadData]);
 
   // 保存分镜数据
   const saveAllShots = useCallback(async (updatedShots: Shot[]) => {

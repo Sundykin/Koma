@@ -168,6 +168,7 @@ export const ImageCardGrid: React.FC<ImageCardGridProps> = ({
             key={idx}
             className={`imageCard ${idx === selectedIndex ? 'selected' : ''}`}
             onClick={() => onSelect(idx)}
+            onDoubleClick={() => handlePreview(idx)}
           >
             <img src={electronService.fs.toLocalUrl(img)} alt={`img-${idx}`} />
             {idx === selectedIndex && <CheckCircleFilled className="selectedIcon" />}

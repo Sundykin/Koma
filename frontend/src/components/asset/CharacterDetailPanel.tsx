@@ -500,7 +500,12 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
           {viewMode === 'costume' ? (
             <div className="creatorMediaViewer">
               {editedCharacter.costumePhotoPath ? (
-                <img src={toLocalUrl(editedCharacter.costumePhotoPath)} alt="定妆照" />
+                <img
+                  src={toLocalUrl(editedCharacter.costumePhotoPath)}
+                  alt="定妆照"
+                  style={{ cursor: 'pointer' }}
+                  onDoubleClick={() => setPreviewImage(toLocalUrl(editedCharacter.costumePhotoPath))}
+                />
               ) : (
                 <div className="creatorMediaPlaceholder">
                   <UserOutlined />

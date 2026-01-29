@@ -475,7 +475,12 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
           {viewMode === 'image' ? (
             <div className="creatorMediaViewer">
               {editedProp.imagePath ? (
-                <img src={toLocalUrl(editedProp.imagePath)} alt="道具图" />
+                <img
+                  src={toLocalUrl(editedProp.imagePath)}
+                  alt="道具图"
+                  style={{ cursor: 'pointer' }}
+                  onDoubleClick={() => setPreviewImage(toLocalUrl(editedProp.imagePath))}
+                />
               ) : (
                 <div className="creatorMediaPlaceholder">
                   <InboxOutlined />
