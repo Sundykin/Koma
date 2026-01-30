@@ -8,6 +8,7 @@ import { FsController } from './fs';
 import { ProjectController } from './project';
 import { FFmpegController } from './ffmpeg';
 import { pluginController } from './plugin';
+import { chatController, ChatController } from './chat';
 
 export const controllers = {
   app: new AppController(),
@@ -17,9 +18,10 @@ export const controllers = {
   project: new ProjectController(),
   ffmpeg: new FFmpegController(),
   plugin: pluginController,
+  chat: chatController,
 };
 
 export type Controllers = typeof controllers;
 
-export { AppController, WindowController, DialogController, FsController, ProjectController, FFmpegController, pluginController };
+export { AppController, WindowController, DialogController, FsController, ProjectController, FFmpegController, pluginController, ChatController, chatController };
 export default controllers;

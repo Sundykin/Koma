@@ -100,4 +100,48 @@ contextBridge.exposeInMainWorld('electronAPI', {
     list: () => ipcRenderer.invoke('plugin:list'),
     openFolder: (pluginPath: string) => ipcRenderer.invoke('plugin:openFolder', pluginPath),
   },
+  chat: {
+    // 会话管理
+    createSession: (config?: any) => ipcRenderer.invoke('chat:session:create', { config }),
+    getSession: (sessionId: string) => ipcRenderer.invoke('chat:session:get', { sessionId }),
+    disposeSession: (sessionId: string) => ipcRenderer.invoke('chat:session:dispose', { sessionId }),
+    listSessions: (windowId?: number) => ipcRenderer.invoke('chat:session:list', { windowId }),
+    updateSessionConfig: (sessionId: string, config: any) =>
+      ipcRenderer.invoke('chat:session:updateConfig', { sessionId, config }),
+
+    // 消息发送
+    sendMessage: (sessionId: string, input: any, options?: any) =>
+      ipcRenderer.invoke('chat:message:send', { sessionId, input, options }),
+    sendMessageStream: (sessionId: string, input: any, options?: any) =>
+      ipcRenderer.invoke('chat:message:sendStream', { sessionId, input, options }),
+    cancelStream: (requestIdOrSessionId: string) =>
+      ipcRenderer.invoke('chat:message:cancel', { sessionId: requestIdOrSessionId }),
+
+    // 流式事件监听
+    onStreamChunk: (callback: (event: any, data: any) => void) => {
+      ipcRenderer.on('chat:stream:chunk', callback);
+      return () => ipcRenderer.removeListener('chat:stream:chunk', callback);
+    },
+    onStreamTool: (callback: (event: any, data: any) => void) => {
+      ipcRenderer.on('chat:stream:tool', callback);
+      return () => ipcRenderer.removeListener('chat:stream:tool', callback);
+    },
+    onStreamDone: (callback: (event: any, data: any) => void) => {
+      ipcRenderer.on('chat:stream:done', callback);
+      return () => ipcRenderer.removeListener('chat:stream:done', callback);
+    },
+    onStreamError: (callback: (event: any, data: any) => void) => {
+      ipcRenderer.on('chat:stream:error', callback);
+      return () => ipcRenderer.removeListener('chat:stream:error', callback);
+    },
+
+    // MCP 管理
+    mcp: {
+      connect: (config: any) => ipcRenderer.invoke('chat:mcp:connect', { config }),
+      disconnect: (name: string) => ipcRenderer.invoke('chat:mcp:disconnect', { name }),
+      list: (includeTools?: boolean) => ipcRenderer.invoke('chat:mcp:list', { includeTools }),
+      listTools: () => ipcRenderer.invoke('chat:mcp:listTools'),
+      callTool: (name: string, args: any) => ipcRenderer.invoke('chat:mcp:callTool', { name, arguments: args }),
+    },
+  },
 });

@@ -1,7 +1,8 @@
 /**
- * 智能体模板管理
+ * 智能体模板管理 (增强版)
+ * 支持 MCP 工具配置、温度和最大 token 设置
  */
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   Modal,
   Form,
@@ -15,14 +16,20 @@ import {
   message,
   Popconfirm,
   Empty,
+  Slider,
+  InputNumber,
+  Select,
+  Spin,
+  Divider,
 } from 'antd';
 import {
   PlusOutlined,
   EditOutlined,
   DeleteOutlined,
-  RobotOutlined,
   CopyOutlined,
+  ToolOutlined,
 } from '@ant-design/icons';
+import { chatIPC, type MCPToolDefinition } from '../../chat/ipc';
 import styles from './AgentTemplates.module.css';
 
 // 智能体模板
@@ -32,6 +39,8 @@ export interface AgentTemplate {
   description: string;
   systemPrompt: string;
   tools?: string[];
+  temperature?: number;
+  maxTokens?: number;
   icon?: string;
   color?: string;
 }
@@ -90,13 +99,37 @@ export const AgentTemplates: React.FC<AgentTemplatesProps> = ({
   const [form] = Form.useForm();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const [mcpTools, setMcpTools] = useState<MCPToolDefinition[]>([]);
+  const [loadingTools, setLoadingTools] = useState(false);
 
   // 所有模板（预设 + 自定义）
   const allTemplates = [...PRESET_TEMPLATES, ...templates];
 
+  // 加载 MCP 工具列表
+  useEffect(() => {
+    if (visible && chatIPC.isElectron()) {
+      setLoadingTools(true);
+      chatIPC.mcp.listTools()
+        .then(tools => {
+          setMcpTools(tools);
+        })
+        .catch(err => {
+          console.error('加载 MCP 工具失败:', err);
+        })
+        .finally(() => {
+          setLoadingTools(false);
+        });
+    }
+  }, [visible]);
+
   // 打开新建表单
   const handleAdd = useCallback(() => {
     form.resetFields();
+    form.setFieldsValue({
+      temperature: 0.7,
+      maxTokens: 4096,
+      tools: [],
+    });
     setEditingId(null);
     setShowForm(true);
   }, [form]);
@@ -107,6 +140,9 @@ export const AgentTemplates: React.FC<AgentTemplatesProps> = ({
       name: `${template.name} (副本)`,
       description: template.description,
       systemPrompt: template.systemPrompt,
+      temperature: template.temperature ?? 0.7,
+      maxTokens: template.maxTokens ?? 4096,
+      tools: template.tools || [],
     });
     setEditingId(null);
     setShowForm(true);
@@ -118,6 +154,9 @@ export const AgentTemplates: React.FC<AgentTemplatesProps> = ({
       name: template.name,
       description: template.description,
       systemPrompt: template.systemPrompt,
+      temperature: template.temperature ?? 0.7,
+      maxTokens: template.maxTokens ?? 4096,
+      tools: template.tools || [],
     });
     setEditingId(template.id);
     setShowForm(true);
@@ -133,6 +172,9 @@ export const AgentTemplates: React.FC<AgentTemplatesProps> = ({
         name: values.name,
         description: values.description,
         systemPrompt: values.systemPrompt,
+        tools: values.tools,
+        temperature: values.temperature,
+        maxTokens: values.maxTokens,
         icon: '🎯',
         color: '#71717a',
       };
@@ -168,6 +210,18 @@ export const AgentTemplates: React.FC<AgentTemplatesProps> = ({
 
   // 判断是否为预设模板
   const isPreset = (id: string) => PRESET_TEMPLATES.some(t => t.id === id);
+
+  // 工具选项
+  const toolOptions = mcpTools.map(tool => ({
+    value: tool.name,
+    label: (
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span>{tool.name}</span>
+        <Tag color="blue" style={{ marginLeft: 8 }}>{tool.serverName}</Tag>
+      </div>
+    ),
+    description: tool.description,
+  }));
 
   return (
     <Modal
@@ -216,6 +270,13 @@ export const AgentTemplates: React.FC<AgentTemplatesProps> = ({
                       </div>
                     </div>
                     <p className={styles.description}>{template.description}</p>
+                    {/* 显示工具数量 */}
+                    {template.tools && template.tools.length > 0 && (
+                      <div className={styles.toolsInfo}>
+                        <ToolOutlined style={{ marginRight: 4 }} />
+                        <span>{template.tools.length} 个工具</span>
+                      </div>
+                    )}
                     <div className={styles.cardActions} onClick={e => e.stopPropagation()}>
                       {isPreset(template.id) ? (
                         <Button
@@ -292,6 +353,82 @@ export const AgentTemplates: React.FC<AgentTemplatesProps> = ({
               autoSize={{ minRows: 4, maxRows: 8 }}
             />
           </Form.Item>
+
+          <Divider>高级设置</Divider>
+
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item
+                name="temperature"
+                label="温度 (Temperature)"
+                tooltip="控制输出的随机性，值越高越有创意，值越低越确定"
+              >
+                <Slider
+                  min={0}
+                  max={2}
+                  step={0.1}
+                  marks={{
+                    0: '精确',
+                    0.7: '平衡',
+                    1: '创意',
+                    2: '随机',
+                  }}
+                />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item
+                name="maxTokens"
+                label="最大 Token"
+                tooltip="控制回复的最大长度"
+              >
+                <InputNumber
+                  min={256}
+                  max={128000}
+                  step={256}
+                  style={{ width: '100%' }}
+                  placeholder="4096"
+                />
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Form.Item
+            name="tools"
+            label={
+              <span>
+                MCP 工具
+                {loadingTools && <Spin size="small" style={{ marginLeft: 8 }} />}
+              </span>
+            }
+            tooltip="选择此智能体可以使用的工具"
+          >
+            <Select
+              mode="multiple"
+              placeholder={mcpTools.length === 0 ? "未连接 MCP 服务器" : "选择可用工具"}
+              options={toolOptions}
+              disabled={mcpTools.length === 0}
+              optionFilterProp="label"
+              showSearch
+              allowClear
+              maxTagCount={3}
+              optionRender={(option) => (
+                <div>
+                  <div style={{ fontWeight: 500 }}>{option.value}</div>
+                  {option.data.description && (
+                    <div style={{ fontSize: 12, color: '#999' }}>
+                      {option.data.description}
+                    </div>
+                  )}
+                </div>
+              )}
+            />
+          </Form.Item>
+          {mcpTools.length === 0 && !loadingTools && (
+            <div style={{ color: '#999', fontSize: 12, marginTop: -16, marginBottom: 16 }}>
+              提示：请先在 MCP 配置中连接服务器以启用工具
+            </div>
+          )}
 
           <Form.Item className={styles.formActions}>
             <Space>

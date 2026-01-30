@@ -1,14 +1,13 @@
 /**
- * 对话页面组件
- * 使用全局 LLM 配置
+ * 对话页面组件 (IPC 版本)
+ * 通过 IPC 与 Electron 主进程通信
  */
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Select, message, Empty, Button, Tooltip } from 'antd';
+import { Select, message, Button, Tooltip, Spin } from 'antd';
 import { ClearOutlined, SettingOutlined, HistoryOutlined, ApiOutlined, RobotOutlined } from '@ant-design/icons';
 import { Input } from 'antd';
-import { ChatRenderer, useChat, createChatAdapterFromLLMConfig } from '../../chat';
-import type { ChatAdapter, ContentPart } from '../../chat';
-import type { MCPServerConfig } from '../../chat/plugins/MCPPlugin';
+import { ChatRenderer } from '../../chat';
+import { useChat, type SessionConfig, type ContentPart, chatIPC } from '../../chat/ipc';
 import { getActiveLLMConfig, loadSettings } from '../../store/globalStore';
 import { useChatHistoryStore } from '../../store/chatHistoryStore';
 import { saveMCPServers, saveAgentTemplates, setActiveAgentId as persistActiveAgentId } from '../../store/settings/chatSettings';
@@ -18,12 +17,12 @@ import { ChatComposer, type AttachmentFile } from './ChatComposer';
 import { HistorySidebar } from './HistorySidebar';
 import { MCPSettings } from './MCPSettings';
 import { AgentTemplates, type AgentTemplate, PRESET_TEMPLATES } from './AgentTemplates';
+import type { MCPServerConfig } from '../../chat/ipc';
 import styles from './ChatPage.module.css';
 
 const { TextArea } = Input;
 
 export const ChatPage: React.FC = () => {
-  const [adapter, setAdapter] = useState<ChatAdapter | null>(null);
   const [llmConfigs, setLlmConfigs] = useState<LLMModelConfig[]>([]);
   const [selectedConfigId, setSelectedConfigId] = useState<string>('');
   const [systemPrompt, setSystemPrompt] = useState('你是一个有帮助的 AI 助手。');
@@ -34,35 +33,94 @@ export const ChatPage: React.FC = () => {
   const [mcpConfigs, setMcpConfigs] = useState<MCPServerConfig[]>([]);
   const [agentTemplates, setAgentTemplates] = useState<AgentTemplate[]>([]);
   const [activeAgentId, setActiveAgentId] = useState<string | null>(null);
+  const [isConfigLoaded, setIsConfigLoaded] = useState(false);
 
-  // 加载 LLM 配置
+  // 获取当前选中的 LLM 配置
+  const selectedConfig = useMemo(() => {
+    return llmConfigs.find(c => c.id === selectedConfigId);
+  }, [llmConfigs, selectedConfigId]);
+
+  // 构建 Session 配置
+  const sessionConfig = useMemo((): SessionConfig => {
+    if (!selectedConfig) {
+      console.log('[ChatPage] No selectedConfig, returning minimal sessionConfig');
+      return { systemPrompt };
+    }
+
+    const config = {
+      systemPrompt,
+      modelProvider: selectedConfig.provider as 'openai' | 'anthropic' | 'google',
+      modelName: selectedConfig.modelName,
+      apiKey: selectedConfig.apiKey,
+      baseUrl: selectedConfig.baseUrl,
+    };
+    console.log('[ChatPage] Built sessionConfig:', { ...config, apiKey: config.apiKey ? '***' : undefined });
+    return config;
+  }, [selectedConfig, systemPrompt]);
+
+  // 使用 IPC 版本的 useChat
+  const {
+    messages,
+    isLoading,
+    isStreaming,
+    streamingContent,
+    streamingReasoning,
+    isReady,
+    sessionId,
+    sendStream,
+    clear,
+    stop,
+    updateConfig,
+  } = useChat({
+    config: sessionConfig,
+    onError: (err) => {
+      message.error(err.message);
+    },
+  });
+
+  // 加载配置
   useEffect(() => {
     const loadConfigs = async () => {
       try {
         const settings = await loadSettings();
         const configs = settings?.llmConfigs || [];
+        console.log('[ChatPage] Loaded LLM configs:', configs.length, configs.map(c => ({ id: c.id, name: c.name, hasApiKey: !!c.apiKey })));
         setLlmConfigs(configs);
         setMcpConfigs((settings as any).mcpServers || []);
         setAgentTemplates((settings as any).agentTemplates || []);
         setActiveAgentId((settings as any).activeAgentId || null);
 
         const activeConfig = await getActiveLLMConfig();
+        console.log('[ChatPage] Active LLM config:', activeConfig ? { id: activeConfig.id, name: activeConfig.name, hasApiKey: !!activeConfig.apiKey } : null);
         if (activeConfig) {
           setSelectedConfigId(activeConfig.id || '');
-          const newAdapter = createChatAdapterFromLLMConfig({
-            provider: activeConfig.provider,
-            apiKey: activeConfig.apiKey,
-            baseUrl: activeConfig.baseUrl,
-            modelName: activeConfig.modelName,
-          });
-          setAdapter(newAdapter);
         }
+
+        setIsConfigLoaded(true);
       } catch (err) {
-        console.error('加载 LLM 配置失败:', err);
+        console.error('加载配置失败:', err);
+        setIsConfigLoaded(true);
       }
     };
     loadConfigs();
   }, []);
+
+  // 连接 MCP 服务器
+  useEffect(() => {
+    if (!isReady || !chatIPC.isElectron()) return;
+
+    const connectMCPServers = async () => {
+      for (const config of mcpConfigs) {
+        try {
+          await chatIPC.mcp.connect(config);
+        } catch (err) {
+          console.error(`连接 MCP 服务器 ${config.name} 失败:`, err);
+        }
+      }
+    };
+
+    connectMCPServers();
+  }, [isReady, mcpConfigs]);
 
   // 所有智能体模板
   const allAgentTemplates = useMemo(() => (
@@ -73,52 +131,40 @@ export const ChatPage: React.FC = () => {
   useEffect(() => {
     if (!activeAgentId) return;
     const template = allAgentTemplates.find(t => t.id === activeAgentId);
-    if (template) setSystemPrompt(template.systemPrompt);
+    if (template) {
+      setSystemPrompt(template.systemPrompt);
+    }
   }, [activeAgentId, allAgentTemplates]);
 
-  // 切换配置时更新适配器
-  const handleConfigChange = (configId: string) => {
+  // 系统提示词变化时更新会话配置
+  useEffect(() => {
+    if (isReady && sessionId) {
+      updateConfig({ systemPrompt });
+    }
+  }, [systemPrompt, isReady, sessionId, updateConfig]);
+
+  // 切换 LLM 配置
+  const handleConfigChange = useCallback(async (configId: string) => {
     setSelectedConfigId(configId);
     const config = llmConfigs.find(c => c.id === configId);
-    if (config) {
-      const newAdapter = createChatAdapterFromLLMConfig({
-        provider: config.provider,
+    if (config && isReady) {
+      await updateConfig({
+        modelProvider: config.provider as 'openai' | 'anthropic' | 'google',
+        modelName: config.modelName,
         apiKey: config.apiKey,
         baseUrl: config.baseUrl,
-        modelName: config.modelName,
       });
-      setAdapter(newAdapter);
     }
-  };
-
-  // 使用 useChat hook
-  const {
-    messages,
-    isLoading,
-    isStreaming,
-    streamingContent,
-    streamingReasoning,
-    sendStream,
-    clear,
-    loadMessages: loadChatMessages,
-    stop,
-    setSystemPrompt: updateSystemPrompt,
-  } = useChat({
-    adapter: adapter!,
-    systemPrompt,
-    onError: (err) => {
-      message.error(err.message);
-    },
-  });
-
-  // 更新系统提示词
-  useEffect(() => {
-    updateSystemPrompt(systemPrompt);
-  }, [systemPrompt, updateSystemPrompt]);
+  }, [llmConfigs, isReady, updateConfig]);
 
   // 发送消息
   const handleSend = useCallback(async (text: string, attachments?: AttachmentFile[]) => {
-    if (!adapter) {
+    if (!isReady) {
+      message.warning('会话尚未就绪');
+      return;
+    }
+
+    if (!selectedConfig) {
       message.warning('请先配置 LLM 模型');
       return;
     }
@@ -128,26 +174,23 @@ export const ChatPage: React.FC = () => {
     if (attachments && attachments.length > 0) {
       const parts: ContentPart[] = [];
 
-      // 添加文本
       if (text) {
         parts.push({ type: 'text', text });
       }
 
-      // 添加附件
       for (const attachment of attachments) {
         if (attachment.type === 'image') {
           const base64 = await fileToBase64(attachment.file);
           parts.push({
             type: 'image',
-            imageBase64: base64,
+            imageUrl: `data:${attachment.file.type};base64,${base64}`,
             mimeType: attachment.file.type,
           });
         } else {
           const base64 = await fileToBase64(attachment.file);
           parts.push({
             type: 'file',
-            fileName: attachment.file.name,
-            fileData: base64,
+            data: base64,
             mimeType: attachment.file.type,
           });
         }
@@ -158,48 +201,38 @@ export const ChatPage: React.FC = () => {
     }
 
     await sendStream(content);
-  }, [adapter, sendStream]);
+  }, [isReady, selectedConfig, sendStream]);
 
   // 历史存储
   const {
     loadMessages: loadHistoryMessages,
     saveMessages,
-    createSession,
+    createSession: createHistorySession,
     currentSessionId,
     setCurrentSession,
   } = useChatHistoryStore();
 
   // 加载历史会话
-  const handleLoadSession = useCallback((sessionId: string) => {
-    const sessionData = loadHistoryMessages(sessionId);
+  const handleLoadSession = useCallback((historySessionId: string) => {
+    const sessionData = loadHistoryMessages(historySessionId);
     if (sessionData) {
-      // 使用 loadChatMessages 回灌消息
-      loadChatMessages({
-        id: sessionId,
-        messages: sessionData.messages,
-        systemPrompt: sessionData.systemPrompt,
-      });
       if (sessionData.systemPrompt) {
         setSystemPrompt(sessionData.systemPrompt);
       }
-      setCurrentSession(sessionId);
+      setCurrentSession(historySessionId);
       message.success(`已加载对话: ${sessionData.title}`);
     } else {
       message.error('加载对话失败');
     }
-  }, [loadHistoryMessages, loadChatMessages, setCurrentSession]);
+  }, [loadHistoryMessages, setCurrentSession]);
 
   // 新建对话
-  const handleNewChat = useCallback(() => {
-    const newSessionId = createSession();
-    loadChatMessages({
-      id: newSessionId,
-      messages: [],
-      systemPrompt,
-    });
+  const handleNewChat = useCallback(async () => {
+    const newSessionId = createHistorySession();
     setCurrentSession(newSessionId);
+    await clear();
     message.success('已创建新对话');
-  }, [createSession, loadChatMessages, setCurrentSession, systemPrompt]);
+  }, [createHistorySession, setCurrentSession, clear]);
 
   // 保存当前会话
   useEffect(() => {
@@ -212,6 +245,23 @@ export const ChatPage: React.FC = () => {
   const handleSaveMcpConfigs = useCallback(async (configs: MCPServerConfig[]) => {
     setMcpConfigs(configs);
     await saveMCPServers(configs);
+
+    // 重新连接 MCP 服务器
+    if (chatIPC.isElectron()) {
+      // 断开所有现有连接
+      const { connections } = await chatIPC.mcp.list();
+      for (const conn of connections) {
+        await chatIPC.mcp.disconnect(conn.name);
+      }
+      // 连接新配置
+      for (const config of configs) {
+        try {
+          await chatIPC.mcp.connect(config);
+        } catch (err) {
+          console.error(`连接 MCP 服务器 ${config.name} 失败:`, err);
+        }
+      }
+    }
   }, []);
 
   // 智能体模板保存
@@ -225,7 +275,12 @@ export const ChatPage: React.FC = () => {
     setSystemPrompt(template.systemPrompt);
     setActiveAgentId(template.id);
     await persistActiveAgentId(template.id);
-  }, []);
+
+    // 更新会话配置中的 enabledTools
+    if (isReady && template.tools) {
+      await updateConfig({ enabledTools: template.tools });
+    }
+  }, [isReady, updateConfig]);
 
   const configOptions = useMemo(() => {
     return llmConfigs.map(config => ({
@@ -234,28 +289,22 @@ export const ChatPage: React.FC = () => {
     }));
   }, [llmConfigs]);
 
-  // 获取当前激活的智能体信息（必须在早期 return 之前）
+  // 获取当前激活的智能体信息
   const activeAgent = useMemo(() => {
     if (!activeAgentId) return null;
     return allAgentTemplates.find(t => t.id === activeAgentId) || null;
   }, [activeAgentId, allAgentTemplates]);
 
-  if (!adapter && llmConfigs.length === 0) {
+  // 加载中显示
+  if (!isConfigLoaded) {
     return (
-      <div className={styles.container}>
-        <Empty
-          description="未配置 LLM 模型"
-          image={Empty.PRESENTED_IMAGE_SIMPLE}
-        >
-          <Button type="primary" onClick={() => window.location.hash = '#settings'}>
-            前往设置
-          </Button>
-        </Empty>
+      <div className={styles.container} style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+        <Spin tip="加载配置中..." />
       </div>
     );
   }
 
-  // 工具栏
+  // 工具栏 - 始终渲染，修复设置按钮 bug
   const toolbar = (
     <div className={styles.toolbar}>
       <div className={styles.toolbarLeft}>
@@ -266,7 +315,6 @@ export const ChatPage: React.FC = () => {
             onClick={() => setShowSidebar(!showSidebar)}
           />
         </Tooltip>
-        {/* 当前激活智能体徽章 */}
         {activeAgent && (
           <div
             className={styles.agentBadge}
@@ -277,13 +325,14 @@ export const ChatPage: React.FC = () => {
           </div>
         )}
         <Select
-          value={selectedConfigId}
+          value={selectedConfigId || undefined}
           onChange={handleConfigChange}
           options={configOptions}
           placeholder="选择模型"
           style={{ width: 200 }}
           disabled={isLoading}
         />
+        {!isReady && <Spin size="small" style={{ marginLeft: 8 }} />}
       </div>
       <div className={styles.toolbarRight}>
         <Tooltip title="智能体模板">
@@ -340,7 +389,7 @@ export const ChatPage: React.FC = () => {
         streaming={isStreaming}
         streamingContent={streamingContent}
         streamingReasoning={streamingReasoning}
-        emptyText="开始与 AI 对话吧"
+        emptyText={llmConfigs.length === 0 ? "请先在设置中配置 LLM 模型" : "开始与 AI 对话吧"}
       />
     </>
   );
@@ -352,7 +401,7 @@ export const ChatPage: React.FC = () => {
       onStop={stop}
       isLoading={isLoading}
       isStreaming={isStreaming}
-      disabled={!adapter}
+      disabled={!isReady || !selectedConfig}
     />
   );
 
@@ -401,7 +450,6 @@ async function fileToBase64(file: File): Promise<string> {
     const reader = new FileReader();
     reader.onload = () => {
       const result = reader.result as string;
-      // 移除 data:xxx;base64, 前缀
       const base64 = result.split(',')[1];
       resolve(base64);
     };

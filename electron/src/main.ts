@@ -200,6 +200,8 @@ async function initServices(): Promise<void> {
   await services.ffmpeg.init();
   // 初始化插件服务
   await services.plugin.init();
+  // 初始化 Chat 控制器（注册 IPC handlers）
+  controllers.chat.init();
 }
 
 app.whenReady().then(async () => {

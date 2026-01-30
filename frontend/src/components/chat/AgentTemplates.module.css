@@ -75,6 +75,14 @@
   overflow: hidden;
 }
 
+.toolsInfo {
+  display: flex;
+  align-items: center;
+  font-size: 12px;
+  color: #71717a;
+  margin-bottom: 8px;
+}
+
 .cardActions {
   display: flex;
   justify-content: flex-end;
