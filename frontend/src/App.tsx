@@ -9,6 +9,7 @@ import { TaskStatusBar } from './components/common/TaskStatusBar';
 import { Sidebar, type AppView } from './components/common/Sidebar';
 import { EditorView } from './components/editor/EditorView';
 import { PluginManager, PluginHost } from './components/plugins';
+import { ChatPage } from './components/chat';
 import { useProjects } from './hooks/useProjects';
 import { TaskManager } from './services/TaskManager';
 import { loadCharacters, loadScenes, loadProps, loadShots, loadEpisodeShots, saveEpisode } from './store/projectStore';
@@ -249,6 +250,7 @@ const AppContent: React.FC = () => {
             )}
             {view === 'settings' && <SettingsPage settings={appSettings} onSave={setAppSettings} />}
             {view === 'plugins' && <PluginManager />}
+            {view === 'chat' && <ChatPage />}
             {view.startsWith('plugin:') && (
               <PluginHost pluginId={view.replace('plugin:', '')} />
             )}

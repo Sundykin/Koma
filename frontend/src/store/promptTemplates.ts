@@ -12,7 +12,8 @@ export type PromptTemplateType =
   | 'shot_breakdown_system'    // 分镜拆解的系统提示
   | 'script_analysis_system'   // 剧本解析的系统提示
   // LLM 任务模板
-  | 'random_idea_generation'   // 随机创意生成
+  | 'random_idea_generation'   // 随机创意生成（已废弃，保留兼容）
+  | 'random_script_generation' // 随机剧本生成（一步完成）
   | 'script_generation'        // 剧本生成
   | 'script_polish'            // 剧本润色
   | 'shot_breakdown'           // 分镜拆解
@@ -103,8 +104,8 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
 
   random_idea_generation: {
     id: 'random_idea_generation',
-    name: '随机创意生成',
-    description: '生成随机的剧本创意',
+    name: '随机创意生成（已废弃）',
+    description: '生成随机的剧本创意（已废弃，请使用 random_script_generation）',
     template: `你是一个创意编剧。请随机生成一个短视频剧本创意。
 
 要求：
@@ -123,6 +124,47 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
 }
 \`\`\``,
     variables: [],
+    isCustom: false,
+  },
+
+  random_script_generation: {
+    id: 'random_script_generation',
+    name: '随机剧本生成',
+    description: '一步生成完整的随机剧本',
+    template: `你是一个专业的编剧，请随机创作一个短视频剧本。
+
+【创作要求】
+1. 随机选择一个新颖有趣的主题和风格（如：治愈、搞笑、悬疑、科幻、爱情、职场等）
+2. 时长约 {{duration}} 分钟
+3. 剧本包含场景描述、角色对话、动作指示
+4. 情节紧凑，有明确的开端、发展、高潮、结局
+5. 对话自然生动，符合角色性格
+6. 每次创作都要有变化，不要重复
+
+【输出格式】
+首先用注释标注创意元数据，然后输出完整剧本：
+
+<!--
+主题：[故事主题]
+风格：[风格类型]
+关键元素：[元素1, 元素2, 元素3]
+一句话简介：[剧情简介]
+-->
+
+## [剧本标题]
+
+### 场景 1：[场景名称]
+[场景描述]
+
+**角色A**：对话内容
+（动作指示）
+
+**角色B**：对话内容
+...
+
+### 场景 2：...
+`,
+    variables: ['duration'],
     isCustom: false,
   },
 

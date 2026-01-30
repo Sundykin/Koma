@@ -1,0 +1,93 @@
+.modal :global(.ant-modal-content) {
+  background-color: #18181b;
+}
+
+.modal :global(.ant-modal-header) {
+  background-color: #18181b;
+  border-bottom: 1px solid #27272a;
+}
+
+.modal :global(.ant-modal-title) {
+  color: #fafafa;
+}
+
+.modal :global(.ant-modal-close-x) {
+  color: #a1a1aa;
+}
+
+.header {
+  margin-bottom: 16px;
+}
+
+.card {
+  background-color: #27272a !important;
+  border: 1px solid #3f3f46 !important;
+  border-radius: 12px !important;
+  transition: border-color 0.2s, transform 0.2s !important;
+}
+
+.card:hover {
+  border-color: #10b981 !important;
+  transform: translateY(-2px);
+}
+
+.cardHeader {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.icon {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  font-size: 20px;
+}
+
+.cardTitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.name {
+  font-size: 16px;
+  font-weight: 500;
+  color: #fafafa;
+}
+
+.tag {
+  margin: 0 !important;
+}
+
+.description {
+  font-size: 13px;
+  color: #a1a1aa;
+  margin: 0 0 12px;
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.cardActions {
+  display: flex;
+  justify-content: flex-end;
+  border-top: 1px solid #3f3f46;
+  padding-top: 12px;
+  margin-top: 12px;
+}
+
+.form {
+  padding: 16px 0;
+}
+
+.formActions {
+  margin-bottom: 0;
+  text-align: right;
+}

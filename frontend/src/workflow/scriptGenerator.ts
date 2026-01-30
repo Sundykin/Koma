@@ -31,7 +31,7 @@ interface ScriptFromIdeaParams {
   duration: string;
 }
 
-// 随机创意接口
+// 随机创意接口（保留兼容）
 interface RandomIdea {
   topic: string;
   style: string;
@@ -39,8 +39,43 @@ interface RandomIdea {
   logline: string;
 }
 
+// 随机剧本生成结果
+export interface RandomScriptResult {
+  script: string;
+  metadata: RandomIdea;
+}
+
 /**
- * 生成随机创意
+ * 从剧本文本中解析元数据注释
+ */
+function parseScriptMetadata(script: string): RandomIdea {
+  const metadataMatch = script.match(/<!--\s*([\s\S]*?)\s*-->/);
+  if (!metadataMatch) {
+    return {
+      topic: '未知主题',
+      style: '未知风格',
+      keyElements: [],
+      logline: '',
+    };
+  }
+
+  const metadataText = metadataMatch[1];
+  const topicMatch = metadataText.match(/主题[：:]\s*(.+)/);
+  const styleMatch = metadataText.match(/风格[：:]\s*(.+)/);
+  const elementsMatch = metadataText.match(/关键元素[：:]\s*(.+)/);
+  const loglineMatch = metadataText.match(/一句话简介[：:]\s*(.+)/);
+
+  return {
+    topic: topicMatch?.[1]?.trim() || '未知主题',
+    style: styleMatch?.[1]?.trim() || '未知风格',
+    keyElements: elementsMatch?.[1]?.split(/[,，]/).map(s => s.trim()).filter(Boolean) || [],
+    logline: loglineMatch?.[1]?.trim() || '',
+  };
+}
+
+/**
+ * 生成随机创意（已废弃，保留兼容）
+ * @deprecated 请使用 generateRandomScript
  */
 export async function generateRandomIdea(
   onProgress?: (progress: number, step?: string) => void
@@ -60,7 +95,6 @@ export async function generateRandomIdea(
 
   onProgress?.(80, '解析创意...');
 
-  // 解析返回的 JSON
   const jsonMatch = response.match(/```json\s*([\s\S]*?)\s*```/) ||
                     response.match(/\{[\s\S]*\}/);
   if (!jsonMatch) {
@@ -75,36 +109,41 @@ export async function generateRandomIdea(
 }
 
 /**
- * 随机生成剧本（先生成创意再生成剧本）
+ * 随机生成剧本（一步完成）
  */
 export async function generateRandomScript(
   duration: string = '3',
   onProgress?: (progress: number, step?: string) => void
 ): Promise<string> {
-  // 第一步：生成随机创意
-  onProgress?.(5, '正在生成随机创意...');
-  const idea = await generateRandomIdea((p, s) => {
-    onProgress?.(5 + p * 0.3, s);
-  });
+  const provider = await getProjectLLMProvider();
+  if (!provider) {
+    throw new Error('未配置 LLM 模型');
+  }
 
-  // 第二步：基于创意生成剧本
-  onProgress?.(40, '正在基于创意生成剧本...');
-  const ideaText = `${idea.logline}\n关键元素: ${idea.keyElements.join(', ')}`;
+  onProgress?.(5, '加载 Prompt 模板...');
+  const template = await getPromptTemplate('random_script_generation');
 
-  const script = await generateScriptFromIdea(
-    {
-      settings: {} as AppSettings,
-      idea: ideaText,
-      style: idea.style,
-      duration,
-    },
-    (p, s) => {
-      onProgress?.(40 + p * 0.6, s);
-    }
-  );
+  const prompt = fillTemplate(template.template, { duration });
+
+  onProgress?.(15, '正在生成随机剧本...');
+  const response = await provider.chat([
+    { role: 'user', content: prompt },
+  ]);
 
   onProgress?.(100, '剧本生成完成');
-  return script;
+  return response;
+}
+
+/**
+ * 随机生成剧本（带元数据）
+ */
+export async function generateRandomScriptWithMetadata(
+  duration: string = '3',
+  onProgress?: (progress: number, step?: string) => void
+): Promise<RandomScriptResult> {
+  const script = await generateRandomScript(duration, onProgress);
+  const metadata = parseScriptMetadata(script);
+  return { script, metadata };
 }
 
 /**
@@ -255,5 +294,6 @@ export default {
   generateScriptFromIdea,
   generateRandomIdea,
   generateRandomScript,
+  generateRandomScriptWithMetadata,
   polishScript,
 };

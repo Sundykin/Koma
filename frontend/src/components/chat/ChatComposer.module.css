@@ -1,0 +1,149 @@
+.composer {
+  position: relative;
+  background-color: #27272a;
+  border: 1px solid #3f3f46;
+  border-radius: 16px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.composer:focus-within {
+  border-color: #10b981;
+  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.1);
+}
+
+.dragging {
+  border-color: #10b981;
+  border-style: dashed;
+}
+
+/* 拖拽提示 */
+.dropOverlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background-color: rgba(16, 185, 129, 0.1);
+  border-radius: 16px;
+  color: #10b981;
+  font-size: 14px;
+  z-index: 10;
+  pointer-events: none;
+}
+
+.dropOverlay :global(.anticon) {
+  font-size: 24px;
+}
+
+/* 附件预览区 */
+.attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px 12px 0;
+}
+
+.attachmentItem {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 28px 6px 8px;
+  background-color: #3f3f46;
+  border-radius: 8px;
+  max-width: 200px;
+}
+
+.attachmentImage {
+  width: 32px;
+  height: 32px;
+  object-fit: cover;
+  border-radius: 4px;
+}
+
+.attachmentFile {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #52525b;
+  border-radius: 4px;
+  color: #a1a1aa;
+}
+
+.attachmentName {
+  font-size: 12px;
+  color: #d4d4d8;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attachmentRemove {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #52525b;
+  border: none;
+  border-radius: 50%;
+  color: #a1a1aa;
+  cursor: pointer;
+  transition: background-color 0.2s, color 0.2s;
+}
+
+.attachmentRemove:hover {
+  background-color: #ef4444;
+  color: white;
+}
+
+/* 输入行 */
+.inputRow {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 8px 12px;
+}
+
+.attachButton {
+  flex-shrink: 0;
+  color: #a1a1aa !important;
+}
+
+.attachButton:hover {
+  color: #10b981 !important;
+}
+
+.textarea {
+  flex: 1;
+  min-height: 24px;
+  max-height: 144px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  outline: none;
+  resize: none;
+  font-size: 14px;
+  line-height: 24px;
+  color: #fafafa;
+  font-family: inherit;
+}
+
+.textarea::placeholder {
+  color: #71717a;
+}
+
+.textarea:disabled {
+  opacity: 0.5;
+}
+
+.sendButton {
+  flex-shrink: 0;
+}
