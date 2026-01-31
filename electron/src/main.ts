@@ -189,6 +189,15 @@ function registerIpcRoutes(): void {
   ipcMain.handle('plugin:uninstall', (_, pluginPath) => controllers.plugin.uninstall({ pluginPath }));
   ipcMain.handle('plugin:list', () => controllers.plugin.list({}));
   ipcMain.handle('plugin:openFolder', (_, pluginPath) => controllers.plugin.openFolder({ pluginPath }));
+
+  // 插件运行时管理
+  ipcMain.handle('plugin:activate', (_, args) => controllers.plugin.activate(args));
+  ipcMain.handle('plugin:deactivate', (_, args) => controllers.plugin.deactivate(args));
+  ipcMain.handle('plugin:status', (_, args) => controllers.plugin.status(args));
+  ipcMain.handle('plugin:listActive', () => controllers.plugin.listActive({}));
+  ipcMain.handle('plugin:listMCPTools', () => controllers.plugin.listMCPTools({}));
+  ipcMain.handle('plugin:callMCPTool', (_, args) => controllers.plugin.callMCPTool(args));
+  ipcMain.handle('plugin:listAgents', () => controllers.plugin.listAgents({}));
 }
 
 async function initServices(): Promise<void> {

@@ -1,6 +1,6 @@
 /**
  * Chat 核心服务
- * 整合 SessionStore, MCPManager, AgentGraph
+ * 整合 SessionStore, MCPManager, AgentGraph, AgentOrchestrator, CapabilityRegistry
  */
 import { EventEmitter } from 'events';
 import { BrowserWindow, ipcMain } from 'electron';
@@ -8,7 +8,10 @@ import { HumanMessage, AIMessage, SystemMessage, ToolMessage } from '@langchain/
 import type { BaseMessage } from '@langchain/core/messages';
 import { sessionStore, SessionStore } from './SessionStore';
 import { mcpManager, MCPManager } from './mcp';
+import { mcpRegistry } from '../plugin/registries';
 import { createLLM, createAgentGraph, createToolsFromMCP, streamAgentGraph } from './AgentGraph';
+import { createOrchestrator } from './AgentOrchestrator';
+import { resolveAndCreateTools } from './CapabilityBridge';
 import type {
   Session,
   SessionConfig,
@@ -22,11 +25,20 @@ import type {
   MCPServerConfig,
   MCPConnection,
   MCPToolDefinition,
+  AgentMode,
 } from './types';
 import { generateId as genId, createUserMessage, createAssistantMessage, createToolMessage } from './types';
+import { onMCPConnectionChanged } from '../plugin/capability';
 
 export class ChatService extends EventEmitter {
   private activeRequests = new Map<string, AbortController>();
+
+  constructor() {
+    super();
+    // 监听 MCP 连接变化，自动同步 Capability
+    mcpManager.on('connected', () => onMCPConnectionChanged());
+    mcpManager.on('disconnected', () => onMCPConnectionChanged());
+  }
 
   // ========== 会话管理 ==========
 
@@ -84,8 +96,8 @@ export class ChatService extends EventEmitter {
 
     // 创建 LLM 和工具
     const llm = createLLM(session.config);
-    const mcpTools = mcpManager.listTools();
-    const tools = createToolsFromMCP(mcpTools, session.config.enabledTools);
+    const allMcpTools = this.listAllMCPTools();
+    const tools = createToolsFromMCP(allMcpTools, session.config.enabledTools);
 
     // 创建图
     const graph = createAgentGraph(llm, tools, session.config.systemPrompt);
@@ -141,78 +153,13 @@ export class ChatService extends EventEmitter {
       const humanMsg = this.contentToHumanMessage(input.content);
       session.langchainMessages.push(humanMsg);
 
-      // 创建 LLM 和工具
-      const llm = createLLM(session.config);
-      const mcpTools = mcpManager.listTools();
-      const tools = createToolsFromMCP(mcpTools, session.config.enabledTools);
+      // 判断模式: orchestrated 走编排器，single 走普通 AgentGraph
+      const mode: AgentMode = session.config.agentMode || 'single';
 
-      // 创建图
-      const graph = createAgentGraph(llm, tools, session.config.systemPrompt);
-
-      // 流式执行
-      let seq = 0;
-      let fullContent = '';
-      let fullReasoning = '';
-
-      for await (const event of streamAgentGraph(
-        graph,
-        session.langchainMessages,
-        abortController.signal
-      )) {
-        if (abortController.signal.aborted) {
-          break;
-        }
-
-        if (event.type === 'chunk') {
-          fullContent += event.content || '';
-          if (event.reasoning) {
-            fullReasoning += event.reasoning;
-          }
-
-          yield {
-            requestId,
-            sessionId,
-            delta: event.content || '',
-            reasoning: event.reasoning,
-            seq: seq++,
-          } as StreamChunkEvent;
-        }
-
-        if (event.type === 'tool') {
-          if (event.toolCall) {
-            yield {
-              requestId,
-              sessionId,
-              toolCall: event.toolCall,
-            } as StreamToolEvent;
-          }
-          if (event.toolResult) {
-            yield {
-              requestId,
-              sessionId,
-              toolCall: { id: event.toolResult.toolCallId, name: event.toolResult.name, arguments: {} },
-              result: event.toolResult.result,
-            } as StreamToolEvent;
-          }
-        }
-
-        if (event.type === 'done') {
-          // 保存助手消息
-          const assistantMessage = createAssistantMessage(
-            fullContent,
-            undefined,
-            fullReasoning || undefined
-          );
-          sessionStore.addMessage(sessionId, assistantMessage);
-          session.langchainMessages.push(new AIMessage(fullContent));
-
-          yield {
-            requestId,
-            sessionId,
-            finishReason: 'stop',
-            message: assistantMessage,
-          } as StreamDoneEvent;
-        }
+      if (mode === 'orchestrated') {
+        yield* this.sendOrchestratedStream(session, requestId, input, abortController);
+      } else {
+        yield* this.sendSingleStream(session, requestId, abortController);
       }
     } catch (err: any) {
       if (err.name === 'AbortError' || abortController.signal.aborted) {
@@ -234,6 +181,165 @@ export class ChatService extends EventEmitter {
     } finally {
       this.activeRequests.delete(requestId);
       sessionStore.clearAbortController(sessionId);
+    }
+  }
+
+  /**
+   * 单 Agent 模式流式执行（原有逻辑）
+   */
+  private async *sendSingleStream(
+    session: Session,
+    requestId: string,
+    abortController: AbortController
+  ): AsyncGenerator<StreamChunkEvent | StreamToolEvent | StreamDoneEvent> {
+    // 创建 LLM 和工具
+    const llm = createLLM(session.config);
+
+    // 如果有 requiredCapabilities，优先用 CapabilityRegistry 解析工具
+    let tools;
+    if (session.config.requiredCapabilities && session.config.requiredCapabilities.length > 0) {
+      tools = resolveAndCreateTools(session.config.requiredCapabilities);
+    } else {
+      // 合并外部 MCP + 内部插件 MCP 工具
+      const allMcpTools = this.listAllMCPTools();
+      tools = createToolsFromMCP(allMcpTools, session.config.enabledTools);
+    }
+
+    const graph = createAgentGraph(llm, tools, session.config.systemPrompt);
+
+    let seq = 0;
+    let fullContent = '';
+    let fullReasoning = '';
+
+    for await (const event of streamAgentGraph(
+      graph,
+      session.langchainMessages,
+      abortController.signal
+    )) {
+      if (abortController.signal.aborted) break;
+
+      if (event.type === 'chunk') {
+        fullContent += event.content || '';
+        if (event.reasoning) fullReasoning += event.reasoning;
+
+        yield {
+          requestId,
+          sessionId: session.id,
+          delta: event.content || '',
+          reasoning: event.reasoning,
+          seq: seq++,
+        } as StreamChunkEvent;
+      }
+
+      if (event.type === 'tool') {
+        if (event.toolCall) {
+          yield { requestId, sessionId: session.id, toolCall: event.toolCall } as StreamToolEvent;
+        }
+        if (event.toolResult) {
+          yield {
+            requestId,
+            sessionId: session.id,
+            toolCall: { id: event.toolResult.toolCallId, name: event.toolResult.name, arguments: {} },
+            result: event.toolResult.result,
+          } as StreamToolEvent;
+        }
+      }
+
+      if (event.type === 'done') {
+        const assistantMessage = createAssistantMessage(fullContent, undefined, fullReasoning || undefined);
+        sessionStore.addMessage(session.id, assistantMessage);
+        session.langchainMessages.push(new AIMessage(fullContent));
+
+        yield {
+          requestId,
+          sessionId: session.id,
+          finishReason: 'stop',
+          message: assistantMessage,
+        } as StreamDoneEvent;
+      }
+    }
+  }
+
+  /**
+   * Orchestrated 模式流式执行（多 Worker 编排）
+   */
+  private async *sendOrchestratedStream(
+    session: Session,
+    requestId: string,
+    input: ChatInput,
+    abortController: AbortController
+  ): AsyncGenerator<StreamChunkEvent | StreamToolEvent | StreamDoneEvent> {
+    const orchestrator = createOrchestrator(session.config, {
+      requiredCapabilities: session.config.requiredCapabilities,
+    });
+
+    const userText = typeof input.content === 'string'
+      ? input.content
+      : input.content.map(p => p.text || '').join(' ');
+
+    let seq = 0;
+
+    for await (const event of orchestrator.orchestrateStream(userText)) {
+      if (abortController.signal.aborted) break;
+
+      switch (event.type) {
+        case 'plan':
+        case 'dispatch':
+        case 'synthesize':
+          // 编排过程事件，作为 chunk 发送（带标记）
+          yield {
+            requestId,
+            sessionId: session.id,
+            delta: '',
+            reasoning: `[${event.type}] ${JSON.stringify(event.data)}`,
+            seq: seq++,
+          } as StreamChunkEvent;
+          break;
+
+        case 'worker_done': {
+          const data = event.data as { taskId: string; content?: string };
+          yield {
+            requestId,
+            sessionId: session.id,
+            delta: '',
+            reasoning: `[worker:${data.taskId}] ${data.content || ''}`,
+            seq: seq++,
+          } as StreamChunkEvent;
+          break;
+        }
+
+        case 'worker_error': {
+          const err = event.data as { taskId: string; error: string };
+          yield {
+            requestId,
+            sessionId: session.id,
+            delta: '',
+            reasoning: `[error:${err.taskId}] ${err.error}`,
+            seq: seq++,
+          } as StreamChunkEvent;
+          break;
+        }
+
+        case 'done': {
+          const result = event.data as { response: string };
+          const assistantMessage = createAssistantMessage(result.response);
+          sessionStore.addMessage(session.id, assistantMessage);
+          session.langchainMessages.push(new AIMessage(result.response));
+
+          yield {
+            requestId,
+            sessionId: session.id,
+            finishReason: 'stop',
+            message: assistantMessage,
+          } as StreamDoneEvent;
+          break;
+        }
+
+        case 'error': {
+          const errorData = event.data as { message: string };
+          throw new Error(errorData.message);
+        }
+      }
     }
   }
 
@@ -273,6 +379,26 @@ export class ChatService extends EventEmitter {
 
   listMCPTools(): MCPToolDefinition[] {
     return mcpManager.listTools();
+  }
+
+  /**
+   * 获取所有 MCP 工具（合并外部连接 + 内部插件注册）
+   */
+  listAllMCPTools(): MCPToolDefinition[] {
+    const externalTools = mcpManager.listTools();
+    const internalTools = mcpRegistry.tools.listDefinitions();
+
+    // 去重，内部优先（与 chat:tools:list 一致）
+    const toolMap = new Map<string, MCPToolDefinition>();
+    for (const t of internalTools) {
+      toolMap.set(t.name, t);
+    }
+    for (const t of externalTools) {
+      if (!toolMap.has(t.name)) {
+        toolMap.set(t.name, t);
+      }
+    }
+    return Array.from(toolMap.values());
   }
 
   async callMCPTool(name: string, args: Record<string, unknown>): Promise<unknown> {

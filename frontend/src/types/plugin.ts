@@ -3,7 +3,7 @@
  */
 
 // 插件分类
-export type PluginCategory = 'provider' | 'global' | 'tool';
+export type PluginCategory = 'provider' | 'global' | 'tool' | 'mcp' | 'agent';
 
 // 权限作用域
 export type PluginScope =
@@ -13,7 +13,12 @@ export type PluginScope =
   | 'projects:write'
   | 'prompts:override'
   | 'storage:limited'
-  | 'network:external';
+  | 'network:external'
+  | 'mcp:server'
+  | 'mcp:tool'
+  | 'mcp:resource'
+  | 'agent:register'
+  | 'spawn:process';
 
 // 插件作者信息
 export interface PluginAuthor {

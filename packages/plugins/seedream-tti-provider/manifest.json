@@ -19,11 +19,18 @@
     "network:external"
   ],
   "entry": {
-    "frontend": "./dist/ui/main.js"
+    "frontend": "./dist/ui/main.js",
+    "backend": "./dist/backend.js"
   },
   "providerMeta": {
     "channelType": "tti",
     "capabilities": ["tti"],
-    "configPanel": true
+    "configPanel": true,
+    "defaultConfig": {
+      "apiKey": "",
+      "baseUrl": "https://api.vectorengine.ai",
+      "sizePreset": "2K",
+      "watermark": true
+    }
   }
 }

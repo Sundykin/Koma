@@ -6,18 +6,22 @@ import * as path from 'path';
 import * as fs from 'fs/promises';
 import { app } from 'electron';
 import AdmZip from 'adm-zip';
+import { pluginRuntime } from './plugin/runtime';
+import type { PluginManifest } from './plugin/types';
 
 // 必填字段
 const REQUIRED_FIELDS = ['id', 'name', 'version', 'category', 'engine', 'scopes', 'entry'];
 
-// 有效的分类
-const VALID_CATEGORIES = ['provider', 'global', 'tool'];
+// 有效的分类（扩展支持 mcp 和 agent）
+const VALID_CATEGORIES = ['provider', 'global', 'tool', 'mcp', 'agent'];
 
 // 有效的权限
 const VALID_SCOPES = [
   'settings:read', 'settings:write',
   'projects:read', 'projects:write',
   'prompts:override', 'storage:limited', 'network:external',
+  'mcp:server', 'mcp:tool', 'mcp:resource',  // MCP 相关权限
+  'agent:register', 'spawn:process',          // Agent 和进程权限
 ];
 
 // 安装时允许复制的顶级文件/目录（排除 node_modules 等开发依赖）
@@ -32,17 +36,7 @@ const DEFAULT_ALLOWLIST = new Set([
   'data',
 ]);
 
-export interface PluginManifest {
-  id: string;
-  name: string;
-  version: string;
-  description?: string;
-  category: 'provider' | 'global' | 'tool';
-  engine: { minAppVersion: string; sdkVersion: string };
-  scopes: string[];
-  entry: { backend?: string; frontend?: string; logic?: string; ui?: string };
-  [key: string]: any;
-}
+export type { PluginManifest } from './plugin/types';
 
 export interface ValidationResult {
   valid: boolean;
@@ -95,6 +89,9 @@ class PluginService {
     // 确保目录存在
     await fs.mkdir(this.pluginsDir, { recursive: true });
     await fs.mkdir(this.stagingDir, { recursive: true });
+
+    // 初始化插件运行时
+    await pluginRuntime.init();
 
     // 清理过期的 staging 缓存
     this._purgeExpiredStaging();
@@ -208,7 +205,7 @@ class PluginService {
 
       // 验证分类
       if (!VALID_CATEGORIES.includes(manifest.category)) {
-        errors.push('category 必须是 provider, global 或 tool');
+        errors.push(`category 必须是 ${VALID_CATEGORIES.join(', ')} 之一`);
       }
 
       // 验证入口配置
@@ -216,8 +213,16 @@ class PluginService {
         errors.push('global 类型插件必须提供 entry.frontend');
       }
 
-      if (manifest.category === 'provider' && !manifest.entry?.backend) {
-        errors.push('provider 类型插件必须提供 entry.backend');
+      if (manifest.category === 'provider' && !manifest.entry?.backend && !manifest.entry?.frontend) {
+        errors.push('provider 类型插件必须提供 entry.backend 或 entry.frontend');
+      }
+
+      if (manifest.category === 'mcp' && !manifest.entry?.backend) {
+        errors.push('mcp 类型插件必须提供 entry.backend');
+      }
+
+      if (manifest.category === 'agent' && !manifest.entry?.backend) {
+        errors.push('agent 类型插件必须提供 entry.backend');
       }
 
       // 验证 scopes
@@ -230,6 +235,14 @@ class PluginService {
       // 验证分类特定元数据
       if (manifest.category === 'global' && !manifest.globalMeta) {
         errors.push('global 类型插件必须提供 globalMeta');
+      }
+
+      if (manifest.category === 'mcp' && !manifest.mcpMeta) {
+        errors.push('mcp 类型插件必须提供 mcpMeta');
+      }
+
+      if (manifest.category === 'agent' && !manifest.agentMeta) {
+        errors.push('agent 类型插件必须提供 agentMeta');
       }
 
       // 验证成功时，保留 staging 供 install 复用
@@ -362,6 +375,12 @@ class PluginService {
    */
   async uninstall(pluginPath: string): Promise<{ success: boolean; error?: string }> {
     try {
+      // 从插件路径提取 pluginId
+      const pluginId = path.basename(pluginPath);
+
+      // 先从运行时卸载
+      await pluginRuntime.unloadPlugin(pluginId);
+
       if (await this.fileExists(pluginPath)) {
         await this.forceRemoveDir(pluginPath);
       }
@@ -369,6 +388,40 @@ class PluginService {
     } catch (err: any) {
       return { success: false, error: err.message };
     }
+  }
+
+  /**
+   * 加载并激活插件
+   */
+  async loadAndActivate(manifest: PluginManifest): Promise<{ success: boolean; error?: string }> {
+    try {
+      await pluginRuntime.loadPlugin(manifest);
+      await pluginRuntime.activatePlugin(manifest.id);
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  }
+
+  /**
+   * 停用插件
+   */
+  async deactivate(pluginId: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      await pluginRuntime.deactivatePlugin(pluginId);
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  }
+
+  /**
+   * 获取插件运行状态
+   */
+  getPluginStatus(pluginId: string): { status: string; error?: string } | null {
+    const plugin = pluginRuntime.getPlugin(pluginId);
+    if (!plugin) return null;
+    return { status: plugin.status, error: plugin.error };
   }
 
   /**

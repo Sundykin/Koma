@@ -4,7 +4,7 @@
 import type { ComponentType } from 'react';
 
 // 插件分类
-export type PluginCategory = 'provider' | 'global' | 'tool';
+export type PluginCategory = 'provider' | 'global' | 'tool' | 'mcp' | 'agent';
 
 // 权限作用域
 export type PluginScope =

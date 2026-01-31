@@ -3,6 +3,8 @@
  */
 import { IpcMainInvokeEvent, shell } from 'electron';
 import { pluginService } from '../service/plugin';
+import { pluginRuntime } from '../service/plugin/runtime';
+import { pluginBridge } from '../service/plugin/bridge';
 
 export const pluginController = {
   /**
@@ -47,5 +49,69 @@ export const pluginController = {
   async openFolder({ pluginPath }: { pluginPath: string }, event?: IpcMainInvokeEvent) {
     shell.openPath(pluginPath);
     return { success: true };
+  },
+
+  // ========== 运行时管理 ==========
+
+  /**
+   * 激活插件
+   */
+  async activate({ manifest }: { manifest: any }, event?: IpcMainInvokeEvent) {
+    return pluginService.loadAndActivate(manifest);
+  },
+
+  /**
+   * 停用插件
+   */
+  async deactivate({ pluginId }: { pluginId: string }, event?: IpcMainInvokeEvent) {
+    return pluginService.deactivate(pluginId);
+  },
+
+  /**
+   * 获取插件运行状态
+   */
+  async status({ pluginId }: { pluginId: string }, event?: IpcMainInvokeEvent) {
+    return pluginService.getPluginStatus(pluginId);
+  },
+
+  /**
+   * 列出活跃插件
+   */
+  async listActive(_args: any, event?: IpcMainInvokeEvent) {
+    return pluginRuntime.listActivePlugins().map(p => ({
+      id: p.manifest.id,
+      name: p.manifest.name,
+      category: p.manifest.category,
+      status: p.status,
+    }));
+  },
+
+  // ========== 工具和 Agent 查询 ==========
+
+  /**
+   * 列出插件系统注册的 MCP 工具
+   */
+  async listMCPTools(_args: any, event?: IpcMainInvokeEvent) {
+    return pluginBridge.listMCPTools();
+  },
+
+  /**
+   * 调用插件 MCP 工具
+   */
+  async callMCPTool({ name, args }: { name: string; args: unknown }, event?: IpcMainInvokeEvent) {
+    return pluginBridge.callMCPTool(name, args);
+  },
+
+  /**
+   * 列出可用 Worker Agent
+   */
+  async listAgents(_args: any, event?: IpcMainInvokeEvent) {
+    return pluginBridge.listAgents().map(a => ({
+      id: a.id,
+      name: a.name,
+      description: a.description,
+      capabilities: a.capabilities,
+      pluginId: a.pluginId,
+    }));
   },
 };

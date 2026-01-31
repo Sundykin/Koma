@@ -12,6 +12,7 @@ import { DynamicStructuredTool } from '@langchain/core/tools';
 import { z } from 'zod';
 import type { SessionConfig, MCPToolDefinition, ToolCall, ToolResult } from './types';
 import { mcpManager } from './mcp';
+import { mcpRegistry } from '../plugin/registries';
 
 // 状态定义
 const AgentState = Annotation.Root({
@@ -127,7 +128,15 @@ export function createToolsFromMCP(
       schema,
       func: async (input) => {
         try {
-          const result = await mcpManager.callTool(tool.name, input as Record<string, unknown>);
+          // 根据工具来源选择调用方式
+          let result: unknown;
+          if (tool.pluginId) {
+            // 内部插件注册的工具
+            result = await mcpRegistry.tools.callTool(tool.name, input as Record<string, unknown>);
+          } else {
+            // 外部 MCP 连接的工具
+            result = await mcpManager.callTool(tool.name, input as Record<string, unknown>);
+          }
           return JSON.stringify(result);
         } catch (err: any) {
           return JSON.stringify({ error: err.message });

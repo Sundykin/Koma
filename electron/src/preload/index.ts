@@ -142,6 +142,21 @@ contextBridge.exposeInMainWorld('electronAPI', {
       list: (includeTools?: boolean) => ipcRenderer.invoke('chat:mcp:list', { includeTools }),
       listTools: () => ipcRenderer.invoke('chat:mcp:listTools'),
       callTool: (name: string, args: any) => ipcRenderer.invoke('chat:mcp:callTool', { name, arguments: args }),
+      importConfig: (args: any) => ipcRenderer.invoke('chat:mcp:importConfig', args),
+      exportConfig: (args?: any) => ipcRenderer.invoke('chat:mcp:exportConfig', args),
+    },
+
+    // 统一工具（合并外部 MCP + 插件内部 MCP）
+    tools: {
+      list: () => ipcRenderer.invoke('chat:tools:list'),
+      call: (name: string, args: any) => ipcRenderer.invoke('chat:tools:call', { name, arguments: args }),
+    },
+
+    // 统一能力查询
+    capability: {
+      list: (filter?: any) => ipcRenderer.invoke('chat:capability:list', filter),
+      invoke: (id: string, args: any) => ipcRenderer.invoke('chat:capability:invoke', { id, arguments: args }),
+      resolve: (requirements: string[]) => ipcRenderer.invoke('chat:capability:resolve', { requirements }),
     },
   },
 });

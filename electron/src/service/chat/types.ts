@@ -49,6 +49,10 @@ export interface SessionConfig {
   modelName?: string;
   apiKey?: string;
   baseUrl?: string;
+  // Agent 模板引用
+  agentTemplateId?: string;
+  agentMode?: AgentMode;             // 覆盖模板的 mode
+  requiredCapabilities?: string[];   // 覆盖/追加能力需求
 }
 
 export interface Session {
@@ -141,7 +145,7 @@ export interface StreamErrorEvent {
 
 // ========== MCP 相关 ==========
 
-export type MCPTransportType = 'stdio' | 'sse' | 'websocket';
+export type MCPTransportType = 'stdio' | 'sse' | 'websocket' | 'internal';
 
 export interface MCPServerConfig {
   name: string;
@@ -150,13 +154,15 @@ export interface MCPServerConfig {
   args?: string[];
   url?: string;
   env?: Record<string, string>;
+  pluginId?: string; // internal 传输时关联的插件
 }
 
 export interface MCPToolDefinition {
   name: string;
   description: string;
   inputSchema: Record<string, unknown>;
-  serverName: string;
+  serverName?: string;  // 来源服务器（外部 MCP）
+  pluginId?: string;    // 来源插件（内部 MCP）
 }
 
 export interface MCPResource {
@@ -177,14 +183,26 @@ export interface MCPConnection {
 
 // ========== 智能体模板 ==========
 
+export type AgentMode = 'single' | 'orchestrated';
+
 export interface AgentTemplate {
   id: string;
   name: string;
   description: string;
   systemPrompt: string;
   enabledTools?: string[];
+  // 能力需求（CapabilityRegistry 自动解析）
+  requiredCapabilities?: string[];   // 标签匹配: ['image-generation', 'web-search']
+  allowedCapabilities?: string[];    // 精确 Capability ID 白名单
+  // 工作流模式
+  mode?: AgentMode;                  // 默认 'single'
+  workerIds?: string[];              // orchestrated 模式下的 Worker 列表
+  // LLM 配置
   temperature?: number;
   maxTokens?: number;
+  modelProvider?: 'openai' | 'anthropic' | 'google';
+  modelName?: string;
+  // UI
   icon?: string;
   color?: string;
   isPreset?: boolean;

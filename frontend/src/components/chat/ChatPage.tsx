@@ -127,14 +127,18 @@ export const ChatPage: React.FC = () => {
     [...PRESET_TEMPLATES, ...agentTemplates]
   ), [agentTemplates]);
 
-  // 智能体切换时更新系统提示词
+  // 智能体切换时更新系统提示词和工具
   useEffect(() => {
     if (!activeAgentId) return;
     const template = allAgentTemplates.find(t => t.id === activeAgentId);
     if (template) {
       setSystemPrompt(template.systemPrompt);
+      // 同时更新 enabledTools 到会话
+      if (isReady && template.tools && template.tools.length > 0) {
+        updateConfig({ enabledTools: template.tools });
+      }
     }
-  }, [activeAgentId, allAgentTemplates]);
+  }, [activeAgentId, allAgentTemplates, isReady, updateConfig]);
 
   // 系统提示词变化时更新会话配置
   useEffect(() => {

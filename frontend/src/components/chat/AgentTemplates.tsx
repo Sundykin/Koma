@@ -105,16 +105,16 @@ export const AgentTemplates: React.FC<AgentTemplatesProps> = ({
   // 所有模板（预设 + 自定义）
   const allTemplates = [...PRESET_TEMPLATES, ...templates];
 
-  // 加载 MCP 工具列表
+  // 加载工具列表（合并外部 MCP + 插件内部 MCP）
   useEffect(() => {
     if (visible && chatIPC.isElectron()) {
       setLoadingTools(true);
-      chatIPC.mcp.listTools()
+      chatIPC.tools.listAll()
         .then(tools => {
           setMcpTools(tools);
         })
         .catch(err => {
-          console.error('加载 MCP 工具失败:', err);
+          console.error('加载工具列表失败:', err);
         })
         .finally(() => {
           setLoadingTools(false);
@@ -217,7 +217,9 @@ export const AgentTemplates: React.FC<AgentTemplatesProps> = ({
     label: (
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span>{tool.name}</span>
-        <Tag color="blue" style={{ marginLeft: 8 }}>{tool.serverName}</Tag>
+        <Tag color={(tool as any).source === 'plugin' ? 'green' : 'blue'} style={{ marginLeft: 8 }}>
+          {(tool as any).source === 'plugin' ? '插件' : tool.serverName}
+        </Tag>
       </div>
     ),
     description: tool.description,
@@ -405,7 +407,7 @@ export const AgentTemplates: React.FC<AgentTemplatesProps> = ({
           >
             <Select
               mode="multiple"
-              placeholder={mcpTools.length === 0 ? "未连接 MCP 服务器" : "选择可用工具"}
+              placeholder={mcpTools.length === 0 ? "无可用工具（请连接 MCP 服务或安装工具插件）" : "选择可用工具"}
               options={toolOptions}
               disabled={mcpTools.length === 0}
               optionFilterProp="label"
@@ -426,7 +428,7 @@ export const AgentTemplates: React.FC<AgentTemplatesProps> = ({
           </Form.Item>
           {mcpTools.length === 0 && !loadingTools && (
             <div style={{ color: '#999', fontSize: 12, marginTop: -16, marginBottom: 16 }}>
-              提示：请先在 MCP 配置中连接服务器以启用工具
+              提示：请先连接 MCP 服务器或安装工具类插件以启用工具
             </div>
           )}
 

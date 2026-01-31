@@ -10,6 +10,7 @@ import type {
   MCPToolDefinition,
   MCPResource,
 } from '../types';
+import { InternalTransport } from './InternalTransport';
 
 interface MCPRequest {
   jsonrpc: '2.0';
@@ -39,6 +40,7 @@ class StdioTransport implements MCPTransport {
     reject: (error: Error) => void;
   }>();
   private buffer = '';
+  private connected = false;
 
   constructor(private config: MCPServerConfig) {}
 
@@ -50,34 +52,74 @@ class StdioTransport implements MCPTransport {
         return;
       }
 
-      this.process = spawn(command, args, {
+      // Windows 上需要特殊处理 npx
+      let finalCommand = command;
+      let finalArgs = args;
+      if (process.platform === 'win32') {
+        if (command === 'npx' || command === 'npm' || command === 'node') {
+          finalCommand = 'cmd.exe';
+          finalArgs = ['/c', command, ...args];
+        }
+      }
+
+      console.log(`[MCP ${this.config.name}] Starting: ${finalCommand} ${finalArgs.join(' ')}`);
+
+      this.process = spawn(finalCommand, finalArgs, {
         stdio: ['pipe', 'pipe', 'pipe'],
         env: { ...process.env, ...env },
-        shell: true,
+        windowsHide: true,
       });
 
+      let startupTimeout: NodeJS.Timeout;
+      let hasError = false;
+
       this.process.stdout?.on('data', (data: Buffer) => {
-        this.buffer += data.toString();
+        const text = data.toString();
+        console.log(`[MCP ${this.config.name}] stdout:`, text.slice(0, 500));
+        this.buffer += text;
         this.processBuffer();
+
+        // 收到数据说明进程已启动
+        if (!this.connected && !hasError) {
+          this.connected = true;
+          clearTimeout(startupTimeout);
+          resolve();
+        }
       });
 
       this.process.stderr?.on('data', (data: Buffer) => {
-        console.error(`[MCP ${this.config.name}] stderr:`, data.toString());
+        const text = data.toString();
+        console.error(`[MCP ${this.config.name}] stderr:`, text);
+        // 某些 MCP 服务器会在 stderr 输出日志，不一定是错误
       });
 
       this.process.on('error', (err) => {
-        reject(err);
+        console.error(`[MCP ${this.config.name}] process error:`, err);
+        hasError = true;
+        if (!this.connected) {
+          clearTimeout(startupTimeout);
+          reject(new Error(`Failed to start process: ${err.message}`));
+        }
       });
 
-      this.process.on('exit', (code) => {
-        if (code !== 0) {
-          console.error(`[MCP ${this.config.name}] exited with code ${code}`);
+      this.process.on('exit', (code, signal) => {
+        console.log(`[MCP ${this.config.name}] exited with code ${code}, signal ${signal}`);
+        if (!this.connected && !hasError) {
+          hasError = true;
+          clearTimeout(startupTimeout);
+          reject(new Error(`Process exited unexpectedly with code ${code}, signal ${signal}`));
         }
         this.cleanup();
       });
 
-      // 等待进程启动
-      setTimeout(() => resolve(), 100);
+      // 等待启动超时
+      startupTimeout = setTimeout(() => {
+        if (!this.connected && !hasError) {
+          this.connected = true; // 假设已连接，让后续请求决定
+          console.log(`[MCP ${this.config.name}] Startup timeout, assuming connected`);
+          resolve();
+        }
+      }, 5000);
     });
   }
 
@@ -101,16 +143,30 @@ class StdioTransport implements MCPTransport {
   }
 
   async send(request: MCPRequest): Promise<MCPResponse> {
-    if (!this.process?.stdin) {
+    if (!this.process || !this.process.stdin || this.process.killed) {
       throw new Error('Transport not connected');
     }
 
     const id = ++this.requestId;
     const req = { ...request, id };
 
+    console.log(`[MCP ${this.config.name}] Sending:`, JSON.stringify(req).slice(0, 200));
+
     return new Promise((resolve, reject) => {
       this.pendingRequests.set(id, { resolve, reject });
-      this.process!.stdin!.write(JSON.stringify(req) + '\n');
+
+      try {
+        this.process!.stdin!.write(JSON.stringify(req) + '\n', (err) => {
+          if (err) {
+            this.pendingRequests.delete(id);
+            reject(err);
+          }
+        });
+      } catch (err) {
+        this.pendingRequests.delete(id);
+        reject(err);
+        return;
+      }
 
       // 超时处理
       setTimeout(() => {
@@ -124,6 +180,20 @@ class StdioTransport implements MCPTransport {
 
   async close(): Promise<void> {
     this.cleanup();
+  }
+
+  // 发送通知（不需要响应）
+  async sendNotification(method: string, params?: Record<string, unknown>): Promise<void> {
+    if (!this.process || !this.process.stdin || this.process.killed) {
+      return;
+    }
+    const notification = {
+      jsonrpc: '2.0',
+      method,
+      params,
+    };
+    console.log(`[MCP ${this.config.name}] Sending notification:`, method);
+    this.process.stdin.write(JSON.stringify(notification) + '\n');
   }
 
   private cleanup(): void {
@@ -270,6 +340,10 @@ class MCPConnectionImpl {
           this.transport = new WebSocketTransport(this.config);
           await (this.transport as WebSocketTransport).connect();
           break;
+        case 'internal':
+          // 内部传输：直接代理到插件注册表
+          this.transport = new InternalTransport(this.config.pluginId);
+          break;
         default:
           throw new Error(`Unknown transport: ${this.config.transport}`);
       }
@@ -291,7 +365,7 @@ class MCPConnectionImpl {
   }
 
   private async initialize(): Promise<void> {
-    await this.send('initialize', {
+    const response = await this.send('initialize', {
       protocolVersion: '2024-11-05',
       capabilities: {
         tools: {},
@@ -302,6 +376,17 @@ class MCPConnectionImpl {
         version: '1.0.0',
       },
     });
+    console.log(`[MCP ${this.config.name}] Initialize response:`, response);
+
+    // 发送 initialized 通知 (MCP 协议要求)
+    if (this.transport) {
+      try {
+        await (this.transport as StdioTransport).sendNotification('notifications/initialized', {});
+      } catch (e) {
+        // 通知失败不是致命错误
+        console.warn(`[MCP ${this.config.name}] Failed to send initialized notification:`, e);
+      }
+    }
   }
 
   private async discoverTools(): Promise<void> {

@@ -45,8 +45,9 @@ export function validateManifest(manifest: any): PluginValidationResult {
   }
 
   // 验证分类
-  if (!['provider', 'global', 'tool'].includes(manifest.category)) {
-    errors.push('category 必须是 provider, global 或 tool');
+  const VALID_CATEGORIES = ['provider', 'global', 'tool', 'mcp', 'agent'];
+  if (!VALID_CATEGORIES.includes(manifest.category)) {
+    errors.push(`category 必须是 ${VALID_CATEGORIES.join(', ')} 之一`);
   }
 
   // 验证入口配置
@@ -67,6 +68,8 @@ export function validateManifest(manifest: any): PluginValidationResult {
     'settings:read', 'settings:write',
     'projects:read', 'projects:write',
     'prompts:override', 'storage:limited', 'network:external',
+    'mcp:server', 'mcp:tool', 'mcp:resource',
+    'agent:register', 'spawn:process',
   ];
   for (const scope of manifest.scopes || []) {
     if (!validScopes.includes(scope)) {

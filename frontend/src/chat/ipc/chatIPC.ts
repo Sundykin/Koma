@@ -256,6 +256,18 @@ export async function callMCPTool(name: string, args: Record<string, unknown>): 
   return api.mcp.callTool(name, args);
 }
 
+// ========== 统一工具（合并外部 MCP + 插件内部 MCP） ==========
+
+export async function listAllTools(): Promise<MCPToolDefinition[]> {
+  const api = getElectronAPI();
+  return api.tools.list();
+}
+
+export async function callTool(name: string, args: Record<string, unknown>): Promise<unknown> {
+  const api = getElectronAPI();
+  return api.tools.call(name, args);
+}
+
 // ========== 辅助工具 ==========
 
 export function generateId(): string {
@@ -287,6 +299,10 @@ export const chatIPC = {
     list: listMCPConnections,
     listTools: listMCPTools,
     callTool: callMCPTool,
+  },
+  tools: {
+    listAll: listAllTools,
+    call: callTool,
   },
   generateId,
   createUserInput,

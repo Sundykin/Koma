@@ -207,4 +207,29 @@ export const SCOPE_DESCRIPTIONS: Record<PluginScope, { label: string; descriptio
     description: '访问外部网络服务',
     level: 'danger',
   },
+  'mcp:server': {
+    label: 'MCP 服务',
+    description: '注册 MCP 服务器，对外提供工具和资源',
+    level: 'warning',
+  },
+  'mcp:tool': {
+    label: 'MCP 工具',
+    description: '注册可被智能体调用的 MCP 工具',
+    level: 'warning',
+  },
+  'mcp:resource': {
+    label: 'MCP 资源',
+    description: '注册 MCP 资源供智能体读取',
+    level: 'safe',
+  },
+  'agent:register': {
+    label: '注册智能体',
+    description: '注册 Worker Agent 参与多智能体编排',
+    level: 'warning',
+  },
+  'spawn:process': {
+    label: '启动进程',
+    description: '启动外部子进程执行命令',
+    level: 'danger',
+  },
 };

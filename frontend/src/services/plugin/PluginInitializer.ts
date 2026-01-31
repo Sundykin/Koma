@@ -5,6 +5,7 @@
 import { usePluginStore, waitForPluginStoreRehydration } from '../../store/pluginStore';
 import { loadPluginComponent, loadProviderPlugin, isPluginLoaded } from './PluginLoader';
 import { createPluginAPI } from './PluginAPI';
+import { electronService } from '../electronService';
 import type { InstalledPlugin } from '../../types/plugin';
 
 // 已初始化的插件 ID 集合
@@ -22,12 +23,40 @@ export async function initializePlugin(plugin: InstalledPlugin): Promise<boolean
   try {
     console.log(`[PluginInitializer] 初始化插件: ${plugin.id}, category: ${plugin.category}`);
 
-    // 根据插件类型选择加载函数
+    // mcp / agent / provider 类型插件如果有 backend 入口，需要后端激活
+    const needsBackendActivation =
+      plugin.category === 'mcp' ||
+      plugin.category === 'agent' ||
+      (plugin.category === 'provider' && plugin.entry?.backend);
+
+    if (needsBackendActivation) {
+      const result = await electronService.ipc.invoke('plugin:activate', { manifest: plugin });
+      if (!result?.success) {
+        console.warn(`[PluginInitializer] 后端激活失败: ${plugin.id}`, result?.error);
+        // provider 类型后端激活失败不阻止前端加载
+        if (plugin.category !== 'provider') {
+          return false;
+        }
+      } else {
+        console.log(`[PluginInitializer] 插件 ${plugin.id} 后端激活成功`);
+      }
+    }
+
+    // mcp / agent 只需后端激活
+    if (plugin.category === 'mcp' || plugin.category === 'agent') {
+      initializedPlugins.add(plugin.id);
+      return true;
+    }
+
+    // global / provider / tool 类型由前端加载
     let exports;
     if (plugin.category === 'global') {
       exports = await loadPluginComponent(plugin);
     } else if (plugin.category === 'provider') {
       exports = await loadProviderPlugin(plugin);
+    } else if (plugin.category === 'tool') {
+      // tool 类型暂时走前端加载
+      exports = await loadPluginComponent(plugin);
     } else {
       console.warn(`[PluginInitializer] 不支持的插件类型: ${plugin.category}`);
       return false;
@@ -55,8 +84,8 @@ export async function initializePlugin(plugin: InstalledPlugin): Promise<boolean
 }
 
 /**
- * 初始化所有已启用的 Provider 插件
- * 在应用启动时调用，确保渠道配置在设置页面可用
+ * 初始化所有已启用的插件
+ * 启动时先和后端实际安装列表对账，清除已不存在的插件记录
  */
 export async function initializeProviderPlugins(): Promise<{
   total: number;
@@ -66,6 +95,9 @@ export async function initializeProviderPlugins(): Promise<{
   // 等待 pluginStore 数据恢复完成
   await waitForPluginStoreRehydration();
   console.log('[PluginInitializer] pluginStore 数据已恢复');
+
+  // 和后端实际安装列表对账，清除 store 中已不存在的插件
+  await reconcilePluginStore();
 
   const plugins = usePluginStore.getState().plugins;
 
@@ -99,6 +131,33 @@ export async function initializeProviderPlugins(): Promise<{
     success,
     failed,
   };
+}
+
+/**
+ * 对账：比较 store 中的插件列表与后端实际安装列表，移除已不存在的记录
+ */
+async function reconcilePluginStore(): Promise<void> {
+  try {
+    // 查询后端实际安装的插件
+    const installedManifests = await electronService.ipc.invoke('plugin:list') as any[];
+    const installedIds = new Set((installedManifests || []).map((m: any) => m.id));
+
+    const store = usePluginStore.getState();
+    const stalePlugins = store.plugins.filter(p => !installedIds.has(p.id));
+
+    if (stalePlugins.length > 0) {
+      console.warn(
+        `[PluginInitializer] 发现 ${stalePlugins.length} 个已不存在的插件，清理:`,
+        stalePlugins.map(p => p.id)
+      );
+      for (const p of stalePlugins) {
+        store.unregisterPlugin(p.id);
+      }
+    }
+  } catch (err) {
+    // 对账失败不阻塞启动
+    console.warn('[PluginInitializer] 插件对账失败，跳过:', err);
+  }
 }
 
 /**
