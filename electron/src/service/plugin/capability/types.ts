@@ -13,7 +13,7 @@ export type CapabilitySourceKind = 'mcp-external' | 'mcp-internal' | 'provider' 
 export type CapabilitySource =
   | { kind: 'mcp-external'; serverName: string }
   | { kind: 'mcp-internal'; pluginId: string }
-  | { kind: 'provider'; pluginId?: string; providerKind: 'tti' | 'itv' | 'tts' | 'llm' }
+  | { kind: 'provider'; pluginId?: string; providerKind: 'tti' | 'itv' | 'tts' | 'llm' | 'image-hosting' }
   | { kind: 'builtin' };
 
 // 能力描述符

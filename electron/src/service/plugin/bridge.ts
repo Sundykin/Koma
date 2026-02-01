@@ -10,7 +10,7 @@ class PluginBridge {
    * 调用 Provider
    */
   async callProvider(
-    kind: 'tti' | 'itv' | 'tts' | 'llm',
+    kind: 'tti' | 'itv' | 'tts' | 'llm' | 'image-hosting',
     type: string,
     method: string,
     args: unknown[]
@@ -67,7 +67,7 @@ class PluginBridge {
   /**
    * 列出可用 Provider
    */
-  listProviders(kind?: 'tti' | 'itv' | 'tts' | 'llm'): ProviderDefinition[] {
+  listProviders(kind?: 'tti' | 'itv' | 'tts' | 'llm' | 'image-hosting'): ProviderDefinition[] {
     if (kind) {
       return providerRegistry.listByKind(kind);
     }

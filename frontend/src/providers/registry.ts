@@ -10,10 +10,10 @@ export type { PollingConfig } from './polling';
 export { DEFAULT_POLLING_CONFIG } from './polling';
 
 // 渠道类型
-export type ChannelKind = 'tti' | 'itv' | 'tts';
+export type ChannelKind = 'tti' | 'itv' | 'tts' | 'image-hosting';
 
 // 渠道能力
-export type ChannelCapability = 'tti' | 'itv' | 'tts' | 'character-extract' | 'remix';
+export type ChannelCapability = 'tti' | 'itv' | 'tts' | 'character-extract' | 'remix' | 'image-hosting';
 
 // Provider 上下文
 export interface ProviderContext {
@@ -95,6 +95,7 @@ class ProviderRegistryImpl<T> implements IProviderRegistry<T> {
 export const ttiRegistry = new ProviderRegistryImpl<any>();
 export const itvRegistry = new ProviderRegistryImpl<any>();
 export const ttsRegistry = new ProviderRegistryImpl<any>();
+export const imageHostingRegistry = new ProviderRegistryImpl<any>();
 
 // 获取注册表
 export function getRegistry(kind: ChannelKind): IProviderRegistry<any> {
@@ -102,6 +103,7 @@ export function getRegistry(kind: ChannelKind): IProviderRegistry<any> {
     case 'tti': return ttiRegistry;
     case 'itv': return itvRegistry;
     case 'tts': return ttsRegistry;
+    case 'image-hosting': return imageHostingRegistry;
   }
 }
 
@@ -122,6 +124,7 @@ export function unregisterProvidersByPlugin(pluginId: string): void {
   ttiRegistry.unregisterByPlugin(pluginId);
   itvRegistry.unregisterByPlugin(pluginId);
   ttsRegistry.unregisterByPlugin(pluginId);
+  imageHostingRegistry.unregisterByPlugin(pluginId);
 }
 
 // 列出所有 Provider

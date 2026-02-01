@@ -2,15 +2,14 @@
  * 图床服务 - 前端上传接口
  * 用于将本地图片上传到远程图床，获取可访问的 URL
  *
- * 注意：此服务使用内置的 fetch 实现，独立于插件系统
- * 插件系统中的 Provider 用于后端和配置管理
+ * 注意：配置从插件系统的 channelConfig.providerConfig 读取
  */
 
 import type {
   ImageHostingUploadOptions,
   ImageHostingUploadResult,
 } from '@komastudio/plugin-sdk';
-import { getImageHostingConfig as getConfigFromStore } from '../store/globalStore';
+import { getChannelConfigs } from '../store/settings/channelConfig';
 
 // SCDN 图床配置
 export interface SCDNImageHostingConfig {
@@ -24,7 +23,7 @@ export const DEFAULT_SCDN_CONFIG: SCDNImageHostingConfig = {
   apiEndpoint: 'https://img.scdn.io/api/v1.php',
   outputFormat: 'webp',
   cdnDomain: '',
-  enabled: false,
+  enabled: true,  // 默认启用
 };
 
 // 支持的 CDN 域名
@@ -35,6 +34,37 @@ export const AVAILABLE_CDN_DOMAINS = [
   { name: 'EdgeOne', domain: 'edgeoneimg.cdn.sn' },
   { name: 'ESA', domain: 'esaimg.cdn1.vip' },
 ];
+
+/**
+ * 从插件系统获取图床配置
+ */
+export async function getImageHostingConfig(): Promise<SCDNImageHostingConfig | null> {
+  try {
+    const configs = await getChannelConfigs();
+    console.log('[ImageHosting] 所有渠道配置:', configs.map(c => ({ id: c.id, providerType: c.providerType, capabilities: c.capabilities })));
+
+    // 查找 image-hosting 类型的渠道配置
+    const imageHostingChannel = configs.find(
+      c => c.providerType === 'scdn-image-hosting' ||
+           (c.capabilities && c.capabilities.includes('image-hosting'))
+    );
+
+    if (imageHostingChannel) {
+      console.log('[ImageHosting] 找到图床渠道配置:', imageHostingChannel);
+      const providerConfig = imageHostingChannel.providerConfig || {};
+      return {
+        ...DEFAULT_SCDN_CONFIG,
+        ...providerConfig,
+      } as SCDNImageHostingConfig;
+    }
+
+    console.log('[ImageHosting] 未找到图床插件配置');
+    return null;
+  } catch (err) {
+    console.error('[ImageHosting] 读取插件配置失败:', err);
+    return null;
+  }
+}
 
 /**
  * 延迟函数
@@ -125,21 +155,16 @@ export async function uploadToImageHostingWithRetry(
   options?: ImageHostingUploadOptions,
   maxRetries: number = 3
 ): Promise<ImageHostingUploadResult> {
-  // 从 store 获取配置
-  const storeConfig = await getConfigFromStore();
-  if (!storeConfig || !storeConfig.enabled) {
+  // 从插件系统获取配置
+  const config = await getImageHostingConfig();
+  console.log('[ImageHosting] 获取到的配置:', config);
+
+  if (!config || !config.enabled) {
     return {
       success: false,
       error: '图床未配置或未启用，请在插件设置中启用 SCDN 图床服务',
     };
   }
-
-  const config: SCDNImageHostingConfig = {
-    apiEndpoint: storeConfig.apiEndpoint,
-    outputFormat: storeConfig.outputFormat,
-    cdnDomain: storeConfig.cdnDomain,
-    enabled: storeConfig.enabled,
-  };
 
   let lastError: string = '';
 

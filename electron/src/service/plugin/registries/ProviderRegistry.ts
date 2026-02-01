@@ -29,7 +29,7 @@ class ProviderRegistry implements IRegistry<ProviderDefinition> {
     return Array.from(this.providers.values());
   }
 
-  listByKind(kind: 'tti' | 'itv' | 'tts' | 'llm'): ProviderDefinition[] {
+  listByKind(kind: 'tti' | 'itv' | 'tts' | 'llm' | 'image-hosting'): ProviderDefinition[] {
     return this.list().filter(p => p.kind === kind);
   }
 

@@ -14,7 +14,7 @@ interface SCDNImageHostingConfig {
 }
 
 const DEFAULT_CONFIG: SCDNImageHostingConfig = {
-  enabled: false,
+  enabled: true,  // 默认启用
   apiEndpoint: 'https://img.scdn.io/api/v1.php',
   outputFormat: 'webp',
   cdnDomain: '',

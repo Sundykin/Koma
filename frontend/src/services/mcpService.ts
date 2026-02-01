@@ -25,7 +25,7 @@ interface ElectronMCPAPI {
 
 // 获取 Electron API
 function getElectronAPI(): ElectronMCPAPI | null {
-  if (typeof window !== 'undefined' && (window as any).electron) {
+  if (typeof window !== 'undefined' && (window as any).electron?.mcp) {
     return (window as any).electron as ElectronMCPAPI;
   }
   return null;

@@ -32,7 +32,7 @@ interface SCDNConfig {
 // ========== 常量 ==========
 
 const DEFAULT_CONFIG: SCDNConfig = {
-  enabled: false,
+  enabled: true,  // 默认启用
   apiEndpoint: 'https://img.scdn.io/api/v1.php',
   outputFormat: 'webp',
   cdnDomain: '',
@@ -295,23 +295,27 @@ function SCDNProvider({ api }: SCDNProviderProps) {
 // ========== 生命周期 ==========
 
 async function onActivate(api: PluginAPI) {
-  console.log('[SCDN] 插件已激活');
+  console.log('[SCDN] 前端 UI 已加载');
 
-  const providerDef = {
-    type: 'scdn-image-hosting',
-    kind: 'image-hosting',
-    name: 'SCDN 图床',
-    description: 'SCDN 图床服务，支持图片上传并获取远程 URL',
-    capabilities: ['image-hosting'],
-    defaultConfig: DEFAULT_CONFIG,
-  };
-
-  await api.channels.registerProvider(providerDef as any);
-  console.log('[SCDN] Provider 已注册');
+  // 注册 Provider 以创建 channelConfig
+  try {
+    await api.channels.registerProvider({
+      type: 'scdn-image-hosting',
+      kind: 'image-hosting' as any,
+      name: 'SCDN 图床',
+      description: 'SCDN 图床服务，支持图片上传并获取远程 URL',
+      capabilities: ['image-hosting'] as any[],
+      defaultConfig: DEFAULT_CONFIG,
+      factory: () => null, // 前端不需要实际的 factory
+    });
+    console.log('[SCDN] Provider 注册成功');
+  } catch (err) {
+    console.warn('[SCDN] Provider 注册跳过（可能已存在）:', err);
+  }
 }
 
 function onDeactivate() {
-  console.log('[SCDN] 插件已停用');
+  console.log('[SCDN] 前端 UI 已卸载');
 }
 
 export default SCDNProvider;

@@ -137,7 +137,7 @@ export interface MCPServerDefinition {
 // Provider 定义
 export interface ProviderDefinition {
   type: string;
-  kind: 'tti' | 'itv' | 'tts' | 'llm';
+  kind: 'tti' | 'itv' | 'tts' | 'llm' | 'image-hosting';
   name: string;
   description?: string;
   capabilities: string[];

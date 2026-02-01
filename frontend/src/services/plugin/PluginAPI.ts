@@ -332,6 +332,7 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
       /**
        * 更新 Provider 配置
        * 插件 UI 保存配置后调用此方法同步到 channelConfig.providerConfig
+       * 如果配置不存在则自动创建
        */
       async updateProviderConfig(type: string, config: Record<string, any>) {
         const result = validateOperation(plugin, 'channels.updateProviderConfig', 'network:external');
@@ -339,15 +340,29 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
           throw new Error(result.reason);
         }
 
-        // 查找该插件对应的渠道配置
-        const { getChannelConfigs, updateChannelConfig } = await import('../../store/settings/channelConfig');
+        const { getChannelConfigs, updateChannelConfig, addChannelConfig } = await import('../../store/settings/channelConfig');
         const configs = await getChannelConfigs();
-        const channelConfig = configs.find(
+        let channelConfig = configs.find(
           c => c.providerType === type && c.pluginId === pluginId
         );
 
         if (!channelConfig) {
-          console.warn(`[PluginAPI] 渠道配置不存在: ${type}`);
+          // 自动创建渠道配置
+          console.log(`[PluginAPI] 渠道配置不存在，自动创建: ${type}`);
+          const manifest = plugin.manifest;
+          const capabilities = manifest.providerMeta?.capabilities || [];
+
+          channelConfig = await addChannelConfig({
+            name: manifest.name || type,
+            description: manifest.description,
+            providerType: type,
+            providerConfig: config,
+            capabilities: capabilities as any[],
+            enabled: true,
+            source: 'plugin',
+            pluginId: pluginId,
+          });
+          console.log(`[PluginAPI] 已创建渠道配置: ${type}`, channelConfig);
           return;
         }
 
