@@ -76,6 +76,12 @@ export {
   getDefaultChannelConfig,
   cleanupDuplicateChannels,
   cleanupLegacyConfigs,
+  // 图床配置
+  getImageHostingConfig,
+  updateImageHostingConfig,
+  setImageHostingEnabled,
+  isImageHostingEnabled,
+  DEFAULT_IMAGE_HOSTING_CONFIG,
 } from './settings';
 
 // 重新导出类型（用于外部引用）

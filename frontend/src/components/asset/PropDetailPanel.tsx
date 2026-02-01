@@ -39,6 +39,8 @@ import { electronService, openFileDialog, fsCopy, fsMkdir, fsExists } from '../.
 import { getStorageConfig, initStorageConfig } from '../../store/storageConfig';
 import { saveProps, loadProps } from '../../store/projectStore';
 import { useActiveConfig } from '../../hooks/useActiveConfig';
+import { uploadLocalFileToImageHosting } from '../../services/imageHostingService';
+import { getImageHostingConfig } from '../../store/globalStore';
 
 const { TextArea } = Input;
 const { Text } = Typography;
@@ -196,7 +198,21 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
       const destPath = await getAssetPath('reference.png');
       await fsCopy(result.filePaths[0], destPath);
 
-      const updated = { ...editedProp, imagePath: destPath };
+      let updated: Prop = { ...editedProp, imagePath: destPath };
+
+      // 检测图床配置，自动上传
+      const imageHostingConfig = await getImageHostingConfig();
+      if (imageHostingConfig.enabled) {
+        message.loading({ content: '正在上传到图床...', key: 'imageHosting' });
+        const uploadResult = await uploadLocalFileToImageHosting(destPath);
+        if (uploadResult.success && uploadResult.url) {
+          updated.imageUrl = uploadResult.url;
+          message.success({ content: '图床上传成功', key: 'imageHosting' });
+        } else {
+          message.warning({ content: `图床上传失败: ${uploadResult.error}`, key: 'imageHosting' });
+        }
+      }
+
       setEditedProp(updated);
       onUpdate(updated);
 

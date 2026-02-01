@@ -42,6 +42,8 @@ import { electronService, openFileDialog, fsCopy, fsMkdir, fsExists } from '../.
 import { getStorageConfig, initStorageConfig } from '../../store/storageConfig';
 import { saveCharacters, loadCharacters } from '../../store/projectStore';
 import { useActiveConfig } from '../../hooks/useActiveConfig';
+import { uploadLocalFileToImageHosting } from '../../services/imageHostingService';
+import { getImageHostingConfig } from '../../store/globalStore';
 
 const { TextArea } = Input;
 const { Text } = Typography;
@@ -200,7 +202,21 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
       const destPath = await getAssetPath('costume.png');
       await fsCopy(result.filePaths[0], destPath);
 
-      const updated = { ...editedCharacter, costumePhotoPath: destPath };
+      let updated: Character = { ...editedCharacter, costumePhotoPath: destPath };
+
+      // 检测图床配置，自动上传
+      const imageHostingConfig = await getImageHostingConfig();
+      if (imageHostingConfig.enabled) {
+        message.loading({ content: '正在上传到图床...', key: 'imageHosting' });
+        const uploadResult = await uploadLocalFileToImageHosting(destPath);
+        if (uploadResult.success && uploadResult.url) {
+          updated.costumePhotoUrl = uploadResult.url;
+          message.success({ content: '图床上传成功', key: 'imageHosting' });
+        } else {
+          message.warning({ content: `图床上传失败: ${uploadResult.error}`, key: 'imageHosting' });
+        }
+      }
+
       setEditedCharacter(updated);
       onUpdate(updated);
 

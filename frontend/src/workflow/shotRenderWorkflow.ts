@@ -2,14 +2,15 @@
  * 分镜视频生成工作流
  * 纯 ITV 调用：使用已有参考图片（可选）生成视频
  */
-import type { Shot, ShotVersion, Character } from '../types';
+import type { Shot, ShotVersion, Character, Prop } from '../types';
 import { getProjectTTSProvider, getProjectITVProvider } from '../providers';
-import { saveShotVersion, loadCharacters } from '../store/projectStore';
+import { saveShotVersion, loadCharacters, loadProps } from '../store/projectStore';
 import { createTask, updateTask, markTaskCompleted, markTaskFailed } from '../store/taskQueueStore';
 import { createLogger } from '../store/logger';
 import { logITVCall, logTTSCall } from '../store/aiCallLogger';
 import { getPromptTemplate, fillTemplate } from '../store/promptTemplates';
 import { getThemeStylePrefixAsync } from '../config/themePresets';
+import { parseMentions, type MentionType } from '../editor/mentionTypes';
 
 const logger = createLogger('ShotRender');
 
@@ -167,12 +168,25 @@ export async function shotRenderWorkflow(
     // 获取视觉风格前缀（支持自定义预设）
     const stylePrefix = await getThemeStylePrefixAsync(theme, stylePrompt);
 
+    // 加载道具
+    let projectProps: Prop[] = [];
+    try {
+      projectProps = await loadProps(projectId);
+    } catch {
+      // 忽略
+    }
+
     // 构建视频 prompt：优先使用 shot.videoPrompt
     let videoPrompt: string;
+    let additionalReferenceImages: string[] = [];
+
     if (shot.videoPrompt) {
       // 使用专用视频提示词
       videoPrompt = stylePrefix ? `${stylePrefix}${shot.videoPrompt}` : shot.videoPrompt;
-      videoPrompt = appendCharacterRefs(videoPrompt, shot, characters);
+      // 使用新的处理函数，支持 Sora2 角色和参考图收集
+      const processed = processVideoPromptAssets(videoPrompt, shot, characters, projectProps);
+      videoPrompt = processed.prompt;
+      additionalReferenceImages = processed.referenceImages;
     } else {
       // 回退到旧逻辑
       try {
@@ -189,6 +203,9 @@ export async function shotRenderWorkflow(
     }
 
     logger.info(`视频 prompt: ${videoPrompt}`);
+    if (additionalReferenceImages.length > 0) {
+      logger.info(`额外参考图: ${additionalReferenceImages.join(', ')}`);
+    }
 
     // 打印 ITV 调用日志
     logITVCall(
@@ -310,6 +327,78 @@ function getCameraMovementDesc(movement?: string): string {
     'handheld': 'handheld camera movement',
   };
   return cameraDesc[movement] || movement;
+}
+
+/**
+ * 处理视频提示词中的资产引用
+ * - 有 sora2CharacterId 的角色：使用 @sora2CharacterId
+ * - 无 sora2CharacterId 的角色：收集其图片 URL
+ * - 道具/场景：收集其图片 URL
+ *
+ * @returns { prompt, referenceImages }
+ */
+function processVideoPromptAssets(
+  prompt: string,
+  shot: Shot,
+  characters: Character[],
+  props?: Prop[]
+): { prompt: string; referenceImages: string[] } {
+  let result = prompt;
+  const referenceImages: string[] = [];
+
+  // 解析提示词中的 @mentions
+  const mentions = parseMentions(prompt);
+
+  // 按位置倒序处理，避免替换时位置偏移
+  const sortedMentions = [...mentions].sort((a, b) => b.from - a.from);
+
+  for (const mention of sortedMentions) {
+    if (mention.type === 'char') {
+      const char = characters.find(
+        c => c.id === mention.id || c.sora2CharacterId === mention.id
+      );
+      if (char) {
+        if (char.sora2CharacterId) {
+          // 有 Sora2 角色 ID：替换为 @sora2CharacterId
+          const replacement = `@${char.sora2CharacterId}`;
+          result = result.slice(0, mention.from) + replacement + result.slice(mention.to);
+        } else if (char.costumePhotoUrl) {
+          // 无 Sora2 ID：收集图片 URL，替换为角色描述
+          referenceImages.push(char.costumePhotoUrl);
+          const replacement = `[${char.name}: ${char.prompt || char.description || char.appearance || ''}]`;
+          result = result.slice(0, mention.from) + replacement + result.slice(mention.to);
+        }
+      }
+    } else if (mention.type === 'prop') {
+      const prop = props?.find(
+        p => p.id === mention.id || p.sora2PropId === mention.id
+      );
+      if (prop) {
+        if (prop.sora2PropId) {
+          // 有 Sora2 道具 ID
+          const replacement = `@${prop.sora2PropId}`;
+          result = result.slice(0, mention.from) + replacement + result.slice(mention.to);
+        } else if (prop.imageUrl) {
+          referenceImages.push(prop.imageUrl);
+          const replacement = `[${prop.name}: ${prop.prompt || prop.description || ''}]`;
+          result = result.slice(0, mention.from) + replacement + result.slice(mention.to);
+        }
+      }
+    }
+    // scene 直接替换为描述（场景没有 sora2 绑定）
+    // 注意：scene 的处理可以在后续需要时添加
+  }
+
+  // 额外检查 shot.characters 中有 sora2CharacterId 但不在提示词中的角色
+  for (const charId of shot.characters || []) {
+    const char = characters.find(c => c.id === charId);
+    if (char?.sora2CharacterId && !result.includes(`@${char.sora2CharacterId}`)) {
+      // 追加到末尾
+      result = `${result} @${char.sora2CharacterId}`;
+    }
+  }
+
+  return { prompt: result, referenceImages };
 }
 
 function appendCharacterRefs(prompt: string, shot: Shot, characters: Character[]): string {

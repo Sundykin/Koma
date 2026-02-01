@@ -4,13 +4,14 @@
  */
 import { TaskManager, Task } from './TaskManager';
 import { getActiveTTIConfig } from '../store/globalStore';
-import { loadEpisodeShots, saveEpisodeShots } from '../store/projectStore';
-import type { Shot, TTIModelConfig, Character, Scene } from '../types';
+import { loadEpisodeShots, saveEpisodeShots, loadProps } from '../store/projectStore';
+import type { Shot, TTIModelConfig, Character, Scene, Prop } from '../types';
 import { createTTIProvider, TTIProvider } from '../providers';
 import { getStorageConfig, initStorageConfig } from '../store/storageConfig';
 import { electronService } from './electronService';
 import { getThemeStylePrefix } from '../config/themePresets';
 import { logTTICall } from '../store/aiCallLogger';
+import { parseMentions, type MentionType } from '../editor/mentionTypes';
 
 const POLL_INTERVAL = 3000;
 const MAX_POLL_TIME = 5 * 60 * 1000;
@@ -99,22 +100,26 @@ export class ShotGenerationService {
 
       TaskManager.updateTask(taskId, { progress: 10 });
 
-      // 构建提示词
-      const prompt = this.buildShotPrompt(shot, characters, scenes);
+      // 加载道具列表
+      const props = await loadProps(this.projectId);
+
+      // 构建提示词，收集参考图 URL
+      const { prompt, referenceImages } = this.buildShotPrompt(shot, characters, scenes, props);
+      console.log('[ShotGen] 参考图列表:', referenceImages);
 
       // 打印完整提示词日志
       logTTICall(
         this.ttiConfig?.name || 'TTI',
         prompt,
-        { width: 1280, height: 720 },
+        { width: 1280, height: 720, referenceImages },
         { projectId: this.projectId, targetId: shot.id, targetName: `分镜: ${shot.id}` }
       );
 
       TaskManager.updateTask(taskId, { progress: 20 });
 
-      // 调用 TTI 生成
+      // 调用 TTI 生成（传递参考图）
       console.log('[ShotGen] 调用 TTI API...');
-      const imageUrl = await this.callTTI(prompt, (ttiProgress) => {
+      const imageUrl = await this.callTTI(prompt, referenceImages, (ttiProgress) => {
         const mappedProgress = 20 + Math.floor(ttiProgress * 0.5);
         TaskManager.updateTask(taskId, { progress: mappedProgress });
       });
@@ -165,15 +170,48 @@ export class ShotGenerationService {
   /**
    * 构建分镜提示词
    * 优先使用 imagePrompt，回退到 description
+   * 收集资源 URL 并替换 @mentions 为资源描述
    */
-  private buildShotPrompt(shot: Shot, characters: Character[], scenes: Scene[]): string {
+  private buildShotPrompt(
+    shot: Shot,
+    characters: Character[],
+    scenes: Scene[],
+    props?: Prop[]
+  ): { prompt: string; referenceImages: string[] } {
+    const referenceImages: string[] = [];
+
+    // 收集关联资产的远程 URL
+    for (const charId of shot.characters || []) {
+      const char = characters.find(c => c.id === charId);
+      if (char?.costumePhotoUrl) {
+        referenceImages.push(char.costumePhotoUrl);
+      }
+    }
+    for (const sceneId of shot.scenes || []) {
+      const scene = scenes.find(s => s.id === sceneId);
+      if (scene?.imageUrl) {
+        referenceImages.push(scene.imageUrl);
+      }
+    }
+    for (const propId of shot.props || []) {
+      const prop = props?.find(p => p.id === propId);
+      if (prop?.imageUrl) {
+        referenceImages.push(prop.imageUrl);
+      }
+    }
+
     // 优先使用专用图片提示词
     if (shot.imagePrompt) {
+      let prompt = shot.imagePrompt;
+
+      // 替换 @mentions 为资源描述
+      prompt = this.replaceMentionsWithDescriptions(prompt, characters, scenes, props);
+
       const stylePrefix = getThemeStylePrefix(this.theme, this.stylePrompt);
       if (stylePrefix) {
-        return `${stylePrefix.replace(/,\s*$/, '')}, ${shot.imagePrompt}`;
+        prompt = `${stylePrefix.replace(/,\s*$/, '')}, ${prompt}`;
       }
-      return shot.imagePrompt;
+      return { prompt, referenceImages };
     }
 
     // 回退到旧逻辑（兼容旧数据）
@@ -232,16 +270,71 @@ export class ShotGenerationService {
     // 添加通用质量词
     parts.push('cinematic lighting, high quality, 4k, detailed');
 
-    return parts.join(', ');
+    return { prompt: parts.join(', '), referenceImages };
   }
 
-  private async callTTI(prompt: string, onProgress?: (progress: number) => void): Promise<string> {
+  /**
+   * 替换提示词中的 @mentions 为资源描述
+   * 格式: @char_xxx -> [角色名: 角色描述]
+   */
+  private replaceMentionsWithDescriptions(
+    prompt: string,
+    characters: Character[],
+    scenes: Scene[],
+    props?: Prop[]
+  ): string {
+    const mentions = parseMentions(prompt);
+    let result = prompt;
+
+    // 按位置倒序替换，避免位置偏移
+    const sortedMentions = [...mentions].sort((a, b) => b.from - a.from);
+
+    for (const mention of sortedMentions) {
+      let replacement = '';
+
+      if (mention.type === 'char') {
+        const char = characters.find(
+          c => c.id === mention.id || c.sora2CharacterId === mention.id
+        );
+        if (char) {
+          replacement = `[${char.name}: ${char.prompt || char.description || char.appearance || ''}]`;
+        }
+      } else if (mention.type === 'scene') {
+        const scene = scenes.find(s => s.id === mention.id);
+        if (scene) {
+          replacement = `[${scene.name}: ${scene.prompt || scene.description || ''}]`;
+        }
+      } else if (mention.type === 'prop') {
+        const prop = props?.find(
+          p => p.id === mention.id || p.sora2PropId === mention.id
+        );
+        if (prop) {
+          replacement = `[${prop.name}: ${prop.prompt || prop.description || ''}]`;
+        }
+      }
+
+      if (replacement) {
+        result = result.slice(0, mention.from) + replacement + result.slice(mention.to);
+      }
+    }
+
+    return result;
+  }
+
+  private async callTTI(
+    prompt: string,
+    referenceImages?: string[],
+    onProgress?: (progress: number) => void
+  ): Promise<string> {
     if (!this.ttiConfig) {
       throw new Error('TTI 配置未设置');
     }
 
     const provider = createTTIProvider(this.ttiConfig);
-    const result = await provider.generateImage(prompt);
+
+    // 构建生成选项，包含参考图
+    const options = referenceImages?.length ? { referenceImages } : undefined;
+    const result = await provider.generateImage(prompt, options);
 
     if (typeof result === 'object' && result.path) {
       return result.path;

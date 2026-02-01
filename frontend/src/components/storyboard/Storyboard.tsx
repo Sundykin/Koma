@@ -31,6 +31,7 @@ import { StoryboardLayout } from './StoryboardLayout';
 import { StoryboardStudio } from './StoryboardStudio';
 import { ShotListEditor } from './ShotListEditor';
 import { ShotAssetPresetModal } from './ShotAssetPresetModal';
+import { useShotAssetSync } from '../../hooks/useShotAssetSync';
 import './Storyboard.css';
 import './ShotListEditor.css';
 
@@ -399,37 +400,89 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     saveAllShots(updatedShots);
   }, [shots, saveAllShots]);
 
-  // 文生图提示词变更
+  // 资产同步 Hook
+  const assets = useMemo(() => ({ characters, scenes, props }), [characters, scenes, props]);
+  const { syncFromPrompt, handleAssetChange } = useShotAssetSync(assets);
+
+  // 文生图提示词变更 - 同时同步资产选择
   const handleImagePromptChange = useCallback((shotId: string, imagePrompt: string) => {
+    const shot = shots.find(s => s.id === shotId);
+    if (!shot) return;
+
+    // 解析提示词中的 @mentions，同步到资产选择
+    const syncState = syncFromPrompt(imagePrompt);
+
     const updatedShots = shots.map(s =>
-      s.id === shotId ? { ...s, imagePrompt } : s
+      s.id === shotId ? {
+        ...s,
+        imagePrompt,
+        characters: syncState.selectedCharacters,
+        scenes: syncState.selectedScenes,
+        props: syncState.selectedProps,
+      } : s
     );
     saveAllShots(updatedShots);
-  }, [shots, saveAllShots]);
+  }, [shots, saveAllShots, syncFromPrompt]);
 
-  // 图生视频提示词变更
+  // 图生视频提示词变更 - 同时同步资产选择
   const handleVideoPromptChange = useCallback((shotId: string, videoPrompt: string) => {
+    const shot = shots.find(s => s.id === shotId);
+    if (!shot) return;
+
+    // 解析提示词中的 @mentions，同步到资产选择
+    const syncState = syncFromPrompt(videoPrompt);
+
     const updatedShots = shots.map(s =>
-      s.id === shotId ? { ...s, videoPrompt } : s
+      s.id === shotId ? {
+        ...s,
+        videoPrompt,
+        characters: syncState.selectedCharacters,
+        scenes: syncState.selectedScenes,
+        props: syncState.selectedProps,
+      } : s
     );
     saveAllShots(updatedShots);
-  }, [shots, saveAllShots]);
+  }, [shots, saveAllShots, syncFromPrompt]);
 
-  // 角色变更
+  // 角色变更 - 同时更新提示词中的 @mentions
   const handleCharactersChange = useCallback((shotId: string, characterIds: string[]) => {
-    const updatedShots = shots.map(s =>
-      s.id === shotId ? { ...s, characters: characterIds } : s
-    );
-    saveAllShots(updatedShots);
-  }, [shots, saveAllShots]);
+    const shot = shots.find(s => s.id === shotId);
+    if (!shot) return;
 
-  // 场景变更
-  const handleScenesChange = useCallback((shotId: string, sceneIds: string[]) => {
+    // 更新图像提示词中的角色 mentions
+    const newImagePrompt = handleAssetChange('character', characterIds, shot.imagePrompt || '', assets);
+    // 更新视频提示词中的角色 mentions
+    const newVideoPrompt = handleAssetChange('character', characterIds, shot.videoPrompt || '', assets);
+
     const updatedShots = shots.map(s =>
-      s.id === shotId ? { ...s, scenes: sceneIds } : s
+      s.id === shotId ? {
+        ...s,
+        characters: characterIds,
+        imagePrompt: newImagePrompt,
+        videoPrompt: newVideoPrompt,
+      } : s
     );
     saveAllShots(updatedShots);
-  }, [shots, saveAllShots]);
+  }, [shots, saveAllShots, handleAssetChange, assets]);
+
+  // 场景变更 - 同时更新提示词中的 @mentions
+  const handleScenesChange = useCallback((shotId: string, sceneIds: string[]) => {
+    const shot = shots.find(s => s.id === shotId);
+    if (!shot) return;
+
+    const newImagePrompt = handleAssetChange('scene', sceneIds, shot.imagePrompt || '', assets);
+    const newVideoPrompt = handleAssetChange('scene', sceneIds, shot.videoPrompt || '', assets);
+
+    const updatedShots = shots.map(s =>
+      s.id === shotId ? {
+        ...s,
+        scenes: sceneIds,
+        imagePrompt: newImagePrompt,
+        videoPrompt: newVideoPrompt,
+      } : s
+    );
+    saveAllShots(updatedShots);
+  }, [shots, saveAllShots, handleAssetChange, assets]);
 
   // 参考图变更
   const handleReferenceImagesChange = useCallback((shotId: string, referenceImages: string[], selectedReferenceIndex: number) => {
@@ -439,13 +492,24 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     saveAllShots(updatedShots);
   }, [shots, saveAllShots]);
 
-  // 道具变更
+  // 道具变更 - 同时更新提示词中的 @mentions
   const handlePropsChange = useCallback((shotId: string, propIds: string[]) => {
+    const shot = shots.find(s => s.id === shotId);
+    if (!shot) return;
+
+    const newImagePrompt = handleAssetChange('prop', propIds, shot.imagePrompt || '', assets);
+    const newVideoPrompt = handleAssetChange('prop', propIds, shot.videoPrompt || '', assets);
+
     const updatedShots = shots.map(s =>
-      s.id === shotId ? { ...s, props: propIds } : s
+      s.id === shotId ? {
+        ...s,
+        props: propIds,
+        imagePrompt: newImagePrompt,
+        videoPrompt: newVideoPrompt,
+      } : s
     );
     saveAllShots(updatedShots);
-  }, [shots, saveAllShots]);
+  }, [shots, saveAllShots, handleAssetChange, assets]);
 
   // 多图片变更
   const handleImagesChange = useCallback((shotId: string, imagePaths: string[], currentImageIndex: number) => {

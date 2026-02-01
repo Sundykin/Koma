@@ -3,7 +3,7 @@
  */
 
 // 渠道类型
-export type ChannelKind = 'tti' | 'itv' | 'tts';
+export type ChannelKind = 'tti' | 'itv' | 'tts' | 'image-hosting';
 
 // 渠道能力
 export type ChannelCapability = 'tti' | 'itv' | 'tts' | 'character-extract' | 'remix';

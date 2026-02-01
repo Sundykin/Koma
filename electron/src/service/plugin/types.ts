@@ -27,7 +27,7 @@ export interface PluginEntry {
 
 // Provider 元数据
 export interface ProviderMeta {
-  channelType: 'tti' | 'itv' | 'tts' | 'llm';
+  channelType: 'tti' | 'itv' | 'tts' | 'llm' | 'image-hosting';
   capabilities: string[];
   configPanel?: boolean;
   defaultConfig?: Record<string, unknown>;
