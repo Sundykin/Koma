@@ -4,7 +4,6 @@
  */
 
 import type { PluginAPI, ProviderDefinition, ProviderContext } from '@komastudio/plugin-sdk';
-import '@komastudio/plugin-sdk';
 
 const React = window.React;
 const { useState, useEffect, useCallback } = React;

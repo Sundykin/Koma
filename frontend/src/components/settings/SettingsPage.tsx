@@ -38,6 +38,7 @@ import { TTSConfigManager } from './TTSConfigManager';
 import { VisualStyleManager } from './VisualStyleManager';
 import { PromptStudio } from './PromptStudio';
 import { PluginManager } from '../plugins';
+import { MCPConfigManager } from './MCPConfigManager';
 
 const { Sider, Content } = Layout;
 const { Title, Text } = Typography;
@@ -225,6 +226,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
       children: [
         { key: 'system-storage', icon: <FolderOutlined />, label: '存储与缓存' },
         { key: 'system-plugins', icon: <BlockOutlined />, label: '插件管理' },
+        { key: 'system-mcp', icon: <ApiOutlined />, label: '扩展工具 (MCP)' },
       ]
     }
   ];
@@ -283,6 +285,8 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
         );
       case 'system-plugins':
         return <PluginManager />;
+      case 'system-mcp':
+        return <MCPConfigManager onConfigChange={handleConfigChange} />;
       default:
         return null;
     }

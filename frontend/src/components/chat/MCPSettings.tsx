@@ -14,6 +14,7 @@ import {
   message,
   Popconfirm,
   Tag,
+  Upload,
 } from 'antd';
 import {
   PlusOutlined,
@@ -24,8 +25,9 @@ import {
   CloseCircleOutlined,
   LoadingOutlined,
   ToolOutlined,
+  ImportOutlined,
 } from '@ant-design/icons';
-import type { MCPServerConfig } from '../../chat/plugins/MCPPlugin';
+import type { MCPServerConfig } from '../../types/mcp';
 import styles from './MCPSettings.module.css';
 
 interface MCPSettingsProps {
@@ -126,6 +128,32 @@ export const MCPSettings: React.FC<MCPSettingsProps> = ({
     const newConfigs = configs.filter(c => c.name !== name);
     onSave(newConfigs);
     message.success('配置已删除');
+  }, [configs, onSave]);
+
+  // 导入 JSON 配置
+  const handleImport = useCallback(async (file: File) => {
+    try {
+      const text = await file.text();
+      const json = JSON.parse(text);
+
+      if (!Array.isArray(json)) {
+        throw new Error('格式错误: 根节点应为数组');
+      }
+
+      const newConfigs = json.filter((item: any) =>
+        item.name && item.transport && !configs.some(c => c.name === item.name)
+      );
+
+      if (newConfigs.length === 0) {
+        message.warning('没有发现有效的新配置');
+        return;
+      }
+
+      onSave([...configs, ...newConfigs]);
+      message.success(`成功导入 ${newConfigs.length} 个配置`);
+    } catch (e) {
+      message.error('导入失败: ' + (e instanceof Error ? e.message : '未知错误'));
+    }
   }, [configs, onSave]);
 
   // 测试连接
@@ -267,13 +295,24 @@ export const MCPSettings: React.FC<MCPSettingsProps> = ({
       {!showForm && (
         <>
           <div className={styles.header}>
-            <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              onClick={handleAdd}
-            >
-              添加服务器
-            </Button>
+            <Space>
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
+                onClick={handleAdd}
+              >
+                添加服务器
+              </Button>
+              <Upload
+                beforeUpload={(file) => { handleImport(file); return false; }}
+                showUploadList={false}
+                accept=".json"
+              >
+                <Button icon={<ImportOutlined />}>
+                  导入配置
+                </Button>
+              </Upload>
+            </Space>
           </div>
           <Table
             dataSource={configs}

@@ -398,12 +398,20 @@ class MCPConnectionImpl {
         inputSchema?: Record<string, unknown>;
       }> };
 
-      this.tools = (result.tools || []).map(tool => ({
-        name: tool.name,
-        description: tool.description || '',
-        inputSchema: tool.inputSchema || {},
-        serverName: this.config.name,
-      }));
+      // 使用 pluginId 或 serverName 作为命名空间
+      const namespace = this.config.pluginId || this.config.name;
+
+      this.tools = (result.tools || []).map(tool => {
+        // 强制命名空间：pluginId:toolName 或 serverName:toolName
+        const namespacedName = tool.name.includes(':') ? tool.name : `${namespace}:${tool.name}`;
+        return {
+          name: namespacedName,
+          description: tool.description || '',
+          inputSchema: tool.inputSchema || {},
+          serverName: this.config.name,
+          pluginId: this.config.pluginId,
+        };
+      });
     } catch (err) {
       console.error(`[MCP ${this.config.name}] Failed to list tools:`, err);
       this.tools = [];
@@ -432,7 +440,9 @@ class MCPConnectionImpl {
   }
 
   async callTool(name: string, args: Record<string, unknown>): Promise<unknown> {
-    const response = await this.send('tools/call', { name, arguments: args });
+    // 如果工具名包含命名空间，去掉前缀再调用 MCP 服务器
+    const actualName = name.includes(':') ? name.split(':').slice(1).join(':') : name;
+    const response = await this.send('tools/call', { name: actualName, arguments: args });
     if (response.error) {
       throw new Error(response.error.message);
     }

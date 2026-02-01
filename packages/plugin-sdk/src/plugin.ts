@@ -2,6 +2,10 @@
  * 插件系统类型定义
  */
 import type { ComponentType } from 'react';
+import type { MCPMeta } from './mcp';
+import type { AgentMeta } from './agent';
+
+export type { MCPMeta, AgentMeta };
 
 // 插件分类
 export type PluginCategory = 'provider' | 'global' | 'tool' | 'mcp' | 'agent';
@@ -93,6 +97,8 @@ export interface PluginManifest {
   globalMeta?: GlobalPluginMeta;
   providerMeta?: ProviderPluginMeta;
   toolMeta?: ToolPluginMeta;
+  mcpMeta?: MCPMeta;
+  agentMeta?: AgentMeta;
 
   panels?: CustomPanelDefinition[];
 }

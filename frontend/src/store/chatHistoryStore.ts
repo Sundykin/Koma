@@ -10,6 +10,8 @@ import { extractThinkFromText } from '../chat/utils/messageUtils';
 // 当前 schema 版本
 const SCHEMA_VERSION = 2;
 
+const MAX_TITLE_LENGTH = 30;
+
 // 会话元数据
 export interface SessionMeta {
   id: string;
@@ -47,14 +49,42 @@ interface ChatHistoryState {
 const SESSIONS_KEY = 'chat_sessions';
 const SESSION_DATA_PREFIX = 'chat_session_';
 
-// 生成会话标题
+// 规范化标题
+function normalizeTitle(text: string): string {
+  const cleaned = text.replace(/\s+/g, ' ').trim();
+  if (!cleaned) return '';
+  return cleaned.length > MAX_TITLE_LENGTH
+    ? `${cleaned.slice(0, MAX_TITLE_LENGTH)}...`
+    : cleaned;
+}
+
+// 提取消息文本内容
+function extractMessageText(message: ChatMessage): string {
+  if (typeof message.content === 'string') {
+    if (message.role === 'assistant') {
+      return extractThinkFromText(message.content).content;
+    }
+    return message.content;
+  }
+  return message.content.reduce((acc, part) => {
+    if (part.type === 'text') {
+      return acc ? `${acc} ${part.text}` : part.text;
+    }
+    return acc;
+  }, '');
+}
+
+// 生成会话标题（优先使用 AI 回答）
 function generateTitle(messages: ChatMessage[]): string {
+  const firstAssistantMsg = messages.find(m => m.role === 'assistant');
+  if (firstAssistantMsg) {
+    const title = normalizeTitle(extractMessageText(firstAssistantMsg));
+    if (title) return title;
+  }
   const firstUserMsg = messages.find(m => m.role === 'user');
   if (firstUserMsg) {
-    const content = typeof firstUserMsg.content === 'string'
-      ? firstUserMsg.content
-      : firstUserMsg.content.find(p => p.type === 'text')?.text || '';
-    return content.slice(0, 30) + (content.length > 30 ? '...' : '');
+    const title = normalizeTitle(extractMessageText(firstUserMsg));
+    if (title) return title;
   }
   return '新对话';
 }

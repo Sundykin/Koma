@@ -4,7 +4,7 @@
  */
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Select, message, Button, Tooltip, Spin } from 'antd';
-import { ClearOutlined, SettingOutlined, HistoryOutlined, ApiOutlined, RobotOutlined } from '@ant-design/icons';
+import { ClearOutlined, SettingOutlined, HistoryOutlined, ApiOutlined, RobotOutlined, TeamOutlined } from '@ant-design/icons';
 import { Input } from 'antd';
 import { ChatRenderer } from '../../chat';
 import { useChat, type SessionConfig, type ContentPart, chatIPC } from '../../chat/ipc';
@@ -238,12 +238,17 @@ export const ChatPage: React.FC = () => {
     message.success('已创建新对话');
   }, [createHistorySession, setCurrentSession, clear]);
 
-  // 保存当前会话
+  // 保存当前会话（懒创建会话 ID）
   useEffect(() => {
-    if (messages.length > 0 && currentSessionId) {
-      saveMessages(currentSessionId, messages, systemPrompt);
+    if (messages.length === 0) return;
+
+    // 如果没有当前会话 ID，自动创建
+    const sessionIdToSave = currentSessionId ?? createHistorySession();
+    if (!currentSessionId) {
+      setCurrentSession(sessionIdToSave);
     }
-  }, [messages, currentSessionId, systemPrompt, saveMessages]);
+    saveMessages(sessionIdToSave, messages, systemPrompt);
+  }, [messages, currentSessionId, systemPrompt, saveMessages, createHistorySession, setCurrentSession]);
 
   // MCP 配置保存
   const handleSaveMcpConfigs = useCallback(async (configs: MCPServerConfig[]) => {
@@ -339,6 +344,20 @@ export const ChatPage: React.FC = () => {
         {!isReady && <Spin size="small" style={{ marginLeft: 8 }} />}
       </div>
       <div className={styles.toolbarRight}>
+        <Tooltip title="多智能体编排">
+          <Button
+            type="text"
+            icon={<TeamOutlined />}
+            onClick={async () => {
+              if (!isReady) {
+                message.warning('会话尚未就绪');
+                return;
+              }
+              await updateConfig({ agentMode: 'orchestrated' });
+              message.success('已启用多智能体编排模式');
+            }}
+          />
+        </Tooltip>
         <Tooltip title="智能体模板">
           <Button
             type="text"
@@ -372,22 +391,24 @@ export const ChatPage: React.FC = () => {
     </div>
   );
 
+  // 设置面板（独立于消息状态）
+  const settingsPanel = showSettings ? (
+    <div className={styles.settingsPanel}>
+      <div className={styles.settingsItem}>
+        <label>系统提示词</label>
+        <TextArea
+          value={systemPrompt}
+          onChange={(e) => setSystemPrompt(e.target.value)}
+          placeholder="设置 AI 的角色和行为..."
+          autoSize={{ minRows: 2, maxRows: 4 }}
+        />
+      </div>
+    </div>
+  ) : null;
+
   // 消息列表
   const messageList = (
     <>
-      {showSettings && (
-        <div className={styles.settingsPanel}>
-          <div className={styles.settingsItem}>
-            <label>系统提示词</label>
-            <TextArea
-              value={systemPrompt}
-              onChange={(e) => setSystemPrompt(e.target.value)}
-              placeholder="设置 AI 的角色和行为..."
-              autoSize={{ minRows: 2, maxRows: 4 }}
-            />
-          </div>
-        </div>
-      )}
       <ChatRenderer
         messages={messages}
         streaming={isStreaming}
@@ -424,6 +445,7 @@ export const ChatPage: React.FC = () => {
         hasMessages={messages.length > 0}
         sidebar={sidebar}
         toolbar={toolbar}
+        settingsPanel={settingsPanel}
         messageList={messageList}
         composer={composer}
       />

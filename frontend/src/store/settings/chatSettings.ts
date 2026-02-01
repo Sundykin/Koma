@@ -2,7 +2,7 @@
  * Chat 设置（MCP & Agent）
  */
 import { loadSettings, saveSettings } from './core';
-import type { MCPServerConfig } from '../../chat/plugins/MCPPlugin';
+import type { MCPServerConfig } from '../../types/mcp';
 import type { AgentTemplate } from '../../components/chat/AgentTemplates';
 
 export async function getMCPServers(): Promise<MCPServerConfig[]> {

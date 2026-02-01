@@ -78,15 +78,13 @@
 /* 消息区域 */
 .messageArea {
   flex: 1;
-  overflow: hidden;
+  overflow-y: auto;
   min-height: 0;
+  padding-bottom: 20px;
 }
 
 /* 输入框容器 */
 .composerContainer {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
   width: 100%;
   max-width: 800px;
   padding: 0 24px;
@@ -97,15 +95,17 @@
 
 /* 居中模式（Hero） */
 .composerCenter {
+  position: absolute;
+  left: 50%;
   top: 55%;
   transform: translate(-50%, -50%);
 }
 
 /* 底部模式（Chat） */
 .composerBottom {
-  top: auto;
-  bottom: 0;
-  transform: translateX(-50%);
+  position: relative;
+  margin: 0 auto;
+  transform: none;
   padding-bottom: 24px;
   background: linear-gradient(to top, #18181b 60%, transparent);
   padding-top: 40px;

@@ -1,6 +1,7 @@
 /**
  * MCP 注册表
  * 管理 MCP 服务器、工具、资源
+ * 工具命名强制使用 pluginId:toolName 格式
  */
 import type {
   MCPServerDefinition,
@@ -11,17 +12,38 @@ import type {
   IRegistry,
 } from '../types';
 
+// 工具命名空间分隔符
+const NAMESPACE_SEPARATOR = ':';
+
+// 生成命名空间化的工具名
+function namespacedToolName(pluginId: string | undefined, toolName: string): string {
+  if (!pluginId) {
+    throw new Error(`Tool "${toolName}" must have a pluginId`);
+  }
+  // 如果已经包含命名空间，直接返回
+  if (toolName.includes(NAMESPACE_SEPARATOR)) {
+    return toolName;
+  }
+  return `${pluginId}${NAMESPACE_SEPARATOR}${toolName}`;
+}
+
 // 工具注册表
 class MCPToolRegistry implements IRegistry<MCPToolHandler> {
   private tools = new Map<string, MCPToolHandler>();
 
   register(handler: MCPToolHandler): void {
-    const name = handler.definition.name;
-    if (this.tools.has(name)) {
-      console.warn(`[MCPToolRegistry] Tool "${name}" already registered, overwriting`);
+    const pluginId = handler.definition.pluginId;
+    const originalName = handler.definition.name;
+
+    // 强制命名空间
+    const namespacedName = namespacedToolName(pluginId, originalName);
+    handler.definition.name = namespacedName;
+
+    if (this.tools.has(namespacedName)) {
+      console.warn(`[MCPToolRegistry] Tool "${namespacedName}" already registered, overwriting`);
     }
-    this.tools.set(name, handler);
-    console.log(`[MCPToolRegistry] Registered tool: ${name}`);
+    this.tools.set(namespacedName, handler);
+    console.log(`[MCPToolRegistry] Registered tool: ${namespacedName}`);
   }
 
   unregister(name: string): void {

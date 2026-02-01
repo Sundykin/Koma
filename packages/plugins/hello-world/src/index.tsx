@@ -4,7 +4,6 @@
  */
 
 import type { PluginAPI } from '@komastudio/plugin-sdk';
-import '@komastudio/plugin-sdk';
 
 const { useState, useEffect } = window.React;
 const { Card, Button, Typography, Space, Statistic, Divider, Tag } = window.antd;

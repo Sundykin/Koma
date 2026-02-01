@@ -12,6 +12,7 @@ interface ChatLayoutProps {
   messageList: React.ReactNode;
   composer: React.ReactNode;
   toolbar?: React.ReactNode;
+  settingsPanel?: React.ReactNode;
   welcomeTitle?: string;
   welcomeSubtitle?: string;
 }
@@ -22,6 +23,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
   messageList,
   composer,
   toolbar,
+  settingsPanel,
   welcomeTitle = 'Koma AI',
   welcomeSubtitle = '有什么可以帮助你的？',
 }) => {
@@ -50,6 +52,9 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
 
         {/* 内容区域 */}
         <div className={styles.content}>
+          {/* 设置面板（独立于消息状态） */}
+          {settingsPanel}
+
           {/* Hero 欢迎区域（无消息时显示） */}
           {!hasMessages && (
             <div className={styles.heroArea}>

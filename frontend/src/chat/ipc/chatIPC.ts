@@ -37,6 +37,8 @@ export interface ChatMessage {
   timestamp: number;
 }
 
+export type AgentMode = 'single' | 'orchestrated';
+
 export interface SessionConfig {
   systemPrompt?: string;
   temperature?: number;
@@ -46,6 +48,8 @@ export interface SessionConfig {
   modelName?: string;
   apiKey?: string;
   baseUrl?: string;
+  agentMode?: AgentMode;
+  requiredCapabilities?: string[];
 }
 
 export interface SessionSummary {

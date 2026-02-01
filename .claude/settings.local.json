@@ -78,7 +78,11 @@
       "WebFetch(domain:docs.langchain.com)",
       "Bash(pnpm add:*)",
       "Bash(npm run build:frontend:*)",
-      "Bash(npm run build:electron:*)"
+      "Bash(npm run build:electron:*)",
+      "Bash(xargs cat:*)",
+      "Bash(C:/Users/user/.claude/bin/codeagent-wrapper.exe --backend gemini - \"E:\\\\Workspace\\\\2025\\\\代码备份\\\\Koma\" <<'EOF'\nROLE_FILE: C:/Users/user/.claude/.ccg/prompts/gemini/analyzer.md\n<TASK>\n需求：修复聊天页面多个 UI/UX 问题\n\n已分析出的问题清单：\n1. 默认对话无法存储 - currentSessionId 为 null 时消息不保存\n2. 对话区域被输入框遮挡 - messageArea 没有为底部 composer 预留空间\n3. 对话气泡样式不符合深色主题 - ChatRenderer.module.css 使用浅色 \\(#f5f5f5\\)\n4. 智能体模板卡片高度不统一 - 预设和自定义卡片高度不一致\n5. 设置按钮无效 - showSettings 面板在 messageList 内，无消息时不渲染\n6. MCP 服务无 JSON 导入功能 - 需要添加 JSON 批量配置导入\n7. 输入框垂直对齐问题 - inputRow 使用 flex-end 导致不居中\n8. 多智能体编排无入口 - 需要在工具栏添加入口按钮\n\n项目上下文：\n- 深色主题：#18181b \\(背景\\), #27272a \\(卡片\\), #3f3f46 \\(边框\\), #10b981 \\(主色\\)\n- 使用 Ant Design 组件库\n- CSS Module 样式\n\n请分析：\n1. 每个问题的 UI/UX 最佳实践解决方案\n2. 样式统一性建议（与项目深色主题一致）\n3. 交互体验优化建议\n</TASK>\nOUTPUT: 结构化分析报告，包含每个问题的解决方案、CSS 修改建议、组件改动建议\nEOF)",
+      "Bash(node:*)",
+      "Bash(copy:*)"
     ]
   }
 }

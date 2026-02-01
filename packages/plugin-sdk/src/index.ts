@@ -36,7 +36,35 @@ export type {
   ProviderPluginMeta,
   ToolPluginMeta,
   CustomPanelDefinition,
+  // MCP/Agent 元数据（新增）
+  MCPMeta,
+  AgentMeta,
 } from './plugin';
+
+// MCP 相关类型（新增）
+export type {
+  MCPTransportType,
+  MCPToolDefinition,
+  MCPToolHandler,
+  MCPResourceDefinition,
+  MCPResourceHandler,
+  MCPServerDefinition,
+} from './mcp';
+
+// Agent 相关类型（新增）
+export type {
+  AgentInput,
+  AgentEvent,
+  WorkerAgentDefinition,
+} from './agent';
+
+// 后端插件 API 类型（新增）
+export type {
+  ElectronPluginAPI,
+  PluginBackendModule,
+  SpawnOptions,
+  ChildProcessHandle,
+} from './backend';
 
 // Provider 相关类型
 export type {

@@ -1,0 +1,68 @@
+.card {
+  marginTop: 12px;
+  border: 1px solid #ffc069;
+  background: #fffbe6;
+}
+
+.card :global(.ant-card-head) {
+  background: #fff7e6;
+  borderBottom: 1px solid #ffc069;
+}
+
+.warningIcon {
+  color: #fa8c16;
+  fontSize: 16px;
+}
+
+.callList {
+  display: flex;
+  flexDirection: column;
+  gap: 12px;
+}
+
+.callItem {
+  padding: 12px;
+  background: white;
+  border: 1px solid #f0f0f0;
+  borderRadius: 8px;
+}
+
+.callHeader {
+  display: flex;
+  justifyContent: space-between;
+  alignItems: center;
+  marginBottom: 4px;
+}
+
+.toolInfo {
+  display: flex;
+  alignItems: center;
+  gap: 8px;
+}
+
+.toolIcon {
+  color: #1890ff;
+}
+
+.namespace {
+  fontSize: 10px;
+  padding: 0 4px;
+  lineHeight: 1.4;
+}
+
+.args {
+  margin: 0;
+  padding: 8px;
+  background: #f5f5f5;
+  borderRadius: 4px;
+  fontSize: 12px;
+  overflowX: auto;
+  maxHeight: 120px;
+  overflowY: auto;
+}
+
+.hint {
+  marginTop: 12px;
+  marginBottom: 0;
+  fontSize: 12px;
+}

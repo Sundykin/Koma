@@ -22,7 +22,8 @@
   ],
 
   "entry": {
-    "frontend": "./dist/ui/main.js"
+    "frontend": "./dist/ui/main.js",
+    "backend": "./dist/backend.js"
   },
 
   "providerMeta": {

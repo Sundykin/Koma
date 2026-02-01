@@ -4,6 +4,6 @@
 export { PluginManager } from './PluginManager';
 export { FunctionCallPlugin } from './FunctionCallPlugin';
 export { FileUploadPlugin } from './FileUploadPlugin';
-export { MCPPlugin } from './MCPPlugin';
 export type { ChatPlugin, PluginContext, ToolHandler } from './types';
-export type { MCPServerConfig } from './MCPPlugin';
+// MCPServerConfig 类型已迁移到 types/mcp.ts
+export type { MCPServerConfig } from '../../types/mcp';

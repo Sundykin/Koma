@@ -23,6 +23,48 @@ import type {
 import { providerRegistry, mcpRegistry, agentRegistry } from './registries';
 import { syncProviders, syncAllMCP, capabilityRegistry } from './capability';
 
+// Provider 配置存储
+class ProviderConfigStore {
+  private configPath: string = '';
+  private configs: Map<string, Record<string, unknown>> = new Map();
+  private initialized = false;
+
+  async init(): Promise<void> {
+    if (this.initialized) return;
+    this.configPath = path.join(app.getPath('userData'), 'provider-configs.json');
+    await this.load();
+    this.initialized = true;
+  }
+
+  private async load(): Promise<void> {
+    try {
+      const content = await fs.readFile(this.configPath, 'utf-8');
+      const data = JSON.parse(content);
+      this.configs = new Map(Object.entries(data));
+    } catch {
+      this.configs = new Map();
+    }
+  }
+
+  private async save(): Promise<void> {
+    const data = Object.fromEntries(this.configs);
+    await fs.writeFile(this.configPath, JSON.stringify(data, null, 2), 'utf-8');
+  }
+
+  async get(type: string): Promise<Record<string, unknown> | null> {
+    await this.init();
+    return this.configs.get(type) || null;
+  }
+
+  async set(type: string, config: Record<string, unknown>): Promise<void> {
+    await this.init();
+    this.configs.set(type, config);
+    await this.save();
+  }
+}
+
+const providerConfigStore = new ProviderConfigStore();
+
 class ElectronPluginRuntime extends EventEmitter {
   private plugins = new Map<string, LoadedPlugin>();
   private pluginsDir: string = '';
@@ -297,6 +339,12 @@ class ElectronPluginRuntime extends EventEmitter {
             return providerRegistry.listByKind(kind as any);
           }
           return providerRegistry.list();
+        },
+        getProviderConfig: async (type: string) => {
+          return providerConfigStore.get(type);
+        },
+        updateProviderConfig: async (type: string, config: Record<string, unknown>) => {
+          await providerConfigStore.set(type, config);
         },
       },
 

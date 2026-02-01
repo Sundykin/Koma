@@ -24,7 +24,6 @@ export {
   PluginManager,
   FunctionCallPlugin,
   FileUploadPlugin,
-  MCPPlugin,
 } from './plugins';
 export type { ChatPlugin, PluginContext, ToolHandler, MCPServerConfig } from './plugins';
 

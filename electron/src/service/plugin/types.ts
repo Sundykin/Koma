@@ -207,6 +207,8 @@ export interface ElectronPluginAPI {
     registerProvider: (def: ProviderDefinition) => Promise<void>;
     unregisterProvider: (type: string) => Promise<void>;
     listProviders: (kind?: string) => ProviderDefinition[];
+    getProviderConfig: (type: string) => Promise<Record<string, unknown> | null>;
+    updateProviderConfig: (type: string, config: Record<string, unknown>) => Promise<void>;
   };
 
   // MCP 能力
