@@ -4,6 +4,7 @@
  */
 import type { TrackLine, TrackItem, VideoTrackItem, AudioTrackItem, ImageTrackItem } from '../types/track';
 import { KeyframeInterpolator } from '../engine/KeyframeInterpolator';
+import { ignoreError } from '../utils/errorHandler';
 
 export interface ExportConfig {
   width: number;
@@ -393,7 +394,7 @@ export class ExportRenderer {
       return this.config.outputPath;
     } catch (err) {
       // 清理临时目录
-      await ffmpegAPI.cleanupTemp(`${tempDir}/${exportId}`).catch(() => {});
+      await ffmpegAPI.cleanupTemp(`${tempDir}/${exportId}`).catch(ignoreError('ExportRenderer:cleanup'));
       throw err;
     }
   }

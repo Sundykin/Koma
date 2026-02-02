@@ -4,6 +4,7 @@
  */
 import type { TrackLine, TrackItem, VideoTrackItem, AudioTrackItem, ImageTrackItem, TrackKeyframe } from '../types/track';
 import { KeyframeInterpolator } from './KeyframeInterpolator';
+import { ignoreError } from '../utils/errorHandler';
 
 export interface PlaybackConfig {
   fps: number;
@@ -473,7 +474,7 @@ export class PlaybackEngine {
           const internalTime = (this.currentFrame - item.start + item.offsetL) / this.config.fps;
           audio.currentTime = internalTime;
           audio.volume = audioItem.volume ?? 1;
-          audio.play().catch(() => {});
+          audio.play().catch(ignoreError('PlaybackEngine:audioPlay'));
         }
       }
     }

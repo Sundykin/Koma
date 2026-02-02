@@ -3,6 +3,7 @@
  * 管理多轨道音频播放和同步
  */
 import type { Clip, Track, Timeline } from '../types';
+import { ignoreError } from '../utils/errorHandler';
 
 interface AudioTrackState {
   clip: Clip;
@@ -107,7 +108,7 @@ export class AudioController {
 
         // 开始播放
         if (this.isPlaying && !state.isPlaying) {
-          audio.play().catch(() => {});
+          audio.play().catch(ignoreError('AudioController:play'));
           state.isPlaying = true;
         }
       } else {

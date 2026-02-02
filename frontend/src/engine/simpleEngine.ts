@@ -5,6 +5,7 @@
 
 import { Track, Clip, MediaType } from '../types/editor';
 import { getAnimatedProperties } from './simpleKeyframe';
+import { ignoreError } from '../utils/errorHandler';
 
 // ========== MediaEngine ==========
 export type EngineEventType = 'play' | 'pause' | 'seek' | 'timeUpdate' | 'ended' | 'rateChange';
@@ -300,7 +301,7 @@ export class SimpleVideoRenderer {
           }
           if (this.engine.isPlaying && video.paused) {
             video.playbackRate = this.engine.playRate;
-            video.play().catch(() => {});
+            video.play().catch(ignoreError('SimpleEngine:videoPlay'));
           } else if (!this.engine.isPlaying && !video.paused) {
             video.pause();
           }
@@ -609,7 +610,7 @@ export class SimpleAudioController {
       if (this.isClipActive(instance.clip, currentTime)) {
         this.syncMediaTime(instance, currentTime);
         if (this.engine.isPlaying && !instance.isShared) {
-          instance.element.play().catch(() => {});
+          instance.element.play().catch(ignoreError('SimpleEngine:mediaPlay'));
         }
       } else if (!instance.isShared) {
         instance.element.pause();
@@ -655,7 +656,7 @@ export class SimpleAudioController {
     instance.element.playbackRate = this.engine.playRate;
     // 共享的视频元素由 VideoRenderer 控制播放
     if (!instance.isShared) {
-      instance.element.play().catch(() => {});
+      instance.element.play().catch(ignoreError('SimpleEngine:instancePlay'));
     }
   }
 
