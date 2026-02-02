@@ -44,8 +44,29 @@ export interface WaveformOptions {
   backgroundColor?: string;
 }
 
+// 视频合成选项
+export interface ComposeVideoOptions {
+  frameDir: string;           // 帧文件目录
+  framePattern: string;       // 帧文件模式，如 'frame_%05d.png'
+  fps: number;
+  width: number;
+  height: number;
+  format: 'mp4' | 'webm' | 'gif';
+  videoCodec?: 'h264' | 'h265' | 'vp9';
+  videoBitrate: number;       // kbps
+  audioBitrate: number;       // kbps
+  audioTracks: Array<{
+    src: string;
+    start: number;            // 开始时间（秒）
+    duration: number;         // 持续时间（秒）
+    offset: number;           // 在输出中的偏移（秒）
+    volume: number;           // 音量 0-1
+  }>;
+  outputPath: string;
+}
+
 // 任务类型
-type TaskType = 'getInfo' | 'extractFrames' | 'waveform' | 'splitAudio' | 'export';
+type TaskType = 'getInfo' | 'extractFrames' | 'waveform' | 'splitAudio' | 'export' | 'composeVideo';
 
 // 任务定义
 interface Task {
@@ -201,6 +222,13 @@ export class FFmpegService {
   }
 
   /**
+   * 合成视频（图片序列 + 音频 -> 视频文件）
+   */
+  async composeVideo(options: ComposeVideoOptions, onProgress?: ProgressCallback): Promise<string> {
+    return this.queueTask<string>('composeVideo', options, onProgress);
+  }
+
+  /**
    * 添加任务到队列
    */
   private queueTask<T>(type: TaskType, args: any, onProgress?: ProgressCallback): Promise<T> {
@@ -242,6 +270,9 @@ export class FFmpegService {
           break;
         case 'splitAudio':
           result = await this.doSplitAudio(task.args.input, task.args.output);
+          break;
+        case 'composeVideo':
+          result = await this.doComposeVideo(task.args, task.onProgress);
           break;
         default:
           throw new Error(`Unknown task type: ${task.type}`);
@@ -414,6 +445,161 @@ export class FFmpegService {
   }
 
   /**
+   * 实际合成视频
+   */
+  private async doComposeVideo(options: ComposeVideoOptions, onProgress?: ProgressCallback): Promise<string> {
+    if (!this.ffmpegPath) {
+      throw new Error('FFmpeg not available');
+    }
+
+    const {
+      frameDir,
+      framePattern,
+      fps,
+      width,
+      height,
+      format,
+      videoCodec = 'h264',
+      videoBitrate,
+      audioBitrate,
+      audioTracks,
+      outputPath
+    } = options;
+
+    // 确保输出目录存在
+    await fs.promises.mkdir(path.dirname(outputPath), { recursive: true });
+
+    const args: string[] = [];
+    const filterInputs: string[] = [];
+    let inputIndex = 0;
+
+    // 输入图片序列
+    args.push('-framerate', fps.toString());
+    args.push('-i', path.join(frameDir, framePattern));
+    filterInputs.push(`[${inputIndex}:v]`);
+    inputIndex++;
+
+    // 添加音频输入
+    for (const audio of audioTracks) {
+      args.push('-i', audio.src);
+      inputIndex++;
+    }
+
+    // 构建滤镜图
+    const filterComplex: string[] = [];
+
+    // 视频缩放（确保尺寸正确）
+    filterComplex.push(`[0:v]scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2[vout]`);
+
+    // 音频混合
+    if (audioTracks.length > 0) {
+      const audioFilters: string[] = [];
+      for (let i = 0; i < audioTracks.length; i++) {
+        const audio = audioTracks[i];
+        const audioIdx = i + 1;
+        // 应用音量和延迟
+        audioFilters.push(`[${audioIdx}:a]volume=${audio.volume},adelay=${Math.round(audio.offset * 1000)}|${Math.round(audio.offset * 1000)}[a${i}]`);
+      }
+      filterComplex.push(...audioFilters);
+
+      // 混合所有音频
+      const mixInputs = audioTracks.map((_, i) => `[a${i}]`).join('');
+      filterComplex.push(`${mixInputs}amix=inputs=${audioTracks.length}:duration=longest[aout]`);
+    }
+
+    // 应用滤镜
+    if (filterComplex.length > 0) {
+      args.push('-filter_complex', filterComplex.join(';'));
+      args.push('-map', '[vout]');
+      if (audioTracks.length > 0) {
+        args.push('-map', '[aout]');
+      }
+    }
+
+    // 视频编码设置
+    if (format === 'mp4') {
+      const codec = videoCodec === 'h265' ? 'libx265' : 'libx264';
+      args.push('-c:v', codec);
+      args.push('-preset', 'medium');
+      args.push('-b:v', `${videoBitrate}k`);
+      args.push('-pix_fmt', 'yuv420p');
+      if (audioTracks.length > 0) {
+        args.push('-c:a', 'aac');
+        args.push('-b:a', `${audioBitrate}k`);
+      }
+    } else if (format === 'webm') {
+      args.push('-c:v', 'libvpx-vp9');
+      args.push('-b:v', `${videoBitrate}k`);
+      if (audioTracks.length > 0) {
+        args.push('-c:a', 'libopus');
+        args.push('-b:a', `${audioBitrate}k`);
+      }
+    } else if (format === 'gif') {
+      // GIF 需要特殊处理
+      args.push('-vf', `fps=${Math.min(fps, 15)},scale=${width}:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse`);
+    }
+
+    // 输出
+    args.push('-y', outputPath);
+
+    // 运行 FFmpeg
+    await this.runFFmpegWithProgress(args, onProgress);
+
+    return outputPath;
+  }
+
+  /**
+   * 运行 FFmpeg 命令（带进度回调）
+   */
+  private runFFmpegWithProgress(args: string[], onProgress?: ProgressCallback): Promise<string> {
+    return new Promise((resolve, reject) => {
+      console.log('[FFmpegService] Running:', this.ffmpegPath, args.join(' '));
+
+      const proc = spawn(this.ffmpegPath, args);
+      this.runningProcess = proc;
+
+      let stderr = '';
+      let totalDuration = 0;
+
+      proc.stderr?.on('data', (data) => {
+        const output = data.toString();
+        stderr += output;
+
+        // 解析总时长
+        if (!totalDuration) {
+          const durationMatch = output.match(/Duration: (\d{2}):(\d{2}):(\d{2})\.(\d{2})/);
+          if (durationMatch) {
+            const [, h, m, s, ms] = durationMatch.map(Number);
+            totalDuration = h * 3600 + m * 60 + s + ms / 100;
+          }
+        }
+
+        // 解析当前进度
+        if (onProgress && totalDuration > 0) {
+          const timeMatch = output.match(/time=(\d{2}):(\d{2}):(\d{2})\.(\d{2})/);
+          if (timeMatch) {
+            const [, h, m, s, ms] = timeMatch.map(Number);
+            const currentTime = h * 3600 + m * 60 + s + ms / 100;
+            const progress = Math.min(100, (currentTime / totalDuration) * 100);
+            onProgress(progress);
+          }
+        }
+      });
+
+      proc.on('close', (code) => {
+        if (code === 0) {
+          onProgress?.(100);
+          resolve('');
+        } else {
+          reject(new Error(`FFmpeg failed: ${stderr}`));
+        }
+      });
+
+      proc.on('error', reject);
+    });
+  }
+
+  /**
    * 运行 FFmpeg 命令
    */
   private runFFmpeg(args: string[]): Promise<string> {
@@ -525,6 +711,49 @@ export class FFmpegService {
       await fs.promises.mkdir(dir, { recursive: true });
     } catch (err) {
       console.error('[FFmpegService] Clear cache failed:', err);
+    }
+  }
+
+  /**
+   * 获取临时目录
+   */
+  getTempDir(): string {
+    return path.join(this.workDir, 'export-temp');
+  }
+
+  /**
+   * 确保目录存在
+   */
+  async ensureDir(dirPath: string): Promise<void> {
+    await fs.promises.mkdir(dirPath, { recursive: true });
+  }
+
+  /**
+   * 保存帧图片（从 base64 data URL）
+   */
+  async saveFrame(filePath: string, dataUrl: string): Promise<void> {
+    // 确保目录存在
+    await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
+
+    // 解析 data URL
+    const matches = dataUrl.match(/^data:image\/(\w+);base64,(.+)$/);
+    if (!matches) {
+      throw new Error('Invalid data URL format');
+    }
+
+    const base64Data = matches[2];
+    const buffer = Buffer.from(base64Data, 'base64');
+    await fs.promises.writeFile(filePath, buffer);
+  }
+
+  /**
+   * 清理临时目录
+   */
+  async cleanupTemp(tempDir: string): Promise<void> {
+    try {
+      await fs.promises.rm(tempDir, { recursive: true, force: true });
+    } catch (err) {
+      console.error('[FFmpegService] Cleanup temp failed:', err);
     }
   }
 }

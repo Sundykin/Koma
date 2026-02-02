@@ -88,7 +88,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
     waveform: (options: any) => ipcRenderer.invoke('controller', 'controller.ffmpeg.waveform', options),
     splitAudio: (input: string, output: string) =>
       ipcRenderer.invoke('controller', 'controller.ffmpeg.splitAudio', { input, output }),
+    composeVideo: (options: any) => ipcRenderer.invoke('controller', 'controller.ffmpeg.composeVideo', options),
     getCacheDir: (subDir?: string) => ipcRenderer.invoke('controller', 'controller.ffmpeg.getCacheDir', { subDir }),
+    getTempDir: () => ipcRenderer.invoke('controller', 'controller.ffmpeg.getTempDir'),
+    ensureDir: (dirPath: string) => ipcRenderer.invoke('controller', 'controller.ffmpeg.ensureDir', { dirPath }),
+    saveFrame: (filePath: string, dataUrl: string) =>
+      ipcRenderer.invoke('controller', 'controller.ffmpeg.saveFrame', { filePath, dataUrl }),
+    cleanupTemp: (tempDir: string) => ipcRenderer.invoke('controller', 'controller.ffmpeg.cleanupTemp', { tempDir }),
     clearCache: (subDir?: string) => ipcRenderer.invoke('controller', 'controller.ffmpeg.clearCache', { subDir }),
     cancelTask: () => ipcRenderer.invoke('controller', 'controller.ffmpeg.cancelTask'),
     clearQueue: () => ipcRenderer.invoke('controller', 'controller.ffmpeg.clearQueue'),

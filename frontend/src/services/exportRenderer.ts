@@ -309,8 +309,6 @@ export class ExportRenderer {
    * 编码视频（通过 FFmpeg）
    */
   private async encodeVideo(frames: Blob[]): Promise<string> {
-    // 这里需要调用 Electron 的 FFmpeg 服务
-    // 简化实现：将帧保存到临时目录，然后调用 FFmpeg 编码
     const ffmpegAPI = (window as any).electronAPI?.ffmpeg;
     if (!ffmpegAPI) {
       throw new Error('FFmpeg not available');
@@ -321,21 +319,155 @@ export class ExportRenderer {
       ? { videoBitrate: this.config.videoBitrate || 5000, audioBitrate: this.config.audioBitrate || 192 }
       : QUALITY_PRESETS[this.config.quality];
 
-    // TODO: 实现实际的 FFmpeg 编码流程
-    // 1. 将帧保存到临时目录
-    // 2. 收集音频轨道
-    // 3. 调用 FFmpeg 合成
+    // 1. 获取临时目录
+    const tempDir = await ffmpegAPI.getTempDir();
+    const exportId = `export-${Date.now()}`;
+    const frameDir = `${tempDir}/${exportId}/frames`;
+    await ffmpegAPI.ensureDir(frameDir);
 
     this.emitProgress({
       stage: 'encoding',
       progress: 50,
       currentFrame: 0,
       totalFrames: frames.length,
-      message: '正在编码视频... (此功能需要完整的 FFmpeg 集成)',
+      message: '正在保存帧文件...',
     });
 
-    // 模拟编码完成
-    return this.config.outputPath;
+    // 2. 将帧保存到临时目录
+    for (let i = 0; i < frames.length; i++) {
+      if (this.aborted) throw new Error('Export aborted');
+
+      const blob = frames[i];
+      const dataUrl = await this.blobToDataUrl(blob);
+      const framePath = `${frameDir}/frame_${String(i + 1).padStart(5, '0')}.png`;
+      await ffmpegAPI.saveFrame(framePath, dataUrl);
+
+      // 更新进度
+      this.emitProgress({
+        stage: 'encoding',
+        progress: 50 + ((i + 1) / frames.length) * 20,
+        currentFrame: i + 1,
+        totalFrames: frames.length,
+        message: `正在保存帧 ${i + 1}/${frames.length}`,
+      });
+    }
+
+    // 3. 收集音频轨道
+    const audioTracks = this.collectAudioTracks();
+
+    this.emitProgress({
+      stage: 'encoding',
+      progress: 70,
+      currentFrame: 0,
+      totalFrames: frames.length,
+      message: '正在合成视频...',
+    });
+
+    // 4. 调用 FFmpeg 合成
+    try {
+      await ffmpegAPI.composeVideo({
+        frameDir,
+        framePattern: 'frame_%05d.png',
+        fps: this.config.fps,
+        width: this.config.width,
+        height: this.config.height,
+        format: this.config.format,
+        videoCodec: this.config.videoCodec || 'h264',
+        videoBitrate: quality.videoBitrate,
+        audioBitrate: quality.audioBitrate,
+        audioTracks,
+        outputPath: this.config.outputPath,
+      });
+
+      this.emitProgress({
+        stage: 'finalizing',
+        progress: 95,
+        currentFrame: frames.length,
+        totalFrames: frames.length,
+        message: '正在清理临时文件...',
+      });
+
+      // 5. 清理临时目录
+      await ffmpegAPI.cleanupTemp(`${tempDir}/${exportId}`);
+
+      return this.config.outputPath;
+    } catch (err) {
+      // 清理临时目录
+      await ffmpegAPI.cleanupTemp(`${tempDir}/${exportId}`).catch(() => {});
+      throw err;
+    }
+  }
+
+  /**
+   * Blob 转 Data URL
+   */
+  private blobToDataUrl(blob: Blob): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  }
+
+  /**
+   * 收集音频轨道信息
+   */
+  private collectAudioTracks(): Array<{
+    src: string;
+    start: number;
+    duration: number;
+    offset: number;
+    volume: number;
+  }> {
+    const audioTracks: Array<{
+      src: string;
+      start: number;
+      duration: number;
+      offset: number;
+      volume: number;
+    }> = [];
+
+    for (const track of this.tracks) {
+      if (track.muted) continue;
+
+      for (const item of track.items) {
+        if (item.type === 'audio') {
+          const audioItem = item as AudioTrackItem;
+          if (audioItem.muted) continue;
+
+          const startSec = audioItem.start / this.config.fps;
+          const durationSec = (audioItem.end - audioItem.start) / this.config.fps;
+          const offsetSec = audioItem.offsetL / this.config.fps;
+
+          audioTracks.push({
+            src: audioItem.source,
+            start: offsetSec,
+            duration: durationSec,
+            offset: startSec,
+            volume: audioItem.volume,
+          });
+        } else if (item.type === 'video') {
+          // 视频轨道也可能有音频
+          const videoItem = item as VideoTrackItem;
+          if (videoItem.source) {
+            const startSec = videoItem.start / this.config.fps;
+            const durationSec = (videoItem.end - videoItem.start) / this.config.fps;
+            const offsetSec = videoItem.offsetL / this.config.fps;
+
+            audioTracks.push({
+              src: videoItem.source,
+              start: offsetSec,
+              duration: durationSec,
+              offset: startSec,
+              volume: 1,
+            });
+          }
+        }
+      }
+    }
+
+    return audioTracks;
   }
 
   /**

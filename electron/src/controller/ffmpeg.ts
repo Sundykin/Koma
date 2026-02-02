@@ -4,7 +4,7 @@
  */
 import { IpcMainInvokeEvent } from 'electron';
 import { services } from '../service';
-import type { ExtractFramesOptions, WaveformOptions } from '../service/ffmpeg';
+import type { ExtractFramesOptions, WaveformOptions, ComposeVideoOptions } from '../service/ffmpeg';
 
 export class FFmpegController {
   /**
@@ -43,10 +43,45 @@ export class FFmpegController {
   }
 
   /**
+   * 合成视频
+   */
+  async composeVideo(args: ComposeVideoOptions, _event: IpcMainInvokeEvent) {
+    return services.ffmpeg.composeVideo(args);
+  }
+
+  /**
    * 获取缓存目录
    */
   async getCacheDir(args: { subDir?: string }, _event: IpcMainInvokeEvent) {
     return services.ffmpeg.getCacheDir(args.subDir);
+  }
+
+  /**
+   * 获取临时目录
+   */
+  async getTempDir(_args: {}, _event: IpcMainInvokeEvent) {
+    return services.ffmpeg.getTempDir();
+  }
+
+  /**
+   * 确保目录存在
+   */
+  async ensureDir(args: { dirPath: string }, _event: IpcMainInvokeEvent) {
+    return services.ffmpeg.ensureDir(args.dirPath);
+  }
+
+  /**
+   * 保存帧图片
+   */
+  async saveFrame(args: { filePath: string; dataUrl: string }, _event: IpcMainInvokeEvent) {
+    return services.ffmpeg.saveFrame(args.filePath, args.dataUrl);
+  }
+
+  /**
+   * 清理临时目录
+   */
+  async cleanupTemp(args: { tempDir: string }, _event: IpcMainInvokeEvent) {
+    return services.ffmpeg.cleanupTemp(args.tempDir);
   }
 
   /**
