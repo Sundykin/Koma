@@ -49,6 +49,19 @@ interface OpenAITool {
   };
 }
 
+// 流式工具调用累积器（内部使用）
+interface StreamingToolCall extends Partial<ToolCall> {
+  _argsStr: string;  // 累积的 arguments 字符串
+}
+
+// OpenAI 响应消息（包含 reasoning_content 扩展）
+interface OpenAIResponseMessage {
+  role: string;
+  content: string | null;
+  tool_calls?: OpenAIToolCall[];
+  reasoning_content?: string;  // DeepSeek 等模型的思考过程
+}
+
 export class OpenAIAdapter extends BaseAdapter {
   readonly type = 'openai';
   readonly capabilities: AdapterCapability[] = [
@@ -99,7 +112,7 @@ export class OpenAIAdapter extends BaseAdapter {
       }
 
       const chunkId = generateId();
-      let toolCalls: Map<number, Partial<ToolCall>> = new Map();
+      const toolCalls: Map<number, StreamingToolCall> = new Map();
 
       for await (const data of this.parseSSEStream(response, options?.signal)) {
         try {
@@ -123,24 +136,22 @@ export class OpenAIAdapter extends BaseAdapter {
               const index = tc.index ?? 0;
               let existing = toolCalls.get(index);
               if (!existing) {
-                existing = { id: tc.id, name: tc.function?.name, arguments: {} };
+                existing = { id: tc.id, name: tc.function?.name, arguments: {}, _argsStr: '' };
                 toolCalls.set(index, existing);
               }
               if (tc.function?.name) {
                 existing.name = tc.function.name;
               }
               if (tc.function?.arguments) {
-                const currentArgs = JSON.stringify(existing.arguments || {});
-                try {
-                  // 累积 arguments 字符串
-                  const argsStr = (existing as any)._argsStr || '';
-                  (existing as any)._argsStr = argsStr + tc.function.arguments;
-                } catch {
-                  // ignore
-                }
+                // 累积 arguments 字符串
+                existing._argsStr += tc.function.arguments;
               }
             }
-            chunk.toolCalls = Array.from(toolCalls.values());
+            chunk.toolCalls = Array.from(toolCalls.values()).map(tc => ({
+              id: tc.id,
+              name: tc.name,
+              arguments: tc.arguments,
+            }));
           }
 
           yield chunk;
@@ -151,14 +162,14 @@ export class OpenAIAdapter extends BaseAdapter {
               const finalToolCalls: ToolCall[] = [];
               for (const tc of toolCalls.values()) {
                 try {
-                  const argsStr = (tc as any)._argsStr || '{}';
+                  const argsStr = tc._argsStr || '{}';
                   finalToolCalls.push({
                     id: tc.id || generateId(),
                     name: tc.name || '',
                     arguments: JSON.parse(argsStr),
                   });
                 } catch {
-                  // ignore
+                  // ignore parse error
                 }
               }
               if (finalToolCalls.length > 0) {
@@ -305,14 +316,14 @@ export class OpenAIAdapter extends BaseAdapter {
       throw new ChatError('无效的响应格式', ChatErrorCode.INVALID_RESPONSE);
     }
 
-    const message = choice.message;
+    const message: OpenAIResponseMessage = choice.message;
     const toolCalls = message.tool_calls?.map((tc: OpenAIToolCall) => ({
       id: tc.id,
       name: tc.function.name,
       arguments: JSON.parse(tc.function.arguments || '{}'),
     }));
     // 处理 reasoning_content（DeepSeek 等模型）
-    const reasoning = message.reasoning_content || (message as any).reasoning;
+    const reasoning = message.reasoning_content;
 
     return {
       id: data.id || generateId(),
