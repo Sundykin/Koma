@@ -1,10 +1,9 @@
 /**
- * ??????
- * ??? trackStore ???????????????
+ * ????
+ * ?? trackStore ??????????
  */
 import type { TrackLine, TrackItem, VideoTrackItem, AudioTrackItem, ImageTrackItem, TrackKeyframe } from '../types/track';
 import { KeyframeInterpolator } from './KeyframeInterpolator';
-import { ignoreError } from '../utils/errorHandler';
 
 export interface PlaybackConfig {
   fps: number;
@@ -15,27 +14,27 @@ export interface PlaybackConfig {
 export interface PlaybackState {
   isPlaying: boolean;
   currentFrame: number;
-  currentTime: number;    // ???
+  currentTime: number;    // ??
   duration: number;       // ?
-  durationMs: number;     // ???
+  durationMs: number;     // ??
   fps: number;
 }
 
 export type PlaybackCallback = (state: PlaybackState) => void;
 
-// ?????????
+// ??????
 interface MediaCache {
   video: Map<string, HTMLVideoElement>;
   audio: Map<string, HTMLAudioElement>;
   image: Map<string, HTMLImageElement>;
 }
 
-// ??? Window ??????? webkitAudioContext
+// ?? Window ????? webkitAudioContext
 interface WindowWithWebkitAudio extends Window {
   webkitAudioContext: typeof AudioContext;
 }
 
-// ????????????????????????????????? as any
+// ?????????????????????? as any
 type AnimatableTrackItem = TrackItem & {
   x?: number;
   y?: number;
@@ -52,7 +51,7 @@ export class PlaybackEngine {
   private config: PlaybackConfig = { fps: 30, width: 1920, height: 1080 };
 
   private tracks: TrackLine[] = [];
-  private _sortedTracks: TrackLine[] = [];  // ????????????        
+  private _sortedTracks: TrackLine[] = [];  // ????????        
   private mediaCache: MediaCache = {
     video: new Map(),
     audio: new Map(),
@@ -65,14 +64,14 @@ export class PlaybackEngine {
   private lastFrameTime = 0;
   private frameInterval = 1000 / 30;
 
-  // ??????
+  // ????
   private _cachedDuration: number | null = null;
   private _durationDirty = true;
 
-  // ?????????????
+  // ?????????
   private static readonly SYNC_TOLERANCE = 0.1;
 
-  // ?????????
+  // ??????
   private _lastEmitTime = 0;
   private static readonly EMIT_INTERVAL = 16;  // ~60fps
 
@@ -97,7 +96,7 @@ export class PlaybackEngine {
   }
 
   /**
-   * ?????????
+   * ??????
    */
   bindCanvas(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -109,7 +108,7 @@ export class PlaybackEngine {
   }
 
   /**
-   * ??????
+   * ????
    */
   setConfig(config: Partial<PlaybackConfig>) {
     this.config = { ...this.config, ...config };
@@ -122,27 +121,27 @@ export class PlaybackEngine {
   }
 
   /**
-   * ?????????
+   * ??????
    */
   async loadTracks(tracks: TrackLine[]): Promise<void> {
     this.tracks = tracks;
     this._durationDirty = true;
-    // ?????????? order ???????
+    // ??????? order ?????
     this._sortedTracks = [...tracks].sort((a, b) => a.order - b.order);
 
-    // ??????????
+    // ???????
     for (const track of tracks) {
       for (const item of track.items) {
         await this.preloadItem(item);
       }
     }
 
-    // ???????
+    // ?????
     this.render();
   }
 
   /**
-   * ?????????
+   * ??????
    */
   private async preloadItem(item: TrackItem): Promise<void> {
     if (item.type === 'video') {
@@ -174,9 +173,9 @@ export class PlaybackEngine {
       video.preload = 'auto';
 
       video.onloadeddata = () => resolve(video);
-      video.onerror = () => reject(new Error(Failed to load video: ));
+      video.onerror = () => reject(new Error(`Failed to load video: ${src}`));
 
-      video.src = koma-local:///;
+      video.src = `koma-local:///${src.replace(/\\/g, '/')}`;
     });
   }
 
@@ -187,9 +186,9 @@ export class PlaybackEngine {
       audio.preload = 'auto';
 
       audio.onloadeddata = () => resolve(audio);
-      audio.onerror = () => reject(new Error(Failed to load audio: ));
+      audio.onerror = () => reject(new Error(`Failed to load audio: ${src}`));
 
-      audio.src = koma-local:///;
+      audio.src = `koma-local:///${src.replace(/\\/g, '/')}`;
     });
   }
 
@@ -199,33 +198,33 @@ export class PlaybackEngine {
       image.crossOrigin = 'anonymous';
 
       image.onload = () => resolve(image);
-      image.onerror = () => reject(new Error(Failed to load image: ));
+      image.onerror = () => reject(new Error(`Failed to load image: ${src}`));
 
-      image.src = koma-local:///;
+      image.src = `koma-local:///${src.replace(/\\/g, '/')}`;
     });
   }
 
   /**
-   * ???
+   * ??
    */
   play() {
     if (this.isPlaying) return;
 
-    // ??? AudioContext
+    // ?? AudioContext
     if (this.audioContext?.state === 'suspended') {
       this.audioContext.resume();
     }
 
     this.isPlaying = true;
     this.lastFrameTime = performance.now();
-    this._lastEmitTime = 0;  // ?????????
-    // ??? RAF ???
+    this._lastEmitTime = 0;  // ??????
+    // ?? RAF ??
     this.animationFrameId = requestAnimationFrame(this._tick);
     this.emitState();
   }
 
   /**
-   * ???
+   * ??
    */
   pause() {
     this.isPlaying = false;
@@ -234,13 +233,13 @@ export class PlaybackEngine {
       this.animationFrameId = null;
     }
 
-    // ?????????
+    // ??????
     this.pauseAllAudio();
     this.emitState();
   }
 
   /**
-   * ???/??????
+   * ??/????
    */
   togglePlay() {
     if (this.isPlaying) {
@@ -251,13 +250,13 @@ export class PlaybackEngine {
   }
 
   /**
-   * ????????????????????
+   * ?????????????
    */
   seekFrame(frame: number) {
     const duration = this.getDuration();
     const targetFrame = Math.max(0, Math.min(frame, duration));        
 
-    // ??????????? SYNC_TOLERANCE ?????????? seek
+    // ??????? SYNC_TOLERANCE ??????? seek
     const currentTimeS = this.currentFrame / this.config.fps;
     const targetTimeS = targetFrame / this.config.fps;
     if (Math.abs(currentTimeS - targetTimeS) < PlaybackEngine.SYNC_TOLERANCE) {
@@ -271,7 +270,7 @@ export class PlaybackEngine {
   }
 
   /**
-   * ????????????????
+   * ???????????
    */
   seekTime(ms: number) {
     const frame = Math.round(ms * this.config.fps / 1000);
@@ -279,21 +278,21 @@ export class PlaybackEngine {
   }
 
   /**
-   * ???????
+   * ?????
    */
   getCurrentFrame(): number {
     return this.currentFrame;
   }
 
   /**
-   * ???????????????
+   * ??????????
    */
   getCurrentTime(): number {
     return this.currentFrame * 1000 / this.config.fps;
   }
 
   /**
-   * ????????????- ??????
+   * ????????- ????
    */
   getDuration(): number {
     if (!this._durationDirty && this._cachedDuration !== null) {       
@@ -315,21 +314,21 @@ export class PlaybackEngine {
   }
 
   /**
-   * ???????????????????
+   * ?????????????
    */
   invalidateDuration() {
     this._durationDirty = true;
   }
 
   /**
-   * ?????????
+   * ??????
    */
   getIsPlaying(): boolean {
     return this.isPlaying;
   }
 
   /**
-   * ?????????
+   * ??????
    */
   onUpdate(callback: PlaybackCallback) {
     this.callbacks.add(callback);
@@ -337,7 +336,7 @@ export class PlaybackEngine {
   }
 
   /**
-   * ???????
+   * ?????
    */
   setVolume(volume: number) {
     if (this.masterGain) {
@@ -346,7 +345,7 @@ export class PlaybackEngine {
   }
 
   /**
-   * ????????????????
+   * ???????????
    */
   private getVisibleItems(frame: number): { item: TrackItem; track: TrackLine }[] {
     const visible: { item: TrackItem; track: TrackLine }[] = [];       
@@ -362,16 +361,16 @@ export class PlaybackEngine {
   }
 
   /**
-   * ???????
+   * ?????
    */
   render() {
     if (!this.ctx || !this.canvas) return;
 
-    // ??????
+    // ????
     this.ctx.fillStyle = '#000';
     this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);    
 
-    // ??????????????? order ????
+    // ?????????? order ???
     const visibleItems = this.getVisibleItems(this.currentFrame);      
     for (const { item } of visibleItems) {
       this.renderItem(item);
@@ -379,20 +378,20 @@ export class PlaybackEngine {
   }
 
   /**
-   * ??????????
+   * ???????
    */
   private renderItem(item: TrackItem) {
     const ctx = this.ctx!;
     const canvas = this.canvas!;
 
-    // ????????????????? offset?
+    // ??????????? offset?
     const internalFrame = this.currentFrame - item.start + item.offsetL;
     const internalTime = internalFrame * 1000 / this.config.fps;       
 
-    // ?????????????????????? as any
+    // ??????????????? as any
     const animItem = item as AnimatableTrackItem;
 
-    // ????????????
+    // ????????
     const keyframes = animItem.keyframes;
     const animValues = KeyframeInterpolator.interpolate(keyframes || [], internalTime, {
       x: animItem.x ?? 0,
@@ -407,13 +406,13 @@ export class PlaybackEngine {
       const videoItem = item as VideoTrackItem;
       const video = this.mediaCache.video.get(videoItem.source || ''); 
       if (video) {
-        // ?????????
+        // ??????
         const videoTime = internalFrame / this.config.fps;
         if (Math.abs(video.currentTime - videoTime) > 0.1) {
           video.currentTime = videoTime;
         }
 
-        // ?????????
+        // ??????
         ctx.save();
         ctx.globalAlpha = animValues.opacity;
         ctx.translate(canvas.width / 2 + animValues.x, canvas.height / 2 + animValues.y);
@@ -429,7 +428,7 @@ export class PlaybackEngine {
       const imageItem = item as ImageTrackItem;
       const image = this.mediaCache.image.get(imageItem.source || ''); 
       if (image) {
-        // ??????????????
+        // ?????????
         const baseScale = Math.min(
           canvas.width / image.width,
           canvas.height / image.height
@@ -437,7 +436,7 @@ export class PlaybackEngine {
         const w = image.width * baseScale;
         const h = image.height * baseScale;
 
-        // ?????????
+        // ??????
         ctx.save();
         ctx.globalAlpha = animValues.opacity;
         ctx.translate(canvas.width / 2 + animValues.x, canvas.height / 2 + animValues.y);
@@ -448,19 +447,19 @@ export class PlaybackEngine {
         ctx.restore();
       }
     }
-    // ???????????????????
+    // ?????????????
   }
 
   /**
-   * ??????
+   * ????
    */
   private syncAudio() {
-    // ??????????????????????????
+    // ?????????????????
     this.pauseAllAudio();
 
     if (!this.isPlaying) return;
 
-    // ??????????????????
+    // ????????????
     for (const track of this.tracks) {
       if (track.muted || !track.visible) continue;
 
@@ -474,14 +473,14 @@ export class PlaybackEngine {
           const internalTime = (this.currentFrame - item.start + item.offsetL) / this.config.fps;
           audio.currentTime = internalTime;
           audio.volume = audioItem.volume ?? 1;
-          audio.play().catch(ignoreError('PlaybackEngine:audioPlay'));
+          audio.play().catch(() => {});
         }
       }
     }
   }
 
   /**
-   * ?????????
+   * ??????
    */
   private pauseAllAudio() {
     for (const audio of this.mediaCache.audio.values()) {
@@ -490,12 +489,12 @@ export class PlaybackEngine {
   }
 
   /**
-   * RAF ???????????????? this ??????
+   * RAF ??????????? this ????
    */
   private _tick = (timestamp: number): void => {
     if (!this.isPlaying) return;
 
-    // ??????????
+    // ???????
     const elapsed = timestamp - this.lastFrameTime;
     const framesToAdvance = Math.floor(elapsed / this.frameInterval);  
 
@@ -503,7 +502,7 @@ export class PlaybackEngine {
       this.lastFrameTime = timestamp - (elapsed % this.frameInterval); 
       this.currentFrame += framesToAdvance;
 
-      // ????????????
+      // ????????
       const duration = this.getDuration();
       if (this.currentFrame >= duration) {
         this.currentFrame = duration;
@@ -511,22 +510,22 @@ export class PlaybackEngine {
         return;
       }
 
-      // ???
+      // ??
       this.render();
 
-      // ????????
+      // ??????
       if (timestamp - this._lastEmitTime >= PlaybackEngine.EMIT_INTERVAL) {
         this._lastEmitTime = timestamp;
         this.emitState();
       }
     }
 
-    // ???????????????????????
+    // ???????????????
     this.animationFrameId = requestAnimationFrame(this._tick);
   };
 
   /**
-   * ??????
+   * ????
    */
   private emitState() {
     const state: PlaybackState = {
@@ -544,12 +543,12 @@ export class PlaybackEngine {
   }
 
   /**
-   * ???
+   * ??
    */
   dispose() {
     this.pause();
 
-    // ?????????
+    // ??????
     for (const video of this.mediaCache.video.values()) {
       video.src = '';
       video.load();
@@ -564,7 +563,7 @@ export class PlaybackEngine {
 
     this.mediaCache.image.clear();
 
-    // ??????????
+    // ???????
     if (this.audioContext) {
       this.audioContext.close();
       this.audioContext = null;

@@ -1,51 +1,51 @@
 /**
- * Edge TTS Provider (???)
- * ??? Microsoft Edge ? TTS ??? (CLI ???)
+ * Edge TTS Provider (??)
+ * ?? Microsoft Edge ? TTS ?? (CLI ??)
  */
 import { spawn } from 'child_process';
 import type { TTSConfig, TTSOptions, AudioResult, Voice } from '../../types';
 import type { TTSProvider } from './types';
 
-// Edge TTS ?????????
+// Edge TTS ??????
 const EDGE_VOICES: Voice[] = [
   {
     id: 'zh-CN-XiaoxiaoNeural',
-    name: '??? (??s)',
+    name: '?? (??)',
     language: 'zh-CN',
     gender: 'female',
     provider: 'edge-tts',
   },
   {
     id: 'zh-CN-YunxiNeural',
-    name: '??? (??s)',
+    name: '?? (??)',
     language: 'zh-CN',
     gender: 'male',
     provider: 'edge-tts',
   },
   {
     id: 'zh-CN-YunjianNeural',
-    name: '??? (??s)',
+    name: '?? (??)',
     language: 'zh-CN',
     gender: 'male',
     provider: 'edge-tts',
   },
   {
     id: 'zh-CN-XiaoyiNeural',
-    name: '??? (??s)',
+    name: '?? (??)',
     language: 'zh-CN',
     gender: 'female',
     provider: 'edge-tts',
   },
   {
     id: 'zh-CN-YunyangNeural',
-    name: '??? (??s-???)',
+    name: '?? (??-??)',
     language: 'zh-CN',
     gender: 'male',
     provider: 'edge-tts',
   },
   {
     id: 'zh-CN-XiaochenNeural',
-    name: '??? (??s)',
+    name: '?? (??)',
     language: 'zh-CN',
     gender: 'female',
     provider: 'edge-tts',
@@ -61,7 +61,7 @@ export class EdgeTTSProvider implements TTSProvider {
   }
 
   validate(): boolean {
-    return true; // Edge TTS ??????? API Key
+    return true; // Edge TTS ????? API Key
   }
 
   async testConnection(): Promise<boolean> {
@@ -69,7 +69,7 @@ export class EdgeTTSProvider implements TTSProvider {
   }
 
   /**
-   * ?????? (??? TTSProvider ???)
+   * ???? (?? TTSProvider ??)
    */
   async synthesize(
     text: string,
@@ -80,29 +80,29 @@ export class EdgeTTSProvider implements TTSProvider {
   }
 
   /**
-   * ??? edge-tts CLI ??????
+   * ?? edge-tts CLI ????
    */
   async generateSpeech(text: string, options?: TTSOptions & { voice?: string }): Promise<AudioResult> {
     const voice = options?.voice || 'zh-CN-XiaoxiaoNeural';
-    // ??? /tmp ????????????
-    const outputPath = /tmp/tts_.mp3;
+    // ?? /tmp ????????
+    const outputPath = `/tmp/tts_${Date.now()}.mp3`;
     
     return new Promise((resolve, reject) => {
-      // ??????
+      // ????
       const args = ['--voice', voice, '--text', text, '--write-media', outputPath];
       
-      // ???????????
+      // ???????
       if (options?.rate) {
         const rateStr = options.rate >= 1 
-          ? +% 
-          : -%;
+          ? `+${Math.round((options.rate - 1) * 100)}%` 
+          : `-${Math.round((1 - options.rate) * 100)}%`;
         args.push('--rate', rateStr);
       }
       
       if (options?.pitch) {
         const pitchStr = options.pitch >= 1 
-          ? +% 
-          : -%;
+          ? `+${Math.round((options.pitch - 1) * 100)}%` 
+          : `-${Math.round((1 - options.pitch) * 100)}%`;
         args.push('--pitch', pitchStr);
       }
 
@@ -116,12 +116,12 @@ export class EdgeTTSProvider implements TTSProvider {
             format: 'mp3'
           });
         } else {
-          reject(new Error(Edge TTS failed with code \));
+          reject(new Error(`Edge TTS failed with code ${code}`));
         }
       });
 
       proc.on('error', (err) => {
-        reject(new Error(Failed to start Edge TTS: \));
+        reject(new Error(`Failed to start Edge TTS: ${err.message}`));
       });
     });
   }

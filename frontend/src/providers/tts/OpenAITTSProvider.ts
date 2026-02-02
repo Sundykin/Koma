@@ -29,7 +29,7 @@ export class OpenAITTSProvider implements TTSProvider {
   }
 
   async testConnection(): Promise<boolean> {
-    // ?????? API Key ???
+    // ???? API Key ??
     return this.validate();
   }
 
@@ -43,12 +43,12 @@ export class OpenAITTSProvider implements TTSProvider {
     }
 
     const response = await fetch(
-      \/audio/speech,
+      `${this.config.baseUrl || 'https://api.openai.com/v1'}/audio/speech`,
       {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: Bearer \,
+          Authorization: `Bearer ${this.config.apiKey}`,
         },
         body: JSON.stringify({
           model: 'tts-1',
@@ -60,22 +60,22 @@ export class OpenAITTSProvider implements TTSProvider {
     );
 
     if (!response.ok) {
-      throw new Error(OpenAI TTS failed: \);    
+      throw new Error(`OpenAI TTS failed: ${response.statusText}`);    
     }
 
     const arrayBuffer = await response.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
     
-    // ??????????????????
+    // ????????????
     const tmpDir = os.tmpdir();
-    const fileName = openai_tts_\.mp3;
+    const fileName = `openai_tts_${Date.now()}.mp3`;
     const filePath = path.join(tmpDir, fileName);
     
     await fs.promises.writeFile(filePath, buffer);
 
     return {
       path: filePath,
-      duration: 0, // ??????????????????????
+      duration: 0, // ???????????????
       sampleRate: 24000,
     };
   }
