@@ -46,6 +46,7 @@ import {
 import { getChannelConfigs, updateChannelConfig } from '../../store/settings/channelConfig';
 import { WorkflowUploader } from './WorkflowUploader';
 import { ProviderPluginModal } from '../plugins/ProviderPluginModal';
+import { createTTIProvider } from '../../providers/tti';
 
 interface TTIConfigManagerProps {
   onConfigChange?: () => void;
@@ -233,9 +234,21 @@ export const TTIConfigManager: React.FC<TTIConfigManagerProps> = ({ onConfigChan
   const handleTestConnection = async (config: TTIModelConfig) => {
     setTestingId(config.id);
     try {
-      // TODO: 实现 TTI 连接测试
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      message.success(`"${config.name}" 连接成功`);
+      // 创建 provider 实例并测试连接
+      const provider = createTTIProvider(config);
+
+      // 先验证配置
+      if (!provider.validate()) {
+        throw new Error('配置验证失败，请检查必填项');
+      }
+
+      // 测试连接
+      const success = await provider.testConnection();
+      if (success) {
+        message.success(`"${config.name}" 连接成功`);
+      } else {
+        message.error(`"${config.name}" 连接失败，请检查服务地址和 API Key`);
+      }
     } catch (err: any) {
       message.error(`连接测试失败: ${err.message}`);
     } finally {
