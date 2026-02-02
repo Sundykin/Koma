@@ -1,91 +1,62 @@
 # Koma Studio Bug 修复任务计划
 
-**创建时间**: 2026-02-03 00:16
-**最后更新**: 2026-02-03 00:22
-**目标**: 系统性修复所有已知 bug
+**最后更新**: 2026-02-03 00:27
 
 ---
 
 ## 📊 进度统计
 
 - 总任务数: 18
-- ✅ 已完成: 1
+- ✅ 已完成: 2
 - 🔄 进行中: 3
-- ⏳ 待开始: 14
+- ⏳ 待开始: 13
 
 ---
 
-## 📋 任务分配总览
+## 📋 任务状态
 
-### Phase 1: 核心功能实现 (P0)
+### ✅ 已完成
 
-| ID | 任务 | 文件 | 分配 | 状态 |
-|----|------|------|------|------|
-| P0-1 | FFmpeg 视频导出 | services/exportRenderer.ts | Claude | ✅ 完成 |
-| P0-2 | Kling Provider | providers/itv/KlingProvider.ts | Codex | 🔄 进行中 |
-| P0-3 | Runway Provider | providers/itv/RunwayProvider.ts | Codex | 🔄 进行中 |
-| P0-4 | Edge TTS | providers/tts/EdgeTTSProvider.ts | Gemini | 🔄 进行中 |
-| P0-5 | OpenAI TTS 文件保存 | providers/tts/OpenAITTSProvider.ts | Gemini | ⏳ 待开始 |
-| P0-6 | ComfyUI TTI | providers/tti/ComfyUIProvider.ts | Codex | ⏳ 待开始 |
+| ID | 任务 | 执行者 | 完成时间 |
+|----|------|--------|----------|
+| P0-1 | FFmpeg 视频导出 | Claude | 00:22 |
+| P1-2 | OpenAIAdapter 类型 | Claude | 00:26 |
 
-### Phase 2: 配置测试功能 (P0)
+### 🔄 进行中
 
-| ID | 任务 | 文件 | 分配 | 状态 |
-|----|------|------|------|------|
-| P0-7 | TTS 连接测试 | components/settings/TTSConfigManager.tsx | Gemini | ⏳ 待开始 |
-| P0-8 | ITV 连接测试 | components/settings/ITVConfigManager.tsx | Codex | ⏳ 待开始 |
-| P0-9 | TTI 连接测试 | components/settings/TTIConfigManager.tsx | Claude | ⏳ 待开始 |
+| ID | 任务 | 执行者 | 状态 |
+|----|------|--------|------|
+| P0-2/3 | Kling/Runway Provider | Codex | 查 API 文档 (78% ctx) |
+| P0-4 | Edge TTS | Gemini | 重新开始 |
+| P1-4 | MCP 工具审批 | Claude | 刚派发 |
 
-### Phase 3: 类型安全修复 (P1)
+### ⏳ 待开始
 
-| ID | 任务 | 文件 | 分配 | 状态 |
-|----|------|------|------|------|
-| P1-1 | PlaybackEngine 类型 | engine/PlaybackEngine.ts | Gemini | 🔄 进行中 |
-| P1-2 | OpenAIAdapter 类型 | chat/adapters/OpenAIAdapter.ts | Claude | 🔄 进行中 |
-| P1-3 | DSL 转换类型 | manju-dsl/*.ts | Codex | ⏳ 待开始 |
-
-### Phase 4: 服务层完善 (P1)
-
-| ID | 任务 | 文件 | 分配 | 状态 |
-|----|------|------|------|------|
-| P1-4 | MCP 工具审批 | services/mcpService.ts | Claude | ⏳ 待开始 |
-| P1-5 | 插件渠道调用 | services/plugin/PluginAPI.ts | Codex | ⏳ 待开始 |
-| P1-6 | 版本号读取 | services/plugin/PluginAPI.ts | Gemini | ⏳ 待开始 |
-
-### Phase 5: 错误处理 (P2)
-
-| ID | 任务 | 文件 | 分配 | 状态 |
-|----|------|------|------|------|
-| P2-1 | 统一错误处理 | 全局 | Claude | ⏳ 待开始 |
-| P2-2 | Promise 错误处理 | hooks/* | Gemini | ⏳ 待开始 |
-| P2-3 | 用户提示完善 | components/* | Codex | ⏳ 待开始 |
-
-### Phase 6: 代码清理 (P3)
-
-| ID | 任务 | 文件 | 分配 | 状态 |
-|----|------|------|------|------|
-| P3-1 | 移除 console.log | 全局 | 任意 | ⏳ 待开始 |
-| P3-2 | 统一日志系统 | 全局 | 任意 | ⏳ 待开始 |
+| ID | 任务 | 预分配 |
+|----|------|--------|
+| P0-5 | OpenAI TTS 文件保存 | Gemini |
+| P0-6 | ComfyUI TTI | Codex |
+| P0-7 | TTS 连接测试 | Gemini |
+| P0-8 | ITV 连接测试 | Codex |
+| P0-9 | TTI 连接测试 | Claude |
+| P1-1 | PlaybackEngine 类型 | Gemini |
+| P1-3 | DSL 转换类型 | Codex |
+| P1-5 | 插件渠道调用 | Codex |
+| P1-6 | 版本号读取 | Gemini |
+| P2-1 | 统一错误处理 | Claude |
+| P2-2 | Promise 错误处理 | Gemini |
+| P2-3 | 用户提示完善 | Codex |
+| P3-1/2 | 代码清理 | 任意 |
 
 ---
 
-## 📝 完成记录
+## 📝 巡检日志
 
-### P0-1: FFmpeg 视频导出 ✅
-- 完成时间: 2026-02-03 00:22
-- 执行者: Claude
-- 提交: dev-openclaw
+### 00:27 巡检 #2
+- Claude 完成 P1-2，派发 P1-4
+- Gemini 卡在交互式 shell，已修复
+- Codex 正常工作
 
----
-
-## 📝 更新日志
-
-### 2026-02-03 00:22
-- P0-1 FFmpeg 导出完成
-- Claude 开始 P1-2 OpenAIAdapter 类型修复
-- Codex 继续 Kling/Runway Provider
-- Gemini 继续 EdgeTTS + PlaybackEngine
-
-### 2026-02-03 00:16
-- 创建任务计划
-- 派发 Phase 1 任务
+### 00:22 巡检 #1
+- Claude 完成 P0-1，派发 P1-2
+- 所有 agent 正常工作
