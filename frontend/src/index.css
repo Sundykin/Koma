@@ -1,0 +1,210 @@
+@import "tailwindcss";
+
+/* ========================================
+   Design System: Cinematic Studio Theme
+   Color Palette: Zinc + Emerald
+   ======================================== */
+
+@theme {
+  /* 背景层级 */
+  --color-bg-app: #09090b;        /* zinc-950 - 最深背景 */
+  --color-bg-surface: #18181b;    /* zinc-900 - 侧边栏/表面 */
+  --color-bg-elevated: #27272a;   /* zinc-800 - 悬浮/弹窗 */
+  --color-bg-card: #18181b;       /* zinc-900 - 卡片背景 */
+  --color-bg-hover: #3f3f46;      /* zinc-700 - 悬停背景 */
+
+  /* 边框 */
+  --color-border: #3f3f46;        /* zinc-700 - 主边框 */
+  --color-border-subtle: #27272a; /* zinc-800 - 次级边框 */
+  --color-border-focus: #10b981;  /* emerald-500 - 焦点边框 */
+
+  /* 文字 */
+  --color-text-primary: #f4f4f5;  /* zinc-100 */
+  --color-text-secondary: #a1a1aa; /* zinc-400 */
+  --color-text-muted: #52525b;    /* zinc-600 */
+
+  /* 主题色 */
+  --color-accent: #10b981;        /* emerald-500 */
+  --color-accent-hover: #059669;  /* emerald-600 */
+  --color-accent-glow: rgba(16, 185, 129, 0.2);
+
+  /* 间距系统 */
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 12px;
+  --space-lg: 16px;
+  --space-xl: 24px;
+
+  /* 布局尺寸 */
+  --sidebar-width: 72px;
+  --header-height: 56px;
+  --header-height-lg: 64px;
+}
+
+/* 兼容变量别名 (供内联样式使用) */
+:root {
+  --bg-base: var(--color-bg-app);
+  --bg-raised: var(--color-bg-card);
+  --bg-surface: var(--color-bg-elevated);
+  --bg-hover: var(--color-bg-hover);
+  --border-default: var(--color-border-subtle);
+  --border-hover: var(--color-border);
+  --border-focus: var(--color-border-focus);
+  --text-primary: var(--color-text-primary);
+  --text-secondary: var(--color-text-secondary);
+  --text-muted: var(--color-text-muted);
+  --accent: var(--color-accent);
+  --accent-hover: var(--color-accent-hover);
+}
+
+/* 基础样式 */
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background-color: var(--color-bg-app);
+  color: var(--color-text-primary);
+  overflow: hidden;
+}
+
+/* 滚动条样式 - Zinc 色调 */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--color-bg-surface);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #52525b; /* zinc-600 */
+}
+
+/* Electron 拖拽区域 */
+.drag-region {
+  -webkit-app-region: drag;
+}
+.no-drag {
+  -webkit-app-region: no-drag;
+}
+
+/* 键盘焦点样式 - 无障碍 */
+:focus-visible {
+  outline: 2px solid var(--color-accent-glow);
+  outline-offset: 2px;
+}
+
+/* 全局过渡优化 */
+* {
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ========================================
+   Antd 深色主题覆盖
+   ======================================== */
+
+/* 深色 Modal */
+.dark-modal .ant-modal-content {
+  background: var(--color-bg-surface) !important;
+  border: 1px solid var(--color-border);
+}
+.dark-modal .ant-modal-header {
+  background: var(--color-bg-surface) !important;
+  border-bottom: 1px solid var(--color-border) !important;
+}
+.dark-modal .ant-modal-title {
+  color: var(--color-text-primary) !important;
+}
+.dark-modal .ant-modal-close {
+  color: var(--color-text-secondary) !important;
+}
+.dark-modal .ant-modal-close:hover {
+  color: var(--color-text-primary) !important;
+  background: var(--color-bg-hover) !important;
+}
+.dark-modal .ant-modal-body {
+  background: var(--color-bg-surface) !important;
+}
+.dark-modal .ant-modal-footer {
+  background: var(--color-bg-surface) !important;
+  border-top: 1px solid var(--color-border) !important;
+}
+
+/* 深色 Modal 内的 Form */
+.dark-modal .ant-form-item-label > label {
+  color: var(--color-text-primary) !important;
+}
+.dark-modal .ant-form-item-explain {
+  color: var(--color-text-secondary) !important;
+}
+.dark-modal .ant-input,
+.dark-modal .ant-input-password,
+.dark-modal .ant-select-selector,
+.dark-modal .ant-input-affix-wrapper {
+  background: var(--color-bg-elevated) !important;
+  border-color: var(--color-border) !important;
+  color: var(--color-text-primary) !important;
+}
+.dark-modal .ant-input::placeholder,
+.dark-modal .ant-input-password input::placeholder {
+  color: var(--color-text-muted) !important;
+}
+.dark-modal .ant-input:hover,
+.dark-modal .ant-input-password:hover,
+.dark-modal .ant-select-selector:hover,
+.dark-modal .ant-input-affix-wrapper:hover {
+  border-color: var(--color-accent) !important;
+}
+.dark-modal .ant-input:focus,
+.dark-modal .ant-input-focused,
+.dark-modal .ant-input-affix-wrapper-focused {
+  border-color: var(--color-accent) !important;
+  box-shadow: 0 0 0 2px var(--color-accent-glow) !important;
+}
+.dark-modal .ant-select-dropdown {
+  background: var(--color-bg-elevated) !important;
+  border: 1px solid var(--color-border) !important;
+}
+.dark-modal .ant-select-item {
+  color: var(--color-text-primary) !important;
+}
+.dark-modal .ant-select-item-option-selected {
+  background: var(--color-accent-glow) !important;
+}
+.dark-modal .ant-select-item-option-active {
+  background: var(--color-bg-hover) !important;
+}
+.dark-modal .ant-select-selection-item {
+  color: var(--color-text-primary) !important;
+}
+.dark-modal .ant-select-arrow,
+.dark-modal .ant-input-prefix {
+  color: var(--color-text-secondary) !important;
+}
+
+/* ========================================
+   浏览器自动填充样式修复
+   ======================================== */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0 1000px var(--color-bg-elevated) inset !important;
+  -webkit-text-fill-color: var(--color-text-primary) !important;
+  caret-color: var(--color-text-primary) !important;
+  transition: background-color 5000s ease-in-out 0s;
+}
+
+/* Skeleton 骨架屏深色优化 */
+.ant-skeleton .ant-skeleton-content .ant-skeleton-title,
+.ant-skeleton .ant-skeleton-content .ant-skeleton-paragraph > li {
+  background: linear-gradient(90deg, #27272a 25%, #3f3f46 50%, #27272a 75%);
+  background-size: 200% 100%;
+}
+

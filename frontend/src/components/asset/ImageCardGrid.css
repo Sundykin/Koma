@@ -1,0 +1,96 @@
+/* ImageCardGrid 多图片卡片网格样式 */
+
+.imageCardGrid {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  height: 100%;
+  overflow: hidden;
+}
+
+.imageCards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  flex: 1;
+  overflow-y: auto;
+  align-content: flex-start;
+}
+
+.imageCard {
+  width: 80px;
+  height: 56px;
+  border-radius: 4px;
+  overflow: hidden;
+  cursor: pointer;
+  position: relative;
+  border: 2px solid transparent;
+  background: #1a1a1a;
+  transition: border-color 0.2s;
+}
+
+.imageCard:hover {
+  border-color: #3f3f46;
+}
+
+.imageCard.selected {
+  border-color: #10b981;
+}
+
+.imageCard img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.imageCard .selectedIcon {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  color: #10b981;
+  font-size: 12px;
+  background: rgba(0, 0, 0, 0.6);
+  border-radius: 50%;
+}
+
+.imageCard .cardOverlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.imageCard:hover .cardOverlay {
+  opacity: 1;
+}
+
+.imageCard .overlayBtn {
+  color: #fff;
+  padding: 2px;
+}
+
+.imageCard.addCard {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed #3f3f46;
+  color: #71717a;
+  gap: 2px;
+}
+
+.imageCard.addCard:hover {
+  border-color: #52525b;
+  color: #a1a1aa;
+}
+
+.imageCardGrid .generateBtn {
+  align-self: flex-start;
+  font-size: 11px;
+  padding: 0 6px;
+  height: 22px;
+}

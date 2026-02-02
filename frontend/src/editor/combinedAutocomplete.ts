@@ -1,0 +1,186 @@
+/**
+ * 组合自动补全
+ * 合并 @ mention 和 / 运镜命令的补全源
+ */
+import {
+  autocompletion,
+  CompletionContext,
+  CompletionResult,
+  Completion,
+} from '@codemirror/autocomplete';
+import { EditorView } from '@codemirror/view';
+import type { MentionItem, MentionType } from './mentionTypes';
+import { createMentionString } from './mentionTypes';
+import { searchCommands } from './cameraCommandTypes';
+
+export type MentionDataSource = () => MentionItem[];
+
+// Mention 类型标签
+function getMentionTypeLabel(type: MentionType): string {
+  switch (type) {
+    case 'char': return '🎬 角色';
+    case 'prop': return '🎬 道具';
+    case 'scene': return '场景';
+    default: return '';
+  }
+}
+
+/**
+ * 创建 Mention 补全源 (@ 触发)
+ */
+function createMentionCompletions(dataSource: MentionDataSource) {
+  return (context: CompletionContext): CompletionResult | null => {
+    const word = context.matchBefore(/@\w*/);
+    if (!word) return null;
+
+    const query = word.text.slice(1).toLowerCase();
+    const items = dataSource();
+
+    const options: Completion[] = items
+      .filter((item) => {
+        if (!query) return true;
+        return item.name.toLowerCase().includes(query) || item.type.includes(query);
+      })
+      .map((item) => ({
+        label: item.name,
+        type: item.type === 'char' ? 'variable' : item.type === 'prop' ? 'property' : 'class',
+        detail: getMentionTypeLabel(item.type),
+        info: item.description,
+        apply: (view, completion, from, to) => {
+          const mentionStr = createMentionString(item.type, item.id);
+          view.dispatch({
+            changes: { from, to, insert: mentionStr + ' ' },
+            selection: { anchor: from + mentionStr.length + 1 },
+          });
+        },
+        boost: item.type === 'char' ? 2 : item.type === 'scene' ? 1 : 0,
+      }));
+
+    if (options.length === 0) return null;
+
+    return {
+      from: word.from,
+      to: word.to,
+      options,
+      filter: false,
+    };
+  };
+}
+
+/**
+ * 创建运镜命令补全源 (/ 触发)
+ * 选择后直接插入中文文字
+ */
+function createCommandCompletions() {
+  return (context: CompletionContext): CompletionResult | null => {
+    // 匹配 / 开头的输入
+    const word = context.matchBefore(/\/[^\s]*/);
+    if (!word) return null;
+
+    const query = word.text.slice(1).toLowerCase();
+    const commands = searchCommands(query);
+
+    if (commands.length === 0) return null;
+
+    const options: Completion[] = commands.map((cmd) => ({
+      label: `${cmd.nameZh} ${cmd.nameEn}`,
+      displayLabel: cmd.nameZh,
+      type: cmd.category === 'camera' ? 'keyword' : 'type',
+      detail: cmd.category === 'camera' ? '🎬 运镜' : '📐 景别',
+      info: `${cmd.nameEn}\n${cmd.description}`,
+      apply: (view, completion, from, to) => {
+        // 直接插入中文名称
+        const text = cmd.nameZh;
+        view.dispatch({
+          changes: { from, to, insert: text + ' ' },
+          selection: { anchor: from + text.length + 1 },
+        });
+      },
+      boost: cmd.category === 'camera' ? 1 : 0,
+    }));
+
+    return {
+      from: word.from,
+      to: word.to,
+      options,
+      filter: false,
+    };
+  };
+}
+
+/**
+ * 创建组合自动补全扩展
+ */
+export function createCombinedAutocomplete(mentionDataSource: MentionDataSource) {
+  return autocompletion({
+    override: [
+      createMentionCompletions(mentionDataSource),
+      createCommandCompletions(),
+    ],
+    activateOnTyping: true,
+    maxRenderedOptions: 25,
+    icons: true,
+    closeOnBlur: false,
+  });
+}
+
+/**
+ * 组合补全列表样式
+ */
+export const combinedAutocompleteTheme = EditorView.theme({
+  '.cm-tooltip': {
+    zIndex: '99999 !important',
+  },
+  '.cm-tooltip-autocomplete': {
+    minWidth: '220px',
+    maxWidth: '450px',
+    zIndex: '99999 !important',
+    background: '#1f1f23 !important',
+    border: '1px solid #10b981 !important',
+    borderRadius: '8px',
+    boxShadow: '0 8px 24px rgba(0, 0, 0, 0.6)',
+    overflow: 'hidden',
+  },
+  '.cm-tooltip-autocomplete ul': {
+    maxHeight: '350px',
+    padding: '4px 0',
+    margin: '0',
+    listStyle: 'none',
+  },
+  '.cm-tooltip-autocomplete li': {
+    padding: '8px 12px !important',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    color: '#e4e4e7 !important',
+    cursor: 'pointer',
+  },
+  '.cm-tooltip-autocomplete li[aria-selected]': {
+    backgroundColor: '#10b981 !important',
+    color: '#fff !important',
+  },
+  '.cm-completionLabel': {
+    flex: '1',
+    fontWeight: '500',
+  },
+  '.cm-completionDetail': {
+    fontSize: '0.85em',
+    color: '#a1a1aa',
+    marginLeft: 'auto',
+  },
+  '.cm-tooltip-autocomplete li[aria-selected] .cm-completionDetail': {
+    color: 'rgba(255, 255, 255, 0.8)',
+  },
+  '.cm-completionIcon': {
+    opacity: '0.7',
+  },
+  '.cm-completionInfo': {
+    padding: '8px 12px',
+    background: '#27272a',
+    color: '#a1a1aa',
+    fontSize: '12px',
+    borderTop: '1px solid #3f3f46',
+    maxWidth: '300px',
+    whiteSpace: 'pre-wrap',
+  },
+});

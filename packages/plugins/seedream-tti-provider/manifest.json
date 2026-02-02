@@ -1,0 +1,36 @@
+{
+  "id": "com.koma.seedream-tti-provider",
+  "name": "Seedream 文生图服务",
+  "version": "1.0.0",
+  "description": "豆包 Seedream 4.0 文生图/图生图服务 (doubao-seedream-4-0-250828)",
+  "author": {
+    "name": "Koma Team",
+    "url": "https://github.com/koma-studio"
+  },
+  "category": "provider",
+  "engine": {
+    "minAppVersion": "2.5.0",
+    "sdkVersion": "1.0.0"
+  },
+  "scopes": [
+    "settings:read",
+    "settings:write",
+    "storage:limited",
+    "network:external"
+  ],
+  "entry": {
+    "frontend": "./dist/ui/main.js",
+    "backend": "./dist/backend.js"
+  },
+  "providerMeta": {
+    "channelType": "tti",
+    "capabilities": ["tti"],
+    "configPanel": true,
+    "defaultConfig": {
+      "apiKey": "",
+      "baseUrl": "https://api.vectorengine.ai",
+      "sizePreset": "2K",
+      "watermark": true
+    }
+  }
+}

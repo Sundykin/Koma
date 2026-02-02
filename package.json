@@ -1,0 +1,23 @@
+{
+  "name": "koma-studio",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Koma Studio - AI Drama Creation Tool",
+  "main": "electron/dist/main.js",
+  "scripts": {
+    "dev": "concurrently \"npm run dev:frontend\" \"npm run dev:electron\"",
+    "dev:frontend": "cd frontend && npm run dev",
+    "dev:electron": "cd electron && npm run dev",
+    "build": "npm run build:frontend && npm run build:electron",
+    "build:frontend": "cd frontend && npm run build",
+    "build:electron": "cd electron && npm run build",
+    "start": "electron electron/dist/main.js",
+    "electron:build": "npm run build && electron-builder",
+    "install:all": "npm install && cd frontend && npm install && cd ../electron && npm install"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1",
+    "electron": "^39.2.7",
+    "electron-builder": "^26.4.0"
+  }
+}

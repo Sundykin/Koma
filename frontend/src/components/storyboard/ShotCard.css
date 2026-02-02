@@ -1,0 +1,135 @@
+.shot-card {
+  position: relative;
+  background: #18181b;
+  border: 1px solid #27272a;
+  border-radius: 8px;
+  margin-bottom: 4px;
+  display: flex;
+  flex-direction: column;
+  transition: all 0.2s ease;
+  overflow: hidden;
+}
+
+.shot-card:hover {
+  background: #202023;
+  border-color: #3f3f46;
+}
+
+.shot-card.selected {
+  background: rgba(16, 185, 129, 0.05);
+  border-color: rgba(16, 185, 129, 0.4);
+}
+
+.shot-card.confirmed {
+  border-left: 4px solid #10b981;
+}
+
+.shot-card.active {
+  background: rgba(59, 130, 246, 0.08);
+  border-color: rgba(59, 130, 246, 0.5);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
+}
+
+/* Header */
+.shot-card-header {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  border-bottom: 1px solid #27272a;
+  gap: 12px;
+}
+
+.shot-card-index {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 60px;
+}
+
+.index-number {
+  font-weight: 600;
+  color: #a1a1aa;
+}
+
+.confirmed-icon {
+  color: #10b981;
+}
+
+.shot-card-meta {
+  flex: 1;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.shot-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Character Select Customization */
+.character-select .ant-select-selector {
+  background: #27272a !important;
+  border-color: #3f3f46 !important;
+  color: #e4e4e7 !important;
+}
+
+.character-select .ant-select-arrow {
+  color: #a1a1aa;
+}
+
+.character-select .ant-select-selection-item {
+  background: #3f3f46 !important;
+  border-color: #52525b !important;
+  color: #fff !important;
+}
+
+/* Editor Overrides */
+.prompt-editor-container .cm-editor {
+  height: 100% !important;
+  background-color: transparent !important;
+}
+
+.prompt-editor-container .cm-scroller {
+  padding: 8px !important;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+}
+
+/* Shot Prompt Editor - 紧凑模式 */
+.shot-prompt-editor .cm-editor {
+  height: 100% !important;
+  background-color: transparent !important;
+}
+
+.shot-prompt-editor .cm-scroller {
+  padding: 4px 6px !important;
+}
+
+.shot-prompt-editor .cm-content {
+  padding: 0 !important;
+}
+
+.shot-prompt-editor .cm-line {
+  padding: 0 !important;
+}
+
+/* Custom Scrollbar for columns */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #3f3f46;
+  border-radius: 2px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #52525b;
+}
