@@ -20,7 +20,21 @@ import type {
   Timeline,
   Track,
   Clip,
+  EasingType,
 } from '../types';
+
+// 有效的 easing 类型列表
+const VALID_EASING_TYPES: EasingType[] = ['linear', 'ease', 'ease-in', 'ease-out', 'ease-in-out', 'cubic-bezier'];
+
+/**
+ * 将字符串转换为 EasingType，无效值返回默认值
+ */
+function toEasingType(value: string | undefined): EasingType {
+  if (value && VALID_EASING_TYPES.includes(value as EasingType)) {
+    return value as EasingType;
+  }
+  return 'linear';
+}
 
 // ========== 导出 ==========
 
@@ -263,7 +277,7 @@ function fromManjuClip(c: ManjuClip): Clip {
       time: kf.time,
       property: kf.property,
       value: kf.value,
-      easing: (kf.easing as any) || 'linear',
+      easing: toEasingType(kf.easing),
     })),
   };
 }
