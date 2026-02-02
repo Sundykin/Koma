@@ -44,6 +44,7 @@ import {
 } from '../../store/globalStore';
 import { getChannelConfigs, updateChannelConfig } from '../../store/settings/channelConfig';
 import { ProviderPluginModal } from '../plugins/ProviderPluginModal';
+import { createITVProvider } from '../../providers/itv';
 
 interface ITVConfigManagerProps {
   onConfigChange?: () => void;
@@ -216,9 +217,18 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
   const handleTestConnection = async (config: ITVModelConfig) => {
     setTestingId(config.id);
     try {
-      // TODO: 实现 ITV 连接测试
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      message.success(`"${config.name}" 连接成功`);
+      const provider = createITVProvider(config);
+
+      if (!provider.validate()) {
+        throw new Error('配置验证失败，请检查必填项');
+      }
+
+      const success = await provider.testConnection();
+      if (success) {
+        message.success(`"${config.name}" 连接成功`);
+      } else {
+        message.error(`"${config.name}" 连接失败，请检查服务地址和 API Key`);
+      }
     } catch (err: any) {
       message.error(`连接测试失败: ${err.message}`);
     } finally {
