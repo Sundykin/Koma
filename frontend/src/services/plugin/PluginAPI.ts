@@ -1,7 +1,7 @@
 /**
- * 插件 API 实现
- * 为插件提供系统能力访问
- * 重构版：支持 Provider 类注入
+ * ?? API ??
+ * ???????????
+ * ?????? Provider ???
  */
 import type {
   PluginAPI,
@@ -29,34 +29,35 @@ import {
   type ProviderContext,
 } from '../../providers/registry';
 import { addChannelConfig, deleteChannelsByPlugin } from '../../store/settings/channelConfig';
+import pkg from '../../../../package.json';
 
-// 事件监听器
-const eventListeners = new Map<string, Map<string, Set<Function>>>();
+// ?????
+const eventListeners = new Map<string, Map<string, Set<Function>>>();  
 
-// 动态菜单项
+// ?????
 const dynamicMenuItems = new Map<string, MenuItem[]>();
 
-// 插件注册的 Provider 类型（用于卸载时清理）
+// ????? Provider ???????????
 const pluginProviderTypes = new Map<string, string[]>();
 
 /**
- * 创建插件专用的 API 实例
+ * ??????? API ??
  */
-export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
+export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {  
   const pluginId = plugin.id;
 
   return {
     // ========== Core ==========
     core: {
       async getVersion() {
-        return '1.0.0'; // TODO: 从 package.json 读取
+        return pkg.version;
       },
 
       async getHostInfo(): Promise<HostInfo> {
         return {
-          appVersion: '1.0.0',
-          platform: process.platform as 'win32' | 'darwin' | 'linux',
-          electronVersion: process.versions.electron || 'unknown',
+          appVersion: pkg.version,
+          platform: process.platform as 'win32' | 'darwin' | 'linux',  
+          electronVersion: process.versions.electron || 'unknown',     
         };
       },
 
@@ -87,20 +88,20 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
           throw new Error(result.reason);
         }
 
-        // 从 globalStore 读取设置
+        // ? globalStore ????
         const { useGlobalStore } = await import('../../store/globalStore');
         const state = useGlobalStore.getState();
 
         if (!keys || keys.length === 0) {
-          // 返回所有设置（排除敏感信息）
+          // ??????????????
           return {
             theme: state.theme,
             language: state.language,
-            // ... 其他非敏感设置
+            // ... ???????
           };
         }
 
-        // 返回指定的设置
+        // ???????
         const result2: Record<string, any> = {};
         for (const key of keys) {
           if (key in state && !isSensitiveKey(key)) {
@@ -116,7 +117,7 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
           throw new Error(result.reason);
         }
 
-        // 过滤敏感字段
+        // ??????
         const safePatch: Record<string, any> = {};
         for (const [key, value] of Object.entries(patch)) {
           if (!isSensitiveKey(key)) {
@@ -125,10 +126,10 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
         }
 
         const { useGlobalStore } = await import('../../store/globalStore');
-        // 应用设置变更
+        // ??????
         useGlobalStore.setState(safePatch);
 
-        // 触发事件
+        // ????
         emitPluginEvent('settingsChanged', safePatch);
       },
     },
@@ -162,7 +163,7 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
         const project = await loadProject(projectId);
 
         if (!project) {
-          throw new Error(`项目不存在: ${projectId}`);
+          throw new Error(`?????: ${projectId}`);
         }
 
         return {
@@ -182,13 +183,13 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
         const { updateProject } = await import('../../store/projectStore');
         await updateProject(projectId, mutation);
 
-        emitPluginEvent('projectChanged', { projectId, mutation });
+        emitPluginEvent('projectChanged', { projectId, mutation });    
       },
     },
 
     // ========== Prompts ==========
     prompts: {
-      async getTemplate(id: string): Promise<PluginPromptTemplate> {
+      async getTemplate(id: string): Promise<PluginPromptTemplate> {   
         const { getPromptTemplate } = await import('../../store/promptTemplates');
         const template = await getPromptTemplate(id);
 
@@ -226,44 +227,44 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
       },
     },
 
-    // ========== Channels (重构版：Provider 注入) ==========
+    // ========== Channels (????Provider ??) ==========
     channels: {
       /**
-       * 注册 Provider（新 API）
-       * 插件通过此方法注册自定义 Provider 类
+       * ?? Provider?? API?
+       * ???????????? Provider ?
        */
       async registerProvider(def: ProviderDefinition<any>) {
-        // 验证权限
+        // ????
         const result = validateOperation(plugin, 'channels.registerProvider', 'network:external');
         if (!result.allowed) {
           throw new Error(result.reason);
         }
 
-        console.log(`[PluginAPI] 插件 ${pluginId} 注册 Provider:`, def.type, 'kind:', def.kind, 'capabilities:', def.capabilities);
+        console.log(`[PluginAPI] ?? ${pluginId} ?? Provider:`, def.type, 'kind:', def.kind, 'capabilities:', def.capabilities);
 
-        // 添加 pluginId 标识
+        // ?? pluginId ??
         def.pluginId = pluginId;
 
-        // 注册到 Registry
+        // ??? Registry
         registerProvider(def);
 
-        // 记录 Provider 类型（卸载时清理）
+        // ?? Provider ???????????
         if (!pluginProviderTypes.has(pluginId)) {
           pluginProviderTypes.set(pluginId, []);
         }
         pluginProviderTypes.get(pluginId)!.push(def.type);
 
-        // 检查是否已存在渠道配置（避免重复创建）
+        // ??????????????????
         const { getChannelConfigs } = await import('../../store/settings/channelConfig');
         const existingConfigs = await getChannelConfigs();
-        console.log(`[PluginAPI] 现有渠道配置数量:`, existingConfigs.length);
+        console.log(`[PluginAPI] ????????:`, existingConfigs.length);
         const existingChannel = existingConfigs.find(
-          c => c.providerType === def.type && c.pluginId === pluginId
+          c => c.providerType === def.type && c.pluginId === pluginId  
         );
 
         if (existingChannel) {
-          console.log(`[PluginAPI] 渠道配置已存在，更新属性:`, def.type, existingChannel.id);
-          // 更新已存在配置的属性（确保 capabilities 等字段正确）
+          console.log(`[PluginAPI] ????????????:`, def.type, existingChannel.id);
+          // ????????????? capabilities ??????      
           const { updateChannelConfig } = await import('../../store/settings/channelConfig');
           await updateChannelConfig(existingChannel.id, {
             name: def.name,
@@ -272,13 +273,13 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
             polling: def.polling,
             enabled: true,
           });
-          // 触发事件通知 UI 刷新
+          // ?????? UI ??
           emitPluginEvent('providerRegistered', { pluginId, providerType: def.type });
           return;
         }
 
-        // 创建对应的渠道配置（失败时回滚）
-        console.log(`[PluginAPI] 创建新渠道配置:`, def.type, 'capabilities:', def.capabilities || [def.kind]);
+        // ????????????????
+        console.log(`[PluginAPI] ???????:`, def.type, 'capabilities:', def.capabilities || [def.kind]);
         try {
           const newConfig = await addChannelConfig({
             name: def.name,
@@ -291,10 +292,10 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
             source: 'plugin',
             pluginId,
           });
-          console.log(`[PluginAPI] 渠道配置创建成功:`, newConfig.id);
+          console.log(`[PluginAPI] ????????:`, newConfig.id);  
         } catch (err) {
-          console.error(`[PluginAPI] 渠道配置创建失败:`, err);
-          // 回滚：移除已注册的 Provider
+          console.error(`[PluginAPI] ????????:`, err);
+          // ????????? Provider
           unregisterProvider(def.kind, def.type);
           const types = pluginProviderTypes.get(pluginId);
           if (types) {
@@ -304,35 +305,35 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
           throw err;
         }
 
-        // 触发事件通知 UI 刷新
+        // ?????? UI ??
         emitPluginEvent('providerRegistered', { pluginId, providerType: def.type });
       },
 
       /**
-       * 反注册 Provider
+       * ??? Provider
        */
       async unregisterProvider(type: string) {
-        const def = listProviders().find(p => p.type === type);
+        const def = listProviders().find(p => p.type === type);        
         if (def && def.pluginId === pluginId) {
           unregisterProvider(def.kind, type);
 
-          // 从记录中移除
+          // ??????
           const types = pluginProviderTypes.get(pluginId);
           if (types) {
             const idx = types.indexOf(type);
             if (idx >= 0) types.splice(idx, 1);
           }
 
-          // 清理对应的渠道配置
+          // ?????????
           const { deleteChannelByProviderType } = await import('../../store/settings/channelConfig');
           await deleteChannelByProviderType(type, pluginId);
         }
       },
 
       /**
-       * 更新 Provider 配置
-       * 插件 UI 保存配置后调用此方法同步到 channelConfig.providerConfig
-       * 如果配置不存在则自动创建
+       * ?? Provider ??
+       * ?? UI ????????????? channelConfig.providerConfig
+       * ????????????
        */
       async updateProviderConfig(type: string, config: Record<string, any>) {
         const result = validateOperation(plugin, 'channels.updateProviderConfig', 'network:external');
@@ -343,12 +344,12 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
         const { getChannelConfigs, updateChannelConfig, addChannelConfig } = await import('../../store/settings/channelConfig');
         const configs = await getChannelConfigs();
         let channelConfig = configs.find(
-          c => c.providerType === type && c.pluginId === pluginId
+          c => c.providerType === type && c.pluginId === pluginId      
         );
 
         if (!channelConfig) {
-          // 自动创建渠道配置
-          console.log(`[PluginAPI] 渠道配置不存在，自动创建: ${type}`);
+          // ????????
+          console.log(`[PluginAPI] ????????????: ${type}`);
           const manifest = plugin.manifest;
           const capabilities = manifest.providerMeta?.capabilities || [];
 
@@ -362,27 +363,27 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
             source: 'plugin',
             pluginId: pluginId,
           });
-          console.log(`[PluginAPI] 已创建渠道配置: ${type}`, channelConfig);
+          console.log(`[PluginAPI] ???????: ${type}`, channelConfig);
           return;
         }
 
-        // 更新 providerConfig
+        // ?? providerConfig
         await updateChannelConfig(channelConfig.id, {
           providerConfig: config,
         });
 
-        console.log(`[PluginAPI] 已更新渠道配置: ${type}`, config);
+        console.log(`[PluginAPI] ???????: ${type}`, config);    
       },
 
       /**
-       * 获取 Provider 配置
-       * 从 channelConfig.providerConfig 读取配置
+       * ?? Provider ??
+       * ? channelConfig.providerConfig ????
        */
       async getProviderConfig(type: string): Promise<Record<string, any> | null> {
         const { getChannelConfigs } = await import('../../store/settings/channelConfig');
         const configs = await getChannelConfigs();
         const channelConfig = configs.find(
-          c => c.providerType === type && c.pluginId === pluginId
+          c => c.providerType === type && c.pluginId === pluginId      
         );
 
         if (!channelConfig) {
@@ -393,14 +394,14 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
       },
 
       /**
-       * 列出所有 Provider
+       * ???? Provider
        */
       async listProviders(kind?: ChannelKind) {
         return listProviders(kind);
       },
 
       /**
-       * 测试 Provider（需要指定 kind）
+       * ?? Provider????? kind?
        */
       async testProvider(kind: ChannelKind, type: string, config: Record<string, any>): Promise<ChannelTestResult> {
         const { createProviderInstance } = await import('../../providers/registry');
@@ -417,7 +418,7 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
             return {
               success,
               latency: Date.now() - start,
-              error: success ? undefined : '连接测试失败',
+              error: success ? undefined : '??????',
             };
           }
 
@@ -434,16 +435,16 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
         }
       },
 
-      async test(channelId: string): Promise<ChannelTestResult> {
+      async test(channelId: string): Promise<ChannelTestResult> {      
         const { getChannelConfigs } = await import('../../store/settings/channelConfig');
         const configs = await getChannelConfigs();
         const config = configs.find(c => c.id === channelId);
 
         if (!config) {
-          return { success: false, latency: 0, error: '渠道不存在' };
+          return { success: false, latency: 0, error: '?????' };  
         }
 
-        // 从 capabilities 推断 kind
+        // ? capabilities ?? kind
         const kind: ChannelKind = config.capabilities?.includes('tts') ? 'tts'
           : config.capabilities?.includes('itv') ? 'itv'
           : 'tti';
@@ -452,8 +453,8 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
       },
 
 
-      async invoke(channelId: string, action: string, params: any) {
-        // TODO: 实现渠道调用
+      async invoke(channelId: string, action: string, params: any) {   
+        // TODO: ??????
         throw new Error('Not implemented');
       },
     },
@@ -476,9 +477,9 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
           throw new Error(validation.error);
         }
 
-        // 确保目录存在
+        // ??????
         const dir = validation.fullPath!.replace(/\\/g, '/').split('/').slice(0, -1).join('/');
-        const dirExists = await electronService.fs.exists(dir);
+        const dirExists = await electronService.fs.exists(dir);        
         if (!dirExists) {
           await electronService.fs.mkdir(dir);
         }
@@ -502,21 +503,21 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
           throw new Error(validation.error);
         }
 
-        // 检查目录是否存在
+        // ????????
         const exists = await electronService.fs.exists(validation.fullPath!);
         if (!exists) {
           return [];
         }
 
-        return electronService.fs.readdir(validation.fullPath!);
+        return electronService.fs.readdir(validation.fullPath!);       
       },
 
-      async openDialog(options: DialogOptions): Promise<string[]> {
+      async openDialog(options: DialogOptions): Promise<string[]> {    
         if (!hasScope(plugin, 'storage:limited')) {
-          throw new Error('插件没有存储权限');
+          throw new Error('????????');
         }
 
-        const result = await electronService.dialog.showOpenDialog({
+        const result = await electronService.dialog.showOpenDialog({   
           title: options.title,
           properties: [
             options.multiple ? 'multiSelections' : undefined,
@@ -535,13 +536,13 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
         message[type](content);
       },
 
-      async showModal(options: ModalOptions): Promise<boolean> {
+      async showModal(options: ModalOptions): Promise<boolean> {       
         return new Promise((resolve) => {
           Modal.confirm({
             title: options.title,
             content: options.content,
-            okText: options.okText || '确定',
-            cancelText: options.cancelText || '取消',
+            okText: options.okText || '??',
+            cancelText: options.cancelText || '??',
             width: options.width,
             onOk: () => resolve(true),
             onCancel: () => resolve(false),
@@ -569,10 +570,10 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
   };
 }
 
-// ========== 辅助函数 ==========
+// ========== ???? ==========
 
 /**
- * 检查是否是敏感配置项
+ * ??????????
  */
 function isSensitiveKey(key: string): boolean {
   const sensitivePatterns = [
@@ -583,9 +584,9 @@ function isSensitiveKey(key: string): boolean {
 }
 
 /**
- * 触发插件事件
+ * ??????
  */
-export function emitPluginEvent(event: string, data: any): void {
+export function emitPluginEvent(event: string, data: any): void {      
   for (const [pluginId, events] of eventListeners) {
     const handlers = events.get(event);
     if (handlers) {
@@ -593,7 +594,7 @@ export function emitPluginEvent(event: string, data: any): void {
         try {
           handler(data);
         } catch (err) {
-          console.error(`[PluginAPI] 事件处理器执行失败 (${pluginId}):`, err);
+          console.error(`[PluginAPI] ????????? (${pluginId}):`, err);
         }
       }
     }
@@ -601,29 +602,29 @@ export function emitPluginEvent(event: string, data: any): void {
 }
 
 /**
- * 获取插件注册的菜单项
+ * ??????????
  */
-export function getPluginMenuItems(pluginId: string): MenuItem[] {
+export function getPluginMenuItems(pluginId: string): MenuItem[] {     
   return dynamicMenuItems.get(pluginId) || [];
 }
 
 /**
- * 清理插件的所有资源
- * 包括事件监听、菜单项、Provider 注册
+ * ?????????
+ * ???????????Provider ??
  */
 export async function cleanupPluginResources(pluginId: string): Promise<void> {
   eventListeners.delete(pluginId);
   dynamicMenuItems.delete(pluginId);
 
-  // 清理 Provider 注册
+  // ?? Provider ??
   const { unregisterProvidersByPlugin } = await import('../../providers/registry');
   unregisterProvidersByPlugin(pluginId);
 
-  // 清理插件的渠道配置
+  // ?????????
   await deleteChannelsByPlugin(pluginId);
 
-  // 清理记录
+  // ????
   pluginProviderTypes.delete(pluginId);
 
-  console.log(`[PluginAPI] 已清理插件 ${pluginId} 的所有资源`);
+  console.log(`[PluginAPI] ????? ${pluginId} ?????`);        
 }
