@@ -152,6 +152,25 @@ contextBridge.exposeInMainWorld('electronAPI', {
       exportConfig: (args?: any) => ipcRenderer.invoke('chat:mcp:exportConfig', args),
     },
 
+    // 工具调用审批
+    toolApproval: {
+      approve: (callId: string) => ipcRenderer.invoke('chat:tool:approve', { callId }),
+      reject: (callId: string, reason?: string) => ipcRenderer.invoke('chat:tool:reject', { callId, reason }),
+      listPending: (sessionId?: string) => ipcRenderer.invoke('chat:tool:listPending', { sessionId }),
+      onPending: (callback: (event: any, data: any) => void) => {
+        ipcRenderer.on('chat:tool:pending', callback);
+        return () => ipcRenderer.removeListener('chat:tool:pending', callback);
+      },
+      onApproved: (callback: (event: any, data: any) => void) => {
+        ipcRenderer.on('chat:tool:approved', callback);
+        return () => ipcRenderer.removeListener('chat:tool:approved', callback);
+      },
+      onRejected: (callback: (event: any, data: any) => void) => {
+        ipcRenderer.on('chat:tool:rejected', callback);
+        return () => ipcRenderer.removeListener('chat:tool:rejected', callback);
+      },
+    },
+
     // 统一工具（合并外部 MCP + 插件内部 MCP）
     tools: {
       list: () => ipcRenderer.invoke('chat:tools:list'),

@@ -21,12 +21,25 @@ interface ElectronMCPAPI {
     callTool: (name: string, args: Record<string, unknown>) => Promise<unknown>;
     readResource: (uri: string) => Promise<{ content: string; mimeType?: string }>;
   };
+  toolApproval: {
+    approve: (callId: string) => Promise<{ success: boolean }>;
+    reject: (callId: string, reason?: string) => Promise<{ success: boolean }>;
+    listPending: (sessionId?: string) => Promise<Array<{
+      callId: string;
+      sessionId: string;
+      toolName: string;
+      args: Record<string, unknown>;
+    }>>;
+    onPending: (callback: (event: any, data: any) => void) => () => void;
+    onApproved: (callback: (event: any, data: any) => void) => () => void;
+    onRejected: (callback: (event: any, data: any) => void) => () => void;
+  };
 }
 
 // 获取 Electron API
 function getElectronAPI(): ElectronMCPAPI | null {
-  if (typeof window !== 'undefined' && (window as any).electron?.mcp) {
-    return (window as any).electron as ElectronMCPAPI;
+  if (typeof window !== 'undefined' && (window as any).electronAPI?.chat) {
+    return (window as any).electronAPI.chat as ElectronMCPAPI;
   }
   return null;
 }
@@ -113,27 +126,90 @@ export const mcpService = {
   },
 
   /**
-   * 允许工具调用
+   * 审批工具调用
    */
-  async approveToolCall(callId: string): Promise<void> {
+  async approveToolCall(callId: string): Promise<boolean> {
     const api = getElectronAPI();
     if (!api) {
       throw new Error('Electron API not available');
     }
-    // TODO: 实现工具调用审批
-    console.log('approveToolCall', callId);
+    const result = await api.toolApproval.approve(callId);
+    return result.success;
   },
 
   /**
    * 拒绝工具调用
    */
-  async rejectToolCall(callId: string): Promise<void> {
+  async rejectToolCall(callId: string, reason?: string): Promise<boolean> {
     const api = getElectronAPI();
     if (!api) {
       throw new Error('Electron API not available');
     }
-    // TODO: 实现工具调用拒绝
-    console.log('rejectToolCall', callId);
+    const result = await api.toolApproval.reject(callId, reason);
+    return result.success;
+  },
+
+  /**
+   * 获取待审批的工具调用列表
+   */
+  async listPendingToolCalls(sessionId?: string): Promise<Array<{
+    callId: string;
+    sessionId: string;
+    toolName: string;
+    args: Record<string, unknown>;
+  }>> {
+    const api = getElectronAPI();
+    if (!api) {
+      return [];
+    }
+    return api.toolApproval.listPending(sessionId);
+  },
+
+  /**
+   * 监听待审批工具调用事件
+   */
+  onToolCallPending(callback: (data: {
+    callId: string;
+    sessionId: string;
+    toolName: string;
+    args: Record<string, unknown>;
+  }) => void): () => void {
+    const api = getElectronAPI();
+    if (!api) {
+      return () => {};
+    }
+    return api.toolApproval.onPending((_, data) => callback(data));
+  },
+
+  /**
+   * 监听工具调用审批通过事件
+   */
+  onToolCallApproved(callback: (data: {
+    callId: string;
+    sessionId: string;
+    toolName: string;
+  }) => void): () => void {
+    const api = getElectronAPI();
+    if (!api) {
+      return () => {};
+    }
+    return api.toolApproval.onApproved((_, data) => callback(data));
+  },
+
+  /**
+   * 监听工具调用拒绝事件
+   */
+  onToolCallRejected(callback: (data: {
+    callId: string;
+    sessionId: string;
+    toolName: string;
+    reason?: string;
+  }) => void): () => void {
+    const api = getElectronAPI();
+    if (!api) {
+      return () => {};
+    }
+    return api.toolApproval.onRejected((_, data) => callback(data));
   },
 };
 

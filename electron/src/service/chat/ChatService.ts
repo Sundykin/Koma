@@ -32,6 +32,14 @@ import { onMCPConnectionChanged } from '../plugin/capability';
 
 export class ChatService extends EventEmitter {
   private activeRequests = new Map<string, AbortController>();
+  // 待审批的工具调用
+  private pendingToolCalls = new Map<string, {
+    sessionId: string;
+    toolName: string;
+    args: Record<string, unknown>;
+    resolve: (approved: boolean) => void;
+    reject: (error: Error) => void;
+  }>();
 
   constructor() {
     super();
@@ -403,6 +411,96 @@ export class ChatService extends EventEmitter {
 
   async callMCPTool(name: string, args: Record<string, unknown>): Promise<unknown> {
     return mcpManager.callTool(name, args);
+  }
+
+  // ========== 工具调用审批 ==========
+
+  /**
+   * 添加待审批的工具调用
+   */
+  addPendingToolCall(
+    callId: string,
+    sessionId: string,
+    toolName: string,
+    args: Record<string, unknown>
+  ): Promise<boolean> {
+    return new Promise((resolve, reject) => {
+      this.pendingToolCalls.set(callId, {
+        sessionId,
+        toolName,
+        args,
+        resolve,
+        reject,
+      });
+
+      // 发送事件通知前端
+      this.emit('toolCallPending', { callId, sessionId, toolName, args });
+    });
+  }
+
+  /**
+   * 审批工具调用
+   */
+  approveToolCall(callId: string): boolean {
+    const pending = this.pendingToolCalls.get(callId);
+    if (!pending) {
+      return false;
+    }
+
+    this.pendingToolCalls.delete(callId);
+    pending.resolve(true);
+    this.emit('toolCallApproved', { callId, sessionId: pending.sessionId, toolName: pending.toolName });
+    return true;
+  }
+
+  /**
+   * 拒绝工具调用
+   */
+  rejectToolCall(callId: string, reason?: string): boolean {
+    const pending = this.pendingToolCalls.get(callId);
+    if (!pending) {
+      return false;
+    }
+
+    this.pendingToolCalls.delete(callId);
+    pending.resolve(false);
+    this.emit('toolCallRejected', {
+      callId,
+      sessionId: pending.sessionId,
+      toolName: pending.toolName,
+      reason: reason || 'User rejected',
+    });
+    return true;
+  }
+
+  /**
+   * 获取待审批的工具调用列表
+   */
+  listPendingToolCalls(sessionId?: string): Array<{
+    callId: string;
+    sessionId: string;
+    toolName: string;
+    args: Record<string, unknown>;
+  }> {
+    const result: Array<{
+      callId: string;
+      sessionId: string;
+      toolName: string;
+      args: Record<string, unknown>;
+    }> = [];
+
+    for (const [callId, pending] of this.pendingToolCalls) {
+      if (!sessionId || pending.sessionId === sessionId) {
+        result.push({
+          callId,
+          sessionId: pending.sessionId,
+          toolName: pending.toolName,
+          args: pending.args,
+        });
+      }
+    }
+
+    return result;
   }
 
   // ========== 工具方法 ==========

@@ -170,6 +170,47 @@ export class ChatController {
       return chatService.listMCPTools();
     });
 
+    // ========== 工具调用审批 ==========
+
+    ipcMain.handle('chat:tool:approve', async (event, args: { callId: string }) => {
+      const success = chatService.approveToolCall(args.callId);
+      return { success };
+    });
+
+    ipcMain.handle('chat:tool:reject', async (event, args: { callId: string; reason?: string }) => {
+      const success = chatService.rejectToolCall(args.callId, args.reason);
+      return { success };
+    });
+
+    ipcMain.handle('chat:tool:listPending', async (event, args?: { sessionId?: string }) => {
+      return chatService.listPendingToolCalls(args?.sessionId);
+    });
+
+    // 监听工具调用审批事件，转发到前端
+    chatService.on('toolCallPending', (data) => {
+      BrowserWindow.getAllWindows().forEach(win => {
+        if (!win.isDestroyed()) {
+          win.webContents.send('chat:tool:pending', data);
+        }
+      });
+    });
+
+    chatService.on('toolCallApproved', (data) => {
+      BrowserWindow.getAllWindows().forEach(win => {
+        if (!win.isDestroyed()) {
+          win.webContents.send('chat:tool:approved', data);
+        }
+      });
+    });
+
+    chatService.on('toolCallRejected', (data) => {
+      BrowserWindow.getAllWindows().forEach(win => {
+        if (!win.isDestroyed()) {
+          win.webContents.send('chat:tool:rejected', data);
+        }
+      });
+    });
+
     // ========== 统一工具列表（合并外部 MCP + 插件内部） ==========
 
     ipcMain.handle('chat:tools:list', async () => {
