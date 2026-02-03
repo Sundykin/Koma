@@ -4,7 +4,7 @@
  */
 import type { TrackLine, TrackItem, VideoTrackItem, AudioTrackItem, ImageTrackItem, TrackKeyframe } from '../types/track';
 import { message } from 'antd';
-import { handleError } from '../utils/errorHandler';
+import { handleError, ignoreError } from '../utils/errorHandler';
 
 const PLAYBACK_AUDIO_ERROR_KEY = 'playback-engine-audio-error';
 
@@ -465,7 +465,7 @@ export class PlaybackEngine {
           const internalTime = (this.currentFrame - item.start + item.offsetL) / this.config.fps;
           audio.currentTime = internalTime;
           audio.volume = audioItem.volume ?? 1;
-          audio.play().catch(() => {});
+          audio.play().catch(ignoreError('PlaybackEngine:audioPlay'));
         }
       }
     }

@@ -106,10 +106,13 @@ export function createSandboxedFetch(
 
 /**
  * 创建沙箱化的 console
+ * 注意：这里的 console.log 是故意保留的，用于插件的日志输出
+ * 插件通过这个沙箱 console 输出日志，会自动添加插件前缀
  */
 export function createSandboxedConsole(pluginId: string): Console {
   const prefix = `[Plugin:${pluginId}]`;
 
+  // 保留 console 调用 - 这是插件的日志输出接口
   return {
     ...console,
     log: (...args: any[]) => console.log(prefix, ...args),

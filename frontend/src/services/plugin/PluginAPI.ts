@@ -20,6 +20,7 @@ import type {
 import { validateOperation, validateStoragePath, createSandboxedFetch, hasScope } from './PluginSandbox';
 import { electronService } from '../electronService';
 import { message, Modal } from 'antd';
+import { createLogger } from '../../store/logger';
 import {
   registerProvider,
   unregisterProvider,
@@ -249,7 +250,8 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
           template: payload.newTemplate,
         });
 
-        console.log(`[PluginAPI] Plugin "${pluginId}" overrode template "${payload.templateId}"`);
+        const pluginLogger = createLogger('PluginAPI');
+        pluginLogger.info(`Plugin "${pluginId}" overrode template "${payload.templateId}"`);
       },
     },
 
