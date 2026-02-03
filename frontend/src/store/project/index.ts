@@ -2,17 +2,56 @@
  * Project Store 统一导出
  */
 
-// 核心
-export {
-  getProjectsRoot,
-  getProjectPath,
-  createProject,
-  loadProject,
-  saveProject,
-  updateProjectLLMConfig,
-  deleteProject,
-  listProjects,
-} from './core';
+// 核心 (使用动态导入以支持代码分割，避免与 manju.ts 动态导入冲突)
+export type { ProjectMeta } from '../../types';
+
+export const getProjectsRoot = async (): Promise<string> => {
+  const { getProjectsRoot: fn } = await import('./core');
+  return fn();
+};
+
+export const getProjectPath = async (projectId: string): Promise<string> => {
+  const { getProjectPath: fn } = await import('./core');
+  return fn(projectId);
+};
+
+export const createProject = async (
+  title: string,
+  genre: string,
+  mode: 'drama' | 'narration',
+  llmConfigId?: string
+) => {
+  const { createProject: fn } = await import('./core');
+  return fn(title, genre, mode, llmConfigId);
+};
+
+export const loadProject = async (projectId: string) => {
+  const { loadProject: fn } = await import('./core');
+  return fn(projectId);
+};
+
+export const saveProject = async (project: any) => {
+  const { saveProject: fn } = await import('./core');
+  return fn(project);
+};
+
+export const updateProjectLLMConfig = async (
+  projectId: string,
+  llmConfigId: string | null
+) => {
+  const { updateProjectLLMConfig: fn } = await import('./core');
+  return fn(projectId, llmConfigId);
+};
+
+export const deleteProject = async (projectId: string) => {
+  const { deleteProject: fn } = await import('./core');
+  return fn(projectId);
+};
+
+export const listProjects = async () => {
+  const { listProjects: fn } = await import('./core');
+  return fn();
+};
 
 // 时间线 (使用动态导入以支持代码分割)
 export type { Timeline } from '../../types';
