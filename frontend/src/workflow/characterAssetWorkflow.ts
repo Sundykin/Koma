@@ -4,7 +4,7 @@
  */
 import type { Character, AsyncTask } from '../types';
 import { getProjectTTIProvider, getProjectITVProvider } from '../providers';
-import { createTask, updateTask, markTaskCompleted, markTaskFailed } from '../store/taskQueueStore';
+import { createTask, updateTask, markTaskCompleted, markTaskFailed, getTask } from '../store/taskQueueStore';
 import { pollTaskUntilComplete, registerProgressChecker } from '../store/taskRecoveryService';
 import { downloadRemoteAsset } from '../store/assetDownloadService';
 import {
@@ -122,7 +122,7 @@ export async function generateCostumePhoto(
           return { success: false, error: '生成失败' };
         }
 
-        const updatedTask = await import('../store/taskQueueStore').then(m => m.getTask(projectId, task.id));
+        const updatedTask = await getTask(projectId, task.id);
         return { success: true, path: updatedTask?.localPath, url: remoteUrl };
       }
     } else {
