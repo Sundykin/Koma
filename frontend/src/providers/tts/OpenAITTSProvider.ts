@@ -1,9 +1,6 @@
 /**
  * OpenAI TTS Provider
  */
-import * as fs from 'fs';
-import * as path from 'path';
-import * as os from 'os';
 import type { TTSConfig, TTSOptions, AudioResult, Voice } from '../../types';
 import type { TTSProvider } from './types';
 
@@ -29,7 +26,7 @@ export class OpenAITTSProvider implements TTSProvider {
   }
 
   async testConnection(): Promise<boolean> {
-    // ???? API Key ??
+    // 简单验证 API Key 格式
     return this.validate();
   }
 
@@ -60,22 +57,17 @@ export class OpenAITTSProvider implements TTSProvider {
     );
 
     if (!response.ok) {
-      throw new Error(`OpenAI TTS failed: ${response.statusText}`);    
+      throw new Error(`OpenAI TTS failed: ${response.statusText}`);
     }
 
-    const arrayBuffer = await response.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-    
-    // ????????????
-    const tmpDir = os.tmpdir();
-    const fileName = `openai_tts_${Date.now()}.mp3`;
-    const filePath = path.join(tmpDir, fileName);
-    
-    await fs.promises.writeFile(filePath, buffer);
+    // TODO: 需要保存到文件并返回路径
+    // 这里返回 Blob URL 作为临时方案
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
 
     return {
-      path: filePath,
-      duration: 0, // ???????????????
+      path: url,
+      duration: 0, // 需要解析音频获取时长
       sampleRate: 24000,
     };
   }

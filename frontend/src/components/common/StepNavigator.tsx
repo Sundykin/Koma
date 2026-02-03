@@ -2,6 +2,7 @@ import React, { ReactNode } from 'react';
 import { EditorStep, EpisodeStepProgress } from '../../types';
 import { Users, Clapperboard, Scissors, Check, Lock } from 'lucide-react';
 import { Tooltip } from 'antd';
+import { useTranslation } from 'react-i18next';
 
 interface StepNavigatorProps {
   currentStep: EditorStep;
@@ -20,10 +21,12 @@ export const StepNavigator: React.FC<StepNavigatorProps> = ({
   stepProgress = defaultProgress,
   actionButton,
 }) => {
+  const { t } = useTranslation();
+
   const steps: { id: EditorStep; label: string; icon: any }[] = [
-    { id: 'assets', label: '角色场景', icon: Users },
-    { id: 'storyboard', label: 'AI分镜', icon: Clapperboard },
-    { id: 'video', label: '后期剪辑', icon: Scissors },
+    { id: 'assets', label: t('editor.stepAssets'), icon: Users },
+    { id: 'storyboard', label: t('editor.stepStoryboard'), icon: Clapperboard },
+    { id: 'video', label: t('editor.stepVideo'), icon: Scissors },
   ];
 
   const stepOrder: EditorStep[] = ['assets', 'storyboard', 'video'];
@@ -96,7 +99,7 @@ export const StepNavigator: React.FC<StepNavigatorProps> = ({
               <React.Fragment key={step.id}>
                 {/* 步骤节点 */}
                 {isLocked ? (
-                  <Tooltip title="请先完成前置步骤" placement="bottom">
+                  <Tooltip title={t('common.required')} placement="bottom">
                     {stepNode}
                   </Tooltip>
                 ) : (

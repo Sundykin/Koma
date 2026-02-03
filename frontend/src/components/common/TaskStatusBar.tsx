@@ -6,6 +6,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Progress, Typography, Tag, Button, Empty, Tabs, Tooltip } from 'antd';
 import { ReloadOutlined, StopOutlined } from '@ant-design/icons';
 import { Loader2, CheckCircle2, XCircle, ChevronDown, ChevronUp, FileText, Video, Cpu, Box, Download, X } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { TaskManager, Task, TaskStatus, TaskCategory, TaskSubType } from '../../services/TaskManager';
 
 const { Text } = Typography;
@@ -16,42 +17,16 @@ interface TaskStatusBarProps {
   onCancel?: (task: Task) => void;
 }
 
-const CATEGORY_CONFIG: Record<TaskCategory, { label: string; icon: React.ReactNode; color: string }> = {
-  prompt: { label: '提示词', icon: <FileText className="w-3 h-3" />, color: 'purple' },
-  media: { label: '媒体', icon: <Video className="w-3 h-3" />, color: 'blue' },
-  analysis: { label: '分析', icon: <Cpu className="w-3 h-3" />, color: 'cyan' },
-  asset: { label: '资产', icon: <Box className="w-3 h-3" />, color: 'orange' },
-  script: { label: '剧本', icon: <FileText className="w-3 h-3" />, color: 'green' },
-  export: { label: '导出', icon: <Download className="w-3 h-3" />, color: 'gold' },
-};
-
-const getSubTypeLabel = (subType?: TaskSubType): string => {
-  const labels: Record<string, string> = {
-    image: '图片', video: '视频', tti: '文生图', itv: '图生视频',
-    tts: '文字转语音', 'shot-analysis': 'AI 分镜', 'shot-generation': '分镜生成',
-    'script-analysis': '剧本解析', 'asset-generation': '资产生成',
-    'character-extraction': '角色提取', 'prompt-generation': '生成提示词',
-    'prompt-optimization': '优化提示词',
-  };
-  return labels[subType || ''] || subType || '';
-};
-
-const getLegacyTypeLabel = (type: string): string => {
-  const labels: Record<string, string> = {
-    'script-analysis': '剧本解析', 'asset-generation': '资产生成',
-    'shot-render': '分镜渲染', 'shot-generation': '分镜生成',
-    'shot-analysis': 'AI 分镜', 'prompt-generation:image': '图片提示词',
-    'prompt-generation:video': '视频提示词', 'prompt-optimization:image': '优化图片提示词',
-    'prompt-optimization:video': '优化视频提示词',
-  };
-  return labels[type] || type;
-};
-
-const getTaskLabel = (task: Task): string => {
-  if (task.category && task.subType) {
-    return `${CATEGORY_CONFIG[task.category]?.label || task.category} - ${getSubTypeLabel(task.subType)}`;
-  }
-  return getLegacyTypeLabel(task.type);
+const useCategoryConfig = () => {
+  const { t } = useTranslation();
+  return {
+    prompt: { label: t('task.scriptAnalysis'), icon: <FileText className="w-3 h-3" />, color: 'purple' },
+    media: { label: t('video.title'), icon: <Video className="w-3 h-3" />, color: 'blue' },
+    analysis: { label: t('project.scriptAnalysis'), icon: <Cpu className="w-3 h-3" />, color: 'cyan' },
+    asset: { label: t('asset.title'), icon: <Box className="w-3 h-3" />, color: 'orange' },
+    script: { label: t('project.scriptAnalysis'), icon: <FileText className="w-3 h-3" />, color: 'green' },
+    export: { label: t('common.export'), icon: <Download className="w-3 h-3" />, color: 'gold' },
+  } as Record<TaskCategory, { label: string; icon: React.ReactNode; color: string }>;
 };
 
 const getStatusIcon = (status: TaskStatus) => {
@@ -77,16 +52,58 @@ const formatDuration = (startedAt?: number, completedAt?: number): string => {
 };
 
 export const TaskStatusBar: React.FC<TaskStatusBarProps> = ({ projectId, onRetry, onCancel }) => {
+  const { t } = useTranslation();
+  const CATEGORY_CONFIG = useCategoryConfig();
+
   const [tasks, setTasks] = useState<Task[]>([]);
   const [expanded, setExpanded] = useState(false);
   const [activeTab, setActiveTab] = useState<string>('all');
   const [dismissed, setDismissed] = useState(false);
 
+  const getSubTypeLabel = (subType?: TaskSubType): string => {
+    const labels: Record<string, string> = {
+      image: t('storyboard.generateImage'),
+      video: t('storyboard.generateVideo'),
+      tti: t('settings.tti'),
+      itv: t('settings.itv'),
+      tts: t('settings.tts'),
+      'shot-analysis': t('storyboard.title'),
+      'shot-generation': t('storyboard.generateImage'),
+      'script-analysis': t('task.scriptAnalysis'),
+      'asset-generation': t('task.imageGeneration'),
+      'character-extraction': t('asset.character'),
+      'prompt-generation': t('storyboard.imagePrompt'),
+      'prompt-optimization': t('storyboard.imagePrompt'),
+    };
+    return labels[subType || ''] || subType || '';
+  };
+
+  const getLegacyTypeLabel = (type: string): string => {
+    const labels: Record<string, string> = {
+      'script-analysis': t('task.scriptAnalysis'),
+      'asset-generation': t('task.imageGeneration'),
+      'shot-render': t('storyboard.generateImage'),
+      'shot-generation': t('storyboard.generateImage'),
+      'shot-analysis': t('storyboard.title'),
+      'prompt-generation:image': t('storyboard.imagePrompt'),
+      'prompt-generation:video': t('storyboard.videoPrompt'),
+      'prompt-optimization:image': t('storyboard.imagePrompt'),
+      'prompt-optimization:video': t('storyboard.videoPrompt'),
+    };
+    return labels[type] || type;
+  };
+
+  const getTaskLabel = (task: Task): string => {
+    if (task.category && task.subType) {
+      return `${CATEGORY_CONFIG[task.category]?.label || task.category} - ${getSubTypeLabel(task.subType)}`;
+    }
+    return getLegacyTypeLabel(task.type);
+  };
+
   useEffect(() => {
     const loadTasks = () => {
       const allTasks = TaskManager.getProjectTasks(projectId);
       setTasks(allTasks.slice(0, 20));
-      // 有新运行任务时自动显示
       if (allTasks.some(t => t.status === 'running' || t.status === 'pending')) {
         setDismissed(false);
       }
@@ -112,7 +129,6 @@ export const TaskStatusBar: React.FC<TaskStatusBarProps> = ({ projectId, onRetry
     return { runningTasks: running, completedTasks: completed, failedTasks: failed, allFilteredTasks: filtered };
   }, [tasks, activeTab]);
 
-  // 无任务或已关闭时隐藏
   if (tasks.length === 0 || dismissed) return null;
 
   const mainTask = runningTasks[0];
@@ -149,7 +165,7 @@ export const TaskStatusBar: React.FC<TaskStatusBarProps> = ({ projectId, onRetry
         <Text className="text-zinc-600 text-xs">{formatDuration(task.startedAt, task.completedAt)}</Text>
       )}
       {task.recoverable && task.attempt && task.attempt > 0 && (
-        <Tooltip title={`重试: ${task.attempt}/${task.maxRetries}`}>
+        <Tooltip title={`${t('common.retry')}: ${task.attempt}/${task.maxRetries}`}>
           <Tag color="warning" className="text-[10px] px-1 py-0">#{task.attempt}</Tag>
         </Tooltip>
       )}
@@ -172,7 +188,6 @@ export const TaskStatusBar: React.FC<TaskStatusBarProps> = ({ projectId, onRetry
 
   return (
     <div className="fixed bottom-4 right-4 z-50 w-80 bg-zinc-900/95 backdrop-blur border border-zinc-700 rounded-lg shadow-2xl overflow-hidden">
-      {/* 悬浮主状态 */}
       {mainTask ? (
         <div
           className="px-3 py-2.5 flex items-center gap-2 cursor-pointer hover:bg-zinc-800/50"
@@ -216,12 +231,12 @@ export const TaskStatusBar: React.FC<TaskStatusBarProps> = ({ projectId, onRetry
             {failedTasks.length > 0 ? (
               <>
                 <XCircle className="w-4 h-4 text-red-500" />
-                <Text className="text-zinc-400 text-sm">{failedTasks.length} 个失败</Text>
+                <Text className="text-zinc-400 text-sm">{failedTasks.length} {t('task.failed')}</Text>
               </>
             ) : (
               <>
                 <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                <Text className="text-zinc-400 text-sm">{completedTasks.length} 个完成</Text>
+                <Text className="text-zinc-400 text-sm">{completedTasks.length} {t('task.completed')}</Text>
               </>
             )}
           </div>
@@ -235,16 +250,15 @@ export const TaskStatusBar: React.FC<TaskStatusBarProps> = ({ projectId, onRetry
         </div>
       ) : null}
 
-      {/* 展开任务列表 */}
       {expanded && (
         <div className="border-t border-zinc-700">
           <div className="px-2 pt-2">
             <Tabs size="small" activeKey={activeTab} onChange={setActiveTab}
               items={[
-                { key: 'all', label: `全部 (${tasks.length})` },
-                { key: 'running', label: `进行 (${runningTasks.length})` },
-                { key: 'completed', label: `完成 (${completedTasks.length})` },
-                { key: 'failed', label: `失败 (${failedTasks.length})` },
+                { key: 'all', label: `${t('common.all')} (${tasks.length})` },
+                { key: 'running', label: `${t('task.running')} (${runningTasks.length})` },
+                { key: 'completed', label: `${t('task.completed')} (${completedTasks.length})` },
+                { key: 'failed', label: `${t('task.failed')} (${failedTasks.length})` },
               ]}
               className="task-status-tabs [&_.ant-tabs-nav]:!mb-0"
             />
@@ -253,7 +267,7 @@ export const TaskStatusBar: React.FC<TaskStatusBarProps> = ({ projectId, onRetry
             {allFilteredTasks.length > 0 ? (
               <div className="space-y-0.5">{allFilteredTasks.map(renderTaskItem)}</div>
             ) : (
-              <Empty description="暂无任务" className="py-3" imageStyle={{ height: 40 }} />
+              <Empty description={t('task.noTasks')} className="py-3" imageStyle={{ height: 40 }} />
             )}
           </div>
         </div>

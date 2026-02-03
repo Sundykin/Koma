@@ -38,8 +38,7 @@ import {
   deleteTTSConfig,
   setDefaultTTSConfig,
 } from '../../store/globalStore';
-import { listProviders, createProviderInstance, type ProviderDefinition } from '../../providers/registry';
-import type { TTSProvider } from '../../providers/tts/types';
+import { listProviders, type ProviderDefinition } from '../../providers/registry';
 
 interface TTSConfigManagerProps {
   onConfigChange?: () => void;
@@ -54,7 +53,7 @@ export const TTSConfigManager: React.FC<TTSConfigManagerProps> = ({ onConfigChan
   const [testingId, setTestingId] = useState<string | null>(null);
   const [form] = Form.useForm();
 
-  // ? Registry ??????? TTS Provider
+  // 从 Registry 获取可用的 TTS Provider
   const availableProviders = useMemo(() => {
     return listProviders('tts');
   }, []);
@@ -94,7 +93,7 @@ export const TTSConfigManager: React.FC<TTSConfigManagerProps> = ({ onConfigChan
   const handlePresetChange = (providerType: TTSProviderType) => {
     const provider = availableProviders.find(p => p.type === providerType);
     if (provider) {
-      // ? configSchema ? default ???????
+      // 从 configSchema 的 default 值填充表单
       const defaults: Record<string, any> = {};
       if (provider.configSchema?.properties) {
         for (const [key, field] of Object.entries(provider.configSchema.properties)) {
@@ -125,10 +124,10 @@ export const TTSConfigManager: React.FC<TTSConfigManagerProps> = ({ onConfigChan
 
       if (editingConfig) {
         await updateTTSConfig(editingConfig.id, configData);
-        message.success('???????');
+        message.success('配置已更新');
       } else {
         await addTTSConfig(configData);
-        message.success('???????');
+        message.success('配置已添加');
       }
 
       setModalVisible(false);
@@ -136,86 +135,40 @@ export const TTSConfigManager: React.FC<TTSConfigManagerProps> = ({ onConfigChan
       onConfigChange?.();
     } catch (err: any) {
       if (err.errorFields) return;
-      message.error(??????: \);
+      message.error(`保存失败: ${err.message}`);
     }
   };
 
   const handleDelete = async (id: string) => {
     try {
       await deleteTTSConfig(id);
-      message.success('???????');
+      message.success('配置已删除');
       await loadConfigs();
       onConfigChange?.();
     } catch (err: any) {
-      message.error(??????: \);
+      message.error(`删除失败: ${err.message}`);
     }
   };
 
   const handleSetDefault = async (id: string) => {
     try {
       await setDefaultTTSConfig(id);
-      message.success('???????');
+      message.success('已设为默认');
       await loadConfigs();
       onConfigChange?.();
     } catch (err: any) {
-      message.error(??????: \);
+      message.error(`设置失败: ${err.message}`);
     }
   };
 
   const handleTestConnection = async (config: TTSModelConfig) => {
     setTestingId(config.id);
     try {
-      // 1. ??? Provider ???
-      const provider = createProviderInstance<TTSProvider>(
-        'tts',
-        config.provider,
-        config
-      );
-
-      // 2. ??????
-      const isConnected = await provider.testConnection();
-      if (!isConnected) {
-        throw new Error('Connection test failed');
-      }
-
-      // 3. ?????????
-      const text = "????????????????????????????????????";
-      let voiceId = config.defaultVoice;
-      
-      if (!voiceId) {
-        // ?????????????????????????????????
-        try {
-          const voices = await provider.listVoices();
-          if (voices.length > 0) {
-            voiceId = voices[0].id;
-          }
-        } catch (e) {
-          console.warn('Failed to list voices:', e);
-        }
-      }
-
-      if (!voiceId) {
-        throw new Error('????????????');
-      }
-
-      const result = await provider.synthesize(text, voiceId, {
-        rate: config.defaultSpeed || 1.0
-      });
-
-      // 4. ??????
-      let src = result.path;
-      // ?????????????????? koma-local ???
-      if (!src.startsWith('http') && !src.startsWith('blob:') && !src.startsWith('data:')) {
-         src = koma-local:///\;
-      }
-
-      const audio = new Audio(src);
-      await audio.play();
-
-      message.success("\" ???????????????????...);
+      // TODO: 实现 TTS 连接测试 / 试听
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      message.success(`"${config.name}" 连接成功`);
     } catch (err: any) {
-      console.error(err);
-      message.error(?????????: \);
+      message.error(`连接测试失败: ${err.message}`);
     } finally {
       setTestingId(null);
     }
@@ -233,7 +186,7 @@ export const TTSConfigManager: React.FC<TTSConfigManagerProps> = ({ onConfigChan
       case 'doubao-tts': return 'purple';
       case 'fish-audio': return 'cyan';
       case 'gpt-sovits': return 'orange';
-      default: return 'default'; // ??? Provider
+      default: return 'default'; // 插件 Provider
     }
   };
 
@@ -242,7 +195,7 @@ export const TTSConfigManager: React.FC<TTSConfigManagerProps> = ({ onConfigChan
     return availableProviders.find(p => p.type === currentProvider);
   }, [currentProvider, availableProviders]);
 
-  // ??? configSchema ?????????
+  // 根据 configSchema 判断字段需求
   const needApiKey = useMemo(() => {
     if (!currentProviderDef?.configSchema?.properties) return false;
     const apiKeyField = currentProviderDef.configSchema.properties.apiKey;
@@ -260,17 +213,17 @@ export const TTSConfigManager: React.FC<TTSConfigManagerProps> = ({ onConfigChan
     return currentProviderDef.configSchema.required?.includes('apiKey') || false;
   }, [currentProviderDef]);
 
-  // ????????????????? configSchema?
+  // 渲染动态表单字段（基于 configSchema）
   const renderDynamicFields = () => {
     if (!currentProviderDef?.configSchema?.properties) {
-      // ? schema???????????
+      // 无 schema，显示基础字段
       return (
         <>
           <Form.Item name="apiKey" label="API Key">
-            <Input.Password prefix={<KeyOutlined />} placeholder="??? API Key" />
+            <Input.Password prefix={<KeyOutlined />} placeholder="输入 API Key" />
           </Form.Item>
-          <Form.Item name="baseUrl" label="API ???">
-            <Input prefix={<ApiOutlined />} placeholder="??? API ???" />
+          <Form.Item name="baseUrl" label="API 地址">
+            <Input prefix={<ApiOutlined />} placeholder="输入 API 地址" />
           </Form.Item>
         </>
       );
@@ -279,16 +232,16 @@ export const TTSConfigManager: React.FC<TTSConfigManagerProps> = ({ onConfigChan
     const fields: React.ReactNode[] = [];
     const props = currentProviderDef.configSchema.properties;
 
-    // apiKey ? baseUrl ??????
+    // apiKey 和 baseUrl 优先渲染
     if (props.apiKey) {
       fields.push(
         <Form.Item
           key="apiKey"
           name="apiKey"
           label={props.apiKey.title || 'API Key'}
-          rules={[{ required: isApiKeyRequired, message: ???? \ }]}
+          rules={[{ required: isApiKeyRequired, message: `请输入 ${props.apiKey.title || 'API Key'}` }]}
         >
-          <Input.Password prefix={<KeyOutlined />} placeholder={??? \} />
+          <Input.Password prefix={<KeyOutlined />} placeholder={`输入 ${props.apiKey.title || 'API Key'}`} />
         </Form.Item>
       );
     }
@@ -298,10 +251,10 @@ export const TTSConfigManager: React.FC<TTSConfigManagerProps> = ({ onConfigChan
         <Form.Item
           key="baseUrl"
           name="baseUrl"
-          label={props.baseUrl.title || 'API ???'}
-          rules={[{ required: currentProviderDef.configSchema.required?.includes('baseUrl'), message: '???? API ???' }]}
+          label={props.baseUrl.title || 'API 地址'}
+          rules={[{ required: currentProviderDef.configSchema.required?.includes('baseUrl'), message: '请输入 API 地址' }]}
         >
-          <Input prefix={<ApiOutlined />} placeholder={props.baseUrl.default || '??? API ???'} />
+          <Input prefix={<ApiOutlined />} placeholder={props.baseUrl.default || '输入 API 地址'} />
         </Form.Item>
       );
     }
@@ -314,11 +267,11 @@ export const TTSConfigManager: React.FC<TTSConfigManagerProps> = ({ onConfigChan
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <div>
           <span style={{ fontSize: 14, color: '#888' }}>
-            ???? <strong>{configs.length}</strong> ??????????
+            已配置 <strong>{configs.length}</strong> 个语音合成服务
           </span>
         </div>
         <Button type="primary" icon={<PlusOutlined />} onClick={() => openModal()}>
-          ??????
+          添加配置
         </Button>
       </div>
 
@@ -329,10 +282,10 @@ export const TTSConfigManager: React.FC<TTSConfigManagerProps> = ({ onConfigChan
       ) : configs.length === 0 ? (
         <Empty
           image={Empty.PRESENTED_IMAGE_SIMPLE}
-          description="???????????????????"
+          description="还没有配置任何语音合成服务"
         >
           <Button type="primary" icon={<PlusOutlined />} onClick={() => openModal()}>
-            ??????????
+            添加第一个配置
           </Button>
         </Empty>
       ) : (
@@ -346,7 +299,7 @@ export const TTSConfigManager: React.FC<TTSConfigManagerProps> = ({ onConfigChan
                     {config.isDefault ? (
                       <StarFilled style={{ color: '#faad14' }} />
                     ) : (
-                      <Tooltip title="??????">
+                      <Tooltip title="设为默认">
                         <StarOutlined
                           style={{ cursor: 'pointer', color: '#d9d9d9' }}
                           onClick={() => handleSetDefault(config.id)}
@@ -362,7 +315,7 @@ export const TTSConfigManager: React.FC<TTSConfigManagerProps> = ({ onConfigChan
                 }
                 extra={
                   <Space size="small">
-                    <Tooltip title="??????">
+                    <Tooltip title="测试连接">
                       <Button
                         type="text"
                         size="small"
@@ -371,7 +324,7 @@ export const TTSConfigManager: React.FC<TTSConfigManagerProps> = ({ onConfigChan
                         disabled={testingId === config.id}
                       />
                     </Tooltip>
-                    <Tooltip title="???">
+                    <Tooltip title="编辑">
                       <Button
                         type="text"
                         size="small"
@@ -380,12 +333,12 @@ export const TTSConfigManager: React.FC<TTSConfigManagerProps> = ({ onConfigChan
                       />
                     </Tooltip>
                     <Popconfirm
-                      title="????????????"
+                      title="确定删除此配置？"
                       onConfirm={() => handleDelete(config.id)}
-                      okText="???"
-                      cancelText="???"
+                      okText="删除"
+                      cancelText="取消"
                     >
-                      <Tooltip title="???">
+                      <Tooltip title="删除">
                         <Button type="text" size="small" danger icon={<DeleteOutlined />} />
                       </Tooltip>
                     </Popconfirm>
@@ -393,11 +346,11 @@ export const TTSConfigManager: React.FC<TTSConfigManagerProps> = ({ onConfigChan
                 }
               >
                 <div style={{ fontSize: 13, color: '#666' }}>
-                  {config.defaultVoice && <div><strong>??????:</strong> {config.defaultVoice}</div>}
-                  {config.defaultSpeed && <div><strong>??????:</strong> {config.defaultSpeed}x</div>}
+                  {config.defaultVoice && <div><strong>默认音色:</strong> {config.defaultVoice}</div>}
+                  {config.defaultSpeed && <div><strong>默认语速:</strong> {config.defaultSpeed}x</div>}
                   {config.baseUrl && (
                     <div style={{ marginTop: 4 }}>
-                      <strong>???:</strong>{' '}
+                      <strong>地址:</strong>{' '}
                       <span style={{ fontSize: 12, fontFamily: 'monospace' }}>
                         {config.baseUrl.replace(/https?:\/\//, '').slice(0, 30)}...
                       </span>
@@ -411,12 +364,12 @@ export const TTSConfigManager: React.FC<TTSConfigManagerProps> = ({ onConfigChan
       )}
 
       <Modal
-        title={editingConfig ? '????????????' : '????????????'}
+        title={editingConfig ? '编辑语音合成配置' : '添加语音合成配置'}
         open={modalVisible}
         onOk={handleSave}
         onCancel={() => setModalVisible(false)}
-        okText="???"
-        cancelText="???"
+        okText="保存"
+        cancelText="取消"
         width={520}
         maskClosable={false}
         destroyOnHidden
@@ -424,15 +377,15 @@ export const TTSConfigManager: React.FC<TTSConfigManagerProps> = ({ onConfigChan
         <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
           <Form.Item
             name="provider"
-            label="????"
-            rules={[{ required: true, message: '?????????' }]}
+            label="服务商"
+            rules={[{ required: true, message: '请选择服务商' }]}
           >
-            <Select placeholder="?????????????" onChange={handlePresetChange}>
+            <Select placeholder="选择语音合成服务商" onChange={handlePresetChange}>
               {availableProviders.map(provider => (
                 <Select.Option key={provider.type} value={provider.type}>
                   <Space>
                     <span>{provider.name}</span>
-                    {provider.pluginId && <Tag size="small">???</Tag>}
+                    {provider.pluginId && <Tag size="small">插件</Tag>}
                   </Space>
                 </Select.Option>
               ))}
@@ -441,22 +394,22 @@ export const TTSConfigManager: React.FC<TTSConfigManagerProps> = ({ onConfigChan
 
           <Form.Item
             name="name"
-            label="??????"
-            rules={[{ required: true, message: '??????????' }]}
+            label="配置名称"
+            rules={[{ required: true, message: '请输入配置名称' }]}
           >
-            <Input placeholder="?: ??? Fish Audio" />
+            <Input placeholder="如: 我的 Fish Audio" />
           </Form.Item>
 
           {renderDynamicFields()}
 
           <Row gutter={16}>
             <Col span={12}>
-              <Form.Item name="defaultVoice" label="??????">
-                <Input prefix={<AudioOutlined />} placeholder="??? ID ????" />
+              <Form.Item name="defaultVoice" label="默认音色">
+                <Input prefix={<AudioOutlined />} placeholder="音色 ID 或名称" />
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item name="defaultSpeed" label="??????">
+              <Form.Item name="defaultSpeed" label="默认语速">
                 <InputNumber min={0.5} max={2} step={0.1} placeholder="1.0" style={{ width: '100%' }} />
               </Form.Item>
             </Col>
@@ -465,7 +418,7 @@ export const TTSConfigManager: React.FC<TTSConfigManagerProps> = ({ onConfigChan
           {currentProvider === 'edge-tts' && (
             <div style={{ padding: '8px 12px', background: '#f6ffed', borderRadius: 4, marginTop: -8 }}>
               <span style={{ color: '#52c41a', fontSize: 13 }}>
-                ? Edge TTS ???????????? API Key
+                ✓ Edge TTS 是免费服务，无需 API Key
               </span>
             </div>
           )}

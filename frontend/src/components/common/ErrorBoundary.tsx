@@ -1,5 +1,6 @@
 import React, { Component, ReactNode } from 'react';
 import { Button, Result } from 'antd';
+import i18n from '../../i18n';
 
 interface Props {
   children: ReactNode;
@@ -21,8 +22,8 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    console.error('[ErrorBoundary] 捕获错误:', error);
-    console.error('[ErrorBoundary] 组件栈:', errorInfo.componentStack);
+    console.error('[ErrorBoundary] Caught error:', error);
+    console.error('[ErrorBoundary] Component stack:', errorInfo.componentStack);
   }
 
   handleReload = () => {
@@ -35,18 +36,19 @@ export class ErrorBoundary extends Component<Props, State> {
 
   render() {
     if (this.state.hasError) {
+      const t = i18n.t.bind(i18n);
       return (
         <div className="flex items-center justify-center h-screen bg-zinc-950">
           <Result
             status="error"
-            title="出错了"
-            subTitle={this.state.error?.message || '发生未知错误'}
+            title={t('common.error')}
+            subTitle={this.state.error?.message || t('error.unknown')}
             extra={[
               <Button key="reload" type="primary" onClick={this.handleReload}>
-                刷新页面
+                {t('common.refresh')}
               </Button>,
               <Button key="retry" onClick={this.handleReset}>
-                重试
+                {t('common.retry')}
               </Button>,
             ]}
           />

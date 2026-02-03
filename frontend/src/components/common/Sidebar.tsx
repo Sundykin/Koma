@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { Avatar, Tooltip } from 'antd';
 import { UserOutlined } from '@ant-design/icons';
 import { LayoutGrid, Scissors, Settings, Puzzle, MessageCircle } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { Project, Episode } from '../../types';
 import { usePluginStore } from '../../store/pluginStore';
 
@@ -56,6 +57,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onViewChange,
   onEnterVideoTest,
 }) => {
+  const { t } = useTranslation();
   const plugins = usePluginStore(state => state.plugins);
 
   const globalPlugins = useMemo(
@@ -65,13 +67,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   // 主导航项
   const mainNavItems = [
-    { key: 'projects', icon: <LayoutGrid size={22} />, label: '项目管理' },
-    { key: 'chat', icon: <MessageCircle size={22} />, label: 'AI 对话' },
+    { key: 'projects', icon: <LayoutGrid size={22} />, label: t('sidebar.projects') },
+    { key: 'chat', icon: <MessageCircle size={22} />, label: t('chat.title') },
   ];
 
   // 工具导航项
   const toolNavItems = [
-    { key: 'video-test', icon: <Scissors size={22} />, label: '剪辑测试', isAction: true },
+    { key: 'video-test', icon: <Scissors size={22} />, label: t('sidebar.videoTest'), isAction: true },
   ];
 
   // 插件导航项
@@ -85,7 +87,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   // 底部导航项
   const bottomNavItems = [
-    { key: 'settings', icon: <Settings size={22} />, label: '全局设置' },
+    { key: 'settings', icon: <Settings size={22} />, label: t('sidebar.settings') },
   ];
 
   const handleNavClick = (key: string, isAction?: boolean) => {

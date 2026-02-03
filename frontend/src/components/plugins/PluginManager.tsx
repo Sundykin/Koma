@@ -4,6 +4,7 @@
 import React, { useState } from 'react';
 import { Tabs, Empty, Input, Select, Modal, message } from 'antd';
 import { SearchOutlined } from '@ant-design/icons';
+import { useTranslation } from 'react-i18next';
 import type { InstalledPlugin, PluginCategory } from '../../types/plugin';
 import { usePluginStore } from '../../store/pluginStore';
 import { PluginCard } from './PluginCard';
@@ -14,6 +15,7 @@ import { initializePlugin } from '../../services/plugin/PluginInitializer';
 import { electronService } from '../../services/electronService';
 
 export const PluginManager: React.FC = () => {
+  const { t } = useTranslation();
   const [searchText, setSearchText] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<PluginCategory | 'all'>('all');
 
@@ -39,15 +41,15 @@ export const PluginManager: React.FC = () => {
       if (plugin) {
         const success = await initializePlugin(plugin);
         if (success) {
-          message.success('插件已启用');
+          message.success(t('common.enabled'));
         } else {
-          message.warning('插件已启用，但初始化失败');
+          message.warning(t('plugin.loadFailed'));
         }
       }
     } else {
       unloadPlugin(id);
       cleanupPluginResources(id);
-      message.success('插件已禁用');
+      message.success(t('common.disabled'));
     }
   };
 
@@ -57,11 +59,11 @@ export const PluginManager: React.FC = () => {
     if (!plugin) return;
 
     Modal.confirm({
-      title: '确认卸载',
-      content: `确定要卸载插件 "${plugin.name}" 吗？这将删除插件文件。`,
-      okText: '卸载',
+      title: t('plugin.uninstallConfirm'),
+      content: `${t('plugin.uninstallConfirm')} "${plugin.name}"`,
+      okText: t('plugin.uninstall'),
       okButtonProps: { danger: true },
-      cancelText: '取消',
+      cancelText: t('common.cancel'),
       onOk: async () => {
         try {
           // 清理运行时资源
@@ -74,9 +76,9 @@ export const PluginManager: React.FC = () => {
           // 从 store 移除
           unregisterPlugin(id);
 
-          message.success('插件已卸载');
+          message.success(t('plugin.uninstallSuccess'));
         } catch (err: any) {
-          message.error(`卸载失败: ${err.message}`);
+          message.error(`${t('error.deleteFailed')}: ${err.message}`);
         }
       },
     });
@@ -101,7 +103,7 @@ export const PluginManager: React.FC = () => {
       {/* 搜索和筛选 */}
       <div className="mb-4 flex gap-3">
         <Input
-          placeholder="搜索插件..."
+          placeholder={t('plugin.searchPlaceholder')}
           prefix={<SearchOutlined className="text-gray-400" />}
           value={searchText}
           onChange={e => setSearchText(e.target.value)}
@@ -113,10 +115,10 @@ export const PluginManager: React.FC = () => {
           onChange={setCategoryFilter}
           style={{ width: 140 }}
           options={[
-            { value: 'all', label: '全部类型' },
-            { value: 'global', label: '全局插件' },
-            { value: 'provider', label: '服务提供' },
-            { value: 'tool', label: '工具' },
+            { value: 'all', label: t('plugin.categoryAll') },
+            { value: 'global', label: t('plugin.categoryGlobal') },
+            { value: 'provider', label: t('plugin.categoryProvider') },
+            { value: 'tool', label: t('plugin.categoryTool') },
           ]}
         />
       </div>
@@ -124,7 +126,7 @@ export const PluginManager: React.FC = () => {
       {/* 插件列表 */}
       {filteredPlugins.length === 0 ? (
         <Empty
-          description={searchText ? '未找到匹配的插件' : '暂无已安装的插件'}
+          description={searchText ? t('error.notFound') : t('plugin.noPlugins')}
           className="my-12"
         />
       ) : (
@@ -149,25 +151,25 @@ export const PluginManager: React.FC = () => {
       <PluginImporter onImportSuccess={handleImportSuccess} />
 
       <div className="mt-8 p-4 bg-gray-50 rounded-lg">
-        <h4 className="font-medium mb-2">插件开发说明</h4>
+        <h4 className="font-medium mb-2">Plugin Development</h4>
         <ul className="text-sm text-gray-500 space-y-1">
-          <li>• 插件包必须包含 <code>manifest.json</code> 清单文件</li>
-          <li>• 全局插件需要导出 React 组件作为 default</li>
-          <li>• 开发模式可直接从文件夹导入，方便调试</li>
-          <li>• 查看文档了解 manifest 规范和 API 接口</li>
+          <li>• Plugin must include <code>manifest.json</code></li>
+          <li>• Global plugins need to export React component as default</li>
+          <li>• Dev mode supports folder import for debugging</li>
+          <li>• See docs for manifest spec and API reference</li>
         </ul>
       </div>
     </div>
   );
 
   const tabItems = [
-    { key: 'installed', label: '已安装', children: installedContent },
-    { key: 'import', label: '导入插件', children: importContent },
+    { key: 'installed', label: t('plugin.installed'), children: installedContent },
+    { key: 'import', label: t('plugin.import'), children: importContent },
   ];
 
   return (
     <div className="plugin-manager p-6 h-full overflow-auto">
-      <h2 className="text-xl font-semibold mb-4">插件管理</h2>
+      <h2 className="text-xl font-semibold mb-4">{t('plugin.plugins')}</h2>
       <Tabs defaultActiveKey="installed" items={tabItems} />
     </div>
   );
