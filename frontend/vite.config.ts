@@ -18,8 +18,20 @@ export default defineConfig(({ mode }) => {
           manualChunks(id) {
             // 将 node_modules 中的依赖分离到 vendor chunks
             if (id.includes('node_modules')) {
-              // UI 组件库：合并 React + UI 组件避免循环依赖
-              if (id.includes('/node_modules/react/') || id.includes('/node_modules/react-dom/') || id.includes('/node_modules/react-router') || id.includes('antd') || id.includes('@ant-design') || id.includes('lucide-react')) {
+              // UI 组件库：合并 React + AntD 及其核心依赖以避免循环依赖
+              if (
+                id.includes('/node_modules/react/') ||
+                id.includes('/node_modules/react-dom/') ||
+                id.includes('/node_modules/react-router/') ||
+                id.includes('/node_modules/antd/') ||
+                id.includes('/node_modules/@ant-design/') ||
+                id.includes('/node_modules/rc-') ||
+                id.includes('/node_modules/dayjs/') ||
+                id.includes('/node_modules/lucide-react/') ||
+                id.includes('/node_modules/classnames/') ||
+                id.includes('/node_modules/scroll-into-view-if-needed/') ||
+                id.includes('/node_modules/compute-scroll-into-view/')
+              ) {
                 return 'vendor-ui';
               }
               // 播放器

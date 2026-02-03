@@ -16,7 +16,8 @@ import { EdgeTTSProvider } from './EdgeTTSProvider';
 import { OpenAITTSProvider } from './OpenAITTSProvider';
 import { FishAudioProvider } from './FishAudioProvider';
 import { GPTSoVITSProvider } from './GPTSoVITSProvider';
-import { ttsRegistry, type ProviderDefinition } from '../registry';
+import type { ProviderDefinition } from '../registry.types';
+import { ttsRegistry } from '../registry';
 
 // configSchema 定义
 const edgeTTSSchema = {

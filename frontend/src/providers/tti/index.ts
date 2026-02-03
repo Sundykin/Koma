@@ -7,7 +7,9 @@ import type { TTIProvider } from './types';
 import { ComfyUIProvider } from './ComfyUIProvider';
 import { NanoBananaProvider } from './NanoBananaProvider';
 import { Gemini3ProProvider } from './Gemini3ProProvider';
-import { ttiRegistry, type ProviderDefinition, DEFAULT_POLLING_CONFIG } from '../registry';
+import type { ProviderDefinition } from '../registry.types';
+import { DEFAULT_POLLING_CONFIG } from '../registry.types';
+import { ttiRegistry } from '../registry';
 
 export type { TTIProvider, ImageResult, TTIOptions } from './types';
 export { ComfyUIProvider } from './ComfyUIProvider';

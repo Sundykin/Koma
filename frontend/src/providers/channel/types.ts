@@ -3,7 +3,7 @@
  * 重构版：移除模板引擎，改为 Provider 注入
  */
 import type { ProgressInfo } from '../../types';
-import type { PollingConfig, ChannelCapability } from '../registry';
+import type { PollingConfig, ChannelCapability } from '../registry.types';
 
 // 重新导出 PollingConfig 和 ChannelCapability
 export type { PollingConfig, ChannelCapability };

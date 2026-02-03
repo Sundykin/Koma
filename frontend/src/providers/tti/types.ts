@@ -2,7 +2,7 @@
  * TTI Provider 类型定义
  */
 import type { TTIModelConfig, ProgressInfo } from '../../types';
-import type { PollingConfig } from '../registry';
+import type { PollingConfig } from '../registry.types';
 
 export interface ImageResult {
   path: string;

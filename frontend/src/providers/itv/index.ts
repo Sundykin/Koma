@@ -16,7 +16,9 @@ import { KlingProvider } from './KlingProvider';
 import { PikaProvider } from './PikaProvider';
 import { Sora2Provider } from './Sora2Provider';
 import { ComfyUIAnimateDiffProvider } from './ComfyUIAnimateDiffProvider';
-import { itvRegistry, type ProviderDefinition, DEFAULT_POLLING_CONFIG } from '../registry';
+import type { ProviderDefinition } from '../registry.types';
+import { DEFAULT_POLLING_CONFIG } from '../registry.types';
+import { itvRegistry } from '../registry';
 
 // 注册内置 Provider
 function registerBuiltinProviders() {

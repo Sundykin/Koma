@@ -22,7 +22,7 @@ import {
   getActiveITVConfig,
   getActiveTTSConfig,
 } from '../store/globalStore';
-import type { ChannelKind } from './registry';
+import type { ChannelKind } from './registry.types';
 import { usePluginStore } from '../store/pluginStore';
 import { createSandboxedFetch } from '../services/plugin/PluginSandbox';
 
@@ -45,27 +45,23 @@ export type {
   ChannelCapability,
   ProviderDefinition,
   ProviderContext,
-} from './registry';
+} from './registry.types';
 
-// Registry 实例可以静态导出 (不在 PluginAPI.ts 中动态导入)
-export {
-  ttiRegistry,
-  itvRegistry,
-  ttsRegistry,
-} from './registry';
+// Registry 实例不再从这里导出，需要的文件直接从 './registry' 导入
+// 这样可以避免 providers/index.ts 同时静态和动态导入 registry
 
 // Registry 函数使用动态导入包装 (避免与 PluginAPI.ts 动态导入冲突)
-export const listProviders = async (kind?: import('./registry').ChannelKind) => {
+export const listProviders = async (kind?: import('./registry.types').ChannelKind) => {
   const { listProviders: fn } = await import('./registry');
   return fn(kind);
 };
 
-export const registerProvider = async (def: import('./registry').ProviderDefinition<any>) => {
+export const registerProvider = async (def: import('./registry.types').ProviderDefinition<any>) => {
   const { registerProvider: fn } = await import('./registry');
   return fn(def);
 };
 
-export const unregisterProvider = async (kind: import('./registry').ChannelKind, type: string) => {
+export const unregisterProvider = async (kind: import('./registry.types').ChannelKind, type: string) => {
   const { unregisterProvider: fn } = await import('./registry');
   return fn(kind, type);
 };
@@ -76,10 +72,10 @@ export const unregisterProvidersByPlugin = async (pluginId: string) => {
 };
 
 export const createProviderInstance = async <T>(
-  kind: import('./registry').ChannelKind,
+  kind: import('./registry.types').ChannelKind,
   type: string,
   config: Record<string, any>,
-  ctx?: Partial<import('./registry').ProviderContext>
+  ctx?: Partial<import('./registry.types').ProviderContext>
 ): Promise<T> => {
   const { createProviderInstance: fn } = await import('./registry');
   return fn<T>(kind, type, config, ctx);
