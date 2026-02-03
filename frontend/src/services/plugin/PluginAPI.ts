@@ -466,8 +466,39 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
 
 
       async invoke(channelId: string, action: string, params: any) {
-        // TODO: 实现渠道调用
-        throw new Error('Not implemented');
+        // Validate permission
+        const result = validateOperation(plugin, 'channels.invoke', 'network:external');
+        if (!result.allowed) {
+          throw new Error(result.reason);
+        }
+
+        // Find channel config
+        const configs = await getChannelConfigs();
+        const config = configs.find(c => c.id === channelId);
+
+        if (!config) {
+          throw new Error(`Channel not found: ${channelId}`);
+        }
+
+        // Determine kind from capabilities (tts, itv, or tti)
+        const kind: ChannelKind = config.capabilities?.includes('tts') ? 'tts'
+          : config.capabilities?.includes('itv') ? 'itv'
+          : 'tti';
+
+        // Create provider instance
+        const provider = createProviderInstance<any>(kind, config.providerType, config.providerConfig || {}, {
+          sandboxedFetch: createSandboxedFetch(plugin),
+          pluginId,
+        });
+
+        // Validate action exists on provider
+        if (typeof provider[action] !== 'function') {
+          throw new Error(`Action "${action}" not supported by provider ${config.providerType}`);
+        }
+
+        // Call the action
+        const actionParams = Array.isArray(params) ? params : [params];
+        return await provider[action](...actionParams);
       },
     },
 
