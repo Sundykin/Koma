@@ -327,6 +327,7 @@ export interface AppSettings {
   customThemePresets?: ThemePreset[];  // 用户自定义视觉风格预设
   channelConfigs?: import('./providers/channel/types').ChannelConfig[];  // 渠道配置（Provider 注入版）
   imageHostingConfig?: ImageHostingConfig;  // 图床配置
+  stylePrompts?: { prompt: string; isDefault?: boolean }[];  // 风格提示词列表
   // @deprecated 以下字段已废弃，迁移后删除
   customChannels?: import('./providers/channel/types').ChannelConfig[];  // 旧版自定义渠道配置
   unifiedChannels?: import('./providers/channel/types').UnifiedChannelConfig[];  // 旧版统一渠道配置
@@ -347,6 +348,7 @@ export type MediaType = 'video' | 'audio' | 'image' | 'text' | 'subtitle' | 'sti
 
 export type EasingType =
   | 'linear'
+  | 'ease'
   | 'ease-in'
   | 'ease-out'
   | 'ease-in-out'
@@ -391,6 +393,7 @@ export interface Track {
   id: string;
   name: string;
   type: 'video' | 'audio' | 'subtitle';
+  order?: number;           // 轨道层级顺序
   muted: boolean;
   locked: boolean;
   visible: boolean;

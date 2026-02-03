@@ -127,7 +127,7 @@ export class OpenAIAdapter extends BaseAdapter {
             id: chunkId,
             content: delta?.content || '',
             reasoning: reasoning || undefined,
-            finishReason: this.mapFinishReason(choice.finish_reason),
+            finishReason: choice.finish_reason ? this.mapChunkFinishReason(choice.finish_reason) : undefined,
           };
 
           // 处理工具调用增量
@@ -349,6 +349,19 @@ export class OpenAIAdapter extends BaseAdapter {
         return 'length';
       default:
         return 'stop';
+    }
+  }
+
+  private mapChunkFinishReason(reason: string | null): ChatChunk['finishReason'] {
+    switch (reason) {
+      case 'stop':
+        return 'stop';
+      case 'tool_calls':
+        return 'tool_calls';
+      case 'length':
+        return 'length';
+      default:
+        return undefined;
     }
   }
 

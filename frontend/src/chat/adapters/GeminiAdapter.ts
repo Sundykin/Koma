@@ -51,12 +51,14 @@ export class GeminiAdapter extends BaseAdapter {
       if (options?.topP !== undefined) {
         config.topP = options.topP;
       }
+      if (options?.tools) {
+        config.tools = this.toGeminiTools(options.tools);
+      }
 
       const response = await this.client.models.generateContent({
         model: this.config.model,
         contents,
         config: Object.keys(config).length > 0 ? config : undefined,
-        tools: options?.tools ? this.toGeminiTools(options.tools) : undefined,
       });
 
       const text = response.text || '';
@@ -91,16 +93,19 @@ export class GeminiAdapter extends BaseAdapter {
       if (options?.maxTokens !== undefined) {
         config.maxOutputTokens = options.maxTokens;
       }
+      if (options?.tools) {
+        config.tools = this.toGeminiTools(options.tools);
+      }
 
       const response = await this.client.models.generateContentStream({
         model: this.config.model,
         contents,
         config: Object.keys(config).length > 0 ? config : undefined,
-        tools: options?.tools ? this.toGeminiTools(options.tools) : undefined,
       });
 
       const chunkId = generateId();
       let fullText = '';
+      let lastChunk: any = null;
 
       for await (const chunk of response) {
         if (options?.signal?.aborted) {
@@ -109,6 +114,7 @@ export class GeminiAdapter extends BaseAdapter {
 
         const text = chunk.text || '';
         fullText += text;
+        lastChunk = chunk;
 
         yield {
           id: chunkId,
@@ -117,14 +123,13 @@ export class GeminiAdapter extends BaseAdapter {
       }
 
       // 检查最终响应是否有工具调用
-      const finalResponse = await response;
-      const functionCalls = finalResponse.functionCalls;
+      const functionCalls = lastChunk?.functionCalls;
 
       yield {
         id: chunkId,
         content: '',
         finishReason: functionCalls?.length ? 'tool_calls' : 'stop',
-        toolCalls: functionCalls?.map(fc => ({
+        toolCalls: functionCalls?.map((fc: any) => ({
           id: generateId(),
           name: fc.name || '',
           arguments: (fc.args as Record<string, unknown>) || {},

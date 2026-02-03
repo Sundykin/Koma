@@ -62,7 +62,7 @@ const StreamingMessage: React.FC<{ content: string; reasoning?: string }> = ({ c
             </div>
           </div>
         )}
-        <Markdown>{content}</Markdown>
+        <Markdown interval={0} disableTyping>{content}</Markdown>
       </div>
     </div>
   );
@@ -102,7 +102,7 @@ export const ChatRenderer: React.FC<ChatRendererProps> = ({
     if (isUser) {
       return <span>{content}</span>;
     }
-    return <Markdown>{content}</Markdown>;
+    return <Markdown interval={0} disableTyping>{content}</Markdown>;
   };
 
   if (messages.length === 0 && !streaming) {

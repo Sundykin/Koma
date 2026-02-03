@@ -234,7 +234,7 @@ export const ScriptWorkshop: React.FC<ScriptWorkshopProps> = ({
       icon: <ThunderboltOutlined />,
       label: randomGenerating ? '正在随机生成...' : '随机生成剧本',
       disabled: randomGenerating || !onRandomGenerate,
-      onClick: handleRandomGenerate,
+      onClick: () => handleRandomGenerate(),
     },
     {
       key: 'generate',

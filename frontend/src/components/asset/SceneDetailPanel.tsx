@@ -336,7 +336,8 @@ export const SceneDetailPanel: React.FC<SceneDetailPanelProps> = ({
         footer={null}
         centered
         width="auto"
-        styles={{ body: { padding: 0 }, content: { background: 'transparent', boxShadow: 'none' } }}
+        styles={{ body: { padding: 0, background: 'transparent' } }}
+        className="transparent-modal"
         closeIcon={null}
       >
         {previewImage && (

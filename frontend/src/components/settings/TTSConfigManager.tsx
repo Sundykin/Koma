@@ -387,7 +387,7 @@ export const TTSConfigManager: React.FC<TTSConfigManagerProps> = ({ onConfigChan
                 <Select.Option key={provider.type} value={provider.type}>
                   <Space>
                     <span>{provider.name}</span>
-                    {provider.pluginId && <Tag size="small">{t('plugin.title')}</Tag>}
+                    {provider.pluginId && <Tag className="text-xs">{t('plugin.title')}</Tag>}
                   </Space>
                 </Select.Option>
               ))}

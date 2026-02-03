@@ -5,6 +5,9 @@
 import type { ThemePreset } from '../types';
 import { getCustomThemePresets } from '../store/globalStore';
 
+// Re-export for convenience
+export type { ThemePreset } from '../types';
+
 export const THEME_PRESETS: ThemePreset[] = [
   {
     id: 'cyberpunk',

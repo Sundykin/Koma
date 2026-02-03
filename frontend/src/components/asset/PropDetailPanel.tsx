@@ -528,7 +528,8 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
         footer={null}
         centered
         width="auto"
-        styles={{ body: { padding: 0 }, content: { background: 'transparent', boxShadow: 'none' } }}
+        styles={{ body: { padding: 0, background: 'transparent' } }}
+        className="transparent-modal"
         closeIcon={null}
       >
         {previewImage && (

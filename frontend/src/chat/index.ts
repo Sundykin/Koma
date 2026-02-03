@@ -31,9 +31,47 @@ export type { ChatPlugin, PluginContext, ToolHandler, MCPServerConfig } from './
 export { useChat } from './hooks';
 export type { UseChatOptions, UseChatReturn } from './hooks';
 
-// IPC 客户端 (新架构)
-export * from './ipc';
+// IPC 客户端 (新架构) - 避免重复导出类型
 export { chatIPC } from './ipc';
+export type {
+  SessionConfig,
+  SessionSummary,
+  SessionDetail,
+  ChatInput,
+  StreamChunkEvent,
+  StreamToolEvent,
+  StreamDoneEvent,
+  StreamErrorEvent,
+  MCPTransportType,
+  MCPConnection,
+  MCPToolDefinition,
+  AgentMode,
+  ToolResult,
+  StreamEventCallback,
+  UnsubscribeFn,
+} from './ipc';
+export {
+  createSession,
+  getSession,
+  disposeSession,
+  listSessions,
+  updateSessionConfig,
+  sendMessage,
+  sendMessageStream,
+  cancelStream,
+  onStreamChunk,
+  onStreamTool,
+  onStreamDone,
+  onStreamError,
+  connectMCP,
+  disconnectMCP,
+  listMCPConnections,
+  listMCPTools,
+  callMCPTool,
+  listAllTools,
+  callTool,
+  createUserInput,
+} from './ipc';
 
 // 组件
 export { ChatRenderer, MessageBubble } from './components';

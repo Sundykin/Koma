@@ -331,7 +331,6 @@ export const LLMConfigManager: React.FC<LLMConfigManagerProps> = ({ onConfigChan
           header: { background: '#18181b', borderBottom: '1px solid #3f3f46' },
           body: { background: '#18181b' },
           footer: { background: '#18181b', borderTop: '1px solid #3f3f46' },
-          content: { background: '#18181b' },
         }}
       >
         <Form form={form} layout="vertical" className="mt-4">
