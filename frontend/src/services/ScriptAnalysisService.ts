@@ -228,6 +228,7 @@ export class ScriptAnalysisService {
       const characters: Character[] = parsed.characters.map((c, index) => ({
         id: `char_${Date.now()}_${index}`,
         name: c.name,
+        prompt: c.description || c.appearance || '',
         age: c.age || '',
         role: c.role || 'supporting',
         description: c.description,
@@ -260,6 +261,7 @@ export class ScriptAnalysisService {
       const scenes: Scene[] = parsed.scenes.map((s, index) => ({
         id: `scene_${Date.now()}_${index}`,
         name: s.name,
+        prompt: s.description || '',
         location: s.location,
         time: s.time || 'day',
         mood: s.mood,
@@ -292,6 +294,7 @@ export class ScriptAnalysisService {
       const props: Prop[] = parsed.props.map((p, index) => ({
         id: `prop_${Date.now()}_${index}`,
         name: p.name,
+        prompt: p.description || '',
         type: p.type,
         description: p.description,
         episodeId: this.episodeContext?.episodeId,

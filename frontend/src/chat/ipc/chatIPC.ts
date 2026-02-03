@@ -6,13 +6,26 @@
 // 类型定义 (与 electron 端保持一致)
 export type MessageRole = 'system' | 'user' | 'assistant' | 'tool';
 
-export interface ContentPart {
-  type: 'text' | 'image' | 'file';
-  text?: string;
-  imageUrl?: string;
-  mimeType?: string;
-  data?: string;
+export interface TextContentPart {
+  type: 'text';
+  text: string;
 }
+
+export interface ImageContentPart {
+  type: 'image';
+  imageUrl?: string;
+  imageBase64?: string;
+  mimeType?: string;
+}
+
+export interface FileContentPart {
+  type: 'file';
+  fileName: string;
+  fileData: string;
+  mimeType: string;
+}
+
+export type ContentPart = TextContentPart | ImageContentPart | FileContentPart;
 
 export interface ToolCall {
   id: string;
@@ -111,15 +124,17 @@ export interface StreamErrorEvent {
   };
 }
 
-export type MCPTransportType = 'stdio' | 'sse' | 'websocket';
+export type MCPTransportType = 'stdio' | 'sse' | 'websocket' | 'internal';
 
 export interface MCPServerConfig {
+  id: string;
   name: string;
   transport: MCPTransportType;
   command?: string;
   args?: string[];
   url?: string;
   env?: Record<string, string>;
+  pluginId?: string;
 }
 
 export interface MCPToolDefinition {

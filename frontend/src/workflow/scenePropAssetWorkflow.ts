@@ -94,7 +94,7 @@ interface GenerateOptions {
  */
 export async function generateSceneImage(
   options: GenerateOptions & { scene: Scene }
-): Promise<{ success: boolean; path?: string; error?: string }> {
+): Promise<{ success: boolean; path?: string; url?: string; error?: string }> {
   const { projectId, scene, theme, stylePrompt, ttiConfigId, onProgress } = options;
 
   logger.info(`开始生成场景预览图: ${scene.name}`);
@@ -270,7 +270,7 @@ export async function generateAllSceneImages(
  */
 export async function generatePropImage(
   options: GenerateOptions & { prop: Prop }
-): Promise<{ success: boolean; path?: string; error?: string }> {
+): Promise<{ success: boolean; path?: string; url?: string; error?: string }> {
   const { projectId, prop, theme, stylePrompt, ttiConfigId, onProgress } = options;
 
   logger.info(`开始生成道具参考图: ${prop.name}`);

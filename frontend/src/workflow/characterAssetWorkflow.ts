@@ -4,7 +4,7 @@
  */
 import type { Character, AsyncTask } from '../types';
 import { getProjectTTIProvider, getProjectITVProvider } from '../providers';
-import { createTask, markTaskCompleted, markTaskFailed } from '../store/taskQueueStore';
+import { createTask, updateTask, markTaskCompleted, markTaskFailed } from '../store/taskQueueStore';
 import { pollTaskUntilComplete, registerProgressChecker } from '../store/taskRecoveryService';
 import { downloadRemoteAsset } from '../store/assetDownloadService';
 import {
@@ -305,13 +305,16 @@ export async function extractAndBindCharacter(
     }
 
     // 使用任务 ID 调用角色提取 API
-    const extractTaskId = await itvProvider.extractCharacter({
+    const extractResult = await itvProvider.extractCharacter({
       fromTask: character.previewVideoTaskId,
       timestamps,
     });
 
+    // Handle case where extractResult is CharacterProgressInfo (already completed)
+    const extractTaskId = typeof extractResult === 'string' ? extractResult : '';
+
     // 检查是否支持角色提取状态轮询
-    if (itvProvider.checkCharacterProgress) {
+    if (itvProvider.checkCharacterProgress && extractTaskId) {
       onProgress?.(20, '等待角色提取完成...');
 
       // 轮询等待完成

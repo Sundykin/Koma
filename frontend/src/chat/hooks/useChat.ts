@@ -167,18 +167,20 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     // 清除该消息及之后的所有消息
     sessionRef.current.clearMessages();
     for (let i = 0; i < userMsgIndex; i++) {
-      if (msgs[i].role === 'user') {
-        sessionRef.current.addUserMessage(msgs[i].content);
-      } else if (msgs[i].role === 'assistant') {
+      const msg = msgs[i];
+      if (msg.role === 'user') {
+        // addUserMessage accepts string | ContentPart[]
+        sessionRef.current.addUserMessage(msg.content as any);
+      } else if (msg.role === 'assistant') {
         sessionRef.current.addAssistantMessage(
-          typeof msgs[i].content === 'string' ? msgs[i].content : '',
-          msgs[i].toolCalls
+          typeof msg.content === 'string' ? msg.content : '',
+          msg.toolCalls
         );
       }
     }
 
     // 重新发送
-    await sendStream(userContent);
+    await sendStream(userContent as any);
   }, [sendStream]);
 
   const clear = useCallback(() => {

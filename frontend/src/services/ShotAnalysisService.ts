@@ -144,9 +144,7 @@ export class ShotAnalysisService {
       const result = await provider.chat([
         { role: 'system', content: systemPrompt },
         { role: 'user', content: prompt },
-      ], {
-        responseFormat: { type: 'json_object', schema: SHOTS_SCHEMA },
-      });
+      ]);
 
       TaskManager.updateTask(taskId, { progress: 70 });
 

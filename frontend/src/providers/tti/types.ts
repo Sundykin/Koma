@@ -6,6 +6,7 @@ import type { PollingConfig } from '../registry';
 
 export interface ImageResult {
   path: string;
+  url?: string;
   width: number;
   height: number;
   seed?: number;
@@ -21,6 +22,7 @@ export interface TTIOptions {
   aspectRatio?: string;      // nano-banana 用
   imageSize?: string;        // nano-banana 用：1K, 2K, 4K
   imageUrls?: string[];      // 参考图（图生图）
+  referenceImages?: string[]; // 参考图列表（别名）
 }
 
 // 图像生成输入参数（统一接口）

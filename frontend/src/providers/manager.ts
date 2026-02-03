@@ -13,6 +13,7 @@ import {
   ttiRegistry,
   itvRegistry,
   ttsRegistry,
+  imageHostingRegistry,
 } from './registry';
 
 // 类型安全映射
@@ -20,6 +21,7 @@ export type ProviderKindMap = {
   tti: TTIProvider;
   itv: ITVProvider;
   tts: TTSProvider;
+  'image-hosting': any;
 };
 
 /**
@@ -34,6 +36,7 @@ export class ProviderManager {
       tti: ttiRegistry,
       itv: itvRegistry,
       tts: ttsRegistry,
+      'image-hosting': imageHostingRegistry,
     };
   }
 

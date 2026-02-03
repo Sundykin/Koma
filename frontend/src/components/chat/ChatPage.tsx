@@ -192,7 +192,8 @@ export const ChatPage: React.FC = () => {
           const base64 = await fileToBase64(attachment.file);
           parts.push({
             type: 'file',
-            data: base64,
+            fileName: attachment.file.name,
+            fileData: base64,
             mimeType: attachment.file.type,
           });
         }

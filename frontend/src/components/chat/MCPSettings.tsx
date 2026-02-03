@@ -38,7 +38,7 @@ interface MCPSettingsProps {
   onTest?: (config: MCPServerConfig) => Promise<boolean>;
 }
 
-type TransportType = 'stdio' | 'sse' | 'websocket';
+type TransportType = 'stdio' | 'sse' | 'websocket' | 'internal';
 
 interface ConfigFormData {
   name: string;
@@ -82,7 +82,7 @@ export const MCPSettings: React.FC<MCPSettingsProps> = ({
       env: config.env ? JSON.stringify(config.env, null, 2) : '',
       enabled: true,
     });
-    setEditingId(config.name);
+    setEditingId(config.id);
     setShowForm(true);
   }, [form]);
 
@@ -92,6 +92,7 @@ export const MCPSettings: React.FC<MCPSettingsProps> = ({
       const values = await form.validateFields();
 
       const config: MCPServerConfig = {
+        id: editingId || `mcp_${Date.now()}`,
         name: values.name,
         transport: values.transport,
         command: values.transport === 'stdio' ? values.command : undefined,
@@ -104,7 +105,7 @@ export const MCPSettings: React.FC<MCPSettingsProps> = ({
 
       let newConfigs: MCPServerConfig[];
       if (editingId) {
-        newConfigs = configs.map(c => c.name === editingId ? config : c);
+        newConfigs = configs.map(c => c.id === editingId ? config : c);
       } else {
         if (configs.some(c => c.name === config.name)) {
           message.error('配置名称已存在');

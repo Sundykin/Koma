@@ -5,10 +5,20 @@
  * 注意：配置从插件系统的 channelConfig.providerConfig 读取
  */
 
-import type {
-  ImageHostingUploadOptions,
-  ImageHostingUploadResult,
-} from '@komastudio/plugin-sdk';
+// 定义类型（避免依赖 @komastudio/plugin-sdk）
+export interface ImageHostingUploadOptions {
+  filename?: string;
+  outputFormat?: string;
+  cdnDomain?: string;
+}
+
+export interface ImageHostingUploadResult {
+  success: boolean;
+  url?: string;
+  data?: any;
+  error?: string;
+}
+
 import { getChannelConfigs } from '../store/settings/channelConfig';
 
 // SCDN 图床配置

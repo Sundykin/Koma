@@ -157,7 +157,8 @@ export class KlingProvider implements ITVProvider {
   }
 
   private extractProgress(data: KlingProgressResponse): ProgressInfo {
-    const payload = data.data || data;
+    // Cast to any for flexible property access - Kling API responses vary
+    const payload: any = data.data || data;
     const status = this.mapStatus(payload.task_status || payload.status || data.status);
     const progressRaw = payload.progress ?? data.progress;
     const progress = typeof progressRaw === 'number'

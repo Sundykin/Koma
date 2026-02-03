@@ -120,7 +120,7 @@ export async function shotRenderWorkflow(
           const voiceId = voices[0]?.id;
 
           logTTSCall(
-            ttsProvider.config?.name || 'TTS',
+            (ttsProvider.config as any)?.name || ttsProvider.type || 'TTS',
             shot.dialogue,
             voiceId!,
             { rate: 1.0, pitch: 1.0 },

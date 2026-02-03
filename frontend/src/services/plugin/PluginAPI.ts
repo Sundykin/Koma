@@ -87,16 +87,18 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
           throw new Error(result.reason);
         }
 
-        // 从 globalStore 读取设置
-        const { useGlobalStore } = await import('../../store/globalStore');
-        const state = useGlobalStore.getState();
+        // 从 globalStore 读取设置（简化版：返回基础状态）
+        const { loadSettings } = await import('../../store/globalStore');
+        const state = await loadSettings();
 
         if (!keys || keys.length === 0) {
           // 返回所有设置（排除敏感信息）
+          // AppSettings contains model configs, not UI settings
           return {
-            theme: state.theme,
-            language: state.language,
-            // ... 其他非敏感设置
+            llmConfigCount: state.llmConfigs?.length || 0,
+            ttiConfigCount: state.ttiConfigs?.length || 0,
+            itvConfigCount: state.itvConfigs?.length || 0,
+            ttsConfigCount: state.ttsConfigs?.length || 0,
           };
         }
 
@@ -124,9 +126,10 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
           }
         }
 
-        const { useGlobalStore } = await import('../../store/globalStore');
-        // 应用设置变更
-        useGlobalStore.setState(safePatch);
+        const { saveSettings, loadSettings } = await import('../../store/globalStore');
+        // 应用设置变更 - 加载当前设置并合并
+        const current = await loadSettings();
+        await saveSettings({ ...current, ...safePatch });
 
         // 触发事件
         emitPluginEvent('settingsChanged', safePatch);
@@ -146,7 +149,7 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
 
         return projects.map(p => ({
           id: p.id,
-          name: p.name,
+          name: p.title,
           createdAt: p.createdAt,
           updatedAt: p.updatedAt || p.createdAt,
         }));
@@ -167,7 +170,7 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
 
         return {
           id: project.id,
-          name: project.name,
+          name: project.title,
           createdAt: project.createdAt,
           updatedAt: project.updatedAt || project.createdAt,
         };
@@ -179,8 +182,13 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
           throw new Error(result.reason);
         }
 
-        const { updateProject } = await import('../../store/projectStore');
-        await updateProject(projectId, mutation);
+        const { loadProject, saveProject } = await import('../../store/projectStore');
+        const currentProject = await loadProject(projectId);
+        if (currentProject) {
+          // saveProject takes a single ProjectMeta argument
+          const updated = { ...currentProject, ...mutation };
+          await saveProject(updated);
+        }
 
         emitPluginEvent('projectChanged', { projectId, mutation });
       },
@@ -190,7 +198,8 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
     prompts: {
       async getTemplate(id: string): Promise<PluginPromptTemplate> {
         const { getPromptTemplate } = await import('../../store/promptTemplates');
-        const template = await getPromptTemplate(id);
+        // Cast to PromptTemplateType - caller must ensure valid template id
+        const template = await getPromptTemplate(id as any);
 
         return {
           id: template.id,
@@ -201,10 +210,10 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
       },
 
       async listTemplates(): Promise<PluginPromptTemplate[]> {
-        const { getAllPromptTemplates } = await import('../../store/promptTemplates');
-        const templates = await getAllPromptTemplates();
+        const { loadPromptTemplates } = await import('../../store/promptTemplates');
+        const templates = await loadPromptTemplates();
 
-        return templates.map(t => ({
+        return Object.values(templates).map(t => ({
           id: t.id,
           name: t.name,
           template: t.template,
@@ -218,10 +227,13 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
           throw new Error(result.reason);
         }
 
-        const { overridePromptTemplate } = await import('../../store/promptTemplates');
-        await overridePromptTemplate(payload.templateId, payload.newTemplate, {
-          pluginId,
-          priority: payload.priority,
+        // TODO: Implement prompt template override functionality
+        // For now, use saveCustomTemplate as a partial implementation
+        const { saveCustomTemplate, getPromptTemplate } = await import('../../store/promptTemplates');
+        const existing = await getPromptTemplate(payload.templateId as any);
+        await saveCustomTemplate({
+          ...existing,
+          template: payload.newTemplate,
         });
       },
     },
@@ -343,12 +355,11 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
 
         if (!channelConfig) {
           // 自动创建渠道配置
-          const manifest = plugin.manifest;
-          const capabilities = manifest.providerMeta?.capabilities || [];
+          const capabilities = plugin.providerMeta?.capabilities || [];
 
           channelConfig = await addChannelConfig({
-            name: manifest.name || type,
-            description: manifest.description,
+            name: plugin.name || type,
+            description: plugin.description,
             providerType: type,
             providerConfig: config,
             capabilities: capabilities as any[],
@@ -508,16 +519,17 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
           throw new Error('插件没有存储权限');
         }
 
-        const result = await electronService.dialog.showOpenDialog({
-          title: options.title,
-          properties: [
-            options.multiple ? 'multiSelections' : undefined,
-            options.directory ? 'openDirectory' : 'openFile',
-          ].filter(Boolean) as any[],
-          filters: options.filters,
-        });
-
-        return result.filePaths || [];
+        // Use the appropriate dialog method based on options
+        if (options.directory) {
+          const result = await electronService.dialog.openDirectory();
+          return result.filePaths || [];
+        } else {
+          const result = await electronService.dialog.openFile({
+            title: options.title,
+            filters: options.filters,
+          });
+          return result.filePaths || [];
+        }
       },
     },
 

@@ -113,17 +113,7 @@ export const Header: React.FC<HeaderProps> = ({
             onStepChange={onStepChange}
             stepProgress={stepProgress}
             actionButton={
-              editorStep === 'script' ? (
-                <Button
-                  type="primary"
-                  icon={isAnalyzing ? <LoadingOutlined /> : <ThunderboltOutlined />}
-                  onClick={onAnalyze}
-                  disabled={isAnalyzing || !scriptText.trim()}
-                  className="bg-green-600 hover:bg-green-500 border-none"
-                >
-                  {isAnalyzing ? t('editor.analyzing') : t('editor.startAnalysis')}
-                </Button>
-              ) : editorStep === 'assets' ? (
+              editorStep === 'assets' ? (
                 <Button
                   type="primary"
                   onClick={() => onStepChangeWithMark('storyboard')}

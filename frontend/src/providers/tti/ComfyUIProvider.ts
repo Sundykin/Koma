@@ -350,7 +350,7 @@ export class ComfyUIProvider implements TTIProvider {
     throw new Error('图片生成超时');
   }
 
-  private get polling() {
+  get polling() {
     return {
       interval: 2000,
       maxDuration: 300000,

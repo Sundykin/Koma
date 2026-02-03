@@ -10,9 +10,9 @@ export * from './trackStore';
 // 新的模块化 settings（逐步迁移用）
 export * as settingsStore from './settings';
 
-import storageConfig from './storageConfig';
-import globalStore from './globalStore';
-import projectStore from './projectStore';
+import * as storageConfig from './storageConfig';
+import * as globalStore from './globalStore';
+import * as projectStore from './projectStore';
 import { useResourceStore, resourceStore } from './resourceStore';
 import { useTrackStore, trackStore } from './trackStore';
 

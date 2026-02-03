@@ -66,7 +66,7 @@ export class MediaEngine {
     const prevMediaPaths = new Set<string>();
 
     for (const track of timeline.tracks) {
-      if (track.type === 'video' || track.type === 'image') {
+      if (track.type === 'video') {
         for (const clip of track.clips) {
           if (clip.sourcePath) {
             newMediaPaths.add(clip.sourcePath);
@@ -77,7 +77,7 @@ export class MediaEngine {
 
     if (prevTimeline) {
       for (const track of prevTimeline.tracks) {
-        if (track.type === 'video' || track.type === 'image') {
+        if (track.type === 'video') {
           for (const clip of track.clips) {
             if (clip.sourcePath) {
               prevMediaPaths.add(clip.sourcePath);
