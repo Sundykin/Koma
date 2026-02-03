@@ -40,7 +40,7 @@ import {
   setDefaultTTSConfig,
 } from '../../store/globalStore';
 import type { ProviderDefinition } from '../../providers/registry.types';
-import { listProviders } from '../../providers';
+import { listProviders, createTTSProviderFromConfig } from '../../providers';
 
 interface TTSConfigManagerProps {
   onConfigChange?: () => void;
@@ -168,9 +168,18 @@ export const TTSConfigManager: React.FC<TTSConfigManagerProps> = ({ onConfigChan
   const handleTestConnection = async (config: TTSModelConfig) => {
     setTestingId(config.id);
     try {
-      // TODO: 实现 TTS 连接测试 / 试听
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      message.success(`"${config.name}" ${t('settings.connectionSuccess')}`);
+      const provider = createTTSProviderFromConfig(config);
+
+      if (!provider.validate()) {
+        throw new Error(t('settings.configValidationFailed'));
+      }
+
+      const success = await provider.testConnection();
+      if (success) {
+        message.success(`"${config.name}" ${t('settings.connectionSuccess')}`);
+      } else {
+        message.error(`"${config.name}" ${t('settings.connectionFailedCheck')}`);
+      }
     } catch (err: any) {
       message.error(`${t('settings.connectionFailed')}: ${err.message}`);
     } finally {
