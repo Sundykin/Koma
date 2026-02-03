@@ -23,7 +23,9 @@ import { message, Modal } from 'antd';
 import {
   registerProvider,
   unregisterProvider,
+  unregisterProvidersByPlugin,
   listProviders,
+  createProviderInstance,
   type ProviderDefinition,
   type ChannelKind,
   type ProviderContext,
@@ -33,6 +35,16 @@ import {
   loadPromptTemplates,
   saveCustomTemplate,
 } from '../../store/promptTemplates';
+import { loadSettings, saveSettings } from '../../store/settings/core';
+import { listProjects, loadProject, saveProject } from '../../store/projectStore';
+import {
+  getChannelConfigs,
+  updateChannelConfig,
+  addChannelConfig,
+  deleteChannelConfig,
+  deleteChannelsByPlugin,
+  deleteChannelByProviderType,
+} from '../../store/settings/channelConfig';
 
 // 事件监听器
 const eventListeners = new Map<string, Map<string, Set<Function>>>();
@@ -92,7 +104,6 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
         }
 
         // 从 globalStore 读取设置（简化版：返回基础状态）
-        const { loadSettings } = await import('../../store/globalStore');
         const state = await loadSettings();
 
         if (!keys || keys.length === 0) {
@@ -130,7 +141,6 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
           }
         }
 
-        const { saveSettings, loadSettings } = await import('../../store/globalStore');
         // 应用设置变更 - 加载当前设置并合并
         const current = await loadSettings();
         await saveSettings({ ...current, ...safePatch });
@@ -148,7 +158,6 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
           throw new Error(result.reason);
         }
 
-        const { listProjects } = await import('../../store/projectStore');
         const projects = await listProjects();
 
         return projects.map(p => ({
@@ -165,7 +174,6 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
           throw new Error(result.reason);
         }
 
-        const { loadProject } = await import('../../store/projectStore');
         const project = await loadProject(projectId);
 
         if (!project) {
@@ -186,7 +194,6 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
           throw new Error(result.reason);
         }
 
-        const { loadProject, saveProject } = await import('../../store/projectStore');
         const currentProject = await loadProject(projectId);
         if (currentProject) {
           // saveProject takes a single ProjectMeta argument
@@ -266,7 +273,6 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
         pluginProviderTypes.get(pluginId)!.push(def.type);
 
         // 检查是否已存在渠道配置（避免重复创建）
-        const { getChannelConfigs } = await import('../../store/settings/channelConfig');
         const existingConfigs = await getChannelConfigs();
         const existingChannel = existingConfigs.find(
           c => c.providerType === def.type && c.pluginId === pluginId
@@ -274,7 +280,6 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
 
         if (existingChannel) {
           // 更新已存在配置的属性（确保 capabilities 等字段正确）
-          const { updateChannelConfig } = await import('../../store/settings/channelConfig');
           await updateChannelConfig(existingChannel.id, {
             name: def.name,
             description: def.description,
@@ -289,7 +294,6 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
 
         // 创建对应的渠道配置（失败时回滚）
         try {
-          const { addChannelConfig } = await import('../../store/settings/channelConfig');
           const newConfig = await addChannelConfig({
             name: def.name,
             description: def.description,
@@ -333,7 +337,6 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
           }
 
           // 清理对应的渠道配置
-          const { deleteChannelByProviderType } = await import('../../store/settings/channelConfig');
           await deleteChannelByProviderType(type, pluginId);
         }
       },
@@ -349,7 +352,6 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
           throw new Error(result.reason);
         }
 
-        const { getChannelConfigs, updateChannelConfig, addChannelConfig } = await import('../../store/settings/channelConfig');
         const configs = await getChannelConfigs();
         let channelConfig = configs.find(
           c => c.providerType === type && c.pluginId === pluginId
@@ -384,7 +386,6 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
        * 从 channelConfig.providerConfig 读取配置
        */
       async getProviderConfig(type: string): Promise<Record<string, any> | null> {
-        const { getChannelConfigs } = await import('../../store/settings/channelConfig');
         const configs = await getChannelConfigs();
         const channelConfig = configs.find(
           c => c.providerType === type && c.pluginId === pluginId
@@ -408,7 +409,6 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
        * 测试 Provider（需要指定 kind）
        */
       async testProvider(kind: ChannelKind, type: string, config: Record<string, any>): Promise<ChannelTestResult> {
-        const { createProviderInstance } = await import('../../providers/registry');
         const start = Date.now();
 
         try {
@@ -440,7 +440,6 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
       },
 
       async test(channelId: string): Promise<ChannelTestResult> {
-        const { getChannelConfigs } = await import('../../store/settings/channelConfig');
         const configs = await getChannelConfigs();
         const config = configs.find(c => c.id === channelId);
 
@@ -622,11 +621,9 @@ export async function cleanupPluginResources(pluginId: string): Promise<void> {
   dynamicMenuItems.delete(pluginId);
 
   // 清理 Provider 注册
-  const { unregisterProvidersByPlugin } = await import('../../providers/registry');
   unregisterProvidersByPlugin(pluginId);
 
   // 清理插件的渠道配置
-  const { deleteChannelsByPlugin } = await import('../../store/settings/channelConfig');
   await deleteChannelsByPlugin(pluginId);
 
   // 清理记录
