@@ -127,7 +127,21 @@
     "generateImage": "Generate Image",
     "generateVideo": "Generate Video",
     "imagePrompt": "Image Prompt",
-    "videoPrompt": "Video Prompt"
+    "videoPrompt": "Video Prompt",
+    "script": "Script",
+    "assets": "Assets",
+    "imageDesign": "Image Design",
+    "image": "Image",
+    "videoDesign": "Video Design",
+    "video": "Video",
+    "selectAll": "Select All",
+    "deselectAll": "Deselect All",
+    "generateEmpty": "Generate Empty",
+    "regenerateAll": "Regenerate All",
+    "generateConfirmed": "Generate Confirmed",
+    "addShot": "Add Shot",
+    "deleteSelected": "Delete",
+    "selectedCount": "items"
   },
   "chat": {
     "title": "AI Chat"

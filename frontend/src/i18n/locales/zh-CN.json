@@ -127,7 +127,21 @@
     "generateImage": "生成分镜图",
     "generateVideo": "生成视频",
     "imagePrompt": "图片提示词",
-    "videoPrompt": "视频提示词"
+    "videoPrompt": "视频提示词",
+    "script": "剧本",
+    "assets": "资产",
+    "imageDesign": "图像设计",
+    "image": "图像",
+    "videoDesign": "视频设计",
+    "video": "视频",
+    "selectAll": "全选",
+    "deselectAll": "取消全选",
+    "generateEmpty": "生成空白项",
+    "regenerateAll": "重新生成全部",
+    "generateConfirmed": "生成已确认项",
+    "addShot": "添加分镜",
+    "deleteSelected": "删除",
+    "selectedCount": "项"
   },
   "chat": {
     "title": "AI 对话"
