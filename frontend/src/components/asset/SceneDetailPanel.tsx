@@ -24,6 +24,7 @@ import {
   LoadingOutlined,
   ExpandOutlined,
 } from '@ant-design/icons';
+import { useTranslation } from 'react-i18next';
 import type { Scene } from '../../types';
 import { generateSceneImage } from '../../workflow/scenePropAssetWorkflow';
 import { electronService, openFileDialog, fsCopy, fsMkdir, fsExists } from '../../services/electronService';
@@ -54,6 +55,7 @@ export const SceneDetailPanel: React.FC<SceneDetailPanelProps> = ({
   onUpdate,
   onDelete,
 }) => {
+  const { t } = useTranslation();
   const { message } = App.useApp();
   const [form] = Form.useForm();
 
@@ -113,11 +115,11 @@ export const SceneDetailPanel: React.FC<SceneDetailPanelProps> = ({
 
       setEditedScene(updatedScene);
       onUpdate(updatedScene);
-      message.success('保存成功');
+      message.success(t('asset.saveSuccess'));
     } catch (err: any) {
-      message.error(err.message || '保存失败');
+      message.error(err.message || t('asset.saveFailed'));
     }
-  }, [editedScene, form, projectId, onUpdate, message]);
+  }, [editedScene, form, projectId, onUpdate, message, t]);
 
   const handleGenerateImage = useCallback(async () => {
     setGenerating(true);
@@ -153,12 +155,12 @@ export const SceneDetailPanel: React.FC<SceneDetailPanelProps> = ({
           scenes[index] = updated;
           await saveScenes(projectId, scenes);
         }
-        message.success('场景图生成完成');
+        message.success(t('asset.sceneImageGenerated'));
       } else {
-        message.error(result.error || '生成失败');
+        message.error(result.error || t('asset.generateFailed'));
       }
     } catch (err: any) {
-      message.error(err.message || '生成失败');
+      message.error(err.message || t('asset.generateFailed'));
     } finally {
       setGenerating(false);
     }
@@ -167,8 +169,8 @@ export const SceneDetailPanel: React.FC<SceneDetailPanelProps> = ({
   const handleUploadImage = useCallback(async () => {
     try {
       const result = await openFileDialog({
-        filters: [{ name: '图片', extensions: ['png', 'jpg', 'jpeg', 'webp'] }],
-        title: '选择场景图',
+        filters: [{ name: t('storyboard.image'), extensions: ['png', 'jpg', 'jpeg', 'webp'] }],
+        title: t('asset.selectSceneImage'),
       });
       if (result.canceled || !result.filePaths[0]) return;
 
@@ -180,14 +182,14 @@ export const SceneDetailPanel: React.FC<SceneDetailPanelProps> = ({
       // 检测图床配置，自动上传
       const imageHostingConfig = await getImageHostingConfig();
       if (imageHostingConfig?.enabled) {
-        message.loading({ content: '正在上传到图床...', key: 'imageHosting' });
+        message.loading({ content: t('asset.uploadToHosting'), key: 'imageHosting' });
         const uploadResult = await uploadLocalFileToImageHosting(destPath);
         if (uploadResult.success && uploadResult.url) {
           updated.imageUrl = uploadResult.url;
-          message.success({ content: '图床上传成功', key: 'imageHosting' });
+          message.success({ content: t('asset.uploadHostingSuccess'), key: 'imageHosting' });
         } else {
           console.warn('[SceneDetailPanel] 图床上传失败:', uploadResult.error);
-          message.warning({ content: `图床上传失败: ${uploadResult.error}`, key: 'imageHosting' });
+          message.warning({ content: `${t('asset.uploadHostingFailed')}: ${uploadResult.error}`, key: 'imageHosting' });
         }
       }
 
@@ -201,11 +203,11 @@ export const SceneDetailPanel: React.FC<SceneDetailPanelProps> = ({
         await saveScenes(projectId, scenes);
       }
 
-      message.success('上传成功');
+      message.success(t('asset.uploadSuccess'));
     } catch (err: any) {
-      message.error(`上传失败: ${err.message}`);
+      message.error(`${t('asset.uploadFailed')}: ${err.message}`);
     }
-  }, [editedScene, getAssetPath, projectId, onUpdate, message]);
+  }, [editedScene, getAssetPath, projectId, onUpdate, message, t]);
 
   const handleDelete = useCallback(async () => {
     onDelete(editedScene.id);
@@ -223,16 +225,16 @@ export const SceneDetailPanel: React.FC<SceneDetailPanelProps> = ({
             <Text strong style={{ fontSize: 16 }}>{editedScene.name}</Text>
           </Space>
           <Space>
-            <Tooltip title="保存">
+            <Tooltip title={t('common.save')}>
               <Button type="text" size="small" icon={<SaveOutlined />} onClick={handleSave} />
             </Tooltip>
             <Popconfirm
-              title="确定删除此场景？"
-              description="删除后无法恢复"
+              title={t('asset.confirmDeleteScene')}
+              description={t('asset.cannotUndo')}
               onConfirm={handleDelete}
               okButtonProps={{ danger: true }}
             >
-              <Tooltip title="删除">
+              <Tooltip title={t('common.delete')}>
                 <Button type="text" danger size="small" icon={<DeleteOutlined />} />
               </Tooltip>
             </Popconfirm>
@@ -241,14 +243,14 @@ export const SceneDetailPanel: React.FC<SceneDetailPanelProps> = ({
 
         <div className="creatorSidebarContent">
           <Form form={form} layout="vertical" size="small">
-            <Form.Item name="name" label="名称" rules={[{ required: true, message: '请输入名称' }]}>
+            <Form.Item name="name" label={t('asset.name')} rules={[{ required: true, message: t('asset.pleaseEnterName') }]}>
               <Input />
             </Form.Item>
 
-            <Form.Item name="prompt" label="视觉描述 Prompt">
+            <Form.Item name="prompt" label={t('asset.visualPrompt')}>
               <TextArea
                 autoSize={{ minRows: 12, maxRows: 20 }}
-                placeholder="在此输入详细的场景视觉描述..."
+                placeholder={t('asset.scenePromptPlaceholder')}
               />
             </Form.Item>
           </Form>
@@ -268,7 +270,7 @@ export const SceneDetailPanel: React.FC<SceneDetailPanelProps> = ({
               </div>
             )}
 
-            <Tooltip title={activeTTI ? `使用服务: ${activeTTI.name}` : '未配置生成服务'}>
+            <Tooltip title={activeTTI ? `${t('asset.useService')}: ${activeTTI.name}` : t('asset.noGenerateService')}>
               <Button
                 type={!editedScene.imagePath ? 'primary' : 'default'}
                 block
@@ -277,7 +279,7 @@ export const SceneDetailPanel: React.FC<SceneDetailPanelProps> = ({
                 loading={generating}
                 disabled={generating}
               >
-                {editedScene.imagePath ? '重新生成场景图' : '生成场景图'}
+                {editedScene.imagePath ? t('asset.regenerateSceneImage') : t('asset.generateSceneImage')}
               </Button>
             </Tooltip>
           </div>
@@ -289,20 +291,20 @@ export const SceneDetailPanel: React.FC<SceneDetailPanelProps> = ({
         <div className="creatorCanvasToolbar">
           <Space>
             <EnvironmentOutlined />
-            <Text>场景预览</Text>
+            <Text>{t('asset.scenePreview')}</Text>
           </Space>
 
           <Space>
-            <Tooltip title="上传场景图">
-              <Button type="text" icon={<UploadOutlined />} onClick={handleUploadImage} aria-label="上传场景图" />
+            <Tooltip title={t('asset.uploadSceneImage')}>
+              <Button type="text" icon={<UploadOutlined />} onClick={handleUploadImage} aria-label={t('asset.uploadSceneImage')} />
             </Tooltip>
-            <Tooltip title="放大预览">
+            <Tooltip title={t('asset.enlargePreview')}>
               <Button
                 type="text"
                 icon={<ExpandOutlined />}
                 onClick={() => editedScene.imagePath && setPreviewImage(toLocalUrl(editedScene.imagePath))}
                 disabled={!editedScene.imagePath}
-                aria-label="放大预览"
+                aria-label={t('asset.enlargePreview')}
               />
             </Tooltip>
           </Space>
@@ -313,14 +315,14 @@ export const SceneDetailPanel: React.FC<SceneDetailPanelProps> = ({
             {editedScene.imagePath ? (
               <img
                   src={toLocalUrl(editedScene.imagePath)}
-                  alt="场景图"
+                  alt={t('asset.sceneImage')}
                   style={{ cursor: 'pointer' }}
                   onDoubleClick={() => setPreviewImage(toLocalUrl(editedScene.imagePath))}
                 />
             ) : (
               <div className="creatorMediaPlaceholder">
                 <EnvironmentOutlined />
-                <div>暂无场景图</div>
+                <div>{t('asset.noSceneImage')}</div>
               </div>
             )}
           </div>
