@@ -18,29 +18,28 @@ export default defineConfig(({ mode }) => {
           manualChunks(id) {
             // 将 node_modules 中的依赖分离到 vendor chunks
             if (id.includes('node_modules')) {
-              if (id.includes('react') || id.includes('react-dom') || id.includes('react-router')) {
-                return 'vendor-react';
-              }
-              if (id.includes('@mui') || id.includes('@emotion')) {
+              // UI 组件库：合并 React + UI 组件避免循环依赖
+              if (id.includes('/node_modules/react/') || id.includes('/node_modules/react-dom/') || id.includes('/node_modules/react-router') || id.includes('antd') || id.includes('@ant-design') || id.includes('lucide-react')) {
                 return 'vendor-ui';
               }
-              if (id.includes('axios') || id.includes('zustand') || id.includes('immer')) {
+              // 播放器
+              if (id.includes('xgplayer')) {
+                return 'vendor-player';
+              }
+              // 编辑器
+              if (id.includes('codemirror') || id.includes('@codemirror') || id.includes('@lezer')) {
+                return 'vendor-editor';
+              }
+              // AI SDK
+              if (id.includes('@google/genai')) {
+                return 'vendor-ai';
+              }
+              // 工具库
+              if (id.includes('axios') || id.includes('zustand') || id.includes('immer') || id.includes('i18next') || id.includes('uuid')) {
                 return 'vendor-utils';
               }
               // 其他 node_modules 依赖
               return 'vendor-other';
-            }
-            // 将 workflow 相关代码分离
-            if (id.includes('/workflow/')) {
-              return 'workflow';
-            }
-            // 将 plugin 相关代码分离
-            if (id.includes('/services/plugin/')) {
-              return 'plugin';
-            }
-            // 将 store 相关代码分离
-            if (id.includes('/store/')) {
-              return 'store';
             }
           },
         },
