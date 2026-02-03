@@ -31,13 +31,6 @@ function createMentionCompletions(
     const query = word.text.slice(1).toLowerCase();
     const items = dataSource();
 
-    console.log('[MentionAutocomplete] 触发补全:', {
-      word: word.text,
-      query,
-      itemCount: items.length,
-      items: items.map(i => i.name),
-    });
-
     const options: Completion[] = items
       .filter((item) => {
         if (!query) return true;
@@ -62,8 +55,6 @@ function createMentionCompletions(
         boost: item.type === 'char' ? 2 : item.type === 'scene' ? 1 : 0,
       }));
 
-    console.log('[MentionAutocomplete] 返回 options:', options.length, options);
-
     if (options.length === 0) {
       return null;
     }
@@ -74,7 +65,6 @@ function createMentionCompletions(
       options,
       filter: false,  // 禁用内置过滤，我们自己处理
     };
-    console.log('[MentionAutocomplete] CompletionResult:', result);
     return result;
   };
 }

@@ -179,7 +179,6 @@ export const SimpleEditor: React.FC<SimpleEditorProps> = ({ shots = [], projectI
         if (savedData && savedData.tracks && savedData.tracks.length > 0) {
           setTracks(savedData.tracks);
           timelineCreatedAtRef.current = savedData.createdAt || Date.now();
-          console.log('[SimpleEditor] 已加载保存的时间线');
         } else if (shots.length > 0) {
           // 没有已保存的数据，使用 shots 初始化
           setTracks(shotsToTracks(shots));
@@ -225,7 +224,6 @@ export const SimpleEditor: React.FC<SimpleEditorProps> = ({ shots = [], projectI
           tracks,
           createdAt: timelineCreatedAtRef.current,
         });
-        console.log('[SimpleEditor] 自动保存成功');
       } catch (err) {
         console.error('[SimpleEditor] 自动保存失败:', err);
       }

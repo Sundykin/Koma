@@ -91,9 +91,8 @@ export const PluginManager: React.FC = () => {
   };
 
   // 导入成功回调
-  const handleImportSuccess = (pluginId: string) => {
-    // 可以在这里做一些导入后的处理
-    console.log('[PluginManager] 插件导入成功:', pluginId);
+  const handleImportSuccess = (_pluginId: string) => {
+    // 导入后的处理（如刷新列表等）由 store 自动完成
   };
 
   // 已安装插件列表内容

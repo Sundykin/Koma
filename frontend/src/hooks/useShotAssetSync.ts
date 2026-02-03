@@ -2,7 +2,7 @@
  * 分镜资产同步 Hook
  * 实现提示词编辑器与资产选择器的双向同步
  */
-import { useCallback, useMemo, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import type { Shot, Character, Scene, Prop } from '../types';
 import { parseMentions, createMentionString, type MentionType, type ParsedMention } from '../editor/mentionTypes';
 

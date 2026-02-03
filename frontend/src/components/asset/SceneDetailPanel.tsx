@@ -179,22 +179,16 @@ export const SceneDetailPanel: React.FC<SceneDetailPanelProps> = ({
 
       // 检测图床配置，自动上传
       const imageHostingConfig = await getImageHostingConfig();
-      console.log('[SceneDetailPanel] 图床配置:', imageHostingConfig);
       if (imageHostingConfig?.enabled) {
-        console.log('[SceneDetailPanel] 图床已启用，开始上传:', destPath);
         message.loading({ content: '正在上传到图床...', key: 'imageHosting' });
         const uploadResult = await uploadLocalFileToImageHosting(destPath);
-        console.log('[SceneDetailPanel] 图床上传结果:', uploadResult);
         if (uploadResult.success && uploadResult.url) {
           updated.imageUrl = uploadResult.url;
-          console.log('[SceneDetailPanel] 图床URL已保存:', uploadResult.url);
           message.success({ content: '图床上传成功', key: 'imageHosting' });
         } else {
           console.warn('[SceneDetailPanel] 图床上传失败:', uploadResult.error);
           message.warning({ content: `图床上传失败: ${uploadResult.error}`, key: 'imageHosting' });
         }
-      } else {
-        console.log('[SceneDetailPanel] 图床未启用，跳过上传');
       }
 
       setEditedScene(updated);

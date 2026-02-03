@@ -78,14 +78,11 @@ export const TTIConfigManager: React.FC<TTIConfigManagerProps> = ({ onConfigChan
       setConfigs(settings.ttiConfigs || []);
       // 加载插件注册的渠道配置
       const channels = await getChannelConfigs();
-      console.log('[TTIConfigManager] 所有渠道配置:', channels);
-      console.log('[TTIConfigManager] 所有渠道的 capabilities:', channels.map(c => ({ id: c.id, name: c.name, source: c.source, enabled: c.enabled, capabilities: c.capabilities })));
       const filtered = channels.filter(c =>
         c.source === 'plugin' &&
         c.enabled &&
         c.capabilities.includes('tti')
       );
-      console.log('[TTIConfigManager] 过滤后的 TTI 插件渠道:', filtered);
       setPluginChannels(filtered);
     } finally {
       setLoading(false);

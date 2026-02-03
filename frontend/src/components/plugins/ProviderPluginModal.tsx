@@ -37,8 +37,6 @@ async function loadProviderPluginComponent(plugin: InstalledPlugin): Promise<Plu
   const frontendEntry = plugin.entry.frontend.replace(/^\.\//, '');
   const entryPath = `${plugin.rootPath}/${frontendEntry}`.replace(/\\/g, '/');
 
-  console.log(`[ProviderPluginModal] 加载插件脚本: ${entryPath}`);
-
   // 通过 electronService 读取文件内容
   const scriptContent = await electronService.fs.readFile(entryPath);
 
@@ -46,25 +44,14 @@ async function loadProviderPluginComponent(plugin: InstalledPlugin): Promise<Plu
 
   // 直接执行脚本内容
   try {
-    // 确保全局变量已设置
-    console.log('[ProviderPluginModal] 检查全局变量:', {
-      React: !!(window as any).React,
-      antd: !!(window as any).antd,
-      icons: !!(window as any)['@ant-design/icons'],
-    });
-
     // 使用 Function 构造器执行，确保在全局作用域
     const fn = new Function(scriptContent);
     fn.call(window);
 
     const module = (window as any)[globalKey];
     if (module) {
-      console.log(`[ProviderPluginModal] 插件加载成功:`, Object.keys(module));
       return module;
     } else {
-      // 列出 window 上所有 __KOMA_PLUGIN 开头的变量
-      const pluginKeys = Object.keys(window).filter(k => k.startsWith('__KOMA_PLUGIN'));
-      console.log(`[ProviderPluginModal] 未找到 ${globalKey}，已有插件变量:`, pluginKeys);
       throw new Error(`插件 ${plugin.id} 未正确导出到 window.${globalKey}`);
     }
   } catch (err: any) {

@@ -205,22 +205,16 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
 
       // 检测图床配置，自动上传
       const imageHostingConfig = await getImageHostingConfig();
-      console.log('[CharacterDetailPanel] 图床配置:', imageHostingConfig);
       if (imageHostingConfig?.enabled) {
-        console.log('[CharacterDetailPanel] 图床已启用，开始上传:', destPath);
         message.loading({ content: '正在上传到图床...', key: 'imageHosting' });
         const uploadResult = await uploadLocalFileToImageHosting(destPath);
-        console.log('[CharacterDetailPanel] 图床上传结果:', uploadResult);
         if (uploadResult.success && uploadResult.url) {
           updated.costumePhotoUrl = uploadResult.url;
-          console.log('[CharacterDetailPanel] 图床URL已保存:', uploadResult.url);
           message.success({ content: '图床上传成功', key: 'imageHosting' });
         } else {
           console.warn('[CharacterDetailPanel] 图床上传失败:', uploadResult.error);
           message.warning({ content: `图床上传失败: ${uploadResult.error}`, key: 'imageHosting' });
         }
-      } else {
-        console.log('[CharacterDetailPanel] 图床未启用，跳过上传');
       }
 
       setEditedCharacter(updated);

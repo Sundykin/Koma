@@ -70,22 +70,17 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
 
     // 如果已经有会话了，不重复创建
     if (currentSessionIdRef.current) {
-      console.log('[useChatIPC] Session already exists:', currentSessionIdRef.current);
       return;
     }
 
     // 需要有 apiKey 才创建会话
     if (!options.config?.apiKey) {
-      console.log('[useChatIPC] No apiKey, skip session creation. config:', options.config);
       return;
     }
-
-    console.log('[useChatIPC] Creating session with config:', options.config);
 
     const initSession = async () => {
       try {
         const session = await chatIPC.createSession(options.config);
-        console.log('[useChatIPC] Session created:', session.id);
         setSessionId(session.id);
         currentSessionIdRef.current = session.id;
         setIsReady(true);
@@ -113,7 +108,6 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
   useEffect(() => {
     if (!isReady || !sessionId || !options.config) return;
 
-    console.log('[useChatIPC] Updating session config:', options.config);
     // 更新会话配置
     chatIPC.updateSessionConfig(sessionId, options.config).catch(err => {
       console.error('Failed to update session config:', err);

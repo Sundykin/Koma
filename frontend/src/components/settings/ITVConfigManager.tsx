@@ -71,14 +71,11 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
       setConfigs(settings.itvConfigs || []);
       // 加载插件注册的渠道配置
       const channels = await getChannelConfigs();
-      console.log('[ITVConfigManager] 所有渠道配置:', channels);
-      console.log('[ITVConfigManager] 所有渠道的 capabilities:', channels.map(c => ({ id: c.id, name: c.name, source: c.source, enabled: c.enabled, capabilities: c.capabilities })));
       const filtered = channels.filter(c =>
         c.source === 'plugin' &&
         c.enabled &&
         c.capabilities.includes('itv')
       );
-      console.log('[ITVConfigManager] 过滤后的 ITV 插件渠道:', filtered);
       setPluginChannels(filtered);
     } finally {
       setLoading(false);

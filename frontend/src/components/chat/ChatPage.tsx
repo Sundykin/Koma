@@ -43,7 +43,6 @@ export const ChatPage: React.FC = () => {
   // 构建 Session 配置
   const sessionConfig = useMemo((): SessionConfig => {
     if (!selectedConfig) {
-      console.log('[ChatPage] No selectedConfig, returning minimal sessionConfig');
       return { systemPrompt };
     }
 
@@ -54,7 +53,6 @@ export const ChatPage: React.FC = () => {
       apiKey: selectedConfig.apiKey,
       baseUrl: selectedConfig.baseUrl,
     };
-    console.log('[ChatPage] Built sessionConfig:', { ...config, apiKey: config.apiKey ? '***' : undefined });
     return config;
   }, [selectedConfig, systemPrompt]);
 
@@ -84,14 +82,12 @@ export const ChatPage: React.FC = () => {
       try {
         const settings = await loadSettings();
         const configs = settings?.llmConfigs || [];
-        console.log('[ChatPage] Loaded LLM configs:', configs.length, configs.map(c => ({ id: c.id, name: c.name, hasApiKey: !!c.apiKey })));
         setLlmConfigs(configs);
         setMcpConfigs((settings as any).mcpServers || []);
         setAgentTemplates((settings as any).agentTemplates || []);
         setActiveAgentId((settings as any).activeAgentId || null);
 
         const activeConfig = await getActiveLLMConfig();
-        console.log('[ChatPage] Active LLM config:', activeConfig ? { id: activeConfig.id, name: activeConfig.name, hasApiKey: !!activeConfig.apiKey } : null);
         if (activeConfig) {
           setSelectedConfigId(activeConfig.id || '');
         }
