@@ -39,7 +39,8 @@ import {
   deleteTTSConfig,
   setDefaultTTSConfig,
 } from '../../store/globalStore';
-import { listProviders, type ProviderDefinition } from '../../providers/registry';
+import type { ProviderDefinition } from '../../providers/registry.types';
+import { listProviders } from '../../providers';
 
 interface TTSConfigManagerProps {
   onConfigChange?: () => void;
@@ -53,11 +54,12 @@ export const TTSConfigManager: React.FC<TTSConfigManagerProps> = ({ onConfigChan
   const [modalVisible, setModalVisible] = useState(false);
   const [editingConfig, setEditingConfig] = useState<TTSModelConfig | null>(null);
   const [testingId, setTestingId] = useState<string | null>(null);
+  const [availableProviders, setAvailableProviders] = useState<ProviderDefinition<any>[]>([]);
   const [form] = Form.useForm();
 
   // 从 Registry 获取可用的 TTS Provider
-  const availableProviders = useMemo(() => {
-    return listProviders('tts');
+  useEffect(() => {
+    listProviders('tts').then(setAvailableProviders);
   }, []);
 
   const loadConfigs = async () => {
