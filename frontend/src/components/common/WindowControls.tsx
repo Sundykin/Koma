@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { Minus, Square, X, Maximize2 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { electronService } from '../../services/electronService';
 
 export const WindowControls: React.FC = () => {
+  const { t } = useTranslation();
   const [isMaximized, setIsMaximized] = useState(false);
 
   useEffect(() => {
@@ -56,21 +58,21 @@ export const WindowControls: React.FC = () => {
         <button
           onClick={handleMinimize}
           className="w-12 h-full flex items-center justify-center text-zinc-400 hover:bg-zinc-700 hover:text-white transition-colors"
-          title="最小化"
+          title={t('window.minimize')}
         >
           <Minus className="w-4 h-4" />
         </button>
         <button
           onClick={handleMaximize}
           className="w-12 h-full flex items-center justify-center text-zinc-400 hover:bg-zinc-700 hover:text-white transition-colors"
-          title={isMaximized ? '还原' : '最大化'}
+          title={isMaximized ? t('window.restore') : t('window.maximize')}
         >
           {isMaximized ? <Square className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
         </button>
         <button
           onClick={handleClose}
           className="w-12 h-full flex items-center justify-center text-zinc-400 hover:bg-red-600 hover:text-white transition-colors"
-          title="关闭"
+          title={t('window.close')}
         >
           <X className="w-4 h-4" />
         </button>

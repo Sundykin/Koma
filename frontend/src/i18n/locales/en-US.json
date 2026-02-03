@@ -249,6 +249,39 @@
     "imageGeneration": "Image Generation"
   },
   "video": {
-    "title": "Video"
+    "title": "Video",
+    "export": "Export Video",
+    "exportComplete": "Export Complete",
+    "exportFailed": "Export Failed",
+    "cancelExport": "Cancel Export",
+    "startExport": "Start Export",
+    "savedTo": "Video saved to",
+    "resolutionPreset": "Resolution Preset",
+    "width": "Width",
+    "height": "Height",
+    "frameRate": "Frame Rate",
+    "format": "Format",
+    "quality": "Quality",
+    "lowQuality": "Low Quality (Fast, ~2Mbps)",
+    "mediumQuality": "Medium Quality (~5Mbps)",
+    "highQuality": "High Quality (~10Mbps)",
+    "customQuality": "Custom",
+    "videoBitrate": "Video Bitrate",
+    "audioBitrate": "Audio Bitrate",
+    "saveLocation": "Save Location",
+    "selectSaveLocation": "Please select save location",
+    "clickToSelect": "Click to select save location",
+    "frame": "Frame",
+    "remaining": "Remaining",
+    "seconds": "seconds",
+    "gifAnimation": "GIF Animation",
+    "mp4Video": "MP4 Video",
+    "webmVideo": "WebM Video"
+  },
+  "window": {
+    "minimize": "Minimize",
+    "maximize": "Maximize",
+    "restore": "Restore",
+    "close": "Close"
   }
 }

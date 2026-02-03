@@ -4,6 +4,7 @@
 import React, { useState, useCallback, useRef } from 'react';
 import { Modal, Form, Select, InputNumber, Input, Button, Progress, Space, Radio, App } from 'antd';
 import { ExportOutlined, FolderOutlined } from '@ant-design/icons';
+import { useTranslation } from 'react-i18next';
 import { useTrackStore } from '../../store/trackStore';
 import { ExportRenderer, ExportConfig, ExportProgress } from '../../services/exportRenderer';
 import { saveFileDialog } from '../../services/electronService';
@@ -13,19 +14,6 @@ interface ExportDialogProps {
   onClose: () => void;
 }
 
-const FORMAT_OPTIONS = [
-  { value: 'mp4', label: 'MP4 (H.264)' },
-  { value: 'webm', label: 'WebM (VP9)' },
-  { value: 'gif', label: 'GIF 动图' },
-];
-
-const QUALITY_OPTIONS = [
-  { value: 'low', label: '低质量 (快速, ~2Mbps)' },
-  { value: 'medium', label: '中等质量 (~5Mbps)' },
-  { value: 'high', label: '高质量 (~10Mbps)' },
-  { value: 'custom', label: '自定义' },
-];
-
 const RESOLUTION_PRESETS = [
   { label: '1080p (1920×1080)', width: 1920, height: 1080 },
   { label: '720p (1280×720)', width: 1280, height: 720 },
@@ -34,8 +22,22 @@ const RESOLUTION_PRESETS = [
 ];
 
 export function ExportDialog({ open, onClose }: ExportDialogProps) {
+  const { t } = useTranslation();
   const { modal } = App.useApp();
   const { tracks, config: timelineConfig } = useTrackStore();
+
+  const FORMAT_OPTIONS = [
+    { value: 'mp4', label: 'MP4 (H.264)' },
+    { value: 'webm', label: 'WebM (VP9)' },
+    { value: 'gif', label: t('video.gifAnimation') },
+  ];
+
+  const QUALITY_OPTIONS = [
+    { value: 'low', label: t('video.lowQuality') },
+    { value: 'medium', label: t('video.mediumQuality') },
+    { value: 'high', label: t('video.highQuality') },
+    { value: 'custom', label: t('video.customQuality') },
+  ];
 
   const [form] = Form.useForm();
   const [exporting, setExporting] = useState(false);
@@ -92,15 +94,15 @@ export function ExportDialog({ open, onClose }: ExportDialogProps) {
 
       // 导出完成
       modal.success({
-        title: '导出完成',
-        content: `视频已保存到: ${config.outputPath}`,
+        title: t('video.exportComplete'),
+        content: `${t('video.savedTo')}: ${config.outputPath}`,
       });
 
       onClose();
     } catch (err) {
       if ((err as Error).message !== 'Export aborted') {
         modal.error({
-          title: '导出失败',
+          title: t('video.exportFailed'),
           content: (err as Error).message,
         });
       }
@@ -130,7 +132,7 @@ export function ExportDialog({ open, onClose }: ExportDialogProps) {
 
   return (
     <Modal
-      title="导出视频"
+      title={t('video.export')}
       open={open}
       onCancel={handleCancel}
       footer={null}
@@ -147,9 +149,9 @@ export function ExportDialog({ open, onClose }: ExportDialogProps) {
           <p style={styles.progressMessage}>{progress.message}</p>
           {progress.stage === 'rendering' && (
             <p style={styles.progressDetail}>
-              帧 {progress.currentFrame} / {progress.totalFrames}
+              {t('video.frame')} {progress.currentFrame} / {progress.totalFrames}
               {progress.estimatedTimeRemaining !== undefined && (
-                <> · 剩余约 {Math.round(progress.estimatedTimeRemaining)}秒</>
+                <> · {t('video.remaining')} {Math.round(progress.estimatedTimeRemaining)}{t('video.seconds')}</>
               )}
             </p>
           )}
@@ -158,7 +160,7 @@ export function ExportDialog({ open, onClose }: ExportDialogProps) {
             onClick={handleCancel}
             style={{ marginTop: 16 }}
           >
-            取消导出
+            {t('video.cancelExport')}
           </Button>
         </div>
       ) : (
@@ -177,7 +179,7 @@ export function ExportDialog({ open, onClose }: ExportDialogProps) {
           }}
         >
           {/* 分辨率预设 */}
-          <Form.Item label="分辨率预设">
+          <Form.Item label={t('video.resolutionPreset')}>
             <Radio.Group
               buttonStyle="solid"
               onChange={(e) => {
@@ -197,23 +199,23 @@ export function ExportDialog({ open, onClose }: ExportDialogProps) {
 
           {/* 自定义分辨率 */}
           <Space>
-            <Form.Item name="width" label="宽度" rules={[{ required: true }]}>
+            <Form.Item name="width" label={t('video.width')} rules={[{ required: true }]}>
               <InputNumber min={320} max={7680} step={2} addonAfter="px" />
             </Form.Item>
-            <Form.Item name="height" label="高度" rules={[{ required: true }]}>
+            <Form.Item name="height" label={t('video.height')} rules={[{ required: true }]}>
               <InputNumber min={240} max={4320} step={2} addonAfter="px" />
             </Form.Item>
-            <Form.Item name="fps" label="帧率" rules={[{ required: true }]}>
+            <Form.Item name="fps" label={t('video.frameRate')} rules={[{ required: true }]}>
               <InputNumber min={15} max={120} addonAfter="fps" />
             </Form.Item>
           </Space>
 
           {/* 格式和质量 */}
           <Space style={{ width: '100%' }}>
-            <Form.Item name="format" label="格式" rules={[{ required: true }]}>
+            <Form.Item name="format" label={t('video.format')} rules={[{ required: true }]}>
               <Select options={FORMAT_OPTIONS} style={{ width: 150 }} />
             </Form.Item>
-            <Form.Item name="quality" label="质量" rules={[{ required: true }]}>
+            <Form.Item name="quality" label={t('video.quality')} rules={[{ required: true }]}>
               <Select options={QUALITY_OPTIONS} style={{ width: 200 }} />
             </Form.Item>
           </Space>
@@ -223,10 +225,10 @@ export function ExportDialog({ open, onClose }: ExportDialogProps) {
             {({ getFieldValue }) =>
               getFieldValue('quality') === 'custom' ? (
                 <Space>
-                  <Form.Item name="videoBitrate" label="视频码率">
+                  <Form.Item name="videoBitrate" label={t('video.videoBitrate')}>
                     <InputNumber min={500} max={50000} addonAfter="kbps" />
                   </Form.Item>
-                  <Form.Item name="audioBitrate" label="音频码率">
+                  <Form.Item name="audioBitrate" label={t('video.audioBitrate')}>
                     <InputNumber min={64} max={512} addonAfter="kbps" />
                   </Form.Item>
                 </Space>
@@ -237,11 +239,11 @@ export function ExportDialog({ open, onClose }: ExportDialogProps) {
           {/* 输出路径 */}
           <Form.Item
             name="outputPath"
-            label="保存位置"
-            rules={[{ required: true, message: '请选择保存位置' }]}
+            label={t('video.saveLocation')}
+            rules={[{ required: true, message: t('video.selectSaveLocation') }]}
           >
             <Input
-              placeholder="点击选择保存位置"
+              placeholder={t('video.clickToSelect')}
               readOnly
               addonAfter={
                 <Button
@@ -257,13 +259,13 @@ export function ExportDialog({ open, onClose }: ExportDialogProps) {
           {/* 导出按钮 */}
           <Form.Item>
             <Space>
-              <Button onClick={onClose}>取消</Button>
+              <Button onClick={onClose}>{t('common.cancel')}</Button>
               <Button
                 type="primary"
                 icon={<ExportOutlined />}
                 onClick={handleExport}
               >
-                开始导出
+                {t('video.startExport')}
               </Button>
             </Space>
           </Form.Item>

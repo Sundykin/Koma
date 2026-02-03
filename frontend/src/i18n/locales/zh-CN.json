@@ -249,6 +249,39 @@
     "imageGeneration": "图片生成"
   },
   "video": {
-    "title": "视频"
+    "title": "视频",
+    "export": "导出视频",
+    "exportComplete": "导出完成",
+    "exportFailed": "导出失败",
+    "cancelExport": "取消导出",
+    "startExport": "开始导出",
+    "savedTo": "视频已保存到",
+    "resolutionPreset": "分辨率预设",
+    "width": "宽度",
+    "height": "高度",
+    "frameRate": "帧率",
+    "format": "格式",
+    "quality": "质量",
+    "lowQuality": "低质量 (快速, ~2Mbps)",
+    "mediumQuality": "中等质量 (~5Mbps)",
+    "highQuality": "高质量 (~10Mbps)",
+    "customQuality": "自定义",
+    "videoBitrate": "视频码率",
+    "audioBitrate": "音频码率",
+    "saveLocation": "保存位置",
+    "selectSaveLocation": "请选择保存位置",
+    "clickToSelect": "点击选择保存位置",
+    "frame": "帧",
+    "remaining": "剩余约",
+    "seconds": "秒",
+    "gifAnimation": "GIF 动图",
+    "mp4Video": "MP4 视频",
+    "webmVideo": "WebM 视频"
+  },
+  "window": {
+    "minimize": "最小化",
+    "maximize": "最大化",
+    "restore": "还原",
+    "close": "关闭"
   }
 }
