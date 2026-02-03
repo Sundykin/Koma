@@ -6,6 +6,7 @@ import type {
   ChatResponse,
   ChatChunk,
   ToolDefinition,
+  ChatOptions,
 } from '../types';
 import type { ChatSession } from '../ChatSession';
 
@@ -13,7 +14,7 @@ import type { ChatSession } from '../ChatSession';
 export interface PluginContext {
   session: ChatSession;
   messages: ChatMessage[];
-  options?: Record<string, unknown>;
+  options?: ChatOptions;
 }
 
 // 插件接口
