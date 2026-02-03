@@ -161,7 +161,6 @@ const rehydratePromise = new Promise<void>((resolve) => {
 
 // 监听 rehydrate 完成
 usePluginStore.persist.onFinishHydration(() => {
-  console.log('[PluginStore] persist 数据恢复完成');
   rehydrateResolve?.();
 });
 

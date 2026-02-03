@@ -558,14 +558,6 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
     e.stopPropagation();
     // 获取源素材时长：优先使用 clip.sourceDuration，否则用当前 duration + offset 作为估算
     const sourceDuration = clip.sourceDuration ?? (clip.duration + clip.offset);
-    console.log('[Resize] 开始:', {
-      clipId: clip.id,
-      type: clip.type,
-      duration: clip.duration,
-      offset: clip.offset,
-      sourceDuration,
-      edge
-    });
     setResizeState({
       clipId: clip.id,
       edge,

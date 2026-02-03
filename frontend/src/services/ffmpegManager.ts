@@ -103,7 +103,6 @@ class FFmpegManager {
     }
 
     this.initialized = true;
-    console.log('[FFmpegManager] Initialized, cacheDir:', this.cacheDir);
   }
 
   /**

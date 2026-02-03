@@ -103,13 +103,11 @@ export class ShotAnalysisService {
     llmConfigId?: string
   ): Promise<void> {
     try {
-      console.log('[ShotAnalysis] 开始生成分镜:', episodeId);
 
       const hasConfig = await this.setLLMConfig(llmConfigId);
       if (!hasConfig) {
         throw new Error('未配��� LLM 模型，请先在设置中添加');
       }
-      console.log('[ShotAnalysis] LLM Config:', this.llmConfig?.name);
 
       TaskManager.updateTask(taskId, { progress: 10 });
 
@@ -118,11 +116,6 @@ export class ShotAnalysisService {
       const scenes = await loadScenes(this.projectId);
       const props = await loadProps(this.projectId);
 
-      console.log('[ShotAnalysis] 已加载资产:', {
-        characters: characters.length,
-        scenes: scenes.length,
-        props: props.length,
-      });
 
       TaskManager.updateTask(taskId, { progress: 20 });
 
@@ -135,7 +128,6 @@ export class ShotAnalysisService {
         props: props.map(p => `${p.name}（${p.description || ''}）`).join('\n'),
       });
 
-      console.log('[ShotAnalysis] 调用 LLM...');
       TaskManager.updateTask(taskId, { progress: 30 });
 
       // 调用 LLM (处理 openai-compatible 类型)
@@ -160,7 +152,6 @@ export class ShotAnalysisService {
 
       // 解析结果
       const parsed = this.parseJSON<{ shots: any[] }>(result);
-      console.log('[ShotAnalysis] 解析结果:', parsed.shots?.length, '个分镜');
 
       // 将角色名/道具名映射到 ID
       // 优先使用预选资产的 Sora2 ID，其次使用已绑定的 Sora2 ID，最后使用自定义 ID
@@ -205,14 +196,12 @@ export class ShotAnalysisService {
 
       // 保存分镜到剧集
       await saveEpisodeShots(this.projectId, episodeId, shots);
-      console.log('[ShotAnalysis] 分镜已保存到剧集:', episodeId, shots.length);
 
       TaskManager.updateTask(taskId, {
         status: 'completed',
         progress: 100,
         result: { shotsCount: shots.length },
       });
-      console.log('[ShotAnalysis] 分镜生成完成');
     } catch (error: any) {
       console.error('[ShotAnalysis] 生成失败:', error);
       TaskManager.updateTask(taskId, {

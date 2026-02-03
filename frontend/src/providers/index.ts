@@ -281,11 +281,9 @@ export async function getProjectTTIProvider(projectTTIConfigId?: string): Promis
   if (!config) return null;
 
   if (config.source === 'channel') {
-    console.log(`[Provider] 使用插件渠道 TTI: ${config.name} (${config.channelConfig.providerType})`);
     return createChannelProvider<TTIProvider>(config.channelConfig, 'tti');
   }
 
-  console.log(`[Provider] 使用内置 TTI: ${config.name} (${config.provider})`);
   return createTTIProviderFromConfig(config);
 }
 
@@ -294,11 +292,9 @@ export async function getProjectITVProvider(projectITVConfigId?: string): Promis
   if (!config) return null;
 
   if (config.source === 'channel') {
-    console.log(`[Provider] 使用插件渠道 ITV: ${config.name} (${config.channelConfig.providerType})`);
     return createChannelProvider<ITVProvider>(config.channelConfig, 'itv');
   }
 
-  console.log(`[Provider] 使用内置 ITV: ${config.name} (${config.provider})`);
   return createITVProviderFromConfig({
     provider: config.provider as any,
     apiKey: config.apiKey,
@@ -316,12 +312,10 @@ export async function getProjectTTSProvider(projectTTSConfigId?: string): Promis
   if ('source' in config && config.source === 'channel') {
     const resolvedConfig = config as ResolvedTTSConfig;
     if (resolvedConfig.source === 'channel') {
-      console.log(`[Provider] 使用插件渠道 TTS: ${resolvedConfig.name} (${resolvedConfig.channelConfig.providerType})`);
       return createChannelProvider<TTSProvider>(resolvedConfig.channelConfig, 'tts');
     }
   }
 
-  console.log(`[Provider] 使用内置 TTS: ${config.name} (${config.provider})`);
   return createTTSProviderFromConfig(config);
 }
 

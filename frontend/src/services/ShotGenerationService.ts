@@ -90,13 +90,11 @@ export class ShotGenerationService {
     configId?: string
   ): Promise<void> {
     try {
-      console.log('[ShotGen] 开始生成分镜图片:', shot.id);
 
       const hasConfig = await this.setTTIConfig(configId);
       if (!hasConfig) {
         throw new Error('未配置 TTI 模型，请先在设置中添加');
       }
-      console.log('[ShotGen] TTI Config:', this.ttiConfig?.name);
 
       TaskManager.updateTask(taskId, { progress: 10 });
 
@@ -105,7 +103,6 @@ export class ShotGenerationService {
 
       // 构建提示词，收集参考图 URL
       const { prompt, referenceImages } = this.buildShotPrompt(shot, characters, scenes, props);
-      console.log('[ShotGen] 参考图列表:', referenceImages);
 
       // 打印完整提示词日志
       logTTICall(
@@ -118,19 +115,15 @@ export class ShotGenerationService {
       TaskManager.updateTask(taskId, { progress: 20 });
 
       // 调用 TTI 生成（传递参考图）
-      console.log('[ShotGen] 调用 TTI API...');
       const imageUrl = await this.callTTI(prompt, referenceImages, (ttiProgress) => {
         const mappedProgress = 20 + Math.floor(ttiProgress * 0.5);
         TaskManager.updateTask(taskId, { progress: mappedProgress });
       });
-      console.log('[ShotGen] TTI 返回图片 URL:', imageUrl);
 
       TaskManager.updateTask(taskId, { progress: 75 });
 
       // 保存图片到本地
-      console.log('[ShotGen] 开始保存图片...');
       const imagePath = await this.saveImage(imageUrl, shot.id);
-      console.log('[ShotGen] 图片已保存到:', imagePath);
 
       TaskManager.updateTask(taskId, { progress: 90 });
 
@@ -150,14 +143,12 @@ export class ShotGenerationService {
         };
       });
       await saveEpisodeShots(this.projectId, this.episodeId, updatedShots);
-      console.log('[ShotGen] 分镜记录已更新，远程URL:', imageUrl);
 
       TaskManager.updateTask(taskId, {
         status: 'completed',
         progress: 100,
         result: { imagePath },
       });
-      console.log('[ShotGen] 分镜图片生成完成');
     } catch (error: any) {
       console.error('[ShotGen] 生成失败:', error);
       TaskManager.updateTask(taskId, {
@@ -356,7 +347,6 @@ export class ShotGenerationService {
 
     while (Date.now() - startTime < MAX_POLL_TIME) {
       const progressInfo = await provider.checkProgress!(taskId);
-      console.log('[TTI Poll]', taskId, progressInfo);
 
       if (progressInfo.status === 'completed' && progressInfo.resultUrl) {
         return progressInfo.resultUrl;
@@ -377,7 +367,6 @@ export class ShotGenerationService {
   }
 
   private async saveImage(imageUrl: string, shotId: string): Promise<string> {
-    console.log('[ShotGen:saveImage] imageUrl:', imageUrl, 'shotId:', shotId);
 
     if (!electronService.isElectron()) {
       return imageUrl;
@@ -392,7 +381,6 @@ export class ShotGenerationService {
     const filePath = `${assetDir}/${filename}`;
 
     const result = await electronService.fs.downloadFile(imageUrl, filePath);
-    console.log('[ShotGen:saveImage] 下载结果:', result);
 
     return filePath;
   }

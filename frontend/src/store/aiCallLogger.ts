@@ -30,31 +30,20 @@ export function logAICall(log: AICallLog): void {
   const prefix = `[AI:${TYPE_LABELS[log.type]}]`;
   const separator = '='.repeat(40);
 
-  console.log(`${prefix} ${separator}`);
-  console.log(`${prefix} Service: ${log.service}`);
 
   if (log.targetName || log.targetId) {
-    console.log(`${prefix} Target: ${log.targetName || log.targetId}`);
   }
 
   if (log.projectId) {
-    console.log(`${prefix} Project: ${log.projectId}`);
   }
 
   if (log.systemPrompt) {
-    console.log(`${prefix} System Prompt:`);
-    console.log(log.systemPrompt);
-    console.log(`${prefix} ---`);
   }
 
-  console.log(`${prefix} Prompt:`);
-  console.log(log.prompt);
 
   if (log.options && Object.keys(log.options).length > 0) {
-    console.log(`${prefix} Options:`, JSON.stringify(log.options, null, 2));
   }
 
-  console.log(`${prefix} ${separator}`);
 }
 
 /**

@@ -236,7 +236,6 @@ class TaskManagerClass {
     for (const task of staleTasks) {
       if (task.recoverable && (task.attempt || 0) < (task.maxRetries || 3)) {
         // 可恢复：转为 pending 重入队
-        console.log(`[TaskManager] 恢复任务 ${task.id} (attempt ${(task.attempt || 0) + 1})`);
         this.updateTask(task.id, {
           status: 'pending',
           attempt: (task.attempt || 0) + 1,
@@ -244,7 +243,6 @@ class TaskManagerClass {
         });
       } else {
         // 不可恢复：标记为 failed
-        console.log(`[TaskManager] 标记任务 ${task.id} 为失败 (stale on restart)`);
         this.updateTask(task.id, {
           status: 'failed',
           error: '任务在软件重启后中断',
@@ -253,7 +251,6 @@ class TaskManagerClass {
     }
 
     if (staleTasks.length > 0) {
-      console.log(`[TaskManager] 恢复处理完成: ${staleTasks.length} 个任务`);
     }
   }
 

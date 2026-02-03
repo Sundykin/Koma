@@ -41,7 +41,6 @@ export const AVAILABLE_CDN_DOMAINS = [
 export async function getImageHostingConfig(): Promise<SCDNImageHostingConfig | null> {
   try {
     const configs = await getChannelConfigs();
-    console.log('[ImageHosting] 所有渠道配置:', configs.map(c => ({ id: c.id, providerType: c.providerType, capabilities: c.capabilities })));
 
     // 查找 image-hosting 类型的渠道配置
     const imageHostingChannel = configs.find(
@@ -50,7 +49,6 @@ export async function getImageHostingConfig(): Promise<SCDNImageHostingConfig | 
     );
 
     if (imageHostingChannel) {
-      console.log('[ImageHosting] 找到图床渠道配置:', imageHostingChannel);
       const providerConfig = imageHostingChannel.providerConfig || {};
       return {
         ...DEFAULT_SCDN_CONFIG,
@@ -58,7 +56,6 @@ export async function getImageHostingConfig(): Promise<SCDNImageHostingConfig | 
       } as SCDNImageHostingConfig;
     }
 
-    console.log('[ImageHosting] 未找到图床插件配置');
     return null;
   } catch (err) {
     console.error('[ImageHosting] 读取插件配置失败:', err);
@@ -157,7 +154,6 @@ export async function uploadToImageHostingWithRetry(
 ): Promise<ImageHostingUploadResult> {
   // 从插件系统获取配置
   const config = await getImageHostingConfig();
-  console.log('[ImageHosting] 获取到的配置:', config);
 
   if (!config || !config.enabled) {
     return {
@@ -169,12 +165,10 @@ export async function uploadToImageHostingWithRetry(
   let lastError: string = '';
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    console.log(`[ImageHosting] 上传尝试 ${attempt}/${maxRetries}`);
 
     const result = await uploadImageToSCDN(imageData, config, options);
 
     if (result.success) {
-      console.log(`[ImageHosting] 上传成功:`, result.url);
       return result;
     }
 
@@ -184,7 +178,6 @@ export async function uploadToImageHostingWithRetry(
     // 如果不是最后一次尝试，等待后重试（指数退避）
     if (attempt < maxRetries) {
       const waitTime = 1000 * Math.pow(2, attempt - 1); // 1s, 2s, 4s
-      console.log(`[ImageHosting] 等待 ${waitTime}ms 后重试...`);
       await delay(waitTime);
     }
   }

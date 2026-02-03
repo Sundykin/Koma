@@ -115,38 +115,30 @@ export class AssetGenerationService {
    */
   private async runCharacterGeneration(taskId: string, character: Character, configId?: string): Promise<void> {
     try {
-      console.log('[AssetGen] ========== 开始生成角色图片 ==========');
-      console.log('[AssetGen] Character:', character.id, character.name);
 
       const hasConfig = await this.setTTIConfig(configId);
       if (!hasConfig) {
         throw new Error('未配置 TTI 模型，请先在设置中添加');
       }
-      console.log('[AssetGen] TTI Config:', this.ttiConfig?.name, this.ttiConfig?.provider);
 
       TaskManager.updateTask(taskId, { progress: 10 });
 
       // 构建提示词
       const prompt = this.buildCharacterPrompt(character);
-      console.log('[AssetGen] Prompt:', prompt);
 
       TaskManager.updateTask(taskId, { progress: 20 });
 
       // 调用 TTI 生成（带进度回调）
-      console.log('[AssetGen] 调用 TTI API...');
       const imageUrl = await this.callTTI(prompt, (ttiProgress) => {
         // TTI 进度映射到 20-70 区间
         const mappedProgress = 20 + Math.floor(ttiProgress * 0.5);
         TaskManager.updateTask(taskId, { progress: mappedProgress });
       });
-      console.log('[AssetGen] TTI 返回图片 URL:', imageUrl);
 
       TaskManager.updateTask(taskId, { progress: 75 });
 
       // 保存图片到本地
-      console.log('[AssetGen] 开始保存图片...');
       const imagePath = await this.saveImage(imageUrl, 'characters', character.id);
-      console.log('[AssetGen] 图片已保存到:', imagePath);
 
       TaskManager.updateTask(taskId, { progress: 90 });
 
@@ -156,14 +148,12 @@ export class AssetGenerationService {
         c.id === character.id ? { ...c, costumePhotoPath: imagePath } : c
       );
       await saveCharacters(this.projectId, updatedChars);
-      console.log('[AssetGen] 角色记录已更新');
 
       TaskManager.updateTask(taskId, {
         status: 'completed',
         progress: 100,
         result: { imagePath },
       });
-      console.log('[AssetGen] ========== 角色图片生成完成 ==========');
     } catch (error: any) {
       console.error('[AssetGen] 生成失败:', error);
       TaskManager.updateTask(taskId, {
@@ -186,7 +176,6 @@ export class AssetGenerationService {
       TaskManager.updateTask(taskId, { progress: 10 });
 
       const prompt = this.buildScenePrompt(scene);
-      console.log('[AssetGen] Scene prompt:', prompt);
 
       TaskManager.updateTask(taskId, { progress: 20 });
 
@@ -194,12 +183,10 @@ export class AssetGenerationService {
         const mappedProgress = 20 + Math.floor(ttiProgress * 0.5);
         TaskManager.updateTask(taskId, { progress: mappedProgress });
       });
-      console.log('[AssetGen] Got image URL:', imageUrl);
 
       TaskManager.updateTask(taskId, { progress: 75 });
 
       const imagePath = await this.saveImage(imageUrl, 'scenes', scene.id);
-      console.log('[AssetGen] Saved to:', imagePath);
 
       TaskManager.updateTask(taskId, { progress: 90 });
 
@@ -236,7 +223,6 @@ export class AssetGenerationService {
       TaskManager.updateTask(taskId, { progress: 10 });
 
       const prompt = this.buildPropPrompt(prop);
-      console.log('[AssetGen] Prop prompt:', prompt);
 
       TaskManager.updateTask(taskId, { progress: 20 });
 
@@ -244,12 +230,10 @@ export class AssetGenerationService {
         const mappedProgress = 20 + Math.floor(ttiProgress * 0.5);
         TaskManager.updateTask(taskId, { progress: mappedProgress });
       });
-      console.log('[AssetGen] Got image URL:', imageUrl);
 
       TaskManager.updateTask(taskId, { progress: 75 });
 
       const imagePath = await this.saveImage(imageUrl, 'props', prop.id);
-      console.log('[AssetGen] Saved to:', imagePath);
 
       TaskManager.updateTask(taskId, { progress: 90 });
 
@@ -332,7 +316,6 @@ export class AssetGenerationService {
 
     while (Date.now() - startTime < MAX_POLL_TIME) {
       const progressInfo = await provider.checkProgress!(taskId);
-      console.log('[TTI Poll]', taskId, progressInfo);
 
       if (progressInfo.status === 'completed' && progressInfo.resultUrl) {
         return progressInfo.resultUrl;
@@ -358,40 +341,28 @@ export class AssetGenerationService {
    * 保存图片到本地
    */
   private async saveImage(imageUrl: string, type: string, assetId: string): Promise<string> {
-    console.log('[AssetGen:saveImage] ========== 开始保存图片 ==========');
-    console.log('[AssetGen:saveImage] imageUrl:', imageUrl);
-    console.log('[AssetGen:saveImage] type:', type, 'assetId:', assetId);
 
     if (!electronService.isElectron()) {
-      console.log('[AssetGen:saveImage] 非 Electron 环境，直接返回 URL');
       return imageUrl;
     }
 
     const config = getStorageConfig() || (await initStorageConfig());
-    console.log('[AssetGen:saveImage] Storage rootPath:', config.rootPath);
 
     const assetDir = `${config.rootPath}/projects/${this.projectId}/assets/${type}/${assetId}`;
-    console.log('[AssetGen:saveImage] 目标目录:', assetDir);
 
     // 确保目录存在
     await electronService.fs.mkdir(assetDir);
-    console.log('[AssetGen:saveImage] 目录已创建');
 
     // 保存到本地
     const filename = `${Date.now()}.png`;
     const filePath = `${assetDir}/${filename}`;
-    console.log('[AssetGen:saveImage] 保存路径:', filePath);
 
     // 使用主进程下载（绕过 CORS）
-    console.log('[AssetGen:saveImage] 调用主进程下载...');
     const result = await electronService.fs.downloadFile(imageUrl, filePath);
-    console.log('[AssetGen:saveImage] 下载结果:', result);
 
     // 验证文件是否存在
     const exists = await electronService.fs.exists(filePath);
-    console.log('[AssetGen:saveImage] 文件存在检查:', exists);
 
-    console.log('[AssetGen:saveImage] ========== 保存完成 ==========');
     return filePath;
   }
 }

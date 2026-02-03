@@ -232,7 +232,6 @@ async function loadUMDModule(path: string, pluginId: string): Promise<any> {
   const encodedPath = normalizedPath.split('/').map(segment => encodeURIComponent(segment)).join('/');
   const fileUrl = `koma-local:///${encodedPath}`;
 
-  console.log(`[PluginLoader] 加载插件脚本: ${fileUrl}`);
 
   // 创建 script 标签动态加载
   return new Promise((resolve, reject) => {

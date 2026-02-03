@@ -343,7 +343,6 @@ export const fsWriteFileBuffer = async (
         .map((b) => String.fromCharCode(b))
         .join('')
     );
-    console.log('[fsWriteFileBuffer] 写入文件:', path, '大小:', buffer.byteLength, 'base64长度:', base64.length);
     await api.fs.writeFile(path, base64, true); // binary: true
     return;
   }

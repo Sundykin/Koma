@@ -111,8 +111,8 @@ function log(level: LogLevel, category: string, message: string, data?: any): vo
     const consoleMethod = level === 'error' ? console.error
       : level === 'warn' ? console.warn
       : level === 'debug' ? console.debug
-      : console.log;
-    consoleMethod(formatLogEntry(entry));
+      : console.info;
+    consoleMethod(`[${entry.timestamp}] [${category}] ${message}`, data ?? '');
   }
 
   // 文件输出

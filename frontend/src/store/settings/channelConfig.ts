@@ -189,7 +189,6 @@ export async function cleanupDuplicateChannels(): Promise<number> {
   if (toRemove.length > 0) {
     settings.channelConfigs = settings.channelConfigs.filter(c => !toRemove.includes(c.id));
     await saveSettings(settings);
-    console.log(`[channelConfig] 已清理 ${toRemove.length} 条重复渠道配置`);
   }
 
   return toRemove.length;
@@ -215,7 +214,6 @@ export async function cleanupLegacyConfigs(): Promise<{
 
   if (result.customChannelsDeleted > 0 || result.unifiedChannelsDeleted > 0) {
     await saveSettings(settings);
-    console.log('[channelConfig] 已清理旧版配置:', result);
   }
 
   return result;

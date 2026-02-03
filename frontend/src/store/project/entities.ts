@@ -51,7 +51,6 @@ export async function loadCharacters(projectId: string): Promise<Character[]> {
         `${projectPath}/characters.json`,
         JSON.stringify(migrated, null, 2)
       );
-      console.log('[Migration] Characters migrated to prompt field');
     }
 
     return migrated;
@@ -92,7 +91,6 @@ export async function loadScenes(projectId: string): Promise<Scene[]> {
         `${projectPath}/scenes.json`,
         JSON.stringify(migrated, null, 2)
       );
-      console.log('[Migration] Scenes migrated to prompt field');
     }
 
     return migrated;

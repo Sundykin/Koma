@@ -239,7 +239,6 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
           throw new Error(result.reason);
         }
 
-        console.log(`[PluginAPI] 插件 ${pluginId} 注册 Provider:`, def.type, 'kind:', def.kind, 'capabilities:', def.capabilities);
 
         // 添加 pluginId 标识
         def.pluginId = pluginId;
@@ -256,13 +255,11 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
         // 检查是否已存在渠道配置（避免重复创建）
         const { getChannelConfigs } = await import('../../store/settings/channelConfig');
         const existingConfigs = await getChannelConfigs();
-        console.log(`[PluginAPI] 现有渠道配置数量:`, existingConfigs.length);
         const existingChannel = existingConfigs.find(
           c => c.providerType === def.type && c.pluginId === pluginId
         );
 
         if (existingChannel) {
-          console.log(`[PluginAPI] 渠道配置已存在，更新属性:`, def.type, existingChannel.id);
           // 更新已存在配置的属性（确保 capabilities 等字段正确）
           const { updateChannelConfig } = await import('../../store/settings/channelConfig');
           await updateChannelConfig(existingChannel.id, {
@@ -278,7 +275,6 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
         }
 
         // 创建对应的渠道配置（失败时回滚）
-        console.log(`[PluginAPI] 创建新渠道配置:`, def.type, 'capabilities:', def.capabilities || [def.kind]);
         try {
           const newConfig = await addChannelConfig({
             name: def.name,
@@ -291,7 +287,6 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
             source: 'plugin',
             pluginId,
           });
-          console.log(`[PluginAPI] 渠道配置创建成功:`, newConfig.id);
         } catch (err) {
           console.error(`[PluginAPI] 渠道配置创建失败:`, err);
           // 回滚：移除已注册的 Provider
@@ -348,7 +343,6 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
 
         if (!channelConfig) {
           // 自动创建渠道配置
-          console.log(`[PluginAPI] 渠道配置不存在，自动创建: ${type}`);
           const manifest = plugin.manifest;
           const capabilities = manifest.providerMeta?.capabilities || [];
 
@@ -362,7 +356,6 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
             source: 'plugin',
             pluginId: pluginId,
           });
-          console.log(`[PluginAPI] 已创建渠道配置: ${type}`, channelConfig);
           return;
         }
 
@@ -371,7 +364,6 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
           providerConfig: config,
         });
 
-        console.log(`[PluginAPI] 已更新渠道配置: ${type}`, config);
       },
 
       /**
@@ -625,5 +617,4 @@ export async function cleanupPluginResources(pluginId: string): Promise<void> {
   // 清理记录
   pluginProviderTypes.delete(pluginId);
 
-  console.log(`[PluginAPI] 已清理插件 ${pluginId} 的所有资源`);
 }

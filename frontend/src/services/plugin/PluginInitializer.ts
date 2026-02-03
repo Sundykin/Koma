@@ -16,12 +16,10 @@ const initializedPlugins = new Set<string>();
  */
 export async function initializePlugin(plugin: InstalledPlugin): Promise<boolean> {
   if (initializedPlugins.has(plugin.id)) {
-    console.log(`[PluginInitializer] 插件 ${plugin.id} 已初始化，跳过`);
     return true;
   }
 
   try {
-    console.log(`[PluginInitializer] 初始化插件: ${plugin.id}, category: ${plugin.category}`);
 
     // mcp / agent / provider 类型插件如果有 backend 入口，需要后端激活
     const needsBackendActivation =
@@ -38,7 +36,6 @@ export async function initializePlugin(plugin: InstalledPlugin): Promise<boolean
           return false;
         }
       } else {
-        console.log(`[PluginInitializer] 插件 ${plugin.id} 后端激活成功`);
       }
     }
 
@@ -71,11 +68,9 @@ export async function initializePlugin(plugin: InstalledPlugin): Promise<boolean
     if (exports.onActivate) {
       const api = createPluginAPI(plugin);
       await exports.onActivate(api);
-      console.log(`[PluginInitializer] 插件 ${plugin.id} onActivate 执行成功`);
     }
 
     initializedPlugins.add(plugin.id);
-    console.log(`[PluginInitializer] 插件 ${plugin.id} 初始化成功`);
     return true;
   } catch (err) {
     console.error(`[PluginInitializer] 插件 ${plugin.id} 初始化失败:`, err);
@@ -94,7 +89,6 @@ export async function initializeProviderPlugins(): Promise<{
 }> {
   // 等待 pluginStore 数据恢复完成
   await waitForPluginStoreRehydration();
-  console.log('[PluginInitializer] pluginStore 数据已恢复');
 
   // 和后端实际安装列表对账，清除 store 中已不存在的插件
   await reconcilePluginStore();
@@ -105,11 +99,9 @@ export async function initializeProviderPlugins(): Promise<{
   const enabledPlugins = plugins.filter(p => p.isEnabled);
 
   if (enabledPlugins.length === 0) {
-    console.log('[PluginInitializer] 没有已启用的插件');
     return { total: 0, success: 0, failed: [] };
   }
 
-  console.log(`[PluginInitializer] 开始初始化 ${enabledPlugins.length} 个插件`);
 
   // 串行初始化插件，避免竞态条件
   const failed: string[] = [];
@@ -124,7 +116,6 @@ export async function initializeProviderPlugins(): Promise<{
     }
   }
 
-  console.log(`[PluginInitializer] 初始化完成: ${success}/${enabledPlugins.length} 成功`);
 
   return {
     total: enabledPlugins.length,

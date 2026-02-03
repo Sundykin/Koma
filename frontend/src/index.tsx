@@ -15,7 +15,6 @@ async function bootstrap() {
   try {
     const count = await cleanupDuplicateChannels();
     if (count > 0) {
-      console.log(`[Startup] 已清理 ${count} 条重复渠道配置`);
     }
   } catch (err) {
     console.warn('[Startup] 清理渠道配置失败:', err);
@@ -25,7 +24,6 @@ async function bootstrap() {
   try {
     const result = await initializeProviderPlugins();
     if (result.total > 0) {
-      console.log(`[Startup] 插件初始化: ${result.success}/${result.total} 成功`);
       if (result.failed.length > 0) {
         console.warn(`[Startup] 初始化失败的插件:`, result.failed);
       }

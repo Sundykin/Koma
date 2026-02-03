@@ -120,7 +120,6 @@ export async function loadProps(projectId: string): Promise<Prop[]> {
         `${projectPath}/props.json`,
         JSON.stringify(migrated, null, 2)
       );
-      console.log('[Migration] Props migrated to prompt field');
     }
 
     return migrated;

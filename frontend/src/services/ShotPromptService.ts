@@ -239,7 +239,6 @@ export class ShotPromptService {
         results.push(result);
         onProgress?.(i + 1, shotsToGenerate.length, result);
 
-        console.log(`[ShotPrompt] 生成双提示词 ${i + 1}/${shotsToGenerate.length}:`, shot.id);
       } catch (error: any) {
         const result: PromptGenerationResult = {
           shotId: shot.id,

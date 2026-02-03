@@ -36,7 +36,6 @@ function migrateEncryptedData<T>(data: T): T {
       const value = result[key];
       if (value && typeof value === 'object' && value.encrypted === true) {
         result[key] = '';
-        console.log(`[migrateEncryptedData] cleared encrypted field: ${key}`);
       } else if (value && typeof value === 'object') {
         result[key] = migrateEncryptedData(value);
       }
