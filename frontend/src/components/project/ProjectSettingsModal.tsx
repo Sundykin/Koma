@@ -3,7 +3,7 @@
  * 允许编辑项目信息和媒体配置
  */
 import React, { useState, useEffect } from 'react';
-import { Modal, Form, Input, App, Tabs } from 'antd';
+import { Modal, Form, Input, Tabs } from 'antd';
 import type { Project } from '../../types';
 import { ProjectMediaSelector } from './ProjectMediaSelector';
 
@@ -22,7 +22,6 @@ export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({
   onSave,
   onGoToGlobalSettings,
 }) => {
-  const { message } = App.useApp();
   const [form] = Form.useForm();
   const [activeTab, setActiveTab] = useState('basic');
   const [mediaConfigs, setMediaConfigs] = useState<{
@@ -55,7 +54,6 @@ export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({
         genre: values.genre,
         ...mediaConfigs,
       });
-      // message.success('项目设置已保存');
       onClose();
     } catch (err) {
       // 验证失败

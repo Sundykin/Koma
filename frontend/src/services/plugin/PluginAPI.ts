@@ -11,7 +11,6 @@ import type {
   PluginProject,
   PluginPromptTemplate,
   PromptOverride,
-  PluginChannelConfig,
   ChannelTestResult,
   DialogOptions,
   ModalOptions,
@@ -26,7 +25,6 @@ import {
   listProviders,
   type ProviderDefinition,
   type ChannelKind,
-  type ProviderContext,
 } from '../../providers/registry';
 import { addChannelConfig, deleteChannelsByPlugin } from '../../store/settings/channelConfig';
 import pkg from '../../../../package.json';
