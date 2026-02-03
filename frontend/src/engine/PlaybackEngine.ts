@@ -1,7 +1,8 @@
 /**
- * ????
- * ?? trackStore ??????????
+ * 播放引擎
+ * 基于 trackStore 的播放控制和渲染引擎
  */
+
 import { message } from 'antd';
 import type { TrackLine, TrackItem, VideoTrackItem, AudioTrackItem, ImageTrackItem, TrackKeyframe } from '../types/track';
 import { KeyframeInterpolator } from './KeyframeInterpolator';

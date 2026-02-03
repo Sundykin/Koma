@@ -3,7 +3,7 @@
  * 管理多轨道音频播放和同步
  */
 import { message } from 'antd';
-import type { Clip, Track, Timeline } from '../types';
+import type { Clip, Timeline } from '../types';
 import { handleError } from '../utils/errorHandler';
 
 const AUDIO_PLAY_ERROR_KEY = 'audio-playback-error';

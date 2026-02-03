@@ -4,6 +4,7 @@ import { ConfigProvider } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
 import App from './App';
 import './index.css';
+import './i18n'; // i18n 初始化
 import { antdTheme } from './theme';
 import { cleanupDuplicateChannels } from './store/globalStore';
 import { initializeProviderPlugins } from './services/plugin/PluginInitializer';
