@@ -2,22 +2,34 @@
  * Provider 插件配置弹窗
  * 用于在渠道管理页面加载和显示 provider 插件的配置 UI
  */
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { Modal, Spin, Result, Button } from 'antd';
-import * as antd from 'antd';
 import { ReloadOutlined } from '@ant-design/icons';
-import * as antdIcons from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import type { InstalledPlugin, PluginExports, PluginAPI } from '../../types/plugin';
 import { createPluginAPI } from '../../services/plugin/PluginAPI';
 import { usePluginStore } from '../../store/pluginStore';
 import { electronService } from '../../services/electronService';
 
-// 暴露 React 和 antd 到全局，供插件使用
-if (typeof window !== 'undefined') {
+// 懒加载 antd 和 icons 暴露给插件（避免通配符导入拖累主 bundle）
+async function exposeLibsToWindow(): Promise<void> {
+  if (typeof window === 'undefined') return;
+
+  // 已经暴露过则跳过
+  if ((window as any).__KOMA_LIBS_EXPOSED__) return;
+
+  // React 直接用已导入的
   (window as any).React = React;
+
+  // 动态导入完整的 antd 和 icons
+  const [antd, antdIcons] = await Promise.all([
+    import('antd'),
+    import('@ant-design/icons'),
+  ]);
+
   (window as any).antd = antd;
   (window as any)['@ant-design/icons'] = antdIcons;
+  (window as any).__KOMA_LIBS_EXPOSED__ = true;
 }
 
 interface ProviderPluginModalProps {
@@ -92,6 +104,9 @@ export const ProviderPluginModal: React.FC<ProviderPluginModalProps> = ({
     setError(null);
 
     try {
+      // 先暴露 antd/icons 给插件使用（懒加载）
+      await exposeLibsToWindow();
+
       const exports = await loadProviderPluginComponent(plugin);
 
       if (!exports || !exports.default) {
