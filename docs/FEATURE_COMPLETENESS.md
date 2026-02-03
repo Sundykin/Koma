@@ -14,12 +14,19 @@
 ## 2. 详细分析
 
 ### 2.1 Workflow (工作流)
-**现状**: `WorkflowManager` 是一个纯内存的队列管理器。
-**问题**:
-- **数据丢失风险**: 应用重启或崩溃后，队列中的任务会全部丢失。
-- **缺乏持久化**: 没有与数据库或文件系统集成，任务状态无法跨会话保存。
-- **并发控制**: 硬编码了 `maxConcurrent = 2`，缺乏动态调度。
-- **错误处理**: 仅有基本的 try-catch，缺乏针对网络波动的自动重试逻辑。
+**现状**: 
+- `WorkflowManager` 是内存队列管理器（短期任务）
+- `taskQueueStore` 提供本地文件持久化（长期任务，存储在 `projects/{id}/tasks.json`）
+
+**已有能力**:
+- ✅ 任务持久化到本地 JSON 文件
+- ✅ 任务状态追踪（pending/running/completed/failed）
+- ✅ 重试计数
+
+**待改进**:
+- **WorkflowManager 与 TaskQueue 集成不完整**: 短期工作流未自动同步到持久化存储
+- **并发控制**: 硬编码了 `maxConcurrent = 2`，缺乏动态调度
+- **断点续传**: 应用重启后未自动恢复未完成的任务
 
 ### 2.2 Providers (AI 服务集成)
 **现状**: `ProviderManager` 提供了统一的类型安全接口。
@@ -46,19 +53,34 @@
 - **导出依赖**: 视频导出 (`SimpleExportRenderer`) 依赖 Electron 主进程的 FFmpeg 能力，无法在纯浏览器环境中完成高质量视频合成。
 - **音频同步**: 渲染器主要关注画面，音频混合似乎依赖外部控制器，需确保音画同步的精确性。
 
-## 3. 业务优先级建议
+## 3. 业务优先级建议（C端本地工具约束）
 
-1.  **[P0] 工作流持久化 (Fix Workflow Persistence)**
-    -   改造 `WorkflowManager`，使其对接 `TaskManager` 或数据库。
-    -   确保任务在应用重启后能自动恢复。
+> ⚠️ Koma 是纯本地 C 端工具，所有数据存储在本地文件系统，不依赖云服务。
+
+1.  **[P0] 完善 WorkflowManager 与 TaskQueue 集成**
+    -   短期工作流自动同步到 `tasks.json`
+    -   应用启动时自动恢复未完成任务
+    -   添加任务恢复 UI 提示
 
 2.  **[P1] 渲染引擎优化 (Optimize Engine)**
     -   评估 Canvas 2D 的性能边界，考虑引入 WebGL (PixiJS / Three.js) 加速渲染。
-    -   解耦导出逻辑，尝试引入 FFmpeg.wasm 以支持纯 Web 端导出。
+    -   保持 FFmpeg 本地调用（Electron 主进程），这是 C 端工具的正确方案。
 
 3.  **[P1] 完成 Service 到 Workflow 的迁移**
     -   清理 `AssetGenerationService` 中的废弃代码。
     -   将所有资产生成逻辑统一封装为可编排的 Workflow。
 
 4.  **[P2] Prompt 模板系统**
-    -   将硬编码的 Prompt 提取到配置文件或数据库中，支持用户自定义模板。
+    -   将硬编码的 Prompt 提取到本地 JSON 配置文件。
+    -   支持用户自定义模板（存储在项目目录或全局配置）。
+
+## 4. 存储架构说明
+
+| 数据类型 | 存储位置 | 格式 |
+|----------|----------|------|
+| 项目元数据 | `projects/{id}/project.json` | JSON |
+| 时间线 | `projects/{id}/timeline.json` | JSON |
+| 任务队列 | `projects/{id}/tasks.json` | JSON |
+| 资产文件 | `projects/{id}/assets/` | 原始文件 |
+| 全局设置 | localStorage | JSON |
+| 提示词模板 | localStorage | JSON |
