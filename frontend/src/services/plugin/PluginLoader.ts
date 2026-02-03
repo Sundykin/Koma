@@ -9,6 +9,7 @@ import type {
   InstalledPlugin,
 } from '../../types/plugin';
 import { usePluginStore } from '../../store/pluginStore';
+import { clearPluginInitialized } from './PluginInitializer';
 
 // 缓存已加载的插件模块
 const loadedModules = new Map<string, PluginExports>();
@@ -284,9 +285,7 @@ export function unloadPlugin(pluginId: string): void {
   usePluginStore.getState().clearRuntimeState(pluginId);
 
   // 清除初始化状态
-  import('./PluginInitializer').then(({ clearPluginInitialized }) => {
-    clearPluginInitialized(pluginId);
-  });
+  clearPluginInitialized(pluginId);
 }
 
 /**
