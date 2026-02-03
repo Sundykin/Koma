@@ -18,40 +18,22 @@ export default defineConfig(({ mode }) => {
           manualChunks(id) {
             // 将 node_modules 中的依赖分离到 vendor chunks
             if (id.includes('node_modules')) {
-              // UI 组件库：合并 React + AntD 及其核心依赖以避免循环依赖
-              if (
-                id.includes('/node_modules/react/') ||
-                id.includes('/node_modules/react-dom/') ||
-                id.includes('/node_modules/react-router/') ||
-                id.includes('/node_modules/antd/') ||
-                id.includes('/node_modules/@ant-design/') ||
-                id.includes('/node_modules/rc-') ||
-                id.includes('/node_modules/dayjs/') ||
-                id.includes('/node_modules/lucide-react/') ||
-                id.includes('/node_modules/classnames/') ||
-                id.includes('/node_modules/scroll-into-view-if-needed/') ||
-                id.includes('/node_modules/compute-scroll-into-view/')
-              ) {
-                return 'vendor-ui';
-              }
-              // 播放器
+              // 播放器（独立，无循环依赖）
               if (id.includes('xgplayer')) {
                 return 'vendor-player';
               }
-              // 编辑器
+              // 编辑器（独立，无循环依赖）
               if (id.includes('codemirror') || id.includes('@codemirror') || id.includes('@lezer')) {
                 return 'vendor-editor';
               }
-              // AI SDK
+              // AI SDK（独立，无循环依赖）
               if (id.includes('@google/genai')) {
                 return 'vendor-ai';
               }
-              // 工具库
-              if (id.includes('axios') || id.includes('zustand') || id.includes('immer') || id.includes('i18next') || id.includes('uuid')) {
-                return 'vendor-utils';
-              }
-              // 其他 node_modules 依赖
-              return 'vendor-other';
+              // 所有其他依赖合并到 vendor-ui
+              // 包括 React、AntD、zustand、i18next 及所有共享依赖
+              // 这样可以完全避免循环依赖
+              return 'vendor-ui';
             }
           },
         },
