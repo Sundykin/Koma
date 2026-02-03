@@ -453,9 +453,62 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
       },
 
 
-      async invoke(channelId: string, action: string, params: any) {   
-        // TODO: ??????
-        throw new Error('Not implemented');
+      async invoke(channelId: string, action: string, params: any): Promise<any> {
+        const result = validateOperation(plugin, 'channels.invoke', 'network:external');
+        if (!result.allowed) {
+          throw new Error(result.reason);
+        }
+
+        // 获取渠道配置
+        const { getChannelConfigs } = await import('../../store/settings/channelConfig');
+        const configs = await getChannelConfigs();
+        const channelConfig = configs.find(c => c.id === channelId);
+
+        if (!channelConfig) {
+          throw new Error(`渠道未找到: ${channelId}`);
+        }
+
+        if (!channelConfig.enabled) {
+          throw new Error(`渠道已禁用: ${channelConfig.name}`);
+        }
+
+        // 从 capabilities 推断 kind
+        const kind: ChannelKind = channelConfig.capabilities?.includes('tts') ? 'tts'
+          : channelConfig.capabilities?.includes('itv') ? 'itv'
+          : 'tti';
+
+        // 创建 Provider 实例
+        const { createProviderInstance } = await import('../../providers/registry');
+        let provider: any;
+
+        try {
+          provider = createProviderInstance(kind, channelConfig.providerType, channelConfig.providerConfig, {
+            sandboxedFetch: createSandboxedFetch(plugin),
+            pluginId,
+          });
+        } catch (err: any) {
+          throw new Error(`创建 Provider 失败: ${err.message}`);
+        }
+
+        // 验证 action 是否为有效方法
+        if (typeof provider[action] !== 'function') {
+          throw new Error(`Provider 不支持操作: ${action}`);
+        }
+
+        // 调用 Provider 方法
+        try {
+          // 根据 action 类型解析 params
+          if (Array.isArray(params)) {
+            return await provider[action](...params);
+          } else if (params !== undefined && params !== null) {
+            return await provider[action](params);
+          } else {
+            return await provider[action]();
+          }
+        } catch (err: any) {
+          console.error(`[PluginAPI] 渠道调用失败 (${channelId}.${action}):`, err);
+          throw new Error(`渠道调用失败: ${err.message}`);
+        }
       },
     },
 
