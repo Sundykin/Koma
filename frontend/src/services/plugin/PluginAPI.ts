@@ -45,6 +45,7 @@ import {
   deleteChannelsByPlugin,
   deleteChannelByProviderType,
 } from '../../store/settings/channelConfig';
+import packageJson from '../../../package.json';
 
 // 事件监听器
 const eventListeners = new Map<string, Map<string, Set<Function>>>();
@@ -65,12 +66,12 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
     // ========== Core ==========
     core: {
       async getVersion() {
-        return '1.0.0'; // TODO: 从 package.json 读取
+        return packageJson.version;
       },
 
       async getHostInfo(): Promise<HostInfo> {
         return {
-          appVersion: '1.0.0',
+          appVersion: packageJson.version,
           platform: process.platform as 'win32' | 'darwin' | 'linux',
           electronVersion: process.versions.electron || 'unknown',
         };
