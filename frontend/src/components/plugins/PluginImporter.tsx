@@ -5,6 +5,7 @@ import React, { useState, useCallback } from 'react';
 import { Upload, Button, message, Modal } from 'antd';
 import type { UploadProps } from 'antd';
 import { InboxOutlined, FolderAddOutlined } from '@ant-design/icons';
+import { useTranslation } from 'react-i18next';
 import type { PluginManifest, PluginValidationResult } from '../../types/plugin';
 import { validateManifest } from '../../services/plugin/PluginLoader';
 import { initializePlugin } from '../../services/plugin/PluginInitializer';
@@ -19,6 +20,7 @@ interface PluginImporterProps {
 }
 
 export const PluginImporter: React.FC<PluginImporterProps> = ({ onImportSuccess }) => {
+  const { t } = useTranslation();
   const [loading, setLoading] = useState(false);
   const [permissionModal, setPermissionModal] = useState<{
     visible: boolean;
@@ -32,7 +34,7 @@ export const PluginImporter: React.FC<PluginImporterProps> = ({ onImportSuccess 
   // 处理文件上传/拖拽
   const handleFile = useCallback(async (file: File) => {
     if (!file.name.endsWith('.zip')) {
-      message.error('请选择 .zip 格式的插件包');
+      message.error(t('plugin.selectZipFile'));
       return false;
     }
 
@@ -42,7 +44,7 @@ export const PluginImporter: React.FC<PluginImporterProps> = ({ onImportSuccess 
       // 获取文件路径 (Electron 环境)
       const filePath = (file as any).path;
       if (!filePath) {
-        message.error('无法获取文件路径，请确保在 Electron 环境中运行');
+        message.error(t('plugin.cannotGetFilePath'));
         return false;
       }
 
@@ -51,7 +53,7 @@ export const PluginImporter: React.FC<PluginImporterProps> = ({ onImportSuccess 
 
       if (!result.valid) {
         Modal.error({
-          title: '插件验证失败',
+          title: t('plugin.validationFailed'),
           content: (
             <ul className="list-disc pl-4">
               {result.errors.map((err: string, i: number) => (
@@ -73,13 +75,13 @@ export const PluginImporter: React.FC<PluginImporterProps> = ({ onImportSuccess 
 
     } catch (err: any) {
       console.error('[PluginImporter] 导入失败:', err);
-      message.error(`导入失败: ${err.message}`);
+      message.error(`${t('plugin.importFailed')}: ${err.message}`);
     } finally {
       setLoading(false);
     }
 
     return false; // 阻止默认上传行为
-  }, []);
+  }, [t]);
 
   // 确认安装
   const handleConfirmInstall = useCallback(async () => {
@@ -99,23 +101,23 @@ export const PluginImporter: React.FC<PluginImporterProps> = ({ onImportSuccess 
       if (installResult.success) {
         // 注册到 store
         registerPlugin(manifest, installResult.rootPath);
-        
+
         // 立即初始化插件（使其 Provider 生效）
         const installedPlugin = usePluginStore.getState().getPlugin(manifest.id);
         if (installedPlugin) {
           try {
             const initSuccess = await initializePlugin(installedPlugin);
             if (initSuccess) {
-              message.success(`插件 "${manifest.name}" 安装并就绪`);
+              message.success(t('plugin.installedAndReady', { name: manifest.name }));
             } else {
-              message.warning(`插件 "${manifest.name}" 安装成功，但初始化失败`);
+              message.warning(t('plugin.installedButInitFailed', { name: manifest.name }));
             }
           } catch (initErr) {
             console.error('[PluginImporter] 初始化异常:', initErr);
-            message.warning(`插件 "${manifest.name}" 初始化异常`);
+            message.warning(t('plugin.initException', { name: manifest.name }));
           }
         } else {
-          message.success(`插件 "${manifest.name}" 安装成功`);
+          message.success(t('plugin.installSuccess', { name: manifest.name }));
         }
 
         onImportSuccess?.(manifest.id);
@@ -123,12 +125,12 @@ export const PluginImporter: React.FC<PluginImporterProps> = ({ onImportSuccess 
         throw new Error(installResult.error);
       }
     } catch (err: any) {
-      message.error(`安装失败: ${err.message}`);
+      message.error(`${t('plugin.installFailed')}: ${err.message}`);
     } finally {
       setLoading(false);
       setPermissionModal({ visible: false, manifest: null, zipPath: '' });
     }
-  }, [permissionModal, registerPlugin, onImportSuccess]);
+  }, [permissionModal, registerPlugin, onImportSuccess, t]);
 
   // 从文件夹导入（开发模式）
   const handleImportFromFolder = useCallback(async () => {
@@ -147,7 +149,7 @@ export const PluginImporter: React.FC<PluginImporterProps> = ({ onImportSuccess 
       const validation = validateManifest(manifest);
       if (!validation.valid) {
         Modal.error({
-          title: '插件验证失败',
+          title: t('plugin.validationFailed'),
           content: (
             <ul className="list-disc pl-4">
               {validation.errors.map((err, i) => (
@@ -167,9 +169,9 @@ export const PluginImporter: React.FC<PluginImporterProps> = ({ onImportSuccess 
       });
 
     } catch (err: any) {
-      message.error(`导入失败: ${err.message}`);
+      message.error(`${t('plugin.importFailed')}: ${err.message}`);
     }
-  }, []);
+  }, [t]);
 
   const uploadProps: UploadProps = {
     name: 'plugin',
@@ -186,9 +188,9 @@ export const PluginImporter: React.FC<PluginImporterProps> = ({ onImportSuccess 
         <p className="ant-upload-drag-icon">
           <InboxOutlined />
         </p>
-        <p className="ant-upload-text">拖拽插件包到此处，或点击选择</p>
+        <p className="ant-upload-text">{t('plugin.dragOrClickToImport')}</p>
         <p className="ant-upload-hint text-gray-400">
-          支持 .zip 格式的插件包
+          {t('plugin.supportZipFormat')}
         </p>
       </Dragger>
 
@@ -199,7 +201,7 @@ export const PluginImporter: React.FC<PluginImporterProps> = ({ onImportSuccess 
           onClick={handleImportFromFolder}
           disabled={loading}
         >
-          从文件夹导入（开发模式）
+          {t('plugin.importFromFolder')}
         </Button>
       </div>
 

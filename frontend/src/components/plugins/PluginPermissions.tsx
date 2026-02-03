@@ -8,6 +8,7 @@ import {
   WarningOutlined,
   ExclamationCircleOutlined,
 } from '@ant-design/icons';
+import { useTranslation } from 'react-i18next';
 import type { PluginManifest, PluginScope } from '../../types/plugin';
 import { SCOPE_DESCRIPTIONS } from '../../services/plugin/PluginSandbox';
 
@@ -38,6 +39,8 @@ export const PluginPermissions: React.FC<PluginPermissionsProps> = ({
   onConfirm,
   onCancel,
 }) => {
+  const { t } = useTranslation();
+
   const hasDangerScope = manifest.scopes.some(
     scope => SCOPE_DESCRIPTIONS[scope as PluginScope]?.level === 'danger'
   );
@@ -46,22 +49,22 @@ export const PluginPermissions: React.FC<PluginPermissionsProps> = ({
     <Modal
       title={
         <Space>
-          <span>安装插件</span>
+          <span>{t('plugin.installPlugin')}</span>
           <Tag color="blue">{manifest.name}</Tag>
         </Space>
       }
       open={visible}
       onOk={onConfirm}
       onCancel={onCancel}
-      okText={hasDangerScope ? '我了解风险，继续安装' : '安装'}
+      okText={hasDangerScope ? t('plugin.understandRiskContinue') : t('plugin.install')}
       okButtonProps={{ danger: hasDangerScope }}
-      cancelText="取消"
+      cancelText={t('common.cancel')}
       width={500}
     >
       <div className="mb-4">
         <Text type="secondary">
-          版本: {manifest.version}
-          {manifest.author && ` · 作者: ${manifest.author.name}`}
+          {t('plugin.version')}: {manifest.version}
+          {manifest.author && ` · ${t('plugin.author')}: ${manifest.author.name}`}
         </Text>
       </div>
 
@@ -72,7 +75,7 @@ export const PluginPermissions: React.FC<PluginPermissionsProps> = ({
       )}
 
       <div className="mb-2">
-        <Text strong>该插件请求以下权限：</Text>
+        <Text strong>{t('plugin.requestPermissions')}</Text>
       </div>
 
       <List
@@ -104,7 +107,7 @@ export const PluginPermissions: React.FC<PluginPermissionsProps> = ({
           <Space>
             <ExclamationCircleOutlined style={{ color: '#ff4d4f' }} />
             <Text type="danger">
-              此插件请求了高风险权限，请确保您信任该插件来源
+              {t('plugin.dangerPermissionWarning')}
             </Text>
           </Space>
         </div>

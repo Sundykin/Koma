@@ -13,6 +13,7 @@ import {
   ApiOutlined,
   ToolOutlined,
 } from '@ant-design/icons';
+import { useTranslation } from 'react-i18next';
 import type { InstalledPlugin } from '../../types/plugin';
 
 const { Text, Paragraph } = Typography;
@@ -30,12 +31,6 @@ const categoryIcons = {
   tool: <ToolOutlined />,
 };
 
-const categoryLabels = {
-  global: '全局插件',
-  provider: '服务提供',
-  tool: '工具',
-};
-
 const categoryColors = {
   global: 'purple',
   provider: 'blue',
@@ -48,18 +43,26 @@ export const PluginCard: React.FC<PluginCardProps> = ({
   onRemove,
   onOpenFolder,
 }) => {
+  const { t } = useTranslation();
+
+  const categoryLabels = {
+    global: t('plugin.categoryGlobal'),
+    provider: t('plugin.categoryProvider'),
+    tool: t('plugin.categoryTool'),
+  };
+
   const menuItems: MenuProps['items'] = [
     {
       key: 'folder',
       icon: <FolderOpenOutlined />,
-      label: '打开插件目录',
+      label: t('plugin.openFolder'),
       onClick: () => onOpenFolder?.(plugin.id),
     },
     { type: 'divider' },
     {
       key: 'remove',
       icon: <DeleteOutlined />,
-      label: '卸载插件',
+      label: t('plugin.uninstallPlugin'),
       danger: true,
       onClick: () => onRemove(plugin.id),
     },
@@ -89,7 +92,7 @@ export const PluginCard: React.FC<PluginCardProps> = ({
             className="text-xs mb-2 !mb-1"
             ellipsis={{ rows: 2 }}
           >
-            {plugin.description || '暂无描述'}
+            {plugin.description || t('plugin.noDescription')}
           </Paragraph>
 
           <div className="flex items-center gap-2 text-xs text-gray-400">

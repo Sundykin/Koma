@@ -7,6 +7,7 @@ import { Modal, Spin, Result, Button } from 'antd';
 import * as antd from 'antd';
 import { ReloadOutlined } from '@ant-design/icons';
 import * as antdIcons from '@ant-design/icons';
+import { useTranslation } from 'react-i18next';
 import type { InstalledPlugin, PluginExports, PluginAPI } from '../../types/plugin';
 import { createPluginAPI } from '../../services/plugin/PluginAPI';
 import { usePluginStore } from '../../store/pluginStore';
@@ -66,6 +67,7 @@ export const ProviderPluginModal: React.FC<ProviderPluginModalProps> = ({
   onClose,
   onConfigSaved,
 }) => {
+  const { t } = useTranslation();
   const plugin = usePluginStore(state => state.getPlugin(pluginId));
 
   const [Component, setComponent] = useState<React.ComponentType<{ api: PluginAPI }> | null>(null);
@@ -75,13 +77,13 @@ export const ProviderPluginModal: React.FC<ProviderPluginModalProps> = ({
 
   const loadPlugin = useCallback(async () => {
     if (!plugin) {
-      setError('插件不存在');
+      setError(t('plugin.pluginNotExist'));
       setLoading(false);
       return;
     }
 
     if (!plugin.entry.frontend) {
-      setError('该插件没有配置界面');
+      setError(t('plugin.noConfigUI'));
       setLoading(false);
       return;
     }
@@ -93,7 +95,7 @@ export const ProviderPluginModal: React.FC<ProviderPluginModalProps> = ({
       const exports = await loadProviderPluginComponent(plugin);
 
       if (!exports || !exports.default) {
-        setError('插件未导出有效组件');
+        setError(t('plugin.noValidComponent'));
         return;
       }
 
@@ -112,7 +114,7 @@ export const ProviderPluginModal: React.FC<ProviderPluginModalProps> = ({
     } finally {
       setLoading(false);
     }
-  }, [plugin]);
+  }, [plugin, t]);
 
   useEffect(() => {
     if (visible && pluginId) {
@@ -130,7 +132,7 @@ export const ProviderPluginModal: React.FC<ProviderPluginModalProps> = ({
 
   return (
     <Modal
-      title={plugin?.name || '插件配置'}
+      title={plugin?.name || t('plugin.pluginConfig')}
       open={visible}
       onCancel={handleClose}
       footer={null}
@@ -140,18 +142,18 @@ export const ProviderPluginModal: React.FC<ProviderPluginModalProps> = ({
     >
       {loading && (
         <div style={{ textAlign: 'center', padding: 48 }}>
-          <Spin size="large" tip="加载插件..." />
+          <Spin size="large" tip={t('plugin.loadingPlugin')} />
         </div>
       )}
 
       {error && (
         <Result
           status="error"
-          title="加载失败"
+          title={t('plugin.loadFailed')}
           subTitle={error}
           extra={
             <Button icon={<ReloadOutlined />} onClick={loadPlugin}>
-              重试
+              {t('common.retry')}
             </Button>
           }
         />
