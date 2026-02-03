@@ -59,7 +59,7 @@ export const TTSConfigManager: React.FC<TTSConfigManagerProps> = ({ onConfigChan
 
   // 从 Registry 获取可用的 TTS Provider
   useEffect(() => {
-    listProviders('tts').then(setAvailableProviders);
+    setAvailableProviders(listProviders('tts'));
   }, []);
 
   const loadConfigs = async () => {

@@ -2,67 +2,22 @@
  * Project Store 统一导出
  */
 
-// 核心 (使用动态导入以支持代码分割，避免与 manju.ts 动态导入冲突)
+// 核心 - 使用静态导出
 export type { ProjectMeta } from '../../types';
+export {
+  getProjectsRoot,
+  getProjectPath,
+  createProject,
+  loadProject,
+  saveProject,
+  updateProjectLLMConfig,
+  deleteProject,
+  listProjects,
+} from './core';
 
-export const getProjectsRoot = async (): Promise<string> => {
-  const { getProjectsRoot: fn } = await import('./core');
-  return fn();
-};
-
-export const getProjectPath = async (projectId: string): Promise<string> => {
-  const { getProjectPath: fn } = await import('./core');
-  return fn(projectId);
-};
-
-export const createProject = async (
-  title: string,
-  genre: string,
-  mode: 'drama' | 'narration',
-  llmConfigId?: string
-) => {
-  const { createProject: fn } = await import('./core');
-  return fn(title, genre, mode, llmConfigId);
-};
-
-export const loadProject = async (projectId: string) => {
-  const { loadProject: fn } = await import('./core');
-  return fn(projectId);
-};
-
-export const saveProject = async (project: any) => {
-  const { saveProject: fn } = await import('./core');
-  return fn(project);
-};
-
-export const updateProjectLLMConfig = async (
-  projectId: string,
-  llmConfigId: string | null
-) => {
-  const { updateProjectLLMConfig: fn } = await import('./core');
-  return fn(projectId, llmConfigId);
-};
-
-export const deleteProject = async (projectId: string) => {
-  const { deleteProject: fn } = await import('./core');
-  return fn(projectId);
-};
-
-export const listProjects = async () => {
-  const { listProjects: fn } = await import('./core');
-  return fn();
-};
-
-// 时间线 (使用动态导入以支持代码分割)
+// 时间线
 export type { Timeline } from '../../types';
-export const loadTimeline = async (projectId: string) => {
-  const { loadTimeline: load } = await import('./timeline');
-  return load(projectId);
-};
-export const saveTimeline = async (projectId: string, timeline: any) => {
-  const { saveTimeline: save } = await import('./timeline');
-  return save(projectId, timeline);
-};
+export { loadTimeline, saveTimeline } from './timeline';
 
 // 素材管理
 export {

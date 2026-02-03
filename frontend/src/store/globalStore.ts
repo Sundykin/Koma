@@ -6,20 +6,11 @@
  * 实际实现已迁移到 store/settings/ 目录
  */
 
-// 核心函数使用动态导入包装（避免与 PluginAPI.ts 动态导入冲突）
-export const loadSettings = async () => {
-  const { loadSettings: fn } = await import('./settings');
-  return fn();
-};
-
-export const saveSettings = async (settings: any) => {
-  const { saveSettings: fn } = await import('./settings');
-  return fn(settings);
-};
-
-// 其他静态导出
+// 统一使用静态导出
 export {
-  // 核心（非冲突项）
+  // 核心
+  loadSettings,
+  saveSettings,
   generateId,
   getGlobalPath,
   DEFAULT_SETTINGS,

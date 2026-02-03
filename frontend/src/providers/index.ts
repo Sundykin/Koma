@@ -23,6 +23,7 @@ import {
   getActiveTTSConfig,
 } from '../store/globalStore';
 import type { ChannelKind } from './registry.types';
+import { createProviderInstance } from './registry';
 import { usePluginStore } from '../store/pluginStore';
 import { createSandboxedFetch } from '../services/plugin/PluginSandbox';
 
@@ -39,7 +40,7 @@ import type { ITVProvider, ProgressInfo, ITVOptions } from './itv/types';
 // 重新导出 ProviderManager
 export { providerManager, ProviderManager, type ProviderKindMap } from './manager';
 
-// 重新导出 Registry (类型可以静态导出)
+// 重新导出 Registry 类型
 export type {
   ChannelKind,
   ChannelCapability,
@@ -47,39 +48,14 @@ export type {
   ProviderContext,
 } from './registry.types';
 
-// Registry 实例不再从这里导出，需要的文件直接从 './registry' 导入
-// 这样可以避免 providers/index.ts 同时静态和动态导入 registry
-
-// Registry 函数使用动态导入包装 (避免与 PluginAPI.ts 动态导入冲突)
-export const listProviders = async (kind?: import('./registry.types').ChannelKind) => {
-  const { listProviders: fn } = await import('./registry');
-  return fn(kind);
-};
-
-export const registerProvider = async (def: import('./registry.types').ProviderDefinition<any>) => {
-  const { registerProvider: fn } = await import('./registry');
-  return fn(def);
-};
-
-export const unregisterProvider = async (kind: import('./registry.types').ChannelKind, type: string) => {
-  const { unregisterProvider: fn } = await import('./registry');
-  return fn(kind, type);
-};
-
-export const unregisterProvidersByPlugin = async (pluginId: string) => {
-  const { unregisterProvidersByPlugin: fn } = await import('./registry');
-  return fn(pluginId);
-};
-
-export const createProviderInstance = async <T>(
-  kind: import('./registry.types').ChannelKind,
-  type: string,
-  config: Record<string, any>,
-  ctx?: Partial<import('./registry.types').ProviderContext>
-): Promise<T> => {
-  const { createProviderInstance: fn } = await import('./registry');
-  return fn<T>(kind, type, config, ctx);
-};
+// Registry 函数使用静态导出
+export {
+  listProviders,
+  registerProvider,
+  unregisterProvider,
+  unregisterProvidersByPlugin,
+  createProviderInstance,
+} from './registry';
 
 // 重新导出子目录内容
 export { createLLMProvider, GeminiProvider, OpenAIProvider, ClaudeProvider } from './llm';
@@ -286,8 +262,7 @@ async function createChannelProvider<T>(channelConfig: ChannelConfig, kind: Chan
   if (!context) return null;
 
   try {
-    const { createProviderInstance: create } = await import('./registry');
-    return create<T>(
+    return createProviderInstance<T>(
       kind,
       channelConfig.providerType,
       channelConfig.providerConfig,

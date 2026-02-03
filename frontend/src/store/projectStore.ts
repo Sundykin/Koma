@@ -6,25 +6,12 @@
  * 实际实现已迁移到 store/project/ 目录
  */
 
-// 核心函数使用动态导入包装（避免与 PluginAPI.ts 动态导入冲突）
-export const listProjects = async () => {
-  const { listProjects: fn } = await import('./project');
-  return fn();
-};
-
-export const loadProject = async (projectId: string) => {
-  const { loadProject: fn } = await import('./project');
-  return fn(projectId);
-};
-
-export const saveProject = async (project: any) => {
-  const { saveProject: fn } = await import('./project');
-  return fn(project);
-};
-
-// 其他静态导出
+// 统一使用静态导出
 export {
-  // 核心（非冲突项）
+  // 核心
+  listProjects,
+  loadProject,
+  saveProject,
   getProjectsRoot,
   getProjectPath,
   createProject,

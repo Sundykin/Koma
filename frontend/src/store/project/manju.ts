@@ -10,6 +10,8 @@ import {
   type ManjuProject,
 } from '../../manju-dsl/protocol';
 import { addRecentProject } from '../globalStore';
+import { loadProject, getProjectPath } from './core';
+import { loadTimeline } from './timeline';
 
 export function saveProjectAsManju(
   project: ProjectMeta,
@@ -36,9 +38,6 @@ export async function exportProjectToManjuFile(
 ): Promise<string | null> {
   if (!electronService.isElectron()) return null;
 
-  const { loadProject, getProjectPath } = await import('./core');
-  const { loadTimeline } = await import('./timeline');
-
   const project = await loadProject(projectId);
   if (!project) throw new Error('项目不存在');
 
@@ -54,8 +53,6 @@ export async function exportProjectToManjuFile(
 
 export async function importProjectFromManjuFile(filePath: string): Promise<ProjectMeta | null> {
   if (!electronService.isElectron()) return null;
-
-  const { getProjectPath } = await import('./core');
 
   const content = await electronService.fs.readFile(filePath);
   const manjuData = JSON.parse(content);
