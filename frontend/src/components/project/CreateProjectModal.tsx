@@ -6,6 +6,7 @@ import {
   QuestionCircleOutlined,
 } from '@ant-design/icons';
 import { Check } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { THEME_PRESETS } from '../../config/themePresets';
 
 interface CreateProjectModalProps {
@@ -20,6 +21,7 @@ interface CreateProjectModalProps {
 }
 
 export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ isOpen, onClose, onCreate }) => {
+  const { t } = useTranslation();
   const [form] = Form.useForm();
   const [selectedTheme, setSelectedTheme] = useState<string>('realistic');
   const [customStyle, setCustomStyle] = useState('');
@@ -46,12 +48,12 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ isOpen, 
 
   return (
     <Modal
-      title="创建项目"
+      title={t('project.create')}
       open={isOpen}
       onCancel={onClose}
       onOk={handleCreate}
-      okText="立即创建"
-      cancelText="取消"
+      okText={t('project.createNow')}
+      cancelText={t('common.cancel')}
       width={680}
       centered
       maskClosable={false}
@@ -65,13 +67,13 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ isOpen, 
       >
         <Form.Item
           name="title"
-          label="项目名称"
-          rules={[{ required: true, message: '请输入项目名称' }]}
+          label={t('project.projectName')}
+          rules={[{ required: true, message: t('project.projectNameRequired') }]}
         >
-          <Input placeholder="请输入短剧项目名称" autoFocus />
+          <Input placeholder={t('project.projectNamePlaceholder')} autoFocus />
         </Form.Item>
 
-        <Form.Item name="mode" label="叙事模式">
+        <Form.Item name="mode" label={t('project.narrativeMode')}>
           <Radio.Group buttonStyle="solid" style={{ width: '100%' }}>
             <Space orientation="vertical" style={{ width: '100%' }} size="middle">
               <Radio.Button
@@ -80,8 +82,8 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ isOpen, 
               >
                 <Space>
                   <AppstoreOutlined />
-                  <span style={{ fontWeight: 'bold' }}>剧情模式</span>
-                  <Tooltip title="适合传统影视剧,包含对话、动作和场景描写">
+                  <span style={{ fontWeight: 'bold' }}>{t('project.dramaMode')}</span>
+                  <Tooltip title={t('project.dramaModeDesc')}>
                     <QuestionCircleOutlined style={{ opacity: 0.6, fontSize: 12 }} />
                   </Tooltip>
                 </Space>
@@ -92,8 +94,8 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ isOpen, 
               >
                 <Space>
                   <SoundOutlined />
-                  <span style={{ fontWeight: 'bold' }}>旁白解说模式</span>
-                  <Tooltip title="适合纪录片或解说类视频,以旁白驱动画面">
+                  <span style={{ fontWeight: 'bold' }}>{t('project.narrationMode')}</span>
+                  <Tooltip title={t('project.narrationModeDesc')}>
                     <QuestionCircleOutlined style={{ opacity: 0.6, fontSize: 12 }} />
                   </Tooltip>
                 </Space>
@@ -103,7 +105,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ isOpen, 
         </Form.Item>
 
         {/* 视觉风格选择 */}
-        <Form.Item label="视觉风格">
+        <Form.Item label={t('project.visualStyle')}>
           <div className="grid grid-cols-4 gap-2">
             {presetThemes.map(theme => {
               const isSelected = selectedTheme === theme.id;
@@ -144,14 +146,14 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ isOpen, 
                   <Check className="w-2.5 h-2.5 text-white" />
                 </div>
               )}
-              <div className="text-xs font-medium text-zinc-200">自定义</div>
+              <div className="text-xs font-medium text-zinc-200">{t('project.custom')}</div>
             </div>
           </div>
 
           {selectedTheme === 'custom' && (
             <Input.TextArea
               className="mt-2"
-              placeholder="输入自定义风格描述，如: 水彩画风格，柔和色彩..."
+              placeholder={t('project.customStylePlaceholder')}
               value={customStyle}
               onChange={e => setCustomStyle(e.target.value)}
               rows={2}
