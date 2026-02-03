@@ -4,6 +4,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Button, Empty, Tooltip, Popconfirm } from 'antd';
 import { PlusOutlined, DeleteOutlined, MessageOutlined } from '@ant-design/icons';
+import { useTranslation } from 'react-i18next';
 import { useChatHistoryStore, type SessionMeta } from '../../store/chatHistoryStore';
 import styles from './HistorySidebar.module.css';
 
@@ -14,53 +15,61 @@ interface HistorySidebarProps {
 }
 
 // 格式化时间
-function formatTime(timestamp: number): string {
-  const now = Date.now();
-  const diff = now - timestamp;
-  const day = 24 * 60 * 60 * 1000;
+function useFormatTime() {
+  const { t } = useTranslation();
 
-  if (diff < day) {
-    return '今天';
-  } else if (diff < 2 * day) {
-    return '昨天';
-  } else if (diff < 7 * day) {
-    return `${Math.floor(diff / day)} 天前`;
-  } else {
-    const date = new Date(timestamp);
-    return `${date.getMonth() + 1}/${date.getDate()}`;
-  }
+  return (timestamp: number): string => {
+    const now = Date.now();
+    const diff = now - timestamp;
+    const day = 24 * 60 * 60 * 1000;
+
+    if (diff < day) {
+      return t('chat.today');
+    } else if (diff < 2 * day) {
+      return t('chat.yesterday');
+    } else if (diff < 7 * day) {
+      return `${Math.floor(diff / day)} ${t('chat.daysAgo')}`;
+    } else {
+      const date = new Date(timestamp);
+      return `${date.getMonth() + 1}/${date.getDate()}`;
+    }
+  };
 }
 
 // 按时间分组
-function groupSessions(sessions: SessionMeta[]): { label: string; sessions: SessionMeta[] }[] {
-  const now = Date.now();
-  const day = 24 * 60 * 60 * 1000;
+function useGroupSessions() {
+  const { t } = useTranslation();
 
-  const today: SessionMeta[] = [];
-  const yesterday: SessionMeta[] = [];
-  const week: SessionMeta[] = [];
-  const older: SessionMeta[] = [];
+  return (sessions: SessionMeta[]): { label: string; sessions: SessionMeta[] }[] => {
+    const now = Date.now();
+    const day = 24 * 60 * 60 * 1000;
 
-  for (const session of sessions) {
-    const diff = now - session.updatedAt;
-    if (diff < day) {
-      today.push(session);
-    } else if (diff < 2 * day) {
-      yesterday.push(session);
-    } else if (diff < 7 * day) {
-      week.push(session);
-    } else {
-      older.push(session);
+    const today: SessionMeta[] = [];
+    const yesterday: SessionMeta[] = [];
+    const week: SessionMeta[] = [];
+    const older: SessionMeta[] = [];
+
+    for (const session of sessions) {
+      const diff = now - session.updatedAt;
+      if (diff < day) {
+        today.push(session);
+      } else if (diff < 2 * day) {
+        yesterday.push(session);
+      } else if (diff < 7 * day) {
+        week.push(session);
+      } else {
+        older.push(session);
+      }
     }
-  }
 
-  const groups: { label: string; sessions: SessionMeta[] }[] = [];
-  if (today.length > 0) groups.push({ label: '今天', sessions: today });
-  if (yesterday.length > 0) groups.push({ label: '昨天', sessions: yesterday });
-  if (week.length > 0) groups.push({ label: '最近 7 天', sessions: week });
-  if (older.length > 0) groups.push({ label: '更早', sessions: older });
+    const groups: { label: string; sessions: SessionMeta[] }[] = [];
+    if (today.length > 0) groups.push({ label: t('chat.today'), sessions: today });
+    if (yesterday.length > 0) groups.push({ label: t('chat.yesterday'), sessions: yesterday });
+    if (week.length > 0) groups.push({ label: t('chat.last7Days'), sessions: week });
+    if (older.length > 0) groups.push({ label: t('chat.earlier'), sessions: older });
 
-  return groups;
+    return groups;
+  };
 }
 
 export const HistorySidebar: React.FC<HistorySidebarProps> = ({
@@ -68,6 +77,8 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
   onSelectSession,
   onNewChat,
 }) => {
+  const { t } = useTranslation();
+  const groupSessions = useGroupSessions();
   const { sessions, currentSessionId: storeCurrentSessionId, loadSessions, deleteSession, setCurrentSession } = useChatHistoryStore();
   const [groups, setGroups] = useState<{ label: string; sessions: SessionMeta[] }[]>([]);
 
@@ -82,7 +93,7 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
   // 分组会话
   useEffect(() => {
     setGroups(groupSessions(sessions));
-  }, [sessions]);
+  }, [sessions, groupSessions]);
 
   // 选择会话
   const handleSelect = useCallback((session: SessionMeta) => {
@@ -110,7 +121,7 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
           onClick={onNewChat}
           block
         >
-          新建对话
+          {t('chat.newChat')}
         </Button>
       </div>
 
@@ -119,7 +130,7 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
         {groups.length === 0 ? (
           <Empty
             image={Empty.PRESENTED_IMAGE_SIMPLE}
-            description="暂无历史对话"
+            description={t('chat.noHistory')}
             className={styles.empty}
           />
         ) : (
@@ -137,16 +148,16 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
                   <MessageOutlined className={styles.sessionIcon} />
                   <span className={styles.sessionTitle}>{session.title}</span>
                   <Popconfirm
-                    title="确定删除此对话？"
+                    title={t('chat.confirmDeleteChat')}
                     onConfirm={(e) => handleDelete(e as any, session.id)}
-                    okText="删除"
-                    cancelText="取消"
+                    okText={t('common.delete')}
+                    cancelText={t('common.cancel')}
                   >
-                    <Tooltip title="删除">
+                    <Tooltip title={t('common.delete')}>
                       <button
                         className={styles.deleteButton}
                         onClick={(e) => e.stopPropagation()}
-                        aria-label={`删除对话: ${session.title}`}
+                        aria-label={`${t('chat.deleteChat')}: ${session.title}`}
                       >
                         <DeleteOutlined />
                       </button>

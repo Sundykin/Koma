@@ -133,7 +133,20 @@
     "aiShotStarted": "AI shot generation task started",
     "startShotFailed": "Failed to start shot generation",
     "generatingAIShots": "Generating AI shots...",
-    "nextGenerateShots": "Next: Generate AI Shots"
+    "nextGenerateShots": "Next: Generate AI Shots",
+    "newCharacter": "New Character",
+    "newScene": "New Scene",
+    "newProp": "New Prop",
+    "new": "New",
+    "totalCharacters": "{{count}} characters",
+    "totalScenes": "{{count}} scenes",
+    "totalProps": "{{count}} props",
+    "noCharacters": "No characters",
+    "noScenes": "No scenes",
+    "noProps": "No props",
+    "protagonist": "Protagonist",
+    "antagonist": "Antagonist",
+    "supporting": "Supporting"
   },
   "storyboard": {
     "title": "Storyboard",
@@ -179,7 +192,16 @@
     "noLLMConfig": "Please configure LLM model in settings first",
     "startChat": "Start chatting with AI",
     "loadConfigFailed": "Failed to load config",
-    "connectMCPFailed": "Failed to connect MCP server"
+    "connectMCPFailed": "Failed to connect MCP server",
+    "newChat": "New Chat",
+    "noHistory": "No chat history",
+    "confirmDeleteChat": "Delete this conversation?",
+    "deleteChat": "Delete conversation",
+    "today": "Today",
+    "yesterday": "Yesterday",
+    "daysAgo": "days ago",
+    "last7Days": "Last 7 days",
+    "earlier": "Earlier"
   },
   "settings": {
     "title": "Settings",

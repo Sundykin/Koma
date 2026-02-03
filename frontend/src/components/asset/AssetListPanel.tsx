@@ -9,6 +9,7 @@ import {
   InfoCircleOutlined,
 } from '@ant-design/icons';
 import { v4 as uuidv4 } from 'uuid';
+import { useTranslation } from 'react-i18next';
 import type { Character, Scene, Prop } from '../../types';
 import { saveCharacters, saveScenes, saveProps, loadCharacters, loadScenes, loadProps } from '../../store/projectStore';
 import { electronService } from '../../services/electronService';
@@ -42,13 +43,14 @@ export const AssetListPanel: React.FC<AssetListPanelProps> = ({
   onCreateProp,
   projectId,
 }) => {
+  const { t } = useTranslation();
   const toLocalUrl = (path?: string) => path ? electronService.fs.toLocalUrl(path) : '';
 
   // 新建角色
   const handleCreateCharacter = async () => {
     const newChar: Character = {
       id: uuidv4(),
-      name: '新角色',
+      name: t('asset.newCharacter'),
       role: 'supporting',
       prompt: '',  // 统一使用 prompt 字段
     };
@@ -61,7 +63,7 @@ export const AssetListPanel: React.FC<AssetListPanelProps> = ({
   const handleCreateScene = async () => {
     const newScene: Scene = {
       id: uuidv4(),
-      name: '新场景',
+      name: t('asset.newScene'),
       prompt: '',  // 统一使用 prompt 字段
     };
     const allScenes = await loadScenes(projectId);
@@ -73,12 +75,21 @@ export const AssetListPanel: React.FC<AssetListPanelProps> = ({
   const handleCreateProp = async () => {
     const newProp: Prop = {
       id: uuidv4(),
-      name: '新道具',
+      name: t('asset.newProp'),
       prompt: '',  // 统一使用 prompt 字段
     };
     const allProps = await loadProps(projectId);
     await saveProps(projectId, [...allProps, newProp]);
     onCreateProp(newProp);
+  };
+
+  // 获取角色类型标签
+  const getRoleLabel = (role: string) => {
+    switch (role) {
+      case 'protagonist': return t('asset.protagonist');
+      case 'antagonist': return t('asset.antagonist');
+      default: return t('asset.supporting');
+    }
   };
 
   // 资产卡片项
@@ -153,7 +164,7 @@ export const AssetListPanel: React.FC<AssetListPanelProps> = ({
   const renderCharacters = () => (
     <div className="h-full flex flex-col">
       <div className="p-2 border-b border-zinc-800 flex justify-between items-center bg-zinc-900/50">
-        <span className="text-xs text-zinc-500">共 {characters.length} 个角色</span>
+        <span className="text-xs text-zinc-500">{t('asset.totalCharacters', { count: characters.length })}</span>
         <Button
           type="primary"
           size="small"
@@ -161,7 +172,7 @@ export const AssetListPanel: React.FC<AssetListPanelProps> = ({
           onClick={handleCreateCharacter}
           ghost
         >
-          新建
+          {t('asset.new')}
         </Button>
       </div>
       <div className="flex-1 overflow-y-auto p-2 custom-scrollbar">
@@ -172,13 +183,13 @@ export const AssetListPanel: React.FC<AssetListPanelProps> = ({
               char.name,
               char.costumePhotoPath,
               !!char.sora2CharacterId,
-              char.role === 'protagonist' ? '主角' : char.role === 'antagonist' ? '反派' : '配角',
+              getRoleLabel(char.role || 'supporting'),
               char.description
             ))}
           </div>
         ) : (
           <div className="h-full flex items-center justify-center">
-            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无角色" />
+            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('asset.noCharacters')} />
           </div>
         )}
       </div>
@@ -189,7 +200,7 @@ export const AssetListPanel: React.FC<AssetListPanelProps> = ({
   const renderScenes = () => (
     <div className="h-full flex flex-col">
       <div className="p-2 border-b border-zinc-800 flex justify-between items-center bg-zinc-900/50">
-        <span className="text-xs text-zinc-500">共 {scenes.length} 个场景</span>
+        <span className="text-xs text-zinc-500">{t('asset.totalScenes', { count: scenes.length })}</span>
         <Button
           type="primary"
           size="small"
@@ -197,7 +208,7 @@ export const AssetListPanel: React.FC<AssetListPanelProps> = ({
           onClick={handleCreateScene}
           ghost
         >
-          新建
+          {t('asset.new')}
         </Button>
       </div>
       <div className="flex-1 overflow-y-auto p-2 custom-scrollbar">
@@ -214,7 +225,7 @@ export const AssetListPanel: React.FC<AssetListPanelProps> = ({
           </div>
         ) : (
           <div className="h-full flex items-center justify-center">
-            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无场景" />
+            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('asset.noScenes')} />
           </div>
         )}
       </div>
@@ -225,7 +236,7 @@ export const AssetListPanel: React.FC<AssetListPanelProps> = ({
   const renderProps = () => (
     <div className="h-full flex flex-col">
       <div className="p-2 border-b border-zinc-800 flex justify-between items-center bg-zinc-900/50">
-        <span className="text-xs text-zinc-500">共 {props.length} 个道具</span>
+        <span className="text-xs text-zinc-500">{t('asset.totalProps', { count: props.length })}</span>
         <Button
           type="primary"
           size="small"
@@ -233,7 +244,7 @@ export const AssetListPanel: React.FC<AssetListPanelProps> = ({
           onClick={handleCreateProp}
           ghost
         >
-          新建
+          {t('asset.new')}
         </Button>
       </div>
       <div className="flex-1 overflow-y-auto p-2 custom-scrollbar">
@@ -250,7 +261,7 @@ export const AssetListPanel: React.FC<AssetListPanelProps> = ({
           </div>
         ) : (
           <div className="h-full flex items-center justify-center">
-            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无道具" />
+            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('asset.noProps')} />
           </div>
         )}
       </div>
@@ -260,17 +271,17 @@ export const AssetListPanel: React.FC<AssetListPanelProps> = ({
   const tabItems = [
     {
       key: 'character',
-      label: <span><UserOutlined /> 角色</span>,
+      label: <span><UserOutlined /> {t('asset.character')}</span>,
       children: renderCharacters(),
     },
     {
       key: 'scene',
-      label: <span><EnvironmentOutlined /> 场景</span>,
+      label: <span><EnvironmentOutlined /> {t('asset.scene')}</span>,
       children: renderScenes(),
     },
     {
       key: 'prop',
-      label: <span><InboxOutlined /> 道具</span>,
+      label: <span><InboxOutlined /> {t('asset.prop')}</span>,
       children: renderProps(),
     },
   ];
