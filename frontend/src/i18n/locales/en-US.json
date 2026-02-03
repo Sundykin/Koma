@@ -120,7 +120,20 @@
     "title": "Assets",
     "character": "Character",
     "scene": "Scene",
-    "prop": "Prop"
+    "prop": "Prop",
+    "loadFailed": "Failed to load assets",
+    "characterDeleted": "Character deleted",
+    "sceneDeleted": "Scene deleted",
+    "propDeleted": "Prop deleted",
+    "selectToView": "Select an asset to view details",
+    "batchGenerate": "Batch Generate",
+    "batchGenerateMaterials": "Batch generate materials",
+    "currentEpisodeOnly": "Current episode only",
+    "missingEpisodeOrScript": "Missing episode or script info, skipping shot generation",
+    "aiShotStarted": "AI shot generation task started",
+    "startShotFailed": "Failed to start shot generation",
+    "generatingAIShots": "Generating AI shots...",
+    "nextGenerateShots": "Next: Generate AI Shots"
   },
   "storyboard": {
     "title": "Storyboard",
@@ -144,7 +157,29 @@
     "selectedCount": "items"
   },
   "chat": {
-    "title": "AI Chat"
+    "title": "AI Chat",
+    "systemPrompt": "System Prompt",
+    "systemPromptPlaceholder": "Set the AI's role and behavior...",
+    "defaultSystemPrompt": "You are a helpful AI assistant.",
+    "selectModel": "Select Model",
+    "loadingConfig": "Loading config...",
+    "hideHistory": "Hide History",
+    "showHistory": "Show History",
+    "multiAgent": "Multi-Agent Orchestration",
+    "agentTemplate": "Agent Templates",
+    "mcpConfig": "MCP Config",
+    "clearChat": "Clear Chat",
+    "chatCleared": "Chat cleared",
+    "sessionNotReady": "Session not ready",
+    "configLLMFirst": "Please configure LLM model first",
+    "loadedChat": "Loaded conversation",
+    "loadChatFailed": "Failed to load conversation",
+    "newChatCreated": "Created new conversation",
+    "multiAgentEnabled": "Multi-agent orchestration enabled",
+    "noLLMConfig": "Please configure LLM model in settings first",
+    "startChat": "Start chatting with AI",
+    "loadConfigFailed": "Failed to load config",
+    "connectMCPFailed": "Failed to connect MCP server"
   },
   "settings": {
     "title": "Settings",

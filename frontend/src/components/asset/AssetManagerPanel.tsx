@@ -10,6 +10,7 @@ import {
   ThunderboltOutlined,
   FilterOutlined,
 } from '@ant-design/icons';
+import { useTranslation } from 'react-i18next';
 import type { Character, Scene, Prop, EpisodeAnalysis } from '../../types';
 import {
   loadCharacters,
@@ -52,6 +53,7 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
   llmConfigId,
   onNext,
 }) => {
+  const { t } = useTranslation();
   const { message } = App.useApp();
 
   // 资产数据
@@ -152,24 +154,24 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
     await saveCharacters(projectId, updatedList);
     setCharacters(updatedList);
     if (selectedId === id) setSelectedId(null);
-    message.success('角色已删除');
-  }, [characters, projectId, selectedId, message]);
+    message.success(t('asset.characterDeleted'));
+  }, [characters, projectId, selectedId, message, t]);
 
   const handleSceneDelete = useCallback(async (id: string) => {
     const updatedList = scenes.filter(s => s.id !== id);
     await saveScenes(projectId, updatedList);
     setScenes(updatedList);
     if (selectedId === id) setSelectedId(null);
-    message.success('场景已删除');
-  }, [scenes, projectId, selectedId, message]);
+    message.success(t('asset.sceneDeleted'));
+  }, [scenes, projectId, selectedId, message, t]);
 
   const handlePropDelete = useCallback(async (id: string) => {
     const updatedList = props.filter(p => p.id !== id);
     await saveProps(projectId, updatedList);
     setProps(updatedList);
     if (selectedId === id) setSelectedId(null);
-    message.success('道具已删除');
-  }, [props, projectId, selectedId, message]);
+    message.success(t('asset.propDeleted'));
+  }, [props, projectId, selectedId, message, t]);
 
   // 新建资产回调
   const handleCharacterCreate = useCallback((newChar: Character) => {
@@ -199,7 +201,7 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
   // 下一步
   const handleNextAndGenerateShots = async () => {
     if (!episodeId || !script) {
-      message.warning('缺少剧集或剧本信息，跳过分镜生成');
+      message.warning(t('asset.missingEpisodeOrScript'));
       onNext();
       return;
     }
@@ -209,14 +211,14 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
       await startShotAnalysis(
         projectId,
         episodeId,
-        episodeName || `剧集 ${episodeId}`,
+        episodeName || `${t('editor.episode')} ${episodeId}`,
         script,
         llmConfigId
       );
-      message.info('AI 分镜生成任务已启动');
+      message.info(t('asset.aiShotStarted'));
       onNext();
     } catch (err: any) {
-      message.error(err.message || '启动分镜生成失败');
+      message.error(err.message || t('asset.startShotFailed'));
     } finally {
       setIsGeneratingShots(false);
     }
@@ -251,7 +253,7 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
           <div className="assetListFilter">
             <Space size="small">
               <FilterOutlined />
-              <span>仅当前剧集</span>
+              <span>{t('asset.currentEpisodeOnly')}</span>
               <Switch
                 size="small"
                 checked={showCurrentEpisodeOnly}
@@ -305,7 +307,7 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
         )}
         {!selectedId && (
           <div className="assetDetailEmpty">
-            <span>选择一个资产查看详情</span>
+            <span>{t('asset.selectToView')}</span>
           </div>
         )}
       </div>
@@ -313,8 +315,8 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
       {/* 底部操作栏 */}
       <div className="assetFooter">
         <Space>
-          <Tooltip title="批量生成素材">
-            <Button icon={<ThunderboltOutlined />}>批量生成</Button>
+          <Tooltip title={t('asset.batchGenerateMaterials')}>
+            <Button icon={<ThunderboltOutlined />}>{t('asset.batchGenerate')}</Button>
           </Tooltip>
         </Space>
         <Button
@@ -324,7 +326,7 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
           onClick={handleNextAndGenerateShots}
           loading={isGeneratingShots}
         >
-          {isGeneratingShots ? 'AI 分镜生成中...' : '下一步：生成 AI 分镜'}
+          {isGeneratingShots ? t('asset.generatingAIShots') : t('asset.nextGenerateShots')}
         </Button>
       </div>
     </div>

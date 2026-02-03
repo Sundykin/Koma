@@ -6,6 +6,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Select, message, Button, Tooltip, Spin } from 'antd';
 import { ClearOutlined, SettingOutlined, HistoryOutlined, ApiOutlined, RobotOutlined, TeamOutlined } from '@ant-design/icons';
 import { Input } from 'antd';
+import { useTranslation } from 'react-i18next';
 import { ChatRenderer } from '../../chat';
 import { useChat, type SessionConfig, type ContentPart, chatIPC } from '../../chat/ipc';
 import { getActiveLLMConfig, loadSettings } from '../../store/globalStore';
@@ -23,9 +24,10 @@ import styles from './ChatPage.module.css';
 const { TextArea } = Input;
 
 export const ChatPage: React.FC = () => {
+  const { t } = useTranslation();
   const [llmConfigs, setLlmConfigs] = useState<LLMModelConfig[]>([]);
   const [selectedConfigId, setSelectedConfigId] = useState<string>('');
-  const [systemPrompt, setSystemPrompt] = useState('你是一个有帮助的 AI 助手。');
+  const [systemPrompt, setSystemPrompt] = useState(t('chat.defaultSystemPrompt'));
   const [showSettings, setShowSettings] = useState(false);
   const [showSidebar, setShowSidebar] = useState(true);
   const [showMcpSettings, setShowMcpSettings] = useState(false);
@@ -160,12 +162,12 @@ export const ChatPage: React.FC = () => {
   // 发送消息
   const handleSend = useCallback(async (text: string, attachments?: AttachmentFile[]) => {
     if (!isReady) {
-      message.warning('会话尚未就绪');
+      message.warning(t('chat.sessionNotReady'));
       return;
     }
 
     if (!selectedConfig) {
-      message.warning('请先配置 LLM 模型');
+      message.warning(t('chat.configLLMFirst'));
       return;
     }
 
@@ -220,19 +222,19 @@ export const ChatPage: React.FC = () => {
         setSystemPrompt(sessionData.systemPrompt);
       }
       setCurrentSession(historySessionId);
-      message.success(`已加载对话: ${sessionData.title}`);
+      message.success(`${t('chat.loadedChat')}: ${sessionData.title}`);
     } else {
-      message.error('加载对话失败');
+      message.error(t('chat.loadChatFailed'));
     }
-  }, [loadHistoryMessages, setCurrentSession]);
+  }, [loadHistoryMessages, setCurrentSession, t]);
 
   // 新建对话
   const handleNewChat = useCallback(async () => {
     const newSessionId = createHistorySession();
     setCurrentSession(newSessionId);
     await clear();
-    message.success('已创建新对话');
-  }, [createHistorySession, setCurrentSession, clear]);
+    message.success(t('chat.newChatCreated'));
+  }, [createHistorySession, setCurrentSession, clear, t]);
 
   // 保存当前会话（懒创建会话 ID）
   useEffect(() => {
@@ -304,7 +306,7 @@ export const ChatPage: React.FC = () => {
   if (!isConfigLoaded) {
     return (
       <div className={styles.container} style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-        <Spin tip="加载配置中..." />
+        <Spin tip={t('chat.loadingConfig')} />
       </div>
     );
   }
@@ -313,7 +315,7 @@ export const ChatPage: React.FC = () => {
   const toolbar = (
     <div className={styles.toolbar}>
       <div className={styles.toolbarLeft}>
-        <Tooltip title={showSidebar ? '隐藏历史' : '显示历史'}>
+        <Tooltip title={showSidebar ? t('chat.hideHistory') : t('chat.showHistory')}>
           <Button
             type="text"
             icon={<HistoryOutlined />}
@@ -333,53 +335,53 @@ export const ChatPage: React.FC = () => {
           value={selectedConfigId || undefined}
           onChange={handleConfigChange}
           options={configOptions}
-          placeholder="选择模型"
+          placeholder={t('chat.selectModel')}
           style={{ width: 200 }}
           disabled={isLoading}
         />
         {!isReady && <Spin size="small" style={{ marginLeft: 8 }} />}
       </div>
       <div className={styles.toolbarRight}>
-        <Tooltip title="多智能体编排">
+        <Tooltip title={t('chat.multiAgent')}>
           <Button
             type="text"
             icon={<TeamOutlined />}
             onClick={async () => {
               if (!isReady) {
-                message.warning('会话尚未就绪');
+                message.warning(t('chat.sessionNotReady'));
                 return;
               }
               await updateConfig({ agentMode: 'orchestrated' });
-              message.success('已启用多智能体编排模式');
+              message.success(t('chat.multiAgentEnabled'));
             }}
           />
         </Tooltip>
-        <Tooltip title="智能体模板">
+        <Tooltip title={t('chat.agentTemplate')}>
           <Button
             type="text"
             icon={<RobotOutlined />}
             onClick={() => setShowAgentTemplates(true)}
           />
         </Tooltip>
-        <Tooltip title="MCP 配置">
+        <Tooltip title={t('chat.mcpConfig')}>
           <Button
             type="text"
             icon={<ApiOutlined />}
             onClick={() => setShowMcpSettings(true)}
           />
         </Tooltip>
-        <Tooltip title="设置">
+        <Tooltip title={t('common.settings')}>
           <Button
             type="text"
             icon={<SettingOutlined />}
             onClick={() => setShowSettings(!showSettings)}
           />
         </Tooltip>
-        <Tooltip title="清空对话">
+        <Tooltip title={t('chat.clearChat')}>
           <Button
             type="text"
             icon={<ClearOutlined />}
-            onClick={() => { clear(); message.success('对话已清空'); }}
+            onClick={() => { clear(); message.success(t('chat.chatCleared')); }}
             disabled={messages.length === 0}
           />
         </Tooltip>
@@ -391,11 +393,11 @@ export const ChatPage: React.FC = () => {
   const settingsPanel = showSettings ? (
     <div className={styles.settingsPanel}>
       <div className={styles.settingsItem}>
-        <label>系统提示词</label>
+        <label>{t('chat.systemPrompt')}</label>
         <TextArea
           value={systemPrompt}
           onChange={(e) => setSystemPrompt(e.target.value)}
-          placeholder="设置 AI 的角色和行为..."
+          placeholder={t('chat.systemPromptPlaceholder')}
           autoSize={{ minRows: 2, maxRows: 4 }}
         />
       </div>
@@ -410,7 +412,7 @@ export const ChatPage: React.FC = () => {
         streaming={isStreaming}
         streamingContent={streamingContent}
         streamingReasoning={streamingReasoning}
-        emptyText={llmConfigs.length === 0 ? "请先在设置中配置 LLM 模型" : "开始与 AI 对话吧"}
+        emptyText={llmConfigs.length === 0 ? t('chat.noLLMConfig') : t('chat.startChat')}
       />
     </>
   );
