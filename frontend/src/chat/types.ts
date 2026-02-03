@@ -49,25 +49,21 @@ export interface ToolDefinition {
   };
 }
 
-// 消息状态
-export type MessageStatus = 'pending' | 'sent' | 'error';
+// 消息状�?export type MessageStatus = 'pending' | 'sent' | 'error';
 
 // 对话消息
 export interface ChatMessage {
   id: string;
   role: MessageRole;
   content: string | ContentPart[];
-  reasoning?: string; // 思考过程内容
-  toolCalls?: ToolCall[];
+  reasoning?: string; // 思考过程内�?  toolCalls?: ToolCall[];
   toolCallId?: string;
   name?: string; // 工具名称（role=tool 时）
   metadata?: Record<string, unknown>;
   timestamp: number;
-  status?: MessageStatus; // 消息状态（乐观更新）
-}
+  status?: MessageStatus; // 消息状态（乐观更新�?}
 
-// 适配器能力
-export type AdapterCapability =
+// 适配器能�?export type AdapterCapability =
   | 'streaming'
   | 'function_call'
   | 'vision'
@@ -84,14 +80,14 @@ export interface ChatOptions {
     type: 'json_object' | 'text';
   };
   signal?: AbortSignal;
+  [key: string]: unknown;
 }
 
 // 对话响应
 export interface ChatResponse {
   id: string;
   content: string;
-  reasoning?: string; // 思考过程内容
-  toolCalls?: ToolCall[];
+  reasoning?: string; // 思考过程内�?  toolCalls?: ToolCall[];
   finishReason: 'stop' | 'tool_calls' | 'length' | 'error';
   usage?: {
     promptTokens: number;
@@ -100,17 +96,14 @@ export interface ChatResponse {
   };
 }
 
-// 流式块
-export interface ChatChunk {
+// 流式�?export interface ChatChunk {
   id: string;
   content: string;
-  reasoning?: string; // 思考过程内容
-  toolCalls?: Partial<ToolCall>[];
+  reasoning?: string; // 思考过程内�?  toolCalls?: Partial<ToolCall>[];
   finishReason?: 'stop' | 'tool_calls' | 'length';
 }
 
-// 错误码
-export enum ChatErrorCode {
+// 错误�?export enum ChatErrorCode {
   NETWORK_ERROR = 'NETWORK_ERROR',
   AUTH_ERROR = 'AUTH_ERROR',
   RATE_LIMIT = 'RATE_LIMIT',
@@ -201,3 +194,4 @@ export function createToolMessage(toolCallId: string, name: string, content: str
     timestamp: Date.now(),
   };
 }
+
