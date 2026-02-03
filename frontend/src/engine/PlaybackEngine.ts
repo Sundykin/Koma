@@ -12,7 +12,7 @@ const PLAYBACK_AUDIO_ERROR_KEY = 'playback-engine-audio-error';
 const notifyPlaybackAudioError = (error: unknown) => {
   handleError(error, { module: 'PlaybackEngine', action: 'audioPlay', severity: 'warning' });
   message.error({
-    content: '音频播放失败，请检查浏览器自动播放权限或重新播放。',
+    content: '?????????????????????????',
     key: PLAYBACK_AUDIO_ERROR_KEY,
   });
 };
