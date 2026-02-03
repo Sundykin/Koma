@@ -237,13 +237,19 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
           throw new Error(result.reason);
         }
 
-        // TODO: Implement prompt template override functionality
-        // For now, use saveCustomTemplate as a partial implementation
         const existing = await getPromptTemplate(payload.templateId as any);
+        if (!existing) {
+          throw new Error(`Template not found: ${payload.templateId}`);
+        }
+
+        // Save the overridden template
+        // Note: priority field is reserved for future multi-plugin override ordering
         await saveCustomTemplate({
           ...existing,
           template: payload.newTemplate,
         });
+
+        console.log(`[PluginAPI] Plugin "${pluginId}" overrode template "${payload.templateId}"`);
       },
     },
 
