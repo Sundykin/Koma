@@ -21,6 +21,9 @@ function intervalsOverlap(
 
 /**
  * 检测 clip 是否与其他 clips 碰撞
+ * @param clip - 需要检测的片段
+ * @param otherClips - 其他片段列表
+ * @returns 是否发生碰撞
  */
 export function hasCollision(
   clip: ClipLike,
@@ -36,6 +39,10 @@ export function hasCollision(
 
 /**
  * 找到指定时间点之后第一个可用位置
+ * @param clips - 已有片段列表
+ * @param duration - 片段时长
+ * @param preferredStart - 期望起点
+ * @returns 可用起点（>= 0）
  */
 export function findNextAvailablePosition(
   clips: ClipLike[],
@@ -75,6 +82,9 @@ export function findNextAvailablePosition(
 /**
  * 解决碰撞：将被挤占的素材向后推移
  * 返回更新后的 clips 数组（不修改原数组）
+ * @param clips - 轨道上的片段列表
+ * @param movedClipId - 被移动的片段 ID
+ * @returns 调整后的片段数组
  */
 export function resolveCollisions(
   clips: Clip[],
@@ -107,6 +117,9 @@ export function resolveCollisions(
 
 /**
  * 获取轨道上的空闲区间
+ * @param clips - 已有片段列表
+ * @param maxTime - 区间上限（默认 Infinity）
+ * @returns 空闲区间列表
  */
 export function getFreeIntervals(
   clips: ClipLike[],
@@ -145,6 +158,11 @@ export function getFreeIntervals(
 
 /**
  * 检查是否可以在指定位置放置指定时长的 clip
+ * @param clips - 已有片段列表
+ * @param start - 目标起点
+ * @param duration - 片段时长
+ * @param excludeClipId - 可选，排除的片段 ID
+ * @returns 是否可放置
  */
 export function canPlaceClip(
   clips: ClipLike[],

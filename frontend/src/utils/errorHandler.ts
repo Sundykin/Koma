@@ -32,6 +32,8 @@ const errorListeners: ErrorListener[] = [];
 /**
  * 注册错误监听器
  * 用于集成通知系统、错误上报等
+ * @param listener - 监听回调
+ * @returns 取消注册函数
  */
 export function addErrorListener(listener: ErrorListener): () => void {
   errorListeners.push(listener);
@@ -45,6 +47,8 @@ export function addErrorListener(listener: ErrorListener): () => void {
 
 /**
  * 提取错误消息
+ * @param error - 任意错误对象
+ * @returns 可读的错误消息
  */
 export function extractErrorMessage(error: unknown): string {
   if (error instanceof Error) {
@@ -139,6 +143,9 @@ export function handleError(
 
 /**
  * 静默错误处理（仅记录日志，不通知用户）
+ * @param error - 捕获的错误
+ * @param context - 错误上下文（可以是字符串或对象）
+ * @returns 错误处理结果
  */
 export function handleSilentError(
   error: unknown,
@@ -153,6 +160,8 @@ export function handleSilentError(
 /**
  * 创建带上下文的错误处理器
  * 用于在特定模块中复用
+ * @param module - 模块名称
+ * @returns 预设模块上下文的错误处理函数
  *
  * @example
  * const handleTTIError = createErrorHandler('TTIProvider');
@@ -168,6 +177,9 @@ export function createErrorHandler(module: string) {
 /**
  * 安全执行异步函数
  * 自动捕获错误并处理
+ * @param fn - 需要安全执行的异步函数
+ * @param context - 错误上下文（可以是字符串或对象）
+ * @returns 成功返回数据，失败返回错误结果
  *
  * @example
  * const result = await safeAsync(
@@ -193,6 +205,9 @@ export async function safeAsync<T>(
 
 /**
  * 安全执行同步函数
+ * @param fn - 需要安全执行的同步函数
+ * @param context - 错误上下文（可以是字符串或对象）
+ * @returns 成功返回数据，失败返回错误结果
  */
 export function safeSync<T>(
   fn: () => T,
@@ -210,6 +225,8 @@ export function safeSync<T>(
 /**
  * 忽略特定错误的包装器
  * 用于替代 .catch(() => {})
+ * @param context - 错误上下文（可以是字符串或对象）
+ * @returns 可直接作为 Promise.catch 的回调
  *
  * @example
  * // 替代: audio.play().catch(() => {});
@@ -224,6 +241,8 @@ export function ignoreError(context?: string | ErrorContext) {
 /**
  * Promise 错误处理包装器
  * 用于替代空的 catch 块
+ * @param context - 错误上下文（可以是字符串或对象）
+ * @returns 可直接作为 Promise.catch 的回调
  *
  * @example
  * // 替代: somePromise.catch(() => {});

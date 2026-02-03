@@ -300,16 +300,28 @@ export class KlingProvider implements ITVProvider {
         });
 
         if (!response.ok) {
-          const errorText = await response.text();
-          lastError = errorText || response.statusText;
+          let errorMsg = response.statusText;
+          try {
+            const errorJson = await response.json();
+            errorMsg = errorJson.message || errorJson.error?.message || JSON.stringify(errorJson);
+          } catch {
+            const text = await response.text();
+            if (text) errorMsg = text.slice(0, 200); // 截断过长的 HTML 错误
+          }
+          
+          lastError = `请求失败 (${response.status}): ${errorMsg}`;
+          
+          // 404/400 可能意味着端点不对，尝试下一个
           if (response.status === 404 || response.status === 400) {
             continue;
           }
+          
+          // 其他错误直接返回
           return {
             taskId,
             status: 'failed',
             progress: 0,
-            error: lastError,
+            error: this.translateError(lastError),
           };
         }
 
@@ -319,11 +331,16 @@ export class KlingProvider implements ITVProvider {
             taskId,
             status: 'failed',
             progress: 0,
-            error: data.message || '查询失败',
+            error: this.translateError(data.message || '查询任务失败'),
           };
         }
 
         const progress = this.extractProgress(data);
+        // 翻译进度中的错误信息
+        if (progress.error) {
+            progress.error = this.translateError(progress.error);
+        }
+        
         return {
           ...progress,
           taskId,
@@ -337,8 +354,19 @@ export class KlingProvider implements ITVProvider {
       taskId,
       status: 'failed',
       progress: 0,
-      error: lastError || '查询失败',
+      error: this.translateError(lastError || '查询任务状态失败，请检查网络或稍后重试'),
     };
+  }
+
+  private translateError(msg: string): string {
+    if (!msg) return '未知错误';
+    const lower = msg.toLowerCase();
+    if (lower.includes('sensitive') || lower.includes('nsfw')) return '内容包含敏感词或违规元素，请修改提示词';
+    if (lower.includes('balance') || lower.includes('credit')) return '账户余额不足';
+    if (lower.includes('timeout')) return '任务处理超时';
+    if (lower.includes('network') || lower.includes('fetch')) return '网络连接失败';
+    if (lower.includes('unauthorized') || lower.includes('401')) return 'API Key 无效或过期';
+    return msg;
   }
 
   async cancelTask(taskId: string): Promise<void> {

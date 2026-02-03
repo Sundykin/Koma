@@ -74,13 +74,82 @@ export class EdgeTTSProvider implements TTSProvider {
     voiceId: string,
     options?: TTSOptions
   ): Promise<AudioResult> {
-    // TODO: 实现 Edge TTS 调用
-    // 需要使用 edge-tts 库或 WebSocket API
-    // 参考: https://github.com/rany2/edge-tts
+    const requestId = crypto.randomUUID().replace(/-/g, '');
+    const timestamp = new Date().toString();
 
-    throw new Error(
-      'Edge TTS synthesis not implemented. Requires edge-tts package or native WebSocket implementation.'
-    );
+    return new Promise((resolve, reject) => {
+      const ws = new WebSocket(
+        'wss://speech.platform.bing.com/consumer/speech/synthesize/readaloud/edge/v1?TrustedClientToken=6A5AA1D4EAFF4E9FB37E23D68491D6F4'
+      );
+
+      const audioChunks: BlobPart[] = [];
+
+      ws.onopen = () => {
+        // 1. 发送配置
+        const configMessage = `X-Timestamp:${timestamp}\r\nContent-Type:application/json; charset=utf-8\r\nPath:speech.config\r\n\r\n{"context":{"synthesis":{"audio":{"metadataoptions":{"sentenceBoundaryEnabled":"false","wordBoundaryEnabled":"false"},"outputFormat":"audio-24khz-48kbitrate-mono-mp3"}}}}\r\n`;
+        ws.send(configMessage);
+
+        // 2. 构建 SSML
+        const rate = options?.rate ? `${options.rate >= 1 ? '+' : ''}${Math.round((options.rate - 1) * 100)}%` : '+0%';
+        // const pitch = '+0Hz'; // 暂不支持调整音调，简单处理
+        const ssml = `
+          <speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='en-US'>
+            <voice name='${voiceId}'>
+              <prosody pitch='+0Hz' rate='${rate}' volume='+0%'>
+                ${text}
+              </prosody>
+            </voice>
+          </speak>
+        `.trim();
+
+        // 3. 发送合成请求
+        const ssmlMessage = `X-RequestId:${requestId}\r\nContent-Type:application/ssml+xml\r\nX-Timestamp:${timestamp}\r\nPath:ssml\r\n\r\n${ssml}`;
+        ws.send(ssmlMessage);
+      };
+
+      ws.onmessage = async (event) => {
+        const data = event.data;
+
+        if (typeof data === 'string') {
+          // 文本消息，检查是否结束
+          if (data.includes('Path:turn.end')) {
+            ws.close();
+            const blob = new Blob(audioChunks, { type: 'audio/mp3' });
+            const url = URL.createObjectURL(blob);
+            resolve({
+              path: url,
+              duration: 0, // Edge TTS 不直接返回时长，需要解码音频获取，这里先置 0
+            });
+          }
+        } else if (data instanceof Blob) {
+          // 二进制数据，寻找音频头
+          // 数据格式: Header (Text) + Binary Audio
+          // 需要解析 Header 找到 Path:audio
+          const text = await data.slice(0, 128).text(); // 读取前128字节检查头
+          if (text.includes('Path:audio')) {
+            // 找到 header 的结束位置 \r\n\r\n
+            const headerEnd = text.indexOf('\r\n\r\n');
+            if (headerEnd !== -1) {
+               // 提取音频部分
+               const audioData = data.slice(headerEnd + 4);
+               audioChunks.push(audioData);
+            }
+          }
+        }
+      };
+
+      ws.onerror = (error) => {
+        console.error('[EdgeTTS] WebSocket Error:', error);
+        reject(new Error('Edge TTS 连接失败'));
+      };
+
+      ws.onclose = (event) => {
+        if (event.code !== 1000 && event.code !== 1005) {
+           // 非正常关闭，且没有 resolve (audioChunks length check usually done in turn.end)
+           // 但如果 turn.end 来了已经 resolve 了，这里不做处理
+        }
+      };
+    });
   }
 
   async listVoices(): Promise<Voice[]> {

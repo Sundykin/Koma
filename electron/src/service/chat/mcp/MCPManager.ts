@@ -230,7 +230,7 @@ class SSETransport implements MCPTransport {
       throw new Error(`HTTP error: ${response.status}`);
     }
 
-    return response.json();
+    return (await response.json()) as MCPResponse;
   }
 
   async close(): Promise<void> {

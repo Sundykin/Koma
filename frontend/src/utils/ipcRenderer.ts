@@ -64,7 +64,10 @@ export const ipcApiRoute = {
 };
 
 /**
- * 便捷调用方法
+ * 便捷调用主进程 controller 方法（controller.xxx.method）
+ * @param channel - IPC 路由
+ * @param args - 传递给主进程的参数对象
+ * @returns 主进程返回结果
  */
 export async function invokeController<T = any>(
   channel: string,

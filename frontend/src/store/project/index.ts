@@ -14,11 +14,16 @@ export {
   listProjects,
 } from './core';
 
-// 时间线
-export {
-  loadTimeline,
-  saveTimeline,
-} from './timeline';
+// 时间线 (使用动态导入以支持代码分割)
+export type { Timeline } from '../../types';
+export const loadTimeline = async (projectId: string) => {
+  const { loadTimeline: load } = await import('./timeline');
+  return load(projectId);
+};
+export const saveTimeline = async (projectId: string, timeline: any) => {
+  const { saveTimeline: save } = await import('./timeline');
+  return save(projectId, timeline);
+};
 
 // 素材管理
 export {

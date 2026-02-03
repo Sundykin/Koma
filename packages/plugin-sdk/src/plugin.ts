@@ -101,6 +101,8 @@ export interface PluginManifest {
   agentMeta?: AgentMeta;
 
   panels?: CustomPanelDefinition[];
+
+  dependencies?: Record<string, string>; // pluginId -> version range
 }
 
 // 已安装的插件

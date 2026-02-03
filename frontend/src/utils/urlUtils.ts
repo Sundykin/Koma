@@ -3,8 +3,10 @@
  */
 
 /**
- * 将本地路径转换为 koma-local:// 协议 URL
+ * 将本地路径或已有 URL 规范为 koma-local:// 协议 URL
  * 用于 Electron 环境中加载本地文件
+ * @param path - 本地路径或已有 URL
+ * @returns 规范化后的 URL，空输入返回空字符串
  */
 export function toKomaLocalUrl(path: string): string {
   if (!path) return '';
@@ -25,6 +27,8 @@ export function toKomaLocalUrl(path: string): string {
 
 /**
  * 从 koma-local:// URL 提取本地路径
+ * @param url - koma-local:// URL 或其他 URL
+ * @returns 提取出的本地路径，无法解析时返回原值
  */
 export function fromKomaLocalUrl(url: string): string {
   if (!url) return '';
