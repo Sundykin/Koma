@@ -24,6 +24,7 @@ import {
   BlockOutlined,
   ApiOutlined,
 } from '@ant-design/icons';
+import { useTranslation } from 'react-i18next';
 import type { AppSettings } from '../../types';
 import { loadSettings, saveSettings } from '../../store/globalStore';
 import {
@@ -52,12 +53,13 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
   settings,
   onSave,
 }) => {
+  const { t } = useTranslation();
   const { message, modal } = App.useApp();
   const [form] = Form.useForm();
   const [activeSection, setActiveSection] = useState('models-llm');
   const [saving, setSaving] = useState(false);
   const [storagePath, setStoragePath] = useState('');
-  const [storageSize, setStorageSize] = useState('计算中...');
+  const [storageSize, setStorageSize] = useState(t('common.calculating'));
   const [clearingCache, setClearingCache] = useState(false);
 
   useEffect(() => {
@@ -71,12 +73,12 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
       setStorageSize('N/A');
       return;
     }
-    setStorageSize('计算中...');
+    setStorageSize(t('common.calculating'));
     try {
       const size = await electronService.fs.dirSize(targetPath);
       setStorageSize(formatBytes(size));
     } catch {
-      setStorageSize('计算失败');
+      setStorageSize(t('common.calcFailed'));
     }
   };
 
@@ -99,7 +101,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
 
   const handleChangeStoragePath = async () => {
     if (!electronService.isElectron()) {
-      message.warning('仅支持桌面版');
+      message.warning(t('common.desktopOnly'));
       return;
     }
 
@@ -108,23 +110,23 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
       const newPath = result.filePaths[0]; // 已经被 normalizePath 处理过
 
       modal.confirm({
-        title: '修改存储位置',
+        title: t('settings.changeStorageTitle'),
         content: (
           <div>
-            <p>新位置: {newPath}</p>
-            <p>是否同时迁移现有数据？</p>
+            <p>{t('settings.newLocation')}: {newPath}</p>
+            <p>{t('settings.migrateDataQuestion')}</p>
           </div>
         ),
-        okText: '迁移并修改',
-        cancelText: '仅修改',
+        okText: t('settings.migrateAndChange'),
+        cancelText: t('settings.onlyChange'),
         onOk: async () => {
           try {
             await updateStoragePath(newPath, true);
             setStoragePath(newPath);
             calcStorageSize(newPath);
-            message.success('存储位置已修改并迁移数据');
+            message.success(t('settings.storageChangedMigrated'));
           } catch (err: any) {
-            message.error(`迁移失败: ${err.message}`);
+            message.error(`${t('settings.migrateFailed')}: ${err.message}`);
           }
         },
         onCancel: async () => {
@@ -132,9 +134,9 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
             await updateStoragePath(newPath, false);
             setStoragePath(newPath);
             calcStorageSize(newPath);
-            message.success('存储位置已修改');
+            message.success(t('settings.storageChanged'));
           } catch (err: any) {
-            message.error(`修改失败: ${err.message}`);
+            message.error(`${t('settings.changeFailed')}: ${err.message}`);
           }
         },
       });
@@ -143,16 +145,16 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
 
   const handleClearCache = async () => {
     modal.confirm({
-      title: '确认清理缓存',
-      content: '这将清理所有项目的缓存文件（缩略图、波形、预览帧），不会影响素材和项目数据。',
-      okText: '清理',
+      title: t('settings.confirmClearCache'),
+      content: t('settings.clearCacheContent'),
+      okText: t('common.clearCache'),
       okType: 'danger',
       onOk: async () => {
         setClearingCache(true);
         try {
-          message.success('缓存已清理');
+          message.success(t('settings.cacheCleared'));
         } catch (err: any) {
-          message.error(`清理失败: ${err.message}`);
+          message.error(`${t('settings.clearFailed')}: ${err.message}`);
         } finally {
           setClearingCache(false);
         }
@@ -180,9 +182,9 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
       } as AppSettings;
       await saveSettings(newSettings);
       onSave(newSettings);
-      message.success('设置已保存');
+      message.success(t('settings.settingsSaved'));
     } catch (err) {
-      message.error('保存失败');
+      message.error(t('settings.saveFailed'));
     } finally {
       setSaving(false);
     }
@@ -202,31 +204,31 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
     {
       key: 'models',
       type: 'group' as const,
-      label: '模型配置',
+      label: t('settings.modelConfig'),
       children: [
-        { key: 'models-llm', icon: <ExperimentOutlined />, label: 'LLM 大语言模型' },
-        { key: 'models-tti', icon: <PictureOutlined />, label: '文生图 (TTI)' },
-        { key: 'models-itv', icon: <VideoCameraOutlined />, label: '图生视频 (ITV)' },
-        { key: 'models-tts', icon: <SoundOutlined />, label: '语音合成 (TTS)' },
+        { key: 'models-llm', icon: <ExperimentOutlined />, label: t('settings.llm') },
+        { key: 'models-tti', icon: <PictureOutlined />, label: t('settings.tti') },
+        { key: 'models-itv', icon: <VideoCameraOutlined />, label: t('settings.itv') },
+        { key: 'models-tts', icon: <SoundOutlined />, label: t('settings.tts') },
       ]
     },
     {
       key: 'workflow',
       type: 'group' as const,
-      label: '工作流',
+      label: t('settings.workflow'),
       children: [
-        { key: 'workflow-visual', icon: <BgColorsOutlined />, label: '视觉风格' },
-        { key: 'workflow-prompts', icon: <CodeOutlined />, label: 'Prompt 模板' },
+        { key: 'workflow-visual', icon: <BgColorsOutlined />, label: t('settings.visualStyle') },
+        { key: 'workflow-prompts', icon: <CodeOutlined />, label: t('settings.promptTemplate') },
       ]
     },
     {
       key: 'system',
       type: 'group' as const,
-      label: '系统',
+      label: t('settings.system'),
       children: [
-        { key: 'system-storage', icon: <FolderOutlined />, label: '存储与缓存' },
-        { key: 'system-plugins', icon: <BlockOutlined />, label: '插件管理' },
-        { key: 'system-mcp', icon: <ApiOutlined />, label: '扩展工具 (MCP)' },
+        { key: 'system-storage', icon: <FolderOutlined />, label: t('settings.storageAndCache') },
+        { key: 'system-plugins', icon: <BlockOutlined />, label: t('settings.pluginManage') },
+        { key: 'system-mcp', icon: <ApiOutlined />, label: t('settings.mcpTools') },
       ]
     }
   ];
@@ -248,35 +250,35 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
       case 'system-storage':
         return (
           <div style={{ maxWidth: 800 }}>
-            <Card title="存储概览" style={{ marginBottom: 24 }}>
+            <Card title={t('settings.storageOverview')} style={{ marginBottom: 24 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 48 }}>
                 <Statistic
-                  title="存储位置"
+                  title={t('settings.storageLocation')}
                   value={storagePath || '~/.koma'}
                   valueStyle={{ fontSize: 16, fontFamily: 'monospace' }}
                 />
-                <Statistic title="已用空间" value={storageSize} />
+                <Statistic title={t('settings.usedSpace')} value={storageSize} />
               </div>
             </Card>
 
-            <Card size="small" title="存储操作">
+            <Card size="small" title={t('settings.storageOps')}>
               <Space direction="vertical" style={{ width: '100%' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span>更改项目和素材的默认存储路径</span>
+                  <span>{t('settings.changeStoragePath')}</span>
                   <Button icon={<FolderOutlined />} onClick={handleChangeStoragePath}>
-                    修改位置
+                    {t('common.changeLocation')}
                   </Button>
                 </div>
                 <Divider style={{ margin: '12px 0' }} />
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ color: '#ff4d4f' }}>清理缓存文件（不会删除项目素材）</span>
+                  <span style={{ color: '#ff4d4f' }}>{t('settings.clearCacheDesc')}</span>
                   <Button
                     danger
                     icon={<DeleteOutlined />}
                     loading={clearingCache}
                     onClick={handleClearCache}
                   >
-                    清理缓存
+                    {t('common.clearCache')}
                   </Button>
                 </div>
               </Space>
@@ -304,7 +306,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
     <Layout className="h-full bg-zinc-950">
       <Sider width={240} theme="dark" className="!bg-zinc-900 border-r border-zinc-800">
         <div className="px-6 pt-6 pb-2">
-          <Title level={4} className="!m-0 !text-white">全局设置</Title>
+          <Title level={4} className="!m-0 !text-white">{t('settings.globalSettings')}</Title>
           <Text className="text-xs !text-zinc-500">System Settings</Text>
         </div>
         <Menu
@@ -330,7 +332,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
               loading={saving}
               onClick={handleSave}
             >
-              应用配置
+              {t('common.applyConfig')}
             </Button>
           )}
         </div>
