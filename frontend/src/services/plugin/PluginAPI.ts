@@ -28,6 +28,11 @@ import {
   type ChannelKind,
   type ProviderContext,
 } from '../../providers/registry';
+import {
+  getPromptTemplate,
+  loadPromptTemplates,
+  saveCustomTemplate,
+} from '../../store/promptTemplates';
 
 // 事件监听器
 const eventListeners = new Map<string, Map<string, Set<Function>>>();
@@ -196,7 +201,6 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
     // ========== Prompts ==========
     prompts: {
       async getTemplate(id: string): Promise<PluginPromptTemplate> {
-        const { getPromptTemplate } = await import('../../store/promptTemplates');
         // Cast to PromptTemplateType - caller must ensure valid template id
         const template = await getPromptTemplate(id as any);
 
@@ -209,7 +213,6 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
       },
 
       async listTemplates(): Promise<PluginPromptTemplate[]> {
-        const { loadPromptTemplates } = await import('../../store/promptTemplates');
         const templates = await loadPromptTemplates();
 
         return Object.values(templates).map(t => ({
@@ -228,7 +231,6 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
 
         // TODO: Implement prompt template override functionality
         // For now, use saveCustomTemplate as a partial implementation
-        const { saveCustomTemplate, getPromptTemplate } = await import('../../store/promptTemplates');
         const existing = await getPromptTemplate(payload.templateId as any);
         await saveCustomTemplate({
           ...existing,
