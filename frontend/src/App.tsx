@@ -1,16 +1,12 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, Suspense, lazy } from 'react';
 import { Project, ScriptAnalysisResult, EditorStep, AppSettings, Episode, EpisodeStepProgress } from './types';
 import { ProjectList, ProjectOverview, CreateProjectModal, ProjectSettingsModal } from './components/project';
 import type { MentionItem } from './editor';
-import { SettingsPage } from './components/settings';
 import { WindowControls } from './components/common';
 import { ErrorBoundary } from './components/common';
 import { TaskStatusBar } from './components/common/TaskStatusBar';
 import { Sidebar } from './components/common/Sidebar';
 import type { AppView } from './components/common/Sidebar';
-import { EditorView } from './components/editor/EditorView';
-import { PluginManager, PluginHost } from './components/plugins';
-import { ChatPage } from './components/chat';
 import { useProjects } from './hooks/useProjects';
 import { TaskManager } from './services/TaskManager';
 import { loadCharacters, loadScenes, loadProps, loadShots, loadEpisodeShots, saveEpisode } from './store/projectStore';
@@ -22,6 +18,20 @@ import {
   DEFAULT_SETTINGS,
   formatTimeAgo,
 } from './constants/appConstants';
+
+// 懒加载重型组件
+const EditorView = lazy(() => import('./components/editor/EditorView').then(m => ({ default: m.EditorView })));
+const SettingsPage = lazy(() => import('./components/settings').then(m => ({ default: m.SettingsPage })));
+const PluginManager = lazy(() => import('./components/plugins').then(m => ({ default: m.PluginManager })));
+const PluginHost = lazy(() => import('./components/plugins').then(m => ({ default: m.PluginHost })));
+const ChatPage = lazy(() => import('./components/chat').then(m => ({ default: m.ChatPage })));
+
+// 加载中占位组件
+const ViewLoading: React.FC<{ tip?: string }> = ({ tip = '加载中...' }) => (
+  <div className="flex h-full items-center justify-center bg-zinc-950">
+    <Spin size="large" tip={tip}><div className="p-12" /></Spin>
+  </div>
+);
 
 const AppContent: React.FC = () => {
   const { message } = AntApp.useApp();
@@ -249,11 +259,25 @@ const AppContent: React.FC = () => {
                 />
               )
             )}
-            {view === 'settings' && <SettingsPage settings={appSettings} onSave={setAppSettings} />}
-            {view === 'plugins' && <PluginManager />}
-            {view === 'chat' && <ChatPage />}
+            {view === 'settings' && (
+              <Suspense fallback={<ViewLoading tip="加载设置页面..." />}>
+                <SettingsPage settings={appSettings} onSave={setAppSettings} />
+              </Suspense>
+            )}
+            {view === 'plugins' && (
+              <Suspense fallback={<ViewLoading tip="加载插件管理..." />}>
+                <PluginManager />
+              </Suspense>
+            )}
+            {view === 'chat' && (
+              <Suspense fallback={<ViewLoading tip="加载对话页面..." />}>
+                <ChatPage />
+              </Suspense>
+            )}
             {view.startsWith('plugin:') && (
-              <PluginHost pluginId={view.replace('plugin:', '')} />
+              <Suspense fallback={<ViewLoading tip="加载插件..." />}>
+                <PluginHost pluginId={view.replace('plugin:', '')} />
+              </Suspense>
             )}
             {view === 'overview' && activeProject && (
               <ProjectOverview
@@ -263,20 +287,22 @@ const AppContent: React.FC = () => {
               />
             )}
             {view === 'editor' && activeProject && (
-              <EditorView
-                activeProject={activeProject}
-                activeEpisode={activeEpisode}
-                editorStep={editorStep}
-                stepProgress={stepProgress}
-                scriptText={scriptText}
-                analysisData={analysisData}
-                appSettings={appSettings}
-                mentionItems={mentionItems}
-                onStepChange={setEditorStep}
-                onStepChangeWithMark={handleStepChangeWithMark}
-                onViewChange={setView}
-                onOpenProjectSettings={() => setIsProjectSettingsOpen(true)}
-              />
+              <Suspense fallback={<ViewLoading tip="加载编辑器..." />}>
+                <EditorView
+                  activeProject={activeProject}
+                  activeEpisode={activeEpisode}
+                  editorStep={editorStep}
+                  stepProgress={stepProgress}
+                  scriptText={scriptText}
+                  analysisData={analysisData}
+                  appSettings={appSettings}
+                  mentionItems={mentionItems}
+                  onStepChange={setEditorStep}
+                  onStepChangeWithMark={handleStepChangeWithMark}
+                  onViewChange={setView}
+                  onOpenProjectSettings={() => setIsProjectSettingsOpen(true)}
+                />
+              </Suspense>
             )}
           </main>
         </div>
