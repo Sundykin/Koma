@@ -8,16 +8,19 @@ import { ClearOutlined, SettingOutlined, HistoryOutlined, ApiOutlined, RobotOutl
 import { Input } from 'antd';
 import { useTranslation } from 'react-i18next';
 import { ChatRenderer } from '../../chat';
-import { useChat, type SessionConfig, type ContentPart, chatIPC } from '../../chat/ipc';
+import { useChat, chatIPC } from '../../chat/ipc';
+import type { SessionConfig, ContentPart } from '../../chat/ipc';
 import { getActiveLLMConfig, loadSettings } from '../../store/globalStore';
 import { useChatHistoryStore } from '../../store/chatHistoryStore';
 import { saveMCPServers, saveAgentTemplates, setActiveAgentId as persistActiveAgentId } from '../../store/settings/chatSettings';
 import type { LLMModelConfig } from '../../types';
 import { ChatLayout } from './ChatLayout';
-import { ChatComposer, type AttachmentFile } from './ChatComposer';
+import { ChatComposer } from './ChatComposer';
+import type { AttachmentFile } from './ChatComposer';
 import { HistorySidebar } from './HistorySidebar';
 import { MCPSettings } from './MCPSettings';
-import { AgentTemplates, type AgentTemplate, PRESET_TEMPLATES } from './AgentTemplates';
+import { AgentTemplates, PRESET_TEMPLATES } from './AgentTemplates';
+import type { AgentTemplate } from './AgentTemplates';
 import type { MCPServerConfig } from '../../chat/ipc';
 import styles from './ChatPage.module.css';
 

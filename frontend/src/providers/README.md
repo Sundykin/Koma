@@ -269,7 +269,8 @@ The registry system enables dynamic provider registration from built-in code and
 ### Registration
 
 ```typescript
-import { registerProvider, type ProviderDefinition } from './providers';
+import { registerProvider } from './providers';
+import type { ProviderDefinition } from './providers';
 
 const myProvider: ProviderDefinition<TTIProvider> = {
   type: 'my-tti',

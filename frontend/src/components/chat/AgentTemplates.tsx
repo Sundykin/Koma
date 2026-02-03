@@ -29,7 +29,8 @@ import {
   CopyOutlined,
   ToolOutlined,
 } from '@ant-design/icons';
-import { chatIPC, type MCPToolDefinition } from '../../chat/ipc';
+import { chatIPC } from '../../chat/ipc';
+import type { MCPToolDefinition } from '../../chat/ipc';
 import styles from './AgentTemplates.module.css';
 
 // 智能体模板

@@ -4,7 +4,8 @@
  */
 import { useCallback, useEffect, useRef } from 'react';
 import type { Shot, Character, Scene, Prop } from '../types';
-import { parseMentions, createMentionString, type MentionType, type ParsedMention } from '../editor/mentionTypes';
+import { parseMentions, createMentionString } from '../editor/mentionTypes';
+import type { MentionType, ParsedMention } from '../editor/mentionTypes';
 
 export interface ShotAssetSyncState {
   selectedCharacters: string[];

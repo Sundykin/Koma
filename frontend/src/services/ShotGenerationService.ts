@@ -11,7 +11,8 @@ import { getStorageConfig, initStorageConfig } from '../store/storageConfig';
 import { electronService } from './electronService';
 import { getThemeStylePrefix } from '../config/themePresets';
 import { logTTICall } from '../store/aiCallLogger';
-import { parseMentions, type MentionType } from '../editor/mentionTypes';
+import { parseMentions } from '../editor/mentionTypes';
+import type { MentionType } from '../editor/mentionTypes';
 
 const POLL_INTERVAL = 3000;
 const MAX_POLL_TIME = 5 * 60 * 1000;

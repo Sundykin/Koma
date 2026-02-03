@@ -5,7 +5,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Button, Empty, Tooltip, Popconfirm } from 'antd';
 import { PlusOutlined, DeleteOutlined, MessageOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
-import { useChatHistoryStore, type SessionMeta } from '../../store/chatHistoryStore';
+import { useChatHistoryStore } from '../../store/chatHistoryStore';
+import type { SessionMeta } from '../../store/chatHistoryStore';
 import styles from './HistorySidebar.module.css';
 
 interface HistorySidebarProps {

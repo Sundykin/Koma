@@ -22,7 +22,8 @@ import type { Shot, Character, Scene, Prop, AppSettings, ShotVideo, EpisodeAnaly
 import { loadEpisodeShots, saveEpisodeShots, loadCharacters, loadScenes, loadProps, loadEpisodeAnalysis } from '../../store/projectStore';
 import { generateShotImage, batchGenerateShotImages } from '../../services/ShotGenerationService';
 import { shotRenderWorkflow, batchRenderShots } from '../../workflow/shotRenderWorkflow';
-import { startShotAnalysis, type PresetAssets } from '../../services/ShotAnalysisService';
+import { startShotAnalysis } from '../../services/ShotAnalysisService';
+import type { PresetAssets } from '../../services/ShotAnalysisService';
 import { generateShotPrompt, batchGenerateShotPrompts } from '../../services/ShotPromptService';
 import { TaskManager } from '../../services/TaskManager';
 import { ScriptEditor } from '../../editor';

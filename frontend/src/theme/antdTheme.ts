@@ -2,7 +2,8 @@
  * Ant Design 主题配置
  * 基于 tokens.ts 构建，确保与设计系统一致
  */
-import { theme, type ThemeConfig } from 'antd';
+import { theme } from 'antd';
+import type { ThemeConfig } from 'antd';
 import { tokens } from './tokens';
 
 export const antdTheme: ThemeConfig = {

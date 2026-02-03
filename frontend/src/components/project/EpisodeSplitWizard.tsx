@@ -18,7 +18,8 @@ import {
 } from 'antd';
 import { ThunderboltOutlined, EditOutlined, CheckCircleOutlined } from '@ant-design/icons';
 import type { LLMModelConfig, Episode } from '../../types';
-import { EpisodeSplitService, type SplitAnalysis, type SplitResult } from '../../services/EpisodeSplitService';
+import { EpisodeSplitService } from '../../services/EpisodeSplitService';
+import type { SplitAnalysis, SplitResult } from '../../services/EpisodeSplitService';
 import { getActiveLLMConfig } from '../../store/globalStore';
 import { createEpisode } from '../../store/projectStore';
 

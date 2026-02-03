@@ -3,7 +3,8 @@
  * 显示任务状态通知
  */
 import React, { useState } from 'react';
-import { useTaskNotifications, type TaskNotification } from '../../hooks/useTaskNotifications';
+import { useTaskNotifications } from '../../hooks/useTaskNotifications';
+import type { TaskNotification } from '../../hooks/useTaskNotifications';
 
 interface NotificationItemProps {
   notification: TaskNotification;

@@ -10,7 +10,8 @@ import { createLogger } from '../store/logger';
 import { logITVCall, logTTSCall } from '../store/aiCallLogger';
 import { getPromptTemplate, fillTemplate } from '../store/promptTemplates';
 import { getThemeStylePrefixAsync } from '../config/themePresets';
-import { parseMentions, type MentionType } from '../editor/mentionTypes';
+import { parseMentions } from '../editor/mentionTypes';
+import type { MentionType } from '../editor/mentionTypes';
 
 const logger = createLogger('ShotRender');
 

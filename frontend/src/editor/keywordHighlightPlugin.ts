@@ -13,7 +13,8 @@ import {
   keymap,
 } from '@codemirror/view';
 import { RangeSetBuilder, EditorSelection } from '@codemirror/state';
-import { ALL_COMMANDS, type CameraCommand } from './cameraCommandTypes';
+import { ALL_COMMANDS } from './cameraCommandTypes';
+import type { CameraCommand } from './cameraCommandTypes';
 
 // 构建关键字到命令的映射
 interface KeywordInfo {

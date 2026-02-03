@@ -3,7 +3,8 @@
  * 选择项目的视觉风格主题
  */
 import React, { useState, useCallback } from 'react';
-import { THEME_PRESETS, type ThemePreset } from '../../config/themePresets';
+import { THEME_PRESETS } from '../../config/themePresets';
+import type { ThemePreset } from '../../config/themePresets';
 import { Check } from 'lucide-react';
 
 interface ThemeSelectorProps {

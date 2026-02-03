@@ -6,7 +6,8 @@
 import type { Shot, Character, Scene, LLMModelConfig } from '../types';
 import { createLLMProvider } from '../providers';
 import { getActiveLLMConfig } from '../store/globalStore';
-import { getPromptTemplate, fillTemplate, type PromptTemplateType } from '../store/promptTemplates';
+import { getPromptTemplate, fillTemplate } from '../store/promptTemplates';
+import type { PromptTemplateType } from '../store/promptTemplates';
 import { loadCharacters, loadScenes, updateShot } from '../store/projectStore';
 import { TaskManager } from './TaskManager';
 

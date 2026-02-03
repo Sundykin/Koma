@@ -8,8 +8,10 @@ import { ExportOutlined, FolderOutlined, WarningOutlined } from '@ant-design/ico
 import { Track } from '../../types/editor';
 import { SimpleExportRenderer, SimpleExportConfig, SimpleExportProgress } from '../../services/simpleExportRenderer';
 import { saveFileDialog, openDirectoryDialog, isElectron, writeFile, createDirectory, fsCopy, fsExists } from '../../services/electronService';
-import { exporterRegistry, type DraftExportOptions } from '../../services/draftExport';
-import { checkExportCompatibility, type CompatibilityReport } from '../../services/draftExport/exportCapabilityChecker';
+import { exporterRegistry } from '../../services/draftExport';
+import type { DraftExportOptions } from '../../services/draftExport';
+import { checkExportCompatibility } from '../../services/draftExport/exportCapabilityChecker';
+import type { CompatibilityReport } from '../../services/draftExport/exportCapabilityChecker';
 import type { JianyingDraftContent, JianyingDraftMetaInfo } from '../../types/jianying';
 
 interface SimpleExportDialogProps {
