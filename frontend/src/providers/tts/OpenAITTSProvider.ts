@@ -3,6 +3,7 @@
  */
 import type { TTSConfig, TTSOptions, AudioResult, Voice } from '../../types';
 import type { TTSProvider } from './types';
+import { electronService } from '../../services/electronService';
 
 const OPENAI_VOICES: Voice[] = [
   { id: 'alloy', name: 'Alloy', language: 'multi', gender: 'neutral', provider: 'openai-tts' },
@@ -60,14 +61,39 @@ export class OpenAITTSProvider implements TTSProvider {
       throw new Error(`OpenAI TTS failed: ${response.statusText}`);
     }
 
-    // TODO: 需要保存到文件并返回路径
-    // 这里返回 Blob URL 作为临时方案
     const blob = await response.blob();
-    const url = URL.createObjectURL(blob);
 
+    // Save to file in Electron environment
+    if (electronService.isElectron()) {
+      try {
+        const storagePath = await electronService.getStoragePath?.();
+        if (storagePath) {
+          const ttsDir = `${storagePath}/cache/tts`;
+          await electronService.fs.mkdir(ttsDir);
+
+          const filename = `openai_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.mp3`;
+          const filePath = `${ttsDir}/${filename}`;
+
+          const arrayBuffer = await blob.arrayBuffer();
+          const uint8Array = new Uint8Array(arrayBuffer);
+          await electronService.fs.writeFileBuffer(filePath, uint8Array);
+
+          return {
+            path: filePath,
+            duration: 0,
+            sampleRate: 24000,
+          };
+        }
+      } catch (err) {
+        console.warn('[OpenAITTS] Failed to save to file, falling back to Blob URL:', err);
+      }
+    }
+
+    // Fallback to Blob URL for browser environment
+    const url = URL.createObjectURL(blob);
     return {
       path: url,
-      duration: 0, // 需要解析音频获取时长
+      duration: 0,
       sampleRate: 24000,
     };
   }
