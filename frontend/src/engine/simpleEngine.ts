@@ -3,9 +3,20 @@
  * 迁移自 electron-egg，与原有系统隔离
  */
 
+import { message } from 'antd';
 import { Track, Clip, MediaType } from '../types/editor';
 import { getAnimatedProperties } from './simpleKeyframe';
-import { ignoreError } from '../utils/errorHandler';
+import { handleError } from '../utils/errorHandler';
+
+const MEDIA_PLAY_ERROR_KEY = 'simple-engine-playback-error';
+
+const notifyMediaPlayError = (error: unknown, action: string) => {
+  handleError(error, { module: 'SimpleEngine', action, severity: 'warning' });
+  message.error({
+    content: `${action}失败，请检查浏览器自动播放权限或重试。`,
+    key: MEDIA_PLAY_ERROR_KEY,
+  });
+};
 
 // ========== MediaEngine ==========
 export type EngineEventType = 'play' | 'pause' | 'seek' | 'timeUpdate' | 'ended' | 'rateChange';
@@ -301,7 +312,7 @@ export class SimpleVideoRenderer {
           }
           if (this.engine.isPlaying && video.paused) {
             video.playbackRate = this.engine.playRate;
-            video.play().catch(ignoreError('SimpleEngine:videoPlay'));
+            video.play().catch((error) => notifyMediaPlayError(error, '视频播放'));
           } else if (!this.engine.isPlaying && !video.paused) {
             video.pause();
           }
@@ -610,7 +621,7 @@ export class SimpleAudioController {
       if (this.isClipActive(instance.clip, currentTime)) {
         this.syncMediaTime(instance, currentTime);
         if (this.engine.isPlaying && !instance.isShared) {
-          instance.element.play().catch(ignoreError('SimpleEngine:mediaPlay'));
+          instance.element.play().catch((error) => notifyMediaPlayError(error, '音频播放'));
         }
       } else if (!instance.isShared) {
         instance.element.pause();
@@ -656,7 +667,7 @@ export class SimpleAudioController {
     instance.element.playbackRate = this.engine.playRate;
     // 共享的视频元素由 VideoRenderer 控制播放
     if (!instance.isShared) {
-      instance.element.play().catch(ignoreError('SimpleEngine:instancePlay'));
+      instance.element.play().catch((error) => notifyMediaPlayError(error, '音频播放'));
     }
   }
 

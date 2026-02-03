@@ -2,8 +2,19 @@
  * 音频控制器
  * 管理多轨道音频播放和同步
  */
+import { message } from 'antd';
 import type { Clip, Track, Timeline } from '../types';
-import { ignoreError } from '../utils/errorHandler';
+import { handleError } from '../utils/errorHandler';
+
+const AUDIO_PLAY_ERROR_KEY = 'audio-playback-error';
+
+const notifyAudioPlayError = (error: unknown) => {
+  handleError(error, { module: 'AudioController', action: 'play', severity: 'warning' });
+  message.error({
+    content: '音频播放失败，请检查浏览器是否允许自动播放或设备音频是否可用。',
+    key: AUDIO_PLAY_ERROR_KEY,
+  });
+};
 
 interface AudioTrackState {
   clip: Clip;
@@ -108,7 +119,7 @@ export class AudioController {
 
         // 开始播放
         if (this.isPlaying && !state.isPlaying) {
-          audio.play().catch(ignoreError('AudioController:play'));
+          audio.play().catch(notifyAudioPlayError);
           state.isPlaying = true;
         }
       } else {

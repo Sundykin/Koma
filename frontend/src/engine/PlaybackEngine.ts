@@ -2,8 +2,20 @@
  * ????
  * ?? trackStore ??????????
  */
+import { message } from 'antd';
 import type { TrackLine, TrackItem, VideoTrackItem, AudioTrackItem, ImageTrackItem, TrackKeyframe } from '../types/track';
 import { KeyframeInterpolator } from './KeyframeInterpolator';
+import { handleError } from '../utils/errorHandler';
+
+const PLAYBACK_AUDIO_ERROR_KEY = 'playback-engine-audio-error';
+
+const notifyPlaybackAudioError = (error: unknown) => {
+  handleError(error, { module: 'PlaybackEngine', action: 'audioPlay', severity: 'warning' });
+  message.error({
+    content: '音频播放失败，请检查浏览器自动播放权限或重新播放。',
+    key: PLAYBACK_AUDIO_ERROR_KEY,
+  });
+};
 
 export interface PlaybackConfig {
   fps: number;
@@ -473,7 +485,7 @@ export class PlaybackEngine {
           const internalTime = (this.currentFrame - item.start + item.offsetL) / this.config.fps;
           audio.currentTime = internalTime;
           audio.volume = audioItem.volume ?? 1;
-          audio.play().catch(() => {});
+          audio.play().catch(notifyPlaybackAudioError);
         }
       }
     }
