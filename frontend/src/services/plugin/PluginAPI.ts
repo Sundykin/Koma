@@ -28,7 +28,6 @@ import {
   type ChannelKind,
   type ProviderContext,
 } from '../../providers/registry';
-import { addChannelConfig, deleteChannelsByPlugin } from '../../store/settings/channelConfig';
 
 // 事件监听器
 const eventListeners = new Map<string, Map<string, Set<Function>>>();
@@ -288,6 +287,7 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
 
         // 创建对应的渠道配置（失败时回滚）
         try {
+          const { addChannelConfig } = await import('../../store/settings/channelConfig');
           const newConfig = await addChannelConfig({
             name: def.name,
             description: def.description,
@@ -624,6 +624,7 @@ export async function cleanupPluginResources(pluginId: string): Promise<void> {
   unregisterProvidersByPlugin(pluginId);
 
   // 清理插件的渠道配置
+  const { deleteChannelsByPlugin } = await import('../../store/settings/channelConfig');
   await deleteChannelsByPlugin(pluginId);
 
   // 清理记录

@@ -71,20 +71,63 @@ export {
   deleteCustomThemePreset,
 } from './themePresets';
 
-// 渠道配置（重构版）
-export {
-  getChannelConfigs,
-  getChannelsByCapability,
-  addChannelConfig,
-  updateChannelConfig,
-  deleteChannelConfig,
-  deleteChannelsByPlugin,
-  deleteChannelByProviderType,
-  setDefaultChannelConfig,
-  getDefaultChannelConfig,
-  cleanupDuplicateChannels,
-  cleanupLegacyConfigs,
-} from './channelConfig';
+// 渠道配置（重构版）- 使用动态导入避免与 PluginAPI.ts 冲突
+export type { ChannelConfig, ChannelCapability } from '../../providers/channel/types';
+
+export const getChannelConfigs = async () => {
+  const { getChannelConfigs: fn } = await import('./channelConfig');
+  return fn();
+};
+
+export const getChannelsByCapability = async (capability: import('../../providers/channel/types').ChannelCapability) => {
+  const { getChannelsByCapability: fn } = await import('./channelConfig');
+  return fn(capability);
+};
+
+export const addChannelConfig = async (config: Omit<import('../../providers/channel/types').ChannelConfig, 'id' | 'createdAt' | 'updatedAt'>) => {
+  const { addChannelConfig: fn } = await import('./channelConfig');
+  return fn(config);
+};
+
+export const updateChannelConfig = async (id: string, updates: Partial<Omit<import('../../providers/channel/types').ChannelConfig, 'id' | 'createdAt'>>) => {
+  const { updateChannelConfig: fn } = await import('./channelConfig');
+  return fn(id, updates);
+};
+
+export const deleteChannelConfig = async (id: string) => {
+  const { deleteChannelConfig: fn } = await import('./channelConfig');
+  return fn(id);
+};
+
+export const deleteChannelsByPlugin = async (pluginId: string) => {
+  const { deleteChannelsByPlugin: fn } = await import('./channelConfig');
+  return fn(pluginId);
+};
+
+export const deleteChannelByProviderType = async (providerType: string, pluginId: string) => {
+  const { deleteChannelByProviderType: fn } = await import('./channelConfig');
+  return fn(providerType, pluginId);
+};
+
+export const setDefaultChannelConfig = async (id: string, capability: import('../../providers/channel/types').ChannelCapability) => {
+  const { setDefaultChannelConfig: fn } = await import('./channelConfig');
+  return fn(id, capability);
+};
+
+export const getDefaultChannelConfig = async (capability: import('../../providers/channel/types').ChannelCapability) => {
+  const { getDefaultChannelConfig: fn } = await import('./channelConfig');
+  return fn(capability);
+};
+
+export const cleanupDuplicateChannels = async () => {
+  const { cleanupDuplicateChannels: fn } = await import('./channelConfig');
+  return fn();
+};
+
+export const cleanupLegacyConfigs = async () => {
+  const { cleanupLegacyConfigs: fn } = await import('./channelConfig');
+  return fn();
+};
 
 // 图床配置
 export {
