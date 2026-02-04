@@ -44,7 +44,7 @@ export const InlineProjectToolbar: React.FC<InlineProjectToolbarProps> = ({
             随机生成
           </Button>
         </Tooltip>
-        <Tooltip title="AI 润色优化">
+        <Tooltip title={hasScript ? "AI 润色优化" : "请先输入剧本内容"}>
           <Button
             type="text"
             size="small"
@@ -56,7 +56,7 @@ export const InlineProjectToolbar: React.FC<InlineProjectToolbarProps> = ({
             AI 润色
           </Button>
         </Tooltip>
-        <Tooltip title="解析剧本提取角色场景">
+        <Tooltip title={!hasScript ? "请先输入剧本内容" : isAnalyzing ? "正在解析中..." : "解析剧本提取角色场景"}>
           <Button
             type="text"
             size="small"
@@ -88,16 +88,18 @@ export const InlineProjectToolbar: React.FC<InlineProjectToolbarProps> = ({
         </div>
 
         {/* 开始制作按钮 */}
-        <Button
-          type="primary"
-          size="small"
-          icon={<Play className="w-3.5 h-3.5" />}
-          onClick={onStartProduction}
-          disabled={!episode}
-          className="bg-emerald-600 hover:bg-emerald-500 border-none"
-        >
-          开始制作
-        </Button>
+        <Tooltip title={!episode ? "请先选择剧集" : "进入分镜制作"}>
+          <Button
+            type="primary"
+            size="small"
+            icon={<Play className="w-3.5 h-3.5" />}
+            onClick={onStartProduction}
+            disabled={!episode}
+            className="bg-emerald-600 hover:bg-emerald-500 border-none"
+          >
+            开始制作
+          </Button>
+        </Tooltip>
       </div>
     </div>
   );

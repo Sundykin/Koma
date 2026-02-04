@@ -209,7 +209,7 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
 
         {/* Center: Model Configs */}
         <div className="flex items-center gap-2">
-          <Tooltip title="LLM 大语言模型">
+          <Tooltip title={llmConfigs.length === 0 ? "请先在设置中配置 LLM 模型" : "LLM 大语言模型"}>
             <div className="flex items-center gap-1">
               <Brain className="w-3.5 h-3.5 text-blue-400" />
               <Select
@@ -221,10 +221,11 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
                 className="!w-28"
                 popupMatchSelectWidth={false}
                 options={llmConfigs.map(c => ({ value: c.id, label: c.name }))}
+                notFoundContent="请先在设置中配置"
               />
             </div>
           </Tooltip>
-          <Tooltip title="文生图 TTI">
+          <Tooltip title={ttiConfigs.length === 0 ? "请先在设置中配置 TTI 服务" : "文生图 TTI"}>
             <div className="flex items-center gap-1">
               <Image className="w-3.5 h-3.5 text-purple-400" />
               <Select
@@ -236,10 +237,11 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
                 className="!w-28"
                 popupMatchSelectWidth={false}
                 options={ttiConfigs.map(c => ({ value: c.id, label: c.name }))}
+                notFoundContent="请先在设置中配置"
               />
             </div>
           </Tooltip>
-          <Tooltip title="图生视频 ITV">
+          <Tooltip title={itvConfigs.length === 0 ? "请先在设置中配置 ITV 服务" : "图生视频 ITV"}>
             <div className="flex items-center gap-1">
               <Video className="w-3.5 h-3.5 text-orange-400" />
               <Select
@@ -251,10 +253,11 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
                 className="!w-28"
                 popupMatchSelectWidth={false}
                 options={itvConfigs.map(c => ({ value: c.id, label: c.name }))}
+                notFoundContent="请先在设置中配置"
               />
             </div>
           </Tooltip>
-          <Tooltip title="语音合成 TTS">
+          <Tooltip title={ttsConfigs.length === 0 ? "请先在设置中配置 TTS 服务" : "语音合成 TTS"}>
             <div className="flex items-center gap-1">
               <Volume2 className="w-3.5 h-3.5 text-emerald-400" />
               <Select
@@ -266,6 +269,7 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
                 className="!w-28"
                 popupMatchSelectWidth={false}
                 options={ttsConfigs.map(c => ({ value: c.id, label: c.name }))}
+                notFoundContent="请先在设置中配置"
               />
             </div>
           </Tooltip>
@@ -376,7 +380,11 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
         onCancel={() => setScriptImportVisible(false)}
         onOk={confirmScriptImport}
         okText="AI 自动分集"
-        okButtonProps={{ disabled: !tempScript.trim(), icon: <ThunderboltOutlined /> }}
+        okButtonProps={{
+          disabled: !tempScript.trim(),
+          icon: <ThunderboltOutlined />,
+          title: !tempScript.trim() ? '请先输入剧本内容' : undefined,
+        }}
         cancelText="取消"
         width={900}
         centered
