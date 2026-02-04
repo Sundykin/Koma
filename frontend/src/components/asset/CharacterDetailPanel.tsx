@@ -428,7 +428,10 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
               </div>
             )}
 
-            <Tooltip title={activeTTI ? `${t('asset.useService')}: ${activeTTI.name}` : t('asset.noGenerateService')}>
+            <Tooltip title={
+              generating !== null ? t('asset.generatingPleaseWait') :
+              activeTTI ? `${t('asset.useService')}: ${activeTTI.name}` : t('asset.noGenerateService')
+            }>
               <Button
                 type={!editedCharacter.costumePhotoPath ? 'primary' : 'default'}
                 block
@@ -441,7 +444,11 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
               </Button>
             </Tooltip>
 
-            <Tooltip title={activeITV ? `${t('asset.useService')}: ${activeITV.name}` : t('asset.noVideoService')}>
+            <Tooltip title={
+              generating !== null ? t('asset.generatingPleaseWait') :
+              !editedCharacter.costumePhotoPath ? t('asset.needCostumePhotoFirst') :
+              activeITV ? `${t('asset.useService')}: ${activeITV.name}` : t('asset.noVideoService')
+            }>
               <Button
                 type={editedCharacter.costumePhotoPath && !editedCharacter.previewVideoPath ? 'primary' : 'default'}
                 block
@@ -475,17 +482,23 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
                 {t('asset.boundTo')}: {editedCharacter.sora2CharacterId.substring(0, 8)}...
               </Tag>
             ) : (
-              <Button
-                size="small"
-                type="primary"
-                ghost
-                icon={<LinkOutlined />}
-                loading={generating === 'extract'}
-                onClick={handleExtractCharacter}
-                disabled={!editedCharacter.previewVideoPath || generating !== null}
-              >
-                {t('asset.extractAndBindCharacter')}
-              </Button>
+              <Tooltip title={
+                generating !== null ? t('asset.generatingPleaseWait') :
+                !editedCharacter.previewVideoPath ? t('asset.needPreviewVideoFirst') :
+                t('asset.extractAndBindCharacter')
+              }>
+                <Button
+                  size="small"
+                  type="primary"
+                  ghost
+                  icon={<LinkOutlined />}
+                  loading={generating === 'extract'}
+                  onClick={handleExtractCharacter}
+                  disabled={!editedCharacter.previewVideoPath || generating !== null}
+                >
+                  {t('asset.extractAndBindCharacter')}
+                </Button>
+              </Tooltip>
             )}
 
             <div className="toolbarDivider" />
@@ -498,7 +511,11 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
                 aria-label={viewMode === 'costume' ? t('asset.uploadCostumePhoto') : t('asset.uploadVideo')}
               />
             </Tooltip>
-            <Tooltip title={t('asset.enlargePreview')}>
+            <Tooltip title={
+              viewMode === 'video' ? t('asset.switchToCostumeMode') :
+              !editedCharacter.costumePhotoPath ? t('asset.noCostumePhoto') :
+              t('asset.enlargePreview')
+            }>
               <Button
                 type="text"
                 icon={<ExpandOutlined />}

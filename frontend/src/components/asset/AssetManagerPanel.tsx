@@ -254,12 +254,14 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
             <Space size="small">
               <FilterOutlined />
               <span>{t('asset.currentEpisodeOnly')}</span>
-              <Switch
-                size="small"
-                checked={showCurrentEpisodeOnly}
-                onChange={setShowCurrentEpisodeOnly}
-                disabled={!episodeAnalysis}
-              />
+              <Tooltip title={!episodeAnalysis ? t('asset.needAnalysisFirst') : ''}>
+                <Switch
+                  size="small"
+                  checked={showCurrentEpisodeOnly}
+                  onChange={setShowCurrentEpisodeOnly}
+                  disabled={!episodeAnalysis}
+                />
+              </Tooltip>
             </Space>
           </div>
         )}
