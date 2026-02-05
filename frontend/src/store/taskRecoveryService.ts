@@ -5,7 +5,6 @@
 import type { AsyncTask, ProgressInfo } from '../types';
 import {
   getPendingTasks,
-  updateTask,
   markTaskCompleted,
   markTaskFailed,
   updateTaskProgress,

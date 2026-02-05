@@ -4,7 +4,6 @@
  */
 import type {
   ITVConfig,
-  ITVOptions,
   VideoResult,
   ProgressInfo,
 } from '../../types';

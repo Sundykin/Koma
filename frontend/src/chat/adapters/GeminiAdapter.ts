@@ -104,7 +104,6 @@ export class GeminiAdapter extends BaseAdapter {
       });
 
       const chunkId = generateId();
-      let fullText = '';
       let lastChunk: any = null;
 
       for await (const chunk of response) {
@@ -113,7 +112,6 @@ export class GeminiAdapter extends BaseAdapter {
         }
 
         const text = chunk.text || '';
-        fullText += text;
         lastChunk = chunk;
 
         yield {

@@ -3,15 +3,14 @@
  * 可视化编辑关键帧动画
  */
 import React, { useCallback, useMemo, useState } from 'react';
-import { Button, Slider, Select, InputNumber, Tooltip, Space, Popover } from 'antd';
+import { Button, Select, InputNumber, Tooltip } from 'antd';
 import {
-  PlusOutlined,
   DeleteOutlined,
   KeyOutlined,
 } from '@ant-design/icons';
 import { useTrackStore } from '../../store/trackStore';
 import { EasingType } from '../../types/track';
-import type { TrackKeyframe, TrackItem } from '../../types/track';
+import type { TrackKeyframe } from '../../types/track';
 import { nanoid } from 'nanoid';
 
 interface KeyframeEditorProps {
@@ -46,7 +45,6 @@ export function KeyframeEditor({ trackId, itemId }: KeyframeEditorProps) {
     addKeyframe,
     removeKeyframe,
     updateKeyframe,
-    updateItem,
   } = useTrackStore();
 
   const item = getItem(trackId, itemId);

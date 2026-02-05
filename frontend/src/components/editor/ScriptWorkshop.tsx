@@ -2,7 +2,7 @@
  * 剧本工作室组件
  * 剧本编辑、导入、版本历史管理
  */
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Card,
   Input,
@@ -10,9 +10,7 @@ import {
   Space,
   App,
   Modal,
-  Upload,
   Typography,
-  Tooltip,
   Dropdown,
   Divider,
 } from 'antd';
@@ -37,7 +35,7 @@ import type { MentionItem } from '../../editor';
 import { getScriptVersionsKey } from '../../constants/storageKeys';
 
 const { TextArea } = Input;
-const { Text, Title } = Typography;
+const { Text } = Typography;
 
 export interface ScriptVersion {
   id: string;
@@ -64,13 +62,13 @@ interface ScriptWorkshopProps {
 
 export const ScriptWorkshop: React.FC<ScriptWorkshopProps> = ({
   projectId,
-  episodeId,
-  episodeName,
+  episodeId: _episodeId,
+  episodeName: _episodeName,
   initialScript = '',
   mentionItems = [],
   onScriptChange,
   onStartAnalysis,
-  onGenerateShots,
+  onGenerateShots: _onGenerateShots,
   onExtractEntities,
   onPolishScript,
   onGenerateScript,

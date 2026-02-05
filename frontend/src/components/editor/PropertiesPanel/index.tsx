@@ -91,7 +91,7 @@ export const PropertiesPanel = memo(function PropertiesPanel({ className }: Prop
   }, [selectedTrackId, selectedItemId, selectedItem, updateItemTransform]);
 
   // 处理添加/删除关键帧
-  const handleToggleKeyframe = useCallback((property: keyof TransformProperties) => {
+  const handleToggleKeyframe = useCallback((_property: keyof TransformProperties) => {
     if (!selectedTrackId || !selectedItemId || !selectedItem) return;
 
     const item = selectedItem as any;

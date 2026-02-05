@@ -55,7 +55,7 @@ export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({
         ...mediaConfigs,
       });
       onClose();
-    } catch (err) {
+    } catch {
       // 验证失败
     }
   };

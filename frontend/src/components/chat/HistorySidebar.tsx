@@ -16,7 +16,7 @@ interface HistorySidebarProps {
 }
 
 // 格式化时间
-function useFormatTime() {
+function _useFormatTime() {
   const { t } = useTranslation();
 
   return (timestamp: number): string => {

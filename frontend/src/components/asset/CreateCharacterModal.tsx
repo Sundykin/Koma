@@ -2,7 +2,7 @@
  * 新建角色弹窗
  */
 import React, { useState, useCallback } from 'react';
-import { Modal, Form, Input, Select, Button, App } from 'antd';
+import { Modal, Form, Input, Select, App } from 'antd';
 import { UserAddOutlined } from '@ant-design/icons';
 import { v4 as uuidv4 } from 'uuid';
 import type { Character } from '../../types';

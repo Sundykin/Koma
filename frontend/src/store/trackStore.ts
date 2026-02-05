@@ -11,28 +11,22 @@ import {
   VideoTrackItem,
   AudioTrackItem,
   ImageTrackItem,
-  TextTrackItem,
   TrackKeyframe,
   TransformProperties,
   EasingType,
   TimelineConfig,
   TrackAction,
-  TrackActionType,
   CollisionResult,
   SnapPoint,
   createTrackLine,
   createVideoTrackItem,
   createAudioTrackItem,
   createImageTrackItem,
-  createTextTrackItem,
   checkItemsOverlap,
   DEFAULT_FPS,
   DEFAULT_CANVAS_WIDTH,
   DEFAULT_CANVAS_HEIGHT,
-  DEFAULT_TRACK_HEIGHT,
-  DEFAULT_TRANSFORM,
   msToFrame,
-  frameToMs,
 } from '../types/track';
 import {
   addKeyframe as addKf,
@@ -352,7 +346,7 @@ export const useTrackStore = create<TrackState & TrackActions>((set, get) => ({
     const actualStart = collision.hasCollision
       ? get().findAvailablePosition(trackId, { start: startFrame, end: endFrame } as TrackItem, startFrame)
       : startFrame;
-    const actualEnd = actualStart + frameCount;
+    const _actualEnd = actualStart + frameCount;
 
     let item: TrackItem;
 

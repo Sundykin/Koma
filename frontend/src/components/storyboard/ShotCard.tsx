@@ -117,7 +117,7 @@ export const ShotCard: React.FC<ShotCardProps> = ({
   onToggleConfirm,
   onDelete,
   onMergeUp,
-  onMergeDown,
+  onMergeDown: _onMergeDown,
   onMoveUp,
   onMoveDown,
   onInsertAbove,

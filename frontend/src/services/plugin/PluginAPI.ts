@@ -11,7 +11,6 @@ import type {
   PluginProject,
   PluginPromptTemplate,
   PromptOverride,
-  PluginChannelConfig,
   ChannelTestResult,
   DialogOptions,
   ModalOptions,
@@ -31,7 +30,6 @@ import {
   createProviderInstance,
   type ProviderDefinition,
   type ChannelKind,
-  type ProviderContext,
 } from '../../providers/registry';
 import {
   getPromptTemplate,
@@ -44,7 +42,6 @@ import {
   getChannelConfigs,
   updateChannelConfig,
   addChannelConfig,
-  deleteChannelConfig,
   deleteChannelsByPlugin,
   deleteChannelByProviderType,
 } from '../../store/settings/channelConfig';
@@ -156,7 +153,7 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
 
     // ========== Projects ==========
     projects: {
-      async list(filter?: ProjectFilter): Promise<PluginProject[]> {
+      async list(_filter?: ProjectFilter): Promise<PluginProject[]> {
         const result = validateOperation(plugin, 'projects.list', 'projects:read');
         if (!result.allowed) {
           throw new Error(result.reason);
@@ -305,7 +302,7 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
 
         // 创建对应的渠道配置（失败时回滚）
         try {
-          const newConfig = await addChannelConfig({
+          const _newConfig = await addChannelConfig({
             name: def.name,
             description: def.description,
             providerType: def.type,

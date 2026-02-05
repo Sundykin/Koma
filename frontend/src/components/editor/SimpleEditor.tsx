@@ -13,7 +13,6 @@ import { SimpleExportDialog } from './SimpleExportDialog';
 import { useAssets } from './useAssets';
 import { addKeyframe, updateKeyframe, removeKeyframe, getKeyframeAtTime, getAnimatedProperties } from '../../engine/simpleKeyframe';
 import { findNextAvailablePosition } from '../../utils/trackCollision';
-import { electronService } from '../../services/electronService';
 import { saveEpisodeTimeline, loadEpisodeTimeline } from '../../store/projectStore';
 import { uploadFiles } from '../../services/uploadService';
 import type { Shot } from '../../types';

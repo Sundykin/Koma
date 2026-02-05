@@ -30,7 +30,7 @@ export const StepNavigator: React.FC<StepNavigatorProps> = ({
   ];
 
   const stepOrder: EditorStep[] = ['assets', 'storyboard', 'video'];
-  const currentIndex = stepOrder.indexOf(currentStep);
+  const _currentIndex = stepOrder.indexOf(currentStep);
 
   // 判断步骤是否可点击
   const isStepClickable = (stepId: EditorStep, index: number): boolean => {

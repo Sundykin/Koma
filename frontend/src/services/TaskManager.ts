@@ -393,7 +393,7 @@ class TaskManagerClass {
    * 子类或外部可以注册轮询处理器
    */
   private async pollRunningTasks(): Promise<void> {
-    const runningTasks = Array.from(this.tasks.values())
+    const _runningTasks = Array.from(this.tasks.values())
       .filter(t => t.status === 'running');
 
     // 这里由具体的服务来处理轮询逻辑

@@ -5,7 +5,7 @@
 import type { PluginScope, InstalledPlugin } from '../../types/plugin';
 
 // 沙箱化的全局对象白名单
-const ALLOWED_GLOBALS = [
+const _ALLOWED_GLOBALS = [
   'console',
   'setTimeout',
   'clearTimeout',
@@ -35,7 +35,7 @@ const ALLOWED_GLOBALS = [
 ];
 
 // 被禁止的 API
-const BLOCKED_APIS = [
+const _BLOCKED_APIS = [
   'eval',
   'Function',
   'localStorage',

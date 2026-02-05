@@ -29,8 +29,8 @@ import {
   LoadingOutlined,
   DownOutlined,
 } from '@ant-design/icons';
-import type { ShotVersion, ShotMeta } from '../../types';
-import { loadShotMeta, switchShotVersion, deleteShotVersion, getShotVersionHistory } from '../../store/projectStore';
+import type { ShotVersion } from '../../types';
+import { loadShotMeta, switchShotVersion, deleteShotVersion } from '../../store/projectStore';
 import { electronService } from '../../services/electronService';
 import './VideoVersionList.css';
 
@@ -91,7 +91,7 @@ export const VideoVersionList: React.FC<VideoVersionListProps> = ({
   }, [currentVersion]);
 
   // 当前版本数据
-  const currentVersionData = useMemo(() => {
+  const _currentVersionData = useMemo(() => {
     return versions.find(v => v.version === localCurrentVersion);
   }, [versions, localCurrentVersion]);
 

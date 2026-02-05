@@ -3,13 +3,13 @@
  * 迁移自 electron-egg，高性能拖拽
  */
 import React, { useRef, useState, useEffect, useCallback, useMemo } from 'react';
-import { Track, Clip, Asset, MediaType, Keyframe, EasingType, InsertPosition } from '../../types/editor';
+import { Track, Clip, Asset, MediaType, Keyframe, EasingType } from '../../types/editor';
 import { toKomaLocalUrl } from '../../utils/urlUtils';
 import { useVideoFramesBatch } from './useVideoFrames';
 import { hasCollision } from '../../utils/trackCollision';
 import {
   Play, Pause, Film, Music, Type, Trash2, Copy, ZoomIn, ZoomOut, Magnet,
-  Volume2, VolumeX, Eye, EyeOff, Pencil, Check, X
+  Volume2, VolumeX, Eye, EyeOff
 } from 'lucide-react';
 import { createLogger } from '../../store/logger';
 
@@ -77,8 +77,7 @@ const ZOOM_PRESETS = [0.25, 0.5, 1, 2, 3];
 
 // 吸附配置
 const SNAP_THRESHOLD = 8; // 像素距离阈值
-const SNAP_TARGETS = ['playhead', 'clipStart', 'clipEnd'] as const;
-type SnapTarget = typeof SNAP_TARGETS[number];
+type SnapTarget = 'playhead' | 'clipStart' | 'clipEnd';
 
 // 计算动态刻度间隔
 const getMarkerInterval = (pixelsPerSecond: number): number => {
@@ -319,7 +318,7 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
   const playheadX = playheadPositionRef.current.viewportX + currentTime * pixelsPerSecond - scrollLeft;
 
   // 吸附检测函数
-  const findSnapPoint = useCallback((time: number, excludeClipId?: string): { time: number; type: SnapTarget } | null => {
+  const findSnapPoint = useCallback((time: number, _excludeClipId?: string): { time: number; type: SnapTarget } | null => {
     if (!snapEnabled) return null;
 
     for (const point of snapPoints) {

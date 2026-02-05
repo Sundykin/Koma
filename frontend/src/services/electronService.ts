@@ -352,7 +352,7 @@ export const fsWriteFileBuffer = async (
 // ========== Shell ==========
 
 // 别名导出，便于在组件中使用
-export const selectDirectory = async (options?: { title?: string }): Promise<OpenDialogResult> => {
+export const selectDirectory = async (_options?: { title?: string }): Promise<OpenDialogResult> => {
   return openDirectoryDialog();
 };
 

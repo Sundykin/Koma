@@ -52,8 +52,8 @@ const NavItem: React.FC<NavItemProps> = ({ active, icon, label, onClick }) => (
 
 export const Sidebar: React.FC<SidebarProps> = ({
   view,
-  activeProject,
-  activeEpisode,
+  activeProject: _activeProject,
+  activeEpisode: _activeEpisode,
   onViewChange,
   onEnterVideoTest,
 }) => {
@@ -90,7 +90,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { key: 'settings', icon: <Settings size={22} />, label: t('sidebar.settings') },
   ];
 
-  const handleNavClick = (key: string, isAction?: boolean) => {
+  const handleNavClick = (key: string, _isAction?: boolean) => {
     if (key === 'video-test') {
       onEnterVideoTest();
     } else {

@@ -10,9 +10,6 @@ import {
   Select,
   Button,
   Space,
-  Tabs,
-  Image,
-  Tooltip,
   Popconfirm,
   Progress,
   Spin,
@@ -32,24 +29,21 @@ import {
   PlayCircleOutlined,
   CheckCircleOutlined,
   LoadingOutlined,
-  EyeOutlined,
-  ReloadOutlined,
   LinkOutlined,
 } from '@ant-design/icons';
-import type { Character, AssetTimestampRange } from '../../types';
+import type { Character } from '../../types';
 import {
   generateCostumePhoto,
   generateCharacterPreviewVideo,
   extractAndBindCharacter,
   getCharacterPrompt,
 } from '../../workflow/characterAssetWorkflow';
-import { getThemeStylePrefix } from '../../config/themePresets';
 import { electronService, openFileDialog, fsCopy, fsMkdir, fsExists } from '../../services/electronService';
 import { getStorageConfig, initStorageConfig } from '../../store/storageConfig';
 import { saveCharacters, loadCharacters } from '../../store/projectStore';
 
 const { TextArea } = Input;
-const { Text, Paragraph } = Typography;
+const { Text } = Typography;
 
 interface CharacterDetailModalProps {
   open: boolean;
@@ -121,7 +115,7 @@ export const CharacterDetailModal: React.FC<CharacterDetailModalProps> = ({
   }, [editedCharacter, theme, stylePrompt]);
 
   // 当前使用的提示词
-  const currentPrompt = customPrompt || autoPrompt;
+  const _currentPrompt = customPrompt || autoPrompt;
 
   // 获取资产路径
   const getAssetPath = useCallback(async (subPath: string) => {

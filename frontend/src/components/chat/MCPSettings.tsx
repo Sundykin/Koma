@@ -9,7 +9,6 @@ import {
   Select,
   Button,
   Table,
-  Switch,
   Space,
   message,
   Popconfirm,
@@ -166,7 +165,7 @@ export const MCPSettings: React.FC<MCPSettingsProps> = ({
       const result = await onTest(config);
       setTestResults(prev => ({ ...prev, [config.name]: result }));
       message.success(result ? '连接成功' : '连接失败');
-    } catch (e) {
+    } catch {
       setTestResults(prev => ({ ...prev, [config.name]: false }));
       message.error('连接测试失败');
     } finally {

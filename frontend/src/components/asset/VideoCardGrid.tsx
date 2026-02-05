@@ -52,7 +52,7 @@ export const VideoCardGrid: React.FC<VideoCardGridProps> = ({
     onDelete(index);
   }, [onDelete]);
 
-  const formatTime = (timestamp: number) => {
+  const _formatTime = (timestamp: number) => {
     const date = new Date(timestamp);
     return `${date.getMonth() + 1}/${date.getDate()}`;
   };

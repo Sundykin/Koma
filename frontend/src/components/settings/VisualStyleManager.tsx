@@ -44,7 +44,7 @@ interface VisualStyleManagerProps {
 }
 
 export const VisualStyleManager: React.FC<VisualStyleManagerProps> = ({ onStyleChange }) => {
-  const { message, modal } = App.useApp();
+  const { message } = App.useApp();
   const [customPresets, setCustomPresets] = useState<ThemePreset[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalVisible, setModalVisible] = useState(false);

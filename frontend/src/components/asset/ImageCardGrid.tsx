@@ -64,7 +64,7 @@ export const ImageCardGrid: React.FC<ImageCardGridProps> = ({
       if (!result.canceled && result.filePaths.length > 0) {
         onAdd(result.filePaths[0]);
       }
-    } catch (err) {
+    } catch {
       message.error('选择文件失败');
     }
   }, [onAdd]);

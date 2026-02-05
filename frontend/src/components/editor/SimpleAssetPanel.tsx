@@ -3,11 +3,10 @@
  * 仿照剪映/CapCut风格，支持分类浏览、拖拽到时间线、素材上传
  */
 import React, { useState, useMemo, useRef, useCallback } from 'react';
-import { Film, Image, Music, Type, Upload, FolderOpen, Search, Plus } from 'lucide-react';
+import { Film, Image, Music, Upload, FolderOpen, Search, Plus } from 'lucide-react';
 import { MediaType } from '../../types/editor';
 import type { AssetItem, AssetSource, Asset } from '../../types/editor';
 import { toKomaLocalUrl } from '../../utils/urlUtils';
-import { isElectron } from '../../services/electronService';
 import { App } from 'antd';
 
 interface AssetPanelProps {
@@ -153,7 +152,7 @@ export const SimpleAssetPanel: React.FC<AssetPanelProps> = ({
   onDragStart,
   onDragEnd,
   onUpload,
-  onAddAsset,
+  onAddAsset: _onAddAsset,
 }) => {
   const { message } = App.useApp();
   const [activeTab, setActiveTab] = useState<FilterTab>('all');

@@ -3,7 +3,7 @@
  * 用于计算关键帧动画的当前值
  */
 import type { TrackKeyframe, TransformProperties } from '../types/track';
-import { EasingType, DEFAULT_TRANSFORM } from '../types/track';
+import { DEFAULT_TRANSFORM } from '../types/track';
 import { easingFunctions, getAnimatedProperties } from './keyframe';
 
 // 关键帧属性类型（包含音频专用属性）

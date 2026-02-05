@@ -2,10 +2,9 @@
  * 插件卡片组件
  */
 import React from 'react';
-import { Card, Switch, Button, Tag, Space, Typography, Dropdown } from 'antd';
+import { Card, Switch, Button, Tag, Typography, Dropdown } from 'antd';
 import type { MenuProps } from 'antd';
 import {
-  SettingOutlined,
   DeleteOutlined,
   FolderOpenOutlined,
   MoreOutlined,

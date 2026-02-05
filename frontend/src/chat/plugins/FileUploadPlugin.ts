@@ -1,7 +1,7 @@
 /**
  * 文件上传插件
  */
-import type { ChatPlugin, PluginContext } from './types';
+import type { ChatPlugin } from './types';
 import type { ContentPart, ImageContentPart, FileContentPart } from '../types';
 
 export interface FileUploadOptions {

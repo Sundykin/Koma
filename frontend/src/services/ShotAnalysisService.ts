@@ -3,7 +3,7 @@
  * 使用 LLM 基于剧本和已确认的角色/场景/道具生成分镜列表
  * 独立于剧本解析，作为单独的步骤执行
  */
-import type { Character, Scene, Prop, Shot, LLMModelConfig } from '../types';
+import type { Shot, LLMModelConfig } from '../types';
 import { createLLMProvider } from '../providers';
 import { getActiveLLMConfig } from '../store/globalStore';
 import { getPromptTemplate, fillTemplate } from '../store/promptTemplates';
@@ -13,7 +13,6 @@ import {
   loadScenes,
   loadProps,
   saveEpisodeShots,
-  loadEpisode,
 } from '../store/projectStore';
 import { createLogger } from '../store/logger';
 import { extractErrorMessage } from '../utils/errorHandler';
@@ -27,7 +26,7 @@ export interface PresetAssets {
 }
 
 // 分镜 JSON Schema（不含 description，后续手动生成提示词）
-const SHOTS_SCHEMA = {
+const _SHOTS_SCHEMA = {
   type: 'object',
   properties: {
     shots: {

@@ -4,14 +4,11 @@
  */
 import React from 'react';
 import { Image, Typography, Table, Alert } from 'antd';
-import {
-  FileImageOutlined,
-  FileTextOutlined,
-  TableOutlined,
-} from '@ant-design/icons';
+
+
 import styles from './ToolResultRenderer.module.css';
 
-const { Text, Paragraph } = Typography;
+const { Text } = Typography;
 
 interface ToolResultRendererProps {
   result: unknown;

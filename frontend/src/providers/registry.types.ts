@@ -2,7 +2,6 @@
  * Provider 注册表类型定义
  * 用于静态导入，避免动态/静态导入冲突
  */
-import type { ProgressInfo } from '../types';
 import type { PollingConfig } from './polling';
 
 // 重新导出 PollingConfig 和 DEFAULT_POLLING_CONFIG

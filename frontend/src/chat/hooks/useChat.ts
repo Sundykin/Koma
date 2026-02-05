@@ -4,7 +4,7 @@
  */
 import { useState, useCallback, useRef, useEffect } from 'react';
 import type { ChatAdapter } from '../adapters/types';
-import type { ChatMessage, ChatChunk, ChatOptions, ContentPart } from '../types';
+import type { ChatMessage, ChatOptions, ContentPart } from '../types';
 import type { ChatPlugin } from '../plugins/types';
 import { ChatSession } from '../ChatSession';
 import { ChatError } from '../types';

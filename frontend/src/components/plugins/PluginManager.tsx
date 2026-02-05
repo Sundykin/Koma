@@ -5,7 +5,7 @@ import React, { useState } from 'react';
 import { Tabs, Empty, Input, Select, Modal, message } from 'antd';
 import { SearchOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
-import type { InstalledPlugin, PluginCategory } from '../../types/plugin';
+import type { PluginCategory } from '../../types/plugin';
 import { usePluginStore } from '../../store/pluginStore';
 import { PluginCard } from './PluginCard';
 import { PluginImporter } from './PluginImporter';

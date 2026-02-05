@@ -2,7 +2,7 @@
  * Provider 插件配置弹窗
  * 用于在渠道管理页面加载和显示 provider 插件的配置 UI
  */
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { Modal, Spin, Result, Button } from 'antd';
 import { ReloadOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
@@ -80,7 +80,7 @@ export const ProviderPluginModal: React.FC<ProviderPluginModalProps> = ({
   visible,
   pluginId,
   onClose,
-  onConfigSaved,
+  onConfigSaved: _onConfigSaved,
 }) => {
   const { t } = useTranslation();
   const plugin = usePluginStore(state => state.getPlugin(pluginId));

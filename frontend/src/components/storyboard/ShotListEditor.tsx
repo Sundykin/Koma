@@ -2,7 +2,7 @@
  * 分镜列表编辑器
  * 内联编辑模式，每行一个分镜
  */
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback } from 'react';
 import { Button, Typography, Progress } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import { StoryboardLayout } from './StoryboardLayout';
@@ -64,7 +64,7 @@ export interface ShotListEditorProps {
 }
 
 export const ShotListEditor: React.FC<ShotListEditorProps> = ({
-  projectId,
+  projectId: _projectId,
   shots,
   characters,
   scenes,
@@ -101,7 +101,7 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
   onToggleConfirm,
   onDelete,
   onBatchDelete,
-  onBatchConfirm,
+  onBatchConfirm: _onBatchConfirm,
   onMergeUp,
   onMergeDown,
   onMoveUp,

@@ -162,11 +162,11 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
     });
   };
 
-  const flattenSettings = (s: AppSettings) => {
+  const flattenSettings = (_s: AppSettings) => {
     return {};
   };
 
-  const unflattenSettings = (values: any): Partial<AppSettings> => {
+  const unflattenSettings = (_values: any): Partial<AppSettings> => {
     return {};
   };
 
@@ -183,7 +183,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
       await saveSettings(newSettings);
       onSave(newSettings);
       message.success(t('settings.settingsSaved'));
-    } catch (err) {
+    } catch {
       message.error(t('settings.saveFailed'));
     } finally {
       setSaving(false);

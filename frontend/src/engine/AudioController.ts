@@ -52,7 +52,7 @@ export class AudioController {
    * 加载单个音频 Clip
    */
   private async loadClip(clip: Clip, muted: boolean): Promise<void> {
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve, _reject) => {
       const audio = new Audio(clip.sourcePath);
       audio.preload = 'auto';
       audio.muted = muted;

@@ -35,7 +35,7 @@ export interface RemixModalProps {
 
 export const VideoRemixModal: React.FC<RemixModalProps> = ({
   open,
-  videoTaskId,
+  videoTaskId: _videoTaskId,
   videoUrl,
   onCancel,
   onSubmit,

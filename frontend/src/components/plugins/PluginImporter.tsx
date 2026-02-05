@@ -6,7 +6,7 @@ import { Upload, Button, message, Modal } from 'antd';
 import type { UploadProps } from 'antd';
 import { InboxOutlined, FolderAddOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
-import type { PluginManifest, PluginValidationResult } from '../../types/plugin';
+import type { PluginManifest } from '../../types/plugin';
 import { validateManifest } from '../../services/plugin/PluginLoader';
 import { initializePlugin } from '../../services/plugin/PluginInitializer';
 import { PluginPermissions } from './PluginPermissions';

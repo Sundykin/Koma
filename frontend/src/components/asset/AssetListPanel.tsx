@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Tabs, Button, Image, Typography, Empty, Tooltip } from 'antd';
+import React from 'react';
+import { Tabs, Button, Typography, Empty, Tooltip } from 'antd';
 import {
   UserOutlined,
   EnvironmentOutlined,

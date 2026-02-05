@@ -16,14 +16,14 @@ import {
   Card,
   App,
 } from 'antd';
-import { ThunderboltOutlined, EditOutlined, CheckCircleOutlined } from '@ant-design/icons';
-import type { LLMModelConfig, Episode } from '../../types';
+import { ThunderboltOutlined, CheckCircleOutlined } from '@ant-design/icons';
+import type { Episode } from '../../types';
 import { EpisodeSplitService } from '../../services/EpisodeSplitService';
 import type { SplitAnalysis, SplitResult } from '../../services/EpisodeSplitService';
 import { getActiveLLMConfig } from '../../store/globalStore';
 import { createEpisode } from '../../store/projectStore';
 
-const { Title, Text, Paragraph } = Typography;
+const { Text, Paragraph } = Typography;
 
 interface EpisodeSplitWizardProps {
   visible: boolean;

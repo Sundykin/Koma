@@ -4,7 +4,6 @@
 import { loadSettings, saveSettings, generateId } from './core';
 import type { TTIModelConfig, ITVModelConfig, TTSModelConfig, ResolvedTTIConfig, ResolvedITVConfig } from '../../types';
 import type { ChannelConfig } from '../../providers/channel/types';
-import { getDefaultChannelConfig, getChannelConfigs } from './channelConfig';
 import { hasChannelCapability } from '../../providers/channel/types';
 
 // ========== 辅助函数：配置解析 ==========

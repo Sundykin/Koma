@@ -4,8 +4,6 @@ import {
   SettingOutlined,
   SaveOutlined,
   ExportOutlined,
-  ThunderboltOutlined,
-  LoadingOutlined,
 } from '@ant-design/icons';
 import { ChevronRight, Home } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
@@ -34,13 +32,13 @@ export const Header: React.FC<HeaderProps> = ({
   activeEpisode,
   editorStep,
   stepProgress,
-  isAnalyzing,
-  scriptText,
+  isAnalyzing: _isAnalyzing,
+  scriptText: _scriptText,
   onViewChange,
   onStepChange,
   onStepChangeWithMark,
   onOpenProjectSettings,
-  onAnalyze,
+  onAnalyze: _onAnalyze,
 }) => {
   const { t } = useTranslation();
 

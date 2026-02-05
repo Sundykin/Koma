@@ -3,7 +3,7 @@
  * 实现提示词编辑器与资产选择器的双向同步
  */
 import { useCallback, useEffect, useRef } from 'react';
-import type { Shot, Character, Scene, Prop } from '../types';
+import type { Character, Scene, Prop } from '../types';
 import { parseMentions, createMentionString } from '../editor/mentionTypes';
 import type { MentionType, ParsedMention } from '../editor/mentionTypes';
 
@@ -95,7 +95,7 @@ function assetTypeToMentionType(type: 'character' | 'scene' | 'prop'): MentionTy
   return map[type];
 }
 
-function mentionTypeToAssetType(type: MentionType): 'character' | 'scene' | 'prop' {
+function _mentionTypeToAssetType(type: MentionType): 'character' | 'scene' | 'prop' {
   const map: Record<MentionType, 'character' | 'scene' | 'prop'> = {
     char: 'character',
     scene: 'scene',

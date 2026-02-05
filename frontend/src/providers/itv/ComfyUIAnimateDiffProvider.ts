@@ -4,7 +4,6 @@
  */
 import type {
   ITVConfig,
-  ITVOptions,
   VideoResult,
   ProgressInfo,
 } from '../../types';
@@ -281,7 +280,7 @@ export class ComfyUIAnimateDiffProvider implements ITVProvider {
     };
   }
 
-  async cancelTask(taskId: string): Promise<void> {
+  async cancelTask(_taskId: string): Promise<void> {
     const baseUrl = this.getBaseUrl();
     await fetch(`${baseUrl}/interrupt`, {
       method: 'POST',

@@ -6,7 +6,7 @@ import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { Input, Tag, App, Modal, Select, Tooltip } from 'antd';
 import { ThunderboltOutlined } from '@ant-design/icons';
 import {
-  Film, Upload, Palette, Package, ChevronLeft, ChevronRight,
+  Film, Upload, Package, ChevronLeft, ChevronRight,
   PanelLeftClose, PanelRightClose, Pencil, Brain, Image, Video, Volume2,
 } from 'lucide-react';
 import type { Project, Episode } from '../../types';
@@ -176,7 +176,7 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
   }, [project.id, onProjectUpdate, message]);
 
   const currentTheme = project.theme ? THEME_PRESETS.find(t => t.id === project.theme) : null;
-  const themeDisplay = currentTheme?.name || project.stylePrompt || '未设置';
+  const _themeDisplay = currentTheme?.name || project.stylePrompt || '未设置';
 
   return (
     <div className="h-full flex flex-col bg-zinc-950 overflow-hidden">

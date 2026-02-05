@@ -11,10 +11,9 @@ import {
   Tag,
   Space,
   Typography,
-  Progress,
   Divider,
 } from 'antd';
-import { CheckCircleOutlined, PlusOutlined, LinkOutlined } from '@ant-design/icons';
+import { PlusOutlined, LinkOutlined } from '@ant-design/icons';
 import type { Character, Scene, Prop } from '../../types';
 import type { MatchResult, AssetCandidate } from '../../services/AssetMatcher';
 
@@ -87,7 +86,7 @@ export const AssetMatchConfirm: React.FC<AssetMatchConfirmProps> = ({
   }, [decisions, onConfirm]);
 
   // 获取可能匹配的已有资产
-  const getPotentialMatches = (candidate: AssetCandidate): { id: string; name: string; type: string }[] => {
+  const getPotentialMatches = (_candidate: AssetCandidate): { id: string; name: string; type: string }[] => {
     const results: { id: string; name: string; type: string }[] = [];
 
     existingAssets.characters.forEach(c => {

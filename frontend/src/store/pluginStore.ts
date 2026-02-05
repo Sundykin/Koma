@@ -9,8 +9,6 @@ import type {
   PluginManifest,
   PluginRuntimeState,
   PluginLoadStatus,
-  PluginImportResult,
-  PluginValidationResult,
 } from '../types/plugin';
 
 interface PluginState {
@@ -121,7 +119,7 @@ export const usePluginStore = create<PluginState>()(
       // 清除运行时状态
       clearRuntimeState: (id) => {
         set(state => {
-          const { [id]: removed, ...rest } = state.runtimeStates;
+          const { [id]: _removed, ...rest } = state.runtimeStates;
           return { runtimeStates: rest };
         });
       },

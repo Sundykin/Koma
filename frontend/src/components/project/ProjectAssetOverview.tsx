@@ -3,7 +3,7 @@
  * 显示项目中所有角色、场景、道具及其跨集使用情况
  */
 import React, { useState, useEffect, useCallback } from 'react';
-import { Tabs, Avatar, Tag, Empty, Spin, Tooltip } from 'antd';
+import { Tabs, Avatar, Empty, Spin, Tooltip } from 'antd';
 import { User, MapPin, Box, Link } from 'lucide-react';
 import type { Character, Scene, Prop, EpisodeRef } from '../../types';
 import { loadCharacters, loadScenes, loadProps, getOrphanedAssets } from '../../store/projectStore';
@@ -85,7 +85,7 @@ export const ProjectAssetOverview: React.FC<ProjectAssetOverviewProps> = ({
     );
   }
 
-  const totalAssets = characters.length + scenes.length + props.length;
+  const _totalAssets = characters.length + scenes.length + props.length;
 
   return (
     <div className="h-full flex flex-col">

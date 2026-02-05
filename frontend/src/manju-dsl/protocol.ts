@@ -130,7 +130,6 @@ import type {
   Timeline,
   Track,
   Clip,
-  Keyframe,
   Character,
   Scene,
   Shot,

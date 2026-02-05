@@ -17,7 +17,6 @@ import {
 } from 'antd';
 import {
   UploadOutlined,
-  DeleteOutlined,
   EyeOutlined,
   NodeIndexOutlined,
   CheckCircleOutlined,
@@ -182,7 +181,7 @@ export const WorkflowUploader: React.FC<WorkflowUploaderProps> = ({
           workflowMapping: autoMapping,
           workflowJson: content,
         });
-      } catch (err) {
+      } catch {
         message.error('JSON 解析失败，请检查文件格式');
       }
     };

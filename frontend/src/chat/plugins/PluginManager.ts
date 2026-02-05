@@ -1,7 +1,7 @@
 /**
  * 插件管理器
  */
-import type { ChatPlugin, PluginContext, ToolHandler } from './types';
+import type { ChatPlugin, PluginContext } from './types';
 import type { ChatResponse, ChatChunk, ToolDefinition } from '../types';
 
 export class PluginManager {

@@ -2,7 +2,7 @@
  * CodeMirror Mention Tooltip
  * 悬浮显示 Mention 详情
  */
-import { EditorView, hoverTooltip, Tooltip } from '@codemirror/view';
+import { EditorView, hoverTooltip } from '@codemirror/view';
 import type { MentionItem, MentionType } from './mentionTypes';
 import { MENTION_REGEX } from './mentionTypes';
 import { electronService } from '../services/electronService';
@@ -14,7 +14,7 @@ export type MentionResolver = (type: MentionType, id: string) => MentionItem | u
  * 创建 Mention Tooltip 扩展
  */
 export function createMentionTooltip(resolver: MentionResolver) {
-  return hoverTooltip((view, pos, side) => {
+  return hoverTooltip((view, pos, _side) => {
     const doc = view.state.doc;
     const line = doc.lineAt(pos);
     const text = line.text;

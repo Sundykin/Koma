@@ -2,11 +2,11 @@
  * Gemini LLM Provider
  */
 import { GoogleGenAI, Type, Schema } from '@google/genai';
-import type { ModelConfig, ScriptAnalysisResult } from '../../types';
+import type { ModelConfig } from '../../types';
 import type { LLMProvider, ChatMessage } from './types';
 
 // 剧本分析 Schema
-const analysisSchema: Schema = {
+const _analysisSchema: Schema = {
   type: Type.OBJECT,
   properties: {
     characters: {

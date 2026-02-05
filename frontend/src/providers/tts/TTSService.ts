@@ -17,7 +17,7 @@ interface TTSCacheEntry {
 }
 
 // 角色音色映射
-interface CharacterVoiceMapping {
+interface _CharacterVoiceMapping {
   characterId: string;
   voiceId: string;
 }

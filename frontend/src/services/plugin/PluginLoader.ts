@@ -252,7 +252,7 @@ async function loadUMDModule(path: string, pluginId: string): Promise<any> {
         // 尝试删除全局变量，忽略失败（某些情况下不可删除）
         try {
           delete (window as any)[globalKey];
-        } catch (e) {
+        } catch {
           // 忽略删除失败
         }
         resolve(module);
@@ -262,7 +262,7 @@ async function loadUMDModule(path: string, pluginId: string): Promise<any> {
       document.head.removeChild(script);
     };
 
-    script.onerror = (err) => {
+    script.onerror = (_err) => {
       document.head.removeChild(script);
       reject(new Error(`加载插件脚本失败: ${path}`));
     };

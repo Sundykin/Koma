@@ -5,7 +5,7 @@
 import React, { useEffect, useState } from 'react';
 import { Spin, Result, Button } from 'antd';
 import { ReloadOutlined } from '@ant-design/icons';
-import type { InstalledPlugin, PluginExports, PluginAPI } from '../../types/plugin';
+import type { PluginAPI } from '../../types/plugin';
 import { loadPluginComponent, unloadPlugin } from '../../services/plugin/PluginLoader';
 import { createPluginAPI } from '../../services/plugin/PluginAPI';
 import { isPluginInitialized } from '../../services/plugin/PluginInitializer';

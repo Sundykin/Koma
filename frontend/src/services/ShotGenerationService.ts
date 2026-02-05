@@ -12,7 +12,6 @@ import { electronService } from './electronService';
 import { getThemeStylePrefix } from '../config/themePresets';
 import { logTTICall } from '../store/aiCallLogger';
 import { parseMentions } from '../editor/mentionTypes';
-import type { MentionType } from '../editor/mentionTypes';
 import { createLogger } from '../store/logger';
 import { extractErrorMessage } from '../utils/errorHandler';
 
@@ -385,7 +384,7 @@ export class ShotGenerationService {
     const filename = `${Date.now()}.png`;
     const filePath = `${assetDir}/${filename}`;
 
-    const result = await electronService.fs.downloadFile(imageUrl, filePath);
+    const _result = await electronService.fs.downloadFile(imageUrl, filePath);
 
     return filePath;
   }

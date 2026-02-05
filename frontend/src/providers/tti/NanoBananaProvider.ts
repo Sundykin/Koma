@@ -3,7 +3,7 @@
  * 官方文生图服务
  */
 import type { TTIModelConfig, ProgressInfo } from '../../types';
-import type { TTIProvider, TTIOptions, ImageResult } from './types';
+import type { TTIProvider, TTIOptions } from './types';
 
 // API 响应类型
 interface NanoBananaResponse {

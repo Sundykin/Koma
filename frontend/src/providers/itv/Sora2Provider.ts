@@ -6,7 +6,6 @@
 import type {
   ITVConfig,
   ITVOptions,
-  VideoResult,
   ProgressInfo,
 } from '../../types';
 import type { ITVProvider } from './types';
@@ -345,7 +344,7 @@ export class Sora2Provider implements ITVProvider {
     return result;
   }
 
-  async cancelTask(taskId: string): Promise<void> {
+  async cancelTask(_taskId: string): Promise<void> {
     // 暂不支持取消任务
   }
 

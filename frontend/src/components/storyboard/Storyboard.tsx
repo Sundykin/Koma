@@ -18,7 +18,7 @@ import {
   LoadingOutlined,
   RobotOutlined,
 } from '@ant-design/icons';
-import type { Shot, Character, Scene, Prop, AppSettings, ShotVideo, EpisodeAnalysis } from '../../types';
+import type { Shot, Character, Scene, Prop, AppSettings, ShotVideo } from '../../types';
 import { loadEpisodeShots, saveEpisodeShots, loadCharacters, loadScenes, loadProps, loadEpisodeAnalysis } from '../../store/projectStore';
 import { generateShotImage, batchGenerateShotImages } from '../../services/ShotGenerationService';
 import { shotRenderWorkflow, batchRenderShots } from '../../workflow/shotRenderWorkflow';
@@ -28,7 +28,6 @@ import { generateShotPrompt, batchGenerateShotPrompts } from '../../services/Sho
 import { TaskManager } from '../../services/TaskManager';
 import { ScriptEditor } from '../../editor';
 import type { MentionItem } from '../../editor';
-import { StoryboardLayout } from './StoryboardLayout';
 import { StoryboardStudio } from './StoryboardStudio';
 import { ShotListEditor } from './ShotListEditor';
 import { ShotAssetPresetModal } from './ShotAssetPresetModal';
@@ -94,7 +93,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
   ttiConfigId,
   settings,
   mentionItems = [],
-  onConfirmedShotsToTimeline,
+  onConfirmedShotsToTimeline: _onConfirmedShotsToTimeline,
 }) => {
   const { message } = App.useApp();
   const [shots, setShots] = useState<Shot[]>([]);
@@ -107,14 +106,14 @@ export const Storyboard: React.FC<StoryboardProps> = ({
   const [generatingImagePrompts, setGeneratingImagePrompts] = useState<Set<string>>(new Set());
   const [generatingVideoPrompts, setGeneratingVideoPrompts] = useState<Set<string>>(new Set());
   const [renderingShots, setRenderingShots] = useState<Set<string>>(new Set());
-  const [renderProgress, setRenderProgress] = useState(0);
-  const [renderStep, setRenderStep] = useState('');
+  const [_renderProgress, setRenderProgress] = useState(0);
+  const [_renderStep, setRenderStep] = useState('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [batchProgress, setBatchProgress] = useState<{ current: number; total: number; step?: string } | undefined>();
 
   // 预选资产弹窗
   const [presetModalOpen, setPresetModalOpen] = useState(false);
-  const [presetAssets, setPresetAssets] = useState<PresetAssets | null>(null);
+  const [_presetAssets, setPresetAssets] = useState<PresetAssets | null>(null);
 
   // 编辑弹窗
   const [editModalOpen, setEditModalOpen] = useState(false);
@@ -125,7 +124,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
   const [activeShotId, setActiveShotId] = useState<string | null>(null);
 
   // 获取当前激活的分镜对象
-  const activeShot = useMemo(() =>
+  const _activeShot = useMemo(() =>
     shots.find(s => s.id === activeShotId) || null
   , [shots, activeShotId]);
 
@@ -275,7 +274,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     try {
       await saveEpisodeShots(projectId, episodeId, updatedShots);
       setShots(updatedShots);
-    } catch (err) {
+    } catch {
       message.error('保存失败');
     }
   }, [projectId, episodeId]);
@@ -878,7 +877,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
   }, [shots, saveAllShots, createNewShot]);
 
   // 打开预选资产弹窗
-  const handleOpenPresetModal = useCallback(() => {
+  const _handleOpenPresetModal = useCallback(() => {
     if (!episodeId || !script) {
       message.warning('缺少剧集信息或剧本内容');
       return;

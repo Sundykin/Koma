@@ -9,7 +9,6 @@ import {
   Button,
   Card,
   Flex,
-  Avatar,
   Progress,
   Typography,
   Space,
@@ -31,16 +30,15 @@ import {
   ReloadOutlined,
   PlayCircleOutlined,
 } from '@ant-design/icons';
-import type { Character, Scene, Prop, Project } from '../../types';
+import type { Project } from '../../types';
 import { loadCharacters, loadScenes, loadProps } from '../../store/projectStore';
 import {
   generateCostumePhoto,
   generateCharacterPreviewVideo,
-  extractAndBindCharacter,
 } from '../../workflow/characterAssetWorkflow';
 import { generateSceneImage, generatePropImage } from '../../workflow/scenePropAssetWorkflow';
 
-const { Text, Paragraph } = Typography;
+const { Text } = Typography;
 
 interface AssetGenerationWizardProps {
   project: Project;
@@ -232,7 +230,7 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
       let result: { success: boolean; path?: string; error?: string };
 
       try {
-        const onProgress = (progress: number, step: string) => {
+        const onProgress = (progress: number, _step: string) => {
           setter(prev => prev.map(it =>
             it.id === item.id ? { ...it, progress } : it
           ));

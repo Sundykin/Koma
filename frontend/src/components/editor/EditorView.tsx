@@ -39,7 +39,7 @@ export const EditorView: React.FC<EditorViewProps> = ({
   onStepChange,
   onStepChangeWithMark,
   onViewChange,
-  onOpenProjectSettings,
+  onOpenProjectSettings: _onOpenProjectSettings,
 }) => {
   const getActionButton = () => {
     if (editorStep === 'assets') {

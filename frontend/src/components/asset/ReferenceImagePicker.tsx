@@ -3,8 +3,8 @@
  * 支持从资产选择、本地上传、拖拽上传
  */
 import React, { useState, useCallback, useRef } from 'react';
-import { Dropdown, Button, Image, Upload, Space, Typography, Divider, Tooltip, App } from 'antd';
-import type { MenuProps, UploadProps } from 'antd';
+import { Dropdown, Button, Image, Space, Tooltip, App } from 'antd';
+import type { MenuProps } from 'antd';
 import {
   PictureOutlined,
   UploadOutlined,
@@ -18,8 +18,6 @@ import {
 import type { Character, Scene, Prop } from '../../types';
 import { electronService } from '../../services/electronService';
 import './ReferenceImagePicker.css';
-
-const { Text } = Typography;
 
 export interface ReferenceImagePickerProps {
   value?: string;  // 当前图片路径
@@ -95,7 +93,7 @@ export const ReferenceImagePicker: React.FC<ReferenceImagePickerProps> = ({
         onChange?.(result.filePaths[0]);
         setDropdownOpen(false);
       }
-    } catch (err) {
+    } catch {
       message.error('选择文件失败');
     }
   }, [onChange]);

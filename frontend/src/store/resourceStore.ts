@@ -6,8 +6,6 @@ import { create } from 'zustand';
 import { nanoid } from 'nanoid';
 import {
   Resource,
-  ResourceType,
-  ResourceStatus,
   ResourceFilter,
   ResourceSort,
   createResource,
@@ -15,7 +13,7 @@ import {
   detectResourceType
 } from '../types/resource';
 import { ffmpegManager } from '../services/ffmpegManager';
-import { fsStat, fsCopy, fsMkdir, fsExists } from '../services/electronService';
+import { fsStat, fsCopy, fsMkdir } from '../services/electronService';
 import { createLogger } from './logger';
 
 const logger = createLogger('ResourceStore');

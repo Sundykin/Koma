@@ -2,14 +2,13 @@
  * 角色资产生成工作流
  * 生成角色定妆照（内置三视图）、预览视频，以及调用角色提取API
  */
-import type { Character, AsyncTask } from '../types';
+import type { Character } from '../types';
 import { getProjectTTIProvider, getProjectITVProvider } from '../providers';
-import { createTask, updateTask, markTaskCompleted, markTaskFailed, getTask } from '../store/taskQueueStore';
-import { pollTaskUntilComplete, registerProgressChecker } from '../store/taskRecoveryService';
+import { createTask, updateTask, markTaskCompleted, getTask } from '../store/taskQueueStore';
+import { pollTaskUntilComplete } from '../store/taskRecoveryService';
 import { downloadRemoteAsset } from '../store/assetDownloadService';
 import {
   saveCharacterCostumePhoto,
-  saveCharacterPreviewVideo,
   saveCharacters,
   loadCharacters,
 } from '../store/projectStore';
@@ -17,7 +16,7 @@ import { getStorageConfig, initStorageConfig } from '../store/storageConfig';
 import { getThemeStylePrefix, getThemeStylePrefixAsync } from '../config/themePresets';
 import { createLogger } from '../store/logger';
 import { logTTICall, logITVCall } from '../store/aiCallLogger';
-import { getPromptTemplate, fillTemplate, getDefaultTemplate } from '../store/promptTemplates';
+import { getPromptTemplate, fillTemplate } from '../store/promptTemplates';
 
 const logger = createLogger('CharacterAsset');
 

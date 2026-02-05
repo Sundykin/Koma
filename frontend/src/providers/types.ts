@@ -11,7 +11,6 @@ import type {
   VideoResult,
   Voice,
   ProgressInfo,
-  ScriptAnalysisResult,
 } from '../types';
 
 // ========== LLM Provider ==========

@@ -5,13 +5,12 @@
 import type { Shot, ShotVersion, Character, Prop } from '../types';
 import { getProjectTTSProvider, getProjectITVProvider } from '../providers';
 import { saveShotVersion, loadCharacters, loadProps } from '../store/projectStore';
-import { createTask, updateTask, markTaskCompleted, markTaskFailed } from '../store/taskQueueStore';
+import { createTask, markTaskCompleted } from '../store/taskQueueStore';
 import { createLogger } from '../store/logger';
 import { logITVCall, logTTSCall } from '../store/aiCallLogger';
 import { getPromptTemplate, fillTemplate } from '../store/promptTemplates';
 import { getThemeStylePrefixAsync } from '../config/themePresets';
 import { parseMentions } from '../editor/mentionTypes';
-import type { MentionType } from '../editor/mentionTypes';
 
 const logger = createLogger('ShotRender');
 
@@ -227,7 +226,7 @@ export async function shotRenderWorkflow(
     if (result.url || (result as any).path) {
       videoPath = result.url || (result as any).path;
       remoteVideoUrl = videoPath;
-      const taskId = (result as any).taskId;
+      const _taskId = (result as any).taskId;
       await markTaskCompleted(projectId, itvTask.id, videoPath!, videoPath!);
       logger.info(`视频生成完成: ${videoPath}`);
       onProgress(95, '视频生成完成');
@@ -268,7 +267,7 @@ export async function shotRenderWorkflow(
   }
 }
 
-function sleep(ms: number): Promise<void> {
+function _sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
@@ -279,7 +278,7 @@ export async function batchRenderShots(
   params: BatchRenderParams,
   onProgress: (overall: number, current: { shotId: string; progress: number; step?: string }) => void
 ): Promise<BatchRenderResult> {
-  const { projectId, shots, projectConfigIds, theme, stylePrompt, concurrency = 1 } = params;
+  const { projectId, shots, projectConfigIds, theme, stylePrompt, concurrency: _concurrency = 1 } = params;
 
   logger.info(`开始批量生成 ${shots.length} 个分镜视频`);
 

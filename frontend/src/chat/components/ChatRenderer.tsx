@@ -4,7 +4,7 @@
  */
 import React, { useRef, useEffect } from 'react';
 import { Avatar } from 'antd';
-import { RobotOutlined, MessageOutlined, UserOutlined } from '@ant-design/icons';
+import { RobotOutlined, MessageOutlined } from '@ant-design/icons';
 import { Markdown } from 'ds-markdown';
 import 'ds-markdown/style.css';
 import type { ChatMessage, ToolCall } from '../types';

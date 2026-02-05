@@ -13,8 +13,8 @@ import {
   keymap,
 } from '@codemirror/view';
 import { RangeSetBuilder, EditorSelection } from '@codemirror/state';
-import type { MentionItem, MentionType, ParsedMention } from './mentionTypes';
-import { parseMentions, MENTION_REGEX } from './mentionTypes';
+import type { MentionItem, MentionType } from './mentionTypes';
+import { parseMentions } from './mentionTypes';
 
 // Mention 数据解析器类型
 export type MentionResolver = (type: MentionType, id: string) => MentionItem | undefined;

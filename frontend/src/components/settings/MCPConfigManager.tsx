@@ -22,7 +22,6 @@ import {
   Spin,
   App,
   Typography,
-  Divider,
   Statistic,
 } from 'antd';
 import {

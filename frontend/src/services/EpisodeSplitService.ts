@@ -2,7 +2,7 @@
  * AI 自动剧集服务
  * 支持将完整剧本智能拆分为多个剧集
  */
-import type { LLMModelConfig, Episode } from '../types';
+import type { LLMModelConfig } from '../types';
 import { createLLMProvider } from '../providers';
 
 export interface SplitOptions {
@@ -103,7 +103,7 @@ class ContextManager {
         { role: 'assistant' as const, content: `[历史摘要] ${summary}` },
         ...recentMessages,
       ];
-    } catch (error) {
+    } catch {
       // 压缩失败时直接截断
       this.messages = [
         ...(systemMessage ? [systemMessage] : []),

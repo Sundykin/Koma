@@ -15,7 +15,7 @@ export const WindowControls: React.FC = () => {
       try {
         const maximized = await electronService.window.isMaximized();
         setIsMaximized(maximized);
-      } catch (e) {
+      } catch {
         // 非 Electron 环境
       }
     };

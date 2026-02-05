@@ -193,7 +193,7 @@ export const AgentTemplates: React.FC<AgentTemplatesProps> = ({
       onSave(newTemplates);
       setShowForm(false);
       message.success(editingId ? '模板已更新' : '模板已创建');
-    } catch (e) {
+    } catch {
       // 表单验证失败
     }
   }, [form, editingId, templates, onSave]);

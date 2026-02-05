@@ -11,7 +11,6 @@ import { saveFileDialog, openDirectoryDialog, isElectron, writeFile, createDirec
 import { exporterRegistry } from '../../services/draftExport';
 import type { DraftExportOptions } from '../../services/draftExport';
 import { checkExportCompatibility } from '../../services/draftExport/exportCapabilityChecker';
-import type { CompatibilityReport } from '../../services/draftExport/exportCapabilityChecker';
 import type { JianyingDraftContent, JianyingDraftMetaInfo } from '../../types/jianying';
 import { VIDEO_RESOLUTIONS } from '../../constants/dimensions';
 import { createLogger } from '../../store/logger';

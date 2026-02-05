@@ -12,7 +12,6 @@ import type {
   AdapterCapability,
   ToolCall,
   ToolDefinition,
-  ContentPart,
 } from '../types';
 import { ChatError, ChatErrorCode, generateId } from '../types';
 

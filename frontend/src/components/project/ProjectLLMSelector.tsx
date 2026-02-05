@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Select, Space, Tag, Typography, Alert } from 'antd';
 import { RobotOutlined, StarFilled } from '@ant-design/icons';
 import type { LLMModelConfig } from '../../types';
-import { loadSettings, getLLMConfigById } from '../../store/globalStore';
+import { loadSettings } from '../../store/globalStore';
 
 const { Text } = Typography;
 
@@ -14,7 +14,7 @@ interface ProjectLLMSelectorProps {
 }
 
 export const ProjectLLMSelector: React.FC<ProjectLLMSelectorProps> = ({
-  projectId,
+  projectId: _projectId,
   currentConfigId,
   onChange,
   disabled = false,

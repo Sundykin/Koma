@@ -9,10 +9,7 @@ import type {
   ITVConfig,
   LLMModelConfig,
   TTIModelConfig,
-  ITVModelConfig,
   TTSModelConfig,
-  ResolvedTTIConfig,
-  ResolvedITVConfig,
   ResolvedTTSConfig,
 } from '../types';
 import type { ChannelConfig } from './channel/types';
@@ -31,14 +28,14 @@ import { createLogger } from '../store/logger';
 const logger = createLogger('Provider');
 
 // 从子目录导入类型和工厂
-import { createLLMProvider, GeminiProvider, OpenAIProvider, ClaudeProvider } from './llm';
+import { createLLMProvider } from './llm';
 import type { LLMProvider } from './llm/types';
-import { createTTIProvider, ComfyUIProvider } from './tti';
-import type { TTIProvider, ImageResult, TTIOptions } from './tti/types';
+import { createTTIProvider } from './tti';
+import type { TTIProvider } from './tti/types';
 import { createTTSProvider } from './tts';
-import type { TTSProvider, AudioResult, TTSOptions } from './tts/types';
+import type { TTSProvider } from './tts/types';
 import { createITVProvider as createITVProviderFromConfig } from './itv';
-import type { ITVProvider, ProgressInfo, ITVOptions } from './itv/types';
+import type { ITVProvider } from './itv/types';
 
 // 重新导出 ProviderManager
 export { providerManager, ProviderManager, type ProviderKindMap } from './manager';

@@ -4,7 +4,6 @@
  */
 import React, { useState, useCallback } from 'react';
 import { THEME_PRESETS } from '../../config/themePresets';
-import type { ThemePreset } from '../../config/themePresets';
 import { Check } from 'lucide-react';
 
 interface ThemeSelectorProps {

@@ -2,7 +2,7 @@
  * 角色/场景/道具/分镜 加载和保存
  */
 import { electronService } from '../../services/electronService';
-import type { Character, Scene, Shot, Prop } from '../../types';
+import type { Character, Scene, Shot } from '../../types';
 import { getProjectPath } from './core';
 
 // 迁移辅助函数：将旧字段合并到 prompt

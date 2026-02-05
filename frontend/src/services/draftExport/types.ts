@@ -3,7 +3,7 @@
  * 支持导出到多种剪辑软件格式
  */
 
-import type { Track, Clip } from '../../types/editor';
+import type { Track } from '../../types/editor';
 
 // 编辑器坐标系 (项目内部使用)
 // - 原点: 画布中心

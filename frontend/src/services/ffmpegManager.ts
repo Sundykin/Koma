@@ -2,7 +2,7 @@
  * 前端 FFmpeg 管理器
  * 负责与 Electron FFmpeg 服务通信，管理帧缓存和波形缓存
  */
-import { isElectron, appGetPath } from './electronService';
+import { isElectron } from './electronService';
 import { createLogger } from '../store/logger';
 
 const logger = createLogger('FFmpegManager');

@@ -49,7 +49,7 @@ export class VideoRenderer {
       return;
     }
 
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve, _reject) => {
       // 去掉查询参数后判断文件类型
       const pathWithoutQuery = sourcePath.split('?')[0];
       const isVideo =

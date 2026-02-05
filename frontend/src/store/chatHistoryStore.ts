@@ -6,7 +6,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { ChatMessage } from '../chat/types';
 import { extractThinkFromText } from '../chat/utils/messageUtils';
-import { CHAT_STORAGE_KEYS, getSessionDataKey } from '../constants/storageKeys';
+import { CHAT_STORAGE_KEYS } from '../constants/storageKeys';
 import { createLogger } from './logger';
 
 const logger = createLogger('ChatHistory');

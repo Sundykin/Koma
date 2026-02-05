@@ -2,7 +2,7 @@
  * 分镜列表生成器
  * 从剧本文本自动生成分镜脚本
  */
-import type { Shot, Character, Scene, AppSettings, ScriptAnalysisResult } from '../types';
+import type { Shot, Character, Scene, AppSettings } from '../types';
 import { getProjectLLMProvider } from '../providers';
 import { getPromptTemplate, fillTemplate } from '../store/promptTemplates';
 
@@ -21,7 +21,7 @@ export async function generateShotList(
   params: ShotListParams,
   onProgress: (progress: number, step?: string) => void
 ): Promise<Shot[]> {
-  const { scriptText, characters, scenes } = params;
+  const { scriptText, characters: _characters, scenes: _scenes } = params;
 
   const provider = await getProjectLLMProvider();
   if (!provider) {

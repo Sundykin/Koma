@@ -94,7 +94,7 @@ export class ChatSession {
    * 发送消息并获取响应
    */
   async send(content: string | ContentPart[], options?: ChatOptions): Promise<ChatMessage> {
-    const userMessage = this.addUserMessage(content);
+    const _userMessage = this.addUserMessage(content);
 
     const context = {
       session: this,
@@ -126,7 +126,7 @@ export class ChatSession {
     content: string | ContentPart[],
     options?: ChatOptions
   ): AsyncIterable<ChatChunk> {
-    const userMessage = this.addUserMessage(content);
+    const _userMessage = this.addUserMessage(content);
 
     const context = {
       session: this,

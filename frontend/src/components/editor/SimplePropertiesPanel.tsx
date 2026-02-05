@@ -4,8 +4,7 @@
  */
 import React, { useMemo } from 'react';
 import {
-  Clip, Keyframe, AnimatableProperty, MediaType,
-  ClipFilter, ClipAnimation, AudioFade, ClipMask, MaskType
+  Clip, Keyframe, AnimatableProperty, MediaType, ClipAnimation, AudioFade, ClipMask, MaskType
 } from '../../types/editor';
 import { getAnimatedProperties, hasKeyframes, getKeyframeAtTime } from '../../engine/simpleKeyframe';
 import { Trash2, Type, Sparkles, Play, Volume2, Square } from 'lucide-react';

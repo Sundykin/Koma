@@ -1,5 +1,5 @@
 import React from 'react';
-import { Button, Space, Typography, Popconfirm, Divider, Tooltip } from 'antd';
+import { Button, Space, Typography, Popconfirm, Tooltip } from 'antd';
 import {
   RobotOutlined,
   ThunderboltOutlined,

@@ -3,7 +3,6 @@
  */
 import type {
   ManjuProject,
-  ManjuExportOptions,
   ManjuCharacter,
   ManjuScene,
   ManjuShot,

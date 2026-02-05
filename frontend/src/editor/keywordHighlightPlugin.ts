@@ -177,7 +177,7 @@ export function createKeywordHighlightPlugin() {
  * 创建关键字悬浮提示
  */
 export function createKeywordTooltip() {
-  return hoverTooltip((view, pos, side) => {
+  return hoverTooltip((view, pos, _side) => {
     const text = view.state.doc.toString();
     const match = findKeywordAt(text, pos);
 
@@ -193,7 +193,7 @@ export function createKeywordTooltip() {
 }
 
 // 创建 Tooltip DOM
-function createTooltipDOM(command: CameraCommand, matchedText: string): { dom: HTMLElement } {
+function createTooltipDOM(command: CameraCommand, _matchedText: string): { dom: HTMLElement } {
   const isCamera = command.category === 'camera';
 
   const container = document.createElement('div');

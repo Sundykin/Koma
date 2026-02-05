@@ -15,11 +15,8 @@ import {
 } from '@ant-design/icons';
 import type {
   LLMModelConfig,
-  TTIModelConfig,
-  ITVModelConfig,
   TTSModelConfig,
 } from '../../types';
-import type { ChannelConfig } from '../../providers/channel/types';
 import { loadSettings, getChannelConfigs } from '../../store/globalStore';
 
 // 统一的配置项接口

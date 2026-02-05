@@ -209,13 +209,13 @@ export const TTSConfigManager: React.FC<TTSConfigManagerProps> = ({ onConfigChan
   }, [currentProvider, availableProviders]);
 
   // 根据 configSchema 判断字段需求
-  const needApiKey = useMemo(() => {
+  const _needApiKey = useMemo(() => {
     if (!currentProviderDef?.configSchema?.properties) return false;
     const apiKeyField = currentProviderDef.configSchema.properties.apiKey;
     return !!apiKeyField;
   }, [currentProviderDef]);
 
-  const needBaseUrl = useMemo(() => {
+  const _needBaseUrl = useMemo(() => {
     if (!currentProviderDef?.configSchema?.properties) return false;
     const baseUrlField = currentProviderDef.configSchema.properties.baseUrl;
     return !!baseUrlField;

@@ -5,7 +5,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import { electronService } from '../services/electronService';
 import { getStorageConfig, initStorageConfig } from './storageConfig';
-import type { AsyncTask, AsyncTaskStatus, AsyncTaskType, AsyncTaskTargetType } from '../types';
+import type { AsyncTask, AsyncTaskStatus, AsyncTaskType } from '../types';
 import { createLogger } from './logger';
 
 const logger = createLogger('TaskQueue');

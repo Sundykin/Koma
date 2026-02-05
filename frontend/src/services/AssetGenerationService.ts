@@ -9,7 +9,7 @@
 import { TaskManager, Task } from './TaskManager';
 import { getActiveTTIConfig } from '../store/globalStore';
 import { saveCharacters, saveScenes, saveProps, loadCharacters, loadScenes, loadProps } from '../store/projectStore';
-import type { Character, Scene, Prop, TTIModelConfig, ProgressInfo } from '../types';
+import type { Character, Scene, Prop, TTIModelConfig } from '../types';
 import { createTTIProvider, TTIProvider } from '../providers';
 import { getStorageConfig, initStorageConfig } from '../store/storageConfig';
 import { electronService } from './electronService';
@@ -362,10 +362,10 @@ export class AssetGenerationService {
     const filePath = `${assetDir}/${filename}`;
 
     // 使用主进程下载（绕过 CORS）
-    const result = await electronService.fs.downloadFile(imageUrl, filePath);
+    const _result = await electronService.fs.downloadFile(imageUrl, filePath);
 
     // 验证文件是否存在
-    const exists = await electronService.fs.exists(filePath);
+    const _exists = await electronService.fs.exists(filePath);
 
     return filePath;
   }

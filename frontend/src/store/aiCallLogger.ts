@@ -27,8 +27,8 @@ const TYPE_LABELS: Record<AICallType, string> = {
  * 打印 AI 调用日志
  */
 export function logAICall(log: AICallLog): void {
-  const prefix = `[AI:${TYPE_LABELS[log.type]}]`;
-  const separator = '='.repeat(40);
+  const _prefix = `[AI:${TYPE_LABELS[log.type]}]`;
+  const _separator = '='.repeat(40);
 
 
   if (log.targetName || log.targetId) {

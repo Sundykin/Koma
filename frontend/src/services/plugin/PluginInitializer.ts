@@ -3,7 +3,7 @@
  * 在应用启动时初始化所有已启用的 Provider 插件
  */
 import { usePluginStore, waitForPluginStoreRehydration } from '../../store/pluginStore';
-import { loadPluginComponent, loadProviderPlugin, isPluginLoaded } from './PluginLoader';
+import { loadPluginComponent, loadProviderPlugin } from './PluginLoader';
 import { createPluginAPI } from './PluginAPI';
 import { electronService } from '../electronService';
 import type { InstalledPlugin } from '../../types/plugin';

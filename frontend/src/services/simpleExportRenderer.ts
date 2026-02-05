@@ -2,7 +2,7 @@
  * SimpleEditor 导出渲染服务
  * 将 SimpleEditor 时间线渲染为视频文件
  */
-import type { Track, Clip, MediaType } from '../types/editor';
+import type { Track, Clip } from '../types/editor';
 import { getAnimatedProperties } from '../engine/simpleKeyframe';
 import { toKomaLocalUrl } from '../utils/urlUtils';
 
@@ -98,7 +98,7 @@ export class SimpleExportRenderer {
       });
 
       const tempDir = ffmpegAPI ? await ffmpegAPI.getTempDir() : '/tmp/export';
-      const frameFiles = await this.renderAllFrames(tempDir);
+      const _frameFiles = await this.renderAllFrames(tempDir);
 
       // 阶段3: FFmpeg 编码
       this.emitProgress({
@@ -276,7 +276,7 @@ export class SimpleExportRenderer {
     // 获取当前时间可见的片段，按 track order 排序
     const visibleClips = this.getVisibleClips(time);
 
-    for (const { clip, order } of visibleClips) {
+    for (const { clip, order: _order } of visibleClips) {
       await this.renderClip(clip, time);
     }
   }
