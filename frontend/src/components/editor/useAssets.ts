@@ -6,6 +6,9 @@ import { useState, useEffect, useCallback } from 'react';
 import type { AssetItem } from '../../types/editor';
 import type { Shot, Character, Scene, Prop } from '../../types';
 import { loadEpisodeShots, loadCharacters, loadScenes, loadProps } from '../../store/projectStore';
+import { createLogger } from '../../store/logger';
+
+const logger = createLogger('useAssets');
 
 interface UseAssetsOptions {
   projectId: string;
@@ -151,7 +154,7 @@ export function useAssets({ projectId, episodeId }: UseAssetsOptions): UseAssets
       // 合并上传的素材
       setAssets([...aggregated, ...uploadedAssets]);
     } catch (err) {
-      console.error('[useAssets] Failed to load assets:', err);
+      logger.error('Failed to load assets:', err);
       setError(err instanceof Error ? err.message : '加载素材失败');
     } finally {
       setLoading(false);

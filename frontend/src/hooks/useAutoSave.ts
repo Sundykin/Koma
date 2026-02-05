@@ -5,6 +5,9 @@
 import { useCallback, useRef, useEffect } from 'react';
 import { saveTimeline, saveProject, loadProject } from '../store/projectStore';
 import type { Timeline, ProjectMeta } from '../types';
+import { createLogger } from '../store/logger';
+
+const logger = createLogger('AutoSave');
 
 interface AutoSaveOptions {
   projectId: string | null;
@@ -43,7 +46,7 @@ export function useAutoSave(options: AutoSaveOptions) {
 
       onSaveEnd?.(true);
     } catch (err) {
-      console.error('自动保存失败:', err);
+      logger.error('自动保存失败', err);
       onSaveEnd?.(false);
     } finally {
       isSavingRef.current = false;

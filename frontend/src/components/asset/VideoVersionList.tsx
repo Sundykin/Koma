@@ -3,6 +3,9 @@
  * 支持版本切换、预览、删除
  */
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { createLogger } from '../../store/logger';
+
+const logger = createLogger('VideoVersionList');
 import {
   Dropdown,
   Button,
@@ -70,7 +73,7 @@ export const VideoVersionList: React.FC<VideoVersionListProps> = ({
         setLocalCurrentVersion(shotMeta.currentVersion);
       }
     } catch (err) {
-      console.error('加载版本列表失败:', err);
+      logger.error('加载版本列表失败:', err);
     } finally {
       setLoading(false);
     }

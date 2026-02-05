@@ -11,6 +11,9 @@ import { saveEpisode } from '../../store/projectStore';
 import { generateRandomScript, polishScript } from '../../workflow/scriptGenerator';
 import { startBackgroundAnalysis } from '../../services/ScriptAnalysisService';
 import type { Project, Episode, AppSettings } from '../../types';
+import { createLogger } from '../../store/logger';
+
+const logger = createLogger('ScriptWorkbench');
 
 interface ScriptWorkbenchProps {
   project: Project;
@@ -49,8 +52,8 @@ export const ScriptWorkbench: React.FC<ScriptWorkbenchProps> = ({
       await saveEpisode(project.id, episode.id, { scriptText: text });
       lastSavedRef.current = text;
       onScriptChange(text);
-    } catch (err: any) {
-      console.error('自动保存失败:', err);
+    } catch (err: unknown) {
+      logger.error('自动保存失败', err);
     } finally {
       setIsSaving(false);
     }
@@ -78,7 +81,7 @@ export const ScriptWorkbench: React.FC<ScriptWorkbenchProps> = ({
       }
       // 立即保存未保存的内容
       if (localScript !== lastSavedRef.current && episode) {
-        saveEpisode(project.id, episode.id, { scriptText: localScript }).catch(console.error);
+        saveEpisode(project.id, episode.id, { scriptText: localScript }).catch(err => logger.error('保存失败', err));
       }
     };
   }, [localScript, episode, project.id]);

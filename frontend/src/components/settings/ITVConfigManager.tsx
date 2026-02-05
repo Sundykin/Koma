@@ -428,6 +428,7 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
           <Form.Item
             name="provider"
             label={t('settings.provider')}
+            required
             rules={[{ required: true, message: `${t('settings.pleaseSelect')} ${t('settings.provider')}` }]}
           >
             <Select placeholder={t('settings.selectITVProvider')} onChange={handlePresetChange}>
@@ -442,6 +443,7 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
           <Form.Item
             name="name"
             label={t('settings.configName')}
+            required
             rules={[{ required: true, message: `${t('settings.pleaseEnter')} ${t('settings.configName')}` }]}
           >
             <Input placeholder={t('settings.configNamePlaceholder')} />
@@ -460,6 +462,7 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
           <Form.Item
             name="baseUrl"
             label={t('settings.apiAddress')}
+            required
             rules={[{ required: true, message: `${t('settings.pleaseEnter')} ${t('settings.apiAddress')}` }]}
           >
             <Input prefix={<ApiOutlined />} placeholder="https://api.klingai.com" />

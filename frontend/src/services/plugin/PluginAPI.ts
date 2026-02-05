@@ -21,6 +21,8 @@ import { validateOperation, validateStoragePath, createSandboxedFetch, hasScope 
 import { electronService } from '../electronService';
 import { message, Modal } from 'antd';
 import { createLogger } from '../../store/logger';
+
+const logger = createLogger('PluginAPI');
 import {
   registerProvider,
   unregisterProvider,
@@ -315,7 +317,7 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
             pluginId,
           });
         } catch (err) {
-          console.error(`[PluginAPI] 渠道配置创建失败:`, err);
+          logger.error('渠道配置创建失败', err);
           // 回滚：移除已注册的 Provider
           unregisterProvider(def.kind, def.type);
           const types = pluginProviderTypes.get(pluginId);
@@ -638,7 +640,7 @@ export function emitPluginEvent(event: string, data: any): void {
         try {
           handler(data);
         } catch (err) {
-          console.error(`[PluginAPI] 事件处理器执行失败 (${pluginId}):`, err);
+          logger.error(`事件处理器执行失败 (${pluginId})`, err);
         }
       }
     }

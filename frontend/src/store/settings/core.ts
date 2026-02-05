@@ -5,6 +5,10 @@
 import { electronService } from '../../services/electronService';
 import { getStorageConfig, initStorageConfig } from '../storageConfig';
 import type { AppSettings } from '../../types';
+import { STORAGE_KEYS } from '../../constants/storageKeys';
+import { createLogger } from '../logger';
+
+const logger = createLogger('Settings');
 
 // 路径工具
 export async function getGlobalPath(filename: string): Promise<string> {
@@ -49,14 +53,14 @@ function migrateEncryptedData<T>(data: T): T {
 export async function loadSettings(): Promise<AppSettings> {
   if (!electronService.isElectron()) {
     try {
-      const data = localStorage.getItem('koma_settings');
+      const data = localStorage.getItem(STORAGE_KEYS.SETTINGS);
       if (data) {
         let parsed = JSON.parse(data);
         parsed = migrateEncryptedData(parsed);
         return { ...DEFAULT_SETTINGS, ...parsed };
       }
     } catch (err) {
-      console.error('[loadSettings] error:', err);
+      logger.error('loadSettings error', err);
     }
     return DEFAULT_SETTINGS;
   }
@@ -71,7 +75,7 @@ export async function loadSettings(): Promise<AppSettings> {
       return { ...DEFAULT_SETTINGS, ...parsed };
     }
   } catch (err) {
-    console.error('[loadSettings] error:', err);
+    logger.error('loadSettings error', err);
   }
   return DEFAULT_SETTINGS;
 }
@@ -79,7 +83,7 @@ export async function loadSettings(): Promise<AppSettings> {
 // 保存设置
 export async function saveSettings(settings: AppSettings): Promise<void> {
   if (!electronService.isElectron()) {
-    localStorage.setItem('koma_settings', JSON.stringify(settings));
+    localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(settings));
     return;
   }
 

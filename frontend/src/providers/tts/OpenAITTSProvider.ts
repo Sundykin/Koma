@@ -4,6 +4,9 @@
 import type { TTSConfig, TTSOptions, AudioResult, Voice } from '../../types';
 import type { TTSProvider } from './types';
 import { electronService } from '../../services/electronService';
+import { createLogger } from '../../store/logger';
+
+const logger = createLogger('OpenAITTSProvider');
 
 const OPENAI_VOICES: Voice[] = [
   { id: 'alloy', name: 'Alloy', language: 'multi', gender: 'neutral', provider: 'openai-tts' },
@@ -85,7 +88,7 @@ export class OpenAITTSProvider implements TTSProvider {
           };
         }
       } catch (err) {
-        console.warn('[OpenAITTS] Failed to save to file, falling back to Blob URL:', err);
+        logger.warn('Failed to save to file, falling back to Blob URL:', err);
       }
     }
 

@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react';
 import { getActiveTTIConfig, getActiveITVConfig } from '../store/settings/mediaConfig';
 import type { TTIModelConfig, ITVModelConfig } from '../types';
+import { createLogger } from '../store/logger';
+
+const logger = createLogger('useActiveConfig');
 
 type ConfigType = 'tti' | 'itv';
 
@@ -26,7 +29,7 @@ export function useActiveConfig(type: ConfigType, configId?: string): UseActiveC
         const result = await getter(configId);
         if (mounted) setConfig(result);
       } catch (err) {
-        console.error(`Failed to load ${type} config:`, err);
+        logger.error(`Failed to load ${type} config`, err);
         if (mounted) setConfig(null);
       } finally {
         if (mounted) setLoading(false);

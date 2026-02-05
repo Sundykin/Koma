@@ -3,6 +3,9 @@
  * 左侧列表 + 右侧详情面板布局
  */
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { createLogger } from '../../store/logger';
+
+const logger = createLogger('AssetManagerPanel');
 import { App, Spin, Button, Space, Switch, Tooltip } from 'antd';
 import {
   ArrowRightOutlined,
@@ -92,7 +95,7 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
         setEpisodeAnalysis(analysis);
       }
     } catch (err) {
-      console.error('加载资产失败:', err);
+      logger.error('加载资产失败:', err);
     } finally {
       setLoading(false);
     }

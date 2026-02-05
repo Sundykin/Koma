@@ -13,6 +13,10 @@ import type { DraftExportOptions } from '../../services/draftExport';
 import { checkExportCompatibility } from '../../services/draftExport/exportCapabilityChecker';
 import type { CompatibilityReport } from '../../services/draftExport/exportCapabilityChecker';
 import type { JianyingDraftContent, JianyingDraftMetaInfo } from '../../types/jianying';
+import { VIDEO_RESOLUTIONS } from '../../constants/dimensions';
+import { createLogger } from '../../store/logger';
+
+const logger = createLogger('SimpleExportDialog');
 
 interface SimpleExportDialogProps {
   open: boolean;
@@ -38,10 +42,10 @@ const QUALITY_OPTIONS = [
 ];
 
 const RESOLUTION_PRESETS = [
-  { label: '1080p', width: 1920, height: 1080 },
-  { label: '720p', width: 1280, height: 720 },
-  { label: '480p', width: 854, height: 480 },
-  { label: '4K', width: 3840, height: 2160 },
+  { label: '1080p', ...VIDEO_RESOLUTIONS['1080p'] },
+  { label: '720p', ...VIDEO_RESOLUTIONS['720p'] },
+  { label: '480p', ...VIDEO_RESOLUTIONS['480p'] },
+  { label: '4K', ...VIDEO_RESOLUTIONS['4K'] },
 ];
 
 const FPS_OPTIONS = [
@@ -114,7 +118,7 @@ export function SimpleExportDialog({ open, onClose, tracks, duration, canvasSize
         setVideoOutputPath(result.filePath);
       }
     } catch (err) {
-      console.error('[SimpleExportDialog] Select output failed:', err);
+      logger.error('Select output failed', err);
     }
   }, [videoForm]);
 
@@ -129,7 +133,7 @@ export function SimpleExportDialog({ open, onClose, tracks, duration, canvasSize
         setDraftOutputPath(selectedPath);
       }
     } catch (err) {
-      console.error('[SimpleExportDialog] Select draft output failed:', err);
+      logger.error('Select draft output failed', err);
     }
   }, [draftForm]);
 
@@ -246,7 +250,7 @@ export function SimpleExportDialog({ open, onClose, tracks, duration, canvasSize
                   video.path = newPath;
                 }
               } catch (e) {
-                console.warn(`复制素材失败: ${video.path}`, e);
+                logger.warn(`复制素材失败: ${video.path}`, e);
               }
             }
           }
@@ -262,7 +266,7 @@ export function SimpleExportDialog({ open, onClose, tracks, duration, canvasSize
                   audio.path = newPath;
                 }
               } catch (e) {
-                console.warn(`复制素材失败: ${audio.path}`, e);
+                logger.warn(`复制素材失败: ${audio.path}`, e);
               }
             }
           }

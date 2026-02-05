@@ -4,6 +4,9 @@
  */
 import type { TTSConfig, TTSOptions, AudioResult, Voice } from '../../types';
 import type { TTSProvider } from './types';
+import { createLogger } from '../../store/logger';
+
+const logger = createLogger('EdgeTTSProvider');
 
 // Edge TTS 中文音色列表
 const EDGE_VOICES: Voice[] = [
@@ -139,7 +142,7 @@ export class EdgeTTSProvider implements TTSProvider {
       };
 
       ws.onerror = (error) => {
-        console.error('[EdgeTTS] WebSocket Error:', error);
+        logger.error('WebSocket Error:', error);
         reject(new Error('Edge TTS 连接失败'));
       };
 

@@ -5,9 +5,13 @@
 import { isElectron } from './electronService';
 import type { AssetItem, AssetSource } from '../types/editor';
 import { ffmpegManager } from './ffmpegManager';
+import { DEFAULT_VIDEO_RESOLUTION } from '../constants/dimensions';
+import { createLogger } from '../store/logger';
+
+const logger = createLogger('UploadService');
 
 // 生成唯一 ID
-const generateId = () => `upload-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+const generateId = () => `upload-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
 
 // 获取文件类型
 function getFileType(filename: string): 'video' | 'image' | 'audio' | null {
@@ -98,7 +102,7 @@ export async function uploadFile(
             }
           }
         } catch (err) {
-          console.warn('[UploadService] Failed to get media info:', err);
+          logger.warn('Failed to get media info', err);
           duration = 10; // 默认 10 秒
         }
       } else if (type === 'image') {
@@ -108,7 +112,7 @@ export async function uploadFile(
           width = dims.width;
           height = dims.height;
         } catch (err) {
-          console.warn('[UploadService] Failed to get image dimensions:', err);
+          logger.warn('Failed to get image dimensions', err);
         }
       }
 
@@ -184,22 +188,6 @@ export async function uploadFiles(
   return results;
 }
 
-// 获取视频时长
-function getVideoDuration(src: string): Promise<number> {
-  return new Promise((resolve) => {
-    const video = document.createElement('video');
-    video.preload = 'metadata';
-    video.onloadedmetadata = () => {
-      resolve(video.duration || 10);
-      URL.revokeObjectURL(src);
-    };
-    video.onerror = () => {
-      resolve(10);
-    };
-    video.src = src;
-  });
-}
-
 // 获取视频时长和尺寸
 function getVideoDurationAndSize(src: string): Promise<{ duration: number; width: number; height: number }> {
   return new Promise((resolve) => {
@@ -208,12 +196,12 @@ function getVideoDurationAndSize(src: string): Promise<{ duration: number; width
     video.onloadedmetadata = () => {
       resolve({
         duration: video.duration || 10,
-        width: video.videoWidth || 1920,
-        height: video.videoHeight || 1080,
+        width: video.videoWidth || DEFAULT_VIDEO_RESOLUTION.width,
+        height: video.videoHeight || DEFAULT_VIDEO_RESOLUTION.height,
       });
     };
     video.onerror = () => {
-      resolve({ duration: 10, width: 1920, height: 1080 });
+      resolve({ duration: 10, width: DEFAULT_VIDEO_RESOLUTION.width, height: DEFAULT_VIDEO_RESOLUTION.height });
     };
     video.src = src;
   });
@@ -224,10 +212,10 @@ function getImageDimensionsFromUrl(src: string): Promise<{ width: number; height
   return new Promise((resolve) => {
     const img = new window.Image();
     img.onload = () => {
-      resolve({ width: img.naturalWidth || 1920, height: img.naturalHeight || 1080 });
+      resolve({ width: img.naturalWidth || DEFAULT_VIDEO_RESOLUTION.width, height: img.naturalHeight || DEFAULT_VIDEO_RESOLUTION.height });
     };
     img.onerror = () => {
-      resolve({ width: 1920, height: 1080 });
+      resolve({ width: DEFAULT_VIDEO_RESOLUTION.width, height: DEFAULT_VIDEO_RESOLUTION.height });
     };
     img.src = src;
   });

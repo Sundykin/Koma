@@ -18,6 +18,7 @@ import { getThemeStylePrefix, getThemeStylePrefixAsync } from '../config/themePr
 import { createLogger } from '../store/logger';
 import { logTTICall, logITVCall } from '../store/aiCallLogger';
 import { getPromptTemplate, fillTemplate } from '../store/promptTemplates';
+import { IMAGE_GENERATION_SIZES } from '../constants/dimensions';
 
 const logger = createLogger('ScenePropAsset');
 
@@ -142,13 +143,12 @@ export async function generateSceneImage(
     logTTICall(
       ttiProvider.config?.name || 'TTI',
       prompt,
-      { width: 1920, height: 1080 },
+      IMAGE_GENERATION_SIZES.video_frame,
       { projectId, targetId: scene.id, targetName: `场景: ${scene.name}` }
     );
 
     const result = await ttiProvider.generateImage(prompt, {
-      width: 1920,
-      height: 1080, // 横版场景图
+      ...IMAGE_GENERATION_SIZES.video_frame, // 横版场景图
     });
 
     if (typeof result === 'string' && ttiProvider.checkProgress) {
@@ -316,13 +316,12 @@ export async function generatePropImage(
     logTTICall(
       ttiProvider.config?.name || 'TTI',
       prompt,
-      { width: 1024, height: 1024 },
+      IMAGE_GENERATION_SIZES.square,
       { projectId, targetId: prop.id, targetName: `道具: ${prop.name}` }
     );
 
     const result = await ttiProvider.generateImage(prompt, {
-      width: 1024,
-      height: 1024, // 正方形道具图
+      ...IMAGE_GENERATION_SIZES.square, // 正方形道具图
     });
 
     if (typeof result === 'string' && ttiProvider.checkProgress) {

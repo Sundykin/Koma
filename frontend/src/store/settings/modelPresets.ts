@@ -3,6 +3,7 @@
  */
 import { electronService } from '../../services/electronService';
 import { getGlobalPath } from './core';
+import { STORAGE_KEYS } from '../../constants/storageKeys';
 
 export interface ModelPreset {
   name: string;
@@ -13,7 +14,7 @@ export interface ModelPreset {
 export async function loadPresets(): Promise<ModelPreset[]> {
   if (!electronService.isElectron()) {
     try {
-      const data = localStorage.getItem('koma_presets');
+      const data = localStorage.getItem(STORAGE_KEYS.PRESETS);
       if (data) {
         return JSON.parse(data);
       }
@@ -51,7 +52,7 @@ export async function savePreset(preset: ModelPreset): Promise<void> {
     const presets = await loadPresets();
     const filtered = presets.filter((p) => p.name !== preset.name);
     filtered.push(preset);
-    localStorage.setItem('koma_presets', JSON.stringify(filtered));
+    localStorage.setItem(STORAGE_KEYS.PRESETS, JSON.stringify(filtered));
     return;
   }
 
@@ -65,7 +66,7 @@ export async function deletePreset(presetName: string): Promise<void> {
   if (!electronService.isElectron()) {
     const presets = await loadPresets();
     const filtered = presets.filter((p) => p.name !== presetName);
-    localStorage.setItem('koma_presets', JSON.stringify(filtered));
+    localStorage.setItem(STORAGE_KEYS.PRESETS, JSON.stringify(filtered));
     return;
   }
 

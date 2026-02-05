@@ -7,6 +7,9 @@ import { message } from 'antd';
 import { Track, Clip, MediaType } from '../types/editor';
 import { getAnimatedProperties } from './simpleKeyframe';
 import { handleError } from '../utils/errorHandler';
+import { createLogger } from '../store/logger';
+
+const logger = createLogger('SimpleEngine');
 
 const MEDIA_PLAY_ERROR_KEY = 'simple-engine-playback-error';
 
@@ -201,7 +204,7 @@ export class SimpleVideoRenderer {
       img.src = mediaSrc;
       const cache: MediaCache = { type: 'image', element: img, isReady: false };
       img.onload = () => { cache.isReady = true; this.renderFrame(); };
-      img.onerror = () => { console.warn('[SimpleRenderer] Failed to load image:', mediaSrc); };
+      img.onerror = () => { logger.warn('Failed to load image: ' + mediaSrc); };
       this.mediaCache.set(clip.id, cache);
     } else if (clip.type === MediaType.VIDEO) {
       const video = document.createElement('video');
@@ -217,7 +220,7 @@ export class SimpleVideoRenderer {
         this.audioController?.shareVideoElement(clip.id, video);
         this.renderFrame();
       };
-      video.onerror = () => { console.warn('[SimpleRenderer] Failed to load video:', mediaSrc); };
+      video.onerror = () => { logger.warn('Failed to load video: ' + mediaSrc); };
       this.mediaCache.set(clip.id, cache);
     }
   }
@@ -539,7 +542,7 @@ export class SimpleAudioController {
 
     const instance: MediaInstance = { element: audio, clip, isReady: false, type: 'audio' };
     audio.addEventListener('canplaythrough', () => { instance.isReady = true; });
-    audio.onerror = () => { console.warn('[SimpleAudio] Failed to load audio:', mediaSrc); };
+    audio.onerror = () => { logger.warn('Failed to load audio: ' + mediaSrc); };
     this.mediaMap.set(clip.id, instance);
   }
 

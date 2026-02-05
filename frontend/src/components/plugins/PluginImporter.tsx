@@ -12,6 +12,9 @@ import { initializePlugin } from '../../services/plugin/PluginInitializer';
 import { PluginPermissions } from './PluginPermissions';
 import { usePluginStore } from '../../store/pluginStore';
 import { electronService } from '../../services/electronService';
+import { createLogger } from '../../store/logger';
+
+const logger = createLogger('PluginImporter');
 
 const { Dragger } = Upload;
 
@@ -73,9 +76,9 @@ export const PluginImporter: React.FC<PluginImporterProps> = ({ onImportSuccess 
         stagingId: result.stagingId, // 保存 stagingId 供安装时复用
       });
 
-    } catch (err: any) {
-      console.error('[PluginImporter] 导入失败:', err);
-      message.error(`${t('plugin.importFailed')}: ${err.message}`);
+    } catch (err: unknown) {
+      logger.error('导入失败', err);
+      message.error(`${t('plugin.importFailed')}: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setLoading(false);
     }
@@ -113,7 +116,7 @@ export const PluginImporter: React.FC<PluginImporterProps> = ({ onImportSuccess 
               message.warning(t('plugin.installedButInitFailed', { name: manifest.name }));
             }
           } catch (initErr) {
-            console.error('[PluginImporter] 初始化异常:', initErr);
+            logger.error('初始化异常', initErr);
             message.warning(t('plugin.initException', { name: manifest.name }));
           }
         } else {

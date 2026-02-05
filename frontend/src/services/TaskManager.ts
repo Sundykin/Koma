@@ -6,6 +6,9 @@
 import { v4 as uuidv4 } from 'uuid';
 import { electronService } from './electronService';
 import { getStorageConfig, initStorageConfig } from '../store/storageConfig';
+import { createLogger } from '../store/logger';
+
+const logger = createLogger('TaskManager');
 
 // ========== 任务分类 ==========
 
@@ -249,9 +252,6 @@ class TaskManagerClass {
         });
       }
     }
-
-    if (staleTasks.length > 0) {
-    }
   }
 
   /**
@@ -294,7 +294,7 @@ class TaskManagerClass {
       try {
         listener(task);
       } catch (err) {
-        console.error('Task listener error:', err);
+        logger.error('Task listener error', err);
       }
     });
   }
@@ -341,7 +341,7 @@ class TaskManagerClass {
         });
       }
     } catch (err) {
-      console.error('Failed to load tasks:', err);
+      logger.error('Failed to load tasks', err);
     }
   }
 
@@ -363,7 +363,7 @@ class TaskManagerClass {
 
       await electronService.fs.writeFile(tasksPath, JSON.stringify(data, null, 2));
     } catch (err) {
-      console.error('Failed to save tasks:', err);
+      logger.error('Failed to save tasks', err);
     }
   }
 

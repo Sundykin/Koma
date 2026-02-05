@@ -5,6 +5,10 @@
 import type { TrackLine, TrackItem, VideoTrackItem, AudioTrackItem, ImageTrackItem, TrackKeyframe } from '../types/track';
 import { message } from 'antd';
 import { handleError, ignoreError } from '../utils/errorHandler';
+import { DEFAULT_PLAYBACK_CONFIG } from '../constants/dimensions';
+import { createLogger } from '../store/logger';
+
+const logger = createLogger('PlaybackEngine');
 
 const PLAYBACK_AUDIO_ERROR_KEY = 'playback-engine-audio-error';
 
@@ -44,7 +48,7 @@ interface MediaCache {
 export class PlaybackEngine {
   private canvas: HTMLCanvasElement | null = null;
   private ctx: CanvasRenderingContext2D | null = null;
-  private config: PlaybackConfig = { fps: 30, width: 1920, height: 1080 };
+  private config: PlaybackConfig = { ...DEFAULT_PLAYBACK_CONFIG };
 
   private tracks: TrackLine[] = [];
   private _sortedTracks: TrackLine[] = [];  // 预排序的轨道缓存
@@ -86,7 +90,7 @@ export class PlaybackEngine {
       this.masterGain = this.audioContext.createGain();
       this.masterGain.connect(this.audioContext.destination);
     } catch (err) {
-      console.warn('[PlaybackEngine] Failed to create AudioContext:', err);
+      logger.warn('Failed to create AudioContext', err);
     }
   }
 

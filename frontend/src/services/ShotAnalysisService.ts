@@ -15,6 +15,10 @@ import {
   saveEpisodeShots,
   loadEpisode,
 } from '../store/projectStore';
+import { createLogger } from '../store/logger';
+import { extractErrorMessage } from '../utils/errorHandler';
+
+const logger = createLogger('ShotAnalysis');
 
 // 预选资产类型
 export interface PresetAssets {
@@ -200,11 +204,11 @@ export class ShotAnalysisService {
         progress: 100,
         result: { shotsCount: shots.length },
       });
-    } catch (error: any) {
-      console.error('[ShotAnalysis] 生成失败:', error);
+    } catch (error: unknown) {
+      logger.error('生成失败', error);
       TaskManager.updateTask(taskId, {
         status: 'failed',
-        error: error.message || '生成失败',
+        error: extractErrorMessage(error) || '生成失败',
       });
     }
   }

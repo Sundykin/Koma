@@ -3,6 +3,9 @@
  * 支持 MCP 工具配置、温度和最大 token 设置
  */
 import React, { useState, useCallback, useEffect } from 'react';
+import { createLogger } from '../../store/logger';
+
+const logger = createLogger('AgentTemplates');
 import {
   Modal,
   Form,
@@ -115,7 +118,7 @@ export const AgentTemplates: React.FC<AgentTemplatesProps> = ({
           setMcpTools(tools);
         })
         .catch(err => {
-          console.error('加载工具列表失败:', err);
+          logger.error('加载工具列表失败:', err);
         })
         .finally(() => {
           setLoadingTools(false);

@@ -4,6 +4,7 @@
  */
 import { electronService } from '../services/electronService';
 import { getStorageConfig, initStorageConfig } from './storageConfig';
+import { STORAGE_KEYS } from '../constants/storageKeys';
 
 // Prompt 模板类型
 export type PromptTemplateType =
@@ -580,7 +581,7 @@ export async function loadPromptTemplates(): Promise<Record<PromptTemplateType, 
   if (!electronService.isElectron()) {
     // 浏览器环境
     try {
-      const data = localStorage.getItem('koma_prompt_templates');
+      const data = localStorage.getItem(STORAGE_KEYS.PROMPT_TEMPLATES);
       if (data) {
         const custom = JSON.parse(data) as Partial<Record<PromptTemplateType, PromptTemplate>>;
         for (const [key, value] of Object.entries(custom)) {
@@ -630,10 +631,10 @@ export async function saveCustomTemplate(template: PromptTemplate): Promise<void
   const customTemplate = { ...template, isCustom: true };
 
   if (!electronService.isElectron()) {
-    const data = localStorage.getItem('koma_prompt_templates');
+    const data = localStorage.getItem(STORAGE_KEYS.PROMPT_TEMPLATES);
     const existing = data ? JSON.parse(data) : {};
     existing[template.id] = customTemplate;
-    localStorage.setItem('koma_prompt_templates', JSON.stringify(existing));
+    localStorage.setItem(STORAGE_KEYS.PROMPT_TEMPLATES, JSON.stringify(existing));
     return;
   }
 
@@ -658,11 +659,11 @@ export async function saveCustomTemplate(template: PromptTemplate): Promise<void
  */
 export async function resetTemplate(type: PromptTemplateType): Promise<PromptTemplate> {
   if (!electronService.isElectron()) {
-    const data = localStorage.getItem('koma_prompt_templates');
+    const data = localStorage.getItem(STORAGE_KEYS.PROMPT_TEMPLATES);
     if (data) {
       const existing = JSON.parse(data);
       delete existing[type];
-      localStorage.setItem('koma_prompt_templates', JSON.stringify(existing));
+      localStorage.setItem(STORAGE_KEYS.PROMPT_TEMPLATES, JSON.stringify(existing));
     }
     return DEFAULT_TEMPLATES[type];
   }
@@ -688,7 +689,7 @@ export async function resetTemplate(type: PromptTemplateType): Promise<PromptTem
  */
 export async function resetAllTemplates(): Promise<void> {
   if (!electronService.isElectron()) {
-    localStorage.removeItem('koma_prompt_templates');
+    localStorage.removeItem(STORAGE_KEYS.PROMPT_TEMPLATES);
     return;
   }
 

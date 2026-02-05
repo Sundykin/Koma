@@ -1,5 +1,8 @@
 import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { ScriptAnalysisResult } from "../types";
+import { createLogger } from '../store/logger';
+
+const logger = createLogger('GeminiService');
 
 // 获取 API Key，实际项目中应从环境变量获取
 const apiKey = process.env.API_KEY || 'dummy-key'; 
@@ -118,7 +121,7 @@ export const analyzeScript = async (scriptText: string): Promise<ScriptAnalysisR
     throw new Error("No response text");
 
   } catch (error) {
-    console.error("Gemini 分析失败:", JSON.stringify(error));
+    logger.error("Gemini 分析失败:", JSON.stringify(error));
     // 降级处理：如果 API 失败，返回中文模拟数据用于演示
     return {
       characters: [

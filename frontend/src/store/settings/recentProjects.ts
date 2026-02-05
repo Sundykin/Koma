@@ -4,11 +4,12 @@
 import { electronService } from '../../services/electronService';
 import { getGlobalPath } from './core';
 import type { RecentProject } from '../../types';
+import { STORAGE_KEYS } from '../../constants/storageKeys';
 
 export async function loadRecentProjects(): Promise<RecentProject[]> {
   if (!electronService.isElectron()) {
     try {
-      const data = localStorage.getItem('koma_recent_projects');
+      const data = localStorage.getItem(STORAGE_KEYS.RECENT_PROJECTS);
       if (data) {
         return JSON.parse(data);
       }
@@ -35,7 +36,7 @@ export async function saveRecentProjects(projects: RecentProject[]): Promise<voi
   const trimmed = projects.slice(0, 20);
 
   if (!electronService.isElectron()) {
-    localStorage.setItem('koma_recent_projects', JSON.stringify(trimmed));
+    localStorage.setItem(STORAGE_KEYS.RECENT_PROJECTS, JSON.stringify(trimmed));
     return;
   }
 

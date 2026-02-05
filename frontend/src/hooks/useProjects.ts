@@ -5,6 +5,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { electronService, ProjectMeta, isElectron } from '../services/electronService';
 import { v4 as uuidv4 } from 'uuid';
+import { createLogger } from '../store/logger';
+
+const logger = createLogger('useProjects');
 
 export interface UseProjectsResult {
   projects: ProjectMeta[];
@@ -41,9 +44,9 @@ export function useProjects(): UseProjectsResult {
       setError(null);
       const list = await electronService.project.list();
       setProjects(list);
-    } catch (err: any) {
-      console.error('加载项目列表失败:', err);
-      setError(err.message || '加载项目列表失败');
+    } catch (err: unknown) {
+      logger.error('加载项目列表失败', err);
+      setError(err instanceof Error ? err.message : '加载项目列表失败');
     } finally {
       setLoading(false);
     }

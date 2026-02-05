@@ -16,6 +16,9 @@ import {
 } from '../types/resource';
 import { ffmpegManager } from '../services/ffmpegManager';
 import { fsStat, fsCopy, fsMkdir, fsExists } from '../services/electronService';
+import { createLogger } from './logger';
+
+const logger = createLogger('ResourceStore');
 
 // Store 状态
 interface ResourceState {
@@ -154,7 +157,7 @@ export const useResourceStore = create<ResourceState & ResourceActions>((set, ge
   importFile: async (filePath, options = {}) => {
     const { projectPath } = get();
     if (!projectPath) {
-      console.error('[ResourceStore] No project path');
+      logger.error('No project path');
       return null;
     }
 
@@ -162,14 +165,14 @@ export const useResourceStore = create<ResourceState & ResourceActions>((set, ge
       // 检测文件类型
       const type = detectResourceType(filePath);
       if (!type) {
-        console.warn('[ResourceStore] Unknown file type:', filePath);
+        logger.warn('Unknown file type: ' + filePath);
         return null;
       }
 
       // 获取文件信息
       const stat = await fsStat(filePath);
       if (!stat) {
-        console.error('[ResourceStore] File not found:', filePath);
+        logger.error('File not found: ' + filePath);
         return null;
       }
 
@@ -220,14 +223,14 @@ export const useResourceStore = create<ResourceState & ResourceActions>((set, ge
           framesPath: result.frames ? result.frames[0]?.replace(/[/\\][^/\\]+$/, '') : undefined
         });
       } catch (err) {
-        console.warn('[ResourceStore] FFmpeg processing failed:', err);
+        logger.warn('FFmpeg processing failed', err);
         // FFmpeg 处理失败，但资源仍可用
         get().updateResource(id, { status: 'ready' });
       }
 
       return get().getResource(id) || null;
     } catch (err) {
-      console.error('[ResourceStore] Import failed:', err);
+      logger.error('Import failed', err);
       return null;
     }
   },

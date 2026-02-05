@@ -6,6 +6,10 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { ChatMessage } from '../chat/types';
 import { extractThinkFromText } from '../chat/utils/messageUtils';
+import { CHAT_STORAGE_KEYS, getSessionDataKey } from '../constants/storageKeys';
+import { createLogger } from './logger';
+
+const logger = createLogger('ChatHistory');
 
 // 当前 schema 版本
 const SCHEMA_VERSION = 2;
@@ -46,8 +50,8 @@ interface ChatHistoryState {
 }
 
 // 存储键
-const SESSIONS_KEY = 'chat_sessions';
-const SESSION_DATA_PREFIX = 'chat_session_';
+const SESSIONS_KEY = CHAT_STORAGE_KEYS.SESSIONS;
+const SESSION_DATA_PREFIX = CHAT_STORAGE_KEYS.SESSION_DATA_PREFIX;
 
 // 规范化标题
 function normalizeTitle(text: string): string {
@@ -134,7 +138,7 @@ export const useChatHistoryStore = create<ChatHistoryState>()(
             set({ sessions });
           }
         } catch (e) {
-          console.error('加载会话列表失败:', e);
+          logger.error('加载会话列表失败', e);
         }
       },
 
@@ -242,7 +246,7 @@ export const useChatHistoryStore = create<ChatHistoryState>()(
             return migratedData;
           }
         } catch (e) {
-          console.error('加载会话数据失败:', e);
+          logger.error('加载会话数据失败', e);
         }
         return null;
       },

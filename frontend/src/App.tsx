@@ -18,6 +18,10 @@ import {
   DEFAULT_SETTINGS,
   formatTimeAgo,
 } from './constants/appConstants';
+import { getThumbnailUrl } from './constants/dimensions';
+import { createLogger } from './store/logger';
+
+const logger = createLogger('App');
 
 // 懒加载重型组件
 const EditorView = lazy(() => import('./components/editor/EditorView').then(m => ({ default: m.EditorView })));
@@ -66,7 +70,9 @@ const AppContent: React.FC = () => {
   // 初始化 TaskManager
   useEffect(() => {
     if (activeProject) {
-      TaskManager.initialize(activeProject.id);
+      TaskManager.initialize(activeProject.id).catch(err => {
+        logger.error('TaskManager 初始化失败', err);
+      });
     }
     return () => { TaskManager.dispose(); };
   }, [activeProject?.id]);
@@ -81,7 +87,7 @@ const AppContent: React.FC = () => {
         setAnalysisData({ characters, scenes, props, shots });
       }
     } catch (err) {
-      console.error('[App] 加载分析数据失败:', err);
+      logger.error('加载分析数据失败', err);
     }
   }, []);
 
@@ -125,6 +131,8 @@ const AppContent: React.FC = () => {
             props: prev?.props || [], shots,
           }));
         }
+      }).catch(err => {
+        logger.error('加载剧集镜头失败', err);
       });
     }
   }, [editorStep, activeProject?.id, activeEpisode?.id, isVideoDevMode]);
@@ -133,7 +141,7 @@ const AppContent: React.FC = () => {
   const displayProjects: Project[] = projects.map(p => ({
     id: p.id, title: p.title, genre: p.genre, mode: p.mode,
     episodes: p.episodes || 1, lastEdited: formatTimeAgo(p.updatedAt),
-    thumbnail: p.thumbnail || `https://picsum.photos/seed/${p.id}/600/338`,
+    thumbnail: p.thumbnail || getThumbnailUrl(p.id),
     status: p.status || 'script', llmConfigId: p.llmConfigId,
     ttiConfigId: p.ttiConfigId, itvConfigId: p.itvConfigId,
     ttsConfigId: p.ttsConfigId, theme: p.theme, stylePrompt: p.stylePrompt,
@@ -152,7 +160,7 @@ const AppContent: React.FC = () => {
       const newProject: Project = {
         id: created.id, title: created.title, genre: created.genre, mode: created.mode,
         episodes: created.episodes || 1, lastEdited: '刚刚',
-        thumbnail: created.thumbnail || `https://picsum.photos/seed/${created.id}/600/338`,
+        thumbnail: created.thumbnail || getThumbnailUrl(created.id),
         status: created.status || 'script', theme: created.theme, stylePrompt: created.stylePrompt,
       };
       setActiveProject(newProject);
@@ -196,7 +204,7 @@ const AppContent: React.FC = () => {
       const updated = { ...prev, [step]: 'completed' as const };
       if (activeProject && activeEpisode) {
         setActiveEpisode({ ...activeEpisode, stepProgress: updated });
-        saveEpisode(activeProject.id, activeEpisode.id, { stepProgress: updated }).catch(console.error);
+        saveEpisode(activeProject.id, activeEpisode.id, { stepProgress: updated }).catch(err => logger.error('保存剧集失败', err));
       }
       return updated;
     });

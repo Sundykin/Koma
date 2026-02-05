@@ -7,6 +7,9 @@ import { loadPluginComponent, loadProviderPlugin, isPluginLoaded } from './Plugi
 import { createPluginAPI } from './PluginAPI';
 import { electronService } from '../electronService';
 import type { InstalledPlugin } from '../../types/plugin';
+import { createLogger } from '../../store/logger';
+
+const logger = createLogger('PluginInitializer');
 
 // 已初始化的插件 ID 集合
 const initializedPlugins = new Set<string>();
@@ -30,7 +33,7 @@ export async function initializePlugin(plugin: InstalledPlugin): Promise<boolean
     if (needsBackendActivation) {
       const result = await electronService.ipc.invoke('plugin:activate', { manifest: plugin });
       if (!result?.success) {
-        console.warn(`[PluginInitializer] 后端激活失败: ${plugin.id}`, result?.error);
+        logger.warn(`后端激活失败: ${plugin.id}`, result?.error);
         // provider 类型后端激活失败不阻止前端加载
         if (plugin.category !== 'provider') {
           return false;
@@ -55,12 +58,12 @@ export async function initializePlugin(plugin: InstalledPlugin): Promise<boolean
       // tool 类型暂时走前端加载
       exports = await loadPluginComponent(plugin);
     } else {
-      console.warn(`[PluginInitializer] 不支持的插件类型: ${plugin.category}`);
+      logger.warn(`不支持的插件类型: ${plugin.category}`);
       return false;
     }
 
     if (!exports) {
-      console.warn(`[PluginInitializer] 插件 ${plugin.id} 加载失败`);
+      logger.warn(`插件 ${plugin.id} 加载失败`);
       return false;
     }
 
@@ -73,7 +76,7 @@ export async function initializePlugin(plugin: InstalledPlugin): Promise<boolean
     initializedPlugins.add(plugin.id);
     return true;
   } catch (err) {
-    console.error(`[PluginInitializer] 插件 ${plugin.id} 初始化失败:`, err);
+    logger.error(`插件 ${plugin.id} 初始化失败`, err);
     return false;
   }
 }
@@ -137,8 +140,8 @@ async function reconcilePluginStore(): Promise<void> {
     const stalePlugins = store.plugins.filter(p => !installedIds.has(p.id));
 
     if (stalePlugins.length > 0) {
-      console.warn(
-        `[PluginInitializer] 发现 ${stalePlugins.length} 个已不存在的插件，清理:`,
+      logger.warn(
+        `发现 ${stalePlugins.length} 个已不存在的插件，清理`,
         stalePlugins.map(p => p.id)
       );
       for (const p of stalePlugins) {
@@ -147,7 +150,7 @@ async function reconcilePluginStore(): Promise<void> {
     }
   } catch (err) {
     // 对账失败不阻塞启动
-    console.warn('[PluginInitializer] 插件对账失败，跳过:', err);
+    logger.warn('插件对账失败，跳过', err);
   }
 }
 

@@ -22,7 +22,10 @@ import { MCPSettings } from './MCPSettings';
 import { AgentTemplates, PRESET_TEMPLATES } from './AgentTemplates';
 import type { AgentTemplate } from './AgentTemplates';
 import type { MCPServerConfig } from '../../chat/ipc';
+import { createLogger } from '../../store/logger';
 import styles from './ChatPage.module.css';
+
+const logger = createLogger('ChatPage');
 
 const { TextArea } = Input;
 
@@ -99,7 +102,7 @@ export const ChatPage: React.FC = () => {
 
         setIsConfigLoaded(true);
       } catch (err) {
-        console.error('加载配置失败:', err);
+        logger.error('加载配置失败', err);
         setIsConfigLoaded(true);
       }
     };
@@ -115,7 +118,7 @@ export const ChatPage: React.FC = () => {
         try {
           await chatIPC.mcp.connect(config);
         } catch (err) {
-          console.error(`连接 MCP 服务器 ${config.name} 失败:`, err);
+          logger.error(`连接 MCP 服务器 ${config.name} 失败`, err);
         }
       }
     };
@@ -153,14 +156,18 @@ export const ChatPage: React.FC = () => {
     setSelectedConfigId(configId);
     const config = llmConfigs.find(c => c.id === configId);
     if (config && isReady) {
-      await updateConfig({
-        modelProvider: config.provider as 'openai' | 'anthropic' | 'google',
-        modelName: config.modelName,
-        apiKey: config.apiKey,
-        baseUrl: config.baseUrl,
-      });
+      try {
+        await updateConfig({
+          modelProvider: config.provider as 'openai' | 'anthropic' | 'google',
+          modelName: config.modelName,
+          apiKey: config.apiKey,
+          baseUrl: config.baseUrl,
+        });
+      } catch (err: any) {
+        message.error(t('chat.configUpdateFailed', { error: err.message }));
+      }
     }
-  }, [llmConfigs, isReady, updateConfig]);
+  }, [llmConfigs, isReady, updateConfig, t]);
 
   // 发送消息
   const handleSend = useCallback(async (text: string, attachments?: AttachmentFile[]) => {
@@ -174,40 +181,45 @@ export const ChatPage: React.FC = () => {
       return;
     }
 
-    // 构建消息内容
-    let content: string | ContentPart[];
-    if (attachments && attachments.length > 0) {
-      const parts: ContentPart[] = [];
+    try {
+      // 构建消息内容
+      let content: string | ContentPart[];
+      if (attachments && attachments.length > 0) {
+        const parts: ContentPart[] = [];
 
-      if (text) {
-        parts.push({ type: 'text', text });
-      }
-
-      for (const attachment of attachments) {
-        if (attachment.type === 'image') {
-          const base64 = await fileToBase64(attachment.file);
-          parts.push({
-            type: 'image',
-            imageUrl: `data:${attachment.file.type};base64,${base64}`,
-            mimeType: attachment.file.type,
-          });
-        } else {
-          const base64 = await fileToBase64(attachment.file);
-          parts.push({
-            type: 'file',
-            fileName: attachment.file.name,
-            fileData: base64,
-            mimeType: attachment.file.type,
-          });
+        if (text) {
+          parts.push({ type: 'text', text });
         }
-      }
-      content = parts;
-    } else {
-      content = text;
-    }
 
-    await sendStream(content);
-  }, [isReady, selectedConfig, sendStream]);
+        for (const attachment of attachments) {
+          if (attachment.type === 'image') {
+            const base64 = await fileToBase64(attachment.file);
+            parts.push({
+              type: 'image',
+              imageUrl: `data:${attachment.file.type};base64,${base64}`,
+              mimeType: attachment.file.type,
+            });
+          } else {
+            const base64 = await fileToBase64(attachment.file);
+            parts.push({
+              type: 'file',
+              fileName: attachment.file.name,
+              fileData: base64,
+              mimeType: attachment.file.type,
+            });
+          }
+        }
+        content = parts;
+      } else {
+        content = text;
+      }
+
+      await sendStream(content);
+    } catch (err: any) {
+      message.error(t('chat.sendFailed', { error: err.message }));
+      logger.error('发送消息失败', err);
+    }
+  }, [isReady, selectedConfig, sendStream, t]);
 
   // 历史存储
   const {
@@ -234,10 +246,14 @@ export const ChatPage: React.FC = () => {
 
   // 新建对话
   const handleNewChat = useCallback(async () => {
-    const newSessionId = createHistorySession();
-    setCurrentSession(newSessionId);
-    await clear();
-    message.success(t('chat.newChatCreated'));
+    try {
+      const newSessionId = createHistorySession();
+      setCurrentSession(newSessionId);
+      await clear();
+      message.success(t('chat.newChatCreated'));
+    } catch (err: any) {
+      message.error(t('chat.createChatFailed', { error: err.message }));
+    }
   }, [createHistorySession, setCurrentSession, clear, t]);
 
   // 保存当前会话（懒创建会话 ID）
@@ -254,44 +270,57 @@ export const ChatPage: React.FC = () => {
 
   // MCP 配置保存
   const handleSaveMcpConfigs = useCallback(async (configs: MCPServerConfig[]) => {
-    setMcpConfigs(configs);
-    await saveMCPServers(configs);
+    try {
+      setMcpConfigs(configs);
+      await saveMCPServers(configs);
 
-    // 重新连接 MCP 服务器
-    if (chatIPC.isElectron()) {
-      // 断开所有现有连接
-      const { connections } = await chatIPC.mcp.list();
-      for (const conn of connections) {
-        await chatIPC.mcp.disconnect(conn.name);
-      }
-      // 连接新配置
-      for (const config of configs) {
-        try {
-          await chatIPC.mcp.connect(config);
-        } catch (err) {
-          console.error(`连接 MCP 服务器 ${config.name} 失败:`, err);
+      // 重新连接 MCP 服务器
+      if (chatIPC.isElectron()) {
+        // 断开所有现有连接
+        const { connections } = await chatIPC.mcp.list();
+        for (const conn of connections) {
+          await chatIPC.mcp.disconnect(conn.name);
+        }
+        // 连接新配置
+        for (const config of configs) {
+          try {
+            await chatIPC.mcp.connect(config);
+          } catch (err) {
+            logger.error(`连接 MCP 服务器 ${config.name} 失败`, err);
+          }
         }
       }
+    } catch (err: any) {
+      message.error(t('chat.mcpSaveFailed', { error: err.message }));
+      logger.error('保存 MCP 配置失败', err);
     }
-  }, []);
+  }, [t]);
 
   // 智能体模板保存
   const handleSaveAgentTemplates = useCallback(async (templates: AgentTemplate[]) => {
-    setAgentTemplates(templates);
-    await saveAgentTemplates(templates);
-  }, []);
+    try {
+      setAgentTemplates(templates);
+      await saveAgentTemplates(templates);
+    } catch (err: any) {
+      message.error(t('chat.templateSaveFailed', { error: err.message }));
+    }
+  }, [t]);
 
   // 智能体选择
   const handleSelectAgentTemplate = useCallback(async (template: AgentTemplate) => {
-    setSystemPrompt(template.systemPrompt);
-    setActiveAgentId(template.id);
-    await persistActiveAgentId(template.id);
+    try {
+      setSystemPrompt(template.systemPrompt);
+      setActiveAgentId(template.id);
+      await persistActiveAgentId(template.id);
 
-    // 更新会话配置中的 enabledTools
-    if (isReady && template.tools) {
-      await updateConfig({ enabledTools: template.tools });
+      // 更新会话配置中的 enabledTools
+      if (isReady && template.tools) {
+        await updateConfig({ enabledTools: template.tools });
+      }
+    } catch (err: any) {
+      message.error(t('chat.agentSelectFailed', { error: err.message }));
     }
-  }, [isReady, updateConfig]);
+  }, [isReady, updateConfig, t]);
 
   const configOptions = useMemo(() => {
     return llmConfigs.map(config => ({
@@ -355,8 +384,12 @@ export const ChatPage: React.FC = () => {
                 message.warning(t('chat.sessionNotReady'));
                 return;
               }
-              await updateConfig({ agentMode: 'orchestrated' });
-              message.success(t('chat.multiAgentEnabled'));
+              try {
+                await updateConfig({ agentMode: 'orchestrated' });
+                message.success(t('chat.multiAgentEnabled'));
+              } catch (err: any) {
+                message.error(t('chat.configUpdateFailed', { error: err.message }));
+              }
             }}
           />
         </Tooltip>
@@ -385,7 +418,14 @@ export const ChatPage: React.FC = () => {
           <Button
             type="text"
             icon={<ClearOutlined />}
-            onClick={() => { clear(); message.success(t('chat.chatCleared')); }}
+            onClick={async () => { 
+              try {
+                await clear(); 
+                message.success(t('chat.chatCleared')); 
+              } catch (err: any) {
+                message.error(t('chat.clearFailed', { error: err.message }));
+              }
+            }}
             disabled={messages.length === 0}
           />
         </Tooltip>

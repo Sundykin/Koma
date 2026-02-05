@@ -4,6 +4,7 @@
  */
 import { electronService, normalizePath } from '../services/electronService';
 import type { StorageConfig } from '../types';
+import { STORAGE_KEYS } from '../constants/storageKeys';
 
 const STORAGE_VERSION = 1;
 const DEFAULT_FOLDER_NAME = '.koma';
@@ -20,7 +21,7 @@ export async function getDefaultStoragePath(): Promise<string> {
 }
 
 // 存储配置 key（使用 localStorage 存储，因为这是系统级配置）
-const STORAGE_CONFIG_KEY = 'koma_storage_config';
+// 注意：此处保留本地常量以保持向后兼容，新代码应使用 STORAGE_KEYS.STORAGE_CONFIG
 
 // 检查路径是否有效（不包含 [object Object] 等无效字符串，且必须是绝对路径）
 function isValidPath(path: string | undefined): boolean {
@@ -39,7 +40,7 @@ function isValidPath(path: string | undefined): boolean {
 
 export function getStorageConfig(): StorageConfig | null {
   try {
-    const data = localStorage.getItem(STORAGE_CONFIG_KEY);
+    const data = localStorage.getItem(STORAGE_KEYS.STORAGE_CONFIG);
     if (data) {
       const config = JSON.parse(data) as StorageConfig;
       // 统一路径斜杠
@@ -47,7 +48,7 @@ export function getStorageConfig(): StorageConfig | null {
       // 验证路径有效性
       if (!isValidPath(config.rootPath)) {
         // 路径无效，清除缓存
-        localStorage.removeItem(STORAGE_CONFIG_KEY);
+        localStorage.removeItem(STORAGE_KEYS.STORAGE_CONFIG);
         return null;
       }
       return config;
@@ -64,7 +65,7 @@ export function setStorageConfig(config: StorageConfig): void {
     ...config,
     rootPath: normalizePath(config.rootPath),
   };
-  localStorage.setItem(STORAGE_CONFIG_KEY, JSON.stringify(normalizedConfig));
+  localStorage.setItem(STORAGE_KEYS.STORAGE_CONFIG, JSON.stringify(normalizedConfig));
 }
 
 // 初始化存储配置

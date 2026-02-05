@@ -457,6 +457,7 @@ export const TTIConfigManager: React.FC<TTIConfigManagerProps> = ({ onConfigChan
           <Form.Item
             name="provider"
             label={t('settings.provider')}
+            required
             rules={[{ required: true, message: `${t('settings.pleaseSelect')} ${t('settings.provider')}` }]}
           >
             <Select placeholder={t('settings.selectTTIProvider')} onChange={handlePresetChange}>
@@ -471,6 +472,7 @@ export const TTIConfigManager: React.FC<TTIConfigManagerProps> = ({ onConfigChan
           <Form.Item
             name="name"
             label={t('settings.configName')}
+            required
             rules={[{ required: true, message: `${t('settings.pleaseEnter')} ${t('settings.configName')}` }]}
           >
             <Input placeholder={t('settings.configNamePlaceholder')} />
@@ -489,6 +491,7 @@ export const TTIConfigManager: React.FC<TTIConfigManagerProps> = ({ onConfigChan
           <Form.Item
             name="baseUrl"
             label={t('settings.apiAddress')}
+            required
             rules={[{ required: true, message: `${t('settings.pleaseEnter')} ${t('settings.apiAddress')}` }]}
           >
             <Input prefix={<ApiOutlined />} placeholder="http://127.0.0.1:8188" />

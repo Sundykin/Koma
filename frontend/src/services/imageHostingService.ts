@@ -5,6 +5,10 @@
  * 注意：配置从插件系统的 channelConfig.providerConfig 读取
  */
 
+import { createLogger } from '../store/logger';
+
+const logger = createLogger('ImageHosting');
+
 // 定义类型（避免依赖 @komastudio/plugin-sdk）
 export interface ImageHostingUploadOptions {
   filename?: string;
@@ -68,7 +72,7 @@ export async function getImageHostingConfig(): Promise<SCDNImageHostingConfig | 
 
     return null;
   } catch (err) {
-    console.error('[ImageHosting] 读取插件配置失败:', err);
+    logger.error('读取插件配置失败', err);
     return null;
   }
 }
@@ -142,11 +146,11 @@ async function uploadImageToSCDN(
         error: result.message || '上传失败',
       };
     }
-  } catch (err: any) {
-    console.error('[SCDN] Upload error:', err);
+  } catch (err: unknown) {
+    logger.error('SCDN Upload error', err);
     return {
       success: false,
-      error: err.message || '网络请求失败',
+      error: err instanceof Error ? err.message : '网络请求失败',
     };
   }
 }
@@ -183,7 +187,7 @@ export async function uploadToImageHostingWithRetry(
     }
 
     lastError = result.error || '未知错误';
-    console.warn(`[ImageHosting] 上传失败 (尝试 ${attempt}):`, lastError);
+    logger.warn(`上传失败 (尝试 ${attempt}): ${lastError}`);
 
     // 如果不是最后一次尝试，等待后重试（指数退避）
     if (attempt < maxRetries) {
@@ -219,10 +223,10 @@ export async function uploadLocalFileToImageHosting(
     const filename = localPath.split(/[/\\]/).pop() || 'image.png';
 
     return uploadToImageHostingWithRetry(fileData, { filename });
-  } catch (err: any) {
+  } catch (err: unknown) {
     return {
       success: false,
-      error: `读取文件失败: ${err.message}`,
+      error: `读取文件失败: ${err instanceof Error ? err.message : String(err)}`,
     };
   }
 }

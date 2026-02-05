@@ -2,6 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { Minus, Square, X, Maximize2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { electronService } from '../../services/electronService';
+import { createLogger } from '../../store/logger';
+
+const logger = createLogger('WindowControls');
 
 export const WindowControls: React.FC = () => {
   const { t } = useTranslation();
@@ -23,7 +26,7 @@ export const WindowControls: React.FC = () => {
     try {
       await electronService.window.minimize();
     } catch (e) {
-      console.error('Minimize failed:', e);
+      logger.error('Minimize failed', e);
     }
   };
 
@@ -33,7 +36,7 @@ export const WindowControls: React.FC = () => {
       const maximized = await electronService.window.isMaximized();
       setIsMaximized(maximized);
     } catch (e) {
-      console.error('Maximize failed:', e);
+      logger.error('Maximize failed', e);
     }
   };
 
@@ -41,7 +44,7 @@ export const WindowControls: React.FC = () => {
     try {
       await electronService.window.close();
     } catch (e) {
-      console.error('Close failed:', e);
+      logger.error('Close failed', e);
     }
   };
 

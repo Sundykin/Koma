@@ -5,6 +5,9 @@
 import { message } from 'antd';
 import type { Clip, Timeline } from '../types';
 import { handleError } from '../utils/errorHandler';
+import { createLogger } from '../store/logger';
+
+const logger = createLogger('AudioController');
 
 const AUDIO_PLAY_ERROR_KEY = 'audio-playback-error';
 
@@ -65,7 +68,7 @@ export class AudioController {
       };
 
       audio.onerror = () => {
-        console.error(`Failed to load audio: ${clip.sourcePath}`);
+        logger.error('Failed to load audio: ' + clip.sourcePath);
         resolve(); // 不阻塞其他音频加载
       };
     });

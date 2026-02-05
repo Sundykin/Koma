@@ -8,6 +8,9 @@ import { User, MapPin, Box, Link } from 'lucide-react';
 import type { Character, Scene, Prop, EpisodeRef } from '../../types';
 import { loadCharacters, loadScenes, loadProps, getOrphanedAssets } from '../../store/projectStore';
 import { electronService } from '../../services/electronService';
+import { createLogger } from '../../store/logger';
+
+const logger = createLogger('ProjectAssetOverview');
 
 interface ProjectAssetOverviewProps {
   projectId: string;
@@ -40,7 +43,7 @@ export const ProjectAssetOverview: React.FC<ProjectAssetOverviewProps> = ({
         orphaned.characters.length + orphaned.scenes.length + orphaned.props.length
       );
     } catch (err) {
-      console.error('加载资产失败:', err);
+      logger.error('加载资产失败:', err);
     } finally {
       setLoading(false);
     }

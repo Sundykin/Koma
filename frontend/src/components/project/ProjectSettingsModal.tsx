@@ -69,6 +69,7 @@ export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({
           <Form.Item
             name="title"
             label="项目名称"
+            required
             rules={[{ required: true, message: '请输入项目名称' }]}
           >
             <Input placeholder="请输入项目名称" />

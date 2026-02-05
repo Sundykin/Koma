@@ -3,6 +3,9 @@
  * 用于在设置页面管理 MCP 服务器连接
  */
 import React, { useState, useEffect, useCallback } from 'react';
+import { createLogger } from '../../store/logger';
+
+const logger = createLogger('MCPConfigManager');
 import {
   Card,
   Row,
@@ -69,7 +72,7 @@ export const MCPConfigManager: React.FC<MCPConfigManagerProps> = ({ onConfigChan
       const conns = await mcpService.getConnections(true);
       setConnections(conns);
     } catch (err) {
-      console.error('Failed to load MCP connections:', err);
+      logger.error('Failed to load MCP connections:', err);
     } finally {
       setLoading(false);
     }
@@ -333,6 +336,7 @@ export const MCPConfigManager: React.FC<MCPConfigManagerProps> = ({ onConfigChan
           <Form.Item
             name="name"
             label="服务器名称"
+            required
             rules={[{ required: true, message: '请输入服务器名称' }]}
           >
             <Input placeholder="例如：filesystem" disabled={!!editingConfig} />
@@ -341,6 +345,7 @@ export const MCPConfigManager: React.FC<MCPConfigManagerProps> = ({ onConfigChan
           <Form.Item
             name="transport"
             label="传输类型"
+            required
             rules={[{ required: true }]}
           >
             <Select>
@@ -362,6 +367,7 @@ export const MCPConfigManager: React.FC<MCPConfigManagerProps> = ({ onConfigChan
                     <Form.Item
                       name="command"
                       label="命令"
+                      required
                       rules={[{ required: true, message: '请输入命令' }]}
                     >
                       <Input placeholder="例如：npx" />
@@ -376,6 +382,7 @@ export const MCPConfigManager: React.FC<MCPConfigManagerProps> = ({ onConfigChan
                 <Form.Item
                   name="url"
                   label="URL"
+                  required
                   rules={[{ required: true, message: '请输入 URL' }]}
                 >
                   <Input placeholder="例如：http://localhost:3000/mcp" />

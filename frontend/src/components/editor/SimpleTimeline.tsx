@@ -11,6 +11,9 @@ import {
   Play, Pause, Film, Music, Type, Trash2, Copy, ZoomIn, ZoomOut, Magnet,
   Volume2, VolumeX, Eye, EyeOff, Pencil, Check, X
 } from 'lucide-react';
+import { createLogger } from '../../store/logger';
+
+const logger = createLogger('SimpleTimeline');
 
 interface TimelineProps {
   tracks: Track[];
@@ -592,7 +595,7 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
       const time = Math.max(0, dropX / pixelsPerSecond);
       onAssetDrop(asset, time, trackId);
     } catch (err) {
-      console.error("Drop failed", err);
+      logger.error("Drop failed", err);
     } finally {
       setHighlightedTrackId(null);
     }

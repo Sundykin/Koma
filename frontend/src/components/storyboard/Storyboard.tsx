@@ -33,8 +33,11 @@ import { StoryboardStudio } from './StoryboardStudio';
 import { ShotListEditor } from './ShotListEditor';
 import { ShotAssetPresetModal } from './ShotAssetPresetModal';
 import { useShotAssetSync } from '../../hooks/useShotAssetSync';
+import { createLogger } from '../../store/logger';
 import './Storyboard.css';
 import './ShotListEditor.css';
+
+const logger = createLogger('Storyboard');
 
 const { Text } = Typography;
 const { TextArea } = Input;
@@ -205,7 +208,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       setScenes(filteredScenes);
       setProps(filteredProps);
     } catch (err) {
-      console.error('[Storyboard] 加载失败:', err);
+      logger.error('加载失败', err);
       message.error('加载分镜数据失败');
     } finally {
       setLoading(false);
@@ -237,7 +240,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
                 setShots(prev => prev.map(s => s.id === task.targetId ? updatedShot : s));
               }
             } catch (err) {
-              console.error('[Storyboard] 更新 shot 失败:', err);
+              logger.error('更新 shot 失败', err);
             }
           }
         } else if (task.status === 'failed') {

@@ -10,6 +10,9 @@ import type {
 } from '../../types/plugin';
 import { usePluginStore } from '../../store/pluginStore';
 import { clearPluginInitialized } from './PluginInitializer';
+import { createLogger } from '../../store/logger';
+
+const logger = createLogger('PluginLoader');
 
 // 缓存已加载的插件模块
 const loadedModules = new Map<string, PluginExports>();
@@ -96,7 +99,7 @@ export function validateManifest(manifest: any): PluginValidationResult {
  */
 export async function loadPluginComponent(plugin: InstalledPlugin): Promise<PluginExports | null> {
   if (plugin.category !== 'global' || !plugin.entry.frontend) {
-    console.warn(`[PluginLoader] 插件 ${plugin.id} 不是 global 类型或无前端入口`);
+    logger.warn(`插件 ${plugin.id} 不是 global 类型或无前端入口`);
     return null;
   }
 
@@ -108,14 +111,14 @@ export async function loadPluginComponent(plugin: InstalledPlugin): Promise<Plug
  */
 export async function loadProviderPlugin(plugin: InstalledPlugin): Promise<PluginExports | null> {
   if (plugin.category !== 'provider') {
-    console.warn(`[PluginLoader] 插件 ${plugin.id} 不是 provider 类型`);
+    logger.warn(`插件 ${plugin.id} 不是 provider 类型`);
     return null;
   }
 
   // 优先使用 frontend 入口（兼容旧插件）
   const entryFile = plugin.entry.frontend || plugin.entry.logic || plugin.entry.ui;
   if (!entryFile) {
-    console.warn(`[PluginLoader] 插件 ${plugin.id} 无可用入口`);
+    logger.warn(`插件 ${plugin.id} 无可用入口`);
     return null;
   }
 
@@ -130,7 +133,7 @@ export async function loadPluginLogic(plugin: InstalledPlugin): Promise<PluginEx
   // 优先使用 logic 入口
   const logicEntry = plugin.entry.logic || plugin.entry.frontend;
   if (!logicEntry) {
-    console.warn(`[PluginLoader] 插件 ${plugin.id} 无逻辑入口`);
+    logger.warn(`插件 ${plugin.id} 无逻辑入口`);
     return null;
   }
 
@@ -160,9 +163,9 @@ export async function loadPluginLogic(plugin: InstalledPlugin): Promise<PluginEx
     store.setRuntimeState(plugin.id, { status: 'loaded', component: exports.default });
 
     return exports;
-  } catch (error: any) {
-    console.error(`[PluginLoader] 加载插件逻辑 ${plugin.id} 失败:`, error);
-    store.setRuntimeState(plugin.id, { status: 'error', error: error.message });
+  } catch (error: unknown) {
+    logger.error(`加载插件逻辑 ${plugin.id} 失败`, error);
+    store.setRuntimeState(plugin.id, { status: 'error', error: error instanceof Error ? error.message : String(error) });
     return null;
   }
 }
@@ -174,7 +177,7 @@ async function loadPluginModule(plugin: InstalledPlugin): Promise<PluginExports 
   // 支持多种入口配置
   const entryFile = plugin.entry.frontend || plugin.entry.ui || plugin.entry.logic;
   if (!entryFile) {
-    console.warn(`[PluginLoader] 插件 ${plugin.id} 无可用入口`);
+    logger.warn(`插件 ${plugin.id} 无可用入口`);
     return null;
   }
 
@@ -213,9 +216,9 @@ async function loadPluginModule(plugin: InstalledPlugin): Promise<PluginExports 
     store.setRuntimeState(plugin.id, { status: 'loaded', component: exports.default });
 
     return exports;
-  } catch (error: any) {
-    console.error(`[PluginLoader] 加载插件 ${plugin.id} 失败:`, error);
-    store.setRuntimeState(plugin.id, { status: 'error', error: error.message });
+  } catch (error: unknown) {
+    logger.error(`加载插件 ${plugin.id} 失败`, error);
+    store.setRuntimeState(plugin.id, { status: 'error', error: error instanceof Error ? error.message : String(error) });
     return null;
   }
 }
@@ -277,7 +280,7 @@ export function unloadPlugin(pluginId: string): void {
     try {
       exports.onDeactivate();
     } catch (err) {
-      console.error(`[PluginLoader] 插件 ${pluginId} onDeactivate 执行失败:`, err);
+      logger.error(`插件 ${pluginId} onDeactivate 执行失败`, err);
     }
   }
 

@@ -391,6 +391,7 @@ export const TTSConfigManager: React.FC<TTSConfigManagerProps> = ({ onConfigChan
           <Form.Item
             name="provider"
             label={t('settings.provider')}
+            required
             rules={[{ required: true, message: `${t('settings.pleaseSelect')} ${t('settings.provider')}` }]}
           >
             <Select placeholder={t('settings.selectProvider')} onChange={handlePresetChange}>
@@ -408,6 +409,7 @@ export const TTSConfigManager: React.FC<TTSConfigManagerProps> = ({ onConfigChan
           <Form.Item
             name="name"
             label={t('settings.configName')}
+            required
             rules={[{ required: true, message: `${t('settings.pleaseEnter')} ${t('settings.configName')}` }]}
           >
             <Input placeholder={t('settings.configNamePlaceholder')} />

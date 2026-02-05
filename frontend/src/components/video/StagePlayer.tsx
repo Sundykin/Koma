@@ -8,6 +8,9 @@ import 'xgplayer/dist/index.min.css';
 import { electronService } from '../../services/electronService';
 import { Typography, Empty } from 'antd';
 import { PlayCircleOutlined } from '@ant-design/icons';
+import { createLogger } from '../../store/logger';
+
+const logger = createLogger('StagePlayer');
 
 const { Text } = Typography;
 
@@ -87,13 +90,13 @@ export const StagePlayer: React.FC<StagePlayerProps> = ({
         playerRef.current.on('ended', onEnded);
       }
 
-      playerRef.current.on('error', (err: any) => {
-        console.error('[StagePlayer] 播放错误:', err);
+      playerRef.current.on('error', (err: unknown) => {
+        logger.error('播放错误', err);
         setError('视频加载失败');
       });
-    } catch (err: any) {
-      console.error('[StagePlayer] 初始化失败:', err);
-      setError(err.message || '播放器初始化失败');
+    } catch (err: unknown) {
+      logger.error('初始化失败', err);
+      setError(err instanceof Error ? err.message : '播放器初始化失败');
     }
 
     return () => {

@@ -6,6 +6,9 @@
 import type { Clip, Track, Timeline } from '../types';
 import { getInterpolatedValues } from './keyframe';
 import { electronService } from '../services/electronService';
+import { createLogger } from '../store/logger';
+
+const logger = createLogger('VideoRenderer');
 
 export class VideoRenderer {
   private canvas: HTMLCanvasElement;
@@ -67,7 +70,7 @@ export class VideoRenderer {
           resolve();
         };
         video.onerror = (e) => {
-          console.warn('[VideoRenderer] Failed to load video:', sourcePath, e);
+          logger.warn('Failed to load video: ' + sourcePath, e);
           resolve(); // 不阻塞其他资源加载
         };
       } else {
@@ -79,7 +82,7 @@ export class VideoRenderer {
           resolve();
         };
         img.onerror = (e) => {
-          console.warn('[VideoRenderer] Failed to load image:', sourcePath, e);
+          logger.warn('Failed to load image: ' + sourcePath, e);
           resolve(); // 不阻塞其他资源加载
         };
       }

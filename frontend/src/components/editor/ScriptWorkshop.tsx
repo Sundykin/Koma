@@ -34,6 +34,7 @@ import {
 import { electronService } from '../../services/electronService';
 import { ScriptEditor } from '../../editor';
 import type { MentionItem } from '../../editor';
+import { getScriptVersionsKey } from '../../constants/storageKeys';
 
 const { TextArea } = Input;
 const { Text, Title } = Typography;
@@ -99,7 +100,7 @@ export const ScriptWorkshop: React.FC<ScriptWorkshopProps> = ({
 
   const loadVersions = async () => {
     if (!electronService.isElectron()) {
-      const data = localStorage.getItem(`koma_script_versions_${projectId}`);
+      const data = localStorage.getItem(getScriptVersionsKey(projectId));
       if (data) {
         setVersions(JSON.parse(data));
       }
@@ -132,7 +133,7 @@ export const ScriptWorkshop: React.FC<ScriptWorkshopProps> = ({
     const updatedVersions = [newVersion, ...versions].slice(0, 50); // 最多 50 个版本
 
     if (!electronService.isElectron()) {
-      localStorage.setItem(`koma_script_versions_${projectId}`, JSON.stringify(updatedVersions));
+      localStorage.setItem(getScriptVersionsKey(projectId), JSON.stringify(updatedVersions));
       setVersions(updatedVersions);
       return;
     }

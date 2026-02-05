@@ -26,6 +26,9 @@ import type { ChannelKind } from './registry.types';
 import { createProviderInstance } from './registry';
 import { usePluginStore } from '../store/pluginStore';
 import { createSandboxedFetch } from '../services/plugin/PluginSandbox';
+import { createLogger } from '../store/logger';
+
+const logger = createLogger('Provider');
 
 // 从子目录导入类型和工厂
 import { createLLMProvider, GeminiProvider, OpenAIProvider, ClaudeProvider } from './llm';
@@ -230,17 +233,17 @@ export function createTTSProviderFromConfig(config: TTSModelConfig): TTSProvider
 function createChannelProviderContext(channelConfig: ChannelConfig) {
   if (channelConfig.source === 'plugin') {
     if (!channelConfig.pluginId) {
-      console.error(`[Provider] 插件渠道 ${channelConfig.name} 缺少 pluginId`);
+      logger.error(`插件渠道 ${channelConfig.name} 缺少 pluginId`);
       return null;
     }
 
     const plugin = usePluginStore.getState().getPlugin(channelConfig.pluginId);
     if (!plugin) {
-      console.warn(`[Provider] 插件 ${channelConfig.pluginId} 未找到`);
+      logger.warn(`插件 ${channelConfig.pluginId} 未找到`);
       return null;
     }
     if (!plugin.isEnabled) {
-      console.warn(`[Provider] 插件 ${channelConfig.pluginId} 已禁用`);
+      logger.warn(`插件 ${channelConfig.pluginId} 已禁用`);
       return null;
     }
 
@@ -268,8 +271,8 @@ async function createChannelProvider<T>(channelConfig: ChannelConfig, kind: Chan
       channelConfig.providerConfig,
       context
     );
-  } catch (err: any) {
-    console.error(`[Provider] 创建插件 Provider 失败:`, err.message);
+  } catch (err: unknown) {
+    logger.error('创建插件 Provider 失败', err);
     return null;
   }
 }

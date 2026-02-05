@@ -68,6 +68,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ isOpen, 
         <Form.Item
           name="title"
           label={t('project.projectName')}
+          required
           rules={[{ required: true, message: t('project.projectNameRequired') }]}
         >
           <Input placeholder={t('project.projectNamePlaceholder')} autoFocus />

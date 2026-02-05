@@ -10,6 +10,9 @@ import { loadPluginComponent, unloadPlugin } from '../../services/plugin/PluginL
 import { createPluginAPI } from '../../services/plugin/PluginAPI';
 import { isPluginInitialized } from '../../services/plugin/PluginInitializer';
 import { usePluginStore, usePluginRuntimeState } from '../../store/pluginStore';
+import { createLogger } from '../../store/logger';
+
+const logger = createLogger('PluginHost');
 
 interface PluginHostProps {
   pluginId: string;
@@ -30,7 +33,7 @@ class PluginErrorBoundary extends React.Component<
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    console.error(`[PluginHost] 插件 ${this.props.pluginId} 渲染错误:`, error, errorInfo);
+    logger.error(`插件 ${this.props.pluginId} 渲染错误:`, { error, errorInfo });
     this.props.onError(error);
   }
 

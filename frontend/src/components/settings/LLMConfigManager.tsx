@@ -337,6 +337,7 @@ export const LLMConfigManager: React.FC<LLMConfigManagerProps> = ({ onConfigChan
           <Form.Item
             name="name"
             label="配置名称"
+            required
             rules={[{ required: true, message: '请输入配置名称' }]}
           >
             <Input placeholder="如: DeepSeek Chat" />
@@ -345,6 +346,7 @@ export const LLMConfigManager: React.FC<LLMConfigManagerProps> = ({ onConfigChan
           <Form.Item
             name="provider"
             label="模型类型"
+            required
             rules={[{ required: true }]}
           >
             <Select onChange={handleProviderChange}>
@@ -404,6 +406,7 @@ export const LLMConfigManager: React.FC<LLMConfigManagerProps> = ({ onConfigChan
           <Form.Item
             name="modelName"
             label="模型名称"
+            required
             rules={[{ required: true, message: '请输入模型名称' }]}
           >
             <AutoComplete
@@ -425,6 +428,7 @@ export const LLMConfigManager: React.FC<LLMConfigManagerProps> = ({ onConfigChan
           <Form.Item
             name="apiKey"
             label="API Key"
+            required
             rules={[{ required: true, message: '请输入 API Key' }]}
           >
             <Input.Password prefix={<KeyOutlined />} placeholder="sk-..." />

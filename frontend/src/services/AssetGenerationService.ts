@@ -13,6 +13,10 @@ import type { Character, Scene, Prop, TTIModelConfig, ProgressInfo } from '../ty
 import { createTTIProvider, TTIProvider } from '../providers';
 import { getStorageConfig, initStorageConfig } from '../store/storageConfig';
 import { electronService } from './electronService';
+import { createLogger } from '../store/logger';
+import { extractErrorMessage } from '../utils/errorHandler';
+
+const logger = createLogger('AssetGen');
 
 // 轮询配置
 const POLL_INTERVAL = 3000; // 3秒
@@ -154,11 +158,11 @@ export class AssetGenerationService {
         progress: 100,
         result: { imagePath },
       });
-    } catch (error: any) {
-      console.error('[AssetGen] 生成失败:', error);
+    } catch (error: unknown) {
+      logger.error('生成失败', error);
       TaskManager.updateTask(taskId, {
         status: 'failed',
-        error: error.message || '生成失败',
+        error: extractErrorMessage(error),
       });
     }
   }
@@ -201,11 +205,11 @@ export class AssetGenerationService {
         progress: 100,
         result: { imagePath },
       });
-    } catch (error: any) {
-      console.error('[AssetGen] Error:', error);
+    } catch (error: unknown) {
+      logger.error('生成失败', error);
       TaskManager.updateTask(taskId, {
         status: 'failed',
-        error: error.message || '生成失败',
+        error: extractErrorMessage(error),
       });
     }
   }
@@ -248,11 +252,11 @@ export class AssetGenerationService {
         progress: 100,
         result: { imagePath },
       });
-    } catch (error: any) {
-      console.error('[AssetGen] Error:', error);
+    } catch (error: unknown) {
+      logger.error('生成失败', error);
       TaskManager.updateTask(taskId, {
         status: 'failed',
-        error: error.message || '生成失败',
+        error: extractErrorMessage(error),
       });
     }
   }

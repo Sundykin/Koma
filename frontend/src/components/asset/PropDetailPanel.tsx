@@ -3,6 +3,9 @@
  * 左侧输入控制区 + 右侧画布预览区
  */
 import React, { useState, useCallback, useEffect } from 'react';
+import { createLogger } from '../../store/logger';
+
+const logger = createLogger('PropDetailPanel');
 import {
   Form,
   Input,
@@ -210,7 +213,7 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
           updated.imageUrl = uploadResult.url;
           message.success({ content: t('asset.uploadHostingSuccess'), key: 'imageHosting' });
         } else {
-          console.warn('[PropDetailPanel] 图床上传失败:', uploadResult.error);
+          logger.warn('图床上传失败:', uploadResult.error);
           message.warning({ content: `${t('asset.uploadHostingFailed')}: ${uploadResult.error}`, key: 'imageHosting' });
         }
       }

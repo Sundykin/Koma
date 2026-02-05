@@ -7,6 +7,7 @@ import { electronService } from '../../services/electronService';
 import { getStorageConfig, initStorageConfig } from '../storageConfig';
 import { addRecentProject, getDefaultLLMConfig } from '../globalStore';
 import type { ProjectMeta, Timeline } from '../../types';
+import { DEFAULT_VIDEO_RESOLUTION } from '../../constants/dimensions';
 
 // ========== 路径工具 ==========
 
@@ -121,7 +122,7 @@ function createDefaultTimeline(): Timeline {
       },
     ],
     fps: 30,
-    resolution: { width: 1920, height: 1080 },
+    resolution: { width: DEFAULT_VIDEO_RESOLUTION.width, height: DEFAULT_VIDEO_RESOLUTION.height },
   };
 }
 

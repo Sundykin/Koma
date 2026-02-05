@@ -1,4 +1,5 @@
 import { Project, ScriptAnalysisResult, AppSettings } from '../types';
+import { getThumbnailUrl } from './dimensions';
 
 // 开发测试用模拟数据
 export const DEV_TEST_PROJECT: Project = {
@@ -8,7 +9,7 @@ export const DEV_TEST_PROJECT: Project = {
   mode: 'drama',
   episodes: 12,
   lastEdited: '测试项目',
-  thumbnail: 'https://picsum.photos/seed/horror/600/338',
+  thumbnail: getThumbnailUrl('horror'),
   status: 'storyboard'
 };
 

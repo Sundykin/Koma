@@ -238,9 +238,10 @@ export class ScriptAnalysisService {
 
       this.reportProgress('characters', 'completed', `识别到 ${characters.length} 个角色`);
       return { success: true, data: characters, episodeId: this.episodeContext?.episodeId };
-    } catch (error: any) {
-      this.reportProgress('characters', 'failed', error.message);
-      return { success: false, error: error.message };
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.reportProgress('characters', 'failed', errorMessage);
+      return { success: false, error: errorMessage };
     }
   }
 
@@ -271,9 +272,10 @@ export class ScriptAnalysisService {
 
       this.reportProgress('scenes', 'completed', `识别到 ${scenes.length} 个场景`);
       return { success: true, data: scenes, episodeId: this.episodeContext?.episodeId };
-    } catch (error: any) {
-      this.reportProgress('scenes', 'failed', error.message);
-      return { success: false, error: error.message };
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.reportProgress('scenes', 'failed', errorMessage);
+      return { success: false, error: errorMessage };
     }
   }
 
@@ -302,9 +304,10 @@ export class ScriptAnalysisService {
 
       this.reportProgress('props', 'completed', `识别到 ${props.length} 个道具`);
       return { success: true, data: props, episodeId: this.episodeContext?.episodeId };
-    } catch (error: any) {
-      this.reportProgress('props', 'failed', error.message);
-      return { success: false, error: error.message };
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.reportProgress('props', 'failed', errorMessage);
+      return { success: false, error: errorMessage };
     }
   }
 
@@ -354,9 +357,10 @@ export class ScriptAnalysisService {
 
       this.reportProgress('shots', 'completed', `生成 ${shots.length} 个分镜`);
       return { success: true, data: shots, episodeId: this.episodeContext?.episodeId };
-    } catch (error: any) {
-      this.reportProgress('shots', 'failed', error.message);
-      return { success: false, error: error.message };
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.reportProgress('shots', 'failed', errorMessage);
+      return { success: false, error: errorMessage };
     }
   }
 
@@ -535,10 +539,11 @@ export class BackgroundAnalysisService {
           propsCount: result.props.length,
         },
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
       TaskManager.updateTask(taskId, {
         status: 'failed',
-        error: error.message || '解析失败',
+        error: errorMessage || '解析失败',
       });
     }
   }

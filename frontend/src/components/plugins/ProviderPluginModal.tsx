@@ -10,6 +10,9 @@ import type { InstalledPlugin, PluginExports, PluginAPI } from '../../types/plug
 import { createPluginAPI } from '../../services/plugin/PluginAPI';
 import { usePluginStore } from '../../store/pluginStore';
 import { electronService } from '../../services/electronService';
+import { createLogger } from '../../store/logger';
+
+const logger = createLogger('ProviderPluginModal');
 
 // 懒加载 antd 和 icons 暴露给插件（避免通配符导入拖累主 bundle）
 async function exposeLibsToWindow(): Promise<void> {
@@ -42,7 +45,7 @@ interface ProviderPluginModalProps {
 // 加载 Provider 插件前端组件
 async function loadProviderPluginComponent(plugin: InstalledPlugin): Promise<PluginExports | null> {
   if (!plugin.entry.frontend) {
-    console.warn(`[ProviderPluginModal] 插件 ${plugin.id} 无前端入口`);
+    logger.warn(`插件 ${plugin.id} 无前端入口`);
     return null;
   }
 
@@ -68,7 +71,7 @@ async function loadProviderPluginComponent(plugin: InstalledPlugin): Promise<Plu
       throw new Error(`插件 ${plugin.id} 未正确导出到 window.${globalKey}`);
     }
   } catch (err: any) {
-    console.error(`[ProviderPluginModal] 执行插件脚本失败:`, err);
+    logger.error(`执行插件脚本失败:`, err);
     throw new Error(`加载插件脚本失败: ${err.message}`);
   }
 }

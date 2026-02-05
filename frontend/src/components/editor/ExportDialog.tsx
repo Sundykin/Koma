@@ -8,6 +8,10 @@ import { useTranslation } from 'react-i18next';
 import { useTrackStore } from '../../store/trackStore';
 import { ExportRenderer, ExportConfig, ExportProgress } from '../../services/exportRenderer';
 import { saveFileDialog } from '../../services/electronService';
+import { VIDEO_RESOLUTIONS } from '../../constants/dimensions';
+import { createLogger } from '../../store/logger';
+
+const logger = createLogger('ExportDialog');
 
 interface ExportDialogProps {
   open: boolean;
@@ -15,10 +19,10 @@ interface ExportDialogProps {
 }
 
 const RESOLUTION_PRESETS = [
-  { label: '1080p (1920×1080)', width: 1920, height: 1080 },
-  { label: '720p (1280×720)', width: 1280, height: 720 },
-  { label: '480p (854×480)', width: 854, height: 480 },
-  { label: '4K (3840×2160)', width: 3840, height: 2160 },
+  { label: '1080p (1920×1080)', ...VIDEO_RESOLUTIONS['1080p'] },
+  { label: '720p (1280×720)', ...VIDEO_RESOLUTIONS['720p'] },
+  { label: '480p (854×480)', ...VIDEO_RESOLUTIONS['480p'] },
+  { label: '4K (3840×2160)', ...VIDEO_RESOLUTIONS['4K'] },
 ];
 
 export function ExportDialog({ open, onClose }: ExportDialogProps) {
@@ -60,7 +64,7 @@ export function ExportDialog({ open, onClose }: ExportDialogProps) {
         form.setFieldValue('outputPath', result.filePath);
       }
     } catch (err) {
-      console.error('[ExportDialog] Select output failed:', err);
+      logger.error('Select output failed:', err);
     }
   }, [form]);
 

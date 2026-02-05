@@ -3,6 +3,9 @@
  * 左侧输入控制区 + 右侧画布预览区
  */
 import React, { useState, useCallback, useEffect } from 'react';
+import { createLogger } from '../../store/logger';
+
+const logger = createLogger('SceneDetailPanel');
 import {
   Form,
   Input,
@@ -188,7 +191,7 @@ export const SceneDetailPanel: React.FC<SceneDetailPanelProps> = ({
           updated.imageUrl = uploadResult.url;
           message.success({ content: t('asset.uploadHostingSuccess'), key: 'imageHosting' });
         } else {
-          console.warn('[SceneDetailPanel] 图床上传失败:', uploadResult.error);
+          logger.warn('图床上传失败:', uploadResult.error);
           message.warning({ content: `${t('asset.uploadHostingFailed')}: ${uploadResult.error}`, key: 'imageHosting' });
         }
       }

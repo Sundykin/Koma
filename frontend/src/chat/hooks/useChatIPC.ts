@@ -14,6 +14,9 @@ import {
   StreamErrorEvent,
   generateId,
 } from '../ipc';
+import { createLogger } from '../../store/logger';
+
+const logger = createLogger('useChatIPC');
 
 export interface UseChatOptions {
   config?: SessionConfig;
@@ -64,7 +67,7 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
   // 初始化会话 - 需要有 apiKey 才创建
   useEffect(() => {
     if (!chatIPC.isElectron()) {
-      console.warn('Chat IPC is only available in Electron environment');
+      logger.warn('Chat IPC is only available in Electron environment');
       return;
     }
 
@@ -85,7 +88,7 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
         currentSessionIdRef.current = session.id;
         setIsReady(true);
       } catch (err) {
-        console.error('Failed to create chat session:', err);
+        logger.error('Failed to create chat session', err);
         setError(err instanceof Error ? err : new Error('Failed to create session'));
       }
     };
@@ -95,7 +98,7 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
     return () => {
       // 清理会话
       if (currentSessionIdRef.current) {
-        chatIPC.disposeSession(currentSessionIdRef.current).catch(console.error);
+        chatIPC.disposeSession(currentSessionIdRef.current).catch(err => logger.error('Failed to dispose session', err));
         currentSessionIdRef.current = '';
       }
       // 取消订阅
@@ -110,7 +113,7 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
 
     // 更新会话配置
     chatIPC.updateSessionConfig(sessionId, options.config).catch(err => {
-      console.error('Failed to update session config:', err);
+      logger.error('Failed to update session config', err);
     });
   }, [isReady, sessionId, options.config?.modelProvider, options.config?.modelName, options.config?.apiKey, options.config?.baseUrl, options.config?.systemPrompt]);
 
@@ -268,7 +271,7 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
       setSessionId(newSession.id);
       currentSessionIdRef.current = newSession.id;
     } catch (err) {
-      console.error('Failed to clear session:', err);
+      logger.error('Failed to clear session', err);
     }
 
     setMessages([]);
@@ -279,7 +282,7 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
 
   const stop = useCallback(() => {
     if (sessionId) {
-      chatIPC.cancelStream(sessionId).catch(console.error);
+      chatIPC.cancelStream(sessionId).catch(err => logger.error('Failed to cancel stream', err));
     }
   }, [sessionId]);
 
@@ -289,7 +292,7 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
     try {
       await chatIPC.updateSessionConfig(sessionId, config);
     } catch (err) {
-      console.error('Failed to update session config:', err);
+      logger.error('Failed to update session config', err);
     }
   }, [sessionId]);
 
@@ -308,7 +311,7 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
         setIsReady(true);
       }
     } catch (err) {
-      console.error('Failed to load session:', err);
+      logger.error('Failed to load session', err);
       setError(err instanceof Error ? err : new Error('Failed to load session'));
     }
   }, []);

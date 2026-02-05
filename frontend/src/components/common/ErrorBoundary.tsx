@@ -1,6 +1,9 @@
 import React, { Component, ReactNode } from 'react';
 import { Button, Result } from 'antd';
 import i18n from '../../i18n';
+import { createLogger } from '../../store/logger';
+
+const logger = createLogger('ErrorBoundary');
 
 interface Props {
   children: ReactNode;
@@ -22,8 +25,7 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    console.error('[ErrorBoundary] Caught error:', error);
-    console.error('[ErrorBoundary] Component stack:', errorInfo.componentStack);
+    logger.error('Caught error', { error: error.message, stack: errorInfo.componentStack });
   }
 
   handleReload = () => {

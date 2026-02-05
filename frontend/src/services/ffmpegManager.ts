@@ -3,6 +3,9 @@
  * 负责与 Electron FFmpeg 服务通信，管理帧缓存和波形缓存
  */
 import { isElectron, appGetPath } from './electronService';
+import { createLogger } from '../store/logger';
+
+const logger = createLogger('FFmpegManager');
 
 // 媒体信息类型
 export interface MediaInfo {
@@ -98,7 +101,7 @@ class FFmpegManager {
       try {
         this.cacheDir = await api.getCacheDir();
       } catch (err) {
-        console.warn('[FFmpegManager] Failed to get cache dir:', err);
+        logger.warn('Failed to get cache dir:', err);
       }
     }
 

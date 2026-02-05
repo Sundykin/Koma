@@ -10,6 +10,9 @@ import { getPromptTemplate, fillTemplate } from '../store/promptTemplates';
 import type { PromptTemplateType } from '../store/promptTemplates';
 import { loadCharacters, loadScenes, updateShot } from '../store/projectStore';
 import { TaskManager } from './TaskManager';
+import { createLogger } from '../store/logger';
+
+const logger = createLogger('ShotPrompt');
 
 // 运镜关键字
 export const CAMERA_OPTIONS = [
@@ -240,17 +243,18 @@ export class ShotPromptService {
         results.push(result);
         onProgress?.(i + 1, shotsToGenerate.length, result);
 
-      } catch (error: any) {
+      } catch (error: unknown) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
         const result: PromptGenerationResult = {
           shotId: shot.id,
           imagePrompt: '',
           videoPrompt: '',
           success: false,
-          error: error.message,
+          error: errorMessage,
         };
         results.push(result);
         onProgress?.(i + 1, shotsToGenerate.length, result);
-        console.error(`[ShotPrompt] 生成失败:`, shot.id, error);
+        logger.error(`生成失败: ${shot.id}`, error);
       }
     }
 
@@ -297,13 +301,14 @@ export class ShotPromptService {
         videoPrompt,
         success: true,
       };
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
       return {
         shotId: shot.id,
         imagePrompt: '',
         videoPrompt: '',
         success: false,
-        error: error.message,
+        error: errorMessage,
       };
     }
   }

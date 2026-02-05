@@ -5,6 +5,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { ffmpegManager } from '../../services/ffmpegManager';
 import { toKomaLocalUrl } from '../../utils/urlUtils';
+import { createLogger } from '../../store/logger';
+
+const logger = createLogger('useVideoFrames');
 
 interface FrameCache {
   frames: string[];
@@ -53,7 +56,7 @@ async function extractVideoFrames(
       // 检查 ffmpeg 是否可用
       const available = await ffmpegManager.isAvailable();
       if (!available) {
-        console.warn('[useVideoFrames] FFmpeg 不可用，跳过帧提取');
+        logger.warn('FFmpeg 不可用，跳过帧提取');
         return [];
       }
 
@@ -70,7 +73,7 @@ async function extractVideoFrames(
 
       return frameUrls;
     } catch (err) {
-      console.error('[useVideoFrames] 帧提取失败:', err);
+      logger.error('帧提取失败:', err);
       globalFrameCache.set(cacheKey, {
         frames: [],
         loading: false,

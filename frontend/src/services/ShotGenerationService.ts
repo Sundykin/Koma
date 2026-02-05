@@ -13,6 +13,10 @@ import { getThemeStylePrefix } from '../config/themePresets';
 import { logTTICall } from '../store/aiCallLogger';
 import { parseMentions } from '../editor/mentionTypes';
 import type { MentionType } from '../editor/mentionTypes';
+import { createLogger } from '../store/logger';
+import { extractErrorMessage } from '../utils/errorHandler';
+
+const logger = createLogger('ShotGen');
 
 const POLL_INTERVAL = 3000;
 const MAX_POLL_TIME = 5 * 60 * 1000;
@@ -150,11 +154,11 @@ export class ShotGenerationService {
         progress: 100,
         result: { imagePath },
       });
-    } catch (error: any) {
-      console.error('[ShotGen] 生成失败:', error);
+    } catch (error: unknown) {
+      logger.error('生成失败', error);
       TaskManager.updateTask(taskId, {
         status: 'failed',
-        error: error.message || '生成失败',
+        error: extractErrorMessage(error),
       });
     }
   }

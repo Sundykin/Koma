@@ -17,6 +17,9 @@ import { electronService } from '../../services/electronService';
 import { saveEpisodeTimeline, loadEpisodeTimeline } from '../../store/projectStore';
 import { uploadFiles } from '../../services/uploadService';
 import type { Shot } from '../../types';
+import { createLogger } from '../../store/logger';
+
+const logger = createLogger('SimpleEditor');
 
 interface SimpleEditorProps {
   shots?: Shot[];
@@ -120,7 +123,7 @@ export const SimpleEditor: React.FC<SimpleEditorProps> = ({ shots = [], projectI
           successCount++;
         } else {
           failCount++;
-          console.warn('[Upload] 上传失败:', result.error);
+          logger.warn('上传失败', result.error);
         }
       }
 
@@ -132,7 +135,7 @@ export const SimpleEditor: React.FC<SimpleEditorProps> = ({ shots = [], projectI
         message.error({ content: '上传失败', key: 'upload' });
       }
     } catch (err) {
-      console.error('[Upload] 上传出错:', err);
+      logger.error('上传出错', err);
       message.error({ content: '上传出错', key: 'upload' });
     }
   }, [projectId, episodeId, addUploadedAsset]);
@@ -185,7 +188,7 @@ export const SimpleEditor: React.FC<SimpleEditorProps> = ({ shots = [], projectI
           timelineCreatedAtRef.current = Date.now();
         }
       } catch (err) {
-        console.error('[SimpleEditor] 加载时间线失败:', err);
+        logger.error('加载时间线失败', err);
         if (shots.length > 0) {
           setTracks(shotsToTracks(shots));
         }
@@ -225,7 +228,7 @@ export const SimpleEditor: React.FC<SimpleEditorProps> = ({ shots = [], projectI
           createdAt: timelineCreatedAtRef.current,
         });
       } catch (err) {
-        console.error('[SimpleEditor] 自动保存失败:', err);
+        logger.error('自动保存失败', err);
       }
     }, 1000);
 

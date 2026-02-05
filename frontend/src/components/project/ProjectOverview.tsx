@@ -16,8 +16,11 @@ import { ProjectAssetOverview } from './ProjectAssetOverview';
 import { ScriptWorkbench } from './ScriptWorkbench';
 import { saveProject, loadProject, listEpisodes } from '../../store/projectStore';
 import { loadSettings, getChannelsByCapability } from '../../store/globalStore';
+import { createLogger } from '../../store/logger';
 import { THEME_PRESETS } from '../../config/themePresets';
 import { ScriptEditor } from '../../editor';
+
+const logger = createLogger('ProjectOverview');
 
 // 统一的配置选项类型
 interface ConfigOption {
@@ -95,7 +98,7 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
           setSelectedEpisode(episodes[0]);
         }
       } catch (err) {
-        console.error('加载剧集失败:', err);
+        logger.error('加载剧集失败:', err);
       }
     };
     loadFirstEpisode();
