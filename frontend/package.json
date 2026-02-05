@@ -51,5 +51,9 @@
     "typescript": "~5.8.2",
     "vite": "^6.2.0",
     "vitest": "^3.0.5"
+  },
+  "overrides": {
+    "prismjs": "^1.30.0",
+    "refractor": "^5.0.0"
   }
 }
