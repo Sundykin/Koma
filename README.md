@@ -20,11 +20,14 @@ AI 短剧创作工具 | AI Drama Creation Tool
 
 ## 技术栈
 
-- **前端**: React 19, TypeScript, Vite, Ant Design 6, Tailwind CSS 4
+- **前端**: React 19, TypeScript, Vite 6, Ant Design 6, Tailwind CSS 4
 - **桌面端**: Electron 39
-- **状态管理**: Zustand
+- **状态管理**: Zustand 5
 - **国际化**: i18next
 - **编辑器**: CodeMirror 6
+- **AI 框架**: LangChain, MCP (Model Context Protocol)
+- **视频播放**: xgplayer
+- **测试**: Vitest
 
 ## 快速开始
 
@@ -81,14 +84,19 @@ npm run test:coverage
 Koma/
 ├── frontend/          # React 前端应用
 │   ├── src/
-│   │   ├── components/   # UI 组件
+│   │   ├── components/   # UI 组件 (asset, chat, editor, storyboard, etc.)
 │   │   ├── store/        # Zustand 状态管理
 │   │   ├── services/     # 业务服务
 │   │   ├── providers/    # LLM/TTI/TTS/ITV Provider
 │   │   ├── hooks/        # React Hooks
+│   │   ├── chat/         # AI 对话模块
+│   │   ├── editor/       # 剧本编辑器 (CodeMirror)
+│   │   ├── engine/       # 播放引擎、关键帧插值
+│   │   ├── workflow/     # 工作流 (资产生成、分镜渲染)
+│   │   ├── manju-dsl/    # Manju DSL 协议转换
 │   │   └── utils/        # 工具函数
 │   └── ...
-├── electron/          # Electron 主进程
+├── electron/          # Electron 主进程 (LangChain, MCP)
 ├── packages/          # 共享包
 ├── docs/              # 项目文档
 └── prompts/           # AI 提示词模板
