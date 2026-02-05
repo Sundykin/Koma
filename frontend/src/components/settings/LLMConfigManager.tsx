@@ -147,9 +147,10 @@ export const LLMConfigManager: React.FC<LLMConfigManagerProps> = ({ onConfigChan
       setModalVisible(false);
       await loadConfigs();
       onConfigChange?.();
-    } catch (err: any) {
-      if (err.errorFields) return;
-      message.error(`保存失败: ${err.message}`);
+    } catch (err: unknown) {
+      if (err && typeof err === 'object' && 'errorFields' in err) return;
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      message.error(`保存失败: ${errorMessage}`);
     }
   };
 
@@ -159,8 +160,9 @@ export const LLMConfigManager: React.FC<LLMConfigManagerProps> = ({ onConfigChan
       message.success('配置已删除');
       await loadConfigs();
       onConfigChange?.();
-    } catch (err: any) {
-      message.error(`删除失败: ${err.message}`);
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      message.error(`删除失败: ${errorMessage}`);
     }
   };
 
@@ -170,8 +172,9 @@ export const LLMConfigManager: React.FC<LLMConfigManagerProps> = ({ onConfigChan
       message.success('已设为默认');
       await loadConfigs();
       onConfigChange?.();
-    } catch (err: any) {
-      message.error(`设置失败: ${err.message}`);
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      message.error(`设置失败: ${errorMessage}`);
     }
   };
 
@@ -189,8 +192,9 @@ export const LLMConfigManager: React.FC<LLMConfigManagerProps> = ({ onConfigChan
       } else {
         message.error(`"${config.name}" ${result.message}`);
       }
-    } catch (err: any) {
-      message.error(`连接测试失败: ${err.message}`);
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      message.error(`连接测试失败: ${errorMessage}`);
     } finally {
       setTestingId(null);
     }

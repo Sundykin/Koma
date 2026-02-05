@@ -86,7 +86,11 @@ export function useProjects(): UseProjectsResult {
       setProjects(prev => prev.map(p => p.id === projectId ? updated : p));
       return updated;
     } else {
-      const updated = { ...projects.find(p => p.id === projectId)!, ...updates, updatedAt: Date.now() };
+      const existing = projects.find(p => p.id === projectId);
+      if (!existing) {
+        throw new Error(`Project not found: ${projectId}`);
+      }
+      const updated = { ...existing, ...updates, updatedAt: Date.now() };
       setProjects(prev => prev.map(p => p.id === projectId ? updated : p));
       return updated;
     }

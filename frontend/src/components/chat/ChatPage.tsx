@@ -163,8 +163,9 @@ export const ChatPage: React.FC = () => {
           apiKey: config.apiKey,
           baseUrl: config.baseUrl,
         });
-      } catch (err: any) {
-        message.error(t('chat.configUpdateFailed', { error: err.message }));
+      } catch (err: unknown) {
+        const errorMessage = err instanceof Error ? err.message : String(err);
+        message.error(t('chat.configUpdateFailed', { error: errorMessage }));
       }
     }
   }, [llmConfigs, isReady, updateConfig, t]);
@@ -215,8 +216,9 @@ export const ChatPage: React.FC = () => {
       }
 
       await sendStream(content);
-    } catch (err: any) {
-      message.error(t('chat.sendFailed', { error: err.message }));
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      message.error(t('chat.sendFailed', { error: errorMessage }));
       logger.error('发送消息失败', err);
     }
   }, [isReady, selectedConfig, sendStream, t]);
@@ -251,8 +253,9 @@ export const ChatPage: React.FC = () => {
       setCurrentSession(newSessionId);
       await clear();
       message.success(t('chat.newChatCreated'));
-    } catch (err: any) {
-      message.error(t('chat.createChatFailed', { error: err.message }));
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      message.error(t('chat.createChatFailed', { error: errorMessage }));
     }
   }, [createHistorySession, setCurrentSession, clear, t]);
 
@@ -290,8 +293,9 @@ export const ChatPage: React.FC = () => {
           }
         }
       }
-    } catch (err: any) {
-      message.error(t('chat.mcpSaveFailed', { error: err.message }));
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      message.error(t('chat.mcpSaveFailed', { error: errorMessage }));
       logger.error('保存 MCP 配置失败', err);
     }
   }, [t]);
@@ -301,8 +305,9 @@ export const ChatPage: React.FC = () => {
     try {
       setAgentTemplates(templates);
       await saveAgentTemplates(templates);
-    } catch (err: any) {
-      message.error(t('chat.templateSaveFailed', { error: err.message }));
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      message.error(t('chat.templateSaveFailed', { error: errorMessage }));
     }
   }, [t]);
 
@@ -317,8 +322,9 @@ export const ChatPage: React.FC = () => {
       if (isReady && template.tools) {
         await updateConfig({ enabledTools: template.tools });
       }
-    } catch (err: any) {
-      message.error(t('chat.agentSelectFailed', { error: err.message }));
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      message.error(t('chat.agentSelectFailed', { error: errorMessage }));
     }
   }, [isReady, updateConfig, t]);
 
@@ -422,8 +428,9 @@ export const ChatPage: React.FC = () => {
               try {
                 await clear(); 
                 message.success(t('chat.chatCleared')); 
-              } catch (err: any) {
-                message.error(t('chat.clearFailed', { error: err.message }));
+              } catch (err: unknown) {
+                const errorMessage = err instanceof Error ? err.message : String(err);
+                message.error(t('chat.clearFailed', { error: errorMessage }));
               }
             }}
             disabled={messages.length === 0}

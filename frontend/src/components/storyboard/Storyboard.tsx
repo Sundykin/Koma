@@ -320,8 +320,9 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     try {
       await generateShotImage(projectId, episodeId, shotId, characters, scenes, ttiConfigId);
       message.info('分镜图片生成任务已启动');
-    } catch (err: any) {
-      message.error(err.message || '启动生成失败');
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      message.error(errorMessage || '启动生成失败');
       setGeneratingShots(prev => {
         const next = new Set(prev);
         next.delete(shotId);
@@ -383,8 +384,9 @@ export const Storyboard: React.FC<StoryboardProps> = ({
         message.error(result.error || '渲染失败');
         loadData();
       }
-    } catch (err: any) {
-      message.error(err.message || '渲染失败');
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      message.error(errorMessage || '渲染失败');
     } finally {
       setRenderingShots(prev => {
         const next = new Set(prev);
@@ -609,8 +611,9 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       } else {
         message.error(result.error || '生成失败');
       }
-    } catch (err: any) {
-      message.error(err.message || '生成失败');
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      message.error(errorMessage || '生成失败');
     } finally {
       setGeneratingImagePrompts(prev => {
         const next = new Set(prev);
@@ -647,8 +650,9 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       } else {
         message.error(result.error || '生成失败');
       }
-    } catch (err: any) {
-      message.error(err.message || '生成失败');
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      message.error(errorMessage || '生成失败');
     } finally {
       setGeneratingVideoPrompts(prev => {
         const next = new Set(prev);
@@ -686,8 +690,9 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       } else {
         message.error(result.error || '优化失败');
       }
-    } catch (err: any) {
-      message.error(err.message || '优化失败');
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      message.error(errorMessage || '优化失败');
     } finally {
       setGeneratingImagePrompts(prev => {
         const next = new Set(prev);
@@ -725,8 +730,9 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       } else {
         message.error(result.error || '优化失败');
       }
-    } catch (err: any) {
-      message.error(err.message || '优化失败');
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      message.error(errorMessage || '优化失败');
     } finally {
       setGeneratingVideoPrompts(prev => {
         const next = new Set(prev);
@@ -775,8 +781,9 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       );
       const successCount = results.filter(r => r.success).length;
       message.success(`提示词生成完成: ${successCount}/${results.length} 成功`);
-    } catch (err: any) {
-      message.error(err.message || '批量生成失败');
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      message.error(errorMessage || '批量生成失败');
     } finally {
       setGeneratingImagePrompts(new Set());
       setGeneratingVideoPrompts(new Set());
@@ -822,8 +829,9 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       );
       const successCount = results.filter(r => r.success).length;
       message.success(`提示词重新生成完成: ${successCount}/${results.length} 成功`);
-    } catch (err: any) {
-      message.error(err.message || '批量重新生成失败');
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      message.error(errorMessage || '批量重新生成失败');
     } finally {
       setGeneratingImagePrompts(new Set());
       setGeneratingVideoPrompts(new Set());
@@ -893,8 +901,9 @@ export const Storyboard: React.FC<StoryboardProps> = ({
         assets  // 传递预选资产
       );
       message.info('AI 分镜生成任务已启动，可在状态栏查看进度');
-    } catch (err: any) {
-      message.error(err.message || '启动生成失败');
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      message.error(errorMessage || '启动生成失败');
       setIsAnalyzing(false);
     }
   }, [projectId, episodeId, episodeName, script, llmConfigId, message]);
@@ -966,8 +975,9 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     try {
       await batchGenerateShotImages(projectId, episodeId, shotIds, characters, scenes, ttiConfigId);
       message.info(`已启动 ${shotIds.length} 个分镜的图片生成任务`);
-    } catch (err: any) {
-      message.error(err.message || '批量生成启动失败');
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      message.error(errorMessage || '批量生成启动失败');
       setGeneratingShots(new Set());
     }
   }, [projectId, episodeId, shots, characters, scenes, ttiConfigId]);
@@ -1055,8 +1065,9 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       });
       await saveAllShots(updatedShots);
       message.success(`批量渲染完成: ${result.success} 成功, ${result.failed} 失败`);
-    } catch (err: any) {
-      message.error(err.message || '批量渲染失败');
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      message.error(errorMessage || '批量渲染失败');
     } finally {
       setRenderingShots(new Set());
       setRenderProgress(0);
@@ -1122,8 +1133,9 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       });
       await saveAllShots(updatedShots);
       message.success(`批量重新渲染完成: ${result.success} 成功, ${result.failed} 失败`);
-    } catch (err: any) {
-      message.error(err.message || '批量重新渲染失败');
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      message.error(errorMessage || '批量重新渲染失败');
     } finally {
       setRenderingShots(new Set());
       setRenderProgress(0);
