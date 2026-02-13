@@ -100,6 +100,27 @@ contextBridge.exposeInMainWorld('electronAPI', {
     list: () => ipcRenderer.invoke('plugin:list'),
     openFolder: (pluginPath: string) => ipcRenderer.invoke('plugin:openFolder', pluginPath),
   },
+  config: {
+    get: (moduleId: string) => ipcRenderer.invoke('config:get', { moduleId }),
+    set: (moduleId: string, payload: any) => ipcRenderer.invoke('config:set', { moduleId, payload }),
+    reset: (moduleId: string) => ipcRenderer.invoke('config:reset', { moduleId }),
+    list: () => ipcRenderer.invoke('config:list'),
+  },
+  workflow: {
+    start: (definition: any, context?: any) => ipcRenderer.invoke('workflow:start', { definition, context }),
+    pause: (runId: string) => ipcRenderer.invoke('workflow:pause', { runId }),
+    resume: (runId: string) => ipcRenderer.invoke('workflow:resume', { runId }),
+    cancel: (runId: string) => ipcRenderer.invoke('workflow:cancel', { runId }),
+    approve: (runId: string, nodeId: string) => ipcRenderer.invoke('workflow:approve', { runId, nodeId }),
+    getRun: (runId: string) => ipcRenderer.invoke('workflow:getRun', { runId }),
+    listRuns: () => ipcRenderer.invoke('workflow:listRuns'),
+    // 事件监听
+    onEvent: (event: string, callback: (event: any, data: any) => void) => {
+      const channel = `workflow:${event}`;
+      ipcRenderer.on(channel, callback);
+      return () => ipcRenderer.removeListener(channel, callback);
+    },
+  },
   chat: {
     // 会话管理
     createSession: (config?: any) => ipcRenderer.invoke('chat:session:create', { config }),
