@@ -8,6 +8,8 @@ import { app } from 'electron';
 import AdmZip from 'adm-zip';
 import { pluginRuntime } from './plugin/runtime';
 import type { PluginManifest } from './plugin/types';
+import { configRegistry } from './config';
+import type { PluginStateConfig } from './config';
 
 // 必填字段
 const REQUIRED_FIELDS = ['id', 'name', 'version', 'category', 'engine', 'scopes', 'entry'];
@@ -95,6 +97,48 @@ class PluginService {
 
     // 清理过期的 staging 缓存
     this._purgeExpiredStaging();
+
+    // 自动发现并恢复已启用的插件
+    await this._restoreEnabledPlugins();
+  }
+
+  /**
+   * 恢复已启用的插件
+   */
+  async _restoreEnabledPlugins(): Promise<void> {
+    try {
+      const state = await configRegistry.get<PluginStateConfig>('plugin-state');
+      const enabledPlugins = state?.enabledPlugins || [];
+      if (enabledPlugins.length === 0) return;
+
+      const installed = await this.listInstalled();
+      for (const manifest of installed) {
+        if (enabledPlugins.includes(manifest.id)) {
+          try {
+            await pluginRuntime.loadPlugin(manifest);
+            await pluginRuntime.activatePlugin(manifest.id);
+            console.log(`[PluginService] Auto-enabled: ${manifest.id}`);
+          } catch (err: any) {
+            console.error(`[PluginService] Failed to auto-enable ${manifest.id}:`, err.message);
+          }
+        }
+      }
+    } catch {
+      // ConfigRegistry 可能未初始化
+    }
+  }
+
+  /**
+   * 保存启用状态
+   */
+  async _saveEnabledPlugins(): Promise<void> {
+    try {
+      const activePlugins = pluginRuntime.listActivePlugins();
+      const enabledPlugins = activePlugins.map(p => p.manifest.id);
+      await configRegistry.set<PluginStateConfig>('plugin-state', { enabledPlugins });
+    } catch {
+      // 静默失败
+    }
   }
 
   /**
@@ -397,6 +441,7 @@ class PluginService {
     try {
       await pluginRuntime.loadPlugin(manifest);
       await pluginRuntime.activatePlugin(manifest.id);
+      await this._saveEnabledPlugins();
       return { success: true };
     } catch (err: any) {
       return { success: false, error: err.message };
@@ -409,6 +454,7 @@ class PluginService {
   async deactivate(pluginId: string): Promise<{ success: boolean; error?: string }> {
     try {
       await pluginRuntime.deactivatePlugin(pluginId);
+      await this._saveEnabledPlugins();
       return { success: true };
     } catch (err: any) {
       return { success: false, error: err.message };

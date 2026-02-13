@@ -7,6 +7,7 @@ import * as fs from 'fs';
 import { controllers } from './controller';
 import { services } from './service';
 import config from './config';
+import { configManager } from './service/config';
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 
@@ -198,18 +199,33 @@ function registerIpcRoutes(): void {
   ipcMain.handle('plugin:listMCPTools', () => controllers.plugin.listMCPTools({}));
   ipcMain.handle('plugin:callMCPTool', (_, args) => controllers.plugin.callMCPTool(args));
   ipcMain.handle('plugin:listAgents', () => controllers.plugin.listAgents({}));
+
+  // 配置管理
+  ipcMain.handle('config:get', (_, args) => controllers.config.get(args));
+  ipcMain.handle('config:set', (_, args) => controllers.config.set(args));
+  ipcMain.handle('config:reset', (_, args) => controllers.config.reset(args));
+  ipcMain.handle('config:list', () => controllers.config.list());
+
+  // 工作流管理
+  ipcMain.handle('workflow:start', (_, args) => controllers.workflow.start(args));
+  ipcMain.handle('workflow:pause', (_, args) => controllers.workflow.pause(args));
+  ipcMain.handle('workflow:resume', (_, args) => controllers.workflow.resume(args));
+  ipcMain.handle('workflow:cancel', (_, args) => controllers.workflow.cancel(args));
+  ipcMain.handle('workflow:approve', (_, args) => controllers.workflow.approve(args));
+  ipcMain.handle('workflow:getRun', (_, args) => controllers.workflow.getRun(args));
+  ipcMain.handle('workflow:listRuns', () => controllers.workflow.listRuns());
 }
 
 async function initServices(): Promise<void> {
   const storageRoot = config.storage?.defaultRoot;
-  await services.project.init(
-    storageRoot ? path.join(app.getPath('home'), storageRoot) : null
-  );
-  // 初始化 FFmpeg 服务
+  const rootPath = storageRoot ? path.join(app.getPath('home'), storageRoot) : undefined;
+
+  // 初始化配置管理系统（最先初始化）
+  await configManager.init(rootPath);
+
+  await services.project.init(rootPath || null);
   await services.ffmpeg.init();
-  // 初始化插件服务
   await services.plugin.init();
-  // 初始化 Chat 控制器（注册 IPC handlers）
   controllers.chat.init();
 }
 
@@ -218,6 +234,11 @@ app.whenReady().then(async () => {
   await initServices();
   registerIpcRoutes();
   createWindow();
+
+  // 设置工作流控制器的窗口引用
+  if (mainWindow) {
+    controllers.workflow.setWindow(mainWindow);
+  }
 });
 
 app.on('window-all-closed', () => {

@@ -22,44 +22,28 @@ import type {
 } from './types';
 import { providerRegistry, mcpRegistry, agentRegistry } from './registries';
 import { syncProviders, syncAllMCP, capabilityRegistry } from './capability';
+import { configRegistry } from '../config';
+import type { ProviderConfigData } from '../config';
 
-// Provider 配置存储
+// Provider 配置存储（通过 ConfigRegistry）
 class ProviderConfigStore {
-  private configPath: string = '';
-  private configs: Map<string, Record<string, unknown>> = new Map();
-  private initialized = false;
-
-  async init(): Promise<void> {
-    if (this.initialized) return;
-    this.configPath = path.join(app.getPath('userData'), 'provider-configs.json');
-    await this.load();
-    this.initialized = true;
-  }
-
-  private async load(): Promise<void> {
+  async get(type: string): Promise<Record<string, unknown> | null> {
     try {
-      const content = await fs.readFile(this.configPath, 'utf-8');
-      const data = JSON.parse(content);
-      this.configs = new Map(Object.entries(data));
+      const configs = await configRegistry.get<ProviderConfigData>('provider-config');
+      return configs[type] || null;
     } catch {
-      this.configs = new Map();
+      return null;
     }
   }
 
-  private async save(): Promise<void> {
-    const data = Object.fromEntries(this.configs);
-    await fs.writeFile(this.configPath, JSON.stringify(data, null, 2), 'utf-8');
-  }
-
-  async get(type: string): Promise<Record<string, unknown> | null> {
-    await this.init();
-    return this.configs.get(type) || null;
-  }
-
   async set(type: string, config: Record<string, unknown>): Promise<void> {
-    await this.init();
-    this.configs.set(type, config);
-    await this.save();
+    try {
+      const configs = await configRegistry.get<ProviderConfigData>('provider-config');
+      configs[type] = config;
+      await configRegistry.set('provider-config', configs);
+    } catch {
+      // ConfigRegistry 未初始化时静默失败
+    }
   }
 }
 
