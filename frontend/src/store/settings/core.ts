@@ -1,8 +1,10 @@
 /**
  * 核心设置存储
  * 负责设置的加载和保存
+ * 优先通过 configBridge 访问后端 ConfigRegistry，fallback 到旧逻辑
  */
 import { electronService } from '../../services/electronService';
+import { configBridge } from '../../services/configBridge';
 import { getStorageConfig, initStorageConfig } from '../storageConfig';
 import type { AppSettings } from '../../types';
 
@@ -36,7 +38,6 @@ function migrateEncryptedData<T>(data: T): T {
       const value = result[key];
       if (value && typeof value === 'object' && value.encrypted === true) {
         result[key] = '';
-        console.log(`[migrateEncryptedData] cleared encrypted field: ${key}`);
       } else if (value && typeof value === 'object') {
         result[key] = migrateEncryptedData(value);
       }
@@ -46,8 +47,8 @@ function migrateEncryptedData<T>(data: T): T {
   return data;
 }
 
-// 加载设置
-export async function loadSettings(): Promise<AppSettings> {
+// 旧逻辑：从文件/localStorage 加载
+async function loadSettingsLegacy(): Promise<AppSettings | null> {
   if (!electronService.isElectron()) {
     try {
       const data = localStorage.getItem('koma_settings');
@@ -57,11 +58,10 @@ export async function loadSettings(): Promise<AppSettings> {
         return { ...DEFAULT_SETTINGS, ...parsed };
       }
     } catch (err) {
-      console.error('[loadSettings] error:', err);
+      console.error('[loadSettings] legacy error:', err);
     }
-    return DEFAULT_SETTINGS;
+    return null;
   }
-
   try {
     const path = await getGlobalPath('settings.json');
     const exists = await electronService.fs.exists(path);
@@ -72,18 +72,41 @@ export async function loadSettings(): Promise<AppSettings> {
       return { ...DEFAULT_SETTINGS, ...parsed };
     }
   } catch (err) {
-    console.error('[loadSettings] error:', err);
+    console.error('[loadSettings] legacy error:', err);
+  }
+  return null;
+}
+
+// 加载设置：优先从后端 ConfigRegistry 读取
+export async function loadSettings(): Promise<AppSettings> {
+  try {
+    const remote = await configBridge.get<AppSettings>('app-settings');
+    if (remote && (remote.llmConfigs || remote.ttiConfigs)) {
+      return { ...DEFAULT_SETTINGS, ...migrateEncryptedData(remote) };
+    }
+  } catch {
+    // fallback
+  }
+  // 后端无数据，走旧逻辑并同步到后端
+  const legacy = await loadSettingsLegacy();
+  if (legacy) {
+    configBridge.set('app-settings', legacy).catch(() => {});
+    return legacy;
   }
   return DEFAULT_SETTINGS;
 }
 
-// 保存设置
+// 保存设置：双写（后端 + 旧逻辑）
 export async function saveSettings(settings: AppSettings): Promise<void> {
+  // 写后端
+  configBridge.set('app-settings', settings).catch((err) => {
+    console.error('[saveSettings] configBridge error:', err);
+  });
+  // 旧逻辑保留兼容
   if (!electronService.isElectron()) {
     localStorage.setItem('koma_settings', JSON.stringify(settings));
     return;
   }
-
   const path = await getGlobalPath('settings.json');
   await electronService.fs.writeFile(path, JSON.stringify(settings, null, 2));
 }
