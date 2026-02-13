@@ -58,6 +58,10 @@ export interface Task {
   attempt?: number;
   maxRetries?: number;
   remoteTaskId?: string;
+  // 远程任务结果（AsyncTask 兼容）
+  resultUrl?: string;
+  localPath?: string;
+  retryCount?: number;
   // 时间戳
   createdAt: number;
   updatedAt: number;
@@ -401,6 +405,122 @@ class TaskManagerClass {
 
     // 这里由具体的服务来处理轮询逻辑
     // TaskManager 只负责管理任务状态
+  }
+
+  /**
+   * 标记任务为处理中（兼容 taskQueueStore）
+   */
+  markProcessing(taskId: string, remoteTaskId?: string): Task | null {
+    return this.updateTask(taskId, {
+      status: 'processing',
+      remoteTaskId,
+    });
+  }
+
+  /**
+   * 标记任务完成（兼容 taskQueueStore）
+   */
+  markCompleted(taskId: string, resultUrl?: string, localPath?: string): Task | null {
+    return this.updateTask(taskId, {
+      status: 'completed',
+      progress: 100,
+      resultUrl,
+      localPath,
+    });
+  }
+
+  /**
+   * 标记任务失败（兼容 taskQueueStore）
+   */
+  markFailed(taskId: string, error: string): Task | null {
+    const task = this.tasks.get(taskId);
+    return this.updateTask(taskId, {
+      status: 'failed',
+      error,
+      retryCount: (task?.retryCount || 0) + 1,
+    });
+  }
+
+  /**
+   * 更新任务进度
+   */
+  updateProgress(taskId: string, progress: number): Task | null {
+    return this.updateTask(taskId, { progress });
+  }
+
+  /**
+   * 获取未完成的任务（pending/processing）
+   */
+  getPendingTasks(projectId: string): Task[] {
+    return this.getProjectTasks(projectId)
+      .filter(t => t.status === 'pending' || t.status === 'processing');
+  }
+
+  /**
+   * 获取失败的任务
+   */
+  getFailedTasks(projectId: string): Task[] {
+    return this.getProjectTasks(projectId)
+      .filter(t => t.status === 'failed');
+  }
+
+  /**
+   * 重试失败的任务
+   */
+  retryTask(taskId: string): Task | null {
+    const task = this.tasks.get(taskId);
+    if (!task) return null;
+    if ((task.retryCount || 0) >= (task.maxRetries || 3)) {
+      console.warn(`[TaskManager] 任务 ${taskId} 已达最大重试次数`);
+      return null;
+    }
+    return this.updateTask(taskId, {
+      status: 'pending',
+      error: undefined,
+      progress: 0,
+    });
+  }
+
+  /**
+   * 删除任务
+   */
+  deleteTask(taskId: string): boolean {
+    const task = this.tasks.get(taskId);
+    if (!task) return false;
+    this.tasks.delete(taskId);
+    this.saveTasks(task.projectId);
+    return true;
+  }
+
+  /**
+   * 清理已完成的旧任务
+   */
+  clearCompletedTasks(projectId: string, olderThanDays: number = 7): number {
+    const cutoff = Date.now() - olderThanDays * 24 * 60 * 60 * 1000;
+    let count = 0;
+    for (const [id, task] of this.tasks.entries()) {
+      if (task.projectId !== projectId) continue;
+      if ((task.status === 'completed' || task.status === 'failed') && task.updatedAt < cutoff) {
+        this.tasks.delete(id);
+        count++;
+      }
+    }
+    if (count > 0) this.saveTasks(projectId);
+    return count;
+  }
+
+  /**
+   * 任务统计
+   */
+  getTaskStats(projectId: string): { total: number; pending: number; processing: number; completed: number; failed: number } {
+    const tasks = this.getProjectTasks(projectId);
+    return {
+      total: tasks.length,
+      pending: tasks.filter(t => t.status === 'pending').length,
+      processing: tasks.filter(t => t.status === 'processing').length,
+      completed: tasks.filter(t => t.status === 'completed').length,
+      failed: tasks.filter(t => t.status === 'failed').length,
+    };
   }
 
   /**

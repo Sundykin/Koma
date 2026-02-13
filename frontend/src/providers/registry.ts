@@ -132,7 +132,7 @@ export function listProviders(kind?: ChannelKind): ProviderDefinition<any>[] {
   if (kind) {
     return getRegistry(kind).list();
   }
-  return [...ttiRegistry.list(), ...itvRegistry.list(), ...ttsRegistry.list()];
+  return [...ttiRegistry.list(), ...itvRegistry.list(), ...ttsRegistry.list(), ...imageHostingRegistry.list()];
 }
 
 // 创建 Provider 实例（强制要求 kind）
