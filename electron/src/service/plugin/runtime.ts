@@ -265,6 +265,14 @@ class ElectronPluginRuntime extends EventEmitter {
     const pluginId = manifest.id;
     const pluginDir = path.join(this.pluginsDir, pluginId);
     const dataDir = path.join(pluginDir, 'data');
+    const scopes = new Set(manifest.scopes || []);
+
+    // scope 守卫：未声明的 scope 抛出错误
+    const requireScope = (scope: string, action: string) => {
+      if (!scopes.has(scope)) {
+        throw new Error(`插件 ${pluginId} 未声明权限 "${scope}"，无法执行: ${action}`);
+      }
+    };
 
     return {
       core: {
@@ -303,10 +311,14 @@ class ElectronPluginRuntime extends EventEmitter {
       },
 
       net: {
-        fetch: globalThis.fetch,
+        fetch: (...args: Parameters<typeof globalThis.fetch>) => {
+          requireScope('network:external', 'net.fetch');
+          return globalThis.fetch(...args);
+        },
       },
 
       spawn: (command: string, args?: string[], options?: SpawnOptions): ChildProcessHandle => {
+        requireScope('spawn:process', 'spawn');
         return this.createChildProcess(command, args, options);
       },
 
@@ -334,24 +346,30 @@ class ElectronPluginRuntime extends EventEmitter {
 
       mcp: {
         registerServer: async (server: MCPServerDefinition) => {
+          requireScope('mcp:server', 'mcp.registerServer');
           server.pluginId = pluginId;
           mcpRegistry.registerServer(server);
         },
         unregisterServer: async (name: string) => {
+          requireScope('mcp:server', 'mcp.unregisterServer');
           mcpRegistry.unregisterServer(name);
         },
         registerTool: async (tool: MCPToolHandler) => {
+          requireScope('mcp:tool', 'mcp.registerTool');
           tool.definition.pluginId = pluginId;
           mcpRegistry.tools.register(tool);
         },
         unregisterTool: async (name: string) => {
+          requireScope('mcp:tool', 'mcp.unregisterTool');
           mcpRegistry.tools.unregister(name);
         },
         registerResource: async (resource: MCPResourceHandler) => {
+          requireScope('mcp:resource', 'mcp.registerResource');
           resource.definition.pluginId = pluginId;
           mcpRegistry.resources.register(resource);
         },
         unregisterResource: async (uri: string) => {
+          requireScope('mcp:resource', 'mcp.unregisterResource');
           mcpRegistry.resources.unregister(uri);
         },
         listTools: () => mcpRegistry.tools.listDefinitions(),
@@ -360,10 +378,12 @@ class ElectronPluginRuntime extends EventEmitter {
 
       agents: {
         registerWorker: async (worker: WorkerAgentDefinition) => {
+          requireScope('agent:register', 'agents.registerWorker');
           worker.pluginId = pluginId;
           agentRegistry.register(worker);
         },
         unregisterWorker: async (id: string) => {
+          requireScope('agent:register', 'agents.unregisterWorker');
           agentRegistry.unregister(id);
         },
         listWorkers: () => agentRegistry.list(),

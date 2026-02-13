@@ -1,6 +1,21 @@
 # Koma 架构改造方案
 
-> 状态：✅ 三个阶段全部完成，TypeScript 编译通过
+> 状态：✅ 后端基础设施 + 前端对接层 + Store 迁移 + 插件 scope 强约束 全部完成
+>
+> 已完成：
+> - 持久化：ConfigManager + ConfigRegistry + JsonStore + 7 个配置模块
+> - 插件：ProviderManager + scope 运行时强约束（net/spawn/mcp/agent）
+> - 工作流：DAG 编排器 + 委托执行 + 漫剧流水线模板
+> - 前端桥接：configBridge + workflowBridge + preload API
+> - Store 迁移：settings / recentProjects / modelPresets / promptTemplates（双写兼容）
+> - 应用初始化：workflowAdapter 注册
+>
+> 待做：
+> - TaskManager + taskQueueStore 整合（都写 tasks.json，需统一）
+> - chatHistoryStore 迁移（大数据量，需专用存储方案）
+> - 前端硬编码 Provider 逐步迁移为插件注册
+> - 前端旧 WorkflowManager 逐步切换到后端 DAG 编排器
+> - 下线前端直写逻辑（settings.json / localStorage）
 
 ## 一、现状诊断
 
