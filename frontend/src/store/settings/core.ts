@@ -96,17 +96,18 @@ export async function loadSettings(): Promise<AppSettings> {
   return DEFAULT_SETTINGS;
 }
 
-// 保存设置：双写（后端 + 旧逻辑）
+// 保存设置：写后端 ConfigRegistry
 export async function saveSettings(settings: AppSettings): Promise<void> {
-  // 写后端
-  configBridge.set('app-settings', settings).catch((err) => {
+  try {
+    await configBridge.set('app-settings', settings);
+  } catch (err) {
     console.error('[saveSettings] configBridge error:', err);
-  });
-  // 旧逻辑保留兼容
-  if (!electronService.isElectron()) {
-    localStorage.setItem('koma_settings', JSON.stringify(settings));
-    return;
+    // 后端不可用时 fallback 到旧逻辑
+    if (!electronService.isElectron()) {
+      localStorage.setItem('koma_settings', JSON.stringify(settings));
+      return;
+    }
+    const path = await getGlobalPath('settings.json');
+    await electronService.fs.writeFile(path, JSON.stringify(settings, null, 2));
   }
-  const path = await getGlobalPath('settings.json');
-  await electronService.fs.writeFile(path, JSON.stringify(settings, null, 2));
 }

@@ -188,5 +188,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
       invoke: (id: string, args: any) => ipcRenderer.invoke('chat:capability:invoke', { id, arguments: args }),
       resolve: (requirements: string[]) => ipcRenderer.invoke('chat:capability:resolve', { requirements }),
     },
+
+    // 聊天历史持久化（消息体文件存储）
+    history: {
+      loadMessages: (sessionId: string) => ipcRenderer.invoke('chat:history:loadMessages', { sessionId }),
+      saveMessages: (data: any) => ipcRenderer.invoke('chat:history:saveMessages', data),
+      deleteMessages: (sessionId: string) => ipcRenderer.invoke('chat:history:deleteMessages', { sessionId }),
+    },
   },
 });

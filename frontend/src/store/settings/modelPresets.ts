@@ -52,17 +52,20 @@ export async function loadPresets(): Promise<ModelPreset[]> {
 }
 
 async function saveAll(presets: ModelPreset[]): Promise<void> {
-  configBridge.set('model-presets', presets).catch(() => {});
-  if (!electronService.isElectron()) {
-    localStorage.setItem('koma_presets', JSON.stringify(presets));
-    return;
-  }
-  const presetsDir = await getGlobalPath('model-presets');
-  await electronService.fs.mkdir(presetsDir);
-  // 旧逻辑：每个预设一个文件
-  for (const preset of presets) {
-    const path = `${presetsDir}/${preset.name}.json`;
-    await electronService.fs.writeFile(path, JSON.stringify(preset, null, 2));
+  try {
+    await configBridge.set('model-presets', presets);
+  } catch {
+    // fallback
+    if (!electronService.isElectron()) {
+      localStorage.setItem('koma_presets', JSON.stringify(presets));
+      return;
+    }
+    const presetsDir = await getGlobalPath('model-presets');
+    await electronService.fs.mkdir(presetsDir);
+    for (const preset of presets) {
+      const path = `${presetsDir}/${preset.name}.json`;
+      await electronService.fs.writeFile(path, JSON.stringify(preset, null, 2));
+    }
   }
 }
 

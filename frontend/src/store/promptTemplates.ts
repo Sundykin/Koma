@@ -642,14 +642,15 @@ export async function getPromptTemplate(type: PromptTemplateType): Promise<Promp
 export async function saveCustomTemplate(template: PromptTemplate): Promise<void> {
   const customTemplate = { ...template, isCustom: true as const };
 
-  // 双写：后端
+  // 写后端
   try {
     const existing = await configBridge.get<Record<string, PromptTemplate>>('custom-templates') || {};
     existing[template.id] = customTemplate;
-    configBridge.set('custom-templates', existing).catch(() => {});
-  } catch { /* ignore */ }
+    await configBridge.set('custom-templates', existing);
+    return;
+  } catch { /* fallback */ }
 
-  // 旧逻辑
+  // fallback 旧逻辑
   if (!electronService.isElectron()) {
     const data = localStorage.getItem('koma_prompt_templates');
     const old = data ? JSON.parse(data) : {};

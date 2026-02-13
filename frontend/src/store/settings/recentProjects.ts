@@ -44,14 +44,17 @@ export async function loadRecentProjects(): Promise<RecentProject[]> {
 
 export async function saveRecentProjects(projects: RecentProject[]): Promise<void> {
   const trimmed = projects.slice(0, 20);
-  // 双写
-  configBridge.set('recent-projects', trimmed).catch(() => {});
-  if (!electronService.isElectron()) {
-    localStorage.setItem('koma_recent_projects', JSON.stringify(trimmed));
-    return;
+  try {
+    await configBridge.set('recent-projects', trimmed);
+  } catch {
+    // fallback
+    if (!electronService.isElectron()) {
+      localStorage.setItem('koma_recent_projects', JSON.stringify(trimmed));
+      return;
+    }
+    const path = await getGlobalPath('recent-projects.json');
+    await electronService.fs.writeFile(path, JSON.stringify(trimmed, null, 2));
   }
-  const path = await getGlobalPath('recent-projects.json');
-  await electronService.fs.writeFile(path, JSON.stringify(trimmed, null, 2));
 }
 
 export async function addRecentProject(project: RecentProject): Promise<void> {

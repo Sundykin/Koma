@@ -10,6 +10,7 @@ import { appSettingsModule } from './modules/appSettings';
 import { recentProjectsModule } from './modules/recentProjects';
 import { modelPresetsModule } from './modules/modelPresets';
 import { customTemplatesModule } from './modules/customTemplates';
+import { chatSessionsModule } from './modules/chatSessions';
 import { providerInstancesModule } from '../provider/instance-store';
 
 export class ConfigManager {
@@ -33,6 +34,7 @@ export class ConfigManager {
     configRegistry.register(recentProjectsModule);
     configRegistry.register(modelPresetsModule);
     configRegistry.register(customTemplatesModule);
+    configRegistry.register(chatSessionsModule);
 
     // 4. 预加载所有模块
     for (const moduleId of configRegistry.getRegisteredModules()) {

@@ -5,6 +5,7 @@
 import { ipcMain, BrowserWindow } from 'electron';
 import { chatService } from '../service/chat';
 import { createOrchestrator, AgentOrchestrator } from '../service/chat/AgentOrchestrator';
+import { loadSessionMessages, saveSessionMessages, deleteSessionFile } from '../service/chat/chatHistoryPersist';
 import { mcpRegistry } from '../service/plugin/registries';
 import { capabilityRegistry } from '../service/plugin/capability';
 import { importFromFile, importFromObject, exportConfig, exportToFile } from '../service/chat/mcp/MCPConfigLoader';
@@ -336,6 +337,26 @@ export class ChatController {
         systemPrompt: w.systemPrompt,
         pluginId: w.pluginId,
       }));
+    });
+
+    // ========== 聊天历史持久化（消息体文件存储） ==========
+
+    ipcMain.handle('chat:history:loadMessages', async (event, args: { sessionId: string }) => {
+      return loadSessionMessages(args.sessionId);
+    });
+
+    ipcMain.handle('chat:history:saveMessages', async (event, args: {
+      id: string; title: string; messages: any[];
+      systemPrompt?: string; schemaVersion: number;
+      createdAt: number; updatedAt: number;
+    }) => {
+      await saveSessionMessages(args);
+      return { ok: true };
+    });
+
+    ipcMain.handle('chat:history:deleteMessages', async (event, args: { sessionId: string }) => {
+      await deleteSessionFile(args.sessionId);
+      return { ok: true };
     });
 
     // 窗口关闭时清理会话
