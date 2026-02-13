@@ -2,9 +2,7 @@
  * Prompt 模板管理
  * 默认模板和自定义模板支持
  */
-import { electronService } from '../services/electronService';
 import { configBridge } from '../services/configBridge';
-import { getStorageConfig, initStorageConfig } from './storageConfig';
 
 // Prompt 模板类型
 export type PromptTemplateType =
@@ -562,68 +560,26 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
   },
 };
 
-// ========== 存储路径 ==========
-
-async function getTemplatesPath(): Promise<string> {
-  const config = getStorageConfig() || (await initStorageConfig());
-  return `${config.rootPath}/prompt-templates.json`;
-}
-
 // ========== 模板管理函数 ==========
 
 /**
  * 加载所有模板（默认 + 自定义）
  */
 export async function loadPromptTemplates(): Promise<Record<PromptTemplateType, PromptTemplate>> {
-  // 从默认模板开始
   const templates = { ...DEFAULT_TEMPLATES };
 
-  // 优先从后端读取自定义模板
   try {
     const remote = await configBridge.get<Record<string, PromptTemplate>>('custom-templates');
-    if (remote && typeof remote === 'object' && Object.keys(remote).length > 0) {
+    if (remote && typeof remote === 'object') {
       for (const [key, value] of Object.entries(remote)) {
         if (value) {
           templates[key as PromptTemplateType] = { ...value, isCustom: true };
         }
       }
-      return templates;
     }
-  } catch { /* fallback */ }
-
-  // fallback 旧逻辑
-  if (!electronService.isElectron()) {
-    try {
-      const data = localStorage.getItem('koma_prompt_templates');
-      if (data) {
-        const custom = JSON.parse(data) as Partial<Record<PromptTemplateType, PromptTemplate>>;
-        for (const [key, value] of Object.entries(custom)) {
-          if (value) {
-            templates[key as PromptTemplateType] = { ...value, isCustom: true };
-          }
-        }
-        // 同步到后端
-        configBridge.set('custom-templates', custom).catch(() => {});
-      }
-    } catch { /* ignore */ }
-    return templates;
+  } catch (err) {
+    console.error('[loadPromptTemplates] configBridge error:', err);
   }
-
-  try {
-    const path = await getTemplatesPath();
-    const exists = await electronService.fs.exists(path);
-    if (exists) {
-      const data = await electronService.fs.readFile(path);
-      const custom = JSON.parse(data) as Partial<Record<PromptTemplateType, PromptTemplate>>;
-      for (const [key, value] of Object.entries(custom)) {
-        if (value) {
-          templates[key as PromptTemplateType] = { ...value, isCustom: true };
-        }
-      }
-      // 同步到后端
-      configBridge.set('custom-templates', custom).catch(() => {});
-    }
-  } catch { /* ignore */ }
 
   return templates;
 }
@@ -641,65 +597,20 @@ export async function getPromptTemplate(type: PromptTemplateType): Promise<Promp
  */
 export async function saveCustomTemplate(template: PromptTemplate): Promise<void> {
   const customTemplate = { ...template, isCustom: true as const };
-
-  // 写后端
-  try {
-    const existing = await configBridge.get<Record<string, PromptTemplate>>('custom-templates') || {};
-    existing[template.id] = customTemplate;
-    await configBridge.set('custom-templates', existing);
-    return;
-  } catch { /* fallback */ }
-
-  // fallback 旧逻辑
-  if (!electronService.isElectron()) {
-    const data = localStorage.getItem('koma_prompt_templates');
-    const old = data ? JSON.parse(data) : {};
-    old[template.id] = customTemplate;
-    localStorage.setItem('koma_prompt_templates', JSON.stringify(old));
-    return;
-  }
-
-  const path = await getTemplatesPath();
-  let old: Record<string, PromptTemplate> = {};
-  try {
-    const exists = await electronService.fs.exists(path);
-    if (exists) {
-      const data = await electronService.fs.readFile(path);
-      old = JSON.parse(data);
-    }
-  } catch { /* ignore */ }
-
-  old[template.id] = customTemplate;
-  await electronService.fs.writeFile(path, JSON.stringify(old, null, 2));
+  const existing = await configBridge.get<Record<string, PromptTemplate>>('custom-templates') || {};
+  existing[template.id] = customTemplate;
+  await configBridge.set('custom-templates', existing);
 }
 
 /**
  * 重置模板为默认
  */
 export async function resetTemplate(type: PromptTemplateType): Promise<PromptTemplate> {
-  if (!electronService.isElectron()) {
-    const data = localStorage.getItem('koma_prompt_templates');
-    if (data) {
-      const existing = JSON.parse(data);
-      delete existing[type];
-      localStorage.setItem('koma_prompt_templates', JSON.stringify(existing));
-    }
-    return DEFAULT_TEMPLATES[type];
-  }
-
-  const path = await getTemplatesPath();
   try {
-    const exists = await electronService.fs.exists(path);
-    if (exists) {
-      const data = await electronService.fs.readFile(path);
-      const existing = JSON.parse(data);
-      delete existing[type];
-      await electronService.fs.writeFile(path, JSON.stringify(existing, null, 2));
-    }
-  } catch {
-    // ignore
-  }
-
+    const existing = await configBridge.get<Record<string, PromptTemplate>>('custom-templates') || {};
+    delete existing[type];
+    await configBridge.set('custom-templates', existing);
+  } catch { /* ignore */ }
   return DEFAULT_TEMPLATES[type];
 }
 
@@ -707,17 +618,7 @@ export async function resetTemplate(type: PromptTemplateType): Promise<PromptTem
  * 重置所有模板为默认
  */
 export async function resetAllTemplates(): Promise<void> {
-  if (!electronService.isElectron()) {
-    localStorage.removeItem('koma_prompt_templates');
-    return;
-  }
-
-  const path = await getTemplatesPath();
-  try {
-    await electronService.fs.remove(path);
-  } catch {
-    // ignore
-  }
+  await configBridge.set('custom-templates', {});
 }
 
 /**

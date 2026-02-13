@@ -1,6 +1,6 @@
 /**
  * 对话历史存储
- * 双写迁移：优先使用后端文件存储，fallback 到 localStorage
+ * 会话列表 → configBridge，消息体 → 后端文件存储
  */
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
@@ -11,7 +11,6 @@ import { configBridge } from '../services/configBridge';
 const SCHEMA_VERSION = 2;
 const MAX_TITLE_LENGTH = 30;
 
-// 会话元数据
 export interface SessionMeta {
   id: string;
   title: string;
@@ -20,14 +19,12 @@ export interface SessionMeta {
   messageCount: number;
 }
 
-// 完整会话数据
 export interface SessionData extends SessionMeta {
   messages: ChatMessage[];
   systemPrompt?: string;
   schemaVersion?: number;
 }
 
-// Store 状态
 interface ChatHistoryState {
   sessions: SessionMeta[];
   currentSessionId: string | null;
@@ -40,11 +37,6 @@ interface ChatHistoryState {
   loadMessages: (sessionId: string) => SessionData | null;
 }
 
-// localStorage 键
-const SESSIONS_KEY = 'chat_sessions';
-const SESSION_DATA_PREFIX = 'chat_session_';
-
-// 后端 API
 function getChatHistoryAPI(): any {
   if (typeof window !== 'undefined' && (window as any).electronAPI?.chat?.history) {
     return (window as any).electronAPI.chat.history;
@@ -99,11 +91,7 @@ function migrateSessionData(data: SessionData): SessionData {
   return { ...data, messages: migratedMessages, schemaVersion: SCHEMA_VERSION };
 }
 
-// 持久化会话列表到后端（异步，不阻塞 UI）
 function persistSessionList(sessions: SessionMeta[], currentSessionId: string | null) {
-  // localStorage 双写
-  localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions));
-  // 后端持久化
   configBridge.set('chat-sessions', { sessions, currentSessionId }).catch(() => {});
 }
 
@@ -114,33 +102,14 @@ export const useChatHistoryStore = create<ChatHistoryState>()(
       currentSessionId: null,
 
       loadSessions: () => {
-        // 优先从后端加载
         configBridge.get<{ sessions: SessionMeta[]; currentSessionId: string | null }>('chat-sessions')
           .then(data => {
             if (data?.sessions?.length) {
               const sessions = [...data.sessions].sort((a, b) => b.updatedAt - a.updatedAt);
               set({ sessions, currentSessionId: data.currentSessionId });
-              return;
-            }
-            // fallback: localStorage
-            const stored = localStorage.getItem(SESSIONS_KEY);
-            if (stored) {
-              const sessions = (JSON.parse(stored) as SessionMeta[]).sort((a, b) => b.updatedAt - a.updatedAt);
-              set({ sessions });
-              // 自动同步到后端
-              configBridge.set('chat-sessions', { sessions, currentSessionId: null }).catch(() => {});
             }
           })
-          .catch(() => {
-            // fallback: localStorage
-            try {
-              const stored = localStorage.getItem(SESSIONS_KEY);
-              if (stored) {
-                const sessions = (JSON.parse(stored) as SessionMeta[]).sort((a, b) => b.updatedAt - a.updatedAt);
-                set({ sessions });
-              }
-            } catch {}
-          });
+          .catch(() => {});
       },
 
       createSession: (title?: string) => {
@@ -166,13 +135,10 @@ export const useChatHistoryStore = create<ChatHistoryState>()(
       },
 
       deleteSession: async (id) => {
-        // 删除消息文件
         const api = getChatHistoryAPI();
         if (api) {
           await api.deleteMessages(id).catch(() => {});
         }
-        localStorage.removeItem(`${SESSION_DATA_PREFIX}${id}`);
-
         set(state => {
           const sessions = state.sessions.filter(s => s.id !== id);
           const currentSessionId = state.currentSessionId === id ? null : state.currentSessionId;
@@ -197,8 +163,6 @@ export const useChatHistoryStore = create<ChatHistoryState>()(
           schemaVersion: SCHEMA_VERSION,
         };
 
-        // 双写：localStorage + 后端文件
-        localStorage.setItem(`${SESSION_DATA_PREFIX}${sessionId}`, JSON.stringify(data));
         const api = getChatHistoryAPI();
         if (api) {
           api.saveMessages(data).catch(() => {});
@@ -221,26 +185,12 @@ export const useChatHistoryStore = create<ChatHistoryState>()(
       },
 
       loadMessages: (sessionId) => {
-        // 同步加载：先 localStorage，异步后端加载会在下次调用时生效
-        try {
-          const stored = localStorage.getItem(`${SESSION_DATA_PREFIX}${sessionId}`);
-          if (stored) {
-            const data = JSON.parse(stored) as SessionData;
-            const migrated = migrateSessionData(data);
-            if (data.schemaVersion !== migrated.schemaVersion) {
-              localStorage.setItem(`${SESSION_DATA_PREFIX}${sessionId}`, JSON.stringify(migrated));
-            }
-            return migrated;
-          }
-        } catch {}
-
-        // 尝试从后端异步加载（触发后台同步）
         const api = getChatHistoryAPI();
         if (api) {
+          // 触发异步加载，结果在下次调用时可用
           api.loadMessages(sessionId).then((data: SessionData | null) => {
             if (data) {
-              // 写回 localStorage 作为缓存
-              localStorage.setItem(`${SESSION_DATA_PREFIX}${sessionId}`, JSON.stringify(data));
+              // 缓存到内存（可选：通过 zustand state 暴露）
             }
           }).catch(() => {});
         }
