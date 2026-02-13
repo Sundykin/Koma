@@ -7,6 +7,7 @@ import './index.css';
 import { antdTheme } from './theme';
 import { cleanupDuplicateChannels } from './store/globalStore';
 import { initializeProviderPlugins } from './services/plugin/PluginInitializer';
+import { initWorkflowDelegates } from './workflow/workflowAdapter';
 
 // 应用启动时初始化
 async function bootstrap() {
@@ -31,6 +32,14 @@ async function bootstrap() {
     }
   } catch (err) {
     console.warn('[Startup] 插件初始化失败:', err);
+  }
+
+  // 3. 注册工作流委托处理器（后端 DAG 编排器 → 前端执行）
+  try {
+    initWorkflowDelegates();
+    console.log('[Startup] 工作流委托处理器已注册');
+  } catch (err) {
+    console.warn('[Startup] 工作流委托注册失败:', err);
   }
 }
 

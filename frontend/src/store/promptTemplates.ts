@@ -3,6 +3,7 @@
  * 默认模板和自定义模板支持
  */
 import { electronService } from '../services/electronService';
+import { configBridge } from '../services/configBridge';
 import { getStorageConfig, initStorageConfig } from './storageConfig';
 
 // Prompt 模板类型
@@ -577,8 +578,21 @@ export async function loadPromptTemplates(): Promise<Record<PromptTemplateType, 
   // 从默认模板开始
   const templates = { ...DEFAULT_TEMPLATES };
 
+  // 优先从后端读取自定义模板
+  try {
+    const remote = await configBridge.get<Record<string, PromptTemplate>>('custom-templates');
+    if (remote && typeof remote === 'object' && Object.keys(remote).length > 0) {
+      for (const [key, value] of Object.entries(remote)) {
+        if (value) {
+          templates[key as PromptTemplateType] = { ...value, isCustom: true };
+        }
+      }
+      return templates;
+    }
+  } catch { /* fallback */ }
+
+  // fallback 旧逻辑
   if (!electronService.isElectron()) {
-    // 浏览器环境
     try {
       const data = localStorage.getItem('koma_prompt_templates');
       if (data) {
@@ -588,14 +602,13 @@ export async function loadPromptTemplates(): Promise<Record<PromptTemplateType, 
             templates[key as PromptTemplateType] = { ...value, isCustom: true };
           }
         }
+        // 同步到后端
+        configBridge.set('custom-templates', custom).catch(() => {});
       }
-    } catch {
-      // ignore
-    }
+    } catch { /* ignore */ }
     return templates;
   }
 
-  // Electron 环境
   try {
     const path = await getTemplatesPath();
     const exists = await electronService.fs.exists(path);
@@ -607,10 +620,10 @@ export async function loadPromptTemplates(): Promise<Record<PromptTemplateType, 
           templates[key as PromptTemplateType] = { ...value, isCustom: true };
         }
       }
+      // 同步到后端
+      configBridge.set('custom-templates', custom).catch(() => {});
     }
-  } catch {
-    // ignore
-  }
+  } catch { /* ignore */ }
 
   return templates;
 }
@@ -627,30 +640,36 @@ export async function getPromptTemplate(type: PromptTemplateType): Promise<Promp
  * 保存自定义模板
  */
 export async function saveCustomTemplate(template: PromptTemplate): Promise<void> {
-  const customTemplate = { ...template, isCustom: true };
+  const customTemplate = { ...template, isCustom: true as const };
 
+  // 双写：后端
+  try {
+    const existing = await configBridge.get<Record<string, PromptTemplate>>('custom-templates') || {};
+    existing[template.id] = customTemplate;
+    configBridge.set('custom-templates', existing).catch(() => {});
+  } catch { /* ignore */ }
+
+  // 旧逻辑
   if (!electronService.isElectron()) {
     const data = localStorage.getItem('koma_prompt_templates');
-    const existing = data ? JSON.parse(data) : {};
-    existing[template.id] = customTemplate;
-    localStorage.setItem('koma_prompt_templates', JSON.stringify(existing));
+    const old = data ? JSON.parse(data) : {};
+    old[template.id] = customTemplate;
+    localStorage.setItem('koma_prompt_templates', JSON.stringify(old));
     return;
   }
 
   const path = await getTemplatesPath();
-  let existing: Record<string, PromptTemplate> = {};
+  let old: Record<string, PromptTemplate> = {};
   try {
     const exists = await electronService.fs.exists(path);
     if (exists) {
       const data = await electronService.fs.readFile(path);
-      existing = JSON.parse(data);
+      old = JSON.parse(data);
     }
-  } catch {
-    // ignore
-  }
+  } catch { /* ignore */ }
 
-  existing[template.id] = customTemplate;
-  await electronService.fs.writeFile(path, JSON.stringify(existing, null, 2));
+  old[template.id] = customTemplate;
+  await electronService.fs.writeFile(path, JSON.stringify(old, null, 2));
 }
 
 /**

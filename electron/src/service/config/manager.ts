@@ -8,6 +8,8 @@ import { providerConfigModule } from './modules/providerConfig';
 import { pluginStateModule } from './modules/pluginState';
 import { appSettingsModule } from './modules/appSettings';
 import { recentProjectsModule } from './modules/recentProjects';
+import { modelPresetsModule } from './modules/modelPresets';
+import { customTemplatesModule } from './modules/customTemplates';
 import { providerInstancesModule } from '../provider/instance-store';
 
 export class ConfigManager {
@@ -29,6 +31,8 @@ export class ConfigManager {
     configRegistry.register(providerInstancesModule);
     configRegistry.register(appSettingsModule);
     configRegistry.register(recentProjectsModule);
+    configRegistry.register(modelPresetsModule);
+    configRegistry.register(customTemplatesModule);
 
     // 4. 预加载所有模块
     for (const moduleId of configRegistry.getRegisteredModules()) {
