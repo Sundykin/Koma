@@ -7,6 +7,7 @@ import { configRegistry } from './registry';
 import { providerConfigModule } from './modules/providerConfig';
 import { pluginStateModule } from './modules/pluginState';
 import { appSettingsModule } from './modules/appSettings';
+import { recentProjectsModule } from './modules/recentProjects';
 import { providerInstancesModule } from '../provider/instance-store';
 
 export class ConfigManager {
@@ -27,6 +28,7 @@ export class ConfigManager {
     configRegistry.register(pluginStateModule);
     configRegistry.register(providerInstancesModule);
     configRegistry.register(appSettingsModule);
+    configRegistry.register(recentProjectsModule);
 
     // 4. 预加载所有模块
     for (const moduleId of configRegistry.getRegisteredModules()) {

@@ -120,6 +120,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.on(channel, callback);
       return () => ipcRenderer.removeListener(channel, callback);
     },
+    // 委托执行：监听后端发来的执行请求
+    onDelegate: (callback: (event: any, data: any) => void) => {
+      ipcRenderer.on('workflow:delegate', callback);
+      return () => ipcRenderer.removeListener('workflow:delegate', callback);
+    },
+    // 委托结果回传
+    sendDelegateResult: (delegateId: string, result: any, error?: string) => {
+      ipcRenderer.send('workflow:delegate-result', { delegateId, result, error });
+    },
   },
   chat: {
     // 会话管理

@@ -111,6 +111,37 @@ export function onWorkflowEvent(
   return api.onEvent(event, (_: any, data: any) => callback(data));
 }
 
+type DelegateHandler = (
+  params: Record<string, unknown>,
+  context: Record<string, unknown>
+) => Promise<unknown>;
+
+/**
+ * 注册委托执行处理器
+ * 后端 DAG 编排器会把节点执行委托给前端，前端在这里注册实际的执行逻辑
+ */
+export function registerDelegateHandlers(
+  handlers: Record<string, DelegateHandler>
+): () => void {
+  const api = getAPI();
+  if (!api) return () => {};
+
+  return api.onDelegate(async (_: any, data: any) => {
+    const { delegateId, handler, params, context } = data;
+    const fn = handlers[handler];
+    if (!fn) {
+      api.sendDelegateResult(delegateId, null, `未注册的处理器: ${handler}`);
+      return;
+    }
+    try {
+      const result = await fn(params, context);
+      api.sendDelegateResult(delegateId, result);
+    } catch (err: any) {
+      api.sendDelegateResult(delegateId, null, err.message);
+    }
+  });
+}
+
 export const workflowBridge = {
   start: workflowStart,
   pause: workflowPause,
@@ -120,4 +151,5 @@ export const workflowBridge = {
   getRun: workflowGetRun,
   listRuns: workflowListRuns,
   onEvent: onWorkflowEvent,
+  registerDelegateHandlers,
 };

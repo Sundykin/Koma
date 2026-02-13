@@ -1,17 +1,98 @@
 /**
  * 工作流 Controller
- * 提供工作流管理的 IPC 接口
+ * 提供工作流管理的 IPC 接口 + 前端委托执行
  */
-import { workflowOrchestrator } from '../service/workflow';
+import { workflowOrchestrator, registerBuiltinHandlers } from '../service/workflow';
 import type { WorkflowDefinition } from '../service/workflow';
 import type { BrowserWindow } from 'electron';
+import { ipcMain } from 'electron';
 
 let mainWindow: BrowserWindow | null = null;
 
+// 等待前端执行结果的 Promise 解析器
+const delegateResolvers = new Map<string, {
+  resolve: (result: any) => void;
+  reject: (error: Error) => void;
+}>();
+
+/** 创建委托处理器：后端发 IPC 给前端执行 */
+function createDelegateHandler(handlerName: string) {
+  return async (
+    params: Record<string, unknown>,
+    context: Record<string, unknown>,
+    onProgress: (progress: number, step?: string) => void
+  ): Promise<unknown> => {
+    if (!mainWindow) throw new Error('主窗口未就绪');
+
+    const delegateId = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+    // 发送给前端执行
+    mainWindow.webContents.send('workflow:delegate', {
+      delegateId,
+      handler: handlerName,
+      params,
+      context: filterContext(context),
+    });
+
+    // 等待前端回传结果
+    return new Promise((resolve, reject) => {
+      delegateResolvers.set(delegateId, { resolve, reject });
+      // 超时 5 分钟
+      setTimeout(() => {
+        if (delegateResolvers.has(delegateId)) {
+          delegateResolvers.delete(delegateId);
+          reject(new Error(`委托执行超时: ${handlerName}`));
+        }
+      }, 5 * 60 * 1000);
+    });
+  };
+}
+
+// 过滤 context 中不可序列化的内容
+function filterContext(ctx: Record<string, unknown>): Record<string, unknown> {
+  const safe: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(ctx)) {
+    if (k.startsWith('_')) continue; // 跳过内部字段
+    try {
+      JSON.stringify(v);
+      safe[k] = v;
+    } catch { /* 不可序列化，跳过 */ }
+  }
+  return safe;
+}
+
 export const workflowController = {
-  /** 设置主窗口引用（用于发送事件） */
+  /** 设置主窗口引用 + 注册处理器 + 监听委托结果 */
   setWindow(win: BrowserWindow) {
     mainWindow = win;
+
+    // 注册内置处理器
+    registerBuiltinHandlers(
+      (name, handler) => workflowOrchestrator.registerHandler(name, handler)
+    );
+
+    // 注册委托处理器（前端执行）
+    const delegateHandlers = [
+      'script-analysis', 'shot-breakdown',
+      'scene-assets', 'character-assets', 'shot-render',
+    ];
+    for (const name of delegateHandlers) {
+      workflowOrchestrator.registerHandler(name, createDelegateHandler(name));
+    }
+
+    // 监听前端回传的委托结果
+    ipcMain.on('workflow:delegate-result', (_, data) => {
+      const { delegateId, result, error } = data;
+      const resolver = delegateResolvers.get(delegateId);
+      if (resolver) {
+        delegateResolvers.delete(delegateId);
+        if (error) {
+          resolver.reject(new Error(error));
+        } else {
+          resolver.resolve(result);
+        }
+      }
+    });
 
     // 转发编排器事件到前端
     const events = [
