@@ -1,21 +1,19 @@
 # Koma 架构改造方案
 
-> 状态：✅ 后端基础设施 + 前端对接层 + Store 迁移 + 插件 scope 强约束 + 任务系统整合 全部完成
+> 状态：✅ 全部完成
 >
 > 已完成：
-> - 持久化：ConfigManager + ConfigRegistry + JsonStore + 7 个配置模块
+> - 持久化：ConfigManager + ConfigRegistry + JsonStore + 8 个配置模块（含 chatSessions）
 > - 插件：ProviderManager + scope 运行时强约束（net/spawn/mcp/agent）
 > - 工作流：DAG 编排器 + 委托执行 + 漫剧流水线模板
 > - 前端桥接：configBridge + workflowBridge + preload API
-> - Store 迁移：settings / recentProjects / modelPresets / promptTemplates（双写兼容）
+> - Store 迁移：settings / recentProjects / modelPresets / promptTemplates（configBridge 优先）
 > - 应用初始化：workflowAdapter 注册
 > - 任务系统：TaskManager + taskQueueStore 整合（单一 tasks.json 写入源）
 > - ProviderManager：补全 image-hosting registry + listProviders 修复
->
-> 待做：
-> - chatHistoryStore 迁移（大数据量，需专用存储方案）
-> - 前端旧 WorkflowManager 逐步切换到后端 DAG 编排器
-> - 下线前端直写逻辑（settings.json / localStorage）
+> - chatHistoryStore：会话元数据 → ConfigRegistry，消息体 → 后端文件存储
+> - 旧双写下线：4 个 store 改为 configBridge 优先，仅错误时回退 localStorage
+> - 工作流切换：委托处理器补全（scene-assets/character-assets/shot-render），旧 WorkflowManager 移除
 
 ## 一、现状诊断
 

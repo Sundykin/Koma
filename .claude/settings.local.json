@@ -84,7 +84,15 @@
       "Bash(node:*)",
       "Bash(copy:*)",
       "Bash(tree:*)",
-      "Bash(npm run zip:*)"
+      "Bash(npm run zip:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(findstr:*)",
+      "Bash(Select-String:*)",
+      "Bash(chmod:*)",
+      "Bash(brew install:*)",
+      "Bash(/bin/sh -c:*)",
+      "Bash(grep:*)"
     ]
   }
 }

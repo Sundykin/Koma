@@ -117,6 +117,15 @@ class MCPResourceRegistry implements IRegistry<MCPResourceHandler> {
     return this.list().map(h => h.definition);
   }
 
+  listByPlugin(pluginId: string): MCPResourceHandler[] {
+    return this.list().filter(h => h.definition.pluginId === pluginId);
+  }
+
+  unregisterByPlugin(pluginId: string): void {
+    const toRemove = this.listByPlugin(pluginId).map(h => h.definition.uri);
+    toRemove.forEach(uri => this.unregister(uri));
+  }
+
   // 支持通配符匹配
   findHandler(uri: string): MCPResourceHandler | undefined {
     // 先精确匹配
@@ -223,10 +232,11 @@ export const mcpRegistry = {
     }
   },
 
-  // 按插件清理
+  // 按插件清理（servers + tools + resources）
   unregisterByPlugin(pluginId: string): void {
     mcpServerRegistry.unregisterByPlugin(pluginId);
     mcpToolRegistry.unregisterByPlugin(pluginId);
+    mcpResourceRegistry.unregisterByPlugin(pluginId);
   },
 
   clear(): void {

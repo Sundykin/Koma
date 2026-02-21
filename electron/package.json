@@ -27,7 +27,7 @@
     "@types/adm-zip": "^0.5.7",
     "@types/archiver": "^6.0.3",
     "@types/node": "^22.14.0",
-    "electron": "^39.2.7",
+    "electron": "^39.6.1",
     "typescript": "~5.8.2"
   }
 }

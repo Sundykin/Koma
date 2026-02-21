@@ -31,10 +31,12 @@ const ipc = {
 };
 
 const isEE = true;
+const platform = process.platform;
 
 contextBridge.exposeInMainWorld('electron', {
   ipcRenderer: ipc,
   isEE,
+  platform,
 });
 
 contextBridge.exposeInMainWorld('electronAPI', {

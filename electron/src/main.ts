@@ -1,7 +1,7 @@
 /**
  * Electron-Egg 主进程入口 (TypeScript)
  */
-import { app, BrowserWindow, ipcMain, IpcMainInvokeEvent, protocol } from 'electron';
+import { app, BrowserWindow, ipcMain, IpcMainInvokeEvent, protocol, Menu } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import { controllers } from './controller';
@@ -97,6 +97,7 @@ function registerLocalProtocol(): void {
 
 function createWindow(): void {
   const { window: winConfig } = config;
+  const isMac = process.platform === 'darwin';
 
   mainWindow = new BrowserWindow({
     width: winConfig.width,
@@ -104,7 +105,7 @@ function createWindow(): void {
     minWidth: winConfig.minWidth,
     minHeight: winConfig.minHeight,
     frame: winConfig.frame,
-    titleBarStyle: winConfig.titleBarStyle,
+    titleBarStyle: isMac ? 'hiddenInset' : winConfig.titleBarStyle,
     backgroundColor: winConfig.backgroundColor,
     webPreferences: {
       nodeIntegration: false,
@@ -230,6 +231,7 @@ async function initServices(): Promise<void> {
 }
 
 app.whenReady().then(async () => {
+  Menu.setApplicationMenu(null);
   registerLocalProtocol();
   await initServices();
   registerIpcRoutes();
