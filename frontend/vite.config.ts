@@ -13,6 +13,20 @@ export default defineConfig(({ mode }) => {
     build: {
       outDir: '../public/dist',
       emptyOutDir: true,
+      target: 'esnext',
+      cssCodeSplit: true,
+      reportCompressedSize: false,
+      chunkSizeWarningLimit: 1000,
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            'vendor-react': ['react', 'react-dom'],
+            'vendor-antd': ['antd', '@ant-design/icons', '@ant-design/cssinjs'],
+            'vendor-editor': ['codemirror', '@codemirror/view', '@codemirror/state', '@codemirror/language', '@codemirror/commands', '@codemirror/autocomplete'],
+            'vendor-player': ['xgplayer', 'xgplayer-mp4'],
+          },
+        },
+      },
     },
     plugins: [react()],
     define: {

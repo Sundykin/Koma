@@ -5,6 +5,7 @@ import React, { useState, useCallback, useRef } from 'react';
 import { Modal, Form, Select, InputNumber, Input, Button, Progress, Space, Radio, App } from 'antd';
 import { ExportOutlined, FolderOutlined } from '@ant-design/icons';
 import { useTrackStore } from '../../store/trackStore';
+import { useShallow } from 'zustand/react/shallow';
 import { ExportRenderer, ExportConfig, ExportProgress } from '../../services/exportRenderer';
 import { saveFileDialog } from '../../services/electronService';
 
@@ -35,7 +36,10 @@ const RESOLUTION_PRESETS = [
 
 export function ExportDialog({ open, onClose }: ExportDialogProps) {
   const { modal } = App.useApp();
-  const { tracks, config: timelineConfig } = useTrackStore();
+  const { tracks, config: timelineConfig } = useTrackStore(useShallow(s => ({
+    tracks: s.tracks,
+    config: s.config,
+  })));
 
   const [form] = Form.useForm();
   const [exporting, setExporting] = useState(false);

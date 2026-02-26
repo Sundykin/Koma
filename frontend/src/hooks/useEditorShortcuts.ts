@@ -4,6 +4,7 @@
  */
 import { useEffect, useCallback } from 'react';
 import { useTrackStore } from '../store/trackStore';
+import { useShallow } from 'zustand/react/shallow';
 import { App } from 'antd';
 
 export interface ShortcutAction {
@@ -33,7 +34,22 @@ export function useEditorShortcuts() {
     redo,
     canUndo,
     canRedo,
-  } = useTrackStore();
+  } = useTrackStore(useShallow(s => ({
+    selectedTrackId: s.selectedTrackId,
+    selectedItemId: s.selectedItemId,
+    currentTime: s.currentTime,
+    isPlaying: s.isPlaying,
+    scale: s.scale,
+    setCurrentTime: s.setCurrentTime,
+    setPlaying: s.setPlaying,
+    setScale: s.setScale,
+    removeItem: s.removeItem,
+    splitItem: s.splitItem,
+    undo: s.undo,
+    redo: s.redo,
+    canUndo: s.canUndo,
+    canRedo: s.canRedo,
+  })));
 
   // 播放/暂停
   const togglePlay = useCallback(() => {

@@ -6,12 +6,21 @@
 import type { Clip, Track, Timeline } from '../types';
 import { getInterpolatedValues } from './keyframe';
 import { electronService } from '../services/electronService';
+import { LRUCache } from '../utils/LRUCache';
+
+// 媒体资源淘汰时的清理回调
+function disposeMedia(_key: string, media: HTMLImageElement | HTMLVideoElement): void {
+  if (media instanceof HTMLVideoElement) {
+    media.pause();
+    media.src = '';
+    media.load();
+  }
+}
 
 export class VideoRenderer {
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
-  private mediaCache: Map<string, HTMLImageElement | HTMLVideoElement> =
-    new Map();
+  private mediaCache = new LRUCache<string, HTMLImageElement | HTMLVideoElement>(50, disposeMedia);
 
   // 预排序的轨道缓存
   private _sortedVideoTracks: Track[] = [];
@@ -252,13 +261,6 @@ export class VideoRenderer {
    * 清理资源
    */
   dispose() {
-    this.mediaCache.forEach((media) => {
-      if (media instanceof HTMLVideoElement) {
-        media.pause();
-        media.src = '';
-        media.load();
-      }
-    });
     this.mediaCache.clear();
     this._sortedVideoTracks = [];
     this._sortedSubtitleTracks = [];

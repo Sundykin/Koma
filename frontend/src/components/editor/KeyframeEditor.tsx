@@ -10,6 +10,7 @@ import {
   KeyOutlined,
 } from '@ant-design/icons';
 import { useTrackStore } from '../../store/trackStore';
+import { useShallow } from 'zustand/react/shallow';
 import { EasingType } from '../../types/track';
 import type { TrackKeyframe, TrackItem } from '../../types/track';
 import { nanoid } from 'nanoid';
@@ -47,7 +48,15 @@ export function KeyframeEditor({ trackId, itemId }: KeyframeEditorProps) {
     removeKeyframe,
     updateKeyframe,
     updateItem,
-  } = useTrackStore();
+  } = useTrackStore(useShallow(s => ({
+    currentTime: s.currentTime,
+    config: s.config,
+    getItem: s.getItem,
+    addKeyframe: s.addKeyframe,
+    removeKeyframe: s.removeKeyframe,
+    updateKeyframe: s.updateKeyframe,
+    updateItem: s.updateItem,
+  })));
 
   const item = getItem(trackId, itemId);
   const keyframes = (item as any)?.keyframes as TrackKeyframe[] | undefined || [];

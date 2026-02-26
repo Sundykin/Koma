@@ -111,18 +111,37 @@ export async function initializeProviderPlugins(): Promise<{
 
   console.log(`[PluginInitializer] 开始初始化 ${enabledPlugins.length} 个插件`);
 
-  // 串行初始化插件，避免竞态条件
+  // 按类型分组：不同类型间并行，同类型内串行（避免竞态）
+  const groups = new Map<string, InstalledPlugin[]>();
+  for (const plugin of enabledPlugins) {
+    const cat = plugin.category || 'unknown';
+    if (!groups.has(cat)) groups.set(cat, []);
+    groups.get(cat)!.push(plugin);
+  }
+
   const failed: string[] = [];
   let success = 0;
 
-  for (const plugin of enabledPlugins) {
-    const result = await initializePlugin(plugin);
-    if (result) {
-      success++;
-    } else {
-      failed.push(plugin.id);
+  const groupResults = await Promise.allSettled(
+    Array.from(groups.entries()).map(async ([category, plugins]) => {
+      console.log(`[PluginInitializer] 初始化 ${category} 类型插件 (${plugins.length} 个)`);
+      for (const plugin of plugins) {
+        const result = await initializePlugin(plugin);
+        if (result) {
+          success++;
+        } else {
+          failed.push(plugin.id);
+        }
+      }
+    })
+  );
+
+  // 记录分组级别的错误
+  groupResults.forEach((result, index) => {
+    if (result.status === 'rejected') {
+      console.error(`[PluginInitializer] 插件组初始化异常:`, result.reason);
     }
-  }
+  });
 
   console.log(`[PluginInitializer] 初始化完成: ${success}/${enabledPlugins.length} 成功`);
 

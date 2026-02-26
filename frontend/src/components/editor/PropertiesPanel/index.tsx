@@ -4,6 +4,7 @@
  */
 import React, { memo, useCallback, useMemo } from 'react';
 import { useTrackStore } from '../../../store/trackStore';
+import { useShallow } from 'zustand/react/shallow';
 import { TransformProperties, EasingType, TrackKeyframe } from '../../../types/track';
 import { hasKeyframeAt } from '../../../engine/keyframe';
 import PropertyRow from './PropertyRow';
@@ -44,7 +45,20 @@ export const PropertiesPanel = memo(function PropertiesPanel({ className }: Prop
     updateItemTransform,
     updateKeyframeEasingInItem,
     getAnimatedPropertiesAtTime,
-  } = useTrackStore();
+  } = useTrackStore(useShallow(s => ({
+    tracks: s.tracks,
+    selectedTrackId: s.selectedTrackId,
+    selectedItemId: s.selectedItemId,
+    selectedKeyframeId: s.selectedKeyframeId,
+    currentTime: s.currentTime,
+    config: s.config,
+    selectKeyframe: s.selectKeyframe,
+    addKeyframeToItem: s.addKeyframeToItem,
+    removeKeyframeFromItem: s.removeKeyframeFromItem,
+    updateItemTransform: s.updateItemTransform,
+    updateKeyframeEasingInItem: s.updateKeyframeEasingInItem,
+    getAnimatedPropertiesAtTime: s.getAnimatedPropertiesAtTime,
+  })));
 
   // 获取选中的片段
   const selectedItem = useMemo(() => {

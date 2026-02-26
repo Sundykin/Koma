@@ -221,20 +221,34 @@ async function initServices(): Promise<void> {
   const storageRoot = config.storage?.defaultRoot;
   const rootPath = storageRoot ? path.join(app.getPath('home'), storageRoot) : undefined;
 
-  // 初始化配置管理系统（最先初始化）
+  // 配置管理系统必须最先初始化（其他服务依赖配置）
   await configManager.init(rootPath);
 
-  await services.project.init(rootPath || null);
-  await services.ffmpeg.init();
-  await services.plugin.init();
-  controllers.chat.init();
+  // 四个独立服务并行初始化，互不依赖
+  const results = await Promise.allSettled([
+    services.project.init(rootPath || null),
+    services.ffmpeg.init(),
+    services.plugin.init(),
+    Promise.resolve(controllers.chat.init()),
+  ]);
+
+  // 记录失败的服务，但不阻塞启动
+  results.forEach((result, index) => {
+    if (result.status === 'rejected') {
+      const names = ['project', 'ffmpeg', 'plugin', 'chat'];
+      console.error(`[Startup] ${names[index]} 服务初始化失败:`, result.reason);
+    }
+  });
 }
 
 app.whenReady().then(async () => {
   Menu.setApplicationMenu(null);
   registerLocalProtocol();
-  await initServices();
+
+  // IPC 路由注册不依赖 initServices，可以并行
   registerIpcRoutes();
+
+  await initServices();
   createWindow();
 
   // 设置工作流控制器的窗口引用

@@ -1,15 +1,18 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, Suspense } from 'react';
 import { Project, ScriptAnalysisResult, EditorStep, AppSettings, Episode, EpisodeStepProgress } from './types';
 import { ProjectList, ProjectOverview, CreateProjectModal, ProjectSettingsModal } from './components/project';
 import type { MentionItem } from './editor';
-import { SettingsPage } from './components/settings';
 import { WindowControls } from './components/common';
 import { ErrorBoundary } from './components/common';
 import { TaskStatusBar } from './components/common/TaskStatusBar';
 import { Sidebar, type AppView } from './components/common/Sidebar';
-import { EditorView } from './components/editor/EditorView';
-import { PluginManager, PluginHost } from './components/plugins';
-import { ChatPage } from './components/chat';
+import { PluginHost } from './components/plugins';
+
+// 懒加载非首屏视图组件
+const SettingsPage = React.lazy(() => import('./components/settings').then(m => ({ default: m.SettingsPage })));
+const PluginManager = React.lazy(() => import('./components/plugins').then(m => ({ default: m.PluginManager })));
+const ChatPage = React.lazy(() => import('./components/chat').then(m => ({ default: m.ChatPage })));
+const EditorView = React.lazy(() => import('./components/editor/EditorView').then(m => ({ default: m.EditorView })));
 import { useProjects } from './hooks/useProjects';
 import { TaskManager } from './services/TaskManager';
 import { loadCharacters, loadScenes, loadProps, loadShots, loadEpisodeShots, saveEpisode } from './store/projectStore';
@@ -21,6 +24,13 @@ import {
   DEFAULT_SETTINGS,
   formatTimeAgo,
 } from './constants/appConstants';
+
+// 懒加载 fallback
+const LazyFallback = () => (
+  <div className="flex h-full items-center justify-center">
+    <Spin size="large" tip="加载中..."><div className="p-12" /></Spin>
+  </div>
+);
 
 const AppContent: React.FC = () => {
   const { message } = AntApp.useApp();
@@ -248,9 +258,9 @@ const AppContent: React.FC = () => {
                 />
               )
             )}
-            {view === 'settings' && <SettingsPage settings={appSettings} onSave={setAppSettings} />}
-            {view === 'plugins' && <PluginManager />}
-            {view === 'chat' && <ChatPage />}
+            {view === 'settings' && <Suspense fallback={<LazyFallback />}><SettingsPage settings={appSettings} onSave={setAppSettings} /></Suspense>}
+            {view === 'plugins' && <Suspense fallback={<LazyFallback />}><PluginManager /></Suspense>}
+            {view === 'chat' && <Suspense fallback={<LazyFallback />}><ChatPage /></Suspense>}
             {view.startsWith('plugin:') && (
               <PluginHost pluginId={view.replace('plugin:', '')} />
             )}
@@ -262,7 +272,8 @@ const AppContent: React.FC = () => {
               />
             )}
             {view === 'editor' && activeProject && (
-              <EditorView
+              <Suspense fallback={<LazyFallback />}>
+                <EditorView
                 activeProject={activeProject}
                 activeEpisode={activeEpisode}
                 editorStep={editorStep}
@@ -276,6 +287,7 @@ const AppContent: React.FC = () => {
                 onViewChange={setView}
                 onOpenProjectSettings={() => setIsProjectSettingsOpen(true)}
               />
+              </Suspense>
             )}
           </main>
         </div>

@@ -1,5 +1,5 @@
-import React from 'react';
-import { Button } from 'antd';
+import React, { Suspense } from 'react';
+import { Button, Spin } from 'antd';
 import {
   Users,
   Clapperboard,
@@ -7,10 +7,18 @@ import {
 } from 'lucide-react';
 import { Project, Episode, EditorStep, EpisodeStepProgress, ScriptAnalysisResult, AppSettings } from '../../types';
 import type { MentionItem } from '../../editor';
-import { SimpleEditor } from './index';
-import { AssetManager } from '../asset/AssetManager';
-import { Storyboard } from '../storyboard/Storyboard';
 import { StepNavigator } from '../common/StepNavigator';
+
+// 懒加载编辑器内各步骤的重型组件
+const AssetManager = React.lazy(() => import('../asset/AssetManager').then(m => ({ default: m.AssetManager })));
+const Storyboard = React.lazy(() => import('../storyboard/Storyboard').then(m => ({ default: m.Storyboard })));
+const SimpleEditor = React.lazy(() => import('./SimpleEditor').then(m => ({ default: m.SimpleEditor })));
+
+const StepFallback = () => (
+  <div className="flex h-full items-center justify-center">
+    <Spin size="large" tip="加载组件..."><div className="p-12" /></Spin>
+  </div>
+);
 
 interface EditorViewProps {
   activeProject: Project;
@@ -82,18 +90,20 @@ export const EditorView: React.FC<EditorViewProps> = ({
         {/* 资产管理视图 */}
         {editorStep === 'assets' && (
           activeProject ? (
-            <AssetManager
-              projectId={activeProject.id}
-              ttiConfigId={activeProject.ttiConfigId}
-              episodeId={activeEpisode?.id}
-              episodeName={activeEpisode?.title || (activeEpisode ? `第${activeEpisode.number}集` : undefined)}
-              script={scriptText}
-              llmConfigId={activeProject.llmConfigId}
-              characters={analysisData?.characters}
-              scenes={analysisData?.scenes}
-              props={analysisData?.props}
-              onNext={() => onStepChange('storyboard')}
-            />
+            <Suspense fallback={<StepFallback />}>
+              <AssetManager
+                projectId={activeProject.id}
+                ttiConfigId={activeProject.ttiConfigId}
+                episodeId={activeEpisode?.id}
+                episodeName={activeEpisode?.title || (activeEpisode ? `第${activeEpisode.number}集` : undefined)}
+                script={scriptText}
+                llmConfigId={activeProject.llmConfigId}
+                characters={analysisData?.characters}
+                scenes={analysisData?.scenes}
+                props={analysisData?.props}
+                onNext={() => onStepChange('storyboard')}
+              />
+            </Suspense>
           ) : (
             <div className="flex h-full items-center justify-center text-zinc-500 flex-col gap-4">
               <Users className="w-16 h-16 opacity-10" />
@@ -107,7 +117,8 @@ export const EditorView: React.FC<EditorViewProps> = ({
         {editorStep === 'storyboard' && (
           activeProject ? (
             <div className="absolute inset-0">
-              <Storyboard
+              <Suspense fallback={<StepFallback />}>
+                <Storyboard
                 projectId={activeProject.id}
                 episodeId={activeEpisode?.id}
                 episodeName={activeEpisode?.title || (activeEpisode ? `第${activeEpisode.number}集` : undefined)}
@@ -117,6 +128,7 @@ export const EditorView: React.FC<EditorViewProps> = ({
                 settings={appSettings}
                 mentionItems={mentionItems}
               />
+              </Suspense>
             </div>
           ) : (
             <div className="flex h-full items-center justify-center text-zinc-500 flex-col gap-4">
@@ -130,11 +142,13 @@ export const EditorView: React.FC<EditorViewProps> = ({
         {/* 剪辑视图 */}
         {editorStep === 'video' && (
           analysisData ? (
-            <SimpleEditor
-              shots={analysisData.shots}
-              projectId={activeProject?.id}
-              episodeId={activeEpisode?.id}
-            />
+            <Suspense fallback={<StepFallback />}>
+              <SimpleEditor
+                shots={analysisData.shots}
+                projectId={activeProject?.id}
+                episodeId={activeEpisode?.id}
+              />
+            </Suspense>
           ) : (
             <div className="flex h-full items-center justify-center text-zinc-500 flex-col gap-4">
               <Scissors className="w-16 h-16 opacity-10" />

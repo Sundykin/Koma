@@ -1,16 +1,14 @@
 /**
  * Electron-Egg 前端 IPC 封装
  * 提供 controller.xxx.method 格式的调用方式
+ * 集成缓存和请求去重优化
  */
+import { createCachedInvoke } from './ipcCache';
 
 // 获取 Electron 对象
 const Renderer = (window as any).electron || {};
 
-/**
- * IPC 对象
- * 官方API说明：https://www.electronjs.org/zh/docs/latest/api/ipc-renderer
- */
-export const ipc = Renderer.ipcRenderer || {
+const rawIpcRenderer = Renderer.ipcRenderer || {
   invoke: () => Promise.reject(new Error('Not in Electron environment')),
   sendSync: () => null,
   on: () => {},
@@ -18,6 +16,14 @@ export const ipc = Renderer.ipcRenderer || {
   removeListener: () => {},
   removeAllListeners: () => {},
   send: () => {},
+};
+
+/**
+ * IPC 对象（带缓存和去重优化）
+ */
+export const ipc = {
+  ...rawIpcRenderer,
+  invoke: createCachedInvoke(rawIpcRenderer.invoke.bind(rawIpcRenderer)),
 };
 
 /**

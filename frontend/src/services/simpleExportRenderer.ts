@@ -5,6 +5,7 @@
 import type { Track, Clip, MediaType } from '../types/editor';
 import { getAnimatedProperties } from '../engine/simpleKeyframe';
 import { toKomaLocalUrl } from '../utils/urlUtils';
+import { LRUCache } from '../utils/LRUCache';
 
 export interface SimpleExportConfig {
   width: number;
@@ -51,7 +52,13 @@ export class SimpleExportRenderer {
   private tracks: Track[] = [];
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
-  private mediaCache: Map<string, HTMLVideoElement | HTMLImageElement> = new Map();
+  private mediaCache = new LRUCache<string, HTMLVideoElement | HTMLImageElement>(30, (_key, media) => {
+    if (media instanceof HTMLVideoElement) {
+      media.pause();
+      media.src = '';
+      media.load();
+    }
+  });
   private aborted = false;
   private progressCallback: SimpleExportProgressCallback | null = null;
   private duration: number = 0;
@@ -174,7 +181,7 @@ export class SimpleExportRenderer {
   }
 
   private async preloadMedia() {
-    const loadPromises: Promise<void>[] = [];
+    const loadTasks: (() => Promise<void>)[] = [];
 
     for (const track of this.tracks) {
       for (const clip of track.clips) {
@@ -182,16 +189,23 @@ export class SimpleExportRenderer {
 
         if (clip.type === 'VIDEO' || clip.type === 'IMAGE') {
           if (!this.mediaCache.has(clip.id)) {
-            const promise = clip.type === 'VIDEO'
-              ? this.loadVideo(clip.src).then(v => { this.mediaCache.set(clip.id, v); })
-              : this.loadImage(clip.src).then(i => { this.mediaCache.set(clip.id, i); });
-            loadPromises.push(promise);
+            loadTasks.push(async () => {
+              const media = clip.type === 'VIDEO'
+                ? await this.loadVideo(clip.src)
+                : await this.loadImage(clip.src);
+              this.mediaCache.set(clip.id, media);
+            });
           }
         }
       }
     }
 
-    await Promise.all(loadPromises);
+    // 并发控制：最多 4 个并行加载
+    const concurrency = 4;
+    for (let i = 0; i < loadTasks.length; i += concurrency) {
+      if (this.aborted) throw new Error('Export aborted');
+      await Promise.all(loadTasks.slice(i, i + concurrency).map(fn => fn()));
+    }
   }
 
   private loadVideo(src: string): Promise<HTMLVideoElement> {
