@@ -44,6 +44,8 @@ import {
   TTI_PRESETS,
 } from '../../store/globalStore';
 import { getChannelConfigs, updateChannelConfig } from '../../store/settings/channelConfig';
+import { testTTIConnection } from '../../providers';
+import { toUserMessage } from '../../utils/errorMessages';
 import { WorkflowUploader } from './WorkflowUploader';
 import { ProviderPluginModal } from '../plugins/ProviderPluginModal';
 
@@ -233,11 +235,15 @@ export const TTIConfigManager: React.FC<TTIConfigManagerProps> = ({ onConfigChan
   const handleTestConnection = async (config: TTIModelConfig) => {
     setTestingId(config.id);
     try {
-      // TODO: 实现 TTI 连接测试
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      message.success(`"${config.name}" 连接成功`);
+      const result = await testTTIConnection(config);
+      if (result.success) {
+        const latency = result.latency ? ` (${result.latency}ms)` : '';
+        message.success(`"${config.name}" 连接成功${latency}`);
+      } else {
+        message.error(`"${config.name}" ${result.message}`);
+      }
     } catch (err: any) {
-      message.error(`连接测试失败: ${err.message}`);
+      message.error(`连接测试失败: ${toUserMessage(err)}`);
     } finally {
       setTestingId(null);
     }

@@ -7,6 +7,7 @@ import {
 } from '@ant-design/icons';
 import { Check } from 'lucide-react';
 import { THEME_PRESETS } from '../../config/themePresets';
+import { PROJECT_TEMPLATES, type ProjectTemplate } from '../../config/projectTemplates';
 
 interface CreateProjectModalProps {
   isOpen: boolean;
@@ -23,6 +24,16 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ isOpen, 
   const [form] = Form.useForm();
   const [selectedTheme, setSelectedTheme] = useState<string>('realistic');
   const [customStyle, setCustomStyle] = useState('');
+  const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
+
+  const handleSelectTemplate = (template: ProjectTemplate) => {
+    setSelectedTemplate(template.id);
+    form.setFieldsValue({
+      title: template.id === 'blank' ? '' : template.name,
+      mode: template.mode,
+    });
+    setSelectedTheme(template.theme);
+  };
 
   const handleCreate = async () => {
     try {
@@ -63,6 +74,37 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ isOpen, 
         initialValues={{ mode: 'drama' }}
         style={{ marginTop: 16 }}
       >
+        {/* 模板选择 */}
+        <Form.Item label="选择模板">
+          <div className="grid grid-cols-3 gap-2 mb-2">
+            {PROJECT_TEMPLATES.map(template => {
+              const isSelected = selectedTemplate === template.id;
+              return (
+                <div
+                  key={template.id}
+                  className={`
+                    relative p-3 rounded-lg cursor-pointer transition-all text-center
+                    ${isSelected
+                      ? 'bg-emerald-900/30 border-2 border-emerald-500'
+                      : 'bg-zinc-800 border-2 border-zinc-700 hover:border-zinc-500'
+                    }
+                  `}
+                  onClick={() => handleSelectTemplate(template)}
+                >
+                  {isSelected && (
+                    <div className="absolute top-1 right-1 w-4 h-4 bg-emerald-500 rounded-full flex items-center justify-center">
+                      <Check className="w-2.5 h-2.5 text-white" />
+                    </div>
+                  )}
+                  <div className="text-lg mb-1">{template.icon}</div>
+                  <div className="text-xs font-medium text-zinc-200">{template.name}</div>
+                  <div className="text-[10px] text-zinc-500 mt-0.5">{template.description}</div>
+                </div>
+              );
+            })}
+          </div>
+        </Form.Item>
+
         <Form.Item
           name="title"
           label="项目名称"

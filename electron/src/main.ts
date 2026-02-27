@@ -8,10 +8,23 @@ import { controllers } from './controller';
 import { services } from './service';
 import config from './config';
 import { configManager } from './service/config';
+import { fail, isDomainActionChannel, ok } from './ipc/contracts';
+import { appEventBus } from './ipc/eventBus';
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 
 let mainWindow: BrowserWindow | null = null;
+
+const rendererEventSubscriptions = new Map<number, Map<string, () => void>>();
+
+function getRendererEventOwner(webContentsId: number): string {
+  return `renderer:${webContentsId}`;
+}
+
+function clearRendererSubscriptions(webContentsId: number): void {
+  appEventBus.clearOwner(getRendererEventOwner(webContentsId));
+  rendererEventSubscriptions.delete(webContentsId);
+}
 
 // MIME 类型映射
 const mimeTypes: Record<string, string> = {
@@ -124,7 +137,16 @@ function createWindow(): void {
   }
 
   mainWindow.on('closed', () => {
+    if (mainWindow) {
+      clearRendererSubscriptions(mainWindow.webContents.id);
+    }
     mainWindow = null;
+  });
+
+  const currentWebContentsId = mainWindow.webContents.id;
+
+  mainWindow.webContents.on('destroyed', () => {
+    clearRendererSubscriptions(currentWebContentsId);
   });
 
   // 注册 F12 / Ctrl+Shift+I 快捷键打开 DevTools
@@ -137,6 +159,26 @@ function createWindow(): void {
 }
 
 function registerIpcRoutes(): void {
+  const invokeDomainAction = async (channel: string, args: unknown, event: IpcMainInvokeEvent) => {
+    if (!isDomainActionChannel(channel)) {
+      return fail(new Error(`Invalid IPC channel format: ${channel}`), 'INVALID_CHANNEL');
+    }
+
+    const [domain, action] = channel.split(':');
+    const handler = (controllers as any)[domain]?.[action];
+
+    if (typeof handler !== 'function') {
+      return fail(new Error(`Handler not found: ${domain}.${action}`), 'HANDLER_NOT_FOUND');
+    }
+
+    try {
+      const result = await handler.call((controllers as any)[domain], args ?? {}, event);
+      return ok(result);
+    } catch (error) {
+      return fail(error, 'HANDLER_EXECUTION_FAILED');
+    }
+  };
+
   // 通用路由: controller.xxx.method
   ipcMain.handle('controller', async (event: IpcMainInvokeEvent, channel: string, args: any) => {
     const parts = channel.split('.');
@@ -157,6 +199,78 @@ function registerIpcRoutes(): void {
     }
 
     return await method.call(controller, args, event);
+  });
+
+  // 新规范路由: domain:action，统一结构化返回
+  ipcMain.handle('rpc:invoke', async (event, request: { channel: string; args?: unknown }) => {
+    return invokeDomainAction(request.channel, request.args, event);
+  });
+
+  // 事件总线 IPC
+  ipcMain.handle('event:emit', (_, args: { event: string; payload?: unknown }) => {
+    appEventBus.emit(args.event, args.payload);
+    return ok({ emitted: true });
+  });
+
+  ipcMain.handle('event:subscribe', (event, args: { event: string }) => {
+    const webContentsId = event.sender.id;
+    const eventName = args?.event;
+
+    if (!eventName) {
+      return fail(new Error('Event name is required'), 'INVALID_EVENT_NAME');
+    }
+
+    if (!isDomainActionChannel(eventName) && !/^[a-z][a-z0-9-]*:\*$/.test(eventName)) {
+      return fail(new Error(`Invalid event name: ${eventName}`), 'INVALID_EVENT_NAME');
+    }
+
+    const owner = getRendererEventOwner(webContentsId);
+    const rendererSubscriptions = rendererEventSubscriptions.get(webContentsId) || new Map<string, () => void>();
+
+    if (rendererSubscriptions.has(eventName)) {
+      return ok({ subscribed: true, duplicated: true, event: eventName });
+    }
+
+    const unsubscribe = appEventBus.on(eventName, owner, (payload, actualEventName) => {
+      event.sender.send('event:message', {
+        event: actualEventName || eventName,
+        payload,
+      });
+    });
+
+    rendererSubscriptions.set(eventName, unsubscribe);
+    rendererEventSubscriptions.set(webContentsId, rendererSubscriptions);
+
+    return ok({ subscribed: true, event: eventName });
+  });
+
+  ipcMain.handle('event:unsubscribe', (event, args: { event?: string }) => {
+    const webContentsId = event.sender.id;
+    const eventName = args?.event;
+    const subscriptions = rendererEventSubscriptions.get(webContentsId);
+
+    if (!subscriptions) {
+      return ok({ unsubscribed: true, event: eventName || '*', count: 0 });
+    }
+
+    if (!eventName) {
+      clearRendererSubscriptions(webContentsId);
+      return ok({ unsubscribed: true, event: '*', count: subscriptions.size });
+    }
+
+    const unsubscribe = subscriptions.get(eventName);
+    if (!unsubscribe) {
+      return ok({ unsubscribed: true, event: eventName, count: 0 });
+    }
+
+    unsubscribe();
+    subscriptions.delete(eventName);
+
+    if (!subscriptions.size) {
+      rendererEventSubscriptions.delete(webContentsId);
+    }
+
+    return ok({ unsubscribed: true, event: eventName, count: 1 });
   });
 
   // 兼容旧格式

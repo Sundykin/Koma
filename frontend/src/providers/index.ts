@@ -172,24 +172,76 @@ export function validateAllSettings(settings: AppSettings): {
 
 // ========== 连接测试函数 ==========
 
-export async function testLLMConnection(config: ModelConfig): Promise<{ success: boolean; message: string }> {
+export async function testLLMConnection(config: ModelConfig): Promise<{ success: boolean; message: string; latency?: number }> {
   try {
     const provider = createLLMProvider(config);
-    if (!provider.validate()) return { success: false, message: '配置校验失败' };
-    const result = await provider.testConnection();
-    return { success: result, message: result ? '连接成功' : '连接失败，请检查配置' };
+    if (!provider.validate()) return { success: false, message: '配置校验失败：请检查必填项' };
+    const start = Date.now();
+    const result = await Promise.race([
+      provider.testConnection(),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 10000)),
+    ]);
+    const latency = Date.now() - start;
+    return { success: result, message: result ? '连接成功' : '连接失败，请检查配置', latency };
   } catch (err: any) {
+    if (err.message === 'timeout') return { success: false, message: '连接超时，请检查网络或服务地址' };
     return { success: false, message: err.message || '连接测试失败' };
   }
 }
 
-export async function testTTIConnection(config: TTIModelConfig): Promise<{ success: boolean; message: string }> {
+export async function testTTIConnection(config: TTIModelConfig): Promise<{ success: boolean; message: string; latency?: number }> {
   try {
     const provider = createTTIProvider(config);
-    if (!provider.validate()) return { success: false, message: '配置校验失败' };
-    const result = await provider.testConnection();
-    return { success: result, message: result ? '连接成功' : '连接失败，请检查配置' };
+    if (!provider.validate()) return { success: false, message: '配置校验失败：请检查必填项' };
+    const start = Date.now();
+    const result = await Promise.race([
+      provider.testConnection(),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 10000)),
+    ]);
+    const latency = Date.now() - start;
+    return { success: result, message: result ? '连接成功' : '连接失败，请检查配置', latency };
   } catch (err: any) {
+    if (err.message === 'timeout') return { success: false, message: '连接超时，请检查网络或服务地址' };
+    return { success: false, message: err.message || '连接测试失败' };
+  }
+}
+
+export async function testITVConnection(config: ITVModelConfig): Promise<{ success: boolean; message: string; latency?: number }> {
+  try {
+    const provider = createITVProviderFromConfig({
+      provider: config.provider as any,
+      apiKey: config.apiKey,
+      baseUrl: config.baseUrl,
+      defaultDuration: config.defaultDuration,
+      defaultResolution: config.defaultResolution,
+    });
+    if (!provider.validate()) return { success: false, message: '配置校验失败：请检查必填项' };
+    const start = Date.now();
+    const result = await Promise.race([
+      provider.testConnection(),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 10000)),
+    ]);
+    const latency = Date.now() - start;
+    return { success: result, message: result ? '连接成功' : '连接失败，请检查配置', latency };
+  } catch (err: any) {
+    if (err.message === 'timeout') return { success: false, message: '连接超时，请检查网络或服务地址' };
+    return { success: false, message: err.message || '连接测试失败' };
+  }
+}
+
+export async function testTTSConnection(config: TTSModelConfig): Promise<{ success: boolean; message: string; latency?: number }> {
+  try {
+    const provider = createTTSProviderFromConfig(config);
+    if (!provider.validate()) return { success: false, message: '配置校验失败：请检查必填项' };
+    const start = Date.now();
+    const result = await Promise.race([
+      provider.testConnection(),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 10000)),
+    ]);
+    const latency = Date.now() - start;
+    return { success: result, message: result ? '连接成功' : '连接失败，请检查配置', latency };
+  } catch (err: any) {
+    if (err.message === 'timeout') return { success: false, message: '连接超时，请检查网络或服务地址' };
     return { success: false, message: err.message || '连接测试失败' };
   }
 }

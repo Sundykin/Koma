@@ -60,14 +60,37 @@ export class OpenAITTSProvider implements TTSProvider {
       throw new Error(`OpenAI TTS failed: ${response.statusText}`);
     }
 
-    // TODO: 需要保存到文件并返回路径
-    // 这里返回 Blob URL 作为临时方案
+    // 通过 Electron IPC 保存到项目目录
     const blob = await response.blob();
-    const url = URL.createObjectURL(blob);
+    const arrayBuffer = await blob.arrayBuffer();
+    const bytes = new Uint8Array(arrayBuffer);
+    let binary = '';
+    for (let i = 0; i < bytes.length; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    const base64Data = btoa(binary);
 
+    const electronAPI = (window as any).electronAPI;
+    if (electronAPI?.fs) {
+      // 保存到临时目录
+      const tempDir = await electronAPI.app.getPath('temp');
+      const fileName = `tts_${Date.now()}_${voiceId}.mp3`;
+      const filePath = `${tempDir}/koma-tts/${fileName}`;
+      await electronAPI.fs.mkdir(`${tempDir}/koma-tts`);
+      await electronAPI.fs.writeFile(filePath, base64Data, true);
+
+      return {
+        path: filePath,
+        duration: 0, // 需要解析音频获取时长
+        sampleRate: 24000,
+      };
+    }
+
+    // 非 Electron 环境回退到 Blob URL
+    const url = URL.createObjectURL(blob);
     return {
       path: url,
-      duration: 0, // 需要解析音频获取时长
+      duration: 0,
       sampleRate: 24000,
     };
   }

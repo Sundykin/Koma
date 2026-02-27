@@ -4,7 +4,7 @@
  */
 import { IpcMainInvokeEvent } from 'electron';
 import { services } from '../service';
-import type { ExtractFramesOptions, WaveformOptions } from '../service/ffmpeg';
+import type { ExtractFramesOptions, WaveformOptions, EncodeVideoOptions } from '../service/ffmpeg';
 
 export class FFmpegController {
   /**
@@ -70,5 +70,19 @@ export class FFmpegController {
   async clearQueue(_args: {}, _event: IpcMainInvokeEvent) {
     services.ffmpeg.clearQueue();
     return { success: true };
+  }
+
+  /**
+   * 编码视频（帧序列 → 视频文件）
+   */
+  async encodeVideo(args: EncodeVideoOptions, _event: IpcMainInvokeEvent) {
+    return services.ffmpeg.encodeVideo(args);
+  }
+
+  /**
+   * 保存 Base64 帧到临时目录
+   */
+  async saveFrames(args: { frames: string[]; subDir?: string }, _event: IpcMainInvokeEvent) {
+    return services.ffmpeg.saveFramesToDir(args.frames, args.subDir);
   }
 }

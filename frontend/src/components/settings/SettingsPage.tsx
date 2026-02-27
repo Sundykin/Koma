@@ -39,6 +39,7 @@ import { VisualStyleManager } from './VisualStyleManager';
 import { PromptStudio } from './PromptStudio';
 import { PluginManager } from '../plugins';
 import { MCPConfigManager } from './MCPConfigManager';
+import { resetOnboarding } from '../common/OnboardingTour';
 
 const { Sider, Content } = Layout;
 const { Title, Text } = Typography;
@@ -160,6 +161,11 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
     });
   };
 
+  const handleResetOnboarding = () => {
+    resetOnboarding();
+    message.success('引导已重置，下次进入项目列表页时将重新显示');
+  };
+
   const flattenSettings = (s: AppSettings) => {
     return {};
   };
@@ -277,6 +283,13 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                     onClick={handleClearCache}
                   >
                     清理缓存
+                  </Button>
+                </div>
+                <Divider style={{ margin: '12px 0' }} />
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span>重新显示新手引导</span>
+                  <Button onClick={handleResetOnboarding}>
+                    重置引导
                   </Button>
                 </div>
               </Space>

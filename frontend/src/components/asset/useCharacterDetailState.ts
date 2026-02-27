@@ -14,6 +14,7 @@ import {
 import { electronService, openFileDialog, fsCopy, fsMkdir, fsExists } from '../../services/electronService';
 import { getStorageConfig, initStorageConfig } from '../../store/storageConfig';
 import { saveCharacters, loadCharacters } from '../../store/projectStore';
+import { toUserMessage } from '../../utils/errorMessages';
 
 export type GeneratingType = 'costume' | 'video' | 'extract' | null;
 
@@ -94,8 +95,8 @@ export function useCharacterDetailState(props: CharacterDetailModalProps, messag
       if (result.success && result.path) {
         const updated = { ...editedCharacter, costumePhotoPath: result.path, costumePhotoUrl: result.url };
         setEditedCharacter(updated); onUpdate(updated); message.success('定妆照生成完成');
-      } else { message.error(result.error || '生成失败'); }
-    } catch (err: any) { message.error(err.message || '生成失败'); }
+      } else { message.error(toUserMessage(result.error)); }
+    } catch (err: any) { message.error(toUserMessage(err)); }
     finally { setGenerating(null); }
   }, [editedCharacter, projectId, theme, stylePrompt, ttiConfigId, customPrompt, onUpdate, message]);
 
@@ -127,8 +128,8 @@ export function useCharacterDetailState(props: CharacterDetailModalProps, messag
       if (result.success && result.path) {
         const updated = { ...editedCharacter, previewVideoPath: result.path, previewVideoTaskId: result.taskId };
         setEditedCharacter(updated); onUpdate(updated); message.success('预览视频生成完成');
-      } else { message.error(result.error || '生成失败'); }
-    } catch (err: any) { message.error(err.message || '生成失败'); }
+      } else { message.error(toUserMessage(result.error)); }
+    } catch (err: any) { message.error(toUserMessage(err)); }
     finally { setGenerating(null); }
   }, [editedCharacter, projectId, itvConfigId, onUpdate, message]);
 
@@ -145,7 +146,7 @@ export function useCharacterDetailState(props: CharacterDetailModalProps, messag
       const index = characters.findIndex(c => c.id === editedCharacter.id);
       if (index !== -1) { characters[index] = updated; await saveCharacters(projectId, characters); }
       message.success('上传成功');
-    } catch (err: any) { message.error(`上传失败: ${err.message}`); }
+    } catch (err: any) { message.error(`上传失败: ${toUserMessage(err)}`); }
   }, [editedCharacter, getAssetPath, projectId, onUpdate, message]);
 
   const handleExtractCharacter = useCallback(async () => {
@@ -161,8 +162,8 @@ export function useCharacterDetailState(props: CharacterDetailModalProps, messag
         const index = characters.findIndex(c => c.id === editedCharacter.id);
         if (index !== -1) { characters[index] = updated; await saveCharacters(projectId, characters); }
         message.success('角色提取成功');
-      } else { message.error(result.error || '提取失败'); }
-    } catch (err: any) { message.error(err.message || '提取失败'); }
+      } else { message.error(toUserMessage(result.error)); }
+    } catch (err: any) { message.error(toUserMessage(err)); }
     finally { setGenerating(null); }
   }, [editedCharacter, projectId, itvConfigId, onUpdate, message]);
 

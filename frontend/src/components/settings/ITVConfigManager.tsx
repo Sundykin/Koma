@@ -43,6 +43,9 @@ import {
   ITV_PRESETS,
 } from '../../store/globalStore';
 import { getChannelConfigs, updateChannelConfig } from '../../store/settings/channelConfig';
+import { testITVConnection } from '../../providers';
+import { itvRegistry } from '../../providers/registry';
+import { toUserMessage } from '../../utils/errorMessages';
 import { ProviderPluginModal } from '../plugins/ProviderPluginModal';
 
 interface ITVConfigManagerProps {
@@ -216,11 +219,15 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
   const handleTestConnection = async (config: ITVModelConfig) => {
     setTestingId(config.id);
     try {
-      // TODO: 实现 ITV 连接测试
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      message.success(`"${config.name}" 连接成功`);
+      const result = await testITVConnection(config);
+      if (result.success) {
+        const latency = result.latency ? ` (${result.latency}ms)` : '';
+        message.success(`"${config.name}" 连接成功${latency}`);
+      } else {
+        message.error(`"${config.name}" ${result.message}`);
+      }
     } catch (err: any) {
-      message.error(`连接测试失败: ${err.message}`);
+      message.error(`连接测试失败: ${toUserMessage(err)}`);
     } finally {
       setTestingId(null);
     }
@@ -229,6 +236,11 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
   const getProviderLabel = (provider: ITVProviderType) => {
     const preset = ITV_PRESETS.find(p => p.id === provider);
     return preset?.name || provider;
+  };
+
+  const isComingSoon = (provider: ITVProviderType): boolean => {
+    const def = itvRegistry.get(provider);
+    return def?.status === 'coming-soon';
   };
 
   const getProviderColor = (provider: ITVProviderType) => {
@@ -298,6 +310,9 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
                     <Tag color={getProviderColor(config.provider)}>
                       {getProviderLabel(config.provider)}
                     </Tag>
+                    {isComingSoon(config.provider) && (
+                      <Tag color="default">即将支持</Tag>
+                    )}
                   </Space>
                 }
                 extra={

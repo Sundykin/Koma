@@ -94,6 +94,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     clearCache: (subDir?: string) => ipcRenderer.invoke('controller', 'controller.ffmpeg.clearCache', { subDir }),
     cancelTask: () => ipcRenderer.invoke('controller', 'controller.ffmpeg.cancelTask'),
     clearQueue: () => ipcRenderer.invoke('controller', 'controller.ffmpeg.clearQueue'),
+    encodeVideo: (options: any) => ipcRenderer.invoke('controller', 'controller.ffmpeg.encodeVideo', options),
+    saveFrames: (frames: string[], subDir?: string) =>
+      ipcRenderer.invoke('controller', 'controller.ffmpeg.saveFrames', { frames, subDir }),
   },
   plugin: {
     validate: (zipPath: string) => ipcRenderer.invoke('plugin:validate', zipPath),
@@ -196,6 +199,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
       loadMessages: (sessionId: string) => ipcRenderer.invoke('chat:history:loadMessages', { sessionId }),
       saveMessages: (data: any) => ipcRenderer.invoke('chat:history:saveMessages', data),
       deleteMessages: (sessionId: string) => ipcRenderer.invoke('chat:history:deleteMessages', { sessionId }),
+    },
+  },
+  eventBus: {
+    emit: (event: string, payload?: unknown) => ipcRenderer.invoke('event:emit', { event, payload }),
+    subscribe: (event: string) => ipcRenderer.invoke('event:subscribe', { event }),
+    unsubscribe: (event?: string) => ipcRenderer.invoke('event:unsubscribe', { event }),
+    onMessage: (callback: (data: { event: string; payload?: unknown }) => void) => {
+      const listener = (_event: IpcRendererEvent, data: { event: string; payload?: unknown }) => callback(data);
+      ipcRenderer.on('event:message', listener);
+      return () => ipcRenderer.removeListener('event:message', listener);
     },
   },
 });

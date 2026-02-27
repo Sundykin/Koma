@@ -13,6 +13,7 @@ import { generateShotPrompt, batchGenerateShotPrompts } from '../../services/Sho
 import { TaskManager } from '../../services/TaskManager';
 import type { MentionItem } from '../../editor';
 import { useShotAssetSync } from '../../hooks/useShotAssetSync';
+import { toUserMessage } from '../../utils/errorMessages';
 import { App } from 'antd';
 
 // 合并两个分镜
@@ -140,7 +141,7 @@ export function useStoryboardState({
             } catch (err) { console.error('[Storyboard] 更新 shot 失败:', err); }
           }
         } else if (task.status === 'failed') {
-          message.error(`分镜图片生成失败: ${task.error}`);
+          message.error(`分镜图片生成失败: ${toUserMessage(task.error)}`);
           setGeneratingShots(prev => { const next = new Set(prev); next.delete(task.targetId!); return next; });
         }
       }
@@ -149,7 +150,7 @@ export function useStoryboardState({
           message.success(`AI 分镜生成完成，共 ${task.result?.shotsCount || 0} 个分镜`);
           setIsAnalyzing(false); loadData();
         } else if (task.status === 'failed') {
-          message.error(`AI 分镜生成失败: ${task.error}`);
+          message.error(`AI 分镜生成失败: ${toUserMessage(task.error)}`);
           setIsAnalyzing(false);
         }
       }
@@ -211,8 +212,8 @@ export function useStoryboardState({
         const existingVideos = shot.videos || [];
         const updatedShots = shots.map(s => s.id === shotId ? { ...s, videos: [...existingVideos, newVideo], currentVideoIndex: existingVideos.length, ...(result.version!.imagePath ? { imagePaths: [...(s.imagePaths || []), result.version!.imagePath!], currentImageIndex: (s.imagePaths || []).length, imagePath: result.version!.imagePath } : {}) } : s);
         await saveAllShots(updatedShots); message.success('分镜渲染完成');
-      } else { message.error(result.error || '渲染失败'); loadData(); }
-    } catch (err: any) { message.error(err.message || '渲染失败'); }
+      } else { message.error(toUserMessage(result.error) || '渲染失败'); loadData(); }
+    } catch (err: any) { message.error(toUserMessage(err)); }
     finally {
       setRenderingShots(prev => { const next = new Set(prev); next.delete(shotId); return next; });
       setRenderProgress(0); setRenderStep('');

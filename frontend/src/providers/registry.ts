@@ -26,12 +26,16 @@ export interface ProviderContext {
   };
 }
 
+// Provider 状态
+export type ProviderStatus = 'available' | 'coming-soon' | 'community';
+
 // Provider 定义
 export interface ProviderDefinition<T> {
   type: string;              // 唯一标识，如 'sora2', 'vectorengine'
   kind: ChannelKind;         // 'tti' | 'itv'
   name: string;              // 显示名称
   description?: string;      // 描述
+  status?: ProviderStatus;   // 实现状态
   factory: (config: Record<string, any>, ctx: ProviderContext) => T;
   capabilities?: ChannelCapability[];
   pluginId?: string;         // 关联插件 ID

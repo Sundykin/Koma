@@ -44,6 +44,19 @@ export interface WaveformOptions {
   backgroundColor?: string;
 }
 
+// 视频编码选项
+export interface EncodeVideoOptions {
+  framesDir: string;        // 帧图片目录
+  audioFiles?: string[];    // 音频文件列表
+  outputPath: string;       // 输出路径
+  fps?: number;             // 帧率，默认 24
+  width?: number;           // 宽度，默认 1920
+  height?: number;          // 高度，默认 1080
+  videoBitrate?: number;    // 视频码率 kbps，默认 5000
+  audioBitrate?: number;    // 音频码率 kbps，默认 192
+  videoCodec?: 'h264' | 'h265' | 'vp9';
+}
+
 // 任务类型
 type TaskType = 'getInfo' | 'extractFrames' | 'waveform' | 'splitAudio' | 'export';
 
@@ -242,6 +255,9 @@ export class FFmpegService {
           break;
         case 'splitAudio':
           result = await this.doSplitAudio(task.args.input, task.args.output);
+          break;
+        case 'export':
+          result = await this.doEncodeVideo(task.args, task.onProgress);
           break;
         default:
           throw new Error(`Unknown task type: ${task.type}`);
@@ -513,6 +529,101 @@ export class FFmpegService {
   getCacheDir(subDir?: string): string {
     const dir = subDir ? path.join(this.workDir, subDir) : this.workDir;
     return dir;
+  }
+
+  /**
+   * 编码视频（公共方法）
+   * @param options 编码选项
+   * @param onProgress 进度回调 0-100
+   */
+  async encodeVideo(options: EncodeVideoOptions, onProgress?: ProgressCallback): Promise<string> {
+    return this.queueTask<string>('export', options, onProgress);
+  }
+
+  /**
+   * 实际编码视频：将帧图片序列 + 音频合成为视频
+   */
+  private async doEncodeVideo(options: EncodeVideoOptions, onProgress?: ProgressCallback): Promise<string> {
+    if (!this.ffmpegPath) {
+      throw new Error('FFmpeg not available');
+    }
+
+    const {
+      framesDir,
+      audioFiles,
+      outputPath,
+      fps = 24,
+      width = 1920,
+      height = 1080,
+      videoBitrate = 5000,
+      audioBitrate = 192,
+      videoCodec = 'h264',
+    } = options;
+
+    // 确保输出目录存在
+    await fs.promises.mkdir(path.dirname(outputPath), { recursive: true });
+
+    const args: string[] = [];
+
+    // 输入帧序列
+    args.push('-framerate', fps.toString());
+    args.push('-i', path.join(framesDir, 'frame_%06d.png'));
+
+    // 输入音频文件（如果有）
+    if (audioFiles && audioFiles.length > 0) {
+      for (const audio of audioFiles) {
+        args.push('-i', audio);
+      }
+    }
+
+    // 视频编码设置
+    const codecMap: Record<string, string> = { h264: 'libx264', h265: 'libx265', vp9: 'libvpx-vp9' };
+    args.push('-c:v', codecMap[videoCodec] || 'libx264');
+    args.push('-b:v', `${videoBitrate}k`);
+    args.push('-pix_fmt', 'yuv420p');
+    args.push('-s', `${width}x${height}`);
+
+    // 音频编码
+    if (audioFiles && audioFiles.length > 0) {
+      args.push('-c:a', 'aac');
+      args.push('-b:a', `${audioBitrate}k`);
+      // 如果有多个音频，混合
+      if (audioFiles.length > 1) {
+        const filterInputs = audioFiles.map((_, i) => `[${i + 1}:a]`).join('');
+        args.push('-filter_complex', `${filterInputs}amix=inputs=${audioFiles.length}[aout]`);
+        args.push('-map', '0:v');
+        args.push('-map', '[aout]');
+      }
+    } else {
+      args.push('-an'); // 无音频
+    }
+
+    args.push('-y', outputPath);
+
+    // 执行编码
+    await this.runFFmpeg(args);
+
+    // 通知完成
+    onProgress?.(100);
+
+    return outputPath;
+  }
+
+  /**
+   * 将 Base64 帧数据保存到临时目录
+   */
+  async saveFramesToDir(frames: string[], subDir?: string): Promise<string> {
+    const framesDir = path.join(this.workDir, subDir || `frames-${Date.now()}`);
+    await fs.promises.mkdir(framesDir, { recursive: true });
+
+    for (let i = 0; i < frames.length; i++) {
+      const frameData = frames[i].replace(/^data:image\/\w+;base64,/, '');
+      const buffer = Buffer.from(frameData, 'base64');
+      const framePath = path.join(framesDir, `frame_${String(i).padStart(6, '0')}.png`);
+      await fs.promises.writeFile(framePath, buffer);
+    }
+
+    return framesDir;
   }
 
   /**

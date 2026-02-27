@@ -3,8 +3,8 @@
  * 三栏式工作台布局：左侧剧集导航(360px) | 中间剧本编辑区 | 右侧资产面板(340px)
  */
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { Input, Tag, App, Modal, Select, Tooltip } from 'antd';
-import { ThunderboltOutlined } from '@ant-design/icons';
+import { Input, Tag, App, Modal, Select, Tooltip, Button, Progress } from 'antd';
+import { ThunderboltOutlined, RocketOutlined } from '@ant-design/icons';
 import {
   Film, Upload, Palette, Package, ChevronLeft, ChevronRight,
   PanelLeftClose, PanelRightClose, Pencil, Brain, Image, Video, Volume2,
@@ -18,6 +18,7 @@ import { saveProject, loadProject, listEpisodes } from '../../store/projectStore
 import { loadSettings, getChannelsByCapability } from '../../store/globalStore';
 import { THEME_PRESETS } from '../../config/themePresets';
 import { ScriptEditor } from '../../editor';
+import { AutoGenerateWorkflow, type WorkflowProgress } from '../../workflow/autoGenerateWorkflow';
 
 // 统一的配置选项类型
 interface ConfigOption {
@@ -51,6 +52,10 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
 
   // 当前选中的剧集（用于中间区域剧本编辑）
   const [selectedEpisode, setSelectedEpisode] = useState<Episode | null>(null);
+
+  // 一键成片工作流状态
+  const [autoGenProgress, setAutoGenProgress] = useState<WorkflowProgress | null>(null);
+  const autoGenRef = useRef<AutoGenerateWorkflow | null>(null);
 
   // 模型配置列表（统一类型）
   const [llmConfigs, setLlmConfigs] = useState<ConfigOption[]>([]);
@@ -151,6 +156,30 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
     setTempScript(fullScript);
     setScriptImportVisible(true);
   };
+
+  const handleAutoGenerate = useCallback(() => {
+    if (!selectedEpisode) {
+      message.warning('请先选择一个剧集');
+      return;
+    }
+    const workflow = new AutoGenerateWorkflow({
+      projectId: project.id,
+      episodeId: selectedEpisode.id,
+      onProgress: setAutoGenProgress,
+    });
+    autoGenRef.current = workflow;
+    workflow.execute().then((success) => {
+      if (success) {
+        message.success('一键成片完成');
+      }
+      autoGenRef.current = null;
+    });
+  }, [project.id, selectedEpisode, message]);
+
+  const handleCancelAutoGenerate = useCallback(() => {
+    autoGenRef.current?.abort();
+    setAutoGenProgress(null);
+  }, []);
 
   const confirmScriptImport = () => {
     setFullScript(tempScript);
@@ -273,6 +302,16 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
 
         {/* Right: Actions */}
         <div className="flex items-center gap-2">
+          <Button
+            type="primary"
+            icon={<RocketOutlined />}
+            onClick={handleAutoGenerate}
+            loading={!!autoGenProgress && !autoGenProgress.completed}
+            disabled={!selectedEpisode}
+            size="small"
+          >
+            一键成片
+          </Button>
           <button
             onClick={openScriptImport}
             className="flex items-center gap-1.5 px-2.5 py-1 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded text-xs text-zinc-300 transition-colors"
@@ -368,6 +407,33 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
           </div>
         </div>
       </div>
+
+      {/* 一键成片进度面板 */}
+      {autoGenProgress && (
+        <div className="absolute bottom-4 right-4 w-80 bg-zinc-900 border border-zinc-700 rounded-lg p-4 shadow-xl z-50">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm font-medium text-zinc-200">
+              {autoGenProgress.completed ? '✅ 成片完成' : '🚀 一键成片'}
+            </span>
+            <button
+              onClick={autoGenProgress.completed ? () => setAutoGenProgress(null) : handleCancelAutoGenerate}
+              className="text-xs text-zinc-500 hover:text-zinc-300"
+            >
+              {autoGenProgress.completed ? '关闭' : '取消'}
+            </button>
+          </div>
+          <Progress
+            percent={Math.round(((autoGenProgress.stepIndex + (autoGenProgress.stepProgress / 100)) / autoGenProgress.totalSteps) * 100)}
+            size="small"
+            status={autoGenProgress.error ? 'exception' : autoGenProgress.completed ? 'success' : 'active'}
+            strokeColor={autoGenProgress.error ? '#ff4d4f' : '#10b981'}
+          />
+          <div className="text-xs text-zinc-400 mt-1">{autoGenProgress.message}</div>
+          {autoGenProgress.error && (
+            <div className="text-xs text-red-400 mt-1">{autoGenProgress.error}</div>
+          )}
+        </div>
+      )}
 
       {/* Script Import Modal */}
       <Modal

@@ -4,7 +4,8 @@
  */
 import React, { useState, useCallback, useMemo } from 'react';
 import { Button, Typography, Progress } from 'antd';
-import { PlusOutlined } from '@ant-design/icons';
+import { PlusOutlined, PauseCircleOutlined, PlayCircleOutlined, StopOutlined } from '@ant-design/icons';
+import { TaskManager } from '../../services/TaskManager';
 import { StoryboardLayout } from './StoryboardLayout';
 import { ShotListHeader } from './ShotListHeader';
 import type { MentionItem } from '../../editor';
@@ -61,6 +62,7 @@ export interface ShotListEditorProps {
   onAddShot: () => void;
   onInsertAbove: (shotId: string) => void;
   onInsertBelow: (shotId: string) => void;
+  onReorder?: (fromIndex: number, toIndex: number) => void;
 }
 
 export const ShotListEditor: React.FC<ShotListEditorProps> = ({
@@ -109,8 +111,11 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
   onAddShot,
   onInsertAbove,
   onInsertBelow,
+  onReorder,
 }) => {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  const dragIndexRef = React.useRef<number | null>(null);
 
   const selectedCount = selectedIds.size;
   const hasSelected = selectedCount > 0;
@@ -184,16 +189,35 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
       <div className="flex flex-col h-full">
         {/* 批量进度 */}
         {batchProgress && batchProgress.total > 0 && (
-          <div className="px-3 py-1.5 bg-zinc-900 border-b border-zinc-800">
-            <Progress
-              percent={Math.round((batchProgress.current / batchProgress.total) * 100)}
+          <div className="px-3 py-1.5 bg-zinc-900 border-b border-zinc-800 flex items-center gap-2">
+            <div className="flex-1">
+              <Progress
+                percent={Math.round((batchProgress.current / batchProgress.total) * 100)}
+                size="small"
+                status={TaskManager.isPaused() ? 'exception' : 'active'}
+                strokeColor={TaskManager.isPaused() ? '#faad14' : '#10b981'}
+              />
+              <Text type="secondary" style={{ fontSize: 10 }}>
+                {TaskManager.isPaused() ? '已暂停 - ' : ''}{batchProgress.step || `${batchProgress.current}/${batchProgress.total}`}
+              </Text>
+            </div>
+            <Button
               size="small"
-              status="active"
-              strokeColor="#10b981"
-            />
-            <Text type="secondary" style={{ fontSize: 10 }}>
-              {batchProgress.step || `${batchProgress.current}/${batchProgress.total}`}
-            </Text>
+              type="text"
+              icon={TaskManager.isPaused() ? <PlayCircleOutlined /> : <PauseCircleOutlined />}
+              onClick={() => { TaskManager.isPaused() ? TaskManager.resume() : TaskManager.pause(); }}
+            >
+              {TaskManager.isPaused() ? '继续' : '暂停'}
+            </Button>
+            <Button
+              size="small"
+              type="text"
+              danger
+              icon={<StopOutlined />}
+              onClick={() => { TaskManager.cancelAll(projectId); }}
+            >
+              取消
+            </Button>
           </div>
         )}
 
@@ -231,8 +255,23 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
               />
               {/* 分镜行 */}
               {shots.map((shot, index) => (
-                <ShotCard
+                <div
                   key={shot.id}
+                  draggable={!!onReorder}
+                  onDragStart={() => { dragIndexRef.current = index; }}
+                  onDragOver={(e) => { e.preventDefault(); setDragOverIndex(index); }}
+                  onDragLeave={() => setDragOverIndex(null)}
+                  onDrop={() => {
+                    if (dragIndexRef.current !== null && dragIndexRef.current !== index && onReorder) {
+                      onReorder(dragIndexRef.current, index);
+                    }
+                    dragIndexRef.current = null;
+                    setDragOverIndex(null);
+                  }}
+                  onDragEnd={() => { dragIndexRef.current = null; setDragOverIndex(null); }}
+                  className={dragOverIndex === index ? 'ring-2 ring-emerald-500/50 ring-inset' : ''}
+                >
+                <ShotCard
                   shot={shot}
                   index={index}
                   totalCount={shots.length}
@@ -272,6 +311,7 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
                   onInsertAbove={onInsertAbove}
                   onInsertBelow={onInsertBelow}
                 />
+                </div>
               ))}
             </div>
           )}

@@ -309,8 +309,6 @@ export class ExportRenderer {
    * 编码视频（通过 FFmpeg）
    */
   private async encodeVideo(frames: Blob[]): Promise<string> {
-    // 这里需要调用 Electron 的 FFmpeg 服务
-    // 简化实现：将帧保存到临时目录，然后调用 FFmpeg 编码
     const ffmpegAPI = (window as any).electronAPI?.ffmpeg;
     if (!ffmpegAPI) {
       throw new Error('FFmpeg not available');
@@ -321,21 +319,74 @@ export class ExportRenderer {
       ? { videoBitrate: this.config.videoBitrate || 5000, audioBitrate: this.config.audioBitrate || 192 }
       : QUALITY_PRESETS[this.config.quality];
 
-    // TODO: 实现实际的 FFmpeg 编码流程
-    // 1. 将帧保存到临时目录
-    // 2. 收集音频轨道
-    // 3. 调用 FFmpeg 合成
+    // 1. 将帧转为 Base64 并保存到临时目录
+    this.emitProgress({
+      stage: 'encoding',
+      progress: 10,
+      currentFrame: 0,
+      totalFrames: frames.length,
+      message: '正在保存帧数据...',
+    });
 
+    const base64Frames: string[] = [];
+    for (let i = 0; i < frames.length; i++) {
+      if (this.aborted) throw new Error('Export aborted');
+      const arrayBuffer = await frames[i].arrayBuffer();
+      const bytes = new Uint8Array(arrayBuffer);
+      let binary = '';
+      for (let j = 0; j < bytes.length; j++) {
+        binary += String.fromCharCode(bytes[j]);
+      }
+      base64Frames.push('data:image/png;base64,' + btoa(binary));
+
+      if (i % 10 === 0) {
+        this.emitProgress({
+          stage: 'encoding',
+          progress: 10 + (i / frames.length) * 30,
+          currentFrame: i,
+          totalFrames: frames.length,
+          message: `正在保存帧 ${i + 1}/${frames.length}...`,
+        });
+      }
+    }
+
+    const framesDir = await ffmpegAPI.saveFrames(base64Frames);
+
+    // 2. 收集音频轨道文件
+    const audioFiles: string[] = [];
+    for (const track of this.tracks) {
+      for (const item of track.items) {
+        if (item.type === 'audio') {
+          const source = (item as AudioTrackItem).source;
+          if (source && !source.startsWith('blob:')) {
+            audioFiles.push(source);
+          }
+        }
+      }
+    }
+
+    // 3. 调用 FFmpeg 编码
     this.emitProgress({
       stage: 'encoding',
       progress: 50,
       currentFrame: 0,
       totalFrames: frames.length,
-      message: '正在编码视频... (此功能需要完整的 FFmpeg 集成)',
+      message: '正在编码视频...',
     });
 
-    // 模拟编码完成
-    return this.config.outputPath;
+    const outputPath = await ffmpegAPI.encodeVideo({
+      framesDir,
+      audioFiles: audioFiles.length > 0 ? audioFiles : undefined,
+      outputPath: this.config.outputPath,
+      fps: this.config.fps,
+      width: this.config.width,
+      height: this.config.height,
+      videoBitrate: quality.videoBitrate,
+      audioBitrate: quality.audioBitrate,
+      videoCodec: this.config.videoCodec || 'h264',
+    });
+
+    return outputPath;
   }
 
   /**

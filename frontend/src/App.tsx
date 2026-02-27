@@ -5,6 +5,7 @@ import type { MentionItem } from './editor';
 import { WindowControls } from './components/common';
 import { ErrorBoundary } from './components/common';
 import { TaskStatusBar } from './components/common/TaskStatusBar';
+import { OnboardingTour } from './components/common/OnboardingTour';
 import { Sidebar, type AppView } from './components/common/Sidebar';
 import { PluginHost } from './components/plugins';
 
@@ -302,6 +303,8 @@ const AppContent: React.FC = () => {
       />
       {/* 全局任务状态悬浮通知 */}
       {activeProject && <TaskStatusBar projectId={activeProject.id} />}
+      {/* 新手引导 */}
+      <OnboardingTour view={view} />
     </div>
   );
 };

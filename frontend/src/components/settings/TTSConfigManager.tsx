@@ -39,6 +39,8 @@ import {
   setDefaultTTSConfig,
 } from '../../store/globalStore';
 import { listProviders, type ProviderDefinition } from '../../providers/registry';
+import { testTTSConnection } from '../../providers';
+import { toUserMessage } from '../../utils/errorMessages';
 
 interface TTSConfigManagerProps {
   onConfigChange?: () => void;
@@ -164,11 +166,15 @@ export const TTSConfigManager: React.FC<TTSConfigManagerProps> = ({ onConfigChan
   const handleTestConnection = async (config: TTSModelConfig) => {
     setTestingId(config.id);
     try {
-      // TODO: 实现 TTS 连接测试 / 试听
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      message.success(`"${config.name}" 连接成功`);
+      const result = await testTTSConnection(config);
+      if (result.success) {
+        const latency = result.latency ? ` (${result.latency}ms)` : '';
+        message.success(`"${config.name}" 连接成功${latency}`);
+      } else {
+        message.error(`"${config.name}" ${result.message}`);
+      }
     } catch (err: any) {
-      message.error(`连接测试失败: ${err.message}`);
+      message.error(`连接测试失败: ${toUserMessage(err)}`);
     } finally {
       setTestingId(null);
     }

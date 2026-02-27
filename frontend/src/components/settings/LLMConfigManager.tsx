@@ -38,6 +38,7 @@ import {
   LLM_CHANNEL_PRESETS,
 } from '../../store/globalStore';
 import { testLLMConnection } from '../../providers';
+import { toUserMessage } from '../../utils/errorMessages';
 
 interface LLMConfigManagerProps {
   onConfigChange?: () => void;
@@ -185,12 +186,13 @@ export const LLMConfigManager: React.FC<LLMConfigManagerProps> = ({ onConfigChan
         modelName: config.modelName,
       });
       if (result.success) {
-        message.success(`"${config.name}" 连接成功`);
+        const latency = result.latency ? ` (${result.latency}ms)` : '';
+        message.success(`"${config.name}" 连接成功${latency}`);
       } else {
         message.error(`"${config.name}" ${result.message}`);
       }
     } catch (err: any) {
-      message.error(`连接测试失败: ${err.message}`);
+      message.error(`连接测试失败: ${toUserMessage(err)}`);
     } finally {
       setTestingId(null);
     }

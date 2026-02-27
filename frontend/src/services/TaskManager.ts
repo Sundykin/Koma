@@ -117,6 +117,7 @@ class TaskManagerClass {
   private pollingInterval: NodeJS.Timeout | null = null;
   private initialized = false;
   private currentProjectId: string | null = null;
+  private paused = false;
 
   /**
    * 初始化任务管理器（支持任务恢复）
@@ -521,6 +522,42 @@ class TaskManagerClass {
       completed: tasks.filter(t => t.status === 'completed').length,
       failed: tasks.filter(t => t.status === 'failed').length,
     };
+  }
+
+  /**
+   * 暂停所有待执行任务
+   */
+  pause(): void {
+    this.paused = true;
+  }
+
+  /**
+   * 恢复执行
+   */
+  resume(): void {
+    this.paused = false;
+  }
+
+  /**
+   * 是否暂停中
+   */
+  isPaused(): boolean {
+    return this.paused;
+  }
+
+  /**
+   * 取消项目中所有 pending/running 任务
+   */
+  cancelAll(projectId: string): number {
+    let count = 0;
+    for (const [id, task] of this.tasks.entries()) {
+      if (task.projectId !== projectId) continue;
+      if (task.status === 'pending' || task.status === 'running' || task.status === 'processing') {
+        this.updateTask(id, { status: 'failed', error: '用户取消' });
+        count++;
+      }
+    }
+    return count;
   }
 
   /**
