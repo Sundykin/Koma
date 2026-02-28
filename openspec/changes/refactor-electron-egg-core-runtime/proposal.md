@@ -1,29 +1,40 @@
-# Change: Refactor Electron egg core runtime
+# Change: Refactor to Electron-egg Runtime and Streamline Core Creation Flow
 
 ## Why
-当前 Electron 运行时仍存在新旧架构并存、前后端职责交叉和 UI 入口分散的问题，导致维护成本和回归风险持续升高。需要一次性完成运行时核心切换，建立单一执行路径并收敛用户界面。
+当前项目仍处于运行时改造中，底层框架、IPC 路由、Provider 体系和创作流程存在分叉，且 Sora2 依赖影响主流程稳定性。需要一次性明确新基线：迁移到 electron-egg 架构、完成 IPC 适配、移除 Sora2，并保障最小漫剧创作主流程可用。
 
 ## What Changes
-- **BREAKING** 一次性切换到 Electron egg 核心运行时（Main 负责核心执行，Renderer 仅负责 UI）。
-- **BREAKING** 删除兼容层策略，不再保留旧 IPC/旧 Provider/旧设置结构的长期兼容分支。
-- 将渲染端顶层导航收敛为核心三页：项目总览、创作工作台、系统设置。
-- 统一 Provider 注册与加载入口为后端中心化注册表，前端仅消费受控配置与状态。
-- 将存储结构迁移为单一新模型：迁移后不再回退或双写旧结构。
+- **BREAKING** 将 Electron 主进程统一到 electron-egg 运行时装配（main/lifecycle/controller/service）。
+- **BREAKING** IPC 统一到 controller 路由语义，并通过 preload 适配层保持前端 `window.electronAPI` 接口稳定。
+- **BREAKING** 移除 Sora2 Provider 及其相关 UI/流程入口，不再作为 ITV 默认或可选依赖。
+- 保留并强化非 Sora2 的 ITV 主路径（如 Kling / Runway），确保分镜视频化可用。
+- 优化漫剧创作最小主流程（剧本→分镜→资产→渲染）中的冗余操作与阻塞 bug。
+- 持久层继续执行一次性迁移策略，切换后只写入新结构。
 
 ## Impact
 - Affected specs:
   - `electron-integration`
   - `model-providers`
+  - `itv`
   - `storage`
+  - `ui-components`
 - Affected code (expected):
   - `electron/src/main.ts`
+  - `electron/src/lifecycle/**`
   - `electron/src/controller/**`
-  - `electron/src/ipc/**`
-  - `electron/src/bootstrap/**`
-  - `frontend/src/components/common/Sidebar.tsx`
-  - `frontend/src/components/project/ProjectOverview.tsx`
+  - `electron/src/preload/**`
+  - `electron/src/service/provider/**`
+  - `electron/src/service/persistence/**`
+  - `frontend/src/providers/itv/**`
+  - `frontend/src/components/storyboard/**`
+  - `frontend/src/components/asset/**`
+  - `frontend/src/services/**`
   - `frontend/src/workflow/**`
-  - `frontend/src/services/*Bridge.ts`
-- Runtime impact:
-  - 启动后执行一次性迁移并进入新运行时。
-  - 不提供旧路径兜底，失败按结构化错误中止并提示修复。
+
+## Validation Plan
+- OpenSpec: `openspec validate refactor-electron-egg-core-runtime --strict`
+- Runtime checks:
+  - 冷启动与主窗口初始化
+  - IPC 调用成功率（前后端路由对齐）
+  - 非 Sora2 的 ITV 渲染链路可用
+  - 最小创作主流程 E2E（剧本→分镜→资产→渲染）

@@ -71,12 +71,6 @@ export interface ThemePreset {
   previewImage?: string;    // 预览图
 }
 
-// 资产时间戳范围（用于 Sora2 角色提取）
-export interface AssetTimestampRange {
-  start: number; // 起始时间（秒）
-  end: number;   // 结束时间（秒），与 start 间隔不超过 3 秒
-}
-
 // 角色接口定义
 export interface Character {
   id: string;
@@ -92,12 +86,10 @@ export interface Character {
   voiceId?: string;    // TTS 音色 ID
   // 资产字段
   costumePhotoPath?: string;  // 定妆照本地路径
-  costumePhotoUrl?: string;   // 定妆照远程URL（用于 Sora2 等需要远程URL的服务）
+  costumePhotoUrl?: string;   // 定妆照远程URL
   previewVideoPath?: string;  // 预览视频路径
-  previewVideoTaskId?: string; // 预览视频的生成任务ID（用于角色提取API）
-  sora2CharacterId?: string;  // 角色提取API返回的ID
+  previewVideoTaskId?: string; // 预览视频的生成任务ID
   customPrompt?: string;      // 用户自定义生成提示词 (Deprecated: use prompt instead)
-  timestampRange?: AssetTimestampRange; // Sora2 提取时间范围
   // 剧集引用追踪
   episodeRefs?: EpisodeRef[];
   fingerprint?: string;       // 资产指纹（用于去重）
@@ -135,12 +127,9 @@ export interface Prop {
   
   imagePath?: string;  // 道具参考图本地路径
   imageUrl?: string;   // 道具参考图远程URL
-  // Sora2 绑定相关
   previewVideoPath?: string;   // 预览视频路径
   previewVideoTaskId?: string; // 预览视频生成任务 ID
-  sora2PropId?: string;        // Sora2 道具 ID
   customPrompt?: string;       // (Deprecated: use prompt instead)
-  timestampRange?: AssetTimestampRange; // Sora2 提取时间范围
   // 剧集引用追踪
   episodeRefs?: EpisodeRef[];
   fingerprint?: string;

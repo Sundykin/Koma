@@ -6,15 +6,9 @@ import React from 'react';
 import {
   Button,
   Space,
-  Segmented,
-  Select,
   Typography,
-  Input,
-  Modal,
-  Form,
   Spin,
   Empty,
-  App,
 } from 'antd';
 import {
   PlusOutlined,
@@ -23,7 +17,6 @@ import {
 } from '@ant-design/icons';
 import type { Shot, AppSettings } from '../../types';
 import type { MentionItem } from '../../editor';
-import { ScriptEditor } from '../../editor';
 import { StoryboardStudio } from './StoryboardStudio';
 import { ShotListEditor } from './ShotListEditor';
 import { ShotAssetPresetModal } from './ShotAssetPresetModal';
@@ -32,22 +25,6 @@ import './Storyboard.css';
 import './ShotListEditor.css';
 
 const { Text } = Typography;
-const { TextArea } = Input;
-
-const SHOT_TYPE_OPTIONS = [
-  { label: 'CU', value: 'close-up' },
-  { label: 'MED', value: 'medium' },
-  { label: 'WIDE', value: 'wide' },
-  { label: 'X-WIDE', value: 'extreme-wide' },
-];
-
-const CAMERA_OPTIONS = [
-  { label: '固定镜头', value: 'static' },
-  { label: '水平摇镜', value: 'pan' },
-  { label: '跟随镜头', value: 'tracking' },
-  { label: '缓慢推镜', value: 'zoom-in' },
-  { label: '手持晃动', value: 'handheld' },
-];
 
 interface StoryboardProps {
   projectId: string;
@@ -163,43 +140,6 @@ export const Storyboard: React.FC<StoryboardProps> = (props) => {
           />
         </StoryboardStudio>
       )}
-
-      {/* 编辑/添加分镜弹窗 */}
-      <Modal
-        title={state.editingShot && state.shots.find(s => s.id === state.editingShot!.id) ? '编辑分镜' : '添加分镜'}
-        open={state.editModalOpen}
-        onCancel={() => { state.setEditModalOpen(false); state.setEditingShot(null); state.setEditFormData({}); }}
-        onOk={state.handleSaveEdit}
-        okText="保存"
-        cancelText="取消"
-        width={700}
-      >
-        <Form layout="vertical">
-          <Form.Item label="剧本内容" required>
-            <TextArea rows={3} placeholder="对应剧本中的内容..." value={state.editFormData.scriptContent || ''} onChange={(e) => state.setEditFormData(prev => ({ ...prev, scriptContent: e.target.value }))} />
-          </Form.Item>
-          <Form.Item label="画面描述 (Prompt)" required>
-            <ScriptEditor value={state.editFormData.description || ''} onChange={(value) => state.setEditFormData(prev => ({ ...prev, description: value }))} placeholder="描述这个镜头的画面，可使用 @ 引用角色或道具" mentionItems={state.actualMentionItems} minHeight="120px" maxHeight="200px" showLineNumbers={false} darkTheme={true} />
-          </Form.Item>
-          <Space size="large" style={{ width: '100%' }}>
-            <Form.Item label="景别" style={{ marginBottom: 0 }}>
-              <Segmented options={SHOT_TYPE_OPTIONS} value={state.editFormData.shotType || 'medium'} onChange={(value) => state.setEditFormData(prev => ({ ...prev, shotType: value as Shot['shotType'] }))} />
-            </Form.Item>
-            <Form.Item label="运镜" style={{ marginBottom: 0 }}>
-              <Select options={CAMERA_OPTIONS} value={state.editFormData.cameraMovement || 'static'} onChange={(value) => state.setEditFormData(prev => ({ ...prev, cameraMovement: value }))} style={{ width: 160 }} />
-            </Form.Item>
-            <Form.Item label="时长（秒）" style={{ marginBottom: 0 }}>
-              <Input type="number" min={1} max={60} value={state.editFormData.duration || 3} onChange={(e) => state.setEditFormData(prev => ({ ...prev, duration: parseInt(e.target.value) || 3 }))} style={{ width: 80 }} />
-            </Form.Item>
-          </Space>
-          <Form.Item label="情绪氛围" style={{ marginTop: 16 }}>
-            <Input placeholder="如：紧张、欢快、悲伤..." value={state.editFormData.emotion || ''} onChange={(e) => state.setEditFormData(prev => ({ ...prev, emotion: e.target.value }))} />
-          </Form.Item>
-          <Form.Item label="台词">
-            <TextArea rows={2} placeholder="角色台词（如有）" value={state.editFormData.dialogue || ''} onChange={(e) => state.setEditFormData(prev => ({ ...prev, dialogue: e.target.value }))} />
-          </Form.Item>
-        </Form>
-      </Modal>
 
       {/* 预选资产弹窗 */}
       <ShotAssetPresetModal

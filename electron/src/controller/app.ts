@@ -2,9 +2,8 @@
  * 应用控制器
  */
 import { app, shell } from 'electron';
-import { BaseController } from './base';
 
-export class AppController extends BaseController {
+export class AppController {
   getPath(args: { name: string }) {
     const pathValue = app.getPath(args.name as any);
     return { path: pathValue };
@@ -24,5 +23,7 @@ export class AppController extends BaseController {
     return { success: true };
   }
 }
+
+AppController.toString = () => '[class AppController]';
 
 export default AppController;

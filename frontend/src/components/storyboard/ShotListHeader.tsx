@@ -30,8 +30,6 @@ interface ShotListHeaderProps {
   onBatchReImages: () => void;
   onBatchVideos: () => void;
   onBatchReVideos: () => void;
-  onBatchVideoPrompts: () => void;
-  onBatchReVideoPrompts: () => void;
   onAddShot: () => void;
   onBatchDelete: () => void;
 }
@@ -51,8 +49,6 @@ export const ShotListHeader: React.FC<ShotListHeaderProps> = ({
   onBatchReImages,
   onBatchVideos,
   onBatchReVideos,
-  onBatchVideoPrompts,
-  onBatchReVideoPrompts,
   onAddShot,
   onBatchDelete,
 }) => {
@@ -66,11 +62,6 @@ export const ShotListHeader: React.FC<ShotListHeaderProps> = ({
   const imageMenuItems: MenuProps['items'] = [
     { key: 'gen', label: '生成空白项', onClick: onBatchImages },
     { key: 'regen', label: '重新生成全部', onClick: onBatchReImages },
-  ];
-
-  const videoPromptMenuItems: MenuProps['items'] = [
-    { key: 'gen', label: '生成空白项', onClick: onBatchVideoPrompts },
-    { key: 'regen', label: '重新生成全部', onClick: onBatchReVideoPrompts },
   ];
 
   const videoMenuItems: MenuProps['items'] = [
@@ -105,7 +96,7 @@ export const ShotListHeader: React.FC<ShotListHeaderProps> = ({
       {/* 资产 */}
       <div className={`${SHOT_LAYOUT.colAssets} ${cellClass}`}>资产</div>
 
-      {/* 图像设计 + 批量生成 */}
+      {/* 图像设计 + 批量生成提示词（同时生成图像和视频提示词） */}
       <div className={`${SHOT_LAYOUT.colImageDesign} ${cellClass} justify-between`}>
         <span>图像设计</span>
         <Dropdown menu={{ items: imagePromptMenuItems }} trigger={['click']}>
@@ -137,20 +128,9 @@ export const ShotListHeader: React.FC<ShotListHeaderProps> = ({
         </Dropdown>
       </div>
 
-      {/* 视频设计 + 批量生成 */}
-      <div className={`${SHOT_LAYOUT.colVideoDesign} ${cellClass} justify-between`}>
+      {/* 视频设计 */}
+      <div className={`${SHOT_LAYOUT.colVideoDesign} ${cellClass}`}>
         <span>视频设计</span>
-        <Dropdown menu={{ items: videoPromptMenuItems }} trigger={['click']}>
-          <Button
-            type="text"
-            size="small"
-            className="h-5 px-1 text-[10px]"
-            icon={<ThunderboltOutlined />}
-            loading={generatingPrompts}
-          >
-            AI{targetLabel} <DownOutlined className="text-[8px]" />
-          </Button>
-        </Dropdown>
       </div>
 
       {/* 视频结果 + 批量生成 + 添加按钮 */}

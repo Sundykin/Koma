@@ -1,11 +1,10 @@
 /**
  * 项目控制器
  */
-import { BaseController } from './base';
 import { services } from '../service';
 import type { ProjectMeta, ExportOptions, ProjectsIndex } from '../service/project';
 
-export class ProjectController extends BaseController {
+class ProjectController {
   async list(): Promise<ProjectMeta[]> {
     return services.project.listProjects();
   }
@@ -50,5 +49,6 @@ export class ProjectController extends BaseController {
   }
 }
 
-export const projectController = new ProjectController();
-export default projectController;
+ProjectController.toString = () => '[class ProjectController]';
+
+export default ProjectController;

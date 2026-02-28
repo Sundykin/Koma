@@ -11,7 +11,6 @@ import { recentProjectsModule } from './modules/recentProjects';
 import { modelPresetsModule } from './modules/modelPresets';
 import { customTemplatesModule } from './modules/customTemplates';
 import { chatSessionsModule } from './modules/chatSessions';
-import { providerInstancesModule } from '../provider/instance-store';
 
 export class ConfigManager {
   private initialized = false;
@@ -29,7 +28,6 @@ export class ConfigManager {
     // 3. 注册内置模块
     configRegistry.register(providerConfigModule);
     configRegistry.register(pluginStateModule);
-    configRegistry.register(providerInstancesModule);
     configRegistry.register(appSettingsModule);
     configRegistry.register(recentProjectsModule);
     configRegistry.register(modelPresetsModule);

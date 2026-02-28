@@ -14,10 +14,11 @@
     "sdkVersion": "1.0.0"
   },
 
-  "scopes": [
-    "settings:read",
-    "storage:limited"
+  "permissions": [
+    { "id": "config.read", "reason": "读取插件配置" }
   ],
+
+  "capabilities": [],
 
   "entry": {
     "frontend": "./dist/ui/main.js"

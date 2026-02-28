@@ -5,11 +5,11 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as https from 'https';
 import * as http from 'http';
-import { BaseController } from './base';
+import { logger } from 'ee-core/log';
 
 const LEGACY_COLLECTION_FILES = new Set(['characters.json', 'scenes.json', 'props.json']);
 
-export class FsController extends BaseController {
+export class FsController {
   async readFile(args: { filePath: string; encoding?: BufferEncoding }) {
     try {
       const content = await fs.promises.readFile(args.filePath, args.encoding || 'utf-8');
@@ -26,11 +26,10 @@ export class FsController extends BaseController {
   }
 
   async writeFile(args: { filePath: string; data: string; encoding?: BufferEncoding; binary?: boolean }) {
-    console.log('[FsController:writeFile] path:', args.filePath, 'binary:', args.binary, 'dataLen:', args.data?.length);
+    logger.info('[FsController:writeFile] path:', args.filePath, 'binary:', args.binary, 'dataLen:', args.data?.length);
     if (args.binary) {
-      // binary 模式：data 是 base64 编码的二进制数据
       const buffer = Buffer.from(args.data, 'base64');
-      console.log('[FsController:writeFile] 解码后 buffer 大小:', buffer.length);
+      logger.info('[FsController:writeFile] decoded buffer size:', buffer.length);
       await fs.promises.writeFile(args.filePath, buffer);
     } else {
       await fs.promises.writeFile(args.filePath, args.data, args.encoding || 'utf-8');
@@ -38,10 +37,9 @@ export class FsController extends BaseController {
     return { success: true };
   }
 
-  // 从 URL 下载文件到本地（绕过 CORS）
   async downloadFile(args: { url: string; destPath: string }): Promise<{ success: boolean; size: number }> {
-    console.log('[FsController:downloadFile] url:', args.url);
-    console.log('[FsController:downloadFile] destPath:', args.destPath);
+    logger.info('[FsController:downloadFile] url:', args.url);
+    logger.info('[FsController:downloadFile] destPath:', args.destPath);
 
     return new Promise((resolve, reject) => {
       const protocol = args.url.startsWith('https') ? https : http;
@@ -51,7 +49,7 @@ export class FsController extends BaseController {
         if (response.statusCode === 301 || response.statusCode === 302) {
           const redirectUrl = response.headers.location;
           if (redirectUrl) {
-            console.log('[FsController:downloadFile] 重定向到:', redirectUrl);
+            logger.info('[FsController:downloadFile] redirect to:', redirectUrl);
             this.downloadFile({ url: redirectUrl, destPath: args.destPath })
               .then(resolve)
               .catch(reject);
@@ -75,7 +73,7 @@ export class FsController extends BaseController {
 
         fileStream.on('finish', () => {
           fileStream.close();
-          console.log('[FsController:downloadFile] 下载完成，大小:', downloadedSize);
+          logger.info('[FsController:downloadFile] download complete, size:', downloadedSize);
           resolve({ success: true, size: downloadedSize });
         });
 
@@ -129,5 +127,7 @@ export class FsController extends BaseController {
     return { success: true };
   }
 }
+
+FsController.toString = () => '[class FsController]';
 
 export default FsController;

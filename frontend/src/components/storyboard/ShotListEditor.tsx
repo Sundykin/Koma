@@ -169,14 +169,6 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
     onBatchReGenerateVideos(hasSelected ? Array.from(selectedIds) : undefined);
   }, [hasSelected, selectedIds, onBatchReGenerateVideos]);
 
-  const handleBatchVideoPrompts = useCallback(() => {
-    onBatchGeneratePrompts(hasSelected ? Array.from(selectedIds) : undefined);
-  }, [hasSelected, selectedIds, onBatchGeneratePrompts]);
-
-  const handleBatchReVideoPrompts = useCallback(() => {
-    onBatchReGeneratePrompts(hasSelected ? Array.from(selectedIds) : undefined);
-  }, [hasSelected, selectedIds, onBatchReGeneratePrompts]);
-
   const handleBatchDelete = useCallback(() => {
     if (hasSelected) {
       onBatchDelete(Array.from(selectedIds));
@@ -248,8 +240,6 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
                 onBatchReImages={handleBatchReImages}
                 onBatchVideos={handleBatchVideos}
                 onBatchReVideos={handleBatchReVideos}
-                onBatchVideoPrompts={handleBatchVideoPrompts}
-                onBatchReVideoPrompts={handleBatchReVideoPrompts}
                 onAddShot={onAddShot}
                 onBatchDelete={handleBatchDelete}
               />

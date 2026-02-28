@@ -124,50 +124,6 @@ export const CharacterDetailModal: React.FC<CharacterDetailModalProps> = (props)
               <Button icon={<UploadOutlined />} onClick={handleUploadVideo} disabled={generating !== null}>上传</Button>
             </Space>
           </Col>
-          <Col span={12}>
-            <Text strong style={{ display: 'block', marginBottom: 8 }}>Sora2 角色绑定</Text>
-            <div style={{ padding: 16, background: '#1a1a1a', borderRadius: 8, minHeight: 100 }}>
-              {editedCharacter.sora2CharacterId ? (
-                <div style={{ textAlign: 'center' }}>
-                  <CheckCircleOutlined style={{ fontSize: 24, color: '#52c41a', marginBottom: 8 }} />
-                  <div><Text type="success">已绑定</Text></div>
-                  <Text type="secondary" style={{ fontSize: 10, wordBreak: 'break-all' }}>{editedCharacter.sora2CharacterId}</Text>
-                </div>
-              ) : (
-                <div style={{ textAlign: 'center' }}>
-                  <LinkOutlined style={{ fontSize: 24, color: '#52525b', marginBottom: 8 }} />
-                  <div><Text type="secondary">未绑定</Text></div>
-                </div>
-              )}
-              <div style={{ marginTop: 12, padding: '8px 0', borderTop: '1px solid #27272a' }}>
-                <Text type="secondary" style={{ fontSize: 11, display: 'block', marginBottom: 8 }}>提取时间范围（秒）</Text>
-                <Space size="small">
-                  <Input type="number" size="small" style={{ width: 60 }} min={0} max={10} step={0.5} placeholder="起始"
-                    value={editedCharacter.timestampRange?.start ?? 1}
-                    onChange={(e) => {
-                      const start = parseFloat(e.target.value) || 0;
-                      const currentEnd = editedCharacter.timestampRange?.end ?? 3;
-                      setEditedCharacter(prev => prev ? { ...prev, timestampRange: { start, end: Math.max(currentEnd, start + 0.5) } } : null);
-                    }} />
-                  <Text type="secondary">-</Text>
-                  <Input type="number" size="small" style={{ width: 60 }} min={0} max={10} step={0.5} placeholder="结束"
-                    value={editedCharacter.timestampRange?.end ?? 3}
-                    onChange={(e) => {
-                      const end = parseFloat(e.target.value) || 3;
-                      const start = editedCharacter.timestampRange?.start ?? 1;
-                      if (end - start > 3) { message.warning('时间范围不能超过3秒'); return; }
-                      setEditedCharacter(prev => prev ? { ...prev, timestampRange: { start, end } } : null);
-                    }} />
-                  <Text type="secondary" style={{ fontSize: 11 }}>最多3秒</Text>
-                </Space>
-              </div>
-            </div>
-            <Button block style={{ marginTop: 8 }} icon={generating === 'extract' ? <LoadingOutlined /> : <LinkOutlined />}
-              onClick={handleExtractCharacter} disabled={generating !== null || !editedCharacter.previewVideoPath}>
-              {editedCharacter.sora2CharacterId ? '重新提取' : '提取角色'}
-            </Button>
-            <Text type="secondary" style={{ fontSize: 11, display: 'block', marginTop: 4 }}>需要先生成预览视频才能提取</Text>
-          </Col>
         </Row>
       </Modal>
 

@@ -2,7 +2,7 @@
   "id": "com.koma.vectorengine-provider",
   "name": "VectorEngine 视频服务",
   "version": "1.0.0",
-  "description": "VectorEngine.ai 视频生成服务提供者 - 支持 Sora-2 图生视频和角色提取",
+  "description": "VectorEngine.ai 视频生成服务提供者 - 支持图生视频和角色提取",
   "author": {
     "name": "Koma Team",
     "url": "https://github.com/koma-studio"
@@ -14,11 +14,25 @@
     "sdkVersion": "1.0.0"
   },
 
-  "scopes": [
-    "settings:read",
-    "settings:write",
-    "storage:limited",
-    "network:external"
+  "permissions": [
+    { "id": "config.read", "reason": "读取 API 配置" },
+    { "id": "config.write", "reason": "保存 API 配置" },
+    { "id": "fs.read", "reason": "读取缓存文件" },
+    { "id": "fs.write", "reason": "写入缓存文件" },
+    { "id": "net.fetch", "reason": "调用 VectorEngine API" },
+    { "id": "capability.register", "reason": "注册 ITV 能力点" }
+  ],
+
+  "capabilities": [
+    {
+      "kind": "itv",
+      "name": "vectorengine-itv",
+      "version": "1.0.0",
+      "config": {
+        "displayName": "VectorEngine",
+        "features": ["asset-extract", "asset-reuse", "camera-control"]
+      }
+    }
   ],
 
   "entry": {
@@ -28,7 +42,7 @@
 
   "providerMeta": {
     "channelType": "itv",
-    "displayName": "VectorEngine (Sora-2)",
+    "displayName": "VectorEngine",
     "capabilities": ["itv", "character-extract"],
     "configPanel": true,
     "defaultConfig": {

@@ -79,7 +79,7 @@ function createMentionCompletions(
   };
 }
 
-// 所有显示在列表中的角色/道具都已绑定 Sora2，统一显示标记
+// 类型标签
 function getTypeLabel(type: MentionType): string {
   switch (type) {
     case 'char':

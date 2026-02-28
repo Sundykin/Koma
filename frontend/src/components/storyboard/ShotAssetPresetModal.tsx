@@ -43,13 +43,13 @@ export const ShotAssetPresetModal: React.FC<ShotAssetPresetModalProps> = ({
   const [selectedCharacterIds, setSelectedCharacterIds] = useState<string[]>([]);
   const [selectedPropIds, setSelectedPropIds] = useState<string[]>([]);
 
-  // 只显示已绑定 Sora2 的资产
-  const boundCharacters = useMemo(
-    () => characters.filter(c => c.sora2CharacterId),
+  // 展示可用资产（不再依赖特定 Provider 绑定字段）
+  const availableCharacters = useMemo(
+    () => characters,
     [characters]
   );
-  const boundProps = useMemo(
-    () => props.filter(p => p.sora2PropId),
+  const availableProps = useMemo(
+    () => props,
     [props]
   );
 
@@ -87,7 +87,7 @@ export const ShotAssetPresetModal: React.FC<ShotAssetPresetModalProps> = ({
 
   const handleSelectAllCharacters = (checked: boolean) => {
     if (checked) {
-      setSelectedCharacterIds(boundCharacters.map(c => c.sora2CharacterId!));
+      setSelectedCharacterIds(availableCharacters.map(c => c.id));
     } else {
       setSelectedCharacterIds([]);
     }
@@ -95,7 +95,7 @@ export const ShotAssetPresetModal: React.FC<ShotAssetPresetModalProps> = ({
 
   const handleSelectAllProps = (checked: boolean) => {
     if (checked) {
-      setSelectedPropIds(boundProps.map(p => p.sora2PropId!));
+      setSelectedPropIds(availableProps.map(p => p.id));
     } else {
       setSelectedPropIds([]);
     }
@@ -193,12 +193,12 @@ export const ShotAssetPresetModal: React.FC<ShotAssetPresetModalProps> = ({
         <Space style={{ marginBottom: 12 }}>
           <UserOutlined />
           <Text strong>角色</Text>
-          {boundCharacters.length > 0 && (
+          {availableCharacters.length > 0 && (
             <Checkbox
-              checked={selectedCharacterIds.length === boundCharacters.length}
+              checked={selectedCharacterIds.length === availableCharacters.length}
               indeterminate={
                 selectedCharacterIds.length > 0 &&
-                selectedCharacterIds.length < boundCharacters.length
+                selectedCharacterIds.length < availableCharacters.length
               }
               onChange={e => handleSelectAllCharacters(e.target.checked)}
             >
@@ -206,20 +206,20 @@ export const ShotAssetPresetModal: React.FC<ShotAssetPresetModalProps> = ({
             </Checkbox>
           )}
           <Text type="secondary" style={{ fontSize: 12 }}>
-            已选 {selectedCharacterIds.length}/{boundCharacters.length}
+            已选 {selectedCharacterIds.length}/{availableCharacters.length}
           </Text>
         </Space>
 
-        {boundCharacters.length > 0 ? (
+        {availableCharacters.length > 0 ? (
           <Row gutter={[12, 12]}>
-            {boundCharacters.map(char =>
+            {availableCharacters.map(char =>
               <Col key={char.id} span={4}>
                 {renderAssetCard(
-                  char.sora2CharacterId!,
+                  char.id,
                   char.name,
                   char.costumePhotoPath,
-                  selectedCharacterIds.includes(char.sora2CharacterId!),
-                  () => handleCharacterToggle(char.sora2CharacterId!)
+                  selectedCharacterIds.includes(char.id),
+                  () => handleCharacterToggle(char.id)
                 )}
               </Col>
             )}
@@ -227,7 +227,7 @@ export const ShotAssetPresetModal: React.FC<ShotAssetPresetModalProps> = ({
         ) : (
           <Empty
             image={Empty.PRESENTED_IMAGE_SIMPLE}
-            description="暂无已绑定 Sora2 的角色"
+            description="暂无可用角色资产"
             style={{ padding: '16px 0' }}
           />
         )}
@@ -240,12 +240,12 @@ export const ShotAssetPresetModal: React.FC<ShotAssetPresetModalProps> = ({
         <Space style={{ marginBottom: 12 }}>
           <InboxOutlined />
           <Text strong>道具</Text>
-          {boundProps.length > 0 && (
+          {availableProps.length > 0 && (
             <Checkbox
-              checked={selectedPropIds.length === boundProps.length}
+              checked={selectedPropIds.length === availableProps.length}
               indeterminate={
                 selectedPropIds.length > 0 &&
-                selectedPropIds.length < boundProps.length
+                selectedPropIds.length < availableProps.length
               }
               onChange={e => handleSelectAllProps(e.target.checked)}
             >
@@ -253,20 +253,20 @@ export const ShotAssetPresetModal: React.FC<ShotAssetPresetModalProps> = ({
             </Checkbox>
           )}
           <Text type="secondary" style={{ fontSize: 12 }}>
-            已选 {selectedPropIds.length}/{boundProps.length}
+            已选 {selectedPropIds.length}/{availableProps.length}
           </Text>
         </Space>
 
-        {boundProps.length > 0 ? (
+        {availableProps.length > 0 ? (
           <Row gutter={[12, 12]}>
-            {boundProps.map(prop =>
+            {availableProps.map(prop =>
               <Col key={prop.id} span={4}>
                 {renderAssetCard(
-                  prop.sora2PropId!,
+                  prop.id,
                   prop.name,
                   prop.imagePath,
-                  selectedPropIds.includes(prop.sora2PropId!),
-                  () => handlePropToggle(prop.sora2PropId!)
+                  selectedPropIds.includes(prop.id),
+                  () => handlePropToggle(prop.id)
                 )}
               </Col>
             )}
@@ -274,7 +274,7 @@ export const ShotAssetPresetModal: React.FC<ShotAssetPresetModalProps> = ({
         ) : (
           <Empty
             image={Empty.PRESENTED_IMAGE_SIMPLE}
-            description="暂无已绑定 Sora2 的道具"
+            description="暂无可用道具资产"
             style={{ padding: '16px 0' }}
           />
         )}
@@ -285,7 +285,7 @@ export const ShotAssetPresetModal: React.FC<ShotAssetPresetModalProps> = ({
         type="secondary"
         style={{ display: 'block', marginTop: 16, fontSize: 12 }}
       >
-        提示：选中的资产将优先出现在 AI 生成的分镜中。未绑定 Sora2 的资产不会显示在此列表。
+        提示：选中的资产将优先出现在 AI 生成的分镜中。
       </Text>
     </Modal>
   );

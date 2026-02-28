@@ -8,7 +8,6 @@ import type { Prop } from '../../types';
 import {
   generatePropImage,
   generatePropPreviewVideo,
-  extractAndBindProp,
 } from '../../workflow/scenePropAssetWorkflow';
 import { electronService, openFileDialog, fsCopy, fsMkdir, fsExists } from '../../services/electronService';
 import { getStorageConfig, initStorageConfig } from '../../store/storageConfig';
@@ -138,22 +137,8 @@ export function usePropDetailState(props: PropDetailModalProps, message: any) {
   }, [editedProp, getAssetPath, projectId, onUpdate, message]);
 
   const handleExtractProp = useCallback(async () => {
-    if (!editedProp) return;
-    if (!editedProp.previewVideoPath) { message.warning('请先生成或上传预览视频'); return; }
-    setGenerating('extract'); setProgress(0); setProgressStep('提取道具中...');
-    try {
-      const result = await extractAndBindProp(projectId, editedProp, itvConfigId);
-      if (result.success && result.propId) {
-        const updated = { ...editedProp, sora2PropId: result.propId };
-        setEditedProp(updated); onUpdate(updated);
-        const allProps = await loadProps(projectId);
-        const index = allProps.findIndex(p => p.id === editedProp.id);
-        if (index !== -1) { allProps[index] = updated; await saveProps(projectId, allProps); }
-        message.success('道具提取成功');
-      } else { message.error(result.error || '提取失败'); }
-    } catch (err: any) { message.error(err.message || '提取失败'); }
-    finally { setGenerating(null); }
-  }, [editedProp, projectId, itvConfigId, onUpdate, message]);
+    message.info('道具提取功能已移除');
+  }, [message]);
 
   const handleDelete = useCallback(async () => {
     if (!editedProp) return;

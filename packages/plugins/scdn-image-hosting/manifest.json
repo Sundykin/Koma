@@ -12,16 +12,30 @@
     "minAppVersion": "2.5.0",
     "sdkVersion": "1.0.0"
   },
-  "scopes": [
-    "settings:read",
-    "settings:write",
-    "storage:limited",
-    "network:external"
+
+  "permissions": [
+    { "id": "config.read", "reason": "读取 API 配置" },
+    { "id": "config.write", "reason": "保存 API 配置" },
+    { "id": "net.fetch", "reason": "上传图片到 SCDN" },
+    { "id": "capability.register", "reason": "注册图床能力点" }
   ],
+
+  "capabilities": [
+    {
+      "kind": "image-hosting",
+      "name": "scdn-image-hosting",
+      "version": "1.0.0",
+      "config": {
+        "displayName": "SCDN 图床"
+      }
+    }
+  ],
+
   "entry": {
     "frontend": "./dist/ui/main.js",
     "backend": "./dist/backend.js"
   },
+
   "providerMeta": {
     "channelType": "image-hosting",
     "capabilities": ["image-hosting"],

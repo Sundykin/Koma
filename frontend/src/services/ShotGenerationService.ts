@@ -294,7 +294,7 @@ export class ShotGenerationService {
 
       if (mention.type === 'char') {
         const char = characters.find(
-          c => c.id === mention.id || c.sora2CharacterId === mention.id
+          c => c.id === mention.id
         );
         if (char) {
           replacement = `[${char.name}: ${char.prompt || char.description || char.appearance || ''}]`;
@@ -306,7 +306,7 @@ export class ShotGenerationService {
         }
       } else if (mention.type === 'prop') {
         const prop = props?.find(
-          p => p.id === mention.id || p.sora2PropId === mention.id
+          p => p.id === mention.id
         );
         if (prop) {
           replacement = `[${prop.name}: ${prop.prompt || prop.description || ''}]`;

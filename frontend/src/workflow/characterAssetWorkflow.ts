@@ -168,7 +168,7 @@ export async function generateCostumePhoto(
 
 /**
  * 生成角色预览视频
- * 优先使用远程 URL（Sora2 等需要远程可访问的图片）
+ * 优先使用远程 URL
  */
 export async function generateCharacterPreviewVideo(
   options: GenerateOptions
@@ -186,7 +186,7 @@ export async function generateCharacterPreviewVideo(
 
   // 如果没有远程 URL，提示用户可能需要重新生成
   if (!character.costumePhotoUrl) {
-    logger.warn(`角色 ${character.name} 没有远程图片 URL，将使用本地路径。某些服务（如 Sora2）可能需要远程 URL。`);
+    logger.warn(`角色 ${character.name} 没有远程图片 URL，将使用本地路径。某些 ITV 服务可能需要远程 URL。`);
   }
 
   try {
@@ -253,111 +253,6 @@ export async function generateCharacterPreviewVideo(
     return { success: false, error: '视频生成失败：未返回有效结果' };
   } catch (err: any) {
     logger.error(`生成预览视频失败: ${character.name}`, { error: err.message });
-    return { success: false, error: err.message };
-  }
-}
-
-/**
- * 调用角色提取API绑定角色
- * 需要先生成预览视频并保存任务 ID
- * 支持异步轮询模式
- */
-export async function extractAndBindCharacter(
-  projectId: string,
-  character: Character,
-  itvConfigId?: string,
-  onProgress?: (progress: number, step: string) => void
-): Promise<{ success: boolean; characterId?: string; error?: string }> {
-  logger.info(`开始提取角色: ${character.name}`);
-  onProgress?.(0, '准备角色提取...');
-
-  // 检查是否有视频生成任务 ID（角色提取 API 需要使用 from_task 参数）
-  if (!character.previewVideoTaskId) {
-    // 兼容旧数据：如果有视频路径但没有任务 ID，提示用户重新生成
-    if (character.previewVideoPath) {
-      return { success: false, error: '请重新生成预览视频（需要保存任务ID用于角色提取）' };
-    }
-    return { success: false, error: '请先生成预览视频' };
-  }
-
-  try {
-    const itvProvider = await getProjectITVProvider(itvConfigId);
-    if (!itvProvider) {
-      throw new Error('未配置 ITV 服务');
-    }
-
-    // 检查是否支持角色提取
-    if (!itvProvider.extractCharacter) {
-      return { success: false, error: 'ITV Provider 不支持角色提取' };
-    }
-
-    onProgress?.(10, '调用角色提取 API...');
-
-    // 获取用户设置的时间范围，默认 1-3 秒
-    let timestamps = '1,3';
-    if (character.timestampRange) {
-      const { start, end } = character.timestampRange;
-      // 验证时间范围不超过 3 秒
-      if (end - start > 3) {
-        return { success: false, error: '提取时间范围不能超过3秒' };
-      }
-      timestamps = `${start},${end}`;
-    }
-
-    // 使用任务 ID 调用角色提取 API
-    const extractTaskId = await itvProvider.extractCharacter({
-      fromTask: character.previewVideoTaskId,
-      timestamps,
-    });
-
-    // 检查是否支持角色提取状态轮询
-    if (itvProvider.checkCharacterProgress) {
-      onProgress?.(20, '等待角色提取完成...');
-
-      // 轮询等待完成
-      let progress = await itvProvider.checkCharacterProgress(extractTaskId);
-      let pollCount = 0;
-      const maxPolls = 60; // 最大轮询 60 次（约 3 分钟）
-
-      while ((progress.status === 'queued' || progress.status === 'processing') && pollCount < maxPolls) {
-        await sleep(3000);
-        progress = await itvProvider.checkCharacterProgress(extractTaskId);
-        pollCount++;
-        const progressPercent = 20 + Math.min(progress.progress, 100) * 0.7;
-        onProgress?.(progressPercent, `提取中 ${progress.progress}%`);
-      }
-
-      if (progress.status === 'completed' && progress.characters && progress.characters.length > 0) {
-        // 取第一个提取的角色
-        const extractedChar = progress.characters[0];
-        const sora2CharacterId = extractedChar.id;
-
-        await updateCharacterAsset(projectId, character.id, { sora2CharacterId });
-        onProgress?.(100, '角色提取完成');
-
-        logger.info(`角色提取成功: ${character.name} -> ${sora2CharacterId}`);
-        return { success: true, characterId: sora2CharacterId };
-      }
-
-      if (progress.status === 'failed') {
-        return { success: false, error: progress.error || '角色提取失败' };
-      }
-
-      if (pollCount >= maxPolls) {
-        return { success: false, error: '角色提取超时' };
-      }
-
-      return { success: false, error: '未能提取到角色' };
-    } else {
-      // 不支持轮询，直接返回任务 ID 作为角色 ID（兼容旧模式）
-      await updateCharacterAsset(projectId, character.id, { sora2CharacterId: extractTaskId });
-      onProgress?.(100, '完成');
-
-      logger.info(`角色提取成功: ${character.name} -> ${extractTaskId}`);
-      return { success: true, characterId: extractTaskId };
-    }
-  } catch (err: any) {
-    logger.error(`角色提取失败: ${character.name}`, { error: err.message });
     return { success: false, error: err.message };
   }
 }

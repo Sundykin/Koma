@@ -8,7 +8,6 @@ import type { Character } from '../../types';
 import {
   generateCostumePhoto,
   generateCharacterPreviewVideo,
-  extractAndBindCharacter,
   getCharacterPrompt,
 } from '../../workflow/characterAssetWorkflow';
 import { electronService, openFileDialog, fsCopy, fsMkdir, fsExists } from '../../services/electronService';
@@ -150,22 +149,8 @@ export function useCharacterDetailState(props: CharacterDetailModalProps, messag
   }, [editedCharacter, getAssetPath, projectId, onUpdate, message]);
 
   const handleExtractCharacter = useCallback(async () => {
-    if (!editedCharacter) return;
-    if (!editedCharacter.previewVideoPath) { message.warning('请先生成或上传预览视频'); return; }
-    setGenerating('extract'); setProgress(0); setProgressStep('提取角色中...');
-    try {
-      const result = await extractAndBindCharacter(projectId, editedCharacter, itvConfigId);
-      if (result.success && result.characterId) {
-        const updated = { ...editedCharacter, sora2CharacterId: result.characterId };
-        setEditedCharacter(updated); onUpdate(updated);
-        const characters = await loadCharacters(projectId);
-        const index = characters.findIndex(c => c.id === editedCharacter.id);
-        if (index !== -1) { characters[index] = updated; await saveCharacters(projectId, characters); }
-        message.success('角色提取成功');
-      } else { message.error(toUserMessage(result.error)); }
-    } catch (err: any) { message.error(toUserMessage(err)); }
-    finally { setGenerating(null); }
-  }, [editedCharacter, projectId, itvConfigId, onUpdate, message]);
+    message.info('角色提取功能已移除');
+  }, [message]);
 
   const handleDelete = useCallback(async () => {
     if (!editedCharacter) return;

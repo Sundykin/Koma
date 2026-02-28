@@ -183,7 +183,7 @@ export async function shotRenderWorkflow(
     if (shot.videoPrompt) {
       // 使用专用视频提示词
       videoPrompt = stylePrefix ? `${stylePrefix}${shot.videoPrompt}` : shot.videoPrompt;
-      // 使用新的处理函数，支持 Sora2 角色和参考图收集
+      // 处理提示词中的资产引用，收集参考图
       const processed = processVideoPromptAssets(videoPrompt, shot, characters, projectProps);
       videoPrompt = processed.prompt;
       additionalReferenceImages = processed.referenceImages;
@@ -331,9 +331,8 @@ function getCameraMovementDesc(movement?: string): string {
 
 /**
  * 处理视频提示词中的资产引用
- * - 有 sora2CharacterId 的角色：使用 @sora2CharacterId
- * - 无 sora2CharacterId 的角色：收集其图片 URL
- * - 道具/场景：收集其图片 URL
+ * - 角色：收集其图片 URL，替换为描述
+ * - 道具：收集其图片 URL，替换为描述
  *
  * @returns { prompt, referenceImages }
  */
@@ -354,79 +353,28 @@ function processVideoPromptAssets(
 
   for (const mention of sortedMentions) {
     if (mention.type === 'char') {
-      const char = characters.find(
-        c => c.id === mention.id || c.sora2CharacterId === mention.id
-      );
-      if (char) {
-        if (char.sora2CharacterId) {
-          // 有 Sora2 角色 ID：替换为 @sora2CharacterId
-          const replacement = `@${char.sora2CharacterId}`;
-          result = result.slice(0, mention.from) + replacement + result.slice(mention.to);
-        } else if (char.costumePhotoUrl) {
-          // 无 Sora2 ID：收集图片 URL，替换为角色描述
-          referenceImages.push(char.costumePhotoUrl);
-          const replacement = `[${char.name}: ${char.prompt || char.description || char.appearance || ''}]`;
-          result = result.slice(0, mention.from) + replacement + result.slice(mention.to);
-        }
+      const char = characters.find(c => c.id === mention.id);
+      if (char?.costumePhotoUrl) {
+        referenceImages.push(char.costumePhotoUrl);
+        const replacement = `[${char.name}: ${char.prompt || char.description || char.appearance || ''}]`;
+        result = result.slice(0, mention.from) + replacement + result.slice(mention.to);
       }
     } else if (mention.type === 'prop') {
-      const prop = props?.find(
-        p => p.id === mention.id || p.sora2PropId === mention.id
-      );
-      if (prop) {
-        if (prop.sora2PropId) {
-          // 有 Sora2 道具 ID
-          const replacement = `@${prop.sora2PropId}`;
-          result = result.slice(0, mention.from) + replacement + result.slice(mention.to);
-        } else if (prop.imageUrl) {
-          referenceImages.push(prop.imageUrl);
-          const replacement = `[${prop.name}: ${prop.prompt || prop.description || ''}]`;
-          result = result.slice(0, mention.from) + replacement + result.slice(mention.to);
-        }
+      const prop = props?.find(p => p.id === mention.id);
+      if (prop?.imageUrl) {
+        referenceImages.push(prop.imageUrl);
+        const replacement = `[${prop.name}: ${prop.prompt || prop.description || ''}]`;
+        result = result.slice(0, mention.from) + replacement + result.slice(mention.to);
       }
     }
-    // scene 直接替换为描述（场景没有 sora2 绑定）
-    // 注意：scene 的处理可以在后续需要时添加
-  }
-
-  // 额外检查 shot.characters 中有 sora2CharacterId 但不在提示词中的角色
-  for (const charId of shot.characters || []) {
-    const char = characters.find(c => c.id === charId);
-    if (char?.sora2CharacterId && !result.includes(`@${char.sora2CharacterId}`)) {
-      // 追加到末尾
-      result = `${result} @${char.sora2CharacterId}`;
-    }
+    // scene 直接替换为描述（场景没有特殊绑定）
   }
 
   return { prompt: result, referenceImages };
 }
 
 function appendCharacterRefs(prompt: string, shot: Shot, characters: Character[]): string {
-  let result = prompt;
-
-  for (const char of characters) {
-    if (char.sora2CharacterId && result.includes(char.name)) {
-      result = result.replace(
-        new RegExp(char.name, 'g'),
-        `${char.name} @${char.sora2CharacterId}`
-      );
-    }
-  }
-
-  if (shot.characters && shot.characters.length > 0) {
-    const charRefs: string[] = [];
-    for (const charId of shot.characters) {
-      const char = characters.find(c => c.id === charId || c.name === charId);
-      if (char?.sora2CharacterId && !result.includes(`@${char.sora2CharacterId}`)) {
-        charRefs.push(`@${char.sora2CharacterId}`);
-      }
-    }
-    if (charRefs.length > 0) {
-      result = `${result} ${charRefs.join(' ')}`;
-    }
-  }
-
-  return result;
+  return prompt;
 }
 
 function buildVideoPrompt(shot: Shot, characters: Character[], stylePrefix?: string): string {
@@ -441,28 +389,6 @@ function buildVideoPrompt(shot: Shot, characters: Character[], stylePrefix?: str
     };
     if (cameraDesc[shot.cameraMovement]) {
       prompt = `${prompt}, ${cameraDesc[shot.cameraMovement]}`;
-    }
-  }
-
-  for (const char of characters) {
-    if (char.sora2CharacterId && prompt.includes(char.name)) {
-      prompt = prompt.replace(
-        new RegExp(char.name, 'g'),
-        `${char.name} @${char.sora2CharacterId}`
-      );
-    }
-  }
-
-  if (shot.characters && shot.characters.length > 0) {
-    const charRefs: string[] = [];
-    for (const charId of shot.characters) {
-      const char = characters.find(c => c.id === charId || c.name === charId);
-      if (char?.sora2CharacterId && !prompt.includes(`@${char.sora2CharacterId}`)) {
-        charRefs.push(`@${char.sora2CharacterId}`);
-      }
-    }
-    if (charRefs.length > 0) {
-      prompt = `${prompt} ${charRefs.join(' ')}`;
     }
   }
 

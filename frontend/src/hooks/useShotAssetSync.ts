@@ -37,21 +37,12 @@ export interface ShotAssetSyncActions {
 
 /**
  * 资产ID映射到 Mention ID
- * 对于角色和道具，优先使用 sora2 ID
  */
 function getAssetMentionId(
   type: 'character' | 'scene' | 'prop',
   assetId: string,
   assets: { characters: Character[]; scenes: Scene[]; props: Prop[] }
 ): string {
-  if (type === 'character') {
-    const char = assets.characters.find(c => c.id === assetId);
-    return char?.sora2CharacterId || assetId;
-  }
-  if (type === 'prop') {
-    const prop = assets.props.find(p => p.id === assetId);
-    return prop?.sora2PropId || assetId;
-  }
   return assetId;
 }
 
@@ -64,15 +55,11 @@ function getAssetIdFromMention(
   assets: { characters: Character[]; scenes: Scene[]; props: Prop[] }
 ): string | null {
   if (type === 'char') {
-    const char = assets.characters.find(
-      c => c.id === mentionId || c.sora2CharacterId === mentionId
-    );
+    const char = assets.characters.find(c => c.id === mentionId);
     return char?.id || null;
   }
   if (type === 'prop') {
-    const prop = assets.props.find(
-      p => p.id === mentionId || p.sora2PropId === mentionId
-    );
+    const prop = assets.props.find(p => p.id === mentionId);
     return prop?.id || null;
   }
   if (type === 'scene') {
@@ -161,7 +148,7 @@ export function useShotAssetSync(
       for (const charId of selectedCharacters) {
         const char = assets.characters.find(c => c.id === charId);
         if (!char) continue;
-        const mentionId = char.sora2CharacterId || charId;
+        const mentionId = charId;
         const inPrompt = mentions.some(m => m.type === 'char' && m.id === mentionId);
         if (!inPrompt) {
           toAdd.push({ type: 'char', id: charId, name: char.name });
@@ -180,7 +167,7 @@ export function useShotAssetSync(
       for (const propId of selectedProps) {
         const prop = assets.props.find(p => p.id === propId);
         if (!prop) continue;
-        const mentionId = prop.sora2PropId || propId;
+        const mentionId = propId;
         const inPrompt = mentions.some(m => m.type === 'prop' && m.id === mentionId);
         if (!inPrompt) {
           toAdd.push({ type: 'prop', id: propId, name: prop.name });

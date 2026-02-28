@@ -135,28 +135,6 @@ export const PropDetailModal: React.FC<PropDetailModalProps> = (props) => {
               <Button icon={<UploadOutlined />} onClick={handleUploadVideo} disabled={generating !== null}>上传</Button>
             </Space>
           </Col>
-          <Col span={12}>
-            <Text strong style={{ display: 'block', marginBottom: 8 }}>Sora2 道具绑定</Text>
-            <div style={{ padding: 16, background: '#1a1a1a', borderRadius: 8, minHeight: 120, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-              {editedProp.sora2PropId ? (
-                <>
-                  <CheckCircleOutlined style={{ fontSize: 24, color: '#52c41a', marginBottom: 8 }} />
-                  <Text type="success">已绑定</Text>
-                  <Text type="secondary" style={{ fontSize: 10, wordBreak: 'break-all', marginTop: 4 }}>{editedProp.sora2PropId}</Text>
-                </>
-              ) : (
-                <>
-                  <LinkOutlined style={{ fontSize: 24, color: '#52525b', marginBottom: 8 }} />
-                  <Text type="secondary">未绑定</Text>
-                </>
-              )}
-            </div>
-            <Button block style={{ marginTop: 8 }} icon={generating === 'extract' ? <LoadingOutlined /> : <LinkOutlined />}
-              onClick={handleExtractProp} disabled={generating !== null || !editedProp.previewVideoPath}>
-              {editedProp.sora2PropId ? '重新提取' : '提取道具'}
-            </Button>
-            <Text type="secondary" style={{ fontSize: 11, display: 'block', marginTop: 4 }}>需要先生成预览视频才能提取</Text>
-          </Col>
         </Row>
       </Modal>
 

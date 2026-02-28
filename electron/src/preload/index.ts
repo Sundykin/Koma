@@ -20,9 +20,6 @@ const invokeRpc = async (channel: string, args?: Record<string, unknown>) => {
 };
 
 contextBridge.exposeInMainWorld('electronAPI', {
-  rpc: {
-    invoke: (channel: string, args?: Record<string, unknown>) => invokeRpcRaw(channel, args),
-  },
   window: {
     minimize: () => invokeRpc('window:minimize'),
     maximize: () => invokeRpc('window:maximize'),
@@ -131,18 +128,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
       invokeRpc('workflow:delegateResult', { delegateId, result, error }),
   },
   chat: {
-    createSession: (config?: any) => invokeRpc('chat:session:create', { config }),
-    getSession: (sessionId: string) => invokeRpc('chat:session:get', { sessionId }),
-    disposeSession: (sessionId: string) => invokeRpc('chat:session:dispose', { sessionId }),
-    listSessions: (windowId?: number) => invokeRpc('chat:session:list', { windowId }),
+    createSession: (config?: any) => invokeRpc('chat:createSession', { config }),
+    getSession: (sessionId: string) => invokeRpc('chat:getSession', { sessionId }),
+    disposeSession: (sessionId: string) => invokeRpc('chat:disposeSession', { sessionId }),
+    listSessions: (windowId?: number) => invokeRpc('chat:listSessions', { windowId }),
     updateSessionConfig: (sessionId: string, config: any) =>
-      invokeRpc('chat:session:updateConfig', { sessionId, config }),
+      invokeRpc('chat:updateSessionConfig', { sessionId, config }),
     sendMessage: (sessionId: string, input: any, options?: any) =>
-      invokeRpc('chat:message:send', { sessionId, input, options }),
+      invokeRpc('chat:sendMessage', { sessionId, input, options }),
     sendMessageStream: (sessionId: string, input: any, options?: any) =>
-      invokeRpc('chat:message:sendStream', { sessionId, input, options }),
+      invokeRpc('chat:sendMessageStream', { sessionId, input, options }),
     cancelStream: (requestIdOrSessionId: string) =>
-      invokeRpc('chat:message:cancel', { sessionId: requestIdOrSessionId }),
+      invokeRpc('chat:cancelStream', { sessionId: requestIdOrSessionId }),
     onStreamChunk: (callback: (event: any, data: any) => void) => {
       ipcRenderer.on('chat:stream:chunk', callback);
       return () => ipcRenderer.removeListener('chat:stream:chunk', callback);
@@ -160,30 +157,44 @@ contextBridge.exposeInMainWorld('electronAPI', {
       return () => ipcRenderer.removeListener('chat:stream:error', callback);
     },
     mcp: {
-      connect: (config: any) => invokeRpc('chat:mcp:connect', { config }),
-      disconnect: (name: string) => invokeRpc('chat:mcp:disconnect', { name }),
-      list: (includeTools?: boolean) => invokeRpc('chat:mcp:list', { includeTools }),
-      listTools: () => invokeRpc('chat:mcp:listTools'),
-      listResources: () => invokeRpc('chat:mcp:listResources'),
-      readResource: (uri: string) => invokeRpc('chat:mcp:readResource', { uri }),
-      callTool: (name: string, args: any) => invokeRpc('chat:mcp:callTool', { name, arguments: args }),
-      importConfig: (args: any) => invokeRpc('chat:mcp:importConfig', args),
-      exportConfig: (args?: any) => invokeRpc('chat:mcp:exportConfig', args),
+      connect: (config: any) => invokeRpc('chat:connectMCP', { config }),
+      disconnect: (name: string) => invokeRpc('chat:disconnectMCP', { name }),
+      list: (includeTools?: boolean) => invokeRpc('chat:listMCP', { includeTools }),
+      listTools: () => invokeRpc('chat:listMCPTools'),
+      listResources: () => invokeRpc('chat:listMCPResources'),
+      readResource: (uri: string) => invokeRpc('chat:readMCPResource', { uri }),
+      callTool: (name: string, args: any) => invokeRpc('chat:callMCPTool', { name, arguments: args }),
+      importConfig: (args: any) => invokeRpc('chat:importMCPConfig', args),
+      exportConfig: (args?: any) => invokeRpc('chat:exportMCPConfig', args),
     },
     tools: {
-      list: () => invokeRpc('chat:tools:list'),
-      call: (name: string, args: any) => invokeRpc('chat:tools:call', { name, arguments: args }),
+      list: () => invokeRpc('chat:listTools'),
+      call: (name: string, args: any) => invokeRpc('chat:callTool', { name, arguments: args }),
     },
     capability: {
-      list: (filter?: any) => invokeRpc('chat:capability:list', filter),
-      invoke: (id: string, args: any) => invokeRpc('chat:capability:invoke', { id, arguments: args }),
-      resolve: (requirements: string[]) => invokeRpc('chat:capability:resolve', { requirements }),
+      list: (filter?: any) => invokeRpc('chat:listCapabilities', filter),
+      invoke: (id: string, args: any) => invokeRpc('chat:invokeCapability', { id, arguments: args }),
+      resolve: (requirements: string[]) => invokeRpc('chat:resolveCapabilities', { requirements }),
     },
     history: {
-      loadMessages: (sessionId: string) => invokeRpc('chat:history:loadMessages', { sessionId }),
-      saveMessages: (data: any) => invokeRpc('chat:history:saveMessages', data),
-      deleteMessages: (sessionId: string) => invokeRpc('chat:history:deleteMessages', { sessionId }),
+      loadMessages: (sessionId: string) => invokeRpc('chat:loadHistory', { sessionId }),
+      saveMessages: (data: any) => invokeRpc('chat:saveHistory', data),
+      deleteMessages: (sessionId: string) => invokeRpc('chat:deleteHistory', { sessionId }),
     },
+  },
+  persistence: {
+    list: (projectId: string, entity: string) =>
+      invokeRpc('persistence:list', { projectId, entity }),
+    find: (projectId: string, entity: string, query?: Record<string, unknown>) =>
+      invokeRpc('persistence:find', { projectId, entity, query }),
+    findById: (projectId: string, entity: string, id: string) =>
+      invokeRpc('persistence:findById', { projectId, entity, id }),
+    save: (projectId: string, entity: string, data: any) =>
+      invokeRpc('persistence:save', { projectId, entity, data }),
+    delete: (projectId: string, entity: string, id: string) =>
+      invokeRpc('persistence:delete', { projectId, entity, id }),
+    batchSave: (projectId: string, operations: Array<{ entity: string; data: unknown }>) =>
+      invokeRpc('persistence:batchSave', { projectId, operations }),
   },
   eventBus: {
     emit: (event: string, payload?: unknown) => invokeRpc('event:emit', { event, payload }),

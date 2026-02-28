@@ -78,14 +78,14 @@ export function useStoryboardState({
   const actualMentionItems: MentionItem[] = useMemo(() => {
     if (mentionItems.length > 0) return mentionItems;
     const items: MentionItem[] = [];
-    characters.filter(char => char.sora2CharacterId).forEach(char => {
-      items.push({ id: char.sora2CharacterId!, type: 'char' as const, name: char.name, description: char.description, previewImage: char.costumePhotoPath });
+    characters.forEach(char => {
+      items.push({ id: char.id, type: 'char' as const, name: char.name, description: char.description, previewImage: char.costumePhotoPath });
     });
     scenes.forEach(scene => {
       items.push({ id: scene.id, type: 'scene' as const, name: scene.name, description: scene.description, previewImage: scene.imagePath });
     });
-    props.filter(prop => prop.sora2PropId).forEach(prop => {
-      items.push({ id: prop.sora2PropId!, type: 'prop' as const, name: prop.name, description: prop.description, previewImage: prop.imagePath });
+    props.forEach(prop => {
+      items.push({ id: prop.id, type: 'prop' as const, name: prop.name, description: prop.description, previewImage: prop.imagePath });
     });
     return items;
   }, [mentionItems, characters, scenes, props]);
@@ -475,15 +475,10 @@ export function useStoryboardState({
 
   const handleGenerateAIShots = useCallback(async () => {
     if (!episodeId || !script) { message.warning('缺少剧集信息或剧本内容'); return; }
-    const hasBoundCharacters = characters.some(c => c.sora2CharacterId);
-    const hasBoundProps = props.some(p => p.sora2PropId);
-    if (hasBoundCharacters || hasBoundProps) { setPresetModalOpen(true); }
-    else {
-      setIsAnalyzing(true);
-      try { await startShotAnalysis(projectId, episodeId, episodeName || `剧集 ${episodeId}`, script, llmConfigId); message.info('AI 分镜生成任务已启动，可在状态栏查看进度'); }
-      catch (err: any) { message.error(err.message || '启动生成失败'); setIsAnalyzing(false); }
-    }
-  }, [projectId, episodeId, episodeName, script, llmConfigId, characters, props, message]);
+    setIsAnalyzing(true);
+    try { await startShotAnalysis(projectId, episodeId, episodeName || `剧集 ${episodeId}`, script, llmConfigId); message.info('AI 分镜生成任务已启动，可在状态栏查看进度'); }
+    catch (err: any) { message.error(err.message || '启动生成失败'); setIsAnalyzing(false); }
+  }, [projectId, episodeId, episodeName, script, llmConfigId, message]);
 
   const handleSaveEdit = useCallback(async () => {
     if (!editFormData.scriptContent?.trim()) { message.warning('请输入剧本内容'); return; }

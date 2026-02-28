@@ -129,7 +129,7 @@ export class ShotPromptService {
 
     // 构建角色引用列表
     const characterRefs = shotCharacters
-      .map(c => `${c.name}: @${c.sora2CharacterId || c.id}`)
+      .map(c => `${c.name}: @${c.id}`)
       .join('\n');
 
     // 按需并行生成

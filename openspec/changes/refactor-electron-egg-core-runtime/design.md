@@ -1,44 +1,51 @@
 ## Context
-当前代码同时存在旧运行时路径与新 egg-core 架构落地，导致 IPC、Provider、存储和 UI 入口存在重复定义。该变更定义一次性切换策略，直接以新核心运行时为唯一真相，避免长期维护双轨系统。
+Koma Studio 当前处于核心运行时切换期：目标是以 electron-egg 为底层统一框架，同时让前端在 IPC 改造期间保持可用。现有问题集中在：
+1) 主进程装配路径尚未完全统一；
+2) IPC 路由语义与前端桥接尚在收敛；
+3) Sora2 依赖对 ITV 与创作流程形成不稳定点；
+4) 主流程存在冗余操作和可恢复 bug。
 
 ## Goals / Non-Goals
 ### Goals
-- 完成 Electron egg-core runtime 的一次性切换。
-- 取消兼容层与双轨执行，建立单一调用链。
-- 将用户顶层操作入口收敛到核心三页。
-- 保证主流程在新运行时可验证、可回归。
+- 统一底层到 electron-egg runtime（main/lifecycle/controller/service）。
+- 完成 IPC 路由收敛，并通过 preload 兼容层保持前端无感。
+- 移除 Sora2 全链路依赖，建立非 Sora2 的 ITV 最小可用基线。
+- 打通最小主流程：剧本→分镜→资产→渲染。
+- 用自动化测试（Chrome DevTools MCP）给出可复验结论。
 
 ### Non-Goals
-- 不新增第四个核心页面或过渡页。
-- 不保留旧 IPC/provide/storage 的长期兼容开关。
-- 不在本提案内扩展新的业务能力。
+- 不新增新的业务页面与功能域。
+- 不引入新的 ITV 供应商类型（仅在既有非 Sora2 选项中择优）。
+- 不保留长期双轨兼容层。
 
 ## Decisions
-- Decision: 采用一次性 cutover（single cutover）而非灰度双轨。
-  - Rationale: 双轨会持续放大维护成本，并掩盖真实边界问题。
-  - Alternative considered: 保留兼容层逐步迁移（拒绝，复杂度高且回收困难）。
+- Decision: 以 preload 为前端稳定边界。
+  - Rationale: 前端大量业务调用已绑定 `window.electronAPI`，集中在 preload 变更可最小化渲染层修改。
+  - Alternative considered: 全量改前端 channel（拒绝，改动面大且回归成本高）。
 
-- Decision: Provider 注册表以后端为唯一实现。
-  - Rationale: 统一健康检查、错误处理和鉴权上下文，减少前后端重复。
+- Decision: Sora2 从 provider、类型、UI、workflow 全链路移除。
+  - Rationale: 当前目标是保证最小主流程稳定，移除高风险依赖可降低回归复杂度。
 
-- Decision: 存储采用一次性迁移后只写新结构。
-  - Rationale: 杜绝双写分叉和历史格式污染，降低数据一致性风险。
-
-- Decision: UI 顶层仅保留三页（项目总览、创作工作台、系统设置）。
-  - Rationale: 核心路径清晰，减少运行时状态分散与路由维护面。
+- Decision: IPC 路由统一后由后端维护单一路径，前端仅消费 typed bridge。
+  - Rationale: 避免 domain:action 与 controller 路由长期并存，减少调试成本。
 
 ## Risks / Trade-offs
-- 风险: 无兼容层意味着迁移失败会直接阻断启动。
-  - Mitigation: 迁移前校验 + 结构化错误 + 明确人工修复提示。
-- 风险: 导航收敛可能影响原有入口习惯。
-  - Mitigation: 将非核心能力下沉为三页内二级入口，不再作为顶层路由。
+- 风险: IPC 切换阶段可能出现局部通道失配。
+  - Mitigation: 建立调用点清单与分域回归（project/config/plugin/workflow/persistence 等）。
+
+- 风险: 移除 Sora2 后用户预设配置失效。
+  - Mitigation: 迁移时标记为无效并提示改选 Kling/Runway；不 silent fallback。
+
+- 风险: 持久层迁移与运行时切换叠加导致启动失败。
+  - Mitigation: 数据完整性门禁 + 结构化错误 + 明确修复指引。
 
 ## Migration Plan
-1. 启动阶段执行存储与配置一次性迁移；失败即终止并返回错误。
-2. 注册新 IPC router 与 controller，移除旧 channel 分发。
-3. 完成 Provider Registry 后端接管并删除兼容映射。
-4. 切换前端主导航为三页壳层并校验主流程。
-5. 全量回归通过后，清理 legacy runtime 代码路径。
+1. 固化 OpenSpec 要求并完成 strict validate。
+2. 后端先完成 runtime + IPC + provider/persistence 基线。
+3. 前端执行 preload 适配与 Sora2 移除，收敛 UI 操作。
+4. 评审全量改动并修复 critical 问题。
+5. 使用 Chrome DevTools MCP 完成 E2E 与残留扫描，形成最终验收。
 
 ## Open Questions
-- 三页内的二级入口组织是否采用统一 tab 规范（不影响本次三页约束）。
+- 事件通道命名在最终 cutover 前是否保持桥接别名（短期）还是一次性替换（长期）？
+- 非 Sora2 的默认 ITV 选型是 Kling 还是 Runway（取决于现网稳定性）？

@@ -465,7 +465,7 @@ export async function generatePropPreviewVideo(
   }
 
   if (!prop.imageUrl) {
-    logger.warn(`道具 ${prop.name} 没有远程图片 URL，将使用本地路径。某些服务（如 Sora2）可能需要远程 URL。`);
+    logger.warn(`道具 ${prop.name} 没有远程图片 URL，将使用本地路径。某些 ITV 服务可能需要远程 URL。`);
   }
 
   try {
@@ -531,48 +531,6 @@ export async function generatePropPreviewVideo(
     return { success: false, error: '视频生成失败：未返回有效结果' };
   } catch (err: any) {
     logger.error(`生成道具预览视频失败: ${prop.name}`, { error: err.message });
-    return { success: false, error: err.message };
-  }
-}
-
-/**
- * 调用道具提取API绑定道具
- * 需要先生成预览视频并保存任务 ID
- */
-export async function extractAndBindProp(
-  projectId: string,
-  prop: Prop,
-  itvConfigId?: string
-): Promise<{ success: boolean; propId?: string; error?: string }> {
-  logger.info(`开始提取道具: ${prop.name}`);
-
-  // 检查是否有视频生成任务 ID
-  if (!prop.previewVideoTaskId) {
-    if (prop.previewVideoPath) {
-      return { success: false, error: '请重新生成预览视频（需要保存任务ID用于道具提取）' };
-    }
-    return { success: false, error: '请先生成预览视频' };
-  }
-
-  try {
-    const itvProvider = await getProjectITVProvider(itvConfigId);
-    if (!itvProvider) {
-      throw new Error('未配置 ITV 服务');
-    }
-
-    // 检查是否支持道具提取
-    if (!itvProvider.extractProp) {
-      return { success: false, error: 'ITV Provider 不支持道具提取' };
-    }
-
-    // 使用任务 ID 调用道具提取 API
-    const sora2PropId = await itvProvider.extractProp(prop.previewVideoTaskId);
-    await updatePropAsset(projectId, prop.id, { sora2PropId });
-
-    logger.info(`道具提取成功: ${prop.name} -> ${sora2PropId}`);
-    return { success: true, propId: sora2PropId };
-  } catch (err: any) {
-    logger.error(`道具提取失败: ${prop.name}`, { error: err.message });
     return { success: false, error: err.message };
   }
 }

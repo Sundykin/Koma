@@ -85,30 +85,6 @@ export interface ITVProvider {
     input: ITVGenerateInput,
     onProgress?: (progress: ProgressInfo) => void
   ): Promise<VideoResult>;
-
-  // ========== 扩展功能（Sora2 等特定 Provider） ==========
-
-  /**
-   * 角色提取
-   * 返回任务 ID（string）或进度信息（CharacterProgressInfo）
-   */
-  extractCharacter?(params: CharacterExtractionParams): Promise<string | CharacterProgressInfo>;
-
-  /**
-   * 角色提取状态查询
-   */
-  checkCharacterProgress?(taskId: string): Promise<CharacterProgressInfo>;
-
-  /**
-   * 道具提取
-   */
-  extractProp?(taskId: string, timestamps?: string): Promise<string>;
-
-  /**
-   * 视频混音
-   * 返回任务 ID（string）或进度信息（ProgressInfo）
-   */
-  remixVideo?(videoId: string, options: RemixOptions): Promise<string | ProgressInfo>;
 }
 
 export { ITVConfig, ITVOptions, VideoResult, ProgressInfo };

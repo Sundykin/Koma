@@ -36,7 +36,6 @@ import type { Character } from '../../types';
 import {
   generateCostumePhoto,
   generateCharacterPreviewVideo,
-  extractAndBindCharacter,
 } from '../../workflow/characterAssetWorkflow';
 import { electronService, openFileDialog, fsCopy, fsMkdir, fsExists } from '../../services/electronService';
 import { getStorageConfig, initStorageConfig } from '../../store/storageConfig';
@@ -313,48 +312,8 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
   }, [editedCharacter, getAssetPath, projectId, onUpdate, message]);
 
   const handleExtractCharacter = useCallback(async () => {
-    if (!editedCharacter.previewVideoPath) {
-      message.warning('请先生成或上传预览视频');
-      return;
-    }
-
-    setGenerating('extract');
-    setProgress(0);
-    setProgressStep('提取角色中...');
-
-    try {
-      const result = await extractAndBindCharacter(
-        projectId,
-        editedCharacter,
-        itvConfigId,
-        (p, step) => {
-          setProgress(p);
-          setProgressStep(step);
-        }
-      );
-
-      if (result.success && result.characterId) {
-        const updated = { ...editedCharacter, sora2CharacterId: result.characterId };
-        setEditedCharacter(updated);
-        onUpdate(updated);
-
-        const characters = await loadCharacters(projectId);
-        const index = characters.findIndex(c => c.id === editedCharacter.id);
-        if (index !== -1) {
-          characters[index] = updated;
-          await saveCharacters(projectId, characters);
-        }
-
-        message.success('角色提取成功');
-      } else {
-        message.error(result.error || '提取失败');
-      }
-    } catch (err: any) {
-      message.error(err.message || '提取失败');
-    } finally {
-      setGenerating(null);
-    }
-  }, [editedCharacter, projectId, itvConfigId, onUpdate, message]);
+    message.info('角色提取功能已移除');
+  }, [message]);
 
   const handleDelete = useCallback(async () => {
     onDelete(editedCharacter.id);
@@ -474,24 +433,6 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
           />
 
           <Space>
-            {editedCharacter.sora2CharacterId ? (
-              <Tag color="success" icon={<CheckCircleOutlined />}>
-                已绑定: {editedCharacter.sora2CharacterId.substring(0, 8)}...
-              </Tag>
-            ) : (
-              <Button
-                size="small"
-                type="primary"
-                ghost
-                icon={<LinkOutlined />}
-                loading={generating === 'extract'}
-                onClick={handleExtractCharacter}
-                disabled={!editedCharacter.previewVideoPath || generating !== null}
-              >
-                提取并绑定角色
-              </Button>
-            )}
-
             <div className="toolbarDivider" />
 
             <Tooltip title={viewMode === 'costume' ? '上传定妆照' : '上传视频'}>

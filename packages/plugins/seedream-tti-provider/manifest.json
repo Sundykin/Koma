@@ -12,16 +12,31 @@
     "minAppVersion": "2.5.0",
     "sdkVersion": "1.0.0"
   },
-  "scopes": [
-    "settings:read",
-    "settings:write",
-    "storage:limited",
-    "network:external"
+
+  "permissions": [
+    { "id": "config.read", "reason": "读取 API 配置" },
+    { "id": "config.write", "reason": "保存 API 配置" },
+    { "id": "net.fetch", "reason": "调用 Seedream API" },
+    { "id": "capability.register", "reason": "注册 TTI 能力点" }
   ],
+
+  "capabilities": [
+    {
+      "kind": "tti",
+      "name": "seedream-tti",
+      "version": "1.0.0",
+      "config": {
+        "displayName": "Seedream 4.0",
+        "features": ["img2img"]
+      }
+    }
+  ],
+
   "entry": {
     "frontend": "./dist/ui/main.js",
     "backend": "./dist/backend.js"
   },
+
   "providerMeta": {
     "channelType": "tti",
     "capabilities": ["tti"],

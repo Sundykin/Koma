@@ -31,7 +31,7 @@ export type ProviderStatus = 'available' | 'coming-soon' | 'community';
 
 // Provider 定义
 export interface ProviderDefinition<T> {
-  type: string;              // 唯一标识，如 'sora2', 'vectorengine'
+  type: string;              // 唯一标识，如 'kling', 'runway'
   kind: ChannelKind;         // 'tti' | 'itv'
   name: string;              // 显示名称
   description?: string;      // 描述

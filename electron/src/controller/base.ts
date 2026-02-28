@@ -1,16 +1,3 @@
-/**
- * 控制器基类
- */
-import { IpcMainInvokeEvent } from 'electron';
-
-export abstract class BaseController {
-  protected ctx: any;
-
-  constructor(ctx?: any) {
-    this.ctx = ctx;
-  }
-}
-
-export interface ControllerMethod<T = any, R = any> {
-  (args: T, event?: IpcMainInvokeEvent): Promise<R> | R;
-}
+// This file is intentionally left empty.
+// BaseController has been removed as part of the ee-core migration.
+// Controllers no longer need a base class - ee-core auto-discovers them.

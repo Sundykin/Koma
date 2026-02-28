@@ -1,8 +1,7 @@
-import { BaseController } from './base';
 import { services } from '../service';
 import type { PersistenceEntity } from '../service/persistence';
 
-export class PersistenceController extends BaseController {
+class PersistenceController {
   async list(args: { projectId: string; entity: PersistenceEntity }): Promise<any[]> {
     return services.persistence.list(args.projectId, args.entity);
   }
@@ -62,4 +61,6 @@ export class PersistenceController extends BaseController {
   }
 }
 
-export const persistenceController = new PersistenceController();
+PersistenceController.toString = () => '[class PersistenceController]';
+
+export default PersistenceController;

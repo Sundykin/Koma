@@ -14,23 +14,18 @@
 - **AND** 如果配置无效则返回结构化错误
 - **AND** 不通过前端本地注册表直接构造 Provider
 
-### Requirement: Official Providers Only
-系统 SHALL 默认仅展示并启用官方渠道配置选项。
-
-#### Scenario: TTI 渠道列表
-- **WHEN** 用户打开 TTI 配置
-- **THEN** TTI_PRESETS 仅包含 nano-banana（官方）
-- **AND** 不展示第三方渠道选项
+### Requirement: Official Providers Baseline
+系统 SHALL 仅保留当前最小主流程所需的官方与稳定可用 Provider 基线，并移除 Sora2。
 
 #### Scenario: ITV 渠道列表
 - **WHEN** 用户打开 ITV 配置
-- **THEN** ITV_PRESETS 仅包含 sora2（官方）
-- **AND** 不展示第三方渠道选项
+- **THEN** 系统仅展示非 Sora2 的可用渠道（如 Kling、Runway）
+- **AND** 不展示或允许选择 Sora2
 
-#### Scenario: 无兼容映射
-- **WHEN** 旧项目包含历史第三方 provider key
-- **THEN** 系统在迁移阶段将其标记为无效并提示用户重新选择
-- **AND** 不保留旧 key 到新 key 的运行时兼容映射
+#### Scenario: 旧配置处理
+- **WHEN** 旧项目包含 `sora2` provider key
+- **THEN** 系统将其标记为无效并提示用户重新选择可用 ITV provider
+- **AND** 不保留 `sora2` 的运行时兼容映射
 
 ## ADDED Requirements
 

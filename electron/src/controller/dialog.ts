@@ -2,7 +2,6 @@
  * 对话框控制器
  */
 import { dialog, BrowserWindow, IpcMainInvokeEvent, OpenDialogOptions } from 'electron';
-import { BaseController } from './base';
 
 interface OpenFileArgs {
   filters?: { name: string; extensions: string[] }[];
@@ -14,7 +13,7 @@ interface SaveFileArgs {
   filters?: { name: string; extensions: string[] }[];
 }
 
-export class DialogController extends BaseController {
+export class DialogController {
   async openFile(args: OpenFileArgs, event?: IpcMainInvokeEvent) {
     const win = event ? BrowserWindow.fromWebContents(event.sender) : null;
     const options: OpenDialogOptions = {
@@ -45,5 +44,7 @@ export class DialogController extends BaseController {
     return result;
   }
 }
+
+DialogController.toString = () => '[class DialogController]';
 
 export default DialogController;

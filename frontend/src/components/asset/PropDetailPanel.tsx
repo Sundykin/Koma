@@ -33,7 +33,6 @@ import type { Prop } from '../../types';
 import {
   generatePropImage,
   generatePropPreviewVideo,
-  extractAndBindProp,
 } from '../../workflow/scenePropAssetWorkflow';
 import { electronService, openFileDialog, fsCopy, fsMkdir, fsExists } from '../../services/electronService';
 import { getStorageConfig, initStorageConfig } from '../../store/storageConfig';
@@ -311,40 +310,8 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
   }, [editedProp, getAssetPath, projectId, onUpdate, message]);
 
   const handleExtractProp = useCallback(async () => {
-    if (!editedProp.previewVideoPath) {
-      message.warning('请先生成或上传预览视频');
-      return;
-    }
-
-    setGenerating('extract');
-    setProgress(0);
-    setProgressStep('提取道具中...');
-
-    try {
-      const result = await extractAndBindProp(projectId, editedProp, itvConfigId);
-
-      if (result.success && result.propId) {
-        const updated = { ...editedProp, sora2PropId: result.propId };
-        setEditedProp(updated);
-        onUpdate(updated);
-
-        const props = await loadProps(projectId);
-        const index = props.findIndex(p => p.id === editedProp.id);
-        if (index !== -1) {
-          props[index] = updated;
-          await saveProps(projectId, props);
-        }
-
-        message.success('道具提取成功');
-      } else {
-        message.error(result.error || '提取失败');
-      }
-    } catch (err: any) {
-      message.error(err.message || '提取失败');
-    } finally {
-      setGenerating(null);
-    }
-  }, [editedProp, projectId, itvConfigId, onUpdate, message]);
+    message.info('道具提取功能已移除');
+  }, [message]);
 
   const handleDelete = useCallback(async () => {
     onDelete(editedProp.id);
@@ -449,24 +416,6 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
           />
 
           <Space>
-            {editedProp.sora2PropId ? (
-              <Tag color="success" icon={<CheckCircleOutlined />}>
-                已绑定: {editedProp.sora2PropId.substring(0, 8)}...
-              </Tag>
-            ) : (
-              <Button
-                size="small"
-                type="primary"
-                ghost
-                icon={<LinkOutlined />}
-                loading={generating === 'extract'}
-                onClick={handleExtractProp}
-                disabled={!editedProp.previewVideoPath || generating !== null}
-              >
-                提取并绑定道具
-              </Button>
-            )}
-
             <div className="toolbarDivider" />
 
             <Tooltip title={viewMode === 'image' ? '上传道具图片' : '上传视频'}>

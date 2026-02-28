@@ -86,3 +86,7 @@ export class FFmpegController {
     return services.ffmpeg.saveFramesToDir(args.frames, args.subDir);
   }
 }
+
+FFmpegController.toString = () => '[class FFmpegController]';
+
+export default FFmpegController;

@@ -171,7 +171,7 @@ export const AssetListPanel: React.FC<AssetListPanelProps> = ({
               char.id,
               char.name,
               char.costumePhotoPath,
-              !!char.sora2CharacterId,
+              false,
               char.role === 'protagonist' ? '主角' : char.role === 'antagonist' ? '反派' : '配角',
               char.description
             ))}
@@ -243,7 +243,7 @@ export const AssetListPanel: React.FC<AssetListPanelProps> = ({
               prop.id,
               prop.name,
               prop.imagePath,
-              !!prop.sora2PropId,
+              false,
               prop.type,
               prop.description
             ))}

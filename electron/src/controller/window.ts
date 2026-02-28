@@ -2,9 +2,8 @@
  * 窗口控制器
  */
 import { BrowserWindow, IpcMainInvokeEvent } from 'electron';
-import { BaseController } from './base';
 
-export class WindowController extends BaseController {
+export class WindowController {
   minimize(args: any, event?: IpcMainInvokeEvent) {
     const win = event ? BrowserWindow.fromWebContents(event.sender) : null;
     if (win) win.minimize();
@@ -34,5 +33,7 @@ export class WindowController extends BaseController {
     return { isMaximized: win ? win.isMaximized() : false };
   }
 }
+
+WindowController.toString = () => '[class WindowController]';
 
 export default WindowController;

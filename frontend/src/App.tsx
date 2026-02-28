@@ -88,7 +88,6 @@ const AppContent: React.FC = () => {
     return analysisData.characters.map(char => ({
       id: char.id, type: 'char' as const, name: char.name,
       description: char.description, previewImage: char.costumePhotoPath,
-      sora2CharacterId: char.sora2CharacterId,
     }));
   }, [analysisData?.characters]);
 

@@ -13,8 +13,7 @@ export interface ConfigExportEnvelope<T = unknown> {
   exportedAt: string;
 }
 
-export const configController = {
-  /** 获取配置 */
+class ConfigController {
   async get(args: { moduleId: string }) {
     const payload = await configRegistry.get(args.moduleId);
     const module = configRegistry.getModule(args.moduleId);
@@ -23,9 +22,8 @@ export const configController = {
       payload,
       version: module?.version ?? 0,
     };
-  },
+  }
 
-  /** 设置配置 */
   async set(args: { moduleId: string; payload: any }) {
     const result = await configRegistry.set(args.moduleId, args.payload);
     const module = configRegistry.getModule(args.moduleId);
@@ -34,20 +32,17 @@ export const configController = {
       payload: result,
       version: module?.version ?? 0,
     };
-  },
+  }
 
-  /** 重置配置 */
   async reset(args: { moduleId: string }) {
     await configRegistry.reset(args.moduleId);
     return { ok: true };
-  },
+  }
 
-  /** 列出所有配置 */
   async list() {
     return configRegistry.list();
-  },
+  }
 
-  /** 导出配置（可选写入文件） */
   async export(args: { moduleId: string; filePath?: string }) {
     const payload = await configRegistry.get(args.moduleId);
     const module = configRegistry.getModule(args.moduleId);
@@ -64,9 +59,8 @@ export const configController = {
     }
 
     return data;
-  },
+  }
 
-  /** 导入配置（支持直接 payload 或文件路径） */
   async import(args: { moduleId: string; payload?: unknown; filePath?: string }) {
     let inputPayload = args.payload;
 
@@ -87,6 +81,9 @@ export const configController = {
       payload,
       version: module?.version ?? 0,
     };
-  },
-};
+  }
+}
 
+ConfigController.toString = () => '[class ConfigController]';
+
+export default ConfigController;

@@ -6,104 +6,71 @@ import { pluginService } from '../service/plugin';
 import { pluginRuntime } from '../service/plugin/runtime';
 import { pluginBridge } from '../service/plugin/bridge';
 
-export const pluginController = {
-  /**
-   * 验证插件包
-   */
-  async validate({ zipPath }: { zipPath: string }, event?: IpcMainInvokeEvent) {
+class PluginController {
+  async validate({ zipPath }: { zipPath: string }, _event?: IpcMainInvokeEvent) {
     return pluginService.validate(zipPath);
-  },
+  }
 
-  /**
-   * 安装插件
-   */
   async install(
     { zipPath, manifest, stagingId }: { zipPath: string; manifest: any; stagingId?: string },
-    event?: IpcMainInvokeEvent
+    _event?: IpcMainInvokeEvent
   ) {
-    // 如果是文件夹路径（开发模式）
     const isFolder = !zipPath.endsWith('.zip');
     if (isFolder) {
       return pluginService.installFromFolder(zipPath, manifest);
     }
     return pluginService.install(zipPath, manifest, stagingId);
-  },
+  }
 
-  /**
-   * 卸载插件
-   */
-  async uninstall({ pluginPath }: { pluginPath: string }, event?: IpcMainInvokeEvent) {
+  async uninstall({ pluginPath }: { pluginPath: string }, _event?: IpcMainInvokeEvent) {
     return pluginService.uninstall(pluginPath);
-  },
+  }
 
-  /**
-   * 列出已安装插件
-   */
-  async list(_args: any, event?: IpcMainInvokeEvent) {
+  async list(_args: any, _event?: IpcMainInvokeEvent) {
     return pluginService.listInstalled();
-  },
+  }
 
-  /**
-   * 打开插件目录
-   */
-  async openFolder({ pluginPath }: { pluginPath: string }, event?: IpcMainInvokeEvent) {
+  async openFolder({ pluginPath }: { pluginPath: string }, _event?: IpcMainInvokeEvent) {
     shell.openPath(pluginPath);
     return { success: true };
-  },
+  }
 
-  // ========== 运行时管理 ==========
-
-  /**
-   * 激活插件
-   */
-  async activate({ manifest }: { manifest: any }, event?: IpcMainInvokeEvent) {
+  async activate({ manifest }: { manifest: any }, _event?: IpcMainInvokeEvent) {
     return pluginService.loadAndActivate(manifest);
-  },
+  }
 
-  /**
-   * 停用插件
-   */
-  async deactivate({ pluginId }: { pluginId: string }, event?: IpcMainInvokeEvent) {
+  async deactivate({ pluginId }: { pluginId: string }, _event?: IpcMainInvokeEvent) {
     return pluginService.deactivate(pluginId);
-  },
+  }
 
-  /**
-   * 获取插件运行状态
-   */
-  async status({ pluginId }: { pluginId: string }, event?: IpcMainInvokeEvent) {
+  async status({ pluginId }: { pluginId: string }, _event?: IpcMainInvokeEvent) {
     return pluginService.getPluginStatus(pluginId);
-  },
+  }
 
-  async listRuntimeStates(_args: any, event?: IpcMainInvokeEvent) {
+  async listRuntimeStates(_args: any, _event?: IpcMainInvokeEvent) {
     return pluginService.listRuntimeStates();
-  },
+  }
 
-  async getRuntimeState({ pluginId }: { pluginId: string }, event?: IpcMainInvokeEvent) {
+  async getRuntimeState({ pluginId }: { pluginId: string }, _event?: IpcMainInvokeEvent) {
     return pluginService.getRuntimeState(pluginId);
-  },
+  }
 
-  /**
-   * 列出活跃插件
-   */
-  async listActive(_args: any, event?: IpcMainInvokeEvent) {
+  async listActive(_args: any, _event?: IpcMainInvokeEvent) {
     return pluginRuntime.listActivePlugins().map(p => ({
       id: p.manifest.id,
       name: p.manifest.name,
       category: p.manifest.category,
       status: p.status,
     }));
-  },
+  }
 
   async listProviderStatus(
     { kind }: { kind?: 'tti' | 'itv' | 'tts' | 'llm' | 'image-hosting' },
-    event?: IpcMainInvokeEvent
+    _event?: IpcMainInvokeEvent
   ) {
     return pluginBridge.listProviderStatus(kind);
-  },
+  }
 
-  /**
-   * 测试 Provider 健康状态
-   */
   async testProvider(
     {
       kind,
@@ -114,31 +81,20 @@ export const pluginController = {
       type: string;
       config: Record<string, unknown>;
     },
-    event?: IpcMainInvokeEvent
+    _event?: IpcMainInvokeEvent
   ) {
     return pluginBridge.testProvider(kind, type, config);
-  },
+  }
 
-  // ========== 工具和 Agent 查询 ==========
-
-  /**
-   * 列出插件系统注册的 MCP 工具
-   */
-  async listMCPTools(_args: any, event?: IpcMainInvokeEvent) {
+  async listMCPTools(_args: any, _event?: IpcMainInvokeEvent) {
     return pluginBridge.listMCPTools();
-  },
+  }
 
-  /**
-   * 调用插件 MCP 工具
-   */
-  async callMCPTool({ name, args }: { name: string; args: unknown }, event?: IpcMainInvokeEvent) {
+  async callMCPTool({ name, args }: { name: string; args: unknown }, _event?: IpcMainInvokeEvent) {
     return pluginBridge.callMCPTool(name, args);
-  },
+  }
 
-  /**
-   * 列出可用 Worker Agent
-   */
-  async listAgents(_args: any, event?: IpcMainInvokeEvent) {
+  async listAgents(_args: any, _event?: IpcMainInvokeEvent) {
     return pluginBridge.listAgents().map(a => ({
       id: a.id,
       name: a.name,
@@ -146,5 +102,9 @@ export const pluginController = {
       capabilities: a.capabilities,
       pluginId: a.pluginId,
     }));
-  },
-};
+  }
+}
+
+PluginController.toString = () => '[class PluginController]';
+
+export default PluginController;
