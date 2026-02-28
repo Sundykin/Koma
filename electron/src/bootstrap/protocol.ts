@@ -15,7 +15,12 @@ const mimeTypes: Record<string, string> = {
   '.wav': 'audio/wav',
 };
 
+let protocolRegistered = false;
+
 export function registerLocalProtocol(): void {
+  if (protocolRegistered) {
+    return;
+  }
   protocol.handle('koma-local', async (request) => {
     try {
       const url = new URL(request.url);
@@ -68,4 +73,6 @@ export function registerLocalProtocol(): void {
       return new Response('File not found', { status: 404 });
     }
   });
+
+  protocolRegistered = true;
 }
