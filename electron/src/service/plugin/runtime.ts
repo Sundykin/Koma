@@ -167,7 +167,7 @@ class ElectronPluginRuntime extends EventEmitter {
               state: 'error',
               sandboxType: this.getSandboxType(current.manifest),
               loadedAt: current.loadedAt,
-              activatedAt: current.loadedAt,
+              activatedAt: this.runtimeStates.get(pluginId)?.activatedAt,
               error: error.message,
             });
           },

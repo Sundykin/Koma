@@ -428,6 +428,7 @@ class PluginService {
       if (await this.fileExists(pluginPath)) {
         await this.forceRemoveDir(pluginPath);
       }
+      await this._saveEnabledPlugins();
       return { success: true };
     } catch (err: any) {
       return { success: false, error: err.message };

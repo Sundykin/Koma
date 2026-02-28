@@ -78,7 +78,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   plugin: {
     validate: (zipPath: string) => invokeRpc('plugin:validate', { zipPath }),
-    install: (zipPath: string, manifest: any) => invokeRpc('plugin:install', { zipPath, manifest }),
+    install: (zipPath: string, manifest: any, stagingId?: string) =>
+      invokeRpc('plugin:install', { zipPath, manifest, stagingId }),
     uninstall: (pluginPath: string) => invokeRpc('plugin:uninstall', { pluginPath }),
     list: () => invokeRpc('plugin:list'),
     openFolder: (pluginPath: string) => invokeRpc('plugin:openFolder', { pluginPath }),

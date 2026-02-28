@@ -52,6 +52,7 @@ export function registerIpcRoutes(options: {
       }
 
       const owner = options.getRendererEventOwner(webContentsId);
+      const hasRendererSubscriptions = options.rendererEventSubscriptions.has(webContentsId);
       const rendererSubscriptions = options.rendererEventSubscriptions.get(webContentsId) || new Map<string, () => void>();
 
       if (rendererSubscriptions.has(eventName)) {
@@ -64,6 +65,12 @@ export function registerIpcRoutes(options: {
           payload,
         });
       });
+
+      if (!hasRendererSubscriptions) {
+        event.sender.once('destroyed', () => {
+          options.clearRendererSubscriptions(webContentsId);
+        });
+      }
 
       rendererSubscriptions.set(eventName, unsubscribe);
       options.rendererEventSubscriptions.set(webContentsId, rendererSubscriptions);

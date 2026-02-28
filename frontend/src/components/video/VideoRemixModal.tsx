@@ -29,7 +29,7 @@ export interface RemixModalProps {
     prompt: string;
     duration?: number;
     aspectRatio?: string;
-    model?: 'sora-2' | 'sora-2-pro';
+    model?: string;
   }) => Promise<void>;
 }
 
@@ -130,11 +130,8 @@ export const VideoRemixModal: React.FC<RemixModalProps> = ({
           />
         </Form.Item>
 
-        <Form.Item name="model" label="模型" initialValue="sora-2">
-          <Select>
-            <Select.Option value="sora-2">Sora-2（标准版）</Select.Option>
-            <Select.Option value="sora-2-pro">Sora-2 Pro（专业版）</Select.Option>
-          </Select>
+        <Form.Item name="model" label="模型">
+          <Input placeholder="可选，留空则使用当前 ITV 渠道默认模型" />
         </Form.Item>
 
         <Space size="large" style={{ width: '100%' }}>

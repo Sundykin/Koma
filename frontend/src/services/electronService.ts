@@ -100,7 +100,7 @@ interface ElectronAPI {
   };
   plugin?: {
     validate?: (zipPath: string) => Promise<any>;
-    install?: (zipPath: string, manifest: any) => Promise<any>;
+    install?: (zipPath: string, manifest: any, stagingId?: string) => Promise<any>;
     uninstall?: (pluginPath: string) => Promise<any>;
     list?: () => Promise<any>;
     openFolder?: (pluginPath: string) => Promise<any>;
@@ -539,7 +539,7 @@ export const electronService = {
         case 'plugin:validate':
           return api.plugin.validate?.(args);
         case 'plugin:install':
-          return api.plugin.install?.(args.zipPath, args.manifest);
+          return api.plugin.install?.(args.zipPath, args.manifest, args.stagingId);
         case 'plugin:uninstall':
           return api.plugin.uninstall?.(args);
         case 'plugin:list':

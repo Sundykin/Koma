@@ -45,6 +45,9 @@ class Lifecycle {
 
     electronApp.on('second-instance', () => {
       const win = getMainWindow();
+      if (!win || win.isDestroyed()) {
+        return;
+      }
       if (win.isMinimized()) {
         win.restore();
       }
