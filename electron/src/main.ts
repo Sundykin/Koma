@@ -132,6 +132,8 @@ function createWindow(): void {
     },
   });
 
+  const currentWebContentsId = mainWindow.webContents.id;
+
   if (isDev) {
     mainWindow.loadURL(`http://localhost:${config.dev.frontendPort}`);
     if (config.dev.openDevTools) {
@@ -142,13 +144,9 @@ function createWindow(): void {
   }
 
   mainWindow.on('closed', () => {
-    if (mainWindow) {
-      clearRendererSubscriptions(mainWindow.webContents.id);
-    }
+    clearRendererSubscriptions(currentWebContentsId);
     mainWindow = null;
   });
-
-  const currentWebContentsId = mainWindow.webContents.id;
 
   mainWindow.webContents.on('destroyed', () => {
     clearRendererSubscriptions(currentWebContentsId);
