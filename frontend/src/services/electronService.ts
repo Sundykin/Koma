@@ -24,6 +24,38 @@ export interface ProjectMeta {
   stylePrompt?: string;
 }
 
+interface ProviderTelemetry {
+  totalCalls: number;
+  successCalls: number;
+  failedCalls: number;
+  avgLatencyMs: number;
+  errorDistribution: Record<string, number>;
+}
+
+export interface ProviderStatusSnapshot {
+  type: string;
+  kind: 'tti' | 'itv' | 'tts' | 'llm' | 'image-hosting';
+  name: string;
+  pluginId?: string;
+  priority: number;
+  health: 'unknown' | 'healthy' | 'degraded' | 'unhealthy';
+  lastCheckedAt?: number;
+  consecutiveFailures: number;
+  telemetry: ProviderTelemetry;
+}
+
+export interface PluginRuntimeSnapshot {
+  id: string;
+  category: 'provider' | 'global' | 'tool' | 'mcp' | 'agent';
+  state: 'installed' | 'loaded' | 'activating' | 'active' | 'deactivating' | 'error' | 'disabled';
+  sandboxType: 'none' | 'worker';
+  loadedAt?: number;
+  activatedAt?: number;
+  deactivatedAt?: number;
+  updatedAt: number;
+  error?: string;
+}
+
 interface ElectronAPI {
   window: {
     minimize: () => Promise<void>;
@@ -65,6 +97,21 @@ interface ElectronAPI {
     rebuildIndex: () => Promise<any>;
     export: (projectId: string, destPath: string, options?: ExportOptions) => Promise<{ success: boolean; path: string }>;
     import: (zipPath: string, newProjectId?: string) => Promise<{ success: boolean; projectId: string; meta: ProjectMeta }>;
+  };
+  plugin?: {
+    validate?: (zipPath: string) => Promise<any>;
+    install?: (zipPath: string, manifest: any) => Promise<any>;
+    uninstall?: (pluginPath: string) => Promise<any>;
+    list?: () => Promise<any>;
+    openFolder?: (pluginPath: string) => Promise<any>;
+    listProviderStatus?: (kind?: 'tti' | 'itv' | 'tts' | 'llm' | 'image-hosting') => Promise<ProviderStatusSnapshot[]>;
+    testProvider?: (
+      kind: 'tti' | 'itv' | 'tts' | 'llm' | 'image-hosting',
+      type: string,
+      config: Record<string, unknown>
+    ) => Promise<{ success: boolean; latency: number; error?: string }>;
+    listRuntimeStates?: () => Promise<PluginRuntimeSnapshot[]>;
+    getRuntimeState?: (pluginId: string) => Promise<PluginRuntimeSnapshot | null>;
   };
 }
 
@@ -528,6 +575,44 @@ export const projectImport = async (
   throw new Error('Project import not available in browser');
 };
 
+export const pluginListProviderStatus = async (
+  kind?: 'tti' | 'itv' | 'tts' | 'llm' | 'image-hosting'
+): Promise<ProviderStatusSnapshot[]> => {
+  const api = getElectronAPI();
+  if (api?.plugin?.listProviderStatus) {
+    return await api.plugin.listProviderStatus(kind);
+  }
+  return [];
+};
+
+export const pluginTestProvider = async (
+  kind: 'tti' | 'itv' | 'tts' | 'llm' | 'image-hosting',
+  type: string,
+  config: Record<string, unknown>
+): Promise<{ success: boolean; latency: number; error?: string }> => {
+  const api = getElectronAPI();
+  if (api?.plugin?.testProvider) {
+    return await api.plugin.testProvider(kind, type, config);
+  }
+  return { success: false, latency: 0, error: 'Plugin provider test not available' };
+};
+
+export const pluginListRuntimeStates = async (): Promise<PluginRuntimeSnapshot[]> => {
+  const api = getElectronAPI();
+  if (api?.plugin?.listRuntimeStates) {
+    return await api.plugin.listRuntimeStates();
+  }
+  return [];
+};
+
+export const pluginGetRuntimeState = async (pluginId: string): Promise<PluginRuntimeSnapshot | null> => {
+  const api = getElectronAPI();
+  if (api?.plugin?.getRuntimeState) {
+    return await api.plugin.getRuntimeState(pluginId);
+  }
+  return null;
+};
+
 // 导出服务对象
 export const electronService = {
   isElectron,
@@ -593,6 +678,12 @@ export const electronService = {
     export: projectExport,
     import: projectImport,
   },
+  plugin: {
+    listProviderStatus: pluginListProviderStatus,
+    testProvider: pluginTestProvider,
+    listRuntimeStates: pluginListRuntimeStates,
+    getRuntimeState: pluginGetRuntimeState,
+  },
   // 插件相关 API
   ipc: {
     invoke: async (channel: string, args?: any): Promise<any> => {
@@ -613,6 +704,12 @@ export const electronService = {
         }
         if (channel === 'plugin:openFolder') {
           return (api as any).plugin.openFolder(args);
+        }
+        if (channel === 'plugin:listRuntimeStates') {
+          return (api as any).plugin.listRuntimeStates();
+        }
+        if (channel === 'plugin:getRuntimeState') {
+          return (api as any).plugin.getRuntimeState(args.pluginId);
         }
       }
       // 通用 IPC 调用（通过 window.electron）

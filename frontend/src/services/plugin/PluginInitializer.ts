@@ -83,6 +83,10 @@ export async function initializePlugin(plugin: InstalledPlugin): Promise<boolean
   }
 }
 
+async function syncRuntimeStates(): Promise<void> {
+  await usePluginStore.getState().refreshRuntimeStates();
+}
+
 /**
  * 初始化所有已启用的插件
  * 启动时先和后端实际安装列表对账，清除已不存在的插件记录
@@ -98,6 +102,9 @@ export async function initializeProviderPlugins(): Promise<{
 
   // 和后端实际安装列表对账，清除 store 中已不存在的插件
   await reconcilePluginStore();
+
+  // 同步一次后端运行时状态，避免本地状态漂移
+  await syncRuntimeStates();
 
   const plugins = usePluginStore.getState().plugins;
 
@@ -144,6 +151,8 @@ export async function initializeProviderPlugins(): Promise<{
   });
 
   console.log(`[PluginInitializer] 初始化完成: ${success}/${enabledPlugins.length} 成功`);
+
+  await syncRuntimeStates();
 
   return {
     total: enabledPlugins.length,

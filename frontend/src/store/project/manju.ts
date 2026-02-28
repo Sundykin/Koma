@@ -11,6 +11,7 @@ import {
 } from '../../manju-dsl/protocol';
 import { getProjectPath } from './core';
 import { addRecentProject } from '../globalStore';
+import { persistenceClient } from '../../utils/ipcRenderer';
 
 export function saveProjectAsManju(
   project: ProjectMeta,
@@ -80,30 +81,15 @@ export async function importProjectFromManjuFile(filePath: string): Promise<Proj
   await electronService.fs.mkdir(`${projectPath}/exports`);
   await electronService.fs.mkdir(`${projectPath}/temp`);
 
-  await electronService.fs.writeFile(
-    `${projectPath}/project.json`,
-    JSON.stringify(imported.project, null, 2)
-  );
+  await persistenceClient.save(projectId, 'project', imported.project);
 
   if (imported.timeline) {
-    await electronService.fs.writeFile(
-      `${projectPath}/timeline.json`,
-      JSON.stringify(imported.timeline, null, 2)
-    );
+    await persistenceClient.save(projectId, 'timeline', imported.timeline);
   }
 
-  await electronService.fs.writeFile(
-    `${projectPath}/characters.json`,
-    JSON.stringify(imported.characters, null, 2)
-  );
-  await electronService.fs.writeFile(
-    `${projectPath}/scenes.json`,
-    JSON.stringify(imported.scenes, null, 2)
-  );
-  await electronService.fs.writeFile(
-    `${projectPath}/shots.json`,
-    JSON.stringify(imported.shots, null, 2)
-  );
+  await persistenceClient.save(projectId, 'character', imported.characters);
+  await persistenceClient.save(projectId, 'scene', imported.scenes);
+  await persistenceClient.save(projectId, 'shot', imported.shots);
 
   await addRecentProject({
     id: projectId,

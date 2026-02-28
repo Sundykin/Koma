@@ -11,6 +11,7 @@ import { pluginController } from './plugin';
 import { chatController, ChatController } from './chat';
 import { configController } from './config';
 import { workflowController } from './workflow';
+import { persistenceController } from './persistence';
 
 export const controllers = {
   app: new AppController(),
@@ -23,9 +24,10 @@ export const controllers = {
   chat: chatController,
   config: configController,
   workflow: workflowController,
+  persistence: persistenceController,
 };
 
 export type Controllers = typeof controllers;
 
-export { AppController, WindowController, DialogController, FsController, ProjectController, FFmpegController, pluginController, ChatController, chatController, configController, workflowController };
+export { AppController, WindowController, DialogController, FsController, ProjectController, FFmpegController, pluginController, ChatController, chatController, configController, workflowController, persistenceController };
 export default controllers;

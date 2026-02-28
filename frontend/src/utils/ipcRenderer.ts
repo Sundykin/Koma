@@ -101,6 +101,33 @@ export async function invokeDomainAction<T = any>(
   return unwrapIPCResponse<T>(response);
 }
 
+export type PersistenceEntity =
+  | 'project'
+  | 'episode'
+  | 'episodeAnalysis'
+  | 'episodeTimeline'
+  | 'shot'
+  | 'character'
+  | 'scene'
+  | 'prop'
+  | 'timeline'
+  | 'asset';
+
+export const persistenceClient = {
+  list: <T = any>(projectId: string, entity: PersistenceEntity) =>
+    invokeDomainAction<T[]>('persistence:list', { projectId, entity }),
+  find: <T = any>(projectId: string, entity: PersistenceEntity, query?: Record<string, unknown>) =>
+    invokeDomainAction<T[]>('persistence:find', { projectId, entity, query }),
+  findById: <T = any>(projectId: string, entity: PersistenceEntity, id: string) =>
+    invokeDomainAction<T | null>('persistence:findById', { projectId, entity, id }),
+  save: <T = any>(projectId: string, entity: PersistenceEntity, data: T | T[]) =>
+    invokeDomainAction<T | T[]>('persistence:save', { projectId, entity, data }),
+  delete: (projectId: string, entity: PersistenceEntity, id: string) =>
+    invokeDomainAction<{ success: boolean }>('persistence:delete', { projectId, entity, id }),
+  batchSave: (projectId: string, operations: Array<{ entity: PersistenceEntity; data: unknown }>) =>
+    invokeDomainAction<{ success: boolean }>('persistence:batchSave', { projectId, operations }),
+};
+
 export function createEventBusClient(owner = 'renderer'): {
   emit: <T = unknown>(event: string, payload?: T) => Promise<void>;
   on: <T = unknown>(event: string, handler: (payload: T, eventName: string) => void) => Promise<() => Promise<void>>;

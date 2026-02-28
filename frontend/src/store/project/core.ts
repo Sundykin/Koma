@@ -4,6 +4,7 @@
  */
 import { v4 as uuidv4 } from 'uuid';
 import { electronService } from '../../services/electronService';
+import { persistenceClient } from '../../utils/ipcRenderer';
 import { getStorageConfig, initStorageConfig } from '../storageConfig';
 import { addRecentProject, getDefaultLLMConfig } from '../globalStore';
 import type { ProjectMeta, Timeline } from '../../types';
@@ -48,31 +49,13 @@ export async function createProject(
   };
 
   if (electronService.isElectron()) {
-    const projectPath = await getProjectPath(projectId);
-
-    await electronService.fs.mkdir(projectPath);
-    await electronService.fs.mkdir(`${projectPath}/assets/images`);
-    await electronService.fs.mkdir(`${projectPath}/assets/videos`);
-    await electronService.fs.mkdir(`${projectPath}/assets/audio`);
-    await electronService.fs.mkdir(`${projectPath}/assets/fonts`);
-    await electronService.fs.mkdir(`${projectPath}/shots`);
-    await electronService.fs.mkdir(`${projectPath}/cache/thumbnails`);
-    await electronService.fs.mkdir(`${projectPath}/cache/waveforms`);
-    await electronService.fs.mkdir(`${projectPath}/cache/previews`);
-    await electronService.fs.mkdir(`${projectPath}/exports`);
-    await electronService.fs.mkdir(`${projectPath}/temp`);
-
-    await electronService.fs.writeFile(
-      `${projectPath}/project.json`,
-      JSON.stringify(project, null, 2)
-    );
+    await electronService.project.create(project as any);
 
     const timeline = createDefaultTimeline();
-    await electronService.fs.writeFile(
-      `${projectPath}/timeline.json`,
-      JSON.stringify(timeline, null, 2)
-    );
+    await persistenceClient.save(projectId, 'project', project);
+    await persistenceClient.save(projectId, 'timeline', timeline);
 
+    const projectPath = await getProjectPath(projectId);
     await addRecentProject({
       id: projectId,
       title,
@@ -126,30 +109,17 @@ function createDefaultTimeline(): Timeline {
 }
 
 export async function loadProject(projectId: string): Promise<ProjectMeta | null> {
-  if (!electronService.isElectron()) {
-    return null;
-  }
-
   try {
-    const projectPath = await getProjectPath(projectId);
-    const data = await electronService.fs.readFile(`${projectPath}/project.json`);
-    return JSON.parse(data);
+    const project = await persistenceClient.findById<ProjectMeta>(projectId, 'project', projectId);
+    return project || null;
   } catch {
     return null;
   }
 }
 
 export async function saveProject(project: ProjectMeta): Promise<void> {
-  if (!electronService.isElectron()) {
-    return;
-  }
-
-  const projectPath = await getProjectPath(project.id);
   project.updatedAt = Date.now();
-  await electronService.fs.writeFile(
-    `${projectPath}/project.json`,
-    JSON.stringify(project, null, 2)
-  );
+  await persistenceClient.save(project.id, 'project', project);
 }
 
 export async function updateProjectLLMConfig(
@@ -169,8 +139,7 @@ export async function deleteProject(projectId: string): Promise<void> {
     return;
   }
 
-  const projectPath = await getProjectPath(projectId);
-  await electronService.fs.remove(projectPath);
+  await electronService.project.remove(projectId);
 }
 
 export async function listProjects(): Promise<ProjectMeta[]> {
@@ -178,26 +147,6 @@ export async function listProjects(): Promise<ProjectMeta[]> {
     return [];
   }
 
-  try {
-    const root = await getProjectsRoot();
-    const entries = await electronService.fs.readdir(root);
-    const projects: ProjectMeta[] = [];
-
-    for (const entry of entries) {
-      const projectFile = `${root}/${entry}/project.json`;
-      const exists = await electronService.fs.exists(projectFile);
-      if (!exists) continue;
-
-      try {
-        const data = await electronService.fs.readFile(projectFile);
-        projects.push(JSON.parse(data));
-      } catch {
-        // skip invalid projects
-      }
-    }
-
-    return projects.sort((a, b) => b.updatedAt - a.updatedAt);
-  } catch {
-    return [];
-  }
+  const projects = await electronService.project.list();
+  return [...projects].sort((a, b) => b.updatedAt - a.updatedAt);
 }

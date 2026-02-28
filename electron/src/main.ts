@@ -13,6 +13,11 @@ import { appEventBus } from './ipc/eventBus';
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 
+if (isDev) {
+  const devtoolsPort = process.env.ELECTRON_DEVTOOLS_PORT || '9333';
+  app.commandLine.appendSwitch('remote-debugging-port', devtoolsPort);
+}
+
 let mainWindow: BrowserWindow | null = null;
 
 const rendererEventSubscriptions = new Map<number, Map<string, () => void>>();
@@ -310,16 +315,22 @@ function registerIpcRoutes(): void {
   ipcMain.handle('plugin:activate', (_, args) => controllers.plugin.activate(args));
   ipcMain.handle('plugin:deactivate', (_, args) => controllers.plugin.deactivate(args));
   ipcMain.handle('plugin:status', (_, args) => controllers.plugin.status(args));
+  ipcMain.handle('plugin:listRuntimeStates', () => controllers.plugin.listRuntimeStates({}));
+  ipcMain.handle('plugin:getRuntimeState', (_, args) => controllers.plugin.getRuntimeState(args));
   ipcMain.handle('plugin:listActive', () => controllers.plugin.listActive({}));
   ipcMain.handle('plugin:listMCPTools', () => controllers.plugin.listMCPTools({}));
   ipcMain.handle('plugin:callMCPTool', (_, args) => controllers.plugin.callMCPTool(args));
   ipcMain.handle('plugin:listAgents', () => controllers.plugin.listAgents({}));
+  ipcMain.handle('plugin:listProviderStatus', (_, args) => controllers.plugin.listProviderStatus(args || {}));
+  ipcMain.handle('plugin:testProvider', (_, args) => controllers.plugin.testProvider(args));
 
   // 配置管理
   ipcMain.handle('config:get', (_, args) => controllers.config.get(args));
   ipcMain.handle('config:set', (_, args) => controllers.config.set(args));
   ipcMain.handle('config:reset', (_, args) => controllers.config.reset(args));
   ipcMain.handle('config:list', () => controllers.config.list());
+  ipcMain.handle('config:import', (_, args) => controllers.config.import(args));
+  ipcMain.handle('config:export', (_, args) => controllers.config.export(args));
 
   // 工作流管理
   ipcMain.handle('workflow:start', (_, args) => controllers.workflow.start(args));

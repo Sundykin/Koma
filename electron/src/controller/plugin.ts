@@ -74,6 +74,14 @@ export const pluginController = {
     return pluginService.getPluginStatus(pluginId);
   },
 
+  async listRuntimeStates(_args: any, event?: IpcMainInvokeEvent) {
+    return pluginService.listRuntimeStates();
+  },
+
+  async getRuntimeState({ pluginId }: { pluginId: string }, event?: IpcMainInvokeEvent) {
+    return pluginService.getRuntimeState(pluginId);
+  },
+
   /**
    * 列出活跃插件
    */
@@ -84,6 +92,31 @@ export const pluginController = {
       category: p.manifest.category,
       status: p.status,
     }));
+  },
+
+  async listProviderStatus(
+    { kind }: { kind?: 'tti' | 'itv' | 'tts' | 'llm' | 'image-hosting' },
+    event?: IpcMainInvokeEvent
+  ) {
+    return pluginBridge.listProviderStatus(kind);
+  },
+
+  /**
+   * 测试 Provider 健康状态
+   */
+  async testProvider(
+    {
+      kind,
+      type,
+      config,
+    }: {
+      kind: 'tti' | 'itv' | 'tts' | 'llm' | 'image-hosting';
+      type: string;
+      config: Record<string, unknown>;
+    },
+    event?: IpcMainInvokeEvent
+  ) {
+    return pluginBridge.testProvider(kind, type, config);
   },
 
   // ========== 工具和 Agent 查询 ==========

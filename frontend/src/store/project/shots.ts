@@ -4,6 +4,7 @@
 import { electronService } from '../../services/electronService';
 import type { ShotVersion, ShotMeta } from '../../types';
 import { getProjectPath } from './core';
+import { persistenceClient } from '../../utils/ipcRenderer';
 
 export async function saveShotVersion(
   projectId: string,
@@ -18,20 +19,15 @@ export async function saveShotVersion(
   const shotPath = `${projectPath}/shots/${shotId}`;
   await electronService.fs.mkdir(shotPath);
 
-  let shotMeta: ShotMeta;
-  try {
-    const data = await electronService.fs.readFile(`${shotPath}/shot.json`);
-    shotMeta = JSON.parse(data);
-  } catch {
-    shotMeta = {
-      id: shotId,
-      prompt: version.prompt,
-      seed: version.seed,
-      model: version.model,
-      currentVersion: 0,
-      versions: [],
-    };
-  }
+  const existingShotMeta = await persistenceClient.findById<ShotMeta>(projectId, 'shot', shotId);
+  const shotMeta: ShotMeta = existingShotMeta || {
+    id: shotId,
+    prompt: version.prompt,
+    seed: version.seed,
+    model: version.model,
+    currentVersion: 0,
+    versions: [],
+  };
 
   const newVersion = shotMeta.currentVersion + 1;
   const versionPath = `${shotPath}/versions/v${newVersion}`;
@@ -86,10 +82,7 @@ export async function saveShotVersion(
   shotMeta.seed = version.seed;
   shotMeta.model = version.model;
 
-  await electronService.fs.writeFile(
-    `${shotPath}/shot.json`,
-    JSON.stringify(shotMeta, null, 2)
-  );
+  await persistenceClient.save(projectId, 'shot', shotMeta);
 
   return shotVersion;
 }
@@ -103,9 +96,7 @@ export async function loadShotMeta(
   }
 
   try {
-    const projectPath = await getProjectPath(projectId);
-    const data = await electronService.fs.readFile(`${projectPath}/shots/${shotId}/shot.json`);
-    return JSON.parse(data);
+    return await persistenceClient.findById<ShotMeta>(projectId, 'shot', shotId);
   } catch {
     return null;
   }
@@ -117,21 +108,8 @@ export async function listShots(projectId: string): Promise<ShotMeta[]> {
   }
 
   try {
-    const projectPath = await getProjectPath(projectId);
-    const shotsPath = `${projectPath}/shots`;
-    const entries = await electronService.fs.readdir(shotsPath);
-    const shots: ShotMeta[] = [];
-
-    for (const entry of entries) {
-      try {
-        const data = await electronService.fs.readFile(`${shotsPath}/${entry}/shot.json`);
-        shots.push(JSON.parse(data));
-      } catch {
-        // skip invalid
-      }
-    }
-
-    return shots;
+    const shots = await persistenceClient.list<ShotMeta>(projectId, 'shot');
+    return Array.isArray(shots) ? shots : [];
   } catch {
     return [];
   }

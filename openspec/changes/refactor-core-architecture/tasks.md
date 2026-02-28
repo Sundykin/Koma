@@ -1,17 +1,17 @@
 ## 1. Foundation & Contracts
-- [ ] 1.1 Define unified architecture boundaries and publish module ownership map (Main vs Renderer vs Shared).
-- [ ] 1.2 Introduce type-safe IPC RPC contract conventions (`domain:action`) and structured error envelope.
-- [ ] 1.3 Establish cross-process Event Bus contract (event naming, payload typing, error isolation).
+- [x] 1.1 Define unified architecture boundaries and publish module ownership map (Main vs Renderer vs Shared).
+- [x] 1.2 Introduce type-safe IPC RPC contract conventions (`domain:action`) and structured error envelope.
+- [x] 1.3 Establish cross-process Event Bus contract (event naming, payload typing, error isolation).
 
 ## 2. Persistence & Configuration Consolidation
-- [ ] 2.1 Implement Persistence Layer with repository interface (`find`, `findById`, `save`, `delete`, `list`) for each core entity.
-- [ ] 2.2 Move file I/O fully to main process and replace renderer direct file access paths with IPC calls.
-- [ ] 2.3 Add cache + write queue (debounce merge) + migration hooks + transactional batch operation semantics.
-- [ ] 2.4 Consolidate settings/config logic into backend Config System with schema validation and import/export support.
+- [x] 2.1 Implement Persistence Layer with repository interface (`find`, `findById`, `save`, `delete`, `list`) for each core entity.
+- [x] 2.2 Move file I/O fully to main process and replace renderer direct file access paths with IPC calls.
+- [x] 2.3 Add cache + write queue (debounce merge) + migration hooks + transactional batch operation semantics.
+- [x] 2.4 Consolidate settings/config logic into backend Config System with schema validation and import/export support.
 
 ## 3. Provider/Plugin/Agent/Workflow Core Refactor
-- [ ] 3.1 Unify Provider Registry between frontend/backend and support health check + fallback strategy.
-- [ ] 3.2 Refactor Plugin Runtime to sandbox execution (Worker/iframe), message-channel host API, and centralized lifecycle state.
+- [x] 3.1 Unify Provider Registry between frontend/backend and support health check + fallback strategy.
+- [x] 3.2 Refactor Plugin Runtime to sandbox execution (Worker/iframe), message-channel host API, and centralized lifecycle state.
 - [ ] 3.3 Consolidate Agent/Chat to backend-only execution with streaming, tool registry, retry, session persistence, and branching.
 - [ ] 3.4 Refactor Workflow Engine to backend DAG execution with parallel scheduling, HITL gates, retry, cancellation, and recovery.
 

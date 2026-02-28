@@ -33,6 +33,18 @@ export interface ExportOptions {
 export class ProjectService {
   private storageRoot: string = '';
 
+  getStorageRoot(): string {
+    return this.storageRoot;
+  }
+
+  getProjectsRootPath(): string {
+    return path.join(this.storageRoot, 'projects');
+  }
+
+  getProjectPath(projectId: string): string {
+    return path.join(this.getProjectsRootPath(), projectId);
+  }
+
   async init(rootPath?: string | null): Promise<string> {
     if (rootPath) {
       this.storageRoot = rootPath;

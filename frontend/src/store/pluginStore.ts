@@ -12,6 +12,8 @@ import type {
   PluginImportResult,
   PluginValidationResult,
 } from '../types/plugin';
+import { electronService } from '../services/electronService';
+import type { PluginRuntimeSnapshot } from '../services/electronService';
 
 interface PluginState {
   // 已安装的插件列表
@@ -29,6 +31,7 @@ interface PluginState {
   // Runtime Actions
   setRuntimeState: (id: string, state: Partial<PluginRuntimeState>) => void;
   clearRuntimeState: (id: string) => void;
+  refreshRuntimeStates: () => Promise<void>;
 
   // Selectors
   getPlugin: (id: string) => InstalledPlugin | undefined;
@@ -37,6 +40,29 @@ interface PluginState {
   getProviderPlugins: () => InstalledPlugin[];
   getToolPlugins: () => InstalledPlugin[];
   getPluginsByCategory: (category: InstalledPlugin['category']) => InstalledPlugin[];
+}
+
+function mapSnapshotStateToLoadStatus(
+  state: PluginRuntimeSnapshot['state']
+): PluginLoadStatus {
+  if (state === 'active' || state === 'loaded') {
+    return 'loaded';
+  }
+  if (state === 'error') {
+    return 'error';
+  }
+  if (state === 'disabled') {
+    return 'disabled';
+  }
+  return 'loading';
+}
+
+function toRuntimeState(snapshot: PluginRuntimeSnapshot): PluginRuntimeState {
+  return {
+    id: snapshot.id,
+    status: mapSnapshotStateToLoadStatus(snapshot.state),
+    error: snapshot.error,
+  };
 }
 
 export const usePluginStore = create<PluginState>()(
@@ -124,6 +150,23 @@ export const usePluginStore = create<PluginState>()(
           const { [id]: removed, ...rest } = state.runtimeStates;
           return { runtimeStates: rest };
         });
+      },
+
+      refreshRuntimeStates: async () => {
+        try {
+          const snapshots = await electronService.plugin.listRuntimeStates();
+          const nextStates = snapshots.reduce<Record<string, PluginRuntimeState>>((acc, snapshot) => {
+            acc[snapshot.id] = {
+              ...toRuntimeState(snapshot),
+              component: get().runtimeStates[snapshot.id]?.component,
+            };
+            return acc;
+          }, {});
+
+          set({ runtimeStates: nextStates });
+        } catch (error) {
+          console.warn('[PluginStore] 刷新插件运行时状态失败:', error);
+        }
       },
 
       // Selectors

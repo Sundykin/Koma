@@ -2,14 +2,27 @@
  * 文件系统控制器
  */
 import * as fs from 'fs';
+import * as path from 'path';
 import * as https from 'https';
 import * as http from 'http';
 import { BaseController } from './base';
 
+const LEGACY_COLLECTION_FILES = new Set(['characters.json', 'scenes.json', 'props.json']);
+
 export class FsController extends BaseController {
   async readFile(args: { filePath: string; encoding?: BufferEncoding }) {
-    const content = await fs.promises.readFile(args.filePath, args.encoding || 'utf-8');
-    return { content };
+    try {
+      const content = await fs.promises.readFile(args.filePath, args.encoding || 'utf-8');
+      return { content };
+    } catch (error) {
+      const err = error as NodeJS.ErrnoException;
+      if (err?.code === 'ENOENT' && LEGACY_COLLECTION_FILES.has(path.basename(args.filePath))) {
+        await fs.promises.mkdir(path.dirname(args.filePath), { recursive: true });
+        await fs.promises.writeFile(args.filePath, '[]', 'utf-8');
+        return { content: '[]' };
+      }
+      throw error;
+    }
   }
 
   async writeFile(args: { filePath: string; data: string; encoding?: BufferEncoding; binary?: boolean }) {

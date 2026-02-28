@@ -9,6 +9,17 @@ export type PluginCategory = 'provider' | 'global' | 'tool' | 'mcp' | 'agent';
 
 export type PluginStatus = 'installed' | 'loaded' | 'active' | 'error' | 'disabled';
 
+export type PluginLifecycleState =
+  | 'installed'
+  | 'loaded'
+  | 'activating'
+  | 'active'
+  | 'deactivating'
+  | 'error'
+  | 'disabled';
+
+export type PluginSandboxType = 'none' | 'worker';
+
 export type MCPTransportType = 'stdio' | 'sse' | 'websocket' | 'internal';
 
 // ========== Manifest 定义 ==========
@@ -147,6 +158,36 @@ export interface ProviderDefinition {
   pluginId?: string;
 }
 
+export type ProviderHealthStatus = 'unknown' | 'healthy' | 'degraded' | 'unhealthy';
+
+export interface ProviderTelemetry {
+  totalCalls: number;
+  successCalls: number;
+  failedCalls: number;
+  avgLatencyMs: number;
+  errorDistribution: Record<string, number>;
+}
+
+export interface ProviderRuntimeState {
+  priority: number;
+  health: ProviderHealthStatus;
+  lastCheckedAt?: number;
+  consecutiveFailures: number;
+  telemetry: ProviderTelemetry;
+}
+
+export interface ProviderStatusSnapshot {
+  type: string;
+  kind: ProviderDefinition['kind'];
+  name: string;
+  pluginId?: string;
+  priority: number;
+  health: ProviderHealthStatus;
+  lastCheckedAt?: number;
+  consecutiveFailures: number;
+  telemetry: ProviderTelemetry;
+}
+
 // Agent Worker 定义
 export interface WorkerAgentDefinition {
   id: string;
@@ -265,6 +306,101 @@ export interface ChildProcessHandle {
   kill: (signal?: string) => void;
   wait: () => Promise<number>;
 }
+
+export interface PluginRuntimeSnapshot {
+  id: string;
+  category: PluginCategory;
+  state: PluginLifecycleState;
+  sandboxType: PluginSandboxType;
+  loadedAt?: number;
+  activatedAt?: number;
+  deactivatedAt?: number;
+  updatedAt: number;
+  error?: string;
+}
+
+export interface PluginHostRpcRequest {
+  requestId: string;
+  method: string;
+  params: unknown[];
+}
+
+export interface PluginHostRpcSuccessResponse {
+  requestId: string;
+  success: true;
+  result: unknown;
+}
+
+export interface PluginHostRpcErrorResponse {
+  requestId: string;
+  success: false;
+  error: {
+    message: string;
+    code?: string;
+  };
+}
+
+export type PluginHostRpcResponse = PluginHostRpcSuccessResponse | PluginHostRpcErrorResponse;
+
+export type PluginWorkerIncomingMessage =
+  | {
+      type: 'activate';
+      requestId: string;
+      pluginId: string;
+      modulePath: string;
+      pluginDir: string;
+      dataDir: string;
+      appVersion: string;
+      manifest: PluginManifest;
+    }
+  | {
+      type: 'deactivate';
+      requestId: string;
+      pluginId: string;
+    }
+  | {
+      type: 'host:response';
+      payload: PluginHostRpcResponse;
+    }
+  | {
+      type: 'dispose';
+      requestId?: string;
+      reason?: string;
+    };
+
+export type PluginWorkerOutgoingMessage =
+  | {
+      type: 'ready';
+      pluginId?: string;
+    }
+  | {
+      type: 'host:request';
+      payload: PluginHostRpcRequest;
+    }
+  | {
+      type: 'activate:result';
+      requestId: string;
+      success: boolean;
+      error?: string;
+    }
+  | {
+      type: 'deactivate:result';
+      requestId: string;
+      success: boolean;
+      error?: string;
+    }
+  | {
+      type: 'log';
+      level: 'debug' | 'info' | 'warn' | 'error';
+      args: unknown[];
+    }
+  | {
+      type: 'error';
+      stage: 'load' | 'activate' | 'deactivate' | 'runtime';
+      message: string;
+      stack?: string;
+    };
+
 
 // ========== 插件实例 ==========
 

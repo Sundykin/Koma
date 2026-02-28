@@ -8,6 +8,7 @@ import { chatService, ChatService } from './chat';
 import { configManager, configRegistry } from './config';
 import { providerManager } from './provider';
 import { workflowOrchestrator } from './workflow';
+import { persistenceService } from './persistence';
 
 export const services = {
   project: projectService,
@@ -17,7 +18,8 @@ export const services = {
   config: configManager,
   provider: providerManager,
   workflow: workflowOrchestrator,
+  persistence: persistenceService,
 };
 
-export { ProjectService, projectService, FFmpegService, ffmpegService, pluginService, ChatService, chatService, configManager, configRegistry, providerManager, workflowOrchestrator };
+export { ProjectService, projectService, FFmpegService, ffmpegService, pluginService, ChatService, chatService, configManager, configRegistry, providerManager, workflowOrchestrator, persistenceService };
 export default services;

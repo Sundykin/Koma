@@ -5,6 +5,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { electronService } from '../../services/electronService';
 import type { Asset } from '../../types';
 import { getProjectPath } from './core';
+import { persistenceClient } from '../../utils/ipcRenderer';
 
 async function computeFileHash(filePath: string): Promise<string> {
   try {
@@ -29,22 +30,9 @@ function hashString(str: string): string {
 }
 
 async function saveAssetMeta(projectId: string, asset: Asset): Promise<void> {
-  const projectPath = await getProjectPath(projectId);
-  const assetsPath = `${projectPath}/assets.json`;
-
-  let assets: Asset[] = [];
-  try {
-    const data = await electronService.fs.readFile(assetsPath);
-    assets = JSON.parse(data);
-  } catch {
-    // 文件不存在
-  }
-
+  const assets = await loadAssets(projectId);
   assets.push(asset);
-  await electronService.fs.writeFile(
-    assetsPath,
-    JSON.stringify(assets, null, 2)
-  );
+  await persistenceClient.save(projectId, 'asset', assets);
 }
 
 export async function importAsset(
@@ -99,9 +87,8 @@ export async function loadAssets(projectId: string): Promise<Asset[]> {
   }
 
   try {
-    const projectPath = await getProjectPath(projectId);
-    const data = await electronService.fs.readFile(`${projectPath}/assets.json`);
-    return JSON.parse(data);
+    const assets = await persistenceClient.list<Asset>(projectId, 'asset');
+    return Array.isArray(assets) ? assets : [];
   } catch {
     return [];
   }
@@ -132,14 +119,12 @@ export async function incrementAssetRef(
 ): Promise<void> {
   if (!electronService.isElectron()) return;
 
-  const projectPath = await getProjectPath(projectId);
-  const assetsPath = `${projectPath}/assets.json`;
   const assets = await loadAssets(projectId);
 
   const asset = assets.find(a => a.id === assetId);
   if (asset) {
     asset.refCount = (asset.refCount || 0) + 1;
-    await electronService.fs.writeFile(assetsPath, JSON.stringify(assets, null, 2));
+    await persistenceClient.save(projectId, 'asset', assets);
   }
 }
 
@@ -149,14 +134,12 @@ export async function decrementAssetRef(
 ): Promise<void> {
   if (!electronService.isElectron()) return;
 
-  const projectPath = await getProjectPath(projectId);
-  const assetsPath = `${projectPath}/assets.json`;
   const assets = await loadAssets(projectId);
 
   const asset = assets.find(a => a.id === assetId);
   if (asset && asset.refCount > 0) {
     asset.refCount -= 1;
-    await electronService.fs.writeFile(assetsPath, JSON.stringify(assets, null, 2));
+    await persistenceClient.save(projectId, 'asset', assets);
   }
 }
 
@@ -168,8 +151,6 @@ export async function getUnusedAssets(projectId: string): Promise<Asset[]> {
 export async function cleanUnusedAssets(projectId: string): Promise<number> {
   if (!electronService.isElectron()) return 0;
 
-  const projectPath = await getProjectPath(projectId);
-  const assetsPath = `${projectPath}/assets.json`;
   const assets = await loadAssets(projectId);
 
   const unusedAssets = assets.filter(a => (a.refCount || 0) === 0);
@@ -183,7 +164,7 @@ export async function cleanUnusedAssets(projectId: string): Promise<number> {
     }
   }
 
-  await electronService.fs.writeFile(assetsPath, JSON.stringify(usedAssets, null, 2));
+  await persistenceClient.save(projectId, 'asset', usedAssets);
 
   return unusedAssets.length;
 }

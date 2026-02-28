@@ -470,6 +470,14 @@ class PluginService {
     return { status: plugin.status, error: plugin.error };
   }
 
+  listRuntimeStates() {
+    return pluginRuntime.listRuntimeStates();
+  }
+
+  getRuntimeState(pluginId: string) {
+    return pluginRuntime.getRuntimeState(pluginId) || null;
+  }
+
   /**
    * 获取已安装插件列表
    */

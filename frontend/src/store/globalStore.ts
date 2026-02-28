@@ -11,6 +11,8 @@ export {
   // 核心
   loadSettings,
   saveSettings,
+  importSettingsFromFile,
+  exportSettingsToFile,
   generateId,
   getGlobalPath,
   DEFAULT_SETTINGS,

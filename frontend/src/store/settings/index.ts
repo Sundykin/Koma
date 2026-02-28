@@ -3,7 +3,15 @@
  */
 
 // 核心
-export { loadSettings, saveSettings, generateId, getGlobalPath, DEFAULT_SETTINGS } from './core';
+export {
+  loadSettings,
+  saveSettings,
+  importSettingsFromFile,
+  exportSettingsToFile,
+  generateId,
+  getGlobalPath,
+  DEFAULT_SETTINGS
+} from './core';
 
 // 预设常量
 export { LLM_CHANNEL_PRESETS, TTI_PRESETS, ITV_PRESETS, TTS_PRESETS } from './presets';

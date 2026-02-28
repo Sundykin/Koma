@@ -3,8 +3,8 @@
  */
 import { electronService } from '../../services/electronService';
 import type { Prop } from '../../types';
+import { persistenceClient } from '../../utils/ipcRenderer';
 import { getProjectPath } from './core';
-import { loadShotMeta } from './shots';
 
 // ========== 角色资产 ==========
 
@@ -101,11 +101,8 @@ function migratePropToPrompt(prop: Prop): Prop {
 export async function loadProps(projectId: string): Promise<Prop[]> {
   if (!electronService.isElectron()) return [];
   try {
-    const projectPath = await getProjectPath(projectId);
-    const data = await electronService.fs.readFile(`${projectPath}/props.json`);
-    const props = JSON.parse(data);
+    const props = await persistenceClient.list<Prop>(projectId, 'prop');
 
-    // 自动迁移
     let needsSave = false;
     const migrated = (Array.isArray(props) ? props : []).map((prop: Prop) => {
       if (!prop.prompt?.trim() && (prop.type || prop.description || prop.customPrompt)) {
@@ -116,10 +113,7 @@ export async function loadProps(projectId: string): Promise<Prop[]> {
     });
 
     if (needsSave) {
-      await electronService.fs.writeFile(
-        `${projectPath}/props.json`,
-        JSON.stringify(migrated, null, 2)
-      );
+      await persistenceClient.save(projectId, 'prop', migrated);
       console.log('[Migration] Props migrated to prompt field');
     }
 
@@ -131,11 +125,7 @@ export async function loadProps(projectId: string): Promise<Prop[]> {
 
 export async function saveProps(projectId: string, props: Prop[]): Promise<void> {
   if (!electronService.isElectron()) return;
-  const projectPath = await getProjectPath(projectId);
-  await electronService.fs.writeFile(
-    `${projectPath}/props.json`,
-    JSON.stringify(props, null, 2)
-  );
+  await persistenceClient.save(projectId, 'prop', props);
 }
 
 // ========== 分镜版本切换 ==========
@@ -149,7 +139,7 @@ export async function switchShotVersion(
     return;
   }
 
-  const shotMeta = await loadShotMeta(projectId, shotId);
+  const shotMeta = await persistenceClient.findById<any>(projectId, 'shot', shotId);
   if (!shotMeta) {
     return;
   }
@@ -161,11 +151,7 @@ export async function switchShotVersion(
 
   shotMeta.currentVersion = version;
 
-  const projectPath = await getProjectPath(projectId);
-  await electronService.fs.writeFile(
-    `${projectPath}/shots/${shotId}/shot.json`,
-    JSON.stringify(shotMeta, null, 2)
-  );
+  await persistenceClient.save(projectId, 'shot', shotMeta);
 }
 
 export async function deleteShotVersion(
@@ -177,7 +163,7 @@ export async function deleteShotVersion(
     return false;
   }
 
-  const shotMeta = await loadShotMeta(projectId, shotId);
+  const shotMeta = await persistenceClient.findById<any>(projectId, 'shot', shotId);
   if (!shotMeta) {
     return false;
   }
@@ -207,10 +193,7 @@ export async function deleteShotVersion(
     shotMeta.currentVersion = latestVersion;
   }
 
-  await electronService.fs.writeFile(
-    `${projectPath}/shots/${shotId}/shot.json`,
-    JSON.stringify(shotMeta, null, 2)
-  );
+  await persistenceClient.save(projectId, 'shot', shotMeta);
 
   return true;
 }

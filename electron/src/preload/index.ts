@@ -104,12 +104,22 @@ contextBridge.exposeInMainWorld('electronAPI', {
     uninstall: (pluginPath: string) => ipcRenderer.invoke('plugin:uninstall', pluginPath),
     list: () => ipcRenderer.invoke('plugin:list'),
     openFolder: (pluginPath: string) => ipcRenderer.invoke('plugin:openFolder', pluginPath),
+    listProviderStatus: (kind?: 'tti' | 'itv' | 'tts' | 'llm' | 'image-hosting') =>
+      ipcRenderer.invoke('plugin:listProviderStatus', { kind }),
+    testProvider: (kind: 'tti' | 'itv' | 'tts' | 'llm' | 'image-hosting', type: string, config: Record<string, unknown>) =>
+      ipcRenderer.invoke('plugin:testProvider', { kind, type, config }),
+    listRuntimeStates: () => ipcRenderer.invoke('plugin:listRuntimeStates'),
+    getRuntimeState: (pluginId: string) => ipcRenderer.invoke('plugin:getRuntimeState', { pluginId }),
   },
   config: {
     get: (moduleId: string) => ipcRenderer.invoke('config:get', { moduleId }),
     set: (moduleId: string, payload: any) => ipcRenderer.invoke('config:set', { moduleId, payload }),
     reset: (moduleId: string) => ipcRenderer.invoke('config:reset', { moduleId }),
     list: () => ipcRenderer.invoke('config:list'),
+    import: (moduleId: string, payload?: unknown, filePath?: string) =>
+      ipcRenderer.invoke('config:import', { moduleId, payload, filePath }),
+    export: (moduleId: string, filePath?: string) =>
+      ipcRenderer.invoke('config:export', { moduleId, filePath }),
   },
   workflow: {
     start: (definition: any, context?: any) => ipcRenderer.invoke('workflow:start', { definition, context }),

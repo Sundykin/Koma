@@ -13,6 +13,8 @@ import {
 } from 'antd';
 import {
   SaveOutlined,
+  UploadOutlined,
+  DownloadOutlined,
   ExperimentOutlined,
   FolderOutlined,
   DeleteOutlined,
@@ -25,7 +27,12 @@ import {
   ApiOutlined,
 } from '@ant-design/icons';
 import type { AppSettings } from '../../types';
-import { loadSettings, saveSettings } from '../../store/globalStore';
+import {
+  loadSettings,
+  saveSettings,
+  importSettingsFromFile,
+  exportSettingsToFile,
+} from '../../store/globalStore';
 import {
   getStorageConfig,
   updateStoragePath,
@@ -172,6 +179,60 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
 
   const unflattenSettings = (values: any): Partial<AppSettings> => {
     return {};
+  };
+
+  const handleImportSettings = async () => {
+    if (!electronService.isElectron()) {
+      message.warning('仅支持桌面版');
+      return;
+    }
+
+    try {
+      const result = await electronService.dialog.openFile({
+        filters: [{ name: 'JSON', extensions: ['json'] }],
+      });
+
+      const filePath = result.filePaths?.[0];
+      if (!filePath) return;
+
+      const imported = await importSettingsFromFile(filePath);
+      if (!imported) {
+        message.error('导入失败：配置格式无效');
+        return;
+      }
+
+      form.setFieldsValue(flattenSettings(imported));
+      onSave(imported);
+      message.success('设置已导入');
+    } catch (err) {
+      message.error('导入失败');
+    }
+  };
+
+  const handleExportSettings = async () => {
+    if (!electronService.isElectron()) {
+      message.warning('仅支持桌面版');
+      return;
+    }
+
+    try {
+      const result = await electronService.dialog.saveFile({
+        defaultPath: 'koma-app-settings.json',
+        filters: [{ name: 'JSON', extensions: ['json'] }],
+      });
+
+      if (!result.filePath) return;
+
+      const ok = await exportSettingsToFile(result.filePath);
+      if (!ok) {
+        message.error('导出失败');
+        return;
+      }
+
+      message.success('设置已导出');
+    } catch {
+      message.error('导出失败');
+    }
   };
 
   const handleSave = async () => {
@@ -337,14 +398,22 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
           </span>
 
           {activeSection.startsWith('models') && (
-            <Button
-              type="primary"
-              icon={<SaveOutlined />}
-              loading={saving}
-              onClick={handleSave}
-            >
-              应用配置
-            </Button>
+            <Space>
+              <Button icon={<UploadOutlined />} onClick={handleImportSettings}>
+                导入配置
+              </Button>
+              <Button icon={<DownloadOutlined />} onClick={handleExportSettings}>
+                导出配置
+              </Button>
+              <Button
+                type="primary"
+                icon={<SaveOutlined />}
+                loading={saving}
+                onClick={handleSave}
+              >
+                应用配置
+              </Button>
+            </Space>
           )}
         </div>
 

@@ -6,6 +6,15 @@ import { loadSettings, saveSettings } from './core';
 import type { ChannelConfig, ChannelCapability } from '../../providers/channel/types';
 import { hasChannelCapability } from '../../providers/channel/types';
 
+const DEFAULT_CHANNEL_PRIORITY = 100;
+
+function normalizeChannelConfig(config: ChannelConfig): ChannelConfig {
+  return {
+    ...config,
+    priority: typeof config.priority === 'number' ? config.priority : DEFAULT_CHANNEL_PRIORITY,
+  };
+}
+
 // ========== 渠道配置 CRUD ==========
 
 /**
@@ -13,7 +22,7 @@ import { hasChannelCapability } from '../../providers/channel/types';
  */
 export async function getChannelConfigs(): Promise<ChannelConfig[]> {
   const settings = await loadSettings();
-  return settings.channelConfigs || [];
+  return (settings.channelConfigs || []).map(normalizeChannelConfig);
 }
 
 /**

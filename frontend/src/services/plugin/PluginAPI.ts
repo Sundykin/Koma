@@ -403,8 +403,18 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
        * 测试 Provider（需要指定 kind）
        */
       async testProvider(kind: ChannelKind, type: string, config: Record<string, any>): Promise<ChannelTestResult> {
-        const { createProviderInstance } = await import('../../providers/registry');
         const start = Date.now();
+
+        if (electronService.isElectron() && electronService.plugin?.testProvider) {
+          const result = await electronService.plugin.testProvider(kind as any, type, config);
+          return {
+            success: result.success,
+            latency: result.latency,
+            error: result.error,
+          };
+        }
+
+        const { createProviderInstance } = await import('../../providers/registry');
 
         try {
           const provider = createProviderInstance<{ testConnection?: () => Promise<boolean> }>(kind, type, config, {

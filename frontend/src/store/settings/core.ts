@@ -37,3 +37,14 @@ export async function loadSettings(): Promise<AppSettings> {
 export async function saveSettings(settings: AppSettings): Promise<void> {
   await configBridge.set('app-settings', settings);
 }
+
+export async function importSettingsFromFile(filePath: string): Promise<AppSettings | null> {
+  const imported = await configBridge.import<AppSettings>('app-settings', { filePath });
+  if (!imported) return null;
+  return { ...DEFAULT_SETTINGS, ...imported };
+}
+
+export async function exportSettingsToFile(filePath: string): Promise<boolean> {
+  const exported = await configBridge.export<AppSettings>('app-settings', filePath);
+  return Boolean(exported);
+}

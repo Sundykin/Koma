@@ -4,7 +4,7 @@
 import { electronService } from '../../services/electronService';
 import type { EpisodeAnalysis, Shot } from '../../types';
 import type { TimelineData } from '../../types/editor';
-import { getProjectPath } from './core';
+import { persistenceClient } from '../../utils/ipcRenderer';
 import { saveEpisode } from './episodes';
 
 export async function saveEpisodeAnalysis(
@@ -16,8 +16,6 @@ export async function saveEpisodeAnalysis(
     throw new Error('仅支持 Electron 环境');
   }
 
-  const projectPath = await getProjectPath(projectId);
-  const episodePath = `${projectPath}/episodes/${episodeId}`;
   const now = Date.now();
 
   const existing = await loadEpisodeAnalysis(projectId, episodeId);
@@ -31,11 +29,7 @@ export async function saveEpisodeAnalysis(
     updatedAt: now,
   };
 
-  await electronService.fs.writeFile(
-    `${episodePath}/analysis.json`,
-    JSON.stringify(result, null, 2)
-  );
-
+  await persistenceClient.save(projectId, 'episodeAnalysis', result);
   await saveEpisode(projectId, episodeId, { hasAnalysis: true });
 
   return result;
@@ -48,11 +42,7 @@ export async function loadEpisodeAnalysis(
   if (!electronService.isElectron()) return null;
 
   try {
-    const projectPath = await getProjectPath(projectId);
-    const data = await electronService.fs.readFile(
-      `${projectPath}/episodes/${episodeId}/analysis.json`
-    );
-    return JSON.parse(data);
+    return await persistenceClient.findById<EpisodeAnalysis>(projectId, 'episodeAnalysis', episodeId);
   } catch {
     return null;
   }
@@ -86,8 +76,6 @@ export async function saveEpisodeShots(
 ): Promise<void> {
   if (!electronService.isElectron()) return;
 
-  const projectPath = await getProjectPath(projectId);
-  const episodePath = `${projectPath}/episodes/${episodeId}`;
   const now = Date.now();
 
   let analysis = await loadEpisodeAnalysis(projectId, episodeId);
@@ -106,12 +94,7 @@ export async function saveEpisodeShots(
   analysis.shots = shots;
   analysis.updatedAt = now;
 
-  await electronService.fs.mkdir(episodePath);
-  await electronService.fs.writeFile(
-    `${episodePath}/analysis.json`,
-    JSON.stringify(analysis, null, 2)
-  );
-
+  await persistenceClient.save(projectId, 'episodeAnalysis', analysis);
   await saveEpisode(projectId, episodeId, { hasAnalysis: true });
 }
 
@@ -121,12 +104,8 @@ export async function loadEpisodeTimeline(
 ): Promise<TimelineData | null> {
   if (!electronService.isElectron()) return null;
 
-  const projectPath = await getProjectPath(projectId);
-  const timelinePath = `${projectPath}/episodes/${episodeId}/timeline.json`;
-
   try {
-    const content = await electronService.fs.readFile(timelinePath);
-    return JSON.parse(content) as TimelineData;
+    return await persistenceClient.findById<TimelineData>(projectId, 'episodeTimeline', episodeId);
   } catch {
     return null;
   }
@@ -139,19 +118,15 @@ export async function saveEpisodeTimeline(
 ): Promise<void> {
   if (!electronService.isElectron()) return;
 
-  const projectPath = await getProjectPath(projectId);
-  const episodePath = `${projectPath}/episodes/${episodeId}`;
-
   const timelineData: TimelineData = {
     ...data,
     updatedAt: Date.now(),
   };
 
-  await electronService.fs.mkdir(episodePath);
-  await electronService.fs.writeFile(
-    `${episodePath}/timeline.json`,
-    JSON.stringify(timelineData, null, 2)
-  );
+  await persistenceClient.save(projectId, 'episodeTimeline', {
+    ...timelineData,
+    episodeId,
+  });
 }
 
 export async function updateShot(
@@ -178,11 +153,8 @@ export async function deleteEpisodeAnalysis(
   if (!electronService.isElectron()) return false;
 
   try {
-    const projectPath = await getProjectPath(projectId);
-    const filePath = `${projectPath}/episodes/${episodeId}/analysis.json`;
-    const exists = await electronService.fs.exists(filePath);
-    if (exists) {
-      await electronService.fs.remove(filePath);
+    const result = await persistenceClient.delete(projectId, 'episodeAnalysis', episodeId);
+    if (result.success) {
       await saveEpisode(projectId, episodeId, { hasAnalysis: false });
     }
     return true;

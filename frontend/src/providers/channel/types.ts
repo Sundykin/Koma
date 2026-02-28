@@ -32,6 +32,13 @@ export interface ChannelValidationResult {
   warnings: string[];
 }
 
+export interface ChannelHealthInfo {
+  status: 'unknown' | 'healthy' | 'degraded' | 'unhealthy';
+  lastCheck?: number;
+  latency?: number;
+  error?: string;
+}
+
 /**
  * 渠道配置（Provider 注入版）
  * 不再包含模板配置，改为引用 Provider 类型
@@ -58,6 +65,12 @@ export interface ChannelConfig {
 
   // 是否为默认渠道（按能力分组）
   isDefault?: boolean;
+
+  // 调度优先级（数值越小优先级越高）
+  priority?: number;
+
+  // 健康状态（展示用途）
+  health?: ChannelHealthInfo;
 
   // 来源标识
   source: 'builtin' | 'plugin';
