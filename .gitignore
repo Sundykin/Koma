@@ -26,5 +26,6 @@ dist-ssr
 # AI agent artifacts
 .agents/
 .claude/skills/
+.claude/worktrees/
 skills-lock.json
 rename_slides.py
