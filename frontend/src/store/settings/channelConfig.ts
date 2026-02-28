@@ -203,29 +203,3 @@ export async function cleanupDuplicateChannels(): Promise<number> {
 
   return toRemove.length;
 }
-
-/**
- * 清理旧版配置数据
- * 删除 customChannels 和 unifiedChannels
- */
-export async function cleanupLegacyConfigs(): Promise<{
-  customChannelsDeleted: number;
-  unifiedChannelsDeleted: number;
-}> {
-  const settings = await loadSettings();
-  const result = {
-    customChannelsDeleted: settings.customChannels?.length || 0,
-    unifiedChannelsDeleted: settings.unifiedChannels?.length || 0,
-  };
-
-  // 删除旧配置
-  delete settings.customChannels;
-  delete settings.unifiedChannels;
-
-  if (result.customChannelsDeleted > 0 || result.unifiedChannelsDeleted > 0) {
-    await saveSettings(settings);
-    console.log('[channelConfig] 已清理旧版配置:', result);
-  }
-
-  return result;
-}

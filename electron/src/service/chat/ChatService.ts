@@ -25,6 +25,7 @@ import type {
   MCPServerConfig,
   MCPConnection,
   MCPToolDefinition,
+  MCPResource,
   AgentMode,
 } from './types';
 import { generateId as genId, createUserMessage, createAssistantMessage, createToolMessage } from './types';
@@ -379,6 +380,14 @@ export class ChatService extends EventEmitter {
 
   listMCPTools(): MCPToolDefinition[] {
     return mcpManager.listTools();
+  }
+
+  listMCPResources(): MCPResource[] {
+    return mcpManager.listResources();
+  }
+
+  async readMCPResource(uri: string): Promise<{ content: string; mimeType?: string }> {
+    return mcpManager.readResource(uri);
   }
 
   /**

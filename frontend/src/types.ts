@@ -210,7 +210,7 @@ export type TTIProviderType =
   | 'comfyui' | 'jimeng' | 'qwen-image' | 'midjourney' | 'dall-e' | 'flux' | 'nano-banana' | 'gemini-3-pro'
   | (string & { __ttiPlugin?: never });
 export type ITVProviderType =
-  | 'runway' | 'kling' | 'pika' | 'minimax' | 'comfyui-animatediff' | 'sora2'
+  | 'runway' | 'kling' | 'pika' | 'minimax' | 'comfyui-animatediff'
   | (string & { __itvPlugin?: never });
 export type TTSProviderType =
   | 'edge-tts' | 'openai-tts' | 'fish-audio' | 'gpt-sovits' | 'doubao-tts'
@@ -327,10 +327,6 @@ export interface AppSettings {
   customThemePresets?: ThemePreset[];  // 用户自定义视觉风格预设
   channelConfigs?: import('./providers/channel/types').ChannelConfig[];  // 渠道配置（Provider 注入版）
   imageHostingConfig?: ImageHostingConfig;  // 图床配置
-  // @deprecated 以下字段已废弃，迁移后删除
-  customChannels?: import('./providers/channel/types').ChannelConfig[];  // 旧版自定义渠道配置
-  unifiedChannels?: import('./providers/channel/types').UnifiedChannelConfig[];  // 旧版统一渠道配置
-  channelMigrationVersion?: number;  // 迁移版本标记
 }
 
 // 图床配置

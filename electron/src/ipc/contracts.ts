@@ -22,7 +22,7 @@ export interface IPCRequestEnvelope<TArgs = unknown> {
   args?: TArgs;
 }
 
-const DOMAIN_ACTION_CHANNEL_RE = /^[a-z][a-z0-9-]*:[a-z][a-zA-Z0-9-]*$/;
+const DOMAIN_ACTION_CHANNEL_RE = /^[a-z][a-z0-9-]*:[a-z][a-zA-Z0-9-]*(?::[a-z][a-zA-Z0-9-]*)*$/;
 
 export function isDomainActionChannel(channel: string): boolean {
   return DOMAIN_ACTION_CHANNEL_RE.test(channel);

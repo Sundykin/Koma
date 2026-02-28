@@ -6,7 +6,6 @@ export * from './types';
 export { RunwayProvider } from './RunwayProvider';
 export { KlingProvider } from './KlingProvider';
 export { PikaProvider } from './PikaProvider';
-export { Sora2Provider } from './Sora2Provider';
 export { ComfyUIAnimateDiffProvider } from './ComfyUIAnimateDiffProvider';
 
 import type { ITVConfig } from '../../types';
@@ -14,7 +13,6 @@ import type { ITVProvider } from './types';
 import { RunwayProvider } from './RunwayProvider';
 import { KlingProvider } from './KlingProvider';
 import { PikaProvider } from './PikaProvider';
-import { Sora2Provider } from './Sora2Provider';
 import { ComfyUIAnimateDiffProvider } from './ComfyUIAnimateDiffProvider';
 import { itvRegistry, type ProviderDefinition, DEFAULT_POLLING_CONFIG } from '../registry';
 
@@ -49,19 +47,6 @@ function registerBuiltinProviders() {
       factory: (config) => new PikaProvider(config as ITVConfig),
       capabilities: ['itv'],
       polling: DEFAULT_POLLING_CONFIG,
-    },
-    {
-      type: 'sora2',
-      kind: 'itv',
-      name: 'Sora 2',
-      description: 'OpenAI Sora 2 视频生成，支持角色提取',
-      factory: (config) => new Sora2Provider(config as ITVConfig),
-      capabilities: ['itv', 'character-extract', 'remix'],
-      polling: {
-        interval: 5000,
-        maxDuration: 600000,
-        initialDelay: 3000,
-      },
     },
     {
       type: 'comfyui-animatediff',

@@ -3,6 +3,8 @@
  * 前端通过 IPC 与 Electron 主进程通信
  */
 
+import { getElectronAPI as getBaseElectronAPI } from '../../services/electronService';
+
 // 类型定义 (与 electron 端保持一致)
 export type MessageRole = 'system' | 'user' | 'assistant' | 'tool';
 
@@ -138,8 +140,12 @@ export interface MCPConnection {
 }
 
 // 检查是否在 Electron 环境
+function getRootElectronAPI(): any {
+  return getBaseElectronAPI() as any;
+}
+
 function isElectron(): boolean {
-  return typeof window !== 'undefined' && !!(window as any).electronAPI?.chat;
+  return !!getRootElectronAPI()?.chat;
 }
 
 // 获取 Electron API
@@ -147,7 +153,7 @@ function getElectronAPI() {
   if (!isElectron()) {
     throw new Error('Chat IPC is only available in Electron environment');
   }
-  return (window as any).electronAPI.chat;
+  return getRootElectronAPI().chat;
 }
 
 // ========== 会话管理 ==========

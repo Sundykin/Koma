@@ -4,8 +4,7 @@
  */
 import { workflowOrchestrator, registerBuiltinHandlers } from '../service/workflow';
 import type { WorkflowDefinition } from '../service/workflow';
-import type { BrowserWindow } from 'electron';
-import { ipcMain } from 'electron';
+import type { BrowserWindow, IpcMainInvokeEvent } from 'electron';
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -80,19 +79,6 @@ export const workflowController = {
       workflowOrchestrator.registerHandler(name, createDelegateHandler(name));
     }
 
-    // 监听前端回传的委托结果
-    ipcMain.on('workflow:delegate-result', (_, data) => {
-      const { delegateId, result, error } = data;
-      const resolver = delegateResolvers.get(delegateId);
-      if (resolver) {
-        delegateResolvers.delete(delegateId);
-        if (error) {
-          resolver.reject(new Error(error));
-        } else {
-          resolver.resolve(result);
-        }
-      }
-    });
 
     // 转发编排器事件到前端
     const events = [
@@ -107,7 +93,24 @@ export const workflowController = {
     }
   },
 
-  /** 启动工作流 */
+  /** 回传前端委托执行结果 */
+  async delegateResult(args: { delegateId: string; result?: unknown; error?: string }, _event?: IpcMainInvokeEvent) {
+    const { delegateId, result, error } = args;
+    const resolver = delegateResolvers.get(delegateId);
+    if (!resolver) {
+      return { ok: false, reason: 'delegate_not_found' };
+    }
+
+    delegateResolvers.delete(delegateId);
+    if (error) {
+      resolver.reject(new Error(error));
+    } else {
+      resolver.resolve(result);
+    }
+
+    return { ok: true };
+  },
+
   async start(args: { definition: WorkflowDefinition; context?: Record<string, unknown> }) {
     const runId = await workflowOrchestrator.startRun(args.definition, args.context);
     return { runId };

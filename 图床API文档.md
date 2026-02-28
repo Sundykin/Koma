@@ -54,3 +54,9 @@ API 的响应将采用 JSON 格式。
   "success": false,
   "message": "请求过于频繁，请稍后再试。"
 }
+
+
+/Users/sunmeng/workspace/Komarefactoring/electron-egg 参考项目中的
+  egg框架要引入到本项目中，electron部分要使用egg框架重构 需要你组建团队。参考项目中的  
+  插件系统（llm，文生图，图生视频，tts，mcp工具），持久化系统等                        
+  都要按照参考项目进行底层的重构。    

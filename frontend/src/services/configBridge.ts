@@ -4,6 +4,8 @@
  * 替代前端直接读写 localStorage / JSON 文件的方式
  */
 
+import { getElectronAPI as getBaseElectronAPI } from './electronService';
+
 interface ConfigResult<T = any> {
   moduleId: string;
   payload: T;
@@ -15,10 +17,7 @@ interface ConfigExportResult<T = any> extends ConfigResult<T> {
 }
 
 function getAPI(): any {
-  if (typeof window !== 'undefined' && (window as any).electronAPI?.config) {
-    return (window as any).electronAPI.config;
-  }
-  return null;
+  return (getBaseElectronAPI() as any)?.config ?? null;
 }
 
 /** 获取指定模块的配置 */

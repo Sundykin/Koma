@@ -2,7 +2,7 @@
  * 素材上传服务
  * 处理文件上传、复制、缩略图生成等
  */
-import { isElectron } from './electronService';
+import { getElectronAPI, isElectron } from './electronService';
 import type { AssetItem, AssetSource } from '../types/editor';
 import { ffmpegManager } from './ffmpegManager';
 
@@ -24,10 +24,8 @@ function getFileType(filename: string): 'video' | 'image' | 'audio' | null {
 
 // Electron API 接口
 const getAssetAPI = (): any => {
-  if (isElectron() && (window as any).electronAPI?.assets) {
-    return (window as any).electronAPI.assets;
-  }
-  return null;
+  const api = getElectronAPI() as any;
+  return isElectron() && api?.assets ? api.assets : null;
 };
 
 export interface UploadResult {

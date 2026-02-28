@@ -10,6 +10,7 @@ import type {
   ImageHostingUploadResult,
 } from '@komastudio/plugin-sdk';
 import { getChannelConfigs } from '../store/settings/channelConfig';
+import { getElectronAPI } from './electronService';
 
 // SCDN 图床配置
 export interface SCDNImageHostingConfig {
@@ -204,7 +205,7 @@ export async function uploadLocalFileToImageHosting(
 ): Promise<ImageHostingUploadResult> {
   try {
     // 通过 Electron API 读取文件
-    const electronAPI = (window as any).electronAPI;
+    const electronAPI = getElectronAPI() as any;
     if (!electronAPI?.fs?.readFile) {
       return {
         success: false,

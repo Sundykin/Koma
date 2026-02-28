@@ -99,16 +99,13 @@ const appSettingsSchema = z.object({
   channelConfigs: z.array(channelConfigSchema).optional(),
   customThemePresets: z.array(themePresetSchema).optional(),
   imageHostingConfig: imageHostingSchema.optional(),
-  customChannels: z.array(channelConfigSchema).optional(),
-  unifiedChannels: z.array(channelConfigSchema).optional(),
-  channelMigrationVersion: z.number().int().optional(),
-}).passthrough();
+});
 
 export type AppSettingsData = z.infer<typeof appSettingsSchema>;
 
 export const appSettingsModule: ConfigModule<AppSettingsData> = {
   id: 'app-settings',
-  version: 1,
+  version: 2,
   schema: appSettingsSchema,
   defaults: {
     llmConfigs: [],
@@ -116,5 +113,31 @@ export const appSettingsModule: ConfigModule<AppSettingsData> = {
     itvConfigs: [],
     ttsConfigs: [],
   },
+  migrations: [
+    {
+      from: 1,
+      to: 2,
+      migrate: (input: any) => {
+        if (!input || typeof input !== 'object') {
+          return {
+            llmConfigs: [],
+            ttiConfigs: [],
+            itvConfigs: [],
+            ttsConfigs: [],
+          };
+        }
+
+        const {
+          customChannels: _legacyCustomChannels,
+          unifiedChannels: _legacyUnifiedChannels,
+          channelMigrationVersion: _legacyMigrationVersion,
+          ...rest
+        } = input;
+
+        return rest;
+      },
+    },
+  ],
   store: 'json',
 };
+

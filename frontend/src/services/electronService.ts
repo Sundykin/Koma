@@ -1,6 +1,6 @@
 /**
  * Electron API 服务封装
- * 在浏览器环境下提供 fallback 实现
+ * 仅支持 Electron 新 runtime 桥接
  */
 
 // 类型定义
@@ -104,6 +104,12 @@ interface ElectronAPI {
     uninstall?: (pluginPath: string) => Promise<any>;
     list?: () => Promise<any>;
     openFolder?: (pluginPath: string) => Promise<any>;
+    activate?: (manifest: any) => Promise<any>;
+    deactivate?: (pluginId: string) => Promise<any>;
+    status?: (pluginId: string) => Promise<any>;
+    listActive?: () => Promise<any>;
+    listMCPTools?: () => Promise<any>;
+    listAgents?: () => Promise<any>;
     listProviderStatus?: (kind?: 'tti' | 'itv' | 'tts' | 'llm' | 'image-hosting') => Promise<ProviderStatusSnapshot[]>;
     testProvider?: (
       kind: 'tti' | 'itv' | 'tts' | 'llm' | 'image-hosting',
@@ -162,44 +168,37 @@ export const normalizePath = (path: string): string => {
 };
 
 // 获取 Electron API（如果可用）
-const getElectronAPI = (): ElectronAPI | null => {
-  if (isElectron()) {
-    return (window as any).electronAPI as ElectronAPI;
+export const getElectronAPI = (): ElectronAPI | null => {
+  if (!isElectron()) {
+    return null;
   }
-  return null;
+  return (window as any).electronAPI as ElectronAPI;
+};
+
+const requireElectronAPI = (): ElectronAPI => {
+  const api = getElectronAPI();
+  if (!api) {
+    throw new Error('Electron runtime bridge is not available');
+  }
+  return api;
 };
 
 // ========== 窗口控制 ==========
 
 export const windowMinimize = async (): Promise<void> => {
-  const api = getElectronAPI();
-  if (api) {
-    await api.window.minimize();
-  }
+  await requireElectronAPI().window.minimize();
 };
 
 export const windowMaximize = async (): Promise<void> => {
-  const api = getElectronAPI();
-  if (api) {
-    await api.window.maximize();
-  }
+  await requireElectronAPI().window.maximize();
 };
 
 export const windowClose = async (): Promise<void> => {
-  const api = getElectronAPI();
-  if (api) {
-    await api.window.close();
-  } else {
-    window.close();
-  }
+  await requireElectronAPI().window.close();
 };
 
 export const windowIsMaximized = async (): Promise<boolean> => {
-  const api = getElectronAPI();
-  if (api) {
-    return await api.window.isMaximized();
-  }
-  return false;
+  return requireElectronAPI().window.isMaximized();
 };
 
 // ========== 文件对话框 ==========
@@ -207,144 +206,71 @@ export const windowIsMaximized = async (): Promise<boolean> => {
 export const openFileDialog = async (
   options?: OpenFileOptions
 ): Promise<OpenDialogResult> => {
-  const api = getElectronAPI();
-  if (api) {
-    return await api.dialog.openFile(options);
-  }
-  // 浏览器 fallback: 使用 input[type=file]
-  return new Promise((resolve) => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    if (options?.multiple) {
-      input.multiple = true;
-    }
-    if (options?.filters) {
-      const extensions = options.filters.flatMap((f) => f.extensions);
-      input.accept = extensions.map((e) => `.${e}`).join(',');
-    }
-    input.onchange = () => {
-      const files = input.files;
-      if (files && files.length > 0) {
-        // 浏览器环境下无法获取真实路径，返回文件名
-        resolve({
-          canceled: false,
-          filePaths: Array.from(files).map((f) => f.name),
-        });
-      } else {
-        resolve({ canceled: true, filePaths: [] });
-      }
-    };
-    input.click();
-  });
+  return requireElectronAPI().dialog.openFile(options);
 };
 
 export const openDirectoryDialog = async (): Promise<OpenDialogResult> => {
-  const api = getElectronAPI();
-  if (api) {
-    const result = await api.dialog.openDirectory();
-    // 统一路径斜杠
-    return {
-      ...result,
-      filePaths: result.filePaths.map(normalizePath),
-    };
-  }
-  return { canceled: true, filePaths: [] };
+  const result = await requireElectronAPI().dialog.openDirectory();
+  return {
+    ...result,
+    filePaths: result.filePaths.map(normalizePath),
+  };
 };
 
 export const saveFileDialog = async (
   options?: SaveFileOptions
 ): Promise<SaveDialogResult> => {
-  const api = getElectronAPI();
-  if (api) {
-    return await api.dialog.saveFile(options);
-  }
-  return { canceled: true };
+  return requireElectronAPI().dialog.saveFile(options);
 };
 
 // ========== 文件系统 ==========
 
 export const fsReadFile = async (path: string): Promise<string> => {
-  const api = getElectronAPI();
-  if (api) {
-    const result = await api.fs.readFile(path);
-    // Controller 返回 { content: string }，需要解包
-    return typeof result === 'object' && result !== null && 'content' in result
-      ? (result as { content: string }).content
-      : (result as string);
-  }
-  throw new Error('File system not available in browser');
+  const result = await requireElectronAPI().fs.readFile(path);
+  return typeof result === 'object' && result !== null && 'content' in result
+    ? (result as { content: string }).content
+    : (result as string);
 };
 
 export const fsWriteFile = async (
   path: string,
   data: string
 ): Promise<void> => {
-  const api = getElectronAPI();
-  if (api) {
-    await api.fs.writeFile(path, data);
-    return;
-  }
-  throw new Error('File system not available in browser');
+  await requireElectronAPI().fs.writeFile(path, data);
 };
 
 export const fsExists = async (path: string): Promise<boolean> => {
-  const api = getElectronAPI();
-  if (api) {
-    const result = await api.fs.exists(path);
-    // Controller 返回 { exists: boolean }，需要解包
-    return typeof result === 'object' && result !== null && 'exists' in result
-      ? (result as { exists: boolean }).exists
-      : Boolean(result);
-  }
-  return false;
+  const result = await requireElectronAPI().fs.exists(path);
+  return typeof result === 'object' && result !== null && 'exists' in result
+    ? (result as { exists: boolean }).exists
+    : Boolean(result);
 };
 
 export const fsMkdir = async (path: string): Promise<void> => {
-  const api = getElectronAPI();
-  if (api) {
-    await api.fs.mkdir(path);
-  }
+  await requireElectronAPI().fs.mkdir(path);
 };
 
 export const fsReaddir = async (path: string): Promise<string[]> => {
-  const api = getElectronAPI();
-  if (api) {
-    const result = await api.fs.readdir(path);
-    // Controller 返回 { files: string[] }，需要解包
-    return typeof result === 'object' && result !== null && 'files' in result
-      ? (result as { files: string[] }).files
-      : (result as string[]);
-  }
-  return [];
+  const result = await requireElectronAPI().fs.readdir(path);
+  return typeof result === 'object' && result !== null && 'files' in result
+    ? (result as { files: string[] }).files
+    : (result as string[]);
 };
 
 export const fsStat = async (path: string): Promise<FileStat | null> => {
-  const api = getElectronAPI();
-  if (api) {
-    return await api.fs.stat(path);
-  }
-  return null;
+  return requireElectronAPI().fs.stat(path);
 };
 
 export const fsRemove = async (path: string): Promise<void> => {
-  const api = getElectronAPI();
-  if (api) {
-    await api.fs.remove(path);
-  }
+  await requireElectronAPI().fs.remove(path);
 };
 
 export const fsCopy = async (src: string, dest: string): Promise<void> => {
-  const api = getElectronAPI();
-  if (api) {
-    await api.fs.copy(src, dest);
-  }
+  await requireElectronAPI().fs.copy(src, dest);
 };
 
 // 递归计算目录大小
 export const fsDirSize = async (dirPath: string): Promise<number> => {
-  const api = getElectronAPI();
-  if (!api) return 0;
-
   let totalSize = 0;
   try {
     const entries = await fsReaddir(dirPath);
@@ -370,11 +296,7 @@ export const fsDownloadFile = async (
   url: string,
   destPath: string
 ): Promise<{ success: boolean; size: number }> => {
-  const api = getElectronAPI();
-  if (api) {
-    return await api.fs.downloadFile(url, destPath);
-  }
-  throw new Error('File download not available in browser');
+  return requireElectronAPI().fs.downloadFile(url, destPath);
 };
 
 // 写入二进制文件（用于下载的图片/视频）
@@ -382,25 +304,19 @@ export const fsWriteFileBuffer = async (
   path: string,
   buffer: Uint8Array
 ): Promise<void> => {
-  const api = getElectronAPI();
-  if (api) {
-    // 将 Uint8Array 转换为 base64 字符串传递
-    const base64 = btoa(
-      Array.from(buffer)
-        .map((b) => String.fromCharCode(b))
-        .join('')
-    );
-    console.log('[fsWriteFileBuffer] 写入文件:', path, '大小:', buffer.byteLength, 'base64长度:', base64.length);
-    await api.fs.writeFile(path, base64, true); // binary: true
-    return;
-  }
-  throw new Error('File system not available in browser');
+  const base64 = btoa(
+    Array.from(buffer)
+      .map((b) => String.fromCharCode(b))
+      .join('')
+  );
+  console.log('[fsWriteFileBuffer] 写入文件:', path, '大小:', buffer.byteLength, 'base64长度:', base64.length);
+  await requireElectronAPI().fs.writeFile(path, base64, true);
 };
 
 // ========== Shell ==========
 
 // 别名导出，便于在组件中使用
-export const selectDirectory = async (options?: { title?: string }): Promise<OpenDialogResult> => {
+export const selectDirectory = async (_options?: { title?: string }): Promise<OpenDialogResult> => {
   return openDirectoryDialog();
 };
 
@@ -408,30 +324,22 @@ export const writeFile = fsWriteFile;
 export const createDirectory = fsMkdir;
 
 export const shellOpenExternal = async (url: string): Promise<void> => {
-  const api = getElectronAPI();
-  if (api) {
-    await api.shell.openExternal(url);
-  } else {
-    window.open(url, '_blank');
-  }
+  await requireElectronAPI().shell.openExternal(url);
 };
 
 export const shellShowItemInFolder = async (path: string): Promise<void> => {
-  const api = getElectronAPI();
-  if (api) {
-    await api.shell.showItemInFolder(path);
-  }
+  await requireElectronAPI().shell.showItemInFolder(path);
 };
 
 // 用系统默认程序打开路径（文件夹会在资源管理器中打开）
 export const shellOpenPath = async (path: string): Promise<void> => {
-  const api = getElectronAPI();
-  if (api && (api.shell as any).openPath) {
-    await (api.shell as any).openPath(path);
-  } else {
-    // fallback: 使用 showItemInFolder
-    await shellShowItemInFolder(path);
+  const api = requireElectronAPI();
+  const shellAny = api.shell as any;
+  if (shellAny.openPath) {
+    await shellAny.openPath(path);
+    return;
   }
+  await api.shell.showItemInFolder(path);
 };
 
 // ========== App ==========
@@ -439,115 +347,66 @@ export const shellOpenPath = async (path: string): Promise<void> => {
 export const appGetPath = async (
   name: 'home' | 'appData' | 'userData' | 'temp' | 'desktop' | 'documents'
 ): Promise<string> => {
-  const api = getElectronAPI();
-  if (api) {
-    const result = await api.app.getPath(name);
-    // Controller 返回 { path: string }，需要解包
-    const path = typeof result === 'object' && result !== null && 'path' in result
-      ? (result as { path: string }).path
-      : (result as string);
-    return normalizePath(path);
-  }
-  // 浏览器 fallback
-  return '';
+  const result = await requireElectronAPI().app.getPath(name);
+  const path = typeof result === 'object' && result !== null && 'path' in result
+    ? (result as { path: string }).path
+    : (result as string);
+  return normalizePath(path);
 };
 
 export const appGetVersion = async (): Promise<string> => {
-  const api = getElectronAPI();
-  if (api) {
-    const result = await api.app.getVersion();
-    // Controller 返回 { version: string }，需要解包
-    return typeof result === 'object' && result !== null && 'version' in result
-      ? (result as { version: string }).version
-      : (result as string);
-  }
-  return '0.0.0';
+  const result = await requireElectronAPI().app.getVersion();
+  return typeof result === 'object' && result !== null && 'version' in result
+    ? (result as { version: string }).version
+    : (result as string);
 };
 
 // 获取存储根路径
 export const getStoragePath = async (): Promise<string> => {
-  const api = getElectronAPI();
-  if (api) {
-    const userData = await api.app.getPath('userData');
-    const path = typeof userData === 'object' && userData !== null && 'path' in userData
-      ? (userData as { path: string }).path
-      : (userData as string);
-    return `${path}/storage`;
-  }
-  return '';
+  const userData = await requireElectronAPI().app.getPath('userData');
+  const path = typeof userData === 'object' && userData !== null && 'path' in userData
+    ? (userData as { path: string }).path
+    : (userData as string);
+  return `${path}/storage`;
 };
 
 // 获取机器唯一标识
 export const getMachineId = async (): Promise<string> => {
-  const api = getElectronAPI();
-  if (api) {
-    const userData = await api.app.getPath('userData');
-    const path = typeof userData === 'object' && userData !== null && 'path' in userData
-      ? (userData as { path: string }).path
-      : (userData as string);
-    // 使用 userData 路径作为基础生成一个稳定的标识
-    return btoa(path).slice(0, 32);
-  }
-  return 'browser-instance';
+  const userData = await requireElectronAPI().app.getPath('userData');
+  const path = typeof userData === 'object' && userData !== null && 'path' in userData
+    ? (userData as { path: string }).path
+    : (userData as string);
+  return btoa(path).slice(0, 32);
 };
 
 // ========== 项目 CRUD ==========
 
 export const projectList = async (): Promise<ProjectMeta[]> => {
-  const api = getElectronAPI();
-  if (api) {
-    return await api.project.list();
-  }
-  // 浏览器 fallback: 返回空列表
-  return [];
+  return requireElectronAPI().project.list();
 };
 
 export const projectCreate = async (meta: ProjectMeta): Promise<ProjectMeta> => {
-  const api = getElectronAPI();
-  if (api) {
-    return await api.project.create(meta);
-  }
-  throw new Error('Project creation not available in browser');
+  return requireElectronAPI().project.create(meta);
 };
 
 export const projectLoad = async (projectId: string): Promise<ProjectMeta> => {
-  const api = getElectronAPI();
-  if (api) {
-    return await api.project.load(projectId);
-  }
-  throw new Error('Project loading not available in browser');
+  return requireElectronAPI().project.load(projectId);
 };
 
 export const projectSave = async (projectId: string, data: any): Promise<{ success: boolean }> => {
-  const api = getElectronAPI();
-  if (api) {
-    return await api.project.save(projectId, data);
-  }
-  throw new Error('Project save not available in browser');
+  return requireElectronAPI().project.save(projectId, data);
 };
 
 export const projectUpdate = async (projectId: string, updates: Partial<ProjectMeta>): Promise<ProjectMeta> => {
-  const api = getElectronAPI();
-  if (api) {
-    return await api.project.update(projectId, updates);
-  }
-  throw new Error('Project update not available in browser');
+  return requireElectronAPI().project.update(projectId, updates);
 };
 
 export const projectDelete = async (projectId: string): Promise<{ success: boolean }> => {
-  const api = getElectronAPI();
-  if (api) {
-    return await api.project.remove(projectId);
-  }
-  throw new Error('Project deletion not available in browser');
+  return requireElectronAPI().project.remove(projectId);
 };
 
 export const projectRebuildIndex = async (): Promise<any> => {
-  const api = getElectronAPI();
-  if (api) {
-    return await api.project.rebuildIndex();
-  }
-  throw new Error('Project index rebuild not available in browser');
+  return requireElectronAPI().project.rebuildIndex();
 };
 
 // ========== 项目导入导出 ==========
@@ -557,32 +416,24 @@ export const projectExport = async (
   destPath: string,
   options?: ExportOptions
 ): Promise<{ success: boolean; path: string }> => {
-  const api = getElectronAPI();
-  if (api) {
-    return await api.project.export(projectId, destPath, options);
-  }
-  throw new Error('Project export not available in browser');
+  return requireElectronAPI().project.export(projectId, destPath, options);
 };
 
 export const projectImport = async (
   zipPath: string,
   newProjectId?: string
 ): Promise<{ success: boolean; projectId: string; meta: any }> => {
-  const api = getElectronAPI();
-  if (api) {
-    return await api.project.import(zipPath, newProjectId);
-  }
-  throw new Error('Project import not available in browser');
+  return requireElectronAPI().project.import(zipPath, newProjectId);
 };
 
 export const pluginListProviderStatus = async (
   kind?: 'tti' | 'itv' | 'tts' | 'llm' | 'image-hosting'
 ): Promise<ProviderStatusSnapshot[]> => {
-  const api = getElectronAPI();
-  if (api?.plugin?.listProviderStatus) {
-    return await api.plugin.listProviderStatus(kind);
+  const fn = requireElectronAPI().plugin?.listProviderStatus;
+  if (!fn) {
+    throw new Error('plugin:listProviderStatus is not available');
   }
-  return [];
+  return fn(kind);
 };
 
 export const pluginTestProvider = async (
@@ -590,27 +441,27 @@ export const pluginTestProvider = async (
   type: string,
   config: Record<string, unknown>
 ): Promise<{ success: boolean; latency: number; error?: string }> => {
-  const api = getElectronAPI();
-  if (api?.plugin?.testProvider) {
-    return await api.plugin.testProvider(kind, type, config);
+  const fn = requireElectronAPI().plugin?.testProvider;
+  if (!fn) {
+    throw new Error('plugin:testProvider is not available');
   }
-  return { success: false, latency: 0, error: 'Plugin provider test not available' };
+  return fn(kind, type, config);
 };
 
 export const pluginListRuntimeStates = async (): Promise<PluginRuntimeSnapshot[]> => {
-  const api = getElectronAPI();
-  if (api?.plugin?.listRuntimeStates) {
-    return await api.plugin.listRuntimeStates();
+  const fn = requireElectronAPI().plugin?.listRuntimeStates;
+  if (!fn) {
+    throw new Error('plugin:listRuntimeStates is not available');
   }
-  return [];
+  return fn();
 };
 
 export const pluginGetRuntimeState = async (pluginId: string): Promise<PluginRuntimeSnapshot | null> => {
-  const api = getElectronAPI();
-  if (api?.plugin?.getRuntimeState) {
-    return await api.plugin.getRuntimeState(pluginId);
+  const fn = requireElectronAPI().plugin?.getRuntimeState;
+  if (!fn) {
+    throw new Error('plugin:getRuntimeState is not available');
   }
-  return null;
+  return fn(pluginId);
 };
 
 // 导出服务对象
@@ -639,19 +490,12 @@ export const electronService = {
     downloadFile: fsDownloadFile,
     writeFileBuffer: fsWriteFileBuffer,
     dirSize: fsDirSize,
-    // 将本地文件路径转换为可用的 URL
     toLocalUrl: (filePath: string): string => {
       if (!filePath) return '';
-      // 浏览器模式直接返回（应该是网络 URL）
-      if (!isElectron()) return filePath;
-      // 如果已经是 URL，直接返回
       if (filePath.startsWith('http://') || filePath.startsWith('https://') || filePath.startsWith('koma-local://')) {
         return filePath;
       }
-      // 将本地路径转换为 koma-local:// 协议
-      // Windows 路径需要处理反斜杠，并对整个路径进行 URL 编码
       const normalizedPath = filePath.replace(/\\/g, '/');
-      // 对路径进行编码，但保留斜杠
       const encodedPath = normalizedPath.split('/').map(segment => encodeURIComponent(segment)).join('/');
       return `koma-local:///${encodedPath}`;
     },
@@ -684,39 +528,47 @@ export const electronService = {
     listRuntimeStates: pluginListRuntimeStates,
     getRuntimeState: pluginGetRuntimeState,
   },
-  // 插件相关 API
   ipc: {
     invoke: async (channel: string, args?: any): Promise<any> => {
-      const api = getElectronAPI();
-      if (api && (api as any).plugin) {
-        // 根据 channel 调用对应的 plugin 方法
-        if (channel === 'plugin:validate') {
-          return (api as any).plugin.validate(args);
-        }
-        if (channel === 'plugin:install') {
-          return (api as any).plugin.install(args.zipPath, args.manifest);
-        }
-        if (channel === 'plugin:uninstall') {
-          return (api as any).plugin.uninstall(args);
-        }
-        if (channel === 'plugin:list') {
-          return (api as any).plugin.list();
-        }
-        if (channel === 'plugin:openFolder') {
-          return (api as any).plugin.openFolder(args);
-        }
-        if (channel === 'plugin:listRuntimeStates') {
-          return (api as any).plugin.listRuntimeStates();
-        }
-        if (channel === 'plugin:getRuntimeState') {
-          return (api as any).plugin.getRuntimeState(args.pluginId);
-        }
+      const api = requireElectronAPI();
+      if (!api.plugin) {
+        throw new Error(`IPC not available: ${channel}`);
       }
-      // 通用 IPC 调用（通过 window.electron）
-      if (typeof window !== 'undefined' && (window as any).electron?.ipcRenderer) {
-        return (window as any).electron.ipcRenderer.invoke(channel, args);
+
+      switch (channel) {
+        case 'plugin:validate':
+          return api.plugin.validate?.(args);
+        case 'plugin:install':
+          return api.plugin.install?.(args.zipPath, args.manifest);
+        case 'plugin:uninstall':
+          return api.plugin.uninstall?.(args);
+        case 'plugin:list':
+          return api.plugin.list?.();
+        case 'plugin:openFolder':
+          return api.plugin.openFolder?.(args);
+        case 'plugin:activate':
+          return api.plugin.activate?.(args.manifest);
+        case 'plugin:deactivate':
+          return api.plugin.deactivate?.(args.pluginId);
+        case 'plugin:status':
+          return api.plugin.status?.(args.pluginId);
+        case 'plugin:listActive':
+          return api.plugin.listActive?.();
+        case 'plugin:listMCPTools':
+          return api.plugin.listMCPTools?.();
+        case 'plugin:listAgents':
+          return api.plugin.listAgents?.();
+        case 'plugin:listRuntimeStates':
+          return api.plugin.listRuntimeStates?.();
+        case 'plugin:getRuntimeState':
+          return api.plugin.getRuntimeState?.(args.pluginId);
+        case 'plugin:listProviderStatus':
+          return api.plugin.listProviderStatus?.(args?.kind);
+        case 'plugin:testProvider':
+          return api.plugin.testProvider?.(args.kind, args.type, args.config);
+        default:
+          throw new Error(`Unsupported IPC channel: ${channel}`);
       }
-      throw new Error(`IPC not available: ${channel}`);
     },
   },
 };

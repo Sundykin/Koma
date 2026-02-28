@@ -91,7 +91,6 @@ export {
   setDefaultChannelConfig,
   getDefaultChannelConfig,
   cleanupDuplicateChannels,
-  cleanupLegacyConfigs,
 } from './channelConfig';
 
 // 图床配置

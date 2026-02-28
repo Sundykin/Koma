@@ -1,9 +1,9 @@
 /**
- * Electron-Egg 前端 IPC 封装
- * 提供 controller.xxx.method 格式的调用方式
- * 集成缓存和请求去重优化
+ * Frontend IPC utilities
+ * Unified around domain-action IPC contract
  */
 import { createCachedInvoke } from './ipcCache';
+import { getElectronAPI as getBaseElectronAPI } from '../services/electronService';
 
 interface IPCErrorEnvelope {
   code: string;
@@ -29,17 +29,13 @@ function unwrapIPCResponse<T>(response: IPCResponseEnvelope<T>): T {
   throw err;
 }
 
-// 获取 Electron 对象
-const Renderer = (window as any).electron || {};
+const electronAPI = getBaseElectronAPI() as any;
+if (!electronAPI?.rpc?.invoke) {
+  throw new Error('Electron RPC bridge is not available');
+}
 
-const rawIpcRenderer = Renderer.ipcRenderer || {
-  invoke: () => Promise.reject(new Error('Not in Electron environment')),
-  sendSync: () => null,
-  on: () => {},
-  once: () => {},
-  removeListener: () => {},
-  removeAllListeners: () => {},
-  send: () => {},
+const rawIpcRenderer = {
+  invoke: (channel: string, args?: unknown) => electronAPI.rpc.invoke(channel, args),
 };
 
 /**
@@ -50,54 +46,11 @@ export const ipc = {
   invoke: createCachedInvoke(rawIpcRenderer.invoke.bind(rawIpcRenderer)),
 };
 
-/**
- * 是否为 Electron-Egg 环境
- */
-export const isEE = Renderer.isEE || false;
-
-/**
- * IPC 路由定义
- * 使用 controller.xxx.method 格式
- */
-export const ipcApiRoute = {
-  // App 控制器
-  app: {
-    getPath: 'controller.app.getPath',
-    getVersion: 'controller.app.getVersion',
-    openExternal: 'controller.app.openExternal',
-    showItemInFolder: 'controller.app.showItemInFolder',
-  },
-  // 窗口控制器
-  window: {
-    minimize: 'controller.window.minimize',
-    maximize: 'controller.window.maximize',
-    close: 'controller.window.close',
-    isMaximized: 'controller.window.isMaximized',
-  },
-  // 对话框控制器
-  dialog: {
-    openFile: 'controller.dialog.openFile',
-    openDirectory: 'controller.dialog.openDirectory',
-    saveFile: 'controller.dialog.saveFile',
-  },
-  // 文件系统控制器
-  fs: {
-    readFile: 'controller.fs.readFile',
-    writeFile: 'controller.fs.writeFile',
-    exists: 'controller.fs.exists',
-    mkdir: 'controller.fs.mkdir',
-    readdir: 'controller.fs.readdir',
-    stat: 'controller.fs.stat',
-    remove: 'controller.fs.remove',
-    copy: 'controller.fs.copy',
-  },
-};
-
 export async function invokeDomainAction<T = any>(
   channel: string,
   args?: Record<string, any>
 ): Promise<T> {
-  const response = await ipc.invoke('rpc:invoke', { channel, args });
+  const response = await ipc.invoke(channel, args);
   return unwrapIPCResponse<T>(response);
 }
 
@@ -135,7 +88,7 @@ export function createEventBusClient(owner = 'renderer'): {
   off: (event: string, handler?: (payload: unknown, eventName: string) => void) => Promise<void>;
   clear: () => Promise<void>;
 } {
-  const electronAPI = (window as any).electronAPI;
+  const electronAPI = getBaseElectronAPI() as any;
   const electronEventBus = electronAPI?.eventBus;
 
   if (!electronEventBus) {
@@ -176,23 +129,20 @@ export function createEventBusClient(owner = 'renderer'): {
 
   const subscribeChannel = async (event: string) => {
     if (subscribedChannels.has(event)) return;
-    const response = await electronEventBus.subscribe(event);
-    unwrapIPCResponse(response);
+    await electronEventBus.subscribe(event);
     subscribedChannels.add(event);
     ensureMessageListener();
   };
 
   const unsubscribeChannel = async (event: string) => {
     if (!subscribedChannels.has(event)) return;
-    const response = await electronEventBus.unsubscribe(event);
-    unwrapIPCResponse(response);
+    await electronEventBus.unsubscribe(event);
     subscribedChannels.delete(event);
   };
 
   return {
     emit: async (event, payload) => {
-      const response = await electronEventBus.emit(event, payload);
-      unwrapIPCResponse(response);
+      await electronEventBus.emit(event, payload);
     },
     on: async (event, handler) => {
       if (!channelToHandlers.has(event)) {
@@ -270,8 +220,7 @@ export function createEventBusClient(owner = 'renderer'): {
     },
     clear: async () => {
       channelToHandlers.clear();
-      const response = await electronEventBus.unsubscribe();
-      unwrapIPCResponse(response);
+      await electronEventBus.unsubscribe();
       subscribedChannels.clear();
       if (removeMessageListener) {
         removeMessageListener();
@@ -280,20 +229,3 @@ export function createEventBusClient(owner = 'renderer'): {
     },
   };
 }
-
-/**
- * 便捷调用方法
- */
-export async function invokeController<T = any>(
-  channel: string,
-  args?: Record<string, any>
-): Promise<T> {
-  return ipc.invoke(channel, args);
-}
-
-export default {
-  ipc,
-  isEE,
-  ipcApiRoute,
-  invokeController,
-};

@@ -14,7 +14,7 @@ import { EpisodeManager, EpisodeManagerRef } from './EpisodeManager';
 import { EpisodeSplitWizard } from './EpisodeSplitWizard';
 import { ProjectAssetOverview } from './ProjectAssetOverview';
 import { ScriptWorkbench } from './ScriptWorkbench';
-import { saveProject, loadProject, listEpisodes } from '../../store/projectStore';
+import { saveProject, loadProject, listEpisodes, loadEpisodeShots } from '../../store/projectStore';
 import { loadSettings, getChannelsByCapability } from '../../store/globalStore';
 import { THEME_PRESETS } from '../../config/themePresets';
 import { ScriptEditor } from '../../editor';
@@ -111,12 +111,22 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
     setSelectedEpisode(episode);
   }, []);
 
-  // 点击"开始制作"：进入编辑器
-  const handleStartProduction = useCallback(() => {
-    if (selectedEpisode) {
-      onEnterEpisode(selectedEpisode);
+  const handleStartProduction = useCallback(async () => {
+    if (!selectedEpisode) return;
+
+    if (!selectedEpisode.scriptText?.trim()) {
+      message.warning('请先编写剧本再开始制作');
+      return;
     }
-  }, [selectedEpisode, onEnterEpisode]);
+
+    const shots = await loadEpisodeShots(project.id, selectedEpisode.id);
+    if (shots.length === 0) {
+      message.warning('请先完成剧本解析并生成分镜');
+      return;
+    }
+
+    onEnterEpisode(selectedEpisode);
+  }, [selectedEpisode, project.id, onEnterEpisode, message]);
 
   // 剧本内容变更（自动保存后回调）
   const handleScriptChange = useCallback((text: string) => {
@@ -165,6 +175,15 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
     const workflow = new AutoGenerateWorkflow({
       projectId: project.id,
       episodeId: selectedEpisode.id,
+      scriptText: selectedEpisode.scriptText || '',
+      projectConfigIds: {
+        llmConfigId: project.llmConfigId,
+        ttiConfigId: project.ttiConfigId,
+        itvConfigId: project.itvConfigId,
+        ttsConfigId: project.ttsConfigId,
+      },
+      theme: project.theme,
+      stylePrompt: project.stylePrompt,
       onProgress: setAutoGenProgress,
     });
     autoGenRef.current = workflow;
@@ -174,7 +193,7 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
       }
       autoGenRef.current = null;
     });
-  }, [project.id, selectedEpisode, message]);
+  }, [project, selectedEpisode, message]);
 
   const handleCancelAutoGenerate = useCallback(() => {
     autoGenRef.current?.abort();

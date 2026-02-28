@@ -3,13 +3,12 @@
  * 前端通过此模块操作后端 WorkflowOrchestrator
  */
 
+import { getElectronAPI as getBaseElectronAPI } from './electronService';
+
 type WorkflowEventCallback = (data: any) => void;
 
 function getAPI(): any {
-  if (typeof window !== 'undefined' && (window as any).electronAPI?.workflow) {
-    return (window as any).electronAPI.workflow;
-  }
-  return null;
+  return (getBaseElectronAPI() as any)?.workflow ?? null;
 }
 
 /** 启动工作流 */

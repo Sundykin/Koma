@@ -2,7 +2,7 @@
  * 前端 FFmpeg 管理器
  * 负责与 Electron FFmpeg 服务通信，管理帧缓存和波形缓存
  */
-import { isElectron, appGetPath } from './electronService';
+import { getElectronAPI, isElectron, appGetPath } from './electronService';
 
 // 媒体信息类型
 export interface MediaInfo {
@@ -71,10 +71,8 @@ export interface ComposeVideoOptions {
 
 // 获取 FFmpeg API
 const getFFmpegAPI = (): any => {
-  if (isElectron() && (window as any).electronAPI?.ffmpeg) {
-    return (window as any).electronAPI.ffmpeg;
-  }
-  return null;
+  const api = getElectronAPI() as any;
+  return isElectron() && api?.ffmpeg ? api.ffmpeg : null;
 };
 
 /**

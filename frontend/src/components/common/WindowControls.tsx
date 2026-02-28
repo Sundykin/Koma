@@ -1,11 +1,18 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Minus, Square, X, Maximize2 } from 'lucide-react';
+import { App } from 'antd';
 import { electronService } from '../../services/electronService';
 
-const isMac = typeof window !== 'undefined' && (window as any).electron?.platform === 'darwin';
+const isMac = typeof navigator !== 'undefined' && /mac/i.test(navigator.platform);
 
 export const WindowControls: React.FC = () => {
+  const { message } = App.useApp();
   const [isMaximized, setIsMaximized] = useState(false);
+
+  const showWindowError = useCallback((action: string, error: unknown) => {
+    const text = error instanceof Error ? error.message : String(error || '未知错误');
+    message.error(`${action}失败：${text}`);
+  }, [message]);
 
   useEffect(() => {
     if (isMac) return;
@@ -13,15 +20,19 @@ export const WindowControls: React.FC = () => {
       try {
         const maximized = await electronService.window.isMaximized();
         setIsMaximized(maximized);
-      } catch (e) {
-        // 非 Electron 环境
+      } catch (error) {
+        showWindowError('读取窗口状态', error);
       }
     };
     checkMaximized();
-  }, []);
+  }, [showWindowError]);
 
   const handleMinimize = async () => {
-    try { await electronService.window.minimize(); } catch (e) {}
+    try {
+      await electronService.window.minimize();
+    } catch (error) {
+      showWindowError('最小化窗口', error);
+    }
   };
 
   const handleMaximize = async () => {
@@ -29,11 +40,17 @@ export const WindowControls: React.FC = () => {
       await electronService.window.maximize();
       const maximized = await electronService.window.isMaximized();
       setIsMaximized(maximized);
-    } catch (e) {}
+    } catch (error) {
+      showWindowError('切换窗口大小', error);
+    }
   };
 
   const handleClose = async () => {
-    try { await electronService.window.close(); } catch (e) {}
+    try {
+      await electronService.window.close();
+    } catch (error) {
+      showWindowError('关闭窗口', error);
+    }
   };
 
   return (

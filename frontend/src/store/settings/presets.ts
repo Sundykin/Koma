@@ -44,9 +44,7 @@ export const TTI_PRESETS: ProviderPreset[] = [
 ];
 
 // ITV 厂商预设
-export const ITV_PRESETS: ProviderPreset[] = [
-  { id: 'sora2', name: 'Sora2（官方）', baseUrl: 'https://toapis.com', models: ['sora-2', 'sora-2-pro'] },
-];
+export const ITV_PRESETS: ProviderPreset[] = [];
 
 // TTS 厂商预设
 export const TTS_PRESETS: ProviderPreset[] = [

@@ -7,17 +7,14 @@ import { ErrorBoundary } from './components/common';
 import { TaskStatusBar } from './components/common/TaskStatusBar';
 import { OnboardingTour } from './components/common/OnboardingTour';
 import { Sidebar, type AppView } from './components/common/Sidebar';
-import { PluginHost } from './components/plugins';
 
 // 懒加载非首屏视图组件
 const SettingsPage = React.lazy(() => import('./components/settings').then(m => ({ default: m.SettingsPage })));
-const PluginManager = React.lazy(() => import('./components/plugins').then(m => ({ default: m.PluginManager })));
-const ChatPage = React.lazy(() => import('./components/chat').then(m => ({ default: m.ChatPage })));
 const EditorView = React.lazy(() => import('./components/editor/EditorView').then(m => ({ default: m.EditorView })));
 import { useProjects } from './hooks/useProjects';
 import { TaskManager } from './services/TaskManager';
 import { loadCharacters, loadScenes, loadProps, loadShots, loadEpisodeShots, saveEpisode } from './store/projectStore';
-import { Spin, App as AntApp } from 'antd';
+import { Spin, App as AntApp, Button } from 'antd';
 import {
   DEV_TEST_PROJECT,
   DEV_TEST_ANALYSIS,
@@ -50,7 +47,7 @@ const AppContent: React.FC = () => {
     updateProject: updateProjectAPI,
   } = useProjects();
 
-  const [view, setView] = useState<AppView>(isVideoDevMode ? 'editor' : 'projects');
+  const [view, setView] = useState<AppView>('projects');
   const [activeProject, setActiveProject] = useState<Project | null>(isVideoDevMode ? DEV_TEST_PROJECT : null);
   const [editorStep, setEditorStep] = useState<EditorStep>(isVideoDevMode ? 'video' : 'assets');
   const [activeEpisode, setActiveEpisode] = useState<Episode | null>(null);
@@ -139,12 +136,19 @@ const AppContent: React.FC = () => {
     ttsConfigId: p.ttsConfigId, theme: p.theme, stylePrompt: p.stylePrompt,
   }));
 
-  const handleEnterVideoTest = () => {
-    setActiveProject(DEV_TEST_PROJECT);
-    setAnalysisData(DEV_TEST_ANALYSIS);
-    setEditorStep('video');
-    setView('editor');
-  };
+  const handleViewChange = useCallback((nextView: AppView) => {
+    if (nextView === 'editor') {
+      if (!activeProject) {
+        message.warning('请先在项目总览中选择项目');
+        setView('projects');
+        return;
+      }
+      setView('editor');
+      return;
+    }
+
+    setView(nextView);
+  }, [activeProject, message]);
 
   const handleCreateProject = async (data: { title: string; mode: 'drama' | 'narration'; theme?: string; stylePrompt?: string }) => {
     try {
@@ -238,17 +242,14 @@ const AppContent: React.FC = () => {
       <div className="flex flex-1 min-h-0">
         <Sidebar
           view={view}
-          activeProject={activeProject}
-          activeEpisode={activeEpisode}
-          onViewChange={setView}
-          onEnterVideoTest={handleEnterVideoTest}
+          onViewChange={handleViewChange}
         />
         <div className="flex-1 flex flex-col min-w-0 transition-all duration-300">
           <main className="flex-1 overflow-hidden relative bg-zinc-950">
             {view === 'projects' && (
               projectsLoading ? (
                 <div className="flex h-full items-center justify-center">
-                  <Spin size="large" tip="加载项目列表..."><div className="p-12" /></Spin>
+                  <Spin size="large" tip="加载项目总览..."><div className="p-12" /></Spin>
                 </div>
               ) : (
                 <ProjectList
@@ -260,11 +261,6 @@ const AppContent: React.FC = () => {
               )
             )}
             {view === 'settings' && <Suspense fallback={<LazyFallback />}><SettingsPage settings={appSettings} onSave={setAppSettings} /></Suspense>}
-            {view === 'plugins' && <Suspense fallback={<LazyFallback />}><PluginManager /></Suspense>}
-            {view === 'chat' && <Suspense fallback={<LazyFallback />}><ChatPage /></Suspense>}
-            {view.startsWith('plugin:') && (
-              <PluginHost pluginId={view.replace('plugin:', '')} />
-            )}
             {view === 'overview' && activeProject && (
               <ProjectOverview
                 project={activeProject}
@@ -272,23 +268,32 @@ const AppContent: React.FC = () => {
                 onProjectUpdate={(updates) => setActiveProject({ ...activeProject, ...updates })}
               />
             )}
-            {view === 'editor' && activeProject && (
-              <Suspense fallback={<LazyFallback />}>
-                <EditorView
-                activeProject={activeProject}
-                activeEpisode={activeEpisode}
-                editorStep={editorStep}
-                stepProgress={stepProgress}
-                scriptText={scriptText}
-                analysisData={analysisData}
-                appSettings={appSettings}
-                mentionItems={mentionItems}
-                onStepChange={setEditorStep}
-                onStepChangeWithMark={handleStepChangeWithMark}
-                onViewChange={setView}
-                onOpenProjectSettings={() => setIsProjectSettingsOpen(true)}
-              />
-              </Suspense>
+            {view === 'editor' && (
+              activeProject ? (
+                <Suspense fallback={<LazyFallback />}>
+                  <EditorView
+                    activeProject={activeProject}
+                    activeEpisode={activeEpisode}
+                    editorStep={editorStep}
+                    stepProgress={stepProgress}
+                    scriptText={scriptText}
+                    analysisData={analysisData}
+                    appSettings={appSettings}
+                    mentionItems={mentionItems}
+                    onStepChange={setEditorStep}
+                    onStepChangeWithMark={handleStepChangeWithMark}
+                    onViewChange={setView}
+                    onOpenProjectSettings={() => setIsProjectSettingsOpen(true)}
+                  />
+                </Suspense>
+              ) : (
+                <div className="flex h-full items-center justify-center">
+                  <div className="text-center space-y-4">
+                    <p className="text-zinc-400">请先在项目总览中选择一个项目，再进入创作工作台。</p>
+                    <Button type="primary" onClick={() => setView('projects')}>返回项目总览</Button>
+                  </div>
+                </div>
+              )
             )}
           </main>
         </div>

@@ -3,7 +3,7 @@
  * 负责将时间线渲染为视频文件
  */
 import type { TrackLine, TrackItem, VideoTrackItem, AudioTrackItem, ImageTrackItem } from '../types/track';
-import { KeyframeInterpolator } from '../engine/KeyframeInterpolator';
+import { getElectronAPI } from './electronService';
 
 export interface ExportConfig {
   width: number;
@@ -309,7 +309,7 @@ export class ExportRenderer {
    * 编码视频（通过 FFmpeg）
    */
   private async encodeVideo(frames: Blob[]): Promise<string> {
-    const ffmpegAPI = (window as any).electronAPI?.ffmpeg;
+    const ffmpegAPI = (getElectronAPI() as any)?.ffmpeg;
     if (!ffmpegAPI) {
       throw new Error('FFmpeg not available');
     }

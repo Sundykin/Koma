@@ -250,7 +250,6 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
       case 'pika': return 'magenta';
       case 'minimax': return 'green';
       case 'comfyui-animatediff': return 'orange';
-      case 'sora2': return 'geekblue';
       default: return 'default';
     }
   };

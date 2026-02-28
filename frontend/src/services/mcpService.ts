@@ -9,26 +9,27 @@ import type {
   MCPResource,
   MCPConnection,
 } from '../types/mcp';
+import { getElectronAPI as getBaseElectronAPI } from './electronService';
 
 // Electron API 类型
 interface ElectronMCPAPI {
-  mcp: {
-    connect: (config: MCPServerConfig) => Promise<MCPConnection>;
-    disconnect: (name: string) => Promise<void>;
-    list: (includeTools?: boolean) => Promise<MCPConnection[]>;
-    listTools: () => Promise<MCPTool[]>;
-    listResources: () => Promise<MCPResource[]>;
-    callTool: (name: string, args: Record<string, unknown>) => Promise<unknown>;
-    readResource: (uri: string) => Promise<{ content: string; mimeType?: string }>;
+  chat: {
+    mcp: {
+      connect: (config: MCPServerConfig) => Promise<MCPConnection>;
+      disconnect: (name: string) => Promise<void>;
+      list: (includeTools?: boolean) => Promise<MCPConnection[]>;
+      listTools: () => Promise<MCPTool[]>;
+      listResources: () => Promise<MCPResource[]>;
+      callTool: (name: string, args: Record<string, unknown>) => Promise<unknown>;
+      readResource: (uri: string) => Promise<{ content: string; mimeType?: string }>;
+    };
   };
 }
 
 // 获取 Electron API
 function getElectronAPI(): ElectronMCPAPI | null {
-  if (typeof window !== 'undefined' && (window as any).electron?.mcp) {
-    return (window as any).electron as ElectronMCPAPI;
-  }
-  return null;
+  const api = getBaseElectronAPI() as any;
+  return api?.chat?.mcp ? (api as ElectronMCPAPI) : null;
 }
 
 /**
@@ -43,7 +44,7 @@ export const mcpService = {
     if (!api) {
       throw new Error('Electron API not available');
     }
-    return api.mcp.connect(config);
+    return api.chat.mcp.connect(config);
   },
 
   /**
@@ -54,7 +55,7 @@ export const mcpService = {
     if (!api) {
       throw new Error('Electron API not available');
     }
-    return api.mcp.disconnect(name);
+    return api.chat.mcp.disconnect(name);
   },
 
   /**
@@ -65,7 +66,7 @@ export const mcpService = {
     if (!api) {
       return [];
     }
-    return api.mcp.list(includeTools);
+    return api.chat.mcp.list(includeTools);
   },
 
   /**
@@ -76,7 +77,7 @@ export const mcpService = {
     if (!api) {
       return [];
     }
-    return api.mcp.listTools();
+    return api.chat.mcp.listTools();
   },
 
   /**
@@ -87,7 +88,7 @@ export const mcpService = {
     if (!api) {
       return [];
     }
-    return api.mcp.listResources();
+    return api.chat.mcp.listResources();
   },
 
   /**
@@ -98,7 +99,7 @@ export const mcpService = {
     if (!api) {
       throw new Error('Electron API not available');
     }
-    return api.mcp.callTool(name, args);
+    return api.chat.mcp.callTool(name, args);
   },
 
   /**
@@ -109,7 +110,7 @@ export const mcpService = {
     if (!api) {
       throw new Error('Electron API not available');
     }
-    return api.mcp.readResource(uri);
+    return api.chat.mcp.readResource(uri);
   },
 
   /**

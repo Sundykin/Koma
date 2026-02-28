@@ -77,7 +77,6 @@ export {
   setDefaultChannelConfig,
   getDefaultChannelConfig,
   cleanupDuplicateChannels,
-  cleanupLegacyConfigs,
   // 图床配置
   getImageHostingConfig,
   updateImageHostingConfig,

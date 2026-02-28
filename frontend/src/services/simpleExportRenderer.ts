@@ -5,7 +5,7 @@
 import type { Track, Clip, MediaType } from '../types/editor';
 import { getAnimatedProperties } from '../engine/simpleKeyframe';
 import { toKomaLocalUrl } from '../utils/urlUtils';
-import { LRUCache } from '../utils/LRUCache';
+import { getElectronAPI } from './electronService';
 
 export interface SimpleExportConfig {
   width: number;
@@ -38,10 +38,8 @@ const QUALITY_PRESETS: Record<string, { videoBitrate: number; audioBitrate: numb
 
 // FFmpeg API 接口
 const getFFmpegAPI = (): any => {
-  if (typeof window !== 'undefined' && (window as any).electronAPI?.ffmpeg) {
-    return (window as any).electronAPI.ffmpeg;
-  }
-  return null;
+  const api = getElectronAPI() as any;
+  return api?.ffmpeg ?? null;
 };
 
 /**

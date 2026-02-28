@@ -3,6 +3,7 @@
  */
 import type { TTSConfig, TTSOptions, AudioResult, Voice } from '../../types';
 import type { TTSProvider } from './types';
+import { getElectronAPI } from '../../services/electronService';
 
 const OPENAI_VOICES: Voice[] = [
   { id: 'alloy', name: 'Alloy', language: 'multi', gender: 'neutral', provider: 'openai-tts' },
@@ -70,7 +71,7 @@ export class OpenAITTSProvider implements TTSProvider {
     }
     const base64Data = btoa(binary);
 
-    const electronAPI = (window as any).electronAPI;
+    const electronAPI = getElectronAPI() as any;
     if (electronAPI?.fs) {
       // 保存到临时目录
       const tempDir = await electronAPI.app.getPath('temp');

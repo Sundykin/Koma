@@ -7,6 +7,7 @@ import { persist } from 'zustand/middleware';
 import type { ChatMessage } from '../chat/types';
 import { extractThinkFromText } from '../chat/utils/messageUtils';
 import { configBridge } from '../services/configBridge';
+import { getElectronAPI as getBaseElectronAPI } from '../services/electronService';
 
 const SCHEMA_VERSION = 2;
 const MAX_TITLE_LENGTH = 30;
@@ -38,10 +39,7 @@ interface ChatHistoryState {
 }
 
 function getChatHistoryAPI(): any {
-  if (typeof window !== 'undefined' && (window as any).electronAPI?.chat?.history) {
-    return (window as any).electronAPI.chat.history;
-  }
-  return null;
+  return (getBaseElectronAPI() as any)?.chat?.history ?? null;
 }
 
 function normalizeTitle(text: string): string {
