@@ -15,6 +15,7 @@ import { providerRegistry, mcpRegistry, agentRegistry } from './registries';
 import { syncProviders, syncAllMCP } from './capability';
 import { PluginWorkerHost } from './sandbox/workerHost';
 import { PluginHostApiBridge } from './sandbox/hostApiBridge';
+import { storagePathLoader } from '../config';
 
 class ElectronPluginRuntime extends EventEmitter {
   private plugins = new Map<string, LoadedPlugin>();
@@ -24,7 +25,7 @@ class ElectronPluginRuntime extends EventEmitter {
   private workerEntryFile = '';
 
   async init(): Promise<void> {
-    this.pluginsDir = path.join(app.getPath('userData'), 'plugins-runtime');
+    this.pluginsDir = storagePathLoader.getPaths().pluginsDir;
     this.workerEntryFile = path.join(__dirname, 'sandbox', 'pluginWorkerEntry.js');
     await fs.mkdir(this.pluginsDir, { recursive: true });
   }

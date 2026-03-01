@@ -2,7 +2,8 @@ const fs = require('fs');
 const path = require('path');
 
 const distDir = path.resolve(__dirname, '..', 'dist');
-const runtimeDir = path.join(distDir, 'public', 'electron');
+const electronDir = path.resolve(__dirname, '..');
+const runtimeDir = path.join(electronDir, 'public', 'electron');
 const cmdDir = path.join(distDir, 'cmd');
 const cmdFile = path.join(cmdDir, 'bin.js');
 

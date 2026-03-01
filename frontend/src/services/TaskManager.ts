@@ -118,6 +118,7 @@ class TaskManagerClass {
   private initialized = false;
   private currentProjectId: string | null = null;
   private paused = false;
+  private saveDebounceTimers: Map<string, NodeJS.Timeout> = new Map();
 
   /**
    * 初始化任务管理器（支持任务恢复）
@@ -173,7 +174,7 @@ class TaskManagerClass {
     };
 
     this.tasks.set(task.id, task);
-    this.saveTasks(params.projectId);
+    this.saveTasks(params.projectId, true);
     this.notifyListeners(task);
 
     return task;
@@ -203,7 +204,8 @@ class TaskManagerClass {
     }
 
     this.tasks.set(taskId, updatedTask);
-    this.saveTasks(task.projectId);
+    const isTerminal = updatedTask.status === 'completed' || updatedTask.status === 'failed';
+    this.saveTasks(task.projectId, isTerminal);
     this.notifyListeners(updatedTask);
 
     return updatedTask;
@@ -354,9 +356,32 @@ class TaskManagerClass {
   }
 
   /**
-   * 保存任务到项目目录
+   * 保存任务到项目目录（防抖，500ms 内多次调用只写一次）
    */
-  private async saveTasks(projectId: string): Promise<void> {
+  private saveTasks(projectId: string, immediate = false): void {
+    if (immediate) {
+      // 清除已有的防抖定时器，立即写入
+      const existing = this.saveDebounceTimers.get(projectId);
+      if (existing) {
+        clearTimeout(existing);
+        this.saveDebounceTimers.delete(projectId);
+      }
+      this.flushSave(projectId);
+      return;
+    }
+
+    // 防抖：重置定时器，500ms 后写入
+    const existing = this.saveDebounceTimers.get(projectId);
+    if (existing) clearTimeout(existing);
+
+    const timer = setTimeout(() => {
+      this.saveDebounceTimers.delete(projectId);
+      this.flushSave(projectId);
+    }, 500);
+    this.saveDebounceTimers.set(projectId, timer);
+  }
+
+  private async flushSave(projectId: string): Promise<void> {
     if (!electronService.isElectron()) return;
 
     try {
@@ -489,7 +514,7 @@ class TaskManagerClass {
     const task = this.tasks.get(taskId);
     if (!task) return false;
     this.tasks.delete(taskId);
-    this.saveTasks(task.projectId);
+    this.saveTasks(task.projectId, true);
     return true;
   }
 
@@ -565,6 +590,8 @@ class TaskManagerClass {
    */
   dispose(): void {
     this.stopPolling();
+    for (const timer of this.saveDebounceTimers.values()) clearTimeout(timer);
+    this.saveDebounceTimers.clear();
     this.tasks.clear();
     this.listeners.clear();
     this.initialized = false;

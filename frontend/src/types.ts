@@ -177,6 +177,12 @@ export interface Shot {
   videos?: ShotVideo[];  // 视频版本列表
   currentVideoIndex?: number;    // 当前选中的视频索引
   selectedVideoIndex?: number;   // 别名（兼容）
+  // 任务队列相关
+  taskId?: string;       // 当前关联的任务ID（用于视频生成）
+  taskStatus?: 'queued' | 'processing' | 'completed' | 'failed'; // 任务状态
+  taskProgress?: number; // 任务进度 (0-100)
+  taskPhase?: string;    // 任务阶段 (prepare/execute/persist)
+  taskError?: string;    // 任务错误信息
 }
 
 // 剧本分析结果接口

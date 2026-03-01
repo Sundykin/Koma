@@ -1,8 +1,17 @@
-import { app, BrowserWindow } from 'electron';
+import { BrowserWindow } from 'electron';
 import * as path from 'path';
 import config from '../config';
 
-const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
+function resolveAppEnv(): string {
+  const envArg = process.argv.find((arg) => arg.startsWith('--env='));
+  if (envArg) {
+    return envArg.slice('--env='.length);
+  }
+  return process.env.NODE_ENV || 'development';
+}
+
+const appEnv = resolveAppEnv();
+const isDev = appEnv === 'local' || appEnv === 'development';
 
 export function createMainWindow(options: { onRendererCleanup: (webContentsId: number) => void }): BrowserWindow {
   const { window: winConfig } = config;

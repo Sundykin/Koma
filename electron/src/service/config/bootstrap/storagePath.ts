@@ -24,7 +24,7 @@ class StoragePathLoader {
     this._paths = {
       dataDir: path.join(root, 'config'),
       projectsDir: path.join(root, 'projects'),
-      pluginsDir: path.join(app.getPath('userData'), 'plugins-runtime'),
+      pluginsDir: path.join(root, 'plugins-runtime'),
       cacheDir: path.join(root, 'cache'),
     };
 

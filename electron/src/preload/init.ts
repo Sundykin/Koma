@@ -12,6 +12,10 @@ import * as path from 'path';
 import { app } from 'electron';
 import { registerLocalProtocol } from '../bootstrap/protocol';
 import { createRendererSubscriptionRegistry, registerIpcRoutes } from '../ipc/router';
+import { sqlitedbService } from '../service/database/sqlitedb';
+import { instanceStore } from '../service/provider/instance-store';
+import { registerTaskHandlers } from '../ipc/taskHandlers';
+import { shotRenderTaskQueue } from '../queue/taskQueue';
 
 async function preload(): Promise<void> {
   logger.info('[preload] initializing services...');
@@ -27,11 +31,20 @@ async function preload(): Promise<void> {
   // Initialize IPC router
   const registry = createRendererSubscriptionRegistry();
   registerIpcRoutes(registry);
+  registerTaskHandlers();
 
   // Initialize all services in parallel
   const initTasks: Array<{ name: string; run: () => Promise<unknown> }> = [
+    {
+      name: 'database',
+      run: async () => {
+        sqlitedbService.init();
+        await instanceStore.init(sqlitedbService.getDb());
+      },
+    },
     { name: 'project', run: () => services.project.init(rootPath || null) },
     { name: 'ffmpeg', run: () => services.ffmpeg.init() },
+    { name: 'task-queue', run: () => shotRenderTaskQueue.init() },
     { name: 'plugin', run: () => services.plugin.init() },
     { name: 'chat', run: () => Promise.resolve(controllers.chat.init()) },
   ];

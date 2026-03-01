@@ -16,9 +16,11 @@ import { ProjectAssetOverview } from './ProjectAssetOverview';
 import { ScriptWorkbench } from './ScriptWorkbench';
 import { saveProject, loadProject, listEpisodes, loadEpisodeShots } from '../../store/projectStore';
 import { loadSettings, getChannelsByCapability } from '../../store/globalStore';
+import { startShotAnalysis } from '../../services/ShotAnalysisService';
+import { TaskManager } from '../../services/TaskManager';
 import { THEME_PRESETS } from '../../config/themePresets';
 import { ScriptEditor } from '../../editor';
-import { AutoGenerateWorkflow, type WorkflowProgress } from '../../workflow/autoGenerateWorkflow';
+import { QueueStatusPanel } from '../task/QueueStatusPanel';
 
 // 统一的配置选项类型
 interface ConfigOption {
@@ -121,12 +123,32 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
 
     const shots = await loadEpisodeShots(project.id, selectedEpisode.id);
     if (shots.length === 0) {
-      message.warning('请先完成剧本解析并生成分镜');
+      // Check if shot-analysis is already running
+      const existingTask = TaskManager.getProjectTasks(project.id).find(
+        t => t.type === 'shot-analysis' && t.targetId === selectedEpisode.id && t.status === 'running'
+      );
+      if (existingTask) {
+        message.info('分镜正在生成中，请稍候...');
+        return;
+      }
+
+      // Auto-trigger shot generation
+      message.info('正在自动生成分镜，完成后请再次点击开始制作');
+      startShotAnalysis(
+        project.id,
+        selectedEpisode.id,
+        selectedEpisode.title || '',
+        selectedEpisode.scriptText,
+        project.llmConfigId
+      ).catch(err => {
+        console.error('自动生成分镜失败:', err);
+        message.error('自动生成分镜失败: ' + (err.message || '未知错误'));
+      });
       return;
     }
 
     onEnterEpisode(selectedEpisode);
-  }, [selectedEpisode, project.id, onEnterEpisode, message]);
+  }, [selectedEpisode, project.id, project.llmConfigId, onEnterEpisode, message]);
 
   // 剧本内容变更（自动保存后回调）
   const handleScriptChange = useCallback((text: string) => {
@@ -421,8 +443,14 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
             </button>
           </div>
           {/* Asset Content */}
-          <div className="flex-1 overflow-hidden">
-            <ProjectAssetOverview projectId={project.id} />
+          <div className="flex-1 overflow-y-auto flex flex-col gap-3 p-3">
+            {/* 队列状态面板 */}
+            <QueueStatusPanel projectId={project.id} />
+
+            {/* 项目资产概览 */}
+            <div className="flex-1">
+              <ProjectAssetOverview projectId={project.id} />
+            </div>
           </div>
         </div>
       </div>

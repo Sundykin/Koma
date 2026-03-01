@@ -1,0 +1,108 @@
+/* Stage Navigation 样式 */
+
+.stage-navigation {
+  display: flex;
+  gap: 8px;
+  padding: 16px;
+  background: #1e1e1e;
+  border-bottom: 1px solid #333;
+}
+
+.stage-nav-button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: #2a2a2a;
+  border: 1px solid #444;
+  border-radius: 20px;
+  color: #999;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+  position: relative;
+}
+
+.stage-nav-button:hover:not(:disabled) {
+  background: #333;
+  border-color: #555;
+  color: #fff;
+}
+
+.stage-nav-button.active {
+  background: #0066cc;
+  border-color: #0066cc;
+  color: #fff;
+}
+
+.stage-nav-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.stage-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 50%;
+  font-weight: bold;
+  font-size: 12px;
+}
+
+.stage-nav-button.active .stage-icon {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.stage-label {
+  font-weight: 500;
+}
+
+.stage-spinner {
+  animation: spin 1s linear infinite;
+  font-size: 16px;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Status indicators */
+.stage-nav-button.ready::after {
+  content: '';
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 6px;
+  height: 6px;
+  background: #4caf50;
+  border-radius: 50%;
+}
+
+.stage-nav-button.processing::after {
+  content: '';
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 6px;
+  height: 6px;
+  background: #ff9800;
+  border-radius: 50%;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}

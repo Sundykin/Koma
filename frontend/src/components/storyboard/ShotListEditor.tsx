@@ -10,7 +10,7 @@ import { StoryboardLayout } from './StoryboardLayout';
 import { ShotListHeader } from './ShotListHeader';
 import type { MentionItem } from '../../editor';
 import type { Shot, Character, Scene, Prop, ShotVideo } from '../../types';
-import { ShotCard } from './ShotCard';
+import { ShotCardWithTask } from './ShotCardWithTask';
 
 const { Text } = Typography;
 
@@ -261,7 +261,7 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
                   onDragEnd={() => { dragIndexRef.current = null; setDragOverIndex(null); }}
                   className={dragOverIndex === index ? 'ring-2 ring-emerald-500/50 ring-inset' : ''}
                 >
-                <ShotCard
+                <ShotCardWithTask
                   shot={shot}
                   index={index}
                   totalCount={shots.length}
@@ -300,6 +300,8 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
                   onMoveDown={onMoveDown}
                   onInsertAbove={onInsertAbove}
                   onInsertBelow={onInsertBelow}
+                  showTaskStatus={true}
+                  taskDisplayMode="both"
                 />
                 </div>
               ))}

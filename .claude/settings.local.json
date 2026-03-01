@@ -1,4 +1,7 @@
 {
+  "env": {
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
+  },
   "permissions": {
     "allow": [
       "Bash(openspec list:*)",
@@ -92,10 +95,9 @@
       "Bash(chmod:*)",
       "Bash(brew install:*)",
       "Bash(/bin/sh -c:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "mcp__contextweaver__codebase-retrieval",
+      "Bash(git -C \"/Users/sunmeng/workspace/Koma\" status --short)"
     ]
-  },
-  "env": {
-    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
   }
 }

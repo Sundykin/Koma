@@ -6,7 +6,7 @@
 import Database from 'better-sqlite3';
 import * as path from 'path';
 import * as fs from 'fs';
-import { app } from 'electron';
+import { storagePathLoader } from '../config';
 
 class BasedbService {
   protected dbname: string;
@@ -15,11 +15,13 @@ class BasedbService {
 
   constructor(options: { dbname: string }) {
     this.dbname = options.dbname;
-    this.dbDir = path.join(app.getPath('userData'), 'db');
+    this.dbDir = '';
   }
 
   /** 初始化数据库连接 */
   protected _init(): void {
+    this.dbDir = path.join(storagePathLoader.getPaths().dataDir, 'db');
+
     if (!fs.existsSync(this.dbDir)) {
       fs.mkdirSync(this.dbDir, { recursive: true });
     }

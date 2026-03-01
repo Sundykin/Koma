@@ -4,8 +4,7 @@ import { getConfig } from 'ee-core/config';
 import { logger } from 'ee-core/log';
 import { registerLocalProtocol } from '../bootstrap/protocol';
 import { controllers } from '../controller';
-
-const isDev = process.env.NODE_ENV === 'development' || !electronApp.isPackaged;
+import { shotRenderTaskQueue } from '../queue/taskQueue';
 
 class Lifecycle {
   /**
@@ -14,15 +13,30 @@ class Lifecycle {
   async ready(): Promise<void> {
     logger.info('[lifecycle] ready');
 
-    // Enable remote debugging port in dev mode
-    if (isDev) {
-      const devtoolsPort = process.env.ELECTRON_DEVTOOLS_PORT || '9333';
-      electronApp.commandLine.appendSwitch('remote-debugging-port', devtoolsPort);
-      electronApp.commandLine.appendSwitch('remote-allow-origins', '*');
+    // macOS requires an Edit menu for standard keyboard shortcuts (Cmd+C/V/A/Z etc.)
+    // On other platforms, remove the menu entirely for a cleaner look
+    if (process.platform === 'darwin') {
+      Menu.setApplicationMenu(Menu.buildFromTemplate([
+        {
+          label: electronApp.name,
+          submenu: [{ role: 'hide' }, { role: 'hideOthers' }, { role: 'unhide' }, { type: 'separator' }, { role: 'quit' }],
+        },
+        {
+          label: 'Edit',
+          submenu: [
+            { role: 'undo' },
+            { role: 'redo' },
+            { type: 'separator' },
+            { role: 'cut' },
+            { role: 'copy' },
+            { role: 'paste' },
+            { role: 'selectAll' },
+          ],
+        },
+      ]));
+    } else {
+      Menu.setApplicationMenu(null);
     }
-
-    // Remove default application menu
-    Menu.setApplicationMenu(null);
   }
 
   /**
@@ -66,6 +80,9 @@ class Lifecycle {
 
     // Set workflow controller window reference
     controllers.workflow.setWindow(win);
+
+    // Set queue delegate window reference
+    shotRenderTaskQueue.setWindow(win);
 
     // Center and scale window proportionally
     const mainScreen = screen.getPrimaryDisplay();

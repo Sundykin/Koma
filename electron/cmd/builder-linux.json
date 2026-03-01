@@ -1,0 +1,33 @@
+{
+  "productName": "Koma Studio",
+  "appId": "com.komastudio.koma",
+  "copyright": "© 2026 Koma Studio",
+  "directories": {
+    "output": "out",
+    "buildResources": "../build/icons"
+  },
+  "asar": true,
+  "files": [
+    "public/**/*",
+    "package.json",
+    "node_modules/**/*"
+  ],
+  "extraResources": [
+    {
+      "from": "build/extraResources",
+      "to": "extraResources"
+    }
+  ],
+  "publish": [
+    {
+      "provider": "generic",
+      "url": ""
+    }
+  ],
+  "linux": {
+    "target": [
+      "deb"
+    ],
+    "artifactName": "${productName}-${os}-${version}-${arch}.${ext}"
+  }
+}

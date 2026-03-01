@@ -19,6 +19,8 @@ const invokeRpc = async (channel: string, args?: Record<string, unknown>) => {
   throw error;
 };
 
+const invokeIpc = (channel: string, args?: unknown) => ipcRenderer.invoke(channel, args);
+
 contextBridge.exposeInMainWorld('electronAPI', {
   window: {
     minimize: () => invokeRpc('window:minimize'),
@@ -127,6 +129,30 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
     sendDelegateResult: (delegateId: string, result: any, error?: string) =>
       invokeRpc('workflow:delegateResult', { delegateId, result, error }),
+  },
+  task: {
+    submitShotRender: (payload: any) => invokeIpc('task:submit', payload),
+    getTask: (taskId: string) => invokeIpc('task:get', { taskId }),
+    listTasks: (projectId: string, status?: 'queued' | 'processing' | 'completed' | 'failed') =>
+      invokeIpc('task:list', { projectId, status }),
+    cancelTask: (taskId: string) => invokeIpc('task:cancel', { taskId }),
+    retryTask: (taskId: string) => invokeIpc('task:retry', { taskId }),
+    onUpdate: (callback: (event: any, data: any) => void) => {
+      ipcRenderer.on('task:update', callback);
+      return () => ipcRenderer.removeListener('task:update', callback);
+    },
+    onDelegate: (callback: (event: any, data: any) => void) => {
+      ipcRenderer.on('task:delegate', callback);
+      return () => ipcRenderer.removeListener('task:delegate', callback);
+    },
+    sendDelegateProgress: (
+      taskId: string,
+      progress: number,
+      phase?: 'prepareShotRenderStage' | 'executeShotRenderStage' | 'persistShotRenderStage',
+      message?: string
+    ) => invokeIpc('task:progress', { taskId, progress, phase, message }),
+    sendDelegateResult: (delegateId: string, result: any, error?: string) =>
+      invokeIpc('task:delegateResult', { delegateId, result, error }),
   },
   chat: {
     createSession: (config?: any) => invokeRpc('chat:createSession', { config }),

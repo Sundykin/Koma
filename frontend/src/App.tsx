@@ -11,9 +11,12 @@ import { Sidebar, type AppView } from './components/common/Sidebar';
 // 懒加载非首屏视图组件
 const SettingsPage = React.lazy(() => import('./components/settings').then(m => ({ default: m.SettingsPage })));
 const EditorView = React.lazy(() => import('./components/editor/EditorView').then(m => ({ default: m.EditorView })));
+const TaskQueuePage = React.lazy(() => import('./pages/TaskQueue').then(m => ({ default: m.TaskQueuePage })));
+const NovelPromotionWorkspace = React.lazy(() => import('./pages/NovelPromotion').then(m => ({ default: m.NovelPromotionWorkspace })));
 import { useProjects } from './hooks/useProjects';
 import { TaskManager } from './services/TaskManager';
-import { loadCharacters, loadScenes, loadProps, loadShots, loadEpisodeShots, saveEpisode } from './store/projectStore';
+import { loadCharacters, loadScenes, loadProps, loadShots, loadEpisodeShots, saveEpisode, loadEpisode } from './store/projectStore';
+import { startShotAnalysis } from './services/ShotAnalysisService';
 import { Spin, App as AntApp, Button } from 'antd';
 import {
   DEV_TEST_PROJECT,
@@ -22,6 +25,8 @@ import {
   DEFAULT_SETTINGS,
   formatTimeAgo,
 } from './constants/appConstants';
+import { taskQueueService } from './services/taskQueueService';
+import { setupDelegateHandler } from './services/delegateHandler';
 
 // 懒加载 fallback
 const LazyFallback = () => (
@@ -60,8 +65,14 @@ const AppContent: React.FC = () => {
   const [scriptText, setScriptText] = useState(DEFAULT_SCRIPT);
   const [analysisData, setAnalysisData] = useState<ScriptAnalysisResult | null>(isVideoDevMode ? DEV_TEST_ANALYSIS : null);
 
-  // 初始化 TaskManager
+  // 初始化 TaskManager 和任务队列服务
   useEffect(() => {
+    // 初始化任务队列服务
+    taskQueueService.initialize();
+
+    // 设置委托处理器
+    setupDelegateHandler();
+
     if (activeProject) {
       TaskManager.initialize(activeProject.id);
     }
@@ -97,8 +108,25 @@ const AppContent: React.FC = () => {
     const unsubscribe = TaskManager.addListener((task) => {
       if (task.projectId !== activeProject.id) return;
       if (task.type === 'script-analysis' && task.status === 'completed') {
-        message.success('剧本解析完成');
+        message.success('剧本解析完成，正在生成分镜...');
         loadAnalysisData(activeProject.id);
+        // 自动启动分镜生成
+        const episodeId = task.targetId;
+        const episodeName = task.targetName || '';
+        loadEpisode(activeProject.id, episodeId).then(episode => {
+          if (episode?.scriptText) {
+            startShotAnalysis(
+              activeProject.id,
+              episodeId,
+              episodeName,
+              episode.scriptText,
+              activeProject.llmConfigId
+            );
+          }
+        }).catch(err => console.error('自动启动分镜生成失败:', err));
+      }
+      if (task.type === 'shot-analysis' && task.status === 'completed') {
+        message.success('分镜生成完成');
       }
     });
     return () => unsubscribe();
@@ -260,6 +288,12 @@ const AppContent: React.FC = () => {
               )
             )}
             {view === 'settings' && <Suspense fallback={<LazyFallback />}><SettingsPage settings={appSettings} onSave={setAppSettings} /></Suspense>}
+            {view === 'tasks' && <Suspense fallback={<LazyFallback />}><TaskQueuePage /></Suspense>}
+            {view === 'novel-promotion' && activeProject && (
+              <Suspense fallback={<LazyFallback />}>
+                <NovelPromotionWorkspace projectId={activeProject.id} />
+              </Suspense>
+            )}
             {view === 'overview' && activeProject && (
               <ProjectOverview
                 project={activeProject}

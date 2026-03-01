@@ -1,10 +1,10 @@
 import React from 'react';
 import { Avatar, Tooltip } from 'antd';
 import { UserOutlined } from '@ant-design/icons';
-import { LayoutGrid, Scissors, Settings } from 'lucide-react';
+import { LayoutGrid, Scissors, Settings, ListTodo, Film } from 'lucide-react';
 
-// 顶层导航仅保留核心三页
-export type AppView = 'projects' | 'overview' | 'editor' | 'settings';
+// 顶层导航仅保留核心三页 + 任务队列 + 短剧制作
+export type AppView = 'projects' | 'overview' | 'editor' | 'tasks' | 'novel-promotion' | 'settings';
 
 interface SidebarProps {
   view: AppView;
@@ -47,6 +47,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ view, onViewChange }) => {
   const navItems = [
     { key: 'projects' as const, icon: <LayoutGrid size={22} />, label: '项目总览' },
     { key: 'editor' as const, icon: <Scissors size={22} />, label: '创作工作台' },
+    { key: 'novel-promotion' as const, icon: <Film size={22} />, label: '短剧制作' },
+    { key: 'tasks' as const, icon: <ListTodo size={22} />, label: '任务队列' },
     { key: 'settings' as const, icon: <Settings size={22} />, label: '系统设置' },
   ];
 
@@ -54,12 +56,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ view, onViewChange }) => {
 
   return (
     <div className="w-[var(--sidebar-width)] bg-zinc-950 border-r border-zinc-800 flex flex-col h-full z-40 shrink-0">
-      <div className="h-14 w-full flex items-center justify-center">
-        <div className="w-10 h-10 bg-gradient-to-br from-emerald-500 to-emerald-700 rounded-xl flex items-center justify-center text-white font-bold text-lg shadow-lg shadow-emerald-900/40">
-          K
-        </div>
-      </div>
-
       <nav className="flex-1 flex flex-col py-2">
         <div className="space-y-1">
           {navItems.map((item) => {

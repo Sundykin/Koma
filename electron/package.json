@@ -2,12 +2,22 @@
   "name": "koma-electron",
   "version": "1.0.0",
   "description": "Koma Studio Electron Main Process",
-  "main": "dist/main.js",
+  "main": "./public/electron/main.js",
   "scripts": {
-    "build": "tsc && node scripts/prepare-ee-core-runtime.cjs",
-    "watch": "tsc -w",
-    "start": "electron dist/main.js",
-    "dev": "tsc && node scripts/prepare-ee-core-runtime.cjs && electron dist/main.js --env=local"
+    "postinstall": "npx @electron/rebuild -f -w better-sqlite3",
+    "dev": "ee-bin dev",
+    "dev-frontend": "ee-bin dev --serve=frontend",
+    "dev-electron": "ee-bin dev --serve=electron",
+    "dev:electron-runtime": "tsc && node scripts/prepare-ee-core-runtime.cjs && electron public/electron/main.js --env=local",
+    "build": "npm run build-frontend && npm run build-electron",
+    "build-frontend": "ee-bin build --cmds=frontend && ee-bin move --flag=frontend_dist",
+    "build-electron": "ee-bin build --cmds=electron",
+    "build:electron-runtime": "tsc && node scripts/prepare-ee-core-runtime.cjs",
+    "start": "ee-bin start",
+    "build-w": "ee-bin build --cmds=win64",
+    "build-m": "ee-bin build --cmds=mac",
+    "build-l": "ee-bin build --cmds=linux",
+    "watch": "tsc -w"
   },
   "dependencies": {
     "@langchain/anthropic": "^1.3.12",
@@ -19,18 +29,24 @@
     "@types/better-sqlite3": "^7.6.13",
     "adm-zip": "^0.5.16",
     "archiver": "^7.0.1",
+    "better-queue": "^3.8.12",
+    "better-queue-sqlite": "^1.0.7",
     "better-sqlite3": "^12.6.2",
     "ee-core": "^4.1.5",
     "electron-store": "^11.0.2",
     "extract-zip": "^2.0.1",
     "langchain": "^1.2.15",
+    "p-queue": "^9.1.0",
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@electron/rebuild": "^3.7.1",
     "@types/adm-zip": "^0.5.7",
     "@types/archiver": "^6.0.3",
     "@types/node": "^22.14.0",
+    "ee-bin": "^4.2.0",
     "electron": "^39.6.1",
+    "electron-builder": "^26.4.0",
     "typescript": "~5.8.2"
   }
 }

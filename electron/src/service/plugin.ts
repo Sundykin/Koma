@@ -4,11 +4,11 @@
  */
 import * as path from 'path';
 import * as fs from 'fs/promises';
-import { app } from 'electron';
 import AdmZip from 'adm-zip';
 import { pluginRuntime } from './plugin/runtime';
 import type { PluginManifest } from './plugin/types';
 import { configRegistry } from './config';
+import { storagePathLoader } from './config';
 import type { PluginStateConfig } from './config';
 
 // 必填字段
@@ -84,9 +84,9 @@ class PluginService {
   _stagingTtlMs = 10 * 60 * 1000; // 10 分钟过期
 
   async init(): Promise<void> {
-    const userDataPath = app.getPath('userData');
-    this.pluginsDir = path.join(userDataPath, 'plugins-runtime');
-    this.stagingDir = path.join(userDataPath, 'plugins-staging');
+    const paths = storagePathLoader.getPaths();
+    this.pluginsDir = paths.pluginsDir;
+    this.stagingDir = path.join(paths.cacheDir, 'plugins-staging');
 
     // 确保目录存在
     await fs.mkdir(this.pluginsDir, { recursive: true });
