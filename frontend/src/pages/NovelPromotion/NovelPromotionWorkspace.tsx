@@ -7,6 +7,7 @@ import React, { useState, useCallback } from 'react';
 import { StageNavigation } from './components/StageNavigation';
 import { EpisodeManager } from './components/EpisodeManager';
 import { ConfigStage } from './ConfigStage';
+import { ScriptStage } from './ScriptStage';
 import { useStageNavigation } from './hooks/useStageNavigation';
 import { useEpisodeData } from './hooks/useEpisodeData';
 import type { Episode } from './types';
@@ -95,6 +96,19 @@ export function NovelPromotionWorkspace({ projectId }: NovelPromotionWorkspacePr
     handleStageChange('script');
   }, [episode, handleStageChange]);
 
+  const handleGenerateStoryboard = useCallback(async () => {
+    if (!episode) return;
+
+    // TODO: 实现实际的 Script-to-Storyboard 工作流调用
+    console.log('Generate storyboard');
+
+    // 模拟异步操作
+    await new Promise(resolve => setTimeout(resolve, 2000));
+
+    // 切换到 Storyboard Stage
+    handleStageChange('storyboard');
+  }, [episode, handleStageChange]);
+
   return (
     <div className="novel-promotion-workspace">
       <EpisodeManager
@@ -145,10 +159,13 @@ export function NovelPromotionWorkspace({ projectId }: NovelPromotionWorkspacePr
             )}
 
             {currentStage === 'script' && (
-              <div className="stage-placeholder">
-                <h2>Script Stage</h2>
-                <p>Clip 编辑器（待实现）</p>
-              </div>
+              <ScriptStage
+                projectId={projectId}
+                clips={clips}
+                characters={characters}
+                locations={locations}
+                onGenerateStoryboard={handleGenerateStoryboard}
+              />
             )}
 
             {currentStage === 'storyboard' && (
