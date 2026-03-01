@@ -6,6 +6,7 @@
 import React, { useState, useCallback } from 'react';
 import { StageNavigation } from './components/StageNavigation';
 import { EpisodeManager } from './components/EpisodeManager';
+import { ConfigStage } from './ConfigStage';
 import { useStageNavigation } from './hooks/useStageNavigation';
 import { useEpisodeData } from './hooks/useEpisodeData';
 import type { Episode } from './types';
@@ -69,6 +70,31 @@ export function NovelPromotionWorkspace({ projectId }: NovelPromotionWorkspacePr
     }
   }, [currentEpisodeId, episodes]);
 
+  const handleEpisodeUpdate = useCallback(async (updates: Partial<Episode>) => {
+    if (!episode) return;
+    // TODO: 实现实际的更新逻辑
+    setEpisodes(prev =>
+      prev.map(ep => ep.id === episode.id ? { ...ep, ...updates, updatedAt: Date.now() } : ep)
+    );
+  }, [episode]);
+
+  const handleGenerateScript = useCallback(async (params: {
+    novelText: string;
+    theme?: string;
+    videoRatio?: string;
+  }) => {
+    if (!episode) return;
+
+    // TODO: 实现实际的 Story-to-Script 工作流调用
+    console.log('Generate script:', params);
+
+    // 模拟异步操作
+    await new Promise(resolve => setTimeout(resolve, 2000));
+
+    // 切换到 Script Stage
+    handleStageChange('script');
+  }, [episode, handleStageChange]);
+
   return (
     <div className="novel-promotion-workspace">
       <EpisodeManager
@@ -110,10 +136,12 @@ export function NovelPromotionWorkspace({ projectId }: NovelPromotionWorkspacePr
         {!loading && !error && currentEpisodeId && (
           <>
             {currentStage === 'config' && (
-              <div className="stage-placeholder">
-                <h2>Config Stage</h2>
-                <p>Story Input 界面（待实现）</p>
-              </div>
+              <ConfigStage
+                projectId={projectId}
+                episode={episode}
+                onEpisodeUpdate={handleEpisodeUpdate}
+                onGenerateScript={handleGenerateScript}
+              />
             )}
 
             {currentStage === 'script' && (
