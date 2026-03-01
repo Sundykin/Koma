@@ -4,7 +4,6 @@
  */
 
 import React, { useState, useCallback } from 'react';
-import { novelPromotionWorkflowService } from '../../../services/novelPromotionWorkflowService';
 import type { Episode } from '../types';
 import './ConfigStage.css';
 
@@ -54,38 +53,14 @@ export function ConfigStage({
     setError(null);
 
     try {
-      // 提交 Story-to-Script 任务
-      const taskId = await novelPromotionWorkflowService.submitStoryToScript({
-        projectId,
-        episodeId: episode.id,
+      await onGenerateScript({
         novelText: novelText.trim(),
         theme,
         videoRatio,
       });
-
-      console.log('[ConfigStage] Task submitted:', taskId);
-
-      // 订阅任务状态
-      const unsubscribe = novelPromotionWorkflowService.subscribeWorkflow(taskId, (status) => {
-        console.log('[ConfigStage] Task status:', status);
-
-        if (status.status === 'completed') {
-          unsubscribe();
-          setIsGenerating(false);
-          // 调用父组件的回调
-          onGenerateScript({
-            novelText: novelText.trim(),
-            theme,
-            videoRatio,
-          });
-        } else if (status.status === 'failed') {
-          unsubscribe();
-          setIsGenerating(false);
-          setError(status.error || '生成剧本失败');
-        }
-      });
     } catch (err) {
       setError(err instanceof Error ? err.message : '生成剧本失败');
+    } finally {
       setIsGenerating(false);
     }
   };

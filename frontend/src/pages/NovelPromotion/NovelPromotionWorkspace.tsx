@@ -14,7 +14,8 @@ import { AssetLibrary } from './AssetLibrary';
 import { useStageNavigation } from './hooks/useStageNavigation';
 import { useEpisodeData } from './hooks/useEpisodeData';
 import { episodeAPI, characterAPI, locationAPI, workflowAPI } from '../../services/novelPromotionService';
-import type { Episode, Character, Location } from './types';
+import { taskQueueService } from '../../services/taskQueueService';
+import type { Episode, Character, Location, Stage } from './types';
 import './NovelPromotionWorkspace.css';
 
 interface NovelPromotionWorkspaceProps {
@@ -25,6 +26,8 @@ export function NovelPromotionWorkspace({ projectId }: NovelPromotionWorkspacePr
   const [currentEpisodeId, setCurrentEpisodeId] = useState<string | null>(null);
   const [episodes, setEpisodes] = useState<Episode[]>([]);
   const [isAssetLibraryOpen, setIsAssetLibraryOpen] = useState(false);
+  const [runningStages, setRunningStages] = useState<Stage[]>([]);
+  const [errorStages, setErrorStages] = useState<Stage[]>([]);
 
   const {
     episode,
@@ -60,9 +63,30 @@ export function NovelPromotionWorkspace({ projectId }: NovelPromotionWorkspacePr
       clips,
       storyboards,
     },
+    runtimeSignals: {
+      runningStages,
+      errorStages,
+    },
   });
 
-  // Episode 管理
+  const markStageRunning = useCallback((stage: Stage) => {
+    setRunningStages(prev => prev.includes(stage) ? prev : [...prev, stage]);
+    setErrorStages(prev => prev.filter(s => s !== stage));
+  }, []);
+
+  const clearStageRunning = useCallback((stage: Stage) => {
+    setRunningStages(prev => prev.filter(s => s !== stage));
+  }, []);
+
+  const markStageError = useCallback((stage: Stage) => {
+    setRunningStages(prev => prev.filter(s => s !== stage));
+    setErrorStages(prev => prev.includes(stage) ? prev : [...prev, stage]);
+  }, []);
+
+  const clearStageError = useCallback((stage: Stage) => {
+    setErrorStages(prev => prev.filter(s => s !== stage));
+  }, []);
+
   const handleEpisodeCreate = useCallback(async (name: string) => {
     try {
       const { id } = await episodeAPI.create(projectId, name);
@@ -124,8 +148,10 @@ export function NovelPromotionWorkspace({ projectId }: NovelPromotionWorkspacePr
   }) => {
     if (!episode) return;
 
+    const stage: Stage = 'script';
+    markStageRunning(stage);
+
     try {
-      // 提交工作流任务
       const { taskId } = await workflowAPI.storyToScript({
         projectId,
         episodeId: episode.id,
@@ -134,42 +160,82 @@ export function NovelPromotionWorkspace({ projectId }: NovelPromotionWorkspacePr
         videoRatio: params.videoRatio,
       });
 
-      console.log('Story-to-Script task submitted:', taskId);
-
-      // TODO: 监听任务完成事件，刷新数据
-      // 暂时延迟后切换到 Script Stage
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      handleStageChange('script');
-    } catch (err) {
-      console.error('Failed to generate script:', err);
+      await new Promise<void>((resolve, reject) => {
+        const unsubscribe = taskQueueService.subscribe(taskId, async (task) => {
+          if (task.status === 'completed') {
+            unsubscribe();
+            await refetch();
+            clearStageError(stage);
+            clearStageRunning(stage);
+            handleStageChange('script');
+            resolve();
+          } else if (task.status === 'failed') {
+            unsubscribe();
+            markStageError(stage);
+            reject(new Error(task.error || '生成剧本失败'));
+          }
+        });
+      });
+    } catch (error) {
+      markStageError(stage);
+      throw error;
     }
-  }, [episode, projectId, handleStageChange]);
+  }, [episode, projectId, handleStageChange, refetch, markStageRunning, clearStageRunning, markStageError, clearStageError]);
 
   const handleGenerateStoryboard = useCallback(async () => {
-    if (!episode) return;
+    if (!episode || clips.length === 0) {
+      throw new Error('请先准备至少一个 Clip');
+    }
 
-    // TODO: 实现实际的 Script-to-Storyboard 工作流调用
-    console.log('Generate storyboard');
+    const stage: Stage = 'storyboard';
+    markStageRunning(stage);
 
-    // 模拟异步操作
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    const firstClip = clips[0];
+    const characterDetails = characters
+      .filter(char => firstClip.characters.includes(char.name))
+      .map(char => ({ name: char.name, description: char.description || '' }));
 
-    // 切换到 Storyboard Stage
-    handleStageChange('storyboard');
-  }, [episode, handleStageChange]);
+    try {
+      const { taskId } = await workflowAPI.scriptToStoryboard({
+        projectId,
+        episodeId: episode.id,
+        clipId: firstClip.id,
+        clipContent: firstClip.content,
+        characters: characterDetails,
+        location: firstClip.location || '',
+      });
+
+      await new Promise<void>((resolve, reject) => {
+        const unsubscribe = taskQueueService.subscribe(taskId, async (task) => {
+          if (task.status === 'completed') {
+            unsubscribe();
+            await refetch();
+            clearStageError(stage);
+            clearStageRunning(stage);
+            handleStageChange('storyboard');
+            resolve();
+          } else if (task.status === 'failed') {
+            unsubscribe();
+            markStageError(stage);
+            reject(new Error(task.error || '生成分镜失败'));
+          }
+        });
+      });
+    } catch (error) {
+      markStageError(stage);
+      throw error;
+    }
+  }, [episode, clips, characters, projectId, handleStageChange, refetch, markStageRunning, clearStageRunning, markStageError, clearStageError]);
 
   const handleGenerateVideos = useCallback(async () => {
     if (!episode) return;
 
-    // TODO: 实现实际的视频生成工作流调用
-    console.log('Generate videos');
+    const stage: Stage = 'video';
+    clearStageError(stage);
 
-    // 模拟异步操作
-    await new Promise(resolve => setTimeout(resolve, 2000));
-
-    // 切换到 Video Stage
+    // P0/P1-1: 暂无后端视频任务，保留手动切换
     handleStageChange('video');
-  }, [episode, handleStageChange]);
+  }, [episode, handleStageChange, clearStageError]);
 
   const handleGeneratePanelVideo = useCallback(async (panelId: string) => {
     // TODO: 实现单个 Panel 的视频生成
@@ -270,7 +336,7 @@ export function NovelPromotionWorkspace({ projectId }: NovelPromotionWorkspacePr
         onStageChange={handleStageChange}
       />
 
-      <div className="stage-content">
+      <div className="stage-content" data-testid="workspace-ready">
         {loading && (
           <div className="loading-state">
             <div className="spinner">⟳</div>

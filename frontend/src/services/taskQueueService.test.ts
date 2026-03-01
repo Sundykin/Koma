@@ -13,6 +13,7 @@ const mockElectronAPI = {
   task: {
     submitShotRender: vi.fn(),
     getTask: vi.fn(),
+    listTasks: vi.fn(),
     cancelTask: vi.fn(),
     onUpdate: vi.fn(),
   },
@@ -56,8 +57,8 @@ describe('taskQueueService', () => {
     it('retrieves task status by ID', async () => {
       const { taskQueueService } = await import('./taskQueueService');
 
-      const mockTask: TaskInfo = {
-        taskId: 'task-123',
+      const mockTask = {
+        id: 'task-123',
         status: 'processing',
         progress: 50,
       };
@@ -65,15 +66,27 @@ describe('taskQueueService', () => {
 
       const result = await taskQueueService.getTaskStatus('task-123');
 
-      expect(result).toEqual(mockTask);
+      expect(result).toEqual({
+        taskId: 'task-123',
+        status: 'processing',
+        progress: 50,
+        type: undefined,
+        phase: undefined,
+        attempts: undefined,
+        maxRetries: undefined,
+        payload: undefined,
+        error: undefined,
+        result: undefined,
+        updatedAt: undefined,
+      });
       expect(mockElectronAPI.task.getTask).toHaveBeenCalledWith('task-123');
     });
 
     it('retrieves completed task with result', async () => {
       const { taskQueueService } = await import('./taskQueueService');
 
-      const mockTask: TaskInfo = {
-        taskId: 'task-456',
+      const mockTask = {
+        id: 'task-456',
         status: 'completed',
         progress: 100,
         result: { videoUrl: 'https://example.com/video.mp4' },
@@ -89,8 +102,8 @@ describe('taskQueueService', () => {
     it('retrieves failed task with error', async () => {
       const { taskQueueService } = await import('./taskQueueService');
 
-      const mockTask: TaskInfo = {
-        taskId: 'task-789',
+      const mockTask = {
+        id: 'task-789',
         status: 'failed',
         progress: 50,
         error: 'ITV provider not found',
@@ -101,6 +114,42 @@ describe('taskQueueService', () => {
 
       expect(result.status).toBe('failed');
       expect(result.error).toBe('ITV provider not found');
+    });
+  });
+
+  describe('listTasks', () => {
+    it('lists tasks successfully', async () => {
+      const { taskQueueService } = await import('./taskQueueService');
+
+      mockElectronAPI.task.listTasks.mockResolvedValue([
+        {
+          id: 'task-1',
+          status: 'queued',
+          progress: 0,
+          type: 'story-to-script',
+          payload: { projectId: 'proj-1' },
+          updatedAt: 1,
+        },
+      ]);
+
+      const result = await taskQueueService.listTasks('queued');
+
+      expect(mockElectronAPI.task.listTasks).toHaveBeenCalledWith(undefined, 'queued');
+      expect(result).toEqual([
+        {
+          taskId: 'task-1',
+          status: 'queued',
+          progress: 0,
+          type: 'story-to-script',
+          phase: undefined,
+          attempts: undefined,
+          maxRetries: undefined,
+          payload: { projectId: 'proj-1' },
+          error: undefined,
+          result: undefined,
+          updatedAt: 1,
+        },
+      ]);
     });
   });
 

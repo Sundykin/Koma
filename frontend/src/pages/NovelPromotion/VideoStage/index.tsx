@@ -26,6 +26,7 @@ export function VideoStage({
 }: VideoStageProps) {
   const [currentPanelId, setCurrentPanelId] = useState<string | null>(null);
   const [isBatchGenerating, setIsBatchGenerating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   // 获取所有 Panels
   const allPanels = storyboards.flatMap(sb => sb.panels);
@@ -37,10 +38,11 @@ export function VideoStage({
 
   const handlePanelGenerateVideo = useCallback(async (panel: Panel) => {
     try {
+      setError(null);
       await onPanelGenerateVideo?.(panel.id);
     } catch (error) {
       console.error('[VideoStage] Generate video failed:', error);
-      alert('生成视频失败');
+      setError(error instanceof Error ? error.message : '生成视频失败');
     }
   }, [onPanelGenerateVideo]);
 
@@ -50,14 +52,14 @@ export function VideoStage({
 
   const handleBatchGenerate = async () => {
     if (allPanels.length === 0) {
-      alert('没有可生成的分镜');
+      setError('没有可生成的分镜');
       return;
     }
 
     // 检查是否所有 Panel 都有图片
     const panelsWithoutImage = allPanels.filter(p => !p.imageUrl);
     if (panelsWithoutImage.length > 0) {
-      alert(`还有 ${panelsWithoutImage.length} 个分镜没有图片，请先生成图片`);
+      setError(`还有 ${panelsWithoutImage.length} 个分镜没有图片，请先生成图片`);
       return;
     }
 
@@ -67,21 +69,17 @@ export function VideoStage({
     );
 
     if (pendingPanels.length === 0) {
-      alert('所有视频已生成完成');
+      setError('所有视频已生成完成');
       return;
     }
 
-    const confirm = window.confirm(
-      `将批量生成 ${pendingPanels.length} 个视频，是否继续？`
-    );
-    if (!confirm) return;
-
     setIsBatchGenerating(true);
+    setError(null);
     try {
       await onBatchGenerateVideos?.();
     } catch (error) {
       console.error('[VideoStage] Batch generate failed:', error);
-      alert('批量生成失败');
+      setError(error instanceof Error ? error.message : '批量生成失败');
     } finally {
       setIsBatchGenerating(false);
     }
@@ -95,6 +93,11 @@ export function VideoStage({
           <p className="header-subtitle">
             为每个分镜生成视频
           </p>
+          {error && (
+            <div className="error-message" data-testid="error-banner-video">
+              {error}
+            </div>
+          )}
         </div>
 
         <div className="header-stats">
@@ -120,6 +123,8 @@ export function VideoStage({
           className="btn-batch-generate"
           onClick={handleBatchGenerate}
           disabled={allPanels.length === 0 || isBatchGenerating}
+          data-testid="action-batch-generate-videos"
+          data-task-status={isBatchGenerating ? 'processing' : 'idle'}
         >
           {isBatchGenerating ? (
             <>

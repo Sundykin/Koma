@@ -158,11 +158,14 @@ export type Stage = 'config' | 'script' | 'storyboard' | 'video' | 'editor';
 
 export type StageStatus = 'empty' | 'active' | 'processing' | 'ready';
 
+export type UnifiedStageStatus = 'blocked' | 'ready' | 'running' | 'done' | 'error';
+
 export interface StageNavItem {
   id: Stage;
   icon: string;
   label: string;
   status: StageStatus;
+  semanticStatus: UnifiedStageStatus;
   disabled?: boolean;
   disabledLabel?: string;
 }
@@ -180,7 +183,10 @@ export interface StoryToScriptParams {
 export interface ScriptToStoryboardParams {
   projectId: string;
   episodeId: string;
-  clipIds: string[];
+  clipId: string;
+  clipContent: string;
+  characters: Array<{ name: string; description: string }>;
+  location: string;
 }
 
 export interface PanelImageGenerationParams {

@@ -10,6 +10,7 @@ import type {
   StoryToScriptTaskPayload,
   ScriptToStoryboardTaskPayload,
 } from '../queue/types';
+import { shotRenderTaskQueue } from '../queue/taskQueue';
 
 // ============ Episode Handlers ============
 
@@ -250,13 +251,25 @@ ipcMain.handle('novel-promotion:panel:update-video', async (_, args: {
 
 ipcMain.handle('novel-promotion:workflow:story-to-script', async (_, args: StoryToScriptTaskPayload): Promise<IPCResponseEnvelope<{ taskId: string }>> => {
   try {
-    // TODO: 提交任务到队列
-    const taskId = `task_${Date.now()}`;
+    if (!args || typeof args !== 'object') {
+      throw new Error('workflow payload is required');
+    }
+    if (typeof args.projectId !== 'string' || !args.projectId.trim()) {
+      throw new Error('projectId is required');
+    }
+    if (typeof args.episodeId !== 'string' || !args.episodeId.trim()) {
+      throw new Error('episodeId is required');
+    }
+    if (typeof args.novelText !== 'string' || !args.novelText.trim()) {
+      throw new Error('novelText is required');
+    }
 
-    // 这里应该调用队列服务提交任务
-    // await queueService.submitTask('story-to-script', args);
+    const task = await shotRenderTaskQueue.submitStoryToScript({
+      ...args,
+      novelText: args.novelText.trim(),
+    });
 
-    return ok({ taskId });
+    return ok({ taskId: task.id });
   } catch (error) {
     return fail(error, 'WORKFLOW_STORY_TO_SCRIPT_ERROR');
   }
@@ -264,13 +277,35 @@ ipcMain.handle('novel-promotion:workflow:story-to-script', async (_, args: Story
 
 ipcMain.handle('novel-promotion:workflow:script-to-storyboard', async (_, args: ScriptToStoryboardTaskPayload): Promise<IPCResponseEnvelope<{ taskId: string }>> => {
   try {
-    // TODO: 提交任务到队列
-    const taskId = `task_${Date.now()}`;
+    if (!args || typeof args !== 'object') {
+      throw new Error('workflow payload is required');
+    }
+    if (typeof args.projectId !== 'string' || !args.projectId.trim()) {
+      throw new Error('projectId is required');
+    }
+    if (typeof args.episodeId !== 'string' || !args.episodeId.trim()) {
+      throw new Error('episodeId is required');
+    }
+    if (typeof args.clipId !== 'string' || !args.clipId.trim()) {
+      throw new Error('clipId is required');
+    }
+    if (typeof args.clipContent !== 'string' || !args.clipContent.trim()) {
+      throw new Error('clipContent is required');
+    }
+    if (!Array.isArray(args.characters)) {
+      throw new Error('characters must be an array');
+    }
+    if (typeof args.location !== 'string' || !args.location.trim()) {
+      throw new Error('location is required');
+    }
 
-    // 这里应该调用队列服务提交任务
-    // await queueService.submitTask('script-to-storyboard', args);
+    const task = await shotRenderTaskQueue.submitScriptToStoryboard({
+      ...args,
+      clipContent: args.clipContent.trim(),
+      location: args.location.trim(),
+    });
 
-    return ok({ taskId });
+    return ok({ taskId: task.id });
   } catch (error) {
     return fail(error, 'WORKFLOW_SCRIPT_TO_STORYBOARD_ERROR');
   }

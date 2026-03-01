@@ -32,6 +32,7 @@ export function ScriptStage({
 }: ScriptStageProps) {
   const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleClipEdit = useCallback((clip: Clip) => {
     // TODO: 打开 Clip 编辑弹窗
@@ -70,16 +71,17 @@ export function ScriptStage({
 
   const handleGenerateStoryboard = async () => {
     if (clips.length === 0) {
-      alert('请先生成 Clip');
+      setError('请先生成 Clip');
       return;
     }
 
     setIsGenerating(true);
+    setError(null);
     try {
       await onGenerateStoryboard?.();
     } catch (error) {
       console.error('[ScriptStage] Generate storyboard failed:', error);
-      alert('生成分镜失败');
+      setError(error instanceof Error ? error.message : '生成分镜失败');
     } finally {
       setIsGenerating(false);
     }
@@ -93,11 +95,18 @@ export function ScriptStage({
           <p className="header-subtitle">
             编辑 Clip 内容，管理角色和场景资产
           </p>
+          {error && (
+            <div className="error-message" data-testid="error-banner-script">
+              {error}
+            </div>
+          )}
         </div>
         <button
           className="btn-generate-storyboard"
           onClick={handleGenerateStoryboard}
           disabled={clips.length === 0 || isGenerating}
+          data-testid="action-generate-storyboard"
+          data-task-status={isGenerating ? 'processing' : 'idle'}
         >
           {isGenerating ? (
             <>

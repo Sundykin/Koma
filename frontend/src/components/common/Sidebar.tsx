@@ -16,12 +16,14 @@ interface NavItemProps {
   icon: React.ReactNode;
   label: string;
   onClick: () => void;
+  testId?: string;
 }
 
-const NavItem: React.FC<NavItemProps> = ({ active, icon, label, onClick }) => (
+const NavItem: React.FC<NavItemProps> = ({ active, icon, label, onClick, testId }) => (
   <Tooltip title={label} placement="right">
     <button
       onClick={onClick}
+      data-testid={testId}
       className={`relative w-full flex justify-center py-2.5 cursor-pointer transition-colors ${
         active ? 'text-emerald-400' : 'text-zinc-500 hover:text-zinc-300'
       }`}
@@ -45,11 +47,11 @@ const NavItem: React.FC<NavItemProps> = ({ active, icon, label, onClick }) => (
 
 export const Sidebar: React.FC<SidebarProps> = ({ view, onViewChange }) => {
   const navItems = [
-    { key: 'projects' as const, icon: <LayoutGrid size={22} />, label: '项目总览' },
-    { key: 'editor' as const, icon: <Scissors size={22} />, label: '创作工作台' },
-    { key: 'novel-promotion' as const, icon: <Film size={22} />, label: '短剧制作' },
-    { key: 'tasks' as const, icon: <ListTodo size={22} />, label: '任务队列' },
-    { key: 'settings' as const, icon: <Settings size={22} />, label: '系统设置' },
+    { key: 'projects' as const, icon: <LayoutGrid size={22} />, label: '项目总览', testId: 'nav-projects' },
+    { key: 'novel-promotion' as const, icon: <Film size={22} />, label: '短剧制作', testId: 'nav-novel-promotion' },
+    { key: 'editor' as const, icon: <Scissors size={22} />, label: '创作工作台', testId: 'nav-editor' },
+    { key: 'tasks' as const, icon: <ListTodo size={22} />, label: '任务队列', testId: 'nav-tasks' },
+    { key: 'settings' as const, icon: <Settings size={22} />, label: '系统设置', testId: 'nav-settings' },
   ];
 
   const isProjectsActive = view === 'projects' || view === 'overview';
@@ -70,6 +72,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ view, onViewChange }) => {
                 active={active}
                 icon={item.icon}
                 label={item.label}
+                testId={item.testId}
                 onClick={() => onViewChange(item.key)}
               />
             );

@@ -1,5 +1,5 @@
 /**
- * 剧本工作台
+ * 脚本辅助区
  * 包含工具栏和剧本编辑器，支持自动保存
  */
 import React, { useState, useEffect, useCallback, useRef } from 'react';
@@ -156,10 +156,10 @@ export const ScriptWorkbench: React.FC<ScriptWorkbenchProps> = ({
           <Film className="w-10 h-10 text-zinc-600" />
         </div>
         <h2 className="text-lg font-semibold text-zinc-200 mb-2">
-          选择剧集开始创作
+          选择剧集继续编辑
         </h2>
         <p className="text-sm text-zinc-500">
-          从左侧选择一个剧集，或创建新剧集开始编写剧本
+          从左侧选择一个剧集，或创建新剧集后在此维护脚本
         </p>
       </div>
     );
@@ -183,7 +183,7 @@ export const ScriptWorkbench: React.FC<ScriptWorkbenchProps> = ({
         <ScriptEditor
           value={localScript}
           onChange={handleScriptChange}
-          placeholder="在此开始创作剧本... (支持 Markdown 格式)"
+          placeholder="在此编辑剧本... (支持 Markdown 格式)"
           minHeight="100%"
           maxHeight="100%"
           showLineNumbers={true}

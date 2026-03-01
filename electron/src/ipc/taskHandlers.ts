@@ -45,8 +45,10 @@ export function registerTaskHandlers(): void {
     return shotRenderTaskQueue.getTask(taskId);
   });
 
-  ipcMain.handle('task:list', async (_event, args: { projectId: string; status?: QueueTaskStatus }) => {
-    const projectId = asRequiredString(args?.projectId, 'projectId');
+  ipcMain.handle('task:list', async (_event, args: { projectId?: string; status?: QueueTaskStatus }) => {
+    const projectId = typeof args?.projectId === 'string' && args.projectId.trim().length > 0
+      ? args.projectId.trim()
+      : undefined;
     const status = args?.status;
     if (status && !ALLOWED_STATUS.has(status)) {
       throw new Error(`invalid status: ${status}`);

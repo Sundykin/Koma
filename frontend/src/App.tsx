@@ -164,9 +164,14 @@ const AppContent: React.FC = () => {
   }));
 
   const handleViewChange = useCallback((nextView: AppView) => {
+    if (nextView === 'projects') {
+      setView(activeProject ? 'overview' : 'projects');
+      return;
+    }
+
     if (nextView === 'editor') {
       if (!activeProject) {
-        message.warning('请先在项目总览中选择项目');
+        message.warning('请先选择项目，再进入短剧制作');
         setView('projects');
         return;
       }
@@ -188,7 +193,7 @@ const AppContent: React.FC = () => {
       };
       setActiveProject(newProject);
       setActiveEpisode(null);
-      setView('overview');
+      setView('novel-promotion');
       setScriptText('');
       setAnalysisData(null);
       setIsCreateModalOpen(false);
@@ -203,23 +208,14 @@ const AppContent: React.FC = () => {
     if (proj) {
       setActiveProject(proj);
       setActiveEpisode(null);
-      setView('overview');
+      setView('novel-promotion');
       setScriptText('');
       setAnalysisData(null);
     }
   };
 
-  const handleEnterEpisode = (episode: Episode) => {
-    setActiveEpisode(episode);
-    setView('editor');
-    const defaultProgress: EpisodeStepProgress = { assets: 'pending', storyboard: 'pending', video: 'pending' };
-    const progress = episode.stepProgress || defaultProgress;
-    setStepProgress(progress);
-    const steps: EditorStep[] = ['assets', 'storyboard', 'video'];
-    const firstPending = steps.find(s => progress[s] === 'pending') || 'assets';
-    setEditorStep(firstPending);
-    setScriptText(episode.scriptText || '');
-    setAnalysisData(null);
+  const handleEnterNovelPromotion = (_episode: Episode) => {
+    setView('novel-promotion');
   };
 
   const markStepCompleted = useCallback((step: EditorStep) => {
@@ -272,7 +268,11 @@ const AppContent: React.FC = () => {
           onViewChange={handleViewChange}
         />
         <div className="flex-1 flex flex-col min-w-0 transition-all duration-300">
-          <main className="flex-1 overflow-hidden relative bg-zinc-950">
+          <main
+            className="flex-1 overflow-hidden relative bg-zinc-950"
+            data-testid="app-main-content"
+            data-current-view={view}
+          >
             {view === 'projects' && (
               projectsLoading ? (
                 <div className="flex h-full items-center justify-center">
@@ -289,15 +289,26 @@ const AppContent: React.FC = () => {
             )}
             {view === 'settings' && <Suspense fallback={<LazyFallback />}><SettingsPage settings={appSettings} onSave={setAppSettings} /></Suspense>}
             {view === 'tasks' && <Suspense fallback={<LazyFallback />}><TaskQueuePage /></Suspense>}
-            {view === 'novel-promotion' && activeProject && (
-              <Suspense fallback={<LazyFallback />}>
-                <NovelPromotionWorkspace projectId={activeProject.id} />
-              </Suspense>
+            {view === 'novel-promotion' && (
+              activeProject ? (
+                <Suspense fallback={<LazyFallback />}>
+                  <NovelPromotionWorkspace projectId={activeProject.id} />
+                </Suspense>
+              ) : (
+                <div className="flex h-full items-center justify-center">
+                  <div className="text-center">
+                    <p className="text-zinc-400 mb-4">请先选择一个项目</p>
+                    <Button type="primary" onClick={() => setView('projects')}>
+                      返回项目列表
+                    </Button>
+                  </div>
+                </div>
+              )
             )}
             {view === 'overview' && activeProject && (
               <ProjectOverview
                 project={activeProject}
-                onEnterEpisode={handleEnterEpisode}
+                onEnterEpisode={handleEnterNovelPromotion}
                 onProjectUpdate={(updates) => setActiveProject({ ...activeProject, ...updates })}
               />
             )}
@@ -322,7 +333,7 @@ const AppContent: React.FC = () => {
               ) : (
                 <div className="flex h-full items-center justify-center">
                   <div className="text-center space-y-4">
-                    <p className="text-zinc-400">请先在项目总览中选择一个项目，再进入创作工作台。</p>
+                    <p className="text-zinc-400">请先在项目总览中选择一个项目，再进入短剧制作。</p>
                     <Button type="primary" onClick={() => setView('projects')}>返回项目总览</Button>
                   </div>
                 </div>

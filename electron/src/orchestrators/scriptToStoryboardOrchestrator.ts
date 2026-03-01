@@ -20,7 +20,7 @@ export interface ScriptToStoryboardInput {
   ) => Promise<{ text: string; reasoning: string }>;
 }
 
-export interface StoryboardPanel {
+export interface StoryboardPanelResult {
   panelNumber: number;
   description: string;
   location: string;
@@ -40,7 +40,7 @@ export interface StoryboardPanel {
 
 export interface ScriptToStoryboardResult {
   clipId: string;
-  panels: StoryboardPanel[];
+  panels: StoryboardPanelResult[];
   summary: {
     panelCount: number;
   };
@@ -111,7 +111,7 @@ export async function scriptToStoryboardOrchestrator(
       );
 
       const panelArray = parsePanelArray(output.text);
-      const panels: StoryboardPanel[] = panelArray.map((panel, index) => ({
+      const panels: StoryboardPanelResult[] = panelArray.map((panel, index) => ({
         panelNumber: index + 1,
         description: String(panel.description || ''),
         location: String(panel.location || input.location),

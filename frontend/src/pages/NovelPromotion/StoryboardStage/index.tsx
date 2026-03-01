@@ -26,6 +26,7 @@ export function StoryboardStage({
   onGenerateVideos,
 }: StoryboardStageProps) {
   const [isGenerating, setIsGenerating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handlePanelEdit = useCallback((panel: Panel) => {
     // TODO: 打开 Panel 编辑弹窗
@@ -34,10 +35,11 @@ export function StoryboardStage({
 
   const handlePanelGenerateImage = useCallback(async (panel: Panel) => {
     try {
+      setError(null);
       await onPanelGenerateImage?.(panel.id);
     } catch (error) {
       console.error('[StoryboardStage] Generate image failed:', error);
-      alert('生成图片失败');
+      setError(error instanceof Error ? error.message : '生成图片失败');
     }
   }, [onPanelGenerateImage]);
 
@@ -48,7 +50,7 @@ export function StoryboardStage({
 
   const handleGenerateVideos = async () => {
     if (storyboards.length === 0) {
-      alert('请先生成分镜');
+      setError('请先生成分镜');
       return;
     }
 
@@ -58,18 +60,17 @@ export function StoryboardStage({
     );
 
     if (panelsWithoutImage.length > 0) {
-      const confirm = window.confirm(
-        `还有 ${panelsWithoutImage.length} 个分镜没有图片，是否继续生成视频？`
-      );
-      if (!confirm) return;
+      setError(`还有 ${panelsWithoutImage.length} 个分镜没有图片，请先补齐图片`);
+      return;
     }
 
     setIsGenerating(true);
+    setError(null);
     try {
       await onGenerateVideos?.();
     } catch (error) {
       console.error('[StoryboardStage] Generate videos failed:', error);
-      alert('生成视频失败');
+      setError(error instanceof Error ? error.message : '生成视频失败');
     } finally {
       setIsGenerating(false);
     }
@@ -90,6 +91,11 @@ export function StoryboardStage({
           <p className="header-subtitle">
             编辑分镜描述，生成分镜图片
           </p>
+          {error && (
+            <div className="error-message" data-testid="error-banner-storyboard">
+              {error}
+            </div>
+          )}
         </div>
 
         <div className="header-stats">
@@ -109,6 +115,8 @@ export function StoryboardStage({
           className="btn-generate-videos"
           onClick={handleGenerateVideos}
           disabled={storyboards.length === 0 || isGenerating}
+          data-testid="action-generate-videos"
+          data-task-status={isGenerating ? 'processing' : 'idle'}
         >
           {isGenerating ? (
             <>

@@ -6,8 +6,14 @@ export interface TaskInfo<T = any> {
   taskId: string;
   status: TaskStatus;
   progress: number;
+  type?: string;
+  phase?: string;
+  attempts?: number;
+  maxRetries?: number;
+  payload?: any;
   error?: string;
   result?: T;
+  updatedAt?: number;
 }
 
 type TaskListener = (task: TaskInfo) => void;
@@ -46,7 +52,25 @@ class TaskQueueService {
     if (!electronService.isElectron()) {
       throw new Error('Task queue only available in Electron');
     }
-    return await (window as any).electronAPI.task.getTask(taskId);
+
+    const task = await (window as any).electronAPI.task.getTask(taskId);
+    if (!task) {
+      throw new Error(`Task not found: ${taskId}`);
+    }
+
+    return {
+      taskId: task.id,
+      status: task.status,
+      progress: task.progress,
+      type: task.type,
+      phase: task.phase,
+      attempts: task.attempts,
+      maxRetries: task.maxRetries,
+      payload: task.payload,
+      error: task.error,
+      result: task.result,
+      updatedAt: task.updatedAt,
+    };
   }
 
   async cancelTask(taskId: string): Promise<boolean> {
@@ -77,13 +101,29 @@ class TaskQueueService {
     };
   }
 
-  // 新增：列出所有任务
   async listTasks(status?: string): Promise<TaskInfo[]> {
     if (!electronService.isElectron()) {
       throw new Error('Task queue only available in Electron');
     }
-    // TODO: 实现 listTasks API
-    return [];
+
+    const tasks = await (window as any).electronAPI.task.listTasks(undefined, status);
+    if (!Array.isArray(tasks)) {
+      return [];
+    }
+
+    return tasks.map((task: any) => ({
+      taskId: task.id,
+      status: task.status,
+      progress: task.progress,
+      type: task.type,
+      phase: task.phase,
+      attempts: task.attempts,
+      maxRetries: task.maxRetries,
+      payload: task.payload,
+      error: task.error,
+      result: task.result,
+      updatedAt: task.updatedAt,
+    }));
   }
 }
 

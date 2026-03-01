@@ -27,7 +27,7 @@ export function VideoPanelCard({
   const hasFailed = panel.videoStatus === 'failed';
 
   return (
-    <div className="video-panel-card">
+    <div className="video-panel-card" data-testid={`video-panel-${panel.id}`} data-video-status={panel.videoStatus || 'pending'}>
       <div className="video-panel-header">
         <span className="panel-number">Panel {panel.panelNumber}</span>
         <span className={`status-badge ${panel.videoStatus || 'pending'}`}>
@@ -95,6 +95,8 @@ export function VideoPanelCard({
               className="btn-generate-video"
               onClick={onGenerateVideo}
               disabled={!panel.imageUrl}
+              data-testid={`action-generate-video-${panel.id}`}
+              data-task-status={isGenerating ? 'processing' : hasFailed ? 'failed' : hasVideo ? 'completed' : 'idle'}
             >
               <span className="icon">🎬</span>
               生成视频
@@ -119,6 +121,7 @@ export function VideoPanelCard({
           <button
             className="btn-retry"
             onClick={onGenerateVideo}
+            data-testid={`retry-video-${panel.id}`}
           >
             <span className="icon">🔄</span>
             重试

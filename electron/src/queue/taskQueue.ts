@@ -13,10 +13,19 @@ import type {
   RendererDelegateResult,
   ShotRenderTaskPayload,
   ShotRenderTaskResult,
+  StoryToScriptTaskPayload,
+  StoryToScriptTaskResult,
+  ScriptToStoryboardTaskPayload,
+  ScriptToStoryboardTaskResult,
+  TaskPayload,
+  TaskResult,
   TaskUpdateEvent,
 } from './types';
 import { rendererDelegate } from './workers/rendererDelegate';
-import { runShotRenderTask, TASK_CANCELLED_ERROR } from './workers/shotRenderHandler';
+import { runShotRenderTask, TASK_CANCELLED_ERROR as SHOT_TASK_CANCELLED_ERROR } from './workers/shotRenderHandler';
+import { runStoryToScriptTask, TASK_CANCELLED_ERROR as STORY_TASK_CANCELLED_ERROR } from './workers/storyToScriptHandler';
+import { runScriptToStoryboardTask, TASK_CANCELLED_ERROR as STORYBOARD_TASK_CANCELLED_ERROR } from './workers/scriptToStoryboardHandler';
+import { novelPromotionDbService } from '../service/database/novelPromotionDb';
 
 const BetterQueue: any = require('better-queue');
 const BetterQueueSqliteStore: any = require('better-queue-sqlite');
@@ -52,6 +61,13 @@ interface TaskRow {
   updated_at: number;
   started_at: number | null;
   completed_at: number | null;
+}
+
+function normalizeTaskType(type: string): QueueTaskRecord['type'] {
+  if (type === 'shot-render' || type === 'story-to-script' || type === 'script-to-storyboard') {
+    return type;
+  }
+  return 'shot-render';
 }
 
 function clampProgress(value: number): number {
@@ -178,21 +194,88 @@ export class ShotRenderTaskQueue {
     return task;
   }
 
+  async submitStoryToScript(payload: StoryToScriptTaskPayload): Promise<QueueTaskRecord> {
+    await this.init();
+    const now = Date.now();
+    const taskId = randomUUID();
+
+    const task: QueueTaskRecord<StoryToScriptTaskPayload, StoryToScriptTaskResult> = {
+      id: taskId,
+      type: 'story-to-script',
+      status: 'queued',
+      progress: 0,
+      attempts: 0,
+      maxRetries: QUEUE_MAX_RETRIES,
+      projectId: payload.projectId,
+      shotId: payload.episodeId,
+      episodeId: payload.episodeId,
+      payload,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    this.upsertTask(task);
+    this.emitUpdate(task, 'Story 转 Script 任务已入队');
+    this.enqueue(taskId);
+
+    return task;
+  }
+
+  async submitScriptToStoryboard(payload: ScriptToStoryboardTaskPayload): Promise<QueueTaskRecord> {
+    await this.init();
+    const now = Date.now();
+    const taskId = randomUUID();
+
+    const task: QueueTaskRecord<ScriptToStoryboardTaskPayload, ScriptToStoryboardTaskResult> = {
+      id: taskId,
+      type: 'script-to-storyboard',
+      status: 'queued',
+      progress: 0,
+      attempts: 0,
+      maxRetries: QUEUE_MAX_RETRIES,
+      projectId: payload.projectId,
+      shotId: payload.clipId,
+      episodeId: payload.episodeId,
+      clipId: payload.clipId,
+      payload,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    this.upsertTask(task);
+    this.emitUpdate(task, 'Script 转 Storyboard 任务已入队');
+    this.enqueue(taskId);
+
+    return task;
+  }
+
   async getTask(taskId: string): Promise<QueueTaskRecord | null> {
     await this.init();
     return this.getTaskSync(taskId);
   }
 
-  async listTasks(projectId: string, status?: QueueTaskStatus): Promise<QueueTaskRecord[]> {
+  async listTasks(projectId?: string, status?: QueueTaskStatus): Promise<QueueTaskRecord[]> {
     await this.init();
     const db = this.getDb();
-    const rows = status
-      ? (db
-          .prepare('SELECT * FROM shot_render_tasks WHERE project_id = ? AND status = ? ORDER BY updated_at DESC')
-          .all(projectId, status) as TaskRow[])
-      : (db
-          .prepare('SELECT * FROM shot_render_tasks WHERE project_id = ? ORDER BY updated_at DESC')
-          .all(projectId) as TaskRow[]);
+
+    let rows: TaskRow[];
+    if (projectId && status) {
+      rows = db
+        .prepare('SELECT * FROM shot_render_tasks WHERE project_id = ? AND status = ? ORDER BY updated_at DESC')
+        .all(projectId, status) as TaskRow[];
+    } else if (projectId) {
+      rows = db
+        .prepare('SELECT * FROM shot_render_tasks WHERE project_id = ? ORDER BY updated_at DESC')
+        .all(projectId) as TaskRow[];
+    } else if (status) {
+      rows = db
+        .prepare('SELECT * FROM shot_render_tasks WHERE status = ? ORDER BY updated_at DESC')
+        .all(status) as TaskRow[];
+    } else {
+      rows = db
+        .prepare('SELECT * FROM shot_render_tasks ORDER BY updated_at DESC')
+        .all() as TaskRow[];
+    }
 
     return rows.map((row) => this.rowToTask(row));
   }
@@ -280,7 +363,7 @@ export class ShotRenderTaskQueue {
     });
   }
 
-  private async processTask(job: QueueJob): Promise<ShotRenderTaskResult> {
+  private async processTask(job: QueueJob): Promise<TaskResult> {
     const current = this.getTaskSync(job.taskId);
     if (!current) {
       throw new Error(`任务不存在: ${job.taskId}`);
@@ -293,7 +376,7 @@ export class ShotRenderTaskQueue {
         completedAt: Date.now(),
       });
       this.cancelledTasks.delete(job.taskId);
-      return { output: { cancelled: true } };
+      return { output: { cancelled: true } } as ShotRenderTaskResult;
     }
 
     this.updateTask(job.taskId, {
@@ -304,23 +387,7 @@ export class ShotRenderTaskQueue {
     }, '开始处理任务');
 
     try {
-      const result = await runShotRenderTask({
-        taskId: job.taskId,
-        payload: current.payload,
-        delegate: rendererDelegate,
-        isCancelled: () => this.cancelledTasks.has(job.taskId),
-        onProgress: async (progress, phase, message) => {
-          this.updateTask(
-            job.taskId,
-            {
-              status: 'processing',
-              progress: clampProgress(progress),
-              phase,
-            },
-            message
-          );
-        },
-      });
+      const result = await this.runTaskByType(job.taskId, current);
 
       this.updateTask(job.taskId, {
         status: 'completed',
@@ -340,7 +407,10 @@ export class ShotRenderTaskQueue {
         throw error instanceof Error ? error : new Error(message);
       }
 
-      const isCancelled = this.cancelledTasks.has(job.taskId) || message === TASK_CANCELLED_ERROR;
+      const isCancelled = this.cancelledTasks.has(job.taskId) ||
+        message === SHOT_TASK_CANCELLED_ERROR ||
+        message === STORY_TASK_CANCELLED_ERROR ||
+        message === STORYBOARD_TASK_CANCELLED_ERROR;
       if (isCancelled) {
         this.updateTask(job.taskId, {
           status: 'failed',
@@ -348,7 +418,7 @@ export class ShotRenderTaskQueue {
           completedAt: Date.now(),
         }, '任务已取消');
         this.cancelledTasks.delete(job.taskId);
-        return { output: { cancelled: true } };
+        return { output: { cancelled: true } } as ShotRenderTaskResult;
       }
 
       if (latest.attempts < latest.maxRetries) {
@@ -367,6 +437,145 @@ export class ShotRenderTaskQueue {
 
       throw error instanceof Error ? error : new Error(message);
     }
+  }
+
+  private async runTaskByType(taskId: string, current: QueueTaskRecord): Promise<TaskResult> {
+    const isCancelled = () => this.cancelledTasks.has(taskId);
+
+    if (current.type === 'shot-render') {
+      return runShotRenderTask({
+        taskId,
+        payload: current.payload as ShotRenderTaskPayload,
+        delegate: rendererDelegate,
+        isCancelled,
+        onProgress: async (progress, phase, message) => {
+          this.updateTask(
+            taskId,
+            {
+              status: 'processing',
+              progress: clampProgress(progress),
+              phase,
+            },
+            message
+          );
+        },
+      });
+    }
+
+    if (current.type === 'story-to-script') {
+      const result = await runStoryToScriptTask({
+        taskId,
+        payload: current.payload as StoryToScriptTaskPayload,
+        delegate: rendererDelegate,
+        isCancelled,
+        onProgress: async (progress, phase, message) => {
+          this.updateTask(
+            taskId,
+            {
+              status: 'processing',
+              progress: clampProgress(progress),
+              phase: phase as QueueTaskRecord['phase'],
+            },
+            message
+          );
+        },
+      });
+
+      this.persistStoryToScriptResult(current, result);
+      return result;
+    }
+
+    if (current.type === 'script-to-storyboard') {
+      const result = await runScriptToStoryboardTask({
+        taskId,
+        payload: current.payload as ScriptToStoryboardTaskPayload,
+        delegate: rendererDelegate,
+        isCancelled,
+        onProgress: async (progress, phase, message) => {
+          this.updateTask(
+            taskId,
+            {
+              status: 'processing',
+              progress: clampProgress(progress),
+              phase: phase as QueueTaskRecord['phase'],
+            },
+            message
+          );
+        },
+      });
+
+      this.persistScriptToStoryboardResult(current, result);
+      return result;
+    }
+
+    throw new Error(`Unsupported task type: ${current.type}`);
+  }
+
+  private persistStoryToScriptResult(
+    current: QueueTaskRecord,
+    result: StoryToScriptTaskResult
+  ): void {
+    if (!current.episodeId) return;
+
+    const payload = current.payload as StoryToScriptTaskPayload;
+    novelPromotionDbService.updateEpisode(current.episodeId, {
+      novelText: payload.novelText,
+      theme: payload.theme,
+      videoRatio: payload.videoRatio,
+    });
+
+    for (const character of result.characters) {
+      novelPromotionDbService.createCharacter({
+        id: `char_${randomUUID()}`,
+        projectId: current.projectId,
+        name: character.name,
+        description: character.description,
+        appearance: character.appearance,
+        personality: character.personality,
+      });
+    }
+
+    for (const location of result.locations) {
+      novelPromotionDbService.createLocation({
+        id: `loc_${randomUUID()}`,
+        projectId: current.projectId,
+        name: location.name,
+        description: location.description,
+      });
+    }
+
+    for (const [index, clip] of result.clips.entries()) {
+      novelPromotionDbService.createClip({
+        id: clip.id || `clip_${randomUUID()}`,
+        episodeId: current.episodeId,
+        clipNumber: index + 1,
+        summary: clip.summary,
+        content: clip.content,
+        location: clip.location || undefined,
+        characters: clip.characters,
+      });
+    }
+  }
+
+  private persistScriptToStoryboardResult(
+    current: QueueTaskRecord,
+    result: ScriptToStoryboardTaskResult
+  ): void {
+    if (!current.clipId) return;
+
+    novelPromotionDbService.createStoryboard({
+      id: `sb_${randomUUID()}`,
+      clipId: current.clipId,
+      panels: result.panels.map((panel) => ({
+        id: `panel_${randomUUID()}`,
+        panelNumber: panel.panelNumber,
+        description: panel.description,
+        location: panel.location,
+        characters: panel.characters,
+        photographyPlan: panel.photographyPlan as Record<string, unknown> | undefined,
+        actingNotes: panel.actingNotes as Array<Record<string, unknown>> | undefined,
+      })),
+    });
   }
 
   private getDb(): Database.Database {
@@ -417,14 +626,37 @@ export class ShotRenderTaskQueue {
   }
 
   private rowToTask(row: TaskRow): QueueTaskRecord {
-    const fallbackPayload: ShotRenderTaskPayload = {
-      projectId: row.project_id,
-      shot: { id: row.shot_id },
-    };
+    const taskType = normalizeTaskType(row.type);
+
+    let fallbackPayload: TaskPayload;
+    if (taskType === 'story-to-script') {
+      fallbackPayload = {
+        projectId: row.project_id,
+        episodeId: row.shot_id,
+        novelText: '',
+      } as StoryToScriptTaskPayload;
+    } else if (taskType === 'script-to-storyboard') {
+      fallbackPayload = {
+        projectId: row.project_id,
+        episodeId: row.shot_id,
+        clipId: row.shot_id,
+        clipContent: '',
+        characters: [],
+        location: '',
+      } as ScriptToStoryboardTaskPayload;
+    } else {
+      fallbackPayload = {
+        projectId: row.project_id,
+        shot: { id: row.shot_id },
+      } as ShotRenderTaskPayload;
+    }
+
+    const payload = parseJson<TaskPayload>(row.payload_json, fallbackPayload);
+    const result = parseJson<TaskResult | undefined>(row.result_json, undefined);
 
     return {
       id: row.id,
-      type: 'shot-render',
+      type: taskType,
       status: this.normalizeStatus(row.status),
       progress: row.progress,
       attempts: row.attempts,
@@ -432,8 +664,10 @@ export class ShotRenderTaskQueue {
       phase: (row.phase || undefined) as QueueTaskRecord['phase'],
       projectId: row.project_id,
       shotId: row.shot_id,
-      payload: parseJson<ShotRenderTaskPayload>(row.payload_json, fallbackPayload),
-      result: parseJson<ShotRenderTaskResult | undefined>(row.result_json, undefined),
+      episodeId: (payload as StoryToScriptTaskPayload | ScriptToStoryboardTaskPayload).episodeId,
+      clipId: (payload as ScriptToStoryboardTaskPayload).clipId,
+      payload,
+      result,
       error: row.error || undefined,
       createdAt: row.created_at,
       updatedAt: row.updated_at,

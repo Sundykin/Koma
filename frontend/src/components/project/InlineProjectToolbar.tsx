@@ -87,7 +87,7 @@ export const InlineProjectToolbar: React.FC<InlineProjectToolbarProps> = ({
           )}
         </div>
 
-        {/* 开始制作按钮 */}
+        {/* 进入主流程按钮 */}
         <Button
           type="primary"
           size="small"
@@ -95,8 +95,9 @@ export const InlineProjectToolbar: React.FC<InlineProjectToolbarProps> = ({
           onClick={onStartProduction}
           disabled={!episode}
           className="bg-emerald-600 hover:bg-emerald-500 border-none"
+          data-testid="action-enter-novel-promotion"
         >
-          开始制作
+          进入短剧主流程
         </Button>
       </div>
     </div>

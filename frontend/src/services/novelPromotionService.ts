@@ -11,7 +11,13 @@ import type {
   Storyboard,
 } from '../pages/NovelPromotion/types';
 
-const { ipcRenderer } = window.require('electron');
+// 使用 Electron API 桥接
+const getElectronAPI = (): any => {
+  if (typeof window === 'undefined' || !(window as any).electronAPI) {
+    throw new Error('Electron API not available');
+  }
+  return (window as any).electronAPI;
+};
 
 interface IPCResponse<T> {
   ok: boolean;
@@ -23,7 +29,19 @@ interface IPCResponse<T> {
 }
 
 async function invoke<T>(channel: string, args?: any): Promise<T> {
-  const response: IPCResponse<T> = await ipcRenderer.invoke(channel, args);
+  const api = getElectronAPI();
+
+  // 使用通用的 IPC invoke 方法
+  if (api.ipc && api.ipc.invoke) {
+    const response: IPCResponse<T> = await api.ipc.invoke(channel, args);
+    if (!response.ok) {
+      throw new Error(response.error?.message || 'IPC call failed');
+    }
+    return response.data as T;
+  }
+
+  // 回退：直接调用（如果 API 已经暴露了特定方法）
+  throw new Error(`IPC channel not available: ${channel}`);
 
   if (!response.ok) {
     throw new Error(response.error?.message || 'IPC call failed');

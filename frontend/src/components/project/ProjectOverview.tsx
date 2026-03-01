@@ -1,6 +1,6 @@
 /**
- * 项目概览页面
- * 三栏式工作台布局：左侧剧集导航(360px) | 中间剧本编辑区 | 右侧资产面板(340px)
+ * 项目概览辅助壳层
+ * 三栏式辅助布局：左侧剧集导航(360px) | 中间脚本区域 | 右侧资产面板(340px)
  */
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { Input, Tag, App, Modal, Select, Tooltip, Button, Progress } from 'antd';
@@ -14,10 +14,8 @@ import { EpisodeManager, EpisodeManagerRef } from './EpisodeManager';
 import { EpisodeSplitWizard } from './EpisodeSplitWizard';
 import { ProjectAssetOverview } from './ProjectAssetOverview';
 import { ScriptWorkbench } from './ScriptWorkbench';
-import { saveProject, loadProject, listEpisodes, loadEpisodeShots } from '../../store/projectStore';
+import { saveProject, loadProject, listEpisodes } from '../../store/projectStore';
 import { loadSettings, getChannelsByCapability } from '../../store/globalStore';
-import { startShotAnalysis } from '../../services/ShotAnalysisService';
-import { TaskManager } from '../../services/TaskManager';
 import { THEME_PRESETS } from '../../config/themePresets';
 import { ScriptEditor } from '../../editor';
 import { QueueStatusPanel } from '../task/QueueStatusPanel';
@@ -114,41 +112,18 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
   }, []);
 
   const handleStartProduction = useCallback(async () => {
-    if (!selectedEpisode) return;
-
-    if (!selectedEpisode.scriptText?.trim()) {
-      message.warning('请先编写剧本再开始制作');
+    if (!selectedEpisode) {
+      message.warning('请先选择一个剧集');
       return;
     }
 
-    const shots = await loadEpisodeShots(project.id, selectedEpisode.id);
-    if (shots.length === 0) {
-      // Check if shot-analysis is already running
-      const existingTask = TaskManager.getProjectTasks(project.id).find(
-        t => t.type === 'shot-analysis' && t.targetId === selectedEpisode.id && t.status === 'running'
-      );
-      if (existingTask) {
-        message.info('分镜正在生成中，请稍候...');
-        return;
-      }
-
-      // Auto-trigger shot generation
-      message.info('正在自动生成分镜，完成后请再次点击开始制作');
-      startShotAnalysis(
-        project.id,
-        selectedEpisode.id,
-        selectedEpisode.title || '',
-        selectedEpisode.scriptText,
-        project.llmConfigId
-      ).catch(err => {
-        console.error('自动生成分镜失败:', err);
-        message.error('自动生成分镜失败: ' + (err.message || '未知错误'));
-      });
+    if (!selectedEpisode.scriptText?.trim()) {
+      message.warning('请先编写剧本再进入短剧制作');
       return;
     }
 
     onEnterEpisode(selectedEpisode);
-  }, [selectedEpisode, project.id, project.llmConfigId, onEnterEpisode, message]);
+  }, [selectedEpisode, onEnterEpisode, message]);
 
   // 剧本内容变更（自动保存后回调）
   const handleScriptChange = useCallback((text: string) => {
@@ -246,7 +221,7 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
   const themeDisplay = currentTheme?.name || project.stylePrompt || '未设置';
 
   return (
-    <div className="h-full flex flex-col bg-zinc-950 overflow-hidden">
+    <div className="h-full flex flex-col bg-zinc-950 overflow-hidden" data-testid="project-overview-shell">
       {/* HeaderBar */}
       <div className="flex-shrink-0 h-14 px-4 flex items-center justify-between border-b border-zinc-800/80 bg-zinc-900">
         {/* Left: Icon + Title */}
@@ -350,11 +325,13 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
             loading={!!autoGenProgress && !autoGenProgress.completed}
             disabled={!selectedEpisode}
             size="small"
+            data-testid="overview-action-auto-generate"
           >
-            一键成片
+            一键成片（辅助）
           </Button>
           <button
             onClick={openScriptImport}
+            data-testid="overview-action-import-script"
             className="flex items-center gap-1.5 px-2.5 py-1 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded text-xs text-zinc-300 transition-colors"
           >
             <Upload className="w-3.5 h-3.5" />
@@ -455,12 +432,12 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
         </div>
       </div>
 
-      {/* 一键成片进度面板 */}
+      {/* 辅助流程进度面板 */}
       {autoGenProgress && (
         <div className="absolute bottom-4 right-4 w-80 bg-zinc-900 border border-zinc-700 rounded-lg p-4 shadow-xl z-50">
           <div className="flex items-center justify-between mb-2">
             <span className="text-sm font-medium text-zinc-200">
-              {autoGenProgress.completed ? '✅ 成片完成' : '🚀 一键成片'}
+              {autoGenProgress.completed ? '✅ 辅助流程完成' : '🚀 辅助流程执行中'}
             </span>
             <button
               onClick={autoGenProgress.completed ? () => setAutoGenProgress(null) : handleCancelAutoGenerate}

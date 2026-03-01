@@ -29,6 +29,7 @@ export function EpisodeManager({
   const [newEpisodeName, setNewEpisodeName] = useState('');
   const [isRenaming, setIsRenaming] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
+  const [confirmDeleteEpisodeId, setConfirmDeleteEpisodeId] = useState<string | null>(null);
 
   const handleCreate = async () => {
     if (!newEpisodeName.trim()) return;
@@ -55,10 +56,9 @@ export function EpisodeManager({
   };
 
   const handleDelete = async (episodeId: string) => {
-    if (!confirm('确定要删除这个 Episode 吗？')) return;
-
     try {
       await onEpisodeDelete(episodeId);
+      setConfirmDeleteEpisodeId(null);
     } catch (error) {
       console.error('Failed to delete episode:', error);
     }
@@ -157,12 +157,31 @@ export function EpisodeManager({
                 >
                   重命名
                 </button>
-                <button
-                  className="btn-delete"
-                  onClick={() => handleDelete(currentEpisode.id)}
-                >
-                  删除
-                </button>
+                {confirmDeleteEpisodeId === currentEpisode.id ? (
+                  <>
+                    <button
+                      className="btn-delete"
+                      onClick={() => handleDelete(currentEpisode.id)}
+                      data-testid={`confirm-delete-episode-${currentEpisode.id}`}
+                    >
+                      确认删除
+                    </button>
+                    <button
+                      onClick={() => setConfirmDeleteEpisodeId(null)}
+                      data-testid={`cancel-delete-episode-${currentEpisode.id}`}
+                    >
+                      取消
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    className="btn-delete"
+                    onClick={() => setConfirmDeleteEpisodeId(currentEpisode.id)}
+                    data-testid={`delete-episode-${currentEpisode.id}`}
+                  >
+                    删除
+                  </button>
+                )}
               </>
             )}
           </>

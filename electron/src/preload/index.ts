@@ -233,4 +233,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
       return () => ipcRenderer.removeListener('event:message', listener);
     },
   },
+  // 通用 IPC invoke 方法（用于自定义 IPC 通道）
+  ipc: {
+    invoke: (channel: string, args?: unknown) => invokeIpc(channel, args),
+  },
 });

@@ -6,7 +6,7 @@ import type {
   RendererDelegatePayload,
   RendererDelegateRequest,
   RendererDelegateResult,
-  ShotRenderPhase,
+  TaskPhase,
 } from '../types';
 
 interface PendingDelegate {
@@ -25,7 +25,7 @@ export class RendererDelegate {
   }
 
   async execute(
-    phase: ShotRenderPhase,
+    phase: TaskPhase | string,
     taskId: string,
     payload: RendererDelegatePayload,
     timeoutMs = 5 * 60 * 1000
@@ -39,7 +39,7 @@ export class RendererDelegate {
       const request: RendererDelegateRequest = {
         delegateId,
         taskId,
-        phase,
+        phase: phase as TaskPhase,
         payload,
       };
 
