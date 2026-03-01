@@ -1,0 +1,136 @@
+/* Storyboard Stage 样式 */
+
+.storyboard-stage {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: #1a1a1a;
+}
+
+.storyboard-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 24px 32px;
+  border-bottom: 1px solid #333;
+  gap: 24px;
+}
+
+.header-info h2 {
+  font-size: 24px;
+  font-weight: 600;
+  color: #fff;
+  margin: 0 0 8px 0;
+}
+
+.header-subtitle {
+  font-size: 14px;
+  color: #999;
+  margin: 0;
+}
+
+.header-stats {
+  display: flex;
+  gap: 24px;
+  margin-left: auto;
+}
+
+.stat-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.stat-label {
+  color: #999;
+}
+
+.stat-value {
+  color: #fff;
+  font-weight: 600;
+}
+
+.btn-generate-videos {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 24px;
+  background: linear-gradient(135deg, #ff5722 0%, #e64a19 100%);
+  border: none;
+  border-radius: 8px;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.btn-generate-videos:hover:not(:disabled) {
+  background: linear-gradient(135deg, #e64a19 0%, #d84315 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(255, 87, 34, 0.3);
+}
+
+.btn-generate-videos:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.btn-generate-videos .spinner {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.btn-generate-videos .icon {
+  font-size: 18px;
+}
+
+.storyboard-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px;
+}
+
+/* Empty State */
+.storyboard-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 12px;
+  color: #999;
+}
+
+.empty-icon {
+  font-size: 64px;
+  opacity: 0.3;
+}
+
+.storyboard-empty p {
+  font-size: 18px;
+  margin: 0;
+}
+
+.empty-hint {
+  font-size: 14px;
+  color: #666;
+}
+
+/* Storyboard List */
+.storyboard-list {
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+}

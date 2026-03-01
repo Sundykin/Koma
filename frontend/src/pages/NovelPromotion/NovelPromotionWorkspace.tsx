@@ -8,6 +8,7 @@ import { StageNavigation } from './components/StageNavigation';
 import { EpisodeManager } from './components/EpisodeManager';
 import { ConfigStage } from './ConfigStage';
 import { ScriptStage } from './ScriptStage';
+import { StoryboardStage } from './StoryboardStage';
 import { useStageNavigation } from './hooks/useStageNavigation';
 import { useEpisodeData } from './hooks/useEpisodeData';
 import type { Episode } from './types';
@@ -109,6 +110,19 @@ export function NovelPromotionWorkspace({ projectId }: NovelPromotionWorkspacePr
     handleStageChange('storyboard');
   }, [episode, handleStageChange]);
 
+  const handleGenerateVideos = useCallback(async () => {
+    if (!episode) return;
+
+    // TODO: 实现实际的视频生成工作流调用
+    console.log('Generate videos');
+
+    // 模拟异步操作
+    await new Promise(resolve => setTimeout(resolve, 2000));
+
+    // 切换到 Video Stage
+    handleStageChange('video');
+  }, [episode, handleStageChange]);
+
   return (
     <div className="novel-promotion-workspace">
       <EpisodeManager
@@ -169,10 +183,12 @@ export function NovelPromotionWorkspace({ projectId }: NovelPromotionWorkspacePr
             )}
 
             {currentStage === 'storyboard' && (
-              <div className="stage-placeholder">
-                <h2>Storyboard Stage</h2>
-                <p>Panel 编辑器（待实现）</p>
-              </div>
+              <StoryboardStage
+                projectId={projectId}
+                storyboards={storyboards}
+                clips={clips}
+                onGenerateVideos={handleGenerateVideos}
+              />
             )}
 
             {currentStage === 'video' && (
