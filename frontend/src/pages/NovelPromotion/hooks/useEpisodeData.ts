@@ -4,10 +4,8 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
+import { episodeAPI, clipAPI, storyboardAPI, characterAPI, locationAPI } from '../../../services/novelPromotionService';
 import type { Episode, Clip, Storyboard, Character, Location } from '../types';
-
-// TODO: 实现实际的数据服务
-// import { novelPromotionService } from '../../../services/novelPromotionService';
 
 interface UseEpisodeDataResult {
   episode: Episode | null;
@@ -44,35 +42,21 @@ export function useEpisodeData(
     setError(null);
 
     try {
-      // TODO: 实现实际的数据加载
-      // const [episodeData, clipsData, storyboardsData, charactersData, locationsData] = await Promise.all([
-      //   novelPromotionService.getEpisode(episodeId),
-      //   novelPromotionService.listClips(episodeId),
-      //   novelPromotionService.listStoryboards(episodeId),
-      //   novelPromotionService.listCharacters(projectId),
-      //   novelPromotionService.listLocations(projectId),
-      // ]);
+      const [episodeData, clipsData, storyboardsData, charactersData, locationsData] = await Promise.all([
+        episodeAPI.get(episodeId),
+        clipAPI.list(episodeId),
+        storyboardAPI.list(episodeId),
+        characterAPI.list(projectId),
+        locationAPI.list(projectId),
+      ]);
 
-      // setEpisode(episodeData);
-      // setClips(clipsData);
-      // setStoryboards(storyboardsData);
-      // setCharacters(charactersData);
-      // setLocations(locationsData);
-
-      // 临时 Mock 数据
-      setEpisode({
-        id: episodeId,
-        projectId,
-        name: 'Episode 1',
-        novelText: '',
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-      });
-      setClips([]);
-      setStoryboards([]);
-      setCharacters([]);
-      setLocations([]);
+      setEpisode(episodeData);
+      setClips(clipsData);
+      setStoryboards(storyboardsData);
+      setCharacters(charactersData);
+      setLocations(locationsData);
     } catch (err) {
+      console.error('Failed to load episode data:', err);
       setError(err instanceof Error ? err.message : 'Failed to load episode data');
     } finally {
       setLoading(false);

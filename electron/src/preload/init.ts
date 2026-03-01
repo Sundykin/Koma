@@ -13,8 +13,10 @@ import { app } from 'electron';
 import { registerLocalProtocol } from '../bootstrap/protocol';
 import { createRendererSubscriptionRegistry, registerIpcRoutes } from '../ipc/router';
 import { sqlitedbService } from '../service/database/sqlitedb';
+import { novelPromotionDbService } from '../service/database/novelPromotionDb';
 import { instanceStore } from '../service/provider/instance-store';
 import { registerTaskHandlers } from '../ipc/taskHandlers';
+import { registerNovelPromotionHandlers } from '../ipc/novelPromotionHandlers';
 import { shotRenderTaskQueue } from '../queue/taskQueue';
 
 async function preload(): Promise<void> {
@@ -32,6 +34,7 @@ async function preload(): Promise<void> {
   const registry = createRendererSubscriptionRegistry();
   registerIpcRoutes(registry);
   registerTaskHandlers();
+  registerNovelPromotionHandlers();
 
   // Initialize all services in parallel
   const initTasks: Array<{ name: string; run: () => Promise<unknown> }> = [
@@ -39,6 +42,7 @@ async function preload(): Promise<void> {
       name: 'database',
       run: async () => {
         sqlitedbService.init();
+        novelPromotionDbService.init();
         await instanceStore.init(sqlitedbService.getDb());
       },
     },

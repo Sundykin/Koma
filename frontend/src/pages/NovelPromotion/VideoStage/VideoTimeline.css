@@ -1,0 +1,158 @@
+/* Video Timeline 样式 */
+
+.video-timeline {
+  display: flex;
+  flex-direction: column;
+  background: #252525;
+  border-bottom: 1px solid #333;
+}
+
+.timeline-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 24px;
+  border-bottom: 1px solid #333;
+}
+
+.timeline-header h3 {
+  font-size: 15px;
+  font-weight: 600;
+  color: #fff;
+  margin: 0;
+}
+
+.timeline-count {
+  font-size: 13px;
+  color: #999;
+}
+
+.timeline-track {
+  display: flex;
+  gap: 12px;
+  padding: 16px 24px;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.timeline-track::-webkit-scrollbar {
+  height: 6px;
+}
+
+.timeline-track::-webkit-scrollbar-track {
+  background: #1a1a1a;
+}
+
+.timeline-track::-webkit-scrollbar-thumb {
+  background: #555;
+  border-radius: 3px;
+}
+
+.timeline-track::-webkit-scrollbar-thumb:hover {
+  background: #666;
+}
+
+.timeline-item {
+  position: relative;
+  flex-shrink: 0;
+  width: 120px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.timeline-item:hover {
+  transform: translateY(-2px);
+}
+
+.timeline-item.active {
+  transform: translateY(-4px);
+}
+
+.timeline-thumbnail {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 2px solid #444;
+  transition: border-color 0.2s;
+}
+
+.timeline-item:hover .timeline-thumbnail {
+  border-color: #555;
+}
+
+.timeline-item.active .timeline-thumbnail {
+  border-color: #0066cc;
+  box-shadow: 0 0 0 2px rgba(0, 102, 204, 0.3);
+}
+
+.timeline-thumbnail video,
+.timeline-thumbnail img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.timeline-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #1a1a1a;
+  color: #666;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.timeline-status {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.8);
+  backdrop-filter: blur(4px);
+  border-radius: 50%;
+  font-size: 12px;
+}
+
+.timeline-item.completed .status-icon {
+  color: #4caf50;
+}
+
+.timeline-item.processing .status-icon {
+  color: #ff9800;
+}
+
+.timeline-item.failed .status-icon {
+  color: #f44336;
+}
+
+.status-icon.spinning {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.timeline-number {
+  margin-top: 6px;
+  text-align: center;
+  font-size: 12px;
+  color: #999;
+  font-weight: 500;
+}
+
+.timeline-item.active .timeline-number {
+  color: #0066cc;
+}

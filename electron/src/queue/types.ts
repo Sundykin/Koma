@@ -1,10 +1,26 @@
-export type QueueTaskType = 'shot-render';
+export type QueueTaskType = 'shot-render' | 'story-to-script' | 'script-to-storyboard';
 export type QueueTaskStatus = 'queued' | 'processing' | 'completed' | 'failed';
 
 export type ShotRenderPhase =
   | 'prepareShotRenderStage'
   | 'executeShotRenderStage'
   | 'persistShotRenderStage';
+
+export type StoryToScriptPhase =
+  | 'initialize'
+  | 'character_analysis'
+  | 'location_analysis'
+  | 'clip_splitting'
+  | 'finalize'
+  | 'complete';
+
+export type ScriptToStoryboardPhase =
+  | 'initialize'
+  | 'storyboard_generation'
+  | 'finalize'
+  | 'complete';
+
+export type TaskPhase = ShotRenderPhase | StoryToScriptPhase | ScriptToStoryboardPhase;
 
 export interface ShotRenderTaskPayload {
   projectId: string;
@@ -27,16 +43,87 @@ export interface ShotRenderTaskResult {
   output?: Record<string, unknown>;
 }
 
-export interface QueueTaskRecord<TPayload = ShotRenderTaskPayload, TResult = ShotRenderTaskResult> {
+export interface StoryToScriptTaskPayload {
+  projectId: string;
+  episodeId: string;
+  novelText: string;
+  theme?: string;
+  videoRatio?: string;
+}
+
+export interface StoryToScriptTaskResult {
+  characters: Array<{
+    name: string;
+    description: string;
+    appearance: string;
+    personality: string;
+  }>;
+  locations: Array<{
+    name: string;
+    description: string;
+  }>;
+  clips: Array<{
+    id: string;
+    summary: string;
+    content: string;
+    characters: string[];
+    location: string | null;
+  }>;
+  summary: {
+    characterCount: number;
+    locationCount: number;
+    clipCount: number;
+  };
+}
+
+export interface ScriptToStoryboardTaskPayload {
+  projectId: string;
+  episodeId: string;
+  clipId: string;
+  clipContent: string;
+  characters: Array<{ name: string; description: string }>;
+  location: string;
+}
+
+export interface ScriptToStoryboardTaskResult {
+  clipId: string;
+  panels: Array<{
+    panelNumber: number;
+    description: string;
+    location: string;
+    characters: string[];
+    photographyPlan?: {
+      shotType: string;
+      cameraAngle: string;
+      cameraMovement: string;
+      lighting: string;
+    };
+    actingNotes?: Array<{
+      character: string;
+      action: string;
+      emotion: string;
+    }>;
+  }>;
+  summary: {
+    panelCount: number;
+  };
+}
+
+export type TaskPayload = ShotRenderTaskPayload | StoryToScriptTaskPayload | ScriptToStoryboardTaskPayload;
+export type TaskResult = ShotRenderTaskResult | StoryToScriptTaskResult | ScriptToStoryboardTaskResult;
+
+export interface QueueTaskRecord<TPayload = TaskPayload, TResult = TaskResult> {
   id: string;
   type: QueueTaskType;
   status: QueueTaskStatus;
   progress: number;
   attempts: number;
   maxRetries: number;
-  phase?: ShotRenderPhase;
+  phase?: TaskPhase;
   projectId: string;
-  shotId: string;
+  shotId?: string;
+  episodeId?: string;
+  clipId?: string;
   payload: TPayload;
   result?: TResult;
   error?: string;
@@ -50,7 +137,7 @@ export interface TaskUpdateEvent {
   taskId: string;
   status: QueueTaskStatus;
   progress: number;
-  phase?: ShotRenderPhase;
+  phase?: TaskPhase;
   attempts: number;
   maxRetries: number;
   error?: string;
@@ -66,7 +153,7 @@ export interface RendererDelegatePayload {
 export interface RendererDelegateRequest {
   delegateId: string;
   taskId: string;
-  phase: ShotRenderPhase;
+  phase: TaskPhase;
   payload: RendererDelegatePayload;
 }
 
@@ -79,6 +166,6 @@ export interface RendererDelegateResult {
 export interface RendererDelegateProgress {
   taskId: string;
   progress: number;
-  phase?: ShotRenderPhase;
+  phase?: TaskPhase;
   message?: string;
 }
