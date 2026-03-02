@@ -11,7 +11,6 @@ export type PromptTemplateType =
   | 'shot_breakdown_system'    // 分镜拆解的系统提示
   | 'script_analysis_system'   // 剧本解析的系统提示
   // LLM 任务模板
-  | 'random_idea_generation'   // 随机创意生成（已废弃，保留兼容）
   | 'random_script_generation' // 随机剧本生成（一步完成）
   | 'script_generation'        // 剧本生成
   | 'script_polish'            // 剧本润色
@@ -20,18 +19,14 @@ export type PromptTemplateType =
   | 'shot_image_prompt_generation' // 分镜图片提示词生成
   | 'shot_video_prompt_generation' // 分镜视频提示词生成
   | 'character_extraction'     // 角色提取
-  | 'character_design'         // 角色视觉设计
   | 'scene_extraction'         // 场景提取
   | 'prop_extraction'          // 道具提取
-  | 'dialogue_generation'      // 对话生成（保留备用）
   // TTI 图片生成模板
   | 'tti_character_costume'    // 角色定妆照（三视图）
   | 'tti_scene_preview'        // 场景预览图
   | 'tti_prop_reference'       // 道具参考图
-  | 'tti_shot_image'           // 分镜图片
   // ITV 视频生成模板
-  | 'itv_shot_video'           // 分镜视频
-  | 'itv_character_motion';    // 角色动态视频
+  | 'itv_shot_video';          // 分镜视频
 
 // Prompt 模板接口
 export interface PromptTemplate {
@@ -100,31 +95,6 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
   },
 
   // ========== LLM 任务模板 ==========
-
-  random_idea_generation: {
-    id: 'random_idea_generation',
-    name: '随机创意生成（已废弃）',
-    description: '生成随机的剧本创意（已废弃，请使用 random_script_generation）',
-    template: `你是一个创意编剧。请随机生成一个短视频剧本创意。
-
-要求：
-1. 创意要新颖有趣，适合短视频形式（1-5分钟）
-2. 包含明确的主题、类型和情感基调
-3. 简要描述核心冲突或亮点
-4. 每次生成都要有变化，不要重复
-
-请以 JSON 格式输出：
-\`\`\`json
-{
-  "topic": "故事主题/概念（一句话）",
-  "style": "风格类型（如：治愈、搞笑、悬疑、科幻等）",
-  "keyElements": ["关键元素1", "关键元素2", "关键元素3"],
-  "logline": "一句话剧情简介"
-}
-\`\`\``,
-    variables: [],
-    isCustom: false,
-  },
 
   random_script_generation: {
     id: 'random_script_generation',
@@ -386,38 +356,6 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
     isCustom: false,
   },
 
-  character_design: {
-    id: 'character_design',
-    name: '角色视觉设计',
-    description: '为角色设计视觉形象（参考专业设计师方案）',
-    template: `你是一名顶尖的角色概念设计师，专为小说进行视觉化开发。
-
-【核心任务】
-为角色设计视觉形象方案，建立基准形象（日常/标志性穿着），并补充特殊场景下的着装。
-
-【红线规则】
-1. 严禁任何形式的暴露或性暗示着装
-2. 严禁非视觉元素（性格、情绪等抽象词汇）
-3. 严禁动作与环境描述，仅描述外观本身
-
-【描述模板】
-姓名(性别)年龄，[脸型]，[眼型/瞳色]，[发型]，[发色]，[服装与配饰描述]。
-
-【服装描述要求】
-必须包含【颜色】、【款式】、【材质】三个维度。
-禁止使用"职业套装"、"休闲服"等模糊词汇。
-
-角色信息：{{character}}
-剧本上下文：{{context}}
-
-请输出该角色的视觉形象描述，格式如下：
-基准形象：[完整的外观描述]
-场景1（如有）：[该场景下的服装变化]
-`,
-    variables: ['character', 'context'],
-    isCustom: false,
-  },
-
   scene_extraction: {
     id: 'scene_extraction',
     name: '场景提取',
@@ -476,31 +414,6 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
     isCustom: false,
   },
 
-  dialogue_generation: {
-    id: 'dialogue_generation',
-    name: '对话生成',
-    description: '为分镜生成角色对话（保留备用）',
-    template: `根据以下场景和角色信息，生成自然的对话。
-
-场景描述：{{scene}}
-参与角色：{{characters}}
-情节要求：{{plot}}
-风格：{{style}}
-
-要求：
-1. 对话符合角色性格
-2. 语言自然，适合配音
-3. 推动剧情发展
-
-请以以下格式输出：
-
-**角色名**：对话内容
-（情绪/动作提示）
-`,
-    variables: ['scene', 'characters', 'plot', 'style'],
-    isCustom: false,
-  },
-
   // ========== TTI 图片生成模板 ==========
 
   tti_character_costume: {
@@ -530,15 +443,6 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
     isCustom: false,
   },
 
-  tti_shot_image: {
-    id: 'tti_shot_image',
-    name: '分镜图片',
-    description: '生成分镜预览图',
-    template: '{{stylePrefix}}, {{description}}, {{shotType}}, {{emotion}} mood, cinematic lighting, high quality, 4k, detailed',
-    variables: ['stylePrefix', 'description', 'shotType', 'emotion'],
-    isCustom: false,
-  },
-
   // ========== ITV 视频生成模板 ==========
 
   itv_shot_video: {
@@ -547,15 +451,6 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
     description: '生成分镜动态视频',
     template: '{{stylePrefix}}{{description}}, {{cameraMovement}}, smooth motion, cinematic, high quality video',
     variables: ['stylePrefix', 'description', 'cameraMovement'],
-    isCustom: false,
-  },
-
-  itv_character_motion: {
-    id: 'itv_character_motion',
-    name: '角色动态视频',
-    description: '生成角色动态展示视频',
-    template: '{{characterName}} {{action}}, {{stylePrefix}}, smooth animation, character showcase, professional quality',
-    variables: ['characterName', 'action', 'stylePrefix'],
     isCustom: false,
   },
 };

@@ -37,6 +37,8 @@ import {
   getStorageConfig,
   updateStoragePath,
 } from '../../store/storageConfig';
+import { listProjects } from '../../store/projectStore';
+import { clearCache } from '../../store/project/cache';
 import { electronService, normalizePath } from '../../services/electronService';
 import { LLMConfigManager } from './LLMConfigManager';
 import { TTIConfigManager } from './TTIConfigManager';
@@ -158,7 +160,12 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
       onOk: async () => {
         setClearingCache(true);
         try {
-          message.success('缓存已清理');
+          const projects = await listProjects();
+          for (const proj of projects) {
+            await clearCache(proj.id);
+          }
+          calcStorageSize();
+          message.success(`已清理 ${projects.length} 个项目的缓存`);
         } catch (err: any) {
           message.error(`清理失败: ${err.message}`);
         } finally {

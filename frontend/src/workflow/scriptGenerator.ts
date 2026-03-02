@@ -31,7 +31,7 @@ interface ScriptFromIdeaParams {
   duration: string;
 }
 
-// 随机创意接口（保留兼容）
+// 随机剧本元数据
 interface RandomIdea {
   topic: string;
   style: string;
@@ -71,41 +71,6 @@ function parseScriptMetadata(script: string): RandomIdea {
     keyElements: elementsMatch?.[1]?.split(/[,，]/).map(s => s.trim()).filter(Boolean) || [],
     logline: loglineMatch?.[1]?.trim() || '',
   };
-}
-
-/**
- * 生成随机创意（已废弃，保留兼容）
- * @deprecated 请使用 generateRandomScript
- */
-export async function generateRandomIdea(
-  onProgress?: (progress: number, step?: string) => void
-): Promise<RandomIdea> {
-  const provider = await getProjectLLMProvider();
-  if (!provider) {
-    throw new Error('未配置 LLM 模型');
-  }
-
-  onProgress?.(5, '加载 Prompt 模板...');
-  const template = await getPromptTemplate('random_idea_generation');
-
-  onProgress?.(20, '正在生成随机创意...');
-  const response = await provider.chat([
-    { role: 'user', content: template.template },
-  ]);
-
-  onProgress?.(80, '解析创意...');
-
-  const jsonMatch = response.match(/```json\s*([\s\S]*?)\s*```/) ||
-                    response.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) {
-    throw new Error('无法解析创意格式');
-  }
-
-  const jsonStr = jsonMatch[1] || jsonMatch[0];
-  const idea: RandomIdea = JSON.parse(jsonStr);
-
-  onProgress?.(100, '创意生成完成');
-  return idea;
 }
 
 /**
@@ -292,7 +257,6 @@ ${sceneDesc}
 export default {
   generateScript,
   generateScriptFromIdea,
-  generateRandomIdea,
   generateRandomScript,
   generateRandomScriptWithMetadata,
   polishScript,
