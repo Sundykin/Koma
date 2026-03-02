@@ -12,6 +12,7 @@ import {
 import { electronService, openFileDialog, fsCopy, fsMkdir, fsExists } from '../../services/electronService';
 import { getStorageConfig, initStorageConfig } from '../../store/storageConfig';
 import { saveProps, loadProps } from '../../store/projectStore';
+import { toUserMessage } from '../../utils/errorMessages';
 
 export type GeneratingType = 'image' | 'video' | 'extract' | null;
 
@@ -68,7 +69,7 @@ export function usePropDetailState(props: PropDetailModalProps, message: any) {
       const index = allProps.findIndex(p => p.id === editedProp.id);
       if (index !== -1) { allProps[index] = updatedProp; await saveProps(projectId, allProps); }
       setEditedProp(updatedProp); onUpdate(updatedProp); message.success('保存成功');
-    } catch (err: any) { message.error(err.message || '保存失败'); }
+    } catch (err: any) { message.error(toUserMessage(err) || '保存失败'); }
   }, [editedProp, form, customPrompt, projectId, onUpdate, message]);
 
   const handleGenerateImage = useCallback(async () => {
@@ -83,7 +84,7 @@ export function usePropDetailState(props: PropDetailModalProps, message: any) {
         const updated = { ...editedProp, imagePath: result.path, imageUrl: (result as any).url };
         setEditedProp(updated); onUpdate(updated); message.success('道具图片生成完成');
       } else { message.error(result.error || '生成失败'); }
-    } catch (err: any) { message.error(err.message || '生成失败'); }
+    } catch (err: any) { message.error(toUserMessage(err) || '生成失败'); }
     finally { setGenerating(null); }
   }, [editedProp, projectId, theme, stylePrompt, ttiConfigId, customPrompt, onUpdate, message]);
 
@@ -100,7 +101,7 @@ export function usePropDetailState(props: PropDetailModalProps, message: any) {
       const index = allProps.findIndex(p => p.id === editedProp.id);
       if (index !== -1) { allProps[index] = updated; await saveProps(projectId, allProps); }
       message.success('上传成功');
-    } catch (err: any) { message.error(`上传失败: ${err.message}`); }
+    } catch (err: any) { message.error(`上传失败: ${toUserMessage(err)}`); }
   }, [editedProp, getAssetPath, projectId, onUpdate, message]);
 
   const handleGenerateVideo = useCallback(async () => {
@@ -116,7 +117,7 @@ export function usePropDetailState(props: PropDetailModalProps, message: any) {
         const updated = { ...editedProp, previewVideoPath: result.path, previewVideoTaskId: result.taskId };
         setEditedProp(updated); onUpdate(updated); message.success('预览视频生成完成');
       } else { message.error(result.error || '生成失败'); }
-    } catch (err: any) { message.error(err.message || '生成失败'); }
+    } catch (err: any) { message.error(toUserMessage(err) || '生成失败'); }
     finally { setGenerating(null); }
   }, [editedProp, projectId, itvConfigId, onUpdate, message]);
 
@@ -133,7 +134,7 @@ export function usePropDetailState(props: PropDetailModalProps, message: any) {
       const index = allProps.findIndex(p => p.id === editedProp.id);
       if (index !== -1) { allProps[index] = updated; await saveProps(projectId, allProps); }
       message.success('上传成功');
-    } catch (err: any) { message.error(`上传失败: ${err.message}`); }
+    } catch (err: any) { message.error(`上传失败: ${toUserMessage(err)}`); }
   }, [editedProp, getAssetPath, projectId, onUpdate, message]);
 
   const handleExtractProp = useCallback(async () => {

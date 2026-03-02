@@ -1,18 +1,20 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Minus, Square, X, Maximize2 } from 'lucide-react';
 import { App } from 'antd';
+import { useTranslation } from 'react-i18next';
 import { electronService } from '../../services/electronService';
 
 const isMac = typeof navigator !== 'undefined' && /mac/i.test(navigator.platform);
 
 export const WindowControls: React.FC = () => {
   const { message } = App.useApp();
+  const { t } = useTranslation('common');
   const [isMaximized, setIsMaximized] = useState(false);
 
   const showWindowError = useCallback((action: string, error: unknown) => {
-    const text = error instanceof Error ? error.message : String(error || '未知错误');
-    message.error(`${action}失败：${text}`);
-  }, [message]);
+    const text = error instanceof Error ? error.message : String(error || t('unknownError'));
+    message.error(t('window.actionFailed', { action, error: text }));
+  }, [message, t]);
 
   useEffect(() => {
     if (isMac) return;
@@ -21,7 +23,7 @@ export const WindowControls: React.FC = () => {
         const maximized = await electronService.window.isMaximized();
         setIsMaximized(maximized);
       } catch (error) {
-        showWindowError('读取窗口状态', error);
+        showWindowError(t('window.readState'), error);
       }
     };
     checkMaximized();
@@ -31,7 +33,7 @@ export const WindowControls: React.FC = () => {
     try {
       await electronService.window.minimize();
     } catch (error) {
-      showWindowError('最小化窗口', error);
+      showWindowError(t('window.minimizeAction'), error);
     }
   };
 
@@ -41,7 +43,7 @@ export const WindowControls: React.FC = () => {
       const maximized = await electronService.window.isMaximized();
       setIsMaximized(maximized);
     } catch (error) {
-      showWindowError('切换窗口大小', error);
+      showWindowError(t('window.toggleSizeAction'), error);
     }
   };
 
@@ -49,7 +51,7 @@ export const WindowControls: React.FC = () => {
     try {
       await electronService.window.close();
     } catch (error) {
-      showWindowError('关闭窗口', error);
+      showWindowError(t('window.closeAction'), error);
     }
   };
 
@@ -67,21 +69,21 @@ export const WindowControls: React.FC = () => {
           <button
             onClick={handleMinimize}
             className="w-12 h-full flex items-center justify-center text-zinc-400 hover:bg-zinc-700 hover:text-white transition-colors"
-            title="最小化"
+            title={t('window.minimize')}
           >
             <Minus className="w-4 h-4" />
           </button>
           <button
             onClick={handleMaximize}
             className="w-12 h-full flex items-center justify-center text-zinc-400 hover:bg-zinc-700 hover:text-white transition-colors"
-            title={isMaximized ? '还原' : '最大化'}
+            title={isMaximized ? t('window.restore') : t('window.maximize')}
           >
             {isMaximized ? <Square className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
           </button>
           <button
             onClick={handleClose}
             className="w-12 h-full flex items-center justify-center text-zinc-400 hover:bg-red-600 hover:text-white transition-colors"
-            title="关闭"
+            title={t('window.close')}
           >
             <X className="w-4 h-4" />
           </button>

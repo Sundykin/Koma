@@ -1,0 +1,50 @@
+{
+  "manager": {
+    "title": "Plugin Management",
+    "tabInstalled": "Installed",
+    "tabImport": "Import Plugin",
+    "searchPlaceholder": "Search plugins...",
+    "filterAll": "All Types",
+    "filterGlobal": "Global Plugin",
+    "filterProvider": "Service Provider",
+    "filterTool": "Tool",
+    "emptyNoMatch": "No matching plugins found",
+    "emptyNone": "No plugins installed",
+    "devGuideTitle": "Plugin Development Guide",
+    "devGuide1": "Plugin packages must include a manifest.json manifest file",
+    "devGuide2": "Global plugins need to export a React component as default",
+    "devGuide3": "In development mode, you can import directly from a folder for easier debugging",
+    "devGuide4": "Refer to the documentation for manifest specification and API reference",
+    "confirmUninstallTitle": "Confirm Uninstall",
+    "confirmUninstallContent": "Are you sure you want to uninstall the plugin \"{{name}}\"? This will delete the plugin files.",
+    "uninstall": "Uninstall",
+    "successEnabled": "Plugin enabled",
+    "warnInitFailed": "Plugin enabled, but initialization failed",
+    "successDisabled": "Plugin disabled",
+    "successUninstalled": "Plugin uninstalled",
+    "errorUninstall": "Uninstall failed: {{error}}"
+  },
+  "card": {
+    "categoryGlobal": "Global Plugin",
+    "categoryProvider": "Service Provider",
+    "categoryTool": "Tool",
+    "openFolder": "Open Plugin Directory",
+    "uninstall": "Uninstall Plugin",
+    "noDescription": "No description",
+    "moreActions": "More Actions"
+  },
+  "importer": {
+    "errorNotZip": "Please select a .zip plugin package",
+    "errorNoFilePath": "Unable to get file path. Please make sure you are running in the Electron environment",
+    "errorValidationTitle": "Plugin Validation Failed",
+    "dragText": "Drag and drop a plugin package here, or click to select",
+    "dragHint": "Supports .zip plugin packages",
+    "importFromFolder": "Import from Folder (Development Mode)",
+    "errorImport": "Import failed: {{error}}",
+    "successReady": "Plugin \"{{name}}\" installed and ready",
+    "warnInitFailed": "Plugin \"{{name}}\" installed successfully, but initialization failed",
+    "warnInitException": "Plugin \"{{name}}\" initialization exception",
+    "successInstalled": "Plugin \"{{name}}\" installed successfully",
+    "errorInstall": "Installation failed: {{error}}"
+  }
+}

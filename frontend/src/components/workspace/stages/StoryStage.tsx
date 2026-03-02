@@ -7,6 +7,7 @@ import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { App, Button, Modal } from 'antd';
 import { ThunderboltOutlined } from '@ant-design/icons';
 import { Upload, BookOpen, ArrowRight } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { ScriptEditor } from '../../../editor';
 import { EpisodeSplitWizard } from '../../project/EpisodeSplitWizard';
 import { saveEpisode } from '../../../store/projectStore';
@@ -45,6 +46,7 @@ const StoryStage: React.FC<StoryStageProps> = ({
   onStageChange,
 }) => {
   const { message } = App.useApp();
+  const { t } = useTranslation('stage');
   const [localText, setLocalText] = useState(episode?.storyText || episode?.scriptText || '');
   const [splitWizardVisible, setSplitWizardVisible] = useState(false);
   const [batchImportVisible, setBatchImportVisible] = useState(false);
@@ -92,7 +94,7 @@ const StoryStage: React.FC<StoryStageProps> = ({
     if (newEpisodes.length > 0) {
       onSelectEpisode(newEpisodes[0].id);
     }
-    message.success(`成功创建 ${newEpisodes.length} 个剧集`);
+    message.success(t('story.splitSuccess', { count: newEpisodes.length }));
   }, [onRefreshEpisodes, onSelectEpisode, message]);
 
   const handleBatchImport = useCallback(() => {
@@ -103,7 +105,7 @@ const StoryStage: React.FC<StoryStageProps> = ({
 
   const handleNext = useCallback(() => {
     if (!localText.trim()) {
-      message.warning('请先输入故事内容');
+      message.warning(t('story.noContentWarning'));
       return;
     }
     onRefreshStatuses();
@@ -115,7 +117,7 @@ const StoryStage: React.FC<StoryStageProps> = ({
       <div className="flex h-full items-center justify-center text-zinc-500">
         <div className="text-center space-y-3">
           <BookOpen className="w-12 h-12 mx-auto opacity-20" />
-          <p>请先创建或选择一个剧集</p>
+          <p>{t('story.emptyState')}</p>
         </div>
       </div>
     );
@@ -128,7 +130,7 @@ const StoryStage: React.FC<StoryStageProps> = ({
         {episodes.length > 1 && (
           <div className="text-center py-1">
             <span className="text-sm font-medium text-zinc-400">
-              当前编辑：第{episode.number}集 · {episode.title}
+              {t('story.currentEditing', { number: episode.number, title: episode.title })}
             </span>
           </div>
         )}
@@ -139,7 +141,7 @@ const StoryStage: React.FC<StoryStageProps> = ({
             {/* 字数统计 */}
             <div className="flex items-center justify-end mb-3">
               <span className="text-xs text-zinc-500 bg-zinc-800 px-2 py-0.5 rounded">
-                {localText.length} 字符
+                {t('story.charCount', { length: localText.length })}
               </span>
             </div>
 
@@ -148,7 +150,7 @@ const StoryStage: React.FC<StoryStageProps> = ({
               <ScriptEditor
                 value={localText}
                 onChange={handleTextChange}
-                placeholder={`在此输入或粘贴故事内容...\n\n提示：\n- 可以直接粘贴小说、剧本或故事大纲\n- 使用"批量导入分集"可以将长文本自动拆分为多个剧集\n- 输入完成后点击"下一步"进入剧本编辑`}
+                placeholder={t('story.editorPlaceholder')}
                 minHeight="100%"
                 maxHeight="100%"
                 showLineNumbers={true}
@@ -164,9 +166,9 @@ const StoryStage: React.FC<StoryStageProps> = ({
                   <BookOpen className="w-5 h-5 text-emerald-400" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <h4 className="text-sm font-medium text-zinc-300">故事素材库</h4>
+                  <h4 className="text-sm font-medium text-zinc-300">{t('story.assetLibraryTitle')}</h4>
                   <p className="text-xs text-zinc-500 mt-1">
-                    在下一步「剧本编辑」中，系统将自动从剧本中提取角色、场景和道具，并支持 @引用 快速定位资产。
+                    {t('story.assetLibraryDesc')}
                   </p>
                 </div>
               </div>
@@ -182,7 +184,7 @@ const StoryStage: React.FC<StoryStageProps> = ({
               className="flex items-center gap-1.5 px-3 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg text-xs text-zinc-300 transition-colors"
             >
               <Upload size={14} />
-              批量导入并分集
+              {t('story.batchImportBtn')}
             </button>
           </div>
         </div>
@@ -194,7 +196,7 @@ const StoryStage: React.FC<StoryStageProps> = ({
             disabled={!localText.trim()}
             className="w-full py-3.5 text-base font-bold text-white bg-emerald-600 hover:bg-emerald-500 disabled:bg-zinc-700 disabled:text-zinc-500 rounded-xl transition-colors flex items-center justify-center gap-2"
           >
-            下一步：剧本编辑
+            {t('story.nextBtn')}
             <ArrowRight size={18} />
           </button>
         </div>
@@ -202,24 +204,24 @@ const StoryStage: React.FC<StoryStageProps> = ({
 
       {/* 批量导入弹窗 */}
       <Modal
-        title="批量导入并自动分集"
+        title={t('story.batchImportModalTitle')}
         open={batchImportVisible}
         onCancel={() => setBatchImportVisible(false)}
         onOk={handleBatchImport}
-        okText="AI 自动分集"
+        okText={t('story.aiSplitOkText')}
         okButtonProps={{ disabled: !batchText.trim(), icon: <ThunderboltOutlined /> }}
-        cancelText="取消"
+        cancelText={t('common:cancel')}
         width={900}
         centered
         maskClosable={false}
       >
         <p className="text-xs text-zinc-500 mb-3">
-          输入完整故事后点击"AI 自动分集"，系统将智能拆分为多个剧集
+          {t('story.batchImportModalDesc')}
         </p>
         <ScriptEditor
           value={batchText}
           onChange={setBatchText}
-          placeholder="在此输入或粘贴完整故事内容..."
+          placeholder={t('story.batchEditorPlaceholder')}
           minHeight="400px"
           maxHeight="500px"
         />

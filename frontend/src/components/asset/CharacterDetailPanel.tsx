@@ -3,6 +3,7 @@
  * 左侧输入控制区 + 右侧画布预览区
  */
 import React, { useState, useCallback, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Form,
   Input,
@@ -42,6 +43,7 @@ import { getStorageConfig, initStorageConfig } from '../../store/storageConfig';
 import { saveCharacters, loadCharacters } from '../../store/projectStore';
 import { useActiveConfig } from '../../hooks/useActiveConfig';
 import { uploadLocalFileToImageHosting, getImageHostingConfig } from '../../services/imageHostingService';
+import { toUserMessage } from '../../utils/errorMessages';
 
 const { TextArea } = Input;
 const { Text } = Typography;
@@ -70,9 +72,10 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
   onUpdate,
   onDelete,
 }) => {
+  const { t } = useTranslation('asset');
   const { message } = App.useApp();
   const [form] = Form.useForm();
-  
+
   const { config: activeTTI } = useActiveConfig('tti', ttiConfigId);
   const { config: activeITV } = useActiveConfig('itv', itvConfigId);
 
@@ -137,9 +140,9 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
 
       setEditedCharacter(updatedCharacter);
       onUpdate(updatedCharacter);
-      message.success('保存成功');
+      message.success(t('character.saveSuccess'));
     } catch (err: any) {
-      message.error(err.message || '保存失败');
+      message.error(toUserMessage(err) || t('character.saveFailed'));
     }
   }, [editedCharacter, form, projectId, onUpdate, message]);
 
@@ -178,12 +181,12 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
           characters[index] = updated;
           await saveCharacters(projectId, characters);
         }
-        message.success('定妆照生成完成');
+        message.success(t('character.costumeGenerateDone'));
       } else {
-        message.error(result.error || '生成失败');
+        message.error(result.error || t('character.generateFailed'));
       }
     } catch (err: any) {
-      message.error(err.message || '生成失败');
+      message.error(toUserMessage(err) || t('character.generateFailed'));
     } finally {
       setGenerating(null);
     }
@@ -192,8 +195,8 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
   const handleUploadCostume = useCallback(async () => {
     try {
       const result = await openFileDialog({
-        filters: [{ name: '图片', extensions: ['png', 'jpg', 'jpeg', 'webp'] }],
-        title: '选择定妆照',
+        filters: [{ name: t('character.filterImage'), extensions: ['png', 'jpg', 'jpeg', 'webp'] }],
+        title: t('character.dialogSelectCostume'),
       });
       if (result.canceled || !result.filePaths[0]) return;
 
@@ -207,16 +210,16 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
       console.log('[CharacterDetailPanel] 图床配置:', imageHostingConfig);
       if (imageHostingConfig?.enabled) {
         console.log('[CharacterDetailPanel] 图床已启用，开始上传:', destPath);
-        message.loading({ content: '正在上传到图床...', key: 'imageHosting' });
+        message.loading({ content: t('character.uploadingToHosting'), key: 'imageHosting' });
         const uploadResult = await uploadLocalFileToImageHosting(destPath);
         console.log('[CharacterDetailPanel] 图床上传结果:', uploadResult);
         if (uploadResult.success && uploadResult.url) {
           updated.costumePhotoUrl = uploadResult.url;
           console.log('[CharacterDetailPanel] 图床URL已保存:', uploadResult.url);
-          message.success({ content: '图床上传成功', key: 'imageHosting' });
+          message.success({ content: t('character.hostingSuccess'), key: 'imageHosting' });
         } else {
           console.warn('[CharacterDetailPanel] 图床上传失败:', uploadResult.error);
-          message.warning({ content: `图床上传失败: ${uploadResult.error}`, key: 'imageHosting' });
+          message.warning({ content: t('character.hostingFailed', { error: uploadResult.error }), key: 'imageHosting' });
         }
       } else {
         console.log('[CharacterDetailPanel] 图床未启用，跳过上传');
@@ -232,15 +235,15 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
         await saveCharacters(projectId, characters);
       }
 
-      message.success('上传成功');
+      message.success(t('character.uploadSuccess'));
     } catch (err: any) {
-      message.error(`上传失败: ${err.message}`);
+      message.error(t('character.uploadFailed', { error: toUserMessage(err) }));
     }
   }, [editedCharacter, getAssetPath, projectId, onUpdate, message]);
 
   const handleGenerateVideo = useCallback(async () => {
     if (!editedCharacter.costumePhotoPath) {
-      message.warning('请先生成或上传定妆照');
+      message.warning(t('character.warnNoCostume'));
       return;
     }
 
@@ -272,12 +275,12 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
           characters[index] = updated;
           await saveCharacters(projectId, characters);
         }
-        message.success('预览视频生成完成');
+        message.success(t('character.videoGenerateDone'));
       } else {
-        message.error(result.error || '生成失败');
+        message.error(result.error || t('character.generateFailed'));
       }
     } catch (err: any) {
-      message.error(err.message || '生成失败');
+      message.error(toUserMessage(err) || t('character.generateFailed'));
     } finally {
       setGenerating(null);
     }
@@ -286,8 +289,8 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
   const handleUploadVideo = useCallback(async () => {
     try {
       const result = await openFileDialog({
-        filters: [{ name: '视频', extensions: ['mp4', 'webm', 'mov'] }],
-        title: '选择预览视频',
+        filters: [{ name: t('character.filterVideo'), extensions: ['mp4', 'webm', 'mov'] }],
+        title: t('character.dialogSelectVideo'),
       });
       if (result.canceled || !result.filePaths[0]) return;
 
@@ -305,14 +308,14 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
         await saveCharacters(projectId, characters);
       }
 
-      message.success('上传成功');
+      message.success(t('character.uploadSuccess'));
     } catch (err: any) {
-      message.error(`上传失败: ${err.message}`);
+      message.error(t('character.uploadFailed', { error: toUserMessage(err) }));
     }
   }, [editedCharacter, getAssetPath, projectId, onUpdate, message]);
 
   const handleExtractCharacter = useCallback(async () => {
-    message.info('角色提取功能已移除');
+    message.info(t('character.infoExtractRemoved'));
   }, [message]);
 
   const handleDelete = useCallback(async () => {
@@ -322,9 +325,9 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
   const toLocalUrl = (path?: string) => path ? electronService.fs.toLocalUrl(path) : '';
 
   const roleOptions = [
-    { value: 'protagonist', label: '主角' },
-    { value: 'antagonist', label: '反派' },
-    { value: 'supporting', label: '配角' },
+    { value: 'protagonist', label: t('character.role.protagonist') },
+    { value: 'antagonist', label: t('character.role.antagonist') },
+    { value: 'supporting', label: t('character.role.supporting') },
   ];
 
   return (
@@ -337,17 +340,17 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
             <Text strong style={{ fontSize: 16 }}>{editedCharacter.name}</Text>
           </Space>
           <Space>
-            <Tooltip title="保存">
-              <Button type="text" size="small" icon={<SaveOutlined />} onClick={handleSave} />
+            <Tooltip title={t('character.save')}>
+              <Button type="text" size="small" icon={<SaveOutlined />} onClick={handleSave} aria-label={t('character.save')} />
             </Tooltip>
             <Popconfirm
-              title="确定删除此角色？"
-              description="删除后无法恢复"
+              title={t('character.confirmDelete')}
+              description={t('character.deleteWarning')}
               onConfirm={handleDelete}
               okButtonProps={{ danger: true }}
             >
-              <Tooltip title="删除">
-                <Button type="text" danger size="small" icon={<DeleteOutlined />} />
+              <Tooltip title={t('character.delete')}>
+                <Button type="text" danger size="small" icon={<DeleteOutlined />} aria-label={t('character.delete')} />
               </Tooltip>
             </Popconfirm>
           </Space>
@@ -357,21 +360,21 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
           <Form form={form} layout="vertical" size="small">
             <Row gutter={12}>
               <Col span={16}>
-                <Form.Item name="name" label="名称" rules={[{ required: true, message: '请输入名称' }]}>
+                <Form.Item name="name" label={t('character.form.name')} rules={[{ required: true, message: t('character.form.nameRequired') }]}>
                   <Input />
                 </Form.Item>
               </Col>
               <Col span={8}>
-                <Form.Item name="role" label="类型">
+                <Form.Item name="role" label={t('character.form.role')}>
                   <Select options={roleOptions} />
                 </Form.Item>
               </Col>
             </Row>
 
-            <Form.Item name="prompt" label="视觉描述 Prompt">
+            <Form.Item name="prompt" label={t('character.form.prompt')}>
               <TextArea
                 autoSize={{ minRows: 10, maxRows: 18 }}
-                placeholder="在此输入详细的角色视觉描述..."
+                placeholder={t('character.form.promptPlaceholder')}
               />
             </Form.Item>
           </Form>
@@ -391,7 +394,7 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
               </div>
             )}
 
-            <Tooltip title={activeTTI ? `使用服务: ${activeTTI.name}` : '未配置生成服务'}>
+            <Tooltip title={activeTTI ? t('character.tooltipService', { name: activeTTI.name }) : t('character.tooltipNoService')}>
               <Button
                 type={!editedCharacter.costumePhotoPath ? 'primary' : 'default'}
                 block
@@ -400,11 +403,11 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
                 loading={generating === 'costume'}
                 disabled={generating !== null}
               >
-                生成定妆照 (三视图)
+                {t('character.generateCostume')}
               </Button>
             </Tooltip>
 
-            <Tooltip title={activeITV ? `使用服务: ${activeITV.name}` : '未配置视频服务'}>
+            <Tooltip title={activeITV ? t('character.tooltipService', { name: activeITV.name }) : t('character.tooltipNoVideoService')}>
               <Button
                 type={editedCharacter.costumePhotoPath && !editedCharacter.previewVideoPath ? 'primary' : 'default'}
                 block
@@ -413,7 +416,7 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
                 loading={generating === 'video'}
                 disabled={generating !== null || !editedCharacter.costumePhotoPath}
               >
-                生成预览视频
+                {t('character.generateVideo')}
               </Button>
             </Tooltip>
           </div>
@@ -427,23 +430,23 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
             value={viewMode}
             onChange={(val) => setViewMode(val as ViewMode)}
             options={[
-              { label: '定妆照', value: 'costume', icon: <UserOutlined /> },
-              { label: '预览视频', value: 'video', icon: <PlayCircleOutlined /> },
+              { label: t('character.tabCostume'), value: 'costume', icon: <UserOutlined /> },
+              { label: t('character.tabVideo'), value: 'video', icon: <PlayCircleOutlined /> },
             ]}
           />
 
           <Space>
             <div className="toolbarDivider" />
 
-            <Tooltip title={viewMode === 'costume' ? '上传定妆照' : '上传视频'}>
+            <Tooltip title={viewMode === 'costume' ? t('character.uploadCostume') : t('character.uploadVideo')}>
               <Button
                 type="text"
                 icon={<UploadOutlined />}
                 onClick={viewMode === 'costume' ? handleUploadCostume : handleUploadVideo}
-                aria-label={viewMode === 'costume' ? '上传定妆照' : '上传视频'}
+                aria-label={viewMode === 'costume' ? t('character.uploadCostume') : t('character.uploadVideo')}
               />
             </Tooltip>
-            <Tooltip title="放大预览">
+            <Tooltip title={t('character.expandPreview')}>
               <Button
                 type="text"
                 icon={<ExpandOutlined />}
@@ -453,7 +456,7 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
                   }
                 }}
                 disabled={viewMode === 'video' || !editedCharacter.costumePhotoPath}
-                aria-label="放大预览"
+                aria-label={t('character.expandPreview')}
               />
             </Tooltip>
           </Space>
@@ -465,14 +468,14 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
               {editedCharacter.costumePhotoPath ? (
                 <img
                   src={toLocalUrl(editedCharacter.costumePhotoPath)}
-                  alt="定妆照"
+                  alt={t('character.tabCostume')}
                   style={{ cursor: 'pointer' }}
                   onDoubleClick={() => setPreviewImage(toLocalUrl(editedCharacter.costumePhotoPath))}
                 />
               ) : (
                 <div className="creatorMediaPlaceholder">
                   <UserOutlined />
-                  <div>暂无定妆照</div>
+                  <div>{t('character.noCostume')}</div>
                 </div>
               )}
             </div>
@@ -483,7 +486,7 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
               ) : (
                 <div className="creatorMediaPlaceholder">
                   <PlayCircleOutlined />
-                  <div>暂无预览视频</div>
+                  <div>{t('character.noVideo')}</div>
                 </div>
               )}
             </div>

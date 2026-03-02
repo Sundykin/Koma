@@ -2,10 +2,11 @@
  * 任务状态悬浮通知组件
  * 右下角悬浮显示当前运行中的后台任务进度
  */
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Progress, Typography, Tag, Button, Empty, Tabs, Tooltip } from 'antd';
 import { ReloadOutlined, StopOutlined } from '@ant-design/icons';
 import { Loader2, CheckCircle2, XCircle, ChevronDown, ChevronUp, FileText, Video, Cpu, Box, Download, X } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { TaskManager, Task, TaskStatus, TaskCategory, TaskSubType } from '../../services/TaskManager';
 
 const { Text } = Typography;
@@ -16,42 +17,13 @@ interface TaskStatusBarProps {
   onCancel?: (task: Task) => void;
 }
 
-const CATEGORY_CONFIG: Record<TaskCategory, { label: string; icon: React.ReactNode; color: string }> = {
-  prompt: { label: '提示词', icon: <FileText className="w-3 h-3" />, color: 'purple' },
-  media: { label: '媒体', icon: <Video className="w-3 h-3" />, color: 'blue' },
-  analysis: { label: '分析', icon: <Cpu className="w-3 h-3" />, color: 'cyan' },
-  asset: { label: '资产', icon: <Box className="w-3 h-3" />, color: 'orange' },
-  script: { label: '剧本', icon: <FileText className="w-3 h-3" />, color: 'green' },
-  export: { label: '导出', icon: <Download className="w-3 h-3" />, color: 'gold' },
-};
-
-const getSubTypeLabel = (subType?: TaskSubType): string => {
-  const labels: Record<string, string> = {
-    image: '图片', video: '视频', tti: '文生图', itv: '图生视频',
-    tts: '文字转语音', 'shot-analysis': 'AI 分镜', 'shot-generation': '分镜生成',
-    'script-analysis': '剧本解析', 'asset-generation': '资产生成',
-    'character-extraction': '角色提取', 'prompt-generation': '生成提示词',
-    'prompt-optimization': '优化提示词',
-  };
-  return labels[subType || ''] || subType || '';
-};
-
-const getLegacyTypeLabel = (type: string): string => {
-  const labels: Record<string, string> = {
-    'script-analysis': '剧本解析', 'asset-generation': '资产生成',
-    'shot-render': '分镜渲染', 'shot-generation': '分镜生成',
-    'shot-analysis': 'AI 分镜', 'prompt-generation:image': '图片提示词',
-    'prompt-generation:video': '视频提示词', 'prompt-optimization:image': '优化图片提示词',
-    'prompt-optimization:video': '优化视频提示词',
-  };
-  return labels[type] || type;
-};
-
-const getTaskLabel = (task: Task): string => {
-  if (task.category && task.subType) {
-    return `${CATEGORY_CONFIG[task.category]?.label || task.category} - ${getSubTypeLabel(task.subType)}`;
-  }
-  return getLegacyTypeLabel(task.type);
+const CATEGORY_ICON_COLOR: Record<TaskCategory, { icon: React.ReactNode; color: string }> = {
+  prompt: { icon: <FileText className="w-3 h-3" />, color: 'purple' },
+  media: { icon: <Video className="w-3 h-3" />, color: 'blue' },
+  analysis: { icon: <Cpu className="w-3 h-3" />, color: 'cyan' },
+  asset: { icon: <Box className="w-3 h-3" />, color: 'orange' },
+  script: { icon: <FileText className="w-3 h-3" />, color: 'green' },
+  export: { icon: <Download className="w-3 h-3" />, color: 'gold' },
 };
 
 const getStatusIcon = (status: TaskStatus) => {
@@ -77,10 +49,46 @@ const formatDuration = (startedAt?: number, completedAt?: number): string => {
 };
 
 export const TaskStatusBar: React.FC<TaskStatusBarProps> = ({ projectId, onRetry, onCancel }) => {
+  const { t } = useTranslation('common');
   const [tasks, setTasks] = useState<Task[]>([]);
   const [expanded, setExpanded] = useState(false);
   const [activeTab, setActiveTab] = useState<string>('all');
   const [dismissed, setDismissed] = useState(false);
+
+  const getCategoryLabel = useCallback((category: TaskCategory): string => {
+    return t(`task.category.${category}`);
+  }, [t]);
+
+  const getSubTypeLabel = useCallback((subType?: TaskSubType): string => {
+    const keyMap: Record<string, string> = {
+      image: 'image', video: 'video', tti: 'tti', itv: 'itv',
+      tts: 'tts', 'shot-analysis': 'shotAnalysis', 'shot-generation': 'shotGeneration',
+      'script-analysis': 'scriptAnalysis', 'asset-generation': 'assetGeneration',
+      'character-extraction': 'characterExtraction', 'prompt-generation': 'promptGeneration',
+      'prompt-optimization': 'promptOptimization',
+    };
+    const key = keyMap[subType || ''];
+    return key ? t(`task.subtype.${key}`) : subType || '';
+  }, [t]);
+
+  const getLegacyTypeLabel = useCallback((type: string): string => {
+    const keyMap: Record<string, string> = {
+      'script-analysis': 'scriptAnalysis', 'asset-generation': 'assetGeneration',
+      'shot-render': 'shotRender', 'shot-generation': 'shotGeneration',
+      'shot-analysis': 'shotAnalysis', 'prompt-generation:image': 'promptImage',
+      'prompt-generation:video': 'promptVideo', 'prompt-optimization:image': 'optimizePromptImage',
+      'prompt-optimization:video': 'optimizePromptVideo',
+    };
+    const key = keyMap[type];
+    return key ? t(`task.subtype.${key}`) : type;
+  }, [t]);
+
+  const getTaskLabel = useCallback((task: Task): string => {
+    if (task.category && task.subType) {
+      return `${getCategoryLabel(task.category)} - ${getSubTypeLabel(task.subType)}`;
+    }
+    return getLegacyTypeLabel(task.type);
+  }, [getCategoryLabel, getSubTypeLabel, getLegacyTypeLabel]);
 
   useEffect(() => {
     const loadTasks = () => {
@@ -122,9 +130,9 @@ export const TaskStatusBar: React.FC<TaskStatusBarProps> = ({ projectId, onRetry
       {getStatusIcon(task.status)}
       <div className="flex flex-col flex-1 min-w-0">
         <div className="flex items-center gap-1.5">
-          {task.category && CATEGORY_CONFIG[task.category] && (
-            <Tag color={CATEGORY_CONFIG[task.category].color} className="text-[10px] px-1 py-0 leading-tight">
-              {CATEGORY_CONFIG[task.category].icon}
+          {task.category && CATEGORY_ICON_COLOR[task.category] && (
+            <Tag color={CATEGORY_ICON_COLOR[task.category].color} className="text-[10px] px-1 py-0 leading-tight">
+              {CATEGORY_ICON_COLOR[task.category].icon}
               <span className="ml-0.5">{getSubTypeLabel(task.subType)}</span>
             </Tag>
           )}
@@ -149,7 +157,7 @@ export const TaskStatusBar: React.FC<TaskStatusBarProps> = ({ projectId, onRetry
         <Text className="text-zinc-600 text-xs">{formatDuration(task.startedAt, task.completedAt)}</Text>
       )}
       {task.recoverable && task.attempt && task.attempt > 0 && (
-        <Tooltip title={`重试: ${task.attempt}/${task.maxRetries}`}>
+        <Tooltip title={t('task.retryTooltip', { attempt: task.attempt, maxRetries: task.maxRetries })}>
           <Tag color="warning" className="text-[10px] px-1 py-0">#{task.attempt}</Tag>
         </Tooltip>
       )}
@@ -181,8 +189,8 @@ export const TaskStatusBar: React.FC<TaskStatusBarProps> = ({ projectId, onRetry
           {getStatusIcon(mainTask.status)}
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-1.5">
-              {mainTask.category && CATEGORY_CONFIG[mainTask.category] && (
-                <Tag color={CATEGORY_CONFIG[mainTask.category].color} className="text-[10px] px-1 py-0">
+              {mainTask.category && CATEGORY_ICON_COLOR[mainTask.category] && (
+                <Tag color={CATEGORY_ICON_COLOR[mainTask.category].color} className="text-[10px] px-1 py-0">
                   {getSubTypeLabel(mainTask.subType)}
                 </Tag>
               )}
@@ -216,12 +224,12 @@ export const TaskStatusBar: React.FC<TaskStatusBarProps> = ({ projectId, onRetry
             {failedTasks.length > 0 ? (
               <>
                 <XCircle className="w-4 h-4 text-red-500" />
-                <Text className="text-zinc-400 text-sm">{failedTasks.length} 个失败</Text>
+                <Text className="text-zinc-400 text-sm">{t('task.summaryFailed', { count: failedTasks.length })}</Text>
               </>
             ) : (
               <>
                 <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                <Text className="text-zinc-400 text-sm">{completedTasks.length} 个完成</Text>
+                <Text className="text-zinc-400 text-sm">{t('task.summaryCompleted', { count: completedTasks.length })}</Text>
               </>
             )}
           </div>
@@ -241,10 +249,10 @@ export const TaskStatusBar: React.FC<TaskStatusBarProps> = ({ projectId, onRetry
           <div className="px-2 pt-2">
             <Tabs size="small" activeKey={activeTab} onChange={setActiveTab}
               items={[
-                { key: 'all', label: `全部 (${tasks.length})` },
-                { key: 'running', label: `进行 (${runningTasks.length})` },
-                { key: 'completed', label: `完成 (${completedTasks.length})` },
-                { key: 'failed', label: `失败 (${failedTasks.length})` },
+                { key: 'all', label: t('task.tabAll', { count: tasks.length }) },
+                { key: 'running', label: t('task.tabRunning', { count: runningTasks.length }) },
+                { key: 'completed', label: t('task.tabCompleted', { count: completedTasks.length }) },
+                { key: 'failed', label: t('task.tabFailed', { count: failedTasks.length }) },
               ]}
               className="task-status-tabs [&_.ant-tabs-nav]:!mb-0"
             />
@@ -253,7 +261,7 @@ export const TaskStatusBar: React.FC<TaskStatusBarProps> = ({ projectId, onRetry
             {allFilteredTasks.length > 0 ? (
               <div className="space-y-0.5">{allFilteredTasks.map(renderTaskItem)}</div>
             ) : (
-              <Empty description="暂无任务" className="py-3" imageStyle={{ height: 40 }} />
+              <Empty description={t('task.empty')} className="py-3" imageStyle={{ height: 40 }} />
             )}
           </div>
         </div>

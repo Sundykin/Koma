@@ -191,7 +191,7 @@ export function useStoryboardState({
       await generateShotImage(projectId, episodeId, shotId, characters, scenes, ttiConfigId);
       message.info('分镜图片生成任务已启动');
     } catch (err: any) {
-      message.error(err.message || '启动生成失败');
+      message.error(toUserMessage(err) || '启动生成失败');
       setGeneratingShots(prev => { const next = new Set(prev); next.delete(shotId); return next; });
     }
   }, [projectId, episodeId, characters, scenes, ttiConfigId]);
@@ -306,7 +306,7 @@ export function useStoryboardState({
       const result = await generateShotPrompt(projectId, episodeId, shot, settings.stylePrompts?.find(p => p.isDefault)?.prompt || '', llmConfigId, { image: true, video: false });
       if (result.success) { setShots(prev => prev.map(s => s.id === shotId ? { ...s, imagePrompt: result.imagePrompt } : s)); message.success('图片提示词生成完成'); }
       else message.error(result.error || '生成失败');
-    } catch (err: any) { message.error(err.message || '生成失败'); }
+    } catch (err: any) { message.error(toUserMessage(err) || '生成失败'); }
     finally { setGeneratingImagePrompts(prev => { const next = new Set(prev); next.delete(shotId); return next; }); }
   }, [projectId, episodeId, shots, llmConfigId, settings.stylePrompts]);
 
@@ -318,7 +318,7 @@ export function useStoryboardState({
       const result = await generateShotPrompt(projectId, episodeId, shot, settings.stylePrompts?.find(p => p.isDefault)?.prompt || '', llmConfigId, { image: false, video: true });
       if (result.success) { setShots(prev => prev.map(s => s.id === shotId ? { ...s, videoPrompt: result.videoPrompt } : s)); message.success('视频提示词生成完成'); }
       else message.error(result.error || '生成失败');
-    } catch (err: any) { message.error(err.message || '生成失败'); }
+    } catch (err: any) { message.error(toUserMessage(err) || '生成失败'); }
     finally { setGeneratingVideoPrompts(prev => { const next = new Set(prev); next.delete(shotId); return next; }); }
   }, [projectId, episodeId, shots, llmConfigId, settings.stylePrompts]);
 
@@ -330,7 +330,7 @@ export function useStoryboardState({
       const result = await generateShotPrompt(projectId, episodeId, shot, settings.stylePrompts?.find(p => p.isDefault)?.prompt || '', llmConfigId, { image: true, video: false }, { force: true });
       if (result.success) { setShots(prev => prev.map(s => s.id === shotId ? { ...s, imagePrompt: result.imagePrompt } : s)); message.success('图片提示词优化完成'); }
       else message.error(result.error || '优化失败');
-    } catch (err: any) { message.error(err.message || '优化失败'); }
+    } catch (err: any) { message.error(toUserMessage(err) || '优化失败'); }
     finally { setGeneratingImagePrompts(prev => { const next = new Set(prev); next.delete(shotId); return next; }); }
   }, [projectId, episodeId, shots, llmConfigId, settings.stylePrompts]);
 
@@ -342,7 +342,7 @@ export function useStoryboardState({
       const result = await generateShotPrompt(projectId, episodeId, shot, settings.stylePrompts?.find(p => p.isDefault)?.prompt || '', llmConfigId, { image: false, video: true }, { force: true });
       if (result.success) { setShots(prev => prev.map(s => s.id === shotId ? { ...s, videoPrompt: result.videoPrompt } : s)); message.success('视频提示词优化完成'); }
       else message.error(result.error || '优化失败');
-    } catch (err: any) { message.error(err.message || '优化失败'); }
+    } catch (err: any) { message.error(toUserMessage(err) || '优化失败'); }
     finally { setGeneratingVideoPrompts(prev => { const next = new Set(prev); next.delete(shotId); return next; }); }
   }, [projectId, episodeId, shots, llmConfigId, settings.stylePrompts]);
 
@@ -360,7 +360,7 @@ export function useStoryboardState({
         (current, total, result) => { setBatchProgress({ current, total, step: `生成中 ${current}/${total}` }); if (result.success) setShots(prev => prev.map(s => s.id === result.shotId ? { ...s, imagePrompt: result.imagePrompt, videoPrompt: result.videoPrompt } : s)); },
         llmConfigId);
       message.success(`提示词生成完成: ${results.filter(r => r.success).length}/${results.length} 成功`);
-    } catch (err: any) { message.error(err.message || '批量生成失败'); }
+    } catch (err: any) { message.error(toUserMessage(err) || '批量生成失败'); }
     finally { setGeneratingImagePrompts(new Set()); setGeneratingVideoPrompts(new Set()); setBatchProgress(undefined); }
   }, [projectId, episodeId, shots, llmConfigId, settings.stylePrompts]);
 
@@ -377,7 +377,7 @@ export function useStoryboardState({
         (current, total, result) => { setBatchProgress({ current, total, step: `重新生成中 ${current}/${total}` }); if (result.success) setShots(prev => prev.map(s => s.id === result.shotId ? { ...s, imagePrompt: result.imagePrompt, videoPrompt: result.videoPrompt } : s)); },
         llmConfigId);
       message.success(`提示词重新生成完成: ${results.filter(r => r.success).length}/${results.length} 成功`);
-    } catch (err: any) { message.error(err.message || '批量重新生成失败'); }
+    } catch (err: any) { message.error(toUserMessage(err) || '批量重新生成失败'); }
     finally { setGeneratingImagePrompts(new Set()); setGeneratingVideoPrompts(new Set()); setBatchProgress(undefined); }
   }, [projectId, episodeId, shots, llmConfigId, settings.stylePrompts]);
 
@@ -389,7 +389,7 @@ export function useStoryboardState({
     const shotIds = shotsWithoutImage.map(s => s.id);
     setGeneratingShots(new Set(shotIds));
     try { await batchGenerateShotImages(projectId, episodeId, shotIds, characters, scenes, ttiConfigId); message.info(`已启动 ${shotIds.length} 个分镜的图片生成任务`); }
-    catch (err: any) { message.error(err.message || '批量生成启动失败'); setGeneratingShots(new Set()); }
+    catch (err: any) { message.error(toUserMessage(err) || '批量生成启动失败'); setGeneratingShots(new Set()); }
   }, [projectId, episodeId, shots, characters, scenes, ttiConfigId]);
 
   const handleBatchReGenerateImages = useCallback(async (targetShotIds?: string[]) => {
@@ -400,7 +400,7 @@ export function useStoryboardState({
     const shotIds = shotsWithImage.map(s => s.id);
     setGeneratingShots(new Set(shotIds));
     try { await batchGenerateShotImages(projectId, episodeId, shotIds, characters, scenes, ttiConfigId); message.info(`已启动 ${shotIds.length} 个分镜的图片重新生成任务`); }
-    catch (err: any) { message.error(err.message || '批量重新生成启动失败'); setGeneratingShots(new Set()); }
+    catch (err: any) { message.error(toUserMessage(err) || '批量重新生成启动失败'); setGeneratingShots(new Set()); }
   }, [projectId, episodeId, shots, characters, scenes, ttiConfigId]);
 
   const handleBatchRenderVideos = useCallback(async (targetShotIds?: string[]) => {
@@ -424,7 +424,7 @@ export function useStoryboardState({
         return s;
       });
       await saveAllShots(updatedShots); message.success(`批量渲染完成: ${result.success} 成功, ${result.failed} 失败`);
-    } catch (err: any) { message.error(err.message || '批量渲染失败'); }
+    } catch (err: any) { message.error(toUserMessage(err) || '批量渲染失败'); }
     finally { setRenderingShots(new Set()); setRenderProgress(0); setRenderStep(''); }
   }, [projectId, shots, ttiConfigId, settings.itvConfigs, settings.ttsConfigs, saveAllShots]);
 
@@ -449,7 +449,7 @@ export function useStoryboardState({
         return s;
       });
       await saveAllShots(updatedShots); message.success(`批量重新渲染完成: ${result.success} 成功, ${result.failed} 失败`);
-    } catch (err: any) { message.error(err.message || '批量重新渲染失败'); }
+    } catch (err: any) { message.error(toUserMessage(err) || '批量重新渲染失败'); }
     finally { setRenderingShots(new Set()); setRenderProgress(0); setRenderStep(''); }
   }, [projectId, shots, ttiConfigId, settings.itvConfigs, settings.ttsConfigs, saveAllShots]);
 
@@ -470,14 +470,14 @@ export function useStoryboardState({
   const handlePresetConfirm = useCallback(async (assets: PresetAssets) => {
     setPresetModalOpen(false); setPresetAssets(assets); setIsAnalyzing(true);
     try { await startShotAnalysis(projectId, episodeId!, episodeName || `剧集 ${episodeId}`, script!, llmConfigId, assets); message.info('AI 分镜生成任务已启动，可在状态栏查看进度'); }
-    catch (err: any) { message.error(err.message || '启动生成失败'); setIsAnalyzing(false); }
+    catch (err: any) { message.error(toUserMessage(err) || '启动生成失败'); setIsAnalyzing(false); }
   }, [projectId, episodeId, episodeName, script, llmConfigId, message]);
 
   const handleGenerateAIShots = useCallback(async () => {
     if (!episodeId || !script) { message.warning('缺少剧集信息或剧本内容'); return; }
     setIsAnalyzing(true);
     try { await startShotAnalysis(projectId, episodeId, episodeName || `剧集 ${episodeId}`, script, llmConfigId); message.info('AI 分镜生成任务已启动，可在状态栏查看进度'); }
-    catch (err: any) { message.error(err.message || '启动生成失败'); setIsAnalyzing(false); }
+    catch (err: any) { message.error(toUserMessage(err) || '启动生成失败'); setIsAnalyzing(false); }
   }, [projectId, episodeId, episodeName, script, llmConfigId, message]);
 
   const handleSaveEdit = useCallback(async () => {

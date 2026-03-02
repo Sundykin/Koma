@@ -4,6 +4,7 @@
  */
 import React from 'react';
 import { Tooltip } from 'antd';
+import { useTranslation } from 'react-i18next';
 import {
   BookOpen,
   FileText,
@@ -17,17 +18,17 @@ export type StageStatus = 'empty' | 'active' | 'processing' | 'ready';
 
 interface StageItem {
   id: WorkspaceStage;
-  label: string;
+  labelKey: string;
   icon: React.ReactNode;
-  description: string;
+  descKey: string;
 }
 
 const STAGES: StageItem[] = [
-  { id: 'story', label: '故事', icon: <BookOpen size={16} />, description: '输入故事文本，AI智能分集' },
-  { id: 'script', label: '剧本', icon: <FileText size={16} />, description: '编辑剧本，管理角色/场景资产' },
-  { id: 'storyboard', label: '分镜', icon: <Clapperboard size={16} />, description: '生成分镜，AI绘制画面' },
-  { id: 'video', label: '视频', icon: <Film size={16} />, description: '生成视频片段' },
-  { id: 'edit', label: '剪辑', icon: <Scissors size={16} />, description: '时间线剪辑，导出成片' },
+  { id: 'story', labelKey: 'stage.story', icon: <BookOpen size={16} />, descKey: 'stage.storyDesc' },
+  { id: 'script', labelKey: 'stage.script', icon: <FileText size={16} />, descKey: 'stage.scriptDesc' },
+  { id: 'storyboard', labelKey: 'stage.storyboard', icon: <Clapperboard size={16} />, descKey: 'stage.storyboardDesc' },
+  { id: 'video', labelKey: 'stage.video', icon: <Film size={16} />, descKey: 'stage.videoDesc' },
+  { id: 'edit', labelKey: 'stage.edit', icon: <Scissors size={16} />, descKey: 'stage.editDesc' },
 ];
 
 interface StageNavigationProps {
@@ -48,9 +49,10 @@ export const StageNavigation: React.FC<StageNavigationProps> = ({
   statuses,
   onStageChange,
 }) => {
+  const { t } = useTranslation('workspace');
   return (
     <div className="flex items-center justify-center py-2 px-4 bg-zinc-900/80 backdrop-blur-xl border-b border-zinc-800/60">
-      <div className="flex items-center gap-1 bg-zinc-800/60 rounded-full px-2 py-1">
+      <div className="flex items-center gap-1 bg-zinc-800/60 rounded-full px-2 py-1" role="tablist" aria-label={t('stageNavAriaLabel')}>
         {STAGES.map((stage, index) => {
           const isActive = currentStage === stage.id;
           const status = statuses[stage.id];
@@ -58,10 +60,12 @@ export const StageNavigation: React.FC<StageNavigationProps> = ({
           return (
             <React.Fragment key={stage.id}>
               {index > 0 && (
-                <div className="w-6 h-px bg-zinc-700 mx-0.5" />
+                <div className="w-6 h-px bg-zinc-700 mx-0.5" aria-hidden="true" />
               )}
-              <Tooltip title={stage.description} placement="bottom">
+              <Tooltip title={t(stage.descKey)} placement="bottom">
                 <button
+                  role="tab"
+                  aria-selected={isActive}
                   onClick={() => onStageChange(stage.id)}
                   className={`
                     flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium
@@ -73,9 +77,10 @@ export const StageNavigation: React.FC<StageNavigationProps> = ({
                   `}
                 >
                   {stage.icon}
-                  <span>{stage.label}</span>
+                  <span>{t(stage.labelKey)}</span>
                   {/* 状态指示点 */}
-                  <span className={`w-1.5 h-1.5 rounded-full ${statusColors[status]}`} />
+                  <span className={`w-1.5 h-1.5 rounded-full ${statusColors[status]}`} aria-hidden="true" />
+                  <span className="sr-only">{t(`status.${status}`)}</span>
                 </button>
               </Tooltip>
             </React.Fragment>

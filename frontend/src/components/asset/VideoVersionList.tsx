@@ -30,6 +30,7 @@ import type { ShotVersion, ShotMeta } from '../../types';
 import { loadShotMeta, switchShotVersion, deleteShotVersion, getShotVersionHistory } from '../../store/projectStore';
 import { electronService } from '../../services/electronService';
 import './VideoVersionList.css';
+import { toUserMessage } from '../../utils/errorMessages';
 
 const { Text } = Typography;
 
@@ -102,7 +103,7 @@ export const VideoVersionList: React.FC<VideoVersionListProps> = ({
       onVersionChange?.(version);
       message.success(`已切换到版本 ${version}`);
     } catch (err: any) {
-      message.error(err.message || '切换版本失败');
+      message.error(toUserMessage(err) || '切换版本失败');
     }
   }, [projectId, shotId, localCurrentVersion, onVersionChange]);
 
@@ -120,7 +121,7 @@ export const VideoVersionList: React.FC<VideoVersionListProps> = ({
       message.success(`已删除版本 ${version}`);
       loadVersions();
     } catch (err: any) {
-      message.error(err.message || '删除失败');
+      message.error(toUserMessage(err) || '删除失败');
     }
   }, [projectId, shotId, versions.length, loadVersions]);
 

@@ -3,6 +3,7 @@
  * 分步引导生成项目所有资产：角色 → 场景 → 道具 → 预览视频
  */
 import React, { useState, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Modal,
   Steps,
@@ -39,6 +40,7 @@ import {
   extractAndBindCharacter,
 } from '../../workflow/characterAssetWorkflow';
 import { generateSceneImage, generatePropImage } from '../../workflow/scenePropAssetWorkflow';
+import { toUserMessage } from '../../utils/errorMessages';
 
 const { Text, Paragraph } = Typography;
 
@@ -61,11 +63,11 @@ interface ItemStatus {
   imagePath?: string;
 }
 
-const stepConfig = [
-  { key: 'characters', title: '角色定妆照', icon: <UserOutlined /> },
-  { key: 'scenes', title: '场景预览图', icon: <EnvironmentOutlined /> },
-  { key: 'props', title: '道具参考图', icon: <AppstoreOutlined /> },
-  { key: 'videos', title: '角色视频', icon: <VideoCameraOutlined /> },
+const stepConfigBase = [
+  { key: 'characters', titleKey: 'wizard.stepCharacters', icon: <UserOutlined /> },
+  { key: 'scenes', titleKey: 'wizard.stepScenes', icon: <EnvironmentOutlined /> },
+  { key: 'props', titleKey: 'wizard.stepProps', icon: <AppstoreOutlined /> },
+  { key: 'videos', titleKey: 'wizard.stepVideos', icon: <VideoCameraOutlined /> },
 ];
 
 export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
@@ -74,7 +76,9 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
   onClose,
   onComplete,
 }) => {
+  const { t } = useTranslation(['asset', 'common']);
   const { message } = App.useApp();
+  const stepConfig = stepConfigBase.map(s => ({ ...s, title: t(s.titleKey) }));
   const [currentStep, setCurrentStep] = useState(0);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
@@ -137,7 +141,7 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
           imagePath: c.previewVideoPath,
         })));
       } catch (err: any) {
-        message.error(`加载数据失败: ${err.message}`);
+        message.error(t('wizard.errorLoadData', { error: toUserMessage(err) }));
       } finally {
         setLoading(false);
       }
@@ -253,7 +257,7 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
                 onProgress,
               });
             } else {
-              result = { success: false, error: '角色不存在' };
+              result = { success: false, error: t('wizard.errorCharNotFound') };
             }
             break;
           }
@@ -270,7 +274,7 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
                 onProgress,
               });
             } else {
-              result = { success: false, error: '场景不存在' };
+              result = { success: false, error: t('wizard.errorSceneNotFound') };
             }
             break;
           }
@@ -287,7 +291,7 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
                 onProgress,
               });
             } else {
-              result = { success: false, error: '道具不存在' };
+              result = { success: false, error: t('wizard.errorPropNotFound') };
             }
             break;
           }
@@ -302,12 +306,12 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
                 onProgress,
               });
             } else {
-              result = { success: false, error: '角色不存在' };
+              result = { success: false, error: t('wizard.errorCharNotFound') };
             }
             break;
           }
           default:
-            result = { success: false, error: '未知步骤' };
+            result = { success: false, error: t('wizard.errorUnknownStep') };
         }
       } catch (err: any) {
         result = { success: false, error: err.message };
@@ -330,7 +334,7 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
     setGenerating(false);
     setCurrentItem('');
     setOverallProgress(100);
-    message.success(`${stepConfig[currentStep].title}生成完成`);
+    message.success(t('wizard.stepDone', { step: stepConfig[currentStep].title }));
   };
 
   // 下一步
@@ -409,7 +413,7 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
             onClick={() => toggleSelect(type, item.id)}
             style={{ marginLeft: 8 }}
           >
-            重试
+            {t('wizard.retry')}
           </Button>
         )}
       </div>
@@ -418,7 +422,7 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
 
   return (
     <Modal
-      title="资产生成向导"
+      title={t('wizard.title')}
       open={open}
       onCancel={() => !generating && onClose()}
       width={720}
@@ -441,7 +445,7 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
           {generating && (
             <Card size="small" style={{ marginBottom: 16 }}>
               <Space orientation="vertical" style={{ width: '100%' }}>
-                <Text>正在生成: {currentItem}</Text>
+                <Text>{t('wizard.generating', { item: currentItem })}</Text>
                 <Progress percent={Math.round(overallProgress)} status="active" />
               </Space>
             </Card>
@@ -451,7 +455,7 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
             title={
               <Space>
                 <span>{stepConfig[currentStep].title}</span>
-                <Tag>{completedCount}/{currentList.length} 已完成</Tag>
+                <Tag>{t('wizard.completedTag', { completed: completedCount, total: currentList.length })}</Tag>
               </Space>
             }
             extra={
@@ -461,14 +465,14 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
                   onClick={() => toggleSelectAll(stepConfig[currentStep].key as WizardStep, true)}
                   disabled={generating}
                 >
-                  全选
+                  {t('wizard.selectAll')}
                 </Button>
                 <Button
                   size="small"
                   onClick={() => toggleSelectAll(stepConfig[currentStep].key as WizardStep, false)}
                   disabled={generating}
                 >
-                  取消全选
+                  {t('wizard.deselectAll')}
                 </Button>
               </Space>
             }
@@ -477,8 +481,8 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
             {currentList.length === 0 ? (
               <Result
                 status="info"
-                title="暂无数据"
-                subTitle={`请先在剧本分析中提取${stepConfig[currentStep].title.replace(/预览图|参考图|定妆照|视频/g, '')}`}
+                title={t('wizard.emptyTitle')}
+                subTitle={t('wizard.emptySubTitle', { type: stepConfig[currentStep].title.replace(/预览图|参考图|定妆照|视频/g, '') })}
               />
             ) : (
               <Flex vertical>
@@ -490,11 +494,11 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
           <div style={{ marginTop: 24, textAlign: 'right' }}>
             <Space>
               <Button onClick={onClose} disabled={generating}>
-                取消
+                {t('common:cancel')}
               </Button>
               {currentStep > 0 && (
                 <Button onClick={() => setCurrentStep(currentStep - 1)} disabled={generating}>
-                  上一步
+                  {t('wizard.prev')}
                 </Button>
               )}
               <Button
@@ -504,10 +508,10 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
                 loading={generating}
                 icon={<PlayCircleOutlined />}
               >
-                开始生成 ({selectedCount})
+                {t('wizard.startGenerate', { count: selectedCount })}
               </Button>
               <Button onClick={handleNext} disabled={generating}>
-                {currentStep === stepConfig.length - 1 ? '完成' : '下一步'}
+                {currentStep === stepConfig.length - 1 ? t('wizard.finish') : t('wizard.next')}
               </Button>
             </Space>
           </div>

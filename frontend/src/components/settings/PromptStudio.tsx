@@ -24,12 +24,15 @@ import {
   type PromptTemplate,
   type PromptTemplateType,
 } from '../../store/promptTemplates';
+import { toUserMessage } from '../../utils/errorMessages';
+import { useTranslation } from 'react-i18next';
 
 const { Title, Text } = Typography;
 const { TextArea, Search } = Input;
 
 export const PromptStudio: React.FC = () => {
   const { message } = App.useApp();
+  const { t } = useTranslation('settings');
   const [templates, setTemplates] = useState<Record<PromptTemplateType, PromptTemplate>>({} as any);
   const [selectedId, setSelectedId] = useState<string>('');
   const [searchText, setSearchText] = useState('');
@@ -68,9 +71,9 @@ export const PromptStudio: React.FC = () => {
       await saveCustomTemplate(updatedTemplate);
       await loadData();
       setHasUnsavedChanges(false);
-      message.success('模板已保存');
+      message.success(t('promptStudio.saveSuccess'));
     } catch (err: any) {
-      message.error(`保存失败: ${err.message}`);
+      message.error(t('common.saveFailed', { error: toUserMessage(err) }));
     }
   };
 
@@ -80,9 +83,9 @@ export const PromptStudio: React.FC = () => {
       await resetTemplate(selectedId as PromptTemplateType);
       await loadData();
       setHasUnsavedChanges(false);
-      message.success('模板已重置为默认');
+      message.success(t('promptStudio.resetSuccess'));
     } catch (err: any) {
-      message.error(`重置失败: ${err.message}`);
+      message.error(t('promptStudio.resetFailed', { error: toUserMessage(err) }));
     }
   };
 
@@ -101,7 +104,7 @@ export const PromptStudio: React.FC = () => {
       <div className="w-80 border-r border-zinc-700 bg-zinc-900 flex flex-col">
         <div className="p-4 border-b border-zinc-700 bg-zinc-800">
           <Search
-            placeholder="搜索模板..."
+            placeholder={t('promptStudio.searchPlaceholder')}
             allowClear
             onChange={e => setSearchText(e.target.value)}
             prefix={<SearchOutlined className="text-zinc-500" />}
@@ -140,15 +143,15 @@ export const PromptStudio: React.FC = () => {
               <div>
                 <div className="flex items-center gap-2">
                   <Title level={5} className="!m-0 !text-zinc-100">{selectedTemplate.name}</Title>
-                  {selectedTemplate.isCustom && <Tag color="green">已修改</Tag>}
-                  {hasUnsavedChanges && <Tag color="warning">未保存</Tag>}
+                  {selectedTemplate.isCustom && <Tag color="green">{t('promptStudio.modifiedTag')}</Tag>}
+                  {hasUnsavedChanges && <Tag color="warning">{t('promptStudio.unsavedTag')}</Tag>}
                 </div>
                 <Text className="text-xs !text-zinc-500">{selectedTemplate.description}</Text>
               </div>
               <Space>
                 {selectedTemplate.isCustom && (
-                  <Popconfirm title="确定重置为默认模板？" onConfirm={handleReset}>
-                    <Button icon={<ReloadOutlined />} size="small">重置</Button>
+                  <Popconfirm title={t('promptStudio.confirmReset')} onConfirm={handleReset}>
+                    <Button icon={<ReloadOutlined />} size="small">{t('promptStudio.resetBtn')}</Button>
                   </Popconfirm>
                 )}
                 <Button
@@ -157,7 +160,7 @@ export const PromptStudio: React.FC = () => {
                   onClick={handleSave}
                   disabled={!hasUnsavedChanges}
                 >
-                  保存
+                  {t('promptStudio.saveBtn')}
                 </Button>
               </Space>
             </div>
@@ -184,17 +187,17 @@ export const PromptStudio: React.FC = () => {
                 <div className="p-3 bg-emerald-900/20 border-t border-emerald-800/50 shrink-0">
                   <div className="flex items-center gap-2 mb-2">
                     <CodeOutlined className="text-emerald-500" />
-                    <Text strong className="text-xs !text-emerald-500 uppercase">可用变量</Text>
+                    <Text strong className="text-xs !text-emerald-500 uppercase">{t('promptStudio.availableVariables')}</Text>
                   </div>
                   <Space size={[4, 8]} wrap>
                     {selectedTemplate.variables.map(v => (
-                      <Tooltip title={`点击复制 {{${v}}}`} key={v}>
+                      <Tooltip title={t('promptStudio.clickToCopy', { variable: `{{${v}}}` })} key={v}>
                         <Tag
                           color="green"
                           className="font-mono cursor-pointer !m-0 !mr-2"
                           onClick={() => {
                             navigator.clipboard.writeText(`{{${v}}}`);
-                            message.success('已复制');
+                            message.success(t('promptStudio.copiedSuccess'));
                           }}
                         >
                           {`{{${v}}}`}
@@ -208,7 +211,7 @@ export const PromptStudio: React.FC = () => {
           </>
         ) : (
           <div className="flex flex-col items-center justify-center h-full text-zinc-500">
-            <Empty description="请从左侧选择一个模板" />
+            <Empty description={t('promptStudio.emptyDesc')} />
           </div>
         )}
       </div>

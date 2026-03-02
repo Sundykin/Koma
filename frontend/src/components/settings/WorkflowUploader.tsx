@@ -2,6 +2,7 @@
  * ComfyUI 工作流上传与节点映射组件
  */
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Upload,
   Button,
@@ -43,17 +44,6 @@ interface ParsedWorkflow {
 // 系统输入映射类型
 type SystemInputType = 'positive_prompt' | 'negative_prompt' | 'image' | 'seed' | 'width' | 'height' | 'steps' | 'cfg';
 
-const SYSTEM_INPUTS: { key: SystemInputType; label: string; description: string }[] = [
-  { key: 'positive_prompt', label: '正向提示词', description: '生成图像的正向描述' },
-  { key: 'negative_prompt', label: '负向提示词', description: '不希望出现的内容' },
-  { key: 'image', label: '输入图片', description: '参考图或待处理图片' },
-  { key: 'seed', label: '随机种子', description: '控制生成结果的可复现性' },
-  { key: 'width', label: '宽度', description: '输出图像宽度' },
-  { key: 'height', label: '高度', description: '输出图像高度' },
-  { key: 'steps', label: '采样步数', description: '去噪迭代次数' },
-  { key: 'cfg', label: 'CFG Scale', description: '提示词引导强度' },
-];
-
 // 常见的 ComfyUI 输入节点类型
 const INPUT_NODE_TYPES = [
   'CLIPTextEncode',
@@ -80,6 +70,18 @@ export const WorkflowUploader: React.FC<WorkflowUploaderProps> = ({
   disabled = false,
 }) => {
   const { message } = App.useApp();
+  const { t } = useTranslation('settings');
+
+  const SYSTEM_INPUTS: { key: SystemInputType; label: string; description: string }[] = [
+    { key: 'positive_prompt', label: t('workflow.input.positivePrompt'), description: t('workflow.input.positivePromptDesc') },
+    { key: 'negative_prompt', label: t('workflow.input.negativePrompt'), description: t('workflow.input.negativePromptDesc') },
+    { key: 'image', label: t('workflow.input.image'), description: t('workflow.input.imageDesc') },
+    { key: 'seed', label: t('workflow.input.seed'), description: t('workflow.input.seedDesc') },
+    { key: 'width', label: t('workflow.input.width'), description: t('workflow.input.widthDesc') },
+    { key: 'height', label: t('workflow.input.height'), description: t('workflow.input.heightDesc') },
+    { key: 'steps', label: t('workflow.input.steps'), description: t('workflow.input.stepsDesc') },
+    { key: 'cfg', label: t('workflow.input.cfgScale'), description: t('workflow.input.cfgScaleDesc') },
+  ];
   const [workflow, setWorkflow] = useState<ParsedWorkflow | null>(null);
   const [workflowJson, setWorkflowJson] = useState<string>('');
   const [mapping, setMapping] = useState<Record<string, string>>(value?.workflowMapping || {});
@@ -134,7 +136,7 @@ export const WorkflowUploader: React.FC<WorkflowUploaderProps> = ({
         const parsed = parseWorkflow(json);
 
         if (parsed.nodes.length === 0) {
-          message.error('无法解析工作流，请检查文件格式');
+          message.error(t('workflow.parseError'));
           return;
         }
 
@@ -175,7 +177,7 @@ export const WorkflowUploader: React.FC<WorkflowUploaderProps> = ({
         }
         setMapping(autoMapping);
 
-        message.success(`工作流已加载，共 ${parsed.nodes.length} 个节点`);
+        message.success(t('workflow.loadSuccess', { count: parsed.nodes.length }));
 
         onChange?.({
           workflowPath: file.name,
@@ -183,7 +185,7 @@ export const WorkflowUploader: React.FC<WorkflowUploaderProps> = ({
           workflowJson: content,
         });
       } catch (err) {
-        message.error('JSON 解析失败，请检查文件格式');
+        message.error(t('workflow.jsonParseError'));
       }
     };
     reader.readAsText(file);
@@ -229,24 +231,24 @@ export const WorkflowUploader: React.FC<WorkflowUploaderProps> = ({
   // 映射表格列
   const mappingColumns = [
     {
-      title: '系统输入',
+      title: t('workflow.table.systemInput'),
       dataIndex: 'label',
       width: 120,
     },
     {
-      title: '说明',
+      title: t('workflow.table.description'),
       dataIndex: 'description',
       width: 200,
       render: (text: string) => <span style={{ color: '#888', fontSize: 12 }}>{text}</span>,
     },
     {
-      title: '映射到节点',
+      title: t('workflow.table.mapToNode'),
       dataIndex: 'key',
       render: (key: string) => (
         <Select
           value={mapping[key]}
           onChange={(val) => handleMappingChange(key, val)}
-          placeholder="选择节点输入"
+          placeholder={t('workflow.table.selectNodeInput')}
           allowClear
           style={{ width: '100%' }}
           options={getNodeOptions()}
@@ -255,7 +257,7 @@ export const WorkflowUploader: React.FC<WorkflowUploaderProps> = ({
       ),
     },
     {
-      title: '状态',
+      title: t('workflow.table.status'),
       width: 60,
       render: (_: any, record: any) => (
         mapping[record.key] ? (
@@ -281,20 +283,20 @@ export const WorkflowUploader: React.FC<WorkflowUploaderProps> = ({
             disabled={disabled}
           >
             <Button icon={<UploadOutlined />} disabled={disabled}>
-              上传工作流 JSON
+              {t('workflow.uploadBtn')}
             </Button>
           </Upload>
 
           {workflow && (
             <>
-              <Tooltip title="预览节点">
+              <Tooltip title={t('workflow.previewNodesTooltip')}>
                 <Button
                   icon={<EyeOutlined />}
                   onClick={() => setPreviewVisible(true)}
                 />
               </Tooltip>
               <Tag color="green">
-                <NodeIndexOutlined /> {workflow.nodes.length} 节点
+                <NodeIndexOutlined /> {t('workflow.nodeCountTag', { count: workflow.nodes.length })}
               </Tag>
             </>
           )}
@@ -303,9 +305,9 @@ export const WorkflowUploader: React.FC<WorkflowUploaderProps> = ({
 
       {/* 节点映射配置 */}
       {workflow ? (
-        <Card size="small" title="节点映射配置" style={{ marginTop: 16 }}>
+        <Card size="small" title={t('workflow.mappingCardTitle')} style={{ marginTop: 16 }}>
           <p style={{ marginBottom: 12, color: '#888', fontSize: 13 }}>
-            将系统输入映射到工作流中对应的节点参数，未映射的输入将使用工作流默认值。
+            {t('workflow.mappingDesc')}
           </p>
           <Table
             dataSource={SYSTEM_INPUTS}
@@ -318,14 +320,14 @@ export const WorkflowUploader: React.FC<WorkflowUploaderProps> = ({
       ) : (
         <Empty
           image={Empty.PRESENTED_IMAGE_SIMPLE}
-          description="上传 ComfyUI 工作流 JSON 文件后可配置节点映射"
+          description={t('workflow.emptyDesc')}
           style={{ marginTop: 16 }}
         />
       )}
 
       {/* 节点预览 Modal */}
       <Modal
-        title="工作流节点预览"
+        title={t('workflow.previewModalTitle')}
         open={previewVisible}
         onCancel={() => setPreviewVisible(false)}
         footer={null}
@@ -336,10 +338,10 @@ export const WorkflowUploader: React.FC<WorkflowUploaderProps> = ({
             dataSource={workflow.nodes}
             columns={[
               { title: 'ID', dataIndex: 'id', width: 60 },
-              { title: '类型', dataIndex: 'type', width: 200 },
-              { title: '标题', dataIndex: 'title', render: (t: string) => t || '—' },
+              { title: t('workflow.preview.typeCol'), dataIndex: 'type', width: 200 },
+              { title: t('workflow.preview.titleCol'), dataIndex: 'title', render: (t: string) => t || '—' },
               {
-                title: '输入',
+                title: t('workflow.preview.inputsCol'),
                 dataIndex: 'inputs',
                 render: (inputs: Record<string, any>) => (
                   <span style={{ fontSize: 12, color: '#888' }}>

@@ -169,6 +169,11 @@ export const ImageCardGrid: React.FC<ImageCardGridProps> = ({
             className={`imageCard ${idx === selectedIndex ? 'selected' : ''}`}
             onClick={() => onSelect(idx)}
             onDoubleClick={() => handlePreview(idx)}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect(idx); } }}
+            aria-label={`图片 ${idx + 1}`}
+            aria-pressed={idx === selectedIndex}
           >
             <img src={electronService.fs.toLocalUrl(img)} alt={`img-${idx}`} />
             {idx === selectedIndex && <CheckCircleFilled className="selectedIcon" />}
@@ -181,6 +186,7 @@ export const ImageCardGrid: React.FC<ImageCardGridProps> = ({
                   icon={<DeleteOutlined />}
                   onClick={(e) => handleDelete(idx, e)}
                   className="overlayBtn"
+                  aria-label="删除"
                 />
               </Tooltip>
             </div>

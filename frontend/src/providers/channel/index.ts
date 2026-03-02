@@ -49,8 +49,3 @@ export function validateChannelConfig(config: ChannelConfig): ChannelValidationR
     warnings,
   };
 }
-
-/**
- * @deprecated 模板系统已删除，此常量保留仅供兼容
- */
-export const UNIFIED_CHANNEL_TEMPLATES: Record<string, any> = {};

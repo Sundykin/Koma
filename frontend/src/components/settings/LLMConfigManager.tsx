@@ -39,6 +39,7 @@ import {
 } from '../../store/globalStore';
 import { testLLMConnection } from '../../providers';
 import { toUserMessage } from '../../utils/errorMessages';
+import { useTranslation } from 'react-i18next';
 
 interface LLMConfigManagerProps {
   onConfigChange?: () => void;
@@ -46,6 +47,7 @@ interface LLMConfigManagerProps {
 
 export const LLMConfigManager: React.FC<LLMConfigManagerProps> = ({ onConfigChange }) => {
   const { message } = App.useApp();
+  const { t } = useTranslation('settings');
   const [configs, setConfigs] = useState<LLMModelConfig[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalVisible, setModalVisible] = useState(false);
@@ -139,10 +141,10 @@ export const LLMConfigManager: React.FC<LLMConfigManagerProps> = ({ onConfigChan
 
       if (editingConfig) {
         await updateLLMConfig(editingConfig.id, configData);
-        message.success('配置已更新');
+        message.success(t('common.updateSuccess'));
       } else {
         await addLLMConfig(configData);
-        message.success('配置已添加');
+        message.success(t('common.addSuccess'));
       }
 
       setModalVisible(false);
@@ -150,29 +152,29 @@ export const LLMConfigManager: React.FC<LLMConfigManagerProps> = ({ onConfigChan
       onConfigChange?.();
     } catch (err: any) {
       if (err.errorFields) return;
-      message.error(`保存失败: ${err.message}`);
+      message.error(t('common.saveFailed', { error: toUserMessage(err) }));
     }
   };
 
   const handleDelete = async (id: string) => {
     try {
       await deleteLLMConfig(id);
-      message.success('配置已删除');
+      message.success(t('common.deleteSuccess'));
       await loadConfigs();
       onConfigChange?.();
     } catch (err: any) {
-      message.error(`删除失败: ${err.message}`);
+      message.error(t('common.deleteFailed', { error: toUserMessage(err) }));
     }
   };
 
   const handleSetDefault = async (id: string) => {
     try {
       await setDefaultLLMConfig(id);
-      message.success('已设为默认');
+      message.success(t('common.setDefaultSuccess'));
       await loadConfigs();
       onConfigChange?.();
     } catch (err: any) {
-      message.error(`设置失败: ${err.message}`);
+      message.error(t('common.setDefaultFailed', { error: toUserMessage(err) }));
     }
   };
 
@@ -187,12 +189,12 @@ export const LLMConfigManager: React.FC<LLMConfigManagerProps> = ({ onConfigChan
       });
       if (result.success) {
         const latency = result.latency ? ` (${result.latency}ms)` : '';
-        message.success(`"${config.name}" 连接成功${latency}`);
+        message.success(t('common.connectionSuccess', { name: config.name, latency }));
       } else {
         message.error(`"${config.name}" ${result.message}`);
       }
     } catch (err: any) {
-      message.error(`连接测试失败: ${toUserMessage(err)}`);
+      message.error(t('common.connectionTestFailed', { error: toUserMessage(err) }));
     } finally {
       setTestingId(null);
     }
@@ -224,11 +226,11 @@ export const LLMConfigManager: React.FC<LLMConfigManagerProps> = ({ onConfigChan
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <div>
           <span style={{ fontSize: 14, color: '#888' }}>
-            已配置 <strong>{configs.length}</strong> 个模型
+            {t('llm.configuredCount', { count: configs.length })}
           </span>
         </div>
         <Button type="primary" icon={<PlusOutlined />} onClick={() => openModal()}>
-          添加模型
+          {t('llm.addBtn')}
         </Button>
       </div>
 
@@ -239,10 +241,10 @@ export const LLMConfigManager: React.FC<LLMConfigManagerProps> = ({ onConfigChan
       ) : configs.length === 0 ? (
         <Empty
           image={Empty.PRESENTED_IMAGE_SIMPLE}
-          description="还没有配置任何 LLM 模型"
+          description={t('llm.emptyDesc')}
         >
           <Button type="primary" icon={<PlusOutlined />} onClick={() => openModal()}>
-            添加第一个模型
+            {t('llm.addFirstBtn')}
           </Button>
         </Empty>
       ) : (
@@ -256,7 +258,7 @@ export const LLMConfigManager: React.FC<LLMConfigManagerProps> = ({ onConfigChan
                     {config.isDefault ? (
                       <StarFilled style={{ color: '#faad14' }} />
                     ) : (
-                      <Tooltip title="设为默认">
+                      <Tooltip title={t('common.setDefault')}>
                         <StarOutlined
                           style={{ cursor: 'pointer', color: '#d9d9d9' }}
                           onClick={() => handleSetDefault(config.id)}
@@ -271,7 +273,7 @@ export const LLMConfigManager: React.FC<LLMConfigManagerProps> = ({ onConfigChan
                 }
                 extra={
                   <Space size="small">
-                    <Tooltip title="测试连接">
+                    <Tooltip title={t('common.testConnection')}>
                       <Button
                         type="text"
                         size="small"
@@ -280,7 +282,7 @@ export const LLMConfigManager: React.FC<LLMConfigManagerProps> = ({ onConfigChan
                         disabled={testingId === config.id}
                       />
                     </Tooltip>
-                    <Tooltip title="编辑">
+                    <Tooltip title={t('common.edit')}>
                       <Button
                         type="text"
                         size="small"
@@ -289,12 +291,12 @@ export const LLMConfigManager: React.FC<LLMConfigManagerProps> = ({ onConfigChan
                       />
                     </Tooltip>
                     <Popconfirm
-                      title="确定删除此配置？"
+                      title={t('common.confirmDelete')}
                       onConfirm={() => handleDelete(config.id)}
-                      okText="删除"
-                      cancelText="取消"
+                      okText={t('common.delete')}
+                      cancelText={t('common.cancel')}
                     >
-                      <Tooltip title="删除">
+                      <Tooltip title={t('common.delete')}>
                         <Button type="text" size="small" danger icon={<DeleteOutlined />} />
                       </Tooltip>
                     </Popconfirm>
@@ -302,10 +304,10 @@ export const LLMConfigManager: React.FC<LLMConfigManagerProps> = ({ onConfigChan
                 }
               >
                 <div style={{ fontSize: 13, color: '#666' }}>
-                  <div><strong>模型:</strong> {config.modelName}</div>
+                  <div><strong>{t('llm.cardModelLabel')}</strong> {config.modelName}</div>
                   {config.baseUrl && (
                     <div style={{ marginTop: 4 }}>
-                      <strong>地址:</strong>{' '}
+                      <strong>{t('common.cardUrlLabel')}</strong>{' '}
                       <span style={{ fontSize: 12, fontFamily: 'monospace' }}>
                         {config.baseUrl.replace(/https?:\/\//, '').slice(0, 30)}...
                       </span>
@@ -319,12 +321,12 @@ export const LLMConfigManager: React.FC<LLMConfigManagerProps> = ({ onConfigChan
       )}
 
       <Modal
-        title={editingConfig ? '编辑模型配置' : '添加模型配置'}
+        title={editingConfig ? t('llm.editTitle') : t('llm.addTitle')}
         open={modalVisible}
         onOk={handleSave}
         onCancel={() => setModalVisible(false)}
-        okText="保存"
-        cancelText="取消"
+        okText={t('common.save')}
+        cancelText={t('common.cancel')}
         width={500}
         maskClosable={false}
         destroyOnHidden
@@ -339,28 +341,28 @@ export const LLMConfigManager: React.FC<LLMConfigManagerProps> = ({ onConfigChan
         <Form form={form} layout="vertical" className="mt-4">
           <Form.Item
             name="name"
-            label="配置名称"
-            rules={[{ required: true, message: '请输入配置名称' }]}
+            label={t('common.form.nameLabel')}
+            rules={[{ required: true, message: t('common.form.nameRequired') }]}
           >
             <Input placeholder="如: DeepSeek Chat" />
           </Form.Item>
 
           <Form.Item
             name="provider"
-            label="模型类型"
+            label={t('common.form.providerLabel')}
             rules={[{ required: true }]}
           >
             <Select onChange={handleProviderChange}>
-              <Select.Option value="openai-compatible">OpenAI 兼容 (推荐)</Select.Option>
+              <Select.Option value="openai-compatible">{t('llm.form.providerOpenAI')}</Select.Option>
               <Select.Option value="gemini">Google Gemini</Select.Option>
               <Select.Option value="claude">Anthropic Claude</Select.Option>
             </Select>
           </Form.Item>
 
           {currentProvider === 'openai-compatible' && (
-            <Form.Item name="presetId" label="快速选择渠道">
+            <Form.Item name="presetId" label={t('llm.form.presetLabel')}>
               <Select
-                placeholder="选择预设渠道自动填充地址"
+                placeholder={t('llm.form.presetPlaceholder')}
                 allowClear
                 onChange={handlePresetChange}
               >
@@ -377,18 +379,18 @@ export const LLMConfigManager: React.FC<LLMConfigManagerProps> = ({ onConfigChan
             name="baseUrl"
             label={
               <span>
-                API 地址
+                {t('common.form.baseUrlLabel')}
                 {currentProvider !== 'openai-compatible' && (
-                  <span className="text-zinc-500 ml-2 text-xs">(可选，用于代理)</span>
+                  <span className="text-zinc-500 ml-2 text-xs">{t('llm.form.baseUrlOptional')}</span>
                 )}
               </span>
             }
-            rules={[{ required: currentProvider === 'openai-compatible', message: '请输入 API 地址' }]}
+            rules={[{ required: currentProvider === 'openai-compatible', message: t('common.form.baseUrlRequired') }]}
             extra={
               currentProvider === 'gemini'
-                ? '留空使用官方地址 generativelanguage.googleapis.com'
+                ? t('llm.form.geminiUrlHint')
                 : currentProvider === 'claude'
-                ? '留空使用官方地址 api.anthropic.com'
+                ? t('llm.form.claudeUrlHint')
                 : undefined
             }
           >
@@ -406,11 +408,11 @@ export const LLMConfigManager: React.FC<LLMConfigManagerProps> = ({ onConfigChan
 
           <Form.Item
             name="modelName"
-            label="模型名称"
-            rules={[{ required: true, message: '请输入模型名称' }]}
+            label={t('llm.form.modelNameLabel')}
+            rules={[{ required: true, message: t('llm.form.modelNameRequired') }]}
           >
             <AutoComplete
-              placeholder="输入或选择模型，如: deepseek-chat, gpt-4o"
+              placeholder={t('llm.form.modelNamePlaceholder')}
               options={
                 currentPresetId
                   ? LLM_CHANNEL_PRESETS.find(p => p.id === currentPresetId)?.models.map(model => ({
@@ -428,9 +430,9 @@ export const LLMConfigManager: React.FC<LLMConfigManagerProps> = ({ onConfigChan
           <Form.Item
             name="apiKey"
             label="API Key"
-            rules={[{ required: true, message: '请输入 API Key' }]}
+            rules={[{ required: true, message: t('common.form.apiKeyRequired') }]}
           >
-            <Input.Password prefix={<KeyOutlined />} placeholder="sk-..." />
+            <Input.Password prefix={<KeyOutlined />} placeholder={t('common.form.apiKeyPlaceholder')} />
           </Form.Item>
         </Form>
       </Modal>

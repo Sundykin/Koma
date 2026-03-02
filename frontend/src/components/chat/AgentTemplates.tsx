@@ -3,6 +3,7 @@
  * 支持 MCP 工具配置、温度和最大 token 设置
  */
 import React, { useState, useCallback, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Modal,
   Form,
@@ -30,7 +31,6 @@ import {
   ToolOutlined,
 } from '@ant-design/icons';
 import { chatIPC, type MCPToolDefinition } from '../../chat/ipc';
-import styles from './AgentTemplates.module.css';
 
 // 智能体模板
 export interface AgentTemplate {
@@ -96,6 +96,7 @@ export const AgentTemplates: React.FC<AgentTemplatesProps> = ({
   onSave,
   onSelect,
 }) => {
+  const { t } = useTranslation('chat');
   const [form] = Form.useForm();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
@@ -137,7 +138,7 @@ export const AgentTemplates: React.FC<AgentTemplatesProps> = ({
   // 从预设复制
   const handleCopyPreset = useCallback((template: AgentTemplate) => {
     form.setFieldsValue({
-      name: `${template.name} (副本)`,
+      name: t('agent.copyNameSuffix', { name: template.name }),
       description: template.description,
       systemPrompt: template.systemPrompt,
       temperature: template.temperature ?? 0.7,
@@ -188,7 +189,7 @@ export const AgentTemplates: React.FC<AgentTemplatesProps> = ({
 
       onSave(newTemplates);
       setShowForm(false);
-      message.success(editingId ? '模板已更新' : '模板已创建');
+      message.success(editingId ? t('agent.successUpdated') : t('agent.successCreated'));
     } catch (e) {
       // 表单验证失败
     }
@@ -198,14 +199,14 @@ export const AgentTemplates: React.FC<AgentTemplatesProps> = ({
   const handleDelete = useCallback((id: string) => {
     const newTemplates = templates.filter(t => t.id !== id);
     onSave(newTemplates);
-    message.success('模板已删除');
+    message.success(t('agent.successDeleted'));
   }, [templates, onSave]);
 
   // 使用模板
   const handleUse = useCallback((template: AgentTemplate) => {
     onSelect(template);
     onClose();
-    message.success(`已切换到 ${template.name}`);
+    message.success(t('agent.successSwitched', { name: template.name }));
   }, [onSelect, onClose]);
 
   // 判断是否为预设模板
@@ -218,7 +219,7 @@ export const AgentTemplates: React.FC<AgentTemplatesProps> = ({
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span>{tool.name}</span>
         <Tag color={(tool as any).source === 'plugin' ? 'green' : 'blue'} style={{ marginLeft: 8 }}>
-          {(tool as any).source === 'plugin' ? '插件' : tool.serverName}
+          {(tool as any).source === 'plugin' ? t('agent.tagPlugin') : tool.serverName}
         </Tag>
       </div>
     ),
@@ -227,59 +228,59 @@ export const AgentTemplates: React.FC<AgentTemplatesProps> = ({
 
   return (
     <Modal
-      title="智能体模板"
+      title={t('agent.modalTitle')}
       open={visible}
       onCancel={onClose}
       width={900}
       footer={null}
-      className={styles.modal}
+      className="[&_.ant-modal-content]:bg-[#18181b] [&_.ant-modal-header]:bg-[#18181b] [&_.ant-modal-header]:border-b [&_.ant-modal-header]:border-[#27272a] [&_.ant-modal-title]:text-[#fafafa] [&_.ant-modal-close-x]:text-[#a1a1aa]"
     >
       {!showForm ? (
         <>
-          <div className={styles.header}>
+          <div className="mb-4">
             <Button
               type="primary"
               icon={<PlusOutlined />}
               onClick={handleAdd}
             >
-              创建模板
+              {t('agent.createTemplate')}
             </Button>
           </div>
 
           {allTemplates.length === 0 ? (
-            <Empty description="暂无智能体模板" />
+            <Empty description={t('agent.emptyTemplates')} />
           ) : (
             <Row gutter={[16, 16]}>
               {allTemplates.map(template => (
                 <Col key={template.id} xs={24} sm={12} md={8}>
                   <Card
-                    className={styles.card}
+                    className="!bg-[#27272a] !border !border-[#3f3f46] !rounded-xl transition-[border-color,transform] duration-200 h-full !flex flex-col hover:!border-emerald-500 hover:-translate-y-0.5 [&_.ant-card-body]:flex-1 [&_.ant-card-body]:flex [&_.ant-card-body]:flex-col"
                     hoverable
                     onClick={() => handleUse(template)}
                   >
-                    <div className={styles.cardHeader}>
+                    <div className="flex items-center gap-3 mb-3">
                       <span
-                        className={styles.icon}
+                        className="w-10 h-10 flex items-center justify-center rounded-[10px] text-xl"
                         style={{ backgroundColor: template.color }}
                       >
                         {template.icon || '🤖'}
                       </span>
-                      <div className={styles.cardTitle}>
-                        <span className={styles.name}>{template.name}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-base font-medium text-[#fafafa]">{template.name}</span>
                         {isPreset(template.id) && (
-                          <Tag color="blue" className={styles.tag}>预设</Tag>
+                          <Tag color="blue" className="!m-0">{t('agent.tagPreset')}</Tag>
                         )}
                       </div>
                     </div>
-                    <p className={styles.description}>{template.description}</p>
+                    <p className="text-[13px] text-[#a1a1aa] mb-3 leading-normal line-clamp-2 mt-0">{template.description}</p>
                     {/* 显示工具数量 */}
                     {template.tools && template.tools.length > 0 && (
-                      <div className={styles.toolsInfo}>
+                      <div className="flex items-center text-xs text-[#71717a] mb-2">
                         <ToolOutlined style={{ marginRight: 4 }} />
-                        <span>{template.tools.length} 个工具</span>
+                        <span>{t('agent.toolCount', { count: template.tools.length })}</span>
                       </div>
                     )}
-                    <div className={styles.cardActions} onClick={e => e.stopPropagation()}>
+                    <div className="flex justify-end border-t border-[#3f3f46] pt-3 mt-auto" onClick={e => e.stopPropagation()}>
                       {isPreset(template.id) ? (
                         <Button
                           type="text"
@@ -287,7 +288,7 @@ export const AgentTemplates: React.FC<AgentTemplatesProps> = ({
                           icon={<CopyOutlined />}
                           onClick={() => handleCopyPreset(template)}
                         >
-                          复制
+                          {t('agent.copy')}
                         </Button>
                       ) : (
                         <Space>
@@ -297,13 +298,13 @@ export const AgentTemplates: React.FC<AgentTemplatesProps> = ({
                             icon={<EditOutlined />}
                             onClick={() => handleEdit(template)}
                           >
-                            编辑
+                            {t('common:edit')}
                           </Button>
                           <Popconfirm
-                            title="确定删除此模板？"
+                            title={t('agent.confirmDelete')}
                             onConfirm={() => handleDelete(template.id)}
-                            okText="删除"
-                            cancelText="取消"
+                            okText={t('common:delete')}
+                            cancelText={t('common:cancel')}
                           >
                             <Button
                               type="text"
@@ -311,7 +312,7 @@ export const AgentTemplates: React.FC<AgentTemplatesProps> = ({
                               danger
                               icon={<DeleteOutlined />}
                             >
-                              删除
+                              {t('common:delete')}
                             </Button>
                           </Popconfirm>
                         </Space>
@@ -327,53 +328,53 @@ export const AgentTemplates: React.FC<AgentTemplatesProps> = ({
         <Form
           form={form}
           layout="vertical"
-          className={styles.form}
+          className="py-4"
         >
           <Form.Item
             name="name"
-            label="模板名称"
-            rules={[{ required: true, message: '请输入模板名称' }]}
+            label={t('agent.form.name')}
+            rules={[{ required: true, message: t('agent.form.nameRequired') }]}
           >
-            <Input placeholder="例如：代码审查助手" />
+            <Input placeholder={t('agent.form.namePlaceholder')} />
           </Form.Item>
 
           <Form.Item
             name="description"
-            label="描述"
-            rules={[{ required: true, message: '请输入描述' }]}
+            label={t('agent.form.description')}
+            rules={[{ required: true, message: t('agent.form.descriptionRequired') }]}
           >
-            <Input placeholder="简要描述这个智能体的功能" />
+            <Input placeholder={t('agent.form.descriptionPlaceholder')} />
           </Form.Item>
 
           <Form.Item
             name="systemPrompt"
-            label="系统提示词"
-            rules={[{ required: true, message: '请输入系统提示词' }]}
+            label={t('agent.form.systemPrompt')}
+            rules={[{ required: true, message: t('agent.form.systemPromptRequired') }]}
           >
             <Input.TextArea
-              placeholder="定义智能体的角色、能力和行为规范..."
+              placeholder={t('agent.form.systemPromptPlaceholder')}
               autoSize={{ minRows: 4, maxRows: 8 }}
             />
           </Form.Item>
 
-          <Divider>高级设置</Divider>
+          <Divider>{t('agent.advancedSettings')}</Divider>
 
           <Row gutter={16}>
             <Col span={12}>
               <Form.Item
                 name="temperature"
-                label="温度 (Temperature)"
-                tooltip="控制输出的随机性，值越高越有创意，值越低越确定"
+                label={t('agent.form.temperature')}
+                tooltip={t('agent.form.temperatureTooltip')}
               >
                 <Slider
                   min={0}
                   max={2}
                   step={0.1}
                   marks={{
-                    0: '精确',
-                    0.7: '平衡',
-                    1: '创意',
-                    2: '随机',
+                    0: t('agent.form.tempPrecise'),
+                    0.7: t('agent.form.tempBalanced'),
+                    1: t('agent.form.tempCreative'),
+                    2: t('agent.form.tempRandom'),
                   }}
                 />
               </Form.Item>
@@ -381,8 +382,8 @@ export const AgentTemplates: React.FC<AgentTemplatesProps> = ({
             <Col span={12}>
               <Form.Item
                 name="maxTokens"
-                label="最大 Token"
-                tooltip="控制回复的最大长度"
+                label={t('agent.form.maxTokens')}
+                tooltip={t('agent.form.maxTokensTooltip')}
               >
                 <InputNumber
                   min={256}
@@ -399,15 +400,15 @@ export const AgentTemplates: React.FC<AgentTemplatesProps> = ({
             name="tools"
             label={
               <span>
-                MCP 工具
+                {t('agent.form.mcpTools')}
                 {loadingTools && <Spin size="small" style={{ marginLeft: 8 }} />}
               </span>
             }
-            tooltip="选择此智能体可以使用的工具"
+            tooltip={t('agent.form.mcpToolsTooltip')}
           >
             <Select
               mode="multiple"
-              placeholder={mcpTools.length === 0 ? "无可用工具（请连接 MCP 服务或安装工具插件）" : "选择可用工具"}
+              placeholder={mcpTools.length === 0 ? t('agent.form.noToolsPlaceholder') : t('agent.form.selectToolsPlaceholder')}
               options={toolOptions}
               disabled={mcpTools.length === 0}
               optionFilterProp="label"
@@ -428,15 +429,15 @@ export const AgentTemplates: React.FC<AgentTemplatesProps> = ({
           </Form.Item>
           {mcpTools.length === 0 && !loadingTools && (
             <div style={{ color: '#999', fontSize: 12, marginTop: -16, marginBottom: 16 }}>
-              提示：请先连接 MCP 服务器或安装工具类插件以启用工具
+              {t('agent.form.toolsHint')}
             </div>
           )}
 
-          <Form.Item className={styles.formActions}>
+          <Form.Item className="!mb-0 text-right">
             <Space>
-              <Button onClick={() => setShowForm(false)}>取消</Button>
+              <Button onClick={() => setShowForm(false)}>{t('common:cancel')}</Button>
               <Button type="primary" onClick={handleSave}>
-                {editingId ? '更新' : '创建'}
+                {editingId ? t('agent.update') : t('agent.create')}
               </Button>
             </Space>
           </Form.Item>

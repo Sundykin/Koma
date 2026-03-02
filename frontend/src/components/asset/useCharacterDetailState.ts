@@ -79,7 +79,7 @@ export function useCharacterDetailState(props: CharacterDetailModalProps, messag
       setEditedCharacter(updatedCharacter);
       onUpdate(updatedCharacter);
       message.success('保存成功');
-    } catch (err: any) { message.error(err.message || '保存失败'); }
+    } catch (err: any) { message.error(toUserMessage(err) || '保存失败'); }
   }, [editedCharacter, form, customPrompt, projectId, onUpdate, message]);
 
   const handleGenerateCostume = useCallback(async () => {
@@ -112,7 +112,7 @@ export function useCharacterDetailState(props: CharacterDetailModalProps, messag
       const index = characters.findIndex(c => c.id === editedCharacter.id);
       if (index !== -1) { characters[index] = updated; await saveCharacters(projectId, characters); }
       message.success('上传成功');
-    } catch (err: any) { message.error(`上传失败: ${err.message}`); }
+    } catch (err: any) { message.error(`上传失败: ${toUserMessage(err)}`); }
   }, [editedCharacter, getAssetPath, projectId, onUpdate, message]);
 
   const handleGenerateVideo = useCallback(async () => {

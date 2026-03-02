@@ -226,6 +226,9 @@ export const ShotCard: React.FC<ShotCardProps> = ({
     <div
       className={`shot-card ${isSelected ? 'selected' : ''} ${shot.confirmed ? 'confirmed' : ''} ${isActive ? 'active' : ''}`}
       onClick={handleCardClick}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleCardClick(e as any); } }}
     >
       <div className="flex items-stretch min-h-[130px] bg-zinc-950">
         {/* 左侧操作列 - 全部显示 */}
@@ -246,25 +249,26 @@ export const ShotCard: React.FC<ShotCardProps> = ({
                 className={actionBtnClass}
                 icon={shot.confirmed ? <CheckCircleFilled /> : <CheckCircleOutlined />}
                 onClick={() => onToggleConfirm(shot)}
+                aria-label={shot.confirmed ? '取消确认' : '确认分镜'}
               />
             </Tooltip>
             <Tooltip title="上移" placement="right">
-              <Button size="small" type="text" className={actionBtnClass} icon={<ArrowUpOutlined />} disabled={isFirst} onClick={() => onMoveUp(shot.id)} />
+              <Button size="small" type="text" className={actionBtnClass} icon={<ArrowUpOutlined />} disabled={isFirst} onClick={() => onMoveUp(shot.id)} aria-label="上移" />
             </Tooltip>
             <Tooltip title="下移" placement="right">
-              <Button size="small" type="text" className={actionBtnClass} icon={<ArrowDownOutlined />} disabled={isLast} onClick={() => onMoveDown(shot.id)} />
+              <Button size="small" type="text" className={actionBtnClass} icon={<ArrowDownOutlined />} disabled={isLast} onClick={() => onMoveDown(shot.id)} aria-label="下移" />
             </Tooltip>
             <Tooltip title="上方插入" placement="right">
-              <Button size="small" type="text" className={actionBtnClass} icon={<InsertRowAboveOutlined />} onClick={() => onInsertAbove(shot.id)} />
+              <Button size="small" type="text" className={actionBtnClass} icon={<InsertRowAboveOutlined />} onClick={() => onInsertAbove(shot.id)} aria-label="上方插入" />
             </Tooltip>
             <Tooltip title="下方插入" placement="right">
-              <Button size="small" type="text" className={actionBtnClass} icon={<InsertRowBelowOutlined />} onClick={() => onInsertBelow(shot.id)} />
+              <Button size="small" type="text" className={actionBtnClass} icon={<InsertRowBelowOutlined />} onClick={() => onInsertBelow(shot.id)} aria-label="下方插入" />
             </Tooltip>
             <Tooltip title="向上合并" placement="right">
-              <Button size="small" type="text" className={actionBtnClass} icon={<MergeCellsOutlined />} disabled={isFirst} onClick={() => onMergeUp(shot.id)} />
+              <Button size="small" type="text" className={actionBtnClass} icon={<MergeCellsOutlined />} disabled={isFirst} onClick={() => onMergeUp(shot.id)} aria-label="向上合并" />
             </Tooltip>
             <Popconfirm title="确定删除？" onConfirm={() => onDelete(shot.id)} placement="right">
-              <Button size="small" type="text" danger className={actionBtnClass} icon={<DeleteOutlined />} />
+              <Button size="small" type="text" danger className={actionBtnClass} icon={<DeleteOutlined />} aria-label="删除分镜" />
             </Popconfirm>
           </div>
         </div>
@@ -436,7 +440,7 @@ export const ShotCard: React.FC<ShotCardProps> = ({
                   生成视频
                 </Button>
                 {currentVideo && (
-                  <Button type="text" size="small" className="h-5 w-5 p-0" icon={<PlayCircleFilled />} onClick={() => setVideoModalOpen(true)} />
+                  <Button type="text" size="small" className="h-5 w-5 p-0" icon={<PlayCircleFilled />} onClick={() => setVideoModalOpen(true)} aria-label="播放视频" />
                 )}
               </div>
             ) : (
@@ -457,6 +461,7 @@ export const ShotCard: React.FC<ShotCardProps> = ({
                     className="absolute top-0 right-0 h-5 w-5 p-0"
                     icon={<PlayCircleFilled />}
                     onClick={() => setVideoModalOpen(true)}
+                    aria-label="播放视频"
                   />
                 )}
               </div>

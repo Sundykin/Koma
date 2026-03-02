@@ -1,7 +1,8 @@
 import React from 'react';
 import { Avatar, Tooltip } from 'antd';
 import { UserOutlined } from '@ant-design/icons';
-import { LayoutGrid, Settings } from 'lucide-react';
+import { LayoutGrid, Settings, MessageSquare } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 export type AppView = string; // 'projects' | 'workspace' | 'settings'
 
@@ -21,17 +22,21 @@ const NavItem: React.FC<NavItemProps> = ({ active, icon, label, onClick }) => (
   <Tooltip title={label} placement="right">
     <button
       onClick={onClick}
+      aria-label={label}
+      aria-current={active ? 'page' : undefined}
       className={`relative w-full flex justify-center py-2.5 cursor-pointer transition-colors ${
         active ? 'text-emerald-400' : 'text-zinc-500 hover:text-zinc-300'
       }`}
     >
       {active && (
         <div
+          aria-hidden="true"
           className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 bg-emerald-500 rounded-r-md"
           style={{ boxShadow: '0 0 12px rgba(16,185,129,0.5)' }}
         />
       )}
       <div
+        aria-hidden="true"
         className={`p-2.5 rounded-xl transition-all ${
           active ? 'bg-emerald-400/10' : 'hover:bg-zinc-800'
         }`}
@@ -43,9 +48,11 @@ const NavItem: React.FC<NavItemProps> = ({ active, icon, label, onClick }) => (
 );
 
 export const Sidebar: React.FC<SidebarProps> = ({ view, onViewChange }) => {
+  const { t } = useTranslation('nav');
   const navItems = [
-    { key: 'projects', icon: <LayoutGrid size={22} />, label: '项目' },
-    { key: 'settings', icon: <Settings size={22} />, label: '设置' },
+    { key: 'projects', icon: <LayoutGrid size={22} />, label: t('projects') },
+    { key: 'chat', icon: <MessageSquare size={22} />, label: t('aiAssistant') },
+    { key: 'settings', icon: <Settings size={22} />, label: t('settings') },
   ];
 
   const isProjectsActive = view === 'projects' || view === 'workspace';
@@ -58,7 +65,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ view, onViewChange }) => {
         </div>
       </div>
 
-      <nav className="flex-1 flex flex-col py-2">
+      <nav className="flex-1 flex flex-col py-2" aria-label={t('mainNavAriaLabel')}>
         <div className="space-y-1">
           {navItems.map((item) => {
             const active =

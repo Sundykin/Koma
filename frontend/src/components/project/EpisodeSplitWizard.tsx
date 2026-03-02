@@ -3,6 +3,7 @@
  * 支持 AI 自动分析剧本并创建剧集
  */
 import React, { useState, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Modal,
   Steps,
@@ -21,6 +22,7 @@ import type { LLMModelConfig, Episode } from '../../types';
 import { EpisodeSplitService, type SplitAnalysis, type SplitResult } from '../../services/EpisodeSplitService';
 import { getActiveLLMConfig } from '../../store/globalStore';
 import { createEpisode } from '../../store/projectStore';
+import { toUserMessage } from '../../utils/errorMessages';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -41,6 +43,7 @@ export const EpisodeSplitWizard: React.FC<EpisodeSplitWizardProps> = ({
   onCancel,
   onComplete,
 }) => {
+  const { t } = useTranslation('project');
   const { message } = App.useApp();
 
   const [step, setStep] = useState<WizardStep>('config');
@@ -54,7 +57,7 @@ export const EpisodeSplitWizard: React.FC<EpisodeSplitWizardProps> = ({
   // 开始分析
   const handleStartAnalysis = useCallback(async () => {
     if (!script.trim()) {
-      message.warning('请先输入剧本内容');
+      message.warning(t('splitWizard.noContentWarning'));
       return;
     }
 
@@ -83,7 +86,7 @@ export const EpisodeSplitWizard: React.FC<EpisodeSplitWizardProps> = ({
 
       setStep('preview');
     } catch (err: any) {
-      message.error(`分析失败: ${err.message}`);
+      message.error(t('splitWizard.analyzeError', { error: toUserMessage(err) }));
       setStep('config');
     }
   }, [script, targetCount, splitStrategy, message]);
@@ -108,10 +111,10 @@ export const EpisodeSplitWizard: React.FC<EpisodeSplitWizardProps> = ({
         createdEpisodes.push(episode);
       }
 
-      message.success(`成功创建 ${createdEpisodes.length} 个剧集`);
+      message.success(t('splitWizard.createSuccess', { count: createdEpisodes.length }));
       onComplete(createdEpisodes);
     } catch (err: any) {
-      message.error(`创建失败: ${err.message}`);
+      message.error(t('splitWizard.createError', { error: toUserMessage(err) }));
       setStep('preview');
     }
   }, [splitResults, projectId, message, onComplete]);
@@ -140,7 +143,7 @@ export const EpisodeSplitWizard: React.FC<EpisodeSplitWizardProps> = ({
 
   return (
     <Modal
-      title="AI 自动剧集"
+      title={t('splitWizard.modalTitle')}
       open={visible}
       onCancel={handleCancel}
       footer={null}
@@ -150,10 +153,10 @@ export const EpisodeSplitWizard: React.FC<EpisodeSplitWizardProps> = ({
       <Steps
         current={getStepIndex()}
         items={[
-          { title: '配置' },
-          { title: '分析中' },
-          { title: '预览' },
-          { title: '创建' },
+          { title: t('splitWizard.stepConfig') },
+          { title: t('splitWizard.stepAnalyzing') },
+          { title: t('splitWizard.stepPreview') },
+          { title: t('splitWizard.stepCreate') },
         ]}
         style={{ marginBottom: 24 }}
       />
@@ -162,7 +165,7 @@ export const EpisodeSplitWizard: React.FC<EpisodeSplitWizardProps> = ({
       {step === 'config' && (
         <div className="space-y-6">
           <div>
-            <Text strong className="block mb-2">目标集数</Text>
+            <Text strong className="block mb-2">{t('splitWizard.targetCountLabel')}</Text>
             <InputNumber
               value={targetCount}
               onChange={(v) => setTargetCount(v || 3)}
@@ -171,38 +174,38 @@ export const EpisodeSplitWizard: React.FC<EpisodeSplitWizardProps> = ({
               style={{ width: 120 }}
             />
             <Text type="secondary" className="ml-3">
-              AI 会根据剧情结构建议调整
+              {t('splitWizard.targetCountHint')}
             </Text>
           </div>
 
           <div>
-            <Text strong className="block mb-2">分割策略</Text>
+            <Text strong className="block mb-2">{t('splitWizard.strategyLabel')}</Text>
             <Radio.Group
               value={splitStrategy}
               onChange={(e) => setSplitStrategy(e.target.value)}
             >
               <Space orientation="vertical">
-                <Radio value="auto">智能分析（推荐）</Radio>
-                <Radio value="scene">按场景分割</Radio>
-                <Radio value="chapter">按章节分割</Radio>
+                <Radio value="auto">{t('splitWizard.strategyAuto')}</Radio>
+                <Radio value="scene">{t('splitWizard.strategyScene')}</Radio>
+                <Radio value="chapter">{t('splitWizard.strategyChapter')}</Radio>
               </Space>
             </Radio.Group>
           </div>
 
           <div className="pt-4 border-t border-gray-200">
             <Text type="secondary">
-              剧本长度: {script.length} 字符
+              {t('splitWizard.scriptLength', { length: script.length })}
             </Text>
           </div>
 
           <div className="flex justify-end gap-3 pt-4">
-            <Button onClick={handleCancel}>取消</Button>
+            <Button onClick={handleCancel}>{t('common:cancel')}</Button>
             <Button
               type="primary"
               icon={<ThunderboltOutlined />}
               onClick={handleStartAnalysis}
             >
-              开始分析
+              {t('splitWizard.startAnalysisBtn')}
             </Button>
           </div>
         </div>
@@ -213,10 +216,10 @@ export const EpisodeSplitWizard: React.FC<EpisodeSplitWizardProps> = ({
         <div className="py-12 text-center">
           <Spin size="large" />
           <div className="mt-4">
-            <Text>AI 正在分析剧本结构...</Text>
+            <Text>{t('splitWizard.analyzingText')}</Text>
           </div>
           <div className="mt-2">
-            <Text type="secondary">这可能需要一些时间</Text>
+            <Text type="secondary">{t('splitWizard.analyzingHint')}</Text>
           </div>
         </div>
       )}
@@ -226,7 +229,7 @@ export const EpisodeSplitWizard: React.FC<EpisodeSplitWizardProps> = ({
         <div className="space-y-4">
           {analysis && (
             <Card size="small" className="bg-blue-50">
-              <Text strong>分析结果：</Text>
+              <Text strong>{t('splitWizard.analysisResultLabel')}</Text>
               <Paragraph className="mt-2 mb-0" type="secondary">
                 {analysis.reasoning}
               </Paragraph>
@@ -234,7 +237,7 @@ export const EpisodeSplitWizard: React.FC<EpisodeSplitWizardProps> = ({
           )}
 
           <div>
-            <Text strong>剧集预览 ({splitResults.length} 集)</Text>
+            <Text strong>{t('splitWizard.previewLabel', { count: splitResults.length })}</Text>
           </div>
 
           <Flex vertical gap={8} style={{ maxHeight: 300, overflow: 'auto', border: '1px solid #303030', borderRadius: 8 }}>
@@ -248,7 +251,7 @@ export const EpisodeSplitWizard: React.FC<EpisodeSplitWizardProps> = ({
                   <Text type="secondary">{item.summary}</Text>
                   <br />
                   <Text type="secondary" className="text-xs">
-                    {item.scriptText.length} 字符
+                    {t('splitWizard.episodeCharCount', { count: item.scriptText.length })}
                   </Text>
                 </div>
               </div>
@@ -257,14 +260,14 @@ export const EpisodeSplitWizard: React.FC<EpisodeSplitWizardProps> = ({
 
           <div className="flex justify-end gap-3 pt-4">
             <Button onClick={() => setStep('config')}>
-              重新配置
+              {t('splitWizard.reconfigBtn')}
             </Button>
             <Button
               type="primary"
               icon={<CheckCircleOutlined />}
               onClick={handleCreateEpisodes}
             >
-              确认创建剧集
+              {t('splitWizard.confirmCreateBtn')}
             </Button>
           </div>
         </div>
@@ -275,7 +278,7 @@ export const EpisodeSplitWizard: React.FC<EpisodeSplitWizardProps> = ({
         <div className="py-12 text-center">
           <Spin size="large" />
           <div className="mt-4">
-            <Text>正在创建剧集...</Text>
+            <Text>{t('splitWizard.creatingText')}</Text>
           </div>
         </div>
       )}

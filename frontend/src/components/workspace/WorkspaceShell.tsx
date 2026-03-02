@@ -5,8 +5,10 @@
  */
 import React, { Suspense, useState, useCallback, useEffect, useRef } from 'react';
 import { Spin, App, Modal } from 'antd';
+import { useTranslation } from 'react-i18next';
 import { WorkspaceHeader } from './WorkspaceHeader';
 import { StageNavigation, type WorkspaceStage, type StageStatus } from './StageNavigation';
+import { StageErrorBoundary } from '../common/StageErrorBoundary';
 import { useEpisodeData } from '../../hooks/useEpisodeData';
 import { useStageStatus } from '../../hooks/useStageStatus';
 import { loadProject, saveProject, loadCharacters, loadScenes, loadProps, loadEpisodeShots } from '../../store/projectStore';
@@ -14,6 +16,7 @@ import { loadSettings } from '../../store/globalStore';
 import { Film } from 'lucide-react';
 import { TaskManager } from '../../services/TaskManager';
 import { AutoGenerateWorkflow, type WorkflowProgress } from '../../workflow/autoGenerateWorkflow';
+import { toUserMessage } from '../../utils/errorMessages';
 
 // 懒加载各阶段组件
 const StoryStage = React.lazy(() => import('./stages/StoryStage'));
@@ -22,11 +25,14 @@ const StoryboardStage = React.lazy(() => import('./stages/StoryboardStage'));
 const VideoStage = React.lazy(() => import('./stages/VideoStage'));
 const EditStage = React.lazy(() => import('./stages/EditStage'));
 
-const StageFallback = () => (
-  <div className="flex h-full items-center justify-center">
-    <Spin size="large" tip="加载中..."><div className="p-12" /></Spin>
-  </div>
-);
+const StageFallback = () => {
+  const { t } = useTranslation('workspace');
+  return (
+    <div className="flex h-full items-center justify-center">
+      <Spin size="large" tip={t('common:loading')}><div className="p-12" /></Spin>
+    </div>
+  );
+};
 
 interface WorkspaceShellProps {
   projectId: string;
@@ -51,6 +57,7 @@ export const WorkspaceShell: React.FC<WorkspaceShellProps> = ({
   onProjectUpdate,
 }) => {
   const { message } = App.useApp();
+  const { t } = useTranslation('workspace');
   const [stage, setStage] = useState<WorkspaceStage>('story');
   const [title, setTitle] = useState(projectTitle);
 
@@ -95,7 +102,7 @@ export const WorkspaceShell: React.FC<WorkspaceShellProps> = ({
         onProjectUpdate({ [key]: value });
       }
     } catch (err: any) {
-      message.error(`更新配置失败: ${err.message}`);
+      message.error(t('message.configUpdateFailed', { error: toUserMessage(err) }));
     }
   }, [projectId, onProjectUpdate, message]);
 
@@ -108,26 +115,26 @@ export const WorkspaceShell: React.FC<WorkspaceShellProps> = ({
     const nextNumber = episodes.length > 0 ? Math.max(...episodes.map(e => e.number)) + 1 : 1;
     const ep = await addEpisode({
       number: nextNumber,
-      title: `第${nextNumber}集`,
+      title: t('shell.episodeDefaultTitle', { number: nextNumber }),
     });
     if (ep) {
       selectEpisode(ep.id);
-      message.success('剧集创建成功');
+      message.success(t('message.episodeCreated'));
     }
   }, [episodes, addEpisode, selectEpisode, message]);
 
   const handleEpisodeDelete = useCallback(async (episodeId: string) => {
     await removeEpisode(episodeId);
-    message.success('剧集已删除');
+    message.success(t('message.episodeDeleted'));
   }, [removeEpisode, message]);
 
   const handleAutoGenerate = useCallback(() => {
     if (!currentEpisode) {
-      message.warning('请先选择一个剧集');
+      message.warning(t('message.selectEpisodeFirst'));
       return;
     }
     if (!currentEpisode.scriptText?.trim()) {
-      message.warning('请先编写剧本');
+      message.warning(t('message.writeScriptFirst'));
       return;
     }
     const workflow = new AutoGenerateWorkflow({
@@ -147,7 +154,7 @@ export const WorkspaceShell: React.FC<WorkspaceShellProps> = ({
     autoGenRef.current = workflow;
     workflow.execute().then((success) => {
       if (success) {
-        message.success('一键成片完成');
+        message.success(t('message.autoGenDone'));
         refreshStatuses();
       }
       autoGenRef.current = null;
@@ -205,23 +212,23 @@ export const WorkspaceShell: React.FC<WorkspaceShellProps> = ({
               <div className="w-16 h-16 mx-auto rounded-2xl bg-zinc-800/80 flex items-center justify-center">
                 <Film className="w-8 h-8 text-zinc-600" />
               </div>
-              <h2 className="text-lg font-semibold text-zinc-200">开始创作</h2>
-              <p className="text-sm text-zinc-500">创建第一个剧集，开始你的短剧制作之旅</p>
+              <h2 className="text-lg font-semibold text-zinc-200">{t('shell.startCreating')}</h2>
+              <p className="text-sm text-zinc-500">{t('shell.startCreatingDesc')}</p>
               <button
                 onClick={handleEpisodeCreate}
                 className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-medium transition-colors"
               >
-                创建第一集
+                {t('shell.createFirstEpisode')}
               </button>
             </div>
           </div>
         ) : (
           <Suspense fallback={<StageFallback />}>
-            {stage === 'story' && <StoryStage {...stageProps} episodes={episodes} onRefreshEpisodes={refreshEpisodes} onSelectEpisode={selectEpisode} />}
-            {stage === 'script' && <ScriptStage {...stageProps} />}
-            {stage === 'storyboard' && <StoryboardStage {...stageProps} />}
-            {stage === 'video' && <VideoStage {...stageProps} />}
-            {stage === 'edit' && <EditStage {...stageProps} />}
+            {stage === 'story' && <StageErrorBoundary stageName={t('stage.story')}><StoryStage {...stageProps} episodes={episodes} onRefreshEpisodes={refreshEpisodes} onSelectEpisode={selectEpisode} /></StageErrorBoundary>}
+            {stage === 'script' && <StageErrorBoundary stageName={t('stage.script')}><ScriptStage {...stageProps} /></StageErrorBoundary>}
+            {stage === 'storyboard' && <StageErrorBoundary stageName={t('stage.storyboard')}><StoryboardStage {...stageProps} /></StageErrorBoundary>}
+            {stage === 'video' && <StageErrorBoundary stageName={t('stage.video')}><VideoStage {...stageProps} /></StageErrorBoundary>}
+            {stage === 'edit' && <StageErrorBoundary stageName={t('stage.edit')}><EditStage {...stageProps} /></StageErrorBoundary>}
           </Suspense>
         )}
       </div>
@@ -231,7 +238,7 @@ export const WorkspaceShell: React.FC<WorkspaceShellProps> = ({
         <div className="absolute bottom-4 right-4 w-80 bg-zinc-900 border border-zinc-700 rounded-lg p-4 shadow-xl z-50">
           <div className="flex items-center justify-between mb-2">
             <span className="text-sm font-medium text-zinc-200">
-              {autoGenProgress.completed ? '成片完成' : '一键成片'}
+              {autoGenProgress.completed ? t('autoGen.completed') : t('autoGen.running')}
             </span>
             <button
               onClick={autoGenProgress.completed
@@ -240,7 +247,7 @@ export const WorkspaceShell: React.FC<WorkspaceShellProps> = ({
               }
               className="text-xs text-zinc-500 hover:text-zinc-300"
             >
-              {autoGenProgress.completed ? '关闭' : '取消'}
+              {autoGenProgress.completed ? t('common:close') : t('common:cancel')}
             </button>
           </div>
           <div className="w-full bg-zinc-800 rounded-full h-1.5 mb-1">

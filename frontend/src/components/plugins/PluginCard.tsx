@@ -2,6 +2,7 @@
  * 插件卡片组件
  */
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { Card, Switch, Button, Tag, Space, Typography, Dropdown } from 'antd';
 import type { MenuProps } from 'antd';
 import {
@@ -30,12 +31,6 @@ const categoryIcons = {
   tool: <ToolOutlined />,
 };
 
-const categoryLabels = {
-  global: '全局插件',
-  provider: '服务提供',
-  tool: '工具',
-};
-
 const categoryColors = {
   global: 'purple',
   provider: 'blue',
@@ -48,18 +43,26 @@ export const PluginCard: React.FC<PluginCardProps> = ({
   onRemove,
   onOpenFolder,
 }) => {
+  const { t } = useTranslation('plugin');
+
+  const categoryLabels = {
+    global: t('card.categoryGlobal'),
+    provider: t('card.categoryProvider'),
+    tool: t('card.categoryTool'),
+  };
+
   const menuItems: MenuProps['items'] = [
     {
       key: 'folder',
       icon: <FolderOpenOutlined />,
-      label: '打开插件目录',
+      label: t('card.openFolder'),
       onClick: () => onOpenFolder?.(plugin.id),
     },
     { type: 'divider' },
     {
       key: 'remove',
       icon: <DeleteOutlined />,
-      label: '卸载插件',
+      label: t('card.uninstall'),
       danger: true,
       onClick: () => onRemove(plugin.id),
     },
@@ -89,7 +92,7 @@ export const PluginCard: React.FC<PluginCardProps> = ({
             className="text-xs mb-2 !mb-1"
             ellipsis={{ rows: 2 }}
           >
-            {plugin.description || '暂无描述'}
+            {plugin.description || t('card.noDescription')}
           </Paragraph>
 
           <div className="flex items-center gap-2 text-xs text-gray-400">
@@ -110,7 +113,7 @@ export const PluginCard: React.FC<PluginCardProps> = ({
             onChange={(checked) => onToggle(plugin.id, checked)}
           />
           <Dropdown menu={{ items: menuItems }} trigger={['click']}>
-            <Button type="text" size="small" icon={<MoreOutlined />} />
+            <Button type="text" size="small" icon={<MoreOutlined />} aria-label={t('card.moreActions')} />
           </Dropdown>
         </div>
       </div>

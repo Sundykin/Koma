@@ -23,6 +23,13 @@ dist-ssr
 *.sln
 *.sw?
 
+# ee-core build output
+public/electron/
+public/dist/
+out/
+data/
+runtime/
+
 # AI agent artifacts
 .agents/
 .claude/skills/

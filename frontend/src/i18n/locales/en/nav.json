@@ -1,0 +1,11 @@
+{
+  "projects": "Projects",
+  "aiAssistant": "AI Assistant",
+  "settings": "Settings",
+  "mainNavAriaLabel": "Main navigation",
+  "home": "Home",
+  "overview": "Overview",
+  "episodeBreadcrumb": "Episode {{number}}",
+  "narrationBadge": "Narration",
+  "globalSettings": "Global Settings"
+}

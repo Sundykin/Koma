@@ -6,6 +6,9 @@ export * from './globalStore';
 export * from './projectStore';
 export * from './resourceStore';
 export * from './trackStore';
+export { useAppStore } from './appStore';
+export type { AppPage, ActiveProject } from './appStore';
+export { useSettingsStore } from './settingsStore';
 
 // 新的模块化 settings（逐步迁移用）
 export * as settingsStore from './settings';

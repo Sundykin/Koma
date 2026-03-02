@@ -85,7 +85,7 @@ export const ShotListHeader: React.FC<ShotListHeaderProps> = ({
         </Tooltip>
         {hasSelected && (
           <Popconfirm title={`删除 ${selectedCount} 项？`} onConfirm={onBatchDelete} placement="right">
-            <Button type="text" danger size="small" className="w-5 h-5 p-0" icon={<DeleteOutlined className="text-[10px]" />} />
+            <Button type="text" danger size="small" className="w-5 h-5 p-0" icon={<DeleteOutlined className="text-[10px]" />} aria-label="批量删除" />
           </Popconfirm>
         )}
       </div>
@@ -155,6 +155,7 @@ export const ShotListHeader: React.FC<ShotListHeaderProps> = ({
               className="h-5 w-5 p-0"
               icon={<PlusOutlined />}
               onClick={onAddShot}
+              aria-label="添加分镜"
             />
           </Tooltip>
         </div>

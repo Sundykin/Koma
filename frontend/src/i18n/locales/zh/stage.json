@@ -1,0 +1,71 @@
+{
+  "story": {
+    "emptyState": "请先创建或选择一个剧集",
+    "currentEditing": "当前编辑：第{{number}}集 · {{title}}",
+    "charCount": "{{length}} 字符",
+    "editorPlaceholder": "在此输入或粘贴故事内容...\n\n提示：\n- 可以直接粘贴小说、剧本或故事大纲\n- 使用\"批量导入分集\"可以将长文本自动拆分为多个剧集\n- 输入完成后点击\"下一步\"进入剧本编辑",
+    "assetLibraryTitle": "故事素材库",
+    "assetLibraryDesc": "在下一步「剧本编辑」中，系统将自动从剧本中提取角色、场景和道具，并支持 @引用 快速定位资产。",
+    "batchImportBtn": "批量导入并分集",
+    "nextBtn": "下一步：剧本编辑",
+    "batchImportModalTitle": "批量导入并自动分集",
+    "aiSplitOkText": "AI 自动分集",
+    "batchImportModalDesc": "输入完整故事后点击\"AI 自动分集\"，系统将智能拆分为多个剧集",
+    "batchEditorPlaceholder": "在此输入或粘贴完整故事内容...",
+    "splitSuccess": "成功创建 {{count}} 个剧集",
+    "noContentWarning": "请先输入故事内容"
+  },
+  "script": {
+    "emptyState": "请先选择一个剧集",
+    "editorTitle": "剧本编辑",
+    "saving": "保存中...",
+    "saved": "已保存",
+    "charCount": "{{length}} 字符",
+    "aiGenerateBtn": "AI生成",
+    "aiPolishBtn": "AI润色",
+    "analyzing": "解析中...",
+    "analyzeBtn": "解析剧本",
+    "editorPlaceholder": "在此编辑剧本... (支持 @角色名 @场景名 引用)",
+    "statusEpisode": "第{{number}}集: {{title}}",
+    "assetsTitle": "项目资产",
+    "nextBtn": "下一步：分镜",
+    "generateSuccess": "剧本生成成功",
+    "generateError": "生成失败: {{error}}",
+    "noContentWarning": "请先输入剧本内容",
+    "polishSuccess": "润色完成",
+    "polishError": "润色失败: {{error}}",
+    "analyzeStarted": "解析任务已启动，可在状态栏查看进度",
+    "analyzeError": "解析失败: {{error}}",
+    "polishInstruction": "使语言更加生动，对话更自然，情节更紧凑"
+  },
+  "storyboard": {
+    "emptyState": "请先选择一个剧集",
+    "episodeNameFallback": "第{{number}}集",
+    "nextBtn": "下一步：视频生成"
+  },
+  "video": {
+    "emptyState": "请先选择一个剧集",
+    "loadingTip": "加载分镜数据...",
+    "noShotsMsg": "需要先完成分镜生成",
+    "backToStoryboard": "返回分镜阶段",
+    "stats": "分镜: {{total}} | 有图: {{withImage}} | 有视频: {{withVideo}}",
+    "batchGenerateBtn": "批量生成视频 ({{count}})",
+    "refreshBtn": "刷新",
+    "nextBtn": "下一步：剪辑",
+    "previewTitle": "分镜 #{{index}}",
+    "shotAlt": "分镜 {{index}}",
+    "generateBtn": "生成视频",
+    "loadError": "加载分镜失败",
+    "noCandidatesInfo": "没有可生成视频的分镜（需有图片且无视频）",
+    "generateSuccess": "视频生成完成",
+    "generateError": "视频生成失败",
+    "batchSuccess": "批量生成完成：{{success}} 成功，{{failed}} 失败",
+    "batchError": "批量生成失败"
+  },
+  "edit": {
+    "emptyState": "请先选择一个剧集",
+    "loadingTip": "加载剪辑数据...",
+    "noShotsMsg": "需完成分镜和视频生成后才能进入剪辑",
+    "backToVideo": "返回视频阶段"
+  }
+}

@@ -3,6 +3,7 @@
  * 显示任务状态通知
  */
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useTaskNotifications, type TaskNotification } from '../../hooks/useTaskNotifications';
 
 interface NotificationItemProps {
@@ -12,6 +13,7 @@ interface NotificationItemProps {
 }
 
 const NotificationItem: React.FC<NotificationItemProps> = ({ notification, onClose, onNavigate }) => {
+  const { t } = useTranslation('common');
   const [retrying, setRetrying] = useState(false);
   const isClickable = !!(notification.onClick || notification.targetId);
   const hasRetry = notification.type === 'error' && !!notification.onRetry;
@@ -165,7 +167,7 @@ const NotificationItem: React.FC<NotificationItemProps> = ({ notification, onClo
       <div style={contentStyle}>
         <div style={messageStyle}>{notification.message}</div>
         {isClickable && (
-          <div style={hintStyle}>点击查看详情 →</div>
+          <div style={hintStyle}>{t('notification.clickForDetails')}</div>
         )}
         {hasRetry && (
           <button
@@ -173,7 +175,7 @@ const NotificationItem: React.FC<NotificationItemProps> = ({ notification, onClo
             onClick={handleRetry}
             disabled={retrying}
           >
-            {retrying ? '重试中...' : '重试'}
+            {retrying ? t('notification.retrying') : t('retry')}
           </button>
         )}
       </div>

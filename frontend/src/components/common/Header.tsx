@@ -8,6 +8,7 @@ import {
   LoadingOutlined,
 } from '@ant-design/icons';
 import { ChevronRight, Home } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { Project, Episode, EditorStep, EpisodeStepProgress } from '../../types';
 import { StepNavigator } from './StepNavigator';
 import { TaskStatusBar } from './TaskStatusBar';
@@ -41,6 +42,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenProjectSettings,
   onAnalyze,
 }) => {
+  const { t } = useTranslation('workspace');
   return (
     <header className="h-auto border-b border-zinc-800 flex flex-col bg-zinc-900/80 backdrop-blur-md shrink-0 z-30">
       {/* 上层：导航与操作 */}
@@ -48,14 +50,14 @@ export const Header: React.FC<HeaderProps> = ({
         <div className="flex items-center text-sm text-zinc-400">
           <button onClick={() => onViewChange('projects')} className="hover:text-white transition-colors flex items-center">
             <Home className="w-4 h-4 mr-2" />
-            <span className="hidden sm:inline">首页</span>
+            <span className="hidden sm:inline">{t('header.home')}</span>
           </button>
           {/* 项目概览视图面包屑 */}
           {view === 'overview' && activeProject && (
             <>
               <ChevronRight className="w-4 h-4 mx-2 text-zinc-600" />
               <span className="text-white font-bold">{activeProject.title}</span>
-              <span className="ml-2 text-xs bg-zinc-800 border border-zinc-700 text-zinc-300 px-2 py-0.5 rounded shadow-sm">概览</span>
+              <span className="ml-2 text-xs bg-zinc-800 border border-zinc-700 text-zinc-300 px-2 py-0.5 rounded shadow-sm">{t('header.overview')}</span>
             </>
           )}
           {/* 编辑视图面包屑 */}
@@ -71,18 +73,18 @@ export const Header: React.FC<HeaderProps> = ({
               {activeEpisode && (
                 <>
                   <ChevronRight className="w-4 h-4 mx-2 text-zinc-600" />
-                  <span className="text-white font-bold">第 {activeEpisode.number} 集</span>
+                  <span className="text-white font-bold">{t('header.episodeInfo', { number: activeEpisode.number })}</span>
                 </>
               )}
               {activeProject.mode === 'narration' && (
-                <span className="ml-2 text-[10px] bg-blue-900/30 text-blue-300 border border-blue-800/50 px-1.5 py-0.5 rounded uppercase font-bold tracking-wide">旁白解说</span>
+                <span className="ml-2 text-[10px] bg-blue-900/30 text-blue-300 border border-blue-800/50 px-1.5 py-0.5 rounded uppercase font-bold tracking-wide">{t('header.narrationLabel')}</span>
               )}
             </>
           )}
           {view === 'settings' && (
             <>
               <ChevronRight className="w-4 h-4 mx-2" />
-              <span className="text-white">全局设置</span>
+              <span className="text-white">{t('settings:title')}</span>
             </>
           )}
         </div>
@@ -90,13 +92,13 @@ export const Header: React.FC<HeaderProps> = ({
         {view === 'editor' && (
           <div className="flex gap-3">
             <Button icon={<SettingOutlined />} onClick={onOpenProjectSettings}>
-              项目设置
+              {t('header.projectSettings')}
             </Button>
             <Button icon={<SaveOutlined />}>
-              保存草稿
+              {t('common:saveDraft')}
             </Button>
             <Button type="primary" icon={<ExportOutlined />}>
-              导出工程
+              {t('common:exportProject')}
             </Button>
           </div>
         )}
@@ -118,7 +120,7 @@ export const Header: React.FC<HeaderProps> = ({
                   disabled={isAnalyzing || !scriptText.trim()}
                   className="bg-green-600 hover:bg-green-500 border-none"
                 >
-                  {isAnalyzing ? '解析中...' : '开始智能解析'}
+                  {isAnalyzing ? t('header.analyzing') : t('header.startAnalysis')}
                 </Button>
               ) : editorStep === 'assets' ? (
                 <Button
@@ -126,7 +128,7 @@ export const Header: React.FC<HeaderProps> = ({
                   onClick={() => onStepChangeWithMark('storyboard')}
                   className="bg-green-600 hover:bg-green-500 border-none"
                 >
-                  下一步：AI分镜
+                  {t('header.nextStoryboard')}
                 </Button>
               ) : editorStep === 'storyboard' ? (
                 <Button
@@ -134,7 +136,7 @@ export const Header: React.FC<HeaderProps> = ({
                   onClick={() => onStepChangeWithMark('video')}
                   className="bg-green-600 hover:bg-green-500 border-none"
                 >
-                  下一步：后期剪辑
+                  {t('header.nextEdit')}
                 </Button>
               ) : null
             }

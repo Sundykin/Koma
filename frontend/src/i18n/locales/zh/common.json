@@ -1,0 +1,74 @@
+{
+  "save": "保存",
+  "cancel": "取消",
+  "delete": "删除",
+  "edit": "编辑",
+  "close": "关闭",
+  "confirm": "确认",
+  "retry": "重试",
+  "loading": "加载中...",
+  "unknown": "未知",
+  "unknownError": "未知错误",
+  "createNew": "新建",
+  "saveDraft": "保存草稿",
+  "exportProject": "导出工程",
+  "window": {
+    "minimize": "最小化",
+    "maximize": "最大化",
+    "restore": "还原",
+    "close": "关闭",
+    "actionFailed": "{{action}}失败：{{error}}",
+    "readState": "读取窗口状态",
+    "minimizeAction": "最小化窗口",
+    "toggleSizeAction": "切换窗口大小",
+    "closeAction": "关闭窗口"
+  },
+  "saveStatus": {
+    "saved": "已保存",
+    "saving": "保存中...",
+    "unsaved": "未保存",
+    "failed": "保存失败",
+    "clickToSave": "点击保存 (Ctrl+S)"
+  },
+  "notification": {
+    "clickForDetails": "点击查看详情 →",
+    "retrying": "重试中..."
+  },
+  "task": {
+    "category": {
+      "prompt": "提示词",
+      "media": "媒体",
+      "analysis": "分析",
+      "asset": "资产",
+      "script": "剧本",
+      "export": "导出"
+    },
+    "subtype": {
+      "image": "图片",
+      "video": "视频",
+      "tti": "文生图",
+      "itv": "图生视频",
+      "tts": "文字转语音",
+      "shotAnalysis": "AI 分镜",
+      "shotGeneration": "分镜生成",
+      "shotRender": "分镜渲染",
+      "scriptAnalysis": "剧本解析",
+      "assetGeneration": "资产生成",
+      "characterExtraction": "角色提取",
+      "promptGeneration": "生成提示词",
+      "promptOptimization": "优化提示词",
+      "promptImage": "图片提示词",
+      "promptVideo": "视频提示词",
+      "optimizePromptImage": "优化图片提示词",
+      "optimizePromptVideo": "优化视频提示词"
+    },
+    "summaryFailed": "{{count}} 个失败",
+    "summaryCompleted": "{{count}} 个完成",
+    "retryTooltip": "重试: {{attempt}}/{{maxRetries}}",
+    "tabAll": "全部 ({{count}})",
+    "tabRunning": "进行 ({{count}})",
+    "tabCompleted": "完成 ({{count}})",
+    "tabFailed": "失败 ({{count}})",
+    "empty": "暂无任务"
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "commonjs",
+    "skipLibCheck": true,
+    "types": ["node"],
+    "esModuleInterop": true,
+    "moduleResolution": "node",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "baseUrl": ".",
+    "strict": true,
+    "noImplicitAny": false,
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": [
+    "./electron/**/*"
+  ]
+}

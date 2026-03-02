@@ -46,6 +46,7 @@ import {
 import { getChannelConfigs, updateChannelConfig } from '../../store/settings/channelConfig';
 import { testTTIConnection } from '../../providers';
 import { toUserMessage } from '../../utils/errorMessages';
+import { useTranslation } from 'react-i18next';
 import { WorkflowUploader } from './WorkflowUploader';
 import { ProviderPluginModal } from '../plugins/ProviderPluginModal';
 
@@ -55,6 +56,7 @@ interface TTIConfigManagerProps {
 
 export const TTIConfigManager: React.FC<TTIConfigManagerProps> = ({ onConfigChange }) => {
   const { message } = App.useApp();
+  const { t } = useTranslation('settings');
   const [configs, setConfigs] = useState<TTIModelConfig[]>([]);
   const [pluginChannels, setPluginChannels] = useState<ChannelConfig[]>([]);
   const [loading, setLoading] = useState(true);
@@ -168,10 +170,10 @@ export const TTIConfigManager: React.FC<TTIConfigManagerProps> = ({ onConfigChan
 
       if (editingConfig) {
         await updateTTIConfig(editingConfig.id, configData);
-        message.success('配置已更新');
+        message.success(t('common.updateSuccess'));
       } else {
         await addTTIConfig(configData);
-        message.success('配置已添加');
+        message.success(t('common.addSuccess'));
       }
 
       setModalVisible(false);
@@ -179,18 +181,18 @@ export const TTIConfigManager: React.FC<TTIConfigManagerProps> = ({ onConfigChan
       onConfigChange?.();
     } catch (err: any) {
       if (err.errorFields) return;
-      message.error(`保存失败: ${err.message}`);
+      message.error(t('common.saveFailed', { error: toUserMessage(err) }));
     }
   };
 
   const handleDelete = async (id: string) => {
     try {
       await deleteTTIConfig(id);
-      message.success('配置已删除');
+      message.success(t('common.deleteSuccess'));
       await loadConfigs();
       onConfigChange?.();
     } catch (err: any) {
-      message.error(`删除失败: ${err.message}`);
+      message.error(t('common.deleteFailed', { error: toUserMessage(err) }));
     }
   };
 
@@ -205,11 +207,11 @@ export const TTIConfigManager: React.FC<TTIConfigManagerProps> = ({ onConfigChan
       }
       // 设置内置配置为默认
       await setDefaultTTIConfig(id);
-      message.success('已设为默认');
+      message.success(t('common.setDefaultSuccess'));
       await loadConfigs();
       onConfigChange?.();
     } catch (err: any) {
-      message.error(`设置失败: ${err.message}`);
+      message.error(t('common.setDefaultFailed', { error: toUserMessage(err) }));
     }
   };
 
@@ -224,11 +226,11 @@ export const TTIConfigManager: React.FC<TTIConfigManagerProps> = ({ onConfigChan
       }
       // 设置插件渠道为默认
       await setDefaultChannelConfig(id, 'tti');
-      message.success('已设为默认');
+      message.success(t('common.setDefaultSuccess'));
       await loadConfigs();
       onConfigChange?.();
     } catch (err: any) {
-      message.error(`设置失败: ${err.message}`);
+      message.error(t('common.setDefaultFailed', { error: toUserMessage(err) }));
     }
   };
 
@@ -238,12 +240,12 @@ export const TTIConfigManager: React.FC<TTIConfigManagerProps> = ({ onConfigChan
       const result = await testTTIConnection(config);
       if (result.success) {
         const latency = result.latency ? ` (${result.latency}ms)` : '';
-        message.success(`"${config.name}" 连接成功${latency}`);
+        message.success(t('common.connectionSuccess', { name: config.name, latency }));
       } else {
         message.error(`"${config.name}" ${result.message}`);
       }
     } catch (err: any) {
-      message.error(`连接测试失败: ${toUserMessage(err)}`);
+      message.error(t('common.connectionTestFailed', { error: toUserMessage(err) }));
     } finally {
       setTestingId(null);
     }
@@ -275,14 +277,14 @@ export const TTIConfigManager: React.FC<TTIConfigManagerProps> = ({ onConfigChan
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <div>
           <span style={{ fontSize: 14, color: '#888' }}>
-            已配置 <strong>{configs.length}</strong> 个文生图服务
+            {t('tti.configuredCount', { count: configs.length })}
             {pluginChannels.length > 0 && (
-              <span>，<strong>{pluginChannels.length}</strong> 个插件渠道</span>
+              <span>, {t('tti.pluginChannelCount', { count: pluginChannels.length })}</span>
             )}
           </span>
         </div>
         <Button type="primary" icon={<PlusOutlined />} onClick={() => openModal()}>
-          添加配置
+          {t('common.addConfigBtn')}
         </Button>
       </div>
 
@@ -293,10 +295,10 @@ export const TTIConfigManager: React.FC<TTIConfigManagerProps> = ({ onConfigChan
       ) : configs.length === 0 && pluginChannels.length === 0 ? (
         <Empty
           image={Empty.PRESENTED_IMAGE_SIMPLE}
-          description="还没有配置任何文生图服务"
+          description={t('tti.emptyDesc')}
         >
           <Button type="primary" icon={<PlusOutlined />} onClick={() => openModal()}>
-            添加内置服务
+            {t('tti.addBuiltinBtn')}
           </Button>
         </Empty>
       ) : (
@@ -311,7 +313,7 @@ export const TTIConfigManager: React.FC<TTIConfigManagerProps> = ({ onConfigChan
                     {config.isDefault ? (
                       <StarFilled style={{ color: '#faad14' }} />
                     ) : (
-                      <Tooltip title="设为默认">
+                      <Tooltip title={t('common.setDefault')}>
                         <StarOutlined
                           style={{ cursor: 'pointer', color: '#d9d9d9' }}
                           onClick={() => handleSetDefault(config.id)}
@@ -327,7 +329,7 @@ export const TTIConfigManager: React.FC<TTIConfigManagerProps> = ({ onConfigChan
                 }
                 extra={
                   <Space size="small">
-                    <Tooltip title="测试连接">
+                    <Tooltip title={t('common.testConnection')}>
                       <Button
                         type="text"
                         size="small"
@@ -336,7 +338,7 @@ export const TTIConfigManager: React.FC<TTIConfigManagerProps> = ({ onConfigChan
                         disabled={testingId === config.id}
                       />
                     </Tooltip>
-                    <Tooltip title="编辑">
+                    <Tooltip title={t('common.edit')}>
                       <Button
                         type="text"
                         size="small"
@@ -345,12 +347,12 @@ export const TTIConfigManager: React.FC<TTIConfigManagerProps> = ({ onConfigChan
                       />
                     </Tooltip>
                     <Popconfirm
-                      title="确定删除此配置？"
+                      title={t('common.confirmDelete')}
                       onConfirm={() => handleDelete(config.id)}
-                      okText="删除"
-                      cancelText="取消"
+                      okText={t('common.delete')}
+                      cancelText={t('common.cancel')}
                     >
-                      <Tooltip title="删除">
+                      <Tooltip title={t('common.delete')}>
                         <Button type="text" size="small" danger icon={<DeleteOutlined />} />
                       </Tooltip>
                     </Popconfirm>
@@ -358,18 +360,18 @@ export const TTIConfigManager: React.FC<TTIConfigManagerProps> = ({ onConfigChan
                 }
               >
                 <div style={{ fontSize: 13, color: '#666' }}>
-                  {config.modelName && <div><strong>模型:</strong> {config.modelName}</div>}
-                  {config.defaultSize && <div><strong>默认尺寸:</strong> {config.defaultSize}</div>}
+                  {config.modelName && <div><strong>{t('tti.cardModelLabel')}</strong> {config.modelName}</div>}
+                  {config.defaultSize && <div><strong>{t('tti.cardDefaultSize')}</strong> {config.defaultSize}</div>}
                   {config.workflowPath && (
                     <div style={{ marginTop: 4 }}>
                       <Tag icon={<NodeIndexOutlined />} color="orange">
-                        工作流: {config.workflowPath}
+                        {t('tti.workflowTag', { path: config.workflowPath })}
                       </Tag>
                     </div>
                   )}
                   {config.baseUrl && (
                     <div style={{ marginTop: 4 }}>
-                      <strong>地址:</strong>{' '}
+                      <strong>{t('common.cardUrlLabel')}</strong>{' '}
                       <span style={{ fontSize: 12, fontFamily: 'monospace' }}>
                         {config.baseUrl.replace(/https?:\/\//, '').slice(0, 30)}...
                       </span>
@@ -390,7 +392,7 @@ export const TTIConfigManager: React.FC<TTIConfigManagerProps> = ({ onConfigChan
                     {channel.isDefault ? (
                       <StarFilled style={{ color: '#faad14' }} />
                     ) : (
-                      <Tooltip title="设为默认">
+                      <Tooltip title={t('common.setDefault')}>
                         <StarOutlined
                           style={{ cursor: 'pointer', color: '#d9d9d9' }}
                           onClick={() => handleSetChannelDefault(channel.id)}
@@ -399,12 +401,12 @@ export const TTIConfigManager: React.FC<TTIConfigManagerProps> = ({ onConfigChan
                     )}
                     <AppstoreOutlined />
                     <span>{channel.name}</span>
-                    <Tag color="blue">插件</Tag>
+                    <Tag color="blue">{t('common.pluginTag')}</Tag>
                   </Space>
                 }
                 extra={
                   channel.pluginId && (
-                    <Tooltip title="配置">
+                    <Tooltip title={t('common.configure')}>
                       <Button
                         type="text"
                         size="small"
@@ -436,12 +438,12 @@ export const TTIConfigManager: React.FC<TTIConfigManagerProps> = ({ onConfigChan
       />
 
       <Modal
-        title={editingConfig ? '编辑文生图配置' : '添加文生图配置'}
+        title={editingConfig ? t('tti.editTitle') : t('tti.addTitle')}
         open={modalVisible}
         onOk={handleSave}
         onCancel={() => setModalVisible(false)}
-        okText="保存"
-        cancelText="取消"
+        okText={t('common.save')}
+        cancelText={t('common.cancel')}
         width={520}
         maskClosable={false}
         destroyOnHidden
@@ -450,10 +452,10 @@ export const TTIConfigManager: React.FC<TTIConfigManagerProps> = ({ onConfigChan
         <Form form={form} layout="vertical" className="mt-4">
           <Form.Item
             name="provider"
-            label="服务商"
-            rules={[{ required: true, message: '请选择服务商' }]}
+            label={t('common.form.providerLabel')}
+            rules={[{ required: true, message: t('common.form.providerRequired') }]}
           >
-            <Select placeholder="选择文生图服务商" onChange={handlePresetChange}>
+            <Select placeholder={t('tti.form.providerPlaceholder')} onChange={handlePresetChange}>
               {TTI_PRESETS.map(preset => (
                 <Select.Option key={preset.id} value={preset.id}>
                   {preset.name}
@@ -464,8 +466,8 @@ export const TTIConfigManager: React.FC<TTIConfigManagerProps> = ({ onConfigChan
 
           <Form.Item
             name="name"
-            label="配置名称"
-            rules={[{ required: true, message: '请输入配置名称' }]}
+            label={t('common.form.nameLabel')}
+            rules={[{ required: true, message: t('common.form.nameRequired') }]}
           >
             <Input placeholder="如: 我的 ComfyUI" />
           </Form.Item>
@@ -474,23 +476,23 @@ export const TTIConfigManager: React.FC<TTIConfigManagerProps> = ({ onConfigChan
             <Form.Item
               name="apiKey"
               label="API Key"
-              rules={[{ required: currentProvider !== 'comfyui', message: '请输入 API Key' }]}
+              rules={[{ required: currentProvider !== 'comfyui', message: t('common.form.apiKeyRequired') }]}
             >
-              <Input.Password prefix={<KeyOutlined />} placeholder="输入 API Key" />
+              <Input.Password prefix={<KeyOutlined />} placeholder={t('common.form.apiKeyPlaceholder')} />
             </Form.Item>
           )}
 
           <Form.Item
             name="baseUrl"
-            label="API 地址"
-            rules={[{ required: true, message: '请输入 API 地址' }]}
+            label={t('common.form.baseUrlLabel')}
+            rules={[{ required: true, message: t('common.form.baseUrlRequired') }]}
           >
             <Input prefix={<ApiOutlined />} placeholder="如: http://127.0.0.1:8188" />
           </Form.Item>
 
           {TTI_PRESETS.find(p => p.id === currentProvider)?.models && (
-            <Form.Item name="modelName" label="模型">
-              <Select placeholder="选择模型" allowClear>
+            <Form.Item name="modelName" label={t('tti.form.modelLabel')}>
+              <Select placeholder={t('tti.form.modelPlaceholder')} allowClear>
                 {TTI_PRESETS.find(p => p.id === currentProvider)?.models?.map(model => (
                   <Select.Option key={model} value={model}>{model}</Select.Option>
                 ))}
@@ -500,8 +502,8 @@ export const TTIConfigManager: React.FC<TTIConfigManagerProps> = ({ onConfigChan
 
           <Row gutter={16}>
             <Col span={12}>
-              <Form.Item name="defaultSize" label="默认尺寸">
-                <Select placeholder="选择尺寸" allowClear>
+              <Form.Item name="defaultSize" label={t('tti.form.defaultSizeLabel')}>
+                <Select placeholder={t('tti.form.sizePlaceholder')} allowClear>
                   <Select.Option value="512x512">512 × 512</Select.Option>
                   <Select.Option value="768x768">768 × 768</Select.Option>
                   <Select.Option value="1024x1024">1024 × 1024</Select.Option>
@@ -513,14 +515,14 @@ export const TTIConfigManager: React.FC<TTIConfigManagerProps> = ({ onConfigChan
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item name="defaultSteps" label="默认步数">
+              <Form.Item name="defaultSteps" label={t('tti.form.defaultStepsLabel')}>
                 <InputNumber min={1} max={150} placeholder="20" style={{ width: '100%' }} />
               </Form.Item>
             </Col>
           </Row>
 
           {currentProvider === 'comfyui' && (
-            <Form.Item label="ComfyUI 工作流">
+            <Form.Item label={t('tti.form.workflowLabel')}>
               <WorkflowUploader
                 value={workflowData}
                 onChange={setWorkflowData}

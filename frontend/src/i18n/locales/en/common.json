@@ -1,0 +1,74 @@
+{
+  "save": "Save",
+  "cancel": "Cancel",
+  "delete": "Delete",
+  "edit": "Edit",
+  "close": "Close",
+  "confirm": "Confirm",
+  "retry": "Retry",
+  "loading": "Loading...",
+  "unknown": "Unknown",
+  "unknownError": "Unknown error",
+  "createNew": "Create New",
+  "saveDraft": "Save Draft",
+  "exportProject": "Export Project",
+  "window": {
+    "minimize": "Minimize",
+    "maximize": "Maximize",
+    "restore": "Restore",
+    "close": "Close",
+    "actionFailed": "{{action}} failed: {{error}}",
+    "readState": "Read window state",
+    "minimizeAction": "Minimize window",
+    "toggleSizeAction": "Toggle window size",
+    "closeAction": "Close window"
+  },
+  "saveStatus": {
+    "saved": "Saved",
+    "saving": "Saving...",
+    "unsaved": "Unsaved",
+    "failed": "Save failed",
+    "clickToSave": "Click to save (Ctrl+S)"
+  },
+  "notification": {
+    "clickForDetails": "Click for details →",
+    "retrying": "Retrying..."
+  },
+  "task": {
+    "category": {
+      "prompt": "Prompt",
+      "media": "Media",
+      "analysis": "Analysis",
+      "asset": "Asset",
+      "script": "Script",
+      "export": "Export"
+    },
+    "subtype": {
+      "image": "Image",
+      "video": "Video",
+      "tti": "Text-to-Image",
+      "itv": "Image-to-Video",
+      "tts": "Text-to-Speech",
+      "shotAnalysis": "AI Storyboard",
+      "shotGeneration": "Shot Generation",
+      "shotRender": "Shot Rendering",
+      "scriptAnalysis": "Script Analysis",
+      "assetGeneration": "Asset Generation",
+      "characterExtraction": "Character Extraction",
+      "promptGeneration": "Generate Prompt",
+      "promptOptimization": "Optimize Prompt",
+      "promptImage": "Image Prompt",
+      "promptVideo": "Video Prompt",
+      "optimizePromptImage": "Optimize Image Prompt",
+      "optimizePromptVideo": "Optimize Video Prompt"
+    },
+    "summaryFailed": "{{count}} failed",
+    "summaryCompleted": "{{count}} completed",
+    "retryTooltip": "Retry: {{attempt}}/{{maxRetries}}",
+    "tabAll": "All ({{count}})",
+    "tabRunning": "Running ({{count}})",
+    "tabCompleted": "Completed ({{count}})",
+    "tabFailed": "Failed ({{count}})",
+    "empty": "No tasks"
+  }
+}

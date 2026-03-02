@@ -7,6 +7,7 @@ import { Button, Input, Space, Progress, Typography, App } from 'antd';
 import { ThunderboltOutlined, UploadOutlined, EditOutlined, CheckOutlined, LoadingOutlined } from '@ant-design/icons';
 import type { Scene } from '../../types';
 import { generateSceneImage, getScenePrompt } from '../../workflow/scenePropAssetWorkflow';
+import { toUserMessage } from '../../utils/errorMessages';
 import { openFileDialog, fsCopy, fsMkdir, fsExists, electronService } from '../../services/electronService';
 import { getStorageConfig, initStorageConfig } from '../../store/storageConfig';
 
@@ -65,7 +66,7 @@ export const SceneAssetEditor: React.FC<SceneAssetEditorProps> = ({
         message.error(result.error || '生成失败');
       }
     } catch (err: any) {
-      message.error(err.message);
+      message.error(toUserMessage(err));
     } finally {
       setLoading(false);
     }
@@ -89,7 +90,7 @@ export const SceneAssetEditor: React.FC<SceneAssetEditorProps> = ({
       onUpdate({ imagePath: destPath });
       message.success('上传成功');
     } catch (err: any) {
-      message.error(`上传失败: ${err.message}`);
+      message.error(`上传失败: ${toUserMessage(err)}`);
     }
   }, [projectId, scene.id, onUpdate, message]);
 

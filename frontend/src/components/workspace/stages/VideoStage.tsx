@@ -8,6 +8,8 @@ import { Film, Play, RefreshCw, Loader2, Video } from 'lucide-react';
 import { loadEpisodeShots, saveEpisodeShots } from '../../../store/projectStore';
 import { shotRenderWorkflow, batchRenderShots } from '../../../workflow/shotRenderWorkflow';
 import type { Shot, ShotVideo } from '../../../types';
+import { toUserMessage } from '../../../utils/errorMessages';
+import { useTranslation } from 'react-i18next';
 
 interface Episode {
   id: string;
@@ -37,6 +39,7 @@ const VideoStage: React.FC<VideoStageProps> = ({
   onStageChange,
 }) => {
   const { message } = App.useApp();
+  const { t } = useTranslation('stage');
   const [shots, setShots] = useState<Shot[]>([]);
   const [loading, setLoading] = useState(false);
   const [generatingShots, setGeneratingShots] = useState<Set<string>>(new Set());
@@ -50,7 +53,7 @@ const VideoStage: React.FC<VideoStageProps> = ({
       const data = await loadEpisodeShots(projectId, episode.id);
       setShots(data);
     } catch {
-      message.error('加载分镜失败');
+      message.error(t('video.loadError'));
     } finally {
       setLoading(false);
     }
@@ -131,13 +134,13 @@ const VideoStage: React.FC<VideoStageProps> = ({
       if (result.success && result.version) {
         const updatedShots = applyRenderResult(shots, shotId, result.version);
         await saveAllShots(updatedShots);
-        message.success('视频生成完成');
+        message.success(t('video.generateSuccess'));
       } else {
-        message.error(result.error || '视频生成失败');
+        message.error(result.error || t('video.generateError'));
         await loadShots();
       }
     } catch (err: any) {
-      message.error(err.message || '视频生成失败');
+      message.error(toUserMessage(err) || t('video.generateError'));
     } finally {
       setGeneratingShots(prev => {
         const next = new Set(prev);
@@ -152,7 +155,7 @@ const VideoStage: React.FC<VideoStageProps> = ({
       s => (s.imagePath || s.imagePaths?.length) && !(s.videoPath || s.videoPaths?.length || s.videos?.length),
     );
     if (candidates.length === 0) {
-      message.info('没有可生成视频的分镜（需有图片且无视频）');
+      message.info(t('video.noCandidatesInfo'));
       return;
     }
 
@@ -180,9 +183,9 @@ const VideoStage: React.FC<VideoStageProps> = ({
         }
       }
       await saveAllShots(updatedShots);
-      message.success(`批量生成完成：${result.success} 成功，${result.failed} 失败`);
+      message.success(t('video.batchSuccess', { success: result.success, failed: result.failed }));
     } catch (err: any) {
-      message.error(err.message || '批量生成失败');
+      message.error(toUserMessage(err) || t('video.batchError'));
       await loadShots();
     } finally {
       setGeneratingShots(new Set());
@@ -195,7 +198,7 @@ const VideoStage: React.FC<VideoStageProps> = ({
     if (!url) return;
     setPreviewVideo({
       url: url.startsWith('http') ? url : `local-file://${url}`,
-      title: `分镜 #${index + 1}`,
+      title: t('video.previewTitle', { index: index + 1 }),
     });
   }, [getVideoUrl]);
 
@@ -206,7 +209,7 @@ const VideoStage: React.FC<VideoStageProps> = ({
       <div className="flex h-full items-center justify-center text-zinc-500">
         <div className="text-center space-y-3">
           <Film className="w-12 h-12 mx-auto opacity-20" />
-          <p>请先选择一个剧集</p>
+          <p>{t('video.emptyState')}</p>
         </div>
       </div>
     );
@@ -215,7 +218,7 @@ const VideoStage: React.FC<VideoStageProps> = ({
   if (loading) {
     return (
       <div className="flex h-full items-center justify-center">
-        <Spin size="large" tip="加载分镜数据..."><div className="p-12" /></Spin>
+        <Spin size="large" tip={t('video.loadingTip')}><div className="p-12" /></Spin>
       </div>
     );
   }
@@ -225,9 +228,9 @@ const VideoStage: React.FC<VideoStageProps> = ({
       <div className="flex h-full items-center justify-center text-zinc-500">
         <div className="text-center space-y-4">
           <Film className="w-16 h-16 mx-auto opacity-10" />
-          <p>需要先完成分镜生成</p>
+          <p>{t('video.noShotsMsg')}</p>
           <Button type="link" onClick={() => onStageChange('storyboard')}>
-            返回分镜阶段
+            {t('video.backToStoryboard')}
           </Button>
         </div>
       </div>
@@ -242,7 +245,7 @@ const VideoStage: React.FC<VideoStageProps> = ({
       <div className="h-10 px-4 flex items-center justify-between border-b border-zinc-800 bg-zinc-900/50">
         <div className="flex items-center gap-3">
           <span className="text-xs text-zinc-400">
-            分镜: {shots.length} | 有图: {shotsWithImage.length} | 有视频: {shotsWithVideo.length}
+            {t('video.stats', { total: shots.length, withImage: shotsWithImage.length, withVideo: shotsWithVideo.length })}
           </span>
         </div>
         <div className="flex items-center gap-2">
@@ -254,7 +257,7 @@ const VideoStage: React.FC<VideoStageProps> = ({
               icon={<Video size={12} />}
               onClick={handleBatchGenerate}
             >
-              批量生成视频 ({pendingCount})
+              {t('video.batchGenerateBtn', { count: pendingCount })}
             </Button>
           )}
           <Button
@@ -262,7 +265,7 @@ const VideoStage: React.FC<VideoStageProps> = ({
             icon={<RefreshCw size={12} />}
             onClick={loadShots}
           >
-            刷新
+            {t('video.refreshBtn')}
           </Button>
           <Button
             type="primary"
@@ -270,7 +273,7 @@ const VideoStage: React.FC<VideoStageProps> = ({
             onClick={() => { onRefreshStatuses(); onStageChange('edit'); }}
             className="!bg-emerald-600 !border-emerald-600"
           >
-            下一步：剪辑
+            {t('video.nextBtn')}
           </Button>
         </div>
       </div>
@@ -296,7 +299,7 @@ const VideoStage: React.FC<VideoStageProps> = ({
                   {hasImage ? (
                     <img
                       src={`local-file://${shot.imagePath}`}
-                      alt={`分镜 ${index + 1}`}
+                      alt={t('video.shotAlt', { index: index + 1 })}
                       className="w-full h-full object-cover"
                     />
                   ) : (
@@ -340,7 +343,7 @@ const VideoStage: React.FC<VideoStageProps> = ({
                       className="!text-xs !h-6 !bg-blue-600 !border-blue-600"
                       onClick={() => handleGenerateSingle(shot.id)}
                     >
-                      生成视频
+                      {t('video.generateBtn')}
                     </Button>
                   )}
                 </div>

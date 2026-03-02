@@ -2,6 +2,7 @@
  * MCP 服务器配置界面
  */
 import React, { useState, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Modal,
   Form,
@@ -28,7 +29,7 @@ import {
   ImportOutlined,
 } from '@ant-design/icons';
 import type { MCPServerConfig } from '../../types/mcp';
-import styles from './MCPSettings.module.css';
+import { toUserMessage } from '../../utils/errorMessages';
 
 interface MCPSettingsProps {
   visible: boolean;
@@ -57,6 +58,7 @@ export const MCPSettings: React.FC<MCPSettingsProps> = ({
   onSave,
   onTest,
 }) => {
+  const { t } = useTranslation('chat');
   const [form] = Form.useForm<ConfigFormData>();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
@@ -107,7 +109,7 @@ export const MCPSettings: React.FC<MCPSettingsProps> = ({
         newConfigs = configs.map(c => c.name === editingId ? config : c);
       } else {
         if (configs.some(c => c.name === config.name)) {
-          message.error('配置名称已存在');
+          message.error(t('mcp.errorNameExists'));
           return;
         }
         newConfigs = [...configs, config];
@@ -115,10 +117,10 @@ export const MCPSettings: React.FC<MCPSettingsProps> = ({
 
       onSave(newConfigs);
       setShowForm(false);
-      message.success(editingId ? '配置已更新' : '配置已添加');
+      message.success(editingId ? t('mcp.successUpdated') : t('mcp.successAdded'));
     } catch (e) {
       if (e instanceof SyntaxError) {
-        message.error('环境变量 JSON 格式错误');
+        message.error(t('mcp.errorEnvJson'));
       }
     }
   }, [form, editingId, configs, onSave]);
@@ -127,7 +129,7 @@ export const MCPSettings: React.FC<MCPSettingsProps> = ({
   const handleDelete = useCallback((name: string) => {
     const newConfigs = configs.filter(c => c.name !== name);
     onSave(newConfigs);
-    message.success('配置已删除');
+    message.success(t('mcp.successDeleted'));
   }, [configs, onSave]);
 
   // 导入 JSON 配置
@@ -137,7 +139,7 @@ export const MCPSettings: React.FC<MCPSettingsProps> = ({
       const json = JSON.parse(text);
 
       if (!Array.isArray(json)) {
-        throw new Error('格式错误: 根节点应为数组');
+        throw new Error(t('mcp.errorFormat'));
       }
 
       const newConfigs = json.filter((item: any) =>
@@ -145,14 +147,14 @@ export const MCPSettings: React.FC<MCPSettingsProps> = ({
       );
 
       if (newConfigs.length === 0) {
-        message.warning('没有发现有效的新配置');
+        message.warning(t('mcp.warnNoNewConfigs'));
         return;
       }
 
       onSave([...configs, ...newConfigs]);
-      message.success(`成功导入 ${newConfigs.length} 个配置`);
+      message.success(t('mcp.successImported', { count: newConfigs.length }));
     } catch (e) {
-      message.error('导入失败: ' + (e instanceof Error ? e.message : '未知错误'));
+      message.error(toUserMessage(e));
     }
   }, [configs, onSave]);
 
@@ -164,10 +166,10 @@ export const MCPSettings: React.FC<MCPSettingsProps> = ({
     try {
       const result = await onTest(config);
       setTestResults(prev => ({ ...prev, [config.name]: result }));
-      message.success(result ? '连接成功' : '连接失败');
+      message.success(result ? t('mcp.successConnected') : t('mcp.failedConnected'));
     } catch (e) {
       setTestResults(prev => ({ ...prev, [config.name]: false }));
-      message.error('连接测试失败');
+      message.error(toUserMessage(e));
     } finally {
       setTestingId(null);
     }
@@ -176,7 +178,7 @@ export const MCPSettings: React.FC<MCPSettingsProps> = ({
   // 表格列
   const columns = [
     {
-      title: '名称',
+      title: t('mcp.colName'),
       dataIndex: 'name',
       key: 'name',
       render: (name: string) => (
@@ -187,7 +189,7 @@ export const MCPSettings: React.FC<MCPSettingsProps> = ({
       ),
     },
     {
-      title: '类型',
+      title: t('mcp.colType'),
       dataIndex: 'transport',
       key: 'transport',
       render: (transport: TransportType) => (
@@ -197,16 +199,16 @@ export const MCPSettings: React.FC<MCPSettingsProps> = ({
       ),
     },
     {
-      title: '地址',
+      title: t('mcp.colAddress'),
       key: 'address',
       render: (_: unknown, record: MCPServerConfig) => (
-        <span className={styles.address}>
+        <span className="font-mono text-xs text-[#a1a1aa]">
           {record.transport === 'stdio' ? record.command : record.url}
         </span>
       ),
     },
     {
-      title: '工具',
+      title: t('mcp.colTools'),
       key: 'tools',
       width: 100,
       render: (_: unknown, record: MCPServerConfig) => {
@@ -215,19 +217,19 @@ export const MCPSettings: React.FC<MCPSettingsProps> = ({
         if (record.name in testResults && testResults[record.name]) {
           return (
             <Tag color="cyan" icon={<ToolOutlined />}>
-              已连接
+              {t('mcp.connected')}
             </Tag>
           );
         }
         return (
           <Tag color="default">
-            待连接
+            {t('mcp.pending')}
           </Tag>
         );
       },
     },
     {
-      title: '状态',
+      title: t('mcp.colStatus'),
       key: 'status',
       width: 80,
       render: (_: unknown, record: MCPServerConfig) => {
@@ -243,7 +245,7 @@ export const MCPSettings: React.FC<MCPSettingsProps> = ({
       },
     },
     {
-      title: '操作',
+      title: t('mcp.colActions'),
       key: 'actions',
       width: 150,
       render: (_: unknown, record: MCPServerConfig) => (
@@ -255,7 +257,7 @@ export const MCPSettings: React.FC<MCPSettingsProps> = ({
               onClick={() => handleTest(record)}
               loading={testingId === record.name}
             >
-              测试
+              {t('mcp.test')}
             </Button>
           )}
           <Button
@@ -265,10 +267,10 @@ export const MCPSettings: React.FC<MCPSettingsProps> = ({
             onClick={() => handleEdit(record)}
           />
           <Popconfirm
-            title="确定删除此配置？"
+            title={t('mcp.confirmDelete')}
             onConfirm={() => handleDelete(record.name)}
-            okText="删除"
-            cancelText="取消"
+            okText={t('common:delete')}
+            cancelText={t('common:cancel')}
           >
             <Button
               type="text"
@@ -284,24 +286,24 @@ export const MCPSettings: React.FC<MCPSettingsProps> = ({
 
   return (
     <Modal
-      title="MCP 服务器配置"
+      title={t('mcp.modalTitle')}
       open={visible}
       onCancel={onClose}
       width={800}
       footer={null}
-      className={styles.modal}
+      className="[&_.ant-modal-content]:bg-[#18181b] [&_.ant-modal-header]:bg-[#18181b] [&_.ant-modal-header]:border-b [&_.ant-modal-header]:border-[#27272a] [&_.ant-modal-title]:text-[#fafafa] [&_.ant-modal-close-x]:text-[#a1a1aa] [&_.ant-table]:bg-transparent [&_.ant-table-thead>tr>th]:bg-[#27272a] [&_.ant-table-thead>tr>th]:text-[#a1a1aa] [&_.ant-table-thead>tr>th]:border-b [&_.ant-table-thead>tr>th]:border-[#3f3f46] [&_.ant-table-tbody>tr>td]:border-b [&_.ant-table-tbody>tr>td]:border-[#27272a] [&_.ant-table-tbody>tr>td]:text-[#d4d4d8] [&_.ant-table-tbody>tr:hover>td]:bg-[#27272a] [&_.ant-empty-description]:text-[#71717a]"
     >
       {/* 配置列表 */}
       {!showForm && (
         <>
-          <div className={styles.header}>
+          <div className="mb-4">
             <Space>
               <Button
                 type="primary"
                 icon={<PlusOutlined />}
                 onClick={handleAdd}
               >
-                添加服务器
+                {t('mcp.addServer')}
               </Button>
               <Upload
                 beforeUpload={(file) => { handleImport(file); return false; }}
@@ -309,7 +311,7 @@ export const MCPSettings: React.FC<MCPSettingsProps> = ({
                 accept=".json"
               >
                 <Button icon={<ImportOutlined />}>
-                  导入配置
+                  {t('mcp.importConfig')}
                 </Button>
               </Upload>
             </Space>
@@ -320,7 +322,7 @@ export const MCPSettings: React.FC<MCPSettingsProps> = ({
             rowKey="name"
             pagination={false}
             size="small"
-            locale={{ emptyText: '暂无 MCP 服务器配置' }}
+            locale={{ emptyText: t('mcp.emptyTable') }}
           />
         </>
       )}
@@ -330,24 +332,24 @@ export const MCPSettings: React.FC<MCPSettingsProps> = ({
         <Form
           form={form}
           layout="vertical"
-          className={styles.form}
+          className="py-4"
         >
           <Form.Item
             name="name"
-            label="服务器名称"
-            rules={[{ required: true, message: '请输入服务器名称' }]}
+            label={t('mcp.form.serverName')}
+            rules={[{ required: true, message: t('mcp.form.serverNameRequired') }]}
           >
             <Input placeholder="例如：filesystem" disabled={!!editingId} />
           </Form.Item>
 
           <Form.Item
             name="transport"
-            label="传输类型"
+            label={t('mcp.form.transportType')}
             rules={[{ required: true }]}
           >
             <Select>
-              <Select.Option value="stdio">Stdio（本地进程）</Select.Option>
-              <Select.Option value="sse">SSE（HTTP 流）</Select.Option>
+              <Select.Option value="stdio">{t('mcp.form.transportStdio')}</Select.Option>
+              <Select.Option value="sse">{t('mcp.form.transportSSE')}</Select.Option>
               <Select.Option value="websocket">WebSocket</Select.Option>
             </Select>
           </Form.Item>
@@ -363,14 +365,14 @@ export const MCPSettings: React.FC<MCPSettingsProps> = ({
                   <>
                     <Form.Item
                       name="command"
-                      label="命令"
-                      rules={[{ required: true, message: '请输入命令' }]}
+                      label={t('mcp.form.command')}
+                      rules={[{ required: true, message: t('mcp.form.commandRequired') }]}
                     >
                       <Input placeholder="例如：npx" />
                     </Form.Item>
                     <Form.Item
                       name="args"
-                      label="参数"
+                      label={t('mcp.form.args')}
                     >
                       <Input placeholder="例如：-y @anthropic/mcp-server-filesystem" />
                     </Form.Item>
@@ -381,7 +383,7 @@ export const MCPSettings: React.FC<MCPSettingsProps> = ({
                 <Form.Item
                   name="url"
                   label="URL"
-                  rules={[{ required: true, message: '请输入 URL' }]}
+                  rules={[{ required: true, message: t('mcp.form.urlRequired') }]}
                 >
                   <Input placeholder="例如：http://localhost:3000/mcp" />
                 </Form.Item>
@@ -391,7 +393,7 @@ export const MCPSettings: React.FC<MCPSettingsProps> = ({
 
           <Form.Item
             name="env"
-            label="环境变量（JSON）"
+            label={t('mcp.form.envVars')}
           >
             <Input.TextArea
               placeholder='{"API_KEY": "xxx"}'
@@ -399,11 +401,11 @@ export const MCPSettings: React.FC<MCPSettingsProps> = ({
             />
           </Form.Item>
 
-          <Form.Item className={styles.formActions}>
+          <Form.Item className="!mb-0 text-right">
             <Space>
-              <Button onClick={() => setShowForm(false)}>取消</Button>
+              <Button onClick={() => setShowForm(false)}>{t('common:cancel')}</Button>
               <Button type="primary" onClick={handleSave}>
-                {editingId ? '更新' : '添加'}
+                {editingId ? t('agent.update') : t('mcp.addServer')}
               </Button>
             </Space>
           </Form.Item>

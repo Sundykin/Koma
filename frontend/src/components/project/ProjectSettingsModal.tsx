@@ -3,6 +3,7 @@
  * 允许编辑项目信息和媒体配置
  */
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Modal, Form, Input, App, Tabs } from 'antd';
 import type { Project } from '../../types';
 import { ProjectMediaSelector } from './ProjectMediaSelector';
@@ -23,6 +24,7 @@ export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({
   onGoToGlobalSettings,
 }) => {
   const { message } = App.useApp();
+  const { t } = useTranslation('project');
   const [form] = Form.useForm();
   const [activeTab, setActiveTab] = useState('basic');
   const [mediaConfigs, setMediaConfigs] = useState<{
@@ -65,30 +67,30 @@ export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({
   const tabItems = [
     {
       key: 'basic',
-      label: '基本信息',
+      label: t('settingsModal.tabBasic'),
       children: (
         <Form form={form} layout="vertical">
           <Form.Item
             name="title"
-            label="项目名称"
-            rules={[{ required: true, message: '请输入项目名称' }]}
+            label={t('settingsModal.projectNameLabel')}
+            rules={[{ required: true, message: t('settingsModal.projectNameRequired') }]}
           >
-            <Input placeholder="请输入项目名称" />
+            <Input placeholder={t('settingsModal.projectNameLabel')} />
           </Form.Item>
 
-          <Form.Item name="genre" label="题材类型">
-            <Input placeholder="如: 悬疑、爱情、科幻" />
+          <Form.Item name="genre" label={t('settingsModal.genreLabel')}>
+            <Input placeholder={t('settingsModal.genrePlaceholder')} />
           </Form.Item>
         </Form>
       ),
     },
     {
       key: 'media',
-      label: '媒体配置',
+      label: t('settingsModal.tabMedia'),
       children: (
         <>
           <div style={{ marginBottom: 16, color: '#888', fontSize: 13 }}>
-            选择此项目使用的媒体生成服务，留空则使用全局默认配置。
+            {t('settingsModal.mediaDesc')}
           </div>
           <ProjectMediaSelector
             llmConfigId={mediaConfigs.llmConfigId}
@@ -105,12 +107,12 @@ export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({
 
   return (
     <Modal
-      title="项目设置"
+      title={t('settingsModal.title')}
       open={open}
       onOk={handleSave}
       onCancel={onClose}
-      okText="保存"
-      cancelText="取消"
+      okText={t('common:save')}
+      cancelText={t('common:cancel')}
       width={600}
       maskClosable={false}
       destroyOnHidden

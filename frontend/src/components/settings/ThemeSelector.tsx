@@ -3,6 +3,7 @@
  * 选择项目的视觉风格主题
  */
 import React, { useState, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { THEME_PRESETS, type ThemePreset } from '../../config/themePresets';
 import { Check } from 'lucide-react';
 
@@ -17,6 +18,7 @@ export const ThemeSelector: React.FC<ThemeSelectorProps> = ({
   customStyle,
   onChange,
 }) => {
+  const { t } = useTranslation('settings');
   const [isCustom, setIsCustom] = useState(!value || !THEME_PRESETS.find(t => t.id === value));
   const [customText, setCustomText] = useState(customStyle || '');
 
@@ -37,7 +39,7 @@ export const ThemeSelector: React.FC<ThemeSelectorProps> = ({
 
   return (
     <div className="p-4">
-      <h4 className="text-zinc-300 text-sm font-medium mb-3">选择主题风格</h4>
+      <h4 className="text-zinc-300 text-sm font-medium mb-3">{t('themeSelector.title')}</h4>
 
       <div className="grid grid-cols-2 gap-3 mb-4">
         {THEME_PRESETS.map(theme => {
@@ -87,8 +89,8 @@ export const ThemeSelector: React.FC<ThemeSelectorProps> = ({
               <Check className="w-3 h-3 text-white" />
             </div>
           )}
-          <div className="text-sm font-medium text-zinc-200 mb-1">自定义</div>
-          <div className="text-xs text-zinc-500 mb-2">输入自己的风格描述</div>
+          <div className="text-sm font-medium text-zinc-200 mb-1">{t('themeSelector.customOption')}</div>
+          <div className="text-xs text-zinc-500 mb-2">{t('themeSelector.customDesc')}</div>
           <div className="text-[10px] text-zinc-600 px-2 py-1 bg-zinc-950 rounded font-mono">
             Custom style...
           </div>
@@ -98,7 +100,7 @@ export const ThemeSelector: React.FC<ThemeSelectorProps> = ({
       {isCustom && (
         <div className="mt-4">
           <label className="block text-xs text-zinc-400 mb-2 font-medium">
-            自定义风格描述
+            {t('themeSelector.customLabel')}
           </label>
           <textarea
             className="w-full min-h-[80px] p-3 text-sm bg-zinc-950 border border-zinc-700 rounded-lg text-zinc-300 placeholder-zinc-600 resize-y focus:outline-none focus:border-emerald-600 transition-colors"
@@ -107,14 +109,14 @@ export const ThemeSelector: React.FC<ThemeSelectorProps> = ({
             onChange={e => handleCustomChange(e.target.value)}
           />
           <div className="text-[11px] text-zinc-600 mt-2">
-            这段描述会作为前缀添加到所有图片生成的 prompt 中
+            {t('themeSelector.customHint')}
           </div>
         </div>
       )}
 
       {value && !isCustom && (
         <div className="mt-4 p-3 bg-zinc-900 border border-emerald-900/50 rounded-lg">
-          <div className="text-[11px] text-emerald-500 font-medium mb-1">当前选择</div>
+          <div className="text-[11px] text-emerald-500 font-medium mb-1">{t('themeSelector.currentSelection')}</div>
           <div className="text-sm text-zinc-300">
             {THEME_PRESETS.find(t => t.id === value)?.name || value}
           </div>

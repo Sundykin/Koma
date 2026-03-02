@@ -9,11 +9,13 @@ import { ThunderboltOutlined, HighlightOutlined, LoadingOutlined } from '@ant-de
 import {
   FileText, Package, Sparkles, ArrowRight, Check, Loader2,
 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { ScriptEditor } from '../../../editor';
 import { ProjectAssetOverview } from '../../project/ProjectAssetOverview';
 import { saveEpisode } from '../../../store/projectStore';
 import { generateRandomScript, polishScript } from '../../../workflow/scriptGenerator';
 import { startBackgroundAnalysis } from '../../../services/ScriptAnalysisService';
+import { toUserMessage } from '../../../utils/errorMessages';
 
 interface Episode {
   id: string;
@@ -48,6 +50,7 @@ const ScriptStage: React.FC<ScriptStageProps> = ({
   onStageChange,
 }) => {
   const { message } = App.useApp();
+  const { t } = useTranslation('stage');
   const [localScript, setLocalScript] = useState(episode?.scriptText || '');
   const [isSaving, setIsSaving] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -97,9 +100,9 @@ const ScriptStage: React.FC<ScriptStageProps> = ({
       const script = await generateRandomScript('3');
       setLocalScript(script);
       await saveScript(script);
-      message.success('剧本生成成功');
+      message.success(t('script.generateSuccess'));
     } catch (err: any) {
-      message.error(`生成失败: ${err.message}`);
+      message.error(t('script.generateError', { error: toUserMessage(err) }));
     } finally {
       setIsGenerating(false);
     }
@@ -108,7 +111,7 @@ const ScriptStage: React.FC<ScriptStageProps> = ({
   // AI 润色
   const handlePolish = async () => {
     if (!localScript.trim()) {
-      message.warning('请先输入剧本内容');
+      message.warning(t('script.noContentWarning'));
       return;
     }
     setIsPolishing(true);
@@ -116,14 +119,14 @@ const ScriptStage: React.FC<ScriptStageProps> = ({
       const polished = await polishScript(
         {} as any,
         localScript,
-        '使语言更加生动，对话更自然，情节更紧凑',
+        t('script.polishInstruction'),
         () => {}
       );
       setLocalScript(polished);
       await saveScript(polished);
-      message.success('润色完成');
+      message.success(t('script.polishSuccess'));
     } catch (err: any) {
-      message.error(`润色失败: ${err.message}`);
+      message.error(t('script.polishError', { error: toUserMessage(err) }));
     } finally {
       setIsPolishing(false);
     }
@@ -132,7 +135,7 @@ const ScriptStage: React.FC<ScriptStageProps> = ({
   // 解析剧本
   const handleAnalyze = async () => {
     if (!episode || !localScript.trim()) {
-      message.warning('请先输入剧本内容');
+      message.warning(t('script.noContentWarning'));
       return;
     }
     setIsAnalyzing(true);
@@ -141,13 +144,13 @@ const ScriptStage: React.FC<ScriptStageProps> = ({
       await startBackgroundAnalysis(
         projectId,
         episode.id,
-        episode.title || `第${episode.number}集`,
+        episode.title || t('storyboard.episodeNameFallback', { number: episode.number }),
         localScript,
         projectConfig.llmConfigId,
       );
-      message.success('解析任务已启动，可在状态栏查看进度');
+      message.success(t('script.analyzeStarted'));
     } catch (err: any) {
-      message.error(`解析失败: ${err.message}`);
+      message.error(t('script.analyzeError', { error: toUserMessage(err) }));
     } finally {
       setIsAnalyzing(false);
     }
@@ -166,7 +169,7 @@ const ScriptStage: React.FC<ScriptStageProps> = ({
       <div className="flex h-full items-center justify-center text-zinc-500">
         <div className="text-center space-y-3">
           <FileText className="w-12 h-12 mx-auto opacity-20" />
-          <p>请先选择一个剧集</p>
+          <p>{t('script.emptyState')}</p>
         </div>
       </div>
     );
@@ -181,22 +184,22 @@ const ScriptStage: React.FC<ScriptStageProps> = ({
           <div className="flex items-center justify-between mb-3">
             <h2 className="flex items-center gap-2 text-base font-semibold text-zinc-100">
               <div className="w-1.5 h-6 bg-emerald-500 rounded-full" />
-              剧本编辑
+              {t('script.editorTitle')}
             </h2>
             <div className="flex items-center gap-2 text-xs text-zinc-500">
               {busyState ? (
                 <>
                   <Loader2 className="w-3 h-3 animate-spin" />
-                  <span>保存中...</span>
+                  <span>{t('script.saving')}</span>
                 </>
               ) : (
                 <>
                   <Check className="w-3 h-3 text-emerald-500" />
-                  <span>已保存</span>
+                  <span>{t('script.saved')}</span>
                 </>
               )}
               <span className="text-zinc-600">|</span>
-              <span>{localScript.length} 字符</span>
+              <span>{t('script.charCount', { length: localScript.length })}</span>
             </div>
           </div>
 
@@ -212,7 +215,7 @@ const ScriptStage: React.FC<ScriptStageProps> = ({
                 loading={isGenerating}
                 className="text-zinc-400 hover:text-purple-400"
               >
-                AI生成
+                {t('script.aiGenerateBtn')}
               </Button>
               <Button
                 type="text"
@@ -223,7 +226,7 @@ const ScriptStage: React.FC<ScriptStageProps> = ({
                 disabled={!hasScript}
                 className="text-zinc-400 hover:text-blue-400"
               >
-                AI润色
+                {t('script.aiPolishBtn')}
               </Button>
               <Button
                 type="text"
@@ -233,7 +236,7 @@ const ScriptStage: React.FC<ScriptStageProps> = ({
                 disabled={!hasScript || isAnalyzing}
                 className="text-zinc-400 hover:text-emerald-400"
               >
-                {isAnalyzing ? '解析中...' : '解析剧本'}
+                {isAnalyzing ? t('script.analyzing') : t('script.analyzeBtn')}
               </Button>
             </div>
 
@@ -242,7 +245,7 @@ const ScriptStage: React.FC<ScriptStageProps> = ({
               <ScriptEditor
                 value={localScript}
                 onChange={handleScriptChange}
-                placeholder="在此编辑剧本... (支持 @角色名 @场景名 引用)"
+                placeholder={t('script.editorPlaceholder')}
                 minHeight="100%"
                 maxHeight="100%"
                 showLineNumbers={true}
@@ -253,8 +256,8 @@ const ScriptStage: React.FC<ScriptStageProps> = ({
 
             {/* Status bar */}
             <div className="h-7 px-4 flex items-center justify-between text-xs text-zinc-500 border-t border-zinc-800">
-              <span>第{episode.number}集: {episode.title}</span>
-              <span>{localScript.length} 字符</span>
+              <span>{t('script.statusEpisode', { number: episode.number, title: episode.title })}</span>
+              <span>{t('script.charCount', { length: localScript.length })}</span>
             </div>
           </div>
         </div>
@@ -265,7 +268,7 @@ const ScriptStage: React.FC<ScriptStageProps> = ({
           <div className="flex items-center mb-3">
             <h2 className="flex items-center gap-2 text-base font-semibold text-zinc-100">
               <div className="w-1.5 h-6 bg-emerald-500 rounded-full" />
-              项目资产
+              {t('script.assetsTitle')}
             </h2>
           </div>
 
@@ -281,7 +284,7 @@ const ScriptStage: React.FC<ScriptStageProps> = ({
                 onClick={handleNext}
                 className="w-full flex items-center justify-center gap-2 py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl transition-colors"
               >
-                下一步：分镜
+                {t('script.nextBtn')}
                 <ArrowRight className="w-4 h-4" />
               </button>
             </div>

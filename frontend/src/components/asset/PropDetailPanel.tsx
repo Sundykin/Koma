@@ -3,6 +3,7 @@
  * 左侧输入控制区 + 右侧画布预览区
  */
 import React, { useState, useCallback, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Form,
   Input,
@@ -39,9 +40,7 @@ import { getStorageConfig, initStorageConfig } from '../../store/storageConfig';
 import { saveProps, loadProps } from '../../store/projectStore';
 import { useActiveConfig } from '../../hooks/useActiveConfig';
 import { uploadLocalFileToImageHosting, getImageHostingConfig } from '../../services/imageHostingService';
-
-const { TextArea } = Input;
-const { Text } = Typography;
+import { toUserMessage } from '../../utils/errorMessages';
 
 interface PropDetailPanelProps {
   prop: Prop;
@@ -67,9 +66,10 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
   onUpdate,
   onDelete,
 }) => {
+  const { t } = useTranslation('asset');
   const { message } = App.useApp();
   const [form] = Form.useForm();
-  
+
   const { config: activeTTI } = useActiveConfig('tti', ttiConfigId);
   const { config: activeITV } = useActiveConfig('itv', itvConfigId);
 
@@ -132,9 +132,9 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
 
       setEditedProp(updatedProp);
       onUpdate(updatedProp);
-      message.success('保存成功');
+      message.success(t('prop.saveSuccess'));
     } catch (err: any) {
-      message.error(err.message || '保存失败');
+      message.error(toUserMessage(err) || t('prop.saveFailed'));
     }
   }, [editedProp, form, projectId, onUpdate, message]);
 
@@ -174,12 +174,12 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
           await saveProps(projectId, props);
         }
 
-        message.success('道具图片生成完成');
+        message.success(t('prop.generateDone'));
       } else {
-        message.error(result.error || '生成失败');
+        message.error(result.error || t('prop.generateFailed'));
       }
     } catch (err: any) {
-      message.error(err.message || '生成失败');
+      message.error(toUserMessage(err) || t('prop.generateFailed'));
     } finally {
       setGenerating(null);
     }
@@ -188,8 +188,8 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
   const handleUploadImage = useCallback(async () => {
     try {
       const result = await openFileDialog({
-        filters: [{ name: '图片', extensions: ['png', 'jpg', 'jpeg', 'webp'] }],
-        title: '选择道具图片',
+        filters: [{ name: t('prop.filterImage'), extensions: ['png', 'jpg', 'jpeg', 'webp'] }],
+        title: t('prop.dialogSelectImage'),
       });
       if (result.canceled || !result.filePaths[0]) return;
 
@@ -203,16 +203,16 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
       console.log('[PropDetailPanel] 图床配置:', imageHostingConfig);
       if (imageHostingConfig?.enabled) {
         console.log('[PropDetailPanel] 图床已启用，开始上传:', destPath);
-        message.loading({ content: '正在上传到图床...', key: 'imageHosting' });
+        message.loading({ content: t('prop.uploadingToHosting'), key: 'imageHosting' });
         const uploadResult = await uploadLocalFileToImageHosting(destPath);
         console.log('[PropDetailPanel] 图床上传结果:', uploadResult);
         if (uploadResult.success && uploadResult.url) {
           updated.imageUrl = uploadResult.url;
           console.log('[PropDetailPanel] 图床URL已保存:', uploadResult.url);
-          message.success({ content: '图床上传成功', key: 'imageHosting' });
+          message.success({ content: t('prop.hostingSuccess'), key: 'imageHosting' });
         } else {
           console.warn('[PropDetailPanel] 图床上传失败:', uploadResult.error);
-          message.warning({ content: `图床上传失败: ${uploadResult.error}`, key: 'imageHosting' });
+          message.warning({ content: t('prop.hostingFailed', { error: uploadResult.error }), key: 'imageHosting' });
         }
       } else {
         console.log('[PropDetailPanel] 图床未启用，跳过上传');
@@ -228,15 +228,15 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
         await saveProps(projectId, props);
       }
 
-      message.success('上传成功');
+      message.success(t('prop.uploadSuccess'));
     } catch (err: any) {
-      message.error(`上传失败: ${err.message}`);
+      message.error(t('prop.uploadFailed', { error: toUserMessage(err) }));
     }
   }, [editedProp, getAssetPath, projectId, onUpdate, message]);
 
   const handleGenerateVideo = useCallback(async () => {
     if (!editedProp.imagePath) {
-      message.warning('请先生成或上传道具图片');
+      message.warning(t('prop.warnNoImage'));
       return;
     }
 
@@ -270,12 +270,12 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
           await saveProps(projectId, props);
         }
 
-        message.success('预览视频生成完成');
+        message.success(t('prop.videoGenerateDone'));
       } else {
-        message.error(result.error || '生成失败');
+        message.error(result.error || t('prop.generateFailed'));
       }
     } catch (err: any) {
-      message.error(err.message || '生成失败');
+      message.error(toUserMessage(err) || t('prop.generateFailed'));
     } finally {
       setGenerating(null);
     }
@@ -284,8 +284,8 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
   const handleUploadVideo = useCallback(async () => {
     try {
       const result = await openFileDialog({
-        filters: [{ name: '视频', extensions: ['mp4', 'webm', 'mov'] }],
-        title: '选择预览视频',
+        filters: [{ name: t('prop.filterVideo'), extensions: ['mp4', 'webm', 'mov'] }],
+        title: t('prop.dialogSelectVideo'),
       });
       if (result.canceled || !result.filePaths[0]) return;
 
@@ -303,14 +303,14 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
         await saveProps(projectId, props);
       }
 
-      message.success('上传成功');
+      message.success(t('prop.uploadSuccess'));
     } catch (err: any) {
-      message.error(`上传失败: ${err.message}`);
+      message.error(t('prop.uploadFailed', { error: toUserMessage(err) }));
     }
   }, [editedProp, getAssetPath, projectId, onUpdate, message]);
 
   const handleExtractProp = useCallback(async () => {
-    message.info('道具提取功能已移除');
+    message.info(t('prop.infoExtractRemoved'));
   }, [message]);
 
   const handleDelete = useCallback(async () => {
@@ -329,17 +329,17 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
             <Text strong style={{ fontSize: 16 }}>{editedProp.name}</Text>
           </Space>
           <Space>
-            <Tooltip title="保存">
-              <Button type="text" size="small" icon={<SaveOutlined />} onClick={handleSave} />
+            <Tooltip title={t('prop.save')}>
+              <Button type="text" size="small" icon={<SaveOutlined />} onClick={handleSave} aria-label={t('prop.save')} />
             </Tooltip>
             <Popconfirm
-              title="确定删除此道具？"
-              description="删除后无法恢复"
+              title={t('prop.confirmDelete')}
+              description={t('prop.deleteWarning')}
               onConfirm={handleDelete}
               okButtonProps={{ danger: true }}
             >
-              <Tooltip title="删除">
-                <Button type="text" danger size="small" icon={<DeleteOutlined />} />
+              <Tooltip title={t('prop.delete')}>
+                <Button type="text" danger size="small" icon={<DeleteOutlined />} aria-label={t('prop.delete')} />
               </Tooltip>
             </Popconfirm>
           </Space>
@@ -347,14 +347,14 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
 
         <div className="creatorSidebarContent">
           <Form form={form} layout="vertical" size="small">
-            <Form.Item name="name" label="名称" rules={[{ required: true, message: '请输入名称' }]}>
+            <Form.Item name="name" label={t('prop.form.name')} rules={[{ required: true, message: t('prop.form.nameRequired') }]}>
               <Input />
             </Form.Item>
 
-            <Form.Item name="prompt" label="视觉描述 Prompt">
+            <Form.Item name="prompt" label={t('prop.form.prompt')}>
               <TextArea
                 autoSize={{ minRows: 10, maxRows: 18 }}
-                placeholder="在此输入详细的道具视觉描述..."
+                placeholder={t('prop.form.promptPlaceholder')}
               />
             </Form.Item>
           </Form>
@@ -374,7 +374,7 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
               </div>
             )}
 
-            <Tooltip title={activeTTI ? `使用服务: ${activeTTI.name}` : '未配置生成服务'}>
+            <Tooltip title={activeTTI ? t('prop.tooltipService', { name: activeTTI.name }) : t('prop.tooltipNoService')}>
               <Button
                 type={!editedProp.imagePath ? 'primary' : 'default'}
                 block
@@ -383,11 +383,11 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
                 loading={generating === 'image'}
                 disabled={generating !== null}
               >
-                {editedProp.imagePath ? '重新生成参考图' : '生成参考图'}
+                {editedProp.imagePath ? t('prop.regenerateImage') : t('prop.generateImage')}
               </Button>
             </Tooltip>
 
-            <Tooltip title={activeITV ? `使用服务: ${activeITV.name}` : '未配置视频服务'}>
+            <Tooltip title={activeITV ? t('prop.tooltipService', { name: activeITV.name }) : t('prop.tooltipNoVideoService')}>
               <Button
                 type={editedProp.imagePath && !editedProp.previewVideoPath ? 'primary' : 'default'}
                 block
@@ -396,7 +396,7 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
                 loading={generating === 'video'}
                 disabled={generating !== null || !editedProp.imagePath}
               >
-                生成预览视频
+                {t('prop.generateVideo')}
               </Button>
             </Tooltip>
           </div>
@@ -410,23 +410,23 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
             value={viewMode}
             onChange={(val) => setViewMode(val as ViewMode)}
             options={[
-              { label: '道具图片', value: 'image', icon: <InboxOutlined /> },
-              { label: '预览视频', value: 'video', icon: <PlayCircleOutlined /> },
+              { label: t('prop.tabImage'), value: 'image', icon: <InboxOutlined /> },
+              { label: t('prop.tabVideo'), value: 'video', icon: <PlayCircleOutlined /> },
             ]}
           />
 
           <Space>
             <div className="toolbarDivider" />
 
-            <Tooltip title={viewMode === 'image' ? '上传道具图片' : '上传视频'}>
+            <Tooltip title={viewMode === 'image' ? t('prop.uploadImage') : t('prop.uploadVideo')}>
               <Button
                 type="text"
                 icon={<UploadOutlined />}
                 onClick={viewMode === 'image' ? handleUploadImage : handleUploadVideo}
-                aria-label={viewMode === 'image' ? '上传道具图片' : '上传视频'}
+                aria-label={viewMode === 'image' ? t('prop.uploadImage') : t('prop.uploadVideo')}
               />
             </Tooltip>
-            <Tooltip title="放大预览">
+            <Tooltip title={t('prop.expandPreview')}>
               <Button
                 type="text"
                 icon={<ExpandOutlined />}
@@ -436,7 +436,7 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
                   }
                 }}
                 disabled={viewMode === 'video' || !editedProp.imagePath}
-                aria-label="放大预览"
+                aria-label={t('prop.expandPreview')}
               />
             </Tooltip>
           </Space>
@@ -448,14 +448,14 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
               {editedProp.imagePath ? (
                 <img
                   src={toLocalUrl(editedProp.imagePath)}
-                  alt="道具图"
+                  alt={t('prop.tabImage')}
                   style={{ cursor: 'pointer' }}
                   onDoubleClick={() => setPreviewImage(toLocalUrl(editedProp.imagePath))}
                 />
               ) : (
                 <div className="creatorMediaPlaceholder">
                   <InboxOutlined />
-                  <div>暂无道具图片</div>
+                  <div>{t('prop.noImage')}</div>
                 </div>
               )}
             </div>
@@ -466,7 +466,7 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
               ) : (
                 <div className="creatorMediaPlaceholder">
                   <PlayCircleOutlined />
-                  <div>暂无预览视频</div>
+                  <div>{t('prop.noVideo')}</div>
                 </div>
               )}
             </div>

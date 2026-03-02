@@ -1,0 +1,71 @@
+{
+  "story": {
+    "emptyState": "Please create or select an episode first",
+    "currentEditing": "Currently editing: Episode {{number}} - {{title}}",
+    "charCount": "{{length}} characters",
+    "editorPlaceholder": "Enter or paste story content here...\n\nTips:\n- You can paste novels, scripts, or story outlines directly\n- Use \"Batch Import Episodes\" to auto-split long text into multiple episodes\n- Click \"Next\" to proceed to script editing after you're done",
+    "assetLibraryTitle": "Story Asset Library",
+    "assetLibraryDesc": "In the next step \"Script Editing\", the system will automatically extract characters, scenes, and props from the script, and support @reference for quick asset lookup.",
+    "batchImportBtn": "Batch Import & Split Episodes",
+    "nextBtn": "Next: Script Editing",
+    "batchImportModalTitle": "Batch Import & Auto-split Episodes",
+    "aiSplitOkText": "AI Auto-split Episodes",
+    "batchImportModalDesc": "Enter the full story then click \"AI Auto-split Episodes\", the system will intelligently split it into multiple episodes",
+    "batchEditorPlaceholder": "Enter or paste full story content here...",
+    "splitSuccess": "Successfully created {{count}} episodes",
+    "noContentWarning": "Please enter story content first"
+  },
+  "script": {
+    "emptyState": "Please select an episode first",
+    "editorTitle": "Script Editor",
+    "saving": "Saving...",
+    "saved": "Saved",
+    "charCount": "{{length}} characters",
+    "aiGenerateBtn": "AI Generate",
+    "aiPolishBtn": "AI Polish",
+    "analyzing": "Analyzing...",
+    "analyzeBtn": "Analyze Script",
+    "editorPlaceholder": "Edit script here... (supports @CharacterName @SceneName references)",
+    "statusEpisode": "Episode {{number}}: {{title}}",
+    "assetsTitle": "Project Assets",
+    "nextBtn": "Next: Storyboard",
+    "generateSuccess": "Script generated successfully",
+    "generateError": "Generation failed: {{error}}",
+    "noContentWarning": "Please enter script content first",
+    "polishSuccess": "Polish complete",
+    "polishError": "Polish failed: {{error}}",
+    "analyzeStarted": "Analysis task started, check progress in the status bar",
+    "analyzeError": "Analysis failed: {{error}}",
+    "polishInstruction": "Make the language more vivid, dialogue more natural, and plot more compact"
+  },
+  "storyboard": {
+    "emptyState": "Please select an episode first",
+    "episodeNameFallback": "Episode {{number}}",
+    "nextBtn": "Next: Video Generation"
+  },
+  "video": {
+    "emptyState": "Please select an episode first",
+    "loadingTip": "Loading storyboard data...",
+    "noShotsMsg": "Storyboard generation needs to be completed first",
+    "backToStoryboard": "Back to Storyboard",
+    "stats": "Shots: {{total}} | With Image: {{withImage}} | With Video: {{withVideo}}",
+    "batchGenerateBtn": "Batch Generate Videos ({{count}})",
+    "refreshBtn": "Refresh",
+    "nextBtn": "Next: Edit",
+    "previewTitle": "Shot #{{index}}",
+    "shotAlt": "Shot {{index}}",
+    "generateBtn": "Generate Video",
+    "loadError": "Failed to load storyboard",
+    "noCandidatesInfo": "No shots available for video generation (requires image and no existing video)",
+    "generateSuccess": "Video generation complete",
+    "generateError": "Video generation failed",
+    "batchSuccess": "Batch generation complete: {{success}} succeeded, {{failed}} failed",
+    "batchError": "Batch generation failed"
+  },
+  "edit": {
+    "emptyState": "Please select an episode first",
+    "loadingTip": "Loading editing data...",
+    "noShotsMsg": "Storyboard and video generation must be completed before entering the editor",
+    "backToVideo": "Back to Video"
+  }
+}

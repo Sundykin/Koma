@@ -46,6 +46,7 @@ import { getChannelConfigs, updateChannelConfig } from '../../store/settings/cha
 import { testITVConnection } from '../../providers';
 import { itvRegistry } from '../../providers/registry';
 import { toUserMessage } from '../../utils/errorMessages';
+import { useTranslation } from 'react-i18next';
 import { ProviderPluginModal } from '../plugins/ProviderPluginModal';
 
 interface ITVConfigManagerProps {
@@ -54,6 +55,7 @@ interface ITVConfigManagerProps {
 
 export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChange }) => {
   const { message } = App.useApp();
+  const { t } = useTranslation('settings');
   const [configs, setConfigs] = useState<ITVModelConfig[]>([]);
   const [pluginChannels, setPluginChannels] = useState<ChannelConfig[]>([]);
   const [loading, setLoading] = useState(true);
@@ -152,10 +154,10 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
 
       if (editingConfig) {
         await updateITVConfig(editingConfig.id, configData);
-        message.success('配置已更新');
+        message.success(t('common.updateSuccess'));
       } else {
         await addITVConfig(configData);
-        message.success('配置已添加');
+        message.success(t('common.addSuccess'));
       }
 
       setModalVisible(false);
@@ -163,18 +165,18 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
       onConfigChange?.();
     } catch (err: any) {
       if (err.errorFields) return;
-      message.error(`保存失败: ${err.message}`);
+      message.error(t('common.saveFailed', { error: toUserMessage(err) }));
     }
   };
 
   const handleDelete = async (id: string) => {
     try {
       await deleteITVConfig(id);
-      message.success('配置已删除');
+      message.success(t('common.deleteSuccess'));
       await loadConfigs();
       onConfigChange?.();
     } catch (err: any) {
-      message.error(`删除失败: ${err.message}`);
+      message.error(t('common.deleteFailed', { error: toUserMessage(err) }));
     }
   };
 
@@ -189,11 +191,11 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
       }
       // 设置内置配置为默认
       await setDefaultITVConfig(id);
-      message.success('已设为默认');
+      message.success(t('common.setDefaultSuccess'));
       await loadConfigs();
       onConfigChange?.();
     } catch (err: any) {
-      message.error(`设置失败: ${err.message}`);
+      message.error(t('common.setDefaultFailed', { error: toUserMessage(err) }));
     }
   };
 
@@ -208,11 +210,11 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
       }
       // 设置插件渠道为默认
       await setDefaultChannelConfig(id, 'itv');
-      message.success('已设为默认');
+      message.success(t('common.setDefaultSuccess'));
       await loadConfigs();
       onConfigChange?.();
     } catch (err: any) {
-      message.error(`设置失败: ${err.message}`);
+      message.error(t('common.setDefaultFailed', { error: toUserMessage(err) }));
     }
   };
 
@@ -222,12 +224,12 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
       const result = await testITVConnection(config);
       if (result.success) {
         const latency = result.latency ? ` (${result.latency}ms)` : '';
-        message.success(`"${config.name}" 连接成功${latency}`);
+        message.success(t('common.connectionSuccess', { name: config.name, latency }));
       } else {
         message.error(`"${config.name}" ${result.message}`);
       }
     } catch (err: any) {
-      message.error(`连接测试失败: ${toUserMessage(err)}`);
+      message.error(t('common.connectionTestFailed', { error: toUserMessage(err) }));
     } finally {
       setTestingId(null);
     }
@@ -261,14 +263,14 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <div>
           <span style={{ fontSize: 14, color: '#888' }}>
-            已配置 <strong>{configs.length}</strong> 个图生视频服务
+            {t('itv.configuredCount', { count: configs.length })}
             {pluginChannels.length > 0 && (
-              <span>，<strong>{pluginChannels.length}</strong> 个插件渠道</span>
+              <span>, {t('itv.pluginChannelCount', { count: pluginChannels.length })}</span>
             )}
           </span>
         </div>
         <Button type="primary" icon={<PlusOutlined />} onClick={() => openModal()}>
-          添加配置
+          {t('common.addConfigBtn')}
         </Button>
       </div>
 
@@ -279,10 +281,10 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
       ) : configs.length === 0 && pluginChannels.length === 0 ? (
         <Empty
           image={Empty.PRESENTED_IMAGE_SIMPLE}
-          description="还没有配置任何图生视频服务"
+          description={t('itv.emptyDesc')}
         >
           <Button type="primary" icon={<PlusOutlined />} onClick={() => openModal()}>
-            添加内置服务
+            {t('itv.addBuiltinBtn')}
           </Button>
         </Empty>
       ) : (
@@ -297,7 +299,7 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
                     {config.isDefault ? (
                       <StarFilled style={{ color: '#faad14' }} />
                     ) : (
-                      <Tooltip title="设为默认">
+                      <Tooltip title={t('common.setDefault')}>
                         <StarOutlined
                           style={{ cursor: 'pointer', color: '#d9d9d9' }}
                           onClick={() => handleSetDefault(config.id)}
@@ -310,13 +312,13 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
                       {getProviderLabel(config.provider)}
                     </Tag>
                     {isComingSoon(config.provider) && (
-                      <Tag color="default">即将支持</Tag>
+                      <Tag color="default">{t('itv.comingSoonTag')}</Tag>
                     )}
                   </Space>
                 }
                 extra={
                   <Space size="small">
-                    <Tooltip title="测试连接">
+                    <Tooltip title={t('common.testConnection')}>
                       <Button
                         type="text"
                         size="small"
@@ -325,7 +327,7 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
                         disabled={testingId === config.id}
                       />
                     </Tooltip>
-                    <Tooltip title="编辑">
+                    <Tooltip title={t('common.edit')}>
                       <Button
                         type="text"
                         size="small"
@@ -334,12 +336,12 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
                       />
                     </Tooltip>
                     <Popconfirm
-                      title="确定删除此配置？"
+                      title={t('common.confirmDelete')}
                       onConfirm={() => handleDelete(config.id)}
-                      okText="删除"
-                      cancelText="取消"
+                      okText={t('common.delete')}
+                      cancelText={t('common.cancel')}
                     >
-                      <Tooltip title="删除">
+                      <Tooltip title={t('common.delete')}>
                         <Button type="text" size="small" danger icon={<DeleteOutlined />} />
                       </Tooltip>
                     </Popconfirm>
@@ -347,11 +349,11 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
                 }
               >
                 <div style={{ fontSize: 13, color: '#666' }}>
-                  {config.defaultDuration && <div><strong>默认时长:</strong> {config.defaultDuration}s</div>}
-                  {config.defaultResolution && <div><strong>默认分辨率:</strong> {config.defaultResolution}</div>}
+                  {config.defaultDuration && <div><strong>{t('itv.cardDefaultDuration')}</strong> {config.defaultDuration}s</div>}
+                  {config.defaultResolution && <div><strong>{t('itv.cardDefaultResolution')}</strong> {config.defaultResolution}</div>}
                   {config.baseUrl && (
                     <div style={{ marginTop: 4 }}>
-                      <strong>地址:</strong>{' '}
+                      <strong>{t('common.cardUrlLabel')}</strong>{' '}
                       <span style={{ fontSize: 12, fontFamily: 'monospace' }}>
                         {config.baseUrl.replace(/https?:\/\//, '').slice(0, 30)}...
                       </span>
@@ -372,7 +374,7 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
                     {channel.isDefault ? (
                       <StarFilled style={{ color: '#faad14' }} />
                     ) : (
-                      <Tooltip title="设为默认">
+                      <Tooltip title={t('common.setDefault')}>
                         <StarOutlined
                           style={{ cursor: 'pointer', color: '#d9d9d9' }}
                           onClick={() => handleSetChannelDefault(channel.id)}
@@ -381,12 +383,12 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
                     )}
                     <AppstoreOutlined />
                     <span>{channel.name}</span>
-                    <Tag color="blue">插件</Tag>
+                    <Tag color="blue">{t('common.pluginTag')}</Tag>
                   </Space>
                 }
                 extra={
                   channel.pluginId && (
-                    <Tooltip title="配置">
+                    <Tooltip title={t('common.configure')}>
                       <Button
                         type="text"
                         size="small"
@@ -418,12 +420,12 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
       />
 
       <Modal
-        title={editingConfig ? '编辑图生视频配置' : '添加图生视频配置'}
+        title={editingConfig ? t('itv.editTitle') : t('itv.addTitle')}
         open={modalVisible}
         onOk={handleSave}
         onCancel={() => setModalVisible(false)}
-        okText="保存"
-        cancelText="取消"
+        okText={t('common.save')}
+        cancelText={t('common.cancel')}
         width={520}
         maskClosable={false}
         destroyOnHidden
@@ -432,10 +434,10 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
         <Form form={form} layout="vertical" className="mt-4">
           <Form.Item
             name="provider"
-            label="服务商"
-            rules={[{ required: true, message: '请选择服务商' }]}
+            label={t('common.form.providerLabel')}
+            rules={[{ required: true, message: t('common.form.providerRequired') }]}
           >
-            <Select placeholder="选择图生视频服务商" onChange={handlePresetChange}>
+            <Select placeholder={t('itv.form.providerPlaceholder')} onChange={handlePresetChange}>
               {ITV_PRESETS.map(preset => (
                 <Select.Option key={preset.id} value={preset.id}>
                   {preset.name}
@@ -446,8 +448,8 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
 
           <Form.Item
             name="name"
-            label="配置名称"
-            rules={[{ required: true, message: '请输入配置名称' }]}
+            label={t('common.form.nameLabel')}
+            rules={[{ required: true, message: t('common.form.nameRequired') }]}
           >
             <Input placeholder="如: 我的可灵账号" />
           </Form.Item>
@@ -456,33 +458,33 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
             <Form.Item
               name="apiKey"
               label="API Key"
-              rules={[{ required: currentProvider !== 'comfyui-animatediff', message: '请输入 API Key' }]}
+              rules={[{ required: currentProvider !== 'comfyui-animatediff', message: t('common.form.apiKeyRequired') }]}
             >
-              <Input.Password prefix={<KeyOutlined />} placeholder="输入 API Key" />
+              <Input.Password prefix={<KeyOutlined />} placeholder={t('common.form.apiKeyPlaceholder')} />
             </Form.Item>
           )}
 
           <Form.Item
             name="baseUrl"
-            label="API 地址"
-            rules={[{ required: true, message: '请输入 API 地址' }]}
+            label={t('common.form.baseUrlLabel')}
+            rules={[{ required: true, message: t('common.form.baseUrlRequired') }]}
           >
             <Input prefix={<ApiOutlined />} placeholder="如: https://api.klingai.com" />
           </Form.Item>
 
           <Row gutter={16}>
             <Col span={12}>
-              <Form.Item name="defaultDuration" label="默认时长 (秒)">
+              <Form.Item name="defaultDuration" label={t('itv.form.defaultDurationLabel')}>
                 <InputNumber min={1} max={60} placeholder="5" style={{ width: '100%' }} />
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item name="defaultResolution" label="默认分辨率">
-                <Select placeholder="选择分辨率" allowClear>
-                  <Select.Option value="1280x720">1280 × 720 (720p)</Select.Option>
-                  <Select.Option value="1920x1080">1920 × 1080 (1080p)</Select.Option>
-                  <Select.Option value="720x1280">720 × 1280 (竖屏)</Select.Option>
-                  <Select.Option value="1080x1920">1080 × 1920 (竖屏)</Select.Option>
+              <Form.Item name="defaultResolution" label={t('itv.form.defaultResolutionLabel')}>
+                <Select placeholder={t('itv.form.resolutionPlaceholder')} allowClear>
+                  <Select.Option value="1280x720">1280 x 720 (720p)</Select.Option>
+                  <Select.Option value="1920x1080">1920 x 1080 (1080p)</Select.Option>
+                  <Select.Option value="720x1280">{t('itv.form.resolution_720x1280')}</Select.Option>
+                  <Select.Option value="1080x1920">{t('itv.form.resolution_1080x1920')}</Select.Option>
                 </Select>
               </Form.Item>
             </Col>

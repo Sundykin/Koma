@@ -2,13 +2,13 @@
  * 新建角色弹窗
  */
 import React, { useState, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Modal, Form, Input, Select, Button, App } from 'antd';
 import { UserAddOutlined } from '@ant-design/icons';
 import { v4 as uuidv4 } from 'uuid';
 import type { Character } from '../../types';
 import { saveCharacters, loadCharacters } from '../../store/projectStore';
-
-const { TextArea } = Input;
+import { toUserMessage } from '../../utils/errorMessages';
 
 interface CreateCharacterModalProps {
   open: boolean;
@@ -23,6 +23,7 @@ export const CreateCharacterModal: React.FC<CreateCharacterModalProps> = ({
   onClose,
   onCreate,
 }) => {
+  const { t } = useTranslation(['asset', 'common']);
   const { message } = App.useApp();
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
@@ -47,13 +48,13 @@ export const CreateCharacterModal: React.FC<CreateCharacterModalProps> = ({
       onCreate(newCharacter);
       form.resetFields();
       onClose();
-      message.success('角色创建成功');
+      message.success(t('createCharacter.successCreated'));
     } catch (err: any) {
       if (err.errorFields) {
         // 表单验证错误
         return;
       }
-      message.error(err.message || '创建失败');
+      message.error(toUserMessage(err) || t('createCharacter.errorCreate'));
     } finally {
       setLoading(false);
     }
@@ -65,9 +66,9 @@ export const CreateCharacterModal: React.FC<CreateCharacterModalProps> = ({
   }, [form, onClose]);
 
   const roleOptions = [
-    { value: 'protagonist', label: '主角' },
-    { value: 'antagonist', label: '反派' },
-    { value: 'supporting', label: '配角' },
+    { value: 'protagonist', label: t('character.role.protagonist') },
+    { value: 'antagonist', label: t('character.role.antagonist') },
+    { value: 'supporting', label: t('character.role.supporting') },
   ];
 
   return (
@@ -75,40 +76,40 @@ export const CreateCharacterModal: React.FC<CreateCharacterModalProps> = ({
       title={
         <span>
           <UserAddOutlined style={{ marginRight: 8 }} />
-          新建角色
+          {t('createCharacter.title')}
         </span>
       }
       open={open}
       onCancel={handleCancel}
       onOk={handleSubmit}
-      okText="创建"
-      cancelText="取消"
+      okText={t('createCharacter.create')}
+      cancelText={t('common:cancel')}
       confirmLoading={loading}
       destroyOnHidden
     >
       <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
         <Form.Item
           name="name"
-          label="角色名称"
-          rules={[{ required: true, message: '请输入角色名称' }]}
+          label={t('createCharacter.form.name')}
+          rules={[{ required: true, message: t('createCharacter.form.nameRequired') }]}
         >
-          <Input placeholder="如：叶青凡" />
+          <Input placeholder={t('createCharacter.form.namePlaceholder')} />
         </Form.Item>
 
-        <Form.Item name="role" label="角色类型" initialValue="supporting">
+        <Form.Item name="role" label={t('createCharacter.form.role')} initialValue="supporting">
           <Select options={roleOptions} />
         </Form.Item>
 
-        <Form.Item name="age" label="年龄">
-          <Input placeholder="如：28岁" />
+        <Form.Item name="age" label={t('createCharacter.form.age')}>
+          <Input placeholder={t('createCharacter.form.agePlaceholder')} />
         </Form.Item>
 
-        <Form.Item name="description" label="人物描述">
-          <TextArea rows={2} placeholder="角色的性格、背景故事..." />
+        <Form.Item name="description" label={t('createCharacter.form.description')}>
+          <TextArea rows={2} placeholder={t('createCharacter.form.descriptionPlaceholder')} />
         </Form.Item>
 
-        <Form.Item name="appearance" label="外貌描述（用于AI图像生成）">
-          <TextArea rows={3} placeholder="如：黑发，深邃眼神，身穿西装，气质冷峻..." />
+        <Form.Item name="appearance" label={t('createCharacter.form.appearance')}>
+          <TextArea rows={3} placeholder={t('createCharacter.form.appearancePlaceholder')} />
         </Form.Item>
       </Form>
     </Modal>

@@ -1,0 +1,69 @@
+{
+  "stage": {
+    "story": "故事",
+    "storyDesc": "输入故事文本，AI智能分集",
+    "script": "剧本",
+    "scriptDesc": "编辑剧本，管理角色/场景资产",
+    "storyboard": "分镜",
+    "storyboardDesc": "生成分镜，AI绘制画面",
+    "video": "视频",
+    "videoDesc": "生成视频片段",
+    "edit": "剪辑",
+    "editDesc": "时间线剪辑，导出成片"
+  },
+  "status": {
+    "empty": "未开始",
+    "active": "当前",
+    "processing": "处理中",
+    "ready": "已完成"
+  },
+  "stageNavAriaLabel": "制作阶段",
+  "header": {
+    "episodePlaceholder": "选择剧集",
+    "episodeLabel": "第{{number}}集 {{title}}",
+    "newEpisode": "新建剧集",
+    "deleteEpisodeConfirm": "确定删除此剧集？",
+    "modelConfig": "项目模型配置",
+    "autoGenerate": "一键成片",
+    "analyzing": "解析中...",
+    "startAnalysis": "开始智能解析",
+    "nextStoryboard": "下一步：AI分镜",
+    "nextEdit": "下一步：后期剪辑",
+    "titleUpdated": "项目名称已更新",
+    "home": "首页",
+    "overview": "概览",
+    "episodeInfo": "第 {{number}} 集",
+    "narrationLabel": "旁白解说",
+    "projectSettings": "项目设置"
+  },
+  "config": {
+    "llmLabel": "LLM 大语言模型",
+    "llmDesc": "用于剧本生成、分镜拆解、提示词生成",
+    "ttiLabel": "文生图 (TTI)",
+    "ttiDesc": "用于角色定妆照、场景图、分镜图生成",
+    "itvLabel": "图生视频 (ITV)",
+    "itvDesc": "用于分镜视频渲染、角色预览视频",
+    "ttsLabel": "语音合成 (TTS)",
+    "ttsDesc": "用于角色对白配音",
+    "useGlobalDefault": "使用全局默认",
+    "defaultSuffix": "{{name}} (默认)"
+  },
+  "shell": {
+    "startCreating": "开始创作",
+    "startCreatingDesc": "创建第一个剧集，开始你的短剧制作之旅",
+    "createFirstEpisode": "创建第一集",
+    "episodeDefaultTitle": "第{{number}}集"
+  },
+  "autoGen": {
+    "completed": "成片完成",
+    "running": "一键成片"
+  },
+  "message": {
+    "configUpdateFailed": "更新配置失败: {{error}}",
+    "episodeCreated": "剧集创建成功",
+    "episodeDeleted": "剧集已删除",
+    "selectEpisodeFirst": "请先选择一个剧集",
+    "writeScriptFirst": "请先编写剧本",
+    "autoGenDone": "一键成片完成"
+  }
+}

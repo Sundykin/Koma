@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Project } from '../../types';
 import { Plus, Clock, Search, MoreHorizontal, FileText, Film, PlayCircle, CheckCircle2, Trash2, FolderPlus } from 'lucide-react';
 import { Dropdown, Modal } from 'antd';
@@ -17,16 +18,17 @@ export const ProjectList: React.FC<ProjectListProps> = ({
   onCreateProject,
   onDeleteProject
 }) => {
+  const { t } = useTranslation('project');
   const [filter, setFilter] = useState<'all' | 'script' | 'video' | 'completed'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
   const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
 
   const statusConfig = {
-    'script': { label: '剧本', color: 'text-blue-400', bg: 'bg-blue-400/10', icon: FileText },
-    'storyboard': { label: '分镜', color: 'text-purple-400', bg: 'bg-purple-400/10', icon: Film },
-    'generating': { label: '生成中', color: 'text-orange-400', bg: 'bg-orange-400/10', icon: PlayCircle },
-    'completed': { label: '已完成', color: 'text-emerald-400', bg: 'bg-emerald-400/10', icon: CheckCircle2 }
+    'script': { label: t('status.script'), color: 'text-blue-400', bg: 'bg-blue-400/10', icon: FileText },
+    'storyboard': { label: t('status.storyboard'), color: 'text-purple-400', bg: 'bg-purple-400/10', icon: Film },
+    'generating': { label: t('status.generating'), color: 'text-orange-400', bg: 'bg-orange-400/10', icon: PlayCircle },
+    'completed': { label: t('status.completed'), color: 'text-emerald-400', bg: 'bg-emerald-400/10', icon: CheckCircle2 }
   };
 
   const filteredProjects = projects.filter(p => {
@@ -52,7 +54,7 @@ export const ProjectList: React.FC<ProjectListProps> = ({
   const getDropdownItems = (project: Project): MenuProps['items'] => [
     {
       key: 'delete',
-      label: '删除项目',
+      label: t('action.delete'),
       icon: <Trash2 className="w-4 h-4" />,
       danger: true,
       onClick: (info) => {
@@ -74,7 +76,7 @@ export const ProjectList: React.FC<ProjectListProps> = ({
       <div className="sticky top-0 z-20 bg-zinc-950/95 backdrop-blur border-b border-zinc-800 px-6 py-3">
         <div className="w-full flex items-center justify-between gap-4">
           {/* 左侧：标题 */}
-          <h1 className="text-xl font-bold text-white whitespace-nowrap">我的项目</h1>
+          <h1 className="text-xl font-bold text-white whitespace-nowrap">{t('list.title')}</h1>
 
           {/* 中间：搜索和筛选 */}
           <div className="flex-1 flex items-center justify-center gap-2 max-w-xl">
@@ -82,7 +84,7 @@ export const ProjectList: React.FC<ProjectListProps> = ({
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
               <input
                 type="text"
-                placeholder="搜索..."
+                placeholder={t('list.searchPlaceholder')}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full bg-zinc-900 border border-zinc-800 text-sm text-white placeholder-zinc-600 pl-9 pr-3 py-1.5 rounded-md focus:outline-none focus:border-zinc-600"
@@ -99,7 +101,7 @@ export const ProjectList: React.FC<ProjectListProps> = ({
                       : 'text-zinc-500 hover:text-zinc-300'
                   }`}
                 >
-                  {f === 'all' ? '全部' : f === 'script' ? '剧本' : f === 'video' ? '制作中' : '已完成'}
+                  {f === 'all' ? t('filter.all') : f === 'script' ? t('filter.script') : f === 'video' ? t('filter.inProgress') : t('filter.completed')}
                 </button>
               ))}
             </div>
@@ -112,7 +114,7 @@ export const ProjectList: React.FC<ProjectListProps> = ({
               className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium rounded-md transition-colors"
             >
               <Plus className="w-4 h-4" />
-              <span>新建</span>
+              <span>{t('common:createNew')}</span>
             </button>
           )}
         </div>
@@ -130,8 +132,8 @@ export const ProjectList: React.FC<ProjectListProps> = ({
                 <div className="w-16 h-16 rounded-full bg-zinc-800 group-hover:bg-emerald-900/30 flex items-center justify-center mb-4 transition-colors">
                   <FolderPlus className="w-8 h-8 text-zinc-500 group-hover:text-emerald-400" />
                 </div>
-                <span className="text-lg font-bold text-zinc-300 group-hover:text-white transition-colors">创建你的第一个项目</span>
-                <span className="text-sm text-zinc-600 mt-1">开始 AI 短剧制作之旅</span>
+                <span className="text-lg font-bold text-zinc-300 group-hover:text-white transition-colors">{t('list.emptyTitle')}</span>
+                <span className="text-sm text-zinc-600 mt-1">{t('list.emptyDesc')}</span>
               </button>
             </div>
           )}
@@ -140,12 +142,12 @@ export const ProjectList: React.FC<ProjectListProps> = ({
           {isFilterEmpty && (
             <div className="flex flex-col items-center justify-center py-20 text-zinc-500">
               <Search className="w-12 h-12 mb-4 opacity-20" />
-              <p>未找到匹配的项目</p>
+              <p>{t('list.noMatchFound')}</p>
               <button
                 onClick={() => { setSearchQuery(''); setFilter('all'); }}
                 className="mt-4 text-sm text-emerald-500 hover:underline"
               >
-                清除筛选条件
+                {t('list.clearFilters')}
               </button>
             </div>
           )}
@@ -160,8 +162,12 @@ export const ProjectList: React.FC<ProjectListProps> = ({
                 return (
                   <div
                     key={project.id}
+                    role="button"
+                    tabIndex={0}
                     onClick={() => onSelectProject(project.id)}
-                    className="group bg-zinc-900 rounded-xl border border-zinc-800 hover:border-emerald-500/40 p-4 cursor-pointer transition-all hover:shadow-lg hover:shadow-emerald-500/5"
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelectProject(project.id); } }}
+                    aria-label={t('card.openAriaLabel', { title: project.title })}
+                    className="group bg-zinc-900 rounded-xl border border-zinc-800 hover:border-emerald-500/40 p-4 cursor-pointer transition-all hover:shadow-lg hover:shadow-emerald-500/5 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
                   >
                     {/* 顶部：状态和操作 */}
                     <div className="flex items-center justify-between mb-3">
@@ -178,6 +184,7 @@ export const ProjectList: React.FC<ProjectListProps> = ({
                       >
                         <button
                           onClick={(e) => e.stopPropagation()}
+                          aria-label={t('card.moreActionsAriaLabel', { title: project.title })}
                           className="p-1 text-zinc-600 hover:text-white hover:bg-zinc-700 rounded opacity-0 group-hover:opacity-100 transition-all"
                         >
                           <MoreHorizontal className="w-4 h-4" />
@@ -204,10 +211,10 @@ export const ProjectList: React.FC<ProjectListProps> = ({
                       </span>
                       {project.mode === 'narration' && (
                         <span className="text-[10px] font-medium text-blue-400 bg-blue-900/20 px-1.5 py-0.5 rounded">
-                          解说
+                          {t('genre.narration')}
                         </span>
                       )}
-                      <span className="text-[10px] text-zinc-600">{project.episodes} 集</span>
+                      <span className="text-[10px] text-zinc-600">{t('card.episodes', { count: project.episodes })}</span>
                     </div>
 
                     {/* 底部：时间 */}
@@ -224,21 +231,21 @@ export const ProjectList: React.FC<ProjectListProps> = ({
 
       {/* 删除确认弹窗 */}
       <Modal
-        title="确认删除项目"
+        title={t('deleteModal.title')}
         open={deleteModalVisible}
         onOk={handleDeleteConfirm}
         onCancel={() => { setDeleteModalVisible(false); setProjectToDelete(null); }}
-        okText="确认删除"
-        cancelText="取消"
+        okText={t('deleteModal.okText')}
+        cancelText={t('common:cancel')}
         okButtonProps={{ danger: true }}
         maskClosable={false}
       >
         <div className="py-4">
           <p className="text-zinc-400 mb-2">
-            您确定要删除项目 <strong className="text-zinc-100">{projectToDelete?.title}</strong> 吗？
+            {t('deleteModal.confirm', { title: projectToDelete?.title })}
           </p>
           <p className="text-red-500 text-sm">
-            此操作不可恢复，项目所有数据（包括剧本、分镜、素材）都将被永久删除。
+            {t('deleteModal.warning')}
           </p>
         </div>
       </Modal>

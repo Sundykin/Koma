@@ -65,6 +65,11 @@ export const VideoCardGrid: React.FC<VideoCardGridProps> = ({
             key={idx}
             className={`videoCard ${idx === selectedIndex ? 'selected' : ''}`}
             onClick={() => onSelect(idx)}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect(idx); } }}
+            aria-label={`视频 ${idx + 1}`}
+            aria-pressed={idx === selectedIndex}
           >
             {video.thumbnailPath ? (
               <img src={electronService.fs.toLocalUrl(video.thumbnailPath)} alt={`v${idx + 1}`} />
@@ -83,6 +88,7 @@ export const VideoCardGrid: React.FC<VideoCardGridProps> = ({
                   icon={<PlayCircleOutlined />}
                   onClick={(e) => handlePlay(video, e)}
                   className="overlayBtn"
+                  aria-label="播放"
                 />
               </Tooltip>
               {videos.length > 1 && (
@@ -99,6 +105,7 @@ export const VideoCardGrid: React.FC<VideoCardGridProps> = ({
                       icon={<DeleteOutlined />}
                       onClick={(e) => e.stopPropagation()}
                       className="overlayBtn"
+                      aria-label="删除"
                     />
                   </Tooltip>
                 </Popconfirm>

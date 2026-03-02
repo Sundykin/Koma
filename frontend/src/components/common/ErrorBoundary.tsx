@@ -1,16 +1,19 @@
 import React, { Component, ReactNode } from 'react';
 import { Button, Result } from 'antd';
+import { withTranslation, WithTranslation } from 'react-i18next';
 
-interface Props {
+interface OwnProps {
   children: ReactNode;
 }
+
+type Props = OwnProps & WithTranslation;
 
 interface State {
   hasError: boolean;
   error: Error | null;
 }
 
-export class ErrorBoundary extends Component<Props, State> {
+class ErrorBoundaryInner extends Component<Props, State> {
   state: State = {
     hasError: false,
     error: null,
@@ -34,19 +37,21 @@ export class ErrorBoundary extends Component<Props, State> {
   };
 
   render() {
+    const { t } = this.props;
+
     if (this.state.hasError) {
       return (
         <div className="flex items-center justify-center h-screen bg-zinc-950">
           <Result
             status="error"
-            title="出错了"
-            subTitle={this.state.error?.message || '发生未知错误'}
+            title={t('boundary.title')}
+            subTitle={this.state.error?.message || t('boundary.unknownError')}
             extra={[
               <Button key="reload" type="primary" onClick={this.handleReload}>
-                刷新页面
+                {t('boundary.reload')}
               </Button>,
               <Button key="retry" onClick={this.handleReset}>
-                重试
+                {t('boundary.retry')}
               </Button>,
             ]}
           />
@@ -57,3 +62,5 @@ export class ErrorBoundary extends Component<Props, State> {
     return this.props.children;
   }
 }
+
+export const ErrorBoundary = withTranslation('error')(ErrorBoundaryInner);

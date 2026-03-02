@@ -90,9 +90,3 @@ export function getChannelCapabilities(config: ChannelConfig): ChannelCapability
 export function hasChannelCapability(config: ChannelConfig, capability: ChannelCapability): boolean {
   return config.capabilities?.includes(capability) ?? false;
 }
-
-/**
- * @deprecated 使用 ChannelConfig 代替
- * 兼容旧代码，将在后续版本删除
- */
-export type UnifiedChannelConfig = ChannelConfig;

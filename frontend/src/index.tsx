@@ -2,9 +2,12 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { ConfigProvider } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
+import enUS from 'antd/locale/en_US';
 import App from './App';
+import './i18n';
 import './index.css';
 import { antdTheme } from './theme';
+import i18n from './i18n';
 import { cleanupDuplicateChannels } from './store/globalStore';
 import { initializeProviderPlugins } from './services/plugin/PluginInitializer';
 import { initWorkflowDelegates } from './workflow/workflowAdapter';
@@ -51,10 +54,12 @@ if (!rootElement) {
   throw new Error("Could not find root element to mount to");
 }
 
+const antdLocale = i18n.language?.startsWith('en') ? enUS : zhCN;
+
 const root = ReactDOM.createRoot(rootElement);
 root.render(
   <React.StrictMode>
-    <ConfigProvider theme={antdTheme} locale={zhCN}>
+    <ConfigProvider theme={antdTheme} locale={antdLocale}>
       <App />
     </ConfigProvider>
   </React.StrictMode>

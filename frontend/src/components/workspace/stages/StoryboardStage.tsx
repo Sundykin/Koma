@@ -5,6 +5,7 @@
  */
 import React, { useCallback } from 'react';
 import { Clapperboard, ArrowRight } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { Storyboard } from '../../storyboard/Storyboard';
 
 interface Episode {
@@ -34,6 +35,7 @@ const StoryboardStage: React.FC<StoryboardStageProps> = ({
   onRefreshStatuses,
   onStageChange,
 }) => {
+  const { t } = useTranslation('stage');
   const handleNext = useCallback(() => {
     onRefreshStatuses();
     onStageChange('video');
@@ -44,7 +46,7 @@ const StoryboardStage: React.FC<StoryboardStageProps> = ({
       <div className="flex h-full items-center justify-center text-zinc-500">
         <div className="text-center space-y-3">
           <Clapperboard className="w-12 h-12 mx-auto opacity-20" />
-          <p>请先选择一个剧集</p>
+          <p>{t('storyboard.emptyState')}</p>
         </div>
       </div>
     );
@@ -55,7 +57,7 @@ const StoryboardStage: React.FC<StoryboardStageProps> = ({
       <Storyboard
         projectId={projectId}
         episodeId={episode.id}
-        episodeName={episode.title || `第${episode.number}集`}
+        episodeName={episode.title || t('storyboard.episodeNameFallback', { number: episode.number })}
         script={episode.scriptText || ''}
         llmConfigId={projectConfig.llmConfigId}
         ttiConfigId={projectConfig.ttiConfigId}
@@ -68,7 +70,7 @@ const StoryboardStage: React.FC<StoryboardStageProps> = ({
         onClick={handleNext}
         className="fixed bottom-6 right-6 z-40 flex items-center gap-2 px-6 py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-2xl shadow-lg shadow-emerald-900/30 transition-colors"
       >
-        下一步：视频生成
+        {t('storyboard.nextBtn')}
         <ArrowRight size={18} />
       </button>
     </div>

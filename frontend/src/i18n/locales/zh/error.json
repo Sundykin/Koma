@@ -1,0 +1,13 @@
+{
+  "boundary": {
+    "title": "出错了",
+    "unknownError": "发生未知错误",
+    "reload": "刷新页面",
+    "retry": "重试"
+  },
+  "stageBoundary": {
+    "title": "「{{stageName}}」加载出错",
+    "unknownError": "发生未知错误，其他阶段不受影响",
+    "retry": "重试此阶段"
+  }
+}

@@ -6,4 +6,6 @@ export { StepNavigator } from './StepNavigator';
 export { SaveStatusIndicator } from './SaveStatusIndicator';
 export { TaskNotifications } from './TaskNotifications';
 export { ErrorBoundary } from './ErrorBoundary';
+export { StageErrorBoundary } from './StageErrorBoundary';
 export { SharedConfigLayout } from './SharedConfigLayout';
+export { ProjectListSkeleton, WorkspaceSkeleton, SettingsSkeleton } from './Skeletons';

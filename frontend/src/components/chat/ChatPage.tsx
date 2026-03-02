@@ -3,6 +3,7 @@
  * 通过 IPC 与 Electron 主进程通信
  */
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Select, message, Button, Tooltip, Spin } from 'antd';
 import { ClearOutlined, SettingOutlined, HistoryOutlined, ApiOutlined, RobotOutlined, TeamOutlined } from '@ant-design/icons';
 import { Input } from 'antd';
@@ -18,14 +19,15 @@ import { HistorySidebar } from './HistorySidebar';
 import { MCPSettings } from './MCPSettings';
 import { AgentTemplates, type AgentTemplate, PRESET_TEMPLATES } from './AgentTemplates';
 import type { MCPServerConfig } from '../../chat/ipc';
-import styles from './ChatPage.module.css';
+import { toUserMessage } from '../../utils/errorMessages';
 
 const { TextArea } = Input;
 
 export const ChatPage: React.FC = () => {
+  const { t } = useTranslation('chat');
   const [llmConfigs, setLlmConfigs] = useState<LLMModelConfig[]>([]);
   const [selectedConfigId, setSelectedConfigId] = useState<string>('');
-  const [systemPrompt, setSystemPrompt] = useState('你是一个有帮助的 AI 助手。');
+  const [systemPrompt, setSystemPrompt] = useState(t('page.defaultSystemPrompt'));
   const [showSettings, setShowSettings] = useState(false);
   const [showSidebar, setShowSidebar] = useState(true);
   const [showMcpSettings, setShowMcpSettings] = useState(false);
@@ -74,7 +76,7 @@ export const ChatPage: React.FC = () => {
   } = useChat({
     config: sessionConfig,
     onError: (err) => {
-      message.error(err.message);
+      message.error(toUserMessage(err));
     },
   });
 
@@ -164,12 +166,12 @@ export const ChatPage: React.FC = () => {
   // 发送消息
   const handleSend = useCallback(async (text: string, attachments?: AttachmentFile[]) => {
     if (!isReady) {
-      message.warning('会话尚未就绪');
+      message.warning(t('page.warnSessionNotReady'));
       return;
     }
 
     if (!selectedConfig) {
-      message.warning('请先配置 LLM 模型');
+      message.warning(t('page.warnNoLLMConfig'));
       return;
     }
 
@@ -224,9 +226,9 @@ export const ChatPage: React.FC = () => {
         setSystemPrompt(sessionData.systemPrompt);
       }
       setCurrentSession(historySessionId);
-      message.success(`已加载对话: ${sessionData.title}`);
+      message.success(t('page.successSessionLoaded', { title: sessionData.title }));
     } else {
-      message.error('加载对话失败');
+      message.error(t('page.errorLoadSession'));
     }
   }, [loadHistoryMessages, setCurrentSession]);
 
@@ -235,7 +237,7 @@ export const ChatPage: React.FC = () => {
     const newSessionId = createHistorySession();
     setCurrentSession(newSessionId);
     await clear();
-    message.success('已创建新对话');
+    message.success(t('page.successNewChat'));
   }, [createHistorySession, setCurrentSession, clear]);
 
   // 保存当前会话（懒创建会话 ID）
@@ -307,83 +309,89 @@ export const ChatPage: React.FC = () => {
   // 加载中显示
   if (!isConfigLoaded) {
     return (
-      <div className={styles.container} style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-        <Spin tip="加载配置中..." />
+      <div className="flex flex-col h-full bg-[#18181b] justify-center items-center">
+        <Spin tip={t('page.loadingConfig')} />
       </div>
     );
   }
 
   // 工具栏 - 始终渲染，修复设置按钮 bug
   const toolbar = (
-    <div className={styles.toolbar}>
-      <div className={styles.toolbarLeft}>
-        <Tooltip title={showSidebar ? '隐藏历史' : '显示历史'}>
+    <div className="flex justify-between items-center py-3 px-4 border-b border-[#27272a] bg-[#09090b]">
+      <div className="flex items-center gap-3">
+        <Tooltip title={showSidebar ? t('page.hideHistory') : t('page.showHistory')}>
           <Button
             type="text"
+            aria-label={showSidebar ? t('page.hideHistory') : t('page.showHistory')}
             icon={<HistoryOutlined />}
             onClick={() => setShowSidebar(!showSidebar)}
           />
         </Tooltip>
         {activeAgent && (
           <div
-            className={styles.agentBadge}
+            className="flex items-center gap-2 py-1 px-3 bg-[#27272a] rounded-md border border-[#3f3f46] cursor-pointer transition-all duration-200 h-8 hover:bg-[#3f3f46] hover:border-emerald-500"
             onClick={() => setShowAgentTemplates(true)}
           >
-            <span className={styles.agentIcon}>{activeAgent.icon || '🤖'}</span>
-            <span className={styles.agentName}>{activeAgent.name}</span>
+            <span className="text-base">{activeAgent.icon || '🤖'}</span>
+            <span className="text-sm font-medium text-[#fafafa]">{activeAgent.name}</span>
           </div>
         )}
         <Select
           value={selectedConfigId || undefined}
           onChange={handleConfigChange}
           options={configOptions}
-          placeholder="选择模型"
+          placeholder={t('page.selectModel')}
           style={{ width: 200 }}
           disabled={isLoading}
         />
         {!isReady && <Spin size="small" style={{ marginLeft: 8 }} />}
       </div>
-      <div className={styles.toolbarRight}>
-        <Tooltip title="多智能体编排">
+      <div className="flex items-center gap-1">
+        <Tooltip title={t('page.multiAgentOrchestration')}>
           <Button
             type="text"
+            aria-label={t('page.multiAgentOrchestration')}
             icon={<TeamOutlined />}
             onClick={async () => {
               if (!isReady) {
-                message.warning('会话尚未就绪');
+                message.warning(t('page.warnSessionNotReady'));
                 return;
               }
               await updateConfig({ agentMode: 'orchestrated' });
-              message.success('已启用多智能体编排模式');
+              message.success(t('page.successMultiAgentEnabled'));
             }}
           />
         </Tooltip>
-        <Tooltip title="智能体模板">
+        <Tooltip title={t('page.agentTemplates')}>
           <Button
             type="text"
+            aria-label={t('page.agentTemplates')}
             icon={<RobotOutlined />}
             onClick={() => setShowAgentTemplates(true)}
           />
         </Tooltip>
-        <Tooltip title="MCP 配置">
+        <Tooltip title={t('page.mcpConfig')}>
           <Button
             type="text"
+            aria-label={t('page.mcpConfig')}
             icon={<ApiOutlined />}
             onClick={() => setShowMcpSettings(true)}
           />
         </Tooltip>
-        <Tooltip title="设置">
+        <Tooltip title={t('page.settings')}>
           <Button
             type="text"
+            aria-label={t('page.settings')}
             icon={<SettingOutlined />}
             onClick={() => setShowSettings(!showSettings)}
           />
         </Tooltip>
-        <Tooltip title="清空对话">
+        <Tooltip title={t('page.clearConversation')}>
           <Button
             type="text"
+            aria-label={t('page.clearConversation')}
             icon={<ClearOutlined />}
-            onClick={() => { clear(); message.success('对话已清空'); }}
+            onClick={() => { clear(); message.success(t('page.successCleared')); }}
             disabled={messages.length === 0}
           />
         </Tooltip>
@@ -393,13 +401,13 @@ export const ChatPage: React.FC = () => {
 
   // 设置面板（独立于消息状态）
   const settingsPanel = showSettings ? (
-    <div className={styles.settingsPanel}>
-      <div className={styles.settingsItem}>
-        <label>系统提示词</label>
+    <div className="p-4 border-b border-[#27272a] bg-[#0f0f11]">
+      <div className="flex flex-col gap-2 [&_label]:text-[13px] [&_label]:text-[#a1a1aa]">
+        <label>{t('page.systemPrompt')}</label>
         <TextArea
           value={systemPrompt}
           onChange={(e) => setSystemPrompt(e.target.value)}
-          placeholder="设置 AI 的角色和行为..."
+          placeholder={t('page.systemPromptPlaceholder')}
           autoSize={{ minRows: 2, maxRows: 4 }}
         />
       </div>
@@ -414,7 +422,7 @@ export const ChatPage: React.FC = () => {
         streaming={isStreaming}
         streamingContent={streamingContent}
         streamingReasoning={streamingReasoning}
-        emptyText={llmConfigs.length === 0 ? "请先在设置中配置 LLM 模型" : "开始与 AI 对话吧"}
+        emptyText={llmConfigs.length === 0 ? t('page.emptyNoLLM') : t('page.emptyStartChat')}
       />
     </>
   );
@@ -440,7 +448,7 @@ export const ChatPage: React.FC = () => {
   ) : undefined;
 
   return (
-    <div className={styles.container}>
+    <div className="flex flex-col h-full bg-[#18181b]">
       <ChatLayout
         hasMessages={messages.length > 0}
         sidebar={sidebar}

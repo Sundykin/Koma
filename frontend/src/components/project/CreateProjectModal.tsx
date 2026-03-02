@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Modal, Form, Input, Radio, Space, Tooltip } from 'antd';
 import {
   SoundOutlined,
@@ -21,6 +22,7 @@ interface CreateProjectModalProps {
 }
 
 export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ isOpen, onClose, onCreate }) => {
+  const { t } = useTranslation('project');
   const [form] = Form.useForm();
   const [selectedTheme, setSelectedTheme] = useState<string>('realistic');
   const [customStyle, setCustomStyle] = useState('');
@@ -53,16 +55,16 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ isOpen, 
   };
 
   // 过滤掉 custom 选项，单独处理
-  const presetThemes = THEME_PRESETS.filter(t => t.id !== 'custom');
+  const presetThemes = THEME_PRESETS.filter(th => th.id !== 'custom');
 
   return (
     <Modal
-      title="创建项目"
+      title={t('createModal.title')}
       open={isOpen}
       onCancel={onClose}
       onOk={handleCreate}
-      okText="立即创建"
-      cancelText="取消"
+      okText={t('createModal.okText')}
+      cancelText={t('common:cancel')}
       width={680}
       centered
       maskClosable={false}
@@ -75,7 +77,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ isOpen, 
         style={{ marginTop: 16 }}
       >
         {/* 模板选择 */}
-        <Form.Item label="选择模板">
+        <Form.Item label={t('createModal.templateLabel')}>
           <div className="grid grid-cols-3 gap-2 mb-2">
             {PROJECT_TEMPLATES.map(template => {
               const isSelected = selectedTemplate === template.id;
@@ -107,13 +109,13 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ isOpen, 
 
         <Form.Item
           name="title"
-          label="项目名称"
-          rules={[{ required: true, message: '请输入项目名称' }]}
+          label={t('createModal.projectNameLabel')}
+          rules={[{ required: true, message: t('createModal.projectNameRequired') }]}
         >
-          <Input placeholder="请输入短剧项目名称" autoFocus />
+          <Input placeholder={t('createModal.projectNamePlaceholder')} autoFocus />
         </Form.Item>
 
-        <Form.Item name="mode" label="叙事模式">
+        <Form.Item name="mode" label={t('createModal.narrativeModeLabel')}>
           <Radio.Group buttonStyle="solid" style={{ width: '100%' }}>
             <Space orientation="vertical" style={{ width: '100%' }} size="middle">
               <Radio.Button
@@ -122,8 +124,8 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ isOpen, 
               >
                 <Space>
                   <AppstoreOutlined />
-                  <span style={{ fontWeight: 'bold' }}>剧情模式</span>
-                  <Tooltip title="适合传统影视剧,包含对话、动作和场景描写">
+                  <span style={{ fontWeight: 'bold' }}>{t('createModal.modeDrama')}</span>
+                  <Tooltip title={t('createModal.modeDramaTooltip')}>
                     <QuestionCircleOutlined style={{ opacity: 0.6, fontSize: 12 }} />
                   </Tooltip>
                 </Space>
@@ -134,8 +136,8 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ isOpen, 
               >
                 <Space>
                   <SoundOutlined />
-                  <span style={{ fontWeight: 'bold' }}>旁白解说模式</span>
-                  <Tooltip title="适合纪录片或解说类视频,以旁白驱动画面">
+                  <span style={{ fontWeight: 'bold' }}>{t('createModal.modeNarration')}</span>
+                  <Tooltip title={t('createModal.modeNarrationTooltip')}>
                     <QuestionCircleOutlined style={{ opacity: 0.6, fontSize: 12 }} />
                   </Tooltip>
                 </Space>
@@ -145,7 +147,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ isOpen, 
         </Form.Item>
 
         {/* 视觉风格选择 */}
-        <Form.Item label="视觉风格">
+        <Form.Item label={t('createModal.visualStyleLabel')}>
           <div className="grid grid-cols-4 gap-2">
             {presetThemes.map(theme => {
               const isSelected = selectedTheme === theme.id;
@@ -186,14 +188,14 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ isOpen, 
                   <Check className="w-2.5 h-2.5 text-white" />
                 </div>
               )}
-              <div className="text-xs font-medium text-zinc-200">自定义</div>
+              <div className="text-xs font-medium text-zinc-200">{t('createModal.customStyle')}</div>
             </div>
           </div>
 
           {selectedTheme === 'custom' && (
             <Input.TextArea
               className="mt-2"
-              placeholder="输入自定义风格描述，如: 水彩画风格，柔和色彩..."
+              placeholder={t('createModal.customStylePlaceholder')}
               value={customStyle}
               onChange={e => setCustomStyle(e.target.value)}
               rows={2}
@@ -202,7 +204,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ isOpen, 
 
           {selectedTheme && selectedTheme !== 'custom' && (
             <div className="mt-2 text-xs text-zinc-500">
-              {THEME_PRESETS.find(t => t.id === selectedTheme)?.description}
+              {THEME_PRESETS.find(th => th.id === selectedTheme)?.description}
             </div>
           )}
         </Form.Item>

@@ -35,6 +35,8 @@ import {
   deleteCustomThemePreset,
 } from '../../store/globalStore';
 import { THEME_PRESETS } from '../../config/themePresets';
+import { toUserMessage } from '../../utils/errorMessages';
+import { useTranslation } from 'react-i18next';
 
 const { TextArea } = Input;
 const { Text, Paragraph } = Typography;
@@ -45,6 +47,7 @@ interface VisualStyleManagerProps {
 
 export const VisualStyleManager: React.FC<VisualStyleManagerProps> = ({ onStyleChange }) => {
   const { message, modal } = App.useApp();
+  const { t } = useTranslation('settings');
   const [customPresets, setCustomPresets] = useState<ThemePreset[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalVisible, setModalVisible] = useState(false);
@@ -95,10 +98,10 @@ export const VisualStyleManager: React.FC<VisualStyleManagerProps> = ({ onStyleC
 
       if (editingPreset) {
         await updateCustomThemePreset(editingPreset.id, presetData);
-        message.success('风格预设已更新');
+        message.success(t('visualStyle.updateSuccess'));
       } else {
         await addCustomThemePreset(presetData);
-        message.success('风格预设已添加');
+        message.success(t('visualStyle.addSuccess'));
       }
 
       setModalVisible(false);
@@ -106,18 +109,18 @@ export const VisualStyleManager: React.FC<VisualStyleManagerProps> = ({ onStyleC
       onStyleChange?.();
     } catch (err: any) {
       if (err.errorFields) return;
-      message.error(`保存失败: ${err.message}`);
+      message.error(t('common.saveFailed', { error: toUserMessage(err) }));
     }
   };
 
   const handleDelete = async (id: string) => {
     try {
       await deleteCustomThemePreset(id);
-      message.success('风格预设已删除');
+      message.success(t('visualStyle.deleteSuccess'));
       await loadPresets();
       onStyleChange?.();
     } catch (err: any) {
-      message.error(`删除失败: ${err.message}`);
+      message.error(t('common.deleteFailed', { error: toUserMessage(err) }));
     }
   };
 
@@ -141,21 +144,21 @@ export const VisualStyleManager: React.FC<VisualStyleManagerProps> = ({ onStyleC
     <div>
       {/* 自定义预设区 */}
       <Card
-        title="自定义风格预设"
+        title={t('visualStyle.customPresetsTitle')}
         extra={
           <Button type="primary" icon={<PlusOutlined />} onClick={() => openModal()}>
-            添加风格
+            {t('visualStyle.addStyleBtn')}
           </Button>
         }
         style={{ marginBottom: 16 }}
       >
         {customPresets.length === 0 ? (
           <Empty
-            description="暂无自定义风格预设"
+            description={t('visualStyle.emptyDesc')}
             image={Empty.PRESENTED_IMAGE_SIMPLE}
           >
             <Button type="primary" onClick={() => openModal()}>
-              创建第一个风格预设
+              {t('visualStyle.createFirstBtn')}
             </Button>
           </Empty>
         ) : (
@@ -166,18 +169,18 @@ export const VisualStyleManager: React.FC<VisualStyleManagerProps> = ({ onStyleC
                   size="small"
                   hoverable
                   actions={[
-                    <Tooltip key="preview" title="预览">
+                    <Tooltip key="preview" title={t('visualStyle.previewTooltip')}>
                       <EyeOutlined onClick={() => handlePreview(preset)} />
                     </Tooltip>,
-                    <Tooltip key="edit" title="编辑">
+                    <Tooltip key="edit" title={t('common.edit')}>
                       <EditOutlined onClick={() => openModal(preset)} />
                     </Tooltip>,
                     <Popconfirm
                       key="delete"
-                      title="确定删除此风格预设吗？"
+                      title={t('visualStyle.confirmDelete')}
                       onConfirm={() => handleDelete(preset.id)}
-                      okText="删除"
-                      cancelText="取消"
+                      okText={t('common.delete')}
+                      cancelText={t('common.cancel')}
                     >
                       <DeleteOutlined style={{ color: '#ff4d4f' }} />
                     </Popconfirm>,
@@ -188,7 +191,7 @@ export const VisualStyleManager: React.FC<VisualStyleManagerProps> = ({ onStyleC
                     title={preset.name}
                     description={
                       <Text type="secondary" ellipsis>
-                        {preset.description || '无描述'}
+                        {preset.description || t('visualStyle.noDescription')}
                       </Text>
                     }
                   />
@@ -200,7 +203,7 @@ export const VisualStyleManager: React.FC<VisualStyleManagerProps> = ({ onStyleC
       </Card>
 
       {/* 系统预设区（只读） */}
-      <Card title="系统内置风格" size="small">
+      <Card title={t('visualStyle.systemPresetsTitle')} size="small">
         <Row gutter={[16, 16]}>
           {systemPresets.map((preset) => (
             <Col key={preset.id} xs={24} sm={12} lg={8}>
@@ -214,7 +217,7 @@ export const VisualStyleManager: React.FC<VisualStyleManagerProps> = ({ onStyleC
                   title={
                     <Space>
                       {preset.name}
-                      <Tag color="green">内置</Tag>
+                      <Tag color="green">{t('visualStyle.builtinTag')}</Tag>
                     </Space>
                   }
                   description={
@@ -231,35 +234,35 @@ export const VisualStyleManager: React.FC<VisualStyleManagerProps> = ({ onStyleC
 
       {/* 编辑弹窗 */}
       <Modal
-        title={editingPreset ? '编辑风格预设' : '添加风格预设'}
+        title={editingPreset ? t('visualStyle.editTitle') : t('visualStyle.addTitle')}
         open={modalVisible}
         onOk={handleSave}
         onCancel={() => setModalVisible(false)}
-        okText="保存"
-        cancelText="取消"
+        okText={t('common.save')}
+        cancelText={t('common.cancel')}
         width={600}
         maskClosable={false}
       >
         <Form form={form} layout="vertical">
           <Form.Item
             name="name"
-            label="风格名称"
-            rules={[{ required: true, message: '请输入风格名称' }]}
+            label={t('visualStyle.form.nameLabel')}
+            rules={[{ required: true, message: t('visualStyle.form.nameRequired') }]}
           >
-            <Input placeholder="如：水彩画风、3D渲染、复古胶片等" />
+            <Input placeholder={t('visualStyle.form.namePlaceholder')} />
           </Form.Item>
 
           <Form.Item
             name="description"
-            label="风格描述"
+            label={t('visualStyle.form.descLabel')}
           >
-            <Input placeholder="简要描述这个风格的特点" />
+            <Input placeholder={t('visualStyle.form.descPlaceholder')} />
           </Form.Item>
 
           <Form.Item
             name="ttiStylePrefix"
-            label="图片生成提示词前缀"
-            tooltip="生成图片时会自动添加到提示词开头"
+            label={t('visualStyle.form.ttiPrefixLabel')}
+            tooltip={t('visualStyle.form.ttiPrefixTooltip')}
           >
             <TextArea
               rows={3}
@@ -269,12 +272,12 @@ export const VisualStyleManager: React.FC<VisualStyleManagerProps> = ({ onStyleC
 
           <Form.Item
             name="llmPromptSuffix"
-            label="LLM 风格后缀"
-            tooltip="生成剧本/描述时会添加到提示词中，引导AI使用这种风格"
+            label={t('visualStyle.form.llmSuffixLabel')}
+            tooltip={t('visualStyle.form.llmSuffixTooltip')}
           >
             <TextArea
               rows={2}
-              placeholder="如：以水彩画的视觉风格呈现，色彩柔和，富有艺术感。"
+              placeholder={t('visualStyle.form.llmSuffixPlaceholder')}
             />
           </Form.Item>
         </Form>
@@ -282,7 +285,7 @@ export const VisualStyleManager: React.FC<VisualStyleManagerProps> = ({ onStyleC
 
       {/* 预览弹窗 */}
       <Modal
-        title={`风格预览：${previewPreset?.name}`}
+        title={t('visualStyle.previewTitle', { name: previewPreset?.name })}
         open={previewVisible}
         onCancel={() => setPreviewVisible(false)}
         footer={null}
@@ -291,21 +294,21 @@ export const VisualStyleManager: React.FC<VisualStyleManagerProps> = ({ onStyleC
         {previewPreset && (
           <div>
             <Paragraph>
-              <Text strong>描述：</Text>
-              <Text>{previewPreset.description || '无描述'}</Text>
+              <Text strong>{t('visualStyle.preview.descLabel')}</Text>
+              <Text>{previewPreset.description || t('visualStyle.noDescription')}</Text>
             </Paragraph>
             <Paragraph>
-              <Text strong>图片生成提示词前缀：</Text>
+              <Text strong>{t('visualStyle.preview.ttiPrefixLabel')}</Text>
               <br />
               <Text code style={{ wordBreak: 'break-all' }}>
-                {previewPreset.ttiStylePrefix || '（无）'}
+                {previewPreset.ttiStylePrefix || t('visualStyle.preview.empty')}
               </Text>
             </Paragraph>
             <Paragraph>
-              <Text strong>LLM 风格后缀：</Text>
+              <Text strong>{t('visualStyle.preview.llmSuffixLabel')}</Text>
               <br />
               <Text code style={{ wordBreak: 'break-all' }}>
-                {previewPreset.llmPromptSuffix || '（无）'}
+                {previewPreset.llmPromptSuffix || t('visualStyle.preview.empty')}
               </Text>
             </Paragraph>
           </div>

@@ -1,0 +1,69 @@
+{
+  "stage": {
+    "story": "Story",
+    "storyDesc": "Enter story text, AI auto-splits into episodes",
+    "script": "Script",
+    "scriptDesc": "Edit script, manage character/scene assets",
+    "storyboard": "Storyboard",
+    "storyboardDesc": "Generate storyboard, AI draws visuals",
+    "video": "Video",
+    "videoDesc": "Generate video clips",
+    "edit": "Edit",
+    "editDesc": "Timeline editing, export final video"
+  },
+  "status": {
+    "empty": "Not Started",
+    "active": "Current",
+    "processing": "Processing",
+    "ready": "Completed"
+  },
+  "stageNavAriaLabel": "Production stages",
+  "header": {
+    "episodePlaceholder": "Select episode",
+    "episodeLabel": "Episode {{number}} {{title}}",
+    "newEpisode": "New Episode",
+    "deleteEpisodeConfirm": "Are you sure you want to delete this episode?",
+    "modelConfig": "Project Model Configuration",
+    "autoGenerate": "One-click Production",
+    "analyzing": "Analyzing...",
+    "startAnalysis": "Start Smart Analysis",
+    "nextStoryboard": "Next: AI Storyboard",
+    "nextEdit": "Next: Post-production Edit",
+    "titleUpdated": "Project name updated",
+    "home": "Home",
+    "overview": "Overview",
+    "episodeInfo": "Episode {{number}}",
+    "narrationLabel": "Narration",
+    "projectSettings": "Project Settings"
+  },
+  "config": {
+    "llmLabel": "LLM Large Language Model",
+    "llmDesc": "Used for script generation, storyboard breakdown, prompt generation",
+    "ttiLabel": "Text-to-Image (TTI)",
+    "ttiDesc": "Used for character portraits, scene images, storyboard image generation",
+    "itvLabel": "Image-to-Video (ITV)",
+    "itvDesc": "Used for storyboard video rendering, character preview videos",
+    "ttsLabel": "Text-to-Speech (TTS)",
+    "ttsDesc": "Used for character dialogue voiceover",
+    "useGlobalDefault": "Use global default",
+    "defaultSuffix": "{{name}} (Default)"
+  },
+  "shell": {
+    "startCreating": "Start Creating",
+    "startCreatingDesc": "Create the first episode and begin your short drama production journey",
+    "createFirstEpisode": "Create First Episode",
+    "episodeDefaultTitle": "Episode {{number}}"
+  },
+  "autoGen": {
+    "completed": "Production Complete",
+    "running": "One-click Production"
+  },
+  "message": {
+    "configUpdateFailed": "Failed to update configuration: {{error}}",
+    "episodeCreated": "Episode created successfully",
+    "episodeDeleted": "Episode deleted",
+    "selectEpisodeFirst": "Please select an episode first",
+    "writeScriptFirst": "Please write a script first",
+    "autoGenDone": "One-click production completed"
+  }
+}

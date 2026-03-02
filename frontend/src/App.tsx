@@ -1,45 +1,41 @@
 /**
  * Koma 主应用
- * 统一路由：projects | workspace | settings
+ * 统一路由：projects | workspace | settings | chat
+ * 状态由 Zustand stores 管理（useAppStore, useSettingsStore）
  */
-import React, { useState, useCallback, Suspense } from 'react';
-import { Spin, App as AntApp, Button } from 'antd';
-import { WindowControls } from './components/common';
-import { ErrorBoundary } from './components/common';
+import React, { useCallback, useEffect, Suspense } from 'react';
+import { useTranslation } from 'react-i18next';
+import { App as AntApp } from 'antd';
+import { WindowControls, ErrorBoundary, ProjectListSkeleton, WorkspaceSkeleton, SettingsSkeleton } from './components/common';
 import { TaskStatusBar } from './components/common/TaskStatusBar';
 import { OnboardingTour } from './components/common/OnboardingTour';
 import { Sidebar } from './components/common/Sidebar';
 import { ProjectList, CreateProjectModal, ProjectSettingsModal } from './components/project';
 import { useProjects } from './hooks/useProjects';
-import { DEFAULT_SETTINGS } from './constants/appConstants';
-import type { AppSettings } from './types';
+import { useAppStore } from './store/appStore';
+import { useSettingsStore } from './store/settingsStore';
+import { toUserMessage } from './utils/errorMessages';
 
 // 懒加载
 const SettingsPage = React.lazy(() => import('./components/settings').then(m => ({ default: m.SettingsPage })));
 const WorkspaceShell = React.lazy(() => import('./components/workspace/WorkspaceShell'));
-
-type AppPage = 'projects' | 'workspace' | 'settings';
-
-const LazyFallback = () => (
-  <div className="flex h-full items-center justify-center">
-    <Spin size="large" tip="加载中..."><div className="p-12" /></Spin>
-  </div>
-);
-
-interface ActiveProject {
-  id: string;
-  title: string;
-  mode?: 'drama' | 'narration';
-  llmConfigId?: string;
-  ttiConfigId?: string;
-  itvConfigId?: string;
-  ttsConfigId?: string;
-  theme?: string;
-  stylePrompt?: string;
-}
+const ChatPage = React.lazy(() => import('./components/chat/ChatPage'));
 
 const AppContent: React.FC = () => {
   const { message } = AntApp.useApp();
+  const { t } = useTranslation('project');
+
+  // Zustand stores
+  const {
+    page, activeProject,
+    isCreateModalOpen, isProjectSettingsOpen,
+    setPage, setActiveProject, updateActiveProject,
+    openCreateModal, closeCreateModal,
+    closeProjectSettings,
+    enterWorkspace, goToProjects,
+  } = useAppStore();
+
+  const { settings, init: initSettings, replace: replaceSettings } = useSettingsStore();
 
   const {
     projects,
@@ -49,17 +45,14 @@ const AppContent: React.FC = () => {
     updateProject: updateProjectAPI,
   } = useProjects();
 
-  const [page, setPage] = useState<AppPage>('projects');
-  const [activeProject, setActiveProject] = useState<ActiveProject | null>(null);
-  const [appSettings, setAppSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
-  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
-  const [isProjectSettingsOpen, setIsProjectSettingsOpen] = useState(false);
+  // Init settings once
+  useEffect(() => { initSettings(); }, [initSettings]);
 
   // 选择项目 → 进入工作台
   const handleSelectProject = useCallback((id: string) => {
     const proj = projects.find(p => p.id === id);
     if (proj) {
-      setActiveProject({
+      enterWorkspace({
         id: proj.id,
         title: proj.title,
         mode: proj.mode,
@@ -70,9 +63,8 @@ const AppContent: React.FC = () => {
         theme: proj.theme,
         stylePrompt: proj.stylePrompt,
       });
-      setPage('workspace');
     }
-  }, [projects]);
+  }, [projects, enterWorkspace]);
 
   // 创建项目
   const handleCreateProject = async (data: { title: string; mode: 'drama' | 'narration'; theme?: string; stylePrompt?: string }) => {
@@ -80,22 +72,21 @@ const AppContent: React.FC = () => {
       const created = await createProjectAPI({
         title: data.title,
         mode: data.mode,
-        genre: data.mode === 'drama' ? '剧情' : '解说',
+        genre: data.mode === 'drama' ? t('genre.drama') : t('genre.narration'),
         theme: data.theme,
         stylePrompt: data.stylePrompt,
       });
-      setActiveProject({
+      enterWorkspace({
         id: created.id,
         title: created.title,
         mode: created.mode,
         theme: created.theme,
         stylePrompt: created.stylePrompt,
       });
-      setPage('workspace');
-      setIsCreateModalOpen(false);
-      message.success('项目创建成功');
+      closeCreateModal();
+      message.success(t('message.created'));
     } catch (err: any) {
-      message.error(err.message || '创建项目失败');
+      message.error(toUserMessage(err) || t('message.createFailed'));
     }
   };
 
@@ -104,42 +95,38 @@ const AppContent: React.FC = () => {
       await deleteProjectAPI(id);
       if (activeProject?.id === id) {
         setActiveProject(null);
-        setPage('projects');
+        goToProjects();
       }
-      message.success('项目已删除');
+      message.success(t('message.deleted'));
     } catch (err: any) {
-      message.error(err.message || '删除项目失败');
+      message.error(toUserMessage(err) || t('message.deleteFailed'));
     }
   };
 
   const handleProjectUpdate = useCallback((updates: Record<string, any>) => {
     if (activeProject) {
-      setActiveProject({ ...activeProject, ...updates });
+      updateActiveProject(updates);
       updateProjectAPI(activeProject.id, updates).catch(console.error);
     }
-  }, [activeProject, updateProjectAPI]);
-
-  const handleBack = useCallback(() => {
-    setPage('projects');
-  }, []);
+  }, [activeProject, updateActiveProject, updateProjectAPI]);
 
   const handlePageChange = useCallback((nextPage: string) => {
     if (nextPage === 'workspace' && !activeProject) {
-      message.warning('请先选择一个项目');
-      setPage('projects');
+      message.warning(t('message.selectProjectFirst'));
+      goToProjects();
       return;
     }
-    setPage(nextPage as AppPage);
-  }, [activeProject, message]);
+    setPage(nextPage as typeof page);
+  }, [activeProject, message, t, setPage, goToProjects]);
 
-  const handleProjectSettingsSave = async (updates: Partial<ActiveProject>) => {
+  const handleProjectSettingsSave = async (updates: Partial<typeof activeProject>) => {
     if (!activeProject) return;
     try {
-      await updateProjectAPI(activeProject.id, updates);
-      setActiveProject({ ...activeProject, ...updates });
-      message.success('项目设置已保存');
+      await updateProjectAPI(activeProject.id, updates as Record<string, any>);
+      updateActiveProject(updates as Record<string, any>);
+      message.success(t('message.settingsSaved'));
     } catch (err: any) {
-      message.error(err.message || '保存失败');
+      message.error(toUserMessage(err) || t('message.saveFailed'));
     }
   };
 
@@ -147,10 +134,10 @@ const AppContent: React.FC = () => {
   const displayProjects = projects.map(p => ({
     id: p.id,
     title: p.title,
-    genre: p.genre || (p.mode === 'drama' ? '剧情' : '解说'),
+    genre: p.genre || (p.mode === 'drama' ? t('genre.drama') : t('genre.narration')),
     mode: p.mode,
     episodes: p.episodes || 1,
-    lastEdited: p.updatedAt ? new Date(p.updatedAt).toLocaleString() : '未知',
+    lastEdited: p.updatedAt ? new Date(p.updatedAt).toLocaleString() : t('common:unknown'),
     thumbnail: p.thumbnail || `https://picsum.photos/seed/${p.id}/600/338`,
     status: p.status || 'script' as const,
   }));
@@ -167,27 +154,31 @@ const AppContent: React.FC = () => {
           <main className="flex-1 overflow-hidden relative bg-zinc-950">
             {page === 'projects' && (
               projectsLoading ? (
-                <div className="flex h-full items-center justify-center">
-                  <Spin size="large" tip="加载项目..."><div className="p-12" /></Spin>
-                </div>
+                <ProjectListSkeleton />
               ) : (
                 <ProjectList
                   projects={displayProjects}
                   onSelectProject={handleSelectProject}
-                  onCreateProject={() => setIsCreateModalOpen(true)}
+                  onCreateProject={openCreateModal}
                   onDeleteProject={handleDeleteProject}
                 />
               )
             )}
 
             {page === 'settings' && (
-              <Suspense fallback={<LazyFallback />}>
-                <SettingsPage settings={appSettings} onSave={setAppSettings} />
+              <Suspense fallback={<SettingsSkeleton />}>
+                <SettingsPage settings={settings} onSave={replaceSettings} />
+              </Suspense>
+            )}
+
+            {page === 'chat' && (
+              <Suspense fallback={<WorkspaceSkeleton />}>
+                <ChatPage />
               </Suspense>
             )}
 
             {page === 'workspace' && activeProject && (
-              <Suspense fallback={<LazyFallback />}>
+              <Suspense fallback={<WorkspaceSkeleton />}>
                 <WorkspaceShell
                   projectId={activeProject.id}
                   projectTitle={activeProject.title}
@@ -199,7 +190,7 @@ const AppContent: React.FC = () => {
                     theme: activeProject.theme,
                     stylePrompt: activeProject.stylePrompt,
                   }}
-                  onBack={handleBack}
+                  onBack={goToProjects}
                   onProjectUpdate={handleProjectUpdate}
                 />
               </Suspense>
@@ -210,16 +201,16 @@ const AppContent: React.FC = () => {
 
       <CreateProjectModal
         isOpen={isCreateModalOpen}
-        onClose={() => setIsCreateModalOpen(false)}
+        onClose={closeCreateModal}
         onCreate={handleCreateProject}
       />
 
       <ProjectSettingsModal
         project={activeProject}
         open={isProjectSettingsOpen}
-        onClose={() => setIsProjectSettingsOpen(false)}
+        onClose={closeProjectSettings}
         onSave={handleProjectSettingsSave}
-        onGoToGlobalSettings={() => { setIsProjectSettingsOpen(false); setPage('settings'); }}
+        onGoToGlobalSettings={() => { closeProjectSettings(); setPage('settings'); }}
       />
 
       {activeProject && <TaskStatusBar projectId={activeProject.id} />}

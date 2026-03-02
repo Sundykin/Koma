@@ -5,6 +5,7 @@
  */
 import React, { useState, useEffect, useCallback } from 'react';
 import { Input, Select, Tooltip, App, Button, Popconfirm, Drawer } from 'antd';
+import { toUserMessage } from '../../utils/errorMessages';
 import { PlusOutlined, RocketOutlined, SettingOutlined } from '@ant-design/icons';
 import {
   Film, Pencil, Brain, Image, Video, Volume2,
@@ -12,6 +13,7 @@ import {
 } from 'lucide-react';
 import { loadSettings, getChannelsByCapability } from '../../store/globalStore';
 import { loadProject, saveProject } from '../../store/projectStore';
+import { useTranslation } from 'react-i18next';
 
 interface ConfigOption {
   id: string;
@@ -62,6 +64,7 @@ export const WorkspaceHeader: React.FC<WorkspaceHeaderProps> = ({
   autoGenerating = false,
 }) => {
   const { message } = App.useApp();
+  const { t } = useTranslation('workspace');
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleValue, setTitleValue] = useState(projectTitle);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -107,10 +110,10 @@ export const WorkspaceHeader: React.FC<WorkspaceHeaderProps> = ({
           projectMeta.title = titleValue.trim();
           await saveProject(projectMeta);
           onTitleChange(titleValue.trim());
-          message.success('项目名称已更新');
+          message.success(t('header.titleUpdated'));
         }
       } catch (err: any) {
-        message.error(err.message);
+        message.error(toUserMessage(err));
       }
     }
     setEditingTitle(false);
@@ -167,13 +170,13 @@ export const WorkspaceHeader: React.FC<WorkspaceHeaderProps> = ({
           <Select
             value={currentEpisodeId || undefined}
             onChange={onEpisodeSelect}
-            placeholder="选择剧集"
+            placeholder={t('header.episodePlaceholder')}
             size="small"
             className="!w-36"
             popupMatchSelectWidth={false}
             options={episodes.map(e => ({
               value: e.id,
-              label: `第${e.number}集 ${e.title}`,
+              label: t('header.episodeLabel', { number: e.number, title: e.title }),
             }))}
             dropdownRender={(menu) => (
               <div>
@@ -186,7 +189,7 @@ export const WorkspaceHeader: React.FC<WorkspaceHeaderProps> = ({
                     className="w-full !text-left !text-xs"
                     size="small"
                   >
-                    新建剧集
+                    {t('header.newEpisode')}
                   </Button>
                 </div>
               </div>
@@ -195,10 +198,10 @@ export const WorkspaceHeader: React.FC<WorkspaceHeaderProps> = ({
 
           {currentEpisode && onEpisodeDelete && (
             <Popconfirm
-              title="确定删除此剧集？"
+              title={t('header.deleteEpisodeConfirm')}
               onConfirm={() => onEpisodeDelete(currentEpisode.id)}
-              okText="删除"
-              cancelText="取消"
+              okText={t('common:delete')}
+              cancelText={t('common:cancel')}
             >
               <button className="p-1 text-zinc-600 hover:text-red-400 transition-colors flex-shrink-0">
                 <Trash2 size={14} />
@@ -209,7 +212,7 @@ export const WorkspaceHeader: React.FC<WorkspaceHeaderProps> = ({
 
         {/* Right: Settings + AutoGenerate */}
         <div className="flex items-center gap-2 flex-shrink-0">
-          <Tooltip title="项目模型配置">
+          <Tooltip title={t('header.modelConfig')}>
             <button
               onClick={() => setSettingsOpen(true)}
               className="relative p-1.5 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 rounded transition-colors"
@@ -232,7 +235,7 @@ export const WorkspaceHeader: React.FC<WorkspaceHeaderProps> = ({
               size="small"
               className="!bg-emerald-600 !border-emerald-600 hover:!bg-emerald-500"
             >
-              一键成片
+              {t('header.autoGenerate')}
             </Button>
           )}
         </div>
@@ -240,7 +243,7 @@ export const WorkspaceHeader: React.FC<WorkspaceHeaderProps> = ({
 
       {/* 模型配置抽屉 */}
       <Drawer
-        title="项目模型配置"
+        title={t('header.modelConfig')}
         placement="right"
         width={360}
         open={settingsOpen}
@@ -251,32 +254,32 @@ export const WorkspaceHeader: React.FC<WorkspaceHeaderProps> = ({
         <div className="space-y-5">
           <ConfigSelect
             icon={<Brain className="w-4 h-4 text-blue-400" />}
-            label="LLM 大语言模型"
-            description="用于剧本生成、分镜拆解、提示词生成"
+            label={t('config.llmLabel')}
+            description={t('config.llmDesc')}
             value={projectConfig.llmConfigId}
             options={llmConfigs}
             onChange={(v) => onConfigChange('llmConfigId', v)}
           />
           <ConfigSelect
             icon={<Image className="w-4 h-4 text-purple-400" />}
-            label="文生图 (TTI)"
-            description="用于角色定妆照、场景图、分镜图生成"
+            label={t('config.ttiLabel')}
+            description={t('config.ttiDesc')}
             value={projectConfig.ttiConfigId}
             options={ttiConfigs}
             onChange={(v) => onConfigChange('ttiConfigId', v)}
           />
           <ConfigSelect
             icon={<Video className="w-4 h-4 text-orange-400" />}
-            label="图生视频 (ITV)"
-            description="用于分镜视频渲染、角色预览视频"
+            label={t('config.itvLabel')}
+            description={t('config.itvDesc')}
             value={projectConfig.itvConfigId}
             options={itvConfigs}
             onChange={(v) => onConfigChange('itvConfigId', v)}
           />
           <ConfigSelect
             icon={<Volume2 className="w-4 h-4 text-emerald-400" />}
-            label="语音合成 (TTS)"
-            description="用于角色对白配音"
+            label={t('config.ttsLabel')}
+            description={t('config.ttsDesc')}
             value={projectConfig.ttsConfigId}
             options={ttsConfigs}
             onChange={(v) => onConfigChange('ttsConfigId', v)}
@@ -295,25 +298,28 @@ const ConfigSelect: React.FC<{
   value?: string;
   options: ConfigOption[];
   onChange: (value: string | undefined) => void;
-}> = ({ icon, label, description, value, options, onChange }) => (
-  <div className="p-3 bg-zinc-900/80 rounded-lg border border-zinc-800">
-    <div className="flex items-center gap-2 mb-1.5">
-      {icon}
-      <span className="text-sm font-medium text-zinc-200">{label}</span>
+}> = ({ icon, label, description, value, options, onChange }) => {
+  const { t } = useTranslation('workspace');
+  return (
+    <div className="p-3 bg-zinc-900/80 rounded-lg border border-zinc-800">
+      <div className="flex items-center gap-2 mb-1.5">
+        {icon}
+        <span className="text-sm font-medium text-zinc-200">{label}</span>
+      </div>
+      <p className="text-xs text-zinc-500 mb-2">{description}</p>
+      <Select
+        value={value}
+        onChange={onChange}
+        placeholder={t('config.useGlobalDefault')}
+        allowClear
+        size="small"
+        className="w-full"
+        popupMatchSelectWidth={false}
+        options={options.map(c => ({
+          value: c.id,
+          label: c.isDefault ? t('config.defaultSuffix', { name: c.name }) : c.name,
+        }))}
+      />
     </div>
-    <p className="text-xs text-zinc-500 mb-2">{description}</p>
-    <Select
-      value={value}
-      onChange={onChange}
-      placeholder="使用全局默认"
-      allowClear
-      size="small"
-      className="w-full"
-      popupMatchSelectWidth={false}
-      options={options.map(c => ({
-        value: c.id,
-        label: c.isDefault ? `${c.name} (默认)` : c.name,
-      }))}
-    />
-  </div>
-);
+  );
+};

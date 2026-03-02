@@ -1,0 +1,22 @@
+{
+  "step0": {
+    "title": "Welcome to Koma Studio",
+    "desc": "This is an AI-powered short drama creation tool. Let's quickly learn the core workflow: from script to finished video in just three steps."
+  },
+  "step1": {
+    "title": "Step 1: Create a Project",
+    "desc": "Click \"New Project\" to start creating. Choose between short drama or narration mode, and set the visual style."
+  },
+  "step2": {
+    "title": "Step 2: Configure AI Services",
+    "desc": "In Global Settings, configure LLM (script analysis), TTI (text-to-image), ITV (image-to-video), and TTS (text-to-speech) services. These are the foundation for content generation."
+  },
+  "step3": {
+    "title": "Three-Step Workflow",
+    "desc": "Once inside a project, follow the three-step workflow: Asset Management, AI Storyboard, and Post-Production Editing. Each step is AI-assisted."
+  },
+  "step4": {
+    "title": "Start Creating!",
+    "desc": "Now you understand the basic workflow. Create your first project and experience the magic of AI-powered short drama creation. You can revisit this guide anytime from Settings."
+  }
+}

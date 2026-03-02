@@ -3,12 +3,14 @@
  * 支持剧集列表展示、增删改、拖拽排序
  */
 import React, { useState, useEffect, useCallback, forwardRef, useImperativeHandle } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Modal, Form, Input, InputNumber, App, Spin, Empty } from 'antd';
 import { GripVertical, Play, Pencil, Trash2, Plus, Zap } from 'lucide-react';
 import type { Episode } from '../../types';
 import { createEpisode, saveEpisode, deleteEpisode, listEpisodes } from '../../store/projectStore';
 import { createLLMProvider } from '../../providers';
 import { getActiveLLMConfig } from '../../store/globalStore';
+import { toUserMessage } from '../../utils/errorMessages';
 
 const { TextArea } = Input;
 
@@ -23,21 +25,23 @@ export interface EpisodeManagerRef {
   refresh: () => void;
 }
 
-const statusConfig: Record<Episode['status'], { label: string; color: string }> = {
-  draft: { label: '草稿', color: 'bg-zinc-700 text-zinc-400' },
-  script: { label: '剧本', color: 'bg-blue-900/50 text-blue-400' },
-  storyboard: { label: '分镜', color: 'bg-purple-900/50 text-purple-400' },
-  generating: { label: '生成中', color: 'bg-orange-900/50 text-orange-400' },
-  completed: { label: '已完成', color: 'bg-emerald-900/50 text-emerald-400' },
-};
-
 export const EpisodeManager = forwardRef<EpisodeManagerRef, EpisodeManagerProps>(({
   projectId,
   fullScript,
   onEpisodeSelect,
   selectedEpisodeId,
 }, ref) => {
+  const { t } = useTranslation('project');
   const { message, modal } = App.useApp();
+
+  const statusConfig: Record<Episode['status'], { label: string; color: string }> = {
+    draft: { label: t('episodeManager.statusDraft'), color: 'bg-zinc-700 text-zinc-400' },
+    script: { label: t('episodeManager.statusScript'), color: 'bg-blue-900/50 text-blue-400' },
+    storyboard: { label: t('episodeManager.statusStoryboard'), color: 'bg-purple-900/50 text-purple-400' },
+    generating: { label: t('episodeManager.statusGenerating'), color: 'bg-orange-900/50 text-orange-400' },
+    completed: { label: t('episodeManager.statusCompleted'), color: 'bg-emerald-900/50 text-emerald-400' },
+  };
+
   const [form] = Form.useForm();
   const [episodes, setEpisodes] = useState<Episode[]>([]);
   const [loading, setLoading] = useState(true);
@@ -53,7 +57,7 @@ export const EpisodeManager = forwardRef<EpisodeManagerRef, EpisodeManagerProps>
       const list = await listEpisodes(projectId);
       setEpisodes(list);
     } catch (err: any) {
-      message.error(err.message);
+      message.error(toUserMessage(err));
     } finally {
       setLoading(false);
     }
@@ -68,13 +72,13 @@ export const EpisodeManager = forwardRef<EpisodeManagerRef, EpisodeManagerProps>
     try {
       const newEpisode = await createEpisode(projectId, {
         number: nextNumber,
-        title: `第 ${nextNumber} 集`,
+        title: t('episodeManager.defaultEpisodeTitle', { number: nextNumber }),
         status: 'draft',
       });
       setEpisodes([...episodes, newEpisode]);
-      message.success('剧集已添加');
+      message.success(t('episodeManager.addSuccess'));
     } catch (err: any) {
-      message.error(err.message);
+      message.error(toUserMessage(err));
     }
   };
 
@@ -99,21 +103,21 @@ export const EpisodeManager = forwardRef<EpisodeManagerRef, EpisodeManagerProps>
       }
       setEditDialogOpen(false);
       setEditingEpisode(null);
-      message.success('剧集已保存');
+      message.success(t('episodeManager.saveSuccess'));
     } catch (err: any) {
       if (err.errorFields) return;
-      message.error(err.message);
+      message.error(toUserMessage(err));
     }
   };
 
   const handleDeleteEpisode = async (episode: Episode, e: React.MouseEvent) => {
     e.stopPropagation();
     modal.confirm({
-      title: '确定删除此剧集？',
-      content: `将删除"${episode.title}"及其所有数据`,
-      okText: '删除',
+      title: t('episodeManager.deleteConfirmTitle'),
+      content: t('episodeManager.deleteConfirmContent', { title: episode.title }),
+      okText: t('common:delete'),
       okType: 'danger',
-      cancelText: '取消',
+      cancelText: t('common:cancel'),
       onOk: async () => {
         try {
           await deleteEpisode(projectId, episode.id);
@@ -123,9 +127,9 @@ export const EpisodeManager = forwardRef<EpisodeManagerRef, EpisodeManagerProps>
           for (const ep of renumbered) {
             await saveEpisode(projectId, ep.id, { number: ep.number });
           }
-          message.success('剧集已删除');
+          message.success(t('episodeManager.deleteSuccess'));
         } catch (err: any) {
-          message.error(err.message);
+          message.error(toUserMessage(err));
         }
       },
     });
@@ -133,7 +137,7 @@ export const EpisodeManager = forwardRef<EpisodeManagerRef, EpisodeManagerProps>
 
   const handleAutoSplit = async () => {
     if (!fullScript?.trim()) {
-      message.warning('请先输入完整剧本');
+      message.warning(t('episodeManager.noScriptWarning'));
       return;
     }
     setSplitting(true);
@@ -183,9 +187,9 @@ ${fullScript}
 
       setEpisodes(newEpisodes);
       setSplitDialogOpen(false);
-      message.success(`已分割为 ${newEpisodes.length} 集`);
+      message.success(t('episodeManager.splitSuccess', { count: newEpisodes.length }));
     } catch (err: any) {
-      message.error(`分割失败: ${err.message}`);
+      message.error(t('episodeManager.splitError', { error: toUserMessage(err) }));
     } finally {
       setSplitting(false);
     }
@@ -209,14 +213,14 @@ ${fullScript}
             className="flex items-center gap-1.5 px-2.5 py-1 text-xs text-purple-400 hover:text-purple-300 bg-purple-900/20 hover:bg-purple-900/30 border border-purple-800/50 rounded-md transition-colors"
           >
             <Zap className="w-3.5 h-3.5" />
-            AI 分割
+            {t('episodeManager.aiSplitBtn')}
           </button>
         </div>
       )}
 
       {/* 剧集列表 */}
       {episodes.length === 0 ? (
-        <Empty description="暂无剧集" className="py-8" />
+        <Empty description={t('episodeManager.emptyState')} className="py-8" />
       ) : (
         <div className="flex flex-col">
           {episodes.map((episode) => {
@@ -239,14 +243,14 @@ ${fullScript}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
                       <span className="text-sm font-medium text-zinc-200 truncate">
-                        第 {episode.number} 集: {episode.title}
+                        {t('episodeManager.episodeLabel', { number: episode.number, title: episode.title })}
                       </span>
                       <span className={`text-[10px] px-1.5 py-0.5 rounded ${status.color}`}>
                         {status.label}
                       </span>
                     </div>
                     <p className="text-xs text-zinc-500 truncate pr-4">
-                      {episode.scriptText?.slice(0, 50) || '暂无剧本内容...'}
+                      {episode.scriptText?.slice(0, 50) || t('episodeManager.noScriptPreview')}
                     </p>
                   </div>
                 </div>
@@ -287,50 +291,50 @@ ${fullScript}
         className="flex items-center justify-center gap-2 h-12 border border-dashed border-zinc-700 hover:border-emerald-500/50 rounded-lg text-sm text-zinc-500 hover:text-emerald-400 transition-colors"
       >
         <Plus className="w-4 h-4" />
-        添加剧集
+        {t('episodeManager.addBtn')}
       </button>
 
       {/* 编辑对话框 */}
       <Modal
-        title={`编辑 - 第 ${editingEpisode?.number} 集`}
+        title={t('episodeManager.editModalTitle', { number: editingEpisode?.number })}
         open={editDialogOpen}
         onOk={handleSaveEdit}
         onCancel={() => setEditDialogOpen(false)}
-        okText="保存"
-        cancelText="取消"
+        okText={t('common:save')}
+        cancelText={t('common:cancel')}
         width={640}
       >
         <Form form={form} layout="vertical" className="mt-4">
           <Form.Item
             name="title"
-            label="剧集标题"
-            rules={[{ required: true, message: '请输入剧集标题' }]}
+            label={t('episodeManager.titleLabel')}
+            rules={[{ required: true, message: t('episodeManager.titleRequired') }]}
           >
-            <Input placeholder="请输入剧集标题" />
+            <Input placeholder={t('episodeManager.titleRequired')} />
           </Form.Item>
-          <Form.Item name="scriptText" label="剧集剧本">
-            <TextArea rows={12} placeholder="输入本集剧本内容..." />
+          <Form.Item name="scriptText" label={t('episodeManager.scriptLabel')}>
+            <TextArea rows={12} placeholder={t('episodeManager.scriptPlaceholder')} />
           </Form.Item>
         </Form>
       </Modal>
 
       {/* 自动分割对话框 */}
       <Modal
-        title="AI 自动分割剧本"
+        title={t('episodeManager.splitModalTitle')}
         open={splitDialogOpen}
         onOk={handleAutoSplit}
         onCancel={() => !splitting && setSplitDialogOpen(false)}
-        okText={splitting ? '分割中...' : '开始分割'}
-        cancelText="取消"
+        okText={splitting ? t('episodeManager.splittingOkText') : t('episodeManager.startSplitOkText')}
+        cancelText={t('common:cancel')}
         confirmLoading={splitting}
         closable={!splitting}
         maskClosable={!splitting}
       >
         <p className="text-zinc-400 text-sm mb-4">
-          使用 AI 自动将完整剧本分割成多集。现有剧集将被替换。
+          {t('episodeManager.splitModalDesc')}
         </p>
         <div className="flex items-center gap-3">
-          <span className="text-sm text-zinc-300">分割成</span>
+          <span className="text-sm text-zinc-300">{t('episodeManager.splitCountLabel')}</span>
           <InputNumber
             value={splitCount}
             onChange={(v) => setSplitCount(v || 1)}
@@ -338,7 +342,7 @@ ${fullScript}
             max={20}
             className="!w-20"
           />
-          <span className="text-sm text-zinc-300">集</span>
+          <span className="text-sm text-zinc-300">{t('episodeManager.splitCountSuffix')}</span>
         </div>
       </Modal>
     </div>

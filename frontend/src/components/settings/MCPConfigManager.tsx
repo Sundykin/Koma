@@ -35,6 +35,8 @@ import {
 } from '@ant-design/icons';
 import type { MCPServerConfig, MCPConnection } from '../../types/mcp';
 import { mcpService } from '../../services/mcpService';
+import { toUserMessage } from '../../utils/errorMessages';
+import { useTranslation } from 'react-i18next';
 
 const { Text, Paragraph } = Typography;
 
@@ -55,6 +57,7 @@ interface FormData {
 
 export const MCPConfigManager: React.FC<MCPConfigManagerProps> = ({ onConfigChange }) => {
   const { message } = App.useApp();
+  const { t } = useTranslation('settings');
   const [connections, setConnections] = useState<MCPConnection[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalVisible, setModalVisible] = useState(false);
@@ -119,15 +122,15 @@ export const MCPConfigManager: React.FC<MCPConfigManagerProps> = ({ onConfigChan
       setConnectingName(config.name);
       await mcpService.connect(config);
 
-      message.success(editingConfig ? '配置已更新并重新连接' : '服务器已添加并连接');
+      message.success(editingConfig ? t('mcp.updateAndReconnectSuccess') : t('mcp.addAndConnectSuccess'));
       setModalVisible(false);
       loadConnections();
       onConfigChange?.();
     } catch (err: any) {
       if (err instanceof SyntaxError) {
-        message.error('环境变量 JSON 格式错误');
+        message.error(t('mcp.envJsonError'));
       } else {
-        message.error(`连接失败: ${err.message}`);
+        message.error(t('mcp.connectFailed', { error: toUserMessage(err) }));
       }
     } finally {
       setConnectingName(null);
@@ -138,11 +141,11 @@ export const MCPConfigManager: React.FC<MCPConfigManagerProps> = ({ onConfigChan
   const handleDisconnect = async (name: string) => {
     try {
       await mcpService.disconnect(name);
-      message.success('已断开连接');
+      message.success(t('mcp.disconnectSuccess'));
       loadConnections();
       onConfigChange?.();
     } catch (err: any) {
-      message.error(`断开失败: ${err.message}`);
+      message.error(t('mcp.disconnectFailed', { error: toUserMessage(err) }));
     }
   };
 
@@ -156,10 +159,10 @@ export const MCPConfigManager: React.FC<MCPConfigManagerProps> = ({ onConfigChan
     setConnectingName(conn.name);
     try {
       await mcpService.connect(config);
-      message.success('重新连接成功');
+      message.success(t('mcp.reconnectSuccess'));
       loadConnections();
     } catch (err: any) {
-      message.error(`连接失败: ${err.message}`);
+      message.error(t('mcp.connectFailed', { error: toUserMessage(err) }));
     } finally {
       setConnectingName(null);
     }
@@ -185,17 +188,17 @@ export const MCPConfigManager: React.FC<MCPConfigManagerProps> = ({ onConfigChan
   // 获取状态文本
   const getStatusText = (status: MCPConnection['status']) => {
     switch (status) {
-      case 'connected': return '已连接';
-      case 'connecting': return '连接中';
-      case 'error': return '连接失败';
-      default: return '未连接';
+      case 'connected': return t('mcp.status.connected');
+      case 'connecting': return t('mcp.status.connecting');
+      case 'error': return t('mcp.status.error');
+      default: return t('mcp.status.disconnected');
     }
   };
 
   if (loading) {
     return (
       <div style={{ textAlign: 'center', padding: 48 }}>
-        <Spin size="large" tip="加载 MCP 服务器..." />
+        <Spin size="large" tip={t('mcp.loadingTip')} />
       </div>
     );
   }
@@ -206,27 +209,27 @@ export const MCPConfigManager: React.FC<MCPConfigManagerProps> = ({ onConfigChan
         <div>
           <Typography.Title level={5} style={{ margin: 0 }}>
             <ApiOutlined style={{ marginRight: 8 }} />
-            MCP 服务器
+            MCP {t('mcp.sectionTitle')}
           </Typography.Title>
-          <Text type="secondary">管理 Model Context Protocol 服务器连接</Text>
+          <Text type="secondary">{t('mcp.sectionDesc')}</Text>
         </div>
         <Space>
           <Button icon={<ReloadOutlined />} onClick={loadConnections}>
-            刷新
+            {t('mcp.refreshBtn')}
           </Button>
           <Button type="primary" icon={<PlusOutlined />} onClick={() => openModal()}>
-            添加服务器
+            {t('mcp.addServerBtn')}
           </Button>
         </Space>
       </div>
 
       {connections.length === 0 ? (
         <Empty
-          description="暂无 MCP 服务器"
+          description={t('mcp.emptyDesc')}
           image={Empty.PRESENTED_IMAGE_SIMPLE}
         >
           <Button type="primary" icon={<PlusOutlined />} onClick={() => openModal()}>
-            添加第一个服务器
+            {t('mcp.addFirstBtn')}
           </Button>
         </Empty>
       ) : (
@@ -253,11 +256,11 @@ export const MCPConfigManager: React.FC<MCPConfigManagerProps> = ({ onConfigChan
                   conn.status === 'connected' ? (
                     <Popconfirm
                       key="disconnect"
-                      title="确定断开连接？"
+                      title={t('mcp.confirmDisconnect')}
                       onConfirm={() => handleDisconnect(conn.name)}
                     >
                       <Button type="text" size="small" danger>
-                        断开
+                        {t('mcp.disconnectBtn')}
                       </Button>
                     </Popconfirm>
                   ) : (
@@ -268,7 +271,7 @@ export const MCPConfigManager: React.FC<MCPConfigManagerProps> = ({ onConfigChan
                       onClick={() => handleReconnect(conn)}
                       loading={connectingName === conn.name}
                     >
-                      连接
+                      {t('mcp.connectBtn')}
                     </Button>
                   ),
                   <Button
@@ -280,7 +283,7 @@ export const MCPConfigManager: React.FC<MCPConfigManagerProps> = ({ onConfigChan
                   />,
                   <Popconfirm
                     key="delete"
-                    title="确定删除此服务器？"
+                    title={t('mcp.confirmDeleteServer')}
                     onConfirm={() => handleDisconnect(conn.name)}
                   >
                     <Button type="text" size="small" danger icon={<DeleteOutlined />} />
@@ -290,7 +293,7 @@ export const MCPConfigManager: React.FC<MCPConfigManagerProps> = ({ onConfigChan
                 <Row gutter={16}>
                   <Col span={12}>
                     <Statistic
-                      title="工具"
+                      title={t('mcp.toolsLabel')}
                       value={conn.tools?.length || 0}
                       prefix={<ToolOutlined />}
                       valueStyle={{ fontSize: 20 }}
@@ -298,7 +301,7 @@ export const MCPConfigManager: React.FC<MCPConfigManagerProps> = ({ onConfigChan
                   </Col>
                   <Col span={12}>
                     <Statistic
-                      title="状态"
+                      title={t('mcp.statusLabel')}
                       value={getStatusText(conn.status)}
                       valueStyle={{
                         fontSize: 14,
@@ -321,31 +324,31 @@ export const MCPConfigManager: React.FC<MCPConfigManagerProps> = ({ onConfigChan
 
       {/* 新建/编辑模态框 */}
       <Modal
-        title={editingConfig ? '编辑 MCP 服务器' : '添加 MCP 服务器'}
+        title={editingConfig ? t('mcp.editTitle') : t('mcp.addTitle')}
         open={modalVisible}
         onCancel={() => setModalVisible(false)}
         onOk={handleSave}
         confirmLoading={!!connectingName}
-        okText={editingConfig ? '保存并连接' : '添加并连接'}
+        okText={editingConfig ? t('mcp.saveAndConnectBtn') : t('mcp.addAndConnectBtn')}
         width={500}
       >
         <Form form={form} layout="vertical">
           <Form.Item
             name="name"
-            label="服务器名称"
-            rules={[{ required: true, message: '请输入服务器名称' }]}
+            label={t('mcp.form.nameLabel')}
+            rules={[{ required: true, message: t('mcp.form.nameRequired') }]}
           >
             <Input placeholder="例如：filesystem" disabled={!!editingConfig} />
           </Form.Item>
 
           <Form.Item
             name="transport"
-            label="传输类型"
+            label={t('mcp.form.transportLabel')}
             rules={[{ required: true }]}
           >
             <Select>
-              <Select.Option value="stdio">Stdio（本地进程）</Select.Option>
-              <Select.Option value="sse">SSE（HTTP 流）</Select.Option>
+              <Select.Option value="stdio">{t('mcp.form.transportStdio')}</Select.Option>
+              <Select.Option value="sse">{t('mcp.form.transportSSE')}</Select.Option>
               <Select.Option value="websocket">WebSocket</Select.Option>
             </Select>
           </Form.Item>
@@ -361,12 +364,12 @@ export const MCPConfigManager: React.FC<MCPConfigManagerProps> = ({ onConfigChan
                   <>
                     <Form.Item
                       name="command"
-                      label="命令"
-                      rules={[{ required: true, message: '请输入命令' }]}
+                      label={t('mcp.form.commandLabel')}
+                      rules={[{ required: true, message: t('mcp.form.commandRequired') }]}
                     >
                       <Input placeholder="例如：npx" />
                     </Form.Item>
-                    <Form.Item name="args" label="参数">
+                    <Form.Item name="args" label={t('mcp.form.argsLabel')}>
                       <Input placeholder="例如：-y @anthropic/mcp-server-filesystem" />
                     </Form.Item>
                   </>
@@ -376,7 +379,7 @@ export const MCPConfigManager: React.FC<MCPConfigManagerProps> = ({ onConfigChan
                 <Form.Item
                   name="url"
                   label="URL"
-                  rules={[{ required: true, message: '请输入 URL' }]}
+                  rules={[{ required: true, message: t('mcp.form.urlRequired') }]}
                 >
                   <Input placeholder="例如：http://localhost:3000/mcp" />
                 </Form.Item>
@@ -384,7 +387,7 @@ export const MCPConfigManager: React.FC<MCPConfigManagerProps> = ({ onConfigChan
             }}
           </Form.Item>
 
-          <Form.Item name="env" label="环境变量（JSON）">
+          <Form.Item name="env" label={t('mcp.form.envLabel')}>
             <Input.TextArea
               placeholder='{"API_KEY": "xxx"}'
               autoSize={{ minRows: 2, maxRows: 4 }}

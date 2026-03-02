@@ -3,6 +3,7 @@
  * 包含工具栏和剧本编辑器，支持自动保存
  */
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { App } from 'antd';
 import { Film } from 'lucide-react';
 import { InlineProjectToolbar } from './InlineProjectToolbar';
@@ -10,6 +11,7 @@ import { ScriptEditor } from '../../editor';
 import { saveEpisode } from '../../store/projectStore';
 import { generateRandomScript, polishScript } from '../../workflow/scriptGenerator';
 import { startBackgroundAnalysis } from '../../services/ScriptAnalysisService';
+import { toUserMessage } from '../../utils/errorMessages';
 import type { Project, Episode, AppSettings } from '../../types';
 
 interface ScriptWorkbenchProps {
@@ -25,6 +27,7 @@ export const ScriptWorkbench: React.FC<ScriptWorkbenchProps> = ({
   onScriptChange,
   onStartProduction,
 }) => {
+  const { t } = useTranslation('project');
   const { message } = App.useApp();
   const [localScript, setLocalScript] = useState(episode?.scriptText || '');
   const [isSaving, setIsSaving] = useState(false);
@@ -90,9 +93,9 @@ export const ScriptWorkbench: React.FC<ScriptWorkbenchProps> = ({
       const script = await generateRandomScript('3');
       setLocalScript(script);
       await saveScript(script);
-      message.success('剧本生成成功！');
+      message.success(t('scriptWorkbench.generateSuccess'));
     } catch (err: any) {
-      message.error(`生成失败: ${err.message}`);
+      message.error(t('scriptWorkbench.generateError', { error: toUserMessage(err) }));
     } finally {
       setIsGenerating(false);
     }
@@ -101,7 +104,7 @@ export const ScriptWorkbench: React.FC<ScriptWorkbenchProps> = ({
   // AI 润色
   const handlePolish = async () => {
     if (!localScript.trim()) {
-      message.warning('请先输入剧本内容');
+      message.warning(t('scriptWorkbench.noContentWarning'));
       return;
     }
     setIsPolishing(true);
@@ -109,14 +112,14 @@ export const ScriptWorkbench: React.FC<ScriptWorkbenchProps> = ({
       const polished = await polishScript(
         {} as AppSettings,
         localScript,
-        '使语言更加生动，对话更自然，情节更紧凑',
+        t('scriptWorkbench.polishInstruction'),
         () => {}
       );
       setLocalScript(polished);
       await saveScript(polished);
-      message.success('润色完成！');
+      message.success(t('scriptWorkbench.polishSuccess'));
     } catch (err: any) {
-      message.error(`润色失败: ${err.message}`);
+      message.error(t('scriptWorkbench.polishError', { error: toUserMessage(err) }));
     } finally {
       setIsPolishing(false);
     }
@@ -125,7 +128,7 @@ export const ScriptWorkbench: React.FC<ScriptWorkbenchProps> = ({
   // 解析剧本
   const handleAnalyze = async () => {
     if (!episode || !localScript.trim()) {
-      message.warning('请先输入剧本内容');
+      message.warning(t('scriptWorkbench.noContentWarning'));
       return;
     }
     setIsAnalyzing(true);
@@ -140,9 +143,9 @@ export const ScriptWorkbench: React.FC<ScriptWorkbenchProps> = ({
         localScript,
         project.llmConfigId
       );
-      message.success('解析任务已启动，可在状态栏查看进度');
+      message.success(t('scriptWorkbench.analyzeStarted'));
     } catch (err: any) {
-      message.error(`解析失败: ${err.message}`);
+      message.error(t('scriptWorkbench.analyzeError', { error: toUserMessage(err) }));
     } finally {
       setIsAnalyzing(false);
     }
@@ -156,10 +159,10 @@ export const ScriptWorkbench: React.FC<ScriptWorkbenchProps> = ({
           <Film className="w-10 h-10 text-zinc-600" />
         </div>
         <h2 className="text-lg font-semibold text-zinc-200 mb-2">
-          选择剧集开始创作
+          {t('scriptWorkbench.emptyTitle')}
         </h2>
         <p className="text-sm text-zinc-500">
-          从左侧选择一个剧集，或创建新剧集开始编写剧本
+          {t('scriptWorkbench.emptyDesc')}
         </p>
       </div>
     );
@@ -183,7 +186,7 @@ export const ScriptWorkbench: React.FC<ScriptWorkbenchProps> = ({
         <ScriptEditor
           value={localScript}
           onChange={handleScriptChange}
-          placeholder="在此开始创作剧本... (支持 Markdown 格式)"
+          placeholder={t('scriptWorkbench.editorPlaceholder')}
           minHeight="100%"
           maxHeight="100%"
           showLineNumbers={true}
@@ -195,10 +198,10 @@ export const ScriptWorkbench: React.FC<ScriptWorkbenchProps> = ({
       {/* 底部状态栏 */}
       <div className="h-8 px-4 flex items-center justify-between text-xs text-zinc-500 border-t border-zinc-800 bg-zinc-900">
         <span>
-          第 {episode.number} 集: {episode.title}
+          {t('scriptWorkbench.statusEpisode', { number: episode.number, title: episode.title })}
         </span>
         <span>
-          {localScript.length} 字符
+          {t('scriptWorkbench.statusCharCount', { length: localScript.length })}
         </span>
       </div>
     </div>

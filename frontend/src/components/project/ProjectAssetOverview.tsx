@@ -3,6 +3,7 @@
  * 显示项目中所有角色、场景、道具及其跨集使用情况
  */
 import React, { useState, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Tabs, Avatar, Tag, Empty, Spin, Tooltip } from 'antd';
 import { User, MapPin, Box, Link } from 'lucide-react';
 import type { Character, Scene, Prop, EpisodeRef } from '../../types';
@@ -18,6 +19,7 @@ export const ProjectAssetOverview: React.FC<ProjectAssetOverviewProps> = ({
   projectId,
   onAssetClick,
 }) => {
+  const { t } = useTranslation('project');
   const [loading, setLoading] = useState(true);
   const [characters, setCharacters] = useState<Character[]>([]);
   const [scenes, setScenes] = useState<Scene[]>([]);
@@ -50,12 +52,12 @@ export const ProjectAssetOverview: React.FC<ProjectAssetOverviewProps> = ({
 
   const renderEpisodeRefs = (refs?: EpisodeRef[]) => {
     if (!refs || refs.length === 0) {
-      return <span className="text-[10px] px-1.5 py-0.5 bg-zinc-800 text-zinc-500 rounded">未使用</span>;
+      return <span className="text-[10px] px-1.5 py-0.5 bg-zinc-800 text-zinc-500 rounded">{t('assetOverview.unused')}</span>;
     }
     return (
       <div className="flex items-center gap-1 flex-wrap">
         {refs.slice(0, 2).map((ref, idx) => (
-          <Tooltip key={idx} title={ref.firstAppearance ? '首次出现' : '复用'}>
+          <Tooltip key={idx} title={ref.firstAppearance ? t('assetOverview.firstAppearance') : t('assetOverview.reused')}>
             <span className={`text-[10px] px-1.5 py-0.5 rounded ${
               ref.firstAppearance
                 ? 'bg-emerald-900/50 text-emerald-400'
@@ -91,21 +93,21 @@ export const ProjectAssetOverview: React.FC<ProjectAssetOverviewProps> = ({
         <div className="grid grid-cols-3 gap-2">
           <div className="text-center">
             <div className="text-lg font-semibold text-zinc-200">{characters.length}</div>
-            <div className="text-[10px] text-zinc-500">角色</div>
+            <div className="text-[10px] text-zinc-500">{t('assetOverview.characters')}</div>
           </div>
           <div className="text-center">
             <div className="text-lg font-semibold text-zinc-200">{scenes.length}</div>
-            <div className="text-[10px] text-zinc-500">场景</div>
+            <div className="text-[10px] text-zinc-500">{t('assetOverview.scenes')}</div>
           </div>
           <div className="text-center">
             <div className="text-lg font-semibold text-zinc-200">{props.length}</div>
-            <div className="text-[10px] text-zinc-500">道具</div>
+            <div className="text-[10px] text-zinc-500">{t('assetOverview.props')}</div>
           </div>
         </div>
         {orphanedCount > 0 && (
           <div className="mt-2 flex items-center justify-center gap-1 text-[10px] text-orange-400">
             <Link className="w-3 h-3" />
-            {orphanedCount} 个未使用
+            {t('assetOverview.orphanedCount', { count: orphanedCount })}
           </div>
         )}
       </div>
@@ -122,13 +124,13 @@ export const ProjectAssetOverview: React.FC<ProjectAssetOverviewProps> = ({
             label: (
               <span className="flex items-center gap-1 text-xs">
                 <User className="w-3 h-3" />
-                角色
+                {t('assetOverview.tabCharacters')}
               </span>
             ),
             children: (
               <div className="h-full overflow-y-auto p-2">
                 {characters.length === 0 ? (
-                  <Empty description="暂无角色" className="py-6" imageStyle={{ height: 40 }} />
+                  <Empty description={t('assetOverview.emptyCharacters')} className="py-6" imageStyle={{ height: 40 }} />
                 ) : (
                   <div className="flex flex-col gap-1">
                     {characters.map((char) => (
@@ -160,13 +162,13 @@ export const ProjectAssetOverview: React.FC<ProjectAssetOverviewProps> = ({
             label: (
               <span className="flex items-center gap-1 text-xs">
                 <MapPin className="w-3 h-3" />
-                场景
+                {t('assetOverview.tabScenes')}
               </span>
             ),
             children: (
               <div className="h-full overflow-y-auto p-2">
                 {scenes.length === 0 ? (
-                  <Empty description="暂无场景" className="py-6" imageStyle={{ height: 40 }} />
+                  <Empty description={t('assetOverview.emptyScenes')} className="py-6" imageStyle={{ height: 40 }} />
                 ) : (
                   <div className="flex flex-col gap-1">
                     {scenes.map((scene) => (
@@ -194,13 +196,13 @@ export const ProjectAssetOverview: React.FC<ProjectAssetOverviewProps> = ({
             label: (
               <span className="flex items-center gap-1 text-xs">
                 <Box className="w-3 h-3" />
-                道具
+                {t('assetOverview.tabProps')}
               </span>
             ),
             children: (
               <div className="h-full overflow-y-auto p-2">
                 {props.length === 0 ? (
-                  <Empty description="暂无道具" className="py-6" imageStyle={{ height: 40 }} />
+                  <Empty description={t('assetOverview.emptyProps')} className="py-6" imageStyle={{ height: 40 }} />
                 ) : (
                   <div className="flex flex-col gap-1">
                     {props.map((prop) => (

@@ -3,6 +3,7 @@
  * 左侧列表 + 右侧详情面板布局
  */
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { App, Spin, Button, Space, Switch, Tooltip } from 'antd';
 import {
   ArrowRightOutlined,
@@ -26,6 +27,7 @@ import { CharacterDetailPanel } from './CharacterDetailPanel';
 import { SceneDetailPanel } from './SceneDetailPanel';
 import { PropDetailPanel } from './PropDetailPanel';
 import './AssetManager.css';
+import { toUserMessage } from '../../utils/errorMessages';
 
 interface AssetManagerPanelProps {
   projectId: string;
@@ -52,6 +54,7 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
   llmConfigId,
   onNext,
 }) => {
+  const { t } = useTranslation('asset');
   const { message } = App.useApp();
 
   // 资产数据
@@ -152,7 +155,7 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
     await saveCharacters(projectId, updatedList);
     setCharacters(updatedList);
     if (selectedId === id) setSelectedId(null);
-    message.success('角色已删除');
+    message.success(t('manager.characterDeleted'));
   }, [characters, projectId, selectedId, message]);
 
   const handleSceneDelete = useCallback(async (id: string) => {
@@ -160,7 +163,7 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
     await saveScenes(projectId, updatedList);
     setScenes(updatedList);
     if (selectedId === id) setSelectedId(null);
-    message.success('场景已删除');
+    message.success(t('manager.sceneDeleted'));
   }, [scenes, projectId, selectedId, message]);
 
   const handlePropDelete = useCallback(async (id: string) => {
@@ -168,7 +171,7 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
     await saveProps(projectId, updatedList);
     setProps(updatedList);
     if (selectedId === id) setSelectedId(null);
-    message.success('道具已删除');
+    message.success(t('manager.propDeleted'));
   }, [props, projectId, selectedId, message]);
 
   // 新建资产回调
@@ -199,7 +202,7 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
   // 下一步
   const handleNextAndGenerateShots = async () => {
     if (!episodeId || !script) {
-      message.warning('缺少剧集或剧本信息，跳过分镜生成');
+      message.warning(t('manager.warnMissingEpisodeInfo'));
       onNext();
       return;
     }
@@ -209,14 +212,14 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
       await startShotAnalysis(
         projectId,
         episodeId,
-        episodeName || `剧集 ${episodeId}`,
+        episodeName || t('manager.episodeFallback', { id: episodeId }),
         script,
         llmConfigId
       );
-      message.info('AI 分镜生成任务已启动');
+      message.info(t('manager.infoShotsStarted'));
       onNext();
     } catch (err: any) {
-      message.error(err.message || '启动分镜生成失败');
+      message.error(toUserMessage(err) || t('manager.errorStartShots'));
     } finally {
       setIsGeneratingShots(false);
     }
@@ -251,7 +254,7 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
           <div className="assetListFilter">
             <Space size="small">
               <FilterOutlined />
-              <span>仅当前剧集</span>
+              <span>{t('manager.filterCurrentEpisode')}</span>
               <Switch
                 size="small"
                 checked={showCurrentEpisodeOnly}
@@ -305,7 +308,7 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
         )}
         {!selectedId && (
           <div className="assetDetailEmpty">
-            <span>选择一个资产查看详情</span>
+            <span>{t('manager.selectToView')}</span>
           </div>
         )}
       </div>
@@ -313,8 +316,8 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
       {/* 底部操作栏 */}
       <div className="assetFooter">
         <Space>
-          <Tooltip title="批量生成素材">
-            <Button icon={<ThunderboltOutlined />}>批量生成</Button>
+          <Tooltip title={t('manager.batchGenerateTooltip')}>
+            <Button icon={<ThunderboltOutlined />}>{t('manager.batchGenerate')}</Button>
           </Tooltip>
         </Space>
         <Button
@@ -324,7 +327,7 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
           onClick={handleNextAndGenerateShots}
           loading={isGeneratingShots}
         >
-          {isGeneratingShots ? 'AI 分镜生成中...' : '下一步：生成 AI 分镜'}
+          {isGeneratingShots ? t('manager.generatingShotsLoading') : t('manager.nextGenerateShots')}
         </Button>
       </div>
     </div>

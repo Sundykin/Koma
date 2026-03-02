@@ -1,0 +1,11 @@
+{
+  "projects": "项目",
+  "aiAssistant": "AI 助手",
+  "settings": "设置",
+  "mainNavAriaLabel": "主导航",
+  "home": "首页",
+  "overview": "概览",
+  "episodeBreadcrumb": "第 {{number}} 集",
+  "narrationBadge": "旁白解说",
+  "globalSettings": "全局设置"
+}

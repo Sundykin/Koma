@@ -16,6 +16,7 @@ import {
   App,
 } from 'antd';
 import { VideoCameraOutlined } from '@ant-design/icons';
+import { toUserMessage } from '../../utils/errorMessages';
 
 const { TextArea } = Input;
 const { Text } = Typography;
@@ -70,7 +71,7 @@ export const VideoRemixModal: React.FC<RemixModalProps> = ({
       onCancel();
     } catch (err: any) {
       if (err.errorFields) return;
-      message.error(`混音失败: ${err.message}`);
+      message.error(`混音失败: ${toUserMessage(err)}`);
     } finally {
       setSubmitting(false);
       setProgress(0);

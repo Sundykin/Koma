@@ -34,6 +34,7 @@ import {
 import { electronService } from '../../services/electronService';
 import { ScriptEditor } from '../../editor';
 import type { MentionItem } from '../../editor';
+import { toUserMessage } from '../../utils/errorMessages';
 
 const { TextArea } = Input;
 const { Text, Title } = Typography;
@@ -303,7 +304,7 @@ export const ScriptWorkshop: React.FC<ScriptWorkshopProps> = ({
         message.success('剧本随机生成成功！');
       }
     } catch (err: any) {
-      message.error(`生成失败: ${err.message}`);
+      message.error(`生成失败: ${toUserMessage(err)}`);
     } finally {
       setRandomGenerating(false);
     }

@@ -3,6 +3,7 @@
  * 三栏式工作台布局：左侧剧集导航(360px) | 中间剧本编辑区 | 右侧资产面板(340px)
  */
 import React, { useState, useCallback, useRef, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Input, Tag, App, Modal, Select, Tooltip, Button, Progress } from 'antd';
 import { ThunderboltOutlined, RocketOutlined } from '@ant-design/icons';
 import {
@@ -19,6 +20,7 @@ import { loadSettings, getChannelsByCapability } from '../../store/globalStore';
 import { THEME_PRESETS } from '../../config/themePresets';
 import { ScriptEditor } from '../../editor';
 import { AutoGenerateWorkflow, type WorkflowProgress } from '../../workflow/autoGenerateWorkflow';
+import { toUserMessage } from '../../utils/errorMessages';
 
 // 统一的配置选项类型
 interface ConfigOption {
@@ -38,6 +40,7 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
   onEnterEpisode,
   onProjectUpdate,
 }) => {
+  const { t } = useTranslation('project');
   const { message } = App.useApp();
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleValue, setTitleValue] = useState(project.title);
@@ -115,13 +118,13 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
     if (!selectedEpisode) return;
 
     if (!selectedEpisode.scriptText?.trim()) {
-      message.warning('请先编写剧本再开始制作');
+      message.warning(t('overview.noScriptWarning'));
       return;
     }
 
     const shots = await loadEpisodeShots(project.id, selectedEpisode.id);
     if (shots.length === 0) {
-      message.warning('请先完成剧本解析并生成分镜');
+      message.warning(t('overview.noShotsWarning'));
       return;
     }
 
@@ -143,10 +146,10 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
           projectMeta.title = titleValue.trim();
           await saveProject(projectMeta);
           onProjectUpdate({ title: titleValue.trim() });
-          message.success('项目名称已更新');
+          message.success(t('overview.titleUpdated'));
         }
       } catch (err: any) {
-        message.error(err.message);
+        message.error(toUserMessage(err));
       }
     }
     setEditingTitle(false);
@@ -159,7 +162,7 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
     if (episodes.length > 0) {
       setSelectedEpisode(episodes[0]);
     }
-    message.success(`成功创建 ${episodes.length} 个剧集`);
+    message.success(t('overview.splitSuccess', { count: episodes.length }));
   }, [message]);
 
   const openScriptImport = () => {
@@ -169,7 +172,7 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
 
   const handleAutoGenerate = useCallback(() => {
     if (!selectedEpisode) {
-      message.warning('请先选择一个剧集');
+      message.warning(t('overview.noEpisodeWarning'));
       return;
     }
     const workflow = new AutoGenerateWorkflow({
@@ -189,7 +192,7 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
     autoGenRef.current = workflow;
     workflow.execute().then((success) => {
       if (success) {
-        message.success('一键成片完成');
+        message.success(t('overview.autoGenerateSuccess'));
       }
       autoGenRef.current = null;
     });
@@ -216,7 +219,7 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
         onProjectUpdate({ [key]: value });
       }
     } catch (err: any) {
-      message.error(`更新配置失败: ${err.message}`);
+      message.error(t('overview.configUpdateError', { error: toUserMessage(err) }));
     }
   }, [project.id, onProjectUpdate, message]);
 
@@ -251,19 +254,19 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
             </div>
           )}
           <Tag className="!m-0 !text-xs !bg-emerald-900/30 !text-emerald-400 !border-emerald-800/50">
-            {project.genre || '未分类'}
+            {project.genre || t('genre.unclassified')}
           </Tag>
         </div>
 
         {/* Center: Model Configs */}
         <div className="flex items-center gap-2">
-          <Tooltip title="LLM 大语言模型">
+          <Tooltip title={t('overview.tooltipLLM')}>
             <div className="flex items-center gap-1">
               <Brain className="w-3.5 h-3.5 text-blue-400" />
               <Select
                 value={project.llmConfigId}
                 onChange={(v) => handleConfigChange('llmConfigId', v)}
-                placeholder="默认"
+                placeholder={t('overview.defaultPlaceholder')}
                 allowClear
                 size="small"
                 className="!w-28"
@@ -272,13 +275,13 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
               />
             </div>
           </Tooltip>
-          <Tooltip title="文生图 TTI">
+          <Tooltip title={t('overview.tooltipTTI')}>
             <div className="flex items-center gap-1">
               <Image className="w-3.5 h-3.5 text-purple-400" />
               <Select
                 value={project.ttiConfigId}
                 onChange={(v) => handleConfigChange('ttiConfigId', v)}
-                placeholder="默认"
+                placeholder={t('overview.defaultPlaceholder')}
                 allowClear
                 size="small"
                 className="!w-28"
@@ -287,13 +290,13 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
               />
             </div>
           </Tooltip>
-          <Tooltip title="图生视频 ITV">
+          <Tooltip title={t('overview.tooltipITV')}>
             <div className="flex items-center gap-1">
               <Video className="w-3.5 h-3.5 text-orange-400" />
               <Select
                 value={project.itvConfigId}
                 onChange={(v) => handleConfigChange('itvConfigId', v)}
-                placeholder="默认"
+                placeholder={t('overview.defaultPlaceholder')}
                 allowClear
                 size="small"
                 className="!w-28"
@@ -302,13 +305,13 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
               />
             </div>
           </Tooltip>
-          <Tooltip title="语音合成 TTS">
+          <Tooltip title={t('overview.tooltipTTS')}>
             <div className="flex items-center gap-1">
               <Volume2 className="w-3.5 h-3.5 text-emerald-400" />
               <Select
                 value={project.ttsConfigId}
                 onChange={(v) => handleConfigChange('ttsConfigId', v)}
-                placeholder="默认"
+                placeholder={t('overview.defaultPlaceholder')}
                 allowClear
                 size="small"
                 className="!w-28"
@@ -329,14 +332,14 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
             disabled={!selectedEpisode}
             size="small"
           >
-            一键成片
+            {t('overview.autoGenerateBtn')}
           </Button>
           <button
             onClick={openScriptImport}
             className="flex items-center gap-1.5 px-2.5 py-1 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded text-xs text-zinc-300 transition-colors"
           >
             <Upload className="w-3.5 h-3.5" />
-            导入剧本
+            {t('overview.importScriptBtn')}
           </button>
         </div>
       </div>
@@ -349,7 +352,7 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
         }`}>
           {/* Panel Header - 48px */}
           <div className="h-12 px-4 flex items-center justify-between border-b border-zinc-800/80">
-            <span className="text-sm font-medium text-zinc-400">剧集管理</span>
+            <span className="text-sm font-medium text-zinc-400">{t('overview.episodePanelTitle')}</span>
             <button
               onClick={() => setLeftCollapsed(true)}
               className="p-1.5 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 rounded transition-colors"
@@ -411,7 +414,7 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
           <div className="h-12 px-4 flex items-center justify-between border-b border-zinc-800/80">
             <span className="text-sm font-medium text-zinc-400 flex items-center gap-2">
               <Package className="w-4 h-4" />
-              项目资产
+              {t('overview.assetPanelTitle')}
             </span>
             <button
               onClick={() => setRightCollapsed(true)}
@@ -432,13 +435,13 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
         <div className="absolute bottom-4 right-4 w-80 bg-zinc-900 border border-zinc-700 rounded-lg p-4 shadow-xl z-50">
           <div className="flex items-center justify-between mb-2">
             <span className="text-sm font-medium text-zinc-200">
-              {autoGenProgress.completed ? '✅ 成片完成' : '🚀 一键成片'}
+              {autoGenProgress.completed ? t('overview.progressCompleted') : t('overview.progressRunning')}
             </span>
             <button
               onClick={autoGenProgress.completed ? () => setAutoGenProgress(null) : handleCancelAutoGenerate}
               className="text-xs text-zinc-500 hover:text-zinc-300"
             >
-              {autoGenProgress.completed ? '关闭' : '取消'}
+              {autoGenProgress.completed ? t('common:close') : t('common:cancel')}
             </button>
           </div>
           <Progress
@@ -456,24 +459,24 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
 
       {/* Script Import Modal */}
       <Modal
-        title="导入剧本并自动分割剧集"
+        title={t('overview.importModalTitle')}
         open={scriptImportVisible}
         onCancel={() => setScriptImportVisible(false)}
         onOk={confirmScriptImport}
-        okText="AI 自动分集"
+        okText={t('overview.aiSplitOkText')}
         okButtonProps={{ disabled: !tempScript.trim(), icon: <ThunderboltOutlined /> }}
-        cancelText="取消"
+        cancelText={t('common:cancel')}
         width={900}
         centered
         maskClosable={false}
       >
         <p className="text-xs text-zinc-500 mb-3">
-          输入完整剧本后点击"AI 自动分集"，系统将智能拆分为多个剧集
+          {t('overview.importModalDesc')}
         </p>
         <ScriptEditor
           value={tempScript}
           onChange={setTempScript}
-          placeholder={`在此输入或粘贴完整剧本内容...\n\n提示：\n- 使用 ## 标记场景\n- 使用 **角色名**：标记对话\n- 文本请用"第n章/集"分割，系统将自动识别剧集`}
+          placeholder={t('overview.importEditorPlaceholder')}
           minHeight="400px"
           maxHeight="500px"
         />

@@ -1,0 +1,50 @@
+{
+  "productName": "Koma Studio",
+  "appId": "com.koma.studio",
+  "copyright": "© 2025 Koma Studio",
+  "directories": {
+    "output": "out"
+  },
+  "asar": true,
+  "files": [
+    "**/*",
+    "!cmd/",
+    "!data/",
+    "!electron/",
+    "!frontend/",
+    "!logs/",
+    "!out/",
+    "!openspec/",
+    "!docs/"
+  ],
+  "extraResources": {
+    "from": "build/extraResources/",
+    "to": "extraResources"
+  },
+  "nsis": {
+    "oneClick": false,
+    "allowElevation": true,
+    "allowToChangeInstallationDirectory": true,
+    "installerIcon": "build/icons/icon.ico",
+    "uninstallerIcon": "build/icons/icon.ico",
+    "installerHeaderIcon": "build/icons/icon.ico",
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true,
+    "shortcutName": "Koma Studio"
+  },
+  "publish": [
+    {
+      "provider": "generic",
+      "url": ""
+    }
+  ],
+  "win": {
+    "icon": "build/icons/icon.ico",
+    "artifactName": "${productName}-${os}-${version}-${arch}.${ext}",
+    "target": [
+      {
+        "target": "nsis"
+      }
+    ]
+  }
+}

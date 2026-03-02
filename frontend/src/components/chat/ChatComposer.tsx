@@ -3,6 +3,7 @@
  * 支持文本输入、附件上传、快捷键
  */
 import React, { useState, useRef, useCallback, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Button, Tooltip, Upload, message } from 'antd';
 import {
   SendOutlined,
@@ -14,7 +15,6 @@ import {
   FileOutlined,
 } from '@ant-design/icons';
 import type { UploadFile } from 'antd/es/upload/interface';
-import styles from './ChatComposer.module.css';
 
 // 支持的文件类型
 const ACCEPTED_TYPES = {
@@ -49,9 +49,11 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
   isLoading = false,
   isStreaming = false,
   disabled = false,
-  placeholder = '输入消息... (Enter 发送, Shift+Enter 换行)',
+  placeholder,
   maxRows = 6,
 }) => {
+  const { t } = useTranslation('chat');
+  const effectivePlaceholder = placeholder ?? t('composer.placeholder');
   const [text, setText] = useState('');
   const [attachments, setAttachments] = useState<AttachmentFile[]>([]);
   const [isDragging, setIsDragging] = useState(false);
@@ -83,7 +85,7 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
 
     for (const file of files) {
       if (file.size > MAX_FILE_SIZE) {
-        message.warning(`文件 ${file.name} 超过 10MB 限制`);
+        message.warning(t('composer.warnFileTooLarge', { name: file.name }));
         continue;
       }
 
@@ -200,36 +202,36 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
   return (
     <div
       ref={composerRef}
-      className={`${styles.composer} ${isDragging ? styles.dragging : ''}`}
+      className={`relative bg-[#27272a] border border-[#3f3f46] rounded-2xl transition-[border-color,box-shadow] duration-200 focus-within:border-emerald-500 focus-within:shadow-[0_0_0_2px_rgba(16,185,129,0.1)] ${isDragging ? 'border-emerald-500 border-dashed' : ''}`}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
       {/* 拖拽提示 */}
       {isDragging && (
-        <div className={styles.dropOverlay}>
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-emerald-500/10 rounded-2xl text-emerald-500 text-sm z-10 pointer-events-none [&_.anticon]:text-2xl">
           <PaperClipOutlined />
-          <span>拖放文件到这里</span>
+          <span>{t('composer.dropFilesHere')}</span>
         </div>
       )}
 
       {/* 附件预览区 */}
       {attachments.length > 0 && (
-        <div className={styles.attachments}>
+        <div className="flex flex-wrap gap-2 pt-3 px-3">
           {attachments.map(attachment => (
-            <div key={attachment.id} className={styles.attachmentItem}>
+            <div key={attachment.id} className="relative flex items-center gap-2 py-1.5 pr-7 pl-2 bg-[#3f3f46] rounded-lg max-w-[200px]">
               {attachment.type === 'image' && attachment.preview ? (
-                <img src={attachment.preview} alt={attachment.file.name} className={styles.attachmentImage} />
+                <img src={attachment.preview} alt={attachment.file.name} className="w-8 h-8 object-cover rounded" />
               ) : (
-                <div className={styles.attachmentFile}>
+                <div className="w-8 h-8 flex items-center justify-center bg-[#52525b] rounded text-[#a1a1aa]">
                   {getAttachmentIcon(attachment.type)}
                 </div>
               )}
-              <span className={styles.attachmentName}>{attachment.file.name}</span>
+              <span className="text-xs text-[#d4d4d8] overflow-hidden text-ellipsis whitespace-nowrap">{attachment.file.name}</span>
               <button
-                className={styles.attachmentRemove}
+                className="absolute top-1 right-1 w-5 h-5 flex items-center justify-center bg-[#52525b] border-none rounded-full text-[#a1a1aa] cursor-pointer transition-[background-color,color] duration-200 hover:bg-red-500 hover:text-white"
                 onClick={() => handleRemoveAttachment(attachment.id)}
-                aria-label={`移除附件: ${attachment.file.name}`}
+                aria-label={t('composer.removeAttachment', { name: attachment.file.name })}
               >
                 <CloseOutlined />
               </button>
@@ -239,7 +241,7 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
       )}
 
       {/* 输入区域 */}
-      <div className={styles.inputRow}>
+      <div className="flex items-center gap-2 py-2 px-3">
         {/* 附件按钮 */}
         <Upload
           accept={ALL_ACCEPTED}
@@ -248,11 +250,11 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
           onChange={handleFileSelect}
           multiple
         >
-          <Tooltip title="添加附件">
+          <Tooltip title={t('composer.addAttachment')}>
             <Button
               type="text"
               icon={<PaperClipOutlined />}
-              className={styles.attachButton}
+              className="shrink-0 !text-[#a1a1aa] hover:!text-emerald-500"
               disabled={disabled}
             />
           </Tooltip>
@@ -265,32 +267,32 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
           onChange={e => setText(e.target.value)}
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}
-          placeholder={placeholder}
+          placeholder={effectivePlaceholder}
           disabled={disabled || isLoading}
-          className={styles.textarea}
+          className="flex-1 min-h-[32px] max-h-36 py-[5px] bg-transparent border-none outline-none resize-none text-sm leading-[22px] text-[#fafafa] font-[inherit] placeholder:text-[#71717a] disabled:opacity-50"
           rows={1}
         />
 
         {/* 发送/停止按钮 */}
         {isStreaming ? (
-          <Tooltip title="停止生成">
+          <Tooltip title={t('composer.stopGeneration')}>
             <Button
               type="primary"
               danger
               icon={<StopOutlined />}
               onClick={onStop}
-              className={styles.sendButton}
+              className="shrink-0"
             />
           </Tooltip>
         ) : (
-          <Tooltip title="发送 (Enter)">
+          <Tooltip title={t('composer.send')}>
             <Button
               type="primary"
               icon={<SendOutlined />}
               onClick={handleSend}
               disabled={!canSend}
               loading={isLoading}
-              className={styles.sendButton}
+              className="shrink-0"
             />
           </Tooltip>
         )}

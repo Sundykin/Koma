@@ -5,6 +5,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Button, Spin } from 'antd';
 import { Scissors, Film } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { SimpleEditor } from '../../editor/SimpleEditor';
 import { loadEpisodeShots } from '../../../store/projectStore';
 import type { Shot } from '../../../types';
@@ -29,6 +30,7 @@ const EditStage: React.FC<EditStageProps> = ({
   episode,
   onStageChange,
 }) => {
+  const { t } = useTranslation('stage');
   const [shots, setShots] = useState<Shot[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -54,7 +56,7 @@ const EditStage: React.FC<EditStageProps> = ({
       <div className="flex h-full items-center justify-center text-zinc-500">
         <div className="text-center space-y-3">
           <Scissors className="w-12 h-12 mx-auto opacity-20" />
-          <p>请先选择一个剧集</p>
+          <p>{t('edit.emptyState')}</p>
         </div>
       </div>
     );
@@ -63,7 +65,7 @@ const EditStage: React.FC<EditStageProps> = ({
   if (loading) {
     return (
       <div className="flex h-full items-center justify-center">
-        <Spin size="large" tip="加载剪辑数据..."><div className="p-12" /></Spin>
+        <Spin size="large" tip={t('edit.loadingTip')}><div className="p-12" /></Spin>
       </div>
     );
   }
@@ -73,9 +75,9 @@ const EditStage: React.FC<EditStageProps> = ({
       <div className="flex h-full items-center justify-center text-zinc-500">
         <div className="text-center space-y-4">
           <Scissors className="w-16 h-16 mx-auto opacity-10" />
-          <p>需完成分镜和视频生成后才能进入剪辑</p>
+          <p>{t('edit.noShotsMsg')}</p>
           <Button type="link" onClick={() => onStageChange('video')}>
-            返回视频阶段
+            {t('edit.backToVideo')}
           </Button>
         </div>
       </div>

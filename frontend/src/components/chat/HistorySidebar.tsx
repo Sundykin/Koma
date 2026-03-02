@@ -2,10 +2,10 @@
  * 历史对话侧边栏
  */
 import React, { useState, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Button, Empty, Tooltip, Popconfirm } from 'antd';
 import { PlusOutlined, DeleteOutlined, MessageOutlined } from '@ant-design/icons';
 import { useChatHistoryStore, type SessionMeta } from '../../store/chatHistoryStore';
-import styles from './HistorySidebar.module.css';
 
 interface HistorySidebarProps {
   currentSessionId?: string | null;
@@ -14,17 +14,17 @@ interface HistorySidebarProps {
 }
 
 // 格式化时间
-function formatTime(timestamp: number): string {
+function formatTime(timestamp: number, t: (key: string, options?: any) => string): string {
   const now = Date.now();
   const diff = now - timestamp;
   const day = 24 * 60 * 60 * 1000;
 
   if (diff < day) {
-    return '今天';
+    return t('history.today');
   } else if (diff < 2 * day) {
-    return '昨天';
+    return t('history.yesterday');
   } else if (diff < 7 * day) {
-    return `${Math.floor(diff / day)} 天前`;
+    return t('history.daysAgo', { count: Math.floor(diff / day) });
   } else {
     const date = new Date(timestamp);
     return `${date.getMonth() + 1}/${date.getDate()}`;
@@ -32,7 +32,7 @@ function formatTime(timestamp: number): string {
 }
 
 // 按时间分组
-function groupSessions(sessions: SessionMeta[]): { label: string; sessions: SessionMeta[] }[] {
+function groupSessions(sessions: SessionMeta[], t: (key: string) => string): { label: string; sessions: SessionMeta[] }[] {
   const now = Date.now();
   const day = 24 * 60 * 60 * 1000;
 
@@ -55,10 +55,10 @@ function groupSessions(sessions: SessionMeta[]): { label: string; sessions: Sess
   }
 
   const groups: { label: string; sessions: SessionMeta[] }[] = [];
-  if (today.length > 0) groups.push({ label: '今天', sessions: today });
-  if (yesterday.length > 0) groups.push({ label: '昨天', sessions: yesterday });
-  if (week.length > 0) groups.push({ label: '最近 7 天', sessions: week });
-  if (older.length > 0) groups.push({ label: '更早', sessions: older });
+  if (today.length > 0) groups.push({ label: t('history.today'), sessions: today });
+  if (yesterday.length > 0) groups.push({ label: t('history.yesterday'), sessions: yesterday });
+  if (week.length > 0) groups.push({ label: t('history.last7Days'), sessions: week });
+  if (older.length > 0) groups.push({ label: t('history.older'), sessions: older });
 
   return groups;
 }
@@ -68,6 +68,7 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
   onSelectSession,
   onNewChat,
 }) => {
+  const { t } = useTranslation('chat');
   const { sessions, currentSessionId: storeCurrentSessionId, loadSessions, deleteSession, setCurrentSession } = useChatHistoryStore();
   const [groups, setGroups] = useState<{ label: string; sessions: SessionMeta[] }[]>([]);
 
@@ -81,8 +82,8 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
 
   // 分组会话
   useEffect(() => {
-    setGroups(groupSessions(sessions));
-  }, [sessions]);
+    setGroups(groupSessions(sessions, t));
+  }, [sessions, t]);
 
   // 选择会话
   const handleSelect = useCallback((session: SessionMeta) => {
@@ -100,53 +101,57 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
   const isNewChatActive = !currentSessionId || !sessions.some(s => s.id === currentSessionId);
 
   return (
-    <div className={styles.sidebar}>
+    <div className="flex flex-col h-full bg-[#09090b]">
       {/* 新建对话按钮 */}
-      <div className={styles.header}>
+      <div className="p-4 border-b border-[#27272a]">
         <Button
           type={isNewChatActive ? 'primary' : 'default'}
-          className={isNewChatActive ? styles.activeNewChat : ''}
+          className={isNewChatActive ? '!bg-emerald-500 !border-emerald-500' : ''}
           icon={<PlusOutlined />}
           onClick={onNewChat}
           block
         >
-          新建对话
+          {t('history.newChat')}
         </Button>
       </div>
 
       {/* 会话列表 */}
-      <div className={styles.list}>
+      <div className="flex-1 overflow-y-auto p-2">
         {groups.length === 0 ? (
           <Empty
             image={Empty.PRESENTED_IMAGE_SIMPLE}
-            description="暂无历史对话"
-            className={styles.empty}
+            description={t('history.empty')}
+            className="mt-10 [&_.ant-empty-description]:text-[#71717a]"
           />
         ) : (
           groups.map(group => (
-            <div key={group.label} className={styles.group}>
-              <div className={styles.groupLabel}>{group.label}</div>
+            <div key={group.label} className="mb-4">
+              <div className="py-2 px-3 text-xs font-medium text-[#71717a] uppercase">{group.label}</div>
               {group.sessions.map(session => (
                 <div
                   key={session.id}
-                  className={`${styles.sessionItem} ${
-                    session.id === currentSessionId ? styles.active : ''
+                  className={`group flex items-center gap-2.5 py-2.5 px-3 rounded-lg cursor-pointer transition-colors duration-200 hover:bg-[#27272a] ${
+                    session.id === currentSessionId ? 'bg-[#27272a]' : ''
                   }`}
                   onClick={() => handleSelect(session)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleSelect(session); } }}
+                  aria-label={session.title}
                 >
-                  <MessageOutlined className={styles.sessionIcon} />
-                  <span className={styles.sessionTitle}>{session.title}</span>
+                  <MessageOutlined className="shrink-0 text-[#71717a] text-sm" />
+                  <span className="flex-1 text-sm text-[#d4d4d8] overflow-hidden text-ellipsis whitespace-nowrap">{session.title}</span>
                   <Popconfirm
-                    title="确定删除此对话？"
+                    title={t('history.confirmDelete')}
                     onConfirm={(e) => handleDelete(e as any, session.id)}
-                    okText="删除"
-                    cancelText="取消"
+                    okText={t('common:delete')}
+                    cancelText={t('common:cancel')}
                   >
-                    <Tooltip title="删除">
+                    <Tooltip title={t('history.deleteTooltip')}>
                       <button
-                        className={styles.deleteButton}
+                        className="shrink-0 w-6 h-6 flex items-center justify-center bg-transparent border-none rounded text-[#71717a] cursor-pointer opacity-0 transition-[opacity,background-color,color] duration-200 group-hover:opacity-100 hover:bg-[#3f3f46] hover:text-red-500"
                         onClick={(e) => e.stopPropagation()}
-                        aria-label={`删除对话: ${session.title}`}
+                        aria-label={t('history.deleteAriaLabel', { title: session.title })}
                       >
                         <DeleteOutlined />
                       </button>

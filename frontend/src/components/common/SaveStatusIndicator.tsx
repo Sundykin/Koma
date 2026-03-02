@@ -2,6 +2,7 @@
  * 保存状态指示器
  */
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { useSaveStatus } from '../../hooks/useTaskNotifications';
 import { saveProjectNow } from '../../store/autoSaveService';
 
@@ -14,6 +15,7 @@ export const SaveStatusIndicator: React.FC<SaveStatusIndicatorProps> = ({
   projectId,
   className = '',
 }) => {
+  const { t } = useTranslation('common');
   const saveState = useSaveStatus(projectId);
 
   const handleClick = async () => {
@@ -40,13 +42,13 @@ export const SaveStatusIndicator: React.FC<SaveStatusIndicatorProps> = ({
   const getStatusText = () => {
     switch (saveState.status) {
       case 'saved':
-        return '已保存';
+        return t('saveStatus.saved');
       case 'saving':
-        return '保存中...';
+        return t('saveStatus.saving');
       case 'dirty':
-        return '未保存';
+        return t('saveStatus.unsaved');
       case 'error':
-        return saveState.error || '保存失败';
+        return saveState.error || t('saveStatus.failed');
       default:
         return '';
     }
@@ -89,7 +91,7 @@ export const SaveStatusIndicator: React.FC<SaveStatusIndicatorProps> = ({
       className={className}
       style={containerStyle}
       onClick={handleClick}
-      title={saveState.status === 'dirty' ? '点击保存 (Ctrl+S)' : getStatusText()}
+      title={saveState.status === 'dirty' ? t('saveStatus.clickToSave') : getStatusText()}
     >
       <span style={iconStyle}>{getStatusIcon()}</span>
       <span>{getStatusText()}</span>
