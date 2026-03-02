@@ -1,15 +1,16 @@
 /**
- * Episode Manager 组件
- * Episode 选择与管理
+ * Episode Manager 兼容适配层
+ * 复用 components/project/EpisodeManager 主实现
  */
 
-import React, { useState } from 'react';
-import type { Episode } from '../types';
-import './EpisodeManager.css';
+import React from 'react';
+import { EpisodeManager as ProjectEpisodeManager } from '../../../components/project/EpisodeManager';
+import type { Episode as ProjectEpisode } from '../../../types';
+import type { Episode as NovelEpisode } from '../types';
 
 interface EpisodeManagerProps {
   projectId: string;
-  episodes: Episode[];
+  episodes: NovelEpisode[];
   currentEpisodeId: string | null;
   onEpisodeSelect: (episodeId: string) => void;
   onEpisodeCreate: (name: string) => Promise<void>;
@@ -17,7 +18,19 @@ interface EpisodeManagerProps {
   onEpisodeDelete: (episodeId: string) => Promise<void>;
 }
 
+const toProjectEpisode = (episode: NovelEpisode, index: number): ProjectEpisode => ({
+  id: episode.id,
+  projectId: episode.projectId,
+  number: index + 1,
+  title: episode.name,
+  scriptText: episode.novelText,
+  status: episode.novelText?.trim() ? 'script' : 'draft',
+  createdAt: episode.createdAt,
+  updatedAt: episode.updatedAt,
+});
+
 export function EpisodeManager({
+  projectId,
   episodes,
   currentEpisodeId,
   onEpisodeSelect,
@@ -25,168 +38,29 @@ export function EpisodeManager({
   onEpisodeRename,
   onEpisodeDelete,
 }: EpisodeManagerProps) {
-  const [isCreating, setIsCreating] = useState(false);
-  const [newEpisodeName, setNewEpisodeName] = useState('');
-  const [isRenaming, setIsRenaming] = useState<string | null>(null);
-  const [renameValue, setRenameValue] = useState('');
-  const [confirmDeleteEpisodeId, setConfirmDeleteEpisodeId] = useState<string | null>(null);
-
-  const handleCreate = async () => {
-    if (!newEpisodeName.trim()) return;
-
-    try {
-      await onEpisodeCreate(newEpisodeName.trim());
-      setNewEpisodeName('');
-      setIsCreating(false);
-    } catch (error) {
-      console.error('Failed to create episode:', error);
-    }
-  };
-
-  const handleRename = async (episodeId: string) => {
-    if (!renameValue.trim()) return;
-
-    try {
-      await onEpisodeRename(episodeId, renameValue.trim());
-      setIsRenaming(null);
-      setRenameValue('');
-    } catch (error) {
-      console.error('Failed to rename episode:', error);
-    }
-  };
-
-  const handleDelete = async (episodeId: string) => {
-    try {
-      await onEpisodeDelete(episodeId);
-      setConfirmDeleteEpisodeId(null);
-    } catch (error) {
-      console.error('Failed to delete episode:', error);
-    }
-  };
-
-  const currentEpisode = episodes.find(ep => ep.id === currentEpisodeId);
+  const mappedEpisodes = episodes.map(toProjectEpisode);
 
   return (
-    <div className="episode-manager">
-      <div className="episode-selector">
-        <label>Episode:</label>
-        <select
-          value={currentEpisodeId || ''}
-          onChange={(e) => onEpisodeSelect(e.target.value)}
-          disabled={episodes.length === 0}
-        >
-          {episodes.length === 0 && (
-            <option value="">无 Episode</option>
-          )}
-          {episodes.map((episode) => (
-            <option key={episode.id} value={episode.id}>
-              {episode.name}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      <div className="episode-actions">
-        {!isCreating ? (
-          <button
-            className="btn-create"
-            onClick={() => setIsCreating(true)}
-          >
-            + 新建 Episode
-          </button>
-        ) : (
-          <div className="episode-create-form">
-            <input
-              type="text"
-              value={newEpisodeName}
-              onChange={(e) => setNewEpisodeName(e.target.value)}
-              placeholder="Episode 名称"
-              autoFocus
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') handleCreate();
-                if (e.key === 'Escape') {
-                  setIsCreating(false);
-                  setNewEpisodeName('');
-                }
-              }}
-            />
-            <button onClick={handleCreate}>创建</button>
-            <button onClick={() => {
-              setIsCreating(false);
-              setNewEpisodeName('');
-            }}>
-              取消
-            </button>
-          </div>
-        )}
-
-        {currentEpisode && (
-          <>
-            {isRenaming === currentEpisode.id ? (
-              <div className="episode-rename-form">
-                <input
-                  type="text"
-                  value={renameValue}
-                  onChange={(e) => setRenameValue(e.target.value)}
-                  placeholder="新名称"
-                  autoFocus
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') handleRename(currentEpisode.id);
-                    if (e.key === 'Escape') {
-                      setIsRenaming(null);
-                      setRenameValue('');
-                    }
-                  }}
-                />
-                <button onClick={() => handleRename(currentEpisode.id)}>确定</button>
-                <button onClick={() => {
-                  setIsRenaming(null);
-                  setRenameValue('');
-                }}>
-                  取消
-                </button>
-              </div>
-            ) : (
-              <>
-                <button
-                  className="btn-rename"
-                  onClick={() => {
-                    setIsRenaming(currentEpisode.id);
-                    setRenameValue(currentEpisode.name);
-                  }}
-                >
-                  重命名
-                </button>
-                {confirmDeleteEpisodeId === currentEpisode.id ? (
-                  <>
-                    <button
-                      className="btn-delete"
-                      onClick={() => handleDelete(currentEpisode.id)}
-                      data-testid={`confirm-delete-episode-${currentEpisode.id}`}
-                    >
-                      确认删除
-                    </button>
-                    <button
-                      onClick={() => setConfirmDeleteEpisodeId(null)}
-                      data-testid={`cancel-delete-episode-${currentEpisode.id}`}
-                    >
-                      取消
-                    </button>
-                  </>
-                ) : (
-                  <button
-                    className="btn-delete"
-                    onClick={() => setConfirmDeleteEpisodeId(currentEpisode.id)}
-                    data-testid={`delete-episode-${currentEpisode.id}`}
-                  >
-                    删除
-                  </button>
-                )}
-              </>
-            )}
-          </>
-        )}
-      </div>
-    </div>
+    <ProjectEpisodeManager
+      projectId={projectId}
+      episodes={mappedEpisodes}
+      selectedEpisodeId={currentEpisodeId || undefined}
+      loading={false}
+      compactMode
+      emptyDescription="无 Episode"
+      createButtonText="+ 新建 Episode"
+      createWithInput
+      showScriptEditor={false}
+      onEpisodeSelect={(episode) => onEpisodeSelect(episode.id)}
+      onCreateEpisode={async ({ title }) => {
+        await onEpisodeCreate(title);
+      }}
+      onUpdateEpisode={async (episodeId, updates) => {
+        if (updates.title !== undefined) {
+          await onEpisodeRename(episodeId, updates.title);
+        }
+      }}
+      onDeleteEpisode={onEpisodeDelete}
+    />
   );
 }

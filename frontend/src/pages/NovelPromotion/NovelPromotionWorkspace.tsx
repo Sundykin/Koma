@@ -62,12 +62,18 @@ export function NovelPromotionWorkspace({ projectId }: NovelPromotionWorkspacePr
       novelText: episode?.novelText,
       clips,
       storyboards,
+      videos: storyboards.flatMap(sb => sb.panels).filter(panel => panel.videoStatus === 'completed' || !!panel.videoUrl),
     },
     runtimeSignals: {
       runningStages,
       errorStages,
     },
   });
+  // 切换 Episode 时清理运行/错误态，避免残留
+  useEffect(() => {
+    setRunningStages([]);
+    setErrorStages([]);
+  }, [currentEpisodeId]);
 
   const markStageRunning = useCallback((stage: Stage) => {
     setRunningStages(prev => prev.includes(stage) ? prev : [...prev, stage]);
@@ -119,9 +125,10 @@ export function NovelPromotionWorkspace({ projectId }: NovelPromotionWorkspacePr
   const handleEpisodeDelete = useCallback(async (episodeId: string) => {
     try {
       await episodeAPI.delete(episodeId);
-      setEpisodes(prev => prev.filter(ep => ep.id !== episodeId));
+      const nextEpisodes = episodes.filter(ep => ep.id !== episodeId);
+      setEpisodes(nextEpisodes);
       if (currentEpisodeId === episodeId) {
-        setCurrentEpisodeId(episodes[0]?.id || null);
+        setCurrentEpisodeId(nextEpisodes[0]?.id || null);
       }
     } catch (err) {
       console.error('Failed to delete episode:', err);
@@ -161,7 +168,8 @@ export function NovelPromotionWorkspace({ projectId }: NovelPromotionWorkspacePr
       });
 
       await new Promise<void>((resolve, reject) => {
-        const unsubscribe = taskQueueService.subscribe(taskId, async (task) => {
+        let unsubscribe = () => {};
+        const subscription = taskQueueService.subscribe(taskId, async (task) => {
           if (task.status === 'completed') {
             unsubscribe();
             await refetch();
@@ -175,6 +183,7 @@ export function NovelPromotionWorkspace({ projectId }: NovelPromotionWorkspacePr
             reject(new Error(task.error || '生成剧本失败'));
           }
         });
+        unsubscribe = subscription;
       });
     } catch (error) {
       markStageError(stage);
@@ -190,37 +199,40 @@ export function NovelPromotionWorkspace({ projectId }: NovelPromotionWorkspacePr
     const stage: Stage = 'storyboard';
     markStageRunning(stage);
 
-    const firstClip = clips[0];
-    const characterDetails = characters
-      .filter(char => firstClip.characters.includes(char.name))
-      .map(char => ({ name: char.name, description: char.description || '' }));
-
     try {
-      const { taskId } = await workflowAPI.scriptToStoryboard({
-        projectId,
-        episodeId: episode.id,
-        clipId: firstClip.id,
-        clipContent: firstClip.content,
-        characters: characterDetails,
-        location: firstClip.location || '',
-      });
+      for (const clip of clips) {
+        const characterDetails = characters
+          .filter(char => clip.characters.includes(char.name))
+          .map(char => ({ name: char.name, description: char.description || '' }));
 
-      await new Promise<void>((resolve, reject) => {
-        const unsubscribe = taskQueueService.subscribe(taskId, async (task) => {
-          if (task.status === 'completed') {
-            unsubscribe();
-            await refetch();
-            clearStageError(stage);
-            clearStageRunning(stage);
-            handleStageChange('storyboard');
-            resolve();
-          } else if (task.status === 'failed') {
-            unsubscribe();
-            markStageError(stage);
-            reject(new Error(task.error || '生成分镜失败'));
-          }
+        const { taskId } = await workflowAPI.scriptToStoryboard({
+          projectId,
+          episodeId: episode.id,
+          clipId: clip.id,
+          clipContent: clip.content,
+          characters: characterDetails,
+          location: clip.location || '',
         });
-      });
+
+        await new Promise<void>((resolve, reject) => {
+          let unsubscribe = () => {};
+          const subscription = taskQueueService.subscribe(taskId, async (task) => {
+            if (task.status === 'completed') {
+              unsubscribe();
+              resolve();
+            } else if (task.status === 'failed') {
+              unsubscribe();
+              reject(new Error(task.error || `Clip(${clip.id}) 生成分镜失败`));
+            }
+          });
+          unsubscribe = subscription;
+        });
+      }
+
+      await refetch();
+      clearStageError(stage);
+      clearStageRunning(stage);
+      handleStageChange('storyboard');
     } catch (error) {
       markStageError(stage);
       throw error;

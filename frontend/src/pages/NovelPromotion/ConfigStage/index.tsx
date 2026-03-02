@@ -3,7 +3,7 @@
  * Story Input 界面 - 小说文本输入与配置
  */
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import type { Episode } from '../types';
 import './ConfigStage.css';
 
@@ -29,6 +29,11 @@ export function ConfigStage({
   const [videoRatio, setVideoRatio] = useState<'16:9' | '9:16'>('16:9');
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setNovelText(episode?.novelText || '');
+    setError(null);
+  }, [episode?.id, episode?.novelText]);
 
   const handleNovelTextChange = useCallback((value: string) => {
     setNovelText(value);

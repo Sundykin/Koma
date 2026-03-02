@@ -107,16 +107,16 @@ describe('App routing', () => {
     mockProjects = [mockProject];
   });
 
-  it('enters novel-promotion after selecting a project', async () => {
+  it('enters overview after selecting a project', async () => {
     render(<App />);
 
     fireEvent.click(screen.getByTestId('select-first-project'));
 
     await waitFor(() => {
-      expect(screen.getByTestId('workspace-ready')).toBeInTheDocument();
+      expect(screen.getByTestId('overview-enter-novel-promotion')).toBeInTheDocument();
     });
 
-    expect(screen.getByTestId('app-main-content')).toHaveAttribute('data-current-view', 'novel-promotion');
+    expect(screen.getByTestId('app-main-content')).toHaveAttribute('data-current-view', 'overview');
   });
 
   it('navigates to overview shell from projects when active project exists', async () => {
@@ -124,7 +124,7 @@ describe('App routing', () => {
 
     fireEvent.click(screen.getByTestId('select-first-project'));
     await waitFor(() => {
-      expect(screen.getByTestId('workspace-ready')).toBeInTheDocument();
+      expect(screen.getByTestId('overview-enter-novel-promotion')).toBeInTheDocument();
     });
 
     fireEvent.click(screen.getByTestId('nav-projects'));
@@ -140,7 +140,7 @@ describe('App routing', () => {
 
     fireEvent.click(screen.getByTestId('select-first-project'));
     await waitFor(() => {
-      expect(screen.getByTestId('workspace-ready')).toBeInTheDocument();
+      expect(screen.getByTestId('overview-enter-novel-promotion')).toBeInTheDocument();
     });
 
     fireEvent.click(screen.getByTestId('nav-projects'));

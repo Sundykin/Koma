@@ -17,6 +17,16 @@ interface EpisodeManagerProps {
   fullScript?: string;
   onEpisodeSelect?: (episode: Episode) => void;
   selectedEpisodeId?: string;
+  episodes?: Episode[];
+  loading?: boolean;
+  onCreateEpisode?: (input: { number: number; title: string; status: Episode['status'] }) => Promise<void>;
+  onUpdateEpisode?: (episodeId: string, updates: Partial<Episode>) => Promise<void>;
+  onDeleteEpisode?: (episodeId: string) => Promise<void>;
+  compactMode?: boolean;
+  emptyDescription?: string;
+  createButtonText?: string;
+  showScriptEditor?: boolean;
+  createWithInput?: boolean;
 }
 
 export interface EpisodeManagerRef {
@@ -36,42 +46,73 @@ export const EpisodeManager = forwardRef<EpisodeManagerRef, EpisodeManagerProps>
   fullScript,
   onEpisodeSelect,
   selectedEpisodeId,
+  episodes: controlledEpisodes,
+  loading: controlledLoading,
+  onCreateEpisode,
+  onUpdateEpisode,
+  onDeleteEpisode,
+  compactMode = false,
+  emptyDescription = '暂无剧集',
+  createButtonText = '添加剧集',
+  showScriptEditor = true,
+  createWithInput = false,
 }, ref) => {
   const { message, modal } = App.useApp();
   const [form] = Form.useForm();
-  const [episodes, setEpisodes] = useState<Episode[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [internalEpisodes, setInternalEpisodes] = useState<Episode[]>([]);
+  const [internalLoading, setInternalLoading] = useState(true);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editingEpisode, setEditingEpisode] = useState<Episode | null>(null);
+  const [isCreating, setIsCreating] = useState(false);
+  const [newEpisodeTitle, setNewEpisodeTitle] = useState('');
   const [splitDialogOpen, setSplitDialogOpen] = useState(false);
   const [splitting, setSplitting] = useState(false);
   const [splitCount, setSplitCount] = useState(3);
 
   const loadEpisodes = useCallback(async () => {
-    setLoading(true);
+    if (controlledEpisodes) {
+      setInternalLoading(false);
+      return;
+    }
+
+    setInternalLoading(true);
     try {
       const list = await listEpisodes(projectId);
-      setEpisodes(list);
+      setInternalEpisodes(list);
     } catch (err: any) {
       message.error(err.message);
     } finally {
-      setLoading(false);
+      setInternalLoading(false);
     }
-  }, [projectId, message]);
+  }, [controlledEpisodes, projectId, message]);
 
   useEffect(() => { loadEpisodes(); }, [loadEpisodes]);
 
   useImperativeHandle(ref, () => ({ refresh: loadEpisodes }), [loadEpisodes]);
 
-  const handleAddEpisode = async () => {
+  const episodes = controlledEpisodes ?? internalEpisodes;
+  const loading = controlledLoading ?? internalLoading;
+  const canAutoSplit = !controlledEpisodes;
+
+  const handleAddEpisode = async (customTitle?: string) => {
     const nextNumber = episodes.length + 1;
+    const nextTitle = customTitle?.trim() || `第 ${nextNumber} 集`;
     try {
+      if (onCreateEpisode) {
+        await onCreateEpisode({
+          number: nextNumber,
+          title: nextTitle,
+          status: 'draft',
+        });
+        return;
+      }
+
       const newEpisode = await createEpisode(projectId, {
         number: nextNumber,
-        title: `第 ${nextNumber} 集`,
+        title: nextTitle,
         status: 'draft',
       });
-      setEpisodes([...episodes, newEpisode]);
+      setInternalEpisodes([...episodes, newEpisode]);
       message.success('剧集已添加');
     } catch (err: any) {
       message.error(err.message);
@@ -81,7 +122,10 @@ export const EpisodeManager = forwardRef<EpisodeManagerRef, EpisodeManagerProps>
   const handleEditClick = (episode: Episode, e: React.MouseEvent) => {
     e.stopPropagation();
     setEditingEpisode(episode);
-    form.setFieldsValue({ title: episode.title, scriptText: episode.scriptText || '' });
+    form.setFieldsValue({
+      title: episode.title,
+      scriptText: showScriptEditor ? (episode.scriptText || '') : undefined,
+    });
     setEditDialogOpen(true);
   };
 
@@ -89,14 +133,23 @@ export const EpisodeManager = forwardRef<EpisodeManagerRef, EpisodeManagerProps>
     if (!editingEpisode) return;
     try {
       const values = await form.validateFields();
-      const updated = await saveEpisode(projectId, editingEpisode.id, {
+      const updates: Partial<Episode> = {
         title: values.title,
-        scriptText: values.scriptText,
-        status: values.scriptText?.trim() ? 'script' : 'draft',
-      });
-      if (updated) {
-        setEpisodes(episodes.map(ep => ep.id === updated.id ? updated : ep));
+      };
+      if (showScriptEditor) {
+        updates.scriptText = values.scriptText;
+        updates.status = values.scriptText?.trim() ? 'script' : 'draft';
       }
+
+      if (onUpdateEpisode) {
+        await onUpdateEpisode(editingEpisode.id, updates);
+      } else {
+        const updated = await saveEpisode(projectId, editingEpisode.id, updates);
+        if (updated) {
+          setInternalEpisodes(episodes.map(ep => ep.id === updated.id ? updated : ep));
+        }
+      }
+
       setEditDialogOpen(false);
       setEditingEpisode(null);
       message.success('剧集已保存');
@@ -116,12 +169,16 @@ export const EpisodeManager = forwardRef<EpisodeManagerRef, EpisodeManagerProps>
       cancelText: '取消',
       onOk: async () => {
         try {
-          await deleteEpisode(projectId, episode.id);
-          const remaining = episodes.filter(ep => ep.id !== episode.id);
-          const renumbered = remaining.map((ep, idx) => ({ ...ep, number: idx + 1 }));
-          setEpisodes(renumbered);
-          for (const ep of renumbered) {
-            await saveEpisode(projectId, ep.id, { number: ep.number });
+          if (onDeleteEpisode) {
+            await onDeleteEpisode(episode.id);
+          } else {
+            await deleteEpisode(projectId, episode.id);
+            const remaining = episodes.filter(ep => ep.id !== episode.id);
+            const renumbered = remaining.map((ep, idx) => ({ ...ep, number: idx + 1 }));
+            setInternalEpisodes(renumbered);
+            for (const ep of renumbered) {
+              await saveEpisode(projectId, ep.id, { number: ep.number });
+            }
           }
           message.success('剧集已删除');
         } catch (err: any) {
@@ -181,7 +238,7 @@ ${fullScript}
         newEpisodes.push(ep);
       }
 
-      setEpisodes(newEpisodes);
+      setInternalEpisodes(newEpisodes);
       setSplitDialogOpen(false);
       message.success(`已分割为 ${newEpisodes.length} 集`);
     } catch (err: any) {
@@ -199,10 +256,18 @@ ${fullScript}
     );
   }
 
+  const containerClassName = compactMode ? 'flex flex-col gap-2 text-sm' : 'flex flex-col gap-2';
+  const listItemClassName = compactMode
+    ? 'group flex items-center justify-between min-h-[56px] px-3 cursor-pointer transition-colors border-b border-zinc-800/80'
+    : 'group flex items-center justify-between h-[72px] px-4 cursor-pointer transition-colors border-b border-zinc-800/80';
+  const createButtonClassName = compactMode
+    ? 'flex items-center justify-center gap-2 h-10 border border-dashed border-zinc-700 hover:border-emerald-500/50 rounded-lg text-xs text-zinc-500 hover:text-emerald-400 transition-colors'
+    : 'flex items-center justify-center gap-2 h-12 border border-dashed border-zinc-700 hover:border-emerald-500/50 rounded-lg text-sm text-zinc-500 hover:text-emerald-400 transition-colors';
+
   return (
-    <div className="flex flex-col gap-2">
+    <div className={containerClassName}>
       {/* 工具栏 */}
-      {fullScript && (
+      {canAutoSplit && fullScript && (
         <div className="flex justify-end mb-2">
           <button
             onClick={() => setSplitDialogOpen(true)}
@@ -216,7 +281,7 @@ ${fullScript}
 
       {/* 剧集列表 */}
       {episodes.length === 0 ? (
-        <Empty description="暂无剧集" className="py-8" />
+        <Empty description={emptyDescription} className="py-8" />
       ) : (
         <div className="flex flex-col">
           {episodes.map((episode) => {
@@ -227,7 +292,7 @@ ${fullScript}
               <div
                 key={episode.id}
                 onClick={() => onEpisodeSelect?.(episode)}
-                className={`group flex items-center justify-between h-[72px] px-4 cursor-pointer transition-colors border-b border-zinc-800/80 ${
+                className={`${listItemClassName} ${
                   isSelected
                     ? 'bg-emerald-500/10 border-l-[3px] border-l-emerald-500'
                     : 'bg-zinc-900 hover:bg-zinc-800/50 border-l-[3px] border-l-transparent'
@@ -282,13 +347,76 @@ ${fullScript}
       )}
 
       {/* 添加剧集按钮 */}
-      <button
-        onClick={handleAddEpisode}
-        className="flex items-center justify-center gap-2 h-12 border border-dashed border-zinc-700 hover:border-emerald-500/50 rounded-lg text-sm text-zinc-500 hover:text-emerald-400 transition-colors"
-      >
-        <Plus className="w-4 h-4" />
-        添加剧集
-      </button>
+      {!createWithInput && (
+        <button
+          onClick={() => void handleAddEpisode()}
+          className={createButtonClassName}
+        >
+          <Plus className="w-4 h-4" />
+          {createButtonText}
+        </button>
+      )}
+
+      {createWithInput && (
+        !isCreating ? (
+          <button
+            onClick={() => setIsCreating(true)}
+            className={createButtonClassName}
+          >
+            <Plus className="w-4 h-4" />
+            {createButtonText}
+          </button>
+        ) : (
+          <div className="flex items-center gap-2">
+            <Input
+              value={newEpisodeTitle}
+              onChange={(e) => setNewEpisodeTitle(e.target.value)}
+              placeholder="Episode 名称"
+              autoFocus
+              onPressEnter={() => {
+                const title = newEpisodeTitle.trim();
+                if (!title) {
+                  return;
+                }
+                void handleAddEpisode(title).then(() => {
+                  setNewEpisodeTitle('');
+                  setIsCreating(false);
+                });
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') {
+                  setIsCreating(false);
+                  setNewEpisodeTitle('');
+                }
+              }}
+            />
+            <button
+              onClick={() => {
+                const title = newEpisodeTitle.trim();
+                if (!title) {
+                  return;
+                }
+                void handleAddEpisode(title).then(() => {
+                  setNewEpisodeTitle('');
+                  setIsCreating(false);
+                });
+              }}
+              className="px-3 h-10 rounded border border-zinc-700 text-zinc-200 hover:bg-zinc-800"
+            >
+              创建
+            </button>
+            <button
+              onClick={() => {
+                setIsCreating(false);
+                setNewEpisodeTitle('');
+              }}
+              className="px-3 h-10 rounded border border-zinc-700 text-zinc-400 hover:bg-zinc-800"
+            >
+              取消
+            </button>
+          </div>
+        )
+      )}
 
       {/* 编辑对话框 */}
       <Modal
@@ -308,39 +436,43 @@ ${fullScript}
           >
             <Input placeholder="请输入剧集标题" />
           </Form.Item>
-          <Form.Item name="scriptText" label="剧集剧本">
-            <TextArea rows={12} placeholder="输入本集剧本内容..." />
-          </Form.Item>
+          {showScriptEditor && (
+            <Form.Item name="scriptText" label="剧集剧本">
+              <TextArea rows={12} placeholder="输入本集剧本内容..." />
+            </Form.Item>
+          )}
         </Form>
       </Modal>
 
       {/* 自动分割对话框 */}
-      <Modal
-        title="AI 自动分割剧本"
-        open={splitDialogOpen}
-        onOk={handleAutoSplit}
-        onCancel={() => !splitting && setSplitDialogOpen(false)}
-        okText={splitting ? '分割中...' : '开始分割'}
-        cancelText="取消"
-        confirmLoading={splitting}
-        closable={!splitting}
-        maskClosable={!splitting}
-      >
-        <p className="text-zinc-400 text-sm mb-4">
-          使用 AI 自动将完整剧本分割成多集。现有剧集将被替换。
-        </p>
-        <div className="flex items-center gap-3">
-          <span className="text-sm text-zinc-300">分割成</span>
-          <InputNumber
-            value={splitCount}
-            onChange={(v) => setSplitCount(v || 1)}
-            min={1}
-            max={20}
-            className="!w-20"
-          />
-          <span className="text-sm text-zinc-300">集</span>
-        </div>
-      </Modal>
+      {canAutoSplit && (
+        <Modal
+          title="AI 自动分割剧本"
+          open={splitDialogOpen}
+          onOk={handleAutoSplit}
+          onCancel={() => !splitting && setSplitDialogOpen(false)}
+          okText={splitting ? '分割中...' : '开始分割'}
+          cancelText="取消"
+          confirmLoading={splitting}
+          closable={!splitting}
+          mask={{ closable: !splitting }}
+        >
+          <p className="text-zinc-400 text-sm mb-4">
+            使用 AI 自动将完整剧本分割成多集。现有剧集将被替换。
+          </p>
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-zinc-300">分割成</span>
+            <InputNumber
+              value={splitCount}
+              onChange={(v) => setSplitCount(v || 1)}
+              min={1}
+              max={20}
+              className="!w-20"
+            />
+            <span className="text-sm text-zinc-300">集</span>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 });

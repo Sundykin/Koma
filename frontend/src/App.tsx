@@ -31,7 +31,7 @@ import { setupDelegateHandler } from './services/delegateHandler';
 // 懒加载 fallback
 const LazyFallback = () => (
   <div className="flex h-full items-center justify-center">
-    <Spin size="large" tip="加载中..."><div className="p-12" /></Spin>
+    <Spin size="large" description="加载中..."><div className="p-12" /></Spin>
   </div>
 );
 
@@ -193,7 +193,7 @@ const AppContent: React.FC = () => {
       };
       setActiveProject(newProject);
       setActiveEpisode(null);
-      setView('novel-promotion');
+      setView('overview');
       setScriptText('');
       setAnalysisData(null);
       setIsCreateModalOpen(false);
@@ -208,7 +208,7 @@ const AppContent: React.FC = () => {
     if (proj) {
       setActiveProject(proj);
       setActiveEpisode(null);
-      setView('novel-promotion');
+      setView('overview');
       setScriptText('');
       setAnalysisData(null);
     }
@@ -276,7 +276,7 @@ const AppContent: React.FC = () => {
             {view === 'projects' && (
               projectsLoading ? (
                 <div className="flex h-full items-center justify-center">
-                  <Spin size="large" tip="加载项目总览..."><div className="p-12" /></Spin>
+                  <Spin size="large" description="加载项目总览..."><div className="p-12" /></Spin>
                 </div>
               ) : (
                 <ProjectList

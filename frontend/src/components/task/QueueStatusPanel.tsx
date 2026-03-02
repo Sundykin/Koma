@@ -37,7 +37,7 @@ export const QueueStatusPanel: React.FC<{ projectId?: string }> = ({ projectId }
             title="排队中"
             value={stats.queued}
             prefix={<ClockCircleOutlined />}
-            valueStyle={{ color: '#6b7280' }}
+            styles={{ content: { color: '#6b7280' } }}
           />
         </Col>
         <Col span={6}>
@@ -45,7 +45,7 @@ export const QueueStatusPanel: React.FC<{ projectId?: string }> = ({ projectId }
             title="处理中"
             value={stats.processing}
             prefix={<LoadingOutlined />}
-            valueStyle={{ color: '#3b82f6' }}
+            styles={{ content: { color: '#3b82f6' } }}
           />
         </Col>
         <Col span={6}>
@@ -53,7 +53,7 @@ export const QueueStatusPanel: React.FC<{ projectId?: string }> = ({ projectId }
             title="已完成"
             value={stats.completed}
             prefix={<CheckCircleOutlined />}
-            valueStyle={{ color: '#10b981' }}
+            styles={{ content: { color: '#10b981' } }}
           />
         </Col>
         <Col span={6}>
@@ -61,7 +61,7 @@ export const QueueStatusPanel: React.FC<{ projectId?: string }> = ({ projectId }
             title="失败"
             value={stats.failed}
             prefix={<CloseCircleOutlined />}
-            valueStyle={{ color: '#ef4444' }}
+            styles={{ content: { color: '#ef4444' } }}
           />
         </Col>
       </Row>
