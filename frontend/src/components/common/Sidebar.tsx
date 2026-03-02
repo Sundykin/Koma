@@ -1,10 +1,9 @@
 import React from 'react';
 import { Avatar, Tooltip } from 'antd';
 import { UserOutlined } from '@ant-design/icons';
-import { LayoutGrid, Scissors, Settings } from 'lucide-react';
+import { LayoutGrid, Settings } from 'lucide-react';
 
-// 顶层导航仅保留核心三页
-export type AppView = 'projects' | 'overview' | 'editor' | 'settings';
+export type AppView = string; // 'projects' | 'workspace' | 'settings'
 
 interface SidebarProps {
   view: AppView;
@@ -45,12 +44,11 @@ const NavItem: React.FC<NavItemProps> = ({ active, icon, label, onClick }) => (
 
 export const Sidebar: React.FC<SidebarProps> = ({ view, onViewChange }) => {
   const navItems = [
-    { key: 'projects' as const, icon: <LayoutGrid size={22} />, label: '项目总览' },
-    { key: 'editor' as const, icon: <Scissors size={22} />, label: '创作工作台' },
-    { key: 'settings' as const, icon: <Settings size={22} />, label: '系统设置' },
+    { key: 'projects', icon: <LayoutGrid size={22} />, label: '项目' },
+    { key: 'settings', icon: <Settings size={22} />, label: '设置' },
   ];
 
-  const isProjectsActive = view === 'projects' || view === 'overview';
+  const isProjectsActive = view === 'projects' || view === 'workspace';
 
   return (
     <div className="w-[var(--sidebar-width)] bg-zinc-950 border-r border-zinc-800 flex flex-col h-full z-40 shrink-0">

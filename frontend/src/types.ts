@@ -1,53 +1,74 @@
-// 项目接口定义
+// ========== 路由类型 ==========
+
+export type AppPage = 'projects' | 'workspace' | 'settings';
+
+export type WorkspaceStage = 'story' | 'script' | 'storyboard' | 'video' | 'edit';
+
+export type StageStatus = 'empty' | 'active' | 'processing' | 'ready';
+
+// ========== 项目接口定义 ==========
+
 export interface Project {
   id: string;
   title: string;
-  genre: string;     // 题材类型
-  mode?: 'drama' | 'narration'; // 叙事模式：剧情模式 | 旁白解说模式
-  episodes: number;  // 集数
-  lastEdited: string;// 最后编辑时间
-  thumbnail: string; // 封面图
-  status: 'script' | 'storyboard' | 'generating' | 'completed'; // 项目状态
-  llmConfigId?: string;  // 关联的 LLM 配置 ID
-  ttiConfigId?: string;  // 关联的 TTI 配置 ID
-  itvConfigId?: string;  // 关联的 ITV 配置 ID
-  ttsConfigId?: string;  // 关联的 TTS 配置 ID
-  // 新增字段
-  theme?: string;           // 主题风格 ID
-  stylePrompt?: string;     // 自定义风格描述
-  episodeCount?: number;    // 实际剧集数（用于剧集管理）
+  genre?: string;
+  mode?: 'drama' | 'narration';
+  episodes?: number;
+  lastEdited?: string;
+  thumbnail?: string;
+  status?: 'script' | 'storyboard' | 'generating' | 'completed';
+  theme?: string;
+  stylePrompt?: string;
+  llmConfigId?: string;
+  ttiConfigId?: string;
+  itvConfigId?: string;
+  ttsConfigId?: string;
+  episodeCount?: number;
+  createdAt?: number;
+  updatedAt?: number;
 }
 
-// 剧集步骤进度 (3步流程: assets → storyboard → video)
+// 编辑器步骤（兼容旧组件）
+export type EditorStep = 'assets' | 'storyboard' | 'video';
+
+// 剧集步骤进度（兼容旧组件）
 export interface EpisodeStepProgress {
   assets: 'pending' | 'completed';
   storyboard: 'pending' | 'completed';
   video: 'pending' | 'completed';
 }
 
+// 主题预设接口
+export interface ThemePreset {
+  id: string;
+  name: string;
+  description: string;
+  ttiStylePrefix: string;   // TTI 提示词风格前缀
+  llmPromptSuffix: string;  // LLM 提示词风格后缀
+  previewImage?: string;    // 预览图
+}
+
 // 剧集接口定义
 export interface Episode {
   id: string;
   projectId: string;
-  number: number;           // 集数编号
-  title: string;            // 剧集标题
-  scriptText?: string;      // 本集剧本
-  status: 'draft' | 'script' | 'storyboard' | 'generating' | 'completed';
-  stepProgress?: EpisodeStepProgress;  // 各步骤完成状态
+  number: number;
+  title: string;
+  storyText?: string;
+  scriptText?: string;
+  status?: 'draft' | 'script' | 'storyboard' | 'generating' | 'completed';
+  stepProgress?: EpisodeStepProgress;
+  hasAnalysis?: boolean;
   createdAt: number;
   updatedAt: number;
-  // 剧集解析数据引用（实际数据存储在 episodes/{id}/analysis.json）
-  hasAnalysis?: boolean;
 }
 
-// 剧集解析结果（存储在 episodes/{id}/analysis.json）
+// 剧集解析结果
 export interface EpisodeAnalysis {
   episodeId: string;
-  // 引用项目级资产（ID 引用，非复制）
   characterRefs: string[];
   sceneRefs: string[];
   propRefs: string[];
-  // 剧集特有的分镜
   shots: Shot[];
   createdAt: number;
   updatedAt: number;
@@ -61,56 +82,39 @@ export interface EpisodeRef {
   shotIds?: string[];
 }
 
-// 主题预设接口
-export interface ThemePreset {
-  id: string;
-  name: string;
-  description: string;
-  ttiStylePrefix: string;   // TTI 提示词风格前缀
-  llmPromptSuffix: string;  // LLM 提示词风格后缀
-  previewImage?: string;    // 预览图
-}
-
 // 角色接口定义
 export interface Character {
   id: string;
   name: string;
-  role: 'protagonist' | 'antagonist' | 'supporting'; // 主角 | 反派 | 配角
-  prompt: string;      // 核心提示词（整合了原有的 description, appearance 等）
-  
-  // 旧字段（保留用于兼容，但UI上将不再显示）
+  role: 'protagonist' | 'antagonist' | 'supporting';
+  prompt?: string;
   age?: string;
-  description?: string; 
+  description?: string;
   appearance?: string;
-  
-  voiceId?: string;    // TTS 音色 ID
-  // 资产字段
-  costumePhotoPath?: string;  // 定妆照本地路径
-  costumePhotoUrl?: string;   // 定妆照远程URL
-  previewVideoPath?: string;  // 预览视频路径
-  previewVideoTaskId?: string; // 预览视频的生成任务ID
-  customPrompt?: string;      // 用户自定义生成提示词 (Deprecated: use prompt instead)
-  // 剧集引用追踪
+  voiceId?: string;
+  imagePath?: string;
+  imageUrl?: string;
+  costumePhotoPath?: string;
+  costumePhotoUrl?: string;
+  previewVideoPath?: string;
+  previewVideoTaskId?: string;
+  customPrompt?: string;
   episodeRefs?: EpisodeRef[];
-  fingerprint?: string;       // 资产指纹（用于去重）
+  fingerprint?: string;
 }
 
 // 场景接口定义
 export interface Scene {
   id: string;
   name: string;
-  prompt: string;     // 核心提示词
-  
-  // 旧字段（保留用于兼容）
+  prompt?: string;
   location?: string;
-  time?: 'day' | 'night' | 'twilight'; 
+  time?: 'day' | 'night' | 'twilight';
   mood?: string;
   description?: string;
-  
-  imagePath?: string;  // 场景预览图本地路径
-  imageUrl?: string;   // 场景预览图远程URL
-  customPrompt?: string; // (Deprecated: use prompt instead)
-  // 剧集引用追踪
+  imagePath?: string;
+  imageUrl?: string;
+  customPrompt?: string;
   episodeRefs?: EpisodeRef[];
   fingerprint?: string;
 }
@@ -119,18 +123,14 @@ export interface Scene {
 export interface Prop {
   id: string;
   name: string;
-  prompt: string;     // 核心提示词
-  
-  // 旧字段（保留用于兼容）
+  prompt?: string;
   type?: string;
   description?: string;
-  
-  imagePath?: string;  // 道具参考图本地路径
-  imageUrl?: string;   // 道具参考图远程URL
-  previewVideoPath?: string;   // 预览视频路径
-  previewVideoTaskId?: string; // 预览视频生成任务 ID
-  customPrompt?: string;       // (Deprecated: use prompt instead)
-  // 剧集引用追踪
+  imagePath?: string;
+  imageUrl?: string;
+  previewVideoPath?: string;
+  previewVideoTaskId?: string;
+  customPrompt?: string;
   episodeRefs?: EpisodeRef[];
   fingerprint?: string;
 }
@@ -149,34 +149,34 @@ export interface ShotVideo {
 // 分镜/镜头接口定义
 export interface Shot {
   id: string;
-  scriptContent: string; // 对应的剧本原文
-  shotType: 'close-up' | 'medium' | 'wide' | 'extreme-wide'; // 特写 | 中景 | 全景 | 大全景
-  cameraMovement: 'static' | 'pan' | 'zoom-in' | 'tracking' | 'handheld'; // 固定 | 摇镜 | 推镜 | 跟随 | 手持
-  duration: number;      // 持续时长(秒)
-  // 双提示词字段
-  description?: string;  // 通用提示词（兼容旧数据）
-  imagePrompt?: string;  // 图片生成提示词
-  videoPrompt?: string;  // 视频生成提示词
-  // 参考图（用于文生图输入）
-  referenceImages?: string[];        // 参考图列表（区别于生成结果 imagePaths）
-  selectedReferenceIndex?: number;   // 当前选中的参考图索引
-  // 生成结果图片
-  imageUrl?: string;     // 预览图或生成图（远程URL）
-  imagePath?: string;    // 当前选中的本地图片路径
-  imagePaths?: string[]; // 所有生成的候选图片列表
-  currentImageIndex?: number; // 当前选中的图片索引
-  // 关联资产
-  characters: string[];  // 涉及的角色ID
-  scenes?: string[];     // 涉及的场景ID（可在 UI 中编辑）
-  dialogue?: string;     // 台词（用于 TTS）
-  emotion?: string;      // 情绪标签
-  props?: string[];      // 涉及的道具ID
-  confirmed?: boolean;   // 是否已确认（用于入轨）
-  seed?: number;         // 生成种子（用于复现）
-  currentVersion?: number; // 当前版本号（兼容旧数据）
-  videos?: ShotVideo[];  // 视频版本列表
-  currentVideoIndex?: number;    // 当前选中的视频索引
-  selectedVideoIndex?: number;   // 别名（兼容）
+  episodeId?: string;
+  index?: number;
+  scriptContent: string;
+  shotType: 'close-up' | 'medium' | 'wide' | 'extreme-wide';
+  cameraMovement: 'static' | 'pan' | 'zoom-in' | 'tracking' | 'handheld';
+  duration: number;
+  description?: string;
+  imagePrompt?: string;
+  videoPrompt?: string;
+  referenceImages?: string[];
+  selectedReferenceIndex?: number;
+  imageUrl?: string;
+  imagePath?: string;
+  imagePaths?: string[];
+  currentImageIndex?: number;
+  videoPath?: string;
+  videoPaths?: string[];
+  characters: string[];
+  scenes?: string[];
+  dialogue?: string;
+  emotion?: string;
+  props?: string[];
+  confirmed?: boolean;
+  seed?: number;
+  currentVersion?: number;
+  videos?: ShotVideo[];
+  currentVideoIndex?: number;
+  selectedVideoIndex?: number;
 }
 
 // 剧本分析结果接口
@@ -186,9 +186,6 @@ export interface ScriptAnalysisResult {
   props: Prop[];
   shots: Shot[];
 }
-
-// 编辑器当前的步骤状态 (3步流程)
-export type EditorStep = 'assets' | 'storyboard' | 'video';
 
 // ========== 模型设置相关类型 ==========
 
@@ -427,14 +424,6 @@ export interface WorkflowProgress {
   completedAt?: number;
 }
 
-// ========== 页面路由 ==========
-
-export type AppPage =
-  | 'projects'            // 项目列表
-  | 'editor'              // 编辑器
-  | 'settings'            // 设置
-  | 'export';             // 导出
-
 // ========== 存储相关类型 ==========
 
 export interface StorageConfig {
@@ -445,17 +434,19 @@ export interface StorageConfig {
 export interface ProjectMeta {
   id: string;
   title: string;
-  genre: string;
+  genre?: string;
   mode: 'drama' | 'narration';
+  status?: string;
+  episodes?: number;
   createdAt: number;
   updatedAt: number;
   thumbnailPath?: string;
-  llmConfigId?: string;   // 关联的 LLM 配置 ID，null/undefined 表示使用默认
-  ttiConfigId?: string;   // 关联的 TTI 配置 ID
-  itvConfigId?: string;   // 关联的 ITV 配置 ID
-  ttsConfigId?: string;   // 关联的 TTS 配置 ID
-  theme?: string;         // 主题风格 ID
-  stylePrompt?: string;   // 自定义风格描述
+  llmConfigId?: string;
+  ttiConfigId?: string;
+  itvConfigId?: string;
+  ttsConfigId?: string;
+  theme?: string;
+  stylePrompt?: string;
 }
 
 export interface RecentProject {

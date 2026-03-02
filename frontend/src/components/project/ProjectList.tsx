@@ -119,8 +119,7 @@ export const ProjectList: React.FC<ProjectListProps> = ({
       </div>
 
       {/* 内容区域 */}
-      <div className="flex-1 p-6">
-        <div className="w-full px-6">
+      <div className="flex-1 p-6 max-w-7xl mx-auto w-full">
           {/* 空状态：没有任何项目 */}
           {hasNoProjects && (
             <div className="flex flex-col items-center justify-center py-20">
@@ -153,7 +152,7 @@ export const ProjectList: React.FC<ProjectListProps> = ({
 
           {/* 项目列表 */}
           {filteredProjects.length > 0 && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 3xl:grid-cols-6 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-6">
               {filteredProjects.map((project) => {
                 const StatusIcon = statusConfig[project.status]?.icon || FileText;
                 const statusCfg = statusConfig[project.status];
@@ -221,7 +220,6 @@ export const ProjectList: React.FC<ProjectListProps> = ({
               })}
             </div>
           )}
-        </div>
       </div>
 
       {/* 删除确认弹窗 */}
