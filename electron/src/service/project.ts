@@ -131,7 +131,7 @@ export class ProjectService {
       const content = await fs.promises.readFile(indexPath, 'utf-8');
       const parsed = JSON.parse(content) as Partial<ProjectsIndex>;
       if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.projects)) {
-        return { version: 1, projects: [] };
+        return this.rebuildIndex();
       }
 
       return {
@@ -139,7 +139,7 @@ export class ProjectService {
         projects: parsed.projects.filter(isProjectMeta),
       };
     } catch {
-      return { version: 1, projects: [] };
+      return this.rebuildIndex();
     }
   }
 
@@ -189,6 +189,9 @@ export class ProjectService {
     }
 
     const projectDir = path.join(this.storageRoot, 'projects', meta.id);
+    if (fs.existsSync(projectDir)) {
+      throw new Error(`Project already exists: ${meta.id}`);
+    }
 
     // 创建完整的项目目录结构
     await fs.promises.mkdir(projectDir, { recursive: true });

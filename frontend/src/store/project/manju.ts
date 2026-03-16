@@ -1,7 +1,7 @@
 /**
  * Manju-DSL 集成
  */
-import { electronService } from '../../services/electronService';
+import { electronService, type ProjectMeta as ElectronProjectMeta } from '../../services/electronService';
 import type { ProjectMeta, Character, Scene, Shot, Timeline } from '../../types';
 import {
   exportToManjuDSL,
@@ -62,22 +62,29 @@ export async function importProjectFromManjuFile(filePath: string): Promise<Proj
   }
 
   const imported = importFromManjuDSL(manjuData);
+  let projectId = imported.project.id;
+  const originalProjectPath = await getProjectPath(projectId);
+  const exists = await electronService.fs.exists(originalProjectPath);
+  if (exists) {
+    projectId = `${projectId}_imported_${Date.now()}`;
+    imported.project.id = projectId;
+  }
 
-  const projectId = imported.project.id;
+  await electronService.project.create({
+    id: projectId,
+    title: imported.project.title,
+    genre: imported.project.genre,
+    mode: imported.project.mode,
+    createdAt: imported.project.createdAt,
+    updatedAt: imported.project.updatedAt,
+  } satisfies ElectronProjectMeta);
+
   const projectPath = await getProjectPath(projectId);
 
-  await electronService.fs.mkdir(projectPath);
-  await electronService.fs.mkdir(`${projectPath}/assets/images`);
-  await electronService.fs.mkdir(`${projectPath}/assets/videos`);
-  await electronService.fs.mkdir(`${projectPath}/assets/audio`);
-  await electronService.fs.mkdir(`${projectPath}/assets/fonts`);
-  await electronService.fs.mkdir(`${projectPath}/shots`);
-  await electronService.fs.mkdir(`${projectPath}/cache/thumbnails`);
-  await electronService.fs.mkdir(`${projectPath}/cache/waveforms`);
-  await electronService.fs.mkdir(`${projectPath}/cache/previews`);
-  await electronService.fs.mkdir(`${projectPath}/exports`);
-  await electronService.fs.mkdir(`${projectPath}/temp`);
-
+  await electronService.fs.writeFile(
+    `${projectPath}/meta.json`,
+    JSON.stringify(imported.project, null, 2)
+  );
   await electronService.fs.writeFile(
     `${projectPath}/project.json`,
     JSON.stringify(imported.project, null, 2)
@@ -102,6 +109,7 @@ export async function importProjectFromManjuFile(filePath: string): Promise<Proj
     `${projectPath}/shots.json`,
     JSON.stringify(imported.shots, null, 2)
   );
+  await electronService.project.rebuildIndex();
 
   await addRecentProject({
     id: projectId,
