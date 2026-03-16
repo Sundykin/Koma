@@ -25,3 +25,7 @@ frontend/coverage
 *.njsproj
 *.sln
 *.sw?
+
+# spec-workflow templates
+.spec-workflow/templates/
+.spec-workflow/user-templates/

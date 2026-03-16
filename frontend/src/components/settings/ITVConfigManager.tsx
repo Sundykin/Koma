@@ -114,6 +114,7 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
         provider: config.provider,
         baseUrl: config.baseUrl,
         apiKey: config.apiKey,
+        modelName: config.modelName,
         defaultDuration: config.defaultDuration,
         defaultResolution: config.defaultResolution,
       });
@@ -130,6 +131,7 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
       form.setFieldsValue({
         name: form.getFieldValue('name') || preset.name,
         baseUrl: preset.baseUrl,
+        modelName: preset.models?.[0] ?? undefined,
       });
     }
   };
@@ -142,6 +144,7 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
         provider: values.provider as ITVProviderType,
         baseUrl: values.baseUrl,
         apiKey: values.apiKey,
+        modelName: values.modelName,
         defaultDuration: values.defaultDuration,
         defaultResolution: values.defaultResolution,
         isDefault: editingConfig?.isDefault || configs.length === 0,
@@ -466,6 +469,20 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
             rules={[{ required: true, message: `${t('settings.pleaseEnter')} ${t('settings.apiAddress')}` }]}
           >
             <Input prefix={<ApiOutlined />} placeholder="https://api.klingai.com" />
+          </Form.Item>
+
+          <Form.Item
+            name="modelName"
+            label={t('settings.model')}
+          >
+            <Select
+              placeholder={t('settings.selectModel')}
+              allowClear
+              showSearch
+              options={
+                ITV_PRESETS.find(p => p.id === currentProvider)?.models?.map(m => ({ label: m, value: m })) || []
+              }
+            />
           </Form.Item>
 
           <Row gutter={16}>

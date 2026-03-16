@@ -27,6 +27,6 @@ export function createLLMProvider(config: ModelConfig): LLMProvider {
     case 'claude':
       return new ClaudeProvider(config);
     default:
-      throw new Error(`Unknown LLM provider: ${config.provider}`);
+      throw new Error(`未知的 LLM 服务商: ${config.provider}`);
   }
 }

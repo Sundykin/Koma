@@ -69,7 +69,7 @@ registerBuiltinProviders();
 export function createTTIProvider(config: TTIModelConfig): TTIProvider {
   const def = ttiRegistry.get(config.provider);
   if (!def) {
-    throw new Error(`Unknown TTI provider: ${config.provider}`);
+    throw new Error(`未知的图片生成服务商: ${config.provider}`);
   }
   // 使用包装函数保持 fetch 的上下文，避免 "Illegal invocation" 错误
   return def.factory(config, { sandboxedFetch: (...args: Parameters<typeof fetch>) => fetch(...args) });

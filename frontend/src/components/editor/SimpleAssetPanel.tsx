@@ -72,7 +72,9 @@ const AssetCard: React.FC<{
 }> = ({ item, onDragStart, onDragEnd }) => {
   const handleDragStart = (e: React.DragEvent) => {
     e.dataTransfer.effectAllowed = 'copy';
-    e.dataTransfer.setData('application/json', JSON.stringify(assetItemToAsset(item)));
+    const data = JSON.stringify(assetItemToAsset(item));
+    e.dataTransfer.setData('application/json', data);
+    e.dataTransfer.setData('text/plain', data);
     onDragStart(assetItemToAsset(item));
   };
 
@@ -147,6 +149,22 @@ function formatDuration(seconds: number): string {
   return `${s}s`;
 }
 
+const SUPPORTED_TYPES = {
+  video: ['.mp4', '.webm', '.mov', '.avi', '.mkv'],
+  image: ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'],
+  audio: ['.mp3', '.wav', '.ogg', '.m4a', '.aac'],
+};
+
+const ACCEPT_STRING = [...SUPPORTED_TYPES.video, ...SUPPORTED_TYPES.image, ...SUPPORTED_TYPES.audio].join(',');
+
+function getFileType(file: File): 'video' | 'image' | 'audio' | null {
+  const ext = '.' + file.name.split('.').pop()?.toLowerCase();
+  if (SUPPORTED_TYPES.video.includes(ext)) return 'video';
+  if (SUPPORTED_TYPES.image.includes(ext)) return 'image';
+  if (SUPPORTED_TYPES.audio.includes(ext)) return 'audio';
+  return null;
+}
+
 export const SimpleAssetPanel: React.FC<AssetPanelProps> = ({
   assets,
   onDragStart,
@@ -160,25 +178,6 @@ export const SimpleAssetPanel: React.FC<AssetPanelProps> = ({
   const [isDragOver, setIsDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // 支持的文件类型
-  const SUPPORTED_TYPES = {
-    video: ['.mp4', '.webm', '.mov', '.avi', '.mkv'],
-    image: ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'],
-    audio: ['.mp3', '.wav', '.ogg', '.m4a', '.aac'],
-  };
-
-  const acceptString = [...SUPPORTED_TYPES.video, ...SUPPORTED_TYPES.image, ...SUPPORTED_TYPES.audio].join(',');
-
-  // 获取文件类型
-  const getFileType = useCallback((file: File): 'video' | 'image' | 'audio' | null => {
-    const ext = '.' + file.name.split('.').pop()?.toLowerCase();
-    if (SUPPORTED_TYPES.video.includes(ext)) return 'video';
-    if (SUPPORTED_TYPES.image.includes(ext)) return 'image';
-    if (SUPPORTED_TYPES.audio.includes(ext)) return 'audio';
-    return null;
-  }, []);
-
-  // 处理文件选择
   const handleFileSelect = useCallback(async (files: FileList | File[]) => {
     const validFiles: File[] = [];
 
@@ -194,7 +193,7 @@ export const SimpleAssetPanel: React.FC<AssetPanelProps> = ({
     if (validFiles.length > 0 && onUpload) {
       onUpload(validFiles);
     }
-  }, [getFileType, onUpload]);
+  }, [onUpload, message]);
 
   // 点击上传按钮
   const handleUploadClick = useCallback(() => {
@@ -273,7 +272,7 @@ export const SimpleAssetPanel: React.FC<AssetPanelProps> = ({
       <input
         ref={fileInputRef}
         type="file"
-        accept={acceptString}
+        accept={ACCEPT_STRING}
         multiple
         onChange={handleFileInputChange}
         className="hidden"
@@ -338,9 +337,25 @@ export const SimpleAssetPanel: React.FC<AssetPanelProps> = ({
 
         {filteredAssets.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-zinc-500">
-            <FolderOpen className="w-12 h-12 mb-2 opacity-50" />
-            <p className="text-sm">暂无素材</p>
-            <p className="text-xs mt-1">拖拽文件或点击上传</p>
+            {assets.length === 0 ? (
+              <>
+                <FolderOpen className="w-12 h-12 mb-2 opacity-50" />
+                <p className="text-sm">暂无素材</p>
+                <p className="text-xs mt-1">拖拽文件或点击上传</p>
+              </>
+            ) : (
+              <>
+                <Search className="w-10 h-10 mb-2 opacity-40" />
+                <p className="text-sm">未找到匹配素材</p>
+                <p className="text-xs mt-1">尝试更换搜索关键词或分类</p>
+                <button
+                  onClick={() => { setSearchQuery(''); setActiveTab('all'); }}
+                  className="mt-3 text-xs text-blue-400 hover:text-blue-300 underline"
+                >
+                  清除筛选
+                </button>
+              </>
+            )}
           </div>
         ) : (
           <div className="grid grid-cols-2 gap-2">

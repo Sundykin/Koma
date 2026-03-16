@@ -4,6 +4,7 @@
  */
 import type { LLMModelConfig } from '../types';
 import { createLLMProvider } from '../providers';
+import { parseLLMJSON } from '../utils/llmJsonParser';
 
 export interface SplitOptions {
   targetEpisodeCount?: number;
@@ -140,6 +141,11 @@ export class EpisodeSplitService {
     this.aborted = true;
   }
 
+  // 安全解析 JSON（委托给 parseLLMJSON 工具函数）
+  private safeParseJSON<T>(text: string): T {
+    return parseLLMJSON<T>(text);
+  }
+
   // 分析剧本，返回建议的剧集方案
   async analyzeScript(script: string, options: SplitOptions): Promise<SplitAnalysis> {
     this.aborted = false;
@@ -181,11 +187,8 @@ ${options.targetEpisodeCount ? `- 目标分成 ${options.targetEpisodeCount} 集
 
     this.contextManager.addMessage({ role: 'assistant', content: response });
 
-    // 解析 JSON 响应
     try {
-      const jsonMatch = response.match(/```json\s*([\s\S]*?)\s*```/) || [null, response];
-      const jsonStr = (jsonMatch[1] || response).trim().replace(/^[^{]*/, '').replace(/[^}]*$/, '');
-      return JSON.parse(jsonStr);
+      return this.safeParseJSON<SplitAnalysis>(response);
     } catch {
       // 解析失败时返回默认值
       return {
@@ -232,11 +235,8 @@ ${script}`;
 
     if (this.aborted) return [];
 
-    // 解析结果
     try {
-      const jsonMatch = response.match(/```json\s*([\s\S]*?)\s*```/) || [null, response];
-      const jsonStr = (jsonMatch[1] || response).trim().replace(/^[^{]*/, '').replace(/[^}]*$/, '');
-      const parsed = JSON.parse(jsonStr) as { episodes: SplitResult[] };
+      const parsed = this.safeParseJSON<{ episodes: SplitResult[] }>(response);
       return parsed.episodes;
     } catch {
       // 如果解析失败，尝试简单分割

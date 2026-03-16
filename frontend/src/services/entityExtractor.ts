@@ -5,6 +5,7 @@
 import type { AppSettings, Character, Scene } from '../types';
 import { getProjectLLMProvider } from '../providers';
 import { getPromptTemplate, fillTemplate } from '../store/promptTemplates';
+import { parseLLMJSON } from '../utils/llmJsonParser';
 
 // 道具接口
 export interface Prop {
@@ -48,14 +49,7 @@ export async function extractCharacters(
 
   onProgress?.(80, '解析角色数据...');
 
-  // 提取 JSON
-  const jsonMatch = response.match(/```json\s*([\s\S]*?)```/) || response.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) {
-    throw new Error('无法解析角色数据');
-  }
-
-  const jsonStr = jsonMatch[1] || jsonMatch[0];
-  const data = JSON.parse(jsonStr);
+  const data = parseLLMJSON<any>(response);
 
   const characters: Character[] = (data.characters || []).map((c: any, idx: number) => ({
     id: `char_${Date.now()}_${idx}`,
@@ -96,13 +90,7 @@ export async function extractScenes(
 
   onProgress?.(80, '解析场景数据...');
 
-  const jsonMatch = response.match(/```json\s*([\s\S]*?)```/) || response.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) {
-    throw new Error('无法解析场景数据');
-  }
-
-  const jsonStr = jsonMatch[1] || jsonMatch[0];
-  const data = JSON.parse(jsonStr);
+  const data = parseLLMJSON<any>(response);
 
   const scenes: Scene[] = (data.scenes || []).map((s: any, idx: number) => ({
     id: `scene_${Date.now()}_${idx}`,
@@ -144,13 +132,7 @@ export async function extractProps(
 
   onProgress?.(80, '解析道具数据...');
 
-  const jsonMatch = response.match(/```json\s*([\s\S]*?)```/) || response.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) {
-    throw new Error('无法解析道具数据');
-  }
-
-  const jsonStr = jsonMatch[1] || jsonMatch[0];
-  const data = JSON.parse(jsonStr);
+  const data = parseLLMJSON<any>(response);
 
   const props: Prop[] = (data.props || []).map((p: any) => ({
     name: p.name,

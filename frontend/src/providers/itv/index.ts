@@ -8,6 +8,7 @@ export { KlingProvider } from './KlingProvider';
 export { PikaProvider } from './PikaProvider';
 export { Sora2Provider } from './Sora2Provider';
 export { ComfyUIAnimateDiffProvider } from './ComfyUIAnimateDiffProvider';
+export { CustomITVProvider } from './CustomITVProvider';
 
 import type { ITVConfig } from '../../types';
 import type { ITVProvider } from './types';
@@ -16,9 +17,11 @@ import { KlingProvider } from './KlingProvider';
 import { PikaProvider } from './PikaProvider';
 import { Sora2Provider } from './Sora2Provider';
 import { ComfyUIAnimateDiffProvider } from './ComfyUIAnimateDiffProvider';
+import { CustomITVProvider } from './CustomITVProvider';
 import type { ProviderDefinition } from '../registry.types';
 import { DEFAULT_POLLING_CONFIG } from '../registry.types';
 import { itvRegistry } from '../registry';
+import { safeFetch } from '../../utils/safeFetch';
 
 // 注册内置 Provider
 function registerBuiltinProviders() {
@@ -76,6 +79,19 @@ function registerBuiltinProviders() {
         initialDelay: 1000,
       },
     },
+    {
+      type: 'custom',
+      kind: 'itv',
+      name: '自定义',
+      description: '自定义视频生成 API（兼容多种接口格式）',
+      factory: (config) => new CustomITVProvider(config as ITVConfig),
+      capabilities: ['itv'],
+      polling: {
+        interval: 5000,
+        maxDuration: 600000,
+        initialDelay: 3000,
+      },
+    },
   ];
 
   for (const def of builtins) {
@@ -95,8 +111,8 @@ registerBuiltinProviders();
 export function createITVProvider(config: ITVConfig): ITVProvider {
   const def = itvRegistry.get(config.provider);
   if (!def) {
-    throw new Error(`Unknown ITV provider: ${config.provider}`);
+    throw new Error(`未知的视频生成服务商: ${config.provider}`);
   }
   // 使用包装函数保持 fetch 的上下文，避免 "Illegal invocation" 错误
-  return def.factory(config, { sandboxedFetch: (...args: Parameters<typeof fetch>) => fetch(...args) });
+  return def.factory(config, { sandboxedFetch: ((input: string | URL | Request, init?: RequestInit) => safeFetch(String(input), init)) as typeof fetch });
 }

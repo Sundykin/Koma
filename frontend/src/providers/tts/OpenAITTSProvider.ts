@@ -40,7 +40,7 @@ export class OpenAITTSProvider implements TTSProvider {
     options?: TTSOptions
   ): Promise<AudioResult> {
     if (!this.config.apiKey) {
-      throw new Error('OpenAI API Key is required');
+      throw new Error('OpenAI API Key 未配置');
     }
 
     const response = await fetch(
@@ -61,7 +61,7 @@ export class OpenAITTSProvider implements TTSProvider {
     );
 
     if (!response.ok) {
-      throw new Error(`OpenAI TTS failed: ${response.statusText}`);
+      throw new Error(`OpenAI TTS 合成失败: ${response.statusText}`);
     }
 
     const blob = await response.blob();

@@ -25,7 +25,7 @@ function delay(ms: number, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
     // 提前检查是否已取消
     if (signal?.aborted) {
-      reject(new Error('Task cancelled'));
+      reject(new Error('任务已取消'));
       return;
     }
 
@@ -35,7 +35,7 @@ function delay(ms: number, signal?: AbortSignal): Promise<void> {
       // 使用 { once: true } 防止监听器泄漏
       signal.addEventListener('abort', () => {
         clearTimeout(timer);
-        reject(new Error('Task cancelled'));
+        reject(new Error('任务已取消'));
       }, { once: true });
     }
   });
@@ -61,7 +61,7 @@ export async function pollTask<TProgress extends ProgressInfo>(
   // 轮询循环
   while (Date.now() - startTime < polling.maxDuration) {
     if (signal?.aborted) {
-      throw new Error('Task cancelled');
+      throw new Error('任务已取消');
     }
 
     const progress = await check(taskId);
@@ -75,7 +75,7 @@ export async function pollTask<TProgress extends ProgressInfo>(
   }
 
   // 超时
-  throw new Error(`Task timeout after ${polling.maxDuration}ms`);
+  throw new Error(`任务超时 (${polling.maxDuration}ms)`);
 }
 
 /**
@@ -98,7 +98,7 @@ export async function pollTaskById<TProgress extends ProgressInfo>(
   // 轮询循环
   while (Date.now() - startTime < polling.maxDuration) {
     if (signal?.aborted) {
-      throw new Error('Task cancelled');
+      throw new Error('任务已取消');
     }
 
     const progress = await check(taskId);
@@ -112,7 +112,7 @@ export async function pollTaskById<TProgress extends ProgressInfo>(
   }
 
   // 超时
-  throw new Error(`Task timeout after ${polling.maxDuration}ms`);
+  throw new Error(`任务超时 (${polling.maxDuration}ms)`);
 }
 
 // 默认轮询配置

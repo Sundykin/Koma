@@ -133,7 +133,7 @@ class FFmpegManager {
 
     const api = getFFmpegAPI();
     if (!api) {
-      throw new Error('FFmpeg not available');
+      throw new Error('FFmpeg 不可用');
     }
 
     const info = await api.getInfo(filePath);
@@ -154,7 +154,7 @@ class FFmpegManager {
 
     const api = getFFmpegAPI();
     if (!api) {
-      throw new Error('FFmpeg not available');
+      throw new Error('FFmpeg 不可用');
     }
 
     const frames = await api.extractFrames(options);
@@ -173,7 +173,7 @@ class FFmpegManager {
 
     const api = getFFmpegAPI();
     if (!api) {
-      throw new Error('FFmpeg not available');
+      throw new Error('FFmpeg 不可用');
     }
 
     const waveformPath = await api.waveform(options);
@@ -187,7 +187,7 @@ class FFmpegManager {
   async splitAudio(input: string, output: string): Promise<string> {
     const api = getFFmpegAPI();
     if (!api) {
-      throw new Error('FFmpeg not available');
+      throw new Error('FFmpeg 不可用');
     }
 
     return await api.splitAudio(input, output);
@@ -345,7 +345,7 @@ class FFmpegManager {
   async composeVideo(options: ComposeVideoOptions): Promise<string> {
     const api = getFFmpegAPI();
     if (!api) {
-      throw new Error('FFmpeg not available');
+      throw new Error('FFmpeg 不可用');
     }
 
     return await api.composeVideo(options);

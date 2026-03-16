@@ -1,6 +1,7 @@
 /**
- * 导出渲染服务
- * 负责将时间线渲染为视频文件
+ * @deprecated 使用 simpleExportRenderer.ts 替代。
+ * 旧版导出渲染服务，仅由 ExportDialog.tsx 引用。
+ * 待 ExportDialog 迁移至 SimpleExportDialog 后可删除。
  */
 import type { TrackLine, TrackItem, VideoTrackItem, AudioTrackItem, ImageTrackItem } from '../types/track';
 import { KeyframeInterpolator } from '../engine/KeyframeInterpolator';

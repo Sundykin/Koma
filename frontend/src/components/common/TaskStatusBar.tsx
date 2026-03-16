@@ -133,56 +133,60 @@ export const TaskStatusBar: React.FC<TaskStatusBarProps> = ({ projectId, onRetry
 
   const mainTask = runningTasks[0];
 
+  const isRunning = (s: TaskStatus) => s === 'running' || s === 'processing' || s === 'pending';
+
   const renderTaskItem = (task: Task) => (
-    <div key={task.id} className="flex items-center gap-2 py-1.5 px-2 rounded hover:bg-zinc-800/50">
-      {getStatusIcon(task.status)}
-      <div className="flex flex-col flex-1 min-w-0">
-        <div className="flex items-center gap-1.5">
-          {task.category && CATEGORY_CONFIG[task.category] && (
-            <Tag color={CATEGORY_CONFIG[task.category].color} className="text-[10px] px-1 py-0 leading-tight">
-              {CATEGORY_CONFIG[task.category].icon}
-              <span className="ml-0.5">{getSubTypeLabel(task.subType)}</span>
-            </Tag>
-          )}
-          <Text className="text-zinc-300 text-sm truncate">
-            {task.targetName || getTaskLabel(task)}
+    <div key={task.id} className="py-1.5 px-2 rounded hover:bg-zinc-800/50">
+      {/* 第一行：图标 + 标签 + 名称 + 时间/操作 */}
+      <div className="flex items-center gap-2">
+        {getStatusIcon(task.status)}
+        {task.category && CATEGORY_CONFIG[task.category] && (
+          <Tag color={CATEGORY_CONFIG[task.category].color} className="text-[10px] px-1 py-0 leading-tight shrink-0">
+            {CATEGORY_CONFIG[task.category].icon}
+            <span className="ml-0.5">{getSubTypeLabel(task.subType)}</span>
+          </Tag>
+        )}
+        <Text className="text-zinc-300 text-sm truncate flex-1 min-w-0">
+          {task.targetName || getTaskLabel(task)}
+        </Text>
+        {task.recoverable && task.attempt && task.attempt > 0 && (
+          <Tooltip title={`${t('common.retry')}: ${task.attempt}/${task.maxRetries}`}>
+            <Tag color="warning" className="text-[10px] px-1 py-0 shrink-0">#{task.attempt}</Tag>
+          </Tooltip>
+        )}
+        {task.startedAt && (
+          <Text className="text-zinc-600 text-xs shrink-0 tabular-nums">
+            {formatDuration(task.startedAt, task.completedAt)}
           </Text>
-        </div>
-        {task.result?.stageMessage && (
-          <Text className="text-zinc-500 text-xs truncate">{task.result.stageMessage}</Text>
         )}
-        {task.error && (
-          <Text className="text-red-400 text-xs truncate">{task.error}</Text>
-        )}
-      </div>
-      {(task.status === 'running' || task.status === 'processing') && (
-        <>
-          <Progress percent={task.progress} size="small" showInfo={false} className="w-14" strokeColor="#10b981" />
-          <Text className="text-zinc-500 text-xs w-7">{task.progress}%</Text>
-        </>
-      )}
-      {task.startedAt && (
-        <Text className="text-zinc-600 text-xs">{formatDuration(task.startedAt, task.completedAt)}</Text>
-      )}
-      {task.recoverable && task.attempt && task.attempt > 0 && (
-        <Tooltip title={`${t('common.retry')}: ${task.attempt}/${task.maxRetries}`}>
-          <Tag color="warning" className="text-[10px] px-1 py-0">#{task.attempt}</Tag>
-        </Tooltip>
-      )}
-      <div className="flex items-center gap-1 ml-1">
         {task.status === 'failed' && onRetry && (
           <Button type="text" size="small" icon={<ReloadOutlined />}
-            className="text-zinc-500 hover:text-blue-400"
+            className="text-zinc-500 hover:text-blue-400 shrink-0 !w-6 !h-6"
             onClick={(e) => { e.stopPropagation(); onRetry(task); }}
           />
         )}
-        {(task.status === 'running' || task.status === 'pending') && onCancel && (
+        {isRunning(task.status) && onCancel && (
           <Button type="text" size="small" icon={<StopOutlined />}
-            className="text-zinc-500 hover:text-red-400"
+            className="text-zinc-500 hover:text-red-400 shrink-0 !w-6 !h-6"
             onClick={(e) => { e.stopPropagation(); onCancel(task); }}
           />
         )}
       </div>
+      {/* 第二行：进度条 / 阶段信息 / 错误 */}
+      {isRunning(task.status) ? (
+        <div className="mt-1 ml-6 space-y-0.5">
+          <div className="flex items-center gap-2">
+            <Progress percent={task.progress} size="small" showInfo={false}
+              className="flex-1" strokeColor="#10b981" trailColor="#3f3f46" />
+            <Text className="text-zinc-500 text-xs shrink-0 tabular-nums">{task.progress}%</Text>
+          </div>
+          {task.result?.stageMessage && (
+            <Text className="text-zinc-500 text-xs truncate block">{task.result.stageMessage}</Text>
+          )}
+        </div>
+      ) : task.status === 'failed' && task.error ? (
+        <Text className="text-red-400 text-xs truncate block mt-0.5 ml-6">{task.error}</Text>
+      ) : null}
     </div>
   );
 

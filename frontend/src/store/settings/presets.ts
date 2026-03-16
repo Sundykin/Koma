@@ -45,7 +45,12 @@ export const TTI_PRESETS: ProviderPreset[] = [
 
 // ITV 厂商预设
 export const ITV_PRESETS: ProviderPreset[] = [
-  { id: 'sora2', name: 'Sora2（官方）', baseUrl: 'https://toapis.com', models: ['sora-2', 'sora-2-pro'] },
+  { id: 'sora2', name: 'Sora 2', baseUrl: 'https://toapis.com', models: ['sora-2', 'sora-2-pro'] },
+  { id: 'kling', name: '可灵 Kling', baseUrl: 'https://api.klingai.com', models: ['kling-v1', 'kling-v1-5'] },
+  { id: 'runway', name: 'Runway', baseUrl: 'https://api.runwayml.com', models: ['gen-2', 'gen-3'] },
+  { id: 'pika', name: 'Pika Labs', baseUrl: 'https://api.pika.art/v1', models: ['pika-1.0'] },
+  { id: 'comfyui-animatediff', name: 'ComfyUI AnimateDiff', baseUrl: 'http://127.0.0.1:8188' },
+  { id: 'custom', name: '自定义 / Grok2API', baseUrl: '', models: ['grok-imagine-1.0-video'] },
 ];
 
 // TTS 厂商预设

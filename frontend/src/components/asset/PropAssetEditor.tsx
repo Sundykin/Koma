@@ -61,10 +61,10 @@ export const PropAssetEditor: React.FC<PropAssetEditorProps> = ({
         onUpdate({ imagePath: result.path, imageUrl: (result as any).url, customPrompt: customPrompt || undefined });
         message.success('参考图生成完成');
       } else {
-        message.error(result.error || '生成失败');
+        message.error('参考图生成失败，请检查图像生成配置');
       }
-    } catch (err: any) {
-      message.error(err.message);
+    } catch {
+      message.error('参考图生成失败，请稍后重试');
     } finally {
       setLoading(false);
     }
@@ -87,8 +87,8 @@ export const PropAssetEditor: React.FC<PropAssetEditorProps> = ({
       await fsCopy(result.filePaths[0], destPath);
       onUpdate({ imagePath: destPath });
       message.success('上传成功');
-    } catch (err: any) {
-      message.error(`上传失败: ${err.message}`);
+    } catch {
+      message.error('上传失败，请检查文件格式后重试');
     }
   }, [projectId, prop.id, onUpdate, message]);
 

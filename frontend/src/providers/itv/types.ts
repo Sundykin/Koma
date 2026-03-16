@@ -111,4 +111,5 @@ export interface ITVProvider {
   remixVideo?(videoId: string, options: RemixOptions): Promise<string | ProgressInfo>;
 }
 
-export { ITVConfig, ITVOptions, VideoResult, ProgressInfo };
+// Re-export：供 providers/index.ts 通过本文件统一导出
+export type { ITVConfig, ITVOptions, VideoResult, ProgressInfo };

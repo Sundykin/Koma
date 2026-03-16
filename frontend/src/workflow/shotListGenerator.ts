@@ -5,6 +5,7 @@
 import type { Shot, Character, Scene, AppSettings } from '../types';
 import { getProjectLLMProvider } from '../providers';
 import { getPromptTemplate, fillTemplate } from '../store/promptTemplates';
+import { parseLLMJSON } from '../utils/llmJsonParser';
 
 interface ShotListParams {
   settings: AppSettings;
@@ -43,13 +44,7 @@ export async function generateShotList(
 
   onProgress(70, '解析分镜数据...');
 
-  // 解析返回的 JSON
-  const jsonMatch = response.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) {
-    throw new Error('无法解析分镜格式');
-  }
-
-  const data = JSON.parse(jsonMatch[0]);
+  const data = parseLLMJSON<any>(response);
   const shots: Shot[] = data.shots.map((s: any, idx: number) => ({
     id: `shot-${Date.now()}-${idx}`,
     scriptContent: s.scriptContent || '',

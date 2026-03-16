@@ -239,7 +239,7 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
 
         const existing = await getPromptTemplate(payload.templateId as any);
         if (!existing) {
-          throw new Error(`Template not found: ${payload.templateId}`);
+          throw new Error(`模板不存在: ${payload.templateId}`);
         }
 
         // Save the overridden template
@@ -476,7 +476,7 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
         const config = configs.find(c => c.id === channelId);
 
         if (!config) {
-          throw new Error(`Channel not found: ${channelId}`);
+          throw new Error(`频道不存在: ${channelId}`);
         }
 
         // Determine kind from capabilities (tts, itv, or tti)
@@ -492,7 +492,7 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
 
         // Validate action exists on provider
         if (typeof provider[action] !== 'function') {
-          throw new Error(`Action "${action}" not supported by provider ${config.providerType}`);
+          throw new Error(`服务商 ${config.providerType} 不支持操作 "${action}"`);
         }
 
         // Call the action

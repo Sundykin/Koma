@@ -177,9 +177,10 @@ export function SimpleExportDialog({ open, onClose, tracks, duration, canvasSize
       onClose();
     } catch (err) {
       if ((err as Error).message !== 'Export aborted') {
+        logger.error('视频导出失败', err);
         modal.error({
           title: '导出失败',
-          content: (err as Error).message,
+          content: '视频导出过程中出现错误，请检查输出路径和磁盘空间后重试',
         });
       }
     } finally {
@@ -305,15 +306,17 @@ export function SimpleExportDialog({ open, onClose, tracks, duration, canvasSize
 
         onClose();
       } else {
+        logger.error('草稿导出失败', result.error);
         modal.error({
           title: '导出失败',
-          content: result.error,
+          content: '草稿导出失败，请检查输出目录权限后重试',
         });
       }
     } catch (err) {
+      logger.error('草稿导出异常', err);
       modal.error({
         title: '导出失败',
-        content: (err as Error).message,
+        content: '导出过程中出现错误，请检查输出路径后重试',
       });
     } finally {
       setExporting(false);
@@ -600,8 +603,9 @@ export function SimpleExportDialog({ open, onClose, tracks, duration, canvasSize
                 type="primary"
                 icon={<ExportOutlined />}
                 onClick={handleExport}
+                loading={exporting}
               >
-                开始导出
+                {exporting ? '导出中...' : '开始导出'}
               </Button>
             </Space>
           </div>

@@ -8,6 +8,7 @@ import { createLLMProvider } from '../providers';
 import { getActiveLLMConfig } from '../store/globalStore';
 import { getPromptTemplate, fillTemplate } from '../store/promptTemplates';
 import { TaskManager, Task } from './TaskManager';
+import { parseLLMJSON } from '../utils/llmJsonParser';
 import {
   loadCharacters,
   loadScenes,
@@ -213,25 +214,10 @@ export class ShotAnalysisService {
   }
 
   /**
-   * 解析 JSON 结果
+   * 解析 JSON 结果（委托给 parseLLMJSON 工具函数）
    */
   private parseJSON<T>(text: string): T {
-    // 尝试直接解析
-    try {
-      return JSON.parse(text);
-    } catch {
-      // 尝试提取 JSON 块
-      const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-      if (jsonMatch) {
-        return JSON.parse(jsonMatch[1].trim());
-      }
-      // 尝试找到 { } 包围的内容
-      const braceMatch = text.match(/\{[\s\S]*\}/);
-      if (braceMatch) {
-        return JSON.parse(braceMatch[0]);
-      }
-      throw new Error('无法解析 LLM 返回的 JSON');
-    }
+    return parseLLMJSON<T>(text);
   }
 }
 

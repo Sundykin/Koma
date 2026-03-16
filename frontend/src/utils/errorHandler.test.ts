@@ -224,25 +224,25 @@ describe('errorHandler', () => {
     });
 
     it('should return error result when function throws', async () => {
-      const result = await safeAsync(async () => {
+      const result = await safeAsync<void>(async () => {
         throw new Error('Async error');
       });
 
       expect(result.success).toBe(false);
-      if (!result.success) {
+      if ('error' in result) {
         expect(result.error.message).toBe('Async error');
       }
     });
 
     it('should pass context to error handler', async () => {
-      const result = await safeAsync(
+      const result = await safeAsync<void>(
         async () => {
           throw new Error('Test');
         },
         'TestModule'
       );
 
-      if (!result.success) {
+      if ('error' in result) {
         expect(result.error.context?.module).toBe('TestModule');
       }
     });
@@ -259,25 +259,25 @@ describe('errorHandler', () => {
     });
 
     it('should return error result when function throws', () => {
-      const result = safeSync(() => {
+      const result = safeSync<void>(() => {
         throw new Error('Sync error');
       });
 
       expect(result.success).toBe(false);
-      if (!result.success) {
+      if ('error' in result) {
         expect(result.error.message).toBe('Sync error');
       }
     });
 
     it('should pass context to error handler', () => {
-      const result = safeSync(
+      const result = safeSync<void>(
         () => {
           throw new Error('Test');
         },
         { module: 'TestModule', action: 'testAction' }
       );
 
-      if (!result.success) {
+      if ('error' in result) {
         expect(result.error.context?.module).toBe('TestModule');
         expect(result.error.context?.action).toBe('testAction');
       }

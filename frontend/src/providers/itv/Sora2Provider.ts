@@ -9,6 +9,7 @@ import type {
   ProgressInfo,
 } from '../../types';
 import type { ITVProvider } from './types';
+import { safeFetch } from '../../utils/safeFetch';
 
 // API 响应类型
 interface Sora2CreateResponse {
@@ -140,7 +141,7 @@ export class Sora2Provider implements ITVProvider {
 
     try {
       // 使用简单的请求测试连接
-      const response = await fetch(`${this.getBaseUrl()}/v1/videos/generations`, {
+      const response = await safeFetch(`${this.getBaseUrl()}/v1/videos/generations`, {
         method: 'POST',
         headers: this.getHeaders(),
         body: JSON.stringify({
@@ -238,7 +239,7 @@ export class Sora2Provider implements ITVProvider {
       body.metadata = metadata;
     }
 
-    const response = await fetch(`${this.getBaseUrl()}/v1/videos/generations`, {
+    const response = await safeFetch(`${this.getBaseUrl()}/v1/videos/generations`, {
       method: 'POST',
       headers: this.getHeaders(),
       body: JSON.stringify(body),
@@ -302,7 +303,7 @@ export class Sora2Provider implements ITVProvider {
    * 轮询视频任务状态
    */
   async checkProgress(taskId: string): Promise<ProgressInfo> {
-    const response = await fetch(`${this.getBaseUrl()}/v1/videos/generations/${taskId}`, {
+    const response = await safeFetch(`${this.getBaseUrl()}/v1/videos/generations/${taskId}`, {
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${this.config.apiKey || ''}`,
@@ -382,7 +383,7 @@ export class Sora2Provider implements ITVProvider {
       body.from_task = params.fromTask;
     }
 
-    const response = await fetch(`${this.getBaseUrl()}/v1/videos/generations`, {
+    const response = await safeFetch(`${this.getBaseUrl()}/v1/videos/generations`, {
       method: 'POST',
       headers: this.getHeaders(),
       body: JSON.stringify(body),
@@ -403,7 +404,7 @@ export class Sora2Provider implements ITVProvider {
    * @returns 角色提取进度信息，完成时包含角色列表
    */
   async checkCharacterProgress(taskId: string): Promise<CharacterProgressInfo> {
-    const response = await fetch(`${this.getBaseUrl()}/v1/characters_tasks/${taskId}`, {
+    const response = await safeFetch(`${this.getBaseUrl()}/v1/characters_tasks/${taskId}`, {
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${this.config.apiKey || ''}`,
@@ -475,7 +476,7 @@ export class Sora2Provider implements ITVProvider {
       body.aspect_ratio = options.aspectRatio;
     }
 
-    const response = await fetch(`${this.getBaseUrl()}/v1/videos/${videoId}/remix`, {
+    const response = await safeFetch(`${this.getBaseUrl()}/v1/videos/${videoId}/remix`, {
       method: 'POST',
       headers: this.getHeaders(),
       body: JSON.stringify(body),
@@ -509,7 +510,7 @@ export class Sora2Provider implements ITVProvider {
       body.timestamps = timestamps;
     }
 
-    const response = await fetch(`${this.getBaseUrl()}/v1/props`, {
+    const response = await safeFetch(`${this.getBaseUrl()}/v1/props`, {
       method: 'POST',
       headers: this.getHeaders(),
       body: JSON.stringify(body),

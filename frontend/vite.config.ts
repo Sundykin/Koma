@@ -16,25 +16,48 @@ export default defineConfig(({ mode }) => {
       rollupOptions: {
         output: {
           manualChunks(id) {
-            // 将 node_modules 中的依赖分离到 vendor chunks
-            if (id.includes('node_modules')) {
-              // 播放器（独立，无循环依赖）
-              if (id.includes('xgplayer')) {
-                return 'vendor-player';
-              }
-              // 编辑器（独立，无循环依赖）
-              if (id.includes('codemirror') || id.includes('@codemirror') || id.includes('@lezer')) {
-                return 'vendor-editor';
-              }
-              // AI SDK（独立，无循环依赖）
-              if (id.includes('@google/genai')) {
-                return 'vendor-ai';
-              }
-              // 所有其他依赖合并到 vendor-ui
-              // 包括 React、AntD、zustand、i18next 及所有共享依赖
-              // 这样可以完全避免循环依赖
-              return 'vendor-ui';
-            }
+            if (!id.includes('node_modules')) return;
+
+            // xgplayer 播放器
+            if (id.includes('xgplayer')) return 'vendor-player';
+
+            // CodeMirror 编辑器
+            if (id.includes('codemirror') || id.includes('@codemirror') || id.includes('@lezer'))
+              return 'vendor-editor';
+
+            // Google AI SDK
+            if (id.includes('@google/genai')) return 'vendor-ai';
+
+            // antd icons + 全部传递依赖，避免与 vendor-antd 循环引用
+            // @ant-design/icons → icons-svg, colors(→fast-color), @rc-component/util, clsx
+            if (
+              id.includes('@ant-design/icons') ||
+              id.includes('@ant-design/icons-svg') ||
+              id.includes('@ant-design/colors') ||
+              id.includes('@ant-design/fast-color') ||
+              id.includes('@rc-component/util')
+            )
+              return 'vendor-antd-icons';
+
+            // antd 核心 + rc-* 组件库 + @ant-design 共享基础设施
+            if (
+              id.includes('/antd/') ||
+              id.includes('@ant-design/') ||
+              id.includes('rc-') ||
+              id.includes('@rc-component')
+            )
+              return 'vendor-antd';
+
+            // React 核心（版本稳定，利于长期缓存）
+            if (
+              id.includes('/react-dom/') ||
+              id.includes('/react/') ||
+              id.includes('/scheduler/')
+            )
+              return 'vendor-react';
+
+            // 其他第三方依赖
+            return 'vendor-ui';
           },
         },
       },

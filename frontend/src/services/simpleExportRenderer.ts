@@ -4,7 +4,7 @@
  */
 import type { Track, Clip } from '../types/editor';
 import { getAnimatedProperties } from '../engine/simpleKeyframe';
-import { toKomaLocalUrl } from '../utils/urlUtils';
+import { toKomaLocalUrl, fromKomaLocalUrl } from '../utils/urlUtils';
 
 export interface SimpleExportConfig {
   width: number;
@@ -119,7 +119,8 @@ export class SimpleExportRenderer {
           : QUALITY_PRESETS[this.config.quality];
 
         await ffmpegAPI.composeVideo({
-          framePattern: `${tempDir}/frame_%05d.png`,
+          frameDir: tempDir,
+          framePattern: 'frame_%05d.png',
           fps: this.config.fps,
           width: this.config.width,
           height: this.config.height,
@@ -128,15 +129,6 @@ export class SimpleExportRenderer {
           audioBitrate: quality.audioBitrate,
           audioTracks: audioClips,
           outputPath: this.config.outputPath,
-          onProgress: (percent: number) => {
-            this.emitProgress({
-              stage: 'encoding',
-              progress: 60 + percent * 0.35,
-              currentFrame: totalFrames,
-              totalFrames,
-              message: `正在编码 ${Math.round(percent)}%...`,
-            });
-          },
         });
 
         // 清理临时文件
@@ -440,7 +432,7 @@ export class SimpleExportRenderer {
       for (const clip of track.clips) {
         if (clip.type === 'AUDIO' || clip.type === 'VIDEO') {
           audioClips.push({
-            src: toKomaLocalUrl(clip.src),
+            src: fromKomaLocalUrl(clip.src),
             start: clip.start,
             duration: clip.duration,
             offset: clip.offset,

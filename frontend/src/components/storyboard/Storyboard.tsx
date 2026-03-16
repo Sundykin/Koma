@@ -243,7 +243,8 @@ export const Storyboard: React.FC<StoryboardProps> = ({
             }
           }
         } else if (task.status === 'failed') {
-          message.error(`分镜图片生成失败: ${task.error}`);
+          logger.error('分镜图片生成失败', task.error);
+          message.error('分镜图片生成失败，请检查图像生成配置后重试');
           setGeneratingShots(prev => {
             const next = new Set(prev);
             next.delete(task.targetId!);
@@ -257,7 +258,8 @@ export const Storyboard: React.FC<StoryboardProps> = ({
           setIsAnalyzing(false);
           loadData();
         } else if (task.status === 'failed') {
-          message.error(`AI 分镜生成失败: ${task.error}`);
+          logger.error('AI 分镜生成失败', task.error);
+          message.error('AI 分镜生成失败，请检查 LLM 配置后重试');
           setIsAnalyzing(false);
         }
       }

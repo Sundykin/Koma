@@ -125,8 +125,8 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
             setStoragePath(newPath);
             calcStorageSize(newPath);
             message.success(t('settings.storageChangedMigrated'));
-          } catch (err: any) {
-            message.error(`${t('settings.migrateFailed')}: ${err.message}`);
+          } catch {
+            message.error(t('settings.migrateFailed'));
           }
         },
         onCancel: async () => {
@@ -135,8 +135,8 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
             setStoragePath(newPath);
             calcStorageSize(newPath);
             message.success(t('settings.storageChanged'));
-          } catch (err: any) {
-            message.error(`${t('settings.changeFailed')}: ${err.message}`);
+          } catch {
+            message.error(t('settings.changeFailed'));
           }
         },
       });
@@ -153,8 +153,8 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
         setClearingCache(true);
         try {
           message.success(t('settings.cacheCleared'));
-        } catch (err: any) {
-          message.error(`${t('settings.clearFailed')}: ${err.message}`);
+        } catch {
+          message.error(t('settings.clearFailed'));
         } finally {
           setClearingCache(false);
         }

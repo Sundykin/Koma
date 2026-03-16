@@ -210,7 +210,7 @@ export type TTIProviderType =
   | 'comfyui' | 'jimeng' | 'qwen-image' | 'midjourney' | 'dall-e' | 'flux' | 'nano-banana' | 'gemini-3-pro'
   | (string & { __ttiPlugin?: never });
 export type ITVProviderType =
-  | 'runway' | 'kling' | 'pika' | 'minimax' | 'comfyui-animatediff' | 'sora2'
+  | 'runway' | 'kling' | 'pika' | 'minimax' | 'comfyui-animatediff' | 'sora2' | 'custom'
   | (string & { __itvPlugin?: never });
 export type TTSProviderType =
   | 'edge-tts' | 'openai-tts' | 'fish-audio' | 'gpt-sovits' | 'doubao-tts'
@@ -240,6 +240,7 @@ export interface TTIModelConfig extends MediaProviderConfig {
 // ITV 配置（图生视频）
 export interface ITVModelConfig extends MediaProviderConfig {
   provider: ITVProviderType;
+  modelName?: string;
   workflowPath?: string;           // ComfyUI AnimateDiff 工作流
   workflowMapping?: Record<string, string>;
   defaultDuration?: number;        // 默认时长（秒）

@@ -5,6 +5,7 @@
 import type { AppSettings, Character, Scene } from '../types';
 import { getProjectLLMProvider } from '../providers';
 import { getPromptTemplate, fillTemplate } from '../store/promptTemplates';
+import { parseLLMJSON } from '../utils/llmJsonParser';
 
 interface ScriptGeneratorParams {
   settings: AppSettings;
@@ -95,14 +96,7 @@ export async function generateRandomIdea(
 
   onProgress?.(80, '解析创意...');
 
-  const jsonMatch = response.match(/```json\s*([\s\S]*?)\s*```/) ||
-                    response.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) {
-    throw new Error('无法解析创意格式');
-  }
-
-  const jsonStr = jsonMatch[1] || jsonMatch[0];
-  const idea: RandomIdea = JSON.parse(jsonStr);
+  const idea: RandomIdea = parseLLMJSON<RandomIdea>(response);
 
   onProgress?.(100, '创意生成完成');
   return idea;
@@ -277,13 +271,7 @@ ${sceneDesc}
 
   onProgress(80, '解析剧本结构...');
 
-  // 解析返回的 JSON
-  const jsonMatch = response.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) {
-    throw new Error('无法解析剧本格式');
-  }
-
-  const script: GeneratedScript = JSON.parse(jsonMatch[0]);
+  const script: GeneratedScript = parseLLMJSON<GeneratedScript>(response);
   onProgress(100, '剧本生成完成');
 
   return script;

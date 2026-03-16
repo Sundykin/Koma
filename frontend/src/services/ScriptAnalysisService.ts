@@ -9,6 +9,7 @@ import { getActiveLLMConfig } from '../store/globalStore';
 import { getPromptTemplate, fillTemplate } from '../store/promptTemplates';
 import { logLLMCall } from '../store/aiCallLogger';
 import { TaskManager, Task } from './TaskManager';
+import { parseLLMJSON } from '../utils/llmJsonParser';
 import {
   saveCharacters,
   saveScenes,
@@ -197,18 +198,9 @@ export class ScriptAnalysisService {
     return result;
   }
 
-  // 解析 LLM 返回的 JSON
+  // 解析 LLM 返回的 JSON（委托给 parseLLMJSON 工具函数）
   private parseJSON<T>(text: string): T {
-    // 尝试提取 JSON 块
-    const jsonMatch = text.match(/```json\s*([\s\S]*?)\s*```/) ||
-                      text.match(/```\s*([\s\S]*?)\s*```/) ||
-                      [null, text];
-    const jsonStr = jsonMatch[1] || text;
-
-    // 清理可能的前后缀
-    const cleaned = jsonStr.trim().replace(/^[^{[]*/, '').replace(/[^}\]]*$/, '');
-
-    return JSON.parse(cleaned);
+    return parseLLMJSON<T>(text);
   }
 
   // 提取角色
@@ -365,31 +357,30 @@ export class ScriptAnalysisService {
   }
 
   // 完整解析流程
-  async analyzeScript(script: string): Promise<ScriptAnalysisResult | null> {
+  async analyzeScript(script: string): Promise<ScriptAnalysisResult> {
     // 提取角色
     const charResult = await this.extractCharacters(script);
     if (!charResult.success || !charResult.data) {
-      return null;
+      throw new Error(charResult.error || '角色提取失败');
     }
 
     // 提取场景
     const sceneResult = await this.extractScenes(script);
     if (!sceneResult.success || !sceneResult.data) {
-      return null;
+      throw new Error(sceneResult.error || '场景提取失败');
     }
 
     // 提取道具
     const propsResult = await this.extractProps(script);
     if (!propsResult.success || !propsResult.data) {
-      return null;
+      throw new Error(propsResult.error || '道具提取失败');
     }
 
-    // 注意：分镜生成已独立为单独步骤，不在此处执行
     return {
       characters: charResult.data,
       scenes: sceneResult.data,
       props: propsResult.data,
-      shots: [], // 分镜由 ShotAnalysisService 单独生成
+      shots: [],
     };
   }
 }
@@ -498,12 +489,8 @@ export class BackgroundAnalysisService {
       const existingScenes = await loadScenes(this.projectId);
       const existingProps = await loadProps(this.projectId);
 
-      // 执行解析
+      // 执行解析（analyzeScript 失败时会直接抛出带有具体原因的异常）
       const result = await service.analyzeScript(script);
-
-      if (!result) {
-        throw new Error('解析失败，请检查剧本内容');
-      }
 
       // 合并去重角色（按名称匹配，保留已有资产的 ID）
       const mergedChars = this.mergeAssets(existingChars, result.characters, 'name');

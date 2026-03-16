@@ -23,6 +23,11 @@ export interface ErrorResult {
   timestamp: number;
 }
 
+// 安全执行结果类型（判别联合）
+export type SafeResult<T> =
+  | { success: true; data: T }
+  | { success: false; error: ErrorResult };
+
 // 错误监听器类型
 type ErrorListener = (result: ErrorResult) => void;
 
@@ -193,7 +198,7 @@ export function createErrorHandler(module: string) {
 export async function safeAsync<T>(
   fn: () => Promise<T>,
   context?: string | ErrorContext
-): Promise<{ success: true; data: T } | { success: false; error: ErrorResult }> {
+): Promise<SafeResult<T>> {
   try {
     const data = await fn();
     return { success: true, data };
@@ -212,7 +217,7 @@ export async function safeAsync<T>(
 export function safeSync<T>(
   fn: () => T,
   context?: string | ErrorContext
-): { success: true; data: T } | { success: false; error: ErrorResult } {
+): SafeResult<T> {
   try {
     const data = fn();
     return { success: true, data };

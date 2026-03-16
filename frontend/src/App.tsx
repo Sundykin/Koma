@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, Suspense, lazy } from 'react';
 import { Project, ScriptAnalysisResult, EditorStep, AppSettings, Episode, EpisodeStepProgress } from './types';
-import { ProjectList, ProjectOverview, CreateProjectModal, ProjectSettingsModal } from './components/project';
+import { ProjectList, CreateProjectModal, ProjectSettingsModal } from './components/project';
 import type { MentionItem } from './editor';
 import { WindowControls } from './components/common';
 import { ErrorBoundary } from './components/common';
@@ -29,6 +29,7 @@ const SettingsPage = lazy(() => import('./components/settings').then(m => ({ def
 const PluginManager = lazy(() => import('./components/plugins').then(m => ({ default: m.PluginManager })));
 const PluginHost = lazy(() => import('./components/plugins').then(m => ({ default: m.PluginHost })));
 const ChatPage = lazy(() => import('./components/chat').then(m => ({ default: m.ChatPage })));
+const ProjectOverview = lazy(() => import('./components/project/ProjectOverview').then(m => ({ default: m.ProjectOverview })));
 
 // 加载中占位组件
 const ViewLoading: React.FC<{ tip?: string }> = ({ tip = '加载中...' }) => (
@@ -288,11 +289,13 @@ const AppContent: React.FC = () => {
               </Suspense>
             )}
             {view === 'overview' && activeProject && (
-              <ProjectOverview
-                project={activeProject}
-                onEnterEpisode={handleEnterEpisode}
-                onProjectUpdate={(updates) => setActiveProject({ ...activeProject, ...updates })}
-              />
+              <Suspense fallback={<ViewLoading tip="加载项目概览..." />}>
+                <ProjectOverview
+                  project={activeProject}
+                  onEnterEpisode={handleEnterEpisode}
+                  onProjectUpdate={(updates) => setActiveProject({ ...activeProject, ...updates })}
+                />
+              </Suspense>
             )}
             {view === 'editor' && activeProject && (
               <Suspense fallback={<ViewLoading tip="加载编辑器..." />}>

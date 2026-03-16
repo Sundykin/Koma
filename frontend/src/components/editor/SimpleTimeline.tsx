@@ -584,11 +584,17 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
     e.stopPropagation();
     if (!containerRef.current) return;
 
-    const json = e.dataTransfer.getData('application/json');
-    if (!json) return;
+    let asset: Asset | null = null;
+    const json = e.dataTransfer.getData('application/json') || e.dataTransfer.getData('text/plain');
+    if (json) {
+      try { asset = JSON.parse(json); } catch { /* ignore */ }
+    }
+    if (!asset && draggingAsset) {
+      asset = draggingAsset;
+    }
+    if (!asset) return;
 
     try {
-      const asset = JSON.parse(json) as Asset;
       const containerRect = containerRef.current.getBoundingClientRect();
       const dropX = e.clientX - containerRect.left + containerRef.current.scrollLeft - HEADER_WIDTH;
       const time = Math.max(0, dropX / pixelsPerSecond);
@@ -681,7 +687,7 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
   return (
     <div className="flex flex-col h-full bg-[#18181b] border-t border-[#27272a] select-none">
       {/* 工具栏 */}
-      <div className="h-10 border-b border-[#27272a] flex items-center px-4 justify-between bg-[#18181b] flex-shrink-0 z-50">
+      <div className="h-10 border-b border-[#27272a] flex items-center px-4 justify-between bg-[#18181b] flex-shrink-0 z-50 overflow-x-auto gap-2" style={{ minWidth: 0 }}>
         <div className="flex items-center gap-4">
           <button onClick={togglePlay} className="text-zinc-300 hover:text-white transition-colors">
             {isPlaying ? <Pause size={18} /> : <Play size={18} />}
@@ -740,7 +746,7 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
           </div>
 
           {/* 缩放预设 */}
-          <div className="flex gap-0.5">
+          <div className="hidden lg:flex gap-0.5">
             {ZOOM_PRESETS.map(preset => (
               <button
                 key={preset}

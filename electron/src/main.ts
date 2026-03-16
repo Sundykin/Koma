@@ -1,7 +1,7 @@
 /**
  * Electron-Egg 主进程入口 (TypeScript)
  */
-import { app, BrowserWindow, ipcMain, IpcMainInvokeEvent, protocol } from 'electron';
+import { app, BrowserWindow, ipcMain, IpcMainInvokeEvent, protocol, session } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import { controllers } from './controller';
@@ -26,6 +26,17 @@ const mimeTypes: Record<string, string> = {
   '.wav': 'audio/wav',
 };
 
+// 校验路径是否在允许的目录范围内（防止路径遍历）
+function isPathAllowed(filePath: string): boolean {
+  const normalized = path.resolve(filePath);
+  const home = app.getPath('home');
+  const appData = app.getPath('appData');
+  const userData = app.getPath('userData');
+  const temp = app.getPath('temp');
+  const allowedRoots = [home, appData, userData, temp];
+  return allowedRoots.some(root => normalized.startsWith(root + path.sep) || normalized === root);
+}
+
 // 注册自定义协议用于加载本地文件（支持 Range 请求）
 function registerLocalProtocol(): void {
   protocol.handle('koma-local', async (request) => {
@@ -37,6 +48,13 @@ function registerLocalProtocol(): void {
       if (filePath.startsWith('/')) {
         filePath = filePath.slice(1);
       }
+
+      const resolvedPath = path.resolve(filePath);
+      if (!isPathAllowed(resolvedPath)) {
+        console.warn('[koma-local] Path access denied:', resolvedPath);
+        return new Response('Forbidden', { status: 403 });
+      }
+      filePath = resolvedPath;
 
       // 获取文件信息
       const stat = await fs.promises.stat(filePath);
@@ -190,6 +208,26 @@ function registerIpcRoutes(): void {
   ipcMain.handle('plugin:list', () => controllers.plugin.list({}));
   ipcMain.handle('plugin:openFolder', (_, pluginPath) => controllers.plugin.openFolder({ pluginPath }));
 
+  // 网络代理：让渲染进程的 LLM 请求通过主进程发出，绕过 CORS
+  ipcMain.handle('net:fetch', async (_, args: { url: string; method?: string; headers?: Record<string, string>; body?: string }) => {
+    try {
+      const parsed = new URL(args.url);
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+        return { ok: false, status: 403, statusText: 'Only http/https URLs are allowed', body: '' };
+      }
+
+      const resp = await fetch(args.url, {
+        method: args.method || 'GET',
+        headers: args.headers,
+        body: args.body,
+      });
+      const body = await resp.text();
+      return { ok: resp.ok, status: resp.status, statusText: resp.statusText, body };
+    } catch (err: any) {
+      return { ok: false, status: 502, statusText: err.message || 'Network error', body: '' };
+    }
+  });
+
   // 插件运行时管理
   ipcMain.handle('plugin:activate', (_, args) => controllers.plugin.activate(args));
   ipcMain.handle('plugin:deactivate', (_, args) => controllers.plugin.deactivate(args));
@@ -215,6 +253,27 @@ async function initServices(): Promise<void> {
 
 app.whenReady().then(async () => {
   registerLocalProtocol();
+
+  // CSP: 限制脚本、样式、连接来源
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    const csp = [
+      "default-src 'self' koma-local:",
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+      "font-src 'self' data: https://fonts.gstatic.com",
+      "img-src 'self' data: blob: koma-local: https: http:",
+      "media-src 'self' blob: koma-local: https: http:",
+      "connect-src 'self' https: http: ws: wss:",
+    ].join('; ');
+
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        'Content-Security-Policy': [csp],
+      },
+    });
+  });
+
   await initServices();
   registerIpcRoutes();
   createWindow();

@@ -9,6 +9,7 @@ import type { Episode } from '../../types';
 import { createEpisode, saveEpisode, deleteEpisode, listEpisodes } from '../../store/projectStore';
 import { createLLMProvider } from '../../providers';
 import { getActiveLLMConfig } from '../../store/globalStore';
+import { parseLLMJSON } from '../../utils/llmJsonParser';
 
 const { TextArea } = Input;
 
@@ -46,14 +47,15 @@ export const EpisodeManager = forwardRef<EpisodeManagerRef, EpisodeManagerProps>
   const [splitDialogOpen, setSplitDialogOpen] = useState(false);
   const [splitting, setSplitting] = useState(false);
   const [splitCount, setSplitCount] = useState(3);
+  const [adding, setAdding] = useState(false);
 
   const loadEpisodes = useCallback(async () => {
     setLoading(true);
     try {
       const list = await listEpisodes(projectId);
       setEpisodes(list);
-    } catch (err: any) {
-      message.error(err.message);
+    } catch {
+      message.error('加载剧集列表失败，请刷新重试');
     } finally {
       setLoading(false);
     }
@@ -64,7 +66,9 @@ export const EpisodeManager = forwardRef<EpisodeManagerRef, EpisodeManagerProps>
   useImperativeHandle(ref, () => ({ refresh: loadEpisodes }), [loadEpisodes]);
 
   const handleAddEpisode = async () => {
+    if (adding) return;
     const nextNumber = episodes.length + 1;
+    setAdding(true);
     try {
       const newEpisode = await createEpisode(projectId, {
         number: nextNumber,
@@ -73,8 +77,10 @@ export const EpisodeManager = forwardRef<EpisodeManagerRef, EpisodeManagerProps>
       });
       setEpisodes([...episodes, newEpisode]);
       message.success('剧集已添加');
-    } catch (err: any) {
-      message.error(err.message);
+    } catch {
+      message.error('添加剧集失败，请重试');
+    } finally {
+      setAdding(false);
     }
   };
 
@@ -101,8 +107,8 @@ export const EpisodeManager = forwardRef<EpisodeManagerRef, EpisodeManagerProps>
       setEditingEpisode(null);
       message.success('剧集已保存');
     } catch (err: any) {
-      if (err.errorFields) return;
-      message.error(err.message);
+      if (err?.errorFields) return;
+      message.error('保存剧集失败，请重试');
     }
   };
 
@@ -124,8 +130,8 @@ export const EpisodeManager = forwardRef<EpisodeManagerRef, EpisodeManagerProps>
             await saveEpisode(projectId, ep.id, { number: ep.number });
           }
           message.success('剧集已删除');
-        } catch (err: any) {
-          message.error(err.message);
+        } catch {
+          message.error('删除剧集失败，请重试');
         }
       },
     });
@@ -161,9 +167,7 @@ ${fullScript}
 }`;
 
       const result = await provider.generateText(prompt, '你是一个专业影视编剧');
-      const jsonMatch = result.match(/```json\s*([\s\S]*?)\s*```/) || [null, result];
-      const jsonStr = (jsonMatch[1] || result).trim().replace(/^[^{]*/, '').replace(/[^}]*$/, '');
-      const parsed = JSON.parse(jsonStr) as { episodes: { title: string; scriptText: string }[] };
+      const parsed = parseLLMJSON<{ episodes: { title: string; scriptText: string }[] }>(result);
 
       for (const ep of episodes) {
         await deleteEpisode(projectId, ep.id);
@@ -184,8 +188,8 @@ ${fullScript}
       setEpisodes(newEpisodes);
       setSplitDialogOpen(false);
       message.success(`已分割为 ${newEpisodes.length} 集`);
-    } catch (err: any) {
-      message.error(`分割失败: ${err.message}`);
+    } catch {
+      message.error('AI 分割失败，请检查 LLM 配置后重试');
     } finally {
       setSplitting(false);
     }
@@ -284,10 +288,15 @@ ${fullScript}
       {/* 添加剧集按钮 */}
       <button
         onClick={handleAddEpisode}
-        className="flex items-center justify-center gap-2 h-12 border border-dashed border-zinc-700 hover:border-emerald-500/50 rounded-lg text-sm text-zinc-500 hover:text-emerald-400 transition-colors"
+        disabled={adding}
+        className={`flex items-center justify-center gap-2 h-12 border border-dashed rounded-lg text-sm transition-colors ${
+          adding
+            ? 'border-zinc-700 text-zinc-600 cursor-not-allowed'
+            : 'border-zinc-700 hover:border-emerald-500/50 text-zinc-500 hover:text-emerald-400'
+        }`}
       >
-        <Plus className="w-4 h-4" />
-        添加剧集
+        <Plus className={`w-4 h-4 ${adding ? 'animate-spin' : ''}`} />
+        {adding ? '添加中...' : '添加剧集'}
       </button>
 
       {/* 编辑对话框 */}

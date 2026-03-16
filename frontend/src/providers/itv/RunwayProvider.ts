@@ -3,6 +3,7 @@
  */
 import type { ITVConfig, ITVOptions, VideoResult, ProgressInfo } from '../../types';
 import type { ITVProvider, ITVGenerateInput } from './types';
+import { safeFetch } from '../../utils/safeFetch';
 
 interface RunwayCreateResponse {
   id?: string;
@@ -60,7 +61,7 @@ export class RunwayProvider implements ITVProvider {
     if (!this.validate()) return false;
 
     try {
-      const response = await fetch(this.buildUrl('organization'), {
+      const response = await safeFetch(this.buildUrl('organization'), {
         method: 'GET',
         headers: this.getHeaders(),
       });
@@ -106,7 +107,7 @@ export class RunwayProvider implements ITVProvider {
       return source;
     }
 
-    const response = await fetch(source);
+    const response = await safeFetch(source);
     const blob = await response.blob();
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -152,7 +153,7 @@ export class RunwayProvider implements ITVProvider {
       body.promptImage = await this.toDataUrl(imageSource);
     }
 
-    const response = await fetch(this.buildUrl(endpoint), {
+    const response = await safeFetch(this.buildUrl(endpoint), {
       method: 'POST',
       headers: this.getHeaders(),
       body: JSON.stringify(body),
@@ -204,7 +205,7 @@ export class RunwayProvider implements ITVProvider {
   }
 
   async checkProgress(taskId: string): Promise<ProgressInfo> {
-    const response = await fetch(this.buildUrl(`tasks/${taskId}`), {
+    const response = await safeFetch(this.buildUrl(`tasks/${taskId}`), {
       method: 'GET',
       headers: this.getHeaders(),
     });
@@ -243,7 +244,7 @@ export class RunwayProvider implements ITVProvider {
 
     for (const endpoint of endpoints) {
       try {
-        const response = await fetch(endpoint.url, {
+        const response = await safeFetch(endpoint.url, {
           method: endpoint.method,
           headers: this.getHeaders(),
         });

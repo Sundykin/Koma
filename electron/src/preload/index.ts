@@ -5,18 +5,60 @@ import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron';
 
 type Listener = (event: IpcRendererEvent, ...args: any[]) => void;
 
+const ALLOWED_INVOKE_CHANNELS = new Set([
+  'controller',
+  'window:minimize', 'window:maximize', 'window:close', 'window:isMaximized',
+  'dialog:openFile', 'dialog:openDirectory', 'dialog:saveFile',
+  'fs:readFile', 'fs:writeFile', 'fs:downloadFile', 'fs:exists',
+  'fs:mkdir', 'fs:readdir', 'fs:stat', 'fs:remove', 'fs:copy',
+  'shell:openExternal', 'shell:showItemInFolder',
+  'app:getPath', 'app:getVersion',
+  'plugin:validate', 'plugin:install', 'plugin:uninstall', 'plugin:list', 'plugin:openFolder',
+  'plugin:activate', 'plugin:deactivate', 'plugin:status', 'plugin:listActive',
+  'plugin:listMCPTools', 'plugin:callMCPTool', 'plugin:listAgents',
+  'net:fetch',
+  'chat:session:create', 'chat:session:get', 'chat:session:dispose',
+  'chat:session:list', 'chat:session:updateConfig',
+  'chat:message:send', 'chat:message:sendStream', 'chat:message:cancel',
+  'chat:mcp:connect', 'chat:mcp:disconnect', 'chat:mcp:list',
+  'chat:mcp:listTools', 'chat:mcp:callTool', 'chat:mcp:importConfig', 'chat:mcp:exportConfig',
+  'chat:tool:approve', 'chat:tool:reject', 'chat:tool:listPending',
+  'chat:tools:list', 'chat:tools:call',
+  'chat:capability:list', 'chat:capability:invoke', 'chat:capability:resolve',
+]);
+
+const ALLOWED_LISTEN_CHANNELS = new Set([
+  'chat:stream:chunk', 'chat:stream:tool', 'chat:stream:done', 'chat:stream:error',
+  'chat:tool:pending', 'chat:tool:approved', 'chat:tool:rejected',
+]);
+
+function validateInvokeChannel(channel: string): void {
+  if (channel.startsWith('controller.')) return;
+  if (!ALLOWED_INVOKE_CHANNELS.has(channel)) {
+    throw new Error(`IPC channel not allowed: ${channel}`);
+  }
+}
+
+function validateListenChannel(channel: string): void {
+  if (!ALLOWED_LISTEN_CHANNELS.has(channel)) {
+    throw new Error(`IPC listen channel not allowed: ${channel}`);
+  }
+}
+
 const ipc = {
   invoke: (channel: string, args?: any) => {
+    validateInvokeChannel(channel);
     if (channel.startsWith('controller.')) {
       return ipcRenderer.invoke('controller', channel, args);
     }
     return ipcRenderer.invoke(channel, args);
   },
-  sendSync: (channel: string, args?: any) => ipcRenderer.sendSync(channel, args),
   on: (channel: string, listener: Listener) => {
+    validateListenChannel(channel);
     ipcRenderer.on(channel, listener);
   },
   once: (channel: string, listener: Listener) => {
+    validateListenChannel(channel);
     ipcRenderer.once(channel, listener);
   },
   removeListener: (channel: string, listener: Listener) => {
@@ -24,9 +66,6 @@ const ipc = {
   },
   removeAllListeners: (channel: string) => {
     ipcRenderer.removeAllListeners(channel);
-  },
-  send: (channel: string, ...args: any[]) => {
-    ipcRenderer.send(channel, ...args);
   },
 };
 
@@ -105,6 +144,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     uninstall: (pluginPath: string) => ipcRenderer.invoke('plugin:uninstall', pluginPath),
     list: () => ipcRenderer.invoke('plugin:list'),
     openFolder: (pluginPath: string) => ipcRenderer.invoke('plugin:openFolder', pluginPath),
+  },
+  net: {
+    fetch: (args: { url: string; method?: string; headers?: Record<string, string>; body?: string }) =>
+      ipcRenderer.invoke('net:fetch', args),
   },
   chat: {
     // 会话管理

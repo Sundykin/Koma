@@ -12,6 +12,8 @@ interface InlineProjectToolbarProps {
   episode: Episode | null;
   isSaving: boolean;
   isAnalyzing: boolean;
+  isGenerating?: boolean;
+  isPolishing?: boolean;
   onPolish: () => void;
   onRandomGenerate: () => void;
   onAnalyze: () => void;
@@ -22,38 +24,42 @@ export const InlineProjectToolbar: React.FC<InlineProjectToolbarProps> = ({
   episode,
   isSaving,
   isAnalyzing,
+  isGenerating = false,
+  isPolishing = false,
   onPolish,
   onRandomGenerate,
   onAnalyze,
   onStartProduction,
 }) => {
   const hasScript = !!episode?.scriptText?.trim();
+  const anyBusy = isGenerating || isPolishing || isAnalyzing;
 
   return (
     <div className="h-12 px-4 flex items-center justify-between border-b border-zinc-800 bg-zinc-900/50">
       {/* Left: AI 辅助工具 */}
       <div className="flex items-center gap-1">
-        <Tooltip title="AI 随机生成剧本">
+        <Tooltip title={isGenerating ? "正在生成中..." : "AI 随机生成剧本"}>
           <Button
             type="text"
             size="small"
-            icon={<ThunderboltOutlined />}
+            icon={isGenerating ? <LoadingOutlined spin /> : <ThunderboltOutlined />}
             onClick={onRandomGenerate}
+            disabled={anyBusy}
             className="text-zinc-400 hover:text-purple-400"
           >
-            随机生成
+            {isGenerating ? '生成中...' : '随机生成'}
           </Button>
         </Tooltip>
-        <Tooltip title={hasScript ? "AI 润色优化" : "请先输入剧本内容"}>
+        <Tooltip title={!hasScript ? "请先输入剧本内容" : isPolishing ? "正在润色中..." : "AI 润色优化"}>
           <Button
             type="text"
             size="small"
-            icon={<HighlightOutlined />}
+            icon={isPolishing ? <LoadingOutlined spin /> : <HighlightOutlined />}
             onClick={onPolish}
-            disabled={!hasScript}
+            disabled={!hasScript || anyBusy}
             className="text-zinc-400 hover:text-blue-400"
           >
-            AI 润色
+            {isPolishing ? '润色中...' : 'AI 润色'}
           </Button>
         </Tooltip>
         <Tooltip title={!hasScript ? "请先输入剧本内容" : isAnalyzing ? "正在解析中..." : "解析剧本提取角色场景"}>

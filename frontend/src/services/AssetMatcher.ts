@@ -5,6 +5,7 @@
 import type { Character, Scene, Prop, LLMModelConfig } from '../types';
 import { createLLMProvider } from '../providers';
 import { calculateAssetFingerprint } from '../store/projectStore';
+import { parseLLMJSON } from '../utils/llmJsonParser';
 
 export interface AssetCandidate {
   name: string;
@@ -254,14 +255,12 @@ ${matchList}
 
     try {
       const response = await this.provider.generateText(prompt, '你是一个资产匹配助手');
-      const jsonMatch = response.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) return null;
 
-      const result = JSON.parse(jsonMatch[0]) as {
+      const result = parseLLMJSON<{
         matchIndex: number;
         confidence: number;
         reason: string;
-      };
+      }>(response);
 
       if (result.matchIndex > 0 && result.matchIndex <= potentialMatches.length) {
         const matched = potentialMatches[result.matchIndex - 1];

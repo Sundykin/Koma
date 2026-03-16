@@ -3,6 +3,7 @@
  */
 import type { ITVConfig, ITVOptions, VideoResult, ProgressInfo } from '../../types';
 import type { ITVProvider, ITVGenerateInput } from './types';
+import { safeFetch } from '../../utils/safeFetch';
 
 interface KlingCreateResponse {
   code?: number;
@@ -89,7 +90,7 @@ export class KlingProvider implements ITVProvider {
     if (!this.validate()) return false;
 
     try {
-      const response = await fetch(this.buildUrl('videos/text2video'), {
+      const response = await safeFetch(this.buildUrl('videos/text2video'), {
         method: 'POST',
         headers: this.getHeaders(),
         body: JSON.stringify({
@@ -128,7 +129,7 @@ export class KlingProvider implements ITVProvider {
       return source;
     }
 
-    const response = await fetch(source);
+    const response = await safeFetch(source);
     const blob = await response.blob();
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -225,7 +226,7 @@ export class KlingProvider implements ITVProvider {
       }
     }
 
-    const response = await fetch(this.buildUrl(endpoint), {
+    const response = await safeFetch(this.buildUrl(endpoint), {
       method: 'POST',
       headers: this.getHeaders(),
       body: JSON.stringify(body),
@@ -292,7 +293,7 @@ export class KlingProvider implements ITVProvider {
 
     for (const url of endpoints) {
       try {
-        const response = await fetch(url, {
+        const response = await safeFetch(url, {
           method: 'GET',
           headers: {
             'Authorization': `Bearer ${this.config.apiKey || ''}`,
@@ -378,7 +379,7 @@ export class KlingProvider implements ITVProvider {
 
     for (const url of endpoints) {
       try {
-        const response = await fetch(url, {
+        const response = await safeFetch(url, {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${this.config.apiKey || ''}`,

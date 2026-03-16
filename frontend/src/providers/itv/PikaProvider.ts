@@ -8,6 +8,7 @@ import type {
   ProgressInfo,
 } from '../../types';
 import type { ITVProvider, ITVGenerateInput } from './types';
+import { safeFetch } from '../../utils/safeFetch';
 
 export class PikaProvider implements ITVProvider {
   type = 'pika' as const;
@@ -29,7 +30,7 @@ export class PikaProvider implements ITVProvider {
     if (!this.validate()) return false;
 
     try {
-      const response = await fetch(`${this.getBaseUrl()}/health`, {
+      const response = await safeFetch(`${this.getBaseUrl()}/health`, {
         headers: {
           Authorization: `Bearer ${this.config.apiKey}`,
         },
@@ -52,7 +53,7 @@ export class PikaProvider implements ITVProvider {
 
     // 读取图片文件
     if (imageUrl) {
-      const imageResponse = await fetch(imageUrl);
+      const imageResponse = await safeFetch(imageUrl);
       const imageBlob = await imageResponse.blob();
       formData.append('image', imageBlob, 'input.png');
     }
@@ -63,7 +64,7 @@ export class PikaProvider implements ITVProvider {
       formData.append('motion', String(options.motionStrength));
     }
 
-    const response = await fetch(`${this.getBaseUrl()}/generate`, {
+    const response = await safeFetch(`${this.getBaseUrl()}/generate`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${this.config.apiKey}`,
@@ -108,7 +109,7 @@ export class PikaProvider implements ITVProvider {
   }
 
   async checkProgress(taskId: string): Promise<ProgressInfo> {
-    const response = await fetch(`${this.getBaseUrl()}/tasks/${taskId}`, {
+    const response = await safeFetch(`${this.getBaseUrl()}/tasks/${taskId}`, {
       headers: {
         Authorization: `Bearer ${this.config.apiKey}`,
       },
@@ -140,7 +141,7 @@ export class PikaProvider implements ITVProvider {
   }
 
   async cancelTask(taskId: string): Promise<void> {
-    await fetch(`${this.getBaseUrl()}/tasks/${taskId}/cancel`, {
+    await safeFetch(`${this.getBaseUrl()}/tasks/${taskId}/cancel`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${this.config.apiKey}`,

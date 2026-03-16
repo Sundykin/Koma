@@ -8,6 +8,7 @@ import type {
   ProgressInfo,
 } from '../../types';
 import type { ITVProvider, ITVGenerateInput } from './types';
+import { safeFetch } from '../../utils/safeFetch';
 
 // AnimateDiff 工作流配置
 interface AnimateDiffWorkflow {
@@ -42,7 +43,7 @@ export class ComfyUIAnimateDiffProvider implements ITVProvider {
 
   async testConnection(): Promise<boolean> {
     try {
-      const response = await fetch(`${this.getBaseUrl()}/system_stats`);
+      const response = await safeFetch(`${this.getBaseUrl()}/system_stats`);
       return response.ok;
     } catch {
       return false;
@@ -53,7 +54,7 @@ export class ComfyUIAnimateDiffProvider implements ITVProvider {
    * 将图片转换为 base64
    */
   private async imageToBase64(imagePath: string): Promise<string> {
-    const response = await fetch(imagePath);
+    const response = await safeFetch(imagePath);
     const blob = await response.blob();
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -162,7 +163,7 @@ export class ComfyUIAnimateDiffProvider implements ITVProvider {
     });
 
     // 提交任务到 ComfyUI
-    const response = await fetch(`${baseUrl}/prompt`, {
+    const response = await safeFetch(`${baseUrl}/prompt`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -213,7 +214,7 @@ export class ComfyUIAnimateDiffProvider implements ITVProvider {
     const baseUrl = this.getBaseUrl();
 
     // 查询历史记录
-    const response = await fetch(`${baseUrl}/history/${taskId}`);
+    const response = await safeFetch(`${baseUrl}/history/${taskId}`);
 
     if (!response.ok) {
       return {
@@ -282,7 +283,7 @@ export class ComfyUIAnimateDiffProvider implements ITVProvider {
 
   async cancelTask(_taskId: string): Promise<void> {
     const baseUrl = this.getBaseUrl();
-    await fetch(`${baseUrl}/interrupt`, {
+    await safeFetch(`${baseUrl}/interrupt`, {
       method: 'POST',
     });
   }

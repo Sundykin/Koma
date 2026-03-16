@@ -27,6 +27,11 @@ export class FsController extends BaseController {
 
   // 从 URL 下载文件到本地（绕过 CORS）
   async downloadFile(args: { url: string; destPath: string }): Promise<{ success: boolean; size: number }> {
+    const parsed = new URL(args.url);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      throw new Error('Only http/https URLs are allowed for download');
+    }
+
     console.log('[FsController:downloadFile] url:', args.url);
     console.log('[FsController:downloadFile] destPath:', args.destPath);
 

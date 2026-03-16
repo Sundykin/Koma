@@ -94,8 +94,9 @@ export const ScriptWorkbench: React.FC<ScriptWorkbenchProps> = ({
       setLocalScript(script);
       await saveScript(script);
       message.success('剧本生成成功！');
-    } catch (err: any) {
-      message.error(`生成失败: ${err.message}`);
+    } catch (err: unknown) {
+      logger.error('随机生成失败', err);
+      message.error('剧本生成失败，请检查 LLM 配置后重试');
     } finally {
       setIsGenerating(false);
     }
@@ -118,8 +119,9 @@ export const ScriptWorkbench: React.FC<ScriptWorkbenchProps> = ({
       setLocalScript(polished);
       await saveScript(polished);
       message.success('润色完成！');
-    } catch (err: any) {
-      message.error(`润色失败: ${err.message}`);
+    } catch (err: unknown) {
+      logger.error('润色失败', err);
+      message.error('润色失败，请检查 LLM 配置后重试');
     } finally {
       setIsPolishing(false);
     }
@@ -144,8 +146,9 @@ export const ScriptWorkbench: React.FC<ScriptWorkbenchProps> = ({
         project.llmConfigId
       );
       message.success('解析任务已启动，可在状态栏查看进度');
-    } catch (err: any) {
-      message.error(`解析失败: ${err.message}`);
+    } catch (err: unknown) {
+      logger.error('解析失败', err);
+      message.error('剧本解析失败，请检查 LLM 配置后重试');
     } finally {
       setIsAnalyzing(false);
     }
@@ -173,8 +176,10 @@ export const ScriptWorkbench: React.FC<ScriptWorkbenchProps> = ({
       {/* 工具栏 */}
       <InlineProjectToolbar
         episode={episode}
-        isSaving={isSaving || isGenerating || isPolishing}
+        isSaving={isSaving}
         isAnalyzing={isAnalyzing}
+        isGenerating={isGenerating}
+        isPolishing={isPolishing}
         onPolish={handlePolish}
         onRandomGenerate={handleRandomGenerate}
         onAnalyze={handleAnalyze}

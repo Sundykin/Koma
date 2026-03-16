@@ -4,6 +4,7 @@
  */
 import type { ModelConfig } from '../../types';
 import type { LLMProvider, ChatMessage } from './types';
+import { safeFetch } from '../../utils/safeFetch';
 
 interface AnthropicMessage {
   role: 'user' | 'assistant';
@@ -38,7 +39,7 @@ export class ClaudeProvider implements LLMProvider {
 
   async testConnection(): Promise<boolean> {
     try {
-      const response = await fetch(`${this.baseUrl}/v1/messages`, {
+      const response = await safeFetch(`${this.baseUrl}/v1/messages`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -58,7 +59,7 @@ export class ClaudeProvider implements LLMProvider {
   }
 
   async generateText(prompt: string, systemPrompt?: string): Promise<string> {
-    const response = await fetch(`${this.baseUrl}/v1/messages`, {
+    const response = await safeFetch(`${this.baseUrl}/v1/messages`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -75,7 +76,7 @@ export class ClaudeProvider implements LLMProvider {
 
     if (!response.ok) {
       const error = await response.text();
-      throw new Error(`Claude API error: ${error}`);
+      throw new Error(`Claude API 请求失败: ${error}`);
     }
 
     const data: AnthropicResponse = await response.json();
@@ -96,7 +97,7 @@ export class ClaudeProvider implements LLMProvider {
         content: m.content,
       }));
 
-    const response = await fetch(`${this.baseUrl}/v1/messages`, {
+    const response = await safeFetch(`${this.baseUrl}/v1/messages`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -113,7 +114,7 @@ export class ClaudeProvider implements LLMProvider {
 
     if (!response.ok) {
       const error = await response.text();
-      throw new Error(`Claude API error: ${error}`);
+      throw new Error(`Claude API 请求失败: ${error}`);
     }
 
     const data: AnthropicResponse = await response.json();
