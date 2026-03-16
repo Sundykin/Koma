@@ -238,7 +238,7 @@ export const VisualStyleManager: React.FC<VisualStyleManagerProps> = ({ onStyleC
         okText="保存"
         cancelText="取消"
         width={600}
-        maskClosable={false}
+        mask={{ closable: false }}
       >
         <Form form={form} layout="vertical">
           <Form.Item

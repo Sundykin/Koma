@@ -1149,7 +1149,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
   if (loading) {
     return (
       <div className="storyboardContainer" style={{ justifyContent: 'center', alignItems: 'center' }}>
-        <Spin size="large" tip="加载分镜数据...">
+        <Spin size="large" description="加载分镜数据...">
           <div style={{ padding: 50 }} />
         </Spin>
       </div>

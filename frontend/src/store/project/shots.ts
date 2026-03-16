@@ -20,7 +20,12 @@ export async function saveShotVersion(
 
   let shotMeta: ShotMeta;
   try {
-    const data = await electronService.fs.readFile(`${shotPath}/shot.json`);
+    const shotMetaPath = `${shotPath}/shot.json`;
+    const exists = await electronService.fs.exists(shotMetaPath);
+    if (!exists) {
+      throw new Error('missing shot meta');
+    }
+    const data = await electronService.fs.readFile(shotMetaPath);
     shotMeta = JSON.parse(data);
   } catch {
     shotMeta = {
@@ -104,7 +109,10 @@ export async function loadShotMeta(
 
   try {
     const projectPath = await getProjectPath(projectId);
-    const data = await electronService.fs.readFile(`${projectPath}/shots/${shotId}/shot.json`);
+    const shotMetaPath = `${projectPath}/shots/${shotId}/shot.json`;
+    const exists = await electronService.fs.exists(shotMetaPath);
+    if (!exists) return null;
+    const data = await electronService.fs.readFile(shotMetaPath);
     return JSON.parse(data);
   } catch {
     return null;
@@ -124,7 +132,10 @@ export async function listShots(projectId: string): Promise<ShotMeta[]> {
 
     for (const entry of entries) {
       try {
-        const data = await electronService.fs.readFile(`${shotsPath}/${entry}/shot.json`);
+        const shotMetaPath = `${shotsPath}/${entry}/shot.json`;
+        const exists = await electronService.fs.exists(shotMetaPath);
+        if (!exists) continue;
+        const data = await electronService.fs.readFile(shotMetaPath);
         shots.push(JSON.parse(data));
       } catch {
         // skip invalid

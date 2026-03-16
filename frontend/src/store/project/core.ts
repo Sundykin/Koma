@@ -3,11 +3,10 @@
  * 项目创建、加载、保存、删除
  */
 import { v4 as uuidv4 } from 'uuid';
-import { electronService } from '../../services/electronService';
+import { electronService, type ProjectMeta as ElectronProjectMeta } from '../../services/electronService';
 import { getStorageConfig, initStorageConfig } from '../storageConfig';
 import { addRecentProject, getDefaultLLMConfig } from '../globalStore';
-import type { ProjectMeta, Timeline } from '../../types';
-import { DEFAULT_VIDEO_RESOLUTION } from '../../constants/dimensions';
+import type { ProjectMeta } from '../../types';
 
 // ========== 路径工具 ==========
 
@@ -19,6 +18,42 @@ export async function getProjectsRoot(): Promise<string> {
 export async function getProjectPath(projectId: string): Promise<string> {
   const root = await getProjectsRoot();
   return `${root}/${projectId}`;
+}
+
+function fromElectronProject(meta: ElectronProjectMeta): ProjectMeta {
+  return {
+    id: meta.id,
+    title: meta.title,
+    genre: meta.genre,
+    mode: meta.mode,
+    createdAt: meta.createdAt,
+    updatedAt: meta.updatedAt,
+    thumbnailPath: meta.thumbnail,
+    llmConfigId: meta.llmConfigId,
+    ttiConfigId: meta.ttiConfigId,
+    itvConfigId: meta.itvConfigId,
+    ttsConfigId: meta.ttsConfigId,
+    theme: meta.theme,
+    stylePrompt: meta.stylePrompt,
+  };
+}
+
+function toElectronProject(meta: ProjectMeta): ElectronProjectMeta {
+  return {
+    id: meta.id,
+    title: meta.title,
+    genre: meta.genre,
+    mode: meta.mode,
+    createdAt: meta.createdAt,
+    updatedAt: meta.updatedAt,
+    thumbnail: meta.thumbnailPath,
+    llmConfigId: meta.llmConfigId,
+    ttiConfigId: meta.ttiConfigId,
+    itvConfigId: meta.itvConfigId,
+    ttsConfigId: meta.ttsConfigId,
+    theme: meta.theme,
+    stylePrompt: meta.stylePrompt,
+  };
 }
 
 // ========== 项目管理 ==========
@@ -49,81 +84,20 @@ export async function createProject(
   };
 
   if (electronService.isElectron()) {
-    const projectPath = await getProjectPath(projectId);
-
-    await electronService.fs.mkdir(projectPath);
-    await electronService.fs.mkdir(`${projectPath}/assets/images`);
-    await electronService.fs.mkdir(`${projectPath}/assets/videos`);
-    await electronService.fs.mkdir(`${projectPath}/assets/audio`);
-    await electronService.fs.mkdir(`${projectPath}/assets/fonts`);
-    await electronService.fs.mkdir(`${projectPath}/shots`);
-    await electronService.fs.mkdir(`${projectPath}/cache/thumbnails`);
-    await electronService.fs.mkdir(`${projectPath}/cache/waveforms`);
-    await electronService.fs.mkdir(`${projectPath}/cache/previews`);
-    await electronService.fs.mkdir(`${projectPath}/exports`);
-    await electronService.fs.mkdir(`${projectPath}/temp`);
-
-    await electronService.fs.writeFile(
-      `${projectPath}/project.json`,
-      JSON.stringify(project, null, 2)
-    );
-
-    const timeline = createDefaultTimeline();
-    await electronService.fs.writeFile(
-      `${projectPath}/timeline.json`,
-      JSON.stringify(timeline, null, 2)
-    );
+    const created = await electronService.project.create(toElectronProject(project));
+    const projectPath = await getProjectPath(created.id);
 
     await addRecentProject({
-      id: projectId,
-      title,
+      id: created.id,
+      title: created.title,
       path: projectPath,
-      lastOpened: now,
+      lastOpened: created.updatedAt,
     });
+
+    return fromElectronProject(created);
   }
 
   return project;
-}
-
-function createDefaultTimeline(): Timeline {
-  return {
-    id: uuidv4(),
-    duration: 0,
-    tracks: [
-      {
-        id: uuidv4(),
-        name: '视频轨道 1',
-        type: 'video',
-        muted: false,
-        locked: false,
-        visible: true,
-        height: 60,
-        clips: [],
-      },
-      {
-        id: uuidv4(),
-        name: '音频轨道 1',
-        type: 'audio',
-        muted: false,
-        locked: false,
-        visible: true,
-        height: 40,
-        clips: [],
-      },
-      {
-        id: uuidv4(),
-        name: '字幕轨道',
-        type: 'subtitle',
-        muted: false,
-        locked: false,
-        visible: true,
-        height: 30,
-        clips: [],
-      },
-    ],
-    fps: 30,
-    resolution: { width: DEFAULT_VIDEO_RESOLUTION.width, height: DEFAULT_VIDEO_RESOLUTION.height },
-  };
 }
 
 export async function loadProject(projectId: string): Promise<ProjectMeta | null> {
@@ -132,9 +106,8 @@ export async function loadProject(projectId: string): Promise<ProjectMeta | null
   }
 
   try {
-    const projectPath = await getProjectPath(projectId);
-    const data = await electronService.fs.readFile(`${projectPath}/project.json`);
-    return JSON.parse(data);
+    const project = await electronService.project.load(projectId);
+    return project ? fromElectronProject(project) : null;
   } catch {
     return null;
   }
@@ -145,12 +118,8 @@ export async function saveProject(project: ProjectMeta): Promise<void> {
     return;
   }
 
-  const projectPath = await getProjectPath(project.id);
   project.updatedAt = Date.now();
-  await electronService.fs.writeFile(
-    `${projectPath}/project.json`,
-    JSON.stringify(project, null, 2)
-  );
+  await electronService.project.update(project.id, toElectronProject(project));
 }
 
 export async function updateProjectLLMConfig(
@@ -170,8 +139,7 @@ export async function deleteProject(projectId: string): Promise<void> {
     return;
   }
 
-  const projectPath = await getProjectPath(projectId);
-  await electronService.fs.remove(projectPath);
+  await electronService.project.remove(projectId);
 }
 
 export async function listProjects(): Promise<ProjectMeta[]> {
@@ -180,24 +148,8 @@ export async function listProjects(): Promise<ProjectMeta[]> {
   }
 
   try {
-    const root = await getProjectsRoot();
-    const entries = await electronService.fs.readdir(root);
-    const projects: ProjectMeta[] = [];
-
-    for (const entry of entries) {
-      const projectFile = `${root}/${entry}/project.json`;
-      const exists = await electronService.fs.exists(projectFile);
-      if (!exists) continue;
-
-      try {
-        const data = await electronService.fs.readFile(projectFile);
-        projects.push(JSON.parse(data));
-      } catch {
-        // skip invalid projects
-      }
-    }
-
-    return projects.sort((a, b) => b.updatedAt - a.updatedAt);
+    const projects = await electronService.project.list();
+    return Array.isArray(projects) ? projects.map(fromElectronProject) : [];
   } catch {
     return [];
   }

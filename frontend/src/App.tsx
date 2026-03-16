@@ -34,9 +34,22 @@ const ProjectOverview = lazy(() => import('./components/project/ProjectOverview'
 // 加载中占位组件
 const ViewLoading: React.FC<{ tip?: string }> = ({ tip = '加载中...' }) => (
   <div className="flex h-full items-center justify-center bg-zinc-950">
-    <Spin size="large" tip={tip}><div className="p-12" /></Spin>
+    <Spin size="large" description={tip}><div className="p-12" /></Spin>
   </div>
 );
+
+function isDisplayableProject(project: unknown): project is NonNullable<ReturnType<typeof useProjects>['projects'][number]> {
+  if (!project || typeof project !== 'object') return false;
+  const meta = project as { id?: unknown; title?: unknown; genre?: unknown; mode?: unknown; updatedAt?: unknown };
+  return (
+    typeof meta.id === 'string' &&
+    meta.id.length > 0 &&
+    typeof meta.title === 'string' &&
+    typeof meta.genre === 'string' &&
+    (meta.mode === 'drama' || meta.mode === 'narration') &&
+    typeof meta.updatedAt === 'number'
+  );
+}
 
 const AppContent: React.FC = () => {
   const { message } = AntApp.useApp();
@@ -94,8 +107,8 @@ const AppContent: React.FC = () => {
 
   // mentionItems
   const mentionItems: MentionItem[] = useMemo(() => {
-    if (!analysisData?.characters) return [];
-    return analysisData.characters.map(char => ({
+    if (!Array.isArray(analysisData?.characters)) return [];
+    return analysisData.characters.filter(Boolean).map(char => ({
       id: char.id, type: 'char' as const, name: char.name,
       description: char.description, previewImage: char.costumePhotoPath,
       sora2CharacterId: char.sora2CharacterId,
@@ -139,7 +152,9 @@ const AppContent: React.FC = () => {
   }, [editorStep, activeProject?.id, activeEpisode?.id, isVideoDevMode]);
 
   // 转换项目显示格式
-  const displayProjects: Project[] = projects.map(p => ({
+  const displayProjects: Project[] = projects
+    .filter(isDisplayableProject)
+    .map(p => ({
     id: p.id, title: p.title, genre: p.genre, mode: p.mode,
     episodes: p.episodes || 1, lastEdited: formatTimeAgo(p.updatedAt),
     thumbnail: p.thumbnail || getThumbnailUrl(p.id),
@@ -254,10 +269,10 @@ const AppContent: React.FC = () => {
         />
         <div className="flex-1 flex flex-col min-w-0 transition-all duration-300">
           <main className="flex-1 overflow-hidden relative bg-zinc-950">
-            {view === 'projects' && (
+                {view === 'projects' && (
               projectsLoading ? (
                 <div className="flex h-full items-center justify-center">
-                  <Spin size="large" tip="加载项目列表..."><div className="p-12" /></Spin>
+                  <Spin size="large" description="加载项目列表..."><div className="p-12" /></Spin>
                 </div>
               ) : (
                 <ProjectList

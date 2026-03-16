@@ -100,8 +100,11 @@ export async function loadAssets(projectId: string): Promise<Asset[]> {
 
   try {
     const projectPath = await getProjectPath(projectId);
+    const exists = await electronService.fs.exists(`${projectPath}/assets.json`);
+    if (!exists) return [];
     const data = await electronService.fs.readFile(`${projectPath}/assets.json`);
-    return JSON.parse(data);
+    const assets = JSON.parse(data);
+    return Array.isArray(assets) ? assets.filter(Boolean) : [];
   } catch {
     return [];
   }

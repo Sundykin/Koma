@@ -448,7 +448,8 @@ export const getMachineId = async (): Promise<string> => {
 export const projectList = async (): Promise<ProjectMeta[]> => {
   const api = getElectronAPI();
   if (api) {
-    return await api.project.list();
+    const result = await api.project.list();
+    return Array.isArray(result) ? result : [];
   }
   // 浏览器 fallback: 返回空列表
   return [];
@@ -597,21 +598,20 @@ export const electronService = {
     invoke: async (channel: string, args?: any): Promise<any> => {
       const api = getElectronAPI();
       if (api && (api as any).plugin) {
-        // 根据 channel 调用对应的 plugin 方法
-        if (channel === 'plugin:validate') {
-          return (api as any).plugin.validate(args);
-        }
-        if (channel === 'plugin:install') {
-          return (api as any).plugin.install(args.zipPath, args.manifest);
-        }
-        if (channel === 'plugin:uninstall') {
-          return (api as any).plugin.uninstall(args);
-        }
-        if (channel === 'plugin:list') {
+        if (channel === 'controller/plugin/list') {
           return (api as any).plugin.list();
         }
-        if (channel === 'plugin:openFolder') {
-          return (api as any).plugin.openFolder(args);
+        if (channel === 'controller/plugin/openFolder') {
+          return (api as any).plugin.openFolder(args.pluginPath);
+        }
+        if (channel === 'controller/plugin/validate') {
+          return (api as any).plugin.validate(args.zipPath);
+        }
+        if (channel === 'controller/plugin/install') {
+          return (api as any).plugin.install(args.zipPath, args.manifest);
+        }
+        if (channel === 'controller/plugin/uninstall') {
+          return (api as any).plugin.uninstall(args.pluginPath);
         }
       }
       // 通用 IPC 调用（通过 window.electron）

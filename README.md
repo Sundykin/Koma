@@ -50,10 +50,10 @@ npm run install:all
 npm run dev
 
 # 或单独启动前端
-npm run dev:frontend
+npm run dev-frontend
 
 # 或单独启动 Electron
-npm run dev:electron
+npm run dev-electron
 ```
 
 ### 构建
@@ -62,8 +62,14 @@ npm run dev:electron
 # 构建前端和 Electron
 npm run build
 
-# 打包桌面应用
-npm run electron:build
+# 仅构建前端
+npm run build-frontend
+
+# 仅构建 Electron 主进程
+npm run build-electron
+
+# 打包 macOS ARM64 应用
+npm run build-m-arm64
 ```
 
 ### 测试

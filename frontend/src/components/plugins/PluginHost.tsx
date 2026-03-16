@@ -127,7 +127,7 @@ export const PluginHost: React.FC<PluginHostProps> = ({ pluginId }) => {
   if (runtimeState?.status === 'loading' || (!Component && !error)) {
     return (
       <div className="flex items-center justify-center h-full">
-        <Spin size="large" tip="加载插件中..." />
+        <Spin size="large" description="加载插件中..." />
       </div>
     );
   }

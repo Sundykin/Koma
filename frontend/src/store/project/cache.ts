@@ -106,6 +106,8 @@ export async function getWaveform(
   const waveformPath = `${projectPath}/cache/waveforms/${assetId}.json`;
 
   try {
+    const exists = await electronService.fs.exists(waveformPath);
+    if (!exists) return null;
     const data = await electronService.fs.readFile(waveformPath);
     return JSON.parse(data);
   } catch {

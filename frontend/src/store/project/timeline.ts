@@ -12,6 +12,8 @@ export async function loadTimeline(projectId: string): Promise<Timeline | null> 
 
   try {
     const projectPath = await getProjectPath(projectId);
+    const exists = await electronService.fs.exists(`${projectPath}/timeline.json`);
+    if (!exists) return null;
     const data = await electronService.fs.readFile(`${projectPath}/timeline.json`);
     return JSON.parse(data);
   } catch {

@@ -362,7 +362,7 @@ export const ScriptWorkshop: React.FC<ScriptWorkshopProps> = ({
         onCancel={() => setHistoryVisible(false)}
         footer={null}
         width={600}
-        maskClosable={false}
+        mask={{ closable: false }}
       >
         {versions.length === 0 ? (
           <div style={{ textAlign: 'center', padding: 40, color: '#888' }}>
@@ -398,7 +398,7 @@ export const ScriptWorkshop: React.FC<ScriptWorkshopProps> = ({
         okText="生成"
         cancelText="取消"
         confirmLoading={generating}
-        maskClosable={false}
+        mask={{ closable: false }}
       >
         <div style={{ marginBottom: 16 }}>
           <div style={{ marginBottom: 8 }}>创意/灵感</div>

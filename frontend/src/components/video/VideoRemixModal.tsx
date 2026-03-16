@@ -92,7 +92,7 @@ export const VideoRemixModal: React.FC<RemixModalProps> = ({
       cancelText="取消"
       confirmLoading={submitting}
       width={520}
-      maskClosable={!submitting}
+      mask={{ closable: !submitting }}
       closable={!submitting}
       destroyOnHidden
     >

@@ -43,10 +43,11 @@ export function useProjects(): UseProjectsResult {
       setLoading(true);
       setError(null);
       const list = await electronService.project.list();
-      setProjects(list);
+      setProjects(Array.isArray(list) ? list : []);
     } catch (err: unknown) {
       logger.error('加载项目列表失败', err);
       setError(err instanceof Error ? err.message : '加载项目列表失败');
+      setProjects([]);
     } finally {
       setLoading(false);
     }

@@ -333,7 +333,7 @@ ${fullScript}
         cancelText="取消"
         confirmLoading={splitting}
         closable={!splitting}
-        maskClosable={!splitting}
+        mask={{ closable: !splitting }}
       >
         <p className="text-zinc-400 text-sm mb-4">
           使用 AI 自动将完整剧本分割成多集。现有剧集将被替换。

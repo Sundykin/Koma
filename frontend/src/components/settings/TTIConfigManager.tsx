@@ -449,7 +449,7 @@ export const TTIConfigManager: React.FC<TTIConfigManagerProps> = ({ onConfigChan
         okText={t('common.save')}
         cancelText={t('common.cancel')}
         width={520}
-        maskClosable={false}
+        mask={{ closable: false }}
         destroyOnHidden
         className="dark-modal"
       >

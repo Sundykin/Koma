@@ -384,7 +384,7 @@ export const TTSConfigManager: React.FC<TTSConfigManagerProps> = ({ onConfigChan
         okText={t('common.save')}
         cancelText={t('common.cancel')}
         width={520}
-        maskClosable={false}
+        mask={{ closable: false }}
         destroyOnHidden
       >
         <Form form={form} layout="vertical" style={{ marginTop: 16 }}>

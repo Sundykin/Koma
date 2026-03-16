@@ -31,7 +31,7 @@ export async function initializePlugin(plugin: InstalledPlugin): Promise<boolean
       (plugin.category === 'provider' && plugin.entry?.backend);
 
     if (needsBackendActivation) {
-      const result = await electronService.ipc.invoke('plugin:activate', { manifest: plugin });
+      const result = await electronService.ipc.invoke('controller/plugin/activate', { manifest: plugin });
       if (!result?.success) {
         logger.warn(`后端激活失败: ${plugin.id}`, result?.error);
         // provider 类型后端激活失败不阻止前端加载
@@ -133,7 +133,7 @@ export async function initializeProviderPlugins(): Promise<{
 async function reconcilePluginStore(): Promise<void> {
   try {
     // 查询后端实际安装的插件
-    const installedManifests = await electronService.ipc.invoke('plugin:list') as any[];
+    const installedManifests = await electronService.ipc.invoke('controller/plugin/list', {}) as any[];
     const installedIds = new Set((installedManifests || []).map((m: any) => m.id));
 
     const store = usePluginStore.getState();

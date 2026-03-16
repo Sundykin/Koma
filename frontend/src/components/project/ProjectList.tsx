@@ -235,7 +235,7 @@ export const ProjectList: React.FC<ProjectListProps> = ({
         okText={t('project.confirmDeleteBtn')}
         cancelText={t('common.cancel')}
         okButtonProps={{ danger: true }}
-        maskClosable={false}
+        mask={{ closable: false }}
       >
         <div className="py-4">
           <p className="text-zinc-400 mb-2">

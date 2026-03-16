@@ -52,7 +52,7 @@ export const PluginImporter: React.FC<PluginImporterProps> = ({ onImportSuccess 
       }
 
       // 调用主进程解压并验证
-      const result = await electronService.ipc.invoke('plugin:validate', filePath);
+      const result = await electronService.ipc.invoke('controller/plugin/validate', { zipPath: filePath });
 
       if (!result.valid) {
         Modal.error({
@@ -95,7 +95,7 @@ export const PluginImporter: React.FC<PluginImporterProps> = ({ onImportSuccess 
 
     try {
       // 调用主进程安装插件（传递 stagingId 复用解压结果）
-      const installResult = await electronService.ipc.invoke('plugin:install', {
+      const installResult = await electronService.ipc.invoke('controller/plugin/install', {
         zipPath,
         manifest,
         stagingId,

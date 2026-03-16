@@ -421,7 +421,7 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
       onCancel={() => !generating && onClose()}
       width={720}
       footer={null}
-      maskClosable={!generating}
+      mask={{ closable: !generating }}
       closable={!generating}
     >
       {loading ? (

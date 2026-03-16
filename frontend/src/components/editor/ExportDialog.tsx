@@ -141,7 +141,7 @@ export function ExportDialog({ open, onClose }: ExportDialogProps) {
       onCancel={handleCancel}
       footer={null}
       width={500}
-      maskClosable={!exporting}
+      mask={{ closable: !exporting }}
       closable={!exporting}
     >
       {exporting && progress ? (

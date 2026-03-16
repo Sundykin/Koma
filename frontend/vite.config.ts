@@ -8,10 +8,10 @@ export default defineConfig(({ mode }) => {
     root: '.',
     server: {
       port: 5173,
-      host: '0.0.0.0',
+      host: env.VITE_DEV_HOST || '127.0.0.1',
     },
     build: {
-      outDir: '../public/dist',
+      outDir: 'dist',
       emptyOutDir: true,
       rollupOptions: {
         output: {

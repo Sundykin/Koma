@@ -17,6 +17,12 @@ export interface ProjectMeta {
   episodes?: number;
   createdAt: number;
   updatedAt: number;
+  llmConfigId?: string;
+  ttiConfigId?: string;
+  itvConfigId?: string;
+  ttsConfigId?: string;
+  theme?: string;
+  stylePrompt?: string;
 }
 
 // 项目索引文件结构
@@ -28,6 +34,66 @@ export interface ProjectsIndex {
 export interface ExportOptions {
   excludeCache?: boolean;
   excludeTemp?: boolean;
+}
+
+function isProjectMeta(input: unknown): input is ProjectMeta {
+  if (!input || typeof input !== 'object') return false;
+
+  const meta = input as Partial<ProjectMeta>;
+  return (
+    typeof meta.id === 'string' &&
+    meta.id.length > 0 &&
+    typeof meta.title === 'string' &&
+    meta.title.length > 0 &&
+    typeof meta.genre === 'string' &&
+    meta.genre.length > 0 &&
+    (meta.mode === 'drama' || meta.mode === 'narration') &&
+    typeof meta.createdAt === 'number' &&
+    Number.isFinite(meta.createdAt) &&
+    typeof meta.updatedAt === 'number' &&
+    Number.isFinite(meta.updatedAt)
+  );
+}
+
+function createDefaultTimeline() {
+  return {
+    id: `timeline-${Date.now()}`,
+    duration: 0,
+    tracks: [
+      {
+        id: `video-${Date.now()}`,
+        name: '视频轨道 1',
+        type: 'video',
+        muted: false,
+        locked: false,
+        visible: true,
+        height: 60,
+        clips: [],
+      },
+      {
+        id: `audio-${Date.now()}`,
+        name: '音频轨道 1',
+        type: 'audio',
+        muted: false,
+        locked: false,
+        visible: true,
+        height: 40,
+        clips: [],
+      },
+      {
+        id: `subtitle-${Date.now()}`,
+        name: '字幕轨道',
+        type: 'subtitle',
+        muted: false,
+        locked: false,
+        visible: true,
+        height: 30,
+        clips: [],
+      },
+    ],
+    fps: 30,
+    resolution: { width: 1920, height: 1080 },
+  };
 }
 
 export class ProjectService {
@@ -63,7 +129,15 @@ export class ProjectService {
     const indexPath = this.getIndexPath();
     try {
       const content = await fs.promises.readFile(indexPath, 'utf-8');
-      return JSON.parse(content);
+      const parsed = JSON.parse(content) as Partial<ProjectsIndex>;
+      if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.projects)) {
+        return { version: 1, projects: [] };
+      }
+
+      return {
+        version: typeof parsed.version === 'number' ? parsed.version : 1,
+        projects: parsed.projects.filter(isProjectMeta),
+      };
     } catch {
       return { version: 1, projects: [] };
     }
@@ -85,7 +159,9 @@ export class ProjectService {
         const metaPath = path.join(projectsDir, dir, 'meta.json');
         try {
           const meta = JSON.parse(await fs.promises.readFile(metaPath, 'utf-8'));
-          projects.push(meta);
+          if (isProjectMeta(meta)) {
+            projects.push(meta);
+          }
         } catch {
           // 跳过无效项目
         }
@@ -122,10 +198,18 @@ export class ProjectService {
     await fs.promises.mkdir(path.join(projectDir, 'cache', 'previews'), { recursive: true });
     await fs.promises.mkdir(path.join(projectDir, 'exports'), { recursive: true });
     await fs.promises.mkdir(path.join(projectDir, 'temp'), { recursive: true });
+    await fs.promises.mkdir(path.join(projectDir, 'episodes'), { recursive: true });
 
     // 保存项目元数据
     const metaPath = path.join(projectDir, 'meta.json');
     await fs.promises.writeFile(metaPath, JSON.stringify(meta, null, 2));
+    await fs.promises.writeFile(path.join(projectDir, 'project.json'), JSON.stringify(meta, null, 2));
+    await fs.promises.writeFile(path.join(projectDir, 'timeline.json'), JSON.stringify(createDefaultTimeline(), null, 2));
+    await fs.promises.writeFile(path.join(projectDir, 'characters.json'), '[]');
+    await fs.promises.writeFile(path.join(projectDir, 'scenes.json'), '[]');
+    await fs.promises.writeFile(path.join(projectDir, 'props.json'), '[]');
+    await fs.promises.writeFile(path.join(projectDir, 'shots.json'), '[]');
+    await fs.promises.writeFile(path.join(projectDir, 'assets.json'), '[]');
 
     // 同步更新索引
     const index = await this.loadProjectsIndex();
@@ -152,6 +236,7 @@ export class ProjectService {
 
     // 保存元数据
     await fs.promises.writeFile(metaPath, JSON.stringify(updatedMeta, null, 2));
+    await fs.promises.writeFile(path.join(projectDir, 'project.json'), JSON.stringify(updatedMeta, null, 2));
 
     // 同步更新索引
     const index = await this.loadProjectsIndex();
@@ -200,8 +285,19 @@ export class ProjectService {
   }
 
   async loadProject(projectId: string): Promise<ProjectMeta> {
-    const metaPath = path.join(this.storageRoot, 'projects', projectId, 'meta.json');
+    const projectDir = path.join(this.storageRoot, 'projects', projectId);
+    const metaPath = path.join(projectDir, 'meta.json');
+    const projectPath = path.join(projectDir, 'project.json');
+
+    try {
+      const project = JSON.parse(await fs.promises.readFile(projectPath, 'utf-8'));
+      if (isProjectMeta(project)) return project;
+    } catch {}
+
     const meta = JSON.parse(await fs.promises.readFile(metaPath, 'utf-8'));
+    if (!isProjectMeta(meta)) {
+      throw new Error(`Invalid project meta: ${projectId}`);
+    }
     return meta;
   }
 
@@ -265,7 +361,10 @@ export class ProjectService {
       }
 
       const metaContent = await fs.promises.readFile(metaPath, 'utf-8');
-      const originalMeta = JSON.parse(metaContent) as ProjectMeta;
+      const originalMeta = JSON.parse(metaContent);
+      if (!isProjectMeta(originalMeta)) {
+        throw new Error('Invalid project package');
+      }
 
       // 生成新的项目ID（避免冲突）
       const projectId = newProjectId || `${originalMeta.id}_imported_${Date.now()}`;
@@ -284,6 +383,10 @@ export class ProjectService {
 
       await fs.promises.writeFile(
         path.join(projectDir, 'meta.json'),
+        JSON.stringify(meta, null, 2)
+      );
+      await fs.promises.writeFile(
+        path.join(projectDir, 'project.json'),
         JSON.stringify(meta, null, 2)
       );
 

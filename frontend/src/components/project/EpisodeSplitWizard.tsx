@@ -146,7 +146,7 @@ export const EpisodeSplitWizard: React.FC<EpisodeSplitWizardProps> = ({
       onCancel={handleCancel}
       footer={null}
       width={720}
-      maskClosable={step === 'config'}
+      mask={{ closable: step === 'config' }}
     >
       <Steps
         current={getStepIndex()}

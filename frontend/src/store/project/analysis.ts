@@ -49,9 +49,10 @@ export async function loadEpisodeAnalysis(
 
   try {
     const projectPath = await getProjectPath(projectId);
-    const data = await electronService.fs.readFile(
-      `${projectPath}/episodes/${episodeId}/analysis.json`
-    );
+    const filePath = `${projectPath}/episodes/${episodeId}/analysis.json`;
+    const exists = await electronService.fs.exists(filePath);
+    if (!exists) return null;
+    const data = await electronService.fs.readFile(filePath);
     return JSON.parse(data);
   } catch {
     return null;
@@ -63,20 +64,7 @@ export async function loadEpisodeShots(
   episodeId: string
 ): Promise<Shot[]> {
   const analysis = await loadEpisodeAnalysis(projectId, episodeId);
-  const shots = analysis?.shots || [];
-
-  // 运行时兼容：旧数据迁移 + 新字段默认值
-  return shots.map(shot => ({
-    ...shot,
-    // 提示词兼容
-    imagePrompt: shot.imagePrompt || shot.description || '',
-    videoPrompt: shot.videoPrompt || shot.description || '',
-    // 参考图默认值
-    referenceImages: Array.isArray(shot.referenceImages) ? shot.referenceImages : [],
-    selectedReferenceIndex: typeof shot.selectedReferenceIndex === 'number' ? shot.selectedReferenceIndex : 0,
-    // 场景默认值
-    scenes: Array.isArray(shot.scenes) ? shot.scenes : [],
-  }));
+  return Array.isArray(analysis?.shots) ? analysis.shots.filter(Boolean) : [];
 }
 
 export async function saveEpisodeShots(
@@ -125,6 +113,8 @@ export async function loadEpisodeTimeline(
   const timelinePath = `${projectPath}/episodes/${episodeId}/timeline.json`;
 
   try {
+    const exists = await electronService.fs.exists(timelinePath);
+    if (!exists) return null;
     const content = await electronService.fs.readFile(timelinePath);
     return JSON.parse(content) as TimelineData;
   } catch {

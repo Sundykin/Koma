@@ -345,7 +345,7 @@ export const ChatPage: React.FC = () => {
   if (!isConfigLoaded) {
     return (
       <div className={styles.container} style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-        <Spin tip={t('chat.loadingConfig')} />
+        <Spin description={t('chat.loadingConfig')} />
       </div>
     );
   }

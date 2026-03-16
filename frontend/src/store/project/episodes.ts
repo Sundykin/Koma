@@ -56,9 +56,10 @@ export async function loadEpisode(
 
   try {
     const projectPath = await getProjectPath(projectId);
-    const data = await electronService.fs.readFile(
-      `${projectPath}/episodes/${episodeId}/meta.json`
-    );
+    const filePath = `${projectPath}/episodes/${episodeId}/meta.json`;
+    const exists = await electronService.fs.exists(filePath);
+    if (!exists) return null;
+    const data = await electronService.fs.readFile(filePath);
     return JSON.parse(data);
   } catch {
     return null;

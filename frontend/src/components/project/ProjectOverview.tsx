@@ -391,7 +391,7 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
         cancelText="取消"
         width={900}
         centered
-        maskClosable={false}
+        mask={{ closable: false }}
       >
         <p className="text-xs text-zinc-500 mb-3">
           输入完整剧本后点击"AI 自动分集"，系统将智能拆分为多个剧集

@@ -5,12 +5,14 @@ import { IpcMainInvokeEvent, shell } from 'electron';
 import { pluginService } from '../service/plugin';
 import { pluginRuntime } from '../service/plugin/runtime';
 import { pluginBridge } from '../service/plugin/bridge';
+import { ensureServicesReady } from '../../bootstrap/services';
 
 export const pluginController = {
   /**
    * 验证插件包
    */
   async validate({ zipPath }: { zipPath: string }, event?: IpcMainInvokeEvent) {
+    await ensureServicesReady();
     return pluginService.validate(zipPath);
   },
 
@@ -21,6 +23,7 @@ export const pluginController = {
     { zipPath, manifest, stagingId }: { zipPath: string; manifest: any; stagingId?: string },
     event?: IpcMainInvokeEvent
   ) {
+    await ensureServicesReady();
     // 如果是文件夹路径（开发模式）
     const isFolder = !zipPath.endsWith('.zip');
     if (isFolder) {
@@ -33,6 +36,7 @@ export const pluginController = {
    * 卸载插件
    */
   async uninstall({ pluginPath }: { pluginPath: string }, event?: IpcMainInvokeEvent) {
+    await ensureServicesReady();
     return pluginService.uninstall(pluginPath);
   },
 
@@ -40,6 +44,7 @@ export const pluginController = {
    * 列出已安装插件
    */
   async list(_args: any, event?: IpcMainInvokeEvent) {
+    await ensureServicesReady();
     return pluginService.listInstalled();
   },
 
@@ -57,6 +62,7 @@ export const pluginController = {
    * 激活插件
    */
   async activate({ manifest }: { manifest: any }, event?: IpcMainInvokeEvent) {
+    await ensureServicesReady();
     return pluginService.loadAndActivate(manifest);
   },
 
@@ -64,6 +70,7 @@ export const pluginController = {
    * 停用插件
    */
   async deactivate({ pluginId }: { pluginId: string }, event?: IpcMainInvokeEvent) {
+    await ensureServicesReady();
     return pluginService.deactivate(pluginId);
   },
 
@@ -71,6 +78,7 @@ export const pluginController = {
    * 获取插件运行状态
    */
   async status({ pluginId }: { pluginId: string }, event?: IpcMainInvokeEvent) {
+    await ensureServicesReady();
     return pluginService.getPluginStatus(pluginId);
   },
 
@@ -78,6 +86,7 @@ export const pluginController = {
    * 列出活跃插件
    */
   async listActive(_args: any, event?: IpcMainInvokeEvent) {
+    await ensureServicesReady();
     return pluginRuntime.listActivePlugins().map(p => ({
       id: p.manifest.id,
       name: p.manifest.name,
@@ -92,6 +101,7 @@ export const pluginController = {
    * 列出插件系统注册的 MCP 工具
    */
   async listMCPTools(_args: any, event?: IpcMainInvokeEvent) {
+    await ensureServicesReady();
     return pluginBridge.listMCPTools();
   },
 
@@ -99,6 +109,7 @@ export const pluginController = {
    * 调用插件 MCP 工具
    */
   async callMCPTool({ name, args }: { name: string; args: unknown }, event?: IpcMainInvokeEvent) {
+    await ensureServicesReady();
     return pluginBridge.callMCPTool(name, args);
   },
 
@@ -106,6 +117,7 @@ export const pluginController = {
    * 列出可用 Worker Agent
    */
   async listAgents(_args: any, event?: IpcMainInvokeEvent) {
+    await ensureServicesReady();
     return pluginBridge.listAgents().map(a => ({
       id: a.id,
       name: a.name,

@@ -6,17 +6,6 @@ import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron';
 type Listener = (event: IpcRendererEvent, ...args: any[]) => void;
 
 const ALLOWED_INVOKE_CHANNELS = new Set([
-  'controller',
-  'window:minimize', 'window:maximize', 'window:close', 'window:isMaximized',
-  'dialog:openFile', 'dialog:openDirectory', 'dialog:saveFile',
-  'fs:readFile', 'fs:writeFile', 'fs:downloadFile', 'fs:exists',
-  'fs:mkdir', 'fs:readdir', 'fs:stat', 'fs:remove', 'fs:copy',
-  'shell:openExternal', 'shell:showItemInFolder',
-  'app:getPath', 'app:getVersion',
-  'plugin:validate', 'plugin:install', 'plugin:uninstall', 'plugin:list', 'plugin:openFolder',
-  'plugin:activate', 'plugin:deactivate', 'plugin:status', 'plugin:listActive',
-  'plugin:listMCPTools', 'plugin:callMCPTool', 'plugin:listAgents',
-  'net:fetch',
   'chat:session:create', 'chat:session:get', 'chat:session:dispose',
   'chat:session:list', 'chat:session:updateConfig',
   'chat:message:send', 'chat:message:sendStream', 'chat:message:cancel',
@@ -33,7 +22,7 @@ const ALLOWED_LISTEN_CHANNELS = new Set([
 ]);
 
 function validateInvokeChannel(channel: string): void {
-  if (channel.startsWith('controller.')) return;
+  if (channel.startsWith('controller/')) return;
   if (!ALLOWED_INVOKE_CHANNELS.has(channel)) {
     throw new Error(`IPC channel not allowed: ${channel}`);
   }
@@ -45,13 +34,14 @@ function validateListenChannel(channel: string): void {
   }
 }
 
+function invokeMain(channel: string, args?: any) {
+  validateInvokeChannel(channel);
+  return ipcRenderer.invoke(channel, args);
+}
+
 const ipc = {
   invoke: (channel: string, args?: any) => {
-    validateInvokeChannel(channel);
-    if (channel.startsWith('controller.')) {
-      return ipcRenderer.invoke('controller', channel, args);
-    }
-    return ipcRenderer.invoke(channel, args);
+    return invokeMain(channel, args);
   },
   on: (channel: string, listener: Listener) => {
     validateListenChannel(channel);
@@ -78,93 +68,97 @@ contextBridge.exposeInMainWorld('electron', {
 
 contextBridge.exposeInMainWorld('electronAPI', {
   window: {
-    minimize: () => ipcRenderer.invoke('window:minimize'),
-    maximize: () => ipcRenderer.invoke('window:maximize'),
-    close: () => ipcRenderer.invoke('window:close'),
-    isMaximized: () => ipcRenderer.invoke('window:isMaximized'),
+    minimize: () => invokeMain('controller/window/minimize'),
+    maximize: () => invokeMain('controller/window/maximize'),
+    close: () => invokeMain('controller/window/close'),
+    isMaximized: () => invokeMain('controller/window/isMaximized'),
   },
   dialog: {
-    openFile: (options?: any) => ipcRenderer.invoke('dialog:openFile', options),
-    openDirectory: () => ipcRenderer.invoke('dialog:openDirectory'),
-    saveFile: (options?: any) => ipcRenderer.invoke('dialog:saveFile', options),
+    openFile: (options?: any) => invokeMain('controller/dialog/openFile', options),
+    openDirectory: () => invokeMain('controller/dialog/openDirectory', {}),
+    saveFile: (options?: any) => invokeMain('controller/dialog/saveFile', options),
   },
   fs: {
-    readFile: (path: string) => ipcRenderer.invoke('fs:readFile', path),
-    writeFile: (path: string, data: string, binary?: boolean) => ipcRenderer.invoke('fs:writeFile', path, data, binary),
-    downloadFile: (url: string, destPath: string) => ipcRenderer.invoke('fs:downloadFile', url, destPath),
-    exists: (path: string) => ipcRenderer.invoke('fs:exists', path),
-    mkdir: (path: string) => ipcRenderer.invoke('fs:mkdir', path),
-    readdir: (path: string) => ipcRenderer.invoke('fs:readdir', path),
-    stat: (path: string) => ipcRenderer.invoke('fs:stat', path),
-    remove: (path: string) => ipcRenderer.invoke('fs:remove', path),
-    copy: (src: string, dest: string) => ipcRenderer.invoke('fs:copy', src, dest),
+    readFile: (path: string) => invokeMain('controller/fs/readFile', { filePath: path }),
+    writeFile: (path: string, data: string, binary?: boolean) =>
+      invokeMain('controller/fs/writeFile', { filePath: path, data, binary }),
+    downloadFile: (url: string, destPath: string) =>
+      invokeMain('controller/fs/downloadFile', { url, destPath }),
+    exists: (path: string) => invokeMain('controller/fs/exists', { filePath: path }),
+    mkdir: (path: string) => invokeMain('controller/fs/mkdir', { dirPath: path }),
+    readdir: (path: string) => invokeMain('controller/fs/readdir', { dirPath: path }),
+    stat: (path: string) => invokeMain('controller/fs/stat', { filePath: path }),
+    remove: (path: string) => invokeMain('controller/fs/remove', { filePath: path }),
+    copy: (src: string, dest: string) => invokeMain('controller/fs/copy', { src, dest }),
   },
   shell: {
-    openExternal: (url: string) => ipcRenderer.invoke('shell:openExternal', url),
-    showItemInFolder: (path: string) => ipcRenderer.invoke('shell:showItemInFolder', path),
+    openExternal: (url: string) => invokeMain('controller/app/openExternal', { url }),
+    showItemInFolder: (path: string) => invokeMain('controller/app/showItemInFolder', { filePath: path }),
   },
   app: {
-    getPath: (name: string) => ipcRenderer.invoke('app:getPath', name),
-    getVersion: () => ipcRenderer.invoke('app:getVersion'),
+    getPath: (name: string) => invokeMain('controller/app/getPath', { name }),
+    getVersion: () => invokeMain('controller/app/getVersion', {}),
   },
   project: {
-    list: () => ipcRenderer.invoke('controller', 'controller.project.list'),
-    create: (meta: any) => ipcRenderer.invoke('controller', 'controller.project.create', meta),
-    load: (projectId: string) => ipcRenderer.invoke('controller', 'controller.project.load', { projectId }),
-    save: (projectId: string, data: any) => ipcRenderer.invoke('controller', 'controller.project.save', { projectId, data }),
-    update: (projectId: string, updates: any) => ipcRenderer.invoke('controller', 'controller.project.update', { projectId, updates }),
-    remove: (projectId: string) => ipcRenderer.invoke('controller', 'controller.project.delete', { projectId }),
-    rebuildIndex: () => ipcRenderer.invoke('controller', 'controller.project.rebuildIndex'),
+    list: () => invokeMain('controller/project/list', {}),
+    create: (meta: any) => invokeMain('controller/project/create', meta),
+    load: (projectId: string) => invokeMain('controller/project/load', { projectId }),
+    save: (projectId: string, data: any) => invokeMain('controller/project/save', { projectId, data }),
+    update: (projectId: string, updates: any) =>
+      invokeMain('controller/project/update', { projectId, updates }),
+    remove: (projectId: string) => invokeMain('controller/project/delete', { projectId }),
+    rebuildIndex: () => invokeMain('controller/project/rebuildIndex', {}),
     export: (projectId: string, destPath: string, options?: any) =>
-      ipcRenderer.invoke('controller', 'controller.project.export', { projectId, destPath, options }),
+      invokeMain('controller/project/export', { projectId, destPath, options }),
     import: (zipPath: string, newProjectId?: string) =>
-      ipcRenderer.invoke('controller', 'controller.project.import', { zipPath, newProjectId }),
+      invokeMain('controller/project/import', { zipPath, newProjectId }),
   },
   ffmpeg: {
-    isAvailable: () => ipcRenderer.invoke('controller', 'controller.ffmpeg.isAvailable'),
-    getInfo: (input: string) => ipcRenderer.invoke('controller', 'controller.ffmpeg.getInfo', { input }),
-    extractFrames: (options: any) => ipcRenderer.invoke('controller', 'controller.ffmpeg.extractFrames', options),
-    waveform: (options: any) => ipcRenderer.invoke('controller', 'controller.ffmpeg.waveform', options),
+    isAvailable: () => invokeMain('controller/ffmpeg/isAvailable', {}),
+    getInfo: (input: string) => invokeMain('controller/ffmpeg/getInfo', { input }),
+    extractFrames: (options: any) => invokeMain('controller/ffmpeg/extractFrames', options),
+    waveform: (options: any) => invokeMain('controller/ffmpeg/waveform', options),
     splitAudio: (input: string, output: string) =>
-      ipcRenderer.invoke('controller', 'controller.ffmpeg.splitAudio', { input, output }),
-    composeVideo: (options: any) => ipcRenderer.invoke('controller', 'controller.ffmpeg.composeVideo', options),
-    getCacheDir: (subDir?: string) => ipcRenderer.invoke('controller', 'controller.ffmpeg.getCacheDir', { subDir }),
-    getTempDir: () => ipcRenderer.invoke('controller', 'controller.ffmpeg.getTempDir'),
-    ensureDir: (dirPath: string) => ipcRenderer.invoke('controller', 'controller.ffmpeg.ensureDir', { dirPath }),
+      invokeMain('controller/ffmpeg/splitAudio', { input, output }),
+    composeVideo: (options: any) => invokeMain('controller/ffmpeg/composeVideo', options),
+    getCacheDir: (subDir?: string) => invokeMain('controller/ffmpeg/getCacheDir', { subDir }),
+    getTempDir: () => invokeMain('controller/ffmpeg/getTempDir', {}),
+    ensureDir: (dirPath: string) => invokeMain('controller/ffmpeg/ensureDir', { dirPath }),
     saveFrame: (filePath: string, dataUrl: string) =>
-      ipcRenderer.invoke('controller', 'controller.ffmpeg.saveFrame', { filePath, dataUrl }),
-    cleanupTemp: (tempDir: string) => ipcRenderer.invoke('controller', 'controller.ffmpeg.cleanupTemp', { tempDir }),
-    clearCache: (subDir?: string) => ipcRenderer.invoke('controller', 'controller.ffmpeg.clearCache', { subDir }),
-    cancelTask: () => ipcRenderer.invoke('controller', 'controller.ffmpeg.cancelTask'),
-    clearQueue: () => ipcRenderer.invoke('controller', 'controller.ffmpeg.clearQueue'),
+      invokeMain('controller/ffmpeg/saveFrame', { filePath, dataUrl }),
+    cleanupTemp: (tempDir: string) => invokeMain('controller/ffmpeg/cleanupTemp', { tempDir }),
+    clearCache: (subDir?: string) => invokeMain('controller/ffmpeg/clearCache', { subDir }),
+    cancelTask: () => invokeMain('controller/ffmpeg/cancelTask', {}),
+    clearQueue: () => invokeMain('controller/ffmpeg/clearQueue', {}),
   },
   plugin: {
-    validate: (zipPath: string) => ipcRenderer.invoke('plugin:validate', zipPath),
-    install: (zipPath: string, manifest: any) => ipcRenderer.invoke('plugin:install', { zipPath, manifest }),
-    uninstall: (pluginPath: string) => ipcRenderer.invoke('plugin:uninstall', pluginPath),
-    list: () => ipcRenderer.invoke('plugin:list'),
-    openFolder: (pluginPath: string) => ipcRenderer.invoke('plugin:openFolder', pluginPath),
+    validate: (zipPath: string) => invokeMain('controller/plugin/validate', { zipPath }),
+    install: (zipPath: string, manifest: any) =>
+      invokeMain('controller/plugin/install', { zipPath, manifest }),
+    uninstall: (pluginPath: string) => invokeMain('controller/plugin/uninstall', { pluginPath }),
+    list: () => invokeMain('controller/plugin/list', {}),
+    openFolder: (pluginPath: string) => invokeMain('controller/plugin/openFolder', { pluginPath }),
   },
   net: {
     fetch: (args: { url: string; method?: string; headers?: Record<string, string>; body?: string }) =>
-      ipcRenderer.invoke('net:fetch', args),
+      invokeMain('controller/net/fetch', args),
   },
   chat: {
     // 会话管理
-    createSession: (config?: any) => ipcRenderer.invoke('chat:session:create', { config }),
-    getSession: (sessionId: string) => ipcRenderer.invoke('chat:session:get', { sessionId }),
-    disposeSession: (sessionId: string) => ipcRenderer.invoke('chat:session:dispose', { sessionId }),
-    listSessions: (windowId?: number) => ipcRenderer.invoke('chat:session:list', { windowId }),
+    createSession: (config?: any) => invokeMain('chat:session:create', { config }),
+    getSession: (sessionId: string) => invokeMain('chat:session:get', { sessionId }),
+    disposeSession: (sessionId: string) => invokeMain('chat:session:dispose', { sessionId }),
+    listSessions: (windowId?: number) => invokeMain('chat:session:list', { windowId }),
     updateSessionConfig: (sessionId: string, config: any) =>
-      ipcRenderer.invoke('chat:session:updateConfig', { sessionId, config }),
+      invokeMain('chat:session:updateConfig', { sessionId, config }),
 
     // 消息发送
     sendMessage: (sessionId: string, input: any, options?: any) =>
-      ipcRenderer.invoke('chat:message:send', { sessionId, input, options }),
+      invokeMain('chat:message:send', { sessionId, input, options }),
     sendMessageStream: (sessionId: string, input: any, options?: any) =>
-      ipcRenderer.invoke('chat:message:sendStream', { sessionId, input, options }),
+      invokeMain('chat:message:sendStream', { sessionId, input, options }),
     cancelStream: (requestIdOrSessionId: string) =>
-      ipcRenderer.invoke('chat:message:cancel', { sessionId: requestIdOrSessionId }),
+      invokeMain('chat:message:cancel', { sessionId: requestIdOrSessionId }),
 
     // 流式事件监听
     onStreamChunk: (callback: (event: any, data: any) => void) => {
@@ -186,20 +180,20 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
     // MCP 管理
     mcp: {
-      connect: (config: any) => ipcRenderer.invoke('chat:mcp:connect', { config }),
-      disconnect: (name: string) => ipcRenderer.invoke('chat:mcp:disconnect', { name }),
-      list: (includeTools?: boolean) => ipcRenderer.invoke('chat:mcp:list', { includeTools }),
-      listTools: () => ipcRenderer.invoke('chat:mcp:listTools'),
-      callTool: (name: string, args: any) => ipcRenderer.invoke('chat:mcp:callTool', { name, arguments: args }),
-      importConfig: (args: any) => ipcRenderer.invoke('chat:mcp:importConfig', args),
-      exportConfig: (args?: any) => ipcRenderer.invoke('chat:mcp:exportConfig', args),
+      connect: (config: any) => invokeMain('chat:mcp:connect', { config }),
+      disconnect: (name: string) => invokeMain('chat:mcp:disconnect', { name }),
+      list: (includeTools?: boolean) => invokeMain('chat:mcp:list', { includeTools }),
+      listTools: () => invokeMain('chat:mcp:listTools', {}),
+      callTool: (name: string, args: any) => invokeMain('chat:mcp:callTool', { name, arguments: args }),
+      importConfig: (args: any) => invokeMain('chat:mcp:importConfig', args),
+      exportConfig: (args?: any) => invokeMain('chat:mcp:exportConfig', args),
     },
 
     // 工具调用审批
     toolApproval: {
-      approve: (callId: string) => ipcRenderer.invoke('chat:tool:approve', { callId }),
-      reject: (callId: string, reason?: string) => ipcRenderer.invoke('chat:tool:reject', { callId, reason }),
-      listPending: (sessionId?: string) => ipcRenderer.invoke('chat:tool:listPending', { sessionId }),
+      approve: (callId: string) => invokeMain('chat:tool:approve', { callId }),
+      reject: (callId: string, reason?: string) => invokeMain('chat:tool:reject', { callId, reason }),
+      listPending: (sessionId?: string) => invokeMain('chat:tool:listPending', { sessionId }),
       onPending: (callback: (event: any, data: any) => void) => {
         ipcRenderer.on('chat:tool:pending', callback);
         return () => ipcRenderer.removeListener('chat:tool:pending', callback);
@@ -216,15 +210,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
     // 统一工具（合并外部 MCP + 插件内部 MCP）
     tools: {
-      list: () => ipcRenderer.invoke('chat:tools:list'),
-      call: (name: string, args: any) => ipcRenderer.invoke('chat:tools:call', { name, arguments: args }),
+      list: () => invokeMain('chat:tools:list', {}),
+      call: (name: string, args: any) => invokeMain('chat:tools:call', { name, arguments: args }),
     },
 
     // 统一能力查询
     capability: {
-      list: (filter?: any) => ipcRenderer.invoke('chat:capability:list', filter),
-      invoke: (id: string, args: any) => ipcRenderer.invoke('chat:capability:invoke', { id, arguments: args }),
-      resolve: (requirements: string[]) => ipcRenderer.invoke('chat:capability:resolve', { requirements }),
+      list: (filter?: any) => invokeMain('chat:capability:list', filter),
+      invoke: (id: string, args: any) => invokeMain('chat:capability:invoke', { id, arguments: args }),
+      resolve: (requirements: string[]) => invokeMain('chat:capability:resolve', { requirements }),
     },
   },
 });

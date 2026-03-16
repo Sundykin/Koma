@@ -111,7 +111,7 @@ export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({
       okText="保存"
       cancelText="取消"
       width={600}
-      maskClosable={false}
+      mask={{ closable: false }}
       destroyOnHidden
     >
       <Tabs

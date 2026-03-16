@@ -56,7 +56,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ isOpen, 
       cancelText={t('common.cancel')}
       width={680}
       centered
-      maskClosable={false}
+      mask={{ closable: false }}
       destroyOnHidden
     >
       <Form

@@ -160,7 +160,7 @@ export const ProviderPluginModal: React.FC<ProviderPluginModalProps> = ({
     >
       {loading && (
         <div style={{ textAlign: 'center', padding: 48 }}>
-          <Spin size="large" tip={t('plugin.loadingPlugin')} />
+          <Spin size="large" description={t('plugin.loadingPlugin')} />
         </div>
       )}
 

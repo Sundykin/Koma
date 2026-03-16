@@ -197,7 +197,7 @@ export const MCPConfigManager: React.FC<MCPConfigManagerProps> = ({ onConfigChan
   if (loading) {
     return (
       <div style={{ textAlign: 'center', padding: 48 }}>
-        <Spin size="large" tip="加载 MCP 服务器..." />
+        <Spin size="large" description="加载 MCP 服务器..." />
       </div>
     );
   }

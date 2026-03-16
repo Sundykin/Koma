@@ -88,41 +88,15 @@ export async function savePropImage(
   return destPath;
 }
 
-// 道具迁移辅助函数
-function migratePropToPrompt(prop: Prop): Prop {
-  if (prop.prompt?.trim()) return prop;
-  const parts: string[] = [];
-  if (prop.type) parts.push(`Type: ${prop.type}`);
-  if (prop.description) parts.push(prop.description);
-  if (prop.customPrompt) parts.push(prop.customPrompt);
-  return { ...prop, prompt: parts.join('\n') || '' };
-}
-
 export async function loadProps(projectId: string): Promise<Prop[]> {
   if (!electronService.isElectron()) return [];
   try {
     const projectPath = await getProjectPath(projectId);
+    const exists = await electronService.fs.exists(`${projectPath}/props.json`);
+    if (!exists) return [];
     const data = await electronService.fs.readFile(`${projectPath}/props.json`);
     const props = JSON.parse(data);
-
-    // 自动迁移
-    let needsSave = false;
-    const migrated = (Array.isArray(props) ? props : []).map((prop: Prop) => {
-      if (!prop.prompt?.trim() && (prop.type || prop.description || prop.customPrompt)) {
-        needsSave = true;
-        return migratePropToPrompt(prop);
-      }
-      return prop;
-    });
-
-    if (needsSave) {
-      await electronService.fs.writeFile(
-        `${projectPath}/props.json`,
-        JSON.stringify(migrated, null, 2)
-      );
-    }
-
-    return migrated;
+    return Array.isArray(props) ? props.filter(Boolean) : [];
   } catch {
     return [];
   }

@@ -328,7 +328,7 @@ export const LLMConfigManager: React.FC<LLMConfigManagerProps> = ({ onConfigChan
         okText="保存"
         cancelText="取消"
         width={500}
-        maskClosable={false}
+        mask={{ closable: false }}
         destroyOnHidden
         className="dark-modal"
         styles={{

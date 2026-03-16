@@ -353,7 +353,7 @@ export function SimpleExportDialog({ open, onClose, tracks, duration, canvasSize
       onCancel={handleCancel}
       footer={null}
       width={520}
-      maskClosable={!exporting}
+      mask={{ closable: !exporting }}
       closable={!exporting}
     >
       {exporting && progress ? (
