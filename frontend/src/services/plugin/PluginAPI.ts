@@ -197,8 +197,11 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
 
         const currentProject = await loadProject(projectId);
         if (currentProject) {
-          // saveProject takes a single ProjectMeta argument
-          const updated = { ...currentProject, ...mutation };
+          const updated = {
+            ...currentProject,
+            updatedAt: mutation.updatedAt ?? Date.now(),
+            ...(typeof mutation.name === 'string' ? { title: mutation.name } : {}),
+          };
           await saveProject(updated);
         }
 

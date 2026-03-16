@@ -184,6 +184,10 @@ export class ProjectService {
   }
 
   async createProject(meta: ProjectMeta): Promise<ProjectMeta> {
+    if (!isProjectMeta(meta)) {
+      throw new Error('Invalid project meta');
+    }
+
     const projectDir = path.join(this.storageRoot, 'projects', meta.id);
 
     // 创建完整的项目目录结构
@@ -233,6 +237,10 @@ export class ProjectService {
       id: projectId, // 确保 id 不变
       updatedAt: Date.now(),
     };
+
+    if (!isProjectMeta(updatedMeta)) {
+      throw new Error(`Invalid project update: ${projectId}`);
+    }
 
     // 保存元数据
     await fs.promises.writeFile(metaPath, JSON.stringify(updatedMeta, null, 2));
@@ -302,8 +310,7 @@ export class ProjectService {
   }
 
   async saveProject(projectId: string, data: any): Promise<{ success: boolean }> {
-    const dataPath = path.join(this.storageRoot, 'projects', projectId, 'project.json');
-    await fs.promises.writeFile(dataPath, JSON.stringify(data, null, 2));
+    await this.updateProject(projectId, data);
     return { success: true };
   }
 
@@ -395,6 +402,15 @@ export class ProjectService {
       await fs.promises.mkdir(path.join(projectDir, 'cache', 'waveforms'), { recursive: true });
       await fs.promises.mkdir(path.join(projectDir, 'cache', 'previews'), { recursive: true });
       await fs.promises.mkdir(path.join(projectDir, 'temp'), { recursive: true });
+
+      const index = await this.loadProjectsIndex();
+      const projectIndex = index.projects.findIndex(project => project.id === projectId);
+      if (projectIndex >= 0) {
+        index.projects[projectIndex] = meta;
+      } else {
+        index.projects.push(meta);
+      }
+      await this.saveProjectsIndex(index);
 
       // 清理临时目录
       await fs.promises.rm(tempDir, { recursive: true, force: true });
