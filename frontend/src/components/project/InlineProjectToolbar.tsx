@@ -4,16 +4,18 @@
  */
 import React from 'react';
 import { Button, Tooltip } from 'antd';
-import { ThunderboltOutlined, HighlightOutlined, LoadingOutlined } from '@ant-design/icons';
+import { ThunderboltOutlined, HighlightOutlined, LoadingOutlined, SaveOutlined } from '@ant-design/icons';
 import { Sparkles, Play, Check, Loader2 } from 'lucide-react';
 import type { Episode } from '../../types';
 
 interface InlineProjectToolbarProps {
   episode: Episode | null;
+  hasScript: boolean;
   isSaving: boolean;
   isAnalyzing: boolean;
   isGenerating?: boolean;
   isPolishing?: boolean;
+  onSave: () => void;
   onPolish: () => void;
   onRandomGenerate: () => void;
   onAnalyze: () => void;
@@ -22,16 +24,17 @@ interface InlineProjectToolbarProps {
 
 export const InlineProjectToolbar: React.FC<InlineProjectToolbarProps> = ({
   episode,
+  hasScript,
   isSaving,
   isAnalyzing,
   isGenerating = false,
   isPolishing = false,
+  onSave,
   onPolish,
   onRandomGenerate,
   onAnalyze,
   onStartProduction,
 }) => {
-  const hasScript = !!episode?.scriptText?.trim();
   const anyBusy = isGenerating || isPolishing || isAnalyzing;
 
   return (
@@ -94,6 +97,16 @@ export const InlineProjectToolbar: React.FC<InlineProjectToolbarProps> = ({
         </div>
 
         {/* 开始制作按钮 */}
+        <Tooltip title={!episode ? "请先选择剧集" : "手动保存当前剧本"}>
+          <Button
+            size="small"
+            icon={isSaving ? <LoadingOutlined spin /> : <SaveOutlined />}
+            onClick={onSave}
+            disabled={!episode || isSaving}
+          >
+            {isSaving ? '保存中...' : '保存'}
+          </Button>
+        </Tooltip>
         <Tooltip title={!episode ? "请先选择剧集" : "进入分镜制作"}>
           <Button
             type="primary"
