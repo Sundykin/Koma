@@ -4,8 +4,14 @@
  */
 import type { AppSettings, Character, Scene } from '../types';
 import { getProjectLLMProvider } from '../providers';
+import type { LLMCallOptions } from '../providers/llm/types';
 import { getPromptTemplate, fillTemplate } from '../store/promptTemplates';
+import { logLLMCall } from '../store/aiCallLogger';
+import { createLogger } from '../store/logger';
+import { createAITraceId, describeLLMProviderTransport } from '../utils/aiTrace';
 import { parseLLMJSON } from '../utils/llmJsonParser';
+
+const logger = createLogger('ScriptGenerator');
 
 interface ScriptGeneratorParams {
   settings: AppSettings;
@@ -107,24 +113,48 @@ export async function generateRandomIdea(
  */
 export async function generateRandomScript(
   duration: string = '3',
-  onProgress?: (progress: number, step?: string) => void
+  onProgress?: (progress: number, step?: string) => void,
+  traceContext?: LLMCallOptions
 ): Promise<string> {
   const provider = await getProjectLLMProvider();
   if (!provider) {
     throw new Error('未配置 LLM 模型');
   }
 
+  const finalTraceContext: LLMCallOptions = {
+    traceId: traceContext?.traceId || createAITraceId('random-script'),
+    source: traceContext?.source || 'scriptGenerator.generateRandomScript',
+    operation: traceContext?.operation || 'random_script_generation',
+    projectId: traceContext?.projectId,
+    targetId: traceContext?.targetId,
+    targetName: traceContext?.targetName || '随机生成剧本',
+  };
+  const providerLabel = `${provider.type}:${provider.config.modelName || 'default'}`;
+
   onProgress?.(5, '加载 Prompt 模板...');
   const template = await getPromptTemplate('random_script_generation');
 
   const prompt = fillTemplate(template.template, { duration });
 
+  logger.info('开始随机生成剧本', {
+    traceId: finalTraceContext.traceId,
+    duration,
+    provider: providerLabel,
+    transport: describeLLMProviderTransport(provider.type),
+  });
+  logLLMCall(providerLabel, prompt, undefined, finalTraceContext);
+
   onProgress?.(15, '正在生成随机剧本...');
   const response = await provider.chat([
     { role: 'user', content: prompt },
-  ]);
+  ], finalTraceContext);
 
   onProgress?.(100, '剧本生成完成');
+  logger.info('随机生成剧本完成', {
+    traceId: finalTraceContext.traceId,
+    provider: providerLabel,
+    responseLength: response.length,
+  });
   return response;
 }
 

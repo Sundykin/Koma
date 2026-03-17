@@ -12,6 +12,7 @@ import { generateRandomScript, polishScript } from '../../workflow/scriptGenerat
 import { startBackgroundAnalysis } from '../../services/ScriptAnalysisService';
 import type { Project, Episode, AppSettings } from '../../types';
 import { createLogger } from '../../store/logger';
+import { createAITraceId } from '../../utils/aiTrace';
 
 const logger = createLogger('ScriptWorkbench');
 
@@ -88,14 +89,37 @@ export const ScriptWorkbench: React.FC<ScriptWorkbenchProps> = ({
 
   // AI 随机生成
   const handleRandomGenerate = async () => {
+    const traceId = createAITraceId('random-script');
     setIsGenerating(true);
     try {
-      const script = await generateRandomScript('3');
+      logger.info('用户触发随机生成剧本', {
+        traceId,
+        projectId: project.id,
+        episodeId: episode?.id,
+        episodeName: episode?.title,
+      });
+
+      const script = await generateRandomScript('3', undefined, {
+        traceId,
+        source: 'ScriptWorkbench.handleRandomGenerate',
+        projectId: project.id,
+        targetId: episode?.id,
+        targetName: episode?.title || `第${episode?.number || 0}集`,
+      });
       setLocalScript(script);
       await saveScript(script);
+      logger.info('随机生成剧本成功', {
+        traceId,
+        projectId: project.id,
+        episodeId: episode?.id,
+        scriptLength: script.length,
+      });
       message.success('剧本生成成功！');
     } catch (err: unknown) {
-      logger.error('随机生成失败', err);
+      logger.error('随机生成失败', {
+        traceId,
+        error: err instanceof Error ? err.message : String(err),
+      });
       message.error('剧本生成失败，请检查 LLM 配置后重试');
     } finally {
       setIsGenerating(false);

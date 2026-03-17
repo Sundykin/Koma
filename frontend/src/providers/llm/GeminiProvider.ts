@@ -3,7 +3,8 @@
  */
 import { GoogleGenAI, Type, Schema } from '@google/genai';
 import type { ModelConfig } from '../../types';
-import type { LLMProvider, ChatMessage } from './types';
+import type { LLMProvider, ChatMessage, LLMCallOptions } from './types';
+import { createLogger } from '../../store/logger';
 
 // 剧本分析 Schema
 const _analysisSchema: Schema = {
@@ -84,6 +85,8 @@ const _analysisSchema: Schema = {
   required: ['characters', 'scenes', 'props', 'shots'],
 };
 
+const logger = createLogger('GeminiProvider');
+
 export class GeminiProvider implements LLMProvider {
   type = 'gemini';
   config: ModelConfig;
@@ -118,16 +121,28 @@ export class GeminiProvider implements LLMProvider {
     }
   }
 
-  async generateText(prompt: string, systemPrompt?: string): Promise<string> {
+  async generateText(prompt: string, systemPrompt?: string, options?: LLMCallOptions): Promise<string> {
     const ai = this.getAI();
+    logger.info('发起 Gemini generateText 请求', {
+      traceId: options?.traceId,
+      model: this.config.modelName || 'gemini-2.0-flash',
+      source: options?.source,
+      operation: options?.operation,
+      transport: 'direct',
+    });
     const response = await ai.models.generateContent({
       model: this.config.modelName || 'gemini-2.0-flash',
       contents: systemPrompt ? `${systemPrompt}\n\n${prompt}` : prompt,
     });
+    logger.info('Gemini generateText 完成', {
+      traceId: options?.traceId,
+      contentLength: response.text?.length || 0,
+      transport: 'direct',
+    });
     return response.text || '';
   }
 
-  async chat(messages: ChatMessage[]): Promise<string> {
+  async chat(messages: ChatMessage[], options?: LLMCallOptions): Promise<string> {
     const ai = this.getAI();
     // 将 messages 转换为 Gemini 格式
     const contents = messages.map(m => ({
@@ -138,10 +153,24 @@ export class GeminiProvider implements LLMProvider {
     const systemMessage = messages.find(m => m.role === 'system');
     const systemInstruction = systemMessage?.content;
 
+    logger.info('发起 Gemini chat 请求', {
+      traceId: options?.traceId,
+      model: this.config.modelName || 'gemini-2.0-flash',
+      messageCount: messages.length,
+      source: options?.source,
+      operation: options?.operation,
+      transport: 'direct',
+    });
+
     const response = await ai.models.generateContent({
       model: this.config.modelName || 'gemini-2.0-flash',
       contents: contents.filter(c => c.role !== 'system'),
       config: systemInstruction ? { systemInstruction } : undefined,
+    });
+    logger.info('Gemini chat 完成', {
+      traceId: options?.traceId,
+      contentLength: response.text?.length || 0,
+      transport: 'direct',
     });
     return response.text || '';
   }

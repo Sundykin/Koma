@@ -21,8 +21,29 @@ export interface LLMProvider {
 
   validate(): boolean;
   testConnection(): Promise<boolean>;
-  generateText(prompt: string, systemPrompt?: string): Promise<string>;
-  chat?(messages: { role: string; content: string }[]): Promise<string>;
+  generateText(
+    prompt: string,
+    systemPrompt?: string,
+    options?: {
+      traceId?: string;
+      source?: string;
+      operation?: string;
+      projectId?: string;
+      targetId?: string;
+      targetName?: string;
+    }
+  ): Promise<string>;
+  chat?(
+    messages: { role: string; content: string }[],
+    options?: {
+      traceId?: string;
+      source?: string;
+      operation?: string;
+      projectId?: string;
+      targetId?: string;
+      targetName?: string;
+    }
+  ): Promise<string>;
 }
 
 // ========== TTI Provider ==========

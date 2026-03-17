@@ -8,11 +8,20 @@ export interface ChatMessage {
   content: string;
 }
 
+export interface LLMCallOptions {
+  traceId?: string;
+  source?: string;
+  operation?: string;
+  projectId?: string;
+  targetId?: string;
+  targetName?: string;
+}
+
 export interface LLMProvider {
   type: string;
   config: ModelConfig;
   validate(): boolean;
   testConnection(): Promise<boolean>;
-  generateText(prompt: string, systemPrompt?: string): Promise<string>;
-  chat(messages: ChatMessage[]): Promise<string>;
+  generateText(prompt: string, systemPrompt?: string, options?: LLMCallOptions): Promise<string>;
+  chat(messages: ChatMessage[], options?: LLMCallOptions): Promise<string>;
 }

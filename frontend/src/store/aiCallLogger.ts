@@ -2,6 +2,7 @@
  * AI 调用日志工具
  * 统一打印所有 AI 服务调用的完整提示词，方便调试
  */
+import { createLogger } from './logger';
 
 export type AICallType = 'llm' | 'tti' | 'itv' | 'tts';
 
@@ -14,6 +15,9 @@ export interface AICallLog {
   targetId?: string;
   targetName?: string;
   systemPrompt?: string; // LLM 专用
+  traceId?: string;
+  source?: string;
+  operation?: string;
 }
 
 const TYPE_LABELS: Record<AICallType, string> = {
@@ -23,27 +27,42 @@ const TYPE_LABELS: Record<AICallType, string> = {
   tts: 'TTS',
 };
 
+const logger = createLogger('AICall');
+
 /**
  * 打印 AI 调用日志
  */
 export function logAICall(log: AICallLog): void {
-  const _prefix = `[AI:${TYPE_LABELS[log.type]}]`;
-  const _separator = '='.repeat(40);
+  const prefix = `[AI:${TYPE_LABELS[log.type]}]`;
+  const meta = {
+    traceId: log.traceId,
+    service: log.service,
+    source: log.source,
+    operation: log.operation,
+    projectId: log.projectId,
+    targetId: log.targetId,
+    targetName: log.targetName,
+  };
 
-
-  if (log.targetName || log.targetId) {
-  }
-
-  if (log.projectId) {
-  }
+  logger.info(`${prefix} ========== ${log.service} ==========`, meta);
+  logger.info(`${prefix} prompt`, {
+    traceId: log.traceId,
+    prompt: log.prompt,
+  });
 
   if (log.systemPrompt) {
+    logger.info(`${prefix} systemPrompt`, {
+      traceId: log.traceId,
+      systemPrompt: log.systemPrompt,
+    });
   }
-
 
   if (log.options && Object.keys(log.options).length > 0) {
+    logger.info(`${prefix} options`, {
+      traceId: log.traceId,
+      options: log.options,
+    });
   }
-
 }
 
 /**
@@ -90,7 +109,14 @@ export function logLLMCall(
   service: string,
   prompt: string,
   systemPrompt?: string,
-  meta?: { projectId?: string; targetId?: string; targetName?: string }
+  meta?: {
+    projectId?: string;
+    targetId?: string;
+    targetName?: string;
+    traceId?: string;
+    source?: string;
+    operation?: string;
+  }
 ): void {
   logAICall({
     type: 'llm',
@@ -109,7 +135,14 @@ export function logTTSCall(
   text: string,
   voiceId: string,
   options?: { rate?: number; pitch?: number; [key: string]: any },
-  meta?: { projectId?: string; targetId?: string; targetName?: string }
+  meta?: {
+    projectId?: string;
+    targetId?: string;
+    targetName?: string;
+    traceId?: string;
+    source?: string;
+    operation?: string;
+  }
 ): void {
   logAICall({
     type: 'tts',
