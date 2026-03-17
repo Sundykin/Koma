@@ -10,6 +10,7 @@ export default defineConfig(({ mode }) => {
       port: 5173,
       host: env.VITE_DEV_HOST || '127.0.0.1',
     },
+    base: './',
     build: {
       outDir: 'dist',
       emptyOutDir: true,

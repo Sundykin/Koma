@@ -90,7 +90,8 @@
       "Bash(cmd //c \"taskkill /F /IM electron.exe\")",
       "Bash(cd:*)",
       "Bash(rm:*)",
-      "Bash(mkdir:*)"
+      "Bash(mkdir:*)",
+      "Bash(powershell -Command \"Stop-Process -Name 'Koma Studio' -Force -ErrorAction SilentlyContinue\" && sleep 2 && cd \"E:/Workspace/2025/代码备份/Koma\" && rm -rf out && npm run build-w 2>&1 | tail -20)"
     ]
   }
 }

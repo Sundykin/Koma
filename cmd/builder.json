@@ -14,7 +14,9 @@
     "!logs/",
     "!out/",
     "!packages/",
-    "!openspec/"
+    "!openspec/",
+    "public/dist/**/*",
+    "public/electron/**/*"
   ],
   "extraResources": {
     "from": "build/extraResources/",
