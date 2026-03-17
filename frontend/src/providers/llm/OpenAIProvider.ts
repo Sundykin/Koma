@@ -68,6 +68,7 @@ export class OpenAIProvider implements LLMProvider {
         body: JSON.stringify({
           model,
           messages,
+          stream: true,
         }),
       });
     } catch (err) {
@@ -102,19 +103,29 @@ export class OpenAIProvider implements LLMProvider {
       throw new Error(`API 请求失败 (${response.status}${hint}): ${detail}`);
     }
 
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content;
+    const content = this.parseSSE(await response.text());
     if (!content) {
-      logger.error('OpenAI Chat 返回空内容', {
-        traceId,
-        responseKeys: Object.keys(data || {}),
-      });
+      logger.error('OpenAI Chat 返回空内容', { traceId });
       throw new Error('API 返回内容为空，请检查模型配置');
     }
     logger.info('OpenAI Chat 解析完成', {
       traceId,
       contentLength: content.length,
     });
+    return content;
+  }
+
+  private parseSSE(text: string): string {
+    let content = '';
+    for (const line of text.split('\n')) {
+      if (line.startsWith('data: ') && line !== 'data: [DONE]') {
+        try {
+          const chunk = JSON.parse(line.slice(6));
+          const delta = chunk.choices?.[0]?.delta?.content;
+          if (delta) content += delta;
+        } catch { /* skip malformed lines */ }
+      }
+    }
     return content;
   }
 

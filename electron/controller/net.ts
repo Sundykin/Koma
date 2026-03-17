@@ -1,5 +1,12 @@
 import { BaseController } from './base';
 
+// 每个 chunk 之间的最大空闲时间（5 分钟，兼容慢模型的首 token 等待）
+const CHUNK_IDLE_TIMEOUT_MS = 300_000;
+// 最大重试次数（应对代理断连 UND_ERR_SOCKET）
+const MAX_RETRIES = 2;
+// 可重试的错误码
+const RETRYABLE_CODES = new Set(['UND_ERR_SOCKET', 'ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT']);
+
 function getHeaderValue(headers: Record<string, string> | undefined, key: string): string | undefined {
   if (!headers) return undefined;
   const target = key.toLowerCase();
@@ -27,6 +34,47 @@ function summarizeBody(body?: string): Record<string, any> {
   }
 }
 
+function isRetryable(err: any): boolean {
+  const code = err?.cause?.code || err?.code;
+  return RETRYABLE_CODES.has(code);
+}
+
+/**
+ * 用 ReadableStream reader 逐块读取响应体
+ * 保持连接活跃，避免 Cloudflare 524 超时
+ */
+async function readBodyChunked(response: Response): Promise<string> {
+  const reader = response.body?.getReader();
+  if (!reader) {
+    return response.text();
+  }
+
+  const decoder = new TextDecoder();
+  const chunks: string[] = [];
+
+  while (true) {
+    const timer = setTimeout(() => reader.cancel('chunk idle timeout'), CHUNK_IDLE_TIMEOUT_MS);
+    let result: ReadableStreamReadResult<Uint8Array>;
+    try {
+      result = await reader.read();
+    } catch (err: any) {
+      clearTimeout(timer);
+      if (String(err).includes('chunk idle timeout')) {
+        throw new Error(`响应数据中断，${CHUNK_IDLE_TIMEOUT_MS / 1000} 秒未收到新数据`);
+      }
+      throw err;
+    }
+    clearTimeout(timer);
+
+    if (result.done) break;
+    chunks.push(decoder.decode(result.value, { stream: true }));
+  }
+
+  // flush decoder
+  chunks.push(decoder.decode());
+  return chunks.join('');
+}
+
 class NetController extends BaseController {
   async fetch(args: {
     url: string;
@@ -49,7 +97,7 @@ class NetController extends BaseController {
     delete headers['x-koma-trace-operation'];
     delete headers['x-koma-trace-target'];
 
-    console.info('[NetController] IPC 网络请求开始', {
+    const logCtx = {
       traceId,
       source: traceSource,
       operation: traceOperation,
@@ -57,43 +105,75 @@ class NetController extends BaseController {
       method: args.method || 'GET',
       url: args.url,
       ...summarizeBody(args.body),
-    });
+    };
+
+    console.info('[NetController] IPC 网络请求开始', logCtx);
 
     const startedAt = Date.now();
+    let lastError: any;
 
-    let response: Response;
-    try {
-      response = await fetch(args.url, {
-        method: args.method || 'GET',
-        headers,
-        body: args.body,
-      });
-    } catch (error) {
-      console.error('[NetController] IPC 网络请求异常', {
-        traceId,
-        url: args.url,
-        method: args.method || 'GET',
-        durationMs: Date.now() - startedAt,
-        error: error instanceof Error ? error.message : String(error),
-      });
-      throw error;
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      if (attempt > 0) {
+        const delay = attempt * 1000;
+        console.info(`[NetController] 第 ${attempt} 次重试 (等待 ${delay}ms)`, { traceId });
+        await new Promise(r => setTimeout(r, delay));
+      }
+
+      try {
+        const response = await fetch(args.url, {
+          method: args.method || 'GET',
+          headers,
+          body: args.body,
+        });
+
+        const body = await readBodyChunked(response);
+
+        console.info('[NetController] IPC 网络请求完成', {
+          traceId,
+          status: response.status,
+          ok: response.ok,
+          durationMs: Date.now() - startedAt,
+          responseLength: body.length,
+          attempts: attempt + 1,
+        });
+
+        return {
+          ok: response.ok,
+          status: response.status,
+          statusText: response.statusText,
+          body,
+        };
+      } catch (err: any) {
+        lastError = err;
+        const errMsg = err instanceof Error ? err.message : String(err);
+        const causeCode = err?.cause?.code;
+
+        console.error('[NetController] IPC 网络请求异常', {
+          traceId,
+          url: args.url,
+          method: args.method || 'GET',
+          durationMs: Date.now() - startedAt,
+          error: errMsg,
+          causeCode,
+          attempt: attempt + 1,
+        });
+
+        if (!isRetryable(err) || attempt >= MAX_RETRIES) {
+          break;
+        }
+      }
     }
 
-    const body = await response.text();
-
-    console.info('[NetController] IPC 网络请求完成', {
-      traceId,
-      status: response.status,
-      ok: response.ok,
-      durationMs: Date.now() - startedAt,
-      responseLength: body.length,
-    });
-
+    // 所有重试耗尽，返回结构化错误
+    const cause = lastError?.cause;
+    const detail = cause?.code
+      ? `${lastError.message} (${cause.code})`
+      : lastError?.message || String(lastError);
     return {
-      ok: response.ok,
-      status: response.status,
-      statusText: response.statusText,
-      body,
+      ok: false,
+      status: 502,
+      statusText: 'Network Error',
+      body: `网络请求失败: ${detail}`,
     };
   }
 }
