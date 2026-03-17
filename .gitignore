@@ -16,7 +16,6 @@ public/dist
 frontend/dist
 electron/dist
 out
-build/icons
 
 # Test coverage
 frontend/coverage

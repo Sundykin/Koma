@@ -84,7 +84,13 @@
       "Bash(node:*)",
       "Bash(copy:*)",
       "Bash(tree:*)",
-      "Bash(npm run zip:*)"
+      "Bash(npm run zip:*)",
+      "Bash(tasklist:*)",
+      "Bash(taskkill:*)",
+      "Bash(cmd //c \"taskkill /F /IM electron.exe\")",
+      "Bash(cd:*)",
+      "Bash(rm:*)",
+      "Bash(mkdir:*)"
     ]
   }
 }

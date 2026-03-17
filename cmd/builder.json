@@ -42,7 +42,7 @@
     "artifactName": "${productName}-${os}-${version}-${arch}.${ext}",
     "target": [
       {
-        "target": "nsis"
+        "target": "portable"
       }
     ]
   }
