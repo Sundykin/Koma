@@ -77,12 +77,28 @@ export const ScriptWorkbench = forwardRef<ScriptWorkbenchRef, ScriptWorkbenchPro
     return saveScript(localScript);
   }, [localScript, saveScript]);
 
+  const handleManualSave = useCallback(async () => {
+    if (!episode) {
+      message.warning('请先选择剧集');
+      return;
+    }
+
+    const result = await flushSave();
+    if (result) {
+      message.success('剧本已保存');
+      return;
+    }
+
+    message.error('保存失败，请重试');
+  }, [episode, flushSave, message]);
+
   useImperativeHandle(ref, () => ({
     flushSave,
   }), [flushSave]);
 
   const handleScriptChange = useCallback((text: string) => {
     setLocalScript(text);
+    onScriptChange(text);
 
     // 清除之前的定时器
     if (saveTimeoutRef.current) {
@@ -221,10 +237,12 @@ export const ScriptWorkbench = forwardRef<ScriptWorkbenchRef, ScriptWorkbenchPro
       {/* 工具栏 */}
       <InlineProjectToolbar
         episode={episode}
+        hasScript={!!localScript.trim()}
         isSaving={isSaving}
         isAnalyzing={isAnalyzing}
         isGenerating={isGenerating}
         isPolishing={isPolishing}
+        onSave={handleManualSave}
         onPolish={handlePolish}
         onRandomGenerate={handleRandomGenerate}
         onAnalyze={handleAnalyze}
