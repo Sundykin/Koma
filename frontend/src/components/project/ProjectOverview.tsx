@@ -13,7 +13,7 @@ import type { Project, Episode } from '../../types';
 import { EpisodeManager, EpisodeManagerRef } from './EpisodeManager';
 import { EpisodeSplitWizard } from './EpisodeSplitWizard';
 import { ProjectAssetOverview } from './ProjectAssetOverview';
-import { ScriptWorkbench } from './ScriptWorkbench';
+import { ScriptWorkbench, type ScriptWorkbenchRef } from './ScriptWorkbench';
 import { saveProject, loadProject, listEpisodes } from '../../store/projectStore';
 import { loadSettings, getChannelsByCapability } from '../../store/globalStore';
 import { createLogger } from '../../store/logger';
@@ -46,6 +46,7 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
   const [fullScript, setFullScript] = useState('');
   const [splitWizardVisible, setSplitWizardVisible] = useState(false);
   const episodeManagerRef = useRef<EpisodeManagerRef>(null);
+  const scriptWorkbenchRef = useRef<ScriptWorkbenchRef>(null);
 
   const [leftCollapsed, setLeftCollapsed] = useState(false);
   const [rightCollapsed, setRightCollapsed] = useState(false);
@@ -109,11 +110,19 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
     setSelectedEpisode(episode);
   }, []);
 
+  const handleEpisodeUpdate = useCallback((episode: Episode) => {
+    setSelectedEpisode(prev => prev?.id === episode.id ? episode : prev);
+  }, []);
+
   // 点击"开始制作"：进入编辑器
-  const handleStartProduction = useCallback(() => {
-    if (selectedEpisode) {
-      onEnterEpisode(selectedEpisode);
-    }
+  const handleStartProduction = useCallback(async () => {
+    if (!selectedEpisode) return;
+
+    const flushedEpisode = await scriptWorkbenchRef.current?.flushSave();
+    const nextEpisode = flushedEpisode || selectedEpisode;
+
+    setSelectedEpisode(nextEpisode);
+    onEnterEpisode(nextEpisode);
   }, [selectedEpisode, onEnterEpisode]);
 
   // 剧本内容变更（自动保存后回调）
@@ -313,6 +322,7 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
               projectId={project.id}
               fullScript={fullScript || undefined}
               onEpisodeSelect={handleEpisodeSelect}
+              onEpisodeUpdate={handleEpisodeUpdate}
               selectedEpisodeId={selectedEpisode?.id}
             />
           </div>
@@ -333,6 +343,7 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
         {/* Center: Script Workbench */}
         <div className="flex-1 flex flex-col min-w-[400px] overflow-hidden border-x border-zinc-800/50">
           <ScriptWorkbench
+            ref={scriptWorkbenchRef}
             project={project}
             episode={selectedEpisode}
             onScriptChange={handleScriptChange}

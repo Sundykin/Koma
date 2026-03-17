@@ -9,7 +9,7 @@ import { Sidebar } from './components/common/Sidebar';
 import type { AppView } from './components/common/Sidebar';
 import { useProjects } from './hooks/useProjects';
 import { TaskManager } from './services/TaskManager';
-import { loadCharacters, loadScenes, loadProps, loadShots, loadEpisodeShots, saveEpisode } from './store/projectStore';
+import { loadCharacters, loadScenes, loadProps, loadShots, loadEpisode, loadEpisodeShots, saveEpisode } from './store/projectStore';
 import { Spin, App as AntApp } from 'antd';
 import {
   DEV_TEST_PROJECT,
@@ -202,18 +202,26 @@ const AppContent: React.FC = () => {
     }
   };
 
-  const handleEnterEpisode = (episode: Episode) => {
-    setActiveEpisode(episode);
+  const handleEnterEpisode = useCallback(async (episode: Episode) => {
+    const latestEpisode = activeProject
+      ? await loadEpisode(activeProject.id, episode.id).catch(err => {
+        logger.error('加载最新剧集失败', err);
+        return null;
+      })
+      : null;
+    const targetEpisode = latestEpisode || episode;
+
+    setActiveEpisode(targetEpisode);
     setView('editor');
     const defaultProgress: EpisodeStepProgress = { assets: 'pending', storyboard: 'pending', video: 'pending' };
-    const progress = episode.stepProgress || defaultProgress;
+    const progress = targetEpisode.stepProgress || defaultProgress;
     setStepProgress(progress);
     const steps: EditorStep[] = ['assets', 'storyboard', 'video'];
     const firstPending = steps.find(s => progress[s] === 'pending') || 'assets';
     setEditorStep(firstPending);
-    setScriptText(episode.scriptText || '');
+    setScriptText(targetEpisode.scriptText || '');
     setAnalysisData(null);
-  };
+  }, [activeProject]);
 
   const markStepCompleted = useCallback((step: EditorStep) => {
     setStepProgress(prev => {

@@ -2,7 +2,7 @@
  * 剧本工作台
  * 包含工具栏和剧本编辑器，支持自动保存
  */
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, forwardRef, useImperativeHandle } from 'react';
 import { App } from 'antd';
 import { Film } from 'lucide-react';
 import { InlineProjectToolbar } from './InlineProjectToolbar';
@@ -23,12 +23,16 @@ interface ScriptWorkbenchProps {
   onStartProduction: () => void;
 }
 
-export const ScriptWorkbench: React.FC<ScriptWorkbenchProps> = ({
+export interface ScriptWorkbenchRef {
+  flushSave: () => Promise<Episode | null>;
+}
+
+export const ScriptWorkbench = forwardRef<ScriptWorkbenchRef, ScriptWorkbenchProps>(({
   project,
   episode,
   onScriptChange,
   onStartProduction,
-}) => {
+}, ref) => {
   const { message } = App.useApp();
   const [localScript, setLocalScript] = useState(episode?.scriptText || '');
   const [isSaving, setIsSaving] = useState(false);
@@ -45,20 +49,37 @@ export const ScriptWorkbench: React.FC<ScriptWorkbenchProps> = ({
   }, [episode?.id, episode?.scriptText]);
 
   // 自动保存 (防抖 2s)
-  const saveScript = useCallback(async (text: string) => {
-    if (!episode || text === lastSavedRef.current) return;
+  const saveScript = useCallback(async (text: string): Promise<Episode | null> => {
+    if (!episode) return null;
+    if (text === lastSavedRef.current) {
+      return { ...episode, scriptText: text };
+    }
 
     setIsSaving(true);
     try {
-      await saveEpisode(project.id, episode.id, { scriptText: text });
+      const updated = await saveEpisode(project.id, episode.id, { scriptText: text });
       lastSavedRef.current = text;
       onScriptChange(text);
+      return updated || { ...episode, scriptText: text };
     } catch (err: unknown) {
       logger.error('自动保存失败', err);
+      return null;
     } finally {
       setIsSaving(false);
     }
   }, [episode, project.id, onScriptChange]);
+
+  const flushSave = useCallback(async (): Promise<Episode | null> => {
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+      saveTimeoutRef.current = null;
+    }
+    return saveScript(localScript);
+  }, [localScript, saveScript]);
+
+  useImperativeHandle(ref, () => ({
+    flushSave,
+  }), [flushSave]);
 
   const handleScriptChange = useCallback((text: string) => {
     setLocalScript(text);
@@ -235,6 +256,8 @@ export const ScriptWorkbench: React.FC<ScriptWorkbenchProps> = ({
       </div>
     </div>
   );
-};
+});
+
+ScriptWorkbench.displayName = 'ScriptWorkbench';
 
 export default ScriptWorkbench;

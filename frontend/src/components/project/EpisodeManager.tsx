@@ -10,13 +10,11 @@ import { createEpisode, saveEpisode, deleteEpisode, listEpisodes } from '../../s
 import { createLLMProvider } from '../../providers';
 import { getActiveLLMConfig } from '../../store/globalStore';
 import { parseLLMJSON } from '../../utils/llmJsonParser';
-
-const { TextArea } = Input;
-
 interface EpisodeManagerProps {
   projectId: string;
   fullScript?: string;
   onEpisodeSelect?: (episode: Episode) => void;
+  onEpisodeUpdate?: (episode: Episode) => void;
   selectedEpisodeId?: string;
 }
 
@@ -36,6 +34,7 @@ export const EpisodeManager = forwardRef<EpisodeManagerRef, EpisodeManagerProps>
   projectId,
   fullScript,
   onEpisodeSelect,
+  onEpisodeUpdate,
   selectedEpisodeId,
 }, ref) => {
   const { message, modal } = App.useApp();
@@ -87,7 +86,7 @@ export const EpisodeManager = forwardRef<EpisodeManagerRef, EpisodeManagerProps>
   const handleEditClick = (episode: Episode, e: React.MouseEvent) => {
     e.stopPropagation();
     setEditingEpisode(episode);
-    form.setFieldsValue({ title: episode.title, scriptText: episode.scriptText || '' });
+    form.setFieldsValue({ title: episode.title });
     setEditDialogOpen(true);
   };
 
@@ -97,11 +96,10 @@ export const EpisodeManager = forwardRef<EpisodeManagerRef, EpisodeManagerProps>
       const values = await form.validateFields();
       const updated = await saveEpisode(projectId, editingEpisode.id, {
         title: values.title,
-        scriptText: values.scriptText,
-        status: values.scriptText?.trim() ? 'script' : 'draft',
       });
       if (updated) {
         setEpisodes(episodes.map(ep => ep.id === updated.id ? updated : ep));
+        onEpisodeUpdate?.(updated);
       }
       setEditDialogOpen(false);
       setEditingEpisode(null);
@@ -307,7 +305,7 @@ ${fullScript}
         onCancel={() => setEditDialogOpen(false)}
         okText="保存"
         cancelText="取消"
-        width={640}
+        width={520}
       >
         <Form form={form} layout="vertical" className="mt-4">
           <Form.Item
@@ -317,9 +315,9 @@ ${fullScript}
           >
             <Input placeholder="请输入剧集标题" />
           </Form.Item>
-          <Form.Item name="scriptText" label="剧集剧本">
-            <TextArea rows={12} placeholder="输入本集剧本内容..." />
-          </Form.Item>
+          <div className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-xs text-zinc-400">
+            完整剧本内容仅在中间工作台编辑，这里只维护剧集标题等元数据。
+          </div>
         </Form>
       </Modal>
 
