@@ -1,6 +1,6 @@
 /**
  * Electron 后端插件 API 类型定义
- * 与 electron/src/service/plugin/types.ts 完全对齐
+ * 与 electron/service/plugin/types.ts 完全对齐
  */
 
 import type {

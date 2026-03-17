@@ -1,6 +1,19 @@
+/**
+ * 服务层索引
+ */
 import path from 'path';
 import { app } from 'electron';
-import { services } from '../src/service';
+import { projectService, ProjectService } from './project';
+import { ffmpegService, FFmpegService } from './ffmpeg';
+import { pluginService } from './plugin';
+import { chatService, ChatService } from './chat';
+
+export const services = {
+  project: projectService,
+  ffmpeg: ffmpegService,
+  plugin: pluginService,
+  chat: chatService,
+};
 
 let initialized = false;
 let initPromise: Promise<void> | null = null;
@@ -27,3 +40,6 @@ export async function ensureServicesReady(): Promise<void> {
   }
   await initPromise;
 }
+
+export { ProjectService, projectService, FFmpegService, ffmpegService, pluginService, ChatService, chatService };
+export default services;

@@ -1,6 +1,6 @@
 /**
  * MCP (Model Context Protocol) 相关类型定义
- * 与 electron/src/service/plugin/types.ts 完全对齐
+ * 与 electron/service/plugin/types.ts 完全对齐
  */
 
 // MCP 传输类型

@@ -1,37 +1,29 @@
-/**
- * Chat 控制器
- * 处理 IPC 通信，转发到 ChatService
- */
-import { ipcMain, BrowserWindow } from 'electron';
-import { chatService } from '../service/chat';
-import { createOrchestrator, AgentOrchestrator } from '../service/chat/AgentOrchestrator';
-import { mcpRegistry } from '../service/plugin/registries';
-import { capabilityRegistry } from '../service/plugin/capability';
-import { importFromFile, importFromObject, exportConfig, exportToFile } from '../service/chat/mcp/MCPConfigLoader';
+import { app, BrowserWindow, ipcMain } from 'electron';
+import { createOrchestrator, AgentOrchestrator } from './AgentOrchestrator';
+import { chatService } from './ChatService';
+import { importFromFile, importFromObject, exportConfig, exportToFile } from './mcp/MCPConfigLoader';
 import type {
-  SessionConfig,
   ChatInput,
   ChatOptions,
   MCPServerConfig,
+  SessionConfig,
   StreamChunkEvent,
-  StreamToolEvent,
   StreamDoneEvent,
   StreamErrorEvent,
-} from '../service/chat/types';
+  StreamToolEvent,
+} from './types';
+import { mcpRegistry } from '../plugin/registries';
+import { capabilityRegistry } from '../plugin/capability';
 
-export class ChatController {
+class ChatIpc {
   private initialized = false;
 
   init(): void {
     if (this.initialized) return;
     this.initialized = true;
 
-    // ========== 会话管理 ==========
-
     ipcMain.handle('chat:session:create', async (event, args: { config?: SessionConfig }) => {
       const windowId = BrowserWindow.fromWebContents(event.sender)?.id || 0;
-      console.log('[ChatController] createSession args:', JSON.stringify(args, null, 2));
-      console.log('[ChatController] config.apiKey exists:', !!args?.config?.apiKey);
       const session = chatService.createSession(windowId, args?.config);
       return {
         id: session.id,
@@ -42,7 +34,7 @@ export class ChatController {
       };
     });
 
-    ipcMain.handle('chat:session:get', async (event, args: { sessionId: string }) => {
+    ipcMain.handle('chat:session:get', async (_event, args: { sessionId: string }) => {
       const session = chatService.getSession(args.sessionId);
       if (!session) return null;
       return {
@@ -55,7 +47,7 @@ export class ChatController {
       };
     });
 
-    ipcMain.handle('chat:session:dispose', async (event, args: { sessionId: string }) => {
+    ipcMain.handle('chat:session:dispose', async (_event, args: { sessionId: string }) => {
       return chatService.disposeSession(args.sessionId);
     });
 
@@ -64,13 +56,10 @@ export class ChatController {
       return chatService.listSessions(windowId);
     });
 
-    ipcMain.handle('chat:session:updateConfig', async (event, args: {
+    ipcMain.handle('chat:session:updateConfig', async (_event, args: {
       sessionId: string;
       config: Partial<SessionConfig>;
     }) => {
-      console.log('[ChatController] updateConfig sessionId:', args.sessionId);
-      console.log('[ChatController] updateConfig config:', args.config);
-      console.log('[ChatController] updateConfig apiKey exists:', !!args.config?.apiKey);
       const session = chatService.updateSessionConfig(args.sessionId, args.config);
       if (!session) return null;
       return {
@@ -79,15 +68,12 @@ export class ChatController {
       };
     });
 
-    // ========== 消息发送 ==========
-
-    ipcMain.handle('chat:message:send', async (event, args: {
+    ipcMain.handle('chat:message:send', async (_event, args: {
       sessionId: string;
       input: ChatInput;
       options?: ChatOptions;
     }) => {
-      const message = await chatService.sendMessage(args.sessionId, args.input, args.options);
-      return message;
+      return chatService.sendMessage(args.sessionId, args.input, args.options);
     });
 
     ipcMain.handle('chat:message:sendStream', async (event, args: {
@@ -96,13 +82,8 @@ export class ChatController {
       options?: ChatOptions;
     }) => {
       const sender = event.sender;
-      const session = chatService.getSession(args.sessionId);
-      console.log('[ChatController] sendMessageStream sessionId:', args.sessionId);
-      console.log('[ChatController] session config:', session?.config);
-      console.log('[ChatController] apiKey exists:', !!session?.config?.apiKey);
 
-      // 异步执行流式发送
-      (async () => {
+      void (async () => {
         try {
           for await (const chunk of chatService.sendMessageStream(args.sessionId, args.input, args.options)) {
             if (sender.isDestroyed()) break;
@@ -131,24 +112,22 @@ export class ChatController {
       return { accepted: true };
     });
 
-    ipcMain.handle('chat:message:cancel', async (event, args: { requestId?: string; sessionId?: string }) => {
+    ipcMain.handle('chat:message:cancel', async (_event, args: { requestId?: string; sessionId?: string }) => {
       const id = args.requestId || args.sessionId;
       if (!id) return false;
       return chatService.cancelRequest(id);
     });
 
-    // ========== MCP 管理 ==========
-
-    ipcMain.handle('chat:mcp:connect', async (event, args: { config: MCPServerConfig }) => {
+    ipcMain.handle('chat:mcp:connect', async (_event, args: { config: MCPServerConfig }) => {
       return chatService.connectMCP(args.config);
     });
 
-    ipcMain.handle('chat:mcp:disconnect', async (event, args: { name: string }) => {
+    ipcMain.handle('chat:mcp:disconnect', async (_event, args: { name: string }) => {
       await chatService.disconnectMCP(args.name);
       return { success: true };
     });
 
-    ipcMain.handle('chat:mcp:list', async (event, args?: { includeTools?: boolean }) => {
+    ipcMain.handle('chat:mcp:list', async (_event, args?: { includeTools?: boolean }) => {
       const connections = chatService.listMCPConnections();
       if (args?.includeTools) {
         return {
@@ -159,7 +138,7 @@ export class ChatController {
       return { connections };
     });
 
-    ipcMain.handle('chat:mcp:callTool', async (event, args: {
+    ipcMain.handle('chat:mcp:callTool', async (_event, args: {
       name: string;
       arguments: Record<string, unknown>;
     }) => {
@@ -170,24 +149,19 @@ export class ChatController {
       return chatService.listMCPTools();
     });
 
-    // ========== 工具调用审批 ==========
-
-    ipcMain.handle('chat:tool:approve', async (event, args: { callId: string }) => {
-      const success = chatService.approveToolCall(args.callId);
-      return { success };
+    ipcMain.handle('chat:tool:approve', async (_event, args: { callId: string }) => {
+      return { success: chatService.approveToolCall(args.callId) };
     });
 
-    ipcMain.handle('chat:tool:reject', async (event, args: { callId: string; reason?: string }) => {
-      const success = chatService.rejectToolCall(args.callId, args.reason);
-      return { success };
+    ipcMain.handle('chat:tool:reject', async (_event, args: { callId: string; reason?: string }) => {
+      return { success: chatService.rejectToolCall(args.callId, args.reason) };
     });
 
-    ipcMain.handle('chat:tool:listPending', async (event, args?: { sessionId?: string }) => {
+    ipcMain.handle('chat:tool:listPending', async (_event, args?: { sessionId?: string }) => {
       return chatService.listPendingToolCalls(args?.sessionId);
     });
 
-    // 监听工具调用审批事件，转发到前端
-    chatService.on('toolCallPending', (data) => {
+    chatService.on('toolCallPending', data => {
       BrowserWindow.getAllWindows().forEach(win => {
         if (!win.isDestroyed()) {
           win.webContents.send('chat:tool:pending', data);
@@ -195,7 +169,7 @@ export class ChatController {
       });
     });
 
-    chatService.on('toolCallApproved', (data) => {
+    chatService.on('toolCallApproved', data => {
       BrowserWindow.getAllWindows().forEach(win => {
         if (!win.isDestroyed()) {
           win.webContents.send('chat:tool:approved', data);
@@ -203,7 +177,7 @@ export class ChatController {
       });
     });
 
-    chatService.on('toolCallRejected', (data) => {
+    chatService.on('toolCallRejected', data => {
       BrowserWindow.getAllWindows().forEach(win => {
         if (!win.isDestroyed()) {
           win.webContents.send('chat:tool:rejected', data);
@@ -211,54 +185,44 @@ export class ChatController {
       });
     });
 
-    // ========== 统一工具列表（合并外部 MCP + 插件内部） ==========
-
     ipcMain.handle('chat:tools:list', async () => {
       const externalTools = chatService.listMCPTools();
       const internalTools = mcpRegistry.tools.listDefinitions();
-      console.log('[ChatController] chat:tools:list external:', externalTools.length, externalTools.map(t => t.name));
-      console.log('[ChatController] chat:tools:list internal:', internalTools.length, internalTools.map(t => t.name));
-      // 去重（按 name），内部优先
       const toolMap = new Map<string, any>();
-      for (const t of internalTools) {
-        toolMap.set(t.name, { ...t, source: 'plugin' });
+
+      for (const tool of internalTools) {
+        toolMap.set(tool.name, { ...tool, source: 'plugin' });
       }
-      for (const t of externalTools) {
-        if (!toolMap.has(t.name)) {
-          toolMap.set(t.name, { ...t, source: 'mcp' });
+      for (const tool of externalTools) {
+        if (!toolMap.has(tool.name)) {
+          toolMap.set(tool.name, { ...tool, source: 'mcp' });
         }
       }
-      const result = Array.from(toolMap.values());
-      console.log('[ChatController] chat:tools:list total:', result.length);
-      return result;
+
+      return Array.from(toolMap.values());
     });
 
-    ipcMain.handle('chat:tools:call', async (event, args: {
+    ipcMain.handle('chat:tools:call', async (_event, args: {
       name: string;
       arguments: Record<string, unknown>;
     }) => {
-      // 先查内部注册表
       const internalTool = mcpRegistry.tools.get(args.name);
       if (internalTool) {
         return internalTool.handler(args.arguments);
       }
-      // 再查外部 MCP
       return chatService.callMCPTool(args.name, args.arguments);
     });
 
-    // ========== Agent 编排 ==========
-
-    // 活跃的编排器
     const orchestrators = new Map<string, AgentOrchestrator>();
 
     ipcMain.handle('chat:agent:list', async () => {
       const orchestrator = createOrchestrator({});
-      return orchestrator.listAvailableWorkers().map(w => ({
-        id: w.id,
-        name: w.name,
-        description: w.description,
-        capabilities: w.capabilities,
-        pluginId: w.pluginId,
+      return orchestrator.listAvailableWorkers().map(worker => ({
+        id: worker.id,
+        name: worker.name,
+        description: worker.description,
+        capabilities: worker.capabilities,
+        pluginId: worker.pluginId,
       }));
     });
 
@@ -278,8 +242,7 @@ export class ChatController {
 
       const sender = event.sender;
 
-      // 异步流式执行
-      (async () => {
+      void (async () => {
         try {
           for await (const ev of orchestrator.orchestrateStream(args.message)) {
             if (sender.isDestroyed()) break;
@@ -301,7 +264,7 @@ export class ChatController {
       return { orchestrateId, accepted: true };
     });
 
-    ipcMain.handle('chat:agent:cancel', async (event, args: { orchestrateId: string }) => {
+    ipcMain.handle('chat:agent:cancel', async (_event, args: { orchestrateId: string }) => {
       const orchestrator = orchestrators.get(args.orchestrateId);
       if (orchestrator) {
         orchestrator.cancel();
@@ -311,9 +274,7 @@ export class ChatController {
       return { success: false, error: 'Orchestrator not found' };
     });
 
-    // ========== Capability 统一能力查询 ==========
-
-    ipcMain.handle('chat:capability:list', async (event, args?: {
+    ipcMain.handle('chat:capability:list', async (_event, args?: {
       type?: string;
       tags?: string[];
       sourceKind?: string;
@@ -325,22 +286,20 @@ export class ChatController {
       });
     });
 
-    ipcMain.handle('chat:capability:invoke', async (event, args: {
+    ipcMain.handle('chat:capability:invoke', async (_event, args: {
       id: string;
       arguments: unknown;
     }) => {
       return capabilityRegistry.invoke(args.id, args.arguments);
     });
 
-    ipcMain.handle('chat:capability:resolve', async (event, args: {
+    ipcMain.handle('chat:capability:resolve', async (_event, args: {
       requirements: string[];
     }) => {
       return capabilityRegistry.resolve(args.requirements);
     });
 
-    // ========== MCP 配置导入/导出 ==========
-
-    ipcMain.handle('chat:mcp:importConfig', async (event, args: {
+    ipcMain.handle('chat:mcp:importConfig', async (_event, args: {
       filePath?: string;
       config?: { mcpServers: Record<string, any> };
     }) => {
@@ -353,7 +312,7 @@ export class ChatController {
       return { error: 'Either filePath or config is required' };
     });
 
-    ipcMain.handle('chat:mcp:exportConfig', async (event, args?: {
+    ipcMain.handle('chat:mcp:exportConfig', async (_event, args?: {
       filePath?: string;
     }) => {
       if (args?.filePath) {
@@ -363,25 +322,20 @@ export class ChatController {
       return exportConfig();
     });
 
-    // ========== Agent 模板管理 ==========
-
     ipcMain.handle('chat:agent:templates', async () => {
-      // 从 Agent 注册表构建模板列表
       const workers = createOrchestrator({}).listAvailableWorkers();
-      return workers.map(w => ({
-        id: w.id,
-        name: w.name,
-        description: w.description,
-        capabilities: w.capabilities,
-        tools: w.tools,
-        systemPrompt: w.systemPrompt,
-        pluginId: w.pluginId,
+      return workers.map(worker => ({
+        id: worker.id,
+        name: worker.name,
+        description: worker.description,
+        capabilities: worker.capabilities,
+        tools: worker.tools,
+        systemPrompt: worker.systemPrompt,
+        pluginId: worker.pluginId,
       }));
     });
 
-    // 窗口关闭时清理会话
-    const { app } = require('electron');
-    app.on('browser-window-closed', (event: any, window: BrowserWindow) => {
+    app.on('browser-window-closed', (_event, window: BrowserWindow) => {
       chatService.disposeSessionsByWindow(window.id);
     });
   }
@@ -391,5 +345,4 @@ export class ChatController {
   }
 }
 
-export const chatController = new ChatController();
-export default chatController;
+export const chatIpc = new ChatIpc();

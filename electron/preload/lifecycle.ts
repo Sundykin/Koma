@@ -1,4 +1,4 @@
-import { app as electronApp } from 'electron';
+import { app as electronApp, type Event as ElectronEvent, type Input } from 'electron';
 import { eventBus, Preload } from 'ee-core/app/events';
 import { createMainWindow, getMainWindow, loadServer, restoreMainWindow } from 'ee-core/electron/window';
 import { logger } from 'ee-core/log';
@@ -34,7 +34,7 @@ export class Lifecycle {
     const win = getMainWindow();
     if (!win) return;
 
-    win.webContents.on('before-input-event', (_event, input) => {
+    win.webContents.on('before-input-event', (_event: ElectronEvent, input: Input) => {
       if (
         input.key === 'F12' ||
         (input.control && input.shift && input.key.toLowerCase() === 'i')

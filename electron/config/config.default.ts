@@ -19,7 +19,7 @@ const config: () => AppConfig = () => {
       webPreferences: {
         contextIsolation: true,
         nodeIntegration: false,
-        preload: path.join(getBaseDir(), 'public', 'electron', 'src', 'preload', 'index.js'),
+        preload: path.join(getBaseDir(), 'public', 'electron', 'preload', 'bridge.js'),
       },
     },
     logger: {
