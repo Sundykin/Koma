@@ -21,11 +21,16 @@ export async function saveEpisodeAnalysis(
   const now = Date.now();
 
   const existing = await loadEpisodeAnalysis(projectId, episodeId);
+  const completedStages = Array.from(new Set([
+    ...(existing?.completedStages || []),
+    ...(analysis.completedStages || []),
+  ]));
   const result: EpisodeAnalysis = {
     episodeId,
     characterRefs: analysis.characterRefs,
     sceneRefs: analysis.sceneRefs,
     propRefs: analysis.propRefs,
+    completedStages,
     shots: analysis.shots,
     createdAt: existing?.createdAt || now,
     updatedAt: now,
@@ -85,6 +90,7 @@ export async function saveEpisodeShots(
       characterRefs: [],
       sceneRefs: [],
       propRefs: [],
+      completedStages: [],
       shots: [],
       createdAt: now,
       updatedAt: now,

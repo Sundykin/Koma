@@ -63,6 +63,7 @@ export interface EpisodeAnalysis {
   characterRefs: string[];
   sceneRefs: string[];
   propRefs: string[];
+  completedStages?: Array<'characters' | 'scenes' | 'props' | 'shots'>;
   // 剧集特有的分镜
   shots: Shot[];
   createdAt: number;

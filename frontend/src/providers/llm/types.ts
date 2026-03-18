@@ -15,6 +15,7 @@ export interface LLMCallOptions {
   projectId?: string;
   targetId?: string;
   targetName?: string;
+  stream?: boolean;
 }
 
 export interface LLMProvider {

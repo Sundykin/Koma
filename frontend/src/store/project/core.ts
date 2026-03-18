@@ -66,7 +66,8 @@ export async function createProject(
   title: string,
   genre: string,
   mode: 'drama' | 'narration',
-  llmConfigId?: string
+  llmConfigId?: string,
+  styleOptions?: { theme?: string; stylePrompt?: string }
 ): Promise<ProjectMeta> {
   const projectId = uuidv4();
   const now = Date.now();
@@ -85,6 +86,8 @@ export async function createProject(
     createdAt: now,
     updatedAt: now,
     llmConfigId: finalLLMConfigId,
+    theme: styleOptions?.theme,
+    stylePrompt: styleOptions?.stylePrompt,
   };
 
   if (electronService.isElectron()) {

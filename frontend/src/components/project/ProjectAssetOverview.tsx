@@ -9,6 +9,7 @@ import type { Character, Scene, Prop, EpisodeRef } from '../../types';
 import { loadCharacters, loadScenes, loadProps, getOrphanedAssets } from '../../store/projectStore';
 import { electronService } from '../../services/electronService';
 import { createLogger } from '../../store/logger';
+import { TaskManager } from '../../services/TaskManager';
 
 const logger = createLogger('ProjectAssetOverview');
 
@@ -50,6 +51,16 @@ export const ProjectAssetOverview: React.FC<ProjectAssetOverviewProps> = ({
   }, [projectId]);
 
   useEffect(() => { loadAssets(); }, [loadAssets]);
+
+  useEffect(() => {
+    const unsubscribe = TaskManager.addListener((task) => {
+      if (task.projectId !== projectId) return;
+      if (task.type === 'script-analysis' && task.status === 'completed') {
+        loadAssets();
+      }
+    });
+    return () => unsubscribe();
+  }, [projectId, loadAssets]);
 
   const renderEpisodeRefs = (refs?: EpisodeRef[]) => {
     if (!refs || refs.length === 0) {

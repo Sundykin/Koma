@@ -268,7 +268,12 @@ export async function polishScript(
   onProgress(10, '正在润色剧本...');
   const response = await provider.chat([
     { role: 'user', content: finalPrompt },
-  ]);
+  ], {
+    source: 'scriptGenerator.polishScript',
+    operation: 'script_polish',
+    targetName: '剧本润色',
+    stream: false,
+  });
 
   onProgress(100, '润色完成');
   return response;

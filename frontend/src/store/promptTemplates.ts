@@ -237,6 +237,13 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
 - {{requirements}}
 
 请保持原有的故事结构，优化语言表达，使对话更加生动自然，场景描述更加具体形象。
+
+硬性要求：
+1. 只返回润色后的完整剧本正文
+2. 不要返回任何前言、后记、说明、总结或解释
+3. 不要使用 Markdown 标题、粗体、分隔线、代码块
+4. 不要补充“以下是润色版”之类提示语
+5. 不要改动角色名、集数、场次编号的语义结构
 `,
     variables: ['script', 'requirements'],
     isCustom: false,
