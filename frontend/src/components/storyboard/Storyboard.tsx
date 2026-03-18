@@ -208,7 +208,60 @@ export const Storyboard: React.FC<StoryboardProps> = ({
         filteredProps = loadedProps.filter(p => propRefs.has(p.id));
       }
 
-      setShots(loadedShots);
+      // 修复旧数据中的资产绑定：将名称字符串重新映射为正确的 ID
+      const allCharIds = new Set(loadedCharacters.map(c => c.id));
+      const allSceneIds = new Set(loadedScenes.map(s => s.id));
+      const allPropIds = new Set(loadedProps.map(p => p.id));
+      // 也把 sora2 ID 加入合法 ID 集合
+      loadedCharacters.forEach(c => { if (c.sora2CharacterId) allCharIds.add(c.sora2CharacterId); });
+      loadedProps.forEach(p => { if (p.sora2PropId) allPropIds.add(p.sora2PropId); });
+
+      const fuzzyMatch = <T extends { name: string }>(name: string, assets: T[]): T | undefined => {
+        if (!name) return undefined;
+        const trimmed = name.trim();
+        return assets.find(a => a.name === trimmed)
+          || assets.find(a => trimmed.includes(a.name))
+          || assets.find(a => a.name.includes(trimmed));
+      };
+
+      let needsSave = false;
+      const repairedShots = loadedShots.map(shot => {
+        let changed = false;
+        // 修复 characters: 过滤掉非法值，将名称字符串映射为 ID
+        const fixedChars = (shot.characters || []).map(ref => {
+          if (allCharIds.has(ref)) return ref;
+          const match = fuzzyMatch(ref, loadedCharacters);
+          if (match) { changed = true; return match.sora2CharacterId || match.id; }
+          changed = true; return undefined;
+        }).filter((id): id is string => id !== undefined);
+
+        // 修复 scenes
+        const fixedScenes = (shot.scenes || []).map(ref => {
+          if (allSceneIds.has(ref)) return ref;
+          const match = fuzzyMatch(ref, loadedScenes);
+          if (match) { changed = true; return match.id; }
+          changed = true; return undefined;
+        }).filter((id): id is string => id !== undefined);
+
+        // 修复 props
+        const fixedProps = (shot.props || []).map(ref => {
+          if (allPropIds.has(ref)) return ref;
+          const match = fuzzyMatch(ref, loadedProps);
+          if (match) { changed = true; return match.sora2PropId || match.id; }
+          changed = true; return undefined;
+        }).filter((id): id is string => id !== undefined);
+
+        if (!changed) return shot;
+        needsSave = true;
+        return { ...shot, characters: fixedChars, scenes: fixedScenes, props: fixedProps };
+      });
+
+      // 如果有修复则异步保存，不阻塞 UI
+      if (needsSave && episodeId) {
+        saveEpisodeShots(projectId, episodeId, repairedShots).catch(() => {});
+      }
+
+      setShots(repairedShots);
       setCharacters(filteredCharacters);
       setScenes(filteredScenes);
       setProps(filteredProps);
