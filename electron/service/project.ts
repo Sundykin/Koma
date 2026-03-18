@@ -7,6 +7,17 @@ import { app } from 'electron';
 import archiver from 'archiver';
 import extract from 'extract-zip';
 
+export interface ProjectStyleSnapshot {
+  id: string;
+  name: string;
+  description: string;
+  ttiStylePrefix: string;
+  llmPromptSuffix: string;
+  sourceType: 'builtin' | 'custom';
+  sourcePresetId: string;
+  createdAt: number;
+}
+
 export interface ProjectMeta {
   id: string;
   title: string;
@@ -21,6 +32,8 @@ export interface ProjectMeta {
   ttiConfigId?: string;
   itvConfigId?: string;
   ttsConfigId?: string;
+  stylePresetId?: string;
+  styleSnapshot?: ProjectStyleSnapshot;
   theme?: string;
   stylePrompt?: string;
 }

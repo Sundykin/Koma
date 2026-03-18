@@ -3,9 +3,15 @@
  * 允许编辑项目信息和媒体配置
  */
 import React, { useState, useEffect } from 'react';
-import { Modal, Form, Input, Tabs } from 'antd';
+import { Modal, Form, Input, Tabs, Select } from 'antd';
 import type { Project } from '../../types';
 import { ProjectMediaSelector } from './ProjectMediaSelector';
+import {
+  DEFAULT_THEME_PRESET_ID,
+  createProjectStyleSnapshot,
+  getAllThemePresets,
+  type ThemePresetCatalogItem,
+} from '../../config/themePresets';
 
 interface ProjectSettingsModalProps {
   project: Project | null;
@@ -30,12 +36,33 @@ export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({
     itvConfigId?: string;
     ttsConfigId?: string;
   }>({});
+  const [themePresets, setThemePresets] = useState<ThemePresetCatalogItem[]>([]);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    let cancelled = false;
+    const loadThemePresets = async () => {
+      const presets = await getAllThemePresets();
+      if (!cancelled) {
+        setThemePresets(presets);
+      }
+    };
+
+    loadThemePresets();
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
 
   useEffect(() => {
     if (project && open) {
       form.setFieldsValue({
         title: project.title,
         genre: project.genre,
+        stylePresetId: project.stylePresetId || project.styleSnapshot?.sourcePresetId || DEFAULT_THEME_PRESET_ID,
       });
       setMediaConfigs({
         llmConfigId: project.llmConfigId,
@@ -49,9 +76,15 @@ export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({
   const handleSave = async () => {
     try {
       const values = await form.validateFields();
+      const stylePresetId = values.stylePresetId || DEFAULT_THEME_PRESET_ID;
+      const styleSnapshot = await createProjectStyleSnapshot(stylePresetId);
       onSave({
         title: values.title,
         genre: values.genre,
+        stylePresetId,
+        styleSnapshot,
+        theme: undefined,
+        stylePrompt: undefined,
         ...mediaConfigs,
       });
       onClose();
@@ -77,6 +110,21 @@ export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({
 
           <Form.Item name="genre" label="题材类型">
             <Input placeholder="如: 悬疑、爱情、科幻" />
+          </Form.Item>
+
+          <Form.Item
+            name="stylePresetId"
+            label="项目风格"
+            rules={[{ required: true, message: '请选择项目风格' }]}
+            extra="风格来源统一使用全局风格目录；如果要新增或编辑自定义风格，请前往全局设置。"
+          >
+            <Select
+              placeholder="请选择项目风格"
+              options={themePresets.map((preset) => ({
+                value: preset.id,
+                label: preset.name,
+              }))}
+            />
           </Form.Item>
         </Form>
       ),

@@ -160,7 +160,11 @@ const AppContent: React.FC = () => {
     thumbnail: p.thumbnail || getThumbnailUrl(p.id),
     status: p.status || 'script', llmConfigId: p.llmConfigId,
     ttiConfigId: p.ttiConfigId, itvConfigId: p.itvConfigId,
-    ttsConfigId: p.ttsConfigId, theme: p.theme, stylePrompt: p.stylePrompt,
+    ttsConfigId: p.ttsConfigId,
+    stylePresetId: p.stylePresetId,
+    styleSnapshot: p.styleSnapshot,
+    theme: p.theme,
+    stylePrompt: p.stylePrompt,
   }));
 
   const handleEnterVideoTest = () => {
@@ -170,14 +174,23 @@ const AppContent: React.FC = () => {
     setView('editor');
   };
 
-  const handleCreateProject = async (data: { title: string; mode: 'drama' | 'narration'; theme?: string; stylePrompt?: string }) => {
+  const handleCreateProject = async (data: { title: string; mode: 'drama' | 'narration'; stylePresetId: string }) => {
     try {
-      const created = await createProjectAPI({ title: data.title, mode: data.mode, genre: data.mode === 'drama' ? '剧情' : '解说', theme: data.theme, stylePrompt: data.stylePrompt });
+      const created = await createProjectAPI({
+        title: data.title,
+        mode: data.mode,
+        genre: data.mode === 'drama' ? '剧情' : '解说',
+        stylePresetId: data.stylePresetId,
+      });
       const newProject: Project = {
         id: created.id, title: created.title, genre: created.genre, mode: created.mode,
         episodes: created.episodes || 1, lastEdited: '刚刚',
         thumbnail: created.thumbnail || getThumbnailUrl(created.id),
-        status: created.status || 'script', theme: created.theme, stylePrompt: created.stylePrompt,
+        status: created.status || 'script',
+        stylePresetId: created.stylePresetId,
+        styleSnapshot: created.styleSnapshot,
+        theme: created.theme,
+        stylePrompt: created.stylePrompt,
       };
       setActiveProject(newProject);
       setActiveEpisode(null);
@@ -317,6 +330,7 @@ const AppContent: React.FC = () => {
                   project={activeProject}
                   onEnterEpisode={handleEnterEpisode}
                   onProjectUpdate={(updates) => setActiveProject({ ...activeProject, ...updates })}
+                  onOpenProjectSettings={() => setIsProjectSettingsOpen(true)}
                 />
               </Suspense>
             )}

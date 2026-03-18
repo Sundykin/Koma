@@ -20,11 +20,18 @@ import { getPromptTemplate, fillTemplate } from '../store/promptTemplates';
 
 const logger = createLogger('CharacterAsset');
 
+interface StyleSnapshotLike {
+  ttiStylePrefix?: string;
+  llmPromptSuffix?: string;
+}
+
 interface GenerateOptions {
   projectId: string;
   character: Character;
   theme?: string;
   stylePrompt?: string;
+  styleSnapshot?: StyleSnapshotLike;
+  project?: { styleSnapshot?: StyleSnapshotLike };
   ttiConfigId?: string;
   itvConfigId?: string;
   onProgress?: (progress: number, step: string) => void;
@@ -37,7 +44,7 @@ interface GenerateOptions {
 export async function generateCostumePhoto(
   options: GenerateOptions
 ): Promise<{ success: boolean; path?: string; url?: string; error?: string }> {
-  const { projectId, character, theme, stylePrompt, ttiConfigId, onProgress } = options;
+  const { projectId, character, theme, stylePrompt, styleSnapshot, project, ttiConfigId, onProgress } = options;
 
   logger.info(`开始生成角色定妆照: ${character.name}`);
   onProgress?.(0, '准备生成定妆照...');
@@ -49,7 +56,7 @@ export async function generateCostumePhoto(
     }
 
     // 构建提示词（从配置化模板读取）
-    const stylePrefix = await getThemeStylePrefixAsync(theme, stylePrompt);
+    const stylePrefix = await getResolvedTTIStylePrefix(styleSnapshot || project?.styleSnapshot, theme, stylePrompt);
     let prompt: string;
     try {
       const template = await getPromptTemplate('tti_character_costume');
@@ -172,7 +179,7 @@ export async function generateCostumePhoto(
 export async function generateCharacterPreviewVideo(
   options: GenerateOptions
 ): Promise<{ success: boolean; path?: string; taskId?: string; error?: string }> {
-  const { projectId, character, itvConfigId, onProgress } = options;
+  const { projectId, character, theme, stylePrompt, styleSnapshot, project, itvConfigId, onProgress } = options;
 
   logger.info(`开始生成角色预览视频: ${character.name}`);
   onProgress?.(0, '准备生成预览视频...');
@@ -210,7 +217,8 @@ export async function generateCharacterPreviewVideo(
     onProgress?.(10, '调用 ITV 服务...');
 
     // 调用 ITV Provider - 优先使用远程 URL
-    const prompt = `${character.name} character introduction, gentle movement, looking at camera`;
+    const resolvedStylePrefix = await getResolvedTTIStylePrefix(styleSnapshot || project?.styleSnapshot, theme, stylePrompt);
+    const prompt = buildCharacterPreviewPrompt(character, resolvedStylePrefix);
 
     // 打印完整提示词日志
     logITVCall(
@@ -398,13 +406,15 @@ export function buildCostumePhotoPrompt(character: Character, stylePrefix: strin
 export function getCharacterPrompt(
   character: Character,
   theme?: string,
-  stylePrompt?: string
+  stylePrompt?: string,
+  styleSnapshot?: StyleSnapshotLike,
+  project?: { styleSnapshot?: StyleSnapshotLike }
 ): string {
   // 优先使用自定义提示词
   if (character.customPrompt) {
     return character.customPrompt;
   }
-  const stylePrefix = getThemeStylePrefix(theme, stylePrompt);
+  const stylePrefix = resolveTTIStylePrefix(styleSnapshot || project?.styleSnapshot, theme, stylePrompt);
   return buildCostumePhotoPrompt(character, stylePrefix);
 }
 
@@ -425,4 +435,35 @@ async function updateCharacterAsset(
 
 function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function resolveTTIStylePrefix(
+  styleSnapshot?: StyleSnapshotLike,
+  theme?: string,
+  stylePrompt?: string
+): string {
+  return styleSnapshot?.ttiStylePrefix || getThemeStylePrefix(theme, stylePrompt);
+}
+
+async function getResolvedTTIStylePrefix(
+  styleSnapshot?: StyleSnapshotLike,
+  theme?: string,
+  stylePrompt?: string
+): Promise<string> {
+  if (styleSnapshot?.ttiStylePrefix) {
+    return styleSnapshot.ttiStylePrefix;
+  }
+  return getThemeStylePrefixAsync(theme, stylePrompt);
+}
+
+function buildCharacterPreviewPrompt(character: Character, stylePrefix: string): string {
+  const visualPrompt = character.prompt || character.appearance || character.description || character.name;
+  return [
+    stylePrefix,
+    visualPrompt,
+    'character showcase',
+    'subtle breathing',
+    'natural eye movement',
+    'steady camera',
+  ].filter(Boolean).join(', ');
 }

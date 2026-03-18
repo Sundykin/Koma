@@ -4,7 +4,7 @@
  */
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { Input, Tag, App, Modal, Select, Tooltip } from 'antd';
-import { ThunderboltOutlined } from '@ant-design/icons';
+import { ThunderboltOutlined, SettingOutlined } from '@ant-design/icons';
 import {
   Film, Upload, Package, ChevronLeft, ChevronRight,
   PanelLeftClose, PanelRightClose, Pencil, Brain, Image, Video, Volume2,
@@ -17,7 +17,6 @@ import { ScriptWorkbench, type ScriptWorkbenchRef } from './ScriptWorkbench';
 import { saveProject, loadProject, listEpisodes, loadEpisode } from '../../store/projectStore';
 import { loadSettings, getChannelsByCapability } from '../../store/globalStore';
 import { createLogger } from '../../store/logger';
-import { THEME_PRESETS } from '../../config/themePresets';
 import { ScriptEditor } from '../../editor';
 
 const logger = createLogger('ProjectOverview');
@@ -33,12 +32,14 @@ interface ProjectOverviewProps {
   project: Project;
   onEnterEpisode: (episode: Episode) => void;
   onProjectUpdate: (updates: Partial<Project>) => void;
+  onOpenProjectSettings?: () => void;
 }
 
 export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
   project,
   onEnterEpisode,
   onProjectUpdate,
+  onOpenProjectSettings,
 }) => {
   const { message } = App.useApp();
   const [editingTitle, setEditingTitle] = useState(false);
@@ -184,10 +185,6 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
       message.error(`更新配置失败: ${err.message}`);
     }
   }, [project.id, onProjectUpdate, message]);
-
-  const currentTheme = project.theme ? THEME_PRESETS.find(t => t.id === project.theme) : null;
-  const _themeDisplay = currentTheme?.name || project.stylePrompt || '未设置';
-
   return (
     <div className="h-full flex flex-col bg-zinc-950 overflow-hidden">
       {/* HeaderBar */}
@@ -290,6 +287,13 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
 
         {/* Right: Actions */}
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => onOpenProjectSettings?.()}
+            className="flex items-center gap-1.5 px-2.5 py-1 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded text-xs text-zinc-300 transition-colors"
+          >
+            <SettingOutlined />
+            项目设置
+          </button>
           <button
             onClick={openScriptImport}
             className="flex items-center gap-1.5 px-2.5 py-1 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded text-xs text-zinc-300 transition-colors"

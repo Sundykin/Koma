@@ -245,8 +245,7 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
               result = await generateCostumePhoto({
                 projectId: project.id,
                 character: char,
-                theme: project.theme,
-                stylePrompt: project.stylePrompt,
+                styleSnapshot: project.styleSnapshot,
                 ttiConfigId: project.ttiConfigId,
                 onProgress,
               });
@@ -262,8 +261,7 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
               result = await generateSceneImage({
                 projectId: project.id,
                 scene,
-                theme: project.theme,
-                stylePrompt: project.stylePrompt,
+                styleSnapshot: project.styleSnapshot,
                 ttiConfigId: project.ttiConfigId,
                 onProgress,
               });
@@ -279,8 +277,7 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
               result = await generatePropImage({
                 projectId: project.id,
                 prop,
-                theme: project.theme,
-                stylePrompt: project.stylePrompt,
+                styleSnapshot: project.styleSnapshot,
                 ttiConfigId: project.ttiConfigId,
                 onProgress,
               });
@@ -296,6 +293,7 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
               result = await generateCharacterPreviewVideo({
                 projectId: project.id,
                 character: char,
+                styleSnapshot: project.styleSnapshot,
                 itvConfigId: project.itvConfigId,
                 onProgress,
               });

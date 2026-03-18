@@ -18,7 +18,7 @@ import {
   LoadingOutlined,
   RobotOutlined,
 } from '@ant-design/icons';
-import type { Shot, Character, Scene, Prop, AppSettings, ShotVideo } from '../../types';
+import type { Shot, Character, Scene, Prop, AppSettings, ShotVideo, ProjectStyleSnapshot } from '../../types';
 import { loadEpisodeShots, saveEpisodeShots, loadCharacters, loadScenes, loadProps, loadEpisodeAnalysis } from '../../store/projectStore';
 import { generateShotImage, batchGenerateShotImages } from '../../services/ShotGenerationService';
 import { shotRenderWorkflow, batchRenderShots } from '../../workflow/shotRenderWorkflow';
@@ -80,6 +80,7 @@ interface StoryboardProps {
   llmConfigId?: string;
   ttiConfigId?: string;
   settings: AppSettings;
+  styleSnapshot?: ProjectStyleSnapshot;
   mentionItems?: MentionItem[];
   onConfirmedShotsToTimeline?: (shots: Shot[]) => void;
 }
@@ -92,6 +93,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
   llmConfigId,
   ttiConfigId,
   settings,
+  styleSnapshot,
   mentionItems = [],
   onConfirmedShotsToTimeline: _onConfirmedShotsToTimeline,
 }) => {
@@ -122,6 +124,10 @@ export const Storyboard: React.FC<StoryboardProps> = ({
 
   // 舞台区激活的分镜
   const [activeShotId, setActiveShotId] = useState<string | null>(null);
+  const projectStylePrompt = useMemo(
+    () => styleSnapshot?.ttiStylePrefix?.trim() || '',
+    [styleSnapshot]
+  );
 
   // 获取当前激活的分镜对象
   const _activeShot = useMemo(() =>
@@ -599,7 +605,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
         projectId,
         episodeId,
         shot,
-        settings.stylePrompts?.find(p => p.isDefault)?.prompt || '',
+        projectStylePrompt,
         llmConfigId,
         { image: true, video: false }  // 只生成图片提示词
       );
@@ -622,7 +628,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
         return next;
       });
     }
-  }, [projectId, episodeId, shots, llmConfigId, settings.stylePrompts]);
+  }, [projectId, episodeId, shots, llmConfigId, projectStylePrompt]);
 
   // 生成视频提示词（首次生成）
   const handleGenerateVideoPrompt = useCallback(async (shotId: string) => {
@@ -638,7 +644,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
         projectId,
         episodeId,
         shot,
-        settings.stylePrompts?.find(p => p.isDefault)?.prompt || '',
+        projectStylePrompt,
         llmConfigId,
         { image: false, video: true }  // 只生成视频提示词
       );
@@ -661,7 +667,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
         return next;
       });
     }
-  }, [projectId, episodeId, shots, llmConfigId, settings.stylePrompts]);
+  }, [projectId, episodeId, shots, llmConfigId, projectStylePrompt]);
 
   // 优化图片提示词（强制重新生成）
   const handleOptimizeImagePrompt = useCallback(async (shotId: string, _currentPrompt: string) => {
@@ -677,7 +683,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
         projectId,
         episodeId,
         shot,
-        settings.stylePrompts?.find(p => p.isDefault)?.prompt || '',
+        projectStylePrompt,
         llmConfigId,
         { image: true, video: false },
         { force: true }  // 强制重新生成
@@ -701,7 +707,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
         return next;
       });
     }
-  }, [projectId, episodeId, shots, llmConfigId, settings.stylePrompts]);
+  }, [projectId, episodeId, shots, llmConfigId, projectStylePrompt]);
 
   // 优化视频提示词（强制重新生成）
   const handleOptimizeVideoPrompt = useCallback(async (shotId: string, _currentPrompt: string) => {
@@ -717,7 +723,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
         projectId,
         episodeId,
         shot,
-        settings.stylePrompts?.find(p => p.isDefault)?.prompt || '',
+        projectStylePrompt,
         llmConfigId,
         { image: false, video: true },
         { force: true }  // 强制重新生成
@@ -741,7 +747,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
         return next;
       });
     }
-  }, [projectId, episodeId, shots, llmConfigId, settings.stylePrompts]);
+  }, [projectId, episodeId, shots, llmConfigId, projectStylePrompt]);
 
   // 批量生成提示词（跳过已有提示词的）
   const handleBatchGeneratePrompts = useCallback(async (targetShotIds?: string[]) => {
@@ -767,7 +773,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
         projectId,
         episodeId,
         shotsWithoutPrompt,
-        settings.stylePrompts?.find(p => p.isDefault)?.prompt || '',
+        projectStylePrompt,
         (current, total, result) => {
           setBatchProgress({ current, total, step: `生成中 ${current}/${total}` });
           if (result.success) {
@@ -790,7 +796,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       setGeneratingVideoPrompts(new Set());
       setBatchProgress(undefined);
     }
-  }, [projectId, episodeId, shots, llmConfigId, settings.stylePrompts]);
+  }, [projectId, episodeId, shots, llmConfigId, projectStylePrompt]);
 
   // 批量重新生成提示词（强制重新生成已有提示词的）
   const handleBatchReGeneratePrompts = useCallback(async (targetShotIds?: string[]) => {
@@ -815,7 +821,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
         projectId,
         episodeId,
         shotsWithPrompt,
-        settings.stylePrompts?.find(p => p.isDefault)?.prompt || '',
+        projectStylePrompt,
         (current, total, result) => {
           setBatchProgress({ current, total, step: `重新生成中 ${current}/${total}` });
           if (result.success) {
@@ -838,7 +844,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       setGeneratingVideoPrompts(new Set());
       setBatchProgress(undefined);
     }
-  }, [projectId, episodeId, shots, llmConfigId, settings.stylePrompts]);
+  }, [projectId, episodeId, shots, llmConfigId, projectStylePrompt]);
 
   // 创建新分镜
   const createNewShot = useCallback((): Shot => ({
