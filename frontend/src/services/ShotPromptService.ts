@@ -183,15 +183,19 @@ export class ShotPromptService {
   ): Promise<string> {
     // 根据类型选择专用模板，回退到通用模板
     const templateKey: PromptTemplateType = type === 'image' ? 'shot_image_prompt_generation' : 'shot_video_prompt_generation';
-    const resolvedPrompt = await resolvePromptTemplate(templateKey, {
+    // 图片模板不包含 cameraOptions 变量，仅视频模板使用
+    const templateVariables: Record<string, string> = {
       scriptContent: shot.scriptContent,
       characters: shotCharacters.map(c => c.name).join(', ') || '无',
       emotion: shot.emotion || '中性',
       stylePrefix: stylePrefix || '',
-      cameraOptions: CAMERA_OPTIONS.join(', '),
       shotTypeOptions: SHOT_TYPE_OPTIONS.join(', '),
       characterRefs: characterRefs || '无角色引用',
-    });
+    };
+    if (type === 'video') {
+      templateVariables.cameraOptions = CAMERA_OPTIONS.join(', ');
+    }
+    const resolvedPrompt = await resolvePromptTemplate(templateKey, templateVariables);
     const prompt = resolvedPrompt.prompt;
 
     const provider = createLLMProvider({

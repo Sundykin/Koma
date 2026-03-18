@@ -23,12 +23,15 @@ import {
   saveScenes,
   saveProps,
   loadEpisodeAnalysis,
+  loadEpisodeShots,
 } from '../../store/projectStore';
 import { startShotAnalysis } from '../../services/ShotAnalysisService';
 import { AssetListPanel, AssetType } from './AssetListPanel';
 import { CharacterDetailPanel } from './CharacterDetailPanel';
 import { SceneDetailPanel } from './SceneDetailPanel';
 import { PropDetailPanel } from './PropDetailPanel';
+import { AssetGenerationWizard } from './AssetGenerationWizard';
+import type { Project } from '../../types';
 import './AssetManager.css';
 
 interface AssetManagerPanelProps {
@@ -77,6 +80,8 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
 
   // 分镜生成状态
   const [isGeneratingShots, setIsGeneratingShots] = useState(false);
+  // 批量生成向导
+  const [wizardOpen, setWizardOpen] = useState(false);
   const stylePrompt = useMemo(
     () => styleSnapshot?.ttiStylePrefix?.trim() || legacyStylePrompt?.trim() || '',
     [styleSnapshot, legacyStylePrompt]
@@ -215,6 +220,17 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
       return;
     }
 
+    // 检查是否已有分镜数据，避免重复生成
+    try {
+      const existingShots = await loadEpisodeShots(projectId, episodeId);
+      if (existingShots.length > 0) {
+        onNext();
+        return;
+      }
+    } catch {
+      // 加载失败时继续生成
+    }
+
     setIsGeneratingShots(true);
     try {
       await startShotAnalysis(
@@ -332,7 +348,7 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
       <div className="assetFooter">
         <Space>
           <Tooltip title={t('asset.batchGenerateMaterials')}>
-            <Button icon={<ThunderboltOutlined />}>{t('asset.batchGenerate')}</Button>
+            <Button icon={<ThunderboltOutlined />} onClick={() => setWizardOpen(true)}>{t('asset.batchGenerate')}</Button>
           </Tooltip>
         </Space>
         <Button
@@ -345,6 +361,14 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
           {isGeneratingShots ? t('asset.generatingAIShots') : t('asset.nextGenerateShots')}
         </Button>
       </div>
+
+      {/* 批量生成向导 */}
+      <AssetGenerationWizard
+        project={{ id: projectId, ttiConfigId, itvConfigId, styleSnapshot } as Project}
+        open={wizardOpen}
+        onClose={() => setWizardOpen(false)}
+        onComplete={loadAssets}
+      />
     </div>
   );
 };

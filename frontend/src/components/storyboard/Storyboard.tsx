@@ -797,7 +797,12 @@ export const Storyboard: React.FC<StoryboardProps> = ({
         styleSnapshot
       );
       const successCount = results.filter(r => r.success).length;
-      message.success(`提示词生成完成: ${successCount}/${results.length} 成功`);
+      if (successCount === 0 && results.length > 0) {
+        const firstError = results.find(r => r.error)?.error;
+        message.error(`提示词生成全部失败${firstError ? `: ${firstError}` : ''}`);
+      } else {
+        message.success(`提示词生成完成: ${successCount}/${results.length} 成功`);
+      }
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : String(err);
       message.error(errorMessage || '批量生成失败');
@@ -846,7 +851,12 @@ export const Storyboard: React.FC<StoryboardProps> = ({
         styleSnapshot
       );
       const successCount = results.filter(r => r.success).length;
-      message.success(`提示词重新生成完成: ${successCount}/${results.length} 成功`);
+      if (successCount === 0 && results.length > 0) {
+        const firstError = results.find(r => r.error)?.error;
+        message.error(`提示词重新生成全部失败${firstError ? `: ${firstError}` : ''}`);
+      } else {
+        message.success(`提示词重新生成完成: ${successCount}/${results.length} 成功`);
+      }
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : String(err);
       message.error(errorMessage || '批量重新生成失败');

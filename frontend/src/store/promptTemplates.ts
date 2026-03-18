@@ -265,6 +265,8 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
 已知场景：{{scenes}}
 已知道具：{{props}}
 
+【重要】characters、scenes、props 字段必须使用上方"已知角色/场景/道具"列表中的原始名称，不要自行编造或修改名称。如果剧本中出现了不在列表中的角色/场景/道具，则不填入对应字段。
+
 剧本：
 {{script}}
 
@@ -278,10 +280,11 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
       "shotType": "close-up/medium/wide/extreme-wide",
       "cameraMovement": "static/pan/zoom-in/tracking/handheld",
       "duration": 5,
-      "dialogue": "角色名（情绪）：\"台词内容\"",
-      "characters": ["出场角色名称"],
+      "dialogue": "角色名（情绪）：\\"台词内容\\"",
+      "characters": ["已知角色名称"],
       "emotion": "情绪标签",
-      "props": ["出现的道具"]
+      "props": ["已知道具名称"],
+      "scenes": ["已知场景名称"]
     }
   ]
 }
@@ -877,32 +880,51 @@ export async function resolvePromptTemplate(
   variables: Record<string, string>
 ): Promise<ResolvedPromptTemplate> {
   const template = await getPromptTemplate(type);
-  assertTemplateValidation(type, template.template);
 
-  const unknownVariables = Object.keys(variables).filter(variable => !template.variables.includes(variable));
-  if (unknownVariables.length > 0) {
-    throw new Error(`模板 ${type} 收到未知运行时变量: ${unknownVariables.join(', ')}`);
+  // 运行时仅警告模板校验问题，不阻断执行
+  const validation = buildValidationResult(type, template.template);
+  if (!validation.isValid) {
+    const warnings: string[] = [];
+    if (validation.unknownVariables.length > 0) {
+      warnings.push(`模板中存在未声明变量: ${validation.unknownVariables.join(', ')}`);
+    }
+    if (validation.missingRequiredVariables.length > 0) {
+      warnings.push(`模板中缺少变量占位符: ${validation.missingRequiredVariables.join(', ')}`);
+    }
+    console.warn(`[PromptTemplate] 模板 ${type} 校验警告: ${warnings.join('；')}`);
   }
 
+  // 过滤掉模板未声明的多余变量（仅警告，不阻断）
+  const unknownVariables = Object.keys(variables).filter(variable => !template.variables.includes(variable));
+  if (unknownVariables.length > 0) {
+    console.warn(`[PromptTemplate] 模板 ${type} 收到未声明变量（已忽略）: ${unknownVariables.join(', ')}`);
+  }
+  const filteredVariables = Object.fromEntries(
+    Object.entries(variables).filter(([key]) => template.variables.includes(key))
+  );
+
   const missingVariables = template.variables.filter((variable) => {
-    if (!Object.prototype.hasOwnProperty.call(variables, variable)) {
+    if (!Object.prototype.hasOwnProperty.call(filteredVariables, variable)) {
       return true;
     }
-    return typeof variables[variable] !== 'string';
+    return typeof filteredVariables[variable] !== 'string';
   });
   if (missingVariables.length > 0) {
     throw new Error(`模板 ${type} 缺少运行时变量: ${missingVariables.join(', ')}`);
   }
 
-  const prompt = fillTemplate(template.template, variables);
+  const prompt = fillTemplate(template.template, filteredVariables);
   const unresolvedVariables = extractTemplateVariables(prompt);
+  let finalPrompt = prompt;
   if (unresolvedVariables.length > 0) {
-    throw new Error(`模板 ${type} 仍有未替换变量: ${unresolvedVariables.join(', ')}`);
+    console.warn(`[PromptTemplate] 模板 ${type} 仍有未替换变量（已清除）: ${unresolvedVariables.join(', ')}`);
+    // 清除未替换的 {{ variable }} 占位符，避免阻断生成流程
+    finalPrompt = prompt.replace(/\{\{\s*\w+\s*\}\}/g, '');
   }
 
   return {
     template,
-    prompt,
+    prompt: finalPrompt,
     source: template.isCustom ? 'custom' : 'default',
   };
 }
