@@ -496,13 +496,18 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     // 解析提示词中的 @mentions，同步到资产选择
     const syncState = syncFromPrompt(imagePrompt);
 
+    // 仅当提示词中确实包含 @mentions 时才更新资产绑定，避免空解析结果覆盖已有数据
+    const hasMentions = syncState.mentionedAssets.length > 0;
+
     const updatedShots = shots.map(s =>
       s.id === shotId ? {
         ...s,
         imagePrompt,
-        characters: syncState.selectedCharacters,
-        scenes: syncState.selectedScenes,
-        props: syncState.selectedProps,
+        ...(hasMentions ? {
+          characters: syncState.selectedCharacters,
+          scenes: syncState.selectedScenes,
+          props: syncState.selectedProps,
+        } : {}),
       } : s
     );
     saveAllShots(updatedShots);
@@ -516,13 +521,18 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     // 解析提示词中的 @mentions，同步到资产选择
     const syncState = syncFromPrompt(videoPrompt);
 
+    // 仅当提示词中确实包含 @mentions 时才更新资产绑定，避免空解析结果覆盖已有数据
+    const hasMentions = syncState.mentionedAssets.length > 0;
+
     const updatedShots = shots.map(s =>
       s.id === shotId ? {
         ...s,
         videoPrompt,
-        characters: syncState.selectedCharacters,
-        scenes: syncState.selectedScenes,
-        props: syncState.selectedProps,
+        ...(hasMentions ? {
+          characters: syncState.selectedCharacters,
+          scenes: syncState.selectedScenes,
+          props: syncState.selectedProps,
+        } : {}),
       } : s
     );
     saveAllShots(updatedShots);
