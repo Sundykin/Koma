@@ -100,6 +100,19 @@ export async function saveEpisodeShots(
   analysis.shots = shots;
   analysis.updatedAt = now;
 
+  // 从 shots 中自动提取资产引用，合并到 refs（保留已有引用）
+  const charSet = new Set(analysis.characterRefs || []);
+  const sceneSet = new Set(analysis.sceneRefs || []);
+  const propSet = new Set(analysis.propRefs || []);
+  for (const shot of shots) {
+    for (const id of shot.characters || []) { if (id) charSet.add(id); }
+    for (const id of shot.scenes || []) { if (id) sceneSet.add(id); }
+    for (const id of shot.props || []) { if (id) propSet.add(id); }
+  }
+  analysis.characterRefs = [...charSet];
+  analysis.sceneRefs = [...sceneSet];
+  analysis.propRefs = [...propSet];
+
   await electronService.fs.mkdir(episodePath);
   await electronService.fs.writeFile(
     `${episodePath}/analysis.json`,

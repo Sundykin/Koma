@@ -199,13 +199,28 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       let filteredProps = loadedProps;
 
       if (episodeAnalysis) {
-        const charRefs = new Set(episodeAnalysis.characterRefs);
-        const sceneRefs = new Set(episodeAnalysis.sceneRefs);
-        const propRefs = new Set(episodeAnalysis.propRefs);
+        // 构建 refs 集合：从 episodeAnalysis.xxxRefs + shots 中的资产 ID 合并
+        const charRefs = new Set(episodeAnalysis.characterRefs || []);
+        const sceneRefs = new Set(episodeAnalysis.sceneRefs || []);
+        const propRefs = new Set(episodeAnalysis.propRefs || []);
 
-        filteredCharacters = loadedCharacters.filter(c => charRefs.has(c.id));
-        filteredScenes = loadedScenes.filter(s => sceneRefs.has(s.id));
-        filteredProps = loadedProps.filter(p => propRefs.has(p.id));
+        // 补充：从 shots 中提取所有引用的资产 ID（兜底 refs 为空的情况）
+        for (const shot of loadedShots) {
+          for (const id of shot.characters || []) { if (id) charRefs.add(id); }
+          for (const id of shot.scenes || []) { if (id) sceneRefs.add(id); }
+          for (const id of shot.props || []) { if (id) propRefs.add(id); }
+        }
+
+        // 仅在有 refs 时过滤，否则保留全部资产
+        if (charRefs.size > 0) {
+          filteredCharacters = loadedCharacters.filter(c => charRefs.has(c.id));
+        }
+        if (sceneRefs.size > 0) {
+          filteredScenes = loadedScenes.filter(s => sceneRefs.has(s.id));
+        }
+        if (propRefs.size > 0) {
+          filteredProps = loadedProps.filter(p => propRefs.has(p.id));
+        }
       }
 
       // 修复旧数据中的资产绑定：将名称字符串重新映射为正确的 ID
