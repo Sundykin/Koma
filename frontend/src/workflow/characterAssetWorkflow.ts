@@ -16,7 +16,7 @@ import { getStorageConfig, initStorageConfig } from '../store/storageConfig';
 import { getThemeStylePrefix, getThemeStylePrefixAsync } from '../config/themePresets';
 import { createLogger } from '../store/logger';
 import { logTTICall, logITVCall } from '../store/aiCallLogger';
-import { getPromptTemplate, fillTemplate } from '../store/promptTemplates';
+import { resolvePromptTemplate } from '../store/promptTemplates';
 
 const logger = createLogger('CharacterAsset');
 
@@ -57,17 +57,11 @@ export async function generateCostumePhoto(
 
     // 构建提示词（从配置化模板读取）
     const stylePrefix = await getResolvedTTIStylePrefix(styleSnapshot || project?.styleSnapshot, theme, stylePrompt);
-    let prompt: string;
-    try {
-      const template = await getPromptTemplate('tti_character_costume');
-      prompt = fillTemplate(template.template, {
-        stylePrefix: stylePrefix || '',
-        appearance: character.appearance || '',
-      });
-    } catch {
-      // 回退到硬编码模板
-      prompt = buildCostumePhotoPrompt(character, stylePrefix);
-    }
+    const resolvedPrompt = await resolvePromptTemplate('tti_character_costume', {
+      stylePrefix: stylePrefix || '',
+      appearance: character.appearance || '',
+    });
+    const prompt = resolvedPrompt.prompt;
 
     // 创建任务记录
     const task = await createTask(projectId, {
@@ -89,7 +83,13 @@ export async function generateCostumePhoto(
       ttiProvider.config?.name || 'TTI',
       prompt,
       { width: 1536, height: 1024 },
-      { projectId, targetId: character.id, targetName: `${character.name} 定妆照` }
+      {
+        projectId,
+        targetId: character.id,
+        targetName: `${character.name} 定妆照`,
+        templateId: resolvedPrompt.template.id,
+        promptSource: resolvedPrompt.source,
+      }
     );
 
     // 调用 TTI Provider - 横版尺寸以容纳三视图
@@ -218,7 +218,13 @@ export async function generateCharacterPreviewVideo(
 
     // 调用 ITV Provider - 优先使用远程 URL
     const resolvedStylePrefix = await getResolvedTTIStylePrefix(styleSnapshot || project?.styleSnapshot, theme, stylePrompt);
-    const prompt = buildCharacterPreviewPrompt(character, resolvedStylePrefix);
+    const visualPrompt = character.prompt || character.appearance || character.description || character.name;
+    const resolvedPrompt = await resolvePromptTemplate('itv_character_motion', {
+      stylePrefix: resolvedStylePrefix,
+      characterName: character.name,
+      action: `${visualPrompt}, character showcase, subtle breathing, natural eye movement, steady camera`,
+    });
+    const prompt = resolvedPrompt.prompt;
 
     // 打印完整提示词日志
     logITVCall(
@@ -226,7 +232,13 @@ export async function generateCharacterPreviewVideo(
       imageSource,
       prompt,
       { duration: 4, aspectRatio: '9:16' },
-      { projectId, targetId: character.id, targetName: `${character.name} 预览视频` }
+      {
+        projectId,
+        targetId: character.id,
+        targetName: `${character.name} 预览视频`,
+        templateId: resolvedPrompt.template.id,
+        promptSource: resolvedPrompt.source,
+      }
     );
 
     // 调用 ITV Provider 生成视频

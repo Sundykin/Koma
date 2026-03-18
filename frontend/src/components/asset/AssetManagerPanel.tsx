@@ -222,7 +222,9 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
         episodeId,
         episodeName || `${t('editor.episode')} ${episodeId}`,
         script,
-        llmConfigId
+        llmConfigId,
+        undefined,
+        styleSnapshot
       );
       message.info(t('asset.aiShotStarted'));
       onNext();
@@ -285,6 +287,7 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
             projectId={projectId}
             theme={theme}
             stylePrompt={stylePrompt}
+            styleSnapshot={styleSnapshot}
             ttiConfigId={ttiConfigId}
             itvConfigId={itvConfigId}
             onUpdate={handleCharacterUpdate}
@@ -298,6 +301,7 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
             projectId={projectId}
             theme={theme}
             stylePrompt={stylePrompt}
+            styleSnapshot={styleSnapshot}
             ttiConfigId={ttiConfigId}
             onUpdate={handleSceneUpdate}
             onDelete={handleSceneDelete}
@@ -310,6 +314,7 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
             projectId={projectId}
             theme={theme}
             stylePrompt={stylePrompt}
+            styleSnapshot={styleSnapshot}
             ttiConfigId={ttiConfigId}
             itvConfigId={itvConfigId}
             onUpdate={handlePropUpdate}

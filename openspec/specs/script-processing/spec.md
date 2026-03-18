@@ -32,33 +32,12 @@ TBD - created by archiving change add-antd-timeline-editor. Update Purpose after
 - **AND** 保留原剧本作为历史版本
 
 ### Requirement: Script to Shot List (核心)
-系统 SHALL 自动将剧本拆解为分镜列表。
+系统 SHALL 使用项目 `styleSnapshot` 完成分镜拆解与分镜提示词生成。
 
-#### Scenario: 自动分镜拆解
-- **WHEN** 用户触发「生成分镜」操作
-- **THEN** 系统调用 LLM 分析剧本结构
-- **AND** 输出 Shot List（分镜列表）JSON
-- **AND** 每个 Shot 包含：
-  - shotId: 唯一标识
-  - sceneIndex: 所属场景序号
-  - content: 画面描述（用于 TTI prompt）
-  - dialogue: 台词文本（用于 TTS）
-  - duration: 建议时长（秒）
-  - characters: 出场角色列表
-  - emotion: 情绪标签（开心/紧张/悲伤等）
-  - cameraAngle: 镜头建议（全景/特写/中景等）
-
-#### Scenario: 分镜提示词生成
-- **WHEN** 生成分镜列表时
-- **THEN** 为每个 Shot 自动生成图片生成提示词（TTI Prompt）
-- **AND** 融合角色特征、场景设定、情绪氛围
-- **AND** 适配当前选择的视觉模型风格
-
-#### Scenario: 手动调整分镜
-- **WHEN** 用户编辑某个分镜的描述或参数
-- **THEN** 系统保存修改
-- **AND** 不影响其他分镜
-- **AND** 支持插入、删除、合并分镜
+#### Scenario: 分镜提示词生成使用项目快照
+- **WHEN** 系统为 Shot 生成图片或视频提示词
+- **THEN** 系统 MUST 从项目 `styleSnapshot.ttiStylePrefix` 读取视觉风格
+- **AND** 提示词生成 SHALL 不再依赖 `settings.stylePrompts`
 
 ### Requirement: Character Extraction
 系统 SHALL 从剧本中提取角色信息。
@@ -237,28 +216,12 @@ TBD - created by archiving change add-antd-timeline-editor. Update Purpose after
 - **AND** 验证 duration 为正数，characters 引用有效角色
 
 ### Requirement: Use Global Prompt Templates
-系统 SHALL 使用全局 Prompt 模板系统进行剧本分析。
+系统 SHALL 在剧本分析与分镜拆解中将项目风格快照作为模板输入的一部分。
 
-#### Scenario: 角色提取使用模板
-- **WHEN** ScriptAnalysisService 执行角色提取
-- **THEN** 从 `promptTemplates.ts` 加载 `character_extraction` 模板
-- **AND** 使用 `fillTemplate()` 填充 `{{script}}` 变量
-- **AND** 用户自定义的模板优先于默认模板
-
-#### Scenario: 场景提取使用模板
-- **WHEN** ScriptAnalysisService 执行场景提取
-- **THEN** 从 `promptTemplates.ts` 加载 `scene_extraction` 模板
-- **AND** 使用 `fillTemplate()` 填充变量
-
-#### Scenario: 道具提取使用模板
-- **WHEN** ScriptAnalysisService 执行道具提取
-- **THEN** 从 `promptTemplates.ts` 加载 `prop_extraction` 模板
-- **AND** 使用 `fillTemplate()` 填充变量
-
-#### Scenario: 分镜生成使用模板
-- **WHEN** ScriptAnalysisService 执行分镜生成
-- **THEN** 从 `promptTemplates.ts` 加载 `shot_breakdown` 模板
-- **AND** 使用 `fillTemplate()` 填充 `{{script}}`, `{{characters}}`, `{{scenes}}`, `{{props}}` 变量
+#### Scenario: 分镜生成使用项目风格模板变量
+- **WHEN** ScriptAnalysisService 或 ShotAnalysisService 执行分镜拆解
+- **THEN** 模板填充 MUST 包含来自项目 `styleSnapshot.llmPromptSuffix` 的风格变量
+- **AND** LLM SHALL 基于项目风格生成分镜结构与视觉描述
 
 ### Requirement: Template Customization Effect
 系统 SHALL 确保用户自定义模板立即生效。
@@ -297,4 +260,28 @@ ScriptAnalysisService SHALL 支持剧集拆分模式，允许按单集或全剧�
 - **WHEN** 角色提取步骤完成
 - **THEN** ScriptAnalysisWizard 显示"生成定妆照"按钮
 - **AND** 点击后可进入资产生成流程
+
+### Requirement: Snapshot-Driven Script Analysis
+剧本解析相关的所有 LLM 工作流 MUST 读取项目 `styleSnapshot.llmPromptSuffix`。
+
+#### Scenario: Character scene and prop extraction use project style
+- **Given** 项目包含 `styleSnapshot.llmPromptSuffix`
+- **When** 系统执行角色、场景、道具提取
+- **Then** 对应 LLM Prompt MUST 注入项目风格要求
+- **And** 解析服务 SHALL 不直接访问全局风格目录
+
+#### Scenario: Shot breakdown uses project style
+- **Given** 项目包含 `styleSnapshot.llmPromptSuffix`
+- **When** 系统执行 AI 分镜拆解
+- **Then** `shot_breakdown` 相关 Prompt MUST 注入项目风格要求
+- **And** 输出的分镜结构 SHALL 与项目风格保持一致
+
+### Requirement: Project Snapshot Is The Only Style Contract
+脚本处理链路 MUST 将项目 `styleSnapshot` 视为唯一风格输入契约。
+
+#### Scenario: Storyboard page reads project snapshot
+- **Given** 用户进入分镜页面
+- **When** 用户执行生成提示词、生成图片、生成视频等操作
+- **Then** 页面 SHALL 从当前项目读取 `styleSnapshot`
+- **And** 页面 MUST 不再读取遗留全局 `stylePrompts`
 

@@ -31,7 +31,7 @@ import {
   LinkOutlined,
   EditOutlined,
 } from '@ant-design/icons';
-import type { Prop } from '../../types';
+import type { ProjectStyleSnapshot, Prop } from '../../types';
 import {
   generatePropImage,
   generatePropPreviewVideo,
@@ -50,6 +50,7 @@ interface PropDetailModalProps {
   projectId: string;
   theme?: string;
   stylePrompt?: string;
+  styleSnapshot?: ProjectStyleSnapshot;
   ttiConfigId?: string;
   itvConfigId?: string;
   onClose: () => void;
@@ -65,6 +66,7 @@ export const PropDetailModal: React.FC<PropDetailModalProps> = ({
   projectId,
   theme,
   stylePrompt,
+  styleSnapshot,
   ttiConfigId,
   itvConfigId,
   onClose,
@@ -154,6 +156,7 @@ export const PropDetailModal: React.FC<PropDetailModalProps> = ({
         prop: { ...editedProp, customPrompt: customPrompt || undefined },
         theme,
         stylePrompt,
+        styleSnapshot,
         ttiConfigId,
         onProgress: (p, step) => {
           setProgress(p);
@@ -178,7 +181,7 @@ export const PropDetailModal: React.FC<PropDetailModalProps> = ({
     } finally {
       setGenerating(null);
     }
-  }, [editedProp, projectId, theme, stylePrompt, ttiConfigId, customPrompt, onUpdate, message]);
+  }, [editedProp, projectId, theme, stylePrompt, styleSnapshot, ttiConfigId, customPrompt, onUpdate, message]);
 
   // 上传道具图片
   const handleUploadImage = useCallback(async () => {
@@ -227,6 +230,9 @@ export const PropDetailModal: React.FC<PropDetailModalProps> = ({
       const result = await generatePropPreviewVideo({
         projectId,
         prop: editedProp,
+        theme,
+        stylePrompt,
+        styleSnapshot,
         itvConfigId,
         onProgress: (p, step) => {
           setProgress(p);
@@ -251,7 +257,7 @@ export const PropDetailModal: React.FC<PropDetailModalProps> = ({
     } finally {
       setGenerating(null);
     }
-  }, [editedProp, projectId, itvConfigId, onUpdate, message]);
+  }, [editedProp, projectId, theme, stylePrompt, styleSnapshot, itvConfigId, onUpdate, message]);
 
   // 上传预览视频
   const handleUploadVideo = useCallback(async () => {

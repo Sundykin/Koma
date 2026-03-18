@@ -17,7 +17,7 @@ import { getStorageConfig, initStorageConfig } from '../store/storageConfig';
 import { getThemeStylePrefix, getThemeStylePrefixAsync } from '../config/themePresets';
 import { createLogger } from '../store/logger';
 import { logTTICall, logITVCall } from '../store/aiCallLogger';
-import { getPromptTemplate, fillTemplate } from '../store/promptTemplates';
+import { resolvePromptTemplate } from '../store/promptTemplates';
 import { IMAGE_GENERATION_SIZES } from '../constants/dimensions';
 
 const logger = createLogger('ScenePropAsset');
@@ -128,20 +128,14 @@ export async function generateSceneImage(
 
     // 构建提示词（从配置化模板读取）
     const stylePrefix = await getResolvedTTIStylePrefix(styleSnapshot || project?.styleSnapshot, theme, stylePrompt);
-    let prompt: string;
-    try {
-      const template = await getPromptTemplate('tti_scene_preview');
-      prompt = fillTemplate(template.template, {
-        stylePrefix: stylePrefix || '',
-        description: scene.description || '',
-        location: scene.location || '',
-        time: scene.time || 'day',
-        mood: scene.mood || '',
-      });
-    } catch {
-      // 回退到硬编码模板
-      prompt = buildScenePrompt(scene, stylePrefix);
-    }
+    const resolvedPrompt = await resolvePromptTemplate('tti_scene_preview', {
+      stylePrefix: stylePrefix || '',
+      description: scene.description || '',
+      location: scene.location || '',
+      time: scene.time || 'day',
+      mood: scene.mood || '',
+    });
+    const prompt = resolvedPrompt.prompt;
 
     // 创建任务记录
     const task = await createTask(projectId, {
@@ -163,7 +157,13 @@ export async function generateSceneImage(
       ttiProvider.config?.name || 'TTI',
       prompt,
       IMAGE_GENERATION_SIZES.video_frame,
-      { projectId, targetId: scene.id, targetName: `场景: ${scene.name}` }
+      {
+        projectId,
+        targetId: scene.id,
+        targetName: `场景: ${scene.name}`,
+        templateId: resolvedPrompt.template.id,
+        promptSource: resolvedPrompt.source,
+      }
     );
 
     const result = await ttiProvider.generateImage(prompt, {
@@ -303,18 +303,12 @@ export async function generatePropImage(
 
     // 构建提示词（从配置化模板读取）
     const stylePrefix = await getResolvedTTIStylePrefix(styleSnapshot || project?.styleSnapshot, theme, stylePrompt);
-    let prompt: string;
-    try {
-      const template = await getPromptTemplate('tti_prop_reference');
-      prompt = fillTemplate(template.template, {
-        stylePrefix: stylePrefix || '',
-        description: prop.description || '',
-        type: prop.type || '',
-      });
-    } catch {
-      // 回退到硬编码模板
-      prompt = buildPropPrompt(prop, stylePrefix);
-    }
+    const resolvedPrompt = await resolvePromptTemplate('tti_prop_reference', {
+      stylePrefix: stylePrefix || '',
+      description: prop.description || '',
+      type: prop.type || '',
+    });
+    const prompt = resolvedPrompt.prompt;
 
     // 创建任务记录
     const task = await createTask(projectId, {
@@ -336,7 +330,13 @@ export async function generatePropImage(
       ttiProvider.config?.name || 'TTI',
       prompt,
       IMAGE_GENERATION_SIZES.square,
-      { projectId, targetId: prop.id, targetName: `道具: ${prop.name}` }
+      {
+        projectId,
+        targetId: prop.id,
+        targetName: `道具: ${prop.name}`,
+        templateId: resolvedPrompt.template.id,
+        promptSource: resolvedPrompt.source,
+      }
     );
 
     const result = await ttiProvider.generateImage(prompt, {
@@ -513,15 +513,25 @@ export async function generatePropPreviewVideo(
 
     // 构建道具视频提示词
     const resolvedStylePrefix = await getResolvedTTIStylePrefix(styleSnapshot || project?.styleSnapshot, theme, stylePrompt);
-    const basePrompt = prop.customPrompt || `${prop.prompt || prop.description || prop.name}, prop showcase, rotating slowly, detailed view`;
-    const prompt = applyStylePrefix(basePrompt, resolvedStylePrefix);
+    const resolvedPrompt = await resolvePromptTemplate('itv_prop_motion', {
+      stylePrefix: resolvedStylePrefix,
+      description: prop.customPrompt || prop.prompt || prop.description || prop.name,
+      motion: 'prop showcase, rotating slowly, detailed view',
+    });
+    const prompt = resolvedPrompt.prompt;
 
     logITVCall(
       itvProvider.config?.name || 'ITV',
       imageSource,
       prompt,
       { duration: 4, aspectRatio: '1:1' },
-      { projectId, targetId: prop.id, targetName: `${prop.name} 预览视频` }
+      {
+        projectId,
+        targetId: prop.id,
+        targetName: `${prop.name} 预览视频`,
+        templateId: resolvedPrompt.template.id,
+        promptSource: resolvedPrompt.source,
+      }
     );
 
     // 调用 ITV Provider 生成视频
