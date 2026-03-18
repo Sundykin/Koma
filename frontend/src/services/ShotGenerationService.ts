@@ -14,6 +14,7 @@ import { logTTICall } from '../store/aiCallLogger';
 import { parseMentions } from '../editor/mentionTypes';
 import { createLogger } from '../store/logger';
 import { extractErrorMessage } from '../utils/errorHandler';
+import { resolvePromptTemplate } from '../store/promptTemplates';
 
 const logger = createLogger('ShotGen');
 
@@ -122,14 +123,20 @@ export class ShotGenerationService {
       const props = await loadProps(this.projectId);
 
       // 构建提示词，收集参考图 URL
-      const { prompt, referenceImages } = this.buildShotPrompt(shot, characters, scenes, props);
+      const { prompt, referenceImages, templateId, promptSource } = await this.buildShotPrompt(shot, characters, scenes, props);
 
       // 打印完整提示词日志
       logTTICall(
         this.ttiConfig?.name || 'TTI',
         prompt,
         { width: 1280, height: 720, referenceImages },
-        { projectId: this.projectId, targetId: shot.id, targetName: `分镜: ${shot.id}` }
+        {
+          projectId: this.projectId,
+          targetId: shot.id,
+          targetName: `分镜: ${shot.id}`,
+          templateId,
+          promptSource,
+        }
       );
 
       TaskManager.updateTask(taskId, { progress: 20 });
@@ -183,12 +190,17 @@ export class ShotGenerationService {
    * 优先使用 imagePrompt，回退到 description
    * 收集资源 URL 并替换 @mentions 为资源描述
    */
-  private buildShotPrompt(
+  private async buildShotPrompt(
     shot: Shot,
     characters: Character[],
     scenes: Scene[],
     props?: Prop[]
-  ): { prompt: string; referenceImages: string[] } {
+  ): Promise<{
+    prompt: string;
+    referenceImages: string[];
+    templateId: string;
+    promptSource: 'default' | 'custom' | 'finalized';
+  }> {
     const referenceImages: string[] = [];
 
     // 收集关联资产的远程 URL
@@ -217,24 +229,19 @@ export class ShotGenerationService {
 
       // 替换 @mentions 为资源描述
       prompt = this.replaceMentionsWithDescriptions(prompt, characters, scenes, props);
-      return { prompt, referenceImages };
+      return {
+        prompt,
+        referenceImages,
+        templateId: 'shot.imagePrompt',
+        promptSource: 'finalized',
+      };
     }
 
-    // 回退到旧逻辑（兼容旧数据）
-    const parts: string[] = [];
-
-    // 添加风格前缀
     const stylePrefix = this.getResolvedTTIStylePrefix();
-    if (stylePrefix) {
-      parts.push(stylePrefix.replace(/,\s*$/, ''));
-    }
-
-    // 基础描述
+    const descriptionParts: string[] = [];
     if (shot.description) {
-      parts.push(shot.description);
+      descriptionParts.push(shot.description);
     }
-
-    // 添加角色外观信息
     if (shot.characters && shot.characters.length > 0) {
       const charDescriptions = shot.characters
         .map(charId => {
@@ -243,20 +250,16 @@ export class ShotGenerationService {
         })
         .filter(Boolean);
       if (charDescriptions.length > 0) {
-        parts.push(`featuring ${charDescriptions.join(' and ')}`);
+        descriptionParts.push(`featuring ${charDescriptions.join(' and ')}`);
       }
     }
 
-    // 景别
     const shotTypeMap: Record<string, string> = {
       'close-up': 'close-up shot',
       'medium': 'medium shot',
       'wide': 'wide shot',
       'extreme-wide': 'extreme wide shot',
     };
-    parts.push(shotTypeMap[shot.shotType] || 'medium shot');
-
-    // 运镜
     const cameraMap: Record<string, string> = {
       'static': 'static camera',
       'pan': 'camera panning',
@@ -265,18 +268,25 @@ export class ShotGenerationService {
       'handheld': 'handheld camera',
     };
     if (shot.cameraMovement && shot.cameraMovement !== 'static') {
-      parts.push(cameraMap[shot.cameraMovement]);
+      descriptionParts.push(cameraMap[shot.cameraMovement]);
     }
-
-    // 情绪
     if (shot.emotion) {
-      parts.push(`${shot.emotion} mood`);
+      descriptionParts.push(`${shot.emotion} mood`);
     }
 
-    // 添加通用质量词
-    parts.push('cinematic lighting, high quality, 4k, detailed');
+    const resolved = await resolvePromptTemplate('tti_shot_image', {
+      stylePrefix,
+      description: descriptionParts.join(', '),
+      shotType: shotTypeMap[shot.shotType] || 'medium shot',
+      emotion: shot.emotion || 'neutral',
+    });
 
-    return { prompt: parts.join(', '), referenceImages };
+    return {
+      prompt: resolved.prompt,
+      referenceImages,
+      templateId: resolved.template.id,
+      promptSource: resolved.source,
+    };
   }
 
   private getResolvedTTIStylePrefix(): string {

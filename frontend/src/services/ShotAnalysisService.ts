@@ -6,7 +6,7 @@
 import type { Shot, LLMModelConfig } from '../types';
 import { createLLMProvider } from '../providers';
 import { getActiveLLMConfig } from '../store/globalStore';
-import { getPromptTemplate, fillTemplate } from '../store/promptTemplates';
+import { resolvePromptTemplate } from '../store/promptTemplates';
 import { TaskManager, Task } from './TaskManager';
 import { parseLLMJSON } from '../utils/llmJsonParser';
 import {
@@ -136,17 +136,13 @@ export class ShotAnalysisService {
       TaskManager.updateTask(taskId, { progress: 20 });
 
       // 构建提示词
-      const template = await getPromptTemplate('shot_breakdown');
-      const styleSuffix = this.styleSnapshot?.llmPromptSuffix?.trim() || '';
-      const prompt = fillTemplate(template.template, {
+      const resolvedPrompt = await resolvePromptTemplate('shot_breakdown', {
         script,
         characters: characters.map(c => `${c.name}（${c.description || ''}）`).join('\n'),
         scenes: scenes.map(s => `${s.name}（${s.description || ''}）`).join('\n'),
         props: props.map(p => `${p.name}（${p.description || ''}）`).join('\n'),
-        styleSuffix,
-        llmPromptSuffix: styleSuffix,
       });
-      const styledPrompt = this.appendStyleRequirement(prompt);
+      const styledPrompt = this.appendStyleRequirement(resolvedPrompt.prompt);
 
       TaskManager.updateTask(taskId, { progress: 30 });
 
@@ -158,8 +154,8 @@ export class ShotAnalysisService {
         modelName: this.llmConfig!.modelName,
       });
       // 获取系统提示词模板
-      const systemPromptTemplate = await getPromptTemplate('shot_breakdown_system');
-      const systemPrompt = systemPromptTemplate.template;
+      const resolvedSystemPrompt = await resolvePromptTemplate('shot_breakdown_system', {});
+      const systemPrompt = resolvedSystemPrompt.prompt;
 
       const result = await provider.chat([
         { role: 'system', content: systemPrompt },

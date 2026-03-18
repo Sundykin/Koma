@@ -22,6 +22,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   ttiConfigs: [],
   itvConfigs: [],
   ttsConfigs: [],
+  promptTemplates: {},
 };
 
 // 生成唯一 ID

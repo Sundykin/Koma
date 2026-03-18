@@ -28,7 +28,7 @@ import {
   ExpandOutlined,
 } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
-import type { Scene } from '../../types';
+import type { ProjectStyleSnapshot, Scene } from '../../types';
 import { generateSceneImage } from '../../workflow/scenePropAssetWorkflow';
 import { electronService, openFileDialog, fsCopy, fsMkdir, fsExists } from '../../services/electronService';
 import { getStorageConfig, initStorageConfig } from '../../store/storageConfig';
@@ -44,6 +44,7 @@ interface SceneDetailPanelProps {
   projectId: string;
   theme?: string;
   stylePrompt?: string;
+  styleSnapshot?: ProjectStyleSnapshot;
   ttiConfigId?: string;
   onUpdate: (scene: Scene) => void;
   onDelete: (sceneId: string) => void;
@@ -54,6 +55,7 @@ export const SceneDetailPanel: React.FC<SceneDetailPanelProps> = ({
   projectId,
   theme,
   stylePrompt,
+  styleSnapshot,
   ttiConfigId,
   onUpdate,
   onDelete,
@@ -137,6 +139,7 @@ export const SceneDetailPanel: React.FC<SceneDetailPanelProps> = ({
         scene: sceneWithPrompt,
         theme,
         stylePrompt,
+        styleSnapshot,
         ttiConfigId,
         onProgress: (p, step) => {
           setProgress(p);
@@ -167,7 +170,7 @@ export const SceneDetailPanel: React.FC<SceneDetailPanelProps> = ({
     } finally {
       setGenerating(false);
     }
-  }, [editedScene, projectId, theme, stylePrompt, ttiConfigId, form, onUpdate, message]);
+  }, [editedScene, projectId, theme, stylePrompt, styleSnapshot, ttiConfigId, form, onUpdate, message]);
 
   const handleUploadImage = useCallback(async () => {
     try {

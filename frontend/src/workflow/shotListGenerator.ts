@@ -4,7 +4,7 @@
  */
 import type { Shot, Character, Scene, AppSettings } from '../types';
 import { getProjectLLMProvider } from '../providers';
-import { getPromptTemplate, fillTemplate } from '../store/promptTemplates';
+import { resolvePromptTemplate } from '../store/promptTemplates';
 import { parseLLMJSON } from '../utils/llmJsonParser';
 
 interface ShotListParams {
@@ -22,7 +22,7 @@ export async function generateShotList(
   params: ShotListParams,
   onProgress: (progress: number, step?: string) => void
 ): Promise<Shot[]> {
-  const { scriptText, characters: _characters, scenes: _scenes } = params;
+  const { scriptText, characters, scenes } = params;
 
   const provider = await getProjectLLMProvider();
   if (!provider) {
@@ -30,15 +30,19 @@ export async function generateShotList(
   }
 
   // 加载 Prompt 模板
-  const template = await getPromptTemplate('shot_breakdown');
-  const prompt = fillTemplate(template.template, { script: scriptText });
+  const resolvedPrompt = await resolvePromptTemplate('shot_breakdown', {
+    script: scriptText,
+    characters: characters?.map((character) => character.name).join(', ') || '无',
+    scenes: scenes?.map((scene) => scene.name).join(', ') || '无',
+    props: '无',
+  });
 
   onProgress(10, '分析剧本结构...');
 
   const response = await provider.chat([
     {
       role: 'user',
-      content: prompt,
+      content: resolvedPrompt.prompt,
     },
   ]);
 

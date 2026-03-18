@@ -6,7 +6,7 @@
 import type { Shot, Character, Scene, LLMModelConfig } from '../types';
 import { createLLMProvider } from '../providers';
 import { getActiveLLMConfig } from '../store/globalStore';
-import { getPromptTemplate, fillTemplate } from '../store/promptTemplates';
+import { resolvePromptTemplate } from '../store/promptTemplates';
 import type { PromptTemplateType } from '../store/promptTemplates';
 import { loadCharacters, updateShot } from '../store/projectStore';
 import { createLogger } from '../store/logger';
@@ -183,16 +183,7 @@ export class ShotPromptService {
   ): Promise<string> {
     // 根据类型选择专用模板，回退到通用模板
     const templateKey: PromptTemplateType = type === 'image' ? 'shot_image_prompt_generation' : 'shot_video_prompt_generation';
-    let template = await getPromptTemplate(templateKey);
-    if (!template) {
-      // 回退到通用模板
-      template = await getPromptTemplate('shot_prompt_generation');
-    }
-    if (!template) {
-      throw new Error(`未找到分镜提示词模板 ${templateKey} 或 shot_prompt_generation`);
-    }
-
-    const prompt = fillTemplate(template.template, {
+    const resolvedPrompt = await resolvePromptTemplate(templateKey, {
       scriptContent: shot.scriptContent,
       characters: shotCharacters.map(c => c.name).join(', ') || '无',
       emotion: shot.emotion || '中性',
@@ -200,8 +191,8 @@ export class ShotPromptService {
       cameraOptions: CAMERA_OPTIONS.join(', '),
       shotTypeOptions: SHOT_TYPE_OPTIONS.join(', '),
       characterRefs: characterRefs || '无角色引用',
-      promptType: type === 'image' ? '静态图片' : '动态视频',
     });
+    const prompt = resolvedPrompt.prompt;
 
     const provider = createLLMProvider({
       provider: this.llmConfig!.provider === 'openai-compatible' ? 'openai' : this.llmConfig!.provider as any,
@@ -210,8 +201,8 @@ export class ShotPromptService {
       modelName: this.llmConfig!.modelName,
     });
 
-    const systemPromptTemplate = await getPromptTemplate('shot_prompt_system');
-    const systemPrompt = systemPromptTemplate?.template || '你是一个专业的视频提示词生成专家。';
+    const resolvedSystemPrompt = await resolvePromptTemplate('shot_prompt_system', {});
+    const systemPrompt = resolvedSystemPrompt.prompt;
 
     const result = await provider.chat([
       { role: 'system', content: systemPrompt },

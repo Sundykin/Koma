@@ -8,7 +8,7 @@ import { saveShotVersion, loadCharacters, loadProps } from '../store/projectStor
 import { createTask, markTaskCompleted } from '../store/taskQueueStore';
 import { createLogger } from '../store/logger';
 import { logITVCall, logTTSCall } from '../store/aiCallLogger';
-import { getPromptTemplate, fillTemplate } from '../store/promptTemplates';
+import { resolvePromptTemplate } from '../store/promptTemplates';
 import { getThemeStylePrefixAsync } from '../config/themePresets';
 import { parseMentions } from '../editor/mentionTypes';
 
@@ -188,6 +188,8 @@ export async function shotRenderWorkflow(
     // 构建视频 prompt：优先使用 shot.videoPrompt
     let videoPrompt: string;
     let additionalReferenceImages: string[] = [];
+    let templateId = 'shot.videoPrompt';
+    let promptSource: 'default' | 'custom' | 'finalized' = 'finalized';
 
     if (shot.videoPrompt) {
       // 使用专用视频提示词
@@ -197,18 +199,14 @@ export async function shotRenderWorkflow(
       videoPrompt = processed.prompt;
       additionalReferenceImages = processed.referenceImages;
     } else {
-      // 回退到旧逻辑
-      try {
-        const videoTemplate = await getPromptTemplate('itv_shot_video');
-        videoPrompt = fillTemplate(videoTemplate.template, {
-          stylePrefix: stylePrefix || '',
-          description: shot.description || '',
-          cameraMovement: getCameraMovementDesc(shot.cameraMovement),
-        });
-        videoPrompt = appendCharacterRefs(videoPrompt, shot, characters);
-      } catch {
-        videoPrompt = buildVideoPrompt(shot, characters, stylePrefix);
-      }
+      const resolvedPrompt = await resolvePromptTemplate('itv_shot_video', {
+        stylePrefix: stylePrefix || '',
+        description: shot.description || '',
+        cameraMovement: getCameraMovementDesc(shot.cameraMovement),
+      });
+      videoPrompt = appendCharacterRefs(resolvedPrompt.prompt, shot, characters);
+      templateId = resolvedPrompt.template.id;
+      promptSource = resolvedPrompt.source;
     }
 
     logger.info(`视频 prompt: ${videoPrompt}`);
@@ -222,7 +220,13 @@ export async function shotRenderWorkflow(
       referenceImageUrl || '',
       videoPrompt,
       { duration: shot.duration, motionPrompt: shot.cameraMovement },
-      { projectId, targetId: shot.id, targetName: `分镜视频: ${shot.id}` }
+      {
+        projectId,
+        targetId: shot.id,
+        targetName: `分镜视频: ${shot.id}`,
+        templateId,
+        promptSource,
+      }
     );
 
     // 调用 ITV Provider 生成视频

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   App,
+  Alert,
   Input,
   Button,
   Tag,
@@ -21,6 +22,7 @@ import {
   loadPromptTemplates,
   saveCustomTemplate,
   resetTemplate,
+  validatePromptTemplateDraft,
   type PromptTemplate,
   type PromptTemplateType,
 } from '../../store/promptTemplates';
@@ -35,6 +37,10 @@ export const PromptStudio: React.FC = () => {
   const [searchText, setSearchText] = useState('');
   const [editingContent, setEditingContent] = useState('');
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [validationErrors, setValidationErrors] = useState<{ unknownVariables: string[]; missingRequiredVariables: string[] }>({
+    unknownVariables: [],
+    missingRequiredVariables: [],
+  });
 
   useEffect(() => {
     loadData();
@@ -50,19 +56,43 @@ export const PromptStudio: React.FC = () => {
 
   useEffect(() => {
     if (selectedId && templates[selectedId as PromptTemplateType]) {
-      setEditingContent(templates[selectedId as PromptTemplateType].template);
+      const nextTemplate = templates[selectedId as PromptTemplateType].template;
+      setEditingContent(nextTemplate);
       setHasUnsavedChanges(false);
+      const validation = validatePromptTemplateDraft(selectedId as PromptTemplateType, nextTemplate);
+      setValidationErrors({
+        unknownVariables: validation.unknownVariables,
+        missingRequiredVariables: validation.missingRequiredVariables,
+      });
     }
   }, [selectedId, templates]);
 
   const handleContentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setEditingContent(e.target.value);
+    const nextContent = e.target.value;
+    setEditingContent(nextContent);
     setHasUnsavedChanges(true);
+    if (selectedId) {
+      const validation = validatePromptTemplateDraft(selectedId as PromptTemplateType, nextContent);
+      setValidationErrors({
+        unknownVariables: validation.unknownVariables,
+        missingRequiredVariables: validation.missingRequiredVariables,
+      });
+    }
   };
 
   const handleSave = async () => {
     if (!selectedId) return;
     try {
+      const validation = validatePromptTemplateDraft(selectedId as PromptTemplateType, editingContent);
+      if (!validation.isValid) {
+        setValidationErrors({
+          unknownVariables: validation.unknownVariables,
+          missingRequiredVariables: validation.missingRequiredVariables,
+        });
+        message.error('模板校验未通过，请先修正变量');
+        return;
+      }
+
       const currentTemplate = templates[selectedId as PromptTemplateType];
       const updatedTemplate = { ...currentTemplate, template: editingContent };
       await saveCustomTemplate(updatedTemplate);
@@ -94,6 +124,7 @@ export const PromptStudio: React.FC = () => {
   }, [templates, searchText]);
 
   const selectedTemplate = templates[selectedId as PromptTemplateType];
+  const hasValidationErrors = validationErrors.unknownVariables.length > 0 || validationErrors.missingRequiredVariables.length > 0;
 
   return (
     <div className="flex h-full border border-zinc-700 rounded-lg overflow-hidden">
@@ -155,7 +186,7 @@ export const PromptStudio: React.FC = () => {
                   type="primary"
                   icon={<SaveOutlined />}
                   onClick={handleSave}
-                  disabled={!hasUnsavedChanges}
+                  disabled={!hasUnsavedChanges || hasValidationErrors}
                 >
                   保存
                 </Button>
@@ -163,6 +194,26 @@ export const PromptStudio: React.FC = () => {
             </div>
 
             <div className="flex-1 flex flex-col overflow-hidden">
+              {hasValidationErrors && (
+                <div className="p-4 border-b border-amber-700/50 bg-amber-950/30">
+                  <Alert
+                    type="error"
+                    showIcon
+                    message="模板变量校验失败"
+                    description={
+                      <div className="text-xs">
+                        {validationErrors.unknownVariables.length > 0 && (
+                          <div>未知变量：{validationErrors.unknownVariables.join(', ')}</div>
+                        )}
+                        {validationErrors.missingRequiredVariables.length > 0 && (
+                          <div>缺失必需变量：{validationErrors.missingRequiredVariables.join(', ')}</div>
+                        )}
+                      </div>
+                    }
+                  />
+                </div>
+              )}
+
               <div className="flex-1 relative">
                 <TextArea
                   value={editingContent}

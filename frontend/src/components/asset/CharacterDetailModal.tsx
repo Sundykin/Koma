@@ -31,7 +31,7 @@ import {
   LoadingOutlined,
   LinkOutlined,
 } from '@ant-design/icons';
-import type { Character } from '../../types';
+import type { Character, ProjectStyleSnapshot } from '../../types';
 import {
   generateCostumePhoto,
   generateCharacterPreviewVideo,
@@ -51,6 +51,7 @@ interface CharacterDetailModalProps {
   projectId: string;
   theme?: string;
   stylePrompt?: string;
+  styleSnapshot?: ProjectStyleSnapshot;
   ttiConfigId?: string;
   itvConfigId?: string;
   onClose: () => void;
@@ -66,6 +67,7 @@ export const CharacterDetailModal: React.FC<CharacterDetailModalProps> = ({
   projectId,
   theme,
   stylePrompt,
+  styleSnapshot,
   ttiConfigId,
   itvConfigId,
   onClose,
@@ -173,6 +175,7 @@ export const CharacterDetailModal: React.FC<CharacterDetailModalProps> = ({
         character: charWithPrompt,
         theme,
         stylePrompt,
+        styleSnapshot,
         ttiConfigId,
         onProgress: (p, step) => {
           setProgress(p);
@@ -197,7 +200,7 @@ export const CharacterDetailModal: React.FC<CharacterDetailModalProps> = ({
     } finally {
       setGenerating(null);
     }
-  }, [editedCharacter, projectId, theme, stylePrompt, ttiConfigId, customPrompt, onUpdate, message]);
+  }, [editedCharacter, projectId, theme, stylePrompt, styleSnapshot, ttiConfigId, customPrompt, onUpdate, message]);
 
   // 上传定妆照
   const handleUploadCostume = useCallback(async () => {
@@ -247,6 +250,9 @@ export const CharacterDetailModal: React.FC<CharacterDetailModalProps> = ({
       const result = await generateCharacterPreviewVideo({
         projectId,
         character: editedCharacter,
+        theme,
+        stylePrompt,
+        styleSnapshot,
         itvConfigId,
         onProgress: (p, step) => {
           setProgress(p);
@@ -272,7 +278,7 @@ export const CharacterDetailModal: React.FC<CharacterDetailModalProps> = ({
     } finally {
       setGenerating(null);
     }
-  }, [editedCharacter, projectId, itvConfigId, onUpdate, message]);
+  }, [editedCharacter, projectId, theme, stylePrompt, styleSnapshot, itvConfigId, onUpdate, message]);
 
   // 上传预览视频
   const handleUploadVideo = useCallback(async () => {

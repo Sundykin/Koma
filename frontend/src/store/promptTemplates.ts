@@ -4,7 +4,9 @@
  */
 import { electronService } from '../services/electronService';
 import { getStorageConfig, initStorageConfig } from './storageConfig';
+import { loadSettings, saveSettings } from './globalStore';
 import { STORAGE_KEYS } from '../constants/storageKeys';
+import type { AppSettings } from '../types';
 
 // Prompt 模板类型
 export type PromptTemplateType =
@@ -33,7 +35,8 @@ export type PromptTemplateType =
   | 'tti_shot_image'           // 分镜图片
   // ITV 视频生成模板
   | 'itv_shot_video'           // 分镜视频
-  | 'itv_character_motion';    // 角色动态视频
+  | 'itv_character_motion'     // 角色动态视频
+  | 'itv_prop_motion';         // 道具动态视频
 
 // Prompt 模板接口
 export interface PromptTemplate {
@@ -43,6 +46,23 @@ export interface PromptTemplate {
   template: string;
   variables: string[];  // 模板变量列表 (如 {{idea}}, {{style}})
   isCustom: boolean;    // 是否自定义
+}
+
+export interface PromptTemplateOverride {
+  template: string;
+  updatedAt: number;
+}
+
+export interface PromptTemplateValidationResult {
+  isValid: boolean;
+  unknownVariables: string[];
+  missingRequiredVariables: string[];
+}
+
+export interface ResolvedPromptTemplate {
+  template: PromptTemplate;
+  prompt: string;
+  source: 'default' | 'custom';
 }
 
 // ========== 默认模板 ==========
@@ -560,6 +580,15 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
     variables: ['characterName', 'action', 'stylePrefix'],
     isCustom: false,
   },
+
+  itv_prop_motion: {
+    id: 'itv_prop_motion',
+    name: '道具动态视频',
+    description: '生成道具动态展示视频',
+    template: '{{stylePrefix}}, {{description}}, {{motion}}, professional product animation, smooth camera movement, high quality video',
+    variables: ['stylePrefix', 'description', 'motion'],
+    isCustom: false,
+  },
 };
 
 // ========== 存储路径 ==========
@@ -567,6 +596,175 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
 async function getTemplatesPath(): Promise<string> {
   const config = getStorageConfig() || (await initStorageConfig());
   return `${config.rootPath}/prompt-templates.json`;
+}
+
+const PLACEHOLDER_REGEX = /\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g;
+
+function extractTemplateVariables(templateText: string): string[] {
+  const matches = Array.from(templateText.matchAll(PLACEHOLDER_REGEX), match => match[1]);
+  return Array.from(new Set(matches)).sort();
+}
+
+function buildValidationResult(
+  type: PromptTemplateType,
+  templateText: string
+): PromptTemplateValidationResult {
+  const allowedVariables = DEFAULT_TEMPLATES[type]?.variables || [];
+  const usedVariables = extractTemplateVariables(templateText);
+  const unknownVariables = usedVariables.filter(variable => !allowedVariables.includes(variable));
+  const missingRequiredVariables = allowedVariables.filter(variable => !usedVariables.includes(variable));
+
+  return {
+    isValid: unknownVariables.length === 0 && missingRequiredVariables.length === 0,
+    unknownVariables,
+    missingRequiredVariables,
+  };
+}
+
+function normalizePromptTemplateOverride(value: unknown): PromptTemplateOverride | undefined {
+  if (!value || typeof value !== 'object') {
+    return undefined;
+  }
+
+  const candidate = value as { template?: unknown; updatedAt?: unknown };
+  if (typeof candidate.template !== 'string') {
+    return undefined;
+  }
+
+  return {
+    template: candidate.template,
+    updatedAt: typeof candidate.updatedAt === 'number' ? candidate.updatedAt : Date.now(),
+  };
+}
+
+function normalizeLegacyPromptTemplates(
+  data: unknown
+): Partial<Record<PromptTemplateType, PromptTemplateOverride>> {
+  const normalized: Partial<Record<PromptTemplateType, PromptTemplateOverride>> = {};
+  if (!data || typeof data !== 'object') {
+    return normalized;
+  }
+
+  for (const [key, value] of Object.entries(data)) {
+    if (!(key in DEFAULT_TEMPLATES)) {
+      continue;
+    }
+    const normalizedValue = normalizePromptTemplateOverride(value);
+    if (normalizedValue) {
+      normalized[key as PromptTemplateType] = normalizedValue;
+    }
+  }
+
+  return normalized;
+}
+
+function mergePromptTemplateOverrides(
+  current: Partial<Record<PromptTemplateType, PromptTemplateOverride>>,
+  incoming: Partial<Record<PromptTemplateType, PromptTemplateOverride>>
+): Partial<Record<PromptTemplateType, PromptTemplateOverride>> {
+  const merged = { ...current };
+  for (const [key, value] of Object.entries(incoming)) {
+    if (!value) {
+      continue;
+    }
+    if (!merged[key as PromptTemplateType]) {
+      merged[key as PromptTemplateType] = value;
+    }
+  }
+  return merged;
+}
+
+async function persistPromptTemplateOverrides(
+  settings: AppSettings,
+  overrides: Partial<Record<PromptTemplateType, PromptTemplateOverride>>
+): Promise<void> {
+  await saveSettings({
+    ...settings,
+    promptTemplates: overrides,
+  });
+}
+
+async function migrateLegacyPromptTemplates(
+  settings?: AppSettings
+): Promise<AppSettings> {
+  const currentSettings = settings || await loadSettings();
+  let overrides = normalizeLegacyPromptTemplates(currentSettings.promptTemplates);
+  let shouldPersist = Object.keys(overrides).length !== Object.keys(currentSettings.promptTemplates || {}).length;
+
+  if (!electronService.isElectron()) {
+    try {
+      const legacyData = localStorage.getItem(STORAGE_KEYS.PROMPT_TEMPLATES);
+      if (legacyData) {
+        const legacyOverrides = normalizeLegacyPromptTemplates(JSON.parse(legacyData));
+        const mergedOverrides = mergePromptTemplateOverrides(overrides, legacyOverrides);
+        if (JSON.stringify(mergedOverrides) !== JSON.stringify(overrides)) {
+          overrides = mergedOverrides;
+          shouldPersist = true;
+        }
+        localStorage.removeItem(STORAGE_KEYS.PROMPT_TEMPLATES);
+      }
+    } catch {
+      // ignore
+    }
+
+    if (shouldPersist) {
+      await persistPromptTemplateOverrides(currentSettings, overrides);
+      return { ...currentSettings, promptTemplates: overrides };
+    }
+
+    return { ...currentSettings, promptTemplates: overrides };
+  }
+
+  try {
+    const path = await getTemplatesPath();
+    const exists = await electronService.fs.exists(path);
+    if (exists) {
+      const data = await electronService.fs.readFile(path);
+      const legacyOverrides = normalizeLegacyPromptTemplates(JSON.parse(data));
+      const mergedOverrides = mergePromptTemplateOverrides(overrides, legacyOverrides);
+      if (JSON.stringify(mergedOverrides) !== JSON.stringify(overrides)) {
+        overrides = mergedOverrides;
+        shouldPersist = true;
+      }
+
+      if (shouldPersist) {
+        await persistPromptTemplateOverrides(currentSettings, overrides);
+      }
+
+      await electronService.fs.remove(path);
+      return { ...currentSettings, promptTemplates: overrides };
+    }
+  } catch {
+    // ignore
+  }
+
+  if (shouldPersist) {
+    await persistPromptTemplateOverrides(currentSettings, overrides);
+  }
+
+  return { ...currentSettings, promptTemplates: overrides };
+}
+
+async function loadPromptTemplateOverrides(): Promise<Partial<Record<PromptTemplateType, PromptTemplateOverride>>> {
+  const settings = await migrateLegacyPromptTemplates();
+  return normalizeLegacyPromptTemplates(settings.promptTemplates);
+}
+
+function assertTemplateValidation(
+  type: PromptTemplateType,
+  templateText: string
+): void {
+  const validation = buildValidationResult(type, templateText);
+  if (!validation.isValid) {
+    const errors: string[] = [];
+    if (validation.unknownVariables.length > 0) {
+      errors.push(`未知变量: ${validation.unknownVariables.join(', ')}`);
+    }
+    if (validation.missingRequiredVariables.length > 0) {
+      errors.push(`缺失必需变量: ${validation.missingRequiredVariables.join(', ')}`);
+    }
+    throw new Error(errors.join('；'));
+  }
 }
 
 // ========== 模板管理函数 ==========
@@ -577,40 +775,17 @@ async function getTemplatesPath(): Promise<string> {
 export async function loadPromptTemplates(): Promise<Record<PromptTemplateType, PromptTemplate>> {
   // 从默认模板开始
   const templates = { ...DEFAULT_TEMPLATES };
-
-  if (!electronService.isElectron()) {
-    // 浏览器环境
-    try {
-      const data = localStorage.getItem(STORAGE_KEYS.PROMPT_TEMPLATES);
-      if (data) {
-        const custom = JSON.parse(data) as Partial<Record<PromptTemplateType, PromptTemplate>>;
-        for (const [key, value] of Object.entries(custom)) {
-          if (value) {
-            templates[key as PromptTemplateType] = { ...value, isCustom: true };
-          }
-        }
-      }
-    } catch {
-      // ignore
+  const overrides = await loadPromptTemplateOverrides();
+  for (const [key, value] of Object.entries(overrides)) {
+    if (!value) {
+      continue;
     }
-    return templates;
-  }
-
-  // Electron 环境
-  try {
-    const path = await getTemplatesPath();
-    const exists = await electronService.fs.exists(path);
-    if (exists) {
-      const data = await electronService.fs.readFile(path);
-      const custom = JSON.parse(data) as Partial<Record<PromptTemplateType, PromptTemplate>>;
-      for (const [key, value] of Object.entries(custom)) {
-        if (value) {
-          templates[key as PromptTemplateType] = { ...value, isCustom: true };
-        }
-      }
-    }
-  } catch {
-    // ignore
+    const templateKey = key as PromptTemplateType;
+    templates[templateKey] = {
+      ...templates[templateKey],
+      template: value.template,
+      isCustom: true,
+    };
   }
 
   return templates;
@@ -628,59 +803,24 @@ export async function getPromptTemplate(type: PromptTemplateType): Promise<Promp
  * 保存自定义模板
  */
 export async function saveCustomTemplate(template: PromptTemplate): Promise<void> {
-  const customTemplate = { ...template, isCustom: true };
-
-  if (!electronService.isElectron()) {
-    const data = localStorage.getItem(STORAGE_KEYS.PROMPT_TEMPLATES);
-    const existing = data ? JSON.parse(data) : {};
-    existing[template.id] = customTemplate;
-    localStorage.setItem(STORAGE_KEYS.PROMPT_TEMPLATES, JSON.stringify(existing));
-    return;
-  }
-
-  const path = await getTemplatesPath();
-  let existing: Record<string, PromptTemplate> = {};
-  try {
-    const exists = await electronService.fs.exists(path);
-    if (exists) {
-      const data = await electronService.fs.readFile(path);
-      existing = JSON.parse(data);
-    }
-  } catch {
-    // ignore
-  }
-
-  existing[template.id] = customTemplate;
-  await electronService.fs.writeFile(path, JSON.stringify(existing, null, 2));
+  assertTemplateValidation(template.id, template.template);
+  const settings = await migrateLegacyPromptTemplates();
+  const overrides = normalizeLegacyPromptTemplates(settings.promptTemplates);
+  overrides[template.id] = {
+    template: template.template,
+    updatedAt: Date.now(),
+  };
+  await persistPromptTemplateOverrides(settings, overrides);
 }
 
 /**
  * 重置模板为默认
  */
 export async function resetTemplate(type: PromptTemplateType): Promise<PromptTemplate> {
-  if (!electronService.isElectron()) {
-    const data = localStorage.getItem(STORAGE_KEYS.PROMPT_TEMPLATES);
-    if (data) {
-      const existing = JSON.parse(data);
-      delete existing[type];
-      localStorage.setItem(STORAGE_KEYS.PROMPT_TEMPLATES, JSON.stringify(existing));
-    }
-    return DEFAULT_TEMPLATES[type];
-  }
-
-  const path = await getTemplatesPath();
-  try {
-    const exists = await electronService.fs.exists(path);
-    if (exists) {
-      const data = await electronService.fs.readFile(path);
-      const existing = JSON.parse(data);
-      delete existing[type];
-      await electronService.fs.writeFile(path, JSON.stringify(existing, null, 2));
-    }
-  } catch {
-    // ignore
-  }
-
+  const settings = await migrateLegacyPromptTemplates();
+  const overrides = normalizeLegacyPromptTemplates(settings.promptTemplates);
+  delete overrides[type];
+  await persistPromptTemplateOverrides(settings, overrides);
   return DEFAULT_TEMPLATES[type];
 }
 
@@ -688,17 +828,8 @@ export async function resetTemplate(type: PromptTemplateType): Promise<PromptTem
  * 重置所有模板为默认
  */
 export async function resetAllTemplates(): Promise<void> {
-  if (!electronService.isElectron()) {
-    localStorage.removeItem(STORAGE_KEYS.PROMPT_TEMPLATES);
-    return;
-  }
-
-  const path = await getTemplatesPath();
-  try {
-    await electronService.fs.remove(path);
-  } catch {
-    // ignore
-  }
+  const settings = await migrateLegacyPromptTemplates();
+  await persistPromptTemplateOverrides(settings, {});
 }
 
 /**
@@ -715,15 +846,58 @@ export function getAllDefaultTemplates(): Record<PromptTemplateType, PromptTempl
   return { ...DEFAULT_TEMPLATES };
 }
 
+export function validatePromptTemplateDraft(
+  type: PromptTemplateType,
+  templateText: string
+): PromptTemplateValidationResult {
+  return buildValidationResult(type, templateText);
+}
+
 /**
  * 填充模板变量
  */
 export function fillTemplate(template: string, variables: Record<string, string>): string {
   let result = template;
   for (const [key, value] of Object.entries(variables)) {
-    result = result.replace(new RegExp(`{{${key}}}`, 'g'), value);
+    const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    result = result.replace(new RegExp(`{{\\s*${escapedKey}\\s*}}`, 'g'), value);
   }
   return result;
+}
+
+export async function resolvePromptTemplate(
+  type: PromptTemplateType,
+  variables: Record<string, string>
+): Promise<ResolvedPromptTemplate> {
+  const template = await getPromptTemplate(type);
+  assertTemplateValidation(type, template.template);
+
+  const unknownVariables = Object.keys(variables).filter(variable => !template.variables.includes(variable));
+  if (unknownVariables.length > 0) {
+    throw new Error(`模板 ${type} 收到未知运行时变量: ${unknownVariables.join(', ')}`);
+  }
+
+  const missingVariables = template.variables.filter((variable) => {
+    if (!Object.prototype.hasOwnProperty.call(variables, variable)) {
+      return true;
+    }
+    return typeof variables[variable] !== 'string';
+  });
+  if (missingVariables.length > 0) {
+    throw new Error(`模板 ${type} 缺少运行时变量: ${missingVariables.join(', ')}`);
+  }
+
+  const prompt = fillTemplate(template.template, variables);
+  const unresolvedVariables = extractTemplateVariables(prompt);
+  if (unresolvedVariables.length > 0) {
+    throw new Error(`模板 ${type} 仍有未替换变量: ${unresolvedVariables.join(', ')}`);
+  }
+
+  return {
+    template,
+    prompt,
+    source: template.isCustom ? 'custom' : 'default',
+  };
 }
 
 export default {
@@ -734,5 +908,7 @@ export default {
   resetAllTemplates,
   getDefaultTemplate,
   getAllDefaultTemplates,
+  validatePromptTemplateDraft,
   fillTemplate,
+  resolvePromptTemplate,
 };

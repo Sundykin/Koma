@@ -6,7 +6,7 @@
 import type { Character, Scene, Prop, Shot, LLMModelConfig, ScriptAnalysisResult } from '../types';
 import { createLLMProvider } from '../providers';
 import { getActiveLLMConfig } from '../store/globalStore';
-import { getPromptTemplate, fillTemplate } from '../store/promptTemplates';
+import { resolvePromptTemplate } from '../store/promptTemplates';
 import { logLLMCall } from '../store/aiCallLogger';
 import { TaskManager, Task } from './TaskManager';
 import { parseLLMJSON } from '../utils/llmJsonParser';
@@ -180,7 +180,11 @@ export class ScriptAnalysisService {
   }
 
   // 调用 LLM
-  private async callLLM(prompt: string, schema: any): Promise<string> {
+  private async callLLM(
+    prompt: string,
+    schema: any,
+    templateMeta?: { templateId?: string; promptSource?: 'default' | 'custom' | 'finalized' }
+  ): Promise<string> {
     if (!this.llmConfig) {
       throw new Error('LLM 配置未设置');
     }
@@ -193,8 +197,8 @@ export class ScriptAnalysisService {
     });
 
     // 获取系统提示词模板
-    const systemPromptTemplate = await getPromptTemplate('script_analysis_system');
-    const systemPrompt = systemPromptTemplate.template;
+    const resolvedSystemPrompt = await resolvePromptTemplate('script_analysis_system', {});
+    const systemPrompt = resolvedSystemPrompt.prompt;
 
     // 构建带 JSON Schema 约束的 prompt
     const fullPrompt = `${prompt}\n\n请严格按以下 JSON Schema 格式输出：\n${JSON.stringify(schema, null, 2)}`;
@@ -204,7 +208,11 @@ export class ScriptAnalysisService {
       this.llmConfig.name || 'LLM',
       fullPrompt,
       systemPrompt,
-      { targetName: '剧本解析' }
+      {
+        targetName: '剧本解析',
+        templateId: templateMeta?.templateId || resolvedSystemPrompt.template.id,
+        promptSource: templateMeta?.promptSource || resolvedSystemPrompt.source,
+      }
     );
 
     const result = await provider.generateText(fullPrompt, systemPrompt);
@@ -237,15 +245,14 @@ export class ScriptAnalysisService {
     this.reportProgress('characters', 'running', `正在分析角色...${modeHint}`);
 
     try {
-      const template = await getPromptTemplate('character_extraction');
-      const styleSuffix = this.getResolvedLLMStyleSuffix();
-      const prompt = fillTemplate(template.template, {
+      const resolvedPrompt = await resolvePromptTemplate('character_extraction', {
         script: effectiveScript,
-        styleSuffix,
-        llmPromptSuffix: styleSuffix,
       });
-      const styledPrompt = this.appendStyleRequirement(prompt);
-      const result = await this.callLLM(styledPrompt, CHARACTERS_SCHEMA);
+      const styledPrompt = this.appendStyleRequirement(resolvedPrompt.prompt);
+      const result = await this.callLLM(styledPrompt, CHARACTERS_SCHEMA, {
+        templateId: resolvedPrompt.template.id,
+        promptSource: resolvedPrompt.source,
+      });
       const parsed = this.parseJSON<{ characters: any[] }>(result);
 
       const characters: Character[] = parsed.characters.map((c, index) => ({
@@ -277,15 +284,14 @@ export class ScriptAnalysisService {
     this.reportProgress('scenes', 'running', `正在分析场景...${modeHint}`);
 
     try {
-      const template = await getPromptTemplate('scene_extraction');
-      const styleSuffix = this.getResolvedLLMStyleSuffix();
-      const prompt = fillTemplate(template.template, {
+      const resolvedPrompt = await resolvePromptTemplate('scene_extraction', {
         script: effectiveScript,
-        styleSuffix,
-        llmPromptSuffix: styleSuffix,
       });
-      const styledPrompt = this.appendStyleRequirement(prompt);
-      const result = await this.callLLM(styledPrompt, SCENES_SCHEMA);
+      const styledPrompt = this.appendStyleRequirement(resolvedPrompt.prompt);
+      const result = await this.callLLM(styledPrompt, SCENES_SCHEMA, {
+        templateId: resolvedPrompt.template.id,
+        promptSource: resolvedPrompt.source,
+      });
       const parsed = this.parseJSON<{ scenes: any[] }>(result);
 
       const scenes: Scene[] = parsed.scenes.map((s, index) => ({
@@ -317,15 +323,14 @@ export class ScriptAnalysisService {
     this.reportProgress('props', 'running', `正在分析道具...${modeHint}`);
 
     try {
-      const template = await getPromptTemplate('prop_extraction');
-      const styleSuffix = this.getResolvedLLMStyleSuffix();
-      const prompt = fillTemplate(template.template, {
+      const resolvedPrompt = await resolvePromptTemplate('prop_extraction', {
         script: effectiveScript,
-        styleSuffix,
-        llmPromptSuffix: styleSuffix,
       });
-      const styledPrompt = this.appendStyleRequirement(prompt);
-      const result = await this.callLLM(styledPrompt, PROPS_SCHEMA);
+      const styledPrompt = this.appendStyleRequirement(resolvedPrompt.prompt);
+      const result = await this.callLLM(styledPrompt, PROPS_SCHEMA, {
+        templateId: resolvedPrompt.template.id,
+        promptSource: resolvedPrompt.source,
+      });
       const parsed = this.parseJSON<{ props: any[] }>(result);
 
       const props: Prop[] = parsed.props.map((p, index) => ({
@@ -360,19 +365,18 @@ export class ScriptAnalysisService {
     this.reportProgress('shots', 'running', `正在生成分镜...${modeHint}`);
 
     try {
-      const template = await getPromptTemplate('shot_breakdown');
-      const styleSuffix = this.getResolvedLLMStyleSuffix();
-      const prompt = fillTemplate(template.template, {
+      const resolvedPrompt = await resolvePromptTemplate('shot_breakdown', {
         script: effectiveScript,
         characters: characters.map(c => c.name).join(', '),
         scenes: scenes.map(s => s.name).join(', '),
         props: props.map(p => p.name).join(', '),
-        styleSuffix,
-        llmPromptSuffix: styleSuffix,
       });
 
-      const styledPrompt = this.appendStyleRequirement(prompt);
-      const result = await this.callLLM(styledPrompt, SHOTS_SCHEMA);
+      const styledPrompt = this.appendStyleRequirement(resolvedPrompt.prompt);
+      const result = await this.callLLM(styledPrompt, SHOTS_SCHEMA, {
+        templateId: resolvedPrompt.template.id,
+        promptSource: resolvedPrompt.source,
+      });
       const parsed = this.parseJSON<{ shots: any[] }>(result);
 
       // 将角色名映射到 ID

@@ -18,6 +18,8 @@ export interface AICallLog {
   traceId?: string;
   source?: string;
   operation?: string;
+  templateId?: string;
+  promptSource?: 'default' | 'custom' | 'finalized';
 }
 
 const TYPE_LABELS: Record<AICallType, string> = {
@@ -39,6 +41,8 @@ export function logAICall(log: AICallLog): void {
     service: log.service,
     source: log.source,
     operation: log.operation,
+    templateId: log.templateId,
+    promptSource: log.promptSource,
     projectId: log.projectId,
     targetId: log.targetId,
     targetName: log.targetName,
@@ -72,7 +76,13 @@ export function logTTICall(
   service: string,
   prompt: string,
   options?: { width?: number; height?: number; [key: string]: any },
-  meta?: { projectId?: string; targetId?: string; targetName?: string }
+  meta?: {
+    projectId?: string;
+    targetId?: string;
+    targetName?: string;
+    templateId?: string;
+    promptSource?: 'default' | 'custom' | 'finalized';
+  }
 ): void {
   logAICall({
     type: 'tti',
@@ -91,7 +101,13 @@ export function logITVCall(
   imageSource: string,
   prompt: string,
   options?: { duration?: number; aspectRatio?: string; [key: string]: any },
-  meta?: { projectId?: string; targetId?: string; targetName?: string }
+  meta?: {
+    projectId?: string;
+    targetId?: string;
+    targetName?: string;
+    templateId?: string;
+    promptSource?: 'default' | 'custom' | 'finalized';
+  }
 ): void {
   logAICall({
     type: 'itv',
@@ -116,6 +132,8 @@ export function logLLMCall(
     traceId?: string;
     source?: string;
     operation?: string;
+    templateId?: string;
+    promptSource?: 'default' | 'custom' | 'finalized';
   }
 ): void {
   logAICall({
@@ -142,6 +160,8 @@ export function logTTSCall(
     traceId?: string;
     source?: string;
     operation?: string;
+    templateId?: string;
+    promptSource?: 'default' | 'custom' | 'finalized';
   }
 ): void {
   logAICall({

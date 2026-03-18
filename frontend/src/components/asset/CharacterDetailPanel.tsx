@@ -36,7 +36,7 @@ import {
   ExpandOutlined,
 } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
-import type { Character } from '../../types';
+import type { Character, ProjectStyleSnapshot } from '../../types';
 import {
   generateCostumePhoto,
   generateCharacterPreviewVideo,
@@ -56,6 +56,7 @@ interface CharacterDetailPanelProps {
   projectId: string;
   theme?: string;
   stylePrompt?: string;
+  styleSnapshot?: ProjectStyleSnapshot;
   ttiConfigId?: string;
   itvConfigId?: string;
   onUpdate: (character: Character) => void;
@@ -70,6 +71,7 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
   projectId,
   theme,
   stylePrompt,
+  styleSnapshot,
   ttiConfigId,
   itvConfigId,
   onUpdate,
@@ -162,6 +164,7 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
         character: charWithPrompt,
         theme,
         stylePrompt,
+        styleSnapshot,
         ttiConfigId,
         onProgress: (p, step) => {
           setProgress(p);
@@ -193,7 +196,7 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
     } finally {
       setGenerating(null);
     }
-  }, [editedCharacter, projectId, theme, stylePrompt, ttiConfigId, form, onUpdate, message]);
+  }, [editedCharacter, projectId, theme, stylePrompt, styleSnapshot, ttiConfigId, form, onUpdate, message]);
 
   const handleUploadCostume = useCallback(async () => {
     try {
@@ -251,6 +254,9 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
       const result = await generateCharacterPreviewVideo({
         projectId,
         character: editedCharacter,
+        theme,
+        stylePrompt,
+        styleSnapshot,
         itvConfigId,
         onProgress: (p, step) => {
           setProgress(p);
@@ -281,7 +287,7 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
     } finally {
       setGenerating(null);
     }
-  }, [editedCharacter, projectId, itvConfigId, onUpdate, message, t]);
+  }, [editedCharacter, projectId, theme, stylePrompt, styleSnapshot, itvConfigId, onUpdate, message, t]);
 
   const handleUploadVideo = useCallback(async () => {
     try {

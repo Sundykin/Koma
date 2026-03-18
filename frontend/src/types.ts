@@ -341,6 +341,10 @@ export interface AppSettings {
   ttiConfigs: TTIModelConfig[];
   itvConfigs: ITVModelConfig[];
   ttsConfigs: TTSModelConfig[];
+  promptTemplates?: Record<string, {
+    template: string;
+    updatedAt: number;
+  }>;
   customThemePresets?: ThemePreset[];  // 用户自定义视觉风格预设
   channelConfigs?: import('./providers/channel/types').ChannelConfig[];  // 渠道配置（Provider 注入版）
   imageHostingConfig?: ImageHostingConfig;  // 图床配置
