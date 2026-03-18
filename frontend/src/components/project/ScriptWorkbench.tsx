@@ -42,11 +42,11 @@ export const ScriptWorkbench = forwardRef<ScriptWorkbenchRef, ScriptWorkbenchPro
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastSavedRef = useRef(episode?.scriptText || '');
 
-  // 同步外部 episode 变化
+  // 同步外部 episode 变化（仅在剧集 ID 切换时重置本地内容）
   useEffect(() => {
     setLocalScript(episode?.scriptText || '');
     lastSavedRef.current = episode?.scriptText || '';
-  }, [episode?.id, episode?.scriptText]);
+  }, [episode?.id]);
 
   // 自动保存 (防抖 2s)
   const saveScript = useCallback(async (text: string): Promise<Episode | null> => {
@@ -98,31 +98,39 @@ export const ScriptWorkbench = forwardRef<ScriptWorkbenchRef, ScriptWorkbenchPro
 
   const handleScriptChange = useCallback((text: string) => {
     setLocalScript(text);
-    onScriptChange(text);
 
     // 清除之前的定时器
     if (saveTimeoutRef.current) {
       clearTimeout(saveTimeoutRef.current);
     }
 
-    // 设置新的定时器
+    // 设置新的定时器，保存成功后 saveScript 内部会回调 onScriptChange
     saveTimeoutRef.current = setTimeout(() => {
       saveScript(text);
     }, 2000);
   }, [saveScript]);
 
-  // 组件卸载时保存
+  // 用 ref 追踪最新状态，供组件卸载时使用
+  const localScriptRef = useRef(localScript);
+  localScriptRef.current = localScript;
+
+  // 组件卸载时保存（剧集切换由 flushSave 处理，不在此处保存）
   useEffect(() => {
+    const episodeId = episode?.id;
     return () => {
       if (saveTimeoutRef.current) {
         clearTimeout(saveTimeoutRef.current);
+        saveTimeoutRef.current = null;
       }
-      // 立即保存未保存的内容
-      if (localScript !== lastSavedRef.current && episode) {
-        saveEpisode(project.id, episode.id, { scriptText: localScript }).catch(err => logger.error('保存失败', err));
+      // 仅在组件卸载时保存，剧集切换走 flushSave 路径
+      if (episodeId) {
+        const currentScript = localScriptRef.current;
+        if (currentScript !== lastSavedRef.current) {
+          saveEpisode(project.id, episodeId, { scriptText: currentScript }).catch(err => logger.error('保存失败', err));
+        }
       }
     };
-  }, [localScript, episode, project.id]);
+  }, [project.id]);
 
   // AI 随机生成
   const handleRandomGenerate = async () => {

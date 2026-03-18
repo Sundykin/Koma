@@ -14,7 +14,7 @@ import { EpisodeManager, EpisodeManagerRef } from './EpisodeManager';
 import { EpisodeSplitWizard } from './EpisodeSplitWizard';
 import { ProjectAssetOverview } from './ProjectAssetOverview';
 import { ScriptWorkbench, type ScriptWorkbenchRef } from './ScriptWorkbench';
-import { saveProject, loadProject, listEpisodes } from '../../store/projectStore';
+import { saveProject, loadProject, listEpisodes, loadEpisode } from '../../store/projectStore';
 import { loadSettings, getChannelsByCapability } from '../../store/globalStore';
 import { createLogger } from '../../store/logger';
 import { THEME_PRESETS } from '../../config/themePresets';
@@ -105,10 +105,13 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
     loadFirstEpisode();
   }, [project.id]);
 
-  // 点击剧集：切换中间区域的剧本内容
-  const handleEpisodeSelect = useCallback((episode: Episode) => {
-    setSelectedEpisode(episode);
-  }, []);
+  // 点击剧集：先保存当前内容，再从磁盘加载最新数据后切换
+  const handleEpisodeSelect = useCallback(async (episode: Episode) => {
+    await scriptWorkbenchRef.current?.flushSave();
+    // 从磁盘加载最新数据，避免使用 EpisodeManager 中的陈旧 scriptText
+    const fresh = await loadEpisode(project.id, episode.id);
+    setSelectedEpisode(fresh || episode);
+  }, [project.id]);
 
   const handleEpisodeUpdate = useCallback((episode: Episode) => {
     setSelectedEpisode(prev => prev?.id === episode.id ? episode : prev);
@@ -127,10 +130,8 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
 
   // 剧本内容变更（自动保存后回调）
   const handleScriptChange = useCallback((text: string) => {
-    if (selectedEpisode) {
-      setSelectedEpisode({ ...selectedEpisode, scriptText: text });
-    }
-  }, [selectedEpisode]);
+    setSelectedEpisode(prev => prev ? { ...prev, scriptText: text } : prev);
+  }, []);
 
   const handleSaveTitle = useCallback(async () => {
     if (titleValue.trim() && titleValue !== project.title) {
