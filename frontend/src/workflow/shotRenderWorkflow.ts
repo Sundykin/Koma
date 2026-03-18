@@ -9,6 +9,7 @@ import { createTask, markTaskCompleted } from '../store/taskQueueStore';
 import { createLogger } from '../store/logger';
 import { logITVCall, logTTSCall } from '../store/aiCallLogger';
 import { resolvePromptTemplate } from '../store/promptTemplates';
+import { resolveImageSourceForAPI } from '../store/assetDownloadService';
 import { getThemeStylePrefixAsync } from '../config/themePresets';
 import { parseMentions } from '../editor/mentionTypes';
 
@@ -63,29 +64,31 @@ interface BatchRenderResult {
 }
 
 /**
- * 从 shot 中获取当前选中的参考图片远程URL
- * 只返回 http/https 开头的远程地址
+ * 从 shot 中获取当前选中的参考图片，并确保可用于远程 API
+ * 返回 http/https URL、data URI，或 undefined
  */
-function getSelectedImageUrl(shot: Shot): string | undefined {
-  // 检查是否是远程URL
-  const isRemoteUrl = (url: string) => url.startsWith('http://') || url.startsWith('https://');
-
+async function getSelectedImageUrl(shot: Shot): Promise<string | undefined> {
   // 优先使用 imagePaths 列表中当前选中的图片
   if (shot.imagePaths && shot.imagePaths.length > 0) {
     const idx = shot.currentImageIndex || 0;
     const selected = shot.imagePaths[idx];
-    if (selected && isRemoteUrl(selected)) {
-      logger.info(`使用 imagePaths[${idx}] 远程URL: ${selected}`);
-      return selected;
+    if (selected) {
+      const resolved = await resolveImageSourceForAPI(selected);
+      if (resolved) {
+        logger.info(`使用 imagePaths[${idx}]: ${resolved.startsWith('data:') ? 'data:...(base64)' : resolved}`);
+        return resolved;
+      }
     }
   }
   // 兼容旧字段 imageUrl
-  if (shot.imageUrl && isRemoteUrl(shot.imageUrl)) {
-    logger.info(`使用 imageUrl 远程URL: ${shot.imageUrl}`);
-    return shot.imageUrl;
+  if (shot.imageUrl) {
+    const resolved = await resolveImageSourceForAPI(shot.imageUrl);
+    if (resolved) {
+      logger.info(`使用 imageUrl: ${resolved.startsWith('data:') ? 'data:...(base64)' : resolved}`);
+      return resolved;
+    }
   }
-  // 不使用本地路径
-  logger.info('没有可用的远程图片URL');
+  logger.info('没有可用的参考图片');
   return undefined;
 }
 
@@ -115,7 +118,7 @@ export async function shotRenderWorkflow(
   }
 
   // 获取当前选中的参考图片
-  const referenceImageUrl = getSelectedImageUrl(shot);
+  const referenceImageUrl = await getSelectedImageUrl(shot);
   logger.info(`参考图片: ${referenceImageUrl || '无'}`);
 
   try {

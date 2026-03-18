@@ -41,6 +41,7 @@ interface ElectronAPI {
   };
   fs: {
     readFile: (path: string) => Promise<string | { content: string }>;
+    readFileAsBase64: (path: string) => Promise<string | { base64: string }>;
     writeFile: (path: string, data: string, binary?: boolean) => Promise<void>;
     downloadFile: (url: string, destPath: string) => Promise<{ success: boolean; size: number }>;
     exists: (path: string) => Promise<boolean | { exists: boolean }>;
@@ -226,6 +227,17 @@ export const fsReadFile = async (path: string): Promise<string> => {
     // Controller 返回 { content: string }，需要解包
     return typeof result === 'object' && result !== null && 'content' in result
       ? (result as { content: string }).content
+      : (result as string);
+  }
+  throw new Error('File system not available in browser');
+};
+
+export const fsReadFileAsBase64 = async (path: string): Promise<string> => {
+  const api = getElectronAPI();
+  if (api) {
+    const result = await api.fs.readFileAsBase64(path);
+    return typeof result === 'object' && result !== null && 'base64' in result
+      ? (result as { base64: string }).base64
       : (result as string);
   }
   throw new Error('File system not available in browser');
@@ -548,6 +560,7 @@ export const electronService = {
   },
   fs: {
     readFile: fsReadFile,
+    readFileAsBase64: fsReadFileAsBase64,
     writeFile: fsWriteFile,
     exists: fsExists,
     mkdir: fsMkdir,

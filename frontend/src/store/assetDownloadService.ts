@@ -104,3 +104,57 @@ export async function getAssetPath(
   }
   return remoteUrl || null;
 }
+
+/**
+ * 将图片源解析为远程 API 可用的格式（URL 或 data URI）
+ * - http/https URL → 直接返回
+ * - data: URI → 直接返回
+ * - 本地文件路径 → 读取文件并转为 data URI
+ * - 空值 → 返回 undefined
+ *
+ * 用于 ITV 等远程 API 调用前，确保 image_url 参数合法
+ */
+export async function resolveImageSourceForAPI(
+  source?: string
+): Promise<string | undefined> {
+  if (!source) return undefined;
+
+  // 已经是远程 URL
+  if (source.startsWith('http://') || source.startsWith('https://')) {
+    return source;
+  }
+
+  // 已经是 data URI
+  if (source.startsWith('data:')) {
+    return source;
+  }
+
+  // 本地文件路径 → 读取并转为 data URI
+  if (!electronService.isElectron()) return undefined;
+
+  try {
+    const exists = await electronService.fs.exists(source);
+    if (!exists) {
+      logger.warn(`本地文件不存在，跳过: ${source}`);
+      return undefined;
+    }
+
+    const base64 = await electronService.fs.readFileAsBase64(source);
+    // 根据扩展名推断 MIME 类型
+    const ext = source.split('.').pop()?.toLowerCase() || 'png';
+    const mimeMap: Record<string, string> = {
+      'jpg': 'image/jpeg',
+      'jpeg': 'image/jpeg',
+      'png': 'image/png',
+      'gif': 'image/gif',
+      'webp': 'image/webp',
+      'bmp': 'image/bmp',
+    };
+    const mime = mimeMap[ext] || 'image/png';
+    logger.info(`本地文件转 data URI: ${source} (${mime})`);
+    return `data:${mime};base64,${base64}`;
+  } catch (err: any) {
+    logger.warn(`读取本地文件失败: ${source}`, { error: err.message });
+    return undefined;
+  }
+}

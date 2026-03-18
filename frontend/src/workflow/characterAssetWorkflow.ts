@@ -6,7 +6,7 @@ import type { Character } from '../types';
 import { getProjectTTIProvider, getProjectITVProvider } from '../providers';
 import { createTask, updateTask, markTaskCompleted, getTask } from '../store/taskQueueStore';
 import { pollTaskUntilComplete } from '../store/taskRecoveryService';
-import { downloadRemoteAsset } from '../store/assetDownloadService';
+import { downloadRemoteAsset, resolveImageSourceForAPI } from '../store/assetDownloadService';
 import {
   saveCharacterCostumePhoto,
   saveCharacters,
@@ -135,17 +135,18 @@ export async function generateCostumePhoto(
       // 同步模式，直接保存
       onProgress?.(90, '保存定妆照...');
 
-      // 判断返回的是远程 URL 还是本地路径
+      // 判断返回的是远程 URL、data URL 还是本地路径
       const isRemoteUrl = result.path.startsWith('http://') || result.path.startsWith('https://');
+      const isDataUrl = result.path.startsWith('data:');
       let localPath: string;
       let remoteUrl: string | undefined;
 
-      if (isRemoteUrl) {
-        // 远程 URL，需要下载
-        remoteUrl = result.path;
+      if (isRemoteUrl || isDataUrl) {
+        // 远程 URL 或 data URL（base64），需要下载/写入
+        if (isRemoteUrl) remoteUrl = result.path;
         const config = getStorageConfig() || (await initStorageConfig());
         localPath = `${config.rootPath}/projects/${projectId}/assets/characters/${character.id}/costume-photo.png`;
-        const downloadResult = await downloadRemoteAsset(remoteUrl, localPath);
+        const downloadResult = await downloadRemoteAsset(result.path, localPath);
         if (!downloadResult.success) {
           throw new Error('下载图片失败');
         }
@@ -185,14 +186,20 @@ export async function generateCharacterPreviewVideo(
   onProgress?.(0, '准备生成预览视频...');
 
   // 优先使用远程 URL，其次使用本地路径
-  const imageSource = character.costumePhotoUrl || character.costumePhotoPath;
-  if (!imageSource) {
+  const rawImageSource = character.costumePhotoUrl || character.costumePhotoPath;
+  if (!rawImageSource) {
     return { success: false, error: '请先生成定妆照' };
+  }
+
+  // 将本地路径转为 data URI，确保远程 API 可用
+  const imageSource = await resolveImageSourceForAPI(rawImageSource);
+  if (!imageSource) {
+    return { success: false, error: '无法读取定妆照图片，请重新生成' };
   }
 
   // 如果没有远程 URL，提示用户可能需要重新生成
   if (!character.costumePhotoUrl) {
-    logger.warn(`角色 ${character.name} 没有远程图片 URL，将使用本地路径。某些服务（如 Sora2）可能需要远程 URL。`);
+    logger.warn(`角色 ${character.name} 没有远程图片 URL，已将本地文件转为 data URI。`);
   }
 
   try {

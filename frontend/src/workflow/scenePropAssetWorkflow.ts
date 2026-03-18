@@ -4,7 +4,7 @@
 import type { Scene, Prop } from '../types';
 import { getProjectTTIProvider, getProjectITVProvider } from '../providers';
 import { createTask, markTaskCompleted, markTaskFailed } from '../store/taskQueueStore';
-import { downloadRemoteAsset } from '../store/assetDownloadService';
+import { downloadRemoteAsset, resolveImageSourceForAPI } from '../store/assetDownloadService';
 import {
   saveSceneImage,
   savePropImage,
@@ -205,16 +205,17 @@ export async function generateSceneImage(
 
       const resultPath = result.path || result.url;
       const isRemoteUrl = resultPath?.startsWith('http://') || resultPath?.startsWith('https://');
+      const isDataUrl = resultPath?.startsWith('data:');
 
       let localPath: string;
       let remoteUrl: string | undefined;
 
-      if (isRemoteUrl) {
-        // 远程 URL，需要下载
-        remoteUrl = resultPath;
+      if (isRemoteUrl || isDataUrl) {
+        // 远程 URL 或 data URL（base64），需要下载/写入
+        if (isRemoteUrl) remoteUrl = resultPath;
         const config = getStorageConfig() || (await initStorageConfig());
         const targetPath = `${config.rootPath}/projects/${projectId}/assets/scenes/${scene.id}/preview.png`;
-        const downloadResult = await downloadRemoteAsset(remoteUrl, targetPath);
+        const downloadResult = await downloadRemoteAsset(resultPath, targetPath);
         if (!downloadResult.success || !downloadResult.localPath) {
           throw new Error('下载图片失败');
         }
@@ -378,16 +379,17 @@ export async function generatePropImage(
 
       const resultPath = result.path || result.url;
       const isRemoteUrl = resultPath?.startsWith('http://') || resultPath?.startsWith('https://');
+      const isDataUrl = resultPath?.startsWith('data:');
 
       let localPath: string;
       let remoteUrl: string | undefined;
 
-      if (isRemoteUrl) {
-        // 远程 URL，需要下载
-        remoteUrl = resultPath;
+      if (isRemoteUrl || isDataUrl) {
+        // 远程 URL 或 data URL（base64），需要下载/写入
+        if (isRemoteUrl) remoteUrl = resultPath;
         const config = getStorageConfig() || (await initStorageConfig());
         const targetPath = `${config.rootPath}/projects/${projectId}/assets/props/${prop.id}/reference.png`;
-        const downloadResult = await downloadRemoteAsset(remoteUrl, targetPath);
+        const downloadResult = await downloadRemoteAsset(resultPath, targetPath);
         if (!downloadResult.success || !downloadResult.localPath) {
           throw new Error('下载图片失败');
         }
@@ -481,13 +483,19 @@ export async function generatePropPreviewVideo(
   onProgress?.(0, '准备生成预览视频...');
 
   // 优先使用远程 URL
-  const imageSource = prop.imageUrl || prop.imagePath;
-  if (!imageSource) {
+  const rawImageSource = prop.imageUrl || prop.imagePath;
+  if (!rawImageSource) {
     return { success: false, error: '请先生成道具参考图' };
   }
 
+  // 将本地路径转为 data URI，确保远程 API 可用
+  const imageSource = await resolveImageSourceForAPI(rawImageSource);
+  if (!imageSource) {
+    return { success: false, error: '无法读取道具参考图，请重新生成' };
+  }
+
   if (!prop.imageUrl) {
-    logger.warn(`道具 ${prop.name} 没有远程图片 URL，将使用本地路径。某些服务（如 Sora2）可能需要远程 URL。`);
+    logger.warn(`道具 ${prop.name} 没有远程图片 URL，已将本地文件转为 data URI。`);
   }
 
   try {
