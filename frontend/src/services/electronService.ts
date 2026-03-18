@@ -2,6 +2,7 @@
  * Electron API 服务封装
  * 在浏览器环境下提供 fallback 实现
  */
+import type { ProjectStyleSnapshot } from '../types';
 
 // 类型定义
 export interface ProjectMeta {
@@ -19,6 +20,8 @@ export interface ProjectMeta {
   ttiConfigId?: string;
   itvConfigId?: string;
   ttsConfigId?: string;
+  stylePresetId?: string;
+  styleSnapshot?: ProjectStyleSnapshot;
   // 主题风格
   theme?: string;
   stylePrompt?: string;

@@ -4,7 +4,7 @@
  */
 import React from 'react';
 import { AssetManagerPanel } from './AssetManagerPanel';
-import type { Character, Scene, Prop } from '../../types';
+import type { Character, Scene, Prop, ProjectStyleSnapshot } from '../../types';
 import './AssetManager.css';
 
 interface AssetManagerProps {
@@ -12,6 +12,7 @@ interface AssetManagerProps {
   ttiConfigId?: string;
   itvConfigId?: string;
   theme?: string;
+  styleSnapshot?: ProjectStyleSnapshot;
   stylePrompt?: string;
   episodeId?: string;
   episodeName?: string;

@@ -14,7 +14,7 @@ import {
   FilterOutlined,
 } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
-import type { Character, Scene, Prop, EpisodeAnalysis } from '../../types';
+import type { Character, Scene, Prop, EpisodeAnalysis, ProjectStyleSnapshot } from '../../types';
 import {
   loadCharacters,
   loadScenes,
@@ -36,6 +36,7 @@ interface AssetManagerPanelProps {
   ttiConfigId?: string;
   itvConfigId?: string;
   theme?: string;
+  styleSnapshot?: ProjectStyleSnapshot;
   stylePrompt?: string;
   episodeId?: string;
   episodeName?: string;
@@ -49,7 +50,8 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
   ttiConfigId,
   itvConfigId,
   theme,
-  stylePrompt,
+  styleSnapshot,
+  stylePrompt: legacyStylePrompt,
   episodeId,
   episodeName,
   script,
@@ -75,6 +77,10 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
 
   // 分镜生成状态
   const [isGeneratingShots, setIsGeneratingShots] = useState(false);
+  const stylePrompt = useMemo(
+    () => styleSnapshot?.ttiStylePrefix?.trim() || legacyStylePrompt?.trim() || '',
+    [styleSnapshot, legacyStylePrompt]
+  );
 
   // 加载资产数据
   const loadAssets = useCallback(async () => {

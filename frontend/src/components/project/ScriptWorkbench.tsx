@@ -150,6 +150,8 @@ export const ScriptWorkbench = forwardRef<ScriptWorkbenchRef, ScriptWorkbenchPro
         projectId: project.id,
         targetId: episode?.id,
         targetName: episode?.title || `第${episode?.number || 0}集`,
+        styleSnapshot: project.styleSnapshot,
+        project,
       });
       setLocalScript(script);
       await saveScript(script);
@@ -183,7 +185,8 @@ export const ScriptWorkbench = forwardRef<ScriptWorkbenchRef, ScriptWorkbenchPro
         {} as AppSettings,
         localScript,
         '使语言更加生动，对话更自然，情节更紧凑',
-        () => {}
+        () => {},
+        { styleSnapshot: project.styleSnapshot, project }
       );
       setLocalScript(polished);
       await saveScript(polished);
@@ -212,7 +215,9 @@ export const ScriptWorkbench = forwardRef<ScriptWorkbenchRef, ScriptWorkbenchPro
         episode.id,
         episode.title || `第${episode.number}集`,
         localScript,
-        project.llmConfigId
+        project.llmConfigId,
+        project.styleSnapshot,
+        project
       );
       message.success('解析任务已启动，可在状态栏查看进度');
     } catch (err: unknown) {

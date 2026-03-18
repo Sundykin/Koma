@@ -20,6 +20,11 @@ import {
   loadProps,
 } from '../store/projectStore';
 
+interface StyleSnapshotLike {
+  ttiStylePrefix?: string;
+  llmPromptSuffix?: string;
+}
+
 // 解析阶段
 export type AnalysisStage = 'characters' | 'scenes' | 'props' | 'shots';
 
@@ -136,18 +141,26 @@ export class ScriptAnalysisService {
   private llmConfig: LLMModelConfig | null = null;
   private onProgress?: (progress: AnalysisProgress) => void;
   private episodeContext?: EpisodeContext;
+  private styleSnapshot?: StyleSnapshotLike;
 
   constructor(options?: {
     onProgress?: (progress: AnalysisProgress) => void;
     episodeContext?: EpisodeContext;
+    styleSnapshot?: StyleSnapshotLike;
+    project?: { styleSnapshot?: StyleSnapshotLike };
   }) {
     this.onProgress = options?.onProgress;
     this.episodeContext = options?.episodeContext;
+    this.styleSnapshot = options?.styleSnapshot || options?.project?.styleSnapshot;
   }
 
   // 设置剧集上下文
   setEpisodeContext(context?: EpisodeContext) {
     this.episodeContext = context;
+  }
+
+  setStyleSnapshot(styleSnapshot?: StyleSnapshotLike) {
+    this.styleSnapshot = styleSnapshot;
   }
 
   // 获取当前使用的剧本（优先剧集剧本）
@@ -203,6 +216,18 @@ export class ScriptAnalysisService {
     return parseLLMJSON<T>(text);
   }
 
+  private getResolvedLLMStyleSuffix(): string {
+    return this.styleSnapshot?.llmPromptSuffix?.trim() || '';
+  }
+
+  private appendStyleRequirement(prompt: string): string {
+    const styleSuffix = this.getResolvedLLMStyleSuffix();
+    if (!styleSuffix) {
+      return prompt;
+    }
+    return `${prompt}\n\n【项目风格要求】\n${styleSuffix}`;
+  }
+
   // 提取角色
   async extractCharacters(script: string): Promise<StageResult<Character[]>> {
     const effectiveScript = this.getScript(script);
@@ -213,8 +238,14 @@ export class ScriptAnalysisService {
 
     try {
       const template = await getPromptTemplate('character_extraction');
-      const prompt = fillTemplate(template.template, { script: effectiveScript });
-      const result = await this.callLLM(prompt, CHARACTERS_SCHEMA);
+      const styleSuffix = this.getResolvedLLMStyleSuffix();
+      const prompt = fillTemplate(template.template, {
+        script: effectiveScript,
+        styleSuffix,
+        llmPromptSuffix: styleSuffix,
+      });
+      const styledPrompt = this.appendStyleRequirement(prompt);
+      const result = await this.callLLM(styledPrompt, CHARACTERS_SCHEMA);
       const parsed = this.parseJSON<{ characters: any[] }>(result);
 
       const characters: Character[] = parsed.characters.map((c, index) => ({
@@ -247,8 +278,14 @@ export class ScriptAnalysisService {
 
     try {
       const template = await getPromptTemplate('scene_extraction');
-      const prompt = fillTemplate(template.template, { script: effectiveScript });
-      const result = await this.callLLM(prompt, SCENES_SCHEMA);
+      const styleSuffix = this.getResolvedLLMStyleSuffix();
+      const prompt = fillTemplate(template.template, {
+        script: effectiveScript,
+        styleSuffix,
+        llmPromptSuffix: styleSuffix,
+      });
+      const styledPrompt = this.appendStyleRequirement(prompt);
+      const result = await this.callLLM(styledPrompt, SCENES_SCHEMA);
       const parsed = this.parseJSON<{ scenes: any[] }>(result);
 
       const scenes: Scene[] = parsed.scenes.map((s, index) => ({
@@ -281,8 +318,14 @@ export class ScriptAnalysisService {
 
     try {
       const template = await getPromptTemplate('prop_extraction');
-      const prompt = fillTemplate(template.template, { script: effectiveScript });
-      const result = await this.callLLM(prompt, PROPS_SCHEMA);
+      const styleSuffix = this.getResolvedLLMStyleSuffix();
+      const prompt = fillTemplate(template.template, {
+        script: effectiveScript,
+        styleSuffix,
+        llmPromptSuffix: styleSuffix,
+      });
+      const styledPrompt = this.appendStyleRequirement(prompt);
+      const result = await this.callLLM(styledPrompt, PROPS_SCHEMA);
       const parsed = this.parseJSON<{ props: any[] }>(result);
 
       const props: Prop[] = parsed.props.map((p, index) => ({
@@ -318,14 +361,18 @@ export class ScriptAnalysisService {
 
     try {
       const template = await getPromptTemplate('shot_breakdown');
+      const styleSuffix = this.getResolvedLLMStyleSuffix();
       const prompt = fillTemplate(template.template, {
         script: effectiveScript,
         characters: characters.map(c => c.name).join(', '),
         scenes: scenes.map(s => s.name).join(', '),
         props: props.map(p => p.name).join(', '),
+        styleSuffix,
+        llmPromptSuffix: styleSuffix,
       });
 
-      const result = await this.callLLM(prompt, SHOTS_SCHEMA);
+      const styledPrompt = this.appendStyleRequirement(prompt);
+      const result = await this.callLLM(styledPrompt, SHOTS_SCHEMA);
       const parsed = this.parseJSON<{ shots: any[] }>(result);
 
       // 将角色名映射到 ID
@@ -388,9 +435,10 @@ export class ScriptAnalysisService {
 // 便捷函数：创建服务实例
 export function createScriptAnalysisService(
   onProgress?: (progress: AnalysisProgress) => void,
-  episodeContext?: EpisodeContext
+  episodeContext?: EpisodeContext,
+  styleSnapshot?: StyleSnapshotLike
 ): ScriptAnalysisService {
-  return new ScriptAnalysisService({ onProgress, episodeContext });
+  return new ScriptAnalysisService({ onProgress, episodeContext, styleSnapshot });
 }
 
 /**
@@ -412,7 +460,9 @@ export class BackgroundAnalysisService {
     episodeId: string,
     episodeName: string,
     script: string,
-    llmConfigId?: string
+    llmConfigId?: string,
+    styleSnapshot?: StyleSnapshotLike,
+    project?: { styleSnapshot?: StyleSnapshotLike }
   ): Promise<Task> {
     // 创建任务
     this.task = TaskManager.createTask({
@@ -427,7 +477,7 @@ export class BackgroundAnalysisService {
     TaskManager.updateTask(this.task.id, { status: 'running', progress: 0 });
 
     // 异步执行解析
-    this.runAnalysis(episodeId, episodeName, script, llmConfigId);
+    this.runAnalysis(episodeId, episodeName, script, llmConfigId, styleSnapshot, project);
 
     return this.task;
   }
@@ -439,7 +489,9 @@ export class BackgroundAnalysisService {
     episodeId: string,
     episodeName: string,
     script: string,
-    llmConfigId?: string
+    llmConfigId?: string,
+    styleSnapshot?: StyleSnapshotLike,
+    project?: { styleSnapshot?: StyleSnapshotLike }
   ): Promise<void> {
     if (!this.task) return;
 
@@ -476,6 +528,7 @@ export class BackgroundAnalysisService {
           episodeName,
           episodeScript: script,
         },
+        styleSnapshot: styleSnapshot || project?.styleSnapshot,
       });
 
       // 设置 LLM 配置
@@ -563,8 +616,10 @@ export async function startBackgroundAnalysis(
   episodeId: string,
   episodeName: string,
   script: string,
-  llmConfigId?: string
+  llmConfigId?: string,
+  styleSnapshot?: StyleSnapshotLike,
+  project?: { styleSnapshot?: StyleSnapshotLike }
 ): Promise<Task> {
   const service = new BackgroundAnalysisService(projectId);
-  return service.startAnalysis(episodeId, episodeName, script, llmConfigId);
+  return service.startAnalysis(episodeId, episodeName, script, llmConfigId, styleSnapshot, project);
 }

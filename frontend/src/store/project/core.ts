@@ -33,6 +33,8 @@ function fromElectronProject(meta: ElectronProjectMeta): ProjectMeta {
     ttiConfigId: meta.ttiConfigId,
     itvConfigId: meta.itvConfigId,
     ttsConfigId: meta.ttsConfigId,
+    stylePresetId: meta.stylePresetId,
+    styleSnapshot: meta.styleSnapshot,
     theme: meta.theme,
     stylePrompt: meta.stylePrompt,
   };
@@ -51,6 +53,8 @@ function toElectronProject(meta: ProjectMeta): ElectronProjectMeta {
     ttiConfigId: meta.ttiConfigId,
     itvConfigId: meta.itvConfigId,
     ttsConfigId: meta.ttsConfigId,
+    stylePresetId: meta.stylePresetId,
+    styleSnapshot: meta.styleSnapshot,
     theme: meta.theme,
     stylePrompt: meta.stylePrompt,
   };

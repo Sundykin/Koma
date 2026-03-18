@@ -2,11 +2,19 @@
  * 主题预设配置
  * 用于项目风格选择，影响 LLM 创作和 TTI 生成
  */
-import type { ThemePreset } from '../types';
+import type { Project, ProjectStyleSnapshot, ThemePreset } from '../types';
 import { getCustomThemePresets } from '../store/globalStore';
 
 // Re-export for convenience
 export type { ThemePreset } from '../types';
+export type ThemePresetSourceType = 'builtin' | 'custom';
+
+export interface ThemePresetCatalogItem extends ThemePreset {
+  sourceType: ThemePresetSourceType;
+  sourcePresetId: string;
+}
+
+export const DEFAULT_THEME_PRESET_ID = 'realistic';
 
 export const THEME_PRESETS: ThemePreset[] = [
   {
@@ -67,12 +75,94 @@ export const THEME_PRESETS: ThemePreset[] = [
   },
 ];
 
-export function getThemePreset(themeId: string): ThemePreset | undefined {
-  return THEME_PRESETS.find(t => t.id === themeId);
+function isLegacyCustomPreset(themeId?: string): boolean {
+  return !themeId || themeId === 'custom';
+}
+
+function toCatalogItem(preset: ThemePreset, sourceType: ThemePresetSourceType): ThemePresetCatalogItem {
+  return {
+    ...preset,
+    sourceType,
+    sourcePresetId: preset.id,
+  };
+}
+
+export function getBuiltinThemePresets(): ThemePresetCatalogItem[] {
+  return THEME_PRESETS
+    .filter((preset) => preset.id !== 'custom')
+    .map((preset) => toCatalogItem(preset, 'builtin'));
+}
+
+export function getThemePreset(themeId: string): ThemePresetCatalogItem | undefined {
+  return getBuiltinThemePresets().find((preset) => preset.id === themeId);
+}
+
+export async function getAllThemePresets(): Promise<ThemePresetCatalogItem[]> {
+  const customPresets = await getCustomThemePresets();
+  const customCatalog = customPresets.map((preset) => toCatalogItem(preset, 'custom'));
+  return [...customCatalog, ...getBuiltinThemePresets()];
+}
+
+export async function getThemePresetAsync(themeId: string): Promise<ThemePresetCatalogItem | undefined> {
+  if (isLegacyCustomPreset(themeId)) {
+    return undefined;
+  }
+
+  const catalog = await getAllThemePresets();
+  return catalog.find((preset) => preset.id === themeId);
+}
+
+export async function resolveThemePreset(
+  themeId: string = DEFAULT_THEME_PRESET_ID
+): Promise<ThemePresetCatalogItem> {
+  const preset = await getThemePresetAsync(themeId);
+  if (preset) {
+    return preset;
+  }
+
+  const fallbackPreset = getThemePreset(DEFAULT_THEME_PRESET_ID);
+  if (!fallbackPreset) {
+    throw new Error(`Default theme preset not found: ${DEFAULT_THEME_PRESET_ID}`);
+  }
+  return fallbackPreset;
+}
+
+export async function createProjectStyleSnapshot(
+  themeId: string = DEFAULT_THEME_PRESET_ID
+): Promise<ProjectStyleSnapshot> {
+  const preset = await resolveThemePreset(themeId);
+  const createdAt = Date.now();
+
+  return {
+    id: `${preset.sourceType}:${preset.id}:${createdAt}`,
+    name: preset.name,
+    description: preset.description,
+    ttiStylePrefix: preset.ttiStylePrefix,
+    llmPromptSuffix: preset.llmPromptSuffix,
+    sourceType: preset.sourceType,
+    sourcePresetId: preset.sourcePresetId,
+    createdAt,
+  };
+}
+
+export function resolveProjectStyleSnapshot(project?: Pick<Project, 'styleSnapshot'> | null): ProjectStyleSnapshot | undefined {
+  return project?.styleSnapshot;
+}
+
+export function getStylePrefixFromSnapshot(styleSnapshot?: ProjectStyleSnapshot | null): string {
+  return styleSnapshot?.ttiStylePrefix || '';
+}
+
+export function getLLMStyleSuffixFromSnapshot(styleSnapshot?: ProjectStyleSnapshot | null): string {
+  return styleSnapshot?.llmPromptSuffix || '';
+}
+
+export function buildLLMStyleInstruction(styleSnapshot?: ProjectStyleSnapshot | null): string {
+  return getLLMStyleSuffixFromSnapshot(styleSnapshot).trim();
 }
 
 export function getThemeStylePrefix(themeId?: string, customStylePrompt?: string): string {
-  if (!themeId || themeId === 'custom') {
+  if (isLegacyCustomPreset(themeId)) {
     return customStylePrompt ? `${customStylePrompt}, ` : '';
   }
   const theme = getThemePreset(themeId);
@@ -80,43 +170,18 @@ export function getThemeStylePrefix(themeId?: string, customStylePrompt?: string
 }
 
 export function getThemeLLMSuffix(themeId?: string, customStylePrompt?: string): string {
-  if (!themeId || themeId === 'custom') {
+  if (isLegacyCustomPreset(themeId)) {
     return customStylePrompt || '';
   }
   const theme = getThemePreset(themeId);
   return theme?.llmPromptSuffix || '';
 }
 
-// ========== 异步函数（支持自定义预设） ==========
-
-/**
- * 获取所有主题预设（包括用户自定义）
- * 自定义预设排在前面，系统预设在后（排除 'custom' 选项）
- */
-export async function getAllThemePresets(): Promise<ThemePreset[]> {
-  const customPresets = await getCustomThemePresets();
-  const systemPresets = THEME_PRESETS.filter(t => t.id !== 'custom');
-  return [...customPresets, ...systemPresets];
-}
-
-/**
- * 异步获取主题预设（支持自定义预设查找）
- */
-export async function getThemePresetAsync(themeId: string): Promise<ThemePreset | undefined> {
-  // 先查系统预设
-  const systemTheme = THEME_PRESETS.find(t => t.id === themeId);
-  if (systemTheme) return systemTheme;
-
-  // 再查自定义预设
-  const customPresets = await getCustomThemePresets();
-  return customPresets.find(t => t.id === themeId);
-}
-
 /**
  * 异步获取风格前缀（支持自定义预设）
  */
 export async function getThemeStylePrefixAsync(themeId?: string, customStylePrompt?: string): Promise<string> {
-  if (!themeId || themeId === 'custom') {
+  if (isLegacyCustomPreset(themeId)) {
     return customStylePrompt ? `${customStylePrompt}, ` : '';
   }
   const theme = await getThemePresetAsync(themeId);
@@ -127,7 +192,7 @@ export async function getThemeStylePrefixAsync(themeId?: string, customStyleProm
  * 异步获取 LLM 后缀（支持自定义预设）
  */
 export async function getThemeLLMSuffixAsync(themeId?: string, customStylePrompt?: string): Promise<string> {
-  if (!themeId || themeId === 'custom') {
+  if (isLegacyCustomPreset(themeId)) {
     return customStylePrompt || '';
   }
   const theme = await getThemePresetAsync(themeId);

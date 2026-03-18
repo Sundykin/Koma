@@ -22,13 +22,24 @@ import { IMAGE_GENERATION_SIZES } from '../constants/dimensions';
 
 const logger = createLogger('ScenePropAsset');
 
+interface StyleSnapshotLike {
+  ttiStylePrefix?: string;
+  llmPromptSuffix?: string;
+}
+
 // ========== 提示词获取（供外部组件使用）==========
 
 /**
  * 获取场景的自动生成提示词（用于预览显示）
  */
-export function getScenePrompt(scene: Scene, theme?: string, stylePrompt?: string): string {
-  const stylePrefix = getThemeStylePrefix(theme) || stylePrompt || '';
+export function getScenePrompt(
+  scene: Scene,
+  theme?: string,
+  stylePrompt?: string,
+  styleSnapshot?: StyleSnapshotLike,
+  project?: { styleSnapshot?: StyleSnapshotLike }
+): string {
+  const stylePrefix = resolveTTIStylePrefix(styleSnapshot || project?.styleSnapshot, theme, stylePrompt);
   if (scene.customPrompt) return scene.customPrompt;
   return buildScenePromptInternal(scene, stylePrefix);
 }
@@ -36,8 +47,14 @@ export function getScenePrompt(scene: Scene, theme?: string, stylePrompt?: strin
 /**
  * 获取道具的自动生成提示词（用于预览显示）
  */
-export function getPropPrompt(prop: Prop, theme?: string, stylePrompt?: string): string {
-  const stylePrefix = getThemeStylePrefix(theme) || stylePrompt || '';
+export function getPropPrompt(
+  prop: Prop,
+  theme?: string,
+  stylePrompt?: string,
+  styleSnapshot?: StyleSnapshotLike,
+  project?: { styleSnapshot?: StyleSnapshotLike }
+): string {
+  const stylePrefix = resolveTTIStylePrefix(styleSnapshot || project?.styleSnapshot, theme, stylePrompt);
   if (prop.customPrompt) return prop.customPrompt;
   return buildPropPromptInternal(prop, stylePrefix);
 }
@@ -84,6 +101,8 @@ interface GenerateOptions {
   projectId: string;
   theme?: string;
   stylePrompt?: string;
+  styleSnapshot?: StyleSnapshotLike;
+  project?: { styleSnapshot?: StyleSnapshotLike };
   ttiConfigId?: string;
   onProgress?: (progress: number, step: string) => void;
 }
@@ -96,7 +115,7 @@ interface GenerateOptions {
 export async function generateSceneImage(
   options: GenerateOptions & { scene: Scene }
 ): Promise<{ success: boolean; path?: string; url?: string; error?: string }> {
-  const { projectId, scene, theme, stylePrompt, ttiConfigId, onProgress } = options;
+  const { projectId, scene, theme, stylePrompt, styleSnapshot, project, ttiConfigId, onProgress } = options;
 
   logger.info(`开始生成场景预览图: ${scene.name}`);
   onProgress?.(0, '准备生成场景图...');
@@ -108,7 +127,7 @@ export async function generateSceneImage(
     }
 
     // 构建提示词（从配置化模板读取）
-    const stylePrefix = await getThemeStylePrefixAsync(theme, stylePrompt);
+    const stylePrefix = await getResolvedTTIStylePrefix(styleSnapshot || project?.styleSnapshot, theme, stylePrompt);
     let prompt: string;
     try {
       const template = await getPromptTemplate('tti_scene_preview');
@@ -271,7 +290,7 @@ export async function generateAllSceneImages(
 export async function generatePropImage(
   options: GenerateOptions & { prop: Prop }
 ): Promise<{ success: boolean; path?: string; url?: string; error?: string }> {
-  const { projectId, prop, theme, stylePrompt, ttiConfigId, onProgress } = options;
+  const { projectId, prop, theme, stylePrompt, styleSnapshot, project, ttiConfigId, onProgress } = options;
 
   logger.info(`开始生成道具参考图: ${prop.name}`);
   onProgress?.(0, '准备生成道具图...');
@@ -283,7 +302,7 @@ export async function generatePropImage(
     }
 
     // 构建提示词（从配置化模板读取）
-    const stylePrefix = await getThemeStylePrefixAsync(theme, stylePrompt);
+    const stylePrefix = await getResolvedTTIStylePrefix(styleSnapshot || project?.styleSnapshot, theme, stylePrompt);
     let prompt: string;
     try {
       const template = await getPromptTemplate('tti_prop_reference');
@@ -441,6 +460,10 @@ export async function generateAllPropImages(
 interface PropVideoOptions {
   projectId: string;
   prop: Prop;
+  theme?: string;
+  stylePrompt?: string;
+  styleSnapshot?: StyleSnapshotLike;
+  project?: { styleSnapshot?: StyleSnapshotLike };
   itvConfigId?: string;
   onProgress?: (progress: number, step: string) => void;
 }
@@ -452,7 +475,7 @@ interface PropVideoOptions {
 export async function generatePropPreviewVideo(
   options: PropVideoOptions
 ): Promise<{ success: boolean; path?: string; taskId?: string; error?: string }> {
-  const { projectId, prop, itvConfigId, onProgress } = options;
+  const { projectId, prop, theme, stylePrompt, styleSnapshot, project, itvConfigId, onProgress } = options;
 
   logger.info(`开始生成道具预览视频: ${prop.name}`);
   onProgress?.(0, '准备生成预览视频...');
@@ -489,7 +512,9 @@ export async function generatePropPreviewVideo(
     onProgress?.(10, '调用 ITV 服务...');
 
     // 构建道具视频提示词
-    const prompt = prop.customPrompt || `${prop.name} prop showcase, rotating slowly, detailed view, studio lighting`;
+    const resolvedStylePrefix = await getResolvedTTIStylePrefix(styleSnapshot || project?.styleSnapshot, theme, stylePrompt);
+    const basePrompt = prop.customPrompt || `${prop.prompt || prop.description || prop.name}, prop showcase, rotating slowly, detailed view`;
+    const prompt = applyStylePrefix(basePrompt, resolvedStylePrefix);
 
     logITVCall(
       itvProvider.config?.name || 'ITV',
@@ -622,4 +647,36 @@ async function updatePropAsset(
 
 function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function resolveTTIStylePrefix(
+  styleSnapshot?: StyleSnapshotLike,
+  theme?: string,
+  stylePrompt?: string
+): string {
+  return styleSnapshot?.ttiStylePrefix || getThemeStylePrefix(theme, stylePrompt);
+}
+
+async function getResolvedTTIStylePrefix(
+  styleSnapshot?: StyleSnapshotLike,
+  theme?: string,
+  stylePrompt?: string
+): Promise<string> {
+  if (styleSnapshot?.ttiStylePrefix) {
+    return styleSnapshot.ttiStylePrefix;
+  }
+  return getThemeStylePrefixAsync(theme, stylePrompt);
+}
+
+function applyStylePrefix(prompt: string, stylePrefix?: string): string {
+  const basePrompt = prompt.trim();
+  const prefix = (stylePrefix || '').trim();
+  if (!prefix) {
+    return basePrompt;
+  }
+  if (basePrompt.startsWith(prefix)) {
+    return basePrompt;
+  }
+  const normalizedPrefix = prefix.endsWith(',') ? prefix : `${prefix},`;
+  return `${normalizedPrefix} ${basePrompt}`;
 }

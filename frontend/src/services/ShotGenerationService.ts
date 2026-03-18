@@ -20,18 +20,34 @@ const logger = createLogger('ShotGen');
 const POLL_INTERVAL = 3000;
 const MAX_POLL_TIME = 5 * 60 * 1000;
 
+interface StyleSnapshotLike {
+  ttiStylePrefix?: string;
+  llmPromptSuffix?: string;
+}
+
 export class ShotGenerationService {
   private projectId: string;
   private episodeId: string;
   private ttiConfig: TTIModelConfig | null = null;
   private theme?: string;
   private stylePrompt?: string;
+  private styleSnapshot?: StyleSnapshotLike;
 
-  constructor(projectId: string, episodeId: string, options?: { theme?: string; stylePrompt?: string }) {
+  constructor(
+    projectId: string,
+    episodeId: string,
+    options?: {
+      theme?: string;
+      stylePrompt?: string;
+      styleSnapshot?: StyleSnapshotLike;
+      project?: { styleSnapshot?: StyleSnapshotLike };
+    }
+  ) {
     this.projectId = projectId;
     this.episodeId = episodeId;
     this.theme = options?.theme;
     this.stylePrompt = options?.stylePrompt;
+    this.styleSnapshot = options?.styleSnapshot || options?.project?.styleSnapshot;
   }
 
   async setTTIConfig(configId?: string): Promise<boolean> {
@@ -201,11 +217,6 @@ export class ShotGenerationService {
 
       // 替换 @mentions 为资源描述
       prompt = this.replaceMentionsWithDescriptions(prompt, characters, scenes, props);
-
-      const stylePrefix = getThemeStylePrefix(this.theme, this.stylePrompt);
-      if (stylePrefix) {
-        prompt = `${stylePrefix.replace(/,\s*$/, '')}, ${prompt}`;
-      }
       return { prompt, referenceImages };
     }
 
@@ -213,7 +224,7 @@ export class ShotGenerationService {
     const parts: string[] = [];
 
     // 添加风格前缀
-    const stylePrefix = getThemeStylePrefix(this.theme, this.stylePrompt);
+    const stylePrefix = this.getResolvedTTIStylePrefix();
     if (stylePrefix) {
       parts.push(stylePrefix.replace(/,\s*$/, ''));
     }
@@ -266,6 +277,10 @@ export class ShotGenerationService {
     parts.push('cinematic lighting, high quality, 4k, detailed');
 
     return { prompt: parts.join(', '), referenceImages };
+  }
+
+  private getResolvedTTIStylePrefix(): string {
+    return this.styleSnapshot?.ttiStylePrefix || getThemeStylePrefix(this.theme, this.stylePrompt);
   }
 
   /**
@@ -406,7 +421,12 @@ export async function generateShotImage(
   characters: Character[],
   scenes: Scene[],
   configId?: string,
-  styleOptions?: { theme?: string; stylePrompt?: string }
+  styleOptions?: {
+    theme?: string;
+    stylePrompt?: string;
+    styleSnapshot?: StyleSnapshotLike;
+    project?: { styleSnapshot?: StyleSnapshotLike };
+  }
 ): Promise<Task> {
   const service = new ShotGenerationService(projectId, episodeId, styleOptions);
   return service.generateShotImage(shotId, characters, scenes, configId);
@@ -422,7 +442,12 @@ export async function batchGenerateShotImages(
   characters: Character[],
   scenes: Scene[],
   configId?: string,
-  styleOptions?: { theme?: string; stylePrompt?: string }
+  styleOptions?: {
+    theme?: string;
+    stylePrompt?: string;
+    styleSnapshot?: StyleSnapshotLike;
+    project?: { styleSnapshot?: StyleSnapshotLike };
+  }
 ): Promise<Task[]> {
   const service = new ShotGenerationService(projectId, episodeId, styleOptions);
   return service.batchGenerateShotImages(shotIds, characters, scenes, configId);

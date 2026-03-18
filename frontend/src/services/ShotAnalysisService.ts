@@ -20,6 +20,11 @@ import { extractErrorMessage } from '../utils/errorHandler';
 
 const logger = createLogger('ShotAnalysis');
 
+interface StyleSnapshotLike {
+  ttiStylePrefix?: string;
+  llmPromptSuffix?: string;
+}
+
 // 预选资产类型
 export interface PresetAssets {
   characterIds: string[];
@@ -55,9 +60,11 @@ export class ShotAnalysisService {
   private projectId: string;
   private llmConfig: LLMModelConfig | null = null;
   private presetAssets: PresetAssets | null = null;
+  private styleSnapshot?: StyleSnapshotLike;
 
-  constructor(projectId: string) {
+  constructor(projectId: string, options?: { styleSnapshot?: StyleSnapshotLike; project?: { styleSnapshot?: StyleSnapshotLike } }) {
     this.projectId = projectId;
+    this.styleSnapshot = options?.styleSnapshot || options?.project?.styleSnapshot;
   }
 
   /**
@@ -77,9 +84,14 @@ export class ShotAnalysisService {
     episodeName: string,
     script: string,
     llmConfigId?: string,
-    presetAssets?: PresetAssets
+    presetAssets?: PresetAssets,
+    styleSnapshot?: StyleSnapshotLike,
+    project?: { styleSnapshot?: StyleSnapshotLike }
   ): Promise<Task> {
     this.presetAssets = presetAssets || null;
+    if (styleSnapshot || project?.styleSnapshot) {
+      this.styleSnapshot = styleSnapshot || project?.styleSnapshot;
+    }
 
     const task = TaskManager.createTask({
       projectId: this.projectId,
@@ -125,12 +137,16 @@ export class ShotAnalysisService {
 
       // 构建提示词
       const template = await getPromptTemplate('shot_breakdown');
+      const styleSuffix = this.styleSnapshot?.llmPromptSuffix?.trim() || '';
       const prompt = fillTemplate(template.template, {
         script,
         characters: characters.map(c => `${c.name}（${c.description || ''}）`).join('\n'),
         scenes: scenes.map(s => `${s.name}（${s.description || ''}）`).join('\n'),
         props: props.map(p => `${p.name}（${p.description || ''}）`).join('\n'),
+        styleSuffix,
+        llmPromptSuffix: styleSuffix,
       });
+      const styledPrompt = this.appendStyleRequirement(prompt);
 
       TaskManager.updateTask(taskId, { progress: 30 });
 
@@ -147,7 +163,7 @@ export class ShotAnalysisService {
 
       const result = await provider.chat([
         { role: 'system', content: systemPrompt },
-        { role: 'user', content: prompt },
+        { role: 'user', content: styledPrompt },
       ]);
 
       TaskManager.updateTask(taskId, { progress: 70 });
@@ -219,6 +235,14 @@ export class ShotAnalysisService {
   private parseJSON<T>(text: string): T {
     return parseLLMJSON<T>(text);
   }
+
+  private appendStyleRequirement(prompt: string): string {
+    const styleSuffix = this.styleSnapshot?.llmPromptSuffix?.trim();
+    if (!styleSuffix) {
+      return prompt;
+    }
+    return `${prompt}\n\n【项目风格要求】\n${styleSuffix}`;
+  }
 }
 
 /**
@@ -230,8 +254,18 @@ export async function startShotAnalysis(
   episodeName: string,
   script: string,
   llmConfigId?: string,
-  presetAssets?: PresetAssets
+  presetAssets?: PresetAssets,
+  styleSnapshot?: StyleSnapshotLike,
+  project?: { styleSnapshot?: StyleSnapshotLike }
 ): Promise<Task> {
-  const service = new ShotAnalysisService(projectId);
-  return service.startShotAnalysis(episodeId, episodeName, script, llmConfigId, presetAssets);
+  const service = new ShotAnalysisService(projectId, { styleSnapshot, project });
+  return service.startShotAnalysis(
+    episodeId,
+    episodeName,
+    script,
+    llmConfigId,
+    presetAssets,
+    styleSnapshot,
+    project
+  );
 }

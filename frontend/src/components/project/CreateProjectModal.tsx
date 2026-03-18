@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Modal, Form, Input, Radio, Space, Tooltip } from 'antd';
+import React, { useEffect, useState } from 'react';
+import { Modal, Form, Input, Radio, Space, Spin, Tooltip } from 'antd';
 import {
   SoundOutlined,
   AppstoreOutlined,
@@ -7,7 +7,11 @@ import {
 } from '@ant-design/icons';
 import { Check } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { THEME_PRESETS } from '../../config/themePresets';
+import {
+  DEFAULT_THEME_PRESET_ID,
+  getAllThemePresets,
+  type ThemePresetCatalogItem,
+} from '../../config/themePresets';
 
 interface CreateProjectModalProps {
   isOpen: boolean;
@@ -15,36 +19,64 @@ interface CreateProjectModalProps {
   onCreate: (data: {
     title: string;
     mode: 'drama' | 'narration';
-    theme?: string;
-    stylePrompt?: string;
+    stylePresetId: string;
   }) => void;
 }
 
 export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ isOpen, onClose, onCreate }) => {
   const { t } = useTranslation();
   const [form] = Form.useForm();
-  const [selectedTheme, setSelectedTheme] = useState<string>('realistic');
-  const [customStyle, setCustomStyle] = useState('');
+  const [themePresets, setThemePresets] = useState<ThemePresetCatalogItem[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [selectedTheme, setSelectedTheme] = useState<string>(DEFAULT_THEME_PRESET_ID);
+
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+
+    let cancelled = false;
+    const loadPresets = async () => {
+      setLoading(true);
+      try {
+        const presets = await getAllThemePresets();
+        if (cancelled) {
+          return;
+        }
+
+        setThemePresets(presets);
+        if (!presets.some((preset) => preset.id === selectedTheme)) {
+          setSelectedTheme(presets[0]?.id || DEFAULT_THEME_PRESET_ID);
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    };
+
+    loadPresets();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen]);
 
   const handleCreate = async () => {
     try {
       const values = await form.validateFields();
+      const fallbackThemeId = themePresets[0]?.id || DEFAULT_THEME_PRESET_ID;
       onCreate({
         title: values.title,
         mode: values.mode || 'drama',
-        theme: selectedTheme !== 'custom' ? selectedTheme : undefined,
-        stylePrompt: selectedTheme === 'custom' ? customStyle : undefined,
+        stylePresetId: selectedTheme || fallbackThemeId,
       });
       form.resetFields();
-      setSelectedTheme('realistic');
-      setCustomStyle('');
+      setSelectedTheme(fallbackThemeId);
     } catch {
       // 验证失败
     }
   };
-
-  // 过滤掉 custom 选项，单独处理
-  const presetThemes = THEME_PRESETS.filter(t => t.id !== 'custom');
 
   return (
     <Modal
@@ -107,63 +139,41 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ isOpen, 
 
         {/* 视觉风格选择 */}
         <Form.Item label={t('project.visualStyle')}>
-          <div className="grid grid-cols-4 gap-2">
-            {presetThemes.map(theme => {
-              const isSelected = selectedTheme === theme.id;
-              return (
-                <div
-                  key={theme.id}
-                  className={`
-                    relative p-2 rounded-lg cursor-pointer transition-all text-center
-                    ${isSelected
-                      ? 'bg-emerald-900/30 border-2 border-emerald-500'
-                      : 'bg-zinc-800 border-2 border-zinc-700 hover:border-zinc-500'
-                    }
-                  `}
-                  onClick={() => setSelectedTheme(theme.id)}
-                >
-                  {isSelected && (
-                    <div className="absolute top-1 right-1 w-4 h-4 bg-emerald-500 rounded-full flex items-center justify-center">
-                      <Check className="w-2.5 h-2.5 text-white" />
-                    </div>
-                  )}
-                  <div className="text-xs font-medium text-zinc-200">{theme.name}</div>
-                </div>
-              );
-            })}
-            {/* 自定义选项 */}
-            <div
-              className={`
-                relative p-2 rounded-lg cursor-pointer transition-all text-center
-                ${selectedTheme === 'custom'
-                  ? 'bg-emerald-900/30 border-2 border-emerald-500'
-                  : 'bg-zinc-800 border-2 border-zinc-700 hover:border-zinc-500'
-                }
-              `}
-              onClick={() => setSelectedTheme('custom')}
-            >
-              {selectedTheme === 'custom' && (
-                <div className="absolute top-1 right-1 w-4 h-4 bg-emerald-500 rounded-full flex items-center justify-center">
-                  <Check className="w-2.5 h-2.5 text-white" />
-                </div>
-              )}
-              <div className="text-xs font-medium text-zinc-200">{t('project.custom')}</div>
+          {loading ? (
+            <div className="py-6 text-center">
+              <Spin size="small" />
             </div>
-          </div>
-
-          {selectedTheme === 'custom' && (
-            <Input.TextArea
-              className="mt-2"
-              placeholder={t('project.customStylePlaceholder')}
-              value={customStyle}
-              onChange={e => setCustomStyle(e.target.value)}
-              rows={2}
-            />
+          ) : (
+            <div className="grid grid-cols-4 gap-2">
+              {themePresets.map(theme => {
+                const isSelected = selectedTheme === theme.id;
+                return (
+                  <div
+                    key={theme.id}
+                    className={`
+                      relative p-2 rounded-lg cursor-pointer transition-all text-center
+                      ${isSelected
+                        ? 'bg-emerald-900/30 border-2 border-emerald-500'
+                        : 'bg-zinc-800 border-2 border-zinc-700 hover:border-zinc-500'
+                      }
+                    `}
+                    onClick={() => setSelectedTheme(theme.id)}
+                  >
+                    {isSelected && (
+                      <div className="absolute top-1 right-1 w-4 h-4 bg-emerald-500 rounded-full flex items-center justify-center">
+                        <Check className="w-2.5 h-2.5 text-white" />
+                      </div>
+                    )}
+                    <div className="text-xs font-medium text-zinc-200">{theme.name}</div>
+                  </div>
+                );
+              })}
+            </div>
           )}
 
-          {selectedTheme && selectedTheme !== 'custom' && (
+          {selectedTheme && (
             <div className="mt-2 text-xs text-zinc-500">
-              {THEME_PRESETS.find(t => t.id === selectedTheme)?.description}
+              {themePresets.find(t => t.id === selectedTheme)?.description}
             </div>
           )}
         </Form.Item>

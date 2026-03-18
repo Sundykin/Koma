@@ -1,3 +1,16 @@
+export type StylePresetSourceType = 'builtin' | 'custom';
+
+export interface ProjectStyleSnapshot {
+  id: string;
+  name: string;
+  description: string;
+  ttiStylePrefix: string;
+  llmPromptSuffix: string;
+  sourceType: StylePresetSourceType;
+  sourcePresetId: string;
+  createdAt: number;
+}
+
 // 项目接口定义
 export interface Project {
   id: string;
@@ -12,9 +25,12 @@ export interface Project {
   ttiConfigId?: string;  // 关联的 TTI 配置 ID
   itvConfigId?: string;  // 关联的 ITV 配置 ID
   ttsConfigId?: string;  // 关联的 TTS 配置 ID
-  // 新增字段
-  theme?: string;           // 主题风格 ID
-  stylePrompt?: string;     // 自定义风格描述
+  stylePresetId?: string;   // 选中的全局风格 ID
+  styleSnapshot?: ProjectStyleSnapshot; // 项目风格快照
+  // @deprecated 遗留字段，仅保留给未改造调用点过渡
+  theme?: string;
+  // @deprecated 遗留字段，仅保留给未改造调用点过渡
+  stylePrompt?: string;
   episodeCount?: number;    // 实际剧集数（用于剧集管理）
 }
 
@@ -473,8 +489,12 @@ export interface ProjectMeta {
   ttiConfigId?: string;   // 关联的 TTI 配置 ID
   itvConfigId?: string;   // 关联的 ITV 配置 ID
   ttsConfigId?: string;   // 关联的 TTS 配置 ID
-  theme?: string;         // 主题风格 ID
-  stylePrompt?: string;   // 自定义风格描述
+  stylePresetId?: string; // 选中的全局风格 ID
+  styleSnapshot?: ProjectStyleSnapshot;
+  // @deprecated 遗留字段，仅保留给未改造调用点过渡
+  theme?: string;
+  // @deprecated 遗留字段，仅保留给未改造调用点过渡
+  stylePrompt?: string;
 }
 
 export interface RecentProject {

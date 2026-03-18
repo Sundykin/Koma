@@ -5,7 +5,7 @@ import {
   Clapperboard,
   Scissors,
 } from 'lucide-react';
-import { Project, Episode, EditorStep, EpisodeStepProgress, ScriptAnalysisResult, AppSettings } from '../../types';
+import { Project, Episode, EditorStep, EpisodeStepProgress, ScriptAnalysisResult, AppSettings, ProjectStyleSnapshot } from '../../types';
 import type { MentionItem } from '../../editor';
 import { SimpleEditor } from './index';
 import { AssetManager } from '../asset/AssetManager';
@@ -41,6 +41,8 @@ export const EditorView: React.FC<EditorViewProps> = ({
   onViewChange,
   onOpenProjectSettings: _onOpenProjectSettings,
 }) => {
+  const styleSnapshot: ProjectStyleSnapshot | undefined = activeProject.styleSnapshot;
+
   const getActionButton = () => {
     if (editorStep === 'assets') {
       return (
@@ -85,6 +87,7 @@ export const EditorView: React.FC<EditorViewProps> = ({
             <AssetManager
               projectId={activeProject.id}
               ttiConfigId={activeProject.ttiConfigId}
+              styleSnapshot={styleSnapshot}
               episodeId={activeEpisode?.id}
               episodeName={activeEpisode?.title || (activeEpisode ? `第${activeEpisode.number}集` : undefined)}
               script={scriptText}
@@ -115,6 +118,7 @@ export const EditorView: React.FC<EditorViewProps> = ({
                 llmConfigId={activeProject.llmConfigId}
                 ttiConfigId={activeProject.ttiConfigId}
                 settings={appSettings}
+                styleSnapshot={styleSnapshot}
                 mentionItems={mentionItems}
               />
             </div>
