@@ -1,11 +1,13 @@
 /**
  * 自动剧集的本地切分工具
  */
+import { detectExplicitEpisodeBoundaries } from './episodeBoundaryDetector';
 
 const MIN_SPLIT_GAP_RATIO = 4;
 const MARKER_SEARCH_WINDOW_CHARS = 2400;
 const BOUNDARY_SEARCH_WINDOW_CHARS = 240;
 const SINGLE_EPISODE_COUNT = 1;
+const EXPLICIT_BOUNDARY_SUMMARY_LENGTH = 80;
 
 export interface SplitPoint {
   position: number;
@@ -23,6 +25,7 @@ export interface SplitAnalysis {
   splitPoints: SplitPoint[];
   reasoning: string;
   episodeBlueprints: EpisodeBlueprint[];
+  source?: 'llm' | 'explicit';
 }
 
 export interface SplitResult {
@@ -33,6 +36,53 @@ export interface SplitResult {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
+}
+
+function createSummary(text: string): string {
+  const normalized = text.replace(/\s+/g, ' ').trim();
+  if (!normalized) {
+    return '按原文分集结构拆分';
+  }
+  return normalized.slice(0, EXPLICIT_BOUNDARY_SUMMARY_LENGTH);
+}
+
+function buildExplicitAnalysis(
+  script: string,
+  boundaries: ReturnType<typeof detectExplicitEpisodeBoundaries>,
+  reason: string
+): SplitAnalysis {
+  const episodeBlueprints = boundaries.map((boundary, index) => {
+    const bodyStart = boundary.contentStart;
+    const bodyEnd = index + 1 < boundaries.length ? boundaries[index + 1].start : script.length;
+    return {
+      title: boundary.title.trim(),
+      summary: createSummary(script.slice(bodyStart, bodyEnd)),
+    };
+  });
+
+  return {
+    suggestedCount: boundaries.length,
+    splitPoints: boundaries.slice(1).map(boundary => ({
+      position: boundary.start,
+      marker: boundary.marker.trim(),
+      reason,
+    })),
+    reasoning: reason,
+    episodeBlueprints,
+    source: 'explicit',
+  };
+}
+
+export function detectExplicitEpisodeAnalysis(script: string): SplitAnalysis | null {
+  const boundaries = detectExplicitEpisodeBoundaries(script);
+  if (boundaries.length >= SINGLE_EPISODE_COUNT) {
+    const reason = boundaries[0]?.title.startsWith('第') && boundaries[0]?.marker.includes('-')
+      ? `已根据原文场次编号识别出 ${boundaries.length} 个剧集边界，优先按原文结构拆分`
+      : `已识别原文中的 ${boundaries.length} 个分集标题，优先按原文结构拆分`;
+    return buildExplicitAnalysis(script, boundaries, reason);
+  }
+
+  return null;
 }
 
 function collectBoundaryCandidates(script: string, start: number, end: number): number[] {

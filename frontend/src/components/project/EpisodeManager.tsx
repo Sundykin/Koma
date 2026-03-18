@@ -318,7 +318,7 @@ export const EpisodeManager = forwardRef<EpisodeManagerRef, EpisodeManagerProps>
         mask={{ closable: !splitting }}
       >
         <p className="text-zinc-400 text-sm mb-4">
-          使用 AI 自动将完整剧本分割成多集。现有剧集将被替换。
+          优先按原文已存在的分集标题拆分；若原文未分集，再按目标集数规划。现有剧集将被替换。
         </p>
         <div className="flex items-center gap-3">
           <span className="text-sm text-zinc-300">分割成</span>
@@ -326,7 +326,6 @@ export const EpisodeManager = forwardRef<EpisodeManagerRef, EpisodeManagerProps>
             value={splitCount}
             onChange={(v) => setSplitCount(v || 1)}
             min={1}
-            max={20}
             className="!w-20"
           />
           <span className="text-sm text-zinc-300">集</span>

@@ -173,11 +173,10 @@ export const EpisodeSplitWizard: React.FC<EpisodeSplitWizardProps> = ({
               value={targetCount}
               onChange={(v) => setTargetCount(v || 3)}
               min={1}
-              max={20}
               style={{ width: 120 }}
             />
             <Text type="secondary" className="ml-3">
-              AI 会根据剧情结构建议调整
+              原文已分集时优先按原文拆分，否则按目标集数规划
             </Text>
           </div>
 

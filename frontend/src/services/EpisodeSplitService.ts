@@ -5,7 +5,7 @@
 import type { LLMModelConfig } from '../types';
 import { createLLMProvider } from '../providers';
 import { parseLLMJSON } from '../utils/llmJsonParser';
-import { materializeEpisodeSplit } from './episodeSplitUtils';
+import { detectExplicitEpisodeAnalysis, materializeEpisodeSplit } from './episodeSplitUtils';
 import type { SplitAnalysis, SplitResult } from './episodeSplitUtils';
 
 const FULL_SCRIPT_ANALYSIS_CHAR_LIMIT = 36_000;
@@ -44,7 +44,7 @@ function buildAnalysisScript(script: string): string {
 function buildSplitPrompt(script: string, options: SplitOptions): string {
   const scriptForAnalysis = buildAnalysisScript(script);
   const targetCountInstruction = options.targetEpisodeCount
-    ? `- 目标分成 ${options.targetEpisodeCount} 集`
+    ? `- 必须严格分成 ${options.targetEpisodeCount} 集`
     : '- 根据剧情自动判断合适的集数';
   const strategy = options.splitStrategy === 'scene'
     ? '按场景分割'
@@ -60,6 +60,7 @@ ${scriptForAnalysis}
 要求：
 ${targetCountInstruction}
 - 分割策略: ${strategy}
+- 若原文存在明确分集边界，必须严格遵守原文边界，不得重排集数
 - splitPoints 必须按剧情顺序输出，数量必须等于 suggestedCount - 1
 - marker 必须是靠近分割点的原文短语，便于在完整剧本中直接定位
 - episodeBlueprints 必须按剧集顺序输出，数量必须等于 suggestedCount
@@ -99,8 +100,31 @@ export class EpisodeSplitService {
     return parseLLMJSON<T>(text);
   }
 
+  private getExplicitAnalysis(script: string, options: SplitOptions): SplitAnalysis | null {
+    const analysis = detectExplicitEpisodeAnalysis(script);
+    if (!analysis) {
+      return null;
+    }
+
+    if (
+      options.targetEpisodeCount
+      && options.targetEpisodeCount !== analysis.suggestedCount
+    ) {
+      return {
+        ...analysis,
+        reasoning: `${analysis.reasoning}。用户输入目标为 ${options.targetEpisodeCount} 集，但已优先按原文识别出的 ${analysis.suggestedCount} 集拆分。`,
+      };
+    }
+
+    return analysis;
+  }
+
   async analyzeScript(script: string, options: SplitOptions): Promise<SplitAnalysis> {
     this.aborted = false;
+    const explicitAnalysis = this.getExplicitAnalysis(script, options);
+    if (explicitAnalysis) {
+      return explicitAnalysis;
+    }
 
     const systemPrompt = `你是一个专业的影视编剧，擅长分析剧本结构和规划剧集。
 分析时请考虑：
