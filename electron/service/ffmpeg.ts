@@ -124,9 +124,9 @@ export class FFmpegService {
    */
   private async detectFFmpegPath(name: 'ffmpeg' | 'ffprobe'): Promise<string> {
     const isWin = process.platform === 'win32';
+    const isX64 = process.arch === 'x64';
     const ext = isWin ? '.exe' : '';
-    const execName = name + ext;
-
+    let execName = name + ext;
     // 候选路径列表
     const candidates: string[] = [
       // 1. 应用内置路径
@@ -136,6 +136,11 @@ export class FFmpegService {
       path.join(app.getPath('userData'), 'ffmpeg', execName),
       // 3. 系统路径（通过 which/where 查找）
     ];
+    if (name === 'ffprobe' && !isX64) {
+      candidates.push(path.join(app.getAppPath(), 'resources', 'ffmpeg', name, 'win32', 'ia32', execName))
+    } else {
+      candidates.push(path.join(app.getAppPath(), 'resources', 'ffmpeg', name, 'win32', 'x64', execName));
+    }
 
     // 检查候选路径
     for (const p of candidates) {
