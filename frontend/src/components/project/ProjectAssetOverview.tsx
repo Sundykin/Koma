@@ -6,7 +6,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Tabs, Avatar, Empty, Spin, Tooltip } from 'antd';
 import { User, MapPin, Box, Link } from 'lucide-react';
 import type { Character, Scene, Prop, EpisodeRef } from '../../types';
-import { loadCharacters, loadScenes, loadProps, getOrphanedAssets } from '../../store/projectStore';
+import { loadCharacters, loadScenes, loadProps, getOrphanedAssets, repairAssetEpisodeRefs } from '../../store/projectStore';
 import { electronService } from '../../services/electronService';
 import { createLogger } from '../../store/logger';
 import { TaskManager } from '../../services/TaskManager';
@@ -31,6 +31,9 @@ export const ProjectAssetOverview: React.FC<ProjectAssetOverviewProps> = ({
   const loadAssets = useCallback(async () => {
     setLoading(true);
     try {
+      // 先修复可能缺失的 episodeRefs
+      await repairAssetEpisodeRefs(projectId);
+
       const [chars, scns, prps, orphaned] = await Promise.all([
         loadCharacters(projectId),
         loadScenes(projectId),

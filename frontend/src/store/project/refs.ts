@@ -5,6 +5,8 @@ import type { EpisodeRef, Character, Scene, Prop } from '../../types';
 import { loadCharacters, saveCharacters } from './entities';
 import { loadScenes, saveScenes } from './entities';
 import { loadProps, saveProps } from './assetStorage';
+import { listEpisodes } from './episodes';
+import { loadEpisodeAnalysis } from './analysis';
 
 export function calculateAssetFingerprint(asset: { name: string; description?: string; type?: string }): string {
   const normalizeText = (text: string): string => {
@@ -169,4 +171,82 @@ export async function getOrphanedAssets(projectId: string): Promise<{
     scenes: scenes.filter(s => !s.episodeRefs || s.episodeRefs.length === 0),
     props: props.filter(p => !p.episodeRefs || p.episodeRefs.length === 0),
   };
+}
+
+/**
+ * 从 episodeAnalysis 数据修复缺失的 episodeRefs
+ * 遍历所有剧集的 analysis，确保被引用的资产都有对应的 episodeRef
+ */
+export async function repairAssetEpisodeRefs(projectId: string): Promise<boolean> {
+  const episodes = await listEpisodes(projectId);
+  if (episodes.length === 0) return false;
+
+  const [characters, scenes, props] = await Promise.all([
+    loadCharacters(projectId),
+    loadScenes(projectId),
+    loadProps(projectId),
+  ]);
+
+  const charMap = new Map(characters.map(c => [c.id, c]));
+  const sceneMap = new Map(scenes.map(s => [s.id, s]));
+  const propMap = new Map(props.map(p => [p.id, p]));
+
+  let charsModified = false;
+  let scenesModified = false;
+  let propsModified = false;
+
+  for (const episode of episodes) {
+    const analysis = await loadEpisodeAnalysis(projectId, episode.id);
+    if (!analysis) continue;
+
+    const ref: EpisodeRef = {
+      episodeId: episode.id,
+      episodeName: episode.title || `第${episode.number}集`,
+      firstAppearance: true,
+    };
+
+    for (const charId of analysis.characterRefs) {
+      const char = charMap.get(charId);
+      if (!char) continue;
+      if (!char.episodeRefs) char.episodeRefs = [];
+      const exists = char.episodeRefs.some(r => r.episodeId === episode.id);
+      if (!exists) {
+        char.episodeRefs.push(ref);
+        charsModified = true;
+      }
+    }
+
+    for (const sceneId of analysis.sceneRefs) {
+      const scene = sceneMap.get(sceneId);
+      if (!scene) continue;
+      if (!scene.episodeRefs) scene.episodeRefs = [];
+      const exists = scene.episodeRefs.some(r => r.episodeId === episode.id);
+      if (!exists) {
+        scene.episodeRefs.push(ref);
+        scenesModified = true;
+      }
+    }
+
+    for (const propId of analysis.propRefs) {
+      const prop = propMap.get(propId);
+      if (!prop) continue;
+      if (!prop.episodeRefs) prop.episodeRefs = [];
+      const exists = prop.episodeRefs.some(r => r.episodeId === episode.id);
+      if (!exists) {
+        prop.episodeRefs.push(ref);
+        propsModified = true;
+      }
+    }
+  }
+
+  const saves: Promise<void>[] = [];
+  if (charsModified) saves.push(saveCharacters(projectId, characters));
+  if (scenesModified) saves.push(saveScenes(projectId, scenes));
+  if (propsModified) saves.push(saveProps(projectId, props));
+
+  if (saves.length > 0) {
+    await Promise.all(saves);
+    return true;
+  }
+  return false;
 }

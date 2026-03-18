@@ -32,11 +32,12 @@ import {
 } from '@ant-design/icons';
 import type { Project } from '../../types';
 import { loadCharacters, loadScenes, loadProps } from '../../store/projectStore';
+import { electronService } from '../../services/electronService';
 import {
   generateCostumePhoto,
   generateCharacterPreviewVideo,
 } from '../../workflow/characterAssetWorkflow';
-import { generateSceneImage, generatePropImage } from '../../workflow/scenePropAssetWorkflow';
+import { generateSceneImage, generatePropImage, generatePropPreviewVideo } from '../../workflow/scenePropAssetWorkflow';
 
 const { Text } = Typography;
 
@@ -57,13 +58,14 @@ interface ItemStatus {
   progress: number;
   error?: string;
   imagePath?: string;
+  sourceType?: 'character' | 'prop'; // 视频步骤区分角色/道具
 }
 
 const stepConfig = [
   { key: 'characters', title: '角色定妆照', icon: <UserOutlined /> },
   { key: 'scenes', title: '场景预览图', icon: <EnvironmentOutlined /> },
   { key: 'props', title: '道具参考图', icon: <AppstoreOutlined /> },
-  { key: 'videos', title: '角色视频', icon: <VideoCameraOutlined /> },
+  { key: 'videos', title: '预览视频', icon: <VideoCameraOutlined /> },
 ];
 
 export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
@@ -83,7 +85,7 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
   const [characters, setCharacters] = useState<ItemStatus[]>([]);
   const [scenes, setScenes] = useState<ItemStatus[]>([]);
   const [props, setProps] = useState<ItemStatus[]>([]);
-  const [videoCharacters, setVideoCharacters] = useState<ItemStatus[]>([]);
+  const [videoItems, setVideoItems] = useState<ItemStatus[]>([]);
 
   // 加载项目资产数据
   useEffect(() => {
@@ -125,15 +127,26 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
           imagePath: p.imagePath,
         })));
 
-        // 视频步骤只显示有定妆照的角色
-        setVideoCharacters(chars.filter(c => c.costumePhotoPath).map(c => ({
+        // 视频步骤：有定妆照的角色 + 有参考图的道具
+        const charVideos: ItemStatus[] = chars.filter(c => c.costumePhotoPath).map(c => ({
           id: c.id,
-          name: c.name,
+          name: `[角色] ${c.name}`,
           selected: !c.previewVideoPath,
           status: c.previewVideoPath ? 'completed' : 'pending',
           progress: c.previewVideoPath ? 100 : 0,
           imagePath: c.previewVideoPath,
-        })));
+          sourceType: 'character' as const,
+        }));
+        const propVideos: ItemStatus[] = prps.filter(p => p.imagePath).map(p => ({
+          id: p.id,
+          name: `[道具] ${p.name}`,
+          selected: !p.previewVideoPath,
+          status: p.previewVideoPath ? 'completed' : 'pending',
+          progress: p.previewVideoPath ? 100 : 0,
+          imagePath: p.previewVideoPath,
+          sourceType: 'prop' as const,
+        }));
+        setVideoItems([...charVideos, ...propVideos]);
       } catch (err: any) {
         message.error(`加载数据失败: ${err.message}`);
       } finally {
@@ -163,10 +176,10 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
         updateList(props, setProps);
         break;
       case 'videos':
-        updateList(videoCharacters, setVideoCharacters);
+        updateList(videoItems, setVideoItems);
         break;
     }
-  }, [characters, scenes, props, videoCharacters]);
+  }, [characters, scenes, props, videoItems]);
 
   // 全选/取消全选
   const toggleSelectAll = useCallback((type: WizardStep, selected: boolean) => {
@@ -185,10 +198,95 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
         updateList(props, setProps);
         break;
       case 'videos':
-        updateList(videoCharacters, setVideoCharacters);
+        updateList(videoItems, setVideoItems);
         break;
     }
-  }, [characters, scenes, props, videoCharacters]);
+  }, [characters, scenes, props, videoItems]);
+
+  // 生成单个资产
+  const generateOneItem = async (
+    item: ItemStatus,
+    stepKey: WizardStep,
+    setter: React.Dispatch<React.SetStateAction<ItemStatus[]>>,
+    onProgress: (progress: number, step: string) => void,
+  ): Promise<{ success: boolean; path?: string; error?: string }> => {
+    switch (stepKey) {
+      case 'characters': {
+        const chars = await loadCharacters(project.id);
+        const char = chars.find(c => c.id === item.id);
+        if (!char) return { success: false, error: '角色不存在' };
+        return generateCostumePhoto({
+          projectId: project.id,
+          character: char,
+          styleSnapshot: project.styleSnapshot,
+          ttiConfigId: project.ttiConfigId,
+          onProgress,
+        });
+      }
+      case 'scenes': {
+        const scns = await loadScenes(project.id);
+        const scene = scns.find(s => s.id === item.id);
+        if (!scene) return { success: false, error: '场景不存在' };
+        return generateSceneImage({
+          projectId: project.id,
+          scene,
+          styleSnapshot: project.styleSnapshot,
+          ttiConfigId: project.ttiConfigId,
+          onProgress,
+        });
+      }
+      case 'props': {
+        const prps = await loadProps(project.id);
+        const prop = prps.find(p => p.id === item.id);
+        if (!prop) return { success: false, error: '道具不存在' };
+        return generatePropImage({
+          projectId: project.id,
+          prop,
+          styleSnapshot: project.styleSnapshot,
+          ttiConfigId: project.ttiConfigId,
+          onProgress,
+        });
+      }
+      case 'videos': {
+        if (item.sourceType === 'prop') {
+          const prps = await loadProps(project.id);
+          const prop = prps.find(p => p.id === item.id);
+          if (!prop) return { success: false, error: '道具不存在' };
+          return generatePropPreviewVideo({
+            projectId: project.id,
+            prop,
+            styleSnapshot: project.styleSnapshot,
+            itvConfigId: project.itvConfigId,
+            onProgress,
+          });
+        } else {
+          const chars = await loadCharacters(project.id);
+          const char = chars.find(c => c.id === item.id);
+          if (!char) return { success: false, error: '角色不存在' };
+          return generateCharacterPreviewVideo({
+            projectId: project.id,
+            character: char,
+            styleSnapshot: project.styleSnapshot,
+            itvConfigId: project.itvConfigId,
+            onProgress,
+          });
+        }
+      }
+      default:
+        return { success: false, error: '未知步骤' };
+    }
+  };
+
+  // 获取当前步骤的 setter
+  const getStepSetter = (stepKey: WizardStep): React.Dispatch<React.SetStateAction<ItemStatus[]>> => {
+    switch (stepKey) {
+      case 'characters': return setCharacters;
+      case 'scenes': return setScenes;
+      case 'props': return setProps;
+      case 'videos': return setVideoItems;
+      default: return setCharacters;
+    }
+  };
 
   // 开始生成当前步骤
   const startGeneration = async () => {
@@ -196,25 +294,21 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
     setOverallProgress(0);
 
     const stepKey = stepConfig[currentStep].key as WizardStep;
+    const setter = getStepSetter(stepKey);
     let items: ItemStatus[] = [];
-    let setter: React.Dispatch<React.SetStateAction<ItemStatus[]>> = setCharacters;
 
     switch (stepKey) {
       case 'characters':
         items = characters.filter(c => c.selected);
-        setter = setCharacters;
         break;
       case 'scenes':
         items = scenes.filter(s => s.selected);
-        setter = setScenes;
         break;
       case 'props':
         items = props.filter(p => p.selected);
-        setter = setProps;
         break;
       case 'videos':
-        items = videoCharacters.filter(c => c.selected);
-        setter = setVideoCharacters;
+        items = videoItems.filter(c => c.selected);
         break;
     }
 
@@ -237,74 +331,7 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
           setOverallProgress(((i + progress / 100) / items.length) * 100);
         };
 
-        switch (stepKey) {
-          case 'characters': {
-            const chars = await loadCharacters(project.id);
-            const char = chars.find(c => c.id === item.id);
-            if (char) {
-              result = await generateCostumePhoto({
-                projectId: project.id,
-                character: char,
-                styleSnapshot: project.styleSnapshot,
-                ttiConfigId: project.ttiConfigId,
-                onProgress,
-              });
-            } else {
-              result = { success: false, error: '角色不存在' };
-            }
-            break;
-          }
-          case 'scenes': {
-            const scns = await loadScenes(project.id);
-            const scene = scns.find(s => s.id === item.id);
-            if (scene) {
-              result = await generateSceneImage({
-                projectId: project.id,
-                scene,
-                styleSnapshot: project.styleSnapshot,
-                ttiConfigId: project.ttiConfigId,
-                onProgress,
-              });
-            } else {
-              result = { success: false, error: '场景不存在' };
-            }
-            break;
-          }
-          case 'props': {
-            const prps = await loadProps(project.id);
-            const prop = prps.find(p => p.id === item.id);
-            if (prop) {
-              result = await generatePropImage({
-                projectId: project.id,
-                prop,
-                styleSnapshot: project.styleSnapshot,
-                ttiConfigId: project.ttiConfigId,
-                onProgress,
-              });
-            } else {
-              result = { success: false, error: '道具不存在' };
-            }
-            break;
-          }
-          case 'videos': {
-            const chars = await loadCharacters(project.id);
-            const char = chars.find(c => c.id === item.id);
-            if (char) {
-              result = await generateCharacterPreviewVideo({
-                projectId: project.id,
-                character: char,
-                styleSnapshot: project.styleSnapshot,
-                itvConfigId: project.itvConfigId,
-                onProgress,
-              });
-            } else {
-              result = { success: false, error: '角色不存在' };
-            }
-            break;
-          }
-          default:
-            result = { success: false, error: '未知步骤' };
-        }
+        result = await generateOneItem(item, stepKey, setter, onProgress);
       } catch (err: any) {
         result = { success: false, error: err.message };
       }
@@ -317,7 +344,7 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
               status: result.success ? 'completed' : 'failed',
               progress: result.success ? 100 : 0,
               error: result.error,
-              imagePath: result.path,
+              imagePath: result.path || it.imagePath,
             }
           : it
       ));
@@ -329,10 +356,86 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
     message.success(`${stepConfig[currentStep].title}生成完成`);
   };
 
+  // 重试单个失败项
+  const retryItem = async (item: ItemStatus) => {
+    const stepKey = stepConfig[currentStep].key as WizardStep;
+    const setter = getStepSetter(stepKey);
+
+    setGenerating(true);
+    setCurrentItem(item.name);
+    setOverallProgress(0);
+
+    setter(prev => prev.map(it =>
+      it.id === item.id ? { ...it, status: 'generating', progress: 0, error: undefined } : it
+    ));
+
+    let result: { success: boolean; path?: string; error?: string };
+    try {
+      const onProgress = (progress: number, _step: string) => {
+        setter(prev => prev.map(it =>
+          it.id === item.id ? { ...it, progress } : it
+        ));
+        setOverallProgress(progress);
+      };
+
+      result = await generateOneItem(item, stepKey, setter, onProgress);
+    } catch (err: any) {
+      result = { success: false, error: err.message };
+    }
+
+    setter(prev => prev.map(it =>
+      it.id === item.id
+        ? {
+            ...it,
+            status: result.success ? 'completed' : 'failed',
+            progress: result.success ? 100 : 0,
+            error: result.error,
+            imagePath: result.path || it.imagePath,
+          }
+        : it
+    ));
+
+    setGenerating(false);
+    setCurrentItem('');
+    setOverallProgress(100);
+    if (result.success) {
+      message.success(`${item.name} 生成完成`);
+    }
+  };
+
   // 下一步
-  const handleNext = () => {
+  const handleNext = async () => {
     if (currentStep < stepConfig.length - 1) {
-      setCurrentStep(currentStep + 1);
+      const nextStep = currentStep + 1;
+
+      // 跳转到视频步骤时，重新加载数据（定妆照/参考图可能刚生成）
+      if (stepConfig[nextStep].key === 'videos') {
+        const [chars, prps] = await Promise.all([
+          loadCharacters(project.id),
+          loadProps(project.id),
+        ]);
+        const charVideos: ItemStatus[] = chars.filter(c => c.costumePhotoPath).map(c => ({
+          id: c.id,
+          name: `[角色] ${c.name}`,
+          selected: !c.previewVideoPath,
+          status: c.previewVideoPath ? 'completed' : 'pending',
+          progress: c.previewVideoPath ? 100 : 0,
+          imagePath: c.previewVideoPath,
+          sourceType: 'character' as const,
+        }));
+        const propVideos: ItemStatus[] = prps.filter(p => p.imagePath).map(p => ({
+          id: p.id,
+          name: `[道具] ${p.name}`,
+          selected: !p.previewVideoPath,
+          status: p.previewVideoPath ? 'completed' : 'pending',
+          progress: p.previewVideoPath ? 100 : 0,
+          imagePath: p.previewVideoPath,
+          sourceType: 'prop' as const,
+        }));
+        setVideoItems([...charVideos, ...propVideos]);
+      }
+
+      setCurrentStep(nextStep);
       setOverallProgress(0);
     } else {
       // 完成
@@ -348,7 +451,7 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
       case 'characters': return characters;
       case 'scenes': return scenes;
       case 'props': return props;
-      case 'videos': return videoCharacters;
+      case 'videos': return videoItems;
       default: return [];
     }
   };
@@ -356,6 +459,8 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
   const currentList = getCurrentList();
   const selectedCount = currentList.filter(i => i.selected).length;
   const completedCount = currentList.filter(i => i.status === 'completed').length;
+
+  const toLocalUrl = (path?: string) => path ? electronService.fs.toLocalUrl(path) : '';
 
   // 渲染列表项
   const renderListItem = (item: ItemStatus, type: WizardStep) => {
@@ -386,12 +491,12 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
           <div style={{ width: 60, height: 60, marginLeft: 12 }}>
             {type === 'videos' ? (
               <video
-                src={item.imagePath}
+                src={toLocalUrl(item.imagePath)}
                 style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 4 }}
               />
             ) : (
               <Image
-                src={item.imagePath}
+                src={toLocalUrl(item.imagePath)}
                 style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 4 }}
                 preview={{ mask: null }}
               />
@@ -402,7 +507,8 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
           <Button
             type="link"
             icon={<ReloadOutlined />}
-            onClick={() => toggleSelect(type, item.id)}
+            onClick={() => retryItem(item)}
+            disabled={generating}
             style={{ marginLeft: 8 }}
           >
             重试

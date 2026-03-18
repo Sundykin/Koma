@@ -14,6 +14,8 @@ interface Asset {
   name: string;
   cover?: string;
   avatar?: string;
+  costumePhotoPath?: string;
+  imagePath?: string;
 }
 
 interface AssetSelectorProps {
@@ -47,7 +49,7 @@ export const AssetSelector: React.FC<AssetSelectorProps> = ({
   };
 
   const getAssetImage = (asset: Asset) => {
-    const src = asset.cover || asset.avatar;
+    const src = asset.costumePhotoPath || asset.imagePath || asset.cover || asset.avatar;
     return src ? electronService.fs.toLocalUrl(src) : undefined;
   };
 

@@ -94,6 +94,7 @@ export {
   findSceneByName,
   findPropByName,
   getOrphanedAssets,
+  repairAssetEpisodeRefs,
 } from './refs';
 
 // 缓存管理

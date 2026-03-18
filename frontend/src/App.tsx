@@ -156,7 +156,7 @@ const AppContent: React.FC = () => {
     .filter(isDisplayableProject)
     .map(p => ({
     id: p.id, title: p.title, genre: p.genre, mode: p.mode,
-    episodes: p.episodes || 1, lastEdited: formatTimeAgo(p.updatedAt),
+    episodes: p.episodes ?? 0, lastEdited: formatTimeAgo(p.updatedAt),
     thumbnail: p.thumbnail || getThumbnailUrl(p.id),
     status: p.status || 'script', llmConfigId: p.llmConfigId,
     ttiConfigId: p.ttiConfigId, itvConfigId: p.itvConfigId,

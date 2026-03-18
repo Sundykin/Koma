@@ -35,6 +35,8 @@ export const StepNavigator: React.FC<StepNavigatorProps> = ({
   // 判断步骤是否可点击
   const isStepClickable = (stepId: EditorStep, index: number): boolean => {
     if (stepId === currentStep) return true;
+    // 当前步骤之前的步骤始终可以返回
+    if (index < _currentIndex) return true;
     if (stepProgress[stepId] === 'completed') return true;
     if (index > 0) {
       const prevStep = stepOrder[index - 1];
