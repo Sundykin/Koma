@@ -7,9 +7,8 @@ import { Modal, Form, Input, InputNumber, App, Spin, Empty } from 'antd';
 import { GripVertical, Play, Pencil, Trash2, Plus, Zap } from 'lucide-react';
 import type { Episode } from '../../types';
 import { createEpisode, saveEpisode, deleteEpisode, listEpisodes } from '../../store/projectStore';
-import { createLLMProvider } from '../../providers';
 import { getActiveLLMConfig } from '../../store/globalStore';
-import { parseLLMJSON } from '../../utils/llmJsonParser';
+import { EpisodeSplitService } from '../../services/EpisodeSplitService';
 interface EpisodeManagerProps {
   projectId: string;
   fullScript?: string;
@@ -145,35 +144,20 @@ export const EpisodeManager = forwardRef<EpisodeManagerRef, EpisodeManagerProps>
       const config = await getActiveLLMConfig();
       if (!config) throw new Error('请先配置 LLM');
 
-      const provider = createLLMProvider({
-        provider: config.provider === 'openai-compatible' ? 'openai' : config.provider as any,
-        apiKey: config.apiKey,
-        baseUrl: config.baseUrl,
-        modelName: config.modelName,
+      const splitService = new EpisodeSplitService(config);
+      const analysis = await splitService.analyzeScript(fullScript, {
+        targetEpisodeCount: splitCount,
+        splitStrategy: 'auto',
       });
-
-      const prompt = `请将以下剧本分割成 ${splitCount} 集，每集都有完整的故事弧和自然的节点。
-
-剧本：
-${fullScript}
-
-请严格按以下 JSON 格式输出：
-{
-  "episodes": [
-    { "title": "第X集标题", "scriptText": "该集的剧本内容" }
-  ]
-}`;
-
-      const result = await provider.generateText(prompt, '你是一个专业影视编剧');
-      const parsed = parseLLMJSON<{ episodes: { title: string; scriptText: string }[] }>(result);
+      const splitResults = splitService.splitScript(fullScript, analysis);
 
       for (const ep of episodes) {
         await deleteEpisode(projectId, ep.id);
       }
 
       const newEpisodes: Episode[] = [];
-      for (let i = 0; i < parsed.episodes.length; i++) {
-        const split = parsed.episodes[i];
+      for (let i = 0; i < splitResults.length; i++) {
+        const split = splitResults[i];
         const ep = await createEpisode(projectId, {
           number: i + 1,
           title: split.title,
@@ -186,8 +170,8 @@ ${fullScript}
       setEpisodes(newEpisodes);
       setSplitDialogOpen(false);
       message.success(`已分割为 ${newEpisodes.length} 集`);
-    } catch {
-      message.error('AI 分割失败，请检查 LLM 配置后重试');
+    } catch (err: any) {
+      message.error(`AI 分割失败: ${err?.message || '未知错误'}`);
     } finally {
       setSplitting(false);
     }

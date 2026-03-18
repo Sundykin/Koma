@@ -1,0 +1,182 @@
+/**
+ * 自动剧集的本地切分工具
+ */
+
+const MIN_SPLIT_GAP_RATIO = 4;
+const MARKER_SEARCH_WINDOW_CHARS = 2400;
+const BOUNDARY_SEARCH_WINDOW_CHARS = 240;
+const SINGLE_EPISODE_COUNT = 1;
+
+export interface SplitPoint {
+  position: number;
+  marker: string;
+  reason: string;
+}
+
+export interface EpisodeBlueprint {
+  title: string;
+  summary: string;
+}
+
+export interface SplitAnalysis {
+  suggestedCount: number;
+  splitPoints: SplitPoint[];
+  reasoning: string;
+  episodeBlueprints: EpisodeBlueprint[];
+}
+
+export interface SplitResult {
+  title: string;
+  scriptText: string;
+  summary: string;
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(Math.max(value, min), max);
+}
+
+function collectBoundaryCandidates(script: string, start: number, end: number): number[] {
+  const patterns = ['\n\n', '\n', '。', '！', '？'];
+  const candidates: number[] = [];
+
+  for (const pattern of patterns) {
+    let cursor = start;
+    while (cursor < end) {
+      const found = script.indexOf(pattern, cursor);
+      if (found < 0 || found >= end) break;
+      candidates.push(found + pattern.length);
+      cursor = found + pattern.length;
+    }
+  }
+
+  return candidates;
+}
+
+function findClosestMarkerMatch(script: string, marker: string, approxIndex: number): number {
+  let closestIndex = -1;
+  let cursor = script.indexOf(marker);
+
+  while (cursor >= 0) {
+    const shouldReplace = closestIndex < 0
+      || Math.abs(cursor - approxIndex) < Math.abs(closestIndex - approxIndex);
+    if (shouldReplace) {
+      closestIndex = cursor;
+    }
+    cursor = script.indexOf(marker, cursor + marker.length);
+  }
+
+  return closestIndex;
+}
+
+function findMarkerIndex(script: string, marker: string, approxIndex: number): number {
+  const normalizedMarker = marker.trim();
+  if (!normalizedMarker) return -1;
+
+  const safeIndex = clamp(Math.floor(approxIndex), 0, script.length);
+  const windowStart = Math.max(0, safeIndex - MARKER_SEARCH_WINDOW_CHARS);
+  const windowEnd = Math.min(script.length, safeIndex + MARKER_SEARCH_WINDOW_CHARS);
+  const windowText = script.slice(windowStart, windowEnd);
+  const localIndex = windowText.indexOf(normalizedMarker);
+
+  if (localIndex >= 0) {
+    return windowStart + localIndex;
+  }
+
+  return findClosestMarkerMatch(script, normalizedMarker, safeIndex);
+}
+
+function moveToBoundary(script: string, index: number, minIndex: number, maxIndex: number): number {
+  const boundedIndex = clamp(index, minIndex, maxIndex);
+  const windowStart = Math.max(minIndex, boundedIndex - BOUNDARY_SEARCH_WINDOW_CHARS);
+  const windowEnd = Math.min(maxIndex, boundedIndex + BOUNDARY_SEARCH_WINDOW_CHARS);
+  const candidates = collectBoundaryCandidates(script, windowStart, windowEnd);
+
+  if (candidates.length === 0) {
+    return boundedIndex;
+  }
+
+  return candidates.reduce((best, candidate) => {
+    const bestDistance = Math.abs(best - boundedIndex);
+    const candidateDistance = Math.abs(candidate - boundedIndex);
+    return candidateDistance < bestDistance ? candidate : best;
+  }, boundedIndex);
+}
+
+function getMinGap(scriptLength: number, episodeCount: number): number {
+  return Math.max(
+    Math.floor(scriptLength / Math.max(episodeCount * MIN_SPLIT_GAP_RATIO, SINGLE_EPISODE_COUNT)),
+    SINGLE_EPISODE_COUNT
+  );
+}
+
+function validateAnalysis(analysis: SplitAnalysis): void {
+  if (!Number.isInteger(analysis.suggestedCount) || analysis.suggestedCount < SINGLE_EPISODE_COUNT) {
+    throw new Error('AI 返回的建议集数无效');
+  }
+
+  if (analysis.episodeBlueprints.length !== analysis.suggestedCount) {
+    throw new Error('AI 返回的剧集标题或摘要数量不完整');
+  }
+
+  if (
+    analysis.suggestedCount > SINGLE_EPISODE_COUNT
+    && analysis.splitPoints.length !== analysis.suggestedCount - SINGLE_EPISODE_COUNT
+  ) {
+    throw new Error('AI 返回的分割点数量不正确');
+  }
+
+  for (const blueprint of analysis.episodeBlueprints) {
+    if (!blueprint.title.trim() || !blueprint.summary.trim()) {
+      throw new Error('AI 返回了空的剧集标题或摘要');
+    }
+  }
+}
+
+function resolveSplitIndices(script: string, analysis: SplitAnalysis): number[] {
+  const splitIndices: number[] = [];
+  const minGap = getMinGap(script.length, analysis.suggestedCount);
+  let previousIndex = 0;
+
+  analysis.splitPoints.forEach((point, index) => {
+    const remainingSplitCount = analysis.splitPoints.length - index;
+    const minIndex = previousIndex + minGap;
+    const maxIndex = script.length - remainingSplitCount * minGap;
+
+    if (minIndex >= maxIndex) {
+      throw new Error('剧本长度不足以按当前分割方案拆分');
+    }
+
+    const markerIndex = findMarkerIndex(script, point.marker, point.position);
+    const approxIndex = markerIndex >= 0 ? markerIndex : point.position;
+    const splitIndex = moveToBoundary(script, approxIndex, minIndex, maxIndex);
+
+    if (splitIndex <= previousIndex) {
+      throw new Error('AI 返回的分割点顺序无效');
+    }
+
+    splitIndices.push(splitIndex);
+    previousIndex = splitIndex;
+  });
+
+  return splitIndices;
+}
+
+export function materializeEpisodeSplit(script: string, analysis: SplitAnalysis): SplitResult[] {
+  validateAnalysis(analysis);
+
+  const boundaries = [0, ...resolveSplitIndices(script, analysis), script.length];
+  const results = analysis.episodeBlueprints.map((blueprint, index) => {
+    const scriptText = script.slice(boundaries[index], boundaries[index + 1]);
+    if (!scriptText) {
+      throw new Error(`第 ${index + 1} 集切分结果为空`);
+    }
+
+    return {
+      title: blueprint.title.trim(),
+      summary: blueprint.summary.trim(),
+      scriptText,
+    };
+  });
+
+  return results;
+}

@@ -79,12 +79,17 @@ export const EpisodeSplitWizard: React.FC<EpisodeSplitWizardProps> = ({
       setAnalysis(result);
 
       // 执行分割
-      const episodes = await splitService.splitScript(script, result.suggestedCount);
+      const episodes = splitService.splitScript(script, result);
       setSplitResults(episodes);
 
       setStep('preview');
     } catch (err: any) {
-      message.error(`分析失败: ${err.message}`);
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      if (errorMessage === '剧集分析已取消' || errorMessage === '剧集切分已取消') {
+        return;
+      }
+
+      message.error(`分析失败: ${errorMessage}`);
       setStep('config');
     }
   }, [script, targetCount, splitStrategy, message]);
@@ -214,7 +219,7 @@ export const EpisodeSplitWizard: React.FC<EpisodeSplitWizardProps> = ({
         <div className="py-12 text-center">
           <Spin size="large" />
           <div className="mt-4">
-            <Text>AI 正在分析剧本结构...</Text>
+            <Text>AI 正在分析剧本并规划剧集...</Text>
           </div>
           <div className="mt-2">
             <Text type="secondary">这可能需要一些时间</Text>
