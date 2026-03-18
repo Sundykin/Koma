@@ -384,7 +384,13 @@ export class ShotGenerationService {
     const filename = `${Date.now()}.png`;
     const filePath = `${assetDir}/${filename}`;
 
-    const _result = await electronService.fs.downloadFile(imageUrl, filePath);
+    if (imageUrl.startsWith('data:')) {
+      // data URL 模式（base64）：直接写入文件
+      const base64Data = imageUrl.replace(/^data:image\/\w+;base64,/, '');
+      await electronService.fs.writeFile(filePath, base64Data, true);
+    } else {
+      await electronService.fs.downloadFile(imageUrl, filePath);
+    }
 
     return filePath;
   }

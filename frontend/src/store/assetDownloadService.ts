@@ -26,11 +26,19 @@ export async function downloadRemoteAsset(
   }
 
   try {
-    logger.info(`开始下载: ${url} -> ${localPath}`);
+    logger.info(`开始下载: ${url.startsWith('data:') ? 'data:image/...(base64)' : url} -> ${localPath}`);
 
     // 确保目标目录存在
     const dir = localPath.substring(0, localPath.lastIndexOf('/'));
     await electronService.fs.mkdir(dir);
+
+    if (url.startsWith('data:')) {
+      // data URL 模式（base64）：直接写入文件
+      const base64Data = url.replace(/^data:image\/\w+;base64,/, '');
+      await electronService.fs.writeFile(localPath, base64Data, true);
+      logger.info(`base64 写入完成: ${localPath}`);
+      return { success: true, localPath };
+    }
 
     // 通过 IPC 调用主进程下载，绕过 CORS
     const result = await electronService.fs.downloadFile(url, localPath);
@@ -42,7 +50,7 @@ export async function downloadRemoteAsset(
     logger.info(`下载完成: ${localPath}, 大小: ${result.size} bytes`);
     return { success: true, localPath };
   } catch (err: any) {
-    logger.error(`下载失败: ${url}`, { error: err.message });
+    logger.error(`下载失败: ${url.startsWith('data:') ? 'data:image/...' : url}`, { error: err.message });
     return { success: false, error: err.message };
   }
 }

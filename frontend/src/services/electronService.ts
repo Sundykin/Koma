@@ -230,11 +230,12 @@ export const fsReadFile = async (path: string): Promise<string> => {
 
 export const fsWriteFile = async (
   path: string,
-  data: string
+  data: string,
+  binary?: boolean
 ): Promise<void> => {
   const api = getElectronAPI();
   if (api) {
-    await api.fs.writeFile(path, data);
+    await api.fs.writeFile(path, data, binary);
     return;
   }
   throw new Error('File system not available in browser');

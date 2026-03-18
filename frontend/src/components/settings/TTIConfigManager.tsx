@@ -270,6 +270,7 @@ export const TTIConfigManager: React.FC<TTIConfigManagerProps> = ({ onConfigChan
       case 'flux': return 'cyan';
       case 'nano-banana': return 'geekblue';
       case 'gemini-3-pro': return 'volcano';
+      case 'openai-compatible-tti': return 'lime';
       default: return 'default';
     }
   };
@@ -497,7 +498,7 @@ export const TTIConfigManager: React.FC<TTIConfigManagerProps> = ({ onConfigChan
             <Input prefix={<ApiOutlined />} placeholder="http://127.0.0.1:8188" />
           </Form.Item>
 
-          {TTI_PRESETS.find(p => p.id === currentProvider)?.models && (
+          {TTI_PRESETS.find(p => p.id === currentProvider)?.models ? (
             <Form.Item name="modelName" label={t('settings.model')}>
               <Select placeholder={t('settings.selectModel')} allowClear>
                 {TTI_PRESETS.find(p => p.id === currentProvider)?.models?.map(model => (
@@ -505,7 +506,11 @@ export const TTIConfigManager: React.FC<TTIConfigManagerProps> = ({ onConfigChan
                 ))}
               </Select>
             </Form.Item>
-          )}
+          ) : currentProvider === 'openai-compatible-tti' ? (
+            <Form.Item name="modelName" label={t('settings.model')}>
+              <Input placeholder="dall-e-3" />
+            </Form.Item>
+          ) : null}
 
           <Row gutter={16}>
             <Col span={12}>
