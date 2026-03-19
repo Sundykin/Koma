@@ -47,6 +47,7 @@ export {
   loadEpisodeTimeline,
   saveEpisodeTimeline,
   updateShot,
+  removeAssetFromAnalysis,
   deleteEpisodeAnalysis,
   // 角色/场景/道具存储
   saveCharacterCostumePhoto,

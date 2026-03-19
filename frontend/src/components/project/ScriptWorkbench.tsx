@@ -7,7 +7,7 @@ import { App } from 'antd';
 import { Film } from 'lucide-react';
 import { InlineProjectToolbar } from './InlineProjectToolbar';
 import { ScriptEditor } from '../../editor';
-import { saveEpisode } from '../../store/projectStore';
+import { saveEpisode, deleteEpisodeAnalysis } from '../../store/projectStore';
 import { generateRandomScript, polishScript } from '../../workflow/scriptGenerator';
 import { startBackgroundAnalysis } from '../../services/ScriptAnalysisService';
 import { TaskManager } from '../../services/TaskManager';
@@ -248,6 +248,8 @@ export const ScriptWorkbench = forwardRef<ScriptWorkbenchRef, ScriptWorkbenchPro
     try {
       // 先保存当前剧本
       await saveScript(localScript);
+      // 清除旧的分析结果（重置 completedStages），确保重新分析能执行
+      await deleteEpisodeAnalysis(project.id, episode.id);
       // 启动后台解析
       const task = await startBackgroundAnalysis(
         project.id,

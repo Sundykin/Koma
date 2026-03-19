@@ -56,6 +56,7 @@ export {
   loadEpisodeTimeline,
   saveEpisodeTimeline,
   updateShot,
+  removeAssetFromAnalysis,
   deleteEpisodeAnalysis,
 } from './analysis';
 

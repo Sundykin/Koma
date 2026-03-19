@@ -24,6 +24,7 @@ import {
   saveProps,
   loadEpisodeAnalysis,
   loadEpisodeShots,
+  removeAssetFromAnalysis,
 } from '../../store/projectStore';
 import { startShotAnalysis } from '../../services/ShotAnalysisService';
 import { AssetListPanel, AssetType } from './AssetListPanel';
@@ -166,26 +167,35 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
   const handleCharacterDelete = useCallback(async (id: string) => {
     const updatedList = characters.filter(c => c.id !== id);
     await saveCharacters(projectId, updatedList);
+    if (episodeId) {
+      await removeAssetFromAnalysis(projectId, episodeId, id, 'character');
+    }
     setCharacters(updatedList);
     if (selectedId === id) setSelectedId(null);
     message.success(t('asset.characterDeleted'));
-  }, [characters, projectId, selectedId, message, t]);
+  }, [characters, projectId, episodeId, selectedId, message, t]);
 
   const handleSceneDelete = useCallback(async (id: string) => {
     const updatedList = scenes.filter(s => s.id !== id);
     await saveScenes(projectId, updatedList);
+    if (episodeId) {
+      await removeAssetFromAnalysis(projectId, episodeId, id, 'scene');
+    }
     setScenes(updatedList);
     if (selectedId === id) setSelectedId(null);
     message.success(t('asset.sceneDeleted'));
-  }, [scenes, projectId, selectedId, message, t]);
+  }, [scenes, projectId, episodeId, selectedId, message, t]);
 
   const handlePropDelete = useCallback(async (id: string) => {
     const updatedList = props.filter(p => p.id !== id);
     await saveProps(projectId, updatedList);
+    if (episodeId) {
+      await removeAssetFromAnalysis(projectId, episodeId, id, 'prop');
+    }
     setProps(updatedList);
     if (selectedId === id) setSelectedId(null);
     message.success(t('asset.propDeleted'));
-  }, [props, projectId, selectedId, message, t]);
+  }, [props, projectId, episodeId, selectedId, message, t]);
 
   // 新建资产回调
   const handleCharacterCreate = useCallback((newChar: Character) => {

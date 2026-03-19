@@ -180,6 +180,57 @@ export async function updateShot(
   return updatedShot;
 }
 
+/**
+ * 从指定剧集的分析数据中移除资产引用（refs + shot bindings）
+ */
+export async function removeAssetFromAnalysis(
+  projectId: string,
+  episodeId: string,
+  assetId: string,
+  assetType: 'character' | 'scene' | 'prop'
+): Promise<void> {
+  if (!electronService.isElectron()) return;
+
+  const analysis = await loadEpisodeAnalysis(projectId, episodeId);
+  if (!analysis) return;
+
+  const refsKey = assetType === 'character' ? 'characterRefs'
+    : assetType === 'scene' ? 'sceneRefs'
+    : 'propRefs';
+  const shotKey = assetType === 'character' ? 'characters'
+    : assetType === 'scene' ? 'scenes'
+    : 'props';
+
+  const hadRef = analysis[refsKey]?.includes(assetId);
+  const filteredRefs = (analysis[refsKey] || []).filter((id: string) => id !== assetId);
+
+  let shotsModified = false;
+  const updatedShots = (analysis.shots || []).map(shot => {
+    const arr = (shot as Record<string, unknown>)[shotKey] as string[] | undefined;
+    if (arr?.includes(assetId)) {
+      shotsModified = true;
+      return { ...shot, [shotKey]: arr.filter(id => id !== assetId) };
+    }
+    return shot;
+  });
+
+  if (!hadRef && !shotsModified) return;
+
+  const projectPath = await getProjectPath(projectId);
+  const episodePath = `${projectPath}/episodes/${episodeId}`;
+  const updated = {
+    ...analysis,
+    [refsKey]: filteredRefs,
+    shots: updatedShots,
+    updatedAt: Date.now(),
+  };
+
+  await electronService.fs.writeFile(
+    `${episodePath}/analysis.json`,
+    JSON.stringify(updated, null, 2)
+  );
+}
+
 export async function deleteEpisodeAnalysis(
   projectId: string,
   episodeId: string
