@@ -239,17 +239,16 @@ export async function shotRenderWorkflow(
       options: { duration: shot.duration, motionPrompt: shot.cameraMovement },
     });
 
-    const resultUrl = result.url || result.path || '';
-    if (!resultUrl) {
-      logger.error('ITV Provider 返回结果缺少视频地址', { result });
-      throw new Error('视频生成完成但未获取到视频地址，请检查 ITV 服务配置');
+    if (result.url || (result as any).path) {
+      videoPath = result.url || (result as any).path;
+      remoteVideoUrl = videoPath;
+      const _taskId = (result as any).taskId;
+      await markTaskCompleted(projectId, itvTask.id, videoPath!, videoPath!);
+      logger.info(`视频生成完成: ${videoPath}`);
+      onProgress(95, '视频生成完成');
+    } else {
+      throw new Error('视频生成失败：未返回有效结果');
     }
-
-    videoPath = resultUrl;
-    remoteVideoUrl = resultUrl;
-    await markTaskCompleted(projectId, itvTask.id, resultUrl, resultUrl);
-    logger.info(`视频生成完成: ${resultUrl}`);
-    onProgress(95, '视频生成完成');
 
     // 步骤3: 保存版本
     onProgress(95, '保存版本...');

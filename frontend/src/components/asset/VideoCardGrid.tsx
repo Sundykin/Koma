@@ -42,9 +42,7 @@ export const VideoCardGrid: React.FC<VideoCardGridProps> = ({
 
   const handlePlay = useCallback((video: ShotVideo, e: React.MouseEvent) => {
     e.stopPropagation();
-    const url = video.path
-      ? electronService.fs.toLocalUrl(video.path)
-      : video.url || '';
+    const url = electronService.fs.toLocalUrl(video.path);
     setPreviewUrl(url);
     setPreviewVisible(true);
   }, []);
