@@ -8,11 +8,6 @@ on:
 permissions:
   contents: write
 
-env:
-  # Override npmmirror in .npmrc — use official sources in CI
-  electron_builder_binaries_mirror: https://github.com/nicedoc/electron-builder-binaries/releases/download/
-  electron_mirror: https://github.com/nicedoc/electron-releases/releases/download/v
-
 jobs:
   build-windows:
     runs-on: windows-latest
@@ -23,7 +18,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
 
       - name: Remove China mirror config
         run: del .npmrc
@@ -58,7 +53,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
 
       - name: Remove China mirror config
         run: rm -f .npmrc
