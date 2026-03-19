@@ -14,8 +14,12 @@ import { EpisodeManager, EpisodeManagerRef } from './EpisodeManager';
 import { EpisodeSplitWizard } from './EpisodeSplitWizard';
 import { ProjectAssetOverview } from './ProjectAssetOverview';
 import { ScriptWorkbench, type ScriptWorkbenchRef } from './ScriptWorkbench';
-import { saveProject, loadProject, listEpisodes, loadEpisode } from '../../store/projectStore';
+import {
+  saveProject, loadProject, listEpisodes, loadEpisode,
+  deleteEpisode, saveCharacters, saveScenes, saveProps,
+} from '../../store/projectStore';
 import { loadSettings, getChannelsByCapability } from '../../store/globalStore';
+import { TaskManager } from '../../services/TaskManager';
 import { createLogger } from '../../store/logger';
 import { ScriptEditor } from '../../editor';
 
@@ -166,10 +170,55 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
     setScriptImportVisible(true);
   };
 
-  const confirmScriptImport = () => {
-    setFullScript(tempScript);
+  const confirmScriptImport = async () => {
+    if (!tempScript.trim()) return;
+
     setScriptImportVisible(false);
-    if (tempScript.trim()) setSplitWizardVisible(true);
+
+    // 检查是否有后台分析任务在跑
+    const runningTasks = TaskManager.getProjectTasks(project.id).filter(task =>
+      task.type === 'script-analysis'
+      && (task.status === 'pending' || task.status === 'running' || task.status === 'processing')
+    );
+    if (runningTasks.length > 0) {
+      message.warning('当前有剧本分析任务正在执行，请等待完成后再导入');
+      return;
+    }
+
+    // 检查是否有旧剧集
+    const existingEpisodes = await listEpisodes(project.id);
+    if (existingEpisodes.length > 0) {
+      Modal.confirm({
+        title: '确认替换剧本',
+        content: `项目中已有 ${existingEpisodes.length} 个剧集，重新导入将删除全部旧剧集及其分析数据、角色、场景、道具信息。已生成的图片/视频文件将保留。此操作不可撤销。`,
+        okText: '确认替换',
+        okType: 'danger',
+        cancelText: '取消',
+        onOk: async () => {
+          try {
+            // 清理旧剧集
+            for (const ep of existingEpisodes) {
+              await deleteEpisode(project.id, ep.id);
+            }
+            // 清空项目级资产
+            await Promise.all([
+              saveCharacters(project.id, []),
+              saveScenes(project.id, []),
+              saveProps(project.id, []),
+            ]);
+            setSelectedEpisode(null);
+            episodeManagerRef.current?.refresh();
+            setFullScript(tempScript);
+            setSplitWizardVisible(true);
+          } catch (err: any) {
+            message.error(`清理旧数据失败: ${err.message}`);
+          }
+        },
+      });
+    } else {
+      setFullScript(tempScript);
+      setSplitWizardVisible(true);
+    }
   };
 
   // 模型配置更新
