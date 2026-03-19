@@ -2,6 +2,7 @@
   "name": "koma-studio",
   "private": true,
   "version": "1.0.0",
+  "author": "Koma Studio",
   "description": "Koma Studio - AI Drama Creation Tool",
   "main": "./public/electron/main.js",
   "scripts": {
