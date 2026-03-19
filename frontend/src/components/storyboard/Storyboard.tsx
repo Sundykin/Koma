@@ -435,7 +435,8 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       if (result.success && result.version) {
         // 更新 shot 的 videos 字段
         const newVideo: ShotVideo = {
-          path: result.version.videoPath || result.version.remoteVideoUrl || '',
+          path: result.version.videoPath || '',
+          url: result.version.remoteVideoUrl,
           thumbnailPath: result.version.imagePath,
           prompt: result.version.prompt,
           seed: result.version.seed,
@@ -1167,7 +1168,8 @@ export const Storyboard: React.FC<StoryboardProps> = ({
         const renderResult = result.results.find(r => r.shotId === s.id && r.success && r.version);
         if (renderResult && renderResult.version) {
           const newVideo: ShotVideo = {
-            path: renderResult.version.videoPath || renderResult.version.remoteVideoUrl || '',
+            path: renderResult.version.videoPath || '',
+            url: renderResult.version.remoteVideoUrl,
             thumbnailPath: renderResult.version.imagePath,
             prompt: renderResult.version.prompt,
             seed: renderResult.version.seed,
@@ -1236,7 +1238,8 @@ export const Storyboard: React.FC<StoryboardProps> = ({
         const renderResult = result.results.find(r => r.shotId === s.id && r.success && r.version);
         if (renderResult && renderResult.version) {
           const newVideo: ShotVideo = {
-            path: renderResult.version.videoPath || renderResult.version.remoteVideoUrl || '',
+            path: renderResult.version.videoPath || '',
+            url: renderResult.version.remoteVideoUrl,
             thumbnailPath: renderResult.version.imagePath,
             prompt: renderResult.version.prompt,
             seed: renderResult.version.seed,
