@@ -40,7 +40,7 @@ module.exports = {
     mac: {
       cmd: 'electron-builder',
       directory: './',
-      args: ['--config=./cmd/builder-mac.json', '-m'],
+      args: ['--config=./cmd/builder-mac.json', '-m', '--x64'],
     },
     mac_arm64: {
       cmd: 'electron-builder',

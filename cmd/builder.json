@@ -41,11 +41,14 @@
   ],
   "win": {
     "icon": "build/icons/icon.ico",
-    "artifactName": "${productName}-${os}-${version}-${arch}.${ext}",
+    "artifactName": "${productName}-${os}-${version}-${arch}-setup.${ext}",
     "target": [
       {
         "target": "portable"
       }
     ]
+  },
+  "portable": {
+    "artifactName": "${productName}-${os}-${version}-${arch}-portable.${ext}"
   }
 }
