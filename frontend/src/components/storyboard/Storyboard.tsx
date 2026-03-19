@@ -488,7 +488,10 @@ export const Storyboard: React.FC<StoryboardProps> = ({
   const assets = useMemo(() => ({ characters, scenes, props }), [characters, scenes, props]);
   const { syncFromPrompt, handleAssetChange } = useShotAssetSync(assets);
 
-  // 文生图提示词变更 - 同时同步资产选择
+  // 提示词变更时的资产同步策略：
+  // 1. 批量生成期间跳过同步（generatingImagePrompts 守卫）
+  // 2. 仅当提示词包含 @mentions 时才更新资产绑定（hasMentions 守卫）
+  // 3. ScriptEditor 外部 value 同步时不触发 onChange（isSyncingExternalRef）
   const handleImagePromptChange = useCallback((shotId: string, imagePrompt: string) => {
     // 批量生成期间，ScriptEditor 的 value 同步会触发 onChange，
     // 但此时 shots 闭包可能是旧状态，直接跳过避免覆盖批量生成的正确数据
@@ -517,7 +520,10 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     saveAllShots(updatedShots);
   }, [shots, saveAllShots, syncFromPrompt, generatingImagePrompts]);
 
-  // 图生视频提示词变更 - 同时同步资产选择
+  // 视频提示词变更时的资产同步策略（同 handleImagePromptChange）：
+  // 1. 批量生成期间跳过同步（generatingVideoPrompts 守卫）
+  // 2. 仅当提示词包含 @mentions 时才更新资产绑定（hasMentions 守卫）
+  // 3. ScriptEditor 外部 value 同步时不触发 onChange（isSyncingExternalRef）
   const handleVideoPromptChange = useCallback((shotId: string, videoPrompt: string) => {
     // 批量生成期间跳过，同 handleImagePromptChange
     if (generatingVideoPrompts.has(shotId)) return;
