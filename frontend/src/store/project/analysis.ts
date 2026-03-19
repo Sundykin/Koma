@@ -10,7 +10,8 @@ import { saveEpisode } from './episodes';
 export async function saveEpisodeAnalysis(
   projectId: string,
   episodeId: string,
-  analysis: Omit<EpisodeAnalysis, 'episodeId' | 'createdAt' | 'updatedAt'>
+  analysis: Omit<EpisodeAnalysis, 'episodeId' | 'createdAt' | 'updatedAt'>,
+  options?: { resetStages?: boolean }
 ): Promise<EpisodeAnalysis> {
   if (!electronService.isElectron()) {
     throw new Error('仅支持 Electron 环境');
@@ -21,10 +22,12 @@ export async function saveEpisodeAnalysis(
   const now = Date.now();
 
   const existing = await loadEpisodeAnalysis(projectId, episodeId);
-  const completedStages = Array.from(new Set([
-    ...(existing?.completedStages || []),
-    ...(analysis.completedStages || []),
-  ]));
+  const completedStages = options?.resetStages
+    ? (analysis.completedStages || [])
+    : Array.from(new Set([
+        ...(existing?.completedStages || []),
+        ...(analysis.completedStages || []),
+      ]));
   const result: EpisodeAnalysis = {
     episodeId,
     characterRefs: analysis.characterRefs,
