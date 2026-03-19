@@ -4,7 +4,7 @@
  */
 import type { AppSettings, Character, Scene } from '../types';
 import { getProjectLLMProvider } from '../providers';
-import { getPromptTemplate, fillTemplate } from '../store/promptTemplates';
+import { resolvePromptTemplate } from '../store/promptTemplates';
 import { parseLLMJSON } from '../utils/llmJsonParser';
 
 // 道具接口
@@ -38,13 +38,11 @@ export async function extractCharacters(
   }
 
   onProgress?.(5, '加载 Prompt 模板...');
-  const template = await getPromptTemplate('character_extraction');
-
-  const prompt = fillTemplate(template.template, { script });
+  const resolvedPrompt = await resolvePromptTemplate('character_extraction', { script });
 
   onProgress?.(10, '分析剧本角色...');
   const response = await provider.chat([
-    { role: 'user', content: prompt },
+    { role: 'user', content: resolvedPrompt.prompt },
   ]);
 
   onProgress?.(80, '解析角色数据...');
@@ -79,13 +77,11 @@ export async function extractScenes(
   }
 
   onProgress?.(5, '加载 Prompt 模板...');
-  const template = await getPromptTemplate('scene_extraction');
-
-  const prompt = fillTemplate(template.template, { script });
+  const resolvedPrompt = await resolvePromptTemplate('scene_extraction', { script });
 
   onProgress?.(10, '分析剧本场景...');
   const response = await provider.chat([
-    { role: 'user', content: prompt },
+    { role: 'user', content: resolvedPrompt.prompt },
   ]);
 
   onProgress?.(80, '解析场景数据...');
@@ -121,13 +117,11 @@ export async function extractProps(
   }
 
   onProgress?.(5, '加载 Prompt 模板...');
-  const template = await getPromptTemplate('prop_extraction');
-
-  const prompt = fillTemplate(template.template, { script });
+  const resolvedPrompt = await resolvePromptTemplate('prop_extraction', { script });
 
   onProgress?.(10, '分析剧本道具...');
   const response = await provider.chat([
-    { role: 'user', content: prompt },
+    { role: 'user', content: resolvedPrompt.prompt },
   ]);
 
   onProgress?.(80, '解析道具数据...');

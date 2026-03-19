@@ -6,6 +6,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { electronService, ProjectMeta, isElectron } from '../services/electronService';
 import { v4 as uuidv4 } from 'uuid';
 import { createLogger } from '../store/logger';
+import { createProjectStyleSnapshot, DEFAULT_THEME_PRESET_ID } from '../config/themePresets';
 
 const logger = createLogger('useProjects');
 
@@ -23,8 +24,7 @@ export interface CreateProjectData {
   title: string;
   mode: 'drama' | 'narration';
   genre?: string;
-  theme?: string;
-  stylePrompt?: string;
+  stylePresetId?: string;
 }
 
 export function useProjects(): UseProjectsResult {
@@ -56,6 +56,8 @@ export function useProjects(): UseProjectsResult {
   // 创建项目
   const createProject = useCallback(async (data: CreateProjectData): Promise<ProjectMeta> => {
     const now = Date.now();
+    const stylePresetId = data.stylePresetId || DEFAULT_THEME_PRESET_ID;
+    const styleSnapshot = await createProjectStyleSnapshot(stylePresetId);
     const meta: ProjectMeta = {
       id: uuidv4(),
       title: data.title,
@@ -65,8 +67,8 @@ export function useProjects(): UseProjectsResult {
       episodes: 1,
       createdAt: now,
       updatedAt: now,
-      theme: data.theme,
-      stylePrompt: data.stylePrompt,
+      stylePresetId,
+      styleSnapshot,
     };
 
     if (isElectron()) {

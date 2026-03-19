@@ -76,6 +76,7 @@ export {
   findSceneByName,
   findPropByName,
   getOrphanedAssets,
+  repairAssetEpisodeRefs,
   // 缓存管理
   getCacheStats,
   saveThumbnail,

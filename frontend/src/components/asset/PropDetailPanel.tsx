@@ -33,7 +33,7 @@ import {
   ExpandOutlined,
 } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
-import type { Prop } from '../../types';
+import type { ProjectStyleSnapshot, Prop } from '../../types';
 import {
   generatePropImage,
   generatePropPreviewVideo,
@@ -53,6 +53,7 @@ interface PropDetailPanelProps {
   projectId: string;
   theme?: string;
   stylePrompt?: string;
+  styleSnapshot?: ProjectStyleSnapshot;
   ttiConfigId?: string;
   itvConfigId?: string;
   onUpdate: (prop: Prop) => void;
@@ -67,6 +68,7 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
   projectId,
   theme,
   stylePrompt,
+  styleSnapshot,
   ttiConfigId,
   itvConfigId,
   onUpdate,
@@ -157,6 +159,7 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
         prop: propWithPrompt,
         theme,
         stylePrompt,
+        styleSnapshot,
         ttiConfigId,
         onProgress: (p, step) => {
           setProgress(p);
@@ -189,7 +192,7 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
     } finally {
       setGenerating(null);
     }
-  }, [editedProp, projectId, theme, stylePrompt, ttiConfigId, form, onUpdate, message]);
+  }, [editedProp, projectId, theme, stylePrompt, styleSnapshot, ttiConfigId, form, onUpdate, message]);
 
   const handleUploadImage = useCallback(async () => {
     try {
@@ -247,6 +250,9 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
       const result = await generatePropPreviewVideo({
         projectId,
         prop: editedProp,
+        theme,
+        stylePrompt,
+        styleSnapshot,
         itvConfigId,
         onProgress: (p, step) => {
           setProgress(p);
@@ -279,7 +285,7 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
     } finally {
       setGenerating(null);
     }
-  }, [editedProp, projectId, itvConfigId, onUpdate, message, t]);
+  }, [editedProp, projectId, theme, stylePrompt, styleSnapshot, itvConfigId, onUpdate, message, t]);
 
   const handleUploadVideo = useCallback(async () => {
     try {

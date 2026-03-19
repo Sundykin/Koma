@@ -31,6 +31,7 @@ export interface LLMProvider {
       projectId?: string;
       targetId?: string;
       targetName?: string;
+      stream?: boolean;
     }
   ): Promise<string>;
   chat?(
@@ -42,6 +43,7 @@ export interface LLMProvider {
       projectId?: string;
       targetId?: string;
       targetName?: string;
+      stream?: boolean;
     }
   ): Promise<string>;
 }

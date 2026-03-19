@@ -64,20 +64,23 @@ function getAssetIdFromMention(
   mentionId: string,
   assets: { characters: Character[]; scenes: Scene[]; props: Prop[] }
 ): string | null {
+  // 构建带前缀的完整 ID（regex 解析时 prefix 被拆到 group1）
+  const fullId = `${type}_${mentionId}`;
+
   if (type === 'char') {
     const char = assets.characters.find(
-      c => c.id === mentionId || c.sora2CharacterId === mentionId
+      c => c.id === mentionId || c.id === fullId || c.sora2CharacterId === mentionId || c.sora2CharacterId === fullId
     );
     return char?.id || null;
   }
   if (type === 'prop') {
     const prop = assets.props.find(
-      p => p.id === mentionId || p.sora2PropId === mentionId
+      p => p.id === mentionId || p.id === fullId || p.sora2PropId === mentionId || p.sora2PropId === fullId
     );
     return prop?.id || null;
   }
   if (type === 'scene') {
-    const scene = assets.scenes.find(s => s.id === mentionId);
+    const scene = assets.scenes.find(s => s.id === mentionId || s.id === fullId);
     return scene?.id || null;
   }
   return null;

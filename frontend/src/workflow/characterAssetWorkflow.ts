@@ -6,7 +6,7 @@ import type { Character } from '../types';
 import { getProjectTTIProvider, getProjectITVProvider } from '../providers';
 import { createTask, updateTask, markTaskCompleted, getTask } from '../store/taskQueueStore';
 import { pollTaskUntilComplete } from '../store/taskRecoveryService';
-import { downloadRemoteAsset } from '../store/assetDownloadService';
+import { downloadRemoteAsset, resolveImageSourceForAPI } from '../store/assetDownloadService';
 import {
   saveCharacterCostumePhoto,
   saveCharacters,
@@ -16,15 +16,22 @@ import { getStorageConfig, initStorageConfig } from '../store/storageConfig';
 import { getThemeStylePrefix, getThemeStylePrefixAsync } from '../config/themePresets';
 import { createLogger } from '../store/logger';
 import { logTTICall, logITVCall } from '../store/aiCallLogger';
-import { getPromptTemplate, fillTemplate } from '../store/promptTemplates';
+import { resolvePromptTemplate } from '../store/promptTemplates';
 
 const logger = createLogger('CharacterAsset');
+
+interface StyleSnapshotLike {
+  ttiStylePrefix?: string;
+  llmPromptSuffix?: string;
+}
 
 interface GenerateOptions {
   projectId: string;
   character: Character;
   theme?: string;
   stylePrompt?: string;
+  styleSnapshot?: StyleSnapshotLike;
+  project?: { styleSnapshot?: StyleSnapshotLike };
   ttiConfigId?: string;
   itvConfigId?: string;
   onProgress?: (progress: number, step: string) => void;
@@ -37,7 +44,7 @@ interface GenerateOptions {
 export async function generateCostumePhoto(
   options: GenerateOptions
 ): Promise<{ success: boolean; path?: string; url?: string; error?: string }> {
-  const { projectId, character, theme, stylePrompt, ttiConfigId, onProgress } = options;
+  const { projectId, character, theme, stylePrompt, styleSnapshot, project, ttiConfigId, onProgress } = options;
 
   logger.info(`开始生成角色定妆照: ${character.name}`);
   onProgress?.(0, '准备生成定妆照...');
@@ -49,18 +56,12 @@ export async function generateCostumePhoto(
     }
 
     // 构建提示词（从配置化模板读取）
-    const stylePrefix = await getThemeStylePrefixAsync(theme, stylePrompt);
-    let prompt: string;
-    try {
-      const template = await getPromptTemplate('tti_character_costume');
-      prompt = fillTemplate(template.template, {
-        stylePrefix: stylePrefix || '',
-        appearance: character.appearance || '',
-      });
-    } catch {
-      // 回退到硬编码模板
-      prompt = buildCostumePhotoPrompt(character, stylePrefix);
-    }
+    const stylePrefix = await getResolvedTTIStylePrefix(styleSnapshot || project?.styleSnapshot, theme, stylePrompt);
+    const resolvedPrompt = await resolvePromptTemplate('tti_character_costume', {
+      stylePrefix: stylePrefix || '',
+      appearance: character.appearance || '',
+    });
+    const prompt = resolvedPrompt.prompt;
 
     // 创建任务记录
     const task = await createTask(projectId, {
@@ -82,7 +83,13 @@ export async function generateCostumePhoto(
       ttiProvider.config?.name || 'TTI',
       prompt,
       { width: 1536, height: 1024 },
-      { projectId, targetId: character.id, targetName: `${character.name} 定妆照` }
+      {
+        projectId,
+        targetId: character.id,
+        targetName: `${character.name} 定妆照`,
+        templateId: resolvedPrompt.template.id,
+        promptSource: resolvedPrompt.source,
+      }
     );
 
     // 调用 TTI Provider - 横版尺寸以容纳三视图
@@ -128,17 +135,18 @@ export async function generateCostumePhoto(
       // 同步模式，直接保存
       onProgress?.(90, '保存定妆照...');
 
-      // 判断返回的是远程 URL 还是本地路径
+      // 判断返回的是远程 URL、data URL 还是本地路径
       const isRemoteUrl = result.path.startsWith('http://') || result.path.startsWith('https://');
+      const isDataUrl = result.path.startsWith('data:');
       let localPath: string;
       let remoteUrl: string | undefined;
 
-      if (isRemoteUrl) {
-        // 远程 URL，需要下载
-        remoteUrl = result.path;
+      if (isRemoteUrl || isDataUrl) {
+        // 远程 URL 或 data URL（base64），需要下载/写入
+        if (isRemoteUrl) remoteUrl = result.path;
         const config = getStorageConfig() || (await initStorageConfig());
         localPath = `${config.rootPath}/projects/${projectId}/assets/characters/${character.id}/costume-photo.png`;
-        const downloadResult = await downloadRemoteAsset(remoteUrl, localPath);
+        const downloadResult = await downloadRemoteAsset(result.path, localPath);
         if (!downloadResult.success) {
           throw new Error('下载图片失败');
         }
@@ -172,20 +180,26 @@ export async function generateCostumePhoto(
 export async function generateCharacterPreviewVideo(
   options: GenerateOptions
 ): Promise<{ success: boolean; path?: string; taskId?: string; error?: string }> {
-  const { projectId, character, itvConfigId, onProgress } = options;
+  const { projectId, character, theme, stylePrompt, styleSnapshot, project, itvConfigId, onProgress } = options;
 
   logger.info(`开始生成角色预览视频: ${character.name}`);
   onProgress?.(0, '准备生成预览视频...');
 
   // 优先使用远程 URL，其次使用本地路径
-  const imageSource = character.costumePhotoUrl || character.costumePhotoPath;
-  if (!imageSource) {
+  const rawImageSource = character.costumePhotoUrl || character.costumePhotoPath;
+  if (!rawImageSource) {
     return { success: false, error: '请先生成定妆照' };
+  }
+
+  // 将本地路径转为 data URI，确保远程 API 可用
+  const imageSource = await resolveImageSourceForAPI(rawImageSource);
+  if (!imageSource) {
+    return { success: false, error: '无法读取定妆照图片，请重新生成' };
   }
 
   // 如果没有远程 URL，提示用户可能需要重新生成
   if (!character.costumePhotoUrl) {
-    logger.warn(`角色 ${character.name} 没有远程图片 URL，将使用本地路径。某些服务（如 Sora2）可能需要远程 URL。`);
+    logger.warn(`角色 ${character.name} 没有远程图片 URL，已将本地文件转为 data URI。`);
   }
 
   try {
@@ -210,7 +224,14 @@ export async function generateCharacterPreviewVideo(
     onProgress?.(10, '调用 ITV 服务...');
 
     // 调用 ITV Provider - 优先使用远程 URL
-    const prompt = `${character.name} character introduction, gentle movement, looking at camera`;
+    const resolvedStylePrefix = await getResolvedTTIStylePrefix(styleSnapshot || project?.styleSnapshot, theme, stylePrompt);
+    const visualPrompt = character.prompt || character.appearance || character.description || character.name;
+    const resolvedPrompt = await resolvePromptTemplate('itv_character_motion', {
+      stylePrefix: resolvedStylePrefix,
+      characterName: character.name,
+      action: `${visualPrompt}, character showcase, subtle breathing, natural eye movement, steady camera`,
+    });
+    const prompt = resolvedPrompt.prompt;
 
     // 打印完整提示词日志
     logITVCall(
@@ -218,7 +239,13 @@ export async function generateCharacterPreviewVideo(
       imageSource,
       prompt,
       { duration: 4, aspectRatio: '9:16' },
-      { projectId, targetId: character.id, targetName: `${character.name} 预览视频` }
+      {
+        projectId,
+        targetId: character.id,
+        targetName: `${character.name} 预览视频`,
+        templateId: resolvedPrompt.template.id,
+        promptSource: resolvedPrompt.source,
+      }
     );
 
     // 调用 ITV Provider 生成视频
@@ -398,13 +425,15 @@ export function buildCostumePhotoPrompt(character: Character, stylePrefix: strin
 export function getCharacterPrompt(
   character: Character,
   theme?: string,
-  stylePrompt?: string
+  stylePrompt?: string,
+  styleSnapshot?: StyleSnapshotLike,
+  project?: { styleSnapshot?: StyleSnapshotLike }
 ): string {
   // 优先使用自定义提示词
   if (character.customPrompt) {
     return character.customPrompt;
   }
-  const stylePrefix = getThemeStylePrefix(theme, stylePrompt);
+  const stylePrefix = resolveTTIStylePrefix(styleSnapshot || project?.styleSnapshot, theme, stylePrompt);
   return buildCostumePhotoPrompt(character, stylePrefix);
 }
 
@@ -425,4 +454,35 @@ async function updateCharacterAsset(
 
 function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function resolveTTIStylePrefix(
+  styleSnapshot?: StyleSnapshotLike,
+  theme?: string,
+  stylePrompt?: string
+): string {
+  return styleSnapshot?.ttiStylePrefix || getThemeStylePrefix(theme, stylePrompt);
+}
+
+async function getResolvedTTIStylePrefix(
+  styleSnapshot?: StyleSnapshotLike,
+  theme?: string,
+  stylePrompt?: string
+): Promise<string> {
+  if (styleSnapshot?.ttiStylePrefix) {
+    return styleSnapshot.ttiStylePrefix;
+  }
+  return getThemeStylePrefixAsync(theme, stylePrompt);
+}
+
+function buildCharacterPreviewPrompt(character: Character, stylePrefix: string): string {
+  const visualPrompt = character.prompt || character.appearance || character.description || character.name;
+  return [
+    stylePrefix,
+    visualPrompt,
+    'character showcase',
+    'subtle breathing',
+    'natural eye movement',
+    'steady camera',
+  ].filter(Boolean).join(', ');
 }

@@ -33,6 +33,8 @@ function fromElectronProject(meta: ElectronProjectMeta): ProjectMeta {
     ttiConfigId: meta.ttiConfigId,
     itvConfigId: meta.itvConfigId,
     ttsConfigId: meta.ttsConfigId,
+    stylePresetId: meta.stylePresetId,
+    styleSnapshot: meta.styleSnapshot,
     theme: meta.theme,
     stylePrompt: meta.stylePrompt,
   };
@@ -51,6 +53,8 @@ function toElectronProject(meta: ProjectMeta): ElectronProjectMeta {
     ttiConfigId: meta.ttiConfigId,
     itvConfigId: meta.itvConfigId,
     ttsConfigId: meta.ttsConfigId,
+    stylePresetId: meta.stylePresetId,
+    styleSnapshot: meta.styleSnapshot,
     theme: meta.theme,
     stylePrompt: meta.stylePrompt,
   };
@@ -62,7 +66,8 @@ export async function createProject(
   title: string,
   genre: string,
   mode: 'drama' | 'narration',
-  llmConfigId?: string
+  llmConfigId?: string,
+  styleOptions?: { theme?: string; stylePrompt?: string }
 ): Promise<ProjectMeta> {
   const projectId = uuidv4();
   const now = Date.now();
@@ -81,6 +86,8 @@ export async function createProject(
     createdAt: now,
     updatedAt: now,
     llmConfigId: finalLLMConfigId,
+    theme: styleOptions?.theme,
+    stylePrompt: styleOptions?.stylePrompt,
   };
 
   if (electronService.isElectron()) {

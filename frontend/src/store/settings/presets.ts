@@ -41,6 +41,7 @@ export const LLM_CHANNEL_PRESETS: LLMChannelPreset[] = [
 export const TTI_PRESETS: ProviderPreset[] = [
   { id: 'nano-banana', name: 'Nano-Banana（官方）', baseUrl: 'http://ai.hsxbk.top', models: ['gemini-2.5-pro-image-preview', 'gemini-3-pro-image-preview'] },
   { id: 'gemini-3-pro', name: 'Gemini-3-Pro (toapis)', baseUrl: 'https://toapis.com', models: ['gemini-3-pro-image-preview'] },
+  { id: 'openai-compatible-tti', name: '自定义服务商（OpenAI 兼容）', baseUrl: '' },
 ];
 
 // ITV 厂商预设

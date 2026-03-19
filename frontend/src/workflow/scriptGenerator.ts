@@ -5,13 +5,25 @@
 import type { AppSettings, Character, Scene } from '../types';
 import { getProjectLLMProvider } from '../providers';
 import type { LLMCallOptions } from '../providers/llm/types';
-import { getPromptTemplate, fillTemplate } from '../store/promptTemplates';
+import { resolvePromptTemplate } from '../store/promptTemplates';
 import { logLLMCall } from '../store/aiCallLogger';
 import { createLogger } from '../store/logger';
 import { createAITraceId, describeLLMProviderTransport } from '../utils/aiTrace';
 import { parseLLMJSON } from '../utils/llmJsonParser';
 
 const logger = createLogger('ScriptGenerator');
+
+interface StyleSnapshotLike {
+  ttiStylePrefix?: string;
+  llmPromptSuffix?: string;
+}
+
+interface StyleContext {
+  styleSnapshot?: StyleSnapshotLike;
+  project?: { styleSnapshot?: StyleSnapshotLike };
+}
+
+type ScriptLLMCallOptions = LLMCallOptions & StyleContext;
 
 interface ScriptGeneratorParams {
   settings: AppSettings;
@@ -20,6 +32,8 @@ interface ScriptGeneratorParams {
   characters?: Character[];
   scenes?: Scene[];
   episodeCount?: number;
+  styleSnapshot?: StyleSnapshotLike;
+  project?: { styleSnapshot?: StyleSnapshotLike };
 }
 
 interface GeneratedScript {
@@ -36,6 +50,8 @@ interface ScriptFromIdeaParams {
   idea: string;
   style: string;
   duration: string;
+  styleSnapshot?: StyleSnapshotLike;
+  project?: { styleSnapshot?: StyleSnapshotLike };
 }
 
 // 随机创意接口（保留兼容）
@@ -50,6 +66,20 @@ interface RandomIdea {
 export interface RandomScriptResult {
   script: string;
   metadata: RandomIdea;
+}
+
+function getResolvedLLMStyleSuffix(context?: StyleContext): string {
+  return context?.styleSnapshot?.llmPromptSuffix
+    || context?.project?.styleSnapshot?.llmPromptSuffix
+    || '';
+}
+
+function appendStyleRequirement(prompt: string, context?: StyleContext): string {
+  const styleSuffix = getResolvedLLMStyleSuffix(context)?.trim();
+  if (!styleSuffix) {
+    return prompt;
+  }
+  return `${prompt}\n\n【项目风格要求】\n${styleSuffix}`;
 }
 
 /**
@@ -93,11 +123,11 @@ export async function generateRandomIdea(
   }
 
   onProgress?.(5, '加载 Prompt 模板...');
-  const template = await getPromptTemplate('random_idea_generation');
+  const resolvedPrompt = await resolvePromptTemplate('random_idea_generation', {});
 
   onProgress?.(20, '正在生成随机创意...');
   const response = await provider.chat([
-    { role: 'user', content: template.template },
+    { role: 'user', content: resolvedPrompt.prompt },
   ]);
 
   onProgress?.(80, '解析创意...');
@@ -114,7 +144,7 @@ export async function generateRandomIdea(
 export async function generateRandomScript(
   duration: string = '3',
   onProgress?: (progress: number, step?: string) => void,
-  traceContext?: LLMCallOptions
+  traceContext?: ScriptLLMCallOptions
 ): Promise<string> {
   const provider = await getProjectLLMProvider();
   if (!provider) {
@@ -132,9 +162,14 @@ export async function generateRandomScript(
   const providerLabel = `${provider.type}:${provider.config.modelName || 'default'}`;
 
   onProgress?.(5, '加载 Prompt 模板...');
-  const template = await getPromptTemplate('random_script_generation');
-
-  const prompt = fillTemplate(template.template, { duration });
+  const styleContext: StyleContext = {
+    styleSnapshot: traceContext?.styleSnapshot,
+    project: traceContext?.project,
+  };
+  const resolvedPrompt = await resolvePromptTemplate('random_script_generation', {
+    duration,
+  });
+  const finalPrompt = appendStyleRequirement(resolvedPrompt.prompt, styleContext);
 
   logger.info('开始随机生成剧本', {
     traceId: finalTraceContext.traceId,
@@ -142,11 +177,15 @@ export async function generateRandomScript(
     provider: providerLabel,
     transport: describeLLMProviderTransport(provider.type),
   });
-  logLLMCall(providerLabel, prompt, undefined, finalTraceContext);
+  logLLMCall(providerLabel, finalPrompt, undefined, {
+    ...finalTraceContext,
+    templateId: resolvedPrompt.template.id,
+    promptSource: resolvedPrompt.source,
+  });
 
   onProgress?.(15, '正在生成随机剧本...');
   const response = await provider.chat([
-    { role: 'user', content: prompt },
+    { role: 'user', content: finalPrompt },
   ], finalTraceContext);
 
   onProgress?.(100, '剧本生成完成');
@@ -163,9 +202,10 @@ export async function generateRandomScript(
  */
 export async function generateRandomScriptWithMetadata(
   duration: string = '3',
-  onProgress?: (progress: number, step?: string) => void
+  onProgress?: (progress: number, step?: string) => void,
+  styleContext?: StyleContext
 ): Promise<RandomScriptResult> {
-  const script = await generateRandomScript(duration, onProgress);
+  const script = await generateRandomScript(duration, onProgress, styleContext);
   const metadata = parseScriptMetadata(script);
   return { script, metadata };
 }
@@ -184,17 +224,19 @@ export async function generateScriptFromIdea(
   }
 
   onProgress(5, '加载 Prompt 模板...');
-  const template = await getPromptTemplate('script_generation');
+  const styleSuffix = getResolvedLLMStyleSuffix(params);
+  const effectiveStyle = styleSuffix || style;
 
-  const prompt = fillTemplate(template.template, {
+  const resolvedPrompt = await resolvePromptTemplate('script_generation', {
     idea,
-    style,
+    style: effectiveStyle,
     duration,
   });
+  const finalPrompt = resolvedPrompt.prompt;
 
   onProgress(10, '正在生成剧本...');
   const response = await provider.chat([
-    { role: 'user', content: prompt },
+    { role: 'user', content: finalPrompt },
   ]);
 
   onProgress(100, '剧本生成完成');
@@ -208,7 +250,8 @@ export async function polishScript(
   settings: AppSettings,
   script: string,
   requirements: string = '使语言更加生动，对话更自然',
-  onProgress: (progress: number, step?: string) => void
+  onProgress: (progress: number, step?: string) => void,
+  styleContext?: StyleContext
 ): Promise<string> {
   const provider = await getProjectLLMProvider();
   if (!provider) {
@@ -216,17 +259,21 @@ export async function polishScript(
   }
 
   onProgress(5, '加载 Prompt 模板...');
-  const template = await getPromptTemplate('script_polish');
-
-  const prompt = fillTemplate(template.template, {
+  const resolvedPrompt = await resolvePromptTemplate('script_polish', {
     script,
     requirements,
   });
+  const finalPrompt = appendStyleRequirement(resolvedPrompt.prompt, styleContext);
 
   onProgress(10, '正在润色剧本...');
   const response = await provider.chat([
-    { role: 'user', content: prompt },
-  ]);
+    { role: 'user', content: finalPrompt },
+  ], {
+    source: 'scriptGenerator.polishScript',
+    operation: 'script_polish',
+    targetName: '剧本润色',
+    stream: false,
+  });
 
   onProgress(100, '润色完成');
   return response;
@@ -292,10 +339,12 @@ ${sceneDesc}
 
   onProgress(10, '正在构思剧本...');
 
+  const finalPrompt = appendStyleRequirement(prompt, params);
+
   const response = await provider.chat([
     {
       role: 'user',
-      content: prompt,
+      content: finalPrompt,
     },
   ]);
 

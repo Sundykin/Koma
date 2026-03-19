@@ -10,9 +10,11 @@ import { ScriptEditor } from '../../editor';
 import { saveEpisode } from '../../store/projectStore';
 import { generateRandomScript, polishScript } from '../../workflow/scriptGenerator';
 import { startBackgroundAnalysis } from '../../services/ScriptAnalysisService';
+import { TaskManager } from '../../services/TaskManager';
 import type { Project, Episode, AppSettings } from '../../types';
 import { createLogger } from '../../store/logger';
 import { createAITraceId } from '../../utils/aiTrace';
+import { classifyAIError } from '../../utils/aiError';
 
 const logger = createLogger('ScriptWorkbench');
 
@@ -47,6 +49,32 @@ export const ScriptWorkbench = forwardRef<ScriptWorkbenchRef, ScriptWorkbenchPro
     setLocalScript(episode?.scriptText || '');
     lastSavedRef.current = episode?.scriptText || '';
   }, [episode?.id]);
+
+  useEffect(() => {
+    if (!episode) {
+      setIsAnalyzing(false);
+      return;
+    }
+
+    const syncAnalyzingState = () => {
+      const running = TaskManager.getProjectTasks(project.id).some(task =>
+        task.type === 'script-analysis'
+        && task.targetId === episode.id
+        && (task.status === 'pending' || task.status === 'running' || task.status === 'processing')
+      );
+      setIsAnalyzing(running);
+    };
+
+    syncAnalyzingState();
+    const unsubscribe = TaskManager.addListener((task) => {
+      if (task.projectId !== project.id) return;
+      if (task.type !== 'script-analysis') return;
+      if (task.targetId !== episode.id) return;
+      syncAnalyzingState();
+    });
+
+    return () => unsubscribe();
+  }, [project.id, episode?.id]);
 
   // 自动保存 (防抖 2s)
   const saveScript = useCallback(async (text: string): Promise<Episode | null> => {
@@ -150,6 +178,8 @@ export const ScriptWorkbench = forwardRef<ScriptWorkbenchRef, ScriptWorkbenchPro
         projectId: project.id,
         targetId: episode?.id,
         targetName: episode?.title || `第${episode?.number || 0}集`,
+        styleSnapshot: project.styleSnapshot,
+        project,
       });
       setLocalScript(script);
       await saveScript(script);
@@ -183,14 +213,15 @@ export const ScriptWorkbench = forwardRef<ScriptWorkbenchRef, ScriptWorkbenchPro
         {} as AppSettings,
         localScript,
         '使语言更加生动，对话更自然，情节更紧凑',
-        () => {}
+        () => {},
+        { styleSnapshot: project.styleSnapshot, project }
       );
       setLocalScript(polished);
       await saveScript(polished);
       message.success('润色完成！');
     } catch (err: unknown) {
       logger.error('润色失败', err);
-      message.error('润色失败，请检查 LLM 配置后重试');
+      message.error(classifyAIError(err).userMessage);
     } finally {
       setIsPolishing(false);
     }
@@ -202,22 +233,39 @@ export const ScriptWorkbench = forwardRef<ScriptWorkbenchRef, ScriptWorkbenchPro
       message.warning('请先输入剧本内容');
       return;
     }
+
+    const existingTask = TaskManager.getProjectTasks(project.id).find(task =>
+      task.type === 'script-analysis'
+      && task.targetId === episode.id
+      && (task.status === 'pending' || task.status === 'running' || task.status === 'processing')
+    );
+    if (existingTask) {
+      message.info('当前剧集已在后台解析中，请等待完成后再试。');
+      return;
+    }
+
     setIsAnalyzing(true);
     try {
       // 先保存当前剧本
       await saveScript(localScript);
       // 启动后台解析
-      await startBackgroundAnalysis(
+      const task = await startBackgroundAnalysis(
         project.id,
         episode.id,
         episode.title || `第${episode.number}集`,
         localScript,
-        project.llmConfigId
+        project.llmConfigId,
+        project.styleSnapshot,
+        project
       );
+      if (task.metadata?.deduped) {
+        message.info('当前剧集已在后台解析中，请等待完成后再试。');
+        return;
+      }
       message.success('解析任务已启动，可在状态栏查看进度');
     } catch (err: unknown) {
       logger.error('解析失败', err);
-      message.error('剧本解析失败，请检查 LLM 配置后重试');
+      message.error(classifyAIError(err).userMessage);
     } finally {
       setIsAnalyzing(false);
     }

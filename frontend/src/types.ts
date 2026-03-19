@@ -1,3 +1,16 @@
+export type StylePresetSourceType = 'builtin' | 'custom';
+
+export interface ProjectStyleSnapshot {
+  id: string;
+  name: string;
+  description: string;
+  ttiStylePrefix: string;
+  llmPromptSuffix: string;
+  sourceType: StylePresetSourceType;
+  sourcePresetId: string;
+  createdAt: number;
+}
+
 // 项目接口定义
 export interface Project {
   id: string;
@@ -12,9 +25,12 @@ export interface Project {
   ttiConfigId?: string;  // 关联的 TTI 配置 ID
   itvConfigId?: string;  // 关联的 ITV 配置 ID
   ttsConfigId?: string;  // 关联的 TTS 配置 ID
-  // 新增字段
-  theme?: string;           // 主题风格 ID
-  stylePrompt?: string;     // 自定义风格描述
+  stylePresetId?: string;   // 选中的全局风格 ID
+  styleSnapshot?: ProjectStyleSnapshot; // 项目风格快照
+  // @deprecated 遗留字段，仅保留给未改造调用点过渡
+  theme?: string;
+  // @deprecated 遗留字段，仅保留给未改造调用点过渡
+  stylePrompt?: string;
   episodeCount?: number;    // 实际剧集数（用于剧集管理）
 }
 
@@ -47,6 +63,7 @@ export interface EpisodeAnalysis {
   characterRefs: string[];
   sceneRefs: string[];
   propRefs: string[];
+  completedStages?: Array<'characters' | 'scenes' | 'props' | 'shots'>;
   // 剧集特有的分镜
   shots: Shot[];
   createdAt: number;
@@ -207,7 +224,7 @@ export type ModelProviderType = 'gemini' | 'openai' | 'openai-compatible' | 'cla
 export type LLMProviderType = 'openai-compatible' | 'gemini' | 'claude';
 // 扩展支持插件动态类型
 export type TTIProviderType =
-  | 'comfyui' | 'jimeng' | 'qwen-image' | 'midjourney' | 'dall-e' | 'flux' | 'nano-banana' | 'gemini-3-pro'
+  | 'comfyui' | 'jimeng' | 'qwen-image' | 'midjourney' | 'dall-e' | 'flux' | 'nano-banana' | 'gemini-3-pro' | 'openai-compatible-tti'
   | (string & { __ttiPlugin?: never });
 export type ITVProviderType =
   | 'runway' | 'kling' | 'pika' | 'minimax' | 'comfyui-animatediff' | 'sora2' | 'custom'
@@ -325,6 +342,10 @@ export interface AppSettings {
   ttiConfigs: TTIModelConfig[];
   itvConfigs: ITVModelConfig[];
   ttsConfigs: TTSModelConfig[];
+  promptTemplates?: Record<string, {
+    template: string;
+    updatedAt: number;
+  }>;
   customThemePresets?: ThemePreset[];  // 用户自定义视觉风格预设
   channelConfigs?: import('./providers/channel/types').ChannelConfig[];  // 渠道配置（Provider 注入版）
   imageHostingConfig?: ImageHostingConfig;  // 图床配置
@@ -473,8 +494,12 @@ export interface ProjectMeta {
   ttiConfigId?: string;   // 关联的 TTI 配置 ID
   itvConfigId?: string;   // 关联的 ITV 配置 ID
   ttsConfigId?: string;   // 关联的 TTS 配置 ID
-  theme?: string;         // 主题风格 ID
-  stylePrompt?: string;   // 自定义风格描述
+  stylePresetId?: string; // 选中的全局风格 ID
+  styleSnapshot?: ProjectStyleSnapshot;
+  // @deprecated 遗留字段，仅保留给未改造调用点过渡
+  theme?: string;
+  // @deprecated 遗留字段，仅保留给未改造调用点过渡
+  stylePrompt?: string;
 }
 
 export interface RecentProject {

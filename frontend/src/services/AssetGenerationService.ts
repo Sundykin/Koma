@@ -361,8 +361,14 @@ export class AssetGenerationService {
     const filename = `${Date.now()}.png`;
     const filePath = `${assetDir}/${filename}`;
 
-    // 使用主进程下载（绕过 CORS）
-    const _result = await electronService.fs.downloadFile(imageUrl, filePath);
+    if (imageUrl.startsWith('data:')) {
+      // data URL 模式（base64）：直接写入文件
+      const base64Data = imageUrl.replace(/^data:image\/\w+;base64,/, '');
+      await electronService.fs.writeFile(filePath, base64Data, true);
+    } else {
+      // 使用主进程下载（绕过 CORS）
+      await electronService.fs.downloadFile(imageUrl, filePath);
+    }
 
     // 验证文件是否存在
     const _exists = await electronService.fs.exists(filePath);

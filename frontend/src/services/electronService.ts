@@ -2,6 +2,7 @@
  * Electron API 服务封装
  * 在浏览器环境下提供 fallback 实现
  */
+import type { ProjectStyleSnapshot } from '../types';
 
 // 类型定义
 export interface ProjectMeta {
@@ -19,6 +20,8 @@ export interface ProjectMeta {
   ttiConfigId?: string;
   itvConfigId?: string;
   ttsConfigId?: string;
+  stylePresetId?: string;
+  styleSnapshot?: ProjectStyleSnapshot;
   // 主题风格
   theme?: string;
   stylePrompt?: string;
@@ -38,6 +41,7 @@ interface ElectronAPI {
   };
   fs: {
     readFile: (path: string) => Promise<string | { content: string }>;
+    readFileAsBase64: (path: string) => Promise<string | { base64: string }>;
     writeFile: (path: string, data: string, binary?: boolean) => Promise<void>;
     downloadFile: (url: string, destPath: string) => Promise<{ success: boolean; size: number }>;
     exists: (path: string) => Promise<boolean | { exists: boolean }>;
@@ -228,13 +232,25 @@ export const fsReadFile = async (path: string): Promise<string> => {
   throw new Error('File system not available in browser');
 };
 
+export const fsReadFileAsBase64 = async (path: string): Promise<string> => {
+  const api = getElectronAPI();
+  if (api) {
+    const result = await api.fs.readFileAsBase64(path);
+    return typeof result === 'object' && result !== null && 'base64' in result
+      ? (result as { base64: string }).base64
+      : (result as string);
+  }
+  throw new Error('File system not available in browser');
+};
+
 export const fsWriteFile = async (
   path: string,
-  data: string
+  data: string,
+  binary?: boolean
 ): Promise<void> => {
   const api = getElectronAPI();
   if (api) {
-    await api.fs.writeFile(path, data);
+    await api.fs.writeFile(path, data, binary);
     return;
   }
   throw new Error('File system not available in browser');
@@ -544,6 +560,7 @@ export const electronService = {
   },
   fs: {
     readFile: fsReadFile,
+    readFileAsBase64: fsReadFileAsBase64,
     writeFile: fsWriteFile,
     exists: fsExists,
     mkdir: fsMkdir,

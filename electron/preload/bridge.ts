@@ -80,6 +80,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   fs: {
     readFile: (path: string) => invokeMain('controller/fs/readFile', { filePath: path }),
+    readFileAsBase64: (path: string) => invokeMain('controller/fs/readFileAsBase64', { filePath: path }),
     writeFile: (path: string, data: string, binary?: boolean) =>
       invokeMain('controller/fs/writeFile', { filePath: path, data, binary }),
     downloadFile: (url: string, destPath: string) =>

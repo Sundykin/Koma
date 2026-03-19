@@ -4,7 +4,7 @@
 import type { Scene, Prop } from '../types';
 import { getProjectTTIProvider, getProjectITVProvider } from '../providers';
 import { createTask, markTaskCompleted, markTaskFailed } from '../store/taskQueueStore';
-import { downloadRemoteAsset } from '../store/assetDownloadService';
+import { downloadRemoteAsset, resolveImageSourceForAPI } from '../store/assetDownloadService';
 import {
   saveSceneImage,
   savePropImage,
@@ -17,18 +17,29 @@ import { getStorageConfig, initStorageConfig } from '../store/storageConfig';
 import { getThemeStylePrefix, getThemeStylePrefixAsync } from '../config/themePresets';
 import { createLogger } from '../store/logger';
 import { logTTICall, logITVCall } from '../store/aiCallLogger';
-import { getPromptTemplate, fillTemplate } from '../store/promptTemplates';
+import { resolvePromptTemplate } from '../store/promptTemplates';
 import { IMAGE_GENERATION_SIZES } from '../constants/dimensions';
 
 const logger = createLogger('ScenePropAsset');
+
+interface StyleSnapshotLike {
+  ttiStylePrefix?: string;
+  llmPromptSuffix?: string;
+}
 
 // ========== 提示词获取（供外部组件使用）==========
 
 /**
  * 获取场景的自动生成提示词（用于预览显示）
  */
-export function getScenePrompt(scene: Scene, theme?: string, stylePrompt?: string): string {
-  const stylePrefix = getThemeStylePrefix(theme) || stylePrompt || '';
+export function getScenePrompt(
+  scene: Scene,
+  theme?: string,
+  stylePrompt?: string,
+  styleSnapshot?: StyleSnapshotLike,
+  project?: { styleSnapshot?: StyleSnapshotLike }
+): string {
+  const stylePrefix = resolveTTIStylePrefix(styleSnapshot || project?.styleSnapshot, theme, stylePrompt);
   if (scene.customPrompt) return scene.customPrompt;
   return buildScenePromptInternal(scene, stylePrefix);
 }
@@ -36,8 +47,14 @@ export function getScenePrompt(scene: Scene, theme?: string, stylePrompt?: strin
 /**
  * 获取道具的自动生成提示词（用于预览显示）
  */
-export function getPropPrompt(prop: Prop, theme?: string, stylePrompt?: string): string {
-  const stylePrefix = getThemeStylePrefix(theme) || stylePrompt || '';
+export function getPropPrompt(
+  prop: Prop,
+  theme?: string,
+  stylePrompt?: string,
+  styleSnapshot?: StyleSnapshotLike,
+  project?: { styleSnapshot?: StyleSnapshotLike }
+): string {
+  const stylePrefix = resolveTTIStylePrefix(styleSnapshot || project?.styleSnapshot, theme, stylePrompt);
   if (prop.customPrompt) return prop.customPrompt;
   return buildPropPromptInternal(prop, stylePrefix);
 }
@@ -84,6 +101,8 @@ interface GenerateOptions {
   projectId: string;
   theme?: string;
   stylePrompt?: string;
+  styleSnapshot?: StyleSnapshotLike;
+  project?: { styleSnapshot?: StyleSnapshotLike };
   ttiConfigId?: string;
   onProgress?: (progress: number, step: string) => void;
 }
@@ -96,7 +115,7 @@ interface GenerateOptions {
 export async function generateSceneImage(
   options: GenerateOptions & { scene: Scene }
 ): Promise<{ success: boolean; path?: string; url?: string; error?: string }> {
-  const { projectId, scene, theme, stylePrompt, ttiConfigId, onProgress } = options;
+  const { projectId, scene, theme, stylePrompt, styleSnapshot, project, ttiConfigId, onProgress } = options;
 
   logger.info(`开始生成场景预览图: ${scene.name}`);
   onProgress?.(0, '准备生成场景图...');
@@ -108,21 +127,15 @@ export async function generateSceneImage(
     }
 
     // 构建提示词（从配置化模板读取）
-    const stylePrefix = await getThemeStylePrefixAsync(theme, stylePrompt);
-    let prompt: string;
-    try {
-      const template = await getPromptTemplate('tti_scene_preview');
-      prompt = fillTemplate(template.template, {
-        stylePrefix: stylePrefix || '',
-        description: scene.description || '',
-        location: scene.location || '',
-        time: scene.time || 'day',
-        mood: scene.mood || '',
-      });
-    } catch {
-      // 回退到硬编码模板
-      prompt = buildScenePrompt(scene, stylePrefix);
-    }
+    const stylePrefix = await getResolvedTTIStylePrefix(styleSnapshot || project?.styleSnapshot, theme, stylePrompt);
+    const resolvedPrompt = await resolvePromptTemplate('tti_scene_preview', {
+      stylePrefix: stylePrefix || '',
+      description: scene.description || '',
+      location: scene.location || '',
+      time: scene.time || 'day',
+      mood: scene.mood || '',
+    });
+    const prompt = resolvedPrompt.prompt;
 
     // 创建任务记录
     const task = await createTask(projectId, {
@@ -144,7 +157,13 @@ export async function generateSceneImage(
       ttiProvider.config?.name || 'TTI',
       prompt,
       IMAGE_GENERATION_SIZES.video_frame,
-      { projectId, targetId: scene.id, targetName: `场景: ${scene.name}` }
+      {
+        projectId,
+        targetId: scene.id,
+        targetName: `场景: ${scene.name}`,
+        templateId: resolvedPrompt.template.id,
+        promptSource: resolvedPrompt.source,
+      }
     );
 
     const result = await ttiProvider.generateImage(prompt, {
@@ -186,16 +205,17 @@ export async function generateSceneImage(
 
       const resultPath = result.path || result.url;
       const isRemoteUrl = resultPath?.startsWith('http://') || resultPath?.startsWith('https://');
+      const isDataUrl = resultPath?.startsWith('data:');
 
       let localPath: string;
       let remoteUrl: string | undefined;
 
-      if (isRemoteUrl) {
-        // 远程 URL，需要下载
-        remoteUrl = resultPath;
+      if (isRemoteUrl || isDataUrl) {
+        // 远程 URL 或 data URL（base64），需要下载/写入
+        if (isRemoteUrl) remoteUrl = resultPath;
         const config = getStorageConfig() || (await initStorageConfig());
         const targetPath = `${config.rootPath}/projects/${projectId}/assets/scenes/${scene.id}/preview.png`;
-        const downloadResult = await downloadRemoteAsset(remoteUrl, targetPath);
+        const downloadResult = await downloadRemoteAsset(resultPath, targetPath);
         if (!downloadResult.success || !downloadResult.localPath) {
           throw new Error('下载图片失败');
         }
@@ -271,7 +291,7 @@ export async function generateAllSceneImages(
 export async function generatePropImage(
   options: GenerateOptions & { prop: Prop }
 ): Promise<{ success: boolean; path?: string; url?: string; error?: string }> {
-  const { projectId, prop, theme, stylePrompt, ttiConfigId, onProgress } = options;
+  const { projectId, prop, theme, stylePrompt, styleSnapshot, project, ttiConfigId, onProgress } = options;
 
   logger.info(`开始生成道具参考图: ${prop.name}`);
   onProgress?.(0, '准备生成道具图...');
@@ -283,19 +303,13 @@ export async function generatePropImage(
     }
 
     // 构建提示词（从配置化模板读取）
-    const stylePrefix = await getThemeStylePrefixAsync(theme, stylePrompt);
-    let prompt: string;
-    try {
-      const template = await getPromptTemplate('tti_prop_reference');
-      prompt = fillTemplate(template.template, {
-        stylePrefix: stylePrefix || '',
-        description: prop.description || '',
-        type: prop.type || '',
-      });
-    } catch {
-      // 回退到硬编码模板
-      prompt = buildPropPrompt(prop, stylePrefix);
-    }
+    const stylePrefix = await getResolvedTTIStylePrefix(styleSnapshot || project?.styleSnapshot, theme, stylePrompt);
+    const resolvedPrompt = await resolvePromptTemplate('tti_prop_reference', {
+      stylePrefix: stylePrefix || '',
+      description: prop.description || '',
+      type: prop.type || '',
+    });
+    const prompt = resolvedPrompt.prompt;
 
     // 创建任务记录
     const task = await createTask(projectId, {
@@ -317,7 +331,13 @@ export async function generatePropImage(
       ttiProvider.config?.name || 'TTI',
       prompt,
       IMAGE_GENERATION_SIZES.square,
-      { projectId, targetId: prop.id, targetName: `道具: ${prop.name}` }
+      {
+        projectId,
+        targetId: prop.id,
+        targetName: `道具: ${prop.name}`,
+        templateId: resolvedPrompt.template.id,
+        promptSource: resolvedPrompt.source,
+      }
     );
 
     const result = await ttiProvider.generateImage(prompt, {
@@ -359,16 +379,17 @@ export async function generatePropImage(
 
       const resultPath = result.path || result.url;
       const isRemoteUrl = resultPath?.startsWith('http://') || resultPath?.startsWith('https://');
+      const isDataUrl = resultPath?.startsWith('data:');
 
       let localPath: string;
       let remoteUrl: string | undefined;
 
-      if (isRemoteUrl) {
-        // 远程 URL，需要下载
-        remoteUrl = resultPath;
+      if (isRemoteUrl || isDataUrl) {
+        // 远程 URL 或 data URL（base64），需要下载/写入
+        if (isRemoteUrl) remoteUrl = resultPath;
         const config = getStorageConfig() || (await initStorageConfig());
         const targetPath = `${config.rootPath}/projects/${projectId}/assets/props/${prop.id}/reference.png`;
-        const downloadResult = await downloadRemoteAsset(remoteUrl, targetPath);
+        const downloadResult = await downloadRemoteAsset(resultPath, targetPath);
         if (!downloadResult.success || !downloadResult.localPath) {
           throw new Error('下载图片失败');
         }
@@ -441,6 +462,10 @@ export async function generateAllPropImages(
 interface PropVideoOptions {
   projectId: string;
   prop: Prop;
+  theme?: string;
+  stylePrompt?: string;
+  styleSnapshot?: StyleSnapshotLike;
+  project?: { styleSnapshot?: StyleSnapshotLike };
   itvConfigId?: string;
   onProgress?: (progress: number, step: string) => void;
 }
@@ -452,19 +477,25 @@ interface PropVideoOptions {
 export async function generatePropPreviewVideo(
   options: PropVideoOptions
 ): Promise<{ success: boolean; path?: string; taskId?: string; error?: string }> {
-  const { projectId, prop, itvConfigId, onProgress } = options;
+  const { projectId, prop, theme, stylePrompt, styleSnapshot, project, itvConfigId, onProgress } = options;
 
   logger.info(`开始生成道具预览视频: ${prop.name}`);
   onProgress?.(0, '准备生成预览视频...');
 
   // 优先使用远程 URL
-  const imageSource = prop.imageUrl || prop.imagePath;
-  if (!imageSource) {
+  const rawImageSource = prop.imageUrl || prop.imagePath;
+  if (!rawImageSource) {
     return { success: false, error: '请先生成道具参考图' };
   }
 
+  // 将本地路径转为 data URI，确保远程 API 可用
+  const imageSource = await resolveImageSourceForAPI(rawImageSource);
+  if (!imageSource) {
+    return { success: false, error: '无法读取道具参考图，请重新生成' };
+  }
+
   if (!prop.imageUrl) {
-    logger.warn(`道具 ${prop.name} 没有远程图片 URL，将使用本地路径。某些服务（如 Sora2）可能需要远程 URL。`);
+    logger.warn(`道具 ${prop.name} 没有远程图片 URL，已将本地文件转为 data URI。`);
   }
 
   try {
@@ -489,14 +520,26 @@ export async function generatePropPreviewVideo(
     onProgress?.(10, '调用 ITV 服务...');
 
     // 构建道具视频提示词
-    const prompt = prop.customPrompt || `${prop.name} prop showcase, rotating slowly, detailed view, studio lighting`;
+    const resolvedStylePrefix = await getResolvedTTIStylePrefix(styleSnapshot || project?.styleSnapshot, theme, stylePrompt);
+    const resolvedPrompt = await resolvePromptTemplate('itv_prop_motion', {
+      stylePrefix: resolvedStylePrefix,
+      description: prop.customPrompt || prop.prompt || prop.description || prop.name,
+      motion: 'prop showcase, rotating slowly, detailed view',
+    });
+    const prompt = resolvedPrompt.prompt;
 
     logITVCall(
       itvProvider.config?.name || 'ITV',
       imageSource,
       prompt,
       { duration: 4, aspectRatio: '1:1' },
-      { projectId, targetId: prop.id, targetName: `${prop.name} 预览视频` }
+      {
+        projectId,
+        targetId: prop.id,
+        targetName: `${prop.name} 预览视频`,
+        templateId: resolvedPrompt.template.id,
+        promptSource: resolvedPrompt.source,
+      }
     );
 
     // 调用 ITV Provider 生成视频
@@ -622,4 +665,36 @@ async function updatePropAsset(
 
 function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function resolveTTIStylePrefix(
+  styleSnapshot?: StyleSnapshotLike,
+  theme?: string,
+  stylePrompt?: string
+): string {
+  return styleSnapshot?.ttiStylePrefix || getThemeStylePrefix(theme, stylePrompt);
+}
+
+async function getResolvedTTIStylePrefix(
+  styleSnapshot?: StyleSnapshotLike,
+  theme?: string,
+  stylePrompt?: string
+): Promise<string> {
+  if (styleSnapshot?.ttiStylePrefix) {
+    return styleSnapshot.ttiStylePrefix;
+  }
+  return getThemeStylePrefixAsync(theme, stylePrompt);
+}
+
+function applyStylePrefix(prompt: string, stylePrefix?: string): string {
+  const basePrompt = prompt.trim();
+  const prefix = (stylePrefix || '').trim();
+  if (!prefix) {
+    return basePrompt;
+  }
+  if (basePrompt.startsWith(prefix)) {
+    return basePrompt;
+  }
+  const normalizedPrefix = prefix.endsWith(',') ? prefix : `${prefix},`;
+  return `${normalizedPrefix} ${basePrompt}`;
 }

@@ -12,6 +12,11 @@ class FsController extends BaseController {
     return { content };
   }
 
+  async readFileAsBase64(args: { filePath: string }) {
+    const buffer = await fs.promises.readFile(args.filePath);
+    return { base64: buffer.toString('base64') };
+  }
+
   async writeFile(args: { filePath: string; data: string; encoding?: BufferEncoding; binary?: boolean }) {
     console.log('[FsController:writeFile] path:', args.filePath, 'binary:', args.binary, 'dataLen:', args.data?.length);
     if (args.binary) {

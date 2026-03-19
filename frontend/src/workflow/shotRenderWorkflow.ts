@@ -8,11 +8,17 @@ import { saveShotVersion, loadCharacters, loadProps } from '../store/projectStor
 import { createTask, markTaskCompleted } from '../store/taskQueueStore';
 import { createLogger } from '../store/logger';
 import { logITVCall, logTTSCall } from '../store/aiCallLogger';
-import { getPromptTemplate, fillTemplate } from '../store/promptTemplates';
+import { resolvePromptTemplate } from '../store/promptTemplates';
+import { resolveImageSourceForAPI } from '../store/assetDownloadService';
 import { getThemeStylePrefixAsync } from '../config/themePresets';
 import { parseMentions } from '../editor/mentionTypes';
 
 const logger = createLogger('ShotRender');
+
+interface StyleSnapshotLike {
+  ttiStylePrefix?: string;
+  llmPromptSuffix?: string;
+}
 
 interface ShotRenderParams {
   projectId: string;
@@ -24,6 +30,8 @@ interface ShotRenderParams {
   };
   theme?: string;
   stylePrompt?: string;
+  styleSnapshot?: StyleSnapshotLike;
+  project?: { styleSnapshot?: StyleSnapshotLike };
 }
 
 interface ShotRenderResult {
@@ -43,6 +51,8 @@ interface BatchRenderParams {
   };
   theme?: string;
   stylePrompt?: string;
+  styleSnapshot?: StyleSnapshotLike;
+  project?: { styleSnapshot?: StyleSnapshotLike };
   concurrency?: number;
 }
 
@@ -54,29 +64,31 @@ interface BatchRenderResult {
 }
 
 /**
- * 从 shot 中获取当前选中的参考图片远程URL
- * 只返回 http/https 开头的远程地址
+ * 从 shot 中获取当前选中的参考图片，并确保可用于远程 API
+ * 返回 http/https URL、data URI，或 undefined
  */
-function getSelectedImageUrl(shot: Shot): string | undefined {
-  // 检查是否是远程URL
-  const isRemoteUrl = (url: string) => url.startsWith('http://') || url.startsWith('https://');
-
+async function getSelectedImageUrl(shot: Shot): Promise<string | undefined> {
   // 优先使用 imagePaths 列表中当前选中的图片
   if (shot.imagePaths && shot.imagePaths.length > 0) {
     const idx = shot.currentImageIndex || 0;
     const selected = shot.imagePaths[idx];
-    if (selected && isRemoteUrl(selected)) {
-      logger.info(`使用 imagePaths[${idx}] 远程URL: ${selected}`);
-      return selected;
+    if (selected) {
+      const resolved = await resolveImageSourceForAPI(selected);
+      if (resolved) {
+        logger.info(`使用 imagePaths[${idx}]: ${resolved.startsWith('data:') ? 'data:...(base64)' : resolved}`);
+        return resolved;
+      }
     }
   }
   // 兼容旧字段 imageUrl
-  if (shot.imageUrl && isRemoteUrl(shot.imageUrl)) {
-    logger.info(`使用 imageUrl 远程URL: ${shot.imageUrl}`);
-    return shot.imageUrl;
+  if (shot.imageUrl) {
+    const resolved = await resolveImageSourceForAPI(shot.imageUrl);
+    if (resolved) {
+      logger.info(`使用 imageUrl: ${resolved.startsWith('data:') ? 'data:...(base64)' : resolved}`);
+      return resolved;
+    }
   }
-  // 不使用本地路径
-  logger.info('没有可用的远程图片URL');
+  logger.info('没有可用的参考图片');
   return undefined;
 }
 
@@ -88,7 +100,7 @@ export async function shotRenderWorkflow(
   params: ShotRenderParams,
   onProgress: (progress: number, step?: string) => void
 ): Promise<ShotRenderResult> {
-  const { projectId, shot, projectConfigIds, theme, stylePrompt } = params;
+  const { projectId, shot, projectConfigIds, theme, stylePrompt, styleSnapshot, project } = params;
 
   logger.info(`开始生成分镜视频 ${shot.id}`);
 
@@ -106,7 +118,7 @@ export async function shotRenderWorkflow(
   }
 
   // 获取当前选中的参考图片
-  const referenceImageUrl = getSelectedImageUrl(shot);
+  const referenceImageUrl = await getSelectedImageUrl(shot);
   logger.info(`参考图片: ${referenceImageUrl || '无'}`);
 
   try {
@@ -166,7 +178,7 @@ export async function shotRenderWorkflow(
     });
 
     // 获取视觉风格前缀（支持自定义预设）
-    const stylePrefix = await getThemeStylePrefixAsync(theme, stylePrompt);
+    const stylePrefix = await getResolvedTTIStylePrefix(styleSnapshot || project?.styleSnapshot, theme, stylePrompt);
 
     // 加载道具
     let projectProps: Prop[] = [];
@@ -179,27 +191,25 @@ export async function shotRenderWorkflow(
     // 构建视频 prompt：优先使用 shot.videoPrompt
     let videoPrompt: string;
     let additionalReferenceImages: string[] = [];
+    let templateId = 'shot.videoPrompt';
+    let promptSource: 'default' | 'custom' | 'finalized' = 'finalized';
 
     if (shot.videoPrompt) {
       // 使用专用视频提示词
-      videoPrompt = stylePrefix ? `${stylePrefix}${shot.videoPrompt}` : shot.videoPrompt;
+      videoPrompt = shot.videoPrompt;
       // 使用新的处理函数，支持 Sora2 角色和参考图收集
       const processed = processVideoPromptAssets(videoPrompt, shot, characters, projectProps);
       videoPrompt = processed.prompt;
       additionalReferenceImages = processed.referenceImages;
     } else {
-      // 回退到旧逻辑
-      try {
-        const videoTemplate = await getPromptTemplate('itv_shot_video');
-        videoPrompt = fillTemplate(videoTemplate.template, {
-          stylePrefix: stylePrefix || '',
-          description: shot.description || '',
-          cameraMovement: getCameraMovementDesc(shot.cameraMovement),
-        });
-        videoPrompt = appendCharacterRefs(videoPrompt, shot, characters);
-      } catch {
-        videoPrompt = buildVideoPrompt(shot, characters, stylePrefix);
-      }
+      const resolvedPrompt = await resolvePromptTemplate('itv_shot_video', {
+        stylePrefix: stylePrefix || '',
+        description: shot.description || '',
+        cameraMovement: getCameraMovementDesc(shot.cameraMovement),
+      });
+      videoPrompt = appendCharacterRefs(resolvedPrompt.prompt, shot, characters);
+      templateId = resolvedPrompt.template.id;
+      promptSource = resolvedPrompt.source;
     }
 
     logger.info(`视频 prompt: ${videoPrompt}`);
@@ -213,7 +223,13 @@ export async function shotRenderWorkflow(
       referenceImageUrl || '',
       videoPrompt,
       { duration: shot.duration, motionPrompt: shot.cameraMovement },
-      { projectId, targetId: shot.id, targetName: `分镜视频: ${shot.id}` }
+      {
+        projectId,
+        targetId: shot.id,
+        targetName: `分镜视频: ${shot.id}`,
+        templateId,
+        promptSource,
+      }
     );
 
     // 调用 ITV Provider 生成视频
@@ -278,7 +294,16 @@ export async function batchRenderShots(
   params: BatchRenderParams,
   onProgress: (overall: number, current: { shotId: string; progress: number; step?: string }) => void
 ): Promise<BatchRenderResult> {
-  const { projectId, shots, projectConfigIds, theme, stylePrompt, concurrency: _concurrency = 1 } = params;
+  const {
+    projectId,
+    shots,
+    projectConfigIds,
+    theme,
+    stylePrompt,
+    styleSnapshot,
+    project,
+    concurrency: _concurrency = 1,
+  } = params;
 
   logger.info(`开始批量生成 ${shots.length} 个分镜视频`);
 
@@ -289,7 +314,7 @@ export async function batchRenderShots(
     const shot = shots[i];
 
     const result = await shotRenderWorkflow(
-      { projectId, shot, projectConfigIds, theme, stylePrompt },
+      { projectId, shot, projectConfigIds, theme, stylePrompt, styleSnapshot, project },
       (progress, step) => {
         const overall = Math.round(((completed + progress / 100) / shots.length) * 100);
         onProgress(overall, { shotId: shot.id, progress, step });
@@ -317,6 +342,17 @@ export async function batchRenderShots(
 }
 
 // ========== 辅助函数 ==========
+
+async function getResolvedTTIStylePrefix(
+  styleSnapshot?: StyleSnapshotLike,
+  theme?: string,
+  stylePrompt?: string
+): Promise<string> {
+  if (styleSnapshot?.ttiStylePrefix) {
+    return styleSnapshot.ttiStylePrefix;
+  }
+  return getThemeStylePrefixAsync(theme, stylePrompt);
+}
 
 function getCameraMovementDesc(movement?: string): string {
   if (!movement || movement === 'static') return 'static shot';

@@ -26,11 +26,19 @@ export async function downloadRemoteAsset(
   }
 
   try {
-    logger.info(`开始下载: ${url} -> ${localPath}`);
+    logger.info(`开始下载: ${url.startsWith('data:') ? 'data:image/...(base64)' : url} -> ${localPath}`);
 
     // 确保目标目录存在
     const dir = localPath.substring(0, localPath.lastIndexOf('/'));
     await electronService.fs.mkdir(dir);
+
+    if (url.startsWith('data:')) {
+      // data URL 模式（base64）：直接写入文件
+      const base64Data = url.replace(/^data:image\/\w+;base64,/, '');
+      await electronService.fs.writeFile(localPath, base64Data, true);
+      logger.info(`base64 写入完成: ${localPath}`);
+      return { success: true, localPath };
+    }
 
     // 通过 IPC 调用主进程下载，绕过 CORS
     const result = await electronService.fs.downloadFile(url, localPath);
@@ -42,7 +50,7 @@ export async function downloadRemoteAsset(
     logger.info(`下载完成: ${localPath}, 大小: ${result.size} bytes`);
     return { success: true, localPath };
   } catch (err: any) {
-    logger.error(`下载失败: ${url}`, { error: err.message });
+    logger.error(`下载失败: ${url.startsWith('data:') ? 'data:image/...' : url}`, { error: err.message });
     return { success: false, error: err.message };
   }
 }
@@ -95,4 +103,58 @@ export async function getAssetPath(
     if (exists) return localPath;
   }
   return remoteUrl || null;
+}
+
+/**
+ * 将图片源解析为远程 API 可用的格式（URL 或 data URI）
+ * - http/https URL → 直接返回
+ * - data: URI → 直接返回
+ * - 本地文件路径 → 读取文件并转为 data URI
+ * - 空值 → 返回 undefined
+ *
+ * 用于 ITV 等远程 API 调用前，确保 image_url 参数合法
+ */
+export async function resolveImageSourceForAPI(
+  source?: string
+): Promise<string | undefined> {
+  if (!source) return undefined;
+
+  // 已经是远程 URL
+  if (source.startsWith('http://') || source.startsWith('https://')) {
+    return source;
+  }
+
+  // 已经是 data URI
+  if (source.startsWith('data:')) {
+    return source;
+  }
+
+  // 本地文件路径 → 读取并转为 data URI
+  if (!electronService.isElectron()) return undefined;
+
+  try {
+    const exists = await electronService.fs.exists(source);
+    if (!exists) {
+      logger.warn(`本地文件不存在，跳过: ${source}`);
+      return undefined;
+    }
+
+    const base64 = await electronService.fs.readFileAsBase64(source);
+    // 根据扩展名推断 MIME 类型
+    const ext = source.split('.').pop()?.toLowerCase() || 'png';
+    const mimeMap: Record<string, string> = {
+      'jpg': 'image/jpeg',
+      'jpeg': 'image/jpeg',
+      'png': 'image/png',
+      'gif': 'image/gif',
+      'webp': 'image/webp',
+      'bmp': 'image/bmp',
+    };
+    const mime = mimeMap[ext] || 'image/png';
+    logger.info(`本地文件转 data URI: ${source} (${mime})`);
+    return `data:${mime};base64,${base64}`;
+  } catch (err: any) {
+    logger.warn(`读取本地文件失败: ${source}`, { error: err.message });
+    return undefined;
+  }
 }

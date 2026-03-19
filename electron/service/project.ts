@@ -7,6 +7,17 @@ import { app } from 'electron';
 import archiver from 'archiver';
 import extract from 'extract-zip';
 
+export interface ProjectStyleSnapshot {
+  id: string;
+  name: string;
+  description: string;
+  ttiStylePrefix: string;
+  llmPromptSuffix: string;
+  sourceType: 'builtin' | 'custom';
+  sourcePresetId: string;
+  createdAt: number;
+}
+
 export interface ProjectMeta {
   id: string;
   title: string;
@@ -21,6 +32,8 @@ export interface ProjectMeta {
   ttiConfigId?: string;
   itvConfigId?: string;
   ttsConfigId?: string;
+  stylePresetId?: string;
+  styleSnapshot?: ProjectStyleSnapshot;
   theme?: string;
   stylePrompt?: string;
 }
@@ -179,8 +192,23 @@ export class ProjectService {
 
   async listProjects(): Promise<ProjectMeta[]> {
     const index = await this.loadProjectsIndex();
-    // 按更新时间降序排列
-    return index.projects.sort((a, b) => b.updatedAt - a.updatedAt);
+    const projects = index.projects.sort((a, b) => b.updatedAt - a.updatedAt);
+
+    // 动态计算每个项目的实际集数
+    for (const project of projects) {
+      try {
+        const episodesDir = path.join(this.storageRoot, 'projects', project.id, 'episodes');
+        if (fs.existsSync(episodesDir)) {
+          const entries = await fs.promises.readdir(episodesDir, { withFileTypes: true });
+          const episodeCount = entries.filter(e => e.isDirectory()).length;
+          project.episodes = episodeCount;
+        }
+      } catch {
+        // 读取失败时保留原值
+      }
+    }
+
+    return projects;
   }
 
   async createProject(meta: ProjectMeta): Promise<ProjectMeta> {

@@ -7,6 +7,7 @@ import type { TTIProvider } from './types';
 import { ComfyUIProvider } from './ComfyUIProvider';
 import { NanoBananaProvider } from './NanoBananaProvider';
 import { Gemini3ProProvider } from './Gemini3ProProvider';
+import { OpenAICompatibleTTIProvider } from './OpenAICompatibleTTIProvider';
 import type { ProviderDefinition } from '../registry.types';
 import { DEFAULT_POLLING_CONFIG } from '../registry.types';
 import { ttiRegistry } from '../registry';
@@ -15,6 +16,7 @@ export type { TTIProvider, ImageResult, TTIOptions } from './types';
 export { ComfyUIProvider } from './ComfyUIProvider';
 export { NanoBananaProvider } from './NanoBananaProvider';
 export { Gemini3ProProvider } from './Gemini3ProProvider';
+export { OpenAICompatibleTTIProvider } from './OpenAICompatibleTTIProvider';
 
 // 注册内置 Provider
 function registerBuiltinProviders() {
@@ -47,6 +49,15 @@ function registerBuiltinProviders() {
       name: 'Gemini 3 Pro',
       description: 'Google Gemini 3 Pro 图像生成',
       factory: (config) => new Gemini3ProProvider(config as TTIModelConfig),
+      capabilities: ['tti'],
+      polling: DEFAULT_POLLING_CONFIG,
+    },
+    {
+      type: 'openai-compatible-tti',
+      kind: 'tti',
+      name: '自定义服务商',
+      description: '兼容 OpenAI 接口的自定义文生图服务',
+      factory: (config) => new OpenAICompatibleTTIProvider(config as TTIModelConfig),
       capabilities: ['tti'],
       polling: DEFAULT_POLLING_CONFIG,
     },

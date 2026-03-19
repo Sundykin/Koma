@@ -6,19 +6,31 @@
 import type { Character, Scene, Prop, Shot, LLMModelConfig, ScriptAnalysisResult } from '../types';
 import { createLLMProvider } from '../providers';
 import { getActiveLLMConfig } from '../store/globalStore';
-import { getPromptTemplate, fillTemplate } from '../store/promptTemplates';
+import { resolvePromptTemplate } from '../store/promptTemplates';
 import { logLLMCall } from '../store/aiCallLogger';
 import { TaskManager, Task } from './TaskManager';
 import { parseLLMJSON } from '../utils/llmJsonParser';
+import { buildChunkContextPrompt, splitScriptIntoChunks } from './scriptAnalysisChunking';
 import {
   saveCharacters,
   saveScenes,
   saveProps,
   saveEpisodeAnalysis,
+  loadEpisodeAnalysis,
   loadCharacters,
   loadScenes,
   loadProps,
 } from '../store/projectStore';
+import {
+  addCharacterEpisodeRef,
+  addSceneEpisodeRef,
+  addPropEpisodeRef,
+} from '../store/projectStore';
+
+interface StyleSnapshotLike {
+  ttiStylePrefix?: string;
+  llmPromptSuffix?: string;
+}
 
 // 解析阶段
 export type AnalysisStage = 'characters' | 'scenes' | 'props' | 'shots';
@@ -136,18 +148,26 @@ export class ScriptAnalysisService {
   private llmConfig: LLMModelConfig | null = null;
   private onProgress?: (progress: AnalysisProgress) => void;
   private episodeContext?: EpisodeContext;
+  private styleSnapshot?: StyleSnapshotLike;
 
   constructor(options?: {
     onProgress?: (progress: AnalysisProgress) => void;
     episodeContext?: EpisodeContext;
+    styleSnapshot?: StyleSnapshotLike;
+    project?: { styleSnapshot?: StyleSnapshotLike };
   }) {
     this.onProgress = options?.onProgress;
     this.episodeContext = options?.episodeContext;
+    this.styleSnapshot = options?.styleSnapshot || options?.project?.styleSnapshot;
   }
 
   // 设置剧集上下文
   setEpisodeContext(context?: EpisodeContext) {
     this.episodeContext = context;
+  }
+
+  setStyleSnapshot(styleSnapshot?: StyleSnapshotLike) {
+    this.styleSnapshot = styleSnapshot;
   }
 
   // 获取当前使用的剧本（优先剧集剧本）
@@ -167,7 +187,11 @@ export class ScriptAnalysisService {
   }
 
   // 调用 LLM
-  private async callLLM(prompt: string, schema: any): Promise<string> {
+  private async callLLM(
+    prompt: string,
+    schema: any,
+    templateMeta?: { templateId?: string; promptSource?: 'default' | 'custom' | 'finalized' }
+  ): Promise<string> {
     if (!this.llmConfig) {
       throw new Error('LLM 配置未设置');
     }
@@ -180,8 +204,8 @@ export class ScriptAnalysisService {
     });
 
     // 获取系统提示词模板
-    const systemPromptTemplate = await getPromptTemplate('script_analysis_system');
-    const systemPrompt = systemPromptTemplate.template;
+    const resolvedSystemPrompt = await resolvePromptTemplate('script_analysis_system', {});
+    const systemPrompt = resolvedSystemPrompt.prompt;
 
     // 构建带 JSON Schema 约束的 prompt
     const fullPrompt = `${prompt}\n\n请严格按以下 JSON Schema 格式输出：\n${JSON.stringify(schema, null, 2)}`;
@@ -191,16 +215,80 @@ export class ScriptAnalysisService {
       this.llmConfig.name || 'LLM',
       fullPrompt,
       systemPrompt,
-      { targetName: '剧本解析' }
+      {
+        targetName: '剧本解析',
+        templateId: templateMeta?.templateId || resolvedSystemPrompt.template.id,
+        promptSource: templateMeta?.promptSource || resolvedSystemPrompt.source,
+      }
     );
 
-    const result = await provider.generateText(fullPrompt, systemPrompt);
+    const result = await provider.generateText(fullPrompt, systemPrompt, {
+      source: 'ScriptAnalysisService.callLLM',
+      operation: 'script_analysis',
+      targetName: this.episodeContext?.episodeName || '剧本解析',
+      stream: false,
+    });
     return result;
   }
 
   // 解析 LLM 返回的 JSON（委托给 parseLLMJSON 工具函数）
   private parseJSON<T>(text: string): T {
     return parseLLMJSON<T>(text);
+  }
+
+  private async extractChunkedItems<T extends { name: string }>(
+    stage: AnalysisStage,
+    label: string,
+    templateId: 'character_extraction' | 'scene_extraction' | 'prop_extraction',
+    script: string,
+    schema: any,
+    parseItems: (text: string) => any[],
+    mapItem: (item: any, index: number) => T
+  ): Promise<T[]> {
+    const chunks = splitScriptIntoChunks(script);
+    const collected = new Map<string, T>();
+
+    for (const chunk of chunks) {
+      this.reportProgress(stage, 'running', `正在分析${label}...（${chunk.index}/${chunk.total}）`);
+
+      const resolvedPrompt = await resolvePromptTemplate(templateId, {
+        script: chunk.content,
+      });
+      const styledPrompt = this.appendStyleRequirement(resolvedPrompt.prompt);
+      const chunkPrompt = buildChunkContextPrompt(
+        styledPrompt,
+        label,
+        chunk,
+        Array.from(collected.keys())
+      );
+
+      const result = await this.callLLM(chunkPrompt, schema, {
+        templateId: resolvedPrompt.template.id,
+        promptSource: resolvedPrompt.source,
+      });
+      const items = parseItems(result);
+
+      for (const item of items) {
+        if (!item?.name || collected.has(item.name)) {
+          continue;
+        }
+        collected.set(item.name, mapItem(item, collected.size));
+      }
+    }
+
+    return Array.from(collected.values());
+  }
+
+  private getResolvedLLMStyleSuffix(): string {
+    return this.styleSnapshot?.llmPromptSuffix?.trim() || '';
+  }
+
+  private appendStyleRequirement(prompt: string): string {
+    const styleSuffix = this.getResolvedLLMStyleSuffix();
+    if (!styleSuffix) {
+      return prompt;
+    }
+    return `${prompt}\n\n【项目风格要求】\n${styleSuffix}`;
   }
 
   // 提取角色
@@ -212,21 +300,24 @@ export class ScriptAnalysisService {
     this.reportProgress('characters', 'running', `正在分析角色...${modeHint}`);
 
     try {
-      const template = await getPromptTemplate('character_extraction');
-      const prompt = fillTemplate(template.template, { script: effectiveScript });
-      const result = await this.callLLM(prompt, CHARACTERS_SCHEMA);
-      const parsed = this.parseJSON<{ characters: any[] }>(result);
-
-      const characters: Character[] = parsed.characters.map((c, index) => ({
-        id: `char_${Date.now()}_${index}`,
-        name: c.name,
-        prompt: c.description || c.appearance || '',
-        age: c.age || '',
-        role: c.role || 'supporting',
-        description: c.description,
-        appearance: c.appearance,
-        episodeId: this.episodeContext?.episodeId,
-      }));
+      const characters = await this.extractChunkedItems<Character>(
+        'characters',
+        '角色',
+        'character_extraction',
+        effectiveScript,
+        CHARACTERS_SCHEMA,
+        (text) => this.parseJSON<{ characters: any[] }>(text).characters,
+        (c, index) => ({
+          id: `char_${Date.now()}_${index}`,
+          name: c.name,
+          prompt: c.description || c.appearance || '',
+          age: c.age || '',
+          role: c.role || 'supporting',
+          description: c.description,
+          appearance: c.appearance,
+          episodeId: this.episodeContext?.episodeId,
+        })
+      );
 
       this.reportProgress('characters', 'completed', `识别到 ${characters.length} 个角色`);
       return { success: true, data: characters, episodeId: this.episodeContext?.episodeId };
@@ -246,21 +337,24 @@ export class ScriptAnalysisService {
     this.reportProgress('scenes', 'running', `正在分析场景...${modeHint}`);
 
     try {
-      const template = await getPromptTemplate('scene_extraction');
-      const prompt = fillTemplate(template.template, { script: effectiveScript });
-      const result = await this.callLLM(prompt, SCENES_SCHEMA);
-      const parsed = this.parseJSON<{ scenes: any[] }>(result);
-
-      const scenes: Scene[] = parsed.scenes.map((s, index) => ({
-        id: `scene_${Date.now()}_${index}`,
-        name: s.name,
-        prompt: s.description || '',
-        location: s.location,
-        time: s.time || 'day',
-        mood: s.mood,
-        description: s.description,
-        episodeId: this.episodeContext?.episodeId,
-      }));
+      const scenes = await this.extractChunkedItems<Scene>(
+        'scenes',
+        '场景',
+        'scene_extraction',
+        effectiveScript,
+        SCENES_SCHEMA,
+        (text) => this.parseJSON<{ scenes: any[] }>(text).scenes,
+        (s, index) => ({
+          id: `scene_${Date.now()}_${index}`,
+          name: s.name,
+          prompt: s.description || '',
+          location: s.location,
+          time: s.time || 'day',
+          mood: s.mood,
+          description: s.description,
+          episodeId: this.episodeContext?.episodeId,
+        })
+      );
 
       this.reportProgress('scenes', 'completed', `识别到 ${scenes.length} 个场景`);
       return { success: true, data: scenes, episodeId: this.episodeContext?.episodeId };
@@ -280,19 +374,22 @@ export class ScriptAnalysisService {
     this.reportProgress('props', 'running', `正在分析道具...${modeHint}`);
 
     try {
-      const template = await getPromptTemplate('prop_extraction');
-      const prompt = fillTemplate(template.template, { script: effectiveScript });
-      const result = await this.callLLM(prompt, PROPS_SCHEMA);
-      const parsed = this.parseJSON<{ props: any[] }>(result);
-
-      const props: Prop[] = parsed.props.map((p, index) => ({
-        id: `prop_${Date.now()}_${index}`,
-        name: p.name,
-        prompt: p.description || '',
-        type: p.type,
-        description: p.description,
-        episodeId: this.episodeContext?.episodeId,
-      }));
+      const props = await this.extractChunkedItems<Prop>(
+        'props',
+        '道具',
+        'prop_extraction',
+        effectiveScript,
+        PROPS_SCHEMA,
+        (text) => this.parseJSON<{ props: any[] }>(text).props,
+        (p, index) => ({
+          id: `prop_${Date.now()}_${index}`,
+          name: p.name,
+          prompt: p.description || '',
+          type: p.type,
+          description: p.description,
+          episodeId: this.episodeContext?.episodeId,
+        })
+      );
 
       this.reportProgress('props', 'completed', `识别到 ${props.length} 个道具`);
       return { success: true, data: props, episodeId: this.episodeContext?.episodeId };
@@ -317,15 +414,18 @@ export class ScriptAnalysisService {
     this.reportProgress('shots', 'running', `正在生成分镜...${modeHint}`);
 
     try {
-      const template = await getPromptTemplate('shot_breakdown');
-      const prompt = fillTemplate(template.template, {
+      const resolvedPrompt = await resolvePromptTemplate('shot_breakdown', {
         script: effectiveScript,
         characters: characters.map(c => c.name).join(', '),
         scenes: scenes.map(s => s.name).join(', '),
         props: props.map(p => p.name).join(', '),
       });
 
-      const result = await this.callLLM(prompt, SHOTS_SCHEMA);
+      const styledPrompt = this.appendStyleRequirement(resolvedPrompt.prompt);
+      const result = await this.callLLM(styledPrompt, SHOTS_SCHEMA, {
+        templateId: resolvedPrompt.template.id,
+        promptSource: resolvedPrompt.source,
+      });
       const parsed = this.parseJSON<{ shots: any[] }>(result);
 
       // 将角色名映射到 ID
@@ -388,9 +488,10 @@ export class ScriptAnalysisService {
 // 便捷函数：创建服务实例
 export function createScriptAnalysisService(
   onProgress?: (progress: AnalysisProgress) => void,
-  episodeContext?: EpisodeContext
+  episodeContext?: EpisodeContext,
+  styleSnapshot?: StyleSnapshotLike
 ): ScriptAnalysisService {
-  return new ScriptAnalysisService({ onProgress, episodeContext });
+  return new ScriptAnalysisService({ onProgress, episodeContext, styleSnapshot });
 }
 
 /**
@@ -412,8 +513,25 @@ export class BackgroundAnalysisService {
     episodeId: string,
     episodeName: string,
     script: string,
-    llmConfigId?: string
+    llmConfigId?: string,
+    styleSnapshot?: StyleSnapshotLike,
+    project?: { styleSnapshot?: StyleSnapshotLike }
   ): Promise<Task> {
+    const existingTask = TaskManager.getProjectTasks(this.projectId).find(task =>
+      task.type === 'script-analysis'
+      && task.targetId === episodeId
+      && (task.status === 'pending' || task.status === 'running' || task.status === 'processing')
+    );
+    if (existingTask) {
+      return {
+        ...existingTask,
+        metadata: {
+          ...(existingTask.metadata || {}),
+          deduped: true,
+        },
+      };
+    }
+
     // 创建任务
     this.task = TaskManager.createTask({
       projectId: this.projectId,
@@ -427,7 +545,7 @@ export class BackgroundAnalysisService {
     TaskManager.updateTask(this.task.id, { status: 'running', progress: 0 });
 
     // 异步执行解析
-    this.runAnalysis(episodeId, episodeName, script, llmConfigId);
+    this.runAnalysis(episodeId, episodeName, script, llmConfigId, styleSnapshot, project);
 
     return this.task;
   }
@@ -435,11 +553,62 @@ export class BackgroundAnalysisService {
   /**
    * 执行解析流程
    */
+  private async persistStageResult(
+    episodeId: string,
+    episodeName: string,
+    stage: AnalysisStage,
+    payload: {
+      mergedChars: Character[];
+      mergedScenes: Scene[];
+      mergedProps: Prop[];
+      characterRefs: string[];
+      sceneRefs: string[];
+      propRefs: string[];
+    }
+  ): Promise<void> {
+    const episodeRef = {
+      episodeId,
+      episodeName,
+      firstAppearance: true,
+    };
+
+    if (stage === 'characters') {
+      await saveCharacters(this.projectId, payload.mergedChars);
+      for (const characterId of payload.characterRefs) {
+        await addCharacterEpisodeRef(this.projectId, characterId, episodeRef);
+      }
+    }
+
+    if (stage === 'scenes') {
+      await saveScenes(this.projectId, payload.mergedScenes);
+      for (const sceneId of payload.sceneRefs) {
+        await addSceneEpisodeRef(this.projectId, sceneId, episodeRef);
+      }
+    }
+
+    if (stage === 'props') {
+      await saveProps(this.projectId, payload.mergedProps);
+      for (const propId of payload.propRefs) {
+        await addPropEpisodeRef(this.projectId, propId, episodeRef);
+      }
+    }
+
+    await saveEpisodeAnalysis(this.projectId, episodeId, {
+      characterRefs: payload.characterRefs,
+      sceneRefs: payload.sceneRefs,
+      propRefs: payload.propRefs,
+      completedStages: [stage],
+      shots: [],
+    });
+  }
+
   private async runAnalysis(
     episodeId: string,
     episodeName: string,
     script: string,
-    llmConfigId?: string
+    llmConfigId?: string,
+    styleSnapshot?: StyleSnapshotLike,
+    project?: { styleSnapshot?: StyleSnapshotLike }
   ): Promise<void> {
     if (!this.task) return;
 
@@ -476,6 +645,7 @@ export class BackgroundAnalysisService {
           episodeName,
           episodeScript: script,
         },
+        styleSnapshot: styleSnapshot || project?.styleSnapshot,
       });
 
       // 设置 LLM 配置
@@ -484,46 +654,83 @@ export class BackgroundAnalysisService {
         throw new Error('未配置 LLM 模型，请先在设置中添加');
       }
 
-      // 加载已有资产用于匹配
-      const existingChars = await loadCharacters(this.projectId);
-      const existingScenes = await loadScenes(this.projectId);
-      const existingProps = await loadProps(this.projectId);
+      let mergedChars = await loadCharacters(this.projectId);
+      let mergedScenes = await loadScenes(this.projectId);
+      let mergedProps = await loadProps(this.projectId);
+      let characterRefs: string[] = [];
+      let sceneRefs: string[] = [];
+      let propRefs: string[] = [];
+      const existingAnalysis = await loadEpisodeAnalysis(this.projectId, episodeId);
+      const completedStages = new Set(existingAnalysis?.completedStages || []);
+      characterRefs = existingAnalysis?.characterRefs || [];
+      sceneRefs = existingAnalysis?.sceneRefs || [];
+      propRefs = existingAnalysis?.propRefs || [];
 
-      // 执行解析（analyzeScript 失败时会直接抛出带有具体原因的异常）
-      const result = await service.analyzeScript(script);
+      if (!completedStages.has('characters')) {
+        const charResult = await service.extractCharacters(script);
+        if (!charResult.success || !charResult.data) {
+          throw new Error(charResult.error || '角色提取失败');
+        }
+        mergedChars = this.mergeAssets(mergedChars, charResult.data, 'name');
+        const charNameToId = new Map(mergedChars.map(c => [c.name, c.id]));
+        characterRefs = charResult.data.map(c => charNameToId.get(c.name) || c.id);
+        await this.persistStageResult(episodeId, episodeName, 'characters', {
+          mergedChars,
+          mergedScenes,
+          mergedProps,
+          characterRefs,
+          sceneRefs,
+          propRefs,
+        });
+        completedStages.add('characters');
+      }
 
-      // 合并去重角色（按名称匹配，保留已有资产的 ID）
-      const mergedChars = this.mergeAssets(existingChars, result.characters, 'name');
-      const mergedScenes = this.mergeAssets(existingScenes, result.scenes, 'name');
-      const mergedProps = this.mergeAssets(existingProps, result.props, 'name');
+      if (!completedStages.has('scenes')) {
+        const sceneResult = await service.extractScenes(script);
+        if (!sceneResult.success || !sceneResult.data) {
+          throw new Error(sceneResult.error || '场景提取失败');
+        }
+        mergedScenes = this.mergeAssets(mergedScenes, sceneResult.data, 'name');
+        const sceneNameToId = new Map(mergedScenes.map(s => [s.name, s.id]));
+        sceneRefs = sceneResult.data.map(s => sceneNameToId.get(s.name) || s.id);
+        await this.persistStageResult(episodeId, episodeName, 'scenes', {
+          mergedChars,
+          mergedScenes,
+          mergedProps,
+          characterRefs,
+          sceneRefs,
+          propRefs,
+        });
+        completedStages.add('scenes');
+      }
 
-      // 保存资产到项目存储（分镜由独立步骤生成）
-      await saveCharacters(this.projectId, mergedChars);
-      await saveScenes(this.projectId, mergedScenes);
-      await saveProps(this.projectId, mergedProps);
-
-      // 获取本次解析结果对应的实际 ID（考虑合并后的 ID 映射）
-      // 如果名称已存在，使用已有资产的 ID；否则使用新生成的 ID
-      const charNameToId = new Map(mergedChars.map(c => [c.name, c.id]));
-      const sceneNameToId = new Map(mergedScenes.map(s => [s.name, s.id]));
-      const propNameToId = new Map(mergedProps.map(p => [p.name, p.id]));
-
-      // 保存剧集解析结果（使用合并后的正确 ID）
-      await saveEpisodeAnalysis(this.projectId, episodeId, {
-        characterRefs: result.characters.map(c => charNameToId.get(c.name) || c.id),
-        sceneRefs: result.scenes.map(s => sceneNameToId.get(s.name) || s.id),
-        propRefs: result.props.map(p => propNameToId.get(p.name) || p.id),
-        shots: [], // 分镜由 ShotAnalysisService 单独生成
-      });
+      if (!completedStages.has('props')) {
+        const propsResult = await service.extractProps(script);
+        if (!propsResult.success || !propsResult.data) {
+          throw new Error(propsResult.error || '道具提取失败');
+        }
+        mergedProps = this.mergeAssets(mergedProps, propsResult.data, 'name');
+        const propNameToId = new Map(mergedProps.map(p => [p.name, p.id]));
+        propRefs = propsResult.data.map(p => propNameToId.get(p.name) || p.id);
+        await this.persistStageResult(episodeId, episodeName, 'props', {
+          mergedChars,
+          mergedScenes,
+          mergedProps,
+          characterRefs,
+          sceneRefs,
+          propRefs,
+        });
+        completedStages.add('props');
+      }
 
       // 更新任务完成
       TaskManager.updateTask(taskId, {
         status: 'completed',
         progress: 100,
         result: {
-          charactersCount: result.characters.length,
-          scenesCount: result.scenes.length,
-          propsCount: result.props.length,
+          charactersCount: characterRefs.length,
+          scenesCount: sceneRefs.length,
+          propsCount: propRefs.length,
         },
       });
     } catch (error: unknown) {
@@ -563,8 +770,10 @@ export async function startBackgroundAnalysis(
   episodeId: string,
   episodeName: string,
   script: string,
-  llmConfigId?: string
+  llmConfigId?: string,
+  styleSnapshot?: StyleSnapshotLike,
+  project?: { styleSnapshot?: StyleSnapshotLike }
 ): Promise<Task> {
   const service = new BackgroundAnalysisService(projectId);
-  return service.startAnalysis(episodeId, episodeName, script, llmConfigId);
+  return service.startAnalysis(episodeId, episodeName, script, llmConfigId, styleSnapshot, project);
 }

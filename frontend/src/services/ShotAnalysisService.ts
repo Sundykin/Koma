@@ -6,7 +6,7 @@
 import type { Shot, LLMModelConfig } from '../types';
 import { createLLMProvider } from '../providers';
 import { getActiveLLMConfig } from '../store/globalStore';
-import { getPromptTemplate, fillTemplate } from '../store/promptTemplates';
+import { resolvePromptTemplate } from '../store/promptTemplates';
 import { TaskManager, Task } from './TaskManager';
 import { parseLLMJSON } from '../utils/llmJsonParser';
 import {
@@ -19,6 +19,11 @@ import { createLogger } from '../store/logger';
 import { extractErrorMessage } from '../utils/errorHandler';
 
 const logger = createLogger('ShotAnalysis');
+
+interface StyleSnapshotLike {
+  ttiStylePrefix?: string;
+  llmPromptSuffix?: string;
+}
 
 // 预选资产类型
 export interface PresetAssets {
@@ -43,6 +48,7 @@ const _SHOTS_SCHEMA = {
           dialogue: { type: 'string', description: '台词' },
           emotion: { type: 'string', description: '情绪氛围' },
           props: { type: 'array', items: { type: 'string' }, description: '涉及的道具名' },
+          scenes: { type: 'array', items: { type: 'string' }, description: '涉及的场景名' },
         },
         required: ['scriptContent', 'shotType'],
       },
@@ -55,9 +61,11 @@ export class ShotAnalysisService {
   private projectId: string;
   private llmConfig: LLMModelConfig | null = null;
   private presetAssets: PresetAssets | null = null;
+  private styleSnapshot?: StyleSnapshotLike;
 
-  constructor(projectId: string) {
+  constructor(projectId: string, options?: { styleSnapshot?: StyleSnapshotLike; project?: { styleSnapshot?: StyleSnapshotLike } }) {
     this.projectId = projectId;
+    this.styleSnapshot = options?.styleSnapshot || options?.project?.styleSnapshot;
   }
 
   /**
@@ -77,9 +85,14 @@ export class ShotAnalysisService {
     episodeName: string,
     script: string,
     llmConfigId?: string,
-    presetAssets?: PresetAssets
+    presetAssets?: PresetAssets,
+    styleSnapshot?: StyleSnapshotLike,
+    project?: { styleSnapshot?: StyleSnapshotLike }
   ): Promise<Task> {
     this.presetAssets = presetAssets || null;
+    if (styleSnapshot || project?.styleSnapshot) {
+      this.styleSnapshot = styleSnapshot || project?.styleSnapshot;
+    }
 
     const task = TaskManager.createTask({
       projectId: this.projectId,
@@ -123,14 +136,20 @@ export class ShotAnalysisService {
 
       TaskManager.updateTask(taskId, { progress: 20 });
 
-      // 构建提示词
-      const template = await getPromptTemplate('shot_breakdown');
-      const prompt = fillTemplate(template.template, {
+      // 构建提示词（只传名称，描述作为参考放在括号内，名称需精确匹配）
+      const resolvedPrompt = await resolvePromptTemplate('shot_breakdown', {
         script,
-        characters: characters.map(c => `${c.name}（${c.description || ''}）`).join('\n'),
-        scenes: scenes.map(s => `${s.name}（${s.description || ''}）`).join('\n'),
-        props: props.map(p => `${p.name}（${p.description || ''}）`).join('\n'),
+        characters: characters.length > 0
+          ? characters.map(c => c.description ? `${c.name}（${c.description}）` : c.name).join('\n')
+          : '无',
+        scenes: scenes.length > 0
+          ? scenes.map(s => s.description ? `${s.name}（${s.description}）` : s.name).join('\n')
+          : '无',
+        props: props.length > 0
+          ? props.map(p => p.description ? `${p.name}（${p.description}）` : p.name).join('\n')
+          : '无',
       });
+      const styledPrompt = this.appendStyleRequirement(resolvedPrompt.prompt);
 
       TaskManager.updateTask(taskId, { progress: 30 });
 
@@ -142,12 +161,12 @@ export class ShotAnalysisService {
         modelName: this.llmConfig!.modelName,
       });
       // 获取系统提示词模板
-      const systemPromptTemplate = await getPromptTemplate('shot_breakdown_system');
-      const systemPrompt = systemPromptTemplate.template;
+      const resolvedSystemPrompt = await resolvePromptTemplate('shot_breakdown_system', {});
+      const systemPrompt = resolvedSystemPrompt.prompt;
 
       const result = await provider.chat([
         { role: 'system', content: systemPrompt },
-        { role: 'user', content: prompt },
+        { role: 'user', content: styledPrompt },
       ]);
 
       TaskManager.updateTask(taskId, { progress: 70 });
@@ -160,23 +179,38 @@ export class ShotAnalysisService {
       const presetCharacterIds = new Set(this.presetAssets?.characterIds || []);
       const presetPropIds = new Set(this.presetAssets?.propIds || []);
 
-      const charNameToId = new Map(characters.map(c => {
-        // 如果角色有 Sora2 ID 且在预选列表中，优先使用
+      const getCharId = (c: typeof characters[0]) => {
         if (c.sora2CharacterId && presetCharacterIds.has(c.sora2CharacterId)) {
-          return [c.name, c.sora2CharacterId];
+          return c.sora2CharacterId;
         }
-        // 否则使用 Sora2 ID 或自定义 ID
-        return [c.name, c.sora2CharacterId || c.id];
-      }));
+        return c.sora2CharacterId || c.id;
+      };
 
-      const propNameToId = new Map(props.map(p => {
-        // 如果道具有 Sora2 ID 且在预选列表中，优先使用
+      const getPropId = (p: typeof props[0]) => {
         if (p.sora2PropId && presetPropIds.has(p.sora2PropId)) {
-          return [p.name, p.sora2PropId];
+          return p.sora2PropId;
         }
-        // 否则使用 Sora2 ID 或自定义 ID
-        return [p.name, p.sora2PropId || p.id];
-      }));
+        return p.sora2PropId || p.id;
+      };
+
+      // 模糊匹配：支持 LLM 返回的名称包含描述后缀（如 "宁卓（侠客）"）或微小差异
+      const fuzzyMatchAsset = <T extends { name: string }>(
+        name: string,
+        assets: T[]
+      ): T | undefined => {
+        if (!name) return undefined;
+        const trimmed = name.trim();
+        // 1. 精确匹配
+        const exact = assets.find(a => a.name === trimmed);
+        if (exact) return exact;
+        // 2. LLM 返回的名称包含资产名（如 "宁卓（侠客）" 包含 "宁卓"）
+        const containsAsset = assets.find(a => trimmed.includes(a.name));
+        if (containsAsset) return containsAsset;
+        // 3. 资产名包含 LLM 返回的名称（如资产名 "宁卓·天机" 包含 "宁卓"）
+        const assetContains = assets.find(a => a.name.includes(trimmed));
+        if (assetContains) return assetContains;
+        return undefined;
+      };
 
       // 分镜拆解时 description 为 undefined，后续手动生成
       const shots: Shot[] = parsed.shots.map((s, index) => ({
@@ -186,10 +220,26 @@ export class ShotAnalysisService {
         cameraMovement: s.cameraMovement || 'static',
         duration: s.duration || 3,
         description: undefined,  // 后续手动生成提示词
-        characters: (s.characters || []).map((name: string) => charNameToId.get(name) || name),
+        characters: (s.characters || [])
+          .map((name: string) => {
+            const match = fuzzyMatchAsset(name, characters);
+            return match ? getCharId(match) : undefined;
+          })
+          .filter((id: string | undefined): id is string => id !== undefined),
         dialogue: s.dialogue || '',
         emotion: s.emotion || '',
-        props: (s.props || []).map((name: string) => propNameToId.get(name) || name),
+        props: (s.props || [])
+          .map((name: string) => {
+            const match = fuzzyMatchAsset(name, props);
+            return match ? getPropId(match) : undefined;
+          })
+          .filter((id: string | undefined): id is string => id !== undefined),
+        scenes: (s.scenes || [])
+          .map((name: string) => {
+            const match = fuzzyMatchAsset(name, scenes);
+            return match ? match.id : undefined;
+          })
+          .filter((id: string | undefined): id is string => id !== undefined),
         confirmed: false,
         episodeId,
       }));
@@ -219,6 +269,14 @@ export class ShotAnalysisService {
   private parseJSON<T>(text: string): T {
     return parseLLMJSON<T>(text);
   }
+
+  private appendStyleRequirement(prompt: string): string {
+    const styleSuffix = this.styleSnapshot?.llmPromptSuffix?.trim();
+    if (!styleSuffix) {
+      return prompt;
+    }
+    return `${prompt}\n\n【项目风格要求】\n${styleSuffix}`;
+  }
 }
 
 /**
@@ -230,8 +288,18 @@ export async function startShotAnalysis(
   episodeName: string,
   script: string,
   llmConfigId?: string,
-  presetAssets?: PresetAssets
+  presetAssets?: PresetAssets,
+  styleSnapshot?: StyleSnapshotLike,
+  project?: { styleSnapshot?: StyleSnapshotLike }
 ): Promise<Task> {
-  const service = new ShotAnalysisService(projectId);
-  return service.startShotAnalysis(episodeId, episodeName, script, llmConfigId, presetAssets);
+  const service = new ShotAnalysisService(projectId, { styleSnapshot, project });
+  return service.startShotAnalysis(
+    episodeId,
+    episodeName,
+    script,
+    llmConfigId,
+    presetAssets,
+    styleSnapshot,
+    project
+  );
 }
