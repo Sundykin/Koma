@@ -60,6 +60,8 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
   const mentionCompartmentRef = useRef(new Compartment());
   // 记录最后一次从编辑器输出的值，用于避免循环更新
   const lastOutputRef = useRef(value);
+  // 标记正在进行外部 value 同步，此时不应触发 onChange（避免反向覆盖数据）
+  const isSyncingExternalRef = useRef(false);
 
   // 更新 onChange 引用
   useEffect(() => {
@@ -126,7 +128,7 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
 
       // 文档变更监听
       EditorView.updateListener.of((update) => {
-        if (update.docChanged && onChangeRef.current) {
+        if (update.docChanged && onChangeRef.current && !isSyncingExternalRef.current) {
           const newValue = update.state.doc.toString();
           // 记录输出的值，用于在 value 同步 effect 中判断是否需要跳过
           lastOutputRef.current = newValue;
@@ -248,6 +250,9 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
     const currentValue = view.state.doc.toString();
     if (currentValue !== value) {
       lastOutputRef.current = value;
+      // 标记为外部同步，阻止 updateListener 触发 onChange
+      // CodeMirror dispatch 是同步的，updateListener 在 dispatch 内部执行
+      isSyncingExternalRef.current = true;
       view.dispatch({
         changes: {
           from: 0,
@@ -255,6 +260,7 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
           insert: value,
         },
       });
+      isSyncingExternalRef.current = false;
     }
   }, [value]);
 
