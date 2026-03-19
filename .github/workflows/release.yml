@@ -20,21 +20,17 @@ jobs:
         with:
           node-version: 20
 
-      - name: Install root dependencies
-        run: npm install
-
-      - name: Install frontend dependencies
-        run: npm install
-        working-directory: frontend
+      - name: Install dependencies
+        run: npm run install:all
 
       - name: Build application
         run: npm run build
 
       - name: Build Windows NSIS installer
-        run: npx electron-builder --config=./cmd/builder.json -w=nsis --x64 --publish=never
+        run: npm run build-w
 
       - name: Build Windows portable
-        run: npx electron-builder --config=./cmd/builder.json -w=portable --x64 --publish=never
+        run: npm run build-we
 
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4
@@ -55,24 +51,20 @@ jobs:
         with:
           node-version: 20
 
-      - name: Install root dependencies
-        run: npm install
+      - name: Install dependencies
+        run: npm run install:all
 
       - name: Install dmg-license
         run: npm install dmg-license
-
-      - name: Install frontend dependencies
-        run: npm install
-        working-directory: frontend
 
       - name: Build application
         run: npm run build
 
       - name: Build macOS (x64)
-        run: npx electron-builder --config=./cmd/builder-mac.json -m --x64 --publish=never
+        run: npm run build-m
 
       - name: Build macOS (ARM64)
-        run: npx electron-builder --config=./cmd/builder-mac-arm64.json -m --arm64 --publish=never
+        run: npm run build-m-arm64
 
       - name: Upload macOS artifacts
         uses: actions/upload-artifact@v4
