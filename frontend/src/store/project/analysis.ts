@@ -201,15 +201,19 @@ export async function removeAssetFromAnalysis(
     : assetType === 'scene' ? 'scenes'
     : 'props';
 
-  const hadRef = analysis[refsKey]?.includes(assetId);
-  const filteredRefs = (analysis[refsKey] || []).filter((id: string) => id !== assetId);
+  const refs = analysis[refsKey];
+  const safeRefs = Array.isArray(refs) ? refs : [];
+  const hadRef = safeRefs.includes(assetId);
+  const filteredRefs = safeRefs.filter((id: string) => id !== assetId);
 
   let shotsModified = false;
-  const updatedShots = (analysis.shots || []).map(shot => {
-    const arr = (shot as Record<string, unknown>)[shotKey] as string[] | undefined;
-    if (arr?.includes(assetId)) {
+  const safeShots = Array.isArray(analysis.shots) ? analysis.shots : [];
+  const updatedShots = safeShots.map(shot => {
+    const arr = (shot as Record<string, unknown>)[shotKey];
+    if (!Array.isArray(arr)) return shot;
+    if (arr.includes(assetId)) {
       shotsModified = true;
-      return { ...shot, [shotKey]: arr.filter(id => id !== assetId) };
+      return { ...shot, [shotKey]: arr.filter((id: string) => id !== assetId) };
     }
     return shot;
   });

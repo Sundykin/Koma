@@ -7,7 +7,7 @@ import { App } from 'antd';
 import { Film } from 'lucide-react';
 import { InlineProjectToolbar } from './InlineProjectToolbar';
 import { ScriptEditor } from '../../editor';
-import { saveEpisode, deleteEpisodeAnalysis } from '../../store/projectStore';
+import { saveEpisode, deleteEpisodeAnalysis, loadEpisodeAnalysis, saveEpisodeAnalysis } from '../../store/projectStore';
 import { generateRandomScript, polishScript } from '../../workflow/scriptGenerator';
 import { startBackgroundAnalysis } from '../../services/ScriptAnalysisService';
 import { TaskManager } from '../../services/TaskManager';
@@ -248,23 +248,33 @@ export const ScriptWorkbench = forwardRef<ScriptWorkbenchRef, ScriptWorkbenchPro
     try {
       // 先保存当前剧本
       await saveScript(localScript);
+      // 备份旧分析数据，以便分析启动失败时恢复
+      const previousAnalysis = await loadEpisodeAnalysis(project.id, episode.id);
       // 清除旧的分析结果（重置 completedStages），确保重新分析能执行
       await deleteEpisodeAnalysis(project.id, episode.id);
       // 启动后台解析
-      const task = await startBackgroundAnalysis(
-        project.id,
-        episode.id,
-        episode.title || `第${episode.number}集`,
-        localScript,
-        project.llmConfigId,
-        project.styleSnapshot,
-        project
-      );
-      if (task.metadata?.deduped) {
-        message.info('当前剧集已在后台解析中，请等待完成后再试。');
-        return;
+      try {
+        const task = await startBackgroundAnalysis(
+          project.id,
+          episode.id,
+          episode.title || `第${episode.number}集`,
+          localScript,
+          project.llmConfigId,
+          project.styleSnapshot,
+          project
+        );
+        if (task.metadata?.deduped) {
+          message.info('当前剧集已在后台解析中，请等待完成后再试。');
+          return;
+        }
+        message.success('解析任务已启动，可在状态栏查看进度');
+      } catch (analysisErr: unknown) {
+        // 分析启动失败，恢复旧的分析数据
+        if (previousAnalysis) {
+          await saveEpisodeAnalysis(project.id, episode.id, previousAnalysis);
+        }
+        throw analysisErr;
       }
-      message.success('解析任务已启动，可在状态栏查看进度');
     } catch (err: unknown) {
       logger.error('解析失败', err);
       message.error(classifyAIError(err).userMessage);

@@ -175,13 +175,13 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
 
     setScriptImportVisible(false);
 
-    // 检查是否有后台分析任务在跑
+    // 检查是否有后台分析任务在跑（包括剧本分析和分镜分析）
     const runningTasks = TaskManager.getProjectTasks(project.id).filter(task =>
-      task.type === 'script-analysis'
+      (task.type === 'script-analysis' || task.type === 'shot-analysis')
       && (task.status === 'pending' || task.status === 'running' || task.status === 'processing')
     );
     if (runningTasks.length > 0) {
-      message.warning('当前有剧本分析任务正在执行，请等待完成后再导入');
+      message.warning('当前有分析任务正在执行，请等待完成后再导入');
       return;
     }
 
@@ -196,9 +196,15 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
         cancelText: '取消',
         onOk: async () => {
           try {
-            // 清理旧剧集
+            // 清理旧剧集，任一失败则中止
+            const failedEpisodes: string[] = [];
             for (const ep of existingEpisodes) {
-              await deleteEpisode(project.id, ep.id);
+              const ok = await deleteEpisode(project.id, ep.id);
+              if (!ok) failedEpisodes.push(ep.title || ep.id);
+            }
+            if (failedEpisodes.length > 0) {
+              message.error(`以下剧集删除失败: ${failedEpisodes.join(', ')}，已中止导入`);
+              return;
             }
             // 清空项目级资产
             await Promise.all([
@@ -211,7 +217,8 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
             setFullScript(tempScript);
             setSplitWizardVisible(true);
           } catch (err: any) {
-            message.error(`清理旧数据失败: ${err.message}`);
+            logger.error('清理旧数据失败', err);
+            message.error('清理旧数据失败，请重试');
           }
         },
       });
