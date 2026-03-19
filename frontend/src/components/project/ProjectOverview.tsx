@@ -12,7 +12,7 @@ import {
 import type { Project, Episode } from '../../types';
 import { EpisodeManager, EpisodeManagerRef } from './EpisodeManager';
 import { EpisodeSplitWizard } from './EpisodeSplitWizard';
-import { ProjectAssetOverview } from './ProjectAssetOverview';
+import { ProjectAssetOverview, type ProjectAssetOverviewRef } from './ProjectAssetOverview';
 import { ScriptWorkbench, type ScriptWorkbenchRef } from './ScriptWorkbench';
 import {
   saveProject, loadProject, listEpisodes, loadEpisode,
@@ -52,6 +52,7 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
   const [splitWizardVisible, setSplitWizardVisible] = useState(false);
   const episodeManagerRef = useRef<EpisodeManagerRef>(null);
   const scriptWorkbenchRef = useRef<ScriptWorkbenchRef>(null);
+  const assetOverviewRef = useRef<ProjectAssetOverviewRef>(null);
 
   const [leftCollapsed, setLeftCollapsed] = useState(false);
   const [rightCollapsed, setRightCollapsed] = useState(false);
@@ -159,6 +160,7 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
     setSplitWizardVisible(false);
     setFullScript('');
     episodeManagerRef.current?.refresh();
+    assetOverviewRef.current?.refresh();
     if (episodes.length > 0) {
       setSelectedEpisode(episodes[0]);
     }
@@ -214,6 +216,7 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
             ]);
             setSelectedEpisode(null);
             episodeManagerRef.current?.refresh();
+            assetOverviewRef.current?.refresh();
             setFullScript(tempScript);
             setSplitWizardVisible(true);
           } catch (err: any) {
@@ -443,7 +446,7 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
           </div>
           {/* Asset Content */}
           <div className="flex-1 overflow-hidden">
-            <ProjectAssetOverview projectId={project.id} />
+            <ProjectAssetOverview ref={assetOverviewRef} projectId={project.id} />
           </div>
         </div>
       </div>

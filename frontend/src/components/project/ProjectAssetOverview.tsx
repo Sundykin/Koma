@@ -2,7 +2,7 @@
  * 项目资产总览组件
  * 显示项目中所有角色、场景、道具及其跨集使用情况
  */
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useImperativeHandle, forwardRef } from 'react';
 import { Tabs, Avatar, Empty, Spin, Tooltip } from 'antd';
 import { User, MapPin, Box, Link } from 'lucide-react';
 import type { Character, Scene, Prop, EpisodeRef } from '../../types';
@@ -18,10 +18,14 @@ interface ProjectAssetOverviewProps {
   onAssetClick?: (assetId: string, type: 'character' | 'scene' | 'prop') => void;
 }
 
-export const ProjectAssetOverview: React.FC<ProjectAssetOverviewProps> = ({
+export interface ProjectAssetOverviewRef {
+  refresh: () => void;
+}
+
+export const ProjectAssetOverview = forwardRef<ProjectAssetOverviewRef, ProjectAssetOverviewProps>(({
   projectId,
   onAssetClick,
-}) => {
+}, ref) => {
   const [loading, setLoading] = useState(true);
   const [characters, setCharacters] = useState<Character[]>([]);
   const [scenes, setScenes] = useState<Scene[]>([]);
@@ -54,6 +58,8 @@ export const ProjectAssetOverview: React.FC<ProjectAssetOverviewProps> = ({
   }, [projectId]);
 
   useEffect(() => { loadAssets(); }, [loadAssets]);
+
+  useImperativeHandle(ref, () => ({ refresh: loadAssets }), [loadAssets]);
 
   useEffect(() => {
     const unsubscribe = TaskManager.addListener((task) => {
@@ -244,6 +250,8 @@ export const ProjectAssetOverview: React.FC<ProjectAssetOverviewProps> = ({
       />
     </div>
   );
-};
+});
+
+ProjectAssetOverview.displayName = 'ProjectAssetOverview';
 
 export default ProjectAssetOverview;
