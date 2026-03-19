@@ -490,6 +490,10 @@ export const Storyboard: React.FC<StoryboardProps> = ({
 
   // 文生图提示词变更 - 同时同步资产选择
   const handleImagePromptChange = useCallback((shotId: string, imagePrompt: string) => {
+    // 批量生成期间，ScriptEditor 的 value 同步会触发 onChange，
+    // 但此时 shots 闭包可能是旧状态，直接跳过避免覆盖批量生成的正确数据
+    if (generatingImagePrompts.has(shotId)) return;
+
     const shot = shots.find(s => s.id === shotId);
     if (!shot) return;
 
@@ -511,10 +515,13 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       } : s
     );
     saveAllShots(updatedShots);
-  }, [shots, saveAllShots, syncFromPrompt]);
+  }, [shots, saveAllShots, syncFromPrompt, generatingImagePrompts]);
 
   // 图生视频提示词变更 - 同时同步资产选择
   const handleVideoPromptChange = useCallback((shotId: string, videoPrompt: string) => {
+    // 批量生成期间跳过，同 handleImagePromptChange
+    if (generatingVideoPrompts.has(shotId)) return;
+
     const shot = shots.find(s => s.id === shotId);
     if (!shot) return;
 
@@ -536,7 +543,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       } : s
     );
     saveAllShots(updatedShots);
-  }, [shots, saveAllShots, syncFromPrompt]);
+  }, [shots, saveAllShots, syncFromPrompt, generatingVideoPrompts]);
 
   // 角色变更 - 同时更新提示词中的 @mentions
   const handleCharactersChange = useCallback((shotId: string, characterIds: string[]) => {
