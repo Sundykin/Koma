@@ -113,10 +113,16 @@ export class CustomITVProvider implements ITVProvider {
           });
         }
 
-        // 解析视频 URL: <source ... src="URL" ...>
-        const srcMatch = content.match(/src="([^"]+\.mp4[^"]*)"/);
+        // 解析视频 URL: <source/video src="URL"> 或直接 http(s) mp4/webm 链接
+        const srcMatch = content.match(/src="([^"]+\.(?:mp4|webm)[^"]*)"/);
         if (srcMatch) {
           videoUrl = srcMatch[1];
+        } else {
+          // fallback: 匹配裸 URL（http/https 开头，以 .mp4 或 .webm 结尾或含视频路径）
+          const urlMatch = content.match(/(https?:\/\/[^\s"<>]+\.(?:mp4|webm)(?:\?[^\s"<>]*)?)/);
+          if (urlMatch) {
+            videoUrl = urlMatch[1];
+          }
         }
       } catch {
         // 忽略非 JSON 行
