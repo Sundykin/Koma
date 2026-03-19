@@ -64,11 +64,17 @@ export async function saveShotVersion(
   const isRemoteUrl = (path: string) => path.startsWith('http://') || path.startsWith('https://');
   const isDataUri = (path: string) => path.startsWith('data:');
 
+  const extractBase64 = (dataUri: string): string => {
+    const commaIndex = dataUri.indexOf(',');
+    return commaIndex >= 0 ? dataUri.slice(commaIndex + 1) : '';
+  };
+
   if (version.imagePath) {
     if (isDataUri(version.imagePath)) {
-      // data URI: 提取 base64 写入文件
-      const base64Data = version.imagePath.replace(/^data:image\/\w+;base64,/, '');
-      await electronService.fs.writeFile(shotVersion.imagePath!, base64Data, true);
+      const base64Data = extractBase64(version.imagePath);
+      if (base64Data) {
+        await electronService.fs.writeFile(shotVersion.imagePath!, base64Data, true);
+      }
     } else if (isRemoteUrl(version.imagePath)) {
       await electronService.fs.downloadFile(version.imagePath, shotVersion.imagePath!);
     } else {
@@ -77,8 +83,10 @@ export async function saveShotVersion(
   }
   if (version.videoPath) {
     if (isDataUri(version.videoPath)) {
-      const base64Data = version.videoPath.replace(/^data:video\/\w+;base64,/, '');
-      await electronService.fs.writeFile(shotVersion.videoPath!, base64Data, true);
+      const base64Data = extractBase64(version.videoPath);
+      if (base64Data) {
+        await electronService.fs.writeFile(shotVersion.videoPath!, base64Data, true);
+      }
     } else if (isRemoteUrl(version.videoPath)) {
       await electronService.fs.downloadFile(version.videoPath, shotVersion.videoPath!);
     } else {
@@ -87,8 +95,10 @@ export async function saveShotVersion(
   }
   if (version.audioPath) {
     if (isDataUri(version.audioPath)) {
-      const base64Data = version.audioPath.replace(/^data:audio\/\w+;base64,/, '');
-      await electronService.fs.writeFile(shotVersion.audioPath!, base64Data, true);
+      const base64Data = extractBase64(version.audioPath);
+      if (base64Data) {
+        await electronService.fs.writeFile(shotVersion.audioPath!, base64Data, true);
+      }
     } else if (isRemoteUrl(version.audioPath)) {
       await electronService.fs.downloadFile(version.audioPath, shotVersion.audioPath!);
     } else {
