@@ -7,6 +7,7 @@ import { getStorageConfig, initStorageConfig } from '../storageConfig';
 import type { AppSettings } from '../../types';
 import { STORAGE_KEYS } from '../../constants/storageKeys';
 import { createLogger } from '../logger';
+import { encryptSettings, decryptSettings, initEncryption } from '../encryption';
 
 const logger = createLogger('Settings');
 
@@ -50,6 +51,15 @@ function migrateEncryptedData<T>(data: T): T {
   return data;
 }
 
+// 确保加密模块已初始化
+let _encryptionReady = false;
+async function ensureEncryption(): Promise<void> {
+  if (_encryptionReady) return;
+  const machineId = await electronService.getMachineId();
+  await initEncryption(machineId);
+  _encryptionReady = true;
+}
+
 // 加载设置
 export async function loadSettings(): Promise<AppSettings> {
   if (!electronService.isElectron()) {
@@ -67,13 +77,15 @@ export async function loadSettings(): Promise<AppSettings> {
   }
 
   try {
+    await ensureEncryption();
     const path = await getGlobalPath('settings.json');
     const exists = await electronService.fs.exists(path);
     if (exists) {
       const data = await electronService.fs.readFile(path);
       let parsed = JSON.parse(data);
       parsed = migrateEncryptedData(parsed);
-      return { ...DEFAULT_SETTINGS, ...parsed };
+      const decrypted = await decryptSettings(parsed);
+      return { ...DEFAULT_SETTINGS, ...decrypted };
     }
   } catch (err) {
     logger.error('loadSettings error', err);
@@ -88,6 +100,8 @@ export async function saveSettings(settings: AppSettings): Promise<void> {
     return;
   }
 
+  await ensureEncryption();
+  const encrypted = await encryptSettings(settings);
   const path = await getGlobalPath('settings.json');
-  await electronService.fs.writeFile(path, JSON.stringify(settings, null, 2));
+  await electronService.fs.writeFile(path, JSON.stringify(encrypted, null, 2));
 }

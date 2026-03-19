@@ -1,4 +1,5 @@
 import { BaseController } from './base';
+import { validateUrl } from '../service/url-validator';
 
 // 每个 chunk 之间的最大空闲时间（5 分钟，兼容慢模型的首 token 等待）
 const CHUNK_IDLE_TIMEOUT_MS = 300_000;
@@ -82,10 +83,8 @@ class NetController extends BaseController {
     headers?: Record<string, string>;
     body?: string;
   }) {
-    const parsed = new URL(args.url);
-    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-      throw new Error('Only http/https URLs are allowed');
-    }
+    // SSRF 防护：校验协议 + 私有 IP 过滤
+    await validateUrl(args.url);
 
     const traceId = getHeaderValue(args.headers, 'x-koma-trace-id');
     const traceSource = getHeaderValue(args.headers, 'x-koma-trace-source');

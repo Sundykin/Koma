@@ -14,6 +14,33 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   'chat:tool:approve', 'chat:tool:reject', 'chat:tool:listPending',
   'chat:tools:list', 'chat:tools:call',
   'chat:capability:list', 'chat:capability:invoke', 'chat:capability:resolve',
+  // controller/* 显式白名单
+  'controller/window/minimize', 'controller/window/maximize',
+  'controller/window/close', 'controller/window/isMaximized',
+  'controller/dialog/openFile', 'controller/dialog/openDirectory',
+  'controller/dialog/saveFile',
+  'controller/fs/readFile', 'controller/fs/readFileAsBase64',
+  'controller/fs/writeFile', 'controller/fs/downloadFile',
+  'controller/fs/exists', 'controller/fs/mkdir', 'controller/fs/readdir',
+  'controller/fs/stat', 'controller/fs/remove', 'controller/fs/copy',
+  'controller/app/openExternal', 'controller/app/showItemInFolder',
+  'controller/app/getPath', 'controller/app/getVersion',
+  'controller/project/list', 'controller/project/create',
+  'controller/project/load', 'controller/project/save',
+  'controller/project/update', 'controller/project/delete',
+  'controller/project/rebuildIndex', 'controller/project/export',
+  'controller/project/import',
+  'controller/ffmpeg/isAvailable', 'controller/ffmpeg/getInfo',
+  'controller/ffmpeg/extractFrames', 'controller/ffmpeg/waveform',
+  'controller/ffmpeg/splitAudio', 'controller/ffmpeg/composeVideo',
+  'controller/ffmpeg/getCacheDir', 'controller/ffmpeg/getTempDir',
+  'controller/ffmpeg/ensureDir', 'controller/ffmpeg/saveFrame',
+  'controller/ffmpeg/cleanupTemp', 'controller/ffmpeg/clearCache',
+  'controller/ffmpeg/cancelTask', 'controller/ffmpeg/clearQueue',
+  'controller/plugin/validate', 'controller/plugin/install',
+  'controller/plugin/uninstall', 'controller/plugin/list',
+  'controller/plugin/openFolder',
+  'controller/net/fetch',
 ]);
 
 const ALLOWED_LISTEN_CHANNELS = new Set([
@@ -22,7 +49,6 @@ const ALLOWED_LISTEN_CHANNELS = new Set([
 ]);
 
 function validateInvokeChannel(channel: string): void {
-  if (channel.startsWith('controller/')) return;
   if (!ALLOWED_INVOKE_CHANNELS.has(channel)) {
     throw new Error(`IPC channel not allowed: ${channel}`);
   }
