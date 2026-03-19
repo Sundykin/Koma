@@ -97,8 +97,18 @@
 .composerCenter {
   position: absolute;
   left: 50%;
-  top: 55%;
-  transform: translate(-50%, -50%);
+  top: 50%;
+  /* 使用较大的偏移量确保不遮挡欢迎语，同时保持在视觉中心附近 */
+  transform: translate(-50%, 80px);
+}
+
+@media (max-height: 700px) {
+  .heroArea {
+    padding-bottom: 80px;
+  }
+  .composerCenter {
+    transform: translate(-50%, 60px);
+  }
 }
 
 /* 底部模式（Chat） */

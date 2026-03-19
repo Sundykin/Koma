@@ -62,10 +62,15 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
   useEffect(() => {
     const textarea = textareaRef.current;
     if (textarea) {
-      textarea.style.height = 'auto';
+      textarea.style.height = 'auto'; // 先重置高度以获取准确的 scrollHeight
       const lineHeight = 24;
       const maxHeight = lineHeight * maxRows;
-      textarea.style.height = `${Math.min(textarea.scrollHeight, maxHeight)}px`;
+      const currentScrollHeight = textarea.scrollHeight;
+      
+      textarea.style.height = `${Math.min(currentScrollHeight, maxHeight)}px`;
+      
+      // 只有内容超过最大高度时才显示滚动条，防止 windows 下空行也显示滚动轴
+      textarea.style.overflowY = currentScrollHeight > maxHeight ? 'auto' : 'hidden';
     }
   }, [text, maxRows]);
 

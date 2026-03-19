@@ -95,7 +95,7 @@ export const ProjectList: React.FC<ProjectListProps> = ({
                 <button
                   key={f}
                   onClick={() => setFilter(f)}
-                  className={`px-2.5 py-1 rounded text-xs font-medium transition-all ${
+                  className={`px-2.5 py-1 rounded text-xs font-medium transition-all cursor-pointer ${
                     filter === f
                       ? 'bg-zinc-700 text-white'
                       : 'text-zinc-500 hover:text-zinc-300'
@@ -111,7 +111,7 @@ export const ProjectList: React.FC<ProjectListProps> = ({
           {!hasNoProjects && (
             <button
               onClick={onCreateProject}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium rounded-md transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium rounded-md transition-colors cursor-pointer"
             >
               <Plus className="w-4 h-4" />
               <span>{t('project.new')}</span>
