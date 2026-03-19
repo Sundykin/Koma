@@ -30,11 +30,11 @@ export async function saveEpisodeAnalysis(
       ]));
   const result: EpisodeAnalysis = {
     episodeId,
-    characterRefs: analysis.characterRefs,
-    sceneRefs: analysis.sceneRefs,
-    propRefs: analysis.propRefs,
+    characterRefs: analysis.characterRefs ?? existing?.characterRefs ?? [],
+    sceneRefs: analysis.sceneRefs ?? existing?.sceneRefs ?? [],
+    propRefs: analysis.propRefs ?? existing?.propRefs ?? [],
     completedStages,
-    shots: analysis.shots,
+    shots: analysis.shots ?? existing?.shots ?? [],
     createdAt: existing?.createdAt || now,
     updatedAt: now,
   };

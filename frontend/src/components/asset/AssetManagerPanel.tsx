@@ -120,20 +120,23 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
   // 筛选后的资产
   const filteredCharacters = useMemo(() => {
     if (!showCurrentEpisodeOnly || !episodeAnalysis) return characters;
-    const refs = new Set(episodeAnalysis.characterRefs);
-    return characters.filter(c => refs.has(c.id));
+    const refs = episodeAnalysis.characterRefs;
+    if (!refs || refs.length === 0) return characters;
+    return characters.filter(c => new Set(refs).has(c.id));
   }, [characters, showCurrentEpisodeOnly, episodeAnalysis]);
 
   const filteredScenes = useMemo(() => {
     if (!showCurrentEpisodeOnly || !episodeAnalysis) return scenes;
-    const refs = new Set(episodeAnalysis.sceneRefs);
-    return scenes.filter(s => refs.has(s.id));
+    const refs = episodeAnalysis.sceneRefs;
+    if (!refs || refs.length === 0) return scenes;
+    return scenes.filter(s => new Set(refs).has(s.id));
   }, [scenes, showCurrentEpisodeOnly, episodeAnalysis]);
 
   const filteredProps = useMemo(() => {
     if (!showCurrentEpisodeOnly || !episodeAnalysis) return props;
-    const refs = new Set(episodeAnalysis.propRefs);
-    return props.filter(p => refs.has(p.id));
+    const refs = episodeAnalysis.propRefs;
+    if (!refs || refs.length === 0) return props;
+    return props.filter(p => new Set(refs).has(p.id));
   }, [props, showCurrentEpisodeOnly, episodeAnalysis]);
 
   // 获取当前选中的资产
