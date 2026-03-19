@@ -4,6 +4,7 @@
  */
 import type { TTIModelConfig, ProgressInfo } from '../../types';
 import type { TTIProvider, TTIOptions } from './types';
+import { safeFetch } from '../../utils/safeFetch';
 
 // API 响应类型
 interface NanoBananaResponse {
@@ -63,7 +64,7 @@ export class NanoBananaProvider implements TTIProvider {
     if (!this.validate()) return false;
 
     try {
-      const response = await fetch(`${this.getBaseUrl()}/api/user/balance`, {
+      const response = await safeFetch(`${this.getBaseUrl()}/api/user/balance`, {
         method: 'GET',
         headers: { 'Authorization': this.config.apiKey || '' },
       });
@@ -99,7 +100,7 @@ export class NanoBananaProvider implements TTIProvider {
       body.image_urls = options.imageUrls;
     }
 
-    const response = await fetch(`${this.getBaseUrl()}/api/nano-banana`, {
+    const response = await safeFetch(`${this.getBaseUrl()}/api/nano-banana`, {
       method: 'POST',
       headers: this.getHeaders(),
       body: JSON.stringify(body),
@@ -118,7 +119,7 @@ export class NanoBananaProvider implements TTIProvider {
    * 轮询任务状态
    */
   async checkProgress(taskId: string): Promise<ProgressInfo> {
-    const response = await fetch(`${this.getBaseUrl()}/api/nano-banana/task/${taskId}`, {
+    const response = await safeFetch(`${this.getBaseUrl()}/api/nano-banana/task/${taskId}`, {
       method: 'GET',
       headers: { 'Authorization': this.config.apiKey || '' },
     });

@@ -5,6 +5,7 @@
  */
 import type { TTIModelConfig, ProgressInfo } from '../../types';
 import type { TTIProvider, TTIOptions, ImageResult } from './types';
+import { safeFetch } from '../../utils/safeFetch';
 
 interface ImageData {
   url?: string;
@@ -64,7 +65,7 @@ export class OpenAICompatibleTTIProvider implements TTIProvider {
     if (!this.validate()) return false;
 
     try {
-      const response = await fetch(`${this.getBaseUrl()}/v1/models`, {
+      const response = await safeFetch(`${this.getBaseUrl()}/v1/models`, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${this.config.apiKey || ''}`,
@@ -113,7 +114,7 @@ export class OpenAICompatibleTTIProvider implements TTIProvider {
       body.image_urls = options.imageUrls.map(url => ({ url }));
     }
 
-    const response = await fetch(`${this.getBaseUrl()}/v1/images/generations`, {
+    const response = await safeFetch(`${this.getBaseUrl()}/v1/images/generations`, {
       method: 'POST',
       headers: this.getHeaders(),
       body: JSON.stringify(body),
@@ -152,7 +153,7 @@ export class OpenAICompatibleTTIProvider implements TTIProvider {
    * 轮询任务状态（异步模式）
    */
   async checkProgress(taskId: string): Promise<ProgressInfo> {
-    const response = await fetch(`${this.getBaseUrl()}/v1/images/generations/${taskId}`, {
+    const response = await safeFetch(`${this.getBaseUrl()}/v1/images/generations/${taskId}`, {
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${this.config.apiKey || ''}`,

@@ -3,6 +3,7 @@
  */
 import type { TTIModelConfig, ProgressInfo } from '../../types';
 import type { TTIProvider, ImageResult, TTIOptions } from './types';
+import { safeFetch } from '../../utils/safeFetch';
 
 interface ComfyUIHistoryResponse {
   [taskId: string]: {
@@ -40,7 +41,7 @@ export class ComfyUIProvider implements TTIProvider {
 
   async testConnection(): Promise<boolean> {
     try {
-      const response = await fetch(
+      const response = await safeFetch(
         `${this.getBaseUrl()}/system_stats`
       );
       return response.ok;
@@ -171,7 +172,7 @@ export class ComfyUIProvider implements TTIProvider {
   }
 
   private async uploadImage(imageUrl: string): Promise<ComfyUIUploadResponse> {
-    const response = await fetch(imageUrl);
+    const response = await safeFetch(imageUrl);
     if (!response.ok) {
       throw new Error('下载参考图失败');
     }
@@ -181,7 +182,7 @@ export class ComfyUIProvider implements TTIProvider {
     formData.append('image', blob, 'input.png');
     formData.append('type', 'input');
 
-    const uploadResponse = await fetch(`${this.getBaseUrl()}/upload/image`, {
+    const uploadResponse = await safeFetch(`${this.getBaseUrl()}/upload/image`, {
       method: 'POST',
       body: formData,
     });
@@ -202,7 +203,7 @@ export class ComfyUIProvider implements TTIProvider {
   }
 
   async checkProgress(taskId: string): Promise<ProgressInfo> {
-    const response = await fetch(`${this.getBaseUrl()}/history/${taskId}`);
+    const response = await safeFetch(`${this.getBaseUrl()}/history/${taskId}`);
 
     if (!response.ok) {
       return {
@@ -298,7 +299,7 @@ export class ComfyUIProvider implements TTIProvider {
       imageName,
     });
 
-    const response = await fetch(`${this.getBaseUrl()}/prompt`, {
+    const response = await safeFetch(`${this.getBaseUrl()}/prompt`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

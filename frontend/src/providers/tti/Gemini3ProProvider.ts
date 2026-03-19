@@ -4,6 +4,7 @@
  */
 import type { TTIModelConfig, ProgressInfo } from '../../types';
 import type { TTIProvider, TTIOptions } from './types';
+import { safeFetch } from '../../utils/safeFetch';
 
 // API 响应类型
 interface Gemini3ProCreateResponse {
@@ -66,7 +67,7 @@ export class Gemini3ProProvider implements TTIProvider {
 
     try {
       // 使用简单的请求测试连接
-      const response = await fetch(`${this.getBaseUrl()}/v1/images/generations`, {
+      const response = await safeFetch(`${this.getBaseUrl()}/v1/images/generations`, {
         method: 'POST',
         headers: this.getHeaders(),
         body: JSON.stringify({
@@ -107,7 +108,7 @@ export class Gemini3ProProvider implements TTIProvider {
       body.image_urls = options.imageUrls.map(url => ({ url }));
     }
 
-    const response = await fetch(`${this.getBaseUrl()}/v1/images/generations`, {
+    const response = await safeFetch(`${this.getBaseUrl()}/v1/images/generations`, {
       method: 'POST',
       headers: this.getHeaders(),
       body: JSON.stringify(body),
@@ -126,7 +127,7 @@ export class Gemini3ProProvider implements TTIProvider {
    * 轮询任务状态
    */
   async checkProgress(taskId: string): Promise<ProgressInfo> {
-    const response = await fetch(`${this.getBaseUrl()}/v1/images/generations/${taskId}`, {
+    const response = await safeFetch(`${this.getBaseUrl()}/v1/images/generations/${taskId}`, {
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${this.config.apiKey || ''}`,
