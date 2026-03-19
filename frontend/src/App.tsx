@@ -33,7 +33,7 @@ const ProjectOverview = lazy(() => import('./components/project/ProjectOverview'
 
 // 加载中占位组件
 const ViewLoading: React.FC<{ tip?: string }> = ({ tip = '加载中...' }) => (
-  <div className="flex h-full items-center justify-center bg-zinc-950">
+  <div className="flex h-full items-center justify-center bg-zinc-950" style={{ whiteSpace: 'nowrap' }}>
     <Spin size="large" description={tip}><div className="p-12" /></Spin>
   </div>
 );
@@ -312,7 +312,7 @@ const AppContent: React.FC = () => {
               </Suspense>
             )}
             {view === 'overview' && activeProject && (
-              <Suspense fallback={<ViewLoading tip="加载项目概览..." />}>
+              <Suspense fallback={<ViewLoading tip="加载中..." />}>
                 <ProjectOverview
                   project={activeProject}
                   onEnterEpisode={handleEnterEpisode}
@@ -321,7 +321,7 @@ const AppContent: React.FC = () => {
               </Suspense>
             )}
             {view === 'editor' && activeProject && (
-              <Suspense fallback={<ViewLoading tip="加载编辑器..." />}>
+              <Suspense fallback={<ViewLoading tip="加载中..." />}>
                 <EditorView
                   activeProject={activeProject}
                   activeEpisode={activeEpisode}
