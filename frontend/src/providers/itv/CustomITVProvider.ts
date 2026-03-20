@@ -127,17 +127,19 @@ export class CustomITVProvider implements ITVProvider {
       });
     };
 
-    const preferredVariant = this.apiVariant || 'public';
+    const preferredVariant: 'public' | 'standard' = this.apiVariant || 'public';
+    const fallbackVariant: 'public' | 'standard' = preferredVariant === 'public' ? 'standard' : 'public';
+
     let resp = await trySubmit(preferredVariant);
-    if (resp.status === 404 && !this.apiVariant) {
-      // Auto-detect endpoint variant once, without requiring UI config changes.
-      const fallbackVariant: 'public' | 'standard' = preferredVariant === 'public' ? 'standard' : 'public';
+    // Some deployments expose only one set of endpoints. Always try the other variant on 404.
+    if (resp.status === 404) {
       const fallbackResp = await trySubmit(fallbackVariant);
       if (fallbackResp.ok) {
         this.apiVariant = fallbackVariant;
         resp = fallbackResp;
       }
     } else if (resp.ok && !this.apiVariant) {
+      // Cache the successful variant for subsequent calls.
       this.apiVariant = preferredVariant;
     }
 
@@ -176,8 +178,8 @@ export class CustomITVProvider implements ITVProvider {
       );
 
       if (!resp.ok) {
-        // If this is a recovered task and the endpoint variant differs, try the other variant once.
-        if (resp.status === 404 && !this.apiVariant) {
+        // Always try the other variant once on 404 (covers recovered tasks and mixed deployments).
+        if (resp.status === 404) {
           const fallbackVariant: 'public' | 'standard' = preferredVariant === 'public' ? 'standard' : 'public';
           const fallbackPaths = this.getApiPaths(fallbackVariant);
           const fallbackResp = await safeFetch(
