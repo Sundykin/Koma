@@ -221,7 +221,7 @@ import { extractAndBindCharacter } from './workflow';
 
 const result = await extractAndBindCharacter(
   'proj-123',
-  characterData,       // Must have previewVideoTaskId
+  characterData,       // Must have media.previewVideo.providerTaskId
   'itv-sora2',
   (progress, step) => console.log(`${progress}%: ${step}`)
 );
@@ -304,7 +304,7 @@ const videoResult = await generatePropPreviewVideo({
 // Extract and bind to Sora2
 const extractResult = await extractAndBindProp(
   'proj-123',
-  propData,  // Must have previewVideoTaskId
+  propData,  // Must have media.previewVideo.providerTaskId
   'itv-sora2'
 );
 ```

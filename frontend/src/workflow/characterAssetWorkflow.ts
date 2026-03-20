@@ -2,21 +2,17 @@
  * 角色资产生成工作流
  * 生成角色定妆照（内置三视图）、预览视频，以及调用角色提取API
  */
-import type { Character } from '../types';
-import { getProjectTTIProvider, getProjectITVProvider } from '../providers';
-import { createTask, updateTask, markTaskCompleted, getTask } from '../store/taskQueueStore';
-import { pollTaskUntilComplete } from '../store/taskRecoveryService';
-import { downloadRemoteAsset, resolveImageSourceForAPI } from '../store/assetDownloadService';
+import { getMediaAssetSource, type Character } from '../types';
+import { getProjectITVProvider } from '../providers';
 import {
-  saveCharacterCostumePhoto,
   saveCharacters,
   loadCharacters,
 } from '../store/projectStore';
-import { getStorageConfig, initStorageConfig } from '../store/storageConfig';
 import { getThemeStylePrefix, getThemeStylePrefixAsync } from '../config/themePresets';
 import { createLogger } from '../store/logger';
 import { logTTICall, logITVCall } from '../store/aiCallLogger';
 import { resolvePromptTemplate } from '../store/promptTemplates';
+import { mediaGenerationService } from '../services/MediaGenerationService';
 
 const logger = createLogger('CharacterAsset');
 
@@ -50,11 +46,6 @@ export async function generateCostumePhoto(
   onProgress?.(0, '准备生成定妆照...');
 
   try {
-    const ttiProvider = await getProjectTTIProvider(ttiConfigId);
-    if (!ttiProvider) {
-      throw new Error('未配置 TTI 服务');
-    }
-
     // 构建提示词（从配置化模板读取）
     const stylePrefix = await getResolvedTTIStylePrefix(styleSnapshot || project?.styleSnapshot, theme, stylePrompt);
     const resolvedPrompt = await resolvePromptTemplate('tti_character_costume', {
@@ -63,24 +54,11 @@ export async function generateCostumePhoto(
     });
     const prompt = resolvedPrompt.prompt;
 
-    // 创建任务记录
-    const task = await createTask(projectId, {
-      projectId,
-      type: 'tti',
-      targetType: 'character',
-      targetId: character.id,
-      targetName: `${character.name} 定妆照`,
-      remoteTaskId: '',
-      status: 'pending',
-      progress: 0,
-      maxRetries: 3,
-    });
-
     onProgress?.(10, '调用 TTI 服务...');
 
     // 打印完整提示词日志
     logTTICall(
-      ttiProvider.config?.name || 'TTI',
+      'TTI',
       prompt,
       { width: 1536, height: 1024 },
       {
@@ -92,81 +70,28 @@ export async function generateCostumePhoto(
       }
     );
 
-    // 调用 TTI Provider - 横版尺寸以容纳三视图
-    const result = await ttiProvider.generateImage(prompt, {
-      width: 1536,
-      height: 1024, // 横版以容纳三视图排列
+    const asset = await mediaGenerationService.generateImage({
+      projectId,
+      ownerRef: {
+        projectId,
+        ownerType: 'character',
+        ownerId: character.id,
+        slot: 'costumePhoto',
+      },
+      request: {
+        prompt,
+        references: [],
+        options: {
+          width: 1536,
+          height: 1024,
+        },
+      },
+      ttiConfigId,
+      taskName: `${character.name} 定妆照`,
     });
 
-    // 处理异步任务模式
-    if (typeof result === 'string') {
-      // 异步模式，更新任务ID并轮询
-      await updateTask(projectId, task.id, { remoteTaskId: result, status: 'processing' });
-
-      if (ttiProvider.checkProgress) {
-        let remoteUrl: string | undefined;
-
-        const success = await pollTaskUntilComplete(
-          projectId,
-          { ...task, remoteTaskId: result },
-          ttiProvider.checkProgress.bind(ttiProvider),
-          {
-            onTaskProgress: (_, progress) => onProgress?.(10 + progress * 0.8, `生成中 ${progress}%`),
-            onTaskCompleted: async (completedTask, localPath) => {
-              // 从任务中获取远程 URL
-              remoteUrl = completedTask.resultUrl;
-              // 同时保存本地路径和远程 URL
-              await updateCharacterAsset(projectId, character.id, {
-                costumePhotoPath: localPath,
-                costumePhotoUrl: remoteUrl,
-              });
-            },
-          }
-        );
-
-        if (!success) {
-          return { success: false, error: '生成失败' };
-        }
-
-        const updatedTask = await getTask(projectId, task.id);
-        return { success: true, path: updatedTask?.localPath, url: remoteUrl };
-      }
-    } else {
-      // 同步模式，直接保存
-      onProgress?.(90, '保存定妆照...');
-
-      // 判断返回的是远程 URL、data URL 还是本地路径
-      const isRemoteUrl = result.path.startsWith('http://') || result.path.startsWith('https://');
-      const isDataUrl = result.path.startsWith('data:');
-      let localPath: string;
-      let remoteUrl: string | undefined;
-
-      if (isRemoteUrl || isDataUrl) {
-        // 远程 URL 或 data URL（base64），需要下载/写入
-        if (isRemoteUrl) remoteUrl = result.path;
-        const config = getStorageConfig() || (await initStorageConfig());
-        localPath = `${config.rootPath}/projects/${projectId}/assets/characters/${character.id}/costume-photo.png`;
-        const downloadResult = await downloadRemoteAsset(result.path, localPath);
-        if (!downloadResult.success) {
-          throw new Error('下载图片失败');
-        }
-        localPath = downloadResult.localPath!;
-      } else {
-        // 本地路径
-        localPath = await saveCharacterCostumePhoto(projectId, character.id, result.path);
-      }
-
-      await markTaskCompleted(projectId, task.id, result.path, localPath);
-      await updateCharacterAsset(projectId, character.id, {
-        costumePhotoPath: localPath,
-        costumePhotoUrl: remoteUrl,
-      });
-
-      onProgress?.(100, '完成');
-      return { success: true, path: localPath, url: remoteUrl };
-    }
-
-    return { success: false, error: '未知错误' };
+    onProgress?.(100, '完成');
+    return { success: true, path: asset.localPath, url: asset.remoteUrl };
   } catch (err: any) {
     logger.error(`生成定妆照失败: ${character.name}`, { error: err.message });
     return { success: false, error: err.message };
@@ -186,44 +111,14 @@ export async function generateCharacterPreviewVideo(
   onProgress?.(0, '准备生成预览视频...');
 
   // 优先使用远程 URL，其次使用本地路径
-  const rawImageSource = character.costumePhotoUrl || character.costumePhotoPath;
+  const rawImageSource = getMediaAssetSource(character.media?.costumePhoto);
   if (!rawImageSource) {
     return { success: false, error: '请先生成定妆照' };
   }
 
-  // 将本地路径转为 data URI，确保远程 API 可用
-  const imageSource = await resolveImageSourceForAPI(rawImageSource);
-  if (!imageSource) {
-    return { success: false, error: '无法读取定妆照图片，请重新生成' };
-  }
-
-  // 如果没有远程 URL，提示用户可能需要重新生成
-  if (!character.costumePhotoUrl) {
-    logger.warn(`角色 ${character.name} 没有远程图片 URL，已将本地文件转为 data URI。`);
-  }
-
   try {
-    const itvProvider = await getProjectITVProvider(itvConfigId);
-    if (!itvProvider) {
-      throw new Error('未配置 ITV 服务');
-    }
-
-    // 创建任务记录
-    const task = await createTask(projectId, {
-      projectId,
-      type: 'itv',
-      targetType: 'character',
-      targetId: character.id,
-      targetName: `${character.name} 预览视频`,
-      remoteTaskId: '',
-      status: 'pending',
-      progress: 0,
-      maxRetries: 3,
-    });
-
     onProgress?.(10, '调用 ITV 服务...');
 
-    // 调用 ITV Provider - 优先使用远程 URL
     const resolvedStylePrefix = await getResolvedTTIStylePrefix(styleSnapshot || project?.styleSnapshot, theme, stylePrompt);
     const visualPrompt = character.prompt || character.appearance || character.description || character.name;
     const resolvedPrompt = await resolvePromptTemplate('itv_character_motion', {
@@ -235,8 +130,8 @@ export async function generateCharacterPreviewVideo(
 
     // 打印完整提示词日志
     logITVCall(
-      itvProvider.config?.name || 'ITV',
-      imageSource,
+      'ITV',
+      rawImageSource,
       prompt,
       { duration: 4, aspectRatio: '9:16' },
       {
@@ -248,35 +143,26 @@ export async function generateCharacterPreviewVideo(
       }
     );
 
-    // 调用 ITV Provider 生成视频
-    const result = await itvProvider.generateVideo({
-      imageUrl: imageSource,
-      prompt,
-      options: { duration: 4, aspectRatio: '9:16' },
+    const asset = await mediaGenerationService.generateVideo({
+      projectId,
+      ownerRef: {
+        projectId,
+        ownerType: 'character',
+        ownerId: character.id,
+        slot: 'previewVideo',
+      },
+      request: {
+        prompt,
+        primaryImage: rawImageSource,
+        additionalReferences: [],
+        options: { duration: 4, aspectRatio: '9:16' },
+      },
+      itvConfigId,
+      taskName: `${character.name} 预览视频`,
     });
 
-    if (result.url || (result as any).path) {
-      const videoUrl = result.url || (result as any).path;
-      const videoTaskId = (result as any).taskId;
-
-      onProgress?.(90, '下载视频...');
-      const config = getStorageConfig() || (await initStorageConfig());
-      const localPath = `${config.rootPath}/projects/${projectId}/assets/characters/${character.id}/preview.mp4`;
-      const downloadResult = await downloadRemoteAsset(videoUrl, localPath);
-
-      if (downloadResult.success && downloadResult.localPath) {
-        await markTaskCompleted(projectId, task.id, videoUrl, downloadResult.localPath);
-        await updateCharacterAsset(projectId, character.id, {
-          previewVideoPath: downloadResult.localPath,
-          previewVideoTaskId: videoTaskId,
-        });
-        onProgress?.(100, '完成');
-        return { success: true, path: downloadResult.localPath, taskId: videoTaskId };
-      }
-      return { success: false, error: '下载视频失败' };
-    }
-
-    return { success: false, error: '视频生成失败：未返回有效结果' };
+    onProgress?.(100, '完成');
+    return { success: true, path: asset.localPath, taskId: asset.providerTaskId };
   } catch (err: any) {
     logger.error(`生成预览视频失败: ${character.name}`, { error: err.message });
     return { success: false, error: err.message };
@@ -298,9 +184,12 @@ export async function extractAndBindCharacter(
   onProgress?.(0, '准备角色提取...');
 
   // 检查是否有视频生成任务 ID（角色提取 API 需要使用 from_task 参数）
-  if (!character.previewVideoTaskId) {
+  const previewVideoTaskId = character.media?.previewVideo?.providerTaskId;
+  const previewVideoPath = getMediaAssetSource(character.media?.previewVideo);
+
+  if (!previewVideoTaskId) {
     // 兼容旧数据：如果有视频路径但没有任务 ID，提示用户重新生成
-    if (character.previewVideoPath) {
+    if (previewVideoPath) {
       return { success: false, error: '请重新生成预览视频（需要保存任务ID用于角色提取）' };
     }
     return { success: false, error: '请先生成预览视频' };
@@ -332,7 +221,7 @@ export async function extractAndBindCharacter(
 
     // 使用任务 ID 调用角色提取 API
     const extractResult = await itvProvider.extractCharacter({
-      fromTask: character.previewVideoTaskId,
+      fromTask: previewVideoTaskId,
       timestamps,
     });
 
@@ -447,7 +336,11 @@ async function updateCharacterAsset(
   const characters = await loadCharacters(projectId);
   const index = characters.findIndex(c => c.id === characterId);
   if (index !== -1) {
-    characters[index] = { ...characters[index], ...updates };
+    const existing = characters[index];
+    const mergedMedia = updates.media
+      ? { ...(existing.media || {}), ...(updates.media || {}) }
+      : existing.media;
+    characters[index] = { ...existing, ...updates, media: mergedMedia };
     await saveCharacters(projectId, characters);
   }
 }
