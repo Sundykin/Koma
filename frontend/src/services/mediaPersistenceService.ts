@@ -34,8 +34,42 @@ function getExtension(kind: MediaKind, mimeType?: string, source?: string): stri
   if (lower === 'audio/mpeg') return 'mp3';
   if (lower === 'audio/wav') return 'wav';
 
-  const ext = source?.split('?')[0].split('.').pop()?.toLowerCase();
-  if (ext) return ext;
+  const safeExtFromName = (name: string): string | undefined => {
+    const base = name.split('?')[0].split('#')[0];
+    const dot = base.lastIndexOf('.');
+    if (dot <= 0) return undefined;
+    const ext = base.slice(dot + 1).toLowerCase();
+    if (!/^[a-z0-9]{1,8}$/.test(ext)) return undefined;
+    return ext;
+  };
+
+  const inferMimeFromDataUri = (dataUrl: string): string | undefined => {
+    // Examples:
+    // data:image/jpeg;base64,...
+    // data:image/png,...
+    const match = /^data:([^;,]+)[;,]/i.exec(dataUrl);
+    return match?.[1]?.toLowerCase();
+  };
+
+  if (source) {
+    if (isDataUri(source)) {
+      const inferredMime = inferMimeFromDataUri(source);
+      return getExtension(kind, inferredMime, undefined);
+    }
+
+    if (isRemoteMediaUri(source)) {
+      try {
+        const url = new URL(source);
+        const ext = safeExtFromName(url.pathname.split('/').pop() || '');
+        if (ext) return ext;
+      } catch {
+        // Fall through to string-based inference.
+      }
+    }
+
+    const ext = safeExtFromName(source.split('/').pop() || source);
+    if (ext) return ext;
+  }
 
   switch (kind) {
     case 'image':

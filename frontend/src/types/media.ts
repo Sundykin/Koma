@@ -113,15 +113,15 @@ export interface ShotVersionMediaState {
   audio?: StoredMediaAsset;
 }
 
-export function isRemoteMediaUri(value?: string): value is string {
+export function isRemoteMediaUri(value?: string): boolean {
   return Boolean(value && /^https?:\/\//i.test(value));
 }
 
-export function isDataUri(value?: string): value is string {
+export function isDataUri(value?: string): boolean {
   return Boolean(value && value.startsWith('data:'));
 }
 
-export function isBlobUri(value?: string): value is string {
+export function isBlobUri(value?: string): boolean {
   return Boolean(value && value.startsWith('blob:'));
 }
 
