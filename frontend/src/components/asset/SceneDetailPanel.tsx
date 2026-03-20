@@ -35,6 +35,8 @@ import { getStorageConfig, initStorageConfig } from '../../store/storageConfig';
 import { saveScenes, loadScenes } from '../../store/projectStore';
 import { useActiveConfig } from '../../hooks/useActiveConfig';
 import { uploadLocalFileToImageHosting, getImageHostingConfig } from '../../services/imageHostingService';
+import { createStoredMediaAsset, updateSceneMedia } from '../../utils/mediaAssets';
+import { getScenePreviewImageSource } from '../../utils/mediaSelectors';
 
 const { TextArea } = Input;
 const { Text } = Typography;
@@ -148,11 +150,18 @@ export const SceneDetailPanel: React.FC<SceneDetailPanelProps> = ({
       });
 
       if (result.success && result.path) {
-        const updated = {
-          ...editedScene,
-          ...currentValues,
-          imagePath: result.path,
-        };
+        const updated = updateSceneMedia(
+          {
+            ...editedScene,
+            ...currentValues,
+          },
+          {
+            previewImage: createStoredMediaAsset('image', {
+              localPath: result.path,
+              remoteUrl: result.url,
+            }),
+          }
+        );
         setEditedScene(updated);
         onUpdate(updated);
         const scenes = await loadScenes(projectId);
@@ -183,7 +192,9 @@ export const SceneDetailPanel: React.FC<SceneDetailPanelProps> = ({
       const destPath = await getAssetPath('scene.png');
       await fsCopy(result.filePaths[0], destPath);
 
-      let updated: Scene = { ...editedScene, imagePath: destPath };
+      let updated: Scene = updateSceneMedia(editedScene, {
+        previewImage: createStoredMediaAsset('image', { localPath: destPath }),
+      });
 
       // 检测图床配置，自动上传
       const imageHostingConfig = await getImageHostingConfig();
@@ -191,7 +202,13 @@ export const SceneDetailPanel: React.FC<SceneDetailPanelProps> = ({
         message.loading({ content: t('asset.uploadToHosting'), key: 'imageHosting' });
         const uploadResult = await uploadLocalFileToImageHosting(destPath);
         if (uploadResult.success && uploadResult.url) {
-          updated.imageUrl = uploadResult.url;
+          updated = updateSceneMedia(updated, {
+            previewImage: createStoredMediaAsset('image', {
+              localPath: destPath,
+              remoteUrl: uploadResult.url,
+              createdAt: updated.media?.previewImage?.createdAt,
+            }),
+          });
           message.success({ content: t('asset.uploadHostingSuccess'), key: 'imageHosting' });
         } else {
           logger.warn('图床上传失败:', uploadResult.error);
@@ -278,14 +295,14 @@ export const SceneDetailPanel: React.FC<SceneDetailPanelProps> = ({
 
             <Tooltip title={activeTTI ? `${t('asset.useService')}: ${activeTTI.name}` : t('asset.noGenerateService')}>
               <Button
-                type={!editedScene.imagePath ? 'primary' : 'default'}
+                type={!getScenePreviewImageSource(editedScene) ? 'primary' : 'default'}
                 block
                 icon={<ThunderboltOutlined />}
                 onClick={handleGenerateImage}
                 loading={generating}
                 disabled={generating}
               >
-                {editedScene.imagePath ? t('asset.regenerateSceneImage') : t('asset.generateSceneImage')}
+                {getScenePreviewImageSource(editedScene) ? t('asset.regenerateSceneImage') : t('asset.generateSceneImage')}
               </Button>
             </Tooltip>
           </div>
@@ -308,8 +325,11 @@ export const SceneDetailPanel: React.FC<SceneDetailPanelProps> = ({
               <Button
                 type="text"
                 icon={<ExpandOutlined />}
-                onClick={() => editedScene.imagePath && setPreviewImage(toLocalUrl(editedScene.imagePath))}
-                disabled={!editedScene.imagePath}
+                onClick={() => {
+                  const source = getScenePreviewImageSource(editedScene);
+                  if (source) setPreviewImage(toLocalUrl(source));
+                }}
+                disabled={!getScenePreviewImageSource(editedScene)}
                 aria-label={t('asset.enlargePreview')}
               />
             </Tooltip>
@@ -318,12 +338,12 @@ export const SceneDetailPanel: React.FC<SceneDetailPanelProps> = ({
 
         <div className="creatorCanvasBody">
           <div className="creatorMediaViewer">
-            {editedScene.imagePath ? (
+            {getScenePreviewImageSource(editedScene) ? (
               <img
-                  src={toLocalUrl(editedScene.imagePath)}
+                  src={toLocalUrl(getScenePreviewImageSource(editedScene))}
                   alt={t('asset.sceneImage')}
                   style={{ cursor: 'pointer' }}
-                  onDoubleClick={() => setPreviewImage(toLocalUrl(editedScene.imagePath))}
+                  onDoubleClick={() => setPreviewImage(toLocalUrl(getScenePreviewImageSource(editedScene)))}
                 />
             ) : (
               <div className="creatorMediaPlaceholder">

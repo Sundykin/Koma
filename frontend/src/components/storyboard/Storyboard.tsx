@@ -18,7 +18,7 @@ import {
   LoadingOutlined,
   RobotOutlined,
 } from '@ant-design/icons';
-import type { Shot, Character, Scene, Prop, AppSettings, ShotVideo, ProjectStyleSnapshot } from '../../types';
+import type { Shot, Character, Scene, Prop, AppSettings, StoredMediaAsset, ProjectStyleSnapshot } from '../../types';
 import { loadEpisodeShots, saveEpisodeShots, loadCharacters, loadScenes, loadProps, loadEpisodeAnalysis } from '../../store/projectStore';
 import { generateShotImage, batchGenerateShotImages } from '../../services/ShotGenerationService';
 import { shotRenderWorkflow, batchRenderShots } from '../../workflow/shotRenderWorkflow';
@@ -35,6 +35,7 @@ import { useShotAssetSync } from '../../hooks/useShotAssetSync';
 import { createLogger } from '../../store/logger';
 import './Storyboard.css';
 import './ShotListEditor.css';
+import { getMediaAssetSource } from '../../types';
 
 const logger = createLogger('Storyboard');
 
@@ -58,6 +59,14 @@ const CAMERA_OPTIONS = [
 
 // 合并两个分镜
 function mergeShots(target: Shot, source: Shot): Shot {
+  const mergedMedia = {
+    references: [...(target.media?.references || []), ...(source.media?.references || [])],
+    images: [...(target.media?.images || []), ...(source.media?.images || [])],
+    videos: [...(target.media?.videos || []), ...(source.media?.videos || [])],
+    selectedReferenceIndex: target.media?.selectedReferenceIndex ?? 0,
+    currentImageIndex: target.media?.currentImageIndex ?? 0,
+    currentVideoIndex: target.media?.currentVideoIndex ?? 0,
+  };
   return {
     ...target,
     scriptContent: [target.scriptContent, source.scriptContent].filter(Boolean).join('\n'),
@@ -66,8 +75,7 @@ function mergeShots(target: Shot, source: Shot): Shot {
     characters: [...new Set([...target.characters, ...source.characters])],
     dialogue: [target.dialogue, source.dialogue].filter(Boolean).join('\n'),
     props: [...new Set([...(target.props || []), ...(source.props || [])])],
-    imagePaths: [...(target.imagePaths || []), ...(source.imagePaths || [])],
-    videos: [...(target.videos || []), ...(source.videos || [])],
+    media: mergedMedia,
   };
 }
 
@@ -79,6 +87,8 @@ interface StoryboardProps {
   script?: string;
   llmConfigId?: string;
   ttiConfigId?: string;
+  itvConfigId?: string;
+  ttsConfigId?: string;
   settings: AppSettings;
   styleSnapshot?: ProjectStyleSnapshot;
   mentionItems?: MentionItem[];
@@ -92,6 +102,8 @@ export const Storyboard: React.FC<StoryboardProps> = ({
   script,
   llmConfigId,
   ttiConfigId,
+  itvConfigId,
+  ttsConfigId,
   settings,
   styleSnapshot,
   mentionItems = [],
@@ -149,7 +161,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
           type: 'char' as const,
           name: char.name,
           description: char.description,
-          previewImage: char.costumePhotoPath,
+          previewImage: getMediaAssetSource(char.media?.costumePhoto),
         });
       });
 
@@ -160,7 +172,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
         type: 'scene' as const,
         name: scene.name,
         description: scene.description,
-        previewImage: scene.imagePath,
+        previewImage: getMediaAssetSource(scene.media?.previewImage),
       });
     });
 
@@ -173,7 +185,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
           type: 'prop' as const,
           name: prop.name,
           description: prop.description,
-          previewImage: prop.imagePath,
+          previewImage: getMediaAssetSource(prop.media?.previewImage),
         });
       });
 
@@ -292,40 +304,10 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     loadData();
   }, [loadData]);
 
-  // 监听任务完成事件
+  // 监听分析任务完成事件（媒体任务已收口到 taskQueueStore，不再走 TaskManager）
   useEffect(() => {
     const unsubscribe = TaskManager.addListener(async (task) => {
       if (task.projectId !== projectId) return;
-      if (task.type === 'shot-generation') {
-        if (task.status === 'completed') {
-          message.success(`分镜图片生成完成`);
-          setGeneratingShots(prev => {
-            const next = new Set(prev);
-            next.delete(task.targetId!);
-            return next;
-          });
-          // 只更新对应的 shot，避免整个列表重新加载
-          if (task.targetId && episodeId) {
-            try {
-              const latestShots = await loadEpisodeShots(projectId, episodeId);
-              const updatedShot = latestShots.find(s => s.id === task.targetId);
-              if (updatedShot) {
-                setShots(prev => prev.map(s => s.id === task.targetId ? updatedShot : s));
-              }
-            } catch (err) {
-              logger.error('更新 shot 失败', err);
-            }
-          }
-        } else if (task.status === 'failed') {
-          logger.error('分镜图片生成失败', task.error);
-          message.error('分镜图片生成失败，请检查图像生成配置后重试');
-          setGeneratingShots(prev => {
-            const next = new Set(prev);
-            next.delete(task.targetId!);
-            return next;
-          });
-        }
-      }
       if (task.type === 'shot-analysis') {
         if (task.status === 'completed') {
           message.success(`AI 分镜生成完成，共 ${task.result?.shotsCount || 0} 个分镜`);
@@ -393,10 +375,27 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     }
     setGeneratingShots(prev => new Set(prev).add(shotId));
     try {
-      await generateShotImage(projectId, episodeId, shotId, characters, scenes, ttiConfigId, {
+      const asset = await generateShotImage(projectId, episodeId, shotId, characters, scenes, ttiConfigId, {
         styleSnapshot,
       });
-      message.info('分镜图片生成任务已启动');
+      message.success('分镜图片生成完成');
+      setShots(prev => prev.map(s => {
+        if (s.id !== shotId) return s;
+        const existing = s.media?.images || [];
+        return {
+          ...s,
+          media: {
+            ...(s.media || {}),
+            images: [...existing, asset],
+            currentImageIndex: existing.length,
+          },
+        };
+      }));
+      setGeneratingShots(prev => {
+        const next = new Set(prev);
+        next.delete(shotId);
+        return next;
+      });
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : String(err);
       message.error(errorMessage || '启动生成失败');
@@ -419,11 +418,12 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       const result = await shotRenderWorkflow(
         {
           projectId,
+          episodeId,
           shot,
           projectConfigIds: {
             ttiConfigId,
-            itvConfigId: settings.itvConfigs?.find(c => c.isDefault)?.id,
-            ttsConfigId: settings.ttsConfigs?.find(c => c.isDefault)?.id,
+            itvConfigId,
+            ttsConfigId,
           },
           styleSnapshot,
         },
@@ -433,27 +433,16 @@ export const Storyboard: React.FC<StoryboardProps> = ({
         }
       );
       if (result.success && result.version) {
-        // 更新 shot 的 videos 字段
-        const newVideo: ShotVideo = {
-          path: result.version.videoPath || result.version.remoteVideoUrl || '',
-          thumbnailPath: result.version.imagePath,
-          prompt: result.version.prompt,
-          seed: result.version.seed,
-          model: result.version.model,
-          createdAt: result.version.createdAt || Date.now(),
-        };
-        const existingVideos = shot.videos || [];
+        const newVideoAsset = result.version.media?.video;
+        const existingVideos = shot.media?.videos || [];
         const updatedShots = shots.map(s =>
           s.id === shotId ? {
             ...s,
-            videos: [...existingVideos, newVideo],
-            currentVideoIndex: existingVideos.length,
-            // 同时更新图片（如果有）
-            ...(result.version.imagePath ? {
-              imagePaths: [...(s.imagePaths || []), result.version.imagePath],
-              currentImageIndex: (s.imagePaths || []).length,
-              imagePath: result.version.imagePath,
-            } : {}),
+            media: {
+              ...(s.media || {}),
+              videos: newVideoAsset ? [...existingVideos, newVideoAsset] : existingVideos,
+              currentVideoIndex: newVideoAsset ? existingVideos.length : (s.media?.currentVideoIndex ?? 0),
+            },
           } : s
         );
         await saveAllShots(updatedShots);
@@ -474,7 +463,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       setRenderProgress(0);
       setRenderStep('');
     }
-  }, [projectId, shots, ttiConfigId, settings.itvConfigs, settings.ttsConfigs, saveAllShots, loadData, styleSnapshot]);
+  }, [projectId, shots, ttiConfigId, itvConfigId, ttsConfigId, saveAllShots, loadData, styleSnapshot]);
 
   // 剧本内容变更
   const handleScriptChange = useCallback((shotId: string, scriptContent: string) => {
@@ -592,9 +581,16 @@ export const Storyboard: React.FC<StoryboardProps> = ({
   }, [shots, saveAllShots, handleAssetChange, assets]);
 
   // 参考图变更
-  const handleReferenceImagesChange = useCallback((shotId: string, referenceImages: string[], selectedReferenceIndex: number) => {
+  const handleReferenceImagesChange = useCallback((shotId: string, referenceImages: StoredMediaAsset[], selectedReferenceIndex: number) => {
     const updatedShots = shots.map(s =>
-      s.id === shotId ? { ...s, referenceImages, selectedReferenceIndex } : s
+      s.id === shotId ? {
+        ...s,
+        media: {
+          ...(s.media || {}),
+          references: referenceImages,
+          selectedReferenceIndex,
+        },
+      } : s
     );
     saveAllShots(updatedShots);
   }, [shots, saveAllShots]);
@@ -619,22 +615,31 @@ export const Storyboard: React.FC<StoryboardProps> = ({
   }, [shots, saveAllShots, handleAssetChange, assets]);
 
   // 多图片变更
-  const handleImagesChange = useCallback((shotId: string, imagePaths: string[], currentImageIndex: number) => {
+  const handleImagesChange = useCallback((shotId: string, images: StoredMediaAsset[], currentImageIndex: number) => {
     const updatedShots = shots.map(s =>
       s.id === shotId ? {
         ...s,
-        imagePaths,
-        currentImageIndex,
-        imagePath: imagePaths[currentImageIndex] || undefined,
+        media: {
+          ...(s.media || {}),
+          images,
+          currentImageIndex,
+        },
       } : s
     );
     saveAllShots(updatedShots);
   }, [shots, saveAllShots]);
 
   // 多视频变更
-  const handleVideosChange = useCallback((shotId: string, videos: ShotVideo[], currentVideoIndex: number) => {
+  const handleVideosChange = useCallback((shotId: string, videos: StoredMediaAsset[], currentVideoIndex: number) => {
     const updatedShots = shots.map(s =>
-      s.id === shotId ? { ...s, videos, currentVideoIndex } : s
+      s.id === shotId ? {
+        ...s,
+        media: {
+          ...(s.media || {}),
+          videos,
+          currentVideoIndex,
+        },
+      } : s
     );
     saveAllShots(updatedShots);
   }, [shots, saveAllShots]);
@@ -1085,7 +1090,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     const baseShots = targetShotIds
       ? shots.filter(s => targetShotIds.includes(s.id))
       : shots;
-    const shotsWithoutImage = baseShots.filter(s => !s.imagePath && !(s.imagePaths?.length));
+    const shotsWithoutImage = baseShots.filter(s => (s.media?.images?.length || 0) === 0);
     if (shotsWithoutImage.length === 0) {
       message.info('所选分镜都已有图片');
       return;
@@ -1093,14 +1098,48 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     const shotIds = shotsWithoutImage.map(s => s.id);
     setGeneratingShots(new Set(shotIds));
     try {
-      await batchGenerateShotImages(projectId, episodeId, shotIds, characters, scenes, ttiConfigId, {
+      const indexMap = new Map(shotIds.map((id, idx) => [id, idx]));
+      setBatchProgress({ current: 0, total: shotIds.length, step: '准备生成...' });
+      const results = await batchGenerateShotImages(projectId, episodeId, shotIds, characters, scenes, ttiConfigId, {
         styleSnapshot,
+        onProgress: (_overall, current) => {
+          const idx = (indexMap.get(current.shotId) ?? 0) + 1;
+          setBatchProgress({
+            current: idx,
+            total: shotIds.length,
+            step: current.step ? `分镜 ${current.shotId}: ${current.step}` : `分镜 ${current.shotId}`,
+          });
+        },
       });
-      message.info(`已启动 ${shotIds.length} 个分镜的图片生成任务`);
+
+      // 回写 UI 状态（shots state），避免依赖 TaskManager 监听
+      setShots(prev => prev.map(s => {
+        const hit = results.find(r => r.shotId === s.id && r.success && r.asset);
+        if (!hit?.asset) return s;
+        const existing = s.media?.images || [];
+        return {
+          ...s,
+          media: {
+            ...(s.media || {}),
+            images: [...existing, hit.asset],
+            currentImageIndex: existing.length,
+          },
+        };
+      }));
+
+      const successCount = results.filter(r => r.success).length;
+      const failed = results.filter(r => !r.success);
+      if (failed.length === 0) {
+        message.success(`批量生成完成：成功 ${successCount}/${results.length}`);
+      } else {
+        message.warning(`批量生成完成：成功 ${successCount}/${results.length}，失败 ${failed.length}`);
+      }
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : String(err);
-      message.error(errorMessage || '批量生成启动失败');
+      message.error(errorMessage || '批量生成失败');
+    } finally {
       setGeneratingShots(new Set());
+      setBatchProgress(undefined);
     }
   }, [projectId, episodeId, shots, characters, scenes, ttiConfigId, styleSnapshot]);
 
@@ -1113,7 +1152,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     const baseShots = targetShotIds
       ? shots.filter(s => targetShotIds.includes(s.id))
       : shots;
-    const shotsWithImage = baseShots.filter(s => s.imagePath || (s.imagePaths?.length));
+    const shotsWithImage = baseShots.filter(s => (s.media?.images?.length || 0) > 0);
     if (shotsWithImage.length === 0) {
       message.info('所选分镜都没有图片');
       return;
@@ -1121,13 +1160,46 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     const shotIds = shotsWithImage.map(s => s.id);
     setGeneratingShots(new Set(shotIds));
     try {
-      await batchGenerateShotImages(projectId, episodeId, shotIds, characters, scenes, ttiConfigId, {
+      const indexMap = new Map(shotIds.map((id, idx) => [id, idx]));
+      setBatchProgress({ current: 0, total: shotIds.length, step: '准备生成...' });
+      const results = await batchGenerateShotImages(projectId, episodeId, shotIds, characters, scenes, ttiConfigId, {
         styleSnapshot,
+        onProgress: (_overall, current) => {
+          const idx = (indexMap.get(current.shotId) ?? 0) + 1;
+          setBatchProgress({
+            current: idx,
+            total: shotIds.length,
+            step: current.step ? `分镜 ${current.shotId}: ${current.step}` : `分镜 ${current.shotId}`,
+          });
+        },
       });
-      message.info(`已启动 ${shotIds.length} 个分镜的图片重新生成任务`);
+
+      setShots(prev => prev.map(s => {
+        const hit = results.find(r => r.shotId === s.id && r.success && r.asset);
+        if (!hit?.asset) return s;
+        const existing = s.media?.images || [];
+        return {
+          ...s,
+          media: {
+            ...(s.media || {}),
+            images: [...existing, hit.asset],
+            currentImageIndex: existing.length,
+          },
+        };
+      }));
+
+      const successCount = results.filter(r => r.success).length;
+      const failed = results.filter(r => !r.success);
+      if (failed.length === 0) {
+        message.success(`批量重新生成完成：成功 ${successCount}/${results.length}`);
+      } else {
+        message.warning(`批量重新生成完成：成功 ${successCount}/${results.length}，失败 ${failed.length}`);
+      }
     } catch (err: any) {
-      message.error(err.message || '批量重新生成启动失败');
+      message.error(err.message || '批量重新生成失败');
+    } finally {
       setGeneratingShots(new Set());
+      setBatchProgress(undefined);
     }
   }, [projectId, episodeId, shots, characters, scenes, ttiConfigId, styleSnapshot]);
 
@@ -1152,8 +1224,8 @@ export const Storyboard: React.FC<StoryboardProps> = ({
           shots: confirmedToRender,
           projectConfigIds: {
             ttiConfigId,
-            itvConfigId: settings.itvConfigs?.find(c => c.isDefault)?.id,
-            ttsConfigId: settings.ttsConfigs?.find(c => c.isDefault)?.id,
+            itvConfigId,
+            ttsConfigId,
           },
           styleSnapshot,
         },
@@ -1166,24 +1238,15 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       const updatedShots = shots.map(s => {
         const renderResult = result.results.find(r => r.shotId === s.id && r.success && r.version);
         if (renderResult && renderResult.version) {
-          const newVideo: ShotVideo = {
-            path: renderResult.version.videoPath || renderResult.version.remoteVideoUrl || '',
-            thumbnailPath: renderResult.version.imagePath,
-            prompt: renderResult.version.prompt,
-            seed: renderResult.version.seed,
-            model: renderResult.version.model,
-            createdAt: renderResult.version.createdAt || Date.now(),
-          };
-          const existingVideos = s.videos || [];
+          const newVideoAsset = renderResult.version.media?.video;
+          const existingVideos = s.media?.videos || [];
           return {
             ...s,
-            videos: [...existingVideos, newVideo],
-            currentVideoIndex: existingVideos.length,
-            ...(renderResult.version.imagePath ? {
-              imagePaths: [...(s.imagePaths || []), renderResult.version.imagePath],
-              currentImageIndex: (s.imagePaths || []).length,
-              imagePath: renderResult.version.imagePath,
-            } : {}),
+            media: {
+              ...(s.media || {}),
+              videos: newVideoAsset ? [...existingVideos, newVideoAsset] : existingVideos,
+              currentVideoIndex: newVideoAsset ? existingVideos.length : (s.media?.currentVideoIndex ?? 0),
+            },
           };
         }
         return s;
@@ -1198,14 +1261,14 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       setRenderProgress(0);
       setRenderStep('');
     }
-  }, [projectId, shots, ttiConfigId, settings.itvConfigs, settings.ttsConfigs, saveAllShots, styleSnapshot]);
+  }, [projectId, shots, ttiConfigId, itvConfigId, ttsConfigId, saveAllShots, styleSnapshot]);
 
   // 批量重新生成视频（已有视频的）
   const handleBatchReGenerateVideos = useCallback(async (targetShotIds?: string[]) => {
     const baseShots = targetShotIds
       ? shots.filter(s => targetShotIds.includes(s.id))
       : shots;
-    const shotsWithVideo = baseShots.filter(s => (s.videos?.length || 0) > 0);
+    const shotsWithVideo = baseShots.filter(s => (s.media?.videos?.length || 0) > 0);
     if (shotsWithVideo.length === 0) {
       message.info('所选分镜都没有视频');
       return;
@@ -1221,8 +1284,8 @@ export const Storyboard: React.FC<StoryboardProps> = ({
           shots: shotsWithVideo,
           projectConfigIds: {
             ttiConfigId,
-            itvConfigId: settings.itvConfigs?.find(c => c.isDefault)?.id,
-            ttsConfigId: settings.ttsConfigs?.find(c => c.isDefault)?.id,
+            itvConfigId,
+            ttsConfigId,
           },
           styleSnapshot,
         },
@@ -1235,24 +1298,15 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       const updatedShots = shots.map(s => {
         const renderResult = result.results.find(r => r.shotId === s.id && r.success && r.version);
         if (renderResult && renderResult.version) {
-          const newVideo: ShotVideo = {
-            path: renderResult.version.videoPath || renderResult.version.remoteVideoUrl || '',
-            thumbnailPath: renderResult.version.imagePath,
-            prompt: renderResult.version.prompt,
-            seed: renderResult.version.seed,
-            model: renderResult.version.model,
-            createdAt: renderResult.version.createdAt || Date.now(),
-          };
-          const existingVideos = s.videos || [];
+          const newVideoAsset = renderResult.version.media?.video;
+          const existingVideos = s.media?.videos || [];
           return {
             ...s,
-            videos: [...existingVideos, newVideo],
-            currentVideoIndex: existingVideos.length,
-            ...(renderResult.version.imagePath ? {
-              imagePaths: [...(s.imagePaths || []), renderResult.version.imagePath],
-              currentImageIndex: (s.imagePaths || []).length,
-              imagePath: renderResult.version.imagePath,
-            } : {}),
+            media: {
+              ...(s.media || {}),
+              videos: newVideoAsset ? [...existingVideos, newVideoAsset] : existingVideos,
+              currentVideoIndex: newVideoAsset ? existingVideos.length : (s.media?.currentVideoIndex ?? 0),
+            },
           };
         }
         return s;
@@ -1267,7 +1321,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       setRenderProgress(0);
       setRenderStep('');
     }
-  }, [projectId, shots, ttiConfigId, settings.itvConfigs, settings.ttsConfigs, saveAllShots, styleSnapshot]);
+  }, [projectId, shots, ttiConfigId, itvConfigId, ttsConfigId, saveAllShots, styleSnapshot]);
 
   // ============ 渲染 ============
 

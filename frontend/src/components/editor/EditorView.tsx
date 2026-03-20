@@ -84,14 +84,15 @@ export const EditorView: React.FC<EditorViewProps> = ({
         {/* 资产管理视图 */}
         {editorStep === 'assets' && (
           activeProject ? (
-            <AssetManager
-              projectId={activeProject.id}
-              ttiConfigId={activeProject.ttiConfigId}
-              styleSnapshot={styleSnapshot}
-              episodeId={activeEpisode?.id}
-              episodeName={activeEpisode?.title || (activeEpisode ? `第${activeEpisode.number}集` : undefined)}
-              script={scriptText}
-              llmConfigId={activeProject.llmConfigId}
+              <AssetManager
+                projectId={activeProject.id}
+                ttiConfigId={activeProject.ttiConfigId}
+                itvConfigId={activeProject.itvConfigId}
+                styleSnapshot={styleSnapshot}
+                episodeId={activeEpisode?.id}
+                episodeName={activeEpisode?.title || (activeEpisode ? `第${activeEpisode.number}集` : undefined)}
+                script={scriptText}
+                llmConfigId={activeProject.llmConfigId}
               characters={analysisData?.characters}
               scenes={analysisData?.scenes}
               props={analysisData?.props}
@@ -117,6 +118,8 @@ export const EditorView: React.FC<EditorViewProps> = ({
                 script={scriptText}
                 llmConfigId={activeProject.llmConfigId}
                 ttiConfigId={activeProject.ttiConfigId}
+                itvConfigId={activeProject.itvConfigId}
+                ttsConfigId={activeProject.ttsConfigId}
                 settings={appSettings}
                 styleSnapshot={styleSnapshot}
                 mentionItems={mentionItems}

@@ -8,7 +8,7 @@ import { PlusOutlined } from '@ant-design/icons';
 import { StoryboardLayout } from './StoryboardLayout';
 import { ShotListHeader } from './ShotListHeader';
 import type { MentionItem } from '../../editor';
-import type { Shot, Character, Scene, Prop, ShotVideo } from '../../types';
+import type { Shot, Character, Scene, Prop, StoredMediaAsset } from '../../types';
 import { ShotCard } from './ShotCard';
 
 const { Text } = Typography;
@@ -34,9 +34,9 @@ export interface ShotListEditorProps {
   onCharactersChange: (shotId: string, characterIds: string[]) => void;
   onScenesChange?: (shotId: string, sceneIds: string[]) => void;
   onPropsChange?: (shotId: string, propIds: string[]) => void;
-  onReferenceImagesChange?: (shotId: string, images: string[], selectedIndex: number) => void;
-  onImagesChange: (shotId: string, images: string[], selectedIndex: number) => void;
-  onVideosChange: (shotId: string, videos: ShotVideo[], selectedIndex: number) => void;
+  onReferenceImagesChange?: (shotId: string, assets: StoredMediaAsset[], selectedIndex: number) => void;
+  onImagesChange: (shotId: string, assets: StoredMediaAsset[], selectedIndex: number) => void;
+  onVideosChange: (shotId: string, assets: StoredMediaAsset[], selectedIndex: number) => void;
   // 回调拆分：生成 vs 优化，图片 vs 视频
   onGenerateImagePrompt: (shotId: string) => void;
   onGenerateVideoPrompt: (shotId: string) => void;
@@ -64,7 +64,7 @@ export interface ShotListEditorProps {
 }
 
 export const ShotListEditor: React.FC<ShotListEditorProps> = ({
-  projectId: _projectId,
+  projectId,
   shots,
   characters,
   scenes,
@@ -233,6 +233,7 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
               {shots.map((shot, index) => (
                 <ShotCard
                   key={shot.id}
+                  projectId={projectId}
                   shot={shot}
                   index={index}
                   totalCount={shots.length}

@@ -5,6 +5,11 @@
 import React, { createContext, useContext, useMemo } from 'react';
 import type { MentionItem, MentionType } from './mentionTypes';
 import type { Character, Scene, Prop } from '../types';
+import {
+  getCharacterCostumePhotoSource,
+  getPropPreviewImageSource,
+  getScenePreviewImageSource,
+} from '../utils/mediaSelectors';
 
 interface MentionContextValue {
   items: MentionItem[];
@@ -38,7 +43,7 @@ function characterToMentionItem(char: Character): MentionItem {
     type: 'char',
     name: char.name,
     description: char.description || char.appearance,
-    previewImage: char.costumePhotoPath,
+    previewImage: getCharacterCostumePhotoSource(char),
   };
 }
 
@@ -51,7 +56,7 @@ function sceneToMentionItem(scene: Scene): MentionItem {
     type: 'scene',
     name: scene.name,
     description: `${scene.location} - ${scene.mood || ''}`,
-    previewImage: scene.imagePath,
+    previewImage: getScenePreviewImageSource(scene),
   };
 }
 
@@ -64,7 +69,7 @@ function propToMentionItem(prop: Prop): MentionItem {
     type: 'prop',
     name: prop.name,
     description: prop.description,
-    previewImage: prop.imagePath,
+    previewImage: getPropPreviewImageSource(prop),
   };
 }
 

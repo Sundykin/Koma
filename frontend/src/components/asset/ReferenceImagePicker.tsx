@@ -17,6 +17,11 @@ import {
 } from '@ant-design/icons';
 import type { Character, Scene, Prop } from '../../types';
 import { electronService } from '../../services/electronService';
+import {
+  getCharacterCostumePhotoSource,
+  getPropPreviewImageSource,
+  getScenePreviewImageSource,
+} from '../../utils/mediaSelectors';
 import './ReferenceImagePicker.css';
 
 export interface ReferenceImagePickerProps {
@@ -62,13 +67,13 @@ export const ReferenceImagePicker: React.FC<ReferenceImagePickerProps> = ({
 
     if (type === 'character') {
       const char = characters.find(c => c.id === assetId);
-      imagePath = char?.costumePhotoPath;
+      imagePath = getCharacterCostumePhotoSource(char);
     } else if (type === 'scene') {
       const scene = scenes.find(s => s.id === assetId);
-      imagePath = scene?.imagePath;
+      imagePath = getScenePreviewImageSource(scene);
     } else {
       const prop = props.find(p => p.id === assetId);
-      imagePath = prop?.imagePath;
+      imagePath = getPropPreviewImageSource(prop);
     }
 
     if (imagePath) {
@@ -172,22 +177,23 @@ export const ReferenceImagePicker: React.FC<ReferenceImagePickerProps> = ({
     // 角色资产
     if (characters.length > 0) {
       const charItems = characters
-        .filter(c => c.costumePhotoPath)
-        .map(c => ({
-          key: `char-${c.id}`,
+        .map(c => ({ asset: c, source: getCharacterCostumePhotoSource(c) }))
+        .filter((entry): entry is { asset: Character; source: string } => Boolean(entry.source))
+        .map(({ asset, source }) => ({
+          key: `char-${asset.id}`,
           label: (
             <Space size={8}>
-              {c.costumePhotoPath && (
+              {source && (
                 <img
-                  src={electronService.fs.toLocalUrl(c.costumePhotoPath)}
-                  alt={c.name}
+                  src={electronService.fs.toLocalUrl(source)}
+                  alt={asset.name}
                   style={{ width: 24, height: 24, objectFit: 'cover', borderRadius: 2 }}
                 />
               )}
-              <span>{c.name}</span>
+              <span>{asset.name}</span>
             </Space>
           ),
-          onClick: () => handleSelectAsset('character', c.id),
+          onClick: () => handleSelectAsset('character', asset.id),
         }));
 
       if (charItems.length > 0) {
@@ -203,22 +209,23 @@ export const ReferenceImagePicker: React.FC<ReferenceImagePickerProps> = ({
     // 场景资产
     if (scenes.length > 0) {
       const sceneItems = scenes
-        .filter(s => s.imagePath)
-        .map(s => ({
-          key: `scene-${s.id}`,
+        .map(s => ({ asset: s, source: getScenePreviewImageSource(s) }))
+        .filter((entry): entry is { asset: Scene; source: string } => Boolean(entry.source))
+        .map(({ asset, source }) => ({
+          key: `scene-${asset.id}`,
           label: (
             <Space size={8}>
-              {s.imagePath && (
+              {source && (
                 <img
-                  src={electronService.fs.toLocalUrl(s.imagePath)}
-                  alt={s.name}
+                  src={electronService.fs.toLocalUrl(source)}
+                  alt={asset.name}
                   style={{ width: 24, height: 24, objectFit: 'cover', borderRadius: 2 }}
                 />
               )}
-              <span>{s.name}</span>
+              <span>{asset.name}</span>
             </Space>
           ),
-          onClick: () => handleSelectAsset('scene', s.id),
+          onClick: () => handleSelectAsset('scene', asset.id),
         }));
 
       if (sceneItems.length > 0) {
@@ -234,22 +241,23 @@ export const ReferenceImagePicker: React.FC<ReferenceImagePickerProps> = ({
     // 道具资产
     if (props.length > 0) {
       const propItems = props
-        .filter(p => p.imagePath)
-        .map(p => ({
-          key: `prop-${p.id}`,
+        .map(p => ({ asset: p, source: getPropPreviewImageSource(p) }))
+        .filter((entry): entry is { asset: Prop; source: string } => Boolean(entry.source))
+        .map(({ asset, source }) => ({
+          key: `prop-${asset.id}`,
           label: (
             <Space size={8}>
-              {p.imagePath && (
+              {source && (
                 <img
-                  src={electronService.fs.toLocalUrl(p.imagePath)}
-                  alt={p.name}
+                  src={electronService.fs.toLocalUrl(source)}
+                  alt={asset.name}
                   style={{ width: 24, height: 24, objectFit: 'cover', borderRadius: 2 }}
                 />
               )}
-              <span>{p.name}</span>
+              <span>{asset.name}</span>
             </Space>
           ),
-          onClick: () => handleSelectAsset('prop', p.id),
+          onClick: () => handleSelectAsset('prop', asset.id),
         }));
 
       if (propItems.length > 0) {

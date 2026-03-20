@@ -44,6 +44,11 @@ import { getStorageConfig, initStorageConfig } from '../../store/storageConfig';
 import { saveProps, loadProps } from '../../store/projectStore';
 import { useActiveConfig } from '../../hooks/useActiveConfig';
 import { uploadLocalFileToImageHosting, getImageHostingConfig } from '../../services/imageHostingService';
+import { createStoredMediaAsset, updatePropMedia } from '../../utils/mediaAssets';
+import {
+  getPropPreviewImageSource,
+  getPropPreviewVideoSource,
+} from '../../utils/mediaSelectors';
 
 const { TextArea } = Input;
 const { Text } = Typography;
@@ -168,11 +173,18 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
       });
 
       if (result.success && result.path) {
-        const updated = {
-          ...editedProp,
-          ...currentValues,
-          imagePath: result.path,
-        };
+        const updated = updatePropMedia(
+          {
+            ...editedProp,
+            ...currentValues,
+          },
+          {
+            previewImage: createStoredMediaAsset('image', {
+              localPath: result.path,
+              remoteUrl: result.url,
+            }),
+          }
+        );
         setEditedProp(updated);
         onUpdate(updated);
 
@@ -205,7 +217,9 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
       const destPath = await getAssetPath('reference.png');
       await fsCopy(result.filePaths[0], destPath);
 
-      let updated: Prop = { ...editedProp, imagePath: destPath };
+      let updated: Prop = updatePropMedia(editedProp, {
+        previewImage: createStoredMediaAsset('image', { localPath: destPath }),
+      });
 
       // 检测图床配置，自动上传
       const imageHostingConfig = await getImageHostingConfig();
@@ -213,7 +227,13 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
         message.loading({ content: t('asset.uploadToHosting'), key: 'imageHosting' });
         const uploadResult = await uploadLocalFileToImageHosting(destPath);
         if (uploadResult.success && uploadResult.url) {
-          updated.imageUrl = uploadResult.url;
+          updated = updatePropMedia(updated, {
+            previewImage: createStoredMediaAsset('image', {
+              localPath: destPath,
+              remoteUrl: uploadResult.url,
+              createdAt: updated.media?.previewImage?.createdAt,
+            }),
+          });
           message.success({ content: t('asset.uploadHostingSuccess'), key: 'imageHosting' });
         } else {
           logger.warn('图床上传失败:', uploadResult.error);
@@ -238,7 +258,7 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
   }, [editedProp, getAssetPath, projectId, onUpdate, message, t]);
 
   const handleGenerateVideo = useCallback(async () => {
-    if (!editedProp.imagePath) {
+    if (!getPropPreviewImageSource(editedProp)) {
       message.warning(t('asset.pleaseGenerateImageFirst'));
       return;
     }
@@ -261,11 +281,12 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
       });
 
       if (result.success && result.path) {
-        const updated = {
-          ...editedProp,
-          previewVideoPath: result.path,
-          previewVideoTaskId: result.taskId,
-        };
+        const updated = updatePropMedia(editedProp, {
+          previewVideo: createStoredMediaAsset('video', {
+            localPath: result.path,
+            providerTaskId: result.taskId,
+          }),
+        });
         setEditedProp(updated);
         onUpdate(updated);
 
@@ -298,7 +319,9 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
       const destPath = await getAssetPath('preview.mp4');
       await fsCopy(result.filePaths[0], destPath);
 
-      const updated = { ...editedProp, previewVideoPath: destPath };
+      const updated = updatePropMedia(editedProp, {
+        previewVideo: createStoredMediaAsset('video', { localPath: destPath }),
+      });
       setEditedProp(updated);
       onUpdate(updated);
 
@@ -316,7 +339,7 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
   }, [editedProp, getAssetPath, projectId, onUpdate, message, t]);
 
   const handleExtractProp = useCallback(async () => {
-    if (!editedProp.previewVideoPath) {
+    if (!getPropPreviewVideoSource(editedProp)) {
       message.warning(t('asset.pleaseGenerateVideoFirst'));
       return;
     }
@@ -414,25 +437,25 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
 
             <Tooltip title={activeTTI ? `${t('asset.useService')}: ${activeTTI.name}` : t('asset.noGenerateService')}>
               <Button
-                type={!editedProp.imagePath ? 'primary' : 'default'}
+                type={!getPropPreviewImageSource(editedProp) ? 'primary' : 'default'}
                 block
                 icon={<ThunderboltOutlined />}
                 onClick={handleGenerateImage}
                 loading={generating === 'image'}
                 disabled={generating !== null}
               >
-                {editedProp.imagePath ? t('asset.regenerateReferenceImage') : t('asset.generateReferenceImage')}
+                {getPropPreviewImageSource(editedProp) ? t('asset.regenerateReferenceImage') : t('asset.generateReferenceImage')}
               </Button>
             </Tooltip>
 
             <Tooltip title={activeITV ? `${t('asset.useService')}: ${activeITV.name}` : t('asset.noVideoService')}>
               <Button
-                type={editedProp.imagePath && !editedProp.previewVideoPath ? 'primary' : 'default'}
+                type={getPropPreviewImageSource(editedProp) && !getPropPreviewVideoSource(editedProp) ? 'primary' : 'default'}
                 block
                 icon={<PlayCircleOutlined />}
                 onClick={handleGenerateVideo}
                 loading={generating === 'video'}
-                disabled={generating !== null || !editedProp.imagePath}
+                disabled={generating !== null || !getPropPreviewImageSource(editedProp)}
               >
                 {t('asset.generatePreviewVideo')}
               </Button>
@@ -466,7 +489,7 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
                 icon={<LinkOutlined />}
                 loading={generating === 'extract'}
                 onClick={handleExtractProp}
-                disabled={!editedProp.previewVideoPath || generating !== null}
+                disabled={!getPropPreviewVideoSource(editedProp) || generating !== null}
               >
                 {t('asset.extractAndBindProp')}
               </Button>
@@ -487,11 +510,12 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
                 type="text"
                 icon={<ExpandOutlined />}
                 onClick={() => {
-                  if (viewMode === 'image' && editedProp.imagePath) {
-                    setPreviewImage(toLocalUrl(editedProp.imagePath));
+                  const previewImageSource = getPropPreviewImageSource(editedProp);
+                  if (viewMode === 'image' && previewImageSource) {
+                    setPreviewImage(toLocalUrl(previewImageSource));
                   }
                 }}
-                disabled={viewMode === 'video' || !editedProp.imagePath}
+                disabled={viewMode === 'video' || !getPropPreviewImageSource(editedProp)}
                 aria-label={t('asset.enlargePreview')}
               />
             </Tooltip>
@@ -501,12 +525,12 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
         <div className="creatorCanvasBody">
           {viewMode === 'image' ? (
             <div className="creatorMediaViewer">
-              {editedProp.imagePath ? (
+              {getPropPreviewImageSource(editedProp) ? (
                 <img
-                  src={toLocalUrl(editedProp.imagePath)}
+                  src={toLocalUrl(getPropPreviewImageSource(editedProp))}
                   alt={t('asset.propImage')}
                   style={{ cursor: 'pointer' }}
-                  onDoubleClick={() => setPreviewImage(toLocalUrl(editedProp.imagePath))}
+                  onDoubleClick={() => setPreviewImage(toLocalUrl(getPropPreviewImageSource(editedProp)))}
                 />
               ) : (
                 <div className="creatorMediaPlaceholder">
@@ -517,8 +541,8 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
             </div>
           ) : (
             <div className="creatorMediaViewer">
-              {editedProp.previewVideoPath ? (
-                <video src={toLocalUrl(editedProp.previewVideoPath)} controls autoPlay loop />
+              {getPropPreviewVideoSource(editedProp) ? (
+                <video src={toLocalUrl(getPropPreviewVideoSource(editedProp))} controls autoPlay loop />
               ) : (
                 <div className="creatorMediaPlaceholder">
                   <PlayCircleOutlined />

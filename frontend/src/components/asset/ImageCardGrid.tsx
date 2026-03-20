@@ -18,6 +18,11 @@ import {
 } from '@ant-design/icons';
 import type { Character, Scene, Prop } from '../../types';
 import { electronService } from '../../services/electronService';
+import {
+  getCharacterCostumePhotoSource,
+  getPropPreviewImageSource,
+  getScenePreviewImageSource,
+} from '../../utils/mediaSelectors';
 import './ImageCardGrid.css';
 
 const { Text } = Typography;
@@ -74,16 +79,13 @@ export const ImageCardGrid: React.FC<ImageCardGridProps> = ({
     let imageUrl: string | undefined;
     if (type === 'character') {
       const char = characters.find(c => c.id === assetId);
-      // 优先使用远程URL
-      imageUrl = char?.costumePhotoUrl || char?.costumePhotoPath;
+      imageUrl = getCharacterCostumePhotoSource(char);
     } else if (type === 'scene') {
       const scene = scenes.find(s => s.id === assetId);
-      // 优先使用远程URL
-      imageUrl = scene?.imageUrl || scene?.imagePath;
+      imageUrl = getScenePreviewImageSource(scene);
     } else {
       const prop = propsList.find(p => p.id === assetId);
-      // 优先使用远程URL
-      imageUrl = prop?.imageUrl || prop?.imagePath;
+      imageUrl = getPropPreviewImageSource(prop);
     }
     if (imageUrl) {
       onAdd(imageUrl);
@@ -100,48 +102,57 @@ export const ImageCardGrid: React.FC<ImageCardGridProps> = ({
     ];
 
     // 角色
-    const charItems = characters.filter(c => c.costumePhotoPath).map(c => ({
-      key: `char-${c.id}`,
+    const charItems = characters
+      .map(c => ({ asset: c, source: getCharacterCostumePhotoSource(c) }))
+      .filter((entry): entry is { asset: Character; source: string } => Boolean(entry.source))
+      .map(({ asset, source }) => ({
+      key: `char-${asset.id}`,
       label: (
         <Space size={8}>
-          <img src={electronService.fs.toLocalUrl(c.costumePhotoPath!)} alt={c.name}
+          <img src={electronService.fs.toLocalUrl(source)} alt={asset.name}
             style={{ width: 24, height: 24, objectFit: 'cover', borderRadius: 2 }} />
-          <span>{c.name}</span>
+          <span>{asset.name}</span>
         </Space>
       ),
-      onClick: () => handleSelectAsset('character', c.id),
+      onClick: () => handleSelectAsset('character', asset.id),
     }));
     if (charItems.length > 0) {
       items.push({ key: 'characters', icon: <UserOutlined />, label: '角色', children: charItems });
     }
 
     // 场景
-    const sceneItems = scenes.filter(s => s.imagePath).map(s => ({
-      key: `scene-${s.id}`,
+    const sceneItems = scenes
+      .map(s => ({ asset: s, source: getScenePreviewImageSource(s) }))
+      .filter((entry): entry is { asset: Scene; source: string } => Boolean(entry.source))
+      .map(({ asset, source }) => ({
+      key: `scene-${asset.id}`,
       label: (
         <Space size={8}>
-          <img src={electronService.fs.toLocalUrl(s.imagePath!)} alt={s.name}
+          <img src={electronService.fs.toLocalUrl(source)} alt={asset.name}
             style={{ width: 24, height: 24, objectFit: 'cover', borderRadius: 2 }} />
-          <span>{s.name}</span>
+          <span>{asset.name}</span>
         </Space>
       ),
-      onClick: () => handleSelectAsset('scene', s.id),
+      onClick: () => handleSelectAsset('scene', asset.id),
     }));
     if (sceneItems.length > 0) {
       items.push({ key: 'scenes', icon: <EnvironmentOutlined />, label: '场景', children: sceneItems });
     }
 
     // 道具
-    const propItems = propsList.filter(p => p.imagePath).map(p => ({
-      key: `prop-${p.id}`,
+    const propItems = propsList
+      .map(p => ({ asset: p, source: getPropPreviewImageSource(p) }))
+      .filter((entry): entry is { asset: Prop; source: string } => Boolean(entry.source))
+      .map(({ asset, source }) => ({
+      key: `prop-${asset.id}`,
       label: (
         <Space size={8}>
-          <img src={electronService.fs.toLocalUrl(p.imagePath!)} alt={p.name}
+          <img src={electronService.fs.toLocalUrl(source)} alt={asset.name}
             style={{ width: 24, height: 24, objectFit: 'cover', borderRadius: 2 }} />
-          <span>{p.name}</span>
+          <span>{asset.name}</span>
         </Space>
       ),
-      onClick: () => handleSelectAsset('prop', p.id),
+      onClick: () => handleSelectAsset('prop', asset.id),
     }));
     if (propItems.length > 0) {
       items.push({ key: 'props', icon: <AppstoreOutlined />, label: '道具', children: propItems });

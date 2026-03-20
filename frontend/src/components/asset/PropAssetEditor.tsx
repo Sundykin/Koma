@@ -9,6 +9,8 @@ import type { Prop } from '../../types';
 import { generatePropImage, getPropPrompt } from '../../workflow/scenePropAssetWorkflow';
 import { openFileDialog, fsCopy, fsMkdir, fsExists, electronService } from '../../services/electronService';
 import { getStorageConfig, initStorageConfig } from '../../store/storageConfig';
+import { createStoredMediaAsset } from '../../utils/mediaAssets';
+import { getPropPreviewImageSource } from '../../utils/mediaSelectors';
 
 const { TextArea } = Input;
 const { Text } = Typography;
@@ -58,7 +60,16 @@ export const PropAssetEditor: React.FC<PropAssetEditorProps> = ({
       });
 
       if (result.success && result.path) {
-        onUpdate({ imagePath: result.path, imageUrl: (result as any).url, customPrompt: customPrompt || undefined });
+        onUpdate({
+          media: {
+            ...(prop.media || {}),
+            previewImage: createStoredMediaAsset('image', {
+              localPath: result.path,
+              remoteUrl: result.url,
+            }),
+          },
+          customPrompt: customPrompt || undefined,
+        });
         message.success('参考图生成完成');
       } else {
         message.error('参考图生成失败，请检查图像生成配置');
@@ -85,7 +96,12 @@ export const PropAssetEditor: React.FC<PropAssetEditorProps> = ({
       }
       const destPath = `${basePath}/reference.png`;
       await fsCopy(result.filePaths[0], destPath);
-      onUpdate({ imagePath: destPath });
+      onUpdate({
+        media: {
+          ...(prop.media || {}),
+          previewImage: createStoredMediaAsset('image', { localPath: destPath }),
+        },
+      });
       message.success('上传成功');
     } catch {
       message.error('上传失败，请检查文件格式后重试');
@@ -119,7 +135,7 @@ export const PropAssetEditor: React.FC<PropAssetEditorProps> = ({
             onClick={handleGenerate}
             disabled={loading}
           >
-            {prop.imagePath ? '重新生成' : '生成'}
+            {getPropPreviewImageSource(prop) ? '重新生成' : '生成'}
           </Button>
           <Button size="small" icon={<UploadOutlined />} onClick={handleUpload} disabled={loading}>
             上传
@@ -149,9 +165,9 @@ export const PropAssetEditor: React.FC<PropAssetEditorProps> = ({
           marginBottom: 12,
         }}
       >
-        {prop.imagePath ? (
+        {getPropPreviewImageSource(prop) ? (
           <img
-            src={toLocalUrl(prop.imagePath)}
+            src={toLocalUrl(getPropPreviewImageSource(prop))}
             alt={prop.name}
             style={{ width: '100%', height: '100%', objectFit: 'contain' }}
           />

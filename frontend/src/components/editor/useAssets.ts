@@ -7,6 +7,14 @@ import type { AssetItem } from '../../types/editor';
 import type { Shot, Character, Scene, Prop } from '../../types';
 import { loadEpisodeShots, loadCharacters, loadScenes, loadProps } from '../../store/projectStore';
 import { createLogger } from '../../store/logger';
+import {
+  getCharacterCostumePhotoSource,
+  getCharacterPreviewVideoSource,
+  getPropPreviewImageSource,
+  getScenePreviewImageSource,
+  getShotCurrentImageSource,
+  getShotCurrentVideoSource,
+} from '../../utils/mediaSelectors';
 
 const logger = createLogger('useAssets');
 
@@ -57,9 +65,8 @@ export function useAssets({ projectId, episodeId }: UseAssetsOptions): UseAssets
 
       // 1. 从分镜提取素材
       shots.forEach((shot: Shot) => {
-        // 获取当前视频（从 videos 数组）
-        const currentVideo = shot.videos?.[shot.currentVideoIndex ?? 0];
-        const videoPath = currentVideo?.path;
+        const videoPath = getShotCurrentVideoSource(shot);
+        const imagePath = getShotCurrentImageSource(shot);
 
         // 视频
         if (videoPath) {
@@ -68,20 +75,20 @@ export function useAssets({ projectId, episodeId }: UseAssetsOptions): UseAssets
             name: shot.description || `分镜 ${shot.id.slice(0, 6)}`,
             type: 'video',
             src: videoPath,
-            thumbnailSrc: shot.imagePath || videoPath,
+            thumbnailSrc: imagePath || videoPath,
             duration: shot.duration || DEFAULT_VIDEO_DURATION,
             source: 'shot',
             metadata: { shotId: shot.id },
           });
         }
         // 图片（如果没有视频）
-        else if (shot.imagePath) {
+        else if (imagePath) {
           aggregated.push({
             id: `shot-image-${shot.id}`,
             name: shot.description || `分镜 ${shot.id.slice(0, 6)}`,
             type: 'image',
-            src: shot.imagePath,
-            thumbnailSrc: shot.imagePath,
+            src: imagePath,
+            thumbnailSrc: imagePath,
             duration: DEFAULT_IMAGE_DURATION,
             source: 'shot',
             metadata: { shotId: shot.id },
@@ -91,27 +98,30 @@ export function useAssets({ projectId, episodeId }: UseAssetsOptions): UseAssets
 
       // 2. 从角色提取素材
       characters.forEach((char: Character) => {
+        const previewVideoPath = getCharacterPreviewVideoSource(char);
+        const costumePhotoPath = getCharacterCostumePhotoSource(char);
+
         // 角色预览视频
-        if (char.previewVideoPath) {
+        if (previewVideoPath) {
           aggregated.push({
             id: `char-video-${char.id}`,
             name: `${char.name} - 预览`,
             type: 'video',
-            src: char.previewVideoPath,
-            thumbnailSrc: char.costumePhotoPath || char.previewVideoPath,
+            src: previewVideoPath,
+            thumbnailSrc: costumePhotoPath || previewVideoPath,
             duration: DEFAULT_VIDEO_DURATION,
             source: 'character',
             metadata: { characterId: char.id },
           });
         }
         // 角色服装照
-        if (char.costumePhotoPath) {
+        if (costumePhotoPath) {
           aggregated.push({
             id: `char-image-${char.id}`,
             name: `${char.name} - 服装`,
             type: 'image',
-            src: char.costumePhotoPath,
-            thumbnailSrc: char.costumePhotoPath,
+            src: costumePhotoPath,
+            thumbnailSrc: costumePhotoPath,
             duration: DEFAULT_IMAGE_DURATION,
             source: 'character',
             metadata: { characterId: char.id },
@@ -121,13 +131,14 @@ export function useAssets({ projectId, episodeId }: UseAssetsOptions): UseAssets
 
       // 3. 从场景提取素材
       scenes.forEach((scene: Scene) => {
-        if (scene.imagePath) {
+        const imagePath = getScenePreviewImageSource(scene);
+        if (imagePath) {
           aggregated.push({
             id: `scene-image-${scene.id}`,
             name: scene.name,
             type: 'image',
-            src: scene.imagePath,
-            thumbnailSrc: scene.imagePath,
+            src: imagePath,
+            thumbnailSrc: imagePath,
             duration: DEFAULT_IMAGE_DURATION,
             source: 'scene',
             metadata: { sceneId: scene.id },
@@ -137,13 +148,14 @@ export function useAssets({ projectId, episodeId }: UseAssetsOptions): UseAssets
 
       // 4. 从道具提取素材
       props.forEach((prop: Prop) => {
-        if (prop.imagePath) {
+        const imagePath = getPropPreviewImageSource(prop);
+        if (imagePath) {
           aggregated.push({
             id: `prop-image-${prop.id}`,
             name: prop.name,
             type: 'image',
-            src: prop.imagePath,
-            thumbnailSrc: prop.imagePath,
+            src: imagePath,
+            thumbnailSrc: imagePath,
             duration: DEFAULT_IMAGE_DURATION,
             source: 'prop',
             metadata: { propId: prop.id },

@@ -17,6 +17,10 @@ import { saveEpisodeTimeline, loadEpisodeTimeline } from '../../store/projectSto
 import { uploadFiles } from '../../services/uploadService';
 import type { Shot } from '../../types';
 import { createLogger } from '../../store/logger';
+import {
+  getShotCurrentImageSource,
+  getShotCurrentVideoSource,
+} from '../../utils/mediaSelectors';
 
 const logger = createLogger('SimpleEditor');
 
@@ -39,9 +43,10 @@ function shotsToTracks(shots: Shot[]): Track[] {
 
   for (const shot of shots) {
     const shotDuration = shot.duration || 3;
-    const currentVideo = shot.videos?.[shot.currentVideoIndex || 0];
-    const mediaPath = currentVideo?.path || shot.imagePath || shot.imageUrl;
-    const mediaType = currentVideo?.path ? MediaType.VIDEO : MediaType.IMAGE;
+    const videoPath = getShotCurrentVideoSource(shot);
+    const imagePath = getShotCurrentImageSource(shot);
+    const mediaPath = videoPath || imagePath;
+    const mediaType = videoPath ? MediaType.VIDEO : MediaType.IMAGE;
 
     if (mediaPath) {
       videoTrack.clips.push({

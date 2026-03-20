@@ -10,6 +10,7 @@ import { loadCharacters, loadScenes, loadProps, getOrphanedAssets, repairAssetEp
 import { electronService } from '../../services/electronService';
 import { createLogger } from '../../store/logger';
 import { TaskManager } from '../../services/TaskManager';
+import { getCharacterCostumePhotoSource } from '../../utils/mediaSelectors';
 
 const logger = createLogger('ProjectAssetOverview');
 
@@ -162,7 +163,12 @@ export const ProjectAssetOverview = forwardRef<ProjectAssetOverviewRef, ProjectA
                       >
                         <Avatar
                           size={32}
-                          src={char.costumePhotoPath ? electronService.fs.toLocalUrl(char.costumePhotoPath) : undefined}
+                          src={(() => {
+                            const source = getCharacterCostumePhotoSource(char);
+                            if (!source) return undefined;
+                            if (/^https?:\/\//i.test(source) || source.startsWith('data:')) return source;
+                            return electronService.fs.toLocalUrl(source);
+                          })()}
                           className="bg-emerald-600 flex-shrink-0"
                         >
                           {char.name.charAt(0)}
