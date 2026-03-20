@@ -1,8 +1,8 @@
 /**
  * ComfyUI TTI Provider
  */
-import type { TTIModelConfig, ProgressInfo } from '../../types';
-import type { TTIProvider, ImageResult, TTIOptions } from './types';
+import type { TTIModelConfig, ProviderStartResult, ProviderTaskSnapshot } from '../../types';
+import type { TTIProvider, ImageResult, TTIOptions, TTIRequest } from './types';
 import { safeFetch } from '../../utils/safeFetch';
 
 interface ComfyUIHistoryResponse {
@@ -202,13 +202,12 @@ export class ComfyUIProvider implements TTIProvider {
     return upload.name;
   }
 
-  async checkProgress(taskId: string): Promise<ProgressInfo> {
+  async getTaskSnapshot(taskId: string): Promise<ProviderTaskSnapshot<ImageResult>> {
     const response = await safeFetch(`${this.getBaseUrl()}/history/${taskId}`);
 
     if (!response.ok) {
       return {
-        taskId,
-        status: 'processing',
+        state: 'running',
         progress: 0,
       };
     }
@@ -218,8 +217,7 @@ export class ComfyUIProvider implements TTIProvider {
 
     if (!result) {
       return {
-        taskId,
-        status: 'queued',
+        state: 'queued',
         progress: 0,
       };
     }
@@ -245,17 +243,15 @@ export class ComfyUIProvider implements TTIProvider {
       }
 
       return {
-        taskId,
-        status: 'completed',
+        state: 'succeeded',
         progress: 100,
-        resultUrl: imageUrl,
+        output: imageUrl ? { path: imageUrl } : undefined,
       };
     }
 
     if (result.status?.status_str === 'error') {
       return {
-        taskId,
-        status: 'failed',
+        state: 'failed',
         progress: 0,
         error: result.status?.messages?.[0]?.[1] || '生成失败',
       };
@@ -263,32 +259,29 @@ export class ComfyUIProvider implements TTIProvider {
 
     const progress = result.status?.executing ? 50 : 10;
     return {
-      taskId,
-      status: 'processing',
+      state: 'running',
       progress,
     };
   }
 
-  async generateImage(
-    prompt: string,
-    options?: TTIOptions
-  ): Promise<ImageResult> {
+  async start(request: TTIRequest): Promise<ProviderStartResult<ImageResult>> {
     if (!this.validate()) {
       throw new Error('ComfyUI 地址未配置');
     }
 
+    const options: TTIOptions | undefined = request.options;
     const size = this.resolveSize(options);
     const steps = options?.steps || this.config.defaultSteps || 20;
     const cfgScale = options?.cfgScale || 7;
     const seed = options?.seed ?? Math.floor(Math.random() * 1000000000);
     const modelName = this.config.modelName || 'sd_xl_base_1.0.safetensors';
 
-    const imageUrl = options?.imageUrls?.[0];
+    const imageUrl = request.references?.[0]?.value;
     const upload = imageUrl ? await this.uploadImage(imageUrl) : undefined;
     const imageName = upload ? this.buildImageName(upload) : undefined;
 
     const workflow = this.buildWorkflow({
-      prompt,
+      prompt: request.prompt,
       negativePrompt: options?.negativePrompt,
       width: size.width,
       height: size.height,
@@ -322,33 +315,7 @@ export class ComfyUIProvider implements TTIProvider {
       throw new Error('ComfyUI 任务ID获取失败');
     }
 
-    const pollingConfig = this.polling;
-    const startTime = Date.now();
-
-    if (pollingConfig.initialDelay) {
-      await this.delay(pollingConfig.initialDelay);
-    }
-
-    while (Date.now() - startTime < pollingConfig.maxDuration) {
-      const progress = await this.checkProgress(taskId);
-
-      if (progress.status === 'completed' && progress.resultUrl) {
-        return {
-          path: progress.resultUrl,
-          width: size.width,
-          height: size.height,
-          seed,
-        };
-      }
-
-      if (progress.status === 'failed') {
-        throw new Error(progress.error || '图片生成失败');
-      }
-
-      await this.delay(pollingConfig.interval);
-    }
-
-    throw new Error('图片生成超时');
+    return { mode: 'async', taskId: String(taskId) };
   }
 
   get polling() {

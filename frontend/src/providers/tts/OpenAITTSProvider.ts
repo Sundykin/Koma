@@ -1,8 +1,9 @@
 /**
  * OpenAI TTS Provider
  */
-import type { TTSConfig, TTSOptions, AudioResult, Voice } from '../../types';
-import type { TTSProvider } from './types';
+import type { TTSConfig, AudioResult, Voice } from '../../types';
+import type { ProviderStartResult } from '../../types';
+import type { TTSProvider, TTSRequest } from './types';
 import { electronService } from '../../services/electronService';
 import { createLogger } from '../../store/logger';
 
@@ -34,11 +35,8 @@ export class OpenAITTSProvider implements TTSProvider {
     return this.validate();
   }
 
-  async synthesize(
-    text: string,
-    voiceId: string,
-    options?: TTSOptions
-  ): Promise<AudioResult> {
+  async start(request: TTSRequest): Promise<ProviderStartResult<AudioResult>> {
+    const { text, voiceId, options } = request;
     if (!this.config.apiKey) {
       throw new Error('OpenAI API Key 未配置');
     }
@@ -82,9 +80,12 @@ export class OpenAITTSProvider implements TTSProvider {
           await electronService.fs.writeFileBuffer(filePath, uint8Array);
 
           return {
-            path: filePath,
-            duration: 0,
-            sampleRate: 24000,
+            mode: 'immediate',
+            output: {
+              path: filePath,
+              duration: 0,
+              sampleRate: 24000,
+            },
           };
         }
       } catch (err) {
@@ -95,9 +96,12 @@ export class OpenAITTSProvider implements TTSProvider {
     // Fallback to Blob URL for browser environment
     const url = URL.createObjectURL(blob);
     return {
-      path: url,
-      duration: 0,
-      sampleRate: 24000,
+      mode: 'immediate',
+      output: {
+        path: url,
+        duration: 0,
+        sampleRate: 24000,
+      },
     };
   }
 

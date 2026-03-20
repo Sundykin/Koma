@@ -13,6 +13,11 @@ import { useTranslation } from 'react-i18next';
 import type { Character, Scene, Prop } from '../../types';
 import { saveCharacters, saveScenes, saveProps, loadCharacters, loadScenes, loadProps } from '../../store/projectStore';
 import { electronService } from '../../services/electronService';
+import {
+  getCharacterCostumePhotoSource,
+  getPropPreviewImageSource,
+  getScenePreviewImageSource,
+} from '../../utils/mediaSelectors';
 
 const { Text } = Typography;
 
@@ -44,7 +49,13 @@ export const AssetListPanel: React.FC<AssetListPanelProps> = ({
   projectId,
 }) => {
   const { t } = useTranslation();
-  const toLocalUrl = (path?: string) => path ? electronService.fs.toLocalUrl(path) : '';
+  const toLocalUrl = (path?: string) => {
+    if (!path) return '';
+    if (/^https?:\/\//i.test(path) || path.startsWith('data:') || path.startsWith('blob:')) {
+      return path;
+    }
+    return electronService.fs.toLocalUrl(path);
+  };
 
   // 新建角色
   const handleCreateCharacter = async () => {
@@ -181,7 +192,7 @@ export const AssetListPanel: React.FC<AssetListPanelProps> = ({
             {characters.map(char => renderAssetCard(
               char.id,
               char.name,
-              char.costumePhotoPath,
+              getCharacterCostumePhotoSource(char),
               !!char.sora2CharacterId,
               getRoleLabel(char.role || 'supporting'),
               char.description
@@ -217,7 +228,7 @@ export const AssetListPanel: React.FC<AssetListPanelProps> = ({
             {scenes.map(scene => renderAssetCard(
               scene.id,
               scene.name,
-              scene.imagePath,
+              getScenePreviewImageSource(scene),
               false,
               scene.location,
               scene.description
@@ -253,7 +264,7 @@ export const AssetListPanel: React.FC<AssetListPanelProps> = ({
             {props.map(prop => renderAssetCard(
               prop.id,
               prop.name,
-              prop.imagePath,
+              getPropPreviewImageSource(prop),
               !!prop.sora2PropId,
               prop.type,
               prop.description

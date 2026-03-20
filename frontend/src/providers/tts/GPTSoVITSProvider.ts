@@ -2,8 +2,9 @@
  * GPT-SoVITS TTS Provider (本地)
  * 支持本地部署的 GPT-SoVITS 服务
  */
-import type { TTSConfig, TTSOptions, AudioResult, Voice } from '../../types';
-import type { TTSProvider } from './types';
+import type { TTSConfig, AudioResult, Voice } from '../../types';
+import type { ProviderStartResult } from '../../types';
+import type { TTSProvider, TTSRequest } from './types';
 
 export class GPTSoVITSProvider implements TTSProvider {
   type = 'gpt-sovits' as const;
@@ -30,11 +31,8 @@ export class GPTSoVITSProvider implements TTSProvider {
     }
   }
 
-  async synthesize(
-    text: string,
-    voiceId: string,
-    options?: TTSOptions
-  ): Promise<AudioResult> {
+  async start(request: TTSRequest): Promise<ProviderStartResult<AudioResult>> {
+    const { text, voiceId, options } = request;
     const baseUrl = this.getBaseUrl();
 
     // GPT-SoVITS API 参数
@@ -61,9 +59,12 @@ export class GPTSoVITSProvider implements TTSProvider {
     const estimatedDuration = text.length * 0.15;
 
     return {
-      path: audioUrl,
-      duration: estimatedDuration,
-      format: 'wav',
+      mode: 'immediate',
+      output: {
+        path: audioUrl,
+        duration: estimatedDuration,
+        format: 'wav',
+      },
     };
   }
 

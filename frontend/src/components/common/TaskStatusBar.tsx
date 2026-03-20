@@ -7,14 +7,43 @@ import { Progress, Typography, Tag, Button, Empty, Tabs, Tooltip } from 'antd';
 import { ReloadOutlined, StopOutlined } from '@ant-design/icons';
 import { Loader2, CheckCircle2, XCircle, ChevronDown, ChevronUp, FileText, Video, Cpu, Box, Download, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { TaskManager, Task, TaskStatus, TaskCategory, TaskSubType } from '../../services/TaskManager';
+import { TaskManager } from '../../services/TaskManager';
+import type { Task as ManagerTask, TaskStatus } from '../../services/TaskManager';
+import type { AsyncTask } from '../../types';
+import { listTasks as listAsyncTasks } from '../../store/taskQueueStore';
 
 const { Text } = Typography;
 
 interface TaskStatusBarProps {
   projectId: string;
-  onRetry?: (task: Task) => void;
-  onCancel?: (task: Task) => void;
+  onRetry?: (task: ManagerTask) => void;
+  onCancel?: (task: ManagerTask) => void;
+}
+
+type StatusBarCategory = 'prompt' | 'analysis' | 'asset' | 'script' | 'export' | 'media';
+type StatusBarStatus = 'pending' | 'running' | 'processing' | 'completed' | 'failed';
+
+interface StatusBarTask {
+  id: string;
+  projectId: string;
+  status: StatusBarStatus;
+  progress: number;
+  category?: StatusBarCategory;
+  subType?: string;
+  type: string;
+  targetType?: string;
+  targetId?: string;
+  targetName?: string;
+  createdAt: number;
+  updatedAt: number;
+  startedAt?: number;
+  completedAt?: number;
+  error?: string;
+  recoverable?: boolean;
+  attempt?: number;
+  maxRetries?: number;
+  source: 'task-manager' | 'task-queue';
+  raw?: ManagerTask;
 }
 
 const useCategoryConfig = () => {
@@ -26,10 +55,10 @@ const useCategoryConfig = () => {
     asset: { label: t('asset.title'), icon: <Box className="w-3 h-3" />, color: 'orange' },
     script: { label: t('project.scriptAnalysis'), icon: <FileText className="w-3 h-3" />, color: 'green' },
     export: { label: t('common.export'), icon: <Download className="w-3 h-3" />, color: 'gold' },
-  } as Record<TaskCategory, { label: string; icon: React.ReactNode; color: string }>;
+  } as Record<StatusBarCategory, { label: string; icon: React.ReactNode; color: string }>;
 };
 
-const getStatusIcon = (status: TaskStatus) => {
+const getStatusIcon = (status: StatusBarStatus) => {
   switch (status) {
     case 'pending':
     case 'running':
@@ -55,12 +84,12 @@ export const TaskStatusBar: React.FC<TaskStatusBarProps> = ({ projectId, onRetry
   const { t } = useTranslation();
   const CATEGORY_CONFIG = useCategoryConfig();
 
-  const [tasks, setTasks] = useState<Task[]>([]);
+  const [tasks, setTasks] = useState<StatusBarTask[]>([]);
   const [expanded, setExpanded] = useState(false);
   const [activeTab, setActiveTab] = useState<string>('all');
   const [dismissed, setDismissed] = useState(false);
 
-  const getSubTypeLabel = (subType?: TaskSubType): string => {
+  const getSubTypeLabel = (subType?: string): string => {
     const labels: Record<string, string> = {
       image: t('storyboard.generateImage'),
       video: t('storyboard.generateVideo'),
@@ -78,48 +107,116 @@ export const TaskStatusBar: React.FC<TaskStatusBarProps> = ({ projectId, onRetry
     return labels[subType || ''] || subType || '';
   };
 
-  const getLegacyTypeLabel = (type: string): string => {
-    const labels: Record<string, string> = {
-      'script-analysis': t('task.scriptAnalysis'),
-      'asset-generation': t('task.imageGeneration'),
-      'shot-render': t('storyboard.generateImage'),
-      'shot-generation': t('storyboard.generateImage'),
-      'shot-analysis': t('storyboard.title'),
-      'prompt-generation:image': t('storyboard.imagePrompt'),
-      'prompt-generation:video': t('storyboard.videoPrompt'),
-      'prompt-optimization:image': t('storyboard.imagePrompt'),
-      'prompt-optimization:video': t('storyboard.videoPrompt'),
-    };
-    return labels[type] || type;
-  };
-
-  const getTaskLabel = (task: Task): string => {
+  const getTaskLabel = (task: StatusBarTask): string => {
     if (task.category && task.subType) {
       return `${CATEGORY_CONFIG[task.category]?.label || task.category} - ${getSubTypeLabel(task.subType)}`;
     }
-    return getLegacyTypeLabel(task.type);
+    return task.type;
   };
 
   useEffect(() => {
-    const loadTasks = () => {
-      const allTasks = TaskManager.getProjectTasks(projectId);
-      setTasks(allTasks.slice(0, 20));
-      if (allTasks.some(t => t.status === 'running' || t.status === 'pending')) {
+    let disposed = false;
+
+    const mapManagerTask = (task: ManagerTask): StatusBarTask => ({
+      id: task.id,
+      projectId: task.projectId,
+      status: task.status,
+      progress: task.progress,
+      category: (task.category as StatusBarCategory | undefined),
+      subType: task.subType,
+      type: task.type,
+      targetType: task.targetType,
+      targetId: task.targetId,
+      targetName: task.targetName,
+      createdAt: task.createdAt,
+      updatedAt: task.updatedAt,
+      startedAt: task.startedAt,
+      completedAt: task.completedAt,
+      error: task.error,
+      recoverable: task.recoverable,
+      attempt: task.attempt,
+      maxRetries: task.maxRetries,
+      source: 'task-manager',
+      raw: task,
+    });
+
+    const mapAsyncTask = (task: AsyncTask): StatusBarTask => ({
+      id: task.id,
+      projectId: task.projectId,
+      status: task.status,
+      progress: task.progress,
+      category: 'media',
+      subType: task.type,
+      type: `media:${task.type}`,
+      targetType: task.targetType,
+      targetId: task.targetId,
+      targetName: task.targetName,
+      createdAt: task.createdAt,
+      updatedAt: task.updatedAt,
+      startedAt: task.createdAt,
+      completedAt: (task.status === 'completed' || task.status === 'failed') ? task.updatedAt : undefined,
+      error: task.error,
+      source: 'task-queue',
+    });
+
+    const loadTasks = async () => {
+      const managerTasks = TaskManager.getProjectTasks(projectId).map(mapManagerTask);
+      const queueTasks = await listAsyncTasks(projectId)
+        .then(list => list
+          // Defensive: tasks.json is reserved for media tasks. If older builds wrote other task shapes,
+          // filter them out to avoid duplicate rendering and incorrect status labels.
+          .filter(t => ['tti', 'itv', 'tts', 'character-extraction'].includes((t as any).type))
+          .map(mapAsyncTask)
+        )
+        .catch(() => []);
+
+      // De-duplicate by id in case of cross-store collisions or corrupted persisted state.
+      const mergedById = new Map<string, StatusBarTask>();
+      for (const task of [...queueTasks, ...managerTasks]) {
+        const prev = mergedById.get(task.id);
+        if (!prev) {
+          mergedById.set(task.id, task);
+          continue;
+        }
+        // Keep the newer one.
+        mergedById.set(task.id, (task.updatedAt >= prev.updatedAt) ? task : prev);
+      }
+
+      const merged = Array.from(mergedById.values())
+        .sort((a, b) => b.createdAt - a.createdAt)
+        .slice(0, 20);
+
+      if (disposed) return;
+      setTasks(merged);
+
+      if (merged.some(t => t.status === 'running' || t.status === 'pending' || t.status === 'processing')) {
         setDismissed(false);
       }
     };
+
     loadTasks();
+
     const unsubscribe = TaskManager.addListener((task) => {
-      if (task.projectId === projectId) loadTasks();
+      if (task.projectId === projectId) {
+        loadTasks();
+      }
     });
-    return () => unsubscribe();
+
+    // taskQueueStore 没有事件订阅，使用轻量轮询同步状态栏显示
+    const timer = setInterval(loadTasks, 2000);
+
+    return () => {
+      disposed = true;
+      unsubscribe();
+      clearInterval(timer);
+    };
   }, [projectId]);
 
   const { runningTasks, completedTasks, failedTasks, allFilteredTasks } = useMemo(() => {
     const running = tasks.filter(t => t.status === 'pending' || t.status === 'running' || t.status === 'processing');
     const completed = tasks.filter(t => t.status === 'completed');
     const failed = tasks.filter(t => t.status === 'failed');
-    let filtered: Task[];
+    let filtered: StatusBarTask[];
     switch (activeTab) {
       case 'running': filtered = running; break;
       case 'completed': filtered = completed; break;
@@ -133,9 +230,9 @@ export const TaskStatusBar: React.FC<TaskStatusBarProps> = ({ projectId, onRetry
 
   const mainTask = runningTasks[0];
 
-  const isRunning = (s: TaskStatus) => s === 'running' || s === 'processing' || s === 'pending';
+  const isRunning = (s: StatusBarStatus) => s === 'running' || s === 'processing' || s === 'pending';
 
-  const renderTaskItem = (task: Task) => (
+  const renderTaskItem = (task: StatusBarTask) => (
     <div key={task.id} className="py-1.5 px-2 rounded hover:bg-zinc-800/50">
       {/* 第一行：图标 + 标签 + 名称 + 时间/操作 */}
       <div className="flex items-center gap-2">
@@ -159,16 +256,16 @@ export const TaskStatusBar: React.FC<TaskStatusBarProps> = ({ projectId, onRetry
             {formatDuration(task.startedAt, task.completedAt)}
           </Text>
         )}
-        {task.status === 'failed' && onRetry && (
+        {task.status === 'failed' && task.source === 'task-manager' && task.raw && onRetry && (
           <Button type="text" size="small" icon={<ReloadOutlined />}
             className="text-zinc-500 hover:text-blue-400 shrink-0 !w-6 !h-6"
-            onClick={(e) => { e.stopPropagation(); onRetry(task); }}
+            onClick={(e) => { e.stopPropagation(); onRetry(task.raw!); }}
           />
         )}
-        {isRunning(task.status) && onCancel && (
+        {isRunning(task.status) && task.source === 'task-manager' && task.raw && onCancel && (
           <Button type="text" size="small" icon={<StopOutlined />}
             className="text-zinc-500 hover:text-red-400 shrink-0 !w-6 !h-6"
-            onClick={(e) => { e.stopPropagation(); onCancel(task); }}
+            onClick={(e) => { e.stopPropagation(); onCancel(task.raw!); }}
           />
         )}
       </div>
@@ -180,8 +277,8 @@ export const TaskStatusBar: React.FC<TaskStatusBarProps> = ({ projectId, onRetry
               className="flex-1" strokeColor="#10b981" trailColor="#3f3f46" />
             <Text className="text-zinc-500 text-xs shrink-0 tabular-nums">{task.progress}%</Text>
           </div>
-          {task.result?.stageMessage && (
-            <Text className="text-zinc-500 text-xs truncate block">{task.result.stageMessage}</Text>
+          {task.source === 'task-manager' && (task.raw as any)?.result?.stageMessage && (
+            <Text className="text-zinc-500 text-xs truncate block">{(task.raw as any).result.stageMessage}</Text>
           )}
         </div>
       ) : task.status === 'failed' && task.error ? (

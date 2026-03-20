@@ -32,6 +32,7 @@ import {
 import type { ShotVersion } from '../../types';
 import { loadShotMeta, switchShotVersion, deleteShotVersion } from '../../store/projectStore';
 import { electronService } from '../../services/electronService';
+import { getMediaAssetSource } from '../../types';
 import './VideoVersionList.css';
 
 const { Text } = Typography;
@@ -168,13 +169,16 @@ export const VideoVersionList: React.FC<VideoVersionListProps> = ({
             </Text>
           </Space>
           <Space size={4}>
-            {v.videoPath && (
+            {v.media?.video && (
               <Tooltip title="预览">
                 <Button
                   type="text"
                   size="small"
                   icon={<PlayCircleOutlined />}
-                  onClick={(e) => { e.stopPropagation(); handlePreview(v.videoPath); }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handlePreview(getMediaAssetSource(v.media?.video));
+                  }}
                 />
               </Tooltip>
             )}
@@ -284,9 +288,14 @@ export const VideoVersionList: React.FC<VideoVersionListProps> = ({
                   className={`versionThumb ${v.version === localCurrentVersion ? 'active' : ''}`}
                   onClick={() => handleSwitchVersion(v.version)}
                 >
-                  {v.imagePath ? (
+                  {v.media?.image ? (
                     <img
-                      src={electronService.fs.toLocalUrl(v.imagePath)}
+                      src={(() => {
+                        const source = getMediaAssetSource(v.media?.image);
+                        if (!source) return '';
+                        if (/^https?:\/\//i.test(source) || source.startsWith('data:')) return source;
+                        return electronService.fs.toLocalUrl(source);
+                      })()}
                       alt={`v${v.version}`}
                     />
                   ) : (

@@ -21,6 +21,12 @@ import type {
   Clip,
   EasingType,
 } from '../types';
+import {
+  getCharacterCostumePhotoSource,
+  getShotCurrentImageSource,
+  getShotCurrentVideoSource,
+} from '../utils/mediaSelectors';
+import { createStoredMediaAsset } from '../utils/mediaAssets';
 
 // 有效的 easing 类型列表
 const VALID_EASING_TYPES: EasingType[] = ['linear', 'ease', 'ease-in', 'ease-out', 'ease-in-out', 'cubic-bezier'];
@@ -72,7 +78,7 @@ function toManjuCharacter(c: Character): ManjuCharacter {
     description: c.description,
     appearance: c.appearance,
     voiceId: c.voiceId,
-    avatar: c.costumePhotoPath,
+    avatar: getCharacterCostumePhotoSource(c),
   };
 }
 
@@ -88,6 +94,8 @@ function toManjuScene(s: Scene): ManjuScene {
 }
 
 function toManjuShot(s: Shot): ManjuShot {
+  const imageSource = getShotCurrentImageSource(s);
+  const videoSource = getShotCurrentVideoSource(s);
   return {
     id: s.id,
     scriptContent: s.scriptContent,
@@ -99,7 +107,12 @@ function toManjuShot(s: Shot): ManjuShot {
     dialogue: s.dialogue,
     emotion: s.emotion,
     seed: s.seed,
-    assets: s.imageUrl ? { image: s.imageUrl } : undefined,
+    assets: imageSource || videoSource
+      ? {
+          image: imageSource,
+          video: videoSource,
+        }
+      : undefined,
   };
 }
 
@@ -187,7 +200,11 @@ function fromManjuCharacter(c: ManjuCharacter): Character {
     role: c.role,
     prompt: promptParts.join('\n') || '',
     voiceId: c.voiceId,
-    costumePhotoPath: c.avatar,
+    media: c.avatar
+      ? {
+          costumePhoto: createStoredMediaAsset('image', { remoteUrl: c.avatar }),
+        }
+      : undefined,
     // 保留旧字段用于兼容
     age: '',
     description: c.description,
@@ -227,7 +244,18 @@ function fromManjuShot(s: ManjuShot): Shot {
     dialogue: s.dialogue,
     emotion: s.emotion,
     seed: s.seed,
-    imageUrl: s.assets?.image,
+    media: s.assets?.image || s.assets?.video
+      ? {
+          images: s.assets?.image
+            ? [createStoredMediaAsset('image', { remoteUrl: s.assets.image })]
+            : undefined,
+          videos: s.assets?.video
+            ? [createStoredMediaAsset('video', { remoteUrl: s.assets.video })]
+            : undefined,
+          currentImageIndex: s.assets?.image ? 0 : undefined,
+          currentVideoIndex: s.assets?.video ? 0 : undefined,
+        }
+      : undefined,
   };
 }
 

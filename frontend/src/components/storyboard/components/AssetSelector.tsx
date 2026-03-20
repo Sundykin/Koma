@@ -6,6 +6,8 @@ import React from 'react';
 import { Popover, Tooltip, Avatar } from 'antd';
 import { PlusOutlined, UserOutlined, EnvironmentOutlined, ToolOutlined } from '@ant-design/icons';
 import { electronService } from '../../../services/electronService';
+import type { StoredMediaAsset } from '../../../types';
+import { getMediaAssetSource } from '../../../types';
 
 type AssetType = 'character' | 'scene' | 'prop';
 
@@ -14,8 +16,10 @@ interface Asset {
   name: string;
   cover?: string;
   avatar?: string;
-  costumePhotoPath?: string;
-  imagePath?: string;
+  media?: {
+    costumePhoto?: StoredMediaAsset;
+    previewImage?: StoredMediaAsset;
+  };
 }
 
 interface AssetSelectorProps {
@@ -49,8 +53,13 @@ export const AssetSelector: React.FC<AssetSelectorProps> = ({
   };
 
   const getAssetImage = (asset: Asset) => {
-    const src = asset.costumePhotoPath || asset.imagePath || asset.cover || asset.avatar;
-    return src ? electronService.fs.toLocalUrl(src) : undefined;
+    const src = getMediaAssetSource(asset.media?.costumePhoto)
+      || getMediaAssetSource(asset.media?.previewImage)
+      || asset.cover
+      || asset.avatar;
+    if (!src) return undefined;
+    if (/^https?:\/\//i.test(src) || src.startsWith('data:')) return src;
+    return electronService.fs.toLocalUrl(src);
   };
 
   const content = (

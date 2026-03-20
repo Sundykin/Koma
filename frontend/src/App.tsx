@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo, Suspense, lazy } from
 import { Project, ScriptAnalysisResult, EditorStep, AppSettings, Episode, EpisodeStepProgress } from './types';
 import { ProjectList, CreateProjectModal, ProjectSettingsModal } from './components/project';
 import type { MentionItem } from './editor';
+import { getCharacterCostumePhotoSource } from './utils/mediaSelectors';
 import { WindowControls } from './components/common';
 import { ErrorBoundary } from './components/common';
 import { TaskStatusBar } from './components/common/TaskStatusBar';
@@ -110,7 +111,7 @@ const AppContent: React.FC = () => {
     if (!Array.isArray(analysisData?.characters)) return [];
     return analysisData.characters.filter(Boolean).map(char => ({
       id: char.id, type: 'char' as const, name: char.name,
-      description: char.description, previewImage: char.costumePhotoPath,
+      description: char.description, previewImage: getCharacterCostumePhotoSource(char),
       sora2CharacterId: char.sora2CharacterId,
     }));
   }, [analysisData?.characters]);

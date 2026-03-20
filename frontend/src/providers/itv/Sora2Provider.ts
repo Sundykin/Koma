@@ -8,7 +8,8 @@ import type {
   ITVOptions,
   ProgressInfo,
 } from '../../types';
-import type { ITVProvider } from './types';
+import type { ProviderStartResult, ProviderTaskSnapshot } from '../../types';
+import type { ITVProvider, ITVRequest, ITVResult } from './types';
 import { safeFetch } from '../../utils/safeFetch';
 
 // API 响应类型
@@ -156,20 +157,13 @@ export class Sora2Provider implements ITVProvider {
     }
   }
 
-  /**
-   * 生成视频（统一接口）
-   * 提交任务后内部轮询等待完成
-   */
-  async generateVideo(input: {
-    imageUrl?: string;
-    prompt: string;
-    options?: Sora2Options;
-  }): Promise<{ url: string; path: string; duration: number; width: number; height: number; fps: number; taskId?: string }> {
+  async start(request: ITVRequest): Promise<ProviderStartResult<ITVResult>> {
     if (!this.validate()) {
       throw new Error('API Key 未配置');
     }
 
-    const { imageUrl, prompt, options } = input;
+    const { prompt } = request;
+    const options = request.options as Sora2Options | undefined;
 
     const body: Record<string, any> = {
       model: options?.model || 'sora-2',
@@ -179,8 +173,12 @@ export class Sora2Provider implements ITVProvider {
     };
 
     // 图生视频
-    if (imageUrl) {
-      body.image_urls = [imageUrl];
+    const imageUrls = [
+      request.primaryImage.value,
+      ...((request.additionalReferences || []).map(r => r.value).filter(Boolean)),
+    ];
+    if (imageUrls.length > 0) {
+      body.image_urls = imageUrls;
     }
 
     // 元数据
@@ -253,56 +251,10 @@ export class Sora2Provider implements ITVProvider {
     const data: Sora2CreateResponse = await response.json();
     const taskId = data.id;
 
-    // 轮询等待完成
-    const pollingConfig = this.polling;
-    const startTime = Date.now();
-
-    // 初始延迟
-    if (pollingConfig.initialDelay) {
-      await this.delay(pollingConfig.initialDelay);
-    }
-
-    while (Date.now() - startTime < pollingConfig.maxDuration) {
-      const progress = await this.checkProgress(taskId);
-
-      if (progress.status === 'completed' && progress.resultUrl) {
-        return {
-          url: progress.resultUrl,
-          path: progress.resultUrl,
-          duration: options?.duration || 10,
-          width: 1920,
-          height: 1080,
-          fps: 24,
-          taskId,
-        };
-      }
-
-      if (progress.status === 'failed') {
-        throw new Error(progress.error || '视频生成失败');
-      }
-
-      await this.delay(pollingConfig.interval);
-    }
-
-    throw new Error('视频生成超时');
+    return { mode: 'async', taskId };
   }
 
-  private get polling() {
-    return {
-      interval: 5000,
-      maxDuration: 600000,
-      initialDelay: 3000,
-    };
-  }
-
-  private delay(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
-  }
-
-  /**
-   * 轮询视频任务状态
-   */
-  async checkProgress(taskId: string): Promise<ProgressInfo> {
+  async getTaskSnapshot(taskId: string): Promise<ProviderTaskSnapshot<ITVResult>> {
     const response = await safeFetch(`${this.getBaseUrl()}/v1/videos/generations/${taskId}`, {
       method: 'GET',
       headers: {
@@ -312,8 +264,7 @@ export class Sora2Provider implements ITVProvider {
 
     if (!response.ok) {
       return {
-        taskId,
-        status: 'failed',
+        state: 'failed',
         progress: 0,
         error: '查询失败',
       };
@@ -321,28 +272,27 @@ export class Sora2Provider implements ITVProvider {
 
     const data: Sora2TaskResponse = await response.json();
 
-    const stateMap: Record<string, ProgressInfo['status']> = {
-      'queued': 'queued',
-      'in_progress': 'processing',
-      'completed': 'completed',
-      'failed': 'failed',
+    const stateMap: Record<string, ProviderTaskSnapshot<ITVResult>['state']> = {
+      queued: 'queued',
+      in_progress: 'running',
+      completed: 'succeeded',
+      failed: 'failed',
     };
 
-    const result: ProgressInfo = {
-      taskId,
-      status: stateMap[data.status] || 'processing',
+    const snapshot: ProviderTaskSnapshot<ITVResult> = {
+      state: stateMap[data.status] || 'running',
       progress: data.progress || 0,
     };
 
     if (data.status === 'completed' && data.result?.data?.[0]?.url) {
-      result.resultUrl = data.result.data[0].url;
+      snapshot.output = { source: data.result.data[0].url, taskId };
     }
 
     if (data.status === 'failed' && data.error) {
-      result.error = data.error.message || '任务失败';
+      snapshot.error = data.error.message || '任务失败';
     }
 
-    return result;
+    return snapshot;
   }
 
   async cancelTask(_taskId: string): Promise<void> {

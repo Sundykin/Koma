@@ -4,6 +4,7 @@
  */
 
 import type { ElectronPluginAPI, ProviderDefinition } from '@komastudio/plugin-sdk';
+import { MEDIA_PROVIDER_CONTRACT_VERSION } from '@komastudio/plugin-sdk';
 
 const MODEL_ID = 'doubao-seedream-4-0-250828';
 
@@ -166,6 +167,7 @@ export async function onActivate(api: ElectronPluginAPI): Promise<void> {
     kind: 'tti',
     name: 'Seedream 文生图',
     description: '豆包 Seedream 4.0 文生图/图生图服务',
+    contractVersion: MEDIA_PROVIDER_CONTRACT_VERSION,
     capabilities: ['tti'],
     defaultConfig: DEFAULT_CONFIG,
     factory: async (config) => {

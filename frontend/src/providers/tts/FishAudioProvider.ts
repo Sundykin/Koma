@@ -2,8 +2,9 @@
  * Fish Audio TTS Provider
  * https://fish.audio/
  */
-import type { TTSConfig, TTSOptions, AudioResult, Voice } from '../../types';
-import type { TTSProvider } from './types';
+import type { TTSConfig, AudioResult, Voice } from '../../types';
+import type { ProviderStartResult } from '../../types';
+import type { TTSProvider, TTSRequest } from './types';
 
 export class FishAudioProvider implements TTSProvider {
   type = 'fish-audio' as const;
@@ -37,11 +38,8 @@ export class FishAudioProvider implements TTSProvider {
     return this.config.baseUrl || 'https://api.fish.audio/v1';
   }
 
-  async synthesize(
-    text: string,
-    voiceId: string,
-    options?: TTSOptions
-  ): Promise<AudioResult> {
+  async start(request: TTSRequest): Promise<ProviderStartResult<AudioResult>> {
+    const { text, voiceId, options } = request;
     if (!this.validate()) {
       throw new Error('Fish Audio API Key 未配置');
     }
@@ -74,9 +72,12 @@ export class FishAudioProvider implements TTSProvider {
     const estimatedDuration = text.length * 0.15;
 
     return {
-      path: audioUrl,
-      duration: estimatedDuration,
-      format: 'mp3',
+      mode: 'immediate',
+      output: {
+        path: audioUrl,
+        duration: estimatedDuration,
+        format: 'mp3',
+      },
     };
   }
 

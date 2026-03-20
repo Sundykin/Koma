@@ -2,11 +2,49 @@
  * Provider 相关类型定义
  */
 
+export const MEDIA_PROVIDER_CONTRACT_VERSION = 'media-request-v1';
+
 // 渠道类型
 export type ChannelKind = 'tti' | 'itv' | 'tts' | 'image-hosting';
 
 // 渠道能力
 export type ChannelCapability = 'tti' | 'itv' | 'tts' | 'character-extract' | 'remix';
+
+export interface ProviderAssetInput {
+  transport: 'remote-url' | 'data-url';
+  value: string;
+  mimeType?: string;
+}
+
+export type ProviderStartResult<T> =
+  | { mode: 'immediate'; output: T }
+  | { mode: 'async'; taskId: string };
+
+export interface ProviderTaskSnapshot<T> {
+  state: 'queued' | 'running' | 'succeeded' | 'failed';
+  progress?: number;
+  output?: T;
+  error?: string;
+}
+
+export interface TTIRequest<TAsset = ProviderAssetInput, TOptions = Record<string, unknown>> {
+  prompt: string;
+  references?: TAsset[];
+  options?: TOptions;
+}
+
+export interface ITVRequest<TAsset = ProviderAssetInput, TOptions = Record<string, unknown>> {
+  prompt: string;
+  primaryImage: TAsset;
+  additionalReferences?: TAsset[];
+  options?: TOptions;
+}
+
+export interface TTSRequest<TOptions = Record<string, unknown>> {
+  text: string;
+  voiceId: string;
+  options?: TOptions;
+}
 
 // 轮询配置
 export interface PollingConfig {
@@ -33,6 +71,7 @@ export interface ProviderDefinition<T = any> {
   name: string;              // 显示名称
   description?: string;      // 描述
   factory: (config: Record<string, any>, ctx: ProviderContext) => T;
+  contractVersion?: string;
   capabilities?: ChannelCapability[];
   pluginId?: string;         // 关联插件 ID
   configSchema?: Record<string, any>;  // JSON Schema for UI

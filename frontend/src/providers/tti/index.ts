@@ -9,7 +9,7 @@ import { NanoBananaProvider } from './NanoBananaProvider';
 import { Gemini3ProProvider } from './Gemini3ProProvider';
 import { OpenAICompatibleTTIProvider } from './OpenAICompatibleTTIProvider';
 import type { ProviderDefinition } from '../registry.types';
-import { DEFAULT_POLLING_CONFIG } from '../registry.types';
+import { DEFAULT_POLLING_CONFIG, MEDIA_PROVIDER_CONTRACT_VERSION } from '../registry.types';
 import { ttiRegistry } from '../registry';
 
 export type { TTIProvider, ImageResult, TTIOptions } from './types';
@@ -27,6 +27,7 @@ function registerBuiltinProviders() {
       name: 'NanoBanana',
       description: 'NanoBanana 文生图服务',
       factory: (config) => new NanoBananaProvider(config as TTIModelConfig),
+      contractVersion: MEDIA_PROVIDER_CONTRACT_VERSION,
       capabilities: ['tti'],
       polling: DEFAULT_POLLING_CONFIG,
     },
@@ -36,6 +37,7 @@ function registerBuiltinProviders() {
       name: 'ComfyUI',
       description: '本地 ComfyUI 文生图',
       factory: (config) => new ComfyUIProvider(config as TTIModelConfig),
+      contractVersion: MEDIA_PROVIDER_CONTRACT_VERSION,
       capabilities: ['tti'],
       polling: {
         interval: 2000,
@@ -49,6 +51,7 @@ function registerBuiltinProviders() {
       name: 'Gemini 3 Pro',
       description: 'Google Gemini 3 Pro 图像生成',
       factory: (config) => new Gemini3ProProvider(config as TTIModelConfig),
+      contractVersion: MEDIA_PROVIDER_CONTRACT_VERSION,
       capabilities: ['tti'],
       polling: DEFAULT_POLLING_CONFIG,
     },
@@ -58,6 +61,7 @@ function registerBuiltinProviders() {
       name: '自定义服务商',
       description: '兼容 OpenAI 接口的自定义文生图服务',
       factory: (config) => new OpenAICompatibleTTIProvider(config as TTIModelConfig),
+      contractVersion: MEDIA_PROVIDER_CONTRACT_VERSION,
       capabilities: ['tti'],
       polling: DEFAULT_POLLING_CONFIG,
     },

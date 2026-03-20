@@ -41,6 +41,11 @@ import {
 import { electronService, openFileDialog, fsCopy, fsMkdir, fsExists } from '../../services/electronService';
 import { getStorageConfig, initStorageConfig } from '../../store/storageConfig';
 import { saveCharacters, loadCharacters } from '../../store/projectStore';
+import { createStoredMediaAsset, updateCharacterMedia } from '../../utils/mediaAssets';
+import {
+  getCharacterCostumePhotoSource,
+  getCharacterPreviewVideoSource,
+} from '../../utils/mediaSelectors';
 
 const { TextArea } = Input;
 const { Text } = Typography;
@@ -184,11 +189,12 @@ export const CharacterDetailModal: React.FC<CharacterDetailModalProps> = ({
       });
 
       if (result.success && result.path) {
-        const updated = {
-          ...editedCharacter,
-          costumePhotoPath: result.path,
-          costumePhotoUrl: result.url,
-        };
+        const updated = updateCharacterMedia(editedCharacter, {
+          costumePhoto: createStoredMediaAsset('image', {
+            localPath: result.path,
+            remoteUrl: result.url,
+          }),
+        });
         setEditedCharacter(updated);
         onUpdate(updated);
         message.success('定妆照生成完成');
@@ -216,7 +222,9 @@ export const CharacterDetailModal: React.FC<CharacterDetailModalProps> = ({
       const destPath = await getAssetPath('costume.png');
       await fsCopy(result.filePaths[0], destPath);
 
-      const updated = { ...editedCharacter, costumePhotoPath: destPath };
+      const updated = updateCharacterMedia(editedCharacter, {
+        costumePhoto: createStoredMediaAsset('image', { localPath: destPath }),
+      });
       setEditedCharacter(updated);
       onUpdate(updated);
 
@@ -238,7 +246,7 @@ export const CharacterDetailModal: React.FC<CharacterDetailModalProps> = ({
   const handleGenerateVideo = useCallback(async () => {
     if (!editedCharacter) return;
 
-    if (!editedCharacter.costumePhotoPath) {
+    if (!getCharacterCostumePhotoSource(editedCharacter)) {
       message.warning('请先生成或上传定妆照');
       return;
     }
@@ -261,12 +269,12 @@ export const CharacterDetailModal: React.FC<CharacterDetailModalProps> = ({
       });
 
       if (result.success && result.path) {
-        // 同时更新视频路径和任务 ID（任务 ID 用于后续角色提取）
-        const updated = {
-          ...editedCharacter,
-          previewVideoPath: result.path,
-          previewVideoTaskId: result.taskId,
-        };
+        const updated = updateCharacterMedia(editedCharacter, {
+          previewVideo: createStoredMediaAsset('video', {
+            localPath: result.path,
+            providerTaskId: result.taskId,
+          }),
+        });
         setEditedCharacter(updated);
         onUpdate(updated);
         message.success('预览视频生成完成');
@@ -294,7 +302,9 @@ export const CharacterDetailModal: React.FC<CharacterDetailModalProps> = ({
       const destPath = await getAssetPath('preview.mp4');
       await fsCopy(result.filePaths[0], destPath);
 
-      const updated = { ...editedCharacter, previewVideoPath: destPath };
+      const updated = updateCharacterMedia(editedCharacter, {
+        previewVideo: createStoredMediaAsset('video', { localPath: destPath }),
+      });
       setEditedCharacter(updated);
       onUpdate(updated);
 
@@ -316,7 +326,7 @@ export const CharacterDetailModal: React.FC<CharacterDetailModalProps> = ({
   const handleExtractCharacter = useCallback(async () => {
     if (!editedCharacter) return;
 
-    if (!editedCharacter.previewVideoPath) {
+    if (!getCharacterPreviewVideoSource(editedCharacter)) {
       message.warning('请先生成或上传预览视频');
       return;
     }
@@ -430,13 +440,16 @@ export const CharacterDetailModal: React.FC<CharacterDetailModalProps> = ({
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  cursor: editedCharacter.costumePhotoPath ? 'pointer' : 'default',
+                  cursor: getCharacterCostumePhotoSource(editedCharacter) ? 'pointer' : 'default',
                 }}
-                onClick={() => editedCharacter.costumePhotoPath && setPreviewImage(toLocalUrl(editedCharacter.costumePhotoPath))}
+                onClick={() => {
+                  const costumePhotoSource = getCharacterCostumePhotoSource(editedCharacter);
+                  if (costumePhotoSource) setPreviewImage(toLocalUrl(costumePhotoSource));
+                }}
               >
-                {editedCharacter.costumePhotoPath ? (
+                {getCharacterCostumePhotoSource(editedCharacter) ? (
                   <img
-                    src={toLocalUrl(editedCharacter.costumePhotoPath)}
+                    src={toLocalUrl(getCharacterCostumePhotoSource(editedCharacter))}
                     alt="定妆照"
                     style={{ width: '100%', height: '100%', objectFit: 'contain' }}
                   />
@@ -450,7 +463,7 @@ export const CharacterDetailModal: React.FC<CharacterDetailModalProps> = ({
                   onClick={handleGenerateCostume}
                   disabled={generating !== null}
                 >
-                  {editedCharacter.costumePhotoPath ? '重新生成' : '生成'}
+                  {getCharacterCostumePhotoSource(editedCharacter) ? '重新生成' : '生成'}
                 </Button>
                 <Button icon={<UploadOutlined />} onClick={handleUploadCostume} disabled={generating !== null}>
                   上传
@@ -527,9 +540,9 @@ export const CharacterDetailModal: React.FC<CharacterDetailModalProps> = ({
                 justifyContent: 'center',
               }}
             >
-              {editedCharacter.previewVideoPath ? (
+              {getCharacterPreviewVideoSource(editedCharacter) ? (
                 <video
-                  src={toLocalUrl(editedCharacter.previewVideoPath)}
+                  src={toLocalUrl(getCharacterPreviewVideoSource(editedCharacter))}
                   controls
                   style={{ width: '100%', height: '100%', objectFit: 'contain' }}
                 />
@@ -541,9 +554,9 @@ export const CharacterDetailModal: React.FC<CharacterDetailModalProps> = ({
               <Button
                 icon={generating === 'video' ? <LoadingOutlined /> : <PlayCircleOutlined />}
                 onClick={handleGenerateVideo}
-                disabled={generating !== null || !editedCharacter.costumePhotoPath}
+                disabled={generating !== null || !getCharacterCostumePhotoSource(editedCharacter)}
               >
-                {editedCharacter.previewVideoPath ? '重新生成' : '生成'}
+                {getCharacterPreviewVideoSource(editedCharacter) ? '重新生成' : '生成'}
               </Button>
               <Button icon={<UploadOutlined />} onClick={handleUploadVideo} disabled={generating !== null}>
                 上传
@@ -632,7 +645,7 @@ export const CharacterDetailModal: React.FC<CharacterDetailModalProps> = ({
               style={{ marginTop: 8 }}
               icon={generating === 'extract' ? <LoadingOutlined /> : <LinkOutlined />}
               onClick={handleExtractCharacter}
-              disabled={generating !== null || !editedCharacter.previewVideoPath}
+              disabled={generating !== null || !getCharacterPreviewVideoSource(editedCharacter)}
             >
               {editedCharacter.sora2CharacterId ? '重新提取' : '提取角色'}
             </Button>

@@ -8,11 +8,17 @@ import type { PollingConfig } from './polling';
 export type { PollingConfig } from './polling';
 export { DEFAULT_POLLING_CONFIG } from './polling';
 
+export const MEDIA_PROVIDER_CONTRACT_VERSION = 'media-request-v1';
+
 // 渠道类型
 export type ChannelKind = 'tti' | 'itv' | 'tts' | 'image-hosting';
 
 // 渠道能力
 export type ChannelCapability = 'tti' | 'itv' | 'tts' | 'character-extract' | 'remix' | 'image-hosting';
+
+export function requiresMediaContractVersion(kind: ChannelKind): boolean {
+  return kind === 'tti' || kind === 'itv' || kind === 'tts';
+}
 
 // Provider 上下文
 export interface ProviderContext {
@@ -32,6 +38,7 @@ export interface ProviderDefinition<T> {
   name: string;              // 显示名称
   description?: string;      // 描述
   factory: (config: Record<string, any>, ctx: ProviderContext) => T;
+  contractVersion?: string;
   capabilities?: ChannelCapability[];
   pluginId?: string;         // 关联插件 ID
   configSchema?: Record<string, any>;  // JSON Schema for UI

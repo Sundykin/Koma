@@ -18,6 +18,7 @@ import type {
   TTIProvider,
   ITVProvider,
 } from '@koma/plugin-sdk';
+import { MEDIA_PROVIDER_CONTRACT_VERSION } from '@koma/plugin-sdk';
 
 // 使用全局变量（类型安全）
 const React = window.React;
@@ -38,6 +39,20 @@ const { SaveOutlined } = window['@ant-design/icons'];
 - `ProviderContext` - Provider 上下文
 - `ChannelKind` - 渠道类型 ('tti' | 'itv' | 'tts')
 - `PollingConfig` - 轮询配置
+- `MEDIA_PROVIDER_CONTRACT_VERSION` - 媒体 Provider 契约版本常量（注册时用于 `contractVersion` 校验）
+
+媒体 Provider (`tti` / `itv` / `tts`) 注册时建议显式声明契约版本：
+
+```typescript
+const providerDef: ProviderDefinition = {
+  type: 'my-provider',
+  kind: 'tti',
+  name: 'My Provider',
+  contractVersion: MEDIA_PROVIDER_CONTRACT_VERSION,
+  factory: (config, ctx) => new MyProvider(config, ctx),
+  capabilities: ['tti'],
+};
+```
 
 ### TTI Provider
 - `TTIProvider` - 文生图 Provider 接口

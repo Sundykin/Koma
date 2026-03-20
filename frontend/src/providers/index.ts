@@ -47,6 +47,7 @@ export type {
   ProviderDefinition,
   ProviderContext,
 } from './registry.types';
+export { MEDIA_PROVIDER_CONTRACT_VERSION } from './registry.types';
 
 // Registry 函数使用静态导出
 export {
@@ -63,9 +64,9 @@ export type { LLMProvider, ChatMessage } from './llm/types';
 export { createTTIProvider, ComfyUIProvider } from './tti';
 export type { TTIProvider, ImageResult, TTIOptions } from './tti/types';
 export { createTTSProvider } from './tts';
-export type { TTSProvider, AudioResult, TTSOptions } from './tts/types';
+export type { TTSProvider, TTSRequest, AudioResult, TTSOptions } from './tts/types';
 export { createITVProvider as createITVProviderFromConfig } from './itv';
-export type { ITVProvider, ProgressInfo, ITVOptions } from './itv/types';
+export type { ITVProvider, ITVRequest, ITVResult, ProgressInfo, ITVOptions } from './itv/types';
 
 // ========== 从 AppSettings 创建 Provider ==========
 

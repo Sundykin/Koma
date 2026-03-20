@@ -4,6 +4,11 @@
 import { electronService } from '../../services/electronService';
 import type { Character, Scene, Shot } from '../../types';
 import { getProjectPath } from './core';
+import {
+  normalizeCharactersMediaState,
+  normalizeScenesMediaState,
+  normalizeShotsMediaState,
+} from './mediaState';
 
 export async function loadCharacters(projectId: string): Promise<Character[]> {
   if (!electronService.isElectron()) return [];
@@ -13,7 +18,7 @@ export async function loadCharacters(projectId: string): Promise<Character[]> {
     if (!exists) return [];
     const data = await electronService.fs.readFile(`${projectPath}/characters.json`);
     const raw = JSON.parse(data);
-    return Array.isArray(raw) ? raw.filter(Boolean) : [];
+    return Array.isArray(raw) ? normalizeCharactersMediaState(raw.filter(Boolean)) : [];
   } catch {
     return [];
   }
@@ -24,7 +29,7 @@ export async function saveCharacters(projectId: string, characters: Character[])
   const projectPath = await getProjectPath(projectId);
   await electronService.fs.writeFile(
     `${projectPath}/characters.json`,
-    JSON.stringify(characters, null, 2)
+    JSON.stringify(normalizeCharactersMediaState(characters), null, 2)
   );
 }
 
@@ -36,7 +41,7 @@ export async function loadScenes(projectId: string): Promise<Scene[]> {
     if (!exists) return [];
     const data = await electronService.fs.readFile(`${projectPath}/scenes.json`);
     const raw = JSON.parse(data);
-    return Array.isArray(raw) ? raw.filter(Boolean) : [];
+    return Array.isArray(raw) ? normalizeScenesMediaState(raw.filter(Boolean)) : [];
   } catch {
     return [];
   }
@@ -47,7 +52,7 @@ export async function saveScenes(projectId: string, scenes: Scene[]): Promise<vo
   const projectPath = await getProjectPath(projectId);
   await electronService.fs.writeFile(
     `${projectPath}/scenes.json`,
-    JSON.stringify(scenes, null, 2)
+    JSON.stringify(normalizeScenesMediaState(scenes), null, 2)
   );
 }
 
@@ -60,7 +65,7 @@ export async function loadShots(projectId: string): Promise<Shot[]> {
     if (!exists) return [];
     const data = await electronService.fs.readFile(filePath);
     const raw = JSON.parse(data);
-    return Array.isArray(raw) ? raw.filter(Boolean) : [];
+    return Array.isArray(raw) ? normalizeShotsMediaState(raw.filter(Boolean)) : [];
   } catch {
     return [];
   }
@@ -71,6 +76,6 @@ export async function saveShots(projectId: string, shots: Shot[]): Promise<void>
   const projectPath = await getProjectPath(projectId);
   await electronService.fs.writeFile(
     `${projectPath}/shots.json`,
-    JSON.stringify(shots, null, 2)
+    JSON.stringify(normalizeShotsMediaState(shots), null, 2)
   );
 }

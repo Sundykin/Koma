@@ -4,6 +4,11 @@
 import { electronService } from '../../services/electronService';
 import type { ShotVersion, ShotMeta } from '../../types';
 import { getProjectPath } from './core';
+import { persistMediaAsset } from '../../services/mediaPersistenceService';
+import {
+  normalizeShotVersionMediaState,
+  normalizeShotVersionsMediaState,
+} from './mediaState';
 
 export async function saveShotVersion(
   projectId: string,
@@ -42,48 +47,70 @@ export async function saveShotVersion(
   const versionPath = `${shotPath}/versions/v${newVersion}`;
   await electronService.fs.mkdir(versionPath);
 
-  const shotVersion: ShotVersion = {
-    version: newVersion,
-    imagePath: version.imagePath
-      ? `${versionPath}/image.png`
-      : undefined,
-    videoPath: version.videoPath
-      ? `${versionPath}/video.mp4`
-      : undefined,
-    audioPath: version.audioPath
-      ? `${versionPath}/audio.mp3`
-      : undefined,
-    remoteImageUrl: version.remoteImageUrl,
-    remoteVideoUrl: version.remoteVideoUrl,
-    prompt: version.prompt,
-    seed: version.seed,
-    model: version.model,
+  const normalizedInput = normalizeShotVersionMediaState({
+    version: 0,
+    ...version,
     createdAt: Date.now(),
-  };
+  });
 
-  const isRemoteUrl = (path: string) => path.startsWith('http://') || path.startsWith('https://');
+  const persistedMedia: NonNullable<ShotVersion['media']> = {};
 
-  if (version.imagePath) {
-    if (isRemoteUrl(version.imagePath)) {
-      await electronService.fs.downloadFile(version.imagePath, shotVersion.imagePath!);
-    } else {
-      await electronService.fs.copy(version.imagePath, shotVersion.imagePath!);
-    }
+  if (normalizedInput.media?.image) {
+    persistedMedia.image = await persistMediaAsset({
+      projectId,
+      kind: 'image',
+      source: normalizedInput.media.image,
+      destPath: `${versionPath}/image.png`,
+      ownerRef: {
+        projectId,
+        ownerType: 'shot-version',
+        ownerId: shotId,
+        slot: 'image',
+        versionId: `v${newVersion}`,
+      },
+    });
   }
-  if (version.videoPath) {
-    if (isRemoteUrl(version.videoPath)) {
-      await electronService.fs.downloadFile(version.videoPath, shotVersion.videoPath!);
-    } else {
-      await electronService.fs.copy(version.videoPath, shotVersion.videoPath!);
-    }
+
+  if (normalizedInput.media?.video) {
+    persistedMedia.video = await persistMediaAsset({
+      projectId,
+      kind: 'video',
+      source: normalizedInput.media.video,
+      destPath: `${versionPath}/video.mp4`,
+      ownerRef: {
+        projectId,
+        ownerType: 'shot-version',
+        ownerId: shotId,
+        slot: 'video',
+        versionId: `v${newVersion}`,
+      },
+    });
   }
-  if (version.audioPath) {
-    if (isRemoteUrl(version.audioPath)) {
-      await electronService.fs.downloadFile(version.audioPath, shotVersion.audioPath!);
-    } else {
-      await electronService.fs.copy(version.audioPath, shotVersion.audioPath!);
-    }
+
+  if (normalizedInput.media?.audio) {
+    persistedMedia.audio = await persistMediaAsset({
+      projectId,
+      kind: 'audio',
+      source: normalizedInput.media.audio,
+      destPath: `${versionPath}/audio.mp3`,
+      ownerRef: {
+        projectId,
+        ownerType: 'shot-version',
+        ownerId: shotId,
+        slot: 'audio',
+        versionId: `v${newVersion}`,
+      },
+    });
   }
+
+  const shotVersion = normalizeShotVersionMediaState({
+    version: newVersion,
+    media: persistedMedia,
+    prompt: normalizedInput.prompt,
+    seed: normalizedInput.seed,
+    model: normalizedInput.model,
+    createdAt: Date.now(),
+  });
 
   shotMeta.currentVersion = newVersion;
   shotMeta.versions.push(shotVersion);
@@ -113,7 +140,11 @@ export async function loadShotMeta(
     const exists = await electronService.fs.exists(shotMetaPath);
     if (!exists) return null;
     const data = await electronService.fs.readFile(shotMetaPath);
-    return JSON.parse(data);
+    const parsed = JSON.parse(data) as ShotMeta;
+    return {
+      ...parsed,
+      versions: normalizeShotVersionsMediaState(parsed.versions || []),
+    };
   } catch {
     return null;
   }
@@ -136,7 +167,11 @@ export async function listShots(projectId: string): Promise<ShotMeta[]> {
         const exists = await electronService.fs.exists(shotMetaPath);
         if (!exists) continue;
         const data = await electronService.fs.readFile(shotMetaPath);
-        shots.push(JSON.parse(data));
+        const parsed = JSON.parse(data) as ShotMeta;
+        shots.push({
+          ...parsed,
+          versions: normalizeShotVersionsMediaState(parsed.versions || []),
+        });
       } catch {
         // skip invalid
       }

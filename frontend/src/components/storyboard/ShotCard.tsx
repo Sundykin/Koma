@@ -27,13 +27,16 @@ import {
   CloseOutlined,
   PlusOutlined,
 } from '@ant-design/icons';
-import type { Shot, Character, Scene, Prop, ShotVideo } from '../../types';
+import type { Shot, Character, Scene, Prop, StoredMediaAsset } from '../../types';
+import { getMediaAssetSource } from '../../types';
 import { ScriptEditor } from '../../editor';
 import type { MentionItem } from '../../editor';
 import { ImageCardGrid } from '../asset/ImageCardGrid';
 import { VideoCardGrid } from '../asset/VideoCardGrid';
 import { StagePlayer } from '../video/StagePlayer';
 import { electronService } from '../../services/electronService';
+import { persistMediaAsset } from '../../services/mediaPersistenceService';
+import { getProjectPath } from '../../store/projectStore';
 import { SHOT_LAYOUT, COL_ACTION_WIDTH } from '../../constants/storyboardConstants';
 import { AssetSelector } from './components/AssetSelector';
 import './ShotCard.css';
@@ -41,6 +44,7 @@ import './ShotCard.css';
 const { TextArea } = Input;
 
 export interface ShotCardProps {
+  projectId: string;
   shot: Shot;
   index: number;
   totalCount: number;
@@ -63,9 +67,9 @@ export interface ShotCardProps {
   onCharactersChange: (shotId: string, characterIds: string[]) => void;
   onScenesChange?: (shotId: string, sceneIds: string[]) => void;
   onPropsChange?: (shotId: string, propIds: string[]) => void;
-  onReferenceImagesChange?: (shotId: string, images: string[], selectedIndex: number) => void;
-  onImagesChange: (shotId: string, images: string[], selectedIndex: number) => void;
-  onVideosChange: (shotId: string, videos: ShotVideo[], selectedIndex: number) => void;
+  onReferenceImagesChange?: (shotId: string, assets: StoredMediaAsset[], selectedIndex: number) => void;
+  onImagesChange: (shotId: string, assets: StoredMediaAsset[], selectedIndex: number) => void;
+  onVideosChange: (shotId: string, assets: StoredMediaAsset[], selectedIndex: number) => void;
   // 回调拆分：生成 vs 优化，图片 vs 视频
   onGenerateImagePrompt: (shotId: string) => void;
   onGenerateVideoPrompt: (shotId: string) => void;
@@ -84,6 +88,7 @@ export interface ShotCardProps {
 }
 
 export const ShotCard: React.FC<ShotCardProps> = ({
+  projectId,
   shot,
   index,
   totalCount,
@@ -162,52 +167,76 @@ export const ShotCard: React.FC<ShotCardProps> = ({
     onActivate?.(shot.id);
   }, [shot.id, onActivate]);
 
-  // 生成结果图片列表
-  const images = useMemo(() => {
-    if (shot.imagePaths && shot.imagePaths.length > 0) return shot.imagePaths;
-    if (shot.imagePath) return [shot.imagePath];
-    return [];
-  }, [shot.imagePaths, shot.imagePath]);
-
-  const referenceImages = shot.referenceImages || [];
-  const videos = shot.videos || [];
+  const images = shot.media?.images || [];
+  const referenceImages = shot.media?.references || [];
+  const videos = shot.media?.videos || [];
 
   const currentVideo = useMemo(() => {
     if (!videos.length) return null;
-    const idx = shot.currentVideoIndex ?? shot.selectedVideoIndex ?? videos.length - 1;
+    const idx = shot.media?.currentVideoIndex ?? videos.length - 1;
     return videos[idx] || videos[videos.length - 1];
-  }, [videos, shot.currentVideoIndex, shot.selectedVideoIndex]);
+  }, [videos, shot.media?.currentVideoIndex]);
 
   const currentImage = useMemo(() => {
     if (!images.length) return null;
-    return images[shot.currentImageIndex || 0];
-  }, [images, shot.currentImageIndex]);
+    return images[shot.media?.currentImageIndex || 0];
+  }, [images, shot.media?.currentImageIndex]);
 
   // 图片操作
   const handleImageSelect = (idx: number) => onImagesChange(shot.id, images, idx);
   const handleImageAdd = (path: string) => {
-    const newImages = [...images, path];
+    const newImages: StoredMediaAsset[] = [
+      ...images,
+      { kind: 'image', localPath: path, createdAt: Date.now() },
+    ];
     onImagesChange(shot.id, newImages, newImages.length - 1);
   };
   const handleImageDelete = (idx: number) => {
     const newImages = images.filter((_, i) => i !== idx);
-    const newIdx = Math.min(shot.currentImageIndex || 0, newImages.length - 1);
+    const newIdx = Math.min(shot.media?.currentImageIndex || 0, newImages.length - 1);
     onImagesChange(shot.id, newImages, Math.max(0, newIdx));
   };
 
   // 参考图操作
   const handleRefImageSelect = (idx: number) => onReferenceImagesChange?.(shot.id, referenceImages, idx);
-  const handleRefImageAdd = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleRefImageAdd = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const newRefs = [...referenceImages, URL.createObjectURL(file)];
-      onReferenceImagesChange?.(shot.id, newRefs, newRefs.length - 1);
+      if (!electronService.isElectron()) {
+        e.target.value = '';
+        return;
+      }
+
+      const blobUrl = URL.createObjectURL(file);
+      try {
+        const projectPath = await getProjectPath(projectId);
+        const ext = file.name.split('.').pop()?.toLowerCase() || 'png';
+        const destPath = `${projectPath}/assets/shots/${shot.id}/references/${Date.now()}.${ext}`;
+
+        const stored = await persistMediaAsset({
+          projectId,
+          kind: 'image',
+          source: blobUrl,
+          destPath,
+          ownerRef: {
+            projectId,
+            ownerType: 'shot',
+            ownerId: shot.id,
+            slot: 'referenceImage',
+          },
+        });
+
+        const newRefs: StoredMediaAsset[] = [...referenceImages, stored];
+        onReferenceImagesChange?.(shot.id, newRefs, newRefs.length - 1);
+      } finally {
+        URL.revokeObjectURL(blobUrl);
+      }
     }
     e.target.value = '';
   };
   const handleRefImageDelete = (idx: number) => {
     const newRefs = referenceImages.filter((_, i) => i !== idx);
-    const newIdx = Math.min(shot.selectedReferenceIndex || 0, newRefs.length - 1);
+    const newIdx = Math.min(shot.media?.selectedReferenceIndex || 0, newRefs.length - 1);
     onReferenceImagesChange?.(shot.id, newRefs, Math.max(0, newIdx));
   };
 
@@ -215,12 +244,24 @@ export const ShotCard: React.FC<ShotCardProps> = ({
   const handleVideoSelect = (idx: number) => onVideosChange(shot.id, videos, idx);
   const handleVideoDelete = (idx: number) => {
     const newVideos = videos.filter((_, i) => i !== idx);
-    const newIdx = Math.min(shot.currentVideoIndex || 0, newVideos.length - 1);
+    const newIdx = Math.min(shot.media?.currentVideoIndex || 0, newVideos.length - 1);
     onVideosChange(shot.id, newVideos, Math.max(0, newIdx));
   };
 
   // 统一按钮样式
   const actionBtnClass = "w-6 h-6 p-0 text-[11px]";
+
+  const getDisplaySrc = useCallback((asset?: StoredMediaAsset | null): string => {
+    const source = asset ? getMediaAssetSource(asset) : undefined;
+    if (!source) return '';
+    if (source.startsWith('http') || source.startsWith('data:')) {
+      return source;
+    }
+    if (electronService.isElectron()) {
+      return electronService.fs.toLocalUrl(source);
+    }
+    return source;
+  }, []);
 
   return (
     <div
@@ -334,11 +375,15 @@ export const ShotCard: React.FC<ShotCardProps> = ({
                 <div
                   key={idx}
                   className={`relative h-7 w-7 rounded overflow-hidden cursor-pointer border ${
-                    idx === (shot.selectedReferenceIndex || 0) ? 'border-blue-500' : 'border-zinc-600'
+                    idx === (shot.media?.selectedReferenceIndex || 0) ? 'border-blue-500' : 'border-zinc-600'
                   } shadow-lg`}
                   onClick={() => handleRefImageSelect(idx)}
                 >
-                  <img src={electronService.fs.toLocalUrl(img)} className="w-full h-full object-cover" alt="" />
+                  <img
+                    src={getDisplaySrc(img)}
+                    className="w-full h-full object-cover"
+                    alt=""
+                  />
                   <button
                     className="absolute -top-0.5 -right-0.5 w-3 h-3 bg-red-500 text-white text-[7px] rounded-full flex items-center justify-center hover:bg-red-600"
                     onClick={(e) => { e.stopPropagation(); handleRefImageDelete(idx); }}
@@ -375,8 +420,8 @@ export const ShotCard: React.FC<ShotCardProps> = ({
             ) : (
               <div className="w-full h-full">
                 <ImageCardGrid
-                  images={images}
-                  selectedIndex={shot.currentImageIndex || 0}
+                  images={images.map(a => getMediaAssetSource(a) || '').filter(Boolean)}
+                  selectedIndex={shot.media?.currentImageIndex || 0}
                   onSelect={handleImageSelect}
                   onAdd={handleImageAdd}
                   onDelete={handleImageDelete}
@@ -442,8 +487,24 @@ export const ShotCard: React.FC<ShotCardProps> = ({
             ) : (
               <div className="w-full h-full relative">
                 <VideoCardGrid
-                  videos={videos}
-                  selectedIndex={shot.currentVideoIndex || 0}
+                  videos={videos.map(a => ({
+                    path: getMediaAssetSource(a) || '',
+                    url: a.remoteUrl,
+                    thumbnailPath: typeof a.metadata?.thumbnailPath === 'string'
+                      ? a.metadata.thumbnailPath
+                      : undefined,
+                    prompt: typeof a.metadata?.prompt === 'string'
+                      ? a.metadata.prompt
+                      : undefined,
+                    seed: typeof a.metadata?.seed === 'number'
+                      ? a.metadata.seed
+                      : undefined,
+                    model: typeof a.metadata?.model === 'string'
+                      ? a.metadata.model
+                      : undefined,
+                    createdAt: a.createdAt,
+                  }))}
+                  selectedIndex={shot.media?.currentVideoIndex || 0}
                   onSelect={handleVideoSelect}
                   onDelete={handleVideoDelete}
                   isGenerating={isGeneratingVideo}
@@ -477,9 +538,9 @@ export const ShotCard: React.FC<ShotCardProps> = ({
       >
         <div className="aspect-video bg-black rounded overflow-hidden">
           <StagePlayer
-            videoPath={currentVideo?.path}
-            videoUrl={currentVideo?.url}
-            poster={currentImage ? electronService.fs.toLocalUrl(currentImage) : undefined}
+            videoPath={getMediaAssetSource(currentVideo || undefined)}
+            videoUrl={currentVideo?.remoteUrl}
+            poster={currentImage ? getDisplaySrc(currentImage) : undefined}
           />
         </div>
       </Modal>

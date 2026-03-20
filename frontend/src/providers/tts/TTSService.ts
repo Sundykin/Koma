@@ -5,6 +5,13 @@
 import type { AudioResult, Character } from '../../types';
 import { getProjectTTSProvider } from '../index';
 import { electronService } from '../../services/electronService';
+import { persistMediaAsset } from '../../services/mediaPersistenceService';
+import type { TTSRequest } from './types';
+import {
+  isBlobUri,
+  isDataUri,
+  isRemoteMediaUri,
+} from '../../types';
 
 // TTS 缓存条目
 interface TTSCacheEntry {
@@ -100,6 +107,12 @@ class TTSCacheManager {
     return Math.abs(hash).toString(16);
   }
 
+  getCachePath(text: string, voiceId: string, extension: string): string | undefined {
+    if (!this.cacheDir) return undefined;
+    const hash = this.generateHash(text, voiceId);
+    return `${this.cacheDir}/${hash}.${extension}`;
+  }
+
   async get(text: string, voiceId: string): Promise<TTSCacheEntry | null> {
     const hash = this.generateHash(text, voiceId);
     const entry = this.cache.get(hash);
@@ -185,8 +198,10 @@ export class TTSService {
   private cacheManager = new TTSCacheManager();
   private voiceManager = new CharacterVoiceManager();
   private ttsConfigId?: string;
+  private projectId?: string;
 
   async init(projectId: string, ttsConfigId?: string): Promise<void> {
+    this.projectId = projectId;
     this.ttsConfigId = ttsConfigId;
     await this.cacheManager.init(projectId);
   }
@@ -216,7 +231,7 @@ export class TTSService {
       throw new Error('未配置 TTS 服务');
     }
 
-    const effectiveVoiceId = voiceId || provider.config?.defaultVoice || 'default';
+    const effectiveVoiceId = await this.resolveVoiceId(provider, voiceId);
 
     // 检查缓存
     if (useCache) {
@@ -231,14 +246,22 @@ export class TTSService {
     }
 
     // 调用 Provider
-    const result = await provider.synthesize(text, effectiveVoiceId);
+    const request: TTSRequest = {
+      text,
+      voiceId: effectiveVoiceId,
+    };
+    const started = await provider.start(request);
+    const result = started.mode === 'immediate'
+      ? started.output
+      : await this.pollAsyncTTS(provider, started.taskId);
+    const normalizedResult = await this.persistAudioResult(text, effectiveVoiceId, result);
 
     // 存入缓存
     if (useCache) {
-      await this.cacheManager.set(text, effectiveVoiceId, result.path, result.duration);
+      await this.cacheManager.set(text, effectiveVoiceId, normalizedResult.path, normalizedResult.duration);
     }
 
-    return result;
+    return normalizedResult;
   }
 
   /**
@@ -289,6 +312,91 @@ export class TTSService {
    */
   async clearCache(): Promise<void> {
     await this.cacheManager.clear();
+  }
+
+  private async resolveVoiceId(
+    provider: NonNullable<Awaited<ReturnType<typeof getProjectTTSProvider>>>,
+    preferredVoiceId?: string
+  ): Promise<string> {
+    if (preferredVoiceId) {
+      return preferredVoiceId;
+    }
+
+    if (provider.config?.defaultVoice) {
+      return provider.config.defaultVoice;
+    }
+
+    const voices = await provider.listVoices();
+    return voices[0]?.id || 'default';
+  }
+
+  private async persistAudioResult(
+    text: string,
+    voiceId: string,
+    result: AudioResult
+  ): Promise<AudioResult> {
+    if (!electronService.isElectron() || !this.projectId) {
+      return result;
+    }
+
+    const needsPersistence = (
+      isRemoteMediaUri(result.path) ||
+      isDataUri(result.path) ||
+      isBlobUri(result.path)
+    );
+
+    if (!needsPersistence) {
+      const exists = await electronService.fs.exists(result.path);
+      if (exists) {
+        return result;
+      }
+    }
+
+    const extension = result.format || (result.path.endsWith('.wav') ? 'wav' : 'mp3');
+    const cachePath = this.cacheManager.getCachePath(text, voiceId, extension);
+
+    const persisted = await persistMediaAsset({
+      projectId: this.projectId,
+      kind: 'audio',
+      source: result.path,
+      destPath: cachePath,
+      mimeType: result.format === 'wav' ? 'audio/wav' : 'audio/mpeg',
+      metadata: {
+        sampleRate: result.sampleRate,
+      },
+    });
+
+    return {
+      ...result,
+      path: persisted.localPath || result.path,
+      format: result.format || extension,
+    };
+  }
+
+  private async pollAsyncTTS(
+    provider: NonNullable<Awaited<ReturnType<typeof getProjectTTSProvider>>>,
+    taskId: string
+  ): Promise<AudioResult> {
+    if (!provider.getTaskSnapshot) {
+      throw new Error('TTS Provider 不支持异步任务查询');
+    }
+
+    const startTime = Date.now();
+    const maxMs = 5 * 60 * 1000;
+    const intervalMs = 1500;
+
+    while (Date.now() - startTime < maxMs) {
+      const snapshot = await provider.getTaskSnapshot(taskId);
+      if (snapshot.state === 'succeeded' && snapshot.output) {
+        return snapshot.output;
+      }
+      if (snapshot.state === 'failed') {
+        throw new Error(snapshot.error || '语音合成失败');
+      }
+      await new Promise(resolve => setTimeout(resolve, intervalMs));
+    }
+
+    throw new Error('语音合成超时');
   }
 }
 

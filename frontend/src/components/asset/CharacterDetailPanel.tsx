@@ -47,6 +47,11 @@ import { getStorageConfig, initStorageConfig } from '../../store/storageConfig';
 import { saveCharacters, loadCharacters } from '../../store/projectStore';
 import { useActiveConfig } from '../../hooks/useActiveConfig';
 import { uploadLocalFileToImageHosting, getImageHostingConfig } from '../../services/imageHostingService';
+import { createStoredMediaAsset, updateCharacterMedia } from '../../utils/mediaAssets';
+import {
+  getCharacterCostumePhotoSource,
+  getCharacterPreviewVideoSource,
+} from '../../utils/mediaSelectors';
 
 const { TextArea } = Input;
 const { Text } = Typography;
@@ -173,12 +178,18 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
       });
 
       if (result.success && result.path) {
-        const updated = {
-          ...editedCharacter,
-          ...currentValues,
-          costumePhotoPath: result.path,
-          costumePhotoUrl: result.url,
-        };
+        const updated = updateCharacterMedia(
+          {
+            ...editedCharacter,
+            ...currentValues,
+          },
+          {
+            costumePhoto: createStoredMediaAsset('image', {
+              localPath: result.path,
+              remoteUrl: result.url,
+            }),
+          }
+        );
         setEditedCharacter(updated);
         onUpdate(updated);
         const characters = await loadCharacters(projectId);
@@ -209,7 +220,9 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
       const destPath = await getAssetPath('costume.png');
       await fsCopy(result.filePaths[0], destPath);
 
-      let updated: Character = { ...editedCharacter, costumePhotoPath: destPath };
+      let updated: Character = updateCharacterMedia(editedCharacter, {
+        costumePhoto: createStoredMediaAsset('image', { localPath: destPath }),
+      });
 
       // 检测图床配置，自动上传
       const imageHostingConfig = await getImageHostingConfig();
@@ -217,7 +230,13 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
         message.loading({ content: t('asset.uploadToHosting'), key: 'imageHosting' });
         const uploadResult = await uploadLocalFileToImageHosting(destPath);
         if (uploadResult.success && uploadResult.url) {
-          updated.costumePhotoUrl = uploadResult.url;
+          updated = updateCharacterMedia(updated, {
+            costumePhoto: createStoredMediaAsset('image', {
+              localPath: destPath,
+              remoteUrl: uploadResult.url,
+              createdAt: updated.media?.costumePhoto?.createdAt,
+            }),
+          });
           message.success({ content: t('asset.uploadHostingSuccess'), key: 'imageHosting' });
         } else {
           logger.warn('图床上传失败:', uploadResult.error);
@@ -242,7 +261,7 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
   }, [editedCharacter, getAssetPath, projectId, onUpdate, message, t]);
 
   const handleGenerateVideo = useCallback(async () => {
-    if (!editedCharacter.costumePhotoPath) {
+    if (!getCharacterCostumePhotoSource(editedCharacter)) {
       message.warning(t('asset.pleaseGenerateCostumeFirst'));
       return;
     }
@@ -265,11 +284,12 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
       });
 
       if (result.success && result.path) {
-        const updated = {
-          ...editedCharacter,
-          previewVideoPath: result.path,
-          previewVideoTaskId: result.taskId,
-        };
+        const updated = updateCharacterMedia(editedCharacter, {
+          previewVideo: createStoredMediaAsset('video', {
+            localPath: result.path,
+            providerTaskId: result.taskId,
+          }),
+        });
         setEditedCharacter(updated);
         onUpdate(updated);
         const characters = await loadCharacters(projectId);
@@ -300,7 +320,9 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
       const destPath = await getAssetPath('preview.mp4');
       await fsCopy(result.filePaths[0], destPath);
 
-      const updated = { ...editedCharacter, previewVideoPath: destPath };
+      const updated = updateCharacterMedia(editedCharacter, {
+        previewVideo: createStoredMediaAsset('video', { localPath: destPath }),
+      });
       setEditedCharacter(updated);
       onUpdate(updated);
 
@@ -318,7 +340,7 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
   }, [editedCharacter, getAssetPath, projectId, onUpdate, message, t]);
 
   const handleExtractCharacter = useCallback(async () => {
-    if (!editedCharacter.previewVideoPath) {
+    if (!getCharacterPreviewVideoSource(editedCharacter)) {
       message.warning(t('asset.pleaseGenerateVideoFirst'));
       return;
     }
@@ -442,7 +464,7 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
               activeTTI ? `${t('asset.useService')}: ${activeTTI.name}` : t('asset.noGenerateService')
             }>
               <Button
-                type={!editedCharacter.costumePhotoPath ? 'primary' : 'default'}
+                type={!getCharacterCostumePhotoSource(editedCharacter) ? 'primary' : 'default'}
                 block
                 icon={<ThunderboltOutlined />}
                 onClick={handleGenerateCostume}
@@ -455,16 +477,16 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
 
             <Tooltip title={
               generating !== null ? t('asset.generatingPleaseWait') :
-              !editedCharacter.costumePhotoPath ? t('asset.needCostumePhotoFirst') :
+              !getCharacterCostumePhotoSource(editedCharacter) ? t('asset.needCostumePhotoFirst') :
               activeITV ? `${t('asset.useService')}: ${activeITV.name}` : t('asset.noVideoService')
             }>
               <Button
-                type={editedCharacter.costumePhotoPath && !editedCharacter.previewVideoPath ? 'primary' : 'default'}
+                type={getCharacterCostumePhotoSource(editedCharacter) && !getCharacterPreviewVideoSource(editedCharacter) ? 'primary' : 'default'}
                 block
                 icon={<PlayCircleOutlined />}
                 onClick={handleGenerateVideo}
                 loading={generating === 'video'}
-                disabled={generating !== null || !editedCharacter.costumePhotoPath}
+                disabled={generating !== null || !getCharacterCostumePhotoSource(editedCharacter)}
               >
                 {t('asset.generatePreviewVideo')}
               </Button>
@@ -493,7 +515,7 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
             ) : (
               <Tooltip title={
                 generating !== null ? t('asset.generatingPleaseWait') :
-                !editedCharacter.previewVideoPath ? t('asset.needPreviewVideoFirst') :
+                !getCharacterPreviewVideoSource(editedCharacter) ? t('asset.needPreviewVideoFirst') :
                 t('asset.extractAndBindCharacter')
               }>
                 <Button
@@ -503,7 +525,7 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
                   icon={<LinkOutlined />}
                   loading={generating === 'extract'}
                   onClick={handleExtractCharacter}
-                  disabled={!editedCharacter.previewVideoPath || generating !== null}
+                  disabled={!getCharacterPreviewVideoSource(editedCharacter) || generating !== null}
                 >
                   {t('asset.extractAndBindCharacter')}
                 </Button>
@@ -522,18 +544,19 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
             </Tooltip>
             <Tooltip title={
               viewMode === 'video' ? t('asset.switchToCostumeMode') :
-              !editedCharacter.costumePhotoPath ? t('asset.noCostumePhoto') :
+              !getCharacterCostumePhotoSource(editedCharacter) ? t('asset.noCostumePhoto') :
               t('asset.enlargePreview')
             }>
               <Button
                 type="text"
                 icon={<ExpandOutlined />}
                 onClick={() => {
-                  if (viewMode === 'costume' && editedCharacter.costumePhotoPath) {
-                    setPreviewImage(toLocalUrl(editedCharacter.costumePhotoPath));
+                  const costumePhotoSource = getCharacterCostumePhotoSource(editedCharacter);
+                  if (viewMode === 'costume' && costumePhotoSource) {
+                    setPreviewImage(toLocalUrl(costumePhotoSource));
                   }
                 }}
-                disabled={viewMode === 'video' || !editedCharacter.costumePhotoPath}
+                disabled={viewMode === 'video' || !getCharacterCostumePhotoSource(editedCharacter)}
                 aria-label={t('asset.enlargePreview')}
               />
             </Tooltip>
@@ -543,12 +566,12 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
         <div className="creatorCanvasBody">
           {viewMode === 'costume' ? (
             <div className="creatorMediaViewer">
-              {editedCharacter.costumePhotoPath ? (
+              {getCharacterCostumePhotoSource(editedCharacter) ? (
                 <img
-                  src={toLocalUrl(editedCharacter.costumePhotoPath)}
+                  src={toLocalUrl(getCharacterCostumePhotoSource(editedCharacter))}
                   alt={t('asset.costumePhoto')}
                   style={{ cursor: 'pointer' }}
-                  onDoubleClick={() => setPreviewImage(toLocalUrl(editedCharacter.costumePhotoPath))}
+                  onDoubleClick={() => setPreviewImage(toLocalUrl(getCharacterCostumePhotoSource(editedCharacter)))}
                 />
               ) : (
                 <div className="creatorMediaPlaceholder">
@@ -559,8 +582,8 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
             </div>
           ) : (
             <div className="creatorMediaViewer">
-              {editedCharacter.previewVideoPath ? (
-                <video src={toLocalUrl(editedCharacter.previewVideoPath)} controls autoPlay loop />
+              {getCharacterPreviewVideoSource(editedCharacter) ? (
+                <video src={toLocalUrl(getCharacterPreviewVideoSource(editedCharacter))} controls autoPlay loop />
               ) : (
                 <div className="creatorMediaPlaceholder">
                   <PlayCircleOutlined />

@@ -22,6 +22,7 @@ import {
 import type { Character, Prop } from '../../types';
 import type { PresetAssets } from '../../services/ShotAnalysisService';
 import { electronService } from '../../services/electronService';
+import { getMediaAssetSource } from '../../types';
 
 const { Text } = Typography;
 
@@ -101,7 +102,11 @@ export const ShotAssetPresetModal: React.FC<ShotAssetPresetModalProps> = ({
     }
   };
 
-  const toLocalUrl = (path?: string) => path ? electronService.fs.toLocalUrl(path) : '';
+  const toAssetUrl = (path?: string) => {
+    if (!path) return '';
+    if (/^https?:\/\//i.test(path) || path.startsWith('data:') || path.startsWith('blob:')) return path;
+    return electronService.fs.toLocalUrl(path);
+  };
 
   const renderAssetCard = (
     id: string,
@@ -151,7 +156,7 @@ export const ShotAssetPresetModal: React.FC<ShotAssetPresetModalProps> = ({
       >
         {imagePath ? (
           <Image
-            src={toLocalUrl(imagePath)}
+            src={toAssetUrl(imagePath)}
             alt={name}
             preview={false}
             style={{ width: '100%', height: '100%', objectFit: 'cover' }}
@@ -217,7 +222,7 @@ export const ShotAssetPresetModal: React.FC<ShotAssetPresetModalProps> = ({
                 {renderAssetCard(
                   char.sora2CharacterId!,
                   char.name,
-                  char.costumePhotoPath,
+                  getMediaAssetSource(char.media?.costumePhoto),
                   selectedCharacterIds.includes(char.sora2CharacterId!),
                   () => handleCharacterToggle(char.sora2CharacterId!)
                 )}
@@ -264,7 +269,7 @@ export const ShotAssetPresetModal: React.FC<ShotAssetPresetModalProps> = ({
                 {renderAssetCard(
                   prop.sora2PropId!,
                   prop.name,
-                  prop.imagePath,
+                  getMediaAssetSource(prop.media?.previewImage),
                   selectedPropIds.includes(prop.sora2PropId!),
                   () => handlePropToggle(prop.sora2PropId!)
                 )}

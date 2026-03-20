@@ -202,14 +202,12 @@ export async function markTaskProcessing(
 export async function markTaskCompleted(
   projectId: string,
   taskId: string,
-  resultUrl: string,
-  localPath?: string
+  resultAsset?: AsyncTask['resultAsset']
 ): Promise<AsyncTask | null> {
   return updateTask(projectId, taskId, {
     status: 'completed',
     progress: 100,
-    resultUrl,
-    localPath,
+    resultAsset,
   });
 }
 

@@ -40,6 +40,11 @@ import {
 import { electronService, openFileDialog, fsCopy, fsMkdir, fsExists } from '../../services/electronService';
 import { getStorageConfig, initStorageConfig } from '../../store/storageConfig';
 import { saveProps, loadProps } from '../../store/projectStore';
+import { createStoredMediaAsset, updatePropMedia } from '../../utils/mediaAssets';
+import {
+  getPropPreviewImageSource,
+  getPropPreviewVideoSource,
+} from '../../utils/mediaSelectors';
 
 const { TextArea } = Input;
 const { Text } = Typography;
@@ -165,11 +170,12 @@ export const PropDetailModal: React.FC<PropDetailModalProps> = ({
       });
 
       if (result.success && result.path) {
-        const updated = {
-          ...editedProp,
-          imagePath: result.path,
-          imageUrl: (result as any).url,
-        };
+        const updated = updatePropMedia(editedProp, {
+          previewImage: createStoredMediaAsset('image', {
+            localPath: result.path,
+            remoteUrl: result.url,
+          }),
+        });
         setEditedProp(updated);
         onUpdate(updated);
         message.success('道具图片生成完成');
@@ -197,7 +203,9 @@ export const PropDetailModal: React.FC<PropDetailModalProps> = ({
       const destPath = await getAssetPath('reference.png');
       await fsCopy(result.filePaths[0], destPath);
 
-      const updated = { ...editedProp, imagePath: destPath };
+      const updated = updatePropMedia(editedProp, {
+        previewImage: createStoredMediaAsset('image', { localPath: destPath }),
+      });
       setEditedProp(updated);
       onUpdate(updated);
 
@@ -218,7 +226,7 @@ export const PropDetailModal: React.FC<PropDetailModalProps> = ({
   const handleGenerateVideo = useCallback(async () => {
     if (!editedProp) return;
 
-    if (!editedProp.imagePath) {
+    if (!getPropPreviewImageSource(editedProp)) {
       message.warning('请先生成或上传道具图片');
       return;
     }
@@ -241,11 +249,12 @@ export const PropDetailModal: React.FC<PropDetailModalProps> = ({
       });
 
       if (result.success && result.path) {
-        const updated = {
-          ...editedProp,
-          previewVideoPath: result.path,
-          previewVideoTaskId: result.taskId,
-        };
+        const updated = updatePropMedia(editedProp, {
+          previewVideo: createStoredMediaAsset('video', {
+            localPath: result.path,
+            providerTaskId: result.taskId,
+          }),
+        });
         setEditedProp(updated);
         onUpdate(updated);
         message.success('预览视频生成完成');
@@ -273,7 +282,9 @@ export const PropDetailModal: React.FC<PropDetailModalProps> = ({
       const destPath = await getAssetPath('preview.mp4');
       await fsCopy(result.filePaths[0], destPath);
 
-      const updated = { ...editedProp, previewVideoPath: destPath };
+      const updated = updatePropMedia(editedProp, {
+        previewVideo: createStoredMediaAsset('video', { localPath: destPath }),
+      });
       setEditedProp(updated);
       onUpdate(updated);
 
@@ -294,7 +305,7 @@ export const PropDetailModal: React.FC<PropDetailModalProps> = ({
   const handleExtractProp = useCallback(async () => {
     if (!editedProp) return;
 
-    if (!editedProp.previewVideoPath) {
+    if (!getPropPreviewVideoSource(editedProp)) {
       message.warning('请先生成或上传预览视频');
       return;
     }
@@ -408,13 +419,16 @@ export const PropDetailModal: React.FC<PropDetailModalProps> = ({
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  cursor: editedProp.imagePath ? 'pointer' : 'default',
+                  cursor: getPropPreviewImageSource(editedProp) ? 'pointer' : 'default',
                 }}
-                onClick={() => editedProp.imagePath && setPreviewImage(toLocalUrl(editedProp.imagePath))}
+                onClick={() => {
+                  const previewImageSource = getPropPreviewImageSource(editedProp);
+                  if (previewImageSource) setPreviewImage(toLocalUrl(previewImageSource));
+                }}
               >
-                {editedProp.imagePath ? (
+                {getPropPreviewImageSource(editedProp) ? (
                   <img
-                    src={toLocalUrl(editedProp.imagePath)}
+                    src={toLocalUrl(getPropPreviewImageSource(editedProp))}
                     alt="道具图"
                     style={{ width: '100%', height: '100%', objectFit: 'contain', padding: 8 }}
                   />
@@ -428,7 +442,7 @@ export const PropDetailModal: React.FC<PropDetailModalProps> = ({
                   onClick={handleGenerateImage}
                   disabled={generating !== null}
                 >
-                  {editedProp.imagePath ? '重新生成' : '生成'}
+                  {getPropPreviewImageSource(editedProp) ? '重新生成' : '生成'}
                 </Button>
                 <Button icon={<UploadOutlined />} onClick={handleUploadImage} disabled={generating !== null}>
                   上传
@@ -525,9 +539,9 @@ export const PropDetailModal: React.FC<PropDetailModalProps> = ({
                 justifyContent: 'center',
               }}
             >
-              {editedProp.previewVideoPath ? (
+              {getPropPreviewVideoSource(editedProp) ? (
                 <video
-                  src={toLocalUrl(editedProp.previewVideoPath)}
+                  src={toLocalUrl(getPropPreviewVideoSource(editedProp))}
                   controls
                   style={{ width: '100%', height: '100%', objectFit: 'contain' }}
                 />
@@ -539,9 +553,9 @@ export const PropDetailModal: React.FC<PropDetailModalProps> = ({
               <Button
                 icon={generating === 'video' ? <LoadingOutlined /> : <PlayCircleOutlined />}
                 onClick={handleGenerateVideo}
-                disabled={generating !== null || !editedProp.imagePath}
+                disabled={generating !== null || !getPropPreviewImageSource(editedProp)}
               >
-                {editedProp.previewVideoPath ? '重新生成' : '生成'}
+                {getPropPreviewVideoSource(editedProp) ? '重新生成' : '生成'}
               </Button>
               <Button icon={<UploadOutlined />} onClick={handleUploadVideo} disabled={generating !== null}>
                 上传
@@ -583,7 +597,7 @@ export const PropDetailModal: React.FC<PropDetailModalProps> = ({
               style={{ marginTop: 8 }}
               icon={generating === 'extract' ? <LoadingOutlined /> : <LinkOutlined />}
               onClick={handleExtractProp}
-              disabled={generating !== null || !editedProp.previewVideoPath}
+              disabled={generating !== null || !getPropPreviewVideoSource(editedProp)}
             >
               {editedProp.sora2PropId ? '重新提取' : '提取道具'}
             </Button>

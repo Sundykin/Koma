@@ -9,6 +9,8 @@ import type { Scene } from '../../types';
 import { generateSceneImage, getScenePrompt } from '../../workflow/scenePropAssetWorkflow';
 import { openFileDialog, fsCopy, fsMkdir, fsExists, electronService } from '../../services/electronService';
 import { getStorageConfig, initStorageConfig } from '../../store/storageConfig';
+import { createStoredMediaAsset } from '../../utils/mediaAssets';
+import { getScenePreviewImageSource } from '../../utils/mediaSelectors';
 
 const { TextArea } = Input;
 const { Text } = Typography;
@@ -59,7 +61,16 @@ export const SceneAssetEditor: React.FC<SceneAssetEditorProps> = ({
       });
 
       if (result.success && result.path) {
-        onUpdate({ imagePath: result.path, imageUrl: (result as any).url, customPrompt: customPrompt || undefined });
+        onUpdate({
+          media: {
+            ...(scene.media || {}),
+            previewImage: createStoredMediaAsset('image', {
+              localPath: result.path,
+              remoteUrl: result.url,
+            }),
+          },
+          customPrompt: customPrompt || undefined,
+        });
         message.success('场景图生成完成');
       } else {
         message.error(result.error || '生成失败');
@@ -86,7 +97,12 @@ export const SceneAssetEditor: React.FC<SceneAssetEditorProps> = ({
       }
       const destPath = `${basePath}/preview.png`;
       await fsCopy(result.filePaths[0], destPath);
-      onUpdate({ imagePath: destPath });
+      onUpdate({
+        media: {
+          ...(scene.media || {}),
+          previewImage: createStoredMediaAsset('image', { localPath: destPath }),
+        },
+      });
       message.success('上传成功');
     } catch (err: any) {
       message.error(`上传失败: ${err.message}`);
@@ -120,7 +136,7 @@ export const SceneAssetEditor: React.FC<SceneAssetEditorProps> = ({
             onClick={handleGenerate}
             disabled={loading}
           >
-            {scene.imagePath ? '重新生成' : '生成'}
+            {getScenePreviewImageSource(scene) ? '重新生成' : '生成'}
           </Button>
           <Button size="small" icon={<UploadOutlined />} onClick={handleUpload} disabled={loading}>
             上传
@@ -149,9 +165,9 @@ export const SceneAssetEditor: React.FC<SceneAssetEditorProps> = ({
           marginBottom: 12,
         }}
       >
-        {scene.imagePath ? (
+        {getScenePreviewImageSource(scene) ? (
           <img
-            src={toLocalUrl(scene.imagePath)}
+            src={toLocalUrl(getScenePreviewImageSource(scene))}
             alt={scene.name}
             style={{ width: '100%', height: '100%', objectFit: 'cover' }}
           />

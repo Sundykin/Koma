@@ -4,7 +4,7 @@
  * API: doubao-seedream-4-0-250828
  */
 
-import type { PluginAPI, ProviderDefinition, ProviderContext } from '@komastudio/plugin-sdk';
+import { MEDIA_PROVIDER_CONTRACT_VERSION, type PluginAPI, type ProviderDefinition, type ProviderContext } from '@komastudio/plugin-sdk';
 
 const React = window.React;
 const { useState, useEffect, useCallback } = React;
@@ -36,7 +36,6 @@ interface SeedreamConfig {
 interface SeedreamOptions {
   width?: number;
   height?: number;
-  imageUrls?: string[];
   imageSize?: string;
 }
 
@@ -205,7 +204,7 @@ class SeedreamTTIProvider {
     }
   }
 
-  async generateImage(prompt: string, options?: SeedreamOptions): Promise<ImageResult> {
+  async start(request: { prompt: string; references?: Array<{ value: string }>; options?: SeedreamOptions }): Promise<{ mode: 'immediate'; output: ImageResult }> {
     const baseUrl = this.getBaseUrl();
     const authHeader = this.getAuthorization();
 
@@ -213,12 +212,12 @@ class SeedreamTTIProvider {
       throw new Error('API Key 未配置');
     }
 
-    const { size, width, height } = resolveSize(this.config, options);
-    const imageInput = options?.imageUrls?.[0];
+    const { size, width, height } = resolveSize(this.config, request.options);
+    const imageInput = request.references?.[0]?.value;
 
     const body: Record<string, any> = {
       model: MODEL_ID,
-      prompt,
+      prompt: request.prompt,
       size,
       sequential_image_generation: 'disabled',
       stream: false,
@@ -258,7 +257,7 @@ class SeedreamTTIProvider {
       throw new Error('返回数据中未找到图像 URL');
     }
 
-    return { path: imageUrl, width, height };
+    return { mode: 'immediate', output: { path: imageUrl, width, height } };
   }
 }
 
@@ -531,6 +530,7 @@ async function onActivate(api: PluginAPI) {
     name: 'Seedream 文生图',
     description: '豆包 Seedream 4.0 文生图/图生图服务',
     factory: (config, ctx) => new SeedreamTTIProvider(config, ctx),
+    contractVersion: MEDIA_PROVIDER_CONTRACT_VERSION,
     capabilities: ['tti'],
     defaultConfig: DEFAULT_CONFIG,
   };

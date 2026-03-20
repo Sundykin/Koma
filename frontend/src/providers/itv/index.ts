@@ -19,7 +19,7 @@ import { Sora2Provider } from './Sora2Provider';
 import { ComfyUIAnimateDiffProvider } from './ComfyUIAnimateDiffProvider';
 import { CustomITVProvider } from './CustomITVProvider';
 import type { ProviderDefinition } from '../registry.types';
-import { DEFAULT_POLLING_CONFIG } from '../registry.types';
+import { DEFAULT_POLLING_CONFIG, MEDIA_PROVIDER_CONTRACT_VERSION } from '../registry.types';
 import { itvRegistry } from '../registry';
 import { safeFetch } from '../../utils/safeFetch';
 
@@ -32,6 +32,7 @@ function registerBuiltinProviders() {
       name: 'Runway',
       description: 'Runway Gen-2 视频生成',
       factory: (config) => new RunwayProvider(config as ITVConfig),
+      contractVersion: MEDIA_PROVIDER_CONTRACT_VERSION,
       capabilities: ['itv'],
       polling: DEFAULT_POLLING_CONFIG,
     },
@@ -41,6 +42,7 @@ function registerBuiltinProviders() {
       name: 'Kling AI',
       description: '快手可灵视频生成',
       factory: (config) => new KlingProvider(config as ITVConfig),
+      contractVersion: MEDIA_PROVIDER_CONTRACT_VERSION,
       capabilities: ['itv'],
       polling: DEFAULT_POLLING_CONFIG,
     },
@@ -50,6 +52,7 @@ function registerBuiltinProviders() {
       name: 'Pika Labs',
       description: 'Pika 视频生成',
       factory: (config) => new PikaProvider(config as ITVConfig),
+      contractVersion: MEDIA_PROVIDER_CONTRACT_VERSION,
       capabilities: ['itv'],
       polling: DEFAULT_POLLING_CONFIG,
     },
@@ -59,6 +62,7 @@ function registerBuiltinProviders() {
       name: 'Sora 2',
       description: 'OpenAI Sora 2 视频生成，支持角色提取',
       factory: (config) => new Sora2Provider(config as ITVConfig),
+      contractVersion: MEDIA_PROVIDER_CONTRACT_VERSION,
       capabilities: ['itv', 'character-extract', 'remix'],
       polling: {
         interval: 5000,
@@ -72,6 +76,7 @@ function registerBuiltinProviders() {
       name: 'ComfyUI AnimateDiff',
       description: '本地 ComfyUI AnimateDiff 视频生成',
       factory: (config) => new ComfyUIAnimateDiffProvider(config as ITVConfig),
+      contractVersion: MEDIA_PROVIDER_CONTRACT_VERSION,
       capabilities: ['itv'],
       polling: {
         interval: 2000,
@@ -85,6 +90,7 @@ function registerBuiltinProviders() {
       name: '自定义',
       description: '自定义视频生成 API（兼容多种接口格式）',
       factory: (config) => new CustomITVProvider(config as ITVConfig),
+      contractVersion: MEDIA_PROVIDER_CONTRACT_VERSION,
       capabilities: ['itv'],
       polling: {
         interval: 5000,

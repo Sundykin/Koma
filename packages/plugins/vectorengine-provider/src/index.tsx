@@ -3,7 +3,7 @@
  * 使用 @komastudio/plugin-sdk 开发
  */
 
-import type { PluginAPI, ProviderDefinition, ProviderContext } from '@komastudio/plugin-sdk';
+import { MEDIA_PROVIDER_CONTRACT_VERSION, type PluginAPI, type ProviderDefinition, type ProviderContext } from '@komastudio/plugin-sdk';
 
 const React = window.React;
 const { useState, useEffect, useCallback } = React;
@@ -93,8 +93,8 @@ class VectorEngineITVProvider {
     }
   }
 
-  async generateVideo(input: { imageUrl?: string; prompt: string; options?: any }): Promise<any> {
-    const { prompt, imageUrl, options } = input;
+  async start(input: { primaryImage: { value: string }; additionalReferences?: Array<{ value: string }>; prompt: string; options?: any }): Promise<{ mode: 'async'; taskId: string }> {
+    const { prompt, primaryImage, additionalReferences, options } = input;
 
     const response = await this.ctx.sandboxedFetch(
       `${this.config.baseUrl}/v1/video/create`,
@@ -105,7 +105,7 @@ class VectorEngineITVProvider {
           'Authorization': `Bearer ${this.config.apiKey}`,
         },
         body: JSON.stringify({
-          images: imageUrl ? [imageUrl] : [],
+          images: [primaryImage?.value, ...(additionalReferences || []).map(r => r.value)].filter(Boolean),
           model: this.config.defaultModel,
           orientation: this.config.defaultOrientation,
           prompt,
@@ -123,31 +123,32 @@ class VectorEngineITVProvider {
     const data = await response.json();
     const taskId = data.id;
 
-    const polling = this.polling;
-    const startTime = Date.now();
-
-    if (polling.initialDelay) {
-      await this.delay(polling.initialDelay);
+    if (!taskId) {
+      throw new Error('任务ID为空');
     }
 
-    while (Date.now() - startTime < polling.maxDuration) {
-      const progress = await this.checkProgress(taskId);
-
-      if (progress.status === 'completed') {
-        return { url: progress.resultUrl, taskId };
-      }
-
-      if (progress.status === 'failed') {
-        throw new Error(progress.error || '生成失败');
-      }
-
-      await this.delay(polling.interval);
-    }
-
-    throw new Error('生成超时');
+    return { mode: 'async', taskId };
   }
 
-  async checkProgress(taskId: string): Promise<any> {
+  async getTaskSnapshot(taskId: string): Promise<any> {
+    const progress = await this.fetchTaskProgress(taskId);
+    const stateMap: Record<string, string> = {
+      queued: 'queued',
+      processing: 'running',
+      completed: 'succeeded',
+      failed: 'failed',
+    };
+
+    const state = stateMap[progress.status] || 'running';
+    return {
+      state,
+      progress: progress.progress,
+      output: (state === 'succeeded' && progress.resultUrl) ? { source: progress.resultUrl, taskId } : undefined,
+      error: progress.error,
+    };
+  }
+
+  private async fetchTaskProgress(taskId: string): Promise<any> {
     const response = await this.ctx.sandboxedFetch(
       `${this.config.baseUrl}/v1/video/query?id=${taskId}`,
       {
@@ -536,6 +537,7 @@ async function onActivate(api: PluginAPI) {
     name: 'VectorEngine (Sora-2)',
     description: 'VectorEngine.ai 视频生成服务 - 支持图生视频和角色提取',
     factory: (config, ctx) => new VectorEngineITVProvider(config, ctx),
+    contractVersion: MEDIA_PROVIDER_CONTRACT_VERSION,
     capabilities: ['itv', 'character-extract'],
     defaultConfig: DEFAULT_CONFIG,
     polling: {

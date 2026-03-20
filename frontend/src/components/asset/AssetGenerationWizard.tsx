@@ -38,6 +38,13 @@ import {
   generateCharacterPreviewVideo,
 } from '../../workflow/characterAssetWorkflow';
 import { generateSceneImage, generatePropImage, generatePropPreviewVideo } from '../../workflow/scenePropAssetWorkflow';
+import {
+  getCharacterCostumePhotoSource,
+  getCharacterPreviewVideoSource,
+  getPropPreviewImageSource,
+  getPropPreviewVideoSource,
+  getScenePreviewImageSource,
+} from '../../utils/mediaSelectors';
 
 const { Text } = Typography;
 
@@ -103,47 +110,51 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
         setCharacters(chars.map(c => ({
           id: c.id,
           name: c.name,
-          selected: !c.costumePhotoPath,
-          status: c.costumePhotoPath ? 'completed' : 'pending',
-          progress: c.costumePhotoPath ? 100 : 0,
-          imagePath: c.costumePhotoPath,
+          selected: !getCharacterCostumePhotoSource(c),
+          status: getCharacterCostumePhotoSource(c) ? 'completed' : 'pending',
+          progress: getCharacterCostumePhotoSource(c) ? 100 : 0,
+          imagePath: getCharacterCostumePhotoSource(c),
         })));
 
         setScenes(scns.map(s => ({
           id: s.id,
           name: s.name,
-          selected: !s.imagePath,
-          status: s.imagePath ? 'completed' : 'pending',
-          progress: s.imagePath ? 100 : 0,
-          imagePath: s.imagePath,
+          selected: !getScenePreviewImageSource(s),
+          status: getScenePreviewImageSource(s) ? 'completed' : 'pending',
+          progress: getScenePreviewImageSource(s) ? 100 : 0,
+          imagePath: getScenePreviewImageSource(s),
         })));
 
         setProps(prps.map(p => ({
           id: p.id,
           name: p.name,
-          selected: !p.imagePath,
-          status: p.imagePath ? 'completed' : 'pending',
-          progress: p.imagePath ? 100 : 0,
-          imagePath: p.imagePath,
+          selected: !getPropPreviewImageSource(p),
+          status: getPropPreviewImageSource(p) ? 'completed' : 'pending',
+          progress: getPropPreviewImageSource(p) ? 100 : 0,
+          imagePath: getPropPreviewImageSource(p),
         })));
 
         // 视频步骤：有定妆照的角色 + 有参考图的道具
-        const charVideos: ItemStatus[] = chars.filter(c => c.costumePhotoPath).map(c => ({
+        const charVideos: ItemStatus[] = chars
+          .filter(c => getCharacterCostumePhotoSource(c))
+          .map(c => ({
           id: c.id,
           name: `[角色] ${c.name}`,
-          selected: !c.previewVideoPath,
-          status: c.previewVideoPath ? 'completed' : 'pending',
-          progress: c.previewVideoPath ? 100 : 0,
-          imagePath: c.previewVideoPath,
+          selected: !getCharacterPreviewVideoSource(c),
+          status: getCharacterPreviewVideoSource(c) ? 'completed' : 'pending',
+          progress: getCharacterPreviewVideoSource(c) ? 100 : 0,
+          imagePath: getCharacterPreviewVideoSource(c),
           sourceType: 'character' as const,
         }));
-        const propVideos: ItemStatus[] = prps.filter(p => p.imagePath).map(p => ({
+        const propVideos: ItemStatus[] = prps
+          .filter(p => getPropPreviewImageSource(p))
+          .map(p => ({
           id: p.id,
           name: `[道具] ${p.name}`,
-          selected: !p.previewVideoPath,
-          status: p.previewVideoPath ? 'completed' : 'pending',
-          progress: p.previewVideoPath ? 100 : 0,
-          imagePath: p.previewVideoPath,
+          selected: !getPropPreviewVideoSource(p),
+          status: getPropPreviewVideoSource(p) ? 'completed' : 'pending',
+          progress: getPropPreviewVideoSource(p) ? 100 : 0,
+          imagePath: getPropPreviewVideoSource(p),
           sourceType: 'prop' as const,
         }));
         setVideoItems([...charVideos, ...propVideos]);
@@ -414,22 +425,26 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
           loadCharacters(project.id),
           loadProps(project.id),
         ]);
-        const charVideos: ItemStatus[] = chars.filter(c => c.costumePhotoPath).map(c => ({
+        const charVideos: ItemStatus[] = chars
+          .filter(c => getCharacterCostumePhotoSource(c))
+          .map(c => ({
           id: c.id,
           name: `[角色] ${c.name}`,
-          selected: !c.previewVideoPath,
-          status: c.previewVideoPath ? 'completed' : 'pending',
-          progress: c.previewVideoPath ? 100 : 0,
-          imagePath: c.previewVideoPath,
+          selected: !getCharacterPreviewVideoSource(c),
+          status: getCharacterPreviewVideoSource(c) ? 'completed' : 'pending',
+          progress: getCharacterPreviewVideoSource(c) ? 100 : 0,
+          imagePath: getCharacterPreviewVideoSource(c),
           sourceType: 'character' as const,
         }));
-        const propVideos: ItemStatus[] = prps.filter(p => p.imagePath).map(p => ({
+        const propVideos: ItemStatus[] = prps
+          .filter(p => getPropPreviewImageSource(p))
+          .map(p => ({
           id: p.id,
           name: `[道具] ${p.name}`,
-          selected: !p.previewVideoPath,
-          status: p.previewVideoPath ? 'completed' : 'pending',
-          progress: p.previewVideoPath ? 100 : 0,
-          imagePath: p.previewVideoPath,
+          selected: !getPropPreviewVideoSource(p),
+          status: getPropPreviewVideoSource(p) ? 'completed' : 'pending',
+          progress: getPropPreviewVideoSource(p) ? 100 : 0,
+          imagePath: getPropPreviewVideoSource(p),
           sourceType: 'prop' as const,
         }));
         setVideoItems([...charVideos, ...propVideos]);

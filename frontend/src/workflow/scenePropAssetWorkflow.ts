@@ -1,24 +1,20 @@
 /**
  * 场景/道具资产生成工作流
  */
-import type { Scene, Prop } from '../types';
-import { getProjectTTIProvider, getProjectITVProvider } from '../providers';
-import { createTask, markTaskCompleted, markTaskFailed } from '../store/taskQueueStore';
-import { downloadRemoteAsset, resolveImageSourceForAPI } from '../store/assetDownloadService';
+import { getMediaAssetSource, type Scene, type Prop } from '../types';
+import { getProjectITVProvider } from '../providers';
 import {
-  saveSceneImage,
-  savePropImage,
   saveScenes,
   saveProps,
   loadScenes,
   loadProps,
 } from '../store/projectStore';
-import { getStorageConfig, initStorageConfig } from '../store/storageConfig';
 import { getThemeStylePrefix, getThemeStylePrefixAsync } from '../config/themePresets';
 import { createLogger } from '../store/logger';
 import { logTTICall, logITVCall } from '../store/aiCallLogger';
 import { resolvePromptTemplate } from '../store/promptTemplates';
 import { IMAGE_GENERATION_SIZES } from '../constants/dimensions';
+import { mediaGenerationService } from '../services/MediaGenerationService';
 
 const logger = createLogger('ScenePropAsset');
 
@@ -121,11 +117,6 @@ export async function generateSceneImage(
   onProgress?.(0, '准备生成场景图...');
 
   try {
-    const ttiProvider = await getProjectTTIProvider(ttiConfigId);
-    if (!ttiProvider) {
-      throw new Error('未配置 TTI 服务');
-    }
-
     // 构建提示词（从配置化模板读取）
     const stylePrefix = await getResolvedTTIStylePrefix(styleSnapshot || project?.styleSnapshot, theme, stylePrompt);
     const resolvedPrompt = await resolvePromptTemplate('tti_scene_preview', {
@@ -137,24 +128,11 @@ export async function generateSceneImage(
     });
     const prompt = resolvedPrompt.prompt;
 
-    // 创建任务记录
-    const task = await createTask(projectId, {
-      projectId,
-      type: 'tti',
-      targetType: 'scene',
-      targetId: scene.id,
-      targetName: `场景: ${scene.name}`,
-      remoteTaskId: '',
-      status: 'pending',
-      progress: 0,
-      maxRetries: 3,
-    });
-
     onProgress?.(10, '调用 TTI 服务...');
 
     // 打印完整提示词日志
     logTTICall(
-      ttiProvider.config?.name || 'TTI',
+      'TTI',
       prompt,
       IMAGE_GENERATION_SIZES.video_frame,
       {
@@ -166,78 +144,26 @@ export async function generateSceneImage(
       }
     );
 
-    const result = await ttiProvider.generateImage(prompt, {
-      ...IMAGE_GENERATION_SIZES.video_frame, // 横版场景图
+    const asset = await mediaGenerationService.generateImage({
+      projectId,
+      ownerRef: {
+        projectId,
+        ownerType: 'scene',
+        ownerId: scene.id,
+        slot: 'previewImage',
+      },
+      request: {
+        prompt,
+        references: [],
+        options: {
+          ...IMAGE_GENERATION_SIZES.video_frame,
+        },
+      },
+      ttiConfigId,
+      taskName: `场景: ${scene.name}`,
     });
-
-    if (typeof result === 'string' && ttiProvider.checkProgress) {
-      // 异步模式
-      let progress = await ttiProvider.checkProgress(result);
-      while (progress.status === 'queued' || progress.status === 'processing') {
-        await sleep(3000);
-        progress = await ttiProvider.checkProgress(result);
-        onProgress?.(10 + progress.progress * 0.8, `生成中 ${progress.progress}%`);
-      }
-
-      if (progress.status === 'completed' && progress.resultUrl) {
-        onProgress?.(90, '下载图片...');
-        const config = getStorageConfig() || (await initStorageConfig());
-        const localPath = `${config.rootPath}/projects/${projectId}/assets/scenes/${scene.id}/preview.png`;
-        const downloadResult = await downloadRemoteAsset(progress.resultUrl, localPath);
-
-        if (downloadResult.success && downloadResult.localPath) {
-          await markTaskCompleted(projectId, task.id, progress.resultUrl, downloadResult.localPath);
-          // 同时保存本地路径和远程URL
-          await updateSceneAsset(projectId, scene.id, {
-            imagePath: downloadResult.localPath,
-            imageUrl: progress.resultUrl,
-          });
-          onProgress?.(100, '完成');
-          return { success: true, path: downloadResult.localPath, url: progress.resultUrl };
-        }
-      }
-
-      await markTaskFailed(projectId, task.id, progress.error || '生成失败');
-      return { success: false, error: progress.error || '生成失败' };
-    } else if (typeof result !== 'string') {
-      // 同步模式 - result 可能包含 url 或本地路径
-      onProgress?.(90, '保存场景图...');
-
-      const resultPath = result.path || result.url;
-      const isRemoteUrl = resultPath?.startsWith('http://') || resultPath?.startsWith('https://');
-      const isDataUrl = resultPath?.startsWith('data:');
-
-      let localPath: string;
-      let remoteUrl: string | undefined;
-
-      if (isRemoteUrl || isDataUrl) {
-        // 远程 URL 或 data URL（base64），需要下载/写入
-        if (isRemoteUrl) remoteUrl = resultPath;
-        const config = getStorageConfig() || (await initStorageConfig());
-        const targetPath = `${config.rootPath}/projects/${projectId}/assets/scenes/${scene.id}/preview.png`;
-        const downloadResult = await downloadRemoteAsset(resultPath, targetPath);
-        if (!downloadResult.success || !downloadResult.localPath) {
-          throw new Error('下载图片失败');
-        }
-        localPath = downloadResult.localPath;
-      } else {
-        // 本地路径
-        localPath = await saveSceneImage(projectId, scene.id, resultPath);
-        remoteUrl = result.url;
-      }
-
-      await markTaskCompleted(projectId, task.id, resultPath, localPath);
-      // 同时保存本地路径和远程URL
-      await updateSceneAsset(projectId, scene.id, {
-        imagePath: localPath,
-        imageUrl: remoteUrl,
-      });
-
-      onProgress?.(100, '完成');
-      return { success: true, path: localPath, url: remoteUrl };
-    }
-
-    return { success: false, error: '未知错误' };
+    onProgress?.(100, '完成');
+    return { success: true, path: asset.localPath, url: asset.remoteUrl };
   } catch (err: any) {
     logger.error(`生成场景图失败: ${scene.name}`, { error: err.message });
     return { success: false, error: err.message };
@@ -297,11 +223,6 @@ export async function generatePropImage(
   onProgress?.(0, '准备生成道具图...');
 
   try {
-    const ttiProvider = await getProjectTTIProvider(ttiConfigId);
-    if (!ttiProvider) {
-      throw new Error('未配置 TTI 服务');
-    }
-
     // 构建提示词（从配置化模板读取）
     const stylePrefix = await getResolvedTTIStylePrefix(styleSnapshot || project?.styleSnapshot, theme, stylePrompt);
     const resolvedPrompt = await resolvePromptTemplate('tti_prop_reference', {
@@ -311,24 +232,11 @@ export async function generatePropImage(
     });
     const prompt = resolvedPrompt.prompt;
 
-    // 创建任务记录
-    const task = await createTask(projectId, {
-      projectId,
-      type: 'tti',
-      targetType: 'prop',
-      targetId: prop.id,
-      targetName: `道具: ${prop.name}`,
-      remoteTaskId: '',
-      status: 'pending',
-      progress: 0,
-      maxRetries: 3,
-    });
-
     onProgress?.(10, '调用 TTI 服务...');
 
     // 打印完整提示词日志
     logTTICall(
-      ttiProvider.config?.name || 'TTI',
+      'TTI',
       prompt,
       IMAGE_GENERATION_SIZES.square,
       {
@@ -340,78 +248,26 @@ export async function generatePropImage(
       }
     );
 
-    const result = await ttiProvider.generateImage(prompt, {
-      ...IMAGE_GENERATION_SIZES.square, // 正方形道具图
+    const asset = await mediaGenerationService.generateImage({
+      projectId,
+      ownerRef: {
+        projectId,
+        ownerType: 'prop',
+        ownerId: prop.id,
+        slot: 'previewImage',
+      },
+      request: {
+        prompt,
+        references: [],
+        options: {
+          ...IMAGE_GENERATION_SIZES.square,
+        },
+      },
+      ttiConfigId,
+      taskName: `道具: ${prop.name}`,
     });
-
-    if (typeof result === 'string' && ttiProvider.checkProgress) {
-      // 异步模式
-      let progress = await ttiProvider.checkProgress(result);
-      while (progress.status === 'queued' || progress.status === 'processing') {
-        await sleep(3000);
-        progress = await ttiProvider.checkProgress(result);
-        onProgress?.(10 + progress.progress * 0.8, `生成中 ${progress.progress}%`);
-      }
-
-      if (progress.status === 'completed' && progress.resultUrl) {
-        onProgress?.(90, '下载图片...');
-        const config = getStorageConfig() || (await initStorageConfig());
-        const localPath = `${config.rootPath}/projects/${projectId}/assets/props/${prop.id}/reference.png`;
-        const downloadResult = await downloadRemoteAsset(progress.resultUrl, localPath);
-
-        if (downloadResult.success && downloadResult.localPath) {
-          await markTaskCompleted(projectId, task.id, progress.resultUrl, downloadResult.localPath);
-          // 同时保存本地路径和远程URL
-          await updatePropAsset(projectId, prop.id, {
-            imagePath: downloadResult.localPath,
-            imageUrl: progress.resultUrl,
-          });
-          onProgress?.(100, '完成');
-          return { success: true, path: downloadResult.localPath, url: progress.resultUrl };
-        }
-      }
-
-      await markTaskFailed(projectId, task.id, progress.error || '生成失败');
-      return { success: false, error: progress.error || '生成失败' };
-    } else if (typeof result !== 'string') {
-      // 同步模式 - result 可能包含 url 或本地路径
-      onProgress?.(90, '保存道具图...');
-
-      const resultPath = result.path || result.url;
-      const isRemoteUrl = resultPath?.startsWith('http://') || resultPath?.startsWith('https://');
-      const isDataUrl = resultPath?.startsWith('data:');
-
-      let localPath: string;
-      let remoteUrl: string | undefined;
-
-      if (isRemoteUrl || isDataUrl) {
-        // 远程 URL 或 data URL（base64），需要下载/写入
-        if (isRemoteUrl) remoteUrl = resultPath;
-        const config = getStorageConfig() || (await initStorageConfig());
-        const targetPath = `${config.rootPath}/projects/${projectId}/assets/props/${prop.id}/reference.png`;
-        const downloadResult = await downloadRemoteAsset(resultPath, targetPath);
-        if (!downloadResult.success || !downloadResult.localPath) {
-          throw new Error('下载图片失败');
-        }
-        localPath = downloadResult.localPath;
-      } else {
-        // 本地路径
-        localPath = await savePropImage(projectId, prop.id, resultPath);
-        remoteUrl = result.url;
-      }
-
-      await markTaskCompleted(projectId, task.id, resultPath, localPath);
-      // 同时保存本地路径和远程URL
-      await updatePropAsset(projectId, prop.id, {
-        imagePath: localPath,
-        imageUrl: remoteUrl,
-      });
-
-      onProgress?.(100, '完成');
-      return { success: true, path: localPath, url: remoteUrl };
-    }
-
-    return { success: false, error: '未知错误' };
+    onProgress?.(100, '完成');
+    return { success: true, path: asset.localPath, url: asset.remoteUrl };
   } catch (err: any) {
     logger.error(`生成道具图失败: ${prop.name}`, { error: err.message });
     return { success: false, error: err.message };
@@ -483,40 +339,12 @@ export async function generatePropPreviewVideo(
   onProgress?.(0, '准备生成预览视频...');
 
   // 优先使用远程 URL
-  const rawImageSource = prop.imageUrl || prop.imagePath;
+  const rawImageSource = getMediaAssetSource(prop.media?.previewImage);
   if (!rawImageSource) {
     return { success: false, error: '请先生成道具参考图' };
   }
 
-  // 将本地路径转为 data URI，确保远程 API 可用
-  const imageSource = await resolveImageSourceForAPI(rawImageSource);
-  if (!imageSource) {
-    return { success: false, error: '无法读取道具参考图，请重新生成' };
-  }
-
-  if (!prop.imageUrl) {
-    logger.warn(`道具 ${prop.name} 没有远程图片 URL，已将本地文件转为 data URI。`);
-  }
-
   try {
-    const itvProvider = await getProjectITVProvider(itvConfigId);
-    if (!itvProvider) {
-      throw new Error('未配置 ITV 服务');
-    }
-
-    // 创建任务记录
-    const task = await createTask(projectId, {
-      projectId,
-      type: 'itv',
-      targetType: 'prop',
-      targetId: prop.id,
-      targetName: `${prop.name} 预览视频`,
-      remoteTaskId: '',
-      status: 'pending',
-      progress: 0,
-      maxRetries: 3,
-    });
-
     onProgress?.(10, '调用 ITV 服务...');
 
     // 构建道具视频提示词
@@ -529,8 +357,8 @@ export async function generatePropPreviewVideo(
     const prompt = resolvedPrompt.prompt;
 
     logITVCall(
-      itvProvider.config?.name || 'ITV',
-      imageSource,
+      'ITV',
+      rawImageSource,
       prompt,
       { duration: 4, aspectRatio: '1:1' },
       {
@@ -542,35 +370,26 @@ export async function generatePropPreviewVideo(
       }
     );
 
-    // 调用 ITV Provider 生成视频
-    const result = await itvProvider.generateVideo({
-      imageUrl: imageSource,
-      prompt,
-      options: { duration: 4, aspectRatio: '1:1' },
+    const asset = await mediaGenerationService.generateVideo({
+      projectId,
+      ownerRef: {
+        projectId,
+        ownerType: 'prop',
+        ownerId: prop.id,
+        slot: 'previewVideo',
+      },
+      request: {
+        prompt,
+        primaryImage: rawImageSource,
+        additionalReferences: [],
+        options: { duration: 4, aspectRatio: '1:1' },
+      },
+      itvConfigId,
+      taskName: `${prop.name} 预览视频`,
     });
 
-    if (result.url || (result as any).path) {
-      const videoUrl = result.url || (result as any).path;
-      const videoTaskId = (result as any).taskId;
-
-      onProgress?.(90, '下载视频...');
-      const config = getStorageConfig() || (await initStorageConfig());
-      const localPath = `${config.rootPath}/projects/${projectId}/assets/props/${prop.id}/preview.mp4`;
-      const downloadResult = await downloadRemoteAsset(videoUrl, localPath);
-
-      if (downloadResult.success && downloadResult.localPath) {
-        await markTaskCompleted(projectId, task.id, videoUrl, downloadResult.localPath);
-        await updatePropAsset(projectId, prop.id, {
-          previewVideoPath: downloadResult.localPath,
-          previewVideoTaskId: videoTaskId,
-        });
-        onProgress?.(100, '完成');
-        return { success: true, path: downloadResult.localPath, taskId: videoTaskId };
-      }
-      return { success: false, error: '下载视频失败' };
-    }
-
-    return { success: false, error: '视频生成失败：未返回有效结果' };
+    onProgress?.(100, '完成');
+    return { success: true, path: asset.localPath, taskId: asset.providerTaskId };
   } catch (err: any) {
     logger.error(`生成道具预览视频失败: ${prop.name}`, { error: err.message });
     return { success: false, error: err.message };
@@ -589,8 +408,11 @@ export async function extractAndBindProp(
   logger.info(`开始提取道具: ${prop.name}`);
 
   // 检查是否有视频生成任务 ID
-  if (!prop.previewVideoTaskId) {
-    if (prop.previewVideoPath) {
+  const previewVideoTaskId = prop.media?.previewVideo?.providerTaskId;
+  const previewVideoPath = getMediaAssetSource(prop.media?.previewVideo);
+
+  if (!previewVideoTaskId) {
+    if (previewVideoPath) {
       return { success: false, error: '请重新生成预览视频（需要保存任务ID用于道具提取）' };
     }
     return { success: false, error: '请先生成预览视频' };
@@ -608,7 +430,7 @@ export async function extractAndBindProp(
     }
 
     // 使用任务 ID 调用道具提取 API
-    const sora2PropId = await itvProvider.extractProp(prop.previewVideoTaskId);
+    const sora2PropId = await itvProvider.extractProp(previewVideoTaskId);
     await updatePropAsset(projectId, prop.id, { sora2PropId });
 
     logger.info(`道具提取成功: ${prop.name} -> ${sora2PropId}`);
@@ -645,7 +467,11 @@ async function updateSceneAsset(
   const scenes = await loadScenes(projectId);
   const index = scenes.findIndex(s => s.id === sceneId);
   if (index !== -1) {
-    scenes[index] = { ...scenes[index], ...updates };
+    const existing = scenes[index];
+    const mergedMedia = updates.media
+      ? { ...(existing.media || {}), ...(updates.media || {}) }
+      : existing.media;
+    scenes[index] = { ...existing, ...updates, media: mergedMedia };
     await saveScenes(projectId, scenes);
   }
 }
@@ -658,7 +484,11 @@ async function updatePropAsset(
   const props = await loadProps(projectId);
   const index = props.findIndex(p => p.id === propId);
   if (index !== -1) {
-    props[index] = { ...props[index], ...updates };
+    const existing = props[index];
+    const mergedMedia = updates.media
+      ? { ...(existing.media || {}), ...(updates.media || {}) }
+      : existing.media;
+    props[index] = { ...existing, ...updates, media: mergedMedia };
     await saveProps(projectId, props);
   }
 }

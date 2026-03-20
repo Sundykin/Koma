@@ -6,6 +6,7 @@ import type { EpisodeAnalysis, Shot } from '../../types';
 import type { TimelineData } from '../../types/editor';
 import { getProjectPath } from './core';
 import { saveEpisode } from './episodes';
+import { normalizeShotsMediaState } from './mediaState';
 
 export async function saveEpisodeAnalysis(
   projectId: string,
@@ -34,7 +35,7 @@ export async function saveEpisodeAnalysis(
     sceneRefs: analysis.sceneRefs ?? existing?.sceneRefs ?? [],
     propRefs: analysis.propRefs ?? existing?.propRefs ?? [],
     completedStages,
-    shots: analysis.shots ?? existing?.shots ?? [],
+    shots: normalizeShotsMediaState(analysis.shots ?? existing?.shots ?? []),
     createdAt: existing?.createdAt || now,
     updatedAt: now,
   };
@@ -61,7 +62,11 @@ export async function loadEpisodeAnalysis(
     const exists = await electronService.fs.exists(filePath);
     if (!exists) return null;
     const data = await electronService.fs.readFile(filePath);
-    return JSON.parse(data);
+    const parsed = JSON.parse(data) as EpisodeAnalysis;
+    return {
+      ...parsed,
+      shots: normalizeShotsMediaState(parsed.shots || []),
+    };
   } catch {
     return null;
   }
@@ -100,7 +105,7 @@ export async function saveEpisodeShots(
     };
   }
 
-  analysis.shots = shots;
+  analysis.shots = normalizeShotsMediaState(shots);
   analysis.updatedAt = now;
 
   // 从 shots 中自动提取资产引用，合并到 refs（保留已有引用）
@@ -212,7 +217,7 @@ export async function removeAssetFromAnalysis(
   let shotsModified = false;
   const safeShots = Array.isArray(analysis.shots) ? analysis.shots : [];
   const updatedShots = safeShots.map(shot => {
-    const arr = (shot as Record<string, unknown>)[shotKey];
+    const arr = (shot as unknown as Record<string, unknown>)[shotKey];
     if (!Array.isArray(arr)) return shot;
     if (arr.includes(assetId)) {
       shotsModified = true;

@@ -5,6 +5,7 @@ import { electronService } from '../../services/electronService';
 import type { Prop } from '../../types';
 import { getProjectPath } from './core';
 import { loadShotMeta } from './shots';
+import { normalizePropsMediaState } from './mediaState';
 
 // ========== 角色资产 ==========
 
@@ -96,7 +97,7 @@ export async function loadProps(projectId: string): Promise<Prop[]> {
     if (!exists) return [];
     const data = await electronService.fs.readFile(`${projectPath}/props.json`);
     const props = JSON.parse(data);
-    return Array.isArray(props) ? props.filter(Boolean) : [];
+    return Array.isArray(props) ? normalizePropsMediaState(props.filter(Boolean)) : [];
   } catch {
     return [];
   }
@@ -107,7 +108,7 @@ export async function saveProps(projectId: string, props: Prop[]): Promise<void>
   const projectPath = await getProjectPath(projectId);
   await electronService.fs.writeFile(
     `${projectPath}/props.json`,
-    JSON.stringify(props, null, 2)
+    JSON.stringify(normalizePropsMediaState(props), null, 2)
   );
 }
 
