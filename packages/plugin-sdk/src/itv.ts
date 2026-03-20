@@ -1,8 +1,14 @@
 /**
- * ITV Provider 类型定义
+ * ITV Provider 类型定义（OpenSpec: request-based + start/snapshot lifecycle）
  */
+import type {
+  ProviderAssetInput,
+  ProviderStartResult,
+  ProviderTaskSnapshot,
+  ITVRequest as BaseITVRequest,
+} from './provider';
 
-// 进度信息
+// 进度信息（扩展能力可能仍会使用）
 export interface ProgressInfo {
   taskId: string;
   status: 'queued' | 'processing' | 'completed' | 'failed';
@@ -11,29 +17,34 @@ export interface ProgressInfo {
   error?: string;
 }
 
-// 视频结果
-export interface VideoResult {
-  url: string;
+export interface ITVResult {
+  source: string;
   taskId?: string;
-  duration?: number;
+  durationSec?: number;
   width?: number;
   height?: number;
+  fps?: number;
+  mimeType?: string;
+  metadata?: Record<string, unknown>;
 }
 
-// ITV 选项
 export interface ITVOptions {
   duration?: number;
   aspectRatio?: string;
   model?: string;
   seed?: number;
+  motionPrompt?: string;
+  resolution?: string;
+  fps?: number;
+  motionStrength?: number;
+  negativePrompt?: string;
+  width?: number;
+  height?: number;
+  startFrame?: string;
+  endFrame?: string;
 }
 
-// 视频生成输入参数
-export interface ITVGenerateInput {
-  imageUrl?: string;
-  prompt: string;
-  options?: ITVOptions;
-}
+export type ITVRequest = BaseITVRequest<ProviderAssetInput, ITVOptions>;
 
 // 角色提取参数
 export interface CharacterExtractionParams {
@@ -43,7 +54,6 @@ export interface CharacterExtractionParams {
   model?: string;
 }
 
-// 角色提取进度信息
 export interface CharacterProgressInfo extends ProgressInfo {
   characters?: Array<{
     id: string;
@@ -53,7 +63,6 @@ export interface CharacterProgressInfo extends ProgressInfo {
   }>;
 }
 
-// 混音选项
 export interface RemixOptions {
   model?: string;
   prompt: string;
@@ -61,9 +70,6 @@ export interface RemixOptions {
   aspectRatio?: string;
 }
 
-/**
- * ITV Provider 接口
- */
 export interface ITVProvider {
   type: string;
   config: Record<string, any>;
@@ -71,48 +77,14 @@ export interface ITVProvider {
   validate(): boolean;
   testConnection(): Promise<boolean>;
 
-  /**
-   * 生成视频（统一接口）
-   */
-  generateVideo(input: ITVGenerateInput): Promise<VideoResult>;
-
-  /**
-   * 查询进度
-   */
-  checkProgress?(taskId: string): Promise<ProgressInfo>;
-
-  /**
-   * 取消任务
-   */
+  start(request: ITVRequest): Promise<ProviderStartResult<ITVResult>>;
+  getTaskSnapshot?(taskId: string): Promise<ProviderTaskSnapshot<ITVResult>>;
   cancelTask?(taskId: string): Promise<void>;
 
-  /**
-   * 生成视频（带进度回调，可选）
-   */
-  generateVideoWithProgress?(
-    input: ITVGenerateInput,
-    onProgress?: (progress: ProgressInfo) => void
-  ): Promise<VideoResult>;
-
-  // ========== 扩展功能 ==========
-
-  /**
-   * 角色提取
-   */
+  // 扩展能力
   extractCharacter?(params: CharacterExtractionParams): Promise<string | CharacterProgressInfo>;
-
-  /**
-   * 角色提取状态查询
-   */
   checkCharacterProgress?(taskId: string): Promise<CharacterProgressInfo>;
-
-  /**
-   * 道具提取
-   */
   extractProp?(taskId: string, timestamps?: string): Promise<string>;
-
-  /**
-   * 视频混音
-   */
   remixVideo?(videoId: string, options: RemixOptions): Promise<string | ProgressInfo>;
 }
+

@@ -4,6 +4,7 @@
  */
 
 import type { ElectronPluginAPI, ProviderDefinition } from '@komastudio/plugin-sdk';
+import { MEDIA_PROVIDER_CONTRACT_VERSION } from '@komastudio/plugin-sdk';
 
 interface VectorEngineConfig {
   apiKey: string;
@@ -24,16 +25,6 @@ const DEFAULT_CONFIG: VectorEngineConfig = {
   defaultDuration: 10,
   watermark: true,
 };
-
-interface GenerateVideoInput {
-  imageUrl?: string;
-  prompt: string;
-  options?: {
-    duration?: number;
-    orientation?: 'portrait' | 'landscape';
-    size?: 'small' | 'large';
-  };
-}
 
 interface ProgressInfo {
   taskId: string;
@@ -85,14 +76,14 @@ class VectorEngineITVProvider {
     }
   }
 
-  async generateVideo(input: GenerateVideoInput): Promise<{ url: string; taskId: string }> {
+  async start(input: { primaryImage: { value: string }; additionalReferences?: Array<{ value: string }>; prompt: string; options?: any }): Promise<{ mode: 'async'; taskId: string }> {
     if (!this.validate()) {
       throw new Error('API Key 未配置');
     }
 
     const baseUrl = this.config.baseUrl.replace(/\/+$/, '');
     const authorization = getAuthorization(this.config.apiKey);
-    const { prompt, imageUrl, options } = input;
+    const { prompt, primaryImage, additionalReferences, options } = input;
 
     const response = await fetch(`${baseUrl}/v1/video/create`, {
       method: 'POST',
@@ -101,7 +92,7 @@ class VectorEngineITVProvider {
         'Authorization': authorization,
       },
       body: JSON.stringify({
-        images: imageUrl ? [imageUrl] : [],
+        images: [primaryImage?.value, ...(additionalReferences || []).map(r => r.value)].filter(Boolean),
         model: this.config.defaultModel,
         orientation: options?.orientation || this.config.defaultOrientation,
         prompt,
@@ -118,31 +109,30 @@ class VectorEngineITVProvider {
 
     const data = await response.json();
     const taskId = data.id;
-
-    // 轮询等待完成
-    const polling = { interval: 5000, maxDuration: 600000, initialDelay: 3000 };
-    const startTime = Date.now();
-
-    await this.delay(polling.initialDelay);
-
-    while (Date.now() - startTime < polling.maxDuration) {
-      const progress = await this.checkProgress(taskId);
-
-      if (progress.status === 'completed' && progress.resultUrl) {
-        return { url: progress.resultUrl, taskId };
-      }
-
-      if (progress.status === 'failed') {
-        throw new Error(progress.error || '视频生成失败');
-      }
-
-      await this.delay(polling.interval);
+    if (!taskId) {
+      throw new Error('任务ID为空');
     }
-
-    throw new Error('视频生成超时');
+    return { mode: 'async', taskId };
   }
 
-  async checkProgress(taskId: string): Promise<ProgressInfo> {
+  async getTaskSnapshot(taskId: string): Promise<any> {
+    const progress = await this.fetchTaskProgress(taskId);
+    const stateMap: Record<string, string> = {
+      queued: 'queued',
+      processing: 'running',
+      completed: 'succeeded',
+      failed: 'failed',
+    };
+    const state = stateMap[progress.status] || 'running';
+    return {
+      state,
+      progress: progress.progress,
+      output: (state === 'succeeded' && progress.resultUrl) ? { source: progress.resultUrl, taskId } : undefined,
+      error: progress.error,
+    };
+  }
+
+  private async fetchTaskProgress(taskId: string): Promise<ProgressInfo> {
     const baseUrl = this.config.baseUrl.replace(/\/+$/, '');
     const authorization = getAuthorization(this.config.apiKey);
 
@@ -261,9 +251,7 @@ class VectorEngineITVProvider {
     return result;
   }
 
-  private delay(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
-  }
+  // polling 由 host 统一管理
 }
 
 // 插件 API 引用
@@ -279,6 +267,7 @@ export async function onActivate(api: ElectronPluginAPI): Promise<void> {
     kind: 'itv',
     name: 'VectorEngine (Sora-2)',
     description: 'VectorEngine.ai 视频生成服务 - 支持图生视频和角色提取',
+    contractVersion: MEDIA_PROVIDER_CONTRACT_VERSION,
     capabilities: ['itv', 'character-extract'],
     defaultConfig: DEFAULT_CONFIG,
     factory: async (config) => {

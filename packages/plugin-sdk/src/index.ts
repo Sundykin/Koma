@@ -73,22 +73,27 @@ export type {
   ChannelKind,
   ChannelCapability,
   PollingConfig,
+  ProviderAssetInput,
+  ProviderStartResult,
+  ProviderTaskSnapshot,
+  TTSRequest,
 } from './provider';
+export { MEDIA_PROVIDER_CONTRACT_VERSION } from './provider';
 
 // TTI Provider 类型
 export type {
   TTIProvider,
   TTIOptions,
-  TTIGenerateInput,
+  TTIRequest,
   ImageResult,
 } from './tti';
 
 // ITV Provider 类型
 export type {
   ITVProvider,
-  ITVGenerateInput,
   ITVOptions,
-  VideoResult,
+  ITVRequest,
+  ITVResult,
   ProgressInfo,
   CharacterExtractionParams,
   CharacterProgressInfo,
