@@ -47,7 +47,13 @@ function toDataUrl(bytes: Uint8Array, mimeType: string): string {
 export async function resolveProviderAssetInput(
   source: string | StoredMediaAsset | undefined
 ): Promise<ProviderAssetInput | undefined> {
-  const resolved = typeof source === 'string' ? source : getMediaAssetSource(source);
+  // Prefer a remote URL when available for remote providers (keeps payload small and avoids servers
+  // that do not accept data URLs).
+  const resolved = typeof source === 'string'
+    ? source
+    : (source.remoteUrl && isRemoteMediaUri(source.remoteUrl))
+      ? source.remoteUrl
+      : getMediaAssetSource(source);
   if (!resolved) return undefined;
 
   if (isRemoteMediaUri(resolved)) {

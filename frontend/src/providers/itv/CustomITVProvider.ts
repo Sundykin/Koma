@@ -13,6 +13,16 @@ import type { ProviderStartResult, ProviderTaskSnapshot } from '../../types';
 import type { ITVProvider, ITVRequest, ITVResult } from './types';
 import { safeFetch } from '../../utils/safeFetch';
 
+function stripDataUrlHeader(dataUrl: string): { mimeType?: string; base64: string } {
+  // data:<mime>;base64,<payload>
+  const match = /^data:([^;,]+);base64,(.*)$/i.exec(dataUrl);
+  if (!match) {
+    const idx = dataUrl.indexOf(',');
+    return { base64: idx >= 0 ? dataUrl.slice(idx + 1) : dataUrl };
+  }
+  return { mimeType: match[1], base64: match[2] };
+}
+
 export class CustomITVProvider implements ITVProvider {
   type = 'custom' as const;
   config: ITVConfig;
@@ -51,10 +61,34 @@ export class CustomITVProvider implements ITVProvider {
   /**
    * 提交视频生成任务
    */
-  private async submitTask(prompt: string, primaryImage?: string): Promise<string> {
-    const body: Record<string, any> = { prompt };
-    if (primaryImage) {
-      body.image_url = primaryImage;
+  private async submitTask(request: ITVRequest): Promise<string> {
+    const body: Record<string, any> = { prompt: request.prompt };
+
+    // Primary image:
+    // - Prefer URL for interoperability with remote servers.
+    // - If the upstream only provides data URL, send both image_url (data URL) and image_base64.
+    //   This keeps mapping centralized within this provider boundary.
+    const primary = request.primaryImage?.value;
+    if (primary) {
+      body.image_url = primary;
+      if (primary.startsWith('data:')) {
+        const { mimeType, base64 } = stripDataUrlHeader(primary);
+        body.image_base64 = base64;
+        if (mimeType) body.image_mime = mimeType;
+      }
+    }
+
+    // Options (best-effort mapping; server may ignore unknown fields)
+    const opts = request.options || {};
+    if (typeof opts.duration === 'number') body.duration = opts.duration;
+    if (typeof opts.fps === 'number') body.fps = opts.fps;
+    if (typeof opts.resolution === 'string') body.resolution = opts.resolution;
+    if (typeof opts.motionPrompt === 'string' && opts.motionPrompt) body.motion_prompt = opts.motionPrompt;
+    if (typeof opts.aspectRatio === 'string' && opts.aspectRatio) body.aspect_ratio = opts.aspectRatio;
+
+    // Additional references (if supported by server)
+    if (request.additionalReferences?.length) {
+      body.additional_reference_images = request.additionalReferences.map(r => r.value);
     }
 
     const resp = await safeFetch(`${this.getBaseUrl()}/v1/public/video/start`, {
@@ -69,9 +103,9 @@ export class CustomITVProvider implements ITVProvider {
     }
 
     const data = await resp.json();
-    const taskId = data.task_id || data.id;
+    const taskId = data.task_id || data.taskId || data.id;
     if (!taskId) {
-      throw new Error('无法获取任务 ID');
+      throw new Error(`无法获取任务 ID: ${JSON.stringify(data).slice(0, 200)}`);
     }
     return taskId;
   }
@@ -162,7 +196,7 @@ export class CustomITVProvider implements ITVProvider {
       throw new Error('请配置 API Key 和 Base URL');
     }
 
-    const taskId = await this.submitTask(request.prompt, request.primaryImage.value);
+    const taskId = await this.submitTask(request);
     return { mode: 'async', taskId };
   }
 
