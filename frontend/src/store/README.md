@@ -326,7 +326,7 @@ await updateTaskProgress(projectId, task.id, 50);
 
 // Mark task status
 await markTaskProcessing(projectId, task.id);
-await markTaskCompleted(projectId, task.id, localPath, remoteUrl);
+await markTaskCompleted(projectId, task.id, resultAsset);
 await markTaskFailed(projectId, task.id, 'API error');
 
 // Task recovery

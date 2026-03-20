@@ -13,19 +13,18 @@ const logger = createLogger('TaskManager');
 // ========== 任务分类 ==========
 
 // 任务大类
-export type TaskCategory = 'prompt' | 'media' | 'analysis' | 'asset' | 'script' | 'export';
+export type TaskCategory = 'prompt' | 'analysis' | 'asset' | 'script' | 'export';
 
 // 任务子类型
 export type TaskSubType =
   | 'image' | 'video'                          // prompt 类
-  | 'tti' | 'itv' | 'tts'                      // media 类
   | 'shot-analysis' | 'shot-generation'        // analysis 类
   | 'script-analysis'                          // script 类
   | 'asset-generation' | 'character-extraction' // asset 类
   | 'prompt-generation' | 'prompt-optimization'; // prompt 操作
 
 // 旧版任务类型（兼容）
-export type TaskType = 'script-analysis' | 'asset-generation' | 'shot-render' | 'shot-generation' | 'shot-analysis'
+export type TaskType = 'script-analysis' | 'asset-generation' | 'shot-generation' | 'shot-analysis'
   | 'prompt-generation:image' | 'prompt-generation:video'
   | 'prompt-optimization:image' | 'prompt-optimization:video';
 
@@ -99,7 +98,6 @@ function mapLegacyTaskType(type: TaskType): { category: TaskCategory; subType: T
   const mapping: Record<string, { category: TaskCategory; subType: TaskSubType }> = {
     'script-analysis': { category: 'script', subType: 'script-analysis' },
     'asset-generation': { category: 'asset', subType: 'asset-generation' },
-    'shot-render': { category: 'media', subType: 'itv' },
     'shot-generation': { category: 'analysis', subType: 'shot-generation' },
     'shot-analysis': { category: 'analysis', subType: 'shot-analysis' },
     'prompt-generation:image': { category: 'prompt', subType: 'image' },

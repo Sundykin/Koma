@@ -2,7 +2,10 @@
  * 远程资产下载服务
  * 下载远程 API 返回的图片/视频到本地存储
  */
+import type { StoredMediaAsset } from '../types';
+import { getMediaAssetSource } from '../types';
 import { electronService } from '../services/electronService';
+import { resolveProviderAssetInput } from '../services/mediaAssetResolver';
 import { createLogger } from './logger';
 
 const logger = createLogger('AssetDownload');
@@ -115,46 +118,25 @@ export async function getAssetPath(
  * 用于 ITV 等远程 API 调用前，确保 image_url 参数合法
  */
 export async function resolveImageSourceForAPI(
-  source?: string
+  source?: string | StoredMediaAsset
 ): Promise<string | undefined> {
-  if (!source) return undefined;
-
-  // 已经是远程 URL
-  if (source.startsWith('http://') || source.startsWith('https://')) {
-    return source;
-  }
-
-  // 已经是 data URI
-  if (source.startsWith('data:')) {
-    return source;
-  }
-
-  // 本地文件路径 → 读取并转为 data URI
-  if (!electronService.isElectron()) return undefined;
+  const originalSource = typeof source === 'string' ? source : getMediaAssetSource(source);
+  if (!originalSource) return undefined;
 
   try {
-    const exists = await electronService.fs.exists(source);
-    if (!exists) {
-      logger.warn(`本地文件不存在，跳过: ${source}`);
+    const resolved = await resolveProviderAssetInput(source);
+    if (!resolved) {
+      logger.warn(`无法解析媒体源，跳过: ${originalSource}`);
       return undefined;
     }
 
-    const base64 = await electronService.fs.readFileAsBase64(source);
-    // 根据扩展名推断 MIME 类型
-    const ext = source.split('.').pop()?.toLowerCase() || 'png';
-    const mimeMap: Record<string, string> = {
-      'jpg': 'image/jpeg',
-      'jpeg': 'image/jpeg',
-      'png': 'image/png',
-      'gif': 'image/gif',
-      'webp': 'image/webp',
-      'bmp': 'image/bmp',
-    };
-    const mime = mimeMap[ext] || 'image/png';
-    logger.info(`本地文件转 data URI: ${source} (${mime})`);
-    return `data:${mime};base64,${base64}`;
+    if (resolved.transport === 'data-url' && !originalSource.startsWith('data:')) {
+      logger.info(`本地文件转 data URI: ${originalSource}`);
+    }
+
+    return resolved.value;
   } catch (err: any) {
-    logger.warn(`读取本地文件失败: ${source}`, { error: err.message });
+    logger.warn(`读取媒体源失败: ${originalSource}`, { error: err.message });
     return undefined;
   }
 }

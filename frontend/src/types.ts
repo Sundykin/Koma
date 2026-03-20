@@ -1,3 +1,37 @@
+import type {
+  CharacterMediaSlots,
+  MediaOwnerRef,
+  PropMediaSlots,
+  SceneMediaSlots,
+  ShotMediaState,
+  ShotVersionMediaState,
+  StoredMediaAsset,
+} from './types/media';
+
+export type {
+  MediaKind,
+  MediaAssetSource,
+  ProviderAssetInput,
+  StoredMediaAsset,
+  MediaOwnerRef,
+  ProviderStartResult,
+  ProviderTaskSnapshot,
+  TTIRequest,
+  ITVRequest,
+  TTSRequest,
+  CharacterMediaSlots,
+  SceneMediaSlots,
+  PropMediaSlots,
+  ShotMediaState,
+  ShotVersionMediaState,
+} from './types/media';
+export {
+  getMediaAssetSource,
+  isBlobUri,
+  isDataUri,
+  isRemoteMediaUri,
+} from './types/media';
+
 export type StylePresetSourceType = 'builtin' | 'custom';
 
 export interface ProjectStyleSnapshot {
@@ -107,11 +141,7 @@ export interface Character {
   appearance?: string;
   
   voiceId?: string;    // TTS 音色 ID
-  // 资产字段
-  costumePhotoPath?: string;  // 定妆照本地路径
-  costumePhotoUrl?: string;   // 定妆照远程URL（用于 Sora2 等需要远程URL的服务）
-  previewVideoPath?: string;  // 预览视频路径
-  previewVideoTaskId?: string; // 预览视频的生成任务ID（用于角色提取API）
+  media?: CharacterMediaSlots; // 结构化媒体槽位
   sora2CharacterId?: string;  // 角色提取API返回的ID
   customPrompt?: string;      // 用户自定义生成提示词 (Deprecated: use prompt instead)
   timestampRange?: AssetTimestampRange; // Sora2 提取时间范围
@@ -132,8 +162,7 @@ export interface Scene {
   mood?: string;
   description?: string;
   
-  imagePath?: string;  // 场景预览图本地路径
-  imageUrl?: string;   // 场景预览图远程URL
+  media?: SceneMediaSlots; // 结构化媒体槽位
   customPrompt?: string; // (Deprecated: use prompt instead)
   // 剧集引用追踪
   episodeRefs?: EpisodeRef[];
@@ -150,11 +179,8 @@ export interface Prop {
   type?: string;
   description?: string;
   
-  imagePath?: string;  // 道具参考图本地路径
-  imageUrl?: string;   // 道具参考图远程URL
+  media?: PropMediaSlots; // 结构化媒体槽位
   // Sora2 绑定相关
-  previewVideoPath?: string;   // 预览视频路径
-  previewVideoTaskId?: string; // 预览视频生成任务 ID
   sora2PropId?: string;        // Sora2 道具 ID
   customPrompt?: string;       // (Deprecated: use prompt instead)
   timestampRange?: AssetTimestampRange; // Sora2 提取时间范围
@@ -171,6 +197,7 @@ export interface ShotVideo {
   prompt?: string;
   seed?: number;
   model?: string;
+  asset?: StoredMediaAsset;
   createdAt: number;
 }
 
@@ -185,14 +212,7 @@ export interface Shot {
   description?: string;  // 通用提示词（兼容旧数据）
   imagePrompt?: string;  // 图片生成提示词
   videoPrompt?: string;  // 视频生成提示词
-  // 参考图（用于文生图输入）
-  referenceImages?: string[];        // 参考图列表（区别于生成结果 imagePaths）
-  selectedReferenceIndex?: number;   // 当前选中的参考图索引
-  // 生成结果图片
-  imageUrl?: string;     // 预览图或生成图（远程URL）
-  imagePath?: string;    // 当前选中的本地图片路径
-  imagePaths?: string[]; // 所有生成的候选图片列表
-  currentImageIndex?: number; // 当前选中的图片索引
+  media?: ShotMediaState; // 结构化媒体槽位
   // 关联资产
   characters: string[];  // 涉及的角色ID
   scenes?: string[];     // 涉及的场景ID（可在 UI 中编辑）
@@ -202,9 +222,6 @@ export interface Shot {
   confirmed?: boolean;   // 是否已确认（用于入轨）
   seed?: number;         // 生成种子（用于复现）
   currentVersion?: number; // 当前版本号（兼容旧数据）
-  videos?: ShotVideo[];  // 视频版本列表
-  currentVideoIndex?: number;    // 当前选中的视频索引
-  selectedVideoIndex?: number;   // 别名（兼容）
 }
 
 // 剧本分析结果接口
@@ -512,11 +529,7 @@ export interface RecentProject {
 
 export interface ShotVersion {
   version: number;
-  imagePath?: string;
-  videoPath?: string;
-  audioPath?: string;
-  remoteImageUrl?: string;   // 原始远程图片 URL
-  remoteVideoUrl?: string;   // 原始远程视频 URL
+  media?: ShotVersionMediaState; // 结构化媒体槽位
   prompt: string;
   seed: number;
   model: string;
@@ -616,10 +629,17 @@ export interface AsyncTask {
   targetId: string;
   targetName?: string;        // 用于显示通知
   remoteTaskId: string;       // 远程API返回的任务ID
+  /**
+   * 任务结果的归属信息，用于重启恢复后把结果回写到对应实体的结构化媒体槽位。
+   * 新创建的媒体任务 SHOULD 设置该字段，避免在各工作流/Provider 层写兼容分支。
+   */
+  ownerRef?: MediaOwnerRef;
   status: AsyncTaskStatus;
   progress: number;
-  resultUrl?: string;
-  localPath?: string;
+  /**
+   * 物化后的结构化媒体资产。用于恢复后绑定与后续链路统一读取。
+   */
+  resultAsset?: StoredMediaAsset;
   error?: string;
   retryCount: number;
   maxRetries: number;
