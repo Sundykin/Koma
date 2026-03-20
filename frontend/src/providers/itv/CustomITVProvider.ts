@@ -27,6 +27,12 @@ export class CustomITVProvider implements ITVProvider {
   type = 'custom' as const;
   config: ITVConfig;
   private apiVariant: 'public' | 'standard' | undefined;
+  private apiOverride?: {
+    baseUrl: string;
+    startPath: string;
+    ssePath?: string;
+    stopPath?: string;
+  };
 
   constructor(config: ITVConfig) {
     this.config = config;
@@ -41,7 +47,7 @@ export class CustomITVProvider implements ITVProvider {
   }
 
   private joinUrl(path: string): string {
-    const base = this.getBaseUrl();
+    const base = (this.apiOverride?.baseUrl || this.getBaseUrl()).replace(/\/+$/, '');
     // Allow users to set baseUrl with /v1 or /v1/public suffix without duplicating segments.
     if (base.endsWith('/v1/public') && path.startsWith('/v1/public/')) {
       return `${base}${path.slice('/v1/public'.length)}`;
@@ -64,6 +70,83 @@ export class CustomITVProvider implements ITVProvider {
         sse: '/v1/video/sse',
         stop: '/v1/video/stop',
       };
+  }
+
+  private async detectApiOverrideFromOpenApi(): Promise<void> {
+    if (this.apiOverride) return;
+    if (!this.validate()) return;
+
+    const rawBase = this.getBaseUrl();
+    const baseCandidates = Array.from(new Set([
+      rawBase,
+      rawBase.replace(/\/v1\/public$/i, ''),
+      rawBase.replace(/\/v1$/i, ''),
+    ].map(v => v.replace(/\/+$/, '')).filter(Boolean)));
+
+    for (const baseUrl of baseCandidates) {
+      try {
+        const resp = await safeFetch(`${baseUrl}/openapi.json`, {
+          method: 'GET',
+          headers: { Authorization: `Bearer ${this.config.apiKey || ''}` },
+        });
+        if (!resp.ok) continue;
+
+        const spec = await resp.json() as any;
+        const paths = spec?.paths as Record<string, any> | undefined;
+        if (!paths) continue;
+
+        const entries = Object.entries(paths);
+        const hasPost = (p: string) => Boolean(paths[p]?.post);
+        const hasGet = (p: string) => Boolean(paths[p]?.get);
+
+        const pickFirst = (predicates: Array<(p: string) => boolean>, methodPred: (p: string) => boolean): string | undefined => {
+          for (const pred of predicates) {
+            const hit = entries.find(([p]) => pred(p) && methodPred(p))?.[0];
+            if (hit) return hit;
+          }
+          return undefined;
+        };
+
+        const startPath = pickFirst(
+          [
+            (p) => /\/v1\/public\/video\/start\/?$/i.test(p),
+            (p) => /\/v1\/video\/start\/?$/i.test(p),
+            (p) => /\/video\/start\/?$/i.test(p),
+            (p) => /\/video\/create\/?$/i.test(p),
+            (p) => /\/video\/generate\/?$/i.test(p),
+          ],
+          hasPost
+        );
+
+        if (!startPath) continue;
+
+        const ssePath = pickFirst(
+          [
+            (p) => /\/video\/sse\/?$/i.test(p),
+            (p) => /\/video\/stream\/?$/i.test(p),
+          ],
+          hasGet
+        );
+
+        const stopPath = pickFirst(
+          [
+            (p) => /\/video\/stop\/?$/i.test(p),
+            (p) => /\/video\/cancel\/?$/i.test(p),
+          ],
+          hasPost
+        );
+
+        this.apiOverride = {
+          baseUrl,
+          startPath,
+          ssePath,
+          stopPath,
+        };
+        return;
+      } catch {
+        // ignore
+      }
+    }
   }
 
   private getHeaders(): Record<string, string> {
@@ -119,8 +202,8 @@ export class CustomITVProvider implements ITVProvider {
     }
 
     const trySubmit = async (variant: 'public' | 'standard') => {
-      const paths = this.getApiPaths(variant);
-      return safeFetch(this.joinUrl(paths.start), {
+      const startPath = this.apiOverride?.startPath || this.getApiPaths(variant).start;
+      return safeFetch(this.joinUrl(startPath), {
         method: 'POST',
         headers: this.getHeaders(),
         body: JSON.stringify(body),
@@ -137,6 +220,16 @@ export class CustomITVProvider implements ITVProvider {
       if (fallbackResp.ok) {
         this.apiVariant = fallbackVariant;
         resp = fallbackResp;
+      } else if (fallbackResp.status === 404) {
+        // Last resort: try to discover the actual endpoint via OpenAPI.
+        await this.detectApiOverrideFromOpenApi();
+        if (this.apiOverride?.startPath) {
+          resp = await safeFetch(this.joinUrl(this.apiOverride.startPath), {
+            method: 'POST',
+            headers: this.getHeaders(),
+            body: JSON.stringify(body),
+          });
+        }
       }
     } else if (resp.ok && !this.apiVariant) {
       // Cache the successful variant for subsequent calls.
@@ -169,8 +262,9 @@ export class CustomITVProvider implements ITVProvider {
     try {
       const preferredVariant = this.apiVariant || 'public';
       const paths = this.getApiPaths(preferredVariant);
+      const ssePath = this.apiOverride?.ssePath || paths.sse;
       const resp = await safeFetch(
-        `${this.joinUrl(paths.sse)}?task_id=${taskId}`,
+        `${this.joinUrl(ssePath)}?task_id=${taskId}`,
         {
           headers: { Authorization: `Bearer ${this.config.apiKey || ''}` },
           signal: controller.signal,
@@ -182,8 +276,9 @@ export class CustomITVProvider implements ITVProvider {
         if (resp.status === 404) {
           const fallbackVariant: 'public' | 'standard' = preferredVariant === 'public' ? 'standard' : 'public';
           const fallbackPaths = this.getApiPaths(fallbackVariant);
+          const fallbackSsePath = this.apiOverride?.ssePath || fallbackPaths.sse;
           const fallbackResp = await safeFetch(
-            `${this.joinUrl(fallbackPaths.sse)}?task_id=${taskId}`,
+            `${this.joinUrl(fallbackSsePath)}?task_id=${taskId}`,
             {
               headers: { Authorization: `Bearer ${this.config.apiKey || ''}` },
               signal: controller.signal,
@@ -209,6 +304,35 @@ export class CustomITVProvider implements ITVProvider {
               }
             }
             return this.parseSSEText(buffer);
+          }
+          // Try OpenAPI discovery once if both variants 404.
+          await this.detectApiOverrideFromOpenApi();
+          if (this.apiOverride?.ssePath) {
+            const overrideResp = await safeFetch(
+              `${this.joinUrl(this.apiOverride.ssePath)}?task_id=${taskId}`,
+              {
+                headers: { Authorization: `Bearer ${this.config.apiKey || ''}` },
+                signal: controller.signal,
+              } as RequestInit
+            );
+            if (overrideResp.ok) {
+              const reader = overrideResp.body?.getReader();
+              if (!reader) {
+                const text = await overrideResp.text();
+                return this.parseSSEText(text);
+              }
+              let buffer = '';
+              const start = Date.now();
+              while (Date.now() - start < timeoutMs) {
+                const { value, done } = await reader.read();
+                if (done) break;
+                buffer += new TextDecoder().decode(value);
+                const parsed = this.parseSSEText(buffer);
+                if (parsed.videoUrl) return parsed;
+                if (typeof parsed.progress === 'number') return parsed;
+              }
+              return this.parseSSEText(buffer);
+            }
           }
         }
         return {};
@@ -306,7 +430,8 @@ export class CustomITVProvider implements ITVProvider {
     try {
       const variant = this.apiVariant || 'public';
       const paths = this.getApiPaths(variant);
-      await safeFetch(this.joinUrl(paths.stop), {
+      const stopPath = this.apiOverride?.stopPath || paths.stop;
+      await safeFetch(this.joinUrl(stopPath), {
         method: 'POST',
         headers: this.getHeaders(),
         body: JSON.stringify({ task_id: taskId }),
