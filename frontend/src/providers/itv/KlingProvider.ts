@@ -1,8 +1,9 @@
 /**
  * Kling (可灵) Provider
  */
-import type { ITVConfig, ITVOptions, VideoResult, ProgressInfo } from '../../types';
-import type { ITVProvider, ITVGenerateInput } from './types';
+import type { ITVConfig, ITVOptions, ProgressInfo } from '../../types';
+import type { ProviderStartResult, ProviderTaskSnapshot } from '../../types';
+import type { ITVProvider, ITVRequest, ITVResult } from './types';
 import { safeFetch } from '../../utils/safeFetch';
 
 interface KlingCreateResponse {
@@ -191,15 +192,33 @@ export class KlingProvider implements ITVProvider {
     };
   }
 
-  async generateVideo(input: ITVGenerateInput): Promise<VideoResult> {
+  private toSnapshot(progress: ProgressInfo, taskId: string): ProviderTaskSnapshot<ITVResult> {
+    const state: ProviderTaskSnapshot<ITVResult>['state'] =
+      progress.status === 'queued'
+        ? 'queued'
+        : progress.status === 'processing'
+          ? 'running'
+          : progress.status === 'completed'
+            ? 'succeeded'
+            : 'failed';
+
+    return {
+      state,
+      progress: progress.progress,
+      output: (state === 'succeeded' && progress.resultUrl)
+        ? { source: progress.resultUrl, taskId }
+        : undefined,
+      error: progress.error,
+    };
+  }
+
+  async start(request: ITVRequest): Promise<ProviderStartResult<ITVResult>> {
     if (!this.validate()) {
       throw new Error('Kling API Key 未配置');
     }
 
-    const { imageUrl, prompt, options } = input;
-    const imageSource = imageUrl || options?.startFrame;
-    const useImage = !!imageSource;
-    const endpoint = useImage ? 'videos/image2video' : 'videos/text2video';
+    const { prompt, options } = request;
+    const endpoint = 'videos/image2video';
 
     const body: Record<string, any> = {
       prompt,
@@ -219,11 +238,10 @@ export class KlingProvider implements ITVProvider {
       body.cfg_scale = options.motionStrength;
     }
 
-    if (useImage && imageSource) {
-      body.image = await this.toDataUrl(imageSource);
-      if (options?.endFrame) {
-        body.image_tail = await this.toDataUrl(options.endFrame);
-      }
+    body.image = request.primaryImage.value;
+    const tail = request.additionalReferences?.[0]?.value || options?.endFrame;
+    if (tail) {
+      body.image_tail = tail;
     }
 
     const response = await safeFetch(this.buildUrl(endpoint), {
@@ -246,41 +264,10 @@ export class KlingProvider implements ITVProvider {
     if (!taskId) {
       throw new Error('Kling 任务ID获取失败');
     }
-
-    const pollingConfig = this.polling;
-    const startTime = Date.now();
-
-    if (pollingConfig.initialDelay) {
-      await this.delay(pollingConfig.initialDelay);
-    }
-
-    while (Date.now() - startTime < pollingConfig.maxDuration) {
-      const progress = await this.checkProgress(taskId);
-
-      if (progress.status === 'completed' && progress.resultUrl) {
-        const resolution = this.parseResolution(options);
-        return {
-          url: progress.resultUrl,
-          path: progress.resultUrl,
-          duration: options?.duration || this.config.defaultDuration || 5,
-          width: resolution.width,
-          height: resolution.height,
-          fps: options?.fps || 24,
-          taskId,
-        };
-      }
-
-      if (progress.status === 'failed') {
-        throw new Error(progress.error || '视频生成失败');
-      }
-
-      await this.delay(pollingConfig.interval);
-    }
-
-    throw new Error('视频生成超时');
+    return { mode: 'async', taskId };
   }
 
-  async checkProgress(taskId: string): Promise<ProgressInfo> {
+  async getTaskSnapshot(taskId: string): Promise<ProviderTaskSnapshot<ITVResult>> {
     const endpoints = [
       this.buildUrl(`videos/text2video/${taskId}`),
       this.buildUrl(`videos/image2video/${taskId}`),
@@ -318,22 +305,12 @@ export class KlingProvider implements ITVProvider {
           }
           
           // 其他错误直接返回
-          return {
-            taskId,
-            status: 'failed',
-            progress: 0,
-            error: this.translateError(lastError),
-          };
+          return { state: 'failed', progress: 0, error: this.translateError(lastError) };
         }
 
         const data: KlingProgressResponse = await response.json();
         if (typeof data.code === 'number' && data.code !== 0 && data.code !== 200) {
-          return {
-            taskId,
-            status: 'failed',
-            progress: 0,
-            error: this.translateError(data.message || '查询任务失败'),
-          };
+          return { state: 'failed', progress: 0, error: this.translateError(data.message || '查询任务失败') };
         }
 
         const progress = this.extractProgress(data);
@@ -341,22 +318,14 @@ export class KlingProvider implements ITVProvider {
         if (progress.error) {
             progress.error = this.translateError(progress.error);
         }
-        
-        return {
-          ...progress,
-          taskId,
-        };
+
+        return this.toSnapshot({ ...progress, taskId }, taskId);
       } catch (err: any) {
         lastError = err?.message || String(err);
       }
     }
 
-    return {
-      taskId,
-      status: 'failed',
-      progress: 0,
-      error: this.translateError(lastError || '查询任务状态失败，请检查网络或稍后重试'),
-    };
+    return { state: 'failed', progress: 0, error: this.translateError(lastError || '查询任务状态失败，请检查网络或稍后重试') };
   }
 
   private translateError(msg: string): string {
@@ -392,17 +361,7 @@ export class KlingProvider implements ITVProvider {
     }
   }
 
-  private get polling() {
-    return {
-      interval: 4000,
-      maxDuration: 600000,
-      initialDelay: 2000,
-    };
-  }
-
-  private delay(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
-  }
+  // polling 配置由 registry 下发；Provider 本身不做内部轮询
 }
 
 export default KlingProvider;

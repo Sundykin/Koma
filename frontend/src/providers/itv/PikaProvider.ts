@@ -4,10 +4,9 @@
  */
 import type {
   ITVConfig,
-  VideoResult,
-  ProgressInfo,
 } from '../../types';
-import type { ITVProvider, ITVGenerateInput } from './types';
+import type { ProviderStartResult, ProviderTaskSnapshot } from '../../types';
+import type { ITVProvider, ITVRequest, ITVResult } from './types';
 import { safeFetch } from '../../utils/safeFetch';
 
 export class PikaProvider implements ITVProvider {
@@ -41,22 +40,21 @@ export class PikaProvider implements ITVProvider {
     }
   }
 
-  async generateVideo(input: ITVGenerateInput): Promise<VideoResult> {
+  async start(request: ITVRequest): Promise<ProviderStartResult<ITVResult>> {
     if (!this.validate()) {
       throw new Error('Pika API Key 未配置');
     }
 
-    const { imageUrl, prompt, options } = input;
+    const { prompt, options } = request;
 
     // Pika API 提交生成任务
     const formData = new FormData();
 
     // 读取图片文件
-    if (imageUrl) {
-      const imageResponse = await safeFetch(imageUrl);
-      const imageBlob = await imageResponse.blob();
-      formData.append('image', imageBlob, 'input.png');
-    }
+    const imageResponse = await safeFetch(request.primaryImage.value);
+    const imageBlob = await imageResponse.blob();
+    formData.append('image', imageBlob, 'input.png');
+
     formData.append('prompt', prompt);
     formData.append('duration', String(options?.duration || this.config.defaultDuration || 4));
 
@@ -79,36 +77,14 @@ export class PikaProvider implements ITVProvider {
 
     const data = await response.json();
     const taskId = data.task_id || data.id;
-
-    // 轮询等待完成
-    const pollingConfig = this.polling;
-    const startTime = Date.now();
-
-    while (Date.now() - startTime < pollingConfig.maxDuration) {
-      const progress = await this.checkProgress(taskId);
-
-      if (progress.status === 'completed' && progress.resultUrl) {
-        return {
-          url: progress.resultUrl,
-          path: progress.resultUrl,
-          duration: options?.duration || 4,
-          width: 1280,
-          height: 720,
-          fps: 24,
-        };
-      }
-
-      if (progress.status === 'failed') {
-        throw new Error(progress.error || '视频生成失败');
-      }
-
-      await this.delay(pollingConfig.interval);
+    if (!taskId) {
+      throw new Error('Pika 任务ID获取失败');
     }
 
-    throw new Error('视频生成超时');
+    return { mode: 'async', taskId: String(taskId) };
   }
 
-  async checkProgress(taskId: string): Promise<ProgressInfo> {
+  async getTaskSnapshot(taskId: string): Promise<ProviderTaskSnapshot<ITVResult>> {
     const response = await safeFetch(`${this.getBaseUrl()}/tasks/${taskId}`, {
       headers: {
         Authorization: `Bearer ${this.config.apiKey}`,
@@ -116,26 +92,26 @@ export class PikaProvider implements ITVProvider {
     });
 
     if (!response.ok) {
-      throw new Error('获取任务状态失败');
+      return { state: 'failed', progress: 0, error: '获取任务状态失败' };
     }
 
     const data = await response.json();
 
     // 映射 Pika 状态
-    let status: ProgressInfo['status'] = 'queued';
+    let state: ProviderTaskSnapshot<ITVResult>['state'] = 'queued';
     if (data.status === 'completed' || data.status === 'succeeded') {
-      status = 'completed';
+      state = 'succeeded';
     } else if (data.status === 'failed' || data.status === 'error') {
-      status = 'failed';
+      state = 'failed';
     } else if (data.status === 'processing' || data.status === 'running') {
-      status = 'processing';
+      state = 'running';
     }
 
+    const resultUrl = data.output_url || data.video_url;
     return {
-      taskId,
-      status,
-      progress: data.progress || 0,
-      resultUrl: data.output_url || data.video_url,
+      state,
+      progress: data.progress || (state === 'succeeded' ? 100 : 0),
+      output: (state === 'succeeded' && resultUrl) ? { source: resultUrl, taskId } : undefined,
       error: data.error,
     };
   }
@@ -149,14 +125,5 @@ export class PikaProvider implements ITVProvider {
     });
   }
 
-  private get polling() {
-    return {
-      interval: 3000,
-      maxDuration: 300000,
-    };
-  }
-
-  private delay(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
-  }
+  // polling 配置由 registry 下发；Provider 本身不做内部轮询
 }

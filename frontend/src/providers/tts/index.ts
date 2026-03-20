@@ -17,6 +17,7 @@ import { OpenAITTSProvider } from './OpenAITTSProvider';
 import { FishAudioProvider } from './FishAudioProvider';
 import { GPTSoVITSProvider } from './GPTSoVITSProvider';
 import type { ProviderDefinition } from '../registry.types';
+import { MEDIA_PROVIDER_CONTRACT_VERSION } from '../registry.types';
 import { ttsRegistry } from '../registry';
 
 // configSchema 定义
@@ -67,6 +68,7 @@ function registerBuiltinTTSProviders() {
       name: 'Edge TTS (免费)',
       description: '微软 Edge 免费语音合成',
       factory: (config) => new EdgeTTSProvider(config as TTSConfig),
+      contractVersion: MEDIA_PROVIDER_CONTRACT_VERSION,
       capabilities: ['tts'],
       configSchema: edgeTTSSchema,
     },
@@ -76,6 +78,7 @@ function registerBuiltinTTSProviders() {
       name: 'OpenAI TTS',
       description: 'OpenAI 官方语音合成',
       factory: (config) => new OpenAITTSProvider(config as TTSConfig),
+      contractVersion: MEDIA_PROVIDER_CONTRACT_VERSION,
       capabilities: ['tts'],
       configSchema: openAITTSSchema,
     },
@@ -85,6 +88,7 @@ function registerBuiltinTTSProviders() {
       name: 'Fish Audio',
       description: 'Fish Audio 语音合成',
       factory: (config) => new FishAudioProvider(config as TTSConfig),
+      contractVersion: MEDIA_PROVIDER_CONTRACT_VERSION,
       capabilities: ['tts'],
       configSchema: fishAudioSchema,
     },
@@ -94,6 +98,7 @@ function registerBuiltinTTSProviders() {
       name: 'GPT-SoVITS (本地)',
       description: '本地部署的 GPT-SoVITS 服务',
       factory: (config) => new GPTSoVITSProvider(config as TTSConfig),
+      contractVersion: MEDIA_PROVIDER_CONTRACT_VERSION,
       capabilities: ['tts'],
       configSchema: gptSovitsSchema,
     },

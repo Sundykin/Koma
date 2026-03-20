@@ -4,10 +4,9 @@
  */
 import type {
   ITVConfig,
-  VideoResult,
-  ProgressInfo,
 } from '../../types';
-import type { ITVProvider, ITVGenerateInput } from './types';
+import type { ProviderStartResult, ProviderTaskSnapshot } from '../../types';
+import type { ITVProvider, ITVRequest, ITVResult } from './types';
 import { safeFetch } from '../../utils/safeFetch';
 
 // AnimateDiff 工作流配置
@@ -139,9 +138,9 @@ export class ComfyUIAnimateDiffProvider implements ITVProvider {
     };
   }
 
-  async generateVideo(input: ITVGenerateInput): Promise<VideoResult> {
+  async start(request: ITVRequest): Promise<ProviderStartResult<ITVResult>> {
     const baseUrl = this.getBaseUrl();
-    const { imageUrl, prompt, options } = input;
+    const { prompt, options } = request;
 
     // 构建工作流参数
     const duration = options?.duration || this.config.defaultDuration || 4;
@@ -159,7 +158,7 @@ export class ComfyUIAnimateDiffProvider implements ITVProvider {
       frames,
       fps,
       motion_module: 'mm_sd_v15_v2.ckpt',
-      image: imageUrl ? await this.imageToBase64(imageUrl) : undefined,
+      image: request.primaryImage ? await this.imageToBase64(request.primaryImage.value) : undefined,
     });
 
     // 提交任务到 ComfyUI
@@ -181,36 +180,14 @@ export class ComfyUIAnimateDiffProvider implements ITVProvider {
 
     const data = await response.json();
     const taskId = data.prompt_id;
-
-    // 轮询等待完成
-    const pollingConfig = this.polling;
-    const startTime = Date.now();
-
-    while (Date.now() - startTime < pollingConfig.maxDuration) {
-      const progress = await this.checkProgress(taskId);
-
-      if (progress.status === 'completed' && progress.resultUrl) {
-        return {
-          url: progress.resultUrl,
-          path: progress.resultUrl,
-          duration,
-          width: options?.width || 512,
-          height: options?.height || 512,
-          fps,
-        };
-      }
-
-      if (progress.status === 'failed') {
-        throw new Error(progress.error || '视频生成失败');
-      }
-
-      await this.delay(pollingConfig.interval);
+    if (!taskId) {
+      throw new Error('ComfyUI 任务ID获取失败');
     }
 
-    throw new Error('视频生成超时');
+    return { mode: 'async', taskId: String(taskId) };
   }
 
-  async checkProgress(taskId: string): Promise<ProgressInfo> {
+  async getTaskSnapshot(taskId: string): Promise<ProviderTaskSnapshot<ITVResult>> {
     const baseUrl = this.getBaseUrl();
 
     // 查询历史记录
@@ -218,8 +195,7 @@ export class ComfyUIAnimateDiffProvider implements ITVProvider {
 
     if (!response.ok) {
       return {
-        taskId,
-        status: 'processing',
+        state: 'running',
         progress: 0,
       };
     }
@@ -229,8 +205,7 @@ export class ComfyUIAnimateDiffProvider implements ITVProvider {
 
     if (!result) {
       return {
-        taskId,
-        status: 'queued',
+        state: 'queued',
         progress: 0,
       };
     }
@@ -254,17 +229,15 @@ export class ComfyUIAnimateDiffProvider implements ITVProvider {
       }
 
       return {
-        taskId,
-        status: 'completed',
+        state: 'succeeded',
         progress: 100,
-        resultUrl: videoUrl,
+        output: videoUrl ? { source: videoUrl, taskId } : undefined,
       };
     }
 
     if (result.status?.status_str === 'error') {
       return {
-        taskId,
-        status: 'failed',
+        state: 'failed',
         progress: 0,
         error: result.status.messages?.[0]?.[1] || '生成失败',
       };
@@ -275,8 +248,7 @@ export class ComfyUIAnimateDiffProvider implements ITVProvider {
     const progress = executing ? 50 : 10;
 
     return {
-      taskId,
-      status: 'processing',
+      state: 'running',
       progress,
     };
   }
@@ -288,14 +260,5 @@ export class ComfyUIAnimateDiffProvider implements ITVProvider {
     });
   }
 
-  private get polling() {
-    return {
-      interval: 2000,
-      maxDuration: 300000,
-    };
-  }
-
-  private delay(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
-  }
+  // polling 配置由 registry 下发；Provider 本身不做内部轮询
 }

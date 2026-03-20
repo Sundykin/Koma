@@ -1,8 +1,9 @@
 /**
  * Runway Gen-3 Provider
  */
-import type { ITVConfig, ITVOptions, VideoResult, ProgressInfo } from '../../types';
-import type { ITVProvider, ITVGenerateInput } from './types';
+import type { ITVConfig, ITVOptions } from '../../types';
+import type { ProviderStartResult, ProviderTaskSnapshot } from '../../types';
+import type { ITVProvider, ITVRequest, ITVResult } from './types';
 import { safeFetch } from '../../utils/safeFetch';
 
 interface RunwayCreateResponse {
@@ -117,24 +118,22 @@ export class RunwayProvider implements ITVProvider {
     });
   }
 
-  private mapStatus(rawStatus?: string): ProgressInfo['status'] {
+  private mapStatus(rawStatus?: string): ProviderTaskSnapshot<ITVResult>['state'] {
     const status = (rawStatus || '').toUpperCase();
-    if (status === 'SUCCEEDED' || status === 'COMPLETED') return 'completed';
+    if (status === 'SUCCEEDED' || status === 'COMPLETED') return 'succeeded';
     if (status === 'FAILED' || status === 'CANCELED' || status === 'CANCELLED') return 'failed';
     if (status === 'PENDING' || status === 'QUEUED' || status === 'THROTTLED') return 'queued';
-    if (status === 'RUNNING' || status === 'IN_PROGRESS' || status === 'PROCESSING') return 'processing';
-    return 'processing';
+    if (status === 'RUNNING' || status === 'IN_PROGRESS' || status === 'PROCESSING') return 'running';
+    return 'running';
   }
 
-  async generateVideo(input: ITVGenerateInput): Promise<VideoResult> {
+  async start(request: ITVRequest): Promise<ProviderStartResult<ITVResult>> {
     if (!this.validate()) {
       throw new Error('Runway API Key 未配置');
     }
 
-    const { imageUrl, prompt, options } = input;
-    const imageSource = imageUrl || options?.startFrame;
-    const useImage = !!imageSource;
-    const endpoint = useImage ? 'image_to_video' : 'text_to_video';
+    const { prompt, options } = request;
+    const endpoint = 'image_to_video';
 
     const duration = options?.duration || this.config.defaultDuration || 4;
     const ratio = this.resolveRatio(options);
@@ -149,9 +148,7 @@ export class RunwayProvider implements ITVProvider {
       body.seed = options.seed;
     }
 
-    if (useImage && imageSource) {
-      body.promptImage = await this.toDataUrl(imageSource);
-    }
+    body.promptImage = request.primaryImage.value;
 
     const response = await safeFetch(this.buildUrl(endpoint), {
       method: 'POST',
@@ -171,40 +168,10 @@ export class RunwayProvider implements ITVProvider {
       throw new Error('Runway 任务ID获取失败');
     }
 
-    const pollingConfig = this.polling;
-    const startTime = Date.now();
-
-    if (pollingConfig.initialDelay) {
-      await this.delay(pollingConfig.initialDelay);
-    }
-
-    while (Date.now() - startTime < pollingConfig.maxDuration) {
-      const progress = await this.checkProgress(taskId);
-
-      if (progress.status === 'completed' && progress.resultUrl) {
-        const resolution = this.parseResolution(options);
-        return {
-          url: progress.resultUrl,
-          path: progress.resultUrl,
-          duration,
-          width: resolution.width,
-          height: resolution.height,
-          fps: options?.fps || 24,
-          taskId,
-        };
-      }
-
-      if (progress.status === 'failed') {
-        throw new Error(progress.error || '视频生成失败');
-      }
-
-      await this.delay(pollingConfig.interval);
-    }
-
-    throw new Error('视频生成超时');
+    return { mode: 'async', taskId: String(taskId) };
   }
 
-  async checkProgress(taskId: string): Promise<ProgressInfo> {
+  async getTaskSnapshot(taskId: string): Promise<ProviderTaskSnapshot<ITVResult>> {
     const response = await safeFetch(this.buildUrl(`tasks/${taskId}`), {
       method: 'GET',
       headers: this.getHeaders(),
@@ -213,25 +180,23 @@ export class RunwayProvider implements ITVProvider {
     if (!response.ok) {
       const errorText = await response.text();
       return {
-        taskId,
-        status: 'failed',
+        state: 'failed',
         progress: 0,
         error: errorText || '查询失败',
       };
     }
 
     const data: RunwayTaskResponse = await response.json();
-    const status = this.mapStatus(data.status);
+    const state = this.mapStatus(data.status);
     const resultUrl = data.output?.[0]
       || data.output_url
       || data.artifacts?.[0]?.url;
     const error = data.error?.message || data.failure_reason || data.message;
 
     return {
-      taskId,
-      status,
-      progress: status === 'completed' ? 100 : status === 'processing' ? 50 : 0,
-      resultUrl,
+      state,
+      progress: state === 'succeeded' ? 100 : state === 'running' ? 50 : 0,
+      output: (state === 'succeeded' && resultUrl) ? { source: resultUrl, taskId } : undefined,
       error,
     };
   }
@@ -255,17 +220,7 @@ export class RunwayProvider implements ITVProvider {
     }
   }
 
-  private get polling() {
-    return {
-      interval: 5000,
-      maxDuration: 600000,
-      initialDelay: 3000,
-    };
-  }
-
-  private delay(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
-  }
+  // polling 配置由 registry 下发；Provider 本身不做内部轮询
 }
 
 export default RunwayProvider;

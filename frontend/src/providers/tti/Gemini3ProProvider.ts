@@ -2,8 +2,8 @@
  * Gemini-3-Pro TTI Provider
  * toapis.com 的 gemini-3-pro-image-preview 文生图服务
  */
-import type { TTIModelConfig, ProgressInfo } from '../../types';
-import type { TTIProvider, TTIOptions } from './types';
+import type { TTIModelConfig, ProviderStartResult, ProviderTaskSnapshot } from '../../types';
+import type { TTIProvider, TTIOptions, TTIRequest, ImageResult } from './types';
 import { safeFetch } from '../../utils/safeFetch';
 
 // API 响应类型
@@ -85,16 +85,16 @@ export class Gemini3ProProvider implements TTIProvider {
 
   /**
    * 创建图片生成任务
-   * @returns taskId 用于轮询结果
    */
-  async generateImage(prompt: string, options?: TTIOptions): Promise<string> {
+  async start(request: TTIRequest): Promise<ProviderStartResult<ImageResult>> {
     if (!this.validate()) {
       throw new Error('API Key 未配置');
     }
 
+    const options: TTIOptions | undefined = request.options;
     const body: Record<string, any> = {
       model: this.config.modelName || 'gemini-3-pro-image-preview',
-      prompt,
+      prompt: request.prompt,
       n: 1,
     };
 
@@ -104,8 +104,8 @@ export class Gemini3ProProvider implements TTIProvider {
     }
 
     // 参考图（图生图）
-    if (options?.imageUrls && options.imageUrls.length > 0) {
-      body.image_urls = options.imageUrls.map(url => ({ url }));
+    if (request.references && request.references.length > 0) {
+      body.image_urls = request.references.map(item => ({ url: item.value }));
     }
 
     const response = await safeFetch(`${this.getBaseUrl()}/v1/images/generations`, {
@@ -120,13 +120,13 @@ export class Gemini3ProProvider implements TTIProvider {
     }
 
     const data: Gemini3ProCreateResponse = await response.json();
-    return data.id;
+    return { mode: 'async', taskId: data.id };
   }
 
   /**
    * 轮询任务状态
    */
-  async checkProgress(taskId: string): Promise<ProgressInfo> {
+  async getTaskSnapshot(taskId: string): Promise<ProviderTaskSnapshot<ImageResult>> {
     const response = await safeFetch(`${this.getBaseUrl()}/v1/images/generations/${taskId}`, {
       method: 'GET',
       headers: {
@@ -136,8 +136,7 @@ export class Gemini3ProProvider implements TTIProvider {
 
     if (!response.ok) {
       return {
-        taskId,
-        status: 'failed',
+        state: 'failed',
         progress: 0,
         error: '查询失败',
       };
@@ -145,27 +144,26 @@ export class Gemini3ProProvider implements TTIProvider {
 
     const data: Gemini3ProTaskResponse = await response.json();
 
-    const stateMap: Record<string, ProgressInfo['status']> = {
-      'queued': 'queued',
-      'in_progress': 'processing',
-      'completed': 'completed',
-      'failed': 'failed',
+    const stateMap: Record<string, ProviderTaskSnapshot<ImageResult>['state']> = {
+      queued: 'queued',
+      in_progress: 'running',
+      completed: 'succeeded',
+      failed: 'failed',
     };
 
-    const result: ProgressInfo = {
-      taskId,
-      status: stateMap[data.status] || 'processing',
+    const snapshot: ProviderTaskSnapshot<ImageResult> = {
+      state: stateMap[data.status] || 'running',
       progress: data.progress || 0,
     };
 
     if (data.status === 'completed' && data.result?.data?.[0]?.url) {
-      result.resultUrl = data.result.data[0].url;
+      snapshot.output = { path: data.result.data[0].url };
     }
 
     if (data.status === 'failed' && data.error) {
-      result.error = data.error.message || '任务失败';
+      snapshot.error = data.error.message || '任务失败';
     }
 
-    return result;
+    return snapshot;
   }
 }

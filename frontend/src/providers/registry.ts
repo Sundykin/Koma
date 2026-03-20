@@ -23,12 +23,27 @@ import type {
   IProviderRegistry,
   ProviderContext
 } from './registry.types';
+import {
+  MEDIA_PROVIDER_CONTRACT_VERSION,
+  requiresMediaContractVersion,
+} from './registry.types';
 
 // 注册表实现
 class ProviderRegistryImpl<T> implements IProviderRegistry<T> {
   private providers = new Map<string, ProviderDefinition<T>>();
 
   register(def: ProviderDefinition<T>): void {
+    if (requiresMediaContractVersion(def.kind)) {
+      if (!def.contractVersion) {
+        throw new Error(`Provider "${def.type}" must declare contractVersion=${MEDIA_PROVIDER_CONTRACT_VERSION}`);
+      }
+      if (def.contractVersion !== MEDIA_PROVIDER_CONTRACT_VERSION) {
+        throw new Error(
+          `Provider "${def.type}" uses unsupported contractVersion "${def.contractVersion}", expected "${MEDIA_PROVIDER_CONTRACT_VERSION}"`
+        );
+      }
+    }
+
     const existing = this.providers.get(def.type);
     if (existing && existing.pluginId !== def.pluginId) {
       throw new Error(`Provider type "${def.type}" already registered by ${existing.pluginId || 'built-in'}`);

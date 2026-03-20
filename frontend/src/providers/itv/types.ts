@@ -1,12 +1,17 @@
 /**
- * ITV Provider 类型定义
+ * ITV Provider 类型定义（OpenSpec: request-based + start/snapshot lifecycle）
  */
 import type {
   ITVConfig,
   ITVOptions,
-  VideoResult,
   ProgressInfo,
   ITVProviderType,
+} from '../../types';
+import type {
+  ProviderAssetInput,
+  ProviderStartResult,
+  ProviderTaskSnapshot,
+  ITVRequest as BaseITVRequest,
 } from '../../types';
 
 // 角色提取参数
@@ -35,19 +40,26 @@ export interface RemixOptions {
   aspectRatio?: string;
 }
 
-// 视频生成输入参数（统一接口）
-export interface ITVGenerateInput {
-  imageUrl?: string;
-  prompt: string;
-  options?: ITVOptions;
+export interface ITVResult {
+  /**
+   * 生成结果来源（URL 或本地路径）。
+   *
+   * 注意：持久化统一由 mediaPersistenceService 完成，Provider 不负责项目路径落盘。
+   */
+  source: string;
+  taskId?: string;
+  durationSec?: number;
+  width?: number;
+  height?: number;
+  fps?: number;
+  mimeType?: string;
+  metadata?: Record<string, unknown>;
 }
+
+export type ITVRequest = BaseITVRequest<ProviderAssetInput, ITVOptions>;
 
 /**
  * ITV Provider 接口
- *
- * 统一接口规范：
- * - generateVideo(): 必需，统一返回 Promise<VideoResult>，内部处理轮询
- * - checkProgress(): 异步 Provider 必需，用于查询任务进度
  */
 export interface ITVProvider {
   type: ITVProviderType;
@@ -57,34 +69,13 @@ export interface ITVProvider {
   validate(): boolean;
   testConnection(): Promise<boolean>;
 
-  // ========== 核心方法（必需） ==========
-
-  /**
-   * 生成视频（统一接口）
-   * 无论底层是同步还是异步，都返回最终结果
-   * 异步 Provider 内部需自行处理轮询
-   */
-  generateVideo(input: ITVGenerateInput): Promise<VideoResult>;
-
-  // ========== 进度查询（异步 Provider 必需） ==========
-
-  /**
-   * 查询进度
-   */
-  checkProgress?(taskId: string): Promise<ProgressInfo>;
+  start(request: ITVRequest): Promise<ProviderStartResult<ITVResult>>;
+  getTaskSnapshot?(taskId: string): Promise<ProviderTaskSnapshot<ITVResult>>;
 
   /**
    * 取消任务
    */
   cancelTask?(taskId: string): Promise<void>;
-
-  /**
-   * 生成视频（带进度回调，可选）
-   */
-  generateVideoWithProgress?(
-    input: ITVGenerateInput,
-    onProgress?: (progress: ProgressInfo) => void
-  ): Promise<VideoResult>;
 
   // ========== 扩展功能（Sora2 等特定 Provider） ==========
 
@@ -112,4 +103,4 @@ export interface ITVProvider {
 }
 
 // Re-export：供 providers/index.ts 通过本文件统一导出
-export type { ITVConfig, ITVOptions, VideoResult, ProgressInfo };
+export type { ITVConfig, ITVOptions, ProgressInfo };

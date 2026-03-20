@@ -3,8 +3,8 @@
  * 兼容 OpenAI /v1/images/generations 接口的自定义文生图服务
  * 支持 url 和 b64_json 两种返回格式
  */
-import type { TTIModelConfig, ProgressInfo } from '../../types';
-import type { TTIProvider, TTIOptions, ImageResult } from './types';
+import type { TTIModelConfig, ProviderStartResult, ProviderTaskSnapshot } from '../../types';
+import type { TTIProvider, TTIOptions, TTIRequest, ImageResult } from './types';
 import { safeFetch } from '../../utils/safeFetch';
 
 interface ImageData {
@@ -95,14 +95,15 @@ export class OpenAICompatibleTTIProvider implements TTIProvider {
    * 生成图片
    * 同步返回（直接拿到结果）或异步（返回 taskId 轮询）
    */
-  async generateImage(prompt: string, options?: TTIOptions): Promise<ImageResult | string> {
+  async start(request: TTIRequest): Promise<ProviderStartResult<ImageResult>> {
     if (!this.validate()) {
       throw new Error('API Key 或 API 地址未配置');
     }
 
+    const options: TTIOptions | undefined = request.options;
     const body: Record<string, any> = {
       model: this.config.modelName || 'dall-e-3',
-      prompt,
+      prompt: request.prompt,
       n: 1,
     };
 
@@ -110,8 +111,8 @@ export class OpenAICompatibleTTIProvider implements TTIProvider {
       body.size = options.aspectRatio;
     }
 
-    if (options?.imageUrls && options.imageUrls.length > 0) {
-      body.image_urls = options.imageUrls.map(url => ({ url }));
+    if (request.references && request.references.length > 0) {
+      body.image_urls = request.references.map(item => ({ url: item.value }));
     }
 
     const response = await safeFetch(`${this.getBaseUrl()}/v1/images/generations`, {
@@ -131,19 +132,19 @@ export class OpenAICompatibleTTIProvider implements TTIProvider {
     if (data.data?.[0]) {
       const imageUrl = this.extractImageUrl(data.data[0]);
       if (imageUrl) {
-        // 返回 ImageResult，path 存放 URL/data URL，下游 saveImage 会处理
         return {
-          path: imageUrl,
-          url: imageUrl,
-          width: 0,
-          height: 0,
+          mode: 'immediate',
+          output: {
+            path: imageUrl,
+            url: imageUrl,
+          },
         };
       }
     }
 
     // 异步模式：返回 taskId
     if (data.id) {
-      return data.id;
+      return { mode: 'async', taskId: data.id };
     }
 
     throw new Error('API 返回了无法识别的响应格式');
@@ -152,7 +153,7 @@ export class OpenAICompatibleTTIProvider implements TTIProvider {
   /**
    * 轮询任务状态（异步模式）
    */
-  async checkProgress(taskId: string): Promise<ProgressInfo> {
+  async getTaskSnapshot(taskId: string): Promise<ProviderTaskSnapshot<ImageResult>> {
     const response = await safeFetch(`${this.getBaseUrl()}/v1/images/generations/${taskId}`, {
       method: 'GET',
       headers: {
@@ -162,8 +163,7 @@ export class OpenAICompatibleTTIProvider implements TTIProvider {
 
     if (!response.ok) {
       return {
-        taskId,
-        status: 'failed',
+        state: 'failed',
         progress: 0,
         error: '查询失败',
       };
@@ -171,16 +171,15 @@ export class OpenAICompatibleTTIProvider implements TTIProvider {
 
     const data: TaskResponse = await response.json();
 
-    const stateMap: Record<string, ProgressInfo['status']> = {
-      'queued': 'queued',
-      'in_progress': 'processing',
-      'completed': 'completed',
-      'failed': 'failed',
+    const stateMap: Record<string, ProviderTaskSnapshot<ImageResult>['state']> = {
+      queued: 'queued',
+      in_progress: 'running',
+      completed: 'succeeded',
+      failed: 'failed',
     };
 
-    const result: ProgressInfo = {
-      taskId,
-      status: stateMap[data.status] || 'processing',
+    const snapshot: ProviderTaskSnapshot<ImageResult> = {
+      state: stateMap[data.status] || 'running',
       progress: data.progress || 0,
     };
 
@@ -189,15 +188,15 @@ export class OpenAICompatibleTTIProvider implements TTIProvider {
       if (items?.[0]) {
         const url = this.extractImageUrl(items[0]);
         if (url) {
-          result.resultUrl = url;
+          snapshot.output = { path: url, url };
         }
       }
     }
 
     if (data.status === 'failed' && data.error) {
-      result.error = data.error.message || '任务失败';
+      snapshot.error = data.error.message || '任务失败';
     }
 
-    return result;
+    return snapshot;
   }
 }

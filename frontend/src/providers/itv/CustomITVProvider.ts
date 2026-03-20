@@ -8,8 +8,9 @@
  *   进度: "正在生成视频中，当前进度XX%"
  *   结果: <video> HTML 标签含 mp4 URL
  */
-import type { ITVConfig, VideoResult, ProgressInfo } from '../../types';
-import type { ITVProvider, ITVGenerateInput } from './types';
+import type { ITVConfig } from '../../types';
+import type { ProviderStartResult, ProviderTaskSnapshot } from '../../types';
+import type { ITVProvider, ITVRequest, ITVResult } from './types';
 import { safeFetch } from '../../utils/safeFetch';
 
 export class CustomITVProvider implements ITVProvider {
@@ -50,10 +51,10 @@ export class CustomITVProvider implements ITVProvider {
   /**
    * 提交视频生成任务
    */
-  private async submitTask(prompt: string, imageUrl?: string): Promise<string> {
+  private async submitTask(prompt: string, primaryImage?: string): Promise<string> {
     const body: Record<string, any> = { prompt };
-    if (imageUrl) {
-      body.image_url = imageUrl;
+    if (primaryImage) {
+      body.image_url = primaryImage;
     }
 
     const resp = await safeFetch(`${this.getBaseUrl()}/v1/public/video/start`, {
@@ -76,116 +77,114 @@ export class CustomITVProvider implements ITVProvider {
   }
 
   /**
-   * 通过 SSE 等待视频生成完成
-   * 解析 chat.completion.chunk 格式的流式响应
+   * 通过 SSE 获取进度与结果（读取一小段后主动中止）
    */
-  private async waitForResult(taskId: string, onProgress?: (p: ProgressInfo) => void): Promise<string> {
-    const resp = await safeFetch(
-      `${this.getBaseUrl()}/v1/public/video/sse?task_id=${taskId}`,
-      { headers: { Authorization: `Bearer ${this.config.apiKey || ''}` } }
-    );
+  private async readSSESnapshot(
+    taskId: string,
+    timeoutMs: number
+  ): Promise<{ progress?: number; videoUrl?: string }> {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
-    if (!resp.ok) {
-      const err = await resp.text();
-      throw new Error(`查询视频进度失败 (${resp.status}): ${err}`);
+    try {
+      const resp = await safeFetch(
+        `${this.getBaseUrl()}/v1/public/video/sse?task_id=${taskId}`,
+        {
+          headers: { Authorization: `Bearer ${this.config.apiKey || ''}` },
+          signal: controller.signal,
+        } as RequestInit
+      );
+
+      if (!resp.ok) {
+        return {};
+      }
+
+      // 尽量从流中读取少量内容，解析出“最新进度”或 mp4 URL
+      const reader = resp.body?.getReader();
+      if (!reader) {
+        const text = await resp.text();
+        return this.parseSSEText(text);
+      }
+
+      let buffer = '';
+      const start = Date.now();
+      while (Date.now() - start < timeoutMs) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += new TextDecoder().decode(value);
+        const parsed = this.parseSSEText(buffer);
+        if (parsed.videoUrl) return parsed;
+        if (typeof parsed.progress === 'number') {
+          // 已获得进度，提前返回，减少一次 snapshot 的耗时
+          return parsed;
+        }
+      }
+
+      return this.parseSSEText(buffer);
+    } catch {
+      return {};
+    } finally {
+      clearTimeout(timeout);
+      controller.abort();
     }
+  }
 
-    const text = await resp.text();
-    let videoUrl = '';
-    let lastProgress = 0;
+  private parseSSEText(text: string): { progress?: number; videoUrl?: string } {
+    let videoUrl: string | undefined;
+    let progress: number | undefined;
 
     for (const line of text.split('\n')) {
       if (!line.startsWith('data: ') || line === 'data: [DONE]') continue;
-
       try {
         const chunk = JSON.parse(line.slice(6));
         const content = chunk.choices?.[0]?.delta?.content || '';
         if (!content) continue;
 
-        // 解析进度: "正在生成视频中，当前进度XX%"
         const progressMatch = content.match(/进度\s*(\d+)%/);
         if (progressMatch) {
-          lastProgress = parseInt(progressMatch[1], 10);
-          onProgress?.({
-            taskId,
-            status: 'processing',
-            progress: lastProgress,
-          });
+          progress = parseInt(progressMatch[1], 10);
         }
 
-        // 解析视频 URL: <source ... src="URL" ...>
         const srcMatch = content.match(/src="([^"]+\.mp4[^"]*)"/);
         if (srcMatch) {
           videoUrl = srcMatch[1];
         }
       } catch {
-        // 忽略非 JSON 行
+        // ignore
       }
     }
 
-    if (!videoUrl) {
-      throw new Error('视频生成完成但未获取到视频地址');
-    }
-
-    return videoUrl;
+    return { progress, videoUrl };
   }
 
-  async generateVideo(input: ITVGenerateInput): Promise<VideoResult> {
+  async start(request: ITVRequest): Promise<ProviderStartResult<ITVResult>> {
     if (!this.validate()) {
       throw new Error('请配置 API Key 和 Base URL');
     }
 
-    const { imageUrl, prompt, options } = input;
-    const taskId = await this.submitTask(prompt, imageUrl || options?.startFrame);
-
-    const videoUrl = await this.waitForResult(taskId);
-
-    return {
-      url: videoUrl,
-      path: videoUrl,
-      duration: options?.duration || this.config.defaultDuration || 5,
-      width: 1280,
-      height: 720,
-      fps: 24,
-      taskId,
-    };
+    const taskId = await this.submitTask(request.prompt, request.primaryImage.value);
+    return { mode: 'async', taskId };
   }
 
-  async generateVideoWithProgress(
-    input: ITVGenerateInput,
-    onProgress?: (progress: ProgressInfo) => void
-  ): Promise<VideoResult> {
+  async getTaskSnapshot(taskId: string): Promise<ProviderTaskSnapshot<ITVResult>> {
     if (!this.validate()) {
-      throw new Error('请配置 API Key 和 Base URL');
+      return { state: 'failed', progress: 0, error: '请配置 API Key 和 Base URL' };
     }
 
-    const { imageUrl, prompt, options } = input;
-    const taskId = await this.submitTask(prompt, imageUrl || options?.startFrame);
-
-    onProgress?.({ taskId, status: 'processing', progress: 0 });
-
-    const videoUrl = await this.waitForResult(taskId, onProgress);
-
-    onProgress?.({ taskId, status: 'completed', progress: 100, resultUrl: videoUrl });
-
-    return {
-      url: videoUrl,
-      path: videoUrl,
-      duration: options?.duration || this.config.defaultDuration || 5,
-      width: 1280,
-      height: 720,
-      fps: 24,
-      taskId,
-    };
-  }
-
-  async checkProgress(taskId: string): Promise<ProgressInfo> {
-    try {
-      const videoUrl = await this.waitForResult(taskId);
-      return { taskId, status: 'completed', progress: 100, resultUrl: videoUrl };
-    } catch (err: any) {
-      return { taskId, status: 'failed', progress: 0, error: err.message };
+    const { progress, videoUrl } = await this.readSSESnapshot(taskId, 1500);
+    if (videoUrl) {
+      return {
+        state: 'succeeded',
+        progress: 100,
+        output: { source: videoUrl, taskId },
+      };
     }
+
+    if (typeof progress === 'number') {
+      return { state: 'running', progress };
+    }
+
+    return { state: 'queued', progress: 0 };
   }
 
   async cancelTask(taskId: string): Promise<void> {

@@ -2,8 +2,9 @@
  * Edge TTS Provider (免费)
  * 使用 Microsoft Edge 的 TTS 服务
  */
-import type { TTSConfig, TTSOptions, AudioResult, Voice } from '../../types';
-import type { TTSProvider } from './types';
+import type { TTSConfig, AudioResult, Voice } from '../../types';
+import type { ProviderStartResult } from '../../types';
+import type { TTSProvider, TTSRequest } from './types';
 import { createLogger } from '../../store/logger';
 
 const logger = createLogger('EdgeTTSProvider');
@@ -72,11 +73,13 @@ export class EdgeTTSProvider implements TTSProvider {
     return true;
   }
 
-  async synthesize(
-    text: string,
-    voiceId: string,
-    options?: TTSOptions
-  ): Promise<AudioResult> {
+  async start(request: TTSRequest): Promise<ProviderStartResult<AudioResult>> {
+    const output = await this.synthesizeInternal(request);
+    return { mode: 'immediate', output };
+  }
+
+  private async synthesizeInternal(request: TTSRequest): Promise<AudioResult> {
+    const { text, voiceId, options } = request;
     const requestId = crypto.randomUUID().replace(/-/g, '');
     const timestamp = new Date().toString();
 

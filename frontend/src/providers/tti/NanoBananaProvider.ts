@@ -2,8 +2,8 @@
  * Nano-Banana TTI Provider
  * 官方文生图服务
  */
-import type { TTIModelConfig, ProgressInfo } from '../../types';
-import type { TTIProvider, TTIOptions } from './types';
+import type { TTIModelConfig, ProviderStartResult, ProviderTaskSnapshot } from '../../types';
+import type { TTIProvider, TTIOptions, TTIRequest, ImageResult } from './types';
 import { safeFetch } from '../../utils/safeFetch';
 
 // API 响应类型
@@ -77,16 +77,16 @@ export class NanoBananaProvider implements TTIProvider {
 
   /**
    * 创建图片生成任务
-   * @returns taskId 用于轮询结果
    */
-  async generateImage(prompt: string, options?: TTIOptions): Promise<string> {
+  async start(request: TTIRequest): Promise<ProviderStartResult<ImageResult>> {
     if (!this.validate()) {
       throw new Error('API Key 未配置');
     }
 
+    const options: TTIOptions | undefined = request.options;
     const body: Record<string, any> = {
       model: this.config.modelName || 'gemini-2.5-pro-image-preview',
-      prompt,
+      prompt: request.prompt,
     };
 
     // 可选参数
@@ -96,8 +96,8 @@ export class NanoBananaProvider implements TTIProvider {
     if (options?.imageSize) {
       body.image_size = options.imageSize;
     }
-    if (options?.imageUrls && options.imageUrls.length > 0) {
-      body.image_urls = options.imageUrls;
+    if (request.references && request.references.length > 0) {
+      body.image_urls = request.references.map(item => item.value);
     }
 
     const response = await safeFetch(`${this.getBaseUrl()}/api/nano-banana`, {
@@ -112,13 +112,13 @@ export class NanoBananaProvider implements TTIProvider {
       throw new Error(data.msg || '创建任务失败');
     }
 
-    return data.data.task_id;
+    return { mode: 'async', taskId: data.data.task_id };
   }
 
   /**
    * 轮询任务状态
    */
-  async checkProgress(taskId: string): Promise<ProgressInfo> {
+  async getTaskSnapshot(taskId: string): Promise<ProviderTaskSnapshot<ImageResult>> {
     const response = await safeFetch(`${this.getBaseUrl()}/api/nano-banana/task/${taskId}`, {
       method: 'GET',
       headers: { 'Authorization': this.config.apiKey || '' },
@@ -128,34 +128,32 @@ export class NanoBananaProvider implements TTIProvider {
 
     if (data.code !== 200) {
       return {
-        taskId,
-        status: 'failed',
+        state: 'failed',
         progress: 0,
         error: data.msg || '查询失败',
       };
     }
 
-    const stateMap: Record<string, ProgressInfo['status']> = {
-      'pending': 'queued',
-      'running': 'processing',
-      'succeeded': 'completed',
-      'failed': 'failed',
+    const stateMap: Record<string, ProviderTaskSnapshot<ImageResult>['state']> = {
+      pending: 'queued',
+      running: 'running',
+      succeeded: 'succeeded',
+      failed: 'failed',
     };
 
-    const result: ProgressInfo = {
-      taskId,
-      status: stateMap[data.data.state] || 'processing',
+    const snapshot: ProviderTaskSnapshot<ImageResult> = {
+      state: stateMap[data.data.state] || 'running',
       progress: data.data.state === 'succeeded' ? 100 : data.data.state === 'running' ? 50 : 0,
     };
 
     if (data.data.state === 'succeeded' && data.data.data?.images?.[0]?.url) {
-      result.resultUrl = data.data.data.images[0].url;
+      snapshot.output = { path: data.data.data.images[0].url };
     }
 
     if (data.data.state === 'failed') {
-      result.error = data.data.msg || '任务失败';
+      snapshot.error = data.data.msg || '任务失败';
     }
 
-    return result;
+    return snapshot;
   }
 }
