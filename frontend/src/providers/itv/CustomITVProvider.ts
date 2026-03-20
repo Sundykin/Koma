@@ -26,6 +26,7 @@ function stripDataUrlHeader(dataUrl: string): { mimeType?: string; base64: strin
 export class CustomITVProvider implements ITVProvider {
   type = 'custom' as const;
   config: ITVConfig;
+  private apiVariant: 'public' | 'standard' | undefined;
 
   constructor(config: ITVConfig) {
     this.config = config;
@@ -37,6 +38,32 @@ export class CustomITVProvider implements ITVProvider {
 
   private getBaseUrl(): string {
     return (this.config.baseUrl || '').replace(/\/+$/, '');
+  }
+
+  private joinUrl(path: string): string {
+    const base = this.getBaseUrl();
+    // Allow users to set baseUrl with /v1 or /v1/public suffix without duplicating segments.
+    if (base.endsWith('/v1/public') && path.startsWith('/v1/public/')) {
+      return `${base}${path.slice('/v1/public'.length)}`;
+    }
+    if (base.endsWith('/v1') && path.startsWith('/v1/')) {
+      return `${base}${path.slice('/v1'.length)}`;
+    }
+    return `${base}${path.startsWith('/') ? '' : '/'}${path}`;
+  }
+
+  private getApiPaths(variant: 'public' | 'standard') {
+    return variant === 'public'
+      ? {
+        start: '/v1/public/video/start',
+        sse: '/v1/public/video/sse',
+        stop: '/v1/public/video/stop',
+      }
+      : {
+        start: '/v1/video/start',
+        sse: '/v1/video/sse',
+        stop: '/v1/video/stop',
+      };
   }
 
   private getHeaders(): Record<string, string> {
@@ -91,11 +118,28 @@ export class CustomITVProvider implements ITVProvider {
       body.additional_reference_images = request.additionalReferences.map(r => r.value);
     }
 
-    const resp = await safeFetch(`${this.getBaseUrl()}/v1/public/video/start`, {
-      method: 'POST',
-      headers: this.getHeaders(),
-      body: JSON.stringify(body),
-    });
+    const trySubmit = async (variant: 'public' | 'standard') => {
+      const paths = this.getApiPaths(variant);
+      return safeFetch(this.joinUrl(paths.start), {
+        method: 'POST',
+        headers: this.getHeaders(),
+        body: JSON.stringify(body),
+      });
+    };
+
+    const preferredVariant = this.apiVariant || 'public';
+    let resp = await trySubmit(preferredVariant);
+    if (resp.status === 404 && !this.apiVariant) {
+      // Auto-detect endpoint variant once, without requiring UI config changes.
+      const fallbackVariant: 'public' | 'standard' = preferredVariant === 'public' ? 'standard' : 'public';
+      const fallbackResp = await trySubmit(fallbackVariant);
+      if (fallbackResp.ok) {
+        this.apiVariant = fallbackVariant;
+        resp = fallbackResp;
+      }
+    } else if (resp.ok && !this.apiVariant) {
+      this.apiVariant = preferredVariant;
+    }
 
     if (!resp.ok) {
       const err = await resp.text();
@@ -121,8 +165,10 @@ export class CustomITVProvider implements ITVProvider {
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
+      const preferredVariant = this.apiVariant || 'public';
+      const paths = this.getApiPaths(preferredVariant);
       const resp = await safeFetch(
-        `${this.getBaseUrl()}/v1/public/video/sse?task_id=${taskId}`,
+        `${this.joinUrl(paths.sse)}?task_id=${taskId}`,
         {
           headers: { Authorization: `Bearer ${this.config.apiKey || ''}` },
           signal: controller.signal,
@@ -130,6 +176,39 @@ export class CustomITVProvider implements ITVProvider {
       );
 
       if (!resp.ok) {
+        // If this is a recovered task and the endpoint variant differs, try the other variant once.
+        if (resp.status === 404 && !this.apiVariant) {
+          const fallbackVariant: 'public' | 'standard' = preferredVariant === 'public' ? 'standard' : 'public';
+          const fallbackPaths = this.getApiPaths(fallbackVariant);
+          const fallbackResp = await safeFetch(
+            `${this.joinUrl(fallbackPaths.sse)}?task_id=${taskId}`,
+            {
+              headers: { Authorization: `Bearer ${this.config.apiKey || ''}` },
+              signal: controller.signal,
+            } as RequestInit
+          );
+          if (fallbackResp.ok) {
+            this.apiVariant = fallbackVariant;
+            const reader = fallbackResp.body?.getReader();
+            if (!reader) {
+              const text = await fallbackResp.text();
+              return this.parseSSEText(text);
+            }
+            let buffer = '';
+            const start = Date.now();
+            while (Date.now() - start < timeoutMs) {
+              const { value, done } = await reader.read();
+              if (done) break;
+              buffer += new TextDecoder().decode(value);
+              const parsed = this.parseSSEText(buffer);
+              if (parsed.videoUrl) return parsed;
+              if (typeof parsed.progress === 'number') {
+                return parsed;
+              }
+            }
+            return this.parseSSEText(buffer);
+          }
+        }
         return {};
       }
 
@@ -223,7 +302,9 @@ export class CustomITVProvider implements ITVProvider {
 
   async cancelTask(taskId: string): Promise<void> {
     try {
-      await safeFetch(`${this.getBaseUrl()}/v1/public/video/stop`, {
+      const variant = this.apiVariant || 'public';
+      const paths = this.getApiPaths(variant);
+      await safeFetch(this.joinUrl(paths.stop), {
         method: 'POST',
         headers: this.getHeaders(),
         body: JSON.stringify({ task_id: taskId }),
