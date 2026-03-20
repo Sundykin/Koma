@@ -115,6 +115,13 @@ class TaskManagerClass {
   private initialized = false;
   private currentProjectId: string | null = null;
 
+  private async getTasksPath(projectId: string): Promise<string> {
+    const config = getStorageConfig() || (await initStorageConfig());
+    // NOTE: taskQueueStore owns `tasks.json` for media tasks.
+    // TaskManager (analysis/script/asset/export) persists to a separate file to avoid collisions.
+    return `${config.rootPath}/projects/${projectId}/background-tasks.json`;
+  }
+
   /**
    * 初始化任务管理器（支持任务恢复）
    */
@@ -304,8 +311,7 @@ class TaskManagerClass {
     if (!electronService.isElectron()) return;
 
     try {
-      const config = getStorageConfig() || (await initStorageConfig());
-      const tasksPath = `${config.rootPath}/projects/${projectId}/tasks.json`;
+      const tasksPath = await this.getTasksPath(projectId);
 
       const exists = await electronService.fs.exists(tasksPath);
       if (!exists) return;
@@ -316,25 +322,31 @@ class TaskManagerClass {
       if (data.tasks && Array.isArray(data.tasks)) {
         // 清理7天前的已完成任务
         const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
-        const validTasks = data.tasks.filter((t: Task) => {
-          if (t.status === 'completed' || t.status === 'failed') {
-            return t.updatedAt > sevenDaysAgo;
-          }
-          return true;
-        });
+        const validTasks = data.tasks
+          .filter((t: Task) => {
+            if (t.status === 'completed' || t.status === 'failed') {
+              return t.updatedAt > sevenDaysAgo;
+            }
+            return true;
+          })
+          // Only accept tasks that already conform to the current Task shape.
+          // Avoid runtime migrations/compat branches per OpenSpec guidance.
+          .filter((t: Partial<Task>) =>
+            Boolean(
+              t
+              && typeof t.id === 'string'
+              && typeof t.projectId === 'string'
+              && typeof t.type === 'string'
+              && typeof t.status === 'string'
+              && typeof t.progress === 'number'
+              && typeof t.targetType === 'string'
+              && typeof t.targetId === 'string'
+              && typeof t.createdAt === 'number'
+              && typeof t.updatedAt === 'number'
+            )
+          ) as Task[];
 
         validTasks.forEach((task: Task) => {
-          // 迁移旧版任务：补充 category/subType
-          if (!task.category && task.type) {
-            const mapped = mapLegacyTaskType(task.type);
-            task.category = mapped.category;
-            task.subType = mapped.subType;
-          }
-          // 补充默认字段
-          if (task.recoverable === undefined) task.recoverable = false;
-          if (task.attempt === undefined) task.attempt = 0;
-          if (task.maxRetries === undefined) task.maxRetries = 3;
-
           this.tasks.set(task.id, task);
         });
       }
@@ -350,8 +362,7 @@ class TaskManagerClass {
     if (!electronService.isElectron()) return;
 
     try {
-      const config = getStorageConfig() || (await initStorageConfig());
-      const tasksPath = `${config.rootPath}/projects/${projectId}/tasks.json`;
+      const tasksPath = await this.getTasksPath(projectId);
 
       const projectTasks = this.getProjectTasks(projectId);
       const data = {

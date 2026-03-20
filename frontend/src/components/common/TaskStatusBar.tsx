@@ -161,8 +161,28 @@ export const TaskStatusBar: React.FC<TaskStatusBarProps> = ({ projectId, onRetry
 
     const loadTasks = async () => {
       const managerTasks = TaskManager.getProjectTasks(projectId).map(mapManagerTask);
-      const queueTasks = await listAsyncTasks(projectId).then(list => list.map(mapAsyncTask)).catch(() => []);
-      const merged = [...queueTasks, ...managerTasks]
+      const queueTasks = await listAsyncTasks(projectId)
+        .then(list => list
+          // Defensive: tasks.json is reserved for media tasks. If older builds wrote other task shapes,
+          // filter them out to avoid duplicate rendering and incorrect status labels.
+          .filter(t => ['tti', 'itv', 'tts', 'character-extraction'].includes((t as any).type))
+          .map(mapAsyncTask)
+        )
+        .catch(() => []);
+
+      // De-duplicate by id in case of cross-store collisions or corrupted persisted state.
+      const mergedById = new Map<string, StatusBarTask>();
+      for (const task of [...queueTasks, ...managerTasks]) {
+        const prev = mergedById.get(task.id);
+        if (!prev) {
+          mergedById.set(task.id, task);
+          continue;
+        }
+        // Keep the newer one.
+        mergedById.set(task.id, (task.updatedAt >= prev.updatedAt) ? task : prev);
+      }
+
+      const merged = Array.from(mergedById.values())
         .sort((a, b) => b.createdAt - a.createdAt)
         .slice(0, 20);
 
