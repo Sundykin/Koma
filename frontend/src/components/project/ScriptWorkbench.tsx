@@ -7,7 +7,7 @@ import { App } from 'antd';
 import { Film } from 'lucide-react';
 import { InlineProjectToolbar } from './InlineProjectToolbar';
 import { ScriptEditor } from '../../editor';
-import { saveEpisode, deleteEpisodeAnalysis, loadEpisodeAnalysis, saveEpisodeAnalysis } from '../../store/projectStore';
+import { saveEpisode, loadEpisodeAnalysis, saveEpisodeAnalysis } from '../../store/projectStore';
 import { generateRandomScript, polishScript } from '../../workflow/scriptGenerator';
 import { startBackgroundAnalysis } from '../../services/ScriptAnalysisService';
 import { TaskManager } from '../../services/TaskManager';
@@ -250,8 +250,13 @@ export const ScriptWorkbench = forwardRef<ScriptWorkbenchRef, ScriptWorkbenchPro
       await saveScript(localScript);
       // 备份旧分析数据，以便分析启动失败时恢复
       const previousAnalysis = await loadEpisodeAnalysis(project.id, episode.id);
-      // 清除旧的分析结果（重置 completedStages），确保重新分析能执行
-      await deleteEpisodeAnalysis(project.id, episode.id);
+      // 重置 completedStages（保留 shots 数据），确保重新分析能执行
+      if (previousAnalysis) {
+        await saveEpisodeAnalysis(project.id, episode.id, {
+          ...previousAnalysis,
+          completedStages: [],
+        }, { resetStages: true });
+      }
       // 启动后台解析
       try {
         const task = await startBackgroundAnalysis(
@@ -271,7 +276,7 @@ export const ScriptWorkbench = forwardRef<ScriptWorkbenchRef, ScriptWorkbenchPro
       } catch (analysisErr: unknown) {
         // 分析启动失败，恢复旧的分析数据
         if (previousAnalysis) {
-          await saveEpisodeAnalysis(project.id, episode.id, previousAnalysis);
+          await saveEpisodeAnalysis(project.id, episode.id, previousAnalysis, { resetStages: true });
         }
         throw analysisErr;
       }

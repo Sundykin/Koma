@@ -158,9 +158,9 @@ export class ShotGenerationService {
       const shots = await loadEpisodeShots(this.projectId, this.episodeId);
       const updatedShots = shots.map(s => {
         if (s.id !== shot.id) return s;
-        // 将新图片添加到 imagePaths 列表，同时保存远程 URL
+        // 将新图片添加到 imagePaths 列表（使用本地路径），同时保存远程 URL
         const existingPaths = s.imagePaths || [];
-        const newImagePaths = [...existingPaths, imageUrl]; // 使用远程URL
+        const newImagePaths = [...existingPaths, imagePath]; // 使用本地路径
         return {
           ...s,
           imagePath,

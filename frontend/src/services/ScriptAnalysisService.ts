@@ -655,12 +655,12 @@ export class BackgroundAnalysisService {
     }
 
     await saveEpisodeAnalysis(this.projectId, episodeId, {
-      characterRefs: payload.characterRefs,
-      sceneRefs: payload.sceneRefs,
-      propRefs: payload.propRefs,
+      characterRefs: stage === 'characters' ? payload.characterRefs : undefined,
+      sceneRefs: stage === 'scenes' ? payload.sceneRefs : undefined,
+      propRefs: stage === 'props' ? payload.propRefs : undefined,
       completedStages: [stage],
-      shots: [],
-    });
+      shots: undefined,
+    } as any);
   }
 
   private async runAnalysis(

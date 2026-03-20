@@ -107,9 +107,9 @@
 /* 输入行 */
 .inputRow {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
+  align-items: flex-end; /* 多行文本时让按钮底部对齐 */
+  gap: 12px;
+  padding: 12px 16px;
 }
 
 .attachButton {
@@ -123,15 +123,16 @@
 
 .textarea {
   flex: 1;
-  min-height: 32px;
-  max-height: 144px;
-  padding: 5px 0;
+  min-height: 36px; /* 匹配单行高度 (24px line-height + 12px padding) */
+  max-height: 200px;
+  padding: 6px 0;
   background: transparent;
   border: none;
   outline: none;
   resize: none;
-  font-size: 14px;
-  line-height: 22px;
+  overflow-y: hidden; /* 默认隐藏滚动轴，交由 JS 处理 */
+  font-size: 15px;
+  line-height: 1.6;
   color: #fafafa;
   font-family: inherit;
 }

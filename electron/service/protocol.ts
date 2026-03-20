@@ -36,7 +36,9 @@ export function registerLocalProtocol(): void {
       const url = new URL(request.url);
       let filePath = decodeURIComponent(url.pathname);
 
-      if (filePath.startsWith('/')) {
+      // Windows: pathname 形如 /C:/Users/... 需要去掉开头的 /
+      // macOS/Linux: pathname 形如 /Users/... 需要保留开头的 /
+      if (process.platform === 'win32' && filePath.startsWith('/')) {
         filePath = filePath.slice(1);
       }
 
