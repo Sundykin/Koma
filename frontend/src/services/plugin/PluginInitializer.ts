@@ -23,7 +23,6 @@ export async function initializePlugin(plugin: InstalledPlugin): Promise<boolean
   }
 
   try {
-
     // mcp / agent / provider 类型插件如果有 backend 入口，需要后端激活
     const needsBackendActivation =
       plugin.category === 'mcp' ||
@@ -31,14 +30,24 @@ export async function initializePlugin(plugin: InstalledPlugin): Promise<boolean
       (plugin.category === 'provider' && plugin.entry?.backend);
 
     if (needsBackendActivation) {
-      const result = await electronService.ipc.invoke('controller/plugin/activate', { manifest: plugin });
-      if (!result?.success) {
-        logger.warn(`后端激活失败: ${plugin.id}`, result?.error);
-        // provider 类型后端激活失败不阻止前端加载
+      try {
+        const result = await electronService.ipc.invoke('controller/plugin/activate', { manifest: plugin });
+        if (!result?.success) {
+          logger.warn(`后端激活失败: ${plugin.id}`, result?.error);
+          // provider 类型后端激活失败不阻止前端加载（例如 backend bundle 格式不兼容）
+          if (plugin.category !== 'provider') {
+            return false;
+          }
+        }
+      } catch (err: unknown) {
+        // 对 provider 插件：后端激活失败不应该阻止前端注册 Provider
+        // 否则会出现“渠道已存在但 Provider 未就绪”的死状态。
+        logger.warn(`后端激活异常: ${plugin.id}`, {
+          error: err instanceof Error ? err.message : String(err),
+        });
         if (plugin.category !== 'provider') {
           return false;
         }
-      } else {
       }
     }
 
