@@ -17,6 +17,8 @@ import type { ImageHostingProvider, ImageHostingUploadOptions, ImageHostingUploa
 
 const logger = createLogger('ImageHosting');
 
+let _recovering: Promise<void> | null = null;
+
 function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
@@ -36,8 +38,51 @@ export async function getActiveImageHostingChannel() {
     || null;
 }
 
+async function recoverImageHostingProviderOnce(): Promise<void> {
+  // Avoid dogpiling if multiple uploads happen concurrently.
+  if (_recovering) return _recovering;
+
+  _recovering = (async () => {
+    try {
+      const channel = await getActiveImageHostingChannel();
+      if (!channel) return;
+
+      // If this channel comes from a plugin, attempt to initialize that plugin.
+      if (channel.source === 'plugin' && channel.pluginId) {
+        // Lazy import to avoid module cycles.
+        const { usePluginStore } = await import('../store/pluginStore');
+        const { initializePlugin } = await import('./plugin/PluginInitializer');
+
+        const plugin = usePluginStore.getState().getPlugin(channel.pluginId);
+        if (plugin && plugin.isEnabled) {
+          await initializePlugin(plugin);
+          return;
+        }
+      }
+
+      // Fallback: re-run provider plugin initialization (best-effort).
+      const { initializeProviderPlugins } = await import('./plugin/PluginInitializer');
+      await initializeProviderPlugins();
+    } catch (err: unknown) {
+      logger.warn('尝试恢复 image-hosting provider 失败', { error: err instanceof Error ? err.message : String(err) });
+    }
+  })();
+
+  try {
+    await _recovering;
+  } finally {
+    _recovering = null;
+  }
+}
+
 export async function getActiveImageHostingProvider(): Promise<ImageHostingProvider | null> {
-  const provider = await getProjectImageHostingProvider();
+  let provider = await getProjectImageHostingProvider();
+  if (!provider) {
+    // Self-heal: plugin might be enabled and channel config exists, but provider definitions
+    // were not registered in-memory yet (startup race / prior plugin load failure).
+    await recoverImageHostingProviderOnce();
+    provider = await getProjectImageHostingProvider();
+  }
   if (!provider) return null;
   if (!provider.validate()) return null;
   return provider;
@@ -54,7 +99,14 @@ export async function uploadBytesToImageHostingWithRetry(
 ): Promise<ImageHostingUploadResult> {
   const provider = await getActiveImageHostingProvider();
   if (!provider) {
-    return { success: false, error: '图床未配置或未启用，请在插件设置中启用 image-hosting 渠道' };
+    const channel = await getActiveImageHostingChannel();
+    if (!channel) {
+      return { success: false, error: '未找到 image-hosting 渠道，请在插件设置中启用图床并创建渠道' };
+    }
+    return {
+      success: false,
+      error: `图床渠道已存在但 Provider 未就绪（${channel.providerType}）。请尝试重启应用或重新启用插件后再试。`,
+    };
   }
 
   let lastError = '';
@@ -99,4 +151,3 @@ export async function uploadLocalFileToImageHosting(
     return { success: false, error: `读取文件失败: ${err instanceof Error ? err.message : String(err)}` };
   }
 }
-
