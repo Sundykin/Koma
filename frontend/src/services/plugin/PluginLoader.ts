@@ -227,6 +227,12 @@ async function loadPluginModule(plugin: InstalledPlugin): Promise<PluginExports 
  * 加载 UMD/IIFE 模块
  */
 async function loadUMDModule(path: string, pluginId: string): Promise<any> {
+  // Provider/global 插件的 UI bundle 目前按 UMD/IIFE 方式运行在宿主页面上下文中，
+  // 且插件代码依赖 window.React / window.antd / window['@ant-design/icons'] 等外部全局。
+  // 宿主应用本身使用模块化打包，这些全局默认不存在，因此这里做一次集中注入。
+  // 这样插件侧无需重复打包 React/AntD，也避免每个插件写兼容代码。
+  await ensurePluginUmdGlobals();
+
   // 使用 koma-local:// 自定义协议加载本地文件（绕过 file:// 安全限制）
   // 路径需要编码，避免 C: 被解析为协议
   let normalizedPath = path.replace(/\\/g, '/');
@@ -269,6 +275,32 @@ async function loadUMDModule(path: string, pluginId: string): Promise<any> {
 
     document.head.appendChild(script);
   });
+}
+
+let pluginUmdGlobalsReady = false;
+async function ensurePluginUmdGlobals(): Promise<void> {
+  if (pluginUmdGlobalsReady) return;
+  if (typeof window === 'undefined') return;
+
+  // React
+  if (!(window as any).React) {
+    const ReactMod = await import('react');
+    (window as any).React = ReactMod;
+  }
+
+  // Ant Design
+  if (!(window as any).antd) {
+    const antdMod = await import('antd');
+    (window as any).antd = antdMod;
+  }
+
+  // Ant Design Icons
+  if (!(window as any)['@ant-design/icons']) {
+    const iconsMod = await import('@ant-design/icons');
+    (window as any)['@ant-design/icons'] = iconsMod;
+  }
+
+  pluginUmdGlobalsReady = true;
 }
 
 /**
