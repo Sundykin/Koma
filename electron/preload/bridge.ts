@@ -37,11 +37,14 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   'controller/ffmpeg/ensureDir', 'controller/ffmpeg/saveFrame',
   'controller/ffmpeg/cleanupTemp', 'controller/ffmpeg/clearCache',
   'controller/ffmpeg/cancelTask', 'controller/ffmpeg/clearQueue',
-  'controller/plugin/validate', 'controller/plugin/install',
-  'controller/plugin/uninstall', 'controller/plugin/list',
-  'controller/plugin/openFolder',
-  'controller/net/fetch',
-]);
+	  'controller/plugin/validate', 'controller/plugin/install',
+	  'controller/plugin/uninstall', 'controller/plugin/list',
+	  'controller/plugin/openFolder',
+	  // runtime lifecycle
+	  'controller/plugin/activate', 'controller/plugin/deactivate',
+	  'controller/plugin/status', 'controller/plugin/listActive',
+	  'controller/net/fetch',
+	]);
 
 const ALLOWED_LISTEN_CHANNELS = new Set([
   'chat:stream:chunk', 'chat:stream:tool', 'chat:stream:done', 'chat:stream:error',
@@ -158,14 +161,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
     cancelTask: () => invokeMain('controller/ffmpeg/cancelTask', {}),
     clearQueue: () => invokeMain('controller/ffmpeg/clearQueue', {}),
   },
-  plugin: {
-    validate: (zipPath: string) => invokeMain('controller/plugin/validate', { zipPath }),
-    install: (zipPath: string, manifest: any) =>
-      invokeMain('controller/plugin/install', { zipPath, manifest }),
-    uninstall: (pluginPath: string) => invokeMain('controller/plugin/uninstall', { pluginPath }),
-    list: () => invokeMain('controller/plugin/list', {}),
-    openFolder: (pluginPath: string) => invokeMain('controller/plugin/openFolder', { pluginPath }),
-  },
+	  plugin: {
+	    validate: (zipPath: string) => invokeMain('controller/plugin/validate', { zipPath }),
+	    install: (zipPath: string, manifest: any) =>
+	      invokeMain('controller/plugin/install', { zipPath, manifest }),
+	    uninstall: (pluginPath: string) => invokeMain('controller/plugin/uninstall', { pluginPath }),
+	    list: () => invokeMain('controller/plugin/list', {}),
+	    openFolder: (pluginPath: string) => invokeMain('controller/plugin/openFolder', { pluginPath }),
+	    activate: (manifest: any) => invokeMain('controller/plugin/activate', { manifest }),
+	    deactivate: (pluginId: string) => invokeMain('controller/plugin/deactivate', { pluginId }),
+	    status: (pluginId: string) => invokeMain('controller/plugin/status', { pluginId }),
+	    listActive: () => invokeMain('controller/plugin/listActive', {}),
+	  },
   net: {
     fetch: (args: { url: string; method?: string; headers?: Record<string, string>; body?: string }) =>
       invokeMain('controller/net/fetch', args),

@@ -630,6 +630,18 @@ export const electronService = {
         if (channel === 'controller/plugin/uninstall') {
           return (api as any).plugin.uninstall(args.pluginPath);
         }
+        if (channel === 'controller/plugin/activate') {
+          return (api as any).plugin.activate(args.manifest);
+        }
+        if (channel === 'controller/plugin/deactivate') {
+          return (api as any).plugin.deactivate(args.pluginId);
+        }
+        if (channel === 'controller/plugin/status') {
+          return (api as any).plugin.status(args.pluginId);
+        }
+        if (channel === 'controller/plugin/listActive') {
+          return (api as any).plugin.listActive();
+        }
       }
       // 通用 IPC 调用（通过 window.electron）
       if (typeof window !== 'undefined' && (window as any).electron?.ipcRenderer) {
