@@ -86,12 +86,3 @@ export {
   cleanupDuplicateChannels,
   cleanupLegacyConfigs,
 } from './channelConfig';
-
-// 图床配置
-export {
-  getImageHostingConfig,
-  updateImageHostingConfig,
-  setImageHostingEnabled,
-  isImageHostingEnabled,
-  DEFAULT_IMAGE_HOSTING_CONFIG,
-} from './imageHostingConfig';

@@ -18,6 +18,8 @@ import {
   getActiveTTIConfig,
   getActiveITVConfig,
   getActiveTTSConfig,
+  getDefaultChannelConfig,
+  getChannelsByCapability,
 } from '../store/globalStore';
 import type { ChannelKind } from './registry.types';
 import { createProviderInstance } from './registry';
@@ -36,6 +38,7 @@ import { createTTSProvider } from './tts';
 import type { TTSProvider } from './tts/types';
 import { createITVProvider as createITVProviderFromConfig } from './itv';
 import type { ITVProvider } from './itv/types';
+import type { ImageHostingProvider } from './imageHosting/types';
 
 // 重新导出 ProviderManager
 export { providerManager, ProviderManager, type ProviderKindMap } from './manager';
@@ -273,6 +276,14 @@ async function createChannelProvider<T>(channelConfig: ChannelConfig, kind: Chan
     logger.error('创建插件 Provider 失败', err);
     return null;
   }
+}
+
+export async function getProjectImageHostingProvider(): Promise<ImageHostingProvider | null> {
+  const channel = await getDefaultChannelConfig('image-hosting' as any)
+    || (await getChannelsByCapability('image-hosting' as any))[0]
+    || null;
+  if (!channel) return null;
+  return createChannelProvider<ImageHostingProvider>(channel, 'image-hosting');
 }
 
 export async function getProjectLLMProvider(projectLLMConfigId?: string): Promise<LLMProvider | null> {

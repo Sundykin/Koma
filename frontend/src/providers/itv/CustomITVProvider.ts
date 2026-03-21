@@ -34,6 +34,11 @@ export class CustomITVProvider implements ITVProvider {
     stopPath?: string;
   };
 
+  assetTransports = {
+    primaryImage: ['remote-url', 'data-url'],
+    additionalReferences: ['remote-url', 'data-url'],
+  } as const;
+
   constructor(config: ITVConfig) {
     this.config = config;
   }

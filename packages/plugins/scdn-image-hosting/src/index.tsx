@@ -294,6 +294,71 @@ function SCDNProvider({ api }: SCDNProviderProps) {
 
 // ========== 生命周期 ==========
 
+class SCDNImageHostingProviderRuntime {
+  type = 'scdn-image-hosting';
+  private readonly fetcher: typeof fetch;
+  private readonly config: SCDNConfig;
+
+  constructor(config: Record<string, unknown>, ctx: { sandboxedFetch?: typeof fetch }) {
+    this.fetcher = ctx?.sandboxedFetch || fetch;
+    this.config = { ...DEFAULT_CONFIG, ...(config as any) } as SCDNConfig;
+  }
+
+  validate(): boolean {
+    return Boolean(this.config.enabled && this.config.apiEndpoint);
+  }
+
+  async testConnection(): Promise<boolean> {
+    if (!this.validate()) return false;
+    try {
+      // 1x1 transparent png
+      const testBase64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+      const bytes = Uint8Array.from(atob(testBase64), (c) => c.charCodeAt(0));
+      const result = await this.uploadImage(bytes, { filename: 'test.png' });
+      return Boolean(result?.success);
+    } catch {
+      return false;
+    }
+  }
+
+  async uploadImage(
+    bytes: ArrayBuffer | Uint8Array,
+    options?: { filename?: string; outputFormat?: string; cdnDomain?: string }
+  ): Promise<{ success: boolean; url?: string; error?: string; data?: any }> {
+    if (!this.validate()) {
+      return { success: false, error: '图床未启用或未配置' };
+    }
+
+    try {
+      const blob = bytes instanceof Uint8Array ? new Blob([bytes]) : new Blob([bytes]);
+      const formData = new FormData();
+      const filename = options?.filename || `image_${Date.now()}.png`;
+      formData.append('image', blob, filename);
+
+      const outputFormat = options?.outputFormat || this.config.outputFormat || 'auto';
+      formData.append('outputFormat', outputFormat);
+
+      const cdnDomain = options?.cdnDomain || this.config.cdnDomain;
+      if (cdnDomain) {
+        formData.append('cdn_domain', cdnDomain);
+      }
+
+      const resp = await this.fetcher(this.config.apiEndpoint, {
+        method: 'POST',
+        body: formData,
+      });
+
+      const result = await resp.json() as any;
+      if (result?.success) {
+        return { success: true, url: result.url, data: result.data };
+      }
+      return { success: false, error: result?.message || '上传失败' };
+    } catch (err: any) {
+      return { success: false, error: err?.message || '网络请求失败' };
+    }
+  }
+}
+
 async function onActivate(api: PluginAPI) {
   console.log('[SCDN] 前端 UI 已加载');
 
@@ -306,7 +371,7 @@ async function onActivate(api: PluginAPI) {
       description: 'SCDN 图床服务，支持图片上传并获取远程 URL',
       capabilities: ['image-hosting'] as any[],
       defaultConfig: DEFAULT_CONFIG,
-      factory: () => null, // 前端不需要实际的 factory
+      factory: (config: any, ctx: any) => new SCDNImageHostingProviderRuntime(config, ctx),
     });
     console.log('[SCDN] Provider 注册成功');
   } catch (err) {
