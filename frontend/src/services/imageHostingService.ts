@@ -187,78 +187,82 @@ export async function uploadBytesToImageHostingWithRetry(
   options?: ImageHostingUploadOptions,
   maxRetries: number = 3
 ): Promise<ImageHostingUploadResult> {
-  const provider = await getActiveImageHostingProvider();
-  if (!provider) {
-    const channel = await getActiveImageHostingChannel();
-    if (!channel) {
-      return { success: false, error: '未找到 image-hosting 渠道，请在插件设置中启用图床并创建渠道' };
-    }
+  const channel = await getActiveImageHostingChannel();
+  if (!channel) {
+    return { success: false, error: '未找到 image-hosting 渠道，请在插件设置中启用图床并创建渠道' };
+  }
 
-    // If the renderer-side provider is not ready, try to invoke the backend provider via IPC.
-    // This is especially important for providers that need Buffer/FormData (image-hosting),
-    // where sandboxed fetch / IPC bridges may not support multipart uploads reliably.
-    if (electronService.isElectron() && channel.source === 'plugin') {
-      const payloadBytes = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
-      let lastBackendError = '';
+  // In Electron, plugin-based image hosting should prefer backend execution.
+  // This avoids renderer CSP restrictions and keeps upload transport centralized.
+  if (electronService.isElectron() && channel.source === 'plugin') {
+    const payloadBytes = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+    let lastBackendError = '';
+    let backendProviderMissing = false;
 
-      for (let attempt = 1; attempt <= maxRetries; attempt++) {
-        try {
-          const result = await electronService.ipc.invoke('controller/plugin/callProvider', {
-            kind: 'image-hosting',
-            type: channel.providerType,
-            method: 'uploadImage',
-            args: [channel.providerConfig || {}, payloadBytes, options],
-          });
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        const result = await electronService.ipc.invoke('controller/plugin/callProvider', {
+          kind: 'image-hosting',
+          type: channel.providerType,
+          method: 'uploadImage',
+          args: [channel.providerConfig || {}, payloadBytes, options],
+        });
 
-          const normalized = result as ImageHostingUploadResult | null;
-          if (normalized?.success) return normalized;
-          if (normalized && typeof normalized === 'object') {
-            lastBackendError = normalized.error || `未返回 success=true，原始结果: ${JSON.stringify(normalized)}`;
-            logger.warn('图床后端 Provider 返回非成功结果', {
-              providerType: channel.providerType,
-              attempt,
-              result: normalized,
-            });
-          } else {
-            lastBackendError = `返回了不可识别结果: ${String(result)}`;
-            logger.warn('图床后端 Provider 返回不可识别结果', {
-              providerType: channel.providerType,
-              attempt,
-              result,
-            });
-          }
-        } catch (err: unknown) {
-          const msg = err instanceof Error ? err.message : String(err);
-          // Backend provider may not exist (e.g. plugin only has frontend entry). In that case,
-          // fall back to the existing renderer-side diagnostics.
-          if (msg.includes('Provider "') && msg.includes('not found')) {
-            lastBackendError = '';
-            break;
-          }
-          logger.error('图床后端 Provider 调用抛错', {
+        const normalized = result as ImageHostingUploadResult | null;
+        if (normalized?.success) return normalized;
+        if (normalized && typeof normalized === 'object') {
+          lastBackendError = normalized.error || `未返回 success=true，原始结果: ${JSON.stringify(normalized)}`;
+          logger.warn('图床后端 Provider 返回非成功结果', {
             providerType: channel.providerType,
             attempt,
-            error: msg,
-            stack: err instanceof Error ? err.stack : undefined,
+            result: normalized,
           });
-          lastBackendError = msg;
+        } else {
+          lastBackendError = `返回了不可识别结果: ${String(result)}`;
+          logger.warn('图床后端 Provider 返回不可识别结果', {
+            providerType: channel.providerType,
+            attempt,
+            result,
+          });
         }
-
-        logger.warn(`图床上传失败 (后端 Provider 尝试 ${attempt}/${maxRetries}): ${lastBackendError}`);
-        if (attempt < maxRetries) {
-          const wait = 1000 * Math.pow(2, attempt - 1);
-          await delay(wait);
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        // Backend provider may not exist (e.g. plugin only has frontend entry). Only then
+        // should we fall back to renderer-side provider resolution.
+        if (msg.includes('Provider "') && msg.includes('not found')) {
+          backendProviderMissing = true;
+          lastBackendError = '';
+          logger.warn('图床后端 Provider 不存在，回退到前端 Provider', {
+            providerType: channel.providerType,
+          });
+          break;
         }
+        logger.error('图床后端 Provider 调用抛错', {
+          providerType: channel.providerType,
+          attempt,
+          error: msg,
+          stack: err instanceof Error ? err.stack : undefined,
+        });
+        lastBackendError = msg;
       }
 
-      if (lastBackendError) {
-        return {
-          success: false,
-          error: `上传失败，已重试 ${maxRetries} 次: ${lastBackendError}`,
-        };
+      logger.warn(`图床上传失败 (后端 Provider 尝试 ${attempt}/${maxRetries}): ${lastBackendError}`);
+      if (attempt < maxRetries) {
+        const wait = 1000 * Math.pow(2, attempt - 1);
+        await delay(wait);
       }
     }
 
+    if (!backendProviderMissing) {
+      return {
+        success: false,
+        error: `上传失败，已重试 ${maxRetries} 次: ${lastBackendError || '未知错误'}`,
+      };
+    }
+  }
+
+  const provider = await getActiveImageHostingProvider();
+  if (!provider) {
     // Differentiate "provider not registered" vs "provider exists but config invalid/disabled".
     // This helps users fix the real issue without guesswork.
     const raw = await getProjectImageHostingProvider();
