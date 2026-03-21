@@ -240,11 +240,18 @@ function createChannelProviderContext(channelConfig: ChannelConfig) {
 
     const plugin = usePluginStore.getState().getPlugin(channelConfig.pluginId);
     if (!plugin) {
-      logger.warn(`插件 ${channelConfig.pluginId} 未找到`);
+      logger.warn(`插件 ${channelConfig.pluginId} 未找到`, {
+        channelId: channelConfig.id,
+        providerType: channelConfig.providerType,
+        capability: channelConfig.capabilities,
+      });
       return null;
     }
     if (!plugin.isEnabled) {
-      logger.warn(`插件 ${channelConfig.pluginId} 已禁用`);
+      logger.warn(`插件 ${channelConfig.pluginId} 已禁用`, {
+        channelId: channelConfig.id,
+        providerType: channelConfig.providerType,
+      });
       return null;
     }
 
@@ -273,7 +280,13 @@ async function createChannelProvider<T>(channelConfig: ChannelConfig, kind: Chan
       context
     );
   } catch (err: unknown) {
-    logger.error('创建插件 Provider 失败', err);
+    logger.error('创建插件 Provider 失败', {
+      kind,
+      providerType: channelConfig.providerType,
+      pluginId: channelConfig.pluginId,
+      channelId: channelConfig.id,
+      error: err instanceof Error ? err.message : String(err),
+    });
     return null;
   }
 }
