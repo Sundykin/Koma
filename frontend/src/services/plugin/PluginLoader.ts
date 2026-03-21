@@ -242,7 +242,6 @@ async function loadUMDModule(path: string, pluginId: string): Promise<any> {
   const encodedPath = normalizedPath.split('/').map(segment => encodeURIComponent(segment)).join('/');
   const fileUrl = `koma-local:///${encodedPath}`;
 
-
   // 创建 script 标签动态加载
   return new Promise((resolve, reject) => {
     const script = document.createElement('script');
@@ -263,6 +262,11 @@ async function loadUMDModule(path: string, pluginId: string): Promise<any> {
         }
         resolve(module);
       } else {
+        logger.error('插件 UMD 导出缺失', {
+          pluginId,
+          globalKey,
+          fileUrl,
+        });
         reject(new Error(`插件 ${pluginId} 未正确导出到 window.${globalKey}`));
       }
       document.head.removeChild(script);
@@ -270,6 +274,7 @@ async function loadUMDModule(path: string, pluginId: string): Promise<any> {
 
     script.onerror = (_err) => {
       document.head.removeChild(script);
+      logger.error('加载插件脚本失败', { pluginId, fileUrl, path });
       reject(new Error(`加载插件脚本失败: ${path}`));
     };
 
