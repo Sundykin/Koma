@@ -55,8 +55,8 @@ async function recoverImageHostingProviderOnce(): Promise<void> {
 
         const plugin = usePluginStore.getState().getPlugin(channel.pluginId);
         if (plugin && plugin.isEnabled) {
-          await initializePlugin(plugin);
-          return;
+          const ok = await initializePlugin(plugin);
+          if (ok) return;
         }
       }
 
@@ -103,6 +103,17 @@ export async function uploadBytesToImageHostingWithRetry(
     if (!channel) {
       return { success: false, error: '未找到 image-hosting 渠道，请在插件设置中启用图床并创建渠道' };
     }
+
+    // Differentiate "provider not registered" vs "provider exists but config invalid/disabled".
+    // This helps users fix the real issue without guesswork.
+    const raw = await getProjectImageHostingProvider();
+    if (raw && !raw.validate()) {
+      return {
+        success: false,
+        error: `图床 Provider 已加载但未启用或配置不完整（${channel.providerType}）。请在插件设置中启用并保存配置后重试。`,
+      };
+    }
+
     return {
       success: false,
       error: `图床渠道已存在但 Provider 未就绪（${channel.providerType}）。请尝试重启应用或重新启用插件后再试。`,
