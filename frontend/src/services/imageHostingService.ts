@@ -1,198 +1,78 @@
 /**
- * 图床服务 - 前端上传接口
- * 用于将本地图片上传到远程图床，获取可访问的 URL
+ * Image hosting orchestrator (pluggable).
  *
- * 注意：配置从插件系统的 channelConfig.providerConfig 读取
+ * This is a thin layer that:
+ * - selects the active image-hosting channel (channelConfig)
+ * - creates the provider instance via ProviderRegistry(kind='image-hosting')
+ * - uploads bytes and returns a remote URL
+ *
+ * It intentionally does not know any provider-specific protocol (e.g. SCDN).
  */
 
 import { createLogger } from '../store/logger';
+import { electronService } from './electronService';
+import { getDefaultChannelConfig, getChannelsByCapability } from '../store/globalStore';
+import { getProjectImageHostingProvider } from '../providers';
+import type { ImageHostingProvider, ImageHostingUploadOptions, ImageHostingUploadResult } from '../providers/imageHosting/types';
 
 const logger = createLogger('ImageHosting');
 
-// 定义类型（避免依赖 @komastudio/plugin-sdk）
-export interface ImageHostingUploadOptions {
-  filename?: string;
-  outputFormat?: string;
-  cdnDomain?: string;
-}
-
-export interface ImageHostingUploadResult {
-  success: boolean;
-  url?: string;
-  data?: any;
-  error?: string;
-}
-
-import { getChannelConfigs } from '../store/settings/channelConfig';
-
-// SCDN 图床配置
-export interface SCDNImageHostingConfig {
-  apiEndpoint: string;
-  outputFormat: 'auto' | 'jpeg' | 'png' | 'webp' | 'gif' | 'webp_animated';
-  cdnDomain: string;
-  enabled: boolean;
-}
-
-export const DEFAULT_SCDN_CONFIG: SCDNImageHostingConfig = {
-  apiEndpoint: 'https://img.scdn.io/api/v1.php',
-  outputFormat: 'webp',
-  cdnDomain: '',
-  enabled: true,  // 默认启用
-};
-
-// 支持的 CDN 域名
-export const AVAILABLE_CDN_DOMAINS = [
-  { name: '默认', domain: '' },
-  { name: '失控的防御系统', domain: 'img.scdn.io' },
-  { name: 'CloudFlare', domain: 'cloudflareimg.cdn.sn' },
-  { name: 'EdgeOne', domain: 'edgeoneimg.cdn.sn' },
-  { name: 'ESA', domain: 'esaimg.cdn1.vip' },
-];
-
-/**
- * 从插件系统获取图床配置
- */
-export async function getImageHostingConfig(): Promise<SCDNImageHostingConfig | null> {
-  try {
-    const configs = await getChannelConfigs();
-
-    // 查找 image-hosting 类型的渠道配置
-    const imageHostingChannel = configs.find(
-      c => c.providerType === 'scdn-image-hosting' ||
-           (c.capabilities && c.capabilities.includes('image-hosting'))
-    );
-
-    if (imageHostingChannel) {
-      const providerConfig = imageHostingChannel.providerConfig || {};
-      return {
-        ...DEFAULT_SCDN_CONFIG,
-        ...providerConfig,
-      } as SCDNImageHostingConfig;
-    }
-
-    return null;
-  } catch (err) {
-    logger.error('读取插件配置失败', err);
-    return null;
-  }
-}
-
-/**
- * 延迟函数
- */
 function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-/**
- * 上传图片到图床
- */
-async function uploadImageToSCDN(
-  imageData: Buffer | Blob | ArrayBuffer,
-  config: SCDNImageHostingConfig,
-  options?: ImageHostingUploadOptions
-): Promise<ImageHostingUploadResult> {
-  if (!config.enabled) {
-    return {
-      success: false,
-      error: '图床未启用，请在插件设置中启用 SCDN 图床服务',
-    };
+function base64ToUint8Array(base64: string): Uint8Array {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
   }
-
-  try {
-    // 转换数据为 Blob
-    let blob: Blob;
-    if (imageData instanceof Blob) {
-      blob = imageData;
-    } else if (imageData instanceof ArrayBuffer) {
-      blob = new Blob([imageData]);
-    } else {
-      // Buffer (Node.js)
-      blob = new Blob([imageData]);
-    }
-
-    // 构建 FormData
-    const formData = new FormData();
-    const filename = options?.filename || `image_${Date.now()}.png`;
-    formData.append('image', blob, filename);
-
-    // 输出格式
-    const outputFormat = options?.outputFormat || config.outputFormat || 'auto';
-    formData.append('outputFormat', outputFormat);
-
-    // CDN 域名
-    const cdnDomain = options?.cdnDomain || config.cdnDomain;
-    if (cdnDomain) {
-      formData.append('cdn_domain', cdnDomain);
-    }
-
-    // 发送请求
-    const response = await fetch(config.apiEndpoint, {
-      method: 'POST',
-      body: formData,
-    });
-
-    const result = await response.json();
-
-    if (result.success) {
-      return {
-        success: true,
-        url: result.url,
-        data: result.data,
-      };
-    } else {
-      return {
-        success: false,
-        error: result.message || '上传失败',
-      };
-    }
-  } catch (err: unknown) {
-    logger.error('SCDN Upload error', err);
-    return {
-      success: false,
-      error: err instanceof Error ? err.message : '网络请求失败',
-    };
-  }
+  return bytes;
 }
 
-/**
- * 带重试的上传
- * @param imageData 图片数据
- * @param options 上传选项
- * @param maxRetries 最大重试次数，默认3次
- */
-export async function uploadToImageHostingWithRetry(
-  imageData: Buffer | Blob | ArrayBuffer,
+export async function getActiveImageHostingChannel() {
+  return await getDefaultChannelConfig('image-hosting' as any)
+    || (await getChannelsByCapability('image-hosting' as any))[0]
+    || null;
+}
+
+export async function getActiveImageHostingProvider(): Promise<ImageHostingProvider | null> {
+  const provider = await getProjectImageHostingProvider();
+  if (!provider) return null;
+  if (!provider.validate()) return null;
+  return provider;
+}
+
+export async function isImageHostingEnabled(): Promise<boolean> {
+  return Boolean(await getActiveImageHostingProvider());
+}
+
+export async function uploadBytesToImageHostingWithRetry(
+  bytes: ArrayBuffer | Uint8Array,
   options?: ImageHostingUploadOptions,
   maxRetries: number = 3
 ): Promise<ImageHostingUploadResult> {
-  // 从插件系统获取配置
-  const config = await getImageHostingConfig();
-
-  if (!config || !config.enabled) {
-    return {
-      success: false,
-      error: '图床未配置或未启用，请在插件设置中启用 SCDN 图床服务',
-    };
+  const provider = await getActiveImageHostingProvider();
+  if (!provider) {
+    return { success: false, error: '图床未配置或未启用，请在插件设置中启用 image-hosting 渠道' };
   }
 
-  let lastError: string = '';
-
+  let lastError = '';
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
-
-    const result = await uploadImageToSCDN(imageData, config, options);
-
-    if (result.success) {
-      return result;
+    try {
+      const result = await provider.uploadImage(bytes, options);
+      if (result.success) {
+        return result;
+      }
+      lastError = result.error || '未知错误';
+    } catch (err: unknown) {
+      lastError = err instanceof Error ? err.message : String(err);
     }
 
-    lastError = result.error || '未知错误';
-    logger.warn(`上传失败 (尝试 ${attempt}): ${lastError}`);
-
-    // 如果不是最后一次尝试，等待后重试（指数退避）
+    logger.warn(`图床上传失败 (尝试 ${attempt}/${maxRetries}): ${lastError}`);
     if (attempt < maxRetries) {
-      const waitTime = 1000 * Math.pow(2, attempt - 1); // 1s, 2s, 4s
-      await delay(waitTime);
+      const wait = 1000 * Math.pow(2, attempt - 1);
+      await delay(wait);
     }
   }
 
@@ -202,31 +82,21 @@ export async function uploadToImageHostingWithRetry(
   };
 }
 
-/**
- * 从本地文件上传到图床
- * @param localPath 本地文件路径
- */
 export async function uploadLocalFileToImageHosting(
-  localPath: string
+  localPath: string,
+  options?: ImageHostingUploadOptions
 ): Promise<ImageHostingUploadResult> {
+  if (!electronService.isElectron()) {
+    return { success: false, error: '不支持的环境（需要 Electron）' };
+  }
+
   try {
-    // 通过 Electron API 读取文件
-    const electronAPI = (window as any).electronAPI;
-    if (!electronAPI?.fs?.readFile) {
-      return {
-        success: false,
-        error: '不支持的环境（需要 Electron）',
-      };
-    }
-
-    const fileData = await electronAPI.fs.readFile(localPath);
-    const filename = localPath.split(/[/\\]/).pop() || 'image.png';
-
-    return uploadToImageHostingWithRetry(fileData, { filename });
+    const base64 = await electronService.fs.readFileAsBase64(localPath);
+    const bytes = base64ToUint8Array(base64);
+    const filename = options?.filename || localPath.split(/[/\\]/).pop() || 'image.png';
+    return uploadBytesToImageHostingWithRetry(bytes, { ...options, filename });
   } catch (err: unknown) {
-    return {
-      success: false,
-      error: `读取文件失败: ${err instanceof Error ? err.message : String(err)}`,
-    };
+    return { success: false, error: `读取文件失败: ${err instanceof Error ? err.message : String(err)}` };
   }
 }
+

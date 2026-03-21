@@ -8,6 +8,8 @@ import type {
   ITVRequest as BaseITVRequest,
 } from './provider';
 
+export type ProviderAssetTransport = ProviderAssetInput['transport'];
+
 // 进度信息（扩展能力可能仍会使用）
 export interface ProgressInfo {
   taskId: string;
@@ -74,6 +76,19 @@ export interface ITVProvider {
   type: string;
   config: Record<string, any>;
 
+  /**
+   * Declares supported input transports for image assets.
+   *
+   * - 'remote-url': upstream server can fetch the image by URL.
+   * - 'data-url': upstream server accepts inline base64 (usually larger payloads).
+   *
+   * Host applications may use this to decide whether remote-url is "required" or "best-effort".
+   */
+  assetTransports?: {
+    primaryImage?: ReadonlyArray<ProviderAssetTransport>;
+    additionalReferences?: ReadonlyArray<ProviderAssetTransport>;
+  };
+
   validate(): boolean;
   testConnection(): Promise<boolean>;
 
@@ -87,4 +102,3 @@ export interface ITVProvider {
   extractProp?(taskId: string, timestamps?: string): Promise<string>;
   remixVideo?(videoId: string, options: RemixOptions): Promise<string | ProgressInfo>;
 }
-

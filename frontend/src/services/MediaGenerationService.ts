@@ -24,6 +24,12 @@ import { resolveProviderAssetInput, resolveProviderAssetInputs } from './mediaAs
 import { persistMediaAsset } from './mediaPersistenceService';
 import { bindOwnerRefMedia } from './mediaTaskBindingService';
 import { getProjectITVProvider, getProjectTTIProvider, getProjectTTSProvider } from '../providers';
+import {
+  ensureRemoteUrlForImageAsset,
+  ensureRemoteUrlForImageSource,
+  ensureRemoteUrlForImageSources,
+} from './mediaRemoteUrlService';
+import type { RemoteUrlPolicy } from './mediaRemoteUrlService';
 
 const logger = createLogger('MediaGeneration');
 
@@ -102,6 +108,20 @@ function getOptionNumber(
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 }
 
+function supportsDataUrl(transports: Array<'remote-url' | 'data-url'> | undefined): boolean {
+  return Boolean(transports?.includes('data-url'));
+}
+
+function providerAllowsDataUrlForITV(provider: any): { primary: boolean; additional: boolean } {
+  const primaryTransports = provider?.assetTransports?.primaryImage as Array<'remote-url' | 'data-url'> | undefined;
+  const additionalTransports = provider?.assetTransports?.additionalReferences as Array<'remote-url' | 'data-url'> | undefined;
+  return {
+    // Default is URL-only to stay safe for remote servers.
+    primary: supportsDataUrl(primaryTransports),
+    additional: supportsDataUrl(additionalTransports ?? primaryTransports),
+  };
+}
+
 export class MediaGenerationService {
   async generateImage(params: {
     projectId: string;
@@ -144,10 +164,16 @@ export class MediaGenerationService {
         },
       });
 
-      const finalAsset = mergeMediaMetadata(persisted, {
+      const normalized = await ensureRemoteUrlForImageAsset({
+        projectId,
+        asset: persisted,
+        policy: 'best-effort',
+      });
+
+      const finalAsset = mergeMediaMetadata(normalized, {
         provider: provider.config?.provider,
-        width: optionWidth ?? output.width ?? persisted.width,
-        height: optionHeight ?? output.height ?? persisted.height,
+        width: optionWidth ?? output.width ?? normalized.width,
+        height: optionHeight ?? output.height ?? normalized.height,
       });
 
       await bindOwnerRefMedia(projectId, ownerRef, finalAsset);
@@ -197,9 +223,34 @@ export class MediaGenerationService {
     const provider = await getProjectITVProvider(itvConfigId);
     if (!provider) throw new Error('未配置 ITV 服务');
 
-    const primaryImage = await ensureProviderAssetInput(request.primaryImage as any);
+    // Decide policy based on provider supported transports:
+    // - URL-only providers: remoteUrl is required (fail fast if cannot upload / missing image-hosting)
+    // - data-url-capable providers: remoteUrl is best-effort (fall back to data-url payload)
+    const allow = providerAllowsDataUrlForITV(provider);
+    const primaryPolicy: RemoteUrlPolicy = allow.primary ? 'best-effort' : 'required';
+    const additionalPolicy: RemoteUrlPolicy = allow.additional ? 'best-effort' : 'required';
+
+    const normalizedPrimary = await ensureRemoteUrlForImageSource({
+      projectId,
+      source: request.primaryImage as any,
+      policy: primaryPolicy,
+    });
+    const normalizedAdditional = await ensureRemoteUrlForImageSources({
+      projectId,
+      sources: ((request.additionalReferences || []) as any[]),
+      policy: additionalPolicy,
+    });
+
+    const primaryImage = await ensureProviderAssetInput(normalizedPrimary as any);
     if (!primaryImage) throw new Error('缺少 primaryImage');
-    const additionalReferences = await ensureProviderAssetInputs((request.additionalReferences || []) as any);
+    const additionalReferences = await ensureProviderAssetInputs(normalizedAdditional as any);
+
+    if (!allow.primary && primaryImage.transport !== 'remote-url') {
+      throw new Error('当前 ITV Provider 仅支持 URL 图片输入（remote-url），请启用图床以获得 remoteUrl');
+    }
+    if (!allow.additional && additionalReferences.some(r => r.transport !== 'remote-url')) {
+      throw new Error('当前 ITV Provider 仅支持 URL 图片输入（remote-url），请启用图床以获得 remoteUrl');
+    }
 
     const started = await provider.start({
       prompt: request.prompt,
@@ -452,7 +503,10 @@ export class MediaGenerationService {
           providerTaskId: providerTaskId || task.remoteTaskId,
         });
 
-        const finalAsset = enrichAsset(persisted);
+        const enriched = enrichAsset(persisted);
+        const finalAsset = kind === 'image'
+          ? await ensureRemoteUrlForImageAsset({ projectId, asset: enriched, policy: 'best-effort' })
+          : enriched;
         await markTaskCompleted(projectId, task.id, finalAsset);
 
         if (task.ownerRef) {

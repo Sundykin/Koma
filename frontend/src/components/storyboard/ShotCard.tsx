@@ -28,7 +28,7 @@ import {
   PlusOutlined,
 } from '@ant-design/icons';
 import type { Shot, Character, Scene, Prop, StoredMediaAsset } from '../../types';
-import { getMediaAssetSource } from '../../types';
+import { getMediaAssetSource, isRemoteMediaUri } from '../../types';
 import { ScriptEditor } from '../../editor';
 import type { MentionItem } from '../../editor';
 import { ImageCardGrid } from '../asset/ImageCardGrid';
@@ -36,9 +36,11 @@ import { VideoCardGrid } from '../asset/VideoCardGrid';
 import { StagePlayer } from '../video/StagePlayer';
 import { electronService } from '../../services/electronService';
 import { persistMediaAsset } from '../../services/mediaPersistenceService';
+import { ensureRemoteUrlForImageAsset } from '../../services/mediaRemoteUrlService';
 import { getProjectPath } from '../../store/projectStore';
 import { SHOT_LAYOUT, COL_ACTION_WIDTH } from '../../constants/storyboardConstants';
 import { AssetSelector } from './components/AssetSelector';
+import { createStoredMediaAsset } from '../../utils/mediaAssets';
 import './ShotCard.css';
 
 const { TextArea } = Input;
@@ -185,9 +187,12 @@ export const ShotCard: React.FC<ShotCardProps> = ({
   // 图片操作
   const handleImageSelect = (idx: number) => onImagesChange(shot.id, images, idx);
   const handleImageAdd = (path: string) => {
+    const asset = createStoredMediaAsset('image', isRemoteMediaUri(path)
+      ? { remoteUrl: path }
+      : { localPath: path });
     const newImages: StoredMediaAsset[] = [
       ...images,
-      { kind: 'image', localPath: path, createdAt: Date.now() },
+      asset,
     ];
     onImagesChange(shot.id, newImages, newImages.length - 1);
   };
@@ -226,7 +231,14 @@ export const ShotCard: React.FC<ShotCardProps> = ({
           },
         });
 
-        const newRefs: StoredMediaAsset[] = [...referenceImages, stored];
+        const finalized = await ensureRemoteUrlForImageAsset({
+          projectId,
+          asset: stored,
+          policy: 'best-effort',
+          filenameHint: file.name,
+        });
+
+        const newRefs: StoredMediaAsset[] = [...referenceImages, finalized];
         onReferenceImagesChange?.(shot.id, newRefs, newRefs.length - 1);
       } finally {
         URL.revokeObjectURL(blobUrl);

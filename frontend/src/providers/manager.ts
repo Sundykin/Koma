@@ -5,6 +5,7 @@
 import type { TTIProvider } from './tti/types';
 import type { ITVProvider } from './itv/types';
 import type { TTSProvider } from './tts/types';
+import type { ImageHostingProvider } from './imageHosting/types';
 import {
   type ChannelKind,
   type ProviderDefinition,
@@ -21,7 +22,7 @@ export type ProviderKindMap = {
   tti: TTIProvider;
   itv: ITVProvider;
   tts: TTSProvider;
-  'image-hosting': any;
+  'image-hosting': ImageHostingProvider;
 };
 
 /**

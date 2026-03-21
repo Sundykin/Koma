@@ -8,7 +8,7 @@ export const MEDIA_PROVIDER_CONTRACT_VERSION = 'media-request-v1';
 export type ChannelKind = 'tti' | 'itv' | 'tts' | 'image-hosting';
 
 // 渠道能力
-export type ChannelCapability = 'tti' | 'itv' | 'tts' | 'character-extract' | 'remix';
+export type ChannelCapability = 'tti' | 'itv' | 'tts' | 'character-extract' | 'remix' | 'image-hosting';
 
 export interface ProviderAssetInput {
   transport: 'remote-url' | 'data-url';
@@ -67,7 +67,7 @@ export interface ProviderContext {
 // Provider 定义
 export interface ProviderDefinition<T = any> {
   type: string;              // 唯一标识，如 'sora2', 'vectorengine'
-  kind: ChannelKind;         // 'tti' | 'itv' | 'tts'
+  kind: ChannelKind;         // 'tti' | 'itv' | 'tts' | 'image-hosting'
   name: string;              // 显示名称
   description?: string;      // 描述
   factory: (config: Record<string, any>, ctx: ProviderContext) => T;
