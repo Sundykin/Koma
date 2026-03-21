@@ -24,6 +24,7 @@ import {
 import type { ChannelKind } from './registry.types';
 import { createProviderInstance } from './registry';
 import { usePluginStore } from '../store/pluginStore';
+import { waitForPluginStoreRehydration } from '../store/pluginStore';
 import { createSandboxedFetch } from '../services/plugin/PluginSandbox';
 import { createLogger } from '../store/logger';
 
@@ -231,14 +232,20 @@ export function createTTSProviderFromConfig(config: TTSModelConfig): TTSProvider
 /**
  * 为插件渠道创建 Provider 上下文
  */
-function createChannelProviderContext(channelConfig: ChannelConfig) {
+async function createChannelProviderContext(channelConfig: ChannelConfig) {
   if (channelConfig.source === 'plugin') {
     if (!channelConfig.pluginId) {
       logger.error(`插件渠道 ${channelConfig.name} 缺少 pluginId`);
       return null;
     }
 
-    const plugin = usePluginStore.getState().getPlugin(channelConfig.pluginId);
+    // In early startup, pluginStore may not have rehydrated yet. For plugin channels,
+    // we wait once to avoid a false "plugin not found" -> "provider not ready".
+    let plugin = usePluginStore.getState().getPlugin(channelConfig.pluginId);
+    if (!plugin) {
+      await waitForPluginStoreRehydration();
+      plugin = usePluginStore.getState().getPlugin(channelConfig.pluginId);
+    }
     if (!plugin) {
       logger.warn(`插件 ${channelConfig.pluginId} 未找到`, {
         channelId: channelConfig.id,
@@ -269,7 +276,7 @@ function createChannelProviderContext(channelConfig: ChannelConfig) {
  * 从插件渠道配置创建 Provider 实例
  */
 async function createChannelProvider<T>(channelConfig: ChannelConfig, kind: ChannelKind): Promise<T | null> {
-  const context = createChannelProviderContext(channelConfig);
+  const context = await createChannelProviderContext(channelConfig);
   if (!context) return null;
 
   try {
