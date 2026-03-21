@@ -43,7 +43,7 @@ import { electronService, openFileDialog, fsCopy, fsMkdir, fsExists } from '../.
 import { getStorageConfig, initStorageConfig } from '../../store/storageConfig';
 import { saveProps, loadProps } from '../../store/projectStore';
 import { useActiveConfig } from '../../hooks/useActiveConfig';
-import { uploadLocalFileToImageHosting, getImageHostingConfig } from '../../services/imageHostingService';
+import { uploadLocalFileToImageHosting, isImageHostingEnabled } from '../../services/imageHostingService';
 import { createStoredMediaAsset, updatePropMedia } from '../../utils/mediaAssets';
 import {
   getPropPreviewImageSource,
@@ -222,8 +222,8 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
       });
 
       // 检测图床配置，自动上传
-      const imageHostingConfig = await getImageHostingConfig();
-      if (imageHostingConfig?.enabled) {
+      const hostingEnabled = await isImageHostingEnabled();
+      if (hostingEnabled) {
         message.loading({ content: t('asset.uploadToHosting'), key: 'imageHosting' });
         const uploadResult = await uploadLocalFileToImageHosting(destPath);
         if (uploadResult.success && uploadResult.url) {

@@ -24,6 +24,11 @@ import { resolveProviderAssetInput, resolveProviderAssetInputs } from './mediaAs
 import { persistMediaAsset } from './mediaPersistenceService';
 import { bindOwnerRefMedia } from './mediaTaskBindingService';
 import { getProjectITVProvider, getProjectTTIProvider, getProjectTTSProvider } from '../providers';
+import {
+  ensureRemoteUrlForImageAsset,
+  ensureRemoteUrlForImageSource,
+  ensureRemoteUrlForImageSources,
+} from './mediaRemoteUrlService';
 
 const logger = createLogger('MediaGeneration');
 
@@ -144,10 +149,16 @@ export class MediaGenerationService {
         },
       });
 
-      const finalAsset = mergeMediaMetadata(persisted, {
+      const normalized = await ensureRemoteUrlForImageAsset({
+        projectId,
+        asset: persisted,
+        policy: 'best-effort',
+      });
+
+      const finalAsset = mergeMediaMetadata(normalized, {
         provider: provider.config?.provider,
-        width: optionWidth ?? output.width ?? persisted.width,
-        height: optionHeight ?? output.height ?? persisted.height,
+        width: optionWidth ?? output.width ?? normalized.width,
+        height: optionHeight ?? output.height ?? normalized.height,
       });
 
       await bindOwnerRefMedia(projectId, ownerRef, finalAsset);
@@ -197,9 +208,21 @@ export class MediaGenerationService {
     const provider = await getProjectITVProvider(itvConfigId);
     if (!provider) throw new Error('未配置 ITV 服务');
 
-    const primaryImage = await ensureProviderAssetInput(request.primaryImage as any);
+    // ITV is remote and typically requires a URL-accessible image; enforce required policy.
+    const normalizedPrimary = await ensureRemoteUrlForImageSource({
+      projectId,
+      source: request.primaryImage as any,
+      policy: 'required',
+    });
+    const normalizedAdditional = await ensureRemoteUrlForImageSources({
+      projectId,
+      sources: ((request.additionalReferences || []) as any[]),
+      policy: 'required',
+    });
+
+    const primaryImage = await ensureProviderAssetInput(normalizedPrimary as any);
     if (!primaryImage) throw new Error('缺少 primaryImage');
-    const additionalReferences = await ensureProviderAssetInputs((request.additionalReferences || []) as any);
+    const additionalReferences = await ensureProviderAssetInputs(normalizedAdditional as any);
 
     const started = await provider.start({
       prompt: request.prompt,
@@ -452,7 +475,10 @@ export class MediaGenerationService {
           providerTaskId: providerTaskId || task.remoteTaskId,
         });
 
-        const finalAsset = enrichAsset(persisted);
+        const enriched = enrichAsset(persisted);
+        const finalAsset = kind === 'image'
+          ? await ensureRemoteUrlForImageAsset({ projectId, asset: enriched, policy: 'best-effort' })
+          : enriched;
         await markTaskCompleted(projectId, task.id, finalAsset);
 
         if (task.ownerRef) {
