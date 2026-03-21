@@ -285,19 +285,31 @@ async function ensurePluginUmdGlobals(): Promise<void> {
   // React
   if (!(window as any).React) {
     const ReactMod = await import('react');
-    (window as any).React = ReactMod;
+    const ReactDefault = (ReactMod as any).default;
+    // In different bundlers, React may appear on either the module namespace or default export.
+    // We normalize to an object that exposes hooks as properties (React.useState etc.).
+    const ReactGlobal = ReactDefault && (ReactDefault.useState || ReactDefault.createElement)
+      ? { ...ReactMod, ...ReactDefault }
+      : ReactMod;
+    (window as any).React = ReactGlobal;
   }
 
   // Ant Design
   if (!(window as any).antd) {
     const antdMod = await import('antd');
-    (window as any).antd = antdMod;
+    const antdDefault = (antdMod as any).default;
+    (window as any).antd = antdDefault && typeof antdDefault === 'object'
+      ? { ...antdMod, ...antdDefault }
+      : antdMod;
   }
 
   // Ant Design Icons
   if (!(window as any)['@ant-design/icons']) {
     const iconsMod = await import('@ant-design/icons');
-    (window as any)['@ant-design/icons'] = iconsMod;
+    const iconsDefault = (iconsMod as any).default;
+    (window as any)['@ant-design/icons'] = iconsDefault && typeof iconsDefault === 'object'
+      ? { ...iconsMod, ...iconsDefault }
+      : iconsMod;
   }
 
   pluginUmdGlobalsReady = true;
