@@ -12,7 +12,7 @@
 import { createLogger } from '../store/logger';
 import { electronService } from './electronService';
 import { getDefaultChannelConfig, getChannelsByCapability } from '../store/globalStore';
-import { getProjectImageHostingProvider } from '../providers';
+import { getProjectImageHostingProvider, listProviders } from '../providers';
 import type { ImageHostingProvider, ImageHostingUploadOptions, ImageHostingUploadResult } from '../providers/imageHosting/types';
 
 const logger = createLogger('ImageHosting');
@@ -76,12 +76,41 @@ async function recoverImageHostingProviderOnce(): Promise<void> {
 }
 
 export async function getActiveImageHostingProvider(): Promise<ImageHostingProvider | null> {
+  const channel = await getActiveImageHostingChannel();
   let provider = await getProjectImageHostingProvider();
   if (!provider) {
+    const defs = listProviders('image-hosting').map(d => ({ type: d.type, pluginId: d.pluginId }));
+    let pluginRuntimeState: any = null;
+    if (channel?.source === 'plugin' && channel.pluginId) {
+      const { usePluginStore } = await import('../store/pluginStore');
+      pluginRuntimeState = usePluginStore.getState().runtimeStates?.[channel.pluginId] || null;
+    }
+    logger.warn('image-hosting provider 未就绪: before recover', {
+      channel: channel
+        ? {
+            id: channel.id,
+            providerType: channel.providerType,
+            source: channel.source,
+            pluginId: channel.pluginId,
+            enabled: channel.enabled,
+            providerConfigEnabled: Boolean((channel.providerConfig as any)?.enabled),
+            providerConfigKeys: Object.keys((channel.providerConfig as any) || {}),
+          }
+        : null,
+      registeredProviders: defs,
+      pluginRuntimeState,
+    });
     // Self-heal: plugin might be enabled and channel config exists, but provider definitions
     // were not registered in-memory yet (startup race / prior plugin load failure).
     await recoverImageHostingProviderOnce();
     provider = await getProjectImageHostingProvider();
+  }
+  if (!provider) {
+    const defs = listProviders('image-hosting').map(d => ({ type: d.type, pluginId: d.pluginId }));
+    logger.warn('image-hosting provider 未就绪: after recover', {
+      channel: channel ? { id: channel.id, providerType: channel.providerType, pluginId: channel.pluginId } : null,
+      registeredProviders: defs,
+    });
   }
   if (!provider) return null;
   if (!provider.validate()) return null;
