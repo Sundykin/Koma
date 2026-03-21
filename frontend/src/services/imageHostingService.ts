@@ -12,7 +12,7 @@
 import { createLogger } from '../store/logger';
 import { electronService } from './electronService';
 import { getDefaultChannelConfig, getChannelsByCapability } from '../store/globalStore';
-import { getProjectImageHostingProvider, listProviders } from '../providers';
+import { createProviderInstance, getProjectImageHostingProvider, listProviders } from '../providers';
 import type { ImageHostingProvider, ImageHostingUploadOptions, ImageHostingUploadResult } from '../providers/imageHosting/types';
 
 const logger = createLogger('ImageHosting');
@@ -36,6 +36,55 @@ export async function getActiveImageHostingChannel() {
   return await getDefaultChannelConfig('image-hosting' as any)
     || (await getChannelsByCapability('image-hosting' as any))[0]
     || null;
+}
+
+async function tryCreateProviderFallback(channel: any): Promise<ImageHostingProvider | null> {
+  if (!channel) return null;
+  if (channel.providerType !== 'scdn-image-hosting' && !listProviders('image-hosting').some(p => p.type === channel.providerType)) {
+    return null;
+  }
+
+  const defs = listProviders('image-hosting');
+  const def = defs.find(d => d.type === channel.providerType);
+  if (!def) return null;
+
+  const pluginIdFromDef = def.pluginId;
+  const pluginId = channel.pluginId || pluginIdFromDef;
+
+  // Reconstruct plugin context locally (avoid depending on higher-level provider factory paths).
+  let sandboxedFetch: typeof fetch = fetch;
+  if (pluginId) {
+    try {
+      const { usePluginStore, waitForPluginStoreRehydration } = await import('../store/pluginStore');
+      const { createSandboxedFetch } = await import('./plugin/PluginSandbox');
+      await waitForPluginStoreRehydration();
+      const plugin = usePluginStore.getState().getPlugin(pluginId);
+      if (plugin) {
+        sandboxedFetch = createSandboxedFetch(plugin);
+      }
+    } catch (err: unknown) {
+      logger.warn('fallback 创建 provider：构建 sandboxedFetch 失败，降级使用全局 fetch', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  try {
+    const provider = createProviderInstance<ImageHostingProvider>(
+      'image-hosting',
+      channel.providerType,
+      channel.providerConfig || {},
+      { sandboxedFetch, pluginId }
+    );
+    return provider;
+  } catch (err: unknown) {
+    logger.error('fallback 创建 provider 失败', {
+      providerType: channel.providerType,
+      pluginId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return null;
+  }
 }
 
 async function recoverImageHostingProviderOnce(): Promise<void> {
@@ -104,6 +153,18 @@ export async function getActiveImageHostingProvider(): Promise<ImageHostingProvi
     // were not registered in-memory yet (startup race / prior plugin load failure).
     await recoverImageHostingProviderOnce();
     provider = await getProjectImageHostingProvider();
+  }
+  if (!provider) {
+    // Last-resort: we can see the provider definition exists in the registry but higher-level
+    // factory paths still returned null. Try constructing the instance directly.
+    const fallbackProvider = await tryCreateProviderFallback(channel);
+    if (fallbackProvider) {
+      logger.info('image-hosting provider recovered via fallback create', {
+        providerType: channel?.providerType,
+        pluginId: channel?.pluginId,
+      });
+      provider = fallbackProvider;
+    }
   }
   if (!provider) {
     const defs = listProviders('image-hosting').map(d => ({ type: d.type, pluginId: d.pluginId }));
