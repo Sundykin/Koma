@@ -29,6 +29,7 @@ import {
   ensureRemoteUrlForImageSource,
   ensureRemoteUrlForImageSources,
 } from './mediaRemoteUrlService';
+import type { RemoteUrlPolicy } from './mediaRemoteUrlService';
 
 const logger = createLogger('MediaGeneration');
 
@@ -105,6 +106,20 @@ function getOptionNumber(
 ): number | undefined {
   const value = options?.[key];
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
+function supportsDataUrl(transports: Array<'remote-url' | 'data-url'> | undefined): boolean {
+  return Boolean(transports?.includes('data-url'));
+}
+
+function providerAllowsDataUrlForITV(provider: any): { primary: boolean; additional: boolean } {
+  const primaryTransports = provider?.assetTransports?.primaryImage as Array<'remote-url' | 'data-url'> | undefined;
+  const additionalTransports = provider?.assetTransports?.additionalReferences as Array<'remote-url' | 'data-url'> | undefined;
+  return {
+    // Default is URL-only to stay safe for remote servers.
+    primary: supportsDataUrl(primaryTransports),
+    additional: supportsDataUrl(additionalTransports ?? primaryTransports),
+  };
 }
 
 export class MediaGenerationService {
@@ -208,21 +223,34 @@ export class MediaGenerationService {
     const provider = await getProjectITVProvider(itvConfigId);
     if (!provider) throw new Error('未配置 ITV 服务');
 
-    // ITV is remote and typically requires a URL-accessible image; enforce required policy.
+    // Decide policy based on provider supported transports:
+    // - URL-only providers: remoteUrl is required (fail fast if cannot upload / missing image-hosting)
+    // - data-url-capable providers: remoteUrl is best-effort (fall back to data-url payload)
+    const allow = providerAllowsDataUrlForITV(provider);
+    const primaryPolicy: RemoteUrlPolicy = allow.primary ? 'best-effort' : 'required';
+    const additionalPolicy: RemoteUrlPolicy = allow.additional ? 'best-effort' : 'required';
+
     const normalizedPrimary = await ensureRemoteUrlForImageSource({
       projectId,
       source: request.primaryImage as any,
-      policy: 'required',
+      policy: primaryPolicy,
     });
     const normalizedAdditional = await ensureRemoteUrlForImageSources({
       projectId,
       sources: ((request.additionalReferences || []) as any[]),
-      policy: 'required',
+      policy: additionalPolicy,
     });
 
     const primaryImage = await ensureProviderAssetInput(normalizedPrimary as any);
     if (!primaryImage) throw new Error('缺少 primaryImage');
     const additionalReferences = await ensureProviderAssetInputs(normalizedAdditional as any);
+
+    if (!allow.primary && primaryImage.transport !== 'remote-url') {
+      throw new Error('当前 ITV Provider 仅支持 URL 图片输入（remote-url），请启用图床以获得 remoteUrl');
+    }
+    if (!allow.additional && additionalReferences.some(r => r.transport !== 'remote-url')) {
+      throw new Error('当前 ITV Provider 仅支持 URL 图片输入（remote-url），请启用图床以获得 remoteUrl');
+    }
 
     const started = await provider.start({
       prompt: request.prompt,

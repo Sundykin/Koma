@@ -63,7 +63,7 @@ export interface ImageHostingProvider {
 
 建议默认：
 - TTI 输出补齐 remoteUrl：`best-effort`（不阻断生成落盘）。
-- ITV primaryImage：`required`（如果目标 ITV provider 是远程且不接受 data-url）。
+- ITV primaryImage：`required`（URL-only provider）或 `best-effort`（provider 明确允许 data-url 作为 fallback）。
 
 最终策略取决于 Open Questions 的确认结果。
 
@@ -104,10 +104,10 @@ sequenceDiagram
   participant ITV as ITVProvider
 
   UI->>MGS: generateVideo(primaryImage, refs)
-  MGS->>RU: ensureRemoteUrl(primaryImage, required)
-  RU-->>MGS: primaryImage(remoteUrl)
+  Note over MGS: policy = required when provider URL-only<br/>policy = best-effort when provider allows data-url
+  MGS->>RU: ensureRemoteUrl(primaryImage, policy)
+  RU-->>MGS: primaryImage(remoteUrl?) or original source
   MGS->>RES: resolveProviderAssetInput(primaryImage)
-  RES-->>MGS: ProviderAssetInput(remote-url)
+  RES-->>MGS: ProviderAssetInput(remote-url|data-url)
   MGS->>ITV: start(...)
 ```
-

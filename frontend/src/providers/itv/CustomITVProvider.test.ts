@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const safeFetchMock = vi.fn(async () => {
+const safeFetchMock = vi.fn(async (_url: string, _init?: RequestInit) => {
   return new Response(JSON.stringify({ task_id: 't1' }), { status: 200 });
 });
 
@@ -40,4 +40,3 @@ describe('CustomITVProvider', () => {
     expect(body.image_mime).toBeUndefined();
   });
 });
-

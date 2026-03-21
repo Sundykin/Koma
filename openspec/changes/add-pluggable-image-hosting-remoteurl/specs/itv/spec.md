@@ -19,3 +19,8 @@
 - **WHEN** 图床未启用或上传失败
 - **THEN** 系统 MUST 失败并提示用户启用图床或检查图床配置
 
+#### Scenario: Provider 支持 data-url 时的失败策略（best-effort）
+- **GIVEN** primaryImage 缺少 `remoteUrl`
+- **AND** 目标 ITV Provider 允许 data-url 输入
+- **WHEN** 图床未启用或上传失败
+- **THEN** 系统 SHOULD 回退为 data-url（base64）并继续提交 ITV 任务
