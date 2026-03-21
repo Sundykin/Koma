@@ -125,7 +125,18 @@ const pluginController = {
     event?: IpcMainInvokeEvent
   ) {
     await ensureServicesReady();
-    return pluginBridge.callProvider(kind, type, method, args);
+    try {
+      return await pluginBridge.callProvider(kind, type, method, args);
+    } catch (err: any) {
+      console.error('[PluginController] callProvider failed', {
+        kind,
+        type,
+        method,
+        error: err?.message || String(err),
+        stack: err?.stack,
+      });
+      throw err;
+    }
   },
 
   /**

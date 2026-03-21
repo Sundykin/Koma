@@ -212,7 +212,21 @@ export async function uploadBytesToImageHostingWithRetry(
 
           const normalized = result as ImageHostingUploadResult | null;
           if (normalized?.success) return normalized;
-          lastBackendError = normalized?.error || '未知错误';
+          if (normalized && typeof normalized === 'object') {
+            lastBackendError = normalized.error || `未返回 success=true，原始结果: ${JSON.stringify(normalized)}`;
+            logger.warn('图床后端 Provider 返回非成功结果', {
+              providerType: channel.providerType,
+              attempt,
+              result: normalized,
+            });
+          } else {
+            lastBackendError = `返回了不可识别结果: ${String(result)}`;
+            logger.warn('图床后端 Provider 返回不可识别结果', {
+              providerType: channel.providerType,
+              attempt,
+              result,
+            });
+          }
         } catch (err: unknown) {
           const msg = err instanceof Error ? err.message : String(err);
           // Backend provider may not exist (e.g. plugin only has frontend entry). In that case,
@@ -221,6 +235,12 @@ export async function uploadBytesToImageHostingWithRetry(
             lastBackendError = '';
             break;
           }
+          logger.error('图床后端 Provider 调用抛错', {
+            providerType: channel.providerType,
+            attempt,
+            error: msg,
+            stack: err instanceof Error ? err.stack : undefined,
+          });
           lastBackendError = msg;
         }
 
