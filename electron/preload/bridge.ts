@@ -43,6 +43,8 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
 	  // runtime lifecycle
 	  'controller/plugin/activate', 'controller/plugin/deactivate',
 	  'controller/plugin/status', 'controller/plugin/listActive',
+	  // backend provider invocation (used by image-hosting fallback)
+	  'controller/plugin/callProvider',
 	  'controller/net/fetch',
 	]);
 
@@ -172,6 +174,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
 	    deactivate: (pluginId: string) => invokeMain('controller/plugin/deactivate', { pluginId }),
 	    status: (pluginId: string) => invokeMain('controller/plugin/status', { pluginId }),
 	    listActive: () => invokeMain('controller/plugin/listActive', {}),
+	    callProvider: (payload: { kind: string; type: string; method: string; args: any[] }) =>
+	      invokeMain('controller/plugin/callProvider', payload),
 	  },
   net: {
     fetch: (args: { url: string; method?: string; headers?: Record<string, string>; body?: string }) =>

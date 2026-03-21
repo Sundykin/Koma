@@ -114,6 +114,21 @@ const pluginController = {
   },
 
   /**
+   * 调用 Provider（后端执行）
+   *
+   * 说明：
+   * - 主要用于 image-hosting 这类需要 FormData/Buffer 的能力，前端沙箱 fetch/IPC 传输可能不支持
+   * - 由 PluginBridge 负责查找 provider 定义并调用实例方法
+   */
+  async callProvider(
+    { kind, type, method, args }: { kind: 'tti' | 'itv' | 'tts' | 'llm' | 'image-hosting'; type: string; method: string; args: unknown[] },
+    event?: IpcMainInvokeEvent
+  ) {
+    await ensureServicesReady();
+    return pluginBridge.callProvider(kind, type, method, args);
+  },
+
+  /**
    * 列出可用 Worker Agent
    */
   async listAgents(_args: any, event?: IpcMainInvokeEvent) {
