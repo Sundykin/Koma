@@ -172,6 +172,20 @@ const COMMON_VARIABLE_DEFINITIONS: Record<string, Omit<PromptTemplateVariable, '
     example: '顾行: @char_001',
     required: true,
   },
+  sceneRefs: {
+    label: '场景引用表',
+    description: '可插入到提示词中的场景引用清单，格式为场景名到 @scene_ID 的映射。',
+    format: '多行文本',
+    example: '雨夜墓地: @scene_scene_001',
+    required: true,
+  },
+  propRefs: {
+    label: '道具引用表',
+    description: '可插入到提示词中的道具引用清单，格式为道具名到 @prop_ID 的映射。',
+    format: '多行文本',
+    example: '铁盆: @prop_prop_001',
+    required: true,
+  },
   shotTypeHint: {
     label: '景别提示',
     description: '当前分镜已经确定的景别提示，应优先遵守。',
@@ -338,9 +352,12 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
 
 要求：
 1. 提示词使用中文描述
-2. 如果有角色引用，使用 @角色ID 格式（如 @abc123）
-3. 包含运镜描述和景别描述
-4. 描述要具体、生动，包含动作、光影、氛围
+2. 如果需要引用资产，使用显式的 @mentions 形式：
+   - 角色：@char_角色ID
+   - 场景：@scene_场景ID
+   - 道具：@prop_道具ID
+3. 包含运镜描述和景别描述（视频提示词时）
+4. 描述要具体、生动，但只写客观可见事实（外观、动作、光线、环境），不要复述剧情或背景设定
 5. 直接输出提示词，不要有任何前缀或解释`,
     variables: [],
     isCustom: false,
@@ -577,32 +594,46 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
 
 剧本内容：{{scriptContent}}
 出场角色：{{characters}}
+出现场景：{{scenes}}
+出场道具：{{props}}
 情绪氛围：{{emotion}}
 风格前缀：{{stylePrefix}}
 推荐景别：{{shotTypeHint}}
 
 要求：
 1. 使用中文输出
-2. 为每个角色添加 @角色ID 引用格式（角色引用列表见下方）
-3. 只描述当前静止画面中可见的客观事实，不要复述剧情，不要描述人物内心，不要解释事件原因
-4. 画面内容必须聚焦于角色外观、服装、姿态、手部动作、道具状态、空间关系、构图和光线
-5. 优先使用推荐景别；如需微调，只能从以下景别关键字中选择：{{shotTypeOptions}}
-6. 把“情绪氛围”转成可见线索，如表情、肢体张力、天气、色调、明暗对比
-7. 输出一段连续中文提示词，不要分点，不要加前言
+2. 为每个角色添加 @char_角色ID 引用格式（角色引用列表见下方）
+3. 为每个场景添加 @scene_场景ID 引用格式（场景引用列表见下方）
+4. 为每个道具添加 @prop_道具ID 引用格式（道具引用列表见下方）
+5. 只描述当前静止画面中可见的客观事实，不要复述剧情，不要描述人物内心，不要解释事件原因
+6. 画面内容必须聚焦于角色外观、服装、姿态、手部动作、道具状态、空间关系、构图和光线
+7. 优先使用推荐景别；如需微调，只能从以下景别关键字中选择：{{shotTypeOptions}}
+8. 把“情绪氛围”转成可见线索，如表情、肢体张力、天气、色调、明暗对比
+9. 输出一段连续中文提示词，不要分点，不要加前言
 
 可用角色引用：
 {{characterRefs}}
+
+可用场景引用：
+{{sceneRefs}}
+
+可用道具引用：
+{{propRefs}}
 
 输出格式：直接输出提示词，无需其他说明
 `,
     variables: [
       variable('scriptContent'),
       variable('characters'),
+      variable('scenes'),
+      variable('props'),
       variable('emotion'),
       variable('stylePrefix'),
       variable('shotTypeHint'),
       variable('shotTypeOptions'),
       variable('characterRefs'),
+      variable('sceneRefs'),
+      variable('propRefs'),
     ],
     isCustom: false,
   },
@@ -615,6 +646,8 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
 
 剧本内容：{{scriptContent}}
 出场角色：{{characters}}
+出现场景：{{scenes}}
+出场道具：{{props}}
 情绪氛围：{{emotion}}
 风格前缀：{{stylePrefix}}
 镜头总时长：{{durationSeconds}} 秒
@@ -623,22 +656,32 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
 
 要求：
 1. 使用中文输出
-2. 为每个角色添加 @角色ID 引用格式（角色引用列表见下方）
-3. 只能描述镜头内直接可观察到的动作、表情变化、镜头运动与环境动态，不要复述剧情，不要写心理活动，不要写因果解释
-4. 输出必须包含连续的时间片段，格式严格为 \`[start,end]秒：描述\`
-5. 时间片段总长度必须覆盖整个镜头时长 {{durationSeconds}} 秒
-6. 优先使用推荐运镜和推荐景别；如需微调，只能从以下关键字中选择：运镜 {{cameraOptions}}；景别 {{shotTypeOptions}}
-7. 每个时间片段都要写清楚人物动作、镜头运动、环境变化和画面节奏
-8. 输出只保留提示词正文，不要加解释，不要加标题
+2. 为每个角色添加 @char_角色ID 引用格式（角色引用列表见下方）
+3. 为每个场景添加 @scene_场景ID 引用格式（场景引用列表见下方）
+4. 为每个道具添加 @prop_道具ID 引用格式（道具引用列表见下方）
+5. 只能描述镜头内直接可观察到的动作、表情变化、镜头运动与环境动态，不要复述剧情，不要写心理活动，不要写因果解释
+6. 输出必须包含连续的时间片段，格式严格为 \`[start,end]秒：描述\`
+7. 时间片段总长度必须覆盖整个镜头时长 {{durationSeconds}} 秒
+8. 优先使用推荐运镜和推荐景别；如需微调，只能从以下关键字中选择：运镜 {{cameraOptions}}；景别 {{shotTypeOptions}}
+9. 每个时间片段都要写清楚人物动作、镜头运动、环境变化和画面节奏
+10. 输出只保留提示词正文，不要加解释，不要加标题
 
 可用角色引用：
 {{characterRefs}}
+
+可用场景引用：
+{{sceneRefs}}
+
+可用道具引用：
+{{propRefs}}
 
 输出格式：直接输出提示词，无需其他说明
 `,
     variables: [
       variable('scriptContent'),
       variable('characters'),
+      variable('scenes'),
+      variable('props'),
       variable('emotion'),
       variable('stylePrefix'),
       variable('durationSeconds'),
@@ -647,6 +690,8 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
       variable('cameraOptions'),
       variable('shotTypeOptions'),
       variable('characterRefs'),
+      variable('sceneRefs'),
+      variable('propRefs'),
     ],
     isCustom: false,
   },

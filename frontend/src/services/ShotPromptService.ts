@@ -8,8 +8,9 @@ import { createLLMProvider } from '../providers';
 import { getActiveLLMConfig } from '../store/globalStore';
 import { resolvePromptTemplate } from '../store/promptTemplates';
 import type { PromptTemplateType } from '../store/promptTemplates';
-import { loadCharacters, updateShot } from '../store/projectStore';
+import { loadCharacters, loadScenes, loadProps, updateShot } from '../store/projectStore';
 import { createLogger } from '../store/logger';
+import { createMentionString } from '../editor/mentionTypes';
 
 const logger = createLogger('ShotPrompt');
 
@@ -141,21 +142,39 @@ export class ShotPromptService {
       };
     }
 
-    // 过滤出该分镜关联的角色
+    // 过滤出该分镜关联的资产（角色/场景/道具）
     const shotCharacters = characters.filter(c => shot.characters?.includes(c.id));
+
+    // 场景与道具由服务内部加载，避免在调用点扩散参数/兼容代码
+    const [allScenes, allProps] = await Promise.all([
+      loadScenes(this.projectId).catch(() => []),
+      loadProps(this.projectId).catch(() => []),
+    ]);
+    const shotScenes = (allScenes || []).filter(s => (shot.scenes || []).includes(s.id));
+    const shotProps = (allProps || []).filter(p => (shot.props || []).includes(p.id));
 
     // 构建角色引用列表
     const characterRefs = shotCharacters
-      .map(c => `${c.name}: @${c.sora2CharacterId || c.id}`)
+      .map(c => `${c.name}: ${createMentionString('char', c.sora2CharacterId || c.id)}`)
+      .join('\n');
+
+    // 场景引用列表（场景不需要 Sora2 绑定）
+    const sceneRefs = shotScenes
+      .map(s => `${s.name}: ${createMentionString('scene', s.id)}`)
+      .join('\n');
+
+    // 道具引用列表（道具可用 sora2PropId 或内部 ID）
+    const propRefs = shotProps
+      .map(p => `${p.name}: ${createMentionString('prop', (p as any).sora2PropId || p.id)}`)
       .join('\n');
 
     // 按需并行生成
     const promises: Promise<string>[] = [];
     if (needImage) {
-      promises.push(this.generatePromptByType('image', shot, shotCharacters, characterRefs, resolvedStylePrefix));
+      promises.push(this.generatePromptByType('image', shot, shotCharacters, shotScenes, shotProps as any, characterRefs, sceneRefs, propRefs, resolvedStylePrefix));
     }
     if (needVideo) {
-      promises.push(this.generatePromptByType('video', shot, shotCharacters, characterRefs, resolvedStylePrefix));
+      promises.push(this.generatePromptByType('video', shot, shotCharacters, shotScenes, shotProps as any, characterRefs, sceneRefs, propRefs, resolvedStylePrefix));
     }
 
     const results = await Promise.all(promises);
@@ -178,7 +197,11 @@ export class ShotPromptService {
     type: 'image' | 'video',
     shot: Shot,
     shotCharacters: Character[],
+    shotScenes: Scene[],
+    shotProps: Array<{ id: string; name: string; prompt: string; sora2PropId?: string }>,
     characterRefs: string,
+    sceneRefs: string,
+    propRefs: string,
     stylePrefix: string
   ): Promise<string> {
     // 根据类型选择专用模板，回退到通用模板
@@ -187,11 +210,15 @@ export class ShotPromptService {
     const templateVariables: Record<string, string> = {
       scriptContent: shot.scriptContent,
       characters: shotCharacters.map(c => c.name).join(', ') || '无',
+      scenes: shotScenes.map(s => s.name).join(', ') || '无',
+      props: shotProps.map(p => p.name).join(', ') || '无',
       emotion: shot.emotion || '中性',
       stylePrefix: stylePrefix || '',
       shotTypeHint: shot.shotType || 'medium',
       shotTypeOptions: SHOT_TYPE_OPTIONS.join(', '),
       characterRefs: characterRefs || '无角色引用',
+      sceneRefs: sceneRefs || '无场景引用',
+      propRefs: propRefs || '无道具引用',
     };
     if (type === 'video') {
       templateVariables.cameraOptions = CAMERA_OPTIONS.join(', ');
