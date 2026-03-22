@@ -9,6 +9,7 @@ export { PikaProvider } from './PikaProvider';
 export { Sora2Provider } from './Sora2Provider';
 export { ComfyUIAnimateDiffProvider } from './ComfyUIAnimateDiffProvider';
 export { CustomITVProvider } from './CustomITVProvider';
+export { Grok2ApiImagineITVProvider } from './Grok2ApiImagineITVProvider';
 
 import type { ITVConfig } from '../../types';
 import type { ITVProvider } from './types';
@@ -18,6 +19,7 @@ import { PikaProvider } from './PikaProvider';
 import { Sora2Provider } from './Sora2Provider';
 import { ComfyUIAnimateDiffProvider } from './ComfyUIAnimateDiffProvider';
 import { CustomITVProvider } from './CustomITVProvider';
+import { Grok2ApiImagineITVProvider } from './Grok2ApiImagineITVProvider';
 import type { ProviderDefinition } from '../registry.types';
 import { DEFAULT_POLLING_CONFIG, MEDIA_PROVIDER_CONTRACT_VERSION } from '../registry.types';
 import { itvRegistry } from '../registry';
@@ -97,6 +99,16 @@ function registerBuiltinProviders() {
         maxDuration: 600000,
         initialDelay: 3000,
       },
+    },
+    {
+      type: 'grok2api-imagine-itv',
+      kind: 'itv',
+      name: 'Grok2API Imagine Video',
+      description: 'Grok2API 逆向接口：图生视频（chat/completions）',
+      factory: (config) => new Grok2ApiImagineITVProvider(config as ITVConfig),
+      contractVersion: MEDIA_PROVIDER_CONTRACT_VERSION,
+      capabilities: ['itv'],
+      polling: DEFAULT_POLLING_CONFIG,
     },
   ];
 
