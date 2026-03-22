@@ -55,7 +55,6 @@ export async function generateShotList(
     shotType: s.shotType || 'medium',
     cameraMovement: s.cameraMovement || 'static',
     duration: s.duration || 3,
-    description: s.description || '',
     characters: s.characters || [],
     dialogue: s.dialogue,
     emotion: s.emotion,

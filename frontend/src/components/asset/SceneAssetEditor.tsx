@@ -2,7 +2,7 @@
  * 场景资产编辑器
  * 简化版：只显示名称、预览图和提示词
  */
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { Button, Input, Space, Progress, Typography, App } from 'antd';
 import { ThunderboltOutlined, UploadOutlined, EditOutlined, CheckOutlined, LoadingOutlined } from '@ant-design/icons';
 import type { Scene } from '../../types';
@@ -36,19 +36,21 @@ export const SceneAssetEditor: React.FC<SceneAssetEditorProps> = ({
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState({ value: 0, step: '' });
   const [isEditing, setIsEditing] = useState(false);
-  const [customPrompt, setCustomPrompt] = useState(scene.customPrompt || '');
+  const [promptDraft, setPromptDraft] = useState(scene.prompt || '');
 
-  // 自动生成的提示词
   const autoPrompt = getScenePrompt(scene, theme, stylePrompt);
-  const currentPrompt = scene.customPrompt || autoPrompt;
+  const currentPrompt = promptDraft.trim() || autoPrompt;
+
+  useEffect(() => {
+    setPromptDraft(scene.prompt || '');
+  }, [scene.id, scene.prompt]);
 
   const handleGenerate = useCallback(async () => {
     setLoading(true);
     setProgress({ value: 0, step: '准备中...' });
 
     try {
-      // 使用自定义提示词
-      const sceneWithPrompt = { ...scene, customPrompt: customPrompt || undefined };
+      const sceneWithPrompt = { ...scene, prompt: currentPrompt };
       const result = await generateSceneImage({
         projectId,
         scene: sceneWithPrompt,
@@ -69,7 +71,7 @@ export const SceneAssetEditor: React.FC<SceneAssetEditorProps> = ({
               remoteUrl: result.url,
             }),
           },
-          customPrompt: customPrompt || undefined,
+          prompt: currentPrompt,
         });
         message.success('场景图生成完成');
       } else {
@@ -80,7 +82,7 @@ export const SceneAssetEditor: React.FC<SceneAssetEditorProps> = ({
     } finally {
       setLoading(false);
     }
-  }, [projectId, scene, theme, stylePrompt, ttiConfigId, customPrompt, onUpdate, message]);
+  }, [projectId, scene, theme, stylePrompt, ttiConfigId, currentPrompt, onUpdate, message]);
 
   const handleUpload = useCallback(async () => {
     try {
@@ -110,7 +112,7 @@ export const SceneAssetEditor: React.FC<SceneAssetEditorProps> = ({
   }, [projectId, scene.id, onUpdate, message]);
 
   const handleSavePrompt = () => {
-    onUpdate({ customPrompt: customPrompt || undefined });
+    onUpdate({ prompt: currentPrompt });
     setIsEditing(false);
     message.success('提示词已保存');
   };
@@ -190,8 +192,8 @@ export const SceneAssetEditor: React.FC<SceneAssetEditorProps> = ({
           </Button>
         </div>
         <TextArea
-          value={isEditing ? customPrompt : currentPrompt}
-          onChange={(e) => setCustomPrompt(e.target.value)}
+          value={isEditing ? promptDraft : currentPrompt}
+          onChange={(e) => setPromptDraft(e.target.value)}
           rows={2}
           placeholder="描述场景..."
           disabled={!isEditing}
@@ -201,9 +203,9 @@ export const SceneAssetEditor: React.FC<SceneAssetEditorProps> = ({
             fontSize: 12,
           }}
         />
-        {scene.customPrompt && (
+        {scene.prompt && (
           <Text type="secondary" style={{ fontSize: 10, marginTop: 4, display: 'block' }}>
-            使用自定义提示词 · <a onClick={() => { setCustomPrompt(''); onUpdate({ customPrompt: undefined }); }}>恢复自动</a>
+            使用已保存提示词 · <a onClick={() => { setPromptDraft(autoPrompt); onUpdate({ prompt: autoPrompt }); }}>恢复自动模板</a>
           </Text>
         )}
       </div>

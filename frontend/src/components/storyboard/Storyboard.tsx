@@ -70,7 +70,7 @@ function mergeShots(target: Shot, source: Shot): Shot {
   return {
     ...target,
     scriptContent: [target.scriptContent, source.scriptContent].filter(Boolean).join('\n'),
-    description: [target.description, source.description].filter(Boolean).join('\n\n'),
+    imagePrompt: [target.imagePrompt, source.imagePrompt].filter(Boolean).join('\n\n'),
     duration: target.duration + source.duration,
     characters: [...new Set([...target.characters, ...source.characters])],
     dialogue: [target.dialogue, source.dialogue].filter(Boolean).join('\n'),
@@ -147,23 +147,22 @@ export const Storyboard: React.FC<StoryboardProps> = ({
   , [shots, activeShotId]);
 
   // 实际使用的 mentionItems
-  // 只有已绑定 Sora2 的角色/道具才能在编辑器中被 @ 引用
+  // 允许在编辑器中 @ 引用所有资产（角色/场景/道具）。
+  // 注意：@mention 的 ID 与 useShotAssetSync 的解析规则保持一致（支持内部 ID 与 Sora2 ID）。
   const actualMentionItems: MentionItem[] = useMemo(() => {
     if (mentionItems.length > 0) return mentionItems;
     const items: MentionItem[] = [];
 
-    // 只添加已绑定 Sora2 的角色，使用 sora2CharacterId 作为 mention ID
-    characters
-      .filter(char => char.sora2CharacterId)
-      .forEach(char => {
-        items.push({
-          id: char.sora2CharacterId!,  // 使用 Sora2 ID 避免 @char_char_xxx 重复
-          type: 'char' as const,
-          name: char.name,
-          description: char.description,
-          previewImage: getMediaAssetDisplaySource(char.media?.costumePhoto),
-        });
+    // 角色：收口使用项目内 ID（在提示词层不混入 Provider 私有 ID）
+    characters.forEach(char => {
+      items.push({
+        id: char.id,
+        type: 'char' as const,
+        name: char.name,
+        description: char.prompt,
+        previewImage: getMediaAssetDisplaySource(char.media?.costumePhoto),
       });
+    });
 
     // 场景不需要 Sora2 绑定，保持使用自定义 ID
     scenes.forEach(scene => {
@@ -171,26 +170,33 @@ export const Storyboard: React.FC<StoryboardProps> = ({
         id: scene.id,
         type: 'scene' as const,
         name: scene.name,
-        description: scene.description,
+        description: scene.prompt,
         previewImage: getMediaAssetDisplaySource(scene.media?.previewImage),
       });
     });
 
-    // 只添加已绑定 Sora2 的道具，使用 sora2PropId 作为 mention ID
-    props
-      .filter(prop => prop.sora2PropId)
-      .forEach(prop => {
-        items.push({
-          id: prop.sora2PropId!,  // 使用 Sora2 ID
-          type: 'prop' as const,
-          name: prop.name,
-          description: prop.description,
-          previewImage: getMediaAssetDisplaySource(prop.media?.previewImage),
-        });
+    // 道具：收口使用项目内 ID
+    props.forEach(prop => {
+      items.push({
+        id: prop.id,
+        type: 'prop' as const,
+        name: prop.name,
+        description: prop.prompt,
+        previewImage: getMediaAssetDisplaySource(prop.media?.previewImage),
       });
+    });
 
     return items;
   }, [mentionItems, characters, scenes, props]);
+
+  useEffect(() => {
+    logger.info('Storyboard mentionItems ready', {
+      characters: characters.length,
+      scenes: scenes.length,
+      props: props.length,
+      mentionItems: actualMentionItems.length,
+    });
+  }, [characters.length, scenes.length, props.length, actualMentionItems.length]);
 
   // 加载数据
   const loadData = useCallback(async () => {
@@ -235,60 +241,8 @@ export const Storyboard: React.FC<StoryboardProps> = ({
         }
       }
 
-      // 修复旧数据中的资产绑定：将名称字符串重新映射为正确的 ID
-      const allCharIds = new Set(loadedCharacters.map(c => c.id));
-      const allSceneIds = new Set(loadedScenes.map(s => s.id));
-      const allPropIds = new Set(loadedProps.map(p => p.id));
-      // 也把 sora2 ID 加入合法 ID 集合
-      loadedCharacters.forEach(c => { if (c.sora2CharacterId) allCharIds.add(c.sora2CharacterId); });
-      loadedProps.forEach(p => { if (p.sora2PropId) allPropIds.add(p.sora2PropId); });
-
-      const fuzzyMatch = <T extends { name: string }>(name: string, assets: T[]): T | undefined => {
-        if (!name) return undefined;
-        const trimmed = name.trim();
-        return assets.find(a => a.name === trimmed)
-          || assets.find(a => trimmed.includes(a.name))
-          || assets.find(a => a.name.includes(trimmed));
-      };
-
-      let needsSave = false;
-      const repairedShots = loadedShots.map(shot => {
-        let changed = false;
-        // 修复 characters: 过滤掉非法值，将名称字符串映射为 ID
-        const fixedChars = (shot.characters || []).map(ref => {
-          if (allCharIds.has(ref)) return ref;
-          const match = fuzzyMatch(ref, loadedCharacters);
-          if (match) { changed = true; return match.sora2CharacterId || match.id; }
-          changed = true; return undefined;
-        }).filter((id): id is string => id !== undefined);
-
-        // 修复 scenes
-        const fixedScenes = (shot.scenes || []).map(ref => {
-          if (allSceneIds.has(ref)) return ref;
-          const match = fuzzyMatch(ref, loadedScenes);
-          if (match) { changed = true; return match.id; }
-          changed = true; return undefined;
-        }).filter((id): id is string => id !== undefined);
-
-        // 修复 props
-        const fixedProps = (shot.props || []).map(ref => {
-          if (allPropIds.has(ref)) return ref;
-          const match = fuzzyMatch(ref, loadedProps);
-          if (match) { changed = true; return match.sora2PropId || match.id; }
-          changed = true; return undefined;
-        }).filter((id): id is string => id !== undefined);
-
-        if (!changed) return shot;
-        needsSave = true;
-        return { ...shot, characters: fixedChars, scenes: fixedScenes, props: fixedProps };
-      });
-
-      // 如果有修复则异步保存，不阻塞 UI
-      if (needsSave && episodeId) {
-        saveEpisodeShots(projectId, episodeId, repairedShots).catch(() => {});
-      }
-
-      setShots(repairedShots);
+      // 一刀切：移除旧数据迁移/修复逻辑。分镜资产绑定与提示词 @mention 统一使用项目内 ID。
+      setShots(loadedShots);
       setCharacters(filteredCharacters);
       setScenes(filteredScenes);
       setProps(filteredProps);
@@ -970,7 +924,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     shotType: 'medium',
     cameraMovement: 'static',
     duration: 3,
-    description: '',
+    imagePrompt: '',
     characters: [],
     dialogue: '',
     emotion: '',
@@ -1061,7 +1015,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       message.warning('请输入剧本内容');
       return;
     }
-    if (!editFormData.description?.trim()) {
+    if (!editFormData.imagePrompt?.trim()) {
       message.warning('请输入画面描述');
       return;
     }
@@ -1443,8 +1397,8 @@ export const Storyboard: React.FC<StoryboardProps> = ({
 
           <Form.Item label="画面描述 (Prompt)" required>
             <ScriptEditor
-              value={editFormData.description || ''}
-              onChange={(value) => setEditFormData(prev => ({ ...prev, description: value }))}
+              value={editFormData.imagePrompt || ''}
+              onChange={(value) => setEditFormData(prev => ({ ...prev, imagePrompt: value }))}
               placeholder="描述这个镜头的画面，可使用 @ 引用角色或道具"
               mentionItems={actualMentionItems}
               minHeight="120px"

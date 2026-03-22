@@ -63,6 +63,7 @@ export const AssetListPanel: React.FC<AssetListPanelProps> = ({
       id: uuidv4(),
       name: t('asset.newCharacter'),
       role: 'supporting',
+      gender: 'unknown',
       prompt: '',  // 统一使用 prompt 字段
     };
     const allChars = await loadCharacters(projectId);

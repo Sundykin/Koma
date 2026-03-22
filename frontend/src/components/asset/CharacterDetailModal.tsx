@@ -2,7 +2,7 @@
  * 角色详情弹窗
  * 支持编辑角色信息、生成/上传资产、角色提取
  */
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   Modal,
   Form,
@@ -21,7 +21,6 @@ import {
 } from 'antd';
 import {
   UserOutlined,
-  EditOutlined,
   SaveOutlined,
   DeleteOutlined,
   UploadOutlined,
@@ -31,12 +30,11 @@ import {
   LoadingOutlined,
   LinkOutlined,
 } from '@ant-design/icons';
-import type { Character, ProjectStyleSnapshot } from '../../types';
+import type { Character, CharacterGender, ProjectStyleSnapshot } from '../../types';
 import {
   generateCostumePhoto,
   generateCharacterPreviewVideo,
   extractAndBindCharacter,
-  getCharacterPrompt,
 } from '../../workflow/characterAssetWorkflow';
 import { electronService, openFileDialog, fsCopy, fsMkdir, fsExists } from '../../services/electronService';
 import { getStorageConfig, initStorageConfig } from '../../store/storageConfig';
@@ -84,8 +82,6 @@ export const CharacterDetailModal: React.FC<CharacterDetailModalProps> = ({
 
   // 编辑状态
   const [editedCharacter, setEditedCharacter] = useState<Character | null>(null);
-  const [isPromptEditing, setIsPromptEditing] = useState(false);
-  const [customPrompt, setCustomPrompt] = useState('');
 
   // 生成状态
   const [generating, setGenerating] = useState<GeneratingType>(null);
@@ -98,31 +94,16 @@ export const CharacterDetailModal: React.FC<CharacterDetailModalProps> = ({
   // 初始化表单
   useEffect(() => {
     if (character && open) {
-      setEditedCharacter({ ...character });
+      setEditedCharacter({ ...character, prompt: character.prompt || '' });
       form.setFieldsValue({
         name: character.name,
         role: character.role,
         age: character.age,
-        description: character.description,
-        appearance: character.appearance,
+        gender: character.gender || 'unknown',
+        prompt: character.prompt || '',
       });
-      setCustomPrompt(character.customPrompt || '');
-      setIsPromptEditing(false);
     }
   }, [character, open, form]);
-
-  // 自动生成的提示词
-  const autoPrompt = useMemo(() => {
-    if (!editedCharacter) return '';
-    return getCharacterPrompt(
-      { ...editedCharacter, customPrompt: undefined },
-      theme,
-      stylePrompt
-    );
-  }, [editedCharacter, theme, stylePrompt]);
-
-  // 当前使用的提示词
-  const _currentPrompt = customPrompt || autoPrompt;
 
   // 获取资产路径
   const getAssetPath = useCallback(async (subPath: string) => {
@@ -146,7 +127,7 @@ export const CharacterDetailModal: React.FC<CharacterDetailModalProps> = ({
       const updatedCharacter: Character = {
         ...editedCharacter,
         ...values,
-        customPrompt: customPrompt || undefined,
+        prompt: values.prompt || '',
       };
 
       // 更新存储
@@ -163,7 +144,7 @@ export const CharacterDetailModal: React.FC<CharacterDetailModalProps> = ({
     } catch (err: any) {
       message.error(err.message || '保存失败');
     }
-  }, [editedCharacter, form, customPrompt, projectId, onUpdate, message]);
+  }, [editedCharacter, form, projectId, onUpdate, message]);
 
   // 生成定妆照
   const handleGenerateCostume = useCallback(async () => {
@@ -173,8 +154,12 @@ export const CharacterDetailModal: React.FC<CharacterDetailModalProps> = ({
     setProgress(0);
 
     try {
-      // 使用自定义提示词（如果有）
-      const charWithPrompt = { ...editedCharacter, customPrompt: customPrompt || undefined };
+      const currentValues = await form.getFieldsValue();
+      const charWithPrompt: Character = {
+        ...editedCharacter,
+        ...currentValues,
+        prompt: currentValues.prompt || '',
+      };
       const result = await generateCostumePhoto({
         projectId,
         character: charWithPrompt,
@@ -189,7 +174,7 @@ export const CharacterDetailModal: React.FC<CharacterDetailModalProps> = ({
       });
 
       if (result.success && result.path) {
-        const updated = updateCharacterMedia(editedCharacter, {
+        const updated = updateCharacterMedia(charWithPrompt, {
           costumePhoto: createStoredMediaAsset('image', {
             localPath: result.path,
             remoteUrl: result.url,
@@ -206,7 +191,7 @@ export const CharacterDetailModal: React.FC<CharacterDetailModalProps> = ({
     } finally {
       setGenerating(null);
     }
-  }, [editedCharacter, projectId, theme, stylePrompt, styleSnapshot, ttiConfigId, customPrompt, onUpdate, message]);
+  }, [editedCharacter, form, projectId, theme, stylePrompt, styleSnapshot, ttiConfigId, onUpdate, message]);
 
   // 上传定妆照
   const handleUploadCostume = useCallback(async () => {
@@ -255,9 +240,15 @@ export const CharacterDetailModal: React.FC<CharacterDetailModalProps> = ({
     setProgress(0);
 
     try {
+      const currentValues = await form.getFieldsValue();
+      const characterForVideo: Character = {
+        ...editedCharacter,
+        ...currentValues,
+        prompt: currentValues.prompt || '',
+      };
       const result = await generateCharacterPreviewVideo({
         projectId,
-        character: editedCharacter,
+        character: characterForVideo,
         theme,
         stylePrompt,
         styleSnapshot,
@@ -269,7 +260,7 @@ export const CharacterDetailModal: React.FC<CharacterDetailModalProps> = ({
       });
 
       if (result.success && result.path) {
-        const updated = updateCharacterMedia(editedCharacter, {
+        const updated = updateCharacterMedia(characterForVideo, {
           previewVideo: createStoredMediaAsset('video', {
             localPath: result.path,
             providerTaskId: result.taskId,
@@ -286,7 +277,7 @@ export const CharacterDetailModal: React.FC<CharacterDetailModalProps> = ({
     } finally {
       setGenerating(null);
     }
-  }, [editedCharacter, projectId, theme, stylePrompt, styleSnapshot, itvConfigId, onUpdate, message]);
+  }, [editedCharacter, form, projectId, theme, stylePrompt, styleSnapshot, itvConfigId, onUpdate, message]);
 
   // 上传预览视频
   const handleUploadVideo = useCallback(async () => {
@@ -378,6 +369,12 @@ export const CharacterDetailModal: React.FC<CharacterDetailModalProps> = ({
     { value: 'protagonist', label: '主角' },
     { value: 'antagonist', label: '反派' },
     { value: 'supporting', label: '配角' },
+  ];
+  const genderOptions: Array<{ value: CharacterGender; label: string }> = [
+    { value: 'male', label: '男' },
+    { value: 'female', label: '女' },
+    { value: 'neutral', label: '中性' },
+    { value: 'unknown', label: '未知' },
   ];
 
   return (
@@ -487,38 +484,29 @@ export const CharacterDetailModal: React.FC<CharacterDetailModalProps> = ({
                   </Form.Item>
                 </Col>
               </Row>
+              <Row gutter={16}>
+                <Col span={12}>
+                  <Form.Item name="age" label="年龄">
+                    <Input placeholder="如：28岁" />
+                  </Form.Item>
+                </Col>
+                <Col span={12}>
+                  <Form.Item name="gender" label="性别">
+                    <Select options={genderOptions} />
+                  </Form.Item>
+                </Col>
+              </Row>
+              <Form.Item name="prompt" label="视觉提示词">
+                <TextArea
+                  rows={4}
+                  placeholder="只描述角色可见外貌、服装、材质、配色、体态等客观视觉信息"
+                  style={{
+                    background: '#1a1a1a',
+                    borderColor: '#27272a',
+                  }}
+                />
+              </Form.Item>
             </Form>
-
-            {/* 提示词编辑（核心字段） */}
-            <div style={{ marginTop: 16 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                <Text strong style={{ fontSize: 13 }}>生成提示词</Text>
-                <Button
-                  type="text"
-                  size="small"
-                  icon={isPromptEditing ? <CheckCircleOutlined /> : <EditOutlined />}
-                  onClick={() => setIsPromptEditing(!isPromptEditing)}
-                >
-                  {isPromptEditing ? '完成' : '编辑'}
-                </Button>
-              </div>
-              <TextArea
-                value={customPrompt || autoPrompt}
-                onChange={(e) => setCustomPrompt(e.target.value)}
-                rows={4}
-                placeholder="描述角色外貌、服装、特征..."
-                disabled={!isPromptEditing}
-                style={{
-                  background: isPromptEditing ? '#09090b' : '#1a1a1a',
-                  borderColor: isPromptEditing ? '#3f3f46' : '#27272a',
-                }}
-              />
-              {customPrompt && (
-                <Text type="secondary" style={{ fontSize: 11, marginTop: 4, display: 'block' }}>
-                  使用自定义提示词 · <a onClick={() => setCustomPrompt('')}>恢复自动</a>
-                </Text>
-              )}
-            </div>
           </Col>
         </Row>
 

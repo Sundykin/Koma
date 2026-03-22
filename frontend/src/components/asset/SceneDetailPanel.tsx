@@ -76,16 +76,7 @@ export const SceneDetailPanel: React.FC<SceneDetailPanelProps> = ({
 
   // 初始化
   useEffect(() => {
-    let initialPrompt = scene.prompt || scene.customPrompt || '';
-    if (!initialPrompt) {
-      const parts = [];
-      if (scene.location) parts.push(`Location: ${scene.location}`);
-      if (scene.time) parts.push(`Time: ${scene.time}`);
-      if (scene.mood) parts.push(`Mood: ${scene.mood}`);
-      if (scene.description) parts.push(scene.description);
-      initialPrompt = parts.join('\n');
-    }
-
+    const initialPrompt = scene.prompt || '';
     setEditedScene({ ...scene, prompt: initialPrompt });
     form.setFieldsValue({
       name: scene.name,

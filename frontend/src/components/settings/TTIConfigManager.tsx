@@ -122,6 +122,7 @@ export const TTIConfigManager: React.FC<TTIConfigManagerProps> = ({ onConfigChan
         baseUrl: config.baseUrl,
         apiKey: config.apiKey,
         modelName: config.modelName,
+        promptProtocol: (config as any).promptProtocol,
         defaultSize: config.defaultSize,
         defaultSteps: config.defaultSteps,
       });
@@ -157,6 +158,7 @@ export const TTIConfigManager: React.FC<TTIConfigManagerProps> = ({ onConfigChan
         baseUrl: values.baseUrl,
         apiKey: values.apiKey,
         modelName: values.modelName,
+        promptProtocol: values.promptProtocol || undefined,
         defaultSize: values.defaultSize,
         defaultSteps: values.defaultSteps,
         workflowPath: workflowData.workflowPath,
@@ -511,6 +513,16 @@ export const TTIConfigManager: React.FC<TTIConfigManagerProps> = ({ onConfigChan
               <Input placeholder="dall-e-3" />
             </Form.Item>
           ) : null}
+
+          <Form.Item
+            name="promptProtocol"
+            label="Prompt 编译协议"
+            tooltip="为特定渠道启用提示词编译与参考图数组对齐（例如 Grok 的 @imageN 协议）。"
+          >
+            <Select allowClear placeholder="不启用（默认）">
+              <Select.Option value="grok-image-index">grok-image-index (@imageN)</Select.Option>
+            </Select>
+          </Form.Item>
 
           <Row gutter={16}>
             <Col span={12}>

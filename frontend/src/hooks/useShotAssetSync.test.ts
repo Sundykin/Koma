@@ -63,11 +63,11 @@ describe('useShotAssetSync', () => {
   describe('syncFromPrompt', () => {
     // === 正向路径（Happy Path）===
 
-    it('TC-SYNC-001: 应从提示词中解析出角色资产（通过 sora2 ID 匹配）', () => {
+    it('TC-SYNC-001: 应从提示词中解析出角色资产（通过项目内 ID 匹配）', () => {
       const assets = createAssets();
       const { result } = renderHook(() => useShotAssetSync(assets));
 
-      const state = result.current.syncFromPrompt('一个女孩 @char_sora2-char-001 站在窗前');
+      const state = result.current.syncFromPrompt('一个女孩 @char_char-001 站在窗前');
       expect(state.selectedCharacters).toEqual(['char-001']);
       expect(state.mentionedAssets).toHaveLength(1);
     });
@@ -80,11 +80,11 @@ describe('useShotAssetSync', () => {
       expect(state.selectedScenes).toEqual(['scene-001']);
     });
 
-    it('TC-SYNC-003: 应从提示词中解析出道具资产（通过 sora2 ID 匹配）', () => {
+    it('TC-SYNC-003: 应从提示词中解析出道具资产（通过项目内 ID 匹配）', () => {
       const assets = createAssets();
       const { result } = renderHook(() => useShotAssetSync(assets));
 
-      const state = result.current.syncFromPrompt('拿起 @prop_sora2-prop-001');
+      const state = result.current.syncFromPrompt('拿起 @prop_prop-001');
       expect(state.selectedProps).toEqual(['prop-001']);
     });
 
@@ -93,7 +93,7 @@ describe('useShotAssetSync', () => {
       const { result } = renderHook(() => useShotAssetSync(assets));
 
       const state = result.current.syncFromPrompt(
-        '@char_sora2-char-001 在 @scene_scene-001 中拿起 @prop_sora2-prop-001'
+        '@char_char-001 在 @scene_scene-001 中拿起 @prop_prop-001'
       );
       expect(state.selectedCharacters).toEqual(['char-001']);
       expect(state.selectedScenes).toEqual(['scene-001']);
@@ -162,7 +162,7 @@ describe('useShotAssetSync', () => {
       const { result } = renderHook(() => useShotAssetSync(assets));
 
       const state = result.current.syncFromPrompt(
-        '@char_sora2-char-001 和 @char_sora2-char-001 在一起'
+        '@char_char-001 和 @char_char-001 在一起'
       );
       expect(state.selectedCharacters).toEqual(['char-001']);
       expect(state.selectedCharacters).toHaveLength(1);
@@ -177,7 +177,7 @@ describe('useShotAssetSync', () => {
       });
       const { result } = renderHook(() => useShotAssetSync(assets));
 
-      const state = result.current.syncFromPrompt('@char_sora2-c1 和 @char_sora2-c2');
+      const state = result.current.syncFromPrompt('@char_char-001 和 @char_char-002');
       expect(state.selectedCharacters).toEqual(['char-001', 'char-002']);
     });
 
@@ -204,7 +204,7 @@ describe('useShotAssetSync', () => {
         '一个女孩站在窗前',
         assets
       );
-      expect(newPrompt).toContain('@char_sora2-char-001');
+      expect(newPrompt).toContain('@char_char-001');
     });
 
     it('TC-ASSET-002: 移除角色应从提示词中删除对应 mention', () => {
@@ -214,10 +214,10 @@ describe('useShotAssetSync', () => {
       const newPrompt = result.current.handleAssetChange(
         'character',
         [],
-        '一个女孩 @char_sora2-char-001 站在窗前',
+        '一个女孩 @char_char-001 站在窗前',
         assets
       );
-      expect(newPrompt).not.toContain('@char_sora2-char-001');
+      expect(newPrompt).not.toContain('@char_char-001');
     });
 
     it('TC-ASSET-003: 添加场景应正确追加 scene mention', () => {
@@ -233,7 +233,7 @@ describe('useShotAssetSync', () => {
       expect(newPrompt).toContain('@scene_scene-001');
     });
 
-    it('TC-ASSET-004: 添加道具应使用 sora2 ID', () => {
+    it('TC-ASSET-004: 添加道具应使用项目内 ID', () => {
       const assets = createAssets();
       const { result } = renderHook(() => useShotAssetSync(assets));
 
@@ -243,7 +243,7 @@ describe('useShotAssetSync', () => {
         '桌上放着',
         assets
       );
-      expect(newPrompt).toContain('@prop_sora2-prop-001');
+      expect(newPrompt).toContain('@prop_prop-001');
     });
 
     // === 逆向路径 ===
@@ -258,7 +258,7 @@ describe('useShotAssetSync', () => {
         '',
         assets
       );
-      expect(newPrompt).toBe('@char_sora2-char-001');
+      expect(newPrompt).toBe('@char_char-001');
     });
 
     it('TC-ASSET-006: 已存在的资产不应重复添加', () => {
@@ -268,11 +268,11 @@ describe('useShotAssetSync', () => {
       const newPrompt = result.current.handleAssetChange(
         'character',
         ['char-001'],
-        '已有 @char_sora2-char-001 在这里',
+        '已有 @char_char-001 在这里',
         assets
       );
-      // 不应出现两个 @char_sora2-char-001
-      const matches = newPrompt.match(/@char_sora2-char-001/g);
+      // 不应出现两个 @char_char-001
+      const matches = newPrompt.match(/@char_char-001/g);
       expect(matches).toHaveLength(1);
     });
 
@@ -291,11 +291,11 @@ describe('useShotAssetSync', () => {
       const newPrompt = result.current.handleAssetChange(
         'character',
         ['char-002'],
-        '角色 @char_sora2-c1 在场景中',
+        '角色 @char_char-001 在场景中',
         assets
       );
-      expect(newPrompt).not.toContain('@char_sora2-c1');
-      expect(newPrompt).toContain('@char_sora2-c2');
+      expect(newPrompt).not.toContain('@char_char-001');
+      expect(newPrompt).toContain('@char_char-002');
     });
   });
 
@@ -313,7 +313,7 @@ describe('useShotAssetSync', () => {
       const assets = createAssets();
       const { result } = renderHook(() => useShotAssetSync(assets));
 
-      const diff = result.current.getDiff('@char_sora2-char-001', [], [], []);
+      const diff = result.current.getDiff('@char_char-001', [], [], []);
       expect(diff.toRemove).toHaveLength(1);
       expect(diff.toRemove[0].type).toBe('char');
     });
@@ -323,7 +323,7 @@ describe('useShotAssetSync', () => {
       const { result } = renderHook(() => useShotAssetSync(assets));
 
       const diff = result.current.getDiff(
-        '@char_sora2-char-001 @scene_scene-001',
+        '@char_char-001 @scene_scene-001',
         ['char-001'],
         ['scene-001'],
         []

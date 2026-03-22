@@ -130,22 +130,23 @@ export interface AssetTimestampRange {
   end: number;   // 结束时间（秒），与 start 间隔不超过 3 秒
 }
 
+export type CharacterGender = 'male' | 'female' | 'neutral' | 'unknown';
+
 // 角色接口定义
 export interface Character {
   id: string;
   name: string;
   role: 'protagonist' | 'antagonist' | 'supporting'; // 主角 | 反派 | 配角
-  prompt: string;      // 核心提示词（整合了原有的 description, appearance 等）
-  
-  // 旧字段（保留用于兼容，但UI上将不再显示）
+  prompt: string;      // 核心视觉提示词
+
   age?: string;
+  gender?: CharacterGender;
   description?: string; 
   appearance?: string;
   
   voiceId?: string;    // TTS 音色 ID
   media?: CharacterMediaSlots; // 结构化媒体槽位
   sora2CharacterId?: string;  // 角色提取API返回的ID
-  customPrompt?: string;      // 用户自定义生成提示词 (Deprecated: use prompt instead)
   timestampRange?: AssetTimestampRange; // Sora2 提取时间范围
   // 剧集引用追踪
   episodeRefs?: EpisodeRef[];
@@ -157,15 +158,13 @@ export interface Scene {
   id: string;
   name: string;
   prompt: string;     // 核心提示词
-  
-  // 旧字段（保留用于兼容）
+
   location?: string;
   time?: 'day' | 'night' | 'twilight'; 
   mood?: string;
   description?: string;
-  
+
   media?: SceneMediaSlots; // 结构化媒体槽位
-  customPrompt?: string; // (Deprecated: use prompt instead)
   // 剧集引用追踪
   episodeRefs?: EpisodeRef[];
   fingerprint?: string;
@@ -176,15 +175,13 @@ export interface Prop {
   id: string;
   name: string;
   prompt: string;     // 核心提示词
-  
-  // 旧字段（保留用于兼容）
+
   type?: string;
   description?: string;
-  
+
   media?: PropMediaSlots; // 结构化媒体槽位
   // Sora2 绑定相关
   sora2PropId?: string;        // Sora2 道具 ID
-  customPrompt?: string;       // (Deprecated: use prompt instead)
   timestampRange?: AssetTimestampRange; // Sora2 提取时间范围
   // 剧集引用追踪
   episodeRefs?: EpisodeRef[];
@@ -210,8 +207,6 @@ export interface Shot {
   shotType: 'close-up' | 'medium' | 'wide' | 'extreme-wide'; // 特写 | 中景 | 全景 | 大全景
   cameraMovement: 'static' | 'pan' | 'zoom-in' | 'tracking' | 'handheld'; // 固定 | 摇镜 | 推镜 | 跟随 | 手持
   duration: number;      // 持续时长(秒)
-  // 双提示词字段
-  description?: string;  // 通用提示词（兼容旧数据）
   imagePrompt?: string;  // 图片生成提示词
   videoPrompt?: string;  // 视频生成提示词
   media?: ShotMediaState; // 结构化媒体槽位
@@ -258,6 +253,11 @@ export interface MediaProviderConfig {
   name: string;
   apiKey?: string;
   baseUrl?: string;
+  /**
+   * Optional prompt compilation protocol.
+   * When set, MediaGenerationService may compile prompt + align reference arrays before provider.start().
+   */
+  promptProtocol?: 'grok-image-index';
   isDefault: boolean;
   createdAt: number;
   updatedAt: number;

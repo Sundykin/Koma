@@ -138,8 +138,8 @@ export const ShotCard: React.FC<ShotCardProps> = ({
 
   // 使用 useMemo 缓存计算值，避免不必要的重渲染
   const hasImagePrompt = useMemo(
-    () => !!(shot.imagePrompt?.trim() || shot.description?.trim()),
-    [shot.imagePrompt, shot.description]
+    () => !!shot.imagePrompt?.trim(),
+    [shot.imagePrompt]
   );
   const hasVideoPrompt = useMemo(
     () => !!shot.videoPrompt?.trim(),
@@ -151,11 +151,11 @@ export const ShotCard: React.FC<ShotCardProps> = ({
   // 图片提示词按钮点击处理
   const handleImagePromptClick = useCallback(() => {
     if (hasImagePrompt) {
-      onOptimizeImagePrompt(shot.id, shot.imagePrompt || shot.description || '');
+      onOptimizeImagePrompt(shot.id, shot.imagePrompt || '');
     } else {
       onGenerateImagePrompt(shot.id);
     }
-  }, [shot.id, shot.imagePrompt, shot.description, hasImagePrompt, onOptimizeImagePrompt, onGenerateImagePrompt]);
+  }, [shot.id, shot.imagePrompt, hasImagePrompt, onOptimizeImagePrompt, onGenerateImagePrompt]);
 
   // 视频提示词按钮点击处理
   const handleVideoPromptClick = useCallback(() => {
@@ -366,7 +366,7 @@ export const ShotCard: React.FC<ShotCardProps> = ({
           {/* 提示词编辑器 + 浮动按钮 */}
           <div className="flex-1 p-1 min-h-0 relative">
             <ScriptEditor
-              value={shot.imagePrompt || shot.description || ''}
+              value={shot.imagePrompt || ''}
               onChange={(value) => onImagePromptChange(shot.id, value)}
               placeholder="画面描述提示词..."
               mentionItems={mentionItems}

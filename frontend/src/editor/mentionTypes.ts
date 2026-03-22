@@ -6,8 +6,7 @@
 export type MentionType = 'char' | 'prop' | 'scene';
 
 // Mention 数据项
-// 注意: 对于角色和道具，id 应使用 Sora2 返回的 ID (sora2CharacterId/sora2PropId)
-// 对于场景，id 使用自定义 ID（场景不需要 Sora2 绑定）
+// 收口约定: id 一律使用项目内资产 ID（与持久化数据一致），不要在提示词层混入 Provider 私有 ID。
 export interface MentionItem {
   id: string;           // 用于生成 mention 格式 @type_id
   type: MentionType;
@@ -66,7 +65,7 @@ export function normalizeMentionId(type: MentionType, id: string): string {
 /**
  * 生成 Mention 字符串
  * @param type - 类型 (char/prop/scene)
- * @param id - 对于角色/道具应使用 Sora2 ID，对于场景使用自定义 ID
+ * @param id - 资产 ID（项目内 ID）
  * @returns 格式为 @type_id 的字符串，如 @char_sora2xxx
  */
 export function createMentionString(type: MentionType, id: string): string {

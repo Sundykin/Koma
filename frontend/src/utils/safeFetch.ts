@@ -28,6 +28,20 @@ function sanitizeHeaders(headers: Record<string, string>): Record<string, string
   return sanitized;
 }
 
+function truncateString(value: string, max = 1000): string {
+  if (value.length <= max) return value;
+  return `${value.slice(0, max)}...(truncated, ${value.length} chars)`;
+}
+
+function summarizeBodyPreview(body?: string, enabled?: boolean): Record<string, any> {
+  if (!enabled || !body) return {};
+  // Keep the structure debug-friendly but avoid dumping huge base64 payloads.
+  const preview = body.startsWith('{') || body.startsWith('[')
+    ? truncateString(body, 4000)
+    : truncateString(body, 1200);
+  return { bodyPreview: preview };
+}
+
 function summarizeBody(body?: string): Record<string, any> {
   if (!body) {
     return {};
@@ -66,7 +80,9 @@ export async function safeFetch(url: string, init?: RequestInit): Promise<Respon
     }
 
     const traceId = headers['x-koma-trace-id'];
+    const debugBody = headers['x-koma-debug-body'] === '1' || headers['x-koma-debug-body'] === 'true';
     const payloadSummary = summarizeBody(typeof init?.body === 'string' ? init.body : undefined);
+    const payloadPreview = summarizeBodyPreview(typeof init?.body === 'string' ? init.body : undefined, debugBody);
 
     let result: IpcFetchResult;
     try {
@@ -83,6 +99,7 @@ export async function safeFetch(url: string, init?: RequestInit): Promise<Respon
         method: init?.method || 'GET',
         headers: sanitizeHeaders(headers),
         ...payloadSummary,
+        ...payloadPreview,
         error: error instanceof Error ? error.message : String(error),
         transport: 'ipc',
       });
@@ -95,6 +112,7 @@ export async function safeFetch(url: string, init?: RequestInit): Promise<Respon
       method: init?.method || 'GET',
       headers: sanitizeHeaders(headers),
       ...payloadSummary,
+      ...payloadPreview,
       status: result.status,
       ok: result.ok,
       transport: 'ipc',
@@ -109,10 +127,14 @@ export async function safeFetch(url: string, init?: RequestInit): Promise<Respon
   const traceId = init?.headers && !(init.headers instanceof Headers) && !Array.isArray(init.headers)
     ? (init.headers as Record<string, string>)['x-koma-trace-id']
     : undefined;
+  const debugBody = Boolean(init?.headers && !(init.headers instanceof Headers) && !Array.isArray(init.headers)
+    ? ((init.headers as Record<string, string>)['x-koma-debug-body'] === '1' || (init.headers as Record<string, string>)['x-koma-debug-body'] === 'true')
+    : false);
   logger.info('直接发送网络请求', {
     traceId,
     url,
     method: init?.method || 'GET',
+    ...(summarizeBodyPreview(typeof init?.body === 'string' ? init.body : undefined, debugBody)),
     transport: 'direct',
   });
   return fetch(url, init);

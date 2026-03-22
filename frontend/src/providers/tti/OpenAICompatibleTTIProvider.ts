@@ -6,6 +6,28 @@
 import type { TTIModelConfig, ProviderStartResult, ProviderTaskSnapshot } from '../../types';
 import type { TTIProvider, TTIOptions, TTIRequest, ImageResult } from './types';
 import { safeFetch } from '../../utils/safeFetch';
+import { createLogger } from '../../store/logger';
+
+const logger = createLogger('OpenAICompatibleTTI');
+
+function sanitizeBodyForLog(body: Record<string, any>): Record<string, any> {
+  const walk = (v: any): any => {
+    if (typeof v === 'string') {
+      if (v.startsWith('data:')) {
+        return `${v.slice(0, 140)}...(data-url ${v.length} chars)`;
+      }
+      return v.length > 2000 ? `${v.slice(0, 800)}...(truncated, ${v.length} chars)` : v;
+    }
+    if (Array.isArray(v)) return v.map(walk);
+    if (v && typeof v === 'object') {
+      const out: Record<string, any> = {};
+      for (const [k, val] of Object.entries(v)) out[k] = walk(val);
+      return out;
+    }
+    return v;
+  };
+  return walk(body);
+}
 
 interface ImageData {
   url?: string;
@@ -115,9 +137,23 @@ export class OpenAICompatibleTTIProvider implements TTIProvider {
       body.image_urls = request.references.map(item => ({ url: item.value }));
     }
 
+    const protocol = (this.config as any)?.promptProtocol;
+    const debugBody = Boolean(protocol) || (import.meta as any)?.env?.DEV === true;
+    if (debugBody) {
+      logger.info('TTI start request body', {
+        provider: this.config.provider,
+        ...(protocol ? { promptProtocol: protocol } : undefined),
+        body: sanitizeBodyForLog(body),
+      });
+    }
+
     const response = await safeFetch(`${this.getBaseUrl()}/v1/images/generations`, {
       method: 'POST',
-      headers: this.getHeaders(),
+      headers: {
+        ...this.getHeaders(),
+        ...(debugBody ? { 'x-koma-debug-body': '1' } : undefined),
+        ...(debugBody ? { 'x-koma-trace-operation': 'tti.start' } : undefined),
+      },
       body: JSON.stringify(body),
     });
 

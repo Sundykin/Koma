@@ -26,11 +26,11 @@ export const DEV_TEST_ANALYSIS: ScriptAnalysisResult = {
     { id: 'pr2', name: '手术刀', prompt: 'Type: 武器\n生锈的手术刀' },
   ],
   shots: [
-    { id: 'shot1', scriptContent: '走廊里死一般的寂静', shotType: 'wide', cameraMovement: 'static', duration: 3, description: 'Wide shot of dark hospital corridor', characters: ['c1'], dialogue: '', emotion: '紧张' },
-    { id: 'shot2', scriptContent: '叶青凡站在铁门前', shotType: 'medium', cameraMovement: 'tracking', duration: 4, description: 'Medium shot of Ye Qingfan holding flashlight', characters: ['c1'], dialogue: '比我记忆中更黑了', emotion: '警觉' },
-    { id: 'shot3', scriptContent: '铁门发出刺耳的摩擦声', shotType: 'close-up', cameraMovement: 'zoom-in', duration: 2, description: 'Close-up of rusty iron door opening', characters: [], dialogue: '', emotion: '悬疑' },
-    { id: 'shot4', scriptContent: '鬼护士背对窗户站立', shotType: 'wide', cameraMovement: 'static', duration: 4, description: 'Wide shot of ghost nurse silhouette against window', characters: ['c2'], dialogue: '', emotion: '恐怖' },
-    { id: 'shot5', scriptContent: '鬼护士转身，脸上没有五官', shotType: 'close-up', cameraMovement: 'zoom-in', duration: 3, description: 'Close-up of faceless ghost nurse turning', characters: ['c2'], dialogue: '', emotion: '惊悚' },
+    { id: 'shot1', scriptContent: '走廊里死一般的寂静', shotType: 'wide', cameraMovement: 'static', duration: 3, imagePrompt: 'Wide shot of dark hospital corridor', characters: ['c1'], dialogue: '', emotion: '紧张' },
+    { id: 'shot2', scriptContent: '叶青凡站在铁门前', shotType: 'medium', cameraMovement: 'tracking', duration: 4, imagePrompt: 'Medium shot of Ye Qingfan holding flashlight', characters: ['c1'], dialogue: '比我记忆中更黑了', emotion: '警觉' },
+    { id: 'shot3', scriptContent: '铁门发出刺耳的摩擦声', shotType: 'close-up', cameraMovement: 'zoom-in', duration: 2, imagePrompt: 'Close-up of rusty iron door opening', characters: [], dialogue: '', emotion: '悬疑' },
+    { id: 'shot4', scriptContent: '鬼护士背对窗户站立', shotType: 'wide', cameraMovement: 'static', duration: 4, imagePrompt: 'Wide shot of ghost nurse silhouette against window', characters: ['c2'], dialogue: '', emotion: '恐怖' },
+    { id: 'shot5', scriptContent: '鬼护士转身，脸上没有五官', shotType: 'close-up', cameraMovement: 'zoom-in', duration: 3, imagePrompt: 'Close-up of faceless ghost nurse turning', characters: ['c2'], dialogue: '', emotion: '惊悚' },
   ],
 };
 

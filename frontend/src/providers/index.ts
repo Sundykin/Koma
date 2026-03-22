@@ -363,13 +363,8 @@ export async function getProjectITVProvider(projectITVConfigId?: string): Promis
     return createChannelProvider<ITVProvider>(config.channelConfig, 'itv');
   }
 
-  return createITVProviderFromConfig({
-    provider: config.provider as any,
-    apiKey: config.apiKey,
-    baseUrl: config.baseUrl,
-    defaultDuration: config.defaultDuration,
-    defaultResolution: config.defaultResolution,
-  });
+  // 关键：不要丢失 promptProtocol 等扩展字段，否则 ITV 侧的 Grok 编译与 debug-body 日志无法生效。
+  return createITVProviderFromConfig(config as any);
 }
 
 export async function getProjectTTSProvider(projectTTSConfigId?: string): Promise<TTSProvider | null> {
