@@ -144,13 +144,7 @@ export async function loadEpisodeTimeline(
     const exists = await electronService.fs.exists(timelinePath);
     if (!exists) return null;
     const content = await electronService.fs.readFile(timelinePath);
-    const parsed = JSON.parse(content) as TimelineData;
-    const { timeline, changed } = await remapTimelineClipSourcesToLocal(projectPath, parsed);
-    if (changed && timeline) {
-      // Best-effort migration so editor uses local sources going forward.
-      electronService.fs.writeFile(timelinePath, JSON.stringify(timeline, null, 2)).catch(() => {});
-    }
-    return timeline as TimelineData;
+    return JSON.parse(content) as TimelineData;
   } catch {
     return null;
   }
@@ -171,10 +165,13 @@ export async function saveEpisodeTimeline(
     updatedAt: Date.now(),
   };
 
+  // Persist with local media sources when possible (avoid CORS in Electron).
+  const { timeline: remapped } = await remapTimelineClipSourcesToLocal(projectPath, timelineData as any);
+
   await electronService.fs.mkdir(episodePath);
   await electronService.fs.writeFile(
     `${episodePath}/timeline.json`,
-    JSON.stringify(timelineData, null, 2)
+    JSON.stringify((remapped || timelineData) as TimelineData, null, 2)
   );
 }
 

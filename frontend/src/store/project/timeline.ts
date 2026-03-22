@@ -16,13 +16,7 @@ export async function loadTimeline(projectId: string): Promise<Timeline | null> 
     const exists = await electronService.fs.exists(`${projectPath}/timeline.json`);
     if (!exists) return null;
     const data = await electronService.fs.readFile(`${projectPath}/timeline.json`);
-    const parsed = JSON.parse(data);
-    const { timeline, changed } = await remapTimelineClipSourcesToLocal(projectPath, parsed);
-    if (changed && timeline) {
-      // Best-effort migration so future loads don't hit CORS again.
-      electronService.fs.writeFile(`${projectPath}/timeline.json`, JSON.stringify(timeline, null, 2)).catch(() => {});
-    }
-    return timeline as any;
+    return JSON.parse(data);
   } catch {
     return null;
   }
@@ -37,8 +31,10 @@ export async function saveTimeline(
   }
 
   const projectPath = await getProjectPath(projectId);
+  // Persist timeline with local media sources when possible (avoid CORS in Electron).
+  const { timeline: remapped } = await remapTimelineClipSourcesToLocal(projectPath, timeline as any);
   await electronService.fs.writeFile(
     `${projectPath}/timeline.json`,
-    JSON.stringify(timeline, null, 2)
+    JSON.stringify(remapped || timeline, null, 2)
   );
 }
