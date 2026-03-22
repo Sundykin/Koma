@@ -22,7 +22,7 @@ import {
 import type { Character, Prop } from '../../types';
 import type { PresetAssets } from '../../services/ShotAnalysisService';
 import { electronService } from '../../services/electronService';
-import { getMediaAssetSource } from '../../types';
+import { getMediaAssetDisplaySource } from '../../types';
 
 const { Text } = Typography;
 
@@ -222,7 +222,7 @@ export const ShotAssetPresetModal: React.FC<ShotAssetPresetModalProps> = ({
                 {renderAssetCard(
                   char.sora2CharacterId!,
                   char.name,
-                  getMediaAssetSource(char.media?.costumePhoto),
+                  getMediaAssetDisplaySource(char.media?.costumePhoto),
                   selectedCharacterIds.includes(char.sora2CharacterId!),
                   () => handleCharacterToggle(char.sora2CharacterId!)
                 )}
@@ -269,7 +269,7 @@ export const ShotAssetPresetModal: React.FC<ShotAssetPresetModalProps> = ({
                 {renderAssetCard(
                   prop.sora2PropId!,
                   prop.name,
-                  getMediaAssetSource(prop.media?.previewImage),
+                  getMediaAssetDisplaySource(prop.media?.previewImage),
                   selectedPropIds.includes(prop.sora2PropId!),
                   () => handlePropToggle(prop.sora2PropId!)
                 )}

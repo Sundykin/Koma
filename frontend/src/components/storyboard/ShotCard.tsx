@@ -28,7 +28,11 @@ import {
   PlusOutlined,
 } from '@ant-design/icons';
 import type { Shot, Character, Scene, Prop, StoredMediaAsset } from '../../types';
-import { getMediaAssetSource, isRemoteMediaUri } from '../../types';
+import {
+  getMediaAssetDisplaySource,
+  getMediaAssetEditingSource,
+  isRemoteMediaUri,
+} from '../../types';
 import { ScriptEditor } from '../../editor';
 import type { MentionItem } from '../../editor';
 import { ImageCardGrid } from '../asset/ImageCardGrid';
@@ -264,7 +268,7 @@ export const ShotCard: React.FC<ShotCardProps> = ({
   const actionBtnClass = "w-6 h-6 p-0 text-[11px]";
 
   const getDisplaySrc = useCallback((asset?: StoredMediaAsset | null): string => {
-    const source = asset ? getMediaAssetSource(asset) : undefined;
+    const source = asset ? getMediaAssetDisplaySource(asset) : undefined;
     if (!source) return '';
     if (source.startsWith('http') || source.startsWith('data:')) {
       return source;
@@ -432,7 +436,7 @@ export const ShotCard: React.FC<ShotCardProps> = ({
             ) : (
               <div className="w-full h-full">
                 <ImageCardGrid
-                  images={images.map(a => getMediaAssetSource(a) || '').filter(Boolean)}
+                  images={images.map(a => getMediaAssetDisplaySource(a) || '').filter(Boolean)}
                   selectedIndex={shot.media?.currentImageIndex || 0}
                   onSelect={handleImageSelect}
                   onAdd={handleImageAdd}
@@ -500,7 +504,7 @@ export const ShotCard: React.FC<ShotCardProps> = ({
               <div className="w-full h-full relative">
                 <VideoCardGrid
                   videos={videos.map(a => ({
-                    path: getMediaAssetSource(a) || '',
+                    path: getMediaAssetDisplaySource(a) || '',
                     url: a.remoteUrl,
                     thumbnailPath: typeof a.metadata?.thumbnailPath === 'string'
                       ? a.metadata.thumbnailPath
@@ -550,7 +554,7 @@ export const ShotCard: React.FC<ShotCardProps> = ({
       >
         <div className="aspect-video bg-black rounded overflow-hidden">
           <StagePlayer
-            videoPath={getMediaAssetSource(currentVideo || undefined)}
+            videoPath={getMediaAssetEditingSource(currentVideo || undefined)}
             videoUrl={currentVideo?.remoteUrl}
             poster={currentImage ? getDisplaySrc(currentImage) : undefined}
           />

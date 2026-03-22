@@ -2,7 +2,7 @@
  * 分镜视频生成工作流
  * 纯 ITV 调用：使用已有参考图片（可选）生成视频
  */
-import { getMediaAssetSource, type Shot, type ShotVersion, type Character, type Prop } from '../types';
+import { getMediaAssetDisplaySource, type Shot, type ShotVersion, type Character, type Prop } from '../types';
 import { getProjectITVProvider, getProjectTTSProvider } from '../providers';
 import { saveShotVersion, loadShotMeta, loadCharacters, loadProps } from '../store/projectStore';
 import { createLogger } from '../store/logger';
@@ -76,7 +76,7 @@ async function getSelectedImageUrl(shot: Shot): Promise<string | undefined> {
   const normalizedShot = normalizeShotMediaState(shot);
   const idx = normalizedShot.media?.currentImageIndex ?? 0;
   const selectedAsset = normalizedShot.media?.images?.[idx];
-  const selectedSource = getMediaAssetSource(selectedAsset);
+  const selectedSource = getMediaAssetDisplaySource(selectedAsset);
   if (selectedSource) {
     logger.info(`使用当前分镜图片: ${selectedSource.startsWith('data:') ? 'data:...(base64)' : selectedSource}`);
     return selectedSource;
@@ -169,7 +169,7 @@ export async function shotRenderWorkflow(
     // 打印 ITV 调用日志（这里记录的是“原始来源”，实际传入 Provider 前会被 resolver 规范化）
     logITVCall(
       itvProvider.config?.name || 'ITV',
-      getMediaAssetSource(selectedImageAsset) || referenceImageUrl || '',
+      getMediaAssetDisplaySource(selectedImageAsset) || referenceImageUrl || '',
       videoPrompt,
       { duration: normalizedShot.duration, motionPrompt: normalizedShot.cameraMovement },
       {
@@ -472,11 +472,11 @@ function getPreferredShotVoiceId(shot: Shot, characters: Character[]): string | 
 }
 
 function getCharacterReferenceSource(character?: Character): string | undefined {
-  return getMediaAssetSource(character?.media?.costumePhoto);
+  return getMediaAssetDisplaySource(character?.media?.costumePhoto);
 }
 
 function getPropReferenceSource(prop?: Prop): string | undefined {
-  return getMediaAssetSource(prop?.media?.previewImage);
+  return getMediaAssetDisplaySource(prop?.media?.previewImage);
 }
 
 function appendCharacterRefs(prompt: string, shot: Shot, characters: Character[]): string {

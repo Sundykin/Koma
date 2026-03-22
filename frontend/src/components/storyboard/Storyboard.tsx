@@ -35,7 +35,7 @@ import { useShotAssetSync } from '../../hooks/useShotAssetSync';
 import { createLogger } from '../../store/logger';
 import './Storyboard.css';
 import './ShotListEditor.css';
-import { getMediaAssetSource } from '../../types';
+import { getMediaAssetDisplaySource } from '../../types';
 
 const logger = createLogger('Storyboard');
 
@@ -161,7 +161,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
           type: 'char' as const,
           name: char.name,
           description: char.description,
-          previewImage: getMediaAssetSource(char.media?.costumePhoto),
+          previewImage: getMediaAssetDisplaySource(char.media?.costumePhoto),
         });
       });
 
@@ -172,7 +172,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
         type: 'scene' as const,
         name: scene.name,
         description: scene.description,
-        previewImage: getMediaAssetSource(scene.media?.previewImage),
+        previewImage: getMediaAssetDisplaySource(scene.media?.previewImage),
       });
     });
 
@@ -185,7 +185,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
           type: 'prop' as const,
           name: prop.name,
           description: prop.description,
-          previewImage: getMediaAssetSource(prop.media?.previewImage),
+          previewImage: getMediaAssetDisplaySource(prop.media?.previewImage),
         });
       });
 

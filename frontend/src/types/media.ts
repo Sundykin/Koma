@@ -125,6 +125,14 @@ export function isBlobUri(value?: string): boolean {
   return Boolean(value && value.startsWith('blob:'));
 }
 
-export function getMediaAssetSource(asset?: StoredMediaAsset): string | undefined {
+export function getMediaAssetDisplaySource(asset?: StoredMediaAsset): string | undefined {
+  return asset?.remoteUrl || asset?.localPath;
+}
+
+export function getMediaAssetEditingSource(asset?: StoredMediaAsset): string | undefined {
   return asset?.localPath || asset?.remoteUrl;
+}
+
+export function getMediaAssetSource(asset?: StoredMediaAsset): string | undefined {
+  return getMediaAssetEditingSource(asset);
 }

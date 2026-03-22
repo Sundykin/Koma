@@ -7,7 +7,7 @@ import { Popover, Tooltip, Avatar } from 'antd';
 import { PlusOutlined, UserOutlined, EnvironmentOutlined, ToolOutlined } from '@ant-design/icons';
 import { electronService } from '../../../services/electronService';
 import type { StoredMediaAsset } from '../../../types';
-import { getMediaAssetSource } from '../../../types';
+import { getMediaAssetDisplaySource } from '../../../types';
 
 type AssetType = 'character' | 'scene' | 'prop';
 
@@ -53,8 +53,8 @@ export const AssetSelector: React.FC<AssetSelectorProps> = ({
   };
 
   const getAssetImage = (asset: Asset) => {
-    const src = getMediaAssetSource(asset.media?.costumePhoto)
-      || getMediaAssetSource(asset.media?.previewImage)
+    const src = getMediaAssetDisplaySource(asset.media?.costumePhoto)
+      || getMediaAssetDisplaySource(asset.media?.previewImage)
       || asset.cover
       || asset.avatar;
     if (!src) return undefined;

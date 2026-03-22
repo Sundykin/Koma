@@ -2,7 +2,7 @@
  * 角色资产生成工作流
  * 生成角色定妆照（内置三视图）、预览视频，以及调用角色提取API
  */
-import { getMediaAssetSource, type Character } from '../types';
+import { getMediaAssetDisplaySource, getMediaAssetSource, type Character } from '../types';
 import { getProjectITVProvider } from '../providers';
 import {
   saveCharacters,
@@ -111,7 +111,7 @@ export async function generateCharacterPreviewVideo(
   onProgress?.(0, '准备生成预览视频...');
 
   // 优先使用远程 URL，其次使用本地路径
-  const rawImageSource = getMediaAssetSource(character.media?.costumePhoto);
+  const rawImageSource = getMediaAssetDisplaySource(character.media?.costumePhoto);
   if (!rawImageSource) {
     return { success: false, error: '请先生成定妆照' };
   }

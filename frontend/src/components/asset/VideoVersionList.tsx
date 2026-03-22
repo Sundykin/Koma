@@ -32,7 +32,7 @@ import {
 import type { ShotVersion } from '../../types';
 import { loadShotMeta, switchShotVersion, deleteShotVersion } from '../../store/projectStore';
 import { electronService } from '../../services/electronService';
-import { getMediaAssetSource } from '../../types';
+import { getMediaAssetDisplaySource } from '../../types';
 import './VideoVersionList.css';
 
 const { Text } = Typography;
@@ -177,7 +177,7 @@ export const VideoVersionList: React.FC<VideoVersionListProps> = ({
                   icon={<PlayCircleOutlined />}
                   onClick={(e) => {
                     e.stopPropagation();
-                    handlePreview(getMediaAssetSource(v.media?.video));
+                    handlePreview(getMediaAssetDisplaySource(v.media?.video));
                   }}
                 />
               </Tooltip>
@@ -291,7 +291,7 @@ export const VideoVersionList: React.FC<VideoVersionListProps> = ({
                   {v.media?.image ? (
                     <img
                       src={(() => {
-                        const source = getMediaAssetSource(v.media?.image);
+                        const source = getMediaAssetDisplaySource(v.media?.image);
                         if (!source) return '';
                         if (/^https?:\/\//i.test(source) || source.startsWith('data:')) return source;
                         return electronService.fs.toLocalUrl(source);

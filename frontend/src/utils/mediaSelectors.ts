@@ -6,18 +6,18 @@ import type {
   ShotVersion,
   StoredMediaAsset,
 } from '../types';
-import { getMediaAssetSource } from '../types';
+import { getMediaAssetDisplaySource } from '../types';
 
 export function getAssetDisplaySource(asset?: StoredMediaAsset): string | undefined {
-  return getMediaAssetSource(asset);
+  return getMediaAssetDisplaySource(asset);
 }
 
 export function getCharacterCostumePhotoSource(character?: Character): string | undefined {
-  return getMediaAssetSource(character?.media?.costumePhoto);
+  return getMediaAssetDisplaySource(character?.media?.costumePhoto);
 }
 
 export function getCharacterPreviewVideoSource(character?: Character): string | undefined {
-  return getMediaAssetSource(character?.media?.previewVideo);
+  return getMediaAssetDisplaySource(character?.media?.previewVideo);
 }
 
 export function getCharacterPreviewVideoTaskId(character?: Character): string | undefined {
@@ -25,15 +25,15 @@ export function getCharacterPreviewVideoTaskId(character?: Character): string | 
 }
 
 export function getScenePreviewImageSource(scene?: Scene): string | undefined {
-  return getMediaAssetSource(scene?.media?.previewImage);
+  return getMediaAssetDisplaySource(scene?.media?.previewImage);
 }
 
 export function getPropPreviewImageSource(prop?: Prop): string | undefined {
-  return getMediaAssetSource(prop?.media?.previewImage);
+  return getMediaAssetDisplaySource(prop?.media?.previewImage);
 }
 
 export function getPropPreviewVideoSource(prop?: Prop): string | undefined {
-  return getMediaAssetSource(prop?.media?.previewVideo);
+  return getMediaAssetDisplaySource(prop?.media?.previewVideo);
 }
 
 export function getPropPreviewVideoTaskId(prop?: Prop): string | undefined {
@@ -65,22 +65,21 @@ export function getShotCurrentVideoAsset(shot?: Shot): StoredMediaAsset | undefi
 }
 
 export function getShotCurrentImageSource(shot?: Shot): string | undefined {
-  return getMediaAssetSource(getShotCurrentImageAsset(shot));
+  return getMediaAssetDisplaySource(getShotCurrentImageAsset(shot));
 }
 
 export function getShotCurrentVideoSource(shot?: Shot): string | undefined {
-  return getMediaAssetSource(getShotCurrentVideoAsset(shot));
+  return getMediaAssetDisplaySource(getShotCurrentVideoAsset(shot));
 }
 
 export function getShotVersionImageSource(version?: ShotVersion): string | undefined {
-  return getMediaAssetSource(version?.media?.image);
+  return getMediaAssetDisplaySource(version?.media?.image);
 }
 
 export function getShotVersionVideoSource(version?: ShotVersion): string | undefined {
-  return getMediaAssetSource(version?.media?.video);
+  return getMediaAssetDisplaySource(version?.media?.video);
 }
 
 export function getShotVersionAudioSource(version?: ShotVersion): string | undefined {
-  return getMediaAssetSource(version?.media?.audio);
+  return getMediaAssetDisplaySource(version?.media?.audio);
 }
-

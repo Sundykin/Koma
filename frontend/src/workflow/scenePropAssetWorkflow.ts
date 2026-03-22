@@ -1,7 +1,7 @@
 /**
  * 场景/道具资产生成工作流
  */
-import { getMediaAssetSource, type Scene, type Prop } from '../types';
+import { getMediaAssetDisplaySource, getMediaAssetSource, type Scene, type Prop } from '../types';
 import { getProjectITVProvider } from '../providers';
 import {
   saveScenes,
@@ -339,7 +339,7 @@ export async function generatePropPreviewVideo(
   onProgress?.(0, '准备生成预览视频...');
 
   // 优先使用远程 URL
-  const rawImageSource = getMediaAssetSource(prop.media?.previewImage);
+  const rawImageSource = getMediaAssetDisplaySource(prop.media?.previewImage);
   if (!rawImageSource) {
     return { success: false, error: '请先生成道具参考图' };
   }

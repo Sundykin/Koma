@@ -4,7 +4,7 @@
  * OpenSpec: 统一通过 MediaGenerationService 编排 start/snapshot、落盘与回写。
  */
 import type { Character, Scene, Shot, StoredMediaAsset } from '../types';
-import { getMediaAssetSource } from '../types';
+import { getMediaAssetDisplaySource } from '../types';
 import { loadProps } from '../store/projectStore';
 import { resolvePromptTemplate } from '../store/promptTemplates';
 import { getThemeStylePrefix } from '../config/themePresets';
@@ -114,7 +114,7 @@ export async function shotImageWorkflow(params: {
     {
       width: 1280,
       height: 720,
-      references: references.map(r => (typeof r === 'string' ? r : getMediaAssetSource(r) || '')).filter(Boolean),
+      references: references.map(r => (typeof r === 'string' ? r : getMediaAssetDisplaySource(r) || '')).filter(Boolean),
     },
     {
       projectId,
@@ -186,4 +186,3 @@ function replaceMentionsWithDescriptions(
 
   return result;
 }
-

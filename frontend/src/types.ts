@@ -26,6 +26,8 @@ export type {
   ShotVersionMediaState,
 } from './types/media';
 export {
+  getMediaAssetDisplaySource,
+  getMediaAssetEditingSource,
   getMediaAssetSource,
   isBlobUri,
   isDataUri,
