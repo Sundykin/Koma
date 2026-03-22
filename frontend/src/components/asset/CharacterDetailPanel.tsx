@@ -36,7 +36,7 @@ import {
   ExpandOutlined,
 } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
-import type { Character, ProjectStyleSnapshot } from '../../types';
+import type { Character, CharacterGender, ProjectStyleSnapshot } from '../../types';
 import {
   generateCostumePhoto,
   generateCharacterPreviewVideo,
@@ -103,6 +103,8 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
     form.setFieldsValue({
       name: character.name,
       role: character.role,
+      age: character.age,
+      gender: character.gender || 'unknown',
       prompt: initialPrompt,
     });
   }, [character, form]);
@@ -392,6 +394,12 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
     { value: 'antagonist', label: t('asset.antagonist') },
     { value: 'supporting', label: t('asset.supporting') },
   ];
+  const genderOptions: Array<{ value: CharacterGender; label: string }> = [
+    { value: 'male', label: '男' },
+    { value: 'female', label: '女' },
+    { value: 'neutral', label: '中性' },
+    { value: 'unknown', label: '未知' },
+  ];
 
   return (
     <div className="assetDetailPanel">
@@ -422,14 +430,27 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
         <div className="creatorSidebarContent">
           <Form form={form} layout="vertical" size="small">
             <Row gutter={12}>
-              <Col span={16}>
+              <Col span={12}>
                 <Form.Item name="name" label={t('asset.name')} rules={[{ required: true, message: t('asset.pleaseEnterName') }]}>
                   <Input />
                 </Form.Item>
               </Col>
-              <Col span={8}>
+              <Col span={12}>
                 <Form.Item name="role" label={t('asset.type')}>
                   <Select options={roleOptions} />
+                </Form.Item>
+              </Col>
+            </Row>
+
+            <Row gutter={12}>
+              <Col span={12}>
+                <Form.Item name="age" label="年龄">
+                  <Input placeholder="如：28岁" />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item name="gender" label="性别">
+                  <Select options={genderOptions} />
                 </Form.Item>
               </Col>
             </Row>

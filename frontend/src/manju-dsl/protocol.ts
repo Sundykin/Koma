@@ -32,6 +32,8 @@ export interface ManjuCharacter {
   id: string;
   name: string;
   role: 'protagonist' | 'antagonist' | 'supporting';
+  age?: string;
+  gender?: 'male' | 'female' | 'neutral' | 'unknown';
   description: string;
   appearance: string;
   voiceId?: string;
@@ -180,8 +182,10 @@ export function exportToManjuDSL(
     id: c.id,
     name: c.name,
     role: c.role,
-    description: c.description,
-    appearance: c.appearance,
+    age: c.age,
+    gender: c.gender,
+    description: c.description || '',
+    appearance: c.appearance || '',
     voiceId: c.voiceId,
     avatar: getCharacterCostumePhotoSource(c),
   }));
@@ -193,7 +197,7 @@ export function exportToManjuDSL(
     location: s.location,
     time: s.time,
     mood: s.mood,
-    description: s.description,
+    description: s.description || '',
   }));
 
   // 转换分镜
@@ -299,22 +303,23 @@ export function importFromManjuDSL(manju: ManjuProject): ImportedProjectData {
     const promptParts: string[] = [];
     if (c.appearance) promptParts.push(c.appearance);
     if (c.description) promptParts.push(c.description);
-    return {
-      id: c.id,
-      name: c.name,
-      role: c.role,
-      prompt: promptParts.join('\n') || '',
-      voiceId: c.voiceId,
-      media: c.avatar
+  return {
+    id: c.id,
+    name: c.name,
+    role: c.role,
+    age: c.age || '未知',
+    gender: c.gender || 'unknown',
+    prompt: promptParts.join('\n') || '',
+    voiceId: c.voiceId,
+    media: c.avatar
         ? {
             costumePhoto: createStoredMediaAsset('image', { remoteUrl: c.avatar }),
           }
         : undefined,
       // 保留旧字段用于兼容
-      age: '',
-      description: c.description,
-      appearance: c.appearance,
-    };
+    description: c.description,
+    appearance: c.appearance,
+  };
   });
 
   // 转换场景

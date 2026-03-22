@@ -658,15 +658,21 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
     template: `分析以下剧本，提取所有角色信息。
 
 【核心任务】
-分析剧本文本，为所有角色设计视觉形象方案。必须提取剧本中出现的所有人物角色，无论是主角、配角还是仅有少量描述的次要角色。
+分析剧本文本，提取所有角色的结构化资料与视觉形象方案。必须提取剧本中出现的所有人物角色，无论是主角、配角还是仅有少量描述的次要角色。
 
-【描述要求】
-1. 外貌描述必须是纯粹的视觉元素：脸型、瞳色、发型发色、服装配饰
-2. 服装描述需包含【颜色】、【款式】、【材质】三个维度
-3. 严禁使用性格、情绪、气质等抽象词汇
-4. 严禁使用"好看的"、"普通的"等模糊词
-5. 输出为中文描述
-6. description 字段只写客观可见外观，不写人物经历、关系和剧情摘要
+【字段要求】
+1. “name”：角色名称
+2. “age”：年龄，能判断时必须填写；无法判断时填写 "未知"
+3. “gender”：只能填写 "male"、"female"、"neutral"、"unknown"
+4. “role”：只能填写 "protagonist"、"antagonist"、"supporting"
+5. “appearance”：只写客观可见外观，包括脸型、瞳色、发型发色、服装配饰、体态、材质与配色
+6. “description”：只写角色识别信息或人物小传，不得替代 “appearance” 承担视觉描述职责
+
+【appearance 红线规则】
+1. 服装描述需包含【颜色】、【款式】、【材质】三个维度
+2. 严禁使用性格、情绪、气质、命运等抽象词汇
+3. 严禁使用"好看的"、"普通的"等模糊词
+4. 输出为中文描述
 
 剧本：
 {{script}}
@@ -678,10 +684,11 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
   "characters": [
     {
       "name": "角色名称",
-      "description": "角色人物小传",
-      "role": "main/supporting/minor",
-      "traits": ["特征1", "特征2"],
-      "voiceType": "声音类型建议（如：温柔女声、沉稳男声）"
+      "age": "28岁",
+      "gender": "male",
+      "role": "protagonist",
+      "appearance": "窄长脸，深棕色瞳孔，黑色短发，深灰色长风衣，内搭白色衬衫，黑色长裤，皮质短靴，衣料略有雨水反光",
+      "description": "年轻调查员，长期独自追查旧案"
     }
   ]
 }

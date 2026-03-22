@@ -52,11 +52,12 @@ export async function extractCharacters(
   const characters: Character[] = (data.characters || []).map((c: any, idx: number) => ({
     id: `char_${Date.now()}_${idx}`,
     name: c.name,
+    age: c.age || '未知',
+    gender: ['male', 'female', 'neutral', 'unknown'].includes(c.gender) ? c.gender : 'unknown',
     description: c.description || '',
+    appearance: c.appearance || '',
+    prompt: [c.appearance, c.description].filter((value: unknown) => typeof value === 'string' && value.trim()).join('，') || c.name,
     role: c.role || 'supporting',
-    traits: c.traits || [],
-    voiceType: c.voiceType,
-    avatar: undefined,
   }));
 
   onProgress?.(100, '角色提取完成');

@@ -130,6 +130,8 @@ export interface AssetTimestampRange {
   end: number;   // 结束时间（秒），与 start 间隔不超过 3 秒
 }
 
+export type CharacterGender = 'male' | 'female' | 'neutral' | 'unknown';
+
 // 角色接口定义
 export interface Character {
   id: string;
@@ -138,6 +140,7 @@ export interface Character {
   prompt: string;      // 核心视觉提示词
 
   age?: string;
+  gender?: CharacterGender;
   description?: string; 
   appearance?: string;
   

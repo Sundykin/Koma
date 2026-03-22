@@ -111,7 +111,7 @@ const AppContent: React.FC = () => {
     if (!Array.isArray(analysisData?.characters)) return [];
     return analysisData.characters.filter(Boolean).map(char => ({
       id: char.id, type: 'char' as const, name: char.name,
-      description: char.description, previewImage: getCharacterCostumePhotoSource(char),
+      description: char.prompt, previewImage: getCharacterCostumePhotoSource(char),
       sora2CharacterId: char.sora2CharacterId,
     }));
   }, [analysisData?.characters]);

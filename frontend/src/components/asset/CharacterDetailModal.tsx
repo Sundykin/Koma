@@ -30,7 +30,7 @@ import {
   LoadingOutlined,
   LinkOutlined,
 } from '@ant-design/icons';
-import type { Character, ProjectStyleSnapshot } from '../../types';
+import type { Character, CharacterGender, ProjectStyleSnapshot } from '../../types';
 import {
   generateCostumePhoto,
   generateCharacterPreviewVideo,
@@ -98,6 +98,8 @@ export const CharacterDetailModal: React.FC<CharacterDetailModalProps> = ({
       form.setFieldsValue({
         name: character.name,
         role: character.role,
+        age: character.age,
+        gender: character.gender || 'unknown',
         prompt: character.prompt || '',
       });
     }
@@ -368,6 +370,12 @@ export const CharacterDetailModal: React.FC<CharacterDetailModalProps> = ({
     { value: 'antagonist', label: '反派' },
     { value: 'supporting', label: '配角' },
   ];
+  const genderOptions: Array<{ value: CharacterGender; label: string }> = [
+    { value: 'male', label: '男' },
+    { value: 'female', label: '女' },
+    { value: 'neutral', label: '中性' },
+    { value: 'unknown', label: '未知' },
+  ];
 
   return (
     <>
@@ -473,6 +481,18 @@ export const CharacterDetailModal: React.FC<CharacterDetailModalProps> = ({
                 <Col span={12}>
                   <Form.Item name="role" label="角色类型">
                     <Select options={roleOptions} />
+                  </Form.Item>
+                </Col>
+              </Row>
+              <Row gutter={16}>
+                <Col span={12}>
+                  <Form.Item name="age" label="年龄">
+                    <Input placeholder="如：28岁" />
+                  </Form.Item>
+                </Col>
+                <Col span={12}>
+                  <Form.Item name="gender" label="性别">
+                    <Select options={genderOptions} />
                   </Form.Item>
                 </Col>
               </Row>

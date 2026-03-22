@@ -5,7 +5,7 @@ import React, { useState, useCallback } from 'react';
 import { Modal, Form, Input, Select, App } from 'antd';
 import { UserAddOutlined } from '@ant-design/icons';
 import { v4 as uuidv4 } from 'uuid';
-import type { Character } from '../../types';
+import type { Character, CharacterGender } from '../../types';
 import { saveCharacters, loadCharacters } from '../../store/projectStore';
 
 const { TextArea } = Input;
@@ -37,6 +37,7 @@ export const CreateCharacterModal: React.FC<CreateCharacterModalProps> = ({
         name: values.name,
         role: values.role || 'supporting',
         age: values.age || undefined,
+        gender: values.gender || 'unknown',
         prompt: values.prompt || '',
       };
 
@@ -70,6 +71,12 @@ export const CreateCharacterModal: React.FC<CreateCharacterModalProps> = ({
     { value: 'antagonist', label: '反派' },
     { value: 'supporting', label: '配角' },
   ];
+  const genderOptions: Array<{ value: CharacterGender; label: string }> = [
+    { value: 'male', label: '男' },
+    { value: 'female', label: '女' },
+    { value: 'neutral', label: '中性' },
+    { value: 'unknown', label: '未知' },
+  ];
 
   return (
     <Modal
@@ -102,6 +109,10 @@ export const CreateCharacterModal: React.FC<CreateCharacterModalProps> = ({
 
         <Form.Item name="age" label="年龄">
           <Input placeholder="如：28岁" />
+        </Form.Item>
+
+        <Form.Item name="gender" label="性别" initialValue="unknown">
+          <Select options={genderOptions} />
         </Form.Item>
 
         <Form.Item

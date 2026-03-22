@@ -75,8 +75,10 @@ function toManjuCharacter(c: Character): ManjuCharacter {
     id: c.id,
     name: c.name,
     role: c.role,
-    description: c.description,
-    appearance: c.appearance,
+    age: c.age,
+    gender: c.gender,
+    description: c.description || '',
+    appearance: c.appearance || '',
     voiceId: c.voiceId,
     avatar: getCharacterCostumePhotoSource(c),
   };
@@ -89,7 +91,7 @@ function toManjuScene(s: Scene): ManjuScene {
     location: s.location,
     time: s.time,
     mood: s.mood,
-    description: s.description,
+    description: s.description || '',
   };
 }
 
@@ -198,6 +200,8 @@ function fromManjuCharacter(c: ManjuCharacter): Character {
     id: c.id,
     name: c.name,
     role: c.role,
+    age: c.age || '未知',
+    gender: c.gender || 'unknown',
     prompt: promptParts.join('\n') || '',
     voiceId: c.voiceId,
     media: c.avatar
@@ -206,7 +210,6 @@ function fromManjuCharacter(c: ManjuCharacter): Character {
         }
       : undefined,
     // 保留旧字段用于兼容
-    age: '',
     description: c.description,
     appearance: c.appearance,
   };
