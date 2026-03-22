@@ -8,6 +8,13 @@ import { toKomaLocalUrl } from '../../utils/urlUtils';
 import { useVideoFramesBatch } from './useVideoFrames';
 import { hasCollision } from '../../utils/trackCollision';
 import {
+  DEFAULT_TRANSITION_DURATION,
+  findTransitionByClipPair,
+  getMaxTransitionDuration,
+  getSortedTrackClips,
+  resolveTimelineTracks,
+} from '../../services/transition/transitionResolver';
+import {
   Play, Pause, Film, Music, Type, Trash2, Copy, ZoomIn, ZoomOut, Magnet,
   Volume2, VolumeX, Eye, EyeOff
 } from 'lucide-react';
@@ -36,8 +43,14 @@ interface TimelineProps {
   togglePlay: () => void;
   onDeleteTrack: (trackId: string) => void;
   onUpdateTrack?: (trackId: string, updates: Partial<Track>) => void;
+  selectedTransitionId?: string | null;
+  onSelectTransition?: (id: string | null) => void;
+  onAddTransition?: (trackId: string, fromClipId: string, toClipId: string) => void;
+  onUpdateTransitionDuration?: (trackId: string, transitionId: string, duration: number) => void;
+  onDeleteTransition?: (trackId: string, transitionId: string) => void;
   draggingAsset: Asset | null;
   onExport?: () => void;
+  onTransitionError?: (message: string) => void;
 }
 
 // 缓动选项
@@ -190,8 +203,14 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
   togglePlay,
   onDeleteTrack,
   onUpdateTrack,
+  selectedTransitionId,
+  onSelectTransition,
+  onAddTransition,
+  onUpdateTransitionDuration,
+  onDeleteTransition,
   draggingAsset,
-  onExport
+  onExport,
+  onTransitionError
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const rulerRef = useRef<HTMLDivElement>(null);
@@ -204,6 +223,22 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
   // 动态计算每秒像素数
   const pixelsPerSecond = BASE_PIXELS_PER_SECOND * zoom;
   const markerInterval = getMarkerInterval(pixelsPerSecond);
+  const resolvedTracks = useMemo(() => resolveTimelineTracks(tracks), [tracks]);
+  const resolvedTracksMap = useMemo(
+    () => new Map(resolvedTracks.map((track) => [track.track.id, track])),
+    [resolvedTracks]
+  );
+
+  useEffect(() => {
+    if (!onTransitionError) return;
+    const invalidCount = resolvedTracks.reduce(
+      (count, track) => count + track.invalidTransitions.length,
+      0
+    );
+    if (invalidCount > 0) {
+      onTransitionError(`检测到 ${invalidCount} 条非法转场关系，已被忽略。`);
+    }
+  }, [onTransitionError, resolvedTracks]);
 
   const [isDraggingPlayhead, setIsDraggingPlayhead] = useState(false);
   const playheadDragStart = useRef<{ startX: number; startTime: number } | null>(null);
@@ -241,11 +276,7 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
   } | null>(null);
 
   // 计算时间轴总长度
-  const maxClipEndTime = tracks.reduce((max, track) => {
-    const trackMax = track.clips.reduce((tMax, clip) => Math.max(tMax, clip.start + clip.duration), 0);
-    return Math.max(max, trackMax);
-  }, 0);
-  const totalSeconds = Math.max(duration, maxClipEndTime + 10, 60);
+  const totalSeconds = Math.max(duration + 10, 60);
   const totalWidth = totalSeconds * pixelsPerSecond;
 
   // 收集所有吸附点（用于拖拽时的吸附）
@@ -254,14 +285,14 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
     // 播放头位置
     points.push({ time: currentTime, type: 'playhead' });
     // 所有片段的起止点
-    tracks.forEach(track => {
-      track.clips.forEach(clip => {
-        points.push({ time: clip.start, type: 'clipStart' });
-        points.push({ time: clip.start + clip.duration, type: 'clipEnd' });
+    resolvedTracks.forEach((track) => {
+      track.clipWindows.forEach((clip) => {
+        points.push({ time: clip.resolvedStart, type: 'clipStart' });
+        points.push({ time: clip.resolvedEnd, type: 'clipEnd' });
       });
     });
     return points;
-  }, [tracks, currentTime]);
+  }, [currentTime, resolvedTracks]);
 
   // 收集所有视频片段用于帧提取
   const videoClips = useMemo(() => {
@@ -538,6 +569,11 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
     if (e.button !== 0) return;
     const target = e.target as HTMLElement;
     if (target.closest('[class*="cursor-w-resize"]') || target.closest('[class*="cursor-e-resize"]')) return;
+    const clipTrack = tracks.find((track) => track.id === clip.trackId);
+    if ((clipTrack?.transitions?.length ?? 0) > 0) {
+      onTransitionError?.('当前含转场轨道暂不支持拖动片段，请先删除转场后再调整片段。');
+      return;
+    }
 
     e.stopPropagation();
     onSelectClip(clip.id);
@@ -558,6 +594,11 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
 
   const handleResizeMouseDown = (e: React.MouseEvent, clip: Clip, edge: 'start' | 'end') => {
     e.stopPropagation();
+    const clipTrack = tracks.find((track) => track.id === clip.trackId);
+    if ((clipTrack?.transitions?.length ?? 0) > 0) {
+      onTransitionError?.('当前含转场轨道暂不支持调整片段边界，请先删除转场后再编辑片段。');
+      return;
+    }
     // 获取源素材时长：优先使用 clip.sourceDuration，否则用当前 duration + offset 作为估算
     const sourceDuration = clip.sourceDuration ?? (clip.duration + clip.offset);
     setResizeState({
@@ -595,6 +636,12 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
     if (!asset) return;
 
     try {
+      const targetTrack = trackId ? tracks.find((track) => track.id === trackId) : null;
+      if ((targetTrack?.transitions?.length ?? 0) > 0) {
+        onTransitionError?.('当前含转场轨道暂不支持插入素材，请先删除转场后再插入片段。');
+        return;
+      }
+
       const containerRect = containerRef.current.getBoundingClientRect();
       const dropX = e.clientX - containerRect.left + containerRef.current.scrollLeft - HEADER_WIDTH;
       const time = Math.max(0, dropX / pixelsPerSecond);
@@ -623,7 +670,13 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
     const scrollLeft = containerRef.current?.scrollLeft || 0;
     const clickX = e.clientX - containerRect.left + scrollLeft - HEADER_WIDTH;
     const clickTime = clickX / pixelsPerSecond;
-    const clipLocalTime = Math.max(0, Math.min(clip.duration, clickTime - clip.start));
+    const resolvedWindow = resolvedTracksMap
+      .get(clip.trackId)
+      ?.clipWindows.find((window) => window.clipId === clip.id);
+    const clipLocalTime = Math.max(
+      0,
+      Math.min(clip.duration, clickTime - (resolvedWindow?.resolvedStart ?? clip.start))
+    );
 
     onSelectClip(clip.id);
     setContextMenu({
@@ -633,7 +686,7 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
       clipId: clip.id,
       clipLocalTime
     });
-  }, [onSelectClip, pixelsPerSecond]);
+  }, [onSelectClip, pixelsPerSecond, resolvedTracksMap]);
 
   // 关键帧右键菜单
   const handleKeyframeContextMenu = useCallback((e: React.MouseEvent, clipId: string, keyframe: Keyframe) => {
@@ -897,50 +950,163 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
 
               {/* 轨道内容 */}
               <div className="relative flex-1 h-full" style={{ width: totalWidth }}>
-                {track.clips.map(clip => (
-                  <div
-                    key={clip.id}
-                    onMouseDown={(e) => handleClipMouseDown(e, clip)}
-                    onContextMenu={(e) => handleClipContextMenu(e, clip)}
-                    className={`absolute top-2 bottom-2 rounded-md overflow-hidden transition-shadow border shadow-sm group/clip select-none
-                      ${selectedClipId === clip.id ? 'border-cyan-400 ring-2 ring-cyan-500/20 z-10' : 'border-transparent hover:border-zinc-500 z-0'}
-                      ${dragState?.clipId === clip.id ? 'cursor-grabbing opacity-90 shadow-xl' : 'cursor-grab'}
-                      ${dragState?.clipId === clip.id && dragState.hasCollision ? 'border-red-500 ring-2 ring-red-500/50' : ''}
-                    `}
-                    style={{ left: clip.start * pixelsPerSecond, width: clip.duration * pixelsPerSecond }}
-                  >
-                    <Filmstrip clip={clip} frames={frameMap.get(clip.id)?.frames} pixelsPerSecond={pixelsPerSecond} />
+                {(() => {
+                  const sortedClips = getSortedTrackClips(track);
+                  const resolvedTrack = resolvedTracksMap.get(track.id);
+                  const clipWindows = new Map(
+                    (resolvedTrack?.clipWindows ?? []).map((window) => [window.clipId, window])
+                  );
 
-                    {/* 关键帧标记 */}
-                    {clip.keyframes?.map(kf => (
+                  return sortedClips.slice(1).map((toClip, clipIndex) => {
+                    const fromClip = sortedClips[clipIndex];
+                    const transition = findTransitionByClipPair(track, fromClip.id, toClip.id);
+                    const maxDuration = getMaxTransitionDuration(track, fromClip.id, toClip.id);
+                    const fromWindow = clipWindows.get(fromClip.id);
+                    const cutPointTime = fromWindow?.resolvedEnd ?? toClip.start;
+
+                    return (
                       <div
-                        key={kf.id}
-                        className={`absolute top-1/2 -translate-x-1/2 -translate-y-1/2 w-3 h-3 cursor-pointer z-30 ${selectedKeyframeId === kf.id ? 'scale-125' : 'hover:scale-110'}`}
-                        style={{ left: kf.time * pixelsPerSecond }}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onSelectKeyframe?.(clip.id, kf.id);
-                          onSeek(clip.start + kf.time);
-                        }}
-                        onContextMenu={(e) => handleKeyframeContextMenu(e, clip.id, kf)}
+                        key={`transition-${fromClip.id}-${toClip.id}`}
+                        className="absolute top-1 z-20 -translate-x-1/2"
+                        style={{ left: cutPointTime * pixelsPerSecond }}
                       >
-                        <svg viewBox="0 0 12 12" className="w-full h-full drop-shadow">
-                          <path d="M6 0L12 6L6 12L0 6Z" fill={selectedKeyframeId === kf.id ? '#22d3ee' : '#facc15'} stroke={selectedKeyframeId === kf.id ? '#0891b2' : '#ca8a04'} strokeWidth="1" />
-                        </svg>
+                        {transition ? (
+                          <div className="flex flex-col items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                onSelectTransition?.(
+                                  selectedTransitionId === transition.id ? null : transition.id
+                                );
+                              }}
+                              className={`rounded-full px-2 py-0.5 text-[10px] font-medium shadow ${
+                                selectedTransitionId === transition.id
+                                  ? 'bg-cyan-500 text-black'
+                                  : 'bg-zinc-800/90 text-cyan-200 hover:bg-zinc-700'
+                              }`}
+                              title="编辑转场"
+                            >
+                              淡变 {transition.duration.toFixed(1)}s
+                            </button>
+                            {selectedTransitionId === transition.id && (
+                              <div className="flex items-center gap-1 rounded-full bg-black/85 px-1 py-1">
+                                <button
+                                  type="button"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    onUpdateTransitionDuration?.(
+                                      track.id,
+                                      transition.id,
+                                      Math.max(0.1, transition.duration - 0.1)
+                                    );
+                                  }}
+                                  className="rounded bg-zinc-700 px-1 text-[10px] text-white hover:bg-zinc-600"
+                                  title="缩短转场"
+                                >
+                                  -
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    onUpdateTransitionDuration?.(
+                                      track.id,
+                                      transition.id,
+                                      Math.min(maxDuration, transition.duration + 0.1)
+                                    );
+                                  }}
+                                  className="rounded bg-zinc-700 px-1 text-[10px] text-white hover:bg-zinc-600"
+                                  title="延长转场"
+                                >
+                                  +
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    onDeleteTransition?.(track.id, transition.id);
+                                  }}
+                                  className="rounded bg-red-600 px-1 text-[10px] text-white hover:bg-red-500"
+                                  title="删除转场"
+                                >
+                                  ×
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          maxDuration > 0 && (
+                            <button
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                onAddTransition?.(track.id, fromClip.id, toClip.id);
+                              }}
+                              className="rounded-full bg-zinc-800/80 px-2 py-0.5 text-[10px] text-zinc-300 hover:bg-cyan-600 hover:text-white"
+                              title={`添加淡变（默认 ${DEFAULT_TRANSITION_DURATION.toFixed(1)}s）`}
+                            >
+                              + 转场
+                            </button>
+                          )
+                        )}
                       </div>
-                    ))}
+                    );
+                  });
+                })()}
+                {track.clips.map(clip => (
+                  (() => {
+                    const resolvedWindow = resolvedTracksMap
+                      .get(track.id)
+                      ?.clipWindows.find((window) => window.clipId === clip.id);
+                    const clipLeft = (resolvedWindow?.resolvedStart ?? clip.start) * pixelsPerSecond;
 
-                    {selectedClipId === clip.id && (
-                      <>
-                        <div className="absolute left-0 top-0 bottom-0 w-3 cursor-w-resize hover:bg-cyan-400/50 z-20 flex items-center justify-center" onMouseDown={(e) => handleResizeMouseDown(e, clip, 'start')}>
-                          <div className="w-1 h-4 bg-white/80 rounded-full" />
-                        </div>
-                        <div className="absolute right-0 top-0 bottom-0 w-3 cursor-e-resize hover:bg-cyan-400/50 z-20 flex items-center justify-center" onMouseDown={(e) => handleResizeMouseDown(e, clip, 'end')}>
-                          <div className="w-1 h-4 bg-white/80 rounded-full" />
-                        </div>
-                      </>
-                    )}
-                  </div>
+                    return (
+                      <div
+                        key={clip.id}
+                        onMouseDown={(e) => handleClipMouseDown(e, clip)}
+                        onContextMenu={(e) => handleClipContextMenu(e, clip)}
+                        className={`absolute top-2 bottom-2 rounded-md overflow-hidden transition-shadow border shadow-sm group/clip select-none
+                          ${selectedClipId === clip.id ? 'border-cyan-400 ring-2 ring-cyan-500/20 z-10' : 'border-transparent hover:border-zinc-500 z-0'}
+                          ${dragState?.clipId === clip.id ? 'cursor-grabbing opacity-90 shadow-xl' : 'cursor-grab'}
+                          ${dragState?.clipId === clip.id && dragState.hasCollision ? 'border-red-500 ring-2 ring-red-500/50' : ''}
+                        `}
+                        style={{ left: clipLeft, width: clip.duration * pixelsPerSecond }}
+                      >
+                        <Filmstrip clip={clip} frames={frameMap.get(clip.id)?.frames} pixelsPerSecond={pixelsPerSecond} />
+
+                        {/* 关键帧标记 */}
+                        {clip.keyframes?.map(kf => (
+                          <div
+                            key={kf.id}
+                            className={`absolute top-1/2 -translate-x-1/2 -translate-y-1/2 w-3 h-3 cursor-pointer z-30 ${selectedKeyframeId === kf.id ? 'scale-125' : 'hover:scale-110'}`}
+                            style={{ left: kf.time * pixelsPerSecond }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onSelectKeyframe?.(clip.id, kf.id);
+                              onSeek((resolvedWindow?.resolvedStart ?? clip.start) + kf.time);
+                            }}
+                            onContextMenu={(e) => handleKeyframeContextMenu(e, clip.id, kf)}
+                          >
+                            <svg viewBox="0 0 12 12" className="w-full h-full drop-shadow">
+                              <path d="M6 0L12 6L6 12L0 6Z" fill={selectedKeyframeId === kf.id ? '#22d3ee' : '#facc15'} stroke={selectedKeyframeId === kf.id ? '#0891b2' : '#ca8a04'} strokeWidth="1" />
+                            </svg>
+                          </div>
+                        ))}
+
+                        {selectedClipId === clip.id && (
+                          <>
+                            <div className="absolute left-0 top-0 bottom-0 w-3 cursor-w-resize hover:bg-cyan-400/50 z-20 flex items-center justify-center" onMouseDown={(e) => handleResizeMouseDown(e, clip, 'start')}>
+                              <div className="w-1 h-4 bg-white/80 rounded-full" />
+                            </div>
+                            <div className="absolute right-0 top-0 bottom-0 w-3 cursor-e-resize hover:bg-cyan-400/50 z-20 flex items-center justify-center" onMouseDown={(e) => handleResizeMouseDown(e, clip, 'end')}>
+                              <div className="w-1 h-4 bg-white/80 rounded-full" />
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    );
+                  })()
                 ))}
               </div>
             </div>

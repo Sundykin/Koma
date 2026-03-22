@@ -41,6 +41,13 @@ import {
   buildMask,
   buildTransition,
 } from './jianyingUtils';
+import {
+  getTimelineDuration,
+  normalizeTrackTransitions,
+  resolveTimelineTracks,
+  resolveTrackTimeline,
+  type ResolvedClipWindow,
+} from '../transition/transitionResolver';
 
 // 导入模板 JSON
 import draftContentTemplate from './templates/draft_content_template.json';
@@ -72,7 +79,13 @@ export class JianyingExporter implements DraftExporter {
   }
 
   canExport(tracks: Track[], _options: DraftExportOptions): boolean {
-    return tracks.some((track) => track.clips.length > 0);
+    if (!tracks.some((track) => track.clips.length > 0)) {
+      return false;
+    }
+
+    return resolveTimelineTracks(tracks).every(
+      (track) => track.invalidTransitions.length === 0
+    );
   }
 
   async export(
@@ -81,6 +94,10 @@ export class JianyingExporter implements DraftExporter {
     canvasSize: CanvasSize
   ): Promise<DraftExportResult> {
     try {
+      if (!this.canExport(tracks, options)) {
+        throw new Error('存在非法转场关系，无法导出剪映草稿。');
+      }
+
       const warnings: string[] = [];
 
       // 基于模板生成草稿内容
@@ -141,13 +158,7 @@ export class JianyingExporter implements DraftExporter {
     );
 
     // 计算总时长 (微秒)
-    let maxDuration = 0;
-    for (const track of tracks) {
-      for (const clip of track.clips) {
-        const endTime = this.transformer.transformTime(clip.start + clip.duration);
-        maxDuration = Math.max(maxDuration, endTime);
-      }
-    }
+    const maxDuration = this.transformer.transformTime(getTimelineDuration(tracks));
 
     // 在模板基础上填充数据
     content.id = draftId;
@@ -205,6 +216,21 @@ export class JianyingExporter implements DraftExporter {
     if (extractedMaterials.speeds.length > 0) {
       merged.speeds = extractedMaterials.speeds;
     }
+    if (extractedMaterials.transitions.length > 0) {
+      merged.transitions = extractedMaterials.transitions;
+    }
+    if (extractedMaterials.audio_fades.length > 0) {
+      merged.audio_fades = extractedMaterials.audio_fades;
+    }
+    if (extractedMaterials.material_animations.length > 0) {
+      merged.material_animations = extractedMaterials.material_animations;
+    }
+    if (extractedMaterials.masks.length > 0) {
+      merged.masks = extractedMaterials.masks;
+    }
+    if (extractedMaterials.effects.length > 0) {
+      merged.effects = extractedMaterials.effects;
+    }
 
     return merged as JianyingMaterials;
   }
@@ -253,7 +279,12 @@ export class JianyingExporter implements DraftExporter {
 
     const processedMaterialIds = new Set<string>();
 
-    for (const track of tracks) {
+    for (const rawTrack of tracks) {
+      const track = normalizeTrackTransitions(rawTrack);
+      const incomingTransitions = new Map(
+        (track.transitions ?? []).map((transition) => [transition.toClipId, transition])
+      );
+
       for (const clip of track.clips) {
         const materialId = clip.assetId || clip.id;
         const extraRefs: string[] = [];
@@ -307,8 +338,9 @@ export class JianyingExporter implements DraftExporter {
         }
 
         // 转场
-        if (clip.transition) {
-          const transitionMaterial = buildTransition(clip.transition);
+        const incomingTransition = incomingTransitions.get(clip.id);
+        if (incomingTransition) {
+          const transitionMaterial = buildTransition(incomingTransition);
           if (transitionMaterial) {
             transitions.push(transitionMaterial);
             extraRefs.push(transitionMaterial.id);
@@ -432,9 +464,19 @@ export class JianyingExporter implements DraftExporter {
     clipMaterialRefs: Map<string, string[]>
   ): JianyingTrack[] {
     return tracks.map((track) => {
+      const resolvedTrack = resolveTrackTimeline(track);
+      const resolvedClipWindows = new Map(
+        resolvedTrack.clipWindows.map((window) => [window.clipId, window] as const)
+      );
       const jianyingType = this.mapTrackType(track.type);
       const segments = track.clips.map((clip) =>
-        this.convertClip(clip, canvasSize, speedMaterials.get(clip.id), clipMaterialRefs.get(clip.id))
+        this.convertClip(
+          clip,
+          canvasSize,
+          resolvedClipWindows.get(clip.id),
+          speedMaterials.get(clip.id),
+          clipMaterialRefs.get(clip.id)
+        )
       );
 
       return {
@@ -455,6 +497,7 @@ export class JianyingExporter implements DraftExporter {
   private convertClip(
     clip: Clip,
     canvasSize: CanvasSize,
+    resolvedClipWindow: ResolvedClipWindow | undefined,
     speedMaterial?: JianyingSpeed,
     extraMaterialRefsList?: string[]
   ): JianyingSegment {
@@ -481,7 +524,7 @@ export class JianyingExporter implements DraftExporter {
     };
 
     const targetTimerange = {
-      start: this.transformer.transformTime(clip.start),
+      start: this.transformer.transformTime(resolvedClipWindow?.resolvedStart ?? clip.start),
       duration: this.transformer.transformTime(clip.duration),
     };
 

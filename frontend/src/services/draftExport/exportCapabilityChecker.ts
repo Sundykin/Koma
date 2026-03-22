@@ -4,6 +4,7 @@
  */
 
 import type { Track, Clip } from '../../types/editor';
+import { normalizeTrackTransitions } from '../transition/transitionResolver';
 
 // 高级特性类型
 export type AdvancedFeature =
@@ -74,10 +75,6 @@ function detectClipFeatures(clip: Clip): AdvancedFeature[] {
   if (clip.mask) {
     features.push('mask');
   }
-  if (clip.transition) {
-    features.push('transition');
-  }
-
   return features;
 }
 
@@ -89,6 +86,14 @@ export function checkExportCompatibility(tracks: Track[]): CompatibilityReport {
 
   // 遍历所有片段检测特性
   for (const track of tracks) {
+    const normalizedTrack = normalizeTrackTransitions(track);
+    if ((normalizedTrack.transitions?.length ?? 0) > 0) {
+      featureCounts.set(
+        'transition',
+        (featureCounts.get('transition') || 0) + normalizedTrack.transitions!.length
+      );
+    }
+
     for (const clip of track.clips) {
       const clipFeatures = detectClipFeatures(clip);
       for (const feature of clipFeatures) {

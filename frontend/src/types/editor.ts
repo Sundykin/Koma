@@ -82,13 +82,25 @@ export interface Clip {
   animations?: ClipAnimation[];  // 动画（入场/出场/组合）
   audioFade?: AudioFade;         // 音频淡入淡出（仅音频片段）
   mask?: ClipMask;               // 蒙版
-  transition?: ClipTransition;   // 转场（应用到前一个片段）
+  /** @deprecated 旧项目兼容读取，新代码请使用 Track.transitions[] */
+  transition?: ClipTransition;   // 旧项目兼容读取：应用到前一个片段
+}
+
+export type TransitionType = 'fade';
+
+export interface Transition {
+  id: string;
+  fromClipId: string;
+  toClipId: string;
+  type: TransitionType;
+  duration: number; // overlap 时长（秒）
 }
 
 export interface Track {
   id: string;
   type: 'video' | 'audio' | 'text';
   clips: Clip[];
+  transitions?: Transition[];
   isMainTrack?: boolean;
   order: number; // 轨道顺序，主轨道为 0，上方为正数，下方为负数
   name?: string;   // 轨道名称（可重命名）
@@ -215,10 +227,10 @@ export interface ClipMask {
 }
 
 // 转场定义
+/** @deprecated 旧项目兼容，新代码请使用 Track.transitions[] + Transition 接口 */
 export interface ClipTransition {
   effectId: string;       // 转场效果 ID
   name?: string;          // 显示名称
   resourceId?: string;    // 剪映资源 ID
   duration: number;       // 持续时间（秒）
 }
-
