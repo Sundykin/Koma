@@ -5,33 +5,46 @@
  * - Keep existing providers untouched.
  * - Speak Grok2API reverse-engineered multimodal shape:
  *   - No references: OpenAI-compatible `/v1/images/generations`
- *   - With references: `/v1/chat/completions` with image_url blocks + final text prompt
+ *   - With references: `/v1/images/edits` (multipart/form-data, repeated `image` fields)
  */
 import type { TTIModelConfig, ProviderStartResult, ProviderTaskSnapshot } from '../../types';
 import type { TTIProvider, TTIRequest, ImageResult } from './types';
 import { safeFetch } from '../../utils/safeFetch';
 import { createLogger } from '../../store/logger';
+import { electronService } from '../../services/electronService';
 
 const logger = createLogger('Grok2ApiImagineTTI');
-
-type ChatContentBlock =
-  | { type: 'text'; text: string }
-  | { type: 'image_url'; image_url: { url: string } };
-
-type ChatCompletionsResponse = {
-  id?: string;
-  choices?: Array<{
-    message?: {
-      content?: unknown;
-    };
-  }>;
-};
 
 type ImageGenResponse = {
   data?: Array<{ url?: string; b64_json?: string }>;
   id?: string;
   created?: number;
 };
+
+function base64ToBytes(base64: string): Uint8Array {
+  const bin = atob(base64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i += 1) bytes[i] = bin.charCodeAt(i);
+  return bytes;
+}
+
+function parseDataUrl(dataUrl: string): { mimeType: string; bytes: Uint8Array } {
+  const m = dataUrl.match(/^data:([^;]+);base64,(.*)$/);
+  if (!m) {
+    // Fallback for non-base64 data URLs is not supported here.
+    throw new Error('不支持的 data-url 格式（需要 base64）');
+  }
+  return { mimeType: m[1] || 'application/octet-stream', bytes: base64ToBytes(m[2] || '') };
+}
+
+function extFromMime(mimeType: string): string {
+  const m = mimeType.toLowerCase();
+  if (m.includes('png')) return 'png';
+  if (m.includes('jpeg') || m.includes('jpg')) return 'jpg';
+  if (m.includes('webp')) return 'webp';
+  if (m.includes('gif')) return 'gif';
+  return 'bin';
+}
 
 function sanitizeBodyForLog(body: Record<string, any>): Record<string, any> {
   const walk = (v: any): any => {
@@ -145,28 +158,6 @@ function findMediaUrlDeep(value: unknown, baseUrl: string): string | null {
   return null;
 }
 
-function extractMediaUrlFromChat(resp: ChatCompletionsResponse, baseUrl: string): string | null {
-  const content = resp.choices?.[0]?.message?.content;
-  // Fast path: OpenAI-style string content
-  if (typeof content === 'string') return extractFirstUrlFromText(content, baseUrl);
-
-  // Common structured content (array of blocks)
-  if (Array.isArray(content)) {
-    for (const block of content as any[]) {
-      if (block?.type === 'image_url' && typeof block?.image_url?.url === 'string') {
-        return normalizeCandidateUrl(block.image_url.url, baseUrl);
-      }
-      if (block?.type === 'text' && typeof block?.text === 'string') {
-        const url = extractFirstUrlFromText(block.text, baseUrl);
-        if (url) return url;
-      }
-    }
-  }
-
-  // Fallback: scan the entire response JSON for any URL-ish string
-  return findMediaUrlDeep(resp, baseUrl);
-}
-
 function extractImageUrlFromGen(resp: ImageGenResponse): string | null {
   const item = resp.data?.[0];
   if (!item) return null;
@@ -190,7 +181,6 @@ export class Grok2ApiImagineTTIProvider implements TTIProvider {
   private getHeaders(): Record<string, string> {
     return {
       Authorization: `Bearer ${this.config.apiKey || ''}`,
-      'Content-Type': 'application/json',
     };
   }
 
@@ -257,61 +247,90 @@ export class Grok2ApiImagineTTIProvider implements TTIProvider {
       return { mode: 'immediate', output: { path: url, url } };
     }
 
-    // 2) With references: call chat multimodal endpoint
-    const refBlocks: ChatContentBlock[] = (request.references || []).map(r => ({
-      type: 'image_url',
-      image_url: { url: r.value },
-    }));
-    const body: Record<string, any> = {
-      model: this.config.modelName || 'grok-imagine-1.0-edit',
-      messages: [
-        {
-          role: 'user',
-          content: [
-            ...refBlocks,
-            { type: 'text', text: request.prompt },
-          ],
-        },
-      ],
-    };
+    // 2) With references: use /v1/images/edits (multipart)
+    const form = new FormData();
+    form.append('model', this.config.modelName || 'grok-imagine-1.0-edit');
+    form.append('prompt', request.prompt);
+
+    const refs = request.references || [];
+    for (let i = 0; i < refs.length; i += 1) {
+      const ref = refs[i];
+      if (!ref?.value) continue;
+
+      let mimeType = ref.mimeType || 'image/png';
+      let bytes: Uint8Array | null = null;
+
+      if (ref.value.startsWith('data:')) {
+        const parsed = parseDataUrl(ref.value);
+        mimeType = parsed.mimeType || mimeType;
+        bytes = parsed.bytes;
+      } else if (ref.transport === 'remote-url') {
+        // Edits endpoint expects file parts; for remote URLs we best-effort download to temp first.
+        if (!electronService.isElectron()) {
+          throw new Error('当前环境无法处理 remote-url 参考图，请改用 data-url 或在 Electron 环境中运行');
+        }
+        const tmpDir = await electronService.app.getPath('temp');
+        const tmpPath = `${tmpDir.replace(/\/+$/, '')}/koma-grok2api-edit-${Date.now()}-${i}.bin`;
+        const dl = await electronService.fs.downloadFile(ref.value, tmpPath);
+        if (!dl?.success) throw new Error(`下载参考图失败: ${ref.value}`);
+        const base64 = await electronService.fs.readFileAsBase64(tmpPath);
+        bytes = base64ToBytes(base64);
+        // Best-effort cleanup (ignore errors)
+        electronService.fs.remove(tmpPath).catch(() => {});
+      } else {
+        // data-url is expected for local assets; if we reach here it's likely a filesystem path or other
+        throw new Error(`不支持的参考图输入: ${ref.transport}:${ref.value}`);
+      }
+
+      const filename = `image${i + 1}.${extFromMime(mimeType)}`;
+      form.append('image', new Blob([bytes], { type: mimeType }), filename);
+    }
 
     if (debugBody) {
-      logger.info('TTI chat (edit) request body', {
+      logger.info('TTI edits (multipart) request', {
         provider: this.config.provider,
         ...(protocol ? { promptProtocol: protocol } : undefined),
-        body: sanitizeBodyForLog(body),
+        model: this.config.modelName || 'grok-imagine-1.0-edit',
+        prompt: request.prompt,
+        images: refs.map((r, i) => ({
+          i: i + 1,
+          transport: r.transport,
+          mimeType: r.mimeType,
+          valuePreview: typeof r.value === 'string' ? (r.value.startsWith('data:') ? `${r.value.slice(0, 80)}...(data-url)` : r.value) : String(r.value),
+        })),
       });
     }
 
-    const resp = await safeFetch(joinUrl(this.config.baseUrl || '', '/v1/chat/completions'), {
+    const resp = await safeFetch(joinUrl(this.config.baseUrl || '', '/v1/images/edits'), {
       method: 'POST',
       headers: {
         ...this.getHeaders(),
         ...(debugBody ? { 'x-koma-debug-body': '1' } : undefined),
-        ...(debugBody ? { 'x-koma-trace-operation': 'tti.chat.edit' } : undefined),
+        ...(debugBody ? { 'x-koma-trace-operation': 'tti.images.edits' } : undefined),
       },
-      body: JSON.stringify(body),
+      body: form as any,
     });
     const raw = await resp.text();
     if (!resp.ok) throw new Error(`创建任务失败: ${raw.slice(0, 1200)}`);
 
-    let data: ChatCompletionsResponse | null = null;
+    let data: any = null;
     try {
-      data = JSON.parse(raw) as ChatCompletionsResponse;
+      data = JSON.parse(raw);
     } catch {
-      // Non-JSON response
-      logger.warn('TTI chat (edit) response is not JSON', { preview: raw.slice(0, 1200) });
-      throw new Error('API 返回了无法识别的图片响应（chat/completions，非 JSON）');
+      logger.warn('TTI images/edits response is not JSON', { preview: raw.slice(0, 1200) });
+      throw new Error('API 返回了无法识别的图片响应（images/edits，非 JSON）');
     }
 
-    const url = extractMediaUrlFromChat(data, this.config.baseUrl || '');
+    // Most deployments keep OpenAI-like shape: { data: [{url|b64_json}] }
+    const candidate = extractImageUrlFromGen(data as ImageGenResponse) || findMediaUrlDeep(data, this.config.baseUrl || '');
+    const url = candidate ? (normalizeCandidateUrl(candidate, this.config.baseUrl || '') || candidate) : null;
     if (!url) {
-      logger.warn('TTI chat (edit) response has no detectable media url', {
+      logger.warn('TTI images/edits response has no detectable media url', {
         provider: this.config.provider,
         response: sanitizeBodyForLog(data as any),
         rawPreview: raw.slice(0, 1200),
       });
-      throw new Error('API 返回了无法识别的图片响应（chat/completions）');
+      throw new Error('API 返回了无法识别的图片响应（images/edits）');
     }
     return { mode: 'immediate', output: { path: url, url } };
   }

@@ -41,7 +41,7 @@ export function compileGrokTTI(params: {
   prompt: string;
   selectedAssets: PromptCompilationInput['selectedAssets'];
   /**
-   * Additional references (optional) that should NOT affect @imageN indices.
+   * Additional references (optional) that should NOT affect @Image N indices.
    * They will be appended after selected assets.
    */
   extraReferences?: Array<MediaAssetSource | ProviderAssetInput>;
@@ -70,7 +70,7 @@ export function compileGrokTTI(params: {
     }
     const idx = usableAssets.findIndex(a => a === hit.asset);
     if (idx >= 0) {
-      mentionToIndex.push({ mention, index: idx + 1 }); // @image1..N
+      mentionToIndex.push({ mention, index: idx + 1 }); // @Image 1..N
     }
   }
 
@@ -78,7 +78,7 @@ export function compileGrokTTI(params: {
   const sorted = [...mentionToIndex].sort((a, b) => b.mention.from - a.mention.from);
   let compiledPrompt = params.prompt;
   for (const { mention, index } of sorted) {
-    compiledPrompt = compiledPrompt.slice(0, mention.from) + `@image${index}` + compiledPrompt.slice(mention.to);
+    compiledPrompt = compiledPrompt.slice(0, mention.from) + `@Image ${index}` + compiledPrompt.slice(mention.to);
   }
 
   const selectedRefs = usableAssets.map(a => a.source!).filter(Boolean);
@@ -98,7 +98,7 @@ export function compileGrokTTI(params: {
     assetToImageIndex: usableAssets.map((a, i) => ({
       type: a.type,
       assetId: a.assetId,
-      image: `@image${i + 1}`,
+      image: `@Image ${i + 1}`,
     })),
     unmappedMentions,
   };
@@ -115,7 +115,7 @@ export function compileGrokITV(params: {
   primaryImage: MediaAssetSource | ProviderAssetInput;
   selectedAssets: PromptCompilationInput['selectedAssets'];
   /**
-   * Additional references (optional) that should NOT affect @imageN indices.
+   * Additional references (optional) that should NOT affect @Image N indices.
    * They will be appended after selected assets.
    */
   extraReferences?: Array<MediaAssetSource | ProviderAssetInput>;
@@ -143,7 +143,7 @@ export function compileGrokITV(params: {
     }
     const idx = usableAssets.findIndex(a => a === hit.asset);
     if (idx >= 0) {
-      // @image1 reserved for primary image; assets start from @image2
+      // @Image 1 reserved for primary image; assets start from @Image 2
       mentionToIndex.push({ mention, index: idx + 2 });
     }
   }
@@ -151,18 +151,18 @@ export function compileGrokITV(params: {
   const sorted = [...mentionToIndex].sort((a, b) => b.mention.from - a.mention.from);
   let compiledPrompt = params.prompt;
   for (const { mention, index } of sorted) {
-    compiledPrompt = compiledPrompt.slice(0, mention.from) + `@image${index}` + compiledPrompt.slice(mention.to);
+    compiledPrompt = compiledPrompt.slice(0, mention.from) + `@Image ${index}` + compiledPrompt.slice(mention.to);
   }
 
-  // Ensure primary image is explicitly referenced as @image1.
-  if (!/\@image1\b/.test(compiledPrompt)) {
-    compiledPrompt = `@image1 ${compiledPrompt}`.trim();
+  // Ensure primary image is explicitly referenced as @Image 1.
+  if (!/\@Image\s+1\b/.test(compiledPrompt)) {
+    compiledPrompt = `@Image 1 ${compiledPrompt}`.trim();
   }
 
   // Provider API separates primary image from additional refs.
   // We align indices by:
-  // - @image1 -> primaryImage
-  // - @image2.. -> additionalReferences[0..]
+  // - @Image 1 -> primaryImage
+  // - @Image 2.. -> additionalReferences[0..]
   const selectedRefs = usableAssets.map(a => a.source!).filter(Boolean);
   const selectedKeys = new Set(selectedRefs.map(refKey));
   const extraRefs = (params.extraReferences || []).filter(r => !selectedKeys.has(refKey(r)));
@@ -178,11 +178,11 @@ export function compileGrokITV(params: {
     compiledPrompt,
     mentions,
     assetToImageIndex: [
-      { type: 'scene' as any, assetId: '(primary-image)', image: '@image1' },
+      { type: 'scene' as any, assetId: '(primary-image)', image: '@Image 1' },
       ...usableAssets.map((a, i) => ({
         type: a.type,
         assetId: a.assetId,
-        image: `@image${i + 2}`,
+        image: `@Image ${i + 2}`,
       })),
     ],
     unmappedMentions,

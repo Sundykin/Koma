@@ -214,7 +214,7 @@ export async function shotRenderWorkflow(
         });
       }
     }
-    // Shot 自身的参考图（手动添加），排在最后，避免影响 Grok @imageN 索引
+    // Shot 自身的参考图（手动添加），排在最后，避免影响 Grok @Image N 索引
     for (const ref of normalizedShot.media?.references || []) {
       const src = getMediaAssetDisplaySource(ref);
       if (src) additionalReferenceImages.push(src);

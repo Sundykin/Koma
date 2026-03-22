@@ -184,7 +184,7 @@ export class MediaGenerationService {
       const { compiledPrompt: cp, compiledReferences, debug } = compileGrokTTI({
         prompt: originalPrompt,
         selectedAssets: promptCompilation.selectedAssets,
-        // Keep any manual refs as trailing extras (do not shift @imageN indices).
+        // Keep any manual refs as trailing extras (do not shift @Image N indices).
         extraReferences: (request.references || []),
       });
       compiledPrompt = cp;
@@ -348,7 +348,7 @@ export class MediaGenerationService {
     let additionalReferences = await ensureProviderAssetInputs(normalizedAdditional as any);
 
     if (protocol === 'grok-image-index' && promptCompilation?.selectedAssets?.length) {
-      // Rebuild additional references in strict order (selectedAssets -> extras) so @imageN is stable.
+      // Rebuild additional references in strict order (selectedAssets -> extras) so @Image N is stable.
       // Important: We compile on the "raw prompt" and rely on the normalized remote/data URLs above.
       const { compiledPrompt: cp, compiledAdditionalReferences, debug } = compileGrokITV({
         prompt: originalPrompt,

@@ -133,7 +133,7 @@ export async function shotImageWorkflow(params: {
 
   if (normalizedShot.imagePrompt) {
     // 保留 @char/@scene/@prop（供渠道编译协议处理，例如 grok-image-index）。
-    // 如果这里把 @ 引用替换成纯文字描述，会导致编译器无法提取 @ 资产并完成 @imageN 映射。
+    // 如果这里把 @ 引用替换成纯文字描述，会导致编译器无法提取 @ 资产并完成 @Image N 映射。
     prompt = normalizedShot.imagePrompt;
   } else {
     const stylePrefix = styleSnapshot?.ttiStylePrefix || project?.styleSnapshot?.ttiStylePrefix || getThemeStylePrefix(theme, stylePrompt);

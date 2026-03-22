@@ -25,7 +25,7 @@ export interface PromptCompilationAsset {
 export interface PromptCompilationInput {
   /**
    * Ordered assets selected by the shot (characters -> scenes -> props).
-   * The order is the source of truth for @imageN index mapping in grok protocol.
+   * The order is the source of truth for @Image N index mapping in grok protocol.
    */
   selectedAssets: PromptCompilationAsset[];
 }
@@ -36,7 +36,7 @@ export interface PromptCompilationDebug {
   compiledPrompt: string;
   mentions: ParsedMention[];
   /**
-   * `@imageN` mapping for each selected asset (if the asset is usable / has source).
+   * `@Image N` mapping for each selected asset (if the asset is usable / has source).
    */
   assetToImageIndex: Array<{ type: MentionType; assetId: string; image: string }>;
   /**
@@ -44,4 +44,3 @@ export interface PromptCompilationDebug {
    */
   unmappedMentions: Array<{ type: MentionType; id: string; fullMatch: string }>;
 }
-

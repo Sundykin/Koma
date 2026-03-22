@@ -39,15 +39,11 @@ describe('Grok2ApiImagineTTIProvider', () => {
     expect((result as any).output.url).toBe('https://cdn.example.com/a.jpg');
   });
 
-  it('uses /v1/chat/completions when references exist and extracts url from content', async () => {
+  it('uses /v1/images/edits when references exist and extracts url from response', async () => {
     (safeFetch as any).mockResolvedValueOnce({
       ok: true,
       status: 200,
-      text: async () => JSON.stringify({
-        choices: [
-          { message: { content: 'ok https://cdn.example.com/x.png' } },
-        ],
-      }),
+      text: async () => JSON.stringify({ data: [{ url: 'https://cdn.example.com/x.png' }] }),
     });
 
     const p = new Grok2ApiImagineTTIProvider({
@@ -65,15 +61,13 @@ describe('Grok2ApiImagineTTIProvider', () => {
     const result = await p.start({
       prompt: 'p',
       references: [
-        { transport: 'remote-url', value: 'https://ref.example.com/r1.jpg' },
+        { transport: 'data-url', value: 'data:image/png;base64,AAAA' },
       ],
     } as any);
 
-    expect((safeFetch as any).mock.calls[0][0]).toContain('/v1/chat/completions');
+    expect((safeFetch as any).mock.calls[0][0]).toContain('/v1/images/edits');
     const init = (safeFetch as any).mock.calls[0][1];
-    const body = JSON.parse(init.body);
-    expect(body.messages[0].content[0].type).toBe('image_url');
-    expect(body.messages[0].content.at(-1).type).toBe('text');
+    expect(init.body).toBeInstanceOf(FormData);
     expect(result.mode).toBe('immediate');
     expect((result as any).output.url).toBe('https://cdn.example.com/x.png');
   });
@@ -103,7 +97,7 @@ describe('Grok2ApiImagineTTIProvider', () => {
     const result = await p.start({
       prompt: 'p',
       references: [
-        { transport: 'remote-url', value: 'https://ref.example.com/r1.jpg' },
+        { transport: 'data-url', value: 'data:image/png;base64,AAAA' },
       ],
     } as any);
 

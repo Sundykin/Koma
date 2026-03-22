@@ -490,10 +490,10 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
           <Form.Item
             name="promptProtocol"
             label="Prompt 编译协议"
-            tooltip="为特定渠道启用提示词编译与参考图数组对齐（例如 Grok 的 @imageN 协议）。"
+            tooltip="为特定渠道启用提示词编译与参考图数组对齐（例如 Grok 的 @Image N 协议）。"
           >
             <Select allowClear placeholder="不启用（默认）">
-              <Select.Option value="grok-image-index">grok-image-index (@imageN)</Select.Option>
+              <Select.Option value="grok-image-index">grok-image-index (@Image N)</Select.Option>
             </Select>
           </Form.Item>
 

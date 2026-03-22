@@ -203,10 +203,26 @@ export class Grok2ApiImagineITVProvider implements ITVProvider {
 
   private normalizeAspectRatio(value: string | undefined): string | undefined {
     if (!value || typeof value !== 'string') return undefined;
-    // Settings UI uses "1280x720" style. grok2api accepts this as aspect_ratio.
-    const m = value.trim().match(/^(\d{3,5})x(\d{3,5})$/);
+    const v = value.trim();
+    // Preferred format: "9:16" / "16:9"
+    if (/^\d{1,3}\s*:\s*\d{1,3}$/.test(v)) {
+      const [aRaw, bRaw] = v.split(':').map(s => Number(s.trim()));
+      if (!Number.isFinite(aRaw) || !Number.isFinite(bRaw) || aRaw <= 0 || bRaw <= 0) return undefined;
+      // Keep as reduced ratio for stability
+      const gcd = (x: number, y: number): number => (y === 0 ? x : gcd(y, x % y));
+      const g = gcd(aRaw, bRaw);
+      return `${Math.round(aRaw / g)}:${Math.round(bRaw / g)}`;
+    }
+
+    // Settings UI uses "1280x720" style; convert it to reduced ratio string.
+    const m = v.match(/^(\d{3,5})x(\d{3,5})$/);
     if (!m) return undefined;
-    return `${m[1]}x${m[2]}`;
+    const w = Number(m[1]);
+    const h = Number(m[2]);
+    if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) return undefined;
+    const gcd = (x: number, y: number): number => (y === 0 ? x : gcd(y, x % y));
+    const g = gcd(w, h);
+    return `${Math.round(w / g)}:${Math.round(h / g)}`;
   }
 
   private normalizeResolutionName(value: string | undefined): '480p' | '720p' | undefined {
@@ -253,16 +269,10 @@ export class Grok2ApiImagineITVProvider implements ITVProvider {
     const debugBody = Boolean(protocol) || (import.meta as any)?.env?.DEV === true;
 
     const blocks: ChatContentBlock[] = [];
-    if (request.primaryImage?.value) {
-      blocks.push({ type: 'image_url', image_url: { url: request.primaryImage.value } });
-    }
-
-    // Best-effort: include additional references (some Grok2API deployments may ignore beyond first).
-    for (const ref of request.additionalReferences || []) {
-      blocks.push({ type: 'image_url', image_url: { url: ref.value } });
-    }
-
+    // Doc-aligned ordering: text first, then images.
     blocks.push({ type: 'text', text: request.prompt });
+    if (request.primaryImage?.value) blocks.push({ type: 'image_url', image_url: { url: request.primaryImage.value } });
+    for (const ref of request.additionalReferences || []) blocks.push({ type: 'image_url', image_url: { url: ref.value } });
 
     const opts = request.options || {};
     const durationRaw = typeof opts.duration === 'number' ? opts.duration : this.config.defaultDuration;
@@ -279,11 +289,13 @@ export class Grok2ApiImagineITVProvider implements ITVProvider {
 
     const body: Record<string, any> = {
       model: (this.config as any).modelName || 'grok-imagine-1.0-video',
+      stream: false,
       messages: [{ role: 'user', content: blocks }],
       video_config: {
         ...(duration ? { video_length: duration } : undefined),
         ...(aspectRatio ? { aspect_ratio: aspectRatio } : undefined),
         ...(resolutionName ? { resolution_name: resolutionName } : undefined),
+        preset: 'custom',
       },
     };
 

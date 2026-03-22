@@ -49,12 +49,15 @@ describe('Grok2ApiImagineITVProvider', () => {
     expect((safeFetch as any).mock.calls[0][0]).toContain('/v1/chat/completions');
     const init = (safeFetch as any).mock.calls[0][1];
     const body = JSON.parse(init.body);
-    expect(body.messages[0].content[0].image_url.url).toBe('https://img.example.com/1.jpg');
+    // Doc-aligned ordering: text first, then images.
+    expect(body.messages[0].content[0].type).toBe('text');
+    expect(body.messages[0].content[1].image_url.url).toBe('https://img.example.com/1.jpg');
     // grok2api expects discrete video_length: 6 / 10 / 15
     expect(body.video_config.video_length).toBe(6);
-    // Koma UI uses WxH; grok2api wants that in aspect_ratio + a small enum resolution_name
-    expect(body.video_config.aspect_ratio).toBe('1920x1080');
+    // Koma UI uses WxH; grok2api wants reduced ratio in aspect_ratio + a small enum resolution_name
+    expect(body.video_config.aspect_ratio).toBe('16:9');
     expect(body.video_config.resolution_name).toBe('720p');
+    expect(body.video_config.preset).toBe('custom');
     expect(res.mode).toBe('immediate');
     expect((res as any).output.source).toBe('https://cdn.example.com/v.mp4');
   });
