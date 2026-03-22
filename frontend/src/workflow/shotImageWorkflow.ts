@@ -61,6 +61,12 @@ export async function shotImageWorkflow(params: {
   onProgress?.(0, '准备生成分镜图片...');
 
   const references: Array<string | StoredMediaAsset> = [];
+  const selectedAssetsForCompilation: Array<{
+    type: 'char' | 'scene' | 'prop';
+    assetId: string;
+    altIds?: string[];
+    source?: string | StoredMediaAsset;
+  }> = [];
 
   // Shot 自身的参考图
   for (const ref of normalizedShot.media?.references || []) {
@@ -70,15 +76,55 @@ export async function shotImageWorkflow(params: {
   // 关联资产参考图
   for (const charId of normalizedShot.characters || []) {
     const char = normalizedCharacters.find(c => c.id === charId);
-    if (char?.media?.costumePhoto) references.push(char.media.costumePhoto);
+    if (char?.media?.costumePhoto) {
+      references.push(char.media.costumePhoto);
+      selectedAssetsForCompilation.push({
+        type: 'char',
+        assetId: char.id,
+        altIds: char.sora2CharacterId ? [char.sora2CharacterId] : undefined,
+        source: char.media.costumePhoto,
+      });
+    } else if (char) {
+      selectedAssetsForCompilation.push({
+        type: 'char',
+        assetId: char.id,
+        altIds: char.sora2CharacterId ? [char.sora2CharacterId] : undefined,
+      });
+    }
   }
   for (const sceneId of normalizedShot.scenes || []) {
     const scene = normalizedScenes.find(s => s.id === sceneId);
-    if (scene?.media?.previewImage) references.push(scene.media.previewImage);
+    if (scene?.media?.previewImage) {
+      references.push(scene.media.previewImage);
+      selectedAssetsForCompilation.push({
+        type: 'scene',
+        assetId: scene.id,
+        source: scene.media.previewImage,
+      });
+    } else if (scene) {
+      selectedAssetsForCompilation.push({
+        type: 'scene',
+        assetId: scene.id,
+      });
+    }
   }
   for (const propId of normalizedShot.props || []) {
     const prop = props.find(p => p.id === propId);
-    if (prop?.media?.previewImage) references.push(prop.media.previewImage);
+    if (prop?.media?.previewImage) {
+      references.push(prop.media.previewImage);
+      selectedAssetsForCompilation.push({
+        type: 'prop',
+        assetId: prop.id,
+        altIds: prop.sora2PropId ? [prop.sora2PropId] : undefined,
+        source: prop.media.previewImage,
+      });
+    } else if (prop) {
+      selectedAssetsForCompilation.push({
+        type: 'prop',
+        assetId: prop.id,
+        altIds: prop.sora2PropId ? [prop.sora2PropId] : undefined,
+      });
+    }
   }
 
   // 构建提示词：优先使用 imagePrompt
@@ -142,6 +188,9 @@ export async function shotImageWorkflow(params: {
       prompt,
       references,
       options: { width: 1280, height: 720 },
+    },
+    promptCompilation: {
+      selectedAssets: selectedAssetsForCompilation,
     },
     ttiConfigId,
     taskName: `分镜图片: ${normalizedShot.id}`,
