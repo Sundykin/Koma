@@ -9,6 +9,8 @@ import type {
 import { getMediaAssetDisplaySource } from '../types';
 
 export function getAssetDisplaySource(asset?: StoredMediaAsset): string | undefined {
+  // Delegates to the shared selector; Electron prefers localPath to avoid CORS.
+  // Kept as a wrapper so callers can stay consistent in this module.
   return getMediaAssetDisplaySource(asset);
 }
 

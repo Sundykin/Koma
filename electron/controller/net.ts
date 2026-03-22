@@ -71,31 +71,42 @@ function buildMultipartBody(multipart?: MultipartPayload): { body: Buffer; conte
   // Build a raw multipart body so we can set Content-Length deterministically.
   const boundary = `----komaFormBoundary${Date.now()}${Math.random().toString(16).slice(2)}`;
   const chunks: Buffer[] = [];
+  const CRLF = Buffer.from([13, 10]);
 
   const pushText = (text: string) => { chunks.push(Buffer.from(text, 'utf8')); };
+  const pushCRLF = () => { chunks.push(CRLF); };
+  const pushBoundaryLine = () => {
+    // Keep CRLF bytes explicit to avoid bundlers rewriting newline escapes into multiline template literals.
+    chunks.push(Buffer.from(`--${boundary}`, 'utf8'));
+    pushCRLF();
+  };
 
   for (const f of multipart?.fields || []) {
     if (!f?.name) continue;
-    pushText(`--${boundary}` + '\r\n');
+    pushBoundaryLine();
     if (f.kind === 'text') {
-      pushText(`Content-Disposition: form-data; name="${escapeHeaderValue(f.name)}"` + '\r\n\r\n');
+      pushText(`Content-Disposition: form-data; name="${escapeHeaderValue(f.name)}"`);
+      pushCRLF();
+      pushCRLF();
       pushText(String(f.value ?? ''));
-      pushText('\r\n');
+      pushCRLF();
       continue;
     }
     if (f.kind === 'file') {
       const filename = escapeHeaderValue(String(f.filename || 'file'));
       const contentType = f.contentType ? String(f.contentType) : 'application/octet-stream';
-      pushText(
-        `Content-Disposition: form-data; name="${escapeHeaderValue(f.name)}"; filename="${filename}"` + '\r\n'
-      );
-      pushText(`Content-Type: ${contentType}` + '\r\n\r\n');
+      pushText(`Content-Disposition: form-data; name="${escapeHeaderValue(f.name)}"; filename="${filename}"`);
+      pushCRLF();
+      pushText(`Content-Type: ${contentType}`);
+      pushCRLF();
+      pushCRLF();
       chunks.push(Buffer.from(String(f.base64 ?? ''), 'base64'));
-      pushText('\r\n');
+      pushCRLF();
     }
   }
 
-  pushText(`--${boundary}--` + '\r\n');
+  chunks.push(Buffer.from(`--${boundary}--`, 'utf8'));
+  pushCRLF();
   const body = Buffer.concat(chunks);
   return { body, contentType: `multipart/form-data; boundary=${boundary}` };
 }

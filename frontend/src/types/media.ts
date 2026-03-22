@@ -126,7 +126,13 @@ export function isBlobUri(value?: string): boolean {
 }
 
 export function getMediaAssetDisplaySource(asset?: StoredMediaAsset): string | undefined {
-  return asset?.remoteUrl || asset?.localPath;
+  if (!asset) return undefined;
+  // Electron should prefer local files to avoid CORS and to keep ffmpeg/canvas pipelines working.
+  // Browser mode cannot access localPath, so prefer remoteUrl there.
+  const isElectronEnv = typeof window !== 'undefined' && Boolean((window as any).electronAPI);
+  return isElectronEnv
+    ? (asset.localPath || asset.remoteUrl)
+    : (asset.remoteUrl || asset.localPath);
 }
 
 export function getMediaAssetEditingSource(asset?: StoredMediaAsset): string | undefined {

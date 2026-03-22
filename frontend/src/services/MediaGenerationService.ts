@@ -296,6 +296,14 @@ export class MediaGenerationService {
     let compilationDebug: any = null;
     let additionalReferencesInput = (request.additionalReferences || []);
 
+    // grok2api video calls can be very sensitive to payload size. Limit reference count
+    // to improve upstream stability (e.g. avoid AssetsUploadReverse upstream errors).
+    const isGrok2ApiImagineITV = provider?.config?.provider === 'grok2api-imagine-itv';
+    const maxGrok2ApiAdditionalRefs = isGrok2ApiImagineITV ? 3 : undefined;
+    if (maxGrok2ApiAdditionalRefs != null && additionalReferencesInput.length > maxGrok2ApiAdditionalRefs) {
+      additionalReferencesInput = additionalReferencesInput.slice(0, maxGrok2ApiAdditionalRefs);
+    }
+
     // Decide policy based on provider supported transports:
     // - URL-only providers: remoteUrl is required (fail fast if cannot upload / missing image-hosting)
     // - data-url-capable providers: remoteUrl is best-effort (fall back to data-url payload)
@@ -327,13 +335,23 @@ export class MediaGenerationService {
     let additionalReferences = await ensureProviderAssetInputs(normalizedAdditional as any);
 
     if (protocol === 'grok-image-index' && promptCompilation?.selectedAssets?.length) {
+      const cappedSelectedAssets = maxGrok2ApiAdditionalRefs != null
+        ? promptCompilation.selectedAssets.slice(0, maxGrok2ApiAdditionalRefs)
+        : promptCompilation.selectedAssets;
+      const remainingForExtra = maxGrok2ApiAdditionalRefs != null
+        ? Math.max(0, maxGrok2ApiAdditionalRefs - cappedSelectedAssets.length)
+        : undefined;
+      const cappedExtraReferences = remainingForExtra != null
+        ? (request.additionalReferences || []).slice(0, remainingForExtra)
+        : (request.additionalReferences || []);
+
       // Rebuild additional references in strict order (selectedAssets -> extras) so @Image N is stable.
       // Important: We compile on the "raw prompt" and rely on the normalized remote/data URLs above.
       const { compiledPrompt: cp, compiledAdditionalReferences, debug } = compileGrokITV({
         prompt: originalPrompt,
         primaryImage: primaryImage.value,
-        selectedAssets: promptCompilation.selectedAssets,
-        extraReferences: (request.additionalReferences || []),
+        selectedAssets: cappedSelectedAssets,
+        extraReferences: cappedExtraReferences,
       });
       compiledPrompt = cp;
       compilationDebug = debug;
@@ -356,6 +374,10 @@ export class MediaGenerationService {
         mentions: parseMentions(originalPrompt),
         debug,
       });
+    }
+
+    if (maxGrok2ApiAdditionalRefs != null && additionalReferences.length > maxGrok2ApiAdditionalRefs) {
+      additionalReferences = additionalReferences.slice(0, maxGrok2ApiAdditionalRefs);
     }
 
     if (protocol === 'grok-image-index') {
