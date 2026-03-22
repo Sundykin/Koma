@@ -8,7 +8,6 @@ import { getMediaAssetDisplaySource } from '../types';
 import { loadProps } from '../store/projectStore';
 import { resolvePromptTemplate } from '../store/promptTemplates';
 import { getThemeStylePrefix } from '../config/themePresets';
-import { parseMentions } from '../editor/mentionTypes';
 import { logTTICall } from '../store/aiCallLogger';
 import { createLogger } from '../store/logger';
 import { mediaGenerationService } from '../services/MediaGenerationService';
@@ -133,12 +132,9 @@ export async function shotImageWorkflow(params: {
   let promptSource: 'default' | 'custom' | 'finalized' = 'finalized';
 
   if (normalizedShot.imagePrompt) {
-    prompt = replaceMentionsWithDescriptions(
-      normalizedShot.imagePrompt,
-      normalizedCharacters,
-      normalizedScenes,
-      props
-    );
+    // 保留 @char/@scene/@prop（供渠道编译协议处理，例如 grok-image-index）。
+    // 如果这里把 @ 引用替换成纯文字描述，会导致编译器无法提取 @ 资产并完成 @imageN 映射。
+    prompt = normalizedShot.imagePrompt;
   } else {
     const stylePrefix = styleSnapshot?.ttiStylePrefix || project?.styleSnapshot?.ttiStylePrefix || getThemeStylePrefix(theme, stylePrompt);
     const resolved = await resolvePromptTemplate('tti_shot_image', buildShotImageTemplateVariables({
@@ -198,42 +194,4 @@ export async function shotImageWorkflow(params: {
 
   onProgress?.(100, '完成');
   return asset;
-}
-
-function replaceMentionsWithDescriptions(
-  prompt: string,
-  characters: Character[],
-  scenes: Scene[],
-  props: Array<{ id: string; name: string; prompt?: string; sora2PropId?: string; type?: string }>
-): string {
-  const mentions = parseMentions(prompt);
-  let result = prompt;
-  const sortedMentions = [...mentions].sort((a, b) => b.from - a.from);
-
-  for (const mention of sortedMentions) {
-    let replacement = '';
-
-    if (mention.type === 'char') {
-      const char = characters.find(c => c.id === mention.id || (c as any).sora2CharacterId === mention.id);
-      if (char) {
-        replacement = `[${char.name}: ${char.prompt || ''}]`;
-      }
-    } else if (mention.type === 'scene') {
-      const scene = scenes.find(s => s.id === mention.id);
-      if (scene) {
-        replacement = `[${scene.name}: ${scene.prompt || ''}]`;
-      }
-    } else if (mention.type === 'prop') {
-      const prop = props.find(p => p.id === mention.id || p.sora2PropId === mention.id);
-      if (prop) {
-        replacement = `[${prop.name}: ${prop.prompt || prop.type || ''}]`;
-      }
-    }
-
-    if (replacement) {
-      result = result.slice(0, mention.from) + replacement + result.slice(mention.to);
-    }
-  }
-
-  return result;
 }
