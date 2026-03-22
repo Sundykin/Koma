@@ -23,6 +23,15 @@ type ImageGenResponse = {
   created?: number;
 };
 
+type ChatCompletionsResponse = {
+  id?: string;
+  choices?: Array<{
+    message?: {
+      content?: unknown;
+    };
+  }>;
+};
+
 function extFromMime(mimeType: string): string {
   const m = mimeType.toLowerCase();
   if (m.includes('png')) return 'png';
@@ -128,6 +137,13 @@ function findMediaUrlDeep(value: unknown, baseUrl: string): string | null {
   return null;
 }
 
+function dropOverflowImageTags(prompt: string, maxImages: number): string {
+  const out = prompt
+    .replace(/\@Image\s+(\d+)\b/g, (m, nRaw) => (Number(nRaw) > maxImages ? '' : m))
+    .replace(/\[\[IMAGE_TAG_(\d+)\]\]/g, (m, nRaw) => (Number(nRaw) > maxImages ? '' : m));
+  return out.replace(/\s{2,}/g, ' ').trim();
+}
+
 function extractImageUrlFromGen(resp: ImageGenResponse): string | null {
   const item = resp.data?.[0];
   if (!item) return null;
@@ -151,6 +167,13 @@ export class Grok2ApiImagineTTIProvider implements TTIProvider {
   private getHeaders(): Record<string, string> {
     return {
       Authorization: `Bearer ${this.config.apiKey || ''}`,
+    };
+  }
+
+  private getJsonHeaders(): Record<string, string> {
+    return {
+      ...this.getHeaders(),
+      'Content-Type': 'application/json',
     };
   }
 
@@ -217,12 +240,72 @@ export class Grok2ApiImagineTTIProvider implements TTIProvider {
       return { mode: 'immediate', output: { path: url, url } };
     }
 
-    // 2) With references: use /v1/images/edits (multipart)
+    // 2) With references:
+    // Some deployments/proxies may not support multipart reliably. Try JSON-body edit first.
+    const refsAll = request.references || [];
+    const refs = refsAll.slice(0, 3);
+    const prompt = dropOverflowImageTags(request.prompt, refs.length);
+
+    try {
+      const content = [
+        { type: 'text', text: prompt },
+        ...refs.map(r => ({ type: 'image_url', image_url: { url: r.value } })),
+      ];
+
+      const w = request.options?.width;
+      const h = request.options?.height;
+      const size = (typeof w === 'number' && typeof h === 'number') ? `${w}x${h}` : undefined;
+
+      const body: Record<string, any> = {
+        model: this.config.modelName || 'grok-imagine-1.0-edit',
+        stream: false,
+        messages: [{ role: 'user', content }],
+        ...(size ? { image_config: { n: 1, size } } : undefined),
+      };
+
+      if (debugBody) {
+        logger.info('TTI chat(edit) request body', {
+          provider: this.config.provider,
+          ...(protocol ? { promptProtocol: protocol } : undefined),
+          body: sanitizeBodyForLog(body),
+        });
+      }
+
+      const resp = await safeFetch(joinUrl(this.config.baseUrl || '', '/v1/chat/completions'), {
+        method: 'POST',
+        headers: {
+          ...this.getJsonHeaders(),
+          ...(debugBody ? { 'x-koma-debug-body': '1' } : undefined),
+          ...(debugBody ? { 'x-koma-trace-operation': 'tti.chat.edit' } : undefined),
+        },
+        body: JSON.stringify(body),
+      });
+      const raw = await resp.text();
+      if (!resp.ok) throw new Error(`chat/edit failed (${resp.status}): ${raw.slice(0, 600)}`);
+
+      let data: ChatCompletionsResponse;
+      try {
+        data = JSON.parse(raw) as ChatCompletionsResponse;
+      } catch {
+        throw new Error(`chat/edit non-json: ${raw.slice(0, 600)}`);
+      }
+
+      const candidate = findMediaUrlDeep(data, this.config.baseUrl || '');
+      const url = candidate ? (normalizeCandidateUrl(candidate, this.config.baseUrl || '') || candidate) : null;
+      if (!url) throw new Error('chat/edit has no media url');
+      return { mode: 'immediate', output: { path: url, url } };
+    } catch (err: any) {
+      logger.warn('TTI chat(edit) failed; falling back to images/edits multipart', {
+        provider: this.config.provider,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+
+    // 2.2) Fallback: use /v1/images/edits (multipart)
     const form = new FormData();
     form.append('model', this.config.modelName || 'grok-imagine-1.0-edit');
-    form.append('prompt', request.prompt);
+    form.append('prompt', prompt);
 
-    const refs = request.references || [];
     for (let i = 0; i < refs.length; i += 1) {
       const ref = refs[i];
       if (!ref?.value) continue;
@@ -261,8 +344,8 @@ export class Grok2ApiImagineTTIProvider implements TTIProvider {
         provider: this.config.provider,
         ...(protocol ? { promptProtocol: protocol } : undefined),
         model: this.config.modelName || 'grok-imagine-1.0-edit',
-        prompt: request.prompt,
-        images: refs.map((r, i) => ({
+        prompt,
+        images: refsAll.map((r, i) => ({
           i: i + 1,
           transport: r.transport,
           mimeType: r.mimeType,
