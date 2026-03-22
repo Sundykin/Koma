@@ -21,6 +21,30 @@ function delay(ms: number): Promise<void> {
 }
 import { buildChunkContextPrompt, splitScriptIntoChunks } from './scriptAnalysisChunking';
 
+function cleanText(value?: string): string {
+  return (value || '').replace(/\s+/g, ' ').replace(/\s*,\s*/g, '，').trim();
+}
+
+function splitVisualClauses(value?: string): string[] {
+  return (value || '')
+    .split(/[，,。；;、\n]+/)
+    .map(cleanText)
+    .filter(Boolean);
+}
+
+const CHARACTER_STORY_TOKENS = [
+  '店主', '老板', '职业', '工作', '靠', '为生', '接私活',
+  '能看见', '看见鬼', '鬼魂', '灵异',
+  '养父', '养母', '继承', '去世', '身世', '成谜',
+  '火场', '被救', '遇难', '全家',
+];
+
+function sanitizeCharacterAppearance(value?: string, fallback?: string): string {
+  const clauses = splitVisualClauses(value);
+  const filtered = clauses.filter(clause => !CHARACTER_STORY_TOKENS.some(token => clause.includes(token)));
+  return cleanText(filtered.join('，') || fallback || '');
+}
+
 // Prompt 注入防御：system prompt 末尾追加的安全规则
 const INJECTION_GUARD = `
 【安全规则】
@@ -362,13 +386,15 @@ export class ScriptAnalysisService {
           return parsed.characters.filter((c: any) => c && typeof c.name === 'string' && c.name.trim());
         },
         (c, index) => ({
+          // prompt 只承载纯视觉 appearance；description 保留为非视觉的人物小传
+          // 即便 LLM 越线把剧情写进 appearance，也会在这里被过滤掉，避免污染后续生图链路。
           id: `char_${Date.now()}_${index}`,
           name: c.name,
-          prompt: [c.appearance, c.description].filter((value: unknown) => typeof value === 'string' && value.trim()).join('，') || c.name,
+          appearance: sanitizeCharacterAppearance(c.appearance, c.name),
+          description: cleanText(c.description || ''),
+          prompt: sanitizeCharacterAppearance(c.appearance, c.name) || c.name,
           age: c.age || '未知',
           gender: ['male', 'female', 'neutral', 'unknown'].includes(c.gender) ? c.gender : 'unknown',
-          description: c.description || '',
-          appearance: c.appearance || '',
           role: c.role || 'supporting',
           episodeId: this.episodeContext?.episodeId,
         })

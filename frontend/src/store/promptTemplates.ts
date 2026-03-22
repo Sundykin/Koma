@@ -674,6 +674,11 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
 3. 严禁使用"好看的"、"普通的"等模糊词
 4. 输出为中文描述
 
+【appearance 禁止内容（必须剔除）】
+- 职业/身份/社会关系（如：店主、老板、养父、继承）
+- 超自然/能力/设定（如：能看见鬼魂、通灵、诅咒）
+- 经历/背景/事件（如：火场被救、全家遇难、身世成谜）
+
 剧本：
 {{script}}
 

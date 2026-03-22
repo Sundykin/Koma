@@ -35,6 +35,13 @@ const PROP_USAGE_TOKENS = [
   '手里', '手中', '手上的', '拿着', '握着', '举着', '抱着', '佩戴', '穿着', '踩着', '坐在', '放在他', '放在她'
 ];
 
+const CHARACTER_STORY_TOKENS = [
+  '店主', '老板', '职业', '工作', '靠', '为生', '接私活',
+  '能看见', '看见鬼', '鬼魂', '灵异',
+  '养父', '养母', '继承', '去世', '身世', '成谜',
+  '火场', '被救', '遇难', '全家',
+];
+
 function containsHumanSubject(clause: string): boolean {
   return HUMAN_TOKENS.some(token => clause.includes(token));
 }
@@ -49,6 +56,19 @@ function containsNarrativeOrAbstractToken(clause: string): boolean {
 
 function containsPropUsageContext(clause: string): boolean {
   return PROP_USAGE_TOKENS.some(token => clause.includes(token));
+}
+
+function containsCharacterStoryToken(clause: string): boolean {
+  return CHARACTER_STORY_TOKENS.some(token => clause.includes(token));
+}
+
+function sanitizeCharacterAppearance(value?: string, fallback?: string): string {
+  const clauses = splitVisualClauses(value);
+  const filtered = clauses.filter(clause => (
+    !containsCharacterStoryToken(clause)
+    && !containsNarrativeOrAbstractToken(clause)
+  ));
+  return cleanText(filtered.join(', ') || fallback || '');
 }
 
 function sanitizeSceneDescription(value?: string, fallback?: string): string {
@@ -140,7 +160,7 @@ function formatEmotionCue(emotion?: string): string {
 
 function getCharacterAppearance(character?: Character): string {
   if (!character) return '';
-  return cleanText(character.prompt || character.name);
+  return sanitizeCharacterAppearance(character.prompt, character.name);
 }
 
 function getSceneVisualDescription(scene?: Scene): string {
