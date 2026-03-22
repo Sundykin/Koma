@@ -324,16 +324,24 @@ export class MediaGenerationService {
     const primaryPolicy: RemoteUrlPolicy = allow.primary ? 'best-effort' : 'required';
     const additionalPolicy: RemoteUrlPolicy = allow.additional ? 'best-effort' : 'required';
 
-    const normalizedPrimary = await ensureRemoteUrlForImageSource({
-      projectId,
-      source: request.primaryImage as any,
-      policy: primaryPolicy,
-    });
-    const normalizedAdditional = await ensureRemoteUrlForImageSources({
-      projectId,
-      sources: (additionalReferencesInput as any[]),
-      policy: additionalPolicy,
-    });
+    // When provider accepts data-url, do not attempt "best-effort" image hosting uploads here.
+    // This avoids hard dependency on image-hosting plugins and keeps the pipeline deterministic:
+    // local paths -> data-url (resolver), remote URLs remain remote-url.
+    const normalizedPrimary = primaryPolicy === 'required'
+      ? await ensureRemoteUrlForImageSource({
+          projectId,
+          source: request.primaryImage as any,
+          policy: primaryPolicy,
+        })
+      : (request.primaryImage as any);
+
+    const normalizedAdditional = additionalPolicy === 'required'
+      ? await ensureRemoteUrlForImageSources({
+          projectId,
+          sources: (additionalReferencesInput as any[]),
+          policy: additionalPolicy,
+        })
+      : (additionalReferencesInput as any[]);
 
     const primaryImage = await ensureProviderAssetInput(normalizedPrimary as any);
     if (!primaryImage) throw new Error('缺少 primaryImage');
@@ -352,11 +360,13 @@ export class MediaGenerationService {
       compilationDebug = debug;
 
       // Normalize the compiled additional refs again (they may include StoredMediaAsset / local paths).
-      const normalizedCompiledAdditional = await ensureRemoteUrlForImageSources({
-        projectId,
-        sources: (compiledAdditionalReferences as any[]),
-        policy: additionalPolicy,
-      });
+      const normalizedCompiledAdditional = additionalPolicy === 'required'
+        ? await ensureRemoteUrlForImageSources({
+            projectId,
+            sources: (compiledAdditionalReferences as any[]),
+            policy: additionalPolicy,
+          })
+        : (compiledAdditionalReferences as any[]);
       additionalReferences = await ensureProviderAssetInputs(normalizedCompiledAdditional as any);
 
       logger.info('ITV prompt compiled (grok-image-index)', {

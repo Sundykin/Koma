@@ -183,6 +183,45 @@ export class Grok2ApiImagineITVProvider implements ITVProvider {
     this.config = config;
   }
 
+  private normalizeVideoLengthSeconds(value: number | undefined): number | undefined {
+    if (typeof value !== 'number' || !Number.isFinite(value)) return undefined;
+    // grok2api reverse-engineered constraints:
+    // video_length is a discrete enum: 6 / 10 / 15 (seconds).
+    // We choose the nearest supported value to reduce "invalid_video_length" errors.
+    const supported = [6, 10, 15] as const;
+    let best: number = supported[0];
+    let bestDist = Math.abs(value - best);
+    for (const s of supported.slice(1)) {
+      const dist = Math.abs(value - s);
+      if (dist < bestDist) {
+        best = s;
+        bestDist = dist;
+      }
+    }
+    return best;
+  }
+
+  private normalizeAspectRatio(value: string | undefined): string | undefined {
+    if (!value || typeof value !== 'string') return undefined;
+    // Settings UI uses "1280x720" style. grok2api accepts this as aspect_ratio.
+    const m = value.trim().match(/^(\d{3,5})x(\d{3,5})$/);
+    if (!m) return undefined;
+    return `${m[1]}x${m[2]}`;
+  }
+
+  private normalizeResolutionName(value: string | undefined): '480p' | '720p' | undefined {
+    if (!value || typeof value !== 'string') return undefined;
+    const v = value.trim().toLowerCase();
+    if (v === '480p' || v === '720p') return v as any;
+    // Map any WxH aspect ratios into the closest supported resolution bucket.
+    const m = v.match(/^(\d{3,5})x(\d{3,5})$/);
+    if (!m) return undefined;
+    const w = Number(m[1]);
+    const h = Number(m[2]);
+    const shortEdge = Math.min(w, h);
+    return shortEdge <= 480 ? '480p' : '720p';
+  }
+
   validate(): boolean {
     return Boolean(this.config.apiKey && this.config.baseUrl);
   }
@@ -226,14 +265,24 @@ export class Grok2ApiImagineITVProvider implements ITVProvider {
     blocks.push({ type: 'text', text: request.prompt });
 
     const opts = request.options || {};
-    const duration = typeof opts.duration === 'number' ? opts.duration : this.config.defaultDuration;
-    const resolutionName = typeof opts.resolution === 'string' ? opts.resolution : this.config.defaultResolution;
+    const durationRaw = typeof opts.duration === 'number' ? opts.duration : this.config.defaultDuration;
+    const duration = this.normalizeVideoLengthSeconds(durationRaw);
+
+    // Koma's ITV settings UI uses "1280x720" etc as the "resolution" selector.
+    // grok2api expects that value in `video_config.aspect_ratio`, and only supports
+    // a small enum for `video_config.resolution_name` (480p / 720p).
+    const resolutionRaw = typeof opts.resolution === 'string'
+      ? opts.resolution
+      : this.config.defaultResolution;
+    const aspectRatio = this.normalizeAspectRatio(resolutionRaw);
+    const resolutionName = this.normalizeResolutionName(resolutionRaw);
 
     const body: Record<string, any> = {
       model: (this.config as any).modelName || 'grok-imagine-1.0-video',
       messages: [{ role: 'user', content: blocks }],
       video_config: {
         ...(duration ? { video_length: duration } : undefined),
+        ...(aspectRatio ? { aspect_ratio: aspectRatio } : undefined),
         ...(resolutionName ? { resolution_name: resolutionName } : undefined),
       },
     };

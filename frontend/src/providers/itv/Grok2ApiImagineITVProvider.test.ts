@@ -34,7 +34,7 @@ describe('Grok2ApiImagineITVProvider', () => {
       updatedAt: Date.now(),
       modelName: 'grok-imagine-1.0-video',
       defaultDuration: 3,
-      defaultResolution: '720p',
+      defaultResolution: '1280x720',
     } as any);
 
     const res = await p.start({
@@ -43,13 +43,18 @@ describe('Grok2ApiImagineITVProvider', () => {
       additionalReferences: [
         { transport: 'remote-url', value: 'https://img.example.com/2.jpg' },
       ],
-      options: { duration: 5, resolution: '1080p' },
+      options: { duration: 5, resolution: '1920x1080' },
     } as any);
 
     expect((safeFetch as any).mock.calls[0][0]).toContain('/v1/chat/completions');
     const init = (safeFetch as any).mock.calls[0][1];
     const body = JSON.parse(init.body);
     expect(body.messages[0].content[0].image_url.url).toBe('https://img.example.com/1.jpg');
+    // grok2api expects discrete video_length: 6 / 10 / 15
+    expect(body.video_config.video_length).toBe(6);
+    // Koma UI uses WxH; grok2api wants that in aspect_ratio + a small enum resolution_name
+    expect(body.video_config.aspect_ratio).toBe('1920x1080');
+    expect(body.video_config.resolution_name).toBe('720p');
     expect(res.mode).toBe('immediate');
     expect((res as any).output.source).toBe('https://cdn.example.com/v.mp4');
   });
