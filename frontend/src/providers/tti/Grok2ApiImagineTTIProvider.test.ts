@@ -18,7 +18,7 @@ describe('Grok2ApiImagineTTIProvider', () => {
     (safeFetch as any).mockResolvedValueOnce({
       ok: true,
       status: 200,
-      json: async () => ({ data: [{ url: 'https://cdn.example.com/a.jpg' }] }),
+      text: async () => JSON.stringify({ data: [{ url: 'https://cdn.example.com/a.jpg' }] }),
     });
 
     const p = new Grok2ApiImagineTTIProvider({
@@ -43,7 +43,7 @@ describe('Grok2ApiImagineTTIProvider', () => {
     (safeFetch as any).mockResolvedValueOnce({
       ok: true,
       status: 200,
-      json: async () => ({
+      text: async () => JSON.stringify({
         choices: [
           { message: { content: 'ok https://cdn.example.com/x.png' } },
         ],
@@ -77,5 +77,36 @@ describe('Grok2ApiImagineTTIProvider', () => {
     expect(result.mode).toBe('immediate');
     expect((result as any).output.url).toBe('https://cdn.example.com/x.png');
   });
-});
 
+  it('extracts url from non-standard response shape (deep scan)', async () => {
+    (safeFetch as any).mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({
+        choices: [{ message: { content: [{ type: 'text', text: 'done' }] } }],
+        data: [{ url: '/outputs/abc.png' }],
+      }),
+    });
+
+    const p = new Grok2ApiImagineTTIProvider({
+      id: 'c1',
+      name: 'grok2',
+      provider: 'grok2api-imagine-tti' as any,
+      baseUrl: 'http://127.0.0.1:8000',
+      apiKey: 'k',
+      isDefault: true,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      modelName: 'grok-imagine-1.0-edit',
+    } as any);
+
+    const result = await p.start({
+      prompt: 'p',
+      references: [
+        { transport: 'remote-url', value: 'https://ref.example.com/r1.jpg' },
+      ],
+    } as any);
+
+    expect((result as any).output.url).toBe('http://127.0.0.1:8000/outputs/abc.png');
+  });
+});
