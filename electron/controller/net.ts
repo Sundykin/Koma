@@ -176,15 +176,15 @@ class NetController extends BaseController {
       }
 
       try {
-        let body: any = args.body;
+        let reqBody: any = args.body;
         if (args.multipart) {
           stripContentType(headers);
-          body = buildMultipartBody(args.multipart);
+          reqBody = buildMultipartBody(args.multipart);
         }
         const response = await fetch(args.url, {
           method: args.method || 'GET',
           headers,
-          body,
+          body: reqBody,
         });
 
         const body = await readBodyChunked(response);
