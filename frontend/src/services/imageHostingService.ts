@@ -19,17 +19,10 @@ const logger = createLogger('ImageHosting');
 
 let _recovering: Promise<void> | null = null;
 
+import { base64ToBytes } from '../utils/encoding';
+
 function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-function base64ToUint8Array(base64: string): Uint8Array {
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-  return bytes;
 }
 
 export async function getActiveImageHostingChannel() {
@@ -314,7 +307,7 @@ export async function uploadLocalFileToImageHosting(
 
   try {
     const base64 = await electronService.fs.readFileAsBase64(localPath);
-    const bytes = base64ToUint8Array(base64);
+    const bytes = base64ToBytes(base64);
     const filename = options?.filename || localPath.split(/[/\\]/).pop() || 'image.png';
     return uploadBytesToImageHostingWithRetry(bytes, { ...options, filename });
   } catch (err: unknown) {

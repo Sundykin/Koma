@@ -17,6 +17,7 @@ import {
 } from '../store/project/mediaState';
 import { mediaGenerationService } from '../services/MediaGenerationService';
 import { buildShotVideoTemplateVariables } from './promptVariableBuilders';
+import { buildShotAssetReferences } from './assetReferenceBuilder';
 
 const logger = createLogger('ShotRender');
 
@@ -147,18 +148,10 @@ export async function shotRenderWorkflow(
 
     // 构建视频 prompt：优先使用 shot.videoPrompt
     let videoPrompt: string;
-    let additionalReferenceImages: Array<string> = [];
-    const selectedAssetsForCompilation: Array<{
-      type: 'char' | 'scene' | 'prop';
-      assetId: string;
-      altIds?: string[];
-      source?: any;
-    }> = [];
     let templateId = 'shot.videoPrompt';
     let promptSource: 'default' | 'custom' | 'finalized' = 'finalized';
 
     if (normalizedShot.videoPrompt) {
-      // 使用专用视频提示词
       videoPrompt = normalizedShot.videoPrompt;
     } else {
       const resolvedPrompt = await resolvePromptTemplate('itv_shot_video', buildShotVideoTemplateVariables({
@@ -169,52 +162,18 @@ export async function shotRenderWorkflow(
         stylePrefix: stylePrefix || '',
         cameraMovement: getCameraMovementDesc(normalizedShot.cameraMovement),
       }));
-      // 渲染阶段的 fallback prompt 不强行注入 Sora2 ID，保持提示词稳定与可编译
       videoPrompt = resolvedPrompt.prompt;
       templateId = resolvedPrompt.template.id;
       promptSource = resolvedPrompt.source;
     }
 
-    // 统一从“分镜已选择资产”构建参考图（角色/场景/道具），保证链路不割裂
-    for (const charId of normalizedShot.characters || []) {
-      const char = characters.find(c => c.id === charId);
-      const src = getMediaAssetDisplaySource(char?.media?.costumePhoto);
-      if (src) additionalReferenceImages.push(src);
-      if (char) {
-        selectedAssetsForCompilation.push({
-          type: 'char',
-          assetId: char.id,
-          altIds: char.sora2CharacterId ? [char.sora2CharacterId] : undefined,
-          source: char.media?.costumePhoto,
-        });
-      }
-    }
-    for (const sceneId of normalizedShot.scenes || []) {
-      const scene = projectScenes.find(s => s.id === sceneId);
-      const src = getMediaAssetDisplaySource(scene?.media?.previewImage);
-      if (src) additionalReferenceImages.push(src);
-      if (scene) {
-        selectedAssetsForCompilation.push({
-          type: 'scene',
-          assetId: scene.id,
-          source: scene.media?.previewImage,
-        });
-      }
-    }
-    for (const propId of normalizedShot.props || []) {
-      const prop = projectProps.find(p => p.id === propId);
-      const src = getMediaAssetDisplaySource(prop?.media?.previewImage);
-      if (src) additionalReferenceImages.push(src);
-      if (prop) {
-        selectedAssetsForCompilation.push({
-          type: 'prop',
-          assetId: prop.id,
-          altIds: prop.sora2PropId ? [prop.sora2PropId] : undefined,
-          source: prop.media?.previewImage,
-        });
-      }
-    }
-    // Shot 自身的参考图（手动添加），排在最后，避免影响 Grok @imageN 索引
+    // 统一从”分镜已选择资产”构建参考图（角色/场景/道具），保证链路不割裂
+    const {
+      displaySourceUrls: additionalReferenceImages,
+      compilationAssets: selectedAssetsForCompilation,
+    } = buildShotAssetReferences(normalizedShot, characters, projectScenes, projectProps);
+
+    // Shot 自身的参考图（手动添加），排在最后，避免影响 Grok @Image N 索引
     for (const ref of normalizedShot.media?.references || []) {
       const src = getMediaAssetDisplaySource(ref);
       if (src) additionalReferenceImages.push(src);

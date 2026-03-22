@@ -238,10 +238,10 @@ export type ModelProviderType = 'gemini' | 'openai' | 'openai-compatible' | 'cla
 export type LLMProviderType = 'openai-compatible' | 'gemini' | 'claude';
 // 扩展支持插件动态类型
 export type TTIProviderType =
-  | 'comfyui' | 'jimeng' | 'qwen-image' | 'midjourney' | 'dall-e' | 'flux' | 'nano-banana' | 'gemini-3-pro' | 'openai-compatible-tti'
+  | 'comfyui' | 'jimeng' | 'qwen-image' | 'midjourney' | 'dall-e' | 'flux' | 'nano-banana' | 'gemini-3-pro' | 'openai-compatible-tti' | 'grok2api-imagine-tti'
   | (string & { __ttiPlugin?: never });
 export type ITVProviderType =
-  | 'runway' | 'kling' | 'pika' | 'minimax' | 'comfyui-animatediff' | 'sora2' | 'custom'
+  | 'runway' | 'kling' | 'pika' | 'minimax' | 'comfyui-animatediff' | 'sora2' | 'custom' | 'grok2api-imagine-itv'
   | (string & { __itvPlugin?: never });
 export type TTSProviderType =
   | 'edge-tts' | 'openai-tts' | 'fish-audio' | 'gpt-sovits' | 'doubao-tts'

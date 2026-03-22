@@ -16,28 +16,11 @@ import { isDataUri, isRemoteMediaUri } from '../types';
 import { electronService } from './electronService';
 import { createLogger } from '../store/logger';
 import { uploadBytesToImageHostingWithRetry } from './imageHostingService';
+import { base64ToBytes, stripDataHeader } from '../utils/encoding';
 
 const logger = createLogger('MediaRemoteUrl');
 
 export type RemoteUrlPolicy = 'best-effort' | 'required';
-
-function base64ToUint8Array(base64: string): Uint8Array {
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-  return bytes;
-}
-
-function stripDataHeader(dataUrl: string): { mimeType?: string; base64: string } {
-  const match = /^data:([^;,]+);base64,(.*)$/i.exec(dataUrl);
-  if (!match) {
-    const idx = dataUrl.indexOf(',');
-    return { base64: idx >= 0 ? dataUrl.slice(idx + 1) : dataUrl };
-  }
-  return { mimeType: match[1], base64: match[2] };
-}
 
 function safeFilenameFromPath(path: string): string {
   const name = path.split(/[/\\]/).pop() || 'image.png';
@@ -73,12 +56,12 @@ async function readBytesFromLocalFile(path: string): Promise<Uint8Array> {
   }
 
   const base64 = await electronService.fs.readFileAsBase64(path);
-  return base64ToUint8Array(base64);
+  return base64ToBytes(base64);
 }
 
 async function readBytesFromDataUrl(dataUrl: string): Promise<Uint8Array> {
   const { base64 } = stripDataHeader(dataUrl);
-  return base64ToUint8Array(base64);
+  return base64ToBytes(base64);
 }
 
 /**

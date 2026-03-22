@@ -33,31 +33,10 @@ import type { RemoteUrlPolicy } from './mediaRemoteUrlService';
 import type { PromptCompilationInput } from './promptCompilation/types';
 import { compileGrokITV, compileGrokTTI } from './promptCompilation/grokImageIndexCompiler';
 import { parseMentions } from '../editor/mentionTypes';
+import { sanitizeBodyForLog, truncateString } from '../utils/logFormatting';
+import { DEFAULT_POLLING_CONFIG } from '../providers/polling';
 
 const logger = createLogger('MediaGeneration');
-
-function truncateString(value: string, max = 600): string {
-  if (value.length <= max) return value;
-  return `${value.slice(0, max)}...(truncated, ${value.length} chars)`;
-}
-
-function sanitizeBodyForLog(body: any): any {
-  // Avoid spewing huge base64 payloads to console while keeping the overall structure visible.
-  const walk = (v: any): any => {
-    if (typeof v === 'string') {
-      if (v.startsWith('data:')) return truncateString(v, 140);
-      return v.length > 2000 ? truncateString(v, 800) : v;
-    }
-    if (Array.isArray(v)) return v.map(walk);
-    if (v && typeof v === 'object') {
-      const out: Record<string, any> = {};
-      for (const [k, val] of Object.entries(v)) out[k] = walk(val);
-      return out;
-    }
-    return v;
-  };
-  return walk(body);
-}
 
 function getPromptProtocol(provider: any): string | undefined {
   // ChannelConfig.providerConfig is spread into resolved config (see store/settings/mediaConfig.ts),
@@ -184,7 +163,7 @@ export class MediaGenerationService {
       const { compiledPrompt: cp, compiledReferences, debug } = compileGrokTTI({
         prompt: originalPrompt,
         selectedAssets: promptCompilation.selectedAssets,
-        // Keep any manual refs as trailing extras (do not shift @imageN indices).
+        // Keep any manual refs as trailing extras (do not shift @Image N indices).
         extraReferences: (request.references || []),
       });
       compiledPrompt = cp;
@@ -324,23 +303,31 @@ export class MediaGenerationService {
     const primaryPolicy: RemoteUrlPolicy = allow.primary ? 'best-effort' : 'required';
     const additionalPolicy: RemoteUrlPolicy = allow.additional ? 'best-effort' : 'required';
 
-    const normalizedPrimary = await ensureRemoteUrlForImageSource({
-      projectId,
-      source: request.primaryImage as any,
-      policy: primaryPolicy,
-    });
-    const normalizedAdditional = await ensureRemoteUrlForImageSources({
-      projectId,
-      sources: (additionalReferencesInput as any[]),
-      policy: additionalPolicy,
-    });
+    // When provider accepts data-url, do not attempt "best-effort" image hosting uploads here.
+    // This avoids hard dependency on image-hosting plugins and keeps the pipeline deterministic:
+    // local paths -> data-url (resolver), remote URLs remain remote-url.
+    const normalizedPrimary = primaryPolicy === 'required'
+      ? await ensureRemoteUrlForImageSource({
+          projectId,
+          source: request.primaryImage as any,
+          policy: primaryPolicy,
+        })
+      : (request.primaryImage as any);
+
+    const normalizedAdditional = additionalPolicy === 'required'
+      ? await ensureRemoteUrlForImageSources({
+          projectId,
+          sources: (additionalReferencesInput as any[]),
+          policy: additionalPolicy,
+        })
+      : (additionalReferencesInput as any[]);
 
     const primaryImage = await ensureProviderAssetInput(normalizedPrimary as any);
     if (!primaryImage) throw new Error('缺少 primaryImage');
     let additionalReferences = await ensureProviderAssetInputs(normalizedAdditional as any);
 
     if (protocol === 'grok-image-index' && promptCompilation?.selectedAssets?.length) {
-      // Rebuild additional references in strict order (selectedAssets -> extras) so @imageN is stable.
+      // Rebuild additional references in strict order (selectedAssets -> extras) so @Image N is stable.
       // Important: We compile on the "raw prompt" and rely on the normalized remote/data URLs above.
       const { compiledPrompt: cp, compiledAdditionalReferences, debug } = compileGrokITV({
         prompt: originalPrompt,
@@ -352,11 +339,13 @@ export class MediaGenerationService {
       compilationDebug = debug;
 
       // Normalize the compiled additional refs again (they may include StoredMediaAsset / local paths).
-      const normalizedCompiledAdditional = await ensureRemoteUrlForImageSources({
-        projectId,
-        sources: (compiledAdditionalReferences as any[]),
-        policy: additionalPolicy,
-      });
+      const normalizedCompiledAdditional = additionalPolicy === 'required'
+        ? await ensureRemoteUrlForImageSources({
+            projectId,
+            sources: (compiledAdditionalReferences as any[]),
+            policy: additionalPolicy,
+          })
+        : (compiledAdditionalReferences as any[]);
       additionalReferences = await ensureProviderAssetInputs(normalizedCompiledAdditional as any);
 
       logger.info('ITV prompt compiled (grok-image-index)', {
@@ -611,8 +600,8 @@ export class MediaGenerationService {
   }): Promise<StoredMediaAsset> {
     const { projectId, kind, task, getSnapshot, extractSource, enrichAsset, providerTaskId, onProgress } = params;
 
-    const pollIntervalMs = 3000;
-    const maxPollMs = 10 * 60 * 1000;
+    const pollIntervalMs = DEFAULT_POLLING_CONFIG.interval;
+    const maxPollMs = DEFAULT_POLLING_CONFIG.maxDuration;
     const startTime = Date.now();
 
     while (Date.now() - startTime < maxPollMs) {

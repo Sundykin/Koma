@@ -9,6 +9,9 @@ import {
   normalizeShotVersionMediaState,
   normalizeShotVersionsMediaState,
 } from './mediaState';
+import { createLogger } from '../logger';
+
+const logger = createLogger('ProjectShots');
 
 export async function saveShotVersion(
   projectId: string,
@@ -145,7 +148,8 @@ export async function loadShotMeta(
       ...parsed,
       versions: normalizeShotVersionsMediaState(parsed.versions || []),
     };
-  } catch {
+  } catch (err) {
+    logger.warn('加载分镜元数据失败', { shotId, err });
     return null;
   }
 }
@@ -172,13 +176,14 @@ export async function listShots(projectId: string): Promise<ShotMeta[]> {
           ...parsed,
           versions: normalizeShotVersionsMediaState(parsed.versions || []),
         });
-      } catch {
-        // skip invalid
+      } catch (err) {
+        logger.warn('跳过无效分镜条目', { entry, err });
       }
     }
 
     return shots;
-  } catch {
+  } catch (err) {
+    logger.warn('列举分镜失败', { projectId, err });
     return [];
   }
 }

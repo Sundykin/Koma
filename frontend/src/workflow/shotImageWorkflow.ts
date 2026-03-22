@@ -18,6 +18,7 @@ import {
   normalizeShotMediaState,
 } from '../store/project/mediaState';
 import { buildShotImageTemplateVariables } from './promptVariableBuilders';
+import { buildShotAssetReferences } from './assetReferenceBuilder';
 
 const logger = createLogger('ShotImageWorkflow');
 
@@ -59,72 +60,20 @@ export async function shotImageWorkflow(params: {
 
   onProgress?.(0, '准备生成分镜图片...');
 
-  const references: Array<string | StoredMediaAsset> = [];
-  const selectedAssetsForCompilation: Array<{
-    type: 'char' | 'scene' | 'prop';
-    assetId: string;
-    altIds?: string[];
-    source?: string | StoredMediaAsset;
-  }> = [];
-
   // Shot 自身的参考图
+  const references: Array<string | StoredMediaAsset> = [];
   for (const ref of normalizedShot.media?.references || []) {
     references.push(ref);
   }
 
-  // 关联资产参考图
-  for (const charId of normalizedShot.characters || []) {
-    const char = normalizedCharacters.find(c => c.id === charId);
-    if (char?.media?.costumePhoto) {
-      references.push(char.media.costumePhoto);
-      selectedAssetsForCompilation.push({
-        type: 'char',
-        assetId: char.id,
-        altIds: char.sora2CharacterId ? [char.sora2CharacterId] : undefined,
-        source: char.media.costumePhoto,
-      });
-    } else if (char) {
-      selectedAssetsForCompilation.push({
-        type: 'char',
-        assetId: char.id,
-        altIds: char.sora2CharacterId ? [char.sora2CharacterId] : undefined,
-      });
-    }
-  }
-  for (const sceneId of normalizedShot.scenes || []) {
-    const scene = normalizedScenes.find(s => s.id === sceneId);
-    if (scene?.media?.previewImage) {
-      references.push(scene.media.previewImage);
-      selectedAssetsForCompilation.push({
-        type: 'scene',
-        assetId: scene.id,
-        source: scene.media.previewImage,
-      });
-    } else if (scene) {
-      selectedAssetsForCompilation.push({
-        type: 'scene',
-        assetId: scene.id,
-      });
-    }
-  }
-  for (const propId of normalizedShot.props || []) {
-    const prop = props.find(p => p.id === propId);
-    if (prop?.media?.previewImage) {
-      references.push(prop.media.previewImage);
-      selectedAssetsForCompilation.push({
-        type: 'prop',
-        assetId: prop.id,
-        altIds: prop.sora2PropId ? [prop.sora2PropId] : undefined,
-        source: prop.media.previewImage,
-      });
-    } else if (prop) {
-      selectedAssetsForCompilation.push({
-        type: 'prop',
-        assetId: prop.id,
-        altIds: prop.sora2PropId ? [prop.sora2PropId] : undefined,
-      });
-    }
-  }
+  // 关联资产参考图（角色/场景/道具）
+  const { mediaReferences, compilationAssets: selectedAssetsForCompilation } = buildShotAssetReferences(
+    normalizedShot,
+    normalizedCharacters,
+    normalizedScenes,
+    props,
+  );
+  references.push(...mediaReferences);
 
   // 构建提示词：优先使用 imagePrompt
   let prompt: string;
@@ -133,7 +82,7 @@ export async function shotImageWorkflow(params: {
 
   if (normalizedShot.imagePrompt) {
     // 保留 @char/@scene/@prop（供渠道编译协议处理，例如 grok-image-index）。
-    // 如果这里把 @ 引用替换成纯文字描述，会导致编译器无法提取 @ 资产并完成 @imageN 映射。
+    // 如果这里把 @ 引用替换成纯文字描述，会导致编译器无法提取 @ 资产并完成 @Image N 映射。
     prompt = normalizedShot.imagePrompt;
   } else {
     const stylePrefix = styleSnapshot?.ttiStylePrefix || project?.styleSnapshot?.ttiStylePrefix || getThemeStylePrefix(theme, stylePrompt);

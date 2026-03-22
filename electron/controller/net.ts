@@ -1,5 +1,6 @@
 import { BaseController } from './base';
 import { validateUrl } from '../service/url-validator';
+import { Blob as BufferBlob } from 'buffer';
 
 // 每个 chunk 之间的最大空闲时间（5 分钟，兼容慢模型的首 token 等待）
 const CHUNK_IDLE_TIMEOUT_MS = 300_000;
@@ -33,6 +34,52 @@ function summarizeBody(body?: string): Record<string, any> {
       bodyLength: body.length,
     };
   }
+}
+
+type MultipartField =
+  | { kind: 'text'; name: string; value: string }
+  | { kind: 'file'; name: string; filename: string; contentType?: string; base64: string; size: number };
+
+type MultipartPayload = { fields: MultipartField[] };
+
+function summarizeMultipart(multipart?: MultipartPayload): Record<string, any> {
+  if (!multipart?.fields?.length) return {};
+  let files = 0;
+  let bytes = 0;
+  for (const f of multipart.fields) {
+    if (f.kind === 'file') {
+      files += 1;
+      bytes += Number(f.size || 0) || 0;
+    }
+  }
+  return { multipartFieldCount: multipart.fields.length, multipartFileCount: files, multipartBytes: bytes };
+}
+
+function stripContentType(headers: Record<string, string>): void {
+  for (const k of Object.keys(headers)) {
+    if (k.toLowerCase() === 'content-type') delete headers[k];
+  }
+}
+
+function buildMultipartBody(multipart?: MultipartPayload): FormData {
+  // Undici fetch in Electron main supports FormData; do not manually set Content-Type boundary.
+  const form = new FormData();
+  for (const f of multipart?.fields || []) {
+    if (!f?.name) continue;
+    if (f.kind === 'text') {
+      form.append(f.name, String(f.value ?? ''));
+      continue;
+    }
+    if (f.kind === 'file') {
+      const buf = Buffer.from(String(f.base64 ?? ''), 'base64');
+      const filename = String(f.filename || 'file');
+      const contentType = f.contentType ? String(f.contentType) : 'application/octet-stream';
+      const BlobCtor: typeof Blob = typeof Blob !== 'undefined' ? Blob : (BufferBlob as any);
+      const blob = new BlobCtor([buf], { type: contentType });
+      form.append(f.name, blob, filename);
+    }
+  }
+  return form;
 }
 
 function isRetryable(err: any): boolean {
@@ -87,6 +134,7 @@ class NetController extends BaseController {
     method?: string;
     headers?: Record<string, string>;
     body?: string;
+    multipart?: MultipartPayload;
   }) {
     // SSRF 防护：校验协议 + 私有 IP 过滤
     await validateUrl(args.url);
@@ -111,7 +159,7 @@ class NetController extends BaseController {
       target: traceTarget,
       method: args.method || 'GET',
       url: args.url,
-      ...summarizeBody(args.body),
+      ...(args.multipart ? summarizeMultipart(args.multipart) : summarizeBody(args.body)),
       ...(debugBody ? { bodyPreview: truncateString(args.body || '', 12_000) } : undefined),
     };
 
@@ -128,10 +176,15 @@ class NetController extends BaseController {
       }
 
       try {
+        let body: any = args.body;
+        if (args.multipart) {
+          stripContentType(headers);
+          body = buildMultipartBody(args.multipart);
+        }
         const response = await fetch(args.url, {
           method: args.method || 'GET',
           headers,
-          body: args.body,
+          body,
         });
 
         const body = await readBodyChunked(response);

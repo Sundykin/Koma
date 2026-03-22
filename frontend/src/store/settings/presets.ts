@@ -42,6 +42,7 @@ export const TTI_PRESETS: ProviderPreset[] = [
   { id: 'nano-banana', name: 'Nano-Banana（官方）', baseUrl: 'http://ai.hsxbk.top', models: ['gemini-2.5-pro-image-preview', 'gemini-3-pro-image-preview'] },
   { id: 'gemini-3-pro', name: 'Gemini-3-Pro (toapis)', baseUrl: 'https://toapis.com', models: ['gemini-3-pro-image-preview'] },
   { id: 'openai-compatible-tti', name: '自定义服务商（OpenAI 兼容）', baseUrl: '' },
+  { id: 'grok2api-imagine-tti', name: 'Grok2API Imagine（多参考）', baseUrl: '', models: ['grok-imagine-1.0', 'grok-imagine-1.0-edit'] },
 ];
 
 // ITV 厂商预设
@@ -52,6 +53,7 @@ export const ITV_PRESETS: ProviderPreset[] = [
   { id: 'pika', name: 'Pika Labs', baseUrl: 'https://api.pika.art/v1', models: ['pika-1.0'] },
   { id: 'comfyui-animatediff', name: 'ComfyUI AnimateDiff', baseUrl: 'http://127.0.0.1:8188' },
   { id: 'custom', name: '自定义 / Grok2API', baseUrl: '', models: ['grok-imagine-1.0-video'] },
+  { id: 'grok2api-imagine-itv', name: 'Grok2API Imagine Video', baseUrl: '', models: ['grok-imagine-1.0-video'] },
 ];
 
 // TTS 厂商预设
