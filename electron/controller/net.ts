@@ -61,25 +61,43 @@ function stripContentType(headers: Record<string, string>): void {
   }
 }
 
-function buildMultipartBody(multipart?: MultipartPayload): FormData {
-  // Undici fetch in Electron main supports FormData; do not manually set Content-Type boundary.
-  const form = new FormData();
+function escapeHeaderValue(value: string): string {
+  // Keep it minimal: prevent breaking out of quotes in Content-Disposition.
+  return value.replace(/"/g, '_');
+}
+
+function buildMultipartBody(multipart?: MultipartPayload): { body: Buffer; contentType: string } {
+  // Some reverse proxies / deployments have issues with chunked multipart streaming.
+  // Build a raw multipart body so we can set Content-Length deterministically.
+  const boundary = `----komaFormBoundary${Date.now()}${Math.random().toString(16).slice(2)}`;
+  const chunks: Buffer[] = [];
+
+  const pushText = (text: string) => { chunks.push(Buffer.from(text, 'utf8')); };
+
   for (const f of multipart?.fields || []) {
     if (!f?.name) continue;
+    pushText(`--${boundary}` + '\r\n');
     if (f.kind === 'text') {
-      form.append(f.name, String(f.value ?? ''));
+      pushText(`Content-Disposition: form-data; name="${escapeHeaderValue(f.name)}"` + '\r\n\r\n');
+      pushText(String(f.value ?? ''));
+      pushText('\r\n');
       continue;
     }
     if (f.kind === 'file') {
-      const buf = Buffer.from(String(f.base64 ?? ''), 'base64');
-      const filename = String(f.filename || 'file');
+      const filename = escapeHeaderValue(String(f.filename || 'file'));
       const contentType = f.contentType ? String(f.contentType) : 'application/octet-stream';
-      const BlobCtor: typeof Blob = typeof Blob !== 'undefined' ? Blob : (BufferBlob as any);
-      const blob = new BlobCtor([buf], { type: contentType });
-      form.append(f.name, blob, filename);
+      pushText(
+        `Content-Disposition: form-data; name="${escapeHeaderValue(f.name)}"; filename="${filename}"` + '\r\n'
+      );
+      pushText(`Content-Type: ${contentType}` + '\r\n\r\n');
+      chunks.push(Buffer.from(String(f.base64 ?? ''), 'base64'));
+      pushText('\r\n');
     }
   }
-  return form;
+
+  pushText(`--${boundary}--` + '\r\n');
+  const body = Buffer.concat(chunks);
+  return { body, contentType: `multipart/form-data; boundary=${boundary}` };
 }
 
 function isRetryable(err: any): boolean {
@@ -179,7 +197,10 @@ class NetController extends BaseController {
         let reqBody: any = args.body;
         if (args.multipart) {
           stripContentType(headers);
-          reqBody = buildMultipartBody(args.multipart);
+          const built = buildMultipartBody(args.multipart);
+          headers['Content-Type'] = built.contentType;
+          headers['Content-Length'] = String(built.body.length);
+          reqBody = built.body;
         }
         const response = await fetch(args.url, {
           method: args.method || 'GET',
