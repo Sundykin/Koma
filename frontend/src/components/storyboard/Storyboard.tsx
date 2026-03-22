@@ -153,10 +153,10 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     if (mentionItems.length > 0) return mentionItems;
     const items: MentionItem[] = [];
 
-    // 角色：优先用 sora2CharacterId（如果有），否则用内部 ID
+    // 角色：收口使用项目内 ID（在提示词层不混入 Provider 私有 ID）
     characters.forEach(char => {
       items.push({
-        id: char.sora2CharacterId || char.id,
+        id: char.id,
         type: 'char' as const,
         name: char.name,
         description: char.prompt,
@@ -175,10 +175,10 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       });
     });
 
-    // 道具：优先用 sora2PropId（如果有），否则用内部 ID
+    // 道具：收口使用项目内 ID
     props.forEach(prop => {
       items.push({
-        id: prop.sora2PropId || prop.id,
+        id: prop.id,
         type: 'prop' as const,
         name: prop.name,
         description: prop.prompt,
@@ -241,60 +241,8 @@ export const Storyboard: React.FC<StoryboardProps> = ({
         }
       }
 
-      // 修复旧数据中的资产绑定：将名称字符串重新映射为正确的 ID
-      const allCharIds = new Set(loadedCharacters.map(c => c.id));
-      const allSceneIds = new Set(loadedScenes.map(s => s.id));
-      const allPropIds = new Set(loadedProps.map(p => p.id));
-      // 也把 sora2 ID 加入合法 ID 集合
-      loadedCharacters.forEach(c => { if (c.sora2CharacterId) allCharIds.add(c.sora2CharacterId); });
-      loadedProps.forEach(p => { if (p.sora2PropId) allPropIds.add(p.sora2PropId); });
-
-      const fuzzyMatch = <T extends { name: string }>(name: string, assets: T[]): T | undefined => {
-        if (!name) return undefined;
-        const trimmed = name.trim();
-        return assets.find(a => a.name === trimmed)
-          || assets.find(a => trimmed.includes(a.name))
-          || assets.find(a => a.name.includes(trimmed));
-      };
-
-      let needsSave = false;
-      const repairedShots = loadedShots.map(shot => {
-        let changed = false;
-        // 修复 characters: 过滤掉非法值，将名称字符串映射为 ID
-        const fixedChars = (shot.characters || []).map(ref => {
-          if (allCharIds.has(ref)) return ref;
-          const match = fuzzyMatch(ref, loadedCharacters);
-          if (match) { changed = true; return match.sora2CharacterId || match.id; }
-          changed = true; return undefined;
-        }).filter((id): id is string => id !== undefined);
-
-        // 修复 scenes
-        const fixedScenes = (shot.scenes || []).map(ref => {
-          if (allSceneIds.has(ref)) return ref;
-          const match = fuzzyMatch(ref, loadedScenes);
-          if (match) { changed = true; return match.id; }
-          changed = true; return undefined;
-        }).filter((id): id is string => id !== undefined);
-
-        // 修复 props
-        const fixedProps = (shot.props || []).map(ref => {
-          if (allPropIds.has(ref)) return ref;
-          const match = fuzzyMatch(ref, loadedProps);
-          if (match) { changed = true; return match.sora2PropId || match.id; }
-          changed = true; return undefined;
-        }).filter((id): id is string => id !== undefined);
-
-        if (!changed) return shot;
-        needsSave = true;
-        return { ...shot, characters: fixedChars, scenes: fixedScenes, props: fixedProps };
-      });
-
-      // 如果有修复则异步保存，不阻塞 UI
-      if (needsSave && episodeId) {
-        saveEpisodeShots(projectId, episodeId, repairedShots).catch(() => {});
-      }
-
-      setShots(repairedShots);
+      // 一刀切：移除旧数据迁移/修复逻辑。分镜资产绑定与提示词 @mention 统一使用项目内 ID。
+      setShots(loadedShots);
       setCharacters(filteredCharacters);
       setScenes(filteredScenes);
       setProps(filteredProps);

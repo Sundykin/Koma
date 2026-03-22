@@ -29,8 +29,8 @@ function createShot(overrides: Partial<Shot> = {}): Shot {
     props: ['prop-001'],
     dialogue: '',
     emotion: '',
-    imagePrompt: '@char_sora2-c1 在 @scene_scene-001 中',
-    videoPrompt: '@char_sora2-c1 走进 @scene_scene-001',
+    imagePrompt: '@char_char-001 在 @scene_scene-001 中',
+    videoPrompt: '@char_char-001 走进 @scene_scene-001',
     ...overrides,
   };
 }
@@ -205,7 +205,7 @@ describe('场景1: 单个 shot 生成图像提示词后资产保留', () => {
     const shot = createShot({ characters: ['char-001'], scenes: ['scene-001'], props: ['prop-001'] });
 
     // 模拟 LLM 生成的提示词（含 @mentions）
-    const generatedPrompt = '一个年轻人 @char_sora2-c1 走在 @scene_scene-001 的小路上';
+    const generatedPrompt = '一个年轻人 @char_char-001 走在 @scene_scene-001 的小路上';
     const updatedShots = simulateImagePromptChange(
       'shot-001', generatedPrompt, [shot], result.current.syncFromPrompt, new Set()
     );
@@ -268,13 +268,13 @@ describe('场景2: 批量生成提示词后资产保留', () => {
     const { result } = renderHook(() => useShotAssetSync(defaultAssets));
     const shot = createShot({
       characters: ['char-001'],
-      imagePrompt: 'LLM 生成的提示词 @char_sora2-c1',
+      imagePrompt: 'LLM 生成的提示词 @char_char-001',
     });
 
     // 批量生成已完成，generatingSet 为空
     const updatedShots = simulateImagePromptChange(
       'shot-001',
-      '用户编辑后 @char_sora2-c1 在森林中',
+      '用户编辑后 @char_char-001 在森林中',
       [shot],
       result.current.syncFromPrompt,
       new Set()
@@ -297,7 +297,7 @@ describe('场景2: 批量生成提示词后资产保留', () => {
     // shot-002 的编辑应正常处理
     const updatedShots = simulateImagePromptChange(
       'shot-002',
-      '编辑 @char_sora2-c1',
+      '编辑 @char_char-001',
       shots,
       result.current.syncFromPrompt,
       generatingSet
@@ -320,7 +320,7 @@ describe('场景3: 手动编辑提示词（不含 @mentions）后资产保留', 
       characters: ['char-001'],
       scenes: ['scene-001'],
       props: ['prop-001'],
-      imagePrompt: '@char_sora2-c1 在 @scene_scene-001 中拿着 @prop_sora2-p1',
+      imagePrompt: '@char_char-001 在 @scene_scene-001 中拿着 @prop_prop-001',
     });
 
     // 用户完全重写提示词，不含任何 @mentions
@@ -392,7 +392,7 @@ describe('场景4: 手动编辑提示词（含 @mentions）后资产正确更新
     // 用户手动添加了第二个角色的 @mention
     const updatedShots = simulateImagePromptChange(
       'shot-001',
-      '@char_sora2-c1 和 @char_sora2-c2 在森林中',
+      '@char_char-001 和 @char_char-002 在森林中',
       [shot],
       result.current.syncFromPrompt,
       new Set()
@@ -417,7 +417,7 @@ describe('场景4: 手动编辑提示词（含 @mentions）后资产正确更新
     // 用户移除了第二个角色的 @mention
     const updatedShots = simulateImagePromptChange(
       'shot-001',
-      '@char_sora2-c1 独自在森林中',
+      '@char_char-001 独自在森林中',
       [shot],
       result.current.syncFromPrompt,
       new Set()
@@ -442,7 +442,7 @@ describe('场景4: 手动编辑提示词（含 @mentions）后资产正确更新
     // 用户将 char-001 替换为 char-002
     const updatedShots = simulateImagePromptChange(
       'shot-001',
-      '@char_sora2-c2 独自在森林中',
+      '@char_char-002 独自在森林中',
       [shot],
       result.current.syncFromPrompt,
       new Set()
@@ -553,92 +553,8 @@ describe('场景5: 加载项目后资产面板正确显示', () => {
 // 测试场景 6: 旧数据修复（名称字符串 → ID 映射）
 // ============================================================
 describe('场景6: 旧数据资产绑定修复', () => {
-  it('TC-INT-016: 旧数据中角色名称字符串应被修复为正确的 ID', () => {
-    // 验证修复 dd7bf47
-    const shot = createShot({
-      characters: ['小明'],  // 旧数据：名称而非 ID
-      scenes: ['森林'],
-      props: ['宝剑'],
-    });
-
-    const { shots, needsSave } = repairLegacyShotAssets(
-      [shot],
-      [createCharacter()],
-      [createScene()],
-      [createProp()]
-    );
-
-    expect(needsSave).toBe(true);
-    expect(shots[0].characters).toEqual(['sora2-c1']); // 修复为 sora2 ID
-    expect(shots[0].scenes).toEqual(['scene-001']);
-    expect(shots[0].props).toEqual(['sora2-p1']);
-  });
-
-  it('TC-INT-017: 已经是正确 ID 的数据不应被修改', () => {
-    const shot = createShot({
-      characters: ['char-001'],
-      scenes: ['scene-001'],
-      props: ['prop-001'],
-    });
-
-    const { shots, needsSave } = repairLegacyShotAssets(
-      [shot],
-      [createCharacter()],
-      [createScene()],
-      [createProp()]
-    );
-
-    expect(needsSave).toBe(false);
-    expect(shots[0]).toBe(shot); // 引用不变
-  });
-
-  it('TC-INT-018: sora2 ID 也应被识别为合法 ID', () => {
-    const shot = createShot({
-      characters: ['sora2-c1'],
-      props: ['sora2-p1'],
-    });
-
-    const { shots, needsSave } = repairLegacyShotAssets(
-      [shot],
-      [createCharacter()],
-      [createScene()],
-      [createProp()]
-    );
-
-    expect(needsSave).toBe(false);
-  });
-
-  it('TC-INT-019: 无法匹配的名称应被过滤掉', () => {
-    const shot = createShot({
-      characters: ['不存在的角色'],
-      scenes: ['scene-001'],
-    });
-
-    const { shots, needsSave } = repairLegacyShotAssets(
-      [shot],
-      [createCharacter()],
-      [createScene()],
-      [createProp()]
-    );
-
-    expect(needsSave).toBe(true);
-    expect(shots[0].characters).toEqual([]);
-    expect(shots[0].scenes).toEqual(['scene-001']);
-  });
-
-  it('TC-INT-020: 模糊匹配应支持包含关系', () => {
-    const shot = createShot({
-      characters: ['小明同学'],  // 包含 "小明"
-    });
-
-    const { shots, needsSave } = repairLegacyShotAssets(
-      [shot],
-      [createCharacter({ id: 'char-001', name: '小明', sora2CharacterId: 'sora2-c1' })],
-      [createScene()],
-      [createProp()]
-    );
-
-    expect(needsSave).toBe(true);
-    expect(shots[0].characters).toEqual(['sora2-c1']);
+  it('TC-INT-016: 旧数据迁移逻辑已移除（不再在前端做名称到 ID 的修复）', () => {
+    // 按“一刀切”策略：不再在运行时修复旧的名称字符串引用，提示词与绑定一律使用项目内 ID。
+    expect(true).toBe(true);
   });
 });
