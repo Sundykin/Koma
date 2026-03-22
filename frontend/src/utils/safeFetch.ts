@@ -3,6 +3,8 @@
  * Electron 环境下通过 IPC 主进程代理（绕过 CORS），浏览器环境走原生 fetch
  */
 import { createLogger } from '../store/logger';
+import { truncateString } from './logFormatting';
+import { bytesToBase64 } from './encoding';
 
 interface IpcFetchResult {
   ok: boolean;
@@ -34,27 +36,8 @@ function sanitizeHeaders(headers: Record<string, string>): Record<string, string
   return sanitized;
 }
 
-function truncateString(value: string, max = 1000): string {
-  if (value.length <= max) return value;
-  return `${value.slice(0, max)}...(truncated, ${value.length} chars)`;
-}
-
 function isFormDataBody(body: unknown): body is FormData {
   return typeof FormData !== 'undefined' && body instanceof FormData;
-}
-
-function bytesToBase64(bytes: Uint8Array): string {
-  // Avoid call stack / argument limits by chunking.
-  let binary = '';
-  const chunkSize = 0x8000;
-  for (let i = 0; i < bytes.length; i += chunkSize) {
-    const chunk = bytes.subarray(i, i + chunkSize);
-    // Avoid `String.fromCharCode(...chunk)` which can overflow on large arrays.
-    let part = '';
-    for (let j = 0; j < chunk.length; j += 1) part += String.fromCharCode(chunk[j]);
-    binary += part;
-  }
-  return btoa(binary);
 }
 
 async function serializeFormDataForIpc(fd: FormData): Promise<IpcMultipartPayload> {

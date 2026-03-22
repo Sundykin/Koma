@@ -12,6 +12,8 @@ import type { TTIProvider, TTIRequest, ImageResult } from './types';
 import { safeFetch } from '../../utils/safeFetch';
 import { createLogger } from '../../store/logger';
 import { electronService } from '../../services/electronService';
+import { base64ToBytes, parseDataUrl } from '../../utils/encoding';
+import { sanitizeBodyForLog } from '../../utils/logFormatting';
 
 const logger = createLogger('Grok2ApiImagineTTI');
 
@@ -20,22 +22,6 @@ type ImageGenResponse = {
   id?: string;
   created?: number;
 };
-
-function base64ToBytes(base64: string): Uint8Array {
-  const bin = atob(base64);
-  const bytes = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i += 1) bytes[i] = bin.charCodeAt(i);
-  return bytes;
-}
-
-function parseDataUrl(dataUrl: string): { mimeType: string; bytes: Uint8Array } {
-  const m = dataUrl.match(/^data:([^;]+);base64,(.*)$/);
-  if (!m) {
-    // Fallback for non-base64 data URLs is not supported here.
-    throw new Error('不支持的 data-url 格式（需要 base64）');
-  }
-  return { mimeType: m[1] || 'application/octet-stream', bytes: base64ToBytes(m[2] || '') };
-}
 
 function extFromMime(mimeType: string): string {
   const m = mimeType.toLowerCase();
@@ -46,22 +32,6 @@ function extFromMime(mimeType: string): string {
   return 'bin';
 }
 
-function sanitizeBodyForLog(body: Record<string, any>): Record<string, any> {
-  const walk = (v: any): any => {
-    if (typeof v === 'string') {
-      if (v.startsWith('data:')) return `${v.slice(0, 140)}...(data-url ${v.length} chars)`;
-      return v.length > 2000 ? `${v.slice(0, 800)}...(truncated, ${v.length} chars)` : v;
-    }
-    if (Array.isArray(v)) return v.map(walk);
-    if (v && typeof v === 'object') {
-      const out: Record<string, any> = {};
-      for (const [k, val] of Object.entries(v)) out[k] = walk(val);
-      return out;
-    }
-    return v;
-  };
-  return walk(body);
-}
 
 function joinUrl(baseUrl: string, path: string): string {
   const b = baseUrl.replace(/\/+$/, '');

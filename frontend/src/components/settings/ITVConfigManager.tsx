@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import {
   Card,
   Row,
@@ -33,78 +33,52 @@ import {
 } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import type { ITVModelConfig, ITVProviderType } from '../../types';
-import type { ChannelConfig } from '../../providers/channel/types';
 import {
-  loadSettings,
   addITVConfig,
   updateITVConfig,
   deleteITVConfig,
   setDefaultITVConfig,
-  setDefaultChannelConfig,
   ITV_PRESETS,
 } from '../../store/globalStore';
-import { getChannelConfigs, updateChannelConfig } from '../../store/settings/channelConfig';
 import { ProviderPluginModal } from '../plugins/ProviderPluginModal';
 import { createITVProvider } from '../../providers/itv';
+import { useMediaConfigManager } from './useMediaConfigManager';
 
 interface ITVConfigManagerProps {
   onConfigChange?: () => void;
 }
 
+const itvActions = {
+  getConfigs: (settings: any) => settings.itvConfigs || [],
+  updateConfig: updateITVConfig,
+  setDefaultConfig: setDefaultITVConfig,
+  capability: 'itv' as const,
+};
+
 export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChange }) => {
   const { t } = useTranslation();
   const { message } = App.useApp();
-  const [configs, setConfigs] = useState<ITVModelConfig[]>([]);
-  const [pluginChannels, setPluginChannels] = useState<ChannelConfig[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [modalVisible, setModalVisible] = useState(false);
-  const [editingConfig, setEditingConfig] = useState<ITVModelConfig | null>(null);
-  const [testingId, setTestingId] = useState<string | null>(null);
-  const [form] = Form.useForm();
 
-  // 插件配置弹窗状态
-  const [pluginModalVisible, setPluginModalVisible] = useState(false);
-  const [activePluginId, setActivePluginId] = useState<string>('');
-
-  const loadConfigs = async () => {
-    setLoading(true);
-    try {
-      const settings = await loadSettings();
-      setConfigs(settings.itvConfigs || []);
-      // 加载插件注册的渠道配置
-      const channels = await getChannelConfigs();
-      const filtered = channels.filter(c =>
-        c.source === 'plugin' &&
-        c.enabled &&
-        c.capabilities.includes('itv')
-      );
-      setPluginChannels(filtered);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // 打开插件配置弹窗
-  const openPluginModal = (pluginId: string) => {
-    setActivePluginId(pluginId);
-    setPluginModalVisible(true);
-  };
-
-  // 关闭插件配置弹窗
-  const closePluginModal = () => {
-    setPluginModalVisible(false);
-    setActivePluginId('');
-  };
-
-  // 插件配置保存后刷新渠道列表
-  const handlePluginConfigSaved = async () => {
-    await loadConfigs();
-    onConfigChange?.();
-  };
-
-  useEffect(() => {
-    loadConfigs();
-  }, []);
+  const {
+    configs,
+    pluginChannels,
+    loading,
+    modalVisible,
+    setModalVisible,
+    editingConfig,
+    setEditingConfig,
+    testingId,
+    setTestingId,
+    form,
+    pluginModalVisible,
+    activePluginId,
+    loadConfigs,
+    openPluginModal,
+    closePluginModal,
+    handlePluginConfigSaved,
+    handleSetDefault,
+    handleSetChannelDefault,
+  } = useMediaConfigManager<ITVModelConfig>(itvActions, onConfigChange);
 
   const openModal = (config?: ITVModelConfig) => {
     if (config) {
@@ -177,44 +151,6 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
       onConfigChange?.();
     } catch (err: any) {
       message.error(`${t('error.deleteFailed')}: ${err.message}`);
-    }
-  };
-
-  // 设置内置配置为默认（同时清除插件渠道的默认状态）
-  const handleSetDefault = async (id: string) => {
-    try {
-      // 清除所有插件渠道的默认状态
-      for (const channel of pluginChannels) {
-        if (channel.isDefault) {
-          await updateChannelConfig(channel.id, { isDefault: false });
-        }
-      }
-      // 设置内置配置为默认
-      await setDefaultITVConfig(id);
-      message.success(t('settings.defaultSet'));
-      await loadConfigs();
-      onConfigChange?.();
-    } catch (err: any) {
-      message.error(`${t('common.error')}: ${err.message}`);
-    }
-  };
-
-  // 设置插件渠道为默认（同时清除内置配置的默认状态）
-  const handleSetChannelDefault = async (id: string) => {
-    try {
-      // 清除所有内置配置的默认状态
-      for (const config of configs) {
-        if (config.isDefault) {
-          await updateITVConfig(config.id, { isDefault: false });
-        }
-      }
-      // 设置插件渠道为默认
-      await setDefaultChannelConfig(id, 'itv');
-      message.success(t('settings.defaultSet'));
-      await loadConfigs();
-      onConfigChange?.();
-    } catch (err: any) {
-      message.error(`${t('common.error')}: ${err.message}`);
     }
   };
 
@@ -303,7 +239,7 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
                       <Tooltip title={t('settings.setAsDefault')}>
                         <StarOutlined
                           style={{ cursor: 'pointer', color: '#d9d9d9' }}
-                          onClick={() => handleSetDefault(config.id)}
+                          onClick={() => handleSetDefault(config.id, message, t)}
                         />
                       </Tooltip>
                     )}
@@ -375,7 +311,7 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
                       <Tooltip title={t('settings.setAsDefault')}>
                         <StarOutlined
                           style={{ cursor: 'pointer', color: '#d9d9d9' }}
-                          onClick={() => handleSetChannelDefault(channel.id)}
+                          onClick={() => handleSetChannelDefault(channel.id, message, t)}
                         />
                       </Tooltip>
                     )}

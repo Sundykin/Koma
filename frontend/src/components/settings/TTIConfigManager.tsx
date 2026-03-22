@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   Card,
   Row,
@@ -34,84 +34,58 @@ import {
 } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import type { TTIModelConfig, TTIProviderType } from '../../types';
-import type { ChannelConfig } from '../../providers/channel/types';
 import {
-  loadSettings,
   addTTIConfig,
   updateTTIConfig,
   deleteTTIConfig,
   setDefaultTTIConfig,
-  setDefaultChannelConfig,
   TTI_PRESETS,
 } from '../../store/globalStore';
-import { getChannelConfigs, updateChannelConfig } from '../../store/settings/channelConfig';
 import { WorkflowUploader } from './WorkflowUploader';
 import { ProviderPluginModal } from '../plugins/ProviderPluginModal';
 import { createTTIProvider } from '../../providers/tti';
+import { useMediaConfigManager } from './useMediaConfigManager';
 
 interface TTIConfigManagerProps {
   onConfigChange?: () => void;
 }
 
+const ttiActions = {
+  getConfigs: (settings: any) => settings.ttiConfigs || [],
+  updateConfig: updateTTIConfig,
+  setDefaultConfig: setDefaultTTIConfig,
+  capability: 'tti' as const,
+};
+
 export const TTIConfigManager: React.FC<TTIConfigManagerProps> = ({ onConfigChange }) => {
   const { t } = useTranslation();
   const { message } = App.useApp();
-  const [configs, setConfigs] = useState<TTIModelConfig[]>([]);
-  const [pluginChannels, setPluginChannels] = useState<ChannelConfig[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [modalVisible, setModalVisible] = useState(false);
-  const [editingConfig, setEditingConfig] = useState<TTIModelConfig | null>(null);
-  const [testingId, setTestingId] = useState<string | null>(null);
   const [workflowData, setWorkflowData] = useState<{
     workflowPath?: string;
     workflowMapping?: Record<string, string>;
     workflowJson?: string;
   }>({});
-  const [form] = Form.useForm();
 
-  // 插件配置弹窗状态
-  const [pluginModalVisible, setPluginModalVisible] = useState(false);
-  const [activePluginId, setActivePluginId] = useState<string>('');
-
-  const loadConfigs = async () => {
-    setLoading(true);
-    try {
-      const settings = await loadSettings();
-      setConfigs(settings.ttiConfigs || []);
-      // 加载插件注册的渠道配置
-      const channels = await getChannelConfigs();
-      const filtered = channels.filter(c =>
-        c.source === 'plugin' &&
-        c.enabled &&
-        c.capabilities.includes('tti')
-      );
-      setPluginChannels(filtered);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // 打开插件配置弹窗
-  const openPluginModal = (pluginId: string) => {
-    setActivePluginId(pluginId);
-    setPluginModalVisible(true);
-  };
-
-  // 关闭插件配置弹窗
-  const closePluginModal = () => {
-    setPluginModalVisible(false);
-    setActivePluginId('');
-  };
-
-  // 插件配置保存后刷新渠道列表
-  const handlePluginConfigSaved = async () => {
-    await loadConfigs();
-    onConfigChange?.();
-  };
-
-  useEffect(() => {
-    loadConfigs();
-  }, []);
+  const {
+    configs,
+    pluginChannels,
+    loading,
+    modalVisible,
+    setModalVisible,
+    editingConfig,
+    setEditingConfig,
+    testingId,
+    setTestingId,
+    form,
+    pluginModalVisible,
+    activePluginId,
+    loadConfigs,
+    openPluginModal,
+    closePluginModal,
+    handlePluginConfigSaved,
+    handleSetDefault,
+    handleSetChannelDefault,
+  } = useMediaConfigManager<TTIModelConfig>(ttiActions, onConfigChange);
 
   const openModal = (config?: TTIModelConfig) => {
     if (config) {
@@ -194,56 +168,15 @@ export const TTIConfigManager: React.FC<TTIConfigManagerProps> = ({ onConfigChan
     }
   };
 
-  // 设置内置配置为默认（同时清除插件渠道的默认状态）
-  const handleSetDefault = async (id: string) => {
-    try {
-      // 清除所有插件渠道的默认状态
-      for (const channel of pluginChannels) {
-        if (channel.isDefault) {
-          await updateChannelConfig(channel.id, { isDefault: false });
-        }
-      }
-      // 设置内置配置为默认
-      await setDefaultTTIConfig(id);
-      message.success(t('settings.defaultSet'));
-      await loadConfigs();
-      onConfigChange?.();
-    } catch (err: any) {
-      message.error(`${t('common.error')}: ${err.message}`);
-    }
-  };
-
-  // 设置插件渠道为默认（同时清除内置配置的默认状态）
-  const handleSetChannelDefault = async (id: string) => {
-    try {
-      // 清除所有内置配置的默认状态
-      for (const config of configs) {
-        if (config.isDefault) {
-          await updateTTIConfig(config.id, { isDefault: false });
-        }
-      }
-      // 设置插件渠道为默认
-      await setDefaultChannelConfig(id, 'tti');
-      message.success(t('settings.defaultSet'));
-      await loadConfigs();
-      onConfigChange?.();
-    } catch (err: any) {
-      message.error(`${t('common.error')}: ${err.message}`);
-    }
-  };
-
   const handleTestConnection = async (config: TTIModelConfig) => {
     setTestingId(config.id);
     try {
-      // 创建 provider 实例并测试连接
       const provider = createTTIProvider(config);
 
-      // 先验证配置
       if (!provider.validate()) {
         throw new Error(t('settings.configValidationFailed'));
       }
 
-      // 测试连接
       const success = await provider.testConnection();
       if (success) {
         message.success(`"${config.name}" ${t('settings.connectionSuccess')}`);
@@ -323,7 +256,7 @@ export const TTIConfigManager: React.FC<TTIConfigManagerProps> = ({ onConfigChan
                       <Tooltip title={t('settings.setAsDefault')}>
                         <StarOutlined
                           style={{ cursor: 'pointer', color: '#d9d9d9' }}
-                          onClick={() => handleSetDefault(config.id)}
+                          onClick={() => handleSetDefault(config.id, message, t)}
                         />
                       </Tooltip>
                     )}
@@ -402,7 +335,7 @@ export const TTIConfigManager: React.FC<TTIConfigManagerProps> = ({ onConfigChan
                       <Tooltip title={t('settings.setAsDefault')}>
                         <StarOutlined
                           style={{ cursor: 'pointer', color: '#d9d9d9' }}
-                          onClick={() => handleSetChannelDefault(channel.id)}
+                          onClick={() => handleSetChannelDefault(channel.id, message, t)}
                         />
                       </Tooltip>
                     )}

@@ -33,31 +33,10 @@ import type { RemoteUrlPolicy } from './mediaRemoteUrlService';
 import type { PromptCompilationInput } from './promptCompilation/types';
 import { compileGrokITV, compileGrokTTI } from './promptCompilation/grokImageIndexCompiler';
 import { parseMentions } from '../editor/mentionTypes';
+import { sanitizeBodyForLog, truncateString } from '../utils/logFormatting';
+import { DEFAULT_POLLING_CONFIG } from '../providers/polling';
 
 const logger = createLogger('MediaGeneration');
-
-function truncateString(value: string, max = 600): string {
-  if (value.length <= max) return value;
-  return `${value.slice(0, max)}...(truncated, ${value.length} chars)`;
-}
-
-function sanitizeBodyForLog(body: any): any {
-  // Avoid spewing huge base64 payloads to console while keeping the overall structure visible.
-  const walk = (v: any): any => {
-    if (typeof v === 'string') {
-      if (v.startsWith('data:')) return truncateString(v, 140);
-      return v.length > 2000 ? truncateString(v, 800) : v;
-    }
-    if (Array.isArray(v)) return v.map(walk);
-    if (v && typeof v === 'object') {
-      const out: Record<string, any> = {};
-      for (const [k, val] of Object.entries(v)) out[k] = walk(val);
-      return out;
-    }
-    return v;
-  };
-  return walk(body);
-}
 
 function getPromptProtocol(provider: any): string | undefined {
   // ChannelConfig.providerConfig is spread into resolved config (see store/settings/mediaConfig.ts),
@@ -621,8 +600,8 @@ export class MediaGenerationService {
   }): Promise<StoredMediaAsset> {
     const { projectId, kind, task, getSnapshot, extractSource, enrichAsset, providerTaskId, onProgress } = params;
 
-    const pollIntervalMs = 3000;
-    const maxPollMs = 10 * 60 * 1000;
+    const pollIntervalMs = DEFAULT_POLLING_CONFIG.interval;
+    const maxPollMs = DEFAULT_POLLING_CONFIG.maxDuration;
     const startTime = Date.now();
 
     while (Date.now() - startTime < maxPollMs) {

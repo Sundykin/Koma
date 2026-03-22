@@ -8,6 +8,7 @@ import type { ITVConfig, ProviderStartResult, ProviderTaskSnapshot } from '../..
 import type { ITVProvider, ITVRequest, ITVResult } from './types';
 import { safeFetch } from '../../utils/safeFetch';
 import { createLogger } from '../../store/logger';
+import { sanitizeBodyForLog } from '../../utils/logFormatting';
 
 const logger = createLogger('Grok2ApiImagineITV');
 
@@ -22,23 +23,6 @@ type ChatCompletionsResponse = {
     };
   }>;
 };
-
-function sanitizeBodyForLog(body: Record<string, any>): Record<string, any> {
-  const walk = (v: any): any => {
-    if (typeof v === 'string') {
-      if (v.startsWith('data:')) return `${v.slice(0, 140)}...(data-url ${v.length} chars)`;
-      return v.length > 2000 ? `${v.slice(0, 800)}...(truncated, ${v.length} chars)` : v;
-    }
-    if (Array.isArray(v)) return v.map(walk);
-    if (v && typeof v === 'object') {
-      const out: Record<string, any> = {};
-      for (const [k, val] of Object.entries(v)) out[k] = walk(val);
-      return out;
-    }
-    return v;
-  };
-  return walk(body);
-}
 
 function joinUrl(baseUrl: string, path: string): string {
   const b = baseUrl.replace(/\/+$/, '');

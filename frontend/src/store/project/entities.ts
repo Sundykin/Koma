@@ -9,6 +9,9 @@ import {
   normalizeScenesMediaState,
   normalizeShotsMediaState,
 } from './mediaState';
+import { createLogger } from '../logger';
+
+const logger = createLogger('ProjectEntities');
 
 export async function loadCharacters(projectId: string): Promise<Character[]> {
   if (!electronService.isElectron()) return [];
@@ -19,7 +22,8 @@ export async function loadCharacters(projectId: string): Promise<Character[]> {
     const data = await electronService.fs.readFile(`${projectPath}/characters.json`);
     const raw = JSON.parse(data);
     return Array.isArray(raw) ? normalizeCharactersMediaState(raw.filter(Boolean)) : [];
-  } catch {
+  } catch (err) {
+    logger.warn('加载角色数据失败', err);
     return [];
   }
 }
@@ -42,7 +46,8 @@ export async function loadScenes(projectId: string): Promise<Scene[]> {
     const data = await electronService.fs.readFile(`${projectPath}/scenes.json`);
     const raw = JSON.parse(data);
     return Array.isArray(raw) ? normalizeScenesMediaState(raw.filter(Boolean)) : [];
-  } catch {
+  } catch (err) {
+    logger.warn('加载场景数据失败', err);
     return [];
   }
 }
@@ -66,7 +71,8 @@ export async function loadShots(projectId: string): Promise<Shot[]> {
     const data = await electronService.fs.readFile(filePath);
     const raw = JSON.parse(data);
     return Array.isArray(raw) ? normalizeShotsMediaState(raw.filter(Boolean)) : [];
-  } catch {
+  } catch (err) {
+    logger.warn('加载分镜数据失败', err);
     return [];
   }
 }
