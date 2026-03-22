@@ -8,6 +8,7 @@ import { ComfyUIProvider } from './ComfyUIProvider';
 import { NanoBananaProvider } from './NanoBananaProvider';
 import { Gemini3ProProvider } from './Gemini3ProProvider';
 import { OpenAICompatibleTTIProvider } from './OpenAICompatibleTTIProvider';
+import { Grok2ApiImagineTTIProvider } from './Grok2ApiImagineTTIProvider';
 import type { ProviderDefinition } from '../registry.types';
 import { DEFAULT_POLLING_CONFIG, MEDIA_PROVIDER_CONTRACT_VERSION } from '../registry.types';
 import { ttiRegistry } from '../registry';
@@ -17,6 +18,7 @@ export { ComfyUIProvider } from './ComfyUIProvider';
 export { NanoBananaProvider } from './NanoBananaProvider';
 export { Gemini3ProProvider } from './Gemini3ProProvider';
 export { OpenAICompatibleTTIProvider } from './OpenAICompatibleTTIProvider';
+export { Grok2ApiImagineTTIProvider } from './Grok2ApiImagineTTIProvider';
 
 // 注册内置 Provider
 function registerBuiltinProviders() {
@@ -61,6 +63,16 @@ function registerBuiltinProviders() {
       name: '自定义服务商',
       description: '兼容 OpenAI 接口的自定义文生图服务',
       factory: (config) => new OpenAICompatibleTTIProvider(config as TTIModelConfig),
+      contractVersion: MEDIA_PROVIDER_CONTRACT_VERSION,
+      capabilities: ['tti'],
+      polling: DEFAULT_POLLING_CONFIG,
+    },
+    {
+      type: 'grok2api-imagine-tti',
+      kind: 'tti',
+      name: 'Grok2API Imagine',
+      description: 'Grok2API 逆向接口：文生图 + 多参考图（chat/completions）',
+      factory: (config) => new Grok2ApiImagineTTIProvider(config as TTIModelConfig),
       contractVersion: MEDIA_PROVIDER_CONTRACT_VERSION,
       capabilities: ['tti'],
       polling: DEFAULT_POLLING_CONFIG,
