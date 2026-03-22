@@ -18,10 +18,9 @@ describe('Grok2ApiImagineITVProvider', () => {
     (safeFetch as any).mockResolvedValueOnce({
       ok: true,
       status: 200,
-      json: async () => ({
+      text: async () => JSON.stringify({
         choices: [{ message: { content: 'video https://cdn.example.com/v.mp4' } }],
       }),
-      text: async () => '',
     });
 
     const p = new Grok2ApiImagineITVProvider({
@@ -54,5 +53,35 @@ describe('Grok2ApiImagineITVProvider', () => {
     expect(res.mode).toBe('immediate');
     expect((res as any).output.source).toBe('https://cdn.example.com/v.mp4');
   });
-});
 
+  it('does not accidentally pick preview_image.jpg with encoded tail', async () => {
+    (safeFetch as any).mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({
+        choices: [{ message: { content: 'preview http://x/y/preview_image.jpg%22%3E video http://x/y/out.mp4' } }],
+      }),
+    });
+
+    const p = new Grok2ApiImagineITVProvider({
+      id: 'i1',
+      name: 'grok2v',
+      provider: 'grok2api-imagine-itv' as any,
+      baseUrl: 'http://127.0.0.1:8000',
+      apiKey: 'k',
+      isDefault: true,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      modelName: 'grok-imagine-1.0-video',
+    } as any);
+
+    const res = await p.start({
+      prompt: 'p',
+      primaryImage: { transport: 'remote-url', value: 'https://img.example.com/1.jpg' },
+      additionalReferences: [],
+      options: {},
+    } as any);
+
+    expect((res as any).output.source).toBe('http://x/y/out.mp4');
+  });
+});
