@@ -18,6 +18,7 @@ import {
   normalizeScenesMediaState,
   normalizeShotMediaState,
 } from '../store/project/mediaState';
+import { buildShotImageTemplateVariables } from './promptVariableBuilders';
 
 const logger = createLogger('ShotImageWorkflow');
 
@@ -94,12 +95,13 @@ export async function shotImageWorkflow(params: {
     );
   } else {
     const stylePrefix = styleSnapshot?.ttiStylePrefix || project?.styleSnapshot?.ttiStylePrefix || getThemeStylePrefix(theme, stylePrompt);
-    const resolved = await resolvePromptTemplate('tti_shot_image', {
+    const resolved = await resolvePromptTemplate('tti_shot_image', buildShotImageTemplateVariables({
+      shot: normalizedShot,
+      characters: normalizedCharacters,
+      scenes: normalizedScenes,
+      props,
       stylePrefix,
-      description: normalizedShot.description || '',
-      shotType: normalizedShot.shotType || 'medium',
-      emotion: normalizedShot.emotion || 'neutral',
-    });
+    }));
     prompt = resolved.prompt;
     templateId = resolved.template.id;
     promptSource = resolved.source;
@@ -153,7 +155,7 @@ function replaceMentionsWithDescriptions(
   prompt: string,
   characters: Character[],
   scenes: Scene[],
-  props: Array<{ id: string; name: string; prompt?: string; description?: string; sora2PropId?: string; type?: string }>
+  props: Array<{ id: string; name: string; prompt?: string; sora2PropId?: string; type?: string }>
 ): string {
   const mentions = parseMentions(prompt);
   let result = prompt;
@@ -165,17 +167,17 @@ function replaceMentionsWithDescriptions(
     if (mention.type === 'char') {
       const char = characters.find(c => c.id === mention.id || (c as any).sora2CharacterId === mention.id);
       if (char) {
-        replacement = `[${char.name}: ${char.prompt || (char as any).description || (char as any).appearance || ''}]`;
+        replacement = `[${char.name}: ${char.prompt || ''}]`;
       }
     } else if (mention.type === 'scene') {
       const scene = scenes.find(s => s.id === mention.id);
       if (scene) {
-        replacement = `[${scene.name}: ${scene.prompt || (scene as any).description || ''}]`;
+        replacement = `[${scene.name}: ${scene.prompt || ''}]`;
       }
     } else if (mention.type === 'prop') {
       const prop = props.find(p => p.id === mention.id || p.sora2PropId === mention.id);
       if (prop) {
-        replacement = `[${prop.name}: ${prop.prompt || prop.description || prop.type || ''}]`;
+        replacement = `[${prop.name}: ${prop.prompt || prop.type || ''}]`;
       }
     }
 

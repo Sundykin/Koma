@@ -24,7 +24,6 @@ function createShot(overrides: Partial<Shot> = {}): Shot {
     shotType: 'medium',
     cameraMovement: 'static',
     duration: 3,
-    description: '',
     characters: ['char-001'],
     scenes: ['scene-001'],
     props: ['prop-001'],
@@ -40,6 +39,7 @@ function createCharacter(overrides: Partial<Character> = {}): Character {
   return {
     id: 'char-001',
     name: '小明',
+    prompt: '短发少年，深色外套，平静站姿',
     description: '主角',
     sora2CharacterId: 'sora2-c1',
     episodeRefs: [],
@@ -51,6 +51,7 @@ function createScene(overrides: Partial<Scene> = {}): Scene {
   return {
     id: 'scene-001',
     name: '森林',
+    prompt: '密集树干，潮湿地面，雾气弥漫',
     description: '茂密的森林',
     episodeRefs: [],
     ...overrides,
@@ -61,6 +62,7 @@ function createProp(overrides: Partial<Prop> = {}): Prop {
   return {
     id: 'prop-001',
     name: '宝剑',
+    prompt: '古铜剑柄，细长剑身，表面磨损',
     description: '一把古剑',
     sora2PropId: 'sora2-p1',
     episodeRefs: [],

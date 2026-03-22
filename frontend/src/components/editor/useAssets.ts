@@ -67,12 +67,13 @@ export function useAssets({ projectId, episodeId }: UseAssetsOptions): UseAssets
       shots.forEach((shot: Shot) => {
         const videoPath = getShotCurrentVideoSource(shot);
         const imagePath = getShotCurrentImageSource(shot);
+        const shotName = shot.scriptContent?.trim().slice(0, 24) || `分镜 ${shot.id.slice(0, 6)}`;
 
         // 视频
         if (videoPath) {
           aggregated.push({
             id: `shot-video-${shot.id}`,
-            name: shot.description || `分镜 ${shot.id.slice(0, 6)}`,
+            name: shotName,
             type: 'video',
             src: videoPath,
             thumbnailSrc: imagePath || videoPath,
@@ -85,7 +86,7 @@ export function useAssets({ projectId, episodeId }: UseAssetsOptions): UseAssets
         else if (imagePath) {
           aggregated.push({
             id: `shot-image-${shot.id}`,
-            name: shot.description || `分镜 ${shot.id.slice(0, 6)}`,
+            name: shotName,
             type: 'image',
             src: imagePath,
             thumbnailSrc: imagePath,

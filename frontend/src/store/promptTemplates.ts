@@ -15,7 +15,6 @@ export type PromptTemplateType =
   | 'shot_breakdown_system'    // 分镜拆解的系统提示
   | 'script_analysis_system'   // 剧本解析的系统提示
   // LLM 任务模板
-  | 'random_idea_generation'   // 随机创意生成（已废弃，保留兼容）
   | 'random_script_generation' // 随机剧本生成（一步完成）
   | 'script_generation'        // 剧本生成
   | 'script_polish'            // 剧本润色
@@ -44,8 +43,17 @@ export interface PromptTemplate {
   name: string;
   description: string;
   template: string;
-  variables: string[];  // 模板变量列表 (如 {{idea}}, {{style}})
+  variables: PromptTemplateVariable[];
   isCustom: boolean;    // 是否自定义
+}
+
+export interface PromptTemplateVariable {
+  name: string;
+  label: string;
+  description: string;
+  format: string;
+  example?: string;
+  required?: boolean;
 }
 
 export interface PromptTemplateOverride {
@@ -63,6 +71,258 @@ export interface ResolvedPromptTemplate {
   template: PromptTemplate;
   prompt: string;
   source: 'default' | 'custom';
+}
+
+const COMMON_VARIABLE_DEFINITIONS: Record<string, Omit<PromptTemplateVariable, 'name'>> = {
+  duration: {
+    label: '目标时长',
+    description: '剧本目标时长，供随机剧本或剧本生成模板控制篇幅。',
+    format: '分钟数字字符串',
+    example: '3',
+    required: true,
+  },
+  idea: {
+    label: '创意',
+    description: '用户提供的故事创意、概念或一句话灵感。',
+    format: '自然语言短段落',
+    example: '一个在旧城区夜巡的入殓师意外发现亡者会留下声音',
+    required: true,
+  },
+  style: {
+    label: '风格',
+    description: '题材或叙事风格标签。',
+    format: '短语或枚举字符串',
+    example: '悬疑、治愈、黑色幽默',
+    required: true,
+  },
+  script: {
+    label: '剧本文本',
+    description: '完整剧本文本，用于提取、拆解或润色。',
+    format: '完整自然语言文本',
+    example: '场景一：雨夜，顾行蹲在后院焚烧纸钱……',
+    required: true,
+  },
+  requirements: {
+    label: '润色要求',
+    description: '用户补充的润色要求或限制。',
+    format: '自然语言短段落',
+    example: '强化节奏，保留人物关系，不要改动结局',
+    required: true,
+  },
+  scriptContent: {
+    label: '分镜素材',
+    description: '分镜对应的原始剧本内容，仅作为视觉提炼素材，不应被原样复述。',
+    format: '自然语言短段落',
+    example: '顾行在后院把纸钱投入火盆，火光映亮脸侧',
+    required: true,
+  },
+  characters: {
+    label: '角色信息',
+    description: '当前任务涉及的角色名或角色视觉信息列表。',
+    format: '逗号分隔字符串或多行列表',
+    example: '顾行, 老周',
+    required: true,
+  },
+  scenes: {
+    label: '场景信息',
+    description: '当前任务涉及的场景列表或场景信息。',
+    format: '逗号分隔字符串或 JSON 字符串',
+    example: '殡葬用品店后院, 雨夜墓地',
+    required: true,
+  },
+  props: {
+    label: '道具信息',
+    description: '当前任务涉及的道具列表或道具信息。',
+    format: '逗号分隔字符串或 JSON 字符串',
+    example: '纸钱, 铁盆, 墓碑',
+    required: true,
+  },
+  emotion: {
+    label: '情绪标签',
+    description: '画面情绪标签，使用时应转化为可见的表情、姿态、光线或色调特征。',
+    format: '短语',
+    example: '平静、压抑、警觉',
+    required: true,
+  },
+  stylePrefix: {
+    label: '画风前缀',
+    description: '项目或主题预设提供的视觉风格前缀。',
+    format: '逗号分隔短语字符串',
+    example: 'anime style, japanese animation, vibrant colors',
+    required: true,
+  },
+  cameraOptions: {
+    label: '可选运镜',
+    description: '允许模型选择的运镜关键字列表。',
+    format: '逗号分隔关键字',
+    example: 'static shot, tracking shot, push in',
+    required: true,
+  },
+  shotTypeOptions: {
+    label: '可选景别',
+    description: '允许模型选择的景别关键字列表。',
+    format: '逗号分隔关键字',
+    example: 'close-up, medium shot, wide shot',
+    required: true,
+  },
+  characterRefs: {
+    label: '角色引用表',
+    description: '可插入到提示词中的角色引用清单，格式为角色名到 @角色ID 的映射。',
+    format: '多行文本',
+    example: '顾行: @char_001',
+    required: true,
+  },
+  shotTypeHint: {
+    label: '景别提示',
+    description: '当前分镜已经确定的景别提示，应优先遵守。',
+    format: '短语',
+    example: 'medium close-up',
+    required: true,
+  },
+  cameraMovementHint: {
+    label: '运镜提示',
+    description: '当前分镜已经确定的运镜提示，应优先遵守。',
+    format: '短语',
+    example: 'slow tracking shot',
+    required: true,
+  },
+  durationSeconds: {
+    label: '镜头时长',
+    description: '当前镜头的总时长，用于视频提示词的时间片段规划。',
+    format: '秒数字符串',
+    example: '4',
+    required: true,
+  },
+  character: {
+    label: '角色资料',
+    description: '角色原始资料或角色卡信息。',
+    format: '自然语言短段落或 JSON 片段',
+    example: '顾行，男，二十多岁，面容清瘦，寡言',
+    required: true,
+  },
+  context: {
+    label: '上下文',
+    description: '角色视觉设计时可参考的剧情上下文，输出时仍需只保留外观信息。',
+    format: '自然语言短段落',
+    example: '角色长期在旧城区夜间工作，服饰偏耐磨、防水',
+    required: true,
+  },
+  scene: {
+    label: '场景信息',
+    description: '场景相关的输入信息。',
+    format: '自然语言短段落',
+    example: '雨夜墓地，墓碑稀疏排列，湿地反光',
+    required: true,
+  },
+  plot: {
+    label: '情节素材',
+    description: '剧情素材，仅供提炼视觉事实，不应用于直接复述。',
+    format: '自然语言短段落',
+    example: '两人在墓前短暂停顿后继续对话',
+    required: true,
+  },
+  appearance: {
+    label: '角色外观',
+    description: '角色客观外观、服装、材质、配色与体态描述。',
+    format: '自然语言短段落，仅限可见外观',
+    example: '瘦高体型，苍白肤色，黑色短发，深灰长风衣，防水皮靴',
+    required: true,
+  },
+  description: {
+    label: '视觉描述',
+    description: '客观视觉描述，只写当前可见外观、动作、空间、材质、光照等事实。',
+    format: '自然语言短段落',
+    example: '湿润石板地面上立着铁盆，火光映亮人物侧脸，纸灰在雨雾中飘散',
+    required: true,
+  },
+  location: {
+    label: '空间位置',
+    description: '场景的地理或空间位置描述。',
+    format: '短语',
+    example: '殡葬用品店后院',
+    required: true,
+  },
+  time: {
+    label: '时间状态',
+    description: '画面中的时间状态，应转为可见光照或天色特征。',
+    format: '短语或枚举',
+    example: 'night',
+    required: true,
+  },
+  mood: {
+    label: '可见氛围',
+    description: '画面氛围的可见化描述，应落到光线、色调、天气或空间状态。',
+    format: '短语',
+    example: 'low-key lighting, damp air, muted blue-gray palette',
+    required: true,
+  },
+  type: {
+    label: '类型',
+    description: '对象的类型或类别说明。',
+    format: '短语',
+    example: 'ritual paper money',
+    required: true,
+  },
+  cameraMovement: {
+    label: '镜头运动',
+    description: '最终视频提示词中的镜头运动描述。',
+    format: '短语',
+    example: 'slow dolly in',
+    required: true,
+  },
+  characterName: {
+    label: '角色名',
+    description: '角色展示视频的主角名称。',
+    format: '字符串',
+    example: '顾行',
+    required: true,
+  },
+  action: {
+    label: '动作描述',
+    description: '主体当前可见动作与动态表现。',
+    format: '自然语言短段落',
+    example: '微微抬头，衣摆轻晃，眼神平稳移动',
+    required: true,
+  },
+  motion: {
+    label: '运动描述',
+    description: '道具或主体的运动方式。',
+    format: '自然语言短段落',
+    example: 'slow rotation, subtle tilt, surface highlights moving across edges',
+    required: true,
+  },
+  motionTimeline: {
+    label: '动作时间线',
+    description: '按 `[start,end]秒` 组织的动作与镜头变化时间线。',
+    format: '多段时间片段文本',
+    example: '[0,1]秒：人物静止建立构图；[1,3]秒：手部缓慢抬起，镜头缓推',
+    required: true,
+  },
+};
+
+function variable(
+  name: string,
+  overrides: Partial<Omit<PromptTemplateVariable, 'name'>> = {}
+): PromptTemplateVariable {
+  const fallback: Omit<PromptTemplateVariable, 'name'> = {
+    label: name,
+    description: `${name} 变量`,
+    format: '字符串',
+    required: true,
+  };
+  return {
+    name,
+    ...(COMMON_VARIABLE_DEFINITIONS[name] || fallback),
+    ...overrides,
+  };
+}
+
+function getVariableNames(variables: PromptTemplateVariable[]): string[] {
+  return variables.map(variableItem => variableItem.name);
+}
+
+function getRequiredVariableNames(variables: PromptTemplateVariable[]): string[] {
+  return variables.filter(variableItem => variableItem.required !== false).map(variableItem => variableItem.name);
 }
 
 // ========== 默认模板 ==========
@@ -123,31 +383,6 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
 
   // ========== LLM 任务模板 ==========
 
-  random_idea_generation: {
-    id: 'random_idea_generation',
-    name: '随机创意生成（已废弃）',
-    description: '生成随机的剧本创意（已废弃，请使用 random_script_generation）',
-    template: `你是一个创意编剧。请随机生成一个短视频剧本创意。
-
-要求：
-1. 创意要新颖有趣，适合短视频形式（1-5分钟）
-2. 包含明确的主题、类型和情感基调
-3. 简要描述核心冲突或亮点
-4. 每次生成都要有变化，不要重复
-
-请以 JSON 格式输出：
-\`\`\`json
-{
-  "topic": "故事主题/概念（一句话）",
-  "style": "风格类型（如：治愈、搞笑、悬疑、科幻等）",
-  "keyElements": ["关键元素1", "关键元素2", "关键元素3"],
-  "logline": "一句话剧情简介"
-}
-\`\`\``,
-    variables: [],
-    isCustom: false,
-  },
-
   random_script_generation: {
     id: 'random_script_generation',
     name: '随机剧本生成',
@@ -185,7 +420,7 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
 
 ### 场景 2：...
 `,
-    variables: ['duration'],
+    variables: [variable('duration')],
     isCustom: false,
   },
 
@@ -220,7 +455,7 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
 
 ### 场景 2：...
 `,
-    variables: ['idea', 'style', 'duration'],
+    variables: [variable('idea'), variable('style'), variable('duration')],
     isCustom: false,
   },
 
@@ -245,7 +480,7 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
 4. 不要补充“以下是润色版”之类提示语
 5. 不要改动角色名、集数、场次编号的语义结构
 `,
-    variables: ['script', 'requirements'],
+    variables: [variable('script'), variable('requirements')],
     isCustom: false,
   },
 
@@ -290,7 +525,7 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
 }
 \`\`\`
 `,
-    variables: ['script', 'characters', 'scenes', 'props'],
+    variables: [variable('script'), variable('characters'), variable('scenes'), variable('props')],
     isCustom: false,
   },
 
@@ -298,27 +533,39 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
     id: 'shot_prompt_generation',
     name: '分镜提示词生成',
     description: '为分镜生成视频/图片提示词',
-    template: `根据以下分镜信息生成视频/图片生成提示词。
+    template: `根据以下分镜信息生成一条可用于视频或图片模型的中文提示词。
 
 剧本内容：{{scriptContent}}
 出场角色：{{characters}}
 情绪氛围：{{emotion}}
 风格前缀：{{stylePrefix}}
+推荐运镜：{{cameraMovementHint}}
+推荐景别：{{shotTypeHint}}
 
 要求：
 1. 使用中文输出
 2. 为每个角色添加 @角色ID 引用格式（角色引用列表见下方）
-3. 使用以下运镜关键字之一：{{cameraOptions}}
-4. 使用以下景别关键字之一：{{shotTypeOptions}}
-5. 描述画面动作、光影、氛围
-6. 包含详尽的画面描述、景别与运镜设计
+3. 只保留当前镜头直接可观察到的画面信息，不要复述剧情，不要写心理活动或因果解释
+4. 优先使用推荐运镜和推荐景别；如需微调，只能从以下关键字中选择：运镜 {{cameraOptions}}；景别 {{shotTypeOptions}}
+5. 描述人物外观、姿态、动作、空间关系、构图、光线和环境细节
+6. 输出应像拍摄指令，不要写小说句子，不要写“正在经历什么故事”
 
 可用角色引用：
 {{characterRefs}}
 
 输出格式：直接输出提示词，无需其他说明
 `,
-    variables: ['scriptContent', 'characters', 'emotion', 'stylePrefix', 'cameraOptions', 'shotTypeOptions', 'characterRefs'],
+    variables: [
+      variable('scriptContent'),
+      variable('characters'),
+      variable('emotion'),
+      variable('stylePrefix'),
+      variable('cameraMovementHint'),
+      variable('shotTypeHint'),
+      variable('cameraOptions'),
+      variable('shotTypeOptions'),
+      variable('characterRefs'),
+    ],
     isCustom: false,
   },
 
@@ -326,27 +573,37 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
     id: 'shot_image_prompt_generation',
     name: '分镜图片提示词生成',
     description: '为分镜生成静态图片提示词',
-    template: `根据以下分镜信息生成图片生成提示词。
+    template: `根据以下分镜信息生成一条静态分镜图片提示词。
 
 剧本内容：{{scriptContent}}
 出场角色：{{characters}}
 情绪氛围：{{emotion}}
 风格前缀：{{stylePrefix}}
+推荐景别：{{shotTypeHint}}
 
 要求：
 1. 使用中文输出
 2. 为每个角色添加 @角色ID 引用格式（角色引用列表见下方）
-3. 使用以下景别关键字之一：{{shotTypeOptions}}
-4. 重点描述画面构图、人物姿态、光影效果
-5. 强调静态画面的视觉冲击力和情绪表达
-6. 包含背景环境、色调氛围描述
+3. 只描述当前静止画面中可见的客观事实，不要复述剧情，不要描述人物内心，不要解释事件原因
+4. 画面内容必须聚焦于角色外观、服装、姿态、手部动作、道具状态、空间关系、构图和光线
+5. 优先使用推荐景别；如需微调，只能从以下景别关键字中选择：{{shotTypeOptions}}
+6. 把“情绪氛围”转成可见线索，如表情、肢体张力、天气、色调、明暗对比
+7. 输出一段连续中文提示词，不要分点，不要加前言
 
 可用角色引用：
 {{characterRefs}}
 
 输出格式：直接输出提示词，无需其他说明
 `,
-    variables: ['scriptContent', 'characters', 'emotion', 'stylePrefix', 'shotTypeOptions', 'characterRefs'],
+    variables: [
+      variable('scriptContent'),
+      variable('characters'),
+      variable('emotion'),
+      variable('stylePrefix'),
+      variable('shotTypeHint'),
+      variable('shotTypeOptions'),
+      variable('characterRefs'),
+    ],
     isCustom: false,
   },
 
@@ -354,28 +611,43 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
     id: 'shot_video_prompt_generation',
     name: '分镜视频提示词生成',
     description: '为分镜生成动态视频提示词',
-    template: `根据以下分镜信息生成视频生成提示词。
+    template: `根据以下分镜信息生成一条动态分镜视频提示词。
 
 剧本内容：{{scriptContent}}
 出场角色：{{characters}}
 情绪氛围：{{emotion}}
 风格前缀：{{stylePrefix}}
+镜头总时长：{{durationSeconds}} 秒
+推荐运镜：{{cameraMovementHint}}
+推荐景别：{{shotTypeHint}}
 
 要求：
 1. 使用中文输出
 2. 为每个角色添加 @角色ID 引用格式（角色引用列表见下方）
-3. 使用以下运镜关键字之一：{{cameraOptions}}
-4. 使用以下景别关键字之一：{{shotTypeOptions}}
-5. 重点描述动作流程、运动轨迹、镜头变化
-6. 强调动态连贯性和时间节奏
-7. 包含转场效果和动态氛围描述
+3. 只能描述镜头内直接可观察到的动作、表情变化、镜头运动与环境动态，不要复述剧情，不要写心理活动，不要写因果解释
+4. 输出必须包含连续的时间片段，格式严格为 \`[start,end]秒：描述\`
+5. 时间片段总长度必须覆盖整个镜头时长 {{durationSeconds}} 秒
+6. 优先使用推荐运镜和推荐景别；如需微调，只能从以下关键字中选择：运镜 {{cameraOptions}}；景别 {{shotTypeOptions}}
+7. 每个时间片段都要写清楚人物动作、镜头运动、环境变化和画面节奏
+8. 输出只保留提示词正文，不要加解释，不要加标题
 
 可用角色引用：
 {{characterRefs}}
 
 输出格式：直接输出提示词，无需其他说明
 `,
-    variables: ['scriptContent', 'characters', 'emotion', 'stylePrefix', 'cameraOptions', 'shotTypeOptions', 'characterRefs'],
+    variables: [
+      variable('scriptContent'),
+      variable('characters'),
+      variable('emotion'),
+      variable('stylePrefix'),
+      variable('durationSeconds'),
+      variable('cameraMovementHint'),
+      variable('shotTypeHint'),
+      variable('cameraOptions'),
+      variable('shotTypeOptions'),
+      variable('characterRefs'),
+    ],
     isCustom: false,
   },
 
@@ -394,6 +666,7 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
 3. 严禁使用性格、情绪、气质等抽象词汇
 4. 严禁使用"好看的"、"普通的"等模糊词
 5. 输出为中文描述
+6. description 字段只写客观可见外观，不写人物经历、关系和剧情摘要
 
 剧本：
 {{script}}
@@ -414,7 +687,7 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
 }
 \`\`\`
 `,
-    variables: ['script'],
+    variables: [variable('script')],
     isCustom: false,
   },
 
@@ -446,7 +719,7 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
 基准形象：[完整的外观描述]
 场景1（如有）：[该场景下的服装变化]
 `,
-    variables: ['character', 'context'],
+    variables: [variable('character'), variable('context')],
     isCustom: false,
   },
 
@@ -460,6 +733,12 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
 {{script}}
 
 请以 JSON 格式输出场景列表：
+
+要求：
+1. description 字段只写空间结构、建筑/自然元素、地面、陈设、天气痕迹、光线和色调
+2. 不要写场景中发生了什么剧情，不要写人物关系，不要写事件因果
+3. mood 字段应尽量写成可见氛围线索，而不是抽象评价
+4. description 字段禁止出现人物、角色名、人物动作、对白和表情
 
 \`\`\`json
 {
@@ -476,7 +755,7 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
 }
 \`\`\`
 `,
-    variables: ['script'],
+    variables: [variable('script')],
     isCustom: false,
   },
 
@@ -491,6 +770,11 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
 
 请以 JSON 格式输出道具列表：
 
+要求：
+1. description 字段只写形状、材质、结构、颜色、磨损、尺寸感和表面细节
+2. 不要写道具在剧情中的象征意义，不要复述它推动了什么事件
+3. description 字段禁止出现人物、角色名、手持/使用动作、对白和表情
+
 \`\`\`json
 {
   "props": [
@@ -504,7 +788,7 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
 }
 \`\`\`
 `,
-    variables: ['script'],
+    variables: [variable('script')],
     isCustom: false,
   },
 
@@ -529,7 +813,7 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
 **角色名**：对话内容
 （情绪/动作提示）
 `,
-    variables: ['scene', 'characters', 'plot', 'style'],
+    variables: [variable('scene'), variable('characters'), variable('plot'), variable('style')],
     isCustom: false,
   },
 
@@ -539,8 +823,13 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
     id: 'tti_character_costume',
     name: '角色定妆照（三视图）',
     description: '生成角色三视图定妆照',
-    template: '{{stylePrefix}}, character turnaround sheet, white background, front view | side view | back view, three poses in one image, character design reference sheet, full body, standing pose, {{appearance}}',
-    variables: ['stylePrefix', 'appearance'],
+    template: '{{stylePrefix}}, character turnaround sheet, white background, front view | side view | back view, three poses in one image, full body standing reference, neutral stance, clear silhouette, clothing layers visible, objective appearance details only, {{appearance}}',
+    variables: [
+      variable('stylePrefix'),
+      variable('appearance', {
+        description: '角色当前用于生图的客观外观描述，只能包含脸部、发型、服装、材质、配色、体态等可见信息。',
+      }),
+    ],
     isCustom: false,
   },
 
@@ -548,8 +837,20 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
     id: 'tti_scene_preview',
     name: '场景预览图',
     description: '生成场景参考图',
-    template: '{{stylePrefix}}, environment concept art, wide shot, establishing shot, {{description}}, {{location}}, {{time}}, {{mood}} atmosphere, detailed background, cinematic composition',
-    variables: ['stylePrefix', 'description', 'location', 'time', 'mood'],
+    template: '{{stylePrefix}}, environment concept art, no people, no character action, establishing shot, wide frame, objective environmental details only, {{description}}, location: {{location}}, visible time cues: {{time}}, visible atmosphere cues: {{mood}}, layered depth, architectural and material details, cinematic composition',
+    variables: [
+      variable('stylePrefix'),
+      variable('description', {
+        description: '场景中的客观环境细节，只描述空间、建筑、地面、植被、天气痕迹、陈设等可见内容，禁止出现人物、角色名、人物动作和对白。',
+      }),
+      variable('location'),
+      variable('time', {
+        description: '用于表现时间状态的可见线索，如 night、twilight、overcast daylight。',
+      }),
+      variable('mood', {
+        description: '场景氛围的可见线索，只能写光线、色调、湿度、雾气、空气状态等物理表现。',
+      }),
+    ],
     isCustom: false,
   },
 
@@ -557,8 +858,14 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
     id: 'tti_prop_reference',
     name: '道具参考图',
     description: '生成道具参考图',
-    template: '{{stylePrefix}}, prop design, item illustration, centered composition, white background, studio lighting, {{description}}, {{type}} item, detailed rendering, clean presentation',
-    variables: ['stylePrefix', 'description', 'type'],
+    template: '{{stylePrefix}}, prop design sheet, no people, no hands, no character action, centered composition, plain background, studio lighting, objective product view only, {{type}}, {{description}}, clear material edges, surface texture details, clean presentation',
+    variables: [
+      variable('stylePrefix'),
+      variable('description', {
+        description: '道具的客观外观描述，只描述形状、结构、材质、磨损、颜色和表面细节，禁止出现人物、角色名和人物动作。',
+      }),
+      variable('type'),
+    ],
     isCustom: false,
   },
 
@@ -566,8 +873,22 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
     id: 'tti_shot_image',
     name: '分镜图片',
     description: '生成分镜预览图',
-    template: '{{stylePrefix}}, {{description}}, {{shotType}}, {{emotion}} mood, cinematic lighting, high quality, 4k, detailed',
-    variables: ['stylePrefix', 'description', 'shotType', 'emotion'],
+    template: '{{stylePrefix}}, {{shotType}}, objective still frame, {{description}}, visible emotion cues: {{emotion}}, cinematic lighting, layered composition, detailed environment, high quality, 4k',
+    variables: [
+      variable('stylePrefix'),
+      variable('description', {
+        description: '当前镜头的客观可见事实，应包含人物外观、姿态、动作瞬间、空间关系、道具状态与环境细节。',
+      }),
+      variable('shotType', {
+        label: '镜头景别',
+        description: '当前静帧使用的景别或机位短语。',
+        format: '短语',
+        example: 'medium close-up, eye-level',
+      }),
+      variable('emotion', {
+        description: '情绪的可见线索，应转化为表情、肢体张力、光照或色调特征。',
+      }),
+    ],
     isCustom: false,
   },
 
@@ -577,8 +898,22 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
     id: 'itv_shot_video',
     name: '分镜视频',
     description: '生成分镜动态视频',
-    template: '{{stylePrefix}}{{description}}, {{cameraMovement}}, smooth motion, cinematic, high quality video',
-    variables: ['stylePrefix', 'description', 'cameraMovement'],
+    template: '{{stylePrefix}}, objective motion picture prompt, {{description}}, shot scale: {{shotType}}, camera movement: {{cameraMovement}}, total duration {{durationSeconds}} seconds, {{motionTimeline}}, cinematic continuity, high quality video',
+    variables: [
+      variable('stylePrefix'),
+      variable('description', {
+        description: '视频镜头中的主体、环境和动作基础状态，只包含当前镜头可见事实。',
+      }),
+      variable('shotType', {
+        label: '镜头景别',
+        description: '视频镜头使用的景别短语。',
+        format: '短语',
+        example: 'wide shot',
+      }),
+      variable('cameraMovement'),
+      variable('durationSeconds'),
+      variable('motionTimeline'),
+    ],
     isCustom: false,
   },
 
@@ -587,7 +922,7 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
     name: '角色动态视频',
     description: '生成角色动态展示视频',
     template: '{{characterName}} {{action}}, {{stylePrefix}}, smooth animation, character showcase, professional quality',
-    variables: ['characterName', 'action', 'stylePrefix'],
+    variables: [variable('characterName'), variable('action'), variable('stylePrefix')],
     isCustom: false,
   },
 
@@ -596,7 +931,7 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
     name: '道具动态视频',
     description: '生成道具动态展示视频',
     template: '{{stylePrefix}}, {{description}}, {{motion}}, professional product animation, smooth camera movement, high quality video',
-    variables: ['stylePrefix', 'description', 'motion'],
+    variables: [variable('stylePrefix'), variable('description'), variable('motion')],
     isCustom: false,
   },
 };
@@ -619,10 +954,11 @@ function buildValidationResult(
   type: PromptTemplateType,
   templateText: string
 ): PromptTemplateValidationResult {
-  const allowedVariables = DEFAULT_TEMPLATES[type]?.variables || [];
+  const allowedVariables = getVariableNames(DEFAULT_TEMPLATES[type]?.variables || []);
+  const requiredVariables = getRequiredVariableNames(DEFAULT_TEMPLATES[type]?.variables || []);
   const usedVariables = extractTemplateVariables(templateText);
   const unknownVariables = usedVariables.filter(variable => !allowedVariables.includes(variable));
-  const missingRequiredVariables = allowedVariables.filter(variable => !usedVariables.includes(variable));
+  const missingRequiredVariables = requiredVariables.filter(variable => !usedVariables.includes(variable));
 
   return {
     isValid: unknownVariables.length === 0 && missingRequiredVariables.length === 0,
@@ -880,6 +1216,8 @@ export async function resolvePromptTemplate(
   variables: Record<string, string>
 ): Promise<ResolvedPromptTemplate> {
   const template = await getPromptTemplate(type);
+  const variableNames = getVariableNames(template.variables);
+  const requiredVariableNames = getRequiredVariableNames(template.variables);
 
   // 运行时仅警告模板校验问题，不阻断执行
   const validation = buildValidationResult(type, template.template);
@@ -895,15 +1233,15 @@ export async function resolvePromptTemplate(
   }
 
   // 过滤掉模板未声明的多余变量（仅警告，不阻断）
-  const unknownVariables = Object.keys(variables).filter(variable => !template.variables.includes(variable));
+  const unknownVariables = Object.keys(variables).filter(variable => !variableNames.includes(variable));
   if (unknownVariables.length > 0) {
     console.warn(`[PromptTemplate] 模板 ${type} 收到未声明变量（已忽略）: ${unknownVariables.join(', ')}`);
   }
   const filteredVariables = Object.fromEntries(
-    Object.entries(variables).filter(([key]) => template.variables.includes(key))
+    Object.entries(variables).filter(([key]) => variableNames.includes(key))
   );
 
-  const missingVariables = template.variables.filter((variable) => {
+  const missingVariables = requiredVariableNames.filter((variable) => {
     if (!Object.prototype.hasOwnProperty.call(filteredVariables, variable)) {
       return true;
     }

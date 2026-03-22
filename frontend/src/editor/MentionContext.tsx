@@ -42,7 +42,7 @@ function characterToMentionItem(char: Character): MentionItem {
     id: char.id,
     type: 'char',
     name: char.name,
-    description: char.description || char.appearance,
+    description: char.prompt,
     previewImage: getCharacterCostumePhotoSource(char),
   };
 }
@@ -55,7 +55,7 @@ function sceneToMentionItem(scene: Scene): MentionItem {
     id: scene.id,
     type: 'scene',
     name: scene.name,
-    description: `${scene.location} - ${scene.mood || ''}`,
+    description: scene.prompt,
     previewImage: getScenePreviewImageSource(scene),
   };
 }
@@ -68,7 +68,7 @@ function propToMentionItem(prop: Prop): MentionItem {
     id: prop.id,
     type: 'prop',
     name: prop.name,
-    description: prop.description,
+    description: prop.prompt,
     previewImage: getPropPreviewImageSource(prop),
   };
 }

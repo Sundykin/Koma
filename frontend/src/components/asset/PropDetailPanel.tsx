@@ -95,14 +95,7 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
 
   // 初始化
   useEffect(() => {
-    let initialPrompt = prop.prompt || prop.customPrompt || '';
-    if (!initialPrompt) {
-      const parts = [];
-      if (prop.type) parts.push(`Type: ${prop.type}`);
-      if (prop.description) parts.push(prop.description);
-      initialPrompt = parts.join('\n');
-    }
-
+    const initialPrompt = prop.prompt || '';
     setEditedProp({ ...prop, prompt: initialPrompt });
     form.setFieldsValue({
       name: prop.name,
@@ -267,9 +260,15 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
     setProgress(0);
 
     try {
+      const currentValues = await form.getFieldsValue();
+      const propForVideo = {
+        ...editedProp,
+        ...currentValues,
+        prompt: currentValues.prompt || '',
+      };
       const result = await generatePropPreviewVideo({
         projectId,
-        prop: editedProp,
+        prop: propForVideo,
         theme,
         stylePrompt,
         styleSnapshot,
@@ -281,7 +280,7 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
       });
 
       if (result.success && result.path) {
-        const updated = updatePropMedia(editedProp, {
+        const updated = updatePropMedia(propForVideo, {
           previewVideo: createStoredMediaAsset('video', {
             localPath: result.path,
             providerTaskId: result.taskId,
@@ -306,7 +305,7 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
     } finally {
       setGenerating(null);
     }
-  }, [editedProp, projectId, theme, stylePrompt, styleSnapshot, itvConfigId, onUpdate, message, t]);
+  }, [editedProp, form, projectId, theme, stylePrompt, styleSnapshot, itvConfigId, onUpdate, message, t]);
 
   const handleUploadVideo = useCallback(async () => {
     try {

@@ -70,7 +70,7 @@ function mergeShots(target: Shot, source: Shot): Shot {
   return {
     ...target,
     scriptContent: [target.scriptContent, source.scriptContent].filter(Boolean).join('\n'),
-    description: [target.description, source.description].filter(Boolean).join('\n\n'),
+    imagePrompt: [target.imagePrompt, source.imagePrompt].filter(Boolean).join('\n\n'),
     duration: target.duration + source.duration,
     characters: [...new Set([...target.characters, ...source.characters])],
     dialogue: [target.dialogue, source.dialogue].filter(Boolean).join('\n'),
@@ -160,7 +160,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
           id: char.sora2CharacterId!,  // 使用 Sora2 ID 避免 @char_char_xxx 重复
           type: 'char' as const,
           name: char.name,
-          description: char.description,
+          description: char.prompt,
           previewImage: getMediaAssetDisplaySource(char.media?.costumePhoto),
         });
       });
@@ -171,7 +171,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
         id: scene.id,
         type: 'scene' as const,
         name: scene.name,
-        description: scene.description,
+        description: scene.prompt,
         previewImage: getMediaAssetDisplaySource(scene.media?.previewImage),
       });
     });
@@ -184,7 +184,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
           id: prop.sora2PropId!,  // 使用 Sora2 ID
           type: 'prop' as const,
           name: prop.name,
-          description: prop.description,
+          description: prop.prompt,
           previewImage: getMediaAssetDisplaySource(prop.media?.previewImage),
         });
       });
@@ -970,7 +970,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     shotType: 'medium',
     cameraMovement: 'static',
     duration: 3,
-    description: '',
+    imagePrompt: '',
     characters: [],
     dialogue: '',
     emotion: '',
@@ -1061,7 +1061,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       message.warning('请输入剧本内容');
       return;
     }
-    if (!editFormData.description?.trim()) {
+    if (!editFormData.imagePrompt?.trim()) {
       message.warning('请输入画面描述');
       return;
     }
@@ -1443,8 +1443,8 @@ export const Storyboard: React.FC<StoryboardProps> = ({
 
           <Form.Item label="画面描述 (Prompt)" required>
             <ScriptEditor
-              value={editFormData.description || ''}
-              onChange={(value) => setEditFormData(prev => ({ ...prev, description: value }))}
+              value={editFormData.imagePrompt || ''}
+              onChange={(value) => setEditFormData(prev => ({ ...prev, imagePrompt: value }))}
               placeholder="描述这个镜头的画面，可使用 @ 引用角色或道具"
               mentionItems={actualMentionItems}
               minHeight="120px"

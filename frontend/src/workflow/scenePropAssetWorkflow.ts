@@ -15,6 +15,10 @@ import { logTTICall, logITVCall } from '../store/aiCallLogger';
 import { resolvePromptTemplate } from '../store/promptTemplates';
 import { IMAGE_GENERATION_SIZES } from '../constants/dimensions';
 import { mediaGenerationService } from '../services/MediaGenerationService';
+import {
+  buildPropReferenceTemplateVariables,
+  buildScenePreviewTemplateVariables,
+} from './promptVariableBuilders';
 
 const logger = createLogger('ScenePropAsset');
 
@@ -36,7 +40,6 @@ export function getScenePrompt(
   project?: { styleSnapshot?: StyleSnapshotLike }
 ): string {
   const stylePrefix = resolveTTIStylePrefix(styleSnapshot || project?.styleSnapshot, theme, stylePrompt);
-  if (scene.customPrompt) return scene.customPrompt;
   return buildScenePromptInternal(scene, stylePrefix);
 }
 
@@ -51,26 +54,21 @@ export function getPropPrompt(
   project?: { styleSnapshot?: StyleSnapshotLike }
 ): string {
   const stylePrefix = resolveTTIStylePrefix(styleSnapshot || project?.styleSnapshot, theme, stylePrompt);
-  if (prop.customPrompt) return prop.customPrompt;
   return buildPropPromptInternal(prop, stylePrefix);
 }
 
 // 内部构建函数（同步版本）
 function buildScenePromptInternal(scene: Scene, stylePrefix: string): string {
-  const timeDescriptions: Record<string, string> = {
-    day: 'daytime, bright natural lighting',
-    night: 'nighttime, moonlight, artificial lights',
-    twilight: 'twilight, golden hour, warm lighting',
-  };
+  const variables = buildScenePreviewTemplateVariables(scene, stylePrefix);
   const parts = [
-    stylePrefix,
+    variables.stylePrefix,
     'environment concept art',
     'wide shot',
     'establishing shot',
-    scene.description,
-    scene.location,
-    scene.time ? timeDescriptions[scene.time] : '',
-    scene.mood ? `${scene.mood} atmosphere` : '',
+    variables.description,
+    variables.location,
+    variables.time,
+    variables.mood,
     'detailed background',
     'cinematic composition',
   ];
@@ -78,15 +76,16 @@ function buildScenePromptInternal(scene: Scene, stylePrefix: string): string {
 }
 
 function buildPropPromptInternal(prop: Prop, stylePrefix: string): string {
+  const variables = buildPropReferenceTemplateVariables(prop, stylePrefix);
   const parts = [
-    stylePrefix,
+    variables.stylePrefix,
     'prop design',
     'item illustration',
     'centered composition',
     'white background',
     'studio lighting',
-    prop.description,
-    prop.type ? `${prop.type} item` : '',
+    variables.description,
+    variables.type ? `${variables.type} item` : '',
     'detailed rendering',
     'clean presentation',
   ];
@@ -119,13 +118,10 @@ export async function generateSceneImage(
   try {
     // 构建提示词（从配置化模板读取）
     const stylePrefix = await getResolvedTTIStylePrefix(styleSnapshot || project?.styleSnapshot, theme, stylePrompt);
-    const resolvedPrompt = await resolvePromptTemplate('tti_scene_preview', {
-      stylePrefix: stylePrefix || '',
-      description: scene.description || '',
-      location: scene.location || '',
-      time: scene.time || 'day',
-      mood: scene.mood || '',
-    });
+    const resolvedPrompt = await resolvePromptTemplate(
+      'tti_scene_preview',
+      buildScenePreviewTemplateVariables(scene, stylePrefix || '')
+    );
     const prompt = resolvedPrompt.prompt;
 
     onProgress?.(10, '调用 TTI 服务...');
@@ -225,11 +221,10 @@ export async function generatePropImage(
   try {
     // 构建提示词（从配置化模板读取）
     const stylePrefix = await getResolvedTTIStylePrefix(styleSnapshot || project?.styleSnapshot, theme, stylePrompt);
-    const resolvedPrompt = await resolvePromptTemplate('tti_prop_reference', {
-      stylePrefix: stylePrefix || '',
-      description: prop.description || '',
-      type: prop.type || '',
-    });
+    const resolvedPrompt = await resolvePromptTemplate(
+      'tti_prop_reference',
+      buildPropReferenceTemplateVariables(prop, stylePrefix || '')
+    );
     const prompt = resolvedPrompt.prompt;
 
     onProgress?.(10, '调用 TTI 服务...');
@@ -351,7 +346,7 @@ export async function generatePropPreviewVideo(
     const resolvedStylePrefix = await getResolvedTTIStylePrefix(styleSnapshot || project?.styleSnapshot, theme, stylePrompt);
     const resolvedPrompt = await resolvePromptTemplate('itv_prop_motion', {
       stylePrefix: resolvedStylePrefix,
-      description: prop.customPrompt || prop.prompt || prop.description || prop.name,
+      description: prop.prompt || prop.name,
       motion: 'prop showcase, rotating slowly, detailed view',
     });
     const prompt = resolvedPrompt.prompt;

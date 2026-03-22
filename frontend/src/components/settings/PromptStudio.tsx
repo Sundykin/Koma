@@ -232,27 +232,45 @@ export const PromptStudio: React.FC = () => {
               </div>
 
               {selectedTemplate.variables.length > 0 && (
-                <div className="p-3 bg-emerald-900/20 border-t border-emerald-800/50 shrink-0">
+                <div className="p-3 bg-emerald-900/20 border-t border-emerald-800/50 shrink-0 overflow-y-auto max-h-72">
                   <div className="flex items-center gap-2 mb-2">
                     <CodeOutlined className="text-emerald-500" />
                     <Text strong className="text-xs !text-emerald-500 uppercase">可用变量</Text>
                   </div>
-                  <Space size={[4, 8]} wrap>
+                  <div className="grid grid-cols-1 xl:grid-cols-2 gap-2">
                     {selectedTemplate.variables.map(v => (
-                      <Tooltip title={`点击复制 {{${v}}}`} key={v}>
-                        <Tag
-                          color="green"
-                          className="font-mono cursor-pointer !m-0 !mr-2"
-                          onClick={() => {
-                            navigator.clipboard.writeText(`{{${v}}}`);
-                            message.success('已复制');
-                          }}
-                        >
-                          {`{{${v}}}`}
-                        </Tag>
-                      </Tooltip>
+                      <div
+                        key={v.name}
+                        className="rounded-lg border border-emerald-800/60 bg-zinc-900/70 p-3"
+                      >
+                        <div className="flex items-center justify-between gap-2 mb-2">
+                          <Tooltip title={`点击复制 {{${v.name}}}`}>
+                            <Tag
+                              color="green"
+                              className="font-mono cursor-pointer !m-0"
+                              onClick={() => {
+                                navigator.clipboard.writeText(`{{${v.name}}}`);
+                                message.success('已复制');
+                              }}
+                            >
+                              {`{{${v.name}}}`}
+                            </Tag>
+                          </Tooltip>
+                          <Tag color={v.required === false ? 'default' : 'blue'} className="!m-0">
+                            {v.required === false ? '选填' : '必填'}
+                          </Tag>
+                        </div>
+                        <div className="text-sm text-zinc-100 mb-1">{v.label}</div>
+                        <div className="text-xs text-zinc-400 mb-2">{v.description}</div>
+                        <div className="text-[11px] text-zinc-500">格式：{v.format}</div>
+                        {v.example && (
+                          <div className="text-[11px] text-zinc-500 mt-1 break-all">
+                            示例：{v.example}
+                          </div>
+                        )}
+                      </div>
                     ))}
-                  </Space>
+                  </div>
                 </div>
               )}
             </div>

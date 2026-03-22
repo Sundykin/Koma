@@ -98,15 +98,7 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
 
   // 初始化
   useEffect(() => {
-    let initialPrompt = character.prompt || character.customPrompt || '';
-    if (!initialPrompt) {
-      const parts = [];
-      if (character.age) parts.push(`Age: ${character.age}`);
-      if (character.appearance) parts.push(character.appearance);
-      if (character.description) parts.push(character.description);
-      initialPrompt = parts.join('\n');
-    }
-
+    const initialPrompt = character.prompt || '';
     setEditedCharacter({ ...character, prompt: initialPrompt });
     form.setFieldsValue({
       name: character.name,
@@ -270,9 +262,15 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
     setProgress(0);
 
     try {
+      const currentValues = await form.getFieldsValue();
+      const characterForVideo = {
+        ...editedCharacter,
+        ...currentValues,
+        prompt: currentValues.prompt || '',
+      };
       const result = await generateCharacterPreviewVideo({
         projectId,
-        character: editedCharacter,
+        character: characterForVideo,
         theme,
         stylePrompt,
         styleSnapshot,
@@ -284,7 +282,7 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
       });
 
       if (result.success && result.path) {
-        const updated = updateCharacterMedia(editedCharacter, {
+        const updated = updateCharacterMedia(characterForVideo, {
           previewVideo: createStoredMediaAsset('video', {
             localPath: result.path,
             providerTaskId: result.taskId,
@@ -307,7 +305,7 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
     } finally {
       setGenerating(null);
     }
-  }, [editedCharacter, projectId, theme, stylePrompt, styleSnapshot, itvConfigId, onUpdate, message, t]);
+  }, [editedCharacter, form, projectId, theme, stylePrompt, styleSnapshot, itvConfigId, onUpdate, message, t]);
 
   const handleUploadVideo = useCallback(async () => {
     try {

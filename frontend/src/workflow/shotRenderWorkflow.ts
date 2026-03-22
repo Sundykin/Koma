@@ -4,7 +4,7 @@
  */
 import { getMediaAssetDisplaySource, type Shot, type ShotVersion, type Character, type Prop } from '../types';
 import { getProjectITVProvider, getProjectTTSProvider } from '../providers';
-import { saveShotVersion, loadShotMeta, loadCharacters, loadProps } from '../store/projectStore';
+import { saveShotVersion, loadShotMeta, loadCharacters, loadProps, loadScenes } from '../store/projectStore';
 import { createLogger } from '../store/logger';
 import { logITVCall, logTTSCall } from '../store/aiCallLogger';
 import { resolvePromptTemplate } from '../store/promptTemplates';
@@ -13,9 +13,11 @@ import { parseMentions } from '../editor/mentionTypes';
 import {
   normalizeCharactersMediaState,
   normalizePropsMediaState,
+  normalizeScenesMediaState,
   normalizeShotMediaState,
 } from '../store/project/mediaState';
 import { mediaGenerationService } from '../services/MediaGenerationService';
+import { buildShotVideoTemplateVariables } from './promptVariableBuilders';
 
 const logger = createLogger('ShotRender');
 
@@ -137,6 +139,13 @@ export async function shotRenderWorkflow(
       // 忽略
     }
 
+    let projectScenes = normalizeScenesMediaState([]);
+    try {
+      projectScenes = normalizeScenesMediaState(await loadScenes(projectId));
+    } catch {
+      // 忽略
+    }
+
     // 构建视频 prompt：优先使用 shot.videoPrompt
     let videoPrompt: string;
     let additionalReferenceImages: string[] = [];
@@ -151,11 +160,14 @@ export async function shotRenderWorkflow(
       videoPrompt = processed.prompt;
       additionalReferenceImages = processed.referenceImages;
     } else {
-      const resolvedPrompt = await resolvePromptTemplate('itv_shot_video', {
+      const resolvedPrompt = await resolvePromptTemplate('itv_shot_video', buildShotVideoTemplateVariables({
+        shot: normalizedShot,
+        characters,
+        scenes: projectScenes,
+        props: projectProps,
         stylePrefix: stylePrefix || '',
-        description: normalizedShot.description || '',
         cameraMovement: getCameraMovementDesc(normalizedShot.cameraMovement),
-      });
+      }));
       videoPrompt = appendCharacterRefs(resolvedPrompt.prompt, normalizedShot, characters);
       templateId = resolvedPrompt.template.id;
       promptSource = resolvedPrompt.source;
@@ -421,7 +433,7 @@ function processVideoPromptAssets(
           }
           // 无 Sora2 ID：收集图片 URL，替换为角色描述
           referenceImages.push(referenceSource);
-          const replacement = `[${char.name}: ${char.prompt || char.description || char.appearance || ''}]`;
+          const replacement = `[${char.name}: ${char.prompt || ''}]`;
           result = result.slice(0, mention.from) + replacement + result.slice(mention.to);
         }
       }
@@ -440,7 +452,7 @@ function processVideoPromptAssets(
             continue;
           }
           referenceImages.push(referenceSource);
-          const replacement = `[${prop.name}: ${prop.prompt || prop.description || ''}]`;
+          const replacement = `[${prop.name}: ${prop.prompt || ''}]`;
           result = result.slice(0, mention.from) + replacement + result.slice(mention.to);
         }
       }
@@ -505,46 +517,6 @@ function appendCharacterRefs(prompt: string, shot: Shot, characters: Character[]
   }
 
   return result;
-}
-
-function buildVideoPrompt(shot: Shot, characters: Character[], stylePrefix?: string): string {
-  let prompt = stylePrefix ? `${stylePrefix}${shot.description || ''}` : (shot.description || '');
-
-  if (shot.cameraMovement && shot.cameraMovement !== 'static') {
-    const cameraDesc: Record<string, string> = {
-      'pan': 'camera panning horizontally',
-      'zoom-in': 'camera slowly zooming in',
-      'tracking': 'camera tracking the subject',
-      'handheld': 'handheld camera movement',
-    };
-    if (cameraDesc[shot.cameraMovement]) {
-      prompt = `${prompt}, ${cameraDesc[shot.cameraMovement]}`;
-    }
-  }
-
-  for (const char of characters) {
-    if (char.sora2CharacterId && prompt.includes(char.name)) {
-      prompt = prompt.replace(
-        new RegExp(char.name, 'g'),
-        `${char.name} @${char.sora2CharacterId}`
-      );
-    }
-  }
-
-  if (shot.characters && shot.characters.length > 0) {
-    const charRefs: string[] = [];
-    for (const charId of shot.characters) {
-      const char = characters.find(c => c.id === charId || c.name === charId);
-      if (char?.sora2CharacterId && !prompt.includes(`@${char.sora2CharacterId}`)) {
-        charRefs.push(`@${char.sora2CharacterId}`);
-      }
-    }
-    if (charRefs.length > 0) {
-      prompt = `${prompt} ${charRefs.join(' ')}`;
-    }
-  }
-
-  return prompt;
 }
 
 export default {

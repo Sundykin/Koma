@@ -117,25 +117,12 @@ function parseScriptMetadata(script: string): RandomIdea {
 export async function generateRandomIdea(
   onProgress?: (progress: number, step?: string) => void
 ): Promise<RandomIdea> {
-  const provider = await getProjectLLMProvider();
-  if (!provider) {
-    throw new Error('未配置 LLM 模型');
-  }
-
-  onProgress?.(5, '加载 Prompt 模板...');
-  const resolvedPrompt = await resolvePromptTemplate('random_idea_generation', {});
-
-  onProgress?.(20, '正在生成随机创意...');
-  const response = await provider.chat([
-    { role: 'user', content: resolvedPrompt.prompt },
-  ]);
-
-  onProgress?.(80, '解析创意...');
-
-  const idea: RandomIdea = parseLLMJSON<RandomIdea>(response);
-
+  onProgress?.(5, '生成随机剧本...');
+  const { metadata } = await generateRandomScriptWithMetadata('3', progress => {
+    onProgress?.(Math.min(progress, 90), progress < 100 ? '生成随机剧本...' : '解析创意...');
+  });
   onProgress?.(100, '创意生成完成');
-  return idea;
+  return metadata;
 }
 
 /**
@@ -295,12 +282,12 @@ export async function generateScript(
 
   // 构建角色描述
   const characterDesc = characters?.length
-    ? characters.map((c) => `- ${c.name}: ${c.description}`).join('\n')
+    ? characters.map((c) => `- ${c.name}: ${c.prompt || c.name}`).join('\n')
     : '（由AI自动创建角色）';
 
   // 构建场景描述
   const sceneDesc = scenes?.length
-    ? scenes.map((s) => `- ${s.name}: ${s.description}`).join('\n')
+    ? scenes.map((s) => `- ${s.name}: ${s.prompt || s.name}`).join('\n')
     : '（由AI自动创建场景）';
 
   const prompt = `你是一位专业编剧。请根据以下信息创作一个短剧剧本：

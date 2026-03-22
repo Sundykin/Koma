@@ -189,11 +189,16 @@ export class ShotPromptService {
       characters: shotCharacters.map(c => c.name).join(', ') || '无',
       emotion: shot.emotion || '中性',
       stylePrefix: stylePrefix || '',
+      shotTypeHint: shot.shotType || 'medium',
       shotTypeOptions: SHOT_TYPE_OPTIONS.join(', '),
       characterRefs: characterRefs || '无角色引用',
     };
     if (type === 'video') {
       templateVariables.cameraOptions = CAMERA_OPTIONS.join(', ');
+      templateVariables.cameraMovementHint = shot.cameraMovement || 'static';
+      templateVariables.durationSeconds = String(Math.max(1, Math.round(shot.duration || 4)));
+    } else {
+      templateVariables.cameraMovementHint = shot.cameraMovement || 'static';
     }
     const resolvedPrompt = await resolvePromptTemplate(templateKey, templateVariables);
     const prompt = resolvedPrompt.prompt;

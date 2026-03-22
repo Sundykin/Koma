@@ -363,11 +363,9 @@ export class ScriptAnalysisService {
         (c, index) => ({
           id: `char_${Date.now()}_${index}`,
           name: c.name,
-          prompt: c.description || c.appearance || '',
+          prompt: [c.appearance, c.description].filter((value: unknown) => typeof value === 'string' && value.trim()).join('，') || c.name,
           age: c.age || '',
           role: c.role || 'supporting',
-          description: c.description,
-          appearance: c.appearance,
           episodeId: this.episodeContext?.episodeId,
         })
       );
@@ -404,11 +402,10 @@ export class ScriptAnalysisService {
         (s, index) => ({
           id: `scene_${Date.now()}_${index}`,
           name: s.name,
-          prompt: s.description || '',
+          prompt: s.description || s.name,
           location: s.location,
           time: s.time || 'day',
           mood: s.mood,
-          description: s.description,
           episodeId: this.episodeContext?.episodeId,
         })
       );
@@ -445,9 +442,8 @@ export class ScriptAnalysisService {
         (p, index) => ({
           id: `prop_${Date.now()}_${index}`,
           name: p.name,
-          prompt: p.description || '',
+          prompt: p.description || p.name,
           type: p.type,
-          description: p.description,
           episodeId: this.episodeContext?.episodeId,
         })
       );
@@ -499,7 +495,6 @@ export class ScriptAnalysisService {
         shotType: s.shotType || 'medium',
         cameraMovement: s.cameraMovement || 'static',
         duration: s.duration || 3,
-        description: s.description,
         characters: (s.characters || []).map((name: string) => charNameToId.get(name) || name),
         dialogue: s.dialogue || '',
         emotion: s.emotion || '',
