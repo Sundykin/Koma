@@ -5,6 +5,7 @@ import { electronService } from '../../services/electronService';
 import type { EpisodeAnalysis, Shot } from '../../types';
 import type { TimelineData } from '../../types/editor';
 import { getProjectPath } from './core';
+import { remapTimelineClipSourcesToLocal } from './mediaUrlRemap';
 import { saveEpisode } from './episodes';
 import { normalizeShotsMediaState } from './mediaState';
 
@@ -143,7 +144,13 @@ export async function loadEpisodeTimeline(
     const exists = await electronService.fs.exists(timelinePath);
     if (!exists) return null;
     const content = await electronService.fs.readFile(timelinePath);
-    return JSON.parse(content) as TimelineData;
+    const parsed = JSON.parse(content) as TimelineData;
+    const { timeline, changed } = await remapTimelineClipSourcesToLocal(projectPath, parsed);
+    if (changed && timeline) {
+      // Best-effort migration so editor uses local sources going forward.
+      electronService.fs.writeFile(timelinePath, JSON.stringify(timeline, null, 2)).catch(() => {});
+    }
+    return timeline as TimelineData;
   } catch {
     return null;
   }
