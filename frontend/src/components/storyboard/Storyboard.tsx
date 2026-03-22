@@ -147,23 +147,22 @@ export const Storyboard: React.FC<StoryboardProps> = ({
   , [shots, activeShotId]);
 
   // 实际使用的 mentionItems
-  // 只有已绑定 Sora2 的角色/道具才能在编辑器中被 @ 引用
+  // 允许在编辑器中 @ 引用所有资产（角色/场景/道具）。
+  // 注意：@mention 的 ID 与 useShotAssetSync 的解析规则保持一致（支持内部 ID 与 Sora2 ID）。
   const actualMentionItems: MentionItem[] = useMemo(() => {
     if (mentionItems.length > 0) return mentionItems;
     const items: MentionItem[] = [];
 
-    // 只添加已绑定 Sora2 的角色，使用 sora2CharacterId 作为 mention ID
-    characters
-      .filter(char => char.sora2CharacterId)
-      .forEach(char => {
-        items.push({
-          id: char.sora2CharacterId!,  // 使用 Sora2 ID 避免 @char_char_xxx 重复
-          type: 'char' as const,
-          name: char.name,
-          description: char.prompt,
-          previewImage: getMediaAssetDisplaySource(char.media?.costumePhoto),
-        });
+    // 角色：优先用 sora2CharacterId（如果有），否则用内部 ID
+    characters.forEach(char => {
+      items.push({
+        id: char.sora2CharacterId || char.id,
+        type: 'char' as const,
+        name: char.name,
+        description: char.prompt,
+        previewImage: getMediaAssetDisplaySource(char.media?.costumePhoto),
       });
+    });
 
     // 场景不需要 Sora2 绑定，保持使用自定义 ID
     scenes.forEach(scene => {
@@ -176,18 +175,16 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       });
     });
 
-    // 只添加已绑定 Sora2 的道具，使用 sora2PropId 作为 mention ID
-    props
-      .filter(prop => prop.sora2PropId)
-      .forEach(prop => {
-        items.push({
-          id: prop.sora2PropId!,  // 使用 Sora2 ID
-          type: 'prop' as const,
-          name: prop.name,
-          description: prop.prompt,
-          previewImage: getMediaAssetDisplaySource(prop.media?.previewImage),
-        });
+    // 道具：优先用 sora2PropId（如果有），否则用内部 ID
+    props.forEach(prop => {
+      items.push({
+        id: prop.sora2PropId || prop.id,
+        type: 'prop' as const,
+        name: prop.name,
+        description: prop.prompt,
+        previewImage: getMediaAssetDisplaySource(prop.media?.previewImage),
       });
+    });
 
     return items;
   }, [mentionItems, characters, scenes, props]);
