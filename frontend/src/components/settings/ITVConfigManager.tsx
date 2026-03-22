@@ -115,6 +115,7 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
         baseUrl: config.baseUrl,
         apiKey: config.apiKey,
         modelName: config.modelName,
+        promptProtocol: (config as any).promptProtocol,
         defaultDuration: config.defaultDuration,
         defaultResolution: config.defaultResolution,
       });
@@ -145,6 +146,7 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
         baseUrl: values.baseUrl,
         apiKey: values.apiKey,
         modelName: values.modelName,
+        promptProtocol: values.promptProtocol || undefined,
         defaultDuration: values.defaultDuration,
         defaultResolution: values.defaultResolution,
         isDefault: editingConfig?.isDefault || configs.length === 0,
@@ -483,6 +485,16 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
                 ITV_PRESETS.find(p => p.id === currentProvider)?.models?.map(m => ({ label: m, value: m })) || []
               }
             />
+          </Form.Item>
+
+          <Form.Item
+            name="promptProtocol"
+            label="Prompt 编译协议"
+            tooltip="为特定渠道启用提示词编译与参考图数组对齐（例如 Grok 的 @imageN 协议）。"
+          >
+            <Select allowClear placeholder="不启用（默认）">
+              <Select.Option value="grok-image-index">grok-image-index (@imageN)</Select.Option>
+            </Select>
           </Form.Item>
 
           <Row gutter={16}>

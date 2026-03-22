@@ -253,6 +253,11 @@ export interface MediaProviderConfig {
   name: string;
   apiKey?: string;
   baseUrl?: string;
+  /**
+   * Optional prompt compilation protocol.
+   * When set, MediaGenerationService may compile prompt + align reference arrays before provider.start().
+   */
+  promptProtocol?: 'grok-image-index';
   isDefault: boolean;
   createdAt: number;
   updatedAt: number;
