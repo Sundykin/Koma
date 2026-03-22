@@ -155,7 +155,7 @@ export class ShotPromptService {
 
     // 构建角色引用列表
     const characterRefs = shotCharacters
-      .map(c => `${c.name}: ${createMentionString('char', c.sora2CharacterId || c.id)}`)
+      .map(c => `${c.name}: ${createMentionString('char', c.id)}`)
       .join('\n');
 
     // 场景引用列表（场景不需要 Sora2 绑定）
@@ -165,7 +165,7 @@ export class ShotPromptService {
 
     // 道具引用列表（道具可用 sora2PropId 或内部 ID）
     const propRefs = shotProps
-      .map(p => `${p.name}: ${createMentionString('prop', (p as any).sora2PropId || p.id)}`)
+      .map(p => `${p.name}: ${createMentionString('prop', p.id)}`)
       .join('\n');
 
     // 按需并行生成
