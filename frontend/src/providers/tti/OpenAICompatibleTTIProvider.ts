@@ -138,10 +138,11 @@ export class OpenAICompatibleTTIProvider implements TTIProvider {
     }
 
     const protocol = (this.config as any)?.promptProtocol;
-    if (protocol) {
+    const debugBody = Boolean(protocol) || (import.meta as any)?.env?.DEV === true;
+    if (debugBody) {
       logger.info('TTI start request body', {
         provider: this.config.provider,
-        promptProtocol: protocol,
+        ...(protocol ? { promptProtocol: protocol } : undefined),
         body: sanitizeBodyForLog(body),
       });
     }
@@ -150,8 +151,8 @@ export class OpenAICompatibleTTIProvider implements TTIProvider {
       method: 'POST',
       headers: {
         ...this.getHeaders(),
-        ...(protocol ? { 'x-koma-debug-body': '1' } : undefined),
-        ...(protocol ? { 'x-koma-trace-operation': 'tti.start' } : undefined),
+        ...(debugBody ? { 'x-koma-debug-body': '1' } : undefined),
+        ...(debugBody ? { 'x-koma-trace-operation': 'tti.start' } : undefined),
       },
       body: JSON.stringify(body),
     });

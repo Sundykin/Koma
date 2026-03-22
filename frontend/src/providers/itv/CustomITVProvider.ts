@@ -232,24 +232,26 @@ export class CustomITVProvider implements ITVProvider {
       body.additional_reference_images = request.additionalReferences.map(r => r.value);
     }
 
+    const protocol = (this.config as any)?.promptProtocol;
+    const debugBody = Boolean(protocol) || (import.meta as any)?.env?.DEV === true;
+
     const trySubmit = async (variant: 'public' | 'standard') => {
       const startPath = this.apiOverride?.startPath || this.getApiPaths(variant).start;
       return safeFetch(this.joinUrl(startPath), {
         method: 'POST',
         headers: {
           ...this.getHeaders(),
-          ...((this.config as any)?.promptProtocol ? { 'x-koma-debug-body': '1' } : undefined),
-          ...((this.config as any)?.promptProtocol ? { 'x-koma-trace-operation': 'itv.start' } : undefined),
+          ...(debugBody ? { 'x-koma-debug-body': '1' } : undefined),
+          ...(debugBody ? { 'x-koma-trace-operation': 'itv.start' } : undefined),
         },
         body: JSON.stringify(body),
       });
     };
 
-    const protocol = (this.config as any)?.promptProtocol;
-    if (protocol) {
+    if (debugBody) {
       logger.info('ITV start request body', {
         provider: this.config.provider,
-        promptProtocol: protocol,
+        ...(protocol ? { promptProtocol: protocol } : undefined),
         body: sanitizeBodyForLog(body),
       });
     }
