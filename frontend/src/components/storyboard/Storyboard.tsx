@@ -189,6 +189,15 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     return items;
   }, [mentionItems, characters, scenes, props]);
 
+  useEffect(() => {
+    logger.info('Storyboard mentionItems ready', {
+      characters: characters.length,
+      scenes: scenes.length,
+      props: props.length,
+      mentionItems: actualMentionItems.length,
+    });
+  }, [characters.length, scenes.length, props.length, actualMentionItems.length]);
+
   // 加载数据
   const loadData = useCallback(async () => {
     if (!projectId) return;

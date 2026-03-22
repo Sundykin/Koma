@@ -168,6 +168,13 @@ export class MediaGenerationService {
     if (!provider) throw new Error('未配置 TTI 服务');
 
     const protocol = getPromptProtocol(provider);
+    logger.info('TTI generateImage entry', {
+      ownerRef,
+      provider: provider.config?.provider,
+      protocol: protocol || 'none',
+      hasPromptCompilation: Boolean(promptCompilation?.selectedAssets?.length),
+      referencesCount: (request.references || []).length,
+    });
     const originalPrompt = request.prompt;
     let compiledPrompt = originalPrompt;
     let compilationDebug: any = null;
@@ -298,6 +305,13 @@ export class MediaGenerationService {
     if (!provider) throw new Error('未配置 ITV 服务');
 
     const protocol = getPromptProtocol(provider);
+    logger.info('ITV generateVideo entry', {
+      ownerRef,
+      provider: provider.config?.provider,
+      protocol: protocol || 'none',
+      hasPromptCompilation: Boolean(promptCompilation?.selectedAssets?.length),
+      additionalRefsCount: (request.additionalReferences || []).length,
+    });
     const originalPrompt = request.prompt;
     let compiledPrompt = originalPrompt;
     let compilationDebug: any = null;
