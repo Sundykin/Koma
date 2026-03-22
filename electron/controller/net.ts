@@ -76,6 +76,11 @@ async function readBodyChunked(response: Response): Promise<string> {
   return chunks.join('');
 }
 
+function truncateString(value: string, max = 6000): string {
+  if (value.length <= max) return value;
+  return `${value.slice(0, max)}...(truncated, ${value.length} chars)`;
+}
+
 class NetController extends BaseController {
   async fetch(args: {
     url: string;
@@ -90,11 +95,14 @@ class NetController extends BaseController {
     const traceSource = getHeaderValue(args.headers, 'x-koma-trace-source');
     const traceOperation = getHeaderValue(args.headers, 'x-koma-trace-operation');
     const traceTarget = getHeaderValue(args.headers, 'x-koma-trace-target');
+    const debugBody = getHeaderValue(args.headers, 'x-koma-debug-body');
     const headers = { ...(args.headers || {}) };
     delete headers['x-koma-trace-id'];
     delete headers['x-koma-trace-source'];
     delete headers['x-koma-trace-operation'];
     delete headers['x-koma-trace-target'];
+    // Debug header is for host-side logging only; never forward to upstream.
+    delete headers['x-koma-debug-body'];
 
     const logCtx = {
       traceId,
@@ -104,6 +112,7 @@ class NetController extends BaseController {
       method: args.method || 'GET',
       url: args.url,
       ...summarizeBody(args.body),
+      ...(debugBody ? { bodyPreview: truncateString(args.body || '', 12_000) } : undefined),
     };
 
     console.info('[NetController] IPC 网络请求开始', logCtx);
