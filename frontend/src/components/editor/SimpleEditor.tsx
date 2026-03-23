@@ -18,11 +18,10 @@ import { findNextAvailablePosition } from '../../utils/trackCollision';
 import { saveEpisodeTimeline, loadEpisodeTimeline } from '../../store/projectStore';
 import { uploadFiles } from '../../services/uploadService';
 import {
-  DEFAULT_TRANSITION_DURATION,
-  getMaxTransitionDuration,
   getTimelineDuration,
   normalizeTimelineTracks,
 } from '../../services/transition/transitionResolver';
+import { useTransitionHandlers } from '../../services/transition/useTransitionHandlers';
 import type { Shot } from '../../types';
 import { createLogger } from '../../store/logger';
 import {
@@ -110,6 +109,20 @@ export const SimpleEditor: React.FC<SimpleEditorProps> = ({ shots = [], projectI
   const updateTracks = useCallback((updater: (prev: Track[]) => Track[]) => {
     setTracks((prev) => normalizeTimelineTracks(updater(prev)));
   }, []);
+
+  const {
+    handleSelectTransition,
+    handleAddTransition,
+    handleUpdateTransitionDuration,
+    handleDeleteTransition,
+  } = useTransitionHandlers({
+    updateTracks,
+    selectedTransitionId,
+    setSelectedTransitionId,
+    setSelectedClipId,
+    setSelectedKeyframeId,
+    message,
+  });
 
   // 素材库
   const { assets: assetItems, addUploadedAsset } = useAssets({
@@ -273,12 +286,6 @@ export const SimpleEditor: React.FC<SimpleEditorProps> = ({ shots = [], projectI
     setSelectedKeyframeId(null);
   }, []);
 
-  const handleSelectTransition = useCallback((id: string | null) => {
-    setSelectedTransitionId(id);
-    setSelectedClipId(null);
-    setSelectedKeyframeId(null);
-  }, []);
-
   const handleUpdateClip = useCallback((clipId: string, updates: Partial<Clip>) => {
     updateTracks(prev => prev.map(track => ({
       ...track,
@@ -380,98 +387,6 @@ export const SimpleEditor: React.FC<SimpleEditorProps> = ({ shots = [], projectI
   const handleDeleteTrack = useCallback((trackId: string) => {
     updateTracks(prev => prev.filter(t => t.id !== trackId));
   }, [updateTracks]);
-
-  const handleAddTransition = useCallback((trackId: string, fromClipId: string, toClipId: string) => {
-    let createdTransitionId: string | null = null;
-
-    updateTracks((prev) =>
-      prev.map((track) => {
-        if (track.id !== trackId) {
-          return track;
-        }
-
-        const maxDuration = getMaxTransitionDuration(track, fromClipId, toClipId);
-        if (maxDuration <= 0) {
-          return track;
-        }
-
-        createdTransitionId = generateId();
-        return {
-          ...track,
-          transitions: [
-            ...(track.transitions ?? []),
-            {
-              id: createdTransitionId,
-              fromClipId,
-              toClipId,
-              type: 'fade',
-              duration: Math.min(DEFAULT_TRANSITION_DURATION, maxDuration),
-            },
-          ],
-        };
-      })
-    );
-
-    if (createdTransitionId) {
-      setSelectedTransitionId(createdTransitionId);
-      message.success('已添加淡变转场');
-    } else {
-      message.warning('当前切点不满足添加转场条件');
-    }
-  }, [message, updateTracks]);
-
-  const handleUpdateTransitionDuration = useCallback((
-    trackId: string,
-    transitionId: string,
-    duration: number
-  ) => {
-    updateTracks((prev) =>
-      prev.map((track) => {
-        if (track.id !== trackId) {
-          return track;
-        }
-
-        return {
-          ...track,
-          transitions: (track.transitions ?? []).map((transition) => {
-            if (transition.id !== transitionId) {
-              return transition;
-            }
-
-            const maxDuration = getMaxTransitionDuration(
-              track,
-              transition.fromClipId,
-              transition.toClipId
-            );
-
-            return {
-              ...transition,
-              duration: Math.min(Math.max(0.1, duration), maxDuration),
-            };
-          }),
-        };
-      })
-    );
-  }, [updateTracks]);
-
-  const handleDeleteTransition = useCallback((trackId: string, transitionId: string) => {
-    updateTracks((prev) =>
-      prev.map((track) =>
-        track.id === trackId
-          ? {
-              ...track,
-              transitions: (track.transitions ?? []).filter(
-                (transition) => transition.id !== transitionId
-              ),
-            }
-          : track
-      )
-    );
-    if (selectedTransitionId === transitionId) {
-      setSelectedTransitionId(null);
-    }
-    message.success('已删除转场');
-  }, [message, selectedTransitionId, updateTracks]);
 
   // 添加关键帧
   const handleAddKeyframe = useCallback((clipId: string, clipLocalTime: number) => {

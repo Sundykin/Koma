@@ -80,6 +80,39 @@ export function getMaxTransitionDuration(
   return Math.max(0, Math.min(fromClip.duration, toClip.duration));
 }
 
+export function getChainAwareMaxDuration(
+  track: Track,
+  transitionId: string,
+): number {
+  const normalizedTrack = normalizeTrackTransitions(track);
+  const transitions = normalizedTrack.transitions ?? [];
+  const target = transitions.find(t => t.id === transitionId);
+  if (!target) return 0;
+
+  const sortedClips = getSortedTrackClips(normalizedTrack);
+  const fromClip = sortedClips.find(c => c.id === target.fromClipId);
+  const toClip = sortedClips.find(c => c.id === target.toClipId);
+  if (!fromClip || !toClip) return 0;
+
+  const baseMax = Math.min(fromClip.duration, toClip.duration);
+
+  const incomingOnFrom = transitions.find(
+    t => t.id !== transitionId && t.toClipId === target.fromClipId
+  );
+  const fromClipBudget = incomingOnFrom
+    ? fromClip.duration - incomingOnFrom.duration
+    : fromClip.duration;
+
+  const outgoingOnTo = transitions.find(
+    t => t.id !== transitionId && t.fromClipId === target.toClipId
+  );
+  const toClipBudget = outgoingOnTo
+    ? toClip.duration - outgoingOnTo.duration
+    : toClip.duration;
+
+  return Math.max(0, Math.min(baseMax, fromClipBudget, toClipBudget));
+}
+
 function deriveLegacyTransitions(track: Track): Transition[] {
   const sortedClips = getSortedTrackClips(track);
 
@@ -108,7 +141,10 @@ function validateTransitions(track: Track, transitions: Transition[]): Transitio
 
   const sortedClips = getSortedTrackClips(track);
   const clipIndex = new Map(sortedClips.map((clip, index) => [clip.id, index]));
-  const occupiedClipIds = new Set<string>();
+  const usedAsFrom = new Set<string>();
+  const usedAsTo = new Set<string>();
+  const incomingDuration = new Map<string, number>();
+  const outgoingDuration = new Map<string, number>();
   const valid: Transition[] = [];
 
   for (const transition of transitions) {
@@ -123,14 +159,30 @@ function validateTransitions(track: Track, transitions: Transition[]): Transitio
       toIndex !== fromIndex + 1 ||
       transition.duration <= 0 ||
       transition.duration > maxDuration ||
-      occupiedClipIds.has(transition.fromClipId) ||
-      occupiedClipIds.has(transition.toClipId)
+      usedAsFrom.has(transition.fromClipId) ||
+      usedAsTo.has(transition.toClipId)
     ) {
       continue;
     }
 
-    occupiedClipIds.add(transition.fromClipId);
-    occupiedClipIds.add(transition.toClipId);
+    // 链式约束：fromClip 的 incoming + 本次 outgoing <= fromClip.duration
+    const fromClip = sortedClips[fromIndex];
+    const existingIncoming = incomingDuration.get(transition.fromClipId) ?? 0;
+    if (existingIncoming + transition.duration > fromClip.duration + 1e-9) {
+      continue;
+    }
+
+    // 链式约束：toClip 的本次 incoming + 已有 outgoing <= toClip.duration
+    const toClip = sortedClips[toIndex];
+    const existingOutgoing = outgoingDuration.get(transition.toClipId) ?? 0;
+    if (transition.duration + existingOutgoing > toClip.duration + 1e-9) {
+      continue;
+    }
+
+    usedAsFrom.add(transition.fromClipId);
+    usedAsTo.add(transition.toClipId);
+    outgoingDuration.set(transition.fromClipId, transition.duration);
+    incomingDuration.set(transition.toClipId, transition.duration);
     valid.push({
       ...transition,
       type: TRANSITION_TYPE_FADE,

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { MediaType, type Clip, type Track } from '../../types/editor';
 import {
+  getChainAwareMaxDuration,
   getClipOpacityFromPlans,
   getClipOpacityMultiplier,
   getMaxTransitionDuration,
@@ -56,7 +57,7 @@ describe('transitionResolver', () => {
     expect(normalized.clips[1].transition).toBeUndefined();
   });
 
-  it('rejects non-adjacent transitions and clips participating in multiple transitions', () => {
+  it('rejects non-adjacent transitions but allows chain transitions', () => {
     const track = createTrack();
     track.transitions = [
       { id: 't1', fromClipId: 'clip-a', toClipId: 'clip-c', type: 'fade', duration: 0.5 },
@@ -67,6 +68,7 @@ describe('transitionResolver', () => {
     const normalized = normalizeTrackTransitions(track);
     expect(normalized.transitions).toEqual([
       { id: 't2', fromClipId: 'clip-a', toClipId: 'clip-b', type: 'fade', duration: 0.5 },
+      { id: 't3', fromClipId: 'clip-b', toClipId: 'clip-c', type: 'fade', duration: 0.5 },
     ]);
   });
 
@@ -260,5 +262,75 @@ describe('transitionResolver', () => {
       expect(getClipOpacityFromPlans(transitionPlans, 'clip-b', t))
         .toBeCloseTo(getClipOpacityMultiplier(track, 'clip-b', t), 10);
     }
+  });
+
+  // --- 链式转场测试 ---
+
+  it('allows chain transitions A->B + B->C', () => {
+    const track = createTrack(); // A(0,3), B(3,2), C(5,2)
+    track.transitions = [
+      { id: 't1', fromClipId: 'clip-a', toClipId: 'clip-b', type: 'fade', duration: 0.5 },
+      { id: 't2', fromClipId: 'clip-b', toClipId: 'clip-c', type: 'fade', duration: 0.5 },
+    ];
+    const normalized = normalizeTrackTransitions(track);
+    expect(normalized.transitions).toHaveLength(2);
+  });
+
+  it('rejects chain transition when middle clip too short for both', () => {
+    const track: Track = {
+      id: 'track-1',
+      type: 'video',
+      order: 0,
+      clips: [createClip('clip-a', 0, 3), createClip('clip-b', 3, 1), createClip('clip-c', 4, 2)],
+      transitions: [
+        { id: 't1', fromClipId: 'clip-a', toClipId: 'clip-b', type: 'fade', duration: 0.8 },
+        { id: 't2', fromClipId: 'clip-b', toClipId: 'clip-c', type: 'fade', duration: 0.8 },
+      ],
+    };
+    const normalized = normalizeTrackTransitions(track);
+    // B.duration=1, t1.duration+t2.duration=1.6 > 1, so t2 is rejected
+    expect(normalized.transitions).toHaveLength(1);
+    expect(normalized.transitions?.[0].id).toBe('t1');
+  });
+
+  it('chain transitions resolve non-overlapping active windows', () => {
+    const track = createTrack(); // A(0,3), B(3,2), C(5,2)
+    track.transitions = [
+      { id: 't1', fromClipId: 'clip-a', toClipId: 'clip-b', type: 'fade', duration: 1 },
+      { id: 't2', fromClipId: 'clip-b', toClipId: 'clip-c', type: 'fade', duration: 1 },
+    ];
+    const resolved = resolveTrackTimeline(track);
+    expect(resolved.transitionPlans).toHaveLength(2);
+    const [plan1, plan2] = resolved.transitionPlans;
+    // T1 active ends before or at T2 active start — no overlap
+    expect(plan1.activeEndTime).toBeLessThanOrEqual(plan2.activeStartTime);
+  });
+
+  it('getChainAwareMaxDuration respects neighbor transition', () => {
+    const track = createTrack(); // A(0,3), B(3,2), C(5,2)
+    track.transitions = [
+      { id: 't1', fromClipId: 'clip-a', toClipId: 'clip-b', type: 'fade', duration: 1 },
+      { id: 't2', fromClipId: 'clip-b', toClipId: 'clip-c', type: 'fade', duration: 0.5 },
+    ];
+    // B.duration=2, t1 uses 1s of B's budget, so t2 max = min(2, 2-1) = 1
+    expect(getChainAwareMaxDuration(track, 't2')).toBe(1);
+    // t1 max = min(2, 3, 2-0.5) = 1.5
+    expect(getChainAwareMaxDuration(track, 't1')).toBe(1.5);
+  });
+
+  it('rejects two outgoing transitions from the same clip', () => {
+    const track: Track = {
+      id: 'track-1',
+      type: 'video',
+      order: 0,
+      clips: [createClip('clip-a', 0, 3), createClip('clip-b', 3, 2)],
+      transitions: [
+        { id: 't1', fromClipId: 'clip-a', toClipId: 'clip-b', type: 'fade', duration: 0.5 },
+        { id: 't2', fromClipId: 'clip-a', toClipId: 'clip-b', type: 'fade', duration: 0.3 },
+      ],
+    };
+    const normalized = normalizeTrackTransitions(track);
+    expect(normalized.transitions).toHaveLength(1);
+    expect(normalized.transitions?.[0].id).toBe('t1');
   });
 });
