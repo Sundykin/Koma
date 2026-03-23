@@ -1,12 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import { MediaType, type Clip, type Track } from '../../types/editor';
 import {
+  findTransitionByClipPair,
   getChainAwareMaxDuration,
   getClipOpacityFromPlans,
   getClipOpacityMultiplier,
+  getClipResolvedWindow,
   getMaxTransitionDuration,
+  getSortedTrackClips,
   getTimelineDuration,
+  normalizeTimelineTracks,
   normalizeTrackTransitions,
+  resolveTimelineTracks,
   resolveTrackTimeline,
 } from './transitionResolver';
 
@@ -123,14 +128,11 @@ describe('transitionResolver', () => {
     ];
     expect(normalizeTrackTransitions(track).transitions).toHaveLength(0);
 
-    // duration missing (NaN/undefined) — currently passes validation due to JS coercion;
-    // validateTransitions does not explicitly check for NaN. Documenting actual behavior.
+    // duration missing (NaN/undefined) — now rejected by Number.isFinite guard
     track.transitions = [
       { id: 't4', fromClipId: 'clip-a', toClipId: 'clip-b', type: 'fade', duration: undefined as unknown as number },
     ];
-    // NOTE: This passes through because undefined <= 0 is false and undefined > maxDuration is false in JS.
-    // Phase 2 should add explicit NaN/undefined guard in validateTransitions.
-    expect(normalizeTrackTransitions(track).transitions).toHaveLength(1);
+    expect(normalizeTrackTransitions(track).transitions).toHaveLength(0);
   });
 
   it('rejects transition with duration=0', () => {
@@ -332,5 +334,190 @@ describe('transitionResolver', () => {
     const normalized = normalizeTrackTransitions(track);
     expect(normalized.transitions).toHaveLength(1);
     expect(normalized.transitions?.[0].id).toBe('t1');
+  });
+
+  // --- 工具函数测试 ---
+
+  it('getSortedTrackClips sorts by start then by id', () => {
+    const track: Track = {
+      id: 'track-1',
+      type: 'video',
+      order: 0,
+      clips: [createClip('clip-c', 5, 2), createClip('clip-a', 0, 3), createClip('clip-b', 3, 2)],
+    };
+    const sorted = getSortedTrackClips(track);
+    expect(sorted.map((c) => c.id)).toEqual(['clip-a', 'clip-b', 'clip-c']);
+  });
+
+  it('getSortedTrackClips breaks ties by id', () => {
+    const track: Track = {
+      id: 'track-1',
+      type: 'video',
+      order: 0,
+      clips: [createClip('clip-z', 0, 2), createClip('clip-a', 0, 3)],
+    };
+    const sorted = getSortedTrackClips(track);
+    expect(sorted[0].id).toBe('clip-a');
+    expect(sorted[1].id).toBe('clip-z');
+  });
+
+  it('findTransitionByClipPair returns matching transition', () => {
+    const track = createTrack();
+    track.transitions = [
+      { id: 't1', fromClipId: 'clip-a', toClipId: 'clip-b', type: 'fade', duration: 0.5 },
+    ];
+    expect(findTransitionByClipPair(track, 'clip-a', 'clip-b')?.id).toBe('t1');
+    expect(findTransitionByClipPair(track, 'clip-b', 'clip-c')).toBeUndefined();
+  });
+
+  it('findTransitionByClipPair returns undefined when no transitions', () => {
+    const track = createTrack();
+    expect(findTransitionByClipPair(track, 'clip-a', 'clip-b')).toBeUndefined();
+  });
+
+  it('normalizeTimelineTracks normalizes all tracks', () => {
+    const videoTrack = createTrack();
+    videoTrack.clips[1].transition = { effectId: 'legacy', duration: 0.5 };
+    const audioTrack: Track = {
+      id: 'track-audio',
+      type: 'audio',
+      order: 1,
+      clips: [
+        { ...createClip('a1', 0, 3), trackId: 'track-audio', type: MediaType.AUDIO },
+      ],
+      transitions: [
+        { id: 'bad', fromClipId: 'a1', toClipId: 'a1', type: 'fade', duration: 0.5 },
+      ],
+    };
+    const result = normalizeTimelineTracks([videoTrack, audioTrack]);
+    expect(result).toHaveLength(2);
+    expect(result[0].transitions).toHaveLength(1);
+    expect(result[1].transitions).toHaveLength(0);
+  });
+
+  it('resolveTimelineTracks resolves all tracks', () => {
+    const track1 = createTrack();
+    track1.transitions = [
+      { id: 't1', fromClipId: 'clip-a', toClipId: 'clip-b', type: 'fade', duration: 1 },
+    ];
+    const track2: Track = {
+      id: 'track-2',
+      type: 'video',
+      order: 1,
+      clips: [createClip('clip-d', 0, 4), createClip('clip-e', 4, 3)],
+    };
+    const resolved = resolveTimelineTracks([track1, track2]);
+    expect(resolved).toHaveLength(2);
+    expect(resolved[0].duration).toBe(6);
+    expect(resolved[1].duration).toBe(7);
+  });
+
+  it('getClipResolvedWindow finds clip across tracks', () => {
+    const track1: Track = {
+      id: 'track-1',
+      type: 'video',
+      order: 0,
+      clips: [createClip('clip-a', 0, 3)],
+    };
+    const track2: Track = {
+      id: 'track-2',
+      type: 'video',
+      order: 1,
+      clips: [createClip('clip-x', 0, 5)],
+    };
+    const window = getClipResolvedWindow([track1, track2], 'clip-x');
+    expect(window).toBeDefined();
+    expect(window?.clipId).toBe('clip-x');
+    expect(window?.resolvedStart).toBe(0);
+    expect(window?.resolvedEnd).toBe(5);
+  });
+
+  it('getClipResolvedWindow returns undefined for missing clip', () => {
+    const track = createTrack();
+    expect(getClipResolvedWindow([track], 'non-existent')).toBeUndefined();
+  });
+
+  // --- 链式转场精确值测试 ---
+
+  it('chain transitions produce correct clipWindows and duration', () => {
+    const track = createTrack(); // A(0,3), B(3,2), C(5,2)
+    track.transitions = [
+      { id: 't1', fromClipId: 'clip-a', toClipId: 'clip-b', type: 'fade', duration: 1 },
+      { id: 't2', fromClipId: 'clip-b', toClipId: 'clip-c', type: 'fade', duration: 1 },
+    ];
+    const resolved = resolveTrackTimeline(track);
+    // Total overlap = 1 + 1 = 2, so duration = 7 - 2 = 5
+    expect(resolved.duration).toBe(5);
+
+    const windowA = resolved.clipWindows.find((w) => w.clipId === 'clip-a');
+    const windowB = resolved.clipWindows.find((w) => w.clipId === 'clip-b');
+    const windowC = resolved.clipWindows.find((w) => w.clipId === 'clip-c');
+    expect(windowA).toMatchObject({ resolvedStart: 0, resolvedEnd: 3 });
+    expect(windowB).toMatchObject({ resolvedStart: 2, resolvedEnd: 4 });
+    expect(windowC).toMatchObject({ resolvedStart: 3, resolvedEnd: 5 });
+  });
+
+  it('chain opacity: middle clip fades in then fades out', () => {
+    const track = createTrack(); // A(0,3), B(3,2), C(5,2)
+    track.transitions = [
+      { id: 't1', fromClipId: 'clip-a', toClipId: 'clip-b', type: 'fade', duration: 1 },
+      { id: 't2', fromClipId: 'clip-b', toClipId: 'clip-c', type: 'fade', duration: 1 },
+    ];
+    // T1 active: [2, 3), T2 active: [3, 4)
+    // clip-b fades in during T1, full opacity between, fades out during T2
+    expect(getClipOpacityMultiplier(track, 'clip-b', 2.0)).toBeCloseTo(0, 5);   // T1 start: fade-in begins
+    expect(getClipOpacityMultiplier(track, 'clip-b', 2.5)).toBeCloseTo(0.5, 5); // T1 mid: half opacity
+    expect(getClipOpacityMultiplier(track, 'clip-b', 2.99)).toBeCloseTo(0.99, 1); // T1 near end
+    expect(getClipOpacityMultiplier(track, 'clip-b', 3.0)).toBeCloseTo(1, 5);   // T2 start: fromClip, 1-0=1
+    expect(getClipOpacityMultiplier(track, 'clip-b', 3.5)).toBeCloseTo(0.5, 5); // T2 mid: fading out
+    expect(getClipOpacityMultiplier(track, 'clip-b', 3.99)).toBeCloseTo(0.01, 1); // T2 near end
+  });
+
+  it('getChainAwareMaxDuration: isolated transition (no neighbor)', () => {
+    const track: Track = {
+      id: 'track-1',
+      type: 'video',
+      order: 0,
+      clips: [createClip('clip-a', 0, 3), createClip('clip-b', 3, 2)],
+      transitions: [
+        { id: 't1', fromClipId: 'clip-a', toClipId: 'clip-b', type: 'fade', duration: 0.5 },
+      ],
+    };
+    // No neighbor, so chain-aware max = base max = min(3, 2) = 2
+    expect(getChainAwareMaxDuration(track, 't1')).toBe(2);
+  });
+
+  it('getChainAwareMaxDuration: transitionId not found returns 0', () => {
+    const track = createTrack();
+    track.transitions = [
+      { id: 't1', fromClipId: 'clip-a', toClipId: 'clip-b', type: 'fade', duration: 0.5 },
+    ];
+    expect(getChainAwareMaxDuration(track, 'non-existent')).toBe(0);
+  });
+
+  it('getChainAwareMaxDuration: both sides have neighbors', () => {
+    // D(0,4) -> E(4,3) -> F(7,2) -> G(9,5)
+    const track: Track = {
+      id: 'track-1',
+      type: 'video',
+      order: 0,
+      clips: [
+        createClip('d', 0, 4),
+        createClip('e', 4, 3),
+        createClip('f', 7, 2),
+        createClip('g', 9, 5),
+      ],
+      transitions: [
+        { id: 't1', fromClipId: 'd', toClipId: 'e', type: 'fade', duration: 1 },
+        { id: 't2', fromClipId: 'e', toClipId: 'f', type: 'fade', duration: 0.5 },
+        { id: 't3', fromClipId: 'f', toClipId: 'g', type: 'fade', duration: 0.5 },
+      ],
+    };
+    // t2: fromClip=E(dur=3), toClip=F(dur=2)
+    // E has incoming t1(dur=1), so E budget = 3-1 = 2
+    // F has outgoing t3(dur=0.5), so F budget = 2-0.5 = 1.5
+    // base max = min(3, 2) = 2
+    // chain max = min(2, 2, 1.5) = 1.5
+    expect(getChainAwareMaxDuration(track, 't2')).toBe(1.5);
   });
 });

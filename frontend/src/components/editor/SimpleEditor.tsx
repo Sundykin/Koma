@@ -38,7 +38,7 @@ interface SimpleEditorProps {
   episodeId?: string;
 }
 
-const generateId = () => `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+import { generateId } from '../../utils/generateId';
 
 // Shot 转换为 Tracks
 function shotsToTracks(shots: Shot[]): Track[] {

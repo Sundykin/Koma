@@ -1,13 +1,13 @@
-import { useCallback } from 'react';
+import { useCallback, useRef } from 'react';
 import type { Track } from '../../types/editor';
 import type { MessageInstance } from 'antd/es/message/interface';
+import { generateId } from '../../utils/generateId';
+import { TRANSITION_TYPE_FADE } from './constants';
 import {
   DEFAULT_TRANSITION_DURATION,
   getChainAwareMaxDuration,
   getMaxTransitionDuration,
 } from './transitionResolver';
-
-const generateId = () => `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
 interface UseTransitionHandlersParams {
   updateTracks: (updater: (prev: Track[]) => Track[]) => void;
@@ -26,6 +26,9 @@ export function useTransitionHandlers({
   setSelectedKeyframeId,
   message,
 }: UseTransitionHandlersParams) {
+  const selectedTransitionIdRef = useRef(selectedTransitionId);
+  selectedTransitionIdRef.current = selectedTransitionId;
+
   const handleSelectTransition = useCallback((id: string | null) => {
     setSelectedTransitionId(id);
     setSelectedClipId(null);
@@ -55,7 +58,7 @@ export function useTransitionHandlers({
               id: createdTransitionId,
               fromClipId,
               toClipId,
-              type: 'fade' as const,
+              type: TRANSITION_TYPE_FADE,
               duration: Math.min(DEFAULT_TRANSITION_DURATION, maxDuration),
             },
           ],
@@ -117,11 +120,11 @@ export function useTransitionHandlers({
           : track
       )
     );
-    if (selectedTransitionId === transitionId) {
+    if (selectedTransitionIdRef.current === transitionId) {
       setSelectedTransitionId(null);
     }
     message.success('已删除转场');
-  }, [message, selectedTransitionId, updateTracks, setSelectedTransitionId]);
+  }, [message, updateTracks, setSelectedTransitionId]);
 
   return {
     handleSelectTransition,

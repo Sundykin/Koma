@@ -1,37 +1,10 @@
 import type { Clip, Track, Transition } from '../../types/editor';
+import { SUPPORTED_TRANSITION_TYPES, TRANSITION_TYPE_FADE } from './constants';
+import type { NormalizedTransitionPlan, ResolvedClipWindow, ResolvedTrackTimeline } from './types';
 
-export const DEFAULT_TRANSITION_DURATION = 0.3;
-export const TRANSITION_TYPE_FADE = 'fade';
-
-export interface ResolvedClipWindow {
-  clipId: string;
-  trackId: string;
-  resolvedStart: number;
-  resolvedEnd: number;
-}
-
-export interface NormalizedTransitionPlan {
-  transitionId: string;
-  trackId: string;
-  fromClipId: string;
-  toClipId: string;
-  type: 'fade';
-  duration: number;
-  cutPointTime: number;
-  activeStartTime: number;
-  activeEndTime: number;
-  exportVideoOffset: number;
-  exportAudioOverlap: number;
-  maxDuration: number;
-}
-
-export interface ResolvedTrackTimeline {
-  track: Track;
-  clipWindows: ResolvedClipWindow[];
-  transitionPlans: NormalizedTransitionPlan[];
-  duration: number;
-  invalidTransitions: Transition[];
-}
+// Re-export for consumers
+export { DEFAULT_TRANSITION_DURATION, TRANSITION_TYPE_FADE } from './constants';
+export type { NormalizedTransitionPlan, ResolvedClipWindow, ResolvedTrackTimeline } from './types';
 
 const clipOrder = (a: Clip, b: Clip) => {
   if (a.start !== b.start) {
@@ -54,6 +27,9 @@ export function findTransitionByClipPair(
   );
 }
 
+/**
+ * 获取两个相邻 clip 之间转场的理论最大时长（不考虑链式约束）
+ */
 export function getMaxTransitionDuration(
   track: Track,
   fromClipId: string,
@@ -80,10 +56,16 @@ export function getMaxTransitionDuration(
   return Math.max(0, Math.min(fromClip.duration, toClip.duration));
 }
 
+/**
+ * 获取链式约束下转场的最大时长，考虑邻居转场对 clip 预算的占用
+ */
 export function getChainAwareMaxDuration(
   track: Track,
   transitionId: string,
 ): number {
+  const baseMax = getChainAwareBaseMax(track, transitionId);
+  if (baseMax <= 0) return 0;
+
   const normalizedTrack = normalizeTrackTransitions(track);
   const transitions = normalizedTrack.transitions ?? [];
   const target = transitions.find(t => t.id === transitionId);
@@ -93,8 +75,6 @@ export function getChainAwareMaxDuration(
   const fromClip = sortedClips.find(c => c.id === target.fromClipId);
   const toClip = sortedClips.find(c => c.id === target.toClipId);
   if (!fromClip || !toClip) return 0;
-
-  const baseMax = Math.min(fromClip.duration, toClip.duration);
 
   const incomingOnFrom = transitions.find(
     t => t.id !== transitionId && t.toClipId === target.fromClipId
@@ -111,6 +91,14 @@ export function getChainAwareMaxDuration(
     : toClip.duration;
 
   return Math.max(0, Math.min(baseMax, fromClipBudget, toClipBudget));
+}
+
+/** 内部：复用 getMaxTransitionDuration 做前置校验 */
+function getChainAwareBaseMax(track: Track, transitionId: string): number {
+  const normalizedTrack = normalizeTrackTransitions(track);
+  const target = (normalizedTrack.transitions ?? []).find(t => t.id === transitionId);
+  if (!target) return 0;
+  return getMaxTransitionDuration(normalizedTrack, target.fromClipId, target.toClipId);
 }
 
 function deriveLegacyTransitions(track: Track): Transition[] {
@@ -134,13 +122,16 @@ function deriveLegacyTransitions(track: Track): Transition[] {
   });
 }
 
+/**
+ * 过滤无效转场，返回合法子集。处理链式约束、类型校验、相邻性校验。
+ */
 function validateTransitions(track: Track, transitions: Transition[]): Transition[] {
   if (track.type !== 'video') {
     return [];
   }
 
   const sortedClips = getSortedTrackClips(track);
-  const clipIndex = new Map(sortedClips.map((clip, index) => [clip.id, index]));
+  const clipIndexMap = new Map(sortedClips.map((clip, index) => [clip.id, index]));
   const usedAsFrom = new Set<string>();
   const usedAsTo = new Set<string>();
   const incomingDuration = new Map<string, number>();
@@ -148,32 +139,32 @@ function validateTransitions(track: Track, transitions: Transition[]): Transitio
   const valid: Transition[] = [];
 
   for (const transition of transitions) {
-    const fromIndex = clipIndex.get(transition.fromClipId);
-    const toIndex = clipIndex.get(transition.toClipId);
+    const fromIdx = clipIndexMap.get(transition.fromClipId);
+    const toIdx = clipIndexMap.get(transition.toClipId);
     const maxDuration = getMaxTransitionDuration(track, transition.fromClipId, transition.toClipId);
 
-    if (
-      transition.type !== TRANSITION_TYPE_FADE ||
-      fromIndex === undefined ||
-      toIndex === undefined ||
-      toIndex !== fromIndex + 1 ||
-      transition.duration <= 0 ||
-      transition.duration > maxDuration ||
-      usedAsFrom.has(transition.fromClipId) ||
-      usedAsTo.has(transition.toClipId)
-    ) {
+    // 类型校验
+    const isValidType = SUPPORTED_TRANSITION_TYPES.has(transition.type);
+    // 相邻性校验
+    const isAdjacent = fromIdx !== undefined && toIdx !== undefined && toIdx === fromIdx + 1;
+    // 时长校验（含 NaN/undefined 防御）
+    const isValidDuration = Number.isFinite(transition.duration) && transition.duration > 0 && transition.duration <= maxDuration;
+    // 唯一性校验
+    const isUnique = !usedAsFrom.has(transition.fromClipId) && !usedAsTo.has(transition.toClipId);
+
+    if (!isValidType || !isAdjacent || !isValidDuration || !isUnique) {
       continue;
     }
 
     // 链式约束：fromClip 的 incoming + 本次 outgoing <= fromClip.duration
-    const fromClip = sortedClips[fromIndex];
+    const fromClip = sortedClips[fromIdx];
     const existingIncoming = incomingDuration.get(transition.fromClipId) ?? 0;
     if (existingIncoming + transition.duration > fromClip.duration + 1e-9) {
       continue;
     }
 
     // 链式约束：toClip 的本次 incoming + 已有 outgoing <= toClip.duration
-    const toClip = sortedClips[toIndex];
+    const toClip = sortedClips[toIdx];
     const existingOutgoing = outgoingDuration.get(transition.toClipId) ?? 0;
     if (transition.duration + existingOutgoing > toClip.duration + 1e-9) {
       continue;
@@ -185,7 +176,7 @@ function validateTransitions(track: Track, transitions: Transition[]): Transitio
     incomingDuration.set(transition.toClipId, transition.duration);
     valid.push({
       ...transition,
-      type: TRANSITION_TYPE_FADE,
+      type: transition.type,
     });
   }
 
@@ -214,6 +205,9 @@ function normalizeTrackTransitionsWithInvalid(track: Track): {
   };
 }
 
+/**
+ * 标准化 track 的转场数据：兼容 legacy clip.transition，验证并过滤无效转场
+ */
 export function normalizeTrackTransitions(track: Track): Track {
   return normalizeTrackTransitionsWithInvalid(track).track;
 }
@@ -222,6 +216,9 @@ export function normalizeTimelineTracks(tracks: Track[]): Track[] {
   return tracks.map(normalizeTrackTransitions);
 }
 
+/**
+ * 将 track 解析为带时间窗口的 timeline，考虑转场重叠产生的时间偏移
+ */
 export function resolveTrackTimeline(track: Track): ResolvedTrackTimeline {
   const normalized = normalizeTrackTransitionsWithInvalid(track);
   const normalizedTrack = normalized.track;
@@ -266,7 +263,7 @@ export function resolveTrackTimeline(track: Track): ResolvedTrackTimeline {
         trackId: normalizedTrack.id,
         fromClipId: transition.fromClipId,
         toClipId: transition.toClipId,
-        type: TRANSITION_TYPE_FADE,
+        type: transition.type,
         duration: transition.duration,
         cutPointTime: fromWindow.resolvedEnd,
         activeStartTime: toWindow.resolvedStart,

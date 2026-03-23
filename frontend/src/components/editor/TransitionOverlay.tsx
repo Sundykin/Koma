@@ -1,13 +1,13 @@
 import React from 'react';
-import type { Clip, Track } from '../../types/editor';
-import type { ResolvedClipWindow } from './transitionResolver';
+import type { Track } from '../../types/editor';
+import type { ResolvedClipWindow } from '../../services/transition/types';
 import {
   DEFAULT_TRANSITION_DURATION,
   findTransitionByClipPair,
   getChainAwareMaxDuration,
   getMaxTransitionDuration,
   getSortedTrackClips,
-} from './transitionResolver';
+} from '../../services/transition/transitionResolver';
 
 interface TransitionOverlayProps {
   track: Track;
@@ -20,7 +20,7 @@ interface TransitionOverlayProps {
   onDeleteTransition?: (trackId: string, transitionId: string) => void;
 }
 
-export const TransitionOverlay: React.FC<TransitionOverlayProps> = ({
+export const TransitionOverlay: React.FC<TransitionOverlayProps> = React.memo(({
   track,
   resolvedClipWindows,
   pixelsPerSecond,
@@ -135,4 +135,6 @@ export const TransitionOverlay: React.FC<TransitionOverlayProps> = ({
       })}
     </>
   );
-};
+});
+
+TransitionOverlay.displayName = 'TransitionOverlay';

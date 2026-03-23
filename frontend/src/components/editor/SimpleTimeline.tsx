@@ -11,7 +11,7 @@ import {
   getSortedTrackClips,
   resolveTimelineTracks,
 } from '../../services/transition/transitionResolver';
-import { TransitionOverlay } from '../../services/transition/TransitionOverlay';
+import { TransitionOverlay } from './TransitionOverlay';
 import {
   Play, Pause, Film, Music, Type, Trash2, Copy, ZoomIn, ZoomOut, Magnet,
   Volume2, VolumeX, Eye, EyeOff
