@@ -302,7 +302,16 @@ export const SimpleEditor: React.FC<SimpleEditorProps> = ({ shots = [], projectI
         const clipIndex = track.clips.findIndex(c => c.id === clipId);
         if (clipIndex >= 0) {
           movedClip = { ...track.clips[clipIndex], start: newStart, trackId: newTrackId };
-          return { ...track, clips: track.clips.filter(c => c.id !== clipId) };
+          const isLeavingTrack = track.id !== newTrackId;
+          return {
+            ...track,
+            clips: track.clips.filter(c => c.id !== clipId),
+            transitions: isLeavingTrack
+              ? (track.transitions ?? []).filter(
+                  t => t.fromClipId !== clipId && t.toClipId !== clipId
+                )
+              : track.transitions,
+          };
         }
         return track;
       });
@@ -377,7 +386,10 @@ export const SimpleEditor: React.FC<SimpleEditorProps> = ({ shots = [], projectI
 
     updateTracks(prev => prev.map(track => ({
       ...track,
-      clips: track.clips.filter(c => c.id !== targetId)
+      clips: track.clips.filter(c => c.id !== targetId),
+      transitions: (track.transitions ?? []).filter(
+        t => t.fromClipId !== targetId && t.toClipId !== targetId
+      ),
     })));
     if (selectedClipId === targetId) {
       setSelectedClipId(null);
