@@ -1,12 +1,15 @@
-import React from 'react';
-import type { Track } from '../../types/editor';
+import React, { useMemo } from 'react';
+import type { Track, Transition } from '../../types/editor';
 import type { ResolvedClipWindow } from '../../services/transition/types';
+import { MIN_VISIBLE_DURATION } from '../../services/transition/constants';
 import {
   DEFAULT_TRANSITION_DURATION,
   findTransitionByClipPair,
+  getAddableTransitionDuration,
   getChainAwareMaxDuration,
   getMaxTransitionDuration,
   getSortedTrackClips,
+  normalizeTrackTransitions,
 } from '../../services/transition/transitionResolver';
 
 interface TransitionOverlayProps {
@@ -14,6 +17,8 @@ interface TransitionOverlayProps {
   resolvedClipWindows: Map<string, ResolvedClipWindow>;
   pixelsPerSecond: number;
   selectedTransitionId: string | null;
+  invalidTransitions?: Transition[];
+  isDragging?: boolean;
   onSelectTransition?: (id: string | null) => void;
   onAddTransition?: (trackId: string, fromClipId: string, toClipId: string) => void;
   onUpdateTransitionDuration?: (trackId: string, transitionId: string, duration: number) => void;
@@ -25,23 +30,46 @@ export const TransitionOverlay: React.FC<TransitionOverlayProps> = React.memo(({
   resolvedClipWindows,
   pixelsPerSecond,
   selectedTransitionId,
+  invalidTransitions,
+  isDragging = false,
   onSelectTransition,
   onAddTransition,
   onUpdateTransitionDuration,
   onDeleteTransition,
 }) => {
   const sortedClips = getSortedTrackClips(track);
+  const normalizedTrack = useMemo(() => normalizeTrackTransitions(track), [track]);
+
+  const chainMaxDurations = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const t of normalizedTrack.transitions ?? []) {
+      map.set(t.id, getChainAwareMaxDuration(normalizedTrack, t.id));
+    }
+    return map;
+  }, [normalizedTrack]);
+
+  const invalidIds = useMemo(
+    () => new Set((invalidTransitions ?? []).map((transition) => transition.id)),
+    [invalidTransitions],
+  );
 
   return (
     <>
       {sortedClips.slice(1).map((toClip, clipIndex) => {
         const fromClip = sortedClips[clipIndex];
-        const transition = findTransitionByClipPair(track, fromClip.id, toClip.id);
-        const maxDuration = getMaxTransitionDuration(track, fromClip.id, toClip.id);
+        const explicitTransition = findTransitionByClipPair(track, fromClip.id, toClip.id);
+        const normalizedTransition = findTransitionByClipPair(normalizedTrack, fromClip.id, toClip.id);
+        const transition = explicitTransition ?? normalizedTransition;
+        const isInvalid = transition ? invalidIds.has(transition.id) : false;
+        const addableDuration = getAddableTransitionDuration(normalizedTrack, fromClip.id, toClip.id);
+        const maxDuration = getMaxTransitionDuration(normalizedTrack, fromClip.id, toClip.id);
         const chainMaxDuration = transition
-          ? getChainAwareMaxDuration(track, transition.id)
+          ? (chainMaxDurations.get(transition.id) ?? maxDuration)
           : maxDuration;
+        const sliderMin = Math.min(MIN_VISIBLE_DURATION, chainMaxDuration);
+        const sliderMax = Math.max(chainMaxDuration, sliderMin);
         const fromWindow = resolvedClipWindows.get(fromClip.id);
+        const toWindow = resolvedClipWindows.get(toClip.id);
         const cutPointTime = fromWindow?.resolvedEnd ?? toClip.start;
 
         return (
@@ -51,60 +79,64 @@ export const TransitionOverlay: React.FC<TransitionOverlayProps> = React.memo(({
             style={{ left: cutPointTime * pixelsPerSecond }}
           >
             {transition ? (
-              <div className="flex flex-col items-center gap-1">
+              <div className="relative flex flex-col items-center gap-1">
+                {!isInvalid && (() => {
+                  const transitionStartTime = toWindow?.resolvedStart ?? (cutPointTime - transition.duration);
+                  return (
+                    <div
+                      className="absolute top-0 h-full border-x border-cyan-400/40 bg-cyan-400/12 pointer-events-none"
+                      style={{
+                        left: (transitionStartTime - cutPointTime) * pixelsPerSecond,
+                        width: transition.duration * pixelsPerSecond,
+                      }}
+                    />
+                  );
+                })()}
                 <button
                   type="button"
                   onClick={(event) => {
                     event.stopPropagation();
-                    onSelectTransition?.(
-                      selectedTransitionId === transition.id ? null : transition.id
-                    );
+                    if (!isInvalid) {
+                      onSelectTransition?.(
+                        selectedTransitionId === transition.id ? null : transition.id,
+                      );
+                    }
                   }}
                   className={`rounded-full px-2 py-0.5 text-[10px] font-medium shadow ${
-                    selectedTransitionId === transition.id
-                      ? 'bg-cyan-500 text-black'
-                      : 'bg-zinc-800/90 text-cyan-200 hover:bg-zinc-700'
+                    isInvalid
+                      ? isDragging
+                        ? 'border border-orange-500/50 bg-orange-500/20 text-orange-300 opacity-60 pointer-events-none transition-colors duration-200 delay-200'
+                        : 'border border-orange-500/45 bg-orange-500/15 text-orange-200 pointer-events-none transition-colors duration-200'
+                      : selectedTransitionId === transition.id
+                        ? 'bg-cyan-500 text-black'
+                        : 'bg-zinc-800/90 text-cyan-200 hover:bg-zinc-700'
                   }`}
-                  title="编辑转场"
+                  title={isInvalid ? '失效转场' : '编辑转场'}
                 >
-                  淡变 {transition.duration.toFixed(1)}s
+                  {isInvalid ? `⚠ 无效 ${transition.duration.toFixed(1)}s` : `淡变 ${transition.duration.toFixed(1)}s`}
                 </button>
-                {selectedTransitionId === transition.id && (
-                  <div className="flex items-center gap-1 rounded-full bg-black/85 px-1 py-1">
-                    <button
-                      type="button"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        onUpdateTransitionDuration?.(
-                          track.id,
-                          transition.id,
-                          Math.max(0.1, transition.duration - 0.1)
-                        );
+                {selectedTransitionId === transition.id && !isInvalid && (
+                  <div className="flex items-center gap-1 rounded-full bg-black/85 px-2 py-1">
+                    <input
+                      type="range"
+                      min={sliderMin}
+                      max={sliderMax}
+                      step={0.1}
+                      value={transition.duration}
+                      onChange={(e) => {
+                        e.stopPropagation();
+                        onUpdateTransitionDuration?.(track.id, transition.id, Number(e.target.value));
                       }}
-                      className="rounded bg-zinc-700 px-1 text-[10px] text-white hover:bg-zinc-600"
-                      title="缩短转场"
-                    >
-                      -
-                    </button>
+                      className="h-1 w-16 accent-cyan-500"
+                      title={`转场时长: ${transition.duration.toFixed(1)}s`}
+                    />
+                    <span className="min-w-[2rem] text-center text-[10px] text-zinc-400">
+                      {transition.duration.toFixed(1)}s
+                    </span>
                     <button
                       type="button"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        onUpdateTransitionDuration?.(
-                          track.id,
-                          transition.id,
-                          Math.min(chainMaxDuration, transition.duration + 0.1)
-                        );
-                      }}
-                      className="rounded bg-zinc-700 px-1 text-[10px] text-white hover:bg-zinc-600"
-                      title="延长转场"
-                    >
-                      +
-                    </button>
-                    <button
-                      type="button"
-                      onClick={(event) => {
-                        event.stopPropagation();
+                      onClick={(e) => {
+                        e.stopPropagation();
                         onDeleteTransition?.(track.id, transition.id);
                       }}
                       className="rounded bg-red-600 px-1 text-[10px] text-white hover:bg-red-500"
@@ -116,7 +148,7 @@ export const TransitionOverlay: React.FC<TransitionOverlayProps> = React.memo(({
                 )}
               </div>
             ) : (
-              maxDuration > 0 && (
+              addableDuration > 0 && (
                 <button
                   type="button"
                   onClick={(event) => {
@@ -138,3 +170,4 @@ export const TransitionOverlay: React.FC<TransitionOverlayProps> = React.memo(({
 });
 
 TransitionOverlay.displayName = 'TransitionOverlay';
+

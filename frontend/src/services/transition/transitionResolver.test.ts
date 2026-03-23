@@ -2,10 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { MediaType, type Clip, type Track } from '../../types/editor';
 import {
   findTransitionByClipPair,
+  getAddableTransitionCount,
   getChainAwareMaxDuration,
   getClipOpacityFromPlans,
   getClipOpacityMultiplier,
   getClipResolvedWindow,
+  getExistingTransitionCount,
   getMaxTransitionDuration,
   getSortedTrackClips,
   getTimelineDuration,
@@ -151,13 +153,13 @@ describe('transitionResolver', () => {
       order: 0,
       clips: [createClip('clip-a', 0, 3), createClip('clip-b', 3, 2)],
     };
-    // maxDuration = min(3, 2) = 2
+    // maxDuration = min(3, 2) = 2, clampMax = 2 - 0.1 = 1.9
     track.transitions = [
       { id: 't1', fromClipId: 'clip-a', toClipId: 'clip-b', type: 'fade', duration: 2 },
     ];
     const normalized = normalizeTrackTransitions(track);
     expect(normalized.transitions).toHaveLength(1);
-    expect(normalized.transitions?.[0].duration).toBe(2);
+    expect(normalized.transitions?.[0].duration).toBe(1.9);
   });
 
   it('cleans up transition when fromClip is removed', () => {
@@ -290,9 +292,12 @@ describe('transitionResolver', () => {
       ],
     };
     const normalized = normalizeTrackTransitions(track);
-    // B.duration=1, t1.duration+t2.duration=1.6 > 1, so t2 is rejected
-    expect(normalized.transitions).toHaveLength(1);
+    // B.duration=1, t1 uses 0.8 of B budget, remaining=0.2, clampMax=0.1
+    // t2 gets clamped to 0.1 instead of rejected
+    expect(normalized.transitions).toHaveLength(2);
     expect(normalized.transitions?.[0].id).toBe('t1');
+    expect(normalized.transitions?.[1].id).toBe('t2');
+    expect(normalized.transitions?.[1].duration).toBeCloseTo(0.1, 5);
   });
 
   it('chain transitions resolve non-overlapping active windows', () => {
@@ -314,10 +319,10 @@ describe('transitionResolver', () => {
       { id: 't1', fromClipId: 'clip-a', toClipId: 'clip-b', type: 'fade', duration: 1 },
       { id: 't2', fromClipId: 'clip-b', toClipId: 'clip-c', type: 'fade', duration: 0.5 },
     ];
-    // B.duration=2, t1 uses 1s of B's budget, so t2 max = min(2, 2-1) = 1
-    expect(getChainAwareMaxDuration(track, 't2')).toBe(1);
-    // t1 max = min(2, 3, 2-0.5) = 1.5
-    expect(getChainAwareMaxDuration(track, 't1')).toBe(1.5);
+    // B.duration=2, t1 uses 1s of B's budget, so t2 max = min(2, 2-1) - 0.1 = 0.9
+    expect(getChainAwareMaxDuration(track, 't2')).toBe(0.9);
+    // t1 max = min(2, 3, 2-0.5) - 0.1 = 1.4
+    expect(getChainAwareMaxDuration(track, 't1')).toBe(1.4);
   });
 
   it('rejects two outgoing transitions from the same clip', () => {
@@ -446,15 +451,17 @@ describe('transitionResolver', () => {
       { id: 't2', fromClipId: 'clip-b', toClipId: 'clip-c', type: 'fade', duration: 1 },
     ];
     const resolved = resolveTrackTimeline(track);
-    // Total overlap = 1 + 1 = 2, so duration = 7 - 2 = 5
-    expect(resolved.duration).toBe(5);
+    // t2 clamped to 0.9 (budget=1, clampMax=0.9)
+    // Total overlap = 1 + 0.9 = 1.9, duration = 7 - 1.9 = 5.1
+    expect(resolved.duration).toBeCloseTo(5.1, 5);
 
     const windowA = resolved.clipWindows.find((w) => w.clipId === 'clip-a');
     const windowB = resolved.clipWindows.find((w) => w.clipId === 'clip-b');
     const windowC = resolved.clipWindows.find((w) => w.clipId === 'clip-c');
     expect(windowA).toMatchObject({ resolvedStart: 0, resolvedEnd: 3 });
     expect(windowB).toMatchObject({ resolvedStart: 2, resolvedEnd: 4 });
-    expect(windowC).toMatchObject({ resolvedStart: 3, resolvedEnd: 5 });
+    expect(windowC?.resolvedStart).toBeCloseTo(3.1, 5);
+    expect(windowC?.resolvedEnd).toBeCloseTo(5.1, 5);
   });
 
   it('chain opacity: middle clip fades in then fades out', () => {
@@ -463,14 +470,12 @@ describe('transitionResolver', () => {
       { id: 't1', fromClipId: 'clip-a', toClipId: 'clip-b', type: 'fade', duration: 1 },
       { id: 't2', fromClipId: 'clip-b', toClipId: 'clip-c', type: 'fade', duration: 1 },
     ];
-    // T1 active: [2, 3), T2 active: [3, 4)
-    // clip-b fades in during T1, full opacity between, fades out during T2
-    expect(getClipOpacityMultiplier(track, 'clip-b', 2.0)).toBeCloseTo(0, 5);   // T1 start: fade-in begins
-    expect(getClipOpacityMultiplier(track, 'clip-b', 2.5)).toBeCloseTo(0.5, 5); // T1 mid: half opacity
+    // t2 clamped to 0.9. T1 active: [2, 3), T2 active: [3.1, 4.0)
+    expect(getClipOpacityMultiplier(track, 'clip-b', 2.0)).toBeCloseTo(0, 5);   // T1 start
+    expect(getClipOpacityMultiplier(track, 'clip-b', 2.5)).toBeCloseTo(0.5, 5); // T1 mid
     expect(getClipOpacityMultiplier(track, 'clip-b', 2.99)).toBeCloseTo(0.99, 1); // T1 near end
-    expect(getClipOpacityMultiplier(track, 'clip-b', 3.0)).toBeCloseTo(1, 5);   // T2 start: fromClip, 1-0=1
-    expect(getClipOpacityMultiplier(track, 'clip-b', 3.5)).toBeCloseTo(0.5, 5); // T2 mid: fading out
-    expect(getClipOpacityMultiplier(track, 'clip-b', 3.99)).toBeCloseTo(0.01, 1); // T2 near end
+    expect(getClipOpacityMultiplier(track, 'clip-b', 3.05)).toBeCloseTo(1, 5);  // gap between T1 and T2
+    expect(getClipOpacityMultiplier(track, 'clip-b', 3.55)).toBeCloseTo(0.5, 1); // T2 mid
   });
 
   it('getChainAwareMaxDuration: isolated transition (no neighbor)', () => {
@@ -483,8 +488,8 @@ describe('transitionResolver', () => {
         { id: 't1', fromClipId: 'clip-a', toClipId: 'clip-b', type: 'fade', duration: 0.5 },
       ],
     };
-    // No neighbor, so chain-aware max = base max = min(3, 2) = 2
-    expect(getChainAwareMaxDuration(track, 't1')).toBe(2);
+    // No neighbor, so chain-aware max = base max = min(3, 2) - 0.1 = 1.9
+    expect(getChainAwareMaxDuration(track, 't1')).toBe(1.9);
   });
 
   it('getChainAwareMaxDuration: transitionId not found returns 0', () => {
@@ -517,7 +522,76 @@ describe('transitionResolver', () => {
     // E has incoming t1(dur=1), so E budget = 3-1 = 2
     // F has outgoing t3(dur=0.5), so F budget = 2-0.5 = 1.5
     // base max = min(3, 2) = 2
-    // chain max = min(2, 2, 1.5) = 1.5
-    expect(getChainAwareMaxDuration(track, 't2')).toBe(1.5);
+    // chain max = min(2, 2, 1.5) - 0.1 = 1.4
+    expect(getChainAwareMaxDuration(track, 't2')).toBe(1.4);
+  });
+
+  // --- getExistingTransitionCount ---
+
+  it('getExistingTransitionCount returns 0 for empty video track', () => {
+    const track: Track = { id: 'video-empty', type: 'video', clips: [], order: 0 };
+    expect(getExistingTransitionCount(track)).toBe(0);
+  });
+
+  it('getExistingTransitionCount returns count of valid transitions', () => {
+    const track = createTrack();
+    track.transitions = [
+      { id: 't1', fromClipId: 'clip-a', toClipId: 'clip-b', type: 'fade', duration: 0.5 },
+    ];
+    expect(getExistingTransitionCount(track)).toBe(1);
+  });
+
+  it('getExistingTransitionCount excludes invalid transitions', () => {
+    const track = createTrack();
+    track.transitions = [
+      { id: 't1', fromClipId: 'clip-a', toClipId: 'clip-b', type: 'fade', duration: 0.5 },
+      { id: 't2', fromClipId: 'clip-a', toClipId: 'clip-c', type: 'fade', duration: 0.5 },
+    ];
+    expect(getExistingTransitionCount(track)).toBe(1);
+  });
+
+  // --- getAddableTransitionCount ---
+
+  it('getAddableTransitionCount returns 0 for non-video track', () => {
+    const track: Track = { id: 'audio-1', type: 'audio', clips: [], order: 0 };
+    expect(getAddableTransitionCount(track)).toBe(0);
+  });
+
+  it('getAddableTransitionCount returns 0 for single clip', () => {
+    const track: Track = {
+      id: 'track-1', type: 'video', order: 0,
+      clips: [createClip('clip-a', 0, 3)],
+    };
+    expect(getAddableTransitionCount(track)).toBe(0);
+  });
+
+  it('getAddableTransitionCount returns count of addable cut points', () => {
+    const track = createTrack();
+    expect(getAddableTransitionCount(track)).toBe(2);
+  });
+
+  it('getAddableTransitionCount excludes cut points with existing transitions', () => {
+    const track = createTrack();
+    track.transitions = [
+      { id: 't1', fromClipId: 'clip-a', toClipId: 'clip-b', type: 'fade', duration: 0.5 },
+    ];
+    expect(getAddableTransitionCount(track)).toBe(1);
+  });
+
+  it('getAddableTransitionCount returns 0 when all cut points have transitions', () => {
+    const track = createTrack();
+    track.transitions = [
+      { id: 't1', fromClipId: 'clip-a', toClipId: 'clip-b', type: 'fade', duration: 0.5 },
+      { id: 't2', fromClipId: 'clip-b', toClipId: 'clip-c', type: 'fade', duration: 0.5 },
+    ];
+    expect(getAddableTransitionCount(track)).toBe(0);
+  });
+
+  it('getAddableTransitionCount skips non-adjacent clips with gaps', () => {
+    const track: Track = {
+      id: 'track-1', type: 'video', order: 0,
+      clips: [createClip('clip-a', 0, 3), createClip('clip-b', 5, 2)],
+    };
+    expect(getAddableTransitionCount(track)).toBe(0);
   });
 });

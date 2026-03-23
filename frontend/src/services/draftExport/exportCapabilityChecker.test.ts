@@ -22,7 +22,7 @@ function createClip(id: string, start: number, duration: number): Clip {
 }
 
 describe('checkExportCompatibility', () => {
-  it('detects track-level transitions as Jianying-only features', () => {
+  it('detects track-level transitions as natively exportable features', () => {
     const track: Track = {
       id: 'track-1',
       type: 'video',
@@ -41,8 +41,31 @@ describe('checkExportCompatibility', () => {
 
     const report = checkExportCompatibility([track]);
     expect(report.usedFeatures).toContain('transition');
-    expect(report.jianyingOnlyFeatures).toContain('transition');
+    expect(report.jianyingOnlyFeatures).not.toContain('transition');
     expect(report.featureDetails.find((detail) => detail.feature === 'transition')?.clipCount).toBe(1);
+  });
+
+  it('treats transitions as natively exportable once renderer supports them', () => {
+    const track: Track = {
+      id: 'track-1',
+      type: 'video',
+      order: 0,
+      clips: [createClip('clip-a', 0, 3), createClip('clip-b', 3, 3)],
+      transitions: [
+        {
+          id: 'transition-1',
+          fromClipId: 'clip-a',
+          toClipId: 'clip-b',
+          type: 'fade',
+          duration: 0.5,
+        },
+      ],
+    };
+
+    const report = checkExportCompatibility([track]);
+    expect(report.usedFeatures).toContain('transition');
+    expect(report.jianyingOnlyFeatures).not.toContain('transition');
+    expect(report.featureDetails.find((detail) => detail.feature === 'transition')?.support.native).toBe(true);
   });
 
   it('keeps legacy clip.transition readable through normalization', () => {

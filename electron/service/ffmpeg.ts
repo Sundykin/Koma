@@ -57,10 +57,12 @@ export interface ComposeVideoOptions {
   audioBitrate: number;       // kbps
   audioTracks: Array<{
     src: string;
-    start: number;            // 开始时间（秒）
+    start: number;            // 输出时间线开始时间（秒）
     duration: number;         // 持续时间（秒）
-    offset: number;           // 在输出中的偏移（秒）
+    offset: number;           // 源素材偏移（秒）
     volume: number;           // 音量 0-1
+    fadeInDuration?: number;  // 淡入时长（秒）
+    fadeOutDuration?: number; // 淡出时长（秒）
   }>;
   outputPath: string;
 }
@@ -502,8 +504,17 @@ export class FFmpegService {
       for (let i = 0; i < audioTracks.length; i++) {
         const audio = audioTracks[i];
         const audioIdx = i + 1;
-        // 应用音量和延迟
-        audioFilters.push(`[${audioIdx}:a]volume=${audio.volume},adelay=${Math.round(audio.offset * 1000)}|${Math.round(audio.offset * 1000)}[a${i}]`);
+        const audioFiltersForTrack = [`atrim=start=${Math.max(0, audio.offset)}:duration=${audio.duration}`];
+        if (audio.fadeInDuration && audio.fadeInDuration > 0) {
+          audioFiltersForTrack.push(`afade=t=in:st=0:d=${audio.fadeInDuration}`);
+        }
+        if (audio.fadeOutDuration && audio.fadeOutDuration > 0) {
+          const fadeOutStart = Math.max(0, audio.duration - audio.fadeOutDuration);
+          audioFiltersForTrack.push(`afade=t=out:st=${fadeOutStart}:d=${audio.fadeOutDuration}`);
+        }
+        audioFiltersForTrack.push(`volume=${audio.volume}`);
+        audioFiltersForTrack.push(`adelay=${Math.round(audio.start * 1000)}|${Math.round(audio.start * 1000)}`);
+        audioFilters.push(`[${audioIdx}:a]${audioFiltersForTrack.join(',')}[a${i}]`);
       }
       filterComplex.push(...audioFilters);
 

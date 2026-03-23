@@ -106,15 +106,37 @@ export const SimpleEditor: React.FC<SimpleEditorProps> = ({ shots = [], projectI
   const [isLoadingTimeline, setIsLoadingTimeline] = useState(true);
   const timelineCreatedAtRef = useRef<number>(Date.now());
 
+  const isDraggingRef = useRef(false);
+
   const updateTracks = useCallback((updater: (prev: Track[]) => Track[]) => {
-    setTracks((prev) => normalizeTimelineTracks(updater(prev)));
+    setTracks((prev) => {
+      const updated = updater(prev);
+      if (updated === prev) return prev;
+      return isDraggingRef.current ? updated : normalizeTimelineTracks(updated);
+    });
   }, []);
+
+  const normalizeNow = useCallback(() => {
+    setTracks((prev) => normalizeTimelineTracks(prev));
+  }, []);
+
+  const handleDragStateChange = useCallback((isDragging: boolean) => {
+    isDraggingRef.current = isDragging;
+    if (!isDragging) {
+      normalizeNow();
+    }
+  }, [normalizeNow]);
+
+  const prevTransitionCountRef = useRef<number>(0);
+  const isUserDeletingRef = useRef(false);
 
   const {
     handleSelectTransition,
     handleAddTransition,
     handleUpdateTransitionDuration,
     handleDeleteTransition,
+    handleAddAllTransitions,
+    handleDeleteAllTransitions,
   } = useTransitionHandlers({
     updateTracks,
     selectedTransitionId,
@@ -122,7 +144,22 @@ export const SimpleEditor: React.FC<SimpleEditorProps> = ({ shots = [], projectI
     setSelectedClipId,
     setSelectedKeyframeId,
     message,
+    isUserDeletingRef,
   });
+
+  useEffect(() => {
+    const currentCount = tracks.reduce(
+      (sum, t) => sum + (t.transitions?.length ?? 0), 0
+    );
+    const prevCount = prevTransitionCountRef.current;
+    prevTransitionCountRef.current = currentCount;
+
+    if (prevCount > 0 && currentCount < prevCount && !isUserDeletingRef.current) {
+      const removed = prevCount - currentCount;
+      message.warning(`已自动清理 ${removed} 条失效转场`);
+    }
+    isUserDeletingRef.current = false;
+  }, [tracks, message]);
 
   // 素材库
   const { assets: assetItems, addUploadedAsset } = useAssets({
@@ -297,6 +334,12 @@ export const SimpleEditor: React.FC<SimpleEditorProps> = ({ shots = [], projectI
 
   const handleMoveClip = useCallback((clipId: string, newStart: number, newTrackId: string) => {
     updateTracks(prev => {
+      const currentTrack = prev.find(t => t.clips.some(c => c.id === clipId));
+      const currentClip = currentTrack?.clips.find(c => c.id === clipId);
+      if (currentClip && currentClip.start === newStart && currentTrack?.id === newTrackId) {
+        return prev;
+      }
+
       let movedClip: Clip | null = null;
       const tracksWithoutClip = prev.map(track => {
         const clipIndex = track.clips.findIndex(c => c.id === clipId);
@@ -384,6 +427,7 @@ export const SimpleEditor: React.FC<SimpleEditorProps> = ({ shots = [], projectI
     const targetId = clipId || selectedClipId;
     if (!targetId) return;
 
+    isUserDeletingRef.current = true;
     updateTracks(prev => prev.map(track => ({
       ...track,
       clips: track.clips.filter(c => c.id !== targetId),
@@ -551,6 +595,9 @@ export const SimpleEditor: React.FC<SimpleEditorProps> = ({ shots = [], projectI
           onAddTransition={handleAddTransition}
           onUpdateTransitionDuration={handleUpdateTransitionDuration}
           onDeleteTransition={handleDeleteTransition}
+          onDragStateChange={handleDragStateChange}
+          onAddAllTransitions={handleAddAllTransitions}
+          onDeleteAllTransitions={handleDeleteAllTransitions}
           draggingAsset={draggingAsset}
           onExport={() => setExportDialogOpen(true)}
           onTransitionError={(errorMessage) => message.warning(errorMessage)}

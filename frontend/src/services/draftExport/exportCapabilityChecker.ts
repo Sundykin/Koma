@@ -37,7 +37,7 @@ const FEATURE_SUPPORT: Record<AdvancedFeature, FeatureSupport> = {
   animation: { native: false, jianying: true },
   audioFade: { native: false, jianying: true },
   mask: { native: false, jianying: true },
-  transition: { native: false, jianying: true },
+  transition: { native: true, jianying: true },
 };
 
 // 兼容性报告

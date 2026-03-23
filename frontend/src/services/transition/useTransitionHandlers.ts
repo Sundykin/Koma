@@ -1,12 +1,14 @@
-import { useCallback, useRef } from 'react';
-import type { Track } from '../../types/editor';
+import React, { useCallback, useRef } from 'react';
+import type { Track, Transition } from '../../types/editor';
 import type { MessageInstance } from 'antd/es/message/interface';
 import { generateId } from '../../utils/generateId';
 import { TRANSITION_TYPE_FADE } from './constants';
 import {
   DEFAULT_TRANSITION_DURATION,
+  findTransitionByClipPair,
+  getAddableTransitionDuration,
   getChainAwareMaxDuration,
-  getMaxTransitionDuration,
+  getSortedTrackClips,
 } from './transitionResolver';
 
 interface UseTransitionHandlersParams {
@@ -16,6 +18,7 @@ interface UseTransitionHandlersParams {
   setSelectedClipId: (id: string | null) => void;
   setSelectedKeyframeId: (id: string | null) => void;
   message: MessageInstance;
+  isUserDeletingRef: React.MutableRefObject<boolean>;
 }
 
 export function useTransitionHandlers({
@@ -25,6 +28,7 @@ export function useTransitionHandlers({
   setSelectedClipId,
   setSelectedKeyframeId,
   message,
+  isUserDeletingRef,
 }: UseTransitionHandlersParams) {
   const selectedTransitionIdRef = useRef(selectedTransitionId);
   selectedTransitionIdRef.current = selectedTransitionId;
@@ -44,8 +48,8 @@ export function useTransitionHandlers({
           return track;
         }
 
-        const maxDuration = getMaxTransitionDuration(track, fromClipId, toClipId);
-        if (maxDuration <= 0) {
+        const addableDuration = getAddableTransitionDuration(track, fromClipId, toClipId);
+        if (addableDuration <= 0) {
           return track;
         }
 
@@ -59,7 +63,7 @@ export function useTransitionHandlers({
               fromClipId,
               toClipId,
               type: TRANSITION_TYPE_FADE,
-              duration: Math.min(DEFAULT_TRANSITION_DURATION, maxDuration),
+              duration: addableDuration,
             },
           ],
         };
@@ -72,7 +76,7 @@ export function useTransitionHandlers({
     } else {
       message.warning('当前切点不满足添加转场条件');
     }
-  }, [message, updateTracks, setSelectedTransitionId]);
+  }, [message, updateTracks, setSelectedTransitionId, getAddableTransitionDuration]);
 
   const handleUpdateTransitionDuration = useCallback((
     trackId: string,
@@ -108,6 +112,7 @@ export function useTransitionHandlers({
   }, [updateTracks]);
 
   const handleDeleteTransition = useCallback((trackId: string, transitionId: string) => {
+    isUserDeletingRef.current = true;
     updateTracks((prev) =>
       prev.map((track) =>
         track.id === trackId
@@ -124,12 +129,83 @@ export function useTransitionHandlers({
       setSelectedTransitionId(null);
     }
     message.success('已删除转场');
-  }, [message, updateTracks, setSelectedTransitionId]);
+  }, [message, updateTracks, setSelectedTransitionId, isUserDeletingRef]);
+
+  const handleAddAllTransitions = useCallback((trackId: string) => {
+    // 先读取当前 track 状态计算候选，避免 updater 闭包竞态
+    let addedCount = 0;
+    const candidateTransitions: Transition[] = [];
+
+    updateTracks((prev) => {
+      const track = prev.find(t => t.id === trackId);
+      if (!track) return prev;
+
+      const sortedClips = getSortedTrackClips(track);
+      if (sortedClips.length <= 1) return prev;
+
+      for (let i = 0; i < sortedClips.length - 1; i++) {
+        const fromClip = sortedClips[i];
+        const toClip = sortedClips[i + 1];
+        if (findTransitionByClipPair(track, fromClip.id, toClip.id)) continue;
+
+        const addableDuration = getAddableTransitionDuration(track, fromClip.id, toClip.id);
+        if (addableDuration <= 0) continue;
+
+        candidateTransitions.push({
+          id: generateId(),
+          fromClipId: fromClip.id,
+          toClipId: toClip.id,
+          type: TRANSITION_TYPE_FADE,
+          duration: addableDuration,
+        });
+      }
+
+      addedCount = candidateTransitions.length;
+      if (addedCount === 0) return prev;
+
+      return prev.map(t =>
+        t.id === trackId
+          ? { ...t, transitions: [...(t.transitions ?? []), ...candidateTransitions] }
+          : t
+      );
+    });
+
+    if (addedCount > 0) {
+      message.success(`已为 ${addedCount} 个切点添加淡变转场`);
+    } else {
+      message.info('所有切点已有转场');
+    }
+  }, [message, updateTracks, getAddableTransitionDuration]);
+
+  const handleDeleteAllTransitions = useCallback((trackId: string) => {
+    isUserDeletingRef.current = true;
+
+    updateTracks((prev) => {
+      const track = prev.find(t => t.id === trackId);
+      const count = track?.transitions?.length ?? 0;
+      if (count === 0) return prev;
+
+      // 在 updater 外部通过 queueMicrotask 发 toast，避免闭包竞态
+      queueMicrotask(() => {
+        message.success(`已清除全部 ${count} 个转场`);
+      });
+
+      return prev.map(t =>
+        t.id === trackId ? { ...t, transitions: [] } : t
+      );
+    });
+
+    if (selectedTransitionIdRef.current) {
+      setSelectedTransitionId(null);
+    }
+  }, [message, updateTracks, setSelectedTransitionId, isUserDeletingRef]);
 
   return {
     handleSelectTransition,
     handleAddTransition,
     handleUpdateTransitionDuration,
     handleDeleteTransition,
+    handleAddAllTransitions,
+    handleDeleteAllTransitions,
   };
 }

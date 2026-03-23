@@ -139,11 +139,6 @@ export function SimpleExportDialog({ open, onClose, tracks, duration, canvasSize
   // 视频导出
   const handleVideoExport = useCallback(async () => {
     try {
-      if (compatibilityReport.jianyingOnlyFeatures.includes('transition')) {
-        message.error('当前转场仅支持草稿导出，请改用「草稿导出」保留转场语义。');
-        return;
-      }
-
       const values = await videoForm.validateFields();
 
       if (!isElectron()) {
@@ -193,7 +188,7 @@ export function SimpleExportDialog({ open, onClose, tracks, duration, canvasSize
       exporterRef.current?.dispose();
       exporterRef.current = null;
     }
-  }, [compatibilityReport.jianyingOnlyFeatures, duration, message, onClose, tracks, videoForm]);
+  }, [duration, message, onClose, tracks, videoForm]);
 
   // 草稿导出
   const handleDraftExport = useCallback(async () => {

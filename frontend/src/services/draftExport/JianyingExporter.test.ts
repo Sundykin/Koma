@@ -73,14 +73,14 @@ describe('JianyingExporter', () => {
       id: 'track-1',
       type: 'video',
       order: 0,
-      clips: [createClip('clip-a', 0, 3), createClip('clip-b', 3, 3)],
+      clips: [createClip('clip-a', 0, 3), createClip('clip-b', 5, 3)], // gap between clips
       transitions: [
         {
           id: 'transition-1',
           fromClipId: 'clip-a',
           toClipId: 'clip-b',
           type: 'fade',
-          duration: 10,
+          duration: 1,
         },
       ],
     };

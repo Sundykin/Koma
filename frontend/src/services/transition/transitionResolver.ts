@@ -1,5 +1,5 @@
 import type { Clip, Track, Transition } from '../../types/editor';
-import { SUPPORTED_TRANSITION_TYPES, TRANSITION_TYPE_FADE } from './constants';
+import { DEFAULT_TRANSITION_DURATION, MIN_VISIBLE_DURATION, SUPPORTED_TRANSITION_TYPES, TRANSITION_TYPE_FADE } from './constants';
 import type { NormalizedTransitionPlan, ResolvedClipWindow, ResolvedTrackTimeline } from './types';
 
 // Re-export for consumers
@@ -25,6 +25,31 @@ export function findTransitionByClipPair(
   return track.transitions?.find(
     (transition) => transition.fromClipId === fromClipId && transition.toClipId === toClipId
   );
+}
+
+export function getAddableTransitionDuration(
+  track: Track,
+  fromClipId: string,
+  toClipId: string,
+): number {
+  const candidateTrack: Track = {
+    ...track,
+    transitions: [
+      ...(track.transitions ?? []),
+      {
+        id: '__candidate-transition__',
+        fromClipId,
+        toClipId,
+        type: TRANSITION_TYPE_FADE,
+        duration: DEFAULT_TRANSITION_DURATION,
+      },
+    ],
+  };
+
+  return normalizeTrackTransitions(candidateTrack)
+    .transitions
+    ?.find((transition) => transition.id === '__candidate-transition__')
+    ?.duration ?? 0;
 }
 
 /**
@@ -63,13 +88,13 @@ export function getChainAwareMaxDuration(
   track: Track,
   transitionId: string,
 ): number {
-  const baseMax = getChainAwareBaseMax(track, transitionId);
-  if (baseMax <= 0) return 0;
-
   const normalizedTrack = normalizeTrackTransitions(track);
   const transitions = normalizedTrack.transitions ?? [];
   const target = transitions.find(t => t.id === transitionId);
   if (!target) return 0;
+
+  const baseMax = getMaxTransitionDuration(normalizedTrack, target.fromClipId, target.toClipId);
+  if (baseMax <= 0) return 0;
 
   const sortedClips = getSortedTrackClips(normalizedTrack);
   const fromClip = sortedClips.find(c => c.id === target.fromClipId);
@@ -90,15 +115,8 @@ export function getChainAwareMaxDuration(
     ? toClip.duration - outgoingOnTo.duration
     : toClip.duration;
 
-  return Math.max(0, Math.min(baseMax, fromClipBudget, toClipBudget));
-}
-
-/** 内部：复用 getMaxTransitionDuration 做前置校验 */
-function getChainAwareBaseMax(track: Track, transitionId: string): number {
-  const normalizedTrack = normalizeTrackTransitions(track);
-  const target = (normalizedTrack.transitions ?? []).find(t => t.id === transitionId);
-  if (!target) return 0;
-  return getMaxTransitionDuration(normalizedTrack, target.fromClipId, target.toClipId);
+  // V4: 减去 MIN_VISIBLE_DURATION，保持 slider max 与 clamp 上限一致
+  return Math.max(0, Math.min(baseMax, fromClipBudget, toClipBudget) - MIN_VISIBLE_DURATION);
 }
 
 function deriveLegacyTransitions(track: Track): Transition[] {
@@ -123,11 +141,15 @@ function deriveLegacyTransitions(track: Track): Transition[] {
 }
 
 /**
- * 过滤无效转场，返回合法子集。处理链式约束、类型校验、相邻性校验。
+ * 验证并 clamp 转场。超标转场自动缩短而非丢弃（类似 Premiere/Kdenlive）。
+ * 按 clip 顺序处理，保证链式预算分配确定性。
  */
-function validateTransitions(track: Track, transitions: Transition[]): Transition[] {
+function validateTransitions(track: Track, transitions: Transition[]): {
+  valid: Transition[];
+  invalid: Transition[];
+} {
   if (track.type !== 'video') {
-    return [];
+    return { valid: [], invalid: [...transitions] };
   }
 
   const sortedClips = getSortedTrackClips(track);
@@ -137,50 +159,69 @@ function validateTransitions(track: Track, transitions: Transition[]): Transitio
   const incomingDuration = new Map<string, number>();
   const outgoingDuration = new Map<string, number>();
   const valid: Transition[] = [];
+  const invalid: Transition[] = [];
 
-  for (const transition of transitions) {
+  // V1: 按 clip 顺序排序，保证链式预算分配确定性
+  const sortedTransitions = [...transitions].sort((a, b) => {
+    const aIdx = clipIndexMap.get(a.fromClipId) ?? Infinity;
+    const bIdx = clipIndexMap.get(b.fromClipId) ?? Infinity;
+    return aIdx - bIdx;
+  });
+
+  for (const transition of sortedTransitions) {
     const fromIdx = clipIndexMap.get(transition.fromClipId);
     const toIdx = clipIndexMap.get(transition.toClipId);
-    const maxDuration = getMaxTransitionDuration(track, transition.fromClipId, transition.toClipId);
+    const maxDuration = getMaxTransitionDuration(
+      track, transition.fromClipId, transition.toClipId,
+    );
 
-    // 类型校验
     const isValidType = SUPPORTED_TRANSITION_TYPES.has(transition.type);
-    // 相邻性校验
-    const isAdjacent = fromIdx !== undefined && toIdx !== undefined && toIdx === fromIdx + 1;
-    // 时长校验（含 NaN/undefined 防御）
-    const isValidDuration = Number.isFinite(transition.duration) && transition.duration > 0 && transition.duration <= maxDuration;
-    // 唯一性校验
-    const isUnique = !usedAsFrom.has(transition.fromClipId) && !usedAsTo.has(transition.toClipId);
+    const isAdjacent = fromIdx !== undefined
+      && toIdx !== undefined && toIdx === fromIdx + 1;
+    const isUnique = !usedAsFrom.has(transition.fromClipId)
+      && !usedAsTo.has(transition.toClipId);
 
-    if (!isValidType || !isAdjacent || !isValidDuration || !isUnique) {
+    if (!isValidType || !isAdjacent || !isUnique) {
+      invalid.push(transition);
       continue;
     }
 
-    // 链式约束：fromClip 的 incoming + 本次 outgoing <= fromClip.duration
     const fromClip = sortedClips[fromIdx];
+    const toClip = sortedClips[toIdx!];
     const existingIncoming = incomingDuration.get(transition.fromClipId) ?? 0;
-    if (existingIncoming + transition.duration > fromClip.duration + 1e-9) {
+    const existingOutgoing = outgoingDuration.get(transition.toClipId) ?? 0;
+    const fromBudget = fromClip.duration - existingIncoming;
+    const toBudget = toClip.duration - existingOutgoing;
+    const effectiveMax = Math.min(maxDuration, fromBudget, toBudget);
+    const clampMax = Math.max(0, effectiveMax - MIN_VISIBLE_DURATION);
+
+    if (clampMax <= 0) {
+      invalid.push(transition);
       continue;
     }
 
-    // 链式约束：toClip 的本次 incoming + 已有 outgoing <= toClip.duration
-    const toClip = sortedClips[toIdx];
-    const existingOutgoing = outgoingDuration.get(transition.toClipId) ?? 0;
-    if (transition.duration + existingOutgoing > toClip.duration + 1e-9) {
+    let finalDuration = transition.duration;
+    if (!Number.isFinite(finalDuration) || finalDuration <= 0) {
+      invalid.push(transition);
       continue;
+    }
+
+    if (finalDuration > clampMax + 1e-9) {
+      finalDuration = clampMax;
     }
 
     usedAsFrom.add(transition.fromClipId);
     usedAsTo.add(transition.toClipId);
-    outgoingDuration.set(transition.fromClipId, transition.duration);
-    incomingDuration.set(transition.toClipId, transition.duration);
-    valid.push({
-      ...transition,
-      type: transition.type,
-    });
+    outgoingDuration.set(transition.fromClipId, finalDuration);
+    incomingDuration.set(transition.toClipId, finalDuration);
+    valid.push(
+      finalDuration !== transition.duration
+        ? { ...transition, duration: finalDuration }
+        : transition,
+    );
   }
 
-  return valid;
+  return { valid, invalid };
 }
 
 function normalizeTrackTransitionsWithInvalid(track: Track): {
@@ -188,20 +229,16 @@ function normalizeTrackTransitionsWithInvalid(track: Track): {
   invalidTransitions: Transition[];
 } {
   const explicitTransitions = track.transitions ?? deriveLegacyTransitions(track);
-  const transitions = validateTransitions(track, explicitTransitions);
+  const { valid, invalid } = validateTransitions(track, explicitTransitions);
   const clips = track.clips.map(({ transition: _legacyTransition, ...clip }) => clip);
-  const validIds = new Set(transitions.map((transition) => transition.id));
-  const invalidTransitions = explicitTransitions.filter(
-    (transition) => !validIds.has(transition.id)
-  );
 
   return {
     track: {
       ...track,
       clips,
-      transitions,
+      transitions: valid,
     },
-    invalidTransitions,
+    invalidTransitions: invalid,
   };
 }
 
@@ -315,6 +352,41 @@ export function getClipResolvedWindow(
     }
   }
   return undefined;
+}
+
+export function getMainVideoTrack(tracks: Track[]): Track | undefined {
+  return tracks.find((track) => track.isMainTrack && track.type === 'video')
+    ?? tracks.find((track) => track.type === 'video');
+}
+
+/**
+ * 获取轨道上已有转场数量（normalize 后）
+ */
+export function getExistingTransitionCount(track: Track): number {
+  const normalized = normalizeTrackTransitions(track);
+  return normalized.transitions?.length ?? 0;
+}
+
+/**
+ * 获取轨道上可添加转场的切点数量（紧密相邻且无转场的 clip 对）
+ */
+export function getAddableTransitionCount(track: Track): number {
+  if (track.type !== 'video') return 0;
+  const normalized = normalizeTrackTransitions(track);
+  const sortedClips = getSortedTrackClips(normalized);
+  const existingPairs = new Set(
+    (normalized.transitions ?? []).map(t => `${t.fromClipId}:${t.toClipId}`),
+  );
+  let count = 0;
+  for (let i = 0; i < sortedClips.length - 1; i++) {
+    const from = sortedClips[i];
+    const to = sortedClips[i + 1];
+    const maxDur = getMaxTransitionDuration(normalized, from.id, to.id);
+    if (maxDur > 0 && !existingPairs.has(`${from.id}:${to.id}`)) {
+      count++;
+    }
+  }
+  return count;
 }
 
 export function getClipOpacityFromPlans(

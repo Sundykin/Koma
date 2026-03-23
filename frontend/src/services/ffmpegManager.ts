@@ -67,6 +67,8 @@ export interface ComposeVideoOptions {
     duration: number;
     offset: number;
     volume: number;
+    fadeInDuration?: number;
+    fadeOutDuration?: number;
   }>;
   outputPath: string;
   onProgress?: (percent: number) => void;
