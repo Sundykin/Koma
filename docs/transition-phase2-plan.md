@@ -163,9 +163,31 @@ Segment 6: 回归测试增强
 1. **拖动后 normalize 性能** — 每次 mouseup 调用 `normalizeTrackTransitions`，片段多时可能卡顿。缓解：normalize 本身是 O(n) 线性，100 个片段内无压力。
 2. **Quick add 链式约束** — 批量添加时后续转场可能因链式约束被拒绝。缓解：按顺序添加，`validateTransitions` 已处理。
 3. **Inspector 与 TransitionOverlay 状态同步** — 两处都能修改时长，需确保单一数据源。缓解：都通过 `handleUpdateTransitionDuration` 走同一路径。
+4. **拖动清理的 undo 体验** — 用户拖动一个 clip 可能意外丢失多个转场。需确保 undo 栈能一次性恢复拖动前的完整状态（clip 位置 + 转场）。缓解：拖动完成后用 `message.info` 提示"已自动移除 N 个不再有效的转场"。
+5. **Batch apply 渲染风暴** — 长轨道（50+ clips）一次性插入大量转场，需确保 batch 操作只触发一次 `updateTracks`，避免 N 次渲染。
 
 ## 10. 成功指标
 
 1. 添加 10 个转场的操作从 ~30 次点击降到 1 次（Quick add）
 2. 调整转场时长从 +/- 按钮多次点击变为滑块一次拖拽
 3. 含转场轨道可正常拖动/resize 片段，无需先删除转场
+4. Phase 2 上线后 > 40% 的项目包含转场（转场功能周活跃使用率）
+
+## 11. 团队评审补充（2026-03-23）
+
+### 产品视角
+- Phase 1 遗留的音频 opacity→volume 问题不纳入 Phase 2，与效率闭环无关，建议单独排期
+- Default transition 是所有效率功能的基础，quick add 和 batch apply 依赖它
+- 成功指标应包含"10 片段批量加转场耗时 < 5 秒"（当前约 60 秒）
+
+### 架构视角
+- 数据模型无需扩展，`Transition` 接口不变
+- Default transition 偏好存储在 settings store（用户级），不侵入项目数据模型
+- 解除拖动限制推荐"拖动后自动清理"方案，"拖动时保持转场"需实时重算链式约束，复杂度过高
+- 需在 `exportCapabilityChecker` 中预埋新转场类型校验，防止未来扩展时静默丢失
+
+### 前端视角
+- Quick add 入口放 timeline toolbar（一级入口），批量操作放轨道右键菜单
+- Inspector 复用 SimplePropertiesPanel，根据 `selectedTransitionId` 切换渲染分支
+- 拖动时转场标签应有视觉反馈：正常=cyan，被缩短=橙色，即将删除=红色
+- 新增 3 个文件：`TransitionInspector.tsx`、`TransitionBatchActions.tsx`、`useDefaultTransition.ts`
