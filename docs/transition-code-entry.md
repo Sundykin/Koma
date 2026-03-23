@@ -66,3 +66,43 @@
 - `openspec/specs/media-playback`：`SimplePlayer` 与 `simpleEngine` 的最小 fade 预览。
 - `openspec/specs/timeline-editing`：`SimpleTimeline` 的 cut point 入口与规则限制。
 - `openspec/specs/timeline-editor`：时间线 UI 的最小可见性与操作入口。
+
+---
+
+## 6. Phase 1 实施状态（2026-03-23 更新）
+
+### 已完成模块
+
+| 模块 | 文件 | 状态 |
+|---|---|---|
+| 数据模型 | `types/editor.ts` — `Track.transitions[]`、`Clip.transition` @deprecated | 完成 |
+| Resolver 核心 | `services/transition/transitionResolver.ts` — 标准化、验证、时间窗口解析 | 完成 |
+| 类型与常量 | `services/transition/types.ts`、`constants.ts` — `SUPPORTED_TRANSITION_TYPES` Set | 完成 |
+| CRUD Handlers | `services/transition/useTransitionHandlers.ts` — add/update/delete/select | 完成 |
+| 链式转场 | A→B + B→C 支持，含 chain budget 约束与 `getChainAwareMaxDuration` | 完成 |
+| 预览渲染 | `engine/simpleEngine.ts` — fade opacity via `getClipOpacityFromPlans` | 完成 |
+| 剪映导出 | `JianyingExporter.ts` — `resolveTrackTimeline` + `extra_material_refs` | 完成 |
+| 能力检测 | `exportCapabilityChecker.ts` — 检测 `Track.transitions[]` | 完成 |
+| Timeline UI | `TransitionOverlay.tsx`（React.memo）+ cut point 入口 | 完成 |
+| 导出对话框 | `SimpleExportDialog.tsx` — Alert 提示 + 视频导出拦截 | 完成 |
+| Clip 生命周期 | `SimpleEditor.tsx` — 删除/移动 clip 时自动清理关联转场 | 完成 |
+| 测试覆盖 | `transitionResolver.test.ts` — 32 个测试用例 | 完成 |
+
+### 遗留项（不阻塞 Phase 1 交付）
+
+#### P1: 音频 crossfade 独立曲线
+- 位置：`engine/simpleEngine.ts` `getClipVolume()`
+- 现状：用视觉 opacity 值直接做音频 volume（线性 crossfade 近似），功能正确
+- 问题：`exportAudioOverlap` 字段已计算但未使用，音频没有独立淡入淡出曲线
+- 建议：Phase 2 扩展转场类型时一并优化，添加独立音频 fade 曲线
+
+#### P2: 含转场轨道禁止拖动/resize/插入
+- 位置：`SimpleTimeline.tsx` 第 572、597、639 行
+- 现状：含转场的轨道直接 block 拖动/调整/插入操作，提示"请先删除转场"
+- 问题：用户体验不好，应改为操作后自动清理失效转场
+- 建议：作为独立任务处理，需改动 drag/resize/drop 三处逻辑
+
+#### P2: 集成测试缺失
+- 现状：单元测试覆盖 resolver 全部导出函数（32 cases），但缺少端到端流程测试
+- 缺失场景：add→save→reload→verify、legacy `Clip.transition` 迁移验证
+- 建议：需要 Electron 环境支持，可在 E2E 测试框架就绪后补充
