@@ -43,6 +43,7 @@ export const TTI_PRESETS: ProviderPreset[] = [
   { id: 'gemini-3-pro', name: 'Gemini-3-Pro (toapis)', baseUrl: 'https://toapis.com', models: ['gemini-3-pro-image-preview'] },
   { id: 'openai-compatible-tti', name: '自定义服务商（OpenAI 兼容）', baseUrl: '' },
   { id: 'grok2api-imagine-tti', name: 'Grok2API Imagine（多参考）', baseUrl: '', models: ['grok-imagine-1.0', 'grok-imagine-1.0-edit'] },
+  { id: 'gemini-native-tti', name: 'Gemini Native（谷歌原生）', baseUrl: 'https://generativelanguage.googleapis.com', models: ['gemini-3-pro-image-preview', 'gemini-2.5-flash-preview-image-generation', 'gemini-2.5-pro-preview-image-generation'] },
 ];
 
 // ITV 厂商预设
