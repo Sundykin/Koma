@@ -19,6 +19,7 @@ interface CreateProjectModalProps {
   onCreate: (data: {
     title: string;
     mode: 'drama' | 'narration';
+    aspectRatio: '16:9' | '9:16';
     stylePresetId: string;
   }) => void;
 }
@@ -69,6 +70,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ isOpen, 
       onCreate({
         title: values.title,
         mode: values.mode || 'drama',
+        aspectRatio: values.aspectRatio || '16:9',
         stylePresetId: selectedTheme || fallbackThemeId,
       });
       form.resetFields();
@@ -94,7 +96,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ isOpen, 
       <Form
         form={form}
         layout="vertical"
-        initialValues={{ mode: 'drama' }}
+        initialValues={{ mode: 'drama', aspectRatio: '16:9' }}
         style={{ marginTop: 16 }}
       >
         <Form.Item
@@ -131,6 +133,31 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ isOpen, 
                   <Tooltip title={t('project.narrationModeDesc')}>
                     <QuestionCircleOutlined style={{ opacity: 0.6, fontSize: 12 }} />
                   </Tooltip>
+                </Space>
+              </Radio.Button>
+            </Space>
+          </Radio.Group>
+        </Form.Item>
+
+        <Form.Item name="aspectRatio" label="画面比例">
+          <Radio.Group buttonStyle="solid" style={{ width: '100%' }}>
+            <Space style={{ width: '100%' }} size="middle">
+              <Radio.Button
+                value="16:9"
+                style={{ flex: 1, height: 48, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+              >
+                <Space>
+                  <span style={{ display: 'inline-block', width: 24, height: 14, border: '2px solid currentColor', borderRadius: 2 }} />
+                  <span style={{ fontWeight: 'bold' }}>16:9 横屏</span>
+                </Space>
+              </Radio.Button>
+              <Radio.Button
+                value="9:16"
+                style={{ flex: 1, height: 48, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+              >
+                <Space>
+                  <span style={{ display: 'inline-block', width: 14, height: 24, border: '2px solid currentColor', borderRadius: 2 }} />
+                  <span style={{ fontWeight: 'bold' }}>9:16 竖屏</span>
                 </Space>
               </Radio.Button>
             </Space>

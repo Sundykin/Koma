@@ -30,6 +30,7 @@ interface ShotRenderParams {
   projectId: string;
   episodeId?: string;
   shot: Shot;
+  aspectRatio?: '16:9' | '9:16';
   projectConfigIds?: {
     ttiConfigId?: string;
     itvConfigId?: string;
@@ -38,7 +39,7 @@ interface ShotRenderParams {
   theme?: string;
   stylePrompt?: string;
   styleSnapshot?: StyleSnapshotLike;
-  project?: { styleSnapshot?: StyleSnapshotLike };
+  project?: { styleSnapshot?: StyleSnapshotLike; aspectRatio?: '16:9' | '9:16' };
 }
 
 interface ShotRenderResult {
@@ -51,6 +52,7 @@ interface ShotRenderResult {
 interface BatchRenderParams {
   projectId: string;
   shots: Shot[];
+  aspectRatio?: '16:9' | '9:16';
   projectConfigIds?: {
     ttiConfigId?: string;
     itvConfigId?: string;
@@ -59,7 +61,7 @@ interface BatchRenderParams {
   theme?: string;
   stylePrompt?: string;
   styleSnapshot?: StyleSnapshotLike;
-  project?: { styleSnapshot?: StyleSnapshotLike };
+  project?: { styleSnapshot?: StyleSnapshotLike; aspectRatio?: '16:9' | '9:16' };
   concurrency?: number;
 }
 
@@ -271,6 +273,7 @@ export async function shotRenderWorkflow(
         options: {
           duration: normalizedShot.duration,
           motionPrompt: normalizedShot.cameraMovement,
+          aspectRatio: params.aspectRatio || params.project?.aspectRatio || '16:9',
         },
       },
       promptCompilation: {
@@ -334,6 +337,7 @@ export async function batchRenderShots(
   const {
     projectId,
     shots,
+    aspectRatio,
     projectConfigIds,
     theme,
     stylePrompt,
@@ -351,7 +355,7 @@ export async function batchRenderShots(
     const shot = shots[i];
 
     const result = await shotRenderWorkflow(
-      { projectId, shot, projectConfigIds, theme, stylePrompt, styleSnapshot, project },
+      { projectId, shot, aspectRatio, projectConfigIds, theme, stylePrompt, styleSnapshot, project },
       (progress, step) => {
         const overall = Math.round(((completed + progress / 100) / shots.length) * 100);
         onProgress(overall, { shotId: shot.id, progress, step });

@@ -23,7 +23,7 @@ interface PlayerProps {
   onUpdateClip?: (clipId: string, updates: Partial<Clip>) => void;
   onAutoKeyframe?: (clipId: string, clipLocalTime: number, updates: Partial<Clip>) => void;
   aspectRatio: AspectRatio;
-  onAspectRatioChange: (ratio: AspectRatio) => void;
+  onAspectRatioChange?: (ratio: AspectRatio) => void;
 }
 
 export const SimplePlayer: React.FC<PlayerProps> = ({
@@ -326,15 +326,19 @@ export const SimplePlayer: React.FC<PlayerProps> = ({
       <div className="h-10 border-b border-[#27272a] flex items-center px-4 justify-between bg-[#18181b] flex-shrink-0">
         <div className="flex items-center gap-2">
           <Maximize2 size={14} className="text-zinc-500" />
-          <select
-            value={aspectRatio}
-            onChange={(e) => onAspectRatioChange(e.target.value as AspectRatio)}
-            className="bg-zinc-800 text-zinc-300 text-xs px-2 py-1 rounded border border-zinc-700 focus:outline-none focus:border-cyan-500"
-          >
-            {ASPECT_RATIOS.map(r => (
-              <option key={r.value} value={r.value}>{r.label}</option>
-            ))}
-          </select>
+          {onAspectRatioChange ? (
+            <select
+              value={aspectRatio}
+              onChange={(e) => onAspectRatioChange(e.target.value as AspectRatio)}
+              className="bg-zinc-800 text-zinc-300 text-xs px-2 py-1 rounded border border-zinc-700 focus:outline-none focus:border-cyan-500"
+            >
+              {ASPECT_RATIOS.map(r => (
+                <option key={r.value} value={r.value}>{r.label}</option>
+              ))}
+            </select>
+          ) : (
+            <span className="text-zinc-400 text-xs px-2 py-1">{aspectRatio}</span>
+          )}
         </div>
         <div className="text-xs text-zinc-500">
           {canvasSize.width} × {canvasSize.height}

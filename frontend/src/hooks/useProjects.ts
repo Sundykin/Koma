@@ -23,6 +23,7 @@ export interface UseProjectsResult {
 export interface CreateProjectData {
   title: string;
   mode: 'drama' | 'narration';
+  aspectRatio?: '16:9' | '9:16';
   genre?: string;
   stylePresetId?: string;
 }
@@ -63,6 +64,7 @@ export function useProjects(): UseProjectsResult {
       title: data.title,
       genre: data.genre || (data.mode === 'drama' ? '剧情' : '解说'),
       mode: data.mode,
+      aspectRatio: data.aspectRatio || '16:9',
       status: 'script',
       episodes: 1,
       createdAt: now,

@@ -197,15 +197,24 @@ export class Grok2ApiImagineTTIProvider implements TTIProvider {
     const protocol = (this.config as any)?.promptProtocol;
     const debugBody = Boolean(protocol) || (import.meta as any)?.env?.DEV === true;
 
-    // 1) No references: call OpenAI-compatible images generation endpoint
-    if (!hasRefs) {
+    // 解析尺寸：优先 width/height，其次 aspectRatio 映射
+    const resolveSize = (): string | undefined => {
       const w = request.options?.width;
       const h = request.options?.height;
+      if (typeof w === 'number' && typeof h === 'number') return `${w}x${h}`;
+      const ar = request.options?.aspectRatio || '16:9';
+      if (ar === '9:16') return '1080x1920';
+      return '1920x1080'; // 16:9 default
+    };
+
+    // 1) No references: call OpenAI-compatible images generation endpoint
+    if (!hasRefs) {
+      const size = resolveSize();
       const body: Record<string, any> = {
         model: this.config.modelName || 'grok-imagine-1.0',
         prompt: request.prompt,
         n: 1,
-        ...(typeof w === 'number' && typeof h === 'number' ? { size: `${w}x${h}` } : undefined),
+        ...(size ? { size } : undefined),
       };
 
       if (debugBody) {
@@ -252,9 +261,7 @@ export class Grok2ApiImagineTTIProvider implements TTIProvider {
         ...refs.map(r => ({ type: 'image_url', image_url: { url: r.value } })),
       ];
 
-      const w = request.options?.width;
-      const h = request.options?.height;
-      const size = (typeof w === 'number' && typeof h === 'number') ? `${w}x${h}` : undefined;
+      const size = resolveSize();
 
       const body: Record<string, any> = {
         model: this.config.modelName || 'grok-imagine-1.0-edit',

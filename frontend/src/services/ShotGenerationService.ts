@@ -19,10 +19,11 @@ export async function generateShotImage(
   scenes: Scene[],
   ttiConfigId?: string,
   styleOptions?: {
+    aspectRatio?: '16:9' | '9:16';
     theme?: string;
     stylePrompt?: string;
     styleSnapshot?: StyleSnapshotLike;
-    project?: { styleSnapshot?: StyleSnapshotLike };
+    project?: { styleSnapshot?: StyleSnapshotLike; aspectRatio?: '16:9' | '9:16' };
     onProgress?: (progress: number, step?: string) => void;
   }
 ): Promise<StoredMediaAsset> {
@@ -39,6 +40,7 @@ export async function generateShotImage(
     characters,
     scenes,
     ttiConfigId,
+    aspectRatio: styleOptions?.aspectRatio,
     theme: styleOptions?.theme,
     stylePrompt: styleOptions?.stylePrompt,
     styleSnapshot: styleOptions?.styleSnapshot,
@@ -55,10 +57,11 @@ export async function batchGenerateShotImages(
   scenes: Scene[],
   ttiConfigId?: string,
   styleOptions?: {
+    aspectRatio?: '16:9' | '9:16';
     theme?: string;
     stylePrompt?: string;
     styleSnapshot?: StyleSnapshotLike;
-    project?: { styleSnapshot?: StyleSnapshotLike };
+    project?: { styleSnapshot?: StyleSnapshotLike; aspectRatio?: '16:9' | '9:16' };
     onProgress?: (overall: number, current: { shotId: string; progress: number; step?: string }) => void;
   }
 ): Promise<Array<{ shotId: string; success: boolean; asset?: StoredMediaAsset; error?: string }>> {
@@ -68,6 +71,7 @@ export async function batchGenerateShotImages(
     const shotId = shotIds[i];
     try {
       const asset = await generateShotImage(projectId, episodeId, shotId, characters, scenes, ttiConfigId, {
+        aspectRatio: styleOptions?.aspectRatio,
         theme: styleOptions?.theme,
         stylePrompt: styleOptions?.stylePrompt,
         styleSnapshot: styleOptions?.styleSnapshot,

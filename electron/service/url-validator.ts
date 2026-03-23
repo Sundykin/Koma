@@ -29,17 +29,27 @@ function isIPv4(address: string): boolean {
   return /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(address);
 }
 
+function isBlockedIPv6(ip: string): boolean {
+  const normalized = ip.toLowerCase();
+  // loopback
+  if (normalized === '::1' || normalized === '::') return true;
+  // IPv4-mapped  ::ffff:x.x.x.x
+  if (normalized.startsWith('::ffff:')) {
+    const mapped = normalized.slice(7);
+    if (isIPv4(mapped)) return isBlockedIP(mapped);
+    return true;
+  }
+  // link-local  fe80::/10
+  if (normalized.startsWith('fe80:')) return true;
+  // unique local  fc00::/7 (fd00:: 也属于此范围)
+  if (normalized.startsWith('fc') || normalized.startsWith('fd')) return true;
+  // 公网 IPv6 — 放行
+  return false;
+}
+
 export function isBlockedIP(ip: string): boolean {
   if (!isIPv4(ip)) {
-    // IPv6 loopback / mapped
-    if (ip === '::1' || ip === '::') return true;
-    if (ip.startsWith('::ffff:')) {
-      const mapped = ip.slice(7);
-      if (isIPv4(mapped)) return isBlockedIP(mapped);
-      return true;
-    }
-    // 保守策略：阻止非 IPv4 地址
-    return true;
+    return isBlockedIPv6(ip);
   }
 
   const addr = ipToUint32(ip);

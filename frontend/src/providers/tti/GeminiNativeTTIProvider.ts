@@ -14,6 +14,7 @@ import type { TTIProvider, TTIRequest, ImageResult } from './types';
 import { safeFetch } from '../../utils/safeFetch';
 import { createLogger } from '../../store/logger';
 import { sanitizeBodyForLog } from '../../utils/logFormatting';
+import { electronService } from '../../services/electronService';
 
 const logger = createLogger('GeminiNativeTTI');
 
@@ -95,22 +96,43 @@ async function assetToInlineDataPart(
   }
 
   if (asset.transport === 'remote-url') {
-    // 下载远程图片并转为 base64
+    // Electron 环境：通过主进程 downloadFile 下载到 userData 临时目录，再读取 base64
+    if (electronService.isElectron()) {
+      const userDataResult = await electronService.app.getPath('userData');
+      // eslint-disable-next-line @typescript-eslint/no-base-to-string
+      const dir = typeof userDataResult === 'string' ? userDataResult : (userDataResult as any)?.path ?? '';
+      const tmpPath = `${dir.replace(/\/+$/, '')}/tmp-gemini-ref-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.bin`;
+      const dl = await electronService.fs.downloadFile(asset.value, tmpPath);
+      if (!dl?.success) {
+        throw new Error(`下载参考图失败: ${asset.value}`);
+      }
+      const base64 = await electronService.fs.readFileAsBase64(tmpPath);
+      electronService.fs.remove(tmpPath).catch(() => {});
+      const mimeType = asset.mimeType || 'image/png';
+      return {
+        inlineData: { mimeType, data: base64 },
+      };
+    }
+
+    // 浏览器环境 fallback
     const resp = await safeFetch(asset.value);
-    if (!resp.ok) {
-      throw new Error(`下载参考图失败 (${resp.status}): ${asset.value}`);
+    if (!resp || !resp.ok) {
+      throw new Error(`下载参考图失败 (${resp?.status ?? 'no response'}): ${asset.value}`);
     }
     const buffer = await resp.arrayBuffer();
     const bytes = new Uint8Array(buffer);
-    const base64 = btoa(String.fromCharCode(...bytes));
+    // 分块编码避免栈溢出
+    let base64 = '';
+    const chunkSize = 8192;
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+      base64 += String.fromCharCode(...bytes.slice(i, i + chunkSize));
+    }
+    base64 = btoa(base64);
     const mimeType = asset.mimeType
       || resp.headers.get('content-type')?.split(';')[0]
       || 'image/png';
     return {
-      inlineData: {
-        mimeType,
-        data: base64,
-      },
+      inlineData: { mimeType, data: base64 },
     };
   }
 

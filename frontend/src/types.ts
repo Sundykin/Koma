@@ -61,6 +61,7 @@ export interface Project {
   ttiConfigId?: string;  // 关联的 TTI 配置 ID
   itvConfigId?: string;  // 关联的 ITV 配置 ID
   ttsConfigId?: string;  // 关联的 TTS 配置 ID
+  aspectRatio?: '16:9' | '9:16'; // 项目画面比例（创建时确定，不可更改）
   stylePresetId?: string;   // 选中的全局风格 ID
   styleSnapshot?: ProjectStyleSnapshot; // 项目风格快照
   // @deprecated 遗留字段，仅保留给未改造调用点过渡

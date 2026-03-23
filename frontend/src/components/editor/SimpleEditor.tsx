@@ -36,6 +36,7 @@ interface SimpleEditorProps {
   onShotsChange?: (shots: Shot[]) => void;
   projectId?: string;
   episodeId?: string;
+  aspectRatio?: '16:9' | '9:16';
 }
 
 import { generateId } from '../../utils/generateId';
@@ -92,7 +93,7 @@ function shotsToTracks(shots: Shot[]): Track[] {
   return [videoTrack, audioTrack, textTrack].filter(t => t.clips.length > 0 || t.isMainTrack);
 }
 
-export const SimpleEditor: React.FC<SimpleEditorProps> = ({ shots = [], projectId, episodeId }) => {
+export const SimpleEditor: React.FC<SimpleEditorProps> = ({ shots = [], projectId, episodeId, aspectRatio: projectAspectRatio }) => {
   const { message } = App.useApp();
   const [tracks, setTracks] = useState<Track[]>([]);
   const [currentTime, setCurrentTime] = useState(0);
@@ -102,7 +103,7 @@ export const SimpleEditor: React.FC<SimpleEditorProps> = ({ shots = [], projectI
   const [selectedKeyframeId, setSelectedKeyframeId] = useState<string | null>(null);
   const [draggingAsset, setDraggingAsset] = useState<Asset | null>(null);
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
-  const [aspectRatio, setAspectRatio] = useState<AspectRatio>('16:9');
+  const [aspectRatio, setAspectRatio] = useState<AspectRatio>(projectAspectRatio || '16:9');
   const [isLoadingTimeline, setIsLoadingTimeline] = useState(true);
   const timelineCreatedAtRef = useRef<number>(Date.now());
 
@@ -554,7 +555,6 @@ export const SimpleEditor: React.FC<SimpleEditorProps> = ({ shots = [], projectI
           onUpdateClip={handleUpdateClip}
           onAutoKeyframe={handleAutoKeyframe}
           aspectRatio={aspectRatio}
-          onAspectRatioChange={setAspectRatio}
         />
         <SimplePropertiesPanel
           selectedClip={selectedClip}
