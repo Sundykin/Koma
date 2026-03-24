@@ -94,10 +94,11 @@ function buildPropPromptInternal(prop: Prop, stylePrefix: string): string {
 
 interface GenerateOptions {
   projectId: string;
+  aspectRatio?: '16:9' | '9:16';
   theme?: string;
   stylePrompt?: string;
   styleSnapshot?: StyleSnapshotLike;
-  project?: { styleSnapshot?: StyleSnapshotLike };
+  project?: { styleSnapshot?: StyleSnapshotLike; aspectRatio?: '16:9' | '9:16' };
   ttiConfigId?: string;
   onProgress?: (progress: number, step: string) => void;
 }
@@ -110,7 +111,8 @@ interface GenerateOptions {
 export async function generateSceneImage(
   options: GenerateOptions & { scene: Scene }
 ): Promise<{ success: boolean; path?: string; url?: string; error?: string }> {
-  const { projectId, scene, theme, stylePrompt, styleSnapshot, project, ttiConfigId, onProgress } = options;
+  const { projectId, scene, aspectRatio, theme, stylePrompt, styleSnapshot, project, ttiConfigId, onProgress } = options;
+  const finalAspectRatio = aspectRatio || project?.aspectRatio || '16:9';
 
   logger.info(`开始生成场景预览图: ${scene.name}`);
   onProgress?.(0, '准备生成场景图...');
@@ -130,7 +132,7 @@ export async function generateSceneImage(
     logTTICall(
       'TTI',
       prompt,
-      IMAGE_GENERATION_SIZES.video_frame,
+      { aspectRatio: finalAspectRatio },
       {
         projectId,
         targetId: scene.id,
@@ -152,7 +154,7 @@ export async function generateSceneImage(
         prompt,
         references: [],
         options: {
-          ...IMAGE_GENERATION_SIZES.video_frame,
+          aspectRatio: finalAspectRatio,
         },
       },
       ttiConfigId,
@@ -172,7 +174,7 @@ export async function generateSceneImage(
 export async function generateAllSceneImages(
   options: GenerateOptions & { scenes: Scene[] }
 ): Promise<{ success: number; failed: number; results: Array<{ sceneId: string; success: boolean; path?: string; error?: string }> }> {
-  const { projectId, scenes, theme, stylePrompt, ttiConfigId, onProgress } = options;
+  const { projectId, scenes, aspectRatio, theme, stylePrompt, project, ttiConfigId, onProgress } = options;
 
   const results: Array<{ sceneId: string; success: boolean; path?: string; error?: string }> = [];
   let success = 0;
@@ -185,8 +187,10 @@ export async function generateAllSceneImages(
     const result = await generateSceneImage({
       projectId,
       scene,
+      aspectRatio,
       theme,
       stylePrompt,
+      project,
       ttiConfigId,
       onProgress: (p, step) => {
         const overall = baseProgress + (p / scenes.length);

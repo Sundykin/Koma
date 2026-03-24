@@ -61,6 +61,7 @@ export interface Project {
   ttiConfigId?: string;  // 关联的 TTI 配置 ID
   itvConfigId?: string;  // 关联的 ITV 配置 ID
   ttsConfigId?: string;  // 关联的 TTS 配置 ID
+  aspectRatio?: '16:9' | '9:16'; // 项目画面比例（创建时确定，不可更改）
   stylePresetId?: string;   // 选中的全局风格 ID
   styleSnapshot?: ProjectStyleSnapshot; // 项目风格快照
   // @deprecated 遗留字段，仅保留给未改造调用点过渡
@@ -238,7 +239,7 @@ export type ModelProviderType = 'gemini' | 'openai' | 'openai-compatible' | 'cla
 export type LLMProviderType = 'openai-compatible' | 'gemini' | 'claude';
 // 扩展支持插件动态类型
 export type TTIProviderType =
-  | 'comfyui' | 'jimeng' | 'qwen-image' | 'midjourney' | 'dall-e' | 'flux' | 'nano-banana' | 'gemini-3-pro' | 'openai-compatible-tti' | 'grok2api-imagine-tti'
+  | 'comfyui' | 'jimeng' | 'qwen-image' | 'midjourney' | 'dall-e' | 'flux' | 'nano-banana' | 'gemini-3-pro' | 'gemini-native-tti' | 'openai-compatible-tti' | 'grok2api-imagine-tti'
   | (string & { __ttiPlugin?: never });
 export type ITVProviderType =
   | 'runway' | 'kling' | 'pika' | 'minimax' | 'comfyui-animatediff' | 'sora2' | 'custom' | 'grok2api-imagine-itv'

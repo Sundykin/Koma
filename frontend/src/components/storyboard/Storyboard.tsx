@@ -85,6 +85,7 @@ interface StoryboardProps {
   episodeId?: string;
   episodeName?: string;
   script?: string;
+  aspectRatio?: '16:9' | '9:16';
   llmConfigId?: string;
   ttiConfigId?: string;
   itvConfigId?: string;
@@ -100,6 +101,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
   episodeId,
   episodeName,
   script,
+  aspectRatio,
   llmConfigId,
   ttiConfigId,
   itvConfigId,
@@ -330,6 +332,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     setGeneratingShots(prev => new Set(prev).add(shotId));
     try {
       const asset = await generateShotImage(projectId, episodeId, shotId, characters, scenes, ttiConfigId, {
+        aspectRatio,
         styleSnapshot,
       });
       message.success('分镜图片生成完成');
@@ -374,6 +377,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
           projectId,
           episodeId,
           shot,
+          aspectRatio,
           projectConfigIds: {
             ttiConfigId,
             itvConfigId,
@@ -1055,6 +1059,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       const indexMap = new Map(shotIds.map((id, idx) => [id, idx]));
       setBatchProgress({ current: 0, total: shotIds.length, step: '准备生成...' });
       const results = await batchGenerateShotImages(projectId, episodeId, shotIds, characters, scenes, ttiConfigId, {
+        aspectRatio,
         styleSnapshot,
         onProgress: (_overall, current) => {
           const idx = (indexMap.get(current.shotId) ?? 0) + 1;
@@ -1117,6 +1122,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       const indexMap = new Map(shotIds.map((id, idx) => [id, idx]));
       setBatchProgress({ current: 0, total: shotIds.length, step: '准备生成...' });
       const results = await batchGenerateShotImages(projectId, episodeId, shotIds, characters, scenes, ttiConfigId, {
+        aspectRatio,
         styleSnapshot,
         onProgress: (_overall, current) => {
           const idx = (indexMap.get(current.shotId) ?? 0) + 1;
@@ -1176,6 +1182,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
         {
           projectId,
           shots: confirmedToRender,
+          aspectRatio,
           projectConfigIds: {
             ttiConfigId,
             itvConfigId,
@@ -1236,6 +1243,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
         {
           projectId,
           shots: shotsWithVideo,
+          aspectRatio,
           projectConfigIds: {
             ttiConfigId,
             itvConfigId,

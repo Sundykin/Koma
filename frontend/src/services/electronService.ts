@@ -22,6 +22,7 @@ export interface ProjectMeta {
   ttsConfigId?: string;
   stylePresetId?: string;
   styleSnapshot?: ProjectStyleSnapshot;
+  aspectRatio?: '16:9' | '9:16';
   // 主题风格
   theme?: string;
   stylePrompt?: string;

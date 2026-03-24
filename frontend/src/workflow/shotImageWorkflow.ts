@@ -33,10 +33,11 @@ export async function shotImageWorkflow(params: {
   characters: Character[];
   scenes: Scene[];
   ttiConfigId?: string;
+  aspectRatio?: '16:9' | '9:16';
   styleSnapshot?: StyleSnapshotLike;
   theme?: string;
   stylePrompt?: string;
-  project?: { styleSnapshot?: StyleSnapshotLike };
+  project?: { styleSnapshot?: StyleSnapshotLike; aspectRatio?: '16:9' | '9:16' };
   onProgress?: (progress: number, step?: string) => void;
 }): Promise<StoredMediaAsset> {
   const {
@@ -46,6 +47,7 @@ export async function shotImageWorkflow(params: {
     characters,
     scenes,
     ttiConfigId,
+    aspectRatio,
     styleSnapshot,
     theme,
     stylePrompt,
@@ -57,6 +59,7 @@ export async function shotImageWorkflow(params: {
   const normalizedCharacters = normalizeCharactersMediaState(characters);
   const normalizedScenes = normalizeScenesMediaState(scenes);
   const props = normalizePropsMediaState(await loadProps(projectId).catch(() => []));
+  const finalAspectRatio = aspectRatio || project?.aspectRatio || '16:9';
 
   onProgress?.(0, '准备生成分镜图片...');
 
@@ -105,8 +108,7 @@ export async function shotImageWorkflow(params: {
     'TTI',
     prompt,
     {
-      width: 1280,
-      height: 720,
+      aspectRatio: finalAspectRatio,
       references: references.map(r => (typeof r === 'string' ? r : getMediaAssetDisplaySource(r) || '')).filter(Boolean),
     },
     {
