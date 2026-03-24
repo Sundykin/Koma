@@ -239,8 +239,10 @@ export const TaskStatusBar: React.FC<TaskStatusBarProps> = ({ projectId, onRetry
         {getStatusIcon(task.status)}
         {task.category && CATEGORY_CONFIG[task.category] && (
           <Tag color={CATEGORY_CONFIG[task.category].color} className="text-[10px] px-1 py-0 leading-tight shrink-0">
-            {CATEGORY_CONFIG[task.category].icon}
-            <span className="ml-0.5">{getSubTypeLabel(task.subType)}</span>
+            <div className="flex items-center gap-0.5">
+              {CATEGORY_CONFIG[task.category].icon}
+              <span className="ml-0.5">{getSubTypeLabel(task.subType)}</span>
+            </div>
           </Tag>
         )}
         <Text className="text-zinc-300 text-sm truncate flex-1 min-w-0">
@@ -288,7 +290,9 @@ export const TaskStatusBar: React.FC<TaskStatusBarProps> = ({ projectId, onRetry
   );
 
   return (
-    <div className="fixed bottom-4 right-4 z-50 w-80 bg-zinc-900/95 backdrop-blur border border-zinc-700 rounded-lg shadow-2xl overflow-hidden">
+    <div
+      className={`fixed bottom-4 right-4 z-50 ${expanded ? 'w-80' : 'w-40'} bg-zinc-900/95 backdrop-blur border border-zinc-700 rounded-lg shadow-2xl overflow-hidden transition-all duration-300 ease-in-out`}
+    >
       {mainTask ? (
         <div
           className="px-3 py-2.5 flex items-center gap-2 cursor-pointer hover:bg-zinc-800/50"
@@ -351,28 +355,51 @@ export const TaskStatusBar: React.FC<TaskStatusBarProps> = ({ projectId, onRetry
         </div>
       ) : null}
 
-      {expanded && (
-        <div className="border-t border-zinc-700">
-          <div className="px-2 pt-2">
-            <Tabs size="small" activeKey={activeTab} onChange={setActiveTab}
-              items={[
-                { key: 'all', label: `${t('common.all')} (${tasks.length})` },
-                { key: 'running', label: `${t('task.running')} (${runningTasks.length})` },
-                { key: 'completed', label: `${t('task.completed')} (${completedTasks.length})` },
-                { key: 'failed', label: `${t('task.failed')} (${failedTasks.length})` },
-              ]}
-              className="task-status-tabs [&_.ant-tabs-nav]:!mb-0"
-            />
+      <div className={`border-t border-zinc-700 overflow-hidden transition-all duration-300 ease-in-out ${expanded ? 'max-h-[400px] opacity-100' : 'max-h-0 opacity-0'}`}>
+        {expanded && (
+          <div className="p-2">
+            <div className="mb-2">
+              <Tabs 
+                size="small" 
+                activeKey={activeTab} 
+                onChange={setActiveTab}
+                items={[
+                  { key: 'all', label: `${t('common.all')} (${tasks.length})` },
+                  { key: 'running', label: `${t('task.running')} (${runningTasks.length})` },
+                  { key: 'completed', label: `${t('task.completed')} (${completedTasks.length})` },
+                  { key: 'failed', label: `${t('task.failed')} (${failedTasks.length})` },
+                ]}
+                className="task-status-tabs [&_.ant-tabs-nav]:!mb-0 [&_.ant-tabs-tab]:transition-colors [&_.ant-tabs-tab-active]:text-emerald-400"
+              />
+            </div>
+            <div className="max-h-[300px] overflow-y-auto custom-scrollbar">
+              {allFilteredTasks.length > 0 ? (
+                <div className="space-y-0.5">
+                  {allFilteredTasks.map((task, index) => (
+                    <div 
+                      key={task.id} 
+                      className="transition-all duration-300 ease-in-out transform"
+                      style={{
+                        opacity: 1,
+                        transform: 'translateY(0)',
+                        transitionDelay: `${index * 50}ms`
+                      }}
+                    >
+                      {renderTaskItem(task)}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <Empty 
+                  description={t('task.noTasks')} 
+                  className="py-3 opacity-0 animate-fade-in" 
+                  imageStyle={{ height: 40 }}
+                />
+              )}
+            </div>
           </div>
-          <div className="px-1 pb-2 max-h-[200px] overflow-y-auto custom-scrollbar">
-            {allFilteredTasks.length > 0 ? (
-              <div className="space-y-0.5">{allFilteredTasks.map(renderTaskItem)}</div>
-            ) : (
-              <Empty description={t('task.noTasks')} className="py-3" imageStyle={{ height: 40 }} />
-            )}
-          </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 };
