@@ -26,6 +26,7 @@
     "nanoid": "^5.1.6",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
+    "react-draggable": "^4.4.6",
     "react-i18next": "^16.5.4",
     "uuid": "^13.0.0",
     "xgplayer": "^3.0.23",
