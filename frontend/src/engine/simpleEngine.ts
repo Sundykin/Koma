@@ -16,7 +16,7 @@ import {
   type NormalizedTransitionPlan,
   type ResolvedClipWindow,
   type ResolvedTrackTimeline,
-} from '../services/transition/transitionResolver';
+} from '../features/transition/core';
 
 const logger = createLogger('SimpleEngine');
 

@@ -116,8 +116,8 @@ export const TransitionOverlay: React.FC<TransitionOverlayProps> = React.memo(({
                   {isInvalid ? `⚠ 无效 ${transition.duration.toFixed(1)}s` : `淡变 ${transition.duration.toFixed(1)}s`}
                 </button>
                 {selectedTransitionId === transition.id && !isInvalid && (() => {
-                  const sliderWidth = transition.duration * pixelsPerSecond;
-                  const useButtons = sliderWidth < 60;
+                  const computedWidth = chainMaxDuration * pixelsPerSecond * 0.8;
+                  const useButtons = computedWidth < 60;
 
                   return (
                     <div className="flex items-center gap-1 rounded-full bg-black/85 px-2 py-1">

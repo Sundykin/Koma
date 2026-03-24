@@ -9,7 +9,7 @@ import { SimpleMediaEngine, SimpleVideoRenderer, SimpleAudioController } from '.
 import { getAnimatedProperties, hasKeyframes } from '../../engine/simpleKeyframe';
 import { TransformControl } from './TransformControl';
 import { Maximize2 } from 'lucide-react';
-import { getClipResolvedWindow } from '../../services/transition/transitionResolver';
+import { getClipResolvedWindow } from '../../features/transition/core';
 import { ASPECT_RATIOS, getCanvasSize } from './aspectRatio';
 import type { AspectRatio } from './aspectRatio';
 

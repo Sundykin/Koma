@@ -2,7 +2,7 @@ import React, { useCallback, useRef } from 'react';
 import type { Track, Transition } from '../../../types/editor';
 import type { MessageInstance } from 'antd/es/message/interface';
 import { generateId } from '../../../utils/generateId';
-import { TRANSITION_TYPE_FADE, DEFAULT_TRANSITION_DURATION } from '../core/constants';
+import { TRANSITION_TYPE_FADE, DEFAULT_TRANSITION_DURATION, MAX_TRANSITION_DURATION } from '../core/constants';
 import {
   findTransitionByClipPair,
   getAddableTransitionDuration,
@@ -18,6 +18,7 @@ interface UseTransitionHandlersParams {
   setSelectedKeyframeId: (id: string | null) => void;
   message: MessageInstance;
   isUserDeletingRef: React.MutableRefObject<boolean>;
+  defaultDuration?: number;
 }
 
 export function useTransitionHandlers({
@@ -28,6 +29,7 @@ export function useTransitionHandlers({
   setSelectedKeyframeId,
   message,
   isUserDeletingRef,
+  defaultDuration = DEFAULT_TRANSITION_DURATION,
 }: UseTransitionHandlersParams) {
   const selectedTransitionIdRef = useRef(selectedTransitionId);
   selectedTransitionIdRef.current = selectedTransitionId;
@@ -62,7 +64,7 @@ export function useTransitionHandlers({
               fromClipId,
               toClipId,
               type: TRANSITION_TYPE_FADE,
-              duration: addableDuration,
+              duration: Math.min(defaultDuration, addableDuration, MAX_TRANSITION_DURATION),
             },
           ],
         };
@@ -75,7 +77,7 @@ export function useTransitionHandlers({
     } else {
       message.warning('当前切点不满足添加转场条件');
     }
-  }, [message, updateTracks, setSelectedTransitionId]);
+  }, [message, updateTracks, setSelectedTransitionId, defaultDuration]);
 
   const handleUpdateTransitionDuration = useCallback((
     trackId: string,
@@ -102,7 +104,7 @@ export function useTransitionHandlers({
 
             return {
               ...transition,
-              duration: Math.min(Math.max(0.1, duration), maxDuration),
+              duration: Math.min(Math.max(0.1, duration), maxDuration, MAX_TRANSITION_DURATION),
             };
           }),
         };
@@ -154,7 +156,7 @@ export function useTransitionHandlers({
           fromClipId: fromClip.id,
           toClipId: toClip.id,
           type: TRANSITION_TYPE_FADE,
-          duration: addableDuration,
+          duration: Math.min(defaultDuration, addableDuration, MAX_TRANSITION_DURATION),
         });
       }
 
@@ -173,9 +175,7 @@ export function useTransitionHandlers({
     } else {
       message.info('所有切点已有转场');
     }
-  }, [message, updateTracks]);
-
-  const handleDeleteAllTransitions = useCallback((trackId: string) => {
+  }, [message, updateTracks, defaultDuration]);  const handleDeleteAllTransitions = useCallback((trackId: string) => {
     isUserDeletingRef.current = true;
 
     updateTracks((prev) => {

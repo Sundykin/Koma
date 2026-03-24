@@ -28,4 +28,5 @@ export interface ResolvedTrackTimeline {
   transitionPlans: NormalizedTransitionPlan[];
   duration: number;
   invalidTransitions: Transition[];
+  clampedIds: Set<string>;
 }

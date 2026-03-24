@@ -310,6 +310,7 @@ export function resolveTrackTimeline(track: Track): ResolvedTrackTimeline {
     transitionPlans,
     duration,
     invalidTransitions: normalized.invalidTransitions,
+    clampedIds: normalized.clampedIds,
   };
 }
 

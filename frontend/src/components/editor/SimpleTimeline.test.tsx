@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { render, screen, fireEvent, within } from '@testing-library/react';
 import type { Asset, Track } from '../../types/editor';
 import { MediaType } from '../../types/editor';
-import { normalizeTimelineTracks } from '../../services/transition/transitionResolver';
+import { normalizeTimelineTracks } from '../../features/transition/core';
 import { SimpleTimeline } from './SimpleTimeline';
 
 vi.mock('./useVideoFrames', () => ({
