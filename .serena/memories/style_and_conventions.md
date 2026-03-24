@@ -1,0 +1,1 @@
+Code style: TypeScript with immutable updates preferred; Zustand stores and service modules are common patterns. Avoid mutating project state directly; timeline data is serialized to JSON and exported through multiple pipelines (native renderer and Jianying draft exporter).

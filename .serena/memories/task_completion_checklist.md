@@ -1,0 +1,1 @@
+When a coding task is completed, check readability, immutability, error handling, input validation, and absence of console.log. For TS/TSX edits, project hooks may run formatting and TypeScript checks automatically. For feature work, use planning, TDD, and code review workflows before commit/PR.

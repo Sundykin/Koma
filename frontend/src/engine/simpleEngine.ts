@@ -10,6 +10,7 @@ import { handleError } from '../utils/errorHandler';
 import { createLogger } from '../store/logger';
 import {
   getClipOpacityFromPlans,
+  getClipAudioFade,
   normalizeTimelineTracks,
   resolveTimelineTracks,
   type NormalizedTransitionPlan,
@@ -744,7 +745,7 @@ export class SimpleAudioController {
   }
 
   private getClipVolume(clip: Clip, currentTime: number): number {
-    return this.masterVolume * getClipOpacityFromPlans(
+    return this.masterVolume * getClipAudioFade(
       this.transitionPlansByTrack.get(clip.trackId) ?? [],
       clip.id,
       currentTime

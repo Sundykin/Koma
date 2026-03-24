@@ -1,0 +1,1 @@
+Common frontend commands in /Users/mjy/WorkSpace/Koma/frontend: `npm run dev` (Vite dev server), `npm run build` (production build), `npm test` (Vitest watch), `npm test -- --run <path>` (targeted test run), `npm run test:coverage` (coverage), `npx tsc --noEmit` (type check).

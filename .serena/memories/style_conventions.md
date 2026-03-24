@@ -1,0 +1,1 @@
+Code style conventions from user/project instructions: prefer immutable updates, strong input validation, comprehensive error handling, small focused files, avoid console.log, keep functions short, and follow conventional commits. UI code uses sectioned panels, dark zinc/cyan styling, Tailwind utility classes, and TypeScript types.

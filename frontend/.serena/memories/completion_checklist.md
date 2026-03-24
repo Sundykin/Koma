@@ -1,0 +1,1 @@
+After completing frontend code changes, run targeted Vitest tests when possible (`npm test -- --run <paths>`) and always run `npx tsc --noEmit` because local hooks may also enforce TypeScript checks after TS/TSX edits. For broader verification use `npm test -- --run`. If code was modified, perform a code review step before declaring completion.
