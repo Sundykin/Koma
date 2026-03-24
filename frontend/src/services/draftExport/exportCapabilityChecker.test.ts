@@ -86,4 +86,73 @@ describe('checkExportCompatibility', () => {
     expect(report.usedFeatures).toContain('transition');
     expect(report.featureDetails.find((detail) => detail.feature === 'transition')?.clipCount).toBe(1);
   });
+
+  it('reports empty transitions array as no transition feature', () => {
+    const track: Track = {
+      id: 'track-1',
+      type: 'video',
+      order: 0,
+      clips: [createClip('clip-a', 0, 3), createClip('clip-b', 3, 3)],
+      transitions: [],
+    };
+
+    const report = checkExportCompatibility([track]);
+    expect(report.usedFeatures).not.toContain('transition');
+    expect(report.hasAdvancedFeatures).toBe(false);
+  });
+
+  it('reports no advanced features for plain clips', () => {
+    const track: Track = {
+      id: 'track-1',
+      type: 'video',
+      order: 0,
+      clips: [createClip('clip-a', 0, 5)],
+      transitions: [],
+    };
+
+    const report = checkExportCompatibility([track]);
+    expect(report.hasAdvancedFeatures).toBe(false);
+    expect(report.usedFeatures).toEqual([]);
+    expect(report.jianyingOnlyFeatures).toEqual([]);
+    expect(report.recommendations).toEqual([]);
+  });
+
+  it('classifies transition as native and filter as jianying-only in mixed project', () => {
+    const clips = [createClip('clip-a', 0, 3), createClip('clip-b', 3, 3)];
+    (clips[0] as any).filter = { id: 'warm', intensity: 0.5 };
+
+    const track: Track = {
+      id: 'track-1',
+      type: 'video',
+      order: 0,
+      clips,
+      transitions: [
+        { id: 't1', fromClipId: 'clip-a', toClipId: 'clip-b', type: 'fade' as const, duration: 0.5 },
+      ],
+    };
+
+    const report = checkExportCompatibility([track]);
+    expect(report.usedFeatures).toContain('transition');
+    expect(report.usedFeatures).toContain('filter');
+    expect(report.jianyingOnlyFeatures).toContain('filter');
+    expect(report.jianyingOnlyFeatures).not.toContain('transition');
+    expect(report.hasAdvancedFeatures).toBe(true);
+  });
+
+  it('pure transition project has no jianying-only features', () => {
+    const track: Track = {
+      id: 'track-1',
+      type: 'video',
+      order: 0,
+      clips: [createClip('clip-a', 0, 3), createClip('clip-b', 3, 3)],
+      transitions: [
+        { id: 't1', fromClipId: 'clip-a', toClipId: 'clip-b', type: 'fade' as const, duration: 1 },
+      ],
+    };
+
+    const report = checkExportCompatibility([track]);
+    expect(report.hasAdvancedFeatures).toBe(true);
+    expect(report.jianyingOnlyFeatures).toEqual([]);
+    expect(report.recommendations).toEqual([]);
+  });
 });

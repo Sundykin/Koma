@@ -688,7 +688,7 @@ describe('transitionResolver', () => {
         id: 'track-1', type: 'video', order: 0,
         clips: [
           createClip('clip-a', 0, 3),
-          { ...createClip('clip-b', 3, 2), transition: { type: 'fade', duration: 0.5 } },
+          { ...createClip('clip-b', 3, 2), transition: { effectId: 'fade', duration: 0.5 } },
         ],
       };
       const [normalized] = normalizeTimelineTracks([track]);

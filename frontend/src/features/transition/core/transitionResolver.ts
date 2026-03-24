@@ -135,7 +135,7 @@ function validateTransitions(track: Track, transitions: Transition[]): {
   clampedIds: Set<string>;
 } {
   if (track.type !== 'video') {
-    return { valid: [], invalid: [...transitions] };
+    return { valid: [], invalid: [...transitions], clampedIds: new Set<string>() };
   }
 
   const sortedClips = getSortedTrackClips(track);

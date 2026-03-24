@@ -335,7 +335,10 @@ export class SimpleVideoRenderer {
     this.ctx.globalAlpha = props.opacity * transitionOpacity;
 
     if (clip.type === MediaType.TEXT) {
-      this.renderText(clip, props);
+      this.renderText(clip, {
+        ...props,
+        opacity: props.opacity * transitionOpacity,
+      });
     } else {
       const cache = this.mediaCache.get(clip.id);
       if (cache?.isReady) {

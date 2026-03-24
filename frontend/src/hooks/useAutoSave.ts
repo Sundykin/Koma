@@ -4,7 +4,8 @@
  */
 import { useCallback, useRef, useEffect } from 'react';
 import { saveTimeline, saveProject, loadProject } from '../store/projectStore';
-import type { Timeline, ProjectMeta } from '../types';
+import type { ProjectMeta } from '../types';
+import type { TimelineData } from '../types/editor';
 import { createLogger } from '../store/logger';
 
 const logger = createLogger('AutoSave');
@@ -19,7 +20,7 @@ interface AutoSaveOptions {
 export function useAutoSave(options: AutoSaveOptions) {
   const { projectId, debounceMs = 2000, onSaveStart, onSaveEnd } = options;
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pendingDataRef = useRef<{ timeline?: Timeline; meta?: Partial<ProjectMeta> } | null>(null);
+  const pendingDataRef = useRef<{ timeline?: TimelineData; meta?: Partial<ProjectMeta> } | null>(null);
   const isSavingRef = useRef(false);
 
   // 执行保存
@@ -55,7 +56,7 @@ export function useAutoSave(options: AutoSaveOptions) {
 
   // 触发保存（防抖）
   const triggerSave = useCallback(
-    (data: { timeline?: Timeline; meta?: Partial<ProjectMeta> }) => {
+    (data: { timeline?: TimelineData; meta?: Partial<ProjectMeta> }) => {
       if (!projectId) return;
 
       // 合并待保存数据
@@ -77,7 +78,7 @@ export function useAutoSave(options: AutoSaveOptions) {
 
   // 立即保存（不防抖）
   const saveNow = useCallback(
-    async (data?: { timeline?: Timeline; meta?: Partial<ProjectMeta> }) => {
+    async (data?: { timeline?: TimelineData; meta?: Partial<ProjectMeta> }) => {
       if (!projectId) return;
 
       // 清除防抖定时器

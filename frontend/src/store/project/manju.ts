@@ -2,7 +2,8 @@
  * Manju-DSL 集成
  */
 import { electronService, type ProjectMeta as ElectronProjectMeta } from '../../services/electronService';
-import type { ProjectMeta, Character, Scene, Shot, Timeline } from '../../types';
+import type { ProjectMeta, Character, Scene, Shot } from '../../types';
+import type { TimelineData } from '../../types/editor';
 import {
   exportToManjuDSL,
   importFromManjuDSL,
@@ -13,14 +14,21 @@ import { addRecentProject } from '../globalStore';
 import { loadProject, getProjectPath } from './core';
 import { loadTimeline } from './timeline';
 
+function warnDroppedTimelineBoundary() {
+  console.warn('[manju] Timeline round-trip is not supported for TimelineData-based transition projects yet. Timeline payload will be omitted.');
+}
+
 export function saveProjectAsManju(
   project: ProjectMeta,
   characters: Character[],
   scenes: Scene[],
   shots: Shot[],
-  timeline?: Timeline
+  timeline?: TimelineData
 ): ManjuProject {
-  return exportToManjuDSL(project, characters, scenes, shots, timeline);
+  if (timeline) {
+    warnDroppedTimelineBoundary();
+  }
+  return exportToManjuDSL(project, characters, scenes, shots);
 }
 
 export function loadProjectFromManju(manjuData: ManjuProject) {
@@ -42,7 +50,10 @@ export async function exportProjectToManjuFile(
   if (!project) throw new Error('项目不存在');
 
   const timeline = await loadTimeline(projectId);
-  const manjuData = exportToManjuDSL(project, characters, scenes, shots, timeline || undefined);
+  if (timeline) {
+    warnDroppedTimelineBoundary();
+  }
+  const manjuData = exportToManjuDSL(project, characters, scenes, shots);
 
   const projectPath = await getProjectPath(projectId);
   const exportPath = `${projectPath}/exports/${project.title}.manju.json`;
@@ -91,10 +102,7 @@ export async function importProjectFromManjuFile(filePath: string): Promise<Proj
   );
 
   if (imported.timeline) {
-    await electronService.fs.writeFile(
-      `${projectPath}/timeline.json`,
-      JSON.stringify(imported.timeline, null, 2)
-    );
+    warnDroppedTimelineBoundary();
   }
 
   await electronService.fs.writeFile(
