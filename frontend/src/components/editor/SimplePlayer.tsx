@@ -9,25 +9,9 @@ import { SimpleMediaEngine, SimpleVideoRenderer, SimpleAudioController } from '.
 import { getAnimatedProperties, hasKeyframes } from '../../engine/simpleKeyframe';
 import { TransformControl } from './TransformControl';
 import { Maximize2 } from 'lucide-react';
-
-// 预设比例
-export type AspectRatio = '16:9' | '9:16' | '4:3' | '1:1';
-export const ASPECT_RATIOS: { label: string; value: AspectRatio; ratio: number }[] = [
-  { label: '16:9', value: '16:9', ratio: 16 / 9 },
-  { label: '9:16', value: '9:16', ratio: 9 / 16 },
-  { label: '4:3', value: '4:3', ratio: 4 / 3 },
-  { label: '1:1', value: '1:1', ratio: 1 },
-];
-
-// 根据比例计算画布尺寸
-export function getCanvasSize(aspectRatio: AspectRatio): { width: number; height: number } {
-  const ratio = ASPECT_RATIOS.find(r => r.value === aspectRatio)?.ratio || 16 / 9;
-  if (ratio >= 1) {
-    return { width: 1920, height: Math.round(1920 / ratio) };
-  } else {
-    return { width: Math.round(1080 * ratio), height: 1080 };
-  }
-}
+import { getClipResolvedWindow } from '../../services/transition/transitionResolver';
+import { ASPECT_RATIOS, getCanvasSize } from './aspectRatio';
+import type { AspectRatio } from './aspectRatio';
 
 interface PlayerProps {
   tracks: Track[];
@@ -39,7 +23,7 @@ interface PlayerProps {
   onUpdateClip?: (clipId: string, updates: Partial<Clip>) => void;
   onAutoKeyframe?: (clipId: string, clipLocalTime: number, updates: Partial<Clip>) => void;
   aspectRatio: AspectRatio;
-  onAspectRatioChange: (ratio: AspectRatio) => void;
+  onAspectRatioChange?: (ratio: AspectRatio) => void;
 }
 
 export const SimplePlayer: React.FC<PlayerProps> = ({
@@ -85,31 +69,41 @@ export const SimplePlayer: React.FC<PlayerProps> = ({
   const canvasSizeRef = useRef(canvasSize);
   canvasSizeRef.current = canvasSize; // 直接同步更新
 
-  // 获取选中的可视素材
-  const selectedClip = useMemo(() => {
+  // 获取选中的可视素材及其 resolved 起始时间
+  const selectedClipInfo = useMemo(() => {
     if (!selectedClipId) return null;
+    const resolvedWindow = getClipResolvedWindow(tracks, selectedClipId);
+    const isVisible = resolvedWindow
+      ? currentTime >= resolvedWindow.resolvedStart && currentTime < resolvedWindow.resolvedEnd
+      : false;
+
     for (const track of tracks) {
       const clip = track.clips.find(c => c.id === selectedClipId);
       if (clip && (clip.type === MediaType.VIDEO || clip.type === MediaType.IMAGE)) {
-        // 检查是否在当前时间可见
-        if (currentTime >= clip.start && currentTime < clip.start + clip.duration) {
-          return clip;
+        if (isVisible) {
+          return { clip, resolvedStart: resolvedWindow?.resolvedStart ?? clip.start };
         }
       }
     }
     return null;
   }, [tracks, selectedClipId, currentTime]);
 
+  const selectedClip = selectedClipInfo?.clip ?? null;
+  const selectedClipResolvedStart = selectedClipInfo?.resolvedStart ?? 0;
+
   // 用 ref 存储 selectedClip，避免回调依赖变化
   const selectedClipRef = useRef<Clip | null>(null);
   selectedClipRef.current = selectedClip;
 
+  const selectedClipResolvedStartRef = useRef(0);
+  selectedClipResolvedStartRef.current = selectedClipResolvedStart;
+
   // 计算插值后的属性（用于控制框同步）
   const animatedProps = useMemo(() => {
     if (!selectedClip) return null;
-    const clipLocalTime = currentTime - selectedClip.start;
+    const clipLocalTime = currentTime - selectedClipResolvedStart;
     return getAnimatedProperties(selectedClip, clipLocalTime);
-  }, [selectedClip, currentTime]);
+  }, [selectedClip, currentTime, selectedClipResolvedStart]);
 
   // 初始化引擎
   useEffect(() => {
@@ -268,7 +262,7 @@ export const SimplePlayer: React.FC<PlayerProps> = ({
 
     // 如果有关键帧，记录待打帧的值
     if (hasKeyframes(clip)) {
-      const clipLocalTime = time - clip.start;
+      const clipLocalTime = time - selectedClipResolvedStartRef.current;
       pendingTransformRef.current = {
         clipId: clip.id,
         clipLocalTime,
@@ -286,7 +280,7 @@ export const SimplePlayer: React.FC<PlayerProps> = ({
     updateClip(clip.id, { scale: newScale });
 
     if (hasKeyframes(clip)) {
-      const clipLocalTime = time - clip.start;
+      const clipLocalTime = time - selectedClipResolvedStartRef.current;
       pendingTransformRef.current = {
         clipId: clip.id,
         clipLocalTime,
@@ -304,7 +298,7 @@ export const SimplePlayer: React.FC<PlayerProps> = ({
     updateClip(clip.id, { rotation: newRotation });
 
     if (hasKeyframes(clip)) {
-      const clipLocalTime = time - clip.start;
+      const clipLocalTime = time - selectedClipResolvedStartRef.current;
       pendingTransformRef.current = {
         clipId: clip.id,
         clipLocalTime,
@@ -332,15 +326,19 @@ export const SimplePlayer: React.FC<PlayerProps> = ({
       <div className="h-10 border-b border-[#27272a] flex items-center px-4 justify-between bg-[#18181b] flex-shrink-0">
         <div className="flex items-center gap-2">
           <Maximize2 size={14} className="text-zinc-500" />
-          <select
-            value={aspectRatio}
-            onChange={(e) => onAspectRatioChange(e.target.value as AspectRatio)}
-            className="bg-zinc-800 text-zinc-300 text-xs px-2 py-1 rounded border border-zinc-700 focus:outline-none focus:border-cyan-500"
-          >
-            {ASPECT_RATIOS.map(r => (
-              <option key={r.value} value={r.value}>{r.label}</option>
-            ))}
-          </select>
+          {onAspectRatioChange ? (
+            <select
+              value={aspectRatio}
+              onChange={(e) => onAspectRatioChange(e.target.value as AspectRatio)}
+              className="bg-zinc-800 text-zinc-300 text-xs px-2 py-1 rounded border border-zinc-700 focus:outline-none focus:border-cyan-500"
+            >
+              {ASPECT_RATIOS.map(r => (
+                <option key={r.value} value={r.value}>{r.label}</option>
+              ))}
+            </select>
+          ) : (
+            <span className="text-zinc-400 text-xs px-2 py-1">{aspectRatio}</span>
+          )}
         </div>
         <div className="text-xs text-zinc-500">
           {canvasSize.width} × {canvasSize.height}

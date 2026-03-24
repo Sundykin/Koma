@@ -1,7 +1,7 @@
 /**
  * 场景/道具资产生成工作流
  */
-import { getMediaAssetSource, type Scene, type Prop } from '../types';
+import { getMediaAssetDisplaySource, getMediaAssetSource, type Scene, type Prop } from '../types';
 import { getProjectITVProvider } from '../providers';
 import {
   saveScenes,
@@ -15,6 +15,10 @@ import { logTTICall, logITVCall } from '../store/aiCallLogger';
 import { resolvePromptTemplate } from '../store/promptTemplates';
 import { IMAGE_GENERATION_SIZES } from '../constants/dimensions';
 import { mediaGenerationService } from '../services/MediaGenerationService';
+import {
+  buildPropReferenceTemplateVariables,
+  buildScenePreviewTemplateVariables,
+} from './promptVariableBuilders';
 
 const logger = createLogger('ScenePropAsset');
 
@@ -36,7 +40,6 @@ export function getScenePrompt(
   project?: { styleSnapshot?: StyleSnapshotLike }
 ): string {
   const stylePrefix = resolveTTIStylePrefix(styleSnapshot || project?.styleSnapshot, theme, stylePrompt);
-  if (scene.customPrompt) return scene.customPrompt;
   return buildScenePromptInternal(scene, stylePrefix);
 }
 
@@ -51,26 +54,21 @@ export function getPropPrompt(
   project?: { styleSnapshot?: StyleSnapshotLike }
 ): string {
   const stylePrefix = resolveTTIStylePrefix(styleSnapshot || project?.styleSnapshot, theme, stylePrompt);
-  if (prop.customPrompt) return prop.customPrompt;
   return buildPropPromptInternal(prop, stylePrefix);
 }
 
 // 内部构建函数（同步版本）
 function buildScenePromptInternal(scene: Scene, stylePrefix: string): string {
-  const timeDescriptions: Record<string, string> = {
-    day: 'daytime, bright natural lighting',
-    night: 'nighttime, moonlight, artificial lights',
-    twilight: 'twilight, golden hour, warm lighting',
-  };
+  const variables = buildScenePreviewTemplateVariables(scene, stylePrefix);
   const parts = [
-    stylePrefix,
+    variables.stylePrefix,
     'environment concept art',
     'wide shot',
     'establishing shot',
-    scene.description,
-    scene.location,
-    scene.time ? timeDescriptions[scene.time] : '',
-    scene.mood ? `${scene.mood} atmosphere` : '',
+    variables.description,
+    variables.location,
+    variables.time,
+    variables.mood,
     'detailed background',
     'cinematic composition',
   ];
@@ -78,15 +76,16 @@ function buildScenePromptInternal(scene: Scene, stylePrefix: string): string {
 }
 
 function buildPropPromptInternal(prop: Prop, stylePrefix: string): string {
+  const variables = buildPropReferenceTemplateVariables(prop, stylePrefix);
   const parts = [
-    stylePrefix,
+    variables.stylePrefix,
     'prop design',
     'item illustration',
     'centered composition',
     'white background',
     'studio lighting',
-    prop.description,
-    prop.type ? `${prop.type} item` : '',
+    variables.description,
+    variables.type ? `${variables.type} item` : '',
     'detailed rendering',
     'clean presentation',
   ];
@@ -95,10 +94,11 @@ function buildPropPromptInternal(prop: Prop, stylePrefix: string): string {
 
 interface GenerateOptions {
   projectId: string;
+  aspectRatio?: '16:9' | '9:16';
   theme?: string;
   stylePrompt?: string;
   styleSnapshot?: StyleSnapshotLike;
-  project?: { styleSnapshot?: StyleSnapshotLike };
+  project?: { styleSnapshot?: StyleSnapshotLike; aspectRatio?: '16:9' | '9:16' };
   ttiConfigId?: string;
   onProgress?: (progress: number, step: string) => void;
 }
@@ -111,7 +111,8 @@ interface GenerateOptions {
 export async function generateSceneImage(
   options: GenerateOptions & { scene: Scene }
 ): Promise<{ success: boolean; path?: string; url?: string; error?: string }> {
-  const { projectId, scene, theme, stylePrompt, styleSnapshot, project, ttiConfigId, onProgress } = options;
+  const { projectId, scene, aspectRatio, theme, stylePrompt, styleSnapshot, project, ttiConfigId, onProgress } = options;
+  const finalAspectRatio = aspectRatio || project?.aspectRatio || '16:9';
 
   logger.info(`开始生成场景预览图: ${scene.name}`);
   onProgress?.(0, '准备生成场景图...');
@@ -119,13 +120,10 @@ export async function generateSceneImage(
   try {
     // 构建提示词（从配置化模板读取）
     const stylePrefix = await getResolvedTTIStylePrefix(styleSnapshot || project?.styleSnapshot, theme, stylePrompt);
-    const resolvedPrompt = await resolvePromptTemplate('tti_scene_preview', {
-      stylePrefix: stylePrefix || '',
-      description: scene.description || '',
-      location: scene.location || '',
-      time: scene.time || 'day',
-      mood: scene.mood || '',
-    });
+    const resolvedPrompt = await resolvePromptTemplate(
+      'tti_scene_preview',
+      buildScenePreviewTemplateVariables(scene, stylePrefix || '')
+    );
     const prompt = resolvedPrompt.prompt;
 
     onProgress?.(10, '调用 TTI 服务...');
@@ -134,7 +132,7 @@ export async function generateSceneImage(
     logTTICall(
       'TTI',
       prompt,
-      IMAGE_GENERATION_SIZES.video_frame,
+      { aspectRatio: finalAspectRatio },
       {
         projectId,
         targetId: scene.id,
@@ -156,7 +154,7 @@ export async function generateSceneImage(
         prompt,
         references: [],
         options: {
-          ...IMAGE_GENERATION_SIZES.video_frame,
+          aspectRatio: finalAspectRatio,
         },
       },
       ttiConfigId,
@@ -176,7 +174,7 @@ export async function generateSceneImage(
 export async function generateAllSceneImages(
   options: GenerateOptions & { scenes: Scene[] }
 ): Promise<{ success: number; failed: number; results: Array<{ sceneId: string; success: boolean; path?: string; error?: string }> }> {
-  const { projectId, scenes, theme, stylePrompt, ttiConfigId, onProgress } = options;
+  const { projectId, scenes, aspectRatio, theme, stylePrompt, project, ttiConfigId, onProgress } = options;
 
   const results: Array<{ sceneId: string; success: boolean; path?: string; error?: string }> = [];
   let success = 0;
@@ -189,8 +187,10 @@ export async function generateAllSceneImages(
     const result = await generateSceneImage({
       projectId,
       scene,
+      aspectRatio,
       theme,
       stylePrompt,
+      project,
       ttiConfigId,
       onProgress: (p, step) => {
         const overall = baseProgress + (p / scenes.length);
@@ -225,11 +225,10 @@ export async function generatePropImage(
   try {
     // 构建提示词（从配置化模板读取）
     const stylePrefix = await getResolvedTTIStylePrefix(styleSnapshot || project?.styleSnapshot, theme, stylePrompt);
-    const resolvedPrompt = await resolvePromptTemplate('tti_prop_reference', {
-      stylePrefix: stylePrefix || '',
-      description: prop.description || '',
-      type: prop.type || '',
-    });
+    const resolvedPrompt = await resolvePromptTemplate(
+      'tti_prop_reference',
+      buildPropReferenceTemplateVariables(prop, stylePrefix || '')
+    );
     const prompt = resolvedPrompt.prompt;
 
     onProgress?.(10, '调用 TTI 服务...');
@@ -339,7 +338,7 @@ export async function generatePropPreviewVideo(
   onProgress?.(0, '准备生成预览视频...');
 
   // 优先使用远程 URL
-  const rawImageSource = getMediaAssetSource(prop.media?.previewImage);
+  const rawImageSource = getMediaAssetDisplaySource(prop.media?.previewImage);
   if (!rawImageSource) {
     return { success: false, error: '请先生成道具参考图' };
   }
@@ -351,7 +350,7 @@ export async function generatePropPreviewVideo(
     const resolvedStylePrefix = await getResolvedTTIStylePrefix(styleSnapshot || project?.styleSnapshot, theme, stylePrompt);
     const resolvedPrompt = await resolvePromptTemplate('itv_prop_motion', {
       stylePrefix: resolvedStylePrefix,
-      description: prop.customPrompt || prop.prompt || prop.description || prop.name,
+      description: prop.prompt || prop.name,
       motion: 'prop showcase, rotating slowly, detailed view',
     });
     const prompt = resolvedPrompt.prompt;

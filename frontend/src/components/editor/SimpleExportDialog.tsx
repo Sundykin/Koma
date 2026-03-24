@@ -188,7 +188,7 @@ export function SimpleExportDialog({ open, onClose, tracks, duration, canvasSize
       exporterRef.current?.dispose();
       exporterRef.current = null;
     }
-  }, [videoForm, tracks, duration, onClose]);
+  }, [duration, message, onClose, tracks, videoForm]);
 
   // 草稿导出
   const handleDraftExport = useCallback(async () => {
@@ -203,6 +203,16 @@ export function SimpleExportDialog({ open, onClose, tracks, duration, canvasSize
       const exporter = exporterRegistry.get(values.draftFormat);
       if (!exporter) {
         message.error('未找到对应的导出器');
+        return;
+      }
+
+      if (!exporter.canExport(tracks, {
+        outputPath: values.draftOutputPath,
+        projectName: values.projectName,
+        fps: 30,
+        copyMaterials: values.copyMaterials || false,
+      })) {
+        message.error('当前草稿导出前置检查未通过，请先修复非法转场或不支持场景。');
         return;
       }
 

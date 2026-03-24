@@ -6,7 +6,9 @@ import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react'
 import { App } from 'antd';
 import { Track, Clip, Asset, MediaType, EasingType, Keyframe } from '../../types/editor';
 import { SimpleTimeline } from './SimpleTimeline';
-import { SimplePlayer, AspectRatio, getCanvasSize } from './SimplePlayer';
+import { SimplePlayer } from './SimplePlayer';
+import { getCanvasSize } from './aspectRatio';
+import type { AspectRatio } from './aspectRatio';
 import { SimplePropertiesPanel } from './SimplePropertiesPanel';
 import { SimpleAssetPanel } from './SimpleAssetPanel';
 import { SimpleExportDialog } from './SimpleExportDialog';
@@ -15,6 +17,11 @@ import { addKeyframe, updateKeyframe, removeKeyframe, getKeyframeAtTime, getAnim
 import { findNextAvailablePosition } from '../../utils/trackCollision';
 import { saveEpisodeTimeline, loadEpisodeTimeline } from '../../store/projectStore';
 import { uploadFiles } from '../../services/uploadService';
+import {
+  getTimelineDuration,
+  normalizeTimelineTracks,
+} from '../../services/transition/transitionResolver';
+import { useTransitionHandlers } from '../../services/transition/useTransitionHandlers';
 import type { Shot } from '../../types';
 import { createLogger } from '../../store/logger';
 import {
@@ -29,9 +36,10 @@ interface SimpleEditorProps {
   onShotsChange?: (shots: Shot[]) => void;
   projectId?: string;
   episodeId?: string;
+  aspectRatio?: '16:9' | '9:16';
 }
 
-const generateId = () => `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+import { generateId } from '../../utils/generateId';
 
 // Shot 转换为 Tracks
 function shotsToTracks(shots: Shot[]): Track[] {
@@ -85,18 +93,74 @@ function shotsToTracks(shots: Shot[]): Track[] {
   return [videoTrack, audioTrack, textTrack].filter(t => t.clips.length > 0 || t.isMainTrack);
 }
 
-export const SimpleEditor: React.FC<SimpleEditorProps> = ({ shots = [], projectId, episodeId }) => {
+export const SimpleEditor: React.FC<SimpleEditorProps> = ({ shots = [], projectId, episodeId, aspectRatio: projectAspectRatio }) => {
   const { message } = App.useApp();
   const [tracks, setTracks] = useState<Track[]>([]);
   const [currentTime, setCurrentTime] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
+  const [selectedTransitionId, setSelectedTransitionId] = useState<string | null>(null);
   const [selectedKeyframeId, setSelectedKeyframeId] = useState<string | null>(null);
   const [draggingAsset, setDraggingAsset] = useState<Asset | null>(null);
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
-  const [aspectRatio, setAspectRatio] = useState<AspectRatio>('16:9');
+  const [aspectRatio, setAspectRatio] = useState<AspectRatio>(projectAspectRatio || '16:9');
   const [isLoadingTimeline, setIsLoadingTimeline] = useState(true);
   const timelineCreatedAtRef = useRef<number>(Date.now());
+
+  const isDraggingRef = useRef(false);
+
+  const updateTracks = useCallback((updater: (prev: Track[]) => Track[]) => {
+    setTracks((prev) => {
+      const updated = updater(prev);
+      if (updated === prev) return prev;
+      return isDraggingRef.current ? updated : normalizeTimelineTracks(updated);
+    });
+  }, []);
+
+  const normalizeNow = useCallback(() => {
+    setTracks((prev) => normalizeTimelineTracks(prev));
+  }, []);
+
+  const handleDragStateChange = useCallback((isDragging: boolean) => {
+    isDraggingRef.current = isDragging;
+    if (!isDragging) {
+      normalizeNow();
+    }
+  }, [normalizeNow]);
+
+  const prevTransitionCountRef = useRef<number>(0);
+  const isUserDeletingRef = useRef(false);
+
+  const {
+    handleSelectTransition,
+    handleAddTransition,
+    handleUpdateTransitionDuration,
+    handleDeleteTransition,
+    handleAddAllTransitions,
+    handleDeleteAllTransitions,
+  } = useTransitionHandlers({
+    updateTracks,
+    selectedTransitionId,
+    setSelectedTransitionId,
+    setSelectedClipId,
+    setSelectedKeyframeId,
+    message,
+    isUserDeletingRef,
+  });
+
+  useEffect(() => {
+    const currentCount = tracks.reduce(
+      (sum, t) => sum + (t.transitions?.length ?? 0), 0
+    );
+    const prevCount = prevTransitionCountRef.current;
+    prevTransitionCountRef.current = currentCount;
+
+    if (prevCount > 0 && currentCount < prevCount && !isUserDeletingRef.current) {
+      const removed = prevCount - currentCount;
+      message.warning(`已自动清理 ${removed} 条失效转场`);
+    }
+    isUserDeletingRef.current = false;
+  }, [tracks, message]);
 
   // 素材库
   const { assets: assetItems, addUploadedAsset } = useAssets({
@@ -156,16 +220,8 @@ export const SimpleEditor: React.FC<SimpleEditorProps> = ({ shots = [], projectI
 
   // 计算总时长（基于实际内容）
   const duration = useMemo(() => {
-    let maxEnd = 0;
-    let hasClips = false;
-    for (const track of tracks) {
-      for (const clip of track.clips) {
-        hasClips = true;
-        maxEnd = Math.max(maxEnd, clip.start + clip.duration);
-      }
-    }
-    // 没有素材时返回最小时长，有素材时返回实际内容时长
-    return hasClips ? maxEnd : 1;
+    const hasClips = tracks.some((track) => track.clips.length > 0);
+    return hasClips ? getTimelineDuration(tracks) : 1;
   }, [tracks]);
 
   // 加载已保存的时间线
@@ -174,7 +230,7 @@ export const SimpleEditor: React.FC<SimpleEditorProps> = ({ shots = [], projectI
       if (!projectId || !episodeId) {
         // 没有 projectId 或 episodeId，使用 shots 初始化
         if (shots.length > 0) {
-          setTracks(shotsToTracks(shots));
+          setTracks(normalizeTimelineTracks(shotsToTracks(shots)));
         }
         setIsLoadingTimeline(false);
         return;
@@ -184,17 +240,17 @@ export const SimpleEditor: React.FC<SimpleEditorProps> = ({ shots = [], projectI
       try {
         const savedData = await loadEpisodeTimeline(projectId, episodeId);
         if (savedData && savedData.tracks && savedData.tracks.length > 0) {
-          setTracks(savedData.tracks);
+          setTracks(normalizeTimelineTracks(savedData.tracks));
           timelineCreatedAtRef.current = savedData.createdAt || Date.now();
         } else if (shots.length > 0) {
           // 没有已保存的数据，使用 shots 初始化
-          setTracks(shotsToTracks(shots));
+          setTracks(normalizeTimelineTracks(shotsToTracks(shots)));
           timelineCreatedAtRef.current = Date.now();
         }
       } catch (err) {
         logger.error('加载时间线失败', err);
         if (shots.length > 0) {
-          setTracks(shotsToTracks(shots));
+          setTracks(normalizeTimelineTracks(shotsToTracks(shots)));
         }
       } finally {
         setIsLoadingTimeline(false);
@@ -264,26 +320,42 @@ export const SimpleEditor: React.FC<SimpleEditorProps> = ({ shots = [], projectI
 
   const handleSelectClip = useCallback((id: string | null) => {
     setSelectedClipId(id);
+    setSelectedTransitionId(null);
     setSelectedKeyframeId(null);
   }, []);
 
   const handleUpdateClip = useCallback((clipId: string, updates: Partial<Clip>) => {
-    setTracks(prev => prev.map(track => ({
+    updateTracks(prev => prev.map(track => ({
       ...track,
       clips: track.clips.map(clip =>
         clip.id === clipId ? { ...clip, ...updates } : clip
       )
     })));
-  }, []);
+  }, [updateTracks]);
 
   const handleMoveClip = useCallback((clipId: string, newStart: number, newTrackId: string) => {
-    setTracks(prev => {
+    updateTracks(prev => {
+      const currentTrack = prev.find(t => t.clips.some(c => c.id === clipId));
+      const currentClip = currentTrack?.clips.find(c => c.id === clipId);
+      if (currentClip && currentClip.start === newStart && currentTrack?.id === newTrackId) {
+        return prev;
+      }
+
       let movedClip: Clip | null = null;
       const tracksWithoutClip = prev.map(track => {
         const clipIndex = track.clips.findIndex(c => c.id === clipId);
         if (clipIndex >= 0) {
           movedClip = { ...track.clips[clipIndex], start: newStart, trackId: newTrackId };
-          return { ...track, clips: track.clips.filter(c => c.id !== clipId) };
+          const isLeavingTrack = track.id !== newTrackId;
+          return {
+            ...track,
+            clips: track.clips.filter(c => c.id !== clipId),
+            transitions: isLeavingTrack
+              ? (track.transitions ?? []).filter(
+                  t => t.fromClipId !== clipId && t.toClipId !== clipId
+                )
+              : track.transitions,
+          };
         }
         return track;
       });
@@ -296,16 +368,16 @@ export const SimpleEditor: React.FC<SimpleEditorProps> = ({ shots = [], projectI
           : track
       );
     });
-  }, []);
+  }, [updateTracks]);
 
   const handleUpdateTrack = useCallback((trackId: string, updates: Partial<Track>) => {
-    setTracks(prev => prev.map(track =>
+    updateTracks(prev => prev.map(track =>
       track.id === trackId ? { ...track, ...updates } : track
     ));
-  }, []);
+  }, [updateTracks]);
 
   const handleAssetDrop = useCallback((asset: Asset, time: number, trackId?: string) => {
-    setTracks(prev => {
+    updateTracks(prev => {
       // 找到目标轨道
       let targetTrack = trackId ? prev.find(t => t.id === trackId) : null;
       const trackType = asset.type === MediaType.AUDIO ? 'audio' : asset.type === MediaType.TEXT ? 'text' : 'video';
@@ -350,28 +422,32 @@ export const SimpleEditor: React.FC<SimpleEditorProps> = ({ shots = [], projectI
     });
 
     message.success(`已添加: ${asset.name}`);
-  }, []);
+  }, [message, updateTracks]);
 
   const handleDeleteClip = useCallback((clipId?: string) => {
     const targetId = clipId || selectedClipId;
     if (!targetId) return;
 
-    setTracks(prev => prev.map(track => ({
+    isUserDeletingRef.current = true;
+    updateTracks(prev => prev.map(track => ({
       ...track,
-      clips: track.clips.filter(c => c.id !== targetId)
+      clips: track.clips.filter(c => c.id !== targetId),
+      transitions: (track.transitions ?? []).filter(
+        t => t.fromClipId !== targetId && t.toClipId !== targetId
+      ),
     })));
     if (selectedClipId === targetId) {
       setSelectedClipId(null);
     }
-  }, [selectedClipId]);
+  }, [selectedClipId, updateTracks]);
 
   const handleDeleteTrack = useCallback((trackId: string) => {
-    setTracks(prev => prev.filter(t => t.id !== trackId));
-  }, []);
+    updateTracks(prev => prev.filter(t => t.id !== trackId));
+  }, [updateTracks]);
 
   // 添加关键帧
   const handleAddKeyframe = useCallback((clipId: string, clipLocalTime: number) => {
-    setTracks(prev => prev.map(track => ({
+    updateTracks(prev => prev.map(track => ({
       ...track,
       clips: track.clips.map(clip => {
         if (clip.id !== clipId) return clip;
@@ -379,18 +455,18 @@ export const SimpleEditor: React.FC<SimpleEditorProps> = ({ shots = [], projectI
       })
     })));
     message.success('已添加关键帧');
-  }, []);
+  }, [message, updateTracks]);
 
   // 更新关键帧
   const handleUpdateKeyframe = useCallback((clipId: string, keyframeId: string, updates: Partial<Keyframe>) => {
-    setTracks(prev => prev.map(track => ({
+    updateTracks(prev => prev.map(track => ({
       ...track,
       clips: track.clips.map(clip => {
         if (clip.id !== clipId) return clip;
         return updateKeyframe(clip, keyframeId, updates);
       })
     })));
-  }, []);
+  }, [updateTracks]);
 
   // 选择关键帧
   const handleSelectKeyframe = useCallback((clipId: string, keyframeId: string | null) => {
@@ -399,7 +475,7 @@ export const SimpleEditor: React.FC<SimpleEditorProps> = ({ shots = [], projectI
 
   // 删除关键帧
   const handleDeleteKeyframe = useCallback((clipId: string, keyframeId: string) => {
-    setTracks(prev => prev.map(track => ({
+    updateTracks(prev => prev.map(track => ({
       ...track,
       clips: track.clips.map(clip => {
         if (clip.id !== clipId) return clip;
@@ -409,11 +485,11 @@ export const SimpleEditor: React.FC<SimpleEditorProps> = ({ shots = [], projectI
     if (selectedKeyframeId === keyframeId) {
       setSelectedKeyframeId(null);
     }
-  }, [selectedKeyframeId]);
+  }, [selectedKeyframeId, updateTracks]);
 
   // 复制片段
   const handleDuplicateClip = useCallback((clipId: string) => {
-    setTracks(prev => prev.map(track => {
+    updateTracks(prev => prev.map(track => {
       const clipIndex = track.clips.findIndex(c => c.id === clipId);
       if (clipIndex < 0) return track;
 
@@ -428,7 +504,7 @@ export const SimpleEditor: React.FC<SimpleEditorProps> = ({ shots = [], projectI
       return { ...track, clips: [...track.clips, newClip] };
     }));
     message.success('已复制片段');
-  }, []);
+  }, [message, updateTracks]);
 
   // 更新关键帧缓动
   const handleUpdateKeyframeEasing = useCallback((clipId: string, keyframeId: string, easing: EasingType) => {
@@ -437,7 +513,7 @@ export const SimpleEditor: React.FC<SimpleEditorProps> = ({ shots = [], projectI
 
   // 自动打帧（画布变换时调用）
   const handleAutoKeyframe = useCallback((clipId: string, clipLocalTime: number, updates: Partial<Clip>) => {
-    setTracks(prev => prev.map(track => ({
+    updateTracks(prev => prev.map(track => ({
       ...track,
       clips: track.clips.map(clip => {
         if (clip.id !== clipId) return clip;
@@ -454,7 +530,7 @@ export const SimpleEditor: React.FC<SimpleEditorProps> = ({ shots = [], projectI
         }
       })
     })));
-  }, []);
+  }, [updateTracks]);
 
   return (
     <div style={styles.container}>
@@ -479,7 +555,6 @@ export const SimpleEditor: React.FC<SimpleEditorProps> = ({ shots = [], projectI
           onUpdateClip={handleUpdateClip}
           onAutoKeyframe={handleAutoKeyframe}
           aspectRatio={aspectRatio}
-          onAspectRatioChange={setAspectRatio}
         />
         <SimplePropertiesPanel
           selectedClip={selectedClip}
@@ -515,8 +590,17 @@ export const SimpleEditor: React.FC<SimpleEditorProps> = ({ shots = [], projectI
           togglePlay={togglePlay}
           onDeleteTrack={handleDeleteTrack}
           onUpdateTrack={handleUpdateTrack}
+          selectedTransitionId={selectedTransitionId}
+          onSelectTransition={handleSelectTransition}
+          onAddTransition={handleAddTransition}
+          onUpdateTransitionDuration={handleUpdateTransitionDuration}
+          onDeleteTransition={handleDeleteTransition}
+          onDragStateChange={handleDragStateChange}
+          onAddAllTransitions={handleAddAllTransitions}
+          onDeleteAllTransitions={handleDeleteAllTransitions}
           draggingAsset={draggingAsset}
           onExport={() => setExportDialogOpen(true)}
+          onTransitionError={(errorMessage) => message.warning(errorMessage)}
         />
       </div>
 

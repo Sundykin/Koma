@@ -219,7 +219,7 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
           id: template.id,
           name: template.name,
           template: template.template,
-          variables: template.variables || [],
+          variables: (template.variables || []).map(variableItem => variableItem.name),
         };
       },
 
@@ -230,7 +230,7 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
           id: t.id,
           name: t.name,
           template: t.template,
-          variables: t.variables || [],
+          variables: (t.variables || []).map(variableItem => variableItem.name),
         }));
       },
 
@@ -273,6 +273,13 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
 
         // 添加 pluginId 标识
         def.pluginId = pluginId;
+
+        logger.info('插件注册 Provider', {
+          pluginId,
+          kind: def.kind,
+          type: def.type,
+          capabilities: def.capabilities,
+        });
 
         // 注册到 Registry
         registerProvider(def);

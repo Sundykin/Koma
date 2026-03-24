@@ -29,7 +29,6 @@ import {
   CheckCircleOutlined,
   LoadingOutlined,
   LinkOutlined,
-  EditOutlined,
 } from '@ant-design/icons';
 import type { ProjectStyleSnapshot, Prop } from '../../types';
 import {
@@ -83,8 +82,6 @@ export const PropDetailModal: React.FC<PropDetailModalProps> = ({
 
   // 编辑状态
   const [editedProp, setEditedProp] = useState<Prop | null>(null);
-  const [isPromptEditing, setIsPromptEditing] = useState(false);
-  const [customPrompt, setCustomPrompt] = useState('');
 
   // 生成状态
   const [generating, setGenerating] = useState<GeneratingType>(null);
@@ -97,14 +94,12 @@ export const PropDetailModal: React.FC<PropDetailModalProps> = ({
   // 初始化表单
   useEffect(() => {
     if (prop && open) {
-      setEditedProp({ ...prop });
+      setEditedProp({ ...prop, prompt: prop.prompt || '' });
       form.setFieldsValue({
         name: prop.name,
         type: prop.type,
-        description: prop.description,
+        prompt: prop.prompt || '',
       });
-      setCustomPrompt(prop.customPrompt || '');
-      setIsPromptEditing(false);
     }
   }, [prop, open, form]);
 
@@ -130,7 +125,7 @@ export const PropDetailModal: React.FC<PropDetailModalProps> = ({
       const updatedProp: Prop = {
         ...editedProp,
         ...values,
-        customPrompt: customPrompt || undefined,
+        prompt: values.prompt || '',
       };
 
       const props = await loadProps(projectId);
@@ -146,7 +141,7 @@ export const PropDetailModal: React.FC<PropDetailModalProps> = ({
     } catch (err: any) {
       message.error(err.message || '保存失败');
     }
-  }, [editedProp, form, customPrompt, projectId, onUpdate, message]);
+  }, [editedProp, form, projectId, onUpdate, message]);
 
   // 生成道具图片
   const handleGenerateImage = useCallback(async () => {
@@ -156,9 +151,15 @@ export const PropDetailModal: React.FC<PropDetailModalProps> = ({
     setProgress(0);
 
     try {
+      const currentValues = await form.getFieldsValue();
+      const propWithPrompt: Prop = {
+        ...editedProp,
+        ...currentValues,
+        prompt: currentValues.prompt || '',
+      };
       const result = await generatePropImage({
         projectId,
-        prop: { ...editedProp, customPrompt: customPrompt || undefined },
+        prop: propWithPrompt,
         theme,
         stylePrompt,
         styleSnapshot,
@@ -170,7 +171,7 @@ export const PropDetailModal: React.FC<PropDetailModalProps> = ({
       });
 
       if (result.success && result.path) {
-        const updated = updatePropMedia(editedProp, {
+        const updated = updatePropMedia(propWithPrompt, {
           previewImage: createStoredMediaAsset('image', {
             localPath: result.path,
             remoteUrl: result.url,
@@ -187,7 +188,7 @@ export const PropDetailModal: React.FC<PropDetailModalProps> = ({
     } finally {
       setGenerating(null);
     }
-  }, [editedProp, projectId, theme, stylePrompt, styleSnapshot, ttiConfigId, customPrompt, onUpdate, message]);
+  }, [editedProp, form, projectId, theme, stylePrompt, styleSnapshot, ttiConfigId, onUpdate, message]);
 
   // 上传道具图片
   const handleUploadImage = useCallback(async () => {
@@ -235,9 +236,15 @@ export const PropDetailModal: React.FC<PropDetailModalProps> = ({
     setProgress(0);
 
     try {
+      const currentValues = await form.getFieldsValue();
+      const propForVideo: Prop = {
+        ...editedProp,
+        ...currentValues,
+        prompt: currentValues.prompt || '',
+      };
       const result = await generatePropPreviewVideo({
         projectId,
-        prop: editedProp,
+        prop: propForVideo,
         theme,
         stylePrompt,
         styleSnapshot,
@@ -249,7 +256,7 @@ export const PropDetailModal: React.FC<PropDetailModalProps> = ({
       });
 
       if (result.success && result.path) {
-        const updated = updatePropMedia(editedProp, {
+        const updated = updatePropMedia(propForVideo, {
           previewVideo: createStoredMediaAsset('video', {
             localPath: result.path,
             providerTaskId: result.taskId,
@@ -266,7 +273,7 @@ export const PropDetailModal: React.FC<PropDetailModalProps> = ({
     } finally {
       setGenerating(null);
     }
-  }, [editedProp, projectId, theme, stylePrompt, styleSnapshot, itvConfigId, onUpdate, message]);
+  }, [editedProp, form, projectId, theme, stylePrompt, styleSnapshot, itvConfigId, onUpdate, message]);
 
   // 上传预览视频
   const handleUploadVideo = useCallback(async () => {
@@ -466,60 +473,12 @@ export const PropDetailModal: React.FC<PropDetailModalProps> = ({
                   </Form.Item>
                 </Col>
               </Row>
-              <Form.Item name="description" label="道具描述（用于AI生成）">
-                <TextArea rows={3} placeholder="如：古老的怀表，金色外壳，雕刻精美..." />
+              <Form.Item name="prompt" label="视觉提示词">
+                <TextArea rows={4} placeholder="只描述道具可见材质、形状、颜色、磨损、结构等客观视觉信息" />
               </Form.Item>
             </Form>
           </Col>
         </Row>
-
-        <Divider />
-
-        {/* 提示词预览/编辑 */}
-        <div style={{ marginBottom: 16 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-            <Text strong>生成提示词</Text>
-            <Button
-              type="text"
-              size="small"
-              icon={isPromptEditing ? <CheckCircleOutlined /> : <EditOutlined />}
-              onClick={() => {
-                if (isPromptEditing && !customPrompt) {
-                  setCustomPrompt('');
-                }
-                setIsPromptEditing(!isPromptEditing);
-              }}
-            >
-              {isPromptEditing ? '完成' : '编辑'}
-            </Button>
-          </div>
-          {isPromptEditing ? (
-            <TextArea
-              value={customPrompt}
-              onChange={(e) => setCustomPrompt(e.target.value)}
-              rows={3}
-              placeholder="输入自定义提示词，留空使用自动生成"
-            />
-          ) : (
-            <div
-              style={{
-                padding: 12,
-                background: '#1a1a1a',
-                borderRadius: 8,
-                fontSize: 12,
-                color: '#a1a1aa',
-                lineHeight: 1.6,
-              }}
-            >
-              {customPrompt || editedProp.description || '(无提示词)'}
-            </div>
-          )}
-          {customPrompt && (
-            <Text type="secondary" style={{ fontSize: 11, marginTop: 4, display: 'block' }}>
-              使用自定义提示词 · <a onClick={() => setCustomPrompt('')}>恢复自动</a>
-            </Text>
-          )}
-        </div>
 
         <Divider />
 

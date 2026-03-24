@@ -8,6 +8,8 @@ import { ComfyUIProvider } from './ComfyUIProvider';
 import { NanoBananaProvider } from './NanoBananaProvider';
 import { Gemini3ProProvider } from './Gemini3ProProvider';
 import { OpenAICompatibleTTIProvider } from './OpenAICompatibleTTIProvider';
+import { Grok2ApiImagineTTIProvider } from './Grok2ApiImagineTTIProvider';
+import { GeminiNativeTTIProvider } from './GeminiNativeTTIProvider';
 import type { ProviderDefinition } from '../registry.types';
 import { DEFAULT_POLLING_CONFIG, MEDIA_PROVIDER_CONTRACT_VERSION } from '../registry.types';
 import { ttiRegistry } from '../registry';
@@ -17,6 +19,8 @@ export { ComfyUIProvider } from './ComfyUIProvider';
 export { NanoBananaProvider } from './NanoBananaProvider';
 export { Gemini3ProProvider } from './Gemini3ProProvider';
 export { OpenAICompatibleTTIProvider } from './OpenAICompatibleTTIProvider';
+export { Grok2ApiImagineTTIProvider } from './Grok2ApiImagineTTIProvider';
+export { GeminiNativeTTIProvider } from './GeminiNativeTTIProvider';
 
 // 注册内置 Provider
 function registerBuiltinProviders() {
@@ -64,6 +68,25 @@ function registerBuiltinProviders() {
       contractVersion: MEDIA_PROVIDER_CONTRACT_VERSION,
       capabilities: ['tti'],
       polling: DEFAULT_POLLING_CONFIG,
+    },
+    {
+      type: 'grok2api-imagine-tti',
+      kind: 'tti',
+      name: 'Grok2API Imagine',
+      description: 'Grok2API 逆向接口：文生图 + 多参考图（chat/completions）',
+      factory: (config) => new Grok2ApiImagineTTIProvider(config as TTIModelConfig),
+      contractVersion: MEDIA_PROVIDER_CONTRACT_VERSION,
+      capabilities: ['tti'],
+      polling: DEFAULT_POLLING_CONFIG,
+    },
+    {
+      type: 'gemini-native-tti',
+      kind: 'tti',
+      name: 'Gemini Native',
+      description: 'Google Gemini 原生 generateContent 图像生成（支持多图参考）',
+      factory: (config) => new GeminiNativeTTIProvider(config as TTIModelConfig),
+      contractVersion: MEDIA_PROVIDER_CONTRACT_VERSION,
+      capabilities: ['tti'],
     },
   ];
 

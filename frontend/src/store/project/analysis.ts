@@ -5,6 +5,7 @@ import { electronService } from '../../services/electronService';
 import type { EpisodeAnalysis, Shot } from '../../types';
 import type { TimelineData } from '../../types/editor';
 import { getProjectPath } from './core';
+import { remapTimelineClipSourcesToLocal } from './mediaUrlRemap';
 import { saveEpisode } from './episodes';
 import { normalizeShotsMediaState } from './mediaState';
 
@@ -164,10 +165,13 @@ export async function saveEpisodeTimeline(
     updatedAt: Date.now(),
   };
 
+  // Persist with local media sources when possible (avoid CORS in Electron).
+  const { timeline: remapped } = await remapTimelineClipSourcesToLocal(projectPath, timelineData as any);
+
   await electronService.fs.mkdir(episodePath);
   await electronService.fs.writeFile(
     `${episodePath}/timeline.json`,
-    JSON.stringify(timelineData, null, 2)
+    JSON.stringify((remapped || timelineData) as TimelineData, null, 2)
   );
 }
 

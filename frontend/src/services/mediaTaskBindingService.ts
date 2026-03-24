@@ -30,6 +30,84 @@ function slotKeyForOwnerSlot(slot: string): 'costumePhoto' | 'previewImage' | 'p
   }
 }
 
+function trimUrlTail(candidate: string): string {
+  let s = String(candidate || '').trim();
+  // Strip common trailing chars and percent-encoded tails like %22%3E (">).
+  for (let i = 0; i < 10; i += 1) {
+    const before = s;
+    s = s.replace(/[)"'<>.,;\]]+$/g, '');
+    s = s.replace(/(%22|%27|%3E|%3C)+$/gi, '');
+    if (s === before) break;
+  }
+  return s;
+}
+
+async function rewriteTimelineFile(
+  filePath: string,
+  fromRemoteUrl: string,
+  toLocalPath: string
+): Promise<boolean> {
+  try {
+    const exists = await electronService.fs.exists(filePath);
+    if (!exists) return false;
+    const raw = await electronService.fs.readFile(filePath);
+    const obj = JSON.parse(raw) as any;
+    const tracks = Array.isArray(obj?.tracks) ? obj.tracks : [];
+    let changed = false;
+    const from = trimUrlTail(fromRemoteUrl);
+
+    for (const track of tracks) {
+      const clips = Array.isArray(track?.clips) ? track.clips : [];
+      for (const clip of clips) {
+        const src = typeof clip?.src === 'string' ? trimUrlTail(clip.src) : null;
+        if (!src) continue;
+        if (src !== clip.src) {
+          clip.src = src;
+          changed = true;
+        }
+        if (src === from) {
+          clip.src = toLocalPath;
+          changed = true;
+        }
+      }
+    }
+
+    if (!changed) return false;
+    await electronService.fs.writeFile(filePath, JSON.stringify(obj, null, 2));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function rewriteTimelinesForAsset(
+  projectId: string,
+  remoteUrl: string,
+  localPath: string
+): Promise<void> {
+  if (!electronService.isElectron()) return;
+  if (!remoteUrl || !localPath) return;
+  if (!/^https?:\/\//i.test(remoteUrl)) return;
+
+  const projectPath = await getProjectPath(projectId);
+
+  // 1) Project-wide timeline
+  await rewriteTimelineFile(`${projectPath}/timeline.json`, remoteUrl, localPath);
+
+  // 2) Episode timelines
+  try {
+    const episodesDir = `${projectPath}/episodes`;
+    const hasEpisodes = await electronService.fs.exists(episodesDir);
+    if (!hasEpisodes) return;
+    const episodeIds = await electronService.fs.readdir(episodesDir);
+    for (const eid of episodeIds) {
+      await rewriteTimelineFile(`${episodesDir}/${eid}/timeline.json`, remoteUrl, localPath);
+    }
+  } catch {
+    // ignore
+  }
+}
+
 async function bindShotVersionMedia(
   projectId: string,
   shotId: string,
@@ -84,6 +162,11 @@ export async function bindOwnerRefMedia(
 ): Promise<void> {
   const slot = slotKeyForOwnerSlot(ownerRef.slot);
   if (!slot) return;
+  const maybeRewriteTimelineSources = () => {
+    if (asset.remoteUrl && asset.localPath) {
+      rewriteTimelinesForAsset(projectId, asset.remoteUrl, asset.localPath).catch(() => {});
+    }
+  };
 
   if (ownerRef.ownerType === 'character') {
     const characters = await loadCharacters(projectId);
@@ -100,6 +183,7 @@ export async function bindOwnerRefMedia(
       },
     };
     await saveCharacters(projectId, characters);
+    maybeRewriteTimelineSources();
     return;
   }
 
@@ -118,6 +202,7 @@ export async function bindOwnerRefMedia(
       },
     };
     await saveScenes(projectId, scenes);
+    maybeRewriteTimelineSources();
     return;
   }
 
@@ -136,6 +221,7 @@ export async function bindOwnerRefMedia(
       },
     };
     await saveProps(projectId, props);
+    maybeRewriteTimelineSources();
     return;
   }
 
@@ -189,11 +275,13 @@ export async function bindOwnerRefMedia(
     } else {
       await saveShots(projectId, shots);
     }
+    maybeRewriteTimelineSources();
     return;
   }
 
   if (ownerRef.ownerType === 'shot-version' && ownerRef.versionId) {
     if (slot !== 'image' && slot !== 'video' && slot !== 'audio') return;
     await bindShotVersionMedia(projectId, ownerRef.ownerId, ownerRef.versionId, slot, asset);
+    maybeRewriteTimelineSources();
   }
 }

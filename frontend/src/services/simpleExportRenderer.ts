@@ -4,6 +4,13 @@
  */
 import type { Track, Clip } from '../types/editor';
 import { getAnimatedProperties } from '../engine/simpleKeyframe';
+import {
+  getClipOpacityFromPlans,
+  normalizeTimelineTracks,
+  type NormalizedTransitionPlan,
+  type ResolvedClipWindow,
+  resolveTimelineTracks,
+} from './transition/transitionResolver';
 import { toKomaLocalUrl, fromKomaLocalUrl } from '../utils/urlUtils';
 
 export interface SimpleExportConfig {
@@ -49,6 +56,8 @@ const getFFmpegAPI = (): any => {
 export class SimpleExportRenderer {
   private config: SimpleExportConfig;
   private tracks: Track[] = [];
+  private resolvedWindows: Map<string, ResolvedClipWindow> = new Map();
+  private transitionPlansByTrack: Map<string, NormalizedTransitionPlan[]> = new Map();
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
   private mediaCache: Map<string, HTMLVideoElement | HTMLImageElement> = new Map();
@@ -69,7 +78,16 @@ export class SimpleExportRenderer {
   }
 
   async export(tracks: Track[], duration: number): Promise<string> {
-    this.tracks = tracks;
+    this.tracks = normalizeTimelineTracks(tracks);
+    const resolvedTracks = resolveTimelineTracks(this.tracks);
+    this.resolvedWindows = new Map(
+      resolvedTracks.flatMap((track) =>
+        track.clipWindows.map((window) => [window.clipId, window] as const)
+      )
+    );
+    this.transitionPlansByTrack = new Map(
+      resolvedTracks.map((resolved) => [resolved.track.id, resolved.transitionPlans])
+    );
     this.duration = duration;
     this.aborted = false;
 
@@ -277,8 +295,19 @@ export class SimpleExportRenderer {
     const visible: { clip: Clip; order: number }[] = [];
 
     for (const track of this.tracks) {
+      if (track.hidden) {
+        continue;
+      }
+
       for (const clip of track.clips) {
-        if (time >= clip.start && time < clip.start + clip.duration) {
+        if (clip.type !== 'VIDEO' && clip.type !== 'IMAGE' && clip.type !== 'TEXT') {
+          continue;
+        }
+
+        const resolvedWindow = this.resolvedWindows.get(clip.id);
+        const clipStart = resolvedWindow?.resolvedStart ?? clip.start;
+        const clipEnd = resolvedWindow?.resolvedEnd ?? (clip.start + clip.duration);
+        if (time >= clipStart && time < clipEnd) {
           visible.push({ clip, order: track.order ?? 0 });
         }
       }
@@ -293,7 +322,9 @@ export class SimpleExportRenderer {
 
     ctx.save();
 
-    const clipLocalTime = currentTime - clip.start;
+    const resolvedWindow = this.resolvedWindows.get(clip.id);
+    const clipStart = resolvedWindow?.resolvedStart ?? clip.start;
+    const clipLocalTime = currentTime - clipStart;
     const props = getAnimatedProperties(clip, clipLocalTime);
 
     const centerX = canvas.width / 2 + props.x;
@@ -301,10 +332,18 @@ export class SimpleExportRenderer {
     ctx.translate(centerX, centerY);
     ctx.rotate((props.rotation * Math.PI) / 180);
     ctx.scale(props.scale, props.scale);
-    ctx.globalAlpha = props.opacity;
+    const transitionOpacity = getClipOpacityFromPlans(
+      this.transitionPlansByTrack.get(clip.trackId) ?? [],
+      clip.id,
+      currentTime,
+    );
+    ctx.globalAlpha = props.opacity * transitionOpacity;
 
     if (clip.type === 'TEXT') {
-      this.renderText(clip, props);
+      this.renderText(clip, {
+        ...props,
+        opacity: props.opacity * transitionOpacity,
+      });
     } else {
       const media = this.mediaCache.get(clip.id);
       if (media) {
@@ -425,18 +464,44 @@ export class SimpleExportRenderer {
     ctx.shadowOffsetY = 0;
   }
 
-  private collectAudioClips(): Array<{ src: string; start: number; duration: number; offset: number; volume: number }> {
-    const audioClips: Array<{ src: string; start: number; duration: number; offset: number; volume: number }> = [];
+  private collectAudioClips(): Array<{
+    src: string;
+    start: number;
+    duration: number;
+    offset: number;
+    volume: number;
+    fadeInDuration?: number;
+    fadeOutDuration?: number;
+  }> {
+    const audioClips: Array<{
+      src: string;
+      start: number;
+      duration: number;
+      offset: number;
+      volume: number;
+      fadeInDuration?: number;
+      fadeOutDuration?: number;
+    }> = [];
 
     for (const track of this.tracks) {
+      if (track.muted) {
+        continue;
+      }
+
+      const transitionPlans = this.transitionPlansByTrack.get(track.id) ?? [];
       for (const clip of track.clips) {
         if (clip.type === 'AUDIO' || clip.type === 'VIDEO') {
+          const resolvedWindow = this.resolvedWindows.get(clip.id);
+          const fadeInPlan = transitionPlans.find((plan) => plan.toClipId === clip.id);
+          const fadeOutPlan = transitionPlans.find((plan) => plan.fromClipId === clip.id);
           audioClips.push({
             src: fromKomaLocalUrl(clip.src),
-            start: clip.start,
+            start: resolvedWindow?.resolvedStart ?? clip.start,
             duration: clip.duration,
             offset: clip.offset,
             volume: clip.opacity ?? 1,
+            fadeInDuration: fadeInPlan?.duration,
+            fadeOutDuration: fadeOutPlan?.duration,
           });
         }
       }

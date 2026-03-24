@@ -2,7 +2,7 @@
  * 角色资产生成工作流
  * 生成角色定妆照（内置三视图）、预览视频，以及调用角色提取API
  */
-import { getMediaAssetSource, type Character } from '../types';
+import { getMediaAssetDisplaySource, getMediaAssetSource, type Character } from '../types';
 import { getProjectITVProvider } from '../providers';
 import {
   saveCharacters,
@@ -13,6 +13,7 @@ import { createLogger } from '../store/logger';
 import { logTTICall, logITVCall } from '../store/aiCallLogger';
 import { resolvePromptTemplate } from '../store/promptTemplates';
 import { mediaGenerationService } from '../services/MediaGenerationService';
+import { buildCharacterCostumeTemplateVariables } from './promptVariableBuilders';
 
 const logger = createLogger('CharacterAsset');
 
@@ -48,10 +49,10 @@ export async function generateCostumePhoto(
   try {
     // 构建提示词（从配置化模板读取）
     const stylePrefix = await getResolvedTTIStylePrefix(styleSnapshot || project?.styleSnapshot, theme, stylePrompt);
-    const resolvedPrompt = await resolvePromptTemplate('tti_character_costume', {
-      stylePrefix: stylePrefix || '',
-      appearance: character.appearance || '',
-    });
+    const resolvedPrompt = await resolvePromptTemplate(
+      'tti_character_costume',
+      buildCharacterCostumeTemplateVariables(character, stylePrefix || '')
+    );
     const prompt = resolvedPrompt.prompt;
 
     onProgress?.(10, '调用 TTI 服务...');
@@ -111,7 +112,7 @@ export async function generateCharacterPreviewVideo(
   onProgress?.(0, '准备生成预览视频...');
 
   // 优先使用远程 URL，其次使用本地路径
-  const rawImageSource = getMediaAssetSource(character.media?.costumePhoto);
+  const rawImageSource = getMediaAssetDisplaySource(character.media?.costumePhoto);
   if (!rawImageSource) {
     return { success: false, error: '请先生成定妆照' };
   }
@@ -120,7 +121,7 @@ export async function generateCharacterPreviewVideo(
     onProgress?.(10, '调用 ITV 服务...');
 
     const resolvedStylePrefix = await getResolvedTTIStylePrefix(styleSnapshot || project?.styleSnapshot, theme, stylePrompt);
-    const visualPrompt = character.prompt || character.appearance || character.description || character.name;
+    const visualPrompt = character.prompt || character.name;
     const resolvedPrompt = await resolvePromptTemplate('itv_character_motion', {
       stylePrefix: resolvedStylePrefix,
       characterName: character.name,
@@ -302,14 +303,13 @@ export function buildCostumePhotoPrompt(character: Character, stylePrefix: strin
   // 可变部分：外貌描述
   const parts = [
     ...templateParts,
-    character.appearance,
+    buildCharacterCostumeTemplateVariables(character, stylePrefix).appearance,
   ];
   return parts.filter(Boolean).join(', ');
 }
 
 /**
  * 获取角色的完整提示词（便捷函数）
- * 如果角色有自定义提示词则优先使用，否则自动生成
  */
 export function getCharacterPrompt(
   character: Character,
@@ -318,10 +318,6 @@ export function getCharacterPrompt(
   styleSnapshot?: StyleSnapshotLike,
   project?: { styleSnapshot?: StyleSnapshotLike }
 ): string {
-  // 优先使用自定义提示词
-  if (character.customPrompt) {
-    return character.customPrompt;
-  }
   const stylePrefix = resolveTTIStylePrefix(styleSnapshot || project?.styleSnapshot, theme, stylePrompt);
   return buildCostumePhotoPrompt(character, stylePrefix);
 }
@@ -369,7 +365,7 @@ async function getResolvedTTIStylePrefix(
 }
 
 function buildCharacterPreviewPrompt(character: Character, stylePrefix: string): string {
-  const visualPrompt = character.prompt || character.appearance || character.description || character.name;
+  const visualPrompt = character.prompt || character.name;
   return [
     stylePrefix,
     visualPrompt,

@@ -26,6 +26,8 @@ export type {
   ShotVersionMediaState,
 } from './types/media';
 export {
+  getMediaAssetDisplaySource,
+  getMediaAssetEditingSource,
   getMediaAssetSource,
   isBlobUri,
   isDataUri,
@@ -59,6 +61,7 @@ export interface Project {
   ttiConfigId?: string;  // 关联的 TTI 配置 ID
   itvConfigId?: string;  // 关联的 ITV 配置 ID
   ttsConfigId?: string;  // 关联的 TTS 配置 ID
+  aspectRatio?: '16:9' | '9:16'; // 项目画面比例（创建时确定，不可更改）
   stylePresetId?: string;   // 选中的全局风格 ID
   styleSnapshot?: ProjectStyleSnapshot; // 项目风格快照
   // @deprecated 遗留字段，仅保留给未改造调用点过渡
@@ -128,22 +131,23 @@ export interface AssetTimestampRange {
   end: number;   // 结束时间（秒），与 start 间隔不超过 3 秒
 }
 
+export type CharacterGender = 'male' | 'female' | 'neutral' | 'unknown';
+
 // 角色接口定义
 export interface Character {
   id: string;
   name: string;
   role: 'protagonist' | 'antagonist' | 'supporting'; // 主角 | 反派 | 配角
-  prompt: string;      // 核心提示词（整合了原有的 description, appearance 等）
-  
-  // 旧字段（保留用于兼容，但UI上将不再显示）
+  prompt: string;      // 核心视觉提示词
+
   age?: string;
+  gender?: CharacterGender;
   description?: string; 
   appearance?: string;
   
   voiceId?: string;    // TTS 音色 ID
   media?: CharacterMediaSlots; // 结构化媒体槽位
   sora2CharacterId?: string;  // 角色提取API返回的ID
-  customPrompt?: string;      // 用户自定义生成提示词 (Deprecated: use prompt instead)
   timestampRange?: AssetTimestampRange; // Sora2 提取时间范围
   // 剧集引用追踪
   episodeRefs?: EpisodeRef[];
@@ -155,15 +159,13 @@ export interface Scene {
   id: string;
   name: string;
   prompt: string;     // 核心提示词
-  
-  // 旧字段（保留用于兼容）
+
   location?: string;
   time?: 'day' | 'night' | 'twilight'; 
   mood?: string;
   description?: string;
-  
+
   media?: SceneMediaSlots; // 结构化媒体槽位
-  customPrompt?: string; // (Deprecated: use prompt instead)
   // 剧集引用追踪
   episodeRefs?: EpisodeRef[];
   fingerprint?: string;
@@ -174,15 +176,13 @@ export interface Prop {
   id: string;
   name: string;
   prompt: string;     // 核心提示词
-  
-  // 旧字段（保留用于兼容）
+
   type?: string;
   description?: string;
-  
+
   media?: PropMediaSlots; // 结构化媒体槽位
   // Sora2 绑定相关
   sora2PropId?: string;        // Sora2 道具 ID
-  customPrompt?: string;       // (Deprecated: use prompt instead)
   timestampRange?: AssetTimestampRange; // Sora2 提取时间范围
   // 剧集引用追踪
   episodeRefs?: EpisodeRef[];
@@ -208,8 +208,6 @@ export interface Shot {
   shotType: 'close-up' | 'medium' | 'wide' | 'extreme-wide'; // 特写 | 中景 | 全景 | 大全景
   cameraMovement: 'static' | 'pan' | 'zoom-in' | 'tracking' | 'handheld'; // 固定 | 摇镜 | 推镜 | 跟随 | 手持
   duration: number;      // 持续时长(秒)
-  // 双提示词字段
-  description?: string;  // 通用提示词（兼容旧数据）
   imagePrompt?: string;  // 图片生成提示词
   videoPrompt?: string;  // 视频生成提示词
   media?: ShotMediaState; // 结构化媒体槽位
@@ -241,10 +239,10 @@ export type ModelProviderType = 'gemini' | 'openai' | 'openai-compatible' | 'cla
 export type LLMProviderType = 'openai-compatible' | 'gemini' | 'claude';
 // 扩展支持插件动态类型
 export type TTIProviderType =
-  | 'comfyui' | 'jimeng' | 'qwen-image' | 'midjourney' | 'dall-e' | 'flux' | 'nano-banana' | 'gemini-3-pro' | 'openai-compatible-tti'
+  | 'comfyui' | 'jimeng' | 'qwen-image' | 'midjourney' | 'dall-e' | 'flux' | 'nano-banana' | 'gemini-3-pro' | 'gemini-native-tti' | 'openai-compatible-tti' | 'grok2api-imagine-tti'
   | (string & { __ttiPlugin?: never });
 export type ITVProviderType =
-  | 'runway' | 'kling' | 'pika' | 'minimax' | 'comfyui-animatediff' | 'sora2' | 'custom'
+  | 'runway' | 'kling' | 'pika' | 'minimax' | 'comfyui-animatediff' | 'sora2' | 'custom' | 'grok2api-imagine-itv'
   | (string & { __itvPlugin?: never });
 export type TTSProviderType =
   | 'edge-tts' | 'openai-tts' | 'fish-audio' | 'gpt-sovits' | 'doubao-tts'
@@ -256,6 +254,11 @@ export interface MediaProviderConfig {
   name: string;
   apiKey?: string;
   baseUrl?: string;
+  /**
+   * Optional prompt compilation protocol.
+   * When set, MediaGenerationService may compile prompt + align reference arrays before provider.start().
+   */
+  promptProtocol?: 'grok-image-index';
   isDefault: boolean;
   createdAt: number;
   updatedAt: number;
@@ -365,20 +368,11 @@ export interface AppSettings {
   }>;
   customThemePresets?: ThemePreset[];  // 用户自定义视觉风格预设
   channelConfigs?: import('./providers/channel/types').ChannelConfig[];  // 渠道配置（Provider 注入版）
-  imageHostingConfig?: ImageHostingConfig;  // 图床配置
   stylePrompts?: { prompt: string; isDefault?: boolean }[];  // 风格提示词列表
   // @deprecated 以下字段已废弃，迁移后删除
   customChannels?: import('./providers/channel/types').ChannelConfig[];  // 旧版自定义渠道配置
   unifiedChannels?: import('./providers/channel/types').UnifiedChannelConfig[];  // 旧版统一渠道配置
   channelMigrationVersion?: number;  // 迁移版本标记
-}
-
-// 图床配置
-export interface ImageHostingConfig {
-  enabled: boolean;
-  apiEndpoint: string;
-  outputFormat: 'auto' | 'jpeg' | 'png' | 'webp' | 'gif' | 'webp_animated';
-  cdnDomain: string;
 }
 
 // ========== 时间线相关类型 ==========

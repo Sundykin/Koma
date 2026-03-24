@@ -4,11 +4,10 @@
  * OpenSpec: 统一通过 MediaGenerationService 编排 start/snapshot、落盘与回写。
  */
 import type { Character, Scene, Shot, StoredMediaAsset } from '../types';
-import { getMediaAssetSource } from '../types';
+import { getMediaAssetDisplaySource } from '../types';
 import { loadProps } from '../store/projectStore';
 import { resolvePromptTemplate } from '../store/promptTemplates';
 import { getThemeStylePrefix } from '../config/themePresets';
-import { parseMentions } from '../editor/mentionTypes';
 import { logTTICall } from '../store/aiCallLogger';
 import { createLogger } from '../store/logger';
 import { mediaGenerationService } from '../services/MediaGenerationService';
@@ -18,6 +17,8 @@ import {
   normalizeScenesMediaState,
   normalizeShotMediaState,
 } from '../store/project/mediaState';
+import { buildShotImageTemplateVariables } from './promptVariableBuilders';
+import { buildShotAssetReferences } from './assetReferenceBuilder';
 
 const logger = createLogger('ShotImageWorkflow');
 
@@ -32,10 +33,11 @@ export async function shotImageWorkflow(params: {
   characters: Character[];
   scenes: Scene[];
   ttiConfigId?: string;
+  aspectRatio?: '16:9' | '9:16';
   styleSnapshot?: StyleSnapshotLike;
   theme?: string;
   stylePrompt?: string;
-  project?: { styleSnapshot?: StyleSnapshotLike };
+  project?: { styleSnapshot?: StyleSnapshotLike; aspectRatio?: '16:9' | '9:16' };
   onProgress?: (progress: number, step?: string) => void;
 }): Promise<StoredMediaAsset> {
   const {
@@ -45,6 +47,7 @@ export async function shotImageWorkflow(params: {
     characters,
     scenes,
     ttiConfigId,
+    aspectRatio,
     styleSnapshot,
     theme,
     stylePrompt,
@@ -56,29 +59,24 @@ export async function shotImageWorkflow(params: {
   const normalizedCharacters = normalizeCharactersMediaState(characters);
   const normalizedScenes = normalizeScenesMediaState(scenes);
   const props = normalizePropsMediaState(await loadProps(projectId).catch(() => []));
+  const finalAspectRatio = aspectRatio || project?.aspectRatio || '16:9';
 
   onProgress?.(0, '准备生成分镜图片...');
 
-  const references: Array<string | StoredMediaAsset> = [];
-
   // Shot 自身的参考图
+  const references: Array<string | StoredMediaAsset> = [];
   for (const ref of normalizedShot.media?.references || []) {
     references.push(ref);
   }
 
-  // 关联资产参考图
-  for (const charId of normalizedShot.characters || []) {
-    const char = normalizedCharacters.find(c => c.id === charId);
-    if (char?.media?.costumePhoto) references.push(char.media.costumePhoto);
-  }
-  for (const sceneId of normalizedShot.scenes || []) {
-    const scene = normalizedScenes.find(s => s.id === sceneId);
-    if (scene?.media?.previewImage) references.push(scene.media.previewImage);
-  }
-  for (const propId of normalizedShot.props || []) {
-    const prop = props.find(p => p.id === propId);
-    if (prop?.media?.previewImage) references.push(prop.media.previewImage);
-  }
+  // 关联资产参考图（角色/场景/道具）
+  const { mediaReferences, compilationAssets: selectedAssetsForCompilation } = buildShotAssetReferences(
+    normalizedShot,
+    normalizedCharacters,
+    normalizedScenes,
+    props,
+  );
+  references.push(...mediaReferences);
 
   // 构建提示词：优先使用 imagePrompt
   let prompt: string;
@@ -86,20 +84,18 @@ export async function shotImageWorkflow(params: {
   let promptSource: 'default' | 'custom' | 'finalized' = 'finalized';
 
   if (normalizedShot.imagePrompt) {
-    prompt = replaceMentionsWithDescriptions(
-      normalizedShot.imagePrompt,
-      normalizedCharacters,
-      normalizedScenes,
-      props
-    );
+    // 保留 @char/@scene/@prop（供渠道编译协议处理，例如 grok-image-index）。
+    // 如果这里把 @ 引用替换成纯文字描述，会导致编译器无法提取 @ 资产并完成 @Image N 映射。
+    prompt = normalizedShot.imagePrompt;
   } else {
     const stylePrefix = styleSnapshot?.ttiStylePrefix || project?.styleSnapshot?.ttiStylePrefix || getThemeStylePrefix(theme, stylePrompt);
-    const resolved = await resolvePromptTemplate('tti_shot_image', {
+    const resolved = await resolvePromptTemplate('tti_shot_image', buildShotImageTemplateVariables({
+      shot: normalizedShot,
+      characters: normalizedCharacters,
+      scenes: normalizedScenes,
+      props,
       stylePrefix,
-      description: normalizedShot.description || '',
-      shotType: normalizedShot.shotType || 'medium',
-      emotion: normalizedShot.emotion || 'neutral',
-    });
+    }));
     prompt = resolved.prompt;
     templateId = resolved.template.id;
     promptSource = resolved.source;
@@ -112,9 +108,8 @@ export async function shotImageWorkflow(params: {
     'TTI',
     prompt,
     {
-      width: 1280,
-      height: 720,
-      references: references.map(r => (typeof r === 'string' ? r : getMediaAssetSource(r) || '')).filter(Boolean),
+      aspectRatio: finalAspectRatio,
+      references: references.map(r => (typeof r === 'string' ? r : getMediaAssetDisplaySource(r) || '')).filter(Boolean),
     },
     {
       projectId,
@@ -141,6 +136,9 @@ export async function shotImageWorkflow(params: {
       references,
       options: { width: 1280, height: 720 },
     },
+    promptCompilation: {
+      selectedAssets: selectedAssetsForCompilation,
+    },
     ttiConfigId,
     taskName: `分镜图片: ${normalizedShot.id}`,
   });
@@ -148,42 +146,3 @@ export async function shotImageWorkflow(params: {
   onProgress?.(100, '完成');
   return asset;
 }
-
-function replaceMentionsWithDescriptions(
-  prompt: string,
-  characters: Character[],
-  scenes: Scene[],
-  props: Array<{ id: string; name: string; prompt?: string; description?: string; sora2PropId?: string; type?: string }>
-): string {
-  const mentions = parseMentions(prompt);
-  let result = prompt;
-  const sortedMentions = [...mentions].sort((a, b) => b.from - a.from);
-
-  for (const mention of sortedMentions) {
-    let replacement = '';
-
-    if (mention.type === 'char') {
-      const char = characters.find(c => c.id === mention.id || (c as any).sora2CharacterId === mention.id);
-      if (char) {
-        replacement = `[${char.name}: ${char.prompt || (char as any).description || (char as any).appearance || ''}]`;
-      }
-    } else if (mention.type === 'scene') {
-      const scene = scenes.find(s => s.id === mention.id);
-      if (scene) {
-        replacement = `[${scene.name}: ${scene.prompt || (scene as any).description || ''}]`;
-      }
-    } else if (mention.type === 'prop') {
-      const prop = props.find(p => p.id === mention.id || p.sora2PropId === mention.id);
-      if (prop) {
-        replacement = `[${prop.name}: ${prop.prompt || prop.description || prop.type || ''}]`;
-      }
-    }
-
-    if (replacement) {
-      result = result.slice(0, mention.from) + replacement + result.slice(mention.to);
-    }
-  }
-
-  return result;
-}
-

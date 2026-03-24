@@ -1,5 +1,6 @@
 import { BaseController } from './base';
 import { validateUrl } from '../service/url-validator';
+import { Blob as BufferBlob } from 'buffer';
 
 // 每个 chunk 之间的最大空闲时间（5 分钟，兼容慢模型的首 token 等待）
 const CHUNK_IDLE_TIMEOUT_MS = 300_000;
@@ -33,6 +34,81 @@ function summarizeBody(body?: string): Record<string, any> {
       bodyLength: body.length,
     };
   }
+}
+
+type MultipartField =
+  | { kind: 'text'; name: string; value: string }
+  | { kind: 'file'; name: string; filename: string; contentType?: string; base64: string; size: number };
+
+type MultipartPayload = { fields: MultipartField[] };
+
+function summarizeMultipart(multipart?: MultipartPayload): Record<string, any> {
+  if (!multipart?.fields?.length) return {};
+  let files = 0;
+  let bytes = 0;
+  for (const f of multipart.fields) {
+    if (f.kind === 'file') {
+      files += 1;
+      bytes += Number(f.size || 0) || 0;
+    }
+  }
+  return { multipartFieldCount: multipart.fields.length, multipartFileCount: files, multipartBytes: bytes };
+}
+
+function stripContentType(headers: Record<string, string>): void {
+  for (const k of Object.keys(headers)) {
+    if (k.toLowerCase() === 'content-type') delete headers[k];
+  }
+}
+
+function escapeHeaderValue(value: string): string {
+  // Keep it minimal: prevent breaking out of quotes in Content-Disposition.
+  return value.replace(/"/g, '_');
+}
+
+function buildMultipartBody(multipart?: MultipartPayload): { body: Buffer; contentType: string } {
+  // Some reverse proxies / deployments have issues with chunked multipart streaming.
+  // Build a raw multipart body so we can set Content-Length deterministically.
+  const boundary = `----komaFormBoundary${Date.now()}${Math.random().toString(16).slice(2)}`;
+  const chunks: Buffer[] = [];
+  const CRLF = Buffer.from([13, 10]);
+
+  const pushText = (text: string) => { chunks.push(Buffer.from(text, 'utf8')); };
+  const pushCRLF = () => { chunks.push(CRLF); };
+  const pushBoundaryLine = () => {
+    // Keep CRLF bytes explicit to avoid bundlers rewriting newline escapes into multiline template literals.
+    chunks.push(Buffer.from(`--${boundary}`, 'utf8'));
+    pushCRLF();
+  };
+
+  for (const f of multipart?.fields || []) {
+    if (!f?.name) continue;
+    pushBoundaryLine();
+    if (f.kind === 'text') {
+      pushText(`Content-Disposition: form-data; name="${escapeHeaderValue(f.name)}"`);
+      pushCRLF();
+      pushCRLF();
+      pushText(String(f.value ?? ''));
+      pushCRLF();
+      continue;
+    }
+    if (f.kind === 'file') {
+      const filename = escapeHeaderValue(String(f.filename || 'file'));
+      const contentType = f.contentType ? String(f.contentType) : 'application/octet-stream';
+      pushText(`Content-Disposition: form-data; name="${escapeHeaderValue(f.name)}"; filename="${filename}"`);
+      pushCRLF();
+      pushText(`Content-Type: ${contentType}`);
+      pushCRLF();
+      pushCRLF();
+      chunks.push(Buffer.from(String(f.base64 ?? ''), 'base64'));
+      pushCRLF();
+    }
+  }
+
+  chunks.push(Buffer.from(`--${boundary}--`, 'utf8'));
+  pushCRLF();
+  const body = Buffer.concat(chunks);
+  return { body, contentType: `multipart/form-data; boundary=${boundary}` };
 }
 
 function isRetryable(err: any): boolean {
@@ -76,12 +152,18 @@ async function readBodyChunked(response: Response): Promise<string> {
   return chunks.join('');
 }
 
+function truncateString(value: string, max = 6000): string {
+  if (value.length <= max) return value;
+  return `${value.slice(0, max)}...(truncated, ${value.length} chars)`;
+}
+
 class NetController extends BaseController {
   async fetch(args: {
     url: string;
     method?: string;
     headers?: Record<string, string>;
     body?: string;
+    multipart?: MultipartPayload;
   }) {
     // SSRF 防护：校验协议 + 私有 IP 过滤
     await validateUrl(args.url);
@@ -90,11 +172,14 @@ class NetController extends BaseController {
     const traceSource = getHeaderValue(args.headers, 'x-koma-trace-source');
     const traceOperation = getHeaderValue(args.headers, 'x-koma-trace-operation');
     const traceTarget = getHeaderValue(args.headers, 'x-koma-trace-target');
+    const debugBody = getHeaderValue(args.headers, 'x-koma-debug-body');
     const headers = { ...(args.headers || {}) };
     delete headers['x-koma-trace-id'];
     delete headers['x-koma-trace-source'];
     delete headers['x-koma-trace-operation'];
     delete headers['x-koma-trace-target'];
+    // Debug header is for host-side logging only; never forward to upstream.
+    delete headers['x-koma-debug-body'];
 
     const logCtx = {
       traceId,
@@ -103,7 +188,8 @@ class NetController extends BaseController {
       target: traceTarget,
       method: args.method || 'GET',
       url: args.url,
-      ...summarizeBody(args.body),
+      ...(args.multipart ? summarizeMultipart(args.multipart) : summarizeBody(args.body)),
+      ...(debugBody ? { bodyPreview: truncateString(args.body || '', 12_000) } : undefined),
     };
 
     console.info('[NetController] IPC 网络请求开始', logCtx);
@@ -119,10 +205,18 @@ class NetController extends BaseController {
       }
 
       try {
+        let reqBody: any = args.body;
+        if (args.multipart) {
+          stripContentType(headers);
+          const built = buildMultipartBody(args.multipart);
+          headers['Content-Type'] = built.contentType;
+          headers['Content-Length'] = String(built.body.length);
+          reqBody = built.body;
+        }
         const response = await fetch(args.url, {
           method: args.method || 'GET',
           headers,
-          body: args.body,
+          body: reqBody,
         });
 
         const body = await readBodyChunked(response);

@@ -12,6 +12,32 @@ import type { ITVConfig } from '../../types';
 import type { ProviderStartResult, ProviderTaskSnapshot } from '../../types';
 import type { ITVProvider, ITVRequest, ITVResult } from './types';
 import { safeFetch } from '../../utils/safeFetch';
+import { createLogger } from '../../store/logger';
+
+const logger = createLogger('CustomITV');
+
+function sanitizeBodyForLog(body: Record<string, any>): Record<string, any> {
+  const walk = (v: any): any => {
+    if (typeof v === 'string') {
+      if (v.startsWith('data:')) {
+        return `${v.slice(0, 140)}...(data-url ${v.length} chars)`;
+      }
+      // base64 field can be enormous
+      if (v.length > 2000) {
+        return `${v.slice(0, 800)}...(truncated, ${v.length} chars)`;
+      }
+      return v;
+    }
+    if (Array.isArray(v)) return v.map(walk);
+    if (v && typeof v === 'object') {
+      const out: Record<string, any> = {};
+      for (const [k, val] of Object.entries(v)) out[k] = walk(val);
+      return out;
+    }
+    return v;
+  };
+  return walk(body);
+}
 
 function stripDataUrlHeader(dataUrl: string): { mimeType?: string; base64: string } {
   // data:<mime>;base64,<payload>
@@ -33,6 +59,11 @@ export class CustomITVProvider implements ITVProvider {
     ssePath?: string;
     stopPath?: string;
   };
+
+  assetTransports = {
+    primaryImage: ['remote-url', 'data-url'],
+    additionalReferences: ['remote-url', 'data-url'],
+  } as const;
 
   constructor(config: ITVConfig) {
     this.config = config;
@@ -201,14 +232,29 @@ export class CustomITVProvider implements ITVProvider {
       body.additional_reference_images = request.additionalReferences.map(r => r.value);
     }
 
+    const protocol = (this.config as any)?.promptProtocol;
+    const debugBody = Boolean(protocol) || (import.meta as any)?.env?.DEV === true;
+
     const trySubmit = async (variant: 'public' | 'standard') => {
       const startPath = this.apiOverride?.startPath || this.getApiPaths(variant).start;
       return safeFetch(this.joinUrl(startPath), {
         method: 'POST',
-        headers: this.getHeaders(),
+        headers: {
+          ...this.getHeaders(),
+          ...(debugBody ? { 'x-koma-debug-body': '1' } : undefined),
+          ...(debugBody ? { 'x-koma-trace-operation': 'itv.start' } : undefined),
+        },
         body: JSON.stringify(body),
       });
     };
+
+    if (debugBody) {
+      logger.info('ITV start request body', {
+        provider: this.config.provider,
+        ...(protocol ? { promptProtocol: protocol } : undefined),
+        body: sanitizeBodyForLog(body),
+      });
+    }
 
     const preferredVariant: 'public' | 'standard' = this.apiVariant || 'public';
     const fallbackVariant: 'public' | 'standard' = preferredVariant === 'public' ? 'standard' : 'public';

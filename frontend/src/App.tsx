@@ -3,6 +3,7 @@ import { Project, ScriptAnalysisResult, EditorStep, AppSettings, Episode, Episod
 import { ProjectList, CreateProjectModal, ProjectSettingsModal } from './components/project';
 import type { MentionItem } from './editor';
 import { getCharacterCostumePhotoSource } from './utils/mediaSelectors';
+import { getMediaAssetDisplaySource } from './types';
 import { WindowControls } from './components/common';
 import { ErrorBoundary } from './components/common';
 import { TaskStatusBar } from './components/common/TaskStatusBar';
@@ -108,13 +109,42 @@ const AppContent: React.FC = () => {
 
   // mentionItems
   const mentionItems: MentionItem[] = useMemo(() => {
-    if (!Array.isArray(analysisData?.characters)) return [];
-    return analysisData.characters.filter(Boolean).map(char => ({
-      id: char.id, type: 'char' as const, name: char.name,
-      description: char.description, previewImage: getCharacterCostumePhotoSource(char),
-      sora2CharacterId: char.sora2CharacterId,
-    }));
-  }, [analysisData?.characters]);
+    const items: MentionItem[] = [];
+    const characters = Array.isArray(analysisData?.characters) ? analysisData!.characters.filter(Boolean) : [];
+    const scenes = Array.isArray(analysisData?.scenes) ? analysisData!.scenes.filter(Boolean) : [];
+    const props = Array.isArray(analysisData?.props) ? analysisData!.props.filter(Boolean) : [];
+
+    // 统一：编辑器里 @mention 只使用项目内资产 ID；高亮/补全覆盖角色/场景/道具。
+    for (const char of characters) {
+      items.push({
+        id: char.id,
+        type: 'char' as const,
+        name: char.name,
+        description: char.prompt,
+        previewImage: getCharacterCostumePhotoSource(char),
+      });
+    }
+    for (const scene of scenes) {
+      items.push({
+        id: scene.id,
+        type: 'scene' as const,
+        name: scene.name,
+        description: scene.prompt,
+        previewImage: getMediaAssetDisplaySource(scene.media?.previewImage),
+      });
+    }
+    for (const prop of props) {
+      items.push({
+        id: prop.id,
+        type: 'prop' as const,
+        name: prop.name,
+        description: prop.prompt,
+        previewImage: getMediaAssetDisplaySource(prop.media?.previewImage),
+      });
+    }
+
+    return items;
+  }, [analysisData?.characters, analysisData?.scenes, analysisData?.props]);
 
   // 监听任务完成
   useEffect(() => {

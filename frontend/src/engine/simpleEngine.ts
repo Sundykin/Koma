@@ -8,6 +8,14 @@ import { Track, Clip, MediaType } from '../types/editor';
 import { getAnimatedProperties } from './simpleKeyframe';
 import { handleError } from '../utils/errorHandler';
 import { createLogger } from '../store/logger';
+import {
+  getClipOpacityFromPlans,
+  normalizeTimelineTracks,
+  resolveTimelineTracks,
+  type NormalizedTransitionPlan,
+  type ResolvedClipWindow,
+  type ResolvedTrackTimeline,
+} from '../services/transition/transitionResolver';
 
 const logger = createLogger('SimpleEngine');
 
@@ -143,6 +151,9 @@ export class SimpleVideoRenderer {
   private ctx: CanvasRenderingContext2D;
   private mediaCache: Map<string, MediaCache> = new Map();
   private tracks: Track[] = [];
+  private resolvedTracks: ResolvedTrackTimeline[] = [];
+  private resolvedWindows: Map<string, ResolvedClipWindow> = new Map();
+  private transitionPlansByTrack: Map<string, NormalizedTransitionPlan[]> = new Map();
   private rafId: number | null = null;
   private isRendering: boolean = false;
   private width: number = 1920;
@@ -179,8 +190,18 @@ export class SimpleVideoRenderer {
   }
 
   setTracks(tracks: Track[]): void {
-    this.tracks = tracks;
-    tracks.forEach(track => {
+    this.tracks = normalizeTimelineTracks(tracks);
+    this.resolvedTracks = resolveTimelineTracks(this.tracks);
+    this.resolvedWindows = new Map(
+      this.resolvedTracks.flatMap((track) =>
+        track.clipWindows.map((window) => [window.clipId, window] as const)
+      )
+    );
+    this.transitionPlansByTrack = new Map(
+      this.resolvedTracks.map((resolved) => [resolved.track.id, resolved.transitionPlans])
+    );
+
+    this.tracks.forEach(track => {
       track.clips.forEach(clip => {
         if (clip.type === MediaType.VIDEO || clip.type === MediaType.IMAGE) {
           this.preloadMedia(clip);
@@ -268,9 +289,14 @@ export class SimpleVideoRenderer {
 
   private getVisibleClips(time: number): Clip[] {
     const visible: { clip: Clip; order: number; trackHidden: boolean }[] = [];
-    this.tracks.forEach(track => {
-      track.clips.forEach(clip => {
-        if (time >= clip.start && time < clip.start + clip.duration) {
+    this.resolvedTracks.forEach(({ track, clipWindows }) => {
+      clipWindows.forEach((window) => {
+        if (time >= window.resolvedStart && time < window.resolvedEnd) {
+          const clip = track.clips.find((candidate) => candidate.id === window.clipId);
+          if (!clip) {
+            return;
+          }
+
           if (clip.type === MediaType.VIDEO || clip.type === MediaType.IMAGE || clip.type === MediaType.TEXT) {
             visible.push({ clip, order: track.order ?? 0, trackHidden: !!track.hidden });
           }
@@ -286,9 +312,11 @@ export class SimpleVideoRenderer {
 
   private renderClip(clip: Clip, currentTime: number): void {
     this.ctx.save();
+    const resolvedWindow = this.resolvedWindows.get(clip.id);
+    const clipStart = resolvedWindow?.resolvedStart ?? clip.start;
 
     // 计算片段内的本地时间
-    const clipLocalTime = currentTime - clip.start;
+    const clipLocalTime = currentTime - clipStart;
 
     // 获取动画属性（如果有关键帧则插值）
     const props = getAnimatedProperties(clip, clipLocalTime);
@@ -298,7 +326,12 @@ export class SimpleVideoRenderer {
     this.ctx.translate(centerX, centerY);
     this.ctx.rotate((props.rotation * Math.PI) / 180);
     this.ctx.scale(props.scale, props.scale);
-    this.ctx.globalAlpha = props.opacity;
+    const transitionOpacity = getClipOpacityFromPlans(
+      this.transitionPlansByTrack.get(clip.trackId) ?? [],
+      clip.id,
+      currentTime
+    );
+    this.ctx.globalAlpha = props.opacity * transitionOpacity;
 
     if (clip.type === MediaType.TEXT) {
       this.renderText(clip, props);
@@ -308,7 +341,7 @@ export class SimpleVideoRenderer {
         const source = cache.element;
         if (cache.type === 'video') {
           const video = source as HTMLVideoElement;
-          const clipTime = currentTime - clip.start + clip.offset;
+          const clipTime = currentTime - clipStart + clip.offset;
           // 只在差距较大时才 seek，避免频繁 seek 导致卡顿
           if (Math.abs(video.currentTime - clipTime) > 0.15) {
             video.currentTime = clipTime;
@@ -462,6 +495,8 @@ export class SimpleAudioController {
   private mutedClips: Set<string> = new Set();
   private mutedTracks: Set<string> = new Set();
   private tracks: Track[] = [];
+  private resolvedWindows: Map<string, ResolvedClipWindow> = new Map();
+  private transitionPlansByTrack: Map<string, NormalizedTransitionPlan[]> = new Map();
 
   constructor(engine: SimpleMediaEngine) {
     this.engine = engine;
@@ -478,10 +513,19 @@ export class SimpleAudioController {
 
   // 设置轨道数据（用于检查轨道静音状态）
   setTracks(tracks: Track[]): void {
-    this.tracks = tracks;
+    this.tracks = normalizeTimelineTracks(tracks);
+    const resolved = resolveTimelineTracks(this.tracks);
+    this.resolvedWindows = new Map(
+      resolved.flatMap((track) =>
+        track.clipWindows.map((window) => [window.clipId, window] as const)
+      )
+    );
+    this.transitionPlansByTrack = new Map(
+      resolved.map((r) => [r.track.id, r.transitionPlans])
+    );
     // 更新轨道静音状态
     this.mutedTracks.clear();
-    tracks.forEach(track => {
+    this.tracks.forEach(track => {
       if (track.muted) {
         this.mutedTracks.add(track.id);
       }
@@ -641,6 +685,7 @@ export class SimpleAudioController {
       // 检查轨道和片段是否被静音
       const isMuted = this.isClipMuted(instance.clip);
       instance.element.muted = isMuted;
+      instance.element.volume = isMuted ? 0 : this.getClipVolume(instance.clip, currentTime);
 
       if (isActive && !isPlaying && this.engine.isPlaying && !isMuted) {
         this.playMedia(instance, currentTime);
@@ -655,7 +700,11 @@ export class SimpleAudioController {
   }
 
   private isClipActive(clip: Clip, time: number): boolean {
-    return time >= clip.start && time < clip.start + clip.duration;
+    const resolvedWindow = this.resolvedWindows.get(clip.id);
+    if (!resolvedWindow) {
+      return time >= clip.start && time < clip.start + clip.duration;
+    }
+    return time >= resolvedWindow.resolvedStart && time < resolvedWindow.resolvedEnd;
   }
 
   private isClipMuted(clip: Clip): boolean {
@@ -675,7 +724,9 @@ export class SimpleAudioController {
   }
 
   private syncMediaTime(instance: MediaInstance, currentTime: number): void {
-    const clipTime = currentTime - instance.clip.start + instance.clip.offset;
+    const resolvedWindow = this.resolvedWindows.get(instance.clip.id);
+    const clipStart = resolvedWindow?.resolvedStart ?? instance.clip.start;
+    const clipTime = currentTime - clipStart + instance.clip.offset;
     let mediaDuration: number;
 
     if (instance.type === 'video') {
@@ -690,6 +741,14 @@ export class SimpleAudioController {
         instance.element.currentTime = seekTime;
       }
     }
+  }
+
+  private getClipVolume(clip: Clip, currentTime: number): number {
+    return this.masterVolume * getClipOpacityFromPlans(
+      this.transitionPlansByTrack.get(clip.trackId) ?? [],
+      clip.id,
+      currentTime
+    );
   }
 
   // 清除特定片段

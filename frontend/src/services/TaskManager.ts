@@ -7,6 +7,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { electronService } from './electronService';
 import { getStorageConfig, initStorageConfig } from '../store/storageConfig';
 import { createLogger } from '../store/logger';
+import { DEFAULT_POLLING_CONFIG } from '../providers/polling';
 
 const logger = createLogger('TaskManager');
 
@@ -384,7 +385,7 @@ class TaskManagerClass {
 
     this.pollingInterval = setInterval(() => {
       this.pollRunningTasks();
-    }, 3000);
+    }, DEFAULT_POLLING_CONFIG.interval);
   }
 
   /**

@@ -5,7 +5,7 @@ import React, { useState, useCallback } from 'react';
 import { Modal, Form, Input, Select, App } from 'antd';
 import { UserAddOutlined } from '@ant-design/icons';
 import { v4 as uuidv4 } from 'uuid';
-import type { Character } from '../../types';
+import type { Character, CharacterGender } from '../../types';
 import { saveCharacters, loadCharacters } from '../../store/projectStore';
 
 const { TextArea } = Input;
@@ -36,7 +36,9 @@ export const CreateCharacterModal: React.FC<CreateCharacterModalProps> = ({
         id: uuidv4(),
         name: values.name,
         role: values.role || 'supporting',
-        prompt: values.prompt || '',  // 统一使用 prompt 字段
+        age: values.age || undefined,
+        gender: values.gender || 'unknown',
+        prompt: values.prompt || '',
       };
 
       // 保存到存储
@@ -68,6 +70,12 @@ export const CreateCharacterModal: React.FC<CreateCharacterModalProps> = ({
     { value: 'protagonist', label: '主角' },
     { value: 'antagonist', label: '反派' },
     { value: 'supporting', label: '配角' },
+  ];
+  const genderOptions: Array<{ value: CharacterGender; label: string }> = [
+    { value: 'male', label: '男' },
+    { value: 'female', label: '女' },
+    { value: 'neutral', label: '中性' },
+    { value: 'unknown', label: '未知' },
   ];
 
   return (
@@ -103,12 +111,16 @@ export const CreateCharacterModal: React.FC<CreateCharacterModalProps> = ({
           <Input placeholder="如：28岁" />
         </Form.Item>
 
-        <Form.Item name="description" label="人物描述">
-          <TextArea rows={2} placeholder="角色的性格、背景故事..." />
+        <Form.Item name="gender" label="性别" initialValue="unknown">
+          <Select options={genderOptions} />
         </Form.Item>
 
-        <Form.Item name="appearance" label="外貌描述（用于AI图像生成）">
-          <TextArea rows={3} placeholder="如：黑发，深邃眼神，身穿西装，气质冷峻..." />
+        <Form.Item
+          name="prompt"
+          label="视觉提示词"
+          rules={[{ required: true, message: '请输入角色视觉提示词' }]}
+        >
+          <TextArea rows={4} placeholder="只描述角色可见外貌、服装、材质、配色、体态等客观视觉信息" />
         </Form.Item>
       </Form>
     </Modal>

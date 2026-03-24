@@ -18,10 +18,13 @@ import {
   getActiveTTIConfig,
   getActiveITVConfig,
   getActiveTTSConfig,
+  getDefaultChannelConfig,
+  getChannelsByCapability,
 } from '../store/globalStore';
 import type { ChannelKind } from './registry.types';
 import { createProviderInstance } from './registry';
 import { usePluginStore } from '../store/pluginStore';
+import { waitForPluginStoreRehydration } from '../store/pluginStore';
 import { createSandboxedFetch } from '../services/plugin/PluginSandbox';
 import { createLogger } from '../store/logger';
 
@@ -36,6 +39,7 @@ import { createTTSProvider } from './tts';
 import type { TTSProvider } from './tts/types';
 import { createITVProvider as createITVProviderFromConfig } from './itv';
 import type { ITVProvider } from './itv/types';
+import type { ImageHostingProvider } from './imageHosting/types';
 
 // 重新导出 ProviderManager
 export { providerManager, ProviderManager, type ProviderKindMap } from './manager';
@@ -225,23 +229,68 @@ export function createTTSProviderFromConfig(config: TTSModelConfig): TTSProvider
 
 // ========== 插件渠道 Provider 创建 ==========
 
+function createBestEffortPluginChannelFetch(): typeof fetch {
+  return async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = typeof input === 'string'
+      ? input
+      : input instanceof URL
+        ? input.toString()
+        : (input as any)?.url || input.toString();
+
+    if (url.startsWith('file://')) {
+      throw new Error('不允许通过 fetch 访问本地文件');
+    }
+    if (url.includes('localhost') || url.includes('127.0.0.1')) {
+      throw new Error('不允许访问本地服务');
+    }
+
+    // We intentionally use native fetch here (not IPC safeFetch) because plugin providers
+    // may send FormData which the IPC bridge does not support yet.
+    return fetch(input as any, init);
+  };
+}
+
 /**
  * 为插件渠道创建 Provider 上下文
  */
-function createChannelProviderContext(channelConfig: ChannelConfig) {
+async function createChannelProviderContext(channelConfig: ChannelConfig, kind: ChannelKind) {
   if (channelConfig.source === 'plugin') {
     if (!channelConfig.pluginId) {
       logger.error(`插件渠道 ${channelConfig.name} 缺少 pluginId`);
       return null;
     }
 
-    const plugin = usePluginStore.getState().getPlugin(channelConfig.pluginId);
+    // In early startup, pluginStore may not have rehydrated yet. For plugin channels,
+    // we wait once to avoid a false "plugin not found" -> "provider not ready".
+    let plugin = usePluginStore.getState().getPlugin(channelConfig.pluginId);
     if (!plugin) {
-      logger.warn(`插件 ${channelConfig.pluginId} 未找到`);
+      await waitForPluginStoreRehydration();
+      plugin = usePluginStore.getState().getPlugin(channelConfig.pluginId);
+    }
+    if (!plugin) {
+      logger.warn(`插件 ${channelConfig.pluginId} 未找到`, {
+        channelId: channelConfig.id,
+        providerType: channelConfig.providerType,
+        capability: channelConfig.capabilities,
+      });
+      // Best-effort: if provider definitions are already registered in-memory but the plugin
+      // record is temporarily unavailable (rehydration edge cases / multi-window), we can
+      // still create the provider instance for image-hosting so downstream remoteUrl fill
+      // does not fail with "Provider not ready".
+      if (kind === 'image-hosting') {
+        return {
+          sandboxedFetch: createBestEffortPluginChannelFetch(),
+          pluginId: channelConfig.pluginId,
+          logger: console,
+        };
+      }
       return null;
     }
     if (!plugin.isEnabled) {
-      logger.warn(`插件 ${channelConfig.pluginId} 已禁用`);
+      logger.warn(`插件 ${channelConfig.pluginId} 已禁用`, {
+        channelId: channelConfig.id,
+        providerType: channelConfig.providerType,
+      });
       return null;
     }
 
@@ -259,7 +308,7 @@ function createChannelProviderContext(channelConfig: ChannelConfig) {
  * 从插件渠道配置创建 Provider 实例
  */
 async function createChannelProvider<T>(channelConfig: ChannelConfig, kind: ChannelKind): Promise<T | null> {
-  const context = createChannelProviderContext(channelConfig);
+  const context = await createChannelProviderContext(channelConfig, kind);
   if (!context) return null;
 
   try {
@@ -270,9 +319,23 @@ async function createChannelProvider<T>(channelConfig: ChannelConfig, kind: Chan
       context
     );
   } catch (err: unknown) {
-    logger.error('创建插件 Provider 失败', err);
+    logger.error('创建插件 Provider 失败', {
+      kind,
+      providerType: channelConfig.providerType,
+      pluginId: channelConfig.pluginId,
+      channelId: channelConfig.id,
+      error: err instanceof Error ? err.message : String(err),
+    });
     return null;
   }
+}
+
+export async function getProjectImageHostingProvider(): Promise<ImageHostingProvider | null> {
+  const channel = await getDefaultChannelConfig('image-hosting' as any)
+    || (await getChannelsByCapability('image-hosting' as any))[0]
+    || null;
+  if (!channel) return null;
+  return createChannelProvider<ImageHostingProvider>(channel, 'image-hosting');
 }
 
 export async function getProjectLLMProvider(projectLLMConfigId?: string): Promise<LLMProvider | null> {
@@ -300,13 +363,8 @@ export async function getProjectITVProvider(projectITVConfigId?: string): Promis
     return createChannelProvider<ITVProvider>(config.channelConfig, 'itv');
   }
 
-  return createITVProviderFromConfig({
-    provider: config.provider as any,
-    apiKey: config.apiKey,
-    baseUrl: config.baseUrl,
-    defaultDuration: config.defaultDuration,
-    defaultResolution: config.defaultResolution,
-  });
+  // 关键：不要丢失 promptProtocol 等扩展字段，否则 ITV 侧的 Grok 编译与 debug-body 日志无法生效。
+  return createITVProviderFromConfig(config as any);
 }
 
 export async function getProjectTTSProvider(projectTTSConfigId?: string): Promise<TTSProvider | null> {

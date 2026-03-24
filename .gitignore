@@ -34,3 +34,6 @@ frontend/coverage
 # spec-workflow templates
 .spec-workflow/templates/
 .spec-workflow/user-templates/
+
+# Local agent scratch prompts
+agent-prompts/

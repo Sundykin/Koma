@@ -227,6 +227,12 @@ async function loadPluginModule(plugin: InstalledPlugin): Promise<PluginExports 
  * 加载 UMD/IIFE 模块
  */
 async function loadUMDModule(path: string, pluginId: string): Promise<any> {
+  // Provider/global 插件的 UI bundle 目前按 UMD/IIFE 方式运行在宿主页面上下文中，
+  // 且插件代码依赖 window.React / window.antd / window['@ant-design/icons'] 等外部全局。
+  // 宿主应用本身使用模块化打包，这些全局默认不存在，因此这里做一次集中注入。
+  // 这样插件侧无需重复打包 React/AntD，也避免每个插件写兼容代码。
+  await ensurePluginUmdGlobals();
+
   // 使用 koma-local:// 自定义协议加载本地文件（绕过 file:// 安全限制）
   // 路径需要编码，避免 C: 被解析为协议
   let normalizedPath = path.replace(/\\/g, '/');
@@ -235,7 +241,6 @@ async function loadUMDModule(path: string, pluginId: string): Promise<any> {
   // 对路径进行编码（保留斜杠）
   const encodedPath = normalizedPath.split('/').map(segment => encodeURIComponent(segment)).join('/');
   const fileUrl = `koma-local:///${encodedPath}`;
-
 
   // 创建 script 标签动态加载
   return new Promise((resolve, reject) => {
@@ -257,6 +262,11 @@ async function loadUMDModule(path: string, pluginId: string): Promise<any> {
         }
         resolve(module);
       } else {
+        logger.error('插件 UMD 导出缺失', {
+          pluginId,
+          globalKey,
+          fileUrl,
+        });
         reject(new Error(`插件 ${pluginId} 未正确导出到 window.${globalKey}`));
       }
       document.head.removeChild(script);
@@ -264,11 +274,50 @@ async function loadUMDModule(path: string, pluginId: string): Promise<any> {
 
     script.onerror = (_err) => {
       document.head.removeChild(script);
+      logger.error('加载插件脚本失败', { pluginId, fileUrl, path });
       reject(new Error(`加载插件脚本失败: ${path}`));
     };
 
     document.head.appendChild(script);
   });
+}
+
+let pluginUmdGlobalsReady = false;
+async function ensurePluginUmdGlobals(): Promise<void> {
+  if (pluginUmdGlobalsReady) return;
+  if (typeof window === 'undefined') return;
+
+  // React
+  if (!(window as any).React) {
+    const ReactMod = await import('react');
+    const ReactDefault = (ReactMod as any).default;
+    // In different bundlers, React may appear on either the module namespace or default export.
+    // We normalize to an object that exposes hooks as properties (React.useState etc.).
+    const ReactGlobal = ReactDefault && (ReactDefault.useState || ReactDefault.createElement)
+      ? { ...ReactMod, ...ReactDefault }
+      : ReactMod;
+    (window as any).React = ReactGlobal;
+  }
+
+  // Ant Design
+  if (!(window as any).antd) {
+    const antdMod = await import('antd');
+    const antdDefault = (antdMod as any).default;
+    (window as any).antd = antdDefault && typeof antdDefault === 'object'
+      ? { ...antdMod, ...antdDefault }
+      : antdMod;
+  }
+
+  // Ant Design Icons
+  if (!(window as any)['@ant-design/icons']) {
+    const iconsMod = await import('@ant-design/icons');
+    const iconsDefault = (iconsMod as any).default;
+    (window as any)['@ant-design/icons'] = iconsDefault && typeof iconsDefault === 'object'
+      ? { ...iconsMod, ...iconsDefault }
+      : iconsMod;
+  }
+
+  pluginUmdGlobalsReady = true;
 }
 
 /**

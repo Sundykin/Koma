@@ -24,8 +24,25 @@ import { resolveProviderAssetInput, resolveProviderAssetInputs } from './mediaAs
 import { persistMediaAsset } from './mediaPersistenceService';
 import { bindOwnerRefMedia } from './mediaTaskBindingService';
 import { getProjectITVProvider, getProjectTTIProvider, getProjectTTSProvider } from '../providers';
+import {
+  ensureRemoteUrlForImageAsset,
+  ensureRemoteUrlForImageSource,
+  ensureRemoteUrlForImageSources,
+} from './mediaRemoteUrlService';
+import type { RemoteUrlPolicy } from './mediaRemoteUrlService';
+import type { PromptCompilationInput } from './promptCompilation/types';
+import { compileGrokITV, compileGrokTTI } from './promptCompilation/grokImageIndexCompiler';
+import { parseMentions } from '../editor/mentionTypes';
+import { sanitizeBodyForLog, truncateString } from '../utils/logFormatting';
+import { DEFAULT_POLLING_CONFIG } from '../providers/polling';
 
 const logger = createLogger('MediaGeneration');
+
+function getPromptProtocol(provider: any): string | undefined {
+  // ChannelConfig.providerConfig is spread into resolved config (see store/settings/mediaConfig.ts),
+  // so protocol flags appear on provider.config directly.
+  return provider?.config?.promptProtocol as string | undefined;
+}
 
 function inferTaskType(kind: MediaKind): AsyncTaskType {
   if (kind === 'video') return 'itv';
@@ -102,21 +119,79 @@ function getOptionNumber(
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 }
 
+function supportsDataUrl(transports: Array<'remote-url' | 'data-url'> | undefined): boolean {
+  return Boolean(transports?.includes('data-url'));
+}
+
+function providerAllowsDataUrlForITV(provider: any): { primary: boolean; additional: boolean } {
+  const primaryTransports = provider?.assetTransports?.primaryImage as Array<'remote-url' | 'data-url'> | undefined;
+  const additionalTransports = provider?.assetTransports?.additionalReferences as Array<'remote-url' | 'data-url'> | undefined;
+  return {
+    // Default is URL-only to stay safe for remote servers.
+    primary: supportsDataUrl(primaryTransports),
+    additional: supportsDataUrl(additionalTransports ?? primaryTransports),
+  };
+}
+
 export class MediaGenerationService {
   async generateImage(params: {
     projectId: string;
     ownerRef: MediaOwnerRef;
     request: TTIRequest<MediaAssetSource | ProviderAssetInput>;
+    promptCompilation?: PromptCompilationInput;
     ttiConfigId?: string;
     taskName?: string;
   }): Promise<StoredMediaAsset> {
-    const { projectId, ownerRef, request, ttiConfigId, taskName } = params;
+    const { projectId, ownerRef, request, ttiConfigId, taskName, promptCompilation } = params;
     const provider = await getProjectTTIProvider(ttiConfigId);
     if (!provider) throw new Error('未配置 TTI 服务');
 
-    const references = await ensureProviderAssetInputs(request.references || []);
+    const protocol = getPromptProtocol(provider);
+    logger.info('TTI generateImage entry', {
+      ownerRef,
+      provider: provider.config?.provider,
+      protocol: protocol || 'none',
+      hasPromptCompilation: Boolean(promptCompilation?.selectedAssets?.length),
+      referencesCount: (request.references || []).length,
+    });
+    const originalPrompt = request.prompt;
+    let compiledPrompt = originalPrompt;
+    let compilationDebug: any = null;
+    let compileReferences = request.references || [];
+
+    if (protocol === 'grok-image-index' && promptCompilation?.selectedAssets?.length) {
+      const { compiledPrompt: cp, compiledReferences, debug } = compileGrokTTI({
+        prompt: originalPrompt,
+        selectedAssets: promptCompilation.selectedAssets,
+        // Keep any manual refs as trailing extras (do not shift @Image N indices).
+        extraReferences: (request.references || []),
+      });
+      compiledPrompt = cp;
+      compilationDebug = debug;
+      compileReferences = compiledReferences;
+
+      logger.info('TTI prompt compiled (grok-image-index)', {
+        ownerRef,
+        protocol,
+        originalPrompt: truncateString(originalPrompt, 800),
+        compiledPrompt: truncateString(compiledPrompt, 800),
+        mentions: parseMentions(originalPrompt),
+        debug,
+      });
+    }
+
+    const references = await ensureProviderAssetInputs(compileReferences);
+    if (protocol === 'grok-image-index') {
+      logger.info('TTI start payload (post-compile)', sanitizeBodyForLog({
+        provider: provider.config?.provider,
+        promptProtocol: protocol,
+        prompt: compiledPrompt,
+        references: references.map(r => ({ transport: r.transport, value: r.value, mimeType: r.mimeType })),
+        options: request.options,
+      }));
+    }
     const started = await provider.start({
-      prompt: request.prompt,
+      prompt: compiledPrompt,
       references,
       options: request.options,
     });
@@ -137,17 +212,25 @@ export class MediaGenerationService {
         ownerRef,
         provider: provider.config?.provider,
         metadata: {
-          prompt: request.prompt,
+          prompt: originalPrompt,
+          ...(protocol ? { promptProtocol: protocol } : undefined),
+          ...(compilationDebug ? { compiledPrompt, compilationDebug } : undefined),
           ...(optionWidth ? { width: optionWidth } : undefined),
           ...(optionHeight ? { height: optionHeight } : undefined),
           ...(optionSeed !== undefined ? { seed: optionSeed } : undefined),
         },
       });
 
-      const finalAsset = mergeMediaMetadata(persisted, {
+      const normalized = await ensureRemoteUrlForImageAsset({
+        projectId,
+        asset: persisted,
+        policy: 'best-effort',
+      });
+
+      const finalAsset = mergeMediaMetadata(normalized, {
         provider: provider.config?.provider,
-        width: optionWidth ?? output.width ?? persisted.width,
-        height: optionHeight ?? output.height ?? persisted.height,
+        width: optionWidth ?? output.width ?? normalized.width,
+        height: optionHeight ?? output.height ?? normalized.height,
       });
 
       await bindOwnerRefMedia(projectId, ownerRef, finalAsset);
@@ -178,7 +261,9 @@ export class MediaGenerationService {
         width: optionWidth ?? asset.width,
         height: optionHeight ?? asset.height,
         metadata: {
-          prompt: request.prompt,
+          prompt: originalPrompt,
+          ...(protocol ? { promptProtocol: protocol } : undefined),
+          ...(compilationDebug ? { compiledPrompt, compilationDebug } : undefined),
           ...(optionSeed !== undefined ? { seed: optionSeed } : undefined),
         },
       }),
@@ -190,19 +275,131 @@ export class MediaGenerationService {
     projectId: string;
     ownerRef: MediaOwnerRef;
     request: ITVRequest<MediaAssetSource | ProviderAssetInput>;
+    promptCompilation?: PromptCompilationInput;
     itvConfigId?: string;
     taskName?: string;
   }): Promise<StoredMediaAsset> {
-    const { projectId, ownerRef, request, itvConfigId, taskName } = params;
+    const { projectId, ownerRef, request, itvConfigId, taskName, promptCompilation } = params;
     const provider = await getProjectITVProvider(itvConfigId);
     if (!provider) throw new Error('未配置 ITV 服务');
 
-    const primaryImage = await ensureProviderAssetInput(request.primaryImage as any);
+    const protocol = getPromptProtocol(provider);
+    logger.info('ITV generateVideo entry', {
+      ownerRef,
+      provider: provider.config?.provider,
+      protocol: protocol || 'none',
+      hasPromptCompilation: Boolean(promptCompilation?.selectedAssets?.length),
+      additionalRefsCount: (request.additionalReferences || []).length,
+    });
+    const originalPrompt = request.prompt;
+    let compiledPrompt = originalPrompt;
+    let compilationDebug: any = null;
+    let additionalReferencesInput = (request.additionalReferences || []);
+
+    // grok2api video calls can be very sensitive to payload size. Limit reference count
+    // to improve upstream stability (e.g. avoid AssetsUploadReverse upstream errors).
+    const isGrok2ApiImagineITV = provider?.config?.provider === 'grok2api-imagine-itv';
+    const maxGrok2ApiAdditionalRefs = isGrok2ApiImagineITV ? 3 : undefined;
+    if (maxGrok2ApiAdditionalRefs != null && additionalReferencesInput.length > maxGrok2ApiAdditionalRefs) {
+      additionalReferencesInput = additionalReferencesInput.slice(0, maxGrok2ApiAdditionalRefs);
+    }
+
+    // Decide policy based on provider supported transports:
+    // - URL-only providers: remoteUrl is required (fail fast if cannot upload / missing image-hosting)
+    // - data-url-capable providers: remoteUrl is best-effort (fall back to data-url payload)
+    const allow = providerAllowsDataUrlForITV(provider);
+    const primaryPolicy: RemoteUrlPolicy = allow.primary ? 'best-effort' : 'required';
+    const additionalPolicy: RemoteUrlPolicy = allow.additional ? 'best-effort' : 'required';
+
+    // When provider accepts data-url, do not attempt "best-effort" image hosting uploads here.
+    // This avoids hard dependency on image-hosting plugins and keeps the pipeline deterministic:
+    // local paths -> data-url (resolver), remote URLs remain remote-url.
+    const normalizedPrimary = primaryPolicy === 'required'
+      ? await ensureRemoteUrlForImageSource({
+          projectId,
+          source: request.primaryImage as any,
+          policy: primaryPolicy,
+        })
+      : (request.primaryImage as any);
+
+    const normalizedAdditional = additionalPolicy === 'required'
+      ? await ensureRemoteUrlForImageSources({
+          projectId,
+          sources: (additionalReferencesInput as any[]),
+          policy: additionalPolicy,
+        })
+      : (additionalReferencesInput as any[]);
+
+    const primaryImage = await ensureProviderAssetInput(normalizedPrimary as any);
     if (!primaryImage) throw new Error('缺少 primaryImage');
-    const additionalReferences = await ensureProviderAssetInputs((request.additionalReferences || []) as any);
+    let additionalReferences = await ensureProviderAssetInputs(normalizedAdditional as any);
+
+    if (protocol === 'grok-image-index' && promptCompilation?.selectedAssets?.length) {
+      const cappedSelectedAssets = maxGrok2ApiAdditionalRefs != null
+        ? promptCompilation.selectedAssets.slice(0, maxGrok2ApiAdditionalRefs)
+        : promptCompilation.selectedAssets;
+      const remainingForExtra = maxGrok2ApiAdditionalRefs != null
+        ? Math.max(0, maxGrok2ApiAdditionalRefs - cappedSelectedAssets.length)
+        : undefined;
+      const cappedExtraReferences = remainingForExtra != null
+        ? (request.additionalReferences || []).slice(0, remainingForExtra)
+        : (request.additionalReferences || []);
+
+      // Rebuild additional references in strict order (selectedAssets -> extras) so @Image N is stable.
+      // Important: We compile on the "raw prompt" and rely on the normalized remote/data URLs above.
+      const { compiledPrompt: cp, compiledAdditionalReferences, debug } = compileGrokITV({
+        prompt: originalPrompt,
+        primaryImage: primaryImage.value,
+        selectedAssets: cappedSelectedAssets,
+        extraReferences: cappedExtraReferences,
+      });
+      compiledPrompt = cp;
+      compilationDebug = debug;
+
+      // Normalize the compiled additional refs again (they may include StoredMediaAsset / local paths).
+      const normalizedCompiledAdditional = additionalPolicy === 'required'
+        ? await ensureRemoteUrlForImageSources({
+            projectId,
+            sources: (compiledAdditionalReferences as any[]),
+            policy: additionalPolicy,
+          })
+        : (compiledAdditionalReferences as any[]);
+      additionalReferences = await ensureProviderAssetInputs(normalizedCompiledAdditional as any);
+
+      logger.info('ITV prompt compiled (grok-image-index)', {
+        ownerRef,
+        protocol,
+        originalPrompt: truncateString(originalPrompt, 800),
+        compiledPrompt: truncateString(compiledPrompt, 800),
+        mentions: parseMentions(originalPrompt),
+        debug,
+      });
+    }
+
+    if (maxGrok2ApiAdditionalRefs != null && additionalReferences.length > maxGrok2ApiAdditionalRefs) {
+      additionalReferences = additionalReferences.slice(0, maxGrok2ApiAdditionalRefs);
+    }
+
+    if (protocol === 'grok-image-index') {
+      logger.info('ITV start payload (post-compile)', sanitizeBodyForLog({
+        provider: provider.config?.provider,
+        promptProtocol: protocol,
+        prompt: compiledPrompt,
+        primaryImage: { transport: primaryImage.transport, value: primaryImage.value, mimeType: primaryImage.mimeType },
+        additionalReferences: additionalReferences.map(r => ({ transport: r.transport, value: r.value, mimeType: r.mimeType })),
+        options: request.options,
+      }));
+    }
+
+    if (!allow.primary && primaryImage.transport !== 'remote-url') {
+      throw new Error('当前 ITV Provider 仅支持 URL 图片输入（remote-url），请启用图床以获得 remoteUrl');
+    }
+    if (!allow.additional && additionalReferences.some(r => r.transport !== 'remote-url')) {
+      throw new Error('当前 ITV Provider 仅支持 URL 图片输入（remote-url），请启用图床以获得 remoteUrl');
+    }
 
     const started = await provider.start({
-      prompt: request.prompt,
+      prompt: compiledPrompt,
       primaryImage,
       additionalReferences,
       options: request.options,
@@ -223,14 +420,20 @@ export class MediaGenerationService {
         provider: provider.config?.provider,
         providerTaskId: (output as any).taskId,
         metadata: {
-          prompt: request.prompt,
+          prompt: originalPrompt,
+          ...(protocol ? { promptProtocol: protocol } : undefined),
+          ...(compilationDebug ? { compiledPrompt, compilationDebug } : undefined),
           ...(optionDuration ? { durationSec: optionDuration } : undefined),
         },
       });
       const finalAsset = mergeMediaMetadata(persisted, {
         provider: provider.config?.provider,
         durationMs: durationSecToMs(optionDuration) ?? persisted.durationMs,
-        metadata: { prompt: request.prompt },
+        metadata: {
+          prompt: originalPrompt,
+          ...(protocol ? { promptProtocol: protocol } : undefined),
+          ...(compilationDebug ? { compiledPrompt, compilationDebug } : undefined),
+        },
       });
       await bindOwnerRefMedia(projectId, ownerRef, finalAsset);
       return finalAsset;
@@ -258,7 +461,11 @@ export class MediaGenerationService {
         provider: provider.config?.provider,
         providerTaskId: started.taskId,
         durationMs: durationSecToMs(optionDuration) ?? asset.durationMs,
-        metadata: { prompt: request.prompt },
+        metadata: {
+          prompt: originalPrompt,
+          ...(protocol ? { promptProtocol: protocol } : undefined),
+          ...(compilationDebug ? { compiledPrompt, compilationDebug } : undefined),
+        },
       }),
       providerTaskId: started.taskId,
     });
@@ -415,8 +622,8 @@ export class MediaGenerationService {
   }): Promise<StoredMediaAsset> {
     const { projectId, kind, task, getSnapshot, extractSource, enrichAsset, providerTaskId, onProgress } = params;
 
-    const pollIntervalMs = 3000;
-    const maxPollMs = 10 * 60 * 1000;
+    const pollIntervalMs = DEFAULT_POLLING_CONFIG.interval;
+    const maxPollMs = DEFAULT_POLLING_CONFIG.maxDuration;
     const startTime = Date.now();
 
     while (Date.now() - startTime < maxPollMs) {
@@ -452,7 +659,10 @@ export class MediaGenerationService {
           providerTaskId: providerTaskId || task.remoteTaskId,
         });
 
-        const finalAsset = enrichAsset(persisted);
+        const enriched = enrichAsset(persisted);
+        const finalAsset = kind === 'image'
+          ? await ensureRemoteUrlForImageAsset({ projectId, asset: enriched, policy: 'best-effort' })
+          : enriched;
         await markTaskCompleted(projectId, task.id, finalAsset);
 
         if (task.ownerRef) {

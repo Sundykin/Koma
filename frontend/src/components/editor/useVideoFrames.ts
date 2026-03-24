@@ -61,9 +61,12 @@ async function extractVideoFrames(
       }
 
       const frames = await ffmpegManager.getFrames(videoPath, resourceId);
+      // Some ffmpeg adapters may return `undefined` on failure instead of throwing.
+      // Keep the hook resilient and avoid crashing on `.map`.
+      const safeFrames = Array.isArray(frames) ? frames : [];
 
       // 将帧路径转换为可用的 URL
-      const frameUrls = frames.map(f => toKomaLocalUrl(f));
+      const frameUrls = safeFrames.map(f => toKomaLocalUrl(f));
 
       globalFrameCache.set(cacheKey, {
         frames: frameUrls,

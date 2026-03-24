@@ -4,6 +4,7 @@
 import { electronService } from '../../services/electronService';
 import type { Timeline } from '../../types';
 import { getProjectPath } from './core';
+import { remapTimelineClipSourcesToLocal } from './mediaUrlRemap';
 
 export async function loadTimeline(projectId: string): Promise<Timeline | null> {
   if (!electronService.isElectron()) {
@@ -30,8 +31,10 @@ export async function saveTimeline(
   }
 
   const projectPath = await getProjectPath(projectId);
+  // Persist timeline with local media sources when possible (avoid CORS in Electron).
+  const { timeline: remapped } = await remapTimelineClipSourcesToLocal(projectPath, timeline as any);
   await electronService.fs.writeFile(
     `${projectPath}/timeline.json`,
-    JSON.stringify(timeline, null, 2)
+    JSON.stringify(remapped || timeline, null, 2)
   );
 }

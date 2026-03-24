@@ -10,7 +10,7 @@ import type {
   ClipAnimation,
   AudioFade,
   ClipMask,
-  ClipTransition,
+  Transition,
 } from '../../types/editor';
 import { generateHexId } from './coordinateTransform';
 
@@ -305,18 +305,28 @@ interface JianyingTransitionExport {
   category_name: string;
 }
 
+const JIANYING_TRANSITION_META: Record<Transition['type'], { effectId: string; name: string }> = {
+  fade: {
+    effectId: 'fade',
+    name: '淡变',
+  },
+};
+
 /**
  * 构建转场素材
  */
-export function buildTransition(transition: ClipTransition | undefined): JianyingTransitionExport | null {
+export function buildTransition(transition: Transition | undefined): JianyingTransitionExport | null {
   if (!transition) return null;
+
+  const meta = JIANYING_TRANSITION_META[transition.type];
+  if (!meta) return null;
 
   return {
     id: generateHexId(),
     type: 'transition',
-    name: transition.name || transition.effectId,
-    effect_id: transition.effectId,
-    resource_id: transition.resourceId || transition.effectId,
+    name: meta.name,
+    effect_id: meta.effectId,
+    resource_id: meta.effectId,
     duration: secondsToMicroseconds(transition.duration),
     is_overlap: true,
     platform: 'all',

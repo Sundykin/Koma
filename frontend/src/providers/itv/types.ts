@@ -14,6 +14,8 @@ import type {
   ITVRequest as BaseITVRequest,
 } from '../../types';
 
+export type ProviderAssetTransport = ProviderAssetInput['transport'];
+
 // 角色提取参数
 export interface CharacterExtractionParams {
   url?: string;
@@ -64,6 +66,21 @@ export type ITVRequest = BaseITVRequest<ProviderAssetInput, ITVOptions>;
 export interface ITVProvider {
   type: ITVProviderType;
   config: ITVConfig;
+
+  /**
+   * Declares which asset transports are supported by this ITV provider.
+   *
+   * Why this exists:
+   * - Some remote ITV servers only accept URL-accessible images (`remote-url`).
+   * - Some accept inline base64 via `data-url` (large payloads, but can be useful as a fallback).
+   *
+   * The host (MediaGenerationService) uses this signal to decide whether "ensure remoteUrl"
+   * should be `required` (URL-only) or `best-effort` (data-url is allowed as fallback).
+   */
+  assetTransports?: {
+    primaryImage?: ReadonlyArray<ProviderAssetTransport>;
+    additionalReferences?: ReadonlyArray<ProviderAssetTransport>;
+  };
 
   // 验证配置
   validate(): boolean;

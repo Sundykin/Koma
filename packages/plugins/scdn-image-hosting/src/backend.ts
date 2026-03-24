@@ -62,16 +62,17 @@ class SCDNImageHostingProvider {
     }
 
     try {
-      // 构建 FormData
-      const FormData = (await import('form-data')).default;
       const formData = new FormData();
 
       // 添加图片数据
       const filename = options?.filename || `image_${Date.now()}.png`;
-      formData.append('image', Buffer.from(imageData as ArrayBuffer), {
-        filename,
-        contentType: 'image/png',
-      });
+      const bytes = imageData instanceof Buffer
+        ? new Uint8Array(imageData)
+        : imageData instanceof ArrayBuffer
+          ? new Uint8Array(imageData)
+          : new Uint8Array(Buffer.from(imageData));
+      const blob = new Blob([bytes], { type: 'image/png' });
+      formData.append('image', blob, filename);
 
       // 输出格式
       const outputFormat = options?.outputFormat || this.config.outputFormat || 'auto';
@@ -84,11 +85,9 @@ class SCDNImageHostingProvider {
       }
 
       // 发送请求
-      const fetch = (await import('node-fetch')).default;
       const response = await fetch(this.config.apiEndpoint, {
         method: 'POST',
-        body: formData as any,
-        headers: formData.getHeaders(),
+        body: formData,
       });
 
       const result = await response.json() as any;

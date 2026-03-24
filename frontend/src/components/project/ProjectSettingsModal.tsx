@@ -112,6 +112,14 @@ export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({
             <Input placeholder="如: 悬疑、爱情、科幻" />
           </Form.Item>
 
+          <Form.Item label="画面比例">
+            <Input
+              value={project?.aspectRatio === '9:16' ? '9:16 竖屏' : '16:9 横屏'}
+              disabled
+              style={{ color: '#999' }}
+            />
+          </Form.Item>
+
           <Form.Item
             name="stylePresetId"
             label="项目风格"

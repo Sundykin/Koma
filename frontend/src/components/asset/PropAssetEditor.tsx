@@ -2,7 +2,7 @@
  * 道具资产编辑器
  * 简化版：只显示名称、参考图和提示词
  */
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { Button, Input, Space, Progress, Typography, App } from 'antd';
 import { ThunderboltOutlined, UploadOutlined, EditOutlined, CheckOutlined, LoadingOutlined } from '@ant-design/icons';
 import type { Prop } from '../../types';
@@ -36,18 +36,21 @@ export const PropAssetEditor: React.FC<PropAssetEditorProps> = ({
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState({ value: 0, step: '' });
   const [isEditing, setIsEditing] = useState(false);
-  const [customPrompt, setCustomPrompt] = useState(prop.customPrompt || '');
+  const [promptDraft, setPromptDraft] = useState(prop.prompt || '');
 
-  // 自动生成的提示词
   const autoPrompt = getPropPrompt(prop, theme, stylePrompt);
-  const currentPrompt = prop.customPrompt || autoPrompt;
+  const currentPrompt = promptDraft.trim() || autoPrompt;
+
+  useEffect(() => {
+    setPromptDraft(prop.prompt || '');
+  }, [prop.id, prop.prompt]);
 
   const handleGenerate = useCallback(async () => {
     setLoading(true);
     setProgress({ value: 0, step: '准备中...' });
 
     try {
-      const propWithPrompt = { ...prop, customPrompt: customPrompt || undefined };
+      const propWithPrompt = { ...prop, prompt: currentPrompt };
       const result = await generatePropImage({
         projectId,
         prop: propWithPrompt,
@@ -68,7 +71,7 @@ export const PropAssetEditor: React.FC<PropAssetEditorProps> = ({
               remoteUrl: result.url,
             }),
           },
-          customPrompt: customPrompt || undefined,
+          prompt: currentPrompt,
         });
         message.success('参考图生成完成');
       } else {
@@ -79,7 +82,7 @@ export const PropAssetEditor: React.FC<PropAssetEditorProps> = ({
     } finally {
       setLoading(false);
     }
-  }, [projectId, prop, theme, stylePrompt, ttiConfigId, customPrompt, onUpdate, message]);
+  }, [projectId, prop, theme, stylePrompt, ttiConfigId, currentPrompt, onUpdate, message]);
 
   const handleUpload = useCallback(async () => {
     try {
@@ -109,7 +112,7 @@ export const PropAssetEditor: React.FC<PropAssetEditorProps> = ({
   }, [projectId, prop.id, onUpdate, message]);
 
   const handleSavePrompt = () => {
-    onUpdate({ customPrompt: customPrompt || undefined });
+    onUpdate({ prompt: currentPrompt });
     setIsEditing(false);
     message.success('提示词已保存');
   };
@@ -190,8 +193,8 @@ export const PropAssetEditor: React.FC<PropAssetEditorProps> = ({
           </Button>
         </div>
         <TextArea
-          value={isEditing ? customPrompt : currentPrompt}
-          onChange={(e) => setCustomPrompt(e.target.value)}
+          value={isEditing ? promptDraft : currentPrompt}
+          onChange={(e) => setPromptDraft(e.target.value)}
           rows={2}
           placeholder="描述道具..."
           disabled={!isEditing}
@@ -201,9 +204,9 @@ export const PropAssetEditor: React.FC<PropAssetEditorProps> = ({
             fontSize: 12,
           }}
         />
-        {prop.customPrompt && (
+        {prop.prompt && (
           <Text type="secondary" style={{ fontSize: 10, marginTop: 4, display: 'block' }}>
-            使用自定义提示词 · <a onClick={() => { setCustomPrompt(''); onUpdate({ customPrompt: undefined }); }}>恢复自动</a>
+            使用已保存提示词 · <a onClick={() => { setPromptDraft(autoPrompt); onUpdate({ prompt: autoPrompt }); }}>恢复自动模板</a>
           </Text>
         )}
       </div>

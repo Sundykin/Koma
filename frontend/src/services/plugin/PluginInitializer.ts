@@ -23,7 +23,12 @@ export async function initializePlugin(plugin: InstalledPlugin): Promise<boolean
   }
 
   try {
-
+    logger.info('初始化插件: start', {
+      pluginId: plugin.id,
+      category: plugin.category,
+      hasFrontendEntry: Boolean(plugin.entry?.frontend || plugin.entry?.ui || plugin.entry?.logic),
+      hasBackendEntry: Boolean(plugin.entry?.backend),
+    });
     // mcp / agent / provider 类型插件如果有 backend 入口，需要后端激活
     const needsBackendActivation =
       plugin.category === 'mcp' ||
@@ -31,14 +36,25 @@ export async function initializePlugin(plugin: InstalledPlugin): Promise<boolean
       (plugin.category === 'provider' && plugin.entry?.backend);
 
     if (needsBackendActivation) {
-      const result = await electronService.ipc.invoke('controller/plugin/activate', { manifest: plugin });
-      if (!result?.success) {
-        logger.warn(`后端激活失败: ${plugin.id}`, result?.error);
-        // provider 类型后端激活失败不阻止前端加载
+      try {
+        logger.info('初始化插件: backend activate', { pluginId: plugin.id });
+        const result = await electronService.ipc.invoke('controller/plugin/activate', { manifest: plugin });
+        if (!result?.success) {
+          logger.warn(`后端激活失败: ${plugin.id}`, result?.error);
+          // provider 类型后端激活失败不阻止前端加载（例如 backend bundle 格式不兼容）
+          if (plugin.category !== 'provider') {
+            return false;
+          }
+        }
+      } catch (err: unknown) {
+        // 对 provider 插件：后端激活失败不应该阻止前端注册 Provider
+        // 否则会出现“渠道已存在但 Provider 未就绪”的死状态。
+        logger.warn(`后端激活异常: ${plugin.id}`, {
+          error: err instanceof Error ? err.message : String(err),
+        });
         if (plugin.category !== 'provider') {
           return false;
         }
-      } else {
       }
     }
 
@@ -69,11 +85,14 @@ export async function initializePlugin(plugin: InstalledPlugin): Promise<boolean
 
     // 创建 API 实例并调用 onActivate
     if (exports.onActivate) {
+      logger.info('初始化插件: calling onActivate', { pluginId: plugin.id, category: plugin.category });
       const api = createPluginAPI(plugin);
       await exports.onActivate(api);
+      logger.info('初始化插件: onActivate done', { pluginId: plugin.id, category: plugin.category });
     }
 
     initializedPlugins.add(plugin.id);
+    logger.info('初始化插件: done', { pluginId: plugin.id, category: plugin.category });
     return true;
   } catch (err) {
     logger.error(`插件 ${plugin.id} 初始化失败`, err);

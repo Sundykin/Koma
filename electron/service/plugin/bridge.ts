@@ -25,24 +25,35 @@ class PluginBridge {
     }
 
     // 获取或创建 Provider 实例
-    const instance = this.getProviderInstance(def, args[0]); // args[0] 通常是 config
+    const instance = await this.getProviderInstance(def, args[0]); // args[0] 通常是 config
 
     // 调用方法
     if (typeof (instance as any)[method] !== 'function') {
       throw new Error(`Method "${method}" not found on provider "${type}"`);
     }
 
-    return (instance as any)[method](...args.slice(1));
+    try {
+      return await (instance as any)[method](...args.slice(1));
+    } catch (err: any) {
+      console.error('[PluginBridge] callProvider failed', {
+        kind,
+        type,
+        method,
+        error: err?.message || String(err),
+        stack: err?.stack,
+      });
+      throw err;
+    }
   }
 
   // Provider 实例缓存
   private providerInstances = new Map<string, unknown>();
 
-  private getProviderInstance(def: ProviderDefinition, config: unknown): unknown {
+  private async getProviderInstance(def: ProviderDefinition, config: unknown): Promise<unknown> {
     const cacheKey = `${def.type}:${JSON.stringify(config)}`;
 
     if (!this.providerInstances.has(cacheKey)) {
-      const instance = def.factory(config, {});
+      const instance = await def.factory(config, {});
       this.providerInstances.set(cacheKey, instance);
     }
 

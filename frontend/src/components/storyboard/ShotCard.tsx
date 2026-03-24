@@ -28,7 +28,11 @@ import {
   PlusOutlined,
 } from '@ant-design/icons';
 import type { Shot, Character, Scene, Prop, StoredMediaAsset } from '../../types';
-import { getMediaAssetSource } from '../../types';
+import {
+  getMediaAssetDisplaySource,
+  getMediaAssetEditingSource,
+  isRemoteMediaUri,
+} from '../../types';
 import { ScriptEditor } from '../../editor';
 import type { MentionItem } from '../../editor';
 import { ImageCardGrid } from '../asset/ImageCardGrid';
@@ -36,9 +40,11 @@ import { VideoCardGrid } from '../asset/VideoCardGrid';
 import { StagePlayer } from '../video/StagePlayer';
 import { electronService } from '../../services/electronService';
 import { persistMediaAsset } from '../../services/mediaPersistenceService';
+import { ensureRemoteUrlForImageAsset } from '../../services/mediaRemoteUrlService';
 import { getProjectPath } from '../../store/projectStore';
 import { SHOT_LAYOUT, COL_ACTION_WIDTH } from '../../constants/storyboardConstants';
 import { AssetSelector } from './components/AssetSelector';
+import { createStoredMediaAsset } from '../../utils/mediaAssets';
 import './ShotCard.css';
 
 const { TextArea } = Input;
@@ -132,8 +138,8 @@ export const ShotCard: React.FC<ShotCardProps> = ({
 
   // 使用 useMemo 缓存计算值，避免不必要的重渲染
   const hasImagePrompt = useMemo(
-    () => !!(shot.imagePrompt?.trim() || shot.description?.trim()),
-    [shot.imagePrompt, shot.description]
+    () => !!shot.imagePrompt?.trim(),
+    [shot.imagePrompt]
   );
   const hasVideoPrompt = useMemo(
     () => !!shot.videoPrompt?.trim(),
@@ -145,11 +151,11 @@ export const ShotCard: React.FC<ShotCardProps> = ({
   // 图片提示词按钮点击处理
   const handleImagePromptClick = useCallback(() => {
     if (hasImagePrompt) {
-      onOptimizeImagePrompt(shot.id, shot.imagePrompt || shot.description || '');
+      onOptimizeImagePrompt(shot.id, shot.imagePrompt || '');
     } else {
       onGenerateImagePrompt(shot.id);
     }
-  }, [shot.id, shot.imagePrompt, shot.description, hasImagePrompt, onOptimizeImagePrompt, onGenerateImagePrompt]);
+  }, [shot.id, shot.imagePrompt, hasImagePrompt, onOptimizeImagePrompt, onGenerateImagePrompt]);
 
   // 视频提示词按钮点击处理
   const handleVideoPromptClick = useCallback(() => {
@@ -185,9 +191,12 @@ export const ShotCard: React.FC<ShotCardProps> = ({
   // 图片操作
   const handleImageSelect = (idx: number) => onImagesChange(shot.id, images, idx);
   const handleImageAdd = (path: string) => {
+    const asset = createStoredMediaAsset('image', isRemoteMediaUri(path)
+      ? { remoteUrl: path }
+      : { localPath: path });
     const newImages: StoredMediaAsset[] = [
       ...images,
-      { kind: 'image', localPath: path, createdAt: Date.now() },
+      asset,
     ];
     onImagesChange(shot.id, newImages, newImages.length - 1);
   };
@@ -226,7 +235,14 @@ export const ShotCard: React.FC<ShotCardProps> = ({
           },
         });
 
-        const newRefs: StoredMediaAsset[] = [...referenceImages, stored];
+        const finalized = await ensureRemoteUrlForImageAsset({
+          projectId,
+          asset: stored,
+          policy: 'best-effort',
+          filenameHint: file.name,
+        });
+
+        const newRefs: StoredMediaAsset[] = [...referenceImages, finalized];
         onReferenceImagesChange?.(shot.id, newRefs, newRefs.length - 1);
       } finally {
         URL.revokeObjectURL(blobUrl);
@@ -252,7 +268,7 @@ export const ShotCard: React.FC<ShotCardProps> = ({
   const actionBtnClass = "w-6 h-6 p-0 text-[11px]";
 
   const getDisplaySrc = useCallback((asset?: StoredMediaAsset | null): string => {
-    const source = asset ? getMediaAssetSource(asset) : undefined;
+    const source = asset ? getMediaAssetDisplaySource(asset) : undefined;
     if (!source) return '';
     if (source.startsWith('http') || source.startsWith('data:')) {
       return source;
@@ -350,7 +366,7 @@ export const ShotCard: React.FC<ShotCardProps> = ({
           {/* 提示词编辑器 + 浮动按钮 */}
           <div className="flex-1 p-1 min-h-0 relative">
             <ScriptEditor
-              value={shot.imagePrompt || shot.description || ''}
+              value={shot.imagePrompt || ''}
               onChange={(value) => onImagePromptChange(shot.id, value)}
               placeholder="画面描述提示词..."
               mentionItems={mentionItems}
@@ -420,7 +436,7 @@ export const ShotCard: React.FC<ShotCardProps> = ({
             ) : (
               <div className="w-full h-full">
                 <ImageCardGrid
-                  images={images.map(a => getMediaAssetSource(a) || '').filter(Boolean)}
+                  images={images.map(a => getMediaAssetDisplaySource(a) || '').filter(Boolean)}
                   selectedIndex={shot.media?.currentImageIndex || 0}
                   onSelect={handleImageSelect}
                   onAdd={handleImageAdd}
@@ -488,7 +504,7 @@ export const ShotCard: React.FC<ShotCardProps> = ({
               <div className="w-full h-full relative">
                 <VideoCardGrid
                   videos={videos.map(a => ({
-                    path: getMediaAssetSource(a) || '',
+                    path: getMediaAssetDisplaySource(a) || '',
                     url: a.remoteUrl,
                     thumbnailPath: typeof a.metadata?.thumbnailPath === 'string'
                       ? a.metadata.thumbnailPath
@@ -538,7 +554,7 @@ export const ShotCard: React.FC<ShotCardProps> = ({
       >
         <div className="aspect-video bg-black rounded overflow-hidden">
           <StagePlayer
-            videoPath={getMediaAssetSource(currentVideo || undefined)}
+            videoPath={getMediaAssetEditingSource(currentVideo || undefined)}
             videoUrl={currentVideo?.remoteUrl}
             poster={currentImage ? getDisplaySrc(currentImage) : undefined}
           />

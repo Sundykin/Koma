@@ -2,20 +2,22 @@
  * 分镜视频生成工作流
  * 纯 ITV 调用：使用已有参考图片（可选）生成视频
  */
-import { getMediaAssetSource, type Shot, type ShotVersion, type Character, type Prop } from '../types';
+import { getMediaAssetDisplaySource, type Shot, type ShotVersion, type Character, type Prop, type Scene } from '../types';
 import { getProjectITVProvider, getProjectTTSProvider } from '../providers';
-import { saveShotVersion, loadShotMeta, loadCharacters, loadProps } from '../store/projectStore';
+import { saveShotVersion, loadShotMeta, loadCharacters, loadProps, loadScenes } from '../store/projectStore';
 import { createLogger } from '../store/logger';
 import { logITVCall, logTTSCall } from '../store/aiCallLogger';
 import { resolvePromptTemplate } from '../store/promptTemplates';
 import { getThemeStylePrefixAsync } from '../config/themePresets';
-import { parseMentions } from '../editor/mentionTypes';
 import {
   normalizeCharactersMediaState,
   normalizePropsMediaState,
+  normalizeScenesMediaState,
   normalizeShotMediaState,
 } from '../store/project/mediaState';
 import { mediaGenerationService } from '../services/MediaGenerationService';
+import { buildShotVideoTemplateVariables } from './promptVariableBuilders';
+import { buildShotAssetReferences } from './assetReferenceBuilder';
 
 const logger = createLogger('ShotRender');
 
@@ -28,6 +30,7 @@ interface ShotRenderParams {
   projectId: string;
   episodeId?: string;
   shot: Shot;
+  aspectRatio?: '16:9' | '9:16';
   projectConfigIds?: {
     ttiConfigId?: string;
     itvConfigId?: string;
@@ -36,7 +39,7 @@ interface ShotRenderParams {
   theme?: string;
   stylePrompt?: string;
   styleSnapshot?: StyleSnapshotLike;
-  project?: { styleSnapshot?: StyleSnapshotLike };
+  project?: { styleSnapshot?: StyleSnapshotLike; aspectRatio?: '16:9' | '9:16' };
 }
 
 interface ShotRenderResult {
@@ -49,6 +52,7 @@ interface ShotRenderResult {
 interface BatchRenderParams {
   projectId: string;
   shots: Shot[];
+  aspectRatio?: '16:9' | '9:16';
   projectConfigIds?: {
     ttiConfigId?: string;
     itvConfigId?: string;
@@ -57,7 +61,7 @@ interface BatchRenderParams {
   theme?: string;
   stylePrompt?: string;
   styleSnapshot?: StyleSnapshotLike;
-  project?: { styleSnapshot?: StyleSnapshotLike };
+  project?: { styleSnapshot?: StyleSnapshotLike; aspectRatio?: '16:9' | '9:16' };
   concurrency?: number;
 }
 
@@ -76,7 +80,7 @@ async function getSelectedImageUrl(shot: Shot): Promise<string | undefined> {
   const normalizedShot = normalizeShotMediaState(shot);
   const idx = normalizedShot.media?.currentImageIndex ?? 0;
   const selectedAsset = normalizedShot.media?.images?.[idx];
-  const selectedSource = getMediaAssetSource(selectedAsset);
+  const selectedSource = getMediaAssetDisplaySource(selectedAsset);
   if (selectedSource) {
     logger.info(`使用当前分镜图片: ${selectedSource.startsWith('data:') ? 'data:...(base64)' : selectedSource}`);
     return selectedSource;
@@ -129,36 +133,52 @@ export async function shotRenderWorkflow(
     // 获取视觉风格前缀（支持自定义预设）
     const stylePrefix = await getResolvedTTIStylePrefix(styleSnapshot || project?.styleSnapshot, theme, stylePrompt);
 
-    // 加载道具
-    let projectProps: Prop[] = [];
+  // 加载道具
+  let projectProps: Prop[] = [];
     try {
       projectProps = normalizePropsMediaState(await loadProps(projectId));
     } catch {
       // 忽略
     }
 
+    let projectScenes: Scene[] = normalizeScenesMediaState([]);
+    try {
+      projectScenes = normalizeScenesMediaState(await loadScenes(projectId));
+    } catch {
+      // 忽略
+    }
+
     // 构建视频 prompt：优先使用 shot.videoPrompt
     let videoPrompt: string;
-    let additionalReferenceImages: string[] = [];
     let templateId = 'shot.videoPrompt';
     let promptSource: 'default' | 'custom' | 'finalized' = 'finalized';
 
     if (normalizedShot.videoPrompt) {
-      // 使用专用视频提示词
       videoPrompt = normalizedShot.videoPrompt;
-      // 使用新的处理函数，支持 Sora2 角色和参考图收集
-      const processed = processVideoPromptAssets(videoPrompt, normalizedShot, characters, projectProps);
-      videoPrompt = processed.prompt;
-      additionalReferenceImages = processed.referenceImages;
     } else {
-      const resolvedPrompt = await resolvePromptTemplate('itv_shot_video', {
+      const resolvedPrompt = await resolvePromptTemplate('itv_shot_video', buildShotVideoTemplateVariables({
+        shot: normalizedShot,
+        characters,
+        scenes: projectScenes,
+        props: projectProps,
         stylePrefix: stylePrefix || '',
-        description: normalizedShot.description || '',
         cameraMovement: getCameraMovementDesc(normalizedShot.cameraMovement),
-      });
-      videoPrompt = appendCharacterRefs(resolvedPrompt.prompt, normalizedShot, characters);
+      }));
+      videoPrompt = resolvedPrompt.prompt;
       templateId = resolvedPrompt.template.id;
       promptSource = resolvedPrompt.source;
+    }
+
+    // 统一从”分镜已选择资产”构建参考图（角色/场景/道具），保证链路不割裂
+    const {
+      displaySourceUrls: additionalReferenceImages,
+      compilationAssets: selectedAssetsForCompilation,
+    } = buildShotAssetReferences(normalizedShot, characters, projectScenes, projectProps);
+
+    // Shot 自身的参考图（手动添加），排在最后，避免影响 Grok @Image N 索引
+    for (const ref of normalizedShot.media?.references || []) {
+      const src = getMediaAssetDisplaySource(ref);
+      if (src) additionalReferenceImages.push(src);
     }
 
     logger.info(`视频 prompt: ${videoPrompt}`);
@@ -169,7 +189,7 @@ export async function shotRenderWorkflow(
     // 打印 ITV 调用日志（这里记录的是“原始来源”，实际传入 Provider 前会被 resolver 规范化）
     logITVCall(
       itvProvider.config?.name || 'ITV',
-      getMediaAssetSource(selectedImageAsset) || referenceImageUrl || '',
+      getMediaAssetDisplaySource(selectedImageAsset) || referenceImageUrl || '',
       videoPrompt,
       { duration: normalizedShot.duration, motionPrompt: normalizedShot.cameraMovement },
       {
@@ -253,7 +273,11 @@ export async function shotRenderWorkflow(
         options: {
           duration: normalizedShot.duration,
           motionPrompt: normalizedShot.cameraMovement,
+          aspectRatio: params.aspectRatio || params.project?.aspectRatio || '16:9',
         },
+      },
+      promptCompilation: {
+        selectedAssets: selectedAssetsForCompilation,
       },
       itvConfigId: projectConfigIds?.itvConfigId,
       taskName: `分镜视频: ${normalizedShot.id}`,
@@ -313,6 +337,7 @@ export async function batchRenderShots(
   const {
     projectId,
     shots,
+    aspectRatio,
     projectConfigIds,
     theme,
     stylePrompt,
@@ -330,7 +355,7 @@ export async function batchRenderShots(
     const shot = shots[i];
 
     const result = await shotRenderWorkflow(
-      { projectId, shot, projectConfigIds, theme, stylePrompt, styleSnapshot, project },
+      { projectId, shot, aspectRatio, projectConfigIds, theme, stylePrompt, styleSnapshot, project },
       (progress, step) => {
         const overall = Math.round(((completed + progress / 100) / shots.length) * 100);
         onProgress(overall, { shotId: shot.id, progress, step });
@@ -381,86 +406,6 @@ function getCameraMovementDesc(movement?: string): string {
   return cameraDesc[movement] || movement;
 }
 
-/**
- * 处理视频提示词中的资产引用
- * - 有 sora2CharacterId 的角色：使用 @sora2CharacterId
- * - 无 sora2CharacterId 的角色：收集其图片 URL
- * - 道具/场景：收集其图片 URL
- *
- * @returns { prompt, referenceImages }
- */
-function processVideoPromptAssets(
-  prompt: string,
-  shot: Shot,
-  characters: Character[],
-  props?: Prop[]
-): { prompt: string; referenceImages: string[] } {
-  let result = prompt;
-  const referenceImages: string[] = [];
-
-  // 解析提示词中的 @mentions
-  const mentions = parseMentions(prompt);
-
-  // 按位置倒序处理，避免替换时位置偏移
-  const sortedMentions = [...mentions].sort((a, b) => b.from - a.from);
-
-  for (const mention of sortedMentions) {
-    if (mention.type === 'char') {
-      const char = characters.find(
-        c => c.id === mention.id || c.sora2CharacterId === mention.id
-      );
-      if (char) {
-        if (char.sora2CharacterId) {
-          // 有 Sora2 角色 ID：替换为 @sora2CharacterId
-          const replacement = `@${char.sora2CharacterId}`;
-          result = result.slice(0, mention.from) + replacement + result.slice(mention.to);
-        } else {
-          const referenceSource = getCharacterReferenceSource(char);
-          if (!referenceSource) {
-            continue;
-          }
-          // 无 Sora2 ID：收集图片 URL，替换为角色描述
-          referenceImages.push(referenceSource);
-          const replacement = `[${char.name}: ${char.prompt || char.description || char.appearance || ''}]`;
-          result = result.slice(0, mention.from) + replacement + result.slice(mention.to);
-        }
-      }
-    } else if (mention.type === 'prop') {
-      const prop = props?.find(
-        p => p.id === mention.id || p.sora2PropId === mention.id
-      );
-      if (prop) {
-        if (prop.sora2PropId) {
-          // 有 Sora2 道具 ID
-          const replacement = `@${prop.sora2PropId}`;
-          result = result.slice(0, mention.from) + replacement + result.slice(mention.to);
-        } else {
-          const referenceSource = getPropReferenceSource(prop);
-          if (!referenceSource) {
-            continue;
-          }
-          referenceImages.push(referenceSource);
-          const replacement = `[${prop.name}: ${prop.prompt || prop.description || ''}]`;
-          result = result.slice(0, mention.from) + replacement + result.slice(mention.to);
-        }
-      }
-    }
-    // scene 直接替换为描述（场景没有 sora2 绑定）
-    // 注意：scene 的处理可以在后续需要时添加
-  }
-
-  // 额外检查 shot.characters 中有 sora2CharacterId 但不在提示词中的角色
-  for (const charId of shot.characters || []) {
-    const char = characters.find(c => c.id === charId);
-    if (char?.sora2CharacterId && !result.includes(`@${char.sora2CharacterId}`)) {
-      // 追加到末尾
-      result = `${result} @${char.sora2CharacterId}`;
-    }
-  }
-
-  return { prompt: result, referenceImages };
-}
-
 function getPreferredShotVoiceId(shot: Shot, characters: Character[]): string | undefined {
   for (const charId of shot.characters || []) {
     const character = characters.find(char => char.id === charId);
@@ -469,82 +414,6 @@ function getPreferredShotVoiceId(shot: Shot, characters: Character[]): string | 
     }
   }
   return undefined;
-}
-
-function getCharacterReferenceSource(character?: Character): string | undefined {
-  return getMediaAssetSource(character?.media?.costumePhoto);
-}
-
-function getPropReferenceSource(prop?: Prop): string | undefined {
-  return getMediaAssetSource(prop?.media?.previewImage);
-}
-
-function appendCharacterRefs(prompt: string, shot: Shot, characters: Character[]): string {
-  let result = prompt;
-
-  for (const char of characters) {
-    if (char.sora2CharacterId && result.includes(char.name)) {
-      result = result.replace(
-        new RegExp(char.name, 'g'),
-        `${char.name} @${char.sora2CharacterId}`
-      );
-    }
-  }
-
-  if (shot.characters && shot.characters.length > 0) {
-    const charRefs: string[] = [];
-    for (const charId of shot.characters) {
-      const char = characters.find(c => c.id === charId || c.name === charId);
-      if (char?.sora2CharacterId && !result.includes(`@${char.sora2CharacterId}`)) {
-        charRefs.push(`@${char.sora2CharacterId}`);
-      }
-    }
-    if (charRefs.length > 0) {
-      result = `${result} ${charRefs.join(' ')}`;
-    }
-  }
-
-  return result;
-}
-
-function buildVideoPrompt(shot: Shot, characters: Character[], stylePrefix?: string): string {
-  let prompt = stylePrefix ? `${stylePrefix}${shot.description || ''}` : (shot.description || '');
-
-  if (shot.cameraMovement && shot.cameraMovement !== 'static') {
-    const cameraDesc: Record<string, string> = {
-      'pan': 'camera panning horizontally',
-      'zoom-in': 'camera slowly zooming in',
-      'tracking': 'camera tracking the subject',
-      'handheld': 'handheld camera movement',
-    };
-    if (cameraDesc[shot.cameraMovement]) {
-      prompt = `${prompt}, ${cameraDesc[shot.cameraMovement]}`;
-    }
-  }
-
-  for (const char of characters) {
-    if (char.sora2CharacterId && prompt.includes(char.name)) {
-      prompt = prompt.replace(
-        new RegExp(char.name, 'g'),
-        `${char.name} @${char.sora2CharacterId}`
-      );
-    }
-  }
-
-  if (shot.characters && shot.characters.length > 0) {
-    const charRefs: string[] = [];
-    for (const charId of shot.characters) {
-      const char = characters.find(c => c.id === charId || c.name === charId);
-      if (char?.sora2CharacterId && !prompt.includes(`@${char.sora2CharacterId}`)) {
-        charRefs.push(`@${char.sora2CharacterId}`);
-      }
-    }
-    if (charRefs.length > 0) {
-      prompt = `${prompt} ${charRefs.join(' ')}`;
-    }
-  }
-
-  return prompt;
 }
 
 export default {

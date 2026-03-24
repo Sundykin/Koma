@@ -116,6 +116,7 @@ export const EditorView: React.FC<EditorViewProps> = ({
                 episodeId={activeEpisode?.id}
                 episodeName={activeEpisode?.title || (activeEpisode ? `第${activeEpisode.number}集` : undefined)}
                 script={scriptText}
+                aspectRatio={activeProject.aspectRatio || '16:9'}
                 llmConfigId={activeProject.llmConfigId}
                 ttiConfigId={activeProject.ttiConfigId}
                 itvConfigId={activeProject.itvConfigId}
@@ -141,6 +142,7 @@ export const EditorView: React.FC<EditorViewProps> = ({
               shots={analysisData.shots}
               projectId={activeProject?.id}
               episodeId={activeEpisode?.id}
+              aspectRatio={activeProject?.aspectRatio || '16:9'}
             />
           ) : (
             <div className="flex h-full items-center justify-center text-zinc-500 flex-col gap-4">

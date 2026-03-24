@@ -34,7 +34,7 @@ import { electronService, openFileDialog, fsCopy, fsMkdir, fsExists } from '../.
 import { getStorageConfig, initStorageConfig } from '../../store/storageConfig';
 import { saveScenes, loadScenes } from '../../store/projectStore';
 import { useActiveConfig } from '../../hooks/useActiveConfig';
-import { uploadLocalFileToImageHosting, getImageHostingConfig } from '../../services/imageHostingService';
+import { uploadLocalFileToImageHosting, isImageHostingEnabled } from '../../services/imageHostingService';
 import { createStoredMediaAsset, updateSceneMedia } from '../../utils/mediaAssets';
 import { getScenePreviewImageSource } from '../../utils/mediaSelectors';
 
@@ -76,16 +76,7 @@ export const SceneDetailPanel: React.FC<SceneDetailPanelProps> = ({
 
   // 初始化
   useEffect(() => {
-    let initialPrompt = scene.prompt || scene.customPrompt || '';
-    if (!initialPrompt) {
-      const parts = [];
-      if (scene.location) parts.push(`Location: ${scene.location}`);
-      if (scene.time) parts.push(`Time: ${scene.time}`);
-      if (scene.mood) parts.push(`Mood: ${scene.mood}`);
-      if (scene.description) parts.push(scene.description);
-      initialPrompt = parts.join('\n');
-    }
-
+    const initialPrompt = scene.prompt || '';
     setEditedScene({ ...scene, prompt: initialPrompt });
     form.setFieldsValue({
       name: scene.name,
@@ -197,8 +188,8 @@ export const SceneDetailPanel: React.FC<SceneDetailPanelProps> = ({
       });
 
       // 检测图床配置，自动上传
-      const imageHostingConfig = await getImageHostingConfig();
-      if (imageHostingConfig?.enabled) {
+      const hostingEnabled = await isImageHostingEnabled();
+      if (hostingEnabled) {
         message.loading({ content: t('asset.uploadToHosting'), key: 'imageHosting' });
         const uploadResult = await uploadLocalFileToImageHosting(destPath);
         if (uploadResult.success && uploadResult.url) {

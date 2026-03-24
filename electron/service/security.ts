@@ -40,8 +40,8 @@ export function registerSecurityHeaders(): void {
   // dev 模式需要 'unsafe-eval' 用于 Vite HMR / source maps
   // Vite 注入的内联脚本需要 'unsafe-inline'
   const scriptSrc = isDev
-    ? "script-src 'self' 'unsafe-inline' 'unsafe-eval'"
-    : "script-src 'self' 'unsafe-inline'";
+    ? "script-src 'self' 'unsafe-inline' 'unsafe-eval' koma-local:"
+    : "script-src 'self' 'unsafe-inline' koma-local:";
 
   const connectSrc = `connect-src 'self' ${ALLOWED_CONNECT_DOMAINS.join(' ')}`;
 
