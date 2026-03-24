@@ -15,6 +15,7 @@ import {
   AppstoreOutlined,
   ThunderboltOutlined,
   LoadingOutlined,
+  EyeOutlined,
 } from '@ant-design/icons';
 import type { Character, Scene, Prop } from '../../types';
 import { electronService } from '../../services/electronService';
@@ -184,6 +185,18 @@ export const ImageCardGrid: React.FC<ImageCardGridProps> = ({
             <img src={electronService.fs.toLocalUrl(img)} alt={`img-${idx}`} />
             {idx === selectedIndex && <CheckCircleFilled className="selectedIcon" />}
             <div className="cardOverlay">
+              <Tooltip title="预览">
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<EyeOutlined />}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handlePreview(idx);
+                  }}
+                  className="overlayBtn"
+                />
+              </Tooltip>
               <Tooltip title="删除">
                 <Button
                   type="text"
