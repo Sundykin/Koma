@@ -12,7 +12,9 @@ import { normalizeTimelineTracks } from './transitionResolver';
 export const CURRENT_TIMELINE_VERSION = 1;
 
 function getRawVersion(raw: Record<string, unknown>): number {
-  return typeof raw.version === 'number' ? raw.version : 0;
+  const version = typeof raw.version === 'number' ? raw.version : 0;
+  if (!Number.isFinite(version) || version < 0) return 0;
+  return Math.floor(version);
 }
 
 function getRawTracks(raw: Record<string, unknown>): Track[] {

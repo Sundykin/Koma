@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MediaType, type Clip, type Track } from '../types/editor';
 import { SimpleExportRenderer } from '../services/simpleExportRenderer';
 import { SimpleMediaEngine, SimpleVideoRenderer } from './simpleEngine';
+import { getClipOpacityFromPlans, resolveTrackTimeline } from '../features/transition/core';
 
 vi.mock('antd', () => ({
   message: {
@@ -162,5 +163,73 @@ describe('SimpleVideoRenderer preview/export alignment', () => {
       expect(previewContext.alphaSnapshots[0]).toBeCloseTo(exportContext.alphaSnapshots[0], 5);
       expect(previewContext.alphaSnapshots[1]).toBeCloseTo(exportContext.alphaSnapshots[1], 5);
     }
+  });
+
+  it('matches golden transition checkpoints across preview export and resolver outputs', async () => {
+    const previewContext = createCanvasContext();
+    const exportContext = createCanvasContext();
+    const previewCanvas = {
+      width: 1920,
+      height: 1080,
+      getContext: vi.fn(() => previewContext.ctx),
+    } as unknown as HTMLCanvasElement;
+    const previewEngine = new SimpleMediaEngine(8);
+    const previewRenderer = new SimpleVideoRenderer(previewEngine, previewCanvas) as any;
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(exportContext.ctx);
+    const exportRenderer = createExportRenderer() as any;
+    const track = createTrack();
+    const resolved = resolveTrackTimeline(track);
+    const checkpoints = [1, 2, 2.25, 2.5, 2.75, 3, 4] as const;
+
+    previewRenderer.setTracks([track]);
+    exportRenderer.tracks = [track];
+    exportRenderer.resolvedWindows = previewRenderer.resolvedWindows;
+    exportRenderer.transitionPlansByTrack = previewRenderer.transitionPlansByTrack;
+
+    const golden = [] as Array<{
+      time: number;
+      visible: string[];
+      previewAlpha: number[];
+      exportAlpha: number[];
+      resolverAlpha: number[];
+    }>;
+
+    for (const time of checkpoints) {
+      previewContext.alphaSnapshots.length = 0;
+      exportContext.alphaSnapshots.length = 0;
+
+      const previewVisible = previewRenderer.getVisibleClips(time) as Clip[];
+      const exportVisible = exportRenderer.getVisibleClips(time).map((entry: { clip: Clip }) => entry.clip);
+
+      for (const clip of previewVisible) {
+        previewRenderer.renderClip(clip, time);
+      }
+
+      for (const clip of exportVisible) {
+        await exportRenderer.renderClip(clip, time);
+      }
+
+      const resolverAlpha = previewVisible.map((clip) =>
+        getClipOpacityFromPlans(resolved.transitionPlans, clip.id, time)
+      );
+
+      golden.push({
+        time,
+        visible: previewVisible.map((clip) => clip.id),
+        previewAlpha: [...previewContext.alphaSnapshots],
+        exportAlpha: [...exportContext.alphaSnapshots],
+        resolverAlpha,
+      });
+    }
+
+    expect(golden).toEqual([
+      { time: 1, visible: ['clip-a'], previewAlpha: [1], exportAlpha: [1], resolverAlpha: [1] },
+      { time: 2, visible: ['clip-a', 'clip-b'], previewAlpha: [1, 0], exportAlpha: [1, 0], resolverAlpha: [1, 0] },
+      { time: 2.25, visible: ['clip-a', 'clip-b'], previewAlpha: [0.75, 0.25], exportAlpha: [0.75, 0.25], resolverAlpha: [0.75, 0.25] },
+      { time: 2.5, visible: ['clip-a', 'clip-b'], previewAlpha: [0.5, 0.5], exportAlpha: [0.5, 0.5], resolverAlpha: [0.5, 0.5] },
+      { time: 2.75, visible: ['clip-a', 'clip-b'], previewAlpha: [0.25, 0.75], exportAlpha: [0.25, 0.75], resolverAlpha: [0.25, 0.75] },
+      { time: 3, visible: ['clip-b'], previewAlpha: [1], exportAlpha: [1], resolverAlpha: [1] },
+      { time: 4, visible: ['clip-b'], previewAlpha: [1], exportAlpha: [1], resolverAlpha: [1] },
+    ]);
   });
 });

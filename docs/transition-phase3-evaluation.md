@@ -11,9 +11,9 @@
 |---|------|------|------|
 | 1 | preview / export 对齐基线已建立 | ✅ | 已补 preview/export 同输入下的可见 clip 集合与 transition alpha 对齐测试（含文本 clip） |
 | 2 | migration fixture 已建立 | ✅ | `migration.test.ts` 已覆盖 v0→v1、无 version 兜底、未来版本拒绝；store 入口测试已补显式失败路径 |
-| 3 | 核心回归用例已建立 | ⚠️ | 已有 migration、持久化、preview/export 对齐与 capability 单元回归，但缺少真正的 E2E / golden 基线 |
-| 4 | capability 判断行为稳定 | ⚠️ | 当前仅证明分类逻辑在现有测试样本上稳定，不等同于导出链路信任模型已闭环 |
-| 5 | 不支持场景不会 silent fallback | ⚠️ | 仅对已分类的剪映专属特性给出 recommendations；缺少完整工作流拦截证据 |
+| 3 | 核心回归用例已建立 | ⚠️ | 已有 migration、持久化、preview/export checkpoint 对齐、capability 边界与 editor workflow 回归，但仍缺真正的 E2E / golden 产物基线 |
+| 4 | capability 判断行为稳定 | ✅ | `exportCapabilityChecker.test.ts` 已固定 supported / degraded / final-only 边界输出，fade 仍保持 supported |
+| 5 | 不支持场景不会 silent fallback | ⚠️ | capability 层结果已固定，编辑器入口对未来版本阻断已建立，但导入/导出整链路拦截仍未完全证明 |
 | 6 | 输入校验已覆盖基本非法 transition 数据 | ⚠️ | 已覆盖常见非法 transition 输入与未来版本显式拒绝，但尚未形成完整错误分级模型 |
 | 7 | 项目文件中的 transition 数据按不可信输入处理 | ⚠️ | 当前项目/剧集加载边界会净化支持版本数据并对未来版本显式失败；编辑器入口已阻止不兼容版本回退初始化与自动保存，但导入导出边界仍未统一 |
 | 8 | old/new schema 行为边界清晰 | ⚠️ | v0→v1 边界明确，但通用 version / compatibility 策略尚未建立 |
@@ -23,7 +23,7 @@
 | # | 条件 | 状态 | 说明 |
 |---|------|------|------|
 | 1 | Phase 1 与 Phase 2 已稳定 | ⚠️ | 当前变更未附 CI / 全量测试报告，不在本文档内直接下结论 |
-| 2 | migration / preview / export / capability 已可持续维护 | ⚠️ | 已建立 migration、持久化与 preview/export 对齐回归，但缺少完整 E2E / 基线资产 |
+| 2 | migration / preview / export / capability 已可持续维护 | ⚠️ | 已建立 migration、持久化、preview/export checkpoint 对齐、capability 边界和支持路径 load→save→reload workflow 回归，但缺少完整 E2E / 基线资产 |
 | 3 | 高频使用价值已被证明 | ⚠️ | 需要用户反馈数据，非代码任务 |
 | 4 | 默认工作流已顺滑 | ⚠️ | 属于 Phase 2 结果，当前缺少 Phase 3 级工作流闭环证据 |
 | 5 | 新增一个内建 effect 的成本与风险已可评估 | ✅ | 见本文档第 2 节 |
@@ -44,6 +44,23 @@
 | 8 | 不会破坏当前工作流稳定性 | ⚠️ | 无扩展实证 |
 
 **结论：Gate E 仍处于治理补强阶段，Gate F 未放行，Gate G 明确未达标。当前不具备以“Phase 3 已完成”或“可进入扩展阶段”对外表述的条件。**
+
+## 稳定性验收口径
+
+- 工作流级证据：创建、保存、重开、预览、导出检查、导出
+- 预览/导出基线证据：同输入下关键时间点结果一致
+- capability 边界证据：unsupported / degraded / preview-limited / final-only 行为固定
+- 无 silent fallback 证据：不支持场景必须显式阻断或提示
+
+## 4. 稳定性结论（最新验证）
+
+- 已新增并通过的直接证据：
+  - `SimpleEditor.workflow.test.tsx` 覆盖 supported path 的 load → save → reload 工作流
+  - `simpleEngine.transition.test.ts` 补充 preview/export/resolver 的关键时间点 checkpoint 对齐
+  - `exportCapabilityChecker.test.ts` 固定 supported / degraded / final-only 能力边界输出
+- 当前可以成立的表述：转场能力在“当前支持范围内”已具备较强回归稳定性，尤其是 fade 主路线、migration/persistence 边界、preview/export 关键时间语义对齐、以及 future-version 阻断链路。
+- 当前仍不能成立的表述：转场功能“整体稳定”、Phase 3“已完成”、Gate F“已放行”。
+- Gate F 仍然阻塞的最小原因清单：缺少真正的 E2E 工作流证据、缺少 golden 产物基线、缺少完整 trust model、缺少统一 import/export 边界。
 
 ---
 

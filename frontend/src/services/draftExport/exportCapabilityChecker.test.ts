@@ -22,6 +22,84 @@ function createClip(id: string, start: number, duration: number): Clip {
 }
 
 describe('checkExportCompatibility', () => {
+  it('classifies plain projects as supported', () => {
+    const track: Track = {
+      id: 'track-1',
+      type: 'video',
+      order: 0,
+      clips: [createClip('clip-a', 0, 5)],
+      transitions: [],
+    };
+
+    const report = checkExportCompatibility([track]);
+    expect(report.outcome).toBe('supported');
+  });
+
+  it('keeps fade transitions on the supported path', () => {
+    const track: Track = {
+      id: 'track-1',
+      type: 'video',
+      order: 0,
+      clips: [createClip('clip-a', 0, 3), createClip('clip-b', 3, 3)],
+      transitions: [
+        {
+          id: 'transition-1',
+          fromClipId: 'clip-a',
+          toClipId: 'clip-b',
+          type: 'fade',
+          duration: 0.5,
+        },
+      ],
+    };
+
+    const report = checkExportCompatibility([track]);
+    expect(report.outcome).toBe('supported');
+    expect(report.featureDetails.find((detail) => detail.feature === 'transition')?.nativeOutcome).toBe('supported');
+  });
+
+  it('classifies jianying-only effects as final-only', () => {
+    const clip = createClip('clip-a', 0, 5);
+    clip.filter = { id: 'warm', intensity: 0.5 } as any;
+
+    const track: Track = {
+      id: 'track-1',
+      type: 'video',
+      order: 0,
+      clips: [clip],
+      transitions: [],
+    };
+
+    const report = checkExportCompatibility([track]);
+    expect(report.outcome).toBe('final-only');
+    expect(report.featureDetails.find((detail) => detail.feature === 'filter')?.nativeOutcome).toBe('final-only');
+  });
+
+  it('classifies mixed native and jianying-only projects as degraded', () => {
+    const clips = [createClip('clip-a', 0, 3), createClip('clip-b', 3, 3)];
+    clips[0].filter = { id: 'warm', intensity: 0.5 } as any;
+
+    const track: Track = {
+      id: 'track-1',
+      type: 'video',
+      order: 0,
+      clips,
+      transitions: [
+        {
+          id: 'transition-1',
+          fromClipId: 'clip-a',
+          toClipId: 'clip-b',
+          type: 'fade',
+          duration: 0.5,
+        },
+      ],
+    };
+
+    const report = checkExportCompatibility([track]);
+    expect(report.outcome).toBe('degraded');
+    expect(report.featureDetails.find((detail) => detail.feature === 'transition')?.nativeOutcome).toBe('supported');
+    expect(report.featureDetails.find((detail) => detail.feature === 'filter')?.nativeOutcome).toBe('final-only');
+  });
+
   it('detects track-level transitions as natively exportable features', () => {
     const track: Track = {
       id: 'track-1',
@@ -154,5 +232,17 @@ describe('checkExportCompatibility', () => {
     expect(report.hasAdvancedFeatures).toBe(true);
     expect(report.jianyingOnlyFeatures).toEqual([]);
     expect(report.recommendations).toEqual([]);
+  });
+
+  it('exposes all native capability boundary labels through feature support outcomes', () => {
+    const report = checkExportCompatibility([]);
+    expect(report.outcome).toBe('supported');
+    expect(report.capabilityBoundaries).toEqual([
+      'supported',
+      'unsupported',
+      'degraded',
+      'preview-limited',
+      'final-only',
+    ]);
   });
 });

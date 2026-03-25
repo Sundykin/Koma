@@ -2,7 +2,7 @@ import React, { useCallback, useRef } from 'react';
 import type { Track, Transition } from '../../../types/editor';
 import type { MessageInstance } from 'antd/es/message/interface';
 import { generateId } from '../../../utils/generateId';
-import { TRANSITION_TYPE_FADE, DEFAULT_TRANSITION_DURATION, MAX_TRANSITION_DURATION } from '../core/constants';
+import { TRANSITION_TYPE_FADE, DEFAULT_TRANSITION_DURATION, MAX_TRANSITION_DURATION, MAX_TRANSITIONS_PER_TRACK } from '../core/constants';
 import {
   findTransitionByClipPair,
   getAddableTransitionDuration,
@@ -143,7 +143,10 @@ export function useTransitionHandlers({
       const sortedClips = getSortedTrackClips(track);
       if (sortedClips.length <= 1) return prev;
 
+      const existingCount = track.transitions?.length ?? 0;
+
       for (let i = 0; i < sortedClips.length - 1; i++) {
+        if (existingCount + candidateTransitions.length >= MAX_TRANSITIONS_PER_TRACK) break;
         const fromClip = sortedClips[i];
         const toClip = sortedClips[i + 1];
         if (findTransitionByClipPair(track, fromClip.id, toClip.id)) continue;
@@ -175,7 +178,9 @@ export function useTransitionHandlers({
     } else {
       message.info('所有切点已有转场');
     }
-  }, [message, updateTracks, defaultDuration]);  const handleDeleteAllTransitions = useCallback((trackId: string) => {
+  }, [message, updateTracks, defaultDuration]);
+
+  const handleDeleteAllTransitions = useCallback((trackId: string) => {
     isUserDeletingRef.current = true;
 
     updateTracks((prev) => {
