@@ -34,6 +34,20 @@ export interface ExtractFramesOptions {
   quality?: number;     // JPEG 质量 1-31（越小越好）
 }
 
+// 九宫格图片分割选项（3×3）
+export interface SplitGridImageOptions {
+  input: string;
+  outputDir: string;
+  aspectRatio: '16:9' | '9:16';
+  // 目标单格最小尺寸，用于放大保证切割后清晰度（默认 16:9 -> 1280x720; 9:16 -> 720x1280）
+  minCellWidth?: number;
+  minCellHeight?: number;
+  // 锐化强度（0~2），默认 0.9
+  sharpenAmount?: number;
+  // 输出格式，默认 png（无损）
+  format?: 'png' | 'jpg' | 'webp';
+}
+
 // 波形生成选项
 export interface WaveformOptions {
   input: string;
@@ -68,7 +82,7 @@ export interface ComposeVideoOptions {
 }
 
 // 任务类型
-type TaskType = 'getInfo' | 'extractFrames' | 'waveform' | 'splitAudio' | 'export' | 'composeVideo';
+type TaskType = 'getInfo' | 'extractFrames' | 'splitGridImage' | 'waveform' | 'splitAudio' | 'export' | 'composeVideo';
 
 // 任务定义
 interface Task {
@@ -215,6 +229,13 @@ export class FFmpegService {
   }
 
   /**
+   * 九宫格图片分割（3×3）
+   */
+  async splitGridImage(options: SplitGridImageOptions): Promise<string[]> {
+    return this.queueTask<string[]>('splitGridImage', options);
+  }
+
+  /**
    * 生成音频波形图
    */
   async generateWaveform(options: WaveformOptions): Promise<string> {
@@ -271,6 +292,9 @@ export class FFmpegService {
           break;
         case 'extractFrames':
           result = await this.doExtractFrames(task.args);
+          break;
+        case 'splitGridImage':
+          result = await this.doSplitGridImage(task.args);
           break;
         case 'waveform':
           result = await this.doGenerateWaveform(task.args);
@@ -393,6 +417,106 @@ export class FFmpegService {
       .filter(f => f.startsWith('frame_') && f.endsWith('.jpg'))
       .sort()
       .map(f => path.join(outputDir, f));
+  }
+
+  private roundUpToMultiple(value: number, multiple: number): number {
+    if (multiple <= 1) return value;
+    return Math.ceil(value / multiple) * multiple;
+  }
+
+  /**
+   * 九宫格图片分割（3×3）
+   *
+   * - 保证输出可平分为 9 张
+   * - 通过“最小单格尺寸”要求进行放大（近似无损放大 + 锐化）
+   */
+  private async doSplitGridImage(options: SplitGridImageOptions): Promise<string[]> {
+    if (!this.ffmpegPath) {
+      throw new Error('FFmpeg not available');
+    }
+
+    const {
+      input,
+      outputDir,
+      aspectRatio,
+      minCellWidth,
+      minCellHeight,
+      sharpenAmount = 0.9,
+      format = 'png',
+    } = options;
+
+    await fs.promises.mkdir(outputDir, { recursive: true });
+
+    let inputWidth = 0;
+    let inputHeight = 0;
+    try {
+      if (this.ffprobePath) {
+        const info = await this.doGetMediaInfo(input);
+        inputWidth = info.width || 0;
+        inputHeight = info.height || 0;
+      }
+    } catch {
+      // ignore
+    }
+
+    const defaultCell = aspectRatio === '16:9'
+      ? { w: 1280, h: 720 }
+      : { w: 720, h: 1280 };
+    const desiredCellW = minCellWidth || defaultCell.w;
+    const desiredCellH = minCellHeight || defaultCell.h;
+    const minW = desiredCellW * 3;
+    const minH = desiredCellH * 3;
+
+    // Upscale first (never downscale), and then round up to multiples of 3 so we can evenly split into 3×3.
+    // We prefer scaling to the final size instead of padding to avoid introducing borders.
+    const hasDimensions = inputWidth > 0 && inputHeight > 0;
+    const scaleFactor = hasDimensions
+      ? Math.max(minW / inputWidth, minH / inputHeight, 1)
+      : 1;
+    const scaledW = hasDimensions ? Math.round(inputWidth * scaleFactor) : minW;
+    const scaledH = hasDimensions ? Math.round(inputHeight * scaleFactor) : minH;
+
+    const finalW = this.roundUpToMultiple(scaledW, 3);
+    const finalH = this.roundUpToMultiple(scaledH, 3);
+    const cellW = Math.floor(finalW / 3);
+    const cellH = Math.floor(finalH / 3);
+
+    // 基础处理：放大（如需要）→ 补充像素到可平分（通过 scale 到可整除尺寸）→ 锐化
+    const baseFilters: string[] = [
+      `scale=${finalW}:${finalH}:flags=lanczos`,
+      `unsharp=5:5:${Math.max(0, Math.min(2, sharpenAmount))}:3:3:0.0`,
+      'split=9[v0][v1][v2][v3][v4][v5][v6][v7][v8]',
+    ];
+
+    const cropFilters: string[] = [];
+    let outIndex = 0;
+    for (let row = 0; row < 3; row += 1) {
+      for (let col = 0; col < 3; col += 1) {
+        const x = col * cellW;
+        const y = row * cellH;
+        cropFilters.push(`[v${outIndex}]crop=${cellW}:${cellH}:${x}:${y}[o${outIndex}]`);
+        outIndex += 1;
+      }
+    }
+
+    const filterComplex = `[0:v]${baseFilters.join(',')};${cropFilters.join(';')}`;
+
+    const outputPaths: string[] = [];
+    const args: string[] = [
+      '-i', input,
+      '-filter_complex', filterComplex,
+      '-y',
+    ];
+
+    for (let i = 0; i < 9; i += 1) {
+      const filename = `cell_${String(i + 1).padStart(2, '0')}.${format}`;
+      const outPath = path.join(outputDir, filename);
+      outputPaths.push(outPath);
+      args.push('-map', `[o${i}]`, '-frames:v', '1', outPath);
+    }
+
+    await this.runFFmpeg(args);
+    return outputPaths;
   }
 
   /**

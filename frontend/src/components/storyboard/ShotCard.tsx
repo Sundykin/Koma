@@ -13,6 +13,7 @@ import {
   Modal,
   Spin,
   Segmented,
+  App,
 } from 'antd';
 import {
   DeleteOutlined,
@@ -42,6 +43,7 @@ import { ImageCardGrid } from '../asset/ImageCardGrid';
 import { VideoCardGrid } from '../asset/VideoCardGrid';
 import { StagePlayer } from '../video/StagePlayer';
 import { electronService } from '../../services/electronService';
+import { ffmpegManager } from '../../services/ffmpegManager';
 import { persistMediaAsset } from '../../services/mediaPersistenceService';
 import { ensureRemoteUrlForImageAsset } from '../../services/mediaRemoteUrlService';
 import { getProjectPath } from '../../store/projectStore';
@@ -139,7 +141,9 @@ export const ShotCard: React.FC<ShotCardProps> = ({
   onInsertAbove,
   onInsertBelow,
 }) => {
+  const { message } = App.useApp();
   const [videoModalOpen, setVideoModalOpen] = useState(false);
+  const [isSplittingGridImage, setIsSplittingGridImage] = useState(false);
 
   // 使用 useMemo 缓存计算值，避免不必要的重渲染
   const hasImagePrompt = useMemo(
@@ -215,6 +219,121 @@ export const ShotCard: React.FC<ShotCardProps> = ({
     const newIdx = Math.min(shot.media?.currentImageIndex || 0, newImages.length - 1);
     onImagesChange(shot.id, newImages, Math.max(0, newIdx));
   };
+
+  const handleSplitGridImage = useCallback(async () => {
+    if (!electronService.isElectron()) {
+      message.error('仅支持 Electron 环境');
+      return;
+    }
+    if (shot.imageMode !== 'grid') {
+      message.info('当前分镜不是九宫格模式');
+      return;
+    }
+    if (!currentImage) {
+      message.info('没有可拆分的图片');
+      return;
+    }
+    if (isSplittingGridImage) return;
+
+    setIsSplittingGridImage(true);
+    try {
+      const available = await ffmpegManager.isAvailable();
+      if (!available) {
+        throw new Error('FFmpeg 不可用');
+      }
+
+      const currentIdx = shot.media?.currentImageIndex || 0;
+      let inputAsset: StoredMediaAsset = currentImage;
+      let baseImages: StoredMediaAsset[] = images;
+
+      const isUsableLocalPath = Boolean(
+        inputAsset.localPath &&
+        !isRemoteMediaUri(inputAsset.localPath)
+      );
+
+      // If the selected image is remote-only, download it into the project so ffmpeg can access it.
+      if (!isUsableLocalPath) {
+        const projectPath = await getProjectPath(projectId);
+        const sourceHint = getMediaAssetEditingSource(inputAsset) || inputAsset.remoteUrl || '';
+        const ext = (() => {
+          const clean = sourceHint.split('?')[0].split('#')[0];
+          const dot = clean.lastIndexOf('.');
+          const raw = dot >= 0 ? clean.slice(dot + 1).toLowerCase() : '';
+          if (raw === 'jpeg') return 'jpg';
+          if (raw === 'png' || raw === 'jpg' || raw === 'webp') return raw;
+          return 'png';
+        })();
+        const destPath = `${projectPath}/assets/shots/${shot.id}/images/grid_source_${Date.now()}.${ext}`;
+
+        const persisted = await persistMediaAsset({
+          projectId,
+          kind: 'image',
+          source: inputAsset,
+          destPath,
+        });
+
+        inputAsset = persisted;
+        baseImages = images.map((a, i) => (i === currentIdx ? persisted : a));
+      }
+
+      const inputPath = inputAsset.localPath;
+      if (!inputPath || isRemoteMediaUri(inputPath)) {
+        throw new Error('缺少可用的本地图片路径');
+      }
+
+      // Infer aspect ratio from the image dimensions (we only care about 16:9 vs 9:16).
+      let aspectRatio: '16:9' | '9:16' = '16:9';
+      try {
+        const info = await ffmpegManager.getMediaInfo(inputPath);
+        if (info.width && info.height && info.height > info.width) {
+          aspectRatio = '9:16';
+        }
+      } catch {
+        // ignore
+      }
+
+      const projectPath = await getProjectPath(projectId);
+      const outputDir = `${projectPath}/assets/shots/${shot.id}/grid-splits/${Date.now()}`;
+      const outputs = await ffmpegManager.splitGridImage({
+        input: inputPath,
+        outputDir,
+        aspectRatio,
+        format: 'png',
+        sharpenAmount: 0.9,
+      });
+
+      if (!Array.isArray(outputs) || outputs.length !== 9) {
+        throw new Error('九宫格拆分失败：输出数量不正确');
+      }
+
+      const newAssets = outputs.map((p, i) => createStoredMediaAsset('image', {
+        localPath: p,
+        metadata: {
+          gridCell: i + 1,
+          gridSource: inputPath,
+        },
+      }));
+
+      const nextImages = [...baseImages, ...newAssets];
+      onImagesChange(shot.id, nextImages, baseImages.length);
+      message.success('九宫格已拆分为 9 张图片');
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      message.error(errorMessage || '九宫格拆分失败');
+    } finally {
+      setIsSplittingGridImage(false);
+    }
+  }, [
+    currentImage,
+    images,
+    isSplittingGridImage,
+    message,
+    onImagesChange,
+    projectId,
+    shot.id,
+    shot.imageMode,
+    shot.media?.currentImageIndex,
+  ]);
 
   // 参考图操作
   const handleRefImageSelect = (idx: number) => onReferenceImagesChange?.(shot.id, referenceImages, idx);
@@ -444,7 +563,7 @@ export const ShotCard: React.FC<ShotCardProps> = ({
 
         {/* 列4: 图像结果 */}
         <div className={`${SHOT_LAYOUT.colImageResult} border-r border-zinc-800 flex flex-col bg-zinc-900/20`}>
-          <div className="flex-1 p-1 min-h-0 overflow-y-auto custom-scrollbar flex items-center justify-center">
+          <div className="flex-1 p-1 min-h-0 overflow-y-auto custom-scrollbar flex items-center justify-center relative">
             {imageSources.length === 0 && !isGeneratingImage ? (
               <Button
                 type="primary"
@@ -474,6 +593,21 @@ export const ShotCard: React.FC<ShotCardProps> = ({
                   compact
                 />
               </div>
+            )}
+
+            {shot.imageMode === 'grid' && currentImage && (
+              <Tooltip title="将当前九宫格图平分为 9 张图片" placement="top">
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<AppstoreOutlined />}
+                  className="absolute top-1 right-1 h-6 px-2 text-[10px]"
+                  onClick={handleSplitGridImage}
+                  disabled={!electronService.isElectron() || isGeneratingImage || isSplittingGridImage}
+                >
+                  {isSplittingGridImage ? '切割中...' : '拆分九宫格'}
+                </Button>
+              </Tooltip>
             )}
           </div>
         </div>

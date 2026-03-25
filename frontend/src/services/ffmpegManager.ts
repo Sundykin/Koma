@@ -34,6 +34,17 @@ export interface ExtractFramesOptions {
   quality?: number;
 }
 
+// 九宫格图片分割选项（3×3）
+export interface SplitGridImageOptions {
+  input: string;
+  outputDir: string;
+  aspectRatio: '16:9' | '9:16';
+  minCellWidth?: number;
+  minCellHeight?: number;
+  sharpenAmount?: number;
+  format?: 'png' | 'jpg' | 'webp';
+}
+
 // 波形生成选项
 export interface WaveformOptions {
   input: string;
@@ -163,6 +174,24 @@ class FFmpegManager {
     const frames = await api.extractFrames(options);
     this.frameCache.set(cacheKey, frames);
     return frames;
+  }
+
+  /**
+   * 九宫格图片分割（3×3）
+   */
+  async splitGridImage(options: SplitGridImageOptions): Promise<string[]> {
+    await this.init();
+    const api = getFFmpegAPI();
+    if (!api) {
+      throw new Error('FFmpeg 不可用');
+    }
+
+    const available = await this.isAvailable();
+    if (!available) {
+      throw new Error('FFmpeg 不可用');
+    }
+
+    return await api.splitGridImage(options);
   }
 
   /**
