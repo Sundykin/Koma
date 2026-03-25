@@ -2,7 +2,7 @@
  * 多视频卡片网格组件
  * 支持多版本视频选择、播放、删除
  */
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { Button, Modal, Tooltip, Typography, Popconfirm } from 'antd';
 import {
   PlayCircleOutlined,
@@ -13,6 +13,7 @@ import {
 } from '@ant-design/icons';
 import type { ShotVideo } from '../../types';
 import { electronService } from '../../services/electronService';
+import { ffmpegManager } from '../../services/ffmpegManager';
 import './VideoCardGrid.css';
 
 const { Text } = Typography;
@@ -39,6 +40,62 @@ export const VideoCardGrid: React.FC<VideoCardGridProps> = ({
 }) => {
   const [previewVisible, setPreviewVisible] = useState(false);
   const [previewUrl, setPreviewUrl] = useState('');
+  const [generatedThumbnails, setGeneratedThumbnails] = useState<Record<string, string>>({});
+
+  const getVideoKey = useCallback((video: ShotVideo) => {
+    const base = `${video.path}|${video.createdAt}|${video.url || ''}`;
+    let hash = 0;
+    for (let i = 0; i < base.length; i += 1) {
+      hash = ((hash << 5) - hash) + base.charCodeAt(i);
+      hash |= 0;
+    }
+    return `shot-video-${Math.abs(hash)}`;
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadPosterFrames = async () => {
+      const missingVideos = videos.filter(video => !video.thumbnailPath && video.path);
+      if (missingVideos.length === 0) return;
+
+      const nextEntries = await Promise.all(missingVideos.map(async (video) => {
+        try {
+          const framePath = await ffmpegManager.getPosterFrame(video.path, getVideoKey(video), 320);
+          if (!framePath) return null;
+          return [getVideoKey(video), electronService.fs.toLocalUrl(framePath)] as const;
+        } catch {
+          return null;
+        }
+      }));
+
+      if (cancelled) return;
+
+      setGeneratedThumbnails(prev => {
+        const merged = { ...prev };
+        nextEntries.forEach((entry) => {
+          if (!entry) return;
+          merged[entry[0]] = entry[1];
+        });
+        return merged;
+      });
+    };
+
+    loadPosterFrames();
+    return () => {
+      cancelled = true;
+    };
+  }, [videos, getVideoKey]);
+
+  const thumbnailSources = useMemo(
+    () => videos.map((video) => {
+      if (video.thumbnailPath) {
+        return electronService.fs.toLocalUrl(video.thumbnailPath);
+      }
+      return generatedThumbnails[getVideoKey(video)] || '';
+    }),
+    [videos, generatedThumbnails, getVideoKey]
+  );
 
   const handlePlay = useCallback((video: ShotVideo, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -66,8 +123,8 @@ export const VideoCardGrid: React.FC<VideoCardGridProps> = ({
             className={`videoCard ${idx === selectedIndex ? 'selected' : ''}`}
             onClick={() => onSelect(idx)}
           >
-            {video.thumbnailPath ? (
-              <img src={electronService.fs.toLocalUrl(video.thumbnailPath)} alt={`v${idx + 1}`} />
+            {thumbnailSources[idx] ? (
+              <img src={thumbnailSources[idx]} alt={`v${idx + 1}`} />
             ) : (
               <div className="videoPlaceholder">
                 <VideoCameraOutlined />
@@ -85,24 +142,22 @@ export const VideoCardGrid: React.FC<VideoCardGridProps> = ({
                   className="overlayBtn"
                 />
               </Tooltip>
-              {videos.length > 1 && (
-                <Popconfirm
-                  title="确定删除此版本？"
-                  onConfirm={(e) => handleDelete(idx, e as any)}
-                  onCancel={(e) => e?.stopPropagation()}
-                >
-                  <Tooltip title="删除">
-                    <Button
-                      type="text"
-                      size="small"
-                      danger
-                      icon={<DeleteOutlined />}
-                      onClick={(e) => e.stopPropagation()}
-                      className="overlayBtn"
-                    />
-                  </Tooltip>
-                </Popconfirm>
-              )}
+              <Popconfirm
+                title="确定删除此版本？"
+                onConfirm={(e) => handleDelete(idx, e as any)}
+                onCancel={(e) => e?.stopPropagation()}
+              >
+                <Tooltip title="删除">
+                  <Button
+                    type="text"
+                    size="small"
+                    danger
+                    icon={<DeleteOutlined />}
+                    onClick={(e) => e.stopPropagation()}
+                    className="overlayBtn"
+                  />
+                </Tooltip>
+              </Popconfirm>
             </div>
           </div>
         ))}

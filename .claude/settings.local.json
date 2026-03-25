@@ -91,7 +91,19 @@
       "Bash(cd:*)",
       "Bash(rm:*)",
       "Bash(mkdir:*)",
-      "Bash(powershell -Command \"Stop-Process -Name 'Koma Studio' -Force -ErrorAction SilentlyContinue\" && sleep 2 && cd \"E:/Workspace/2025/代码备份/Koma\" && rm -rf out && npm run build-w 2>&1 | tail -20)"
+      "Bash(powershell -Command \"Stop-Process -Name 'Koma Studio' -Force -ErrorAction SilentlyContinue\" && sleep 2 && cd \"E:/Workspace/2025/代码备份/Koma\" && rm -rf out && npm run build-w 2>&1 | tail -20)",
+      "Bash(git checkout:*)",
+      "Bash(git pull:*)",
+      "Bash(git merge:*)",
+      "Bash(git tag:*)",
+      "Bash(git push:*)",
+      "Bash(grep -r \"canvasSize\\\\|canvas.?size\\\\|width.*height\" /Users/sunmeng/workspace/Koma/frontend/src/components/editor/*.tsx)",
+      "Bash(grep -r \"resolution\\\\|Resolution\" /Users/sunmeng/workspace/Koma/frontend/src/providers/itv/*.ts)",
+      "Bash(npm run:*)",
+      "Bash(git status:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(npx vite:*)"
     ]
   }
 }

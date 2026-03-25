@@ -11,6 +11,8 @@ import {
   Popconfirm,
   Input,
   Modal,
+  Spin,
+  Segmented,
 } from 'antd';
 import {
   DeleteOutlined,
@@ -26,6 +28,7 @@ import {
   VideoCameraOutlined,
   CloseOutlined,
   PlusOutlined,
+  AppstoreOutlined,
 } from '@ant-design/icons';
 import type { Shot, Character, Scene, Prop, StoredMediaAsset } from '../../types';
 import {
@@ -70,6 +73,7 @@ export interface ShotCardProps {
   onScriptChange: (shotId: string, script: string) => void;
   onImagePromptChange: (shotId: string, imagePrompt: string) => void;
   onVideoPromptChange: (shotId: string, videoPrompt: string) => void;
+  onImageModeChange: (shotId: string, mode: 'normal' | 'grid') => void;
   onCharactersChange: (shotId: string, characterIds: string[]) => void;
   onScenesChange?: (shotId: string, sceneIds: string[]) => void;
   onPropsChange?: (shotId: string, propIds: string[]) => void;
@@ -113,6 +117,7 @@ export const ShotCard: React.FC<ShotCardProps> = ({
   onScriptChange,
   onImagePromptChange,
   onVideoPromptChange,
+  onImageModeChange,
   onCharactersChange,
   onScenesChange,
   onPropsChange,
@@ -176,6 +181,11 @@ export const ShotCard: React.FC<ShotCardProps> = ({
   const images = shot.media?.images || [];
   const referenceImages = shot.media?.references || [];
   const videos = shot.media?.videos || [];
+
+  const imageSources = useMemo(
+    () => images.map(a => getMediaAssetDisplaySource(a) || '').filter(Boolean),
+    [images]
+  );
 
   const currentVideo = useMemo(() => {
     if (!videos.length) return null;
@@ -363,6 +373,19 @@ export const ShotCard: React.FC<ShotCardProps> = ({
 
         {/* 列3: 图像设计 */}
         <div className={`${SHOT_LAYOUT.colImageDesign} border-r border-zinc-800 flex flex-col`}>
+          <div className="flex items-center justify-between gap-2 border-b border-zinc-800 px-2 py-1">
+            <span className="text-[10px] text-zinc-400">图片模式</span>
+            <Segmented
+              size="small"
+              value={shot.imageMode || 'normal'}
+              onChange={(value) => onImageModeChange(shot.id, value as 'normal' | 'grid')}
+              options={[
+                { value: 'normal', label: '普通' },
+                { value: 'grid', icon: <AppstoreOutlined />, label: '九宫格' },
+              ]}
+              className="text-[10px]"
+            />
+          </div>
           {/* 提示词编辑器 + 浮动按钮 */}
           <div className="flex-1 p-1 min-h-0 relative">
             <ScriptEditor
@@ -422,7 +445,7 @@ export const ShotCard: React.FC<ShotCardProps> = ({
         {/* 列4: 图像结果 */}
         <div className={`${SHOT_LAYOUT.colImageResult} border-r border-zinc-800 flex flex-col bg-zinc-900/20`}>
           <div className="flex-1 p-1 min-h-0 overflow-y-auto custom-scrollbar flex items-center justify-center">
-            {images.length === 0 && !isGeneratingImage ? (
+            {imageSources.length === 0 && !isGeneratingImage ? (
               <Button
                 type="primary"
                 size="small"
@@ -433,10 +456,12 @@ export const ShotCard: React.FC<ShotCardProps> = ({
               >
                 生成图像
               </Button>
+            ) : isGeneratingImage && imageSources.length === 0 ? (
+              <Spin size="small" />
             ) : (
               <div className="w-full h-full">
                 <ImageCardGrid
-                  images={images.map(a => getMediaAssetDisplaySource(a) || '').filter(Boolean)}
+                  images={imageSources}
                   selectedIndex={shot.media?.currentImageIndex || 0}
                   onSelect={handleImageSelect}
                   onAdd={handleImageAdd}

@@ -87,6 +87,7 @@ const getFFmpegAPI = (): any => {
  */
 class FFmpegManager {
   private frameCache: Map<string, string[]> = new Map();
+  private posterFrameCache: Map<string, string> = new Map();
   private waveformCache: Map<string, string> = new Map();
   private mediaInfoCache: Map<string, MediaInfo> = new Map();
   private cacheDir: string = '';
@@ -162,6 +163,51 @@ class FFmpegManager {
     const frames = await api.extractFrames(options);
     this.frameCache.set(cacheKey, frames);
     return frames;
+  }
+
+  /**
+   * 提取视频首帧，作为缩略图/预览图。
+   */
+  async getPosterFrame(
+    filePath: string,
+    resourceId: string,
+    width: number = 320
+  ): Promise<string | null> {
+    const cacheKey = `${filePath}:${resourceId}:${width}:poster`;
+    if (this.posterFrameCache.has(cacheKey)) {
+      return this.posterFrameCache.get(cacheKey)!;
+    }
+
+    await this.init();
+    const api = getFFmpegAPI();
+    if (!api) {
+      return null;
+    }
+
+    const available = await this.isAvailable();
+    if (!available) {
+      return null;
+    }
+
+    const rootDir = await api.getCacheDir('video-posters');
+    const outputDir = `${rootDir}/${resourceId}`;
+    await api.ensureDir(outputDir);
+
+    const frames = await api.extractFrames({
+      input: filePath,
+      outputDir,
+      fps: 1,
+      startTime: 0,
+      endTime: 0.1,
+      width,
+      quality: 2,
+    });
+
+    const firstFrame = Array.isArray(frames) && frames.length > 0 ? frames[0] : null;
+    if (firstFrame) {
+      this.posterFrameCache.set(cacheKey, firstFrame);
+    }
+    return firstFrame;
   }
 
   /**

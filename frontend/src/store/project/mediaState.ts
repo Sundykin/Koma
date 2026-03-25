@@ -26,6 +26,20 @@ function compactAssets(assets?: StoredMediaAsset[]): StoredMediaAsset[] | undefi
   return compacted.length ? compacted : undefined;
 }
 
+function mergeLegacyGridImage(
+  images: StoredMediaAsset[] | undefined,
+  legacyGridImage?: StoredMediaAsset
+): StoredMediaAsset[] | undefined {
+  if (!legacyGridImage) return images;
+  const next = images ? [...images] : [];
+  const legacySource = getMediaAssetSource(legacyGridImage);
+  const exists = next.some(asset => getMediaAssetSource(asset) === legacySource);
+  if (!exists) {
+    next.unshift(legacyGridImage);
+  }
+  return next.length ? next : undefined;
+}
+
 function clampIndex(index: number | undefined, length: number): number | undefined {
   if (!length) return undefined;
   if (index == null || Number.isNaN(index)) return 0;
@@ -66,7 +80,8 @@ export function normalizeShotVersionMediaState(version: ShotVersion): ShotVersio
 
 export function normalizeShotMediaState(shot: Shot): Shot {
   const references = compactAssets(shot.media?.references);
-  const images = compactAssets(shot.media?.images);
+  const legacyGridImage = compactAsset(shot.media?.gridImage);
+  const images = mergeLegacyGridImage(compactAssets(shot.media?.images), legacyGridImage);
   const videos = compactAssets(shot.media?.videos);
 
   const selectedReferenceIndex = clampIndex(
@@ -115,4 +130,3 @@ export function normalizeShotsMediaState(shots: Shot[]): Shot[] {
 export function normalizeShotVersionsMediaState(versions: ShotVersion[]): ShotVersion[] {
   return versions.map(normalizeShotVersionMediaState);
 }
-
