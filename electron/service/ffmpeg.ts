@@ -481,12 +481,27 @@ export class FFmpegService {
     const cellW = Math.floor(finalW / 3);
     const cellH = Math.floor(finalH / 3);
 
-    // 基础处理：放大（如需要）→ 补充像素到可平分（通过 scale 到可整除尺寸）→ 锐化
+    const padRight = Math.max(0, finalW - scaledW);
+    const padBottom = Math.max(0, finalH - scaledH);
+
+    // 基础处理：
+    // 1) 如需放大：高质量插值（lanczos）
+    // 2) 如需补充像素到可平分：pad 右/下边缘 + fillborders 把新增边缘用“边缘像素扩展”填充（不会整体缩放原图）
+    // 3) 锐化，保证切割后单格观感更清晰
     const baseFilters: string[] = [
-      `scale=${finalW}:${finalH}:flags=lanczos`,
+      `scale=${scaledW}:${scaledH}:flags=lanczos`,
+    ];
+
+    if (padRight > 0 || padBottom > 0) {
+      baseFilters.push(`pad=${finalW}:${finalH}:0:0:color=black`);
+      // Use smear to extend edge pixels into padded area (near-lossless border fill).
+      baseFilters.push(`fillborders=left=0:top=0:right=${padRight}:bottom=${padBottom}:mode=smear`);
+    }
+
+    baseFilters.push(
       `unsharp=5:5:${Math.max(0, Math.min(2, sharpenAmount))}:3:3:0.0`,
       'split=9[v0][v1][v2][v3][v4][v5][v6][v7][v8]',
-    ];
+    );
 
     const cropFilters: string[] = [];
     let outIndex = 0;
