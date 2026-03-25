@@ -144,6 +144,9 @@ export const ShotCard: React.FC<ShotCardProps> = ({
   const { message } = App.useApp();
   const [videoModalOpen, setVideoModalOpen] = useState(false);
   const [isSplittingGridImage, setIsSplittingGridImage] = useState(false);
+  const [gridSplitModalOpen, setGridSplitModalOpen] = useState(false);
+  const [gridSplitTargetIndex, setGridSplitTargetIndex] = useState<number | null>(null);
+  const [gridSplitImageSize, setGridSplitImageSize] = useState<{ w: number; h: number } | null>(null);
 
   // 使用 useMemo 缓存计算值，避免不必要的重渲染
   const hasImagePrompt = useMemo(
@@ -202,6 +205,51 @@ export const ShotCard: React.FC<ShotCardProps> = ({
     return images[shot.media?.currentImageIndex || 0];
   }, [images, shot.media?.currentImageIndex]);
 
+  const gridSplitAsset = useMemo(() => {
+    if (gridSplitTargetIndex == null) return null;
+    return images[gridSplitTargetIndex] || null;
+  }, [images, gridSplitTargetIndex]);
+
+  const gridSplitAspectStyle = useMemo(() => {
+    const w = gridSplitImageSize?.w || gridSplitAsset?.width || 0;
+    const h = gridSplitImageSize?.h || gridSplitAsset?.height || 0;
+    if (w > 0 && h > 0) return `${w} / ${h}`;
+    return '16 / 9';
+  }, [gridSplitAsset, gridSplitImageSize]);
+
+  const gridSplitPreviewMeta = useMemo(() => {
+    const w = gridSplitImageSize?.w || gridSplitAsset?.width || 0;
+    const h = gridSplitImageSize?.h || gridSplitAsset?.height || 0;
+    if (!w || !h) return null;
+
+    const aspect = h > w ? '9:16' : '16:9';
+    const defaultCell = aspect === '16:9'
+      ? { w: 1280, h: 720 }
+      : { w: 720, h: 1280 };
+    const minW = defaultCell.w * 3;
+    const minH = defaultCell.h * 3;
+    const scaleFactor = Math.max(minW / w, minH / h, 1);
+    const scaledW = Math.round(w * scaleFactor);
+    const scaledH = Math.round(h * scaleFactor);
+    const finalW = Math.ceil(scaledW / 3) * 3;
+    const finalH = Math.ceil(scaledH / 3) * 3;
+    const padRight = finalW - scaledW;
+    const padBottom = finalH - scaledH;
+    const cellW = Math.floor(finalW / 3);
+    const cellH = Math.floor(finalH / 3);
+
+    return {
+      aspect,
+      scaleFactor,
+      finalW,
+      finalH,
+      padRight,
+      padBottom,
+      cellW,
+      cellH,
+    };
+  }, [gridSplitAsset, gridSplitImageSize]);
+
   // 图片操作
   const handleImageSelect = (idx: number) => onImagesChange(shot.id, images, idx);
   const handleImageAdd = (path: string) => {
@@ -220,7 +268,20 @@ export const ShotCard: React.FC<ShotCardProps> = ({
     onImagesChange(shot.id, newImages, Math.max(0, newIdx));
   };
 
-  const handleSplitGridImage = useCallback(async () => {
+  const handleOpenGridSplitPreview = useCallback((idx: number) => {
+    setGridSplitTargetIndex(idx);
+    setGridSplitImageSize(null);
+    setGridSplitModalOpen(true);
+  }, []);
+
+  const handleCloseGridSplitPreview = useCallback(() => {
+    if (isSplittingGridImage) return;
+    setGridSplitModalOpen(false);
+    setGridSplitTargetIndex(null);
+    setGridSplitImageSize(null);
+  }, [isSplittingGridImage]);
+
+  const handleConfirmGridSplit = useCallback(async () => {
     if (!electronService.isElectron()) {
       message.error('仅支持 Electron 环境');
       return;
@@ -229,7 +290,12 @@ export const ShotCard: React.FC<ShotCardProps> = ({
       message.info('当前分镜不是九宫格模式');
       return;
     }
-    if (!currentImage) {
+    if (gridSplitTargetIndex == null) {
+      message.info('未选择要拆分的图片');
+      return;
+    }
+    const targetAsset = images[gridSplitTargetIndex];
+    if (!targetAsset) {
       message.info('没有可拆分的图片');
       return;
     }
@@ -242,8 +308,11 @@ export const ShotCard: React.FC<ShotCardProps> = ({
         throw new Error('FFmpeg 不可用');
       }
 
-      const currentIdx = shot.media?.currentImageIndex || 0;
-      let inputAsset: StoredMediaAsset = currentImage;
+      const w = gridSplitImageSize?.w || targetAsset.width || 0;
+      const h = gridSplitImageSize?.h || targetAsset.height || 0;
+      const aspectRatio: '16:9' | '9:16' = (w > 0 && h > 0 && h > w) ? '9:16' : '16:9';
+
+      let inputAsset: StoredMediaAsset = targetAsset;
       let baseImages: StoredMediaAsset[] = images;
 
       const isUsableLocalPath = Boolean(
@@ -273,23 +342,12 @@ export const ShotCard: React.FC<ShotCardProps> = ({
         });
 
         inputAsset = persisted;
-        baseImages = images.map((a, i) => (i === currentIdx ? persisted : a));
+        baseImages = images.map((a, i) => (i === gridSplitTargetIndex ? persisted : a));
       }
 
       const inputPath = inputAsset.localPath;
       if (!inputPath || isRemoteMediaUri(inputPath)) {
         throw new Error('缺少可用的本地图片路径');
-      }
-
-      // Infer aspect ratio from the image dimensions (we only care about 16:9 vs 9:16).
-      let aspectRatio: '16:9' | '9:16' = '16:9';
-      try {
-        const info = await ffmpegManager.getMediaInfo(inputPath);
-        if (info.width && info.height && info.height > info.width) {
-          aspectRatio = '9:16';
-        }
-      } catch {
-        // ignore
       }
 
       const projectPath = await getProjectPath(projectId);
@@ -317,6 +375,9 @@ export const ShotCard: React.FC<ShotCardProps> = ({
       const nextImages = [...baseImages, ...newAssets];
       onImagesChange(shot.id, nextImages, baseImages.length);
       message.success('九宫格已拆分为 9 张图片');
+      setGridSplitModalOpen(false);
+      setGridSplitTargetIndex(null);
+      setGridSplitImageSize(null);
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : String(err);
       message.error(errorMessage || '九宫格拆分失败');
@@ -324,7 +385,8 @@ export const ShotCard: React.FC<ShotCardProps> = ({
       setIsSplittingGridImage(false);
     }
   }, [
-    currentImage,
+    gridSplitImageSize,
+    gridSplitTargetIndex,
     images,
     isSplittingGridImage,
     message,
@@ -332,7 +394,6 @@ export const ShotCard: React.FC<ShotCardProps> = ({
     projectId,
     shot.id,
     shot.imageMode,
-    shot.media?.currentImageIndex,
   ]);
 
   // 参考图操作
@@ -407,6 +468,8 @@ export const ShotCard: React.FC<ShotCardProps> = ({
     }
     return source;
   }, []);
+
+  const gridSplitSrc = gridSplitAsset ? getDisplaySrc(gridSplitAsset) : '';
 
   return (
     <div
@@ -585,6 +648,9 @@ export const ShotCard: React.FC<ShotCardProps> = ({
                   onSelect={handleImageSelect}
                   onAdd={handleImageAdd}
                   onDelete={handleImageDelete}
+                  onSplitGrid={shot.imageMode === 'grid' && electronService.isElectron()
+                    ? handleOpenGridSplitPreview
+                    : undefined}
                   isGenerating={isGeneratingImage}
                   disabled={!hasImagePrompt}
                   characters={characters}
@@ -593,21 +659,6 @@ export const ShotCard: React.FC<ShotCardProps> = ({
                   compact
                 />
               </div>
-            )}
-
-            {shot.imageMode === 'grid' && currentImage && (
-              <Tooltip title="将当前九宫格图平分为 9 张图片" placement="top">
-                <Button
-                  type="text"
-                  size="small"
-                  icon={<AppstoreOutlined />}
-                  className="absolute top-1 right-1 h-6 px-2 text-[10px]"
-                  onClick={handleSplitGridImage}
-                  disabled={!electronService.isElectron() || isGeneratingImage || isSplittingGridImage}
-                >
-                  {isSplittingGridImage ? '切割中...' : '拆分九宫格'}
-                </Button>
-              </Tooltip>
             )}
           </div>
         </div>
@@ -700,6 +751,108 @@ export const ShotCard: React.FC<ShotCardProps> = ({
           </div>
         </div>
       </div>
+
+      {/* 九宫格拆分预览 Modal */}
+      <Modal
+        title={`分镜 #${index + 1} - 九宫格拆分预览`}
+        open={gridSplitModalOpen}
+        onCancel={handleCloseGridSplitPreview}
+        onOk={handleConfirmGridSplit}
+        okText={isSplittingGridImage ? '拆分中...' : '确定拆分'}
+        cancelText="取消"
+        okButtonProps={{
+          disabled: !electronService.isElectron() || isSplittingGridImage || !gridSplitAsset,
+        }}
+        cancelButtonProps={{
+          disabled: isSplittingGridImage,
+        }}
+        width={920}
+        centered
+        destroyOnClose
+        maskClosable={!isSplittingGridImage}
+        closable={!isSplittingGridImage}
+      >
+        {!gridSplitAsset ? (
+          <div className="text-sm text-zinc-400">未找到要拆分的图片</div>
+        ) : (
+          <div className="flex flex-col gap-3">
+            <div className="text-[12px] text-zinc-400">
+              <div>将把所选图片平均切成 9 张（3×3）。确认后才会真正落盘拆分。</div>
+              {gridSplitPreviewMeta && (
+                <div className="mt-1">
+                  预计输出单格分辨率约 {gridSplitPreviewMeta.cellW}×{gridSplitPreviewMeta.cellH}，
+                  右/下补像素 {gridSplitPreviewMeta.padRight}/{gridSplitPreviewMeta.padBottom}px，
+                  放大倍率 {gridSplitPreviewMeta.scaleFactor.toFixed(2)}×
+                </div>
+              )}
+            </div>
+
+            <div className="flex flex-col md:flex-row gap-3">
+              {/* 分割线预览 */}
+              <div className="flex-1">
+                <div className="text-[12px] text-zinc-500 mb-1">分割线预览</div>
+                <div
+                  className="relative w-full rounded overflow-hidden bg-black border border-zinc-800"
+                  style={{ aspectRatio: gridSplitAspectStyle }}
+                >
+                  {gridSplitSrc && (
+                    <img
+                      src={gridSplitSrc}
+                      alt=""
+                      className="absolute inset-0 w-full h-full object-cover"
+                      onLoad={(e) => {
+                        const w = e.currentTarget.naturalWidth || 0;
+                        const h = e.currentTarget.naturalHeight || 0;
+                        if (w && h) setGridSplitImageSize({ w, h });
+                      }}
+                    />
+                  )}
+
+                  {/* 3×3 分割线 */}
+                  <div className="absolute inset-0 pointer-events-none">
+                    {/* vertical lines */}
+                    <div className="absolute top-0 bottom-0 left-1/3 w-px bg-white/70" />
+                    <div className="absolute top-0 bottom-0 left-2/3 w-px bg-white/70" />
+                    {/* horizontal lines */}
+                    <div className="absolute left-0 right-0 top-1/3 h-px bg-white/70" />
+                    <div className="absolute left-0 right-0 top-2/3 h-px bg-white/70" />
+                  </div>
+                </div>
+              </div>
+
+              {/* 结果预览 */}
+              <div className="flex-1">
+                <div className="text-[12px] text-zinc-500 mb-1">生成结果预览</div>
+                <div className="grid grid-cols-3 gap-2">
+                  {Array.from({ length: 9 }).map((_, i) => {
+                    const row = Math.floor(i / 3);
+                    const col = i % 3;
+                    const bgPosX = `${col * 50}%`;
+                    const bgPosY = `${row * 50}%`;
+                    return (
+                      <div
+                        key={i}
+                        className="relative rounded overflow-hidden border border-zinc-800 bg-black"
+                        style={{
+                          aspectRatio: gridSplitAspectStyle,
+                          backgroundImage: gridSplitSrc ? `url(${gridSplitSrc})` : undefined,
+                          backgroundSize: '300% 300%',
+                          backgroundPosition: `${bgPosX} ${bgPosY}`,
+                          backgroundRepeat: 'no-repeat',
+                        }}
+                      >
+                        <div className="absolute left-1 top-1 text-[10px] text-white/80 bg-black/50 px-1 rounded">
+                          {String(i + 1).padStart(2, '0')}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </Modal>
 
       {/* 视频播放 Modal */}
       <Modal
