@@ -59,3 +59,16 @@
 - Claude: 继续 i18n (components/project 目录)
 - Gemini: 修复 TypeScript 错误 (ChatSession.ts)
 - Codex: 代码清理 (删除 console.log)
+
+---
+
+## 2026-03-26 附加计划：灵绘独立菜单提案
+
+- **目标：** 产出“灵绘”独立菜单功能的 OpenSpec 规划文档，明确 MVP 与后续迭代边界；本轮不实现代码。
+- **当前阶段：** 方案与规范编写
+- **输出物：** `openspec/changes/add-linghui-canvas-studio/` 下的 `proposal.md`、`design.md`、`tasks.md` 与 spec deltas
+- **当前判断：**
+  - 首版应作为内建一级菜单，而不是全局插件
+  - 数据模型应独立于现有 `Project / Episode`
+  - MVP 聚焦画布、分组、基础节点、4 宫格、多角度、分镜组、预览导出
+  - 运镜节点、9 宫格、自定义角度和视频后处理进入后续迭代

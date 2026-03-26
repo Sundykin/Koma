@@ -18,6 +18,7 @@
     "@codemirror/state": "^6.5.4",
     "@codemirror/view": "^6.39.11",
     "@google/genai": "^1.36.0",
+    "@litegraph-ts/core": "^0.2.27",
     "antd": "^6.2.1",
     "ds-markdown": "^1.0.4",
     "i18next": "^25.8.0",

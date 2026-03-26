@@ -32,6 +32,7 @@ const PluginManager = lazy(() => import('./components/plugins').then(m => ({ def
 const PluginHost = lazy(() => import('./components/plugins').then(m => ({ default: m.PluginHost })));
 const ChatPage = lazy(() => import('./components/chat').then(m => ({ default: m.ChatPage })));
 const ProjectOverview = lazy(() => import('./components/project/ProjectOverview').then(m => ({ default: m.ProjectOverview })));
+const LinghuiPage = lazy(() => import('./components/linghui').then(m => ({ default: m.LinghuiPage })));
 
 // 加载中占位组件
 const ViewLoading: React.FC<{ tip?: string }> = ({ tip = '加载中...' }) => (
@@ -348,6 +349,11 @@ const AppContent: React.FC = () => {
             {view === 'chat' && (
               <Suspense fallback={<ViewLoading tip="加载对话页面..." />}>
                 <ChatPage />
+              </Suspense>
+            )}
+            {view === 'linghui' && (
+              <Suspense fallback={<ViewLoading tip="加载灵绘工作台..." />}>
+                <LinghuiPage />
               </Suspense>
             )}
             {view.startsWith('plugin:') && (

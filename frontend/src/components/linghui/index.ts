@@ -1,0 +1,2 @@
+export { LinghuiPage } from './LinghuiPage';
+

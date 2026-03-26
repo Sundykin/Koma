@@ -1,13 +1,13 @@
 import React, { useMemo } from 'react';
 import { Avatar, Tooltip } from 'antd';
 import { UserOutlined } from '@ant-design/icons';
-import { LayoutGrid, Scissors, Settings, Puzzle, MessageCircle } from 'lucide-react';
+import { LayoutGrid, Scissors, Settings, Puzzle, MessageCircle, PenTool } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Project, Episode } from '../../types';
 import { usePluginStore } from '../../store/pluginStore';
 
 // 视图类型：支持插件路由
-export type AppView = 'projects' | 'overview' | 'editor' | 'settings' | 'plugins' | 'chat' | `plugin:${string}`;
+export type AppView = 'projects' | 'overview' | 'editor' | 'settings' | 'plugins' | 'chat' | 'linghui' | `plugin:${string}`;
 
 interface SidebarProps {
   view: AppView;
@@ -68,6 +68,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   // 主导航项
   const mainNavItems = [
     { key: 'projects', icon: <LayoutGrid size={22} />, label: t('sidebar.projects') },
+    { key: 'linghui', icon: <PenTool size={22} />, label: t('sidebar.linghui') },
     { key: 'chat', icon: <MessageCircle size={22} />, label: t('chat.title') },
   ];
 

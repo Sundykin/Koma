@@ -1,0 +1,808 @@
+.linghuiPage {
+  display: grid;
+  grid-template-columns: 272px minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+  height: 100%;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at top left, rgba(16, 185, 129, 0.08), transparent 28%),
+    radial-gradient(circle at bottom right, rgba(59, 130, 246, 0.08), transparent 22%),
+    #090d12;
+}
+
+.linghuiToolbar {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 16px;
+  border-bottom: 1px solid rgba(63, 63, 70, 0.9);
+  background: rgba(9, 13, 18, 0.88);
+  backdrop-filter: blur(14px);
+}
+
+.linghuiToolbarLeft,
+.linghuiToolbarRight {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.linghuiWorkspaceSelect {
+  width: 220px;
+}
+
+.linghuiSidebar {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: rgba(14, 18, 25, 0.88);
+}
+
+.linghuiSidebar {
+  border-right: 1px solid rgba(63, 63, 70, 0.9);
+  padding: 14px;
+}
+
+.linghuiSidebarHeader,
+.linghuiInspectorSection {
+  padding: 14px;
+}
+
+.linghuiSidebarTitle,
+.linghuiInspectorTitle {
+  color: #f4f4f5;
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.linghuiSidebarSubtitle,
+.linghuiSelectionSubtitle,
+.linghuiNodeDescription,
+.linghuiEmptyInspector {
+  color: #a1a1aa;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.linghuiSearchInput {
+  margin: 0 14px 14px;
+}
+
+.linghuiNodeGroups {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.linghuiNodeGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.linghuiNodeGroupTitle {
+  color: #d4d4d8;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.linghuiNodeList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.linghuiNodeCard {
+  display: flex;
+  width: 100%;
+  align-items: stretch;
+  gap: 12px;
+  border: 1px solid rgba(63, 63, 70, 0.9);
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(24, 24, 27, 0.95), rgba(15, 23, 32, 0.95));
+  padding: 12px;
+  color: inherit;
+  text-align: left;
+  transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.linghuiNodeCard:hover {
+  transform: translateY(-1px);
+  border-color: rgba(16, 185, 129, 0.65);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.22);
+}
+
+.linghuiNodeAccent {
+  width: 6px;
+  border-radius: 999px;
+  flex: 0 0 6px;
+}
+
+.linghuiNodeContent {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.linghuiNodeName,
+.linghuiSelectionTitle {
+  color: #fafafa;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.linghuiCanvasPanel {
+  min-width: 0;
+  min-height: 0;
+  padding: 14px 14px 14px 0;
+}
+
+.linghuiCanvasWorkspace {
+  position: relative;
+  height: 100%;
+}
+
+.linghuiCanvasRoot {
+  position: relative;
+  height: 100%;
+  overflow: hidden;
+  border: 1px solid rgba(63, 63, 70, 0.9);
+  border-radius: 22px;
+  background:
+    radial-gradient(circle at top, rgba(16, 185, 129, 0.05), transparent 32%),
+    linear-gradient(180deg, rgba(10, 14, 19, 0.96), rgba(6, 10, 14, 0.98));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
+}
+
+.linghuiFloatingPanel {
+  position: absolute;
+  pointer-events: auto;
+  z-index: 30;
+  width: 320px;
+  max-width: calc(100% - 24px);
+  border: 1px solid rgba(63, 63, 70, 0.78);
+  border-radius: 18px;
+  background: rgba(11, 15, 21, 0.88);
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.32);
+  backdrop-filter: blur(18px);
+  overflow: hidden;
+}
+
+.linghuiWorkspacePanel {
+  top: 14px;
+  right: 14px;
+}
+
+.linghuiLogsPanel {
+  right: 14px;
+  bottom: 14px;
+}
+
+.linghuiFloatingPanelHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 1px solid rgba(63, 63, 70, 0.58);
+  background: linear-gradient(180deg, rgba(22, 28, 36, 0.95), rgba(13, 17, 23, 0.92));
+}
+
+.linghuiFloatingPanelBody {
+  max-height: 46vh;
+  overflow: auto;
+  padding: 14px 16px 16px;
+}
+
+.linghuiFloatingPanel.isCollapsed .linghuiFloatingPanelBody {
+  display: none;
+}
+
+.linghuiFloatingToggle {
+  border: 1px solid rgba(82, 82, 91, 0.85);
+  border-radius: 999px;
+  background: rgba(24, 24, 27, 0.75);
+  color: #e4e4e7;
+  font-size: 12px;
+  padding: 4px 10px;
+  transition: border-color 160ms ease, transform 160ms ease;
+}
+
+.linghuiFloatingToggle:hover {
+  border-color: rgba(16, 185, 129, 0.68);
+  transform: translateY(-1px);
+}
+
+.linghuiGraphCanvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.linghuiCanvasEmpty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  pointer-events: none;
+  color: #e4e4e7;
+  text-align: center;
+}
+
+.linghuiCanvasEmptyTitle {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.linghuiCanvasEmptyDesc {
+  max-width: 420px;
+  color: #a1a1aa;
+  font-size: 13px;
+}
+
+.linghuiField {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 14px;
+}
+
+.linghuiSwitchField {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.linghuiFieldLabel,
+.linghuiInfoLabel {
+  color: #a1a1aa;
+  font-size: 12px;
+}
+
+.linghuiInfoGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.linghuiInfoValue {
+  margin-top: 2px;
+  color: #f4f4f5;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.linghuiSelectionHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 14px;
+}
+
+.linghuiInspectorDivider {
+  margin: 16px 0 6px;
+  border-top: 1px solid rgba(63, 63, 70, 0.6);
+}
+
+.linghuiRunStatusRow {
+  margin-top: 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #d4d4d8;
+  font-size: 12px;
+}
+
+.linghuiRunMessage {
+  color: #cbd5f5;
+  font-size: 12px;
+}
+
+.linghuiRunProgress {
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(30, 41, 59, 0.7);
+  margin-top: 8px;
+  overflow: hidden;
+}
+
+.linghuiRunProgressBar {
+  height: 100%;
+  background: linear-gradient(90deg, #38bdf8, #22c55e);
+}
+
+.linghuiPreviewText {
+  margin-top: 10px;
+  padding: 12px;
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.7);
+  color: #e2e8f0;
+  white-space: pre-wrap;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.linghuiPreviewImage {
+  width: 100%;
+  border-radius: 12px;
+  margin-top: 10px;
+  border: 1px solid rgba(63, 63, 70, 0.6);
+}
+
+.linghuiPreviewVideo {
+  width: 100%;
+  margin-top: 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(63, 63, 70, 0.6);
+  background: #020617;
+}
+
+.linghuiPreviewGrid {
+  margin-top: 10px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.linghuiGridPreviewStack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.linghuiPreviewTile {
+  margin: 0;
+  padding: 10px;
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.65);
+  border: 1px solid rgba(63, 63, 70, 0.5);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.linghuiPreviewTile img {
+  width: 100%;
+  border-radius: 10px;
+}
+
+.linghuiPreviewTile figcaption {
+  color: #cbd5f5;
+  font-size: 11px;
+}
+
+.linghuiPreviewPlaceholder {
+  height: 120px;
+  border-radius: 10px;
+  background: rgba(30, 41, 59, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #94a3b8;
+  font-size: 12px;
+}
+
+.linghuiNodeWidget {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  height: 100%;
+  box-sizing: border-box;
+  padding: 12px;
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(17, 24, 39, 0.96), rgba(8, 13, 19, 0.96));
+  border: 1px solid rgba(63, 63, 70, 0.55);
+  color: #f8fafc;
+}
+
+.linghuiNodeWidgetHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.linghuiNodeWidgetLabel {
+  color: #f8fafc;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.linghuiNodeWidgetHint {
+  color: #a5b4fc;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.linghuiNodeEditorWidget textarea,
+.linghuiNodeEditorWidget input {
+  width: 100%;
+  border: 1px solid rgba(82, 82, 91, 0.8);
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.85);
+  color: #f8fafc;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.linghuiNodeTextarea {
+  min-height: 84px;
+  resize: none;
+  padding: 10px 12px;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.linghuiNodeInput {
+  height: 40px;
+  padding: 0 12px;
+  font-size: 12px;
+}
+
+.linghuiNodeTextarea:focus,
+.linghuiNodeInput:focus {
+  border-color: rgba(16, 185, 129, 0.82);
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.14);
+}
+
+.linghuiNodeMediaFrame {
+  position: relative;
+  flex: 1;
+  min-height: 112px;
+  border-radius: 14px;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at top, rgba(56, 189, 248, 0.16), transparent 40%),
+    rgba(15, 23, 42, 0.78);
+  border: 1px dashed rgba(125, 211, 252, 0.42);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.linghuiNodeDropZone {
+  cursor: pointer;
+  transition: transform 160ms ease, border-color 160ms ease, background 160ms ease;
+}
+
+.linghuiNodeDropZone:hover,
+.linghuiNodeDropZone.is-dragover {
+  border-color: rgba(125, 211, 252, 0.88);
+  background:
+    radial-gradient(circle at top, rgba(56, 189, 248, 0.24), transparent 45%),
+    rgba(17, 24, 39, 0.92);
+  transform: translateY(-1px);
+}
+
+.linghuiNodeDropZone.hasPreview {
+  border-style: solid;
+}
+
+.linghuiNodeMediaPreview,
+.linghuiNodePreviewImage,
+.linghuiNodePreviewVideo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 12px;
+}
+
+.linghuiNodeMediaPlaceholder,
+.linghuiNodePreviewPlaceholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100px;
+  text-align: center;
+  color: #cbd5e1;
+  font-size: 12px;
+  line-height: 1.6;
+  padding: 0 12px;
+}
+
+.linghuiNodePreviewPlaceholder.is-error {
+  color: #fca5a5;
+}
+
+.linghuiNodePreviewWidget.isCollapsed {
+  padding: 8px 12px;
+  gap: 6px;
+}
+
+.linghuiNodeThumbContainer {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.linghuiNodeThumbImage {
+  width: 100%;
+  max-height: 72px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid rgba(63, 63, 70, 0.5);
+}
+
+.linghuiNodeThumbText {
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.7);
+  color: #cbd5e1;
+  font-size: 11px;
+  line-height: 1.5;
+  max-height: 52px;
+  overflow: hidden;
+}
+
+.linghuiNodePreviewBody {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.linghuiNodePreviewText {
+  min-height: 88px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.8);
+  color: #e2e8f0;
+  white-space: pre-wrap;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.linghuiNodePreviewGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.linghuiNodePreviewTile {
+  margin: 0;
+  padding: 8px;
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.7);
+  border: 1px solid rgba(71, 85, 105, 0.45);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.linghuiNodePreviewTile img {
+  width: 100%;
+  height: 76px;
+  object-fit: cover;
+  border-radius: 10px;
+}
+
+.linghuiNodePreviewTile figcaption {
+  color: #cbd5e1;
+  font-size: 10px;
+}
+
+.linghuiNodeStoryboardList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.linghuiNodeStoryboardItem {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  gap: 8px;
+  padding: 8px;
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.72);
+  border: 1px solid rgba(71, 85, 105, 0.4);
+}
+
+.linghuiNodeStoryboardThumb {
+  width: 64px;
+  height: 52px;
+  overflow: hidden;
+  border-radius: 10px;
+  background: rgba(30, 41, 59, 0.8);
+  color: #94a3b8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+}
+
+.linghuiNodeStoryboardThumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.linghuiNodeStoryboardMeta {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.linghuiNodeStoryboardTitle {
+  color: #f8fafc;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.linghuiNodeStoryboardDetail {
+  color: #a5b4fc;
+  font-size: 11px;
+}
+
+.linghuiNodeStatusBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.linghuiNodeStatusBadge.is-idle {
+  background: rgba(71, 85, 105, 0.3);
+  color: #cbd5e1;
+}
+
+.linghuiNodeStatusBadge.is-running {
+  background: rgba(59, 130, 246, 0.16);
+  color: #93c5fd;
+}
+
+.linghuiNodeStatusBadge.is-success {
+  background: rgba(34, 197, 94, 0.16);
+  color: #86efac;
+}
+
+.linghuiNodeStatusBadge.is-warning {
+  background: rgba(249, 115, 22, 0.16);
+  color: #fdba74;
+}
+
+.linghuiNodeStatusBadge.is-error {
+  background: rgba(239, 68, 68, 0.16);
+  color: #fca5a5;
+}
+
+.linghuiShotList {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.linghuiShotCard {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr);
+  gap: 12px;
+  padding: 10px;
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(63, 63, 70, 0.55);
+}
+
+.linghuiShotThumb img {
+  width: 100%;
+  border-radius: 8px;
+}
+
+.linghuiShotMeta {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.linghuiShotTitle {
+  color: #f8fafc;
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.linghuiShotDesc {
+  color: #cbd5f5;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.linghuiShotDuration {
+  color: #94a3b8;
+  font-size: 11px;
+}
+
+.linghuiLogEntry {
+  display: grid;
+  grid-template-columns: 80px minmax(0, 1fr);
+  gap: 8px;
+  font-size: 11px;
+  color: #cbd5f5;
+  padding: 6px 0;
+  border-bottom: 1px dashed rgba(63, 63, 70, 0.4);
+}
+
+.linghuiLogEntry:last-child {
+  border-bottom: none;
+}
+
+.linghuiLog-info {
+  color: #cbd5f5;
+}
+
+.linghuiLog-success {
+  color: #86efac;
+}
+
+.linghuiLog-error {
+  color: #fca5a5;
+}
+
+.linghuiStatusBar {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 16px;
+  border-top: 1px solid rgba(63, 63, 70, 0.9);
+  background: rgba(8, 10, 15, 0.92);
+  color: #d4d4d8;
+  font-size: 12px;
+}
+
+.linghuiStatusItems {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 1320px) {
+  .linghuiPage {
+    grid-template-columns: 248px minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 1120px) {
+  .linghuiPage {
+    grid-template-columns: 232px minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 920px) {
+  .linghuiPage {
+    grid-template-columns: 1fr;
+  }
+
+  .linghuiSidebar {
+    display: none;
+  }
+
+  .linghuiCanvasPanel {
+    padding: 12px;
+  }
+
+  .linghuiWorkspacePanel,
+  .linghuiLogsPanel {
+    width: min(320px, calc(100% - 24px));
+  }
+}
