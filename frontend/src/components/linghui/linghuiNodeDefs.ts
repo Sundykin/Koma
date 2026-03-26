@@ -17,6 +17,10 @@ export interface LinghuiNodeMeta {
   background: string;
 }
 
+interface CreateNewNodeDataOptions {
+  label?: string;
+}
+
 export const NODE_META: Record<LinghuiNodeType, LinghuiNodeMeta> = {
   'linghui/reference': {
     type: 'linghui/reference',
@@ -206,14 +210,14 @@ export function getLinghuiNodeAccent(type?: string | null): string {
   return getLinghuiNodeMeta(type)?.accent ?? '#4ade80';
 }
 
-export function createNewNodeData(type: LinghuiNodeType): LinghuiNodeData {
+export function createNewNodeData(type: LinghuiNodeType, options?: CreateNewNodeDataOptions): LinghuiNodeData {
   const meta = NODE_META[type];
   const slots = NODE_SLOT_LAYOUTS[type];
   const defaults = NODE_PROPERTY_DEFAULTS[type];
 
   return {
     linghuiType: type,
-    label: meta.title,
+    label: options?.label?.trim() || meta.title,
     accent: meta.accent,
     background: meta.background,
     properties: { ...defaults },

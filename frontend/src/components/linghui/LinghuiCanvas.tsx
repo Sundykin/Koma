@@ -132,6 +132,42 @@ function rfTypeKey(linghuiType: LinghuiNodeType): string {
   return linghuiType.replace(/\//g, '-');
 }
 
+function extractDefaultImageLabelIndex(label: string): number {
+  const match = label.trim().match(/^图片\s*(\d+)$/);
+  return match ? Number(match[1]) : 0;
+}
+
+function resolveNewNodeLabel(type: LinghuiNodeType, currentNodes: Node[]): string | undefined {
+  if (type !== 'linghui/image') {
+    return undefined;
+  }
+
+  const imageNodes = currentNodes.filter(node => {
+    if (node.type === 'group') return false;
+    const nodeData = node.data as unknown as LinghuiNodeData | undefined;
+    return nodeData?.linghuiType === 'linghui/image';
+  });
+
+  const maxDefaultIndex = imageNodes.reduce((maxValue, node) => {
+    const nodeData = node.data as unknown as LinghuiNodeData | undefined;
+    return Math.max(maxValue, extractDefaultImageLabelIndex(nodeData?.label ?? ''));
+  }, 0);
+
+  return `图片 ${Math.max(imageNodes.length, maxDefaultIndex) + 1}`;
+}
+
+function createCanvasNode(type: LinghuiNodeType, position: Node['position'], currentNodes: Node[]): Node {
+  return {
+    id: nanoid(10),
+    type: rfTypeKey(type),
+    position,
+    data: createNewNodeData(type, {
+      label: resolveNewNodeLabel(type, currentNodes),
+    }) as any,
+    draggable: false,
+  };
+}
+
 const NODE_LONG_PRESS_MS = 220;
 
 interface ActiveNodePressState {
@@ -526,14 +562,7 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
   const addNodeFromMenu = useCallback((type: LinghuiNodeType) => {
     if (!contextMenu) return;
     const position = reactFlow.screenToFlowPosition({ x: contextMenu.screenX, y: contextMenu.screenY });
-    const newNode: Node = {
-      id: nanoid(10),
-      type: rfTypeKey(type),
-      position,
-      data: createNewNodeData(type) as any,
-      draggable: false,
-    };
-    setNodes(nds => [...nds, newNode]);
+    setNodes(currentNodes => [...currentNodes, createCanvasNode(type, position, currentNodes)]);
     closeContextMenu();
     requestAnimationFrame(() => emitSnapshot());
   }, [closeContextMenu, contextMenu, emitSnapshot, reactFlow, setNodes]);
@@ -857,15 +886,7 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
     event.preventDefault();
 
     const position = reactFlow.screenToFlowPosition({ x: event.clientX, y: event.clientY });
-    const newNode: Node = {
-      id: nanoid(10),
-      type: rfTypeKey(nodeType),
-      position,
-      data: createNewNodeData(nodeType) as any,
-      draggable: false,
-    };
-
-    setNodes(nds => [...nds, newNode]);
+    setNodes(currentNodes => [...currentNodes, createCanvasNode(nodeType, position, currentNodes)]);
     requestAnimationFrame(() => emitSnapshot());
   }, [reactFlow, setNodes, emitSnapshot]);
 
@@ -948,15 +969,7 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
           y: window.innerHeight / 2,
         });
 
-      const newNode: Node = {
-        id: nanoid(10),
-        type: rfTypeKey(type),
-        position,
-        data: createNewNodeData(type) as any,
-        draggable: false,
-      };
-
-      setNodesRef.current(nds => [...nds, newNode]);
+      setNodesRef.current(currentNodes => [...currentNodes, createCanvasNode(type, position, currentNodes)]);
       requestAnimationFrame(() => emitSnapshotRef.current());
     },
 

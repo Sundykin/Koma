@@ -1224,6 +1224,21 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  cursor: text;
+}
+
+.linghuiCompactLabelInput {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid rgba(74, 222, 128, 0.55);
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.92);
+  color: #f8fafc;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+  padding: 4px 8px;
+  outline: none;
 }
 
 .linghuiCompactMeta {
@@ -1375,39 +1390,6 @@
 
 .linghuiEditorPromptHint {
   margin-top: 8px;
-}
-
-.linghuiPromptEditorPreviewRow {
-  display: flex;
-  gap: 8px;
-  padding: 8px 2px 12px;
-  flex-wrap: wrap;
-}
-
-.linghuiPromptEditorPreviewItem {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 8px;
-  border-radius: 999px;
-  background: rgba(15, 23, 42, 0.7);
-  border: 1px solid rgba(63, 63, 70, 0.5);
-  color: #d1d5db;
-  font-size: 11px;
-}
-
-.linghuiPromptEditorPreviewItem img {
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  object-fit: cover;
-}
-
-.linghuiPromptEditorPreviewItem span {
-  max-width: 120px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .linghuiEditorToolbar {

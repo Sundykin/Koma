@@ -7,6 +7,7 @@ import type {
 } from '../../../types/linghui';
 import { useNodeRunState, useLinghuiNodeInteraction } from './LinghuiNodeRunsContext';
 import { electronService } from '../../../services/electronService';
+import { EditableCompactNodeLabel } from './EditableCompactNodeLabel';
 
 const STATUS_COLORS: Record<LinghuiRunStatus, string> = {
   idle: '#64748b',
@@ -70,7 +71,11 @@ function ReferenceNodeInner({ id, data, selected }: NodeProps) {
       </div>
 
       <div className="linghuiCompactInfo">
-        <span className="linghuiCompactLabel">{nodeData.label}</span>
+        <EditableCompactNodeLabel
+          nodeId={id}
+          label={nodeData.label}
+          fallbackLabel="参考图"
+        />
         <span className="linghuiCompactMeta">
           {note || (thumbSource ? '已挂载参考图' : '拖入图片或上传')}
         </span>

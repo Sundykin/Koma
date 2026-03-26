@@ -3,6 +3,7 @@ import { Handle, Position, type NodeProps } from '@xyflow/react';
 import type { LinghuiNodeData, LinghuiRunStatus } from '../../../types/linghui';
 import { useNodeRunState, useLinghuiNodeInteraction } from './LinghuiNodeRunsContext';
 import { electronService } from '../../../services/electronService';
+import { EditableCompactNodeLabel } from './EditableCompactNodeLabel';
 
 const STATUS_COLORS: Record<LinghuiRunStatus, string> = {
   idle: '#64748b',
@@ -71,7 +72,11 @@ function VideoNodeInner({ id, data, selected }: NodeProps) {
       </div>
 
       <div className="linghuiCompactInfo">
-        <span className="linghuiCompactLabel">{nodeData.label}</span>
+        <EditableCompactNodeLabel
+          nodeId={id}
+          label={nodeData.label}
+          fallbackLabel="视频"
+        />
         {status === 'running' && (
           <div className="linghuiCompactProgress">
             <div className="linghuiCompactProgressBar" style={{ width: `${runState?.progress ?? 0}%` }} />

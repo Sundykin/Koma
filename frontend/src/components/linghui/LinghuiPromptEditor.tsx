@@ -62,6 +62,10 @@ function getReferenceWidgetColor(kind: LinghuiPromptReferenceItem['kind']): { ba
   }
 }
 
+function isVisualReference(item: LinghuiPromptReferenceItem): boolean {
+  return (item.kind === 'image' || item.kind === 'video') && Boolean(item.previewSource || item.source);
+}
+
 function toPreviewSource(source?: string): string | undefined {
   if (!source) return undefined;
   if (
@@ -76,6 +80,85 @@ function toPreviewSource(source?: string): string | undefined {
   return electronService.fs.toLocalUrl(source);
 }
 
+function removeReferencePreviewTooltip(anchor: HTMLElement) {
+  const tooltip = (anchor as HTMLElement & { __linghuiPreviewTooltip?: HTMLElement }).__linghuiPreviewTooltip;
+  if (tooltip) {
+    tooltip.remove();
+    delete (anchor as HTMLElement & { __linghuiPreviewTooltip?: HTMLElement }).__linghuiPreviewTooltip;
+  }
+}
+
+function positionReferencePreviewTooltip(tooltip: HTMLElement, event: MouseEvent) {
+  const rect = tooltip.getBoundingClientRect();
+  const viewportWidth = window.innerWidth;
+  const viewportHeight = window.innerHeight;
+  const offset = 16;
+
+  let left = event.clientX + offset;
+  let top = event.clientY + offset;
+
+  if (left + rect.width > viewportWidth - 12) {
+    left = event.clientX - rect.width - offset;
+  }
+  if (top + rect.height > viewportHeight - 12) {
+    top = event.clientY - rect.height - offset;
+  }
+
+  tooltip.style.left = `${Math.max(12, left)}px`;
+  tooltip.style.top = `${Math.max(12, top)}px`;
+}
+
+function showReferencePreviewTooltip(anchor: HTMLElement, item: LinghuiPromptReferenceItem, event: MouseEvent) {
+  removeReferencePreviewTooltip(anchor);
+
+  const previewSource = toPreviewSource(item.previewSource);
+  if (!previewSource) return;
+
+  const tooltip = document.createElement('div');
+  tooltip.style.cssText = `
+    position: fixed;
+    left: 0;
+    top: 0;
+    z-index: 100001;
+    width: 220px;
+    padding: 10px;
+    border-radius: 14px;
+    background: rgba(3, 7, 18, 0.96);
+    border: 1px solid rgba(16, 185, 129, 0.35);
+    box-shadow: 0 20px 45px rgba(0, 0, 0, 0.42);
+    backdrop-filter: blur(14px);
+    pointer-events: none;
+    color: #e5e7eb;
+  `;
+
+  const image = document.createElement('img');
+  image.src = previewSource;
+  image.alt = item.name;
+  image.style.cssText = `
+    display: block;
+    width: 100%;
+    height: 136px;
+    object-fit: cover;
+    border-radius: 10px;
+    background: rgba(15, 23, 42, 0.9);
+  `;
+  tooltip.appendChild(image);
+
+  const title = document.createElement('div');
+  title.textContent = item.name || `${getReferenceKindLabel(item.kind)}参考`;
+  title.style.cssText = 'margin-top: 8px; font-size: 13px; font-weight: 700; color: #f8fafc;';
+  tooltip.appendChild(title);
+
+  const description = document.createElement('div');
+  description.textContent = item.description || `${getReferenceKindLabel(item.kind)}参考`;
+  description.style.cssText = 'margin-top: 4px; font-size: 12px; line-height: 1.5; color: #94a3b8;';
+  tooltip.appendChild(description);
+
+  document.body.appendChild(tooltip);
+  (anchor as HTMLElement & { __linghuiPreviewTooltip?: HTMLElement }).__linghuiPreviewTooltip = tooltip;
+  positionReferencePreviewTooltip(tooltip, event);
+}
+
 class LinghuiReferenceWidget extends WidgetType {
   constructor(readonly item: LinghuiPromptReferenceItem) {
     super();
@@ -83,8 +166,84 @@ class LinghuiReferenceWidget extends WidgetType {
 
   toDOM(): HTMLElement {
     const span = document.createElement('span');
-    const colors = getReferenceWidgetColor(this.item.kind);
     span.className = `linghui-reference-widget linghui-reference-${this.item.kind}`;
+    span.style.cssText = 'display: inline-flex; align-items: center; margin: 0 2px;';
+
+    if (isVisualReference(this.item)) {
+      const previewSource = toPreviewSource(this.item.previewSource);
+      const chip = document.createElement('span');
+      chip.title = this.item.name || `${getReferenceKindLabel(this.item.kind)}参考`;
+      chip.style.cssText = `
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 2px 6px 2px 4px;
+        border-radius: 999px;
+        background: rgba(15, 23, 42, 0.82);
+        color: #d1fae5;
+        border: 1px solid rgba(16, 185, 129, 0.24);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+        vertical-align: middle;
+      `;
+
+      const prefix = document.createElement('span');
+      prefix.textContent = '@';
+      prefix.style.cssText = 'font-size: 12px; font-weight: 700; line-height: 1; color: #6ee7b7;';
+      chip.appendChild(prefix);
+
+      const thumb = document.createElement('span');
+      thumb.style.cssText = `
+        position: relative;
+        width: 22px;
+        height: 22px;
+        border-radius: 7px;
+        overflow: hidden;
+        background: rgba(30, 41, 59, 0.92);
+        flex: 0 0 22px;
+      `;
+
+      if (previewSource) {
+        const img = document.createElement('img');
+        img.src = previewSource;
+        img.alt = this.item.name;
+        img.style.cssText = 'display: block; width: 100%; height: 100%; object-fit: cover;';
+        thumb.appendChild(img);
+      }
+
+      if (this.item.kind === 'video') {
+        const badge = document.createElement('span');
+        badge.textContent = '▶';
+        badge.style.cssText = `
+          position: absolute;
+          right: 2px;
+          bottom: 1px;
+          font-size: 9px;
+          line-height: 1;
+          color: white;
+          text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+        `;
+        thumb.appendChild(badge);
+      }
+
+      chip.appendChild(thumb);
+
+      const moveTooltip = (event: MouseEvent) => {
+        const tooltip = (chip as HTMLElement & { __linghuiPreviewTooltip?: HTMLElement }).__linghuiPreviewTooltip;
+        if (tooltip) {
+          positionReferencePreviewTooltip(tooltip, event);
+        }
+      };
+
+      chip.addEventListener('mouseenter', event => showReferencePreviewTooltip(chip, this.item, event));
+      chip.addEventListener('mousemove', moveTooltip);
+      chip.addEventListener('mouseleave', () => removeReferencePreviewTooltip(chip));
+      chip.addEventListener('pointerdown', () => removeReferencePreviewTooltip(chip));
+
+      span.appendChild(chip);
+      return span;
+    }
+
+    const colors = getReferenceWidgetColor(this.item.kind);
     span.textContent = `@${this.item.name}`;
     span.title = this.item.description || `${getReferenceKindLabel(this.item.kind)}参考`;
     span.style.cssText = `
@@ -106,8 +265,14 @@ class LinghuiReferenceWidget extends WidgetType {
     return (
       other.item.id === this.item.id &&
       other.item.name === this.item.name &&
-      other.item.kind === this.item.kind
+      other.item.kind === this.item.kind &&
+      other.item.description === this.item.description &&
+      other.item.previewSource === this.item.previewSource
     );
+  }
+
+  destroy(dom: HTMLElement): void {
+    removeReferencePreviewTooltip(dom);
   }
 }
 
@@ -451,14 +616,6 @@ export const LinghuiPromptEditor: React.FC<LinghuiPromptEditorProps> = ({
     }
   }, []);
 
-  const previewRefs = references
-    .map(item => ({
-      ...item,
-      previewSource: toPreviewSource(item.previewSource),
-    }))
-    .filter(item => item.previewSource)
-    .slice(0, 4);
-
   return (
     <div className={className} style={style}>
       <div
@@ -466,16 +623,6 @@ export const LinghuiPromptEditor: React.FC<LinghuiPromptEditorProps> = ({
         style={{ position: 'relative', cursor: 'text' }}
         onClick={handleContainerClick}
       />
-      {previewRefs.length > 0 && (
-        <div className="linghuiPromptEditorPreviewRow">
-          {previewRefs.map(item => (
-            <div key={item.id} className="linghuiPromptEditorPreviewItem" title={item.name}>
-              <img src={item.previewSource} alt={item.name} />
-              <span>{item.name}</span>
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 };
