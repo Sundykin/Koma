@@ -210,6 +210,7 @@ export interface Shot {
   duration: number;      // 持续时长(秒)
   imagePrompt?: string;  // 图片生成提示词
   videoPrompt?: string;  // 视频生成提示词
+  imageMode?: 'normal' | 'grid'; // 图片生成模式：普通模式 | 九宫格模式（默认 normal）
   media?: ShotMediaState; // 结构化媒体槽位
   // 关联资产
   characters: string[];  // 涉及的角色ID

@@ -25,6 +25,8 @@ function slotKeyForOwnerSlot(slot: string): 'costumePhoto' | 'previewImage' | 'p
     case 'video':
     case 'audio':
       return slot;
+    case 'gridImage':
+      return 'image';
     default:
       return undefined;
   }

@@ -33,7 +33,7 @@ export async function generateShotImage(
     throw new Error('分镜不存在');
   }
 
-  return shotImageWorkflow({
+  const workflowParams = {
     projectId,
     episodeId,
     shot,
@@ -46,7 +46,9 @@ export async function generateShotImage(
     styleSnapshot: styleOptions?.styleSnapshot,
     project: styleOptions?.project,
     onProgress: styleOptions?.onProgress,
-  });
+  };
+
+  return shotImageWorkflow(workflowParams);
 }
 
 export async function batchGenerateShotImages(
@@ -89,4 +91,3 @@ export async function batchGenerateShotImages(
 
   return results;
 }
-

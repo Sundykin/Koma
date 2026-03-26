@@ -73,11 +73,11 @@ interface BatchRenderResult {
 }
 
 /**
- * 从 shot 中获取当前选中的参考图片，并确保可用于远程 API
- * 返回 http/https URL、data URI，或 undefined
+ * 从 shot 中获取当前选中的参考图片，并确保可用于远程 API。
  */
 async function getSelectedImageUrl(shot: Shot): Promise<string | undefined> {
   const normalizedShot = normalizeShotMediaState(shot);
+
   const idx = normalizedShot.media?.currentImageIndex ?? 0;
   const selectedAsset = normalizedShot.media?.images?.[idx];
   const selectedSource = getMediaAssetDisplaySource(selectedAsset);

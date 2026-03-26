@@ -224,6 +224,8 @@ export class ShotPromptService {
       templateVariables.cameraOptions = CAMERA_OPTIONS.join(', ');
       templateVariables.cameraMovementHint = shot.cameraMovement || 'static';
       templateVariables.durationSeconds = String(Math.max(1, Math.round(shot.duration || 4)));
+      templateVariables.imageMode = shot.imageMode || 'normal';
+      templateVariables.gridSequencePrompt = shot.imagePrompt?.trim() || '无';
     } else {
       templateVariables.cameraMovementHint = shot.cameraMovement || 'static';
     }
@@ -255,6 +257,81 @@ export class ShotPromptService {
   }
 
   /**
+   * 九宫格模式：将单个分镜扩展为 9 个连续画面的 imagePrompt
+   * 使用 grid_shot_prompt_generation 模板
+   */
+  async generateGridShotPrompt(
+    shot: Shot,
+    characters: Character[],
+    stylePrefix: string = '',
+    styleSnapshot?: StyleSnapshotLike
+  ): Promise<string> {
+    if (!this.llmConfig) {
+      const hasConfig = await this.setLLMConfig();
+      if (!hasConfig) {
+        throw new Error('未配置 LLM 模型，请先在设置中添加');
+      }
+    }
+
+    const resolvedStylePrefix = this.resolveTTIStylePrefix(stylePrefix, styleSnapshot);
+
+    // 过滤出该分镜关联的资产
+    const shotCharacters = characters.filter(c => shot.characters?.includes(c.id));
+    const [allScenes, allProps] = await Promise.all([
+      loadScenes(this.projectId).catch(() => []),
+      loadProps(this.projectId).catch(() => []),
+    ]);
+    const shotScenes = (allScenes || []).filter(s => (shot.scenes || []).includes(s.id));
+    const shotProps = (allProps || []).filter(p => (shot.props || []).includes(p.id));
+
+    // 构建引用列表
+    const characterRefs = shotCharacters
+      .map(c => `${c.name}: ${createMentionString('char', c.id)}`)
+      .join('\n');
+    const sceneRefs = shotScenes
+      .map(s => `${s.name}: ${createMentionString('scene', s.id)}`)
+      .join('\n');
+    const propRefs = shotProps
+      .map(p => `${p.name}: ${createMentionString('prop', p.id)}`)
+      .join('\n');
+
+    const templateVariables: Record<string, string> = {
+      scriptContent: shot.scriptContent,
+      characters: shotCharacters.map(c => `${c.name}（${c.appearance || c.description || ''}）`).join('; ') || '无',
+      scenes: shotScenes.map(s => s.name).join(', ') || '无',
+      props: shotProps.map(p => p.name).join(', ') || '无',
+      emotion: shot.emotion || '中性',
+      stylePrefix: resolvedStylePrefix || '',
+      characterRefs: characterRefs || '无角色引用',
+      sceneRefs: sceneRefs || '无场景引用',
+      propRefs: propRefs || '无道具引用',
+    };
+
+    const resolvedPrompt = await resolvePromptTemplate('grid_shot_prompt_generation', templateVariables);
+
+    const provider = createLLMProvider({
+      provider: this.llmConfig!.provider === 'openai-compatible' ? 'openai' : this.llmConfig!.provider as any,
+      apiKey: this.llmConfig!.apiKey,
+      baseUrl: this.llmConfig!.baseUrl,
+      modelName: this.llmConfig!.modelName,
+    });
+
+    const resolvedSystemPrompt = await resolvePromptTemplate('shot_prompt_system', {});
+
+    const result = await provider.chat([
+      { role: 'system', content: resolvedSystemPrompt.prompt },
+      { role: 'user', content: resolvedPrompt.prompt },
+    ]);
+
+    let cleanedResult = result.trim();
+    if (cleanedResult.startsWith('"') && cleanedResult.endsWith('"')) {
+      cleanedResult = cleanedResult.slice(1, -1);
+    }
+
+    return cleanedResult;
+  }
+
+  /**
    * 批量生成分镜提示词（双提示词版本）
    * 支持按需生成：只生成缺失的提示词类型
    */
@@ -262,39 +339,33 @@ export class ShotPromptService {
     shots: Shot[],
     stylePrefix: string = '',
     onProgress?: (current: number, total: number, result: PromptGenerationResult) => void,
-    styleSnapshot?: StyleSnapshotLike
+    styleSnapshot?: StyleSnapshotLike,
+    generateFlags?: { image?: boolean; video?: boolean },
+    options?: { force?: boolean },
   ): Promise<PromptGenerationResult[]> {
-    const characters = await loadCharacters(this.projectId);
     const results: PromptGenerationResult[] = [];
+    const wantsImage = generateFlags?.image ?? true;
+    const wantsVideo = generateFlags?.video ?? true;
+    const force = options?.force ?? false;
 
-    // 过滤出至少缺少一种提示词的分镜
-    const shotsToGenerate = shots.filter(s => !s.imagePrompt?.trim() || !s.videoPrompt?.trim());
+    const shotsToGenerate = shots.filter((shot) => {
+      const needImage = wantsImage && (force || !shot.imagePrompt?.trim());
+      const needVideo = wantsVideo && (force || !shot.videoPrompt?.trim());
+      return needImage || needVideo;
+    });
 
     for (let i = 0; i < shotsToGenerate.length; i++) {
       const shot = shotsToGenerate[i];
       try {
-        // generateDualShotPrompts 会自动检测并只生成缺失的类型
-        const { imagePrompt, videoPrompt } = await this.generateDualShotPrompts(
+        const result = await this.generateAndSaveShotPrompt(
           shot,
-          characters,
           stylePrefix,
-          undefined,
-          undefined,
-          styleSnapshot
+          generateFlags,
+          options,
+          styleSnapshot,
         );
-
-        // 保存双提示词到数据库
-        await updateShot(this.projectId, this.episodeId, shot.id, { imagePrompt, videoPrompt });
-
-        const result: PromptGenerationResult = {
-          shotId: shot.id,
-          imagePrompt,
-          videoPrompt,
-          success: true,
-        };
         results.push(result);
         onProgress?.(i + 1, shotsToGenerate.length, result);
-
       } catch (error: unknown) {
         const errorMessage = error instanceof Error ? error.message : String(error);
         const result: PromptGenerationResult = {
@@ -327,17 +398,48 @@ export class ShotPromptService {
   ): Promise<PromptGenerationResult> {
     try {
       const characters = await loadCharacters(this.projectId);
-      const { imagePrompt, videoPrompt } = await this.generateDualShotPrompts(
-        shot,
-        characters,
-        stylePrefix,
-        generateFlags,
-        options,
-        styleSnapshot
-      );
+      let workingShot = shot;
+      let prerequisiteGridImagePrompt: string | undefined;
+      let imagePrompt: string;
+      let videoPrompt: string;
+
+      const needsGridVideoPrompt = generateFlags?.video ?? !shot.videoPrompt?.trim();
+      if (shot.imageMode === 'grid' && needsGridVideoPrompt && !shot.imagePrompt?.trim()) {
+        prerequisiteGridImagePrompt = await this.generateGridShotPrompt(shot, characters, stylePrefix, styleSnapshot);
+        workingShot = {
+          ...shot,
+          imagePrompt: prerequisiteGridImagePrompt,
+        };
+      }
+
+      if (shot.imageMode === 'grid' && (generateFlags?.image !== false)) {
+        // 九宫格模式：imagePrompt 使用专用模板
+        const needImage = options?.force || !shot.imagePrompt?.trim();
+        imagePrompt = needImage
+          ? (prerequisiteGridImagePrompt || await this.generateGridShotPrompt(shot, characters, stylePrefix, styleSnapshot))
+          : (workingShot.imagePrompt || '');
+        const shotWithGridPrompt = { ...workingShot, imagePrompt };
+        // videoPrompt 仍走原流程
+        const dualResult = await this.generateDualShotPrompts(
+          shotWithGridPrompt, characters, stylePrefix,
+          { image: false, video: generateFlags?.video ?? true },
+          options, styleSnapshot
+        );
+        videoPrompt = dualResult.videoPrompt;
+      } else {
+        const dualResult = await this.generateDualShotPrompts(
+          workingShot, characters, stylePrefix,
+          generateFlags, options, styleSnapshot
+        );
+        imagePrompt = dualResult.imagePrompt;
+        videoPrompt = dualResult.videoPrompt;
+      }
 
       // 只更新实际生成的字段
       const updates: Partial<Shot> = {};
+      if (prerequisiteGridImagePrompt && !shot.imagePrompt?.trim()) {
+        updates.imagePrompt = prerequisiteGridImagePrompt;
+      }
       if (generateFlags?.image !== false && (options?.force || !shot.imagePrompt?.trim())) {
         updates.imagePrompt = imagePrompt;
       }
@@ -402,11 +504,13 @@ export async function batchGenerateShotPrompts(
   onProgress?: (current: number, total: number, result: PromptGenerationResult) => void,
   llmConfigId?: string,
   styleSnapshot?: StyleSnapshotLike,
-  project?: { styleSnapshot?: StyleSnapshotLike }
+  project?: { styleSnapshot?: StyleSnapshotLike },
+  generateFlags?: { image?: boolean; video?: boolean },
+  options?: { force?: boolean },
 ): Promise<PromptGenerationResult[]> {
   const service = new ShotPromptService(projectId, episodeId, { styleSnapshot, project });
   if (llmConfigId) {
     await service.setLLMConfig(llmConfigId);
   }
-  return service.batchGenerateShotPrompts(shots, stylePrefix, onProgress, styleSnapshot);
+  return service.batchGenerateShotPrompts(shots, stylePrefix, onProgress, styleSnapshot, generateFlags, options);
 }

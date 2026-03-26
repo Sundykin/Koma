@@ -34,6 +34,17 @@ export interface ExtractFramesOptions {
   quality?: number;
 }
 
+// 九宫格图片分割选项（3×3）
+export interface SplitGridImageOptions {
+  input: string;
+  outputDir: string;
+  aspectRatio: '16:9' | '9:16';
+  minCellWidth?: number;
+  minCellHeight?: number;
+  sharpenAmount?: number;
+  format?: 'png' | 'jpg' | 'webp';
+}
+
 // 波形生成选项
 export interface WaveformOptions {
   input: string;
@@ -87,6 +98,7 @@ const getFFmpegAPI = (): any => {
  */
 class FFmpegManager {
   private frameCache: Map<string, string[]> = new Map();
+  private posterFrameCache: Map<string, string> = new Map();
   private waveformCache: Map<string, string> = new Map();
   private mediaInfoCache: Map<string, MediaInfo> = new Map();
   private cacheDir: string = '';
@@ -162,6 +174,69 @@ class FFmpegManager {
     const frames = await api.extractFrames(options);
     this.frameCache.set(cacheKey, frames);
     return frames;
+  }
+
+  /**
+   * 九宫格图片分割（3×3）
+   */
+  async splitGridImage(options: SplitGridImageOptions): Promise<string[]> {
+    await this.init();
+    const api = getFFmpegAPI();
+    if (!api) {
+      throw new Error('FFmpeg 不可用');
+    }
+
+    const available = await this.isAvailable();
+    if (!available) {
+      throw new Error('FFmpeg 不可用');
+    }
+
+    return await api.splitGridImage(options);
+  }
+
+  /**
+   * 提取视频首帧，作为缩略图/预览图。
+   */
+  async getPosterFrame(
+    filePath: string,
+    resourceId: string,
+    width: number = 320
+  ): Promise<string | null> {
+    const cacheKey = `${filePath}:${resourceId}:${width}:poster`;
+    if (this.posterFrameCache.has(cacheKey)) {
+      return this.posterFrameCache.get(cacheKey)!;
+    }
+
+    await this.init();
+    const api = getFFmpegAPI();
+    if (!api) {
+      return null;
+    }
+
+    const available = await this.isAvailable();
+    if (!available) {
+      return null;
+    }
+
+    const rootDir = await api.getCacheDir('video-posters');
+    const outputDir = `${rootDir}/${resourceId}`;
+    await api.ensureDir(outputDir);
+
+    const frames = await api.extractFrames({
+      input: filePath,
+      outputDir,
+      fps: 1,
+      startTime: 0,
+      endTime: 0.1,
+      width,
+      quality: 2,
+    });
+
+    const firstFrame = Array.isArray(frames) && frames.length > 0 ? frames[0] : null;
+    if (firstFrame) {
+      this.posterFrameCache.set(cacheKey, firstFrame);
+    }
+    return firstFrame;
   }
 
   /**

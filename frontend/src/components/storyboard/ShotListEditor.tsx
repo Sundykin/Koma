@@ -42,8 +42,10 @@ export interface ShotListEditorProps {
   onGenerateVideoPrompt: (shotId: string) => void;
   onOptimizeImagePrompt: (shotId: string, currentPrompt: string) => void;
   onOptimizeVideoPrompt: (shotId: string, currentPrompt: string) => void;
-  onBatchGeneratePrompts: (shotIds?: string[]) => void;
-  onBatchReGeneratePrompts: (shotIds?: string[]) => void;
+  onBatchGenerateImagePrompts: (shotIds?: string[]) => void;
+  onBatchReGenerateImagePrompts: (shotIds?: string[]) => void;
+  onBatchGenerateVideoPrompts: (shotIds?: string[]) => void;
+  onBatchReGenerateVideoPrompts: (shotIds?: string[]) => void;
   onGenerateImage: (shotId: string) => void;
   onBatchGenerateImages: (shotIds?: string[]) => void;
   onBatchReGenerateImages: (shotIds?: string[]) => void;
@@ -61,6 +63,7 @@ export interface ShotListEditorProps {
   onAddShot: () => void;
   onInsertAbove: (shotId: string) => void;
   onInsertBelow: (shotId: string) => void;
+  onShotImageModeChange: (shotId: string, mode: 'normal' | 'grid') => void;
 }
 
 export const ShotListEditor: React.FC<ShotListEditorProps> = ({
@@ -90,8 +93,10 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
   onGenerateVideoPrompt,
   onOptimizeImagePrompt,
   onOptimizeVideoPrompt,
-  onBatchGeneratePrompts,
-  onBatchReGeneratePrompts,
+  onBatchGenerateImagePrompts,
+  onBatchReGenerateImagePrompts,
+  onBatchGenerateVideoPrompts,
+  onBatchReGenerateVideoPrompts,
   onGenerateImage,
   onBatchGenerateImages,
   onBatchReGenerateImages,
@@ -109,6 +114,7 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
   onAddShot,
   onInsertAbove,
   onInsertBelow,
+  onShotImageModeChange,
 }) => {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
@@ -141,12 +147,12 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
 
   // 批量操作
   const handleBatchPrompts = useCallback(() => {
-    onBatchGeneratePrompts(hasSelected ? Array.from(selectedIds) : undefined);
-  }, [hasSelected, selectedIds, onBatchGeneratePrompts]);
+    onBatchGenerateImagePrompts(hasSelected ? Array.from(selectedIds) : undefined);
+  }, [hasSelected, selectedIds, onBatchGenerateImagePrompts]);
 
   const handleBatchRePrompts = useCallback(() => {
-    onBatchReGeneratePrompts(hasSelected ? Array.from(selectedIds) : undefined);
-  }, [hasSelected, selectedIds, onBatchReGeneratePrompts]);
+    onBatchReGenerateImagePrompts(hasSelected ? Array.from(selectedIds) : undefined);
+  }, [hasSelected, selectedIds, onBatchReGenerateImagePrompts]);
 
   const handleBatchImages = useCallback(() => {
     onBatchGenerateImages(hasSelected ? Array.from(selectedIds) : undefined);
@@ -165,12 +171,12 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
   }, [hasSelected, selectedIds, onBatchReGenerateVideos]);
 
   const handleBatchVideoPrompts = useCallback(() => {
-    onBatchGeneratePrompts(hasSelected ? Array.from(selectedIds) : undefined);
-  }, [hasSelected, selectedIds, onBatchGeneratePrompts]);
+    onBatchGenerateVideoPrompts(hasSelected ? Array.from(selectedIds) : undefined);
+  }, [hasSelected, selectedIds, onBatchGenerateVideoPrompts]);
 
   const handleBatchReVideoPrompts = useCallback(() => {
-    onBatchReGeneratePrompts(hasSelected ? Array.from(selectedIds) : undefined);
-  }, [hasSelected, selectedIds, onBatchReGeneratePrompts]);
+    onBatchReGenerateVideoPrompts(hasSelected ? Array.from(selectedIds) : undefined);
+  }, [hasSelected, selectedIds, onBatchReGenerateVideoPrompts]);
 
   const handleBatchDelete = useCallback(() => {
     if (hasSelected) {
@@ -252,6 +258,7 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
                   onScriptChange={onScriptChange}
                   onImagePromptChange={onImagePromptChange}
                   onVideoPromptChange={onVideoPromptChange}
+                  onImageModeChange={onShotImageModeChange}
                   onCharactersChange={onCharactersChange}
                   onScenesChange={onScenesChange}
                   onPropsChange={onPropsChange}
