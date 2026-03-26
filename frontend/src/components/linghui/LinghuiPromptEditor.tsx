@@ -289,11 +289,6 @@ class LinghuiReferenceWidget extends WidgetType {
         vertical-align: middle;
       `;
 
-      const openBracket = document.createElement('span');
-      openBracket.textContent = '[';
-      openBracket.style.cssText = 'font-size: 12px; font-weight: 700; line-height: 1; color: #6ee7b7;';
-      chip.appendChild(openBracket);
-
       const thumb = document.createElement('span');
       thumb.style.cssText = `
         position: relative;
@@ -343,11 +338,6 @@ class LinghuiReferenceWidget extends WidgetType {
       `;
       chip.appendChild(name);
 
-      const closeBracket = document.createElement('span');
-      closeBracket.textContent = ']';
-      closeBracket.style.cssText = 'font-size: 12px; font-weight: 700; line-height: 1; color: #6ee7b7;';
-      chip.appendChild(closeBracket);
-
       const moveTooltip = (event: MouseEvent) => {
         const tooltip = (chip as HTMLElement & { __linghuiPreviewTooltip?: HTMLElement }).__linghuiPreviewTooltip;
         if (tooltip) {
@@ -365,7 +355,7 @@ class LinghuiReferenceWidget extends WidgetType {
     }
 
     const colors = getReferenceWidgetColor(this.item.kind);
-    span.textContent = `[${getReferenceKindLabel(this.item.kind)} ${this.item.name}]`;
+    span.textContent = `${getReferenceKindLabel(this.item.kind)} ${this.item.name}`;
     span.title = this.item.description || `${getReferenceKindLabel(this.item.kind)}参考`;
     span.style.cssText = `
       display: inline-flex;
