@@ -417,6 +417,15 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
     markNodesAsStale([nodeId], '上游节点参数已变更，请重新运行相关节点。');
   }, [markNodesAsStale]);
 
+  const handleClearNodeRunState = useCallback((nodeId: string) => {
+    const current = activeWorkspaceRef.current;
+    if (!current || !current.nodeRuns[nodeId]) return;
+
+    const nextRuns = { ...current.nodeRuns };
+    delete nextRuns[nodeId];
+    updateWorkspaceExecution(nextRuns, current.executionLogs);
+  }, [updateWorkspaceExecution]);
+
   const handleRunAll = useCallback(async () => {
     await runWorkflow();
   }, [runWorkflow]);
@@ -490,6 +499,7 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
             executionLogs={executionLogs}
             onGraphChange={handleGraphChange}
             onNodeMutate={handleNodeMutate}
+            onClearNodeRunState={handleClearNodeRunState}
             onConnectionError={handleConnectionError}
             onRunSingleNode={handleRunSingleNode}
             onRunAll={handleRunAll}
