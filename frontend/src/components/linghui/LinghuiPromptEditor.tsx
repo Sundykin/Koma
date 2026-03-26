@@ -269,7 +269,7 @@ class LinghuiReferenceWidget extends WidgetType {
   toDOM(): HTMLElement {
     const span = document.createElement('span');
     span.className = `linghui-reference-widget linghui-reference-${this.item.kind}`;
-    span.style.cssText = 'display: inline-flex; align-items: center; margin: 0 2px;';
+    span.style.cssText = 'display: inline-flex; align-items: center; margin: 0 2px; vertical-align: middle;';
 
     if (isVisualReference(this.item)) {
       const previewSource = toPreviewSource(this.item.previewSource);
@@ -278,9 +278,11 @@ class LinghuiReferenceWidget extends WidgetType {
       chip.style.cssText = `
         display: inline-flex;
         align-items: center;
+        justify-content: center;
         gap: 6px;
         max-width: 240px;
         padding: 2px 8px;
+        min-height: 28px;
         border-radius: 999px;
         background: rgba(15, 23, 42, 0.82);
         color: #d1fae5;
@@ -328,12 +330,15 @@ class LinghuiReferenceWidget extends WidgetType {
       const name = document.createElement('span');
       name.textContent = this.item.name || `${getReferenceKindLabel(this.item.kind)}参考`;
       name.style.cssText = `
+        display: inline-flex;
+        align-items: center;
         min-width: 0;
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
         font-size: 12px;
         font-weight: 600;
+        line-height: 1.2;
         color: #ecfdf5;
       `;
       chip.appendChild(name);
@@ -360,11 +365,14 @@ class LinghuiReferenceWidget extends WidgetType {
     span.style.cssText = `
       display: inline-flex;
       align-items: center;
+      justify-content: center;
       padding: 2px 8px;
+      min-height: 28px;
       margin: 0 2px;
       border-radius: 999px;
       font-size: 0.9em;
       font-weight: 600;
+      line-height: 1.2;
       background: ${colors.background};
       color: ${colors.color};
       border: 1px solid rgba(15, 23, 42, 0.08);
@@ -560,6 +568,7 @@ const autocompleteTheme = EditorView.theme({
     display: 'flex',
     alignItems: 'center',
     gap: '10px',
+    minHeight: '50px',
     padding: '8px 12px !important',
     color: '#e5e7eb !important',
   },
@@ -570,8 +579,11 @@ const autocompleteTheme = EditorView.theme({
   '.cm-completionLabel': {
     flex: '1',
     minWidth: '0',
-    display: 'block',
+    display: 'flex',
+    alignItems: 'center',
     fontWeight: '500',
+    minHeight: '34px',
+    lineHeight: '1.35',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
@@ -580,6 +592,7 @@ const autocompleteTheme = EditorView.theme({
     color: '#9ca3af',
     marginLeft: 'auto',
     flex: '0 0 auto',
+    alignSelf: 'center',
     fontSize: '11px',
     borderRadius: '999px',
     padding: '2px 8px',
