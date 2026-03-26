@@ -21,8 +21,6 @@ import { DEFAULT_LINGHUI_WORKSPACE_NAME } from '../../types/linghui';
 import LinghuiCanvas, {
   type LinghuiCanvasHandle,
 } from './LinghuiCanvas';
-import LinghuiNodeLibrary from './LinghuiNodeLibrary';
-import LinghuiPropertiesPanel from './LinghuiPropertiesPanel';
 import LinghuiToolbar from './LinghuiToolbar';
 import { collectLinghuiDependentNodeIds, executeLinghuiWorkflow } from './linghuiExecution';
 import './LinghuiPage.css';
@@ -44,7 +42,11 @@ function mergeExecutionLogs(
   return [...currentLogs, entry].slice(-80);
 }
 
-export const LinghuiPage: React.FC = () => {
+interface LinghuiPageProps {
+  onExit?: () => void;
+}
+
+export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
   const { message } = AntApp.useApp();
   const canvasRef = useRef<LinghuiCanvasHandle | null>(null);
   const saveTimerRef = useRef<number | null>(null);
@@ -182,13 +184,13 @@ export const LinghuiPage: React.FC = () => {
   }
 
   function markNodesAsStale(nodeIds: string[], reason: string) {
-    const graph = canvasRef.current?.getGraph();
+    const context = canvasRef.current?.getExecutionContext();
     const current = activeWorkspaceRef.current;
-    if (!graph || !current || nodeIds.length === 0) return;
+    if (!context || !current || nodeIds.length === 0) return;
 
     const affected = new Set<string>([
       ...nodeIds,
-      ...collectLinghuiDependentNodeIds(graph, nodeIds),
+      ...collectLinghuiDependentNodeIds(context.edges, nodeIds),
     ]);
     if (affected.size === 0) return;
 
@@ -222,10 +224,16 @@ export const LinghuiPage: React.FC = () => {
     updateWorkspaceExecution(nextRuns, nextLogs);
   }
 
-  async function runWorkflow(targetNodeIds?: string[]) {
-    const graph = canvasRef.current?.getGraph();
+  async function runWorkflow(
+    targetNodeIds?: string[],
+    options?: {
+      resolveTargetsOnly?: boolean;
+      successMessage?: string;
+    },
+  ) {
+    const context = canvasRef.current?.getExecutionContext();
     const current = activeWorkspaceRef.current;
-    if (!graph || !current) return;
+    if (!context || !current) return;
 
     let nextRuns = { ...current.nodeRuns };
     let nextLogs = [...current.executionLogs];
@@ -234,9 +242,10 @@ export const LinghuiPage: React.FC = () => {
 
     try {
       const finalRuns = await executeLinghuiWorkflow({
-        graph,
+        context,
         targetNodeIds,
         previousRuns: current.nodeRuns,
+        resolveTargetsOnly: options?.resolveTargetsOnly,
         onNodeStateChange(nodeId, nextState) {
           nextRuns = {
             ...nextRuns,
@@ -252,7 +261,10 @@ export const LinghuiPage: React.FC = () => {
 
       nextRuns = finalRuns;
       updateWorkspaceExecution(nextRuns, nextLogs);
-      message.success(targetNodeIds?.length ? '已执行选中节点' : '已执行全部工作流');
+      message.success(
+        options?.successMessage ||
+        (targetNodeIds?.length ? '已执行选中节点' : '已执行全部工作流'),
+      );
     } catch (error: any) {
       const failureMessage = error?.message || '执行灵绘工作流失败';
       nextLogs = mergeExecutionLogs(nextLogs, createLog('error', failureMessage));
@@ -314,10 +326,6 @@ export const LinghuiPage: React.FC = () => {
     }
   }
 
-  function handleAddNode(type: LinghuiNodeType) {
-    canvasRef.current?.addNode(type);
-  }
-
   function handleGraphChange(
     graphData: LinghuiGraphSnapshot,
     viewport: LinghuiViewportState,
@@ -352,6 +360,13 @@ export const LinghuiPage: React.FC = () => {
 
   async function handleRunAll() {
     await runWorkflow();
+  }
+
+  async function handleRunSingleNode(nodeId: string) {
+    await runWorkflow([nodeId], {
+      resolveTargetsOnly: true,
+      successMessage: '已执行当前节点',
+    });
   }
 
   async function handleRunSelection() {
@@ -389,19 +404,19 @@ export const LinghuiPage: React.FC = () => {
       <LinghuiToolbar
         workspaces={workspaceList}
         activeWorkspaceId={activeWorkspace?.id ?? null}
+        workspaceName={activeWorkspace?.name ?? ''}
+        stats={stats}
+        lastSavedAt={lastSavedAt}
         saving={saving}
         running={running}
+        runSummary={runSummary}
+        onExit={onExit}
         onCreateWorkspace={handleCreateWorkspace}
         onSelectWorkspace={handleSelectWorkspace}
+        onWorkspaceRename={handleWorkspaceRename}
         onSave={handleManualSave}
         onExport={handleExport}
-        onRunAll={handleRunAll}
-        onRunSelection={handleRunSelection}
-        onCreateGroup={() => canvasRef.current?.createGroupFromSelection()}
-        onFocusContent={() => canvasRef.current?.focusContent()}
       />
-
-      <LinghuiNodeLibrary onAddNode={handleAddNode} />
 
       <div className="linghuiCanvasPanel">
         <div className="linghuiCanvasWorkspace">
@@ -409,19 +424,13 @@ export const LinghuiPage: React.FC = () => {
             ref={canvasRef}
             workspace={activeWorkspace}
             nodeRuns={nodeRuns}
+            executionLogs={executionLogs}
             onGraphChange={handleGraphChange}
             onNodeMutate={handleNodeMutate}
             onConnectionError={content => message.warning(content)}
-          />
-          <LinghuiPropertiesPanel
-            workspace={activeWorkspace}
-            executionLogs={executionLogs}
-            stats={stats}
-            saving={saving}
-            running={running}
-            lastSavedAt={lastSavedAt}
-            runSummary={runSummary}
-            onWorkspaceRename={handleWorkspaceRename}
+            onRunSingleNode={handleRunSingleNode}
+            onRunAll={handleRunAll}
+            onRunSelection={handleRunSelection}
           />
         </div>
       </div>

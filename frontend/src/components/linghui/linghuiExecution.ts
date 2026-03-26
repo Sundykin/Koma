@@ -1,62 +1,36 @@
 import { nanoid } from 'nanoid';
-import type { LGraph, LGraphNode } from '@litegraph-ts/core';
+import type { MediaAssetSource, ProviderAssetInput } from '../../types';
 import { DEFAULT_POLLING_CONFIG } from '../../providers/polling';
 import { getProjectITVProvider, getProjectTTIProvider } from '../../providers';
 import type { ITVProvider, ITVResult } from '../../providers/itv/types';
-import type { ImageResult, TTIProvider } from '../../providers/tti/types';
+import type { ImageResult } from '../../providers/tti/types';
 import { ensureRemoteUrlForImageSource } from '../../services/mediaRemoteUrlService';
 import { resolveProviderAssetInput } from '../../services/mediaAssetResolver';
 import { electronService } from '../../services/electronService';
 import type {
+  LinghuiExecutionContext,
   LinghuiExecutionLogEntry,
+  LinghuiGridType,
   LinghuiMediaItem,
   LinghuiNodeResult,
   LinghuiNodeRunState,
+  LinghuiNodeType,
+  LinghuiRFEdgeSnapshot,
+  LinghuiRFNodeSnapshot,
+  LinghuiReferenceNodeProperties,
+  LinghuiVideoRefMode,
 } from '../../types/linghui';
+import { gridTypeToCount } from '../../types/linghui';
+import {
+  buildLinghuiPromptReferenceItems,
+  compileLinghuiPromptReferences,
+  type LinghuiPromptReferenceItem,
+} from './linghuiPromptReferences';
 
 const EXECUTION_PROJECT_ID = 'linghui';
 
 function delay(ms: number): Promise<void> {
   return new Promise(resolve => window.setTimeout(resolve, ms));
-}
-
-function normalizeNodeId(nodeId: string | number): string {
-  return String(nodeId);
-}
-
-function getGraphNodes(graph: LGraph): LGraphNode[] {
-  return (((graph as any)._nodes as LGraphNode[] | undefined) ?? []);
-}
-
-function getGraphLinks(graph: LGraph) {
-  return Object.values((graph.links ?? {}) as Record<string, any>).filter(Boolean) as Array<{
-    origin_id: string | number;
-    target_id: string | number;
-  }>;
-}
-
-function getDirectUpstreamNodeIds(graph: LGraph, nodeId: string): string[] {
-  const incoming = new Set<string>();
-  for (const link of getGraphLinks(graph)) {
-    if (normalizeNodeId(link.target_id) === nodeId) {
-      incoming.add(normalizeNodeId(link.origin_id));
-    }
-  }
-  return [...incoming];
-}
-
-function getNodeById(graph: LGraph, nodeId: string): LGraphNode | null {
-  const found = graph.getNodeById(nodeId as any);
-  if (found) return found as LGraphNode;
-  return getGraphNodes(graph).find(node => normalizeNodeId(node.id) === nodeId) ?? null;
-}
-
-function escapeSvgText(value: string): string {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
 }
 
 function toPreviewSource(source?: string): string | undefined {
@@ -70,8 +44,11 @@ function toPreviewSource(source?: string): string | undefined {
   ) {
     return source;
   }
-
   return electronService.fs.toLocalUrl(source);
+}
+
+function escapeSvgText(value: string): string {
+  return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 function createPlaceholderImage(params: {
@@ -82,50 +59,15 @@ function createPlaceholderImage(params: {
 }): string {
   const { title, subtitle, accent = '#4ade80', background = '#0b1220' } = params;
   const lines = [escapeSvgText(title), escapeSvgText(subtitle ?? '')].filter(Boolean);
-  const subtitleSvg = lines[1]
-    ? `<text x="40" y="178" font-size="18" fill="#cbd5e1" opacity="0.9">${lines[1]}</text>`
-    : '';
-
-  const svg = `
-    <svg xmlns="http://www.w3.org/2000/svg" width="960" height="640" viewBox="0 0 960 640">
-      <defs>
-        <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stop-color="${background}" />
-          <stop offset="100%" stop-color="#020617" />
-        </linearGradient>
-      </defs>
-      <rect width="960" height="640" rx="36" fill="url(#bg)" />
-      <circle cx="760" cy="120" r="150" fill="${accent}" opacity="0.18" />
-      <circle cx="190" cy="520" r="180" fill="${accent}" opacity="0.10" />
-      <rect x="40" y="40" width="880" height="560" rx="28" fill="none" stroke="${accent}" stroke-opacity="0.55" stroke-width="4" />
-      <text x="40" y="132" font-size="34" font-weight="700" fill="#f8fafc">${lines[0] ?? ''}</text>
-      ${subtitleSvg}
-      <text x="40" y="585" font-size="16" fill="#94a3b8">Linghui Placeholder Preview</text>
-    </svg>
-  `;
-
-  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
-}
-
-function createGridPlaceholder(items: LinghuiMediaItem[], accent: string): string {
-  const labels = items.map((item, index) => escapeSvgText(item.label || `#${index + 1}`));
-  const cells = [
-    { x: 48, y: 96 },
-    { x: 486, y: 96 },
-    { x: 48, y: 366 },
-    { x: 486, y: 366 },
-  ];
-  const cellSvg = cells.map((cell, index) => `
-    <rect x="${cell.x}" y="${cell.y}" width="390" height="210" rx="24" fill="#111827" stroke="${accent}" stroke-opacity="0.35" />
-    <text x="${cell.x + 24}" y="${cell.y + 44}" font-size="24" font-weight="700" fill="#f8fafc">${labels[index] ?? `#${index + 1}`}</text>
-  `).join('');
-  const svg = `
-    <svg xmlns="http://www.w3.org/2000/svg" width="960" height="640" viewBox="0 0 960 640">
-      <rect width="960" height="640" rx="36" fill="#050816" />
-      <text x="48" y="56" font-size="28" font-weight="700" fill="#f8fafc">4 宫格结果</text>
-      ${cellSvg}
-    </svg>
-  `;
+  const subtitleSvg = lines[1] ? `<text x="40" y="178" font-size="18" fill="#cbd5e1" opacity="0.9">${lines[1]}</text>` : '';
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="960" height="640" viewBox="0 0 960 640">
+    <defs><linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="${background}" /><stop offset="100%" stop-color="#020617" /></linearGradient></defs>
+    <rect width="960" height="640" rx="36" fill="url(#bg)" />
+    <circle cx="760" cy="120" r="150" fill="${accent}" opacity="0.18" />
+    <rect x="40" y="40" width="880" height="560" rx="28" fill="none" stroke="${accent}" stroke-opacity="0.55" stroke-width="4" />
+    <text x="40" y="132" font-size="34" font-weight="700" fill="#f8fafc">${lines[0] ?? ''}</text>
+    ${subtitleSvg}
+  </svg>`;
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 }
 
@@ -137,26 +79,109 @@ function buildMediaItem(params: Partial<LinghuiMediaItem> & Pick<LinghuiMediaIte
   };
 }
 
-function getNodePrompt(node: LGraphNode, fallback = ''): string {
-  return String(node.properties?.prompt ?? fallback).trim();
+function createLog(level: LinghuiExecutionLogEntry['level'], message: string, nodeId?: string): LinghuiExecutionLogEntry {
+  return { id: nanoid(10), level, message, nodeId, createdAt: Date.now() };
 }
 
-function getNodeTitle(node: LGraphNode): string {
-  return String(node.title || node.type || '节点');
+interface ExecutionNodeView {
+  id: string;
+  type: LinghuiNodeType;
+  properties: Record<string, unknown>;
+  title: string;
+  getAllInputImages: () => LinghuiNodeResult[];
+  getInputResult: (slot: number) => LinghuiNodeResult | undefined;
+  getPromptReferences: () => LinghuiPromptReferenceItem[];
 }
 
-function splitAngles(value: string): string[] {
-  return value
-    .split(/[\n,]/)
-    .map(item => item.trim())
+function resolveAllInputResults(context: LinghuiExecutionContext, nodeId: string, handleId = 'input-0'): LinghuiNodeResult[] {
+  return context.edges
+    .filter(edge => edge.target === nodeId && edge.targetHandle === handleId)
+    .map(edge => context.nodeOutputs[edge.source])
     .filter(Boolean);
 }
 
-function combinePrompt(parts: Array<string | undefined>): string {
-  return parts
-    .map(part => part?.trim())
-    .filter(Boolean)
-    .join('\n');
+function resolveInputData(context: LinghuiExecutionContext, nodeId: string, inputSlotIndex: number): LinghuiNodeResult | undefined {
+  const targetHandle = `input-${inputSlotIndex}`;
+  const edge = context.edges.find(item => item.target === nodeId && item.targetHandle === targetHandle);
+  return edge ? context.nodeOutputs[edge.source] : undefined;
+}
+
+function createNodeView(context: LinghuiExecutionContext, snapshot: LinghuiRFNodeSnapshot): ExecutionNodeView {
+  const nodeId = snapshot.id;
+  return {
+    id: nodeId,
+    type: snapshot.data.linghuiType,
+    properties: snapshot.data.properties,
+    title: snapshot.data.label,
+    getAllInputImages() {
+      return resolveAllInputResults(context, nodeId);
+    },
+    getInputResult(slot) {
+      return resolveInputData(context, nodeId, slot);
+    },
+    getPromptReferences() {
+      return buildLinghuiPromptReferenceItems({
+        nodeId,
+        nodes: context.nodes.map(node => ({
+          id: node.id,
+          data: node.data,
+        })),
+        edges: context.edges.map(edge => ({
+          source: edge.source,
+          target: edge.target,
+        })),
+        getNodeResult(upstreamNodeId) {
+          return context.nodeOutputs[upstreamNodeId];
+        },
+      });
+    },
+  };
+}
+
+function getPromptProtocol(provider: any): string | undefined {
+  return provider?.config?.promptProtocol as string | undefined;
+}
+
+function supportsDataUrl(transports: ReadonlyArray<'remote-url' | 'data-url'> | undefined): boolean {
+  return Boolean(transports?.includes('data-url'));
+}
+
+function providerAllowsDataUrlForITV(provider: ITVProvider): { primary: boolean; additional: boolean } {
+  const primaryTransports = provider.assetTransports?.primaryImage;
+  const additionalTransports = provider.assetTransports?.additionalReferences;
+  return {
+    primary: supportsDataUrl(primaryTransports),
+    additional: supportsDataUrl(additionalTransports ?? primaryTransports),
+  };
+}
+
+function collectReferenceSources(results: LinghuiNodeResult[]): string[] {
+  const sources: string[] = [];
+  const dedupe = new Set<string>();
+
+  for (const result of results) {
+    const primarySource = result.primary?.source;
+    if (!primarySource || dedupe.has(primarySource)) continue;
+    dedupe.add(primarySource);
+    sources.push(primarySource);
+  }
+
+  return sources;
+}
+
+async function ensureProviderAssetInputs(
+  sources: Array<MediaAssetSource | ProviderAssetInput>,
+): Promise<ProviderAssetInput[]> {
+  const resolved = await Promise.all(
+    sources.map(async source => {
+      if (source && typeof source === 'object' && 'transport' in source && 'value' in source) {
+        return source as ProviderAssetInput;
+      }
+      return resolveProviderAssetInput(source as MediaAssetSource);
+    }),
+  );
+
+  return resolved.filter(Boolean) as ProviderAssetInput[];
 }
 
 async function resolveAsyncProviderResult<T>(
@@ -164,31 +189,23 @@ async function resolveAsyncProviderResult<T>(
   getTaskSnapshot: ((taskId: string) => Promise<{ state: string; progress?: number; output?: T; error?: string }>) | undefined,
   onProgress?: (progress: number, message?: string) => void,
 ): Promise<T> {
-  if (!getTaskSnapshot) {
-    throw new Error('当前 Provider 不支持任务状态查询');
-  }
+  if (!getTaskSnapshot) throw new Error('当前 Provider 不支持任务状态查询');
 
   const startedAt = Date.now();
   await delay(DEFAULT_POLLING_CONFIG.initialDelay ?? 0);
 
   while (Date.now() - startedAt < DEFAULT_POLLING_CONFIG.maxDuration) {
     const snapshot = await getTaskSnapshot(taskId);
-
     if (snapshot.state === 'running' || snapshot.state === 'queued') {
       onProgress?.(snapshot.progress ?? 0, '生成中');
       await delay(DEFAULT_POLLING_CONFIG.interval);
       continue;
     }
-
-    if (snapshot.state === 'failed') {
-      throw new Error(snapshot.error || '生成失败');
-    }
-
+    if (snapshot.state === 'failed') throw new Error(snapshot.error || '生成失败');
     if (snapshot.state === 'succeeded' && snapshot.output) {
       onProgress?.(100, '生成完成');
       return snapshot.output;
     }
-
     await delay(DEFAULT_POLLING_CONFIG.interval);
   }
 
@@ -197,14 +214,16 @@ async function resolveAsyncProviderResult<T>(
 
 async function generateImageWithProvider(params: {
   prompt: string;
-  referenceSource?: string;
+  referenceSources?: string[];
   steps?: number;
   onProgress?: (progress: number, message?: string) => void;
   placeholderTitle: string;
   placeholderSubtitle?: string;
   accent?: string;
+  ttiConfigId?: string;
+  promptReferences?: LinghuiPromptReferenceItem[];
 }): Promise<LinghuiMediaItem> {
-  const provider = await getProjectTTIProvider();
+  const provider = await getProjectTTIProvider(params.ttiConfigId || undefined);
   if (!provider || !provider.validate()) {
     return buildMediaItem({
       kind: 'image',
@@ -217,18 +236,29 @@ async function generateImageWithProvider(params: {
     });
   }
 
-  const reference = params.referenceSource
-    ? await resolveProviderAssetInput(params.referenceSource)
-    : undefined;
+  let compiledPrompt = params.prompt || params.placeholderTitle;
+  let referenceSources: Array<MediaAssetSource | ProviderAssetInput> = params.referenceSources ?? [];
+  const replacementStrategy = getPromptProtocol(provider) === 'grok-image-index'
+    ? 'image-index'
+    : 'readable-name';
 
+  if ((params.promptReferences?.length ?? 0) > 0) {
+    const compiled = compileLinghuiPromptReferences({
+      prompt: compiledPrompt,
+      references: params.promptReferences ?? [],
+      extraReferences: referenceSources,
+      replacementStrategy,
+    });
+    compiledPrompt = compiled.compiledPrompt;
+    referenceSources = compiled.compiledReferences;
+  }
+
+  const references = await ensureProviderAssetInputs(referenceSources);
   const started = await provider.start({
-    prompt: params.prompt || params.placeholderTitle,
-    references: reference ? [reference] : undefined,
-    options: {
-      steps: params.steps,
-    },
+    prompt: compiledPrompt,
+    references,
+    options: { steps: params.steps },
   });
-
   const output = started.mode === 'immediate'
     ? started.output
     : await resolveAsyncProviderResult<ImageResult>(started.taskId, provider.getTaskSnapshot, params.onProgress);
@@ -243,69 +273,108 @@ async function generateImageWithProvider(params: {
   });
 }
 
-function providerAllowsDataUrlForITV(provider: ITVProvider): boolean {
-  const transports = provider.assetTransports?.primaryImage;
-  if (!transports || transports.length === 0) {
-    return false;
+async function normalizeAdditionalITVSources(
+  sources: Array<MediaAssetSource | ProviderAssetInput>,
+  requiresRemoteUrl: boolean,
+): Promise<Array<MediaAssetSource | ProviderAssetInput>> {
+  if (!requiresRemoteUrl || sources.length === 0) {
+    return sources;
   }
-  return transports.includes('data-url');
+
+  return Promise.all(
+    sources.map((source, index) => {
+      const rawSource = typeof source === 'object' && source && 'transport' in source
+        ? source.value
+        : source;
+      return ensureRemoteUrlForImageSource({
+        projectId: EXECUTION_PROJECT_ID,
+        source: rawSource as MediaAssetSource,
+        policy: 'required',
+        filenameHint: `linghui-additional-${index + 1}.png`,
+      });
+    }),
+  );
+}
+
+async function normalizePrimaryITVSource(
+  source: MediaAssetSource | undefined,
+  requiresRemoteUrl: boolean,
+): Promise<MediaAssetSource | undefined> {
+  if (!source || !requiresRemoteUrl) {
+    return source;
+  }
+
+  return await ensureRemoteUrlForImageSource({
+    projectId: EXECUTION_PROJECT_ID,
+    source,
+    policy: 'required',
+    filenameHint: 'linghui-primary.png',
+  }) as MediaAssetSource | undefined;
 }
 
 async function generateVideoWithProvider(params: {
   prompt: string;
   imageSource?: string;
+  additionalReferenceSources?: string[];
   duration?: number;
   aspectRatio?: string;
-  motion?: string;
   onProgress?: (progress: number, message?: string) => void;
+  itvConfigId?: string;
+  promptReferences?: LinghuiPromptReferenceItem[];
+  primaryReferenceId?: string;
 }): Promise<LinghuiMediaItem> {
   const placeholderPoster = params.imageSource
     ? toPreviewSource(params.imageSource)
-    : createPlaceholderImage({
-      title: '视频预览占位',
-      subtitle: '未配置 ITV 服务',
-      accent: '#22c55e',
-    });
+    : createPlaceholderImage({ title: '视频预览占位', subtitle: '未配置 ITV 服务', accent: '#22c55e' });
 
-  const provider = await getProjectITVProvider();
+  const provider = await getProjectITVProvider(params.itvConfigId || undefined);
   if (!provider || !provider.validate() || !params.imageSource) {
     return buildMediaItem({
       kind: 'video',
       posterSource: placeholderPoster,
       placeholder: true,
-      metadata: {
-        note: params.imageSource ? '未配置 ITV 服务，已返回占位预览。' : '缺少主参考图，已返回占位预览。',
-      },
+      metadata: { note: params.imageSource ? '未配置 ITV 服务。' : '缺少主参考图。' },
     });
   }
 
-  const allowDataUrl = providerAllowsDataUrlForITV(provider);
-  const normalizedSource = allowDataUrl
-    ? params.imageSource
-    : await ensureRemoteUrlForImageSource({
-      projectId: EXECUTION_PROJECT_ID,
-      source: params.imageSource,
-      policy: 'required',
-      filenameHint: 'linghui-primary.png',
-    });
-  const primaryImage = await resolveProviderAssetInput(normalizedSource as string);
+  const allow = providerAllowsDataUrlForITV(provider);
+  const normalizedPrimary = await normalizePrimaryITVSource(params.imageSource, !allow.primary);
+  let compiledPrompt = params.prompt;
+  let additionalSources: Array<MediaAssetSource | ProviderAssetInput> = params.additionalReferenceSources ?? [];
+  const replacementStrategy = getPromptProtocol(provider) === 'grok-image-index'
+    ? 'image-index'
+    : 'readable-name';
 
-  if (!primaryImage) {
-    throw new Error('无法解析图生视频主图');
+  if ((params.promptReferences?.length ?? 0) > 0) {
+    const compiled = compileLinghuiPromptReferences({
+      prompt: compiledPrompt,
+      references: params.promptReferences ?? [],
+      extraReferences: additionalSources,
+      replacementStrategy,
+      primaryReferenceId: params.primaryReferenceId,
+      ensurePrimaryReference: replacementStrategy === 'image-index',
+    });
+    compiledPrompt = compiled.compiledPrompt;
+    additionalSources = compiled.compiledReferences;
   }
 
-  if (!allowDataUrl && primaryImage.transport !== 'remote-url') {
-    throw new Error('当前 ITV Provider 仅支持远程 URL 主图，请启用图床后重试');
+  const normalizedAdditionalSources = await normalizeAdditionalITVSources(additionalSources, !allow.additional);
+  const primaryImage = await resolveProviderAssetInput(normalizedPrimary);
+  if (!primaryImage) throw new Error('无法解析主参考图');
+
+  const additionalReferences = await ensureProviderAssetInputs(normalizedAdditionalSources);
+  if (!allow.primary && primaryImage.transport !== 'remote-url') {
+    throw new Error('当前 ITV Provider 仅支持远程 URL 主图');
+  }
+  if (!allow.additional && additionalReferences.some(item => item.transport !== 'remote-url')) {
+    throw new Error('当前 ITV Provider 仅支持远程 URL 附加参考图');
   }
 
   const started = await provider.start({
-    prompt: params.prompt,
+    prompt: compiledPrompt,
     primaryImage,
-    options: {
-      duration: params.duration,
-      aspectRatio: params.aspectRatio,
-      motionStrength: params.motion,
-    } as Record<string, unknown>,
+    additionalReferences,
+    options: { duration: params.duration, aspectRatio: params.aspectRatio } as Record<string, unknown>,
   } as any);
 
   const output = started.mode === 'immediate'
@@ -324,269 +393,184 @@ async function generateVideoWithProvider(params: {
   });
 }
 
-function getInputResult(node: LGraphNode, slot: number): LinghuiNodeResult | undefined {
-  return node.getInputData<LinghuiNodeResult>(slot);
-}
-
-function getInputImageSource(node: LGraphNode, slot: number): string | undefined {
-  const result = getInputResult(node, slot);
-  return result?.primary?.source;
-}
-
-function getInputText(node: LGraphNode, slot: number): string {
-  return getInputResult(node, slot)?.text?.trim() ?? '';
-}
-
-function createLog(level: LinghuiExecutionLogEntry['level'], message: string, nodeId?: string): LinghuiExecutionLogEntry {
-  return {
-    id: nanoid(10),
-    level,
-    message,
-    nodeId,
-    createdAt: Date.now(),
-  };
-}
-
-async function executeReferenceImageNode(node: LGraphNode): Promise<LinghuiNodeResult> {
-  const source = String(node.properties?.source ?? '').trim();
-  if (!source) {
-    throw new Error('请先填写参考图路径或 URL');
+async function executeReferenceNode(node: ExecutionNodeView): Promise<LinghuiNodeResult> {
+  const { source = '', note = '' } = node.properties as unknown as LinghuiReferenceNodeProperties;
+  const normalizedSource = String(source).trim();
+  if (!normalizedSource) {
+    throw new Error('请先上传参考图');
   }
 
   return {
     kind: 'image',
     primary: buildMediaItem({
       kind: 'image',
-      source,
-      metadata: {
-        note: String(node.properties?.note ?? ''),
-      },
+      source: normalizedSource,
+      label: String(note || node.title),
+      metadata: { note: String(note ?? '') },
     }),
+    metadata: { note: String(note ?? '') },
   };
 }
 
-async function executePromptNode(node: LGraphNode): Promise<LinghuiNodeResult> {
-  const prompt = getNodePrompt(node);
-  const style = String(node.properties?.style ?? '').trim();
-
-  return {
-    kind: 'text',
-    text: combinePrompt([prompt, style ? `风格：${style}` : '']),
-    metadata: {
-      prompt,
-      style,
-    },
-  };
-}
-
-async function executeImageToImageNode(
-  node: LGraphNode,
+async function executeImageNode(
+  node: ExecutionNodeView,
   onProgress?: (progress: number, message?: string) => void,
 ): Promise<LinghuiNodeResult> {
-  const referenceSource = getInputImageSource(node, 0);
-  const prompt = combinePrompt([getInputText(node, 1), getNodePrompt(node)]);
+  const prompt = String(node.properties.prompt ?? '').trim();
+  const ttiConfigId = String(node.properties.ttiConfigId ?? '');
+  const gridType = (node.properties.gridType ?? 'none') as LinghuiGridType;
+  const batchCount = Number(node.properties.batchCount ?? 1);
+  const referenceSources = collectReferenceSources(node.getAllInputImages());
+  const promptReferences = node.getPromptReferences();
+  const count = gridType !== 'none' ? gridTypeToCount(gridType) : batchCount;
+
+  if (count > 1) {
+    const items = await Promise.all(
+      Array.from({ length: count }, (_, i) => i).map(async index => {
+        const label = gridType !== 'none' ? `画面 ${index + 1}` : `#${index + 1}`;
+        const image = await generateImageWithProvider({
+          prompt: prompt || node.title,
+          referenceSources,
+          ttiConfigId,
+          promptReferences,
+          onProgress: progress => onProgress?.(Math.round((index / count) * 100 + progress / count), `${label} 生成中`),
+          placeholderTitle: label,
+          placeholderSubtitle: prompt || '占位预览',
+          accent: '#4ade80',
+        });
+        return { ...image, label };
+      }),
+    );
+
+    return {
+      kind: gridType !== 'none' ? 'grid' : 'images',
+      primary: items[0],
+      items,
+      metadata: { prompt, gridType, batchCount: count },
+    };
+  }
+
   const image = await generateImageWithProvider({
-    prompt,
-    referenceSource,
-    steps: Number(node.properties?.steps ?? 28),
+    prompt: prompt || node.title,
+    referenceSources,
+    ttiConfigId,
+    promptReferences,
     onProgress,
-    placeholderTitle: getNodeTitle(node),
-    placeholderSubtitle: prompt || '图生图占位预览',
+    placeholderTitle: node.title,
+    placeholderSubtitle: prompt || '图片占位预览',
     accent: '#4ade80',
   });
 
   return {
     kind: 'image',
     primary: image,
-    metadata: {
-      prompt,
-      strength: Number(node.properties?.strength ?? 0.65),
-    },
+    metadata: { prompt },
   };
 }
 
-async function executeImageToVideoNode(
-  node: LGraphNode,
+async function executeVideoNode(
+  node: ExecutionNodeView,
   onProgress?: (progress: number, message?: string) => void,
 ): Promise<LinghuiNodeResult> {
-  const imageSource = getInputImageSource(node, 0);
-  const prompt = combinePrompt([getInputText(node, 1), getNodePrompt(node)]);
+  const prompt = String(node.properties.prompt ?? '').trim();
+  const itvConfigId = String(node.properties.itvConfigId ?? '');
+  const refMode = (node.properties.refMode ?? 'all-ref') as LinghuiVideoRefMode;
+  const duration = Number(node.properties.duration ?? 5);
+  const aspectRatio = String(node.properties.aspectRatio ?? '16:9');
+  const referenceSources = collectReferenceSources(node.getAllInputImages());
+  const promptReferences = node.getPromptReferences();
+  const primarySource = referenceSources[0];
+  const additionalReferenceSources = refMode === 'all-ref' ? referenceSources.slice(1) : referenceSources.slice(1, 2);
+  const primaryReferenceId = promptReferences.find(item => item.source === primarySource)?.id;
+
   const video = await generateVideoWithProvider({
-    prompt: prompt || getNodeTitle(node),
-    imageSource,
-    duration: Number(node.properties?.duration ?? 4),
-    aspectRatio: String(node.properties?.aspectRatio ?? '16:9'),
-    motion: String(node.properties?.motion ?? 'medium'),
+    prompt: prompt || node.title,
+    imageSource: primarySource,
+    additionalReferenceSources,
+    duration,
+    aspectRatio,
+    itvConfigId,
+    promptReferences,
+    primaryReferenceId,
     onProgress,
   });
 
   return {
     kind: 'video',
     primary: video,
-    metadata: {
-      prompt,
-      duration: Number(node.properties?.duration ?? 4),
-      motion: String(node.properties?.motion ?? 'medium'),
-    },
-  };
-}
-
-async function executeFourGridNode(
-  node: LGraphNode,
-  onProgress?: (progress: number, message?: string) => void,
-): Promise<LinghuiNodeResult> {
-  const basePrompt = combinePrompt([getInputText(node, 1), getNodePrompt(node), String(node.properties?.tilePrompt ?? '')]);
-  const referenceSource = getInputImageSource(node, 0);
-  const tileLabels = ['画面 1', '画面 2', '画面 3', '画面 4'];
-  const accent = '#fb923c';
-
-  const items = await Promise.all(tileLabels.map(async (label, index) => {
-    const image = await generateImageWithProvider({
-      prompt: combinePrompt([basePrompt, `${label}`]),
-      referenceSource,
-      steps: 22,
-      onProgress: progress => onProgress?.(Math.round((index / tileLabels.length) * 100 + progress / tileLabels.length), `${label} 生成中`),
-      placeholderTitle: label,
-      placeholderSubtitle: basePrompt || '4 宫格占位预览',
-      accent,
-    });
-    return {
-      ...image,
-      label,
-    };
-  }));
-
-  return {
-    kind: 'grid',
-    primary: buildMediaItem({
-      kind: 'image',
-      source: createGridPlaceholder(items, accent),
-      placeholder: items.every(item => item.placeholder),
-      metadata: {
-        layout: String(node.properties?.layout ?? '2x2'),
-      },
-    }),
-    items,
-    metadata: {
-      layout: String(node.properties?.layout ?? '2x2'),
-      styleMode: String(node.properties?.styleMode ?? 'unified'),
-      prompt: basePrompt,
-    },
-  };
-}
-
-async function executeMultiAngleNode(
-  node: LGraphNode,
-  onProgress?: (progress: number, message?: string) => void,
-): Promise<LinghuiNodeResult> {
-  const referenceSource = getInputImageSource(node, 0);
-  const basePrompt = combinePrompt([getInputText(node, 1), getNodePrompt(node)]);
-  const angles = splitAngles(String(node.properties?.angles ?? 'front,left,right,top,back'));
-  const accent = '#a78bfa';
-
-  const items = await Promise.all(angles.map(async (angle, index) => {
-    const image = await generateImageWithProvider({
-      prompt: combinePrompt([basePrompt, `视角：${angle}`]),
-      referenceSource,
-      steps: 24,
-      onProgress: progress => onProgress?.(Math.round((index / angles.length) * 100 + progress / angles.length), `${angle} 生成中`),
-      placeholderTitle: angle,
-      placeholderSubtitle: basePrompt || '多角度占位预览',
-      accent,
-    });
-    return {
-      ...image,
-      label: angle,
-    };
-  }));
-
-  return {
-    kind: 'images',
-    items,
-    primary: items[0],
-    metadata: {
-      angles,
-      consistency: Boolean(node.properties?.consistency ?? true),
-      prompt: basePrompt,
-    },
+    metadata: { prompt, refMode, duration, aspectRatio },
   };
 }
 
 async function executeStoryboardShotNode(
-  node: LGraphNode,
+  node: ExecutionNodeView,
   onProgress?: (progress: number, message?: string) => void,
 ): Promise<LinghuiNodeResult> {
-  const description = String(node.properties?.description ?? '').trim();
-  const durationSec = Number(node.properties?.duration ?? 3);
-  const prompt = combinePrompt([getInputText(node, 1), description]);
-  const connectedImage = getInputResult(node, 0)?.primary;
-  const primary = connectedImage ?? await generateImageWithProvider({
-    prompt: prompt || getNodeTitle(node),
-    referenceSource: undefined,
-    steps: 20,
-    onProgress,
-    placeholderTitle: getNodeTitle(node),
-    placeholderSubtitle: description || '分镜占位预览',
-    accent: '#2dd4bf',
-  });
+  const description = String(node.properties.description ?? '').trim();
+  const durationSec = Number(node.properties.duration ?? 3);
+  const connectedImage = node.getInputResult(0)?.primary?.source;
+  const prompt = description;
+  const promptReferences = node.getPromptReferences();
+  const primary = connectedImage
+    ? buildMediaItem({ kind: 'image', source: connectedImage })
+    : await generateImageWithProvider({
+        prompt: prompt || node.title,
+        referenceSources: [],
+        promptReferences,
+        onProgress,
+        placeholderTitle: node.title,
+        placeholderSubtitle: description || '分镜占位预览',
+        accent: '#2dd4bf',
+      });
 
   return {
     kind: 'shot',
     primary,
-    metadata: {
-      title: getNodeTitle(node),
-      description,
-      durationSec,
-      prompt,
-    },
+    metadata: { title: node.title, description, durationSec, prompt },
   };
 }
 
-async function executeStoryboardGroupNode(node: LGraphNode): Promise<LinghuiNodeResult> {
-  const shots = (node.inputs ?? [])
-    .map((_, index) => node.getInputData<LinghuiNodeResult>(index))
-    .filter((result): result is LinghuiNodeResult => result?.kind === 'shot')
-    .map((result, index) => ({
-      id: `${normalizeNodeId(node.id)}-${index + 1}`,
-      title: String(result.metadata?.title ?? `分镜 ${index + 1}`),
-      description: String(result.metadata?.description ?? ''),
-      durationSec: Number(result.metadata?.durationSec ?? 3),
-      image: result.primary,
-    }));
-
-  if (!shots.length) {
-    throw new Error('请至少连接一个分镜节点');
+async function executeStoryboardGroupNode(node: ExecutionNodeView): Promise<LinghuiNodeResult> {
+  const shots: LinghuiNodeResult[] = [];
+  for (let index = 0; ; index += 1) {
+    const result = node.getInputResult(index);
+    if (result === undefined) break;
+    if (result.kind === 'shot') shots.push(result);
   }
+
+  if (!shots.length) throw new Error('请至少连接一个分镜节点');
+
+  const frames = shots.map((result, index) => ({
+    id: `${node.id}-${index + 1}`,
+    title: String(result.metadata?.title ?? `分镜 ${index + 1}`),
+    description: String(result.metadata?.description ?? ''),
+    durationSec: Number(result.metadata?.durationSec ?? 3),
+    image: result.primary,
+  }));
 
   return {
     kind: 'storyboard',
-    primary: shots[0].image,
-    shots,
+    primary: frames[0].image,
+    shots: frames,
     metadata: {
-      title: String(node.properties?.title ?? getNodeTitle(node)),
-      notes: String(node.properties?.notes ?? ''),
-      totalDurationSec: shots.reduce((sum, shot) => sum + shot.durationSec, 0),
+      title: String(node.properties.title ?? node.title),
+      notes: String(node.properties.notes ?? ''),
+      totalDurationSec: frames.reduce((sum, frame) => sum + frame.durationSec, 0),
     },
   };
 }
 
 async function executeNode(
-  node: LGraphNode,
+  node: ExecutionNodeView,
   onProgress?: (progress: number, message?: string) => void,
 ): Promise<LinghuiNodeResult> {
   switch (node.type) {
-    case 'linghui/reference-image':
-      return executeReferenceImageNode(node);
-    case 'linghui/prompt':
-      return executePromptNode(node);
-    case 'linghui/image-to-image':
-      return executeImageToImageNode(node, onProgress);
-    case 'linghui/image-to-video':
-      return executeImageToVideoNode(node, onProgress);
-    case 'linghui/four-grid':
-      return executeFourGridNode(node, onProgress);
-    case 'linghui/multi-angle':
-      return executeMultiAngleNode(node, onProgress);
+    case 'linghui/reference':
+      return executeReferenceNode(node);
+    case 'linghui/image':
+      return executeImageNode(node, onProgress);
+    case 'linghui/video':
+      return executeVideoNode(node, onProgress);
     case 'linghui/storyboard-shot':
       return executeStoryboardShotNode(node, onProgress);
     case 'linghui/storyboard-group':
@@ -596,19 +580,22 @@ async function executeNode(
   }
 }
 
-export function collectLinghuiDependentNodeIds(
-  graph: LGraph,
-  rootNodeIds: Array<string | number>,
-): string[] {
+function getDirectUpstreamNodeIds(edges: LinghuiRFEdgeSnapshot[], nodeId: string): string[] {
+  const incoming = new Set<string>();
+  for (const edge of edges) {
+    if (edge.target === nodeId) incoming.add(edge.source);
+  }
+  return [...incoming];
+}
+
+export function collectLinghuiDependentNodeIds(edges: LinghuiRFEdgeSnapshot[], rootNodeIds: string[]): string[] {
   const adjacency = new Map<string, Set<string>>();
-  for (const link of getGraphLinks(graph)) {
-    const from = normalizeNodeId(link.origin_id);
-    const to = normalizeNodeId(link.target_id);
-    if (!adjacency.has(from)) adjacency.set(from, new Set());
-    adjacency.get(from)!.add(to);
+  for (const edge of edges) {
+    if (!adjacency.has(edge.source)) adjacency.set(edge.source, new Set());
+    adjacency.get(edge.source)?.add(edge.target);
   }
 
-  const queue = [...new Set(rootNodeIds.map(normalizeNodeId))];
+  const queue = [...new Set(rootNodeIds)];
   const visited = new Set<string>();
 
   while (queue.length > 0) {
@@ -623,13 +610,13 @@ export function collectLinghuiDependentNodeIds(
   return [...visited];
 }
 
-function collectRequiredNodeIds(graph: LGraph, targetNodeIds: string[]): string[] {
+function collectRequiredNodeIds(edges: LinghuiRFEdgeSnapshot[], targetNodeIds: string[]): string[] {
   const stack = [...targetNodeIds];
   const required = new Set<string>(targetNodeIds);
 
   while (stack.length > 0) {
     const current = stack.pop()!;
-    for (const upstreamId of getDirectUpstreamNodeIds(graph, current)) {
+    for (const upstreamId of getDirectUpstreamNodeIds(edges, current)) {
       if (required.has(upstreamId)) continue;
       required.add(upstreamId);
       stack.push(upstreamId);
@@ -639,99 +626,118 @@ function collectRequiredNodeIds(graph: LGraph, targetNodeIds: string[]): string[
   return [...required];
 }
 
-function topologicalSort(graph: LGraph, requiredNodeIds: Set<string>): LGraphNode[] {
-  const nodes = getGraphNodes(graph).filter(node => requiredNodeIds.has(normalizeNodeId(node.id)));
+function topologicalSort(
+  nodes: LinghuiRFNodeSnapshot[],
+  edges: LinghuiRFEdgeSnapshot[],
+  requiredNodeIds: Set<string>,
+): LinghuiRFNodeSnapshot[] {
+  const filteredNodes = nodes.filter(node => requiredNodeIds.has(node.id));
   const indegree = new Map<string, number>();
   const adjacency = new Map<string, Set<string>>();
 
-  for (const node of nodes) {
-    indegree.set(normalizeNodeId(node.id), 0);
-    adjacency.set(normalizeNodeId(node.id), new Set());
+  for (const node of filteredNodes) {
+    indegree.set(node.id, 0);
+    adjacency.set(node.id, new Set());
   }
 
-  for (const link of getGraphLinks(graph)) {
-    const from = normalizeNodeId(link.origin_id);
-    const to = normalizeNodeId(link.target_id);
-    if (!requiredNodeIds.has(from) || !requiredNodeIds.has(to)) continue;
-    adjacency.get(from)?.add(to);
-    indegree.set(to, (indegree.get(to) ?? 0) + 1);
+  for (const edge of edges) {
+    if (!requiredNodeIds.has(edge.source) || !requiredNodeIds.has(edge.target)) continue;
+    adjacency.get(edge.source)?.add(edge.target);
+    indegree.set(edge.target, (indegree.get(edge.target) ?? 0) + 1);
   }
 
-  const queue = nodes
-    .filter(node => (indegree.get(normalizeNodeId(node.id)) ?? 0) === 0)
-    .sort((left, right) => left.pos[0] - right.pos[0] || left.pos[1] - right.pos[1]);
-  const ordered: LGraphNode[] = [];
+  const queue = filteredNodes
+    .filter(node => (indegree.get(node.id) ?? 0) === 0)
+    .sort((a, b) => a.position.x - b.position.x || a.position.y - b.position.y);
+  const ordered: LinghuiRFNodeSnapshot[] = [];
 
   while (queue.length > 0) {
     const node = queue.shift()!;
     ordered.push(node);
 
-    for (const nextId of adjacency.get(normalizeNodeId(node.id)) ?? []) {
+    for (const nextId of adjacency.get(node.id) ?? []) {
       const nextDegree = (indegree.get(nextId) ?? 0) - 1;
       indegree.set(nextId, nextDegree);
       if (nextDegree === 0) {
-        const nextNode = nodes.find(item => normalizeNodeId(item.id) === nextId);
+        const nextNode = filteredNodes.find(item => item.id === nextId);
         if (nextNode) queue.push(nextNode);
       }
     }
   }
 
-  if (ordered.length === nodes.length) {
+  if (ordered.length === filteredNodes.length) {
     return ordered;
   }
 
-  const orderedSet = new Set(ordered.map(node => normalizeNodeId(node.id)));
-  return [
-    ...ordered,
-    ...nodes.filter(node => !orderedSet.has(normalizeNodeId(node.id))),
-  ];
+  const orderedSet = new Set(ordered.map(node => node.id));
+  return [...ordered, ...filteredNodes.filter(node => !orderedSet.has(node.id))];
 }
 
 export interface ExecuteLinghuiWorkflowOptions {
-  graph: LGraph;
-  targetNodeIds?: Array<string | number>;
+  context: LinghuiExecutionContext;
+  targetNodeIds?: string[];
   previousRuns?: Record<string, LinghuiNodeRunState>;
+  resolveTargetsOnly?: boolean;
+  seedPreviousOutputs?: boolean;
   onNodeStateChange?: (nodeId: string, nextState: LinghuiNodeRunState) => void;
   onLog?: (entry: LinghuiExecutionLogEntry) => void;
 }
 
-export async function executeLinghuiWorkflow(
-  options: ExecuteLinghuiWorkflowOptions,
-): Promise<Record<string, LinghuiNodeRunState>> {
+function seedNodeOutputsFromRuns(
+  previousRuns: Record<string, LinghuiNodeRunState>,
+): Record<string, LinghuiNodeResult> {
+  const outputs: Record<string, LinghuiNodeResult> = {};
+
+  for (const [nodeId, runState] of Object.entries(previousRuns)) {
+    if (!runState?.result) continue;
+    if (runState.status !== 'succeeded' && runState.status !== 'stale') continue;
+    outputs[nodeId] = runState.result;
+  }
+
+  return outputs;
+}
+
+export async function executeLinghuiWorkflow(options: ExecuteLinghuiWorkflowOptions): Promise<Record<string, LinghuiNodeRunState>> {
   const {
-    graph,
+    context,
     targetNodeIds,
     previousRuns = {},
+    resolveTargetsOnly = false,
+    seedPreviousOutputs = true,
     onNodeStateChange,
     onLog,
   } = options;
+  const normalizedTargetIds = targetNodeIds?.length ? targetNodeIds : context.nodes.map(node => node.id);
+  const requiredNodeIds = new Set(
+    resolveTargetsOnly
+      ? normalizedTargetIds
+      : collectRequiredNodeIds(context.edges, normalizedTargetIds),
+  );
+  const orderedNodes = topologicalSort(context.nodes, context.edges, requiredNodeIds);
+  const nextRuns: Record<string, LinghuiNodeRunState> = { ...previousRuns };
 
-  const allNodes = getGraphNodes(graph);
-  const normalizedTargetIds = (targetNodeIds?.length
-    ? targetNodeIds
-    : allNodes.map(node => node.id)
-  ).map(normalizeNodeId);
-  const requiredNodeIds = new Set(collectRequiredNodeIds(graph, normalizedTargetIds));
-  const orderedNodes = topologicalSort(graph, requiredNodeIds);
-  const nextRuns: Record<string, LinghuiNodeRunState> = {
-    ...previousRuns,
-  };
+  if (seedPreviousOutputs) {
+    context.nodeOutputs = {
+      ...seedNodeOutputsFromRuns(previousRuns),
+      ...context.nodeOutputs,
+    };
+  }
 
-  for (const node of orderedNodes) {
-    const nodeId = normalizeNodeId(node.id);
-    const upstreamIds = getDirectUpstreamNodeIds(graph, nodeId);
+  for (const snapshot of orderedNodes) {
+    const nodeId = snapshot.id;
+    const upstreamIds = getDirectUpstreamNodeIds(context.edges, nodeId);
     const upstreamFailure = upstreamIds.find(upstreamId => nextRuns[upstreamId]?.status === 'failed');
 
     if (upstreamFailure) {
       const failedState: LinghuiNodeRunState = {
         status: 'failed',
-        error: '上游节点执行失败，请先修复依赖节点后重试。',
+        error: '上游节点执行失败',
         updatedAt: Date.now(),
         upstreamIds,
       };
       nextRuns[nodeId] = failedState;
       onNodeStateChange?.(nodeId, failedState);
-      onLog?.(createLog('error', `${getNodeTitle(node)} 未执行：上游依赖失败`, nodeId));
+      onLog?.(createLog('error', `${snapshot.data.label} 未执行：上游依赖失败`, nodeId));
       continue;
     }
 
@@ -746,11 +752,13 @@ export async function executeLinghuiWorkflow(
     };
     nextRuns[nodeId] = runningState;
     onNodeStateChange?.(nodeId, runningState);
-    onLog?.(createLog('info', `开始执行 ${getNodeTitle(node)}`, nodeId));
+    onLog?.(createLog('info', `开始执行 ${snapshot.data.label}`, nodeId));
+
+    const nodeView = createNodeView(context, snapshot);
 
     try {
-      const result = await executeNode(node, (progress, message) => {
-        const progressState: LinghuiNodeRunState = {
+      const result = await executeNode(nodeView, (progress, message) => {
+        const nextState: LinghuiNodeRunState = {
           ...nextRuns[nodeId],
           status: 'running',
           progress,
@@ -758,12 +766,11 @@ export async function executeLinghuiWorkflow(
           updatedAt: Date.now(),
           upstreamIds,
         };
-        nextRuns[nodeId] = progressState;
-        onNodeStateChange?.(nodeId, progressState);
+        nextRuns[nodeId] = nextState;
+        onNodeStateChange?.(nodeId, nextState);
       });
 
-      node.setOutputData(0, result);
-
+      context.nodeOutputs[nodeId] = result;
       const successState: LinghuiNodeRunState = {
         status: 'succeeded',
         progress: 100,
@@ -775,7 +782,7 @@ export async function executeLinghuiWorkflow(
       };
       nextRuns[nodeId] = successState;
       onNodeStateChange?.(nodeId, successState);
-      onLog?.(createLog('success', `${getNodeTitle(node)} 执行完成`, nodeId));
+      onLog?.(createLog('success', `${snapshot.data.label} 执行完成`, nodeId));
     } catch (error: any) {
       const failedState: LinghuiNodeRunState = {
         status: 'failed',
@@ -789,7 +796,7 @@ export async function executeLinghuiWorkflow(
       };
       nextRuns[nodeId] = failedState;
       onNodeStateChange?.(nodeId, failedState);
-      onLog?.(createLog('error', `${getNodeTitle(node)} 执行失败：${failedState.error}`, nodeId));
+      onLog?.(createLog('error', `${snapshot.data.label} 执行失败：${failedState.error}`, nodeId));
     }
   }
 

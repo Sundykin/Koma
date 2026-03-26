@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { Input } from 'antd';
 import { Search } from 'lucide-react';
-import { LINGHUI_NODE_CATALOG } from './linghuiNodes';
+import { LINGHUI_NODE_CATALOG } from './linghuiNodeDefs';
 import type { LinghuiNodeCategory, LinghuiNodeType } from '../../types/linghui';
 
 interface LinghuiNodeLibraryProps {
@@ -9,8 +9,7 @@ interface LinghuiNodeLibraryProps {
 }
 
 const CATEGORY_TITLES: Record<LinghuiNodeCategory, string> = {
-  basic: '基础节点',
-  generation: '生成节点',
+  creation: '创作节点',
   storyboard: '分镜节点',
 };
 
@@ -30,7 +29,7 @@ export const LinghuiNodeLibrary: React.FC<LinghuiNodeLibraryProps> = ({
   }, [keyword]);
 
   const groups = useMemo(() => {
-    return (['basic', 'generation', 'storyboard'] as LinghuiNodeCategory[]).map(category => ({
+    return (['creation', 'storyboard'] as LinghuiNodeCategory[]).map(category => ({
       category,
       items: filteredCatalog.filter(item => item.category === category),
     }));

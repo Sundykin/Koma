@@ -1,7 +1,6 @@
 import React from 'react';
 import { Tag } from 'antd';
-import type { LinghuiGraphStats } from '../../types/linghui';
-import type { LinghuiCanvasSelection } from './LinghuiCanvas';
+import type { LinghuiGraphStats, LinghuiCanvasSelection } from '../../types/linghui';
 
 interface LinghuiStatusBarProps {
   workspaceCount: number;
@@ -20,8 +19,8 @@ interface LinghuiStatusBarProps {
 
 function getSelectionLabel(selection: LinghuiCanvasSelection): string {
   if (!selection) return '未选中';
-  if (selection.kind === 'group') return `分组 · ${selection.group.title}`;
-  return `节点 · ${selection.node.title || selection.node.type}`;
+  if (selection.kind === 'group') return `分组 · ${selection.label}`;
+  return `节点 · ${selection.label}`;
 }
 
 export const LinghuiStatusBar: React.FC<LinghuiStatusBarProps> = ({

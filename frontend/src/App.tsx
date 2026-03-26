@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo, Suspense, lazy } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef, Suspense, lazy } from 'react';
 import { Project, ScriptAnalysisResult, EditorStep, AppSettings, Episode, EpisodeStepProgress } from './types';
 import { ProjectList, CreateProjectModal, ProjectSettingsModal } from './components/project';
 import type { MentionItem } from './editor';
@@ -83,6 +83,7 @@ const AppContent: React.FC = () => {
   const [isProjectSettingsOpen, setIsProjectSettingsOpen] = useState(false);
   const [scriptText, setScriptText] = useState(DEFAULT_SCRIPT);
   const [analysisData, setAnalysisData] = useState<ScriptAnalysisResult | null>(isVideoDevMode ? DEV_TEST_ANALYSIS : null);
+  const lastNonLinghuiViewRef = useRef<AppView>('projects');
 
   // 初始化 TaskManager
   useEffect(() => {
@@ -166,6 +167,12 @@ const AppContent: React.FC = () => {
       loadAnalysisData(activeProject.id);
     }
   }, [view, activeProject?.id, isVideoDevMode, loadAnalysisData]);
+
+  useEffect(() => {
+    if (view !== 'linghui') {
+      lastNonLinghuiViewRef.current = view;
+    }
+  }, [view]);
 
   // 切换到视频步骤时加载 shots
   useEffect(() => {
@@ -313,13 +320,15 @@ const AppContent: React.FC = () => {
     <div className="flex flex-col h-screen bg-zinc-950 text-zinc-100 font-sans selection:bg-emerald-500/30">
       <WindowControls />
       <div className="flex flex-1 min-h-0">
-        <Sidebar
-          view={view}
-          activeProject={activeProject}
-          activeEpisode={activeEpisode}
-          onViewChange={setView}
-          onEnterVideoTest={handleEnterVideoTest}
-        />
+        {view !== 'linghui' && (
+          <Sidebar
+            view={view}
+            activeProject={activeProject}
+            activeEpisode={activeEpisode}
+            onViewChange={setView}
+            onEnterVideoTest={handleEnterVideoTest}
+          />
+        )}
         <div className="flex-1 flex flex-col min-w-0 transition-all duration-300">
           <main className="flex-1 overflow-hidden relative bg-zinc-950">
                 {view === 'projects' && (
@@ -353,7 +362,9 @@ const AppContent: React.FC = () => {
             )}
             {view === 'linghui' && (
               <Suspense fallback={<ViewLoading tip="加载灵绘工作台..." />}>
-                <LinghuiPage />
+                <LinghuiPage
+                  onExit={() => setView(lastNonLinghuiViewRef.current === 'linghui' ? 'projects' : lastNonLinghuiViewRef.current)}
+                />
               </Suspense>
             )}
             {view.startsWith('plugin:') && (
