@@ -18,6 +18,13 @@ export interface LinghuiPromptReferenceItem {
   textValue?: string;
 }
 
+export interface LinghuiPromptReferenceEdge {
+  source: string;
+  target: string;
+  sourceHandle?: string | null;
+  targetHandle?: string | null;
+}
+
 export interface ParsedLinghuiPromptReference {
   id: string;
   fullMatch: string;
@@ -216,11 +223,32 @@ function buildFallbackReference(
   }];
 }
 
+function getHandleIndex(handleId: string | null | undefined, prefix: 'input' | 'output'): number {
+  if (!handleId) return 0;
+  const match = handleId.match(new RegExp(`^${prefix}-(\\d+)$`));
+  return match ? Number(match[1]) : 0;
+}
+
+export function getOrderedIncomingReferenceEdges(
+  nodeId: string,
+  edges: LinghuiPromptReferenceEdge[],
+): LinghuiPromptReferenceEdge[] {
+  return edges
+    .map((edge, index) => ({ edge, index }))
+    .filter(item => item.edge.target === nodeId)
+    .sort((left, right) => (
+      getHandleIndex(left.edge.targetHandle, 'input') - getHandleIndex(right.edge.targetHandle, 'input')
+      || getHandleIndex(left.edge.sourceHandle, 'output') - getHandleIndex(right.edge.sourceHandle, 'output')
+      || left.index - right.index
+    ))
+    .map(item => item.edge);
+}
+
 function collectUpstreamNodeIds(
   nodeId: string,
-  edges: Array<{ source: string; target: string }>,
+  edges: LinghuiPromptReferenceEdge[],
 ): string[] {
-  const queue = edges.filter(edge => edge.target === nodeId).map(edge => edge.source);
+  const queue = getOrderedIncomingReferenceEdges(nodeId, edges).map(edge => edge.source);
   const seen = new Set<string>();
   const ordered: string[] = [];
 
@@ -231,9 +259,7 @@ function collectUpstreamNodeIds(
     seen.add(currentId);
     ordered.push(currentId);
 
-    const parents = edges
-      .filter(edge => edge.target === currentId)
-      .map(edge => edge.source);
+    const parents = getOrderedIncomingReferenceEdges(currentId, edges).map(edge => edge.source);
     queue.push(...parents);
   }
 
@@ -243,7 +269,7 @@ function collectUpstreamNodeIds(
 export function buildLinghuiPromptReferenceItems(params: {
   nodeId: string;
   nodes: Array<{ id: string; data: LinghuiNodeData }>;
-  edges: Array<{ source: string; target: string }>;
+  edges: LinghuiPromptReferenceEdge[];
   getNodeResult?: (nodeId: string) => LinghuiNodeResult | undefined;
 }): LinghuiPromptReferenceItem[] {
   const { nodeId, nodes, edges, getNodeResult } = params;
@@ -277,6 +303,11 @@ export interface CompileLinghuiPromptReferencesResult {
   unresolvedMentions: string[];
 }
 
+interface OrderedVisualReference {
+  key: string;
+  source: MediaAssetSource | ProviderAssetInput;
+}
+
 export function compileLinghuiPromptReferences(params: {
   prompt: string;
   references: LinghuiPromptReferenceItem[];
@@ -296,12 +327,59 @@ export function compileLinghuiPromptReferences(params: {
 
   const parsedRefs = parseLinghuiPromptReferences(prompt);
   const refMap = new Map(references.map(item => [item.id, item]));
-  const visualRefs: Array<MediaAssetSource | ProviderAssetInput> = [];
-  const visualKeys = new Set<string>();
-  const imageIndexByRefId = new Map<string, number>();
   const unresolvedMentions: string[] = [];
   let compiledPrompt = prompt;
-  let nextImageIndex = primaryReferenceId && replacementStrategy === 'image-index' ? 2 : 1;
+
+  const primaryReference = primaryReferenceId ? refMap.get(primaryReferenceId) : undefined;
+  const primarySourceKey = primaryReference?.source ? buildRefKey(primaryReference.source) : null;
+  const requiredVisualKeys = new Set<string>();
+
+  if (primarySourceKey) {
+    requiredVisualKeys.add(primarySourceKey);
+  }
+
+  for (const ref of extraReferences) {
+    requiredVisualKeys.add(buildRefKey(ref));
+  }
+
+  for (const parsed of parsedRefs) {
+    const item = refMap.get(parsed.id);
+    if (item?.source) {
+      requiredVisualKeys.add(buildRefKey(item.source));
+    }
+  }
+
+  const orderedVisualRefs: OrderedVisualReference[] = [];
+  const orderedVisualKeys = new Set<string>();
+  const pushOrderedVisualRef = (source?: MediaAssetSource | ProviderAssetInput) => {
+    if (!source) return;
+    const key = buildRefKey(source);
+    if (!requiredVisualKeys.has(key) || orderedVisualKeys.has(key)) {
+      return;
+    }
+
+    orderedVisualKeys.add(key);
+    orderedVisualRefs.push({ key, source });
+  };
+
+  if (primaryReference?.source) {
+    pushOrderedVisualRef(primaryReference.source);
+  }
+
+  for (const ref of extraReferences) {
+    pushOrderedVisualRef(ref);
+  }
+
+  for (const item of references) {
+    if (item.source) {
+      pushOrderedVisualRef(item.source);
+    }
+  }
+
+  const imageIndexBySourceKey = new Map<string, number>();
+  orderedVisualRefs.forEach((item, index) => {
+    imageIndexBySourceKey.set(item.key, index + 1);
+  });
 
   const replacements = parsedRefs.map(parsed => {
     const item = refMap.get(parsed.id);
@@ -310,26 +388,14 @@ export function compileLinghuiPromptReferences(params: {
       return null;
     }
 
-    const isPrimaryReference = Boolean(item.source && item.id === primaryReferenceId);
-    if (isPrimaryReference) {
-      if (replacementStrategy === 'image-index') {
-        imageIndexByRefId.set(item.id, 1);
-        return { ...parsed, replacement: '@Image 1' };
-      }
-      return { ...parsed, replacement: item.name };
-    }
-
     if (item.source) {
-      if (!visualKeys.has(buildRefKey(item.source))) {
-        visualRefs.push(item.source);
-        visualKeys.add(buildRefKey(item.source));
-      }
+      const sourceKey = buildRefKey(item.source);
 
       if (replacementStrategy === 'image-index') {
-        const existing = imageIndexByRefId.get(item.id);
-        const index = existing ?? nextImageIndex++;
-        imageIndexByRefId.set(item.id, index);
-        return { ...parsed, replacement: `@Image ${index}` };
+        const index = imageIndexBySourceKey.get(sourceKey);
+        if (index != null) {
+          return { ...parsed, replacement: `@Image ${index}` };
+        }
       }
 
       return { ...parsed, replacement: item.name };
@@ -355,14 +421,9 @@ export function compileLinghuiPromptReferences(params: {
     compiledPrompt = `@Image 1 ${compiledPrompt}`.trim();
   }
 
-  const compiledReferences = [...visualRefs];
-  const compiledReferenceKeys = new Set(compiledReferences.map(buildRefKey));
-  for (const ref of extraReferences) {
-    const key = buildRefKey(ref);
-    if (compiledReferenceKeys.has(key)) continue;
-    compiledReferenceKeys.add(key);
-    compiledReferences.push(ref);
-  }
+  const compiledReferences = orderedVisualRefs
+    .filter(item => item.key !== primarySourceKey)
+    .map(item => item.source);
 
   return {
     compiledPrompt,

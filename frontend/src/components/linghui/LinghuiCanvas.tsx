@@ -1,5 +1,6 @@
 import React, {
   forwardRef,
+  memo,
   useCallback,
   useEffect,
   useImperativeHandle,
@@ -1284,7 +1285,7 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
   );
 });
 
-export const LinghuiCanvas = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(function LinghuiCanvas(
+const LinghuiCanvasComponent = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(function LinghuiCanvas(
   props,
   ref,
 ) {
@@ -1298,5 +1299,23 @@ export const LinghuiCanvas = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>
     </LinghuiNodeRunsContext.Provider>
   );
 });
+
+function areLinghuiCanvasPropsEqual(prev: LinghuiCanvasProps, next: LinghuiCanvasProps): boolean {
+  return (
+    prev.workspace === next.workspace &&
+    prev.nodeRuns === next.nodeRuns &&
+    prev.executionLogs === next.executionLogs &&
+    prev.onGraphChange === next.onGraphChange &&
+    prev.onSelectionChange === next.onSelectionChange &&
+    prev.onNodeMutate === next.onNodeMutate &&
+    prev.onConnectionError === next.onConnectionError &&
+    prev.onRunSingleNode === next.onRunSingleNode &&
+    prev.onRunAll === next.onRunAll &&
+    prev.onRunSelection === next.onRunSelection
+  );
+}
+
+export const LinghuiCanvas = memo(LinghuiCanvasComponent, areLinghuiCanvasPropsEqual);
+LinghuiCanvas.displayName = 'LinghuiCanvas';
 
 export default LinghuiCanvas;

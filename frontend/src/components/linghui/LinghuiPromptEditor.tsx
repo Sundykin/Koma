@@ -1,6 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 import { EditorState, Extension, Compartment, Prec, EditorSelection, RangeSetBuilder } from '@codemirror/state';
-import { autocompletion, Completion, CompletionContext, CompletionResult, completionKeymap } from '@codemirror/autocomplete';
+import {
+  autocompletion,
+  Completion,
+  CompletionContext,
+  CompletionInfo,
+  CompletionResult,
+  completionKeymap,
+} from '@codemirror/autocomplete';
 import {
   Decoration,
   DecorationSet,
@@ -30,6 +37,10 @@ interface LinghuiPromptEditorProps {
   darkTheme?: boolean;
   className?: string;
   style?: React.CSSProperties;
+}
+
+interface LinghuiReferenceCompletion extends Completion {
+  linghuiItem: LinghuiPromptReferenceItem;
 }
 
 function getReferenceKindLabel(kind: LinghuiPromptReferenceItem['kind']): string {
@@ -159,6 +170,97 @@ function showReferencePreviewTooltip(anchor: HTMLElement, item: LinghuiPromptRef
   positionReferencePreviewTooltip(tooltip, event);
 }
 
+function getReferenceCompletionItem(completion: Completion): LinghuiPromptReferenceItem | null {
+  return (completion as LinghuiReferenceCompletion).linghuiItem ?? null;
+}
+
+function createCompletionInfoDom(item: LinghuiPromptReferenceItem): CompletionInfo {
+  const wrap = document.createElement('div');
+  wrap.className = 'linghuiCompletionInfoCard';
+
+  const previewSource = toPreviewSource(item.previewSource);
+  if (previewSource && (item.kind === 'image' || item.kind === 'video')) {
+    const imageWrap = document.createElement('div');
+    imageWrap.className = 'linghuiCompletionInfoImageWrap';
+
+    const image = document.createElement('img');
+    image.src = previewSource;
+    image.alt = item.name;
+    image.className = 'linghuiCompletionInfoImage';
+    imageWrap.appendChild(image);
+
+    if (item.kind === 'video') {
+      const badge = document.createElement('span');
+      badge.className = 'linghuiCompletionInfoVideoBadge';
+      badge.textContent = 'VIDEO';
+      imageWrap.appendChild(badge);
+    }
+
+    wrap.appendChild(imageWrap);
+  }
+
+  const title = document.createElement('div');
+  title.className = 'linghuiCompletionInfoTitle';
+  title.textContent = item.name || `${getReferenceKindLabel(item.kind)}参考`;
+  wrap.appendChild(title);
+
+  const meta = document.createElement('div');
+  meta.className = 'linghuiCompletionInfoMeta';
+  meta.textContent = getReferenceKindLabel(item.kind);
+  wrap.appendChild(meta);
+
+  if (item.description) {
+    const desc = document.createElement('div');
+    desc.className = 'linghuiCompletionInfoDescription';
+    desc.textContent = item.description;
+    wrap.appendChild(desc);
+  }
+
+  return wrap;
+}
+
+function renderCompletionLeading(completion: Completion): Node | null {
+  const item = getReferenceCompletionItem(completion);
+  if (!item) return null;
+
+  const visual = isVisualReference(item);
+  const wrap = document.createElement('span');
+  wrap.className = `linghuiCompletionLeading ${visual ? 'isVisual' : 'isText'}`;
+
+  if (visual) {
+    const previewSource = toPreviewSource(item.previewSource);
+    const thumb = document.createElement('span');
+    thumb.className = 'linghuiCompletionThumb';
+
+    if (previewSource) {
+      const img = document.createElement('img');
+      img.src = previewSource;
+      img.alt = item.name;
+      img.className = 'linghuiCompletionThumbImage';
+      thumb.appendChild(img);
+    } else {
+      thumb.textContent = getReferenceKindLabel(item.kind).slice(0, 1);
+      thumb.classList.add('isFallback');
+    }
+
+    if (item.kind === 'video') {
+      const badge = document.createElement('span');
+      badge.className = 'linghuiCompletionThumbBadge';
+      badge.textContent = '▶';
+      thumb.appendChild(badge);
+    }
+
+    wrap.appendChild(thumb);
+    return wrap;
+  }
+
+  const badge = document.createElement('span');
+  badge.className = 'linghuiCompletionKindBadge';
+  badge.textContent = getReferenceKindLabel(item.kind);
+  wrap.appendChild(badge);
+  return wrap;
+}
+
 class LinghuiReferenceWidget extends WidgetType {
   constructor(readonly item: LinghuiPromptReferenceItem) {
     super();
@@ -177,7 +279,8 @@ class LinghuiReferenceWidget extends WidgetType {
         display: inline-flex;
         align-items: center;
         gap: 6px;
-        padding: 2px 6px 2px 4px;
+        max-width: 240px;
+        padding: 2px 8px;
         border-radius: 999px;
         background: rgba(15, 23, 42, 0.82);
         color: #d1fae5;
@@ -186,10 +289,10 @@ class LinghuiReferenceWidget extends WidgetType {
         vertical-align: middle;
       `;
 
-      const prefix = document.createElement('span');
-      prefix.textContent = '@';
-      prefix.style.cssText = 'font-size: 12px; font-weight: 700; line-height: 1; color: #6ee7b7;';
-      chip.appendChild(prefix);
+      const openBracket = document.createElement('span');
+      openBracket.textContent = '[';
+      openBracket.style.cssText = 'font-size: 12px; font-weight: 700; line-height: 1; color: #6ee7b7;';
+      chip.appendChild(openBracket);
 
       const thumb = document.createElement('span');
       thumb.style.cssText = `
@@ -227,6 +330,24 @@ class LinghuiReferenceWidget extends WidgetType {
 
       chip.appendChild(thumb);
 
+      const name = document.createElement('span');
+      name.textContent = this.item.name || `${getReferenceKindLabel(this.item.kind)}参考`;
+      name.style.cssText = `
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: 12px;
+        font-weight: 600;
+        color: #ecfdf5;
+      `;
+      chip.appendChild(name);
+
+      const closeBracket = document.createElement('span');
+      closeBracket.textContent = ']';
+      closeBracket.style.cssText = 'font-size: 12px; font-weight: 700; line-height: 1; color: #6ee7b7;';
+      chip.appendChild(closeBracket);
+
       const moveTooltip = (event: MouseEvent) => {
         const tooltip = (chip as HTMLElement & { __linghuiPreviewTooltip?: HTMLElement }).__linghuiPreviewTooltip;
         if (tooltip) {
@@ -244,7 +365,7 @@ class LinghuiReferenceWidget extends WidgetType {
     }
 
     const colors = getReferenceWidgetColor(this.item.kind);
-    span.textContent = `@${this.item.name}`;
+    span.textContent = `[${getReferenceKindLabel(this.item.kind)} ${this.item.name}]`;
     span.title = this.item.description || `${getReferenceKindLabel(this.item.kind)}参考`;
     span.style.cssText = `
       display: inline-flex;
@@ -387,7 +508,7 @@ function createReferenceAutocomplete(references: LinghuiPromptReferenceItem[]) {
           label: item.name,
           type: item.kind === 'text' ? 'text' : 'variable',
           detail: getReferenceKindLabel(item.kind),
-          info: item.description,
+          info: () => createCompletionInfoDom(item),
           apply: (view, _completion, from, to) => {
             const mention = createLinghuiPromptReferenceString(item.id);
             view.dispatch({
@@ -396,7 +517,8 @@ function createReferenceAutocomplete(references: LinghuiPromptReferenceItem[]) {
             });
           },
           boost: item.kind === 'image' ? 2 : item.kind === 'video' ? 1 : 0,
-        }));
+          linghuiItem: item,
+        } as LinghuiReferenceCompletion));
 
       if (!options.length) {
         return null;
@@ -412,7 +534,15 @@ function createReferenceAutocomplete(references: LinghuiPromptReferenceItem[]) {
     activateOnTyping: true,
     closeOnBlur: false,
     maxRenderedOptions: 24,
-    icons: true,
+    icons: false,
+    optionClass: completion => {
+      const item = getReferenceCompletionItem(completion);
+      return item ? `linghuiCompletionOption ${isVisualReference(item) ? 'hasVisual' : 'isText'}` : 'linghuiCompletionOption';
+    },
+    addToOptions: [{
+      position: 30,
+      render: completion => renderCompletionLeading(completion),
+    }],
   });
 }
 
@@ -421,8 +551,8 @@ const autocompleteTheme = EditorView.theme({
     zIndex: '99999 !important',
   },
   '.cm-tooltip-autocomplete': {
-    minWidth: '220px',
-    maxWidth: '420px',
+    minWidth: '280px',
+    maxWidth: '460px',
     zIndex: '99999 !important',
     background: '#111827 !important',
     border: '1px solid rgba(16, 185, 129, 0.7) !important',
@@ -437,6 +567,9 @@ const autocompleteTheme = EditorView.theme({
     listStyle: 'none',
   },
   '.cm-tooltip-autocomplete li': {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
     padding: '8px 12px !important',
     color: '#e5e7eb !important',
   },
@@ -446,14 +579,134 @@ const autocompleteTheme = EditorView.theme({
   },
   '.cm-completionLabel': {
     flex: '1',
+    minWidth: '0',
+    display: 'block',
     fontWeight: '500',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
   },
   '.cm-completionDetail': {
     color: '#9ca3af',
     marginLeft: 'auto',
+    flex: '0 0 auto',
+    fontSize: '11px',
+    borderRadius: '999px',
+    padding: '2px 8px',
+    background: 'rgba(255,255,255,0.06)',
   },
   '.cm-tooltip-autocomplete li[aria-selected] .cm-completionDetail': {
     color: 'rgba(255, 255, 255, 0.82)',
+    background: 'rgba(255,255,255,0.18)',
+  },
+  '.cm-tooltip.cm-completionInfo': {
+    zIndex: '100000 !important',
+    padding: '0',
+    border: '1px solid rgba(16, 185, 129, 0.55)',
+    borderRadius: '14px',
+    background: 'rgba(3, 7, 18, 0.98)',
+    boxShadow: '0 24px 48px rgba(0, 0, 0, 0.42)',
+    overflow: 'hidden',
+  },
+  '.linghuiCompletionLeading': {
+    display: 'inline-flex',
+    alignItems: 'center',
+    flex: '0 0 auto',
+  },
+  '.linghuiCompletionThumb': {
+    position: 'relative',
+    width: '34px',
+    height: '34px',
+    borderRadius: '10px',
+    overflow: 'hidden',
+    background: 'rgba(30, 41, 59, 0.88)',
+    border: '1px solid rgba(148, 163, 184, 0.22)',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    color: '#cbd5e1',
+    fontSize: '11px',
+    fontWeight: '700',
+  },
+  '.linghuiCompletionThumbImage': {
+    display: 'block',
+    width: '100%',
+    height: '100%',
+    objectFit: 'cover',
+  },
+  '.linghuiCompletionThumbBadge': {
+    position: 'absolute',
+    right: '3px',
+    bottom: '2px',
+    fontSize: '10px',
+    lineHeight: '1',
+    color: '#ffffff',
+    textShadow: '0 1px 3px rgba(0,0,0,0.6)',
+  },
+  '.linghuiCompletionKindBadge': {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: '34px',
+    height: '34px',
+    padding: '0 8px',
+    borderRadius: '10px',
+    background: 'rgba(15, 23, 42, 0.82)',
+    border: '1px solid rgba(148, 163, 184, 0.22)',
+    color: '#cbd5e1',
+    fontSize: '11px',
+    fontWeight: '700',
+  },
+  '.linghuiCompletionInfoCard': {
+    width: '240px',
+    padding: '10px',
+    color: '#e5e7eb',
+  },
+  '.linghuiCompletionInfoImageWrap': {
+    position: 'relative',
+    width: '100%',
+    height: '144px',
+    borderRadius: '10px',
+    overflow: 'hidden',
+    background: 'rgba(15, 23, 42, 0.9)',
+  },
+  '.linghuiCompletionInfoImage': {
+    display: 'block',
+    width: '100%',
+    height: '100%',
+    objectFit: 'cover',
+  },
+  '.linghuiCompletionInfoVideoBadge': {
+    position: 'absolute',
+    top: '8px',
+    right: '8px',
+    padding: '2px 6px',
+    borderRadius: '999px',
+    background: 'rgba(15, 23, 42, 0.8)',
+    color: '#f8fafc',
+    fontSize: '10px',
+    fontWeight: '700',
+    letterSpacing: '0.04em',
+  },
+  '.linghuiCompletionInfoTitle': {
+    marginTop: '8px',
+    fontSize: '13px',
+    fontWeight: '700',
+    color: '#f8fafc',
+  },
+  '.linghuiCompletionInfoMeta': {
+    marginTop: '4px',
+    color: '#6ee7b7',
+    fontSize: '11px',
+    fontWeight: '700',
+    letterSpacing: '0.04em',
+    textTransform: 'uppercase',
+  },
+  '.linghuiCompletionInfoDescription': {
+    marginTop: '6px',
+    color: '#94a3b8',
+    fontSize: '12px',
+    lineHeight: '1.5',
   },
 });
 
@@ -502,7 +755,7 @@ export const LinghuiPromptEditor: React.FC<LinghuiPromptEditorProps> = ({
         '&': {
           height: minHeight,
           maxHeight,
-          overflow: 'hidden',
+          overflow: 'visible',
           border: darkTheme ? '1px solid #3f3f46' : '1px solid #d4d4d8',
           borderRadius: '10px',
           fontFamily: 'system-ui, -apple-system, sans-serif',

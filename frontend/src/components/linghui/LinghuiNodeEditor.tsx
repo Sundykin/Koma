@@ -15,7 +15,10 @@ import type {
 import { ReferenceNodeEditor } from './ReferenceNodeEditor';
 import { ImageNodeEditor } from './ImageNodeEditor';
 import { VideoNodeEditor } from './VideoNodeEditor';
-import { buildLinghuiPromptReferenceItems } from './linghuiPromptReferences';
+import {
+  buildLinghuiPromptReferenceItems,
+  getOrderedIncomingReferenceEdges,
+} from './linghuiPromptReferences';
 
 interface LinghuiNodeEditorProps {
   selection: LinghuiCanvasSelection;
@@ -65,8 +68,16 @@ export const LinghuiNodeEditor: React.FC<LinghuiNodeEditorProps> = ({
     const refs: Array<{ source?: string; label?: string }> = [];
     const dedupe = new Set<string>();
 
-    for (const edge of edges) {
-      if (edge.target !== nodeId || edge.targetHandle !== 'input-0') continue;
+    for (const edge of getOrderedIncomingReferenceEdges(
+      nodeId,
+      edges.map(edge => ({
+        source: edge.source,
+        target: edge.target,
+        sourceHandle: edge.sourceHandle,
+        targetHandle: edge.targetHandle,
+      })),
+    )) {
+      if (edge.targetHandle !== 'input-0') continue;
 
       const result = nodeRuns[edge.source]?.result;
       const sourceNodeData = nodeDataMap.get(edge.source);
@@ -99,6 +110,8 @@ export const LinghuiNodeEditor: React.FC<LinghuiNodeEditorProps> = ({
       edges: edges.map(edge => ({
         source: edge.source,
         target: edge.target,
+        sourceHandle: edge.sourceHandle,
+        targetHandle: edge.targetHandle,
       })),
       getNodeResult(upstreamNodeId) {
         return nodeRuns[upstreamNodeId]?.result;

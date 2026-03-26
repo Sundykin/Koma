@@ -1265,6 +1265,7 @@
 
 .linghuiNodeEditorContainer {
   pointer-events: auto;
+  overflow: visible;
 }
 
 .linghuiEditorPanel {
@@ -1273,7 +1274,7 @@
   background: rgba(11, 15, 21, 0.95);
   box-shadow: 0 24px 48px rgba(0, 0, 0, 0.4);
   backdrop-filter: blur(18px);
-  overflow: hidden;
+  overflow: visible;
   color: #f8fafc;
 }
 
@@ -1285,6 +1286,7 @@
   padding: 14px 14px 10px;
   border-bottom: 1px solid rgba(63, 63, 70, 0.4);
   background: linear-gradient(180deg, rgba(22, 28, 36, 0.9), rgba(13, 17, 23, 0.82));
+  border-radius: 18px 18px 0 0;
 }
 
 .linghuiEditorTitle {
@@ -1374,6 +1376,8 @@
 }
 
 .linghuiEditorPrompt {
+  position: relative;
+  z-index: 2;
   padding: 12px 14px 0;
 }
 
@@ -1399,6 +1403,7 @@
   gap: 10px;
   padding: 10px 14px;
   border-top: 1px solid rgba(63, 63, 70, 0.4);
+  border-radius: 0 0 18px 18px;
 }
 
 .linghuiEditorToolbarLeft,

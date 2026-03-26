@@ -24,6 +24,7 @@ import { gridTypeToCount } from '../../types/linghui';
 import {
   buildLinghuiPromptReferenceItems,
   compileLinghuiPromptReferences,
+  getOrderedIncomingReferenceEdges,
   type LinghuiPromptReferenceItem,
 } from './linghuiPromptReferences';
 
@@ -94,15 +95,16 @@ interface ExecutionNodeView {
 }
 
 function resolveAllInputResults(context: LinghuiExecutionContext, nodeId: string, handleId = 'input-0'): LinghuiNodeResult[] {
-  return context.edges
-    .filter(edge => edge.target === nodeId && edge.targetHandle === handleId)
+  return getOrderedIncomingReferenceEdges(nodeId, context.edges)
+    .filter(edge => edge.targetHandle === handleId)
     .map(edge => context.nodeOutputs[edge.source])
     .filter(Boolean);
 }
 
 function resolveInputData(context: LinghuiExecutionContext, nodeId: string, inputSlotIndex: number): LinghuiNodeResult | undefined {
   const targetHandle = `input-${inputSlotIndex}`;
-  const edge = context.edges.find(item => item.target === nodeId && item.targetHandle === targetHandle);
+  const edge = getOrderedIncomingReferenceEdges(nodeId, context.edges)
+    .find(item => item.targetHandle === targetHandle);
   return edge ? context.nodeOutputs[edge.source] : undefined;
 }
 
@@ -129,6 +131,8 @@ function createNodeView(context: LinghuiExecutionContext, snapshot: LinghuiRFNod
         edges: context.edges.map(edge => ({
           source: edge.source,
           target: edge.target,
+          sourceHandle: edge.sourceHandle,
+          targetHandle: edge.targetHandle,
         })),
         getNodeResult(upstreamNodeId) {
           return context.nodeOutputs[upstreamNodeId];
