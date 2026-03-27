@@ -1,10 +1,12 @@
-import React, { memo, useEffect, useRef, useState } from 'react';
-import { NodeResizer, type NodeProps, useReactFlow } from '@xyflow/react';
+import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
+import { NodeResizer, type NodeProps } from '@xyflow/react';
 import type { LinghuiCanvasGroupData } from '../../../types/linghui';
+import { useLinghuiNodeMutation, useLinghuiNodeInteractionApi } from './LinghuiNodeRunsContext';
 
 function CanvasGroupNodeInner({ id, data, selected }: NodeProps) {
   const groupData = data as unknown as LinghuiCanvasGroupData;
-  const reactFlow = useReactFlow();
+  const { updateNodeData } = useLinghuiNodeMutation();
+  const { openNodeContextMenu } = useLinghuiNodeInteractionApi();
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [editing, setEditing] = useState(false);
   const [draftLabel, setDraftLabel] = useState(groupData.label ?? '分组');
@@ -19,16 +21,30 @@ function CanvasGroupNodeInner({ id, data, selected }: NodeProps) {
     inputRef.current?.select();
   }, [editing]);
 
-  const commitLabel = () => {
+  const commitLabel = useCallback(() => {
     const nextLabel = draftLabel.trim() || '分组';
-    reactFlow.updateNodeData(id, { label: nextLabel });
+    updateNodeData(id, prev => ({
+      ...prev,
+      label: nextLabel,
+    }), { markStale: false });
     setEditing(false);
-  };
+  }, [draftLabel, id, updateNodeData]);
+
+  const beginEditing = useCallback((event?: React.SyntheticEvent) => {
+    event?.preventDefault();
+    event?.stopPropagation();
+    setEditing(true);
+  }, []);
 
   return (
     <div
-      className={`linghuiCanvasGroup ${selected ? 'isSelected' : ''}`}
+      className={`linghuiCanvasGroup nopan ${selected ? 'isSelected' : ''}`}
       style={{ ['--linghui-group-color' as string]: groupData.color ?? '#2563eb' }}
+      onContextMenu={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        openNodeContextMenu(id, event.clientX, event.clientY);
+      }}
     >
       <NodeResizer
         isVisible={selected}
@@ -39,7 +55,10 @@ function CanvasGroupNodeInner({ id, data, selected }: NodeProps) {
         handleClassName="linghuiCanvasGroupResizeHandle"
       />
 
-      <div className="linghuiCanvasGroupHeader linghuiCanvasGroupDragHandle">
+      <div
+        className="linghuiCanvasGroupHeader linghuiCanvasGroupDragHandle"
+        onDoubleClick={beginEditing}
+      >
         {editing ? (
           <input
             ref={inputRef}
@@ -48,6 +67,8 @@ function CanvasGroupNodeInner({ id, data, selected }: NodeProps) {
             onChange={(event) => setDraftLabel(event.target.value)}
             onBlur={commitLabel}
             onPointerDown={(event) => event.stopPropagation()}
+            onDoubleClick={(event) => event.stopPropagation()}
+            onContextMenu={(event) => event.stopPropagation()}
             onKeyDown={(event) => {
               if (event.key === 'Enter') {
                 event.preventDefault();
@@ -64,12 +85,13 @@ function CanvasGroupNodeInner({ id, data, selected }: NodeProps) {
           <button
             type="button"
             className="linghuiCanvasGroupTitleButton nodrag nopan"
-            onDoubleClick={(event) => {
+            onDoubleClick={beginEditing}
+            onPointerDown={(event) => event.stopPropagation()}
+            onContextMenu={(event) => {
               event.preventDefault();
               event.stopPropagation();
-              setEditing(true);
+              openNodeContextMenu(id, event.clientX, event.clientY);
             }}
-            onPointerDown={(event) => event.stopPropagation()}
           >
             {groupData.label ?? '分组'}
           </button>

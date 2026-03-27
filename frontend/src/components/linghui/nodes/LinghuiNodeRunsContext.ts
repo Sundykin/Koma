@@ -44,6 +44,7 @@ export interface LinghuiNodeInteractionHandlers {
 export interface LinghuiNodeInteractionApi {
   canvasMode: LinghuiCanvasMode;
   bindNodeSurface: (nodeId: string) => LinghuiNodeInteractionHandlers;
+  openNodeContextMenu: (nodeId: string, clientX: number, clientY: number) => void;
 }
 
 const noopHandlers: LinghuiNodeInteractionHandlers = {
@@ -56,6 +57,7 @@ const noopHandlers: LinghuiNodeInteractionHandlers = {
 const noopInteractionApi: LinghuiNodeInteractionApi = {
   canvasMode: 'mouse',
   bindNodeSurface: () => noopHandlers,
+  openNodeContextMenu: () => undefined,
 };
 
 export const LinghuiNodeInteractionContext = createContext<LinghuiNodeInteractionApi>(noopInteractionApi);
@@ -67,4 +69,8 @@ export function useLinghuiNodeInteraction(nodeId: string): LinghuiNodeInteractio
 
 export function useLinghuiCanvasMode(): LinghuiCanvasMode {
   return useContext(LinghuiNodeInteractionContext).canvasMode;
+}
+
+export function useLinghuiNodeInteractionApi(): LinghuiNodeInteractionApi {
+  return useContext(LinghuiNodeInteractionContext);
 }

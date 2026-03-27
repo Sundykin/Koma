@@ -170,6 +170,7 @@ function createCanvasNode(type: LinghuiNodeType, position: Node['position'], cur
 }
 
 const NODE_LONG_PRESS_MS = 220;
+const PENDING_GROUP_ACTIONS_WIDTH = 228;
 
 interface ActiveNodePressState {
   nodeId: string;
@@ -208,6 +209,42 @@ interface SelectionScreenState {
   lastClientX: number;
   lastClientY: number;
   detach?: () => void;
+}
+
+function collectGroupPositions(
+  currentNodes: Node[],
+  groupIds: Iterable<string>,
+): Map<string, { x: number; y: number }> {
+  const groupIdSet = new Set(groupIds);
+  const groupPositions = new Map<string, { x: number; y: number }>();
+
+  for (const node of currentNodes) {
+    if (node.type !== 'group' || !groupIdSet.has(node.id)) continue;
+    groupPositions.set(node.id, { x: node.position.x, y: node.position.y });
+  }
+
+  return groupPositions;
+}
+
+function detachNodesFromGroups(
+  currentNodes: Node[],
+  groupPositions: Map<string, { x: number; y: number }>,
+  options?: { selectDetached?: boolean },
+): Node[] {
+  return currentNodes.map(node => {
+    if (!node.parentId || !groupPositions.has(node.parentId)) return node;
+
+    const groupPos = groupPositions.get(node.parentId)!;
+    return {
+      ...node,
+      parentId: undefined,
+      selected: options?.selectDetached ? true : node.selected,
+      position: {
+        x: node.position.x + groupPos.x,
+        y: node.position.y + groupPos.y,
+      },
+    };
+  });
 }
 
 const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(function LinghuiCanvasInner(
@@ -501,10 +538,6 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
     [nodes],
   );
 
-  const selectedCreatableIds = useMemo(() => {
-    return nodes.filter(node => node.selected && node.type !== 'group').map(node => node.id);
-  }, [nodes]);
-
   const contextMenuNode = useMemo(() => {
     if (!contextMenu?.nodeId) return null;
     return nodes.find(node => node.id === contextMenu.nodeId) ?? null;
@@ -522,33 +555,44 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
     };
   }, [canvasRect, pendingGroupFrame, reactFlow, viewport]);
 
+  const pendingGroupCreatableIds = useMemo(() => {
+    if (!pendingGroupFrame) return [];
+    const selectionSet = new Set(pendingGroupFrame.selectionIds);
+    return nodes
+      .filter(node => selectionSet.has(node.id) && node.type !== 'group')
+      .map(node => node.id);
+  }, [nodes, pendingGroupFrame]);
+
+  const pendingGroupActionsStyle = useMemo(() => {
+    if (!pendingGroupFrame || !canvasRect) return null;
+
+    const topRight = reactFlow.flowToScreenPosition({ x: pendingGroupFrame.maxX, y: pendingGroupFrame.minY });
+    const rawLeft = topRight.x - canvasRect.left - PENDING_GROUP_ACTIONS_WIDTH;
+    const rawTop = topRight.y - canvasRect.top - 52;
+    const maxLeft = Math.max(12, canvasRect.width - PENDING_GROUP_ACTIONS_WIDTH - 12);
+    const maxTop = Math.max(12, canvasRect.height - 44 - 12);
+    const left = Math.max(12, Math.min(rawLeft, maxLeft));
+    const top = rawTop >= 12
+      ? rawTop
+      : Math.max(12, Math.min(topRight.y - canvasRect.top + 12, maxTop));
+
+    return { left, top };
+  }, [canvasRect, pendingGroupFrame, reactFlow, viewport]);
+
+  const clearPendingGroupFrame = useCallback(() => {
+    setPendingGroupFrame(null);
+  }, []);
+
   const deleteNodesByIds = useCallback((nodeIds: string[]) => {
     if (!nodeIds.length) return;
 
     setNodes(currentNodes => {
       const deleteSet = new Set(nodeIds);
-      const groupPositions = new Map<string, { x: number; y: number }>();
-
-      for (const node of currentNodes) {
-        if (deleteSet.has(node.id) && node.type === 'group') {
-          groupPositions.set(node.id, { x: node.position.x, y: node.position.y });
-        }
-      }
-
-      return currentNodes
-        .filter(node => !deleteSet.has(node.id))
-        .map(node => {
-          if (!node.parentId || !groupPositions.has(node.parentId)) return node;
-          const groupPos = groupPositions.get(node.parentId)!;
-          return {
-            ...node,
-            parentId: undefined,
-            position: {
-              x: node.position.x + groupPos.x,
-              y: node.position.y + groupPos.y,
-            },
-          };
-        });
+      const groupPositions = collectGroupPositions(currentNodes, deleteSet);
+      return detachNodesFromGroups(
+        currentNodes.filter(node => !deleteSet.has(node.id)),
+        groupPositions,
+      );
     });
 
     setEdges(currentEdges => currentEdges.filter(edge => (
@@ -559,6 +603,25 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
     setPendingGroupFrame(null);
     requestAnimationFrame(() => emitSnapshot());
   }, [emitSnapshot, setNodes, setEdges]);
+
+  const ungroupGroupsByIds = useCallback((groupIds: string[]) => {
+    if (!groupIds.length) return;
+
+    setNodes(currentNodes => {
+      const groupPositions = collectGroupPositions(currentNodes, groupIds);
+      if (!groupPositions.size) return currentNodes;
+
+      return detachNodesFromGroups(
+        currentNodes.filter(node => !groupPositions.has(node.id)),
+        groupPositions,
+        { selectDetached: true },
+      );
+    });
+
+    setEditorSelection(null);
+    clearPendingGroupFrame();
+    requestAnimationFrame(() => emitSnapshot());
+  }, [clearPendingGroupFrame, emitSnapshot, setNodes]);
 
   const addNodeFromMenu = useCallback((type: LinghuiNodeType) => {
     if (!contextMenu) return;
@@ -591,6 +654,21 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
     setPendingGroupFrame(null);
     openContextMenuAt(event.clientX, event.clientY, 'node', { nodeId: node.id });
   }, [openContextMenuAt, setNodes]);
+
+  const openNodeContextMenu = useCallback((nodeId: string, clientX: number, clientY: number) => {
+    const targetNode = reactFlow.getNode(nodeId);
+    if (!targetNode) return;
+
+    if (!targetNode.selected) {
+      setNodes(current => current.map(node => ({
+        ...node,
+        selected: node.id === nodeId,
+      })));
+    }
+
+    setPendingGroupFrame(null);
+    openContextMenuAt(clientX, clientY, 'node', { nodeId });
+  }, [openContextMenuAt, reactFlow, setNodes]);
 
   const detachSelectionTracking = useCallback(() => {
     selectionScreenRef.current?.detach?.();
@@ -640,19 +718,53 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
     selectionDragRef.current = { previousIds };
   }, [reactFlow]);
 
-  const handleSelectionDragStop = useCallback((event: React.MouseEvent, draggedNodes: Node[]) => {
+  const handleSelectionDragStop = useCallback(() => {
     detachSelectionTracking();
+  }, [detachSelectionTracking]);
+
+  const handleSelectionContextMenu = useCallback((event: React.MouseEvent, selectedNodes: Node[]) => {
+    event.preventDefault();
+    event.stopPropagation();
+    openContextMenuAt(event.clientX, event.clientY, 'selection', {
+      selectionIds: selectedNodes.map(node => node.id),
+    });
+  }, [openContextMenuAt]);
+
+  const handleSelectionEnd = useCallback(() => {
+    const selectionScreen = selectionScreenRef.current;
+    detachSelectionTracking();
+
+    const currentSelectedIds = reactFlow.getNodes().filter(node => node.selected).map(node => node.id);
     const previousIds = selectionDragRef.current?.previousIds ?? new Set<string>();
-    const mergedIds = new Set<string>(previousIds);
-    draggedNodes.forEach(node => mergedIds.add(node.id));
     selectionDragRef.current = null;
 
-    if (mergedIds.size === 0) {
-      closeContextMenu();
+    const mergedIds = new Set<string>(previousIds);
+    currentSelectedIds.forEach(id => mergedIds.add(id));
+    const selectionIds = Array.from(mergedIds);
+
+    if (selectionIds.length !== currentSelectedIds.length) {
+      setNodes(current => current.map(node => ({
+        ...node,
+        selected: mergedIds.has(node.id),
+      })));
+    }
+
+    if (!selectionIds.length) {
+      setPendingGroupFrame(null);
       return;
     }
 
-    const selectionScreen = selectionScreenRef.current;
+    closeContextMenu();
+
+    const creatableNodes = reactFlow.getNodes().filter(node => (
+      mergedIds.has(node.id) && node.type !== 'group'
+    ));
+
+    if (!creatableNodes.length) {
+      setPendingGroupFrame(null);
+      return;
+    }
+
     if (selectionScreen) {
       const minClientX = Math.min(selectionScreen.startClientX, selectionScreen.lastClientX);
       const minClientY = Math.min(selectionScreen.startClientY, selectionScreen.lastClientY);
@@ -666,29 +778,19 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
         minY: Math.min(topLeft.y, bottomRight.y),
         maxX: Math.max(topLeft.x, bottomRight.x),
         maxY: Math.max(topLeft.y, bottomRight.y),
-        selectionIds: Array.from(mergedIds),
+        selectionIds,
       });
+      return;
     }
 
-    setNodes(current => current.map(node => ({
-      ...node,
-      selected: mergedIds.has(node.id),
-    })));
-
-    openContextMenuAt(event.clientX, event.clientY, 'selection', { selectionIds: Array.from(mergedIds) });
-  }, [closeContextMenu, detachSelectionTracking, openContextMenuAt, reactFlow, setNodes]);
-
-  const handleSelectionContextMenu = useCallback((event: React.MouseEvent, selectedNodes: Node[]) => {
-    event.preventDefault();
-    event.stopPropagation();
-    openContextMenuAt(event.clientX, event.clientY, 'selection', {
-      selectionIds: selectedNodes.map(node => node.id),
+    setPendingGroupFrame({
+      minX: Math.min(...creatableNodes.map(node => node.position.x)),
+      minY: Math.min(...creatableNodes.map(node => node.position.y)),
+      maxX: Math.max(...creatableNodes.map(node => node.position.x + (node.measured?.width ?? 280))),
+      maxY: Math.max(...creatableNodes.map(node => node.position.y + (node.measured?.height ?? 180))),
+      selectionIds,
     });
-  }, [openContextMenuAt]);
-
-  const handleSelectionEnd = useCallback(() => {
-    detachSelectionTracking();
-  }, [detachSelectionTracking]);
+  }, [closeContextMenu, detachSelectionTracking, reactFlow, setNodes]);
 
   const clearActivePress = useCallback(() => {
     if (activePressRef.current) {
@@ -933,6 +1035,7 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
       type: 'group',
       position: { x: bounds.minX - padding, y: bounds.minY - padding - 20 },
       data: { label: '新分组', color: '#2563eb' },
+      selected: true,
       draggable: true,
       style: {
         width: bounds.maxX - bounds.minX + padding * 2,
@@ -941,11 +1044,15 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
     };
 
     setNodesRef.current(nds => {
+      const selectedIdSet = new Set(selected.map(node => node.id));
       const updated = nds.map(n => {
-        if (!selected.some(s => s.id === n.id)) return n;
+        if (!selectedIdSet.has(n.id)) {
+          return n.selected ? { ...n, selected: false } : n;
+        }
         return {
           ...n,
           parentId: groupId,
+          selected: false,
           position: {
             x: n.position.x - (bounds.minX - padding),
             y: n.position.y - (bounds.minY - padding - 20),
@@ -955,9 +1062,11 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
       return [groupNode, ...updated];
     });
 
-    setPendingGroupFrame(null);
+    setEditorSelection(null);
+    setContextMenu(null);
+    clearPendingGroupFrame();
     requestAnimationFrame(() => emitSnapshotRef.current());
-  }, [pendingGroupFrame]);
+  }, [clearPendingGroupFrame, pendingGroupFrame]);
 
   useImperativeHandle(ref, () => ({
     addNode(type, clientPosition) {
@@ -1008,7 +1117,7 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
   }), [createGroupFromSelection]);
 
   return (
-    <LinghuiNodeInteractionContext.Provider value={{ canvasMode, bindNodeSurface }}>
+    <LinghuiNodeInteractionContext.Provider value={{ canvasMode, bindNodeSurface, openNodeContextMenu }}>
       <LinghuiNodeMutationContext.Provider value={{ updateNodeData: updateLinghuiNodeData }}>
       <div
         ref={hostRef}
@@ -1016,6 +1125,12 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
         onDragOver={handleDragOver}
         onDrop={handleDrop}
       >
+        <div className="linghuiCanvasBackdrop" aria-hidden="true">
+          <div className="linghuiCanvasNebula" />
+          <div className="linghuiCanvasStarField isPrimary" />
+          <div className="linghuiCanvasStarField isSecondary" />
+        </div>
+
         <div className="linghuiCanvasTools nopan nowheel">
           <button
             type="button"
@@ -1134,14 +1249,38 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
         />
 
         {pendingGroupFrameStyle && (
-          <div
-            className="linghuiPendingGroupFrame"
-            style={pendingGroupFrameStyle}
-          >
-            <span className="linghuiPendingGroupBadge">
-              选区待分组 · {pendingGroupFrame?.selectionIds.length ?? 0} 项
-            </span>
-          </div>
+          <>
+            <div
+              className="linghuiPendingGroupFrame"
+              style={pendingGroupFrameStyle}
+            >
+              <span className="linghuiPendingGroupBadge">
+                选区待分组 · {pendingGroupCreatableIds.length} 项
+              </span>
+            </div>
+            {pendingGroupActionsStyle && pendingGroupCreatableIds.length > 0 && (
+              <div
+                className="linghuiPendingGroupActions nopan nowheel"
+                style={pendingGroupActionsStyle}
+                onPointerDown={(event) => event.stopPropagation()}
+              >
+                <button
+                  type="button"
+                  className="linghuiPendingGroupAction isPrimary"
+                  onClick={() => createGroupFromSelection(pendingGroupCreatableIds)}
+                >
+                  创建分组
+                </button>
+                <button
+                  type="button"
+                  className="linghuiPendingGroupAction"
+                  onClick={clearPendingGroupFrame}
+                >
+                  暂不分组
+                </button>
+              </div>
+            )}
+          </>
         )}
 
         {contextMenu && (
@@ -1152,7 +1291,9 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
           >
             {contextMenu.kind === 'node' && (
               <>
-                <div className="linghuiContextMenuHeader">节点操作</div>
+                <div className="linghuiContextMenuHeader">
+                  {contextMenuNode?.type === 'group' ? '分组操作' : '节点操作'}
+                </div>
                 {contextMenuNode?.type !== 'group' ? (
                   <button
                     type="button"
@@ -1168,20 +1309,48 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
                     运行当前节点
                   </button>
                 ) : (
-                  <div className="linghuiContextMenuHint">双击分组标题可直接重命名</div>
+                  <>
+                    <div className="linghuiContextMenuHint">双击分组标题可直接重命名</div>
+                    <button
+                      type="button"
+                      className="linghuiContextMenuItem"
+                      onClick={() => {
+                        if (contextMenu.nodeId) {
+                          ungroupGroupsByIds([contextMenu.nodeId]);
+                        }
+                        closeContextMenu();
+                      }}
+                    >
+                      取消分组
+                    </button>
+                    <button
+                      type="button"
+                      className="linghuiContextMenuItem isDanger"
+                      onClick={() => {
+                        if (contextMenu.nodeId) {
+                          deleteNodesByIds([contextMenu.nodeId]);
+                        }
+                        closeContextMenu();
+                      }}
+                    >
+                      删除分组
+                    </button>
+                  </>
                 )}
-                <button
-                  type="button"
-                  className="linghuiContextMenuItem isDanger"
-                  onClick={() => {
-                    if (contextMenu.nodeId) {
-                      deleteNodesByIds([contextMenu.nodeId]);
-                    }
-                    closeContextMenu();
-                  }}
-                >
-                  删除节点
-                </button>
+                {contextMenuNode?.type !== 'group' && (
+                  <button
+                    type="button"
+                    className="linghuiContextMenuItem isDanger"
+                    onClick={() => {
+                      if (contextMenu.nodeId) {
+                        deleteNodesByIds([contextMenu.nodeId]);
+                      }
+                      closeContextMenu();
+                    }}
+                  >
+                    删除节点
+                  </button>
+                )}
               </>
             )}
 
@@ -1207,7 +1376,7 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
                   </div>
                 ))}
                 <div className="linghuiContextMenuDivider" />
-                <div className="linghuiContextMenuHeader">运行与分组</div>
+                <div className="linghuiContextMenuHeader">运行与操作</div>
                 <button
                   type="button"
                   className="linghuiContextMenuItem"
@@ -1228,17 +1397,6 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
                   }}
                 >
                   运行选中
-                </button>
-                <button
-                  type="button"
-                  className={`linghuiContextMenuItem ${selectedCreatableIds.length ? '' : 'isDisabled'}`}
-                  onClick={() => {
-                    if (!selectedCreatableIds.length) return;
-                    createGroupFromSelection(selectedCreatableIds);
-                    closeContextMenu();
-                  }}
-                >
-                  创建分组
                 </button>
                 {selectedNodeIds.length > 0 && (
                   <button
