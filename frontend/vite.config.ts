@@ -19,46 +19,14 @@ export default defineConfig(({ mode }) => {
           manualChunks(id) {
             if (!id.includes('node_modules')) return;
 
-            // xgplayer 播放器
+            // 独立大库，和 React 生态无交叉依赖，可安全拆分
             if (id.includes('xgplayer')) return 'vendor-player';
-
-            // CodeMirror 编辑器
             if (id.includes('codemirror') || id.includes('@codemirror') || id.includes('@lezer'))
               return 'vendor-editor';
-
-            // Google AI SDK
             if (id.includes('@google/genai')) return 'vendor-ai';
 
-            // antd icons + 全部传递依赖，避免与 vendor-antd 循环引用
-            // @ant-design/icons → icons-svg, colors(→fast-color), @rc-component/util, clsx
-            if (
-              id.includes('@ant-design/icons') ||
-              id.includes('@ant-design/icons-svg') ||
-              id.includes('@ant-design/colors') ||
-              id.includes('@ant-design/fast-color') ||
-              id.includes('@rc-component/util')
-            )
-              return 'vendor-antd-icons';
-
-            // antd 核心 + rc-* 组件库 + @ant-design 共享基础设施
-            if (
-              id.includes('/antd/') ||
-              id.includes('@ant-design/') ||
-              id.includes('rc-') ||
-              id.includes('@rc-component')
-            )
-              return 'vendor-antd';
-
-            // React 核心（版本稳定，利于长期缓存）
-            if (
-              id.includes('/react-dom/') ||
-              id.includes('/react/') ||
-              id.includes('/scheduler/')
-            )
-              return 'vendor-react';
-
-            // 其他第三方依赖
-            return 'vendor-ui';
+            // 其余所有 node_modules 放同一个 chunk，避免循环依赖
+            return 'vendor-lib';
           },
         },
       },
