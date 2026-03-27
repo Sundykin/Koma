@@ -20,6 +20,7 @@ import { uploadFiles } from '../../services/uploadService';
 import {
   getTimelineDuration,
   normalizeTimelineTracks,
+  CURRENT_TIMELINE_VERSION,
 } from '../../features/transition/core';
 import { useTransitionHandlers } from '../../features/transition/editor';
 import { useDefaultTransition } from '../../features/transition/hooks/useDefaultTransition';
@@ -106,6 +107,7 @@ export const SimpleEditor: React.FC<SimpleEditorProps> = ({ shots = [], projectI
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>(projectAspectRatio || '16:9');
   const [isLoadingTimeline, setIsLoadingTimeline] = useState(true);
+  const [hasBlockingTimelineError, setHasBlockingTimelineError] = useState(false);
   const timelineCreatedAtRef = useRef<number>(Date.now());
 
   const isDraggingRef = useRef(false);
@@ -240,6 +242,7 @@ export const SimpleEditor: React.FC<SimpleEditorProps> = ({ shots = [], projectI
       }
 
       setIsLoadingTimeline(true);
+      setHasBlockingTimelineError(false);
       try {
         const savedData = await loadEpisodeTimeline(projectId, episodeId);
         if (savedData && savedData.tracks && savedData.tracks.length > 0) {
@@ -252,6 +255,15 @@ export const SimpleEditor: React.FC<SimpleEditorProps> = ({ shots = [], projectI
         }
       } catch (err) {
         logger.error('加载时间线失败', err);
+        if (err instanceof Error && err.message.startsWith('Unsupported timeline version:')) {
+          setHasBlockingTimelineError(true);
+          message.error({
+            content: '当前时间线版本过高，无法安全加载。已阻止回退初始化和自动保存，请先完成兼容迁移。',
+            key: 'timeline-version-incompatible',
+            duration: 6,
+          });
+          return;
+        }
         if (shots.length > 0) {
           setTracks(normalizeTimelineTracks(shotsToTracks(shots)));
         }
@@ -269,7 +281,7 @@ export const SimpleEditor: React.FC<SimpleEditorProps> = ({ shots = [], projectI
 
   useEffect(() => {
     // 跳过首次渲染和加载中状态
-    if (isFirstRender.current || isLoadingTimeline) {
+    if (isFirstRender.current || isLoadingTimeline || hasBlockingTimelineError) {
       isFirstRender.current = false;
       return;
     }
@@ -286,7 +298,7 @@ export const SimpleEditor: React.FC<SimpleEditorProps> = ({ shots = [], projectI
     saveTimeoutRef.current = setTimeout(async () => {
       try {
         await saveEpisodeTimeline(projectId, episodeId, {
-          version: 1,
+          version: CURRENT_TIMELINE_VERSION,
           tracks,
           createdAt: timelineCreatedAtRef.current,
         });
@@ -300,7 +312,7 @@ export const SimpleEditor: React.FC<SimpleEditorProps> = ({ shots = [], projectI
         clearTimeout(saveTimeoutRef.current);
       }
     };
-  }, [tracks, projectId, episodeId, isLoadingTimeline]);
+  }, [tracks, projectId, episodeId, isLoadingTimeline, hasBlockingTimelineError]);
 
   const togglePlay = useCallback(() => {
     setIsPlaying(prev => !prev);

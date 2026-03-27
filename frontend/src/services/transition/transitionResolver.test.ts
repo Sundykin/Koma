@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { MediaType, type Clip, type Track } from '../../types/editor';
 import {
+  batchChainAwareMaxDurations,
   findTransitionByClipPair,
   getAddableTransitionCount,
   getChainAwareMaxDuration,
@@ -688,7 +689,7 @@ describe('transitionResolver', () => {
         id: 'track-1', type: 'video', order: 0,
         clips: [
           createClip('clip-a', 0, 3),
-          { ...createClip('clip-b', 3, 2), transition: { type: 'fade', duration: 0.5 } },
+          { ...createClip('clip-b', 3, 2), transition: { effectId: 'fade', duration: 0.5 } },
         ],
       };
       const [normalized] = normalizeTimelineTracks([track]);
@@ -696,6 +697,62 @@ describe('transitionResolver', () => {
         expect(clip).not.toHaveProperty('transition');
       }
       expect(normalized.transitions?.length).toBe(1);
+    });
+  });
+
+  describe('batchChainAwareMaxDurations', () => {
+    it('returns empty map for track with no transitions', () => {
+      const track = normalizeTrackTransitions({
+        id: 'track-1', type: 'video', order: 0,
+        clips: [createClip('clip-a', 0, 3), createClip('clip-b', 3, 3)],
+      });
+      const result = batchChainAwareMaxDurations(track);
+      expect(result.size).toBe(0);
+    });
+
+    it('matches individual getChainAwareMaxDuration for single transition', () => {
+      const rawTrack: Track = {
+        id: 'track-1', type: 'video', order: 0,
+        clips: [createClip('clip-a', 0, 3), createClip('clip-b', 3, 3)],
+        transitions: [{ id: 't1', fromClipId: 'clip-a', toClipId: 'clip-b', type: 'fade', duration: 0.5 }],
+      };
+      const normalized = normalizeTrackTransitions(rawTrack);
+      const batchResult = batchChainAwareMaxDurations(normalized);
+      const singleResult = getChainAwareMaxDuration(rawTrack, 't1');
+
+      expect(batchResult.get('t1')).toBeCloseTo(singleResult, 9);
+    });
+
+    it('matches individual results for chained transitions (A→B→C)', () => {
+      const rawTrack: Track = {
+        id: 'track-1', type: 'video', order: 0,
+        clips: [
+          createClip('clip-a', 0, 3),
+          createClip('clip-b', 3, 3),
+          createClip('clip-c', 6, 3),
+        ],
+        transitions: [
+          { id: 't1', fromClipId: 'clip-a', toClipId: 'clip-b', type: 'fade', duration: 0.5 },
+          { id: 't2', fromClipId: 'clip-b', toClipId: 'clip-c', type: 'fade', duration: 0.5 },
+        ],
+      };
+      const normalized = normalizeTrackTransitions(rawTrack);
+      const batchResult = batchChainAwareMaxDurations(normalized);
+
+      expect(batchResult.get('t1')).toBeCloseTo(getChainAwareMaxDuration(rawTrack, 't1'), 9);
+      expect(batchResult.get('t2')).toBeCloseTo(getChainAwareMaxDuration(rawTrack, 't2'), 9);
+    });
+
+    it('returns 0 for transitions with non-adjacent clips', () => {
+      const track = normalizeTrackTransitions({
+        id: 'track-1', type: 'video', order: 0,
+        clips: [createClip('clip-a', 0, 3), createClip('clip-b', 3, 3)],
+        transitions: [{ id: 't1', fromClipId: 'clip-a', toClipId: 'clip-b', type: 'fade', duration: 0.5 }],
+      });
+      // Force a non-video track type
+      const audioTrack: Track = { ...track, type: 'audio' };
+      const result = batchChainAwareMaxDurations(audioTrack);
+      expect(result.get('t1')).toBe(0);
     });
   });
 });

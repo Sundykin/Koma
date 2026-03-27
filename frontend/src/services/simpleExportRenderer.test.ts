@@ -336,4 +336,49 @@ describe('SimpleExportRenderer transition support', () => {
       }),
     ]);
   });
+
+  it('renders single clip at full opacity outside transition region', async () => {
+    const { ctx, alphaSnapshots } = createCanvasContext();
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(ctx);
+
+    const track = createTrack();
+    const resolved = resolveTrackTimeline(track);
+    const renderer = createRenderer() as any;
+
+    renderer.transitionPlansByTrack = new Map([[track.id, resolved.transitionPlans]]);
+    renderer.mediaCache = new Map([
+      ['clip-a', { width: 1920, height: 1080 }],
+    ]);
+
+    // t=1.0 is well before the transition region (2.0–3.0)
+    await renderer.renderClip(track.clips[0], 1.0);
+
+    expect(alphaSnapshots).toHaveLength(1);
+    expect(alphaSnapshots[0]).toBe(1);
+  });
+
+  it('renders track without transitions at full opacity', async () => {
+    const { ctx, alphaSnapshots } = createCanvasContext();
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(ctx);
+
+    const noTransitionTrack: Track = {
+      id: 'track-no-trans',
+      type: 'video',
+      order: 0,
+      clips: [createClip('solo-clip', 0, 5, 'track-no-trans')],
+      transitions: [],
+    };
+    const resolved = resolveTrackTimeline(noTransitionTrack);
+    const renderer = createRenderer() as any;
+
+    renderer.transitionPlansByTrack = new Map([[noTransitionTrack.id, resolved.transitionPlans]]);
+    renderer.mediaCache = new Map([
+      ['solo-clip', { width: 1920, height: 1080 }],
+    ]);
+
+    await renderer.renderClip(noTransitionTrack.clips[0], 2.5);
+
+    expect(alphaSnapshots).toHaveLength(1);
+    expect(alphaSnapshots[0]).toBe(1);
+  });
 });

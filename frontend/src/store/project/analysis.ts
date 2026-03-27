@@ -8,6 +8,11 @@ import { getProjectPath } from './core';
 import { remapTimelineClipSourcesToLocal } from './mediaUrlRemap';
 import { saveEpisode } from './episodes';
 import { normalizeShotsMediaState } from './mediaState';
+import { migrateTimelineData, prepareTimelineForSave } from '../../features/transition/core';
+
+function shouldRethrowTimelineError(error: unknown): boolean {
+  return error instanceof Error && error.message.startsWith('Unsupported timeline version:');
+}
 
 export async function saveEpisodeAnalysis(
   projectId: string,
@@ -144,8 +149,11 @@ export async function loadEpisodeTimeline(
     const exists = await electronService.fs.exists(timelinePath);
     if (!exists) return null;
     const content = await electronService.fs.readFile(timelinePath);
-    return JSON.parse(content) as TimelineData;
-  } catch {
+    return migrateTimelineData(JSON.parse(content));
+  } catch (error) {
+    if (shouldRethrowTimelineError(error)) {
+      throw error;
+    }
     return null;
   }
 }
@@ -160,10 +168,10 @@ export async function saveEpisodeTimeline(
   const projectPath = await getProjectPath(projectId);
   const episodePath = `${projectPath}/episodes/${episodeId}`;
 
-  const timelineData: TimelineData = {
+  const timelineData = prepareTimelineForSave({
     ...data,
     updatedAt: Date.now(),
-  };
+  });
 
   // Persist with local media sources when possible (avoid CORS in Electron).
   const { timeline: remapped } = await remapTimelineClipSourcesToLocal(projectPath, timelineData as any);

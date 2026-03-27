@@ -1,5 +1,5 @@
 import type { Clip, Track, Transition } from '../../../types/editor';
-import { DEFAULT_TRANSITION_DURATION, MIN_VISIBLE_DURATION, SUPPORTED_TRANSITION_TYPES, TRANSITION_TYPE_FADE } from './constants';
+import { DEFAULT_TRANSITION_DURATION, MIN_VISIBLE_DURATION, SUPPORTED_TRANSITION_TYPES, TIME_EPSILON, TRANSITION_TYPE_FADE } from './constants';
 import type { NormalizedTransitionPlan, ResolvedClipWindow, ResolvedTrackTimeline } from './types';
 
 const clipOrder = (a: Clip, b: Clip) => {
@@ -67,18 +67,80 @@ export function getMaxTransitionDuration(
 
   const fromClip = sortedClips[fromIndex];
   const toClip = sortedClips[toIndex];
-  const sameCutPoint = Math.abs(toClip.start - (fromClip.start + fromClip.duration)) < 1e-6;
+  const sameCutPoint = Math.abs(toClip.start - (fromClip.start + fromClip.duration)) < TIME_EPSILON;
   if (!sameCutPoint) {
     return 0;
   }
   return Math.max(0, Math.min(fromClip.duration, toClip.duration));
 }
 
+/**
+ * 计算单个 transition 的链感知最大时长。
+ * 接受原始（未归一化）Track，内部会自动归一化。
+ * 适用于编辑器中对单个 transition 的交互操作。
+ */
 export function getChainAwareMaxDuration(
   track: Track,
   transitionId: string,
 ): number {
   const normalizedTrack = normalizeTrackTransitions(track);
+  return computeChainAwareMaxDuration(normalizedTrack, transitionId);
+}
+
+/**
+ * 批量计算已归一化轨道上所有 transition 的链感知最大时长。
+ * 避免重复调用 normalizeTrackTransitions，将 O(n²) 降为 O(n)。
+ *
+ * 注意：传入的 track 必须是已归一化的（由 normalizeTrackTransitions 处理过）。
+ * 如果传入未归一化的 track，结果可能不正确。
+ * 适用于 UI 渲染等需要一次性计算所有值的场景。
+ */
+export function batchChainAwareMaxDurations(normalizedTrack: Track): Map<string, number> {
+  const result = new Map<string, number>();
+  const transitions = normalizedTrack.transitions ?? [];
+  if (transitions.length === 0) return result;
+
+  const sortedClips = getSortedTrackClips(normalizedTrack);
+  const clipById = new Map(sortedClips.map(c => [c.id, c]));
+  const incomingDurationByClip = new Map<string, number>();
+  const outgoingDurationByClip = new Map<string, number>();
+
+  for (const t of transitions) {
+    incomingDurationByClip.set(t.toClipId, t.duration);
+    outgoingDurationByClip.set(t.fromClipId, t.duration);
+  }
+
+  for (const t of transitions) {
+    const baseMax = getMaxTransitionDuration(normalizedTrack, t.fromClipId, t.toClipId);
+    if (baseMax <= 0) {
+      result.set(t.id, 0);
+      continue;
+    }
+
+    const fromClip = clipById.get(t.fromClipId);
+    const toClip = clipById.get(t.toClipId);
+    if (!fromClip || !toClip) {
+      result.set(t.id, 0);
+      continue;
+    }
+
+    const incomingOnFrom = incomingDurationByClip.get(t.fromClipId);
+    const fromClipBudget = incomingOnFrom !== undefined
+      ? fromClip.duration - incomingOnFrom
+      : fromClip.duration;
+
+    const outgoingOnTo = outgoingDurationByClip.get(t.toClipId);
+    const toClipBudget = outgoingOnTo !== undefined
+      ? toClip.duration - outgoingOnTo
+      : toClip.duration;
+
+    result.set(t.id, Math.max(0, Math.min(baseMax, fromClipBudget, toClipBudget) - MIN_VISIBLE_DURATION));
+  }
+
+  return result;
+}
+
+function computeChainAwareMaxDuration(normalizedTrack: Track, transitionId: string): number {
   const transitions = normalizedTrack.transitions ?? [];
   const target = transitions.find(t => t.id === transitionId);
   if (!target) return 0;
@@ -135,7 +197,7 @@ function validateTransitions(track: Track, transitions: Transition[]): {
   clampedIds: Set<string>;
 } {
   if (track.type !== 'video') {
-    return { valid: [], invalid: [...transitions] };
+    return { valid: [], invalid: [...transitions], clampedIds: new Set<string>() };
   }
 
   const sortedClips = getSortedTrackClips(track);
@@ -192,7 +254,7 @@ function validateTransitions(track: Track, transitions: Transition[]): {
       continue;
     }
 
-    if (finalDuration > clampMax + 1e-9) {
+    if (finalDuration > clampMax + TIME_EPSILON) {
       finalDuration = clampMax;
       clampedIds.add(transition.id);
     }
@@ -269,35 +331,42 @@ export function resolveTrackTimeline(track: Track): ResolvedTrackTimeline {
     }
   }
 
-  const transitionPlans = (normalizedTrack.transitions ?? [])
-    .map((transition) => {
-      const fromWindow = clipWindowsById.get(transition.fromClipId);
-      const toWindow = clipWindowsById.get(transition.toClipId);
+  const transitionPlans: NormalizedTransitionPlan[] = [];
+  const droppedTransitionIds: string[] = [];
 
-      if (!fromWindow || !toWindow) {
-        return null;
+  for (const transition of normalizedTrack.transitions ?? []) {
+    const fromWindow = clipWindowsById.get(transition.fromClipId);
+    const toWindow = clipWindowsById.get(transition.toClipId);
+
+    if (!fromWindow || !toWindow) {
+      droppedTransitionIds.push(transition.id);
+      if (process.env.NODE_ENV !== 'production') {
+        console.warn(
+          `[TransitionResolver] Transition ${transition.id} dropped: missing clip window (from=${transition.fromClipId}, to=${transition.toClipId})`,
+        );
       }
+      continue;
+    }
 
-      return {
-        transitionId: transition.id,
-        trackId: normalizedTrack.id,
-        fromClipId: transition.fromClipId,
-        toClipId: transition.toClipId,
-        type: transition.type,
-        duration: transition.duration,
-        cutPointTime: fromWindow.resolvedEnd,
-        activeStartTime: toWindow.resolvedStart,
-        activeEndTime: toWindow.resolvedStart + transition.duration,
-        exportVideoOffset: fromWindow.resolvedEnd - fromWindow.resolvedStart - transition.duration,
-        exportAudioOverlap: transition.duration,
-        maxDuration: getMaxTransitionDuration(
-          normalizedTrack,
-          transition.fromClipId,
-          transition.toClipId
-        ),
-      } satisfies NormalizedTransitionPlan;
-    })
-    .filter((transition): transition is NormalizedTransitionPlan => Boolean(transition));
+    transitionPlans.push({
+      transitionId: transition.id,
+      trackId: normalizedTrack.id,
+      fromClipId: transition.fromClipId,
+      toClipId: transition.toClipId,
+      type: transition.type,
+      duration: transition.duration,
+      cutPointTime: fromWindow.resolvedEnd,
+      activeStartTime: toWindow.resolvedStart,
+      activeEndTime: toWindow.resolvedStart + transition.duration,
+      exportVideoOffset: fromWindow.resolvedEnd - fromWindow.resolvedStart - transition.duration,
+      exportAudioOverlap: transition.duration,
+      maxDuration: getMaxTransitionDuration(
+        normalizedTrack,
+        transition.fromClipId,
+        transition.toClipId
+      ),
+    });
+  }
 
   const duration = clipWindows.reduce(
     (maxDuration, window) => Math.max(maxDuration, window.resolvedEnd),
@@ -311,6 +380,7 @@ export function resolveTrackTimeline(track: Track): ResolvedTrackTimeline {
     duration,
     invalidTransitions: normalized.invalidTransitions,
     clampedIds: normalized.clampedIds,
+    droppedTransitionIds,
   };
 }
 
@@ -367,6 +437,12 @@ export function getAddableTransitionCount(track: Track): number {
   return count;
 }
 
+/** Clamp progress to [0, 1] with division-by-zero guard */
+function safeProgress(currentTime: number, startTime: number, duration: number): number {
+  if (duration <= 0) return 0;
+  return Math.min(1, Math.max(0, (currentTime - startTime) / duration));
+}
+
 export function getClipOpacityFromPlans(
   transitionPlans: NormalizedTransitionPlan[],
   clipId: string,
@@ -381,8 +457,7 @@ export function getClipOpacityFromPlans(
     return 1;
   }
 
-  const progress =
-    (currentTime - activeTransition.activeStartTime) / activeTransition.duration;
+  const progress = safeProgress(currentTime, activeTransition.activeStartTime, activeTransition.duration);
 
   if (activeTransition.fromClipId === clipId) {
     return 1 - progress;
@@ -418,8 +493,7 @@ export function getClipAudioFade(
     return 1;
   }
 
-  const progress =
-    (currentTime - activeTransition.activeStartTime) / activeTransition.duration;
+  const progress = safeProgress(currentTime, activeTransition.activeStartTime, activeTransition.duration);
 
   if (activeTransition.fromClipId === clipId) {
     return Math.cos(progress * Math.PI / 2);

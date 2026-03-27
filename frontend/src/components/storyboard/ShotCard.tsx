@@ -11,6 +11,9 @@ import {
   Popconfirm,
   Input,
   Modal,
+  Spin,
+  Segmented,
+  App,
 } from 'antd';
 import {
   DeleteOutlined,
@@ -26,6 +29,7 @@ import {
   VideoCameraOutlined,
   CloseOutlined,
   PlusOutlined,
+  AppstoreOutlined,
 } from '@ant-design/icons';
 import type { Shot, Character, Scene, Prop, StoredMediaAsset } from '../../types';
 import {
@@ -39,6 +43,7 @@ import { ImageCardGrid } from '../asset/ImageCardGrid';
 import { VideoCardGrid } from '../asset/VideoCardGrid';
 import { StagePlayer } from '../video/StagePlayer';
 import { electronService } from '../../services/electronService';
+import { ffmpegManager } from '../../services/ffmpegManager';
 import { persistMediaAsset } from '../../services/mediaPersistenceService';
 import { ensureRemoteUrlForImageAsset } from '../../services/mediaRemoteUrlService';
 import { getProjectPath } from '../../store/projectStore';
@@ -70,6 +75,7 @@ export interface ShotCardProps {
   onScriptChange: (shotId: string, script: string) => void;
   onImagePromptChange: (shotId: string, imagePrompt: string) => void;
   onVideoPromptChange: (shotId: string, videoPrompt: string) => void;
+  onImageModeChange: (shotId: string, mode: 'normal' | 'grid') => void;
   onCharactersChange: (shotId: string, characterIds: string[]) => void;
   onScenesChange?: (shotId: string, sceneIds: string[]) => void;
   onPropsChange?: (shotId: string, propIds: string[]) => void;
@@ -113,6 +119,7 @@ export const ShotCard: React.FC<ShotCardProps> = ({
   onScriptChange,
   onImagePromptChange,
   onVideoPromptChange,
+  onImageModeChange,
   onCharactersChange,
   onScenesChange,
   onPropsChange,
@@ -134,7 +141,12 @@ export const ShotCard: React.FC<ShotCardProps> = ({
   onInsertAbove,
   onInsertBelow,
 }) => {
+  const { message } = App.useApp();
   const [videoModalOpen, setVideoModalOpen] = useState(false);
+  const [isSplittingGridImage, setIsSplittingGridImage] = useState(false);
+  const [gridSplitModalOpen, setGridSplitModalOpen] = useState(false);
+  const [gridSplitTargetIndex, setGridSplitTargetIndex] = useState<number | null>(null);
+  const [gridSplitImageSize, setGridSplitImageSize] = useState<{ w: number; h: number } | null>(null);
 
   // 使用 useMemo 缓存计算值，避免不必要的重渲染
   const hasImagePrompt = useMemo(
@@ -177,6 +189,11 @@ export const ShotCard: React.FC<ShotCardProps> = ({
   const referenceImages = shot.media?.references || [];
   const videos = shot.media?.videos || [];
 
+  const imageSources = useMemo(
+    () => images.map(a => getMediaAssetDisplaySource(a) || '').filter(Boolean),
+    [images]
+  );
+
   const currentVideo = useMemo(() => {
     if (!videos.length) return null;
     const idx = shot.media?.currentVideoIndex ?? videos.length - 1;
@@ -187,6 +204,51 @@ export const ShotCard: React.FC<ShotCardProps> = ({
     if (!images.length) return null;
     return images[shot.media?.currentImageIndex || 0];
   }, [images, shot.media?.currentImageIndex]);
+
+  const gridSplitAsset = useMemo(() => {
+    if (gridSplitTargetIndex == null) return null;
+    return images[gridSplitTargetIndex] || null;
+  }, [images, gridSplitTargetIndex]);
+
+  const gridSplitAspectStyle = useMemo(() => {
+    const w = gridSplitImageSize?.w || gridSplitAsset?.width || 0;
+    const h = gridSplitImageSize?.h || gridSplitAsset?.height || 0;
+    if (w > 0 && h > 0) return `${w} / ${h}`;
+    return '16 / 9';
+  }, [gridSplitAsset, gridSplitImageSize]);
+
+  const gridSplitPreviewMeta = useMemo(() => {
+    const w = gridSplitImageSize?.w || gridSplitAsset?.width || 0;
+    const h = gridSplitImageSize?.h || gridSplitAsset?.height || 0;
+    if (!w || !h) return null;
+
+    const aspect = h > w ? '9:16' : '16:9';
+    const defaultCell = aspect === '16:9'
+      ? { w: 1280, h: 720 }
+      : { w: 720, h: 1280 };
+    const minW = defaultCell.w * 3;
+    const minH = defaultCell.h * 3;
+    const scaleFactor = Math.max(minW / w, minH / h, 1);
+    const scaledW = Math.round(w * scaleFactor);
+    const scaledH = Math.round(h * scaleFactor);
+    const finalW = Math.ceil(scaledW / 3) * 3;
+    const finalH = Math.ceil(scaledH / 3) * 3;
+    const padRight = finalW - scaledW;
+    const padBottom = finalH - scaledH;
+    const cellW = Math.floor(finalW / 3);
+    const cellH = Math.floor(finalH / 3);
+
+    return {
+      aspect,
+      scaleFactor,
+      finalW,
+      finalH,
+      padRight,
+      padBottom,
+      cellW,
+      cellH,
+    };
+  }, [gridSplitAsset, gridSplitImageSize]);
 
   // 图片操作
   const handleImageSelect = (idx: number) => onImagesChange(shot.id, images, idx);
@@ -205,6 +267,134 @@ export const ShotCard: React.FC<ShotCardProps> = ({
     const newIdx = Math.min(shot.media?.currentImageIndex || 0, newImages.length - 1);
     onImagesChange(shot.id, newImages, Math.max(0, newIdx));
   };
+
+  const handleOpenGridSplitPreview = useCallback((idx: number) => {
+    setGridSplitTargetIndex(idx);
+    setGridSplitImageSize(null);
+    setGridSplitModalOpen(true);
+  }, []);
+
+  const handleCloseGridSplitPreview = useCallback(() => {
+    if (isSplittingGridImage) return;
+    setGridSplitModalOpen(false);
+    setGridSplitTargetIndex(null);
+    setGridSplitImageSize(null);
+  }, [isSplittingGridImage]);
+
+  const handleConfirmGridSplit = useCallback(async () => {
+    if (!electronService.isElectron()) {
+      message.error('仅支持 Electron 环境');
+      return;
+    }
+    if (shot.imageMode !== 'grid') {
+      message.info('当前分镜不是九宫格模式');
+      return;
+    }
+    if (gridSplitTargetIndex == null) {
+      message.info('未选择要拆分的图片');
+      return;
+    }
+    const targetAsset = images[gridSplitTargetIndex];
+    if (!targetAsset) {
+      message.info('没有可拆分的图片');
+      return;
+    }
+    if (isSplittingGridImage) return;
+
+    setIsSplittingGridImage(true);
+    try {
+      const available = await ffmpegManager.isAvailable();
+      if (!available) {
+        throw new Error('FFmpeg 不可用');
+      }
+
+      const w = gridSplitImageSize?.w || targetAsset.width || 0;
+      const h = gridSplitImageSize?.h || targetAsset.height || 0;
+      const aspectRatio: '16:9' | '9:16' = (w > 0 && h > 0 && h > w) ? '9:16' : '16:9';
+
+      let inputAsset: StoredMediaAsset = targetAsset;
+      let baseImages: StoredMediaAsset[] = images;
+
+      const isUsableLocalPath = Boolean(
+        inputAsset.localPath &&
+        !isRemoteMediaUri(inputAsset.localPath)
+      );
+
+      // If the selected image is remote-only, download it into the project so ffmpeg can access it.
+      if (!isUsableLocalPath) {
+        const projectPath = await getProjectPath(projectId);
+        const sourceHint = getMediaAssetEditingSource(inputAsset) || inputAsset.remoteUrl || '';
+        const ext = (() => {
+          const clean = sourceHint.split('?')[0].split('#')[0];
+          const dot = clean.lastIndexOf('.');
+          const raw = dot >= 0 ? clean.slice(dot + 1).toLowerCase() : '';
+          if (raw === 'jpeg') return 'jpg';
+          if (raw === 'png' || raw === 'jpg' || raw === 'webp') return raw;
+          return 'png';
+        })();
+        const destPath = `${projectPath}/assets/shots/${shot.id}/images/grid_source_${Date.now()}.${ext}`;
+
+        const persisted = await persistMediaAsset({
+          projectId,
+          kind: 'image',
+          source: inputAsset,
+          destPath,
+        });
+
+        inputAsset = persisted;
+        baseImages = images.map((a, i) => (i === gridSplitTargetIndex ? persisted : a));
+      }
+
+      const inputPath = inputAsset.localPath;
+      if (!inputPath || isRemoteMediaUri(inputPath)) {
+        throw new Error('缺少可用的本地图片路径');
+      }
+
+      const projectPath = await getProjectPath(projectId);
+      const outputDir = `${projectPath}/assets/shots/${shot.id}/grid-splits/${Date.now()}`;
+      const outputs = await ffmpegManager.splitGridImage({
+        input: inputPath,
+        outputDir,
+        aspectRatio,
+        format: 'png',
+        sharpenAmount: 0.9,
+      });
+
+      if (!Array.isArray(outputs) || outputs.length !== 9) {
+        throw new Error('九宫格拆分失败：输出数量不正确');
+      }
+
+      const newAssets = outputs.map((p, i) => createStoredMediaAsset('image', {
+        localPath: p,
+        metadata: {
+          gridCell: i + 1,
+          gridSource: inputPath,
+        },
+      }));
+
+      const nextImages = [...baseImages, ...newAssets];
+      onImagesChange(shot.id, nextImages, baseImages.length);
+      message.success('九宫格已拆分为 9 张图片');
+      setGridSplitModalOpen(false);
+      setGridSplitTargetIndex(null);
+      setGridSplitImageSize(null);
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      message.error(errorMessage || '九宫格拆分失败');
+    } finally {
+      setIsSplittingGridImage(false);
+    }
+  }, [
+    gridSplitImageSize,
+    gridSplitTargetIndex,
+    images,
+    isSplittingGridImage,
+    message,
+    onImagesChange,
+    projectId,
+    shot.id,
+    shot.imageMode,
+  ]);
 
   // 参考图操作
   const handleRefImageSelect = (idx: number) => onReferenceImagesChange?.(shot.id, referenceImages, idx);
@@ -278,6 +468,8 @@ export const ShotCard: React.FC<ShotCardProps> = ({
     }
     return source;
   }, []);
+
+  const gridSplitSrc = gridSplitAsset ? getDisplaySrc(gridSplitAsset) : '';
 
   return (
     <div
@@ -363,6 +555,19 @@ export const ShotCard: React.FC<ShotCardProps> = ({
 
         {/* 列3: 图像设计 */}
         <div className={`${SHOT_LAYOUT.colImageDesign} border-r border-zinc-800 flex flex-col`}>
+          <div className="flex items-center justify-between gap-2 border-b border-zinc-800 px-2 py-1">
+            <span className="text-[10px] text-zinc-400">图片模式</span>
+            <Segmented
+              size="small"
+              value={shot.imageMode || 'normal'}
+              onChange={(value) => onImageModeChange(shot.id, value as 'normal' | 'grid')}
+              options={[
+                { value: 'normal', label: '普通' },
+                { value: 'grid', icon: <AppstoreOutlined />, label: '九宫格' },
+              ]}
+              className="text-[10px]"
+            />
+          </div>
           {/* 提示词编辑器 + 浮动按钮 */}
           <div className="flex-1 p-1 min-h-0 relative">
             <ScriptEditor
@@ -421,8 +626,8 @@ export const ShotCard: React.FC<ShotCardProps> = ({
 
         {/* 列4: 图像结果 */}
         <div className={`${SHOT_LAYOUT.colImageResult} border-r border-zinc-800 flex flex-col bg-zinc-900/20`}>
-          <div className="flex-1 p-1 min-h-0 overflow-y-auto custom-scrollbar flex items-center justify-center">
-            {images.length === 0 && !isGeneratingImage ? (
+          <div className="flex-1 p-1 min-h-0 overflow-y-auto custom-scrollbar flex items-center justify-center relative">
+            {imageSources.length === 0 && !isGeneratingImage ? (
               <Button
                 type="primary"
                 size="small"
@@ -433,14 +638,19 @@ export const ShotCard: React.FC<ShotCardProps> = ({
               >
                 生成图像
               </Button>
+            ) : isGeneratingImage && imageSources.length === 0 ? (
+              <Spin size="small" />
             ) : (
               <div className="w-full h-full">
                 <ImageCardGrid
-                  images={images.map(a => getMediaAssetDisplaySource(a) || '').filter(Boolean)}
+                  images={imageSources}
                   selectedIndex={shot.media?.currentImageIndex || 0}
                   onSelect={handleImageSelect}
                   onAdd={handleImageAdd}
                   onDelete={handleImageDelete}
+                  onSplitGrid={shot.imageMode === 'grid' && electronService.isElectron()
+                    ? handleOpenGridSplitPreview
+                    : undefined}
                   isGenerating={isGeneratingImage}
                   disabled={!hasImagePrompt}
                   characters={characters}
@@ -541,6 +751,108 @@ export const ShotCard: React.FC<ShotCardProps> = ({
           </div>
         </div>
       </div>
+
+      {/* 九宫格拆分预览 Modal */}
+      <Modal
+        title={`分镜 #${index + 1} - 九宫格拆分预览`}
+        open={gridSplitModalOpen}
+        onCancel={handleCloseGridSplitPreview}
+        onOk={handleConfirmGridSplit}
+        okText={isSplittingGridImage ? '拆分中...' : '确定拆分'}
+        cancelText="取消"
+        okButtonProps={{
+          disabled: !electronService.isElectron() || isSplittingGridImage || !gridSplitAsset,
+        }}
+        cancelButtonProps={{
+          disabled: isSplittingGridImage,
+        }}
+        width={920}
+        centered
+        destroyOnClose
+        maskClosable={!isSplittingGridImage}
+        closable={!isSplittingGridImage}
+      >
+        {!gridSplitAsset ? (
+          <div className="text-sm text-zinc-400">未找到要拆分的图片</div>
+        ) : (
+          <div className="flex flex-col gap-3">
+            <div className="text-[12px] text-zinc-400">
+              <div>将把所选图片平均切成 9 张（3×3）。确认后才会真正落盘拆分。</div>
+              {gridSplitPreviewMeta && (
+                <div className="mt-1">
+                  预计输出单格分辨率约 {gridSplitPreviewMeta.cellW}×{gridSplitPreviewMeta.cellH}，
+                  右/下补像素 {gridSplitPreviewMeta.padRight}/{gridSplitPreviewMeta.padBottom}px，
+                  放大倍率 {gridSplitPreviewMeta.scaleFactor.toFixed(2)}×
+                </div>
+              )}
+            </div>
+
+            <div className="flex flex-col md:flex-row gap-3">
+              {/* 分割线预览 */}
+              <div className="flex-1">
+                <div className="text-[12px] text-zinc-500 mb-1">分割线预览</div>
+                <div
+                  className="relative w-full rounded overflow-hidden bg-black border border-zinc-800"
+                  style={{ aspectRatio: gridSplitAspectStyle }}
+                >
+                  {gridSplitSrc && (
+                    <img
+                      src={gridSplitSrc}
+                      alt=""
+                      className="absolute inset-0 w-full h-full object-cover"
+                      onLoad={(e) => {
+                        const w = e.currentTarget.naturalWidth || 0;
+                        const h = e.currentTarget.naturalHeight || 0;
+                        if (w && h) setGridSplitImageSize({ w, h });
+                      }}
+                    />
+                  )}
+
+                  {/* 3×3 分割线 */}
+                  <div className="absolute inset-0 pointer-events-none">
+                    {/* vertical lines */}
+                    <div className="absolute top-0 bottom-0 left-1/3 w-px bg-white/70" />
+                    <div className="absolute top-0 bottom-0 left-2/3 w-px bg-white/70" />
+                    {/* horizontal lines */}
+                    <div className="absolute left-0 right-0 top-1/3 h-px bg-white/70" />
+                    <div className="absolute left-0 right-0 top-2/3 h-px bg-white/70" />
+                  </div>
+                </div>
+              </div>
+
+              {/* 结果预览 */}
+              <div className="flex-1">
+                <div className="text-[12px] text-zinc-500 mb-1">生成结果预览</div>
+                <div className="grid grid-cols-3 gap-2">
+                  {Array.from({ length: 9 }).map((_, i) => {
+                    const row = Math.floor(i / 3);
+                    const col = i % 3;
+                    const bgPosX = `${col * 50}%`;
+                    const bgPosY = `${row * 50}%`;
+                    return (
+                      <div
+                        key={i}
+                        className="relative rounded overflow-hidden border border-zinc-800 bg-black"
+                        style={{
+                          aspectRatio: gridSplitAspectStyle,
+                          backgroundImage: gridSplitSrc ? `url(${gridSplitSrc})` : undefined,
+                          backgroundSize: '300% 300%',
+                          backgroundPosition: `${bgPosX} ${bgPosY}`,
+                          backgroundRepeat: 'no-repeat',
+                        }}
+                      >
+                        <div className="absolute left-1 top-1 text-[10px] text-white/80 bg-black/50 px-1 rounded">
+                          {String(i + 1).padStart(2, '0')}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </Modal>
 
       {/* 视频播放 Modal */}
       <Modal

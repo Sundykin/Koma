@@ -155,6 +155,8 @@ export class SimpleVideoRenderer {
   private resolvedTracks: ResolvedTrackTimeline[] = [];
   private resolvedWindows: Map<string, ResolvedClipWindow> = new Map();
   private transitionPlansByTrack: Map<string, NormalizedTransitionPlan[]> = new Map();
+  /** 按 clipId 索引的 transition plans，避免每帧 O(n) 查找 */
+  private transitionPlansByClip: Map<string, NormalizedTransitionPlan[]> = new Map();
   private rafId: number | null = null;
   private isRendering: boolean = false;
   private width: number = 1920;
@@ -201,6 +203,17 @@ export class SimpleVideoRenderer {
     this.transitionPlansByTrack = new Map(
       this.resolvedTracks.map((resolved) => [resolved.track.id, resolved.transitionPlans])
     );
+    this.transitionPlansByClip = new Map();
+    for (const resolved of this.resolvedTracks) {
+      for (const plan of resolved.transitionPlans) {
+        const fromPlans = this.transitionPlansByClip.get(plan.fromClipId) ?? [];
+        fromPlans.push(plan);
+        this.transitionPlansByClip.set(plan.fromClipId, fromPlans);
+        const toPlans = this.transitionPlansByClip.get(plan.toClipId) ?? [];
+        toPlans.push(plan);
+        this.transitionPlansByClip.set(plan.toClipId, toPlans);
+      }
+    }
 
     this.tracks.forEach(track => {
       track.clips.forEach(clip => {
@@ -328,14 +341,17 @@ export class SimpleVideoRenderer {
     this.ctx.rotate((props.rotation * Math.PI) / 180);
     this.ctx.scale(props.scale, props.scale);
     const transitionOpacity = getClipOpacityFromPlans(
-      this.transitionPlansByTrack.get(clip.trackId) ?? [],
+      this.transitionPlansByClip.get(clip.id) ?? [],
       clip.id,
       currentTime
     );
     this.ctx.globalAlpha = props.opacity * transitionOpacity;
 
     if (clip.type === MediaType.TEXT) {
-      this.renderText(clip, props);
+      this.renderText(clip, {
+        ...props,
+        opacity: props.opacity * transitionOpacity,
+      });
     } else {
       const cache = this.mediaCache.get(clip.id);
       if (cache?.isReady) {

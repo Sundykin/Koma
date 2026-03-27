@@ -248,6 +248,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       setCharacters(filteredCharacters);
       setScenes(filteredScenes);
       setProps(filteredProps);
+
     } catch (err) {
       logger.error('加载失败', err);
       message.error('加载分镜数据失败');
@@ -331,6 +332,10 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     }
     setGeneratingShots(prev => new Set(prev).add(shotId));
     try {
+      const shot = shots.find(s => s.id === shotId);
+      if (!shot) {
+        throw new Error('分镜不存在');
+      }
       const asset = await generateShotImage(projectId, episodeId, shotId, characters, scenes, ttiConfigId, {
         aspectRatio,
         styleSnapshot,
@@ -348,14 +353,10 @@ export const Storyboard: React.FC<StoryboardProps> = ({
           },
         };
       }));
-      setGeneratingShots(prev => {
-        const next = new Set(prev);
-        next.delete(shotId);
-        return next;
-      });
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : String(err);
       message.error(errorMessage || '启动生成失败');
+    } finally {
       setGeneratingShots(prev => {
         const next = new Set(prev);
         next.delete(shotId);
@@ -812,24 +813,22 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     }
   }, [projectId, episodeId, shots, llmConfigId, projectStylePrompt, styleSnapshot]);
 
-  // 批量生成提示词（跳过已有提示词的）
-  const handleBatchGeneratePrompts = useCallback(async (targetShotIds?: string[]) => {
+  // 批量生成图片提示词（跳过已有图片提示词的）
+  const handleBatchGenerateImagePrompts = useCallback(async (targetShotIds?: string[]) => {
     if (!episodeId) {
       message.warning('未选择剧集');
       return;
     }
-    // 如果指定了 shotIds，则只处理这些分镜中缺少提示词的
     const baseShots = targetShotIds
       ? shots.filter(s => targetShotIds.includes(s.id))
       : shots;
-    const shotsWithoutPrompt = baseShots.filter(s => !s.imagePrompt?.trim() || !s.videoPrompt?.trim());
+    const shotsWithoutPrompt = baseShots.filter(s => !s.imagePrompt?.trim());
     if (shotsWithoutPrompt.length === 0) {
-      message.info('所选分镜都已有提示词');
+      message.info('所选分镜都已有图片提示词');
       return;
     }
     const shotIds = shotsWithoutPrompt.map(s => s.id);
     setGeneratingImagePrompts(new Set(shotIds));
-    setGeneratingVideoPrompts(new Set(shotIds));
     setBatchProgress({ current: 0, total: shotsWithoutPrompt.length, step: '准备生成...' });
     try {
       const results = await batchGenerateShotPrompts(
@@ -843,32 +842,32 @@ export const Storyboard: React.FC<StoryboardProps> = ({
             setShots(prev => prev.map(s => s.id === result.shotId ? {
               ...s,
               imagePrompt: result.imagePrompt,
-              videoPrompt: result.videoPrompt,
             } : s));
           }
         },
         llmConfigId,
-        styleSnapshot
+        styleSnapshot,
+        undefined,
+        { image: true, video: false }
       );
       const successCount = results.filter(r => r.success).length;
       if (successCount === 0 && results.length > 0) {
         const firstError = results.find(r => r.error)?.error;
-        message.error(`提示词生成全部失败${firstError ? `: ${firstError}` : ''}`);
+        message.error(`图片提示词生成全部失败${firstError ? `: ${firstError}` : ''}`);
       } else {
-        message.success(`提示词生成完成: ${successCount}/${results.length} 成功`);
+        message.success(`图片提示词生成完成: ${successCount}/${results.length} 成功`);
       }
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : String(err);
       message.error(errorMessage || '批量生成失败');
     } finally {
       setGeneratingImagePrompts(new Set());
-      setGeneratingVideoPrompts(new Set());
       setBatchProgress(undefined);
     }
   }, [projectId, episodeId, shots, llmConfigId, projectStylePrompt, styleSnapshot]);
 
-  // 批量重新生成提示词（强制重新生成已有提示词的）
-  const handleBatchReGeneratePrompts = useCallback(async (targetShotIds?: string[]) => {
+  // 批量重新生成图片提示词
+  const handleBatchReGenerateImagePrompts = useCallback(async (targetShotIds?: string[]) => {
     if (!episodeId) {
       message.warning('未选择剧集');
       return;
@@ -876,14 +875,13 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     const baseShots = targetShotIds
       ? shots.filter(s => targetShotIds.includes(s.id))
       : shots;
-    const shotsWithPrompt = baseShots.filter(s => s.imagePrompt?.trim() || s.videoPrompt?.trim());
+    const shotsWithPrompt = baseShots.filter(s => s.imagePrompt?.trim());
     if (shotsWithPrompt.length === 0) {
-      message.info('所选分镜都没有提示词');
+      message.info('所选分镜都没有图片提示词');
       return;
     }
     const shotIds = shotsWithPrompt.map(s => s.id);
     setGeneratingImagePrompts(new Set(shotIds));
-    setGeneratingVideoPrompts(new Set(shotIds));
     setBatchProgress({ current: 0, total: shotsWithPrompt.length, step: '准备重新生成...' });
     try {
       const results = await batchGenerateShotPrompts(
@@ -897,25 +895,133 @@ export const Storyboard: React.FC<StoryboardProps> = ({
             setShots(prev => prev.map(s => s.id === result.shotId ? {
               ...s,
               imagePrompt: result.imagePrompt,
-              videoPrompt: result.videoPrompt,
             } : s));
           }
         },
         llmConfigId,
-        styleSnapshot
+        styleSnapshot,
+        undefined,
+        { image: true, video: false },
+        { force: true }
       );
       const successCount = results.filter(r => r.success).length;
       if (successCount === 0 && results.length > 0) {
         const firstError = results.find(r => r.error)?.error;
-        message.error(`提示词重新生成全部失败${firstError ? `: ${firstError}` : ''}`);
+        message.error(`图片提示词重新生成全部失败${firstError ? `: ${firstError}` : ''}`);
       } else {
-        message.success(`提示词重新生成完成: ${successCount}/${results.length} 成功`);
+        message.success(`图片提示词重新生成完成: ${successCount}/${results.length} 成功`);
       }
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : String(err);
       message.error(errorMessage || '批量重新生成失败');
     } finally {
       setGeneratingImagePrompts(new Set());
+      setBatchProgress(undefined);
+    }
+  }, [projectId, episodeId, shots, llmConfigId, projectStylePrompt, styleSnapshot]);
+
+  // 批量生成视频提示词（跳过已有视频提示词的）
+  const handleBatchGenerateVideoPrompts = useCallback(async (targetShotIds?: string[]) => {
+    if (!episodeId) {
+      message.warning('未选择剧集');
+      return;
+    }
+    const baseShots = targetShotIds
+      ? shots.filter(s => targetShotIds.includes(s.id))
+      : shots;
+    const shotsWithoutPrompt = baseShots.filter(s => !s.videoPrompt?.trim());
+    if (shotsWithoutPrompt.length === 0) {
+      message.info('所选分镜都已有视频提示词');
+      return;
+    }
+    const shotIds = shotsWithoutPrompt.map(s => s.id);
+    setGeneratingVideoPrompts(new Set(shotIds));
+    setBatchProgress({ current: 0, total: shotsWithoutPrompt.length, step: '准备生成...' });
+    try {
+      const results = await batchGenerateShotPrompts(
+        projectId,
+        episodeId,
+        shotsWithoutPrompt,
+        projectStylePrompt,
+        (current, total, result) => {
+          setBatchProgress({ current, total, step: `生成中 ${current}/${total}` });
+          if (result.success) {
+            setShots(prev => prev.map(s => s.id === result.shotId ? {
+              ...s,
+              videoPrompt: result.videoPrompt,
+            } : s));
+          }
+        },
+        llmConfigId,
+        styleSnapshot,
+        undefined,
+        { image: false, video: true }
+      );
+      const successCount = results.filter(r => r.success).length;
+      if (successCount === 0 && results.length > 0) {
+        const firstError = results.find(r => r.error)?.error;
+        message.error(`视频提示词生成全部失败${firstError ? `: ${firstError}` : ''}`);
+      } else {
+        message.success(`视频提示词生成完成: ${successCount}/${results.length} 成功`);
+      }
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      message.error(errorMessage || '批量生成失败');
+    } finally {
+      setGeneratingVideoPrompts(new Set());
+      setBatchProgress(undefined);
+    }
+  }, [projectId, episodeId, shots, llmConfigId, projectStylePrompt, styleSnapshot]);
+
+  // 批量重新生成视频提示词
+  const handleBatchReGenerateVideoPrompts = useCallback(async (targetShotIds?: string[]) => {
+    if (!episodeId) {
+      message.warning('未选择剧集');
+      return;
+    }
+    const baseShots = targetShotIds
+      ? shots.filter(s => targetShotIds.includes(s.id))
+      : shots;
+    const shotsWithPrompt = baseShots.filter(s => s.videoPrompt?.trim());
+    if (shotsWithPrompt.length === 0) {
+      message.info('所选分镜都没有视频提示词');
+      return;
+    }
+    const shotIds = shotsWithPrompt.map(s => s.id);
+    setGeneratingVideoPrompts(new Set(shotIds));
+    setBatchProgress({ current: 0, total: shotsWithPrompt.length, step: '准备重新生成...' });
+    try {
+      const results = await batchGenerateShotPrompts(
+        projectId,
+        episodeId,
+        shotsWithPrompt,
+        projectStylePrompt,
+        (current, total, result) => {
+          setBatchProgress({ current, total, step: `重新生成中 ${current}/${total}` });
+          if (result.success) {
+            setShots(prev => prev.map(s => s.id === result.shotId ? {
+              ...s,
+              videoPrompt: result.videoPrompt,
+            } : s));
+          }
+        },
+        llmConfigId,
+        styleSnapshot,
+        undefined,
+        { image: false, video: true },
+        { force: true }
+      );
+      const successCount = results.filter(r => r.success).length;
+      if (successCount === 0 && results.length > 0) {
+        const firstError = results.find(r => r.error)?.error;
+        message.error(`视频提示词重新生成全部失败${firstError ? `: ${firstError}` : ''}`);
+      } else {
+        message.success(`视频提示词重新生成完成: ${successCount}/${results.length} 成功`);
+      }
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      message.error(errorMessage || '批量重新生成失败');
+    } finally {
       setGeneratingVideoPrompts(new Set());
       setBatchProgress(undefined);
     }
@@ -929,6 +1035,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     cameraMovement: 'static',
     duration: 3,
     imagePrompt: '',
+    imageMode: 'normal',
     characters: [],
     dialogue: '',
     emotion: '',
@@ -940,6 +1047,13 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     const updatedShots = [...shots, newShot];
     await saveAllShots(updatedShots);
   }, [shots, saveAllShots, createNewShot]);
+
+  const handleShotImageModeChange = useCallback((shotId: string, mode: 'normal' | 'grid') => {
+    const updatedShots = shots.map(s =>
+      s.id === shotId ? { ...s, imageMode: mode } : s
+    );
+    saveAllShots(updatedShots);
+  }, [shots, saveAllShots]);
 
   // 在指定位置上方插入
   const handleInsertAbove = useCallback(async (shotId: string) => {
@@ -1360,8 +1474,10 @@ export const Storyboard: React.FC<StoryboardProps> = ({
             onGenerateVideoPrompt={handleGenerateVideoPrompt}
             onOptimizeImagePrompt={handleOptimizeImagePrompt}
             onOptimizeVideoPrompt={handleOptimizeVideoPrompt}
-            onBatchGeneratePrompts={handleBatchGeneratePrompts}
-            onBatchReGeneratePrompts={handleBatchReGeneratePrompts}
+            onBatchGenerateImagePrompts={handleBatchGenerateImagePrompts}
+            onBatchReGenerateImagePrompts={handleBatchReGenerateImagePrompts}
+            onBatchGenerateVideoPrompts={handleBatchGenerateVideoPrompts}
+            onBatchReGenerateVideoPrompts={handleBatchReGenerateVideoPrompts}
             onGenerateImage={handleGenerateShotImage}
             onBatchGenerateImages={handleBatchGenerate}
             onBatchReGenerateImages={handleBatchReGenerateImages}
@@ -1379,6 +1495,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
             onAddShot={handleAddShot}
             onInsertAbove={handleInsertAbove}
             onInsertBelow={handleInsertBelow}
+            onShotImageModeChange={handleShotImageModeChange}
           />
         </StoryboardStudio>
       )}

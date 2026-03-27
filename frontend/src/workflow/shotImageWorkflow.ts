@@ -78,17 +78,31 @@ export async function shotImageWorkflow(params: {
   );
   references.push(...mediaReferences);
 
-  // 构建提示词：优先使用 imagePrompt
+  // 构建提示词：统一走同一条生图 workflow。
+  // 九宫格模式仅在最终提交给 TTI 前套用九宫格终稿模板，不影响存储与工作流分支。
   let prompt: string;
   let templateId = 'shot.imagePrompt';
   let promptSource: 'default' | 'custom' | 'finalized' = 'finalized';
+  const stylePrefix = styleSnapshot?.ttiStylePrefix || project?.styleSnapshot?.ttiStylePrefix || getThemeStylePrefix(theme, stylePrompt);
 
   if (normalizedShot.imagePrompt) {
-    // 保留 @char/@scene/@prop（供渠道编译协议处理，例如 grok-image-index）。
-    // 如果这里把 @ 引用替换成纯文字描述，会导致编译器无法提取 @ 资产并完成 @Image N 映射。
-    prompt = normalizedShot.imagePrompt;
+    if (normalizedShot.imageMode === 'grid') {
+      const resolved = await resolvePromptTemplate('tti_grid_shot_image', {
+        stylePrefix: stylePrefix || '',
+        shotDescription: normalizedShot.scriptContent || '',
+        gridPrompt: normalizedShot.imagePrompt,
+        resolution: '8K',
+        aspectRatio: finalAspectRatio,
+      });
+      prompt = resolved.prompt;
+      templateId = resolved.template.id;
+      promptSource = resolved.source;
+    } else {
+      // 保留 @char/@scene/@prop（供渠道编译协议处理，例如 grok-image-index）。
+      // 如果这里把 @ 引用替换成纯文字描述，会导致编译器无法提取 @ 资产并完成 @Image N 映射。
+      prompt = normalizedShot.imagePrompt;
+    }
   } else {
-    const stylePrefix = styleSnapshot?.ttiStylePrefix || project?.styleSnapshot?.ttiStylePrefix || getThemeStylePrefix(theme, stylePrompt);
     const resolved = await resolvePromptTemplate('tti_shot_image', buildShotImageTemplateVariables({
       shot: normalizedShot,
       characters: normalizedCharacters,

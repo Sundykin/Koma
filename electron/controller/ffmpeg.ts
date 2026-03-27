@@ -5,7 +5,7 @@
 import { IpcMainInvokeEvent } from 'electron';
 import { services } from '../service';
 import { ensureServicesReady } from '../service';
-import type { ExtractFramesOptions, WaveformOptions, ComposeVideoOptions } from '../service/ffmpeg';
+import type { ExtractFramesOptions, SplitGridImageOptions, WaveformOptions, ComposeVideoOptions } from '../service/ffmpeg';
 
 class FFmpegController {
   /**
@@ -30,6 +30,14 @@ class FFmpegController {
   async extractFrames(args: ExtractFramesOptions, _event: IpcMainInvokeEvent) {
     await ensureServicesReady();
     return services.ffmpeg.extractFrames(args);
+  }
+
+  /**
+   * 九宫格图片分割（3×3）
+   */
+  async splitGridImage(args: SplitGridImageOptions, _event: IpcMainInvokeEvent) {
+    await ensureServicesReady();
+    return services.ffmpeg.splitGridImage(args);
   }
 
   /**

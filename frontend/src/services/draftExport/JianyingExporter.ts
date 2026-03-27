@@ -47,7 +47,7 @@ import {
   resolveTimelineTracks,
   resolveTrackTimeline,
   type ResolvedClipWindow,
-} from '../transition/transitionResolver';
+} from '../../features/transition/core';
 
 // 导入模板 JSON
 import draftContentTemplate from './templates/draft_content_template.json';
@@ -267,12 +267,12 @@ export class JianyingExporter implements DraftExporter {
     const texts: JianyingTextMaterial[] = [];
     const speedMaterials = new Map<string, JianyingSpeed>();
 
-    // 高级属性素材
-    const filters: any[] = [];
-    const masks: any[] = [];
-    const audioFades: any[] = [];
-    const materialAnimations: any[] = [];
-    const transitions: any[] = [];
+    // 高级属性素材（剪映专有结构，类型由 buildXxx 工具函数推断）
+    const filters: NonNullable<ReturnType<typeof buildFilter>>[] = [];
+    const masks: NonNullable<ReturnType<typeof buildMask>>[] = [];
+    const audioFades: NonNullable<ReturnType<typeof buildAudioFade>>[] = [];
+    const materialAnimations: NonNullable<ReturnType<typeof buildAnimations>>[] = [];
+    const transitions: NonNullable<ReturnType<typeof buildTransition>>[] = [];
 
     // 每个片段的额外素材引用
     const clipMaterialRefs = new Map<string, string[]>();

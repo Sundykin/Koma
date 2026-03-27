@@ -43,7 +43,8 @@ export interface MediaOwnerRef {
     | 'referenceImage'
     | 'image'
     | 'video'
-    | 'audio';
+    | 'audio'
+    | 'gridImage';
   episodeId?: string;
   versionId?: string;
 }
@@ -102,6 +103,7 @@ export interface ShotMediaState {
   references?: StoredMediaAsset[];
   images?: StoredMediaAsset[];
   videos?: StoredMediaAsset[];
+  gridImage?: StoredMediaAsset; // 九宫格模式生成的 3×3 网格图
   selectedReferenceIndex?: number;
   currentImageIndex?: number;
   currentVideoIndex?: number;

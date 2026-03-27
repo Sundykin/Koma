@@ -5,7 +5,7 @@ import { MIN_VISIBLE_DURATION, DEFAULT_TRANSITION_DURATION, MAX_TRANSITION_DURAT
 import {
   findTransitionByClipPair,
   getAddableTransitionDuration,
-  getChainAwareMaxDuration,
+  batchChainAwareMaxDurations,
   getMaxTransitionDuration,
   getSortedTrackClips,
   normalizeTrackTransitions,
@@ -39,13 +39,10 @@ export const TransitionOverlay: React.FC<TransitionOverlayProps> = React.memo(({
   const sortedClips = getSortedTrackClips(track);
   const normalizedTrack = useMemo(() => normalizeTrackTransitions(track), [track]);
 
-  const chainMaxDurations = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const t of normalizedTrack.transitions ?? []) {
-      map.set(t.id, getChainAwareMaxDuration(normalizedTrack, t.id));
-    }
-    return map;
-  }, [normalizedTrack]);
+  const chainMaxDurations = useMemo(
+    () => batchChainAwareMaxDurations(normalizedTrack),
+    [normalizedTrack],
+  );
 
   const invalidIds = useMemo(
     () => new Set((invalidTransitions ?? []).map((transition) => transition.id)),

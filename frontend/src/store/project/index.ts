@@ -16,7 +16,7 @@ export {
 } from './core';
 
 // 时间线
-export type { Timeline } from '../../types';
+export type { TimelineData } from '../../types/editor';
 export { loadTimeline, saveTimeline } from './timeline';
 
 // 素材管理

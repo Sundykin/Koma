@@ -4,7 +4,17 @@
  */
 
 import type { Track, Clip } from '../../types/editor';
-import { normalizeTrackTransitions } from '../transition/transitionResolver';
+import { normalizeTrackTransitions } from '../../features/transition/core';
+
+export type CapabilityOutcome = 'supported' | 'unsupported' | 'degraded' | 'preview-limited' | 'final-only';
+
+export const CAPABILITY_BOUNDARIES: CapabilityOutcome[] = [
+  'supported',
+  'unsupported',
+  'degraded',
+  'preview-limited',
+  'final-only',
+];
 
 // 高级特性类型
 export type AdvancedFeature =
@@ -31,6 +41,18 @@ export interface FeatureSupport {
   jianying: boolean;    // 剪映草稿是否支持
 }
 
+function getNativeOutcome(support: FeatureSupport): CapabilityOutcome {
+  if (support.native) {
+    return 'supported';
+  }
+
+  if (support.jianying) {
+    return 'final-only';
+  }
+
+  return 'unsupported';
+}
+
 const FEATURE_SUPPORT: Record<AdvancedFeature, FeatureSupport> = {
   jianyingKeyframes: { native: false, jianying: true },
   filter: { native: false, jianying: true },
@@ -43,12 +65,15 @@ const FEATURE_SUPPORT: Record<AdvancedFeature, FeatureSupport> = {
 // 兼容性报告
 export interface CompatibilityReport {
   hasAdvancedFeatures: boolean;          // 是否有高级特性
+  outcome: CapabilityOutcome;            // 原生导出整体能力结果
+  capabilityBoundaries: CapabilityOutcome[]; // 能力边界标签
   usedFeatures: AdvancedFeature[];       // 使用的高级特性列表
   featureDetails: {                      // 特性详情
     feature: AdvancedFeature;
     name: string;
     clipCount: number;                   // 使用该特性的片段数量
     support: FeatureSupport;
+    nativeOutcome: CapabilityOutcome;
   }[];
   jianyingOnlyFeatures: AdvancedFeature[]; // 仅剪映支持的特性
   recommendations: string[];               // ��荐信息
@@ -111,6 +136,7 @@ export function checkExportCompatibility(tracks: Track[]): CompatibilityReport {
     name: FEATURE_NAMES[feature],
     clipCount: featureCounts.get(feature) || 0,
     support: FEATURE_SUPPORT[feature],
+    nativeOutcome: getNativeOutcome(FEATURE_SUPPORT[feature]),
   }));
 
   // 找出仅剪映支持的特性
@@ -126,8 +152,20 @@ export function checkExportCompatibility(tracks: Track[]): CompatibilityReport {
     recommendations.push('建议使用「草稿导出」以保留这些效果');
   }
 
+  const hasSupportedFeatures = featureDetails.some((detail) => detail.nativeOutcome === 'supported');
+  const hasFinalOnlyFeatures = featureDetails.some((detail) => detail.nativeOutcome === 'final-only');
+
+  let outcome: CapabilityOutcome = 'supported';
+  if (hasSupportedFeatures && hasFinalOnlyFeatures) {
+    outcome = 'degraded';
+  } else if (hasFinalOnlyFeatures) {
+    outcome = 'final-only';
+  }
+
   return {
     hasAdvancedFeatures: usedFeatures.length > 0,
+    outcome,
+    capabilityBoundaries: CAPABILITY_BOUNDARIES,
     usedFeatures,
     featureDetails,
     jianyingOnlyFeatures,

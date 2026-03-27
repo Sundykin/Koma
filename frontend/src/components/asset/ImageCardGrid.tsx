@@ -9,6 +9,7 @@ import {
   PlusOutlined,
   CheckCircleFilled,
   DeleteOutlined,
+  EyeOutlined,
   UploadOutlined,
   UserOutlined,
   EnvironmentOutlined,
@@ -34,6 +35,7 @@ export interface ImageCardGridProps {
   onSelect: (index: number) => void;
   onAdd: (imagePath: string) => void;
   onDelete: (index: number) => void;
+  onSplitGrid?: (index: number) => void;
   onGenerate?: () => void;
   isGenerating?: boolean;
   disabled?: boolean;
@@ -49,6 +51,7 @@ export const ImageCardGrid: React.FC<ImageCardGridProps> = ({
   onSelect,
   onAdd,
   onDelete,
+  onSplitGrid,
   onGenerate,
   isGenerating = false,
   disabled = false,
@@ -172,6 +175,16 @@ export const ImageCardGrid: React.FC<ImageCardGridProps> = ({
     onDelete(index);
   };
 
+  const handlePreviewClick = (index: number, e: React.MouseEvent) => {
+    e.stopPropagation();
+    handlePreview(index);
+  };
+
+  const handleSplitGridClick = (index: number, e: React.MouseEvent) => {
+    e.stopPropagation();
+    onSplitGrid?.(index);
+  };
+
   return (
     <div className="imageCardGrid">
       <div className="imageCards">
@@ -190,13 +203,21 @@ export const ImageCardGrid: React.FC<ImageCardGridProps> = ({
                   type="text"
                   size="small"
                   icon={<EyeOutlined />}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handlePreview(idx);
-                  }}
+                  onClick={(e) => handlePreviewClick(idx, e)}
                   className="overlayBtn"
                 />
               </Tooltip>
+              {onSplitGrid && (
+                <Tooltip title="拆分九宫格">
+                  <Button
+                    type="text"
+                    size="small"
+                    icon={<AppstoreOutlined />}
+                    onClick={(e) => handleSplitGridClick(idx, e)}
+                    className="overlayBtn"
+                  />
+                </Tooltip>
+              )}
               <Tooltip title="删除">
                 <Button
                   type="text"

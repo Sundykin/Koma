@@ -22,6 +22,7 @@ export type PromptTemplateType =
   | 'shot_prompt_generation'   // 分镜提示词生成（通用）
   | 'shot_image_prompt_generation' // 分镜图片提示词生成
   | 'shot_video_prompt_generation' // 分镜视频提示词生成
+  | 'grid_shot_prompt_generation'  // 九宫格分镜提示词生成（将单个分镜扩展为9个连续画面）
   | 'character_extraction'     // 角色提取
   | 'character_design'         // 角色视觉设计
   | 'scene_extraction'         // 场景提取
@@ -32,6 +33,7 @@ export type PromptTemplateType =
   | 'tti_scene_preview'        // 场景预览图
   | 'tti_prop_reference'       // 道具参考图
   | 'tti_shot_image'           // 分镜图片
+  | 'tti_grid_shot_image'      // 九宫格分镜图片（3×3网格）
   // ITV 视频生成模板
   | 'itv_shot_video'           // 分镜视频
   | 'itv_character_motion'     // 角色动态视频
@@ -207,6 +209,20 @@ const COMMON_VARIABLE_DEFINITIONS: Record<string, Omit<PromptTemplateVariable, '
     example: '4',
     required: true,
   },
+  imageMode: {
+    label: '图片模式',
+    description: '当前分镜的图片生成模式，值为 normal 或 grid。',
+    format: '枚举字符串',
+    example: 'grid',
+    required: true,
+  },
+  gridSequencePrompt: {
+    label: '九宫格镜头拆解',
+    description: '九宫格模式下已生成的 9 条连续镜头提示词，可作为视频提示词的分段依据。',
+    format: '多行文本',
+    example: '镜头01：...\n镜头02：...',
+    required: true,
+  },
   character: {
     label: '角色资料',
     description: '角色原始资料或角色卡信息。',
@@ -310,6 +326,34 @@ const COMMON_VARIABLE_DEFINITIONS: Record<string, Omit<PromptTemplateVariable, '
     description: '按 `[start,end]秒` 组织的动作与镜头变化时间线。',
     format: '多段时间片段文本',
     example: '[0,1]秒：人物静止建立构图；[1,3]秒：手部缓慢抬起，镜头缓推',
+    required: true,
+  },
+  shotDescription: {
+    label: '分镜剧情概述',
+    description: '当前分镜的剧情概述或画面主题，用于九宫格图片生成时的全局描述。',
+    format: '自然语言短段落',
+    example: '顾行在后院焚烧纸钱，火光映照出压抑的夜晚氛围',
+    required: true,
+  },
+  gridPrompt: {
+    label: '九宫格镜头描述',
+    description: '已组装的 9 条连续画面描述（镜头01~镜头09），用于九宫格 TTI 图片生成。',
+    format: '多行文本，每行以 镜头NN： 开头',
+    example: '镜头01：远景，雨夜墓地全貌…\n镜头02：中景，人物走向墓碑…',
+    required: true,
+  },
+  resolution: {
+    label: '分辨率',
+    description: '目标图片分辨率。',
+    format: '短语',
+    example: '8K',
+    required: true,
+  },
+  aspectRatio: {
+    label: '画幅比例',
+    description: '目标图片画幅比例，九宫格中每个格子的画面比例应与整体一致。',
+    format: '比例字符串',
+    example: '16:9',
     required: true,
   },
 };
@@ -650,6 +694,8 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
 出场道具：{{props}}
 情绪氛围：{{emotion}}
 风格前缀：{{stylePrefix}}
+图片模式：{{imageMode}}
+九宫格镜头拆解：{{gridSequencePrompt}}
 镜头总时长：{{durationSeconds}} 秒
 推荐运镜：{{cameraMovementHint}}
 推荐景别：{{shotTypeHint}}
@@ -660,11 +706,23 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
 3. 为每个场景添加 @scene_场景ID 引用格式（场景引用列表见下方）
 4. 为每个道具添加 @prop_道具ID 引用格式（道具引用列表见下方）
 5. 只能描述镜头内直接可观察到的动作、表情变化、镜头运动与环境动态，不要复述剧情，不要写心理活动，不要写因果解释
-6. 输出必须包含连续的时间片段，格式严格为 \`[start,end]秒：描述\`
-7. 时间片段总长度必须覆盖整个镜头时长 {{durationSeconds}} 秒
-8. 优先使用推荐运镜和推荐景别；如需微调，只能从以下关键字中选择：运镜 {{cameraOptions}}；景别 {{shotTypeOptions}}
-9. 每个时间片段都要写清楚人物动作、镜头运动、环境变化和画面节奏
-10. 输出只保留提示词正文，不要加解释，不要加标题
+6. 若图片模式为 \`normal\`，输出必须包含连续的时间片段，格式严格为 \`[start,end]秒：描述\`
+7. 若图片模式为 \`normal\`，时间片段总长度必须覆盖整个镜头时长 {{durationSeconds}} 秒
+8. 若图片模式为 \`grid\`，必须基于“九宫格镜头拆解”写成连续 9 段 sequence，每一段对应一个分镜推进节点，角色外观、服装、场景与光线保持统一，不要输出时间片段
+9. 若图片模式为 \`grid\`，输出格式严格为：
+The video plays out in a continuous 9-part sequence:
+1. [景别/视角]: [描述]
+2. [景别/视角]: [描述]
+3. [景别/视角]: [描述]
+4. [景别/视角]: [描述]
+5. [景别/视角]: [描述]
+6. [景别/视角]: [描述]
+7. [景别/视角]: [描述]
+8. [景别/视角]: [描述]
+9. [景别/视角]: [描述]
+10. 优先使用推荐运镜和推荐景别；如需微调，只能从以下关键字中选择：运镜 {{cameraOptions}}；景别 {{shotTypeOptions}}
+11. 每个片段都要写清楚人物动作、镜头运动、环境变化和画面节奏
+12. 输出只保留提示词正文，不要加解释，不要加标题
 
 可用角色引用：
 {{characterRefs}}
@@ -684,11 +742,71 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
       variable('props'),
       variable('emotion'),
       variable('stylePrefix'),
+      variable('imageMode'),
+      variable('gridSequencePrompt'),
       variable('durationSeconds'),
       variable('cameraMovementHint'),
       variable('shotTypeHint'),
       variable('cameraOptions'),
       variable('shotTypeOptions'),
+      variable('characterRefs'),
+      variable('sceneRefs'),
+      variable('propRefs'),
+    ],
+    isCustom: false,
+  },
+
+  grid_shot_prompt_generation: {
+    id: 'grid_shot_prompt_generation',
+    name: '九宫格分镜提示词生成',
+    description: '将单个分镜扩展为9个连续画面的提示词',
+    template: `根据以下分镜信息，将该分镜的剧情内容扩展为一组具有清晰叙事推进关系的 3×3 九宫格分镜提示词文本，共 9 个连续镜头。
+
+剧本内容：{{scriptContent}}
+出场角色：{{characters}}
+出现场景：{{scenes}}
+出场道具：{{props}}
+情绪氛围：{{emotion}}
+风格前缀：{{stylePrefix}}
+
+要求：
+1. 全部镜头发生在同一场景与同一时间轴内，九个画面之间必须存在明确的前后承接关系，形成连续的动作、视线或情绪推进，而不是彼此孤立的画面拼接
+2. 分镜采用电影镜头语言自由发挥：在整体叙事推进中自然涵盖远景、中景、近景与特写等不同景别，并根据剧情需要灵活使用正视、侧视、背视、过肩、内反打、轻微俯仰等视角变化
+3. 镜头景别与角度不与编号固定绑定，而是由剧情发展自动选择最合适的表现方式，使九个镜头整体读起来具备真实影视分镜的流动感
+4. 在全部九个分镜中，人物的外观、服装、体型比例、面部特征保持一致，整体色彩倾向与光照条件统一，仅允许人物动作、姿态以及镜头远近和角度发生变化
+5. 为每个角色添加 @char_角色ID 引用格式（角色引用列表见下方）
+6. 为每个场景添加 @scene_场景ID 引用格式（场景引用列表见下方）
+7. 为每个道具添加 @prop_道具ID 引用格式（道具引用列表见下方）
+8. 只描述客观可见事实（外观、动作、光线、环境），不要复述剧情，不要描述人物内心
+9. 把"情绪氛围"转成可见线索，如表情、肢体张力、天气、色调、明暗对比
+
+可用角色引用：
+{{characterRefs}}
+
+可用场景引用：
+{{sceneRefs}}
+
+可用道具引用：
+{{propRefs}}
+
+输出格式（严格按此格式输出，不要有前言或解释）：
+镜头01：[描述]
+镜头02：[描述]
+镜头03：[描述]
+镜头04：[描述]
+镜头05：[描述]
+镜头06：[描述]
+镜头07：[描述]
+镜头08：[描述]
+镜头09：[描述]
+`,
+    variables: [
+      variable('scriptContent'),
+      variable('characters'),
+      variable('scenes'),
+      variable('props'),
+      variable('emotion'),
+      variable('stylePrefix'),
       variable('characterRefs'),
       variable('sceneRefs'),
       variable('propRefs'),
@@ -945,6 +1063,23 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
       variable('emotion', {
         description: '情绪的可见线索，应转化为表情、肢体张力、光照或色调特征。',
       }),
+    ],
+    isCustom: false,
+  },
+
+  tti_grid_shot_image: {
+    id: 'tti_grid_shot_image',
+    name: '九宫格分镜图片',
+    description: '生成 3×3 九宫格网格分镜图',
+    template: `{{stylePrefix}}, 根据{{shotDescription}}, 生成一张具有凝聚力的 3×3 网格图像, 包含在同一环境中的 9 个不同摄像机镜头, 严格保持人物/物体、服装和光线的一致性, 每个网格画面的比例保持为{{aspectRatio}}, {{resolution}}分辨率, {{aspectRatio}}画幅。
+
+{{gridPrompt}}`,
+    variables: [
+      variable('stylePrefix'),
+      variable('shotDescription'),
+      variable('gridPrompt'),
+      variable('resolution'),
+      variable('aspectRatio'),
     ],
     isCustom: false,
   },
