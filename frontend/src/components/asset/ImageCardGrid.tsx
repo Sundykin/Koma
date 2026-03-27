@@ -16,6 +16,7 @@ import {
   AppstoreOutlined,
   ThunderboltOutlined,
   LoadingOutlined,
+  EyeOutlined,
 } from '@ant-design/icons';
 import type { Character, Scene, Prop } from '../../types';
 import { electronService } from '../../services/electronService';
