@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MediaType, type Track, type Transition } from '../../types/editor';
-import { TransitionOverlay } from './TransitionOverlay';
+import { TransitionOverlay } from '../../features/transition/ui';
 
 const makeTrack = (transition?: Transition): Track => ({
   id: 'track-1',
@@ -117,5 +117,66 @@ describe('TransitionOverlay', () => {
     );
 
     expect(screen.queryByText('+ 转场')).not.toBeInTheDocument();
+  });
+
+  it('shows +/- buttons instead of slider when transition span is narrow', () => {
+    const transition: Transition = {
+      id: 'transition-1',
+      fromClipId: 'clip-a',
+      toClipId: 'clip-b',
+      type: 'fade',
+      duration: 0.5,
+    };
+    const track = makeTrack(transition);
+    const resolvedClipWindows = new Map([
+      ['clip-a', { clipId: 'clip-a', trackId: 'track-1', resolvedStart: 0, resolvedEnd: 2 }],
+      ['clip-b', { clipId: 'clip-b', trackId: 'track-1', resolvedStart: 1.5, resolvedEnd: 3.5 }],
+    ]);
+
+    // pixelsPerSecond=5 → maxDuration≈1.9 * 5 * 0.8 ≈ 7.6px < 60 → buttons
+    render(
+      <TransitionOverlay
+        track={track}
+        resolvedClipWindows={resolvedClipWindows}
+        pixelsPerSecond={5}
+        selectedTransitionId="transition-1"
+        onUpdateTransitionDuration={vi.fn()}
+        onDeleteTransition={vi.fn()}
+      />
+    );
+
+    expect(screen.getByTitle('减少 0.1s')).toBeInTheDocument();
+    expect(screen.getByTitle('增加 0.1s')).toBeInTheDocument();
+    expect(screen.queryByRole('slider')).not.toBeInTheDocument();
+  });
+
+  it('shows slider when transition span is wide enough', () => {
+    const transition: Transition = {
+      id: 'transition-1',
+      fromClipId: 'clip-a',
+      toClipId: 'clip-b',
+      type: 'fade',
+      duration: 0.5,
+    };
+    const track = makeTrack(transition);
+    const resolvedClipWindows = new Map([
+      ['clip-a', { clipId: 'clip-a', trackId: 'track-1', resolvedStart: 0, resolvedEnd: 2 }],
+      ['clip-b', { clipId: 'clip-b', trackId: 'track-1', resolvedStart: 1.5, resolvedEnd: 3.5 }],
+    ]);
+
+    // pixelsPerSecond=100 → maxDuration≈1.9 * 100 * 0.8 ≈ 152px > 60 → slider
+    render(
+      <TransitionOverlay
+        track={track}
+        resolvedClipWindows={resolvedClipWindows}
+        pixelsPerSecond={100}
+        selectedTransitionId="transition-1"
+        onUpdateTransitionDuration={vi.fn()}
+        onDeleteTransition={vi.fn()}
+      />
+    );
+
+    expect(screen.getByRole('slider')).toBeInTheDocument();
+    expect(screen.queryByTitle('减少 0.1s')).not.toBeInTheDocument();
   });
 });

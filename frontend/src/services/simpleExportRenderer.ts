@@ -10,7 +10,7 @@ import {
   type NormalizedTransitionPlan,
   type ResolvedClipWindow,
   resolveTimelineTracks,
-} from './transition/transitionResolver';
+} from '../features/transition/core';
 import { toKomaLocalUrl, fromKomaLocalUrl } from '../utils/urlUtils';
 
 export interface SimpleExportConfig {

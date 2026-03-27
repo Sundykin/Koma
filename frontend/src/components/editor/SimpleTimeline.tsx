@@ -14,8 +14,8 @@ import {
   getAddableTransitionDuration,
   getExistingTransitionCount,
   getMainVideoTrack,
-} from '../../services/transition/transitionResolver';
-import { TransitionOverlay } from './TransitionOverlay';
+} from '../../features/transition/core';
+import { TransitionOverlay } from '../../features/transition/ui';
 import {
   Play, Pause, Film, Music, Type, Trash2, Copy, ZoomIn, ZoomOut, Magnet,
   Volume2, VolumeX, Eye, EyeOff, Wand2, Eraser
@@ -1290,16 +1290,24 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
                     >
                       一键转场 ({addableCount})
                     </button>
-                    <button
-                      className="w-full px-3 py-1.5 text-left text-xs text-zinc-200 hover:bg-zinc-800 disabled:text-zinc-500 disabled:hover:bg-transparent"
-                      disabled={existingCount === 0}
-                      onClick={() => {
+                    <Popconfirm
+                      title="删除所有转场"
+                      description={`将删除该轨道上的 ${existingCount} 个转场，无法撤销`}
+                      onConfirm={() => {
                         onDeleteAllTransitions?.(track.id);
                         closeContextMenu();
                       }}
+                      okButtonProps={{ danger: true }}
+                      placement="right"
+                      disabled={existingCount === 0}
                     >
-                      清除转场 ({existingCount})
-                    </button>
+                      <button
+                        className="w-full px-3 py-1.5 text-left text-xs text-zinc-200 hover:bg-zinc-800 disabled:text-zinc-500 disabled:hover:bg-transparent"
+                        disabled={existingCount === 0}
+                      >
+                        清除转场 ({existingCount})
+                      </button>
+                    </Popconfirm>
                   </>
                 )}
               </>

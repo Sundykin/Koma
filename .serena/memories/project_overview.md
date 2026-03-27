@@ -1,0 +1,1 @@
+Koma is an Electron + React + TypeScript AI short-video editor. Core editor timeline types live in frontend/src/types/editor.ts; draft export compatibility and Jianying export logic live in frontend/src/services/draftExport/.

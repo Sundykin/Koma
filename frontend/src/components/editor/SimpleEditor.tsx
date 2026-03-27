@@ -20,8 +20,9 @@ import { uploadFiles } from '../../services/uploadService';
 import {
   getTimelineDuration,
   normalizeTimelineTracks,
-} from '../../services/transition/transitionResolver';
-import { useTransitionHandlers } from '../../services/transition/useTransitionHandlers';
+} from '../../features/transition/core';
+import { useTransitionHandlers } from '../../features/transition/editor';
+import { useDefaultTransition } from '../../features/transition/hooks/useDefaultTransition';
 import type { Shot } from '../../types';
 import { createLogger } from '../../store/logger';
 import {
@@ -130,6 +131,7 @@ export const SimpleEditor: React.FC<SimpleEditorProps> = ({ shots = [], projectI
 
   const prevTransitionCountRef = useRef<number>(0);
   const isUserDeletingRef = useRef(false);
+  const { defaultDuration } = useDefaultTransition();
 
   const {
     handleSelectTransition,
@@ -146,6 +148,7 @@ export const SimpleEditor: React.FC<SimpleEditorProps> = ({ shots = [], projectI
     setSelectedKeyframeId,
     message,
     isUserDeletingRef,
+    defaultDuration,
   });
 
   useEffect(() => {

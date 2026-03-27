@@ -10,12 +10,13 @@ import { handleError } from '../utils/errorHandler';
 import { createLogger } from '../store/logger';
 import {
   getClipOpacityFromPlans,
+  getClipAudioFade,
   normalizeTimelineTracks,
   resolveTimelineTracks,
   type NormalizedTransitionPlan,
   type ResolvedClipWindow,
   type ResolvedTrackTimeline,
-} from '../services/transition/transitionResolver';
+} from '../features/transition/core';
 
 const logger = createLogger('SimpleEngine');
 
@@ -744,7 +745,7 @@ export class SimpleAudioController {
   }
 
   private getClipVolume(clip: Clip, currentTime: number): number {
-    return this.masterVolume * getClipOpacityFromPlans(
+    return this.masterVolume * getClipAudioFade(
       this.transitionPlansByTrack.get(clip.trackId) ?? [],
       clip.id,
       currentTime

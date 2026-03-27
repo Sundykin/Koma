@@ -132,6 +132,7 @@ function deriveLegacyTransitions(track: Track): Transition[] {
 function validateTransitions(track: Track, transitions: Transition[]): {
   valid: Transition[];
   invalid: Transition[];
+  clampedIds: Set<string>;
 } {
   if (track.type !== 'video') {
     return { valid: [], invalid: [...transitions] };
@@ -145,6 +146,7 @@ function validateTransitions(track: Track, transitions: Transition[]): {
   const outgoingDuration = new Map<string, number>();
   const valid: Transition[] = [];
   const invalid: Transition[] = [];
+  const clampedIds = new Set<string>();
 
   const sortedTransitions = [...transitions].sort((a, b) => {
     const aIdx = clipIndexMap.get(a.fromClipId) ?? Infinity;
@@ -192,6 +194,7 @@ function validateTransitions(track: Track, transitions: Transition[]): {
 
     if (finalDuration > clampMax + 1e-9) {
       finalDuration = clampMax;
+      clampedIds.add(transition.id);
     }
 
     usedAsFrom.add(transition.fromClipId);
@@ -205,15 +208,16 @@ function validateTransitions(track: Track, transitions: Transition[]): {
     );
   }
 
-  return { valid, invalid };
+  return { valid, invalid, clampedIds };
 }
 
 function normalizeTrackTransitionsWithInvalid(track: Track): {
   track: Track;
   invalidTransitions: Transition[];
+  clampedIds: Set<string>;
 } {
   const explicitTransitions = track.transitions ?? deriveLegacyTransitions(track);
-  const { valid, invalid } = validateTransitions(track, explicitTransitions);
+  const { valid, invalid, clampedIds } = validateTransitions(track, explicitTransitions);
   const clips = track.clips.map(({ transition: _legacyTransition, ...clip }) => clip);
 
   return {
@@ -223,6 +227,7 @@ function normalizeTrackTransitionsWithInvalid(track: Track): {
       transitions: valid,
     },
     invalidTransitions: invalid,
+    clampedIds,
   };
 }
 
@@ -305,6 +310,7 @@ export function resolveTrackTimeline(track: Track): ResolvedTrackTimeline {
     transitionPlans,
     duration,
     invalidTransitions: normalized.invalidTransitions,
+    clampedIds: normalized.clampedIds,
   };
 }
 
@@ -396,4 +402,32 @@ export function getClipOpacityMultiplier(
 ): number {
   const { transitionPlans } = resolveTrackTimeline(track);
   return getClipOpacityFromPlans(transitionPlans, clipId, currentTime);
+}
+
+export function getClipAudioFade(
+  transitionPlans: NormalizedTransitionPlan[],
+  clipId: string,
+  currentTime: number
+): number {
+  const activeTransition = transitionPlans.find(
+    (transition) =>
+      currentTime >= transition.activeStartTime && currentTime < transition.activeEndTime
+  );
+
+  if (!activeTransition) {
+    return 1;
+  }
+
+  const progress =
+    (currentTime - activeTransition.activeStartTime) / activeTransition.duration;
+
+  if (activeTransition.fromClipId === clipId) {
+    return Math.cos(progress * Math.PI / 2);
+  }
+
+  if (activeTransition.toClipId === clipId) {
+    return Math.sin(progress * Math.PI / 2);
+  }
+
+  return 1;
 }

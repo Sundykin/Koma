@@ -4,6 +4,7 @@ import {
   findTransitionByClipPair,
   getAddableTransitionCount,
   getChainAwareMaxDuration,
+  getClipAudioFade,
   getClipOpacityFromPlans,
   getClipOpacityMultiplier,
   getClipResolvedWindow,
@@ -593,5 +594,108 @@ describe('transitionResolver', () => {
       clips: [createClip('clip-a', 0, 3), createClip('clip-b', 5, 2)],
     };
     expect(getAddableTransitionCount(track)).toBe(0);
+  });
+
+  describe('getClipAudioFade (equal-power crossfade)', () => {
+    function buildPlans() {
+      const track: Track = {
+        id: 'track-1', type: 'video', order: 0,
+        clips: [createClip('clip-a', 0, 3), createClip('clip-b', 3, 3)],
+        transitions: [{ id: 't1', fromClipId: 'clip-a', toClipId: 'clip-b', type: 'fade', duration: 1 }],
+      };
+      return resolveTrackTimeline(track).transitionPlans;
+    }
+
+    it('returns 1 outside transition region', () => {
+      const plans = buildPlans();
+      expect(getClipAudioFade(plans, 'clip-a', 0)).toBe(1);
+      expect(getClipAudioFade(plans, 'clip-b', 4)).toBe(1);
+    });
+
+    it('fromClip fades out with cos curve', () => {
+      const plans = buildPlans();
+      const fade = getClipAudioFade(plans, 'clip-a', 2.5);
+      // progress = 0.5, cos(0.5 * PI/2) = cos(PI/4) ≈ 0.707
+      expect(fade).toBeCloseTo(Math.cos(0.5 * Math.PI / 2), 6);
+    });
+
+    it('toClip fades in with sin curve', () => {
+      const plans = buildPlans();
+      const fade = getClipAudioFade(plans, 'clip-b', 2.5);
+      // progress = 0.5, sin(0.5 * PI/2) = sin(PI/4) ≈ 0.707
+      expect(fade).toBeCloseTo(Math.sin(0.5 * Math.PI / 2), 6);
+    });
+
+    it('energy is preserved: from^2 + to^2 ≈ 1', () => {
+      const plans = buildPlans();
+      for (const progress of [0.0, 0.25, 0.5, 0.75, 0.99]) {
+        const time = 2.0 + progress;
+        const fromFade = getClipAudioFade(plans, 'clip-a', time);
+        const toFade = getClipAudioFade(plans, 'clip-b', time);
+        expect(fromFade ** 2 + toFade ** 2).toBeCloseTo(1, 5);
+      }
+    });
+
+    it('at transition start, fromClip is full and toClip is silent', () => {
+      const plans = buildPlans();
+      expect(getClipAudioFade(plans, 'clip-a', 2.0)).toBeCloseTo(1, 6);
+      expect(getClipAudioFade(plans, 'clip-b', 2.0)).toBeCloseTo(0, 6);
+    });
+
+    it('returns 1 for unrelated clip', () => {
+      const plans = buildPlans();
+      expect(getClipAudioFade(plans, 'clip-c', 2.5)).toBe(1);
+    });
+  });
+
+  describe('clampedIds propagation', () => {
+    it('resolveTrackTimeline returns clampedIds for over-budget transitions', () => {
+      const track: Track = {
+        id: 'track-1', type: 'video', order: 0,
+        clips: [createClip('clip-a', 0, 1), createClip('clip-b', 1, 1)],
+        transitions: [{ id: 't1', fromClipId: 'clip-a', toClipId: 'clip-b', type: 'fade', duration: 5 }],
+      };
+      const resolved = resolveTrackTimeline(track);
+      expect(resolved.clampedIds.has('t1')).toBe(true);
+      expect(resolved.transitionPlans[0].duration).toBeLessThan(5);
+    });
+
+    it('resolveTrackTimeline returns empty clampedIds when no clamping needed', () => {
+      const track: Track = {
+        id: 'track-1', type: 'video', order: 0,
+        clips: [createClip('clip-a', 0, 3), createClip('clip-b', 3, 3)],
+        transitions: [{ id: 't1', fromClipId: 'clip-a', toClipId: 'clip-b', type: 'fade', duration: 0.5 }],
+      };
+      const resolved = resolveTrackTimeline(track);
+      expect(resolved.clampedIds.size).toBe(0);
+    });
+  });
+
+  describe('normalizeTimelineTracks skip-normalize semantics', () => {
+    it('normalizeTimelineTracks returns referentially stable clips when no transitions change', () => {
+      const track: Track = {
+        id: 'track-1', type: 'video', order: 0,
+        clips: [createClip('clip-a', 0, 3), createClip('clip-b', 3, 2)],
+        transitions: [{ id: 't1', fromClipId: 'clip-a', toClipId: 'clip-b', type: 'fade', duration: 0.5 }],
+      };
+      const normalized1 = normalizeTimelineTracks([track]);
+      const normalized2 = normalizeTimelineTracks(normalized1);
+      expect(normalized2[0].transitions).toEqual(normalized1[0].transitions);
+    });
+
+    it('normalizeTimelineTracks strips legacy clip.transition after normalization', () => {
+      const track: Track = {
+        id: 'track-1', type: 'video', order: 0,
+        clips: [
+          createClip('clip-a', 0, 3),
+          { ...createClip('clip-b', 3, 2), transition: { type: 'fade', duration: 0.5 } },
+        ],
+      };
+      const [normalized] = normalizeTimelineTracks([track]);
+      for (const clip of normalized.clips) {
+        expect(clip).not.toHaveProperty('transition');
+      }
+      expect(normalized.transitions?.length).toBe(1);
+    });
   });
 });

@@ -1,0 +1,1 @@
+Useful commands in this repo typically use Darwin shell tools and project-local scripts. Git is available. For code inspection, prefer Serena semantic tools and Read/Grep. Timeline persistence is stored as JSON via frontend/src/store/project/timeline.ts.

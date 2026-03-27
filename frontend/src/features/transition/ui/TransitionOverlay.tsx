@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import type { Track, Transition } from '../../../types/editor';
 import type { ResolvedClipWindow } from '../core/types';
-import { MIN_VISIBLE_DURATION, DEFAULT_TRANSITION_DURATION } from '../core/constants';
+import { MIN_VISIBLE_DURATION, DEFAULT_TRANSITION_DURATION, MAX_TRANSITION_DURATION } from '../core/constants';
 import {
   findTransitionByClipPair,
   getAddableTransitionDuration,
@@ -66,7 +66,7 @@ export const TransitionOverlay: React.FC<TransitionOverlayProps> = React.memo(({
           ? (chainMaxDurations.get(transition.id) ?? maxDuration)
           : maxDuration;
         const sliderMin = Math.min(MIN_VISIBLE_DURATION, chainMaxDuration);
-        const sliderMax = Math.max(chainMaxDuration, sliderMin);
+        const sliderMax = Math.min(MAX_TRANSITION_DURATION, Math.max(chainMaxDuration, sliderMin));
         const fromWindow = resolvedClipWindows.get(fromClip.id);
         const toWindow = resolvedClipWindows.get(toClip.id);
         const cutPointTime = fromWindow?.resolvedEnd ?? toClip.start;
@@ -87,6 +87,7 @@ export const TransitionOverlay: React.FC<TransitionOverlayProps> = React.memo(({
                       style={{
                         left: (transitionStartTime - cutPointTime) * pixelsPerSecond,
                         width: transition.duration * pixelsPerSecond,
+                        minWidth: 2,
                       }}
                     />
                   );
@@ -114,37 +115,76 @@ export const TransitionOverlay: React.FC<TransitionOverlayProps> = React.memo(({
                 >
                   {isInvalid ? `⚠ 无效 ${transition.duration.toFixed(1)}s` : `淡变 ${transition.duration.toFixed(1)}s`}
                 </button>
-                {selectedTransitionId === transition.id && !isInvalid && (
-                  <div className="flex items-center gap-1 rounded-full bg-black/85 px-2 py-1">
-                    <input
-                      type="range"
-                      min={sliderMin}
-                      max={sliderMax}
-                      step={0.1}
-                      value={transition.duration}
-                      onChange={(e) => {
-                        e.stopPropagation();
-                        onUpdateTransitionDuration?.(track.id, transition.id, Number(e.target.value));
-                      }}
-                      className="h-1 w-16 accent-cyan-500"
-                      title={`转场时长: ${transition.duration.toFixed(1)}s`}
-                    />
-                    <span className="min-w-[2rem] text-center text-[10px] text-zinc-400">
-                      {transition.duration.toFixed(1)}s
-                    </span>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onDeleteTransition?.(track.id, transition.id);
-                      }}
-                      className="rounded bg-red-600 px-1 text-[10px] text-white hover:bg-red-500"
-                      title="删除转场"
-                    >
-                      ×
-                    </button>
-                  </div>
-                )}
+                {selectedTransitionId === transition.id && !isInvalid && (() => {
+                  const computedWidth = chainMaxDuration * pixelsPerSecond * 0.8;
+                  const useButtons = computedWidth < 60;
+
+                  return (
+                    <div className="flex items-center gap-1 rounded-full bg-black/85 px-2 py-1">
+                      {useButtons ? (
+                        <>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const newDuration = Math.max(sliderMin, transition.duration - 0.1);
+                              onUpdateTransitionDuration?.(track.id, transition.id, newDuration);
+                            }}
+                            className="rounded bg-zinc-700 px-1 text-[10px] text-white hover:bg-zinc-600"
+                            title="减少 0.1s"
+                          >
+                            −
+                          </button>
+                          <span className="min-w-[2rem] text-center text-[10px] text-zinc-400">
+                            {transition.duration.toFixed(1)}s
+                          </span>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const newDuration = Math.min(sliderMax, transition.duration + 0.1);
+                              onUpdateTransitionDuration?.(track.id, transition.id, newDuration);
+                            }}
+                            className="rounded bg-zinc-700 px-1 text-[10px] text-white hover:bg-zinc-600"
+                            title="增加 0.1s"
+                          >
+                            +
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <input
+                            type="range"
+                            min={sliderMin}
+                            max={sliderMax}
+                            step={0.1}
+                            value={transition.duration}
+                            onChange={(e) => {
+                              e.stopPropagation();
+                              onUpdateTransitionDuration?.(track.id, transition.id, Number(e.target.value));
+                            }}
+                            className="h-1 w-16 accent-cyan-500"
+                            title={`转场时长: ${transition.duration.toFixed(1)}s`}
+                          />
+                          <span className="min-w-[2rem] text-center text-[10px] text-zinc-400">
+                            {transition.duration.toFixed(1)}s
+                          </span>
+                        </>
+                      )}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onDeleteTransition?.(track.id, transition.id);
+                        }}
+                        className="rounded bg-red-600 px-1 text-[10px] text-white hover:bg-red-500"
+                        title="删除转场"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  );
+                })()}
               </div>
             ) : (
               addableDuration > 0 && (
