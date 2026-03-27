@@ -78,6 +78,7 @@ interface LinghuiCanvasProps {
   ) => void;
   onSelectionChange?: (selection: LinghuiCanvasSelection) => void;
   onNodeMutate?: (nodeId: string) => void;
+  onClearNodeRunState?: (nodeId: string) => void;
   onConnectionError?: (message: string) => void;
   onRunSingleNode?: (nodeId: string) => void;
   onRunAll?: () => void;
@@ -255,6 +256,7 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
     onGraphChange,
     onSelectionChange,
     onNodeMutate,
+    onClearNodeRunState,
     onConnectionError,
     onRunSingleNode,
     onRunAll,
@@ -1118,7 +1120,12 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
 
   return (
     <LinghuiNodeInteractionContext.Provider value={{ canvasMode, bindNodeSurface, openNodeContextMenu }}>
-      <LinghuiNodeMutationContext.Provider value={{ updateNodeData: updateLinghuiNodeData }}>
+      <LinghuiNodeMutationContext.Provider value={{
+        updateNodeData: updateLinghuiNodeData,
+        clearNodeRunState(nodeId: string) {
+          onClearNodeRunState?.(nodeId);
+        },
+      }}>
       <div
         ref={hostRef}
         className={`linghuiCanvasRoot ${canvasMode === 'hand' ? 'isHandMode' : 'isMouseMode'}`}
@@ -1466,6 +1473,7 @@ function areLinghuiCanvasPropsEqual(prev: LinghuiCanvasProps, next: LinghuiCanva
     prev.onGraphChange === next.onGraphChange &&
     prev.onSelectionChange === next.onSelectionChange &&
     prev.onNodeMutate === next.onNodeMutate &&
+    prev.onClearNodeRunState === next.onClearNodeRunState &&
     prev.onConnectionError === next.onConnectionError &&
     prev.onRunSingleNode === next.onRunSingleNode &&
     prev.onRunAll === next.onRunAll &&

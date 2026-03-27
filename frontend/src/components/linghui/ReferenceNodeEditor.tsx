@@ -43,7 +43,7 @@ export const ReferenceNodeEditor: React.FC<ReferenceNodeEditorProps> = ({
   onRun,
 }) => {
   const { message } = App.useApp();
-  const { updateNodeData } = useLinghuiNodeMutation();
+  const { clearNodeRunState, updateNodeData } = useLinghuiNodeMutation();
   const props = nodeData.properties as unknown as LinghuiReferenceNodeProperties;
   const source = String(props.source ?? '').trim();
   const note = String(props.note ?? '').trim();
@@ -128,7 +128,8 @@ export const ReferenceNodeEditor: React.FC<ReferenceNodeEditorProps> = ({
         note: '',
       },
     }));
-  }, [nodeId, updateNodeData]);
+    clearNodeRunState(nodeId);
+  }, [clearNodeRunState, nodeId, updateNodeData]);
 
   return (
     <div className="linghuiEditorPanel" onMouseDown={event => event.stopPropagation()}>

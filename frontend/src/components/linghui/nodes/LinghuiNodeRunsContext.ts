@@ -22,10 +22,12 @@ export interface LinghuiNodeMutationApi {
     updater: (prev: LinghuiNodeData) => LinghuiNodeData,
     options?: LinghuiNodeMutationOptions,
   ) => void;
+  clearNodeRunState: (nodeId: string) => void;
 }
 
 const noopMutationApi: LinghuiNodeMutationApi = {
   updateNodeData: () => undefined,
+  clearNodeRunState: () => undefined,
 };
 
 export const LinghuiNodeMutationContext = createContext<LinghuiNodeMutationApi>(noopMutationApi);
