@@ -33,7 +33,7 @@ class FFmpegController {
   }
 
   /**
-   * 九宫格图片分割（3×3）
+   * 宫格图片分割（支持 2×2 / 3×3 / 4×4 / 5×5）
    */
   async splitGridImage(args: SplitGridImageOptions, _event: IpcMainInvokeEvent) {
     await ensureServicesReady();

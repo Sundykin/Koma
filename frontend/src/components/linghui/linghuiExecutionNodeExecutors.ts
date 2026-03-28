@@ -1,7 +1,6 @@
 import {
-  gridTypeToCount,
   type LinghuiAudioNodeProperties,
-  type LinghuiGridType,
+  type LinghuiImageNodeProperties,
   type LinghuiNodeResult,
   type LinghuiScriptNodeProperties,
   type LinghuiTextNodeProperties,
@@ -22,6 +21,10 @@ import {
   resolveImageNodeMode,
   type ExecutionNodeView,
 } from './linghuiExecutionShared';
+import {
+  getLinghuiImageImportItems,
+  resolveLinghuiImagePrimaryImportItem,
+} from './linghuiImageCollections';
 import {
   generateAudioWithProvider,
   generateImageWithProvider,
@@ -104,39 +107,49 @@ export async function executeImageNode(
   signal?: AbortSignal,
 ): Promise<LinghuiNodeResult> {
   const source = String(node.properties.source ?? '').trim();
-  const mode = resolveImageNodeMode({ source, mode: node.properties.mode });
+  const properties = node.properties as unknown as LinghuiImageNodeProperties;
+  const mode = resolveImageNodeMode({ source, mode: properties.mode });
   const prompt = String(node.properties.prompt ?? '').trim();
   const ttiConfigId = String(node.properties.ttiConfigId ?? '');
-  const gridType = (node.properties.gridType ?? 'none') as LinghuiGridType;
-  const batchCount = Number(node.properties.batchCount ?? 1);
+  const batchCount = Math.max(1, Math.min(4, Number(node.properties.batchCount ?? 1)));
 
   if (mode === 'import') {
-    if (!source) {
+    const importItems = getLinghuiImageImportItems(properties);
+    const primaryImport = resolveLinghuiImagePrimaryImportItem(properties);
+    if (!importItems.length) {
       throw new Error('请先上传图片素材');
     }
 
-    return {
+    const items = importItems.map(item => buildMediaItem({
       kind: 'image',
-      primary: buildMediaItem({
-        kind: 'image',
-        source,
-        label: node.title,
-      }),
-      metadata: { source, mode: 'import' },
+      source: item.source,
+      label: item.label || node.title,
+      width: item.width,
+      height: item.height,
+      mimeType: item.mimeType,
+      metadata: item.aspectRatio ? { aspectRatio: item.aspectRatio } : undefined,
+    }));
+    const primary = items.find(item => item.source === primaryImport?.source) ?? items[0];
+
+    return {
+      kind: items.length > 1 ? 'images' : 'image',
+      primary,
+      items: items.length > 1 ? items : undefined,
+      metadata: { source: primary?.source ?? source, mode: 'import', itemCount: items.length },
     };
   }
 
   const referenceSources = collectReferenceSources(node.getAllInputImages());
-  const silentReferenceSources = source ? [source] : [];
+  const silentReferenceSources: string[] = [];
   const textSnippets = collectTextSnippets(node.getAllInputResults(1));
   const promptReferences = node.getPromptReferences();
   const effectivePrompt = mergePromptWithTextInputs(prompt || node.title, textSnippets);
-  const count = gridType !== 'none' ? gridTypeToCount(gridType) : batchCount;
+  const count = batchCount;
 
   if (count > 1) {
     const items = await Promise.all(
       Array.from({ length: count }, (_, i) => i).map(async index => {
-        const label = gridType !== 'none' ? `画面 ${index + 1}` : `#${index + 1}`;
+        const label = `#${index + 1}`;
         const image = await generateImageWithProvider({
           prompt: effectivePrompt,
           referenceSources,
@@ -154,10 +167,10 @@ export async function executeImageNode(
     );
 
     return {
-      kind: gridType !== 'none' ? 'grid' : 'images',
+      kind: 'images',
       primary: items[0],
       items,
-      metadata: { prompt, gridType, batchCount: count, mode: 'generate' },
+      metadata: { prompt, batchCount: count, mode: 'generate' },
     };
   }
 

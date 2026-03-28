@@ -1,5 +1,7 @@
-import React, { memo } from 'react';
-import { Handle, Position, type NodeProps } from '@xyflow/react';
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { App } from 'antd';
+import { Handle, Position, type NodeProps, useUpdateNodeInternals } from '@xyflow/react';
+import { Download, Image as ImageIcon } from 'lucide-react';
 import type {
   LinghuiImageNodeMode,
   LinghuiImageNodeProperties,
@@ -8,19 +10,18 @@ import type {
 } from '../../../types/linghui';
 import {
   useNodeRunState,
+  useLinghuiNodeMutation,
   useLinghuiNodeInteraction,
-  useLinghuiNodeInteractionApi,
 } from './LinghuiNodeRunsContext';
 import { electronService } from '../../../services/electronService';
 import { EditableCompactNodeLabel } from './EditableCompactNodeLabel';
 import { resolveLinghuiNodeViewMode } from '../linghuiNodeViewMode';
-
-const IMAGE_TOOLBAR_ITEMS = [
-  { key: 'slash' as const, label: 'Slash' },
-  { key: 'multi-angle' as const, label: '多角度' },
-  { key: 'outpaint' as const, label: '扩图' },
-  { key: 'relight' as const, label: '打光' },
-];
+import {
+  createLinghuiImageImportProperties,
+  getLinghuiImageImportItems,
+  resolveLinghuiImageCollection,
+} from '../linghuiImageCollections';
+import { resolveMediaCardSize } from './linghuiNodeCardSizing';
 
 const STATUS_COLORS: Record<LinghuiRunStatus, string> = {
   idle: '#64748b',
@@ -49,29 +50,293 @@ function resolveHandleTop(index: number, total: number): string {
   return `${step * (index + 1)}%`;
 }
 
+function sanitizeFileSegment(value: string, fallback: string): string {
+  const normalized = value.trim().replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, ' ');
+  return normalized || fallback;
+}
+
+function decodeLinghuiSource(source: string): string {
+  if (!source.startsWith('koma-local://')) {
+    return source;
+  }
+
+  const decoded = decodeURIComponent(source.replace(/^koma-local:\/\//, ''));
+  return decoded.replace(/^\/([A-Za-z]:\/)/, '$1');
+}
+
+function isRemoteMediaUri(source: string): boolean {
+  return /^https?:\/\//i.test(source);
+}
+
+function isDataUri(source: string): boolean {
+  return /^data:/i.test(source);
+}
+
+function isBlobUri(source: string): boolean {
+  return /^blob:/i.test(source);
+}
+
+function getFileExtensionFromMimeType(mimeType?: string, fallback = 'png'): string {
+  if (!mimeType) {
+    return fallback;
+  }
+
+  const normalized = mimeType.toLowerCase();
+  if (normalized.includes('png')) return 'png';
+  if (normalized.includes('jpeg') || normalized.includes('jpg')) return 'jpg';
+  if (normalized.includes('webp')) return 'webp';
+  if (normalized.includes('gif')) return 'gif';
+  if (normalized.includes('bmp')) return 'bmp';
+  if (normalized.includes('tiff')) return 'tiff';
+  return fallback;
+}
+
+function getFileExtensionFromSource(source: string, mimeType?: string): string {
+  const normalized = decodeLinghuiSource(source);
+  const matched = normalized.match(/\.([a-zA-Z0-9]+)(?:$|[?#])/);
+  if (matched?.[1]) {
+    return matched[1].toLowerCase();
+  }
+  return getFileExtensionFromMimeType(mimeType, 'png');
+}
+
+async function writeImageSourceToPath(source: string, targetPath: string): Promise<void> {
+  const normalized = decodeLinghuiSource(source);
+
+  if (isRemoteMediaUri(normalized)) {
+    await electronService.fs.downloadFile(normalized, targetPath);
+    return;
+  }
+
+  if (isDataUri(normalized) || isBlobUri(normalized)) {
+    const response = await fetch(normalized);
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    await electronService.fs.writeFileBuffer(targetPath, bytes);
+    return;
+  }
+
+  await electronService.fs.copy(normalized, targetPath);
+}
+
+interface DisplayImageItem {
+  key: string;
+  source: string;
+  preview: string;
+  label?: string;
+  mimeType?: string;
+  assetId?: string;
+  isPrimary: boolean;
+}
+
 function ImageNodeInner({ id, data, selected }: NodeProps) {
+  const { message } = App.useApp();
+  const updateNodeInternals = useUpdateNodeInternals();
   const nodeData = data as unknown as LinghuiNodeData;
   const props = nodeData.properties as unknown as LinghuiImageNodeProperties;
   const mode = resolveImageNodeMode(props);
   const runState = useNodeRunState(id);
+  const { updateNodeData } = useLinghuiNodeMutation();
   const interactionHandlers = useLinghuiNodeInteraction(id);
-  const { openImageToolPanel } = useLinghuiNodeInteractionApi();
+  const rootRef = useRef<HTMLDivElement | null>(null);
   const status = runState?.status ?? 'idle';
   const statusColor = STATUS_COLORS[status] ?? STATUS_COLORS.idle;
-  const borderColor = status !== 'idle' ? statusColor : (selected ? nodeData.accent : 'rgba(63, 63, 70, 0.7)');
   const viewMode = resolveLinghuiNodeViewMode(nodeData.viewMode);
+  const [isExpanded, setIsExpanded] = useState(false);
 
-  const thumbSrc = getPreviewSource(runState?.result?.primary?.source || props.source);
-  const hasUploadedSource = Boolean(String(props.source ?? '').trim());
-  const metaLabel = hasUploadedSource
-    ? (mode === 'generate' ? '本地图作为参考' : '已挂载本地图片')
-    : '';
+  const collection = resolveLinghuiImageCollection(props, runState?.result);
+  const importItems = useMemo(() => getLinghuiImageImportItems(props), [props]);
+  const importSource = mode === 'import' ? String(props.source ?? '').trim() : '';
+  const stackedItems = collection.primary
+    ? [collection.primary, ...collection.items.filter(item => item.source !== collection.primary?.source)].slice(0, 4)
+    : collection.items.slice(0, 4);
+  const fallbackItem = collection.primary?.source || importSource
+    ? [{
+        source: collection.primary?.source || importSource,
+        label: collection.primary?.label || nodeData.label,
+      }]
+    : [];
+  const baseDisplayItems = stackedItems.length > 0 ? stackedItems : fallbackItem;
+  const displayItems = useMemo<DisplayImageItem[]>(() => {
+    const importItemBySource = new Map(importItems.map(item => [item.source, item]));
+    return baseDisplayItems.map((item, index) => {
+      const source = String(item.source ?? '').trim();
+      const importedItem = importItemBySource.get(source);
+      const isPrimary = source
+        ? source === collection.primary?.source
+        : index === 0;
+      return {
+        key: `${source || 'image'}-${importedItem?.id || index}`,
+        source,
+        preview: getPreviewSource(source),
+        label: item.label || importedItem?.label || undefined,
+        mimeType: item.mimeType || importedItem?.mimeType,
+        assetId: importedItem?.id,
+        isPrimary,
+      };
+    });
+  }, [baseDisplayItems, collection.primary?.source, importItems]);
+  const imageCount = Math.max(collection.items.length, displayItems.length);
+  const mediaCardLayout = useMemo(() => {
+    const metadataAspectRatio = typeof collection.primary?.metadata?.aspectRatio === 'string'
+      ? collection.primary.metadata.aspectRatio
+      : undefined;
+
+    return resolveMediaCardSize({
+      width: collection.primary?.width,
+      height: collection.primary?.height,
+      aspectRatio: metadataAspectRatio || props.aspectRatio,
+    });
+  }, [collection.primary, props.aspectRatio]);
+  const expandedColumns = Math.min(2, Math.max(1, displayItems.length));
+  const expandedRows = Math.max(1, Math.ceil(displayItems.length / 2));
+  const expandedGap = 12;
+  const expandedWidth = isExpanded
+    ? (mediaCardLayout.width * expandedColumns) + (expandedGap * Math.max(0, expandedColumns - 1))
+    : mediaCardLayout.width;
+  const expandedHeight = isExpanded
+    ? (mediaCardLayout.height * expandedRows) + (expandedGap * Math.max(0, expandedRows - 1))
+    : mediaCardLayout.height;
+  const nodeStyle = useMemo(() => ({
+    ...mediaCardLayout.style,
+    '--linghui-node-width': `${expandedWidth}px`,
+    '--linghui-thumb-height': `${expandedHeight}px`,
+    '--linghui-node-min-height': `${expandedHeight}px`,
+    '--linghui-base-node-width': `${mediaCardLayout.width}px`,
+    '--linghui-base-thumb-height': `${mediaCardLayout.height}px`,
+  }), [expandedHeight, expandedWidth, mediaCardLayout]);
+  const expandedDeckStyle = useMemo(() => (
+    isExpanded
+      ? {
+          gridTemplateColumns: `repeat(${expandedColumns}, ${mediaCardLayout.width}px)`,
+          gridAutoRows: `${mediaCardLayout.height}px`,
+        }
+      : undefined
+  ), [expandedColumns, isExpanded, mediaCardLayout.height, mediaCardLayout.width]);
+
+  useEffect(() => {
+    if (displayItems.length <= 1 && isExpanded) {
+      setIsExpanded(false);
+    }
+  }, [displayItems.length, isExpanded]);
+
+  useEffect(() => {
+    const rafId = window.requestAnimationFrame(() => {
+      updateNodeInternals(id);
+    });
+    return () => window.cancelAnimationFrame(rafId);
+  }, [displayItems.length, expandedHeight, expandedWidth, id, isExpanded, updateNodeInternals]);
+
+  useEffect(() => {
+    if (!isExpanded) {
+      return undefined;
+    }
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (rootRef.current && target instanceof Node && rootRef.current.contains(target)) {
+        return;
+      }
+      setIsExpanded(false);
+    };
+
+    window.addEventListener('pointerdown', handlePointerDown, true);
+    return () => window.removeEventListener('pointerdown', handlePointerDown, true);
+  }, [isExpanded]);
+
+  const updatePrimaryImage = useCallback((item: DisplayImageItem) => {
+    if (!item.source) {
+      return;
+    }
+
+    updateNodeData(id, prev => {
+      const prevProps = prev.properties as unknown as LinghuiImageNodeProperties;
+      if (collection.mode === 'import') {
+        const importEntries = getLinghuiImageImportItems(prevProps);
+        const nextPrimaryId = item.assetId
+          || importEntries.find(entry => entry.source === item.source)?.id
+          || '';
+        if (!nextPrimaryId) {
+          return prev;
+        }
+
+        const nextProps = createLinghuiImageImportProperties(prevProps, importEntries, nextPrimaryId);
+        if (nextProps.primaryAssetId === prevProps.primaryAssetId && nextProps.source === prevProps.source) {
+          return prev;
+        }
+
+        return {
+          ...prev,
+          properties: nextProps as unknown as Record<string, unknown>,
+        };
+      }
+
+      if (prevProps.primaryResultSource === item.source) {
+        return prev;
+      }
+
+      return {
+        ...prev,
+        properties: {
+          ...prevProps,
+          primaryResultSource: item.source,
+        } as unknown as Record<string, unknown>,
+      };
+    }, { markStale: false });
+  }, [collection.mode, id, updateNodeData]);
+
+  const handleDownloadImage = useCallback(async (item: DisplayImageItem) => {
+    if (!item.source) {
+      message.info('当前图片还没有可下载的源文件');
+      return;
+    }
+
+    const extension = getFileExtensionFromSource(item.source, item.mimeType);
+    const filename = `${sanitizeFileSegment(item.label || nodeData.label || 'image', 'image')}.${extension}`;
+
+    try {
+      if (!electronService.isElectron()) {
+        const anchor = document.createElement('a');
+        anchor.href = item.preview || getPreviewSource(item.source);
+        anchor.download = filename;
+        anchor.click();
+        message.success('图片已开始下载');
+        return;
+      }
+
+      const result = await electronService.dialog.saveFile({
+        title: '保存图片',
+        defaultPath: filename,
+        filters: [{ name: '图片', extensions: [extension] }],
+      });
+
+      if (!result.filePath) {
+        return;
+      }
+
+      await writeImageSourceToPath(item.source, result.filePath);
+      message.success('图片已保存');
+    } catch (error: any) {
+      message.error(error?.message || '下载图片失败');
+    }
+  }, [message, nodeData.label]);
+
+  const stopSurfaceEvent = useCallback((event: React.SyntheticEvent) => {
+    event.stopPropagation();
+  }, []);
 
   return (
     <div
-      className={`linghuiCompactNode nopan ${selected ? 'isSelected' : ''} ${viewMode === 'collapsed' ? 'isCollapsed' : ''}`}
+      ref={rootRef}
+      className={`linghuiCompactNode nopan ${selected ? 'isSelected' : ''} ${viewMode === 'collapsed' ? 'isCollapsed' : ''} ${displayItems.length > 1 ? 'isMultiImage' : ''} ${isExpanded ? 'isImageExpanded' : ''}`}
       data-view-mode={viewMode}
-      style={{ borderColor }}
+      style={{
+        ...nodeStyle,
+        boxShadow: status !== 'idle'
+          ? `0 0 0 1px ${statusColor}66, 0 12px 28px rgba(2, 6, 23, 0.32)`
+          : selected
+            ? '0 0 0 1px rgba(255, 255, 255, 0.08), 0 12px 24px rgba(2, 6, 23, 0.26)'
+            : undefined,
+      }}
       {...interactionHandlers}
     >
       {nodeData.inputs.map((slot, index) => (
@@ -96,27 +361,61 @@ function ImageNodeInner({ id, data, selected }: NodeProps) {
 
       {/* 缩略图 */}
       <div className="linghuiCompactThumb">
-        {selected && (
-          <div className="linghuiCompactToolBar">
-            {IMAGE_TOOLBAR_ITEMS.map(item => (
-              <button
-                key={item.key}
-                type="button"
-                className="linghuiCompactToolButton nodrag nopan"
-                onPointerDown={event => event.stopPropagation()}
-                onClick={event => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  openImageToolPanel(id, item.key);
-                }}
-              >
-                {item.label}
-              </button>
-            ))}
+        {displayItems.length > 0 ? (
+          <div
+            className={`linghuiCompactThumbDeck ${displayItems.length > 1 ? 'isStacked' : 'isSingle'} ${isExpanded ? 'isExpanded' : ''}`}
+            data-count={displayItems.length}
+            style={expandedDeckStyle}
+          >
+            {displayItems.map((item, index) => {
+              return (
+                <div
+                  key={item.key}
+                  className={`linghuiCompactThumbLayer ${item.isPrimary ? 'isPrimary' : ''}`}
+                  style={{ ['--layer-index' as string]: index }}
+                >
+                  {item.preview ? <img src={item.preview} alt={item.label || `图片 ${index + 1}`} draggable={false} /> : <ImageIcon size={18} />}
+                  {isExpanded && (
+                    <div className="linghuiCompactThumbLayerOverlay">
+                      <div className="linghuiCompactThumbLayerTop">
+                        {item.isPrimary ? <span className="linghuiCompactThumbPrimaryBadge">主图</span> : <span />}
+                      </div>
+                      <div className="linghuiCompactThumbLayerActions">
+                        <button
+                          type="button"
+                          className="linghuiCompactThumbActionButton nodrag nopan"
+                          onMouseDown={stopSurfaceEvent}
+                          onPointerDown={stopSurfaceEvent}
+                          onClick={(event) => {
+                            stopSurfaceEvent(event);
+                            updatePrimaryImage(item);
+                          }}
+                          disabled={item.isPrimary}
+                          title={item.isPrimary ? '当前主图' : '设为主图'}
+                        >
+                          设为主图
+                        </button>
+                        <button
+                          type="button"
+                          className="linghuiCompactThumbActionButton nodrag nopan"
+                          onMouseDown={stopSurfaceEvent}
+                          onPointerDown={stopSurfaceEvent}
+                          onClick={(event) => {
+                            stopSurfaceEvent(event);
+                            void handleDownloadImage(item);
+                          }}
+                          title="下载图片"
+                        >
+                          <Download size={12} />
+                          <span>下载</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
-        )}
-        {thumbSrc ? (
-          <img src={thumbSrc} alt="preview" draggable={false} />
         ) : (
           <div className="linghuiCompactThumbEmpty" style={{ background: `${nodeData.accent}18` }}>
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
@@ -126,20 +425,34 @@ function ImageNodeInner({ id, data, selected }: NodeProps) {
             </svg>
           </div>
         )}
-      </div>
-
-      {/* 标签 */}
-      <div className="linghuiCompactInfo">
-        <EditableCompactNodeLabel
-          nodeId={id}
-          label={nodeData.label}
-          fallbackLabel="图片"
-        />
-        {metaLabel && status === 'idle' && (
-          <span className="linghuiCompactMeta">{metaLabel}</span>
+        <div className="linghuiCompactThumbMeta">
+          <EditableCompactNodeLabel
+            nodeId={id}
+            label={nodeData.label}
+            fallbackLabel="图片"
+          />
+          {imageCount > 1 && (
+            <span className="linghuiCompactThumbCount">
+              {imageCount}
+            </span>
+          )}
+        </div>
+        {displayItems.length > 1 && (
+          <button
+            type="button"
+            className="linghuiCompactThumbExpand nodrag nopan"
+            onMouseDown={stopSurfaceEvent}
+            onPointerDown={stopSurfaceEvent}
+            onClick={(event) => {
+              stopSurfaceEvent(event);
+              setIsExpanded(current => !current);
+            }}
+          >
+            {isExpanded ? '收起' : '展开'}
+          </button>
         )}
         {status === 'running' && (
-          <div className="linghuiCompactProgress">
+          <div className="linghuiCompactThumbProgress">
             <div className="linghuiCompactProgressBar" style={{ width: `${runState?.progress ?? 0}%` }} />
           </div>
         )}

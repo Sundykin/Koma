@@ -8,6 +8,7 @@ import React, {
 } from 'react';
 import { App as AntApp } from 'antd';
 import {
+  type Edge,
   useNodesState,
   useEdgesState,
   useReactFlow,
@@ -102,6 +103,10 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
     () => nodes.filter(node => node.selected).map(node => node.id),
     [nodes],
   );
+  const selectedEdgeIds = useMemo(
+    () => edges.filter(edge => edge.selected).map(edge => edge.id),
+    [edges],
+  );
 
   const {
     contextMenu,
@@ -161,12 +166,14 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
     duplicateSelection,
     createNodeFromWorkspaceAsset,
     deleteNodesByIds,
+    deleteEdgesByIds,
     ungroupGroupsByIds,
     insertNodeAtScreenPosition,
     deriveStoryboardShotsFromScript,
     deriveStoryboardImagesFromScript,
     deriveStoryboardVideosFromScript,
     createGroupFromSelection,
+    createDerivedImageNodesFromNode,
     clearPendingGroupFrame,
   } = useLinghuiCanvasDocumentOps({
     reactFlow,
@@ -179,6 +186,7 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
     setPendingGroupFrame,
     pendingGroupFrame,
     scheduleSnapshot,
+    onClearNodeRunState,
   });
 
   const {
@@ -222,11 +230,13 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
     pasteClipboardSnapshot,
     duplicateSelection,
     deleteNodesByIds,
+    deleteEdgesByIds,
     undoHistory,
     redoHistory,
     closeContextMenu,
     closeQuickCreate,
     clearPendingGroupFrame,
+    selectedEdgeIds,
   });
   const {
     handleNodesChange,
@@ -300,6 +310,35 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
 
   const { zoomIn, zoomOut, focusContent } = useLinghuiCanvasViewportControls(reactFlow);
 
+  const selectSingleEdge = useCallback((edgeId: string) => {
+    setEdges(currentEdges => currentEdges.map(edge => ({
+      ...edge,
+      selected: edge.id === edgeId,
+    })));
+    setNodes(currentNodes => currentNodes.map(node => (
+      node.selected ? { ...node, selected: false } : node
+    )));
+    setEditorSelection(null);
+    setActiveNodeTool(null);
+    setPendingGroupFrame(null);
+  }, [setActiveNodeTool, setEditorSelection, setEdges, setNodes, setPendingGroupFrame]);
+
+  const handleEdgeClick = useCallback((event: React.MouseEvent, edge: Edge) => {
+    event.preventDefault();
+    event.stopPropagation();
+    closeContextMenu();
+    closeQuickCreate();
+    selectSingleEdge(edge.id);
+  }, [closeContextMenu, closeQuickCreate, selectSingleEdge]);
+
+  const handleEdgeContextMenu = useCallback((event: React.MouseEvent, edge: Edge) => {
+    event.preventDefault();
+    event.stopPropagation();
+    closeQuickCreate();
+    selectSingleEdge(edge.id);
+    openContextMenuAt(event.clientX, event.clientY, 'edge', { edgeId: edge.id, selectionIds: [] });
+  }, [closeQuickCreate, openContextMenuAt, selectSingleEdge]);
+
   const overlayProps = useLinghuiCanvasOverlayProps({
     editorSelection,
     activeNodeTool,
@@ -339,10 +378,12 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
     deriveStoryboardShotsFromScript,
     deriveStoryboardImagesFromScript,
     deriveStoryboardVideosFromScript,
+    createDerivedImageNodesFromNode,
     copySelectionToClipboard,
     duplicateSelection,
     pasteClipboardSnapshot,
     deleteNodesByIds,
+    deleteEdgesByIds,
     ungroupGroupsByIds,
     handleUploadImagesToCanvas,
     handleUploadVideosToCanvas,
@@ -436,6 +477,8 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
         onSelectionEnd: handleSelectionEnd,
         onNodeClick: handleNodeClick,
         onNodeContextMenu: handleNodeContextMenu,
+        onEdgeClick: handleEdgeClick,
+        onEdgeContextMenu: handleEdgeContextMenu,
         onPaneClick: handlePaneClick,
         onPaneContextMenu: handlePaneContextMenu,
         onMoveEnd: handleMoveEnd,

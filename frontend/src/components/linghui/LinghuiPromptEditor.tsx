@@ -35,6 +35,7 @@ interface LinghuiPromptEditorProps {
   minHeight?: string;
   maxHeight?: string;
   darkTheme?: boolean;
+  surfaceStyle?: 'default' | 'fusion';
   className?: string;
   style?: React.CSSProperties;
 }
@@ -722,6 +723,7 @@ export const LinghuiPromptEditor: React.FC<LinghuiPromptEditorProps> = ({
   minHeight = '120px',
   maxHeight = '200px',
   darkTheme = true,
+  surfaceStyle = 'default',
   className,
   style,
 }) => {
@@ -743,6 +745,7 @@ export const LinghuiPromptEditor: React.FC<LinghuiPromptEditorProps> = ({
   ], [references]);
 
   const baseExtensions = useMemo<Extension[]>(() => {
+    const isFusionSurface = surfaceStyle === 'fusion';
     const extensions: Extension[] = [
       highlightActiveLine(),
       history(),
@@ -759,12 +762,16 @@ export const LinghuiPromptEditor: React.FC<LinghuiPromptEditorProps> = ({
           height: minHeight,
           maxHeight,
           overflow: 'visible',
-          border: darkTheme ? '1px solid #3f3f46' : '1px solid #d4d4d8',
-          borderRadius: '10px',
+          border: isFusionSurface
+            ? (darkTheme ? '1px solid rgba(148, 163, 184, 0.16)' : '1px solid rgba(148, 163, 184, 0.22)')
+            : (darkTheme ? '1px solid #3f3f46' : '1px solid #d4d4d8'),
+          borderRadius: isFusionSurface ? '16px' : '10px',
           fontFamily: 'system-ui, -apple-system, sans-serif',
           fontSize: '13px',
           lineHeight: '1.6',
-          backgroundColor: darkTheme ? '#111827' : '#ffffff',
+          backgroundColor: isFusionSurface
+            ? (darkTheme ? 'rgba(255, 255, 255, 0.03)' : 'rgba(255, 255, 255, 0.92)')
+            : (darkTheme ? '#111827' : '#ffffff'),
         },
         '.cm-scroller': {
           overflow: 'auto',
@@ -781,10 +788,12 @@ export const LinghuiPromptEditor: React.FC<LinghuiPromptEditorProps> = ({
         },
         '&.cm-focused': {
           outline: 'none',
-          borderColor: darkTheme ? '#10b981' : '#2563eb',
+          borderColor: isFusionSurface
+            ? (darkTheme ? 'rgba(52, 211, 153, 0.42)' : 'rgba(37, 99, 235, 0.42)')
+            : (darkTheme ? '#10b981' : '#2563eb'),
           boxShadow: darkTheme
-            ? '0 0 0 2px rgba(16, 185, 129, 0.18)'
-            : '0 0 0 2px rgba(37, 99, 235, 0.18)',
+            ? (isFusionSurface ? '0 0 0 1px rgba(16, 185, 129, 0.14)' : '0 0 0 2px rgba(16, 185, 129, 0.18)')
+            : (isFusionSurface ? '0 0 0 1px rgba(37, 99, 235, 0.14)' : '0 0 0 2px rgba(37, 99, 235, 0.18)'),
         },
         '.cm-activeLine': {
           backgroundColor: 'transparent',
@@ -809,7 +818,7 @@ export const LinghuiPromptEditor: React.FC<LinghuiPromptEditorProps> = ({
     }
 
     return extensions;
-  }, [darkTheme, maxHeight, minHeight, placeholder, readOnly]);
+  }, [darkTheme, maxHeight, minHeight, placeholder, readOnly, surfaceStyle]);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -873,7 +882,7 @@ export const LinghuiPromptEditor: React.FC<LinghuiPromptEditorProps> = ({
   }, []);
 
   return (
-    <div className={className} style={style}>
+    <div className={className} style={style} data-surface-style={surfaceStyle}>
       <div
         ref={containerRef}
         style={{ position: 'relative', cursor: 'text' }}

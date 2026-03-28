@@ -1,6 +1,7 @@
 import type {
   LinghuiCanvasSelection,
   LinghuiExecutionLogEntry,
+  LinghuiImageAssetItem,
   LinghuiNodeCatalogItem,
   LinghuiNodeRunState,
   LinghuiNodeToolState,
@@ -26,6 +27,7 @@ export interface LinghuiCanvasOverlaysProps {
   onDeriveScriptShots: (nodeId: string, shots: LinghuiStoryboardFrame[]) => void;
   onGenerateScriptImages: (nodeId: string, shots: LinghuiStoryboardFrame[]) => void;
   onGenerateScriptVideos: (nodeId: string, shots: LinghuiStoryboardFrame[]) => void;
+  onCreateDerivedImportImages: (nodeId: string, items: LinghuiImageAssetItem[]) => void;
   pendingGroupFrameStyle: { left: number; top: number; width: number; height: number } | null;
   pendingGroupActionsStyle: { left: number; top: number } | null;
   pendingGroupCreatableIds: string[];
@@ -55,6 +57,7 @@ export interface LinghuiCanvasOverlaysProps {
   onDeleteCurrentGroup: () => void;
   onPasteNearNode: () => void;
   onDeleteCurrentNode: () => void;
+  onDeleteCurrentEdge: () => void;
   onUploadImages: () => void;
   onUploadVideos: () => void;
   onUploadAudios: () => void;
@@ -84,6 +87,7 @@ export function LinghuiCanvasOverlays({
   onDeriveScriptShots,
   onGenerateScriptImages,
   onGenerateScriptVideos,
+  onCreateDerivedImportImages,
   pendingGroupFrameStyle,
   pendingGroupActionsStyle,
   pendingGroupCreatableIds,
@@ -113,6 +117,7 @@ export function LinghuiCanvasOverlays({
   onDeleteCurrentGroup,
   onPasteNearNode,
   onDeleteCurrentNode,
+  onDeleteCurrentEdge,
   onUploadImages,
   onUploadVideos,
   onUploadAudios,
@@ -140,6 +145,7 @@ export function LinghuiCanvasOverlays({
         onDeriveScriptShots={onDeriveScriptShots}
         onGenerateScriptImages={onGenerateScriptImages}
         onGenerateScriptVideos={onGenerateScriptVideos}
+        onCreateDerivedImportImages={onCreateDerivedImportImages}
         canvasRect={canvasRect}
         workspaceId={workspaceId}
         onAssetLibraryMutate={onAssetLibraryMutate}
@@ -181,6 +187,7 @@ export function LinghuiCanvasOverlays({
         onDeleteCurrentGroup={onDeleteCurrentGroup}
         onPasteNearNode={onPasteNearNode}
         onDeleteCurrentNode={onDeleteCurrentNode}
+        onDeleteCurrentEdge={onDeleteCurrentEdge}
         onUploadImages={onUploadImages}
         onUploadVideos={onUploadVideos}
         onUploadAudios={onUploadAudios}

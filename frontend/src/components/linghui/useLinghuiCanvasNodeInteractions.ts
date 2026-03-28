@@ -12,6 +12,7 @@ import type {
   LinghuiNodeToolState,
 } from '../../types/linghui';
 import {
+  clampNodePositionToParentBounds,
   NODE_LONG_PRESS_MS,
   type ActiveNodePressState,
   type LinghuiPendingGroupFrame,
@@ -195,13 +196,24 @@ export function useLinghuiCanvasNodeInteractions({
       if (deltaX !== 0 || deltaY !== 0) {
         setNodes(currentNodes => currentNodes.map(node => (
           node.id === nodeId
-            ? {
-                ...node,
-                position: {
+            ? (() => {
+                const nextPosition = {
                   x: node.position.x + deltaX,
                   y: node.position.y + deltaY,
-                },
-              }
+                };
+                const parentNode = node.parentId
+                  ? currentNodes.find(currentNode => currentNode.id === node.parentId)
+                  : null;
+
+                return {
+                  ...node,
+                  position: clampNodePositionToParentBounds({
+                    node,
+                    parentNode,
+                    nextPosition,
+                  }),
+                };
+              })()
             : node
         )));
       }

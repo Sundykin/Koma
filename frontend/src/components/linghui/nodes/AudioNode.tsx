@@ -4,6 +4,7 @@ import type { LinghuiNodeData, LinghuiRunStatus } from '../../../types/linghui';
 import { useNodeRunState, useLinghuiNodeInteraction } from './LinghuiNodeRunsContext';
 import { EditableCompactNodeLabel } from './EditableCompactNodeLabel';
 import { resolveLinghuiNodeViewMode } from '../linghuiNodeViewMode';
+import { resolveDefaultCompactNodeStyle } from './linghuiNodeCardSizing';
 
 const STATUS_COLORS: Record<LinghuiRunStatus, string> = {
   idle: '#64748b',
@@ -53,7 +54,6 @@ function AudioNodeInner({ id, data, selected }: NodeProps) {
   const interactionHandlers = useLinghuiNodeInteraction(id);
   const status = runState?.status ?? 'idle';
   const statusColor = STATUS_COLORS[status] ?? STATUS_COLORS.idle;
-  const borderColor = status !== 'idle' ? statusColor : (selected ? nodeData.accent : 'rgba(63, 63, 70, 0.7)');
   const hasUploadedSource = Boolean(String(props.source ?? '').trim());
   const durationLabel = formatDuration(runState?.result?.primary?.durationSec);
   const modeLabel = hasUploadedSource
@@ -67,7 +67,10 @@ function AudioNodeInner({ id, data, selected }: NodeProps) {
     <div
       className={`linghuiCompactNode nopan ${selected ? 'isSelected' : ''} ${viewMode === 'collapsed' ? 'isCollapsed' : ''}`}
       data-view-mode={viewMode}
-      style={{ borderColor }}
+      style={{
+        ...resolveDefaultCompactNodeStyle({ thumbHeight: 214, minHeight: 344 }),
+        borderColor: status !== 'idle' ? statusColor : (selected ? nodeData.accent : 'rgba(63, 63, 70, 0.7)'),
+      }}
       {...interactionHandlers}
     >
       {nodeData.inputs.map((slot, index) => (

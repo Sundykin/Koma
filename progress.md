@@ -1,5 +1,207 @@
 # 進度日誌
 
+## 會話：2026-03-28 图片节点多图集合与宫格切分
+
+### 階段 1：上下文回读与方案收敛
+- **狀態：** completed
+- **開始時間：** 2026-03-28 CST
+- 執行的操作：
+  - 读取 `openspec/AGENTS.md`、`openspec/project.md`、`openspec list`、`openspec list --specs`
+  - 读取现有 `TASK_PLAN.md`、`findings.md`、`progress.md`
+  - 检查 `ImageNodeEditor.tsx`、`ImageNode.tsx`、`LinghuiNodeEditor.tsx`
+  - 检查 `linghuiPromptReferences.ts`、`linghuiExecutionNodeExecutors.ts`、`linghuiExecutionProviders.ts`
+  - 检查 `electron/service/ffmpeg.ts`、`electron/controller/ffmpeg.ts` 和 `ffmpegManager.ts`
+  - 收敛为“多图集合 + 主图控制 + 独立宫格切分工具”的实现方向
+- 建立/修改的檔案：
+  - `TASK_PLAN.md`
+  - `findings.md`
+  - `progress.md`
+
+### 階段 2：OpenSpec 变更草案
+- **狀態：** completed
+- **開始時間：** 2026-03-28 CST
+- 執行的操作：
+  - 新建 `openspec/changes/add-linghui-image-batches-and-grid-split/`
+  - 起草 `proposal.md`，明确图片集合、主图和宫格切分范围
+  - 起草 `design.md`，定义多图集合数据模型、下游只消费主图和 NxN 切图策略
+  - 起草 `tasks.md`，拆解数据模型、UI、执行链和 FFmpeg 扩展任务
+  - 起草 `specs/linghui-studio/spec.md`，写入图片节点多图与宫格切分要求
+  - 执行 `openspec validate add-linghui-image-batches-and-grid-split --strict` 并通过
+- 建立/修改的檔案：
+  - `openspec/changes/add-linghui-image-batches-and-grid-split/proposal.md`
+  - `openspec/changes/add-linghui-image-batches-and-grid-split/design.md`
+  - `openspec/changes/add-linghui-image-batches-and-grid-split/tasks.md`
+  - `openspec/changes/add-linghui-image-batches-and-grid-split/specs/linghui-studio/spec.md`
+  - `TASK_PLAN.md`
+  - `findings.md`
+  - `progress.md`
+
+### 階段 3：图片节点数据模型与消费链路
+- **狀態：** completed
+- **開始時間：** 2026-03-28 CST
+- 執行的操作：
+  - 扩展 `frontend/src/types/linghui.ts`，为图片节点增加多图集合、主图与结果主图映射字段
+  - 新建 `frontend/src/components/linghui/linghuiImageCollections.ts` 统一处理导入集合、运行集合和主图解析
+  - 调整 `linghuiExecutionShared.ts`、`linghuiExecutionNodeExecutors.ts` 和 `linghuiPromptReferences.ts`
+  - 让下游输入、提示词引用和执行编译统一只消费图片节点当前主图
+- 建立/修改的檔案：
+  - `frontend/src/types/linghui.ts`
+  - `frontend/src/components/linghui/linghuiImageCollections.ts`
+  - `frontend/src/components/linghui/linghuiExecutionShared.ts`
+  - `frontend/src/components/linghui/linghuiExecutionNodeExecutors.ts`
+  - `frontend/src/components/linghui/linghuiPromptReferences.ts`
+
+### 階段 4：图片节点 UI 与交互实现
+- **狀態：** completed
+- **開始時間：** 2026-03-28 CST
+- 執行的操作：
+  - 重构 `ImageNodeEditor.tsx`，支持多图导入、移除、主图切换、比例校验和 1-4 张生成
+  - 调整 `LinghuiNodeEditor.tsx`，把图片工具面板与宫格切分入口接入节点编辑态
+  - 重构 `nodes/ImageNode.tsx`，让图片节点直接展示主图，并在多图场景下提供展开平铺动画
+  - 调整 `LinghuiPage.css`，补齐多图集合、节点平铺和宫格工具样式
+- 建立/修改的檔案：
+  - `frontend/src/components/linghui/ImageNodeEditor.tsx`
+  - `frontend/src/components/linghui/LinghuiNodeEditor.tsx`
+  - `frontend/src/components/linghui/nodes/ImageNode.tsx`
+  - `frontend/src/components/linghui/LinghuiPage.css`
+
+### 階段 5：宫格切分与画布回写
+- **狀態：** completed
+- **開始時間：** 2026-03-28 CST
+- 執行的操作：
+  - 扩展 Electron FFmpeg 切图能力到 2x2 / 3x3 / 4x4 / 5x5，并支持切块后放大到原图尺寸
+  - 接入 `materializeLinghuiWorkspaceAssetSource`，确保远程或临时图片会先落地再交给 FFmpeg
+  - 在 `useLinghuiCanvasDocumentOps.ts` 中增加 `createDerivedImageNodesFromNode`，把切分结果回写为新的导入图片节点
+- 建立/修改的檔案：
+  - `electron/service/ffmpeg.ts`
+  - `electron/controller/ffmpeg.ts`
+  - `frontend/src/services/ffmpegManager.ts`
+  - `frontend/src/store/linghuiStorage.ts`
+  - `frontend/src/components/linghui/useLinghuiCanvasDocumentOps.ts`
+  - `frontend/src/components/linghui/LinghuiCanvas.tsx`
+  - `frontend/src/components/linghui/LinghuiCanvasOverlays.tsx`
+  - `frontend/src/components/linghui/useLinghuiCanvasOverlayProps.ts`
+
+### 階段 6：验证与收尾
+- **狀態：** in_progress
+- **開始時間：** 2026-03-28 CST
+- 執行的操作：
+  - 修复 `useLinghuiCanvasDocumentOps.ts` 对 `createLinghuiImageImportProperties` 的旧引用，恢复前端类型检查
+  - 补齐图片节点多图展开平铺动画和宫格预览样式
+  - 把图片节点 DOM 改成“节点缩略图区本身就是叠图结构”，去掉额外挂在主图上的小缩略图堆叠
+  - 宫格切分生成的新图片节点会自动回连到源图片节点
+  - 画布新增连线右键删除能力，并支持选中连线后按 `Delete / Backspace` 删除
+  - 进一步精简图片节点样式：名称移到图片左上角、数量移到右上角，并增加只展开图片的 2x2 展开按钮
+  - 收敛图片节点边框层级，只保留主图高亮边框，去掉多余外层强调
+  - 执行 `pnpm -s exec tsc --noEmit --pretty false -p frontend/tsconfig.json` 并通过
+  - 在 `frontend/` 下执行 `pnpm exec vite build` 并通过
+  - 更新 `openspec/changes/add-linghui-image-batches-and-grid-split/tasks.md`、`TASK_PLAN.md`、`findings.md`、`progress.md`
+- 建立/修改的檔案：
+  - `frontend/src/components/linghui/ImageNodeEditor.tsx`
+  - `frontend/src/components/linghui/LinghuiPage.css`
+  - `frontend/src/components/linghui/LinghuiEdge.tsx`
+  - `frontend/src/components/linghui/nodes/ImageNode.tsx`
+  - `frontend/src/components/linghui/LinghuiCanvas.tsx`
+  - `frontend/src/components/linghui/LinghuiCanvasStage.tsx`
+  - `frontend/src/components/linghui/LinghuiCanvasContextMenu.tsx`
+  - `frontend/src/components/linghui/LinghuiCanvasOverlays.tsx`
+  - `frontend/src/components/linghui/useLinghuiCanvasOverlayState.ts`
+  - `frontend/src/components/linghui/useLinghuiCanvasOverlayProps.ts`
+  - `frontend/src/components/linghui/useLinghuiCanvasHotkeys.ts`
+  - `frontend/src/components/linghui/linghuiExecutionShared.ts`
+  - `frontend/src/components/linghui/linghuiCanvasShared.ts`
+  - `frontend/src/components/linghui/useLinghuiCanvasDocumentOps.ts`
+  - `openspec/changes/add-linghui-image-batches-and-grid-split/tasks.md`
+  - `TASK_PLAN.md`
+  - `findings.md`
+  - `progress.md`
+
+## 會話：2026-03-28 节点编辑弹窗首轮实施
+
+### 階段 1：规范回读与实现边界确认
+- **狀態：** completed
+- **開始時間：** 2026-03-28 CST
+- 執行的操作：
+  - 重新读取 `update-linghui-node-editor-fusion` 的 `proposal.md`、`design.md`、`tasks.md`
+  - 对照 `LinghuiNodeEditor.tsx`、`ImageNodeEditor.tsx`、`VideoNodeEditor.tsx`、`LinghuiPromptEditor.tsx`、`LinghuiPage.css`
+  - 明确本轮只实施弹窗布局、模式裁剪、工具面板分层和提示词视觉融合，不改执行引擎
+- 建立/修改的檔案：
+  - `TASK_PLAN.md`
+
+### 階段 2：节点编辑弹窗与模式化表单重构
+- **狀態：** completed
+- **開始時間：** 2026-03-28 CST
+- 執行的操作：
+  - 重写 `LinghuiNodeEditor.tsx` 的轻编辑态布局，改为上方工具条和下方主编辑区
+  - 为轻编辑态增加底部优先、侧边降级的避让策略
+  - 重写 `ImageNodeEditor.tsx`，按 `generate/import` 模式拆分表单
+  - 重写 `VideoNodeEditor.tsx`，按生成/导入状态拆分表单
+  - 将图片/视频工具面板改成独立侧面板，不再直接插入主表单
+  - 为 `LinghuiPromptEditor.tsx` 增加 `surfaceStyle="fusion"`，弱化内层盒子感
+  - 调整 `LinghuiPage.css`，补齐新的双区布局、独立工具面板和紧凑资源控件样式
+- 建立/修改的檔案：
+  - `frontend/src/components/linghui/LinghuiNodeEditor.tsx`
+  - `frontend/src/components/linghui/ImageNodeEditor.tsx`
+  - `frontend/src/components/linghui/VideoNodeEditor.tsx`
+  - `frontend/src/components/linghui/LinghuiPromptEditor.tsx`
+  - `frontend/src/components/linghui/LinghuiPage.css`
+
+### 階段 3：实现验证与任务同步
+- **狀態：** completed
+- **開始時間：** 2026-03-28 CST
+- 執行的操作：
+  - 执行 `pnpm -s exec tsc --noEmit --pretty false`，发现仓库根目录被 `electron/` 既有问题阻塞
+  - 改为执行 `pnpm -s exec tsc --noEmit --pretty false -p frontend/tsconfig.json` 并通过
+  - 在 `frontend/` 下执行 `pnpm exec vite build` 并通过
+  - 更新 `tasks.md`、`TASK_PLAN.md`、`findings.md`、`progress.md`
+- 建立/修改的檔案：
+  - `openspec/changes/update-linghui-node-editor-fusion/tasks.md`
+  - `TASK_PLAN.md`
+  - `findings.md`
+  - `progress.md`
+
+## 會話：2026-03-28 节点编辑弹窗变更提案
+
+### 階段 1：上下文恢复与现状勘查
+- **狀態：** completed
+- **開始時間：** 2026-03-28 CST
+- 執行的操作：
+  - 读取 `planning-with-files-zht` 技能说明
+  - 重新读取 `openspec/AGENTS.md`、`openspec/project.md`、`openspec list`、`openspec list --specs`
+  - 重新读取 `task_plan.md`、`findings.md`、`progress.md`
+  - 核对 `LinghuiNodeEditor.tsx`、`ImageNodeEditor.tsx`、`VideoNodeEditor.tsx`、`LinghuiPromptEditor.tsx`、`LinghuiPage.css`
+  - 回看归档中的灵绘 spec / design，确认不沿用旧 LiteGraph 方案
+- 建立/修改的檔案：
+  - `task_plan.md`
+  - `findings.md`
+  - `progress.md`
+
+### 階段 2：OpenSpec 变更草案编写
+- **狀態：** completed
+- **開始時間：** 2026-03-28 CST
+- 執行的操作：
+  - 新建 `openspec/changes/update-linghui-node-editor-fusion/`
+  - 起草 `proposal.md`，明确问题、变更范围和影响文件
+  - 起草 `design.md`，收敛双区编辑态、模式裁剪、工具独立化和提示词视觉融合决策
+  - 起草 `tasks.md`，拆出后续实现任务
+  - 起草 `specs/linghui-studio/spec.md`，写入节点编辑态相关规范
+- 建立/修改的檔案：
+  - `openspec/changes/update-linghui-node-editor-fusion/proposal.md`
+  - `openspec/changes/update-linghui-node-editor-fusion/design.md`
+  - `openspec/changes/update-linghui-node-editor-fusion/tasks.md`
+  - `openspec/changes/update-linghui-node-editor-fusion/specs/linghui-studio/spec.md`
+
+### 階段 3：规范校验与交付整理
+- **狀態：** completed
+- **開始時間：** 2026-03-28 CST
+- 執行的操作：
+  - 执行 `openspec validate update-linghui-node-editor-fusion --strict`
+  - 确认本次 change 严格校验通过
+  - 将 `TASK_PLAN.md` 更新为已完成状态，收拢本轮提案上下文
+- 建立/修改的檔案：
+  - `TASK_PLAN.md`
+  - `progress.md`
+
 ## 會話：2026-03-27 LibTV 对标灵绘规划
 
 ### 階段 1：调研初始化
