@@ -1,24 +1,45 @@
 export type LinghuiNodeType =
   | 'linghui/reference'
+  | 'linghui/text'
   | 'linghui/image'
   | 'linghui/video'
+  | 'linghui/audio'
   | 'linghui/storyboard-shot'
   | 'linghui/storyboard-group';
 
 export type LinghuiRFNodeTypeKey =
   | 'linghui-reference'
+  | 'linghui-text'
   | 'linghui-image'
   | 'linghui-video'
+  | 'linghui-audio'
   | 'linghui-storyboard-shot'
   | 'linghui-storyboard-group';
 
 export type LinghuiNodeCategory = 'creation' | 'storyboard';
-export type LinghuiSlotDataType = 'image' | 'text' | 'video' | 'images' | 'shot' | 'storyboard';
+export type LinghuiSlotDataType = 'image' | 'text' | 'video' | 'audio' | 'images' | 'shot' | 'storyboard';
 export type LinghuiRunStatus = 'idle' | 'running' | 'succeeded' | 'failed' | 'stale';
-export type LinghuiResultKind = 'image' | 'text' | 'video' | 'grid' | 'images' | 'shot' | 'storyboard';
+export type LinghuiResultKind = 'image' | 'text' | 'video' | 'audio' | 'grid' | 'images' | 'shot' | 'storyboard';
 export type LinghuiCanvasMode = 'mouse' | 'hand';
+export type LinghuiImageNodeMode = 'import' | 'generate';
+export type LinghuiImageToolKey = 'slash' | 'multi-angle' | 'outpaint' | 'relight' | 'repaint';
+export type LinghuiVideoToolKey = 'upscale' | 'analyze' | 'compose';
+export type LinghuiNodeToolState =
+  | { kind: 'image'; nodeId: string; tool: LinghuiImageToolKey }
+  | { kind: 'video'; nodeId: string; tool: LinghuiVideoToolKey }
+  | null;
 
 // --- 图片节点 ---
+
+export type LinghuiTextNodeMode = 'manual' | 'generate';
+
+export interface LinghuiTextNodeProperties {
+  mode: LinghuiTextNodeMode;
+  content: string;
+  prompt: string;
+  systemPrompt: string;
+  llmConfigId: string;
+}
 
 export interface LinghuiReferenceNodeProperties {
   source: string;
@@ -28,6 +49,8 @@ export interface LinghuiReferenceNodeProperties {
 export type LinghuiGridType = 'none' | '2x2' | '3x3' | '4x4' | '5x5';
 
 export interface LinghuiImageNodeProperties {
+  mode: LinghuiImageNodeMode;
+  source: string;
   prompt: string;
   ttiConfigId: string;
   aspectRatio: string;
@@ -43,10 +66,20 @@ export type LinghuiVideoRefMode = 'all-ref' | 'first-last-frame';
 export interface LinghuiVideoNodeProperties {
   prompt: string;
   itvConfigId: string;
+  source: string;
+  posterSource: string;
   refMode: LinghuiVideoRefMode;
   aspectRatio: string;
   resolution: string;
   duration: number;
+}
+
+// --- 音频节点 ---
+
+export interface LinghuiAudioNodeProperties {
+  source: string;
+  prompt: string;
+  ttsConfigId: string;
 }
 
 // --- 通用 ---
@@ -73,7 +106,7 @@ export interface LinghuiEdgeData {
 }
 
 export interface LinghuiMediaItem {
-  kind: 'image' | 'video';
+  kind: 'image' | 'video' | 'audio';
   label?: string;
   source?: string;
   posterSource?: string;
@@ -160,11 +193,14 @@ export interface LinghuiCanvasGroupData {
   collapsed?: boolean;
 }
 
-export interface LinghuiGraphSnapshot {
-  version: number;
+export interface LinghuiSubgraphSnapshot {
   nodes: LinghuiRFNodeSnapshot[];
   edges: LinghuiRFEdgeSnapshot[];
   groups: LinghuiRFGroupSnapshot[];
+}
+
+export interface LinghuiGraphSnapshot extends LinghuiSubgraphSnapshot {
+  version: number;
 }
 
 export interface LinghuiGraphStats {

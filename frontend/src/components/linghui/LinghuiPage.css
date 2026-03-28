@@ -36,6 +36,13 @@
   white-space: nowrap;
 }
 
+.linghuiToolbarDrawerGroup {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .linghuiWorkspaceSelect {
   width: 180px;
 }
@@ -157,6 +164,324 @@
 .linghuiCanvasWorkspace {
   position: relative;
   height: 100%;
+}
+
+.linghuiLibraryDrawer .ant-drawer-content,
+.linghuiLibraryDrawer .ant-drawer-header,
+.linghuiAssetDrawer .ant-drawer-content,
+.linghuiAssetDrawer .ant-drawer-header {
+  background: rgba(10, 14, 19, 0.98);
+  color: #f4f4f5;
+}
+
+.linghuiLibraryDrawer .ant-drawer-title,
+.linghuiLibraryDrawer .ant-drawer-close,
+.linghuiAssetDrawer .ant-drawer-title,
+.linghuiAssetDrawer .ant-drawer-close {
+  color: #f4f4f5 !important;
+}
+
+.linghuiLibraryDrawer .ant-drawer-body,
+.linghuiAssetDrawer .ant-drawer-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  background:
+    radial-gradient(circle at top left, rgba(16, 185, 129, 0.06), transparent 26%),
+    rgba(9, 13, 18, 0.98);
+}
+
+.linghuiLibraryDrawerBody {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.linghuiLibrarySection {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.linghuiLibrarySectionHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.linghuiLibrarySectionTitle {
+  color: #f8fafc;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.linghuiLibrarySectionHint {
+  color: #94a3b8;
+  font-size: 12px;
+  line-height: 1.5;
+  margin-top: 4px;
+}
+
+.linghuiLibraryQuickActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.linghuiLibraryNodeList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.linghuiLibraryNodeButton {
+  width: 100%;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(63, 63, 70, 0.72);
+  border-radius: 16px;
+  background: rgba(15, 23, 42, 0.68);
+  color: #f4f4f5;
+  text-align: left;
+  transition: transform 160ms ease, border-color 160ms ease, background 160ms ease;
+}
+
+.linghuiLibraryNodeButton:hover {
+  transform: translateY(-1px);
+  border-color: rgba(16, 185, 129, 0.52);
+  background: rgba(15, 23, 42, 0.82);
+}
+
+.linghuiLibraryNodeDot {
+  width: 10px;
+  height: 10px;
+  margin-top: 6px;
+  border-radius: 999px;
+  flex: 0 0 10px;
+}
+
+.linghuiLibraryNodeBody {
+  min-width: 0;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.linghuiLibraryNodeLabel {
+  color: #f8fafc;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.linghuiLibraryNodeDesc {
+  color: #94a3b8;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.linghuiLibraryCardList {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.linghuiLibraryTemplateCard {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid rgba(63, 63, 70, 0.72);
+  border-radius: 16px;
+  background: rgba(15, 23, 42, 0.72);
+}
+
+.linghuiLibraryCardBody {
+  min-width: 0;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.linghuiLibraryCardTitle {
+  color: #fafafa;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.linghuiLibraryCardMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  color: #94a3b8;
+  font-size: 11px;
+}
+
+.linghuiLibraryCardText {
+  color: #d4d4d8;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.linghuiLibraryTagRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.linghuiLibraryTag {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: rgba(16, 185, 129, 0.12);
+  color: #d1fae5;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.linghuiAssetDrawerToolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.linghuiLibraryDrawerLoading,
+.linghuiLibraryDrawerEmpty,
+.linghuiAssetDrawerLoading,
+.linghuiAssetDrawerEmpty {
+  min-height: 320px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.linghuiAssetDrawerCard {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr);
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid rgba(63, 63, 70, 0.72);
+  border-radius: 16px;
+  background: rgba(15, 23, 42, 0.72);
+}
+
+.linghuiAssetDrawerPreview {
+  min-height: 104px;
+  border-radius: 14px;
+  overflow: hidden;
+  background: rgba(24, 24, 27, 0.92);
+  border: 1px solid rgba(63, 63, 70, 0.5);
+}
+
+.linghuiAssetDrawerPreview.hasPreview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.linghuiAssetDrawerPreviewFallback {
+  height: 100%;
+  padding: 12px 10px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.linghuiAssetDrawerPreviewKind {
+  display: inline-flex;
+  width: fit-content;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(16, 185, 129, 0.14);
+  color: #a7f3d0;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.linghuiAssetDrawerPreviewName {
+  color: #e4e4e7;
+  font-size: 12px;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.linghuiAssetDrawerCardBody {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.linghuiAssetDrawerCardTitle {
+  color: #fafafa;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.linghuiAssetDrawerCardMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  color: #94a3b8;
+  font-size: 11px;
+}
+
+.linghuiAssetDrawerCardText {
+  color: #d4d4d8;
+  font-size: 12px;
+  line-height: 1.6;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
+}
+
+.linghuiTutorialList,
+.linghuiShortcutList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.linghuiTutorialItem,
+.linghuiShortcutItem {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(63, 63, 70, 0.68);
+  border-radius: 14px;
+  background: rgba(15, 23, 42, 0.6);
+}
+
+.linghuiShortcutItem {
+  grid-template-columns: 126px minmax(0, 1fr);
+  align-items: start;
+}
+
+.linghuiShortcutKey {
+  color: #e2e8f0;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.linghuiShortcutDesc,
+.linghuiTutorialItem {
+  color: #cbd5e1;
+  font-size: 12px;
+  line-height: 1.6;
 }
 
 .linghuiLibraryOverlay {
@@ -339,6 +664,49 @@
   cursor: default;
 }
 
+.linghuiCanvasHud {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  z-index: 38;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.linghuiCanvasRunBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1px solid rgba(63, 63, 70, 0.82);
+  border-radius: 999px;
+  background: rgba(11, 15, 21, 0.92);
+  color: #f4f4f5;
+  font-size: 12px;
+  font-weight: 600;
+  backdrop-filter: blur(16px);
+  box-shadow: 0 18px 36px rgba(0, 0, 0, 0.28);
+  appearance: none;
+  cursor: pointer;
+  transition: transform 160ms ease, border-color 160ms ease, background 160ms ease;
+}
+
+.linghuiCanvasRunBadge:hover {
+  transform: translateY(-1px);
+  border-color: rgba(16, 185, 129, 0.5);
+  background: rgba(11, 15, 21, 0.98);
+}
+
+.linghuiCanvasRunBadge .isWarn {
+  color: #fca5a5;
+}
+
+.linghuiCanvasRunBadge .isMuted {
+  color: #fbbf24;
+}
+
 .linghuiPendingGroupFrame {
   position: absolute;
   z-index: 34;
@@ -445,6 +813,125 @@
   align-self: stretch;
   background: rgba(63, 63, 70, 0.82);
   margin: 2px 2px;
+}
+
+.linghuiCanvasZoomBadge {
+  min-width: 52px;
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid rgba(82, 82, 91, 0.72);
+  border-radius: 10px;
+  background: rgba(24, 24, 27, 0.72);
+  color: #d4d4d8;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.linghuiCanvasMiniMap {
+  background: rgba(8, 12, 18, 0.9);
+  border: 1px solid rgba(63, 63, 70, 0.82);
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 18px 36px rgba(0, 0, 0, 0.28);
+}
+
+.linghuiCanvasMiniMap .react-flow__minimap-svg {
+  background: linear-gradient(180deg, rgba(10, 14, 19, 0.92), rgba(6, 10, 14, 0.98));
+}
+
+.linghuiQuickCreate {
+  position: absolute;
+  z-index: 44;
+  width: 304px;
+  max-height: min(72vh, 420px);
+  overflow: auto;
+  padding: 12px;
+  border: 1px solid rgba(63, 63, 70, 0.84);
+  border-radius: 18px;
+  background: rgba(11, 15, 21, 0.96);
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.34);
+  backdrop-filter: blur(18px);
+}
+
+.linghuiQuickCreateHeader {
+  color: #f4f4f5;
+  font-size: 14px;
+  font-weight: 700;
+  margin: 2px 4px 4px;
+}
+
+.linghuiQuickCreateHint {
+  color: #94a3b8;
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 0 4px 10px;
+}
+
+.linghuiQuickCreateSection + .linghuiQuickCreateSection {
+  margin-top: 12px;
+}
+
+.linghuiQuickCreateSectionTitle {
+  color: #94a3b8;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin: 0 4px 8px;
+}
+
+.linghuiQuickCreateItem {
+  width: 100%;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid transparent;
+  border-radius: 14px;
+  background: transparent;
+  color: #f4f4f5;
+  text-align: left;
+  transition: transform 160ms ease, border-color 160ms ease, background 160ms ease;
+}
+
+.linghuiQuickCreateItem + .linghuiQuickCreateItem {
+  margin-top: 6px;
+}
+
+.linghuiQuickCreateItem:hover {
+  transform: translateY(-1px);
+  background: rgba(24, 24, 27, 0.82);
+  border-color: rgba(56, 189, 248, 0.36);
+}
+
+.linghuiQuickCreateItemBody {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.linghuiQuickCreateItemLabel {
+  color: #f4f4f5;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.linghuiQuickCreateItemDesc {
+  color: #94a3b8;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.linghuiQuickCreateEmpty {
+  padding: 10px 12px 4px;
+  color: #94a3b8;
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .linghuiContextMenu {
@@ -693,10 +1180,40 @@
     0 0 18px color-mix(in srgb, var(--linghui-group-color, #2563eb) 20%, transparent);
 }
 
+.linghuiCanvasGroup.is-running {
+  border-color: rgba(59, 130, 246, 0.88);
+  box-shadow:
+    inset 0 0 0 1px rgba(96, 165, 250, 0.28),
+    0 0 24px rgba(59, 130, 246, 0.14);
+}
+
+.linghuiCanvasGroup.is-failed {
+  border-color: rgba(248, 113, 113, 0.86);
+  box-shadow:
+    inset 0 0 0 1px rgba(248, 113, 113, 0.18),
+    0 0 24px rgba(239, 68, 68, 0.16);
+}
+
+.linghuiCanvasGroup.is-stale {
+  border-color: rgba(251, 191, 36, 0.84);
+  box-shadow:
+    inset 0 0 0 1px rgba(251, 191, 36, 0.18),
+    0 0 24px rgba(245, 158, 11, 0.12);
+}
+
+.linghuiCanvasGroup.is-succeeded {
+  border-color: rgba(52, 211, 153, 0.82);
+  box-shadow:
+    inset 0 0 0 1px rgba(52, 211, 153, 0.18),
+    0 0 24px rgba(16, 185, 129, 0.12);
+}
+
 .linghuiCanvasGroupHeader {
   height: 40px;
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   padding: 0 12px;
   background: linear-gradient(180deg, rgba(13, 17, 23, 0.96), rgba(13, 17, 23, 0.82));
   border-bottom: 1px solid rgba(255, 255, 255, 0.05);
@@ -717,6 +1234,45 @@
   line-height: 1;
   cursor: text;
   text-align: left;
+}
+
+.linghuiCanvasGroupStatus {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  background: rgba(63, 63, 70, 0.72);
+  color: #e4e4e7;
+}
+
+.linghuiCanvasGroupStatus.is-running {
+  background: rgba(37, 99, 235, 0.18);
+  color: #bfdbfe;
+}
+
+.linghuiCanvasGroupStatus.is-failed {
+  background: rgba(127, 29, 29, 0.5);
+  color: #fecaca;
+}
+
+.linghuiCanvasGroupStatus.is-stale {
+  background: rgba(120, 53, 15, 0.52);
+  color: #fde68a;
+}
+
+.linghuiCanvasGroupStatus.is-succeeded {
+  background: rgba(6, 78, 59, 0.52);
+  color: #a7f3d0;
+}
+
+.linghuiCanvasGroupStatus.is-partial {
+  background: rgba(67, 56, 202, 0.3);
+  color: #c7d2fe;
 }
 
 .linghuiCanvasGroupInput {
@@ -966,7 +1522,9 @@
 }
 
 .linghuiNodeEditorWidget textarea,
-.linghuiNodeEditorWidget input {
+.linghuiNodeEditorWidget input,
+.linghuiEditorField textarea,
+.linghuiEditorField input {
   width: 100%;
   border: 1px solid rgba(82, 82, 91, 0.8);
   border-radius: 12px;
@@ -991,7 +1549,9 @@
 }
 
 .linghuiNodeTextarea:focus,
-.linghuiNodeInput:focus {
+.linghuiNodeInput:focus,
+.linghuiEditorField textarea:focus,
+.linghuiEditorField input:focus {
   border-color: rgba(16, 185, 129, 0.82);
   box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.14);
 }
@@ -1085,6 +1645,24 @@
   overflow: hidden;
 }
 
+.linghuiNodeThumbAudio {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(124, 45, 18, 0.28);
+  border: 1px solid rgba(249, 115, 22, 0.3);
+  color: #fed7aa;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.linghuiNodeThumbAudioIcon {
+  font-size: 14px;
+  line-height: 1;
+}
+
 .linghuiNodePreviewBody {
   display: flex;
   flex: 1;
@@ -1102,6 +1680,25 @@
   white-space: pre-wrap;
   font-size: 12px;
   line-height: 1.6;
+}
+
+.linghuiNodePreviewAudioWrap {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.linghuiNodePreviewAudio {
+  width: 100%;
+}
+
+.linghuiNodePreviewAudioMeta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: #fdba74;
+  font-size: 11px;
 }
 
 .linghuiNodePreviewGrid {
@@ -1344,6 +1941,37 @@
   overflow: hidden;
 }
 
+.linghuiCompactToolBar {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  right: 8px;
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.linghuiCompactToolButton {
+  min-height: 24px;
+  padding: 0 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  background: rgba(8, 12, 18, 0.78);
+  color: #f8fafc;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  backdrop-filter: blur(10px);
+  transition: transform 160ms ease, border-color 160ms ease, background 160ms ease;
+}
+
+.linghuiCompactToolButton:hover {
+  transform: translateY(-1px);
+  border-color: rgba(16, 185, 129, 0.52);
+  background: rgba(8, 12, 18, 0.92);
+}
+
 .linghuiCompactThumb img {
   width: 100%;
   height: 100%;
@@ -1370,6 +1998,78 @@
   align-items: center;
   justify-content: center;
 }
+
+.linghuiCompactTextThumb {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 10px;
+  padding: 18px 16px;
+  background:
+    radial-gradient(circle at 18% 18%, rgba(245, 158, 11, 0.16), transparent 42%),
+    linear-gradient(135deg, rgba(22, 28, 36, 0.94), rgba(15, 23, 42, 0.98));
+}
+
+.linghuiCompactTextGlyph {
+  font-size: 26px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.linghuiCompactTextLines {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.linghuiCompactTextLines span {
+  display: block;
+  height: 6px;
+  border-radius: 999px;
+}
+
+.linghuiCompactTextLines span:nth-child(1) {
+  width: 72%;
+}
+
+.linghuiCompactTextLines span:nth-child(2) {
+  width: 88%;
+}
+
+.linghuiCompactTextLines span:nth-child(3) {
+  width: 58%;
+}
+
+.linghuiCompactAudioThumb {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background:
+    radial-gradient(circle at 20% 20%, rgba(249, 115, 22, 0.16), transparent 42%),
+    linear-gradient(135deg, rgba(22, 28, 36, 0.94), rgba(15, 23, 42, 0.98));
+}
+
+.linghuiCompactAudioWave {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  height: 46px;
+}
+
+.linghuiCompactAudioWave span {
+  width: 5px;
+  border-radius: 999px;
+  background: currentColor;
+  opacity: 0.9;
+}
+
+.linghuiCompactAudioWave span:nth-child(1) { height: 18px; }
+.linghuiCompactAudioWave span:nth-child(2) { height: 30px; }
+.linghuiCompactAudioWave span:nth-child(3) { height: 40px; }
+.linghuiCompactAudioWave span:nth-child(4) { height: 26px; }
+.linghuiCompactAudioWave span:nth-child(5) { height: 14px; }
 
 .linghuiCompactInfo {
   padding: 8px 10px;
@@ -1407,6 +2107,16 @@
   font-size: 11px;
   line-height: 1.4;
   min-height: 16px;
+}
+
+.linghuiCompactTextExcerpt {
+  color: #cbd5e1;
+  font-size: 11px;
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .linghuiCompactProgress {
@@ -1470,6 +2180,106 @@
   padding: 12px 14px 8px;
 }
 
+.linghuiEditorToolBar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px 14px 0;
+}
+
+.linghuiEditorToolChip {
+  min-height: 30px;
+  padding: 0 12px;
+  border: 1px solid rgba(82, 82, 91, 0.7);
+  border-radius: 999px;
+  background: rgba(24, 24, 27, 0.68);
+  color: #d4d4d8;
+  font-size: 12px;
+  font-weight: 700;
+  transition: transform 160ms ease, border-color 160ms ease, background 160ms ease;
+}
+
+.linghuiEditorToolChip:hover {
+  transform: translateY(-1px);
+  border-color: rgba(16, 185, 129, 0.52);
+}
+
+.linghuiEditorToolChip.isActive {
+  background: rgba(16, 185, 129, 0.16);
+  border-color: rgba(16, 185, 129, 0.62);
+  color: #ecfdf5;
+}
+
+.linghuiEditorToolPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 12px 14px 0;
+  padding: 14px;
+  border: 1px solid rgba(63, 63, 70, 0.62);
+  border-radius: 16px;
+  background:
+    radial-gradient(circle at top left, rgba(16, 185, 129, 0.08), transparent 28%),
+    rgba(15, 23, 42, 0.72);
+}
+
+.linghuiEditorToolPanelHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.linghuiEditorToolPanelTitle {
+  color: #f8fafc;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.linghuiEditorToolPanelDesc {
+  color: #94a3b8;
+  font-size: 12px;
+  line-height: 1.5;
+  margin-top: 4px;
+}
+
+.linghuiEditorToolPresetList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.linghuiEditorToolPresetCard {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid rgba(63, 63, 70, 0.6);
+  border-radius: 14px;
+  background: rgba(9, 13, 18, 0.62);
+}
+
+.linghuiEditorToolPresetBody {
+  min-width: 0;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.linghuiEditorToolPresetTitle {
+  color: #f8fafc;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.linghuiEditorToolPresetDesc {
+  color: #94a3b8;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 .linghuiEditorRefModeTab {
   padding: 6px 14px;
   border-radius: 999px;
@@ -1496,6 +2306,107 @@
   gap: 8px;
   padding: 8px 14px;
   overflow-x: auto;
+}
+
+.linghuiEditorAssetGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 8px;
+}
+
+.linghuiEditorAssetTitle {
+  color: #e2e8f0;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 0 14px;
+}
+
+.linghuiEditorAssetList {
+  display: flex;
+  gap: 8px;
+  padding: 0 14px 2px;
+  overflow-x: auto;
+}
+
+.linghuiEditorAssetCard {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 156px;
+  max-width: 220px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(63, 63, 70, 0.55);
+  background: rgba(15, 23, 42, 0.78);
+}
+
+.linghuiEditorAssetCard.isAudio {
+  min-width: 168px;
+}
+
+.linghuiEditorAssetCardThumb {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  overflow: hidden;
+  flex: 0 0 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #dbeafe;
+  background: rgba(30, 41, 59, 0.92);
+}
+
+.linghuiEditorAssetCardThumb.isAudio {
+  color: #fdba74;
+  background: rgba(124, 45, 18, 0.36);
+}
+
+.linghuiEditorAssetCardThumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.linghuiEditorAssetCardBadge {
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.88);
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.linghuiEditorAssetCardMeta {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.linghuiEditorAssetCardTitle {
+  color: #f8fafc;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.linghuiEditorAssetCardHint {
+  color: #94a3b8;
+  font-size: 11px;
+  line-height: 1.45;
 }
 
 .linghuiEditorRefThumb {
@@ -1555,6 +2466,27 @@
 
 .linghuiEditorPromptHint {
   margin-top: 8px;
+}
+
+.linghuiEditorField {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px 0;
+}
+
+.linghuiEditorFieldLabel {
+  color: #e2e8f0;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.linghuiEditorInlineHint {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #94a3b8;
+  font-size: 12px;
 }
 
 .linghuiEditorToolbar {
@@ -1622,6 +2554,47 @@
 .linghuiReferencePlaceholderHint {
   color: #93c5fd;
   font-size: 12px;
+}
+
+.linghuiAudioDropzone {
+  min-height: 176px;
+}
+
+.linghuiAudioUploadCard {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px;
+}
+
+.linghuiAudioUploadIcon {
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  background: rgba(249, 115, 22, 0.18);
+  color: #fdba74;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.linghuiAudioUploadMeta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.linghuiAudioUploadTitle {
+  color: #fff7ed;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.linghuiAudioUploadHint {
+  color: #fdba74;
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .linghuiToolbarLogList {

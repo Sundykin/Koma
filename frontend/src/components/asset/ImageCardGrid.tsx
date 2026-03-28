@@ -15,7 +15,7 @@ import {
   EnvironmentOutlined,
   AppstoreOutlined,
   ThunderboltOutlined,
-  LoadingOutlined,
+  LoadingOutlined
 } from '@ant-design/icons';
 import type { Character, Scene, Prop } from '../../types';
 import { electronService } from '../../services/electronService';

@@ -1,9 +1,25 @@
 import React, { memo } from 'react';
 import { Handle, Position, type NodeProps } from '@xyflow/react';
-import type { LinghuiNodeData, LinghuiRunStatus } from '../../../types/linghui';
-import { useNodeRunState, useLinghuiNodeInteraction } from './LinghuiNodeRunsContext';
+import type {
+  LinghuiImageNodeMode,
+  LinghuiImageNodeProperties,
+  LinghuiNodeData,
+  LinghuiRunStatus,
+} from '../../../types/linghui';
+import {
+  useNodeRunState,
+  useLinghuiNodeInteraction,
+  useLinghuiNodeInteractionApi,
+} from './LinghuiNodeRunsContext';
 import { electronService } from '../../../services/electronService';
 import { EditableCompactNodeLabel } from './EditableCompactNodeLabel';
+
+const IMAGE_TOOLBAR_ITEMS = [
+  { key: 'slash' as const, label: 'Slash' },
+  { key: 'multi-angle' as const, label: '多角度' },
+  { key: 'outpaint' as const, label: '扩图' },
+  { key: 'relight' as const, label: '打光' },
+];
 
 const STATUS_COLORS: Record<LinghuiRunStatus, string> = {
   idle: '#64748b',
@@ -19,16 +35,35 @@ function getPreviewSource(source?: string): string {
   return electronService.fs.toLocalUrl(source);
 }
 
+function resolveImageNodeMode(props: LinghuiImageNodeProperties): LinghuiImageNodeMode {
+  if (props.mode === 'import' || props.mode === 'generate') {
+    return props.mode;
+  }
+  return String(props.source ?? '').trim() ? 'import' : 'generate';
+}
+
+function resolveHandleTop(index: number, total: number): string {
+  if (total <= 1) return '50%';
+  const step = 100 / (total + 1);
+  return `${step * (index + 1)}%`;
+}
+
 function ImageNodeInner({ id, data, selected }: NodeProps) {
   const nodeData = data as unknown as LinghuiNodeData;
+  const props = nodeData.properties as unknown as LinghuiImageNodeProperties;
+  const mode = resolveImageNodeMode(props);
   const runState = useNodeRunState(id);
   const interactionHandlers = useLinghuiNodeInteraction(id);
+  const { openImageToolPanel } = useLinghuiNodeInteractionApi();
   const status = runState?.status ?? 'idle';
   const statusColor = STATUS_COLORS[status] ?? STATUS_COLORS.idle;
   const borderColor = status !== 'idle' ? statusColor : (selected ? nodeData.accent : 'rgba(63, 63, 70, 0.7)');
 
-  // 缩略图来源：执行结果 > 空
-  const thumbSrc = getPreviewSource(runState?.result?.primary?.source);
+  const thumbSrc = getPreviewSource(runState?.result?.primary?.source || props.source);
+  const hasUploadedSource = Boolean(String(props.source ?? '').trim());
+  const metaLabel = hasUploadedSource
+    ? (mode === 'generate' ? '本地图作为参考' : '已挂载本地图片')
+    : '';
 
   return (
     <div
@@ -36,17 +71,18 @@ function ImageNodeInner({ id, data, selected }: NodeProps) {
       style={{ borderColor }}
       {...interactionHandlers}
     >
-      {/* 多连接输入 Handle */}
-      <Handle
-        type="target"
-        position={Position.Left}
-        id="input-0"
-        className="linghuiCompactHandle"
-        style={{ background: nodeData.accent }}
-        isConnectable
-      />
+      {nodeData.inputs.map((slot, index) => (
+        <Handle
+          key={`input-${index}`}
+          type="target"
+          position={Position.Left}
+          id={`input-${index}`}
+          className="linghuiCompactHandle"
+          style={{ background: slot.dataType === 'text' ? '#f59e0b' : nodeData.accent, top: resolveHandleTop(index, nodeData.inputs.length) }}
+          isConnectable
+        />
+      ))}
 
-      {/* 输出 Handle */}
       <Handle
         type="source"
         position={Position.Right}
@@ -57,6 +93,25 @@ function ImageNodeInner({ id, data, selected }: NodeProps) {
 
       {/* 缩略图 */}
       <div className="linghuiCompactThumb">
+        {selected && (
+          <div className="linghuiCompactToolBar">
+            {IMAGE_TOOLBAR_ITEMS.map(item => (
+              <button
+                key={item.key}
+                type="button"
+                className="linghuiCompactToolButton nodrag nopan"
+                onPointerDown={event => event.stopPropagation()}
+                onClick={event => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  openImageToolPanel(id, item.key);
+                }}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+        )}
         {thumbSrc ? (
           <img src={thumbSrc} alt="preview" draggable={false} />
         ) : (
@@ -77,6 +132,9 @@ function ImageNodeInner({ id, data, selected }: NodeProps) {
           label={nodeData.label}
           fallbackLabel="图片"
         />
+        {metaLabel && status === 'idle' && (
+          <span className="linghuiCompactMeta">{metaLabel}</span>
+        )}
         {status === 'running' && (
           <div className="linghuiCompactProgress">
             <div className="linghuiCompactProgressBar" style={{ width: `${runState?.progress ?? 0}%` }} />

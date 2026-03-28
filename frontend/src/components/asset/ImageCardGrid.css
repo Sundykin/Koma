@@ -18,8 +18,8 @@
 }
 
 .imageCard {
-  width: 80px;
-  height: 56px;
+  width: 100px;
+  height: 70px;
   border-radius: 4px;
   overflow: hidden;
   cursor: pointer;

@@ -1,16 +1,19 @@
 import { nanoid } from 'nanoid';
 import type { MediaAssetSource, ProviderAssetInput } from '../../types';
 import { DEFAULT_POLLING_CONFIG } from '../../providers/polling';
-import { getProjectITVProvider, getProjectTTIProvider } from '../../providers';
+import { getProjectITVProvider, getProjectLLMProvider, getProjectTTIProvider, getProjectTTSProvider } from '../../providers';
 import type { ITVProvider, ITVResult } from '../../providers/itv/types';
 import type { ImageResult } from '../../providers/tti/types';
+import type { AudioResult } from '../../providers/tts/types';
 import { ensureRemoteUrlForImageSource } from '../../services/mediaRemoteUrlService';
 import { resolveProviderAssetInput } from '../../services/mediaAssetResolver';
 import { electronService } from '../../services/electronService';
 import type {
+  LinghuiAudioNodeProperties,
   LinghuiExecutionContext,
   LinghuiExecutionLogEntry,
   LinghuiGridType,
+  LinghuiImageNodeMode,
   LinghuiMediaItem,
   LinghuiNodeResult,
   LinghuiNodeRunState,
@@ -18,6 +21,7 @@ import type {
   LinghuiRFEdgeSnapshot,
   LinghuiRFNodeSnapshot,
   LinghuiReferenceNodeProperties,
+  LinghuiTextNodeProperties,
   LinghuiVideoRefMode,
 } from '../../types/linghui';
 import { gridTypeToCount } from '../../types/linghui';
@@ -25,6 +29,7 @@ import {
   buildLinghuiPromptReferenceItems,
   compileLinghuiPromptReferences,
   getOrderedIncomingReferenceEdges,
+  parseLinghuiPromptReferences,
   type LinghuiPromptReferenceItem,
 } from './linghuiPromptReferences';
 
@@ -89,6 +94,7 @@ interface ExecutionNodeView {
   type: LinghuiNodeType;
   properties: Record<string, unknown>;
   title: string;
+  getAllInputResults: (slot: number) => LinghuiNodeResult[];
   getAllInputImages: () => LinghuiNodeResult[];
   getInputResult: (slot: number) => LinghuiNodeResult | undefined;
   getPromptReferences: () => LinghuiPromptReferenceItem[];
@@ -115,6 +121,9 @@ function createNodeView(context: LinghuiExecutionContext, snapshot: LinghuiRFNod
     type: snapshot.data.linghuiType,
     properties: snapshot.data.properties,
     title: snapshot.data.label,
+    getAllInputResults(slot) {
+      return resolveAllInputResults(context, nodeId, `input-${slot}`);
+    },
     getAllInputImages() {
       return resolveAllInputResults(context, nodeId);
     },
@@ -162,15 +171,105 @@ function providerAllowsDataUrlForITV(provider: ITVProvider): { primary: boolean;
 function collectReferenceSources(results: LinghuiNodeResult[]): string[] {
   const sources: string[] = [];
   const dedupe = new Set<string>();
+  const pushSource = (candidate?: string) => {
+    if (!candidate || dedupe.has(candidate)) return;
+    dedupe.add(candidate);
+    sources.push(candidate);
+  };
 
   for (const result of results) {
-    const primarySource = result.primary?.source;
-    if (!primarySource || dedupe.has(primarySource)) continue;
-    dedupe.add(primarySource);
-    sources.push(primarySource);
+    if (result.primary?.kind === 'image') {
+      pushSource(result.primary.source);
+    }
+
+    for (const item of result.items ?? []) {
+      if (item.kind === 'image') {
+        pushSource(item.source);
+      }
+    }
   }
 
   return sources;
+}
+
+function collectVideoPosterSources(results: LinghuiNodeResult[]): string[] {
+  const sources: string[] = [];
+  const dedupe = new Set<string>();
+  const pushSource = (candidate?: string) => {
+    if (!candidate || dedupe.has(candidate)) return;
+    dedupe.add(candidate);
+    sources.push(candidate);
+  };
+
+  for (const result of results) {
+    if (result.primary?.kind === 'video') {
+      pushSource(result.primary.posterSource);
+    }
+
+    for (const item of result.items ?? []) {
+      if (item.kind === 'video') {
+        pushSource(item.posterSource);
+      }
+    }
+  }
+
+  return sources;
+}
+
+function mergeUniqueSources(...groups: string[][]): string[] {
+  const merged: string[] = [];
+  const dedupe = new Set<string>();
+
+  for (const group of groups) {
+    for (const source of group) {
+      if (!source || dedupe.has(source)) continue;
+      dedupe.add(source);
+      merged.push(source);
+    }
+  }
+
+  return merged;
+}
+
+function collectTextSnippets(results: LinghuiNodeResult[]): string[] {
+  const snippets: string[] = [];
+  const dedupe = new Set<string>();
+
+  for (const result of results) {
+    const candidate = String(
+      result.text ??
+      result.metadata?.description ??
+      result.metadata?.note ??
+      '',
+    ).trim();
+
+    if (!candidate || dedupe.has(candidate)) continue;
+    dedupe.add(candidate);
+    snippets.push(candidate);
+  }
+
+  return snippets;
+}
+
+function mergePromptWithTextInputs(prompt: string, textSnippets: string[]): string {
+  const normalizedPrompt = prompt.trim();
+  if (!textSnippets.length) {
+    return normalizedPrompt;
+  }
+
+  if (parseLinghuiPromptReferences(normalizedPrompt).length > 0) {
+    return normalizedPrompt;
+  }
+
+  const contextBlock = textSnippets.join('\n\n');
+  return normalizedPrompt ? `${contextBlock}\n\n${normalizedPrompt}` : contextBlock;
+}
+
+function resolveImageNodeMode(params: { source?: string; mode?: unknown }): LinghuiImageNodeMode {
+  if (params.mode === 'import' || params.mode === 'generate') {
+    return params.mode;
+  }
+  return String(params.source ?? '').trim() ? 'import' : 'generate';
 }
 
 async function ensureProviderAssetInputs(
@@ -219,6 +318,7 @@ async function resolveAsyncProviderResult<T>(
 async function generateImageWithProvider(params: {
   prompt: string;
   referenceSources?: string[];
+  silentReferenceSources?: string[];
   steps?: number;
   onProgress?: (progress: number, message?: string) => void;
   placeholderTitle: string;
@@ -242,6 +342,7 @@ async function generateImageWithProvider(params: {
 
   let compiledPrompt = params.prompt || params.placeholderTitle;
   let referenceSources: Array<MediaAssetSource | ProviderAssetInput> = params.referenceSources ?? [];
+  const silentReferenceSources = params.silentReferenceSources ?? [];
   const replacementStrategy = getPromptProtocol(provider) === 'grok-image-index'
     ? 'image-index'
     : 'readable-name';
@@ -257,7 +358,10 @@ async function generateImageWithProvider(params: {
     referenceSources = compiled.compiledReferences;
   }
 
-  const references = await ensureProviderAssetInputs(referenceSources);
+  const references = [
+    ...await ensureProviderAssetInputs(referenceSources),
+    ...await ensureProviderAssetInputs(silentReferenceSources),
+  ];
   const started = await provider.start({
     prompt: compiledPrompt,
     references,
@@ -322,6 +426,7 @@ async function generateVideoWithProvider(params: {
   additionalReferenceSources?: string[];
   duration?: number;
   aspectRatio?: string;
+  resolution?: string;
   onProgress?: (progress: number, message?: string) => void;
   itvConfigId?: string;
   promptReferences?: LinghuiPromptReferenceItem[];
@@ -378,7 +483,11 @@ async function generateVideoWithProvider(params: {
     prompt: compiledPrompt,
     primaryImage,
     additionalReferences,
-    options: { duration: params.duration, aspectRatio: params.aspectRatio } as Record<string, unknown>,
+    options: {
+      duration: params.duration,
+      aspectRatio: params.aspectRatio,
+      resolution: params.resolution,
+    } as Record<string, unknown>,
   } as any);
 
   const output = started.mode === 'immediate'
@@ -395,6 +504,69 @@ async function generateVideoWithProvider(params: {
     mimeType: output.mimeType,
     metadata: output.metadata,
   });
+}
+
+async function resolveTTSVoiceId(provider: NonNullable<Awaited<ReturnType<typeof getProjectTTSProvider>>>): Promise<string> {
+  if (provider.config?.defaultVoice) {
+    return provider.config.defaultVoice;
+  }
+
+  const voices = await provider.listVoices();
+  return voices[0]?.id || 'default';
+}
+
+async function generateAudioWithProvider(params: {
+  text: string;
+  ttsConfigId?: string;
+  onProgress?: (progress: number, message?: string) => void;
+}): Promise<LinghuiMediaItem> {
+  const provider = await getProjectTTSProvider(params.ttsConfigId || undefined);
+  if (!provider || !provider.validate()) {
+    throw new Error('未配置可用的 TTS 服务');
+  }
+
+  const voiceId = await resolveTTSVoiceId(provider);
+  const started = await provider.start({
+    text: params.text,
+    voiceId,
+  } as any);
+  const output = started.mode === 'immediate'
+    ? started.output
+    : await resolveAsyncProviderResult<AudioResult>(started.taskId, provider.getTaskSnapshot, params.onProgress);
+
+  const format = output.format?.toLowerCase();
+  const mimeType = format
+    ? (format === 'wav' ? 'audio/wav' : format === 'ogg' ? 'audio/ogg' : format === 'aac' ? 'audio/aac' : format === 'flac' ? 'audio/flac' : 'audio/mpeg')
+    : undefined;
+
+  return buildMediaItem({
+    kind: 'audio',
+    source: output.path,
+    mimeType,
+    durationSec: output.duration,
+    metadata: { voiceId, format: output.format },
+  });
+}
+
+async function generateTextWithProvider(params: {
+  prompt: string;
+  systemPrompt?: string;
+  llmConfigId?: string;
+}): Promise<string> {
+  const provider = await getProjectLLMProvider(params.llmConfigId || undefined);
+  if (!provider || !provider.validate()) {
+    throw new Error('未配置可用的 LLM 服务');
+  }
+
+  return provider.generateText(
+    params.prompt,
+    params.systemPrompt || undefined,
+    {
+      source: 'linghui',
+      operation: 'text-node-generate',
+      projectId: EXECUTION_PROJECT_ID,
+    },
+  );
 }
 
 async function executeReferenceNode(node: ExecutionNodeView): Promise<LinghuiNodeResult> {
@@ -416,16 +588,92 @@ async function executeReferenceNode(node: ExecutionNodeView): Promise<LinghuiNod
   };
 }
 
+async function executeTextNode(
+  node: ExecutionNodeView,
+): Promise<LinghuiNodeResult> {
+  const {
+    mode = 'manual',
+    content = '',
+    prompt = '',
+    systemPrompt = '',
+    llmConfigId = '',
+  } = node.properties as unknown as LinghuiTextNodeProperties;
+
+  if (mode === 'manual') {
+    const normalizedContent = String(content).trim();
+    if (!normalizedContent) {
+      throw new Error('请先输入文本内容');
+    }
+
+    return {
+      kind: 'text',
+      text: normalizedContent,
+      metadata: { mode: 'manual' },
+    };
+  }
+
+  const promptReferences = node.getPromptReferences();
+  const promptWithRefs = promptReferences.length > 0
+    ? compileLinghuiPromptReferences({
+        prompt: String(prompt).trim(),
+        references: promptReferences,
+        replacementStrategy: 'readable-name',
+      }).compiledPrompt
+    : String(prompt).trim();
+
+  if (!promptWithRefs) {
+    throw new Error('请先输入生成文本的提示词');
+  }
+
+  const generatedText = await generateTextWithProvider({
+    prompt: promptWithRefs,
+    systemPrompt: String(systemPrompt).trim(),
+    llmConfigId: String(llmConfigId),
+  });
+
+  return {
+    kind: 'text',
+    text: generatedText.trim(),
+    metadata: {
+      mode: 'generate',
+      prompt: String(prompt).trim(),
+      systemPrompt: String(systemPrompt).trim(),
+    },
+  };
+}
+
 async function executeImageNode(
   node: ExecutionNodeView,
   onProgress?: (progress: number, message?: string) => void,
 ): Promise<LinghuiNodeResult> {
+  const source = String(node.properties.source ?? '').trim();
+  const mode = resolveImageNodeMode({ source, mode: node.properties.mode });
   const prompt = String(node.properties.prompt ?? '').trim();
   const ttiConfigId = String(node.properties.ttiConfigId ?? '');
   const gridType = (node.properties.gridType ?? 'none') as LinghuiGridType;
   const batchCount = Number(node.properties.batchCount ?? 1);
+
+  if (mode === 'import') {
+    if (!source) {
+      throw new Error('请先上传图片素材');
+    }
+
+    return {
+      kind: 'image',
+      primary: buildMediaItem({
+        kind: 'image',
+        source,
+        label: node.title,
+      }),
+      metadata: { source, mode: 'import' },
+    };
+  }
+
   const referenceSources = collectReferenceSources(node.getAllInputImages());
+  const silentReferenceSources = source ? [source] : [];
+  const textSnippets = collectTextSnippets(node.getAllInputResults(1));
   const promptReferences = node.getPromptReferences();
+  const effectivePrompt = mergePromptWithTextInputs(prompt || node.title, textSnippets);
   const count = gridType !== 'none' ? gridTypeToCount(gridType) : batchCount;
 
   if (count > 1) {
@@ -433,8 +681,9 @@ async function executeImageNode(
       Array.from({ length: count }, (_, i) => i).map(async index => {
         const label = gridType !== 'none' ? `画面 ${index + 1}` : `#${index + 1}`;
         const image = await generateImageWithProvider({
-          prompt: prompt || node.title,
+          prompt: effectivePrompt,
           referenceSources,
+          silentReferenceSources,
           ttiConfigId,
           promptReferences,
           onProgress: progress => onProgress?.(Math.round((index / count) * 100 + progress / count), `${label} 生成中`),
@@ -450,13 +699,14 @@ async function executeImageNode(
       kind: gridType !== 'none' ? 'grid' : 'images',
       primary: items[0],
       items,
-      metadata: { prompt, gridType, batchCount: count },
+      metadata: { prompt, gridType, batchCount: count, mode: 'generate' },
     };
   }
 
   const image = await generateImageWithProvider({
-    prompt: prompt || node.title,
+    prompt: effectivePrompt,
     referenceSources,
+    silentReferenceSources,
     ttiConfigId,
     promptReferences,
     onProgress,
@@ -468,7 +718,7 @@ async function executeImageNode(
   return {
     kind: 'image',
     primary: image,
-    metadata: { prompt },
+    metadata: { prompt, mode: 'generate' },
   };
 }
 
@@ -476,23 +726,50 @@ async function executeVideoNode(
   node: ExecutionNodeView,
   onProgress?: (progress: number, message?: string) => void,
 ): Promise<LinghuiNodeResult> {
+  const source = String(node.properties.source ?? '').trim();
+  const posterSource = String(node.properties.posterSource ?? '').trim();
   const prompt = String(node.properties.prompt ?? '').trim();
   const itvConfigId = String(node.properties.itvConfigId ?? '');
   const refMode = (node.properties.refMode ?? 'all-ref') as LinghuiVideoRefMode;
   const duration = Number(node.properties.duration ?? 5);
   const aspectRatio = String(node.properties.aspectRatio ?? '16:9');
-  const referenceSources = collectReferenceSources(node.getAllInputImages());
+  const resolution = String(node.properties.resolution ?? '720P');
+
+  if (source) {
+    return {
+      kind: 'video',
+      primary: buildMediaItem({
+        kind: 'video',
+        source,
+        posterSource,
+        label: node.title,
+      }),
+      metadata: { source, posterSource, mode: 'upload' },
+    };
+  }
+
+  const imageReferenceSources = collectReferenceSources(node.getAllInputResults(0));
+  const videoPosterSources = collectVideoPosterSources(node.getAllInputResults(3));
+  const referenceSources = mergeUniqueSources(imageReferenceSources, videoPosterSources);
+  const textSnippets = collectTextSnippets([
+    ...node.getAllInputResults(1),
+    ...node.getAllInputResults(2),
+  ]);
   const promptReferences = node.getPromptReferences();
   const primarySource = referenceSources[0];
-  const additionalReferenceSources = refMode === 'all-ref' ? referenceSources.slice(1) : referenceSources.slice(1, 2);
+  const additionalReferenceSources = refMode === 'all-ref'
+    ? referenceSources.slice(1)
+    : (referenceSources.length > 1 ? [referenceSources[referenceSources.length - 1]] : []);
   const primaryReferenceId = promptReferences.find(item => item.source === primarySource)?.id;
+  const effectivePrompt = mergePromptWithTextInputs(prompt || node.title, textSnippets);
 
   const video = await generateVideoWithProvider({
-    prompt: prompt || node.title,
+    prompt: effectivePrompt,
     imageSource: primarySource,
     additionalReferenceSources,
     duration,
     aspectRatio,
+    resolution,
     itvConfigId,
     promptReferences,
     primaryReferenceId,
@@ -502,7 +779,58 @@ async function executeVideoNode(
   return {
     kind: 'video',
     primary: video,
-    metadata: { prompt, refMode, duration, aspectRatio },
+    metadata: {
+      prompt,
+      refMode,
+      duration,
+      aspectRatio,
+      resolution,
+      audioSource: node.getInputResult(2)?.primary?.source,
+      imageReferenceCount: imageReferenceSources.length,
+      videoReferenceCount: videoPosterSources.length,
+    },
+  };
+}
+
+async function executeAudioNode(
+  node: ExecutionNodeView,
+  onProgress?: (progress: number, message?: string) => void,
+): Promise<LinghuiNodeResult> {
+  const { source = '', prompt = '', ttsConfigId = '' } = node.properties as unknown as LinghuiAudioNodeProperties;
+  const normalizedSource = String(source).trim();
+  const normalizedPrompt = String(prompt).trim();
+
+  if (normalizedSource) {
+    return {
+      kind: 'audio',
+      primary: buildMediaItem({
+        kind: 'audio',
+        source: normalizedSource,
+        label: node.title,
+      }),
+      text: normalizedPrompt || undefined,
+      metadata: { source: normalizedSource, mode: 'upload' },
+    };
+  }
+
+  if (!normalizedPrompt) {
+    throw new Error('请先上传音频，或输入要合成的文本');
+  }
+
+  const audio = await generateAudioWithProvider({
+    text: normalizedPrompt,
+    ttsConfigId: String(ttsConfigId),
+    onProgress,
+  });
+
+  return {
+    kind: 'audio',
+    primary: {
+      ...audio,
+      label: node.title,
+    },
+    text: normalizedPrompt,
+    metadata: { prompt: normalizedPrompt, mode: 'tts' },
   };
 }
 
@@ -571,10 +899,14 @@ async function executeNode(
   switch (node.type) {
     case 'linghui/reference':
       return executeReferenceNode(node);
+    case 'linghui/text':
+      return executeTextNode(node);
     case 'linghui/image':
       return executeImageNode(node, onProgress);
     case 'linghui/video':
       return executeVideoNode(node, onProgress);
+    case 'linghui/audio':
+      return executeAudioNode(node, onProgress);
     case 'linghui/storyboard-shot':
       return executeStoryboardShotNode(node, onProgress);
     case 'linghui/storyboard-group':
