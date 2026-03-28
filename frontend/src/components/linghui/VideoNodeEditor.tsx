@@ -1,8 +1,9 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { App, Button, Select } from 'antd';
 import { ArrowUp, Film, Image as ImageIcon, Music4, Trash2, UploadCloud } from 'lucide-react';
 import type {
   LinghuiNodeData,
+  LinghuiNodeRunState,
   LinghuiVideoNodeProperties,
   LinghuiVideoRefMode,
   LinghuiVideoToolKey,
@@ -41,6 +42,7 @@ const DURATION_OPTIONS = [
 interface VideoNodeEditorProps {
   nodeId: string;
   nodeData: LinghuiNodeData;
+  nodeRun?: LinghuiNodeRunState;
   referenceImages: Array<{ source?: string; label?: string }>;
   referenceVideos: Array<{ source?: string; posterSource?: string; label?: string }>;
   referenceAudios: Array<{ source?: string; label?: string }>;
@@ -145,6 +147,7 @@ function mergePromptSnippet(currentPrompt: string, snippet?: string): string {
 export const VideoNodeEditor: React.FC<VideoNodeEditorProps> = ({
   nodeId,
   nodeData,
+  nodeRun,
   referenceImages,
   referenceVideos,
   referenceAudios,
@@ -168,11 +171,36 @@ export const VideoNodeEditor: React.FC<VideoNodeEditorProps> = ({
   const previewSource = getPreviewSource(source);
   const uploadedPoster = getPreviewSource(posterSource);
   const isUploadMode = Boolean(source.trim());
+  const resultVideoSource = getPreviewSource(nodeRun?.result?.primary?.source);
+  const resultPosterSource = getPreviewSource(nodeRun?.result?.primary?.posterSource);
   const upstreamSummary = [
     referenceImages.length > 0 ? `${referenceImages.length} 张图片` : '',
     referenceVideos.length > 0 ? `${referenceVideos.length} 条视频` : '',
     referenceAudios.length > 0 ? `${referenceAudios.length} 条音频` : '',
   ].filter(Boolean);
+  const visualReferenceRoles = useMemo(() => {
+    if (refMode !== 'first-last-frame') {
+      return new Map<string, 'default' | 'first' | 'last' | 'unused'>();
+    }
+
+    const sequence = [
+      ...referenceImages.map(ref => ({ key: `image:${ref.source || ref.label || ''}` })),
+      ...referenceVideos.map(ref => ({ key: `video:${ref.posterSource || ref.source || ref.label || ''}` })),
+    ].filter(item => item.key.split(':')[1]);
+    const roleMap = new Map<string, 'default' | 'first' | 'last' | 'unused'>();
+
+    sequence.forEach(item => {
+      roleMap.set(item.key, 'unused');
+    });
+
+    if (!sequence.length) {
+      return roleMap;
+    }
+
+    roleMap.set(sequence[0].key, 'first');
+    roleMap.set(sequence[sequence.length - 1].key, sequence.length === 1 ? 'first' : 'last');
+    return roleMap;
+  }, [refMode, referenceImages, referenceVideos]);
 
   const [providers, setProviders] = useState<ProviderOption[]>([]);
   const mentionHint = isUploadMode
@@ -330,6 +358,11 @@ export const VideoNodeEditor: React.FC<VideoNodeEditorProps> = ({
                 ? `当前已注入 ${upstreamSummary.join('、')}；首个视觉输入会作为主参考，文本与音频描述会并入提示上下文`
                 : '可上传本地视频，或连接图片 / 文本 / 音频 / 视频节点后生成视频'}
           </div>
+          {!isUploadMode && refMode === 'first-last-frame' && (
+            <div className="linghuiEditorPromptHint">
+              首尾帧模式下仅使用第一路视觉输入作为首帧、最后一路视觉输入作为尾帧；中间视觉参考只保留展示，不参与实际执行。
+            </div>
+          )}
         </div>
       </div>
 
@@ -441,6 +474,15 @@ export const VideoNodeEditor: React.FC<VideoNodeEditorProps> = ({
                 <div key={`${ref.source || ref.label || i}`} className="linghuiEditorRefThumb">
                   {src ? <img src={src} alt={ref.label || `参考 ${i + 1}`} /> : <ImageIcon size={16} />}
                   <span className="linghuiEditorRefBadge">{i + 1}</span>
+                  {refMode === 'first-last-frame' && (
+                    <span className="linghuiEditorRefBadge isRole">
+                      {visualReferenceRoles.get(`image:${ref.source || ref.label || ''}`) === 'first'
+                        ? '首帧'
+                        : visualReferenceRoles.get(`image:${ref.source || ref.label || ''}`) === 'last'
+                          ? '尾帧'
+                          : '忽略'}
+                    </span>
+                  )}
                 </div>
               );
             })}
@@ -463,7 +505,15 @@ export const VideoNodeEditor: React.FC<VideoNodeEditorProps> = ({
                   <div className="linghuiEditorAssetCardMeta">
                     <div className="linghuiEditorAssetCardTitle">{ref.label || `视频参考 ${index + 1}`}</div>
                     <div className="linghuiEditorAssetCardHint">
-                      {index === 0 && referenceImages.length === 0 ? '可作为主视觉参考' : '作为补充视觉参考'}
+                      {refMode === 'first-last-frame'
+                        ? visualReferenceRoles.get(`video:${ref.posterSource || ref.source || ref.label || ''}`) === 'first'
+                          ? '当前作为首帧输入'
+                          : visualReferenceRoles.get(`video:${ref.posterSource || ref.source || ref.label || ''}`) === 'last'
+                            ? '当前作为尾帧输入'
+                            : '首尾帧模式下当前不参与执行'
+                        : index === 0 && referenceImages.length === 0
+                          ? '可作为主视觉参考'
+                          : '作为补充视觉参考'}
                     </div>
                   </div>
                 </div>
@@ -504,6 +554,20 @@ export const VideoNodeEditor: React.FC<VideoNodeEditorProps> = ({
         />
         <div className="linghuiEditorPromptHint">{mentionHint}</div>
       </div>
+
+      {!isUploadMode && resultVideoSource && (
+        <div className="linghuiEditorAssetGroup">
+          <div className="linghuiEditorAssetTitle">生成结果</div>
+          <video
+            className="linghuiPreviewVideo"
+            src={resultVideoSource}
+            poster={resultPosterSource || undefined}
+            controls
+            playsInline
+          />
+          <div className="linghuiEditorPromptHint">生成完成后可继续连接脚本、历史或资产流程复用这段视频。</div>
+        </div>
+      )}
 
       <div className="linghuiEditorToolbar">
         <div className="linghuiEditorToolbarLeft">

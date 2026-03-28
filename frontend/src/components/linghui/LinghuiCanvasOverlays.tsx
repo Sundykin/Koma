@@ -5,6 +5,7 @@ import type {
   LinghuiNodeRunState,
   LinghuiNodeToolState,
   LinghuiNodeType,
+  LinghuiStoryboardFrame,
 } from '../../types/linghui';
 import type { LinghuiCanvasMenuState, QuickCreateState } from './linghuiCanvasShared';
 import { LinghuiNodeEditor } from './LinghuiNodeEditor';
@@ -16,10 +17,15 @@ export interface LinghuiCanvasOverlaysProps {
   editorSelection: LinghuiCanvasSelection;
   activeNodeTool: LinghuiNodeToolState;
   setActiveNodeTool: (tool: LinghuiNodeToolState) => void;
+  onCloseEditor: () => void;
   nodeRuns: Record<string, LinghuiNodeRunState>;
   workspaceId: string | null;
+  onAssetLibraryMutate?: () => void;
   canvasRect: DOMRect | null;
   onRunNode: (nodeId: string) => void;
+  onDeriveScriptShots: (nodeId: string, shots: LinghuiStoryboardFrame[]) => void;
+  onGenerateScriptImages: (nodeId: string, shots: LinghuiStoryboardFrame[]) => void;
+  onGenerateScriptVideos: (nodeId: string, shots: LinghuiStoryboardFrame[]) => void;
   pendingGroupFrameStyle: { left: number; top: number; width: number; height: number } | null;
   pendingGroupActionsStyle: { left: number; top: number } | null;
   pendingGroupCreatableIds: string[];
@@ -43,6 +49,7 @@ export interface LinghuiCanvasOverlaysProps {
   onCreateAssetFromNode: () => void;
   onRunCurrentNode: () => void;
   onRunCurrentGroup: () => void;
+  onExportCurrentSelection: () => void;
   onSaveCurrentGroupAsWorkflow: () => void;
   onUngroupCurrentGroup: () => void;
   onDeleteCurrentGroup: () => void;
@@ -56,6 +63,7 @@ export interface LinghuiCanvasOverlaysProps {
   onRedo: () => void;
   onRunAll: () => void;
   onRunSelection: () => void;
+  onExportSelection: () => void;
   onSaveSelectionAsWorkflow: () => void;
   onCopySelection: () => void;
   onDuplicateSelection: () => void;
@@ -67,10 +75,15 @@ export function LinghuiCanvasOverlays({
   editorSelection,
   activeNodeTool,
   setActiveNodeTool,
+  onCloseEditor,
   nodeRuns,
   workspaceId,
+  onAssetLibraryMutate,
   canvasRect,
   onRunNode,
+  onDeriveScriptShots,
+  onGenerateScriptImages,
+  onGenerateScriptVideos,
   pendingGroupFrameStyle,
   pendingGroupActionsStyle,
   pendingGroupCreatableIds,
@@ -94,6 +107,7 @@ export function LinghuiCanvasOverlays({
   onCreateAssetFromNode,
   onRunCurrentNode,
   onRunCurrentGroup,
+  onExportCurrentSelection,
   onSaveCurrentGroupAsWorkflow,
   onUngroupCurrentGroup,
   onDeleteCurrentGroup,
@@ -107,6 +121,7 @@ export function LinghuiCanvasOverlays({
   onRedo,
   onRunAll,
   onRunSelection,
+  onExportSelection,
   onSaveSelectionAsWorkflow,
   onCopySelection,
   onDuplicateSelection,
@@ -119,10 +134,15 @@ export function LinghuiCanvasOverlays({
         selection={editorSelection}
         activeTool={activeNodeTool}
         onToolChange={setActiveNodeTool}
+        onCloseEditor={onCloseEditor}
         nodeRuns={nodeRuns}
         onRunNode={onRunNode}
+        onDeriveScriptShots={onDeriveScriptShots}
+        onGenerateScriptImages={onGenerateScriptImages}
+        onGenerateScriptVideos={onGenerateScriptVideos}
         canvasRect={canvasRect}
         workspaceId={workspaceId}
+        onAssetLibraryMutate={onAssetLibraryMutate}
       />
 
       <LinghuiCanvasPendingGroupOverlay
@@ -155,6 +175,7 @@ export function LinghuiCanvasOverlays({
         onCreateAssetFromNode={onCreateAssetFromNode}
         onRunCurrentNode={onRunCurrentNode}
         onRunCurrentGroup={onRunCurrentGroup}
+        onExportCurrentSelection={onExportCurrentSelection}
         onSaveCurrentGroupAsWorkflow={onSaveCurrentGroupAsWorkflow}
         onUngroupCurrentGroup={onUngroupCurrentGroup}
         onDeleteCurrentGroup={onDeleteCurrentGroup}
@@ -168,6 +189,7 @@ export function LinghuiCanvasOverlays({
         onRedo={onRedo}
         onRunAll={onRunAll}
         onRunSelection={onRunSelection}
+        onExportSelection={onExportSelection}
         onSaveSelectionAsWorkflow={onSaveSelectionAsWorkflow}
         onCopySelection={onCopySelection}
         onDuplicateSelection={onDuplicateSelection}

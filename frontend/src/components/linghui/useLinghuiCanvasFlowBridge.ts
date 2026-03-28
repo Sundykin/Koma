@@ -3,6 +3,7 @@ import { nanoid } from 'nanoid';
 import { useCallback } from 'react';
 import type { Dispatch, MutableRefObject, RefObject, SetStateAction } from 'react';
 import type { LinghuiCanvasSelection, LinghuiNodeData } from '../../types/linghui';
+import { resolveLinghuiWorkflowBlockLabel } from '../../constants/linghuiWorkflowBlock';
 import { isLinghuiConnectionValid, parseHandleId } from './linghuiNodeDefs';
 import type { PendingConnectionCreateState } from './linghuiCanvasShared';
 
@@ -45,7 +46,9 @@ function buildCanvasSelection(selectedNodes: Node[]): LinghuiCanvasSelection {
     return {
       kind: 'group',
       groupId: group.id,
-      label: (group.data as { label?: string } | undefined)?.label ?? '分组',
+      label: resolveLinghuiWorkflowBlockLabel(
+        (group.data as { label?: string } | undefined)?.label,
+      ),
     };
   }
 

@@ -6,12 +6,17 @@ import type {
   LinghuiCanvasSelection,
   LinghuiImageNodeProperties,
   LinghuiNodeData,
+  LinghuiScriptDerivationKind,
   LinghuiNodeType,
+  LinghuiStoryboardFrame,
+  LinghuiTextNodeProperties,
+  LinghuiVideoNodeProperties,
 } from '../../types/linghui';
 import type {
   LinghuiWorkspaceAssetRecord,
   LinghuiWorkspaceHistoryRecord,
 } from '../../store/linghuiStorage';
+import { createNextLinghuiWorkflowBlockLabel } from '../../constants/linghuiWorkflowBlock';
 import {
   type LinghuiCanvasMenuState,
   type LinghuiClipboardSnapshot,
@@ -42,6 +47,35 @@ interface UseLinghuiCanvasDocumentOpsParams {
   setPendingGroupFrame: Dispatch<SetStateAction<LinghuiPendingGroupFrame | null>>;
   pendingGroupFrame: LinghuiPendingGroupFrame | null;
   scheduleSnapshot: (options?: { recordHistory?: boolean; force?: boolean }) => void;
+}
+
+function getDerivedNodeMeta(node: Node): {
+  scriptSourceNodeId?: string;
+  scriptShotId?: string;
+  scriptDerivationKind?: LinghuiScriptDerivationKind;
+} {
+  const nodeData = node.data as unknown as LinghuiNodeData | undefined;
+  const properties = (nodeData?.properties ?? {}) as Record<string, unknown>;
+
+  return {
+    scriptSourceNodeId: typeof properties.scriptSourceNodeId === 'string' ? properties.scriptSourceNodeId : undefined,
+    scriptShotId: typeof properties.scriptShotId === 'string' ? properties.scriptShotId : undefined,
+    scriptDerivationKind: typeof properties.scriptDerivationKind === 'string'
+      ? properties.scriptDerivationKind as LinghuiScriptDerivationKind
+      : undefined,
+  };
+}
+
+function hasMatchingEdge(
+  edges: Edge[],
+  target: Pick<Edge, 'source' | 'sourceHandle' | 'target' | 'targetHandle'>,
+): boolean {
+  return edges.some(edge => (
+    edge.source === target.source &&
+    (edge.sourceHandle ?? 'output-0') === (target.sourceHandle ?? 'output-0') &&
+    edge.target === target.target &&
+    (edge.targetHandle ?? 'input-0') === (target.targetHandle ?? 'input-0')
+  ));
 }
 
 export function useLinghuiCanvasDocumentOps({
@@ -401,8 +435,473 @@ export function useLinghuiCanvasDocumentOps({
     });
   }, [reactFlow, scheduleSnapshot, setContextMenu, setEditorSelection, setEdges, setNodes, setQuickCreate]);
 
+  const deriveStoryboardShotsFromScript = useCallback((
+    scriptNodeId: string,
+    shots: LinghuiStoryboardFrame[],
+  ) => {
+    const scriptNode = reactFlow.getNode(scriptNodeId);
+    if (!scriptNode || scriptNode.type === 'group' || !shots.length) {
+      return false;
+    }
+
+    const currentNodes = reactFlow.getNodes();
+    const currentEdges = reactFlow.getEdges();
+    const groupPositions = collectGroupPositions(currentNodes, scriptNode.parentId ? [scriptNode.parentId] : []);
+    const scriptAbsolutePosition = getNodeAbsolutePosition(scriptNode, groupPositions);
+    const parentPosition = scriptNode.parentId ? groupPositions.get(scriptNode.parentId) : undefined;
+    const existingByShotId = new Map(
+      currentNodes
+        .filter(node => {
+          if (node.type === 'group') return false;
+          const nodeData = node.data as unknown as LinghuiNodeData | undefined;
+          if (nodeData?.linghuiType !== 'linghui/text') return false;
+          const meta = getDerivedNodeMeta(node);
+          return meta.scriptSourceNodeId === scriptNodeId && meta.scriptDerivationKind === 'text' && Boolean(meta.scriptShotId);
+        })
+        .map(node => [getDerivedNodeMeta(node).scriptShotId!, node]),
+    );
+
+    const nextNodeMap = new Map(currentNodes.map(node => [node.id, node]));
+    const targetIds: string[] = [];
+
+    for (const [index, shot] of shots.entries()) {
+      const row = Math.floor(index / 2);
+      const column = index % 2;
+      const absolutePosition = {
+        x: scriptAbsolutePosition.x + 248 + column * 220,
+        y: scriptAbsolutePosition.y + row * 168,
+      };
+      const nextPosition = parentPosition
+        ? {
+            x: absolutePosition.x - parentPosition.x,
+            y: absolutePosition.y - parentPosition.y,
+          }
+        : absolutePosition;
+      const normalizedLabel = shot.title?.trim() || `镜头 ${index + 1}`;
+      const normalizedContent = ([shot.title?.trim(), shot.description?.trim()]
+        .filter(Boolean)
+        .join('\n')
+        .trim()) || normalizedLabel;
+      const existingNode = existingByShotId.get(shot.id);
+
+      if (existingNode) {
+        const existingData = existingNode.data as unknown as LinghuiNodeData;
+        const existingProps = existingData.properties as unknown as LinghuiTextNodeProperties;
+        nextNodeMap.set(existingNode.id, {
+          ...existingNode,
+          selected: true,
+          data: {
+            ...existingData,
+            label: normalizedLabel || existingData.label || `镜头 ${index + 1}`,
+            properties: {
+              ...existingProps,
+              mode: 'manual',
+              content: normalizedContent,
+              prompt: '',
+              systemPrompt: '',
+              llmConfigId: '',
+              scriptSourceNodeId: scriptNodeId,
+              scriptShotId: shot.id,
+              scriptShotTitle: normalizedLabel,
+              scriptDerivationKind: 'text',
+            } satisfies LinghuiTextNodeProperties,
+          } as unknown as Record<string, unknown>,
+        });
+        targetIds.push(existingNode.id);
+        continue;
+      }
+
+      const created = createCanvasNode('linghui/text', nextPosition, currentNodes);
+      const nodeData = created.data as unknown as LinghuiNodeData;
+      const nodeProps = nodeData.properties as unknown as LinghuiTextNodeProperties;
+      nextNodeMap.set(created.id, {
+        ...created,
+        parentId: scriptNode.parentId,
+        selected: true,
+        data: {
+          ...nodeData,
+          label: normalizedLabel,
+          properties: {
+            ...nodeProps,
+            mode: 'manual',
+            content: normalizedContent,
+            prompt: '',
+            systemPrompt: '',
+            llmConfigId: '',
+            scriptSourceNodeId: scriptNodeId,
+            scriptShotId: shot.id,
+            scriptShotTitle: normalizedLabel,
+            scriptDerivationKind: 'text',
+          } satisfies LinghuiTextNodeProperties,
+        } as unknown as Record<string, unknown>,
+      });
+      targetIds.push(created.id);
+    }
+
+    const nextNodes = currentNodes.map(node => {
+      const mapped = nextNodeMap.get(node.id);
+      if (!mapped) return node;
+      return targetIds.includes(node.id)
+        ? mapped
+        : (node.selected ? { ...mapped, selected: false } : mapped);
+    });
+    const appendedNodes = [...nextNodeMap.values()].filter(node => !currentNodes.some(current => current.id === node.id));
+
+    const nextEdges = [...currentEdges];
+    for (const nodeId of targetIds) {
+      const edgeShape = {
+        source: scriptNodeId,
+        sourceHandle: 'output-0',
+        target: nodeId,
+        targetHandle: 'input-1',
+      };
+      if (!hasMatchingEdge(nextEdges, edgeShape)) {
+        nextEdges.push({
+          id: `e-${nanoid(8)}`,
+          ...edgeShape,
+          type: 'linghui-edge',
+        });
+      }
+    }
+
+    setNodes([...nextNodes.map(node => (targetIds.includes(node.id) ? node : (node.selected ? { ...node, selected: false } : node))), ...appendedNodes]);
+    setEdges(nextEdges);
+    setEditorSelection(null);
+    setContextMenu(null);
+    setQuickCreate(null);
+    setPendingGroupFrame(null);
+    scheduleSnapshot();
+    return true;
+  }, [reactFlow, scheduleSnapshot, setContextMenu, setEditorSelection, setEdges, setNodes, setPendingGroupFrame, setQuickCreate]);
+
+  const deriveStoryboardImagesFromScript = useCallback((
+    scriptNodeId: string,
+    shots: LinghuiStoryboardFrame[],
+  ): string[] => {
+    const scriptNode = reactFlow.getNode(scriptNodeId);
+    if (!scriptNode || scriptNode.type === 'group' || !shots.length) {
+      return [];
+    }
+
+    const currentNodes = reactFlow.getNodes();
+    const groupPositions = collectGroupPositions(currentNodes, scriptNode.parentId ? [scriptNode.parentId] : []);
+    const scriptAbsolutePosition = getNodeAbsolutePosition(scriptNode, groupPositions);
+    const parentPosition = scriptNode.parentId ? groupPositions.get(scriptNode.parentId) : undefined;
+    const existingByShotId = new Map(
+      currentNodes
+        .filter(node => {
+          if (node.type === 'group') return false;
+          const nodeData = node.data as unknown as LinghuiNodeData | undefined;
+          if (nodeData?.linghuiType !== 'linghui/image') return false;
+          const meta = getDerivedNodeMeta(node);
+          return meta.scriptSourceNodeId === scriptNodeId && meta.scriptDerivationKind === 'image' && Boolean(meta.scriptShotId);
+        })
+        .map(node => [getDerivedNodeMeta(node).scriptShotId!, node]),
+    );
+
+    const nextNodeMap = new Map(currentNodes.map(node => [node.id, node]));
+    const targetIds: string[] = [];
+
+    for (const [index, shot] of shots.entries()) {
+      const row = Math.floor(index / 2);
+      const column = index % 2;
+      const absolutePosition = {
+        x: scriptAbsolutePosition.x + 248 + column * 236,
+        y: scriptAbsolutePosition.y + row * 186,
+      };
+      const nextPosition = parentPosition
+        ? {
+            x: absolutePosition.x - parentPosition.x,
+            y: absolutePosition.y - parentPosition.y,
+          }
+        : absolutePosition;
+      const normalizedLabel = shot.title?.trim() || `镜头 ${index + 1}`;
+      const normalizedSource = String(shot.image?.source ?? '').trim();
+      const normalizedPrompt = shot.description?.trim() || normalizedLabel;
+      const existingNode = existingByShotId.get(shot.id);
+
+      if (existingNode) {
+        const existingData = existingNode.data as unknown as LinghuiNodeData;
+        const existingProps = existingData.properties as unknown as LinghuiImageNodeProperties;
+        nextNodeMap.set(existingNode.id, {
+          ...existingNode,
+          selected: true,
+          data: {
+            ...existingData,
+            label: normalizedLabel,
+            properties: {
+              ...existingProps,
+              mode: normalizedSource ? 'import' : 'generate',
+              source: normalizedSource,
+              prompt: normalizedPrompt,
+              gridType: 'none',
+              batchCount: 1,
+              scriptSourceNodeId: scriptNodeId,
+              scriptShotId: shot.id,
+              scriptShotTitle: normalizedLabel,
+              scriptDerivationKind: 'image',
+            } satisfies LinghuiImageNodeProperties,
+          } as unknown as Record<string, unknown>,
+        });
+        targetIds.push(existingNode.id);
+        continue;
+      }
+
+      const created = createCanvasNode('linghui/image', nextPosition, currentNodes);
+      const nodeData = created.data as unknown as LinghuiNodeData;
+      const nodeProps = nodeData.properties as unknown as LinghuiImageNodeProperties;
+      nextNodeMap.set(created.id, {
+        ...created,
+        parentId: scriptNode.parentId,
+        selected: true,
+        data: {
+          ...nodeData,
+          label: normalizedLabel,
+          properties: {
+            ...nodeProps,
+            mode: normalizedSource ? 'import' : 'generate',
+            source: normalizedSource,
+            prompt: normalizedPrompt,
+            gridType: 'none',
+            batchCount: 1,
+            scriptSourceNodeId: scriptNodeId,
+            scriptShotId: shot.id,
+            scriptShotTitle: normalizedLabel,
+            scriptDerivationKind: 'image',
+          } satisfies LinghuiImageNodeProperties,
+        } as unknown as Record<string, unknown>,
+      });
+      targetIds.push(created.id);
+    }
+
+    const nextNodes = currentNodes.map(node => {
+      const mapped = nextNodeMap.get(node.id);
+      if (!mapped) return node;
+      return targetIds.includes(node.id)
+        ? mapped
+        : (node.selected ? { ...mapped, selected: false } : mapped);
+    });
+    const appendedNodes = [...nextNodeMap.values()].filter(node => !currentNodes.some(current => current.id === node.id));
+
+    setNodes([...nextNodes, ...appendedNodes]);
+    setEditorSelection(null);
+    setContextMenu(null);
+    setQuickCreate(null);
+    setPendingGroupFrame(null);
+    scheduleSnapshot();
+    return targetIds;
+  }, [reactFlow, scheduleSnapshot, setContextMenu, setEditorSelection, setNodes, setPendingGroupFrame, setQuickCreate]);
+
+  const deriveStoryboardVideosFromScript = useCallback((
+    scriptNodeId: string,
+    shots: LinghuiStoryboardFrame[],
+  ): string[] => {
+    const scriptNode = reactFlow.getNode(scriptNodeId);
+    if (!scriptNode || scriptNode.type === 'group' || !shots.length) {
+      return [];
+    }
+
+    const currentNodes = reactFlow.getNodes();
+    const currentEdges = reactFlow.getEdges();
+    const groupPositions = collectGroupPositions(currentNodes, scriptNode.parentId ? [scriptNode.parentId] : []);
+    const scriptAbsolutePosition = getNodeAbsolutePosition(scriptNode, groupPositions);
+    const parentPosition = scriptNode.parentId ? groupPositions.get(scriptNode.parentId) : undefined;
+    const existingImageByShotId = new Map(
+      currentNodes
+        .filter(node => {
+          if (node.type === 'group') return false;
+          const nodeData = node.data as unknown as LinghuiNodeData | undefined;
+          if (nodeData?.linghuiType !== 'linghui/image') return false;
+          const meta = getDerivedNodeMeta(node);
+          return meta.scriptSourceNodeId === scriptNodeId && meta.scriptDerivationKind === 'video-image' && Boolean(meta.scriptShotId);
+        })
+        .map(node => [getDerivedNodeMeta(node).scriptShotId!, node]),
+    );
+    const existingVideoByShotId = new Map(
+      currentNodes
+        .filter(node => {
+          if (node.type === 'group') return false;
+          const nodeData = node.data as unknown as LinghuiNodeData | undefined;
+          if (nodeData?.linghuiType !== 'linghui/video') return false;
+          const meta = getDerivedNodeMeta(node);
+          return meta.scriptSourceNodeId === scriptNodeId && meta.scriptDerivationKind === 'video' && Boolean(meta.scriptShotId);
+        })
+        .map(node => [getDerivedNodeMeta(node).scriptShotId!, node]),
+    );
+
+    const nextNodeMap = new Map(currentNodes.map(node => [node.id, node]));
+    const nextEdges = [...currentEdges];
+    const targetIds: string[] = [];
+
+    for (const [index, shot] of shots.entries()) {
+      const row = Math.floor(index / 2);
+      const column = index % 2;
+      const imageAbsolutePosition = {
+        x: scriptAbsolutePosition.x + 248 + column * 468,
+        y: scriptAbsolutePosition.y + row * 196,
+      };
+      const videoAbsolutePosition = {
+        x: imageAbsolutePosition.x + 228,
+        y: imageAbsolutePosition.y,
+      };
+      const imagePosition = parentPosition
+        ? {
+            x: imageAbsolutePosition.x - parentPosition.x,
+            y: imageAbsolutePosition.y - parentPosition.y,
+          }
+        : imageAbsolutePosition;
+      const videoPosition = parentPosition
+        ? {
+            x: videoAbsolutePosition.x - parentPosition.x,
+            y: videoAbsolutePosition.y - parentPosition.y,
+          }
+        : videoAbsolutePosition;
+      const normalizedLabel = shot.title?.trim() || `镜头 ${index + 1}`;
+      const normalizedSource = String(shot.image?.source ?? '').trim();
+      const normalizedPrompt = shot.description?.trim() || normalizedLabel;
+      const imageLabel = normalizedSource ? `${normalizedLabel} 首帧` : `${normalizedLabel} 分镜图`;
+      const videoLabel = `${normalizedLabel} 视频`;
+
+      let imageNode = existingImageByShotId.get(shot.id);
+      if (imageNode) {
+        const imageData = imageNode.data as unknown as LinghuiNodeData;
+        const imageProps = imageData.properties as unknown as LinghuiImageNodeProperties;
+        imageNode = {
+          ...imageNode,
+          selected: false,
+          data: {
+            ...imageData,
+            label: imageLabel,
+            properties: {
+              ...imageProps,
+              mode: normalizedSource ? 'import' : 'generate',
+              source: normalizedSource,
+              prompt: normalizedPrompt,
+              gridType: 'none',
+              batchCount: 1,
+              scriptSourceNodeId: scriptNodeId,
+              scriptShotId: shot.id,
+              scriptShotTitle: normalizedLabel,
+              scriptDerivationKind: 'video-image',
+            } satisfies LinghuiImageNodeProperties,
+          } as unknown as Record<string, unknown>,
+        };
+      } else {
+        const createdImageNode = createCanvasNode('linghui/image', imagePosition, currentNodes);
+        const imageData = createdImageNode.data as unknown as LinghuiNodeData;
+        const imageProps = imageData.properties as unknown as LinghuiImageNodeProperties;
+        imageNode = {
+          ...createdImageNode,
+          parentId: scriptNode.parentId,
+          selected: false,
+          data: {
+            ...imageData,
+            label: imageLabel,
+            properties: {
+              ...imageProps,
+              mode: normalizedSource ? 'import' : 'generate',
+              source: normalizedSource,
+              prompt: normalizedPrompt,
+              gridType: 'none',
+              batchCount: 1,
+              scriptSourceNodeId: scriptNodeId,
+              scriptShotId: shot.id,
+              scriptShotTitle: normalizedLabel,
+              scriptDerivationKind: 'video-image',
+            } satisfies LinghuiImageNodeProperties,
+          } as unknown as Record<string, unknown>,
+        };
+      }
+      nextNodeMap.set(imageNode.id, imageNode);
+
+      let videoNode = existingVideoByShotId.get(shot.id);
+      if (videoNode) {
+        const videoData = videoNode.data as unknown as LinghuiNodeData;
+        const videoProps = videoData.properties as unknown as LinghuiVideoNodeProperties;
+        videoNode = {
+          ...videoNode,
+          selected: true,
+          data: {
+            ...videoData,
+            label: videoLabel,
+            properties: {
+              ...videoProps,
+              prompt: normalizedPrompt,
+              duration: Math.max(3, Math.round(shot.durationSec || 5)),
+              source: '',
+              posterSource: '',
+              scriptSourceNodeId: scriptNodeId,
+              scriptShotId: shot.id,
+              scriptShotTitle: normalizedLabel,
+              scriptDerivationKind: 'video',
+            } satisfies LinghuiVideoNodeProperties,
+          } as unknown as Record<string, unknown>,
+        };
+      } else {
+        const createdVideoNode = createCanvasNode('linghui/video', videoPosition, currentNodes);
+        const videoData = createdVideoNode.data as unknown as LinghuiNodeData;
+        const videoProps = videoData.properties as unknown as LinghuiVideoNodeProperties;
+        videoNode = {
+          ...createdVideoNode,
+          parentId: scriptNode.parentId,
+          selected: true,
+          data: {
+            ...videoData,
+            label: videoLabel,
+            properties: {
+              ...videoProps,
+              prompt: normalizedPrompt,
+              duration: Math.max(3, Math.round(shot.durationSec || 5)),
+              source: '',
+              posterSource: '',
+              scriptSourceNodeId: scriptNodeId,
+              scriptShotId: shot.id,
+              scriptShotTitle: normalizedLabel,
+              scriptDerivationKind: 'video',
+            } satisfies LinghuiVideoNodeProperties,
+          } as unknown as Record<string, unknown>,
+        };
+      }
+      nextNodeMap.set(videoNode.id, videoNode);
+      targetIds.push(videoNode.id);
+
+      const edgeShape = {
+        source: imageNode.id,
+        sourceHandle: 'output-0',
+        target: videoNode.id,
+        targetHandle: 'input-0',
+      };
+      if (!hasMatchingEdge(nextEdges, edgeShape)) {
+        nextEdges.push({
+          id: `e-${nanoid(8)}`,
+          ...edgeShape,
+          type: 'linghui-edge',
+        });
+      }
+    }
+
+    const nextNodes = currentNodes.map(node => {
+      const mapped = nextNodeMap.get(node.id);
+      if (!mapped) return node.selected ? { ...node, selected: false } : node;
+      return targetIds.includes(node.id)
+        ? mapped
+        : (mapped.selected ? { ...mapped, selected: false } : mapped);
+    });
+    const appendedNodes = [...nextNodeMap.values()].filter(node => !currentNodes.some(current => current.id === node.id));
+
+    setNodes([...nextNodes, ...appendedNodes]);
+    setEdges(nextEdges);
+    setEditorSelection(null);
+    setContextMenu(null);
+    setQuickCreate(null);
+    setPendingGroupFrame(null);
+    scheduleSnapshot();
+    return targetIds;
+  }, [reactFlow, scheduleSnapshot, setContextMenu, setEditorSelection, setEdges, setNodes, setPendingGroupFrame, setQuickCreate]);
+
   const createGroupFromSelection = useCallback((selectionIds?: string[]) => {
-    const selected = reactFlow.getNodes().filter(n => (selectionIds?.includes(n.id) ?? n.selected) && n.type !== 'group');
+    const allNodes = reactFlow.getNodes();
+    const selected = allNodes.filter(n => (selectionIds?.includes(n.id) ?? n.selected) && n.type !== 'group');
     if (!selected.length) return;
 
     const frameBounds = pendingGroupFrame && (!selectionIds || selectionIds.every(id => pendingGroupFrame.selectionIds.includes(id)))
@@ -424,11 +923,16 @@ export function useLinghuiCanvasDocumentOps({
 
     const padding = 36;
     const groupId = nanoid(10);
+    const nextGroupLabel = createNextLinghuiWorkflowBlockLabel(
+      allNodes
+        .filter(node => node.type === 'group')
+        .map(node => (node.data as { label?: string } | undefined)?.label),
+    );
     const groupNode: Node = {
       id: groupId,
       type: 'group',
       position: { x: bounds.minX - padding, y: bounds.minY - padding - 20 },
-      data: { label: '新分组', color: '#2563eb' },
+      data: { label: nextGroupLabel, color: '#2563eb' },
       selected: true,
       draggable: true,
       style: {
@@ -475,6 +979,9 @@ export function useLinghuiCanvasDocumentOps({
     deleteNodesByIds,
     ungroupGroupsByIds,
     insertNodeAtScreenPosition,
+    deriveStoryboardShotsFromScript,
+    deriveStoryboardImagesFromScript,
+    deriveStoryboardVideosFromScript,
     createGroupFromSelection,
     clearPendingGroupFrame,
   };

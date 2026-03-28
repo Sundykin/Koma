@@ -1,6 +1,7 @@
 import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { NodeResizer, type NodeProps } from '@xyflow/react';
 import type { LinghuiCanvasGroupData } from '../../../types/linghui';
+import { resolveLinghuiWorkflowBlockLabel } from '../../../constants/linghuiWorkflowBlock';
 import {
   useGroupRunSummary,
   useLinghuiNodeMutation,
@@ -14,11 +15,12 @@ function CanvasGroupNodeInner({ id, data, selected }: NodeProps) {
   const runSummary = useGroupRunSummary(id);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [editing, setEditing] = useState(false);
-  const [draftLabel, setDraftLabel] = useState(groupData.label ?? '分组');
+  const resolvedLabel = resolveLinghuiWorkflowBlockLabel(groupData.label);
+  const [draftLabel, setDraftLabel] = useState(resolvedLabel);
 
   useEffect(() => {
-    setDraftLabel(groupData.label ?? '分组');
-  }, [groupData.label]);
+    setDraftLabel(resolvedLabel);
+  }, [resolvedLabel]);
 
   useEffect(() => {
     if (!editing) return;
@@ -27,7 +29,7 @@ function CanvasGroupNodeInner({ id, data, selected }: NodeProps) {
   }, [editing]);
 
   const commitLabel = useCallback(() => {
-    const nextLabel = draftLabel.trim() || '分组';
+    const nextLabel = resolveLinghuiWorkflowBlockLabel(draftLabel);
     updateNodeData(id, prev => ({
       ...prev,
       label: nextLabel,
@@ -42,7 +44,7 @@ function CanvasGroupNodeInner({ id, data, selected }: NodeProps) {
   }, []);
 
   const statusLabel = (() => {
-    if (!runSummary || runSummary.total === 0) return '空分组';
+    if (!runSummary || runSummary.total === 0) return '空工作流块';
     if (runSummary.failed > 0) return `失败 ${runSummary.failed}`;
     if (runSummary.running > 0) return `运行中 ${runSummary.running}/${runSummary.total}`;
     if (runSummary.stale > 0) return `待重跑 ${runSummary.stale}`;
@@ -91,7 +93,7 @@ function CanvasGroupNodeInner({ id, data, selected }: NodeProps) {
               }
               if (event.key === 'Escape') {
                 event.preventDefault();
-                setDraftLabel(groupData.label ?? '分组');
+                setDraftLabel(resolvedLabel);
                 setEditing(false);
               }
             }}
@@ -108,7 +110,7 @@ function CanvasGroupNodeInner({ id, data, selected }: NodeProps) {
               openNodeContextMenu(id, event.clientX, event.clientY);
             }}
           >
-            {groupData.label ?? '分组'}
+            {resolvedLabel}
           </button>
         )}
 

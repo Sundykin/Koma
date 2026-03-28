@@ -13,6 +13,7 @@ import {
 } from './LinghuiNodeRunsContext';
 import { electronService } from '../../../services/electronService';
 import { EditableCompactNodeLabel } from './EditableCompactNodeLabel';
+import { resolveLinghuiNodeViewMode } from '../linghuiNodeViewMode';
 
 const IMAGE_TOOLBAR_ITEMS = [
   { key: 'slash' as const, label: 'Slash' },
@@ -58,6 +59,7 @@ function ImageNodeInner({ id, data, selected }: NodeProps) {
   const status = runState?.status ?? 'idle';
   const statusColor = STATUS_COLORS[status] ?? STATUS_COLORS.idle;
   const borderColor = status !== 'idle' ? statusColor : (selected ? nodeData.accent : 'rgba(63, 63, 70, 0.7)');
+  const viewMode = resolveLinghuiNodeViewMode(nodeData.viewMode);
 
   const thumbSrc = getPreviewSource(runState?.result?.primary?.source || props.source);
   const hasUploadedSource = Boolean(String(props.source ?? '').trim());
@@ -67,7 +69,8 @@ function ImageNodeInner({ id, data, selected }: NodeProps) {
 
   return (
     <div
-      className={`linghuiCompactNode nopan ${selected ? 'isSelected' : ''}`}
+      className={`linghuiCompactNode nopan ${selected ? 'isSelected' : ''} ${viewMode === 'collapsed' ? 'isCollapsed' : ''}`}
+      data-view-mode={viewMode}
       style={{ borderColor }}
       {...interactionHandlers}
     >

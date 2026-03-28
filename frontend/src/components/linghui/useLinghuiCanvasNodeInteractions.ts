@@ -71,11 +71,11 @@ export function useLinghuiCanvasNodeInteractions({
 
     const nodeData = node.data as unknown as LinghuiNodeData;
     if (
-      nodeData.linghuiType !== 'linghui/reference' &&
       nodeData.linghuiType !== 'linghui/text' &&
       nodeData.linghuiType !== 'linghui/image' &&
       nodeData.linghuiType !== 'linghui/video' &&
-      nodeData.linghuiType !== 'linghui/audio'
+      nodeData.linghuiType !== 'linghui/audio' &&
+      nodeData.linghuiType !== 'linghui/script'
     ) {
       setEditorSelection(null);
       setActiveNodeTool(null);

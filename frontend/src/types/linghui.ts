@@ -1,20 +1,16 @@
 export type LinghuiNodeType =
-  | 'linghui/reference'
   | 'linghui/text'
   | 'linghui/image'
   | 'linghui/video'
   | 'linghui/audio'
-  | 'linghui/storyboard-shot'
-  | 'linghui/storyboard-group';
+  | 'linghui/script';
 
 export type LinghuiRFNodeTypeKey =
-  | 'linghui-reference'
   | 'linghui-text'
   | 'linghui-image'
   | 'linghui-video'
   | 'linghui-audio'
-  | 'linghui-storyboard-shot'
-  | 'linghui-storyboard-group';
+  | 'linghui-script';
 
 export type LinghuiNodeCategory = 'creation' | 'storyboard';
 export type LinghuiSlotDataType = 'image' | 'text' | 'video' | 'audio' | 'images' | 'shot' | 'storyboard';
@@ -24,6 +20,7 @@ export type LinghuiCanvasMode = 'mouse' | 'hand';
 export type LinghuiImageNodeMode = 'import' | 'generate';
 export type LinghuiImageToolKey = 'slash' | 'multi-angle' | 'outpaint' | 'relight' | 'repaint';
 export type LinghuiVideoToolKey = 'upscale' | 'analyze' | 'compose';
+export type LinghuiNodeViewMode = 'collapsed' | 'light' | 'immersive';
 export type LinghuiNodeToolState =
   | { kind: 'image'; nodeId: string; tool: LinghuiImageToolKey }
   | { kind: 'video'; nodeId: string; tool: LinghuiVideoToolKey }
@@ -32,8 +29,18 @@ export type LinghuiNodeToolState =
 // --- 图片节点 ---
 
 export type LinghuiTextNodeMode = 'manual' | 'generate';
+export type LinghuiScriptNodeMode = 'manual' | 'generate';
+export type LinghuiScriptNodeViewMode = 'cards' | 'table';
+export type LinghuiScriptDerivationKind = 'text' | 'image' | 'video-image' | 'video';
 
-export interface LinghuiTextNodeProperties {
+export interface LinghuiScriptDerivedProperties {
+  scriptSourceNodeId?: string;
+  scriptShotId?: string;
+  scriptShotTitle?: string;
+  scriptDerivationKind?: LinghuiScriptDerivationKind;
+}
+
+export interface LinghuiTextNodeProperties extends LinghuiScriptDerivedProperties {
   mode: LinghuiTextNodeMode;
   content: string;
   prompt: string;
@@ -41,14 +48,18 @@ export interface LinghuiTextNodeProperties {
   llmConfigId: string;
 }
 
-export interface LinghuiReferenceNodeProperties {
-  source: string;
-  note: string;
+export interface LinghuiScriptNodeProperties {
+  mode: LinghuiScriptNodeMode;
+  content: string;
+  prompt: string;
+  systemPrompt: string;
+  llmConfigId: string;
+  viewMode: LinghuiScriptNodeViewMode;
 }
 
 export type LinghuiGridType = 'none' | '2x2' | '3x3' | '4x4' | '5x5';
 
-export interface LinghuiImageNodeProperties {
+export interface LinghuiImageNodeProperties extends LinghuiScriptDerivedProperties {
   mode: LinghuiImageNodeMode;
   source: string;
   prompt: string;
@@ -63,7 +74,7 @@ export interface LinghuiImageNodeProperties {
 
 export type LinghuiVideoRefMode = 'all-ref' | 'first-last-frame';
 
-export interface LinghuiVideoNodeProperties {
+export interface LinghuiVideoNodeProperties extends LinghuiScriptDerivedProperties {
   prompt: string;
   itvConfigId: string;
   source: string;
@@ -94,6 +105,7 @@ export interface LinghuiNodeData {
   label: string;
   accent: string;
   background: string;
+  viewMode?: LinghuiNodeViewMode;
   properties: Record<string, unknown>;
   inputs: LinghuiSlotDef[];
   outputs: LinghuiSlotDef[];
@@ -152,6 +164,27 @@ export interface LinghuiExecutionLogEntry {
   message: string;
   nodeId?: string;
   createdAt: number;
+}
+
+export type LinghuiExecutionQueueStatus =
+  | 'idle'
+  | 'running'
+  | 'canceling'
+  | 'completed'
+  | 'failed'
+  | 'canceled';
+
+export interface LinghuiExecutionQueueState {
+  status: LinghuiExecutionQueueStatus;
+  total: number;
+  targetNodeIds: string[];
+  queuedNodeIds: string[];
+  runningNodeId?: string;
+  completedNodeIds: string[];
+  failedNodeIds: string[];
+  canceledNodeIds: string[];
+  startedAt?: number;
+  updatedAt?: number;
 }
 
 export interface LinghuiViewportState {

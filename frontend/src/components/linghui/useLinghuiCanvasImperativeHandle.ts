@@ -7,8 +7,15 @@ import type {
   LinghuiWorkspaceAssetRecord,
   LinghuiWorkspaceHistoryRecord,
 } from '../../store/linghuiStorage';
-import { createCanvasNode, resolveExecutionTargetNodeIds, toEdgeSnapshot, toNodeSnapshot } from './linghuiCanvasShared';
-import type { LinghuiCanvasHandle } from './LinghuiCanvas';
+import {
+  collectGroupPositions,
+  createCanvasNode,
+  getNodeAbsolutePosition,
+  resolveExecutionTargetNodeIds,
+  toEdgeSnapshot,
+  toNodeSnapshot,
+} from './linghuiCanvasShared';
+import type { LinghuiCanvasHandle } from './linghuiCanvasTypes';
 
 interface UseLinghuiCanvasImperativeHandleParams {
   ref: ForwardedRef<LinghuiCanvasHandle>;
@@ -105,6 +112,51 @@ export function useLinghuiCanvasImperativeHandle({
 
     focusContent() {
       reactFlowRef.current.fitView({ padding: 0.12, duration: 240 });
+    },
+
+    focusNodes(nodeIds, options) {
+      if (!nodeIds.length) {
+        return;
+      }
+
+      const currentNodes = reactFlowRef.current.getNodes();
+      const targetSet = new Set(nodeIds);
+      const matchedNodes = currentNodes.filter(node => targetSet.has(node.id));
+      if (!matchedNodes.length) {
+        return;
+      }
+
+      if (options?.select) {
+        setNodesRef.current(nodes => nodes.map(node => {
+          const isSelected = targetSet.has(node.id);
+          return node.selected === isSelected ? node : { ...node, selected: isSelected };
+        }));
+      }
+
+      const groupPositions = collectGroupPositions(currentNodes, currentNodes.filter(node => node.type === 'group').map(node => node.id));
+      const bounds = matchedNodes.map(node => {
+        const absolute = getNodeAbsolutePosition(node, groupPositions);
+        return {
+          x: absolute.x,
+          y: absolute.y,
+          width: node.measured?.width ?? node.width ?? 220,
+          height: node.measured?.height ?? node.height ?? 140,
+        };
+      });
+      const minX = Math.min(...bounds.map(item => item.x));
+      const minY = Math.min(...bounds.map(item => item.y));
+      const maxX = Math.max(...bounds.map(item => item.x + item.width));
+      const maxY = Math.max(...bounds.map(item => item.y + item.height));
+
+      reactFlowRef.current.fitBounds({
+        x: minX,
+        y: minY,
+        width: Math.max(40, maxX - minX),
+        height: Math.max(40, maxY - minY),
+      }, {
+        padding: 0.28,
+        duration: 260,
+      });
     },
 
     notifyMutation() {

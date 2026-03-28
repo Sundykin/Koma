@@ -8,6 +8,7 @@ import {
 } from './LinghuiNodeRunsContext';
 import { electronService } from '../../../services/electronService';
 import { EditableCompactNodeLabel } from './EditableCompactNodeLabel';
+import { resolveLinghuiNodeViewMode } from '../linghuiNodeViewMode';
 
 const VIDEO_TOOLBAR_ITEMS = [
   { key: 'upscale' as const, label: '高清' },
@@ -57,6 +58,7 @@ function VideoNodeInner({ id, data, selected }: NodeProps) {
   const status = runState?.status ?? 'idle';
   const statusColor = STATUS_COLORS[status] ?? STATUS_COLORS.idle;
   const borderColor = status !== 'idle' ? statusColor : (selected ? nodeData.accent : 'rgba(63, 63, 70, 0.7)');
+  const viewMode = resolveLinghuiNodeViewMode(nodeData.viewMode);
 
   const posterSrc = getPreviewSource(
     runState?.result?.primary?.posterSource ||
@@ -68,7 +70,8 @@ function VideoNodeInner({ id, data, selected }: NodeProps) {
 
   return (
     <div
-      className={`linghuiCompactNode nopan ${selected ? 'isSelected' : ''}`}
+      className={`linghuiCompactNode nopan ${selected ? 'isSelected' : ''} ${viewMode === 'collapsed' ? 'isCollapsed' : ''}`}
+      data-view-mode={viewMode}
       style={{ borderColor }}
       {...interactionHandlers}
     >

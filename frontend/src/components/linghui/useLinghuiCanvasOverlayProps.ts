@@ -9,6 +9,7 @@ import type {
   LinghuiNodeRunState,
   LinghuiNodeToolState,
   LinghuiNodeType,
+  LinghuiStoryboardFrame,
 } from '../../types/linghui';
 import {
   createLinghuiWorkflowTemplate,
@@ -24,6 +25,7 @@ interface UseLinghuiCanvasOverlayPropsParams {
   editorSelection: LinghuiCanvasSelection;
   activeNodeTool: LinghuiNodeToolState;
   setActiveNodeTool: (tool: LinghuiNodeToolState) => void;
+  onCloseEditor: () => void;
   nodeRuns: Record<string, LinghuiNodeRunState>;
   workspaceId: string | null;
   canvasRect: DOMRect | null;
@@ -46,6 +48,7 @@ interface UseLinghuiCanvasOverlayPropsParams {
   onWorkflowTemplateMutate?: () => void;
   onRunSelection?: (selectionIds?: string[]) => void;
   onRunAll?: () => void;
+  onExportSelection?: (selectionIds?: string[]) => void;
   onRunSingleNodeRef: MutableRefObject<((nodeId: string) => void) | undefined>;
   onOpenDrawerRef: MutableRefObject<((drawer: LinghuiCanvasDrawer) => void) | undefined>;
   openQuickCreateAt: (
@@ -63,6 +66,9 @@ interface UseLinghuiCanvasOverlayPropsParams {
       sourceConnection?: QuickCreateState['sourceConnection'];
     },
   ) => void;
+  deriveStoryboardShotsFromScript: (nodeId: string, shots: LinghuiStoryboardFrame[]) => boolean;
+  deriveStoryboardImagesFromScript: (nodeId: string, shots: LinghuiStoryboardFrame[]) => string[];
+  deriveStoryboardVideosFromScript: (nodeId: string, shots: LinghuiStoryboardFrame[]) => string[];
   copySelectionToClipboard: (requestedIds?: string[]) => boolean;
   duplicateSelection: (
     requestedIds?: string[],
@@ -83,6 +89,7 @@ export function useLinghuiCanvasOverlayProps({
   editorSelection,
   activeNodeTool,
   setActiveNodeTool,
+  onCloseEditor,
   nodeRuns,
   workspaceId,
   canvasRect,
@@ -105,11 +112,15 @@ export function useLinghuiCanvasOverlayProps({
   onWorkflowTemplateMutate,
   onRunSelection,
   onRunAll,
+  onExportSelection,
   onRunSingleNodeRef,
   onOpenDrawerRef,
   openQuickCreateAt,
   closeContextMenu,
   insertNodeAtScreenPosition,
+  deriveStoryboardShotsFromScript,
+  deriveStoryboardImagesFromScript,
+  deriveStoryboardVideosFromScript,
   copySelectionToClipboard,
   duplicateSelection,
   pasteClipboardSnapshot,
@@ -179,7 +190,7 @@ export function useLinghuiCanvasOverlayProps({
 
     const targetNode = reactFlow.getNode(nodeId);
     if (!targetNode || targetNode.type === 'group') {
-      message.info('当前分组不支持直接创建资产');
+      message.info('当前工作流块不支持直接创建资产');
       return;
     }
 
@@ -226,7 +237,7 @@ export function useLinghuiCanvasOverlayProps({
     const selectionIds = requestedIds?.length ? requestedIds : contextMenuSelectionIds;
     const snapshot = buildClipboardSnapshot(selectionIds);
     if (!snapshot) {
-      message.info('请先选中一个分组或一组节点，再保存为工作流');
+      message.info('请先选中一个工作流块或一组节点，再保存为工作流');
       return;
     }
 
@@ -257,15 +268,53 @@ export function useLinghuiCanvasOverlayProps({
     workspaceId,
   ]);
 
+  const runDerivedTargets = useCallback((targetIds: string[], successMessage: string) => {
+    if (!targetIds.length) {
+      return;
+    }
+
+    requestAnimationFrame(() => {
+      onRunSelection?.(targetIds);
+      message.info(successMessage);
+    });
+  }, [message, onRunSelection]);
+
   return {
     editorSelection,
     activeNodeTool,
     setActiveNodeTool,
+    onCloseEditor,
     nodeRuns,
     workspaceId,
+    onAssetLibraryMutate,
     canvasRect,
     onRunNode(nodeId) {
       onRunSingleNodeRef.current?.(nodeId);
+    },
+    onDeriveScriptShots(nodeId, shots) {
+      if (!shots.length) {
+        message.info('当前脚本还没有可派生的镜头');
+        return;
+      }
+      if (deriveStoryboardShotsFromScript(nodeId, shots)) {
+        message.success('已派生镜头文本节点');
+      }
+    },
+    onGenerateScriptImages(nodeId, shots) {
+      if (!shots.length) {
+        message.info('当前脚本还没有可生成的镜头');
+        return;
+      }
+      const targetIds = deriveStoryboardImagesFromScript(nodeId, shots);
+      runDerivedTargets(targetIds, '已开始生成选中分镜图');
+    },
+    onGenerateScriptVideos(nodeId, shots) {
+      if (!shots.length) {
+        message.info('当前脚本还没有可生成的视频镜头');
+        return;
+      }
+      const targetIds = deriveStoryboardVideosFromScript(nodeId, shots);
+      runDerivedTargets(targetIds, '已开始生成选中视频流程');
     },
     pendingGroupFrameStyle,
     pendingGroupActionsStyle,
@@ -325,6 +374,13 @@ export function useLinghuiCanvasOverlayProps({
         return;
       }
       onRunSelection?.([contextMenu.nodeId]);
+      closeContextMenu();
+    },
+    onExportCurrentSelection() {
+      if (!contextMenu?.nodeId) {
+        return;
+      }
+      onExportSelection?.([contextMenu.nodeId]);
       closeContextMenu();
     },
     onSaveCurrentGroupAsWorkflow() {
@@ -419,6 +475,13 @@ export function useLinghuiCanvasOverlayProps({
         return;
       }
       onRunSelection?.(contextMenuSelectionIds);
+      closeContextMenu();
+    },
+    onExportSelection() {
+      if (!contextMenuSelectionIds.length) {
+        return;
+      }
+      onExportSelection?.(contextMenuSelectionIds);
       closeContextMenu();
     },
     onSaveSelectionAsWorkflow() {
