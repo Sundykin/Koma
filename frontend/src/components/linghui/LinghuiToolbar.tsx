@@ -1,6 +1,6 @@
 import React from 'react';
 import { Button, Input, Select, Tag, Tooltip } from 'antd';
-import { ArrowLeft, Download, FolderOpen, Plus, Save } from 'lucide-react';
+import { ArrowLeft, BookOpen, Boxes, Download, FolderOpen, History, Library, Plus, Save } from 'lucide-react';
 import type { LinghuiGraphStats, LinghuiWorkspaceMeta } from '../../types/linghui';
 
 interface LinghuiToolbarProps {
@@ -23,6 +23,8 @@ interface LinghuiToolbarProps {
   onWorkspaceRename: (name: string) => void;
   onSave: () => void;
   onExport: () => void;
+  activeDrawer: 'add' | 'workflow' | 'asset' | 'history' | 'tutorial' | null;
+  onToggleDrawer: (drawer: 'add' | 'workflow' | 'asset' | 'history' | 'tutorial') => void;
 }
 
 export const LinghuiToolbar: React.FC<LinghuiToolbarProps> = ({
@@ -40,6 +42,8 @@ export const LinghuiToolbar: React.FC<LinghuiToolbarProps> = ({
   onWorkspaceRename,
   onSave,
   onExport,
+  activeDrawer,
+  onToggleDrawer,
 }) => {
   return (
     <div className="linghuiToolbar">
@@ -77,6 +81,47 @@ export const LinghuiToolbar: React.FC<LinghuiToolbarProps> = ({
         <Button icon={<Download size={16} />} onClick={onExport}>
           导出
         </Button>
+        <div className="linghuiToolbarDrawerGroup">
+          <Button
+            size="small"
+            type={activeDrawer === 'add' ? 'primary' : 'default'}
+            onClick={() => onToggleDrawer('add')}
+          >
+            添加
+          </Button>
+          <Button
+            size="small"
+            icon={<Boxes size={14} />}
+            type={activeDrawer === 'workflow' ? 'primary' : 'default'}
+            onClick={() => onToggleDrawer('workflow')}
+          >
+            工作流
+          </Button>
+          <Button
+            size="small"
+            icon={<Library size={14} />}
+            type={activeDrawer === 'asset' ? 'primary' : 'default'}
+            onClick={() => onToggleDrawer('asset')}
+          >
+            资产
+          </Button>
+          <Button
+            size="small"
+            icon={<History size={14} />}
+            type={activeDrawer === 'history' ? 'primary' : 'default'}
+            onClick={() => onToggleDrawer('history')}
+          >
+            历史
+          </Button>
+          <Button
+            size="small"
+            icon={<BookOpen size={14} />}
+            type={activeDrawer === 'tutorial' ? 'primary' : 'default'}
+            onClick={() => onToggleDrawer('tutorial')}
+          >
+            教程
+          </Button>
+        </div>
       </div>
 
       <div className="linghuiToolbarRight">

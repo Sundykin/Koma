@@ -21,6 +21,9 @@ function getThumbnailSource(result: LinghuiNodeResult): string {
   if (result.kind === 'video') {
     return getPreviewSource(result.primary?.posterSource) || getPreviewSource(result.primary?.source) || '';
   }
+  if (result.kind === 'audio') {
+    return '';
+  }
   if (result.kind === 'image' || result.kind === 'shot' || result.kind === 'grid') {
     return getPreviewSource(result.primary?.source) || '';
   }
@@ -64,6 +67,29 @@ const VideoPreview: React.FC<{ source?: string; posterSource?: string }> = ({ so
 const TextPreview: React.FC<{ text: string }> = ({ text }) => (
   <div className="linghuiNodePreviewText">{text}</div>
 );
+
+const AudioPreview: React.FC<{ source?: string; label?: string; durationSec?: number; text?: string }> = ({
+  source,
+  label,
+  durationSec,
+  text,
+}) => {
+  const src = getPreviewSource(source);
+  if (!src) {
+    return <div className="linghuiNodePreviewPlaceholder">暂无音频预览</div>;
+  }
+
+  return (
+    <div className="linghuiNodePreviewAudioWrap">
+      <audio className="linghuiNodePreviewAudio" src={src} controls />
+      <div className="linghuiNodePreviewAudioMeta">
+        <span>{label || '音频结果'}</span>
+        {durationSec ? <span>{Math.max(1, Math.round(durationSec))} 秒</span> : null}
+      </div>
+      {text ? <div className="linghuiNodePreviewText">{text}</div> : null}
+    </div>
+  );
+};
 
 const ImageGrid: React.FC<{ items: Array<{ source?: string; label?: string }> }> = ({ items }) => (
   <div className="linghuiNodePreviewGrid">
@@ -113,6 +139,15 @@ function ExpandedPreview({ result, message, isError }: { result?: LinghuiNodeRes
   switch (result.kind) {
     case 'text':
       return <TextPreview text={result.text || '暂无文本输出'} />;
+    case 'audio':
+      return (
+        <AudioPreview
+          source={result.primary?.source}
+          label={result.primary?.label}
+          durationSec={result.primary?.durationSec}
+          text={result.text}
+        />
+      );
     case 'video':
       return <VideoPreview source={result.primary?.source} posterSource={result.primary?.posterSource} />;
     case 'grid':
@@ -139,6 +174,15 @@ function CompactThumbnail({ result }: { result?: LinghuiNodeResult }) {
 
   if (result.kind === 'text') {
     return <div className="linghuiNodeThumbText">{(result.text || '').slice(0, 80)}</div>;
+  }
+
+  if (result.kind === 'audio') {
+    return (
+      <div className="linghuiNodeThumbAudio">
+        <span className="linghuiNodeThumbAudioIcon">♪</span>
+        <span>{result.primary?.label || '音频结果'}</span>
+      </div>
+    );
   }
 
   const src = getThumbnailSource(result);

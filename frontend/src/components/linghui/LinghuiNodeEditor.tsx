@@ -8,13 +8,21 @@ import {
   useViewport,
 } from '@xyflow/react';
 import type {
+  LinghuiAudioNodeProperties,
   LinghuiCanvasSelection,
+  LinghuiImageToolKey,
+  LinghuiImageNodeProperties,
   LinghuiNodeData,
+  LinghuiNodeToolState,
   LinghuiReferenceNodeProperties,
+  LinghuiVideoToolKey,
+  LinghuiVideoNodeProperties,
 } from '../../types/linghui';
 import { ReferenceNodeEditor } from './ReferenceNodeEditor';
+import { TextNodeEditor } from './TextNodeEditor';
 import { ImageNodeEditor } from './ImageNodeEditor';
 import { VideoNodeEditor } from './VideoNodeEditor';
+import { AudioNodeEditor } from './AudioNodeEditor';
 import {
   buildLinghuiPromptReferenceItems,
   getOrderedIncomingReferenceEdges,
@@ -22,6 +30,8 @@ import {
 
 interface LinghuiNodeEditorProps {
   selection: LinghuiCanvasSelection;
+  activeTool: LinghuiNodeToolState;
+  onToolChange: (tool: LinghuiNodeToolState) => void;
   nodeRuns: Record<string, import('../../types/linghui').LinghuiNodeRunState>;
   onRunNode: (nodeId: string) => void;
   canvasRect: DOMRect | null;
@@ -30,6 +40,8 @@ interface LinghuiNodeEditorProps {
 
 export const LinghuiNodeEditor: React.FC<LinghuiNodeEditorProps> = ({
   selection,
+  activeTool,
+  onToolChange,
   nodeRuns,
   onRunNode,
   canvasRect,
@@ -48,8 +60,10 @@ export const LinghuiNodeEditor: React.FC<LinghuiNodeEditorProps> = ({
 
   const showEditor = (
     nodeType === 'linghui/reference' ||
+    nodeType === 'linghui/text' ||
     nodeType === 'linghui/image' ||
-    nodeType === 'linghui/video'
+    nodeType === 'linghui/video' ||
+    nodeType === 'linghui/audio'
   );
 
   const nodeData = useMemo(() => {
@@ -83,6 +97,8 @@ export const LinghuiNodeEditor: React.FC<LinghuiNodeEditorProps> = ({
       const sourceNodeData = nodeDataMap.get(edge.source);
       const fallbackSource = sourceNodeData?.linghuiType === 'linghui/reference'
         ? String((sourceNodeData.properties as unknown as LinghuiReferenceNodeProperties)?.source ?? '').trim()
+        : sourceNodeData?.linghuiType === 'linghui/image'
+          ? String((sourceNodeData.properties as unknown as LinghuiImageNodeProperties)?.source ?? '').trim()
         : '';
       const source = result?.primary?.source || fallbackSource;
 
@@ -92,6 +108,76 @@ export const LinghuiNodeEditor: React.FC<LinghuiNodeEditorProps> = ({
       refs.push({
         source,
         label: result?.primary?.label || sourceNodeData?.label || `参考 ${refs.length + 1}`,
+      });
+    }
+
+    return refs;
+  }, [edges, nodeId, nodeDataMap, nodeRuns]);
+
+  const referenceVideos = useMemo(() => {
+    if (!nodeId) return [];
+
+    const refs: Array<{ source?: string; posterSource?: string; label?: string }> = [];
+    const dedupe = new Set<string>();
+
+    for (const edge of getOrderedIncomingReferenceEdges(
+      nodeId,
+      edges.map(edge => ({
+        source: edge.source,
+        target: edge.target,
+        sourceHandle: edge.sourceHandle,
+        targetHandle: edge.targetHandle,
+      })),
+    )) {
+      if (edge.targetHandle !== 'input-3') continue;
+
+      const result = nodeRuns[edge.source]?.result;
+      const sourceNodeData = nodeDataMap.get(edge.source);
+      const props = sourceNodeData?.properties as unknown as LinghuiVideoNodeProperties | undefined;
+      const source = String(result?.primary?.source ?? props?.source ?? '').trim();
+      const posterSource = String(result?.primary?.posterSource ?? props?.posterSource ?? '').trim();
+      const key = posterSource || source;
+
+      if (!key || dedupe.has(key)) continue;
+
+      dedupe.add(key);
+      refs.push({
+        source,
+        posterSource,
+        label: result?.primary?.label || sourceNodeData?.label || `视频 ${refs.length + 1}`,
+      });
+    }
+
+    return refs;
+  }, [edges, nodeId, nodeDataMap, nodeRuns]);
+
+  const referenceAudios = useMemo(() => {
+    if (!nodeId) return [];
+
+    const refs: Array<{ source?: string; label?: string }> = [];
+    const dedupe = new Set<string>();
+
+    for (const edge of getOrderedIncomingReferenceEdges(
+      nodeId,
+      edges.map(edge => ({
+        source: edge.source,
+        target: edge.target,
+        sourceHandle: edge.sourceHandle,
+        targetHandle: edge.targetHandle,
+      })),
+    )) {
+      if (edge.targetHandle !== 'input-2') continue;
+
+      const result = nodeRuns[edge.source]?.result;
+      const sourceNodeData = nodeDataMap.get(edge.source);
+      const props = sourceNodeData?.properties as unknown as LinghuiAudioNodeProperties | undefined;
+      const source = String(result?.primary?.source ?? props?.source ?? '').trim();
+      if (!source || dedupe.has(source)) continue;
+
+      dedupe.add(source);
+      refs.push({
+        source,
+        label: result?.primary?.label || sourceNodeData?.label || `音频 ${refs.length + 1}`,
       });
     }
 
@@ -134,7 +220,15 @@ export const LinghuiNodeEditor: React.FC<LinghuiNodeEditorProps> = ({
     });
 
     const panelWidth = nodeType === 'linghui/reference' ? 420 : 560;
-    const panelHeight = nodeType === 'linghui/reference' ? 360 : 340;
+    const panelHeight = nodeType === 'linghui/reference'
+      ? 360
+      : nodeType === 'linghui/text'
+        ? 460
+        : nodeType === 'linghui/audio'
+          ? 400
+          : activeTool
+            ? 560
+          : 340;
     const centeredX = screenPos.x - canvasRect.left + nodeWidth / 2 - panelWidth / 2;
     const belowY = screenPos.y - canvasRect.top + nodeHeight + 12;
     const aboveY = screenPos.y - canvasRect.top - panelHeight - 12;
@@ -144,11 +238,17 @@ export const LinghuiNodeEditor: React.FC<LinghuiNodeEditorProps> = ({
       : Math.max(12, aboveY);
 
     setPanelPos({ x: clampedX, y: resolvedY });
-  }, [canvasRect, internalNode, nodeId, nodeType, reactFlow, showEditor, viewport]);
+  }, [activeTool, canvasRect, internalNode, nodeId, nodeType, reactFlow, showEditor, viewport]);
 
   if (!showEditor || !nodeId || !nodeData || !panelPos) return null;
 
   const panelWidth = nodeType === 'linghui/reference' ? 420 : 560;
+  const activeImageTool = activeTool?.kind === 'image' && activeTool.nodeId === nodeId
+    ? activeTool.tool
+    : null;
+  const activeVideoTool = activeTool?.kind === 'video' && activeTool.nodeId === nodeId
+    ? activeTool.tool
+    : null;
 
   return (
     <div
@@ -169,12 +269,23 @@ export const LinghuiNodeEditor: React.FC<LinghuiNodeEditorProps> = ({
           onRun={() => onRunNode(nodeId)}
         />
       )}
+      {nodeType === 'linghui/text' && (
+        <TextNodeEditor
+          nodeId={nodeId}
+          nodeData={nodeData}
+          promptReferences={promptReferences}
+          onRun={() => onRunNode(nodeId)}
+        />
+      )}
       {nodeType === 'linghui/image' && (
         <ImageNodeEditor
           nodeId={nodeId}
           nodeData={nodeData}
           referenceImages={referenceImages}
           promptReferences={promptReferences}
+          workspaceId={workspaceId}
+          activeTool={activeImageTool}
+          onToolChange={(tool: LinghuiImageToolKey | null) => onToolChange(tool ? { kind: 'image', nodeId, tool } : null)}
           onRun={() => onRunNode(nodeId)}
         />
       )}
@@ -183,7 +294,20 @@ export const LinghuiNodeEditor: React.FC<LinghuiNodeEditorProps> = ({
           nodeId={nodeId}
           nodeData={nodeData}
           referenceImages={referenceImages}
+          referenceVideos={referenceVideos}
+          referenceAudios={referenceAudios}
           promptReferences={promptReferences}
+          workspaceId={workspaceId}
+          activeTool={activeVideoTool}
+          onToolChange={(tool: LinghuiVideoToolKey | null) => onToolChange(tool ? { kind: 'video', nodeId, tool } : null)}
+          onRun={() => onRunNode(nodeId)}
+        />
+      )}
+      {nodeType === 'linghui/audio' && (
+        <AudioNodeEditor
+          nodeId={nodeId}
+          nodeData={nodeData}
+          workspaceId={workspaceId}
           onRun={() => onRunNode(nodeId)}
         />
       )}

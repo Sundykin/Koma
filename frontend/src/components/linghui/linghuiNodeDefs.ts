@@ -32,6 +32,16 @@ export const NODE_META: Record<LinghuiNodeType, LinghuiNodeMeta> = {
     accent: '#38bdf8',
     background: '#0f1720',
   },
+  'linghui/text': {
+    type: 'linghui/text',
+    title: '文本',
+    desc: '手动输入文本，或调用 LLM 生成文本块',
+    catalogCategory: 'creation',
+    catalogLabel: '文本节点',
+    catalogDescription: '输入角色设定、剧情描述、镜头说明等文本内容',
+    accent: '#f59e0b',
+    background: '#0f1720',
+  },
   'linghui/image': {
     type: 'linghui/image',
     title: '图片',
@@ -50,6 +60,16 @@ export const NODE_META: Record<LinghuiNodeType, LinghuiNodeMeta> = {
     catalogLabel: '视频节点',
     catalogDescription: '生成视频，支持多种参考模式',
     accent: '#22c55e',
+    background: '#0f1720',
+  },
+  'linghui/audio': {
+    type: 'linghui/audio',
+    title: '音频',
+    desc: '统一音频节点，支持上传音频或文本转语音',
+    catalogCategory: 'creation',
+    catalogLabel: '音频节点',
+    catalogDescription: '上传音频或生成语音，输出音频产物',
+    accent: '#f97316',
     background: '#0f1720',
   },
   'linghui/storyboard-shot': {
@@ -78,6 +98,7 @@ export const SLOT_TYPE_LABELS: Record<LinghuiSlotDataType, string> = {
   image: '图片',
   text: '文本',
   video: '视频',
+  audio: '音频',
   images: '多图',
   shot: '分镜',
   storyboard: '分镜序列',
@@ -88,13 +109,29 @@ export const NODE_SLOT_LAYOUTS: Record<LinghuiNodeType, { inputs: LinghuiSlotDef
     inputs: [],
     outputs: [{ name: 'reference', dataType: 'image' }],
   },
+  'linghui/text': {
+    inputs: [],
+    outputs: [{ name: 'text', dataType: 'text' }],
+  },
   'linghui/image': {
-    inputs: [{ name: '参考', dataType: 'image' }],
+    inputs: [
+      { name: '参考', dataType: 'image' },
+      { name: '文本', dataType: 'text' },
+    ],
     outputs: [{ name: 'image', dataType: 'image' }],
   },
   'linghui/video': {
-    inputs: [{ name: '参考', dataType: 'image' }],
+    inputs: [
+      { name: '参考', dataType: 'image' },
+      { name: '文本', dataType: 'text' },
+      { name: '音频', dataType: 'audio' },
+      { name: '视频', dataType: 'video' },
+    ],
     outputs: [{ name: 'video', dataType: 'video' }],
+  },
+  'linghui/audio': {
+    inputs: [],
+    outputs: [{ name: 'audio', dataType: 'audio' }],
   },
   'linghui/storyboard-shot': {
     inputs: [
@@ -114,7 +151,16 @@ export const NODE_PROPERTY_DEFAULTS: Record<LinghuiNodeType, Record<string, unkn
     source: '',
     note: '',
   },
+  'linghui/text': {
+    mode: 'manual',
+    content: '',
+    prompt: '',
+    systemPrompt: '',
+    llmConfigId: '',
+  },
   'linghui/image': {
+    mode: 'generate',
+    source: '',
     prompt: '',
     ttiConfigId: '',
     aspectRatio: '3:4',
@@ -125,10 +171,17 @@ export const NODE_PROPERTY_DEFAULTS: Record<LinghuiNodeType, Record<string, unkn
   'linghui/video': {
     prompt: '',
     itvConfigId: '',
+    source: '',
+    posterSource: '',
     refMode: 'all-ref',
     aspectRatio: '16:9',
     resolution: '720P',
     duration: 5,
+  },
+  'linghui/audio': {
+    source: '',
+    prompt: '',
+    ttsConfigId: '',
   },
   'linghui/storyboard-shot': { description: '', duration: 3 },
   'linghui/storyboard-group': { title: '场景序列', notes: '' },
