@@ -34,14 +34,18 @@ export interface ExtractFramesOptions {
   quality?: number;     // JPEG 质量 1-31（越小越好）
 }
 
-// 九宫格图片分割选项（3×3）
+// 宫格图片分割选项（支持 2×2 / 3×3 / 4×4 / 5×5）
 export interface SplitGridImageOptions {
   input: string;
   outputDir: string;
-  aspectRatio: '16:9' | '9:16';
+  aspectRatio?: string;
+  gridSize?: 2 | 3 | 4 | 5;
   // 目标单格最小尺寸，用于放大保证切割后清晰度（默认 16:9 -> 1280x720; 9:16 -> 720x1280）
   minCellWidth?: number;
   minCellHeight?: number;
+  // 输出单格目标尺寸；若传入则在裁切后放大到该尺寸
+  targetWidth?: number;
+  targetHeight?: number;
   // 锐化强度（0~2），默认 0.9
   sharpenAmount?: number;
   // 输出格式，默认 png（无损）
@@ -229,7 +233,7 @@ export class FFmpegService {
   }
 
   /**
-   * 九宫格图片分割（3×3）
+   * 宫格图片分割（支持 2×2 / 3×3 / 4×4 / 5×5）
    */
   async splitGridImage(options: SplitGridImageOptions): Promise<string[]> {
     return this.queueTask<string[]>('splitGridImage', options);
@@ -425,10 +429,11 @@ export class FFmpegService {
   }
 
   /**
-   * 九宫格图片分割（3×3）
+   * 宫格图片分割（支持 2×2 / 3×3 / 4×4 / 5×5）
    *
-   * - 保证输出可平分为 9 张
-   * - 通过“最小单格尺寸”要求进行放大（近似无损放大 + 锐化）
+   * - 保证输出尺寸可被 gridSize 均分
+   * - 通过“最小单格尺寸”或目标输出尺寸进行放大
+   * - 可在切块后直接放大到 targetWidth / targetHeight
    */
   private async doSplitGridImage(options: SplitGridImageOptions): Promise<string[]> {
     if (!this.ffmpegPath) {
@@ -438,9 +443,12 @@ export class FFmpegService {
     const {
       input,
       outputDir,
-      aspectRatio,
+      aspectRatio = '16:9',
+      gridSize = 3,
       minCellWidth,
       minCellHeight,
+      targetWidth,
+      targetHeight,
       sharpenAmount = 0.9,
       format = 'png',
     } = options;
@@ -464,8 +472,8 @@ export class FFmpegService {
       : { w: 720, h: 1280 };
     const desiredCellW = minCellWidth || defaultCell.w;
     const desiredCellH = minCellHeight || defaultCell.h;
-    const minW = desiredCellW * 3;
-    const minH = desiredCellH * 3;
+    const minW = desiredCellW * gridSize;
+    const minH = desiredCellH * gridSize;
 
     // Upscale first (never downscale), and then round up to multiples of 3 so we can evenly split into 3×3.
     // We prefer scaling to the final size instead of padding to avoid introducing borders.
@@ -476,10 +484,10 @@ export class FFmpegService {
     const scaledW = hasDimensions ? Math.round(inputWidth * scaleFactor) : minW;
     const scaledH = hasDimensions ? Math.round(inputHeight * scaleFactor) : minH;
 
-    const finalW = this.roundUpToMultiple(scaledW, 3);
-    const finalH = this.roundUpToMultiple(scaledH, 3);
-    const cellW = Math.floor(finalW / 3);
-    const cellH = Math.floor(finalH / 3);
+    const finalW = this.roundUpToMultiple(scaledW, gridSize);
+    const finalH = this.roundUpToMultiple(scaledH, gridSize);
+    const cellW = Math.floor(finalW / gridSize);
+    const cellH = Math.floor(finalH / gridSize);
 
     const padRight = Math.max(0, finalW - scaledW);
     const padBottom = Math.max(0, finalH - scaledH);
@@ -500,16 +508,19 @@ export class FFmpegService {
 
     baseFilters.push(
       `unsharp=5:5:${Math.max(0, Math.min(2, sharpenAmount))}:3:3:0.0`,
-      'split=9[v0][v1][v2][v3][v4][v5][v6][v7][v8]',
+      `split=${gridSize * gridSize}${Array.from({ length: gridSize * gridSize }, (_, index) => `[v${index}]`).join('')}`,
     );
 
     const cropFilters: string[] = [];
     let outIndex = 0;
-    for (let row = 0; row < 3; row += 1) {
-      for (let col = 0; col < 3; col += 1) {
+    for (let row = 0; row < gridSize; row += 1) {
+      for (let col = 0; col < gridSize; col += 1) {
         const x = col * cellW;
         const y = row * cellH;
-        cropFilters.push(`[v${outIndex}]crop=${cellW}:${cellH}:${x}:${y}[o${outIndex}]`);
+        const scaleFilter = targetWidth && targetHeight
+          ? `,scale=${targetWidth}:${targetHeight}:flags=lanczos,unsharp=5:5:${Math.max(0, Math.min(2, sharpenAmount))}:3:3:0.0`
+          : '';
+        cropFilters.push(`[v${outIndex}]crop=${cellW}:${cellH}:${x}:${y}${scaleFilter}[o${outIndex}]`);
         outIndex += 1;
       }
     }
@@ -523,7 +534,7 @@ export class FFmpegService {
       '-y',
     ];
 
-    for (let i = 0; i < 9; i += 1) {
+    for (let i = 0; i < gridSize * gridSize; i += 1) {
       const filename = `cell_${String(i + 1).padStart(2, '0')}.${format}`;
       const outPath = path.join(outputDir, filename);
       outputPaths.push(outPath);

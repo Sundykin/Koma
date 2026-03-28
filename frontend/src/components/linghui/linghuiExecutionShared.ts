@@ -2,6 +2,7 @@ import { nanoid } from 'nanoid';
 import { electronService } from '../../services/electronService';
 import type {
   LinghuiExecutionContext,
+  LinghuiImageNodeProperties,
   LinghuiExecutionLogEntry,
   LinghuiImageNodeMode,
   LinghuiMediaItem,
@@ -15,6 +16,7 @@ import {
   parseLinghuiPromptReferences,
   type LinghuiPromptReferenceItem,
 } from './linghuiPromptReferences';
+import { resolveLinghuiImageResultWithSelectedPrimary } from './linghuiImageCollections';
 
 export const EXECUTION_PROJECT_ID = 'linghui';
 
@@ -124,15 +126,47 @@ export interface ExecutionNodeView {
 function resolveAllInputResults(context: LinghuiExecutionContext, nodeId: string, handleId = 'input-0'): LinghuiNodeResult[] {
   return getOrderedIncomingReferenceEdges(nodeId, context.edges)
     .filter(edge => edge.targetHandle === handleId)
-    .map(edge => context.nodeOutputs[edge.source])
-    .filter(Boolean);
+    .map(edge => {
+      const result = context.nodeOutputs[edge.source];
+      if (!result) {
+        return undefined;
+      }
+
+      const sourceNode = context.nodes.find(node => node.id === edge.source);
+      if (sourceNode?.data.linghuiType !== 'linghui/image') {
+        return result;
+      }
+
+      return resolveLinghuiImageResultWithSelectedPrimary(
+        sourceNode.data.properties as unknown as LinghuiImageNodeProperties,
+        result,
+      );
+    })
+    .filter(Boolean) as LinghuiNodeResult[];
 }
 
 function resolveInputData(context: LinghuiExecutionContext, nodeId: string, inputSlotIndex: number): LinghuiNodeResult | undefined {
   const targetHandle = `input-${inputSlotIndex}`;
   const edge = getOrderedIncomingReferenceEdges(nodeId, context.edges)
     .find(item => item.targetHandle === targetHandle);
-  return edge ? context.nodeOutputs[edge.source] : undefined;
+  if (!edge) {
+    return undefined;
+  }
+
+  const result = context.nodeOutputs[edge.source];
+  if (!result) {
+    return undefined;
+  }
+
+  const sourceNode = context.nodes.find(node => node.id === edge.source);
+  if (sourceNode?.data.linghuiType !== 'linghui/image') {
+    return result;
+  }
+
+  return resolveLinghuiImageResultWithSelectedPrimary(
+    sourceNode.data.properties as unknown as LinghuiImageNodeProperties,
+    result,
+  );
 }
 
 export function createNodeView(context: LinghuiExecutionContext, snapshot: LinghuiRFNodeSnapshot): ExecutionNodeView {
@@ -184,12 +218,6 @@ export function collectReferenceSources(results: LinghuiNodeResult[]): string[] 
   for (const result of results) {
     if (result.primary?.kind === 'image') {
       pushSource(result.primary.source);
-    }
-
-    for (const item of result.items ?? []) {
-      if (item.kind === 'image') {
-        pushSource(item.source);
-      }
     }
   }
 

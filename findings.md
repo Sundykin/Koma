@@ -5,6 +5,83 @@
 - 用户希望对照当前灵绘，列出缺失能力。
 - 用户希望在差异基础上制定补齐计划，而不是直接进入实现。
 
+## 新需求：2026-03-28 节点编辑弹窗变更提案
+- 用户希望为灵绘中的节点编辑弹窗制定新的 OpenSpec 变更，而不是直接编码。
+- 用户要求节点编辑弹窗更融入画布，不要挡住被编辑节点。
+- 用户要求围绕节点形成上下两部分布局：上方紧凑工具条、下方主编辑区，中间保留节点本体可见。
+- 用户要求图片节点和视频节点按模式裁剪内容：
+  - 图片生成模式弱化上传区，重点来自上游输入和提示词
+  - 图片导入输出模式无需编辑提示词
+  - 视频导入模式同样应隐藏无关生成控件
+- 用户要求多角度等工具改成独立能力入口，而不是和主编辑区混成一块。
+- 用户要求提示词编辑器视觉上与弹窗背景融合，减少割裂感。
+
+## 新需求：2026-03-28 图片节点多图集合与宫格切分
+- 用户希望图片节点支持多张图片，但单节点最多保留 4 张。
+- 用户希望图片节点同时支持“多张生成”和“多张导入输出”。
+- 用户要求同一图片节点中的图片必须保持相同比例。
+- 用户希望图片节点在有图时直接展示图片，多图时可以展开平铺，并带有动画效果。
+- 用户要求只有被设为主图的图片才能被下游节点继续使用。
+- 用户希望为图片节点增加“宫格操作”：
+  - 支持 4 / 9 / 16 / 25 宫格
+  - 分割线显示在放大的图片预览上
+  - 用户可多选若干格子
+  - 选中后通过 IPC 调用 FFmpeg 做高清化
+  - 最终自动生成对应数量的导入图片节点
+
+## 本輪研究發現：图片节点多图集合
+- 当前图片节点属性层仍以单个 `source` 为核心，只能稳定表达“单张导入图片”。
+  - 参考：`frontend/src/types/linghui.ts`
+- 当前图片节点执行层虽然支持 `batchCount` 和 `gridType` 返回多张结果，但：
+  - 节点本体不会展示多张图
+  - 下游引用不会区分“用户当前想用哪张”
+  - 提示词引用默认会把整组结果都暴露出来
+  - 参考：`frontend/src/components/linghui/linghuiExecutionNodeExecutors.ts`
+  - 参考：`frontend/src/components/linghui/linghuiPromptReferences.ts`
+- 当前图片节点编辑器仍以单图导入/单图预览为主：
+  - 导入模式只支持 1 张图
+  - 生成模式的批量结果没有节点内选图与主图切换
+  - `gridType` 当前仍被当作生成数量辅助参数，而不是切图工具
+  - 参考：`frontend/src/components/linghui/ImageNodeEditor.tsx`
+- 当前图片节点卡片只显示单张缩略图，不支持多图展开或平铺动画。
+  - 参考：`frontend/src/components/linghui/nodes/ImageNode.tsx`
+  - 参考：`frontend/src/components/linghui/LinghuiPage.css`
+
+## 本輪研究發現：宫格切分能力
+- Electron 侧已经存在 FFmpeg IPC 和前端封装，不需要重新搭建图像处理通道。
+  - 参考：`electron/controller/ffmpeg.ts`
+  - 参考：`electron/service/ffmpeg.ts`
+  - 参考：`frontend/src/services/ffmpegManager.ts`
+- 当前 FFmpeg 只支持 `splitGridImage` 的 3x3 场景，本质上是九宫格专用实现。
+  - 参考：`electron/service/ffmpeg.ts`
+- Storyboard 场景里已经有“先确保本地文件、再切图、再生成新图片资产”的成熟路径，可以借鉴到灵绘。
+  - 参考：`frontend/src/components/storyboard/ShotCard.tsx`
+
+## 本輪设计决策
+- 图片节点升级为“图片集合容器”，但集合大小限制在 4，避免节点膨胀失控。
+- 下游只消费主图，不默认消费整组图片，保证提示词编译和执行顺序稳定。
+- 多张生成继续使用批量生成语义，宫格切分改为独立工具，不再与生成数量混用。
+- 宫格切分始终作用于当前主图；切分结果不回写原节点，而是自动生成新的导入图片节点。
+
+## 本輪实现补充发现
+- 图片节点多图体验除了数据模型，还依赖节点卡片层的“展开态”视觉提示；仅有缩略图堆叠不足以表达集合浏览，因此补成了 hover / selected 时展开为平铺网格的动画。
+  - 参考：`frontend/src/components/linghui/nodes/ImageNode.tsx`
+  - 参考：`frontend/src/components/linghui/LinghuiPage.css`
+- 用户对“多图节点”的预期更接近一张张图片直接叠成节点本体，而不是“主图 + 额外漂浮缩略图”；因此节点 DOM 需要以多层完整图片为基础，而不是附加装饰层。
+  - 参考：`frontend/src/components/linghui/nodes/ImageNode.tsx`
+  - 参考：`frontend/src/components/linghui/LinghuiPage.css`
+- 宫格工具在结构接入后如果没有独立样式，用户几乎感知不到分割线与选择状态；因此需要专门的网格预览、编号、选中高亮和“未单选时默认全选”提示。
+  - 参考：`frontend/src/components/linghui/ImageNodeEditor.tsx`
+  - 参考：`frontend/src/components/linghui/LinghuiPage.css`
+- 仅规范化 `getAllInputResults()` 还不够，`getInputResult()` 也需要对图片节点运行结果做主图归一，否则少数按单槽读取的执行路径仍可能绕过主图选择。
+  - 参考：`frontend/src/components/linghui/linghuiExecutionShared.ts`
+- 宫格切分产生的导入图片节点如果不自动回连源节点，会丢失来源关系和后续整理线索；回写节点时需要同时创建对应连线。
+  - 参考：`frontend/src/components/linghui/useLinghuiCanvasDocumentOps.ts`
+- 当前灵绘连线之前只承担展示作用，缺少独立删除入口；把连线纳入右键菜单和键盘删除后，画布编排会更接近节点编辑器的基本操作预期。
+  - 参考：`frontend/src/components/linghui/LinghuiCanvas.tsx`
+  - 参考：`frontend/src/components/linghui/LinghuiCanvasContextMenu.tsx`
+  - 参考：`frontend/src/components/linghui/LinghuiEdge.tsx`
+
 ## 研究發現
 - `LibTV` 相关公开资料在通用搜索里噪音较大，但在 LiblibAI 官方域名下可以确认它属于同一产品体系的一部分，而不是孤立的单点产品。
 - LiblibAI 当前公开出来的能力不是“单一画布工具”，而是覆盖图片生成、视频生成、WebUI、ComfyUI 工作流、LoRA 训练、AI 应用、资产、创作中心、教程、API 的完整创作平台。
@@ -218,6 +295,60 @@
 - 当前灵绘在节点能力上的核心缺失有：
   - 缺少文本节点、音频节点、脚本节点
   - 图片节点仍然把“导入图片”和“生成图片”拆成了 `reference + image` 两种心智
+
+## 节点编辑弹窗变更提案的现状发现
+
+- `LinghuiNodeEditor.tsx` 当前轻编辑态仍然只是在节点上方或下方放一块大卡片：
+  - 位置算法只有 `above / below + centered`
+  - 没有“上方工具条 + 下方编辑区 + 节点主体可见”的空间规划
+  - 节点很容易被面板直接挡住
+- `ImageNodeEditor.tsx` 当前无论模式如何都保留大面积上传区：
+  - `generate` 模式下仍突出拖拽上传，不符合“主要由上游驱动”的使用路径
+  - `import` 模式下仍渲染提示词编辑器和生成参数，只是文案变化
+  - 多角度、扩图、打光、重绘等工具直接作为大块 preset panel 插入主编辑区
+- `VideoNodeEditor.tsx` 也有相同问题：
+  - 上传区在生成模式中同样过于显眼
+  - 导入模式没有真正裁掉提示词和生成参数
+  - 工具能力和主表单没有分层
+- `LinghuiPromptEditor.tsx` 功能上已经支持 `@` 引用、补全和缩略预览：
+  - 这部分能力不需要重写
+  - 主要问题在于放入节点弹窗后，视觉上仍像第二层卡片
+- `LinghuiPage.css` 中 `.linghuiEditorPanel` 与 `.linghuiEditorPrompt .cm-editor` 都有很强的边框和背景盒子感：
+  - 容易形成“浮层里再嵌一个编辑器盒子”的割裂体验
+
+## 本轮提案的设计判断
+
+- 本轮应该创建新的 OpenSpec change，而不是直接改现有实现。
+- 更适合新建 `linghui-studio` 相关变更，而不是并入 `ui-layout` 或 `ui-components`。
+- 这次提案的核心不在“移除弹窗”，而在“重构弹窗与节点的空间关系”。
+- 图片和视频节点都需要明确的模式裁剪规则，否则视觉负担和误操作会持续存在。
+- 提示词编辑器应保留现有 `@` 能力，只重做在节点弹窗中的视觉容器和层级。
+
+## 节点编辑弹窗实施结果
+
+- `LinghuiNodeEditor.tsx` 已改成“非阻塞覆盖层 + 上方工具条 + 下方主编辑区”的结构：
+  - 顶层覆盖层不再拦截整块画布
+  - 只有工具条和主编辑面板能接收事件
+  - 主编辑面板增加了底部优先、侧边降级的避让策略
+- `ImageNodeEditor.tsx` 已按模式拆分：
+  - `generate` 模式不再渲染大上传区，改为上游输入区 + 紧凑附加参考图卡片 + 提示词 + 生成参数
+  - `import` 模式只保留图片预览、上传/替换、清空和运行
+- `VideoNodeEditor.tsx` 已按生成/导入状态拆分：
+  - 生成模式以输入摘要、参考组织、提示词和参数为主
+  - 导入模式只保留视频预览、上传/替换、清空和运行
+  - 生成型工具在导入模式下会明确提示并支持切回生成模式
+- 图片和视频工具能力已从主表单中抽离：
+  - 主编辑区和工具面板改成独立并列结构
+  - 工具开关不再把整块预设卡插进主表单中间
+- `LinghuiPromptEditor.tsx` 新增了 `surfaceStyle="fusion"` 视觉模式：
+  - 节点弹窗里的提示词编辑器不再是明显的第二层盒子
+  - `@` 引用 widget、补全列表和预览能力保持不变
+
+## 实现验证结论
+
+- `pnpm -s exec tsc --noEmit --pretty false -p frontend/tsconfig.json` 通过，说明前端改动类型正确。
+- `frontend/` 下的 `pnpm exec vite build` 通过，说明这批 UI 改动可以完成生产构建。
+- 仓库根目录全量 `tsc` 仍被 `electron/` 侧既有问题阻塞，不是本轮灵绘改动引入。
   - 视频节点仍然缺少上传模式、多模态输入和工具条能力
   - 节点通用操作还没有成为一等能力
   - 节点复杂能力仍然过度依赖弹窗，不适合继续扩展

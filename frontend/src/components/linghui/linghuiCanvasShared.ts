@@ -29,6 +29,11 @@ export const PENDING_GROUP_ACTIONS_WIDTH = 228;
 export const QUICK_CREATE_WIDTH = 304;
 export const QUICK_CREATE_HEIGHT = 360;
 export const PASTE_OFFSET_STEP = 28;
+export const GROUP_HEADER_HEIGHT = 40;
+
+export function resolveParentExtent(parentId?: string): 'parent' | undefined {
+  return parentId ? 'parent' : undefined;
+}
 
 export interface ActiveNodePressState {
   nodeId: string;
@@ -41,7 +46,7 @@ export interface ActiveNodePressState {
   timerId: number;
 }
 
-export type LinghuiCanvasMenuKind = 'pane' | 'node' | 'selection';
+export type LinghuiCanvasMenuKind = 'pane' | 'node' | 'selection' | 'edge';
 
 export interface LinghuiCanvasMenuState {
   kind: LinghuiCanvasMenuKind;
@@ -50,6 +55,7 @@ export interface LinghuiCanvasMenuState {
   screenX: number;
   screenY: number;
   nodeId?: string;
+  edgeId?: string;
   selectionIds?: string[];
 }
 
@@ -161,26 +167,30 @@ export function buildCanvasDocumentSnapshotFromRF(
 
 export function buildRFNodesFromSnapshot(snapshot: LinghuiCanvasDocumentSnapshot): Node[] {
   const { nodes: snapNodes, groups: snapGroups } = snapshot.graphData;
+  const groupNodes: Node[] = (snapGroups ?? []).map(group => ({
+    id: group.id,
+    type: 'group',
+    position: group.position,
+    data: group.data as unknown as Record<string, unknown>,
+    style: { width: group.style.width, height: group.style.height },
+    draggable: true,
+    selected: false,
+  }));
+  const childNodes: Node[] = (snapNodes ?? []).map(node => ({
+    id: node.id,
+    type: node.type,
+    position: node.position,
+    data: cloneLinghuiNodeData(node.data) as unknown as Record<string, unknown>,
+    parentId: node.parentId,
+    extent: resolveParentExtent(node.parentId),
+    draggable: false,
+    selected: false,
+  }));
+
   return [
-    ...(snapGroups ?? []).map(group => ({
-      id: group.id,
-      type: 'group' as const,
-      position: group.position,
-      data: group.data as unknown as Record<string, unknown>,
-      style: { width: group.style.width, height: group.style.height },
-      draggable: true,
-      selected: false,
-    })),
-    ...(snapNodes ?? []).map(node => ({
-      id: node.id,
-      type: node.type,
-      position: node.position,
-      data: cloneLinghuiNodeData(node.data) as unknown as Record<string, unknown>,
-      parentId: node.parentId,
-      draggable: false,
-      selected: false,
-    })),
-  ] satisfies Node[];
+    ...groupNodes,
+    ...childNodes,
+  ];
 }
 
 export function buildRFEdgesFromSnapshot(snapshot: LinghuiCanvasDocumentSnapshot): Edge[] {
@@ -233,6 +243,29 @@ export function createCanvasNode(type: LinghuiNodeType, position: Node['position
     }) as unknown as Record<string, unknown>,
     draggable: false,
   };
+}
+
+export function expandNodeIdsWithDescendants(
+  currentNodes: Node[],
+  nodeIds: Iterable<string>,
+): string[] {
+  const expanded = new Set(nodeIds);
+  let changed = true;
+
+  while (changed) {
+    changed = false;
+
+    for (const node of currentNodes) {
+      if (!node.parentId || expanded.has(node.id) || !expanded.has(node.parentId)) {
+        continue;
+      }
+
+      expanded.add(node.id);
+      changed = true;
+    }
+  }
+
+  return [...expanded];
 }
 
 export function resolveCompatibleTargetHandleId(
@@ -308,6 +341,7 @@ export function detachNodesFromGroups(
     return {
       ...node,
       parentId: undefined,
+      extent: undefined,
       selected: options?.selectDetached ? true : node.selected,
       position: {
         x: node.position.x + groupPos.x,
@@ -315,6 +349,52 @@ export function detachNodesFromGroups(
       },
     };
   });
+}
+
+function resolveNodeSize(node: Pick<Node, 'measured' | 'width' | 'height'>): { width: number; height: number } {
+  return {
+    width: node.measured?.width ?? node.width ?? 180,
+    height: node.measured?.height ?? node.height ?? 120,
+  };
+}
+
+export function clampNodePositionToParentBounds(params: {
+  node: Pick<Node, 'parentId' | 'measured' | 'width' | 'height'>;
+  parentNode?: Pick<Node, 'measured' | 'width' | 'height' | 'style'> | null;
+  nextPosition: { x: number; y: number };
+}): { x: number; y: number } {
+  const { node, parentNode, nextPosition } = params;
+  if (!node.parentId || !parentNode) {
+    return nextPosition;
+  }
+
+  const parentWidth = Number(
+    (parentNode.style as { width?: number | string } | undefined)?.width
+      ?? parentNode.measured?.width
+      ?? parentNode.width
+      ?? 0,
+  );
+  const parentHeight = Number(
+    (parentNode.style as { height?: number | string } | undefined)?.height
+      ?? parentNode.measured?.height
+      ?? parentNode.height
+      ?? 0,
+  );
+
+  if (!Number.isFinite(parentWidth) || !Number.isFinite(parentHeight) || parentWidth <= 0 || parentHeight <= 0) {
+    return nextPosition;
+  }
+
+  const { width: nodeWidth, height: nodeHeight } = resolveNodeSize(node);
+  const minX = 0;
+  const maxX = Math.max(0, parentWidth - nodeWidth);
+  const minY = GROUP_HEADER_HEIGHT;
+  const maxY = Math.max(minY, parentHeight - nodeHeight);
+
+  return {
+    x: Math.max(minX, Math.min(nextPosition.x, maxX)),
+    y: Math.max(minY, Math.min(nextPosition.y, maxY)),
+  };
 }
 
 export function resolveExecutionTargetNodeIds(

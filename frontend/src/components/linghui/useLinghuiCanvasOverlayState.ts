@@ -41,6 +41,9 @@ export function useLinghuiCanvasOverlayState({
   }, [contextMenu?.nodeId, nodes]);
 
   const contextMenuSelectionIds = useMemo(() => {
+    if (contextMenu?.kind === 'edge') {
+      return [];
+    }
     if (contextMenu?.selectionIds?.length) {
       return contextMenu.selectionIds;
     }
@@ -111,12 +114,12 @@ export function useLinghuiCanvasOverlayState({
     clientX: number,
     clientY: number,
     kind: LinghuiCanvasMenuState['kind'],
-    extras?: { nodeId?: string; selectionIds?: string[] },
+    extras?: { nodeId?: string; edgeId?: string; selectionIds?: string[] },
   ) => {
     if (!hostRef.current) return;
     const rect = hostRef.current.getBoundingClientRect();
     const menuWidth = 260;
-    const menuHeight = kind === 'node' ? 460 : 560;
+    const menuHeight = kind === 'node' ? 460 : kind === 'edge' ? 164 : 560;
     const rawX = clientX - rect.left;
     const rawY = clientY - rect.top;
     const x = Math.max(10, Math.min(rawX, rect.width - menuWidth - 10));
@@ -129,6 +132,7 @@ export function useLinghuiCanvasOverlayState({
       screenX: clientX,
       screenY: clientY,
       nodeId: extras?.nodeId,
+      edgeId: extras?.edgeId,
       selectionIds: extras?.selectionIds,
     });
   }, [hostRef]);

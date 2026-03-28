@@ -29,6 +29,8 @@ interface LinghuiCanvasStageProps {
   onSelectionEnd: ReactFlowComponentProps['onSelectionEnd'];
   onNodeClick: ReactFlowComponentProps['onNodeClick'];
   onNodeContextMenu: ReactFlowComponentProps['onNodeContextMenu'];
+  onEdgeClick: ReactFlowComponentProps['onEdgeClick'];
+  onEdgeContextMenu: ReactFlowComponentProps['onEdgeContextMenu'];
   onPaneClick: ReactFlowComponentProps['onPaneClick'];
   onPaneContextMenu: ReactFlowComponentProps['onPaneContextMenu'];
   onMoveEnd: ReactFlowComponentProps['onMoveEnd'];
@@ -52,6 +54,8 @@ export function LinghuiCanvasStage({
   onSelectionEnd,
   onNodeClick,
   onNodeContextMenu,
+  onEdgeClick,
+  onEdgeContextMenu,
   onPaneClick,
   onPaneContextMenu,
   onMoveEnd,
@@ -74,6 +78,8 @@ export function LinghuiCanvasStage({
       onSelectionEnd={onSelectionEnd}
       onNodeClick={onNodeClick}
       onNodeContextMenu={onNodeContextMenu}
+      onEdgeClick={onEdgeClick}
+      onEdgeContextMenu={onEdgeContextMenu}
       onPaneClick={onPaneClick}
       onPaneContextMenu={onPaneContextMenu}
       onMoveEnd={onMoveEnd}

@@ -23,6 +23,7 @@ function LinghuiEdgeInner({
   id,
   source,
   target,
+  selected,
   sourceX,
   sourceY,
   targetX,
@@ -56,13 +57,19 @@ function LinghuiEdgeInner({
       id={id}
       path={edgePath}
       markerEnd={markerEnd}
+      interactionWidth={24}
       style={{
         ...style,
         stroke: color,
-        strokeWidth: linkStatus === 'running' ? 3 : 2,
+        strokeWidth: selected ? 4 : linkStatus === 'running' ? 3 : 2,
         strokeDasharray: linkStatus === 'running' ? '8 6' : undefined,
-        opacity: traceStatus ? 0.98 : 0.72,
-        filter: traceStatus ? `drop-shadow(0 0 4px ${color})` : undefined,
+        opacity: selected ? 1 : traceStatus ? 0.98 : 0.72,
+        filter: selected
+          ? `drop-shadow(0 0 6px ${color})`
+          : traceStatus
+            ? `drop-shadow(0 0 4px ${color})`
+            : undefined,
+        cursor: 'pointer',
         transition: 'stroke 200ms ease, stroke-width 200ms ease, opacity 200ms ease, filter 200ms ease',
       }}
     />

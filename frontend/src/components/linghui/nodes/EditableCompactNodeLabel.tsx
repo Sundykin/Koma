@@ -5,17 +5,25 @@ interface EditableCompactNodeLabelProps {
   nodeId: string;
   label: string;
   fallbackLabel?: string;
+  variant?: 'compact' | 'editor';
+  title?: string;
 }
 
 export const EditableCompactNodeLabel: React.FC<EditableCompactNodeLabelProps> = ({
   nodeId,
   label,
   fallbackLabel = '未命名节点',
+  variant = 'compact',
+  title = '双击重命名',
 }) => {
   const { updateNodeData } = useLinghuiNodeMutation();
   const [isEditing, setIsEditing] = useState(false);
   const [draftLabel, setDraftLabel] = useState(label || fallbackLabel);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const labelClassName = variant === 'editor' ? 'linghuiNodeEditorTitleEditable' : 'linghuiCompactLabel';
+  const inputClassName = variant === 'editor'
+    ? 'linghuiNodeEditorTitleInput nodrag nopan'
+    : 'linghuiCompactLabelInput nodrag nopan';
 
   useEffect(() => {
     if (!isEditing) {
@@ -54,7 +62,7 @@ export const EditableCompactNodeLabel: React.FC<EditableCompactNodeLabelProps> =
     return (
       <input
         ref={inputRef}
-        className="linghuiCompactLabelInput nodrag nopan"
+        className={inputClassName}
         value={draftLabel}
         onChange={event => setDraftLabel(event.target.value)}
         onBlur={commitRename}
@@ -67,6 +75,7 @@ export const EditableCompactNodeLabel: React.FC<EditableCompactNodeLabelProps> =
             cancelRename();
           }
         }}
+        onMouseDown={event => event.stopPropagation()}
         onPointerDown={event => event.stopPropagation()}
         onDoubleClick={event => event.stopPropagation()}
       />
@@ -75,8 +84,9 @@ export const EditableCompactNodeLabel: React.FC<EditableCompactNodeLabelProps> =
 
   return (
     <span
-      className="linghuiCompactLabel"
-      title="双击重命名"
+      className={labelClassName}
+      title={title}
+      onMouseDown={event => event.stopPropagation()}
       onDoubleClick={event => {
         event.preventDefault();
         event.stopPropagation();

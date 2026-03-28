@@ -9,6 +9,7 @@ import { useLinghuiNodeInteraction, useNodeRunState } from './LinghuiNodeRunsCon
 import { EditableCompactNodeLabel } from './EditableCompactNodeLabel';
 import { parseLinghuiScriptContent } from '../linghuiScriptNodeUtils';
 import { resolveLinghuiNodeViewMode } from '../linghuiNodeViewMode';
+import { resolveDefaultCompactNodeStyle } from './linghuiNodeCardSizing';
 
 const STATUS_COLORS: Record<LinghuiRunStatus, string> = {
   idle: '#64748b',
@@ -42,7 +43,6 @@ function ScriptNodeInner({ id, data, selected }: NodeProps) {
   const interactionHandlers = useLinghuiNodeInteraction(id);
   const status = runState?.status ?? 'idle';
   const statusColor = STATUS_COLORS[status] ?? STATUS_COLORS.idle;
-  const borderColor = status !== 'idle' ? statusColor : (selected ? nodeData.accent : 'rgba(63, 63, 70, 0.7)');
 
   const fallbackShots = useMemo(() => (
     props.mode === 'manual' ? parseLinghuiScriptContent(String(props.content ?? '')).shots : []
@@ -59,7 +59,10 @@ function ScriptNodeInner({ id, data, selected }: NodeProps) {
     <div
       className={`linghuiCompactNode nopan ${selected ? 'isSelected' : ''} ${viewMode === 'collapsed' ? 'isCollapsed' : ''}`}
       data-view-mode={viewMode}
-      style={{ borderColor }}
+      style={{
+        ...resolveDefaultCompactNodeStyle({ thumbHeight: 214, minHeight: 368 }),
+        borderColor: status !== 'idle' ? statusColor : (selected ? nodeData.accent : 'rgba(63, 63, 70, 0.7)'),
+      }}
       {...interactionHandlers}
     >
       {nodeData.inputs.map((slot, index) => (

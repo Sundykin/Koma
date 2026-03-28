@@ -314,6 +314,10 @@ async function getWorkspaceDir(workspaceId: string): Promise<string> {
   return `${await getLinghuiRoot()}/${workspaceId}`;
 }
 
+export async function getLinghuiWorkspaceDir(workspaceId: string): Promise<string> {
+  return getWorkspaceDir(workspaceId);
+}
+
 async function getWorkspacePath(workspaceId: string): Promise<string> {
   return `${await getWorkspaceDir(workspaceId)}/workspace.json`;
 }
@@ -663,6 +667,28 @@ async function materializeWorkspaceAssetSource(params: {
   const targetPath = `${params.assetDir}/${params.filename}.${ext}`;
   await electronService.fs.copy(rawSource, targetPath);
   return targetPath;
+}
+
+export async function materializeLinghuiWorkspaceAssetSource(params: {
+  workspaceId: string;
+  source?: string;
+  filename: string;
+  fallbackExt: string;
+  mimeType?: string;
+  subDir?: string;
+}): Promise<string | undefined> {
+  const assetDir = `${await getWorkspaceDir(params.workspaceId)}/${params.subDir ?? 'assets/references'}`;
+  if (electronService.isElectron()) {
+    await electronService.fs.mkdir(assetDir);
+  }
+
+  return materializeWorkspaceAssetSource({
+    assetDir,
+    filename: params.filename,
+    source: params.source,
+    fallbackExt: params.fallbackExt,
+    mimeType: params.mimeType,
+  });
 }
 
 type LinghuiLibraryRecordKind = 'image' | 'video' | 'audio' | 'text';

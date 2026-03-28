@@ -7,6 +7,7 @@ import type {
   LinghuiTextNodeProperties,
   LinghuiVideoNodeProperties,
 } from '../../types/linghui';
+import { resolveLinghuiImageResultWithSelectedPrimary } from './linghuiImageCollections';
 
 export type LinghuiPromptReferenceKind = 'image' | 'video' | 'audio' | 'text';
 
@@ -36,6 +37,13 @@ export interface ParsedLinghuiPromptReference {
 }
 
 export const LINGHUI_PROMPT_REFERENCE_REGEX = /@ref_([a-zA-Z0-9_-]+)/g;
+
+function resolveImageFallbackMode(properties: LinghuiImageNodeProperties): 'import' | 'generate' {
+  if (properties.mode === 'import' || properties.mode === 'generate') {
+    return properties.mode;
+  }
+  return String(properties.source ?? '').trim() ? 'import' : 'generate';
+}
 
 export function parseLinghuiPromptReferences(text: string): ParsedLinghuiPromptReference[] {
   const refs: ParsedLinghuiPromptReference[] = [];
@@ -145,9 +153,16 @@ function buildResultReferences(
   const refs: LinghuiPromptReferenceItem[] = [];
   if (!result) return refs;
 
-  const baseName = getDescriptionText(result.primary?.label, nodeData.label) || nodeData.label;
+  const normalizedResult = nodeData.linghuiType === 'linghui/image'
+    ? resolveLinghuiImageResultWithSelectedPrimary(
+        nodeData.properties as unknown as LinghuiImageNodeProperties,
+        result,
+      ) ?? result
+    : result;
+
+  const baseName = getDescriptionText(normalizedResult.primary?.label, nodeData.label) || nodeData.label;
   const baseDescription = `来自上游节点：${nodeData.label}`;
-  const primaryKind = result.primary?.kind;
+  const primaryKind = normalizedResult.primary?.kind;
 
   if (primaryKind === 'audio') {
     refs.push({
@@ -157,12 +172,12 @@ function buildResultReferences(
       name: baseName,
       description: baseDescription,
       textValue:
-        getDescriptionText(result.text) ||
-        getDescriptionText(result.metadata?.description) ||
-        getDescriptionText(result.metadata?.note) ||
+        getDescriptionText(normalizedResult.text) ||
+        getDescriptionText(normalizedResult.metadata?.description) ||
+        getDescriptionText(normalizedResult.metadata?.note) ||
         baseName,
     });
-  } else if (primaryKind === 'video' && !getMediaReferenceSource(result.primary)) {
+  } else if (primaryKind === 'video' && !getMediaReferenceSource(normalizedResult.primary)) {
     refs.push({
       id: nodeId,
       nodeId,
@@ -172,11 +187,11 @@ function buildResultReferences(
       textValue: baseName,
     });
   } else {
-    const primarySource = getMediaReferenceSource(result.primary);
+    const primarySource = getMediaReferenceSource(normalizedResult.primary);
     pushVisualReference(refs, {
       id: nodeId,
       nodeId,
-      kind: result.primary?.kind === 'video' ? 'video' : 'image',
+      kind: normalizedResult.primary?.kind === 'video' ? 'video' : 'image',
       name: baseName,
       description: baseDescription,
       source: primarySource,
@@ -184,48 +199,50 @@ function buildResultReferences(
     });
   }
 
-  result.items?.forEach((item, index) => {
-    const itemSource = getMediaReferenceSource(item);
-    if (primaryKind !== 'audio' && index === 0 && itemSource && getMediaReferenceSource(result.primary) === itemSource) {
-      return;
-    }
+  if (nodeData.linghuiType !== 'linghui/image') {
+    normalizedResult.items?.forEach((item, index) => {
+      const itemSource = getMediaReferenceSource(item);
+      if (primaryKind !== 'audio' && index === 0 && itemSource && getMediaReferenceSource(normalizedResult.primary) === itemSource) {
+        return;
+      }
 
-    if (item.kind === 'audio') {
-      refs.push({
+      if (item.kind === 'audio') {
+        refs.push({
+          id: `${nodeId}__item_${index + 1}`,
+          nodeId,
+          kind: 'audio',
+          name: getDescriptionText(item.label, `${baseName} ${index + 1}`) || `${baseName} ${index + 1}`,
+          description: `${baseDescription} · 产物 ${index + 1}`,
+          textValue: getDescriptionText(item.label, `${baseName} ${index + 1}`) || `${baseName} ${index + 1}`,
+        });
+        return;
+      }
+
+      if (item.kind === 'video' && !itemSource) {
+        refs.push({
+          id: `${nodeId}__item_${index + 1}`,
+          nodeId,
+          kind: 'video',
+          name: getDescriptionText(item.label, `${baseName} ${index + 1}`) || `${baseName} ${index + 1}`,
+          description: `${baseDescription} · 产物 ${index + 1}`,
+          textValue: getDescriptionText(item.label, `${baseName} ${index + 1}`) || `${baseName} ${index + 1}`,
+        });
+        return;
+      }
+
+      pushVisualReference(refs, {
         id: `${nodeId}__item_${index + 1}`,
         nodeId,
-        kind: 'audio',
+        kind: item.kind === 'video' ? 'video' : 'image',
         name: getDescriptionText(item.label, `${baseName} ${index + 1}`) || `${baseName} ${index + 1}`,
         description: `${baseDescription} · 产物 ${index + 1}`,
-        textValue: getDescriptionText(item.label, `${baseName} ${index + 1}`) || `${baseName} ${index + 1}`,
+        source: itemSource,
+        previewSource: itemSource,
       });
-      return;
-    }
-
-    if (item.kind === 'video' && !itemSource) {
-      refs.push({
-        id: `${nodeId}__item_${index + 1}`,
-        nodeId,
-        kind: 'video',
-        name: getDescriptionText(item.label, `${baseName} ${index + 1}`) || `${baseName} ${index + 1}`,
-        description: `${baseDescription} · 产物 ${index + 1}`,
-        textValue: getDescriptionText(item.label, `${baseName} ${index + 1}`) || `${baseName} ${index + 1}`,
-      });
-      return;
-    }
-
-    pushVisualReference(refs, {
-      id: `${nodeId}__item_${index + 1}`,
-      nodeId,
-      kind: item.kind === 'video' ? 'video' : 'image',
-      name: getDescriptionText(item.label, `${baseName} ${index + 1}`) || `${baseName} ${index + 1}`,
-      description: `${baseDescription} · 产物 ${index + 1}`,
-      source: itemSource,
-      previewSource: itemSource,
     });
-  });
+  }
 
-  result.shots?.forEach((shot, index) => {
+  normalizedResult.shots?.forEach((shot, index) => {
     const shotSource = getMediaReferenceSource(shot.image);
     const shotId = `${nodeId}__shot_${index + 1}`;
     const shotName = getDescriptionText(shot.title, `${baseName} 分镜 ${index + 1}`) || `${baseName} 分镜 ${index + 1}`;
@@ -259,9 +276,9 @@ function buildResultReferences(
     name: `${baseName} 文本`,
     description: baseDescription,
     textValue:
-      getDescriptionText(result.text) ||
-      getDescriptionText(result.metadata?.description) ||
-      getDescriptionText(result.metadata?.note),
+      getDescriptionText(normalizedResult.text) ||
+      getDescriptionText(normalizedResult.metadata?.description) ||
+      getDescriptionText(normalizedResult.metadata?.note),
   });
 
   return refs;
@@ -289,8 +306,9 @@ function buildFallbackReference(
 
   if (nodeData.linghuiType === 'linghui/image') {
     const properties = nodeData.properties as unknown as LinghuiImageNodeProperties;
+    const mode = resolveImageFallbackMode(properties);
     const source = getDescriptionText(properties.source);
-    if (!source) {
+    if (!source || mode !== 'import') {
       return [];
     }
 

@@ -18,7 +18,7 @@ export type LinghuiRunStatus = 'idle' | 'running' | 'succeeded' | 'failed' | 'st
 export type LinghuiResultKind = 'image' | 'text' | 'video' | 'audio' | 'grid' | 'images' | 'shot' | 'storyboard';
 export type LinghuiCanvasMode = 'mouse' | 'hand';
 export type LinghuiImageNodeMode = 'import' | 'generate';
-export type LinghuiImageToolKey = 'slash' | 'multi-angle' | 'outpaint' | 'relight' | 'repaint';
+export type LinghuiImageToolKey = 'multi-angle' | 'outpaint' | 'relight' | 'repaint' | 'grid-split';
 export type LinghuiVideoToolKey = 'upscale' | 'analyze' | 'compose';
 export type LinghuiNodeViewMode = 'collapsed' | 'light' | 'immersive';
 export type LinghuiNodeToolState =
@@ -59,9 +59,22 @@ export interface LinghuiScriptNodeProperties {
 
 export type LinghuiGridType = 'none' | '2x2' | '3x3' | '4x4' | '5x5';
 
+export interface LinghuiImageAssetItem {
+  id: string;
+  source: string;
+  label?: string;
+  width?: number;
+  height?: number;
+  mimeType?: string;
+  aspectRatio?: string;
+}
+
 export interface LinghuiImageNodeProperties extends LinghuiScriptDerivedProperties {
   mode: LinghuiImageNodeMode;
   source: string;
+  items?: LinghuiImageAssetItem[];
+  primaryAssetId?: string;
+  primaryResultSource?: string;
   prompt: string;
   ttiConfigId: string;
   aspectRatio: string;
@@ -340,6 +353,8 @@ export const GRID_TYPES: Array<{ label: string; value: LinghuiGridType }> = [
   { label: '16宫格 (4×4)', value: '4x4' },
   { label: '25宫格 (5×5)', value: '5x5' },
 ];
+
+export const LINGHUI_IMAGE_BATCH_COUNTS = [1, 2, 3, 4] as const;
 
 export const VIDEO_ASPECT_RATIOS = [
   { label: '16:9', value: '16:9' },

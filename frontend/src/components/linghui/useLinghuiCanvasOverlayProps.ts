@@ -5,6 +5,7 @@ import type { ReactFlowInstance } from '@xyflow/react';
 import type {
   LinghuiCanvasSelection,
   LinghuiExecutionLogEntry,
+  LinghuiImageAssetItem,
   LinghuiNodeData,
   LinghuiNodeRunState,
   LinghuiNodeToolState,
@@ -69,6 +70,7 @@ interface UseLinghuiCanvasOverlayPropsParams {
   deriveStoryboardShotsFromScript: (nodeId: string, shots: LinghuiStoryboardFrame[]) => boolean;
   deriveStoryboardImagesFromScript: (nodeId: string, shots: LinghuiStoryboardFrame[]) => string[];
   deriveStoryboardVideosFromScript: (nodeId: string, shots: LinghuiStoryboardFrame[]) => string[];
+  createDerivedImageNodesFromNode: (sourceNodeId: string, items: LinghuiImageAssetItem[]) => string[];
   copySelectionToClipboard: (requestedIds?: string[]) => boolean;
   duplicateSelection: (
     requestedIds?: string[],
@@ -76,6 +78,7 @@ interface UseLinghuiCanvasOverlayPropsParams {
   ) => boolean;
   pasteClipboardSnapshot: (options?: { screenX?: number; screenY?: number }) => boolean;
   deleteNodesByIds: (nodeIds: string[]) => void;
+  deleteEdgesByIds: (edgeIds: string[]) => void;
   ungroupGroupsByIds: (groupIds: string[]) => void;
   handleUploadImagesToCanvas: (screenX?: number, screenY?: number) => Promise<void>;
   handleUploadVideosToCanvas: (screenX?: number, screenY?: number) => Promise<void>;
@@ -121,10 +124,12 @@ export function useLinghuiCanvasOverlayProps({
   deriveStoryboardShotsFromScript,
   deriveStoryboardImagesFromScript,
   deriveStoryboardVideosFromScript,
+  createDerivedImageNodesFromNode,
   copySelectionToClipboard,
   duplicateSelection,
   pasteClipboardSnapshot,
   deleteNodesByIds,
+  deleteEdgesByIds,
   ungroupGroupsByIds,
   handleUploadImagesToCanvas,
   handleUploadVideosToCanvas,
@@ -316,6 +321,9 @@ export function useLinghuiCanvasOverlayProps({
       const targetIds = deriveStoryboardVideosFromScript(nodeId, shots);
       runDerivedTargets(targetIds, '已开始生成选中视频流程');
     },
+    onCreateDerivedImportImages(nodeId, items) {
+      createDerivedImageNodesFromNode(nodeId, items);
+    },
     pendingGroupFrameStyle,
     pendingGroupActionsStyle,
     pendingGroupCreatableIds,
@@ -419,6 +427,13 @@ export function useLinghuiCanvasOverlayProps({
         return;
       }
       deleteNodesByIds([contextMenu.nodeId]);
+      closeContextMenu();
+    },
+    onDeleteCurrentEdge() {
+      if (!contextMenu?.edgeId) {
+        return;
+      }
+      deleteEdgesByIds([contextMenu.edgeId]);
       closeContextMenu();
     },
     onUploadImages() {

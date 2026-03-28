@@ -4,6 +4,7 @@ import { useCallback, useRef } from 'react';
 import type { Dispatch, RefObject, SetStateAction } from 'react';
 import type {
   LinghuiCanvasSelection,
+  LinghuiImageAssetItem,
   LinghuiImageNodeProperties,
   LinghuiNodeData,
   LinghuiScriptDerivationKind,
@@ -17,6 +18,7 @@ import type {
   LinghuiWorkspaceHistoryRecord,
 } from '../../store/linghuiStorage';
 import { createNextLinghuiWorkflowBlockLabel } from '../../constants/linghuiWorkflowBlock';
+import { createLinghuiImageImportProperties } from './linghuiImageCollections';
 import {
   type LinghuiCanvasMenuState,
   type LinghuiClipboardSnapshot,
@@ -27,9 +29,11 @@ import {
   cloneLinghuiNodeData,
   cloneSnapshotValue,
   collectGroupPositions,
+  expandNodeIdsWithDescendants,
   createCanvasNode,
   detachNodesFromGroups,
   getNodeAbsolutePosition,
+  resolveParentExtent,
   resolveCompatibleTargetHandleId,
   toEdgeSnapshot,
   toGroupSnapshot,
@@ -47,6 +51,7 @@ interface UseLinghuiCanvasDocumentOpsParams {
   setPendingGroupFrame: Dispatch<SetStateAction<LinghuiPendingGroupFrame | null>>;
   pendingGroupFrame: LinghuiPendingGroupFrame | null;
   scheduleSnapshot: (options?: { recordHistory?: boolean; force?: boolean }) => void;
+  onClearNodeRunState?: (nodeId: string) => void;
 }
 
 function getDerivedNodeMeta(node: Node): {
@@ -89,6 +94,7 @@ export function useLinghuiCanvasDocumentOps({
   setPendingGroupFrame,
   pendingGroupFrame,
   scheduleSnapshot,
+  onClearNodeRunState,
 }: UseLinghuiCanvasDocumentOpsParams) {
   const clipboardRef = useRef<LinghuiClipboardSnapshot | null>(null);
   const pasteSequenceRef = useRef(0);
@@ -221,6 +227,7 @@ export function useLinghuiCanvasDocumentOps({
             },
         data: cloneLinghuiNodeData(node.data) as unknown as Record<string, unknown>,
         parentId: nextParentId,
+        extent: resolveParentExtent(nextParentId),
         draggable: false,
         selected: true,
       };
@@ -356,8 +363,18 @@ export function useLinghuiCanvasDocumentOps({
   const deleteNodesByIds = useCallback((nodeIds: string[]) => {
     if (!nodeIds.length) return;
 
+    const currentNodes = reactFlow.getNodes();
+    const expandedNodeIds = expandNodeIdsWithDescendants(currentNodes, nodeIds);
+    const deleteSet = new Set(expandedNodeIds);
+    const deletedLeafNodeIds = currentNodes
+      .filter(node => deleteSet.has(node.id) && node.type !== 'group')
+      .map(node => node.id);
+
+    deletedLeafNodeIds.forEach(nodeId => {
+      onClearNodeRunState?.(nodeId);
+    });
+
     setNodes(currentNodes => {
-      const deleteSet = new Set(nodeIds);
       const groupPositions = collectGroupPositions(currentNodes, deleteSet);
       return detachNodesFromGroups(
         currentNodes.filter(node => !deleteSet.has(node.id)),
@@ -366,13 +383,24 @@ export function useLinghuiCanvasDocumentOps({
     });
 
     setEdges(currentEdges => currentEdges.filter(edge => (
-      !nodeIds.includes(edge.source) && !nodeIds.includes(edge.target)
+      !deleteSet.has(edge.source) && !deleteSet.has(edge.target)
     )));
 
     setEditorSelection(null);
     setPendingGroupFrame(null);
     scheduleSnapshot();
-  }, [scheduleSnapshot, setEdges, setEditorSelection, setNodes, setPendingGroupFrame]);
+  }, [onClearNodeRunState, reactFlow, scheduleSnapshot, setEdges, setEditorSelection, setNodes, setPendingGroupFrame]);
+
+  const deleteEdgesByIds = useCallback((edgeIds: string[]) => {
+    if (!edgeIds.length) return;
+
+    const deleteSet = new Set(edgeIds);
+    setEdges(currentEdges => currentEdges.filter(edge => !deleteSet.has(edge.id)));
+    setContextMenu(null);
+    setQuickCreate(null);
+    setPendingGroupFrame(null);
+    scheduleSnapshot();
+  }, [scheduleSnapshot, setContextMenu, setEdges, setPendingGroupFrame, setQuickCreate]);
 
   const ungroupGroupsByIds = useCallback((groupIds: string[]) => {
     if (!groupIds.length) return;
@@ -517,6 +545,7 @@ export function useLinghuiCanvasDocumentOps({
       nextNodeMap.set(created.id, {
         ...created,
         parentId: scriptNode.parentId,
+        extent: resolveParentExtent(scriptNode.parentId),
         selected: true,
         data: {
           ...nodeData,
@@ -653,6 +682,7 @@ export function useLinghuiCanvasDocumentOps({
       nextNodeMap.set(created.id, {
         ...created,
         parentId: scriptNode.parentId,
+        extent: resolveParentExtent(scriptNode.parentId),
         selected: true,
         data: {
           ...nodeData,
@@ -793,6 +823,7 @@ export function useLinghuiCanvasDocumentOps({
         imageNode = {
           ...createdImageNode,
           parentId: scriptNode.parentId,
+          extent: resolveParentExtent(scriptNode.parentId),
           selected: false,
           data: {
             ...imageData,
@@ -844,6 +875,7 @@ export function useLinghuiCanvasDocumentOps({
         videoNode = {
           ...createdVideoNode,
           parentId: scriptNode.parentId,
+          extent: resolveParentExtent(scriptNode.parentId),
           selected: true,
           data: {
             ...videoData,
@@ -950,6 +982,7 @@ export function useLinghuiCanvasDocumentOps({
         return {
           ...n,
           parentId: groupId,
+          extent: 'parent' as const,
           selected: false,
           position: {
             x: n.position.x - (bounds.minX - padding),
@@ -966,6 +999,84 @@ export function useLinghuiCanvasDocumentOps({
     scheduleSnapshot();
   }, [clearPendingGroupFrame, pendingGroupFrame, reactFlow, scheduleSnapshot, setContextMenu, setEditorSelection, setNodes]);
 
+  const createDerivedImageNodesFromNode = useCallback((sourceNodeId: string, items: LinghuiImageAssetItem[]): string[] => {
+    if (!items.length) {
+      return [];
+    }
+
+    const currentNodes = reactFlow.getNodes();
+    const sourceNode = currentNodes.find(node => node.id === sourceNodeId);
+    if (!sourceNode || sourceNode.type === 'group') {
+      return [];
+    }
+
+    const groupPositions = collectGroupPositions(currentNodes, sourceNode.parentId ? [sourceNode.parentId] : []);
+    const sourceAbsolutePosition = getNodeAbsolutePosition(sourceNode, groupPositions);
+    const parentPosition = sourceNode.parentId ? groupPositions.get(sourceNode.parentId) : undefined;
+    const sourceWidth = sourceNode.measured?.width ?? sourceNode.width ?? 180;
+    const gapX = 228;
+    const gapY = 196;
+    const columns = Math.min(2, items.length);
+    const createdIds: string[] = [];
+    const createdEdges: Edge[] = [];
+
+    setNodes(existingNodes => {
+      const nextNodes = existingNodes.map(node => (node.selected ? { ...node, selected: false } : node));
+      const createdNodes = items.map((item, index) => {
+        const column = index % columns;
+        const row = Math.floor(index / columns);
+        const absolutePosition = {
+          x: sourceAbsolutePosition.x + sourceWidth + 84 + column * gapX,
+          y: sourceAbsolutePosition.y + row * gapY,
+        };
+        const position = parentPosition
+          ? {
+              x: absolutePosition.x - parentPosition.x,
+              y: absolutePosition.y - parentPosition.y,
+            }
+          : absolutePosition;
+        const created = createCanvasNode('linghui/image', position, existingNodes);
+        const createdData = created.data as unknown as LinghuiNodeData;
+        const createdProps = createdData.properties as unknown as LinghuiImageNodeProperties;
+        createdIds.push(created.id);
+        createdEdges.push({
+          id: `e-${nanoid(8)}`,
+          source: sourceNodeId,
+          target: created.id,
+          sourceHandle: 'output-0',
+          targetHandle: 'input-0',
+          type: 'linghui-edge',
+          data: {
+            sourceSlotType: 'image',
+            targetSlotType: 'image',
+          } as Record<string, unknown>,
+        });
+
+        return {
+          ...created,
+          parentId: sourceNode.parentId,
+          extent: resolveParentExtent(sourceNode.parentId),
+          selected: true,
+          data: {
+            ...createdData,
+            label: item.label || createdData.label,
+            properties: createLinghuiImageImportProperties(createdProps, [item], item.id) as unknown as Record<string, unknown>,
+          } as unknown as Record<string, unknown>,
+        };
+      });
+
+      return [...nextNodes, ...createdNodes];
+    });
+    setEdges(existingEdges => [...existingEdges, ...createdEdges]);
+
+    setEditorSelection(null);
+    setContextMenu(null);
+    setQuickCreate(null);
+    setPendingGroupFrame(null);
+    scheduleSnapshot();
+    return createdIds;
+  }, [reactFlow, scheduleSnapshot, setContextMenu, setEditorSelection, setNodes, setPendingGroupFrame, setQuickCreate]);
+
   const hasClipboardData = Boolean(clipboardRef.current?.nodes.length || clipboardRef.current?.groups.length);
 
   return {
@@ -977,12 +1088,14 @@ export function useLinghuiCanvasDocumentOps({
     duplicateSelection,
     createNodeFromWorkspaceAsset,
     deleteNodesByIds,
+    deleteEdgesByIds,
     ungroupGroupsByIds,
     insertNodeAtScreenPosition,
     deriveStoryboardShotsFromScript,
     deriveStoryboardImagesFromScript,
     deriveStoryboardVideosFromScript,
     createGroupFromSelection,
+    createDerivedImageNodesFromNode,
     clearPendingGroupFrame,
   };
 }

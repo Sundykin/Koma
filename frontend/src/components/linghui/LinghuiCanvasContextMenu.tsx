@@ -28,6 +28,7 @@ interface LinghuiCanvasContextMenuProps {
   onDeleteCurrentGroup: () => void;
   onPasteNearNode: () => void;
   onDeleteCurrentNode: () => void;
+  onDeleteCurrentEdge: () => void;
   onUploadImages: () => void;
   onUploadVideos: () => void;
   onUploadAudios: () => void;
@@ -66,6 +67,7 @@ export const LinghuiCanvasContextMenu: React.FC<LinghuiCanvasContextMenuProps> =
   onDeleteCurrentGroup,
   onPasteNearNode,
   onDeleteCurrentNode,
+  onDeleteCurrentEdge,
   onUploadImages,
   onUploadVideos,
   onUploadAudios,
@@ -198,7 +200,21 @@ export const LinghuiCanvasContextMenu: React.FC<LinghuiCanvasContextMenuProps> =
         </>
       )}
 
-      {contextMenu.kind !== 'node' && (
+      {contextMenu.kind === 'edge' && (
+        <>
+          <div className="linghuiContextMenuHeader">连线操作</div>
+          <div className="linghuiContextMenuHint">右键选中的连线可直接删除，方便清理错误连接。</div>
+          <button
+            type="button"
+            className="linghuiContextMenuItem isDanger"
+            onClick={onDeleteCurrentEdge}
+          >
+            删除连线
+          </button>
+        </>
+      )}
+
+      {contextMenu.kind !== 'node' && contextMenu.kind !== 'edge' && (
         <>
           <div className="linghuiContextMenuHeader">添加节点</div>
           {(['creation', 'storyboard'] as const).map(category => (

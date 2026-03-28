@@ -143,12 +143,15 @@ export const NODE_PROPERTY_DEFAULTS: Record<LinghuiNodeType, Record<string, unkn
   'linghui/image': {
     mode: 'generate',
     source: '',
+    items: [],
+    primaryAssetId: '',
+    primaryResultSource: '',
     prompt: '',
     ttiConfigId: '',
     aspectRatio: '3:4',
     resolution: 'auto',
     gridType: 'none',
-    batchCount: 4,
+    batchCount: 1,
   },
   'linghui/video': {
     prompt: '',

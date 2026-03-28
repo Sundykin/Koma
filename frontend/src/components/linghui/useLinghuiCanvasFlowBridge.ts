@@ -5,7 +5,10 @@ import type { Dispatch, MutableRefObject, RefObject, SetStateAction } from 'reac
 import type { LinghuiCanvasSelection, LinghuiNodeData } from '../../types/linghui';
 import { resolveLinghuiWorkflowBlockLabel } from '../../constants/linghuiWorkflowBlock';
 import { isLinghuiConnectionValid, parseHandleId } from './linghuiNodeDefs';
-import type { PendingConnectionCreateState } from './linghuiCanvasShared';
+import {
+  clampNodePositionToParentBounds,
+  type PendingConnectionCreateState,
+} from './linghuiCanvasShared';
 
 interface UseLinghuiCanvasFlowBridgeParams {
   reactFlow: ReactFlowInstance;
@@ -73,9 +76,47 @@ export function useLinghuiCanvasFlowBridge({
   onConnectionErrorRef,
 }: UseLinghuiCanvasFlowBridgeParams) {
   const handleNodesChange = useCallback((changes: NodeChange[]) => {
-    onNodesChange(changes);
+    const currentNodes = reactFlow.getNodes();
+    const nodeMap = new Map(currentNodes.map(node => [node.id, node]));
+    const normalizedChanges = changes.map(change => {
+      if (change.type !== 'position') {
+        return change;
+      }
 
-    for (const change of changes) {
+      const currentNode = nodeMap.get(change.id);
+      if (!currentNode?.parentId || !change.position) {
+        return change;
+      }
+
+      const parentNode = nodeMap.get(currentNode.parentId) ?? reactFlow.getNode(currentNode.parentId);
+      const clampedPosition = clampNodePositionToParentBounds({
+        node: currentNode,
+        parentNode,
+        nextPosition: change.position,
+      });
+
+      if (
+        clampedPosition.x === change.position.x &&
+        clampedPosition.y === change.position.y
+      ) {
+        return change;
+      }
+
+      return {
+        ...change,
+        position: clampedPosition,
+        positionAbsolute: parentNode
+          ? {
+              x: parentNode.position.x + clampedPosition.x,
+              y: parentNode.position.y + clampedPosition.y,
+            }
+          : change.positionAbsolute,
+      };
+    });
+
+    onNodesChange(normalizedChanges);
+
+    for (const change of normalizedChanges) {
       if (change.type !== 'replace' || !change.item) {
         continue;
       }
@@ -88,7 +129,7 @@ export function useLinghuiCanvasFlowBridge({
     }
 
     requestAnimationFrame(() => emitSnapshot());
-  }, [emitSnapshot, onNodeMutateRef, onNodesChange]);
+  }, [emitSnapshot, onNodeMutateRef, onNodesChange, reactFlow]);
 
   const handleEdgesChange = useCallback((changes: EdgeChange[]) => {
     onEdgesChange(changes);
