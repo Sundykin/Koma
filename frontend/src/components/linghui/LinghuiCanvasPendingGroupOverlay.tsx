@@ -24,7 +24,7 @@ export const LinghuiCanvasPendingGroupOverlay: React.FC<LinghuiCanvasPendingGrou
         style={frameStyle}
       >
         <span className="linghuiPendingGroupBadge">
-          选区待分组 · {creatableIds.length} 项
+          选区待创建工作流块 · {creatableIds.length} 项
         </span>
       </div>
       {actionsStyle && creatableIds.length > 0 && (
@@ -38,14 +38,14 @@ export const LinghuiCanvasPendingGroupOverlay: React.FC<LinghuiCanvasPendingGrou
             className="linghuiPendingGroupAction isPrimary"
             onClick={() => onCreateGroup(creatableIds)}
           >
-            创建分组
+            创建工作流块
           </button>
           <button
             type="button"
             className="linghuiPendingGroupAction"
             onClick={onDismiss}
           >
-            暂不分组
+            暂不创建
           </button>
         </div>
       )}

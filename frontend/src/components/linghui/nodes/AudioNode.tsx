@@ -3,6 +3,7 @@ import { Handle, Position, type NodeProps } from '@xyflow/react';
 import type { LinghuiNodeData, LinghuiRunStatus } from '../../../types/linghui';
 import { useNodeRunState, useLinghuiNodeInteraction } from './LinghuiNodeRunsContext';
 import { EditableCompactNodeLabel } from './EditableCompactNodeLabel';
+import { resolveLinghuiNodeViewMode } from '../linghuiNodeViewMode';
 
 const STATUS_COLORS: Record<LinghuiRunStatus, string> = {
   idle: '#64748b',
@@ -11,6 +12,25 @@ const STATUS_COLORS: Record<LinghuiRunStatus, string> = {
   failed: '#ef4444',
   stale: '#f97316',
 };
+
+function resolveHandleTop(index: number, total: number): string {
+  if (total <= 1) return '50%';
+  const step = 100 / (total + 1);
+  return `${step * (index + 1)}%`;
+}
+
+function getHandleColor(dataType: LinghuiNodeData['inputs'][number]['dataType'], accent: string): string {
+  switch (dataType) {
+    case 'text':
+      return '#f59e0b';
+    case 'video':
+      return '#38bdf8';
+    case 'audio':
+      return '#f97316';
+    default:
+      return accent;
+  }
+}
 
 function formatDuration(durationSec?: number): string {
   if (!durationSec || !Number.isFinite(durationSec)) {
@@ -41,13 +61,27 @@ function AudioNodeInner({ id, data, selected }: NodeProps) {
     : String(props.prompt ?? '').trim()
       ? '文本转语音'
       : '待配置';
+  const viewMode = resolveLinghuiNodeViewMode(nodeData.viewMode);
 
   return (
     <div
-      className={`linghuiCompactNode nopan ${selected ? 'isSelected' : ''}`}
+      className={`linghuiCompactNode nopan ${selected ? 'isSelected' : ''} ${viewMode === 'collapsed' ? 'isCollapsed' : ''}`}
+      data-view-mode={viewMode}
       style={{ borderColor }}
       {...interactionHandlers}
     >
+      {nodeData.inputs.map((slot, index) => (
+        <Handle
+          key={`input-${index}`}
+          type="target"
+          position={Position.Left}
+          id={`input-${index}`}
+          className="linghuiCompactHandle"
+          style={{ background: getHandleColor(slot.dataType, nodeData.accent), top: resolveHandleTop(index, nodeData.inputs.length) }}
+          isConnectable
+        />
+      ))}
+
       <Handle
         type="source"
         position={Position.Right}

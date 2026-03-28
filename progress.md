@@ -259,6 +259,56 @@
   - `frontend/src/types/linghui.ts`
   - `openspec/changes/add-linghui-canvas-studio/tasks.md`
 
+### 階段 15：脚本节点与分镜派生首版闭环
+- **狀態：** completed
+- **開始時間：** 2026-03-28 CST
+- 執行的操作：
+  - 为灵绘节点体系增加 `linghui/script`，补齐节点类型、RF 节点类型、端口布局和默认属性
+  - 新增 `ScriptNode`、`ScriptNodeEditor` 和 `linghuiScriptNodeUtils`，支持手动结构化脚本、LLM 生成、卡片/表格切换、全屏查看与批量勾选
+  - 在执行链中接入脚本节点执行，统一把手动脚本和生成脚本解析为 `storyboard` 结果
+  - 为 prompt references 补齐脚本节点 fallback，并让无图片的脚本镜头也能以文本形式被下游 `@` 引用
+  - 为画布补齐“从脚本批量派生分镜节点”能力，支持把选中的镜头直接生成 `storyboard-shot` 节点并自动连接脚本文本输出
+  - 为分镜节点执行补齐文本输入拼接，让派生镜头节点能够继承脚本上下文
+  - 执行 `openspec validate add-linghui-canvas-studio --strict`、`pnpm -s exec tsc --noEmit --pretty false` 和 `pnpm -s exec vite build` 并通过
+- 建立/修改的檔案：
+  - `frontend/src/types/linghui.ts`
+  - `frontend/src/components/linghui/linghuiNodeDefs.ts`
+  - `frontend/src/components/linghui/linghuiExecution.ts`
+  - `frontend/src/components/linghui/linghuiPromptReferences.ts`
+  - `frontend/src/components/linghui/linghuiScriptNodeUtils.ts`
+  - `frontend/src/components/linghui/ScriptNodeEditor.tsx`
+  - `frontend/src/components/linghui/LinghuiNodeEditor.tsx`
+  - `frontend/src/components/linghui/LinghuiCanvasOverlays.tsx`
+  - `frontend/src/components/linghui/useLinghuiCanvasOverlayProps.ts`
+  - `frontend/src/components/linghui/useLinghuiCanvasDocumentOps.ts`
+  - `frontend/src/components/linghui/useLinghuiCanvasNodeInteractions.ts`
+  - `frontend/src/components/linghui/nodes/ScriptNode.tsx`
+  - `frontend/src/components/linghui/nodes/index.ts`
+  - `frontend/src/components/linghui/LinghuiPage.css`
+  - `openspec/changes/add-linghui-canvas-studio/tasks.md`
+  - `progress.md`
+
+### 階段 16：脚本节点批量生成图像/视频与部分重跑
+- **狀態：** completed
+- **開始時間：** 2026-03-28 CST
+- 執行的操作：
+  - 为脚本节点编辑器补齐“生成分镜图”“生成视频流程”两个批量动作入口
+  - 在画布文档操作层新增脚本派生图片节点与视频流程节点的能力，按镜头描述生成或复用对应节点
+  - 为脚本派生节点补齐 `scriptSourceNodeId / scriptShotId / scriptDerivationKind` 元数据，支持按“脚本节点 + 镜头 + 派生类型”命中已有节点
+  - 让脚本批量生成再次执行时优先更新已有派生节点，只对当前勾选镜头执行局部重跑，而不是重复创建整套流程
+  - 为视频流程补齐“首帧图节点 -> 视频节点”的自动连线与批量执行入口
+  - 更新 OpenSpec 任务勾选，补记脚本节点批量图像/视频与部分重跑完成度
+  - 再次执行 `pnpm -s exec tsc --noEmit --pretty false`，准备执行完整验证
+- 建立/修改的檔案：
+  - `frontend/src/types/linghui.ts`
+  - `frontend/src/components/linghui/ScriptNodeEditor.tsx`
+  - `frontend/src/components/linghui/LinghuiNodeEditor.tsx`
+  - `frontend/src/components/linghui/LinghuiCanvasOverlays.tsx`
+  - `frontend/src/components/linghui/useLinghuiCanvasOverlayProps.ts`
+  - `frontend/src/components/linghui/useLinghuiCanvasDocumentOps.ts`
+  - `openspec/changes/add-linghui-canvas-studio/tasks.md`
+  - `progress.md`
+
 ### 階段 15：节点工具条与图片节点统一上传/生成模式
 - **狀態：** completed
 - **開始時間：** 2026-03-28 CST
@@ -383,9 +433,311 @@
   - `frontend/src/components/linghui/useLinghuiCanvasOverlayProps.ts`
   - `progress.md`
 
+### 階段 20：画布项目入口与工作区导入导出补齐
+- **狀態：** completed
+- **開始時間：** 2026-03-28 CST
+- 執行的操作：
+  - 为画布左上角补齐轻量项目入口，将工作区与画布命令收敛到 `LinghuiCanvasHud` 的项目浮层入口
+  - 在项目入口中补齐新建、打开、保存、另存为副本、导入、导出，以及常用抽屉入口跳转
+  - 在存储层新增 `saveLinghuiWorkspaceAs` 与 `importLinghuiWorkspace`，让工作区模型补齐“另存为 / 导入”能力
+  - 更新 `add-linghui-canvas-studio` 任务清单，勾选 `1.4` 与 `2.3`
+  - 执行 `openspec validate add-linghui-canvas-studio --strict`、`pnpm -s exec tsc --noEmit --pretty false` 与 `pnpm -s exec vite build` 并通过
+- 建立/修改的檔案：
+  - `frontend/src/components/linghui/LinghuiCanvas.tsx`
+  - `frontend/src/components/linghui/LinghuiCanvasHud.tsx`
+  - `frontend/src/components/linghui/LinghuiPage.tsx`
+  - `frontend/src/components/linghui/LinghuiPage.css`
+  - `frontend/src/store/linghuiStorage.ts`
+  - `openspec/changes/add-linghui-canvas-studio/tasks.md`
+  - `progress.md`
+
+### 階段 21：执行路径高亮与失败定位补齐
+- **狀態：** completed
+- **開始時間：** 2026-03-28 CST
+- 執行的操作：
+  - 为画布执行态补齐 `LinghuiExecutionTraceContext`，把失败节点、待重跑节点和边的执行状态透传到节点/连线层
+  - 为 `LinghuiEdge` 接入执行路径高亮，让运行中、失败、待重跑链路具备颜色、描边和虚线反馈
+  - 为 `LinghuiCanvasHud` 增加“跳到失败”和“重跑受影响”快捷操作，并在页面层接通失败节点聚焦与 stale 节点局部重跑
+  - 为 `LinghuiCanvasHandle` 增加 `focusNodes`，支持按节点集合快速聚焦并可选同步选择态
+  - 更新 `add-linghui-canvas-studio` 任务清单，勾选 `7.5`
+  - 执行 `openspec validate add-linghui-canvas-studio --strict`、`pnpm -s exec tsc --noEmit --pretty false` 与 `pnpm -s exec vite build` 并通过
+- 建立/修改的檔案：
+  - `frontend/src/components/linghui/LinghuiCanvas.tsx`
+  - `frontend/src/components/linghui/LinghuiCanvasHud.tsx`
+  - `frontend/src/components/linghui/LinghuiEdge.tsx`
+  - `frontend/src/components/linghui/LinghuiPage.tsx`
+  - `frontend/src/components/linghui/LinghuiPage.css`
+  - `frontend/src/components/linghui/nodes/LinghuiNodeRunsContext.ts`
+  - `frontend/src/components/linghui/nodes/index.ts`
+  - `frontend/src/components/linghui/useLinghuiCanvasImperativeHandle.ts`
+  - `frontend/src/components/linghui/useLinghuiCanvasRunSummaries.ts`
+  - `openspec/changes/add-linghui-canvas-studio/tasks.md`
+  - `progress.md`
+
+### 階段 22：文本与音频节点多模态输入聚合
+- **狀態：** completed
+- **開始時間：** 2026-03-28 CST
+- 執行的操作：
+  - 为文本节点补齐图片 / 文本 / 视频 / 音频输入槽，让文本生成节点可以直接接收上游多模态输入
+  - 为音频节点补齐图片 / 文本 / 视频 / 音频输入槽，并在提示词编辑器中接通上游 `@` 引用
+  - 调整文本节点和音频节点执行链，在生成模式下聚合上游文本摘要并编译提示词引用
+  - 为文本节点和音频节点卡片补齐输入 handle 展示，确保画布侧连线能力与执行能力一致
+  - 更新 `add-linghui-canvas-studio` 任务清单，勾选 `7.3`
+  - 执行 `openspec validate add-linghui-canvas-studio --strict`、`pnpm -s exec tsc --noEmit --pretty false` 与 `pnpm -s exec vite build` 并通过
+- 建立/修改的檔案：
+  - `frontend/src/components/linghui/AudioNodeEditor.tsx`
+  - `frontend/src/components/linghui/LinghuiNodeEditor.tsx`
+  - `frontend/src/components/linghui/linghuiExecution.ts`
+  - `frontend/src/components/linghui/linghuiNodeDefs.ts`
+  - `frontend/src/components/linghui/nodes/AudioNode.tsx`
+  - `frontend/src/components/linghui/nodes/TextNode.tsx`
+  - `openspec/changes/add-linghui-canvas-studio/tasks.md`
+  - `progress.md`
+
+### 階段 23：执行队列、失败重试与取消
+- **狀態：** completed
+- **開始時間：** 2026-03-28 CST
+- 執行的操作：
+  - 为灵绘执行链新增本地执行队列状态，补齐排队、当前执行、完成、失败与取消中的运行态编排
+  - 为 `executeLinghuiWorkflow` 接入协作式取消信号，在轮询型图片/视频/音频任务中支持及时截断，并在当前节点结束后停止后续队列
+  - 为工具栏和画布 HUD 增加“取消执行”和“重试失败”入口，并把排队数量、取消中状态透传到轻量运行状态条
+  - 在页面层增加失败节点重试、执行队列取消和历史结果去重保护，避免取消后误把旧结果再次写入历史
+  - 更新 `add-linghui-canvas-studio` 任务清单，勾选 `7.4`
+  - 执行 `pnpm -s exec tsc --noEmit --pretty false` 与 `pnpm -s exec vite build` 并通过
+- 建立/修改的檔案：
+  - `frontend/src/components/linghui/LinghuiCanvas.tsx`
+  - `frontend/src/components/linghui/LinghuiCanvasHud.tsx`
+  - `frontend/src/components/linghui/LinghuiPage.tsx`
+  - `frontend/src/components/linghui/LinghuiPage.css`
+  - `frontend/src/components/linghui/LinghuiToolbar.tsx`
+  - `frontend/src/components/linghui/linghuiExecution.ts`
+  - `frontend/src/types/linghui.ts`
+  - `openspec/changes/add-linghui-canvas-studio/tasks.md`
+  - `progress.md`
+
+### 階段 24：视频首尾帧语义与音频结果预览补强
+- **狀態：** completed
+- **開始時間：** 2026-03-28 CST
+- 執行的操作：
+  - 为视频节点编辑器补齐首尾帧模式说明，明确提示只有第一路视觉输入和最后一路视觉输入参与执行
+  - 为图片参考和视频参考增加首帧 / 尾帧 / 忽略角色标识，让用户可以直接看到首尾帧模式下的实际输入语义
+  - 为视频节点编辑器增加生成结果预览区，执行后可直接在节点弹窗中播放结果视频
+  - 为音频节点编辑器增加生成结果播放器和结果摘要，补强播放预览与复用提示
+  - 更新 `add-linghui-canvas-studio` 任务清单，勾选 `5.9`
+  - 执行 `pnpm -s exec tsc --noEmit --pretty false` 与 `pnpm -s exec vite build` 并通过
+- 建立/修改的檔案：
+  - `frontend/src/components/linghui/AudioNodeEditor.tsx`
+  - `frontend/src/components/linghui/LinghuiNodeEditor.tsx`
+  - `frontend/src/components/linghui/LinghuiPage.css`
+  - `frontend/src/components/linghui/VideoNodeEditor.tsx`
+  - `openspec/changes/add-linghui-canvas-studio/tasks.md`
+  - `progress.md`
+
+### 階段 25：文档状态与运行态拆分、静默自动保存
+- **狀態：** completed
+- **開始時間：** 2026-03-28 CST
+- 執行的操作：
+  - 在 `LinghuiPage.tsx` 中将工作区运行态从 `activeWorkspace` 主状态中拆开，改为独立维护 `nodeRuns / executionLogs`
+  - 让执行过程中的运行态更新不再回灌整个工作区文档状态，避免画布因为运行态持久化重复收到新的 `workspace` 引用
+  - 调整自动保存为静默持久化，保留手动保存的状态提示，但不再让自动保存切换 `saving` 指示从而放大页面重渲染
+  - 更新 `add-linghui-canvas-studio` 任务清单，勾选 `9.1` 与 `9.2`
+- 建立/修改的檔案：
+  - `frontend/src/components/linghui/LinghuiPage.tsx`
+  - `openspec/changes/add-linghui-canvas-studio/tasks.md`
+  - `progress.md`
+
+### 階段 26：灵绘结果批量导出与命名规则
+- **狀態：** completed
+- **開始時間：** 2026-03-28 CST
+- 執行的操作：
+  - 新增独立的 `linghuiResultExport.ts` 导出服务，为图片、批量图片、视频、音频、文本与脚本/分镜结果统一生成结构化导出目录
+  - 约定导出命名规则为 `<workspace>-results-<timestamp>` 批次目录，节点子目录按 `01-节点名` 顺序编号，并生成 `manifest.json`
+  - 为脚本与分镜结果补齐 `script.txt`、`shots.json` 与镜头图片导出，为多图结果按顺序拆出单文件
+  - 把“导出当前结果 / 导出工作流块结果 / 批量导出选中结果”接入灵绘右键菜单，并在页面层统一解析节点、选区和分组的真实导出目标
+  - 更新 `add-linghui-canvas-studio` 任务清单，勾选 `8.4`
+  - 执行 `openspec validate add-linghui-canvas-studio --strict`、`pnpm -s exec tsc --noEmit --pretty false` 与 `pnpm -s exec vite build` 并通过
+- 建立/修改的檔案：
+  - `frontend/src/components/linghui/LinghuiCanvas.tsx`
+  - `frontend/src/components/linghui/LinghuiCanvasContextMenu.tsx`
+  - `frontend/src/components/linghui/LinghuiCanvasOverlays.tsx`
+  - `frontend/src/components/linghui/LinghuiPage.tsx`
+  - `frontend/src/components/linghui/linghuiResultExport.ts`
+  - `frontend/src/components/linghui/useLinghuiCanvasOverlayProps.ts`
+  - `openspec/changes/add-linghui-canvas-studio/tasks.md`
+  - `progress.md`
+
+### 階段 27：LinghuiCanvas 继续瘦身与装配拆分
+- **狀態：** completed
+- **開始時間：** 2026-03-28 CST
+- 執行的操作：
+  - 新增 `useLinghuiCanvasUiState.ts`，把编辑器选中态、工具态、画布模式、分组框和宿主尺寸监听从 `LinghuiCanvas.tsx` 中抽离
+  - 新增 `LinghuiCanvasSurface.tsx`，集中承接 provider 嵌套、画布根节点、HUD、Stage 和 Overlay 渲染
+  - 新增 `LinghuiCanvasProviders.tsx` 与 `linghuiCanvasTypes.ts`，把 React Flow/provider 包裹层和 `LinghuiCanvas` 类型定义从主文件挪出
+  - 新增 `useLinghuiCanvasViewportControls.ts`，把缩放与视口归位控制从主组件中拆分
+  - 调整 `useLinghuiCanvasImperativeHandle.ts` 改为直接依赖 `linghuiCanvasTypes.ts`，降低对主组件文件的类型耦合
+  - 将 `LinghuiCanvas.tsx` 从 588 行收敛到 488 行，主组件进一步收敛为 hooks 编排与核心业务装配
+  - 更新 `add-linghui-canvas-studio` 任务清单，勾选 `9.3`
+  - 执行 `pnpm -s exec tsc --noEmit --pretty false` 与 `pnpm -s exec vite build` 并通过
+- 建立/修改的檔案：
+  - `frontend/src/components/linghui/LinghuiCanvas.tsx`
+  - `frontend/src/components/linghui/LinghuiCanvasProviders.tsx`
+  - `frontend/src/components/linghui/LinghuiCanvasSurface.tsx`
+  - `frontend/src/components/linghui/linghuiCanvasTypes.ts`
+  - `frontend/src/components/linghui/useLinghuiCanvasImperativeHandle.ts`
+  - `frontend/src/components/linghui/useLinghuiCanvasUiState.ts`
+  - `frontend/src/components/linghui/useLinghuiCanvasViewportControls.ts`
+  - `openspec/changes/add-linghui-canvas-studio/tasks.md`
+  - `progress.md`
+
+### 階段 28：音频节点播放预览与结果复用入口
+- **狀態：** completed
+- **開始時間：** 2026-03-28 CST
+- 執行的操作：
+  - 为 `AudioNodeEditor` 的生成结果区域补齐近场复用操作，支持将最新生成音频直接写回当前节点素材
+  - 为音频节点补齐“一键保存为资产”入口，避免必须绕到右键菜单才能复用音频结果
+  - 将资产库刷新回调透传到音频节点弹窗，使保存后资产抽屉可立即感知新增结果
+  - 保留音频播放器、时长和文本摘要展示，形成“试听 -> 写回素材 / 存资产”的节点内闭环
+  - 更新 `add-linghui-canvas-studio` 任务清单，勾选 `8.5`
+  - 执行 `pnpm -s exec tsc --noEmit --pretty false` 与 `pnpm -s exec vite build` 并通过
+- 建立/修改的檔案：
+  - `frontend/src/components/linghui/AudioNodeEditor.tsx`
+  - `frontend/src/components/linghui/LinghuiCanvasOverlays.tsx`
+  - `frontend/src/components/linghui/LinghuiNodeEditor.tsx`
+  - `frontend/src/components/linghui/useLinghuiCanvasOverlayProps.ts`
+  - `openspec/changes/add-linghui-canvas-studio/tasks.md`
+  - `progress.md`
+
+### 階段 29：工作流块收口与最小回归补齐
+- **狀態：** completed
+- **開始時間：** 2026-03-28 CST
+- 執行的操作：
+  - 按用户要求将 `5.10` 在 `add-linghui-canvas-studio` 任务清单中强制标记完成
+  - 为画布分组补齐“工作流块”术语收口，统一右键菜单、浮层、状态栏、工具栏、教程文案和工作流库提示
+  - 为新建工作流块增加统一默认命名与递增序号，避免继续沿用“新分组 / 分组”旧命名
+  - 为旧工作区分组迁移补齐默认标题兜底，保证历史数据加载后也显示为“工作流块”
+  - 新增 `linghuiWorkflowBlock` helper 与对应单元测试
+  - 新增 `linghuiPromptReferences` 单元测试，锁定 `@Image N` 编号顺序必须与上游输入展示顺序一致
+  - 新增 `openspec/changes/add-linghui-canvas-studio/regression-checklist.md`，补齐灵绘画布最小回归清单
+  - 更新 `add-linghui-canvas-studio` 任务清单，勾选 `6.1` 和 `9.4`
+  - 执行 `pnpm -s exec vitest run src/constants/linghuiWorkflowBlock.test.ts src/components/linghui/linghuiPromptReferences.test.ts`、`pnpm -s exec tsc --noEmit --pretty false`、`pnpm -s exec vite build` 与 `openspec validate add-linghui-canvas-studio --strict` 并通过
+- 建立/修改的檔案：
+  - `frontend/src/constants/linghuiWorkflowBlock.ts`
+  - `frontend/src/constants/linghuiWorkflowBlock.test.ts`
+  - `frontend/src/components/linghui/linghuiPromptReferences.test.ts`
+  - `frontend/src/components/linghui/nodes/CanvasGroupNode.tsx`
+  - `frontend/src/components/linghui/useLinghuiCanvasDocumentOps.ts`
+  - `frontend/src/components/linghui/useLinghuiCanvasFlowBridge.ts`
+  - `frontend/src/components/linghui/LinghuiCanvasContextMenu.tsx`
+  - `frontend/src/components/linghui/LinghuiCanvasPendingGroupOverlay.tsx`
+  - `frontend/src/components/linghui/LinghuiCanvasHud.tsx`
+  - `frontend/src/components/linghui/LinghuiPropertiesPanel.tsx`
+  - `frontend/src/components/linghui/LinghuiStatusBar.tsx`
+  - `frontend/src/components/linghui/LinghuiToolbar.tsx`
+  - `frontend/src/components/linghui/useLinghuiCanvasOverlayProps.ts`
+  - `frontend/src/components/linghui/LinghuiPage.tsx`
+  - `frontend/src/store/linghuiStorage.ts`
+  - `openspec/changes/add-linghui-canvas-studio/tasks.md`
+  - `openspec/changes/add-linghui-canvas-studio/regression-checklist.md`
+  - `progress.md`
+
+### 階段 30：节点三层视图补齐
+- **狀態：** completed
+- **開始時間：** 2026-03-28 CST
+- 執行的操作：
+  - 为灵绘节点数据补齐 `viewMode`，统一抽象节点的折叠态、轻编辑态、沉浸式态
+  - 新增 `linghuiNodeViewMode` helper 与单元测试，约束默认视图解析与沉浸式打开策略
+  - 为文本、图片、视频、音频、脚本及旧分镜节点补齐视图模式标记，让折叠/沉浸偏好能反映到节点卡片或节点壳层外观
+  - 在 `LinghuiNodeEditor` 中新增统一视图切换条，支持“折叠态 / 轻编辑态 / 沉浸式态”切换
+  - 将沉浸式态实现为统一全屏编辑壳层，并保留轻编辑态的跟随节点浮层
+  - 更新灵绘回归清单，新增三层视图切换检查项
+  - 更新 `add-linghui-canvas-studio` 任务清单，勾选 `5.3`
+  - 执行 `pnpm -s exec vitest run src/components/linghui/linghuiNodeViewMode.test.ts src/constants/linghuiWorkflowBlock.test.ts src/components/linghui/linghuiPromptReferences.test.ts`、`pnpm -s exec tsc --noEmit --pretty false` 与 `openspec validate add-linghui-canvas-studio --strict` 并通过
+- 建立/修改的檔案：
+  - `frontend/src/types/linghui.ts`
+  - `frontend/src/components/linghui/linghuiNodeViewMode.ts`
+  - `frontend/src/components/linghui/linghuiNodeViewMode.test.ts`
+  - `frontend/src/components/linghui/linghuiNodeDefs.ts`
+  - `frontend/src/components/linghui/LinghuiNodeEditor.tsx`
+  - `frontend/src/components/linghui/LinghuiCanvasOverlays.tsx`
+  - `frontend/src/components/linghui/useLinghuiCanvasOverlayProps.ts`
+  - `frontend/src/components/linghui/LinghuiCanvas.tsx`
+  - `frontend/src/components/linghui/LinghuiPage.css`
+  - `frontend/src/components/linghui/nodes/ReferenceNode.tsx`
+  - `frontend/src/components/linghui/nodes/TextNode.tsx`
+  - `frontend/src/components/linghui/nodes/ImageNode.tsx`
+  - `frontend/src/components/linghui/nodes/VideoNode.tsx`
+  - `frontend/src/components/linghui/nodes/AudioNode.tsx`
+  - `frontend/src/components/linghui/nodes/ScriptNode.tsx`
+  - `frontend/src/components/linghui/nodes/LinghuiNodeShell.tsx`
+  - `frontend/src/components/linghui/nodes/StoryboardGroupNode.tsx`
+  - `openspec/changes/add-linghui-canvas-studio/tasks.md`
+  - `openspec/changes/add-linghui-canvas-studio/regression-checklist.md`
+  - `progress.md`
+
+### 階段 31：旧节点体系彻底收口
+- **狀態：** completed
+- **開始時間：** 2026-03-28 CST
+- 執行的操作：
+  - 从灵绘节点类型、节点定义、节点注册、节点编辑器和执行分发中彻底移除旧 `reference / storyboard-shot / storyboard-group`
+  - 将脚本节点的“派生镜头节点”改为派生文本节点，统一收口到 5 类基础节点模型
+  - 清理 prompt fallback、结果导出和节点交互中的旧节点分支
+  - 将 V1 历史生成节点映射直接收口到当前图片/视频节点，不再回落到旧参考节点语义
+  - 同步更新 `add-linghui-canvas-studio` 的设计文档、存储 spec 和任务清单，勾选 `4.6`
+  - 执行 `pnpm -s exec vitest run src/components/linghui/linghuiNodeViewMode.test.ts src/constants/linghuiWorkflowBlock.test.ts src/components/linghui/linghuiPromptReferences.test.ts`、`pnpm -s exec tsc --noEmit --pretty false`、`pnpm -s exec vite build` 与 `openspec validate add-linghui-canvas-studio --strict` 并通过
+- 建立/修改的檔案：
+  - `frontend/src/types/linghui.ts`
+  - `frontend/src/components/linghui/linghuiNodeDefs.ts`
+  - `frontend/src/components/linghui/LinghuiNodeEditor.tsx`
+  - `frontend/src/components/linghui/ScriptNodeEditor.tsx`
+  - `frontend/src/components/linghui/useLinghuiCanvasDocumentOps.ts`
+  - `frontend/src/components/linghui/useLinghuiCanvasOverlayProps.ts`
+  - `frontend/src/components/linghui/useLinghuiCanvasNodeInteractions.ts`
+  - `frontend/src/components/linghui/linghuiPromptReferences.ts`
+  - `frontend/src/components/linghui/linghuiExecutionNodeExecutors.ts`
+  - `frontend/src/components/linghui/linghuiResultExport.ts`
+  - `frontend/src/components/linghui/nodes/index.ts`
+  - `frontend/src/store/linghuiStorage.ts`
+  - `frontend/src/components/linghui/ReferenceNodeEditor.tsx`
+  - `frontend/src/components/linghui/nodes/ReferenceNode.tsx`
+  - `frontend/src/components/linghui/nodes/StoryboardShotNode.tsx`
+  - `frontend/src/components/linghui/nodes/StoryboardGroupNode.tsx`
+  - `openspec/changes/add-linghui-canvas-studio/design.md`
+  - `openspec/changes/add-linghui-canvas-studio/specs/storage/spec.md`
+  - `openspec/changes/add-linghui-canvas-studio/tasks.md`
+  - `progress.md`
+
+### 階段 32：OpenSpec 活跃变更强制清理
+- **狀態：** completed
+- **開始時間：** 2026-03-28 CST
+- 執行的操作：
+  - 按“完成态归档、未完成删除”的策略清空 `openspec/changes` 下所有活跃变更
+  - 将已完成的变更移动到 `openspec/changes/archive/2026-03-28-*`
+  - 删除所有未完成、暂停或不再继续推进的活跃变更目录，避免新阶段继续背负旧 spec 包袱
+  - 执行 `openspec list`，确认当前没有任何活跃 change
+  - 执行 `openspec validate --specs --strict`，确认现存 specs 校验通过
+- 建立/修改的檔案：
+  - `openspec/changes/archive/2026-03-28-add-character-demographics-extraction/*`
+  - `openspec/changes/archive/2026-03-28-add-grid-storyboard-mode/*`
+  - `openspec/changes/archive/2026-03-28-add-linghui-canvas-studio/*`
+  - `openspec/changes/archive/2026-03-28-refactor-media-generation-pipeline/*`
+  - `openspec/changes/archive/2026-03-28-refine-linghui-inline-node-panels/*`
+  - `openspec/changes/archive/2026-03-28-update-builtin-prompt-template-objective-rules/*`
+  - `openspec/changes/add-chat-module/*`
+  - `openspec/changes/add-comfyui-mapping/*`
+  - `openspec/changes/add-grok-prompt-compilation/*`
+  - `openspec/changes/add-grok2api-imagine-providers/*`
+  - `openspec/changes/add-pluggable-image-hosting-remoteurl/*`
+  - `openspec/changes/refactor-electron-shell-to-ee-core/*`
+  - `openspec/changes/update-episode-split-explicit-boundaries/*`
+  - `openspec/changes/update-prompt-template-storage-and-validation/*`
+  - `openspec/changes/update-transition-governance-boundaries/*`
+  - `openspec/changes/update-transition-semantics-migration/*`
+  - `progress.md`
+
 ## 測試結果
 | 測試 | 輸入 | 預期結果 | 實際結果 | 狀態 |
 |------|------|---------|---------|------|
+| `openspec validate add-linghui-canvas-studio --strict` | repo root | 规格变更保持合法 | 通过 | pass |
 | `pnpm -s exec tsc --noEmit --pretty false` | `frontend/` | 灵绘前端通过类型检查 | 通过 | pass |
 | `pnpm -s exec vite build` | `frontend/` | 灵绘前端可完成生产构建 | 通过（仅有大包体 warning） | pass |
 

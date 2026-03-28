@@ -32,6 +32,24 @@ export function useGroupRunSummary(groupId: string): LinghuiGroupRunSummary | un
   return useContext(LinghuiGroupRunsContext)[groupId];
 }
 
+export interface LinghuiExecutionTraceState {
+  edgeStatuses: Record<string, LinghuiNodeRunState['status']>;
+  failedNodeIds: string[];
+  staleNodeIds: string[];
+}
+
+const emptyExecutionTraceState: LinghuiExecutionTraceState = {
+  edgeStatuses: {},
+  failedNodeIds: [],
+  staleNodeIds: [],
+};
+
+export const LinghuiExecutionTraceContext = createContext<LinghuiExecutionTraceState>(emptyExecutionTraceState);
+
+export function useLinghuiExecutionTrace(): LinghuiExecutionTraceState {
+  return useContext(LinghuiExecutionTraceContext);
+}
+
 export type ConnectionErrorHandler = (message: string) => void;
 export const LinghuiConnectionErrorContext = createContext<ConnectionErrorHandler>(() => {});
 

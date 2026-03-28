@@ -71,7 +71,7 @@ export const LinghuiPropertiesPanel: React.FC<LinghuiPropertiesPanelProps> = ({
                 <div className="linghuiInfoValue">{workspace?.nodeCount ?? stats.nodeCount}</div>
               </div>
               <div>
-                <div className="linghuiInfoLabel">分组</div>
+                <div className="linghuiInfoLabel">工作流块</div>
                 <div className="linghuiInfoValue">{workspace?.groupCount ?? stats.groupCount}</div>
               </div>
               <div>

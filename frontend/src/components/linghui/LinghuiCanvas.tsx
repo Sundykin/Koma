@@ -5,42 +5,18 @@ import React, {
   useEffect,
   useMemo,
   useRef,
-  useState,
 } from 'react';
 import { App as AntApp } from 'antd';
 import {
-  ReactFlowProvider,
   useNodesState,
   useEdgesState,
   useReactFlow,
   useViewport,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import type {
-  LinghuiCanvasSelection,
-  LinghuiCanvasMode,
-  LinghuiExecutionContext,
-  LinghuiExecutionLogEntry,
-  LinghuiNodeRunState,
-  LinghuiNodeToolState,
-  LinghuiNodeType,
-  LinghuiWorkspaceDocument,
-} from '../../types/linghui';
-import {
-  type LinghuiWorkflowTemplateRecord,
-  type LinghuiWorkspaceAssetRecord,
-  type LinghuiWorkspaceHistoryRecord,
-} from '../../store/linghuiStorage';
-import {
-  LinghuiGroupRunsContext,
-  LinghuiNodeRunsContext,
-  LinghuiConnectionErrorContext,
-  LinghuiNodeInteractionContext,
-  LinghuiNodeMutationContext,
-} from './nodes';
-import { LinghuiCanvasHud } from './LinghuiCanvasHud';
-import { LinghuiCanvasOverlays } from './LinghuiCanvasOverlays';
-import { LinghuiCanvasStage } from './LinghuiCanvasStage';
+import type { LinghuiCanvasSelection } from '../../types/linghui';
+import { LinghuiCanvasProviders } from './LinghuiCanvasProviders';
+import { LinghuiCanvasSurface } from './LinghuiCanvasSurface';
 import { useLinghuiCanvasOverlayState } from './useLinghuiCanvasOverlayState';
 import { useLinghuiCanvasDocumentOps } from './useLinghuiCanvasDocumentOps';
 import { useLinghuiCanvasMediaImport } from './useLinghuiCanvasMediaImport';
@@ -53,53 +29,16 @@ import { useLinghuiCanvasHistory } from './useLinghuiCanvasHistory';
 import { useLinghuiCanvasCallbackRefs } from './useLinghuiCanvasCallbackRefs';
 import { useLinghuiCanvasFlowBridge } from './useLinghuiCanvasFlowBridge';
 import { useLinghuiCanvasOverlayProps } from './useLinghuiCanvasOverlayProps';
-import { type LinghuiPendingGroupFrame, type PendingConnectionCreateState } from './linghuiCanvasShared';
+import { useLinghuiCanvasUiState } from './useLinghuiCanvasUiState';
+import { useLinghuiCanvasViewportControls } from './useLinghuiCanvasViewportControls';
+import { type PendingConnectionCreateState } from './linghuiCanvasShared';
+import type { LinghuiCanvasHandle, LinghuiCanvasProps } from './linghuiCanvasTypes';
 import './LinghuiPage.css';
-
-export interface LinghuiCanvasHandle {
-  addNode: (type: LinghuiNodeType, clientPosition?: [number, number]) => void;
-  addWorkspaceAsset: (
-    asset: LinghuiWorkspaceAssetRecord | LinghuiWorkspaceHistoryRecord,
-    clientPosition?: [number, number],
-  ) => void;
-  addWorkflowTemplate: (template: LinghuiWorkflowTemplateRecord, clientPosition?: [number, number]) => void;
-  importMediaToCanvas: (
-    kind: 'image' | 'video' | 'audio',
-    clientPosition?: [number, number],
-  ) => Promise<void>;
-  createGroupFromSelection: () => void;
-  focusContent: () => void;
-  notifyMutation: () => void;
-  snapshotNow: () => void;
-  getSelectionIds: () => string[];
-  resolveExecutionTargetIds: (selectionIds?: string[]) => string[];
-  getExecutionContext: () => LinghuiExecutionContext | null;
-}
-
-interface LinghuiCanvasProps {
-  workspace: LinghuiWorkspaceDocument | null;
-  nodeRuns: Record<string, LinghuiNodeRunState>;
-  executionLogs?: LinghuiExecutionLogEntry[];
-  onGraphChange: (
-    graphData: import('../../types/linghui').LinghuiGraphSnapshot,
-    viewport: import('../../types/linghui').LinghuiViewportState,
-    stats: import('../../types/linghui').LinghuiGraphStats,
-  ) => void;
-  onSelectionChange?: (selection: LinghuiCanvasSelection) => void;
-  onNodeMutate?: (nodeId: string) => void;
-  onClearNodeRunState?: (nodeId: string) => void;
-  onConnectionError?: (message: string) => void;
-  onAssetLibraryMutate?: () => void;
-  onWorkflowTemplateMutate?: () => void;
-  onRunSingleNode?: (nodeId: string) => void;
-  onRunAll?: () => void;
-  onRunSelection?: (selectionIds?: string[]) => void;
-  onOpenDrawer?: (drawer: 'add' | 'workflow' | 'asset' | 'history' | 'tutorial') => void;
-}
 
 const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(function LinghuiCanvasInner(
   {
     workspace,
+    projectEntry,
     nodeRuns,
     executionLogs,
     onGraphChange,
@@ -112,6 +51,12 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
     onRunSingleNode,
     onRunAll,
     onRunSelection,
+    onExportSelection,
+    onFocusFailedNode,
+    onRetryFailed,
+    onRerunAffected,
+    onCancelRun,
+    executionQueue,
     onOpenDrawer,
   },
   ref,
@@ -121,16 +66,24 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const reactFlow = useReactFlow();
 
-  const [, setSelection] = useState<LinghuiCanvasSelection>(null);
-  const [editorSelection, setEditorSelection] = useState<LinghuiCanvasSelection>(null);
-  const [activeNodeTool, setActiveNodeTool] = useState<LinghuiNodeToolState>(null);
-  const hostRef = useRef<HTMLDivElement | null>(null);
-  const [canvasRect, setCanvasRect] = useState<DOMRect | null>(null);
-  const [canvasMode, setCanvasMode] = useState<LinghuiCanvasMode>('mouse');
-  const [pendingGroupFrame, setPendingGroupFrame] = useState<LinghuiPendingGroupFrame | null>(null);
   const viewport = useViewport();
 
   const pendingConnectionCreateRef = useRef<PendingConnectionCreateState | null>(null);
+  const {
+    setSelection,
+    editorSelection,
+    setEditorSelection,
+    activeNodeTool,
+    setActiveNodeTool,
+    hostRef,
+    canvasRect,
+    setCanvasRect,
+    canvasMode,
+    setCanvasMode,
+    pendingGroupFrame,
+    setPendingGroupFrame,
+    resetLocalCanvasUiState,
+  } = useLinghuiCanvasUiState();
   const {
     onSelectionChangeRef,
     onNodeMutateRef,
@@ -144,24 +97,6 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
     onRunSingleNode,
     onOpenDrawer,
   });
-
-  // Track canvas rect for editor positioning
-  useEffect(() => {
-    if (!hostRef.current) return;
-    const observer = new ResizeObserver(() => {
-      if (hostRef.current) setCanvasRect(hostRef.current.getBoundingClientRect());
-    });
-    observer.observe(hostRef.current);
-    setCanvasRect(hostRef.current.getBoundingClientRect());
-    return () => observer.disconnect();
-  }, []);
-
-  useEffect(() => {
-    if (!activeNodeTool) return;
-    if (editorSelection?.kind !== 'node' || editorSelection.nodeId !== activeNodeTool.nodeId) {
-      setActiveNodeTool(null);
-    }
-  }, [activeNodeTool, editorSelection]);
 
   const selectedNodeIds = useMemo(
     () => nodes.filter(node => node.selected).map(node => node.id),
@@ -193,13 +128,10 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
   });
 
   const resetCanvasUiState = useCallback(() => {
-    setSelection(null);
-    setEditorSelection(null);
-    setActiveNodeTool(null);
+    resetLocalCanvasUiState();
     setContextMenu(null);
     setQuickCreate(null);
-    setPendingGroupFrame(null);
-  }, [setContextMenu, setQuickCreate]);
+  }, [resetLocalCanvasUiState, setContextMenu, setQuickCreate]);
 
   const {
     canUndo,
@@ -231,6 +163,9 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
     deleteNodesByIds,
     ungroupGroupsByIds,
     insertNodeAtScreenPosition,
+    deriveStoryboardShotsFromScript,
+    deriveStoryboardImagesFromScript,
+    deriveStoryboardVideosFromScript,
     createGroupFromSelection,
     clearPendingGroupFrame,
   } = useLinghuiCanvasDocumentOps({
@@ -274,6 +209,7 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
 
   const { canvasRunSummary, groupRunSummaries } = useLinghuiCanvasRunSummaries({
     nodes,
+    edges,
     nodeRuns,
   });
 
@@ -362,22 +298,16 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
     emitSnapshot,
   });
 
-  const zoomIn = useCallback(() => {
-    reactFlow.zoomIn({ duration: 180 });
-  }, [reactFlow]);
-
-  const zoomOut = useCallback(() => {
-    reactFlow.zoomOut({ duration: 180 });
-  }, [reactFlow]);
-
-  const focusContent = useCallback(() => {
-    reactFlow.fitView({ padding: 0.12, duration: 240 });
-  }, [reactFlow]);
+  const { zoomIn, zoomOut, focusContent } = useLinghuiCanvasViewportControls(reactFlow);
 
   const overlayProps = useLinghuiCanvasOverlayProps({
     editorSelection,
     activeNodeTool,
     setActiveNodeTool,
+    onCloseEditor: () => {
+      setEditorSelection(null);
+      setActiveNodeTool(null);
+    },
     nodeRuns,
     workspaceId: workspace?.id ?? null,
     canvasRect,
@@ -400,11 +330,15 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
     onWorkflowTemplateMutate,
     onRunSelection,
     onRunAll,
+    onExportSelection,
     onRunSingleNodeRef,
     onOpenDrawerRef,
     openQuickCreateAt,
     closeContextMenu,
     insertNodeAtScreenPosition,
+    deriveStoryboardShotsFromScript,
+    deriveStoryboardImagesFromScript,
+    deriveStoryboardVideosFromScript,
     copySelectionToClipboard,
     duplicateSelection,
     pasteClipboardSnapshot,
@@ -433,8 +367,10 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
   });
 
   return (
-    <LinghuiGroupRunsContext.Provider value={groupRunSummaries}>
-      <LinghuiNodeInteractionContext.Provider value={{
+    <LinghuiCanvasSurface
+      hostRef={hostRef}
+      canvasMode={canvasMode}
+      nodeInteraction={{
         canvasMode,
         bindNodeSurface,
         openNodeContextMenu,
@@ -444,60 +380,68 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
         openVideoToolPanel(nodeId, tool) {
           openNodeToolPanel({ kind: 'video', nodeId, tool });
         },
-      }}>
-        <LinghuiNodeMutationContext.Provider value={{
+      }}
+      nodeMutation={{
         updateNodeData: updateLinghuiNodeData,
         clearNodeRunState(nodeId: string) {
           onClearNodeRunState?.(nodeId);
         },
-      }}>
-      <div
-        ref={hostRef}
-        className={`linghuiCanvasRoot ${canvasMode === 'hand' ? 'isHandMode' : 'isMouseMode'}`}
-        onDragOver={handleDragOver}
-        onDrop={handleDrop}
-        onDoubleClick={handleCanvasDoubleClick}
-      >
-        <LinghuiCanvasHud
-          canvasMode={canvasMode}
-          zoom={viewport.zoom}
-          runSummary={canvasRunSummary}
-          showEmpty={!workspace}
-          onOpenHistory={() => onOpenDrawerRef.current?.('history')}
-          onSetCanvasMode={setCanvasMode}
-          onZoomOut={zoomOut}
-          onFocusContent={focusContent}
-          onZoomIn={zoomIn}
-        />
-
-        <LinghuiCanvasStage
-          nodes={nodes}
-          edges={edges}
-          canvasMode={canvasMode}
-          onNodesChange={handleNodesChange}
-          onEdgesChange={handleEdgesChange}
-          onConnect={handleConnect}
-          onConnectStart={handleConnectStart}
-          onConnectEnd={handleConnectEnd}
-          isValidConnection={handleIsValidConnection}
-          onSelectionChange={handleSelectionChange}
-          onSelectionDragStart={handleSelectionDragStart}
-          onSelectionDragStop={handleSelectionDragStop}
-          onSelectionContextMenu={handleSelectionContextMenu}
-          onSelectionStart={handleSelectionStart}
-          onSelectionEnd={handleSelectionEnd}
-          onNodeClick={handleNodeClick}
-          onNodeContextMenu={handleNodeContextMenu}
-          onPaneClick={handlePaneClick}
-          onPaneContextMenu={handlePaneContextMenu}
-          onMoveEnd={handleMoveEnd}
-        />
-
-        <LinghuiCanvasOverlays {...overlayProps} />
-      </div>
-        </LinghuiNodeMutationContext.Provider>
-      </LinghuiNodeInteractionContext.Provider>
-    </LinghuiGroupRunsContext.Provider>
+      }}
+      executionTrace={{
+        edgeStatuses: canvasRunSummary.edgeStatuses,
+        failedNodeIds: canvasRunSummary.failedNodeIds,
+        staleNodeIds: canvasRunSummary.staleNodeIds,
+      }}
+      groupRunSummaries={groupRunSummaries}
+      rootHandlers={{
+        onDragOver: handleDragOver,
+        onDrop: handleDrop,
+        onDoubleClick: handleCanvasDoubleClick,
+      }}
+      hudProps={{
+        projectEntry,
+        canvasMode,
+        zoom: viewport.zoom,
+        runSummary: {
+          ...canvasRunSummary,
+          queued: executionQueue?.queuedNodeIds.length ?? 0,
+          queueStatus: executionQueue?.status ?? 'idle',
+        },
+        showEmpty: !workspace,
+        onOpenHistory: () => onOpenDrawerRef.current?.('history'),
+        onFocusFailedNode,
+        onRetryFailed,
+        onRerunAffected,
+        onCancelRun,
+        onSetCanvasMode: setCanvasMode,
+        onZoomOut: zoomOut,
+        onFocusContent: focusContent,
+        onZoomIn: zoomIn,
+      }}
+      stageProps={{
+        nodes,
+        edges,
+        canvasMode,
+        onNodesChange: handleNodesChange,
+        onEdgesChange: handleEdgesChange,
+        onConnect: handleConnect,
+        onConnectStart: handleConnectStart,
+        onConnectEnd: handleConnectEnd,
+        isValidConnection: handleIsValidConnection,
+        onSelectionChange: handleSelectionChange,
+        onSelectionDragStart: handleSelectionDragStart,
+        onSelectionDragStop: handleSelectionDragStop,
+        onSelectionContextMenu: handleSelectionContextMenu,
+        onSelectionStart: handleSelectionStart,
+        onSelectionEnd: handleSelectionEnd,
+        onNodeClick: handleNodeClick,
+        onNodeContextMenu: handleNodeContextMenu,
+        onPaneClick: handlePaneClick,
+        onPaneContextMenu: handlePaneContextMenu,
+        onMoveEnd: handleMoveEnd,
+      }}
+      overlayProps={overlayProps}
+    />
   );
 });
 
@@ -506,19 +450,19 @@ const LinghuiCanvasComponent = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProp
   ref,
 ) {
   return (
-    <LinghuiNodeRunsContext.Provider value={props.nodeRuns}>
-      <LinghuiConnectionErrorContext.Provider value={props.onConnectionError ?? (() => {})}>
-        <ReactFlowProvider>
-          <LinghuiCanvasInner {...props} ref={ref} />
-        </ReactFlowProvider>
-      </LinghuiConnectionErrorContext.Provider>
-    </LinghuiNodeRunsContext.Provider>
+    <LinghuiCanvasProviders
+      nodeRuns={props.nodeRuns}
+      onConnectionError={props.onConnectionError}
+    >
+      <LinghuiCanvasInner {...props} ref={ref} />
+    </LinghuiCanvasProviders>
   );
 });
 
 function areLinghuiCanvasPropsEqual(prev: LinghuiCanvasProps, next: LinghuiCanvasProps): boolean {
   return (
     prev.workspace === next.workspace &&
+    prev.projectEntry === next.projectEntry &&
     prev.nodeRuns === next.nodeRuns &&
     prev.executionLogs === next.executionLogs &&
     prev.onGraphChange === next.onGraphChange &&
@@ -531,6 +475,12 @@ function areLinghuiCanvasPropsEqual(prev: LinghuiCanvasProps, next: LinghuiCanva
     prev.onRunSingleNode === next.onRunSingleNode &&
     prev.onRunAll === next.onRunAll &&
     prev.onRunSelection === next.onRunSelection &&
+    prev.onExportSelection === next.onExportSelection &&
+    prev.onFocusFailedNode === next.onFocusFailedNode &&
+    prev.onRetryFailed === next.onRetryFailed &&
+    prev.onRerunAffected === next.onRerunAffected &&
+    prev.onCancelRun === next.onCancelRun &&
+    prev.executionQueue === next.executionQueue &&
     prev.onOpenDrawer === next.onOpenDrawer
   );
 }
@@ -538,4 +488,5 @@ function areLinghuiCanvasPropsEqual(prev: LinghuiCanvasProps, next: LinghuiCanva
 export const LinghuiCanvas = memo(LinghuiCanvasComponent, areLinghuiCanvasPropsEqual);
 LinghuiCanvas.displayName = 'LinghuiCanvas';
 
+export type { LinghuiCanvasHandle, LinghuiCanvasProps } from './linghuiCanvasTypes';
 export default LinghuiCanvas;

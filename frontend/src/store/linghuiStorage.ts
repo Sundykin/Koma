@@ -21,6 +21,7 @@ import {
   type LinghuiWorkspaceMeta,
 } from '../types/linghui';
 import { createNewNodeData } from '../components/linghui/linghuiNodeDefs';
+import { resolveLinghuiWorkflowBlockLabel } from '../constants/linghuiWorkflowBlock';
 import type { LinghuiNodeType } from '../types/linghui';
 
 const LINGHUI_INDEX_KEY = 'koma.linghui.index.v1';
@@ -52,15 +53,15 @@ function isV1Graph(graphData: any): boolean {
   return Array.isArray(graphData.links) || !Array.isArray(graphData.edges);
 }
 
-// Maps old node types to new unified types
+// Maps deprecated V1 generation node types to the current core node model.
 const OLD_TO_NEW_TYPE_MAP: Record<string, string> = {
-  'linghui/reference-image': 'linghui/reference',
+  'linghui/reference-image': 'linghui/image',
   'linghui/prompt': 'linghui/image',
   'linghui/image-to-image': 'linghui/image',
   'linghui/four-grid': 'linghui/image',
   'linghui/multi-angle': 'linghui/image',
   'linghui/image-to-video': 'linghui/video',
-  'linghui-reference-image': 'linghui-reference',
+  'linghui-reference-image': 'linghui-image',
   'linghui-prompt': 'linghui-image',
   'linghui-image-to-image': 'linghui-image',
   'linghui-four-grid': 'linghui-image',
@@ -83,7 +84,7 @@ function migrateLinghuiGraphV1ToV2(v1: any): LinghuiGraphSnapshot {
   const v1Groups: any[] = v1.groups ?? [];
 
   const nodes: LinghuiRFNodeSnapshot[] = v1Nodes.map((n: any) => {
-    const linghuiType = String(n.type ?? '') as LinghuiNodeType;
+    const linghuiType = migrateNodeType(String(n.type ?? '')) as LinghuiNodeType;
     const rfType = linghuiTypeToRFTypeKey(linghuiType);
 
     let nodeData: LinghuiNodeData;
@@ -92,6 +93,13 @@ function migrateLinghuiGraphV1ToV2(v1: any): LinghuiGraphSnapshot {
       // Merge saved properties
       if (n.properties) {
         nodeData.properties = { ...nodeData.properties, ...n.properties };
+        if (linghuiType === 'linghui/image' && n.type === 'linghui/reference-image') {
+          nodeData.properties = {
+            ...nodeData.properties,
+            mode: 'import',
+            source: String(n.properties.source ?? ''),
+          };
+        }
       }
     } catch {
       // Unknown node type - create minimal data
@@ -158,7 +166,7 @@ function migrateLinghuiGraphV1ToV2(v1: any): LinghuiGraphSnapshot {
       y: Array.isArray(g.pos) ? g.pos[1] : 0,
     },
     data: {
-      label: String(g.title ?? '分组'),
+      label: resolveLinghuiWorkflowBlockLabel(typeof g.title === 'string' ? g.title : undefined),
       color: String(g.color ?? '#2563eb'),
     },
     style: {
@@ -210,10 +218,17 @@ function migrateV2NodeTypes(graphData: LinghuiGraphSnapshot): LinghuiGraphSnapsh
           newData = createNewNodeData(newLinghuiType);
           // Merge old properties
           if (n.data?.properties) {
-            // Map old prompt property
             const oldProps = n.data.properties;
-            if (oldProps.prompt) newData.properties.prompt = oldProps.prompt;
-            if (oldProps.source) newData.properties.prompt = String(oldProps.note ?? '');
+            if (oldProps.prompt) {
+              newData.properties.prompt = oldProps.prompt;
+            }
+            if (newLinghuiType === 'linghui/image' && oldProps.source) {
+              newData.properties = {
+                ...newData.properties,
+                mode: 'import',
+                source: String(oldProps.source),
+              };
+            }
           }
         } catch {
           newData = { ...n.data, linghuiType: newLinghuiType } as any;
@@ -235,7 +250,7 @@ function migrateDocumentIfNeeded(doc: LinghuiWorkspaceDocument): LinghuiWorkspac
     };
   }
 
-  // Migrate old node types to new unified types
+  // Normalize deprecated V1 generation node types into the current core node model.
   result = {
     ...result,
     graphData: migrateV2NodeTypes(result.graphData),
@@ -434,6 +449,46 @@ export async function createLinghuiWorkspace(
   });
 
   return saveLinghuiWorkspace(doc);
+}
+
+export async function saveLinghuiWorkspaceAs(
+  doc: LinghuiWorkspaceDocument,
+  name?: string,
+): Promise<LinghuiWorkspaceDocument> {
+  const cloned = withNormalizedDocument({
+    ...clone(doc),
+    id: nanoid(12),
+    name: name ?? `${sanitizeWorkspaceName(doc.name)} 副本`,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    lastOpenedAt: Date.now(),
+  });
+
+  return saveLinghuiWorkspace(cloned);
+}
+
+function getWorkspaceNameFromFilePath(filePath: string): string {
+  const filename = filePath.split(/[\\/]/).pop() ?? DEFAULT_LINGHUI_WORKSPACE_NAME;
+  return sanitizeWorkspaceName(
+    filename
+      .replace(/\.linghui\.json$/i, '')
+      .replace(/\.json$/i, ''),
+  );
+}
+
+export async function importLinghuiWorkspace(filePath: string): Promise<LinghuiWorkspaceDocument> {
+  const raw = await electronService.fs.readFile(filePath);
+  const parsed = JSON.parse(raw) as Partial<LinghuiWorkspaceDocument>;
+  const imported = migrateDocumentIfNeeded(withNormalizedDocument({
+    ...parsed,
+    id: nanoid(12),
+    name: sanitizeWorkspaceName(parsed.name ?? getWorkspaceNameFromFilePath(filePath)),
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    lastOpenedAt: Date.now(),
+  }));
+
+  return saveLinghuiWorkspace(imported);
 }
 
 export async function exportLinghuiWorkspace(

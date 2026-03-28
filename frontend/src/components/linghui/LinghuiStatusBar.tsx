@@ -1,6 +1,7 @@
 import React from 'react';
 import { Tag } from 'antd';
 import type { LinghuiGraphStats, LinghuiCanvasSelection } from '../../types/linghui';
+import { LINGHUI_WORKFLOW_BLOCK_LABEL } from '../../constants/linghuiWorkflowBlock';
 
 interface LinghuiStatusBarProps {
   workspaceCount: number;
@@ -19,7 +20,7 @@ interface LinghuiStatusBarProps {
 
 function getSelectionLabel(selection: LinghuiCanvasSelection): string {
   if (!selection) return '未选中';
-  if (selection.kind === 'group') return `分组 · ${selection.label}`;
+  if (selection.kind === 'group') return `${LINGHUI_WORKFLOW_BLOCK_LABEL} · ${selection.label}`;
   return `节点 · ${selection.label}`;
 }
 
@@ -37,7 +38,7 @@ export const LinghuiStatusBar: React.FC<LinghuiStatusBarProps> = ({
       <div className="linghuiStatusItems">
         <span>工作区 {workspaceCount}</span>
         <span>节点 {stats.nodeCount}</span>
-        <span>分组 {stats.groupCount}</span>
+        <span>{LINGHUI_WORKFLOW_BLOCK_LABEL} {stats.groupCount}</span>
         <span>连线 {stats.linkCount}</span>
         <span>{getSelectionLabel(selection)}</span>
         <span>运行中 {runSummary.running}</span>

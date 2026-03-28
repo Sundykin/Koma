@@ -3,7 +3,7 @@ import type {
   LinghuiImageNodeProperties,
   LinghuiNodeData,
   LinghuiNodeResult,
-  LinghuiReferenceNodeProperties,
+  LinghuiScriptNodeProperties,
   LinghuiTextNodeProperties,
   LinghuiVideoNodeProperties,
 } from '../../types/linghui';
@@ -227,14 +227,29 @@ function buildResultReferences(
 
   result.shots?.forEach((shot, index) => {
     const shotSource = getMediaReferenceSource(shot.image);
-    pushVisualReference(refs, {
-      id: `${nodeId}__shot_${index + 1}`,
+    const shotId = `${nodeId}__shot_${index + 1}`;
+    const shotName = getDescriptionText(shot.title, `${baseName} 分镜 ${index + 1}`) || `${baseName} 分镜 ${index + 1}`;
+    const shotDescription = getDescriptionText(shot.description, `${baseDescription} · 分镜 ${index + 1}`);
+
+    if (shotSource) {
+      pushVisualReference(refs, {
+        id: shotId,
+        nodeId,
+        kind: 'image',
+        name: shotName,
+        description: shotDescription,
+        source: shotSource,
+        previewSource: shotSource,
+      });
+      return;
+    }
+
+    pushTextReference(refs, {
+      id: shotId,
       nodeId,
-      kind: 'image',
-      name: getDescriptionText(shot.title, `${baseName} 分镜 ${index + 1}`) || `${baseName} 分镜 ${index + 1}`,
-      description: getDescriptionText(shot.description, `${baseDescription} · 分镜 ${index + 1}`),
-      source: shotSource,
-      previewSource: shotSource,
+      name: shotName,
+      description: shotDescription,
+      textValue: shot.description || shot.title,
     });
   });
 
@@ -256,25 +271,6 @@ function buildFallbackReference(
   nodeId: string,
   nodeData: LinghuiNodeData,
 ): LinghuiPromptReferenceItem[] {
-  if (nodeData.linghuiType === 'linghui/reference') {
-    const properties = nodeData.properties as unknown as LinghuiReferenceNodeProperties;
-    const source = getDescriptionText(properties.source);
-    if (!source) {
-      return [];
-    }
-
-    const note = getDescriptionText(properties.note, nodeData.label) || nodeData.label;
-    return [{
-      id: nodeId,
-      nodeId,
-      kind: 'image',
-      name: note,
-      description: `来自上游节点：${nodeData.label}`,
-      source,
-      previewSource: source,
-    }];
-  }
-
   if (nodeData.linghuiType === 'linghui/audio') {
     const source = getDescriptionText((nodeData.properties as Record<string, unknown>)?.source);
     if (!source) {
@@ -341,6 +337,25 @@ function buildFallbackReference(
     }
 
     const content = getDescriptionText(properties.content);
+    if (!content) {
+      return [];
+    }
+
+    return [{
+      id: `${nodeId}__text`,
+      nodeId,
+      kind: 'text',
+      name: nodeData.label,
+      description: `来自上游节点：${nodeData.label}`,
+      textValue: content,
+    }];
+  }
+
+  if (nodeData.linghuiType === 'linghui/script') {
+    const properties = nodeData.properties as unknown as LinghuiScriptNodeProperties;
+    const content = getDescriptionText(
+      properties.mode === 'manual' ? properties.content : properties.prompt,
+    );
     if (!content) {
       return [];
     }

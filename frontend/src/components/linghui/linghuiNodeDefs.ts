@@ -22,16 +22,6 @@ interface CreateNewNodeDataOptions {
 }
 
 export const NODE_META: Record<LinghuiNodeType, LinghuiNodeMeta> = {
-  'linghui/reference': {
-    type: 'linghui/reference',
-    title: '参考图',
-    desc: '拖入或上传参考图，作为上游图片输入',
-    catalogCategory: 'creation',
-    catalogLabel: '参考图节点',
-    catalogDescription: '挂载本地图片或素材图，输出单张参考图',
-    accent: '#38bdf8',
-    background: '#0f1720',
-  },
   'linghui/text': {
     type: 'linghui/text',
     title: '文本',
@@ -72,24 +62,14 @@ export const NODE_META: Record<LinghuiNodeType, LinghuiNodeMeta> = {
     accent: '#f97316',
     background: '#0f1720',
   },
-  'linghui/storyboard-shot': {
-    type: 'linghui/storyboard-shot',
-    title: '分镜',
-    desc: '管理单个分镜内容与时长',
+  'linghui/script': {
+    type: 'linghui/script',
+    title: '脚本',
+    desc: '生成结构化脚本，并批量派生镜头文本、图片和视频',
     catalogCategory: 'storyboard',
-    catalogLabel: '分镜节点',
-    catalogDescription: '描述单个镜头内容与时长',
-    accent: '#2dd4bf',
-    background: '#0f1720',
-  },
-  'linghui/storyboard-group': {
-    type: 'linghui/storyboard-group',
-    title: '分镜组',
-    desc: '串联多个分镜形成序列',
-    catalogCategory: 'storyboard',
-    catalogLabel: '分镜组节点',
-    catalogDescription: '聚合多个分镜节点形成序列',
-    accent: '#facc15',
+    catalogLabel: '脚本节点',
+    catalogDescription: '生成或整理剧情脚本，输出结构化分镜序列',
+    accent: '#a78bfa',
     background: '#0f1720',
   },
 };
@@ -105,12 +85,13 @@ export const SLOT_TYPE_LABELS: Record<LinghuiSlotDataType, string> = {
 };
 
 export const NODE_SLOT_LAYOUTS: Record<LinghuiNodeType, { inputs: LinghuiSlotDef[]; outputs: LinghuiSlotDef[] }> = {
-  'linghui/reference': {
-    inputs: [],
-    outputs: [{ name: 'reference', dataType: 'image' }],
-  },
   'linghui/text': {
-    inputs: [],
+    inputs: [
+      { name: '图片参考', dataType: 'image' },
+      { name: '文本输入', dataType: 'text' },
+      { name: '视频参考', dataType: 'video' },
+      { name: '音频参考', dataType: 'audio' },
+    ],
     outputs: [{ name: 'text', dataType: 'text' }],
   },
   'linghui/image': {
@@ -130,27 +111,28 @@ export const NODE_SLOT_LAYOUTS: Record<LinghuiNodeType, { inputs: LinghuiSlotDef
     outputs: [{ name: 'video', dataType: 'video' }],
   },
   'linghui/audio': {
-    inputs: [],
+    inputs: [
+      { name: '图片参考', dataType: 'image' },
+      { name: '文本输入', dataType: 'text' },
+      { name: '视频参考', dataType: 'video' },
+      { name: '音频参考', dataType: 'audio' },
+    ],
     outputs: [{ name: 'audio', dataType: 'audio' }],
   },
-  'linghui/storyboard-shot': {
+  'linghui/script': {
     inputs: [
-      { name: 'image', dataType: 'image' },
-      { name: 'prompt', dataType: 'text' },
+      { name: '图片参考', dataType: 'image' },
+      { name: '文本设定', dataType: 'text' },
+      { name: '视频参考', dataType: 'video' },
     ],
-    outputs: [{ name: 'shot', dataType: 'shot' }],
-  },
-  'linghui/storyboard-group': {
-    inputs: [{ name: '分镜 1', dataType: 'shot' }],
-    outputs: [{ name: 'sequence', dataType: 'storyboard' }],
+    outputs: [
+      { name: 'script', dataType: 'text' },
+      { name: 'storyboard', dataType: 'storyboard' },
+    ],
   },
 };
 
 export const NODE_PROPERTY_DEFAULTS: Record<LinghuiNodeType, Record<string, unknown>> = {
-  'linghui/reference': {
-    source: '',
-    note: '',
-  },
   'linghui/text': {
     mode: 'manual',
     content: '',
@@ -183,8 +165,14 @@ export const NODE_PROPERTY_DEFAULTS: Record<LinghuiNodeType, Record<string, unkn
     prompt: '',
     ttsConfigId: '',
   },
-  'linghui/storyboard-shot': { description: '', duration: 3 },
-  'linghui/storyboard-group': { title: '场景序列', notes: '' },
+  'linghui/script': {
+    mode: 'manual',
+    content: '',
+    prompt: '',
+    systemPrompt: '',
+    llmConfigId: '',
+    viewMode: 'cards',
+  },
 };
 
 export const LINGHUI_NODE_CATALOG: LinghuiNodeCatalogItem[] = Object.values(NODE_META).map(meta => ({
@@ -273,6 +261,7 @@ export function createNewNodeData(type: LinghuiNodeType, options?: CreateNewNode
     label: options?.label?.trim() || meta.title,
     accent: meta.accent,
     background: meta.background,
+    viewMode: 'light',
     properties: { ...defaults },
     inputs: slots.inputs.map(s => ({ ...s })),
     outputs: slots.outputs.map(s => ({ ...s })),

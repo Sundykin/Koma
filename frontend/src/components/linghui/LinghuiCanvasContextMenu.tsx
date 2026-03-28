@@ -22,6 +22,7 @@ interface LinghuiCanvasContextMenuProps {
   onCreateAssetFromNode: () => void;
   onRunCurrentNode: () => void;
   onRunCurrentGroup: () => void;
+  onExportCurrentSelection: () => void;
   onSaveCurrentGroupAsWorkflow: () => void;
   onUngroupCurrentGroup: () => void;
   onDeleteCurrentGroup: () => void;
@@ -35,6 +36,7 @@ interface LinghuiCanvasContextMenuProps {
   onRedo: () => void;
   onRunAll: () => void;
   onRunSelection: () => void;
+  onExportSelection: () => void;
   onSaveSelectionAsWorkflow: () => void;
   onCopySelection: () => void;
   onDuplicateSelection: () => void;
@@ -58,6 +60,7 @@ export const LinghuiCanvasContextMenu: React.FC<LinghuiCanvasContextMenuProps> =
   onCreateAssetFromNode,
   onRunCurrentNode,
   onRunCurrentGroup,
+  onExportCurrentSelection,
   onSaveCurrentGroupAsWorkflow,
   onUngroupCurrentGroup,
   onDeleteCurrentGroup,
@@ -71,6 +74,7 @@ export const LinghuiCanvasContextMenu: React.FC<LinghuiCanvasContextMenuProps> =
   onRedo,
   onRunAll,
   onRunSelection,
+  onExportSelection,
   onSaveSelectionAsWorkflow,
   onCopySelection,
   onDuplicateSelection,
@@ -88,7 +92,7 @@ export const LinghuiCanvasContextMenu: React.FC<LinghuiCanvasContextMenuProps> =
       {contextMenu.kind === 'node' && (
         <>
           <div className="linghuiContextMenuHeader">
-            {contextMenuNodeIsGroup ? '分组操作' : '节点操作'}
+            {contextMenuNodeIsGroup ? '工作流块操作' : '节点操作'}
           </div>
           <button
             type="button"
@@ -127,6 +131,13 @@ export const LinghuiCanvasContextMenu: React.FC<LinghuiCanvasContextMenuProps> =
               >
                 运行当前节点
               </button>
+              <button
+                type="button"
+                className="linghuiContextMenuItem"
+                onClick={onExportCurrentSelection}
+              >
+                导出当前结果
+              </button>
             </>
           ) : (
             <>
@@ -140,24 +151,31 @@ export const LinghuiCanvasContextMenu: React.FC<LinghuiCanvasContextMenuProps> =
               <button
                 type="button"
                 className="linghuiContextMenuItem"
+                onClick={onExportCurrentSelection}
+              >
+                导出工作流块结果
+              </button>
+              <button
+                type="button"
+                className="linghuiContextMenuItem"
                 onClick={onSaveCurrentGroupAsWorkflow}
               >
                 保存为工作流
               </button>
-              <div className="linghuiContextMenuHint">双击分组标题可直接重命名</div>
+              <div className="linghuiContextMenuHint">双击工作流块标题可直接重命名</div>
               <button
                 type="button"
                 className="linghuiContextMenuItem"
                 onClick={onUngroupCurrentGroup}
               >
-                取消分组
+                取消工作流块
               </button>
               <button
                 type="button"
                 className="linghuiContextMenuItem isDanger"
                 onClick={onDeleteCurrentGroup}
               >
-                删除分组
+                删除工作流块
               </button>
             </>
           )}
@@ -259,6 +277,15 @@ export const LinghuiCanvasContextMenu: React.FC<LinghuiCanvasContextMenuProps> =
           >
             运行选中
           </button>
+          {contextMenu.kind === 'selection' && (
+            <button
+              type="button"
+              className={`linghuiContextMenuItem ${contextMenuSelectionIds.length ? '' : 'isDisabled'}`}
+              onClick={onExportSelection}
+            >
+              批量导出选中结果
+            </button>
+          )}
           {contextMenu.kind === 'selection' && (
             <>
               <button

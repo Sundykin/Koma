@@ -1,12 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { App, Button, Select } from 'antd';
 import { ArrowUp, Music4, Trash2, UploadCloud } from 'lucide-react';
-import type { LinghuiAudioNodeProperties, LinghuiNodeData } from '../../types/linghui';
+import type { LinghuiAudioNodeProperties, LinghuiNodeData, LinghuiNodeRunState } from '../../types/linghui';
 import { loadSettings } from '../../store/settings/core';
 import { electronService, openFileDialog } from '../../services/electronService';
-import { importLinghuiWorkspaceAsset } from '../../store/linghuiStorage';
+import { createLinghuiWorkspaceAsset, importLinghuiWorkspaceAsset } from '../../store/linghuiStorage';
 import { useLinghuiNodeMutation } from './nodes/LinghuiNodeRunsContext';
 import { LinghuiPromptEditor } from './LinghuiPromptEditor';
+import type { LinghuiPromptReferenceItem } from './linghuiPromptReferences';
 
 function getPreviewSource(source?: string): string {
   if (!source) return '';
@@ -29,14 +30,20 @@ interface ProviderOption {
 interface AudioNodeEditorProps {
   nodeId: string;
   nodeData: LinghuiNodeData;
+  nodeRun?: LinghuiNodeRunState;
+  promptReferences?: LinghuiPromptReferenceItem[];
   workspaceId?: string | null;
+  onAssetLibraryMutate?: () => void;
   onRun: () => void;
 }
 
 export const AudioNodeEditor: React.FC<AudioNodeEditorProps> = ({
   nodeId,
   nodeData,
+  nodeRun,
+  promptReferences = [],
   workspaceId = null,
+  onAssetLibraryMutate,
   onRun,
 }) => {
   const { message } = App.useApp();
@@ -48,9 +55,31 @@ export const AudioNodeEditor: React.FC<AudioNodeEditorProps> = ({
   const previewSource = getPreviewSource(source);
   const sourceName = useMemo(() => getSourceName(source), [source]);
   const [providers, setProviders] = useState<ProviderOption[]>([]);
+  const generatedAudioSource = getPreviewSource(nodeRun?.result?.primary?.source);
+  const generatedAudioLabel = String(nodeRun?.result?.primary?.label ?? nodeData.label ?? '音频结果').trim();
+  const generatedAudioDuration = nodeRun?.result?.primary?.durationSec;
+  const generatedAudioText = String(nodeRun?.result?.text ?? '').trim();
+  const canReuseGeneratedAudio = !source && Boolean(nodeRun?.result?.primary?.source);
+
+  const upstreamSummary = useMemo(() => {
+    if (!promptReferences.length) return '';
+
+    const imageCount = promptReferences.filter(item => item.kind === 'image').length;
+    const videoCount = promptReferences.filter(item => item.kind === 'video').length;
+    const audioCount = promptReferences.filter(item => item.kind === 'audio').length;
+    const textCount = promptReferences.filter(item => item.kind === 'text').length;
+    return [
+      imageCount > 0 ? `${imageCount} 个图片参考` : '',
+      videoCount > 0 ? `${videoCount} 个视频参考` : '',
+      audioCount > 0 ? `${audioCount} 条音频参考` : '',
+      textCount > 0 ? `${textCount} 段文本输入` : '',
+    ].filter(Boolean).join('、');
+  }, [promptReferences]);
 
   const mentionHint = source
     ? '当前节点已挂载本地音频，会以导入模式输出；清空素材后可切回文本转语音'
+    : promptReferences.length > 0
+      ? `输入 @ 可直接引用上游文本、图片、视频或音频参考${upstreamSummary ? `；当前已接入 ${upstreamSummary}` : ''}`
     : '输入要合成的旁白、对白或提示文本，运行后会生成音频产物';
 
   useEffect(() => {
@@ -157,6 +186,43 @@ export const AudioNodeEditor: React.FC<AudioNodeEditorProps> = ({
     }));
   }, [nodeId, updateNodeData]);
 
+  const handleReuseGeneratedAudio = useCallback(() => {
+    const nextSource = String(nodeRun?.result?.primary?.source ?? '').trim();
+    if (!nextSource) {
+      message.info('当前还没有可复用的音频结果');
+      return;
+    }
+
+    updateNodeData(nodeId, prev => ({
+      ...prev,
+      properties: {
+        ...prev.properties,
+        source: nextSource,
+      },
+    }));
+    message.success('已将生成结果写回当前节点素材');
+  }, [message, nodeId, nodeRun?.result?.primary?.source, updateNodeData]);
+
+  const handleCreateAudioAsset = useCallback(async () => {
+    if (!workspaceId) {
+      message.warning('请先打开一个灵绘工作区，再保存音频资产');
+      return;
+    }
+
+    try {
+      const asset = await createLinghuiWorkspaceAsset({
+        workspaceId,
+        nodeId,
+        nodeData,
+        nodeRun,
+      });
+      onAssetLibraryMutate?.();
+      message.success(`已保存音频资产：${asset.name}`);
+    } catch (error: any) {
+      message.error(error?.message || '保存音频资产失败');
+    }
+  }, [message, nodeData, nodeId, nodeRun, onAssetLibraryMutate, workspaceId]);
+
   return (
     <div className="linghuiEditorPanel" onMouseDown={e => e.stopPropagation()}>
       <div className="linghuiEditorHeader">
@@ -215,14 +281,39 @@ export const AudioNodeEditor: React.FC<AudioNodeEditorProps> = ({
         <LinghuiPromptEditor
           value={prompt}
           onChange={value => updateProp('prompt', value)}
-          references={[]}
-          placeholder="输入要合成的旁白、对白或音频描述"
+          references={promptReferences}
+          placeholder="输入要合成的旁白、对白或音频描述，输入 @ 引用上游产物"
           darkTheme
           minHeight="80px"
           maxHeight="160px"
         />
         <div className="linghuiEditorPromptHint">{mentionHint}</div>
       </div>
+
+      {!source && generatedAudioSource && (
+        <div className="linghuiEditorAssetGroup">
+          <div className="linghuiEditorAssetTitle">生成结果</div>
+          <div className="linghuiNodePreviewAudioWrap">
+            <audio className="linghuiNodePreviewAudio" src={generatedAudioSource} controls />
+            <div className="linghuiNodePreviewAudioMeta">
+              <span>{generatedAudioLabel}</span>
+              {generatedAudioDuration ? <span>{Math.max(1, Math.round(generatedAudioDuration))} 秒</span> : null}
+            </div>
+            {generatedAudioText ? <div className="linghuiNodePreviewText">{generatedAudioText}</div> : null}
+          </div>
+          <div className="linghuiEditorToolbar" style={{ marginTop: 10 }}>
+            <div className="linghuiEditorToolbarLeft">
+              <Button size="small" disabled={!canReuseGeneratedAudio} onClick={handleReuseGeneratedAudio}>
+                写回当前素材
+              </Button>
+              <Button size="small" onClick={() => void handleCreateAudioAsset()}>
+                保存为资产
+              </Button>
+            </div>
+          </div>
+          <div className="linghuiEditorPromptHint">可直接在这里试听、写回当前节点素材，或保存为资产后继续发送到画布。</div>
+        </div>
+      )}
 
       <div className="linghuiEditorToolbar">
         <div className="linghuiEditorToolbarLeft">
