@@ -423,17 +423,26 @@ export class FFmpegService {
       .map(f => path.join(outputDir, f));
   }
 
-  private roundUpToMultiple(value: number, multiple: number): number {
-    if (multiple <= 1) return value;
-    return Math.ceil(value / multiple) * multiple;
+  private buildGridSplitBounds(total: number, gridSize: number): number[] {
+    if (gridSize <= 1) {
+      return [0, Math.max(0, total)];
+    }
+
+    const bounds = [0];
+    for (let index = 1; index < gridSize; index += 1) {
+      const next = Math.round((total * index) / gridSize);
+      bounds.push(Math.max(bounds[bounds.length - 1], next));
+    }
+    bounds.push(Math.max(0, total));
+    return bounds;
   }
 
   /**
    * 宫格图片分割（支持 2×2 / 3×3 / 4×4 / 5×5）
    *
-   * - 保证输出尺寸可被 gridSize 均分
-   * - 通过“最小单格尺寸”或目标输出尺寸进行放大
-   * - 可在切块后直接放大到 targetWidth / targetHeight
+   * - 通过“目标单格尺寸”或最小单格尺寸进行预放大
+   * - 使用统一边界算法精确切割，避免预览与实际输出错位
+   * - 可在切块后直接缩放到 targetWidth / targetHeight
    */
   private async doSplitGridImage(options: SplitGridImageOptions): Promise<string[]> {
     if (!this.ffmpegPath) {
@@ -470,41 +479,28 @@ export class FFmpegService {
     const defaultCell = aspectRatio === '16:9'
       ? { w: 1280, h: 720 }
       : { w: 720, h: 1280 };
-    const desiredCellW = minCellWidth || defaultCell.w;
-    const desiredCellH = minCellHeight || defaultCell.h;
-    const minW = desiredCellW * gridSize;
-    const minH = desiredCellH * gridSize;
+    const desiredCellW = targetWidth || minCellWidth || defaultCell.w;
+    const desiredCellH = targetHeight || minCellHeight || defaultCell.h;
+    const desiredTotalW = desiredCellW * gridSize;
+    const desiredTotalH = desiredCellH * gridSize;
 
-    // Upscale first (never downscale), and then round up to multiples of 3 so we can evenly split into 3×3.
-    // We prefer scaling to the final size instead of padding to avoid introducing borders.
+    // 先整体等比放大到足够精细，再按统一边界切块。
     const hasDimensions = inputWidth > 0 && inputHeight > 0;
     const scaleFactor = hasDimensions
-      ? Math.max(minW / inputWidth, minH / inputHeight, 1)
+      ? Math.max(desiredTotalW / inputWidth, desiredTotalH / inputHeight, 1)
       : 1;
-    const scaledW = hasDimensions ? Math.round(inputWidth * scaleFactor) : minW;
-    const scaledH = hasDimensions ? Math.round(inputHeight * scaleFactor) : minH;
-
-    const finalW = this.roundUpToMultiple(scaledW, gridSize);
-    const finalH = this.roundUpToMultiple(scaledH, gridSize);
-    const cellW = Math.floor(finalW / gridSize);
-    const cellH = Math.floor(finalH / gridSize);
-
-    const padRight = Math.max(0, finalW - scaledW);
-    const padBottom = Math.max(0, finalH - scaledH);
+    const scaledW = hasDimensions ? Math.max(1, Math.round(inputWidth * scaleFactor)) : desiredTotalW;
+    const scaledH = hasDimensions ? Math.max(1, Math.round(inputHeight * scaleFactor)) : desiredTotalH;
+    const xBounds = this.buildGridSplitBounds(scaledW, gridSize);
+    const yBounds = this.buildGridSplitBounds(scaledH, gridSize);
 
     // 基础处理：
     // 1) 如需放大：高质量插值（lanczos）
-    // 2) 如需补充像素到可平分：pad 右/下边缘 + fillborders 把新增边缘用“边缘像素扩展”填充（不会整体缩放原图）
-    // 3) 锐化，保证切割后单格观感更清晰
+    // 2) 锐化，保证切割后单格观感更清晰
+    // 3) split 后按统一边界裁切，确保和预览使用同一套坐标
     const baseFilters: string[] = [
       `scale=${scaledW}:${scaledH}:flags=lanczos`,
     ];
-
-    if (padRight > 0 || padBottom > 0) {
-      baseFilters.push(`pad=${finalW}:${finalH}:0:0:color=black`);
-      // Use smear to extend edge pixels into padded area (near-lossless border fill).
-      baseFilters.push(`fillborders=left=0:top=0:right=${padRight}:bottom=${padBottom}:mode=smear`);
-    }
 
     baseFilters.push(
       `unsharp=5:5:${Math.max(0, Math.min(2, sharpenAmount))}:3:3:0.0`,
@@ -515,8 +511,10 @@ export class FFmpegService {
     let outIndex = 0;
     for (let row = 0; row < gridSize; row += 1) {
       for (let col = 0; col < gridSize; col += 1) {
-        const x = col * cellW;
-        const y = row * cellH;
+        const x = xBounds[col];
+        const y = yBounds[row];
+        const cellW = Math.max(1, xBounds[col + 1] - xBounds[col]);
+        const cellH = Math.max(1, yBounds[row + 1] - yBounds[row]);
         const scaleFilter = targetWidth && targetHeight
           ? `,scale=${targetWidth}:${targetHeight}:flags=lanczos,unsharp=5:5:${Math.max(0, Math.min(2, sharpenAmount))}:3:3:0.0`
           : '';

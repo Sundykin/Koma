@@ -5,7 +5,8 @@ import type {
   LinghuiRunStatus,
   LinghuiTextNodeProperties,
 } from '../../../types/linghui';
-import { useLinghuiNodeInteraction, useNodeRunState } from './LinghuiNodeRunsContext';
+import { useLinghuiNodeInteraction, useLinghuiNodeEditorVisibility, useNodeRunState } from './LinghuiNodeRunsContext';
+import { LinghuiNodeEditor } from '../LinghuiNodeEditor';
 import { EditableCompactNodeLabel } from './EditableCompactNodeLabel';
 import { resolveLinghuiNodeViewMode } from '../linghuiNodeViewMode';
 import { resolveDefaultCompactNodeStyle } from './linghuiNodeCardSizing';
@@ -51,10 +52,11 @@ function TextNodeInner({ id, data, selected }: NodeProps) {
   ).trim();
   const modeLabel = props.mode === 'generate' ? 'LLM 生成' : '手动文本';
   const viewMode = resolveLinghuiNodeViewMode(nodeData.viewMode);
+  const isEditorVisible = useLinghuiNodeEditorVisibility(id, 'linghui/text');
 
   return (
     <div
-      className={`linghuiCompactNode nopan ${selected ? 'isSelected' : ''} ${viewMode === 'collapsed' ? 'isCollapsed' : ''}`}
+      className={`linghuiCompactNode nopan ${selected ? 'isSelected' : ''} ${viewMode === 'collapsed' ? 'isCollapsed' : ''} ${isEditorVisible ? 'hasInlineEditor' : ''}`}
       data-view-mode={viewMode}
       style={{
         ...resolveDefaultCompactNodeStyle({ thumbHeight: 214, minHeight: 356 }),
@@ -111,6 +113,8 @@ function TextNodeInner({ id, data, selected }: NodeProps) {
           </div>
         )}
       </div>
+
+      {isEditorVisible ? <LinghuiNodeEditor nodeId={id} nodeType="linghui/text" /> : null}
     </div>
   );
 }

@@ -8,7 +8,9 @@ import type {
 import {
   useNodeRunState,
   useLinghuiNodeInteraction,
+  useLinghuiNodeEditorVisibility,
 } from './LinghuiNodeRunsContext';
+import { LinghuiNodeEditor } from '../LinghuiNodeEditor';
 import { electronService } from '../../../services/electronService';
 import { EditableCompactNodeLabel } from './EditableCompactNodeLabel';
 import { resolveLinghuiNodeViewMode } from '../linghuiNodeViewMode';
@@ -71,10 +73,11 @@ function VideoNodeInner({ id, data, selected }: NodeProps) {
       ? runState.result.metadata.aspectRatio
       : String(props.aspectRatio ?? '16:9'),
   }).style;
+  const isEditorVisible = useLinghuiNodeEditorVisibility(id, 'linghui/video');
 
   return (
     <div
-      className={`linghuiCompactNode nopan ${selected ? 'isSelected' : ''} ${viewMode === 'collapsed' ? 'isCollapsed' : ''}`}
+      className={`linghuiCompactNode nopan ${selected ? 'isSelected' : ''} ${viewMode === 'collapsed' ? 'isCollapsed' : ''} ${isEditorVisible ? 'hasInlineEditor' : ''}`}
       data-view-mode={viewMode}
       style={{
         ...mediaCardStyle,
@@ -140,6 +143,8 @@ function VideoNodeInner({ id, data, selected }: NodeProps) {
           </div>
         )}
       </div>
+
+      {isEditorVisible ? <LinghuiNodeEditor nodeId={id} nodeType="linghui/video" /> : null}
     </div>
   );
 }

@@ -5,7 +5,8 @@ import type {
   LinghuiRunStatus,
   LinghuiScriptNodeProperties,
 } from '../../../types/linghui';
-import { useLinghuiNodeInteraction, useNodeRunState } from './LinghuiNodeRunsContext';
+import { useLinghuiNodeInteraction, useLinghuiNodeEditorVisibility, useNodeRunState } from './LinghuiNodeRunsContext';
+import { LinghuiNodeEditor } from '../LinghuiNodeEditor';
 import { EditableCompactNodeLabel } from './EditableCompactNodeLabel';
 import { parseLinghuiScriptContent } from '../linghuiScriptNodeUtils';
 import { resolveLinghuiNodeViewMode } from '../linghuiNodeViewMode';
@@ -54,10 +55,11 @@ function ScriptNodeInner({ id, data, selected }: NodeProps) {
   const modeLabel = props.mode === 'generate' ? '脚本生成' : '结构化脚本';
   const viewLabel = props.viewMode === 'table' ? '表格视图' : '卡片视图';
   const viewMode = resolveLinghuiNodeViewMode(nodeData.viewMode);
+  const isEditorVisible = useLinghuiNodeEditorVisibility(id, 'linghui/script');
 
   return (
     <div
-      className={`linghuiCompactNode nopan ${selected ? 'isSelected' : ''} ${viewMode === 'collapsed' ? 'isCollapsed' : ''}`}
+      className={`linghuiCompactNode nopan ${selected ? 'isSelected' : ''} ${viewMode === 'collapsed' ? 'isCollapsed' : ''} ${isEditorVisible ? 'hasInlineEditor' : ''}`}
       data-view-mode={viewMode}
       style={{
         ...resolveDefaultCompactNodeStyle({ thumbHeight: 214, minHeight: 368 }),
@@ -126,6 +128,8 @@ function ScriptNodeInner({ id, data, selected }: NodeProps) {
           </div>
         )}
       </div>
+
+      {isEditorVisible ? <LinghuiNodeEditor nodeId={id} nodeType="linghui/script" /> : null}
     </div>
   );
 }

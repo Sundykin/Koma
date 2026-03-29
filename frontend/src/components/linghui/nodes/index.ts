@@ -22,4 +22,6 @@ export {
   LinghuiExecutionTraceContext,
   LinghuiNodeMutationContext,
   LinghuiNodeInteractionContext,
+  LinghuiGridSplitContext,
+  LinghuiNodeEditorContext,
 } from './LinghuiNodeRunsContext';

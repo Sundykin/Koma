@@ -1,7 +1,8 @@
 import React, { memo } from 'react';
 import { Handle, Position, type NodeProps } from '@xyflow/react';
 import type { LinghuiNodeData, LinghuiRunStatus } from '../../../types/linghui';
-import { useNodeRunState, useLinghuiNodeInteraction } from './LinghuiNodeRunsContext';
+import { useNodeRunState, useLinghuiNodeInteraction, useLinghuiNodeEditorVisibility } from './LinghuiNodeRunsContext';
+import { LinghuiNodeEditor } from '../LinghuiNodeEditor';
 import { EditableCompactNodeLabel } from './EditableCompactNodeLabel';
 import { resolveLinghuiNodeViewMode } from '../linghuiNodeViewMode';
 import { resolveDefaultCompactNodeStyle } from './linghuiNodeCardSizing';
@@ -62,10 +63,11 @@ function AudioNodeInner({ id, data, selected }: NodeProps) {
       ? '文本转语音'
       : '待配置';
   const viewMode = resolveLinghuiNodeViewMode(nodeData.viewMode);
+  const isEditorVisible = useLinghuiNodeEditorVisibility(id, 'linghui/audio');
 
   return (
     <div
-      className={`linghuiCompactNode nopan ${selected ? 'isSelected' : ''} ${viewMode === 'collapsed' ? 'isCollapsed' : ''}`}
+      className={`linghuiCompactNode nopan ${selected ? 'isSelected' : ''} ${viewMode === 'collapsed' ? 'isCollapsed' : ''} ${isEditorVisible ? 'hasInlineEditor' : ''}`}
       data-view-mode={viewMode}
       style={{
         ...resolveDefaultCompactNodeStyle({ thumbHeight: 214, minHeight: 344 }),
@@ -116,6 +118,8 @@ function AudioNodeInner({ id, data, selected }: NodeProps) {
           </div>
         )}
       </div>
+
+      {isEditorVisible ? <LinghuiNodeEditor nodeId={id} nodeType="linghui/audio" /> : null}
     </div>
   );
 }

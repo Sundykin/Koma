@@ -128,6 +128,10 @@ export function useLinghuiCanvasNodeInteractions({
     if (!element) return false;
 
     return Boolean(
+      element.closest('.linghuiNodeEditorContainer') ||
+      element.closest('.linghuiNodeEditorTopBar') ||
+      element.closest('.linghuiNodeEditorMainSurface') ||
+      element.closest('.linghuiEditorPanel') ||
       element.closest('.react-flow__handle') ||
       element.closest('button, input, textarea, select, a, [role="button"], [contenteditable="true"]'),
     );
@@ -289,6 +293,13 @@ export function useLinghuiCanvasNodeInteractions({
     ) {
       return;
     }
+
+    // Block editor opening when image node is in expanded state
+    const nodeElement = (event.target as HTMLElement)?.closest?.('.linghuiCompactNode');
+    if (nodeElement instanceof HTMLElement && nodeElement.dataset.expanded === 'true') {
+      return;
+    }
+
     setPendingGroupFrame(null);
     closeContextMenu();
     openNodeEditor(node.id);
