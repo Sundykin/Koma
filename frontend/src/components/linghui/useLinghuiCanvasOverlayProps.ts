@@ -1,11 +1,14 @@
 import { useCallback, useMemo } from 'react';
 import type { MutableRefObject } from 'react';
+import { nanoid } from 'nanoid';
 import type { MessageInstance } from 'antd/es/message/interface';
 import type { ReactFlowInstance } from '@xyflow/react';
 import type {
   LinghuiCanvasSelection,
   LinghuiExecutionLogEntry,
   LinghuiImageAssetItem,
+  LinghuiImageNodeProperties,
+  LinghuiGridType,
   LinghuiNodeData,
   LinghuiNodeRunState,
   LinghuiNodeToolState,
@@ -15,21 +18,174 @@ import type {
 import {
   createLinghuiWorkflowTemplate,
   createLinghuiWorkspaceAsset,
+  getLinghuiWorkspaceDir,
 } from '../../store/linghuiStorage';
+import { electronService } from '../../services/electronService';
+import { ffmpegManager } from '../../services/ffmpegManager';
+import { stripDataHeader } from '../../utils/encoding';
 import { LINGHUI_NODE_CATALOG } from './linghuiNodeDefs';
 import type { LinghuiCanvasMenuState, LinghuiClipboardSnapshot, QuickCreateState } from './linghuiCanvasShared';
 import type { LinghuiCanvasOverlaysProps } from './LinghuiCanvasOverlays';
+import {
+  resolveImageAspectRatioLabel,
+  resolveLinghuiImagePrimaryForNode,
+} from './linghuiImageCollections';
 
 type LinghuiCanvasDrawer = 'add' | 'workflow' | 'asset' | 'history' | 'tutorial';
+
+const GRID_SPLIT_SIZE_MAP: Record<Exclude<LinghuiGridType, 'none'>, 2 | 3 | 4 | 5> = {
+  '2x2': 2,
+  '3x3': 3,
+  '4x4': 4,
+  '5x5': 5,
+};
+
+function mergePromptSnippet(currentPrompt: string, snippet: string): string {
+  const normalizedCurrent = currentPrompt.trim();
+  const normalizedSnippet = snippet.trim();
+  if (!normalizedSnippet) return normalizedCurrent;
+  if (normalizedCurrent.includes(normalizedSnippet)) return normalizedCurrent;
+  return normalizedCurrent ? `${normalizedCurrent}\n${normalizedSnippet}` : normalizedSnippet;
+}
+
+function getPreviewSource(source?: string): string {
+  if (!source) return '';
+  if (
+    source.startsWith('http://') ||
+    source.startsWith('https://') ||
+    source.startsWith('data:') ||
+    source.startsWith('blob:') ||
+    source.startsWith('koma-local://')
+  ) {
+    return source;
+  }
+  return electronService.fs.toLocalUrl(source);
+}
+
+function decodeLinghuiLocalSource(source: string): string {
+  if (!source.startsWith('koma-local://')) {
+    return source;
+  }
+
+  const decoded = decodeURIComponent(source.replace(/^koma-local:\/\//, ''));
+  return decoded.replace(/^\/([A-Za-z]:\/)/, '$1');
+}
+
+function getFileExtension(source: string, fallback = 'png'): string {
+  const normalized = decodeLinghuiLocalSource(source).split('?')[0].split('#')[0];
+  const matched = normalized.match(/\.([a-zA-Z0-9]+)$/);
+  if (!matched?.[1]) {
+    return fallback;
+  }
+  const ext = matched[1].toLowerCase();
+  return ext === 'jpeg' ? 'jpg' : ext;
+}
+
+function getExtensionFromMimeType(mimeType?: string, fallback = 'png'): string {
+  const normalized = String(mimeType ?? '').toLowerCase();
+  if (normalized.includes('jpeg') || normalized.includes('jpg')) return 'jpg';
+  if (normalized.includes('png')) return 'png';
+  if (normalized.includes('webp')) return 'webp';
+  return fallback;
+}
+
+async function materializeGridSplitInputSource(params: {
+  source: string;
+  workspaceId: string;
+  baseName: string;
+}): Promise<string> {
+  const { source, workspaceId, baseName } = params;
+  const trimmedSource = String(source).trim();
+  if (!trimmedSource) {
+    throw new Error('缺少可拆分的图片');
+  }
+
+  if (trimmedSource.startsWith('koma-local://')) {
+    return decodeLinghuiLocalSource(trimmedSource);
+  }
+
+  if (
+    !trimmedSource.startsWith('http://') &&
+    !trimmedSource.startsWith('https://') &&
+    !trimmedSource.startsWith('data:') &&
+    !trimmedSource.startsWith('blob:')
+  ) {
+    return trimmedSource;
+  }
+
+  const workspaceDir = await getLinghuiWorkspaceDir(workspaceId);
+  const inputDir = `${workspaceDir}/assets/grid-split-sources`;
+  await electronService.fs.mkdir(inputDir);
+
+  if (trimmedSource.startsWith('http://') || trimmedSource.startsWith('https://')) {
+    const ext = getFileExtension(trimmedSource, 'png');
+    const inputPath = `${inputDir}/${Date.now()}-${baseName}.${ext}`;
+    await electronService.fs.downloadFile(trimmedSource, inputPath);
+    return inputPath;
+  }
+
+  if (trimmedSource.startsWith('data:')) {
+    const { mimeType, base64 } = stripDataHeader(trimmedSource);
+    const ext = getExtensionFromMimeType(mimeType, 'png');
+    const inputPath = `${inputDir}/${Date.now()}-${baseName}.${ext}`;
+    await electronService.fs.writeFile(inputPath, base64, true);
+    return inputPath;
+  }
+
+  const response = await fetch(trimmedSource);
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  const ext = getExtensionFromMimeType(response.headers.get('content-type') ?? undefined, 'png');
+  const inputPath = `${inputDir}/${Date.now()}-${baseName}.${ext}`;
+  await electronService.fs.writeFileBuffer(inputPath, bytes);
+  return inputPath;
+}
+
+async function createLinghuiImageAssetItemFromSource(params: {
+  source: string;
+  label: string;
+}): Promise<LinghuiImageAssetItem> {
+  const previewSource = getPreviewSource(params.source);
+  const metadata = await new Promise<{ width?: number; height?: number; aspectRatio?: string }>(resolve => {
+    const image = new Image();
+    image.onload = () => resolve({
+      width: image.naturalWidth,
+      height: image.naturalHeight,
+      aspectRatio: resolveImageAspectRatioLabel(image.naturalWidth, image.naturalHeight),
+    });
+    image.onerror = () => resolve({});
+    image.src = previewSource;
+  });
+
+  return {
+    id: nanoid(10),
+    source: params.source,
+    label: params.label,
+    width: metadata.width,
+    height: metadata.height,
+    aspectRatio: metadata.aspectRatio,
+  };
+}
 
 interface UseLinghuiCanvasOverlayPropsParams {
   editorSelection: LinghuiCanvasSelection;
   activeNodeTool: LinghuiNodeToolState;
   setActiveNodeTool: (tool: LinghuiNodeToolState) => void;
+  revertGridSplitTool: () => void;
   onCloseEditor: () => void;
   nodeRuns: Record<string, LinghuiNodeRunState>;
   workspaceId: string | null;
+  updateNodeData: (
+    nodeId: string,
+    updater: (prev: LinghuiNodeData) => LinghuiNodeData,
+    options?: { markStale?: boolean },
+  ) => void;
   canvasRect: DOMRect | null;
+  gridSplitType: LinghuiGridType;
+  setGridSplitType: (type: LinghuiGridType) => void;
+  gridSplitSelectedCells: number[];
+  setGridSplitSelectedCells: (cells: number[]) => void;
+  gridSplitUpscaleFactor: 2 | 4;
+  setGridSplitUpscaleFactor: (factor: 2 | 4) => void;
   pendingGroupFrameStyle: { left: number; top: number; width: number; height: number } | null;
   pendingGroupActionsStyle: { left: number; top: number } | null;
   pendingGroupCreatableIds: string[];
@@ -92,10 +248,18 @@ export function useLinghuiCanvasOverlayProps({
   editorSelection,
   activeNodeTool,
   setActiveNodeTool,
+  revertGridSplitTool,
   onCloseEditor,
   nodeRuns,
   workspaceId,
+  updateNodeData,
   canvasRect,
+  gridSplitType,
+  setGridSplitType,
+  gridSplitSelectedCells,
+  setGridSplitSelectedCells,
+  gridSplitUpscaleFactor,
+  setGridSplitUpscaleFactor,
   pendingGroupFrameStyle,
   pendingGroupActionsStyle,
   pendingGroupCreatableIds,
@@ -284,6 +448,126 @@ export function useLinghuiCanvasOverlayProps({
     });
   }, [message, onRunSelection]);
 
+  const applyImageToolPreset = useCallback((preset: {
+    promptSnippet: string;
+    properties?: Partial<LinghuiImageNodeProperties>;
+  }) => {
+    if (editorSelection?.kind !== 'node' || editorSelection.nodeType !== 'linghui/image') {
+      return;
+    }
+
+    updateNodeData(editorSelection.nodeId, prev => {
+      const previousProps = prev.properties as unknown as LinghuiImageNodeProperties;
+      return {
+        ...prev,
+        properties: {
+          ...previousProps,
+          ...preset.properties,
+          prompt: mergePromptSnippet(String(previousProps.prompt ?? ''), preset.promptSnippet),
+        } as unknown as Record<string, unknown>,
+      };
+    }, { markStale: true });
+    message.success('已应用节点预设');
+  }, [editorSelection, message, updateNodeData]);
+
+  const executeGridSplit = useCallback(async () => {
+    if (!activeNodeTool || activeNodeTool.kind !== 'image' || activeNodeTool.tool !== 'grid-split') {
+      return;
+    }
+    if (!workspaceId) {
+      message.warning('请先打开灵绘工作区，再执行宫格切分');
+      return;
+    }
+    if (!electronService.isElectron()) {
+      message.warning('宫格切分需要在桌面端执行');
+      return;
+    }
+    if (!gridSplitSelectedCells.length) {
+      message.info('请先在图片节点上选择要切出的宫格');
+      return;
+    }
+
+    const gridSize = GRID_SPLIT_SIZE_MAP[gridSplitType === 'none' ? '2x2' : gridSplitType] ?? 2;
+    const targetNode = reactFlow.getNode(activeNodeTool.nodeId);
+    if (!targetNode || targetNode.type === 'group') {
+      message.info('当前节点不可执行宫格切分');
+      return;
+    }
+
+    const nodeData = targetNode.data as unknown as LinghuiNodeData;
+    const primaryImage = resolveLinghuiImagePrimaryForNode(nodeData, nodeRuns[activeNodeTool.nodeId]?.result);
+    const source = String(primaryImage?.source ?? '').trim();
+    if (!source) {
+      message.info('当前图片节点没有可切分的主图');
+      return;
+    }
+
+    try {
+      const nodeLabel = String(primaryImage?.label || nodeData.label || '图片').trim() || '图片';
+      const baseName = nodeLabel.replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, ' ').trim() || 'grid-source';
+      const inputPath = await materializeGridSplitInputSource({
+        source,
+        workspaceId,
+        baseName,
+      });
+      const inputItem = await createLinghuiImageAssetItemFromSource({
+        source: inputPath,
+        label: nodeLabel,
+      });
+      const workspaceDir = await getLinghuiWorkspaceDir(workspaceId);
+      const outputDir = `${workspaceDir}/assets/grid-splits/${activeNodeTool.nodeId}/${Date.now()}`;
+      const targetWidth = inputItem.width ? Math.ceil(inputItem.width / gridSize) * gridSplitUpscaleFactor : undefined;
+      const targetHeight = inputItem.height ? Math.ceil(inputItem.height / gridSize) * gridSplitUpscaleFactor : undefined;
+      const outputs = await ffmpegManager.splitGridImage({
+        input: inputPath,
+        outputDir,
+        aspectRatio: inputItem.aspectRatio || (inputItem.height && inputItem.width && inputItem.height > inputItem.width ? '9:16' : '16:9'),
+        gridSize,
+        targetWidth,
+        targetHeight,
+        format: 'png',
+        sharpenAmount: 0.9,
+      });
+
+      if (!Array.isArray(outputs) || outputs.length !== gridSize * gridSize) {
+        throw new Error('宫格切分失败：输出数量不正确');
+      }
+
+      const selectedIndices = [...gridSplitSelectedCells].sort((left, right) => left - right);
+      const selectedItems = await Promise.all(selectedIndices.map(async cellIndex => {
+        const outputPath = outputs[cellIndex];
+        if (!outputPath) {
+          throw new Error(`缺少第 ${cellIndex + 1} 格输出图片`);
+        }
+        return createLinghuiImageAssetItemFromSource({
+          source: outputPath,
+          label: `${nodeLabel} ${cellIndex + 1}`,
+        });
+      }));
+
+      const createdIds = createDerivedImageNodesFromNode(activeNodeTool.nodeId, selectedItems);
+      setGridSplitSelectedCells([]);
+      if (createdIds.length) {
+        message.success(`已创建 ${createdIds.length} 个图片节点，高清倍率 ${gridSplitUpscaleFactor}x`);
+      } else {
+        message.info('没有生成新的图片节点');
+      }
+    } catch (error: any) {
+      message.error(error?.message || '宫格切分失败');
+    }
+  }, [
+    activeNodeTool,
+    createDerivedImageNodesFromNode,
+    gridSplitSelectedCells,
+    gridSplitType,
+    gridSplitUpscaleFactor,
+    message,
+    nodeRuns,
+    reactFlow,
+    setGridSplitSelectedCells,
+    workspaceId,
+  ]);
+
   return {
     editorSelection,
     activeNodeTool,
@@ -324,6 +608,20 @@ export function useLinghuiCanvasOverlayProps({
     onCreateDerivedImportImages(nodeId, items) {
       createDerivedImageNodesFromNode(nodeId, items);
     },
+    onApplyImageToolPreset: applyImageToolPreset,
+    onSetGridSplitType(type) {
+      setGridSplitType(type);
+      setGridSplitSelectedCells([]);
+    },
+    onClearGridSplitCells() {
+      setGridSplitSelectedCells([]);
+    },
+    onExecuteGridSplit() {
+      void executeGridSplit();
+    },
+    gridSplitUpscaleFactor,
+    onSetGridSplitUpscaleFactor: setGridSplitUpscaleFactor,
+    onRevertGridSplit: revertGridSplitTool,
     pendingGroupFrameStyle,
     pendingGroupActionsStyle,
     pendingGroupCreatableIds,

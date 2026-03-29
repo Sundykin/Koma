@@ -83,6 +83,14 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
     setCanvasMode,
     pendingGroupFrame,
     setPendingGroupFrame,
+    gridSplitType,
+    setGridSplitType,
+    gridSplitSelectedCells,
+    setGridSplitSelectedCells,
+    gridSplitUpscaleFactor,
+    setGridSplitUpscaleFactor,
+    toggleGridSplitCell,
+    revertGridSplitTool,
     resetLocalCanvasUiState,
   } = useLinghuiCanvasUiState();
   const {
@@ -349,7 +357,15 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
     },
     nodeRuns,
     workspaceId: workspace?.id ?? null,
+    updateNodeData: updateLinghuiNodeData,
     canvasRect,
+    gridSplitType,
+    setGridSplitType,
+    gridSplitSelectedCells,
+    setGridSplitSelectedCells,
+    gridSplitUpscaleFactor,
+    setGridSplitUpscaleFactor,
+    revertGridSplitTool,
     pendingGroupFrameStyle,
     pendingGroupActionsStyle,
     pendingGroupCreatableIds,
@@ -413,6 +429,7 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
       canvasMode={canvasMode}
       nodeInteraction={{
         canvasMode,
+        canvasZoom: viewport.zoom,
         bindNodeSurface,
         openNodeContextMenu,
         openImageToolPanel(nodeId, tool) {
@@ -432,6 +449,15 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
         edgeStatuses: canvasRunSummary.edgeStatuses,
         failedNodeIds: canvasRunSummary.failedNodeIds,
         staleNodeIds: canvasRunSummary.staleNodeIds,
+      }}
+      gridSplitOverlay={{
+        nodeId: activeNodeTool?.kind === 'image' && activeNodeTool.tool === 'grid-split' ? activeNodeTool.nodeId : null,
+        gridSize: (() => {
+          const sizes: Record<string, number> = { '2x2': 2, '3x3': 3, '4x4': 4, '5x5': 5 };
+          return sizes[gridSplitType] ?? 2;
+        })(),
+        selectedCells: gridSplitSelectedCells,
+        toggleCell: toggleGridSplitCell,
       }}
       groupRunSummaries={groupRunSummaries}
       rootHandlers={{

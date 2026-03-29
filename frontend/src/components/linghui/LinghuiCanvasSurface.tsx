@@ -4,6 +4,7 @@ import type { LinghuiCanvasMode } from '../../types/linghui';
 import {
   LinghuiGroupRunsContext,
   LinghuiExecutionTraceContext,
+  LinghuiNodeEditorContext,
   LinghuiNodeInteractionContext,
   LinghuiNodeMutationContext,
 } from './nodes';
@@ -12,6 +13,10 @@ import type {
   LinghuiGroupRunSummary,
   LinghuiNodeInteractionApi,
   LinghuiNodeMutationApi,
+} from './nodes/LinghuiNodeRunsContext';
+import {
+  LinghuiGridSplitContext,
+  type LinghuiGridSplitOverlayState,
 } from './nodes/LinghuiNodeRunsContext';
 import { LinghuiCanvasHud } from './LinghuiCanvasHud';
 import { LinghuiCanvasOverlays, type LinghuiCanvasOverlaysProps } from './LinghuiCanvasOverlays';
@@ -23,6 +28,7 @@ interface LinghuiCanvasSurfaceProps {
   nodeInteraction: LinghuiNodeInteractionApi;
   nodeMutation: LinghuiNodeMutationApi;
   executionTrace: LinghuiExecutionTraceState;
+  gridSplitOverlay: LinghuiGridSplitOverlayState;
   groupRunSummaries: Record<string, LinghuiGroupRunSummary>;
   rootHandlers: {
     onDragOver: React.DragEventHandler<HTMLDivElement>;
@@ -40,29 +46,56 @@ export function LinghuiCanvasSurface({
   nodeInteraction,
   nodeMutation,
   executionTrace,
+  gridSplitOverlay,
   groupRunSummaries,
   rootHandlers,
   hudProps,
   stageProps,
   overlayProps,
 }: LinghuiCanvasSurfaceProps) {
+  const nodeEditor = React.useMemo(() => ({
+    selection: overlayProps.editorSelection,
+    activeTool: overlayProps.activeNodeTool,
+    setActiveTool: overlayProps.setActiveNodeTool,
+    closeEditor: overlayProps.onCloseEditor,
+    nodeRuns: overlayProps.nodeRuns,
+    workspaceId: overlayProps.workspaceId,
+    onAssetLibraryMutate: overlayProps.onAssetLibraryMutate,
+    onRunNode: overlayProps.onRunNode,
+    onDeriveScriptShots: overlayProps.onDeriveScriptShots,
+    onGenerateScriptImages: overlayProps.onGenerateScriptImages,
+    onGenerateScriptVideos: overlayProps.onGenerateScriptVideos,
+    onCreateDerivedImportImages: overlayProps.onCreateDerivedImportImages,
+    onApplyImageToolPreset: overlayProps.onApplyImageToolPreset,
+    onSetGridSplitType: overlayProps.onSetGridSplitType,
+    onClearGridSplitCells: overlayProps.onClearGridSplitCells,
+    onExecuteGridSplit: overlayProps.onExecuteGridSplit,
+    gridSplitUpscaleFactor: overlayProps.gridSplitUpscaleFactor,
+    onSetGridSplitUpscaleFactor: overlayProps.onSetGridSplitUpscaleFactor,
+    onRevertGridSplit: overlayProps.onRevertGridSplit,
+  }), [overlayProps]);
+
   return (
     <LinghuiGroupRunsContext.Provider value={groupRunSummaries}>
       <LinghuiExecutionTraceContext.Provider value={executionTrace}>
         <LinghuiNodeInteractionContext.Provider value={nodeInteraction}>
-          <LinghuiNodeMutationContext.Provider value={nodeMutation}>
-            <div
-              ref={hostRef}
-              className={`linghuiCanvasRoot ${canvasMode === 'hand' ? 'isHandMode' : 'isMouseMode'}`}
-              onDragOver={rootHandlers.onDragOver}
-              onDrop={rootHandlers.onDrop}
-              onDoubleClick={rootHandlers.onDoubleClick}
-            >
-              <LinghuiCanvasHud {...hudProps} />
-              <LinghuiCanvasStage {...stageProps} />
-              <LinghuiCanvasOverlays {...overlayProps} />
-            </div>
-          </LinghuiNodeMutationContext.Provider>
+          <LinghuiGridSplitContext.Provider value={gridSplitOverlay}>
+            <LinghuiNodeMutationContext.Provider value={nodeMutation}>
+              <LinghuiNodeEditorContext.Provider value={nodeEditor}>
+                <div
+                  ref={hostRef}
+                  className={`linghuiCanvasRoot ${canvasMode === 'hand' ? 'isHandMode' : 'isMouseMode'}`}
+                  onDragOver={rootHandlers.onDragOver}
+                  onDrop={rootHandlers.onDrop}
+                  onDoubleClick={rootHandlers.onDoubleClick}
+                >
+                  <LinghuiCanvasHud {...hudProps} />
+                  <LinghuiCanvasStage {...stageProps} />
+                  <LinghuiCanvasOverlays {...overlayProps} />
+                </div>
+              </LinghuiNodeEditorContext.Provider>
+            </LinghuiNodeMutationContext.Provider>
+          </LinghuiGridSplitContext.Provider>
         </LinghuiNodeInteractionContext.Provider>
       </LinghuiExecutionTraceContext.Provider>
     </LinghuiGroupRunsContext.Provider>

@@ -12,8 +12,12 @@ import {
   useNodeRunState,
   useLinghuiNodeMutation,
   useLinghuiNodeInteraction,
+  useLinghuiGridSplitOverlay,
+  useLinghuiNodeEditorVisibility,
 } from './LinghuiNodeRunsContext';
+import { LinghuiNodeEditor } from '../LinghuiNodeEditor';
 import { electronService } from '../../../services/electronService';
+import { stripDataHeader } from '../../../utils/encoding';
 import { EditableCompactNodeLabel } from './EditableCompactNodeLabel';
 import { resolveLinghuiNodeViewMode } from '../linghuiNodeViewMode';
 import {
@@ -108,7 +112,12 @@ async function writeImageSourceToPath(source: string, targetPath: string): Promi
     return;
   }
 
-  if (isDataUri(normalized) || isBlobUri(normalized)) {
+  if (isDataUri(normalized)) {
+    await electronService.fs.writeFile(targetPath, stripDataHeader(normalized).base64, true);
+    return;
+  }
+
+  if (isBlobUri(normalized)) {
     const response = await fetch(normalized);
     const bytes = new Uint8Array(await response.arrayBuffer());
     await electronService.fs.writeFileBuffer(targetPath, bytes);
@@ -128,6 +137,157 @@ interface DisplayImageItem {
   isPrimary: boolean;
 }
 
+interface GridSplitCellLayout {
+  index: number;
+  style: React.CSSProperties;
+}
+
+function parseAspectRatioValue(value?: string): number | null {
+  if (!value) {
+    return null;
+  }
+
+  const [widthText, heightText] = value.split(':');
+  const width = Number(widthText);
+  const height = Number(heightText);
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+    return null;
+  }
+
+  return width / height;
+}
+
+function resolveImageRatio(params: {
+  width?: number;
+  height?: number;
+  aspectRatio?: string;
+}): number | null {
+  if (
+    typeof params.width === 'number'
+    && typeof params.height === 'number'
+    && Number.isFinite(params.width)
+    && Number.isFinite(params.height)
+    && params.width > 0
+    && params.height > 0
+  ) {
+    return params.width / params.height;
+  }
+
+  return parseAspectRatioValue(params.aspectRatio);
+}
+
+function buildGridSplitBounds(total: number, gridSize: number): number[] {
+  if (!Number.isFinite(total) || total <= 0 || gridSize <= 1) {
+    return [0, Math.max(0, total)];
+  }
+
+  const bounds = [0];
+  for (let index = 1; index < gridSize; index += 1) {
+    const next = Math.round((total * index) / gridSize);
+    bounds.push(Math.max(bounds[bounds.length - 1], next));
+  }
+  bounds.push(total);
+  return bounds;
+}
+
+function buildGridSplitPreviewLayout(params: {
+  containerWidth: number;
+  containerHeight: number;
+  imageWidth?: number;
+  imageHeight?: number;
+  aspectRatio?: string;
+  gridSize: number;
+}): {
+  frameStyle: React.CSSProperties;
+  cells: GridSplitCellLayout[];
+  verticalLines: React.CSSProperties[];
+  horizontalLines: React.CSSProperties[];
+} | null {
+  const {
+    containerWidth,
+    containerHeight,
+    imageWidth,
+    imageHeight,
+    aspectRatio,
+    gridSize,
+  } = params;
+
+  if (containerWidth <= 0 || containerHeight <= 0 || gridSize <= 0) {
+    return null;
+  }
+
+  const ratio = resolveImageRatio({ width: imageWidth, height: imageHeight, aspectRatio }) ?? (containerWidth / containerHeight);
+  const containerRatio = containerWidth / containerHeight;
+
+  let frameWidth = containerWidth;
+  let frameHeight = containerHeight;
+
+  if (ratio > 0) {
+    if (ratio >= containerRatio) {
+      frameWidth = containerWidth;
+      frameHeight = containerWidth / ratio;
+    } else {
+      frameHeight = containerHeight;
+      frameWidth = containerHeight * ratio;
+    }
+  }
+
+  const frameLeft = (containerWidth - frameWidth) / 2;
+  const frameTop = (containerHeight - frameHeight) / 2;
+
+  const sourceWidth = typeof imageWidth === 'number' && imageWidth > 0
+    ? Math.round(imageWidth)
+    : Math.max(gridSize, Math.round((ratio > 0 ? ratio : 1) * 1000));
+  const sourceHeight = typeof imageHeight === 'number' && imageHeight > 0
+    ? Math.round(imageHeight)
+    : Math.max(gridSize, Math.round(sourceWidth / (ratio > 0 ? ratio : 1)));
+
+  const xBounds = buildGridSplitBounds(sourceWidth, gridSize);
+  const yBounds = buildGridSplitBounds(sourceHeight, gridSize);
+
+  const cells: GridSplitCellLayout[] = [];
+  for (let row = 0; row < gridSize; row += 1) {
+    for (let col = 0; col < gridSize; col += 1) {
+      const left = (xBounds[col] / sourceWidth) * 100;
+      const top = (yBounds[row] / sourceHeight) * 100;
+      const width = ((xBounds[col + 1] - xBounds[col]) / sourceWidth) * 100;
+      const height = ((yBounds[row + 1] - yBounds[row]) / sourceHeight) * 100;
+      cells.push({
+        index: row * gridSize + col,
+        style: {
+          left: `${left}%`,
+          top: `${top}%`,
+          width: `${width}%`,
+          height: `${height}%`,
+        },
+      });
+    }
+  }
+
+  const verticalLines = xBounds
+    .slice(1, -1)
+    .map(boundary => ({
+      left: `${(boundary / sourceWidth) * 100}%`,
+    }));
+  const horizontalLines = yBounds
+    .slice(1, -1)
+    .map(boundary => ({
+      top: `${(boundary / sourceHeight) * 100}%`,
+    }));
+
+  return {
+    frameStyle: {
+      left: `${frameLeft}px`,
+      top: `${frameTop}px`,
+      width: `${frameWidth}px`,
+      height: `${frameHeight}px`,
+    },
+    cells,
+    verticalLines,
+    horizontalLines,
+  };
+}
+
 function ImageNodeInner({ id, data, selected }: NodeProps) {
   const { message } = App.useApp();
   const updateNodeInternals = useUpdateNodeInternals();
@@ -137,11 +297,13 @@ function ImageNodeInner({ id, data, selected }: NodeProps) {
   const runState = useNodeRunState(id);
   const { updateNodeData } = useLinghuiNodeMutation();
   const interactionHandlers = useLinghuiNodeInteraction(id);
+  const gridSplitOverlay = useLinghuiGridSplitOverlay(id);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const status = runState?.status ?? 'idle';
   const statusColor = STATUS_COLORS[status] ?? STATUS_COLORS.idle;
   const viewMode = resolveLinghuiNodeViewMode(nodeData.viewMode);
   const [isExpanded, setIsExpanded] = useState(false);
+  const isEditorVisible = useLinghuiNodeEditorVisibility(id, 'linghui/image');
 
   const collection = resolveLinghuiImageCollection(props, runState?.result);
   const importItems = useMemo(() => getLinghuiImageImportItems(props), [props]);
@@ -175,6 +337,9 @@ function ImageNodeInner({ id, data, selected }: NodeProps) {
       };
     });
   }, [baseDisplayItems, collection.primary?.source, importItems]);
+  const primaryDisplayItem = useMemo(() => (
+    displayItems.find(item => item.isPrimary) ?? displayItems[0] ?? null
+  ), [displayItems]);
   const imageCount = Math.max(collection.items.length, displayItems.length);
   const mediaCardLayout = useMemo(() => {
     const metadataAspectRatio = typeof collection.primary?.metadata?.aspectRatio === 'string'
@@ -212,6 +377,33 @@ function ImageNodeInner({ id, data, selected }: NodeProps) {
         }
       : undefined
   ), [expandedColumns, isExpanded, mediaCardLayout.height, mediaCardLayout.width]);
+  const primaryAspectRatio = useMemo(() => {
+    const metadataAspectRatio = typeof collection.primary?.metadata?.aspectRatio === 'string'
+      ? collection.primary.metadata.aspectRatio
+      : undefined;
+    return metadataAspectRatio || props.aspectRatio;
+  }, [collection.primary?.metadata, props.aspectRatio]);
+  const gridSplitPreviewLayout = useMemo(() => {
+    if (!gridSplitOverlay) {
+      return null;
+    }
+
+    return buildGridSplitPreviewLayout({
+      containerWidth: expandedWidth,
+      containerHeight: expandedHeight,
+      imageWidth: collection.primary?.width,
+      imageHeight: collection.primary?.height,
+      aspectRatio: primaryAspectRatio,
+      gridSize: gridSplitOverlay.gridSize,
+    });
+  }, [
+    collection.primary?.height,
+    collection.primary?.width,
+    expandedHeight,
+    expandedWidth,
+    gridSplitOverlay,
+    primaryAspectRatio,
+  ]);
 
   useEffect(() => {
     if (displayItems.length <= 1 && isExpanded) {
@@ -327,8 +519,9 @@ function ImageNodeInner({ id, data, selected }: NodeProps) {
   return (
     <div
       ref={rootRef}
-      className={`linghuiCompactNode nopan ${selected ? 'isSelected' : ''} ${viewMode === 'collapsed' ? 'isCollapsed' : ''} ${displayItems.length > 1 ? 'isMultiImage' : ''} ${isExpanded ? 'isImageExpanded' : ''}`}
+      className={`linghuiCompactNode nopan ${selected ? 'isSelected' : ''} ${viewMode === 'collapsed' ? 'isCollapsed' : ''} ${displayItems.length > 1 ? 'isMultiImage' : ''} ${isExpanded ? 'isImageExpanded' : ''} ${isEditorVisible ? 'hasInlineEditor' : ''}`}
       data-view-mode={viewMode}
+      data-expanded={isExpanded ? 'true' : undefined}
       style={{
         ...nodeStyle,
         boxShadow: status !== 'idle'
@@ -361,7 +554,18 @@ function ImageNodeInner({ id, data, selected }: NodeProps) {
 
       {/* 缩略图 */}
       <div className="linghuiCompactThumb">
-        {displayItems.length > 0 ? (
+        {gridSplitOverlay && primaryDisplayItem && gridSplitPreviewLayout ? (
+          <div className="linghuiCompactGridPreviewSurface">
+            <div
+              className="linghuiCompactGridPreviewMedia"
+              style={gridSplitPreviewLayout.frameStyle}
+            >
+              {primaryDisplayItem.preview
+                ? <img src={primaryDisplayItem.preview} alt={primaryDisplayItem.label || '主图'} draggable={false} />
+                : <ImageIcon size={18} />}
+            </div>
+          </div>
+        ) : displayItems.length > 0 ? (
           <div
             className={`linghuiCompactThumbDeck ${displayItems.length > 1 ? 'isStacked' : 'isSingle'} ${isExpanded ? 'isExpanded' : ''}`}
             data-count={displayItems.length}
@@ -441,6 +645,7 @@ function ImageNodeInner({ id, data, selected }: NodeProps) {
           <button
             type="button"
             className="linghuiCompactThumbExpand nodrag nopan"
+            style={gridSplitOverlay ? { display: 'none' } : undefined}
             onMouseDown={stopSurfaceEvent}
             onPointerDown={stopSurfaceEvent}
             onClick={(event) => {
@@ -451,12 +656,54 @@ function ImageNodeInner({ id, data, selected }: NodeProps) {
             {isExpanded ? '收起' : '展开'}
           </button>
         )}
+        {gridSplitOverlay && (
+          <div
+            className="linghuiCompactGridOverlay nopan nodrag"
+            style={gridSplitPreviewLayout?.frameStyle}
+            onMouseDown={stopSurfaceEvent}
+            onPointerDown={stopSurfaceEvent}
+          >
+            {gridSplitPreviewLayout?.verticalLines.map((style, index) => (
+              <div
+                key={`v-${index}`}
+                className="linghuiCompactGridLine isVertical"
+                style={style}
+              />
+            ))}
+            {gridSplitPreviewLayout?.horizontalLines.map((style, index) => (
+              <div
+                key={`h-${index}`}
+                className="linghuiCompactGridLine isHorizontal"
+                style={style}
+              />
+            ))}
+            {gridSplitPreviewLayout?.cells.map(cell => {
+              const isSelected = gridSplitOverlay.selectedCells.includes(cell.index);
+              return (
+                <button
+                  key={cell.index}
+                  type="button"
+                  className={`linghuiCompactGridCell ${isSelected ? 'isSelected' : ''}`}
+                  style={cell.style}
+                  onClick={(event) => {
+                    stopSurfaceEvent(event);
+                    gridSplitOverlay.toggleCell(cell.index);
+                  }}
+                >
+                  <span>{cell.index + 1}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
         {status === 'running' && (
           <div className="linghuiCompactThumbProgress">
             <div className="linghuiCompactProgressBar" style={{ width: `${runState?.progress ?? 0}%` }} />
           </div>
         )}
       </div>
+
+      {isEditorVisible ? <LinghuiNodeEditor nodeId={id} nodeType="linghui/image" /> : null}
     </div>
   );
 }

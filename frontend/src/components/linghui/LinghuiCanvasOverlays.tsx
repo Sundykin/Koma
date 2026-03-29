@@ -1,7 +1,9 @@
 import type {
   LinghuiCanvasSelection,
   LinghuiExecutionLogEntry,
+  LinghuiGridType,
   LinghuiImageAssetItem,
+  LinghuiImageNodeProperties,
   LinghuiNodeCatalogItem,
   LinghuiNodeRunState,
   LinghuiNodeToolState,
@@ -9,7 +11,6 @@ import type {
   LinghuiStoryboardFrame,
 } from '../../types/linghui';
 import type { LinghuiCanvasMenuState, QuickCreateState } from './linghuiCanvasShared';
-import { LinghuiNodeEditor } from './LinghuiNodeEditor';
 import { LinghuiCanvasPendingGroupOverlay } from './LinghuiCanvasPendingGroupOverlay';
 import { LinghuiCanvasQuickCreate } from './LinghuiCanvasQuickCreate';
 import { LinghuiCanvasContextMenu } from './LinghuiCanvasContextMenu';
@@ -28,6 +29,16 @@ export interface LinghuiCanvasOverlaysProps {
   onGenerateScriptImages: (nodeId: string, shots: LinghuiStoryboardFrame[]) => void;
   onGenerateScriptVideos: (nodeId: string, shots: LinghuiStoryboardFrame[]) => void;
   onCreateDerivedImportImages: (nodeId: string, items: LinghuiImageAssetItem[]) => void;
+  onApplyImageToolPreset: (preset: {
+    promptSnippet: string;
+    properties?: Partial<LinghuiImageNodeProperties>;
+  }) => void;
+  onSetGridSplitType: (type: LinghuiGridType) => void;
+  onClearGridSplitCells: () => void;
+  onExecuteGridSplit: () => void;
+  gridSplitUpscaleFactor: 2 | 4;
+  onSetGridSplitUpscaleFactor: (factor: 2 | 4) => void;
+  onRevertGridSplit: () => void;
   pendingGroupFrameStyle: { left: number; top: number; width: number; height: number } | null;
   pendingGroupActionsStyle: { left: number; top: number } | null;
   pendingGroupCreatableIds: string[];
@@ -75,19 +86,6 @@ export interface LinghuiCanvasOverlaysProps {
 }
 
 export function LinghuiCanvasOverlays({
-  editorSelection,
-  activeNodeTool,
-  setActiveNodeTool,
-  onCloseEditor,
-  nodeRuns,
-  workspaceId,
-  onAssetLibraryMutate,
-  canvasRect,
-  onRunNode,
-  onDeriveScriptShots,
-  onGenerateScriptImages,
-  onGenerateScriptVideos,
-  onCreateDerivedImportImages,
   pendingGroupFrameStyle,
   pendingGroupActionsStyle,
   pendingGroupCreatableIds,
@@ -135,22 +133,6 @@ export function LinghuiCanvasOverlays({
 }: LinghuiCanvasOverlaysProps) {
   return (
     <>
-      <LinghuiNodeEditor
-        selection={editorSelection}
-        activeTool={activeNodeTool}
-        onToolChange={setActiveNodeTool}
-        onCloseEditor={onCloseEditor}
-        nodeRuns={nodeRuns}
-        onRunNode={onRunNode}
-        onDeriveScriptShots={onDeriveScriptShots}
-        onGenerateScriptImages={onGenerateScriptImages}
-        onGenerateScriptVideos={onGenerateScriptVideos}
-        onCreateDerivedImportImages={onCreateDerivedImportImages}
-        canvasRect={canvasRect}
-        workspaceId={workspaceId}
-        onAssetLibraryMutate={onAssetLibraryMutate}
-      />
-
       <LinghuiCanvasPendingGroupOverlay
         frameStyle={pendingGroupFrameStyle}
         actionsStyle={pendingGroupActionsStyle}
