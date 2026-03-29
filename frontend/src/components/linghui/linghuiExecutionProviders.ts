@@ -1,11 +1,20 @@
-import type { MediaAssetSource, ProviderAssetInput } from '../../types';
+import type { MediaAssetSource, ProviderAssetInput, VideoGenerationCapability } from '../../types';
 import { getProjectITVProvider, getProjectLLMProvider, getProjectTTIProvider, getProjectTTSProvider } from '../../providers';
+import { resolveConfiguredChannelModel } from '../../providers/channel/resolver';
 import { DEFAULT_POLLING_CONFIG } from '../../providers/polling';
-import type { ITVProvider, ITVResult } from '../../providers/itv/types';
+import type { ITVResult } from '../../providers/itv/types';
 import type { ImageResult } from '../../providers/tti/types';
 import type { AudioResult } from '../../providers/tts/types';
 import { resolveProviderAssetInput } from '../../services/mediaAssetResolver';
-import { ensureRemoteUrlForImageSource } from '../../services/mediaRemoteUrlService';
+import {
+  buildVideoCapabilityRequest,
+  compileWorkflowVideoDomainRequest,
+  getPromptProtocol,
+  mapVideoRequestToProviderRequest,
+  resolveITVTransportSupport,
+  resolveVideoProtocolCompilationLimit,
+} from '../../services/promptCompilation/videoRequestCompiler';
+import { loadSettings } from '../../store/settings/core';
 import type { LinghuiMediaItem } from '../../types/linghui';
 import {
   compileLinghuiPromptReferences,
@@ -19,23 +28,7 @@ import {
   throwIfExecutionAborted,
   toPreviewSource,
 } from './linghuiExecutionShared';
-
-function getPromptProtocol(provider: unknown): string | undefined {
-  return (provider as { config?: { promptProtocol?: string } } | undefined)?.config?.promptProtocol;
-}
-
-function supportsDataUrl(transports: ReadonlyArray<'remote-url' | 'data-url'> | undefined): boolean {
-  return Boolean(transports?.includes('data-url'));
-}
-
-function providerAllowsDataUrlForITV(provider: ITVProvider): { primary: boolean; additional: boolean } {
-  const primaryTransports = provider.assetTransports?.primaryImage;
-  const additionalTransports = provider.assetTransports?.additionalReferences;
-  return {
-    primary: supportsDataUrl(primaryTransports),
-    additional: supportsDataUrl(additionalTransports ?? primaryTransports),
-  };
-}
+import { getVideoCapabilityDescriptor } from './videoCapabilityUtils';
 
 async function ensureProviderAssetInputs(
   sources: Array<MediaAssetSource | ProviderAssetInput>,
@@ -93,12 +86,12 @@ export async function generateImageWithProvider(params: {
   placeholderTitle: string;
   placeholderSubtitle?: string;
   accent?: string;
-  ttiConfigId?: string;
+  ttiSelection?: string;
   promptReferences?: LinghuiPromptReferenceItem[];
   signal?: AbortSignal;
 }): Promise<LinghuiMediaItem> {
   throwIfExecutionAborted(params.signal);
-  const provider = await getProjectTTIProvider(params.ttiConfigId || undefined);
+  const provider = await getProjectTTIProvider(params.ttiSelection || undefined);
   if (!provider || !provider.validate()) {
     return buildMediaItem({
       kind: 'image',
@@ -154,116 +147,138 @@ export async function generateImageWithProvider(params: {
   });
 }
 
-async function normalizeAdditionalITVSources(
-  sources: Array<MediaAssetSource | ProviderAssetInput>,
-  requiresRemoteUrl: boolean,
-): Promise<Array<MediaAssetSource | ProviderAssetInput>> {
-  if (!requiresRemoteUrl || sources.length === 0) {
-    return sources;
-  }
-
-  return Promise.all(
-    sources.map((source, index) => {
-      const rawSource = typeof source === 'object' && source && 'transport' in source
-        ? source.value
-        : source;
-      return ensureRemoteUrlForImageSource({
-        projectId: EXECUTION_PROJECT_ID,
-        source: rawSource as MediaAssetSource,
-        policy: 'required',
-        filenameHint: `linghui-additional-${index + 1}.png`,
-      });
-    }),
-  );
-}
-
-async function normalizePrimaryITVSource(
-  source: MediaAssetSource | undefined,
-  requiresRemoteUrl: boolean,
-): Promise<MediaAssetSource | undefined> {
-  if (!source || !requiresRemoteUrl) {
-    return source;
-  }
-
-  return await ensureRemoteUrlForImageSource({
-    projectId: EXECUTION_PROJECT_ID,
-    source,
-    policy: 'required',
-    filenameHint: 'linghui-primary.png',
-  }) as MediaAssetSource | undefined;
-}
-
 export async function generateVideoWithProvider(params: {
+  capability: VideoGenerationCapability;
   prompt: string;
-  imageSource?: string;
+  primaryImageSource?: string;
   additionalReferenceSources?: string[];
+  referenceImageSources?: string[];
+  startFrameSource?: string;
+  endFrameSource?: string;
   duration?: number;
   aspectRatio?: string;
   resolution?: string;
   onProgress?: (progress: number, message?: string) => void;
-  itvConfigId?: string;
+  itvSelection?: string;
   promptReferences?: LinghuiPromptReferenceItem[];
   primaryReferenceId?: string;
   signal?: AbortSignal;
 }): Promise<LinghuiMediaItem> {
   throwIfExecutionAborted(params.signal);
-  const placeholderPoster = params.imageSource
-    ? toPreviewSource(params.imageSource)
+  const previewSource = params.primaryImageSource
+    || params.startFrameSource
+    || params.referenceImageSources?.[0];
+  const placeholderPoster = previewSource
+    ? toPreviewSource(previewSource)
     : createPlaceholderImage({ title: '视频预览占位', subtitle: '未配置 ITV 服务', accent: '#22c55e' });
 
-  const provider = await getProjectITVProvider(params.itvConfigId || undefined);
-  if (!provider || !provider.validate() || !params.imageSource) {
+  const settings = await loadSettings();
+  const selectedContext = resolveConfiguredChannelModel(settings, 'itv', params.itvSelection);
+  if (selectedContext && !selectedContext.model.capabilities.includes(params.capability)) {
+    throw new Error(`当前视频模型不支持${getVideoCapabilityDescriptor(params.capability).label}`);
+  }
+
+  const provider = await getProjectITVProvider(params.itvSelection || undefined, params.capability);
+  if (!provider || !provider.validate()) {
     return buildMediaItem({
       kind: 'video',
       posterSource: placeholderPoster,
       placeholder: true,
-      metadata: { note: params.imageSource ? '未配置 ITV 服务。' : '缺少主参考图。' },
+      metadata: { note: '未配置 ITV 服务。' },
     });
   }
 
-  const allow = providerAllowsDataUrlForITV(provider);
-  const normalizedPrimary = await normalizePrimaryITVSource(params.imageSource, !allow.primary);
-  let compiledPrompt = params.prompt;
-  let additionalSources: Array<MediaAssetSource | ProviderAssetInput> = params.additionalReferenceSources ?? [];
-  const replacementStrategy = getPromptProtocol(provider) === 'grok-image-index'
-    ? 'image-index'
-    : 'readable-name';
-
-  if ((params.promptReferences?.length ?? 0) > 0) {
-    const compiled = compileLinghuiPromptReferences({
-      prompt: compiledPrompt,
-      references: params.promptReferences ?? [],
-      extraReferences: additionalSources,
-      replacementStrategy,
-      primaryReferenceId: params.primaryReferenceId,
-      ensurePrimaryReference: replacementStrategy === 'image-index',
-    });
-    compiledPrompt = compiled.compiledPrompt;
-    additionalSources = compiled.compiledReferences;
+  const protocol = getPromptProtocol(provider);
+  const maxAdditionalReferences = resolveVideoProtocolCompilationLimit({
+    provider,
+    protocol,
+  });
+  const primarySource = params.capability === 'video.start-end-to-video'
+    ? params.startFrameSource
+    : params.primaryImageSource;
+  let additionalSources: Array<MediaAssetSource | ProviderAssetInput>;
+  if (params.capability === 'video.reference-to-video') {
+    additionalSources = params.referenceImageSources ?? [];
+  } else if (params.capability === 'video.start-end-to-video') {
+    additionalSources = params.endFrameSource ? [params.endFrameSource] : [];
+  } else {
+    additionalSources = params.additionalReferenceSources ?? [];
   }
 
-  const normalizedAdditionalSources = await normalizeAdditionalITVSources(additionalSources, !allow.additional);
-  const primaryImage = await resolveProviderAssetInput(normalizedPrimary);
-  if (!primaryImage) throw new Error('无法解析主参考图');
+  const commonOptions = {
+    duration: params.duration,
+    aspectRatio: params.aspectRatio,
+    resolution: params.resolution,
+  } as Record<string, unknown>;
 
-  const additionalReferences = await ensureProviderAssetInputs(normalizedAdditionalSources);
-  if (!allow.primary && primaryImage.transport !== 'remote-url') {
-    throw new Error('当前 ITV Provider 仅支持远程 URL 主图');
-  }
-  if (!allow.additional && additionalReferences.some(item => item.transport !== 'remote-url')) {
-    throw new Error('当前 ITV Provider 仅支持远程 URL 附加参考图');
-  }
+  const domainRequest = params.capability === 'video.reference-to-video'
+    ? buildVideoCapabilityRequest({
+        capability: params.capability,
+        prompt: params.prompt,
+        referenceImages: additionalSources,
+        options: commonOptions,
+      })
+    : params.capability === 'video.start-end-to-video'
+      ? buildVideoCapabilityRequest({
+          capability: params.capability,
+          prompt: params.prompt,
+          startFrame: primarySource,
+          endFrame: additionalSources[0],
+          options: commonOptions,
+        })
+      : params.capability === 'video.text-to-video'
+        ? buildVideoCapabilityRequest({
+            capability: params.capability,
+            prompt: params.prompt,
+            options: commonOptions,
+          })
+        : buildVideoCapabilityRequest({
+            capability: params.capability,
+            prompt: params.prompt,
+            primaryImage: primarySource,
+            additionalReferences: additionalSources,
+            options: commonOptions,
+          });
+  const compiledDomainRequest = compileWorkflowVideoDomainRequest({
+    request: domainRequest,
+    promptCompilation: (params.promptReferences?.length ?? 0) > 0
+      ? {
+          promptReferences: {
+            references: (params.promptReferences ?? []).map(item => ({
+              id: item.id,
+              name: item.name,
+              textValue: item.textValue,
+              source: item.source,
+            })),
+            extraReferences: additionalSources,
+            primaryReferenceId: params.primaryReferenceId,
+            ensurePrimaryReference: params.capability !== 'video.text-to-video',
+          },
+        }
+      : undefined,
+    protocol,
+    maxAdditionalReferences,
+  });
+  const providerRequest = await mapVideoRequestToProviderRequest({
+    projectId: EXECUTION_PROJECT_ID,
+    request: compiledDomainRequest.request,
+    transportSupport: resolveITVTransportSupport(provider),
+    maxAdditionalReferences,
+    messages: {
+      missingPrimaryImage: '缺少主图输入',
+      missingReferenceImages: '缺少参考图输入',
+      missingStartEndFrames: '缺少首尾帧输入',
+      remotePrimary: params.capability === 'video.start-end-to-video'
+        ? '当前 ITV Provider 仅支持远程 URL 首帧'
+        : '当前 ITV Provider 仅支持远程 URL 主图',
+      remoteAdditional: '当前 ITV Provider 仅支持远程 URL 附加参考图',
+      remoteReference: '当前 ITV Provider 仅支持远程 URL 参考图',
+      remoteStart: '当前 ITV Provider 仅支持远程 URL 首帧',
+      remoteEnd: '当前 ITV Provider 仅支持远程 URL 尾帧',
+    },
+  });
 
-  const started = await provider.start({
-    prompt: compiledPrompt,
-    primaryImage,
-    additionalReferences,
-    options: {
-      duration: params.duration,
-      aspectRatio: params.aspectRatio,
-      resolution: params.resolution,
-    } as Record<string, unknown>,
-  } as never);
+  const started = await provider.start(providerRequest as never);
   throwIfExecutionAborted(params.signal);
 
   const output = started.mode === 'immediate'
@@ -294,12 +309,12 @@ async function resolveTTSVoiceId(provider: NonNullable<Awaited<ReturnType<typeof
 
 export async function generateAudioWithProvider(params: {
   text: string;
-  ttsConfigId?: string;
+  ttsSelection?: string;
   onProgress?: (progress: number, message?: string) => void;
   signal?: AbortSignal;
 }): Promise<LinghuiMediaItem> {
   throwIfExecutionAborted(params.signal);
-  const provider = await getProjectTTSProvider(params.ttsConfigId || undefined);
+  const provider = await getProjectTTSProvider(params.ttsSelection || undefined);
   if (!provider || !provider.validate()) {
     throw new Error('未配置可用的 TTS 服务');
   }
@@ -332,11 +347,11 @@ export async function generateAudioWithProvider(params: {
 export async function generateTextWithProvider(params: {
   prompt: string;
   systemPrompt?: string;
-  llmConfigId?: string;
+  llmSelection?: string;
   signal?: AbortSignal;
 }): Promise<string> {
   throwIfExecutionAborted(params.signal);
-  const provider = await getProjectLLMProvider(params.llmConfigId || undefined);
+  const provider = await getProjectLLMProvider(params.llmSelection || undefined);
   if (!provider || !provider.validate()) {
     throw new Error('未配置可用的 LLM 服务');
   }

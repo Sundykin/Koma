@@ -3,7 +3,7 @@
  */
 import type { ITVConfig, ITVOptions, ProgressInfo } from '../../types';
 import type { ProviderStartResult, ProviderTaskSnapshot } from '../../types';
-import type { ITVProvider, ITVRequest, ITVResult } from './types';
+import { requirePrimaryImage, type ITVProvider, type ITVRequest, type ITVResult } from './types';
 import { safeFetch } from '../../utils/safeFetch';
 
 interface KlingCreateResponse {
@@ -217,6 +217,7 @@ export class KlingProvider implements ITVProvider {
       throw new Error('Kling API Key 未配置');
     }
 
+    const primaryImage = requirePrimaryImage(request, 'Kling');
     const { prompt, options } = request;
     const endpoint = 'videos/image2video';
 
@@ -238,7 +239,7 @@ export class KlingProvider implements ITVProvider {
       body.cfg_scale = options.motionStrength;
     }
 
-    body.image = request.primaryImage.value;
+    body.image = primaryImage.value;
     const tail = request.additionalReferences?.[0]?.value || options?.endFrame;
     if (tail) {
       body.image_tail = tail;

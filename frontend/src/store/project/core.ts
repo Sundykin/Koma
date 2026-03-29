@@ -5,8 +5,8 @@
 import { v4 as uuidv4 } from 'uuid';
 import { electronService, type ProjectMeta as ElectronProjectMeta } from '../../services/electronService';
 import { getStorageConfig, initStorageConfig } from '../storageConfig';
-import { addRecentProject, getDefaultLLMConfig } from '../globalStore';
-import type { ProjectMeta } from '../../types';
+import { addRecentProject } from '../globalStore';
+import type { MediaModelSelection, ProjectMeta } from '../../types';
 
 // ========== 路径工具 ==========
 
@@ -29,10 +29,7 @@ function fromElectronProject(meta: ElectronProjectMeta): ProjectMeta {
     createdAt: meta.createdAt,
     updatedAt: meta.updatedAt,
     thumbnailPath: meta.thumbnail,
-    llmConfigId: meta.llmConfigId,
-    ttiConfigId: meta.ttiConfigId,
-    itvConfigId: meta.itvConfigId,
-    ttsConfigId: meta.ttsConfigId,
+    mediaSelections: meta.mediaSelections,
     stylePresetId: meta.stylePresetId,
     styleSnapshot: meta.styleSnapshot,
     theme: meta.theme,
@@ -49,10 +46,7 @@ function toElectronProject(meta: ProjectMeta): ElectronProjectMeta {
     createdAt: meta.createdAt,
     updatedAt: meta.updatedAt,
     thumbnail: meta.thumbnailPath,
-    llmConfigId: meta.llmConfigId,
-    ttiConfigId: meta.ttiConfigId,
-    itvConfigId: meta.itvConfigId,
-    ttsConfigId: meta.ttsConfigId,
+    mediaSelections: meta.mediaSelections,
     stylePresetId: meta.stylePresetId,
     styleSnapshot: meta.styleSnapshot,
     theme: meta.theme,
@@ -66,17 +60,11 @@ export async function createProject(
   title: string,
   genre: string,
   mode: 'drama' | 'narration',
-  llmConfigId?: string,
+  llmSelection?: MediaModelSelection,
   styleOptions?: { theme?: string; stylePrompt?: string }
 ): Promise<ProjectMeta> {
   const projectId = uuidv4();
   const now = Date.now();
-
-  let finalLLMConfigId = llmConfigId;
-  if (!finalLLMConfigId) {
-    const defaultConfig = await getDefaultLLMConfig();
-    finalLLMConfigId = defaultConfig?.id;
-  }
 
   const project: ProjectMeta = {
     id: projectId,
@@ -85,7 +73,7 @@ export async function createProject(
     mode,
     createdAt: now,
     updatedAt: now,
-    llmConfigId: finalLLMConfigId,
+    mediaSelections: llmSelection ? { llm: llmSelection } : undefined,
     theme: styleOptions?.theme,
     stylePrompt: styleOptions?.stylePrompt,
   };
@@ -131,12 +119,18 @@ export async function saveProject(project: ProjectMeta): Promise<void> {
 
 export async function updateProjectLLMConfig(
   projectId: string,
-  llmConfigId: string | null
+  llmSelection: MediaModelSelection | null
 ): Promise<ProjectMeta | null> {
   const project = await loadProject(projectId);
   if (!project) return null;
 
-  project.llmConfigId = llmConfigId || undefined;
+  project.mediaSelections = {
+    ...(project.mediaSelections || {}),
+    ...(llmSelection ? { llm: llmSelection } : {}),
+  };
+  if (!llmSelection && project.mediaSelections) {
+    delete project.mediaSelections.llm;
+  }
   await saveProject(project);
   return project;
 }

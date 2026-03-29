@@ -3,6 +3,8 @@
  * 重构版：移除模板引擎，改为 Provider 注入
  */
 export * from './types';
+export * from './catalog';
+export * from './resolver';
 
 // 导出 Registry 和 Polling
 export {
@@ -39,9 +41,7 @@ export function validateChannelConfig(config: ChannelConfig): ChannelValidationR
   if (!config.id) errors.push('缺少 id');
   if (!config.name) errors.push('缺少名称');
   if (!config.providerType) errors.push('缺少 providerType');
-  if (!config.capabilities || config.capabilities.length === 0) {
-    errors.push('至少需要一个 capability');
-  }
+  if (!config.category) errors.push('缺少 category');
 
   return {
     valid: errors.length === 0,

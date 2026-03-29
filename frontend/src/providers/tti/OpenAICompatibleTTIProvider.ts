@@ -68,6 +68,14 @@ export class OpenAICompatibleTTIProvider implements TTIProvider {
     this.config = config;
   }
 
+  private getModelName(): string {
+    const value = String(this.config.modelName || '').trim();
+    if (!value) {
+      throw new Error('模型名称未配置');
+    }
+    return value;
+  }
+
   private getBaseUrl(): string {
     return (this.config.baseUrl || '').replace(/\/+$/, '');
   }
@@ -80,7 +88,7 @@ export class OpenAICompatibleTTIProvider implements TTIProvider {
   }
 
   validate(): boolean {
-    return !!this.config.apiKey && !!this.config.baseUrl;
+    return Boolean(this.config.apiKey && this.config.baseUrl && String(this.config.modelName || '').trim());
   }
 
   async testConnection(): Promise<boolean> {
@@ -118,13 +126,16 @@ export class OpenAICompatibleTTIProvider implements TTIProvider {
    * 同步返回（直接拿到结果）或异步（返回 taskId 轮询）
    */
   async start(request: TTIRequest): Promise<ProviderStartResult<ImageResult>> {
-    if (!this.validate()) {
+    if (!this.config.apiKey || !this.config.baseUrl) {
       throw new Error('API Key 或 API 地址未配置');
+    }
+    if (!String(this.config.modelName || '').trim()) {
+      throw new Error('模型名称未配置');
     }
 
     const options: TTIOptions | undefined = request.options;
     const body: Record<string, any> = {
-      model: this.config.modelName || 'dall-e-3',
+      model: this.getModelName(),
       prompt: request.prompt,
       n: 1,
     };

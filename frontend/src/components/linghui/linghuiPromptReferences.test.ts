@@ -19,7 +19,7 @@ function createImageNodeData(label: string, source: string): LinghuiNodeData {
       mode: 'import',
       source,
       prompt: '',
-      ttiConfigId: '',
+      ttiSelection: '',
       aspectRatio: '1:1',
       resolution: '1024x1024',
       gridType: 'none',

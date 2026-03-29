@@ -16,6 +16,14 @@ export type ChannelKind = 'tti' | 'itv' | 'tts' | 'image-hosting';
 // 渠道能力
 export type ChannelCapability = 'tti' | 'itv' | 'tts' | 'character-extract' | 'remix' | 'image-hosting';
 
+export interface ProviderModelDefinition {
+  id: string;
+  label: string;
+  description?: string;
+  capabilities: string[];
+  defaults?: Record<string, unknown>;
+}
+
 export function requiresMediaContractVersion(kind: ChannelKind): boolean {
   return kind === 'tti' || kind === 'itv' || kind === 'tts';
 }
@@ -40,6 +48,7 @@ export interface ProviderDefinition<T> {
   factory: (config: Record<string, any>, ctx: ProviderContext) => T;
   contractVersion?: string;
   capabilities?: ChannelCapability[];
+  models?: ProviderModelDefinition[];
   pluginId?: string;         // 关联插件 ID
   configSchema?: Record<string, any>;  // JSON Schema for UI
   defaultConfig?: Record<string, any>;

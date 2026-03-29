@@ -2,8 +2,15 @@
  * 角色资产生成工作流
  * 生成角色定妆照（内置三视图）、预览视频，以及调用角色提取API
  */
-import { getMediaAssetDisplaySource, getMediaAssetSource, type Character } from '../types';
+import {
+  getMediaAssetDisplaySource,
+  getMediaAssetSource,
+  type Character,
+  type StoredMediaAsset,
+  type VideoGenerationCapability,
+} from '../types';
 import { getProjectITVProvider } from '../providers';
+import { serializeMediaSelection } from '../providers/channel/resolver';
 import {
   saveCharacters,
   loadCharacters,
@@ -14,6 +21,7 @@ import { logTTICall, logITVCall } from '../store/aiCallLogger';
 import { resolvePromptTemplate } from '../store/promptTemplates';
 import { mediaGenerationService } from '../services/MediaGenerationService';
 import { buildCharacterCostumeTemplateVariables } from './promptVariableBuilders';
+import { compileCharacterPreviewVideoRequest } from './videoGenerationRequests';
 
 const logger = createLogger('CharacterAsset');
 
@@ -29,8 +37,8 @@ interface GenerateOptions {
   stylePrompt?: string;
   styleSnapshot?: StyleSnapshotLike;
   project?: { styleSnapshot?: StyleSnapshotLike };
-  ttiConfigId?: string;
-  itvConfigId?: string;
+  ttiSelection?: string;
+  itvSelection?: string;
   onProgress?: (progress: number, step: string) => void;
 }
 
@@ -41,7 +49,7 @@ interface GenerateOptions {
 export async function generateCostumePhoto(
   options: GenerateOptions
 ): Promise<{ success: boolean; path?: string; url?: string; error?: string }> {
-  const { projectId, character, theme, stylePrompt, styleSnapshot, project, ttiConfigId, onProgress } = options;
+  const { projectId, character, theme, stylePrompt, styleSnapshot, project, ttiSelection, onProgress } = options;
 
   logger.info(`开始生成角色定妆照: ${character.name}`);
   onProgress?.(0, '准备生成定妆照...');
@@ -87,7 +95,7 @@ export async function generateCostumePhoto(
           height: 1024,
         },
       },
-      ttiConfigId,
+      ttiSelection,
       taskName: `${character.name} 定妆照`,
     });
 
@@ -106,7 +114,7 @@ export async function generateCostumePhoto(
 export async function generateCharacterPreviewVideo(
   options: GenerateOptions
 ): Promise<{ success: boolean; path?: string; taskId?: string; error?: string }> {
-  const { projectId, character, theme, stylePrompt, styleSnapshot, project, itvConfigId, onProgress } = options;
+  const { projectId, character, theme, stylePrompt, styleSnapshot, project, itvSelection, onProgress } = options;
 
   logger.info(`开始生成角色预览视频: ${character.name}`);
   onProgress?.(0, '准备生成预览视频...');
@@ -121,26 +129,24 @@ export async function generateCharacterPreviewVideo(
     onProgress?.(10, '调用 ITV 服务...');
 
     const resolvedStylePrefix = await getResolvedTTIStylePrefix(styleSnapshot || project?.styleSnapshot, theme, stylePrompt);
-    const visualPrompt = character.prompt || character.name;
-    const resolvedPrompt = await resolvePromptTemplate('itv_character_motion', {
+    const compiledRequest = await compileCharacterPreviewVideoRequest({
+      character,
+      primaryImage: rawImageSource,
       stylePrefix: resolvedStylePrefix,
-      characterName: character.name,
-      action: `${visualPrompt}, character showcase, subtle breathing, natural eye movement, steady camera`,
     });
-    const prompt = resolvedPrompt.prompt;
 
     // 打印完整提示词日志
     logITVCall(
       'ITV',
       rawImageSource,
-      prompt,
+      compiledRequest.prompt,
       { duration: 4, aspectRatio: '9:16' },
       {
         projectId,
         targetId: character.id,
         targetName: `${character.name} 预览视频`,
-        templateId: resolvedPrompt.template.id,
-        promptSource: resolvedPrompt.source,
+        templateId: compiledRequest.templateId,
+        promptSource: compiledRequest.promptSource,
       }
     );
 
@@ -152,13 +158,8 @@ export async function generateCharacterPreviewVideo(
         ownerId: character.id,
         slot: 'previewVideo',
       },
-      request: {
-        prompt,
-        primaryImage: rawImageSource,
-        additionalReferences: [],
-        options: { duration: 4, aspectRatio: '9:16' },
-      },
-      itvConfigId,
+      request: compiledRequest.request,
+      itvSelection,
       taskName: `${character.name} 预览视频`,
     });
 
@@ -178,7 +179,7 @@ export async function generateCharacterPreviewVideo(
 export async function extractAndBindCharacter(
   projectId: string,
   character: Character,
-  itvConfigId?: string,
+  itvSelection?: string,
   onProgress?: (progress: number, step: string) => void
 ): Promise<{ success: boolean; characterId?: string; error?: string }> {
   logger.info(`开始提取角色: ${character.name}`);
@@ -187,6 +188,7 @@ export async function extractAndBindCharacter(
   // 检查是否有视频生成任务 ID（角色提取 API 需要使用 from_task 参数）
   const previewVideoTaskId = character.media?.previewVideo?.providerTaskId;
   const previewVideoPath = getMediaAssetSource(character.media?.previewVideo);
+  const previewVideoAsset = character.media?.previewVideo;
 
   if (!previewVideoTaskId) {
     // 兼容旧数据：如果有视频路径但没有任务 ID，提示用户重新生成
@@ -197,7 +199,10 @@ export async function extractAndBindCharacter(
   }
 
   try {
-    const itvProvider = await getProjectITVProvider(itvConfigId);
+    const itvProvider = await getProjectITVProvider(
+      getMediaAssetSelectionKey(previewVideoAsset) || itvSelection,
+      getPreviewVideoCapability(previewVideoAsset),
+    );
     if (!itvProvider) {
       throw new Error('未配置 ITV 服务');
     }
@@ -343,6 +348,28 @@ async function updateCharacterAsset(
 
 function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function getMediaAssetSelectionKey(asset?: StoredMediaAsset): string | undefined {
+  if (!asset?.channelId || !asset?.modelId) {
+    return undefined;
+  }
+  return serializeMediaSelection({
+    channelId: asset.channelId,
+    modelId: asset.modelId,
+  });
+}
+
+function getPreviewVideoCapability(asset?: StoredMediaAsset): VideoGenerationCapability {
+  switch (asset?.capability) {
+    case 'video.text-to-video':
+    case 'video.reference-to-video':
+    case 'video.start-end-to-video':
+    case 'video.image-to-video':
+      return asset.capability;
+    default:
+      return 'video.image-to-video';
+  }
 }
 
 function resolveTTIStylePrefix(

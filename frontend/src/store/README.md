@@ -198,18 +198,11 @@ await addTTSConfig({
 
 ```typescript
 interface AppSettings {
-  llmConfigs: ModelConfig[];
-  defaultLLMConfigId?: string;
-  ttiConfigs: TTIModelConfig[];
-  defaultTTIConfigId?: string;
-  itvConfigs: ITVConfig[];
-  defaultITVConfigId?: string;
-  ttsConfigs: TTSConfig[];
-  defaultTTSConfigId?: string;
   channelConfigs: ChannelConfig[];
-  imageHosting: ImageHostingConfig;
-  theme: string;
-  language: string;
+  mediaDefaults?: MediaDefaults;
+  promptTemplates?: Record<string, { template: string; updatedAt: number }>;
+  customThemePresets?: ThemePreset[];
+  stylePrompts?: { prompt: string; isDefault?: boolean }[];
 }
 ```
 

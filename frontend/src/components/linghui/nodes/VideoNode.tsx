@@ -15,6 +15,7 @@ import { electronService } from '../../../services/electronService';
 import { EditableCompactNodeLabel } from './EditableCompactNodeLabel';
 import { resolveLinghuiNodeViewMode } from '../linghuiNodeViewMode';
 import { resolveMediaCardSize } from './linghuiNodeCardSizing';
+import { getVideoCapabilityDescriptor } from '../videoCapabilityUtils';
 
 const STATUS_COLORS: Record<LinghuiRunStatus, string> = {
   idle: '#64748b',
@@ -65,7 +66,7 @@ function VideoNodeInner({ id, data, selected }: NodeProps) {
     props.posterSource,
   );
   const hasUploadedSource = Boolean(String(props.source ?? '').trim());
-  const modeLabel = props.refMode === 'first-last-frame' ? '首尾帧模式' : '多参考模式';
+  const modeLabel = getVideoCapabilityDescriptor(props.videoCapability).label;
   const mediaCardStyle = resolveMediaCardSize({
     width: primaryVideo?.width,
     height: primaryVideo?.height,

@@ -17,7 +17,7 @@ export async function generateShotImage(
   shotId: string,
   characters: Character[],
   scenes: Scene[],
-  ttiConfigId?: string,
+  ttiSelection?: string,
   styleOptions?: {
     aspectRatio?: '16:9' | '9:16';
     theme?: string;
@@ -39,7 +39,7 @@ export async function generateShotImage(
     shot,
     characters,
     scenes,
-    ttiConfigId,
+    ttiSelection,
     aspectRatio: styleOptions?.aspectRatio,
     theme: styleOptions?.theme,
     stylePrompt: styleOptions?.stylePrompt,
@@ -57,7 +57,7 @@ export async function batchGenerateShotImages(
   shotIds: string[],
   characters: Character[],
   scenes: Scene[],
-  ttiConfigId?: string,
+  ttiSelection?: string,
   styleOptions?: {
     aspectRatio?: '16:9' | '9:16';
     theme?: string;
@@ -72,7 +72,7 @@ export async function batchGenerateShotImages(
   for (let i = 0; i < shotIds.length; i++) {
     const shotId = shotIds[i];
     try {
-      const asset = await generateShotImage(projectId, episodeId, shotId, characters, scenes, ttiConfigId, {
+      const asset = await generateShotImage(projectId, episodeId, shotId, characters, scenes, ttiSelection, {
         aspectRatio: styleOptions?.aspectRatio,
         theme: styleOptions?.theme,
         stylePrompt: styleOptions?.stylePrompt,

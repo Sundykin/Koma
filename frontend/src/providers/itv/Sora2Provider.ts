@@ -9,7 +9,13 @@ import type {
   ProgressInfo,
 } from '../../types';
 import type { ProviderStartResult, ProviderTaskSnapshot } from '../../types';
-import type { ITVProvider, ITVRequest, ITVResult } from './types';
+import {
+  assertSupportedVideoCapabilities,
+  requirePrimaryImage,
+  type ITVProvider,
+  type ITVRequest,
+  type ITVResult,
+} from './types';
 import { safeFetch } from '../../utils/safeFetch';
 
 // API 响应类型
@@ -84,7 +90,7 @@ export interface CharacterProgressInfo extends ProgressInfo {
 
 // Sora2 视频生成扩展选项
 export interface Sora2Options extends ITVOptions {
-  model?: 'sora-2' | 'sora-2-pro';
+  model?: string;
   // 角色引用
   characterUrl?: string;
   characterTimestamps?: string;
@@ -108,7 +114,7 @@ export interface Sora2Options extends ITVOptions {
 
 // 混音选项
 export interface RemixOptions {
-  model?: 'sora-2' | 'sora-2-pro';
+  model?: string;
   prompt: string;
   duration?: number;
   aspectRatio?: string;
@@ -133,20 +139,29 @@ export class Sora2Provider implements ITVProvider {
     };
   }
 
+  private getModelName(): string {
+    const value = String(this.config.modelName || '').trim();
+    if (!value) {
+      throw new Error('模型名称未配置');
+    }
+    return value;
+  }
+
   validate(): boolean {
-    return !!this.config.apiKey;
+    return Boolean(this.config.apiKey && String(this.config.modelName || '').trim());
   }
 
   async testConnection(): Promise<boolean> {
     if (!this.validate()) return false;
 
     try {
+      const modelName = this.getModelName();
       // 使用简单的请求测试连接
       const response = await safeFetch(`${this.getBaseUrl()}/v1/videos/generations`, {
         method: 'POST',
         headers: this.getHeaders(),
         body: JSON.stringify({
-          model: 'sora-2',
+          model: modelName,
           prompt: 'test',
           duration: 5,
         }),
@@ -158,23 +173,26 @@ export class Sora2Provider implements ITVProvider {
   }
 
   async start(request: ITVRequest): Promise<ProviderStartResult<ITVResult>> {
-    if (!this.validate()) {
+    if (!this.config.apiKey) {
       throw new Error('API Key 未配置');
     }
+    assertSupportedVideoCapabilities(request, 'Sora2', ['video.image-to-video']);
 
     const { prompt } = request;
     const options = request.options as Sora2Options | undefined;
+    const resolvedModel = this.getModelName();
 
     const body: Record<string, any> = {
-      model: options?.model || 'sora-2',
+      model: resolvedModel,
       prompt,
       aspect_ratio: options?.aspectRatio || '16:9',
       duration: options?.duration || 10,
     };
 
     // 图生视频
+    const primaryImage = requirePrimaryImage(request, 'Sora2');
     const imageUrls = [
-      request.primaryImage.value,
+      primaryImage.value,
       ...((request.additionalReferences || []).map(r => r.value).filter(Boolean)),
     ];
     if (imageUrls.length > 0) {
@@ -209,7 +227,7 @@ export class Sora2Provider implements ITVProvider {
     }
 
     // 高清模式（仅 sora-2-pro 且时长非 25s）
-    if (options?.hd && options?.model === 'sora-2-pro') {
+    if (options?.hd && resolvedModel === 'sora-2-pro') {
       metadata.hd = true;
     }
 
@@ -312,9 +330,9 @@ export class Sora2Provider implements ITVProvider {
     url?: string;
     fromTask?: string;
     timestamps: string;
-    model?: 'sora-2' | 'sora-2-pro';
+    model?: string;
   }): Promise<string> {
-    if (!this.validate()) {
+    if (!this.config.apiKey) {
       throw new Error('API Key 未配置');
     }
 
@@ -322,8 +340,9 @@ export class Sora2Provider implements ITVProvider {
       throw new Error('必须提供 url 或 fromTask 参数');
     }
 
+    const modelName = this.getModelName();
     const body: Record<string, any> = {
-      model: params.model || 'sora-2',
+      model: params.model || modelName,
       timestamps: params.timestamps,
     };
 
@@ -409,12 +428,13 @@ export class Sora2Provider implements ITVProvider {
    * @returns 混音任务 ID
    */
   async remixVideo(videoId: string, options: RemixOptions): Promise<string> {
-    if (!this.validate()) {
+    if (!this.config.apiKey) {
       throw new Error('API Key 未配置');
     }
 
+    const modelName = this.getModelName();
     const body: Record<string, any> = {
-      model: options.model || 'sora-2',
+      model: options.model || modelName,
       prompt: options.prompt,
     };
 

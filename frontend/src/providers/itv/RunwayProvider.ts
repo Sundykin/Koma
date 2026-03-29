@@ -3,7 +3,7 @@
  */
 import type { ITVConfig, ITVOptions } from '../../types';
 import type { ProviderStartResult, ProviderTaskSnapshot } from '../../types';
-import type { ITVProvider, ITVRequest, ITVResult } from './types';
+import { requirePrimaryImage, type ITVProvider, type ITVRequest, type ITVResult } from './types';
 import { safeFetch } from '../../utils/safeFetch';
 
 interface RunwayCreateResponse {
@@ -132,6 +132,7 @@ export class RunwayProvider implements ITVProvider {
       throw new Error('Runway API Key 未配置');
     }
 
+    const primaryImage = requirePrimaryImage(request, 'Runway');
     const { prompt, options } = request;
     const endpoint = 'image_to_video';
 
@@ -148,7 +149,7 @@ export class RunwayProvider implements ITVProvider {
       body.seed = options.seed;
     }
 
-    body.promptImage = request.primaryImage.value;
+    body.promptImage = primaryImage.value;
 
     const response = await safeFetch(this.buildUrl(endpoint), {
       method: 'POST',

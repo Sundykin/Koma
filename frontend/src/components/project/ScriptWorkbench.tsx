@@ -15,6 +15,7 @@ import type { Project, Episode, AppSettings } from '../../types';
 import { createLogger } from '../../store/logger';
 import { createAITraceId } from '../../utils/aiTrace';
 import { classifyAIError } from '../../utils/aiError';
+import { serializeMediaSelection } from '../../providers/channel/resolver';
 
 const logger = createLogger('ScriptWorkbench');
 
@@ -264,7 +265,7 @@ export const ScriptWorkbench = forwardRef<ScriptWorkbenchRef, ScriptWorkbenchPro
           episode.id,
           episode.title || `第${episode.number}集`,
           localScript,
-          project.llmConfigId,
+          serializeMediaSelection(project.mediaSelections?.llm),
           project.styleSnapshot,
           project
         );

@@ -19,35 +19,19 @@ export {
   TTI_PRESETS,
   ITV_PRESETS,
   TTS_PRESETS,
-  // LLM 配置
-  addLLMConfig,
-  updateLLMConfig,
-  deleteLLMConfig,
-  setDefaultLLMConfig,
+  // LLM 配置读取
   getDefaultLLMConfig,
   getLLMConfigById,
   getActiveLLMConfig,
-  // TTI 配置
-  addTTIConfig,
-  updateTTIConfig,
-  deleteTTIConfig,
-  setDefaultTTIConfig,
+  // TTI 配置读取
   getDefaultTTIConfig,
   getTTIConfigById,
   getActiveTTIConfig,
-  // ITV 配置
-  addITVConfig,
-  updateITVConfig,
-  deleteITVConfig,
-  setDefaultITVConfig,
+  // ITV 配置读取
   getDefaultITVConfig,
   getITVConfigById,
   getActiveITVConfig,
-  // TTS 配置
-  addTTSConfig,
-  updateTTSConfig,
-  deleteTTSConfig,
-  setDefaultTTSConfig,
+  // TTS 配置读取
   getDefaultTTSConfig,
   getTTSConfigById,
   getActiveTTSConfig,
@@ -67,6 +51,7 @@ export {
   deleteCustomThemePreset,
   // 渠道配置（重构版）
   getChannelConfigs,
+  getChannelsByCategory,
   getChannelsByCapability,
   addChannelConfig,
   updateChannelConfig,
@@ -74,6 +59,8 @@ export {
   deleteChannelsByPlugin,
   setDefaultChannelConfig,
   getDefaultChannelConfig,
+  setDefaultMediaModelSelection,
+  getDefaultMediaModelSelection,
   cleanupDuplicateChannels,
   cleanupLegacyConfigs,
 } from './settings';

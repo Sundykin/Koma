@@ -52,6 +52,7 @@ import {
   getCharacterCostumePhotoSource,
   getCharacterPreviewVideoSource,
 } from '../../utils/mediaSelectors';
+import type { ModelCapability } from '../../providers/channel/types';
 
 const { TextArea } = Input;
 const { Text } = Typography;
@@ -62,8 +63,8 @@ interface CharacterDetailPanelProps {
   theme?: string;
   stylePrompt?: string;
   styleSnapshot?: ProjectStyleSnapshot;
-  ttiConfigId?: string;
-  itvConfigId?: string;
+  ttiSelection?: string;
+  itvSelection?: string;
   onUpdate: (character: Character) => void;
   onDelete: (characterId: string) => void;
 }
@@ -77,8 +78,8 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
   theme,
   stylePrompt,
   styleSnapshot,
-  ttiConfigId,
-  itvConfigId,
+  ttiSelection,
+  itvSelection,
   onUpdate,
   onDelete,
 }) => {
@@ -86,8 +87,8 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
   const { message } = App.useApp();
   const [form] = Form.useForm();
   
-  const { config: activeTTI } = useActiveConfig('tti', ttiConfigId);
-  const { config: activeITV } = useActiveConfig('itv', itvConfigId);
+  const { config: activeTTI, activeModel: activeTTIModel } = useActiveConfig('tti', ttiSelection);
+  const { config: activeITV, activeModel: activeITVModel } = useActiveConfig('itv', itvSelection);
 
   const [editedCharacter, setEditedCharacter] = useState<Character>(character);
   const [viewMode, setViewMode] = useState<ViewMode>('costume');
@@ -95,6 +96,11 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
   const [progress, setProgress] = useState(0);
   const [progressStep, setProgressStep] = useState('');
   const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const supportsCapability = useCallback((capabilities: ModelCapability[] | undefined, capability: ModelCapability) => (
+    capabilities?.includes(capability) ?? false
+  ), []);
+  const supportsTextToImage = supportsCapability(activeTTIModel?.capabilities, 'image.text-to-image');
+  const supportsImageToVideo = supportsCapability(activeITVModel?.capabilities, 'video.image-to-video');
 
   // 初始化
   useEffect(() => {
@@ -164,7 +170,7 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
         theme,
         stylePrompt,
         styleSnapshot,
-        ttiConfigId,
+        ttiSelection,
         onProgress: (p, step) => {
           setProgress(p);
           setProgressStep(step);
@@ -201,7 +207,7 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
     } finally {
       setGenerating(null);
     }
-  }, [editedCharacter, projectId, theme, stylePrompt, styleSnapshot, ttiConfigId, form, onUpdate, message]);
+  }, [editedCharacter, projectId, theme, stylePrompt, styleSnapshot, ttiSelection, form, onUpdate, message]);
 
   const handleUploadCostume = useCallback(async () => {
     try {
@@ -276,7 +282,7 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
         theme,
         stylePrompt,
         styleSnapshot,
-        itvConfigId,
+        itvSelection,
         onProgress: (p, step) => {
           setProgress(p);
           setProgressStep(step);
@@ -307,7 +313,7 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
     } finally {
       setGenerating(null);
     }
-  }, [editedCharacter, form, projectId, theme, stylePrompt, styleSnapshot, itvConfigId, onUpdate, message, t]);
+  }, [editedCharacter, form, projectId, theme, stylePrompt, styleSnapshot, itvSelection, onUpdate, message, t]);
 
   const handleUploadVideo = useCallback(async () => {
     try {
@@ -353,7 +359,7 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
       const result = await extractAndBindCharacter(
         projectId,
         editedCharacter,
-        itvConfigId,
+        itvSelection,
         (p, step) => {
           setProgress(p);
           setProgressStep(step);
@@ -381,7 +387,7 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
     } finally {
       setGenerating(null);
     }
-  }, [editedCharacter, projectId, itvConfigId, onUpdate, message, t]);
+  }, [editedCharacter, projectId, itvSelection, onUpdate, message, t]);
 
   const handleDelete = useCallback(async () => {
     onDelete(editedCharacter.id);
@@ -480,7 +486,9 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
 
             <Tooltip title={
               generating !== null ? t('asset.generatingPleaseWait') :
-              activeTTI ? `${t('asset.useService')}: ${activeTTI.name}` : t('asset.noGenerateService')
+              !activeTTI ? t('asset.noGenerateService') :
+              !supportsTextToImage ? '当前模型不支持文生图能力' :
+              `${t('asset.useService')}: ${activeTTIModel?.channelLabel || activeTTI.name} / ${activeTTIModel?.modelLabel || activeTTI.modelName || ''}`
             }>
               <Button
                 type={!getCharacterCostumePhotoSource(editedCharacter) ? 'primary' : 'default'}
@@ -488,7 +496,7 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
                 icon={<ThunderboltOutlined />}
                 onClick={handleGenerateCostume}
                 loading={generating === 'costume'}
-                disabled={generating !== null}
+                disabled={generating !== null || !supportsTextToImage}
               >
                 {t('asset.generateCostumePhoto')}
               </Button>
@@ -497,7 +505,9 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
             <Tooltip title={
               generating !== null ? t('asset.generatingPleaseWait') :
               !getCharacterCostumePhotoSource(editedCharacter) ? t('asset.needCostumePhotoFirst') :
-              activeITV ? `${t('asset.useService')}: ${activeITV.name}` : t('asset.noVideoService')
+              !activeITV ? t('asset.noVideoService') :
+              !supportsImageToVideo ? '当前视频模型不支持图生视频能力' :
+              `${t('asset.useService')}: ${activeITVModel?.channelLabel || activeITV.name} / ${activeITVModel?.modelLabel || activeITV.modelName || ''}`
             }>
               <Button
                 type={getCharacterCostumePhotoSource(editedCharacter) && !getCharacterPreviewVideoSource(editedCharacter) ? 'primary' : 'default'}
@@ -505,7 +515,7 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
                 icon={<PlayCircleOutlined />}
                 onClick={handleGenerateVideo}
                 loading={generating === 'video'}
-                disabled={generating !== null || !getCharacterCostumePhotoSource(editedCharacter)}
+                disabled={generating !== null || !getCharacterCostumePhotoSource(editedCharacter) || !supportsImageToVideo}
               >
                 {t('asset.generatePreviewVideo')}
               </Button>

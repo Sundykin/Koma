@@ -1,17 +1,22 @@
 import React from 'react';
 import { Button, Select } from 'antd';
 import { ArrowUp, Film, Image as ImageIcon, Music4, Trash2, UploadCloud } from 'lucide-react';
-import { VIDEO_ASPECT_RATIOS, VIDEO_RESOLUTIONS, type LinghuiVideoRefMode, type LinghuiVideoToolKey } from '../../types/linghui';
+import { VIDEO_ASPECT_RATIOS, VIDEO_RESOLUTIONS, type LinghuiVideoCapability, type LinghuiVideoToolKey } from '../../types/linghui';
 import type { LinghuiPromptReferenceItem } from './linghuiPromptReferences';
 import { LinghuiPromptEditor } from './LinghuiPromptEditor';
 import {
   DURATION_OPTIONS,
-  REF_MODES,
   VIDEO_TOOL_PRESETS,
   type ProviderOption,
   type VideoToolPreset,
   getPreviewSource,
 } from './videoNodeEditorShared';
+import {
+  getVideoCapabilityDescriptor,
+  getVisualReferenceRoleLabel,
+  type LinghuiVisualReferenceRole,
+  type VideoCapabilityDescriptor,
+} from './videoCapabilityUtils';
 
 interface VideoToolSectionProps {
   activeTool: LinghuiVideoToolKey | null;
@@ -174,12 +179,14 @@ export function VideoImportPanel({
 }
 
 interface VideoGeneratePanelProps {
-  refMode: LinghuiVideoRefMode;
-  onRefModeChange: (mode: LinghuiVideoRefMode) => void;
+  videoCapability: LinghuiVideoCapability;
+  supportedCapabilities: LinghuiVideoCapability[];
+  capabilityDescriptor: VideoCapabilityDescriptor;
+  onVideoCapabilityChange: (capability: LinghuiVideoCapability) => void;
   referenceImages: Array<{ source?: string; label?: string }>;
   referenceVideos: Array<{ source?: string; posterSource?: string; label?: string }>;
   referenceAudios: Array<{ source?: string; label?: string }>;
-  visualReferenceRoles: Map<string, 'default' | 'first' | 'last' | 'unused'>;
+  visualReferenceRoles: Map<string, LinghuiVisualReferenceRole>;
   prompt: string;
   onPromptChange: (value: string) => void;
   promptReferences: LinghuiPromptReferenceItem[];
@@ -187,7 +194,7 @@ interface VideoGeneratePanelProps {
   resultVideoSource: string;
   resultPosterSource: string;
   providers: ProviderOption[];
-  itvConfigId: string;
+  selectedProviderValue: string;
   aspectRatio: string;
   resolution: string;
   duration: number;
@@ -198,8 +205,10 @@ interface VideoGeneratePanelProps {
 }
 
 export function VideoGeneratePanel({
-  refMode,
-  onRefModeChange,
+  videoCapability,
+  supportedCapabilities,
+  capabilityDescriptor,
+  onVideoCapabilityChange,
   referenceImages,
   referenceVideos,
   referenceAudios,
@@ -211,7 +220,7 @@ export function VideoGeneratePanel({
   resultVideoSource,
   resultPosterSource,
   providers,
-  itvConfigId,
+  selectedProviderValue,
   aspectRatio,
   resolution,
   duration,
@@ -225,13 +234,32 @@ export function VideoGeneratePanel({
     referenceVideos.length > 0 ? `${referenceVideos.length} 条视频` : '',
     referenceAudios.length > 0 ? `${referenceAudios.length} 条音频` : '',
   ].filter(Boolean);
+  const showCapabilitySwitcher = supportedCapabilities.length > 1;
+  const renderRoleHint = (role?: LinghuiVisualReferenceRole) => {
+    switch (role) {
+      case 'primary':
+        return '当前作为主图输入';
+      case 'reference':
+        return '当前作为视觉参考参与执行';
+      case 'start':
+        return '当前作为首帧输入';
+      case 'end':
+        return '当前作为尾帧输入';
+      case 'prompt-only':
+        return '当前不会直接提交给模型，仅供提示词引用';
+      case 'unused':
+        return '当前模式下不参与执行';
+      default:
+        return '当前作为视觉参考参与执行';
+    }
+  };
 
   return (
     <>
       <div className="linghuiEditorSection">
         <div className="linghuiEditorSectionHeader">
           <div className="linghuiEditorSectionTitle">上游输入</div>
-          <div className="linghuiEditorSectionHint">这里会决定实际传给视频模型的视觉参考、音频节奏和文本上下文。</div>
+          <div className="linghuiEditorSectionHint">{capabilityDescriptor.inputHint}</div>
         </div>
 
         <div className="linghuiEditorInlineActions">
@@ -261,19 +289,26 @@ export function VideoGeneratePanel({
 
       <div className="linghuiEditorSection">
         <div className="linghuiEditorSectionHeader">
-          <div className="linghuiEditorSectionTitle">参考组织</div>
+          <div className="linghuiEditorSectionTitle">生成模式</div>
+          <div className="linghuiEditorSectionHint">{capabilityDescriptor.shortDescription}</div>
         </div>
-        <div className="linghuiEditorRefModes">
-          {REF_MODES.map(mode => (
-            <button
-              key={mode.key}
-              className={`linghuiEditorRefModeTab ${refMode === mode.key ? 'isActive' : ''}`}
-              onClick={() => onRefModeChange(mode.key)}
-            >
-              {mode.label}
-            </button>
-          ))}
-        </div>
+        {showCapabilitySwitcher ? (
+          <div className="linghuiEditorRefModes">
+            {supportedCapabilities.map(capability => (
+              <button
+                key={capability}
+                className={`linghuiEditorRefModeTab ${videoCapability === capability ? 'isActive' : ''}`}
+                onClick={() => onVideoCapabilityChange(capability)}
+              >
+                {getVideoCapabilityDescriptor(capability).label}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <div className="linghuiEditorPromptHint">
+            当前模型仅支持 {capabilityDescriptor.label}
+          </div>
+        )}
       </div>
 
       {referenceImages.length > 0 ? (
@@ -282,17 +317,15 @@ export function VideoGeneratePanel({
           <div className="linghuiEditorRefs">
             {referenceImages.map((ref, index) => {
               const src = getPreviewSource(ref.source);
+              const role = visualReferenceRoles.get(`image:${ref.source || ref.label || ''}`);
+              const roleLabel = role ? getVisualReferenceRoleLabel(role) : undefined;
               return (
                 <div key={`${ref.source || ref.label || index}`} className="linghuiEditorRefThumb">
                   {src ? <img src={src} alt={ref.label || `参考 ${index + 1}`} /> : <ImageIcon size={16} />}
                   <span className="linghuiEditorRefBadge">{index + 1}</span>
-                  {refMode === 'first-last-frame' && (
+                  {roleLabel && (
                     <span className="linghuiEditorRefBadge isRole">
-                      {visualReferenceRoles.get(`image:${ref.source || ref.label || ''}`) === 'first'
-                        ? '首帧'
-                        : visualReferenceRoles.get(`image:${ref.source || ref.label || ''}`) === 'last'
-                          ? '尾帧'
-                          : '忽略'}
+                      {roleLabel}
                     </span>
                   )}
                 </div>
@@ -308,6 +341,7 @@ export function VideoGeneratePanel({
           <div className="linghuiEditorAssetList">
             {referenceVideos.map((ref, index) => {
               const poster = getPreviewSource(ref.posterSource || ref.source);
+              const role = visualReferenceRoles.get(`video:${ref.posterSource || ref.source || ref.label || ''}`);
               return (
                 <div key={`${ref.posterSource || ref.source || ref.label || index}`} className="linghuiEditorAssetCard">
                   <div className="linghuiEditorAssetCardThumb">
@@ -317,15 +351,7 @@ export function VideoGeneratePanel({
                   <div className="linghuiEditorAssetCardMeta">
                     <div className="linghuiEditorAssetCardTitle">{ref.label || `视频参考 ${index + 1}`}</div>
                     <div className="linghuiEditorAssetCardHint">
-                      {refMode === 'first-last-frame'
-                        ? visualReferenceRoles.get(`video:${ref.posterSource || ref.source || ref.label || ''}`) === 'first'
-                          ? '当前作为首帧输入'
-                          : visualReferenceRoles.get(`video:${ref.posterSource || ref.source || ref.label || ''}`) === 'last'
-                            ? '当前作为尾帧输入'
-                            : '首尾帧模式下当前不参与执行'
-                        : index === 0 && referenceImages.length === 0
-                          ? '可作为主视觉参考'
-                          : '作为补充视觉参考'}
+                      {renderRoleHint(role)}
                     </div>
                   </div>
                 </div>
@@ -356,7 +382,7 @@ export function VideoGeneratePanel({
 
       {upstreamSummary.length === 0 && (
         <div className="linghuiEditorEmptyState">
-          还没有上游参考输入。你可以连接图片、视频、文本或音频节点，再通过提示词把它们组织成完整镜头。
+          {capabilityDescriptor.emptyStateHint}
         </div>
       )}
 
@@ -393,8 +419,8 @@ export function VideoGeneratePanel({
           <Select
             size="small"
             className="linghuiEditorSelect"
-            value={itvConfigId || undefined}
-            placeholder="选择视频渠道"
+            value={selectedProviderValue || undefined}
+            placeholder="选择视频模型"
             onChange={onUpdateProvider}
             options={providers}
             popupMatchSelectWidth={false}

@@ -6,7 +6,9 @@ import type {
   ITVOptions,
   ProgressInfo,
   ITVProviderType,
+  VideoGenerationCapability,
 } from '../../types';
+import { isImageToVideoRequest } from '../../types';
 import type {
   ProviderAssetInput,
   ProviderStartResult,
@@ -60,6 +62,32 @@ export interface ITVResult {
 
 export type ITVRequest = BaseITVRequest<ProviderAssetInput, ITVOptions>;
 
+export function assertSupportedVideoCapabilities(
+  request: ITVRequest,
+  providerName: string,
+  capabilities: VideoGenerationCapability[],
+): void {
+  if (!capabilities.includes(request.capability)) {
+    throw new Error(
+      `${providerName} 不支持 ${request.capability}，仅支持 ${capabilities.join(', ')}`,
+    );
+  }
+}
+
+export function requirePrimaryImage(
+  request: ITVRequest,
+  providerName: string
+): ProviderAssetInput {
+  assertSupportedVideoCapabilities(request, providerName, ['video.image-to-video']);
+  if (!isImageToVideoRequest(request)) {
+    throw new Error(`${providerName} 仅支持图生视频请求`);
+  }
+  if (!request.primaryImage) {
+    throw new Error(`${providerName} 仅支持图生视频请求`);
+  }
+  return request.primaryImage;
+}
+
 /**
  * ITV Provider 接口
  */
@@ -80,6 +108,9 @@ export interface ITVProvider {
   assetTransports?: {
     primaryImage?: ReadonlyArray<ProviderAssetTransport>;
     additionalReferences?: ReadonlyArray<ProviderAssetTransport>;
+    referenceImages?: ReadonlyArray<ProviderAssetTransport>;
+    startFrame?: ReadonlyArray<ProviderAssetTransport>;
+    endFrame?: ReadonlyArray<ProviderAssetTransport>;
   };
 
   // 验证配置

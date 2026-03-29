@@ -20,6 +20,7 @@ import {
   importLinghuiWorkspaceAsset,
 } from '../../store/linghuiStorage';
 import { loadSettings } from '../../store/settings/core';
+import { listConfiguredModelSelectOptions } from '../../providers/channel/resolver';
 import type { LinghuiPromptReferenceItem } from './linghuiPromptReferences';
 import { LinghuiPromptEditor } from './LinghuiPromptEditor';
 import { useLinghuiNodeMutation } from './nodes/LinghuiNodeRunsContext';
@@ -117,7 +118,7 @@ export const ImageNodeEditor: React.FC<ImageNodeEditorProps> = ({
   const mode = resolveImageNodeMode(props);
   const isImportMode = mode === 'import';
   const prompt = String(props.prompt ?? '');
-  const ttiConfigId = String(props.ttiConfigId ?? '');
+  const ttiSelection = String(props.ttiSelection ?? '');
   const aspectRatio = String(props.aspectRatio ?? '3:4');
   const resolution = String(props.resolution ?? 'auto');
   const batchCount = Number(props.batchCount ?? 1);
@@ -132,17 +133,10 @@ export const ImageNodeEditor: React.FC<ImageNodeEditorProps> = ({
 
   useEffect(() => {
     loadSettings().then(settings => {
-      const builtins = (settings.ttiConfigs ?? []).map(config => ({
-        value: config.id,
-        label: config.name || config.provider,
-      }));
-      const channels = (settings.channelConfigs ?? [])
-        .filter(config => config.enabled && config.capabilities?.includes('tti'))
-        .map(config => ({
-          value: config.id,
-          label: config.name || config.id,
-        }));
-      setProviders([...builtins, ...channels]);
+      setProviders(listConfiguredModelSelectOptions(settings, 'tti', 'image.text-to-image').map(option => ({
+        value: option.value,
+        label: `${option.channelLabel} / ${option.modelLabel}`,
+      })));
     });
   }, []);
 
@@ -275,9 +269,9 @@ export const ImageNodeEditor: React.FC<ImageNodeEditorProps> = ({
           <Select
             size="small"
             className="linghuiEditorSelect"
-            value={ttiConfigId || undefined}
+            value={ttiSelection || undefined}
             placeholder="选择生图渠道"
-            onChange={value => updateProp('ttiConfigId', value)}
+            onChange={value => updateProp('ttiSelection', value)}
             options={providers}
             popupMatchSelectWidth={false}
             style={{ minWidth: 140 }}

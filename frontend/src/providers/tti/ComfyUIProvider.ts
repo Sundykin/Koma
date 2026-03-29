@@ -31,8 +31,16 @@ export class ComfyUIProvider implements TTIProvider {
     this.config = config;
   }
 
+  private getModelName(): string {
+    const value = String(this.config.modelName || '').trim();
+    if (!value) {
+      throw new Error('ComfyUI 模型名称未配置');
+    }
+    return value;
+  }
+
   validate(): boolean {
-    return !!this.config.baseUrl;
+    return Boolean(this.config.baseUrl && String(this.config.modelName || '').trim());
   }
 
   private getBaseUrl(): string {
@@ -40,6 +48,7 @@ export class ComfyUIProvider implements TTIProvider {
   }
 
   async testConnection(): Promise<boolean> {
+    if (!this.validate()) return false;
     try {
       const response = await safeFetch(
         `${this.getBaseUrl()}/system_stats`
@@ -265,8 +274,11 @@ export class ComfyUIProvider implements TTIProvider {
   }
 
   async start(request: TTIRequest): Promise<ProviderStartResult<ImageResult>> {
-    if (!this.validate()) {
+    if (!this.config.baseUrl) {
       throw new Error('ComfyUI 地址未配置');
+    }
+    if (!String(this.config.modelName || '').trim()) {
+      throw new Error('ComfyUI 模型名称未配置');
     }
 
     const options: TTIOptions | undefined = request.options;
@@ -274,7 +286,7 @@ export class ComfyUIProvider implements TTIProvider {
     const steps = options?.steps || this.config.defaultSteps || 20;
     const cfgScale = options?.cfgScale || 7;
     const seed = options?.seed ?? Math.floor(Math.random() * 1000000000);
-    const modelName = this.config.modelName || 'sd_xl_base_1.0.safetensors';
+    const modelName = this.getModelName();
 
     const imageUrl = request.references?.[0]?.value;
     const upload = imageUrl ? await this.uploadImage(imageUrl) : undefined;

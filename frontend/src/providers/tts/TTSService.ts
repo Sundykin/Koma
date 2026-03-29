@@ -197,17 +197,17 @@ class CharacterVoiceManager {
 export class TTSService {
   private cacheManager = new TTSCacheManager();
   private voiceManager = new CharacterVoiceManager();
-  private ttsConfigId?: string;
+  private ttsSelection?: string;
   private projectId?: string;
 
-  async init(projectId: string, ttsConfigId?: string): Promise<void> {
+  async init(projectId: string, ttsSelection?: string): Promise<void> {
     this.projectId = projectId;
-    this.ttsConfigId = ttsConfigId;
+    this.ttsSelection = ttsSelection;
     await this.cacheManager.init(projectId);
   }
 
-  setTTSConfigId(ttsConfigId?: string): void {
-    this.ttsConfigId = ttsConfigId;
+  setTTSSelection(ttsSelection?: string): void {
+    this.ttsSelection = ttsSelection;
   }
 
   loadCharacterVoices(characters: Character[]): void {
@@ -226,7 +226,7 @@ export class TTSService {
     voiceId?: string,
     useCache = true
   ): Promise<AudioResult> {
-    const provider = await getProjectTTSProvider(this.ttsConfigId);
+    const provider = await getProjectTTSProvider(this.ttsSelection);
     if (!provider) {
       throw new Error('未配置 TTS 服务');
     }
@@ -271,7 +271,7 @@ export class TTSService {
     segments: DialogueSegment[],
     onProgress?: (progress: number, segment: number) => void
   ): Promise<SynthesizedDialogue> {
-    const provider = await getProjectTTSProvider(this.ttsConfigId);
+    const provider = await getProjectTTSProvider(this.ttsSelection);
     if (!provider) {
       throw new Error('未配置 TTS 服务');
     }

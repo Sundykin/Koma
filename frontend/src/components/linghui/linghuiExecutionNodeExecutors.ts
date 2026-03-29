@@ -4,7 +4,7 @@ import {
   type LinghuiNodeResult,
   type LinghuiScriptNodeProperties,
   type LinghuiTextNodeProperties,
-  type LinghuiVideoRefMode,
+  type LinghuiVideoCapability,
 } from '../../types/linghui';
 import { compileLinghuiPromptReferences } from './linghuiPromptReferences';
 import {
@@ -31,6 +31,10 @@ import {
   generateTextWithProvider,
   generateVideoWithProvider,
 } from './linghuiExecutionProviders';
+import {
+  getVideoCapabilityInputError,
+  resolveVideoCapabilitySources,
+} from './videoCapabilityUtils';
 
 const DEFAULT_SCRIPT_SYSTEM_PROMPT = [
   '你是灵绘的分镜脚本助手。',
@@ -48,7 +52,7 @@ export async function executeTextNode(
     content = '',
     prompt = '',
     systemPrompt = '',
-    llmConfigId = '',
+    llmSelection = '',
   } = node.properties as unknown as LinghuiTextNodeProperties;
 
   if (mode === 'manual') {
@@ -86,7 +90,7 @@ export async function executeTextNode(
   const generatedText = await generateTextWithProvider({
     prompt: promptWithRefs,
     systemPrompt: String(systemPrompt).trim(),
-    llmConfigId: String(llmConfigId),
+    llmSelection: String(llmSelection),
     signal,
   });
 
@@ -110,7 +114,7 @@ export async function executeImageNode(
   const properties = node.properties as unknown as LinghuiImageNodeProperties;
   const mode = resolveImageNodeMode({ source, mode: properties.mode });
   const prompt = String(node.properties.prompt ?? '').trim();
-  const ttiConfigId = String(node.properties.ttiConfigId ?? '');
+  const ttiSelection = String(node.properties.ttiSelection ?? '');
   const batchCount = Math.max(1, Math.min(4, Number(node.properties.batchCount ?? 1)));
 
   if (mode === 'import') {
@@ -154,7 +158,7 @@ export async function executeImageNode(
           prompt: effectivePrompt,
           referenceSources,
           silentReferenceSources,
-          ttiConfigId,
+          ttiSelection,
           promptReferences,
           onProgress: progress => onProgress?.(Math.round((index / count) * 100 + progress / count), `${label} 生成中`),
           placeholderTitle: label,
@@ -178,7 +182,7 @@ export async function executeImageNode(
     prompt: effectivePrompt,
     referenceSources,
     silentReferenceSources,
-    ttiConfigId,
+    ttiSelection,
     promptReferences,
     onProgress,
     placeholderTitle: node.title,
@@ -200,7 +204,7 @@ export async function executeScriptNode(node: ExecutionNodeView, signal?: AbortS
     content = '',
     prompt = '',
     systemPrompt = '',
-    llmConfigId = '',
+    llmSelection = '',
   } = node.properties as unknown as LinghuiScriptNodeProperties;
 
   if (mode === 'manual') {
@@ -243,7 +247,7 @@ export async function executeScriptNode(node: ExecutionNodeView, signal?: AbortS
   const generatedText = await generateTextWithProvider({
     prompt: compiledPrompt,
     systemPrompt: String(systemPrompt).trim() || DEFAULT_SCRIPT_SYSTEM_PROMPT,
-    llmConfigId: String(llmConfigId),
+    llmSelection: String(llmSelection),
     signal,
   });
   const parsed = parseLinghuiScriptContent(generatedText);
@@ -275,8 +279,8 @@ export async function executeVideoNode(
   const source = String(node.properties.source ?? '').trim();
   const posterSource = String(node.properties.posterSource ?? '').trim();
   const prompt = String(node.properties.prompt ?? '').trim();
-  const itvConfigId = String(node.properties.itvConfigId ?? '');
-  const refMode = (node.properties.refMode ?? 'all-ref') as LinghuiVideoRefMode;
+  const itvSelection = String(node.properties.itvSelection ?? '');
+  const videoCapability = (node.properties.videoCapability ?? 'video.text-to-video') as LinghuiVideoCapability;
   const duration = Number(node.properties.duration ?? 5);
   const aspectRatio = String(node.properties.aspectRatio ?? '16:9');
   const resolution = String(node.properties.resolution ?? '720P');
@@ -302,21 +306,28 @@ export async function executeVideoNode(
     ...node.getAllInputResults(2),
   ]);
   const promptReferences = node.getPromptReferences();
-  const primarySource = referenceSources[0];
-  const additionalReferenceSources = refMode === 'all-ref'
-    ? referenceSources.slice(1)
-    : (referenceSources.length > 1 ? [referenceSources[referenceSources.length - 1]] : []);
-  const primaryReferenceId = promptReferences.find(item => item.source === primarySource)?.id;
+  const resolvedSources = resolveVideoCapabilitySources(videoCapability, referenceSources);
+  const inputError = getVideoCapabilityInputError(videoCapability, resolvedSources);
+  if (inputError) {
+    throw new Error(inputError);
+  }
+
+  const primaryReferenceSource = resolvedSources.primaryImageSource || resolvedSources.startFrameSource;
+  const primaryReferenceId = promptReferences.find(item => item.source === primaryReferenceSource)?.id;
   const effectivePrompt = mergePromptWithTextInputs(prompt || node.title, textSnippets);
 
   const video = await generateVideoWithProvider({
+    capability: videoCapability,
     prompt: effectivePrompt,
-    imageSource: primarySource,
-    additionalReferenceSources,
+    primaryImageSource: resolvedSources.primaryImageSource,
+    additionalReferenceSources: resolvedSources.additionalReferenceSources,
+    referenceImageSources: resolvedSources.referenceImageSources,
+    startFrameSource: resolvedSources.startFrameSource,
+    endFrameSource: resolvedSources.endFrameSource,
     duration,
     aspectRatio,
     resolution,
-    itvConfigId,
+    itvSelection,
     promptReferences,
     primaryReferenceId,
     onProgress,
@@ -328,11 +339,12 @@ export async function executeVideoNode(
     primary: video,
     metadata: {
       prompt,
-      refMode,
+      capability: videoCapability,
       duration,
       aspectRatio,
       resolution,
       audioSource: node.getInputResult(2)?.primary?.source,
+      visualReferenceCount: resolvedSources.visualSources.length,
       imageReferenceCount: imageReferenceSources.length,
       videoReferenceCount: videoPosterSources.length,
     },
@@ -344,7 +356,7 @@ export async function executeAudioNode(
   onProgress?: (progress: number, message?: string) => void,
   signal?: AbortSignal,
 ): Promise<LinghuiNodeResult> {
-  const { source = '', prompt = '', ttsConfigId = '' } = node.properties as unknown as LinghuiAudioNodeProperties;
+  const { source = '', prompt = '', ttsSelection = '' } = node.properties as unknown as LinghuiAudioNodeProperties;
   const normalizedSource = String(source).trim();
   const normalizedPrompt = String(prompt).trim();
 
@@ -393,7 +405,7 @@ export async function executeAudioNode(
 
   const audio = await generateAudioWithProvider({
     text: compiledPrompt,
-    ttsConfigId: String(ttsConfigId),
+    ttsSelection: String(ttsSelection),
     onProgress,
     signal,
   });

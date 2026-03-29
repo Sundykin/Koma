@@ -55,8 +55,8 @@ interface CharacterDetailModalProps {
   theme?: string;
   stylePrompt?: string;
   styleSnapshot?: ProjectStyleSnapshot;
-  ttiConfigId?: string;
-  itvConfigId?: string;
+  ttiSelection?: string;
+  itvSelection?: string;
   onClose: () => void;
   onUpdate: (character: Character) => void;
   onDelete: (characterId: string) => void;
@@ -71,8 +71,8 @@ export const CharacterDetailModal: React.FC<CharacterDetailModalProps> = ({
   theme,
   stylePrompt,
   styleSnapshot,
-  ttiConfigId,
-  itvConfigId,
+  ttiSelection,
+  itvSelection,
   onClose,
   onUpdate,
   onDelete,
@@ -166,7 +166,7 @@ export const CharacterDetailModal: React.FC<CharacterDetailModalProps> = ({
         theme,
         stylePrompt,
         styleSnapshot,
-        ttiConfigId,
+        ttiSelection,
         onProgress: (p, step) => {
           setProgress(p);
           setProgressStep(step);
@@ -191,7 +191,7 @@ export const CharacterDetailModal: React.FC<CharacterDetailModalProps> = ({
     } finally {
       setGenerating(null);
     }
-  }, [editedCharacter, form, projectId, theme, stylePrompt, styleSnapshot, ttiConfigId, onUpdate, message]);
+  }, [editedCharacter, form, projectId, theme, stylePrompt, styleSnapshot, ttiSelection, onUpdate, message]);
 
   // 上传定妆照
   const handleUploadCostume = useCallback(async () => {
@@ -252,7 +252,7 @@ export const CharacterDetailModal: React.FC<CharacterDetailModalProps> = ({
         theme,
         stylePrompt,
         styleSnapshot,
-        itvConfigId,
+        itvSelection,
         onProgress: (p, step) => {
           setProgress(p);
           setProgressStep(step);
@@ -277,7 +277,7 @@ export const CharacterDetailModal: React.FC<CharacterDetailModalProps> = ({
     } finally {
       setGenerating(null);
     }
-  }, [editedCharacter, form, projectId, theme, stylePrompt, styleSnapshot, itvConfigId, onUpdate, message]);
+  }, [editedCharacter, form, projectId, theme, stylePrompt, styleSnapshot, itvSelection, onUpdate, message]);
 
   // 上传预览视频
   const handleUploadVideo = useCallback(async () => {
@@ -327,7 +327,7 @@ export const CharacterDetailModal: React.FC<CharacterDetailModalProps> = ({
     setProgressStep('提取角色中...');
 
     try {
-      const result = await extractAndBindCharacter(projectId, editedCharacter, itvConfigId);
+      const result = await extractAndBindCharacter(projectId, editedCharacter, itvSelection);
 
       if (result.success && result.characterId) {
         const updated = { ...editedCharacter, sora2CharacterId: result.characterId };
@@ -351,7 +351,7 @@ export const CharacterDetailModal: React.FC<CharacterDetailModalProps> = ({
     } finally {
       setGenerating(null);
     }
-  }, [editedCharacter, projectId, itvConfigId, onUpdate, message]);
+  }, [editedCharacter, projectId, itvSelection, onUpdate, message]);
 
   // 删除角色
   const handleDelete = useCallback(async () => {

@@ -6,7 +6,7 @@ import type {
   ITVConfig,
 } from '../../types';
 import type { ProviderStartResult, ProviderTaskSnapshot } from '../../types';
-import type { ITVProvider, ITVRequest, ITVResult } from './types';
+import { assertSupportedVideoCapabilities, type ITVProvider, type ITVRequest, type ITVResult } from './types';
 import { safeFetch } from '../../utils/safeFetch';
 
 // AnimateDiff 工作流配置
@@ -27,6 +27,9 @@ interface AnimateDiffWorkflow {
 export class ComfyUIAnimateDiffProvider implements ITVProvider {
   type = 'comfyui-animatediff' as const;
   config: ITVConfig;
+  assetTransports = {
+    primaryImage: ['remote-url', 'data-url'] as const,
+  };
 
   constructor(config: ITVConfig) {
     this.config = config;
@@ -139,6 +142,11 @@ export class ComfyUIAnimateDiffProvider implements ITVProvider {
   }
 
   async start(request: ITVRequest): Promise<ProviderStartResult<ITVResult>> {
+    assertSupportedVideoCapabilities(request, 'ComfyUI AnimateDiff', [
+      'video.text-to-video',
+      'video.image-to-video',
+    ]);
+
     const baseUrl = this.getBaseUrl();
     const { prompt, options } = request;
 

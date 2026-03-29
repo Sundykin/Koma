@@ -84,7 +84,7 @@ export class ShotAnalysisService {
     episodeId: string,
     episodeName: string,
     script: string,
-    llmConfigId?: string,
+    llmSelection?: string,
     presetAssets?: PresetAssets,
     styleSnapshot?: StyleSnapshotLike,
     project?: { styleSnapshot?: StyleSnapshotLike }
@@ -105,7 +105,7 @@ export class ShotAnalysisService {
     TaskManager.updateTask(task.id, { status: 'running', progress: 0 });
 
     // 异步执行
-    this.runShotAnalysis(task.id, episodeId, script, llmConfigId);
+    this.runShotAnalysis(task.id, episodeId, script, llmSelection);
 
     return task;
   }
@@ -117,11 +117,11 @@ export class ShotAnalysisService {
     taskId: string,
     episodeId: string,
     script: string,
-    llmConfigId?: string
+    llmSelection?: string
   ): Promise<void> {
     try {
 
-      const hasConfig = await this.setLLMConfig(llmConfigId);
+      const hasConfig = await this.setLLMConfig(llmSelection);
       if (!hasConfig) {
         throw new Error('未配��� LLM 模型，请先在设置中添加');
       }
@@ -287,7 +287,7 @@ export async function startShotAnalysis(
   episodeId: string,
   episodeName: string,
   script: string,
-  llmConfigId?: string,
+  llmSelection?: string,
   presetAssets?: PresetAssets,
   styleSnapshot?: StyleSnapshotLike,
   project?: { styleSnapshot?: StyleSnapshotLike }
@@ -297,7 +297,7 @@ export async function startShotAnalysis(
     episodeId,
     episodeName,
     script,
-    llmConfigId,
+    llmSelection,
     presetAssets,
     styleSnapshot,
     project

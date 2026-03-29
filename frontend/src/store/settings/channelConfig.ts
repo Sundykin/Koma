@@ -3,8 +3,16 @@
  * 重构版：移除模板配置，改为 Provider 注入
  */
 import { loadSettings, saveSettings } from './core';
-import type { ChannelConfig, ChannelCapability } from '../../providers/channel/types';
-import { hasChannelCapability } from '../../providers/channel/types';
+import type {
+  ChannelConfig,
+  ChannelCapability,
+  MediaCategory,
+  MediaModelSelection,
+} from '../../providers/channel/types';
+import {
+  getDefaultMediaSelection,
+  resolveConfiguredChannelModel,
+} from '../../providers/channel/resolver';
 
 // ========== 渠道配置 CRUD ==========
 
@@ -16,6 +24,11 @@ export async function getChannelConfigs(): Promise<ChannelConfig[]> {
   return settings.channelConfigs || [];
 }
 
+export async function getChannelsByCategory(category: MediaCategory): Promise<ChannelConfig[]> {
+  const configs = await getChannelConfigs();
+  return configs.filter(c => c.category === category);
+}
+
 /**
  * 按能力获取渠道配置
  */
@@ -23,7 +36,24 @@ export async function getChannelsByCapability(
   capability: ChannelCapability
 ): Promise<ChannelConfig[]> {
   const configs = await getChannelConfigs();
-  return configs.filter(c => c.enabled && hasChannelCapability(c, capability));
+  return configs.filter((config) => {
+    if (!config.enabled) {
+      return false;
+    }
+    if (capability === 'image-hosting') {
+      return config.category === 'image-hosting';
+    }
+    const models = config.models || [];
+    if (!models.length) {
+      return false;
+    }
+    return models.some((model) => {
+      if (capability === 'tti') return model.capabilities.includes('image.text-to-image');
+      if (capability === 'itv') return model.capabilities.some(item => item.startsWith('video.'));
+      if (capability === 'tts') return model.capabilities.includes('speech.text-to-speech');
+      return false;
+    });
+  });
 }
 
 /**
@@ -84,6 +114,13 @@ export async function deleteChannelConfig(id: string): Promise<boolean> {
   if (index === -1) return false;
 
   settings.channelConfigs.splice(index, 1);
+  if (settings.mediaDefaults) {
+    for (const category of Object.keys(settings.mediaDefaults) as MediaCategory[]) {
+      if (settings.mediaDefaults[category]?.channelId === id) {
+        delete settings.mediaDefaults[category];
+      }
+    }
+  }
   await saveSettings(settings);
   return true;
 }
@@ -111,21 +148,37 @@ export async function deleteChannelsByPlugin(pluginId: string): Promise<number> 
  */
 export async function setDefaultChannelConfig(
   id: string,
-  capability: ChannelCapability
+  capability: ChannelCapability,
 ): Promise<boolean> {
   const settings = await loadSettings();
   if (!settings.channelConfigs) return false;
 
   const target = settings.channelConfigs.find(c => c.id === id);
-  if (!target || !target.capabilities.includes(capability)) return false;
+  if (!target) return false;
 
-  // 清除同能力其他渠道的默认状态
-  settings.channelConfigs = settings.channelConfigs.map(c => {
-    if (c.capabilities.includes(capability)) {
-      return { ...c, isDefault: c.id === id, updatedAt: c.id === id ? Date.now() : c.updatedAt };
-    }
-    return c;
-  });
+  const category = capability === 'tti'
+    ? 'tti'
+    : capability === 'itv'
+      ? 'itv'
+      : capability === 'tts'
+        ? 'tts'
+        : undefined;
+  if (!category) {
+    return false;
+  }
+
+  const modelId = target.defaultModelId || target.models?.[0]?.id;
+  if (!modelId) {
+    return false;
+  }
+
+  settings.mediaDefaults = {
+    ...(settings.mediaDefaults || {}),
+    [category]: {
+      channelId: id,
+      modelId,
+    },
+  };
 
   await saveSettings(settings);
   return true;
@@ -137,8 +190,47 @@ export async function setDefaultChannelConfig(
 export async function getDefaultChannelConfig(
   capability: ChannelCapability
 ): Promise<ChannelConfig | null> {
-  const configs = await getChannelsByCapability(capability);
-  return configs.find(c => c.isDefault) || configs[0] || null;
+  const settings = await loadSettings();
+  const category = capability === 'tti'
+    ? 'tti'
+    : capability === 'itv'
+      ? 'itv'
+      : capability === 'tts'
+        ? 'tts'
+        : undefined;
+  if (!category) {
+    return null;
+  }
+  const selection = getDefaultMediaSelection(settings, category);
+  if (!selection) {
+    return null;
+  }
+  return settings.channelConfigs.find(c => c.id === selection.channelId) || null;
+}
+
+export async function setDefaultMediaModelSelection(
+  category: MediaCategory,
+  selection: MediaModelSelection,
+): Promise<boolean> {
+  const settings = await loadSettings();
+  const resolved = resolveConfiguredChannelModel(settings, category, selection);
+  if (!resolved) {
+    return false;
+  }
+
+  settings.mediaDefaults = {
+    ...(settings.mediaDefaults || {}),
+    [category]: selection,
+  };
+  await saveSettings(settings);
+  return true;
+}
+
+export async function getDefaultMediaModelSelection(
+  category: MediaCategory,
+): Promise<MediaModelSelection | null> {
+  const settings = await loadSettings();
+  return getDefaultMediaSelection(settings, category) || null;
 }
 
 /**
@@ -203,14 +295,15 @@ export async function cleanupLegacyConfigs(): Promise<{
   unifiedChannelsDeleted: number;
 }> {
   const settings = await loadSettings();
+  const legacySettings = settings as Record<string, any>;
   const result = {
-    customChannelsDeleted: settings.customChannels?.length || 0,
-    unifiedChannelsDeleted: settings.unifiedChannels?.length || 0,
+    customChannelsDeleted: legacySettings.customChannels?.length || 0,
+    unifiedChannelsDeleted: legacySettings.unifiedChannels?.length || 0,
   };
 
   // 删除旧配置
-  delete settings.customChannels;
-  delete settings.unifiedChannels;
+  delete legacySettings.customChannels;
+  delete legacySettings.unifiedChannels;
 
   if (result.customChannelsDeleted > 0 || result.unifiedChannelsDeleted > 0) {
     await saveSettings(settings);

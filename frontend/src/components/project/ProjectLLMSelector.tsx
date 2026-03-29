@@ -1,27 +1,34 @@
 import React, { useState, useEffect } from 'react';
 import { Select, Space, Tag, Typography, Alert } from 'antd';
 import { RobotOutlined, StarFilled } from '@ant-design/icons';
-import type { LLMModelConfig } from '../../types';
 import { loadSettings } from '../../store/globalStore';
+import type { AppSettings } from '../../types';
+import {
+  buildLLMConfigFromContext,
+  getDefaultMediaSelection,
+  listConfiguredModelSelectOptions,
+  resolveConfiguredChannelModel,
+} from '../../providers/channel/resolver';
 
 const { Text } = Typography;
 
 interface ProjectLLMSelectorProps {
   projectId: string;
-  currentConfigId?: string;
-  onChange: (configId: string | null) => void;
+  currentSelection?: string;
+  onChange: (selectionKey: string | null) => void;
   disabled?: boolean;
 }
 
 export const ProjectLLMSelector: React.FC<ProjectLLMSelectorProps> = ({
   projectId: _projectId,
-  currentConfigId,
+  currentSelection,
   onChange,
   disabled = false,
 }) => {
-  const [configs, setConfigs] = useState<LLMModelConfig[]>([]);
+  const [settings, setSettings] = useState<AppSettings | null>(null);
+  const [configs, setConfigs] = useState<ReturnType<typeof listConfiguredModelSelectOptions>>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedConfig, setSelectedConfig] = useState<LLMModelConfig | null>(null);
+  const [selectedConfig, setSelectedConfig] = useState<ReturnType<typeof buildLLMConfigFromContext> | null>(null);
   const [configDeleted, setConfigDeleted] = useState(false);
 
   useEffect(() => {
@@ -30,34 +37,37 @@ export const ProjectLLMSelector: React.FC<ProjectLLMSelectorProps> = ({
 
   useEffect(() => {
     updateSelectedConfig();
-  }, [currentConfigId, configs]);
+  }, [currentSelection, configs, settings]);
 
   const loadConfigs = async () => {
     setLoading(true);
     try {
-      const settings = await loadSettings();
-      setConfigs(settings.llmConfigs || []);
+      const nextSettings = await loadSettings();
+      setSettings(nextSettings);
+      setConfigs(listConfiguredModelSelectOptions(nextSettings, 'llm', 'llm.chat'));
     } finally {
       setLoading(false);
     }
   };
 
   const updateSelectedConfig = async () => {
-    if (!currentConfigId) {
-      // 使用默认
-      const defaultConfig = configs.find(c => c.isDefault) || configs[0];
-      setSelectedConfig(defaultConfig || null);
+    if (!settings) return;
+
+    const selectionKey = currentSelection || (() => {
+      const selection = getDefaultMediaSelection(settings, 'llm', 'llm.chat');
+      return selection ? `${selection.channelId}::${selection.modelId}` : '';
+    })();
+
+    const context = resolveConfiguredChannelModel(settings, 'llm', selectionKey, 'llm.chat');
+    if (context) {
+      setSelectedConfig(buildLLMConfigFromContext(context));
       setConfigDeleted(false);
-    } else {
-      const config = configs.find(c => c.id === currentConfigId);
-      if (config) {
-        setSelectedConfig(config);
-        setConfigDeleted(false);
-      } else if (configs.length > 0) {
-        // 配置已被删除
-        setSelectedConfig(null);
-        setConfigDeleted(true);
-      }
+      return;
+    }
+
+    if (configs.length > 0) {
+      setSelectedConfig(null);
+      setConfigDeleted(true);
     }
   };
 
@@ -97,7 +107,7 @@ export const ProjectLLMSelector: React.FC<ProjectLLMSelectorProps> = ({
           style={{ width: '100%' }}
           loading={loading}
           disabled={disabled || loading}
-          value={currentConfigId || '__default__'}
+          value={currentSelection || '__default__'}
           onChange={handleChange}
           placeholder="选择 LLM 模型"
         >
@@ -108,12 +118,11 @@ export const ProjectLLMSelector: React.FC<ProjectLLMSelectorProps> = ({
             </Space>
           </Select.Option>
           {configs.map(config => (
-            <Select.Option key={config.id} value={config.id}>
+            <Select.Option key={config.value} value={config.value}>
               <Space>
                 <RobotOutlined />
-                <span>{config.name}</span>
-                <Tag color="blue" style={{ fontSize: 10 }}>{getProviderLabel(config.provider)}</Tag>
-                {config.isDefault && <Tag color="gold" style={{ fontSize: 10 }}>默认</Tag>}
+                <span>{config.channelLabel} / {config.modelLabel}</span>
+                <Tag color="blue" style={{ fontSize: 10 }}>{getProviderLabel(config.channelName)}</Tag>
               </Space>
             </Select.Option>
           ))}

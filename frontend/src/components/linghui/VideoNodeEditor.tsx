@@ -3,13 +3,18 @@ import { App } from 'antd';
 import type {
   LinghuiNodeData,
   LinghuiNodeRunState,
+  LinghuiVideoCapability,
   LinghuiVideoNodeProperties,
-  LinghuiVideoRefMode,
   LinghuiVideoToolKey,
 } from '../../types/linghui';
 import { electronService, openFileDialog } from '../../services/electronService';
 import { importLinghuiWorkspaceAsset } from '../../store/linghuiStorage';
 import { loadSettings } from '../../store/settings/core';
+import {
+  getDefaultMediaSelection,
+  listConfiguredModelSelectOptions,
+  serializeMediaSelection,
+} from '../../providers/channel/resolver';
 import type { LinghuiPromptReferenceItem } from './linghuiPromptReferences';
 import { useLinghuiNodeMutation } from './nodes/LinghuiNodeRunsContext';
 import {
@@ -24,6 +29,12 @@ import {
   getPreviewSource,
   mergePromptSnippet,
 } from './videoNodeEditorShared';
+import {
+  getVideoCapabilityDescriptor,
+  listVideoCapabilities,
+  resolveSupportedVideoCapability,
+  type LinghuiVisualReferenceRole,
+} from './videoCapabilityUtils';
 
 interface VideoNodeEditorProps {
   nodeId: string;
@@ -58,8 +69,8 @@ export const VideoNodeEditor: React.FC<VideoNodeEditorProps> = ({
   const source = String(props.source ?? '');
   const posterSource = String(props.posterSource ?? '');
   const prompt = String(props.prompt ?? '');
-  const itvConfigId = String(props.itvConfigId ?? '');
-  const refMode = (props.refMode ?? 'all-ref') as LinghuiVideoRefMode;
+  const itvSelection = String(props.itvSelection ?? '');
+  const rawVideoCapability = props.videoCapability as LinghuiVideoCapability | undefined;
   const aspectRatio = String(props.aspectRatio ?? '16:9');
   const resolution = String(props.resolution ?? '720P');
   const duration = Number(props.duration ?? 5);
@@ -70,52 +81,120 @@ export const VideoNodeEditor: React.FC<VideoNodeEditorProps> = ({
   const resultPosterSource = getPreviewSource(nodeRun?.result?.primary?.posterSource);
 
   const [providers, setProviders] = useState<ProviderOption[]>([]);
+  const [fallbackSelectionKey, setFallbackSelectionKey] = useState('');
+
+  const resolvedSelectionKey = itvSelection || fallbackSelectionKey || providers[0]?.value || '';
+  const activeProvider = useMemo(
+    () => providers.find(option => option.value === resolvedSelectionKey) || providers[0],
+    [providers, resolvedSelectionKey],
+  );
+  const supportedCapabilities = useMemo(() => {
+    if (activeProvider?.capabilities?.length) {
+      return listVideoCapabilities(activeProvider.capabilities);
+    }
+    if (rawVideoCapability) {
+      return listVideoCapabilities([rawVideoCapability]);
+    }
+    return ['video.text-to-video'] as LinghuiVideoCapability[];
+  }, [activeProvider, rawVideoCapability]);
+  const videoCapability = useMemo(
+    () => resolveSupportedVideoCapability(rawVideoCapability, supportedCapabilities),
+    [rawVideoCapability, supportedCapabilities],
+  );
+  const capabilityDescriptor = useMemo(
+    () => getVideoCapabilityDescriptor(videoCapability),
+    [videoCapability],
+  );
 
   const visualReferenceRoles = useMemo(() => {
-    if (refMode !== 'first-last-frame') {
-      return new Map<string, 'default' | 'first' | 'last' | 'unused'>();
-    }
-
     const sequence = [
       ...referenceImages.map(ref => ({ key: `image:${ref.source || ref.label || ''}` })),
       ...referenceVideos.map(ref => ({ key: `video:${ref.posterSource || ref.source || ref.label || ''}` })),
     ].filter(item => item.key.split(':')[1]);
-    const roleMap = new Map<string, 'default' | 'first' | 'last' | 'unused'>();
+    const roleMap = new Map<string, LinghuiVisualReferenceRole>();
 
     sequence.forEach(item => {
-      roleMap.set(item.key, 'unused');
+      roleMap.set(item.key, 'reference');
     });
 
     if (!sequence.length) {
       return roleMap;
     }
 
-    roleMap.set(sequence[0].key, 'first');
-    roleMap.set(sequence[sequence.length - 1].key, sequence.length === 1 ? 'first' : 'last');
+    if (videoCapability === 'video.text-to-video') {
+      sequence.forEach(item => {
+        roleMap.set(item.key, 'prompt-only');
+      });
+      return roleMap;
+    }
+
+    if (videoCapability === 'video.image-to-video') {
+      roleMap.set(sequence[0].key, 'primary');
+      return roleMap;
+    }
+
+    if (videoCapability === 'video.start-end-to-video') {
+      sequence.forEach(item => {
+        roleMap.set(item.key, 'unused');
+      });
+      roleMap.set(sequence[0].key, 'start');
+      roleMap.set(sequence[sequence.length - 1].key, sequence.length === 1 ? 'start' : 'end');
+    }
+
     return roleMap;
-  }, [refMode, referenceImages, referenceVideos]);
+  }, [videoCapability, referenceImages, referenceVideos]);
 
   const mentionHint = isUploadMode
     ? '当前节点已挂载本地视频，会以导入模式输出；清空后可切回生成模式。'
     : promptReferences.length > 0
-      ? '输入 @ 可直接引用上游图片、视频封面、音频描述和文本产物，执行时会自动完成替换。'
-      : '连接图片、文本、音频或上游视频节点后，才会出现可引用的上游产物。';
+      ? `输入 @ 可直接引用上游图片、视频封面、音频描述和文本产物。${capabilityDescriptor.inputHint}`
+      : `连接图片、文本、音频或上游视频节点后，才会出现可引用的上游产物。${capabilityDescriptor.inputHint}`;
 
   useEffect(() => {
     loadSettings().then(settings => {
-      const builtins = (settings.itvConfigs ?? []).map(config => ({
-        value: config.id,
-        label: config.name || config.provider,
+      const nextProviders = listConfiguredModelSelectOptions(settings, 'itv').map(option => ({
+        value: option.value,
+        label: `${option.channelLabel} / ${option.modelLabel}`,
+        capabilities: listVideoCapabilities(option.capabilities),
+        channelLabel: option.channelLabel,
+        modelLabel: option.modelLabel,
       }));
-      const channels = (settings.channelConfigs ?? [])
-        .filter(config => config.enabled && config.capabilities?.includes('itv'))
-        .map(config => ({
-          value: config.id,
-          label: config.name || config.id,
-        }));
-      setProviders([...builtins, ...channels]);
+      setProviders(nextProviders);
+      setFallbackSelectionKey(
+        serializeMediaSelection(getDefaultMediaSelection(settings, 'itv')) || nextProviders[0]?.value || '',
+      );
     });
   }, []);
+
+  useEffect(() => {
+    if (isUploadMode || rawVideoCapability === videoCapability) {
+      return;
+    }
+
+    updateNodeData(nodeId, prev => ({
+      ...prev,
+      properties: {
+        ...prev.properties,
+        videoCapability,
+      },
+    }));
+    clearNodeRunState(nodeId);
+
+    if (activeProvider && rawVideoCapability) {
+      const previousLabel = getVideoCapabilityDescriptor(rawVideoCapability).label;
+      message.info(`当前模型不支持${previousLabel}，已切换为${capabilityDescriptor.label}`);
+    }
+  }, [
+    activeProvider,
+    capabilityDescriptor.label,
+    clearNodeRunState,
+    isUploadMode,
+    message,
+    nodeId,
+    rawVideoCapability,
+    updateNodeData,
+    videoCapability,
+  ]);
 
   const updateProp = useCallback((key: string, value: unknown) => {
     updateNodeData(nodeId, prev => ({
@@ -229,6 +308,45 @@ export const VideoNodeEditor: React.FC<VideoNodeEditorProps> = ({
     message.success(`已应用 ${preset.label} 预设`);
   }, [clearNodeRunState, isUploadMode, message, nodeId, updateNodeData]);
 
+  const handleVideoCapabilityChange = useCallback((nextCapability: LinghuiVideoCapability) => {
+    if (nextCapability === videoCapability) {
+      return;
+    }
+
+    updateProp('videoCapability', nextCapability);
+    clearNodeRunState(nodeId);
+  }, [clearNodeRunState, nodeId, updateProp, videoCapability]);
+
+  const handleProviderChange = useCallback((value: string) => {
+    const nextProvider = providers.find(option => option.value === value);
+    const previousCapability = rawVideoCapability || videoCapability;
+    const nextCapability = resolveSupportedVideoCapability(previousCapability, nextProvider?.capabilities);
+
+    updateNodeData(nodeId, prev => ({
+      ...prev,
+      properties: {
+        ...prev.properties,
+        itvSelection: value,
+        videoCapability: nextCapability,
+      },
+    }));
+    clearNodeRunState(nodeId);
+
+    if (nextProvider && nextCapability !== previousCapability) {
+      const previousLabel = getVideoCapabilityDescriptor(previousCapability).label;
+      const nextLabel = getVideoCapabilityDescriptor(nextCapability).label;
+      message.info(`当前模型不支持${previousLabel}，已切换为${nextLabel}`);
+    }
+  }, [
+    clearNodeRunState,
+    message,
+    nodeId,
+    providers,
+    rawVideoCapability,
+    updateNodeData,
+    videoCapability,
+  ]);
+
   const switchToGenerateMode = useCallback(() => {
     handleClearVideo();
     message.success('已切回生成模式');
@@ -239,7 +357,7 @@ export const VideoNodeEditor: React.FC<VideoNodeEditorProps> = ({
         imageCount: referenceImages.length,
         videoCount: referenceVideos.length,
         audioCount: referenceAudios.length,
-        refMode,
+        videoCapability,
       })
     : [];
 
@@ -255,9 +373,9 @@ export const VideoNodeEditor: React.FC<VideoNodeEditorProps> = ({
                 ? '当前会综合上游图片、视频、音频和文本输入来组织镜头。'
                 : '当前以生成模式工作，可组合图片、视频、音频和文本输入来组织镜头。'}
           </div>
-          {!isUploadMode && refMode === 'first-last-frame' && (
+          {!isUploadMode && (
             <div className="linghuiEditorPromptHint">
-              首尾帧模式下仅使用第一路视觉输入作为首帧、最后一路视觉输入作为尾帧；中间视觉参考只保留展示，不参与实际执行。
+              {capabilityDescriptor.shortDescription}
             </div>
           )}
         </div>
@@ -310,8 +428,10 @@ export const VideoNodeEditor: React.FC<VideoNodeEditorProps> = ({
         />
       ) : (
         <VideoGeneratePanel
-          refMode={refMode}
-          onRefModeChange={mode => updateProp('refMode', mode)}
+          videoCapability={videoCapability}
+          supportedCapabilities={supportedCapabilities}
+          capabilityDescriptor={capabilityDescriptor}
+          onVideoCapabilityChange={handleVideoCapabilityChange}
           referenceImages={referenceImages}
           referenceVideos={referenceVideos}
           referenceAudios={referenceAudios}
@@ -323,11 +443,11 @@ export const VideoNodeEditor: React.FC<VideoNodeEditorProps> = ({
           resultVideoSource={resultVideoSource}
           resultPosterSource={resultPosterSource}
           providers={providers}
-          itvConfigId={itvConfigId}
+          selectedProviderValue={resolvedSelectionKey}
           aspectRatio={aspectRatio}
           resolution={resolution}
           duration={duration}
-          onUpdateProvider={value => updateProp('itvConfigId', value)}
+          onUpdateProvider={handleProviderChange}
           onUpdateCompositeOptions={value => {
             const parts = value.split('·');
             updateProp('aspectRatio', parts[0]);

@@ -20,7 +20,7 @@ interface PropAssetEditorProps {
   prop: Prop;
   theme?: string;
   stylePrompt?: string;
-  ttiConfigId?: string;
+  ttiSelection?: string;
   onUpdate: (updates: Partial<Prop>) => void;
 }
 
@@ -29,7 +29,7 @@ export const PropAssetEditor: React.FC<PropAssetEditorProps> = ({
   prop,
   theme,
   stylePrompt,
-  ttiConfigId,
+  ttiSelection,
   onUpdate,
 }) => {
   const { message } = App.useApp();
@@ -56,7 +56,7 @@ export const PropAssetEditor: React.FC<PropAssetEditorProps> = ({
         prop: propWithPrompt,
         theme,
         stylePrompt,
-        ttiConfigId,
+        ttiSelection,
         onProgress: (value, step) => {
           setProgress({ value, step: step || '' });
         },
@@ -82,7 +82,7 @@ export const PropAssetEditor: React.FC<PropAssetEditorProps> = ({
     } finally {
       setLoading(false);
     }
-  }, [projectId, prop, theme, stylePrompt, ttiConfigId, currentPrompt, onUpdate, message]);
+  }, [projectId, prop, theme, stylePrompt, ttiSelection, currentPrompt, onUpdate, message]);
 
   const handleUpload = useCallback(async () => {
     try {

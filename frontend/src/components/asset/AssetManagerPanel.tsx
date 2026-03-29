@@ -32,34 +32,35 @@ import { CharacterDetailPanel } from './CharacterDetailPanel';
 import { SceneDetailPanel } from './SceneDetailPanel';
 import { PropDetailPanel } from './PropDetailPanel';
 import { AssetGenerationWizard } from './AssetGenerationWizard';
+import { parseMediaSelectionKey } from '../../providers/channel/resolver';
 import type { Project } from '../../types';
 import './AssetManager.css';
 
 interface AssetManagerPanelProps {
   projectId: string;
-  ttiConfigId?: string;
-  itvConfigId?: string;
+  ttiSelection?: string;
+  itvSelection?: string;
   theme?: string;
   styleSnapshot?: ProjectStyleSnapshot;
   stylePrompt?: string;
   episodeId?: string;
   episodeName?: string;
   script?: string;
-  llmConfigId?: string;
+  llmSelection?: string;
   onNext: () => void;
 }
 
 export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
   projectId,
-  ttiConfigId,
-  itvConfigId,
+  ttiSelection,
+  itvSelection,
   theme,
   styleSnapshot,
   stylePrompt: legacyStylePrompt,
   episodeId,
   episodeName,
   script,
-  llmConfigId,
+  llmSelection,
   onNext,
 }) => {
   const { t } = useTranslation();
@@ -251,7 +252,7 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
         episodeId,
         episodeName || `${t('editor.episode')} ${episodeId}`,
         script,
-        llmConfigId,
+        llmSelection,
         undefined,
         styleSnapshot
       );
@@ -317,8 +318,8 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
             theme={theme}
             stylePrompt={stylePrompt}
             styleSnapshot={styleSnapshot}
-            ttiConfigId={ttiConfigId}
-            itvConfigId={itvConfigId}
+            ttiSelection={ttiSelection}
+            itvSelection={itvSelection}
             onUpdate={handleCharacterUpdate}
             onDelete={handleCharacterDelete}
           />
@@ -331,7 +332,7 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
             theme={theme}
             stylePrompt={stylePrompt}
             styleSnapshot={styleSnapshot}
-            ttiConfigId={ttiConfigId}
+            ttiSelection={ttiSelection}
             onUpdate={handleSceneUpdate}
             onDelete={handleSceneDelete}
           />
@@ -344,8 +345,8 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
             theme={theme}
             stylePrompt={stylePrompt}
             styleSnapshot={styleSnapshot}
-            ttiConfigId={ttiConfigId}
-            itvConfigId={itvConfigId}
+            ttiSelection={ttiSelection}
+            itvSelection={itvSelection}
             onUpdate={handlePropUpdate}
             onDelete={handlePropDelete}
           />
@@ -377,7 +378,20 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
 
       {/* 批量生成向导 */}
       <AssetGenerationWizard
-        project={{ id: projectId, ttiConfigId, itvConfigId, styleSnapshot } as Project}
+        project={{
+          id: projectId,
+          title: '',
+          genre: '',
+          episodes: 0,
+          lastEdited: '',
+          thumbnail: '',
+          status: 'script',
+          mediaSelections: {
+            ...(ttiSelection ? { tti: parseMediaSelectionKey(ttiSelection) } : undefined),
+            ...(itvSelection ? { itv: parseMediaSelectionKey(itvSelection) } : undefined),
+          },
+          styleSnapshot,
+        } as Project}
         open={wizardOpen}
         onClose={() => setWizardOpen(false)}
         onComplete={loadAssets}

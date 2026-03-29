@@ -19,7 +19,6 @@ import { electronService } from '../../services/electronService';
 const logger = createLogger('GeminiNativeTTI');
 
 const DEFAULT_BASE_URL = 'https://generativelanguage.googleapis.com';
-const DEFAULT_MODEL = 'gemini-3-pro-image-preview';
 
 // --- Gemini generateContent request/response types ---
 
@@ -178,11 +177,15 @@ export class GeminiNativeTTIProvider implements TTIProvider {
   }
 
   private getModel(): string {
-    return this.config.modelName || DEFAULT_MODEL;
+    const value = String(this.config.modelName || '').trim();
+    if (!value) {
+      throw new Error('模型名称未配置');
+    }
+    return value;
   }
 
   validate(): boolean {
-    return Boolean(this.config.apiKey);
+    return Boolean(this.config.apiKey && String(this.config.modelName || '').trim());
   }
 
   async testConnection(): Promise<boolean> {
@@ -209,8 +212,11 @@ export class GeminiNativeTTIProvider implements TTIProvider {
   }
 
   async start(request: TTIRequest): Promise<ProviderStartResult<ImageResult>> {
-    if (!this.validate()) {
+    if (!this.config.apiKey) {
       throw new Error('API Key 未配置');
+    }
+    if (!String(this.config.modelName || '').trim()) {
+      throw new Error('模型名称未配置');
     }
 
     const model = this.getModel();

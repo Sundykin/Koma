@@ -4,6 +4,7 @@ import type { MenuProps } from 'antd';
 import {
   createLinghuiWorkspace,
   createLinghuiWorkspaceHistoryRecord,
+  deleteLinghuiWorkspace,
   exportLinghuiWorkspace,
   importLinghuiWorkspace,
   listLinghuiWorkflowTemplates,
@@ -97,6 +98,7 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [deletingWorkspace, setDeletingWorkspace] = useState(false);
   const [running, setRunning] = useState(false);
   const [executionQueue, setExecutionQueue] = useState<LinghuiExecutionQueueState | null>(null);
   const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
@@ -708,9 +710,58 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
     if (!current) return;
     scheduleWorkspaceSave({
       ...current,
-      name,
+      name: name.trim().length > 0 ? name : DEFAULT_LINGHUI_WORKSPACE_NAME,
     });
   }, [scheduleWorkspaceSave]);
+
+  const handleDeleteWorkspace = useCallback(async () => {
+    const current = activeWorkspaceRef.current;
+    if (!current) {
+      message.info('当前没有可删除的灵绘工作区');
+      return;
+    }
+    if (running) {
+      message.info('请先取消或等待当前执行完成，再删除当前工作流');
+      return;
+    }
+
+    cancelPendingWorkspaceSave();
+    setDeletingWorkspace(true);
+
+    try {
+      await deleteLinghuiWorkspace(current.id);
+
+      const remaining = await listLinghuiWorkspaces();
+      setWorkspaceList(remaining);
+
+      if (remaining.length > 0) {
+        const nextWorkspace = await loadLinghuiWorkspace(remaining[0].id);
+        if (nextWorkspace) {
+          activateWorkspace(nextWorkspace);
+        } else {
+          const fallbackWorkspace = await createLinghuiWorkspace(DEFAULT_LINGHUI_WORKSPACE_NAME);
+          activateWorkspace(fallbackWorkspace);
+          await refreshWorkspaceList(fallbackWorkspace.id);
+        }
+      } else {
+        const fallbackWorkspace = await createLinghuiWorkspace(DEFAULT_LINGHUI_WORKSPACE_NAME);
+        activateWorkspace(fallbackWorkspace);
+        await refreshWorkspaceList(fallbackWorkspace.id);
+      }
+
+      message.success(`已删除 ${current.name}，相关历史数据也已清理`);
+    } catch (error: any) {
+      message.error(error?.message || '删除灵绘工作区失败');
+    } finally {
+      setDeletingWorkspace(false);
+    }
+  }, [
+    activateWorkspace,
+    cancelPendingWorkspaceSave,
+    message,
+    refreshWorkspaceList,
+    running,
+  ]);
 
   const handleNodeMutate = useCallback((nodeId: string) => {
     markNodesAsStale([nodeId], '上游节点参数已变更，请重新运行相关节点。');
@@ -1047,6 +1098,8 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
         onExport={handleExport}
         onRetryFailed={handleRetryFailed}
         onCancelRun={handleCancelRun}
+        deletingWorkspace={deletingWorkspace}
+        onDeleteWorkspace={handleDeleteWorkspace}
         activeDrawer={activeDrawer}
         onToggleDrawer={handleToggleDrawer}
       />

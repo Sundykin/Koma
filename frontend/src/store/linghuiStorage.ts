@@ -471,6 +471,22 @@ export async function saveLinghuiWorkspaceAs(
   return saveLinghuiWorkspace(cloned);
 }
 
+export async function deleteLinghuiWorkspace(workspaceId: string): Promise<void> {
+  if (!workspaceId) return;
+
+  if (!electronService.isElectron()) {
+    window.localStorage.removeItem(`${LINGHUI_DOC_KEY_PREFIX}${workspaceId}`);
+    window.localStorage.removeItem(`${LINGHUI_DOC_KEY_PREFIX}workflow-index.${workspaceId}`);
+    window.localStorage.removeItem(`${LINGHUI_DOC_KEY_PREFIX}history-index.${workspaceId}`);
+    window.localStorage.removeItem(`${LINGHUI_DOC_KEY_PREFIX}asset-index.${workspaceId}`);
+    writeBrowserIndex(readBrowserIndex().filter(item => item.id !== workspaceId));
+    return;
+  }
+
+  await electronService.fs.remove(await getWorkspaceDir(workspaceId));
+  await writeIndex((await readIndex()).filter(item => item.id !== workspaceId));
+}
+
 function getWorkspaceNameFromFilePath(filePath: string): string {
   const filename = filePath.split(/[\\/]/).pop() ?? DEFAULT_LINGHUI_WORKSPACE_NAME;
   return sanitizeWorkspaceName(

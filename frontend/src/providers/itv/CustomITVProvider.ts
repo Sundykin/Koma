@@ -8,9 +8,15 @@
  *   进度: "正在生成视频中，当前进度XX%"
  *   结果: <video> HTML 标签含 mp4 URL
  */
-import type { ITVConfig } from '../../types';
+import type { ITVConfig, ProviderAssetInput } from '../../types';
+import {
+  isImageToVideoRequest,
+  isReferenceToVideoRequest,
+  isStartEndToVideoRequest,
+  isTextToVideoRequest,
+} from '../../types';
 import type { ProviderStartResult, ProviderTaskSnapshot } from '../../types';
-import type { ITVProvider, ITVRequest, ITVResult } from './types';
+import { assertSupportedVideoCapabilities, type ITVProvider, type ITVRequest, type ITVResult } from './types';
 import { safeFetch } from '../../utils/safeFetch';
 import { createLogger } from '../../store/logger';
 
@@ -63,6 +69,9 @@ export class CustomITVProvider implements ITVProvider {
   assetTransports = {
     primaryImage: ['remote-url', 'data-url'],
     additionalReferences: ['remote-url', 'data-url'],
+    referenceImages: ['remote-url', 'data-url'],
+    startFrame: ['remote-url', 'data-url'],
+    endFrame: ['remote-url', 'data-url'],
   } as const;
 
   constructor(config: ITVConfig) {
@@ -203,13 +212,47 @@ export class CustomITVProvider implements ITVProvider {
    * 提交视频生成任务
    */
   private async submitTask(request: ITVRequest): Promise<string> {
+    assertSupportedVideoCapabilities(request, 'Custom ITV', [
+      'video.text-to-video',
+      'video.image-to-video',
+      'video.reference-to-video',
+      'video.start-end-to-video',
+    ]);
+
     const body: Record<string, any> = { prompt: request.prompt };
+
+    const normalizedInputs: {
+      primary?: ProviderAssetInput;
+      references: ProviderAssetInput[];
+    } = {
+      references: [],
+    };
+
+    if (isImageToVideoRequest(request)) {
+      normalizedInputs.primary = request.primaryImage;
+      normalizedInputs.references = request.additionalReferences || [];
+    } else if (isReferenceToVideoRequest(request)) {
+      if (!request.referenceImages?.length) {
+        throw new Error('Custom ITV 参考生视频需要至少 1 张参考图');
+      }
+      const [primary, ...refs] = request.referenceImages;
+      normalizedInputs.primary = primary;
+      normalizedInputs.references = refs;
+    } else if (isStartEndToVideoRequest(request)) {
+      if (!request.startFrame || !request.endFrame) {
+        throw new Error('Custom ITV 首尾帧视频需要首帧和尾帧');
+      }
+      normalizedInputs.primary = request.startFrame;
+      normalizedInputs.references = [request.endFrame];
+    } else if (!isTextToVideoRequest(request)) {
+      throw new Error(`Custom ITV 不支持的视频能力: ${request.capability}`);
+    }
 
     // Primary image:
     // - Prefer URL for interoperability with remote servers.
     // - If the upstream only provides data URL, send both image_url (data URL) and image_base64.
     //   This keeps mapping centralized within this provider boundary.
-    const primary = request.primaryImage?.value;
+    const primary = normalizedInputs.primary?.value;
     if (primary) {
       body.image_url = primary;
       if (primary.startsWith('data:')) {
@@ -228,8 +271,8 @@ export class CustomITVProvider implements ITVProvider {
     if (typeof opts.aspectRatio === 'string' && opts.aspectRatio) body.aspect_ratio = opts.aspectRatio;
 
     // Additional references (if supported by server)
-    if (request.additionalReferences?.length) {
-      body.additional_reference_images = request.additionalReferences.map(r => r.value);
+    if (normalizedInputs.references.length) {
+      body.additional_reference_images = normalizedInputs.references.map(r => r.value);
     }
 
     const protocol = (this.config as any)?.promptProtocol;
