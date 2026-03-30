@@ -1,5 +1,6 @@
-import React, { memo } from 'react';
+import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { Handle, Position, type NodeProps } from '@xyflow/react';
+import { Pause, Play } from 'lucide-react';
 import type {
   LinghuiNodeData,
   LinghuiRunStatus,
@@ -50,6 +51,62 @@ function getHandleColor(dataType: LinghuiNodeData['inputs'][number]['dataType'],
   }
 }
 
+function drawVideoFrame(video: HTMLVideoElement, canvas: HTMLCanvasElement): boolean {
+  const width = Math.max(1, Math.round(canvas.clientWidth || canvas.offsetWidth || 0));
+  const height = Math.max(1, Math.round(canvas.clientHeight || canvas.offsetHeight || 0));
+  if (width <= 0 || height <= 0 || video.videoWidth <= 0 || video.videoHeight <= 0 || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+    return false;
+  }
+
+  const devicePixelRatio = window.devicePixelRatio || 1;
+  const scaledWidth = Math.max(1, Math.round(width * devicePixelRatio));
+  const scaledHeight = Math.max(1, Math.round(height * devicePixelRatio));
+  if (canvas.width !== scaledWidth || canvas.height !== scaledHeight) {
+    canvas.width = scaledWidth;
+    canvas.height = scaledHeight;
+  }
+
+  let context: CanvasRenderingContext2D | null = null;
+  try {
+    context = canvas.getContext('2d');
+  } catch {
+    context = null;
+  }
+
+  if (!context) {
+    return false;
+  }
+
+  context.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+  context.clearRect(0, 0, width, height);
+  context.fillStyle = '#020617';
+  context.fillRect(0, 0, width, height);
+
+  const sourceRatio = video.videoWidth / video.videoHeight;
+  const targetRatio = width / height;
+  let drawWidth = width;
+  let drawHeight = height;
+  let offsetX = 0;
+  let offsetY = 0;
+
+  if (sourceRatio > targetRatio) {
+    drawHeight = height;
+    drawWidth = height * sourceRatio;
+    offsetX = (width - drawWidth) / 2;
+  } else {
+    drawWidth = width;
+    drawHeight = width / sourceRatio;
+    offsetY = (height - drawHeight) / 2;
+  }
+
+  try {
+    context.drawImage(video, offsetX, offsetY, drawWidth, drawHeight);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function VideoNodeInner({ id, data, selected }: NodeProps) {
   const nodeData = data as unknown as LinghuiNodeData;
   const props = nodeData.properties as unknown as LinghuiVideoNodeProperties;
@@ -58,13 +115,18 @@ function VideoNodeInner({ id, data, selected }: NodeProps) {
   const status = runState?.status ?? 'idle';
   const statusColor = STATUS_COLORS[status] ?? STATUS_COLORS.idle;
   const viewMode = resolveLinghuiNodeViewMode(nodeData.viewMode);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const animationFrameRef = useRef<number | null>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [hasRenderableFrame, setHasRenderableFrame] = useState(false);
+  const [hasMediaLoaded, setHasMediaLoaded] = useState(false);
 
   const primaryVideo = runState?.result?.primary;
-  const posterSrc = getPreviewSource(
-    primaryVideo?.posterSource ||
-    primaryVideo?.source ||
-    props.posterSource,
-  );
+  const rawVideoSource = String(primaryVideo?.source ?? props.source ?? '').trim();
+  const rawPosterSource = String(primaryVideo?.posterSource ?? props.posterSource ?? '').trim();
+  const videoSource = getPreviewSource(rawVideoSource);
+  const posterSource = getPreviewSource(rawPosterSource);
   const hasUploadedSource = Boolean(String(props.source ?? '').trim());
   const modeLabel = getVideoCapabilityDescriptor(props.videoCapability).label;
   const mediaCardStyle = resolveMediaCardSize({
@@ -75,6 +137,132 @@ function VideoNodeInner({ id, data, selected }: NodeProps) {
       : String(props.aspectRatio ?? '16:9'),
   }).style;
   const isEditorVisible = useLinghuiNodeEditorVisibility(id, 'linghui/video');
+
+  const stopRenderLoop = useCallback(() => {
+    if (animationFrameRef.current !== null) {
+      cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
+    }
+  }, []);
+
+  const syncVideoFrame = useCallback(() => {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || !canvas) {
+      return false;
+    }
+
+    const rendered = drawVideoFrame(video, canvas);
+    if (rendered) {
+      setHasRenderableFrame(true);
+    }
+    return rendered;
+  }, []);
+
+  const startRenderLoop = useCallback(() => {
+    stopRenderLoop();
+
+    const video = videoRef.current;
+    if (!video) {
+      return;
+    }
+
+    const tick = () => {
+      syncVideoFrame();
+      if (!video.paused && !video.ended) {
+        animationFrameRef.current = requestAnimationFrame(tick);
+      } else {
+        animationFrameRef.current = null;
+      }
+    };
+
+    animationFrameRef.current = requestAnimationFrame(tick);
+  }, [stopRenderLoop, syncVideoFrame]);
+
+  useEffect(() => {
+    stopRenderLoop();
+    videoRef.current?.pause();
+    setIsPlaying(false);
+    setHasRenderableFrame(false);
+    setHasMediaLoaded(false);
+  }, [stopRenderLoop, videoSource]);
+
+  useEffect(() => () => {
+    stopRenderLoop();
+    videoRef.current?.pause();
+  }, [stopRenderLoop]);
+
+  useEffect(() => {
+    if (!videoSource || typeof ResizeObserver === 'undefined') {
+      return undefined;
+    }
+
+    const canvas = canvasRef.current;
+    if (!canvas) {
+      return undefined;
+    }
+
+    const observer = new ResizeObserver(() => {
+      syncVideoFrame();
+    });
+    observer.observe(canvas);
+    return () => observer.disconnect();
+  }, [syncVideoFrame, videoSource]);
+
+  const stopSurfaceEvent = useCallback((event: React.SyntheticEvent) => {
+    event.stopPropagation();
+  }, []);
+
+  const handleTogglePlayback = useCallback((event: React.SyntheticEvent) => {
+    stopSurfaceEvent(event);
+
+    const video = videoRef.current;
+    if (!video) {
+      return;
+    }
+
+    if (video.paused || video.ended) {
+      if (video.ended) {
+        video.currentTime = 0;
+        syncVideoFrame();
+      }
+      void video.play().catch(() => undefined);
+      return;
+    }
+
+    video.pause();
+  }, [stopSurfaceEvent, syncVideoFrame]);
+
+  const handleMediaReady = useCallback(() => {
+    setHasMediaLoaded(true);
+    requestAnimationFrame(() => {
+      syncVideoFrame();
+    });
+  }, [syncVideoFrame]);
+
+  const handleVideoPlay = useCallback(() => {
+    setIsPlaying(true);
+    syncVideoFrame();
+    startRenderLoop();
+  }, [startRenderLoop, syncVideoFrame]);
+
+  const handleVideoPause = useCallback(() => {
+    stopRenderLoop();
+    setIsPlaying(false);
+    syncVideoFrame();
+  }, [stopRenderLoop, syncVideoFrame]);
+
+  const handleVideoEnded = useCallback(() => {
+    stopRenderLoop();
+    setIsPlaying(false);
+    syncVideoFrame();
+  }, [stopRenderLoop, syncVideoFrame]);
+
+  const handleVideoError = useCallback(() => {
+    stopRenderLoop();
+    setIsPlaying(false);
+    setHasRenderableFrame(false);
+  }, [stopRenderLoop]);
 
   return (
     <div
@@ -111,8 +299,64 @@ function VideoNodeInner({ id, data, selected }: NodeProps) {
       />
 
       <div className="linghuiCompactThumb">
-        {posterSrc ? (
-          <img src={posterSrc} alt="preview" draggable={false} />
+        {videoSource ? (
+          <div className="linghuiCompactVideoStage">
+            <video
+              ref={videoRef}
+              className="linghuiCompactVideoMedia"
+              src={videoSource}
+              poster={posterSource || undefined}
+              preload="auto"
+              playsInline
+              disablePictureInPicture
+              disableRemotePlayback
+              onLoadedData={handleMediaReady}
+              onCanPlay={handleMediaReady}
+              onTimeUpdate={syncVideoFrame}
+              onSeeking={syncVideoFrame}
+              onSeeked={syncVideoFrame}
+              onPlay={handleVideoPlay}
+              onPause={handleVideoPause}
+              onEnded={handleVideoEnded}
+              onError={handleVideoError}
+            />
+            <canvas
+              ref={canvasRef}
+              className={`linghuiCompactVideoCanvas ${hasRenderableFrame ? 'hasFrame' : ''}`}
+              aria-hidden="true"
+            />
+            {!hasRenderableFrame && posterSource ? (
+              <img
+                className={`linghuiCompactVideoFallback ${hasMediaLoaded ? 'isLoaded' : ''}`}
+                src={posterSource}
+                alt="视频封面"
+                draggable={false}
+              />
+            ) : null}
+            {!hasRenderableFrame && !posterSource ? (
+              <div className="linghuiCompactThumbEmpty" style={{ background: `${nodeData.accent}18` }}>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                  <rect x="3" y="3" width="18" height="18" rx="3" stroke={nodeData.accent} strokeWidth="1.5" strokeOpacity="0.6" />
+                  <polygon points="10,8 16,12 10,16" fill={nodeData.accent} fillOpacity="0.5" />
+                </svg>
+              </div>
+            ) : null}
+            <div className={`linghuiCompactVideoOverlay ${isPlaying ? 'isPlaying' : ''}`}>
+              <button
+                type="button"
+                className={`linghuiCompactVideoToggle nodrag nopan ${isPlaying ? 'isPlaying' : ''}`}
+                onMouseDown={stopSurfaceEvent}
+                onPointerDown={stopSurfaceEvent}
+                onClick={handleTogglePlayback}
+                aria-label={isPlaying ? '暂停视频' : '播放视频'}
+                title={isPlaying ? '暂停视频' : '播放视频'}
+              >
+                {isPlaying ? <Pause size={16} /> : <Play size={16} />}
+              </button>
+            </div>
+          </div>
+        ) : posterSource ? (
+          <img src={posterSource} alt="preview" draggable={false} />
         ) : (
           <div className="linghuiCompactThumbEmpty" style={{ background: `${nodeData.accent}18` }}>
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
@@ -135,7 +379,7 @@ function VideoNodeInner({ id, data, selected }: NodeProps) {
         </div>
         <div className="linghuiCompactThumbFooter">
           <span className="linghuiCompactThumbCaption">
-            {hasUploadedSource ? '已挂载本地视频' : modeLabel}
+            {hasUploadedSource ? '透传输出' : modeLabel}
           </span>
         </div>
         {status === 'running' && (

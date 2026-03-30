@@ -7,8 +7,6 @@ import type {
   LinghuiVideoNodeProperties,
   LinghuiVideoToolKey,
 } from '../../types/linghui';
-import { electronService, openFileDialog } from '../../services/electronService';
-import { importLinghuiWorkspaceAsset } from '../../store/linghuiStorage';
 import { loadSettings } from '../../store/settings/core';
 import {
   getDefaultMediaSelection,
@@ -19,14 +17,12 @@ import type { LinghuiPromptReferenceItem } from './linghuiPromptReferences';
 import { useLinghuiNodeMutation } from './nodes/LinghuiNodeRunsContext';
 import {
   VideoGeneratePanel,
-  VideoImportPanel,
+  VideoPassThroughPanel,
   VideoToolSection,
 } from './VideoNodeEditorPanels';
 import {
   VIDEO_TOOL_PRESETS,
   type ProviderOption,
-  type VideoToolPreset,
-  getPreviewSource,
   mergePromptSnippet,
 } from './videoNodeEditorShared';
 import {
@@ -58,7 +54,7 @@ export const VideoNodeEditor: React.FC<VideoNodeEditorProps> = ({
   referenceVideos,
   referenceAudios,
   promptReferences = [],
-  workspaceId = null,
+  workspaceId: _workspaceId = null,
   activeTool,
   onToolChange,
   onRun,
@@ -66,21 +62,14 @@ export const VideoNodeEditor: React.FC<VideoNodeEditorProps> = ({
   const { message } = App.useApp();
   const { clearNodeRunState, updateNodeData } = useLinghuiNodeMutation();
   const props = nodeData.properties as unknown as LinghuiVideoNodeProperties;
-  const source = String(props.source ?? '');
-  const posterSource = String(props.posterSource ?? '');
+  const source = String(props.source ?? '').trim();
   const prompt = String(props.prompt ?? '');
   const itvSelection = String(props.itvSelection ?? '');
   const rawVideoCapability = props.videoCapability as LinghuiVideoCapability | undefined;
   const aspectRatio = String(props.aspectRatio ?? '16:9');
   const resolution = String(props.resolution ?? '720p');
   const duration = Number(props.duration ?? 5);
-  const previewSource = getPreviewSource(source);
-  const uploadedPoster = getPreviewSource(posterSource);
-  const isUploadMode = Boolean(source.trim());
-  const rawResultVideoSource = String(nodeRun?.result?.primary?.source ?? '').trim();
-  const rawResultPosterSource = String(nodeRun?.result?.primary?.posterSource ?? '').trim();
-  const resultVideoSource = getPreviewSource(rawResultVideoSource);
-  const resultPosterSource = getPreviewSource(rawResultPosterSource);
+  const isPassThroughNode = Boolean(source);
 
   const [providers, setProviders] = useState<ProviderOption[]>([]);
   const [fallbackSelectionKey, setFallbackSelectionKey] = useState('');
@@ -146,11 +135,9 @@ export const VideoNodeEditor: React.FC<VideoNodeEditorProps> = ({
     return roleMap;
   }, [videoCapability, referenceImages, referenceVideos]);
 
-  const mentionHint = isUploadMode
-    ? '当前节点已挂载本地视频，会以导入模式输出；清空后可切回生成模式。'
-    : promptReferences.length > 0
-      ? `输入 @ 可直接引用上游图片、视频封面、音频描述和文本产物。${capabilityDescriptor.inputHint}`
-      : `连接图片、文本、音频或上游视频节点后，才会出现可引用的上游产物。${capabilityDescriptor.inputHint}`;
+  const mentionHint = promptReferences.length > 0
+    ? `输入 @ 可直接引用上游图片、视频封面、音频描述和文本产物。${capabilityDescriptor.inputHint}`
+    : `连接图片、文本、音频或上游视频节点后，可在提示词中通过 @ 引用。${capabilityDescriptor.inputHint}`;
 
   useEffect(() => {
     loadSettings().then(settings => {
@@ -169,7 +156,7 @@ export const VideoNodeEditor: React.FC<VideoNodeEditorProps> = ({
   }, []);
 
   useEffect(() => {
-    if (isUploadMode || rawVideoCapability === videoCapability) {
+    if (isPassThroughNode || rawVideoCapability === videoCapability) {
       return;
     }
 
@@ -190,13 +177,19 @@ export const VideoNodeEditor: React.FC<VideoNodeEditorProps> = ({
     activeProvider,
     capabilityDescriptor.label,
     clearNodeRunState,
-    isUploadMode,
+    isPassThroughNode,
     message,
     nodeId,
     rawVideoCapability,
     updateNodeData,
     videoCapability,
   ]);
+
+  useEffect(() => {
+    if (isPassThroughNode && activeTool) {
+      onToolChange(null);
+    }
+  }, [activeTool, isPassThroughNode, onToolChange]);
 
   const updateProp = useCallback((key: string, value: unknown) => {
     updateNodeData(nodeId, prev => ({
@@ -209,92 +202,7 @@ export const VideoNodeEditor: React.FC<VideoNodeEditorProps> = ({
     updateProp('prompt', value);
   }, [updateProp]);
 
-  const applyUploadedVideo = useCallback(async (nextSource: string, filenameHint?: string) => {
-    let resolvedSource = nextSource;
-
-    if (
-      workspaceId &&
-      electronService.isElectron() &&
-      nextSource &&
-      !nextSource.startsWith('http://') &&
-      !nextSource.startsWith('https://') &&
-      !nextSource.startsWith('data:') &&
-      !nextSource.startsWith('blob:')
-    ) {
-      resolvedSource = await importLinghuiWorkspaceAsset(workspaceId, nextSource, filenameHint);
-    }
-
-    updateNodeData(nodeId, prev => ({
-      ...prev,
-      label: prev.label.startsWith('视频') ? (filenameHint?.replace(/\.[^.]+$/, '') || prev.label) : prev.label,
-      properties: {
-        ...prev.properties,
-        source: resolvedSource,
-        posterSource: '',
-      },
-    }));
-    clearNodeRunState(nodeId);
-  }, [clearNodeRunState, nodeId, updateNodeData, workspaceId]);
-
-  const handleSelectVideo = useCallback(async () => {
-    try {
-      const result = await openFileDialog({
-        filters: [{ name: '视频', extensions: ['mp4', 'mov', 'webm', 'avi', 'mkv'] }],
-        multiple: false,
-        title: '选择视频素材',
-      });
-
-      if (!result.canceled && result.filePaths.length > 0) {
-        const filePath = result.filePaths[0];
-        const filename = filePath.split(/[\\/]/).pop();
-        await applyUploadedVideo(filePath, filename);
-      }
-    } catch (error: any) {
-      message.error(error?.message || '选择视频失败');
-    }
-  }, [applyUploadedVideo, message]);
-
-  const handleDropVideo = useCallback(async (event: React.DragEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    event.stopPropagation();
-
-    const file = event.dataTransfer.files?.[0];
-    if (!file || !file.type.startsWith('video/')) {
-      message.warning('请拖入视频文件');
-      return;
-    }
-
-    try {
-      const filePath = (file as File & { path?: string }).path;
-      if (filePath) {
-        await applyUploadedVideo(filePath, file.name);
-        return;
-      }
-
-      message.info('当前浏览器模式下暂不支持直接拖入本地视频，请在桌面端使用上传按钮。');
-    } catch (error: any) {
-      message.error(error?.message || '导入视频失败');
-    }
-  }, [applyUploadedVideo, message]);
-
-  const handleClearVideo = useCallback(() => {
-    updateNodeData(nodeId, prev => ({
-      ...prev,
-      properties: {
-        ...prev.properties,
-        source: '',
-        posterSource: '',
-      },
-    }));
-    clearNodeRunState(nodeId);
-  }, [clearNodeRunState, nodeId, updateNodeData]);
-
-  const applyToolPreset = useCallback((preset: VideoToolPreset) => {
-    if (isUploadMode) {
-      message.info('当前节点处于导入模式，视频工具预设会在切回生成模式后生效。');
-      return;
-    }
-
+  const applyToolPreset = useCallback((preset: { label: string; promptSnippet?: string; properties?: Partial<LinghuiVideoNodeProperties> }) => {
     updateNodeData(nodeId, prev => {
       const previousProps = prev.properties as unknown as LinghuiVideoNodeProperties;
       return {
@@ -308,7 +216,7 @@ export const VideoNodeEditor: React.FC<VideoNodeEditorProps> = ({
     });
     clearNodeRunState(nodeId);
     message.success(`已应用 ${preset.label} 预设`);
-  }, [clearNodeRunState, isUploadMode, message, nodeId, updateNodeData]);
+  }, [clearNodeRunState, message, nodeId, updateNodeData]);
 
   const handleVideoCapabilityChange = useCallback((nextCapability: LinghuiVideoCapability) => {
     if (nextCapability === videoCapability) {
@@ -349,11 +257,6 @@ export const VideoNodeEditor: React.FC<VideoNodeEditorProps> = ({
     videoCapability,
   ]);
 
-  const switchToGenerateMode = useCallback(() => {
-    handleClearVideo();
-    message.success('已切回生成模式');
-  }, [handleClearVideo, message]);
-
   const activeToolPresets = activeTool
     ? VIDEO_TOOL_PRESETS[activeTool].buildPresets({
         imageCount: referenceImages.length,
@@ -369,65 +272,22 @@ export const VideoNodeEditor: React.FC<VideoNodeEditorProps> = ({
         <div>
           <div className="linghuiEditorTitle">视频节点</div>
           <div className="linghuiEditorSubtitle">
-            {isUploadMode
-              ? '当前处于导入模式，会直接输出挂载的视频产物。'
-              : referenceImages.length + referenceVideos.length + referenceAudios.length > 0
-                ? '当前会综合上游图片、视频、音频和文本输入来组织镜头。'
-                : '当前以生成模式工作，可组合图片、视频、音频和文本输入来组织镜头。'}
+            {isPassThroughNode ? '透传输出' : capabilityDescriptor.label}
           </div>
-          {!isUploadMode && (
-            <div className="linghuiEditorPromptHint">
-              {capabilityDescriptor.shortDescription}
-            </div>
-          )}
         </div>
       </div>
 
-      <VideoToolSection
-        activeTool={activeTool}
-        isUploadMode={isUploadMode}
-        onClose={() => onToolChange(null)}
-        onSwitchToGenerateMode={switchToGenerateMode}
-        onApplyPreset={applyToolPreset}
-        presets={activeToolPresets}
-      />
-
-      <div className="linghuiEditorRefModes">
-        <button
-          className={`linghuiEditorRefModeTab ${!isUploadMode ? 'isActive' : ''}`}
-          onClick={() => {
-            if (isUploadMode) {
-              switchToGenerateMode();
-            }
-          }}
-        >
-          生成视频
-        </button>
-        <button
-          className={`linghuiEditorRefModeTab ${isUploadMode ? 'isActive' : ''}`}
-          onClick={() => {
-            if (!isUploadMode) {
-              void handleSelectVideo();
-            }
-          }}
-        >
-          导入输出
-        </button>
-      </div>
-
-      {isUploadMode ? (
-        <VideoImportPanel
-          previewSource={previewSource}
-          uploadedPoster={uploadedPoster}
-          hasSource={Boolean(source)}
-          nodeLabel={nodeData.label}
-          onSelectVideo={() => {
-            void handleSelectVideo();
-          }}
-          onDropVideo={handleDropVideo}
-          onClearVideo={handleClearVideo}
-          onRun={onRun}
+      {!isPassThroughNode && (
+        <VideoToolSection
+          activeTool={activeTool}
+          onClose={() => onToolChange(null)}
+          onApplyPreset={applyToolPreset}
+          presets={activeToolPresets}
         />
+      )}
+
+      {isPassThroughNode ? (
+        <VideoPassThroughPanel source={source} />
       ) : (
         <VideoGeneratePanel
           videoCapability={videoCapability}
@@ -442,24 +302,16 @@ export const VideoNodeEditor: React.FC<VideoNodeEditorProps> = ({
           onPromptChange={handlePromptChange}
           promptReferences={promptReferences}
           mentionHint={mentionHint}
-          resultVideoSource={resultVideoSource}
-          resultPosterSource={resultPosterSource}
           providers={providers}
           selectedProviderValue={resolvedSelectionKey}
           aspectRatio={aspectRatio}
           resolution={resolution}
           duration={duration}
           onUpdateProvider={handleProviderChange}
-          onUpdateCompositeOptions={value => {
-            const parts = value.split('·');
-            updateProp('aspectRatio', parts[0]);
-            updateProp('resolution', parts[1]);
-            updateProp('duration', Number(parts[2]?.replace('s', '') ?? 5));
-          }}
+          onUpdateAspectRatio={value => updateProp('aspectRatio', value)}
+          onUpdateResolution={value => updateProp('resolution', value)}
+          onUpdateDuration={value => updateProp('duration', value)}
           onRun={onRun}
-          onSelectVideo={() => {
-            void handleSelectVideo();
-          }}
         />
       )}
     </div>
