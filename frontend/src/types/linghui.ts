@@ -366,6 +366,6 @@ export const VIDEO_ASPECT_RATIOS = [
 ];
 
 export const VIDEO_RESOLUTIONS = [
-  { label: '720P', value: '720P' },
-  { label: '1080P', value: '1080P' },
+  { label: '720P', value: '720p' },
+  { label: '1080P', value: '1080p' },
 ];

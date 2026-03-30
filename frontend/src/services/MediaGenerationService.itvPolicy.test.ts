@@ -140,11 +140,17 @@ describe('MediaGenerationService.generateVideo - ITV input policy matrix', () =>
       } as any,
     });
 
-    expect(start).toHaveBeenCalledWith({
+    expect(start).toHaveBeenCalledWith(expect.objectContaining({
       capability: 'video.text-to-video',
       prompt: 'a cinematic sunrise over the ocean',
       options: { duration: 5 },
-    });
+      __komaTrace: expect.objectContaining({
+        traceId: expect.any(String),
+        source: 'media-generation',
+        operation: 'media.generate-video',
+        debugBody: true,
+      }),
+    }));
     expect(out.kind).toBe('video');
   });
 

@@ -160,7 +160,7 @@ export const NODE_PROPERTY_DEFAULTS: Record<LinghuiNodeType, Record<string, unkn
     posterSource: '',
     videoCapability: 'video.text-to-video',
     aspectRatio: '16:9',
-    resolution: '720P',
+    resolution: '720p',
     duration: 5,
   },
   'linghui/audio': {

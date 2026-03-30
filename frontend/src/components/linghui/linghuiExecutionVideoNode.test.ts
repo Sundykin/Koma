@@ -35,7 +35,7 @@ function createNode(params?: {
       videoCapability: params?.capability ?? 'video.reference-to-video',
       duration: 6,
       aspectRatio: '16:9',
-      resolution: '720P',
+      resolution: '720p',
     },
     getAllInputResults(slot) {
       if (slot === 0) return slot0;

@@ -51,6 +51,11 @@ import {
 } from './promptCompilation/videoRequestCompiler';
 import { parseMentions } from '../editor/mentionTypes';
 import { sanitizeBodyForLog, truncateString } from '../utils/logFormatting';
+import {
+  createVideoTraceContext,
+  summarizeVideoRequestForLog,
+  withVideoTrace,
+} from '../utils/videoGenerationTrace';
 import { DEFAULT_POLLING_CONFIG } from '../providers/polling';
 
 const logger = createLogger('MediaGeneration');
@@ -418,10 +423,20 @@ export class MediaGenerationService {
       missingError: '未配置 ITV 服务',
     });
     const executionMetadata = buildExecutionMetadata(resolvedContext, request.capability);
+    const traceContext = createVideoTraceContext({
+      prefix: 'itv',
+      source: 'media-generation',
+      operation: 'media.generate-video',
+      debugBody: true,
+    });
 
     const protocol = getPromptProtocol(provider);
     logger.info('ITV generateVideo entry', {
+      traceId: traceContext.traceId,
       ownerRef,
+      selectionKey: itvSelection,
+      channelId: executionMetadata.channelId,
+      modelId: executionMetadata.modelId,
       provider: provider.config?.provider,
       capability: request.capability,
       protocol: protocol || 'none',
@@ -433,6 +448,7 @@ export class MediaGenerationService {
           : isReferenceToVideoRequest(request)
             ? request.referenceImages.length
             : 2,
+      request: summarizeVideoRequestForLog(request),
     });
     const originalPrompt = request.prompt;
     let compiledPrompt = originalPrompt;
@@ -450,8 +466,20 @@ export class MediaGenerationService {
     compiledPrompt = compiledDomainRequest.compiledPrompt;
     compilationDebug = compiledDomainRequest.compilationDebug;
 
+    logger.info('ITV domain request compiled', {
+      traceId: traceContext.traceId,
+      provider: provider.config?.provider,
+      capability: request.capability,
+      protocol: protocol || 'none',
+      unresolvedMentions: compiledDomainRequest.unresolvedMentions,
+      compiledPrompt: truncateString(compiledPrompt, 800),
+      request: summarizeVideoRequestForLog(compiledDomainRequest.request),
+      compilationDebug: compilationDebug ? sanitizeBodyForLog(compilationDebug) : undefined,
+    });
+
     if (compilationDebug && protocol === 'grok-image-index') {
       logger.info('ITV prompt compiled (grok-image-index)', {
+        traceId: traceContext.traceId,
         ownerRef,
         protocol,
         originalPrompt: truncateString(originalPrompt, 800),
@@ -462,41 +490,56 @@ export class MediaGenerationService {
     }
 
     const transportSupport = resolveITVTransportSupport(provider);
+    logger.info('ITV transport support resolved', {
+      traceId: traceContext.traceId,
+      provider: provider.config?.provider,
+      transportSupport,
+    });
     const providerRequest = await mapVideoRequestToProviderRequest({
       projectId,
       request: compiledDomainRequest.request,
       transportSupport,
       maxAdditionalReferences,
     });
+    const tracedProviderRequest = withVideoTrace(providerRequest, traceContext);
 
-    if (protocol === 'grok-image-index') {
-      logger.info('ITV start payload (post-compile)', sanitizeBodyForLog({
+    logger.info('ITV provider request mapped', {
+      traceId: traceContext.traceId,
+      provider: provider.config?.provider,
+      capability: tracedProviderRequest.capability,
+      promptProtocol: protocol || 'none',
+      request: summarizeVideoRequestForLog(tracedProviderRequest),
+    });
+
+    let started: Awaited<ReturnType<typeof provider.start>>;
+    try {
+      started = await provider.start(tracedProviderRequest as any);
+    } catch (error) {
+      logger.error('ITV provider.start failed', {
+        traceId: traceContext.traceId,
+        ownerRef,
+        selectionKey: itvSelection,
         provider: provider.config?.provider,
-        capability: providerRequest.capability,
-        promptProtocol: protocol,
-        prompt: providerRequest.prompt,
-        primaryImage: providerRequest.primaryImage
-          ? {
-              transport: providerRequest.primaryImage.transport,
-              value: providerRequest.primaryImage.value,
-              mimeType: providerRequest.primaryImage.mimeType,
-            }
-          : undefined,
-        additionalReferences: (providerRequest.additionalReferences || []).map(item => ({
-          transport: item.transport,
-          value: item.value,
-          mimeType: item.mimeType,
-        })),
-        referenceImages: (providerRequest.referenceImages || []).map(item => ({
-          transport: item.transport,
-          value: item.value,
-          mimeType: item.mimeType,
-        })),
-        options: providerRequest.options,
-      }));
+        channelId: executionMetadata.channelId,
+        modelId: executionMetadata.modelId,
+        capability: request.capability,
+        protocol: protocol || 'none',
+        error: error instanceof Error ? error.message : String(error),
+        originalRequest: summarizeVideoRequestForLog(request),
+        compiledRequest: summarizeVideoRequestForLog(compiledDomainRequest.request),
+        providerRequest: summarizeVideoRequestForLog(tracedProviderRequest),
+      });
+      throw error;
     }
 
-    const started = await provider.start(providerRequest as any);
+    logger.info('ITV provider.start succeeded', {
+      traceId: traceContext.traceId,
+      provider: provider.config?.provider,
+      capability: request.capability,
+      mode: started.mode,
+      taskId: started.mode === 'async' ? started.taskId : started.output.taskId,
+      immediateSource: started.mode === 'immediate' ? started.output.source : undefined,
+    });
 
     const kind: MediaKind = 'video';
     const options = request.options as Record<string, unknown> | undefined;
@@ -538,6 +581,12 @@ export class MediaGenerationService {
           ...(compilationDebug ? { compiledPrompt, compilationDebug } : undefined),
         },
       });
+      logger.info('ITV immediate result persisted', {
+        traceId: traceContext.traceId,
+        ownerRef,
+        source,
+        provider: provider.config?.provider,
+      });
       await bindOwnerRefMedia(projectId, ownerRef, finalAsset);
       return finalAsset;
     }
@@ -548,6 +597,14 @@ export class MediaGenerationService {
       remoteTaskId: started.taskId,
       taskName: taskName || '视频生成',
       ...executionMetadata,
+    });
+
+    logger.info('ITV async task created', {
+      traceId: traceContext.traceId,
+      localTaskId: task.id,
+      remoteTaskId: started.taskId,
+      ownerRef,
+      provider: provider.config?.provider,
     });
 
     return this.pollAndFinalizeTask({

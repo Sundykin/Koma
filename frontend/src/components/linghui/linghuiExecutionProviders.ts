@@ -14,8 +14,15 @@ import {
   resolveITVTransportSupport,
   resolveVideoProtocolCompilationLimit,
 } from '../../services/promptCompilation/videoRequestCompiler';
+import { createLogger } from '../../store/logger';
 import { loadSettings } from '../../store/settings/core';
 import type { LinghuiMediaItem } from '../../types/linghui';
+import { sanitizeBodyForLog, truncateString } from '../../utils/logFormatting';
+import {
+  createVideoTraceContext,
+  summarizeVideoRequestForLog,
+  withVideoTrace,
+} from '../../utils/videoGenerationTrace';
 import {
   compileLinghuiPromptReferences,
   type LinghuiPromptReferenceItem,
@@ -29,6 +36,24 @@ import {
   toPreviewSource,
 } from './linghuiExecutionShared';
 import { getVideoCapabilityDescriptor } from './videoCapabilityUtils';
+
+const logger = createLogger('LinghuiVideoExecution');
+
+type AsyncTaskSnapshot<T> = {
+  state: string;
+  progress?: number;
+  output?: T;
+  error?: string;
+};
+
+type AsyncTaskSnapshotGetter<T> = (taskId: string) => Promise<AsyncTaskSnapshot<T>>;
+
+interface AsyncPollingLogContext {
+  traceId?: string;
+  provider?: string;
+  capability?: string;
+  mediaKind: 'image' | 'video' | 'audio';
+}
 
 async function ensureProviderAssetInputs(
   sources: Array<MediaAssetSource | ProviderAssetInput>,
@@ -45,35 +70,90 @@ async function ensureProviderAssetInputs(
   return resolved.filter(Boolean) as ProviderAssetInput[];
 }
 
+function createTaskSnapshotGetter<T>(
+  provider: { getTaskSnapshot?: AsyncTaskSnapshotGetter<T> },
+): AsyncTaskSnapshotGetter<T> | undefined {
+  if (!provider.getTaskSnapshot) {
+    return undefined;
+  }
+  return async (taskId: string) => provider.getTaskSnapshot!(taskId);
+}
+
 async function resolveAsyncProviderResult<T>(
   taskId: string,
-  getTaskSnapshot: ((taskId: string) => Promise<{ state: string; progress?: number; output?: T; error?: string }>) | undefined,
+  getTaskSnapshot: AsyncTaskSnapshotGetter<T> | undefined,
   onProgress?: (progress: number, message?: string) => void,
   signal?: AbortSignal,
+  logContext?: AsyncPollingLogContext,
 ): Promise<T> {
   if (!getTaskSnapshot) throw new Error('当前 Provider 不支持任务状态查询');
 
   const startedAt = Date.now();
+  let pollCount = 0;
+  logger.info('灵绘异步任务开始轮询', {
+    taskId,
+    ...logContext,
+  });
   await delay(DEFAULT_POLLING_CONFIG.initialDelay ?? 0, signal);
 
   while (Date.now() - startedAt < DEFAULT_POLLING_CONFIG.maxDuration) {
     throwIfExecutionAborted(signal);
-    const snapshot = await getTaskSnapshot(taskId);
+    pollCount += 1;
+    let snapshot: AsyncTaskSnapshot<T>;
+    try {
+      snapshot = await getTaskSnapshot(taskId);
+    } catch (error) {
+      logger.error('灵绘异步任务轮询异常', {
+        taskId,
+        pollCount,
+        ...logContext,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
+    logger.info('灵绘异步任务轮询快照', {
+      taskId,
+      pollCount,
+      ...logContext,
+      state: snapshot.state,
+      progress: snapshot.progress,
+      hasOutput: Boolean(snapshot.output),
+      error: snapshot.error,
+    });
     if (snapshot.state === 'running' || snapshot.state === 'queued') {
       throwIfExecutionAborted(signal);
       onProgress?.(snapshot.progress ?? 0, '生成中');
       await delay(DEFAULT_POLLING_CONFIG.interval, signal);
       continue;
     }
-    if (snapshot.state === 'failed') throw new Error(snapshot.error || '生成失败');
+    if (snapshot.state === 'failed') {
+      logger.error('灵绘异步任务轮询判定失败', {
+        taskId,
+        pollCount,
+        ...logContext,
+        error: snapshot.error || '生成失败',
+      });
+      throw new Error(snapshot.error || '生成失败');
+    }
     if (snapshot.state === 'succeeded' && snapshot.output) {
       throwIfExecutionAborted(signal);
+      logger.info('灵绘异步任务轮询完成', {
+        taskId,
+        pollCount,
+        ...logContext,
+      });
       onProgress?.(100, '生成完成');
       return snapshot.output;
     }
     await delay(DEFAULT_POLLING_CONFIG.interval, signal);
   }
 
+  logger.error('灵绘异步任务轮询超时', {
+    taskId,
+    pollCount,
+    ...logContext,
+    maxDuration: DEFAULT_POLLING_CONFIG.maxDuration,
+  });
   throw new Error('任务轮询超时');
 }
 
@@ -134,7 +214,16 @@ export async function generateImageWithProvider(params: {
   throwIfExecutionAborted(params.signal);
   const output = started.mode === 'immediate'
     ? started.output
-    : await resolveAsyncProviderResult<ImageResult>(started.taskId, provider.getTaskSnapshot, params.onProgress, params.signal);
+    : await resolveAsyncProviderResult<ImageResult>(
+        started.taskId,
+        createTaskSnapshotGetter(provider),
+        params.onProgress,
+        params.signal,
+        {
+          mediaKind: 'image',
+          provider: provider.config?.provider,
+        },
+      );
   throwIfExecutionAborted(params.signal);
 
   return buildMediaItem({
@@ -165,6 +254,12 @@ export async function generateVideoWithProvider(params: {
   signal?: AbortSignal;
 }): Promise<LinghuiMediaItem> {
   throwIfExecutionAborted(params.signal);
+  const traceContext = createVideoTraceContext({
+    prefix: 'linghui-video',
+    source: 'linghui',
+    operation: 'linghui.generate-video',
+    debugBody: true,
+  });
   const previewSource = params.primaryImageSource
     || params.startFrameSource
     || params.referenceImageSources?.[0];
@@ -175,11 +270,37 @@ export async function generateVideoWithProvider(params: {
   const settings = await loadSettings();
   const selectedContext = resolveConfiguredChannelModel(settings, 'itv', params.itvSelection);
   if (selectedContext && !selectedContext.model.capabilities.includes(params.capability)) {
+    logger.warn('灵绘视频能力校验失败', {
+      traceId: traceContext.traceId,
+      selectionKey: params.itvSelection,
+      capability: params.capability,
+      channelId: selectedContext.channelConfig.id,
+      modelId: selectedContext.model.id,
+    });
     throw new Error(`当前视频模型不支持${getVideoCapabilityDescriptor(params.capability).label}`);
   }
 
+  logger.info('灵绘视频生成入口', {
+    traceId: traceContext.traceId,
+    selectionKey: params.itvSelection,
+    capability: params.capability,
+    channelId: selectedContext?.channelConfig.id,
+    modelId: selectedContext?.model.id,
+    prompt: truncateString(params.prompt, 800),
+    hasPrimaryImage: Boolean(params.primaryImageSource),
+    referenceImageCount: params.referenceImageSources?.length || 0,
+    additionalReferenceCount: params.additionalReferenceSources?.length || 0,
+    hasStartFrame: Boolean(params.startFrameSource),
+    hasEndFrame: Boolean(params.endFrameSource),
+  });
+
   const provider = await getProjectITVProvider(params.itvSelection || undefined, params.capability);
   if (!provider || !provider.validate()) {
+    logger.warn('灵绘视频未配置 ITV Provider，返回占位结果', {
+      traceId: traceContext.traceId,
+      selectionKey: params.itvSelection,
+      capability: params.capability,
+    });
     return buildMediaItem({
       kind: 'video',
       posterSource: placeholderPoster,
@@ -232,13 +353,19 @@ export async function generateVideoWithProvider(params: {
             prompt: params.prompt,
             options: commonOptions,
           })
-        : buildVideoCapabilityRequest({
-            capability: params.capability,
-            prompt: params.prompt,
-            primaryImage: primarySource,
-            additionalReferences: additionalSources,
-            options: commonOptions,
-          });
+      : buildVideoCapabilityRequest({
+          capability: params.capability,
+          prompt: params.prompt,
+          primaryImage: primarySource,
+          additionalReferences: additionalSources,
+          options: commonOptions,
+        });
+  logger.info('灵绘视频领域请求已构建', {
+    traceId: traceContext.traceId,
+    selectionKey: params.itvSelection,
+    capability: params.capability,
+    request: summarizeVideoRequestForLog(domainRequest),
+  });
   const compiledDomainRequest = compileWorkflowVideoDomainRequest({
     request: domainRequest,
     promptCompilation: (params.promptReferences?.length ?? 0) > 0
@@ -259,10 +386,22 @@ export async function generateVideoWithProvider(params: {
     protocol,
     maxAdditionalReferences,
   });
+  logger.info('灵绘视频请求已编译', {
+    traceId: traceContext.traceId,
+    provider: provider.config?.provider,
+    protocol: protocol || 'none',
+    unresolvedMentions: compiledDomainRequest.unresolvedMentions,
+    compiledPrompt: truncateString(compiledDomainRequest.compiledPrompt, 800),
+    request: summarizeVideoRequestForLog(compiledDomainRequest.request),
+    compilationDebug: compiledDomainRequest.compilationDebug
+      ? sanitizeBodyForLog(compiledDomainRequest.compilationDebug)
+      : undefined,
+  });
+  const transportSupport = resolveITVTransportSupport(provider);
   const providerRequest = await mapVideoRequestToProviderRequest({
     projectId: EXECUTION_PROJECT_ID,
     request: compiledDomainRequest.request,
-    transportSupport: resolveITVTransportSupport(provider),
+    transportSupport,
     maxAdditionalReferences,
     messages: {
       missingPrimaryImage: '缺少主图输入',
@@ -277,13 +416,55 @@ export async function generateVideoWithProvider(params: {
       remoteEnd: '当前 ITV Provider 仅支持远程 URL 尾帧',
     },
   });
+  const tracedProviderRequest = withVideoTrace(providerRequest, traceContext);
+  logger.info('灵绘视频 Provider 请求已映射', {
+    traceId: traceContext.traceId,
+    provider: provider.config?.provider,
+    protocol: protocol || 'none',
+    transportSupport,
+    request: summarizeVideoRequestForLog(tracedProviderRequest),
+  });
 
-  const started = await provider.start(providerRequest as never);
+  let started: Awaited<ReturnType<typeof provider.start>>;
+  try {
+    started = await provider.start(tracedProviderRequest as never);
+  } catch (error) {
+    logger.error('灵绘视频任务提交失败', {
+      traceId: traceContext.traceId,
+      selectionKey: params.itvSelection,
+      provider: provider.config?.provider,
+      capability: params.capability,
+      error: error instanceof Error ? error.message : String(error),
+      originalRequest: summarizeVideoRequestForLog(domainRequest),
+      compiledRequest: summarizeVideoRequestForLog(compiledDomainRequest.request),
+      providerRequest: summarizeVideoRequestForLog(tracedProviderRequest),
+    });
+    throw error;
+  }
+  logger.info('灵绘视频任务提交成功', {
+    traceId: traceContext.traceId,
+    provider: provider.config?.provider,
+    capability: params.capability,
+    mode: started.mode,
+    taskId: started.mode === 'async' ? started.taskId : started.output.taskId,
+    immediateSource: started.mode === 'immediate' ? started.output.source : undefined,
+  });
   throwIfExecutionAborted(params.signal);
 
   const output = started.mode === 'immediate'
     ? started.output
-    : await resolveAsyncProviderResult<ITVResult>(started.taskId, provider.getTaskSnapshot, params.onProgress, params.signal);
+    : await resolveAsyncProviderResult<ITVResult>(
+        started.taskId,
+        createTaskSnapshotGetter(provider),
+        params.onProgress,
+        params.signal,
+        {
+          traceId: traceContext.traceId,
+          mediaKind: 'video',
+          provider: provider.config?.provider,
+          capability: params.capability,
+        },
+      );
   throwIfExecutionAborted(params.signal);
 
   return buildMediaItem({
@@ -327,7 +508,16 @@ export async function generateAudioWithProvider(params: {
   throwIfExecutionAborted(params.signal);
   const output = started.mode === 'immediate'
     ? started.output
-    : await resolveAsyncProviderResult<AudioResult>(started.taskId, provider.getTaskSnapshot, params.onProgress, params.signal);
+    : await resolveAsyncProviderResult<AudioResult>(
+        started.taskId,
+        createTaskSnapshotGetter(provider),
+        params.onProgress,
+        params.signal,
+        {
+          mediaKind: 'audio',
+          provider: provider.config?.provider,
+        },
+      );
   throwIfExecutionAborted(params.signal);
 
   const format = output.format?.toLowerCase();

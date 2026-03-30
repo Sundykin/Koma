@@ -5,10 +5,58 @@ import {
   isStartEndToVideoRequest,
   isTextToVideoRequest,
 } from '../../types';
+import { createLogger } from '../../store/logger';
+import { buildAITraceHeaders } from '../../utils/aiTrace';
+import { sanitizeBodyForLog, truncateString } from '../../utils/logFormatting';
 import type { ITVProvider, ITVRequest, ITVResult } from './types';
 import { safeFetch } from '../../utils/safeFetch';
+import { readVideoTraceContext, summarizeVideoRequestForLog } from '../../utils/videoGenerationTrace';
 
 type ViduTaskState = 'queued' | 'running' | 'succeeded' | 'failed';
+
+type ViduRequestBody = Record<string, unknown> & {
+  model: string;
+  prompt: string;
+  duration: number;
+  seed: number;
+  resolution: string;
+  movement_amplitude: 'auto' | 'small' | 'medium' | 'large';
+  off_peak: boolean;
+};
+
+const VIDU_RESOLUTIONS = new Set(['360p', '540p', '720p', '1080p']);
+const VIDU_MOVEMENT_AMPLITUDES = new Set(['auto', 'small', 'medium', 'large']);
+const VIDU_MODEL_RULES: Record<string, {
+  durations: number[];
+  resolutions: string[];
+}> = {
+  'viduq2-pro': {
+    durations: [1, 2, 3, 4, 5, 6, 7, 8],
+    resolutions: ['540p', '720p', '1080p'],
+  },
+  'viduq2-turbo': {
+    durations: [1, 2, 3, 4, 5, 6, 7, 8],
+    resolutions: ['540p', '720p', '1080p'],
+  },
+  viduq1: {
+    durations: [1, 2, 3, 4, 5, 6, 7, 8],
+    resolutions: ['1080p'],
+  },
+  'viduq1-classic': {
+    durations: [1, 2, 3, 4, 5, 6, 7, 8],
+    resolutions: ['1080p'],
+  },
+  'vidu2.0': {
+    durations: [4, 8],
+    resolutions: ['360p', '720p', '1080p'],
+  },
+  'vidu1.5': {
+    durations: [4, 8],
+    resolutions: ['360p', '720p', '1080p'],
+  },
+};
+
+const logger = createLogger('ViduProvider');
 
 function joinUrl(baseUrl: string, path: string): string {
   const normalizedBase = baseUrl.replace(/\/+$/, '');
@@ -119,10 +167,14 @@ export class ViduProvider implements ITVProvider {
     return Boolean(this.config.baseUrl && this.config.apiKey && String(this.config.modelName || '').trim());
   }
 
-  private getHeaders(): Record<string, string> {
+  private getHeaders(request?: ITVRequest): Record<string, string> {
+    const traceContext = request ? readVideoTraceContext(request) : undefined;
     return {
       Authorization: `Bearer ${this.config.apiKey || ''}`,
+      Accept: 'application/json',
       'Content-Type': 'application/json',
+      ...buildAITraceHeaders(traceContext),
+      ...(traceContext?.debugBody ? { 'x-koma-debug-body': '1' } : undefined),
     };
   }
 
@@ -134,47 +186,166 @@ export class ViduProvider implements ITVProvider {
     return candidate;
   }
 
-  private buildCommonBody(request: ITVRequest, options?: ITVOptions): Record<string, unknown> {
+  private normalizeResolution(value: unknown): string {
+    if (typeof value === 'string') {
+      const normalized = value.trim().toLowerCase();
+      if (VIDU_RESOLUTIONS.has(normalized)) {
+        return normalized;
+      }
+
+      const match = normalized.match(/^(\d{3,5})\s*x\s*(\d{3,5})$/);
+      if (match) {
+        const width = Number(match[1]);
+        const height = Number(match[2]);
+        const shortEdge = Math.min(width, height);
+        if (shortEdge <= 360) return '360p';
+        if (shortEdge <= 540) return '540p';
+        if (shortEdge <= 720) return '720p';
+        return '1080p';
+      }
+    }
+    return '720p';
+  }
+
+  private normalizeDuration(value: unknown): number {
+    if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
+      return Math.floor(value);
+    }
+    if (typeof value === 'string') {
+      const parsed = Number(value.trim());
+      if (Number.isFinite(parsed) && parsed > 0) {
+        return Math.floor(parsed);
+      }
+    }
+    return 5;
+  }
+
+  private normalizeMovementAmplitude(value: unknown): 'auto' | 'small' | 'medium' | 'large' {
+    if (typeof value === 'string') {
+      const normalized = value.trim().toLowerCase();
+      if (VIDU_MOVEMENT_AMPLITUDES.has(normalized)) {
+        return normalized as 'auto' | 'small' | 'medium' | 'large';
+      }
+    }
+    return 'auto';
+  }
+
+  private normalizeBoolean(value: unknown): boolean | undefined {
+    return typeof value === 'boolean' ? value : undefined;
+  }
+
+  private normalizeWatermarkPosition(value: unknown): number | undefined {
+    const parsed = typeof value === 'number'
+      ? value
+      : typeof value === 'string'
+        ? Number(value.trim())
+        : NaN;
+    if (Number.isFinite(parsed) && parsed >= 1 && parsed <= 4) {
+      return Math.floor(parsed);
+    }
+    return undefined;
+  }
+
+  private normalizeMetaData(value: unknown): string | undefined {
+    if (typeof value === 'string') {
+      const normalized = value.trim();
+      return normalized || undefined;
+    }
+    if (value && typeof value === 'object') {
+      try {
+        return JSON.stringify(value);
+      } catch {
+        return undefined;
+      }
+    }
+    return undefined;
+  }
+
+  private stripUndefined<T extends Record<string, unknown>>(value: T): T {
+    return Object.fromEntries(
+      Object.entries(value).filter(([, item]) => item !== undefined),
+    ) as T;
+  }
+
+  private buildCommonBody(request: ITVRequest, options?: ITVOptions): ViduRequestBody {
     const defaults = {
       duration: this.config.defaultDuration,
       resolution: this.config.defaultResolution,
       movementAmplitude: (this.config as any)?.movementAmplitude,
       offPeak: (this.config as any)?.offPeak,
+      seed: (this.config as any)?.seed,
     } as const;
 
-    return {
+    const body: ViduRequestBody = {
       model: this.getModelId(),
       prompt: ensurePrompt(request.prompt),
-      duration: options?.duration ?? defaults.duration,
-      seed: options?.seed ?? 0,
-      resolution: options?.resolution ?? defaults.resolution,
-      is_rec: options?.isRecommendedPrompt,
-      bgm: options?.bgm,
-      watermark: options?.watermark,
-      wm_position: options?.watermarkPosition,
-      wm_url: options?.watermarkUrl,
-      payload: options?.payload,
-      meta_data: options?.metaData,
-      movement_amplitude: (options as Record<string, unknown> | undefined)?.movementAmplitude
-        ?? defaults.movementAmplitude
-        ?? 'auto',
-      off_peak: (options as Record<string, unknown> | undefined)?.offPeak
-        ?? defaults.offPeak
-        ?? false,
+      duration: this.normalizeDuration(options?.duration ?? defaults.duration),
+      seed: typeof options?.seed === 'number'
+        ? Math.floor(options.seed)
+        : typeof defaults.seed === 'number'
+          ? Math.floor(defaults.seed)
+          : 0,
+      resolution: this.normalizeResolution(options?.resolution ?? defaults.resolution),
+      movement_amplitude: this.normalizeMovementAmplitude(
+        (options as Record<string, unknown> | undefined)?.movementAmplitude
+        ?? defaults.movementAmplitude,
+      ),
+      off_peak: this.normalizeBoolean((options as Record<string, unknown> | undefined)?.offPeak ?? defaults.offPeak) ?? false,
     };
+    this.assertKnownModelOptionCompatibility(body);
+    return body;
   }
 
-  private buildRequest(params: ITVRequest): { path: string; body: Record<string, unknown> } {
+  private assertKnownModelOptionCompatibility(body: ViduRequestBody): void {
+    const rule = VIDU_MODEL_RULES[body.model];
+    if (!rule) {
+      return;
+    }
+
+    if (!rule.durations.includes(body.duration)) {
+      throw new Error(`Vidu 模型 ${body.model} 不支持 ${body.duration}s，当前仅支持 ${rule.durations.join(' / ')}s`);
+    }
+
+    if (!rule.resolutions.includes(body.resolution)) {
+      throw new Error(`Vidu 模型 ${body.model} 不支持 ${body.resolution}，当前仅支持 ${rule.resolutions.join(' / ')}`);
+    }
+  }
+
+  private buildRequest(
+    params: ITVRequest,
+    variant: 'default' | 'compat-406' = 'default',
+  ): { path: string; body: Record<string, unknown> } {
     const options = params.options as ITVOptions | undefined;
-    const body = this.buildCommonBody(params, options);
+    const baseBody = this.buildCommonBody(params, options);
+    const optionalFields = variant === 'compat-406'
+      ? {}
+      : {
+          is_rec: this.normalizeBoolean(options?.isRecommendedPrompt),
+          bgm: this.normalizeBoolean(options?.bgm),
+          watermark: this.normalizeBoolean(options?.watermark),
+          wm_position: this.normalizeWatermarkPosition(options?.watermarkPosition),
+          wm_url: typeof options?.watermarkUrl === 'string' && options.watermarkUrl.trim()
+            ? options.watermarkUrl.trim()
+            : undefined,
+          payload: typeof options?.payload === 'string' && options.payload.trim()
+            ? options.payload
+            : undefined,
+          meta_data: this.normalizeMetaData(options?.metaData),
+        };
+    const body = this.stripUndefined({
+      ...baseBody,
+      ...optionalFields,
+    });
 
     if (isTextToVideoRequest(params)) {
       return {
         path: '/vidu/v2/text2video',
-        body: {
-          ...body,
-          images: [],
-        },
+        body: variant === 'compat-406'
+          ? {
+              ...body,
+              images: [],
+            }
+          : body,
       };
     }
 
@@ -217,6 +388,15 @@ export class ViduProvider implements ITVProvider {
     throw new Error(`ViduProvider 不支持的视频能力: ${params.capability}`);
   }
 
+  private async readResponsePreview(response: Response): Promise<string | undefined> {
+    try {
+      const text = await response.clone().text();
+      return text ? truncateString(text, 2000) : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
   async testConnection(): Promise<boolean> {
     if (!this.validate()) return false;
     try {
@@ -234,27 +414,113 @@ export class ViduProvider implements ITVProvider {
   }
 
   async start(request: ITVRequest): Promise<ProviderStartResult<ITVResult>> {
+    const traceContext = readVideoTraceContext(request);
     if (!this.validate()) {
+      logger.error('Vidu 配置缺失，无法提交任务', {
+        traceId: traceContext?.traceId,
+        provider: this.config.provider,
+        capability: request.capability,
+      });
       throw new Error('Vidu baseUrl、API Key 或模型名称未配置');
     }
 
-    const { path, body } = this.buildRequest(request);
-    const response = await safeFetch(joinUrl(this.config.baseUrl || '', path), {
-      method: 'POST',
-      headers: this.getHeaders(),
-      body: JSON.stringify(body),
+    logger.info('Vidu 开始提交视频任务', {
+      traceId: traceContext?.traceId,
+      provider: this.config.provider,
+      capability: request.capability,
+      model: this.getModelId(),
+      request: summarizeVideoRequestForLog(request),
     });
 
-    if (!response.ok) {
-      const errorText = await response.text().catch(() => '');
-      throw new Error(errorText || `Vidu 请求失败 (${response.status})`);
+    const attempt = async (variant: 'default' | 'compat-406') => {
+      const { path, body } = this.buildRequest(request, variant);
+      const url = joinUrl(this.config.baseUrl || '', path);
+
+      logger.info('Vidu 提交请求', {
+        traceId: traceContext?.traceId,
+        variant,
+        url,
+        path,
+        capability: request.capability,
+        body: sanitizeBodyForLog(body),
+      });
+
+      let response: Response;
+      try {
+        response = await safeFetch(url, {
+          method: 'POST',
+          headers: this.getHeaders(request),
+          body: JSON.stringify(body),
+        });
+      } catch (error) {
+        logger.error('Vidu 提交请求异常', {
+          traceId: traceContext?.traceId,
+          variant,
+          url,
+          path,
+          error: error instanceof Error ? error.message : String(error),
+          body: sanitizeBodyForLog(body),
+        });
+        throw error;
+      }
+
+      const responsePreview = !response.ok ? await this.readResponsePreview(response) : undefined;
+      logger.info('Vidu 提交响应', {
+        traceId: traceContext?.traceId,
+        variant,
+        url,
+        path,
+        status: response.status,
+        ok: response.ok,
+        responsePreview,
+      });
+
+      return { path, url, body, response, responsePreview, variant };
+    };
+
+    let finalAttempt = await attempt('default');
+    if (finalAttempt.response.status === 406) {
+      const compatRequest = this.buildRequest(request, 'compat-406');
+      logger.warn('Vidu 返回 406，尝试兼容重试', {
+        traceId: traceContext?.traceId,
+        provider: this.config.provider,
+        capability: request.capability,
+        defaultPath: finalAttempt.path,
+        defaultResponsePreview: finalAttempt.responsePreview,
+        defaultBody: sanitizeBodyForLog(finalAttempt.body),
+        compatBody: sanitizeBodyForLog(compatRequest.body),
+      });
+      finalAttempt = await attempt('compat-406');
     }
 
-    const payload = await response.json().catch(() => ({}));
+    if (!finalAttempt.response.ok) {
+      const errorText = await finalAttempt.response.text().catch(() => '');
+      logger.error('Vidu 提交失败', {
+        traceId: traceContext?.traceId,
+        provider: this.config.provider,
+        capability: request.capability,
+        variant: finalAttempt.variant,
+        url: finalAttempt.url,
+        path: finalAttempt.path,
+        status: finalAttempt.response.status,
+        responsePreview: finalAttempt.responsePreview,
+        body: sanitizeBodyForLog(finalAttempt.body),
+      });
+      throw new Error(errorText || `Vidu 请求失败 (${finalAttempt.response.status})`);
+    }
+
+    const payload = await finalAttempt.response.json().catch(() => ({}));
     const taskId = findTaskId(payload);
     if (!taskId) {
       const source = findVideoSource(payload);
       if (source) {
+        logger.info('Vidu 返回即时视频结果', {
+          traceId: traceContext?.traceId,
+          provider: this.config.provider,
+          capability: request.capability,
+          variant: finalAttempt.variant,
+          source,
+        });
         return {
           mode: 'immediate',
           output: {
@@ -263,8 +529,23 @@ export class ViduProvider implements ITVProvider {
           },
         };
       }
+      logger.error('Vidu 返回缺少任务 ID', {
+        traceId: traceContext?.traceId,
+        provider: this.config.provider,
+        capability: request.capability,
+        variant: finalAttempt.variant,
+        payload: sanitizeBodyForLog(payload),
+      });
       throw new Error('Vidu 返回中缺少任务 ID');
     }
+
+    logger.info('Vidu 任务提交成功', {
+      traceId: traceContext?.traceId,
+      provider: this.config.provider,
+      capability: request.capability,
+      variant: finalAttempt.variant,
+      taskId,
+    });
 
     return {
       mode: 'async',
@@ -277,8 +558,15 @@ export class ViduProvider implements ITVProvider {
       throw new Error('Vidu baseUrl 或 API Key 未配置');
     }
 
+    const url = joinUrl(this.config.baseUrl || '', `/vidu/v2/tasks/${encodeURIComponent(taskId)}/creations`);
+    logger.info('Vidu 查询任务状态', {
+      taskId,
+      url,
+      provider: this.config.provider,
+    });
+
     const response = await safeFetch(
-      joinUrl(this.config.baseUrl || '', `/vidu/v2/tasks/${encodeURIComponent(taskId)}/creations`),
+      url,
       {
         method: 'GET',
         headers: this.getHeaders(),
@@ -287,6 +575,13 @@ export class ViduProvider implements ITVProvider {
 
     if (!response.ok) {
       const errorText = await response.text().catch(() => '');
+      logger.error('Vidu 查询任务失败', {
+        taskId,
+        url,
+        provider: this.config.provider,
+        status: response.status,
+        responsePreview: truncateString(errorText, 2000),
+      });
       throw new Error(errorText || `Vidu 查询任务失败 (${response.status})`);
     }
 
@@ -295,15 +590,38 @@ export class ViduProvider implements ITVProvider {
     const progress = findProgress(payload);
     const source = findVideoSource(payload);
 
+    logger.info('Vidu 任务状态已解析', {
+      taskId,
+      url,
+      provider: this.config.provider,
+      state,
+      progress,
+      hasSource: Boolean(source),
+    });
+
     if (state === 'failed') {
+      const errorMessage = findNestedString(payload, (key, value) => key.toLowerCase() === 'message' && value.trim().length > 0) || 'Vidu 任务失败';
+      logger.error('Vidu 任务执行失败', {
+        taskId,
+        provider: this.config.provider,
+        state,
+        progress,
+        error: errorMessage,
+        payload: sanitizeBodyForLog(payload),
+      });
       return {
         state: 'failed',
         progress,
-        error: findNestedString(payload, (key, value) => key.toLowerCase() === 'message' && value.trim().length > 0) || 'Vidu 任务失败',
+        error: errorMessage,
       };
     }
 
     if (state === 'succeeded' && source) {
+      logger.info('Vidu 任务已产出视频', {
+        taskId,
+        provider: this.config.provider,
+        source,
+      });
       return {
         state: 'succeeded',
         progress: progress ?? 100,

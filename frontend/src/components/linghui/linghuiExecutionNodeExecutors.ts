@@ -283,7 +283,7 @@ export async function executeVideoNode(
   const videoCapability = (node.properties.videoCapability ?? 'video.text-to-video') as LinghuiVideoCapability;
   const duration = Number(node.properties.duration ?? 5);
   const aspectRatio = String(node.properties.aspectRatio ?? '16:9');
-  const resolution = String(node.properties.resolution ?? '720P');
+  const resolution = String(node.properties.resolution ?? '720p');
 
   if (source) {
     return {
