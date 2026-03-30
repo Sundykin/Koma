@@ -495,16 +495,35 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
         const historyResults = await Promise.allSettled(historyCandidates.map(async ([nodeId, runState]) => {
           const nodeSnapshot = nodeSnapshotMap.get(nodeId);
           if (!nodeSnapshot) return null;
-          return createLinghuiWorkspaceHistoryRecord({
+          const result = await createLinghuiWorkspaceHistoryRecord({
             workspaceId: current.id,
             nodeId,
             nodeData: nodeSnapshot.data,
             nodeRun: runState,
           });
+          return { nodeId, ...result };
         }));
 
-        if (historyResults.some(result => result.status === 'fulfilled' && result.value)) {
+        let hasHistoryMutate = false;
+        let hasRunMaterialization = false;
+
+        for (const outcome of historyResults) {
+          if (outcome.status !== 'fulfilled' || !outcome.value) continue;
+          hasHistoryMutate = true;
+          if (outcome.value.materializedRun) {
+            nextRuns = {
+              ...nextRuns,
+              [outcome.value.nodeId]: outcome.value.materializedRun,
+            };
+            hasRunMaterialization = true;
+          }
+        }
+
+        if (hasHistoryMutate) {
           handleHistoryLibraryMutate();
+        }
+        if (hasRunMaterialization) {
+          updateWorkspaceExecution(nextRuns, nextLogs);
         }
       }
 

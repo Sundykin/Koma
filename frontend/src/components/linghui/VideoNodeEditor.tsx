@@ -77,8 +77,10 @@ export const VideoNodeEditor: React.FC<VideoNodeEditorProps> = ({
   const previewSource = getPreviewSource(source);
   const uploadedPoster = getPreviewSource(posterSource);
   const isUploadMode = Boolean(source.trim());
-  const resultVideoSource = getPreviewSource(nodeRun?.result?.primary?.source);
-  const resultPosterSource = getPreviewSource(nodeRun?.result?.primary?.posterSource);
+  const rawResultVideoSource = String(nodeRun?.result?.primary?.source ?? '').trim();
+  const rawResultPosterSource = String(nodeRun?.result?.primary?.posterSource ?? '').trim();
+  const resultVideoSource = getPreviewSource(rawResultVideoSource);
+  const resultPosterSource = getPreviewSource(rawResultPosterSource);
 
   const [providers, setProviders] = useState<ProviderOption[]>([]);
   const [fallbackSelectionKey, setFallbackSelectionKey] = useState('');
