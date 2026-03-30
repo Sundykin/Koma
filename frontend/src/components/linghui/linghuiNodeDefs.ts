@@ -22,14 +22,14 @@ interface CreateNewNodeDataOptions {
 }
 
 export const NODE_META: Record<LinghuiNodeType, LinghuiNodeMeta> = {
-  'linghui/reference': {
-    type: 'linghui/reference',
-    title: '参考图',
-    desc: '拖入或上传参考图，作为上游图片输入',
+  'linghui/text': {
+    type: 'linghui/text',
+    title: '文本',
+    desc: '手动输入文本，或调用 LLM 生成文本块',
     catalogCategory: 'creation',
-    catalogLabel: '参考图节点',
-    catalogDescription: '挂载本地图片或素材图，输出单张参考图',
-    accent: '#38bdf8',
+    catalogLabel: '文本节点',
+    catalogDescription: '输入角色设定、剧情描述、镜头说明等文本内容',
+    accent: '#f59e0b',
     background: '#0f1720',
   },
   'linghui/image': {
@@ -45,31 +45,31 @@ export const NODE_META: Record<LinghuiNodeType, LinghuiNodeMeta> = {
   'linghui/video': {
     type: 'linghui/video',
     title: '视频',
-    desc: '统一视频生成节点，支持全能参考/首尾帧',
+    desc: '统一视频生成节点，支持文生、图生、参考生和首尾帧',
     catalogCategory: 'creation',
     catalogLabel: '视频节点',
-    catalogDescription: '生成视频，支持多种参考模式',
+    catalogDescription: '生成视频，按模型能力切换不同视频模式',
     accent: '#22c55e',
     background: '#0f1720',
   },
-  'linghui/storyboard-shot': {
-    type: 'linghui/storyboard-shot',
-    title: '分镜',
-    desc: '管理单个分镜内容与时长',
-    catalogCategory: 'storyboard',
-    catalogLabel: '分镜节点',
-    catalogDescription: '描述单个镜头内容与时长',
-    accent: '#2dd4bf',
+  'linghui/audio': {
+    type: 'linghui/audio',
+    title: '音频',
+    desc: '统一音频节点，支持上传音频或文本转语音',
+    catalogCategory: 'creation',
+    catalogLabel: '音频节点',
+    catalogDescription: '上传音频或生成语音，输出音频产物',
+    accent: '#f97316',
     background: '#0f1720',
   },
-  'linghui/storyboard-group': {
-    type: 'linghui/storyboard-group',
-    title: '分镜组',
-    desc: '串联多个分镜形成序列',
+  'linghui/script': {
+    type: 'linghui/script',
+    title: '脚本',
+    desc: '生成结构化脚本，并批量派生镜头文本、图片和视频',
     catalogCategory: 'storyboard',
-    catalogLabel: '分镜组节点',
-    catalogDescription: '聚合多个分镜节点形成序列',
-    accent: '#facc15',
+    catalogLabel: '脚本节点',
+    catalogDescription: '生成或整理剧情脚本，输出结构化分镜序列',
+    accent: '#a78bfa',
     background: '#0f1720',
   },
 };
@@ -78,60 +78,104 @@ export const SLOT_TYPE_LABELS: Record<LinghuiSlotDataType, string> = {
   image: '图片',
   text: '文本',
   video: '视频',
+  audio: '音频',
   images: '多图',
   shot: '分镜',
   storyboard: '分镜序列',
 };
 
 export const NODE_SLOT_LAYOUTS: Record<LinghuiNodeType, { inputs: LinghuiSlotDef[]; outputs: LinghuiSlotDef[] }> = {
-  'linghui/reference': {
-    inputs: [],
-    outputs: [{ name: 'reference', dataType: 'image' }],
+  'linghui/text': {
+    inputs: [
+      { name: '图片参考', dataType: 'image' },
+      { name: '文本输入', dataType: 'text' },
+      { name: '视频参考', dataType: 'video' },
+      { name: '音频参考', dataType: 'audio' },
+    ],
+    outputs: [{ name: 'text', dataType: 'text' }],
   },
   'linghui/image': {
-    inputs: [{ name: '参考', dataType: 'image' }],
+    inputs: [
+      { name: '参考', dataType: 'image' },
+      { name: '文本', dataType: 'text' },
+    ],
     outputs: [{ name: 'image', dataType: 'image' }],
   },
   'linghui/video': {
-    inputs: [{ name: '参考', dataType: 'image' }],
+    inputs: [
+      { name: '参考', dataType: 'image' },
+      { name: '文本', dataType: 'text' },
+      { name: '音频', dataType: 'audio' },
+      { name: '视频', dataType: 'video' },
+    ],
     outputs: [{ name: 'video', dataType: 'video' }],
   },
-  'linghui/storyboard-shot': {
+  'linghui/audio': {
     inputs: [
-      { name: 'image', dataType: 'image' },
-      { name: 'prompt', dataType: 'text' },
+      { name: '图片参考', dataType: 'image' },
+      { name: '文本输入', dataType: 'text' },
+      { name: '视频参考', dataType: 'video' },
+      { name: '音频参考', dataType: 'audio' },
     ],
-    outputs: [{ name: 'shot', dataType: 'shot' }],
+    outputs: [{ name: 'audio', dataType: 'audio' }],
   },
-  'linghui/storyboard-group': {
-    inputs: [{ name: '分镜 1', dataType: 'shot' }],
-    outputs: [{ name: 'sequence', dataType: 'storyboard' }],
+  'linghui/script': {
+    inputs: [
+      { name: '图片参考', dataType: 'image' },
+      { name: '文本设定', dataType: 'text' },
+      { name: '视频参考', dataType: 'video' },
+    ],
+    outputs: [
+      { name: 'script', dataType: 'text' },
+      { name: 'storyboard', dataType: 'storyboard' },
+    ],
   },
 };
 
 export const NODE_PROPERTY_DEFAULTS: Record<LinghuiNodeType, Record<string, unknown>> = {
-  'linghui/reference': {
-    source: '',
-    note: '',
+  'linghui/text': {
+    mode: 'manual',
+    content: '',
+    prompt: '',
+    systemPrompt: '',
+    llmSelection: '',
   },
   'linghui/image': {
+    mode: 'generate',
+    source: '',
+    items: [],
+    primaryAssetId: '',
+    primaryResultSource: '',
     prompt: '',
-    ttiConfigId: '',
+    ttiSelection: '',
     aspectRatio: '3:4',
     resolution: 'auto',
     gridType: 'none',
-    batchCount: 4,
+    batchCount: 1,
   },
   'linghui/video': {
     prompt: '',
-    itvConfigId: '',
-    refMode: 'all-ref',
+    itvSelection: '',
+    source: '',
+    posterSource: '',
+    videoCapability: 'video.text-to-video',
     aspectRatio: '16:9',
-    resolution: '720P',
+    resolution: '720p',
     duration: 5,
   },
-  'linghui/storyboard-shot': { description: '', duration: 3 },
-  'linghui/storyboard-group': { title: '场景序列', notes: '' },
+  'linghui/audio': {
+    source: '',
+    prompt: '',
+    ttsSelection: '',
+  },
+  'linghui/script': {
+    mode: 'manual',
+    content: '',
+    prompt: '',
+    systemPrompt: '',
+    llmSelection: '',
+    viewMode: 'cards',
+  },
 };
 
 export const LINGHUI_NODE_CATALOG: LinghuiNodeCatalogItem[] = Object.values(NODE_META).map(meta => ({
@@ -220,6 +264,7 @@ export function createNewNodeData(type: LinghuiNodeType, options?: CreateNewNode
     label: options?.label?.trim() || meta.title,
     accent: meta.accent,
     background: meta.background,
+    viewMode: 'light',
     properties: { ...defaults },
     inputs: slots.inputs.map(s => ({ ...s })),
     outputs: slots.outputs.map(s => ({ ...s })),

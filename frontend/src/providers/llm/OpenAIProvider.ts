@@ -18,11 +18,20 @@ export class OpenAIProvider implements LLMProvider {
     this.config = config;
   }
 
+  private getModelName(): string {
+    const value = String(this.config.modelName || '').trim();
+    if (!value) {
+      throw new Error('模型名称未配置');
+    }
+    return value;
+  }
+
   validate(): boolean {
-    return !!this.config.apiKey && this.config.apiKey.length > 0;
+    return Boolean(this.config.apiKey && this.config.apiKey.length > 0 && String(this.config.modelName || '').trim());
   }
 
   async testConnection(): Promise<boolean> {
+    if (!this.validate()) return false;
     try {
       const response = await safeFetch(
         `${this.config.baseUrl || 'https://api.openai.com/v1'}/models`,
@@ -45,7 +54,7 @@ export class OpenAIProvider implements LLMProvider {
     const baseUrl = this.config.baseUrl || 'https://api.openai.com/v1';
     const url = `${baseUrl}/chat/completions`;
     const traceId = options?.traceId;
-    const model = this.config.modelName || 'gpt-4';
+    const model = this.getModelName();
     const useStream = options?.stream ?? false;
 
     logger.info('发起 OpenAI Chat 请求', {

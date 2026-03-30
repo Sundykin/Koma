@@ -28,6 +28,9 @@ export interface StoredMediaAsset {
   fps?: number;
   provider?: string;
   providerTaskId?: string;
+  channelId?: string;
+  modelId?: string;
+  capability?: string;
   metadata?: Record<string, unknown>;
   createdAt: number;
 }
@@ -72,10 +75,20 @@ export interface TTIRequest<TAsset = ProviderAssetInput, TOptions = Record<strin
   options?: TOptions;
 }
 
+export type VideoGenerationCapability =
+  | 'video.text-to-video'
+  | 'video.image-to-video'
+  | 'video.reference-to-video'
+  | 'video.start-end-to-video';
+
 export interface ITVRequest<TAsset = ProviderAssetInput, TOptions = Record<string, unknown>> {
+  capability: VideoGenerationCapability;
   prompt: string;
-  primaryImage: TAsset;
+  primaryImage?: TAsset;
   additionalReferences?: TAsset[];
+  referenceImages?: TAsset[];
+  startFrame?: TAsset;
+  endFrame?: TAsset;
   options?: TOptions;
 }
 
@@ -113,6 +126,58 @@ export interface ShotVersionMediaState {
   image?: StoredMediaAsset;
   video?: StoredMediaAsset;
   audio?: StoredMediaAsset;
+}
+
+export function isTextToVideoRequest<TAsset, TOptions>(
+  request: ITVRequest<TAsset, TOptions>
+): request is ITVRequest<TAsset, TOptions> & { capability: 'video.text-to-video' } {
+  return request.capability === 'video.text-to-video';
+}
+
+export function isImageToVideoRequest<TAsset, TOptions>(
+  request: ITVRequest<TAsset, TOptions>
+): request is ITVRequest<TAsset, TOptions> & {
+  capability: 'video.image-to-video';
+  primaryImage: TAsset;
+} {
+  return request.capability === 'video.image-to-video';
+}
+
+export function isReferenceToVideoRequest<TAsset, TOptions>(
+  request: ITVRequest<TAsset, TOptions>
+): request is ITVRequest<TAsset, TOptions> & {
+  capability: 'video.reference-to-video';
+  referenceImages: TAsset[];
+} {
+  return request.capability === 'video.reference-to-video';
+}
+
+export function isStartEndToVideoRequest<TAsset, TOptions>(
+  request: ITVRequest<TAsset, TOptions>
+): request is ITVRequest<TAsset, TOptions> & {
+  capability: 'video.start-end-to-video';
+  startFrame: TAsset;
+  endFrame: TAsset;
+} {
+  return request.capability === 'video.start-end-to-video';
+}
+
+export function getITVRequestReferenceAssets<TAsset, TOptions>(
+  request: ITVRequest<TAsset, TOptions>
+): TAsset[] {
+  if (isReferenceToVideoRequest(request)) {
+    return request.referenceImages;
+  }
+  if (isImageToVideoRequest(request)) {
+    return [
+      request.primaryImage,
+      ...(request.additionalReferences || []),
+    ];
+  }
+  if (isStartEndToVideoRequest(request)) {
+    return [request.startFrame, request.endFrame];
+  }
+  return [];
 }
 
 export function isRemoteMediaUri(value?: string): boolean {

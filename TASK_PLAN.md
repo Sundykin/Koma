@@ -1,74 +1,135 @@
-# Koma Studio Bug 修复任务计划
+# 任務計畫：灵绘节点编辑弹窗融合重构
 
-**最后更新**: 2026-02-03 10:40
+## 目標
+完成灵绘节点编辑弹窗的首轮实现：让轻编辑态围绕节点展开，图片/视频节点按模式裁剪，工具能力独立成次级面板，并让提示词编辑器与弹窗背景更融合。
+
+## 目前階段
+階段 5
+
+## 各階段
+
+### 階段 1：现状梳理与约束确认
+- [x] 阅读 OpenSpec 约束、项目上下文和现有规划文件
+- [x] 检查当前灵绘节点编辑器、图片节点、视频节点和提示词编辑器实现
+- [x] 记录当前弹窗布局、模式耦合和视觉割裂问题
+- **狀態：** completed
+
+### 階段 2：变更提案与规范编写
+- [x] 选定新的 change-id 并创建 proposal、design、tasks、spec delta
+- [x] 把“上下双区编辑态、模式裁剪、工具独立化、提示词融合”写入规范
+- [x] 同步更新 findings.md 和 progress.md
+- **狀態：** completed
+
+### 階段 3：规范校验与交付
+- [x] 运行 `openspec validate update-linghui-node-editor-fusion --strict`
+- [x] 修正可能的格式问题
+- [x] 输出本次变更的中文结论与后续实现入口
+- **狀態：** completed
+
+### 階段 4：节点编辑弹窗实施
+- [x] 重构 `LinghuiNodeEditor` 的轻编辑态布局与避让逻辑
+- [x] 重构图片和视频节点的模式化编辑内容
+- [x] 拆出图片/视频工具的独立次级面板
+- [x] 调整提示词编辑器在节点弹窗中的视觉样式
+- **狀態：** completed
+
+### 階段 5：实现验证与收尾
+- [x] 运行 `pnpm -s exec tsc --noEmit --pretty false -p frontend/tsconfig.json`
+- [x] 在 `frontend/` 下运行 `pnpm exec vite build`
+- [ ] 补做实际交互层面的手工视口验证
+- **狀態：** in_progress
+
+## 關鍵問題
+1. 如何让轻编辑态围绕节点展开，而不是继续遮挡节点主体？
+2. 图片/视频节点哪些内容必须按模式裁剪，才能减少无效操作？
+3. 工具能力和提示词编辑器应该怎样融入弹窗，才能更接近画布原生体验？
+
+## 已做決策
+| 決策 | 理由 |
+|------|------|
+| 本轮先创建新的 OpenSpec change，而不是直接实现 | 用户明确要求“制定变更”，当前需要先收敛方案 |
+| 为本次需求单独新增 `linghui-studio` change，而不是并入通用 UI spec | 需求集中在灵绘画布节点编辑态，领域语义明确 |
+| 不沿用旧 LiteGraph 时期“去掉浮动面板”的方案 | 当前实现已切到 React Flow，问题变成浮层空间关系和内容裁剪 |
+| 实现阶段优先在现有组件内重构布局，而不是继续新增节点类型或改执行引擎 | 用户当前关注的是编辑体验和画布融合感，非执行链扩展 |
+
+## 遇到的錯誤
+| 錯誤 | 嘗試次數 | 解決方案 |
+|------|---------|---------|
+| 现有规划文件仍停留在上一轮 LibTV 对标任务 | 1 | 重写为本次节点编辑弹窗变更提案的任务计划 |
+| 仓库根目录全量 `tsc` 被 `electron/` 侧既有未使用变量和 IPC 类型问题阻塞 | 1 | 改用 `frontend/tsconfig.json` 做前端局部类型校验，并在 `frontend/` 下执行 Vite 构建 |
+
+## 備註
+- 当前 `openspec/changes` 里没有活动变更，本次会新建独立 change。
+- 用户给出的参考方向是“围绕节点的上方工具条 + 下方编辑区”，需要写入设计决策而不是泛化成普通弹窗优化。
 
 ---
 
-## 📊 进度统计
+# 任務計畫：灵绘图片节点多图集合与宫格切分
 
-- 总任务数: 18
-- ✅ 已完成: 14 (78%)
-- 🔄 进行中: 4
-- ⏳ 待开始: 0
+## 目標
+完成灵绘图片节点的多图集合升级：支持最多 4 张同一比例图片的导入与生成、主图切换、节点内平铺展示，并补齐 4/9/16/25 宫格切分 + FFmpeg 高清化 + 自动生成图片节点的工作流。
 
----
+## 目前階段
+階段 6
 
-## 🔄 当前进行中
+## 各階段
 
-| ID | 任务 | 执行者 | 状态 |
-|----|------|--------|------|
-| P6-i18n | 国际化 components/project | Claude | 进行中 |
-| P1-TS | 修复 TypeScript 错误 (ChatSession.ts) | Gemini | 刚派发 |
-| P3-1 | 代码清理 (删除 console.log) | Codex | 刚派发 |
+### 階段 1：上下文梳理与方案收敛
+- [x] 阅读 OpenSpec 约束、项目规划文件和当前灵绘图片节点实现
+- [x] 检查图片节点类型、节点编辑器、提示词引用、执行链与 FFmpeg IPC 现状
+- [x] 明确本轮采用“多图集合 + 主图指针 + 宫格工具独立化”的实现方向
+- **狀態：** completed
 
----
+### 階段 2：OpenSpec 变更补齐
+- [x] 新建 `add-linghui-image-batches-and-grid-split` change
+- [x] 编写 proposal / design / tasks / spec delta
+- [x] 运行 `openspec validate add-linghui-image-batches-and-grid-split --strict`
+- **狀態：** completed
 
-## ✅ 已完成
+### 階段 3：图片节点数据模型与消费链路
+- [x] 扩展图片节点属性，支持多图导入集合、主图选择和生成结果主图映射
+- [x] 提供统一 helper，给节点预览、提示词引用和执行链路复用
+- [x] 保证下游只消费主图
+- **狀態：** completed
 
-| ID | 任务 | 执行者 | 完成时间 |
-|----|------|--------|----------|
-| P0-1 | FFmpeg 视频导出 | Claude | 00:22 |
-| P0-2 | Kling Provider | Codex | 00:50 |
-| P0-3 | Runway Provider | Codex | 00:50 |
-| P0-4 | Edge TTS | Gemini | 00:31 |
-| P0-5 | OpenAI TTS 文件保存 | Gemini | 00:51 |
-| P0-6 | ComfyUI TTI | Codex | 00:55 |
-| P0-7 | TTS 连接测试 | Gemini | 00:55 |
-| P0-8 | ITV 连接测试 | Codex | 01:09 |
-| P0-9 | TTI 连接测试 | Claude | 00:51 |
-| P1-2 | OpenAIAdapter 类型 | Claude | 00:26 |
-| P1-3 | DSL 转换类型 | Claude | 01:09 |
-| P1-4 | MCP 工具审批 | Claude | 00:31 |
-| P2-1 | 统一错误处理 | Claude | 00:55 |
-| P1-1 | PlaybackEngine 类型 | Gemini | 01:10 |
+### 階段 4：图片节点 UI 与交互
+- [x] 重构 `ImageNodeEditor`，支持多图上传、主图切换、比例校验和批量生成
+- [x] 重构 `ImageNode` 卡片，支持多图展开平铺和轻量动画
+- [x] 在节点编辑态中展示当前集合与宫格工具入口
+- **狀態：** completed
 
----
+### 階段 5：宫格切分工具与画布回写
+- [x] 扩展 FFmpeg IPC 到 NxN 切分与选中格子高清化
+- [x] 实现宫格预览、多选和执行流程
+- [x] 自动在画布中生成对应数量的导入图片节点
+- **狀態：** completed
 
-## 📝 任务分配原则
+### 階段 6：验证与收尾
+- [x] 运行 `pnpm -s exec tsc --noEmit --pretty false -p frontend/tsconfig.json`
+- [ ] 补充必要的交互验证
+- [x] 更新 planning 文件与任务状态
+- **狀態：** in_progress
 
-- **Claude** (WSL): 中文相关、i18n、文档
-- **Gemini** (Windows): 英文代码、类型修复、架构分析
-- **Codex** (Windows): 代码清理、测试、优化
+## 關鍵問題
+1. 如何在不破坏现有单图兼容性的前提下，把图片节点升级为最多 4 张图片的集合？
+2. 如何让“主图”同时影响节点展示、提示词引用和下游执行，而不引入行为分裂？
+3. 如何复用现有 FFmpeg 能力，把宫格切分升级成 4/9/16/25 且可多选、可自动回写画布的流程？
 
----
+## 已做決策
+| 決策 | 理由 |
+|------|------|
+| 为本轮能力单独新增 `add-linghui-image-batches-and-grid-split` change | 这是新的图片节点能力集，不应混入节点弹窗变更 |
+| 下游只消费图片节点主图 | 保持引用和执行语义稳定，避免多图自动扩散造成顺序混乱 |
+| 多张生成与宫格切分解耦 | “生成 4 张图”和“把一张图切成 4/9/16/25 块”是两类不同工作流 |
+| 宫格切分始终基于当前主图执行 | 用户心智更清晰，也减少多图节点下的歧义 |
 
-## 📝 巡检日志
+## 遇到的錯誤
+| 錯誤 | 嘗試次數 | 解決方案 |
+|------|---------|---------|
+| 当前 `openspec/specs` 中没有正式落地的 `linghui-studio` spec | 1 | 参考归档与活跃 change，在本轮变更中继续用 `linghui-studio` delta 组织需求 |
+| `useLinghuiCanvasDocumentOps.ts` 仍从旧 shared 模块引用 `createLinghuiImageImportProperties` | 1 | 改为直接从 `linghuiImageCollections.ts` 引入，恢复前端类型检查 |
+| 宫格切分工具结构已经接入编辑器，但缺少独立样式且选择提示不完整 | 1 | 补齐网格预览/分割线/状态样式，并把“未单选时默认全选”的提示显式化 |
 
-### 10:40 巡检 (技术总监主动分析)
-- 分析项目状态，发现 TypeScript 错误和 273 个 console.log
-- Claude: 继续 i18n (components/project 目录)
-- Gemini: 修复 TypeScript 错误 (ChatSession.ts)
-- Codex: 代码清理 (删除 console.log)
-
----
-
-## 2026-03-26 附加计划：灵绘独立菜单提案
-
-- **目标：** 产出“灵绘”独立菜单功能的 OpenSpec 规划文档，明确 MVP 与后续迭代边界；本轮不实现代码。
-- **当前阶段：** 方案与规范编写
-- **输出物：** `openspec/changes/add-linghui-canvas-studio/` 下的 `proposal.md`、`design.md`、`tasks.md` 与 spec deltas
-- **当前判断：**
-  - 首版应作为内建一级菜单，而不是全局插件
-  - 数据模型应独立于现有 `Project / Episode`
-  - MVP 聚焦画布、分组、基础节点、4 宫格、多角度、分镜组、预览导出
-  - 运镜节点、9 宫格、自定义角度和视频后处理进入后续迭代
+## 備註
+- 当前仓库有较多未提交的灵绘改动，本轮只在相关文件上增量修改。
+- 宫格切分会优先复用现有 FFmpeg IPC 能力，不额外引入新的图像服务依赖。

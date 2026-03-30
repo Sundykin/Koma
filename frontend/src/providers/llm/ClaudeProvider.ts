@@ -30,7 +30,7 @@ export class ClaudeProvider implements LLMProvider {
   }
 
   validate(): boolean {
-    return !!this.config.apiKey && this.config.apiKey.length > 0;
+    return Boolean(this.config.apiKey && this.config.apiKey.length > 0 && String(this.config.modelName || '').trim());
   }
 
   private get baseUrl(): string {
@@ -38,10 +38,15 @@ export class ClaudeProvider implements LLMProvider {
   }
 
   private get modelName(): string {
-    return this.config.modelName || 'claude-sonnet-4-20250514';
+    const value = String(this.config.modelName || '').trim();
+    if (!value) {
+      throw new Error('模型名称未配置');
+    }
+    return value;
   }
 
   async testConnection(): Promise<boolean> {
+    if (!this.validate()) return false;
     try {
       const response = await safeFetch(`${this.baseUrl}/v1/messages`, {
         method: 'POST',

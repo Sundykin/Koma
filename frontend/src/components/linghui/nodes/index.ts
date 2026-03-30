@@ -1,23 +1,27 @@
-import { ReferenceNode } from './ReferenceNode';
 import type { NodeTypes } from '@xyflow/react';
+import { TextNode } from './TextNode';
 import { ImageNode } from './ImageNode';
 import { VideoNode } from './VideoNode';
-import { StoryboardShotNode } from './StoryboardShotNode';
-import { StoryboardGroupNode } from './StoryboardGroupNode';
+import { AudioNode } from './AudioNode';
+import { ScriptNode } from './ScriptNode';
 import { CanvasGroupNode } from './CanvasGroupNode';
 
 export const linghuiNodeTypes: NodeTypes = {
   group: CanvasGroupNode,
-  'linghui-reference': ReferenceNode,
+  'linghui-text': TextNode,
   'linghui-image': ImageNode,
   'linghui-video': VideoNode,
-  'linghui-storyboard-shot': StoryboardShotNode,
-  'linghui-storyboard-group': StoryboardGroupNode,
+  'linghui-audio': AudioNode,
+  'linghui-script': ScriptNode,
 };
 
 export {
   LinghuiNodeRunsContext,
+  LinghuiGroupRunsContext,
   LinghuiConnectionErrorContext,
+  LinghuiExecutionTraceContext,
   LinghuiNodeMutationContext,
   LinghuiNodeInteractionContext,
+  LinghuiGridSplitContext,
+  LinghuiNodeEditorContext,
 } from './LinghuiNodeRunsContext';

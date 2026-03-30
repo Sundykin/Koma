@@ -2,6 +2,7 @@ import React, { type PropsWithChildren } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import type { LinghuiNodeData, LinghuiRunStatus } from '../../../types/linghui';
 import { useLinghuiNodeInteraction, useNodeRunState } from './LinghuiNodeRunsContext';
+import { resolveLinghuiNodeViewMode } from '../linghuiNodeViewMode';
 
 const STATUS_COLORS: Record<LinghuiRunStatus, string> = {
   idle: '#64748b',
@@ -44,10 +45,12 @@ export const LinghuiNodeShell: React.FC<PropsWithChildren<LinghuiNodeShellProps>
   const statusColor = STATUS_COLORS[status] ?? STATUS_COLORS.idle;
   const statusMeta = getStatusMeta(status, runState?.progress);
   const borderColor = status !== 'idle' ? statusColor : (selected ? data.accent : 'rgba(63, 63, 70, 0.9)');
+  const viewMode = resolveLinghuiNodeViewMode(data.viewMode);
 
   return (
     <div
-      className={`linghuiRFNode nopan ${selected ? 'isSelected' : ''}`}
+      className={`linghuiRFNode nopan ${selected ? 'isSelected' : ''} ${viewMode === 'collapsed' ? 'isCollapsed' : ''}`}
+      data-view-mode={viewMode}
       style={{
         background: data.background,
         borderColor,

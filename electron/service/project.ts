@@ -18,6 +18,11 @@ export interface ProjectStyleSnapshot {
   createdAt: number;
 }
 
+export interface MediaModelSelection {
+  channelId: string;
+  modelId: string;
+}
+
 export interface ProjectMeta {
   id: string;
   title: string;
@@ -28,10 +33,7 @@ export interface ProjectMeta {
   episodes?: number;
   createdAt: number;
   updatedAt: number;
-  llmConfigId?: string;
-  ttiConfigId?: string;
-  itvConfigId?: string;
-  ttsConfigId?: string;
+  mediaSelections?: Partial<Record<'llm' | 'tti' | 'itv' | 'tts', MediaModelSelection>>;
   stylePresetId?: string;
   styleSnapshot?: ProjectStyleSnapshot;
   theme?: string;

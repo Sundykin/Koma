@@ -1,9 +1,21 @@
 import React, { memo } from 'react';
 import { Handle, Position, type NodeProps } from '@xyflow/react';
-import type { LinghuiNodeData, LinghuiRunStatus } from '../../../types/linghui';
-import { useNodeRunState, useLinghuiNodeInteraction } from './LinghuiNodeRunsContext';
+import type {
+  LinghuiNodeData,
+  LinghuiRunStatus,
+  LinghuiVideoNodeProperties,
+} from '../../../types/linghui';
+import {
+  useNodeRunState,
+  useLinghuiNodeInteraction,
+  useLinghuiNodeEditorVisibility,
+} from './LinghuiNodeRunsContext';
+import { LinghuiNodeEditor } from '../LinghuiNodeEditor';
 import { electronService } from '../../../services/electronService';
 import { EditableCompactNodeLabel } from './EditableCompactNodeLabel';
+import { resolveLinghuiNodeViewMode } from '../linghuiNodeViewMode';
+import { resolveMediaCardSize } from './linghuiNodeCardSizing';
+import { getVideoCapabilityDescriptor } from '../videoCapabilityUtils';
 
 const STATUS_COLORS: Record<LinghuiRunStatus, string> = {
   idle: '#64748b',
@@ -19,30 +31,76 @@ function getPreviewSource(source?: string): string {
   return electronService.fs.toLocalUrl(source);
 }
 
+function resolveHandleTop(index: number, total: number): string {
+  if (total <= 1) return '50%';
+  const step = 100 / (total + 1);
+  return `${step * (index + 1)}%`;
+}
+
+function getHandleColor(dataType: LinghuiNodeData['inputs'][number]['dataType'], accent: string): string {
+  switch (dataType) {
+    case 'text':
+      return '#f59e0b';
+    case 'audio':
+      return '#f97316';
+    case 'video':
+      return '#38bdf8';
+    default:
+      return accent;
+  }
+}
+
 function VideoNodeInner({ id, data, selected }: NodeProps) {
   const nodeData = data as unknown as LinghuiNodeData;
+  const props = nodeData.properties as unknown as LinghuiVideoNodeProperties;
   const runState = useNodeRunState(id);
   const interactionHandlers = useLinghuiNodeInteraction(id);
   const status = runState?.status ?? 'idle';
   const statusColor = STATUS_COLORS[status] ?? STATUS_COLORS.idle;
-  const borderColor = status !== 'idle' ? statusColor : (selected ? nodeData.accent : 'rgba(63, 63, 70, 0.7)');
+  const viewMode = resolveLinghuiNodeViewMode(nodeData.viewMode);
 
-  const posterSrc = getPreviewSource(runState?.result?.primary?.posterSource || runState?.result?.primary?.source);
+  const primaryVideo = runState?.result?.primary;
+  const posterSrc = getPreviewSource(
+    primaryVideo?.posterSource ||
+    primaryVideo?.source ||
+    props.posterSource,
+  );
+  const hasUploadedSource = Boolean(String(props.source ?? '').trim());
+  const modeLabel = getVideoCapabilityDescriptor(props.videoCapability).label;
+  const mediaCardStyle = resolveMediaCardSize({
+    width: primaryVideo?.width,
+    height: primaryVideo?.height,
+    aspectRatio: typeof runState?.result?.metadata?.aspectRatio === 'string'
+      ? runState.result.metadata.aspectRatio
+      : String(props.aspectRatio ?? '16:9'),
+  }).style;
+  const isEditorVisible = useLinghuiNodeEditorVisibility(id, 'linghui/video');
 
   return (
     <div
-      className={`linghuiCompactNode nopan ${selected ? 'isSelected' : ''}`}
-      style={{ borderColor }}
+      className={`linghuiCompactNode nopan ${selected ? 'isSelected' : ''} ${viewMode === 'collapsed' ? 'isCollapsed' : ''} ${isEditorVisible ? 'hasInlineEditor' : ''}`}
+      data-view-mode={viewMode}
+      style={{
+        ...mediaCardStyle,
+        boxShadow: status !== 'idle'
+          ? `0 0 0 1px ${statusColor}66, 0 12px 28px rgba(2, 6, 23, 0.32)`
+          : selected
+            ? '0 0 0 1px rgba(255, 255, 255, 0.08), 0 12px 24px rgba(2, 6, 23, 0.26)'
+            : undefined,
+      }}
       {...interactionHandlers}
     >
-      <Handle
-        type="target"
-        position={Position.Left}
-        id="input-0"
-        className="linghuiCompactHandle"
-        style={{ background: nodeData.accent }}
-        isConnectable
-      />
+      {nodeData.inputs.map((slot, index) => (
+        <Handle
+          key={`input-${index}`}
+          type="target"
+          position={Position.Left}
+          id={`input-${index}`}
+          className="linghuiCompactHandle"
+          style={{ background: getHandleColor(slot.dataType, nodeData.accent), top: resolveHandleTop(index, nodeData.inputs.length) }}
+          isConnectable
+        />
+      ))}
 
       <Handle
         type="source"
@@ -63,26 +121,31 @@ function VideoNodeInner({ id, data, selected }: NodeProps) {
             </svg>
           </div>
         )}
-        {/* 视频标识 */}
-        <div className="linghuiCompactVideoIndicator">
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="white">
-            <polygon points="3,1 10,6 3,11" />
-          </svg>
+        <div className="linghuiCompactThumbMeta">
+          <EditableCompactNodeLabel
+            nodeId={id}
+            label={nodeData.label}
+            fallbackLabel="视频"
+          />
+          <div className="linghuiCompactVideoIndicator">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="white">
+              <polygon points="3,1 10,6 3,11" />
+            </svg>
+          </div>
         </div>
-      </div>
-
-      <div className="linghuiCompactInfo">
-        <EditableCompactNodeLabel
-          nodeId={id}
-          label={nodeData.label}
-          fallbackLabel="视频"
-        />
+        <div className="linghuiCompactThumbFooter">
+          <span className="linghuiCompactThumbCaption">
+            {hasUploadedSource ? '已挂载本地视频' : modeLabel}
+          </span>
+        </div>
         {status === 'running' && (
-          <div className="linghuiCompactProgress">
+          <div className="linghuiCompactThumbProgress">
             <div className="linghuiCompactProgressBar" style={{ width: `${runState?.progress ?? 0}%` }} />
           </div>
         )}
       </div>
+
+      {isEditorVisible ? <LinghuiNodeEditor nodeId={id} nodeType="linghui/video" /> : null}
     </div>
   );
 }

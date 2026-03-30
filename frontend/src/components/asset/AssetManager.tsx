@@ -9,15 +9,15 @@ import './AssetManager.css';
 
 interface AssetManagerProps {
   projectId: string;
-  ttiConfigId?: string;
-  itvConfigId?: string;
+  ttiSelection?: string;
+  itvSelection?: string;
   theme?: string;
   styleSnapshot?: ProjectStyleSnapshot;
   stylePrompt?: string;
   episodeId?: string;
   episodeName?: string;
   script?: string;
-  llmConfigId?: string;
+  llmSelection?: string;
   characters?: Character[];
   scenes?: Scene[];
   props?: Prop[];

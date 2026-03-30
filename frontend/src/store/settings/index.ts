@@ -8,40 +8,21 @@ export { loadSettings, saveSettings, generateId, getGlobalPath, DEFAULT_SETTINGS
 // 预设常量
 export { LLM_CHANNEL_PRESETS, TTI_PRESETS, ITV_PRESETS, TTS_PRESETS } from './presets';
 
-// LLM 配置
+// LLM 配置读取
 export {
-  addLLMConfig,
-  updateLLMConfig,
-  deleteLLMConfig,
-  setDefaultLLMConfig,
   getDefaultLLMConfig,
   getLLMConfigById,
   getActiveLLMConfig,
 } from './llmConfig';
 
-// 媒体配置 (TTI/ITV/TTS)
+// 媒体配置读取 (TTI/ITV/TTS)
 export {
-  // TTI
-  addTTIConfig,
-  updateTTIConfig,
-  deleteTTIConfig,
-  setDefaultTTIConfig,
   getDefaultTTIConfig,
   getTTIConfigById,
   getActiveTTIConfig,
-  // ITV
-  addITVConfig,
-  updateITVConfig,
-  deleteITVConfig,
-  setDefaultITVConfig,
   getDefaultITVConfig,
   getITVConfigById,
   getActiveITVConfig,
-  // TTS
-  addTTSConfig,
-  updateTTSConfig,
-  deleteTTSConfig,
-  setDefaultTTSConfig,
   getDefaultTTSConfig,
   getTTSConfigById,
   getActiveTTSConfig,
@@ -75,6 +56,7 @@ export {
 export type { ChannelConfig, ChannelCapability } from '../../providers/channel/types';
 export {
   getChannelConfigs,
+  getChannelsByCategory,
   getChannelsByCapability,
   addChannelConfig,
   updateChannelConfig,
@@ -83,6 +65,8 @@ export {
   deleteChannelByProviderType,
   setDefaultChannelConfig,
   getDefaultChannelConfig,
+  setDefaultMediaModelSelection,
+  getDefaultMediaModelSelection,
   cleanupDuplicateChannels,
   cleanupLegacyConfigs,
 } from './channelConfig';

@@ -45,6 +45,14 @@ export class NanoBananaProvider implements TTIProvider {
     this.config = config;
   }
 
+  private getModelName(): string {
+    const value = String(this.config.modelName || '').trim();
+    if (!value) {
+      throw new Error('模型名称未配置');
+    }
+    return value;
+  }
+
   private getBaseUrl(): string {
     return this.config.baseUrl || 'http://ai.hsxbk.top';
   }
@@ -57,7 +65,7 @@ export class NanoBananaProvider implements TTIProvider {
   }
 
   validate(): boolean {
-    return !!this.config.apiKey;
+    return Boolean(this.config.apiKey && String(this.config.modelName || '').trim());
   }
 
   async testConnection(): Promise<boolean> {
@@ -79,13 +87,16 @@ export class NanoBananaProvider implements TTIProvider {
    * 创建图片生成任务
    */
   async start(request: TTIRequest): Promise<ProviderStartResult<ImageResult>> {
-    if (!this.validate()) {
+    if (!this.config.apiKey) {
       throw new Error('API Key 未配置');
+    }
+    if (!String(this.config.modelName || '').trim()) {
+      throw new Error('模型名称未配置');
     }
 
     const options: TTIOptions | undefined = request.options;
     const body: Record<string, any> = {
-      model: this.config.modelName || 'gemini-2.5-pro-image-preview',
+      model: this.getModelName(),
       prompt: request.prompt,
     };
 

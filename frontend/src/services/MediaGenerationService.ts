@@ -12,6 +12,11 @@ import type {
   TTIRequest,
   TTSRequest,
 } from '../types';
+import {
+  isImageToVideoRequest,
+  isReferenceToVideoRequest,
+  isTextToVideoRequest,
+} from '../types';
 import { createLogger } from '../store/logger';
 import {
   createTask,
@@ -20,28 +25,130 @@ import {
   updateTask,
   updateTaskProgress,
 } from '../store/taskQueueStore';
+import { loadSettings } from '../store/globalStore';
 import { resolveProviderAssetInput, resolveProviderAssetInputs } from './mediaAssetResolver';
 import { persistMediaAsset } from './mediaPersistenceService';
 import { bindOwnerRefMedia } from './mediaTaskBindingService';
 import { getProjectITVProvider, getProjectTTIProvider, getProjectTTSProvider } from '../providers';
 import {
+  listConfiguredModelSelectOptions,
+  resolveConfiguredChannelModel,
+  serializeMediaSelection,
+  type ResolvedChannelModelContext,
+} from '../providers/channel/resolver';
+import type { MediaCategory, ModelCapability } from '../providers/channel/types';
+import {
   ensureRemoteUrlForImageAsset,
-  ensureRemoteUrlForImageSource,
-  ensureRemoteUrlForImageSources,
 } from './mediaRemoteUrlService';
-import type { RemoteUrlPolicy } from './mediaRemoteUrlService';
 import type { PromptCompilationInput } from './promptCompilation/types';
-import { compileGrokITV, compileGrokTTI } from './promptCompilation/grokImageIndexCompiler';
+import { compileGrokTTI } from './promptCompilation/grokImageIndexCompiler';
+import {
+  compileWorkflowVideoDomainRequest,
+  getPromptProtocol,
+  mapVideoRequestToProviderRequest,
+  resolveITVTransportSupport,
+  resolveVideoProtocolCompilationLimit,
+} from './promptCompilation/videoRequestCompiler';
 import { parseMentions } from '../editor/mentionTypes';
 import { sanitizeBodyForLog, truncateString } from '../utils/logFormatting';
+import {
+  createVideoTraceContext,
+  summarizeVideoRequestForLog,
+  withVideoTrace,
+} from '../utils/videoGenerationTrace';
 import { DEFAULT_POLLING_CONFIG } from '../providers/polling';
 
 const logger = createLogger('MediaGeneration');
 
-function getPromptProtocol(provider: any): string | undefined {
-  // ChannelConfig.providerConfig is spread into resolved config (see store/settings/mediaConfig.ts),
-  // so protocol flags appear on provider.config directly.
-  return provider?.config?.promptProtocol as string | undefined;
+function buildExecutionMetadata(
+  context: ResolvedChannelModelContext | undefined,
+  capability: ModelCapability,
+) {
+  return {
+    channelId: context?.channelConfig.id,
+    modelId: context?.model.id,
+    capability,
+  };
+}
+
+const CAPABILITY_LABELS: Partial<Record<ModelCapability, string>> = {
+  'llm.chat': '对话',
+  'image.text-to-image': '文生图',
+  'image.image-to-image': '图生图',
+  'video.text-to-video': '文生视频',
+  'video.image-to-video': '图生视频',
+  'video.reference-to-video': '参考生视频',
+  'video.start-end-to-video': '首尾帧视频',
+  'speech.text-to-speech': '语音合成',
+};
+
+function buildMissingCapabilityError(params: {
+  category: MediaCategory;
+  capability: ModelCapability;
+  selectionKey?: string;
+  hasCapableModels: boolean;
+  fallbackMessage: string;
+}): string {
+  const capabilityLabel = CAPABILITY_LABELS[params.capability] || params.capability;
+  if (params.hasCapableModels && params.selectionKey) {
+    return `当前选择的模型不支持${capabilityLabel}，请切换模型`;
+  }
+  if (!params.hasCapableModels) {
+    return `当前没有配置支持${capabilityLabel}的模型`;
+  }
+  return params.fallbackMessage;
+}
+
+async function resolveProviderAndContext<T>(params: {
+  category: MediaCategory;
+  selectionKey?: string;
+  capability: ModelCapability;
+  getProvider: (selectionKey?: string, capability?: ModelCapability) => Promise<T | null>;
+  missingError: string;
+}): Promise<{ provider: T; resolvedContext?: ResolvedChannelModelContext }> {
+  let resolvedContext: ResolvedChannelModelContext | undefined;
+  let capabilityError: string | undefined;
+  try {
+    const canReadSettings = typeof window !== 'undefined'
+      ? typeof window.localStorage !== 'undefined'
+      : typeof localStorage !== 'undefined';
+    if (canReadSettings) {
+      const settings = await loadSettings();
+      resolvedContext = resolveConfiguredChannelModel(
+        settings,
+        params.category,
+        params.selectionKey,
+        params.capability,
+      );
+      if (!resolvedContext) {
+        const capableModels = listConfiguredModelSelectOptions(
+          settings,
+          params.category,
+          params.capability,
+        );
+        capabilityError = buildMissingCapabilityError({
+          category: params.category,
+          capability: params.capability,
+          selectionKey: params.selectionKey,
+          hasCapableModels: capableModels.length > 0,
+          fallbackMessage: params.missingError,
+        });
+      }
+    }
+  } catch (error) {
+    logger.warn('Failed to resolve media execution context metadata', {
+      category: params.category,
+      capability: params.capability,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+
+  const provider = await params.getProvider(params.selectionKey, params.capability);
+  if (!provider) {
+    throw new Error(capabilityError || params.missingError);
+  }
+
+  return { provider, resolvedContext };
 }
 
 function inferTaskType(kind: MediaKind): AsyncTaskType {
@@ -119,18 +226,30 @@ function getOptionNumber(
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 }
 
-function supportsDataUrl(transports: Array<'remote-url' | 'data-url'> | undefined): boolean {
-  return Boolean(transports?.includes('data-url'));
+function resolveTaskSelectionKey(task: AsyncTask, fallbackSelection?: string): string | undefined {
+  if (task.channelId && task.modelId) {
+    return serializeMediaSelection({
+      channelId: task.channelId,
+      modelId: task.modelId,
+    });
+  }
+  return fallbackSelection;
 }
 
-function providerAllowsDataUrlForITV(provider: any): { primary: boolean; additional: boolean } {
-  const primaryTransports = provider?.assetTransports?.primaryImage as Array<'remote-url' | 'data-url'> | undefined;
-  const additionalTransports = provider?.assetTransports?.additionalReferences as Array<'remote-url' | 'data-url'> | undefined;
-  return {
-    // Default is URL-only to stay safe for remote servers.
-    primary: supportsDataUrl(primaryTransports),
-    additional: supportsDataUrl(additionalTransports ?? primaryTransports),
-  };
+function resolveTaskCapability(task: AsyncTask): ModelCapability {
+  if (task.capability) {
+    return task.capability as ModelCapability;
+  }
+
+  switch (task.type) {
+    case 'tts':
+      return 'speech.text-to-speech';
+    case 'itv':
+      return 'video.image-to-video';
+    case 'tti':
+    default:
+      return 'image.text-to-image';
+  }
 }
 
 export class MediaGenerationService {
@@ -139,12 +258,18 @@ export class MediaGenerationService {
     ownerRef: MediaOwnerRef;
     request: TTIRequest<MediaAssetSource | ProviderAssetInput>;
     promptCompilation?: PromptCompilationInput;
-    ttiConfigId?: string;
+    ttiSelection?: string;
     taskName?: string;
   }): Promise<StoredMediaAsset> {
-    const { projectId, ownerRef, request, ttiConfigId, taskName, promptCompilation } = params;
-    const provider = await getProjectTTIProvider(ttiConfigId);
-    if (!provider) throw new Error('未配置 TTI 服务');
+    const { projectId, ownerRef, request, ttiSelection, taskName, promptCompilation } = params;
+    const { provider, resolvedContext } = await resolveProviderAndContext({
+      category: 'tti',
+      selectionKey: ttiSelection,
+      capability: 'image.text-to-image',
+      getProvider: getProjectTTIProvider,
+      missingError: '未配置 TTI 服务',
+    });
+    const executionMetadata = buildExecutionMetadata(resolvedContext, 'image.text-to-image');
 
     const protocol = getPromptProtocol(provider);
     logger.info('TTI generateImage entry', {
@@ -211,7 +336,11 @@ export class MediaGenerationService {
         source,
         ownerRef,
         provider: provider.config?.provider,
+        channelId: executionMetadata.channelId,
+        modelId: executionMetadata.modelId,
+        capability: executionMetadata.capability,
         metadata: {
+          ...executionMetadata,
           prompt: originalPrompt,
           ...(protocol ? { promptProtocol: protocol } : undefined),
           ...(compilationDebug ? { compiledPrompt, compilationDebug } : undefined),
@@ -242,6 +371,7 @@ export class MediaGenerationService {
       ownerRef,
       remoteTaskId: started.taskId,
       taskName: taskName || '图片生成',
+      ...executionMetadata,
     });
 
     return this.pollAndFinalizeTask({
@@ -258,9 +388,13 @@ export class MediaGenerationService {
       enrichAsset: (asset) => mergeMediaMetadata(asset, {
         provider: provider.config?.provider,
         providerTaskId: started.taskId,
+        channelId: executionMetadata.channelId,
+        modelId: executionMetadata.modelId,
+        capability: executionMetadata.capability,
         width: optionWidth ?? asset.width,
         height: optionHeight ?? asset.height,
         metadata: {
+          ...executionMetadata,
           prompt: originalPrompt,
           ...(protocol ? { promptProtocol: protocol } : undefined),
           ...(compilationDebug ? { compiledPrompt, compilationDebug } : undefined),
@@ -268,6 +402,7 @@ export class MediaGenerationService {
         },
       }),
       providerTaskId: started.taskId,
+      ...executionMetadata,
     });
   }
 
@@ -276,134 +411,135 @@ export class MediaGenerationService {
     ownerRef: MediaOwnerRef;
     request: ITVRequest<MediaAssetSource | ProviderAssetInput>;
     promptCompilation?: PromptCompilationInput;
-    itvConfigId?: string;
+    itvSelection?: string;
     taskName?: string;
   }): Promise<StoredMediaAsset> {
-    const { projectId, ownerRef, request, itvConfigId, taskName, promptCompilation } = params;
-    const provider = await getProjectITVProvider(itvConfigId);
-    if (!provider) throw new Error('未配置 ITV 服务');
+    const { projectId, ownerRef, request, itvSelection, taskName, promptCompilation } = params;
+    const { provider, resolvedContext } = await resolveProviderAndContext({
+      category: 'itv',
+      selectionKey: itvSelection,
+      capability: request.capability,
+      getProvider: getProjectITVProvider,
+      missingError: '未配置 ITV 服务',
+    });
+    const executionMetadata = buildExecutionMetadata(resolvedContext, request.capability);
+    const traceContext = createVideoTraceContext({
+      prefix: 'itv',
+      source: 'media-generation',
+      operation: 'media.generate-video',
+      debugBody: true,
+    });
 
     const protocol = getPromptProtocol(provider);
     logger.info('ITV generateVideo entry', {
+      traceId: traceContext.traceId,
       ownerRef,
+      selectionKey: itvSelection,
+      channelId: executionMetadata.channelId,
+      modelId: executionMetadata.modelId,
       provider: provider.config?.provider,
+      capability: request.capability,
       protocol: protocol || 'none',
       hasPromptCompilation: Boolean(promptCompilation?.selectedAssets?.length),
-      additionalRefsCount: (request.additionalReferences || []).length,
+      visualInputCount: isTextToVideoRequest(request)
+        ? 0
+        : isImageToVideoRequest(request)
+          ? 1 + (request.additionalReferences || []).length
+          : isReferenceToVideoRequest(request)
+            ? request.referenceImages.length
+            : 2,
+      request: summarizeVideoRequestForLog(request),
     });
     const originalPrompt = request.prompt;
     let compiledPrompt = originalPrompt;
     let compilationDebug: any = null;
-    let additionalReferencesInput = (request.additionalReferences || []);
+    const maxAdditionalReferences = resolveVideoProtocolCompilationLimit({
+      provider,
+      protocol,
+    });
+    const compiledDomainRequest = compileWorkflowVideoDomainRequest({
+      request,
+      promptCompilation,
+      protocol,
+      maxAdditionalReferences,
+    });
+    compiledPrompt = compiledDomainRequest.compiledPrompt;
+    compilationDebug = compiledDomainRequest.compilationDebug;
 
-    // grok2api video calls can be very sensitive to payload size. Limit reference count
-    // to improve upstream stability (e.g. avoid AssetsUploadReverse upstream errors).
-    const isGrok2ApiImagineITV = provider?.config?.provider === 'grok2api-imagine-itv';
-    const maxGrok2ApiAdditionalRefs = isGrok2ApiImagineITV ? 3 : undefined;
-    if (maxGrok2ApiAdditionalRefs != null && additionalReferencesInput.length > maxGrok2ApiAdditionalRefs) {
-      additionalReferencesInput = additionalReferencesInput.slice(0, maxGrok2ApiAdditionalRefs);
-    }
+    logger.info('ITV domain request compiled', {
+      traceId: traceContext.traceId,
+      provider: provider.config?.provider,
+      capability: request.capability,
+      protocol: protocol || 'none',
+      unresolvedMentions: compiledDomainRequest.unresolvedMentions,
+      compiledPrompt: truncateString(compiledPrompt, 800),
+      request: summarizeVideoRequestForLog(compiledDomainRequest.request),
+      compilationDebug: compilationDebug ? sanitizeBodyForLog(compilationDebug) : undefined,
+    });
 
-    // Decide policy based on provider supported transports:
-    // - URL-only providers: remoteUrl is required (fail fast if cannot upload / missing image-hosting)
-    // - data-url-capable providers: remoteUrl is best-effort (fall back to data-url payload)
-    const allow = providerAllowsDataUrlForITV(provider);
-    const primaryPolicy: RemoteUrlPolicy = allow.primary ? 'best-effort' : 'required';
-    const additionalPolicy: RemoteUrlPolicy = allow.additional ? 'best-effort' : 'required';
-
-    // When provider accepts data-url, do not attempt "best-effort" image hosting uploads here.
-    // This avoids hard dependency on image-hosting plugins and keeps the pipeline deterministic:
-    // local paths -> data-url (resolver), remote URLs remain remote-url.
-    const normalizedPrimary = primaryPolicy === 'required'
-      ? await ensureRemoteUrlForImageSource({
-          projectId,
-          source: request.primaryImage as any,
-          policy: primaryPolicy,
-        })
-      : (request.primaryImage as any);
-
-    const normalizedAdditional = additionalPolicy === 'required'
-      ? await ensureRemoteUrlForImageSources({
-          projectId,
-          sources: (additionalReferencesInput as any[]),
-          policy: additionalPolicy,
-        })
-      : (additionalReferencesInput as any[]);
-
-    const primaryImage = await ensureProviderAssetInput(normalizedPrimary as any);
-    if (!primaryImage) throw new Error('缺少 primaryImage');
-    let additionalReferences = await ensureProviderAssetInputs(normalizedAdditional as any);
-
-    if (protocol === 'grok-image-index' && promptCompilation?.selectedAssets?.length) {
-      const cappedSelectedAssets = maxGrok2ApiAdditionalRefs != null
-        ? promptCompilation.selectedAssets.slice(0, maxGrok2ApiAdditionalRefs)
-        : promptCompilation.selectedAssets;
-      const remainingForExtra = maxGrok2ApiAdditionalRefs != null
-        ? Math.max(0, maxGrok2ApiAdditionalRefs - cappedSelectedAssets.length)
-        : undefined;
-      const cappedExtraReferences = remainingForExtra != null
-        ? (request.additionalReferences || []).slice(0, remainingForExtra)
-        : (request.additionalReferences || []);
-
-      // Rebuild additional references in strict order (selectedAssets -> extras) so @Image N is stable.
-      // Important: We compile on the "raw prompt" and rely on the normalized remote/data URLs above.
-      const { compiledPrompt: cp, compiledAdditionalReferences, debug } = compileGrokITV({
-        prompt: originalPrompt,
-        primaryImage: primaryImage.value,
-        selectedAssets: cappedSelectedAssets,
-        extraReferences: cappedExtraReferences,
-      });
-      compiledPrompt = cp;
-      compilationDebug = debug;
-
-      // Normalize the compiled additional refs again (they may include StoredMediaAsset / local paths).
-      const normalizedCompiledAdditional = additionalPolicy === 'required'
-        ? await ensureRemoteUrlForImageSources({
-            projectId,
-            sources: (compiledAdditionalReferences as any[]),
-            policy: additionalPolicy,
-          })
-        : (compiledAdditionalReferences as any[]);
-      additionalReferences = await ensureProviderAssetInputs(normalizedCompiledAdditional as any);
-
+    if (compilationDebug && protocol === 'grok-image-index') {
       logger.info('ITV prompt compiled (grok-image-index)', {
+        traceId: traceContext.traceId,
         ownerRef,
         protocol,
         originalPrompt: truncateString(originalPrompt, 800),
         compiledPrompt: truncateString(compiledPrompt, 800),
         mentions: parseMentions(originalPrompt),
-        debug,
+        debug: compilationDebug,
       });
     }
 
-    if (maxGrok2ApiAdditionalRefs != null && additionalReferences.length > maxGrok2ApiAdditionalRefs) {
-      additionalReferences = additionalReferences.slice(0, maxGrok2ApiAdditionalRefs);
-    }
+    const transportSupport = resolveITVTransportSupport(provider);
+    logger.info('ITV transport support resolved', {
+      traceId: traceContext.traceId,
+      provider: provider.config?.provider,
+      transportSupport,
+    });
+    const providerRequest = await mapVideoRequestToProviderRequest({
+      projectId,
+      request: compiledDomainRequest.request,
+      transportSupport,
+      maxAdditionalReferences,
+    });
+    const tracedProviderRequest = withVideoTrace(providerRequest, traceContext);
 
-    if (protocol === 'grok-image-index') {
-      logger.info('ITV start payload (post-compile)', sanitizeBodyForLog({
+    logger.info('ITV provider request mapped', {
+      traceId: traceContext.traceId,
+      provider: provider.config?.provider,
+      capability: tracedProviderRequest.capability,
+      promptProtocol: protocol || 'none',
+      request: summarizeVideoRequestForLog(tracedProviderRequest),
+    });
+
+    let started: Awaited<ReturnType<typeof provider.start>>;
+    try {
+      started = await provider.start(tracedProviderRequest as any);
+    } catch (error) {
+      logger.error('ITV provider.start failed', {
+        traceId: traceContext.traceId,
+        ownerRef,
+        selectionKey: itvSelection,
         provider: provider.config?.provider,
-        promptProtocol: protocol,
-        prompt: compiledPrompt,
-        primaryImage: { transport: primaryImage.transport, value: primaryImage.value, mimeType: primaryImage.mimeType },
-        additionalReferences: additionalReferences.map(r => ({ transport: r.transport, value: r.value, mimeType: r.mimeType })),
-        options: request.options,
-      }));
+        channelId: executionMetadata.channelId,
+        modelId: executionMetadata.modelId,
+        capability: request.capability,
+        protocol: protocol || 'none',
+        error: error instanceof Error ? error.message : String(error),
+        originalRequest: summarizeVideoRequestForLog(request),
+        compiledRequest: summarizeVideoRequestForLog(compiledDomainRequest.request),
+        providerRequest: summarizeVideoRequestForLog(tracedProviderRequest),
+      });
+      throw error;
     }
 
-    if (!allow.primary && primaryImage.transport !== 'remote-url') {
-      throw new Error('当前 ITV Provider 仅支持 URL 图片输入（remote-url），请启用图床以获得 remoteUrl');
-    }
-    if (!allow.additional && additionalReferences.some(r => r.transport !== 'remote-url')) {
-      throw new Error('当前 ITV Provider 仅支持 URL 图片输入（remote-url），请启用图床以获得 remoteUrl');
-    }
-
-    const started = await provider.start({
-      prompt: compiledPrompt,
-      primaryImage,
-      additionalReferences,
-      options: request.options,
-    } as any);
+    logger.info('ITV provider.start succeeded', {
+      traceId: traceContext.traceId,
+      provider: provider.config?.provider,
+      capability: request.capability,
+      mode: started.mode,
+      taskId: started.mode === 'async' ? started.taskId : started.output.taskId,
+      immediateSource: started.mode === 'immediate' ? started.output.source : undefined,
+    });
 
     const kind: MediaKind = 'video';
     const options = request.options as Record<string, unknown> | undefined;
@@ -419,7 +555,12 @@ export class MediaGenerationService {
         ownerRef,
         provider: provider.config?.provider,
         providerTaskId: (output as any).taskId,
+        channelId: executionMetadata.channelId,
+        modelId: executionMetadata.modelId,
+        capability: executionMetadata.capability,
         metadata: {
+          ...executionMetadata,
+          capability: request.capability,
           prompt: originalPrompt,
           ...(protocol ? { promptProtocol: protocol } : undefined),
           ...(compilationDebug ? { compiledPrompt, compilationDebug } : undefined),
@@ -428,12 +569,23 @@ export class MediaGenerationService {
       });
       const finalAsset = mergeMediaMetadata(persisted, {
         provider: provider.config?.provider,
+        channelId: executionMetadata.channelId,
+        modelId: executionMetadata.modelId,
+        capability: executionMetadata.capability,
         durationMs: durationSecToMs(optionDuration) ?? persisted.durationMs,
         metadata: {
+          ...executionMetadata,
+          capability: request.capability,
           prompt: originalPrompt,
           ...(protocol ? { promptProtocol: protocol } : undefined),
           ...(compilationDebug ? { compiledPrompt, compilationDebug } : undefined),
         },
+      });
+      logger.info('ITV immediate result persisted', {
+        traceId: traceContext.traceId,
+        ownerRef,
+        source,
+        provider: provider.config?.provider,
       });
       await bindOwnerRefMedia(projectId, ownerRef, finalAsset);
       return finalAsset;
@@ -444,6 +596,15 @@ export class MediaGenerationService {
       ownerRef,
       remoteTaskId: started.taskId,
       taskName: taskName || '视频生成',
+      ...executionMetadata,
+    });
+
+    logger.info('ITV async task created', {
+      traceId: traceContext.traceId,
+      localTaskId: task.id,
+      remoteTaskId: started.taskId,
+      ownerRef,
+      provider: provider.config?.provider,
     });
 
     return this.pollAndFinalizeTask({
@@ -460,14 +621,19 @@ export class MediaGenerationService {
       enrichAsset: (asset) => mergeMediaMetadata(asset, {
         provider: provider.config?.provider,
         providerTaskId: started.taskId,
+        channelId: executionMetadata.channelId,
+        modelId: executionMetadata.modelId,
+        capability: executionMetadata.capability,
         durationMs: durationSecToMs(optionDuration) ?? asset.durationMs,
         metadata: {
+          ...executionMetadata,
           prompt: originalPrompt,
           ...(protocol ? { promptProtocol: protocol } : undefined),
           ...(compilationDebug ? { compiledPrompt, compilationDebug } : undefined),
         },
       }),
       providerTaskId: started.taskId,
+      ...executionMetadata,
     });
   }
 
@@ -475,12 +641,18 @@ export class MediaGenerationService {
     projectId: string;
     ownerRef: MediaOwnerRef;
     request: TTSRequest;
-    ttsConfigId?: string;
+    ttsSelection?: string;
     taskName?: string;
   }): Promise<StoredMediaAsset> {
-    const { projectId, ownerRef, request, ttsConfigId, taskName } = params;
-    const provider = await getProjectTTSProvider(ttsConfigId);
-    if (!provider) throw new Error('未配置 TTS 服务');
+    const { projectId, ownerRef, request, ttsSelection, taskName } = params;
+    const { provider, resolvedContext } = await resolveProviderAndContext({
+      category: 'tts',
+      selectionKey: ttsSelection,
+      capability: 'speech.text-to-speech',
+      getProvider: getProjectTTSProvider,
+      missingError: '未配置 TTS 服务',
+    });
+    const executionMetadata = buildExecutionMetadata(resolvedContext, 'speech.text-to-speech');
 
     const started = await provider.start(request as any);
     const kind: MediaKind = 'audio';
@@ -493,11 +665,20 @@ export class MediaGenerationService {
         source: output.path,
         ownerRef,
         provider: provider.config?.provider,
-        metadata: { voiceId: request.voiceId },
+        channelId: executionMetadata.channelId,
+        modelId: executionMetadata.modelId,
+        capability: executionMetadata.capability,
+        metadata: {
+          ...executionMetadata,
+          voiceId: request.voiceId,
+        },
       });
 
       const finalAsset = mergeMediaMetadata(persisted, {
         provider: provider.config?.provider,
+        channelId: executionMetadata.channelId,
+        modelId: executionMetadata.modelId,
+        capability: executionMetadata.capability,
         durationMs: durationSecToMs(output.duration) ?? persisted.durationMs,
         mimeType: output.format === 'wav' ? 'audio/wav' : 'audio/mpeg',
       });
@@ -511,6 +692,7 @@ export class MediaGenerationService {
       ownerRef,
       remoteTaskId: started.taskId,
       taskName: taskName || '语音合成',
+      ...executionMetadata,
     });
 
     return this.pollAndFinalizeTask({
@@ -527,36 +709,50 @@ export class MediaGenerationService {
       enrichAsset: (asset) => mergeMediaMetadata(asset, {
         provider: provider.config?.provider,
         providerTaskId: started.taskId,
-        metadata: { voiceId: request.voiceId },
+        channelId: executionMetadata.channelId,
+        modelId: executionMetadata.modelId,
+        capability: executionMetadata.capability,
+        metadata: {
+          ...executionMetadata,
+          voiceId: request.voiceId,
+        },
       }),
       providerTaskId: started.taskId,
+      ...executionMetadata,
     });
   }
 
   async recoverTask(params: {
     projectId: string;
     task: AsyncTask;
-    ttiConfigId?: string;
-    itvConfigId?: string;
-    ttsConfigId?: string;
+    ttiSelection?: string;
+    itvSelection?: string;
+    ttsSelection?: string;
     onProgress?: (task: AsyncTask, progress: number) => void;
   }): Promise<StoredMediaAsset | null> {
-    const { projectId, task, ttiConfigId, itvConfigId, ttsConfigId, onProgress } = params;
+    const { projectId, task, ttiSelection, itvSelection, ttsSelection, onProgress } = params;
     if (!task.remoteTaskId) return null;
     const kind: MediaKind = task.type === 'itv' ? 'video' : task.type === 'tts' ? 'audio' : 'image';
+    const taskCapability = resolveTaskCapability(task);
+    const resolvedTTISelection = resolveTaskSelectionKey(task, ttiSelection);
+    const resolvedITVSelection = resolveTaskSelectionKey(task, itvSelection);
+    const resolvedTTSSelection = resolveTaskSelectionKey(task, ttsSelection);
 
     const getSnapshot = async (remoteTaskId: string): Promise<ProviderTaskSnapshot<any>> => {
       if (task.type === 'tti') {
-        const provider = await getProjectTTIProvider(ttiConfigId);
+        const provider = await getProjectTTIProvider(
+          resolvedTTISelection,
+          taskCapability === 'image.image-to-image' ? 'image.image-to-image' : 'image.text-to-image',
+        );
         if (!provider?.getTaskSnapshot) throw new Error('TTI Provider 不可用');
         return provider.getTaskSnapshot(remoteTaskId);
       }
       if (task.type === 'itv') {
-        const provider = await getProjectITVProvider(itvConfigId);
+        const provider = await getProjectITVProvider(resolvedITVSelection, taskCapability as any);
         if (!provider?.getTaskSnapshot) throw new Error('ITV Provider 不可用');
         return provider.getTaskSnapshot(remoteTaskId);
       }
-      const provider = await getProjectTTSProvider(ttsConfigId);
+      const provider = await getProjectTTSProvider(resolvedTTSSelection, 'speech.text-to-speech');
       if (!provider?.getTaskSnapshot) throw new Error('TTS Provider 不可用');
       return provider.getTaskSnapshot(remoteTaskId);
     };
@@ -573,8 +769,14 @@ export class MediaGenerationService {
       },
       enrichAsset: (asset) => mergeMediaMetadata(asset, {
         providerTaskId: task.remoteTaskId,
+        channelId: task.channelId,
+        modelId: task.modelId,
+        capability: task.capability,
       }),
       providerTaskId: task.remoteTaskId,
+      channelId: task.channelId,
+      modelId: task.modelId,
+      capability: task.capability,
       onProgress,
     });
   }
@@ -586,9 +788,12 @@ export class MediaGenerationService {
       ownerRef: MediaOwnerRef;
       remoteTaskId: string;
       taskName: string;
+      channelId?: string;
+      modelId?: string;
+      capability?: string;
     }
   ): Promise<AsyncTask> {
-    const { kind, ownerRef, remoteTaskId, taskName } = params;
+    const { kind, ownerRef, remoteTaskId, taskName, channelId, modelId, capability } = params;
     const taskType = inferTaskType(kind);
     const targetType = inferTargetType(ownerRef);
     const targetId = ownerRef.ownerId;
@@ -600,6 +805,9 @@ export class MediaGenerationService {
       targetId,
       targetName: taskName,
       remoteTaskId,
+      channelId,
+      modelId,
+      capability,
       ownerRef,
       status: 'processing',
       progress: 0,
@@ -618,9 +826,12 @@ export class MediaGenerationService {
     extractSource: (output: any) => string | undefined;
     enrichAsset: (asset: StoredMediaAsset) => StoredMediaAsset;
     providerTaskId?: string;
+    channelId?: string;
+    modelId?: string;
+    capability?: string;
     onProgress?: (task: AsyncTask, progress: number) => void;
   }): Promise<StoredMediaAsset> {
-    const { projectId, kind, task, getSnapshot, extractSource, enrichAsset, providerTaskId, onProgress } = params;
+    const { projectId, kind, task, getSnapshot, extractSource, enrichAsset, providerTaskId, channelId, modelId, capability, onProgress } = params;
 
     const pollIntervalMs = DEFAULT_POLLING_CONFIG.interval;
     const maxPollMs = DEFAULT_POLLING_CONFIG.maxDuration;
@@ -657,6 +868,14 @@ export class MediaGenerationService {
           source,
           ownerRef: task.ownerRef,
           providerTaskId: providerTaskId || task.remoteTaskId,
+          channelId,
+          modelId,
+          capability,
+          metadata: {
+            ...(channelId ? { channelId } : undefined),
+            ...(modelId ? { modelId } : undefined),
+            ...(capability ? { capability } : undefined),
+          },
         });
 
         const enriched = enrichAsset(persisted);

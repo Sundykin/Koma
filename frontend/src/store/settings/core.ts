@@ -19,10 +19,8 @@ export async function getGlobalPath(filename: string): Promise<string> {
 
 // 默认设置
 export const DEFAULT_SETTINGS: AppSettings = {
-  llmConfigs: [],
-  ttiConfigs: [],
-  itvConfigs: [],
-  ttsConfigs: [],
+  channelConfigs: [],
+  mediaDefaults: {},
   promptTemplates: {},
 };
 

@@ -10,10 +10,10 @@ import { useTranslation } from 'react-i18next';
 import { ChatRenderer } from '../../chat';
 import { useChat, chatIPC } from '../../chat/ipc';
 import type { SessionConfig, ContentPart } from '../../chat/ipc';
-import { getActiveLLMConfig, loadSettings } from '../../store/globalStore';
+import { loadSettings } from '../../store/globalStore';
 import { useChatHistoryStore } from '../../store/chatHistoryStore';
 import { saveMCPServers, saveAgentTemplates, setActiveAgentId as persistActiveAgentId } from '../../store/settings/chatSettings';
-import type { LLMModelConfig } from '../../types';
+import type { AppSettings, LLMModelConfig } from '../../types';
 import { ChatLayout } from './ChatLayout';
 import { ChatComposer } from './ChatComposer';
 import type { AttachmentFile } from './ChatComposer';
@@ -24,6 +24,12 @@ import type { AgentTemplate } from './AgentTemplates';
 import type { MCPServerConfig } from '../../chat/ipc';
 import { createLogger } from '../../store/logger';
 import styles from './ChatPage.module.css';
+import {
+  buildLLMConfigFromContext,
+  getDefaultMediaSelection,
+  listConfiguredModelSelectOptions,
+  resolveConfiguredChannelModel,
+} from '../../providers/channel/resolver';
 
 const logger = createLogger('ChatPage');
 
@@ -31,8 +37,9 @@ const { TextArea } = Input;
 
 export const ChatPage: React.FC = () => {
   const { t } = useTranslation();
-  const [llmConfigs, setLlmConfigs] = useState<LLMModelConfig[]>([]);
-  const [selectedConfigId, setSelectedConfigId] = useState<string>('');
+  const [settings, setSettings] = useState<AppSettings | null>(null);
+  const [llmOptions, setLlmOptions] = useState<ReturnType<typeof listConfiguredModelSelectOptions>>([]);
+  const [selectedSelectionKey, setSelectedSelectionKey] = useState<string>('');
   const [systemPrompt, setSystemPrompt] = useState(t('chat.defaultSystemPrompt'));
   const [showSettings, setShowSettings] = useState(false);
   const [showSidebar, setShowSidebar] = useState(true);
@@ -45,8 +52,10 @@ export const ChatPage: React.FC = () => {
 
   // 获取当前选中的 LLM 配置
   const selectedConfig = useMemo(() => {
-    return llmConfigs.find(c => c.id === selectedConfigId);
-  }, [llmConfigs, selectedConfigId]);
+    if (!settings) return null;
+    const context = resolveConfiguredChannelModel(settings, 'llm', selectedSelectionKey, 'llm.chat');
+    return context ? buildLLMConfigFromContext(context) : null;
+  }, [settings, selectedSelectionKey]);
 
   // 构建 Session 配置
   const sessionConfig = useMemo((): SessionConfig => {
@@ -89,15 +98,16 @@ export const ChatPage: React.FC = () => {
     const loadConfigs = async () => {
       try {
         const settings = await loadSettings();
-        const configs = settings?.llmConfigs || [];
-        setLlmConfigs(configs);
+        setSettings(settings);
+        const options = listConfiguredModelSelectOptions(settings, 'llm', 'llm.chat');
+        setLlmOptions(options);
         setMcpConfigs((settings as any).mcpServers || []);
         setAgentTemplates((settings as any).agentTemplates || []);
         setActiveAgentId((settings as any).activeAgentId || null);
 
-        const activeConfig = await getActiveLLMConfig();
-        if (activeConfig) {
-          setSelectedConfigId(activeConfig.id || '');
+        const activeSelection = getDefaultMediaSelection(settings, 'llm', 'llm.chat');
+        if (activeSelection) {
+          setSelectedSelectionKey(`${activeSelection.channelId}::${activeSelection.modelId}`);
         }
 
         setIsConfigLoaded(true);
@@ -152,9 +162,14 @@ export const ChatPage: React.FC = () => {
   }, [systemPrompt, isReady, sessionId, updateConfig]);
 
   // 切换 LLM 配置
-  const handleConfigChange = useCallback(async (configId: string) => {
-    setSelectedConfigId(configId);
-    const config = llmConfigs.find(c => c.id === configId);
+  const handleConfigChange = useCallback(async (selectionKey: string) => {
+    setSelectedSelectionKey(selectionKey);
+    const config = settings
+      ? (() => {
+          const context = resolveConfiguredChannelModel(settings, 'llm', selectionKey, 'llm.chat');
+          return context ? buildLLMConfigFromContext(context) : null;
+        })()
+      : null;
     if (config && isReady) {
       try {
         await updateConfig({
@@ -168,7 +183,7 @@ export const ChatPage: React.FC = () => {
         message.error(t('chat.configUpdateFailed', { error: errorMessage }));
       }
     }
-  }, [llmConfigs, isReady, updateConfig, t]);
+  }, [isReady, settings, updateConfig, t]);
 
   // 发送消息
   const handleSend = useCallback(async (text: string, attachments?: AttachmentFile[]) => {
@@ -329,11 +344,11 @@ export const ChatPage: React.FC = () => {
   }, [isReady, updateConfig, t]);
 
   const configOptions = useMemo(() => {
-    return llmConfigs.map(config => ({
-      value: config.id,
-      label: `${config.name} (${config.provider})`,
+    return llmOptions.map(config => ({
+      value: config.value,
+      label: `${config.channelLabel} / ${config.modelLabel}`,
     }));
-  }, [llmConfigs]);
+  }, [llmOptions]);
 
   // 获取当前激活的智能体信息
   const activeAgent = useMemo(() => {
@@ -371,7 +386,7 @@ export const ChatPage: React.FC = () => {
           </div>
         )}
         <Select
-          value={selectedConfigId || undefined}
+          value={selectedSelectionKey || undefined}
           onChange={handleConfigChange}
           options={configOptions}
           placeholder={t('chat.selectModel')}
@@ -463,7 +478,7 @@ export const ChatPage: React.FC = () => {
         streaming={isStreaming}
         streamingContent={streamingContent}
         streamingReasoning={streamingReasoning}
-        emptyText={llmConfigs.length === 0 ? t('chat.noLLMConfig') : t('chat.startChat')}
+        emptyText={llmOptions.length === 0 ? t('chat.noLLMConfig') : t('chat.startChat')}
       />
     </>
   );

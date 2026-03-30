@@ -1,244 +1,216 @@
-/**
- * 项目级媒体配置选择器
- * 允许在项目设置中选择使用哪个 TTI/ITV/TTS/LLM 配置
- * 支持内置配置和插件渠道
- */
-import React, { useState, useEffect } from 'react';
-import { Select, Space, Tag, Tooltip, Button } from 'antd';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Button, Select, Space, Tag, Tooltip } from 'antd';
 import {
-  PictureOutlined,
-  VideoCameraOutlined,
-  SoundOutlined,
   ExperimentOutlined,
+  PictureOutlined,
   SettingOutlined,
-  AppstoreOutlined,
+  SoundOutlined,
+  VideoCameraOutlined,
 } from '@ant-design/icons';
-import type {
-  LLMModelConfig,
-  TTSModelConfig,
-} from '../../types';
-import { loadSettings, getChannelConfigs } from '../../store/globalStore';
+import type { AppSettings, MediaModelSelection } from '../../types';
+import { loadSettings } from '../../store/globalStore';
+import {
+  parseMediaSelectionKey,
+} from '../../providers/channel/resolver';
+import type { MediaCategory } from '../../providers/channel/types';
+import {
+  buildProjectMediaCategoryState,
+  PROJECT_MEDIA_BASE_REQUIREMENTS,
+  PROJECT_MEDIA_CAPABILITY_LABELS,
+  type ProjectMediaCategoryKey,
+  type ProjectMediaRequirement,
+} from './projectMediaSelectionState';
 
-// 统一的配置项接口
-interface UnifiedConfigOption {
-  id: string;
-  name: string;
-  isDefault?: boolean;
-  source: 'builtin' | 'plugin';
-  providerType?: string;
-}
+type ProjectMediaSelections = Partial<Record<'llm' | 'tti' | 'itv' | 'tts', MediaModelSelection>>;
 
 interface ProjectMediaSelectorProps {
-  llmConfigId?: string;
-  ttiConfigId?: string;
-  itvConfigId?: string;
-  ttsConfigId?: string;
-  onChange: (configs: {
-    llmConfigId?: string;
-    ttiConfigId?: string;
-    itvConfigId?: string;
-    ttsConfigId?: string;
-  }) => void;
+  mediaSelections?: ProjectMediaSelections;
+  onChange: (selections: ProjectMediaSelections) => void;
   onGoToSettings?: () => void;
+  requirements?: Partial<Record<ProjectMediaCategoryKey, ProjectMediaRequirement>>;
+}
+
+function categoryLabel(category: MediaCategory): string {
+  switch (category) {
+    case 'llm':
+      return 'LLM 大模型';
+    case 'tti':
+      return '文生图';
+    case 'itv':
+      return '视频生成';
+    case 'tts':
+      return '语音合成';
+    default:
+      return category;
+  }
+}
+
+function categoryIcon(category: MediaCategory) {
+  switch (category) {
+    case 'llm':
+      return <ExperimentOutlined />;
+    case 'tti':
+      return <PictureOutlined />;
+    case 'itv':
+      return <VideoCameraOutlined />;
+    case 'tts':
+      return <SoundOutlined />;
+    default:
+      return null;
+  }
+}
+
+function renderOptionLabel(option: ReturnType<typeof buildProjectMediaCategoryState>['options'][number]) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <Space size={6} wrap>
+        <span>{option.modelLabel}</span>
+        <Tag color="blue">{option.channelLabel}</Tag>
+      </Space>
+      <Space size={4} wrap>
+        {option.capabilities.map((capability) => (
+          <Tag key={capability} bordered={false} color={capability.startsWith('video.') ? 'magenta' : 'default'}>
+            {PROJECT_MEDIA_CAPABILITY_LABELS[capability] || capability}
+          </Tag>
+        ))}
+      </Space>
+    </div>
+  );
 }
 
 export const ProjectMediaSelector: React.FC<ProjectMediaSelectorProps> = ({
-  llmConfigId,
-  ttiConfigId,
-  itvConfigId,
-  ttsConfigId,
+  mediaSelections,
   onChange,
   onGoToSettings,
+  requirements,
 }) => {
-  const [llmConfigs, setLLMConfigs] = useState<LLMModelConfig[]>([]);
-  const [ttiOptions, setTTIOptions] = useState<UnifiedConfigOption[]>([]);
-  const [itvOptions, setITVOptions] = useState<UnifiedConfigOption[]>([]);
-  const [ttsConfigs, setTTSConfigs] = useState<TTSModelConfig[]>([]);
+  const [settings, setSettings] = useState<AppSettings | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    loadConfigs();
+    let cancelled = false;
+    const run = async () => {
+      setLoading(true);
+      const value = await loadSettings();
+      if (!cancelled) {
+        setSettings(value);
+        setLoading(false);
+      }
+    };
+    run();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  const loadConfigs = async () => {
-    setLoading(true);
-    try {
-      const settings = await loadSettings();
-      const channelConfigs = await getChannelConfigs();
-
-      setLLMConfigs(settings.llmConfigs || []);
-      setTTSConfigs(settings.ttsConfigs || []);
-
-      // 合并内置 TTI 配置和插件渠道
-      const builtinTTI: UnifiedConfigOption[] = (settings.ttiConfigs || []).map(c => ({
-        id: c.id,
-        name: c.name,
-        isDefault: c.isDefault,
-        source: 'builtin' as const,
-        providerType: c.provider,
-      }));
-      const pluginTTI: UnifiedConfigOption[] = channelConfigs
-        .filter(c => c.source === 'plugin' && c.enabled && c.capabilities.includes('tti'))
-        .map(c => ({
-          id: c.id,
-          name: c.name,
-          isDefault: c.isDefault,
-          source: 'plugin' as const,
-          providerType: c.providerType,
-        }));
-      setTTIOptions([...builtinTTI, ...pluginTTI]);
-
-      // 合并内置 ITV 配置和插件渠道
-      const builtinITV: UnifiedConfigOption[] = (settings.itvConfigs || []).map(c => ({
-        id: c.id,
-        name: c.name,
-        isDefault: c.isDefault,
-        source: 'builtin' as const,
-        providerType: c.provider,
-      }));
-      const pluginITV: UnifiedConfigOption[] = channelConfigs
-        .filter(c => c.source === 'plugin' && c.enabled && c.capabilities.includes('itv'))
-        .map(c => ({
-          id: c.id,
-          name: c.name,
-          isDefault: c.isDefault,
-          source: 'plugin' as const,
-          providerType: c.providerType,
-        }));
-      setITVOptions([...builtinITV, ...pluginITV]);
-    } finally {
-      setLoading(false);
+  const optionMap = useMemo(() => {
+    if (!settings) {
+      return {
+        llm: buildProjectMediaCategoryState({ settings: { channelConfigs: [], promptTemplates: {} }, category: 'llm' }),
+        tti: buildProjectMediaCategoryState({ settings: { channelConfigs: [], promptTemplates: {} }, category: 'tti' }),
+        itv: buildProjectMediaCategoryState({ settings: { channelConfigs: [], promptTemplates: {} }, category: 'itv' }),
+        tts: buildProjectMediaCategoryState({ settings: { channelConfigs: [], promptTemplates: {} }, category: 'tts' }),
+      };
     }
+    return {
+      llm: buildProjectMediaCategoryState({
+        settings,
+        category: 'llm',
+        explicitSelection: mediaSelections?.llm,
+        requirement: requirements?.llm || PROJECT_MEDIA_BASE_REQUIREMENTS.llm,
+      }),
+      tti: buildProjectMediaCategoryState({
+        settings,
+        category: 'tti',
+        explicitSelection: mediaSelections?.tti,
+        requirement: requirements?.tti || PROJECT_MEDIA_BASE_REQUIREMENTS.tti,
+      }),
+      itv: buildProjectMediaCategoryState({
+        settings,
+        category: 'itv',
+        explicitSelection: mediaSelections?.itv,
+        requirement: requirements?.itv,
+      }),
+      tts: buildProjectMediaCategoryState({
+        settings,
+        category: 'tts',
+        explicitSelection: mediaSelections?.tts,
+        requirement: requirements?.tts || PROJECT_MEDIA_BASE_REQUIREMENTS.tts,
+      }),
+    };
+  }, [settings, mediaSelections, requirements]);
+
+  const updateCategory = (category: keyof ProjectMediaSelections, value?: string) => {
+    const nextSelection = parseMediaSelectionKey(value);
+    const next: ProjectMediaSelections = {
+      ...(mediaSelections || {}),
+    };
+    if (nextSelection) {
+      next[category] = nextSelection;
+    } else {
+      delete next[category];
+    }
+    onChange(next);
   };
 
-  const getDefaultLabel = (configs: { isDefault?: boolean; name: string }[]) => {
-    const defaultConfig = configs.find(c => c.isDefault);
-    return defaultConfig ? `使用全局默认 (${defaultConfig.name})` : '使用全局默认';
+  const renderCategory = (category: ProjectMediaCategoryKey) => {
+    const state = optionMap[category];
+    const selectValue = state.explicitSupported ? state.explicitValue : undefined;
+    const fallbackText = state.fallbackLabel
+      ? (state.usingFallback ? `当前使用全局默认: ${state.fallbackLabel}` : `留空时回退到全局默认: ${state.fallbackLabel}`)
+      : '当前未配置全局默认模型';
+
+    return (
+      <div key={category}>
+        <div style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
+          {categoryIcon(category)}
+          <span style={{ fontWeight: 500 }}>{categoryLabel(category)}</span>
+          {state.requirement?.label && <Tag color="cyan">{state.requirement.label}</Tag>}
+          {state.options.length === 0 && <Tag color="orange">未配置</Tag>}
+          {state.usingFallback && state.fallbackLabel && <Tag color="gold">默认回退</Tag>}
+        </div>
+        <Select
+          allowClear
+          showSearch
+          value={selectValue}
+          placeholder={state.fallbackLabel ? `使用全局默认: ${state.fallbackLabel}` : '使用全局默认'}
+          optionLabelProp="label"
+          style={{ width: '100%' }}
+          loading={loading}
+          disabled={state.options.length === 0}
+          onChange={(value) => updateCategory(category, value)}
+          status={state.warning ? 'warning' : undefined}
+          options={state.options.map((option) => ({
+            value: option.value,
+            label: `${option.channelLabel} / ${option.modelLabel}`,
+          }))}
+          optionRender={({ value }) => {
+            const option = state.options.find((item) => item.value === value);
+            return option ? renderOptionLabel(option) : value;
+          }}
+        />
+        <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <span style={{ fontSize: 12, color: '#888' }}>{fallbackText}</span>
+          {state.requirement?.description && (
+            <span style={{ fontSize: 12, color: '#888' }}>{state.requirement.description}</span>
+          )}
+          {state.warning && (
+            <span style={{ fontSize: 12, color: '#d97706' }}>{state.warning}</span>
+          )}
+        </div>
+      </div>
+    );
   };
-
-  const renderLLMOption = (config: LLMModelConfig) => (
-    <Select.Option key={config.id} value={config.id}>
-      <Space>
-        {config.name}
-        {config.isDefault && <Tag color="gold" style={{ marginLeft: 4 }}>默认</Tag>}
-      </Space>
-    </Select.Option>
-  );
-
-  const renderTTSOption = (config: TTSModelConfig) => (
-    <Select.Option key={config.id} value={config.id}>
-      <Space>
-        {config.name}
-        {config.isDefault && <Tag color="gold" style={{ marginLeft: 4 }}>默认</Tag>}
-      </Space>
-    </Select.Option>
-  );
-
-  const renderUnifiedOption = (option: UnifiedConfigOption) => (
-    <Select.Option key={option.id} value={option.id}>
-      <Space>
-        {option.source === 'plugin' && <AppstoreOutlined style={{ color: '#1890ff' }} />}
-        {option.name}
-        {option.source === 'plugin' && <Tag color="blue" style={{ marginLeft: 4 }}>插件</Tag>}
-        {option.isDefault && <Tag color="gold" style={{ marginLeft: 4 }}>默认</Tag>}
-      </Space>
-    </Select.Option>
-  );
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      {/* LLM 配置选择 */}
-      <div>
-        <div style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
-          <ExperimentOutlined />
-          <span style={{ fontWeight: 500 }}>LLM 大模型</span>
-          {llmConfigs.length === 0 && (
-            <Tag color="orange">未配置</Tag>
-          )}
-        </div>
-        <Select
-          value={llmConfigId || undefined}
-          onChange={(value) => onChange({ llmConfigId: value, ttiConfigId, itvConfigId, ttsConfigId })}
-          placeholder={getDefaultLabel(llmConfigs)}
-          allowClear
-          style={{ width: '100%' }}
-          loading={loading}
-          disabled={llmConfigs.length === 0}
-        >
-          {llmConfigs.map(renderLLMOption)}
-        </Select>
-      </div>
-
-      {/* TTI 配置选择（包含插件渠道） */}
-      <div>
-        <div style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
-          <PictureOutlined />
-          <span style={{ fontWeight: 500 }}>文生图 (TTI)</span>
-          {ttiOptions.length === 0 && (
-            <Tag color="orange">未配置</Tag>
-          )}
-        </div>
-        <Select
-          value={ttiConfigId || undefined}
-          onChange={(value) => onChange({ llmConfigId, ttiConfigId: value, itvConfigId, ttsConfigId })}
-          placeholder={getDefaultLabel(ttiOptions)}
-          allowClear
-          style={{ width: '100%' }}
-          loading={loading}
-          disabled={ttiOptions.length === 0}
-        >
-          {ttiOptions.map(renderUnifiedOption)}
-        </Select>
-      </div>
-
-      {/* ITV 配置选择（包含插件渠道） */}
-      <div>
-        <div style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
-          <VideoCameraOutlined />
-          <span style={{ fontWeight: 500 }}>图生视频 (ITV)</span>
-          {itvOptions.length === 0 && (
-            <Tag color="orange">未配置</Tag>
-          )}
-        </div>
-        <Select
-          value={itvConfigId || undefined}
-          onChange={(value) => onChange({ llmConfigId, ttiConfigId, itvConfigId: value, ttsConfigId })}
-          placeholder={getDefaultLabel(itvOptions)}
-          allowClear
-          style={{ width: '100%' }}
-          loading={loading}
-          disabled={itvOptions.length === 0}
-        >
-          {itvOptions.map(renderUnifiedOption)}
-        </Select>
-      </div>
-
-      {/* TTS 配置选择 */}
-      <div>
-        <div style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
-          <SoundOutlined />
-          <span style={{ fontWeight: 500 }}>语音合成 (TTS)</span>
-          {ttsConfigs.length === 0 && (
-            <Tag color="orange">未配置</Tag>
-          )}
-        </div>
-        <Select
-          value={ttsConfigId || undefined}
-          onChange={(value) => onChange({ llmConfigId, ttiConfigId, itvConfigId, ttsConfigId: value })}
-          placeholder={getDefaultLabel(ttsConfigs)}
-          allowClear
-          style={{ width: '100%' }}
-          loading={loading}
-          disabled={ttsConfigs.length === 0}
-        >
-          {ttsConfigs.map(renderTTSOption)}
-        </Select>
-      </div>
-
-      {/* 前往设置 */}
+      {renderCategory('llm')}
+      {renderCategory('tti')}
+      {renderCategory('itv')}
+      {renderCategory('tts')}
       {onGoToSettings && (
         <div style={{ marginTop: 8 }}>
-          <Tooltip title="在全局设置中管理所有媒体配置">
+          <Tooltip title="在全局设置中管理渠道与默认模型">
             <Button
               type="link"
               icon={<SettingOutlined />}

@@ -11,16 +11,23 @@ import type {
   TTIModelConfig,
   TTSModelConfig,
   ResolvedTTSConfig,
+  VideoGenerationCapability,
 } from '../types';
-import type { ChannelConfig } from './channel/types';
+import type { ChannelConfig, MediaCategory, ModelCapability } from './channel/types';
 import {
-  getActiveLLMConfig,
-  getActiveTTIConfig,
-  getActiveITVConfig,
-  getActiveTTSConfig,
   getDefaultChannelConfig,
   getChannelsByCapability,
+  loadSettings,
 } from '../store/globalStore';
+import {
+  buildITVConfigFromContext,
+  buildITVProviderConfigFromContext,
+  buildLLMConfigFromContext,
+  buildTTIConfigFromContext,
+  buildTTSConfigFromContext,
+  getDefaultMediaSelection,
+  resolveConfiguredChannelModel,
+} from './channel/resolver';
 import type { ChannelKind } from './registry.types';
 import { createProviderInstance } from './registry';
 import { usePluginStore } from '../store/pluginStore';
@@ -75,7 +82,13 @@ export type { ITVProvider, ITVRequest, ITVResult, ProgressInfo, ITVOptions } fro
 // ========== 从 AppSettings 创建 Provider ==========
 
 export function createProvidersFromSettings(settings: AppSettings) {
-  const defaultLLMConfig = settings.llmConfigs.find(c => c.isDefault) || settings.llmConfigs[0];
+  const llmContext = resolveConfiguredChannelModel(
+    settings,
+    'llm',
+    getDefaultMediaSelection(settings, 'llm'),
+    'llm.chat',
+  );
+  const defaultLLMConfig = llmContext ? buildLLMConfigFromContext(llmContext) : null;
 
   return {
     llm: defaultLLMConfig ? createLLMProvider({
@@ -137,7 +150,13 @@ export function validateAllSettings(settings: AppSettings): {
   itv: ValidationResult;
   tts: ValidationResult;
 } {
-  const defaultLLMConfig = settings.llmConfigs?.find(c => c.isDefault) || settings.llmConfigs?.[0];
+  const defaultLLMContext = resolveConfiguredChannelModel(
+    settings,
+    'llm',
+    getDefaultMediaSelection(settings, 'llm'),
+    'llm.chat',
+  );
+  const defaultLLMConfig = defaultLLMContext ? buildLLMConfigFromContext(defaultLLMContext) : null;
   const llmResult: ValidationResult = defaultLLMConfig
     ? validateLLMConfig({
         provider: defaultLLMConfig.provider as any,
@@ -147,7 +166,13 @@ export function validateAllSettings(settings: AppSettings): {
       })
     : { valid: false, errors: ['未配置 LLM 模型'] };
 
-  const defaultTTIConfig = settings.ttiConfigs?.find(c => c.isDefault) || settings.ttiConfigs?.[0];
+  const defaultTTIContext = resolveConfiguredChannelModel(
+    settings,
+    'tti',
+    getDefaultMediaSelection(settings, 'tti'),
+    'image.text-to-image',
+  );
+  const defaultTTIConfig = defaultTTIContext ? buildTTIConfigFromContext(defaultTTIContext) : null;
   const ttiResult: ValidationResult = defaultTTIConfig
     ? validateTTIConfig({
         provider: defaultTTIConfig.provider as any,
@@ -157,7 +182,13 @@ export function validateAllSettings(settings: AppSettings): {
       })
     : { valid: false, errors: ['未配置 TTI 服务'] };
 
-  const defaultITVConfig = settings.itvConfigs?.find(c => c.isDefault) || settings.itvConfigs?.[0];
+  const defaultITVContext = resolveConfiguredChannelModel(
+    settings,
+    'itv',
+    getDefaultMediaSelection(settings, 'itv'),
+    'video.image-to-video',
+  );
+  const defaultITVConfig = defaultITVContext ? buildITVConfigFromContext(defaultITVContext) : null;
   const itvResult: ValidationResult = defaultITVConfig
     ? validateITVConfig({
         provider: defaultITVConfig.provider as any,
@@ -167,7 +198,13 @@ export function validateAllSettings(settings: AppSettings): {
       })
     : { valid: false, errors: ['未配置 ITV 服务'] };
 
-  const defaultTTSConfig = settings.ttsConfigs?.find(c => c.isDefault) || settings.ttsConfigs?.[0];
+  const defaultTTSContext = resolveConfiguredChannelModel(
+    settings,
+    'tts',
+    getDefaultMediaSelection(settings, 'tts'),
+    'speech.text-to-speech',
+  );
+  const defaultTTSConfig = defaultTTSContext ? buildTTSConfigFromContext(defaultTTSContext) : null;
   const ttsResult: ValidationResult = defaultTTSConfig
     ? validateTTSConfig({
         provider: defaultTTSConfig.provider,
@@ -223,6 +260,7 @@ export function createTTSProviderFromConfig(config: TTSModelConfig): TTSProvider
     provider: config.provider,
     apiKey: config.apiKey,
     baseUrl: config.baseUrl,
+    modelName: config.modelName,
     defaultVoice: config.defaultVoice,
   });
 }
@@ -338,61 +376,77 @@ export async function getProjectImageHostingProvider(): Promise<ImageHostingProv
   return createChannelProvider<ImageHostingProvider>(channel, 'image-hosting');
 }
 
-export async function getProjectLLMProvider(projectLLMConfigId?: string): Promise<LLMProvider | null> {
-  const config = await getActiveLLMConfig(projectLLMConfigId);
-  if (!config) return null;
-  return createLLMProviderFromConfig(config);
+async function resolveConfiguredProviderContext(
+  category: MediaCategory,
+  selectionKey?: string,
+  capability?: ModelCapability,
+) {
+  const settings = await loadSettings();
+  return resolveConfiguredChannelModel(settings, category, selectionKey, capability);
 }
 
-export async function getProjectTTIProvider(projectTTIConfigId?: string): Promise<TTIProvider | null> {
-  const config = await getActiveTTIConfig(projectTTIConfigId);
-  if (!config) return null;
-
-  if (config.source === 'channel') {
-    return createChannelProvider<TTIProvider>(config.channelConfig, 'tti');
-  }
-
-  return createTTIProviderFromConfig(config);
+export async function getProjectLLMProvider(
+  projectLLMSelection?: string,
+  capability: 'llm.chat' = 'llm.chat',
+): Promise<LLMProvider | null> {
+  const context = await resolveConfiguredProviderContext('llm', projectLLMSelection, capability);
+  if (!context) return null;
+  return createLLMProviderFromConfig(buildLLMConfigFromContext(context));
 }
 
-export async function getProjectITVProvider(projectITVConfigId?: string): Promise<ITVProvider | null> {
-  const config = await getActiveITVConfig(projectITVConfigId);
-  if (!config) return null;
+export async function getProjectTTIProvider(
+  projectTTISelection?: string,
+  capability: 'image.text-to-image' | 'image.image-to-image' = 'image.text-to-image',
+): Promise<TTIProvider | null> {
+  const context = await resolveConfiguredProviderContext('tti', projectTTISelection, capability);
+  if (!context) return null;
 
-  if (config.source === 'channel') {
-    return createChannelProvider<ITVProvider>(config.channelConfig, 'itv');
+  if (context.channelConfig.source === 'plugin') {
+    return createChannelProvider<TTIProvider>(context.channelConfig, 'tti');
   }
 
-  // 关键：不要丢失 promptProtocol 等扩展字段，否则 ITV 侧的 Grok 编译与 debug-body 日志无法生效。
-  return createITVProviderFromConfig(config as any);
+  return createTTIProviderFromConfig(buildTTIConfigFromContext(context));
 }
 
-export async function getProjectTTSProvider(projectTTSConfigId?: string): Promise<TTSProvider | null> {
-  const config = await getActiveTTSConfig(projectTTSConfigId);
-  if (!config) return null;
+export async function getProjectITVProvider(
+  projectITVSelection?: string,
+  capability: VideoGenerationCapability = 'video.image-to-video',
+): Promise<ITVProvider | null> {
+  const context = await resolveConfiguredProviderContext('itv', projectITVSelection, capability);
+  if (!context) return null;
 
-  // 支持插件渠道（如果有）
-  if ('source' in config && config.source === 'channel') {
-    const resolvedConfig = config as ResolvedTTSConfig;
-    if (resolvedConfig.source === 'channel') {
-      return createChannelProvider<TTSProvider>(resolvedConfig.channelConfig, 'tts');
-    }
+  if (context.channelConfig.source === 'plugin') {
+    return createChannelProvider<ITVProvider>(context.channelConfig, 'itv');
   }
 
-  return createTTSProviderFromConfig(config);
+  return createITVProviderFromConfig(buildITVProviderConfigFromContext(context));
+}
+
+export async function getProjectTTSProvider(
+  projectTTSSelection?: string,
+  capability: 'speech.text-to-speech' = 'speech.text-to-speech',
+): Promise<TTSProvider | null> {
+  const context = await resolveConfiguredProviderContext('tts', projectTTSSelection, capability);
+  if (!context) return null;
+
+  if (context.channelConfig.source === 'plugin') {
+    return createChannelProvider<TTSProvider>(context.channelConfig, 'tts');
+  }
+
+  return createTTSProviderFromConfig(buildTTSConfigFromContext(context));
 }
 
 export async function getProjectProviders(project: {
-  llmConfigId?: string;
-  ttiConfigId?: string;
-  itvConfigId?: string;
-  ttsConfigId?: string;
+  llmSelection?: string;
+  ttiSelection?: string;
+  itvSelection?: string;
+  ttsSelection?: string;
 }) {
   const [llm, tti, itv, tts] = await Promise.all([
-    getProjectLLMProvider(project.llmConfigId),
-    getProjectTTIProvider(project.ttiConfigId),
-    getProjectITVProvider(project.itvConfigId).catch(() => null),
-    getProjectTTSProvider(project.ttsConfigId).catch(() => null),
+    getProjectLLMProvider(project.llmSelection),
+    getProjectTTIProvider(project.ttiSelection),
+    getProjectITVProvider(project.itvSelection).catch(() => null),
+    getProjectTTSProvider(project.ttsSelection).catch(() => null),
   ]);
   return { llm, tti, itv, tts };
 }

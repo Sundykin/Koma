@@ -52,10 +52,8 @@ export const DEFAULT_SCRIPT = `# 第一场：废弃医院 - 夜
 
 // 默认设置
 export const DEFAULT_SETTINGS: AppSettings = {
-  llmConfigs: [],
-  ttiConfigs: [],
-  itvConfigs: [],
-  ttsConfigs: [],
+  channelConfigs: [],
+  mediaDefaults: {},
 };
 
 // 时间格式化工具函数

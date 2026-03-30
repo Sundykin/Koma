@@ -38,6 +38,7 @@ describe('Grok2ApiImagineITVProvider', () => {
     } as any);
 
     const res = await p.start({
+      capability: 'video.image-to-video',
       prompt: 'p',
       primaryImage: { transport: 'remote-url', value: 'https://img.example.com/1.jpg' },
       additionalReferences: [
@@ -84,6 +85,7 @@ describe('Grok2ApiImagineITVProvider', () => {
     } as any);
 
     const res = await p.start({
+      capability: 'video.image-to-video',
       prompt: 'p',
       primaryImage: { transport: 'remote-url', value: 'https://img.example.com/1.jpg' },
       additionalReferences: [],

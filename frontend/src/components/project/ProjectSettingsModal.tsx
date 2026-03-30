@@ -4,8 +4,9 @@
  */
 import React, { useState, useEffect } from 'react';
 import { Modal, Form, Input, Tabs, Select } from 'antd';
-import type { Project } from '../../types';
+import type { MediaModelSelection, Project } from '../../types';
 import { ProjectMediaSelector } from './ProjectMediaSelector';
+import type { ProjectMediaCategoryKey, ProjectMediaRequirement } from './projectMediaSelectionState';
 import {
   DEFAULT_THEME_PRESET_ID,
   createProjectStyleSnapshot,
@@ -30,13 +31,15 @@ export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({
 }) => {
   const [form] = Form.useForm();
   const [activeTab, setActiveTab] = useState('basic');
-  const [mediaConfigs, setMediaConfigs] = useState<{
-    llmConfigId?: string;
-    ttiConfigId?: string;
-    itvConfigId?: string;
-    ttsConfigId?: string;
-  }>({});
+  const [mediaSelections, setMediaSelections] = useState<
+    Partial<Record<'llm' | 'tti' | 'itv' | 'tts', MediaModelSelection>>
+  >({});
   const [themePresets, setThemePresets] = useState<ThemePresetCatalogItem[]>([]);
+  const mediaRequirements: Partial<Record<ProjectMediaCategoryKey, ProjectMediaRequirement>> = {
+    itv: {
+      description: '项目视频链路会按文生视频、图生视频、参考生视频、首尾帧视频等实际能力继续校验；这里用于设置项目默认视频模型。',
+    },
+  };
 
   useEffect(() => {
     if (!open) {
@@ -64,12 +67,7 @@ export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({
         genre: project.genre,
         stylePresetId: project.stylePresetId || project.styleSnapshot?.sourcePresetId || DEFAULT_THEME_PRESET_ID,
       });
-      setMediaConfigs({
-        llmConfigId: project.llmConfigId,
-        ttiConfigId: project.ttiConfigId,
-        itvConfigId: project.itvConfigId,
-        ttsConfigId: project.ttsConfigId,
-      });
+      setMediaSelections(project.mediaSelections || {});
     }
   }, [project, open, form]);
 
@@ -85,7 +83,7 @@ export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({
         styleSnapshot,
         theme: undefined,
         stylePrompt: undefined,
-        ...mediaConfigs,
+        mediaSelections,
       });
       onClose();
     } catch {
@@ -146,12 +144,10 @@ export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({
             选择此项目使用的媒体生成服务，留空则使用全局默认配置。
           </div>
           <ProjectMediaSelector
-            llmConfigId={mediaConfigs.llmConfigId}
-            ttiConfigId={mediaConfigs.ttiConfigId}
-            itvConfigId={mediaConfigs.itvConfigId}
-            ttsConfigId={mediaConfigs.ttsConfigId}
-            onChange={setMediaConfigs}
+            mediaSelections={mediaSelections}
+            onChange={setMediaSelections}
             onGoToSettings={onGoToGlobalSettings}
+            requirements={mediaRequirements}
           />
         </>
       ),

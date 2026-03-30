@@ -5,7 +5,13 @@
  * We intentionally keep this provider isolated to avoid impacting existing ITV providers.
  */
 import type { ITVConfig, ProviderStartResult, ProviderTaskSnapshot } from '../../types';
-import type { ITVProvider, ITVRequest, ITVResult } from './types';
+import {
+  assertSupportedVideoCapabilities,
+  requirePrimaryImage,
+  type ITVProvider,
+  type ITVRequest,
+  type ITVResult,
+} from './types';
 import { safeFetch } from '../../utils/safeFetch';
 import { createLogger } from '../../store/logger';
 import { sanitizeBodyForLog } from '../../utils/logFormatting';
@@ -167,6 +173,14 @@ export class Grok2ApiImagineITVProvider implements ITVProvider {
     this.config = config;
   }
 
+  private getModelName(): string {
+    const value = String(this.config.modelName || '').trim();
+    if (!value) {
+      throw new Error('模型名称未配置');
+    }
+    return value;
+  }
+
   private normalizeVideoLengthSeconds(value: number | undefined): number | undefined {
     if (typeof value !== 'number' || !Number.isFinite(value)) return undefined;
     // grok2api reverse-engineered constraints:
@@ -223,7 +237,7 @@ export class Grok2ApiImagineITVProvider implements ITVProvider {
   }
 
   validate(): boolean {
-    return Boolean(this.config.apiKey && this.config.baseUrl);
+    return Boolean(this.config.apiKey && this.config.baseUrl && String(this.config.modelName || '').trim());
   }
 
   private getHeaders(): Record<string, string> {
@@ -247,7 +261,12 @@ export class Grok2ApiImagineITVProvider implements ITVProvider {
   }
 
   async start(request: ITVRequest): Promise<ProviderStartResult<ITVResult>> {
-    if (!this.validate()) throw new Error('API Key 或 API 地址未配置');
+    if (!this.config.apiKey || !this.config.baseUrl) {
+      throw new Error('API Key 或 API 地址未配置');
+    }
+    const modelName = this.getModelName();
+    assertSupportedVideoCapabilities(request, 'Grok2API Imagine Video', ['video.image-to-video']);
+    const primaryImage = requirePrimaryImage(request, 'Grok2API Imagine Video');
 
     const protocol = (this.config as any)?.promptProtocol;
     const debugBody = Boolean(protocol) || (import.meta as any)?.env?.DEV === true;
@@ -255,7 +274,7 @@ export class Grok2ApiImagineITVProvider implements ITVProvider {
     const blocks: ChatContentBlock[] = [];
     // Doc-aligned ordering: text first, then images.
     blocks.push({ type: 'text', text: request.prompt });
-    if (request.primaryImage?.value) blocks.push({ type: 'image_url', image_url: { url: request.primaryImage.value } });
+    blocks.push({ type: 'image_url', image_url: { url: primaryImage.value } });
     for (const ref of request.additionalReferences || []) blocks.push({ type: 'image_url', image_url: { url: ref.value } });
 
     const opts = request.options || {};
@@ -272,7 +291,7 @@ export class Grok2ApiImagineITVProvider implements ITVProvider {
     const resolutionName = this.normalizeResolutionName(resolutionRaw);
 
     const body: Record<string, any> = {
-      model: (this.config as any).modelName || 'grok-imagine-1.0-video',
+      model: modelName,
       stream: false,
       messages: [{ role: 'user', content: blocks }],
       video_config: {

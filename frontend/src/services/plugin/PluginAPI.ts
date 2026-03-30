@@ -20,6 +20,37 @@ import { validateOperation, validateStoragePath, createSandboxedFetch, hasScope 
 import { electronService } from '../electronService';
 import { message, Modal } from 'antd';
 import { createLogger } from '../../store/logger';
+import type { ChannelCapability } from '../../providers/registry.types';
+import type { ChannelModelDefinition } from '../../providers/channel/types';
+import { isModelCapability } from '../../providers/channel/types';
+
+function inferPluginCategory(kind: string): 'tti' | 'itv' | 'tts' | 'image-hosting' {
+  switch (kind) {
+    case 'itv':
+      return 'itv';
+    case 'tts':
+      return 'tts';
+    case 'image-hosting':
+      return 'image-hosting';
+    default:
+      return 'tti';
+  }
+}
+
+function inferPluginCategoryFromCapabilities(
+  capabilities: string[] | undefined,
+): 'tti' | 'itv' | 'tts' | 'image-hosting' {
+  if (capabilities?.includes('image-hosting')) {
+    return 'image-hosting';
+  }
+  if (capabilities?.includes('tts')) {
+    return 'tts';
+  }
+  if (capabilities?.includes('itv')) {
+    return 'itv';
+  }
+  return 'tti';
+}
 
 const logger = createLogger('PluginAPI');
 import {
@@ -55,6 +86,46 @@ const dynamicMenuItems = new Map<string, MenuItem[]>();
 
 // 插件注册的 Provider 类型（用于卸载时清理）
 const pluginProviderTypes = new Map<string, string[]>();
+
+function normalizeProviderModels(def: ProviderDefinition<any>): ChannelModelDefinition[] | undefined {
+  if (def.kind === 'image-hosting') {
+    return undefined;
+  }
+
+  if (!def.models?.length) {
+    throw new Error(`插件 Provider "${def.type}" 必须声明至少一个模型`);
+  }
+
+  return def.models.map((model) => {
+    if (!model.id || !model.label) {
+      throw new Error(`插件 Provider "${def.type}" 的模型必须包含 id 和 label`);
+    }
+
+    const capabilities = (model.capabilities || []).filter(isModelCapability);
+    if (!capabilities.length) {
+      throw new Error(`插件 Provider "${def.type}" 的模型 "${model.id}" 缺少有效能力声明`);
+    }
+
+    return {
+      id: model.id,
+      label: model.label,
+      description: model.description,
+      capabilities,
+      defaults: model.defaults,
+    };
+  });
+}
+
+function resolveProviderChannelCapabilities(def: ProviderDefinition<any>): ChannelCapability[] {
+  return (def.capabilities?.length ? def.capabilities : [def.kind]) as ChannelCapability[];
+}
+
+function findRegisteredPluginProviderDefinition(
+  type: string,
+  pluginId: string,
+): ProviderDefinition<any> | undefined {
+  return listProviders().find((def) => def.type === type && def.pluginId === pluginId);
+}
 
 /**
  * 创建插件专用的 API 实例
@@ -108,13 +179,15 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
         const state = await loadSettings();
 
         if (!keys || keys.length === 0) {
+          const countByCategory = (category: string) => (
+            (state.channelConfigs || []).filter(channel => channel.category === category).length
+          );
           // 返回所有设置（排除敏感信息）
-          // AppSettings contains model configs, not UI settings
           return {
-            llmConfigCount: state.llmConfigs?.length || 0,
-            ttiConfigCount: state.ttiConfigs?.length || 0,
-            itvConfigCount: state.itvConfigs?.length || 0,
-            ttsConfigCount: state.ttsConfigs?.length || 0,
+            llmConfigCount: countByCategory('llm'),
+            ttiConfigCount: countByCategory('tti'),
+            itvConfigCount: countByCategory('itv'),
+            ttsConfigCount: countByCategory('tts'),
           };
         }
 
@@ -270,6 +343,8 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
           throw new Error(result.reason);
         }
 
+        const normalizedModels = normalizeProviderModels(def);
+        const channelCapabilities = resolveProviderChannelCapabilities(def);
 
         // 添加 pluginId 标识
         def.pluginId = pluginId;
@@ -301,7 +376,11 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
           await updateChannelConfig(existingChannel.id, {
             name: def.name,
             description: def.description,
-            capabilities: def.capabilities || [def.kind],
+            defaultModelId: existingChannel.defaultModelId && normalizedModels?.some((model) => model.id === existingChannel.defaultModelId)
+              ? existingChannel.defaultModelId
+              : normalizedModels?.[0]?.id,
+            models: normalizedModels,
+            capabilities: channelCapabilities,
             polling: def.polling,
             enabled: true,
           });
@@ -315,9 +394,12 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
           const _newConfig = await addChannelConfig({
             name: def.name,
             description: def.description,
+            category: inferPluginCategory(def.kind),
             providerType: def.type,
             providerConfig: def.defaultConfig || {},
-            capabilities: def.capabilities || [def.kind],
+            defaultModelId: normalizedModels?.[0]?.id,
+            models: normalizedModels,
+            capabilities: channelCapabilities,
             polling: def.polling,
             enabled: true,
             source: 'plugin',
@@ -374,17 +456,25 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
         let channelConfig = configs.find(
           c => c.providerType === type && c.pluginId === pluginId
         );
+        const providerDefinition = findRegisteredPluginProviderDefinition(type, pluginId);
+        const normalizedModels = providerDefinition ? normalizeProviderModels(providerDefinition) : undefined;
+        const channelCapabilities = providerDefinition
+          ? resolveProviderChannelCapabilities(providerDefinition)
+          : (plugin.providerMeta?.capabilities || []) as ChannelCapability[];
+        if (!providerDefinition && inferPluginCategoryFromCapabilities(channelCapabilities as string[]) !== 'image-hosting') {
+          throw new Error(`插件 Provider "${type}" 尚未注册模型定义，无法写入配置`);
+        }
 
         if (!channelConfig) {
-          // 自动创建渠道配置
-          const capabilities = plugin.providerMeta?.capabilities || [];
-
           channelConfig = await addChannelConfig({
             name: plugin.name || type,
             description: plugin.description,
+            category: inferPluginCategoryFromCapabilities(channelCapabilities as string[]),
             providerType: type,
             providerConfig: config,
-            capabilities: capabilities as any[],
+            defaultModelId: normalizedModels?.[0]?.id,
+            models: normalizedModels,
+            capabilities: channelCapabilities,
             enabled: true,
             source: 'plugin',
             pluginId: pluginId,
@@ -395,6 +485,11 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
         // 更新 providerConfig
         await updateChannelConfig(channelConfig.id, {
           providerConfig: config,
+          defaultModelId: channelConfig.defaultModelId && normalizedModels?.some((model) => model.id === channelConfig.defaultModelId)
+            ? channelConfig.defaultModelId
+            : normalizedModels?.[0]?.id,
+          models: normalizedModels,
+          capabilities: channelCapabilities,
         });
 
       },

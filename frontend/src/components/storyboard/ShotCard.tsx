@@ -89,6 +89,8 @@ export interface ShotCardProps {
   onOptimizeVideoPrompt: (shotId: string, currentPrompt: string) => void;
   onGenerateImage: (shotId: string) => void;
   onGenerateVideo: (shotId: string) => void;
+  videoCapabilityLabel?: string;
+  videoGenerateDisabledReason?: string;
   onToggleConfirm: (shot: Shot) => void;
   onDelete: (shotId: string) => void;
   onMergeUp: (shotId: string) => void;
@@ -132,6 +134,8 @@ export const ShotCard: React.FC<ShotCardProps> = ({
   onOptimizeVideoPrompt,
   onGenerateImage,
   onGenerateVideo,
+  videoCapabilityLabel,
+  videoGenerateDisabledReason,
   onToggleConfirm,
   onDelete,
   onMergeUp,
@@ -696,16 +700,25 @@ export const ShotCard: React.FC<ShotCardProps> = ({
           <div className="flex-1 p-1 min-h-0 overflow-y-auto custom-scrollbar flex items-center justify-center">
             {videos.length === 0 && !isGeneratingVideo ? (
               <div className="flex flex-col items-center gap-2">
-                <Button
-                  type="primary"
-                  size="small"
-                  className="h-7 px-3 text-[11px]"
-                  onClick={() => onGenerateVideo(shot.id)}
-                  disabled={images.length === 0}
-                  icon={<VideoCameraOutlined />}
-                >
-                  生成视频
-                </Button>
+                <Tooltip title={videoGenerateDisabledReason || (videoCapabilityLabel ? `当前将生成${videoCapabilityLabel}` : '生成视频')}>
+                  <span>
+                    <Button
+                      type="primary"
+                      size="small"
+                      className="h-7 px-3 text-[11px]"
+                      onClick={() => onGenerateVideo(shot.id)}
+                      disabled={Boolean(videoGenerateDisabledReason)}
+                      icon={<VideoCameraOutlined />}
+                    >
+                      生成视频
+                    </Button>
+                  </span>
+                </Tooltip>
+                {videoCapabilityLabel && (
+                  <div className={`text-[10px] ${videoGenerateDisabledReason ? 'text-amber-400' : 'text-zinc-500'}`}>
+                    {videoCapabilityLabel}
+                  </div>
+                )}
                 {currentVideo && (
                   <Button type="text" size="small" className="h-5 w-5 p-0" icon={<PlayCircleFilled />} onClick={() => setVideoModalOpen(true)} />
                 )}
@@ -734,7 +747,7 @@ export const ShotCard: React.FC<ShotCardProps> = ({
                   onSelect={handleVideoSelect}
                   onDelete={handleVideoDelete}
                   isGenerating={isGeneratingVideo}
-                  disabled={images.length === 0}
+                  disabled={Boolean(videoGenerateDisabledReason)}
                   compact
                 />
                 {currentVideo && (

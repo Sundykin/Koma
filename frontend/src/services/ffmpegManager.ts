@@ -34,13 +34,16 @@ export interface ExtractFramesOptions {
   quality?: number;
 }
 
-// 九宫格图片分割选项（3×3）
+// 宫格图片分割选项（支持 2×2 / 3×3 / 4×4 / 5×5）
 export interface SplitGridImageOptions {
   input: string;
   outputDir: string;
-  aspectRatio: '16:9' | '9:16';
+  aspectRatio?: string;
+  gridSize?: 2 | 3 | 4 | 5;
   minCellWidth?: number;
   minCellHeight?: number;
+  targetWidth?: number;
+  targetHeight?: number;
   sharpenAmount?: number;
   format?: 'png' | 'jpg' | 'webp';
 }
@@ -177,7 +180,7 @@ class FFmpegManager {
   }
 
   /**
-   * 九宫格图片分割（3×3）
+   * 宫格图片分割（支持 2×2 / 3×3 / 4×4 / 5×5）
    */
   async splitGridImage(options: SplitGridImageOptions): Promise<string[]> {
     await this.init();

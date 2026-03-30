@@ -22,12 +22,27 @@ export interface PromptCompilationAsset {
   source?: MediaAssetSource | ProviderAssetInput;
 }
 
+export interface PromptCompilationReferenceItem {
+  id: string;
+  name: string;
+  textValue?: string;
+  source?: MediaAssetSource | ProviderAssetInput;
+}
+
+export interface PromptReferenceCompilationInput {
+  references: PromptCompilationReferenceItem[];
+  extraReferences?: Array<MediaAssetSource | ProviderAssetInput>;
+  primaryReferenceId?: string;
+  ensurePrimaryReference?: boolean;
+}
+
 export interface PromptCompilationInput {
   /**
    * Ordered assets selected by the shot (characters -> scenes -> props).
    * The order is the source of truth for @Image N index mapping in grok protocol.
    */
-  selectedAssets: PromptCompilationAsset[];
+  selectedAssets?: PromptCompilationAsset[];
+  promptReferences?: PromptReferenceCompilationInput;
 }
 
 export interface PromptCompilationDebug {

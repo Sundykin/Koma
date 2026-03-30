@@ -2,7 +2,7 @@
  * 项目概览页面
  * 三栏式工作台布局：左侧剧集导航(360px) | 中间剧本编辑区 | 右侧资产面板(340px)
  */
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { Input, Tag, App, Modal, Select, Tooltip } from 'antd';
 import { ThunderboltOutlined, SettingOutlined } from '@ant-design/icons';
 import {
@@ -18,19 +18,20 @@ import {
   saveProject, loadProject, listEpisodes, loadEpisode,
   deleteEpisode, saveCharacters, saveScenes, saveProps,
 } from '../../store/projectStore';
-import { loadSettings, getChannelsByCapability } from '../../store/globalStore';
+import { loadSettings } from '../../store/globalStore';
 import { TaskManager } from '../../services/TaskManager';
 import { createLogger } from '../../store/logger';
 import { ScriptEditor } from '../../editor';
+import {
+  parseMediaSelectionKey,
+} from '../../providers/channel/resolver';
+import {
+  buildProjectMediaCategoryState,
+  PROJECT_MEDIA_BASE_REQUIREMENTS,
+  type ProjectMediaCategoryKey,
+} from './projectMediaSelectionState';
 
 const logger = createLogger('ProjectOverview');
-
-// 统一的配置选项类型
-interface ConfigOption {
-  id: string;
-  name: string;
-  isDefault?: boolean;
-}
 
 interface ProjectOverviewProps {
   project: Project;
@@ -62,39 +63,46 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
   // 当前选中的剧集（用于中间区域剧本编辑）
   const [selectedEpisode, setSelectedEpisode] = useState<Episode | null>(null);
 
-  // 模型配置列表（统一类型）
-  const [llmConfigs, setLlmConfigs] = useState<ConfigOption[]>([]);
-  const [ttiConfigs, setTtiConfigs] = useState<ConfigOption[]>([]);
-  const [itvConfigs, setItvConfigs] = useState<ConfigOption[]>([]);
-  const [ttsConfigs, setTtsConfigs] = useState<ConfigOption[]>([]);
+  const [settings, setSettings] = useState<Awaited<ReturnType<typeof loadSettings>> | null>(null);
 
   // 加载模型配置（内置 + 插件渠道）
   useEffect(() => {
     const load = async () => {
-      const settings = await loadSettings();
-      // 内置配置
-      const builtinLLM: ConfigOption[] = (settings.llmConfigs || []).map(c => ({ id: c.id, name: c.name, isDefault: c.isDefault }));
-      const builtinTTI: ConfigOption[] = (settings.ttiConfigs || []).map(c => ({ id: c.id, name: c.name, isDefault: c.isDefault }));
-      const builtinITV: ConfigOption[] = (settings.itvConfigs || []).map(c => ({ id: c.id, name: c.name, isDefault: c.isDefault }));
-      const builtinTTS: ConfigOption[] = (settings.ttsConfigs || []).map(c => ({ id: c.id, name: c.name, isDefault: c.isDefault }));
-
-      // 插件渠道
-      const [ttiChannels, itvChannels, ttsChannels] = await Promise.all([
-        getChannelsByCapability('tti'),
-        getChannelsByCapability('itv'),
-        getChannelsByCapability('tts'),
-      ]);
-      const channelTTI: ConfigOption[] = ttiChannels.map(c => ({ id: c.id, name: c.name }));
-      const channelITV: ConfigOption[] = itvChannels.map(c => ({ id: c.id, name: c.name }));
-      const channelTTS: ConfigOption[] = ttsChannels.map(c => ({ id: c.id, name: c.name }));
-
-      setLlmConfigs(builtinLLM);
-      setTtiConfigs([...builtinTTI, ...channelTTI]);
-      setItvConfigs([...builtinITV, ...channelITV]);
-      setTtsConfigs([...builtinTTS, ...channelTTS]);
+      setSettings(await loadSettings());
     };
     load();
   }, []);
+
+  const mediaSelectionStates = useMemo(() => {
+    if (!settings) {
+      return null;
+    }
+    return {
+      llm: buildProjectMediaCategoryState({
+        settings,
+        category: 'llm',
+        explicitSelection: project.mediaSelections?.llm,
+        requirement: PROJECT_MEDIA_BASE_REQUIREMENTS.llm,
+      }),
+      tti: buildProjectMediaCategoryState({
+        settings,
+        category: 'tti',
+        explicitSelection: project.mediaSelections?.tti,
+        requirement: PROJECT_MEDIA_BASE_REQUIREMENTS.tti,
+      }),
+      itv: buildProjectMediaCategoryState({
+        settings,
+        category: 'itv',
+        explicitSelection: project.mediaSelections?.itv,
+      }),
+      tts: buildProjectMediaCategoryState({
+        settings,
+        category: 'tts',
+        explicitSelection: project.mediaSelections?.tts,
+        requirement: PROJECT_MEDIA_BASE_REQUIREMENTS.tts,
+      }),
+    };
+  }, [settings, project.mediaSelections]);
 
   // 初始加载时自动选中第一集
   useEffect(() => {
@@ -232,18 +240,71 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
   };
 
   // 模型配置更新
-  const handleConfigChange = useCallback(async (key: string, value: string | undefined) => {
+  const handleConfigChange = useCallback(async (
+    category: 'llm' | 'tti' | 'itv' | 'tts',
+    value: string | undefined,
+  ) => {
     try {
       const projectMeta = await loadProject(project.id);
       if (projectMeta) {
-        (projectMeta as any)[key] = value;
+        projectMeta.mediaSelections = {
+          ...(projectMeta.mediaSelections || {}),
+        };
+        const selection = parseMediaSelectionKey(value);
+        if (selection) {
+          projectMeta.mediaSelections[category] = selection;
+        } else {
+          delete projectMeta.mediaSelections[category];
+        }
         await saveProject(projectMeta);
-        onProjectUpdate({ [key]: value });
+        onProjectUpdate({ mediaSelections: projectMeta.mediaSelections });
       }
     } catch (err: any) {
       message.error(`更新配置失败: ${err.message}`);
     }
   }, [project.id, onProjectUpdate, message]);
+
+  const renderQuickSelector = (
+    category: ProjectMediaCategoryKey,
+    icon: React.ReactNode,
+    colorClassName: string,
+    emptyTitle: string,
+    readyTitle: string,
+  ) => {
+    const state = mediaSelectionStates?.[category];
+    const tooltipLines = state
+      ? [
+          state.options.length === 0 ? emptyTitle : readyTitle,
+          state.requirement?.description,
+          state.fallbackLabel ? `全局默认: ${state.fallbackLabel}` : undefined,
+          state.warning,
+        ].filter(Boolean)
+      : [emptyTitle];
+
+    return (
+      <Tooltip title={tooltipLines.join('；')}>
+        <div className="flex items-center gap-1">
+          <span className={colorClassName}>{icon}</span>
+          <Select
+            value={state?.explicitSupported ? state.explicitValue : undefined}
+            onChange={(v) => handleConfigChange(category, v)}
+            placeholder={state?.fallbackLabel ? `默认 · ${state.fallbackLabel}` : '默认'}
+            allowClear
+            size="small"
+            status={state?.warning ? 'warning' : undefined}
+            className="!w-36"
+            popupMatchSelectWidth={false}
+            options={(state?.options || []).map((option) => ({
+              value: option.value,
+              label: `${option.channelLabel} / ${option.modelLabel}`,
+            }))}
+            notFoundContent="请先在设置中配置"
+          />
+        </div>
+      </Tooltip>
+    );
+  };
+
   return (
     <div className="h-full flex flex-col bg-zinc-950 overflow-hidden">
       {/* HeaderBar */}
@@ -278,70 +339,10 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
 
         {/* Center: Model Configs */}
         <div className="flex items-center gap-2">
-          <Tooltip title={llmConfigs.length === 0 ? "请先在设置中配置 LLM 模型" : "LLM 大语言模型"}>
-            <div className="flex items-center gap-1">
-              <Brain className="w-3.5 h-3.5 text-blue-400" />
-              <Select
-                value={project.llmConfigId}
-                onChange={(v) => handleConfigChange('llmConfigId', v)}
-                placeholder="默认"
-                allowClear
-                size="small"
-                className="!w-28"
-                popupMatchSelectWidth={false}
-                options={llmConfigs.map(c => ({ value: c.id, label: c.name }))}
-                notFoundContent="请先在设置中配置"
-              />
-            </div>
-          </Tooltip>
-          <Tooltip title={ttiConfigs.length === 0 ? "请先在设置中配置 TTI 服务" : "文生图 TTI"}>
-            <div className="flex items-center gap-1">
-              <Image className="w-3.5 h-3.5 text-purple-400" />
-              <Select
-                value={project.ttiConfigId}
-                onChange={(v) => handleConfigChange('ttiConfigId', v)}
-                placeholder="默认"
-                allowClear
-                size="small"
-                className="!w-28"
-                popupMatchSelectWidth={false}
-                options={ttiConfigs.map(c => ({ value: c.id, label: c.name }))}
-                notFoundContent="请先在设置中配置"
-              />
-            </div>
-          </Tooltip>
-          <Tooltip title={itvConfigs.length === 0 ? "请先在设置中配置 ITV 服务" : "图生视频 ITV"}>
-            <div className="flex items-center gap-1">
-              <Video className="w-3.5 h-3.5 text-orange-400" />
-              <Select
-                value={project.itvConfigId}
-                onChange={(v) => handleConfigChange('itvConfigId', v)}
-                placeholder="默认"
-                allowClear
-                size="small"
-                className="!w-28"
-                popupMatchSelectWidth={false}
-                options={itvConfigs.map(c => ({ value: c.id, label: c.name }))}
-                notFoundContent="请先在设置中配置"
-              />
-            </div>
-          </Tooltip>
-          <Tooltip title={ttsConfigs.length === 0 ? "请先在设置中配置 TTS 服务" : "语音合成 TTS"}>
-            <div className="flex items-center gap-1">
-              <Volume2 className="w-3.5 h-3.5 text-emerald-400" />
-              <Select
-                value={project.ttsConfigId}
-                onChange={(v) => handleConfigChange('ttsConfigId', v)}
-                placeholder="默认"
-                allowClear
-                size="small"
-                className="!w-28"
-                popupMatchSelectWidth={false}
-                options={ttsConfigs.map(c => ({ value: c.id, label: c.name }))}
-                notFoundContent="请先在设置中配置"
-              />
-            </div>
-          </Tooltip>
+          {renderQuickSelector('llm', <Brain className="w-3.5 h-3.5" />, 'text-blue-400', '请先在设置中配置 LLM 模型', 'LLM 大语言模型')}
+          {renderQuickSelector('tti', <Image className="w-3.5 h-3.5" />, 'text-purple-400', '请先在设置中配置 TTI 服务', '文生图 TTI')}
+          {renderQuickSelector('itv', <Video className="w-3.5 h-3.5" />, 'text-orange-400', '请先在设置中配置 ITV 服务', '项目视频模型')}
+          {renderQuickSelector('tts', <Volume2 className="w-3.5 h-3.5" />, 'text-emerald-400', '请先在设置中配置 TTS 服务', '语音合成 TTS')}
         </div>
 
         {/* Right: Actions */}

@@ -2,7 +2,7 @@
  * Electron API 服务封装
  * 在浏览器环境下提供 fallback 实现
  */
-import type { ProjectStyleSnapshot } from '../types';
+import type { MediaModelSelection, ProjectStyleSnapshot } from '../types';
 
 // 类型定义
 export interface ProjectMeta {
@@ -15,11 +15,7 @@ export interface ProjectMeta {
   episodes?: number;
   createdAt: number;
   updatedAt: number;
-  // 媒体配置
-  llmConfigId?: string;
-  ttiConfigId?: string;
-  itvConfigId?: string;
-  ttsConfigId?: string;
+  mediaSelections?: Partial<Record<'llm' | 'tti' | 'itv' | 'tts', MediaModelSelection>>;
   stylePresetId?: string;
   styleSnapshot?: ProjectStyleSnapshot;
   aspectRatio?: '16:9' | '9:16';

@@ -480,15 +480,15 @@ export async function generateShotPrompt(
   episodeId: string,
   shot: Shot,
   stylePrefix?: string,
-  llmConfigId?: string,
+  llmSelection?: string,
   generateFlags?: { image?: boolean; video?: boolean },
   options?: { force?: boolean },
   styleSnapshot?: StyleSnapshotLike,
   project?: { styleSnapshot?: StyleSnapshotLike }
 ): Promise<PromptGenerationResult> {
   const service = new ShotPromptService(projectId, episodeId, { styleSnapshot, project });
-  if (llmConfigId) {
-    await service.setLLMConfig(llmConfigId);
+  if (llmSelection) {
+    await service.setLLMConfig(llmSelection);
   }
   return service.generateAndSaveShotPrompt(shot, stylePrefix, generateFlags, options, styleSnapshot);
 }
@@ -502,15 +502,15 @@ export async function batchGenerateShotPrompts(
   shots: Shot[],
   stylePrefix?: string,
   onProgress?: (current: number, total: number, result: PromptGenerationResult) => void,
-  llmConfigId?: string,
+  llmSelection?: string,
   styleSnapshot?: StyleSnapshotLike,
   project?: { styleSnapshot?: StyleSnapshotLike },
   generateFlags?: { image?: boolean; video?: boolean },
   options?: { force?: boolean },
 ): Promise<PromptGenerationResult[]> {
   const service = new ShotPromptService(projectId, episodeId, { styleSnapshot, project });
-  if (llmConfigId) {
-    await service.setLLMConfig(llmConfigId);
+  if (llmSelection) {
+    await service.setLLMConfig(llmSelection);
   }
   return service.batchGenerateShotPrompts(shots, stylePrefix, onProgress, styleSnapshot, generateFlags, options);
 }

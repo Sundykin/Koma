@@ -20,7 +20,7 @@ interface SceneAssetEditorProps {
   scene: Scene;
   theme?: string;
   stylePrompt?: string;
-  ttiConfigId?: string;
+  ttiSelection?: string;
   onUpdate: (updates: Partial<Scene>) => void;
 }
 
@@ -29,7 +29,7 @@ export const SceneAssetEditor: React.FC<SceneAssetEditorProps> = ({
   scene,
   theme,
   stylePrompt,
-  ttiConfigId,
+  ttiSelection,
   onUpdate,
 }) => {
   const { message } = App.useApp();
@@ -56,7 +56,7 @@ export const SceneAssetEditor: React.FC<SceneAssetEditorProps> = ({
         scene: sceneWithPrompt,
         theme,
         stylePrompt,
-        ttiConfigId,
+        ttiSelection,
         onProgress: (value, step) => {
           setProgress({ value, step: step || '' });
         },
@@ -82,7 +82,7 @@ export const SceneAssetEditor: React.FC<SceneAssetEditorProps> = ({
     } finally {
       setLoading(false);
     }
-  }, [projectId, scene, theme, stylePrompt, ttiConfigId, currentPrompt, onUpdate, message]);
+  }, [projectId, scene, theme, stylePrompt, ttiSelection, currentPrompt, onUpdate, message]);
 
   const handleUpload = useCallback(async () => {
     try {

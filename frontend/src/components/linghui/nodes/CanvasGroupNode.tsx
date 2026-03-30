@@ -1,19 +1,26 @@
 import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { NodeResizer, type NodeProps } from '@xyflow/react';
 import type { LinghuiCanvasGroupData } from '../../../types/linghui';
-import { useLinghuiNodeMutation, useLinghuiNodeInteractionApi } from './LinghuiNodeRunsContext';
+import { resolveLinghuiWorkflowBlockLabel } from '../../../constants/linghuiWorkflowBlock';
+import {
+  useGroupRunSummary,
+  useLinghuiNodeMutation,
+  useLinghuiNodeInteractionApi,
+} from './LinghuiNodeRunsContext';
 
 function CanvasGroupNodeInner({ id, data, selected }: NodeProps) {
   const groupData = data as unknown as LinghuiCanvasGroupData;
   const { updateNodeData } = useLinghuiNodeMutation();
   const { openNodeContextMenu } = useLinghuiNodeInteractionApi();
+  const runSummary = useGroupRunSummary(id);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [editing, setEditing] = useState(false);
-  const [draftLabel, setDraftLabel] = useState(groupData.label ?? '分组');
+  const resolvedLabel = resolveLinghuiWorkflowBlockLabel(groupData.label);
+  const [draftLabel, setDraftLabel] = useState(resolvedLabel);
 
   useEffect(() => {
-    setDraftLabel(groupData.label ?? '分组');
-  }, [groupData.label]);
+    setDraftLabel(resolvedLabel);
+  }, [resolvedLabel]);
 
   useEffect(() => {
     if (!editing) return;
@@ -22,7 +29,7 @@ function CanvasGroupNodeInner({ id, data, selected }: NodeProps) {
   }, [editing]);
 
   const commitLabel = useCallback(() => {
-    const nextLabel = draftLabel.trim() || '分组';
+    const nextLabel = resolveLinghuiWorkflowBlockLabel(draftLabel);
     updateNodeData(id, prev => ({
       ...prev,
       label: nextLabel,
@@ -36,9 +43,19 @@ function CanvasGroupNodeInner({ id, data, selected }: NodeProps) {
     setEditing(true);
   }, []);
 
+  const statusLabel = (() => {
+    if (!runSummary || runSummary.total === 0) return '空工作流块';
+    if (runSummary.failed > 0) return `失败 ${runSummary.failed}`;
+    if (runSummary.running > 0) return `运行中 ${runSummary.running}/${runSummary.total}`;
+    if (runSummary.stale > 0) return `待重跑 ${runSummary.stale}`;
+    if (runSummary.succeeded === runSummary.total) return `完成 ${runSummary.succeeded}`;
+    if (runSummary.succeeded > 0) return `部分完成 ${runSummary.succeeded}/${runSummary.total}`;
+    return `${runSummary.total} 节点`;
+  })();
+
   return (
     <div
-      className={`linghuiCanvasGroup nopan ${selected ? 'isSelected' : ''}`}
+      className={`linghuiCanvasGroup nopan ${selected ? 'isSelected' : ''} ${runSummary ? `is-${runSummary.status}` : ''}`}
       style={{ ['--linghui-group-color' as string]: groupData.color ?? '#2563eb' }}
       onContextMenu={(event) => {
         event.preventDefault();
@@ -76,7 +93,7 @@ function CanvasGroupNodeInner({ id, data, selected }: NodeProps) {
               }
               if (event.key === 'Escape') {
                 event.preventDefault();
-                setDraftLabel(groupData.label ?? '分组');
+                setDraftLabel(resolvedLabel);
                 setEditing(false);
               }
             }}
@@ -93,9 +110,13 @@ function CanvasGroupNodeInner({ id, data, selected }: NodeProps) {
               openNodeContextMenu(id, event.clientX, event.clientY);
             }}
           >
-            {groupData.label ?? '分组'}
+            {resolvedLabel}
           </button>
         )}
+
+        <span className={`linghuiCanvasGroupStatus is-${runSummary?.status ?? 'idle'}`}>
+          {statusLabel}
+        </span>
       </div>
     </div>
   );

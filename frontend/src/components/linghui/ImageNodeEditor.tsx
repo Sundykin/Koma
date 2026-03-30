@@ -1,20 +1,33 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { Button, Dropdown, Select, Tooltip } from 'antd';
-import { ArrowUp, Grid3x3, Image as ImageIcon } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { App, Button, Select } from 'antd';
+import { nanoid } from 'nanoid';
+import { ArrowUp, Image as ImageIcon, Trash2, UploadCloud } from 'lucide-react';
 import type {
-  LinghuiGridType,
+  LinghuiImageAssetItem,
+  LinghuiImageNodeMode,
+  LinghuiImageNodeProperties,
+  LinghuiImageToolKey,
   LinghuiNodeData,
+  LinghuiNodeRunState,
 } from '../../types/linghui';
 import {
   IMAGE_ASPECT_RATIOS,
   IMAGE_RESOLUTIONS,
-  GRID_TYPES,
+  LINGHUI_IMAGE_BATCH_COUNTS,
 } from '../../types/linghui';
+import { electronService, openFileDialog } from '../../services/electronService';
+import {
+  importLinghuiWorkspaceAsset,
+} from '../../store/linghuiStorage';
 import { loadSettings } from '../../store/settings/core';
-import { electronService } from '../../services/electronService';
-import { useLinghuiNodeMutation } from './nodes/LinghuiNodeRunsContext';
-import { LinghuiPromptEditor } from './LinghuiPromptEditor';
+import { listConfiguredModelSelectOptions } from '../../providers/channel/resolver';
 import type { LinghuiPromptReferenceItem } from './linghuiPromptReferences';
+import { LinghuiPromptEditor } from './LinghuiPromptEditor';
+import { useLinghuiNodeMutation } from './nodes/LinghuiNodeRunsContext';
+import {
+  createLinghuiImageImportProperties,
+  resolveImageAspectRatioLabel,
+} from './linghuiImageCollections';
 
 function getPreviewSource(source?: string): string {
   if (!source) return '';
@@ -22,106 +35,233 @@ function getPreviewSource(source?: string): string {
   return electronService.fs.toLocalUrl(source);
 }
 
+function resolveImageNodeMode(props: LinghuiImageNodeProperties): LinghuiImageNodeMode {
+  if (props.mode === 'import' || props.mode === 'generate') {
+    return props.mode;
+  }
+  return String(props.source ?? '').trim() ? 'import' : 'generate';
+}
+
+export function mergePromptSnippet(currentPrompt: string, snippet: string): string {
+  const normalizedCurrent = currentPrompt.trim();
+  const normalizedSnippet = snippet.trim();
+  if (!normalizedSnippet) return normalizedCurrent;
+  if (normalizedCurrent.includes(normalizedSnippet)) return normalizedCurrent;
+  return normalizedCurrent ? `${normalizedCurrent}\n${normalizedSnippet}` : normalizedSnippet;
+}
+
 interface ProviderOption {
   value: string;
   label: string;
 }
 
-interface ImageNodeEditorProps {
+interface DisplayReferenceImage {
+  source?: string;
+  label?: string;
+  badge: string;
+}
+
+export interface ImageNodeEditorProps {
   nodeId: string;
   nodeData: LinghuiNodeData;
+  nodeRun?: LinghuiNodeRunState;
   referenceImages: Array<{ source?: string; label?: string }>;
   promptReferences?: LinghuiPromptReferenceItem[];
+  workspaceId?: string | null;
+  activeTool: LinghuiImageToolKey | null;
+  onToolChange: (tool: LinghuiImageToolKey | null) => void;
+  onCreateDerivedImportImages?: (items: LinghuiImageAssetItem[]) => void;
   onRun: () => void;
+}
+
+async function createSingleImageAssetItem(params: {
+  source: string;
+  filenameHint?: string;
+  label?: string;
+}): Promise<LinghuiImageAssetItem> {
+  const previewSource = getPreviewSource(params.source);
+  const metadata = await new Promise<{ width: number; height: number; aspectRatio: string }>((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve({
+      width: image.naturalWidth,
+      height: image.naturalHeight,
+      aspectRatio: resolveImageAspectRatioLabel(image.naturalWidth, image.naturalHeight),
+    });
+    image.onerror = () => reject(new Error('读取图片尺寸失败'));
+    image.src = previewSource;
+  });
+  return {
+    id: nanoid(10),
+    source: params.source,
+    label: params.label || params.filenameHint?.replace(/\.[^.]+$/, '') || undefined,
+    width: metadata.width,
+    height: metadata.height,
+    aspectRatio: metadata.aspectRatio,
+  };
 }
 
 export const ImageNodeEditor: React.FC<ImageNodeEditorProps> = ({
   nodeId,
   nodeData,
+  nodeRun,
   referenceImages,
   promptReferences = [],
+  workspaceId = null,
+  activeTool,
+  onToolChange,
+  onCreateDerivedImportImages,
   onRun,
 }) => {
-  const { updateNodeData } = useLinghuiNodeMutation();
-  const props = nodeData.properties;
+  const { message } = App.useApp();
+  const { clearNodeRunState, updateNodeData } = useLinghuiNodeMutation();
+  const props = nodeData.properties as unknown as LinghuiImageNodeProperties;
+  const mode = resolveImageNodeMode(props);
+  const isImportMode = mode === 'import';
   const prompt = String(props.prompt ?? '');
-  const ttiConfigId = String(props.ttiConfigId ?? '');
+  const ttiSelection = String(props.ttiSelection ?? '');
   const aspectRatio = String(props.aspectRatio ?? '3:4');
   const resolution = String(props.resolution ?? 'auto');
-  const gridType = (props.gridType ?? 'none') as LinghuiGridType;
-  const batchCount = Number(props.batchCount ?? 4);
+  const batchCount = Number(props.batchCount ?? 1);
+  const hasImportSource = Boolean(String(props.source ?? '').trim());
+
+  const displayReferenceImages: DisplayReferenceImage[] = referenceImages.map((ref, index) => ({
+    ...ref,
+    badge: String(index + 1),
+  }));
 
   const [providers, setProviders] = useState<ProviderOption[]>([]);
-  const mentionHint = promptReferences.length > 0
-    ? '输入 @ 可直接引用上游图片、封面或文本产物，执行时会自动完成提示词替换'
-    : '当前还没有可引用的上游产物，先连接参考图或上游图片节点';
 
-  // 加载可用的 TTI providers
   useEffect(() => {
     loadSettings().then(settings => {
-      const builtins = (settings.ttiConfigs ?? []).map(c => ({
-        value: c.id,
-        label: c.name || c.provider,
-      }));
-      const channels = (settings.channelConfigs ?? [])
-        .filter(c => c.enabled && c.capabilities?.includes('tti'))
-        .map(c => ({
-          value: c.id,
-          label: c.name || c.id,
-        }));
-      setProviders([...builtins, ...channels]);
+      setProviders(listConfiguredModelSelectOptions(settings, 'tti', 'image.text-to-image').map(option => ({
+        value: option.value,
+        label: `${option.channelLabel} / ${option.modelLabel}`,
+      })));
     });
   }, []);
 
-  const updateProp = useCallback((key: string, value: unknown) => {
+  const updateProp = useCallback((key: string, value: unknown, options?: { markStale?: boolean }) => {
     updateNodeData(nodeId, prev => ({
       ...prev,
       properties: { ...prev.properties, [key]: value },
-    }));
+    }), options);
   }, [nodeId, updateNodeData]);
 
-  const handlePromptChange = useCallback((value: string) => {
-    updateProp('prompt', value);
-  }, [updateProp]);
+  const handleReplaceImage = useCallback(async () => {
+    try {
+      const result = await openFileDialog({
+        filters: [{ name: '图片', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'] }],
+        multiple: false,
+        title: '选择图片素材',
+      });
 
-  return (
-    <div className="linghuiEditorPanel" onMouseDown={e => e.stopPropagation()}>
-      <div className="linghuiEditorHeader">
-        <div>
-          <div className="linghuiEditorTitle">图片节点</div>
-          <div className="linghuiEditorSubtitle">
-            {referenceImages.length > 0
-              ? `已注入 ${referenceImages.length} 张上游参考图，执行时会自动带入`
-              : '可连接参考图节点作为上游输入'}
+      if (!result.canceled && result.filePaths.length > 0) {
+        const filePath = result.filePaths[0];
+        let resolvedSource = filePath;
+        if (
+          workspaceId &&
+          electronService.isElectron() &&
+          filePath &&
+          !filePath.startsWith('http://') &&
+          !filePath.startsWith('https://') &&
+          !filePath.startsWith('data:') &&
+          !filePath.startsWith('blob:')
+        ) {
+          resolvedSource = await importLinghuiWorkspaceAsset(workspaceId, filePath, filePath.split(/[\\/]/).pop());
+        }
+
+        const newItem = await createSingleImageAssetItem({
+          source: resolvedSource,
+          filenameHint: filePath.split(/[\\/]/).pop(),
+        });
+
+        updateNodeData(nodeId, prev => {
+          const previousProps = prev.properties as unknown as LinghuiImageNodeProperties;
+          const nextProperties = createLinghuiImageImportProperties(previousProps, [newItem], newItem.id);
+          const nextLabel = prev.label.startsWith('图片') && newItem.label
+            ? newItem.label
+            : prev.label;
+          return {
+            ...prev,
+            label: nextLabel,
+            properties: nextProperties as unknown as Record<string, unknown>,
+          };
+        }, { markStale: false });
+        clearNodeRunState(nodeId);
+      }
+    } catch (error: any) {
+      message.error(error?.message || '选择图片失败');
+    }
+  }, [clearNodeRunState, message, nodeId, updateNodeData, workspaceId]);
+
+  const handleClearImage = useCallback(() => {
+    updateNodeData(nodeId, prev => {
+      const previousProps = prev.properties as unknown as LinghuiImageNodeProperties;
+      const nextProperties = createLinghuiImageImportProperties(previousProps, [], '');
+      return {
+        ...prev,
+        properties: nextProperties as unknown as Record<string, unknown>,
+      };
+    }, { markStale: false });
+    clearNodeRunState(nodeId);
+  }, [clearNodeRunState, nodeId, updateNodeData]);
+
+  if (isImportMode) {
+    return (
+      <div className="linghuiEditorPanel" onMouseDown={event => event.stopPropagation()}>
+        <div className="linghuiEditorToolbar">
+          <div className="linghuiEditorToolbarLeft">
+            <Button size="small" icon={<UploadCloud size={14} />} onClick={() => void handleReplaceImage()}>
+              替换图片
+            </Button>
+            <Button size="small" icon={<Trash2 size={14} />} danger disabled={!hasImportSource} onClick={handleClearImage}>
+              清空
+            </Button>
+          </div>
+
+          <div className="linghuiEditorToolbarRight">
+            <Button
+              type="primary"
+              size="small"
+              shape="circle"
+              icon={<ArrowUp size={16} />}
+              onClick={onRun}
+            />
           </div>
         </div>
       </div>
+    );
+  }
 
-      {referenceImages.length > 0 && (
-        <div className="linghuiEditorRefs">
-          {referenceImages.map((ref, i) => {
-            const src = getPreviewSource(ref.source);
-            return (
-              <div key={i} className="linghuiEditorRefThumb">
-                {src ? <img src={src} alt={ref.label || `参考 ${i + 1}`} /> : <ImageIcon size={16} />}
-                <span className="linghuiEditorRefBadge">{i + 1}</span>
-              </div>
-            );
-          })}
+  return (
+    <div className="linghuiEditorPanel" onMouseDown={event => event.stopPropagation()}>
+      {displayReferenceImages.length > 0 && (
+        <div className="linghuiEditorSection">
+          <div className="linghuiEditorRefs">
+            {displayReferenceImages.map((ref, index) => {
+              const src = getPreviewSource(ref.source);
+              return (
+                <div key={`${ref.source || ref.label || index}-${ref.badge}`} className="linghuiEditorRefThumb">
+                  {src ? <img src={src} alt={ref.label || `参考 ${index + 1}`} /> : <ImageIcon size={16} />}
+                  <span className="linghuiEditorRefBadge">{ref.badge}</span>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 
       <div className="linghuiEditorPrompt">
         <LinghuiPromptEditor
           value={prompt}
-          onChange={handlePromptChange}
+          onChange={value => updateProp('prompt', value)}
           references={promptReferences}
-          placeholder="描述你想要生成的画面内容，输入 @ 引用上游产物"
+          placeholder="输入 @ 引用上游产物"
           darkTheme
-          minHeight="80px"
-          maxHeight="160px"
+          surfaceStyle="fusion"
+          minHeight="72px"
+          maxHeight="144px"
         />
-        <div className="linghuiEditorPromptHint">{mentionHint}</div>
       </div>
 
       <div className="linghuiEditorToolbar">
@@ -129,9 +269,9 @@ export const ImageNodeEditor: React.FC<ImageNodeEditorProps> = ({
           <Select
             size="small"
             className="linghuiEditorSelect"
-            value={ttiConfigId || undefined}
+            value={ttiSelection || undefined}
             placeholder="选择生图渠道"
-            onChange={v => updateProp('ttiConfigId', v)}
+            onChange={value => updateProp('ttiSelection', value)}
             options={providers}
             popupMatchSelectWidth={false}
             style={{ minWidth: 140 }}
@@ -140,51 +280,30 @@ export const ImageNodeEditor: React.FC<ImageNodeEditorProps> = ({
           <Select
             size="small"
             className="linghuiEditorSelect"
-            value={`${aspectRatio}·${resolution}`}
-            onChange={v => {
-              const [ar, res] = v.split('·');
-              updateProp('aspectRatio', ar);
-              updateProp('resolution', res);
-            }}
+            value={aspectRatio}
+            onChange={value => updateProp('aspectRatio', value)}
+            options={IMAGE_ASPECT_RATIOS}
             popupMatchSelectWidth={false}
-            options={IMAGE_ASPECT_RATIOS.flatMap(ar =>
-              IMAGE_RESOLUTIONS.map(res => ({
-                value: `${ar.value}·${res.value}`,
-                label: `${ar.label} · ${res.label}`,
-              })),
-            )}
-            style={{ minWidth: 120 }}
+            style={{ minWidth: 72 }}
+          />
+
+          <Select
+            size="small"
+            className="linghuiEditorSelect"
+            value={resolution}
+            onChange={value => updateProp('resolution', value)}
+            options={IMAGE_RESOLUTIONS}
+            popupMatchSelectWidth={false}
+            style={{ minWidth: 80 }}
           />
         </div>
 
         <div className="linghuiEditorToolbarRight">
-          <Dropdown
-            menu={{
-              items: GRID_TYPES.map(g => ({
-                key: g.value,
-                label: g.label,
-                onClick: () => updateProp('gridType', g.value),
-              })),
-              selectedKeys: [gridType],
-            }}
-            trigger={['click']}
-          >
-            <Tooltip title="宫格类型">
-              <Button size="small" icon={<Grid3x3 size={14} />} type={gridType !== 'none' ? 'primary' : 'default'}>
-                {gridType !== 'none' ? gridType : ''}
-              </Button>
-            </Tooltip>
-          </Dropdown>
-
           <Select
             size="small"
             value={batchCount}
-            onChange={v => updateProp('batchCount', v)}
-            options={[
-              { value: 1, label: '1张' },
-              { value: 2, label: '2张' },
-              { value: 4, label: '4张' },
-            ]}
+            onChange={value => updateProp('batchCount', value)}
+            options={LINGHUI_IMAGE_BATCH_COUNTS.map(value => ({ value, label: `${value}张` }))}
             popupMatchSelectWidth={false}
             style={{ width: 72 }}
           />

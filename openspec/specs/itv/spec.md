@@ -1,171 +1,117 @@
 # itv Specification
 
 ## Purpose
-TBD - created by archiving change add-antd-timeline-editor. Update Purpose after archive.
+TBD - updated by archiving change refactor-media-channel-model-capabilities. Refine Purpose after archive.
+
 ## Requirements
+
 ### Requirement: ITV Provider Interface
-系统 SHALL 支持多种图生视频服务提供商。
+系统 SHALL 支持按渠道组织的视频模型目录，并由模型能力矩阵决定可执行的视频生成模式。
 
-#### Scenario: Provider 注册
+#### Scenario: 注册视频渠道
 - **WHEN** 应用启动时
-- **THEN** 系统注册所有内置 ITV Provider
-- **AND** 包括：Runway Gen-3、Kling（可灵）、Pika、Sora2、ComfyUI（AnimateDiff）
+- **THEN** 系统 MUST 注册所有 ITV 渠道定义
+- **AND** 每个渠道 MUST 暴露多个可选模型或至少一个模型
+- **AND** 每个模型 MUST 显式声明支持的 `video.*` 能力集合
 
-#### Scenario: Provider 切换
-- **WHEN** 用户在设置中选择不同的 ITV Provider
-- **THEN** 系统切换到对应的视频生成服务
-- **AND** 保留各 Provider 的独立配置
+#### Scenario: 选择视频模型
+- **WHEN** 用户在项目或界面中选择某个视频模型
+- **THEN** 系统 MUST 仅暴露该模型支持的视频生成模式
+- **AND** SHALL 不再把“视频能力范围”建立在 provider 名称猜测上
 
 ### Requirement: Video Generation Parameters
-系统 SHALL 支持视频生成参数配置。
+系统 SHALL 根据所选模型和能力动态约束视频生成参数。
 
-#### Scenario: 基础参数
-- **WHEN** 配置视频生成时
-- **THEN** 可设置视频时长（如 4s、8s、16s）
-- **AND** 可设置输出分辨率（720p、1080p、4K）
-- **AND** 可设置帧率（24fps、30fps）
-- **AND** 可设置宽高比（16:9、9:16、1:1）
+#### Scenario: 模型约束参数范围
+- **WHEN** 用户配置视频时长、分辨率、比例或其他生成参数
+- **THEN** 系统 MUST 只允许选择当前模型在当前能力下支持的参数值
+- **AND** MUST 使用模型定义的默认参数初始化表单
 
-#### Scenario: 运动控制
-- **WHEN** 需要控制视频运动时
-- **THEN** 可设置运动强度（motion strength）
-- **AND** 可输入运动描述文本（motion prompt）
-- **AND** 可选择摄像机运动类型（推进、拉远、平移、旋转等）
-
-### Requirement: Image to Video Generation
-系统 SHALL 支持从静态图片生成动态视频。
-
-#### Scenario: 单图生成
-- **WHEN** 用户触发分镜视频化
-- **THEN** 系统读取分镜的静态图片
-- **AND** 结合分镜描述生成运动提示词
-- **AND** 调用 ITV Provider 生成视频
-- **AND** 返回视频文件路径
-
-#### Scenario: 批量生成
-- **WHEN** 用户触发批量视频化
-- **THEN** 系统按序处理多个分镜
-- **AND** 显示整体进度和单个进度
-- **AND** 支持取消和重试
-
-#### Scenario: 首尾帧控制
-- **WHEN** Provider 支持首尾帧模式
-- **THEN** 可指定首帧图片和尾帧图片
-- **AND** 生成平滑过渡的视频
-
-### Requirement: Runway Gen-3 Provider
-系统 SHALL 支持 Runway Gen-3 Alpha/Turbo。
-
-#### Scenario: 配置
-- **WHEN** 选择 Runway Provider
-- **THEN** 需要配置 API Key
-- **AND** 可选择模型版本（Gen-3 Alpha、Gen-3 Turbo）
-- **AND** 支持 5s、10s 视频生成
-
-#### Scenario: 运动提示
-- **WHEN** 调用 Runway 生成
-- **THEN** 支持 motion prompt 描述运动
-- **AND** 支持 camera motion 参数
-
-### Requirement: Kling (可灵) Provider
-系统 SHALL 支持快手可灵 AI 视频生成。
-
-#### Scenario: 配置
-- **WHEN** 选择 Kling Provider
-- **THEN** 需要配置 API Key（或账号 Cookie）
-- **AND** 可选择模型版本（1.0、1.5、2.0）
-- **AND** 支持标准/专业模式
-
-#### Scenario: 特色功能
-- **WHEN** 使用 Kling 生成
-- **THEN** 支持首尾帧生成
-- **AND** 支持运动笔刷控制
-- **AND** 支持 5s、10s 视频
-
-### Requirement: Pika Provider
-系统 SHALL 支持 Pika Labs 视频生成。
-
-#### Scenario: 配置
-- **WHEN** 选择 Pika Provider
-- **THEN** 需要配置 API Key
-- **AND** 可选择模型版本
-
-### Requirement: Sora2 Provider (占位)
-系统 SHALL 预留 OpenAI Sora2 接口。
-
-#### Scenario: 配置
-- **WHEN** 选择 Sora2 Provider
-- **THEN** 需要配置 OpenAI API Key
-- **AND** 待 API 正式开放后实现
-
-### Requirement: ComfyUI AnimateDiff Provider
-系统 SHALL 支持本地 ComfyUI + AnimateDiff。
-
-#### Scenario: 配置
-- **WHEN** 选择 ComfyUI ITV Provider
-- **THEN** 需要配置 ComfyUI 服务地址
-- **AND** 需要上传或选择 AnimateDiff 工作流 JSON
-- **AND** 系统自动映射输入节点（图片、提示词、种子等）
-
-#### Scenario: 本地渲染
-- **WHEN** 调用 ComfyUI 生成
-- **THEN** 将图片和参数发送到本地 ComfyUI
-- **AND** 通过 WebSocket 监听进度
-- **AND** 获取生成的视频文件
+#### Scenario: 切换能力清理无效参数
+- **WHEN** 用户切换到不同的视频能力或不同模型
+- **THEN** 系统 MUST 清理与新能力不兼容的输入和参数
+- **AND** MUST 明确提示哪些字段因能力变化而失效
 
 ### Requirement: Generation Progress
-系统 SHALL 显示视频生成进度。
+系统 SHALL 显示按渠道、模型和能力区分的视频生成进度。
 
 #### Scenario: 进度反馈
 - **WHEN** 视频生成进行中
-- **THEN** 显示当前状态（排队中/生成中/后处理）
-- **AND** 对于支持的 Provider 显示百分比进度
-- **AND** 显示预计剩余时间（如果可用）
+- **THEN** 系统 MUST 显示当前渠道名、模型名、能力模式和任务状态
+- **AND** 对于支持的渠道 MUST 显示百分比进度
 
-#### Scenario: 轮询检查
-- **WHEN** Provider 使用异步生成模式
-- **THEN** 系统定期轮询任务状态
-- **AND** 自动下载生成完成的视频
+#### Scenario: 异步状态查询
+- **WHEN** 渠道使用异步生成模式
+- **THEN** 系统 MUST 使用该渠道定义的查询接口轮询任务状态
+- **AND** 生成完成后 MUST 下载或持久化输出视频
 
 ### Requirement: Video Cache
-系统 SHALL 缓存生成的视频。
+系统 SHALL 缓存生成的视频，并记录可复现的渠道模型上下文。
 
 #### Scenario: 版本存储
 - **WHEN** 视频生成完成
-- **THEN** 存储到 `shots/{shotId}/versions/v{n}/video.mp4`
-- **AND** 记录生成参数（provider, seed, prompt, motion）
+- **THEN** 系统 MUST 存储本地视频文件
+- **AND** MUST 记录 `channelId`、`modelId`、`capability`、提示词和关键参数
 
 #### Scenario: 版本回溯
 - **WHEN** 用户切换视频版本
-- **THEN** 加载对应版本的视频文件
-- **AND** 更新时间线预览
+- **THEN** 系统 MUST 加载对应版本的视频文件
+- **AND** MUST 能显示该版本的渠道、模型和能力信息
 
-### Requirement: Sora2 Character Extraction API
-系统 SHALL 支持 Sora2 角色提取 API 使用视频生成任务 ID。
+### Requirement: Capability-Driven Video Generation
+系统 SHALL 将视频生成拆分为显式的模型能力，而不是单一的 ITV 调用。
 
-#### Scenario: 角色提取参数
-- **WHEN** 调用 Sora2 角色提取 API
-- **THEN** 使用 `from_task` 参数传递视频生成任务 ID
-- **AND** 可选传递 `timestamps` 参数指定提取时间段（如 "3,6"）
-- **AND** API 返回角色 ID 用于后续视频生成引用
+#### Scenario: 文生视频
+- **WHEN** 选中的模型支持 `video.text-to-video`
+- **THEN** 系统 MUST 允许用户仅基于提示词生成视频
+- **AND** SHALL 不要求上传首图或参考图
 
-#### Scenario: 提取时间戳
-- **WHEN** 指定 `timestamps` 参数
-- **THEN** 从视频指定时间段提取角色特征
-- **AND** 格式为 "开始秒,结束秒"（如 "3,6" 表示 3-6 秒）
+#### Scenario: 图生视频
+- **WHEN** 选中的模型支持 `video.image-to-video`
+- **THEN** 系统 MUST 要求一张主图作为生成输入
+- **AND** MUST 使用主图和提示词生成视频
 
-### Requirement: 预览视频任务 ID 保存
-系统 SHALL 在角色预览视频生成后保存任务 ID。
+#### Scenario: 参考生视频
+- **WHEN** 选中的模型支持 `video.reference-to-video`
+- **THEN** 系统 MUST 要求参考图集合输入
+- **AND** MUST 按该能力的输入契约构建请求
 
-#### Scenario: 任务 ID 存储
-- **WHEN** 角色预览视频生成完成
-- **THEN** 保存视频生成任务 ID 到 `previewVideoTaskId` 字段
-- **AND** 同时保存本地视频路径到 `previewVideoPath` 字段
-- **AND** 两个字段均可用于后续操作
+#### Scenario: 首尾帧视频
+- **WHEN** 选中的模型支持 `video.start-end-to-video`
+- **THEN** 系统 MUST 要求首帧和尾帧两张图片
+- **AND** MUST 生成由首帧到尾帧平滑过渡的视频
 
-#### Scenario: 角色提取依赖
-- **WHEN** 用户触发角色提取
-- **THEN** 检查 `previewVideoTaskId` 是否存在
-- **AND** 若不存在则提示用户重新生成预览视频
-- **AND** 使用任务 ID 调用角色提取 API
+### Requirement: Capability-Aware Video Prompt Compilation
+系统 SHALL 根据目标视频能力选择对应的提示词编译路径。
 
+#### Scenario: 工作流编译视频请求
+- **WHEN** 项目工作流或灵绘请求视频生成
+- **THEN** 系统 MUST 先生成带有能力类型的标准视频请求
+- **AND** MUST 按该能力所绑定的 prompt compiler 构建提示词和输入摘要
+
+#### Scenario: 渠道适配器不再反推模式
+- **WHEN** 视频请求进入渠道适配器
+- **THEN** 适配器 MUST 直接消费已编译的能力级标准请求
+- **AND** SHALL 不再通过 provider 名称或字段猜测当前生成模式
+
+### Requirement: Vidu Channel
+系统 SHALL 在新架构下接入 Vidu 作为多模型视频渠道。
+
+#### Scenario: 渠道共享配置
+- **WHEN** 用户配置 Vidu 渠道
+- **THEN** 系统 MUST 允许配置 `baseUrl` 和 `apiKey`
+- **AND** 系统 SHALL 以 [vidu视频渠道.md](/Users/sunmeng/workspace/Koma/vidu视频渠道.md) 作为该渠道的接口契约来源
+- **AND** 鉴权头 MUST 映射为 `Authorization: Bearer {apiKey}`
+
+#### Scenario: 本地渠道文档接口映射
+- **WHEN** Vidu 渠道执行不同视频能力
+- **THEN** 文生视频 MUST 映射到 `POST /vidu/v2/text2video`
+- **AND** 图生视频 MUST 映射到 `POST /vidu/v2/img2video`
+- **AND** 参考生视频 MUST 映射到 `POST /vidu/v2/reference2video`
+- **AND** 首尾帧视频 MUST 映射到 `POST /vidu/v2/start-end2video`
+- **AND** 任务查询 MUST 映射到 `GET /vidu/v2/tasks/{task_id}/creations`
+
+#### Scenario: 模型能力过滤
+- **WHEN** 用户切换到不同的 Vidu 模型
+- **THEN** 系统 MUST 根据该模型的能力矩阵更新可用模式
+- **AND** MUST 阻止用户在不支持某能力的模型上发起对应请求

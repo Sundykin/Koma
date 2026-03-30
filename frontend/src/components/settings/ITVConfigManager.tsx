@@ -1,72 +1,122 @@
-import React from 'react';
+import React, { useCallback, useMemo } from 'react';
 import {
-  Card,
-  Row,
-  Col,
+  App,
   Button,
-  Modal,
+  Card,
+  Col,
+  Empty,
   Form,
   Input,
+  InputNumber,
+  Modal,
+  Popconfirm,
+  Row,
   Select,
   Space,
+  Spin,
   Tag,
   Tooltip,
-  Empty,
-  Popconfirm,
-  Spin,
-  App,
-  InputNumber,
 } from 'antd';
 import {
-  PlusOutlined,
-  EditOutlined,
-  DeleteOutlined,
-  CheckCircleOutlined,
-  StarOutlined,
-  StarFilled,
-  ApiOutlined,
-  KeyOutlined,
-  LoadingOutlined,
-  VideoCameraOutlined,
-  SettingOutlined,
   AppstoreOutlined,
+  CheckCircleOutlined,
+  DeleteOutlined,
+  EditOutlined,
+  LoadingOutlined,
+  PlusOutlined,
+  SettingOutlined,
+  StarFilled,
+  StarOutlined,
+  VideoCameraOutlined,
 } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
-import type { ITVModelConfig, ITVProviderType } from '../../types';
+import type { AppSettings, ITVModelConfig } from '../../types';
+import { buildITVConfigFromContext } from '../../providers/channel/resolver';
+import type { ChannelConfig, ChannelModelDefinition } from '../../providers/channel/types';
 import {
-  addITVConfig,
-  updateITVConfig,
-  deleteITVConfig,
-  setDefaultITVConfig,
-  ITV_PRESETS,
+  addChannelConfig,
+  deleteChannelConfig,
+  generateId,
+  setDefaultMediaModelSelection,
+  updateChannelConfig,
 } from '../../store/globalStore';
-import { ProviderPluginModal } from '../plugins/ProviderPluginModal';
 import { createITVProvider } from '../../providers/itv';
+import { ProviderPluginModal } from '../plugins/ProviderPluginModal';
+import { ChannelModelsEditor } from './ChannelModelsEditor';
+import {
+  buildChannelFormValues,
+  buildManagedChannelCards,
+  getPreferredChannelModelId,
+  listBuiltInChannelOptions,
+} from './channelManagerShared';
 import { useMediaConfigManager } from './useMediaConfigManager';
 
 interface ITVConfigManagerProps {
   onConfigChange?: () => void;
 }
 
-const itvActions = {
-  getConfigs: (settings: any) => settings.itvConfigs || [],
-  updateConfig: updateITVConfig,
-  setDefaultConfig: setDefaultITVConfig,
-  capability: 'itv' as const,
+const CAPABILITY_LABELS: Record<string, string> = {
+  'video.text-to-video': '文生视频',
+  'video.image-to-video': '图生视频',
+  'video.reference-to-video': '参考生视频',
+  'video.start-end-to-video': '首尾帧视频',
 };
+
+function getProviderColor(provider: string) {
+  switch (provider) {
+    case 'vidu': return 'volcano';
+    case 'runway': return 'blue';
+    case 'kling': return 'purple';
+    case 'pika': return 'magenta';
+    case 'sora2': return 'geekblue';
+    case 'comfyui-animatediff': return 'orange';
+    case 'grok2api-imagine-itv': return 'green';
+    default: return 'default';
+  }
+}
+
+function getChannelDefaults(definition?: ReturnType<typeof listBuiltInChannelOptions>[number]) {
+  if (!definition) {
+    return {};
+  }
+
+  const schemaProperties = (definition.configSchema as { properties?: Record<string, { default?: unknown }> } | undefined)?.properties || {};
+  const defaults = Object.fromEntries(
+    Object.entries(schemaProperties)
+      .filter(([, field]) => field?.default !== undefined)
+      .map(([key, field]) => [key, field.default]),
+  );
+
+  return {
+    name: definition.name,
+    ...defaults,
+  };
+}
 
 export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChange }) => {
   const { t } = useTranslation();
   const { message } = App.useApp();
 
+  const channelDefinitions = useMemo(() => listBuiltInChannelOptions('itv'), []);
+  const definitionMap = useMemo(
+    () => new Map(channelDefinitions.map((definition) => [definition.id, definition])),
+    [channelDefinitions],
+  );
+
+  const loadBuiltins = useCallback(
+    (settings: AppSettings) => buildManagedChannelCards(settings, 'itv', buildITVConfigFromContext),
+    [],
+  );
+
   const {
     configs,
     pluginChannels,
+    settings,
     loading,
     modalVisible,
     setModalVisible,
-    editingConfig,
-    setEditingConfig,
+    editingChannel,
+    setEditingChannel,
     testingId,
     setTestingId,
     form,
@@ -76,124 +126,253 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
     openPluginModal,
     closePluginModal,
     handlePluginConfigSaved,
-    handleSetDefault,
-    handleSetChannelDefault,
-  } = useMediaConfigManager<ITVModelConfig>(itvActions, onConfigChange);
+  } = useMediaConfigManager<ITVModelConfig>('itv', loadBuiltins, onConfigChange);
 
-  const openModal = (config?: ITVModelConfig) => {
-    if (config) {
-      setEditingConfig(config);
-      form.setFieldsValue({
-        name: config.name,
-        provider: config.provider,
-        baseUrl: config.baseUrl,
-        apiKey: config.apiKey,
-        modelName: config.modelName,
-        promptProtocol: (config as any).promptProtocol,
-        defaultDuration: config.defaultDuration,
-        defaultResolution: config.defaultResolution,
-      });
-    } else {
-      setEditingConfig(null);
-      form.resetFields();
+  const currentProviderType = Form.useWatch('providerType', form) as string | undefined;
+  const currentDefinition = currentProviderType ? definitionMap.get(currentProviderType) : undefined;
+  const watchedModels = Form.useWatch('models', form) as Array<Partial<ChannelModelDefinition>> | undefined;
+  const modelOptions = useMemo(() => (
+    (watchedModels || [])
+      .filter((model) => Boolean(model && model.id))
+      .map((model) => ({
+        label: (String(model.label || '').trim()
+          || String(model.providerModelName || '').trim()
+          || String(model.id || '').trim()),
+        value: String(model.id),
+      }))
+  ), [watchedModels]);
+
+  const normalizeModels = useCallback((raw: unknown): ChannelModelDefinition[] => {
+    const models = (Array.isArray(raw) ? raw : []) as Array<Partial<ChannelModelDefinition>>;
+    if (models.length === 0) {
+      throw new Error('请至少添加一个模型');
     }
-    setModalVisible(true);
-  };
 
-  const handlePresetChange = (provider: ITVProviderType) => {
-    const preset = ITV_PRESETS.find(p => p.id === provider);
-    if (preset) {
-      form.setFieldsValue({
-        name: form.getFieldValue('name') || preset.name,
-        baseUrl: preset.baseUrl,
-        modelName: preset.models?.[0] ?? undefined,
-      });
-    }
-  };
-
-  const handleSave = async () => {
-    try {
-      const values = await form.validateFields();
-      const configData = {
-        name: values.name,
-        provider: values.provider as ITVProviderType,
-        baseUrl: values.baseUrl,
-        apiKey: values.apiKey,
-        modelName: values.modelName,
-        promptProtocol: values.promptProtocol || undefined,
-        defaultDuration: values.defaultDuration,
-        defaultResolution: values.defaultResolution,
-        isDefault: editingConfig?.isDefault || configs.length === 0,
-      };
-
-      if (editingConfig) {
-        await updateITVConfig(editingConfig.id, configData);
-        message.success(t('settings.configUpdated'));
-      } else {
-        await addITVConfig(configData);
-        message.success(t('settings.configAdded'));
+    return models.map((item) => {
+      const providerModelName = String(item.providerModelName || '').trim();
+      if (!providerModelName) {
+        throw new Error('模型名称不能为空');
+      }
+      const label = String(item.label || '').trim() || providerModelName;
+      const id = String(item.id || '').trim() || generateId();
+      const capabilities = Array.isArray(item.capabilities) ? item.capabilities : [];
+      if (capabilities.length === 0) {
+        throw new Error('请为每个模型至少选择一个能力');
       }
 
+      return {
+        id,
+        label,
+        providerModelName,
+        capabilities,
+      };
+    });
+  }, []);
+
+  const openModal = useCallback((config?: typeof configs[number]) => {
+    if (config) {
+      setEditingChannel(config.channel);
+      form.setFieldsValue(buildChannelFormValues(config.channel, config.definition));
+    } else {
+      const firstDefinition = channelDefinitions[0];
+      const modelId = generateId();
+      setEditingChannel(null);
+      form.resetFields();
+      form.setFieldsValue({
+        providerType: firstDefinition?.id,
+        ...getChannelDefaults(firstDefinition),
+        models: [{
+          id: modelId,
+          providerModelName: '',
+          label: '',
+          capabilities: ['video.image-to-video'],
+        }],
+        defaultModelId: modelId,
+      });
+    }
+    setModalVisible(true);
+  }, [channelDefinitions, configs, form, setEditingChannel, setModalVisible]);
+
+  const handleProviderChange = useCallback((providerType: string) => {
+    const definition = definitionMap.get(providerType);
+    if (!definition) {
+      return;
+    }
+
+    const existingModels = form.getFieldValue('models');
+    const normalizedModels = Array.isArray(existingModels) && existingModels.length > 0
+      ? existingModels
+      : [{
+          id: generateId(),
+          providerModelName: '',
+          label: '',
+          capabilities: ['video.image-to-video'],
+        }];
+
+    const currentDefaultModelId = String(form.getFieldValue('defaultModelId') || '');
+    const nextDefaultModelId = currentDefaultModelId && normalizedModels.some((model: any) => String(model?.id) === currentDefaultModelId)
+      ? currentDefaultModelId
+      : String(normalizedModels[0]?.id || '');
+
+    const previousName = form.getFieldValue('name');
+    form.setFieldsValue({
+      providerType,
+      name: previousName || definition.name,
+      ...getChannelDefaults(definition),
+      models: normalizedModels,
+      defaultModelId: nextDefaultModelId,
+    });
+  }, [definitionMap, form]);
+
+  React.useEffect(() => {
+    const models = watchedModels || [];
+    if (models.length === 0) {
+      return;
+    }
+    const current = String(form.getFieldValue('defaultModelId') || '');
+    if (!current || !models.some((item) => String(item?.id || '') === current)) {
+      const next = String(models[0]?.id || '');
+      if (next) {
+        form.setFieldValue('defaultModelId', next);
+      }
+    }
+  }, [form, watchedModels]);
+
+  const handleSave = useCallback(async () => {
+    try {
+      const values = await form.validateFields();
+      const definition = definitionMap.get(values.providerType);
+      if (!definition) {
+        throw new Error('未找到对应的视频渠道定义');
+      }
+
+      const models = normalizeModels(values.models);
+      const modelIdSet = new Set(models.map((model) => model.id));
+      const defaultModelId = modelIdSet.has(values.defaultModelId)
+        ? values.defaultModelId
+        : models[0]?.id;
+      if (!defaultModelId) throw new Error('请至少添加一个模型');
+
+      const payload = {
+        name: values.name,
+        description: definition.description,
+        category: 'itv' as const,
+        providerType: definition.id,
+        providerConfig: {
+          baseUrl: values.baseUrl,
+          apiKey: values.apiKey,
+          promptProtocol: values.promptProtocol || undefined,
+          defaultDuration: values.defaultDuration || undefined,
+          defaultResolution: values.defaultResolution || undefined,
+        },
+        defaultModelId,
+        models,
+        enabled: true,
+        source: 'builtin' as const,
+      };
+
+      const saved = editingChannel
+        ? await updateChannelConfig(editingChannel.id, payload)
+        : await addChannelConfig(payload);
+
+      if (!saved) {
+        throw new Error('保存渠道配置失败');
+      }
+
+      const shouldUpdateDefault = !settings?.mediaDefaults?.itv
+        || settings.mediaDefaults.itv.channelId === saved.id;
+      if (shouldUpdateDefault) {
+        await setDefaultMediaModelSelection('itv', { channelId: saved.id, modelId: defaultModelId });
+      }
+
+      message.success(editingChannel ? t('settings.configUpdated') : t('settings.configAdded'));
       setModalVisible(false);
       await loadConfigs();
       onConfigChange?.();
     } catch (err: any) {
-      if (err.errorFields) return;
-      message.error(`${t('common.saveFailed')}: ${err.message}`);
+      if (err?.errorFields) return;
+      message.error(`${t('common.saveFailed')}: ${err?.message || String(err)}`);
     }
-  };
+  }, [definitionMap, editingChannel, form, loadConfigs, message, onConfigChange, setModalVisible, settings?.mediaDefaults?.itv, t]);
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = useCallback(async (id: string) => {
     try {
-      await deleteITVConfig(id);
+      await deleteChannelConfig(id);
       message.success(t('settings.configDeleted'));
       await loadConfigs();
       onConfigChange?.();
     } catch (err: any) {
-      message.error(`${t('error.deleteFailed')}: ${err.message}`);
+      message.error(`${t('error.deleteFailed')}: ${err?.message || String(err)}`);
     }
-  };
+  }, [loadConfigs, message, onConfigChange, t]);
 
-  const handleTestConnection = async (config: ITVModelConfig) => {
-    setTestingId(config.id);
+  const handleSetDefault = useCallback(async (channel: ChannelConfig, modelId?: string) => {
+    if (!modelId) {
+      message.error('当前渠道没有可用模型');
+      return;
+    }
+
     try {
-      const provider = createITVProvider(config);
+      await setDefaultMediaModelSelection('itv', { channelId: channel.id, modelId });
+      message.success(t('settings.defaultSet'));
+      await loadConfigs();
+      onConfigChange?.();
+    } catch (err: any) {
+      message.error(`${t('common.error')}: ${err?.message || String(err)}`);
+    }
+  }, [loadConfigs, message, onConfigChange, t]);
 
+  const handleSetPluginDefault = useCallback(async (channel: ChannelConfig) => {
+    if (!channel.defaultModelId) {
+      message.warning('插件渠道尚未声明默认模型');
+      return;
+    }
+
+    await handleSetDefault(channel, channel.defaultModelId);
+  }, [handleSetDefault, message]);
+
+  const handleTestConnection = useCallback(async (config: typeof configs[number]) => {
+    setTestingId(config.channel.id);
+    try {
+      const provider = createITVProvider(config.resolvedConfig);
       if (!provider.validate()) {
         throw new Error(t('settings.configValidationFailed'));
       }
-
       const success = await provider.testConnection();
       if (success) {
-        message.success(`"${config.name}" ${t('settings.connectionSuccess')}`);
+        message.success(`"${config.channel.name}" ${t('settings.connectionSuccess')}`);
       } else {
-        message.error(`"${config.name}" ${t('settings.connectionFailedCheck')}`);
+        message.error(`"${config.channel.name}" ${t('settings.connectionFailedCheck')}`);
       }
     } catch (err: any) {
-      message.error(`${t('settings.connectionFailed')}: ${err.message}`);
+      message.error(`${t('settings.connectionFailed')}: ${err?.message || String(err)}`);
     } finally {
       setTestingId(null);
     }
-  };
+  }, [message, setTestingId, t]);
 
-  const getProviderLabel = (provider: ITVProviderType) => {
-    const preset = ITV_PRESETS.find(p => p.id === provider);
-    return preset?.name || provider;
-  };
+  const renderModelTags = useCallback((models: ChannelModelDefinition[], defaultModelId?: string) => (
+    <Space wrap size={[6, 6]}>
+      {models.map((model) => (
+        <Tag key={model.id} color={model.id === defaultModelId ? 'gold' : 'default'}>
+          {model.label}
+        </Tag>
+      ))}
+    </Space>
+  ), []);
 
-  const getProviderColor = (provider: ITVProviderType) => {
-    switch (provider) {
-      case 'runway': return 'blue';
-      case 'kling': return 'purple';
-      case 'pika': return 'magenta';
-      case 'minimax': return 'green';
-      case 'comfyui-animatediff': return 'orange';
-      case 'sora2': return 'geekblue';
-      default: return 'default';
-    }
-  };
-
-  const currentProvider = Form.useWatch('provider', form);
+  const renderCapabilityTags = useCallback((models: ChannelModelDefinition[]) => {
+    const capabilities = Array.from(new Set(models.flatMap((model) => model.capabilities)));
+    return (
+      <Space wrap size={[6, 6]}>
+        {capabilities.map((capability) => (
+          <Tag key={capability} color="cyan">
+            {CAPABILITY_LABELS[capability] || capability}
+          </Tag>
+        ))}
+      </Space>
+    );
+  }, []);
 
   return (
     <div>
@@ -201,9 +380,7 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
         <div>
           <span style={{ fontSize: 14, color: '#888' }}>
             {t('settings.itvConfigured', { count: configs.length })}
-            {pluginChannels.length > 0 && (
-              <span>，{t('settings.pluginChannels', { count: pluginChannels.length })}</span>
-            )}
+            {pluginChannels.length > 0 && <span>，{t('settings.pluginChannels', { count: pluginChannels.length })}</span>}
           </span>
         </div>
         <Button type="primary" icon={<PlusOutlined />} onClick={() => openModal()}>
@@ -216,102 +393,110 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
           <Spin />
         </div>
       ) : configs.length === 0 && pluginChannels.length === 0 ? (
-        <Empty
-          image={Empty.PRESENTED_IMAGE_SIMPLE}
-          description={t('settings.noITVConfigs')}
-        >
+        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('settings.noITVConfigs')}>
           <Button type="primary" icon={<PlusOutlined />} onClick={() => openModal()}>
             {t('settings.addBuiltinService')}
           </Button>
         </Empty>
       ) : (
         <Row gutter={[16, 16]}>
-          {/* 内置服务配置卡片 */}
-          {configs.map((config: ITVModelConfig) => (
-            <Col key={config.id} xs={24} sm={12}>
-              <Card
-                size="small"
-                title={
-                  <Space>
-                    {config.isDefault ? (
-                      <StarFilled style={{ color: '#faad14' }} />
-                    ) : (
-                      <Tooltip title={t('settings.setAsDefault')}>
-                        <StarOutlined
-                          style={{ cursor: 'pointer', color: '#d9d9d9' }}
-                          onClick={() => handleSetDefault(config.id, message, t)}
+          {configs.map((config) => {
+            const preferredModelId = getPreferredChannelModelId(config.channel, config.definition);
+            return (
+              <Col key={config.channel.id} xs={24} sm={12}>
+                <Card
+                  size="small"
+                  title={(
+                    <Space>
+                      {config.isDefault ? (
+                        <StarFilled style={{ color: '#faad14' }} />
+                      ) : (
+                        <Tooltip title={t('settings.setAsDefault')}>
+                          <StarOutlined
+                            style={{ cursor: 'pointer', color: '#d9d9d9' }}
+                            onClick={() => handleSetDefault(config.channel, preferredModelId)}
+                          />
+                        </Tooltip>
+                      )}
+                      <VideoCameraOutlined />
+                      <span>{config.channel.name}</span>
+                      <Tag color={getProviderColor(config.definition.id)}>{config.definition.name}</Tag>
+                    </Space>
+                  )}
+                  extra={(
+                    <Space size="small">
+                      <Tooltip title={t('settings.testConnection')}>
+                        <Button
+                          type="text"
+                          size="small"
+                          icon={testingId === config.channel.id ? <LoadingOutlined /> : <CheckCircleOutlined />}
+                          onClick={() => handleTestConnection(config)}
+                          disabled={testingId === config.channel.id}
                         />
                       </Tooltip>
-                    )}
-                    <VideoCameraOutlined />
-                    <span>{config.name}</span>
-                    <Tag color={getProviderColor(config.provider)}>
-                      {getProviderLabel(config.provider)}
-                    </Tag>
-                  </Space>
-                }
-                extra={
-                  <Space size="small">
-                    <Tooltip title={t('settings.testConnection')}>
-                      <Button
-                        type="text"
-                        size="small"
-                        icon={testingId === config.id ? <LoadingOutlined /> : <CheckCircleOutlined />}
-                        onClick={() => handleTestConnection(config)}
-                        disabled={testingId === config.id}
-                      />
-                    </Tooltip>
-                    <Tooltip title={t('common.edit')}>
-                      <Button
-                        type="text"
-                        size="small"
-                        icon={<EditOutlined />}
-                        onClick={() => openModal(config)}
-                      />
-                    </Tooltip>
-                    <Popconfirm
-                      title={t('settings.confirmDeleteConfig')}
-                      onConfirm={() => handleDelete(config.id)}
-                      okText={t('common.delete')}
-                      cancelText={t('common.cancel')}
-                    >
-                      <Tooltip title={t('common.delete')}>
-                        <Button type="text" size="small" danger icon={<DeleteOutlined />} />
+                      <Tooltip title={t('common.edit')}>
+                        <Button
+                          type="text"
+                          size="small"
+                          icon={<EditOutlined />}
+                          onClick={() => openModal(config)}
+                        />
                       </Tooltip>
-                    </Popconfirm>
-                  </Space>
-                }
-              >
-                <div style={{ fontSize: 13, color: '#666' }}>
-                  {config.defaultDuration && <div><strong>{t('settings.defaultDuration')}:</strong> {config.defaultDuration}s</div>}
-                  {config.defaultResolution && <div><strong>{t('settings.defaultResolution')}:</strong> {config.defaultResolution}</div>}
-                  {config.baseUrl && (
-                    <div style={{ marginTop: 4 }}>
-                      <strong>{t('settings.apiAddress')}:</strong>{' '}
-                      <span style={{ fontSize: 12, fontFamily: 'monospace' }}>
-                        {config.baseUrl.replace(/https?:\/\//, '').slice(0, 30)}...
-                      </span>
-                    </div>
+                      <Popconfirm
+                        title={t('settings.confirmDeleteConfig')}
+                        onConfirm={() => handleDelete(config.channel.id)}
+                        okText={t('common.delete')}
+                        cancelText={t('common.cancel')}
+                      >
+                        <Tooltip title={t('common.delete')}>
+                          <Button type="text" size="small" danger icon={<DeleteOutlined />} />
+                        </Tooltip>
+                      </Popconfirm>
+                    </Space>
                   )}
-                </div>
-              </Card>
-            </Col>
-          ))}
+                >
+                  <div style={{ fontSize: 13, color: '#666' }}>
+                    <div style={{ marginBottom: 8 }}>
+                      <strong>模型列表:</strong>
+                      <div style={{ marginTop: 6 }}>
+                        {renderModelTags(config.enabledModels, config.channel.defaultModelId)}
+                      </div>
+                    </div>
+                    <div style={{ marginBottom: 8 }}>
+                      <strong>能力:</strong>
+                      <div style={{ marginTop: 6 }}>
+                        {renderCapabilityTags(config.enabledModels)}
+                      </div>
+                    </div>
+                    {config.resolvedConfig.defaultDuration && <div><strong>{t('settings.defaultDuration')}:</strong> {config.resolvedConfig.defaultDuration}s</div>}
+                    {config.resolvedConfig.defaultResolution && <div><strong>{t('settings.defaultResolution')}:</strong> {config.resolvedConfig.defaultResolution}</div>}
+                    {config.resolvedConfig.baseUrl && (
+                      <div style={{ marginTop: 6 }}>
+                        <strong>{t('settings.apiAddress')}:</strong>{' '}
+                        <span style={{ fontSize: 12, fontFamily: 'monospace' }}>
+                          {config.resolvedConfig.baseUrl.replace(/https?:\/\//, '').slice(0, 36)}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </Card>
+              </Col>
+            );
+          })}
 
-          {/* 插件注册的渠道卡片 */}
           {pluginChannels.map((channel) => (
             <Col key={channel.id} xs={24} sm={12}>
               <Card
                 size="small"
-                title={
+                title={(
                   <Space>
-                    {channel.isDefault ? (
+                    {settings?.mediaDefaults?.itv?.channelId === channel.id ? (
                       <StarFilled style={{ color: '#faad14' }} />
                     ) : (
                       <Tooltip title={t('settings.setAsDefault')}>
                         <StarOutlined
                           style={{ cursor: 'pointer', color: '#d9d9d9' }}
-                          onClick={() => handleSetChannelDefault(channel.id, message, t)}
+                          onClick={() => handleSetPluginDefault(channel)}
                         />
                       </Tooltip>
                     )}
@@ -319,25 +504,22 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
                     <span>{channel.name}</span>
                     <Tag color="blue">{t('plugin.title')}</Tag>
                   </Space>
-                }
-                extra={
-                  channel.pluginId && (
-                    <Tooltip title={t('settings.configSettings')}>
-                      <Button
-                        type="text"
-                        size="small"
-                        icon={<SettingOutlined />}
-                        onClick={() => openPluginModal(channel.pluginId!)}
-                      />
-                    </Tooltip>
-                  )
-                }
+                )}
+                extra={channel.pluginId ? (
+                  <Tooltip title={t('settings.configSettings')}>
+                    <Button
+                      type="text"
+                      size="small"
+                      icon={<SettingOutlined />}
+                      onClick={() => openPluginModal(channel.pluginId!)}
+                    />
+                  </Tooltip>
+                ) : null}
               >
                 <div style={{ fontSize: 13, color: '#666' }}>
                   {channel.description && <div>{channel.description}</div>}
-                  <div style={{ marginTop: 4 }}>
-                    <strong>Provider:</strong> {channel.providerType}
-                  </div>
+                  <div style={{ marginTop: 6 }}><strong>Provider:</strong> {channel.providerType}</div>
+                  {channel.defaultModelId && <div style={{ marginTop: 6 }}><strong>默认模型:</strong> {channel.defaultModelId}</div>}
                 </div>
               </Card>
             </Col>
@@ -345,7 +527,6 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
         </Row>
       )}
 
-      {/* Provider 插件配置弹窗 */}
       <ProviderPluginModal
         visible={pluginModalVisible}
         pluginId={activePluginId}
@@ -354,28 +535,28 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
       />
 
       <Modal
-        title={editingConfig ? t('settings.editITVConfig') : t('settings.addITVConfig')}
+        title={editingChannel ? t('settings.editITVConfig') : t('settings.addITVConfig')}
         open={modalVisible}
         onOk={handleSave}
         onCancel={() => setModalVisible(false)}
         okText={t('common.save')}
         cancelText={t('common.cancel')}
-        width={520}
+        width={560}
         mask={{ closable: false }}
         destroyOnHidden
         className="dark-modal"
       >
         <Form form={form} layout="vertical" className="mt-4">
           <Form.Item
-            name="provider"
+            name="providerType"
             label={t('settings.provider')}
             required
             rules={[{ required: true, message: `${t('settings.pleaseSelect')} ${t('settings.provider')}` }]}
           >
-            <Select placeholder={t('settings.selectITVProvider')} onChange={handlePresetChange}>
-              {ITV_PRESETS.map(preset => (
-                <Select.Option key={preset.id} value={preset.id}>
-                  {preset.name}
+            <Select placeholder={t('settings.selectITVProvider')} onChange={handleProviderChange}>
+              {channelDefinitions.map((definition) => (
+                <Select.Option key={definition.id} value={definition.id}>
+                  {definition.name}
                 </Select.Option>
               ))}
             </Select>
@@ -390,43 +571,57 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
             <Input placeholder={t('settings.configNamePlaceholder')} />
           </Form.Item>
 
-          {currentProvider !== 'comfyui-animatediff' && (
+          <Form.Item
+            label="模型列表"
+            required
+          >
+            <ChannelModelsEditor
+              capabilityOptions={[
+                { value: 'video.text-to-video', label: '文生视频' },
+                { value: 'video.image-to-video', label: '图生视频' },
+                { value: 'video.reference-to-video', label: '参考生视频' },
+                { value: 'video.start-end-to-video', label: '首尾帧视频' },
+              ]}
+              defaultCapabilities={['video.image-to-video']}
+              helpText="模型列表为手动维护。请为每个模型勾选其真实支持的能力，项目与灵绘会自动按能力过滤可选模型。"
+              modelNamePlaceholder="填写模型名称，如: viduq2-pro / gen-3 / kling-v1-5"
+            />
+          </Form.Item>
+
+          <Form.Item
+            name="defaultModelId"
+            label="默认模型"
+            required
+            rules={[{ required: true, message: '请选择默认模型' }]}
+          >
+            <Select
+              placeholder="选择默认模型"
+              options={modelOptions}
+            />
+          </Form.Item>
+
+          {currentProviderType !== 'comfyui-animatediff' && (
             <Form.Item
               name="apiKey"
               label={t('settings.apiKey')}
-              rules={[{ required: currentProvider !== 'comfyui-animatediff', message: `${t('settings.pleaseEnter')} ${t('settings.apiKey')}` }]}
+              rules={[{ required: currentProviderType !== 'comfyui-animatediff', message: `${t('settings.pleaseEnter')} ${t('settings.apiKey')}` }]}
             >
-              <Input.Password prefix={<KeyOutlined />} placeholder={t('settings.enterApiKey')} />
+              <Input.Password placeholder={t('settings.enterApiKey')} />
             </Form.Item>
           )}
 
           <Form.Item
             name="baseUrl"
             label={t('settings.apiAddress')}
-            required
             rules={[{ required: true, message: `${t('settings.pleaseEnter')} ${t('settings.apiAddress')}` }]}
           >
-            <Input prefix={<ApiOutlined />} placeholder="https://api.klingai.com" />
-          </Form.Item>
-
-          <Form.Item
-            name="modelName"
-            label={t('settings.model')}
-          >
-            <Select
-              placeholder={t('settings.selectModel')}
-              allowClear
-              showSearch
-              options={
-                ITV_PRESETS.find(p => p.id === currentProvider)?.models?.map(m => ({ label: m, value: m })) || []
-              }
-            />
+            <Input placeholder="https://api.klingai.com" />
           </Form.Item>
 
           <Form.Item
             name="promptProtocol"
             label="Prompt 编译协议"
-            tooltip="为特定渠道启用提示词编译与参考图数组对齐（例如 Grok 的 @Image N 协议）。"
+            tooltip="为特定渠道启用提示词编译与参考图数组对齐。"
           >
             <Select allowClear placeholder="不启用（默认）">
               <Select.Option value="grok-image-index">grok-image-index (@Image N)</Select.Option>
@@ -442,8 +637,11 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
             <Col span={12}>
               <Form.Item name="defaultResolution" label={t('settings.defaultResolution')}>
                 <Select placeholder={t('settings.selectSize')} allowClear>
-                  <Select.Option value="1280x720">1280 × 720 (720p)</Select.Option>
-                  <Select.Option value="1920x1080">1920 × 1080 (1080p)</Select.Option>
+                  <Select.Option value="360p">360p</Select.Option>
+                  <Select.Option value="720p">720p</Select.Option>
+                  <Select.Option value="1080p">1080p</Select.Option>
+                  <Select.Option value="1280x720">1280 × 720</Select.Option>
+                  <Select.Option value="1920x1080">1920 × 1080</Select.Option>
                   <Select.Option value="720x1280">720 × 1280 ({t('settings.portrait')})</Select.Option>
                   <Select.Option value="1080x1920">1080 × 1920 ({t('settings.portrait')})</Select.Option>
                 </Select>

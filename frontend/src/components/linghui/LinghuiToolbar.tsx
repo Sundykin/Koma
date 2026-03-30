@@ -1,7 +1,13 @@
 import React from 'react';
-import { Button, Input, Select, Tag, Tooltip } from 'antd';
-import { ArrowLeft, Download, FolderOpen, Plus, Save } from 'lucide-react';
-import type { LinghuiGraphStats, LinghuiWorkspaceMeta } from '../../types/linghui';
+import { Button, Input, Popconfirm, Select, Tag, Tooltip } from 'antd';
+import { ArrowLeft, BookOpen, Boxes, Download, FolderOpen, History, Library, Plus, Save, Trash2 } from 'lucide-react';
+import type {
+  LinghuiExecutionQueueState,
+  LinghuiGraphStats,
+  LinghuiWorkspaceMeta,
+} from '../../types/linghui';
+import { LINGHUI_WORKFLOW_BLOCK_LABEL } from '../../constants/linghuiWorkflowBlock';
+import { DEFAULT_LINGHUI_WORKSPACE_NAME } from '../../types/linghui';
 
 interface LinghuiToolbarProps {
   workspaces: LinghuiWorkspaceMeta[];
@@ -11,11 +17,14 @@ interface LinghuiToolbarProps {
   lastSavedAt: number | null;
   saving: boolean;
   running: boolean;
+  executionQueue?: LinghuiExecutionQueueState | null;
   runSummary: {
     running: number;
     succeeded: number;
     failed: number;
     stale: number;
+    queued: number;
+    queueStatus: LinghuiExecutionQueueState['status'];
   };
   onExit?: () => void;
   onCreateWorkspace: () => void;
@@ -23,6 +32,12 @@ interface LinghuiToolbarProps {
   onWorkspaceRename: (name: string) => void;
   onSave: () => void;
   onExport: () => void;
+  onRetryFailed?: () => void;
+  onCancelRun?: () => void;
+  deletingWorkspace?: boolean;
+  onDeleteWorkspace?: () => void | Promise<void>;
+  activeDrawer: 'add' | 'workflow' | 'asset' | 'history' | 'tutorial' | null;
+  onToggleDrawer: (drawer: 'add' | 'workflow' | 'asset' | 'history' | 'tutorial') => void;
 }
 
 export const LinghuiToolbar: React.FC<LinghuiToolbarProps> = ({
@@ -33,6 +48,7 @@ export const LinghuiToolbar: React.FC<LinghuiToolbarProps> = ({
   lastSavedAt,
   saving,
   running,
+  executionQueue,
   runSummary,
   onExit,
   onCreateWorkspace,
@@ -40,7 +56,16 @@ export const LinghuiToolbar: React.FC<LinghuiToolbarProps> = ({
   onWorkspaceRename,
   onSave,
   onExport,
+  onRetryFailed,
+  onCancelRun,
+  deletingWorkspace = false,
+  onDeleteWorkspace,
+  activeDrawer,
+  onToggleDrawer,
 }) => {
+  const isCanceling = runSummary.queueStatus === 'canceling';
+  const showQueueProgress = executionQueue != null && (executionQueue.status === 'running' || executionQueue.status === 'canceling');
+
   return (
     <div className="linghuiToolbar">
       <div className="linghuiToolbarLeft">
@@ -77,20 +102,98 @@ export const LinghuiToolbar: React.FC<LinghuiToolbarProps> = ({
         <Button icon={<Download size={16} />} onClick={onExport}>
           导出
         </Button>
+        <div className="linghuiToolbarDrawerGroup">
+          <Button
+            size="small"
+            type={activeDrawer === 'add' ? 'primary' : 'default'}
+            onClick={() => onToggleDrawer('add')}
+          >
+            添加
+          </Button>
+          <Button
+            size="small"
+            icon={<Boxes size={14} />}
+            type={activeDrawer === 'workflow' ? 'primary' : 'default'}
+            onClick={() => onToggleDrawer('workflow')}
+          >
+            工作流
+          </Button>
+          <Button
+            size="small"
+            icon={<Library size={14} />}
+            type={activeDrawer === 'asset' ? 'primary' : 'default'}
+            onClick={() => onToggleDrawer('asset')}
+          >
+            资产
+          </Button>
+          <Button
+            size="small"
+            icon={<History size={14} />}
+            type={activeDrawer === 'history' ? 'primary' : 'default'}
+            onClick={() => onToggleDrawer('history')}
+          >
+            历史
+          </Button>
+          <Button
+            size="small"
+            icon={<BookOpen size={14} />}
+            type={activeDrawer === 'tutorial' ? 'primary' : 'default'}
+            onClick={() => onToggleDrawer('tutorial')}
+          >
+            教程
+          </Button>
+          <Popconfirm
+            title={`删除当前工作流“${workspaceName || DEFAULT_LINGHUI_WORKSPACE_NAME}”？`}
+            description="会同时删除当前工作区、工作流模板、历史结果和残留资产数据，且无法恢复。"
+            okText="删除"
+            cancelText="取消"
+            okButtonProps={{
+              danger: true,
+              loading: deletingWorkspace,
+            }}
+            disabled={!activeWorkspaceId || !onDeleteWorkspace}
+            onConfirm={onDeleteWorkspace}
+          >
+            <Tooltip title="删除当前工作流">
+              <Button
+                size="small"
+                danger
+                icon={<Trash2 size={14} />}
+                aria-label="删除当前工作流"
+                loading={deletingWorkspace}
+                disabled={!activeWorkspaceId || !onDeleteWorkspace}
+              />
+            </Tooltip>
+          </Popconfirm>
+        </div>
       </div>
 
       <div className="linghuiToolbarRight">
         <span className="linghuiToolbarMeta">
-          节点 {stats.nodeCount} · 连线 {stats.linkCount} · 分组 {stats.groupCount} · 运行中 {runSummary.running} · 失败 {runSummary.failed}
+          节点 {stats.nodeCount} · 连线 {stats.linkCount} · {LINGHUI_WORKFLOW_BLOCK_LABEL} {stats.groupCount} · 排队 {runSummary.queued} · 运行中 {runSummary.running} · 失败 {runSummary.failed}
         </span>
-        <Tag color={running ? 'processing' : 'default'}>
-          {running ? '执行中' : '待命'}
+        <Tag color={isCanceling ? 'warning' : running ? 'processing' : 'default'}>
+          {isCanceling ? '取消中' : running ? '执行中' : '待命'}
         </Tag>
+        {runSummary.failed > 0 && !running && onRetryFailed && (
+          <Button size="small" danger onClick={onRetryFailed}>
+            重试失败
+          </Button>
+        )}
+        {running && onCancelRun && (
+          <Button size="small" danger ghost disabled={isCanceling} onClick={onCancelRun}>
+            {isCanceling ? '取消中' : '取消执行'}
+          </Button>
+        )}
         <Tag color={saving ? 'processing' : 'success'}>
           {saving ? '保存中' : '自动保存'}
         </Tag>
         <span className="linghuiToolbarMeta">
-          {lastSavedAt ? `最近保存 ${new Date(lastSavedAt).toLocaleTimeString()}` : '尚未保存'}
+          {showQueueProgress
+            ? `本轮队列 ${executionQueue.completedNodeIds.length}/${executionQueue.total}`
+            : lastSavedAt
+              ? `最近保存 ${new Date(lastSavedAt).toLocaleTimeString()}`
+              : '尚未保存'}
         </span>
       </div>
     </div>

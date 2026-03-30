@@ -1,279 +1,338 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import {
-  Card,
-  Row,
-  Col,
+  App,
   Button,
-  Modal,
+  Card,
+  Col,
+  Empty,
   Form,
   Input,
+  InputNumber,
+  Modal,
+  Popconfirm,
+  Row,
   Select,
   Space,
+  Spin,
   Tag,
   Tooltip,
-  Empty,
-  Popconfirm,
-  Spin,
-  App,
-  InputNumber,
 } from 'antd';
 import {
-  PlusOutlined,
-  EditOutlined,
-  DeleteOutlined,
-  CheckCircleOutlined,
-  StarOutlined,
-  StarFilled,
-  ApiOutlined,
-  KeyOutlined,
-  LoadingOutlined,
   AudioOutlined,
+  CheckCircleOutlined,
+  DeleteOutlined,
+  EditOutlined,
+  LoadingOutlined,
+  PlusOutlined,
   SoundOutlined,
+  StarFilled,
+  StarOutlined,
 } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
-import type { TTSModelConfig, TTSProviderType } from '../../types';
+import type { AppSettings, TTSModelConfig } from '../../types';
+import { createTTSProvider } from '../../providers/tts';
+import { buildTTSConfigFromContext } from '../../providers/channel/resolver';
+import type { ChannelModelDefinition } from '../../providers/channel/types';
 import {
-  loadSettings,
-  addTTSConfig,
-  updateTTSConfig,
-  deleteTTSConfig,
-  setDefaultTTSConfig,
+  addChannelConfig,
+  deleteChannelConfig,
+  generateId,
+  setDefaultMediaModelSelection,
+  updateChannelConfig,
 } from '../../store/globalStore';
-import type { ProviderDefinition } from '../../providers/registry.types';
-import { listProviders, createTTSProviderFromConfig } from '../../providers';
+import { ChannelModelsEditor } from './ChannelModelsEditor';
+import {
+  buildChannelFormValues,
+  buildManagedChannelCards,
+  getPreferredChannelModelId,
+  listBuiltInChannelOptions,
+} from './channelManagerShared';
+import { useMediaConfigManager } from './useMediaConfigManager';
 
 interface TTSConfigManagerProps {
   onConfigChange?: () => void;
 }
 
+function getProviderColor(providerType: string) {
+  switch (providerType) {
+    case 'edge-tts': return 'blue';
+    case 'openai-tts': return 'green';
+    case 'fish-audio': return 'cyan';
+    case 'gpt-sovits': return 'orange';
+    default: return 'default';
+  }
+}
+
+function getChannelDefaults(definition?: ReturnType<typeof listBuiltInChannelOptions>[number]) {
+  if (!definition) {
+    return {};
+  }
+
+  const schemaProperties = (definition.configSchema as { properties?: Record<string, { default?: unknown }> } | undefined)?.properties || {};
+  const defaults = Object.fromEntries(
+    Object.entries(schemaProperties)
+      .filter(([, field]) => field?.default !== undefined)
+      .map(([key, field]) => [key, field.default]),
+  );
+
+  return {
+    name: definition.name,
+    ...defaults,
+  };
+}
+
 export const TTSConfigManager: React.FC<TTSConfigManagerProps> = ({ onConfigChange }) => {
   const { t } = useTranslation();
   const { message } = App.useApp();
-  const [configs, setConfigs] = useState<TTSModelConfig[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [modalVisible, setModalVisible] = useState(false);
-  const [editingConfig, setEditingConfig] = useState<TTSModelConfig | null>(null);
-  const [testingId, setTestingId] = useState<string | null>(null);
-  const [availableProviders, setAvailableProviders] = useState<ProviderDefinition<any>[]>([]);
-  const [form] = Form.useForm();
 
-  // 从 Registry 获取可用的 TTS Provider
-  useEffect(() => {
-    setAvailableProviders(listProviders('tts'));
-  }, []);
+  const channelDefinitions = useMemo(() => listBuiltInChannelOptions('tts'), []);
+  const definitionMap = useMemo(
+    () => new Map(channelDefinitions.map((definition) => [definition.id, definition])),
+    [channelDefinitions],
+  );
 
-  const loadConfigs = async () => {
-    setLoading(true);
-    try {
-      const settings = await loadSettings();
-      setConfigs(settings.ttsConfigs || []);
-    } finally {
-      setLoading(false);
+  const loadBuiltins = useCallback(
+    (settings: AppSettings) => buildManagedChannelCards(settings, 'tts', buildTTSConfigFromContext),
+    [],
+  );
+
+  const {
+    configs,
+    loading,
+    modalVisible,
+    setModalVisible,
+    editingChannel,
+    setEditingChannel,
+    testingId,
+    setTestingId,
+    form,
+    settings,
+    loadConfigs,
+  } = useMediaConfigManager<TTSModelConfig>('tts', loadBuiltins, onConfigChange);
+
+  const currentProviderType = Form.useWatch('providerType', form) as string | undefined;
+  const currentDefinition = currentProviderType ? definitionMap.get(currentProviderType) : undefined;
+  const watchedModels = Form.useWatch('models', form) as Array<Partial<ChannelModelDefinition>> | undefined;
+  const modelOptions = useMemo(() => (
+    (watchedModels || [])
+      .filter((model) => Boolean(model && model.id))
+      .map((model) => ({
+        label: (String(model.label || '').trim()
+          || String(model.providerModelName || '').trim()
+          || String(model.id || '').trim()),
+        value: String(model.id),
+      }))
+  ), [watchedModels]);
+
+  const normalizeModels = useCallback((raw: unknown): ChannelModelDefinition[] => {
+    const models = (Array.isArray(raw) ? raw : []) as Array<Partial<ChannelModelDefinition>>;
+    if (models.length === 0) {
+      throw new Error('请至少添加一个模型');
     }
-  };
 
-  useEffect(() => {
-    loadConfigs();
+    return models.map((item) => {
+      const providerModelName = String(item.providerModelName || '').trim();
+      if (!providerModelName) {
+        throw new Error('模型名称不能为空');
+      }
+      const label = String(item.label || '').trim() || providerModelName;
+      const id = String(item.id || '').trim() || generateId();
+
+      return {
+        id,
+        label,
+        providerModelName,
+        capabilities: ['speech.text-to-speech'],
+      };
+    });
   }, []);
 
-  const openModal = (config?: TTSModelConfig) => {
+  const openModal = useCallback((config?: typeof configs[number]) => {
     if (config) {
-      setEditingConfig(config);
-      form.setFieldsValue({
-        name: config.name,
-        provider: config.provider,
-        baseUrl: config.baseUrl,
-        apiKey: config.apiKey,
-        defaultVoice: config.defaultVoice,
-        defaultSpeed: config.defaultSpeed,
-      });
+      setEditingChannel(config.channel);
+      form.setFieldsValue(buildChannelFormValues(config.channel, config.definition));
     } else {
-      setEditingConfig(null);
+      const firstDefinition = channelDefinitions[0];
+      const modelId = generateId();
+      setEditingChannel(null);
       form.resetFields();
+      form.setFieldsValue({
+        providerType: firstDefinition?.id,
+        ...getChannelDefaults(firstDefinition),
+        models: [{
+          id: modelId,
+          providerModelName: '',
+          label: '',
+          capabilities: ['speech.text-to-speech'],
+        }],
+        defaultModelId: modelId,
+      });
     }
     setModalVisible(true);
-  };
+  }, [channelDefinitions, configs, form, setEditingChannel, setModalVisible]);
 
-  const handlePresetChange = (providerType: TTSProviderType) => {
-    const provider = availableProviders.find(p => p.type === providerType);
-    if (provider) {
-      // 从 configSchema 的 default 值填充表单
-      const defaults: Record<string, any> = {};
-      if (provider.configSchema?.properties) {
-        for (const [key, field] of Object.entries(provider.configSchema.properties)) {
-          if ((field as any).default !== undefined) {
-            defaults[key] = (field as any).default;
-          }
-        }
-      }
-      form.setFieldsValue({
-        name: form.getFieldValue('name') || provider.name,
-        ...defaults,
-      });
+  const handleProviderChange = useCallback((providerType: string) => {
+    const definition = definitionMap.get(providerType);
+    if (!definition) {
+      return;
     }
-  };
 
-  const handleSave = async () => {
+    const existingModels = form.getFieldValue('models');
+    const normalizedModels = Array.isArray(existingModels) && existingModels.length > 0
+      ? existingModels
+      : [{
+          id: generateId(),
+          providerModelName: '',
+          label: '',
+          capabilities: ['speech.text-to-speech'],
+        }];
+
+    const currentDefaultModelId = String(form.getFieldValue('defaultModelId') || '');
+    const nextDefaultModelId = currentDefaultModelId && normalizedModels.some((model: any) => String(model?.id) === currentDefaultModelId)
+      ? currentDefaultModelId
+      : String(normalizedModels[0]?.id || '');
+
+    const previousName = form.getFieldValue('name');
+    form.setFieldsValue({
+      providerType,
+      name: previousName || definition.name,
+      ...getChannelDefaults(definition),
+      models: normalizedModels,
+      defaultModelId: nextDefaultModelId,
+    });
+  }, [definitionMap, form]);
+
+  React.useEffect(() => {
+    const models = watchedModels || [];
+    if (models.length === 0) {
+      return;
+    }
+    const current = String(form.getFieldValue('defaultModelId') || '');
+    if (!current || !models.some((item) => String(item?.id || '') === current)) {
+      const next = String(models[0]?.id || '');
+      if (next) {
+        form.setFieldValue('defaultModelId', next);
+      }
+    }
+  }, [form, watchedModels]);
+
+  const handleSave = useCallback(async () => {
     try {
       const values = await form.validateFields();
-      const configData = {
-        name: values.name,
-        provider: values.provider as TTSProviderType,
-        baseUrl: values.baseUrl,
-        apiKey: values.apiKey,
-        defaultVoice: values.defaultVoice,
-        defaultSpeed: values.defaultSpeed,
-        isDefault: editingConfig?.isDefault || configs.length === 0,
-      };
-
-      if (editingConfig) {
-        await updateTTSConfig(editingConfig.id, configData);
-        message.success(t('settings.configUpdated'));
-      } else {
-        await addTTSConfig(configData);
-        message.success(t('settings.configAdded'));
+      const definition = definitionMap.get(values.providerType);
+      if (!definition) {
+        throw new Error('未找到对应的语音渠道定义');
       }
 
+      const models = normalizeModels(values.models);
+      const modelIdSet = new Set(models.map((model) => model.id));
+      const defaultModelId = modelIdSet.has(values.defaultModelId)
+        ? values.defaultModelId
+        : models[0]?.id;
+      if (!defaultModelId) throw new Error('请至少添加一个模型');
+
+      const payload = {
+        name: values.name,
+        description: definition.description,
+        category: 'tts' as const,
+        providerType: definition.id,
+        providerConfig: {
+          apiKey: values.apiKey,
+          baseUrl: values.baseUrl,
+          defaultVoice: values.defaultVoice,
+          defaultSpeed: values.defaultSpeed,
+        },
+        defaultModelId,
+        models,
+        enabled: true,
+        source: 'builtin' as const,
+      };
+
+      const saved = editingChannel
+        ? await updateChannelConfig(editingChannel.id, payload)
+        : await addChannelConfig(payload);
+
+      if (!saved) {
+        throw new Error('保存渠道配置失败');
+      }
+
+      const shouldUpdateDefault = !settings?.mediaDefaults?.tts
+        || settings.mediaDefaults.tts.channelId === saved.id;
+      if (shouldUpdateDefault) {
+        await setDefaultMediaModelSelection('tts', { channelId: saved.id, modelId: defaultModelId });
+      }
+
+      message.success(editingChannel ? t('settings.configUpdated') : t('settings.configAdded'));
       setModalVisible(false);
       await loadConfigs();
       onConfigChange?.();
     } catch (err: any) {
-      if (err.errorFields) return;
-      message.error(`${t('common.saveFailed')}: ${err.message}`);
+      if (err?.errorFields) return;
+      message.error(`${t('common.saveFailed')}: ${err?.message || String(err)}`);
     }
-  };
+  }, [definitionMap, editingChannel, form, loadConfigs, message, onConfigChange, setModalVisible, settings?.mediaDefaults?.tts, t]);
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = useCallback(async (id: string) => {
     try {
-      await deleteTTSConfig(id);
+      await deleteChannelConfig(id);
       message.success(t('settings.configDeleted'));
       await loadConfigs();
       onConfigChange?.();
     } catch (err: any) {
-      message.error(`${t('error.deleteFailed')}: ${err.message}`);
+      message.error(`${t('error.deleteFailed')}: ${err?.message || String(err)}`);
     }
-  };
+  }, [loadConfigs, message, onConfigChange, t]);
 
-  const handleSetDefault = async (id: string) => {
+  const handleSetDefault = useCallback(async (channelId: string, modelId?: string) => {
+    if (!modelId) {
+      message.error('当前渠道没有可用模型');
+      return;
+    }
+
     try {
-      await setDefaultTTSConfig(id);
+      await setDefaultMediaModelSelection('tts', { channelId, modelId });
       message.success(t('settings.defaultSet'));
       await loadConfigs();
       onConfigChange?.();
     } catch (err: any) {
-      message.error(`${t('common.error')}: ${err.message}`);
+      message.error(`${t('common.error')}: ${err?.message || String(err)}`);
     }
-  };
+  }, [loadConfigs, message, onConfigChange, t]);
 
-  const handleTestConnection = async (config: TTSModelConfig) => {
-    setTestingId(config.id);
+  const handleTestConnection = useCallback(async (config: typeof configs[number]) => {
+    setTestingId(config.channel.id);
     try {
-      const provider = createTTSProviderFromConfig(config);
-
+      const provider = createTTSProvider({
+        provider: config.resolvedConfig.provider,
+        apiKey: config.resolvedConfig.apiKey,
+        baseUrl: config.resolvedConfig.baseUrl,
+        defaultVoice: config.resolvedConfig.defaultVoice,
+      });
       if (!provider.validate()) {
         throw new Error(t('settings.configValidationFailed'));
       }
-
       const success = await provider.testConnection();
       if (success) {
-        message.success(`"${config.name}" ${t('settings.connectionSuccess')}`);
+        message.success(`"${config.channel.name}" ${t('settings.connectionSuccess')}`);
       } else {
-        message.error(`"${config.name}" ${t('settings.connectionFailedCheck')}`);
+        message.error(`"${config.channel.name}" ${t('settings.connectionFailedCheck')}`);
       }
     } catch (err: any) {
-      message.error(`${t('settings.connectionFailed')}: ${err.message}`);
+      message.error(`${t('settings.connectionFailed')}: ${err?.message || String(err)}`);
     } finally {
       setTestingId(null);
     }
-  };
+  }, [message, setTestingId, t]);
 
-  const getProviderLabel = (providerType: TTSProviderType) => {
-    const provider = availableProviders.find(p => p.type === providerType);
-    return provider?.name || providerType;
-  };
-
-  const getProviderColor = (provider: TTSProviderType) => {
-    switch (provider) {
-      case 'edge-tts': return 'blue';
-      case 'openai-tts': return 'green';
-      case 'doubao-tts': return 'purple';
-      case 'fish-audio': return 'cyan';
-      case 'gpt-sovits': return 'orange';
-      default: return 'default'; // 插件 Provider
-    }
-  };
-
-  const currentProvider = Form.useWatch('provider', form);
-  const currentProviderDef = useMemo(() => {
-    return availableProviders.find(p => p.type === currentProvider);
-  }, [currentProvider, availableProviders]);
-
-  // 根据 configSchema 判断字段需求
-  const _needApiKey = useMemo(() => {
-    if (!currentProviderDef?.configSchema?.properties) return false;
-    const apiKeyField = currentProviderDef.configSchema.properties.apiKey;
-    return !!apiKeyField;
-  }, [currentProviderDef]);
-
-  const _needBaseUrl = useMemo(() => {
-    if (!currentProviderDef?.configSchema?.properties) return false;
-    const baseUrlField = currentProviderDef.configSchema.properties.baseUrl;
-    return !!baseUrlField;
-  }, [currentProviderDef]);
-
-  const isApiKeyRequired = useMemo(() => {
-    if (!currentProviderDef?.configSchema) return false;
-    return currentProviderDef.configSchema.required?.includes('apiKey') || false;
-  }, [currentProviderDef]);
-
-  // 渲染动态表单字段（基于 configSchema）
-  const renderDynamicFields = () => {
-    if (!currentProviderDef?.configSchema?.properties) {
-      // 无 schema，显示基础字段
-      return (
-        <>
-          <Form.Item name="apiKey" label={t('settings.apiKey')}>
-            <Input.Password prefix={<KeyOutlined />} placeholder={t('settings.enterApiKey')} />
-          </Form.Item>
-          <Form.Item name="baseUrl" label={t('settings.apiAddress')}>
-            <Input prefix={<ApiOutlined />} placeholder={t('settings.enterApiAddress')} />
-          </Form.Item>
-        </>
-      );
-    }
-
-    const fields: React.ReactNode[] = [];
-    const props = currentProviderDef.configSchema.properties;
-
-    // apiKey 和 baseUrl 优先渲染
-    if (props.apiKey) {
-      fields.push(
-        <Form.Item
-          key="apiKey"
-          name="apiKey"
-          label={props.apiKey.title || t('settings.apiKey')}
-          rules={[{ required: isApiKeyRequired, message: `${t('settings.pleaseEnter')} ${props.apiKey.title || t('settings.apiKey')}` }]}
-        >
-          <Input.Password prefix={<KeyOutlined />} placeholder={`${t('settings.pleaseEnter')} ${props.apiKey.title || t('settings.apiKey')}`} />
-        </Form.Item>
-      );
-    }
-
-    if (props.baseUrl) {
-      fields.push(
-        <Form.Item
-          key="baseUrl"
-          name="baseUrl"
-          label={props.baseUrl.title || t('settings.apiAddress')}
-          rules={[{ required: currentProviderDef.configSchema.required?.includes('baseUrl'), message: `${t('settings.pleaseEnter')} ${t('settings.apiAddress')}` }]}
-        >
-          <Input prefix={<ApiOutlined />} placeholder={props.baseUrl.default || t('settings.enterApiAddress')} />
-        </Form.Item>
-      );
-    }
-
-    return fields;
-  };
+  const renderModelTags = useCallback((models: ChannelModelDefinition[], defaultModelId?: string) => (
+    <Space wrap size={[6, 6]}>
+      {models.map((model) => (
+        <Tag key={model.id} color={model.id === defaultModelId ? 'gold' : 'default'}>
+          {model.label}
+        </Tag>
+      ))}
+    </Space>
+  ), []);
 
   return (
     <div>
@@ -293,91 +352,95 @@ export const TTSConfigManager: React.FC<TTSConfigManagerProps> = ({ onConfigChan
           <Spin />
         </div>
       ) : configs.length === 0 ? (
-        <Empty
-          image={Empty.PRESENTED_IMAGE_SIMPLE}
-          description={t('settings.noTTSConfigs')}
-        >
+        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('settings.noTTSConfigs')}>
           <Button type="primary" icon={<PlusOutlined />} onClick={() => openModal()}>
             {t('settings.addFirstConfig')}
           </Button>
         </Empty>
       ) : (
         <Row gutter={[16, 16]}>
-          {configs.map((config: TTSModelConfig) => (
-            <Col key={config.id} xs={24} sm={12}>
-              <Card
-                size="small"
-                title={
-                  <Space>
-                    {config.isDefault ? (
-                      <StarFilled style={{ color: '#faad14' }} />
-                    ) : (
-                      <Tooltip title={t('settings.setAsDefault')}>
-                        <StarOutlined
-                          style={{ cursor: 'pointer', color: '#d9d9d9' }}
-                          onClick={() => handleSetDefault(config.id)}
+          {configs.map((config) => {
+            const preferredModelId = getPreferredChannelModelId(config.channel, config.definition);
+            return (
+              <Col key={config.channel.id} xs={24} sm={12}>
+                <Card
+                  size="small"
+                  title={(
+                    <Space>
+                      {config.isDefault ? (
+                        <StarFilled style={{ color: '#faad14' }} />
+                      ) : (
+                        <Tooltip title={t('settings.setAsDefault')}>
+                          <StarOutlined
+                            style={{ cursor: 'pointer', color: '#d9d9d9' }}
+                            onClick={() => handleSetDefault(config.channel.id, preferredModelId)}
+                          />
+                        </Tooltip>
+                      )}
+                      <SoundOutlined />
+                      <span>{config.channel.name}</span>
+                      <Tag color={getProviderColor(config.definition.id)}>{config.definition.name}</Tag>
+                    </Space>
+                  )}
+                  extra={(
+                    <Space size="small">
+                      <Tooltip title={t('settings.testConnection')}>
+                        <Button
+                          type="text"
+                          size="small"
+                          icon={testingId === config.channel.id ? <LoadingOutlined /> : <CheckCircleOutlined />}
+                          onClick={() => handleTestConnection(config)}
+                          disabled={testingId === config.channel.id}
                         />
                       </Tooltip>
-                    )}
-                    <SoundOutlined />
-                    <span>{config.name}</span>
-                    <Tag color={getProviderColor(config.provider)}>
-                      {getProviderLabel(config.provider)}
-                    </Tag>
-                  </Space>
-                }
-                extra={
-                  <Space size="small">
-                    <Tooltip title={t('settings.testConnection')}>
-                      <Button
-                        type="text"
-                        size="small"
-                        icon={testingId === config.id ? <LoadingOutlined /> : <CheckCircleOutlined />}
-                        onClick={() => handleTestConnection(config)}
-                        disabled={testingId === config.id}
-                      />
-                    </Tooltip>
-                    <Tooltip title={t('common.edit')}>
-                      <Button
-                        type="text"
-                        size="small"
-                        icon={<EditOutlined />}
-                        onClick={() => openModal(config)}
-                      />
-                    </Tooltip>
-                    <Popconfirm
-                      title={t('settings.confirmDeleteConfig')}
-                      onConfirm={() => handleDelete(config.id)}
-                      okText={t('common.delete')}
-                      cancelText={t('common.cancel')}
-                    >
-                      <Tooltip title={t('common.delete')}>
-                        <Button type="text" size="small" danger icon={<DeleteOutlined />} />
+                      <Tooltip title={t('common.edit')}>
+                        <Button
+                          type="text"
+                          size="small"
+                          icon={<EditOutlined />}
+                          onClick={() => openModal(config)}
+                        />
                       </Tooltip>
-                    </Popconfirm>
-                  </Space>
-                }
-              >
-                <div style={{ fontSize: 13, color: '#666' }}>
-                  {config.defaultVoice && <div><strong>{t('settings.defaultVoice')}:</strong> {config.defaultVoice}</div>}
-                  {config.defaultSpeed && <div><strong>{t('settings.defaultSpeed')}:</strong> {config.defaultSpeed}x</div>}
-                  {config.baseUrl && (
-                    <div style={{ marginTop: 4 }}>
-                      <strong>{t('settings.apiAddress')}:</strong>{' '}
-                      <span style={{ fontSize: 12, fontFamily: 'monospace' }}>
-                        {config.baseUrl.replace(/https?:\/\//, '').slice(0, 30)}...
-                      </span>
-                    </div>
+                      <Popconfirm
+                        title={t('settings.confirmDeleteConfig')}
+                        onConfirm={() => handleDelete(config.channel.id)}
+                        okText={t('common.delete')}
+                        cancelText={t('common.cancel')}
+                      >
+                        <Tooltip title={t('common.delete')}>
+                          <Button type="text" size="small" danger icon={<DeleteOutlined />} />
+                        </Tooltip>
+                      </Popconfirm>
+                    </Space>
                   )}
-                </div>
-              </Card>
-            </Col>
-          ))}
+                >
+                  <div style={{ fontSize: 13, color: '#666' }}>
+                    <div style={{ marginBottom: 8 }}>
+                      <strong>模型列表:</strong>
+                      <div style={{ marginTop: 6 }}>
+                        {renderModelTags(config.enabledModels, config.channel.defaultModelId)}
+                      </div>
+                    </div>
+                    {config.resolvedConfig.defaultVoice && <div><strong>{t('settings.defaultVoice')}:</strong> {config.resolvedConfig.defaultVoice}</div>}
+                    {config.channel.providerConfig.defaultSpeed && <div><strong>{t('settings.defaultSpeed')}:</strong> {String(config.channel.providerConfig.defaultSpeed)}x</div>}
+                    {config.resolvedConfig.baseUrl && (
+                      <div style={{ marginTop: 6 }}>
+                        <strong>{t('settings.apiAddress')}:</strong>{' '}
+                        <span style={{ fontSize: 12, fontFamily: 'monospace' }}>
+                          {config.resolvedConfig.baseUrl.replace(/https?:\/\//, '').slice(0, 36)}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </Card>
+              </Col>
+            );
+          })}
         </Row>
       )}
 
       <Modal
-        title={editingConfig ? t('settings.editTTSConfig') : t('settings.addTTSConfig')}
+        title={editingChannel ? t('settings.editTTSConfig') : t('settings.addTTSConfig')}
         open={modalVisible}
         onOk={handleSave}
         onCancel={() => setModalVisible(false)}
@@ -389,18 +452,15 @@ export const TTSConfigManager: React.FC<TTSConfigManagerProps> = ({ onConfigChan
       >
         <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
           <Form.Item
-            name="provider"
+            name="providerType"
             label={t('settings.provider')}
             required
             rules={[{ required: true, message: `${t('settings.pleaseSelect')} ${t('settings.provider')}` }]}
           >
-            <Select placeholder={t('settings.selectProvider')} onChange={handlePresetChange}>
-              {availableProviders.map(provider => (
-                <Select.Option key={provider.type} value={provider.type}>
-                  <Space>
-                    <span>{provider.name}</span>
-                    {provider.pluginId && <Tag className="text-xs">{t('plugin.title')}</Tag>}
-                  </Space>
+            <Select placeholder={t('settings.selectProvider')} onChange={handleProviderChange}>
+              {channelDefinitions.map((definition) => (
+                <Select.Option key={definition.id} value={definition.id}>
+                  {definition.name}
                 </Select.Option>
               ))}
             </Select>
@@ -415,7 +475,47 @@ export const TTSConfigManager: React.FC<TTSConfigManagerProps> = ({ onConfigChan
             <Input placeholder={t('settings.configNamePlaceholder')} />
           </Form.Item>
 
-          {renderDynamicFields()}
+          <Form.Item
+            label="模型列表"
+            required
+          >
+            <ChannelModelsEditor
+              fixedCapabilities={['speech.text-to-speech']}
+              helpText="模型列表为手动维护。若渠道不区分模型，可填写任意占位名（如: default）。"
+              modelNamePlaceholder="填写模型名称，如: tts-1 / tts-1-hd / default"
+            />
+          </Form.Item>
+
+          <Form.Item
+            name="defaultModelId"
+            label="默认模型"
+            required
+            rules={[{ required: true, message: '请选择默认模型' }]}
+          >
+            <Select
+              placeholder="选择默认模型"
+              options={modelOptions}
+            />
+          </Form.Item>
+
+          {currentProviderType !== 'edge-tts' && (
+            <Form.Item
+              name="apiKey"
+              label={t('settings.apiKey')}
+              rules={[{
+                required: currentProviderType !== 'gpt-sovits' && currentProviderType !== 'edge-tts',
+                message: `${t('settings.pleaseEnter')} ${t('settings.apiKey')}`,
+              }]}
+            >
+              <Input.Password placeholder={t('settings.enterApiKey')} />
+            </Form.Item>
+          )}
+
+          {currentProviderType !== 'edge-tts' && (
+            <Form.Item name="baseUrl" label={t('settings.apiAddress')}>
+              <Input placeholder={t('settings.enterApiAddress')} />
+            </Form.Item>
+          )}
 
           <Row gutter={16}>
             <Col span={12}>
@@ -430,7 +530,7 @@ export const TTSConfigManager: React.FC<TTSConfigManagerProps> = ({ onConfigChan
             </Col>
           </Row>
 
-          {currentProvider === 'edge-tts' && (
+          {currentProviderType === 'edge-tts' && (
             <div style={{ padding: '8px 12px', background: '#f6ffed', borderRadius: 4, marginTop: -8 }}>
               <span style={{ color: '#52c41a', fontSize: 13 }}>
                 ✓ {t('settings.edgeTTSFree')}

@@ -1,35 +1,84 @@
+import type { VideoGenerationCapability } from './media';
+
 export type LinghuiNodeType =
-  | 'linghui/reference'
+  | 'linghui/text'
   | 'linghui/image'
   | 'linghui/video'
-  | 'linghui/storyboard-shot'
-  | 'linghui/storyboard-group';
+  | 'linghui/audio'
+  | 'linghui/script';
 
 export type LinghuiRFNodeTypeKey =
-  | 'linghui-reference'
+  | 'linghui-text'
   | 'linghui-image'
   | 'linghui-video'
-  | 'linghui-storyboard-shot'
-  | 'linghui-storyboard-group';
+  | 'linghui-audio'
+  | 'linghui-script';
 
 export type LinghuiNodeCategory = 'creation' | 'storyboard';
-export type LinghuiSlotDataType = 'image' | 'text' | 'video' | 'images' | 'shot' | 'storyboard';
+export type LinghuiSlotDataType = 'image' | 'text' | 'video' | 'audio' | 'images' | 'shot' | 'storyboard';
 export type LinghuiRunStatus = 'idle' | 'running' | 'succeeded' | 'failed' | 'stale';
-export type LinghuiResultKind = 'image' | 'text' | 'video' | 'grid' | 'images' | 'shot' | 'storyboard';
+export type LinghuiResultKind = 'image' | 'text' | 'video' | 'audio' | 'grid' | 'images' | 'shot' | 'storyboard';
 export type LinghuiCanvasMode = 'mouse' | 'hand';
+export type LinghuiImageNodeMode = 'import' | 'generate';
+export type LinghuiImageToolKey = 'multi-angle' | 'outpaint' | 'relight' | 'repaint' | 'grid-split';
+export type LinghuiVideoToolKey = 'upscale' | 'analyze' | 'compose';
+export type LinghuiNodeViewMode = 'collapsed' | 'light' | 'immersive';
+export type LinghuiNodeToolState =
+  | { kind: 'image'; nodeId: string; tool: LinghuiImageToolKey }
+  | { kind: 'video'; nodeId: string; tool: LinghuiVideoToolKey }
+  | null;
 
 // --- 图片节点 ---
 
-export interface LinghuiReferenceNodeProperties {
-  source: string;
-  note: string;
+export type LinghuiTextNodeMode = 'manual' | 'generate';
+export type LinghuiScriptNodeMode = 'manual' | 'generate';
+export type LinghuiScriptNodeViewMode = 'cards' | 'table';
+export type LinghuiScriptDerivationKind = 'text' | 'image' | 'video-image' | 'video';
+
+export interface LinghuiScriptDerivedProperties {
+  scriptSourceNodeId?: string;
+  scriptShotId?: string;
+  scriptShotTitle?: string;
+  scriptDerivationKind?: LinghuiScriptDerivationKind;
+}
+
+export interface LinghuiTextNodeProperties extends LinghuiScriptDerivedProperties {
+  mode: LinghuiTextNodeMode;
+  content: string;
+  prompt: string;
+  systemPrompt: string;
+  llmSelection: string;
+}
+
+export interface LinghuiScriptNodeProperties {
+  mode: LinghuiScriptNodeMode;
+  content: string;
+  prompt: string;
+  systemPrompt: string;
+  llmSelection: string;
+  viewMode: LinghuiScriptNodeViewMode;
 }
 
 export type LinghuiGridType = 'none' | '2x2' | '3x3' | '4x4' | '5x5';
 
-export interface LinghuiImageNodeProperties {
+export interface LinghuiImageAssetItem {
+  id: string;
+  source: string;
+  label?: string;
+  width?: number;
+  height?: number;
+  mimeType?: string;
+  aspectRatio?: string;
+}
+
+export interface LinghuiImageNodeProperties extends LinghuiScriptDerivedProperties {
+  mode: LinghuiImageNodeMode;
+  source: string;
+  items?: LinghuiImageAssetItem[];
+  primaryAssetId?: string;
+  primaryResultSource?: string;
   prompt: string;
-  ttiConfigId: string;
+  ttiSelection: string;
   aspectRatio: string;
   resolution: string;
   gridType: LinghuiGridType;
@@ -38,15 +87,25 @@ export interface LinghuiImageNodeProperties {
 
 // --- 视频节点 ---
 
-export type LinghuiVideoRefMode = 'all-ref' | 'first-last-frame';
+export type LinghuiVideoCapability = VideoGenerationCapability;
 
-export interface LinghuiVideoNodeProperties {
+export interface LinghuiVideoNodeProperties extends LinghuiScriptDerivedProperties {
   prompt: string;
-  itvConfigId: string;
-  refMode: LinghuiVideoRefMode;
+  itvSelection: string;
+  source: string;
+  posterSource: string;
+  videoCapability: LinghuiVideoCapability;
   aspectRatio: string;
   resolution: string;
   duration: number;
+}
+
+// --- 音频节点 ---
+
+export interface LinghuiAudioNodeProperties {
+  source: string;
+  prompt: string;
+  ttsSelection: string;
 }
 
 // --- 通用 ---
@@ -61,6 +120,7 @@ export interface LinghuiNodeData {
   label: string;
   accent: string;
   background: string;
+  viewMode?: LinghuiNodeViewMode;
   properties: Record<string, unknown>;
   inputs: LinghuiSlotDef[];
   outputs: LinghuiSlotDef[];
@@ -73,7 +133,7 @@ export interface LinghuiEdgeData {
 }
 
 export interface LinghuiMediaItem {
-  kind: 'image' | 'video';
+  kind: 'image' | 'video' | 'audio';
   label?: string;
   source?: string;
   posterSource?: string;
@@ -121,6 +181,27 @@ export interface LinghuiExecutionLogEntry {
   createdAt: number;
 }
 
+export type LinghuiExecutionQueueStatus =
+  | 'idle'
+  | 'running'
+  | 'canceling'
+  | 'completed'
+  | 'failed'
+  | 'canceled';
+
+export interface LinghuiExecutionQueueState {
+  status: LinghuiExecutionQueueStatus;
+  total: number;
+  targetNodeIds: string[];
+  queuedNodeIds: string[];
+  runningNodeId?: string;
+  completedNodeIds: string[];
+  failedNodeIds: string[];
+  canceledNodeIds: string[];
+  startedAt?: number;
+  updatedAt?: number;
+}
+
 export interface LinghuiViewportState {
   x: number;
   y: number;
@@ -160,11 +241,14 @@ export interface LinghuiCanvasGroupData {
   collapsed?: boolean;
 }
 
-export interface LinghuiGraphSnapshot {
-  version: number;
+export interface LinghuiSubgraphSnapshot {
   nodes: LinghuiRFNodeSnapshot[];
   edges: LinghuiRFEdgeSnapshot[];
   groups: LinghuiRFGroupSnapshot[];
+}
+
+export interface LinghuiGraphSnapshot extends LinghuiSubgraphSnapshot {
+  version: number;
 }
 
 export interface LinghuiGraphStats {
@@ -272,6 +356,8 @@ export const GRID_TYPES: Array<{ label: string; value: LinghuiGridType }> = [
   { label: '25宫格 (5×5)', value: '5x5' },
 ];
 
+export const LINGHUI_IMAGE_BATCH_COUNTS = [1, 2, 3, 4] as const;
+
 export const VIDEO_ASPECT_RATIOS = [
   { label: '16:9', value: '16:9' },
   { label: '9:16', value: '9:16' },
@@ -280,6 +366,6 @@ export const VIDEO_ASPECT_RATIOS = [
 ];
 
 export const VIDEO_RESOLUTIONS = [
-  { label: '720P', value: '720P' },
-  { label: '1080P', value: '1080P' },
+  { label: '720P', value: '720p' },
+  { label: '1080P', value: '1080p' },
 ];

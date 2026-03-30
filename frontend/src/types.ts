@@ -7,6 +7,11 @@ import type {
   ShotVersionMediaState,
   StoredMediaAsset,
 } from './types/media';
+import type {
+  ChannelConfig,
+  MediaDefaults,
+  MediaModelSelection,
+} from './providers/channel/types';
 
 export type {
   MediaKind,
@@ -16,6 +21,7 @@ export type {
   MediaOwnerRef,
   ProviderStartResult,
   ProviderTaskSnapshot,
+  VideoGenerationCapability,
   TTIRequest,
   ITVRequest,
   TTSRequest,
@@ -25,10 +31,20 @@ export type {
   ShotMediaState,
   ShotVersionMediaState,
 } from './types/media';
+export type {
+  ChannelConfig,
+  MediaDefaults,
+  MediaModelSelection,
+} from './providers/channel/types';
 export {
+  getITVRequestReferenceAssets,
   getMediaAssetDisplaySource,
   getMediaAssetEditingSource,
   getMediaAssetSource,
+  isImageToVideoRequest,
+  isReferenceToVideoRequest,
+  isStartEndToVideoRequest,
+  isTextToVideoRequest,
   isBlobUri,
   isDataUri,
   isRemoteMediaUri,
@@ -57,10 +73,7 @@ export interface Project {
   lastEdited: string;// 最后编辑时间
   thumbnail: string; // 封面图
   status: 'script' | 'storyboard' | 'generating' | 'completed'; // 项目状态
-  llmConfigId?: string;  // 关联的 LLM 配置 ID
-  ttiConfigId?: string;  // 关联的 TTI 配置 ID
-  itvConfigId?: string;  // 关联的 ITV 配置 ID
-  ttsConfigId?: string;  // 关联的 TTS 配置 ID
+  mediaSelections?: Partial<Record<'llm' | 'tti' | 'itv' | 'tts', MediaModelSelection>>;
   aspectRatio?: '16:9' | '9:16'; // 项目画面比例（创建时确定，不可更改）
   stylePresetId?: string;   // 选中的全局风格 ID
   styleSnapshot?: ProjectStyleSnapshot; // 项目风格快照
@@ -243,7 +256,7 @@ export type TTIProviderType =
   | 'comfyui' | 'jimeng' | 'qwen-image' | 'midjourney' | 'dall-e' | 'flux' | 'nano-banana' | 'gemini-3-pro' | 'gemini-native-tti' | 'openai-compatible-tti' | 'grok2api-imagine-tti'
   | (string & { __ttiPlugin?: never });
 export type ITVProviderType =
-  | 'runway' | 'kling' | 'pika' | 'minimax' | 'comfyui-animatediff' | 'sora2' | 'custom' | 'grok2api-imagine-itv'
+  | 'runway' | 'kling' | 'pika' | 'minimax' | 'comfyui-animatediff' | 'sora2' | 'vidu' | 'custom' | 'grok2api-imagine-itv'
   | (string & { __itvPlugin?: never });
 export type TTSProviderType =
   | 'edge-tts' | 'openai-tts' | 'fish-audio' | 'gpt-sovits' | 'doubao-tts'
@@ -301,6 +314,7 @@ export type ResolvedTTSConfig =
 // TTS 配置（语音合成）
 export interface TTSModelConfig extends MediaProviderConfig {
   provider: TTSProviderType;
+  modelName?: string;
   defaultVoice?: string;
   defaultSpeed?: number;           // 0.5-2.0
 }
@@ -331,7 +345,11 @@ export interface LLMChannelPreset {
   id: string;
   name: string;
   baseUrl: string;
-  models: string[];
+  /**
+   * Optional suggestion list. Do not rely on this for actual runtime models.
+   * Models are maintained per-channel in settings (ChannelConfig.models).
+   */
+  models?: string[];
 }
 
 
@@ -346,6 +364,7 @@ export interface TTSConfig {
   provider: TTSProviderType;
   apiKey?: string;
   baseUrl?: string;
+  modelName?: string;
   defaultVoice?: string;
 }
 
@@ -354,26 +373,20 @@ export interface ITVConfig {
   name?: string;
   apiKey?: string;
   baseUrl?: string;
+  modelName?: string;
   defaultDuration?: number;  // 默认视频时长（秒）
   defaultResolution?: string; // 默认分辨率
 }
 
 export interface AppSettings {
-  llmConfigs: LLMModelConfig[];
-  ttiConfigs: TTIModelConfig[];
-  itvConfigs: ITVModelConfig[];
-  ttsConfigs: TTSModelConfig[];
+  channelConfigs: ChannelConfig[];
+  mediaDefaults?: MediaDefaults;
   promptTemplates?: Record<string, {
     template: string;
     updatedAt: number;
   }>;
   customThemePresets?: ThemePreset[];  // 用户自定义视觉风格预设
-  channelConfigs?: import('./providers/channel/types').ChannelConfig[];  // 渠道配置（Provider 注入版）
   stylePrompts?: { prompt: string; isDefault?: boolean }[];  // 风格提示词列表
-  // @deprecated 以下字段已废弃，迁移后删除
-  customChannels?: import('./providers/channel/types').ChannelConfig[];  // 旧版自定义渠道配置
-  unifiedChannels?: import('./providers/channel/types').UnifiedChannelConfig[];  // 旧版统一渠道配置
-  channelMigrationVersion?: number;  // 迁移版本标记
 }
 
 // ========== 时间线相关类型 ==========
@@ -502,10 +515,7 @@ export interface ProjectMeta {
   createdAt: number;
   updatedAt: number;
   thumbnailPath?: string;
-  llmConfigId?: string;   // 关联的 LLM 配置 ID，null/undefined 表示使用默认
-  ttiConfigId?: string;   // 关联的 TTI 配置 ID
-  itvConfigId?: string;   // 关联的 ITV 配置 ID
-  ttsConfigId?: string;   // 关联的 TTS 配置 ID
+  mediaSelections?: Partial<Record<'llm' | 'tti' | 'itv' | 'tts', MediaModelSelection>>;
   stylePresetId?: string; // 选中的全局风格 ID
   styleSnapshot?: ProjectStyleSnapshot;
   // @deprecated 遗留字段，仅保留给未改造调用点过渡
@@ -575,15 +585,25 @@ export interface AudioResult {
 // ========== ITV 类型 ==========
 
 export interface ITVOptions {
+  model?: string;
   duration?: number;      // 视频时长（秒）
   resolution?: string;    // 分辨率 "1280x720"
   fps?: number;           // 帧率
   motionStrength?: number;// 运动强度 0-1
+  movementAmplitude?: 'auto' | 'small' | 'medium' | 'large';
   cameraMotion?: 'static' | 'pan-left' | 'pan-right' | 'zoom-in' | 'zoom-out';
   motionPrompt?: string;  // 运动描述
   startFrame?: string;    // 首帧图片路径
   endFrame?: string;      // 尾帧图片路径
   aspectRatio?: string;   // 宽高比 16:9, 9:16, 1:1
+  offPeak?: boolean;
+  isRecommendedPrompt?: boolean;
+  bgm?: boolean;
+  watermark?: boolean;
+  watermarkPosition?: number;
+  watermarkUrl?: string;
+  payload?: string;
+  metaData?: string;
   // ComfyUI AnimateDiff 扩展
   negativePrompt?: string;
   width?: number;
@@ -624,6 +644,9 @@ export interface AsyncTask {
   targetId: string;
   targetName?: string;        // 用于显示通知
   remoteTaskId: string;       // 远程API返回的任务ID
+  channelId?: string;
+  modelId?: string;
+  capability?: string;
   /**
    * 任务结果的归属信息，用于重启恢复后把结果回写到对应实体的结构化媒体槽位。
    * 新创建的媒体任务 SHOULD 设置该字段，避免在各工作流/Provider 层写兼容分支。
