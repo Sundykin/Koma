@@ -1405,7 +1405,6 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     return (
       <div className="storyboardContainer w-500" style={{ justifyContent: 'center', alignItems: 'center' }}>
         <Spin size="large" description="加载分镜数据...">
-          <div style={{ padding: 50 }} />
         </Spin>
       </div>
     );
