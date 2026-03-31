@@ -75,7 +75,6 @@ const KLING_SUPPORTED_CAPABILITIES: VideoGenerationCapability[] = [
   'video.reference-to-video',
   'video.start-end-to-video',
 ];
-const KLING_MODEL_NAMES = new Set(['kling-v1', 'kling-v1-5', 'kling-v1-6']);
 
 function isSuccessCode(code: unknown): boolean {
   return code === undefined
@@ -113,9 +112,6 @@ export class KlingProvider implements ITVProvider {
     const value = String(this.config.modelName || '').trim();
     if (!value) {
       throw new Error('Kling 模型名称未配置');
-    }
-    if (!KLING_MODEL_NAMES.has(value)) {
-      throw new Error('Kling 模型名称无效，仅支持 kling-v1、kling-v1-5、kling-v1-6');
     }
     return value;
   }

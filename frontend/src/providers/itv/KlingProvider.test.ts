@@ -230,7 +230,12 @@ describe('KlingProvider', () => {
     expect(safeFetchMock).not.toHaveBeenCalled();
   });
 
-  it('rejects undocumented Kling model aliases before submitting', async () => {
+  it('forwards configured Kling model aliases without hard-coded validation', async () => {
+    safeFetchMock.mockResolvedValueOnce(new Response(JSON.stringify({
+      code: 0,
+      data: { task_id: 'task-image-new-model' },
+    }), { status: 200 }));
+
     const provider = new KlingProvider({
       provider: 'kling',
       baseUrl: 'https://kling-proxy.example.com',
@@ -243,9 +248,10 @@ describe('KlingProvider', () => {
       prompt: 'make the still image move',
       primaryImage: { transport: 'remote-url', value: 'https://cdn.example.com/primary.png' },
       options: { duration: 10 },
-    } as any)).rejects.toThrow('Kling 模型名称无效，仅支持 kling-v1、kling-v1-5、kling-v1-6');
+    } as any)).resolves.toEqual({ mode: 'async', taskId: 'task-image-new-model' });
 
-    expect(safeFetchMock).not.toHaveBeenCalled();
+    const body = JSON.parse((safeFetchMock.mock.calls[0][1] as RequestInit).body as string);
+    expect(body.model_name).toBe('kling-video-v3');
   });
 
   it('surfaces gateway timeouts separately from Kling task timeouts', async () => {
