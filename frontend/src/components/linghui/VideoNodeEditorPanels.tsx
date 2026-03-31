@@ -23,6 +23,7 @@ import {
   type LinghuiVisualReferenceRole,
   type VideoCapabilityDescriptor,
 } from './videoCapabilityUtils';
+import { StagePlayer } from '../video/StagePlayer';
 
 function TooltipLabel({
   label,
@@ -100,10 +101,12 @@ export function VideoToolSection({
 
 interface VideoPassThroughPanelProps {
   source: string;
+  posterSource?: string;
 }
 
 export function VideoPassThroughPanel({
   source,
+  posterSource,
 }: VideoPassThroughPanelProps) {
   const sourceLabel = source.split(/[\\/]/).pop() || '已导入视频';
 
@@ -117,6 +120,16 @@ export function VideoPassThroughPanel({
       </div>
 
       <div className="linghuiEditorPassThroughCard">
+        <div className="linghuiEditorPlayerCard">
+          <div className="linghuiEditorPlayerSurface">
+            <StagePlayer
+              source={source}
+              poster={posterSource}
+              showStopButton
+              emptyDescription="当前没有可播放的视频"
+            />
+          </div>
+        </div>
         <div className="linghuiEditorPassThroughTitle">{sourceLabel}</div>
         <div className="linghuiEditorPassThroughMeta">{source}</div>
         <div className="linghuiEditorSummaryRow">
@@ -147,6 +160,9 @@ interface VideoGeneratePanelProps {
   aspectRatio: string;
   resolution: string;
   duration: number;
+  outputSource?: string;
+  outputPosterSource?: string;
+  outputLabel?: string;
   onUpdateProvider: (value: string) => void;
   onUpdateAspectRatio: (value: string) => void;
   onUpdateResolution: (value: string) => void;
@@ -172,6 +188,9 @@ export function VideoGeneratePanel({
   aspectRatio,
   resolution,
   duration,
+  outputSource,
+  outputPosterSource,
+  outputLabel,
   onUpdateProvider,
   onUpdateAspectRatio,
   onUpdateResolution,
@@ -233,6 +252,33 @@ export function VideoGeneratePanel({
           </div>
         )}
       </div>
+
+      {outputSource ? (
+        <div className="linghuiEditorSection">
+          <div className="linghuiEditorSectionHeader">
+            <TooltipLabel
+              label="生成结果"
+              tooltip="这里提供当前节点最新一次生成出的视频预览与播放控制。"
+            />
+          </div>
+
+          <div className="linghuiEditorPlayerCard">
+            <div className="linghuiEditorPlayerSurface">
+              <StagePlayer
+                source={outputSource}
+                poster={outputPosterSource}
+                showStopButton
+                emptyDescription="当前还没有可播放的生成结果"
+              />
+            </div>
+            <div className="linghuiEditorPlayerMetaRow">
+              <span className="linghuiEditorSummaryPill">{outputLabel || '最新结果'}</span>
+              <span className="linghuiEditorSummaryPill">可拖动进度</span>
+              <span className="linghuiEditorSummaryPill">支持音量与全屏</span>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <div className="linghuiEditorSection">
         <div className="linghuiEditorSectionHeader">

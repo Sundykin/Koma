@@ -2,7 +2,7 @@ import React from 'react';
 import { App } from 'antd';
 import { render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { LinghuiNodeData } from '../../types/linghui';
+import type { LinghuiNodeData, LinghuiNodeRunState } from '../../types/linghui';
 import { VideoNodeEditor } from './VideoNodeEditor';
 
 const {
@@ -55,6 +55,26 @@ vi.mock('./nodes/LinghuiNodeRunsContext', () => ({
   }),
 }));
 
+vi.mock('../video/StagePlayer', () => ({
+  StagePlayer: ({
+    source,
+    videoPath,
+    videoUrl,
+    poster,
+  }: {
+    source?: string;
+    videoPath?: string;
+    videoUrl?: string;
+    poster?: string;
+  }) => (
+    <div
+      data-testid="stage-player"
+      data-source={source || videoUrl || videoPath || ''}
+      data-poster={poster || ''}
+    />
+  ),
+}));
+
 function createVideoNodeData(overrides?: Partial<LinghuiNodeData['properties']>): LinghuiNodeData {
   return {
     linghuiType: 'linghui/video',
@@ -83,12 +103,20 @@ function createVideoNodeData(overrides?: Partial<LinghuiNodeData['properties']>)
   };
 }
 
-function renderEditor(nodeData: LinghuiNodeData, options?: { activeTool?: 'upscale' | 'analyze' | 'compose' | null; onToolChange?: (tool: any) => void }) {
+function renderEditor(
+  nodeData: LinghuiNodeData,
+  options?: {
+    activeTool?: 'upscale' | 'analyze' | 'compose' | null;
+    onToolChange?: (tool: any) => void;
+    nodeRun?: LinghuiNodeRunState;
+  },
+) {
   return render(
     <App>
       <VideoNodeEditor
         nodeId="video-node-1"
         nodeData={nodeData}
+        nodeRun={options?.nodeRun}
         referenceImages={[]}
         referenceVideos={[]}
         referenceAudios={[]}
@@ -137,6 +165,7 @@ describe('VideoNodeEditor', () => {
 
     expect(screen.getAllByText('透传输出').length).toBeGreaterThan(0);
     expect(screen.getByText('不进入生成')).toBeInTheDocument();
+    expect(screen.getByTestId('stage-player')).toHaveAttribute('data-source', '/tmp/imported-cat.mp4');
     expect(screen.queryByText('提示词')).not.toBeInTheDocument();
     expect(screen.queryByText('模型与参数')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '生成' })).not.toBeInTheDocument();
@@ -156,6 +185,43 @@ describe('VideoNodeEditor', () => {
     expect(screen.getByText('时长')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '生成' })).toBeInTheDocument();
     expect(screen.queryByText('生成结果')).not.toBeInTheDocument();
+  });
+
+  it('生成态视频节点在存在输出视频时展示播放器', async () => {
+    render(
+      <App>
+        <VideoNodeEditor
+          nodeId="video-node-1"
+          nodeData={createVideoNodeData()}
+          nodeRun={{
+            status: 'succeeded',
+            result: {
+              kind: 'video',
+              primary: {
+                kind: 'video',
+                source: 'https://cdn.example.com/video.mp4',
+                posterSource: 'https://cdn.example.com/video.jpg',
+                label: '风筝镜头',
+              },
+            },
+          }}
+          referenceImages={[]}
+          referenceVideos={[]}
+          referenceAudios={[]}
+          promptReferences={[]}
+          activeTool={null}
+          onToolChange={vi.fn()}
+          onRun={vi.fn()}
+        />
+      </App>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('生成结果')).toBeInTheDocument();
+    });
+
+    expect(screen.getByTestId('stage-player')).toHaveAttribute('data-source', 'https://cdn.example.com/video.mp4');
+    expect(screen.getByText('支持音量与全屏')).toBeInTheDocument();
   });
 
   it('只展示当前模型真实支持的视频能力', async () => {

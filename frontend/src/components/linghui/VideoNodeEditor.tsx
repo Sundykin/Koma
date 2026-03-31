@@ -70,6 +70,10 @@ export const VideoNodeEditor: React.FC<VideoNodeEditorProps> = ({
   const resolution = String(props.resolution ?? '720p');
   const duration = Number(props.duration ?? 5);
   const isPassThroughNode = Boolean(source);
+  const passThroughPosterSource = String(props.posterSource ?? '').trim();
+  const generatedVideoSource = String(nodeRun?.result?.kind === 'video' ? nodeRun.result.primary?.source ?? '' : '').trim();
+  const generatedPosterSource = String(nodeRun?.result?.kind === 'video' ? nodeRun.result.primary?.posterSource ?? '' : '').trim();
+  const generatedVideoLabel = String(nodeRun?.result?.kind === 'video' ? nodeRun.result.primary?.label ?? '' : '').trim();
 
   const [providers, setProviders] = useState<ProviderOption[]>([]);
   const [fallbackSelectionKey, setFallbackSelectionKey] = useState('');
@@ -287,7 +291,10 @@ export const VideoNodeEditor: React.FC<VideoNodeEditorProps> = ({
       )}
 
       {isPassThroughNode ? (
-        <VideoPassThroughPanel source={source} />
+        <VideoPassThroughPanel
+          source={source}
+          posterSource={passThroughPosterSource}
+        />
       ) : (
         <VideoGeneratePanel
           videoCapability={videoCapability}
@@ -307,6 +314,9 @@ export const VideoNodeEditor: React.FC<VideoNodeEditorProps> = ({
           aspectRatio={aspectRatio}
           resolution={resolution}
           duration={duration}
+          outputSource={generatedVideoSource}
+          outputPosterSource={generatedPosterSource}
+          outputLabel={generatedVideoLabel}
           onUpdateProvider={handleProviderChange}
           onUpdateAspectRatio={value => updateProp('aspectRatio', value)}
           onUpdateResolution={value => updateProp('resolution', value)}

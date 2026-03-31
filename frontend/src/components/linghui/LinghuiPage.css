@@ -3402,6 +3402,46 @@
     rgba(15, 23, 42, 0.68);
 }
 
+.linghuiEditorPlayerCard {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.linghuiEditorPlayerSurface {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: 14px;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at top, rgba(56, 189, 248, 0.14), transparent 44%),
+    #020617;
+  border: 1px solid rgba(71, 85, 105, 0.42);
+}
+
+.linghuiEditorPlayerSurface .stagePlayer {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border-radius: 14px;
+}
+
+.linghuiEditorPlayerSurface .xgplayer {
+  background: transparent;
+}
+
+.linghuiEditorPlayerSurface .xgplayer .xgplayer-controls {
+  backdrop-filter: blur(12px);
+  background: linear-gradient(180deg, rgba(2, 6, 23, 0), rgba(2, 6, 23, 0.88));
+}
+
+.linghuiEditorPlayerMetaRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .linghuiEditorPassThroughTitle {
   color: #f8fafc;
   font-size: 13px;
