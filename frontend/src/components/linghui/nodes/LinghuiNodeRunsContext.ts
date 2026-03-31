@@ -92,8 +92,6 @@ export interface LinghuiNodeInteractionHandlers {
 }
 
 export interface LinghuiNodeInteractionApi {
-  canvasMode: LinghuiCanvasMode;
-  canvasZoom: number;
   bindNodeSurface: (nodeId: string) => LinghuiNodeInteractionHandlers;
   openNodeContextMenu: (nodeId: string, clientX: number, clientY: number) => void;
   openImageToolPanel: (nodeId: string, tool: LinghuiImageToolKey) => void;
@@ -108,8 +106,6 @@ const noopHandlers: LinghuiNodeInteractionHandlers = {
 };
 
 const noopInteractionApi: LinghuiNodeInteractionApi = {
-  canvasMode: 'mouse',
-  canvasZoom: 1,
   bindNodeSurface: () => noopHandlers,
   openNodeContextMenu: () => undefined,
   openImageToolPanel: () => undefined,
@@ -117,6 +113,8 @@ const noopInteractionApi: LinghuiNodeInteractionApi = {
 };
 
 export const LinghuiNodeInteractionContext = createContext<LinghuiNodeInteractionApi>(noopInteractionApi);
+export const LinghuiCanvasModeContext = createContext<LinghuiCanvasMode>('mouse');
+export const LinghuiCanvasZoomContext = createContext<number>(1);
 
 export function useLinghuiNodeInteraction(nodeId: string): LinghuiNodeInteractionHandlers {
   const api = useContext(LinghuiNodeInteractionContext);
@@ -124,11 +122,11 @@ export function useLinghuiNodeInteraction(nodeId: string): LinghuiNodeInteractio
 }
 
 export function useLinghuiCanvasMode(): LinghuiCanvasMode {
-  return useContext(LinghuiNodeInteractionContext).canvasMode;
+  return useContext(LinghuiCanvasModeContext);
 }
 
 export function useLinghuiCanvasZoom(): number {
-  return useContext(LinghuiNodeInteractionContext).canvasZoom;
+  return useContext(LinghuiCanvasZoomContext);
 }
 
 export function useLinghuiNodeInteractionApi(): LinghuiNodeInteractionApi {

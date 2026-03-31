@@ -615,7 +615,9 @@ export class MediaGenerationService {
         if (!provider.getTaskSnapshot) {
           throw new Error('ITV Provider 不支持任务查询');
         }
-        return provider.getTaskSnapshot(remoteTaskId);
+        return provider.getTaskSnapshot(remoteTaskId, {
+          capability: request.capability,
+        });
       },
       extractSource: (output: any) => output?.source,
       enrichAsset: (asset) => mergeMediaMetadata(asset, {
@@ -750,7 +752,9 @@ export class MediaGenerationService {
       if (task.type === 'itv') {
         const provider = await getProjectITVProvider(resolvedITVSelection, taskCapability as any);
         if (!provider?.getTaskSnapshot) throw new Error('ITV Provider 不可用');
-        return provider.getTaskSnapshot(remoteTaskId);
+        return provider.getTaskSnapshot(remoteTaskId, {
+          capability: taskCapability as any,
+        });
       }
       const provider = await getProjectTTSProvider(resolvedTTSSelection, 'speech.text-to-speech');
       if (!provider?.getTaskSnapshot) throw new Error('TTS Provider 不可用');

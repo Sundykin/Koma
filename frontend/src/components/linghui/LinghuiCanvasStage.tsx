@@ -10,6 +10,8 @@ import { linghuiEdgeTypes } from './LinghuiEdge';
 import { linghuiNodeTypes } from './nodes';
 
 type ReactFlowComponentProps = React.ComponentProps<typeof ReactFlow>;
+const DEFAULT_EDGE_OPTIONS = { type: 'linghui-edge' } as const;
+const REACT_FLOW_PRO_OPTIONS = { hideAttribution: true } as const;
 
 interface LinghuiCanvasStageProps {
   nodes: ReactFlowComponentProps['nodes'];
@@ -60,6 +62,8 @@ export function LinghuiCanvasStage({
   onPaneContextMenu,
   onMoveEnd,
 }: LinghuiCanvasStageProps) {
+  const useVisibleElementCulling = nodes.length + edges.length >= 120;
+
   return (
     <ReactFlow
       nodes={nodes}
@@ -85,7 +89,7 @@ export function LinghuiCanvasStage({
       onMoveEnd={onMoveEnd}
       nodeTypes={linghuiNodeTypes}
       edgeTypes={linghuiEdgeTypes}
-      defaultEdgeOptions={{ type: 'linghui-edge' }}
+      defaultEdgeOptions={DEFAULT_EDGE_OPTIONS}
       minZoom={0.25}
       maxZoom={2.5}
       deleteKeyCode={null}
@@ -100,7 +104,8 @@ export function LinghuiCanvasStage({
       panActivationKeyCode={null}
       zoomActivationKeyCode={null}
       nodeDragThreshold={8}
-      proOptions={{ hideAttribution: true }}
+      onlyRenderVisibleElements={useVisibleElementCulling}
+      proOptions={REACT_FLOW_PRO_OPTIONS}
       colorMode="dark"
       fitView
     >

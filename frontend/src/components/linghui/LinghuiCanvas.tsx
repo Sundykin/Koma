@@ -266,6 +266,7 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
     setSelection,
     setEditorSelection,
     setCanvasRect,
+    scheduleSnapshot,
     emitSnapshot,
     openQuickCreateAt,
     pendingConnectionCreateRef,
@@ -315,6 +316,26 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
     openContextMenuAt,
     emitSnapshot,
   });
+
+  const nodeInteractionApi = useMemo(() => ({
+    bindNodeSurface,
+    openNodeContextMenu,
+    openImageToolPanel(nodeId: string, tool: 'multi-angle' | 'outpaint' | 'relight' | 'repaint' | 'grid-split') {
+      openNodeToolPanel({ kind: 'image', nodeId, tool });
+    },
+    openVideoToolPanel(nodeId: string, tool: 'upscale' | 'analyze' | 'compose') {
+      openNodeToolPanel({ kind: 'video', nodeId, tool });
+    },
+  }), [bindNodeSurface, openNodeContextMenu, openNodeToolPanel]);
+
+  const clearNodeRunState = useCallback((nodeId: string) => {
+    onClearNodeRunState?.(nodeId);
+  }, [onClearNodeRunState]);
+
+  const nodeMutationApi = useMemo(() => ({
+    updateNodeData: updateLinghuiNodeData,
+    clearNodeRunState,
+  }), [clearNodeRunState, updateLinghuiNodeData]);
 
   const { zoomIn, zoomOut, focusContent } = useLinghuiCanvasViewportControls(reactFlow);
 
@@ -427,24 +448,9 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
     <LinghuiCanvasSurface
       hostRef={hostRef}
       canvasMode={canvasMode}
-      nodeInteraction={{
-        canvasMode,
-        canvasZoom: viewport.zoom,
-        bindNodeSurface,
-        openNodeContextMenu,
-        openImageToolPanel(nodeId, tool) {
-          openNodeToolPanel({ kind: 'image', nodeId, tool });
-        },
-        openVideoToolPanel(nodeId, tool) {
-          openNodeToolPanel({ kind: 'video', nodeId, tool });
-        },
-      }}
-      nodeMutation={{
-        updateNodeData: updateLinghuiNodeData,
-        clearNodeRunState(nodeId: string) {
-          onClearNodeRunState?.(nodeId);
-        },
-      }}
+      canvasZoom={viewport.zoom}
+      nodeInteraction={nodeInteractionApi}
+      nodeMutation={nodeMutationApi}
       executionTrace={{
         edgeStatuses: canvasRunSummary.edgeStatuses,
         failedNodeIds: canvasRunSummary.failedNodeIds,

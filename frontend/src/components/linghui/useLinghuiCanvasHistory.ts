@@ -14,6 +14,7 @@ import {
   buildRFNodesFromSnapshot,
   calculateStats,
   cloneSnapshotValue,
+  detectCanvasMutationKind,
   serializeCanvasDocumentSnapshot,
 } from './linghuiCanvasShared';
 
@@ -124,12 +125,8 @@ export function useLinghuiCanvasHistory({
     if (hydratingRef.current) return;
     const { recordHistory = true, force = false } = options ?? {};
     const snapshot = captureCanvasDocumentSnapshot();
-    const nextSerialized = serializeCanvasDocumentSnapshot(snapshot);
-    const currentSerialized = historyPresentRef.current
-      ? serializeCanvasDocumentSnapshot(historyPresentRef.current)
-      : null;
-
-    if (!force && currentSerialized === nextSerialized) {
+    const changeKind = detectCanvasMutationKind(historyPresentRef.current, snapshot);
+    if (!force && changeKind === 'none') {
       return;
     }
 
@@ -139,7 +136,7 @@ export function useLinghuiCanvasHistory({
       calculateStats(snapshot.graphData),
     );
 
-    if (recordHistory) {
+    if (recordHistory && changeKind !== 'viewport') {
       commitHistorySnapshot(snapshot);
     }
   }, [captureCanvasDocumentSnapshot, commitHistorySnapshot]);

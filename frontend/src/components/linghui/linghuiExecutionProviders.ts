@@ -2,7 +2,7 @@ import type { MediaAssetSource, ProviderAssetInput, VideoGenerationCapability } 
 import { getProjectITVProvider, getProjectLLMProvider, getProjectTTIProvider, getProjectTTSProvider } from '../../providers';
 import { resolveConfiguredChannelModel } from '../../providers/channel/resolver';
 import { DEFAULT_POLLING_CONFIG } from '../../providers/polling';
-import type { ITVResult } from '../../providers/itv/types';
+import type { ITVResult, ITVTaskSnapshotContext } from '../../providers/itv/types';
 import type { ImageResult } from '../../providers/tti/types';
 import type { AudioResult } from '../../providers/tts/types';
 import { resolveProviderAssetInput } from '../../services/mediaAssetResolver';
@@ -71,12 +71,13 @@ async function ensureProviderAssetInputs(
 }
 
 function createTaskSnapshotGetter<T>(
-  provider: { getTaskSnapshot?: AsyncTaskSnapshotGetter<T> },
+  provider: { getTaskSnapshot?: (taskId: string, context?: ITVTaskSnapshotContext) => Promise<AsyncTaskSnapshot<T>> },
+  context?: ITVTaskSnapshotContext,
 ): AsyncTaskSnapshotGetter<T> | undefined {
   if (!provider.getTaskSnapshot) {
     return undefined;
   }
-  return async (taskId: string) => provider.getTaskSnapshot!(taskId);
+  return async (taskId: string) => provider.getTaskSnapshot!(taskId, context);
 }
 
 async function resolveAsyncProviderResult<T>(
@@ -455,7 +456,7 @@ export async function generateVideoWithProvider(params: {
     ? started.output
     : await resolveAsyncProviderResult<ITVResult>(
         started.taskId,
-        createTaskSnapshotGetter(provider),
+        createTaskSnapshotGetter(provider, { capability: params.capability }),
         params.onProgress,
         params.signal,
         {

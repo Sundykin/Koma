@@ -90,12 +90,10 @@ export function getChannelDefinitionForConfig(config: ChannelConfig): ChannelDef
 }
 
 function getChannelModel(config: ChannelConfig, definition: ChannelDefinition, modelId?: string): ChannelModelDefinition | undefined {
-  const requestedId = modelId || config.defaultModelId;
-  if (requestedId) {
-    const match = definition.models.find((item) => item.id === requestedId);
-    if (match) {
-      return match;
-    }
+  const candidateIds = [modelId, config.defaultModelId].filter(Boolean) as string[];
+  for (const candidateId of candidateIds) {
+    const match = definition.models.find((item) => item.id === candidateId);
+    if (match) return match;
   }
   return definition.models[0];
 }

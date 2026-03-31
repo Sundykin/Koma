@@ -117,7 +117,6 @@ function VideoNodeInner({ id, data, selected }: NodeProps) {
   const viewMode = resolveLinghuiNodeViewMode(nodeData.viewMode);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const animationFrameRef = useRef<number | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [hasRenderableFrame, setHasRenderableFrame] = useState(false);
   const [hasMediaLoaded, setHasMediaLoaded] = useState(false);
@@ -138,13 +137,6 @@ function VideoNodeInner({ id, data, selected }: NodeProps) {
   }).style;
   const isEditorVisible = useLinghuiNodeEditorVisibility(id, 'linghui/video');
 
-  const stopRenderLoop = useCallback(() => {
-    if (animationFrameRef.current !== null) {
-      cancelAnimationFrame(animationFrameRef.current);
-      animationFrameRef.current = null;
-    }
-  }, []);
-
   const syncVideoFrame = useCallback(() => {
     const video = videoRef.current;
     const canvas = canvasRef.current;
@@ -159,38 +151,16 @@ function VideoNodeInner({ id, data, selected }: NodeProps) {
     return rendered;
   }, []);
 
-  const startRenderLoop = useCallback(() => {
-    stopRenderLoop();
-
-    const video = videoRef.current;
-    if (!video) {
-      return;
-    }
-
-    const tick = () => {
-      syncVideoFrame();
-      if (!video.paused && !video.ended) {
-        animationFrameRef.current = requestAnimationFrame(tick);
-      } else {
-        animationFrameRef.current = null;
-      }
-    };
-
-    animationFrameRef.current = requestAnimationFrame(tick);
-  }, [stopRenderLoop, syncVideoFrame]);
-
   useEffect(() => {
-    stopRenderLoop();
     videoRef.current?.pause();
     setIsPlaying(false);
     setHasRenderableFrame(false);
     setHasMediaLoaded(false);
-  }, [stopRenderLoop, videoSource]);
+  }, [videoSource]);
 
   useEffect(() => () => {
-    stopRenderLoop();
     videoRef.current?.pause();
-  }, [stopRenderLoop]);
+  }, []);
 
   useEffect(() => {
     if (!videoSource || typeof ResizeObserver === 'undefined') {
@@ -242,27 +212,27 @@ function VideoNodeInner({ id, data, selected }: NodeProps) {
 
   const handleVideoPlay = useCallback(() => {
     setIsPlaying(true);
-    syncVideoFrame();
-    startRenderLoop();
-  }, [startRenderLoop, syncVideoFrame]);
+    setHasMediaLoaded(true);
+  }, []);
 
   const handleVideoPause = useCallback(() => {
-    stopRenderLoop();
     setIsPlaying(false);
-    syncVideoFrame();
-  }, [stopRenderLoop, syncVideoFrame]);
+    requestAnimationFrame(() => {
+      syncVideoFrame();
+    });
+  }, [syncVideoFrame]);
 
   const handleVideoEnded = useCallback(() => {
-    stopRenderLoop();
     setIsPlaying(false);
-    syncVideoFrame();
-  }, [stopRenderLoop, syncVideoFrame]);
+    requestAnimationFrame(() => {
+      syncVideoFrame();
+    });
+  }, [syncVideoFrame]);
 
   const handleVideoError = useCallback(() => {
-    stopRenderLoop();
     setIsPlaying(false);
     setHasRenderableFrame(false);
-  }, [stopRenderLoop]);
+  }, []);
 
   return (
     <div
@@ -303,13 +273,14 @@ function VideoNodeInner({ id, data, selected }: NodeProps) {
           <div className="linghuiCompactVideoStage">
             <video
               ref={videoRef}
-              className="linghuiCompactVideoMedia"
+              className={`linghuiCompactVideoMedia ${isPlaying ? 'isActivePlayback' : ''}`}
               src={videoSource}
               poster={posterSource || undefined}
               preload="auto"
               playsInline
               disablePictureInPicture
               disableRemotePlayback
+              onLoadedMetadata={handleMediaReady}
               onLoadedData={handleMediaReady}
               onCanPlay={handleMediaReady}
               onTimeUpdate={syncVideoFrame}
@@ -322,10 +293,10 @@ function VideoNodeInner({ id, data, selected }: NodeProps) {
             />
             <canvas
               ref={canvasRef}
-              className={`linghuiCompactVideoCanvas ${hasRenderableFrame ? 'hasFrame' : ''}`}
+              className={`linghuiCompactVideoCanvas ${hasRenderableFrame && !isPlaying ? 'hasFrame' : ''}`}
               aria-hidden="true"
             />
-            {!hasRenderableFrame && posterSource ? (
+            {!isPlaying && !hasRenderableFrame && posterSource ? (
               <img
                 className={`linghuiCompactVideoFallback ${hasMediaLoaded ? 'isLoaded' : ''}`}
                 src={posterSource}
@@ -333,7 +304,7 @@ function VideoNodeInner({ id, data, selected }: NodeProps) {
                 draggable={false}
               />
             ) : null}
-            {!hasRenderableFrame && !posterSource ? (
+            {!isPlaying && !hasRenderableFrame && !posterSource ? (
               <div className="linghuiCompactThumbEmpty" style={{ background: `${nodeData.accent}18` }}>
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
                   <rect x="3" y="3" width="18" height="18" rx="3" stroke={nodeData.accent} strokeWidth="1.5" strokeOpacity="0.6" />

@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { LinghuiNodeData } from '../../../types/linghui';
 import { VideoNode } from './VideoNode';
@@ -139,12 +139,7 @@ describe('VideoNode', () => {
     expect(playMock).toHaveBeenCalledTimes(1);
   });
 
-  it('暂停后再次播放会重新启动节点帧刷新循环', () => {
-    const requestAnimationFrameMock = vi.spyOn(window, 'requestAnimationFrame')
-      .mockImplementation(callback => window.setTimeout(() => callback(performance.now()), 0));
-    const cancelAnimationFrameMock = vi.spyOn(window, 'cancelAnimationFrame')
-      .mockImplementation(handle => window.clearTimeout(handle));
-
+  it('播放时切回 video 渲染，暂停后把当前帧同步到 canvas', async () => {
     const drawImageMock = vi.fn();
     vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
       setTransform: vi.fn(),
@@ -248,15 +243,23 @@ describe('VideoNode', () => {
     const playButton = screen.getByRole('button', { name: '播放视频' });
 
     fireEvent.click(playButton);
-    expect(requestAnimationFrameMock).toHaveBeenCalledTimes(1);
+    await waitFor(() => {
+      expect(video.className).toContain('isActivePlayback');
+    });
 
     const pauseButton = screen.getByRole('button', { name: '暂停视频' });
     fireEvent.click(pauseButton);
-    expect(cancelAnimationFrameMock).toHaveBeenCalledTimes(1);
+    await waitFor(() => {
+      expect(video.className).not.toContain('isActivePlayback');
+    });
 
     const replayButton = screen.getByRole('button', { name: '播放视频' });
     fireEvent.click(replayButton);
-    expect(requestAnimationFrameMock).toHaveBeenCalledTimes(2);
-    expect(drawImageMock).toHaveBeenCalled();
+    await waitFor(() => {
+      expect(video.className).toContain('isActivePlayback');
+    });
+    await waitFor(() => {
+      expect(drawImageMock).toHaveBeenCalled();
+    });
   });
 });

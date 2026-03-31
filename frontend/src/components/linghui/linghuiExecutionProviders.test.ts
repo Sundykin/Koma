@@ -118,7 +118,9 @@ describe('linghuiExecutionProviders', () => {
     });
 
     expect(provider.start).toHaveBeenCalledTimes(1);
-    expect(provider.getTaskSnapshot).toHaveBeenCalledWith('task-vidu-1');
+    expect(provider.getTaskSnapshot).toHaveBeenCalledWith('task-vidu-1', {
+      capability: 'video.text-to-video',
+    });
     expect(validateContexts.at(-1)).toBe(provider);
     expect(result.source).toBe('https://cdn.example.com/task-vidu-1.mp4');
   });

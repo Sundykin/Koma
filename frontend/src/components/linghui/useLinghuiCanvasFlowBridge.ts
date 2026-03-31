@@ -20,6 +20,7 @@ interface UseLinghuiCanvasFlowBridgeParams {
   setSelection: Dispatch<SetStateAction<LinghuiCanvasSelection>>;
   setEditorSelection: Dispatch<SetStateAction<LinghuiCanvasSelection>>;
   setCanvasRect: Dispatch<SetStateAction<DOMRect | null>>;
+  scheduleSnapshot: (options?: { recordHistory?: boolean; force?: boolean }) => void;
   emitSnapshot: (options?: { recordHistory?: boolean; force?: boolean }) => void;
   openQuickCreateAt: (
     clientX: number,
@@ -58,6 +59,25 @@ function buildCanvasSelection(selectedNodes: Node[]): LinghuiCanvasSelection {
   return null;
 }
 
+export function hasPersistableNodeChanges(changes: NodeChange[]): boolean {
+  return changes.some((change) => {
+    if (change.type === 'select') {
+      return false;
+    }
+    if (change.type === 'position') {
+      return !change.dragging;
+    }
+    if (change.type === 'dimensions') {
+      return !change.resizing;
+    }
+    return true;
+  });
+}
+
+export function hasPersistableEdgeChanges(changes: EdgeChange[]): boolean {
+  return changes.some(change => change.type !== 'select');
+}
+
 export function useLinghuiCanvasFlowBridge({
   reactFlow,
   hostRef,
@@ -68,6 +88,7 @@ export function useLinghuiCanvasFlowBridge({
   setSelection,
   setEditorSelection,
   setCanvasRect,
+  scheduleSnapshot,
   emitSnapshot,
   openQuickCreateAt,
   pendingConnectionCreateRef,
@@ -128,13 +149,17 @@ export function useLinghuiCanvasFlowBridge({
       }
     }
 
-    requestAnimationFrame(() => emitSnapshot());
-  }, [emitSnapshot, onNodeMutateRef, onNodesChange, reactFlow]);
+    if (hasPersistableNodeChanges(normalizedChanges)) {
+      scheduleSnapshot();
+    }
+  }, [onNodeMutateRef, onNodesChange, reactFlow, scheduleSnapshot]);
 
   const handleEdgesChange = useCallback((changes: EdgeChange[]) => {
     onEdgesChange(changes);
-    requestAnimationFrame(() => emitSnapshot());
-  }, [emitSnapshot, onEdgesChange]);
+    if (hasPersistableEdgeChanges(changes)) {
+      scheduleSnapshot();
+    }
+  }, [onEdgesChange, scheduleSnapshot]);
 
   const handleConnect = useCallback((connection: Connection) => {
     pendingConnectionCreateRef.current = null;
@@ -159,8 +184,8 @@ export function useLinghuiCanvasFlowBridge({
       type: 'linghui-edge',
       id: `e-${nanoid(8)}`,
     }, currentEdges));
-    requestAnimationFrame(() => emitSnapshot());
-  }, [emitSnapshot, onConnectionErrorRef, pendingConnectionCreateRef, reactFlow, setEdges]);
+    scheduleSnapshot();
+  }, [onConnectionErrorRef, pendingConnectionCreateRef, reactFlow, scheduleSnapshot, setEdges]);
 
   const handleIsValidConnection = useCallback((connection: Connection) => {
     const allNodes = reactFlow.getNodes();
@@ -184,22 +209,7 @@ export function useLinghuiCanvasFlowBridge({
       setEditorSelection(null);
     }
     onSelectionChangeRef.current?.(nextSelection);
-
-    setNodes(currentNodes => currentNodes.map(node => {
-      const isSelected = selectedNodes.some(selectedNode => selectedNode.id === node.id);
-      const currentData = node.data as unknown as LinghuiNodeData;
-      if (currentData?.active === isSelected) {
-        return node;
-      }
-      return {
-        ...node,
-        data: {
-          ...currentData,
-          active: isSelected,
-        } as Record<string, unknown>,
-      };
-    }));
-  }, [onSelectionChangeRef, setEditorSelection, setNodes, setSelection]);
+  }, [onSelectionChangeRef, setEditorSelection, setSelection]);
 
   const handleMoveEnd = useCallback(() => {
     emitSnapshot();
@@ -287,12 +297,12 @@ export function useLinghuiCanvasFlowBridge({
     }
 
     requestAnimationFrame(() => {
-      emitSnapshot();
+      scheduleSnapshot();
       if (options?.markStale !== false) {
         onNodeMutateRef.current?.(nodeId);
       }
     });
-  }, [emitSnapshot, onNodeMutateRef, setNodes]);
+  }, [onNodeMutateRef, scheduleSnapshot, setNodes]);
 
   return {
     handleNodesChange,

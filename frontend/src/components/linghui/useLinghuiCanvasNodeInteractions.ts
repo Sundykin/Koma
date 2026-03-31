@@ -48,19 +48,29 @@ export function useLinghuiCanvasNodeInteractions({
 }: UseLinghuiCanvasNodeInteractionsParams) {
   const activePressRef = useRef<ActiveNodePressState | null>(null);
   const suppressedClickRef = useRef<{ nodeId: string; until: number } | null>(null);
+  const dragFrameRef = useRef<number | null>(null);
+
+  const cancelDragFrame = useCallback(() => {
+    if (dragFrameRef.current !== null) {
+      window.cancelAnimationFrame(dragFrameRef.current);
+      dragFrameRef.current = null;
+    }
+  }, []);
 
   const clearActivePress = useCallback(() => {
+    cancelDragFrame();
     if (activePressRef.current) {
       window.clearTimeout(activePressRef.current.timerId);
       activePressRef.current = null;
     }
-  }, []);
+  }, [cancelDragFrame]);
 
   useEffect(() => () => {
+    cancelDragFrame();
     if (activePressRef.current) {
       window.clearTimeout(activePressRef.current.timerId);
     }
-  }, []);
+  }, [cancelDragFrame]);
 
   const openNodeEditor = useCallback((nodeId: string) => {
     const node = reactFlow.getNode(nodeId);
@@ -137,6 +147,70 @@ export function useLinghuiCanvasNodeInteractions({
     );
   }, []);
 
+  const applyPendingDragMovement = useCallback(() => {
+    const activePress = activePressRef.current;
+    if (!activePress?.dragActive) {
+      return;
+    }
+
+    const nextClientX = activePress.pendingClientX;
+    const nextClientY = activePress.pendingClientY;
+    if (nextClientX === activePress.lastClientX && nextClientY === activePress.lastClientY) {
+      return;
+    }
+
+    const previousFlow = reactFlow.screenToFlowPosition({
+      x: activePress.lastClientX,
+      y: activePress.lastClientY,
+    });
+    const nextFlow = reactFlow.screenToFlowPosition({
+      x: nextClientX,
+      y: nextClientY,
+    });
+    const deltaX = nextFlow.x - previousFlow.x;
+    const deltaY = nextFlow.y - previousFlow.y;
+
+    if (deltaX !== 0 || deltaY !== 0) {
+      reactFlow.updateNode(activePress.nodeId, node => {
+        const nextPosition = {
+          x: node.position.x + deltaX,
+          y: node.position.y + deltaY,
+        };
+        const parentNode = node.parentId ? reactFlow.getNode(node.parentId) : null;
+        const clampedPosition = clampNodePositionToParentBounds({
+          node,
+          parentNode,
+          nextPosition,
+        });
+
+        if (
+          clampedPosition.x === node.position.x &&
+          clampedPosition.y === node.position.y
+        ) {
+          return {};
+        }
+
+        return {
+          position: clampedPosition,
+        };
+      });
+    }
+
+    activePress.lastClientX = nextClientX;
+    activePress.lastClientY = nextClientY;
+  }, [reactFlow]);
+
+  const scheduleDragFrame = useCallback(() => {
+    if (dragFrameRef.current !== null) {
+      return;
+    }
+
+    dragFrameRef.current = window.requestAnimationFrame(() => {
+      dragFrameRef.current = null;
+      applyPendingDragMovement();
+    });
+  }, [applyPendingDragMovement]);
+
   const bindNodeSurface = useCallback((nodeId: string) => ({
     onPointerDown: (event: ReactPointerEvent<HTMLElement>) => {
       if (event.button !== 0) return;
@@ -165,6 +239,8 @@ export function useLinghuiCanvasNodeInteractions({
         startClientY,
         lastClientX: startClientX,
         lastClientY: startClientY,
+        pendingClientX: startClientX,
+        pendingClientY: startClientY,
         dragActive: false,
         timerId,
       };
@@ -178,52 +254,17 @@ export function useLinghuiCanvasNodeInteractions({
       }
 
       if (!activePress.dragActive) {
-        activePress.lastClientX = event.clientX;
-        activePress.lastClientY = event.clientY;
+        activePress.pendingClientX = event.clientX;
+        activePress.pendingClientY = event.clientY;
         return;
       }
 
       event.preventDefault();
       event.stopPropagation();
 
-      const previousFlow = reactFlow.screenToFlowPosition({
-        x: activePress.lastClientX,
-        y: activePress.lastClientY,
-      });
-      const nextFlow = reactFlow.screenToFlowPosition({
-        x: event.clientX,
-        y: event.clientY,
-      });
-      const deltaX = nextFlow.x - previousFlow.x;
-      const deltaY = nextFlow.y - previousFlow.y;
-
-      if (deltaX !== 0 || deltaY !== 0) {
-        setNodes(currentNodes => currentNodes.map(node => (
-          node.id === nodeId
-            ? (() => {
-                const nextPosition = {
-                  x: node.position.x + deltaX,
-                  y: node.position.y + deltaY,
-                };
-                const parentNode = node.parentId
-                  ? currentNodes.find(currentNode => currentNode.id === node.parentId)
-                  : null;
-
-                return {
-                  ...node,
-                  position: clampNodePositionToParentBounds({
-                    node,
-                    parentNode,
-                    nextPosition,
-                  }),
-                };
-              })()
-            : node
-        )));
-      }
-
-      activePress.lastClientX = event.clientX;
-      activePress.lastClientY = event.clientY;
+      activePress.pendingClientX = event.clientX;
+      activePress.pendingClientY = event.clientY;
+      scheduleDragFrame();
     },
     onPointerUp: (event: ReactPointerEvent<HTMLElement>) => {
       const activePress = activePressRef.current;
@@ -233,6 +274,8 @@ export function useLinghuiCanvasNodeInteractions({
 
       const wasDragging = activePress.dragActive;
 
+      cancelDragFrame();
+      applyPendingDragMovement();
       clearActivePress();
       event.currentTarget.releasePointerCapture?.(event.pointerId);
 
@@ -253,7 +296,7 @@ export function useLinghuiCanvasNodeInteractions({
       clearActivePress();
       event.currentTarget.releasePointerCapture?.(event.pointerId);
     },
-  }), [clearActivePress, emitSnapshot, isInteractiveNodeTarget, reactFlow, setNodes]);
+  }), [applyPendingDragMovement, cancelDragFrame, clearActivePress, emitSnapshot, isInteractiveNodeTarget, scheduleDragFrame]);
 
   const handleNodeContextMenu = useCallback((event: ReactMouseEvent, node: Node) => {
     event.preventDefault();

@@ -11,6 +11,7 @@ import { sanitizeBodyForLog, truncateString } from '../../utils/logFormatting';
 import type { ITVProvider, ITVRequest, ITVResult } from './types';
 import { safeFetch } from '../../utils/safeFetch';
 import { readVideoTraceContext, summarizeVideoRequestForLog } from '../../utils/videoGenerationTrace';
+import { VIDU_MODEL_RULES } from './modelCatalog';
 
 type ViduTaskState = 'queued' | 'running' | 'succeeded' | 'failed';
 
@@ -26,36 +27,6 @@ type ViduRequestBody = Record<string, unknown> & {
 
 const VIDU_RESOLUTIONS = new Set(['360p', '540p', '720p', '1080p']);
 const VIDU_MOVEMENT_AMPLITUDES = new Set(['auto', 'small', 'medium', 'large']);
-const VIDU_MODEL_RULES: Record<string, {
-  durations: number[];
-  resolutions: string[];
-}> = {
-  'viduq2-pro': {
-    durations: [1, 2, 3, 4, 5, 6, 7, 8],
-    resolutions: ['540p', '720p', '1080p'],
-  },
-  'viduq2-turbo': {
-    durations: [1, 2, 3, 4, 5, 6, 7, 8],
-    resolutions: ['540p', '720p', '1080p'],
-  },
-  viduq1: {
-    durations: [1, 2, 3, 4, 5, 6, 7, 8],
-    resolutions: ['1080p'],
-  },
-  'viduq1-classic': {
-    durations: [1, 2, 3, 4, 5, 6, 7, 8],
-    resolutions: ['1080p'],
-  },
-  'vidu2.0': {
-    durations: [4, 8],
-    resolutions: ['360p', '720p', '1080p'],
-  },
-  'vidu1.5': {
-    durations: [4, 8],
-    resolutions: ['360p', '720p', '1080p'],
-  },
-};
-
 const logger = createLogger('ViduProvider');
 
 function joinUrl(baseUrl: string, path: string): string {

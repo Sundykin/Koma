@@ -200,7 +200,9 @@ describe('MediaGenerationService.generateVideo - ITV input policy matrix', () =>
       'vidu-main::vidu-model-a',
       'video.reference-to-video',
     );
-    expect(getTaskSnapshot).toHaveBeenCalledWith('remote-1');
+    expect(getTaskSnapshot).toHaveBeenCalledWith('remote-1', {
+      capability: 'video.reference-to-video',
+    });
     expect(out?.kind).toBe('video');
   });
 });

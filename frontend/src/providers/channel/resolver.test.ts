@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { AppSettings } from '../../types';
 import {
+  buildITVProviderConfigFromContext,
   getDefaultMediaSelection,
   listConfiguredModelSelectOptions,
   resolveConfiguredChannelModel,
@@ -34,7 +35,12 @@ function createSettings(): AppSettings {
         name: 'Vidu',
         category: 'itv',
         providerType: 'vidu',
-        providerConfig: { apiKey: 'vidu-key', baseUrl: 'https://vidu.example.com' },
+        providerConfig: {
+          apiKey: 'vidu-key',
+          baseUrl: 'https://vidu.example.com',
+          defaultDuration: 5,
+          defaultResolution: '720p',
+        },
         defaultModelId: 'vidu-model-a',
         models: [
           {
@@ -47,6 +53,10 @@ function createSettings(): AppSettings {
               'video.reference-to-video',
               'video.start-end-to-video',
             ],
+            defaults: {
+              defaultDuration: 4,
+              defaultResolution: '360p',
+            },
           },
         ],
         enabled: true,
@@ -122,6 +132,34 @@ describe('channel resolver', () => {
     expect(resolved?.model.capabilities).toContain('video.reference-to-video');
   });
 
+  it('当选择的模型 ID 已失效时，会优先回退到渠道默认模型而不是列表首项', () => {
+    const settings = createSettings();
+    settings.channelConfigs[1].defaultModelId = 'vidu-model-b';
+    settings.channelConfigs[1].models = [
+      {
+        id: 'vidu-model-a',
+        label: 'vidu-a',
+        providerModelName: 'vidu-a',
+        capabilities: ['video.image-to-video'],
+      },
+      {
+        id: 'vidu-model-b',
+        label: 'vidu-b',
+        providerModelName: 'vidu-b',
+        capabilities: ['video.image-to-video'],
+      },
+    ];
+
+    const resolved = resolveConfiguredChannelModel(
+      settings,
+      'itv',
+      { channelId: 'vidu-main', modelId: 'missing-model-id' },
+      'video.image-to-video',
+    );
+
+    expect(resolved?.model.id).toBe('vidu-model-b');
+  });
+
   it('按能力过滤模型选项时只暴露真实支持的模型', () => {
     const options = listConfiguredModelSelectOptions(
       createSettings(),
@@ -146,5 +184,21 @@ describe('channel resolver', () => {
     expect(resolved?.definition.runtimeProviderType).toBe('plugin-tti-provider');
     expect(resolved?.model.id).toBe('plugin-image-pro');
     expect(resolved?.model.capabilities).toContain('image.image-to-image');
+  });
+
+  it('模型级默认值会覆盖到 ITV provider 运行时配置', () => {
+    const resolved = resolveConfiguredChannelModel(
+      createSettings(),
+      'itv',
+      { channelId: 'vidu-main', modelId: 'vidu-model-a' },
+      'video.text-to-video',
+    );
+
+    expect(resolved).toBeTruthy();
+
+    const config = buildITVProviderConfigFromContext(resolved!);
+    expect(config.defaultDuration).toBe(4);
+    expect(config.defaultResolution).toBe('360p');
+    expect(config.modelName).toBe('vidu-a');
   });
 });

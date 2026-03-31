@@ -18,6 +18,10 @@ import type {
 
 export type ProviderAssetTransport = ProviderAssetInput['transport'];
 
+export interface ITVTaskSnapshotContext {
+  capability?: VideoGenerationCapability;
+}
+
 // 角色提取参数
 export interface CharacterExtractionParams {
   url?: string;
@@ -118,7 +122,7 @@ export interface ITVProvider {
   testConnection(): Promise<boolean>;
 
   start(request: ITVRequest): Promise<ProviderStartResult<ITVResult>>;
-  getTaskSnapshot?(taskId: string): Promise<ProviderTaskSnapshot<ITVResult>>;
+  getTaskSnapshot?(taskId: string, context?: ITVTaskSnapshotContext): Promise<ProviderTaskSnapshot<ITVResult>>;
 
   /**
    * 取消任务
