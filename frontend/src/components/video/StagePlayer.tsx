@@ -14,6 +14,10 @@ const logger = createLogger('StagePlayer');
 
 const { Text } = Typography;
 
+function prefersNativeVideoPlayback(source: string): boolean {
+  return source.startsWith('koma-local://');
+}
+
 function resolveMediaSource(source?: string): string {
   if (!source) return '';
   if (
@@ -58,6 +62,7 @@ export const StagePlayer: React.FC<StagePlayerProps> = ({
   stopButtonLabel = '停止',
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
+  const nativeVideoRef = useRef<HTMLVideoElement>(null);
   const playerRef = useRef<Player | null>(null);
   const [error, setError] = useState<string | null>(null);
   const resolvedSrc = useMemo(
@@ -65,14 +70,21 @@ export const StagePlayer: React.FC<StagePlayerProps> = ({
     [source, videoPath, videoUrl],
   );
   const resolvedPoster = useMemo(() => resolveMediaSource(poster), [poster]);
+  const useNativeVideo = useMemo(() => prefersNativeVideoPlayback(resolvedSrc), [resolvedSrc]);
+
+  useEffect(() => {
+    setError(null);
+  }, [resolvedSrc, resolvedPoster, useNativeVideo]);
 
   // 初始化播放器
   useEffect(() => {
-    if (!containerRef.current || !resolvedSrc) {
+    if (useNativeVideo || !containerRef.current || !resolvedSrc) {
+      if (playerRef.current) {
+        playerRef.current.destroy();
+        playerRef.current = null;
+      }
       return;
     }
-
-    setError(null);
 
     // 销毁旧实例
     if (playerRef.current) {
@@ -124,21 +136,54 @@ export const StagePlayer: React.FC<StagePlayerProps> = ({
         playerRef.current = null;
       }
     };
-  }, [autoPlay, onEnded, onTimeUpdate, resolvedPoster, resolvedSrc]);
+  }, [autoPlay, onEnded, onTimeUpdate, resolvedPoster, resolvedSrc, useNativeVideo]);
+
+  const handleNativeTimeUpdate = useCallback((event: React.SyntheticEvent<HTMLVideoElement>) => {
+    onTimeUpdate?.(event.currentTarget.currentTime);
+  }, [onTimeUpdate]);
+
+  const handleNativeEnded = useCallback(() => {
+    onEnded?.();
+  }, [onEnded]);
+
+  const handleNativeError = useCallback((event: React.SyntheticEvent<HTMLVideoElement>) => {
+    const video = event.currentTarget;
+    logger.error('播放错误', {
+      playerType: 'native-video',
+      src: video.currentSrc || resolvedSrc,
+      currentTime: video.currentTime,
+      duration: Number.isFinite(video.duration) ? video.duration : undefined,
+      ended: video.ended,
+      readyState: video.readyState,
+      networkState: video.networkState,
+      mediaError: video.error,
+      errorCode: video.error?.code,
+      errorMessage: video.error?.message,
+    });
+    setError('视频加载失败');
+  }, [resolvedSrc]);
 
   const handleStop = useCallback(() => {
-    const player = playerRef.current;
-    if (!player) {
-      return;
-    }
-
     try {
+      if (useNativeVideo) {
+        const video = nativeVideoRef.current;
+        if (!video) return;
+        video.pause();
+        video.currentTime = 0;
+        return;
+      }
+
+      const player = playerRef.current;
+      if (!player) {
+        return;
+      }
+
       player.pause();
       player.currentTime = 0;
     } catch (err: unknown) {
       logger.warn('停止播放失败', err);
     }
-  }, []);
+  }, [useNativeVideo]);
 
   const hasVideo = Boolean(resolvedSrc);
 
@@ -164,10 +209,30 @@ export const StagePlayer: React.FC<StagePlayerProps> = ({
         </div>
       ) : hasVideo ? (
         <>
-          <div
-            ref={containerRef}
-            style={{ width: '100%', height: '100%' }}
-          />
+          {useNativeVideo ? (
+            <video
+              ref={nativeVideoRef}
+              src={resolvedSrc}
+              poster={resolvedPoster || undefined}
+              autoPlay={autoPlay}
+              controls
+              playsInline
+              preload="metadata"
+              onTimeUpdate={handleNativeTimeUpdate}
+              onEnded={handleNativeEnded}
+              onError={handleNativeError}
+              style={{
+                width: '100%',
+                height: '100%',
+                background: '#000',
+              }}
+            />
+          ) : (
+            <div
+              ref={containerRef}
+              style={{ width: '100%', height: '100%' }}
+            />
+          )}
           {showStopButton ? (
             <div
               style={{
