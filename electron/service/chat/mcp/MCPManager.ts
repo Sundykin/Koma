@@ -212,7 +212,7 @@ class StdioTransport implements MCPTransport {
 class SSETransport implements MCPTransport {
   private baseUrl: string;
 
-  constructor(private config: MCPServerConfig) {
+  constructor(config: MCPServerConfig) {
     if (!config.url) {
       throw new Error('SSE transport requires url');
     }

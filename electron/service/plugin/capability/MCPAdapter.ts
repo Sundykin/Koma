@@ -56,7 +56,7 @@ function registerExternalResource(resource: MCPResource): void {
     source,
   };
 
-  const invoker = async (args: unknown): Promise<CapabilityResult> => {
+  const invoker = async (_args: unknown): Promise<CapabilityResult> => {
     try {
       const result = await mcpManager.readResource(resource.uri);
       return { success: true, data: result.content, mimeType: result.mimeType };

@@ -3,7 +3,7 @@
  * ReAct 模式: agent -> (tool?) -> agent -> END
  */
 import { StateGraph, END, START, Annotation } from '@langchain/langgraph';
-import { BaseMessage, HumanMessage, AIMessage, ToolMessage, SystemMessage } from '@langchain/core/messages';
+import { BaseMessage, AIMessage, ToolMessage, SystemMessage } from '@langchain/core/messages';
 import { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import { ChatOpenAI } from '@langchain/openai';
 import { ChatAnthropic } from '@langchain/anthropic';
