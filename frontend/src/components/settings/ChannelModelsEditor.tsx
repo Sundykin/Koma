@@ -142,6 +142,7 @@ export const ChannelModelsEditor: React.FC<ChannelModelsEditorProps> = ({
           <Button
             type="dashed"
             icon={<PlusOutlined />}
+            size="small"
             block
             onClick={() => add({
               id: generateId(),
