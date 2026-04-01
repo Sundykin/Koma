@@ -55,26 +55,6 @@ vi.mock('./nodes/LinghuiNodeRunsContext', () => ({
   }),
 }));
 
-vi.mock('../video/StagePlayer', () => ({
-  StagePlayer: ({
-    source,
-    videoPath,
-    videoUrl,
-    poster,
-  }: {
-    source?: string;
-    videoPath?: string;
-    videoUrl?: string;
-    poster?: string;
-  }) => (
-    <div
-      data-testid="stage-player"
-      data-source={source || videoUrl || videoPath || ''}
-      data-poster={poster || ''}
-    />
-  ),
-}));
-
 function createVideoNodeData(overrides?: Partial<LinghuiNodeData['properties']>): LinghuiNodeData {
   return {
     linghuiType: 'linghui/video',
@@ -165,7 +145,9 @@ describe('VideoNodeEditor', () => {
 
     expect(screen.getAllByText('透传输出').length).toBeGreaterThan(0);
     expect(screen.getByText('不进入生成')).toBeInTheDocument();
-    expect(screen.getByTestId('stage-player')).toHaveAttribute('data-source', '/tmp/imported-cat.mp4');
+    expect(screen.getByRole('button', { name: '在系统播放器打开' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '打开所在位置' })).toBeInTheDocument();
+    expect(screen.getByText('/tmp/imported-cat.mp4')).toBeInTheDocument();
     expect(screen.queryByText('提示词')).not.toBeInTheDocument();
     expect(screen.queryByText('模型与参数')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '生成' })).not.toBeInTheDocument();
@@ -187,7 +169,7 @@ describe('VideoNodeEditor', () => {
     expect(screen.queryByText('生成结果')).not.toBeInTheDocument();
   });
 
-  it('生成态视频节点在存在输出视频时展示播放器', async () => {
+  it('生成态视频节点在存在输出视频时展示外部打开入口', async () => {
     render(
       <App>
         <VideoNodeEditor
@@ -220,8 +202,8 @@ describe('VideoNodeEditor', () => {
       expect(screen.getByText('生成结果')).toBeInTheDocument();
     });
 
-    expect(screen.getByTestId('stage-player')).toHaveAttribute('data-source', 'https://cdn.example.com/video.mp4');
-    expect(screen.getByText('支持音量与全屏')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '在浏览器打开' })).toBeInTheDocument();
+    expect(screen.getByText('请外部打开查看')).toBeInTheDocument();
   });
 
   it('只展示当前模型真实支持的视频能力', async () => {

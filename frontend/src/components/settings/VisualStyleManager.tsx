@@ -138,10 +138,12 @@ export const VisualStyleManager: React.FC<VisualStyleManagerProps> = ({ onStyleC
   }
 
   return (
-    <div>
+    <div className="settings-manager">
       {/* 自定义预设区 */}
       <Card
         title="自定义风格预设"
+        size="small"
+        className="settings-config-card"
         extra={
           <Button type="primary" icon={<PlusOutlined />} onClick={() => openModal()}>
             添加风格
@@ -153,17 +155,19 @@ export const VisualStyleManager: React.FC<VisualStyleManagerProps> = ({ onStyleC
           <Empty
             description="暂无自定义风格预设"
             image={Empty.PRESENTED_IMAGE_SIMPLE}
+            className="settings-empty-state"
           >
             <Button type="primary" onClick={() => openModal()}>
               创建第一个风格预设
             </Button>
           </Empty>
         ) : (
-          <Row gutter={[16, 16]}>
+          <Row gutter={[12, 12]}>
             {customPresets.map((preset) => (
               <Col key={preset.id} xs={24} sm={12} lg={8}>
                 <Card
                   size="small"
+                  className="settings-config-card"
                   hoverable
                   actions={[
                     <Tooltip key="preview" title="预览">
@@ -200,12 +204,13 @@ export const VisualStyleManager: React.FC<VisualStyleManagerProps> = ({ onStyleC
       </Card>
 
       {/* 系统预设区（只读） */}
-      <Card title="系统内置风格" size="small">
-        <Row gutter={[16, 16]}>
+      <Card title="系统内置风格" size="small" className="settings-config-card">
+        <Row gutter={[12, 12]}>
           {systemPresets.map((preset) => (
             <Col key={preset.id} xs={24} sm={12} lg={8}>
               <Card
                 size="small"
+                className="settings-config-card"
                 hoverable
                 onClick={() => handlePreview(preset)}
               >
@@ -237,46 +242,60 @@ export const VisualStyleManager: React.FC<VisualStyleManagerProps> = ({ onStyleC
         onCancel={() => setModalVisible(false)}
         okText="保存"
         cancelText="取消"
-        width={600}
+        width={780}
         mask={{ closable: false }}
+        className="dark-modal settings-compact-modal"
       >
-        <Form form={form} layout="vertical">
-          <Form.Item
-            name="name"
-            label="风格名称"
-            rules={[{ required: true, message: '请输入风格名称' }]}
-          >
-            <Input placeholder="如：水彩画风、3D渲染、复古胶片等" />
-          </Form.Item>
+        <Form form={form} layout="vertical" className="settings-modal-form">
+          <div className="settings-form-section">
+            <div className="settings-form-section-title">基础信息</div>
+            <div className="settings-modal-grid">
+              <Form.Item
+                name="name"
+                label="风格名称"
+                rules={[{ required: true, message: '请输入风格名称' }]}
+              >
+                <Input placeholder="如：水彩画风、3D 渲染、复古胶片等" />
+              </Form.Item>
 
-          <Form.Item
-            name="description"
-            label="风格描述"
-          >
-            <Input placeholder="简要描述这个风格的特点" />
-          </Form.Item>
+              <Form.Item
+                name="description"
+                label="风格描述"
+                style={{ marginBottom: 0 }}
+              >
+                <Input placeholder="简要描述这个风格的特点" />
+              </Form.Item>
+            </div>
+          </div>
 
-          <Form.Item
-            name="ttiStylePrefix"
-            label="图片生成提示词前缀"
-            tooltip="生成图片时会自动添加到提示词开头"
-          >
-            <TextArea
-              rows={3}
-              placeholder="如：watercolor painting style, soft colors, artistic brushstrokes, "
-            />
-          </Form.Item>
+          <div className="settings-form-section">
+            <div className="settings-form-section-title">生成提示词</div>
+            <div className="settings-modal-grid">
+              <Form.Item
+                name="ttiStylePrefix"
+                label="图片生成提示词前缀"
+                tooltip="生成图片时会自动添加到提示词开头"
+                style={{ marginBottom: 0 }}
+              >
+                <TextArea
+                  rows={4}
+                  placeholder="如：watercolor painting style, soft colors, artistic brushstrokes"
+                />
+              </Form.Item>
 
-          <Form.Item
-            name="llmPromptSuffix"
-            label="LLM 风格后缀"
-            tooltip="生成剧本/描述时会添加到提示词中，引导AI使用这种风格"
-          >
-            <TextArea
-              rows={2}
-              placeholder="如：以水彩画的视觉风格呈现，色彩柔和，富有艺术感。"
-            />
-          </Form.Item>
+              <Form.Item
+                name="llmPromptSuffix"
+                label="LLM 风格后缀"
+                tooltip="生成剧本/描述时会添加到提示词中，引导 AI 使用这种风格"
+                style={{ marginBottom: 0 }}
+              >
+                <TextArea
+                  rows={4}
+                  placeholder="如：以水彩画的视觉风格呈现，色彩柔和，富有艺术感。"
+                />
+              </Form.Item>
+            </div>
+          </div>
         </Form>
       </Modal>
 
@@ -286,22 +305,23 @@ export const VisualStyleManager: React.FC<VisualStyleManagerProps> = ({ onStyleC
         open={previewVisible}
         onCancel={() => setPreviewVisible(false)}
         footer={null}
-        width={600}
+        width={760}
+        className="dark-modal settings-compact-modal settings-slim-preview"
       >
         {previewPreset && (
-          <div>
-            <Paragraph>
+          <div className="settings-card-content">
+            <Paragraph style={{ marginBottom: 8 }}>
               <Text strong>描述：</Text>
               <Text>{previewPreset.description || '无描述'}</Text>
             </Paragraph>
-            <Paragraph>
+            <Paragraph style={{ marginBottom: 8 }}>
               <Text strong>图片生成提示词前缀：</Text>
               <br />
               <Text code style={{ wordBreak: 'break-all' }}>
                 {previewPreset.ttiStylePrefix || '（无）'}
               </Text>
             </Paragraph>
-            <Paragraph>
+            <Paragraph style={{ marginBottom: 0 }}>
               <Text strong>LLM 风格后缀：</Text>
               <br />
               <Text code style={{ wordBreak: 'break-all' }}>

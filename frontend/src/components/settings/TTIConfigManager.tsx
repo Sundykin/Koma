@@ -390,10 +390,10 @@ export const TTIConfigManager: React.FC<TTIConfigManagerProps> = ({ onConfigChan
   }, []);
 
   return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <div>
-          <span style={{ fontSize: 14, color: '#888' }}>
+    <div className="settings-manager">
+      <div className="settings-manager-toolbar">
+        <div className="settings-toolbar-meta">
+          <span>
             {t('settings.ttiConfigured', { count: configs.length })}
             {pluginChannels.length > 0 && <span>，{t('settings.pluginChannels', { count: pluginChannels.length })}</span>}
           </span>
@@ -408,19 +408,24 @@ export const TTIConfigManager: React.FC<TTIConfigManagerProps> = ({ onConfigChan
           <Spin />
         </div>
       ) : configs.length === 0 && pluginChannels.length === 0 ? (
-        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('settings.noTTIConfigs')}>
+        <Empty
+          image={Empty.PRESENTED_IMAGE_SIMPLE}
+          description={t('settings.noTTIConfigs')}
+          className="settings-empty-state"
+        >
           <Button type="primary" icon={<PlusOutlined />} onClick={() => openModal()}>
             {t('settings.addBuiltinService')}
           </Button>
         </Empty>
       ) : (
-        <Row gutter={[16, 16]}>
+        <Row gutter={[12, 12]}>
           {configs.map((config) => {
             const preferredModelId = getPreferredChannelModelId(config.channel, config.definition);
             return (
-              <Col key={config.channel.id} xs={24} sm={12}>
+              <Col key={config.channel.id} xs={24} md={12} xl={8}>
                 <Card
                   size="small"
+                  className="settings-config-card"
                   title={(
                     <Space>
                       {config.isDefault ? (
@@ -470,31 +475,38 @@ export const TTIConfigManager: React.FC<TTIConfigManagerProps> = ({ onConfigChan
                     </Space>
                   )}
                 >
-                  <div style={{ fontSize: 13, color: '#666' }}>
-                    <div style={{ marginBottom: 8 }}>
-                      <strong>模型列表:</strong>
-                      <div style={{ marginTop: 6 }}>
+                  <div className="settings-card-content">
+                    <div className="settings-card-section">
+                      <div className="settings-card-label">模型列表</div>
+                      <div>
                         {renderModelTags(config.enabledModels, config.channel.defaultModelId)}
                       </div>
                     </div>
-                    <div style={{ marginBottom: 8 }}>
-                      <strong>能力:</strong>
-                      <div style={{ marginTop: 6 }}>
+                    <div className="settings-card-section">
+                      <div className="settings-card-label">能力</div>
+                      <div>
                         {renderCapabilityTags(config.enabledModels)}
                       </div>
                     </div>
-                    {config.resolvedConfig.defaultSize && <div><strong>{t('settings.defaultSize')}:</strong> {config.resolvedConfig.defaultSize}</div>}
+                    <div className="settings-card-inline">
+                      {config.resolvedConfig.defaultSize && (
+                        <div className="settings-card-kv">
+                          <strong>{t('settings.defaultSize')}:</strong>
+                          <span>{config.resolvedConfig.defaultSize}</span>
+                        </div>
+                      )}
+                    </div>
                     {config.channel.providerConfig.workflowPath && (
-                      <div style={{ marginTop: 6 }}>
+                      <div className="settings-card-section">
                         <Tag icon={<NodeIndexOutlined />} color="orange">
                           {t('settings.workflow')}: {String(config.channel.providerConfig.workflowPath)}
                         </Tag>
                       </div>
                     )}
                     {config.resolvedConfig.baseUrl && (
-                      <div style={{ marginTop: 6 }}>
-                        <strong>{t('settings.apiAddress')}:</strong>{' '}
-                        <span style={{ fontSize: 12, fontFamily: 'monospace' }}>
+                      <div className="settings-card-section">
+                        <div className="settings-card-label">{t('settings.apiAddress')}</div>
+                        <span className="settings-card-code">
                           {config.resolvedConfig.baseUrl.replace(/https?:\/\//, '').slice(0, 36)}
                         </span>
                       </div>
@@ -506,9 +518,10 @@ export const TTIConfigManager: React.FC<TTIConfigManagerProps> = ({ onConfigChan
           })}
 
           {pluginChannels.map((channel) => (
-            <Col key={channel.id} xs={24} sm={12}>
+            <Col key={channel.id} xs={24} md={12} xl={8}>
               <Card
                 size="small"
+                className="settings-config-card"
                 title={(
                   <Space>
                     {settings?.mediaDefaults?.tti?.channelId === channel.id ? (
@@ -537,10 +550,14 @@ export const TTIConfigManager: React.FC<TTIConfigManagerProps> = ({ onConfigChan
                   </Tooltip>
                 ) : null}
               >
-                <div style={{ fontSize: 13, color: '#666' }}>
+                <div className="settings-card-content">
                   {channel.description && <div>{channel.description}</div>}
-                  <div style={{ marginTop: 6 }}><strong>Provider:</strong> {channel.providerType}</div>
-                  {channel.defaultModelId && <div style={{ marginTop: 6 }}><strong>默认模型:</strong> {channel.defaultModelId}</div>}
+                  <div className="settings-card-inline">
+                    <div className="settings-card-kv"><strong>Provider:</strong><span>{channel.providerType}</span></div>
+                    {channel.defaultModelId && (
+                      <div className="settings-card-kv"><strong>默认模型:</strong><span>{channel.defaultModelId}</span></div>
+                    )}
+                  </div>
                 </div>
               </Card>
             </Col>
@@ -562,93 +579,103 @@ export const TTIConfigManager: React.FC<TTIConfigManagerProps> = ({ onConfigChan
         onCancel={() => setModalVisible(false)}
         okText={t('common.save')}
         cancelText={t('common.cancel')}
-        width={560}
+        width={840}
         mask={{ closable: false }}
         destroyOnHidden
-        className="dark-modal"
+        className="dark-modal settings-compact-modal"
       >
-        <Form form={form} layout="vertical" className="mt-4">
-          <Form.Item
-            name="providerType"
-            label={t('settings.provider')}
-            required
-            rules={[{ required: true, message: `${t('settings.pleaseSelect')} ${t('settings.provider')}` }]}
-          >
-            <Select placeholder={t('settings.selectTTIProvider')} onChange={handleProviderChange}>
-              {channelDefinitions.map((definition) => (
-                <Select.Option key={definition.id} value={definition.id}>
-                  {definition.name}
-                </Select.Option>
-              ))}
-            </Select>
-          </Form.Item>
+        <Form form={form} layout="vertical" className="settings-modal-form">
+          <div className="settings-form-section">
+            <div className="settings-form-section-title">基础信息</div>
+            <div className="settings-modal-grid">
+              <Form.Item
+                name="providerType"
+                label={t('settings.provider')}
+                required
+                rules={[{ required: true, message: `${t('settings.pleaseSelect')} ${t('settings.provider')}` }]}
+              >
+                <Select placeholder={t('settings.selectTTIProvider')} onChange={handleProviderChange}>
+                  {channelDefinitions.map((definition) => (
+                    <Select.Option key={definition.id} value={definition.id}>
+                      {definition.name}
+                    </Select.Option>
+                  ))}
+                </Select>
+              </Form.Item>
 
-          <Form.Item
-            name="name"
-            label={t('settings.configName')}
-            required
-            rules={[{ required: true, message: `${t('settings.pleaseEnter')} ${t('settings.configName')}` }]}
-          >
-            <Input placeholder={t('settings.configNamePlaceholder')} />
-          </Form.Item>
+              <Form.Item
+                name="name"
+                label={t('settings.configName')}
+                required
+                rules={[{ required: true, message: `${t('settings.pleaseEnter')} ${t('settings.configName')}` }]}
+              >
+                <Input placeholder={t('settings.configNamePlaceholder')} />
+              </Form.Item>
+            </div>
+          </div>
 
-          <Form.Item
-            label="模型列表"
-            required
-          >
-            <ChannelModelsEditor
-              capabilityOptions={[
-                { value: 'image.text-to-image', label: '文生图' },
-                { value: 'image.image-to-image', label: '图生图' },
-              ]}
-              defaultCapabilities={['image.text-to-image']}
-              helpText="模型列表为手动维护。请为每个模型勾选其真实支持的能力。"
-              modelNamePlaceholder="填写模型名称，如: sd_xl_base_1.0.safetensors / gemini-3-pro-image-preview"
-            />
-          </Form.Item>
-
-          <Form.Item
-            name="defaultModelId"
-            label="默认模型"
-            required
-            rules={[{ required: true, message: '请选择默认模型' }]}
-          >
-            <Select
-              placeholder="选择默认模型"
-              options={modelOptions}
-            />
-          </Form.Item>
-
-          {currentProviderType !== 'comfyui' && (
+          <div className="settings-form-section">
+            <div className="settings-form-section-title">模型维护</div>
             <Form.Item
-              name="apiKey"
-              label={t('settings.apiKey')}
-              rules={[{ required: currentProviderType !== 'comfyui', message: `${t('settings.pleaseEnter')} ${t('settings.apiKey')}` }]}
+              label="模型列表"
+              required
+              style={{ marginBottom: 0 }}
             >
-              <Input.Password placeholder={t('settings.enterApiKey')} />
+              <ChannelModelsEditor
+                capabilityOptions={[
+                  { value: 'image.text-to-image', label: '文生图' },
+                  { value: 'image.image-to-image', label: '图生图' },
+                ]}
+                defaultCapabilities={['image.text-to-image']}
+                helpText="模型列表为手动维护。请为每个模型勾选真实支持的能力，系统会按能力自动过滤可选项。"
+                modelNamePlaceholder="填写模型名称，如: sd_xl_base_1.0.safetensors / gemini-3-pro-image-preview"
+              />
             </Form.Item>
-          )}
+          </div>
 
-          <Form.Item
-            name="baseUrl"
-            label={t('settings.apiAddress')}
-            rules={[{ required: true, message: `${t('settings.pleaseEnter')} ${t('settings.apiAddress')}` }]}
-          >
-            <Input placeholder="http://127.0.0.1:8188" />
-          </Form.Item>
+          <div className="settings-form-section">
+            <div className="settings-form-section-title">默认项与连接参数</div>
+            <div className="settings-modal-grid">
+              <Form.Item
+                name="defaultModelId"
+                label="默认模型"
+                required
+                rules={[{ required: true, message: '请选择默认模型' }]}
+              >
+                <Select
+                  placeholder="选择默认模型"
+                  options={modelOptions}
+                />
+              </Form.Item>
 
-          <Form.Item
-            name="promptProtocol"
-            label="Prompt 编译协议"
-            tooltip="为特定渠道启用提示词编译与参考图数组对齐。"
-          >
-            <Select allowClear placeholder="不启用（默认）">
-              <Select.Option value="grok-image-index">grok-image-index (@Image N)</Select.Option>
-            </Select>
-          </Form.Item>
+              <Form.Item
+                name="promptProtocol"
+                label="Prompt 编译协议"
+                tooltip="为特定渠道启用提示词编译与参考图数组对齐。"
+              >
+                <Select allowClear placeholder="不启用（默认）">
+                  <Select.Option value="grok-image-index">grok-image-index (@Image N)</Select.Option>
+                </Select>
+              </Form.Item>
 
-          <Row gutter={16}>
-            <Col span={12}>
+              {currentProviderType !== 'comfyui' && (
+                <Form.Item
+                  name="apiKey"
+                  label={t('settings.apiKey')}
+                  rules={[{ required: currentProviderType !== 'comfyui', message: `${t('settings.pleaseEnter')} ${t('settings.apiKey')}` }]}
+                >
+                  <Input.Password placeholder={t('settings.enterApiKey')} />
+                </Form.Item>
+              )}
+
+              <Form.Item
+                name="baseUrl"
+                label={t('settings.apiAddress')}
+                rules={[{ required: true, message: `${t('settings.pleaseEnter')} ${t('settings.apiAddress')}` }]}
+              >
+                <Input placeholder="http://127.0.0.1:8188" />
+              </Form.Item>
+
               <Form.Item name="defaultSize" label={t('settings.defaultSize')}>
                 <Select placeholder={t('settings.selectSize')} allowClear>
                   <Select.Option value="512x512">512 × 512</Select.Option>
@@ -660,18 +687,18 @@ export const TTIConfigManager: React.FC<TTIConfigManagerProps> = ({ onConfigChan
                   <Select.Option value="720x1280">720 × 1280 (9:16)</Select.Option>
                 </Select>
               </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item name="defaultSteps" label={t('settings.defaultSteps')}>
-                <InputNumber min={1} max={150} placeholder="20" style={{ width: '100%' }} />
+
+              <Form.Item name="defaultSteps" label={t('settings.defaultSteps')} style={{ marginBottom: 0 }}>
+                <InputNumber min={1} max={150} placeholder="20" />
               </Form.Item>
-            </Col>
-          </Row>
+            </div>
+          </div>
 
           {currentProviderType === 'comfyui' && (
-            <Form.Item label={t('settings.comfyuiWorkflow')}>
+            <div className="settings-form-section">
+              <div className="settings-form-section-title">{t('settings.comfyuiWorkflow')}</div>
               <WorkflowUploader value={workflowData} onChange={setWorkflowData} />
-            </Form.Item>
+            </div>
           )}
         </Form>
       </Modal>
