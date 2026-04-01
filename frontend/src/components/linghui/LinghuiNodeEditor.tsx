@@ -4,7 +4,7 @@ import {
   useNodes,
   useNodesData,
 } from '@xyflow/react';
-import { Button, Dropdown } from 'antd';
+import { Button, Dropdown, Tooltip } from 'antd';
 import type { MenuProps } from 'antd';
 import { X } from 'lucide-react';
 import type {
@@ -34,6 +34,7 @@ import {
   getOrderedIncomingReferenceEdges,
 } from './linghuiPromptReferences';
 import { resolveLinghuiImagePrimaryForNode } from './linghuiImageCollections';
+import { VIDEO_TOOL_PRESETS } from './videoNodeEditorShared';
 
 interface LinghuiNodeEditorProps {
   nodeId: string;
@@ -357,6 +358,8 @@ export const LinghuiNodeEditor: React.FC<LinghuiNodeEditorProps> = ({
       },
     })
   ), [edges, nodeId, nodeRuns, nodes]);
+  const isVideoPassThroughNode = nodeType === 'linghui/video'
+    && Boolean(String((nodeData?.properties as unknown as LinghuiVideoNodeProperties | undefined)?.source ?? '').trim());
 
   const activeImageTool = activeTool?.kind === 'image' && activeTool.nodeId === nodeId
     ? activeTool.tool
@@ -377,7 +380,7 @@ export const LinghuiNodeEditor: React.FC<LinghuiNodeEditorProps> = ({
   const toolbarWidth = isGridSplitMode
     ? 720
     : nodeType === 'linghui/video'
-      ? Math.max(248, VIDEO_TOOLBAR_ITEMS.length * 88 + 108)
+      ? (isVideoPassThroughNode ? 248 : Math.max(248, VIDEO_TOOLBAR_ITEMS.length * 88 + 108))
       : nodeType === 'linghui/image'
         ? Math.max(248, IMAGE_TOOLBAR_ITEMS.length * 88 + 108)
         : 248;
@@ -433,6 +436,12 @@ export const LinghuiNodeEditor: React.FC<LinghuiNodeEditorProps> = ({
   useEffect(() => {
     setOpenDropdownKey(null);
   }, [isVisible, isGridSplitMode, nodeId, nodeType]);
+
+  useEffect(() => {
+    if (isVideoPassThroughNode && activeTool?.kind === 'video' && activeTool.nodeId === nodeId) {
+      setActiveTool(null);
+    }
+  }, [activeTool, isVideoPassThroughNode, nodeId, setActiveTool]);
 
   const gridSplitMenuItems = useMemo<MenuProps['items']>(() => (
     GRID_SPLIT_OPTIONS.map(option => ({
@@ -583,17 +592,25 @@ export const LinghuiNodeEditor: React.FC<LinghuiNodeEditorProps> = ({
     }
 
     if (nodeType === 'linghui/video') {
+      if (isVideoPassThroughNode) {
+        return null;
+      }
+
       return (
         <div className="linghuiNodeEditorToolRail">
           {VIDEO_TOOLBAR_ITEMS.map(item => (
-            <button
+            <Tooltip
               key={item.key}
-              type="button"
-              className={`linghuiNodeEditorToolButton ${activeVideoTool === item.key ? 'isActive' : ''}`}
-              onClick={() => setActiveTool(activeVideoTool === item.key ? null : { kind: 'video', nodeId, tool: item.key })}
+              title={VIDEO_TOOL_PRESETS[item.key].description}
             >
-              {item.label}
-            </button>
+              <button
+                type="button"
+                className={`linghuiNodeEditorToolButton ${activeVideoTool === item.key ? 'isActive' : ''}`}
+                onClick={() => setActiveTool(activeVideoTool === item.key ? null : { kind: 'video', nodeId, tool: item.key })}
+              >
+                {item.label}
+              </button>
+            </Tooltip>
           ))}
         </div>
       );

@@ -2,6 +2,8 @@ import React from 'react';
 import type { RefObject } from 'react';
 import type { LinghuiCanvasMode } from '../../types/linghui';
 import {
+  LinghuiCanvasModeContext,
+  LinghuiCanvasZoomContext,
   LinghuiGroupRunsContext,
   LinghuiExecutionTraceContext,
   LinghuiNodeEditorContext,
@@ -25,6 +27,7 @@ import { LinghuiCanvasStage } from './LinghuiCanvasStage';
 interface LinghuiCanvasSurfaceProps {
   hostRef: RefObject<HTMLDivElement | null>;
   canvasMode: LinghuiCanvasMode;
+  canvasZoom: number;
   nodeInteraction: LinghuiNodeInteractionApi;
   nodeMutation: LinghuiNodeMutationApi;
   executionTrace: LinghuiExecutionTraceState;
@@ -43,6 +46,7 @@ interface LinghuiCanvasSurfaceProps {
 export function LinghuiCanvasSurface({
   hostRef,
   canvasMode,
+  canvasZoom,
   nodeInteraction,
   nodeMutation,
   executionTrace,
@@ -76,28 +80,32 @@ export function LinghuiCanvasSurface({
   }), [overlayProps]);
 
   return (
-    <LinghuiGroupRunsContext.Provider value={groupRunSummaries}>
-      <LinghuiExecutionTraceContext.Provider value={executionTrace}>
-        <LinghuiNodeInteractionContext.Provider value={nodeInteraction}>
-          <LinghuiGridSplitContext.Provider value={gridSplitOverlay}>
-            <LinghuiNodeMutationContext.Provider value={nodeMutation}>
-              <LinghuiNodeEditorContext.Provider value={nodeEditor}>
-                <div
-                  ref={hostRef}
-                  className={`linghuiCanvasRoot ${canvasMode === 'hand' ? 'isHandMode' : 'isMouseMode'}`}
-                  onDragOver={rootHandlers.onDragOver}
-                  onDrop={rootHandlers.onDrop}
-                  onDoubleClick={rootHandlers.onDoubleClick}
-                >
-                  <LinghuiCanvasHud {...hudProps} />
-                  <LinghuiCanvasStage {...stageProps} />
-                  <LinghuiCanvasOverlays {...overlayProps} />
-                </div>
-              </LinghuiNodeEditorContext.Provider>
-            </LinghuiNodeMutationContext.Provider>
-          </LinghuiGridSplitContext.Provider>
-        </LinghuiNodeInteractionContext.Provider>
-      </LinghuiExecutionTraceContext.Provider>
-    </LinghuiGroupRunsContext.Provider>
+    <LinghuiCanvasModeContext.Provider value={canvasMode}>
+      <LinghuiCanvasZoomContext.Provider value={canvasZoom}>
+        <LinghuiGroupRunsContext.Provider value={groupRunSummaries}>
+          <LinghuiExecutionTraceContext.Provider value={executionTrace}>
+            <LinghuiNodeInteractionContext.Provider value={nodeInteraction}>
+              <LinghuiGridSplitContext.Provider value={gridSplitOverlay}>
+                <LinghuiNodeMutationContext.Provider value={nodeMutation}>
+                  <LinghuiNodeEditorContext.Provider value={nodeEditor}>
+                    <div
+                      ref={hostRef}
+                      className={`linghuiCanvasRoot ${canvasMode === 'hand' ? 'isHandMode' : 'isMouseMode'}`}
+                      onDragOver={rootHandlers.onDragOver}
+                      onDrop={rootHandlers.onDrop}
+                      onDoubleClick={rootHandlers.onDoubleClick}
+                    >
+                      <LinghuiCanvasHud {...hudProps} />
+                      <LinghuiCanvasStage {...stageProps} />
+                      <LinghuiCanvasOverlays {...overlayProps} />
+                    </div>
+                  </LinghuiNodeEditorContext.Provider>
+                </LinghuiNodeMutationContext.Provider>
+              </LinghuiGridSplitContext.Provider>
+            </LinghuiNodeInteractionContext.Provider>
+          </LinghuiExecutionTraceContext.Provider>
+        </LinghuiGroupRunsContext.Provider>
+      </LinghuiCanvasZoomContext.Provider>
+    </LinghuiCanvasModeContext.Provider>
   );
 }

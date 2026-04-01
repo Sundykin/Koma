@@ -96,8 +96,16 @@ export class GeminiProvider implements LLMProvider {
     this.config = config;
   }
 
+  private getModelName(): string {
+    const value = String(this.config.modelName || '').trim();
+    if (!value) {
+      throw new Error('模型名称未配置');
+    }
+    return value;
+  }
+
   validate(): boolean {
-    return !!this.config.apiKey && this.config.apiKey.length > 0;
+    return Boolean(this.config.apiKey && this.config.apiKey.length > 0 && String(this.config.modelName || '').trim());
   }
 
   private getAI(): GoogleGenAI {
@@ -108,10 +116,11 @@ export class GeminiProvider implements LLMProvider {
   }
 
   async testConnection(): Promise<boolean> {
+    if (!this.validate()) return false;
     try {
       const ai = this.getAI();
       const response = await ai.models.generateContent({
-        model: this.config.modelName || 'gemini-2.0-flash',
+        model: this.getModelName(),
         contents: 'Hello',
         config: { maxOutputTokens: 10 },
       });
@@ -123,15 +132,16 @@ export class GeminiProvider implements LLMProvider {
 
   async generateText(prompt: string, systemPrompt?: string, options?: LLMCallOptions): Promise<string> {
     const ai = this.getAI();
+    const modelName = this.getModelName();
     logger.info('发起 Gemini generateText 请求', {
       traceId: options?.traceId,
-      model: this.config.modelName || 'gemini-2.0-flash',
+      model: modelName,
       source: options?.source,
       operation: options?.operation,
       transport: 'direct',
     });
     const response = await ai.models.generateContent({
-      model: this.config.modelName || 'gemini-2.0-flash',
+      model: modelName,
       contents: systemPrompt ? `${systemPrompt}\n\n${prompt}` : prompt,
     });
     logger.info('Gemini generateText 完成', {
@@ -144,6 +154,7 @@ export class GeminiProvider implements LLMProvider {
 
   async chat(messages: ChatMessage[], options?: LLMCallOptions): Promise<string> {
     const ai = this.getAI();
+    const modelName = this.getModelName();
     // 将 messages 转换为 Gemini 格式
     const contents = messages.map(m => ({
       role: m.role === 'assistant' ? 'model' : 'user',
@@ -155,7 +166,7 @@ export class GeminiProvider implements LLMProvider {
 
     logger.info('发起 Gemini chat 请求', {
       traceId: options?.traceId,
-      model: this.config.modelName || 'gemini-2.0-flash',
+      model: modelName,
       messageCount: messages.length,
       source: options?.source,
       operation: options?.operation,
@@ -163,7 +174,7 @@ export class GeminiProvider implements LLMProvider {
     });
 
     const response = await ai.models.generateContent({
-      model: this.config.modelName || 'gemini-2.0-flash',
+      model: modelName,
       contents: contents.filter(c => c.role !== 'system'),
       config: systemInstruction ? { systemInstruction } : undefined,
     });

@@ -1,236 +1,348 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import {
-  Card,
-  Row,
-  Col,
+  App,
   Button,
-  Modal,
+  Card,
+  Col,
+  Empty,
   Form,
   Input,
+  Modal,
+  Popconfirm,
+  Row,
   Select,
-  AutoComplete,
   Space,
+  Spin,
   Tag,
   Tooltip,
-  Empty,
-  Popconfirm,
-  Spin,
-  App,
 } from 'antd';
 import {
-  PlusOutlined,
-  EditOutlined,
-  DeleteOutlined,
-  CheckCircleOutlined,
-  StarOutlined,
-  StarFilled,
   ApiOutlined,
+  CheckCircleOutlined,
+  DeleteOutlined,
+  EditOutlined,
   KeyOutlined,
   LoadingOutlined,
+  PlusOutlined,
+  RobotOutlined,
+  StarFilled,
+  StarOutlined,
 } from '@ant-design/icons';
-import type { LLMModelConfig, LLMProviderType } from '../../types';
+import type { AppSettings, LLMModelConfig } from '../../types';
+import { createLLMProvider } from '../../providers/llm';
+import { buildLLMConfigFromContext } from '../../providers/channel/resolver';
+import type { ChannelModelDefinition, ModelCapability } from '../../providers/channel/types';
 import {
-  loadSettings,
-  addLLMConfig,
-  updateLLMConfig,
-  deleteLLMConfig,
-  setDefaultLLMConfig,
-  LLM_CHANNEL_PRESETS,
+  addChannelConfig,
+  deleteChannelConfig,
+  generateId,
+  setDefaultMediaModelSelection,
+  updateChannelConfig,
 } from '../../store/globalStore';
-import { testLLMConnection } from '../../providers';
+import { ChannelModelsEditor } from './ChannelModelsEditor';
+import {
+  buildChannelFormValues,
+  buildManagedChannelCards,
+  getPreferredChannelModelId,
+  listBuiltInChannelOptions,
+} from './channelManagerShared';
+import { useMediaConfigManager } from './useMediaConfigManager';
 
 interface LLMConfigManagerProps {
   onConfigChange?: () => void;
 }
 
+function getProviderColor(providerType: string) {
+  switch (providerType) {
+    case 'gemini': return 'blue';
+    case 'claude': return 'orange';
+    case 'deepseek': return 'geekblue';
+    case 'qwen': return 'purple';
+    case 'zhipu': return 'green';
+    case 'moonshot': return 'cyan';
+    default: return 'default';
+  }
+}
+
+function getChannelDefaults(definition?: ReturnType<typeof listBuiltInChannelOptions>[number]) {
+  if (!definition) {
+    return {};
+  }
+
+  const schemaProperties = (definition.configSchema as { properties?: Record<string, { default?: unknown }> } | undefined)?.properties || {};
+  const defaults = Object.fromEntries(
+    Object.entries(schemaProperties)
+      .filter(([, field]) => field?.default !== undefined)
+      .map(([key, field]) => [key, field.default]),
+  );
+
+  return {
+    name: definition.name,
+    ...defaults,
+  };
+}
+
 export const LLMConfigManager: React.FC<LLMConfigManagerProps> = ({ onConfigChange }) => {
   const { message } = App.useApp();
-  const [configs, setConfigs] = useState<LLMModelConfig[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [modalVisible, setModalVisible] = useState(false);
-  const [editingConfig, setEditingConfig] = useState<LLMModelConfig | null>(null);
-  const [testingId, setTestingId] = useState<string | null>(null);
-  const [form] = Form.useForm();
 
-  const loadConfigs = async () => {
-    setLoading(true);
-    try {
-      const settings = await loadSettings();
-      setConfigs(settings.llmConfigs || []);
-    } finally {
-      setLoading(false);
+  const channelDefinitions = useMemo(() => listBuiltInChannelOptions('llm'), []);
+  const definitionMap = useMemo(
+    () => new Map(channelDefinitions.map((definition) => [definition.id, definition])),
+    [channelDefinitions],
+  );
+
+  const loadBuiltins = useCallback(
+    (settings: AppSettings) => buildManagedChannelCards(settings, 'llm', buildLLMConfigFromContext),
+    [],
+  );
+
+  const {
+    configs,
+    loading,
+    modalVisible,
+    setModalVisible,
+    editingChannel,
+    setEditingChannel,
+    testingId,
+    setTestingId,
+    form,
+    settings,
+    loadConfigs,
+  } = useMediaConfigManager<LLMModelConfig>('llm', loadBuiltins, onConfigChange);
+
+  const currentProviderType = Form.useWatch('providerType', form) as string | undefined;
+  const currentDefinition = currentProviderType ? definitionMap.get(currentProviderType) : undefined;
+  const currentIsOpenAICompatible = currentDefinition?.runtimeProviderType === 'openai-compatible';
+  const watchedModels = Form.useWatch('models', form) as Array<Partial<ChannelModelDefinition>> | undefined;
+  const modelOptions = useMemo(() => (
+    (watchedModels || [])
+      .filter((model) => Boolean(model && model.id))
+      .map((model) => ({
+        label: (String(model.label || '').trim()
+          || String(model.providerModelName || '').trim()
+          || String(model.id || '').trim()),
+        value: String(model.id),
+      }))
+  ), [watchedModels]);
+
+  const normalizeModels = useCallback((raw: unknown): ChannelModelDefinition[] => {
+    const models = (Array.isArray(raw) ? raw : []) as Array<Partial<ChannelModelDefinition>>;
+    if (models.length === 0) {
+      throw new Error('请至少添加一个模型');
     }
-  };
 
-  useEffect(() => {
-    loadConfigs();
+    return models.map((item) => {
+      const providerModelName = String(item.providerModelName || '').trim();
+      if (!providerModelName) {
+        throw new Error('模型名称不能为空');
+      }
+      const label = String(item.label || '').trim() || providerModelName;
+      const id = String(item.id || '').trim() || generateId();
+
+      return {
+        id,
+        label,
+        providerModelName,
+        capabilities: ['llm.chat' satisfies ModelCapability],
+      };
+    });
   }, []);
 
-  const openModal = (config?: LLMModelConfig) => {
+  const openModal = useCallback((config?: typeof configs[number]) => {
     if (config) {
-      setEditingConfig(config);
-      form.setFieldsValue({
-        name: config.name,
-        provider: config.provider,
-        presetId: getPresetIdFromBaseUrl(config.baseUrl),
-        baseUrl: config.baseUrl,
-        apiKey: config.apiKey,
-        modelName: config.modelName,
-      });
+      setEditingChannel(config.channel);
+      form.setFieldsValue(buildChannelFormValues(config.channel, config.definition));
     } else {
-      setEditingConfig(null);
+      const firstDefinition = channelDefinitions[0];
+      const modelId = generateId();
+      setEditingChannel(null);
       form.resetFields();
-      form.setFieldsValue({ provider: 'openai-compatible' });
+      form.setFieldsValue({
+        providerType: firstDefinition?.id,
+        ...getChannelDefaults(firstDefinition),
+        models: [{
+          id: modelId,
+          providerModelName: '',
+          label: '',
+          capabilities: ['llm.chat'],
+        }],
+        defaultModelId: modelId,
+      });
     }
     setModalVisible(true);
-  };
+  }, [channelDefinitions, configs, form, setEditingChannel, setModalVisible]);
 
-  const getPresetIdFromBaseUrl = (baseUrl?: string): string | undefined => {
-    if (!baseUrl) return undefined;
-    const preset = LLM_CHANNEL_PRESETS.find(p => p.baseUrl === baseUrl);
-    return preset?.id;
-  };
-
-  const handleProviderChange = (provider: LLMProviderType) => {
-    if (provider === 'gemini') {
-      form.setFieldsValue({
-        presetId: undefined,
-        modelName: 'gemini-2.0-flash',
-        // 保留 baseUrl 供代理使用
-      });
-    } else if (provider === 'claude') {
-      form.setFieldsValue({
-        baseUrl: 'https://api.anthropic.com',
-        presetId: undefined,
-        modelName: 'claude-sonnet-4-20250514',
-      });
-    } else {
-      // openai-compatible
-      form.setFieldsValue({
-        presetId: undefined,
-        baseUrl: undefined,
-        modelName: undefined,
-      });
+  const handleProviderChange = useCallback((providerType: string) => {
+    const definition = definitionMap.get(providerType);
+    if (!definition) {
+      return;
     }
-  };
 
-  const handlePresetChange = (presetId: string) => {
-    const preset = LLM_CHANNEL_PRESETS.find(p => p.id === presetId);
-    if (preset) {
-      form.setFieldsValue({
-        baseUrl: preset.baseUrl,
-        modelName: preset.models[0],
-      });
+    const existingModels = form.getFieldValue('models');
+    const normalizedModels = Array.isArray(existingModels) && existingModels.length > 0
+      ? existingModels
+      : [{
+          id: generateId(),
+          providerModelName: '',
+          label: '',
+          capabilities: ['llm.chat'],
+        }];
+
+    const currentDefaultModelId = String(form.getFieldValue('defaultModelId') || '');
+    const nextDefaultModelId = currentDefaultModelId && normalizedModels.some((model: any) => String(model?.id) === currentDefaultModelId)
+      ? currentDefaultModelId
+      : String(normalizedModels[0]?.id || '');
+
+    const previousName = form.getFieldValue('name');
+    form.setFieldsValue({
+      providerType,
+      name: previousName || definition.name,
+      ...getChannelDefaults(definition),
+      models: normalizedModels,
+      defaultModelId: nextDefaultModelId,
+    });
+  }, [definitionMap, form]);
+
+  React.useEffect(() => {
+    const models = watchedModels || [];
+    if (models.length === 0) {
+      return;
     }
-  };
+    const current = String(form.getFieldValue('defaultModelId') || '');
+    if (!current || !models.some((item) => String(item?.id || '') === current)) {
+      const next = String(models[0]?.id || '');
+      if (next) {
+        form.setFieldValue('defaultModelId', next);
+      }
+    }
+  }, [form, watchedModels]);
 
-  const handleSave = async () => {
+  const handleSave = useCallback(async () => {
     try {
       const values = await form.validateFields();
-      const configData = {
-        name: values.name,
-        provider: values.provider as LLMProviderType,
-        baseUrl: values.baseUrl,
-        apiKey: values.apiKey,
-        modelName: values.modelName,
-        isDefault: editingConfig?.isDefault || configs.length === 0,
-      };
-
-      if (editingConfig) {
-        await updateLLMConfig(editingConfig.id, configData);
-        message.success('配置已更新');
-      } else {
-        await addLLMConfig(configData);
-        message.success('配置已添加');
+      const definition = definitionMap.get(values.providerType);
+      if (!definition) {
+        throw new Error('未找到对应的 LLM 渠道定义');
       }
 
+      const models = normalizeModels(values.models);
+      const modelIdSet = new Set(models.map((model) => model.id));
+      const defaultModelId = modelIdSet.has(values.defaultModelId)
+        ? values.defaultModelId
+        : models[0]?.id;
+      if (!defaultModelId) throw new Error('请至少添加一个模型');
+
+      const payload = {
+        name: values.name,
+        description: definition.description,
+        category: 'llm' as const,
+        providerType: definition.id,
+        providerConfig: {
+          apiKey: values.apiKey,
+          baseUrl: values.baseUrl,
+        },
+        defaultModelId,
+        models,
+        enabled: true,
+        source: 'builtin' as const,
+      };
+
+      const saved = editingChannel
+        ? await updateChannelConfig(editingChannel.id, payload)
+        : await addChannelConfig(payload);
+
+      if (!saved) {
+        throw new Error('保存渠道配置失败');
+      }
+
+      const shouldUpdateDefault = !settings?.mediaDefaults?.llm
+        || settings.mediaDefaults.llm.channelId === saved.id;
+      if (shouldUpdateDefault) {
+        await setDefaultMediaModelSelection('llm', { channelId: saved.id, modelId: defaultModelId });
+      }
+
+      message.success(editingChannel ? '配置已更新' : '配置已添加');
       setModalVisible(false);
       await loadConfigs();
       onConfigChange?.();
-    } catch (err: unknown) {
-      if (err && typeof err === 'object' && 'errorFields' in err) return;
-      const errorMessage = err instanceof Error ? err.message : String(err);
-      message.error(`保存失败: ${errorMessage}`);
+    } catch (err: any) {
+      if (err?.errorFields) return;
+      message.error(`保存失败: ${err?.message || String(err)}`);
     }
-  };
+  }, [definitionMap, editingChannel, form, loadConfigs, message, onConfigChange, setModalVisible, settings?.mediaDefaults?.llm]);
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = useCallback(async (id: string) => {
     try {
-      await deleteLLMConfig(id);
+      await deleteChannelConfig(id);
       message.success('配置已删除');
       await loadConfigs();
       onConfigChange?.();
-    } catch (err: unknown) {
-      const errorMessage = err instanceof Error ? err.message : String(err);
-      message.error(`删除失败: ${errorMessage}`);
+    } catch (err: any) {
+      message.error(`删除失败: ${err?.message || String(err)}`);
     }
-  };
+  }, [loadConfigs, message, onConfigChange]);
 
-  const handleSetDefault = async (id: string) => {
+  const handleSetDefault = useCallback(async (channelId: string, modelId?: string) => {
+    if (!modelId) {
+      message.error('当前渠道没有可用模型');
+      return;
+    }
+
     try {
-      await setDefaultLLMConfig(id);
+      await setDefaultMediaModelSelection('llm', { channelId, modelId });
       message.success('已设为默认');
       await loadConfigs();
       onConfigChange?.();
-    } catch (err: unknown) {
-      const errorMessage = err instanceof Error ? err.message : String(err);
-      message.error(`设置失败: ${errorMessage}`);
+    } catch (err: any) {
+      message.error(`设置失败: ${err?.message || String(err)}`);
     }
-  };
+  }, [loadConfigs, message, onConfigChange]);
 
-  const handleTestConnection = async (config: LLMModelConfig) => {
-    setTestingId(config.id);
+  const handleTestConnection = useCallback(async (config: typeof configs[number]) => {
+    setTestingId(config.channel.id);
     try {
-      const result = await testLLMConnection({
-        provider: config.provider as any,
-        apiKey: config.apiKey,
-        baseUrl: config.baseUrl,
-        modelName: config.modelName,
+      const provider = createLLMProvider({
+        provider: config.resolvedConfig.provider,
+        apiKey: config.resolvedConfig.apiKey,
+        baseUrl: config.resolvedConfig.baseUrl,
+        modelName: config.resolvedConfig.modelName,
       });
-      if (result.success) {
-        message.success(`"${config.name}" 连接成功`);
-      } else {
-        message.error(`"${config.name}" ${result.message}`);
+      if (!provider.validate()) {
+        throw new Error('配置校验失败');
       }
-    } catch (err: unknown) {
-      const errorMessage = err instanceof Error ? err.message : String(err);
-      message.error(`连接测试失败: ${errorMessage}`);
+      const success = await provider.testConnection();
+      if (success) {
+        message.success(`"${config.channel.name}" 连接成功`);
+      } else {
+        message.error(`"${config.channel.name}" 连接失败，请检查配置`);
+      }
+    } catch (err: any) {
+      message.error(`连接测试失败: ${err?.message || String(err)}`);
     } finally {
       setTestingId(null);
     }
-  };
+  }, [message, setTestingId]);
 
-  const getProviderLabel = (provider: LLMProviderType) => {
-    switch (provider) {
-      case 'gemini': return 'Gemini';
-      case 'claude': return 'Claude';
-      case 'openai-compatible': return 'OpenAI 兼容';
-      default: return provider;
-    }
-  };
-
-  const getProviderColor = (provider: LLMProviderType) => {
-    switch (provider) {
-      case 'gemini': return 'blue';
-      case 'claude': return 'orange';
-      case 'openai-compatible': return 'purple';
-      default: return 'default';
-    }
-  };
-
-  const currentProvider = Form.useWatch('provider', form);
-  const currentPresetId = Form.useWatch('presetId', form);
+  const renderModelTags = useCallback((models: ChannelModelDefinition[], defaultModelId?: string) => (
+    <Space wrap size={[6, 6]}>
+      {models.map((model) => (
+        <Tag key={model.id} color={model.id === defaultModelId ? 'gold' : 'default'}>
+          {model.label}
+        </Tag>
+      ))}
+    </Space>
+  ), []);
 
   return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <div>
-          <span style={{ fontSize: 14, color: '#888' }}>
-            已配置 <strong>{configs.length}</strong> 个模型
+    <div className="settings-manager">
+      <div className="settings-manager-toolbar">
+        <div className="settings-toolbar-meta">
+          <span>
+            已配置 <strong>{configs.length}</strong> 个渠道
           </span>
         </div>
         <Button type="primary" icon={<PlusOutlined />} onClick={() => openModal()}>
-          添加模型
+          添加渠道
         </Button>
       </div>
 
@@ -241,202 +353,193 @@ export const LLMConfigManager: React.FC<LLMConfigManagerProps> = ({ onConfigChan
       ) : configs.length === 0 ? (
         <Empty
           image={Empty.PRESENTED_IMAGE_SIMPLE}
-          description="还没有配置任何 LLM 模型"
+          description="还没有配置任何 LLM 渠道"
+          className="settings-empty-state"
         >
           <Button type="primary" icon={<PlusOutlined />} onClick={() => openModal()}>
-            添加第一个模型
+            添加第一个渠道
           </Button>
         </Empty>
       ) : (
-        <Row gutter={[16, 16]}>
-          {configs.map((config: LLMModelConfig) => (
-            <Col key={config.id} xs={24} sm={12}>
-              <Card
-                size="small"
-                title={
-                  <Space>
-                    {config.isDefault ? (
-                      <StarFilled style={{ color: '#faad14' }} />
-                    ) : (
-                      <Tooltip title="设为默认">
-                        <StarOutlined
-                          style={{ cursor: 'pointer', color: '#d9d9d9' }}
-                          onClick={() => handleSetDefault(config.id)}
+        <Row gutter={[12, 12]}>
+          {configs.map((config) => {
+            const preferredModelId = getPreferredChannelModelId(config.channel, config.definition);
+            return (
+              <Col key={config.channel.id} xs={24} md={12} xl={8}>
+                <Card
+                  size="small"
+                  className="settings-config-card"
+                  title={(
+                    <Space>
+                      {config.isDefault ? (
+                        <StarFilled style={{ color: '#faad14' }} />
+                      ) : (
+                        <Tooltip title="设为默认">
+                          <StarOutlined
+                            style={{ cursor: 'pointer', color: '#d9d9d9' }}
+                            onClick={() => handleSetDefault(config.channel.id, preferredModelId)}
+                          />
+                        </Tooltip>
+                      )}
+                      <RobotOutlined />
+                      <span>{config.channel.name}</span>
+                      <Tag color={getProviderColor(config.definition.id)}>{config.definition.name}</Tag>
+                    </Space>
+                  )}
+                  extra={(
+                    <Space size="small">
+                      <Tooltip title="测试连接">
+                        <Button
+                          type="text"
+                          size="small"
+                          icon={testingId === config.channel.id ? <LoadingOutlined /> : <CheckCircleOutlined />}
+                          onClick={() => handleTestConnection(config)}
+                          disabled={testingId === config.channel.id}
                         />
                       </Tooltip>
-                    )}
-                    <span>{config.name}</span>
-                    <Tag color={getProviderColor(config.provider)}>
-                      {getProviderLabel(config.provider)}
-                    </Tag>
-                  </Space>
-                }
-                extra={
-                  <Space size="small">
-                    <Tooltip title="测试连接">
-                      <Button
-                        type="text"
-                        size="small"
-                        icon={testingId === config.id ? <LoadingOutlined /> : <CheckCircleOutlined />}
-                        onClick={() => handleTestConnection(config)}
-                        disabled={testingId === config.id}
-                      />
-                    </Tooltip>
-                    <Tooltip title="编辑">
-                      <Button
-                        type="text"
-                        size="small"
-                        icon={<EditOutlined />}
-                        onClick={() => openModal(config)}
-                      />
-                    </Tooltip>
-                    <Popconfirm
-                      title="确定删除此配置？"
-                      onConfirm={() => handleDelete(config.id)}
-                      okText="删除"
-                      cancelText="取消"
-                    >
-                      <Tooltip title="删除">
-                        <Button type="text" size="small" danger icon={<DeleteOutlined />} />
+                      <Tooltip title="编辑">
+                        <Button
+                          type="text"
+                          size="small"
+                          icon={<EditOutlined />}
+                          onClick={() => openModal(config)}
+                        />
                       </Tooltip>
-                    </Popconfirm>
-                  </Space>
-                }
-              >
-                <div style={{ fontSize: 13, color: '#666' }}>
-                  <div><strong>模型:</strong> {config.modelName}</div>
-                  {config.baseUrl && (
-                    <div style={{ marginTop: 4 }}>
-                      <strong>地址:</strong>{' '}
-                      <span style={{ fontSize: 12, fontFamily: 'monospace' }}>
-                        {config.baseUrl.replace(/https?:\/\//, '').slice(0, 30)}...
-                      </span>
-                    </div>
+                      <Popconfirm
+                        title="确定删除此配置？"
+                        onConfirm={() => handleDelete(config.channel.id)}
+                        okText="删除"
+                        cancelText="取消"
+                      >
+                        <Tooltip title="删除">
+                          <Button type="text" size="small" danger icon={<DeleteOutlined />} />
+                        </Tooltip>
+                      </Popconfirm>
+                    </Space>
                   )}
-                </div>
-              </Card>
-            </Col>
-          ))}
+                >
+                  <div className="settings-card-content">
+                    <div className="settings-card-section">
+                      <div className="settings-card-label">模型列表</div>
+                      <div>
+                        {renderModelTags(config.enabledModels, config.channel.defaultModelId)}
+                      </div>
+                    </div>
+                    {config.resolvedConfig.baseUrl && (
+                      <div className="settings-card-section">
+                        <div className="settings-card-label">地址</div>
+                        <span className="settings-card-code">
+                          {config.resolvedConfig.baseUrl.replace(/https?:\/\//, '').slice(0, 36)}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </Card>
+              </Col>
+            );
+          })}
         </Row>
       )}
 
       <Modal
-        title={editingConfig ? '编辑模型配置' : '添加模型配置'}
+        title={editingChannel ? '编辑渠道配置' : '添加渠道配置'}
         open={modalVisible}
         onOk={handleSave}
         onCancel={() => setModalVisible(false)}
         okText="保存"
         cancelText="取消"
-        width={500}
+        width={760}
         mask={{ closable: false }}
         destroyOnHidden
-        className="dark-modal"
-        styles={{
-          header: { background: '#18181b', borderBottom: '1px solid #3f3f46' },
-          body: { background: '#18181b' },
-          footer: { background: '#18181b', borderTop: '1px solid #3f3f46' },
-        }}
+        className="dark-modal settings-compact-modal"
       >
-        <Form form={form} layout="vertical" className="mt-4">
-          <Form.Item
-            name="name"
-            label="配置名称"
-            required
-            rules={[{ required: true, message: '请输入配置名称' }]}
-          >
-            <Input placeholder="如: DeepSeek Chat" />
-          </Form.Item>
-
-          <Form.Item
-            name="provider"
-            label="模型类型"
-            required
-            rules={[{ required: true }]}
-          >
-            <Select onChange={handleProviderChange}>
-              <Select.Option value="openai-compatible">OpenAI 兼容 (推荐)</Select.Option>
-              <Select.Option value="gemini">Google Gemini</Select.Option>
-              <Select.Option value="claude">Anthropic Claude</Select.Option>
-            </Select>
-          </Form.Item>
-
-          {currentProvider === 'openai-compatible' && (
-            <Form.Item name="presetId" label="快速选择渠道">
-              <Select
-                placeholder="选择预设渠道自动填充地址"
-                allowClear
-                onChange={handlePresetChange}
+        <Form form={form} layout="vertical" className="settings-modal-form">
+          <div className="settings-form-section">
+            <div className="settings-form-section-title">基础信息</div>
+            <div className="settings-modal-grid">
+              <Form.Item
+                name="providerType"
+                label="模型渠道"
+                required
+                rules={[{ required: true, message: '请选择模型渠道' }]}
               >
-                {LLM_CHANNEL_PRESETS.map(preset => (
-                  <Select.Option key={preset.id} value={preset.id}>
-                    {preset.name}
-                  </Select.Option>
-                ))}
-              </Select>
+                <Select onChange={handleProviderChange}>
+                  {channelDefinitions.map((definition) => (
+                    <Select.Option key={definition.id} value={definition.id}>
+                      {definition.name}
+                    </Select.Option>
+                  ))}
+                </Select>
+              </Form.Item>
+
+              <Form.Item
+                name="name"
+                label="配置名称"
+                required
+                rules={[{ required: true, message: '请输入配置名称' }]}
+              >
+                <Input placeholder="如: DeepSeek 团队账号" />
+              </Form.Item>
+            </div>
+          </div>
+
+          <div className="settings-form-section">
+            <div className="settings-form-section-title">模型维护</div>
+            <Form.Item
+              label="模型列表"
+              required
+              style={{ marginBottom: 0 }}
+            >
+              <ChannelModelsEditor
+                fixedCapabilities={['llm.chat']}
+                helpText="模型列表为手动维护。修改模型名称不会影响项目中的已选择项，系统会继续按稳定 ID 关联。"
+              />
             </Form.Item>
-          )}
+          </div>
 
-          <Form.Item
-            name="baseUrl"
-            label={
-              <span>
-                API 地址
-                {currentProvider !== 'openai-compatible' && (
-                  <span className="text-zinc-500 ml-2 text-xs">(可选，用于代理)</span>
+          <div className="settings-form-section">
+            <div className="settings-form-section-title">连接参数</div>
+            <div className="settings-modal-grid">
+              <Form.Item
+                name="defaultModelId"
+                label="默认模型"
+                required
+                rules={[{ required: true, message: '请选择默认模型' }]}
+              >
+                <Select
+                  placeholder="选择默认模型"
+                  options={modelOptions}
+                />
+              </Form.Item>
+
+              <Form.Item
+                name="baseUrl"
+                label={(
+                  <span>
+                    API 地址
+                    {!currentIsOpenAICompatible && <span className="text-zinc-500 ml-2 text-xs">(可选，用于代理)</span>}
+                  </span>
                 )}
-              </span>
-            }
-            rules={[{ required: currentProvider === 'openai-compatible', message: '请输入 API 地址' }]}
-            extra={
-              currentProvider === 'gemini'
-                ? '留空使用官方地址 generativelanguage.googleapis.com'
-                : currentProvider === 'claude'
-                ? '留空使用官方地址 api.anthropic.com'
-                : undefined
-            }
-          >
-            <Input
-              prefix={<ApiOutlined />}
-              placeholder={
-                currentProvider === 'gemini'
-                  ? 'https://your-proxy.com/v1beta 或留空'
-                  : currentProvider === 'claude'
-                  ? 'https://api.anthropic.com 或代理地址'
-                  : 'https://api.deepseek.com/v1'
-              }
-            />
-          </Form.Item>
+                rules={[{ required: currentIsOpenAICompatible, message: '请输入 API 地址' }]}
+              >
+                <Input
+                  prefix={<ApiOutlined />}
+                  placeholder={currentIsOpenAICompatible ? 'https://api.deepseek.com/v1' : '可留空使用官方地址'}
+                />
+              </Form.Item>
 
-          <Form.Item
-            name="modelName"
-            label="模型名称"
-            required
-            rules={[{ required: true, message: '请输入模型名称' }]}
-          >
-            <AutoComplete
-              placeholder="输入或选择模型，如: deepseek-chat, gpt-4o"
-              options={
-                currentPresetId
-                  ? LLM_CHANNEL_PRESETS.find(p => p.id === currentPresetId)?.models.map(model => ({
-                      value: model,
-                      label: model,
-                    })) || []
-                  : []
-              }
-              filterOption={(inputValue, option) =>
-                option?.value.toLowerCase().includes(inputValue.toLowerCase()) ?? false
-              }
-            />
-          </Form.Item>
-
-          <Form.Item
-            name="apiKey"
-            label="API Key"
-            required
-            rules={[{ required: true, message: '请输入 API Key' }]}
-          >
-            <Input.Password prefix={<KeyOutlined />} placeholder="sk-..." />
-          </Form.Item>
+              <Form.Item
+                name="apiKey"
+                label="API Key"
+                className="settings-grid-span-full"
+                required
+                rules={[{ required: true, message: '请输入 API Key' }]}
+                style={{ marginBottom: 0 }}
+              >
+                <Input.Password prefix={<KeyOutlined />} placeholder="sk-..." />
+              </Form.Item>
+            </div>
+          </div>
         </Form>
       </Modal>
     </div>

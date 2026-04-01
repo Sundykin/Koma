@@ -21,6 +21,9 @@ interface PersistMediaParams {
   mimeType?: string;
   provider?: string;
   providerTaskId?: string;
+  channelId?: string;
+  modelId?: string;
+  capability?: string;
   metadata?: Record<string, unknown>;
 }
 
@@ -132,6 +135,9 @@ export async function persistMediaAsset({
   mimeType,
   provider,
   providerTaskId,
+  channelId,
+  modelId,
+  capability,
   metadata,
 }: PersistMediaParams): Promise<StoredMediaAsset> {
   if (!electronService.isElectron()) {
@@ -173,6 +179,9 @@ export async function persistMediaAsset({
     height: typeof source === 'string' ? undefined : source.height,
     durationMs: typeof source === 'string' ? undefined : source.durationMs,
     fps: typeof source === 'string' ? undefined : source.fps,
+    channelId: channelId || (typeof source === 'string' ? undefined : source.channelId),
+    modelId: modelId || (typeof source === 'string' ? undefined : source.modelId),
+    capability: capability || (typeof source === 'string' ? undefined : source.capability),
     metadata: {
       ...(typeof source === 'string' ? undefined : source.metadata),
       ...metadata,

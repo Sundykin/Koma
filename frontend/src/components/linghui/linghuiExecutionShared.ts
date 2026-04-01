@@ -1,6 +1,7 @@
 import { nanoid } from 'nanoid';
 import { electronService } from '../../services/electronService';
 import type {
+  LinghuiAudioNodeProperties,
   LinghuiExecutionContext,
   LinghuiImageNodeProperties,
   LinghuiExecutionLogEntry,
@@ -9,6 +10,9 @@ import type {
   LinghuiNodeResult,
   LinghuiNodeType,
   LinghuiRFNodeSnapshot,
+  LinghuiScriptNodeProperties,
+  LinghuiTextNodeProperties,
+  LinghuiVideoNodeProperties,
 } from '../../types/linghui';
 import {
   buildLinghuiPromptReferenceItems,
@@ -16,7 +20,10 @@ import {
   parseLinghuiPromptReferences,
   type LinghuiPromptReferenceItem,
 } from './linghuiPromptReferences';
-import { resolveLinghuiImageResultWithSelectedPrimary } from './linghuiImageCollections';
+import {
+  resolveLinghuiImageCollection,
+  resolveLinghuiImageResultWithSelectedPrimary,
+} from './linghuiImageCollections';
 
 export const EXECUTION_PROJECT_ID = 'linghui';
 
@@ -127,12 +134,15 @@ function resolveAllInputResults(context: LinghuiExecutionContext, nodeId: string
   return getOrderedIncomingReferenceEdges(nodeId, context.edges)
     .filter(edge => edge.targetHandle === handleId)
     .map(edge => {
-      const result = context.nodeOutputs[edge.source];
+      const sourceNode = context.nodes.find(node => node.id === edge.source);
+      const result = context.nodeOutputs[edge.source] ?? resolveStaticNodeResult(sourceNode);
+      if (result && !context.nodeOutputs[edge.source]) {
+        context.nodeOutputs[edge.source] = result;
+      }
       if (!result) {
         return undefined;
       }
 
-      const sourceNode = context.nodes.find(node => node.id === edge.source);
       if (sourceNode?.data.linghuiType !== 'linghui/image') {
         return result;
       }
@@ -153,12 +163,15 @@ function resolveInputData(context: LinghuiExecutionContext, nodeId: string, inpu
     return undefined;
   }
 
-  const result = context.nodeOutputs[edge.source];
+  const sourceNode = context.nodes.find(node => node.id === edge.source);
+  const result = context.nodeOutputs[edge.source] ?? resolveStaticNodeResult(sourceNode);
+  if (result && !context.nodeOutputs[edge.source]) {
+    context.nodeOutputs[edge.source] = result;
+  }
   if (!result) {
     return undefined;
   }
 
-  const sourceNode = context.nodes.find(node => node.id === edge.source);
   if (sourceNode?.data.linghuiType !== 'linghui/image') {
     return result;
   }
@@ -204,6 +217,109 @@ export function createNodeView(context: LinghuiExecutionContext, snapshot: Lingh
       });
     },
   };
+}
+
+function resolveStaticNodeResult(snapshot?: LinghuiRFNodeSnapshot): LinghuiNodeResult | undefined {
+  if (!snapshot) {
+    return undefined;
+  }
+
+  if (snapshot.data.linghuiType === 'linghui/image') {
+    const properties = snapshot.data.properties as unknown as LinghuiImageNodeProperties;
+    const collection = resolveLinghuiImageCollection(properties);
+    if (!collection.primary) {
+      return undefined;
+    }
+
+    const items = collection.items.map(item => buildMediaItem(item));
+    const primary = collection.primary ? buildMediaItem(collection.primary) : undefined;
+    return {
+      kind: items.length > 1 ? 'images' : 'image',
+      primary,
+      items: items.length > 1 ? items : undefined,
+      metadata: {
+        source: primary?.source,
+        mode: collection.mode,
+        itemCount: items.length,
+      },
+    };
+  }
+
+  if (snapshot.data.linghuiType === 'linghui/text') {
+    const properties = snapshot.data.properties as unknown as LinghuiTextNodeProperties;
+    const content = String(properties.content ?? '').trim();
+    if (properties.mode !== 'manual' || !content) {
+      return undefined;
+    }
+
+    return {
+      kind: 'text',
+      text: content,
+      metadata: { mode: 'manual' },
+    };
+  }
+
+  if (snapshot.data.linghuiType === 'linghui/script') {
+    const properties = snapshot.data.properties as unknown as LinghuiScriptNodeProperties;
+    const content = String(properties.content ?? '').trim();
+    if (properties.mode !== 'manual' || !content) {
+      return undefined;
+    }
+
+    return {
+      kind: 'storyboard',
+      text: content,
+      metadata: {
+        mode: 'manual',
+        rawContent: content,
+      },
+    };
+  }
+
+  if (snapshot.data.linghuiType === 'linghui/audio') {
+    const properties = snapshot.data.properties as unknown as LinghuiAudioNodeProperties;
+    const source = String(properties.source ?? '').trim();
+    if (!source) {
+      return undefined;
+    }
+
+    return {
+      kind: 'audio',
+      primary: buildMediaItem({
+        kind: 'audio',
+        source,
+        label: snapshot.data.label,
+      }),
+      text: String(properties.prompt ?? '').trim() || undefined,
+      metadata: { source, mode: 'upload' },
+    };
+  }
+
+  if (snapshot.data.linghuiType === 'linghui/video') {
+    const properties = snapshot.data.properties as unknown as LinghuiVideoNodeProperties;
+    const source = String(properties.source ?? '').trim();
+    const posterSource = String(properties.posterSource ?? '').trim();
+    if (!source && !posterSource) {
+      return undefined;
+    }
+
+    return {
+      kind: 'video',
+      primary: buildMediaItem({
+        kind: 'video',
+        source: source || undefined,
+        posterSource: posterSource || undefined,
+        label: snapshot.data.label,
+      }),
+      metadata: {
+        source: source || undefined,
+        posterSource: posterSource || undefined,
+        mode: 'upload',
+      },
+    };
+  }
+
+  return undefined;
 }
 
 export function collectReferenceSources(results: LinghuiNodeResult[]): string[] {

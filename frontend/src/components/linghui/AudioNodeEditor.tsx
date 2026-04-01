@@ -3,6 +3,7 @@ import { App, Button, Select } from 'antd';
 import { ArrowUp, Music4, Trash2, UploadCloud } from 'lucide-react';
 import type { LinghuiAudioNodeProperties, LinghuiNodeData, LinghuiNodeRunState } from '../../types/linghui';
 import { loadSettings } from '../../store/settings/core';
+import { listConfiguredModelSelectOptions } from '../../providers/channel/resolver';
 import { electronService, openFileDialog } from '../../services/electronService';
 import { createLinghuiWorkspaceAsset, importLinghuiWorkspaceAsset } from '../../store/linghuiStorage';
 import { useLinghuiNodeMutation } from './nodes/LinghuiNodeRunsContext';
@@ -51,7 +52,7 @@ export const AudioNodeEditor: React.FC<AudioNodeEditorProps> = ({
   const props = nodeData.properties as unknown as LinghuiAudioNodeProperties;
   const source = String(props.source ?? '');
   const prompt = String(props.prompt ?? '');
-  const ttsConfigId = String(props.ttsConfigId ?? '');
+  const ttsSelection = String(props.ttsSelection ?? '');
   const previewSource = getPreviewSource(source);
   const sourceName = useMemo(() => getSourceName(source), [source]);
   const [providers, setProviders] = useState<ProviderOption[]>([]);
@@ -84,17 +85,10 @@ export const AudioNodeEditor: React.FC<AudioNodeEditorProps> = ({
 
   useEffect(() => {
     loadSettings().then(settings => {
-      const builtins = (settings.ttsConfigs ?? []).map(config => ({
-        value: config.id,
-        label: config.name || config.provider,
-      }));
-      const channels = (settings.channelConfigs ?? [])
-        .filter(config => config.enabled && config.capabilities?.includes('tts'))
-        .map(config => ({
-          value: config.id,
-          label: config.name || config.id,
-        }));
-      setProviders([...builtins, ...channels]);
+      setProviders(listConfiguredModelSelectOptions(settings, 'tts', 'speech.text-to-speech').map(option => ({
+        value: option.value,
+        label: `${option.channelLabel} / ${option.modelLabel}`,
+      })));
     });
   }, []);
 
@@ -326,9 +320,9 @@ export const AudioNodeEditor: React.FC<AudioNodeEditorProps> = ({
           <Select
             size="small"
             className="linghuiEditorSelect"
-            value={ttsConfigId || undefined}
+            value={ttsSelection || undefined}
             placeholder="选择 TTS 渠道"
-            onChange={value => updateProp('ttsConfigId', value)}
+            onChange={value => updateProp('ttsSelection', value)}
             options={providers}
             popupMatchSelectWidth={false}
             style={{ minWidth: 160 }}

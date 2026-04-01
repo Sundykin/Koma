@@ -52,6 +52,8 @@ export interface ShotListEditorProps {
   onGenerateVideo: (shotId: string) => void;
   onBatchGenerateVideos: (shotIds?: string[]) => void;
   onBatchReGenerateVideos: (shotIds?: string[]) => void;
+  getVideoCapabilityLabel?: (shotId: string) => string | undefined;
+  getVideoGenerateDisabledReason?: (shotId: string) => string | undefined;
   onToggleConfirm: (shot: Shot) => void;
   onDelete: (shotId: string) => void;
   onBatchDelete: (shotIds: string[]) => void;
@@ -103,6 +105,8 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
   onGenerateVideo,
   onBatchGenerateVideos,
   onBatchReGenerateVideos,
+  getVideoCapabilityLabel,
+  getVideoGenerateDisabledReason,
   onToggleConfirm,
   onDelete,
   onBatchDelete,
@@ -271,6 +275,8 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
                   onOptimizeVideoPrompt={onOptimizeVideoPrompt}
                   onGenerateImage={onGenerateImage}
                   onGenerateVideo={onGenerateVideo}
+                  videoCapabilityLabel={getVideoCapabilityLabel?.(shot.id)}
+                  videoGenerateDisabledReason={getVideoGenerateDisabledReason?.(shot.id)}
                   onToggleConfirm={onToggleConfirm}
                   onDelete={onDelete}
                   onMergeUp={onMergeUp}

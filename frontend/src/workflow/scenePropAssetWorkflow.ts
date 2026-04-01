@@ -1,8 +1,16 @@
 /**
  * 场景/道具资产生成工作流
  */
-import { getMediaAssetDisplaySource, getMediaAssetSource, type Scene, type Prop } from '../types';
+import {
+  getMediaAssetDisplaySource,
+  getMediaAssetSource,
+  type Scene,
+  type Prop,
+  type StoredMediaAsset,
+  type VideoGenerationCapability,
+} from '../types';
 import { getProjectITVProvider } from '../providers';
+import { serializeMediaSelection } from '../providers/channel/resolver';
 import {
   saveScenes,
   saveProps,
@@ -19,6 +27,7 @@ import {
   buildPropReferenceTemplateVariables,
   buildScenePreviewTemplateVariables,
 } from './promptVariableBuilders';
+import { compilePropPreviewVideoRequest } from './videoGenerationRequests';
 
 const logger = createLogger('ScenePropAsset');
 
@@ -99,7 +108,7 @@ interface GenerateOptions {
   stylePrompt?: string;
   styleSnapshot?: StyleSnapshotLike;
   project?: { styleSnapshot?: StyleSnapshotLike; aspectRatio?: '16:9' | '9:16' };
-  ttiConfigId?: string;
+  ttiSelection?: string;
   onProgress?: (progress: number, step: string) => void;
 }
 
@@ -111,7 +120,7 @@ interface GenerateOptions {
 export async function generateSceneImage(
   options: GenerateOptions & { scene: Scene }
 ): Promise<{ success: boolean; path?: string; url?: string; error?: string }> {
-  const { projectId, scene, aspectRatio, theme, stylePrompt, styleSnapshot, project, ttiConfigId, onProgress } = options;
+  const { projectId, scene, aspectRatio, theme, stylePrompt, styleSnapshot, project, ttiSelection, onProgress } = options;
   const finalAspectRatio = aspectRatio || project?.aspectRatio || '16:9';
 
   logger.info(`开始生成场景预览图: ${scene.name}`);
@@ -157,7 +166,7 @@ export async function generateSceneImage(
           aspectRatio: finalAspectRatio,
         },
       },
-      ttiConfigId,
+      ttiSelection,
       taskName: `场景: ${scene.name}`,
     });
     onProgress?.(100, '完成');
@@ -174,7 +183,7 @@ export async function generateSceneImage(
 export async function generateAllSceneImages(
   options: GenerateOptions & { scenes: Scene[] }
 ): Promise<{ success: number; failed: number; results: Array<{ sceneId: string; success: boolean; path?: string; error?: string }> }> {
-  const { projectId, scenes, aspectRatio, theme, stylePrompt, project, ttiConfigId, onProgress } = options;
+  const { projectId, scenes, aspectRatio, theme, stylePrompt, project, ttiSelection, onProgress } = options;
 
   const results: Array<{ sceneId: string; success: boolean; path?: string; error?: string }> = [];
   let success = 0;
@@ -191,7 +200,7 @@ export async function generateAllSceneImages(
       theme,
       stylePrompt,
       project,
-      ttiConfigId,
+      ttiSelection,
       onProgress: (p, step) => {
         const overall = baseProgress + (p / scenes.length);
         onProgress?.(overall, `${scene.name}: ${step}`);
@@ -217,7 +226,7 @@ export async function generateAllSceneImages(
 export async function generatePropImage(
   options: GenerateOptions & { prop: Prop }
 ): Promise<{ success: boolean; path?: string; url?: string; error?: string }> {
-  const { projectId, prop, theme, stylePrompt, styleSnapshot, project, ttiConfigId, onProgress } = options;
+  const { projectId, prop, theme, stylePrompt, styleSnapshot, project, ttiSelection, onProgress } = options;
 
   logger.info(`开始生成道具参考图: ${prop.name}`);
   onProgress?.(0, '准备生成道具图...');
@@ -262,7 +271,7 @@ export async function generatePropImage(
           ...IMAGE_GENERATION_SIZES.square,
         },
       },
-      ttiConfigId,
+      ttiSelection,
       taskName: `道具: ${prop.name}`,
     });
     onProgress?.(100, '完成');
@@ -279,7 +288,7 @@ export async function generatePropImage(
 export async function generateAllPropImages(
   options: GenerateOptions & { props: Prop[] }
 ): Promise<{ success: number; failed: number; results: Array<{ propId: string; success: boolean; path?: string; error?: string }> }> {
-  const { projectId, props, theme, stylePrompt, ttiConfigId, onProgress } = options;
+  const { projectId, props, theme, stylePrompt, ttiSelection, onProgress } = options;
 
   const results: Array<{ propId: string; success: boolean; path?: string; error?: string }> = [];
   let success = 0;
@@ -294,7 +303,7 @@ export async function generateAllPropImages(
       prop,
       theme,
       stylePrompt,
-      ttiConfigId,
+      ttiSelection,
       onProgress: (p, step) => {
         const overall = baseProgress + (p / props.length);
         onProgress?.(overall, `${prop.name}: ${step}`);
@@ -321,7 +330,7 @@ interface PropVideoOptions {
   stylePrompt?: string;
   styleSnapshot?: StyleSnapshotLike;
   project?: { styleSnapshot?: StyleSnapshotLike };
-  itvConfigId?: string;
+  itvSelection?: string;
   onProgress?: (progress: number, step: string) => void;
 }
 
@@ -332,7 +341,7 @@ interface PropVideoOptions {
 export async function generatePropPreviewVideo(
   options: PropVideoOptions
 ): Promise<{ success: boolean; path?: string; taskId?: string; error?: string }> {
-  const { projectId, prop, theme, stylePrompt, styleSnapshot, project, itvConfigId, onProgress } = options;
+  const { projectId, prop, theme, stylePrompt, styleSnapshot, project, itvSelection, onProgress } = options;
 
   logger.info(`开始生成道具预览视频: ${prop.name}`);
   onProgress?.(0, '准备生成预览视频...');
@@ -348,24 +357,23 @@ export async function generatePropPreviewVideo(
 
     // 构建道具视频提示词
     const resolvedStylePrefix = await getResolvedTTIStylePrefix(styleSnapshot || project?.styleSnapshot, theme, stylePrompt);
-    const resolvedPrompt = await resolvePromptTemplate('itv_prop_motion', {
+    const compiledRequest = await compilePropPreviewVideoRequest({
+      prop,
+      primaryImage: rawImageSource,
       stylePrefix: resolvedStylePrefix,
-      description: prop.prompt || prop.name,
-      motion: 'prop showcase, rotating slowly, detailed view',
     });
-    const prompt = resolvedPrompt.prompt;
 
     logITVCall(
       'ITV',
       rawImageSource,
-      prompt,
+      compiledRequest.prompt,
       { duration: 4, aspectRatio: '1:1' },
       {
         projectId,
         targetId: prop.id,
         targetName: `${prop.name} 预览视频`,
-        templateId: resolvedPrompt.template.id,
-        promptSource: resolvedPrompt.source,
+        templateId: compiledRequest.templateId,
+        promptSource: compiledRequest.promptSource,
       }
     );
 
@@ -377,13 +385,8 @@ export async function generatePropPreviewVideo(
         ownerId: prop.id,
         slot: 'previewVideo',
       },
-      request: {
-        prompt,
-        primaryImage: rawImageSource,
-        additionalReferences: [],
-        options: { duration: 4, aspectRatio: '1:1' },
-      },
-      itvConfigId,
+      request: compiledRequest.request,
+      itvSelection,
       taskName: `${prop.name} 预览视频`,
     });
 
@@ -402,13 +405,14 @@ export async function generatePropPreviewVideo(
 export async function extractAndBindProp(
   projectId: string,
   prop: Prop,
-  itvConfigId?: string
+  itvSelection?: string
 ): Promise<{ success: boolean; propId?: string; error?: string }> {
   logger.info(`开始提取道具: ${prop.name}`);
 
   // 检查是否有视频生成任务 ID
   const previewVideoTaskId = prop.media?.previewVideo?.providerTaskId;
   const previewVideoPath = getMediaAssetSource(prop.media?.previewVideo);
+  const previewVideoAsset = prop.media?.previewVideo;
 
   if (!previewVideoTaskId) {
     if (previewVideoPath) {
@@ -418,7 +422,10 @@ export async function extractAndBindProp(
   }
 
   try {
-    const itvProvider = await getProjectITVProvider(itvConfigId);
+    const itvProvider = await getProjectITVProvider(
+      getMediaAssetSelectionKey(previewVideoAsset) || itvSelection,
+      getPreviewVideoCapability(previewVideoAsset),
+    );
     if (!itvProvider) {
       throw new Error('未配置 ITV 服务');
     }
@@ -494,6 +501,28 @@ async function updatePropAsset(
 
 function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function getMediaAssetSelectionKey(asset?: StoredMediaAsset): string | undefined {
+  if (!asset?.channelId || !asset?.modelId) {
+    return undefined;
+  }
+  return serializeMediaSelection({
+    channelId: asset.channelId,
+    modelId: asset.modelId,
+  });
+}
+
+function getPreviewVideoCapability(asset?: StoredMediaAsset): VideoGenerationCapability {
+  switch (asset?.capability) {
+    case 'video.text-to-video':
+    case 'video.reference-to-video':
+    case 'video.start-end-to-video':
+    case 'video.image-to-video':
+      return asset.capability;
+    default:
+      return 'video.image-to-video';
+  }
 }
 
 function resolveTTIStylePrefix(

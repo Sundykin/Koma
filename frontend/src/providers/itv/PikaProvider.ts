@@ -6,7 +6,7 @@ import type {
   ITVConfig,
 } from '../../types';
 import type { ProviderStartResult, ProviderTaskSnapshot } from '../../types';
-import type { ITVProvider, ITVRequest, ITVResult } from './types';
+import { requirePrimaryImage, type ITVProvider, type ITVRequest, type ITVResult } from './types';
 import { safeFetch } from '../../utils/safeFetch';
 
 export class PikaProvider implements ITVProvider {
@@ -45,13 +45,14 @@ export class PikaProvider implements ITVProvider {
       throw new Error('Pika API Key 未配置');
     }
 
+    const primaryImage = requirePrimaryImage(request, 'Pika');
     const { prompt, options } = request;
 
     // Pika API 提交生成任务
     const formData = new FormData();
 
     // 读取图片文件
-    const imageResponse = await safeFetch(request.primaryImage.value);
+    const imageResponse = await safeFetch(primaryImage.value);
     const imageBlob = await imageResponse.blob();
     formData.append('image', imageBlob, 'input.png');
 

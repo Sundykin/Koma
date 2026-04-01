@@ -23,6 +23,7 @@ export interface LinghuiCanvasDocumentSnapshot {
 }
 
 export type LinghuiClipboardSnapshot = LinghuiSubgraphSnapshot;
+export type LinghuiCanvasMutationKind = 'none' | 'viewport' | 'layout' | 'content';
 
 export const NODE_LONG_PRESS_MS = 220;
 export const PENDING_GROUP_ACTIONS_WIDTH = 228;
@@ -42,6 +43,8 @@ export interface ActiveNodePressState {
   startClientY: number;
   lastClientX: number;
   lastClientY: number;
+  pendingClientX: number;
+  pendingClientY: number;
   dragActive: boolean;
   timerId: number;
 }
@@ -145,8 +148,59 @@ export function calculateStats(graphData: LinghuiGraphSnapshot): LinghuiGraphSta
   };
 }
 
+function normalizeGraphSnapshotWithoutPositions(graphData: LinghuiGraphSnapshot): Omit<LinghuiGraphSnapshot, 'nodes' | 'groups'> & {
+  nodes: Array<Omit<LinghuiRFNodeSnapshot, 'position'>>;
+  groups: Array<Omit<LinghuiRFGroupSnapshot, 'position'>>;
+} {
+  return {
+    version: graphData.version,
+    edges: graphData.edges.map(edge => cloneSnapshotValue(edge)),
+    nodes: graphData.nodes.map(({ position: _position, ...node }) => cloneSnapshotValue(node)),
+    groups: graphData.groups.map(({ position: _position, ...group }) => cloneSnapshotValue(group)),
+  };
+}
+
+function serializeViewport(viewport: LinghuiViewportState): string {
+  return JSON.stringify(viewport);
+}
+
+function serializeGraphSnapshotWithoutPositions(graphData: LinghuiGraphSnapshot): string {
+  return JSON.stringify(normalizeGraphSnapshotWithoutPositions(graphData));
+}
+
 export function serializeCanvasDocumentSnapshot(snapshot: LinghuiCanvasDocumentSnapshot): string {
   return JSON.stringify(snapshot);
+}
+
+export function detectCanvasMutationKind(
+  previous: LinghuiCanvasDocumentSnapshot | null | undefined,
+  next: LinghuiCanvasDocumentSnapshot,
+): LinghuiCanvasMutationKind {
+  if (!previous) {
+    return 'content';
+  }
+
+  const sameGraph = JSON.stringify(previous.graphData) === JSON.stringify(next.graphData);
+  const sameViewport = serializeViewport(previous.viewport) === serializeViewport(next.viewport);
+
+  if (sameGraph && sameViewport) {
+    return 'none';
+  }
+
+  if (sameGraph) {
+    return 'viewport';
+  }
+
+  const sameGraphContent = (
+    serializeGraphSnapshotWithoutPositions(previous.graphData) ===
+    serializeGraphSnapshotWithoutPositions(next.graphData)
+  );
+
+  if (sameGraphContent) {
+    return 'layout';
+  }
+
+  return 'content';
 }
 
 export function buildCanvasDocumentSnapshotFromRF(

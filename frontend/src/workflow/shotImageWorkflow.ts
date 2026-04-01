@@ -32,7 +32,7 @@ export async function shotImageWorkflow(params: {
   shot: Shot;
   characters: Character[];
   scenes: Scene[];
-  ttiConfigId?: string;
+  ttiSelection?: string;
   aspectRatio?: '16:9' | '9:16';
   styleSnapshot?: StyleSnapshotLike;
   theme?: string;
@@ -46,7 +46,7 @@ export async function shotImageWorkflow(params: {
     shot,
     characters,
     scenes,
-    ttiConfigId,
+    ttiSelection,
     aspectRatio,
     styleSnapshot,
     theme,
@@ -153,7 +153,7 @@ export async function shotImageWorkflow(params: {
     promptCompilation: {
       selectedAssets: selectedAssetsForCompilation,
     },
-    ttiConfigId,
+    ttiSelection,
     taskName: `分镜图片: ${normalizedShot.id}`,
   });
 

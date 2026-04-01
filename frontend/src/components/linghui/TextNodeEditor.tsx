@@ -7,6 +7,7 @@ import type {
   LinghuiTextNodeProperties,
 } from '../../types/linghui';
 import { loadSettings } from '../../store/settings/core';
+import { listConfiguredModelSelectOptions } from '../../providers/channel/resolver';
 import { useLinghuiNodeMutation } from './nodes/LinghuiNodeRunsContext';
 import { LinghuiPromptEditor } from './LinghuiPromptEditor';
 import type { LinghuiPromptReferenceItem } from './linghuiPromptReferences';
@@ -40,16 +41,15 @@ export const TextNodeEditor: React.FC<TextNodeEditorProps> = ({
   const content = String(props.content ?? '');
   const prompt = String(props.prompt ?? '');
   const systemPrompt = String(props.systemPrompt ?? '');
-  const llmConfigId = String(props.llmConfigId ?? '');
+  const llmSelection = String(props.llmSelection ?? '');
   const [providers, setProviders] = useState<ProviderOption[]>([]);
 
   useEffect(() => {
     loadSettings().then(settings => {
-      const builtins = (settings.llmConfigs ?? []).map(config => ({
-        value: config.id,
-        label: config.name || config.provider,
-      }));
-      setProviders(builtins);
+      setProviders(listConfiguredModelSelectOptions(settings, 'llm', 'llm.chat').map(option => ({
+        value: option.value,
+        label: `${option.channelLabel} / ${option.modelLabel}`,
+      })));
     });
   }, []);
 
@@ -139,9 +139,9 @@ export const TextNodeEditor: React.FC<TextNodeEditorProps> = ({
               <Select
                 size="small"
                 className="linghuiEditorSelect"
-                value={llmConfigId || undefined}
+                value={llmSelection || undefined}
                 placeholder="选择 LLM 渠道"
-                onChange={value => updateProp('llmConfigId', value)}
+                onChange={value => updateProp('llmSelection', value)}
                 options={providers}
                 popupMatchSelectWidth={false}
                 style={{ minWidth: 160 }}

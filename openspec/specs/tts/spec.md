@@ -1,44 +1,43 @@
 # tts Specification
 
 ## Purpose
-TBD - created by archiving change add-antd-timeline-editor. Update Purpose after archive.
+TBD - updated by archiving change refactor-media-channel-model-capabilities. Refine Purpose after archive.
+
 ## Requirements
+
 ### Requirement: TTS Provider Interface
-系统 SHALL 支持多种 TTS 服务提供商。
+系统 SHALL 支持按渠道组织的 TTS 模型目录，并通过所选模型执行语音合成。
 
-#### Scenario: Provider 注册
+#### Scenario: 注册 TTS 渠道
 - **WHEN** 应用启动时
-- **THEN** 系统注册所有内置 TTS Provider
-- **AND** 包括：Edge TTS、OpenAI TTS、Fish Audio、GPT-SoVITS
+- **THEN** 系统 MUST 注册所有 TTS 渠道定义
+- **AND** 每个渠道 MUST 暴露可选模型列表
 
-#### Scenario: Provider 切换
-- **WHEN** 用户在设置中选择不同的 TTS Provider
-- **THEN** 系统切换到对应的语音合成服务
-- **AND** 保留各 Provider 的独立配置
+#### Scenario: 选择 TTS 模型
+- **WHEN** 用户在项目或全局设置中选择某个 TTS 模型
+- **THEN** 系统 MUST 通过该模型解析语音合成请求
+- **AND** SHALL 不再以单条 provider 配置直接代表最终模型
 
 ### Requirement: Voice Configuration
-系统 SHALL 支持语音参数配置。
+系统 SHALL 按所选 TTS 模型约束音色配置。
 
 #### Scenario: 角色音色绑定
 - **WHEN** 用户为角色配置语音时
-- **THEN** 可选择音色（voice ID）
-- **AND** 可设置语速（0.5x - 2.0x）
-- **AND** 可设置音调偏移
-- **AND** 配置保存到角色数据中
+- **THEN** 系统 MUST 只展示当前 TTS 模型提供的音色集合或允许的音色输入方式
+- **AND** 用户设置的音速、音调和相关参数 MUST 受当前模型约束
 
-#### Scenario: 默认音色
-- **WHEN** 角色未配置音色时
-- **THEN** 使用项目默认音色
-- **AND** 用户可在项目设置中修改默认值
+#### Scenario: 模型切换后的音色校验
+- **WHEN** 项目切换到另一个 TTS 模型
+- **THEN** 系统 MUST 校验已有默认音色和角色音色是否仍然有效
+- **AND** 对无效音色 MUST 提示用户重新选择或重置
 
 ### Requirement: Speech Synthesis
-系统 SHALL 支持将文本转换为语音。
+系统 SHALL 通过统一目录解析的 TTS 模型执行语音合成。
 
 #### Scenario: 单句合成
 - **WHEN** 用户触发分镜配音生成
-- **THEN** 系统提取分镜的 dialogue 文本
-- **AND** 调用 TTS Provider 生成音频
-- **AND** 返回音频文件路径或 base64 数据
+- **THEN** 系统 MUST 先解析当前项目选中的 TTS 渠道模型
+- **AND** MUST 使用该模型执行语音合成
 
 #### Scenario: 批量合成
 - **WHEN** 用户触发批量配音生成
@@ -48,9 +47,8 @@ TBD - created by archiving change add-antd-timeline-editor. Update Purpose after
 
 #### Scenario: 多角色对话
 - **WHEN** 分镜包含多角色对话时
-- **THEN** 系统识别对话归属的角色
-- **AND** 使用对应角色的音色生成
-- **AND** 合并为单个音频文件（可选）
+- **THEN** 系统 MUST 在同一 TTS 模型上下文中解析角色音色
+- **AND** SHALL 不再依赖旧 provider 选择逻辑切换实现
 
 ### Requirement: Audio Processing
 系统 SHALL 支持音频后处理。
@@ -107,15 +105,14 @@ TBD - created by archiving change add-antd-timeline-editor. Update Purpose after
 - **AND** 支持角色模型切换
 
 ### Requirement: TTS Cache
-系统 SHALL 缓存已生成的语音。
+系统 SHALL 缓存已生成的语音，并记录对应的渠道模型上下文。
 
 #### Scenario: 缓存命中
-- **WHEN** 请求相同文本+音色+参数的语音
-- **THEN** 直接返回缓存的音频文件
-- **AND** 避免重复调用 API
+- **WHEN** 请求相同文本、模型、音色和参数的语音
+- **THEN** 系统 MUST 直接返回缓存结果
+- **AND** 缓存键 MUST 包含 `channelId` 和 `modelId`
 
-#### Scenario: 缓存失效
-- **WHEN** 用户修改文本或音色配置
-- **THEN** 标记原缓存为失效
-- **AND** 下次请求重新生成
-
+#### Scenario: 模型变化导致缓存失效
+- **WHEN** 用户切换 TTS 模型或修改模型级参数
+- **THEN** 系统 MUST 将不再匹配当前模型上下文的缓存视为失效
+- **AND** 下次请求 MUST 重新生成

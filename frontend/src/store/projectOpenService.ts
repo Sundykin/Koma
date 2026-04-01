@@ -6,6 +6,7 @@ import { recoverPendingTasks } from './taskRecoveryService';
 import { initSaveHooks, setGetCurrentProjectId } from './autoSaveService';
 import { loadProject } from './projectStore';
 import { createLogger } from './logger';
+import { serializeMediaSelection } from '../providers/channel/resolver';
 
 const logger = createLogger('ProjectOpen');
 
@@ -55,10 +56,10 @@ export async function onProjectOpen(projectId: string): Promise<void> {
     const project = await loadProject(projectId).catch(() => null);
 
     const result = await recoverPendingTasks(projectId, {
-      configIds: {
-        ttiConfigId: project?.ttiConfigId,
-        itvConfigId: project?.itvConfigId,
-        ttsConfigId: project?.ttsConfigId,
+      selections: {
+        ttiSelection: serializeMediaSelection(project?.mediaSelections?.tti),
+        itvSelection: serializeMediaSelection(project?.mediaSelections?.itv),
+        ttsSelection: serializeMediaSelection(project?.mediaSelections?.tts),
       },
       callbacks: {
         onTaskProgress: (task, progress) => {

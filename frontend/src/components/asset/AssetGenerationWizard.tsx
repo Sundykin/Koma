@@ -33,6 +33,7 @@ import {
 import type { Project } from '../../types';
 import { loadCharacters, loadScenes, loadProps } from '../../store/projectStore';
 import { electronService } from '../../services/electronService';
+import { serializeMediaSelection } from '../../providers/channel/resolver';
 import {
   generateCostumePhoto,
   generateCharacterPreviewVideo,
@@ -221,6 +222,8 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
     setter: React.Dispatch<React.SetStateAction<ItemStatus[]>>,
     onProgress: (progress: number, step: string) => void,
   ): Promise<{ success: boolean; path?: string; error?: string }> => {
+    const ttiSelection = serializeMediaSelection(project.mediaSelections?.tti);
+    const itvSelection = serializeMediaSelection(project.mediaSelections?.itv);
     switch (stepKey) {
       case 'characters': {
         const chars = await loadCharacters(project.id);
@@ -230,7 +233,7 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
           projectId: project.id,
           character: char,
           styleSnapshot: project.styleSnapshot,
-          ttiConfigId: project.ttiConfigId,
+          ttiSelection,
           onProgress,
         });
       }
@@ -242,7 +245,7 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
           projectId: project.id,
           scene,
           styleSnapshot: project.styleSnapshot,
-          ttiConfigId: project.ttiConfigId,
+          ttiSelection,
           onProgress,
         });
       }
@@ -254,7 +257,7 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
           projectId: project.id,
           prop,
           styleSnapshot: project.styleSnapshot,
-          ttiConfigId: project.ttiConfigId,
+          ttiSelection,
           onProgress,
         });
       }
@@ -267,7 +270,7 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
             projectId: project.id,
             prop,
             styleSnapshot: project.styleSnapshot,
-            itvConfigId: project.itvConfigId,
+            itvSelection,
             onProgress,
           });
         } else {
@@ -278,7 +281,7 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
             projectId: project.id,
             character: char,
             styleSnapshot: project.styleSnapshot,
-            itvConfigId: project.itvConfigId,
+            itvSelection,
             onProgress,
           });
         }

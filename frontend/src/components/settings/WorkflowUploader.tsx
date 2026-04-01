@@ -302,8 +302,8 @@ export const WorkflowUploader: React.FC<WorkflowUploaderProps> = ({
 
       {/* 节点映射配置 */}
       {workflow ? (
-        <Card size="small" title="节点映射配置" style={{ marginTop: 16 }}>
-          <p style={{ marginBottom: 12, color: '#888', fontSize: 13 }}>
+        <Card size="small" title="节点映射配置" className="settings-config-card" style={{ marginTop: 14 }}>
+          <p className="settings-form-hint" style={{ marginBottom: 12 }}>
             将系统输入映射到工作流中对应的节点参数，未映射的输入将使用工作流默认值。
           </p>
           <Table
@@ -328,7 +328,8 @@ export const WorkflowUploader: React.FC<WorkflowUploaderProps> = ({
         open={previewVisible}
         onCancel={() => setPreviewVisible(false)}
         footer={null}
-        width={700}
+        width={860}
+        className="dark-modal settings-compact-modal settings-slim-preview"
       >
         {workflow && (
           <Table

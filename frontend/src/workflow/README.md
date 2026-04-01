@@ -71,7 +71,7 @@ import { workflowManager } from './workflow';
 const result = await workflowManager.submit('shot-render', {
   projectId: 'proj-123',
   shot: shotData,
-  projectConfigIds: { itvConfigId: 'itv-1' },
+  mediaSelections: { itvSelection: 'vidu-main::vidu-q1' },
 });
 
 // Monitor all workflows
@@ -188,7 +188,7 @@ const result = await generateCostumePhoto({
   projectId: 'proj-123',
   character: characterData,
   theme: 'anime',
-  ttiConfigId: 'tti-comfyui',
+  ttiSelection: 'comfyui-main::flux-dev',
   onProgress: (progress, step) => console.log(`${progress}%: ${step}`),
 });
 
@@ -205,7 +205,7 @@ import { generateCharacterPreviewVideo } from './workflow';
 const result = await generateCharacterPreviewVideo({
   projectId: 'proj-123',
   character: characterData,
-  itvConfigId: 'itv-sora2',
+  itvSelection: 'vidu-main::vidu-q1',
   onProgress: (progress, step) => console.log(`${progress}%: ${step}`),
 });
 
@@ -258,7 +258,7 @@ const result = await generateSceneImage({
   projectId: 'proj-123',
   scene: sceneData,
   theme: 'realistic',
-  ttiConfigId: 'tti-dalle',
+  ttiSelection: 'openai-images::gpt-image-1',
   onProgress: (progress, step) => console.log(`${progress}%: ${step}`),
 });
 
@@ -283,7 +283,7 @@ const result = await generatePropImage({
   projectId: 'proj-123',
   prop: propData,
   theme: 'realistic',
-  ttiConfigId: 'tti-midjourney',
+  ttiSelection: 'midjourney-main::midjourney-v7',
   onProgress: (progress, step) => console.log(`${progress}%: ${step}`),
 });
 ```
@@ -297,7 +297,7 @@ import { generatePropPreviewVideo, extractAndBindProp } from './workflow';
 const videoResult = await generatePropPreviewVideo({
   projectId: 'proj-123',
   prop: propData,
-  itvConfigId: 'itv-sora2',
+  itvSelection: 'vidu-main::vidu-q1',
   onProgress: (progress, step) => console.log(`${progress}%: ${step}`),
 });
 
@@ -305,7 +305,7 @@ const videoResult = await generatePropPreviewVideo({
 const extractResult = await extractAndBindProp(
   'proj-123',
   propData,  // Must have media.previewVideo.providerTaskId
-  'itv-sora2'
+  'vidu-main::vidu-q1'
 );
 ```
 
@@ -332,9 +332,9 @@ import { shotRenderWorkflow } from './workflow';
 const result = await shotRenderWorkflow({
   projectId: 'proj-123',
   shot: shotData,
-  projectConfigIds: {
-    ttsConfigId: 'tts-edge',
-    itvConfigId: 'itv-sora2',
+  mediaSelections: {
+    ttsSelection: 'edge-main::zh-CN-XiaoxiaoNeural',
+    itvSelection: 'vidu-main::vidu-q1',
   },
   theme: 'anime',
   stylePrompt: 'cinematic lighting, ',
@@ -351,9 +351,9 @@ import { batchRenderShots } from './workflow';
 const result = await batchRenderShots({
   projectId: 'proj-123',
   shots: selectedShots,
-  projectConfigIds: {
-    ttsConfigId: 'tts-edge',
-    itvConfigId: 'itv-sora2',
+  mediaSelections: {
+    ttsSelection: 'edge-main::zh-CN-XiaoxiaoNeural',
+    itvSelection: 'vidu-main::vidu-q1',
   },
   theme: 'anime',
   concurrency: 1,  // Sequential for now

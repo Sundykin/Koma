@@ -1,12 +1,13 @@
 import React from 'react';
-import { Button, Input, Select, Tag, Tooltip } from 'antd';
-import { ArrowLeft, BookOpen, Boxes, Download, FolderOpen, History, Library, Plus, Save } from 'lucide-react';
+import { Button, Input, Popconfirm, Select, Tag, Tooltip } from 'antd';
+import { ArrowLeft, BookOpen, Boxes, Download, FolderOpen, History, Library, Plus, Save, Trash2 } from 'lucide-react';
 import type {
   LinghuiExecutionQueueState,
   LinghuiGraphStats,
   LinghuiWorkspaceMeta,
 } from '../../types/linghui';
 import { LINGHUI_WORKFLOW_BLOCK_LABEL } from '../../constants/linghuiWorkflowBlock';
+import { DEFAULT_LINGHUI_WORKSPACE_NAME } from '../../types/linghui';
 
 interface LinghuiToolbarProps {
   workspaces: LinghuiWorkspaceMeta[];
@@ -33,6 +34,8 @@ interface LinghuiToolbarProps {
   onExport: () => void;
   onRetryFailed?: () => void;
   onCancelRun?: () => void;
+  deletingWorkspace?: boolean;
+  onDeleteWorkspace?: () => void | Promise<void>;
   activeDrawer: 'add' | 'workflow' | 'asset' | 'history' | 'tutorial' | null;
   onToggleDrawer: (drawer: 'add' | 'workflow' | 'asset' | 'history' | 'tutorial') => void;
 }
@@ -55,6 +58,8 @@ export const LinghuiToolbar: React.FC<LinghuiToolbarProps> = ({
   onExport,
   onRetryFailed,
   onCancelRun,
+  deletingWorkspace = false,
+  onDeleteWorkspace,
   activeDrawer,
   onToggleDrawer,
 }) => {
@@ -137,6 +142,29 @@ export const LinghuiToolbar: React.FC<LinghuiToolbarProps> = ({
           >
             教程
           </Button>
+          <Popconfirm
+            title={`删除当前工作流“${workspaceName || DEFAULT_LINGHUI_WORKSPACE_NAME}”？`}
+            description="会同时删除当前工作区、工作流模板、历史结果和残留资产数据，且无法恢复。"
+            okText="删除"
+            cancelText="取消"
+            okButtonProps={{
+              danger: true,
+              loading: deletingWorkspace,
+            }}
+            disabled={!activeWorkspaceId || !onDeleteWorkspace}
+            onConfirm={onDeleteWorkspace}
+          >
+            <Tooltip title="删除当前工作流">
+              <Button
+                size="small"
+                danger
+                icon={<Trash2 size={14} />}
+                aria-label="删除当前工作流"
+                loading={deletingWorkspace}
+                disabled={!activeWorkspaceId || !onDeleteWorkspace}
+              />
+            </Tooltip>
+          </Popconfirm>
         </div>
       </div>
 

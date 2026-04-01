@@ -69,67 +69,43 @@ TBD - created by archiving change add-antd-timeline-editor. Update Purpose after
 - **AND** 需要二次确认
 
 ### Requirement: LLM Config List Component
-系统 SHALL 提供 LLM 模型配置列表组件。
+系统 SHALL 以“渠道 + 渠道内模型”的形式展示 LLM 配置。
 
 #### Scenario: 列表展示
 - **WHEN** 用户进入设置页面的 LLM 配置选项卡
-- **THEN** 显示所有已配置的 LLM 模型列表
-- **AND** 每个配置项显示：名称、渠道类型、模型名、是否为默认
-- **AND** 显示配置总数（如 "已配置 3 个模型"）
+- **THEN** 系统 MUST 按渠道卡片展示所有已配置的 LLM 渠道
+- **AND** 每个渠道卡片 MUST 显示共享连接状态、默认模型和该渠道内的模型列表
 
-#### Scenario: 空状态
-- **WHEN** 没有任何 LLM 配置
-- **THEN** 显示引导文案和「添加第一个模型」按钮
-
-#### Scenario: 列表操作
-- **WHEN** 鼠标悬停在配置项上
-- **THEN** 显示操作按钮：编辑、删除、设为默认、测试连接
-- **AND** 默认配置显示星标图标
+#### Scenario: 模型能力展示
+- **WHEN** 显示某个 LLM 渠道卡片
+- **THEN** 系统 MUST 在模型列表中展示该模型的能力徽标和默认标记
+- **AND** SHALL 不再把每个模型渲染成独立配置对象
 
 ### Requirement: LLM Config Editor Component
-系统 SHALL 提供 LLM 模型配置编辑器组件。
+系统 SHALL 提供渠道级的 LLM 配置编辑器，而不是单模型配置编辑器。
 
 #### Scenario: 新增配置
-- **WHEN** 用户点击「添加模型」按钮
-- **THEN** 打开配置编辑器弹窗
-- **AND** 表单包含：名称、渠道类型、API 地址、API Key、模型名
-- **AND** 保存时验证必填字段
+- **WHEN** 用户点击「添加模型」或「添加渠道」按钮
+- **THEN** 打开渠道配置编辑器
+- **AND** 表单 MUST 包含渠道共享字段、连接测试入口和模型目录预览
 
-#### Scenario: 渠道选择
-- **WHEN** 用户选择渠道类型
-- **THEN** 如果选择 OpenAI，显示模型下拉框（gpt-4o, gpt-4o-mini 等）
-- **AND** 如果选择 Gemini，显示模型下拉框（gemini-2.0-flash 等）
-- **AND** 如果选择 OpenAI 兼容，显示预设渠道选择和自定义 baseUrl 输入框
-
-#### Scenario: 预设渠道选择
-- **WHEN** 选择 OpenAI 兼容渠道并选择预设
-- **THEN** 自动填充 baseUrl 和建议的模型名列表
-- **AND** 用户只需填写 API Key
-
-#### Scenario: 连接测试
-- **WHEN** 用户点击「测试连接」按钮
-- **THEN** 使用当前配置创建 Provider 并调用 testConnection
-- **AND** 显示测试结果（成功/失败）
-- **AND** 失败时显示错误信息
+#### Scenario: 模型目录预览
+- **WHEN** 用户选择某个 LLM 渠道类型
+- **THEN** 系统 MUST 展示该渠道内可用模型列表
+- **AND** MUST 允许用户设置默认模型
 
 ### Requirement: Project LLM Selector Component
-系统 SHALL 在项目设置中提供 LLM 模型选择组件。
+系统 SHALL 在项目设置中提供基于渠道和模型的 LLM 选择组件。
 
 #### Scenario: 模型选择下拉框
 - **WHEN** 用户打开项目设置
-- **THEN** 显示 LLM 模型选择下拉框
-- **AND** 选项包含所有已配置的模型和「使用全局默认」选项
-- **AND** 当前选中的模型高亮显示
+- **THEN** 显示按渠道分组的 LLM 模型选择器
+- **AND** 选项 MUST 包含所有已启用模型和「使用全局默认」选项
 
 #### Scenario: 显示当前配置
-- **WHEN** 项目已关联某个 LLM 配置
-- **THEN** 显示该配置的名称和渠道类型
-- **AND** 如果配置已被删除，显示警告并提示重新选择
-
-#### Scenario: 切换确认
-- **WHEN** 用户切换到不同的模型
-- **THEN** 显示简短提示说明切换影响
-- **AND** 保存切换后立即生效
+- **WHEN** 项目已关联某个 LLM 模型
+- **THEN** 显示该模型所属渠道、模型名称和能力摘要
+- **AND** 如果模型已失效，MUST 显示警告并提示重新选择
 
 ### Requirement: Script Analysis Wizard Component
 系统 SHALL 提供剧本解析向导组件。
@@ -158,52 +134,44 @@ TBD - created by archiving change add-antd-timeline-editor. Update Purpose after
 - **AND** 最后一步显示「完成」按钮
 
 ### Requirement: TTI Config Manager Component
-系统 SHALL 提供文生图配置管理组件。
+系统 SHALL 提供按渠道组织的文生图配置管理组件。
 
 #### Scenario: 配置列表展示
 - **WHEN** 用户进入 TTI 设置页
-- **THEN** 以卡片列表展示所有 TTI 配置
-- **AND** 显示名称、厂商类型、默认标记
-- **AND** 提供「添加配置」按钮
+- **THEN** 系统 MUST 以渠道卡片列表展示所有 TTI 渠道
+- **AND** 每个渠道卡片 MUST 展示默认模型和模型能力徽标
 
 #### Scenario: 配置编辑
 - **WHEN** 用户点击「添加」或「编辑」按钮
-- **THEN** 打开配置编辑弹窗
-- **AND** 显示厂商预设快速选择
-- **AND** ComfyUI 类型显示工作流上传区域
-- **AND** 填写完成后保存
-
-#### Scenario: 测试连接
-- **WHEN** 用户点击「测试连接」按钮
-- **THEN** 系统验证 API 可用性
-- **AND** 显示成功或失败状态
+- **THEN** 打开渠道配置编辑器
+- **AND** MUST 显示渠道共享配置和模型目录
+- **AND** 渠道若支持工作流型能力则展示对应附加配置入口
 
 ### Requirement: ITV Config Manager Component
-系统 SHALL 提供图生视频配置管理组件。
+系统 SHALL 提供按渠道组织且能力可视化的视频配置管理组件。
 
 #### Scenario: 配置列表展示
 - **WHEN** 用户进入 ITV 设置页
-- **THEN** 以卡片列表展示所有 ITV 配置
-- **AND** 显示名称、厂商类型、默认时长
+- **THEN** 系统 MUST 以渠道卡片列表展示所有 ITV 渠道
+- **AND** 每个渠道卡片 MUST 显示 `baseUrl`、连接状态和默认视频模型
 
-#### Scenario: 配置编辑
-- **WHEN** 用户编辑 ITV 配置
-- **THEN** 可选择厂商预设
-- **AND** 配置默认时长、分辨率
-- **AND** ComfyUI AnimateDiff 类型支持工作流上传
+#### Scenario: 模型能力矩阵
+- **WHEN** 展示某个 ITV 渠道的模型列表
+- **THEN** 系统 MUST 为每个模型显示支持的文生视频、图生视频、参考生视频、首尾帧视频能力徽标
+- **AND** 用户 MUST 能直接看出不同模型的能力范围
 
 ### Requirement: TTS Config Manager Component
-系统 SHALL 提供语音合成配置管理组件。
+系统 SHALL 提供按渠道组织的语音合成配置管理组件。
 
 #### Scenario: 配置列表展示
 - **WHEN** 用户进入 TTS 设置页
-- **THEN** 以卡片列表展示所有 TTS 配置
-- **AND** 显示名称、厂商类型、默认音色
+- **THEN** 系统 MUST 以渠道卡片列表展示所有 TTS 渠道
+- **AND** 每个渠道卡片 MUST 显示默认模型和音色能力摘要
 
 #### Scenario: 音色试听
 - **WHEN** 用户配置 TTS 时
-- **THEN** 可选择音色并试听效果
-- **AND** 播放示例语音
+- **THEN** 系统 MUST 基于当前模型提供可用音色选择和试听
+- **AND** SHALL 不再脱离模型上下文展示音色列表
 
 ### Requirement: Workflow Uploader Component
 系统 SHALL 提供 ComfyUI 工作流上传组件。
@@ -221,18 +189,31 @@ TBD - created by archiving change add-antd-timeline-editor. Update Purpose after
 - **AND** 支持：正向提示词、负向提示词、图片输入、种子、尺寸等
 
 ### Requirement: Project Media Selector Component
-系统 SHALL 提供项目级媒体配置选择组件。
+系统 SHALL 提供项目级的渠道模型选择组件，并按能力过滤可选项。
 
 #### Scenario: 配置选择
 - **WHEN** 在项目设置中配置媒体服务
-- **THEN** 显示 TTI/ITV/TTS 三个下拉选择器
-- **AND** 选项包含「使用全局默认」+ 所有已配置项
-- **AND** 显示当前选中配置的简要信息
+- **THEN** 系统 MUST 显示 LLM、TTI、ITV、TTS 四个模型选择器
+- **AND** 每个选择器 MUST 以渠道分组展示所有已启用模型
+- **AND** 选项包含「使用全局默认」
 
-#### Scenario: 快捷入口
-- **WHEN** 用户需要添加新配置
-- **THEN** 选择器提供「前往设置」快捷链接
-- **AND** 点击后跳转到对应的全局设置页
+#### Scenario: 能力过滤
+- **WHEN** 某个业务动作要求特定能力
+- **THEN** 选择器或入口 MUST 只显示支持该能力的模型
+- **AND** SHALL 不要求用户自行判断模型是否可用
+
+### Requirement: Capability Badges In Media Pickers
+系统 SHALL 在所有媒体模型选择器中展示模型能力范围。
+
+#### Scenario: 设置页展示能力徽标
+- **WHEN** 用户浏览媒体渠道中的模型列表
+- **THEN** 系统 MUST 以标签或徽标展示每个模型支持的能力集合
+- **AND** ITV 模型 MUST 明确区分文生视频、图生视频、参考生视频、首尾帧视频
+
+#### Scenario: 项目选择器展示能力徽标
+- **WHEN** 用户在项目设置或业务弹窗中选择模型
+- **THEN** 系统 MUST 同步展示模型能力徽标
+- **AND** 当前业务所需能力 MUST 高亮显示
 
 ### Requirement: 失败任务重试按钮
 系统 SHALL 在任务通知中为失败的任务显示重试按钮，允许用户一键重试失败的操作。
@@ -407,18 +388,18 @@ TBD - created by archiving change add-antd-timeline-editor. Update Purpose after
 - **THEN** 当前分镜与下一个分镜交换位置
 
 ### Requirement: Storyboard Video Generation
-系统 SHALL 在分镜页面提供视频生成入口。
+系统 SHALL 在分镜页面提供能力感知的视频生成入口。
 
 #### Scenario: 单个分镜视频生成
 - **WHEN** 用户在分镜卡片点击视频生成按钮
-- **THEN** 调用 `shotRenderWorkflow` 执行完整渲染
+- **THEN** 系统 MUST 使用 `shotRenderWorkflow` 执行完整渲染
+- **AND** MUST 根据当前视频模型能力决定可执行的视频模式
 - **AND** 显示渲染进度（图片 → 语音 → 视频）
-- **AND** 完成后更新分镜预览
 
 #### Scenario: 导演面板渲染
 - **WHEN** 用户在导演面板点击"渲染此镜头"
 - **THEN** 执行完整的分镜渲染流程
-- **AND** 包含图片生成、语音合成、视频生成
+- **AND** 视频部分 MUST 使用统一模型解析器和能力级请求
 
 ### Requirement: Mention Editor Character Support
 系统 SHALL 在分镜描述编辑器中支持角色和道具的 @ 引用，且只显示已绑定 Sora2 的资产。
@@ -534,4 +515,3 @@ TBD - created by archiving change add-antd-timeline-editor. Update Purpose after
 - **WHEN** AI 返回分镜结果
 - **THEN** 自动解析并关联预选的角色/道具
 - **AND** 分镜描述包含正确的 @ 引用
-

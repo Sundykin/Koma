@@ -127,27 +127,24 @@ export const PromptStudio: React.FC = () => {
   const hasValidationErrors = validationErrors.unknownVariables.length > 0 || validationErrors.missingRequiredVariables.length > 0;
 
   return (
-    <div className="flex h-full border border-zinc-700 rounded-lg overflow-hidden">
+    <div className="prompt-studio-shell">
       {/* 左侧模板列表 */}
-      <div className="w-80 border-r border-zinc-700 bg-zinc-900 flex flex-col">
-        <div className="p-4 border-b border-zinc-700 bg-zinc-800">
+      <div className="prompt-studio-sidebar">
+        <div className="prompt-studio-sidebar-header">
           <Search
             placeholder="搜索模板..."
             allowClear
             onChange={e => setSearchText(e.target.value)}
             prefix={<SearchOutlined className="text-zinc-500" />}
+            size="small"
           />
         </div>
-        <div className="flex-1 overflow-y-auto p-2">
+        <div className="prompt-studio-sidebar-list">
           {filteredTemplates.map(item => (
             <div
               key={item.id}
               onClick={() => setSelectedId(item.id)}
-              className={`p-3 mb-2 rounded-lg cursor-pointer transition-all border ${
-                selectedId === item.id
-                  ? 'border-emerald-600 bg-emerald-900/30'
-                  : 'border-transparent bg-zinc-800 hover:bg-zinc-700'
-              }`}
+              className={`prompt-studio-list-item${selectedId === item.id ? ' is-active' : ''}`}
             >
               <div className="flex justify-between items-center mb-1">
                 <span className={`font-medium ${selectedId === item.id ? 'text-emerald-400' : 'text-zinc-200'}`}>
@@ -164,11 +161,11 @@ export const PromptStudio: React.FC = () => {
       </div>
 
       {/* 右侧编辑器 */}
-      <div className="flex-1 flex flex-col bg-zinc-950 min-w-0">
+      <div className="prompt-studio-editor">
         {selectedTemplate ? (
           <>
-            <div className="p-4 border-b border-zinc-700 flex justify-between items-center bg-zinc-900">
-              <div>
+            <div className="prompt-studio-editor-header">
+              <div className="prompt-studio-editor-meta">
                 <div className="flex items-center gap-2">
                   <Title level={5} className="!m-0 !text-zinc-100">{selectedTemplate.name}</Title>
                   {selectedTemplate.isCustom && <Tag color="green">已修改</Tag>}
@@ -176,7 +173,7 @@ export const PromptStudio: React.FC = () => {
                 </div>
                 <Text className="text-xs !text-zinc-500">{selectedTemplate.description}</Text>
               </div>
-              <Space>
+              <Space size="small" wrap>
                 {selectedTemplate.isCustom && (
                   <Popconfirm title="确定重置为默认模板？" onConfirm={handleReset}>
                     <Button icon={<ReloadOutlined />} size="small">重置</Button>
@@ -185,6 +182,7 @@ export const PromptStudio: React.FC = () => {
                 <Button
                   type="primary"
                   icon={<SaveOutlined />}
+                  size="small"
                   onClick={handleSave}
                   disabled={!hasUnsavedChanges || hasValidationErrors}
                 >
@@ -193,9 +191,9 @@ export const PromptStudio: React.FC = () => {
               </Space>
             </div>
 
-            <div className="flex-1 flex flex-col overflow-hidden">
+            <div className="prompt-studio-editor-main">
               {hasValidationErrors && (
-                <div className="p-4 border-b border-amber-700/50 bg-amber-950/30">
+                <div className="prompt-studio-validation">
                   <Alert
                     type="error"
                     showIcon
@@ -214,34 +212,30 @@ export const PromptStudio: React.FC = () => {
                 </div>
               )}
 
-              <div className="flex-1 relative">
+              <div className="prompt-studio-textarea-shell">
                 <TextArea
                   value={editingContent}
                   onChange={handleContentChange}
                   className="!bg-zinc-900 !text-zinc-200 !border-none"
+                  autoSize={false}
                   style={{
-                    fontFamily: "'Fira Code', 'Menlo', 'Monaco', 'Courier New', monospace",
-                    fontSize: 14,
-                    lineHeight: 1.6,
-                    resize: 'none',
                     height: '100%',
-                    padding: 16,
                   }}
                   spellCheck={false}
                 />
               </div>
 
               {selectedTemplate.variables.length > 0 && (
-                <div className="p-3 bg-emerald-900/20 border-t border-emerald-800/50 shrink-0 overflow-y-auto max-h-72">
+                <div className="prompt-studio-vars">
                   <div className="flex items-center gap-2 mb-2">
                     <CodeOutlined className="text-emerald-500" />
                     <Text strong className="text-xs !text-emerald-500 uppercase">可用变量</Text>
                   </div>
-                  <div className="grid grid-cols-1 xl:grid-cols-2 gap-2">
+                  <div className="prompt-studio-vars-grid">
                     {selectedTemplate.variables.map(v => (
                       <div
                         key={v.name}
-                        className="rounded-lg border border-emerald-800/60 bg-zinc-900/70 p-3"
+                        className="prompt-studio-var-card"
                       >
                         <div className="flex items-center justify-between gap-2 mb-2">
                           <Tooltip title={`点击复制 {{${v.name}}}`}>
@@ -276,7 +270,7 @@ export const PromptStudio: React.FC = () => {
             </div>
           </>
         ) : (
-          <div className="flex flex-col items-center justify-center h-full text-zinc-500">
+          <div className="prompt-studio-empty">
             <Empty description="请从左侧选择一个模板" />
           </div>
         )}

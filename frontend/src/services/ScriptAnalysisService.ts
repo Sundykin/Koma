@@ -599,7 +599,7 @@ export class BackgroundAnalysisService {
     episodeId: string,
     episodeName: string,
     script: string,
-    llmConfigId?: string,
+    llmSelection?: string,
     styleSnapshot?: StyleSnapshotLike,
     project?: { styleSnapshot?: StyleSnapshotLike }
   ): Promise<Task> {
@@ -631,7 +631,7 @@ export class BackgroundAnalysisService {
     TaskManager.updateTask(this.task.id, { status: 'running', progress: 0 });
 
     // 异步执行解析
-    this.runAnalysis(episodeId, episodeName, script, llmConfigId, styleSnapshot, project);
+    this.runAnalysis(episodeId, episodeName, script, llmSelection, styleSnapshot, project);
 
     return this.task;
   }
@@ -692,7 +692,7 @@ export class BackgroundAnalysisService {
     episodeId: string,
     episodeName: string,
     script: string,
-    llmConfigId?: string,
+    llmSelection?: string,
     styleSnapshot?: StyleSnapshotLike,
     project?: { styleSnapshot?: StyleSnapshotLike }
   ): Promise<void> {
@@ -735,7 +735,7 @@ export class BackgroundAnalysisService {
       });
 
       // 设置 LLM 配置
-      const hasConfig = await service.setLLMConfig(llmConfigId);
+      const hasConfig = await service.setLLMConfig(llmSelection);
       if (!hasConfig) {
         throw new Error('未配置 LLM 模型，请先在设置中添加');
       }
@@ -856,10 +856,10 @@ export async function startBackgroundAnalysis(
   episodeId: string,
   episodeName: string,
   script: string,
-  llmConfigId?: string,
+  llmSelection?: string,
   styleSnapshot?: StyleSnapshotLike,
   project?: { styleSnapshot?: StyleSnapshotLike }
 ): Promise<Task> {
   const service = new BackgroundAnalysisService(projectId);
-  return service.startAnalysis(episodeId, episodeName, script, llmConfigId, styleSnapshot, project);
+  return service.startAnalysis(episodeId, episodeName, script, llmSelection, styleSnapshot, project);
 }

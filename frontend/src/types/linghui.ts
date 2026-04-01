@@ -1,3 +1,5 @@
+import type { VideoGenerationCapability } from './media';
+
 export type LinghuiNodeType =
   | 'linghui/text'
   | 'linghui/image'
@@ -45,7 +47,7 @@ export interface LinghuiTextNodeProperties extends LinghuiScriptDerivedPropertie
   content: string;
   prompt: string;
   systemPrompt: string;
-  llmConfigId: string;
+  llmSelection: string;
 }
 
 export interface LinghuiScriptNodeProperties {
@@ -53,7 +55,7 @@ export interface LinghuiScriptNodeProperties {
   content: string;
   prompt: string;
   systemPrompt: string;
-  llmConfigId: string;
+  llmSelection: string;
   viewMode: LinghuiScriptNodeViewMode;
 }
 
@@ -76,7 +78,7 @@ export interface LinghuiImageNodeProperties extends LinghuiScriptDerivedProperti
   primaryAssetId?: string;
   primaryResultSource?: string;
   prompt: string;
-  ttiConfigId: string;
+  ttiSelection: string;
   aspectRatio: string;
   resolution: string;
   gridType: LinghuiGridType;
@@ -85,14 +87,14 @@ export interface LinghuiImageNodeProperties extends LinghuiScriptDerivedProperti
 
 // --- 视频节点 ---
 
-export type LinghuiVideoRefMode = 'all-ref' | 'first-last-frame';
+export type LinghuiVideoCapability = VideoGenerationCapability;
 
 export interface LinghuiVideoNodeProperties extends LinghuiScriptDerivedProperties {
   prompt: string;
-  itvConfigId: string;
+  itvSelection: string;
   source: string;
   posterSource: string;
-  refMode: LinghuiVideoRefMode;
+  videoCapability: LinghuiVideoCapability;
   aspectRatio: string;
   resolution: string;
   duration: number;
@@ -103,7 +105,7 @@ export interface LinghuiVideoNodeProperties extends LinghuiScriptDerivedProperti
 export interface LinghuiAudioNodeProperties {
   source: string;
   prompt: string;
-  ttsConfigId: string;
+  ttsSelection: string;
 }
 
 // --- 通用 ---
@@ -364,6 +366,6 @@ export const VIDEO_ASPECT_RATIOS = [
 ];
 
 export const VIDEO_RESOLUTIONS = [
-  { label: '720P', value: '720P' },
-  { label: '1080P', value: '1080P' },
+  { label: '720P', value: '720p' },
+  { label: '1080P', value: '1080p' },
 ];

@@ -33,6 +33,10 @@ import { ShotListEditor } from './ShotListEditor';
 import { ShotAssetPresetModal } from './ShotAssetPresetModal';
 import { useShotAssetSync } from '../../hooks/useShotAssetSync';
 import { createLogger } from '../../store/logger';
+import {
+  collectShotVideoPlan,
+  resolveShotVideoCapabilitySupport,
+} from '../../workflow/shotVideoPlan';
 import './Storyboard.css';
 import './ShotListEditor.css';
 import { getMediaAssetDisplaySource } from '../../types';
@@ -86,10 +90,10 @@ interface StoryboardProps {
   episodeName?: string;
   script?: string;
   aspectRatio?: '16:9' | '9:16';
-  llmConfigId?: string;
-  ttiConfigId?: string;
-  itvConfigId?: string;
-  ttsConfigId?: string;
+  llmSelection?: string;
+  ttiSelection?: string;
+  itvSelection?: string;
+  ttsSelection?: string;
   settings: AppSettings;
   styleSnapshot?: ProjectStyleSnapshot;
   mentionItems?: MentionItem[];
@@ -102,10 +106,10 @@ export const Storyboard: React.FC<StoryboardProps> = ({
   episodeName,
   script,
   aspectRatio,
-  llmConfigId,
-  ttiConfigId,
-  itvConfigId,
-  ttsConfigId,
+  llmSelection,
+  ttiSelection,
+  itvSelection,
+  ttsSelection,
   settings,
   styleSnapshot,
   mentionItems = [],
@@ -199,6 +203,40 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       mentionItems: actualMentionItems.length,
     });
   }, [characters.length, scenes.length, props.length, actualMentionItems.length]);
+
+  const shotVideoSupportMap = useMemo(() => {
+    return new Map(shots.map(shot => {
+      const plan = collectShotVideoPlan({ shot, characters, scenes, props });
+      const support = resolveShotVideoCapabilitySupport({
+        settings,
+        selectionKey: itvSelection,
+        capability: plan.capability,
+      });
+      return [shot.id, support] as const;
+    }));
+  }, [shots, characters, scenes, props, settings, itvSelection]);
+
+  const buildUnsupportedShotVideoMessage = useCallback((targetShots: Shot[]) => {
+    const unsupported = targetShots
+      .map(shot => ({
+        shot,
+        support: shotVideoSupportMap.get(shot.id),
+        index: shots.findIndex(item => item.id === shot.id) + 1,
+      }))
+      .filter(item => item.support?.disabledReason);
+
+    if (unsupported.length === 0) {
+      return undefined;
+    }
+
+    const sample = unsupported
+      .slice(0, 3)
+      .map(item => `#${item.index} ${item.support?.capabilityLabel}`)
+      .join('、');
+    const suffix = unsupported.length > 3 ? ' 等分镜' : '';
+
+    return `${unsupported[0].support?.disabledReason}。受影响分镜：${sample}${suffix}`;
+  }, [shotVideoSupportMap, shots]);
 
   // 加载数据
   const loadData = useCallback(async () => {
@@ -336,7 +374,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       if (!shot) {
         throw new Error('分镜不存在');
       }
-      const asset = await generateShotImage(projectId, episodeId, shotId, characters, scenes, ttiConfigId, {
+      const asset = await generateShotImage(projectId, episodeId, shotId, characters, scenes, ttiSelection, {
         aspectRatio,
         styleSnapshot,
       });
@@ -363,12 +401,17 @@ export const Storyboard: React.FC<StoryboardProps> = ({
         return next;
       });
     }
-  }, [projectId, episodeId, characters, scenes, ttiConfigId, styleSnapshot]);
+  }, [projectId, episodeId, characters, scenes, ttiSelection, styleSnapshot]);
 
   // 渲染视频
   const handleRenderShotVideo = useCallback(async (shotId: string) => {
     const shot = shots.find(s => s.id === shotId);
     if (!shot) return;
+    const support = shotVideoSupportMap.get(shotId);
+    if (support?.disabledReason) {
+      message.error(support.disabledReason);
+      return;
+    }
     setRenderingShots(prev => new Set(prev).add(shotId));
     setRenderProgress(0);
     setRenderStep('准备渲染...');
@@ -378,11 +421,12 @@ export const Storyboard: React.FC<StoryboardProps> = ({
           projectId,
           episodeId,
           shot,
+          settings,
           aspectRatio,
-          projectConfigIds: {
-            ttiConfigId,
-            itvConfigId,
-            ttsConfigId,
+          mediaSelections: {
+            ttiSelection,
+            itvSelection,
+            ttsSelection,
           },
           styleSnapshot,
         },
@@ -422,7 +466,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       setRenderProgress(0);
       setRenderStep('');
     }
-  }, [projectId, shots, ttiConfigId, itvConfigId, ttsConfigId, saveAllShots, loadData, styleSnapshot]);
+  }, [projectId, shots, shotVideoSupportMap, settings, ttiSelection, itvSelection, ttsSelection, saveAllShots, loadData, styleSnapshot, message]);
 
   // 剧本内容变更
   const handleScriptChange = useCallback((shotId: string, scriptContent: string) => {
@@ -664,7 +708,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
         episodeId,
         shot,
         projectStylePrompt,
-        llmConfigId,
+        llmSelection,
         { image: true, video: false },  // 只生成图片提示词
         undefined,
         styleSnapshot
@@ -688,7 +732,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
         return next;
       });
     }
-  }, [projectId, episodeId, shots, llmConfigId, projectStylePrompt, styleSnapshot]);
+  }, [projectId, episodeId, shots, llmSelection, projectStylePrompt, styleSnapshot]);
 
   // 生成视频提示词（首次生成）
   const handleGenerateVideoPrompt = useCallback(async (shotId: string) => {
@@ -705,7 +749,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
         episodeId,
         shot,
         projectStylePrompt,
-        llmConfigId,
+        llmSelection,
         { image: false, video: true },  // 只生成视频提示词
         undefined,
         styleSnapshot
@@ -729,7 +773,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
         return next;
       });
     }
-  }, [projectId, episodeId, shots, llmConfigId, projectStylePrompt, styleSnapshot]);
+  }, [projectId, episodeId, shots, llmSelection, projectStylePrompt, styleSnapshot]);
 
   // 优化图片提示词（强制重新生成）
   const handleOptimizeImagePrompt = useCallback(async (shotId: string, _currentPrompt: string) => {
@@ -746,7 +790,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
         episodeId,
         shot,
         projectStylePrompt,
-        llmConfigId,
+        llmSelection,
         { image: true, video: false },
         { force: true },  // 强制重新生成
         styleSnapshot
@@ -770,7 +814,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
         return next;
       });
     }
-  }, [projectId, episodeId, shots, llmConfigId, projectStylePrompt, styleSnapshot]);
+  }, [projectId, episodeId, shots, llmSelection, projectStylePrompt, styleSnapshot]);
 
   // 优化视频提示词（强制重新生成）
   const handleOptimizeVideoPrompt = useCallback(async (shotId: string, _currentPrompt: string) => {
@@ -787,7 +831,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
         episodeId,
         shot,
         projectStylePrompt,
-        llmConfigId,
+        llmSelection,
         { image: false, video: true },
         { force: true },  // 强制重新生成
         styleSnapshot
@@ -811,7 +855,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
         return next;
       });
     }
-  }, [projectId, episodeId, shots, llmConfigId, projectStylePrompt, styleSnapshot]);
+  }, [projectId, episodeId, shots, llmSelection, projectStylePrompt, styleSnapshot]);
 
   // 批量生成图片提示词（跳过已有图片提示词的）
   const handleBatchGenerateImagePrompts = useCallback(async (targetShotIds?: string[]) => {
@@ -845,7 +889,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
             } : s));
           }
         },
-        llmConfigId,
+        llmSelection,
         styleSnapshot,
         undefined,
         { image: true, video: false }
@@ -864,7 +908,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       setGeneratingImagePrompts(new Set());
       setBatchProgress(undefined);
     }
-  }, [projectId, episodeId, shots, llmConfigId, projectStylePrompt, styleSnapshot]);
+  }, [projectId, episodeId, shots, llmSelection, projectStylePrompt, styleSnapshot]);
 
   // 批量重新生成图片提示词
   const handleBatchReGenerateImagePrompts = useCallback(async (targetShotIds?: string[]) => {
@@ -898,7 +942,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
             } : s));
           }
         },
-        llmConfigId,
+        llmSelection,
         styleSnapshot,
         undefined,
         { image: true, video: false },
@@ -918,7 +962,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       setGeneratingImagePrompts(new Set());
       setBatchProgress(undefined);
     }
-  }, [projectId, episodeId, shots, llmConfigId, projectStylePrompt, styleSnapshot]);
+  }, [projectId, episodeId, shots, llmSelection, projectStylePrompt, styleSnapshot]);
 
   // 批量生成视频提示词（跳过已有视频提示词的）
   const handleBatchGenerateVideoPrompts = useCallback(async (targetShotIds?: string[]) => {
@@ -952,7 +996,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
             } : s));
           }
         },
-        llmConfigId,
+        llmSelection,
         styleSnapshot,
         undefined,
         { image: false, video: true }
@@ -971,7 +1015,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       setGeneratingVideoPrompts(new Set());
       setBatchProgress(undefined);
     }
-  }, [projectId, episodeId, shots, llmConfigId, projectStylePrompt, styleSnapshot]);
+  }, [projectId, episodeId, shots, llmSelection, projectStylePrompt, styleSnapshot]);
 
   // 批量重新生成视频提示词
   const handleBatchReGenerateVideoPrompts = useCallback(async (targetShotIds?: string[]) => {
@@ -1005,7 +1049,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
             } : s));
           }
         },
-        llmConfigId,
+        llmSelection,
         styleSnapshot,
         undefined,
         { image: false, video: true },
@@ -1025,7 +1069,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       setGeneratingVideoPrompts(new Set());
       setBatchProgress(undefined);
     }
-  }, [projectId, episodeId, shots, llmConfigId, projectStylePrompt, styleSnapshot]);
+  }, [projectId, episodeId, shots, llmSelection, projectStylePrompt, styleSnapshot]);
 
   // 创建新分镜
   const createNewShot = useCallback((): Shot => ({
@@ -1093,7 +1137,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
         episodeId!,
         episodeName || `剧集 ${episodeId}`,
         script!,
-        llmConfigId,
+        llmSelection,
         assets,  // 传递预选资产
         styleSnapshot
       );
@@ -1103,7 +1147,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       message.error(errorMessage || '启动生成失败');
       setIsAnalyzing(false);
     }
-  }, [projectId, episodeId, episodeName, script, llmConfigId, message, styleSnapshot]);
+  }, [projectId, episodeId, episodeName, script, llmSelection, message, styleSnapshot]);
 
   const handleGenerateAIShots = useCallback(async () => {
     if (!episodeId || !script) {
@@ -1119,14 +1163,14 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       // 无已绑定资产，直接生成
       setIsAnalyzing(true);
       try {
-        await startShotAnalysis(projectId, episodeId, episodeName || `剧集 ${episodeId}`, script, llmConfigId, undefined, styleSnapshot);
+        await startShotAnalysis(projectId, episodeId, episodeName || `剧集 ${episodeId}`, script, llmSelection, undefined, styleSnapshot);
         message.info('AI 分镜生成任务已启动，可在状态栏查看进度');
       } catch (err: any) {
         message.error(err.message || '启动生成失败');
         setIsAnalyzing(false);
       }
     }
-  }, [projectId, episodeId, episodeName, script, llmConfigId, characters, props, message, styleSnapshot]);
+  }, [projectId, episodeId, episodeName, script, llmSelection, characters, props, message, styleSnapshot]);
 
   const handleSaveEdit = useCallback(async () => {
     if (!editFormData.scriptContent?.trim()) {
@@ -1172,7 +1216,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     try {
       const indexMap = new Map(shotIds.map((id, idx) => [id, idx]));
       setBatchProgress({ current: 0, total: shotIds.length, step: '准备生成...' });
-      const results = await batchGenerateShotImages(projectId, episodeId, shotIds, characters, scenes, ttiConfigId, {
+      const results = await batchGenerateShotImages(projectId, episodeId, shotIds, characters, scenes, ttiSelection, {
         aspectRatio,
         styleSnapshot,
         onProgress: (_overall, current) => {
@@ -1214,7 +1258,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       setGeneratingShots(new Set());
       setBatchProgress(undefined);
     }
-  }, [projectId, episodeId, shots, characters, scenes, ttiConfigId, styleSnapshot]);
+  }, [projectId, episodeId, shots, characters, scenes, ttiSelection, styleSnapshot]);
 
   // 批量重新生成图片（强制重新生成已有图片的）
   const handleBatchReGenerateImages = useCallback(async (targetShotIds?: string[]) => {
@@ -1235,7 +1279,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     try {
       const indexMap = new Map(shotIds.map((id, idx) => [id, idx]));
       setBatchProgress({ current: 0, total: shotIds.length, step: '准备生成...' });
-      const results = await batchGenerateShotImages(projectId, episodeId, shotIds, characters, scenes, ttiConfigId, {
+      const results = await batchGenerateShotImages(projectId, episodeId, shotIds, characters, scenes, ttiSelection, {
         aspectRatio,
         styleSnapshot,
         onProgress: (_overall, current) => {
@@ -1275,7 +1319,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       setGeneratingShots(new Set());
       setBatchProgress(undefined);
     }
-  }, [projectId, episodeId, shots, characters, scenes, ttiConfigId, styleSnapshot]);
+  }, [projectId, episodeId, shots, characters, scenes, ttiSelection, styleSnapshot]);
 
   // 批量渲染视频（已确认的）
   const handleBatchRenderVideos = useCallback(async (targetShotIds?: string[]) => {
@@ -1287,6 +1331,11 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       message.warning('请先确认要渲染的分镜');
       return;
     }
+    const unsupportedMessage = buildUnsupportedShotVideoMessage(confirmedToRender);
+    if (unsupportedMessage) {
+      message.error(unsupportedMessage);
+      return;
+    }
     const shotIds = confirmedToRender.map(s => s.id);
     setRenderingShots(new Set(shotIds));
     setRenderProgress(0);
@@ -1296,11 +1345,12 @@ export const Storyboard: React.FC<StoryboardProps> = ({
         {
           projectId,
           shots: confirmedToRender,
+          settings,
           aspectRatio,
-          projectConfigIds: {
-            ttiConfigId,
-            itvConfigId,
-            ttsConfigId,
+          mediaSelections: {
+            ttiSelection,
+            itvSelection,
+            ttsSelection,
           },
           styleSnapshot,
         },
@@ -1336,7 +1386,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       setRenderProgress(0);
       setRenderStep('');
     }
-  }, [projectId, shots, ttiConfigId, itvConfigId, ttsConfigId, saveAllShots, styleSnapshot]);
+  }, [projectId, shots, settings, ttiSelection, itvSelection, ttsSelection, saveAllShots, styleSnapshot, buildUnsupportedShotVideoMessage, message]);
 
   // 批量重新生成视频（已有视频的）
   const handleBatchReGenerateVideos = useCallback(async (targetShotIds?: string[]) => {
@@ -1348,6 +1398,11 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       message.info('所选分镜都没有视频');
       return;
     }
+    const unsupportedMessage = buildUnsupportedShotVideoMessage(shotsWithVideo);
+    if (unsupportedMessage) {
+      message.error(unsupportedMessage);
+      return;
+    }
     const shotIds = shotsWithVideo.map(s => s.id);
     setRenderingShots(new Set(shotIds));
     setRenderProgress(0);
@@ -1357,11 +1412,12 @@ export const Storyboard: React.FC<StoryboardProps> = ({
         {
           projectId,
           shots: shotsWithVideo,
+          settings,
           aspectRatio,
-          projectConfigIds: {
-            ttiConfigId,
-            itvConfigId,
-            ttsConfigId,
+          mediaSelections: {
+            ttiSelection,
+            itvSelection,
+            ttsSelection,
           },
           styleSnapshot,
         },
@@ -1397,7 +1453,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       setRenderProgress(0);
       setRenderStep('');
     }
-  }, [projectId, shots, ttiConfigId, itvConfigId, ttsConfigId, saveAllShots, styleSnapshot]);
+  }, [projectId, shots, settings, ttiSelection, itvSelection, ttsSelection, saveAllShots, styleSnapshot, buildUnsupportedShotVideoMessage, message]);
 
   // ============ 渲染 ============
 
@@ -1405,7 +1461,6 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     return (
       <div className="storyboardContainer w-500" style={{ justifyContent: 'center', alignItems: 'center' }}>
         <Spin size="large" description="加载分镜数据...">
-          <div style={{ padding: 50 }} />
         </Spin>
       </div>
     );
@@ -1484,6 +1539,8 @@ export const Storyboard: React.FC<StoryboardProps> = ({
             onGenerateVideo={handleRenderShotVideo}
             onBatchGenerateVideos={handleBatchRenderVideos}
             onBatchReGenerateVideos={handleBatchReGenerateVideos}
+            getVideoCapabilityLabel={(shotId) => shotVideoSupportMap.get(shotId)?.capabilityLabel}
+            getVideoGenerateDisabledReason={(shotId) => shotVideoSupportMap.get(shotId)?.disabledReason}
             onToggleConfirm={handleToggleConfirm}
             onDelete={handleDeleteShot}
             onBatchDelete={handleBatchDelete}

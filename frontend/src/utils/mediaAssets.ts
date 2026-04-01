@@ -19,6 +19,9 @@ interface CreateStoredMediaAssetOptions {
   fps?: number;
   provider?: string;
   providerTaskId?: string;
+  channelId?: string;
+  modelId?: string;
+  capability?: string;
   metadata?: Record<string, unknown>;
   createdAt?: number;
 }

@@ -7,6 +7,7 @@ export { RunwayProvider } from './RunwayProvider';
 export { KlingProvider } from './KlingProvider';
 export { PikaProvider } from './PikaProvider';
 export { Sora2Provider } from './Sora2Provider';
+export { ViduProvider } from './ViduProvider';
 export { ComfyUIAnimateDiffProvider } from './ComfyUIAnimateDiffProvider';
 export { CustomITVProvider } from './CustomITVProvider';
 export { Grok2ApiImagineITVProvider } from './Grok2ApiImagineITVProvider';
@@ -17,6 +18,7 @@ import { RunwayProvider } from './RunwayProvider';
 import { KlingProvider } from './KlingProvider';
 import { PikaProvider } from './PikaProvider';
 import { Sora2Provider } from './Sora2Provider';
+import { ViduProvider } from './ViduProvider';
 import { ComfyUIAnimateDiffProvider } from './ComfyUIAnimateDiffProvider';
 import { CustomITVProvider } from './CustomITVProvider';
 import { Grok2ApiImagineITVProvider } from './Grok2ApiImagineITVProvider';
@@ -65,7 +67,21 @@ function registerBuiltinProviders() {
       description: 'OpenAI Sora 2 视频生成，支持角色提取',
       factory: (config) => new Sora2Provider(config as ITVConfig),
       contractVersion: MEDIA_PROVIDER_CONTRACT_VERSION,
-      capabilities: ['itv', 'character-extract', 'remix'],
+      capabilities: ['itv'],
+      polling: {
+        interval: 5000,
+        maxDuration: 600000,
+        initialDelay: 3000,
+      },
+    },
+    {
+      type: 'vidu',
+      kind: 'itv',
+      name: 'Vidu',
+      description: 'Vidu 视频生成，支持文生视频、图生视频、参考生视频、首尾帧视频',
+      factory: (config) => new ViduProvider(config as ITVConfig),
+      contractVersion: MEDIA_PROVIDER_CONTRACT_VERSION,
+      capabilities: ['itv'],
       polling: {
         interval: 5000,
         maxDuration: 600000,

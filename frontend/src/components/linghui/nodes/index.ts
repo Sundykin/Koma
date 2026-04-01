@@ -16,6 +16,8 @@ export const linghuiNodeTypes: NodeTypes = {
 };
 
 export {
+  LinghuiCanvasModeContext,
+  LinghuiCanvasZoomContext,
   LinghuiNodeRunsContext,
   LinghuiGroupRunsContext,
   LinghuiConnectionErrorContext,

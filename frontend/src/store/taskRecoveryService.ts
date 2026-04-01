@@ -23,10 +23,10 @@ interface RecoveryCallbacks {
 export async function recoverPendingTasks(
   projectId: string,
   params?: {
-    configIds?: {
-      ttiConfigId?: string;
-      itvConfigId?: string;
-      ttsConfigId?: string;
+    selections?: {
+      ttiSelection?: string;
+      itvSelection?: string;
+      ttsSelection?: string;
     };
     callbacks?: RecoveryCallbacks;
   }
@@ -41,7 +41,7 @@ export async function recoverPendingTasks(
   logger.info(`发现 ${pendingTasks.length} 个未完成任务，开始恢复`);
 
   const callbacks = params?.callbacks;
-  const configIds = params?.configIds;
+  const selections = params?.selections;
 
   let recovered = 0;
   let failed = 0;
@@ -52,9 +52,9 @@ export async function recoverPendingTasks(
         const asset = await mediaGenerationService.recoverTask({
           projectId,
           task,
-          ttiConfigId: configIds?.ttiConfigId,
-          itvConfigId: configIds?.itvConfigId,
-          ttsConfigId: configIds?.ttsConfigId,
+          ttiSelection: selections?.ttiSelection,
+          itvSelection: selections?.itvSelection,
+          ttsSelection: selections?.ttsSelection,
           onProgress: (t, progress) => callbacks?.onTaskProgress?.(t, progress),
         });
 
@@ -79,4 +79,3 @@ export async function recoverPendingTasks(
   logger.info(`任务恢复完成: ${recovered} 成功, ${failed} 失败`);
   return { recovered, failed };
 }
-

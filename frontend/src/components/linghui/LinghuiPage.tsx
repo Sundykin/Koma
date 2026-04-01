@@ -4,6 +4,7 @@ import type { MenuProps } from 'antd';
 import {
   createLinghuiWorkspace,
   createLinghuiWorkspaceHistoryRecord,
+  deleteLinghuiWorkspace,
   exportLinghuiWorkspace,
   importLinghuiWorkspace,
   listLinghuiWorkflowTemplates,
@@ -52,6 +53,7 @@ import { LinghuiLibraryDrawer, type LinghuiAssetFilter, type LinghuiLibraryDrawe
 import LinghuiToolbar from './LinghuiToolbar';
 import { collectLinghuiDependentNodeIds, executeLinghuiWorkflow } from './linghuiExecution';
 import { exportLinghuiNodeResults } from './linghuiResultExport';
+import { detectCanvasMutationKind } from './linghuiCanvasShared';
 import './LinghuiPage.css';
 
 function createLog(level: LinghuiExecutionLogEntry['level'], message: string, nodeId?: string): LinghuiExecutionLogEntry {
@@ -71,6 +73,25 @@ function mergeExecutionLogs(
   return [...currentLogs, entry].slice(-80);
 }
 
+function serializeWorkspaceForDirtyCheck(doc: LinghuiWorkspaceDocument | null): string {
+  if (!doc) {
+    return '';
+  }
+
+  return JSON.stringify({
+    id: doc.id,
+    name: doc.name,
+    description: doc.description,
+    viewport: doc.viewport,
+    graphData: doc.graphData,
+    nodeRuns: doc.nodeRuns,
+    executionLogs: doc.executionLogs,
+    nodeCount: doc.nodeCount,
+    linkCount: doc.linkCount,
+    groupCount: doc.groupCount,
+  });
+}
+
 interface LinghuiPageProps {
   onExit?: () => void;
 }
@@ -81,6 +102,7 @@ const EMPTY_WORKSPACE_RUNTIME: LinghuiWorkspaceRuntimeState = {
   nodeRuns: EMPTY_LINGHUI_NODE_RUNS,
   executionLogs: EMPTY_LINGHUI_EXECUTION_LOGS,
 };
+const WORKSPACE_SAVE_DEBOUNCE_MS = 2500;
 
 export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
   const { message } = AntApp.useApp();
@@ -93,10 +115,12 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
     refreshWorkspaceList: boolean;
   } | null>(null);
   const activeWorkspaceRef = useRef<LinghuiWorkspaceDocument | null>(null);
+  const persistedWorkspaceRef = useRef<LinghuiWorkspaceDocument | null>(null);
   const workspaceRuntimeRef = useRef<LinghuiWorkspaceRuntimeState>(EMPTY_WORKSPACE_RUNTIME);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [deletingWorkspace, setDeletingWorkspace] = useState(false);
   const [running, setRunning] = useState(false);
   const [executionQueue, setExecutionQueue] = useState<LinghuiExecutionQueueState | null>(null);
   const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
@@ -134,6 +158,7 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
 
   const activateWorkspace = useCallback((workspace: LinghuiWorkspaceDocument) => {
     activeWorkspaceRef.current = workspace;
+    persistedWorkspaceRef.current = workspace;
     applyWorkspaceRuntime({
       nodeRuns: workspace.nodeRuns,
       executionLogs: workspace.executionLogs,
@@ -285,7 +310,7 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
       refreshWorkspaceList?: boolean;
       showIndicator?: boolean;
     },
-  ) => {
+  ): Promise<boolean> => {
     const {
       notify = false,
       syncActiveWorkspace = true,
@@ -299,6 +324,7 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
     try {
       const saved = await saveLinghuiWorkspace(doc);
       activeWorkspaceRef.current = saved;
+      persistedWorkspaceRef.current = saved;
       workspaceRuntimeRef.current = {
         nodeRuns: saved.nodeRuns,
         executionLogs: saved.executionLogs,
@@ -313,14 +339,53 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
       if (notify) {
         message.success('灵绘工作区已保存');
       }
+      return true;
     } catch (error: any) {
       message.error(error?.message || '保存灵绘工作区失败');
+      return false;
     } finally {
       if (showIndicator) {
         setSaving(false);
       }
     }
   }, [message, refreshWorkspaceList]);
+
+  const flushWorkspaceDraft = useCallback(async (options?: {
+    notify?: boolean;
+    syncActiveWorkspace?: boolean;
+    refreshWorkspaceList?: boolean;
+    showIndicator?: boolean;
+  }): Promise<boolean> => {
+    canvasRef.current?.snapshotNow();
+
+    const current = activeWorkspaceRef.current;
+    if (!current) {
+      return true;
+    }
+
+    const hasPendingSave = pendingSaveRef.current != null || saveTimerRef.current != null;
+    const isDirty = (
+      serializeWorkspaceForDirtyCheck(current) !==
+      serializeWorkspaceForDirtyCheck(persistedWorkspaceRef.current)
+    );
+
+    if (!hasPendingSave && !isDirty) {
+      return true;
+    }
+
+    if (saveTimerRef.current) {
+      window.clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
+    pendingSaveRef.current = null;
+
+    return persistWorkspace(current, {
+      notify: options?.notify ?? false,
+      syncActiveWorkspace: options?.syncActiveWorkspace ?? false,
+      refreshWorkspaceList: options?.refreshWorkspaceList ?? false,
+      showIndicator: options?.showIndicator ?? false,
+    });
+  }, [persistWorkspace]);
 
   const scheduleWorkspaceSave = useCallback((
     doc: LinghuiWorkspaceDocument,
@@ -364,7 +429,7 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
         syncActiveWorkspace: pending.syncActiveWorkspace,
         refreshWorkspaceList: pending.refreshWorkspaceList,
       });
-    }, 500);
+    }, WORKSPACE_SAVE_DEBOUNCE_MS);
   }, [persistWorkspace]);
 
   const updateWorkspaceExecution = useCallback((
@@ -493,16 +558,35 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
         const historyResults = await Promise.allSettled(historyCandidates.map(async ([nodeId, runState]) => {
           const nodeSnapshot = nodeSnapshotMap.get(nodeId);
           if (!nodeSnapshot) return null;
-          return createLinghuiWorkspaceHistoryRecord({
+          const result = await createLinghuiWorkspaceHistoryRecord({
             workspaceId: current.id,
             nodeId,
             nodeData: nodeSnapshot.data,
             nodeRun: runState,
           });
+          return { nodeId, ...result };
         }));
 
-        if (historyResults.some(result => result.status === 'fulfilled' && result.value)) {
+        let hasHistoryMutate = false;
+        let hasRunMaterialization = false;
+
+        for (const outcome of historyResults) {
+          if (outcome.status !== 'fulfilled' || !outcome.value) continue;
+          hasHistoryMutate = true;
+          if (outcome.value.materializedRun) {
+            nextRuns = {
+              ...nextRuns,
+              [outcome.value.nodeId]: outcome.value.materializedRun,
+            };
+            hasRunMaterialization = true;
+          }
+        }
+
+        if (hasHistoryMutate) {
           handleHistoryLibraryMutate();
+        }
+        if (hasRunMaterialization) {
+          updateWorkspaceExecution(nextRuns, nextLogs);
         }
       }
 
@@ -531,13 +615,29 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
   }, [handleHistoryLibraryMutate, message, updateWorkspaceExecution]);
 
   const handleCreateWorkspace = useCallback(async () => {
+    const flushed = await flushWorkspaceDraft({
+      syncActiveWorkspace: false,
+      refreshWorkspaceList: false,
+    });
+    if (!flushed) return;
+
     const workspace = await createLinghuiWorkspace(`灵绘 ${workspaceList.length + 1}`);
     activateWorkspace(workspace);
     await refreshWorkspaceList(workspace.id);
     message.success('已创建新的灵绘工作区');
-  }, [activateWorkspace, message, refreshWorkspaceList, workspaceList.length]);
+  }, [activateWorkspace, flushWorkspaceDraft, message, refreshWorkspaceList, workspaceList.length]);
 
   const handleSelectWorkspace = useCallback(async (workspaceId: string) => {
+    if (workspaceId === activeWorkspaceRef.current?.id) {
+      return;
+    }
+
+    const flushed = await flushWorkspaceDraft({
+      syncActiveWorkspace: false,
+      refreshWorkspaceList: false,
+    });
+    if (!flushed) return;
+
     const workspace = await loadLinghuiWorkspace(workspaceId);
     if (!workspace) {
       message.error('无法加载所选工作区');
@@ -545,9 +645,10 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
     }
 
     activateWorkspace(workspace);
-  }, [activateWorkspace, message]);
+  }, [activateWorkspace, flushWorkspaceDraft, message]);
 
   const handleSaveAsWorkspace = useCallback(async () => {
+    canvasRef.current?.snapshotNow();
     const current = activeWorkspaceRef.current;
     if (!current) return;
 
@@ -569,6 +670,12 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
       return;
     }
 
+    const flushed = await flushWorkspaceDraft({
+      syncActiveWorkspace: false,
+      refreshWorkspaceList: false,
+    });
+    if (!flushed) return;
+
     try {
       const result = await openFileDialog({
         title: '导入灵绘工作区',
@@ -587,9 +694,10 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
     } catch (error: any) {
       message.error(error?.message || '导入灵绘工作区失败');
     }
-  }, [activateWorkspace, message, refreshWorkspaceList]);
+  }, [activateWorkspace, flushWorkspaceDraft, message, refreshWorkspaceList]);
 
   const handleManualSave = useCallback(async () => {
+    canvasRef.current?.snapshotNow();
     const current = activeWorkspaceRef.current;
     if (!current) return;
     if (saveTimerRef.current) {
@@ -606,6 +714,7 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
   }, [persistWorkspace]);
 
   const handleExport = useCallback(async () => {
+    canvasRef.current?.snapshotNow();
     const current = activeWorkspaceRef.current;
     if (!current) return;
     const result = await exportLinghuiWorkspace(current);
@@ -613,6 +722,17 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
       message.success(`已导出到 ${result}`);
     }
   }, [message]);
+
+  const handleExitWorkspace = useCallback(async () => {
+    const flushed = await flushWorkspaceDraft({
+      syncActiveWorkspace: false,
+      refreshWorkspaceList: false,
+      showIndicator: true,
+    });
+    if (!flushed) return;
+
+    onExit?.();
+  }, [flushWorkspaceDraft, onExit]);
 
   const openDrawer = useCallback(async (drawer: LinghuiLibraryDrawerKey) => {
     setActiveDrawer(drawer);
@@ -682,6 +802,21 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
   ) => {
     const current = activeWorkspaceRef.current;
     if (!current) return;
+    const nextDraft = {
+      ...current,
+      graphData,
+      viewport,
+      nodeCount: nextStats.nodeCount,
+      linkCount: nextStats.linkCount,
+      groupCount: nextStats.groupCount,
+    };
+    const changeKind = detectCanvasMutationKind({
+      graphData: current.graphData,
+      viewport: current.viewport,
+    }, {
+      graphData,
+      viewport,
+    });
 
     setStats(previous => (
       previous.nodeCount === nextStats.nodeCount &&
@@ -690,14 +825,20 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
         ? previous
         : nextStats
     ));
-    scheduleWorkspaceSave({
-      ...current,
-      graphData,
-      viewport,
-      nodeCount: nextStats.nodeCount,
-      linkCount: nextStats.linkCount,
-      groupCount: nextStats.groupCount,
-    }, {
+
+    activeWorkspaceRef.current = nextDraft;
+    if (pendingSaveRef.current) {
+      pendingSaveRef.current = {
+        ...pendingSaveRef.current,
+        doc: nextDraft,
+      };
+    }
+
+    if (changeKind !== 'content') {
+      return;
+    }
+
+    scheduleWorkspaceSave(nextDraft, {
       syncActiveWorkspace: false,
       refreshWorkspaceList: false,
     });
@@ -708,9 +849,58 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
     if (!current) return;
     scheduleWorkspaceSave({
       ...current,
-      name,
+      name: name.trim().length > 0 ? name : DEFAULT_LINGHUI_WORKSPACE_NAME,
     });
   }, [scheduleWorkspaceSave]);
+
+  const handleDeleteWorkspace = useCallback(async () => {
+    const current = activeWorkspaceRef.current;
+    if (!current) {
+      message.info('当前没有可删除的灵绘工作区');
+      return;
+    }
+    if (running) {
+      message.info('请先取消或等待当前执行完成，再删除当前工作流');
+      return;
+    }
+
+    cancelPendingWorkspaceSave();
+    setDeletingWorkspace(true);
+
+    try {
+      await deleteLinghuiWorkspace(current.id);
+
+      const remaining = await listLinghuiWorkspaces();
+      setWorkspaceList(remaining);
+
+      if (remaining.length > 0) {
+        const nextWorkspace = await loadLinghuiWorkspace(remaining[0].id);
+        if (nextWorkspace) {
+          activateWorkspace(nextWorkspace);
+        } else {
+          const fallbackWorkspace = await createLinghuiWorkspace(DEFAULT_LINGHUI_WORKSPACE_NAME);
+          activateWorkspace(fallbackWorkspace);
+          await refreshWorkspaceList(fallbackWorkspace.id);
+        }
+      } else {
+        const fallbackWorkspace = await createLinghuiWorkspace(DEFAULT_LINGHUI_WORKSPACE_NAME);
+        activateWorkspace(fallbackWorkspace);
+        await refreshWorkspaceList(fallbackWorkspace.id);
+      }
+
+      message.success(`已删除 ${current.name}，相关历史数据也已清理`);
+    } catch (error: any) {
+      message.error(error?.message || '删除灵绘工作区失败');
+    } finally {
+      setDeletingWorkspace(false);
+    }
+  }, [
+    activateWorkspace,
+    cancelPendingWorkspaceSave,
+    message,
+    refreshWorkspaceList,
+    running,
+  ]);
 
   const handleNodeMutate = useCallback((nodeId: string) => {
     markNodesAsStale([nodeId], '上游节点参数已变更，请重新运行相关节点。');
@@ -1039,7 +1229,7 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
         running={running}
         executionQueue={executionQueue}
         runSummary={runSummary}
-        onExit={onExit}
+        onExit={handleExitWorkspace}
         onCreateWorkspace={handleCreateWorkspace}
         onSelectWorkspace={handleSelectWorkspace}
         onWorkspaceRename={handleWorkspaceRename}
@@ -1047,6 +1237,8 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
         onExport={handleExport}
         onRetryFailed={handleRetryFailed}
         onCancelRun={handleCancelRun}
+        deletingWorkspace={deletingWorkspace}
+        onDeleteWorkspace={handleDeleteWorkspace}
         activeDrawer={activeDrawer}
         onToggleDrawer={handleToggleDrawer}
       />

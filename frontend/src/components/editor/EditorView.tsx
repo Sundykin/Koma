@@ -11,6 +11,7 @@ import { SimpleEditor } from './index';
 import { AssetManager } from '../asset/AssetManager';
 import { Storyboard } from '../storyboard/Storyboard';
 import { StepNavigator } from '../common/StepNavigator';
+import { serializeMediaSelection } from '../../providers/channel/resolver';
 
 interface EditorViewProps {
   activeProject: Project;
@@ -42,6 +43,10 @@ export const EditorView: React.FC<EditorViewProps> = ({
   onOpenProjectSettings: _onOpenProjectSettings,
 }) => {
   const styleSnapshot: ProjectStyleSnapshot | undefined = activeProject.styleSnapshot;
+  const llmSelection = serializeMediaSelection(activeProject.mediaSelections?.llm);
+  const ttiSelection = serializeMediaSelection(activeProject.mediaSelections?.tti);
+  const itvSelection = serializeMediaSelection(activeProject.mediaSelections?.itv);
+  const ttsSelection = serializeMediaSelection(activeProject.mediaSelections?.tts);
 
   const getActionButton = () => {
     if (editorStep === 'assets') {
@@ -86,13 +91,13 @@ export const EditorView: React.FC<EditorViewProps> = ({
           activeProject ? (
               <AssetManager
                 projectId={activeProject.id}
-                ttiConfigId={activeProject.ttiConfigId}
-                itvConfigId={activeProject.itvConfigId}
+                ttiSelection={ttiSelection}
+                itvSelection={itvSelection}
                 styleSnapshot={styleSnapshot}
                 episodeId={activeEpisode?.id}
                 episodeName={activeEpisode?.title || (activeEpisode ? `第${activeEpisode.number}集` : undefined)}
                 script={scriptText}
-                llmConfigId={activeProject.llmConfigId}
+                llmSelection={llmSelection}
               characters={analysisData?.characters}
               scenes={analysisData?.scenes}
               props={analysisData?.props}
@@ -117,10 +122,10 @@ export const EditorView: React.FC<EditorViewProps> = ({
                 episodeName={activeEpisode?.title || (activeEpisode ? `第${activeEpisode.number}集` : undefined)}
                 script={scriptText}
                 aspectRatio={activeProject.aspectRatio || '16:9'}
-                llmConfigId={activeProject.llmConfigId}
-                ttiConfigId={activeProject.ttiConfigId}
-                itvConfigId={activeProject.itvConfigId}
-                ttsConfigId={activeProject.ttsConfigId}
+                llmSelection={llmSelection}
+                ttiSelection={ttiSelection}
+                itvSelection={itvSelection}
+                ttsSelection={ttsSelection}
                 settings={appSettings}
                 styleSnapshot={styleSnapshot}
                 mentionItems={mentionItems}

@@ -26,8 +26,16 @@ export class OpenAITTSProvider implements TTSProvider {
     this.config = config;
   }
 
+  private getModelName(): string {
+    const value = String(this.config.modelName || '').trim();
+    if (!value) {
+      throw new Error('模型名称未配置');
+    }
+    return value;
+  }
+
   validate(): boolean {
-    return !!this.config.apiKey;
+    return Boolean(this.config.apiKey && String(this.config.modelName || '').trim());
   }
 
   async testConnection(): Promise<boolean> {
@@ -40,6 +48,9 @@ export class OpenAITTSProvider implements TTSProvider {
     if (!this.config.apiKey) {
       throw new Error('OpenAI API Key 未配置');
     }
+    if (!String(this.config.modelName || '').trim()) {
+      throw new Error('OpenAI TTS 模型未配置');
+    }
 
     const response = await fetch(
       `${this.config.baseUrl || 'https://api.openai.com/v1'}/audio/speech`,
@@ -50,7 +61,7 @@ export class OpenAITTSProvider implements TTSProvider {
           Authorization: `Bearer ${this.config.apiKey}`,
         },
         body: JSON.stringify({
-          model: 'tts-1',
+          model: this.getModelName(),
           input: text,
           voice: voiceId,
           speed: options?.rate || 1.0,

@@ -160,8 +160,16 @@ export class Grok2ApiImagineTTIProvider implements TTIProvider {
     this.config = config;
   }
 
+  private getModelName(): string {
+    const value = String(this.config.modelName || '').trim();
+    if (!value) {
+      throw new Error('模型名称未配置');
+    }
+    return value;
+  }
+
   validate(): boolean {
-    return Boolean(this.config.apiKey && this.config.baseUrl);
+    return Boolean(this.config.apiKey && this.config.baseUrl && String(this.config.modelName || '').trim());
   }
 
   private getHeaders(): Record<string, string> {
@@ -191,7 +199,10 @@ export class Grok2ApiImagineTTIProvider implements TTIProvider {
   }
 
   async start(request: TTIRequest): Promise<ProviderStartResult<ImageResult>> {
-    if (!this.validate()) throw new Error('API Key 或 API 地址未配置');
+    if (!this.config.apiKey || !this.config.baseUrl) {
+      throw new Error('API Key 或 API 地址未配置');
+    }
+    const modelName = this.getModelName();
 
     const hasRefs = Boolean(request.references?.length);
     const protocol = (this.config as any)?.promptProtocol;
@@ -211,7 +222,7 @@ export class Grok2ApiImagineTTIProvider implements TTIProvider {
     if (!hasRefs) {
       const size = resolveSize();
       const body: Record<string, any> = {
-        model: this.config.modelName || 'grok-imagine-1.0',
+        model: modelName,
         prompt: request.prompt,
         n: 1,
         ...(size ? { size } : undefined),
@@ -264,7 +275,7 @@ export class Grok2ApiImagineTTIProvider implements TTIProvider {
       const size = resolveSize();
 
       const body: Record<string, any> = {
-        model: this.config.modelName || 'grok-imagine-1.0-edit',
+        model: modelName,
         stream: false,
         messages: [{ role: 'user', content }],
         ...(size ? { image_config: { n: 1, size } } : undefined),
@@ -310,7 +321,7 @@ export class Grok2ApiImagineTTIProvider implements TTIProvider {
 
     // 2.2) Fallback: use /v1/images/edits (multipart)
     const form = new FormData();
-    form.append('model', this.config.modelName || 'grok-imagine-1.0-edit');
+    form.append('model', modelName);
     form.append('prompt', prompt);
 
     for (let i = 0; i < refs.length; i += 1) {
@@ -350,7 +361,7 @@ export class Grok2ApiImagineTTIProvider implements TTIProvider {
       logger.info('TTI edits (multipart) request', {
         provider: this.config.provider,
         ...(protocol ? { promptProtocol: protocol } : undefined),
-        model: this.config.modelName || 'grok-imagine-1.0-edit',
+        model: modelName,
         prompt,
         images: refsAll.map((r, i) => ({
           i: i + 1,

@@ -49,6 +49,7 @@ import {
   getPropPreviewImageSource,
   getPropPreviewVideoSource,
 } from '../../utils/mediaSelectors';
+import type { ModelCapability } from '../../providers/channel/types';
 
 const { TextArea } = Input;
 const { Text } = Typography;
@@ -59,8 +60,8 @@ interface PropDetailPanelProps {
   theme?: string;
   stylePrompt?: string;
   styleSnapshot?: ProjectStyleSnapshot;
-  ttiConfigId?: string;
-  itvConfigId?: string;
+  ttiSelection?: string;
+  itvSelection?: string;
   onUpdate: (prop: Prop) => void;
   onDelete: (propId: string) => void;
 }
@@ -74,8 +75,8 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
   theme,
   stylePrompt,
   styleSnapshot,
-  ttiConfigId,
-  itvConfigId,
+  ttiSelection,
+  itvSelection,
   onUpdate,
   onDelete,
 }) => {
@@ -83,8 +84,8 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
   const { message } = App.useApp();
   const [form] = Form.useForm();
   
-  const { config: activeTTI } = useActiveConfig('tti', ttiConfigId);
-  const { config: activeITV } = useActiveConfig('itv', itvConfigId);
+  const { config: activeTTI, activeModel: activeTTIModel } = useActiveConfig('tti', ttiSelection);
+  const { config: activeITV, activeModel: activeITVModel } = useActiveConfig('itv', itvSelection);
 
   const [editedProp, setEditedProp] = useState<Prop>(prop);
   const [viewMode, setViewMode] = useState<ViewMode>('image');
@@ -92,6 +93,11 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
   const [progress, setProgress] = useState(0);
   const [progressStep, setProgressStep] = useState('');
   const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const supportsCapability = useCallback((capabilities: ModelCapability[] | undefined, capability: ModelCapability) => (
+    capabilities?.includes(capability) ?? false
+  ), []);
+  const supportsTextToImage = supportsCapability(activeTTIModel?.capabilities, 'image.text-to-image');
+  const supportsImageToVideo = supportsCapability(activeITVModel?.capabilities, 'video.image-to-video');
 
   // 初始化
   useEffect(() => {
@@ -158,7 +164,7 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
         theme,
         stylePrompt,
         styleSnapshot,
-        ttiConfigId,
+        ttiSelection,
         onProgress: (p, step) => {
           setProgress(p);
           setProgressStep(step);
@@ -197,7 +203,7 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
     } finally {
       setGenerating(null);
     }
-  }, [editedProp, projectId, theme, stylePrompt, styleSnapshot, ttiConfigId, form, onUpdate, message]);
+  }, [editedProp, projectId, theme, stylePrompt, styleSnapshot, ttiSelection, form, onUpdate, message]);
 
   const handleUploadImage = useCallback(async () => {
     try {
@@ -272,7 +278,7 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
         theme,
         stylePrompt,
         styleSnapshot,
-        itvConfigId,
+        itvSelection,
         onProgress: (p, step) => {
           setProgress(p);
           setProgressStep(step);
@@ -305,7 +311,7 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
     } finally {
       setGenerating(null);
     }
-  }, [editedProp, form, projectId, theme, stylePrompt, styleSnapshot, itvConfigId, onUpdate, message, t]);
+  }, [editedProp, form, projectId, theme, stylePrompt, styleSnapshot, itvSelection, onUpdate, message, t]);
 
   const handleUploadVideo = useCallback(async () => {
     try {
@@ -348,7 +354,7 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
     setProgressStep(t('asset.extractingProp'));
 
     try {
-      const result = await extractAndBindProp(projectId, editedProp, itvConfigId);
+      const result = await extractAndBindProp(projectId, editedProp, itvSelection);
 
       if (result.success && result.propId) {
         const updated = { ...editedProp, sora2PropId: result.propId };
@@ -371,7 +377,7 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
     } finally {
       setGenerating(null);
     }
-  }, [editedProp, projectId, itvConfigId, onUpdate, message, t]);
+  }, [editedProp, projectId, itvSelection, onUpdate, message, t]);
 
   const handleDelete = useCallback(async () => {
     onDelete(editedProp.id);
@@ -434,27 +440,35 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
               </div>
             )}
 
-            <Tooltip title={activeTTI ? `${t('asset.useService')}: ${activeTTI.name}` : t('asset.noGenerateService')}>
+            <Tooltip title={
+              !activeTTI ? t('asset.noGenerateService') :
+              !supportsTextToImage ? '当前模型不支持文生图能力' :
+              `${t('asset.useService')}: ${activeTTIModel?.channelLabel || activeTTI.name} / ${activeTTIModel?.modelLabel || activeTTI.modelName || ''}`
+            }>
               <Button
                 type={!getPropPreviewImageSource(editedProp) ? 'primary' : 'default'}
                 block
                 icon={<ThunderboltOutlined />}
                 onClick={handleGenerateImage}
                 loading={generating === 'image'}
-                disabled={generating !== null}
+                disabled={generating !== null || !supportsTextToImage}
               >
                 {getPropPreviewImageSource(editedProp) ? t('asset.regenerateReferenceImage') : t('asset.generateReferenceImage')}
               </Button>
             </Tooltip>
 
-            <Tooltip title={activeITV ? `${t('asset.useService')}: ${activeITV.name}` : t('asset.noVideoService')}>
+            <Tooltip title={
+              !activeITV ? t('asset.noVideoService') :
+              !supportsImageToVideo ? '当前视频模型不支持图生视频能力' :
+              `${t('asset.useService')}: ${activeITVModel?.channelLabel || activeITV.name} / ${activeITVModel?.modelLabel || activeITV.modelName || ''}`
+            }>
               <Button
                 type={getPropPreviewImageSource(editedProp) && !getPropPreviewVideoSource(editedProp) ? 'primary' : 'default'}
                 block
                 icon={<PlayCircleOutlined />}
                 onClick={handleGenerateVideo}
                 loading={generating === 'video'}
-                disabled={generating !== null || !getPropPreviewImageSource(editedProp)}
+                disabled={generating !== null || !getPropPreviewImageSource(editedProp) || !supportsImageToVideo}
               >
                 {t('asset.generatePreviewVideo')}
               </Button>

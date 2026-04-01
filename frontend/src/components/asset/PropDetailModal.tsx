@@ -55,8 +55,8 @@ interface PropDetailModalProps {
   theme?: string;
   stylePrompt?: string;
   styleSnapshot?: ProjectStyleSnapshot;
-  ttiConfigId?: string;
-  itvConfigId?: string;
+  ttiSelection?: string;
+  itvSelection?: string;
   onClose: () => void;
   onUpdate: (prop: Prop) => void;
   onDelete: (propId: string) => void;
@@ -71,8 +71,8 @@ export const PropDetailModal: React.FC<PropDetailModalProps> = ({
   theme,
   stylePrompt,
   styleSnapshot,
-  ttiConfigId,
-  itvConfigId,
+  ttiSelection,
+  itvSelection,
   onClose,
   onUpdate,
   onDelete,
@@ -163,7 +163,7 @@ export const PropDetailModal: React.FC<PropDetailModalProps> = ({
         theme,
         stylePrompt,
         styleSnapshot,
-        ttiConfigId,
+        ttiSelection,
         onProgress: (p, step) => {
           setProgress(p);
           setProgressStep(step);
@@ -188,7 +188,7 @@ export const PropDetailModal: React.FC<PropDetailModalProps> = ({
     } finally {
       setGenerating(null);
     }
-  }, [editedProp, form, projectId, theme, stylePrompt, styleSnapshot, ttiConfigId, onUpdate, message]);
+  }, [editedProp, form, projectId, theme, stylePrompt, styleSnapshot, ttiSelection, onUpdate, message]);
 
   // 上传道具图片
   const handleUploadImage = useCallback(async () => {
@@ -248,7 +248,7 @@ export const PropDetailModal: React.FC<PropDetailModalProps> = ({
         theme,
         stylePrompt,
         styleSnapshot,
-        itvConfigId,
+        itvSelection,
         onProgress: (p, step) => {
           setProgress(p);
           setProgressStep(step);
@@ -273,7 +273,7 @@ export const PropDetailModal: React.FC<PropDetailModalProps> = ({
     } finally {
       setGenerating(null);
     }
-  }, [editedProp, form, projectId, theme, stylePrompt, styleSnapshot, itvConfigId, onUpdate, message]);
+  }, [editedProp, form, projectId, theme, stylePrompt, styleSnapshot, itvSelection, onUpdate, message]);
 
   // 上传预览视频
   const handleUploadVideo = useCallback(async () => {
@@ -322,7 +322,7 @@ export const PropDetailModal: React.FC<PropDetailModalProps> = ({
     setProgressStep('提取道具中...');
 
     try {
-      const result = await extractAndBindProp(projectId, editedProp, itvConfigId);
+      const result = await extractAndBindProp(projectId, editedProp, itvSelection);
 
       if (result.success && result.propId) {
         const updated = { ...editedProp, sora2PropId: result.propId };
@@ -345,7 +345,7 @@ export const PropDetailModal: React.FC<PropDetailModalProps> = ({
     } finally {
       setGenerating(null);
     }
-  }, [editedProp, projectId, itvConfigId, onUpdate, message]);
+  }, [editedProp, projectId, itvSelection, onUpdate, message]);
 
   // 删除道具
   const handleDelete = useCallback(async () => {

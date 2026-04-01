@@ -47,7 +47,7 @@ interface SceneDetailPanelProps {
   theme?: string;
   stylePrompt?: string;
   styleSnapshot?: ProjectStyleSnapshot;
-  ttiConfigId?: string;
+  ttiSelection?: string;
   onUpdate: (scene: Scene) => void;
   onDelete: (sceneId: string) => void;
 }
@@ -58,7 +58,7 @@ export const SceneDetailPanel: React.FC<SceneDetailPanelProps> = ({
   theme,
   stylePrompt,
   styleSnapshot,
-  ttiConfigId,
+  ttiSelection,
   onUpdate,
   onDelete,
 }) => {
@@ -66,7 +66,8 @@ export const SceneDetailPanel: React.FC<SceneDetailPanelProps> = ({
   const { message } = App.useApp();
   const [form] = Form.useForm();
 
-  const { config: activeTTI } = useActiveConfig('tti', ttiConfigId);
+  const { config: activeTTI, activeModel: activeTTIModel } = useActiveConfig('tti', ttiSelection);
+  const supportsTextToImage = activeTTIModel?.capabilities.includes('image.text-to-image') ?? false;
 
   const [editedScene, setEditedScene] = useState<Scene>(scene);
   const [generating, setGenerating] = useState(false);
@@ -133,7 +134,7 @@ export const SceneDetailPanel: React.FC<SceneDetailPanelProps> = ({
         theme,
         stylePrompt,
         styleSnapshot,
-        ttiConfigId,
+        ttiSelection,
         onProgress: (p, step) => {
           setProgress(p);
           setProgressStep(step);
@@ -170,7 +171,7 @@ export const SceneDetailPanel: React.FC<SceneDetailPanelProps> = ({
     } finally {
       setGenerating(false);
     }
-  }, [editedScene, projectId, theme, stylePrompt, styleSnapshot, ttiConfigId, form, onUpdate, message]);
+  }, [editedScene, projectId, theme, stylePrompt, styleSnapshot, ttiSelection, form, onUpdate, message]);
 
   const handleUploadImage = useCallback(async () => {
     try {
@@ -284,14 +285,18 @@ export const SceneDetailPanel: React.FC<SceneDetailPanelProps> = ({
               </div>
             )}
 
-            <Tooltip title={activeTTI ? `${t('asset.useService')}: ${activeTTI.name}` : t('asset.noGenerateService')}>
+            <Tooltip title={
+              !activeTTI ? t('asset.noGenerateService') :
+              !supportsTextToImage ? '当前模型不支持文生图能力' :
+              `${t('asset.useService')}: ${activeTTIModel?.channelLabel || activeTTI.name} / ${activeTTIModel?.modelLabel || activeTTI.modelName || ''}`
+            }>
               <Button
                 type={!getScenePreviewImageSource(editedScene) ? 'primary' : 'default'}
                 block
                 icon={<ThunderboltOutlined />}
                 onClick={handleGenerateImage}
                 loading={generating}
-                disabled={generating}
+                disabled={generating || !supportsTextToImage}
               >
                 {getScenePreviewImageSource(editedScene) ? t('asset.regenerateSceneImage') : t('asset.generateSceneImage')}
               </Button>

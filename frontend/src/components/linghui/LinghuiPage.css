@@ -1516,14 +1516,6 @@
   border: 1px solid rgba(63, 63, 70, 0.6);
 }
 
-.linghuiPreviewVideo {
-  width: 100%;
-  margin-top: 10px;
-  border-radius: 12px;
-  border: 1px solid rgba(63, 63, 70, 0.6);
-  background: #020617;
-}
-
 .linghuiPreviewGrid {
   margin-top: 10px;
   display: grid;
@@ -2134,11 +2126,108 @@
   background: rgba(8, 12, 18, 0.92);
 }
 
-.linghuiCompactThumb img {
+.linghuiCompactThumb img,
+.linghuiCompactVideoMedia,
+.linghuiCompactVideoFallback {
   width: 100%;
   height: 100%;
   object-fit: cover;
   display: block;
+}
+
+.linghuiCompactVideoStage {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  background: #020617;
+  overflow: hidden;
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  contain: paint;
+}
+
+.linghuiCompactVideoMedia,
+.linghuiCompactVideoCanvas,
+.linghuiCompactVideoFallback {
+  position: absolute;
+  inset: 0;
+}
+
+.linghuiCompactVideoMedia {
+  z-index: 1;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 140ms ease;
+}
+
+.linghuiCompactVideoMedia.isActivePlayback {
+  opacity: 1;
+}
+
+.linghuiCompactVideoCanvas {
+  z-index: 2;
+  width: 100%;
+  height: 100%;
+  display: block;
+  background: #020617;
+  opacity: 0;
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  transition: opacity 140ms ease;
+}
+
+.linghuiCompactVideoCanvas.hasFrame {
+  opacity: 1;
+}
+
+.linghuiCompactVideoFallback {
+  z-index: 3;
+  transition: opacity 180ms ease;
+}
+
+.linghuiCompactVideoFallback.isLoaded {
+  opacity: 0.96;
+}
+
+.linghuiCompactVideoOverlay {
+  position: absolute;
+  inset: 0;
+  z-index: 12;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  background: linear-gradient(180deg, rgba(8, 12, 18, 0.08), rgba(8, 12, 18, 0.18));
+}
+
+.linghuiCompactVideoOverlay.isPlaying {
+  background: linear-gradient(180deg, rgba(8, 12, 18, 0.03), rgba(8, 12, 18, 0.12));
+}
+
+.linghuiCompactVideoToggle {
+  width: 44px;
+  height: 44px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(9, 13, 18, 0.76);
+  color: #f8fafc;
+  pointer-events: auto;
+  backdrop-filter: blur(14px);
+  transition: transform 160ms ease, border-color 160ms ease, background 160ms ease;
+}
+
+.linghuiCompactVideoToggle:hover {
+  transform: translateY(-1px) scale(1.02);
+  border-color: rgba(56, 189, 248, 0.56);
+  background: rgba(9, 13, 18, 0.88);
+}
+
+.linghuiCompactVideoToggle.isPlaying {
+  background: rgba(15, 23, 42, 0.82);
+  border-color: rgba(148, 163, 184, 0.34);
 }
 
 .linghuiCompactThumbDeck {
@@ -3073,7 +3162,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  padding: 12px 14px 8px;
+  padding: 2px 0 0;
 }
 
 .linghuiEditorToolBar {
@@ -3116,9 +3205,7 @@
   font-weight: 700;
 }
 
-.linghuiEditorSectionHint,
-.linghuiEditorEmptyState,
-.linghuiEditorToolModeNoticeText {
+.linghuiEditorEmptyState {
   color: #94a3b8;
   font-size: 12px;
   line-height: 1.6;
@@ -3131,74 +3218,26 @@
   background: rgba(15, 23, 42, 0.36);
 }
 
-.linghuiEditorInlineActions {
-  display: flex;
-  flex-wrap: wrap;
+.linghuiEditorLabelWithTooltip {
+  min-width: 0;
+  display: inline-flex;
   align-items: center;
-  gap: 10px;
+  gap: 6px;
+  color: inherit;
 }
 
-.linghuiEditorCompactActionCard {
-  flex: 1;
-  min-width: 220px;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 12px;
-  border-radius: 16px;
-  border: 1px dashed rgba(56, 189, 248, 0.42);
-  background:
-    radial-gradient(circle at top left, rgba(56, 189, 248, 0.1), transparent 30%),
-    rgba(15, 23, 42, 0.5);
-  cursor: pointer;
-  transition: transform 160ms ease, border-color 160ms ease, background 160ms ease;
-}
-
-.linghuiEditorCompactActionCard:hover {
-  transform: translateY(-1px);
-  border-color: rgba(56, 189, 248, 0.72);
-  background:
-    radial-gradient(circle at top left, rgba(56, 189, 248, 0.12), transparent 30%),
-    rgba(15, 23, 42, 0.62);
-}
-
-.linghuiEditorCompactActionThumb {
-  width: 42px;
-  height: 42px;
-  flex: 0 0 42px;
-  border-radius: 12px;
-  overflow: hidden;
-  display: flex;
+.linghuiEditorInfoIcon {
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: #dbeafe;
-  background: rgba(30, 41, 59, 0.94);
-}
-
-.linghuiEditorCompactActionThumb img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.linghuiEditorCompactActionMeta {
-  min-width: 0;
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.linghuiEditorCompactActionTitle {
-  color: #f8fafc;
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.linghuiEditorCompactActionHint {
   color: #94a3b8;
-  font-size: 12px;
-  line-height: 1.5;
+  background: rgba(30, 41, 59, 0.72);
+  font-size: 10px;
+  line-height: 1;
+  cursor: help;
 }
 
 .linghuiEditorToolChip {
@@ -3240,16 +3279,6 @@
     rgba(15, 23, 42, 0.72);
 }
 
-.linghuiEditorToolModeNotice {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 12px;
-  border-radius: 14px;
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  background: rgba(9, 13, 18, 0.44);
-}
-
 .linghuiEditorToolPanelHeader {
   display: flex;
   align-items: flex-start;
@@ -3261,13 +3290,6 @@
   color: #f8fafc;
   font-size: 13px;
   font-weight: 700;
-}
-
-.linghuiEditorToolPanelDesc {
-  color: #94a3b8;
-  font-size: 12px;
-  line-height: 1.5;
-  margin-top: 4px;
 }
 
 .linghuiEditorToolPresetList {
@@ -3348,6 +3370,126 @@
   font-size: 12px;
   font-weight: 700;
   padding: 0;
+}
+
+.linghuiEditorSummaryRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.linghuiEditorSummaryPill {
+  min-height: 28px;
+  padding: 0 12px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  background: rgba(30, 41, 59, 0.76);
+  color: #e2e8f0;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.linghuiEditorPassThroughCard {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(63, 63, 70, 0.56);
+  background:
+    radial-gradient(circle at top left, rgba(56, 189, 248, 0.1), transparent 34%),
+    rgba(15, 23, 42, 0.68);
+}
+
+.linghuiEditorPlayerCard {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.linghuiEditorPlayerSurface {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: 14px;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at top, rgba(56, 189, 248, 0.14), transparent 44%),
+    #020617;
+  border: 1px solid rgba(71, 85, 105, 0.42);
+}
+
+.linghuiEditorPlayerSurface.isStatic {
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+}
+
+.linghuiEditorPlayerSurface .stagePlayer {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border-radius: 14px;
+}
+
+.linghuiEditorPlayerSurface .xgplayer {
+  background: transparent;
+}
+
+.linghuiEditorPlayerSurface .xgplayer .xgplayer-controls {
+  backdrop-filter: blur(12px);
+  background: linear-gradient(180deg, rgba(2, 6, 23, 0), rgba(2, 6, 23, 0.88));
+}
+
+.linghuiEditorPlayerPoster {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.linghuiEditorPlayerPlaceholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: center;
+  justify-content: center;
+  color: #cbd5e1;
+  font-size: 13px;
+  text-align: center;
+  padding: 20px;
+}
+
+.linghuiEditorPlayerOverlay {
+  position: absolute;
+  inset: auto 12px 12px 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.linghuiEditorPlayerMetaRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.linghuiEditorPassThroughTitle {
+  color: #f8fafc;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.linghuiEditorPassThroughMeta {
+  color: #94a3b8;
+  font-size: 12px;
+  line-height: 1.6;
+  word-break: break-all;
 }
 
 .linghuiEditorAssetList {
@@ -3660,6 +3802,19 @@
   padding: 12px 14px 0;
 }
 
+.linghuiEditorFieldGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.linghuiEditorSelectField {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
 .linghuiEditorFieldLabel {
   color: #e2e8f0;
   font-size: 12px;
@@ -3695,6 +3850,12 @@
 
 .linghuiEditorSelect {
   font-size: 12px;
+}
+
+@media (max-width: 640px) {
+  .linghuiEditorFieldGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .linghuiReferenceDropzone {

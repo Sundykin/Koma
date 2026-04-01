@@ -1,6 +1,7 @@
 import { nanoid } from 'nanoid';
 import { electronService } from '../services/electronService';
 import { getStorageConfig, initStorageConfig } from './storageConfig';
+import { createLogger } from './logger';
 import {
   EMPTY_LINGHUI_EXECUTION_LOGS,
   EMPTY_LINGHUI_NODE_RUNS,
@@ -26,6 +27,7 @@ import type { LinghuiNodeType } from '../types/linghui';
 
 const LINGHUI_INDEX_KEY = 'koma.linghui.index.v1';
 const LINGHUI_DOC_KEY_PREFIX = 'koma.linghui.doc.';
+const logger = createLogger('LinghuiStorage');
 
 function clone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value));
@@ -471,6 +473,22 @@ export async function saveLinghuiWorkspaceAs(
   return saveLinghuiWorkspace(cloned);
 }
 
+export async function deleteLinghuiWorkspace(workspaceId: string): Promise<void> {
+  if (!workspaceId) return;
+
+  if (!electronService.isElectron()) {
+    window.localStorage.removeItem(`${LINGHUI_DOC_KEY_PREFIX}${workspaceId}`);
+    window.localStorage.removeItem(`${LINGHUI_DOC_KEY_PREFIX}workflow-index.${workspaceId}`);
+    window.localStorage.removeItem(`${LINGHUI_DOC_KEY_PREFIX}history-index.${workspaceId}`);
+    window.localStorage.removeItem(`${LINGHUI_DOC_KEY_PREFIX}asset-index.${workspaceId}`);
+    writeBrowserIndex(readBrowserIndex().filter(item => item.id !== workspaceId));
+    return;
+  }
+
+  await electronService.fs.remove(await getWorkspaceDir(workspaceId));
+  await writeIndex((await readIndex()).filter(item => item.id !== workspaceId));
+}
+
 function getWorkspaceNameFromFilePath(filePath: string): string {
   const filename = filePath.split(/[\\/]/).pop() ?? DEFAULT_LINGHUI_WORKSPACE_NAME;
   return sanitizeWorkspaceName(
@@ -657,9 +675,21 @@ async function materializeWorkspaceAssetSource(params: {
 
   if (
     rawSource.startsWith('http://') ||
-    rawSource.startsWith('https://') ||
-    rawSource.startsWith('blob:')
+    rawSource.startsWith('https://')
   ) {
+    const ext = getExtensionFromPath(rawSource, getExtensionFromMimeType(params.mimeType, params.fallbackExt));
+    const targetPath = `${params.assetDir}/${params.filename}.${ext}`;
+
+    logger.info('下载远程媒体到灵绘工作区', {
+      url: rawSource,
+      targetPath,
+    });
+
+    await electronService.fs.downloadFile(rawSource, targetPath);
+    return targetPath;
+  }
+
+  if (rawSource.startsWith('blob:')) {
     return rawSource;
   }
 
@@ -798,6 +828,11 @@ export interface LinghuiWorkspaceHistoryRecord {
   text?: string;
   snapshotPath: string;
   metadata?: Record<string, unknown>;
+}
+
+export interface LinghuiWorkspaceHistoryRecordResult {
+  record: LinghuiWorkspaceHistoryRecord;
+  materializedRun?: LinghuiNodeRunState;
 }
 
 export interface LinghuiWorkspaceAssetRecord {
@@ -1067,7 +1102,7 @@ export async function createLinghuiWorkspaceHistoryRecord(params: {
   nodeId: string;
   nodeData: LinghuiNodeData;
   nodeRun?: LinghuiNodeRunState;
-}): Promise<LinghuiWorkspaceHistoryRecord> {
+}): Promise<LinghuiWorkspaceHistoryRecordResult> {
   const { workspaceId, nodeId, nodeData, nodeRun } = params;
   const createdAt = nodeRun?.updatedAt ?? Date.now();
   const historyId = nanoid(12);
@@ -1075,6 +1110,7 @@ export async function createLinghuiWorkspaceHistoryRecord(params: {
   const textValue = getNodeAssetTextValue(nodeData, nodeRun);
   const media = getPrimaryAssetMedia(nodeData, nodeRun);
   const kind = resolveLinghuiLibraryRecordKind(nodeData, nodeRun);
+  const materializedRun: LinghuiNodeRunState | undefined = nodeRun ? clone(nodeRun) : undefined;
 
   if (!textValue && !media?.source) {
     throw new Error('当前节点还没有可记录的执行结果');
@@ -1096,6 +1132,35 @@ export async function createLinghuiWorkspaceHistoryRecord(params: {
   let persistedPosterSource: string | undefined;
   let persistedText = textValue || undefined;
 
+  const materializeMediaItem = async (
+    item: LinghuiMediaItem,
+    options: { filename: string; posterFilename?: string },
+  ): Promise<LinghuiMediaItem> => {
+    const fallbackExt = item.kind === 'audio' ? 'mp3' : item.kind === 'video' ? 'mp4' : 'png';
+    const nextSource = await materializeWorkspaceAssetSource({
+      assetDir: historyDir,
+      filename: options.filename,
+      source: item.source,
+      fallbackExt,
+      mimeType: item.mimeType,
+    });
+
+    const nextPosterSource = item.kind === 'video'
+      ? await materializeWorkspaceAssetSource({
+          assetDir: historyDir,
+          filename: options.posterFilename || `${options.filename}-poster`,
+          source: item.posterSource,
+          fallbackExt: 'png',
+        })
+      : undefined;
+
+    return {
+      ...item,
+      source: nextSource ?? item.source,
+      posterSource: nextPosterSource ?? item.posterSource,
+    };
+  };
+
   if (kind === 'text') {
     if (persistedText && electronService.isElectron()) {
       const textPath = `${historyDir}/content.txt`;
@@ -1103,21 +1168,58 @@ export async function createLinghuiWorkspaceHistoryRecord(params: {
       persistedSource = textPath;
     }
   } else {
-    persistedSource = await materializeWorkspaceAssetSource({
-      assetDir: historyDir,
-      filename: kind,
-      source: media?.source,
-      fallbackExt: kind === 'audio' ? 'mp3' : kind === 'video' ? 'mp4' : 'png',
-      mimeType: media?.mimeType,
-    });
-
-    if (kind === 'video') {
-      persistedPosterSource = await materializeWorkspaceAssetSource({
-        assetDir: historyDir,
-        filename: 'poster',
-        source: media?.posterSource,
-        fallbackExt: 'png',
+    if (materializedRun?.result?.primary) {
+      materializedRun.result.primary = await materializeMediaItem(materializedRun.result.primary, {
+        filename: kind,
+        posterFilename: kind === 'video' ? 'poster' : undefined,
       });
+      persistedSource = materializedRun.result.primary.source;
+      persistedPosterSource = kind === 'video' ? materializedRun.result.primary.posterSource : undefined;
+    } else if (media) {
+      persistedSource = await materializeWorkspaceAssetSource({
+        assetDir: historyDir,
+        filename: kind,
+        source: media.source,
+        fallbackExt: kind === 'audio' ? 'mp3' : kind === 'video' ? 'mp4' : 'png',
+        mimeType: media.mimeType,
+      });
+
+      if (kind === 'video') {
+        persistedPosterSource = await materializeWorkspaceAssetSource({
+          assetDir: historyDir,
+          filename: 'poster',
+          source: media.posterSource,
+          fallbackExt: 'png',
+        });
+      }
+    }
+
+    if (materializedRun?.result && !materializedRun.result.primary && persistedSource) {
+      materializedRun.result.primary = {
+        kind: kind as 'image' | 'video' | 'audio',
+        label: historyName,
+        source: persistedSource,
+        posterSource: persistedPosterSource,
+      };
+    }
+
+    if (materializedRun?.result?.items?.length) {
+      materializedRun.result.items = await Promise.all(
+        materializedRun.result.items.map(async (item, index) => {
+          if (!item) return item;
+          return materializeMediaItem(item, { filename: `item-${index + 1}` });
+        }),
+      );
+    }
+
+    if (materializedRun?.result?.shots?.length) {
+      materializedRun.result.shots = await Promise.all(
+        materializedRun.result.shots.map(async (shot, index) => {
+          if (!shot || !shot.image) return shot;
+          const nextImage = await materializeMediaItem(shot.image, { filename: `shot-${index + 1}` });
+          return { ...shot, image: nextImage };
+        }),
+      );
     }
   }
 
@@ -1153,7 +1255,7 @@ export async function createLinghuiWorkspaceHistoryRecord(params: {
       id: nodeId,
       data: clone(nodeData),
     },
-    run: nodeRun ? clone(nodeRun) : null,
+    run: materializedRun ?? null,
   };
 
   if (electronService.isElectron()) {
@@ -1171,7 +1273,7 @@ export async function createLinghuiWorkspaceHistoryRecord(params: {
     browserStorageKey: storageKey,
   });
 
-  return record;
+  return { record, materializedRun };
 }
 
 export async function importLinghuiWorkspaceAsset(
