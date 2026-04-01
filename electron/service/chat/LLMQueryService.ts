@@ -42,6 +42,7 @@ export interface LLMQueryResponse {
     code: 'EMPTY_MESSAGES' | 'TIMEOUT' | 'ABORTED' | 'API_ERROR' | 'UNKNOWN';
     message: string;
   };
+  retryCount?: number;
 }
 
 const DEFAULT_TIMEOUT_MS = 60_000;
@@ -66,7 +67,9 @@ function isPrivateHost(baseUrl: string): boolean {
   }
 
   if (hostname === 'localhost') return true;
+  if (hostname === '0.0.0.0') return true;
 
+  // IPv4 checks
   const parts = hostname.split('.').map(Number);
   if (parts.length === 4 && parts.every(n => !Number.isNaN(n))) {
     const [a, b] = parts;
@@ -77,7 +80,48 @@ function isPrivateHost(baseUrl: string): boolean {
     if (a === 169 && b === 254) return true;                             // 169.254.0.0/16 link-local
   }
 
+  // IPv6 checks — URL 中 IPv6 地址被方括号包裹，new URL().hostname 会保留方括号
+  const ipv6 = hostname.startsWith('[') && hostname.endsWith(']')
+    ? hostname.slice(1, -1)
+    : hostname;
+
+  if (ipv6 === '::1') return true;                                      // IPv6 localhost
+  if (ipv6 === '::') return true;                                       // IPv6 零地址
+  if (/^fe80:/i.test(ipv6)) return true;                                // fe80::/10 link-local
+  if (/^fc[0-9a-f]{2}:/i.test(ipv6)) return true;                      // fc00::/7 unique local (fc)
+  if (/^fd[0-9a-f]{2}:/i.test(ipv6)) return true;                      // fc00::/7 unique local (fd)
+
+  // IPv4-mapped IPv6: ::ffff:x.x.x.x 或 ::ffff:xxxx:xxxx
+  if (/^::ffff:/i.test(ipv6)) {
+    const mapped = ipv6.slice(7);
+    const v4parts = mapped.split('.').map(Number);
+    if (v4parts.length === 4 && v4parts.every(n => !Number.isNaN(n))) {
+      const [a, b] = v4parts;
+      if (a === 127 || a === 10 || (a === 192 && b === 168) ||
+          (a === 172 && b >= 16 && b <= 31) || (a === 169 && b === 254)) return true;
+    }
+    // 保守策略：所有 ::ffff: 映射地址一律拦截
+    return true;
+  }
+
   return false;
+}
+
+const MAX_RETRIES = 2;
+
+function isRetryableError(errMsg: string): boolean {
+  const lower = errMsg.toLowerCase();
+  return (
+    lower.includes('429') ||
+    lower.includes('503') ||
+    lower.includes('rate limit') ||
+    lower.includes('too many requests') ||
+    lower.includes('service unavailable')
+  );
+}
+
+function retryDelayMs(attempt: number): number {
+  return Math.min(1000 * Math.pow(2, attempt), 8000);
 }
 
 export class LLMQueryService {
@@ -111,95 +155,117 @@ export class LLMQueryService {
     }
 
     const timeoutMs = request.options?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
     const startTime = Date.now();
 
     console.info('[LLMQuery] 请求开始', { ...logCtx, timeoutMs });
 
-    try {
-      const sessionConfig: SessionConfig = {
-        modelProvider: request.config.modelProvider,
-        modelName: request.config.modelName,
-        apiKey: request.config.apiKey,
-        baseUrl: request.config.baseUrl,
-        temperature: request.config.temperature,
-        maxTokens: request.config.maxTokens,
-      };
+    let retryCount = 0;
 
-      const llm = createLLM(sessionConfig);
-      const messages = toLangChainMessages(request.messages);
+    while (true) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
 
-      // 打印实际发送的参数，排查兼容性问题
-      if (sessionConfig.baseUrl) {
-        try {
-          const SENSITIVE_KEYS = new Set(['apikey', 'api_key', 'authorization', 'token', 'secret']);
-          const params = (llm as any).invocationParams?.() ?? {};
-          console.debug('[LLMQuery] OpenAI-compatible 请求参数', {
-            ...logCtx,
-            baseUrl: sessionConfig.baseUrl,
-            invocationParams: Object.fromEntries(
-              Object.entries(params).filter(([k, v]) => v !== undefined && !SENSITIVE_KEYS.has(k.toLowerCase()))
-            ),
-          });
-        } catch { /* ignore */ }
-      }
+      try {
+        const sessionConfig: SessionConfig = {
+          modelProvider: request.config.modelProvider,
+          modelName: request.config.modelName,
+          apiKey: request.config.apiKey,
+          baseUrl: request.config.baseUrl,
+          temperature: request.config.temperature,
+          maxTokens: request.config.maxTokens,
+        };
 
-      const response = await llm.invoke(messages, { signal: controller.signal });
+        const llm = createLLM(sessionConfig);
+        const messages = toLangChainMessages(request.messages);
 
-      const content = typeof response.content === 'string'
-        ? response.content
-        : JSON.stringify(response.content);
+        // 打印实际发送的参数，排查兼容性问题
+        if (sessionConfig.baseUrl) {
+          try {
+            const SENSITIVE_KEYS = new Set(['apikey', 'api_key', 'authorization', 'token', 'secret']);
+            const params = (llm as any).invocationParams?.() ?? {};
+            console.debug('[LLMQuery] OpenAI-compatible 请求参数', {
+              ...logCtx,
+              baseUrl: sessionConfig.baseUrl,
+              invocationParams: Object.fromEntries(
+                Object.entries(params).filter(([k, v]) => v !== undefined && !SENSITIVE_KEYS.has(k.toLowerCase()))
+              ),
+            });
+          } catch { /* ignore */ }
+        }
 
-      const usage = response.usage_metadata
-        ? {
-            promptTokens: response.usage_metadata.input_tokens ?? 0,
-            completionTokens: response.usage_metadata.output_tokens ?? 0,
-            totalTokens: response.usage_metadata.total_tokens ?? 0,
+        const response = await llm.invoke(messages, { signal: controller.signal });
+
+        const content = typeof response.content === 'string'
+          ? response.content
+          : JSON.stringify(response.content);
+
+        const usage = response.usage_metadata
+          ? {
+              promptTokens: response.usage_metadata.input_tokens ?? 0,
+              completionTokens: response.usage_metadata.output_tokens ?? 0,
+              totalTokens: response.usage_metadata.total_tokens ?? 0,
+            }
+          : undefined;
+
+        const durationMs = Date.now() - startTime;
+        console.info('[LLMQuery] 请求完成', {
+          ...logCtx,
+          durationMs,
+          contentLength: content.length,
+          retryCount,
+          ...(usage ? { inputTokens: usage.promptTokens, outputTokens: usage.completionTokens } : {}),
+        });
+
+        return { content, usage, retryCount: retryCount > 0 ? retryCount : undefined };
+      } catch (err: unknown) {
+        const durationMs = Date.now() - startTime;
+        const errMsg = err instanceof Error ? err.message : String(err);
+
+        if (controller.signal.aborted) {
+          // 超时：重试一次
+          if (retryCount < MAX_RETRIES) {
+            retryCount++;
+            console.warn('[LLMQuery] 请求超时，准备重试', { ...logCtx, durationMs, timeoutMs, retryCount });
+            continue;
           }
-        : undefined;
+          console.error('[LLMQuery] 请求超时（已达重试上限）', { ...logCtx, durationMs, timeoutMs });
+          return {
+            content: '',
+            error: { code: 'TIMEOUT', message: `LLM query timed out after ${timeoutMs}ms` },
+          };
+        }
+        if (err instanceof Error && err.name === 'AbortError') {
+          console.warn('[LLMQuery] 请求被中止', { ...logCtx, durationMs });
+          return {
+            content: '',
+            error: { code: 'ABORTED', message: 'LLM query was aborted' },
+          };
+        }
 
-      const durationMs = Date.now() - startTime;
-      console.info('[LLMQuery] 请求完成', {
-        ...logCtx,
-        durationMs,
-        contentLength: content.length,
-        ...(usage ? { inputTokens: usage.promptTokens, outputTokens: usage.completionTokens } : {}),
-      });
+        // 对 429/503 等可重试错误进行指数退避重试
+        if (retryCount < MAX_RETRIES && isRetryableError(errMsg)) {
+          const delay = retryDelayMs(retryCount);
+          retryCount++;
+          console.warn('[LLMQuery] 可重试错误，等待后重试', { ...logCtx, durationMs, error: errMsg, retryCount, delay });
+          await new Promise(resolve => setTimeout(resolve, delay));
+          continue;
+        }
 
-      return { content, usage };
-    } catch (err: unknown) {
-      const durationMs = Date.now() - startTime;
-      const errMsg = err instanceof Error ? err.message : String(err);
-
-      if (controller.signal.aborted) {
-        console.error('[LLMQuery] 请求超时', { ...logCtx, durationMs, timeoutMs });
+        // 内部日志记录完整错误
+        console.error('[LLMQuery] 请求异常', { ...logCtx, durationMs, error: errMsg, retryCount });
+        // 返回给前端：保留 API 状态码和错误描述，但脱敏 API Key
+        const safeMsg = errMsg
+          .replace(/sk-[a-zA-Z0-9_-]{6,}/g, 'sk-***')
+          .replace(/AIzaSy[a-zA-Z0-9_-]{20,}/g, 'AIza***')
+          .replace(/xai-[a-zA-Z0-9_-]{6,}/g, 'xai-***')
+          .replace(/(?:api[_-]?)?key[=:]\s*\S+/gi, 'key=***');
         return {
           content: '',
-          error: { code: 'TIMEOUT', message: `LLM query timed out after ${timeoutMs}ms` },
+          error: { code: 'API_ERROR', message: safeMsg },
         };
+      } finally {
+        clearTimeout(timer);
       }
-      if (err instanceof Error && err.name === 'AbortError') {
-        console.warn('[LLMQuery] 请求被中止', { ...logCtx, durationMs });
-        return {
-          content: '',
-          error: { code: 'ABORTED', message: 'LLM query was aborted' },
-        };
-      }
-      // 内部日志记录完整错误
-      console.error('[LLMQuery] 请求异常', { ...logCtx, durationMs, error: errMsg });
-      // 返回给前端：保留 API 状态码和错误描述，但脱敏 API Key
-      const safeMsg = errMsg
-        .replace(/sk-[a-zA-Z0-9_-]{6,}/g, 'sk-***')
-        .replace(/AIzaSy[a-zA-Z0-9_-]{20,}/g, 'AIza***')
-        .replace(/xai-[a-zA-Z0-9_-]{6,}/g, 'xai-***')
-        .replace(/(?:api[_-]?)?key[=:]\s*\S+/gi, 'key=***');
-      return {
-        content: '',
-        error: { code: 'API_ERROR', message: safeMsg },
-      };
-    } finally {
-      clearTimeout(timer);
     }
   }
 }

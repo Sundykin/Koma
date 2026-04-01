@@ -11,6 +11,8 @@ import { logLLMCall } from '../store/aiCallLogger';
 import { createLogger } from '../store/logger';
 import { TaskManager, Task } from './TaskManager';
 import { parseLLMJSON } from '../utils/llmJsonParser';
+import { cleanText, splitVisualClauses, CHARACTER_STORY_TOKENS, sanitizeCharacterAppearance } from '../utils/textUtils';
+import { runWithConcurrency } from '../utils/concurrency';
 
 const logger = createLogger('ScriptAnalysisService');
 
@@ -20,53 +22,7 @@ const CHUNK_CONCURRENCY = 3;
 function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
-
-/** 并发控制：最多 limit 个任务同时执行，参考 claude-code Promise.allSettled 模式 */
-async function runWithConcurrency<T>(
-  tasks: (() => Promise<T>)[],
-  limit: number
-): Promise<PromiseSettledResult<T>[]> {
-  const results: PromiseSettledResult<T>[] = new Array(tasks.length);
-  let index = 0;
-  async function next(): Promise<void> {
-    while (index < tasks.length) {
-      const i = index++;
-      try {
-        const value = await tasks[i]();
-        results[i] = { status: 'fulfilled', value };
-      } catch (reason) {
-        results[i] = { status: 'rejected', reason };
-      }
-    }
-  }
-  await Promise.all(Array.from({ length: Math.min(limit, tasks.length) }, () => next()));
-  return results;
-}
 import { buildChunkContextPrompt, splitScriptIntoChunks } from './scriptAnalysisChunking';
-
-function cleanText(value?: string): string {
-  return (value || '').replace(/\s+/g, ' ').replace(/\s*,\s*/g, '，').trim();
-}
-
-function splitVisualClauses(value?: string): string[] {
-  return (value || '')
-    .split(/[，,。；;、\n]+/)
-    .map(cleanText)
-    .filter(Boolean);
-}
-
-const CHARACTER_STORY_TOKENS = [
-  '店主', '老板', '职业', '工作', '靠', '为生', '接私活',
-  '能看见', '看见鬼', '鬼魂', '灵异',
-  '养父', '养母', '继承', '去世', '身世', '成谜',
-  '火场', '被救', '遇难', '全家',
-];
-
-function sanitizeCharacterAppearance(value?: string, fallback?: string): string {
-  const clauses = splitVisualClauses(value);
-  const filtered = clauses.filter(clause => !CHARACTER_STORY_TOKENS.some(token => clause.includes(token)));
-  return cleanText(filtered.join('，') || fallback || '');
-}
 
 // Prompt 注入防御：system prompt 末尾追加的安全规则
 const INJECTION_GUARD = `
@@ -252,7 +208,7 @@ export class ScriptAnalysisService {
     this.llmConfig = await getActiveLLMConfig(configId);
     if (this.llmConfig) {
       this.llmProvider = createLLMProvider({
-        provider: this.llmConfig.provider === 'openai-compatible' ? 'openai' : this.llmConfig.provider as any,
+        provider: this.llmConfig.provider as any,
         apiKey: this.llmConfig.apiKey,
         baseUrl: this.llmConfig.baseUrl,
         modelName: this.llmConfig.modelName,

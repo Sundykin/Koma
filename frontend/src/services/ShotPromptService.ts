@@ -4,13 +4,14 @@
  * v2: 支持 force 强制重新生成，分离 image/video 任务
  */
 import type { Shot, Character, Scene, LLMModelConfig } from '../types';
-import { createLLMProvider } from '../providers';
+import { createLLMProvider, type LLMProvider } from '../providers';
 import { getActiveLLMConfig } from '../store/globalStore';
 import { resolvePromptTemplate } from '../store/promptTemplates';
 import type { PromptTemplateType } from '../store/promptTemplates';
 import { loadCharacters, loadScenes, loadProps, updateShot } from '../store/projectStore';
 import { createLogger } from '../store/logger';
 import { createMentionString } from '../editor/mentionTypes';
+import { runWithConcurrency } from '../utils/concurrency';
 
 const logger = createLogger('ShotPrompt');
 
@@ -69,6 +70,7 @@ export class ShotPromptService {
   private projectId: string;
   private episodeId: string;
   private llmConfig: LLMModelConfig | null = null;
+  private llmProvider: LLMProvider | null = null;
   private styleSnapshot?: StyleSnapshotLike;
 
   constructor(
@@ -86,6 +88,16 @@ export class ShotPromptService {
    */
   async setLLMConfig(configId?: string): Promise<boolean> {
     this.llmConfig = await getActiveLLMConfig(configId);
+    if (this.llmConfig) {
+      this.llmProvider = createLLMProvider({
+        provider: this.llmConfig.provider as any,
+        apiKey: this.llmConfig.apiKey,
+        baseUrl: this.llmConfig.baseUrl,
+        modelName: this.llmConfig.modelName,
+      });
+    } else {
+      this.llmProvider = null;
+    }
     return this.llmConfig !== null;
   }
 
@@ -232,17 +244,14 @@ export class ShotPromptService {
     const resolvedPrompt = await resolvePromptTemplate(templateKey, templateVariables);
     const prompt = resolvedPrompt.prompt;
 
-    const provider = createLLMProvider({
-      provider: this.llmConfig!.provider === 'openai-compatible' ? 'openai' : this.llmConfig!.provider as any,
-      apiKey: this.llmConfig!.apiKey,
-      baseUrl: this.llmConfig!.baseUrl,
-      modelName: this.llmConfig!.modelName,
-    });
+    if (!this.llmProvider) {
+      throw new Error('LLM provider not initialized. Call setLLMConfig() first.');
+    }
 
     const resolvedSystemPrompt = await resolvePromptTemplate('shot_prompt_system', {});
     const systemPrompt = resolvedSystemPrompt.prompt;
 
-    const result = await provider.chat([
+    const result = await this.llmProvider.chat([
       { role: 'system', content: systemPrompt },
       { role: 'user', content: prompt },
     ]);
@@ -309,16 +318,13 @@ export class ShotPromptService {
 
     const resolvedPrompt = await resolvePromptTemplate('grid_shot_prompt_generation', templateVariables);
 
-    const provider = createLLMProvider({
-      provider: this.llmConfig!.provider === 'openai-compatible' ? 'openai' : this.llmConfig!.provider as any,
-      apiKey: this.llmConfig!.apiKey,
-      baseUrl: this.llmConfig!.baseUrl,
-      modelName: this.llmConfig!.modelName,
-    });
+    if (!this.llmProvider) {
+      throw new Error('LLM provider not initialized. Call setLLMConfig() first.');
+    }
 
     const resolvedSystemPrompt = await resolvePromptTemplate('shot_prompt_system', {});
 
-    const result = await provider.chat([
+    const result = await this.llmProvider.chat([
       { role: 'system', content: resolvedSystemPrompt.prompt },
       { role: 'user', content: resolvedPrompt.prompt },
     ]);
@@ -343,7 +349,6 @@ export class ShotPromptService {
     generateFlags?: { image?: boolean; video?: boolean },
     options?: { force?: boolean },
   ): Promise<PromptGenerationResult[]> {
-    const results: PromptGenerationResult[] = [];
     const wantsImage = generateFlags?.image ?? true;
     const wantsVideo = generateFlags?.video ?? true;
     const force = options?.force ?? false;
@@ -354,34 +359,39 @@ export class ShotPromptService {
       return needImage || needVideo;
     });
 
-    for (let i = 0; i < shotsToGenerate.length; i++) {
-      const shot = shotsToGenerate[i];
-      try {
-        const result = await this.generateAndSaveShotPrompt(
-          shot,
-          stylePrefix,
-          generateFlags,
-          options,
-          styleSnapshot,
-        );
-        results.push(result);
-        onProgress?.(i + 1, shotsToGenerate.length, result);
-      } catch (error: unknown) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        const result: PromptGenerationResult = {
-          shotId: shot.id,
-          imagePrompt: '',
-          videoPrompt: '',
-          success: false,
-          error: errorMessage,
-        };
-        results.push(result);
-        onProgress?.(i + 1, shotsToGenerate.length, result);
-        logger.error(`生成失败: ${shot.id}`, error);
-      }
-    }
+    if (shotsToGenerate.length === 0) return [];
 
-    return results;
+    // 预加载 characters，避免并发时 N 次重复 IO
+    const preloadedCharacters = await loadCharacters(this.projectId);
+
+    let completedCount = 0;
+    const tasks = shotsToGenerate.map((shot) => async () => {
+      const result = await this.generateAndSaveShotPrompt(
+        shot,
+        stylePrefix,
+        generateFlags,
+        options,
+        styleSnapshot,
+        preloadedCharacters,
+      );
+      completedCount++;
+      onProgress?.(completedCount, shotsToGenerate.length, result);
+      return result;
+    });
+
+    const settled = await runWithConcurrency(tasks, 3);
+
+    return settled.map((r, i) =>
+      r.status === 'fulfilled'
+        ? r.value
+        : {
+            shotId: shotsToGenerate[i].id,
+            imagePrompt: '',
+            videoPrompt: '',
+            success: false,
+            error: (r.reason as Error)?.message || String(r.reason),
+          }
+    );
   }
 
   /**
@@ -394,10 +404,11 @@ export class ShotPromptService {
     stylePrefix: string = '',
     generateFlags?: { image?: boolean; video?: boolean },
     options?: { force?: boolean },
-    styleSnapshot?: StyleSnapshotLike
+    styleSnapshot?: StyleSnapshotLike,
+    preloadedCharacters?: Character[],
   ): Promise<PromptGenerationResult> {
     try {
-      const characters = await loadCharacters(this.projectId);
+      const characters = preloadedCharacters || await loadCharacters(this.projectId);
       let workingShot = shot;
       let prerequisiteGridImagePrompt: string | undefined;
       let imagePrompt: string;

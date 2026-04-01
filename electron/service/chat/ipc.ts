@@ -22,6 +22,16 @@ const VALID_PROVIDERS = new Set(['openai', 'anthropic', 'google']);
 const MAX_CONTENT_LENGTH = 100_000;
 const MAX_MESSAGES = 200;
 const MAX_CONCURRENT_LLM_QUERIES = 5;
+const MAX_CONCURRENT_WORKFLOW_QUERIES = 3;
+const MAX_CONCURRENT_USER_QUERIES = 2;
+const QUEUE_TIMEOUT_MS = 30_000;
+
+const WORKFLOW_SOURCE_PATTERNS = ['workflow', 'script', 'shot', 'entity', 'episode'];
+
+function isWorkflowSource(source: string): boolean {
+  const lower = source.toLowerCase();
+  return WORKFLOW_SOURCE_PATTERNS.some(p => lower.includes(p));
+}
 
 function validateLLMQueryRequest(args: unknown): args is LLMQueryRequest {
   if (!args || typeof args !== 'object') return false;
@@ -49,6 +59,59 @@ function validateLLMQueryRequest(args: unknown): args is LLMQueryRequest {
 class ChatIpc {
   private initialized = false;
   private activeLLMQueries = 0;
+  private activeWorkflowQueries = 0;
+  private activeUserQueries = 0;
+  private waitQueue: Array<() => void> = [];
+
+  private canAcquireSlot(isWorkflow: boolean): boolean {
+    if (this.activeLLMQueries >= MAX_CONCURRENT_LLM_QUERIES) return false;
+    if (isWorkflow && this.activeWorkflowQueries >= MAX_CONCURRENT_WORKFLOW_QUERIES) return false;
+    if (!isWorkflow && this.activeUserQueries >= MAX_CONCURRENT_USER_QUERIES) return false;
+    return true;
+  }
+
+  private acquireSlot(isWorkflow: boolean): void {
+    this.activeLLMQueries++;
+    if (isWorkflow) this.activeWorkflowQueries++;
+    else this.activeUserQueries++;
+  }
+
+  private releaseSlot(isWorkflow: boolean): void {
+    this.activeLLMQueries--;
+    if (isWorkflow) this.activeWorkflowQueries--;
+    else this.activeUserQueries--;
+    // 唤醒队列中等待的请求
+    if (this.waitQueue.length > 0) {
+      const next = this.waitQueue.shift()!;
+      next();
+    }
+  }
+
+  private waitForSlot(isWorkflow: boolean): Promise<boolean> {
+    if (this.canAcquireSlot(isWorkflow)) {
+      this.acquireSlot(isWorkflow);
+      return Promise.resolve(true);
+    }
+    return new Promise<boolean>((resolve) => {
+      const timer = setTimeout(() => {
+        const idx = this.waitQueue.indexOf(tryAcquire);
+        if (idx !== -1) this.waitQueue.splice(idx, 1);
+        resolve(false);
+      }, QUEUE_TIMEOUT_MS);
+
+      const tryAcquire = () => {
+        if (this.canAcquireSlot(isWorkflow)) {
+          clearTimeout(timer);
+          this.acquireSlot(isWorkflow);
+          resolve(true);
+        } else {
+          // 槽位被其他类型请求拿走，重新排队
+          this.waitQueue.push(tryAcquire);
+        }
+      };
+      this.waitQueue.push(tryAcquire);
+    });
+  }
 
   init(): void {
     if (this.initialized) return;
@@ -59,17 +122,18 @@ class ChatIpc {
     ipcMain.handle('llm:query', async (_event, args: LLMQueryRequest) => {
       const traceId = args?.options?.traceId || `ipc-${Date.now()}`;
       const source = args?.options?.source || 'unknown';
+      const isWorkflow = isWorkflowSource(source);
 
       if (!validateLLMQueryRequest(args)) {
         console.warn('[ChatIpc] llm:query 参数校验失败', { traceId, source });
         return { content: '', error: { code: 'API_ERROR' as const, message: 'Invalid request: bad messages, role, content length, or provider' } };
       }
-      if (this.activeLLMQueries >= MAX_CONCURRENT_LLM_QUERIES) {
-        console.warn('[ChatIpc] llm:query 并发超限', { traceId, source, active: this.activeLLMQueries, max: MAX_CONCURRENT_LLM_QUERIES });
-        return { content: '', error: { code: 'API_ERROR' as const, message: 'Too many concurrent LLM queries, please retry later' } };
+      const acquired = await this.waitForSlot(isWorkflow);
+      if (!acquired) {
+        console.warn('[ChatIpc] llm:query 排队超时', { traceId, source, isWorkflow, active: this.activeLLMQueries });
+        return { content: '', error: { code: 'API_ERROR' as const, message: 'LLM query queue timeout, please retry later' } };
       }
-      this.activeLLMQueries++;
-      console.info('[ChatIpc] llm:query 接收请求', { traceId, source, active: this.activeLLMQueries });
+      console.info('[ChatIpc] llm:query 接收请求', { traceId, source, isWorkflow, active: this.activeLLMQueries, activeWorkflow: this.activeWorkflowQueries, activeUser: this.activeUserQueries });
       try {
         // query() 内部已捕获所有异常并返回结构化错误，此处 catch 仅作保底
         const result = await llmQueryService.query(args);
@@ -82,7 +146,7 @@ class ChatIpc {
         console.error('[ChatIpc] llm:query 未预期异常', { traceId, source, error: errMsg });
         return { content: '', error: { code: 'UNKNOWN' as const, message: 'LLM query failed' } };
       } finally {
-        this.activeLLMQueries--;
+        this.releaseSlot(isWorkflow);
       }
     });
 

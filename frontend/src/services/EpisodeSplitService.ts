@@ -85,7 +85,7 @@ export class EpisodeSplitService {
 
   constructor(llmConfig: LLMModelConfig) {
     this.provider = createLLMProvider({
-      provider: llmConfig.provider === 'openai-compatible' ? 'openai' : llmConfig.provider as any,
+      provider: llmConfig.provider as any,
       apiKey: llmConfig.apiKey,
       baseUrl: llmConfig.baseUrl,
       modelName: llmConfig.modelName,

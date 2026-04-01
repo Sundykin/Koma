@@ -24,12 +24,17 @@ export function createLLMProvider(config: ModelConfig): LLMProvider {
     return new IPCLLMProvider(config);
   }
 
-  // 非 Electron fallback（开发/测试用）
-  switch (config.provider) {
+  // 规范化 openai-compatible → openai
+  const normalizedProvider = config.provider === 'openai-compatible' ? 'openai' : config.provider;
+
+  // 非 Electron fallback（开发/测试用）— 生产环境禁止直连，防止 API key 暴露
+  if (typeof process !== 'undefined' && process.env?.NODE_ENV === 'production') {
+    throw new Error('[LLMProvider] Production environment must use IPC — direct API key access is not allowed');
+  }
+  switch (normalizedProvider) {
     case 'gemini':
       return new GeminiProvider(config);
     case 'openai':
-    case 'openai-compatible':
       return new OpenAIProvider(config);
     case 'claude':
       return new ClaudeProvider(config);

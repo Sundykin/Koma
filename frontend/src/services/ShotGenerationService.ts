@@ -6,6 +6,7 @@
 import type { Character, Scene, StoredMediaAsset } from '../types';
 import { loadEpisodeShots } from '../store/projectStore';
 import { shotImageWorkflow } from '../workflow/shotImageWorkflow';
+import { runWithConcurrency } from '../utils/concurrency';
 
 interface StyleSnapshotLike {
   ttiStylePrefix?: string;
@@ -67,27 +68,47 @@ export async function batchGenerateShotImages(
     onProgress?: (overall: number, current: { shotId: string; progress: number; step?: string }) => void;
   }
 ): Promise<Array<{ shotId: string; success: boolean; asset?: StoredMediaAsset; error?: string }>> {
-  const results: Array<{ shotId: string; success: boolean; asset?: StoredMediaAsset; error?: string }> = [];
+  if (shotIds.length === 0) return [];
 
-  for (let i = 0; i < shotIds.length; i++) {
-    const shotId = shotIds[i];
-    try {
-      const asset = await generateShotImage(projectId, episodeId, shotId, characters, scenes, ttiSelection, {
-        aspectRatio: styleOptions?.aspectRatio,
-        theme: styleOptions?.theme,
-        stylePrompt: styleOptions?.stylePrompt,
-        styleSnapshot: styleOptions?.styleSnapshot,
-        project: styleOptions?.project,
-        onProgress: (progress, step) => {
-          const overall = Math.round(((i + progress / 100) / shotIds.length) * 100);
-          styleOptions?.onProgress?.(overall, { shotId, progress, step });
-        },
-      });
-      results.push({ shotId, success: true, asset });
-    } catch (err: any) {
-      results.push({ shotId, success: false, error: err?.message || String(err) });
+  // 预加载 shots，避免并发时 N 次重复 IO
+  const allShots = await loadEpisodeShots(projectId, episodeId);
+
+  let completedCount = 0;
+  const tasks = shotIds.map((shotId) => async () => {
+    const shot = allShots.find(s => s.id === shotId);
+    if (!shot) {
+      completedCount++;
+      return { shotId, success: false as const, error: '分镜不存在' };
     }
-  }
 
-  return results;
+    const workflowParams = {
+      projectId,
+      episodeId,
+      shot,
+      characters,
+      scenes,
+      ttiSelection,
+      aspectRatio: styleOptions?.aspectRatio,
+      theme: styleOptions?.theme,
+      stylePrompt: styleOptions?.stylePrompt,
+      styleSnapshot: styleOptions?.styleSnapshot,
+      project: styleOptions?.project,
+      onProgress: (progress: number, step?: string) => {
+        const overall = Math.round(((completedCount + progress / 100) / shotIds.length) * 100);
+        styleOptions?.onProgress?.(overall, { shotId, progress, step });
+      },
+    };
+
+    const asset = await shotImageWorkflow(workflowParams);
+    completedCount++;
+    return { shotId, success: true as const, asset };
+  });
+
+  const settled = await runWithConcurrency(tasks, 2);
+
+  return settled.map((r, i) =>
+    r.status === 'fulfilled'
+      ? r.value
+      : { shotId: shotIds[i], success: false, error: (r.reason as Error)?.message || String(r.reason) }
+  );
 }

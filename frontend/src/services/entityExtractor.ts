@@ -6,30 +6,7 @@ import type { AppSettings, Character, Scene } from '../types';
 import { getProjectLLMProvider } from '../providers';
 import { resolvePromptTemplate } from '../store/promptTemplates';
 import { parseLLMJSON } from '../utils/llmJsonParser';
-
-function cleanText(value?: string): string {
-  return (value || '').replace(/\s+/g, ' ').replace(/\s*,\s*/g, '，').trim();
-}
-
-function splitVisualClauses(value?: string): string[] {
-  return (value || '')
-    .split(/[，,。；;、\n]+/)
-    .map(cleanText)
-    .filter(Boolean);
-}
-
-const CHARACTER_STORY_TOKENS = [
-  '店主', '老板', '职业', '工作', '靠', '为生', '接私活',
-  '能看见', '看见鬼', '鬼魂', '灵异',
-  '养父', '养母', '继承', '去世', '身世', '成谜',
-  '火场', '被救', '遇难', '全家',
-];
-
-function sanitizeCharacterAppearance(value?: string, fallback?: string): string {
-  const clauses = splitVisualClauses(value);
-  const filtered = clauses.filter(clause => !CHARACTER_STORY_TOKENS.some(token => clause.includes(token)));
-  return cleanText(filtered.join('，') || fallback || '');
-}
+import { cleanText, splitVisualClauses, CHARACTER_STORY_TOKENS, sanitizeCharacterAppearance } from '../utils/textUtils';
 
 // 道具接口
 export interface Prop {

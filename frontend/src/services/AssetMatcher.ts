@@ -40,7 +40,7 @@ export class AssetMatcher {
   constructor(llmConfig?: LLMModelConfig) {
     if (llmConfig) {
       this.provider = createLLMProvider({
-        provider: llmConfig.provider === 'openai-compatible' ? 'openai' : llmConfig.provider as any,
+        provider: llmConfig.provider as any,
         apiKey: llmConfig.apiKey,
         baseUrl: llmConfig.baseUrl,
         modelName: llmConfig.modelName,
@@ -230,7 +230,10 @@ export class AssetMatcher {
     candidate: AssetCandidate,
     potentialMatches: { asset: Character | Scene | Prop; type: string }[]
   ): Promise<MatchResult | null> {
-    if (!this.provider || potentialMatches.length === 0) {
+    if (!this.provider) {
+      throw new Error('LLM provider not configured. Call setLLMConfig() first.');
+    }
+    if (potentialMatches.length === 0) {
       return null;
     }
 

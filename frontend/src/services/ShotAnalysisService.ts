@@ -153,9 +153,9 @@ export class ShotAnalysisService {
 
       TaskManager.updateTask(taskId, { progress: 30 });
 
-      // 调用 LLM (处理 openai-compatible 类型)
+      // 调用 LLM
       const provider = createLLMProvider({
-        provider: this.llmConfig!.provider === 'openai-compatible' ? 'openai' : this.llmConfig!.provider as any,
+        provider: this.llmConfig!.provider as any,
         apiKey: this.llmConfig!.apiKey,
         baseUrl: this.llmConfig!.baseUrl,
         modelName: this.llmConfig!.modelName,
