@@ -22,13 +22,9 @@ import { resolvePromptTemplate } from '../store/promptTemplates';
 import { mediaGenerationService } from '../services/MediaGenerationService';
 import { buildCharacterCostumeTemplateVariables } from './promptVariableBuilders';
 import { compileCharacterPreviewVideoRequest } from './videoGenerationRequests';
+import type { StyleSnapshotLike } from '../utils/promptNormalize';
 
 const logger = createLogger('CharacterAsset');
-
-interface StyleSnapshotLike {
-  ttiStylePrefix?: string;
-  llmPromptSuffix?: string;
-}
 
 interface GenerateOptions {
   projectId: string;

@@ -1,8 +1,12 @@
 /**
  * 工作流管理器
  * 管理异步任务队列和工作流状态
+ * 支持 DAG 工作流的检查点持久化与断点恢复
  */
 import type { WorkflowProgress, WorkflowType } from '../types';
+import { electronService } from '../services/electronService';
+import { getStorageConfig, initStorageConfig } from '../store/storageConfig';
+import type { DAGCheckpoint } from './DAGExecutor';
 
 type WorkflowHandler = (
   params: any,
@@ -15,6 +19,23 @@ interface QueuedTask {
   params: any;
   resolve: (value: any) => void;
   reject: (error: Error) => void;
+}
+
+// ========== 检查点持久化辅助 ==========
+
+async function getProjectPath(projectId: string): Promise<string> {
+  const config = getStorageConfig() || (await initStorageConfig());
+  return `${config.rootPath}/projects/${projectId}`;
+}
+
+async function getCheckpointPath(projectId: string, workflowId: string): Promise<string> {
+  const projectPath = await getProjectPath(projectId);
+  return `${projectPath}/workflow-checkpoints/${workflowId}.json`;
+}
+
+async function getCheckpointsDir(projectId: string): Promise<string> {
+  const projectPath = await getProjectPath(projectId);
+  return `${projectPath}/workflow-checkpoints`;
 }
 
 export class WorkflowManager {
@@ -80,6 +101,86 @@ export class WorkflowManager {
       this.listeners = this.listeners.filter((l) => l !== listener);
     };
   }
+
+  // ========== 检查点持久化 ==========
+
+  /**
+   * 保存 DAG 检查点到项目目录
+   */
+  async saveCheckpoint(projectId: string, workflowId: string, checkpoint: DAGCheckpoint): Promise<void> {
+    if (!electronService.isElectron()) return;
+    const dir = await getCheckpointsDir(projectId);
+    await electronService.fs.mkdir(dir);
+    const filePath = await getCheckpointPath(projectId, workflowId);
+    await electronService.fs.writeFile(filePath, JSON.stringify(checkpoint, null, 2));
+  }
+
+  /**
+   * 加载 DAG 检查点
+   */
+  async loadCheckpoint(projectId: string, workflowId: string): Promise<DAGCheckpoint | null> {
+    if (!electronService.isElectron()) return null;
+    try {
+      const filePath = await getCheckpointPath(projectId, workflowId);
+      const exists = await electronService.fs.exists(filePath);
+      if (!exists) return null;
+      const data = await electronService.fs.readFile(filePath);
+      const raw = typeof data === 'string' ? data : (data as any).content;
+      return JSON.parse(raw) as DAGCheckpoint;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * 删除检查点（工作流完成后清理）
+   */
+  async removeCheckpoint(projectId: string, workflowId: string): Promise<void> {
+    if (!electronService.isElectron()) return;
+    try {
+      const filePath = await getCheckpointPath(projectId, workflowId);
+      await electronService.fs.remove(filePath);
+    } catch {
+      // 忽略删除失败
+    }
+  }
+
+  /**
+   * 列出项目中所有未完成的检查点
+   */
+  async listIncompleteCheckpoints(projectId: string): Promise<DAGCheckpoint[]> {
+    if (!electronService.isElectron()) return [];
+    try {
+      const dir = await getCheckpointsDir(projectId);
+      const exists = await electronService.fs.exists(dir);
+      if (!exists) return [];
+
+      const files: string[] = await electronService.fs.readdir(dir);
+      const checkpoints: DAGCheckpoint[] = [];
+
+      for (const file of files) {
+        if (!file.endsWith('.json')) continue;
+        try {
+          const data = await electronService.fs.readFile(`${dir}/${file}`);
+          const raw = typeof data === 'string' ? data : (data as any).content;
+          const cp: DAGCheckpoint = JSON.parse(raw);
+          // 有未完成节点的才算 incomplete
+          const hasIncomplete = cp.nodes.some(
+            (n) => n.status === 'pending' || n.status === 'running'
+          );
+          if (hasIncomplete) checkpoints.push(cp);
+        } catch {
+          // 跳过损坏的检查点文件
+        }
+      }
+
+      return checkpoints;
+    } catch {
+      return [];
+    }
+  }
+
+  // ========== 内部方法 ==========
 
   /**
    * 处理队列

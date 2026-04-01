@@ -209,11 +209,20 @@ export function isLLMIPCAvailable(): boolean {
   return typeof window !== 'undefined' && !!(window as any).electronAPI?.llm;
 }
 
+export class LLMQueryError extends Error {
+  code: string;
+  constructor(code: string, message: string) {
+    super(message);
+    this.name = 'LLMQueryError';
+    this.code = code;
+  }
+}
+
 export async function llmQuery(request: LLMQueryRequest): Promise<LLMQueryResponse> {
   const api = getLLMAPI();
   const response = await api.query(request);
   if (response.error) {
-    throw new Error(response.error.message);
+    throw new LLMQueryError(response.error.code, response.error.message);
   }
   return response;
 }

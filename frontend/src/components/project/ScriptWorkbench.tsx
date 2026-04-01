@@ -267,7 +267,6 @@ export const ScriptWorkbench = forwardRef<ScriptWorkbenchRef, ScriptWorkbenchPro
           localScript,
           serializeMediaSelection(project.mediaSelections?.llm),
           project.styleSnapshot,
-          project
         );
         if (task.metadata?.deduped) {
           message.info('当前剧集已在后台解析中，请等待完成后再试。');

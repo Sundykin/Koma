@@ -27,9 +27,9 @@ describe('scriptAnalysisChunking', () => {
 
   it('生成分块上下文提示词', () => {
     const [chunk] = splitScriptIntoChunks(LONG_SCRIPT);
-    const prompt = buildChunkContextPrompt('分析以下剧本', '角色', chunk, ['宁卓', '许杰']);
+    const prompt = buildChunkContextPrompt('分析以下剧本', chunk.index, chunk.total, ['宁卓', '许杰']);
 
     expect(prompt).toContain('当前处理第 1/');
-    expect(prompt).toContain('已识别角色：宁卓、许杰');
+    expect(prompt).toContain('已识别实体：宁卓、许杰');
   });
 });

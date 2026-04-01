@@ -3,14 +3,14 @@
  * 独立于分镜拆解，支持单条和批量生成
  * v2: 支持 force 强制重新生成，分离 image/video 任务
  */
-import type { Shot, Character, Scene, LLMModelConfig } from '../types';
-import { createLLMProvider } from '../providers';
-import { getActiveLLMConfig } from '../store/globalStore';
+import type { Shot, Character, Scene } from '../types';
 import { resolvePromptTemplate } from '../store/promptTemplates';
 import type { PromptTemplateType } from '../store/promptTemplates';
-import { loadCharacters, loadScenes, loadProps, updateShot } from '../store/projectStore';
+import { loadScenes, loadProps, updateShot } from '../store/projectStore';
 import { createLogger } from '../store/logger';
 import { createMentionString } from '../editor/mentionTypes';
+import { runWithConcurrency } from '../utils/concurrency';
+import type { StyleSnapshotLike } from '../utils/promptNormalize';
 
 const logger = createLogger('ShotPrompt');
 
@@ -52,11 +52,6 @@ export interface PromptGenerationContext {
   stylePrefix: string;
 }
 
-interface StyleSnapshotLike {
-  ttiStylePrefix?: string;
-  llmPromptSuffix?: string;
-}
-
 export interface PromptGenerationResult {
   shotId: string;
   imagePrompt: string;
@@ -66,31 +61,14 @@ export interface PromptGenerationResult {
 }
 
 export class ShotPromptService {
-  private projectId: string;
-  private episodeId: string;
-  private llmConfig: LLMModelConfig | null = null;
-  private styleSnapshot?: StyleSnapshotLike;
+  private ctx: import('./CreationContext').CreationContext;
 
-  constructor(
-    projectId: string,
-    episodeId: string,
-    options?: { styleSnapshot?: StyleSnapshotLike; project?: { styleSnapshot?: StyleSnapshotLike } }
-  ) {
-    this.projectId = projectId;
-    this.episodeId = episodeId;
-    this.styleSnapshot = options?.styleSnapshot || options?.project?.styleSnapshot;
+  constructor(ctx: import('./CreationContext').CreationContext) {
+    this.ctx = ctx;
   }
 
   /**
-   * 设置 LLM 配置
-   */
-  async setLLMConfig(configId?: string): Promise<boolean> {
-    this.llmConfig = await getActiveLLMConfig(configId);
-    return this.llmConfig !== null;
-  }
-
-  /**
-   * 生成单条分镜提示词（返回单一提示词，用于兼容）
+   * 生成单条分镜提示词（返回单一提示词）
    */
   async generateShotPrompt(
     shot: Shot,
@@ -115,13 +93,6 @@ export class ShotPromptService {
     options?: { force?: boolean },
     styleSnapshot?: StyleSnapshotLike
   ): Promise<{ imagePrompt: string; videoPrompt: string }> {
-    if (!this.llmConfig) {
-      const hasConfig = await this.setLLMConfig();
-      if (!hasConfig) {
-        throw new Error('未配置 LLM 模型，请先在设置中添加');
-      }
-    }
-
     const force = options?.force ?? false;
     const resolvedStylePrefix = this.resolveTTIStylePrefix(stylePrefix, styleSnapshot);
 
@@ -147,8 +118,8 @@ export class ShotPromptService {
 
     // 场景与道具由服务内部加载，避免在调用点扩散参数/兼容代码
     const [allScenes, allProps] = await Promise.all([
-      loadScenes(this.projectId).catch(() => []),
-      loadProps(this.projectId).catch(() => []),
+      loadScenes(this.ctx.projectId).catch(() => []),
+      loadProps(this.ctx.projectId).catch(() => []),
     ]);
     const shotScenes = (allScenes || []).filter(s => (shot.scenes || []).includes(s.id));
     const shotProps = (allProps || []).filter(p => (shot.props || []).includes(p.id));
@@ -187,7 +158,7 @@ export class ShotPromptService {
   }
 
   private resolveTTIStylePrefix(legacyStylePrefix?: string, styleSnapshot?: StyleSnapshotLike): string {
-    return styleSnapshot?.ttiStylePrefix || this.styleSnapshot?.ttiStylePrefix || legacyStylePrefix || '';
+    return styleSnapshot?.ttiStylePrefix || this.ctx.styleSnapshot?.ttiStylePrefix || legacyStylePrefix || '';
   }
 
   /**
@@ -232,17 +203,10 @@ export class ShotPromptService {
     const resolvedPrompt = await resolvePromptTemplate(templateKey, templateVariables);
     const prompt = resolvedPrompt.prompt;
 
-    const provider = createLLMProvider({
-      provider: this.llmConfig!.provider === 'openai-compatible' ? 'openai' : this.llmConfig!.provider as any,
-      apiKey: this.llmConfig!.apiKey,
-      baseUrl: this.llmConfig!.baseUrl,
-      modelName: this.llmConfig!.modelName,
-    });
-
     const resolvedSystemPrompt = await resolvePromptTemplate('shot_prompt_system', {});
     const systemPrompt = resolvedSystemPrompt.prompt;
 
-    const result = await provider.chat([
+    const result = await this.ctx.llmProvider.chat([
       { role: 'system', content: systemPrompt },
       { role: 'user', content: prompt },
     ]);
@@ -266,20 +230,13 @@ export class ShotPromptService {
     stylePrefix: string = '',
     styleSnapshot?: StyleSnapshotLike
   ): Promise<string> {
-    if (!this.llmConfig) {
-      const hasConfig = await this.setLLMConfig();
-      if (!hasConfig) {
-        throw new Error('未配置 LLM 模型，请先在设置中添加');
-      }
-    }
-
     const resolvedStylePrefix = this.resolveTTIStylePrefix(stylePrefix, styleSnapshot);
 
     // 过滤出该分镜关联的资产
     const shotCharacters = characters.filter(c => shot.characters?.includes(c.id));
     const [allScenes, allProps] = await Promise.all([
-      loadScenes(this.projectId).catch(() => []),
-      loadProps(this.projectId).catch(() => []),
+      loadScenes(this.ctx.projectId).catch(() => []),
+      loadProps(this.ctx.projectId).catch(() => []),
     ]);
     const shotScenes = (allScenes || []).filter(s => (shot.scenes || []).includes(s.id));
     const shotProps = (allProps || []).filter(p => (shot.props || []).includes(p.id));
@@ -309,16 +266,9 @@ export class ShotPromptService {
 
     const resolvedPrompt = await resolvePromptTemplate('grid_shot_prompt_generation', templateVariables);
 
-    const provider = createLLMProvider({
-      provider: this.llmConfig!.provider === 'openai-compatible' ? 'openai' : this.llmConfig!.provider as any,
-      apiKey: this.llmConfig!.apiKey,
-      baseUrl: this.llmConfig!.baseUrl,
-      modelName: this.llmConfig!.modelName,
-    });
-
     const resolvedSystemPrompt = await resolvePromptTemplate('shot_prompt_system', {});
 
-    const result = await provider.chat([
+    const result = await this.ctx.llmProvider.chat([
       { role: 'system', content: resolvedSystemPrompt.prompt },
       { role: 'user', content: resolvedPrompt.prompt },
     ]);
@@ -343,7 +293,6 @@ export class ShotPromptService {
     generateFlags?: { image?: boolean; video?: boolean },
     options?: { force?: boolean },
   ): Promise<PromptGenerationResult[]> {
-    const results: PromptGenerationResult[] = [];
     const wantsImage = generateFlags?.image ?? true;
     const wantsVideo = generateFlags?.video ?? true;
     const force = options?.force ?? false;
@@ -354,34 +303,39 @@ export class ShotPromptService {
       return needImage || needVideo;
     });
 
-    for (let i = 0; i < shotsToGenerate.length; i++) {
-      const shot = shotsToGenerate[i];
-      try {
-        const result = await this.generateAndSaveShotPrompt(
-          shot,
-          stylePrefix,
-          generateFlags,
-          options,
-          styleSnapshot,
-        );
-        results.push(result);
-        onProgress?.(i + 1, shotsToGenerate.length, result);
-      } catch (error: unknown) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        const result: PromptGenerationResult = {
-          shotId: shot.id,
-          imagePrompt: '',
-          videoPrompt: '',
-          success: false,
-          error: errorMessage,
-        };
-        results.push(result);
-        onProgress?.(i + 1, shotsToGenerate.length, result);
-        logger.error(`生成失败: ${shot.id}`, error);
-      }
-    }
+    if (shotsToGenerate.length === 0) return [];
 
-    return results;
+    // 使用 ctx 中已加载的 characters
+    const preloadedCharacters = this.ctx.characters;
+
+    let completedCount = 0;
+    const tasks = shotsToGenerate.map((shot) => async () => {
+      const result = await this.generateAndSaveShotPrompt(
+        shot,
+        stylePrefix,
+        generateFlags,
+        options,
+        styleSnapshot,
+        preloadedCharacters,
+      );
+      completedCount++;
+      onProgress?.(completedCount, shotsToGenerate.length, result);
+      return result;
+    });
+
+    const settled = await runWithConcurrency(tasks, 3);
+
+    return settled.map((r, i) =>
+      r.status === 'fulfilled'
+        ? r.value
+        : {
+            shotId: shotsToGenerate[i].id,
+            imagePrompt: '',
+            videoPrompt: '',
+            success: false,
+            error: (r.reason as Error)?.message || String(r.reason),
+          }
+    );
   }
 
   /**
@@ -394,10 +348,11 @@ export class ShotPromptService {
     stylePrefix: string = '',
     generateFlags?: { image?: boolean; video?: boolean },
     options?: { force?: boolean },
-    styleSnapshot?: StyleSnapshotLike
+    styleSnapshot?: StyleSnapshotLike,
+    preloadedCharacters?: Character[],
   ): Promise<PromptGenerationResult> {
     try {
-      const characters = await loadCharacters(this.projectId);
+      const characters = preloadedCharacters || this.ctx.characters;
       let workingShot = shot;
       let prerequisiteGridImagePrompt: string | undefined;
       let imagePrompt: string;
@@ -448,7 +403,7 @@ export class ShotPromptService {
       }
 
       if (Object.keys(updates).length > 0) {
-        await updateShot(this.projectId, this.episodeId, shot.id, updates);
+        await updateShot(this.ctx.projectId, this.ctx.episodeId, shot.id, updates);
       }
 
       return {
@@ -484,12 +439,13 @@ export async function generateShotPrompt(
   generateFlags?: { image?: boolean; video?: boolean },
   options?: { force?: boolean },
   styleSnapshot?: StyleSnapshotLike,
-  project?: { styleSnapshot?: StyleSnapshotLike }
 ): Promise<PromptGenerationResult> {
-  const service = new ShotPromptService(projectId, episodeId, { styleSnapshot, project });
-  if (llmSelection) {
-    await service.setLLMConfig(llmSelection);
-  }
+  const { createCreationContext } = await import('./CreationContext');
+  const ctx = await createCreationContext(projectId, episodeId, {
+    llmConfigId: llmSelection,
+    styleSnapshot,
+  });
+  const service = new ShotPromptService(ctx);
   return service.generateAndSaveShotPrompt(shot, stylePrefix, generateFlags, options, styleSnapshot);
 }
 
@@ -504,13 +460,14 @@ export async function batchGenerateShotPrompts(
   onProgress?: (current: number, total: number, result: PromptGenerationResult) => void,
   llmSelection?: string,
   styleSnapshot?: StyleSnapshotLike,
-  project?: { styleSnapshot?: StyleSnapshotLike },
   generateFlags?: { image?: boolean; video?: boolean },
   options?: { force?: boolean },
 ): Promise<PromptGenerationResult[]> {
-  const service = new ShotPromptService(projectId, episodeId, { styleSnapshot, project });
-  if (llmSelection) {
-    await service.setLLMConfig(llmSelection);
-  }
+  const { createCreationContext } = await import('./CreationContext');
+  const ctx = await createCreationContext(projectId, episodeId, {
+    llmConfigId: llmSelection,
+    styleSnapshot,
+  });
+  const service = new ShotPromptService(ctx);
   return service.batchGenerateShotPrompts(shots, stylePrefix, onProgress, styleSnapshot, generateFlags, options);
 }

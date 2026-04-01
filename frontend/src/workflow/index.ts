@@ -2,9 +2,11 @@
  * Workflow 模块统一导出
  */
 export { WorkflowManager, workflowManager } from './workflowManager';
+export { DAGExecutor } from './DAGExecutor';
+export type { DAGNode, DAGDefinition, DAGCheckpoint, DAGExecutorOptions, NodeStatus } from './DAGExecutor';
+export { createFullCreationDAG, createPromptRegenerationDAG } from './workflowTemplates';
 export { shotRenderWorkflow } from './shotRenderWorkflow';
 export { generateScript } from './scriptGenerator';
-export { generateShotList } from './shotListGenerator';
 export {
   generateSceneImage,
   generateAllSceneImages,

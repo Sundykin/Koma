@@ -10,13 +10,9 @@ import { logLLMCall } from '../store/aiCallLogger';
 import { createLogger } from '../store/logger';
 import { createAITraceId, describeLLMProviderTransport } from '../utils/aiTrace';
 import { parseLLMJSON } from '../utils/llmJsonParser';
+import type { StyleSnapshotLike } from '../utils/promptNormalize';
 
 const logger = createLogger('ScriptGenerator');
-
-interface StyleSnapshotLike {
-  ttiStylePrefix?: string;
-  llmPromptSuffix?: string;
-}
 
 interface StyleContext {
   styleSnapshot?: StyleSnapshotLike;
