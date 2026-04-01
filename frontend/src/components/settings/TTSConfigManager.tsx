@@ -335,10 +335,10 @@ export const TTSConfigManager: React.FC<TTSConfigManagerProps> = ({ onConfigChan
   ), []);
 
   return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <div>
-          <span style={{ fontSize: 14, color: '#888' }}>
+    <div className="settings-manager">
+      <div className="settings-manager-toolbar">
+        <div className="settings-toolbar-meta">
+          <span>
             {t('settings.ttsConfigured', { count: configs.length })}
           </span>
         </div>
@@ -352,19 +352,24 @@ export const TTSConfigManager: React.FC<TTSConfigManagerProps> = ({ onConfigChan
           <Spin />
         </div>
       ) : configs.length === 0 ? (
-        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('settings.noTTSConfigs')}>
+        <Empty
+          image={Empty.PRESENTED_IMAGE_SIMPLE}
+          description={t('settings.noTTSConfigs')}
+          className="settings-empty-state"
+        >
           <Button type="primary" icon={<PlusOutlined />} onClick={() => openModal()}>
             {t('settings.addFirstConfig')}
           </Button>
         </Empty>
       ) : (
-        <Row gutter={[16, 16]}>
+        <Row gutter={[12, 12]}>
           {configs.map((config) => {
             const preferredModelId = getPreferredChannelModelId(config.channel, config.definition);
             return (
-              <Col key={config.channel.id} xs={24} sm={12}>
+              <Col key={config.channel.id} xs={24} md={12} xl={8}>
                 <Card
                   size="small"
+                  className="settings-config-card"
                   title={(
                     <Space>
                       {config.isDefault ? (
@@ -414,19 +419,31 @@ export const TTSConfigManager: React.FC<TTSConfigManagerProps> = ({ onConfigChan
                     </Space>
                   )}
                 >
-                  <div style={{ fontSize: 13, color: '#666' }}>
-                    <div style={{ marginBottom: 8 }}>
-                      <strong>模型列表:</strong>
-                      <div style={{ marginTop: 6 }}>
+                  <div className="settings-card-content">
+                    <div className="settings-card-section">
+                      <div className="settings-card-label">模型列表</div>
+                      <div>
                         {renderModelTags(config.enabledModels, config.channel.defaultModelId)}
                       </div>
                     </div>
-                    {config.resolvedConfig.defaultVoice && <div><strong>{t('settings.defaultVoice')}:</strong> {config.resolvedConfig.defaultVoice}</div>}
-                    {config.channel.providerConfig.defaultSpeed && <div><strong>{t('settings.defaultSpeed')}:</strong> {String(config.channel.providerConfig.defaultSpeed)}x</div>}
+                    <div className="settings-card-inline">
+                      {config.resolvedConfig.defaultVoice && (
+                        <div className="settings-card-kv">
+                          <strong>{t('settings.defaultVoice')}:</strong>
+                          <span>{config.resolvedConfig.defaultVoice}</span>
+                        </div>
+                      )}
+                      {config.channel.providerConfig.defaultSpeed && (
+                        <div className="settings-card-kv">
+                          <strong>{t('settings.defaultSpeed')}:</strong>
+                          <span>{String(config.channel.providerConfig.defaultSpeed)}x</span>
+                        </div>
+                      )}
+                    </div>
                     {config.resolvedConfig.baseUrl && (
-                      <div style={{ marginTop: 6 }}>
-                        <strong>{t('settings.apiAddress')}:</strong>{' '}
-                        <span style={{ fontSize: 12, fontFamily: 'monospace' }}>
+                      <div className="settings-card-section">
+                        <div className="settings-card-label">{t('settings.apiAddress')}</div>
+                        <span className="settings-card-code">
                           {config.resolvedConfig.baseUrl.replace(/https?:\/\//, '').slice(0, 36)}
                         </span>
                       </div>
@@ -446,97 +463,107 @@ export const TTSConfigManager: React.FC<TTSConfigManagerProps> = ({ onConfigChan
         onCancel={() => setModalVisible(false)}
         okText={t('common.save')}
         cancelText={t('common.cancel')}
-        width={520}
+        width={760}
         mask={{ closable: false }}
         destroyOnHidden
+        className="dark-modal settings-compact-modal"
       >
-        <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
-          <Form.Item
-            name="providerType"
-            label={t('settings.provider')}
-            required
-            rules={[{ required: true, message: `${t('settings.pleaseSelect')} ${t('settings.provider')}` }]}
-          >
-            <Select placeholder={t('settings.selectProvider')} onChange={handleProviderChange}>
-              {channelDefinitions.map((definition) => (
-                <Select.Option key={definition.id} value={definition.id}>
-                  {definition.name}
-                </Select.Option>
-              ))}
-            </Select>
-          </Form.Item>
+        <Form form={form} layout="vertical" className="settings-modal-form">
+          <div className="settings-form-section">
+            <div className="settings-form-section-title">基础信息</div>
+            <div className="settings-modal-grid">
+              <Form.Item
+                name="providerType"
+                label={t('settings.provider')}
+                required
+                rules={[{ required: true, message: `${t('settings.pleaseSelect')} ${t('settings.provider')}` }]}
+              >
+                <Select placeholder={t('settings.selectProvider')} onChange={handleProviderChange}>
+                  {channelDefinitions.map((definition) => (
+                    <Select.Option key={definition.id} value={definition.id}>
+                      {definition.name}
+                    </Select.Option>
+                  ))}
+                </Select>
+              </Form.Item>
 
-          <Form.Item
-            name="name"
-            label={t('settings.configName')}
-            required
-            rules={[{ required: true, message: `${t('settings.pleaseEnter')} ${t('settings.configName')}` }]}
-          >
-            <Input placeholder={t('settings.configNamePlaceholder')} />
-          </Form.Item>
+              <Form.Item
+                name="name"
+                label={t('settings.configName')}
+                required
+                rules={[{ required: true, message: `${t('settings.pleaseEnter')} ${t('settings.configName')}` }]}
+              >
+                <Input placeholder={t('settings.configNamePlaceholder')} />
+              </Form.Item>
+            </div>
+          </div>
 
-          <Form.Item
-            label="模型列表"
-            required
-          >
-            <ChannelModelsEditor
-              fixedCapabilities={['speech.text-to-speech']}
-              helpText="模型列表为手动维护。若渠道不区分模型，可填写任意占位名（如: default）。"
-              modelNamePlaceholder="填写模型名称，如: tts-1 / tts-1-hd / default"
-            />
-          </Form.Item>
-
-          <Form.Item
-            name="defaultModelId"
-            label="默认模型"
-            required
-            rules={[{ required: true, message: '请选择默认模型' }]}
-          >
-            <Select
-              placeholder="选择默认模型"
-              options={modelOptions}
-            />
-          </Form.Item>
-
-          {currentProviderType !== 'edge-tts' && (
+          <div className="settings-form-section">
+            <div className="settings-form-section-title">模型维护</div>
             <Form.Item
-              name="apiKey"
-              label={t('settings.apiKey')}
-              rules={[{
-                required: currentProviderType !== 'gpt-sovits' && currentProviderType !== 'edge-tts',
-                message: `${t('settings.pleaseEnter')} ${t('settings.apiKey')}`,
-              }]}
+              label="模型列表"
+              required
+              style={{ marginBottom: 0 }}
             >
-              <Input.Password placeholder={t('settings.enterApiKey')} />
+              <ChannelModelsEditor
+                fixedCapabilities={['speech.text-to-speech']}
+                helpText="模型列表为手动维护。若渠道不区分模型，可填写占位模型名，例如 default。"
+                modelNamePlaceholder="填写模型名称，如: tts-1 / tts-1-hd / default"
+              />
             </Form.Item>
-          )}
+          </div>
 
-          {currentProviderType !== 'edge-tts' && (
-            <Form.Item name="baseUrl" label={t('settings.apiAddress')}>
-              <Input placeholder={t('settings.enterApiAddress')} />
-            </Form.Item>
-          )}
+          <div className="settings-form-section">
+            <div className="settings-form-section-title">默认项与连接参数</div>
+            <div className="settings-modal-grid">
+              <Form.Item
+                name="defaultModelId"
+                label="默认模型"
+                required
+                rules={[{ required: true, message: '请选择默认模型' }]}
+              >
+                <Select
+                  placeholder="选择默认模型"
+                  options={modelOptions}
+                />
+              </Form.Item>
 
-          <Row gutter={16}>
-            <Col span={12}>
               <Form.Item name="defaultVoice" label={t('settings.defaultVoice')}>
                 <Input prefix={<AudioOutlined />} placeholder={t('settings.voiceIdPlaceholder')} />
               </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item name="defaultSpeed" label={t('settings.defaultSpeed')}>
-                <InputNumber min={0.5} max={2} step={0.1} placeholder="1.0" style={{ width: '100%' }} />
-              </Form.Item>
-            </Col>
-          </Row>
 
-          {currentProviderType === 'edge-tts' && (
-            <div style={{ padding: '8px 12px', background: '#f6ffed', borderRadius: 4, marginTop: -8 }}>
-              <span style={{ color: '#52c41a', fontSize: 13 }}>
-                ✓ {t('settings.edgeTTSFree')}
-              </span>
+              {currentProviderType !== 'edge-tts' && (
+                <Form.Item name="baseUrl" label={t('settings.apiAddress')}>
+                  <Input placeholder={t('settings.enterApiAddress')} />
+                </Form.Item>
+              )}
+
+              <Form.Item name="defaultSpeed" label={t('settings.defaultSpeed')}>
+                <InputNumber min={0.5} max={2} step={0.1} placeholder="1.0" />
+              </Form.Item>
+
+              {currentProviderType !== 'edge-tts' && (
+                <Form.Item
+                  name="apiKey"
+                  label={t('settings.apiKey')}
+                  className="settings-grid-span-full"
+                  rules={[{
+                    required: currentProviderType !== 'gpt-sovits' && currentProviderType !== 'edge-tts',
+                    message: `${t('settings.pleaseEnter')} ${t('settings.apiKey')}`,
+                  }]}
+                  style={{ marginBottom: 0 }}
+                >
+                  <Input.Password placeholder={t('settings.enterApiKey')} />
+                </Form.Item>
+              )}
             </div>
-          )}
+
+            {currentProviderType === 'edge-tts' && (
+              <div className="settings-inline-note is-success" style={{ marginTop: 12 }}>
+                {t('settings.edgeTTSFree')}
+              </div>
+            )}
+          </div>
         </Form>
       </Modal>
     </div>

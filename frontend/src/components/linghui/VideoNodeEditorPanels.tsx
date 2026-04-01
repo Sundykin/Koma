@@ -1,6 +1,6 @@
 import React from 'react';
 import { InfoCircleOutlined } from '@ant-design/icons';
-import { Button, Select, Tooltip } from 'antd';
+import { App, Button, Select, Tooltip } from 'antd';
 import { ArrowUp, Film, Image as ImageIcon, Music4 } from 'lucide-react';
 import {
   VIDEO_ASPECT_RATIOS,
@@ -23,7 +23,105 @@ import {
   type LinghuiVisualReferenceRole,
   type VideoCapabilityDescriptor,
 } from './videoCapabilityUtils';
-import { StagePlayer } from '../video/StagePlayer';
+import { electronService } from '../../services/electronService';
+
+function decodeKomaLocalSource(source: string): string {
+  if (!source.startsWith('koma-local://')) return source;
+  const decoded = decodeURIComponent(source.replace(/^koma-local:\/\//, ''));
+  return decoded.replace(/^\/([A-Za-z]:\/)/, '$1');
+}
+
+function isRemoteSource(source: string): boolean {
+  return /^https?:\/\//i.test(source);
+}
+
+function isLocalSource(source: string): boolean {
+  return Boolean(source) && !isRemoteSource(source) && !source.startsWith('data:') && !source.startsWith('blob:');
+}
+
+interface VideoAccessCardProps {
+  source: string;
+  posterSource?: string;
+  emptyDescription: string;
+  pills?: string[];
+}
+
+function VideoAccessCard({
+  source,
+  posterSource,
+  emptyDescription,
+  pills = [],
+}: VideoAccessCardProps) {
+  const { message } = App.useApp();
+  const rawSource = source.startsWith('koma-local://') ? decodeKomaLocalSource(source) : source;
+  const previewSource = posterSource ? getPreviewSource(posterSource) : '';
+  const sourceLabel = rawSource.split(/[\\/]/).pop() || '视频文件';
+  const canOpen = Boolean(rawSource) && (isRemoteSource(rawSource) || isLocalSource(rawSource));
+  const canReveal = isLocalSource(rawSource);
+
+  const handleOpen = async () => {
+    if (!canOpen) return;
+    try {
+      if (isRemoteSource(rawSource)) {
+        await electronService.shell.openExternal(rawSource);
+      } else {
+        await electronService.shell.openPath(rawSource);
+      }
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '打开视频失败');
+    }
+  };
+
+  const handleReveal = async () => {
+    if (!canReveal) return;
+    try {
+      await electronService.shell.showItemInFolder(rawSource);
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '定位视频文件失败');
+    }
+  };
+
+  return (
+    <div className="linghuiEditorPlayerCard">
+      <div className="linghuiEditorPlayerSurface isStatic">
+        {previewSource ? (
+          <img
+            className="linghuiEditorPlayerPoster"
+            src={previewSource}
+            alt={sourceLabel}
+          />
+        ) : (
+          <div className="linghuiEditorPlayerPlaceholder">
+            <Film size={24} />
+            <span>{emptyDescription}</span>
+          </div>
+        )}
+        <div className="linghuiEditorPlayerOverlay">
+          <span className="linghuiEditorSummaryPill">弹框内不嵌入播放器</span>
+          {canOpen ? (
+            <Button size="small" type="primary" onClick={handleOpen}>
+              {isRemoteSource(rawSource) ? '在浏览器打开' : '在系统播放器打开'}
+            </Button>
+          ) : null}
+          {canReveal ? (
+            <Button size="small" onClick={handleReveal}>
+              打开所在位置
+            </Button>
+          ) : null}
+        </div>
+      </div>
+      <div className="linghuiEditorPassThroughTitle">{sourceLabel}</div>
+      <div className="linghuiEditorPassThroughMeta">{rawSource}</div>
+      {pills.length > 0 ? (
+        <div className="linghuiEditorPlayerMetaRow">
+          {pills.map(item => (
+            <span key={item} className="linghuiEditorSummaryPill">{item}</span>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 function TooltipLabel({
   label,
@@ -108,8 +206,6 @@ export function VideoPassThroughPanel({
   source,
   posterSource,
 }: VideoPassThroughPanelProps) {
-  const sourceLabel = source.split(/[\\/]/).pop() || '已导入视频';
-
   return (
     <div className="linghuiEditorSection">
       <div className="linghuiEditorSectionHeader">
@@ -120,23 +216,12 @@ export function VideoPassThroughPanel({
       </div>
 
       <div className="linghuiEditorPassThroughCard">
-        <div className="linghuiEditorPlayerCard">
-          <div className="linghuiEditorPlayerSurface">
-            <StagePlayer
-              source={source}
-              poster={posterSource}
-              showStopButton
-              emptyDescription="当前没有可播放的视频"
-            />
-          </div>
-        </div>
-        <div className="linghuiEditorPassThroughTitle">{sourceLabel}</div>
-        <div className="linghuiEditorPassThroughMeta">{source}</div>
-        <div className="linghuiEditorSummaryRow">
-          <span className="linghuiEditorSummaryPill">已挂载视频</span>
-          <span className="linghuiEditorSummaryPill">直接给下游</span>
-          <span className="linghuiEditorSummaryPill">不进入生成</span>
-        </div>
+        <VideoAccessCard
+          source={source}
+          posterSource={posterSource}
+          emptyDescription="当前没有可展示的封面"
+          pills={['已挂载视频', '直接给下游', '不进入生成']}
+        />
       </div>
     </div>
   );
@@ -258,25 +343,16 @@ export function VideoGeneratePanel({
           <div className="linghuiEditorSectionHeader">
             <TooltipLabel
               label="生成结果"
-              tooltip="这里提供当前节点最新一次生成出的视频预览与播放控制。"
+              tooltip="这里展示当前节点最新一次生成结果的封面和文件入口，可直接外部打开查看。"
             />
           </div>
 
-          <div className="linghuiEditorPlayerCard">
-            <div className="linghuiEditorPlayerSurface">
-              <StagePlayer
-                source={outputSource}
-                poster={outputPosterSource}
-                showStopButton
-                emptyDescription="当前还没有可播放的生成结果"
-              />
-            </div>
-            <div className="linghuiEditorPlayerMetaRow">
-              <span className="linghuiEditorSummaryPill">{outputLabel || '最新结果'}</span>
-              <span className="linghuiEditorSummaryPill">可拖动进度</span>
-              <span className="linghuiEditorSummaryPill">支持音量与全屏</span>
-            </div>
-          </div>
+          <VideoAccessCard
+            source={outputSource}
+            posterSource={outputPosterSource}
+            emptyDescription="当前还没有可展示的生成结果"
+            pills={[outputLabel || '最新结果', '生成完成', '请外部打开查看']}
+          />
         </div>
       ) : null}
 

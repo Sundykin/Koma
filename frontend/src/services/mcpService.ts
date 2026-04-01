@@ -15,7 +15,12 @@ interface ElectronMCPAPI {
   mcp: {
     connect: (config: MCPServerConfig) => Promise<MCPConnection>;
     disconnect: (name: string) => Promise<void>;
-    list: (includeTools?: boolean) => Promise<MCPConnection[]>;
+    list: (includeTools?: boolean) => Promise<
+      MCPConnection[]
+      | {
+        connections?: MCPConnection[];
+      }
+    >;
     listTools: () => Promise<MCPTool[]>;
     listResources: () => Promise<MCPResource[]>;
     callTool: (name: string, args: Record<string, unknown>) => Promise<unknown>;
@@ -42,6 +47,18 @@ function getElectronAPI(): ElectronMCPAPI | null {
     return (window as any).electronAPI.chat as ElectronMCPAPI;
   }
   return null;
+}
+
+function normalizeConnectionsResponse(
+  value: MCPConnection[] | { connections?: MCPConnection[] } | null | undefined
+): MCPConnection[] {
+  if (Array.isArray(value)) {
+    return value;
+  }
+  if (value && Array.isArray(value.connections)) {
+    return value.connections;
+  }
+  return [];
 }
 
 /**
@@ -78,7 +95,7 @@ export const mcpService = {
     if (!api) {
       return [];
     }
-    return api.mcp.list(includeTools);
+    return normalizeConnectionsResponse(await api.mcp.list(includeTools));
   },
 
   /**

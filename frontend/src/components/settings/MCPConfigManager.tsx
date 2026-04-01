@@ -203,10 +203,10 @@ export const MCPConfigManager: React.FC<MCPConfigManagerProps> = ({ onConfigChan
   }
 
   return (
-    <div style={{ padding: 16 }}>
-      <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+    <div className="settings-manager">
+      <div className="settings-manager-toolbar">
         <div>
-          <Typography.Title level={5} style={{ margin: 0 }}>
+          <Typography.Title level={5} style={{ margin: 0, color: 'var(--color-text-primary)' }}>
             <ApiOutlined style={{ marginRight: 8 }} />
             MCP 服务器
           </Typography.Title>
@@ -226,17 +226,19 @@ export const MCPConfigManager: React.FC<MCPConfigManagerProps> = ({ onConfigChan
         <Empty
           description="暂无 MCP 服务器"
           image={Empty.PRESENTED_IMAGE_SIMPLE}
+          className="settings-empty-state"
         >
           <Button type="primary" icon={<PlusOutlined />} onClick={() => openModal()}>
             添加第一个服务器
           </Button>
         </Empty>
       ) : (
-        <Row gutter={[16, 16]}>
+        <Row gutter={[12, 12]}>
           {connections.map(conn => (
-            <Col key={conn.name} xs={24} sm={12} lg={8}>
+            <Col key={conn.name} xs={24} md={12} xl={8}>
               <Card
                 size="small"
+                className="settings-config-card"
                 title={
                   <Space>
                     {getStatusIcon(conn.status, conn.name)}
@@ -289,13 +291,13 @@ export const MCPConfigManager: React.FC<MCPConfigManagerProps> = ({ onConfigChan
                   </Popconfirm>,
                 ]}
               >
-                <Row gutter={16}>
+                <Row gutter={12}>
                   <Col span={12}>
                     <Statistic
                       title="工具"
                       value={conn.tools?.length || 0}
                       prefix={<ToolOutlined />}
-                      valueStyle={{ fontSize: 20 }}
+                      valueStyle={{ fontSize: 18 }}
                     />
                   </Col>
                   <Col span={12}>
@@ -311,7 +313,7 @@ export const MCPConfigManager: React.FC<MCPConfigManagerProps> = ({ onConfigChan
                   </Col>
                 </Row>
                 {conn.error && (
-                  <Paragraph type="danger" ellipsis style={{ marginTop: 8, marginBottom: 0 }}>
+                  <Paragraph type="danger" ellipsis style={{ marginTop: 10, marginBottom: 0 }}>
                     {conn.error}
                   </Paragraph>
                 )}
@@ -329,73 +331,90 @@ export const MCPConfigManager: React.FC<MCPConfigManagerProps> = ({ onConfigChan
         onOk={handleSave}
         confirmLoading={!!connectingName}
         okText={editingConfig ? '保存并连接' : '添加并连接'}
-        width={500}
+        width={760}
+        className="dark-modal settings-compact-modal"
       >
-        <Form form={form} layout="vertical">
-          <Form.Item
-            name="name"
-            label="服务器名称"
-            required
-            rules={[{ required: true, message: '请输入服务器名称' }]}
-          >
-            <Input placeholder="例如：filesystem" disabled={!!editingConfig} />
-          </Form.Item>
+        <Form form={form} layout="vertical" className="settings-modal-form">
+          <div className="settings-form-section">
+            <div className="settings-form-section-title">基础信息</div>
+            <div className="settings-modal-grid">
+              <Form.Item
+                name="name"
+                label="服务器名称"
+                required
+                rules={[{ required: true, message: '请输入服务器名称' }]}
+              >
+                <Input placeholder="例如：filesystem" disabled={!!editingConfig} />
+              </Form.Item>
 
-          <Form.Item
-            name="transport"
-            label="传输类型"
-            required
-            rules={[{ required: true }]}
-          >
-            <Select>
-              <Select.Option value="stdio">Stdio（本地进程）</Select.Option>
-              <Select.Option value="sse">SSE（HTTP 流）</Select.Option>
-              <Select.Option value="websocket">WebSocket</Select.Option>
-            </Select>
-          </Form.Item>
+              <Form.Item
+                name="transport"
+                label="传输类型"
+                required
+                rules={[{ required: true }]}
+                style={{ marginBottom: 0 }}
+              >
+                <Select>
+                  <Select.Option value="stdio">Stdio（本地进程）</Select.Option>
+                  <Select.Option value="sse">SSE（HTTP 流）</Select.Option>
+                  <Select.Option value="websocket">WebSocket</Select.Option>
+                </Select>
+              </Form.Item>
+            </div>
+          </div>
 
-          <Form.Item
-            noStyle
-            shouldUpdate={(prev, curr) => prev.transport !== curr.transport}
-          >
-            {({ getFieldValue }) => {
-              const transport = getFieldValue('transport');
-              if (transport === 'stdio') {
+          <div className="settings-form-section">
+            <div className="settings-form-section-title">连接参数</div>
+            <Form.Item
+              noStyle
+              shouldUpdate={(prev, curr) => prev.transport !== curr.transport}
+            >
+              {({ getFieldValue }) => {
+                const transport = getFieldValue('transport');
+                if (transport === 'stdio') {
+                  return (
+                    <div className="settings-modal-grid">
+                      <Form.Item
+                        name="command"
+                        label="命令"
+                        required
+                        rules={[{ required: true, message: '请输入命令' }]}
+                      >
+                        <Input placeholder="例如：npx" />
+                      </Form.Item>
+                      <Form.Item name="args" label="参数" style={{ marginBottom: 0 }}>
+                        <Input placeholder="例如：-y @anthropic/mcp-server-filesystem" />
+                      </Form.Item>
+                    </div>
+                  );
+                }
                 return (
-                  <>
+                  <div className="settings-modal-grid">
                     <Form.Item
-                      name="command"
-                      label="命令"
+                      name="url"
+                      label="URL"
+                      className="settings-grid-span-full"
                       required
-                      rules={[{ required: true, message: '请输入命令' }]}
+                      rules={[{ required: true, message: '请输入 URL' }]}
+                      style={{ marginBottom: 0 }}
                     >
-                      <Input placeholder="例如：npx" />
+                      <Input placeholder="例如：http://localhost:3000/mcp" />
                     </Form.Item>
-                    <Form.Item name="args" label="参数">
-                      <Input placeholder="例如：-y @anthropic/mcp-server-filesystem" />
-                    </Form.Item>
-                  </>
+                  </div>
                 );
-              }
-              return (
-                <Form.Item
-                  name="url"
-                  label="URL"
-                  required
-                  rules={[{ required: true, message: '请输入 URL' }]}
-                >
-                  <Input placeholder="例如：http://localhost:3000/mcp" />
-                </Form.Item>
-              );
-            }}
-          </Form.Item>
+              }}
+            </Form.Item>
+          </div>
 
-          <Form.Item name="env" label="环境变量（JSON）">
-            <Input.TextArea
-              placeholder='{"API_KEY": "xxx"}'
-              autoSize={{ minRows: 2, maxRows: 4 }}
-            />
-          </Form.Item>
+          <div className="settings-form-section">
+            <div className="settings-form-section-title">环境变量</div>
+            <Form.Item name="env" label="环境变量（JSON）" style={{ marginBottom: 0 }}>
+              <Input.TextArea
+                placeholder='{"API_KEY": "xxx"}'
+                autoSize={{ minRows: 3, maxRows: 6 }}
+              />
+            </Form.Item>
+          </div>
         </Form>
       </Modal>
     </div>

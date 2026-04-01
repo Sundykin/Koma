@@ -1,18 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
-  Layout,
-  Menu,
-  Form,
   Button,
-  Space,
   App,
-  Divider,
   Statistic,
   Typography,
   Card,
 } from 'antd';
 import {
-  SaveOutlined,
   ExperimentOutlined,
   FolderOutlined,
   DeleteOutlined,
@@ -26,7 +20,7 @@ import {
 } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import type { AppSettings } from '../../types';
-import { loadSettings, saveSettings } from '../../store/globalStore';
+import { loadSettings } from '../../store/globalStore';
 import {
   getStorageConfig,
   updateStoragePath,
@@ -41,12 +35,18 @@ import { PromptStudio } from './PromptStudio';
 import { PluginManager } from '../plugins';
 import { MCPConfigManager } from './MCPConfigManager';
 
-const { Sider, Content } = Layout;
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
 interface SettingsPageProps {
   settings: AppSettings;
   onSave: (newSettings: AppSettings) => void;
+}
+
+interface SectionDef {
+  key: string;
+  label: string;
+  icon: React.ReactNode;
+  group: string;
 }
 
 export const SettingsPage: React.FC<SettingsPageProps> = ({
@@ -55,18 +55,37 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
 }) => {
   const { t } = useTranslation();
   const { message, modal } = App.useApp();
-  const [form] = Form.useForm();
-  const [activeSection, setActiveSection] = useState('models-llm');
-  const [saving, setSaving] = useState(false);
   const [storagePath, setStoragePath] = useState('');
   const [storageSize, setStorageSize] = useState(t('common.calculating'));
   const [clearingCache, setClearingCache] = useState(false);
+  const [activeKey, setActiveKey] = useState('models-llm');
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const isClickScrolling = useRef(false);
 
-  useEffect(() => {
-    form.setFieldsValue(flattenSettings(settings));
-  }, [settings, form]);
+  const sections: SectionDef[] = [
+    { key: 'models-llm', icon: <ExperimentOutlined />, label: t('settings.llm'), group: t('settings.modelConfig') },
+    { key: 'models-tti', icon: <PictureOutlined />, label: t('settings.tti'), group: t('settings.modelConfig') },
+    { key: 'models-itv', icon: <VideoCameraOutlined />, label: t('settings.itv'), group: t('settings.modelConfig') },
+    { key: 'models-tts', icon: <SoundOutlined />, label: t('settings.tts'), group: t('settings.modelConfig') },
+    { key: 'workflow-visual', icon: <BgColorsOutlined />, label: t('settings.visualStyle'), group: t('settings.workflow') },
+    { key: 'workflow-prompts', icon: <CodeOutlined />, label: t('settings.promptTemplate'), group: t('settings.workflow') },
+    { key: 'system-storage', icon: <FolderOutlined />, label: t('settings.storageAndCache'), group: t('settings.system') },
+    { key: 'system-plugins', icon: <BlockOutlined />, label: t('settings.pluginManage'), group: t('settings.system') },
+    { key: 'system-mcp', icon: <ApiOutlined />, label: t('settings.mcpTools'), group: t('settings.system') },
+  ];
 
-  // 计算存储空间大小
+  // Group sections for anchor display
+  const groups = sections.reduce<{ group: string; items: SectionDef[] }[]>((acc, s) => {
+    const last = acc[acc.length - 1];
+    if (last && last.group === s.group) {
+      last.items.push(s);
+    } else {
+      acc.push({ group: s.group, items: [s] });
+    }
+    return acc;
+  }, []);
+
   const calcStorageSize = async (path?: string) => {
     const targetPath = path || getStorageConfig()?.rootPath;
     if (!targetPath || !electronService.isElectron()) {
@@ -90,7 +109,6 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
     calcStorageSize();
   }, []);
 
-  // 格式化字节大小
   const formatBytes = (bytes: number): string => {
     if (bytes === 0) return '0 B';
     const k = 1024;
@@ -107,7 +125,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
 
     const result = await electronService.dialog.openDirectory();
     if (result.filePaths && result.filePaths.length > 0) {
-      const newPath = result.filePaths[0]; // 已经被 normalizePath 处理过
+      const newPath = result.filePaths[0];
 
       modal.confirm({
         title: t('settings.changeStorageTitle'),
@@ -162,81 +180,63 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
     });
   };
 
-  const flattenSettings = (_s: AppSettings) => {
-    return {};
-  };
-
-  const unflattenSettings = (_values: any): Partial<AppSettings> => {
-    return {};
-  };
-
-  const handleSave = async () => {
-    try {
-      setSaving(true);
-      const values = await form.validateFields();
-      const partialSettings = unflattenSettings(values);
-      const currentSettings = await loadSettings();
-      const newSettings: AppSettings = {
-        ...currentSettings,
-        ...partialSettings,
-      } as AppSettings;
-      await saveSettings(newSettings);
-      onSave(newSettings);
-      message.success(t('settings.settingsSaved'));
-    } catch {
-      message.error(t('settings.saveFailed'));
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleLLMConfigChange = async () => {
-    const newSettings = await loadSettings();
-    onSave(newSettings);
-  };
-
   const handleConfigChange = async () => {
     const newSettings = await loadSettings();
     onSave(newSettings);
   };
 
-  const menuItems = [
-    {
-      key: 'models',
-      type: 'group' as const,
-      label: t('settings.modelConfig'),
-      children: [
-        { key: 'models-llm', icon: <ExperimentOutlined />, label: t('settings.llm') },
-        { key: 'models-tti', icon: <PictureOutlined />, label: t('settings.tti') },
-        { key: 'models-itv', icon: <VideoCameraOutlined />, label: t('settings.itv') },
-        { key: 'models-tts', icon: <SoundOutlined />, label: t('settings.tts') },
-      ]
-    },
-    {
-      key: 'workflow',
-      type: 'group' as const,
-      label: t('settings.workflow'),
-      children: [
-        { key: 'workflow-visual', icon: <BgColorsOutlined />, label: t('settings.visualStyle') },
-        { key: 'workflow-prompts', icon: <CodeOutlined />, label: t('settings.promptTemplate') },
-      ]
-    },
-    {
-      key: 'system',
-      type: 'group' as const,
-      label: t('settings.system'),
-      children: [
-        { key: 'system-storage', icon: <FolderOutlined />, label: t('settings.storageAndCache') },
-        { key: 'system-plugins', icon: <BlockOutlined />, label: t('settings.pluginManage') },
-        { key: 'system-mcp', icon: <ApiOutlined />, label: t('settings.mcpTools') },
-      ]
-    }
-  ];
+  // Scroll spy: track which section is in view
+  const handleScroll = useCallback(() => {
+    if (isClickScrolling.current) return;
+    const container = scrollRef.current;
+    if (!container) return;
+    const scrollTop = container.scrollTop;
+    const offset = 120;
 
-  const renderContent = () => {
-    switch (activeSection) {
+    let current = sections[0].key;
+    for (const section of sections) {
+      const el = sectionRefs.current[section.key];
+      if (el) {
+        const top = el.offsetTop - offset;
+        if (scrollTop >= top) {
+          current = section.key;
+        }
+      }
+    }
+    setActiveKey(current);
+  }, [sections]);
+
+  useEffect(() => {
+    const container = scrollRef.current;
+    if (!container) return;
+    container.addEventListener('scroll', handleScroll, { passive: true });
+    return () => container.removeEventListener('scroll', handleScroll);
+  }, [handleScroll]);
+
+  const scrollToSection = (key: string) => {
+    const el = sectionRefs.current[key];
+    const container = scrollRef.current;
+    if (!el || !container) return;
+
+    isClickScrolling.current = true;
+    setActiveKey(key);
+
+    const top = el.offsetTop - 80;
+    container.scrollTo({ top, behavior: 'smooth' });
+
+    setTimeout(() => {
+      isClickScrolling.current = false;
+    }, 600);
+  };
+
+  const setSectionRef = (key: string) => (el: HTMLDivElement | null) => {
+    sectionRefs.current[key] = el;
+  };
+
+  const renderSectionContent = (key: string) => {
+    switch (key) {
       case 'models-llm':
-        return <LLMConfigManager onConfigChange={handleLLMConfigChange} />;
+        return <LLMConfigManager onConfigChange={handleConfigChange} />;
       case 'models-tti':
         return <TTIConfigManager onConfigChange={handleConfigChange} />;
       case 'models-itv':
@@ -249,9 +249,13 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
         return <PromptStudio />;
       case 'system-storage':
         return (
-          <div style={{ maxWidth: 800 }}>
-            <Card title={t('settings.storageOverview')} style={{ marginBottom: 24 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 48 }}>
+          <div className="settings-manager" style={{ maxWidth: 900 }}>
+            <Card
+              size="small"
+              title={t('settings.storageOverview')}
+              className="settings-config-card settings-summary-card"
+            >
+              <div className="settings-summary-metrics">
                 <Statistic
                   title={t('settings.storageLocation')}
                   value={storagePath || '~/.koma'}
@@ -260,18 +264,26 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                 <Statistic title={t('settings.usedSpace')} value={storageSize} />
               </div>
             </Card>
-
-            <Card size="small" title={t('settings.storageOps')}>
-              <Space direction="vertical" style={{ width: '100%' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span>{t('settings.changeStoragePath')}</span>
+            <Card size="small" title={t('settings.storageOps')} className="settings-config-card">
+              <div className="settings-action-list">
+                <div className="settings-action-row">
+                  <div className="settings-action-copy">
+                    <span className="settings-action-title">{t('settings.changeStoragePath')}</span>
+                    <span className="settings-action-desc">
+                      {t('settings.storageMoveDesc', { defaultValue: '选择新的存储根目录，统一管理缓存与生成素材' })}
+                    </span>
+                  </div>
                   <Button icon={<FolderOutlined />} onClick={handleChangeStoragePath}>
                     {t('common.changeLocation')}
                   </Button>
                 </div>
-                <Divider style={{ margin: '12px 0' }} />
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ color: '#ff4d4f' }}>{t('settings.clearCacheDesc')}</span>
+                <div className="settings-action-row">
+                  <div className="settings-action-copy">
+                    <span className="settings-action-title" style={{ color: '#f87171' }}>
+                      {t('common.clearCache')}
+                    </span>
+                    <span className="settings-action-desc">{t('settings.clearCacheDesc')}</span>
+                  </div>
                   <Button
                     danger
                     icon={<DeleteOutlined />}
@@ -281,7 +293,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                     {t('common.clearCache')}
                   </Button>
                 </div>
-              </Space>
+              </div>
             </Card>
           </div>
         );
@@ -294,60 +306,98 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
     }
   };
 
-  const getCurrentLabel = () => {
-    for (const group of menuItems) {
-      const found = group.children?.find(item => item.key === activeSection);
-      if (found) return found.label;
-    }
-    return '';
-  };
-
   return (
-    <Layout className="h-full bg-zinc-950">
-      <Sider width={240} theme="dark" className="!bg-zinc-900 border-r border-zinc-800">
-        <div className="px-6 pt-6 pb-2">
-          <Title level={4} className="!m-0 !text-white">{t('settings.globalSettings')}</Title>
-          <Text className="text-xs !text-zinc-500">System Settings</Text>
-        </div>
-        <Menu
-          mode="inline"
-          theme="dark"
-          selectedKeys={[activeSection]}
-          className="!bg-zinc-900 !border-r-0"
-          items={menuItems}
-          onClick={({ key }) => setActiveSection(key)}
-        />
-      </Sider>
+    <div className="settings-page-shell h-full relative flex">
+      {/* Main scrollable content */}
+      <div
+        ref={scrollRef}
+        className="settings-page-scroll flex-1 h-full overflow-auto"
+      >
+        <div className="settings-page-content">
+          {/* Page title */}
+          <div className="settings-page-hero">
+            <h1 className="settings-page-hero-title">
+              {t('settings.globalSettings')}
+            </h1>
+            <Text className="settings-page-hero-desc">
+              {t('settings.allSettingsDesc', { defaultValue: 'Manage all application settings in one place' })}
+            </Text>
+          </div>
 
-      <Content className="h-full overflow-hidden flex flex-col bg-zinc-950">
-        <div className="h-14 bg-zinc-900 border-b border-zinc-800 px-6 flex items-center justify-between shrink-0">
-          <span className="font-medium text-base text-zinc-100">
-            {getCurrentLabel()}
-          </span>
+          {/* All sections */}
+          {sections.map((section, idx) => {
+            const prevSection = idx > 0 ? sections[idx - 1] : null;
+            const showGroupHeader = !prevSection || prevSection.group !== section.group;
 
-          {activeSection.startsWith('models') && (
-            <Button
-              type="primary"
-              icon={<SaveOutlined />}
-              loading={saving}
-              onClick={handleSave}
-            >
-              {t('common.applyConfig')}
-            </Button>
-          )}
-        </div>
+            return (
+              <div key={section.key}>
+                {/* Group divider */}
+                {showGroupHeader && idx > 0 && (
+                  <div className="settings-group-divider" />
+                )}
 
-        <div className="flex-1 overflow-auto p-6">
-          <Form
-            form={form}
-            layout="vertical"
-            initialValues={flattenSettings(settings)}
-            className="h-full"
-          >
-            {renderContent()}
-          </Form>
+                {/* Group label */}
+                {showGroupHeader && (
+                  <Text className="settings-group-label">
+                    {section.group}
+                  </Text>
+                )}
+
+                {/* Section */}
+                <div
+                  ref={setSectionRef(section.key)}
+                  id={`section-${section.key}`}
+                  className="settings-section-shell"
+                >
+                  <div className="settings-section-card">
+                    {/* Section header */}
+                    <div className="settings-section-header">
+                      <span className="settings-section-icon">{section.icon}</span>
+                      <h2 className="settings-section-title">
+                        {section.label}
+                      </h2>
+                    </div>
+                    {/* Section content */}
+                    <div className="settings-section-content">
+                      {renderSectionContent(section.key)}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </div>
-      </Content>
-    </Layout>
+      </div>
+
+      {/* Right floating anchor nav */}
+      <div className="settings-anchor-nav">
+        <div className="settings-anchor-inner">
+          <div className="settings-anchor-title">
+            {t('settings.navigation', { defaultValue: 'Navigation' })}
+          </div>
+          <nav>
+            {groups.map((group, gi) => (
+              <div key={group.group} className="settings-anchor-cluster">
+                <div className="settings-anchor-group">
+                  {group.group}
+                </div>
+                <div className="settings-anchor-list">
+                  {group.items.map((item) => (
+                    <button
+                      key={item.key}
+                      onClick={() => scrollToSection(item.key)}
+                      className={`settings-anchor-button${activeKey === item.key ? ' is-active' : ''}`}
+                    >
+                      <span className="settings-anchor-button-icon">{item.icon}</span>
+                      <span className="settings-anchor-button-label">{item.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </nav>
+        </div>
+      </div>
+    </div>
   );
 };
