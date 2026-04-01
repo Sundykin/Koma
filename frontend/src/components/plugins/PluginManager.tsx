@@ -99,21 +99,23 @@ export const PluginManager: React.FC = () => {
 
   // 已安装插件列表内容
   const installedContent = (
-    <>
+    <div className="settings-manager">
       {/* 搜索和筛选 */}
-      <div className="mb-4 flex gap-3">
+      <div className="settings-manager-toolbar">
         <Input
           placeholder={t('plugin.searchPlaceholder')}
           prefix={<SearchOutlined className="text-gray-400" />}
           value={searchText}
           onChange={e => setSearchText(e.target.value)}
-          style={{ width: 240 }}
+          size="small"
+          style={{ width: 220 }}
           allowClear
         />
         <Select
           value={categoryFilter}
           onChange={setCategoryFilter}
-          style={{ width: 140 }}
+          size="small"
+          style={{ width: 136 }}
           options={[
             { value: 'all', label: t('plugin.categoryAll') },
             { value: 'global', label: t('plugin.categoryGlobal') },
@@ -127,7 +129,7 @@ export const PluginManager: React.FC = () => {
       {filteredPlugins.length === 0 ? (
         <Empty
           description={searchText ? t('error.notFound') : t('plugin.noPlugins')}
-          className="my-12"
+          className="settings-empty-state my-8"
         />
       ) : (
         <div className="grid gap-3">
@@ -142,15 +144,15 @@ export const PluginManager: React.FC = () => {
           ))}
         </div>
       )}
-    </>
+    </div>
   );
 
   // 导入插件内容
   const importContent = (
-    <div className="max-w-md mx-auto py-8">
+    <div className="max-w-md mx-auto py-4">
       <PluginImporter onImportSuccess={handleImportSuccess} />
 
-      <div className="mt-8 p-4 bg-gray-50 rounded-lg">
+      <div className="mt-6 p-4 bg-gray-50 rounded-lg">
         <h4 className="font-medium mb-2">Plugin Development</h4>
         <ul className="text-sm text-gray-500 space-y-1">
           <li>• Plugin must include <code>manifest.json</code></li>
@@ -168,8 +170,8 @@ export const PluginManager: React.FC = () => {
   ];
 
   return (
-    <div className="plugin-manager p-6 h-full overflow-auto">
-      <h2 className="text-xl font-semibold mb-4">{t('plugin.plugins')}</h2>
+    <div className="plugin-manager settings-manager">
+      <h2 className="text-lg font-semibold mb-1">{t('plugin.plugins')}</h2>
       <Tabs defaultActiveKey="installed" items={tabItems} />
     </div>
   );

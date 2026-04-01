@@ -409,10 +409,10 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
   }, []);
 
   return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <div>
-          <span style={{ fontSize: 14, color: '#888' }}>
+    <div className="settings-manager">
+      <div className="settings-manager-toolbar">
+        <div className="settings-toolbar-meta">
+          <span>
             {t('settings.itvConfigured', { count: configs.length })}
             {pluginChannels.length > 0 && <span>，{t('settings.pluginChannels', { count: pluginChannels.length })}</span>}
           </span>
@@ -427,19 +427,24 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
           <Spin />
         </div>
       ) : configs.length === 0 && pluginChannels.length === 0 ? (
-        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('settings.noITVConfigs')}>
+        <Empty
+          image={Empty.PRESENTED_IMAGE_SIMPLE}
+          description={t('settings.noITVConfigs')}
+          className="settings-empty-state"
+        >
           <Button type="primary" icon={<PlusOutlined />} onClick={() => openModal()}>
             {t('settings.addBuiltinService')}
           </Button>
         </Empty>
       ) : (
-        <Row gutter={[16, 16]}>
+        <Row gutter={[12, 12]}>
           {configs.map((config) => {
             const preferredModelId = getPreferredChannelModelId(config.channel, config.definition);
             return (
-              <Col key={config.channel.id} xs={24} sm={12}>
+              <Col key={config.channel.id} xs={24} md={12} xl={8}>
                 <Card
                   size="small"
+                  className="settings-config-card"
                   title={(
                     <Space>
                       {config.isDefault ? (
@@ -489,25 +494,37 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
                     </Space>
                   )}
                 >
-                  <div style={{ fontSize: 13, color: '#666' }}>
-                    <div style={{ marginBottom: 8 }}>
-                      <strong>模型列表:</strong>
-                      <div style={{ marginTop: 6 }}>
+                  <div className="settings-card-content">
+                    <div className="settings-card-section">
+                      <div className="settings-card-label">模型列表</div>
+                      <div>
                         {renderModelTags(config.enabledModels, config.channel.defaultModelId)}
                       </div>
                     </div>
-                    <div style={{ marginBottom: 8 }}>
-                      <strong>能力:</strong>
-                      <div style={{ marginTop: 6 }}>
+                    <div className="settings-card-section">
+                      <div className="settings-card-label">能力</div>
+                      <div>
                         {renderCapabilityTags(config.enabledModels)}
                       </div>
                     </div>
-                    {config.resolvedConfig.defaultDuration && <div><strong>{t('settings.defaultDuration')}:</strong> {config.resolvedConfig.defaultDuration}s</div>}
-                    {config.resolvedConfig.defaultResolution && <div><strong>{t('settings.defaultResolution')}:</strong> {config.resolvedConfig.defaultResolution}</div>}
+                    <div className="settings-card-inline">
+                      {config.resolvedConfig.defaultDuration && (
+                        <div className="settings-card-kv">
+                          <strong>{t('settings.defaultDuration')}:</strong>
+                          <span>{config.resolvedConfig.defaultDuration}s</span>
+                        </div>
+                      )}
+                      {config.resolvedConfig.defaultResolution && (
+                        <div className="settings-card-kv">
+                          <strong>{t('settings.defaultResolution')}:</strong>
+                          <span>{config.resolvedConfig.defaultResolution}</span>
+                        </div>
+                      )}
+                    </div>
                     {config.resolvedConfig.baseUrl && (
-                      <div style={{ marginTop: 6 }}>
-                        <strong>{t('settings.apiAddress')}:</strong>{' '}
-                        <span style={{ fontSize: 12, fontFamily: 'monospace' }}>
+                      <div className="settings-card-section">
+                        <div className="settings-card-label">{t('settings.apiAddress')}</div>
+                        <span className="settings-card-code">
                           {config.resolvedConfig.baseUrl.replace(/https?:\/\//, '').slice(0, 36)}
                         </span>
                       </div>
@@ -519,9 +536,10 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
           })}
 
           {pluginChannels.map((channel) => (
-            <Col key={channel.id} xs={24} sm={12}>
+            <Col key={channel.id} xs={24} md={12} xl={8}>
               <Card
                 size="small"
+                className="settings-config-card"
                 title={(
                   <Space>
                     {settings?.mediaDefaults?.itv?.channelId === channel.id ? (
@@ -550,10 +568,14 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
                   </Tooltip>
                 ) : null}
               >
-                <div style={{ fontSize: 13, color: '#666' }}>
+                <div className="settings-card-content">
                   {channel.description && <div>{channel.description}</div>}
-                  <div style={{ marginTop: 6 }}><strong>Provider:</strong> {channel.providerType}</div>
-                  {channel.defaultModelId && <div style={{ marginTop: 6 }}><strong>默认模型:</strong> {channel.defaultModelId}</div>}
+                  <div className="settings-card-inline">
+                    <div className="settings-card-kv"><strong>Provider:</strong><span>{channel.providerType}</span></div>
+                    {channel.defaultModelId && (
+                      <div className="settings-card-kv"><strong>默认模型:</strong><span>{channel.defaultModelId}</span></div>
+                    )}
+                  </div>
                 </div>
               </Card>
             </Col>
@@ -575,101 +597,110 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
         onCancel={() => setModalVisible(false)}
         okText={t('common.save')}
         cancelText={t('common.cancel')}
-        width={560}
+        width={840}
         mask={{ closable: false }}
         destroyOnHidden
-        className="dark-modal"
+        className="dark-modal settings-compact-modal"
       >
-        <Form form={form} layout="vertical" className="mt-4">
-          <Form.Item
-            name="providerType"
-            label={t('settings.provider')}
-            required
-            rules={[{ required: true, message: `${t('settings.pleaseSelect')} ${t('settings.provider')}` }]}
-          >
-            <Select placeholder={t('settings.selectITVProvider')} onChange={handleProviderChange}>
-              {channelDefinitions.map((definition) => (
-                <Select.Option key={definition.id} value={definition.id}>
-                  {definition.name}
-                </Select.Option>
-              ))}
-            </Select>
-          </Form.Item>
-
-          <Form.Item
-            name="name"
-            label={t('settings.configName')}
-            required
-            rules={[{ required: true, message: `${t('settings.pleaseEnter')} ${t('settings.configName')}` }]}
-          >
-            <Input placeholder={t('settings.configNamePlaceholder')} />
-          </Form.Item>
-
-          <Form.Item
-            label="模型列表"
-            required
-          >
-            <ChannelModelsEditor
-              capabilityOptions={[
-                { value: 'video.text-to-video', label: '文生视频' },
-                { value: 'video.image-to-video', label: '图生视频' },
-                { value: 'video.reference-to-video', label: '参考生视频' },
-                { value: 'video.start-end-to-video', label: '首尾帧视频' },
-              ]}
-              defaultCapabilities={['video.image-to-video']}
-              helpText="模型列表为手动维护。请为每个模型勾选其真实支持的能力，项目与灵绘会自动按能力过滤可选模型。"
-              modelNamePlaceholder="填写模型名称，如: viduq2-pro / gen-3 / kling-v1-5"
-            />
-          </Form.Item>
-
-          <Form.Item
-            name="defaultModelId"
-            label="默认模型"
-            required
-            rules={[{ required: true, message: '请选择默认模型' }]}
-          >
-            <Select
-              placeholder="选择默认模型"
-              options={modelOptions}
-            />
-          </Form.Item>
-
-          {currentProviderType !== 'comfyui-animatediff' && (
-            <Form.Item
-              name="apiKey"
-              label={t('settings.apiKey')}
-              rules={[{ required: currentProviderType !== 'comfyui-animatediff', message: `${t('settings.pleaseEnter')} ${t('settings.apiKey')}` }]}
-            >
-              <Input.Password placeholder={t('settings.enterApiKey')} />
-            </Form.Item>
-          )}
-
-          <Form.Item
-            name="baseUrl"
-            label={t('settings.apiAddress')}
-            rules={[{ required: true, message: `${t('settings.pleaseEnter')} ${t('settings.apiAddress')}` }]}
-          >
-            <Input placeholder="https://api.klingai.com" />
-          </Form.Item>
-
-          <Form.Item
-            name="promptProtocol"
-            label="Prompt 编译协议"
-            tooltip="为特定渠道启用提示词编译与参考图数组对齐。"
-          >
-            <Select allowClear placeholder="不启用（默认）">
-              <Select.Option value="grok-image-index">grok-image-index (@Image N)</Select.Option>
-            </Select>
-          </Form.Item>
-
-          <Row gutter={16}>
-            <Col span={12}>
-              <Form.Item name="defaultDuration" label={`${t('settings.defaultDuration')} (s)`}>
-                <InputNumber min={1} max={60} placeholder="5" style={{ width: '100%' }} />
+        <Form form={form} layout="vertical" className="settings-modal-form">
+          <div className="settings-form-section">
+            <div className="settings-form-section-title">基础信息</div>
+            <div className="settings-modal-grid">
+              <Form.Item
+                name="providerType"
+                label={t('settings.provider')}
+                required
+                rules={[{ required: true, message: `${t('settings.pleaseSelect')} ${t('settings.provider')}` }]}
+              >
+                <Select placeholder={t('settings.selectITVProvider')} onChange={handleProviderChange}>
+                  {channelDefinitions.map((definition) => (
+                    <Select.Option key={definition.id} value={definition.id}>
+                      {definition.name}
+                    </Select.Option>
+                  ))}
+                </Select>
               </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item name="defaultResolution" label={t('settings.defaultResolution')}>
+
+              <Form.Item
+                name="name"
+                label={t('settings.configName')}
+                required
+                rules={[{ required: true, message: `${t('settings.pleaseEnter')} ${t('settings.configName')}` }]}
+              >
+                <Input placeholder={t('settings.configNamePlaceholder')} />
+              </Form.Item>
+            </div>
+          </div>
+
+          <div className="settings-form-section">
+            <div className="settings-form-section-title">模型维护</div>
+            <Form.Item
+              label="模型列表"
+              required
+              style={{ marginBottom: 0 }}
+            >
+              <ChannelModelsEditor
+                capabilityOptions={[
+                  { value: 'video.text-to-video', label: '文生视频' },
+                  { value: 'video.image-to-video', label: '图生视频' },
+                  { value: 'video.reference-to-video', label: '参考生视频' },
+                  { value: 'video.start-end-to-video', label: '首尾帧视频' },
+                ]}
+                defaultCapabilities={['video.image-to-video']}
+                helpText="模型列表为手动维护。请按真实能力勾选，项目与灵绘会自动过滤不可用的模型。"
+                modelNamePlaceholder="填写模型名称，如: viduq2-pro / gen-3 / kling-v1-5"
+              />
+            </Form.Item>
+          </div>
+
+          <div className="settings-form-section">
+            <div className="settings-form-section-title">默认项与连接参数</div>
+            <div className="settings-modal-grid">
+              <Form.Item
+                name="defaultModelId"
+                label="默认模型"
+                required
+                rules={[{ required: true, message: '请选择默认模型' }]}
+              >
+                <Select
+                  placeholder="选择默认模型"
+                  options={modelOptions}
+                />
+              </Form.Item>
+
+              <Form.Item
+                name="promptProtocol"
+                label="Prompt 编译协议"
+                tooltip="为特定渠道启用提示词编译与参考图数组对齐。"
+              >
+                <Select allowClear placeholder="不启用（默认）">
+                  <Select.Option value="grok-image-index">grok-image-index (@Image N)</Select.Option>
+                </Select>
+              </Form.Item>
+
+              {currentProviderType !== 'comfyui-animatediff' && (
+                <Form.Item
+                  name="apiKey"
+                  label={t('settings.apiKey')}
+                  rules={[{ required: currentProviderType !== 'comfyui-animatediff', message: `${t('settings.pleaseEnter')} ${t('settings.apiKey')}` }]}
+                >
+                  <Input.Password placeholder={t('settings.enterApiKey')} />
+                </Form.Item>
+              )}
+
+              <Form.Item
+                name="baseUrl"
+                label={t('settings.apiAddress')}
+                rules={[{ required: true, message: `${t('settings.pleaseEnter')} ${t('settings.apiAddress')}` }]}
+              >
+                <Input placeholder="https://api.klingai.com" />
+              </Form.Item>
+
+              <Form.Item name="defaultDuration" label={`${t('settings.defaultDuration')} (s)`}>
+                <InputNumber min={1} max={60} placeholder="5" />
+              </Form.Item>
+
+              <Form.Item name="defaultResolution" label={t('settings.defaultResolution')} style={{ marginBottom: 0 }}>
                 <Select placeholder={t('settings.selectSize')} allowClear>
                   <Select.Option value="360p">360p</Select.Option>
                   <Select.Option value="720p">720p</Select.Option>
@@ -680,8 +711,8 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
                   <Select.Option value="1080x1920">1080 × 1920 ({t('settings.portrait')})</Select.Option>
                 </Select>
               </Form.Item>
-            </Col>
-          </Row>
+            </div>
+          </div>
         </Form>
       </Modal>
     </div>

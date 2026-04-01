@@ -154,8 +154,9 @@ export const ProviderPluginModal: React.FC<ProviderPluginModalProps> = ({
       open={visible}
       onCancel={handleClose}
       footer={null}
-      width={720}
+      width={800}
       destroyOnClose
+      className="dark-modal settings-compact-modal"
       styles={{ body: { maxHeight: '70vh', overflow: 'auto' } }}
     >
       {loading && (

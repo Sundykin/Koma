@@ -334,10 +334,10 @@ export const LLMConfigManager: React.FC<LLMConfigManagerProps> = ({ onConfigChan
   ), []);
 
   return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <div>
-          <span style={{ fontSize: 14, color: '#888' }}>
+    <div className="settings-manager">
+      <div className="settings-manager-toolbar">
+        <div className="settings-toolbar-meta">
+          <span>
             已配置 <strong>{configs.length}</strong> 个渠道
           </span>
         </div>
@@ -351,19 +351,24 @@ export const LLMConfigManager: React.FC<LLMConfigManagerProps> = ({ onConfigChan
           <Spin />
         </div>
       ) : configs.length === 0 ? (
-        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="还没有配置任何 LLM 渠道">
+        <Empty
+          image={Empty.PRESENTED_IMAGE_SIMPLE}
+          description="还没有配置任何 LLM 渠道"
+          className="settings-empty-state"
+        >
           <Button type="primary" icon={<PlusOutlined />} onClick={() => openModal()}>
             添加第一个渠道
           </Button>
         </Empty>
       ) : (
-        <Row gutter={[16, 16]}>
+        <Row gutter={[12, 12]}>
           {configs.map((config) => {
             const preferredModelId = getPreferredChannelModelId(config.channel, config.definition);
             return (
-              <Col key={config.channel.id} xs={24} sm={12}>
+              <Col key={config.channel.id} xs={24} md={12} xl={8}>
                 <Card
                   size="small"
+                  className="settings-config-card"
                   title={(
                     <Space>
                       {config.isDefault ? (
@@ -413,17 +418,17 @@ export const LLMConfigManager: React.FC<LLMConfigManagerProps> = ({ onConfigChan
                     </Space>
                   )}
                 >
-                  <div style={{ fontSize: 13, color: '#666' }}>
-                    <div style={{ marginBottom: 8 }}>
-                      <strong>模型列表:</strong>
-                      <div style={{ marginTop: 6 }}>
+                  <div className="settings-card-content">
+                    <div className="settings-card-section">
+                      <div className="settings-card-label">模型列表</div>
+                      <div>
                         {renderModelTags(config.enabledModels, config.channel.defaultModelId)}
                       </div>
                     </div>
                     {config.resolvedConfig.baseUrl && (
-                      <div style={{ marginTop: 6 }}>
-                        <strong>地址:</strong>{' '}
-                        <span style={{ fontSize: 12, fontFamily: 'monospace' }}>
+                      <div className="settings-card-section">
+                        <div className="settings-card-label">地址</div>
+                        <span className="settings-card-code">
                           {config.resolvedConfig.baseUrl.replace(/https?:\/\//, '').slice(0, 36)}
                         </span>
                       </div>
@@ -443,82 +448,98 @@ export const LLMConfigManager: React.FC<LLMConfigManagerProps> = ({ onConfigChan
         onCancel={() => setModalVisible(false)}
         okText="保存"
         cancelText="取消"
-        width={520}
+        width={760}
         mask={{ closable: false }}
         destroyOnHidden
-        className="dark-modal"
+        className="dark-modal settings-compact-modal"
       >
-        <Form form={form} layout="vertical" className="mt-4">
-          <Form.Item
-            name="providerType"
-            label="模型渠道"
-            required
-            rules={[{ required: true, message: '请选择模型渠道' }]}
-          >
-            <Select onChange={handleProviderChange}>
-              {channelDefinitions.map((definition) => (
-                <Select.Option key={definition.id} value={definition.id}>
-                  {definition.name}
-                </Select.Option>
-              ))}
-            </Select>
-          </Form.Item>
+        <Form form={form} layout="vertical" className="settings-modal-form">
+          <div className="settings-form-section">
+            <div className="settings-form-section-title">基础信息</div>
+            <div className="settings-modal-grid">
+              <Form.Item
+                name="providerType"
+                label="模型渠道"
+                required
+                rules={[{ required: true, message: '请选择模型渠道' }]}
+              >
+                <Select onChange={handleProviderChange}>
+                  {channelDefinitions.map((definition) => (
+                    <Select.Option key={definition.id} value={definition.id}>
+                      {definition.name}
+                    </Select.Option>
+                  ))}
+                </Select>
+              </Form.Item>
 
-          <Form.Item
-            name="name"
-            label="配置名称"
-            required
-            rules={[{ required: true, message: '请输入配置名称' }]}
-          >
-            <Input placeholder="如: DeepSeek 团队账号" />
-          </Form.Item>
+              <Form.Item
+                name="name"
+                label="配置名称"
+                required
+                rules={[{ required: true, message: '请输入配置名称' }]}
+              >
+                <Input placeholder="如: DeepSeek 团队账号" />
+              </Form.Item>
+            </div>
+          </div>
 
-          <Form.Item
-            label="模型列表"
-            required
-          >
-            <ChannelModelsEditor
-              fixedCapabilities={['llm.chat']}
-              helpText="模型列表为手动维护。修改模型名称不会影响项目中的已选择项（内部以稳定 ID 关联）。"
-            />
-          </Form.Item>
+          <div className="settings-form-section">
+            <div className="settings-form-section-title">模型维护</div>
+            <Form.Item
+              label="模型列表"
+              required
+              style={{ marginBottom: 0 }}
+            >
+              <ChannelModelsEditor
+                fixedCapabilities={['llm.chat']}
+                helpText="模型列表为手动维护。修改模型名称不会影响项目中的已选择项，系统会继续按稳定 ID 关联。"
+              />
+            </Form.Item>
+          </div>
 
-          <Form.Item
-            name="defaultModelId"
-            label="默认模型"
-            required
-            rules={[{ required: true, message: '请选择默认模型' }]}
-          >
-            <Select
-              placeholder="选择默认模型"
-              options={modelOptions}
-            />
-          </Form.Item>
+          <div className="settings-form-section">
+            <div className="settings-form-section-title">连接参数</div>
+            <div className="settings-modal-grid">
+              <Form.Item
+                name="defaultModelId"
+                label="默认模型"
+                required
+                rules={[{ required: true, message: '请选择默认模型' }]}
+              >
+                <Select
+                  placeholder="选择默认模型"
+                  options={modelOptions}
+                />
+              </Form.Item>
 
-          <Form.Item
-            name="baseUrl"
-            label={(
-              <span>
-                API 地址
-                {!currentIsOpenAICompatible && <span className="text-zinc-500 ml-2 text-xs">(可选，用于代理)</span>}
-              </span>
-            )}
-            rules={[{ required: currentIsOpenAICompatible, message: '请输入 API 地址' }]}
-          >
-            <Input
-              prefix={<ApiOutlined />}
-              placeholder={currentIsOpenAICompatible ? 'https://api.deepseek.com/v1' : '可留空使用官方地址'}
-            />
-          </Form.Item>
+              <Form.Item
+                name="baseUrl"
+                label={(
+                  <span>
+                    API 地址
+                    {!currentIsOpenAICompatible && <span className="text-zinc-500 ml-2 text-xs">(可选，用于代理)</span>}
+                  </span>
+                )}
+                rules={[{ required: currentIsOpenAICompatible, message: '请输入 API 地址' }]}
+              >
+                <Input
+                  prefix={<ApiOutlined />}
+                  placeholder={currentIsOpenAICompatible ? 'https://api.deepseek.com/v1' : '可留空使用官方地址'}
+                />
+              </Form.Item>
 
-          <Form.Item
-            name="apiKey"
-            label="API Key"
-            required
-            rules={[{ required: true, message: '请输入 API Key' }]}
-          >
-            <Input.Password prefix={<KeyOutlined />} placeholder="sk-..." />
-          </Form.Item>
+              <Form.Item
+                name="apiKey"
+                label="API Key"
+                className="settings-grid-span-full"
+                required
+                rules={[{ required: true, message: '请输入 API Key' }]}
+                style={{ marginBottom: 0 }}
+              >
+                <Input.Password prefix={<KeyOutlined />} placeholder="sk-..." />
+              </Form.Item>
+            </div>
+          </div>
         </Form>
       </Modal>
     </div>

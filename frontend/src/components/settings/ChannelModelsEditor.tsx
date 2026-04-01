@@ -45,20 +45,21 @@ export const ChannelModelsEditor: React.FC<ChannelModelsEditorProps> = ({
   labelPlaceholder = '展示名（可选）',
   helpText,
 }) => (
-  <div>
+  <div className="settings-models-editor">
     {helpText && (
-      <Typography.Paragraph type="secondary" style={{ marginBottom: 10 }}>
+      <Typography.Paragraph type="secondary" className="settings-models-help">
         {helpText}
       </Typography.Paragraph>
     )}
 
     <Form.List name={name}>
       {(fields, { add, remove }) => (
-        <Space direction="vertical" style={{ width: '100%' }} size="middle">
+        <Space direction="vertical" style={{ width: '100%' }} size="small">
           {fields.map((field, index) => (
             <Card
               key={field.key}
               size="small"
+              className="settings-model-card"
               title={`模型 ${index + 1}`}
               extra={(
                 <Tooltip title={fields.length === 1 ? '至少保留一个模型' : '删除该模型'}>
@@ -77,34 +78,33 @@ export const ChannelModelsEditor: React.FC<ChannelModelsEditorProps> = ({
                 <Input />
               </Form.Item>
 
-              <Space direction="vertical" style={{ width: '100%' }} size="small">
-                <Space style={{ width: '100%' }} size="middle" align="start">
-                  <Form.Item
-                    name={[field.name, 'providerModelName']}
-                    label="模型名称"
-                    rules={[{
-                      required: true,
-                      message: '请输入模型名称',
-                      transform: normalizeString,
-                    }]}
-                    style={{ flex: 1, marginBottom: 0 }}
-                  >
-                    <Input placeholder={modelNamePlaceholder} />
-                  </Form.Item>
+              <div className="settings-model-grid">
+                <Form.Item
+                  name={[field.name, 'providerModelName']}
+                  label="模型名称"
+                  rules={[{
+                    required: true,
+                    message: '请输入模型名称',
+                    transform: normalizeString,
+                  }]}
+                  style={{ marginBottom: 0 }}
+                >
+                  <Input placeholder={modelNamePlaceholder} />
+                </Form.Item>
 
-                  <Form.Item
-                    name={[field.name, 'label']}
-                    label="展示名"
-                    style={{ flex: 1, marginBottom: 0 }}
-                  >
-                    <Input placeholder={labelPlaceholder} />
-                  </Form.Item>
-                </Space>
+                <Form.Item
+                  name={[field.name, 'label']}
+                  label="展示名"
+                  style={{ marginBottom: 0 }}
+                >
+                  <Input placeholder={labelPlaceholder} />
+                </Form.Item>
 
                 {capabilityOptions?.length ? (
                   <Form.Item
                     name={[field.name, 'capabilities']}
                     label="能力"
+                    className="full-span"
                     rules={[{
                       validator: async (_rule, value: unknown) => {
                         const array = Array.isArray(value) ? value : [];
@@ -116,6 +116,7 @@ export const ChannelModelsEditor: React.FC<ChannelModelsEditorProps> = ({
                     style={{ marginBottom: 0 }}
                   >
                     <Checkbox.Group
+                      className="settings-model-capabilities"
                       options={capabilityOptions.map((option) => ({
                         value: option.value,
                         label: option.label,
@@ -123,7 +124,7 @@ export const ChannelModelsEditor: React.FC<ChannelModelsEditorProps> = ({
                     />
                   </Form.Item>
                 ) : fixedCapabilities?.length ? (
-                  <div>
+                  <div className="full-span">
                     <Typography.Text type="secondary">能力:</Typography.Text>
                     <div style={{ marginTop: 6 }}>
                       <Space wrap size={[6, 6]}>
@@ -134,7 +135,7 @@ export const ChannelModelsEditor: React.FC<ChannelModelsEditorProps> = ({
                     </div>
                   </div>
                 ) : null}
-              </Space>
+              </div>
             </Card>
           ))}
 
