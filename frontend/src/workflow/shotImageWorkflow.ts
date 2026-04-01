@@ -19,12 +19,9 @@ import {
 } from '../store/project/mediaState';
 import { buildShotImageTemplateVariables } from './promptVariableBuilders';
 import { buildShotAssetReferences } from './assetReferenceBuilder';
+import type { StyleSnapshotLike } from '../utils/promptNormalize';
 
 const logger = createLogger('ShotImageWorkflow');
-
-interface StyleSnapshotLike {
-  ttiStylePrefix?: string;
-}
 
 export async function shotImageWorkflow(params: {
   projectId: string;

@@ -2,15 +2,20 @@
  * AI 自动剧集服务
  * 单次调用 LLM 生成切分方案，再在本地落地切分结果
  */
-import type { LLMModelConfig } from '../types';
-import { createLLMProvider } from '../providers';
+import type { CreationContext } from './CreationContext';
 import { parseLLMJSON } from '../utils/llmJsonParser';
 import { detectExplicitEpisodeAnalysis, materializeEpisodeSplit } from './episodeSplitUtils';
 import type { SplitAnalysis, SplitResult } from './episodeSplitUtils';
 
 const FULL_SCRIPT_ANALYSIS_CHAR_LIMIT = 36_000;
-const SCRIPT_SAMPLE_COUNT = 6;
-const SINGLE_EPISODE_COUNT = 1;
+const BOOKEND_SIZE = 3_000;
+const MIDDLE_SEGMENT_MIN = 3_000;
+const MIDDLE_SEGMENT_MAX = 6_000;
+const MAX_MIDDLE_SEGMENTS = 12;
+const OMISSION_MARKER = '\n\n[...省略...]\n\n';
+
+/** Scene boundary regex (local copy from scriptAnalysisChunking) */
+const SCENE_BOUNDARY_RE = /^\s*(第[零〇一二三四五六七八九十百千两\d０-９]+\s*[集回话章节卷部篇]|(?:episode|ep\.?|chapter|part|vol\.?)\s*\d+|s\s*\d+\s*e\s*\d+|\d{1,4}\s*[-—–]\s*\d{1,4}\b)/i;
 
 export interface SplitOptions {
   targetEpisodeCount?: number;
@@ -20,25 +25,107 @@ export interface SplitOptions {
 
 export type { EpisodeBlueprint, SplitAnalysis, SplitPoint, SplitResult } from './episodeSplitUtils';
 
+/**
+ * Find all scene boundary character positions within a substring of the script.
+ * Returns positions relative to the full script (offset-adjusted).
+ */
+function findSceneBoundaries(script: string, from: number, to: number): number[] {
+  const positions: number[] = [];
+  const region = script.slice(from, to);
+  const lines = region.split('\n');
+  let cursor = 0;
+  for (const line of lines) {
+    if (SCENE_BOUNDARY_RE.test(line.trim())) {
+      positions.push(from + cursor);
+    }
+    cursor += line.length + 1; // +1 for the '\n'
+  }
+  return positions;
+}
+
 function buildAnalysisScript(script: string): string {
   if (script.length <= FULL_SCRIPT_ANALYSIS_CHAR_LIMIT) {
     return script;
   }
 
-  const segmentLength = Math.floor(FULL_SCRIPT_ANALYSIS_CHAR_LIMIT / SCRIPT_SAMPLE_COUNT);
-  const maxStart = Math.max(script.length - segmentLength, 0);
-  const segments = Array.from({ length: SCRIPT_SAMPLE_COUNT }, (_, index) => {
-    const ratio = index / (SCRIPT_SAMPLE_COUNT - SINGLE_EPISODE_COUNT);
-    const start = Math.floor(maxStart * ratio);
-    const end = Math.min(start + segmentLength, script.length);
-    return `【片段 ${index + 1}/${SCRIPT_SAMPLE_COUNT}，原始位置 ${start}-${end}】\n${script.slice(start, end)}`;
+  const totalLength = script.length;
+
+  // 1. Bookend segments: opening and ending
+  const openingEnd = Math.min(BOOKEND_SIZE, totalLength);
+  const closingStart = Math.max(totalLength - BOOKEND_SIZE, openingEnd);
+
+  const opening = script.slice(0, openingEnd);
+  const closing = script.slice(closingStart);
+
+  // 2. Middle section sampling
+  const middleFrom = openingEnd;
+  const middleTo = closingStart;
+  const middleLength = middleTo - middleFrom;
+
+  if (middleLength <= 0) {
+    // Script is short enough that bookends cover everything
+    return opening + (closingStart > openingEnd ? OMISSION_MARKER + closing : '');
+  }
+
+  const segmentCount = Math.min(MAX_MIDDLE_SEGMENTS, Math.ceil(totalLength / 6000));
+  const boundaries = findSceneBoundaries(script, middleFrom, middleTo);
+
+  const middleSegments: string[] = [];
+
+  if (boundaries.length >= segmentCount) {
+    // Enough scene boundaries — pick evenly distributed ones
+    for (let i = 0; i < segmentCount; i++) {
+      const idx = Math.floor((i / segmentCount) * boundaries.length);
+      const segStart = boundaries[idx];
+      const segEnd = Math.min(segStart + MIDDLE_SEGMENT_MAX, middleTo);
+      middleSegments.push(script.slice(segStart, segEnd));
+    }
+  } else {
+    // Not enough scene boundaries — fall back to evenly spaced positions,
+    // snapping to the nearest scene boundary when one is close.
+    const step = middleLength / segmentCount;
+    for (let i = 0; i < segmentCount; i++) {
+      let segStart = middleFrom + Math.floor(step * i);
+
+      // Snap to nearest scene boundary within ±2000 chars
+      let bestDist = Infinity;
+      for (const b of boundaries) {
+        const dist = Math.abs(b - segStart);
+        if (dist < bestDist && dist <= 2000) {
+          bestDist = dist;
+          segStart = b;
+        }
+      }
+
+      const segSize = Math.max(MIDDLE_SEGMENT_MIN, Math.min(MIDDLE_SEGMENT_MAX, Math.floor(step)));
+      const segEnd = Math.min(segStart + segSize, middleTo);
+      middleSegments.push(script.slice(segStart, segEnd));
+    }
+  }
+
+  // 3. Assemble with position labels and omission markers
+  const totalSegments = middleSegments.length + 2; // +2 for opening & closing
+  const parts: string[] = [
+    `【片段 1/${totalSegments}，原始位置 0-${openingEnd}】\n${opening}`,
+  ];
+
+  middleSegments.forEach((seg, i) => {
+    const segIdx = i + 2;
+    // Recover approximate position from the segment content
+    const pos = script.indexOf(seg.slice(0, 80));
+    const posLabel = pos >= 0 ? `${pos}-${pos + seg.length}` : '(中间采样)';
+    parts.push(`【片段 ${segIdx}/${totalSegments}，原始位置 ${posLabel}】\n${seg}`);
   });
 
+  parts.push(
+    `【片段 ${totalSegments}/${totalSegments}，原始位置 ${closingStart}-${totalLength}】\n${closing}`,
+  );
+
   return [
-    '原始剧本较长，以下内容是按时间顺序抽样的完整剧本片段。',
+    '原始剧本较长，以下内容是按时间顺序抽样的完整剧本片段（含开头与结尾完整内容）。',
     '请基于这些片段判断整体节奏，所有 splitPoints.position 都必须使用完整原始剧本的字符位置。',
-    ...segments,
-  ].join('\n\n');
+    ...parts,
+  ].join(OMISSION_MARKER);
 }
 
 function buildSplitPrompt(script: string, options: SplitOptions): string {
@@ -80,16 +167,11 @@ JSON 格式：
 }
 
 export class EpisodeSplitService {
-  private provider: ReturnType<typeof createLLMProvider>;
+  private provider: CreationContext['llmProvider'];
   private aborted = false;
 
-  constructor(llmConfig: LLMModelConfig) {
-    this.provider = createLLMProvider({
-      provider: llmConfig.provider as any,
-      apiKey: llmConfig.apiKey,
-      baseUrl: llmConfig.baseUrl,
-      modelName: llmConfig.modelName,
-    });
+  constructor(ctx: CreationContext) {
+    this.provider = ctx.llmProvider;
   }
 
   abort(): void {

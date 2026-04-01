@@ -7,10 +7,7 @@ import type { Character, Scene, StoredMediaAsset } from '../types';
 import { loadEpisodeShots } from '../store/projectStore';
 import { shotImageWorkflow } from '../workflow/shotImageWorkflow';
 import { runWithConcurrency } from '../utils/concurrency';
-
-interface StyleSnapshotLike {
-  ttiStylePrefix?: string;
-}
+import type { StyleSnapshotLike } from '../utils/promptNormalize';
 
 export async function generateShotImage(
   projectId: string,

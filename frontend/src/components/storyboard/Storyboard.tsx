@@ -891,7 +891,6 @@ export const Storyboard: React.FC<StoryboardProps> = ({
         },
         llmSelection,
         styleSnapshot,
-        undefined,
         { image: true, video: false }
       );
       const successCount = results.filter(r => r.success).length;
@@ -944,7 +943,6 @@ export const Storyboard: React.FC<StoryboardProps> = ({
         },
         llmSelection,
         styleSnapshot,
-        undefined,
         { image: true, video: false },
         { force: true }
       );
@@ -998,7 +996,6 @@ export const Storyboard: React.FC<StoryboardProps> = ({
         },
         llmSelection,
         styleSnapshot,
-        undefined,
         { image: false, video: true }
       );
       const successCount = results.filter(r => r.success).length;
@@ -1051,7 +1048,6 @@ export const Storyboard: React.FC<StoryboardProps> = ({
         },
         llmSelection,
         styleSnapshot,
-        undefined,
         { image: false, video: true },
         { force: true }
       );

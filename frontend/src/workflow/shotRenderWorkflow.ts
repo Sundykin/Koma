@@ -22,13 +22,9 @@ import {
   resolveShotVideoCapabilitySupport,
 } from './shotVideoPlan';
 import { compileShotVideoGenerationRequest } from './videoGenerationRequests';
+import type { StyleSnapshotLike } from '../utils/promptNormalize';
 
 const logger = createLogger('ShotRender');
-
-interface StyleSnapshotLike {
-  ttiStylePrefix?: string;
-  llmPromptSuffix?: string;
-}
 
 interface ShotRenderParams {
   projectId: string;

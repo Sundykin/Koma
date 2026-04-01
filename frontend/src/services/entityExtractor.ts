@@ -2,11 +2,11 @@
  * 实体提取服务
  * 从剧本中自动提取角色、场景、道具
  */
-import type { AppSettings, Character, Scene } from '../types';
-import { getProjectLLMProvider } from '../providers';
+import type { Character, Scene } from '../types';
+import type { CreationContext } from './CreationContext';
 import { resolvePromptTemplate } from '../store/promptTemplates';
 import { parseLLMJSON } from '../utils/llmJsonParser';
-import { cleanText, splitVisualClauses, CHARACTER_STORY_TOKENS, sanitizeCharacterAppearance } from '../utils/textUtils';
+import { cleanText, sanitizeCharacterAppearance } from '../utils/textUtils';
 
 // 道具接口
 export interface Prop {
@@ -29,20 +29,15 @@ type EntityType = 'character' | 'scene' | 'prop';
  * 从剧本提取角色
  */
 export async function extractCharacters(
-  settings: AppSettings,
+  ctx: CreationContext,
   script: string,
-  onProgress?: (progress: number, step?: string) => void
+  onProgress?: (progress: number, step?: string) => void,
 ): Promise<Character[]> {
-  const provider = await getProjectLLMProvider();
-  if (!provider) {
-    throw new Error('未配置 LLM 模型');
-  }
-
   onProgress?.(5, '加载 Prompt 模板...');
   const resolvedPrompt = await resolvePromptTemplate('character_extraction', { script });
 
   onProgress?.(10, '分析剧本角色...');
-  const response = await provider.chat([
+  const response = await ctx.llmProvider.chat([
     { role: 'user', content: resolvedPrompt.prompt },
   ]);
 
@@ -69,20 +64,15 @@ export async function extractCharacters(
  * 从剧本提取场景
  */
 export async function extractScenes(
-  settings: AppSettings,
+  ctx: CreationContext,
   script: string,
-  onProgress?: (progress: number, step?: string) => void
+  onProgress?: (progress: number, step?: string) => void,
 ): Promise<Scene[]> {
-  const provider = await getProjectLLMProvider();
-  if (!provider) {
-    throw new Error('未配置 LLM 模型');
-  }
-
   onProgress?.(5, '加载 Prompt 模板...');
   const resolvedPrompt = await resolvePromptTemplate('scene_extraction', { script });
 
   onProgress?.(10, '分析剧本场景...');
-  const response = await provider.chat([
+  const response = await ctx.llmProvider.chat([
     { role: 'user', content: resolvedPrompt.prompt },
   ]);
 
@@ -109,26 +99,21 @@ export async function extractScenes(
  * 从剧本提取道具
  */
 export async function extractProps(
-  settings: AppSettings,
+  ctx: CreationContext,
   script: string,
-  onProgress?: (progress: number, step?: string) => void
+  onProgress?: (progress: number, step?: string) => void,
 ): Promise<Prop[]> {
-  const provider = await getProjectLLMProvider();
-  if (!provider) {
-    throw new Error('未配置 LLM 模型');
-  }
-
   onProgress?.(5, '加载 Prompt 模板...');
   const resolvedPrompt = await resolvePromptTemplate('prop_extraction', { script });
 
   onProgress?.(10, '分析剧本道具...');
-  const response = await provider.chat([
+  const propResponse = await ctx.llmProvider.chat([
     { role: 'user', content: resolvedPrompt.prompt },
   ]);
 
   onProgress?.(80, '解析道具数据...');
 
-  const data = parseLLMJSON<any>(response);
+  const data = parseLLMJSON<any>(propResponse);
 
   const props: Prop[] = (data.props || []).map((p: any) => ({
     name: p.name,
@@ -145,18 +130,18 @@ export async function extractProps(
  * 统一提取接口
  */
 export async function extractEntities(
-  settings: AppSettings,
+  ctx: CreationContext,
   script: string,
   type: EntityType,
-  onProgress?: (progress: number, step?: string) => void
+  onProgress?: (progress: number, step?: string) => void,
 ): Promise<ExtractionResult> {
   switch (type) {
     case 'character':
-      return { characters: await extractCharacters(settings, script, onProgress) };
+      return { characters: await extractCharacters(ctx, script, onProgress) };
     case 'scene':
-      return { scenes: await extractScenes(settings, script, onProgress) };
+      return { scenes: await extractScenes(ctx, script, onProgress) };
     case 'prop':
-      return { props: await extractProps(settings, script, onProgress) };
+      return { props: await extractProps(ctx, script, onProgress) };
     default:
       throw new Error(`未知的实体类型: ${type}`);
   }
@@ -166,21 +151,21 @@ export async function extractEntities(
  * 批量提取所有实体
  */
 export async function extractAllEntities(
-  settings: AppSettings,
+  ctx: CreationContext,
   script: string,
-  onProgress?: (progress: number, step?: string) => void
+  onProgress?: (progress: number, step?: string) => void,
 ): Promise<ExtractionResult> {
   onProgress?.(0, '开始提取实体...');
 
-  const characters = await extractCharacters(settings, script, (p, s) => {
+  const characters = await extractCharacters(ctx, script, (p, s) => {
     onProgress?.(p * 0.33, s);
   });
 
-  const scenes = await extractScenes(settings, script, (p, s) => {
+  const scenes = await extractScenes(ctx, script, (p, s) => {
     onProgress?.(33 + p * 0.33, s);
   });
 
-  const props = await extractProps(settings, script, (p, s) => {
+  const props = await extractProps(ctx, script, (p, s) => {
     onProgress?.(66 + p * 0.34, s);
   });
 

@@ -3,27 +3,16 @@
  * 使用 LLM 基于剧本和已确认的角色/场景/道具生成分镜列表
  * 独立于剧本解析，作为单独的步骤执行
  */
-import type { Shot, LLMModelConfig } from '../types';
-import { createLLMProvider } from '../providers';
-import { getActiveLLMConfig } from '../store/globalStore';
+import type { Shot } from '../types';
 import { resolvePromptTemplate } from '../store/promptTemplates';
 import { TaskManager, Task } from './TaskManager';
 import { parseLLMJSON } from '../utils/llmJsonParser';
-import {
-  loadCharacters,
-  loadScenes,
-  loadProps,
-  saveEpisodeShots,
-} from '../store/projectStore';
+import { saveEpisodeShots } from '../store/projectStore';
 import { createLogger } from '../store/logger';
 import { extractErrorMessage } from '../utils/errorHandler';
+import { appendStyleRequirement, type StyleSnapshotLike } from '../utils/promptNormalize';
 
 const logger = createLogger('ShotAnalysis');
-
-interface StyleSnapshotLike {
-  ttiStylePrefix?: string;
-  llmPromptSuffix?: string;
-}
 
 // 预选资产类型
 export interface PresetAssets {
@@ -58,44 +47,26 @@ const _SHOTS_SCHEMA = {
 };
 
 export class ShotAnalysisService {
-  private projectId: string;
-  private llmConfig: LLMModelConfig | null = null;
+  private ctx: import('./CreationContext').CreationContext;
   private presetAssets: PresetAssets | null = null;
-  private styleSnapshot?: StyleSnapshotLike;
 
-  constructor(projectId: string, options?: { styleSnapshot?: StyleSnapshotLike; project?: { styleSnapshot?: StyleSnapshotLike } }) {
-    this.projectId = projectId;
-    this.styleSnapshot = options?.styleSnapshot || options?.project?.styleSnapshot;
-  }
-
-  /**
-   * 设置 LLM 配置
-   */
-  async setLLMConfig(configId?: string): Promise<boolean> {
-    this.llmConfig = await getActiveLLMConfig(configId);
-    return this.llmConfig !== null;
+  constructor(ctx: import('./CreationContext').CreationContext) {
+    this.ctx = ctx;
   }
 
   /**
    * 启动分镜生成任务
-   * @param presetAssets 预选资产，用于优先匹配
    */
   async startShotAnalysis(
     episodeId: string,
     episodeName: string,
     script: string,
-    llmSelection?: string,
     presetAssets?: PresetAssets,
-    styleSnapshot?: StyleSnapshotLike,
-    project?: { styleSnapshot?: StyleSnapshotLike }
   ): Promise<Task> {
     this.presetAssets = presetAssets || null;
-    if (styleSnapshot || project?.styleSnapshot) {
-      this.styleSnapshot = styleSnapshot || project?.styleSnapshot;
-    }
 
     const task = TaskManager.createTask({
-      projectId: this.projectId,
+      projectId: this.ctx.projectId,
       type: 'shot-analysis',
       targetType: 'episode',
       targetId: episodeId,
@@ -105,7 +76,7 @@ export class ShotAnalysisService {
     TaskManager.updateTask(task.id, { status: 'running', progress: 0 });
 
     // 异步执行
-    this.runShotAnalysis(task.id, episodeId, script, llmSelection);
+    this.runShotAnalysis(task.id, episodeId, script);
 
     return task;
   }
@@ -117,22 +88,11 @@ export class ShotAnalysisService {
     taskId: string,
     episodeId: string,
     script: string,
-    llmSelection?: string
   ): Promise<void> {
     try {
-
-      const hasConfig = await this.setLLMConfig(llmSelection);
-      if (!hasConfig) {
-        throw new Error('未配��� LLM 模型，请先在设置中添加');
-      }
-
       TaskManager.updateTask(taskId, { progress: 10 });
 
-      // 加载已有资产
-      const characters = await loadCharacters(this.projectId);
-      const scenes = await loadScenes(this.projectId);
-      const props = await loadProps(this.projectId);
-
+      const { characters, scenes, props } = this.ctx;
 
       TaskManager.updateTask(taskId, { progress: 20 });
 
@@ -154,17 +114,11 @@ export class ShotAnalysisService {
       TaskManager.updateTask(taskId, { progress: 30 });
 
       // 调用 LLM
-      const provider = createLLMProvider({
-        provider: this.llmConfig!.provider as any,
-        apiKey: this.llmConfig!.apiKey,
-        baseUrl: this.llmConfig!.baseUrl,
-        modelName: this.llmConfig!.modelName,
-      });
       // 获取系统提示词模板
       const resolvedSystemPrompt = await resolvePromptTemplate('shot_breakdown_system', {});
       const systemPrompt = resolvedSystemPrompt.prompt;
 
-      const result = await provider.chat([
+      const result = await this.ctx.llmProvider.chat([
         { role: 'system', content: systemPrompt },
         { role: 'user', content: styledPrompt },
       ]);
@@ -247,7 +201,7 @@ export class ShotAnalysisService {
       TaskManager.updateTask(taskId, { progress: 85 });
 
       // 保存分镜到剧集
-      await saveEpisodeShots(this.projectId, episodeId, shots);
+      await saveEpisodeShots(this.ctx.projectId, episodeId, shots);
 
       TaskManager.updateTask(taskId, {
         status: 'completed',
@@ -271,11 +225,7 @@ export class ShotAnalysisService {
   }
 
   private appendStyleRequirement(prompt: string): string {
-    const styleSuffix = this.styleSnapshot?.llmPromptSuffix?.trim();
-    if (!styleSuffix) {
-      return prompt;
-    }
-    return `${prompt}\n\n【项目风格要求】\n${styleSuffix}`;
+    return appendStyleRequirement(prompt, this.ctx.styleSnapshot);
   }
 }
 
@@ -290,16 +240,12 @@ export async function startShotAnalysis(
   llmSelection?: string,
   presetAssets?: PresetAssets,
   styleSnapshot?: StyleSnapshotLike,
-  project?: { styleSnapshot?: StyleSnapshotLike }
 ): Promise<Task> {
-  const service = new ShotAnalysisService(projectId, { styleSnapshot, project });
-  return service.startShotAnalysis(
-    episodeId,
-    episodeName,
-    script,
-    llmSelection,
-    presetAssets,
+  const { createCreationContext } = await import('./CreationContext');
+  const ctx = await createCreationContext(projectId, episodeId, {
+    llmConfigId: llmSelection,
     styleSnapshot,
-    project
-  );
+  });
+  const service = new ShotAnalysisService(ctx);
+  return service.startShotAnalysis(episodeId, episodeName, script, presetAssets);
 }

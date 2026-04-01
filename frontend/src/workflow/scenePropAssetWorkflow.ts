@@ -28,13 +28,9 @@ import {
   buildScenePreviewTemplateVariables,
 } from './promptVariableBuilders';
 import { compilePropPreviewVideoRequest } from './videoGenerationRequests';
+import type { StyleSnapshotLike } from '../utils/promptNormalize';
 
 const logger = createLogger('ScenePropAsset');
-
-interface StyleSnapshotLike {
-  ttiStylePrefix?: string;
-  llmPromptSuffix?: string;
-}
 
 // ========== 提示词获取（供外部组件使用）==========
 

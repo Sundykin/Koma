@@ -2,8 +2,8 @@
  * 资产匹配服务
  * 用于识别和匹配已有资产，避免重复创建
  */
-import type { Character, Scene, Prop, LLMModelConfig } from '../types';
-import { createLLMProvider } from '../providers';
+import type { Character, Scene, Prop } from '../types';
+import type { CreationContext } from './CreationContext';
 import { calculateAssetFingerprint } from '../store/projectStore';
 import { parseLLMJSON } from '../utils/llmJsonParser';
 
@@ -35,17 +35,10 @@ const MATCH_THRESHOLDS = {
 };
 
 export class AssetMatcher {
-  private provider?: ReturnType<typeof createLLMProvider>;
+  private provider: CreationContext['llmProvider'];
 
-  constructor(llmConfig?: LLMModelConfig) {
-    if (llmConfig) {
-      this.provider = createLLMProvider({
-        provider: llmConfig.provider as any,
-        apiKey: llmConfig.apiKey,
-        baseUrl: llmConfig.baseUrl,
-        modelName: llmConfig.modelName,
-      });
-    }
+  constructor(ctx: CreationContext) {
+    this.provider = ctx.llmProvider;
   }
 
   // 计算字符串相似度（Levenshtein 距离）
@@ -230,9 +223,6 @@ export class AssetMatcher {
     candidate: AssetCandidate,
     potentialMatches: { asset: Character | Scene | Prop; type: string }[]
   ): Promise<MatchResult | null> {
-    if (!this.provider) {
-      throw new Error('LLM provider not configured. Call setLLMConfig() first.');
-    }
     if (potentialMatches.length === 0) {
       return null;
     }

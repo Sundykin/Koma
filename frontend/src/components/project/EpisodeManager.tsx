@@ -7,8 +7,8 @@ import { Modal, Form, Input, InputNumber, App, Spin, Empty } from 'antd';
 import { GripVertical, Play, Pencil, Trash2, Plus, Zap } from 'lucide-react';
 import type { Episode } from '../../types';
 import { createEpisode, saveEpisode, deleteEpisode, listEpisodes } from '../../store/projectStore';
-import { getActiveLLMConfig } from '../../store/globalStore';
 import { EpisodeSplitService } from '../../services/EpisodeSplitService';
+import { createCreationContext } from '../../services/CreationContext';
 interface EpisodeManagerProps {
   projectId: string;
   fullScript?: string;
@@ -141,10 +141,8 @@ export const EpisodeManager = forwardRef<EpisodeManagerRef, EpisodeManagerProps>
     }
     setSplitting(true);
     try {
-      const config = await getActiveLLMConfig();
-      if (!config) throw new Error('请先配置 LLM');
-
-      const splitService = new EpisodeSplitService(config);
+      const ctx = await createCreationContext(projectId, '');
+      const splitService = new EpisodeSplitService(ctx);
       const analysis = await splitService.analyzeScript(fullScript, {
         targetEpisodeCount: splitCount,
         splitStrategy: 'auto',

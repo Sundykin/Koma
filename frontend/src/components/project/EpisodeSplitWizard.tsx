@@ -20,7 +20,7 @@ import { ThunderboltOutlined, CheckCircleOutlined } from '@ant-design/icons';
 import type { Episode } from '../../types';
 import { EpisodeSplitService } from '../../services/EpisodeSplitService';
 import type { SplitAnalysis, SplitResult } from '../../services/EpisodeSplitService';
-import { getActiveLLMConfig } from '../../store/globalStore';
+import { createCreationContext } from '../../services/CreationContext';
 import { createEpisode } from '../../store/projectStore';
 
 const { Text, Paragraph } = Typography;
@@ -62,12 +62,8 @@ export const EpisodeSplitWizard: React.FC<EpisodeSplitWizardProps> = ({
     setStep('analyzing');
 
     try {
-      const config = await getActiveLLMConfig();
-      if (!config) {
-        throw new Error('请先配置 LLM');
-      }
-
-      const splitService = new EpisodeSplitService(config);
+      const ctx = await createCreationContext(projectId, '');
+      const splitService = new EpisodeSplitService(ctx);
       setService(splitService);
 
       // 分析剧本
