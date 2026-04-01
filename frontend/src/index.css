@@ -540,55 +540,89 @@ body {
 }
 
 .settings-compact-modal .ant-modal-content {
-  border-radius: 18px;
+  border-radius: 16px;
   overflow: hidden;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.32);
 }
 
 .settings-compact-modal .ant-modal-header {
-  padding: 12px 14px !important;
+  padding: 10px 12px !important;
 }
 
 .settings-compact-modal .ant-modal-title {
-  font-size: 15px !important;
+  font-size: 14px !important;
   font-weight: 600;
 }
 
 .settings-compact-modal .ant-modal-body {
-  padding: 10px 14px 12px !important;
+  padding: 8px 12px 10px !important;
   max-height: min(76vh, 760px);
   overflow-y: auto;
 }
 
 .settings-compact-modal .ant-modal-footer {
-  padding: 8px 14px 12px !important;
+  padding: 7px 12px 10px !important;
 }
 
 .settings-compact-modal .ant-form-item {
-  margin-bottom: 10px;
+  margin-bottom: 8px;
 }
 
 .settings-compact-modal .ant-form-item-label {
-  padding-bottom: 4px !important;
+  padding-bottom: 2px !important;
 }
 
 .settings-compact-modal .ant-form-item-label > label {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 500;
-  min-height: 20px;
+  min-height: 18px;
+}
+
+.settings-compact-modal .ant-form-item-explain,
+.settings-compact-modal .ant-form-item-extra {
+  margin-top: 2px !important;
+  font-size: 11px;
+  line-height: 1.35;
 }
 
 .settings-compact-modal .ant-input,
 .settings-compact-modal .ant-input-affix-wrapper,
 .settings-compact-modal .ant-input-number,
 .settings-compact-modal .ant-select-selector {
-  min-height: 34px;
-  border-radius: 9px !important;
+  min-height: 32px;
+  border-radius: 8px !important;
 }
 
 .settings-compact-modal .ant-btn {
-  height: 34px;
-  border-radius: 9px;
+  height: 32px;
+  border-radius: 8px;
+  padding-inline: 10px;
+}
+
+.settings-compact-modal .ant-btn-sm {
+  height: 28px;
+  padding-inline: 8px;
+}
+
+.settings-compact-modal .ant-input {
+  padding: 5px 10px;
+}
+
+.settings-compact-modal .ant-input-affix-wrapper {
+  padding: 0 10px !important;
+}
+
+.settings-compact-modal .ant-input-affix-wrapper > input.ant-input {
+  padding: 5px 0 !important;
+}
+
+.settings-compact-modal .ant-select-selector {
+  padding: 0 10px !important;
+}
+
+.settings-compact-modal .ant-select-selection-item,
+.settings-compact-modal .ant-select-selection-placeholder {
+  line-height: 30px !important;
 }
 
 .settings-compact-modal .ant-input-number {
@@ -604,43 +638,53 @@ body {
 }
 
 .settings-compact-modal .ant-input-number-input {
-  height: 32px;
+  height: 30px;
   color: var(--color-text-primary);
+  padding-inline: 0;
 }
 
 .settings-compact-modal .ant-checkbox-group {
   width: 100%;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 6px 10px;
+  gap: 4px 8px;
+}
+
+.settings-compact-modal .ant-checkbox-wrapper {
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.settings-compact-modal textarea.ant-input {
+  padding: 8px 10px !important;
 }
 
 .settings-modal-form {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
 
 .settings-form-section {
-  padding: 10px 12px;
+  padding: 8px 10px;
   border: 1px solid rgba(63, 63, 70, 0.42);
-  border-radius: 12px;
+  border-radius: 10px;
   background: rgba(9, 9, 11, 0.18);
 }
 
 .settings-form-section-title {
-  margin-bottom: 10px;
-  font-size: 11px;
+  margin-bottom: 8px;
+  font-size: 10px;
   font-weight: 600;
   color: var(--color-text-muted);
   text-transform: uppercase;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.12em;
 }
 
 .settings-modal-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0 12px;
+  gap: 0 10px;
 }
 
 .settings-grid-span-full {
@@ -656,32 +700,33 @@ body {
 .settings-models-editor {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
 }
 
 .settings-models-help {
   margin-bottom: 0 !important;
-  font-size: 12px;
+  font-size: 11px;
+  line-height: 1.45;
 }
 
 .settings-model-card .ant-card-head {
-  min-height: 36px;
-  padding: 0 10px;
+  min-height: 32px;
+  padding: 0 8px;
 }
 
 .settings-model-card .ant-card-head-title,
 .settings-model-card .ant-card-extra {
-  padding: 6px 0;
+  padding: 4px 0;
 }
 
 .settings-model-card .ant-card-body {
-  padding: 10px !important;
+  padding: 8px !important;
 }
 
 .settings-model-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0 10px;
+  gap: 0 8px;
 }
 
 .settings-model-card .full-span {
@@ -689,7 +734,7 @@ body {
 }
 
 .settings-model-card .ant-form-item {
-  margin-bottom: 10px;
+  margin-bottom: 8px;
 }
 
 .settings-model-capabilities .ant-checkbox-wrapper {

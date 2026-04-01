@@ -278,7 +278,7 @@ export const VisualStyleManager: React.FC<VisualStyleManagerProps> = ({ onStyleC
                 style={{ marginBottom: 0 }}
               >
                 <TextArea
-                  rows={4}
+                  rows={3}
                   placeholder="如：watercolor painting style, soft colors, artistic brushstrokes"
                 />
               </Form.Item>
@@ -290,7 +290,7 @@ export const VisualStyleManager: React.FC<VisualStyleManagerProps> = ({ onStyleC
                 style={{ marginBottom: 0 }}
               >
                 <TextArea
-                  rows={4}
+                  rows={3}
                   placeholder="如：以水彩画的视觉风格呈现，色彩柔和，富有艺术感。"
                 />
               </Form.Item>
