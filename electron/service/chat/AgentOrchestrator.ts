@@ -4,8 +4,7 @@
  * 基于 LangGraph StateGraph 实现并行 Worker 调度
  * 支持 CapabilityRegistry 能力解析
  */
-import { StateGraph, END, START, Annotation } from '@langchain/langgraph';
-import { BaseMessage, HumanMessage, AIMessage, SystemMessage } from '@langchain/core/messages';
+import { SystemMessage, HumanMessage } from '@langchain/core/messages';
 import { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import { EventEmitter } from 'events';
 import { agentRegistry } from '../plugin/registries';
@@ -50,31 +49,6 @@ const DEFAULT_CONFIG: OrchestratorConfig = {
 };
 
 // ========== 编排状态 ==========
-
-const OrchestratorState = Annotation.Root({
-  messages: Annotation<BaseMessage[]>({
-    reducer: (prev, next) => [...prev, ...next],
-    default: () => [],
-  }),
-  plan: Annotation<TaskPlan[]>({
-    reducer: (_, next) => next,
-    default: () => [],
-  }),
-  workerResults: Annotation<Array<{ taskId: string; result: AgentResult }>>({
-    reducer: (prev, next) => [...prev, ...next],
-    default: () => [],
-  }),
-  iteration: Annotation<number>({
-    reducer: (_, next) => next,
-    default: () => 0,
-  }),
-  phase: Annotation<'plan' | 'dispatch' | 'aggregate' | 'done'>({
-    reducer: (_, next) => next,
-    default: () => 'plan' as const,
-  }),
-});
-
-type OrchestratorStateType = typeof OrchestratorState.State;
 
 // ========== 核心编排器 ==========
 

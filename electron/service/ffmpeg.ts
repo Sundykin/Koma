@@ -557,7 +557,6 @@ export class FFmpegService {
       width = 1800,
       height = 140,
       color = '0x4a9eff',
-      backgroundColor = '0x1a1a2e'
     } = options;
 
     // 确保输出目录存在
@@ -830,8 +829,6 @@ export class FFmpegService {
     // 解析 time=00:01:23.45 格式
     const timeMatch = output.match(/time=(\d{2}):(\d{2}):(\d{2})\.(\d{2})/);
     if (timeMatch) {
-      const [, h, m, s, ms] = timeMatch.map(Number);
-      const currentTime = h * 3600 + m * 60 + s + ms / 100;
       // 这里需要知道总时长才能计算进度，暂时不实现
     }
   }

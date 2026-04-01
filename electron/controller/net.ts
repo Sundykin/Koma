@@ -1,6 +1,5 @@
 import { BaseController } from './base';
 import { validateUrl } from '../service/url-validator';
-import { Blob as BufferBlob } from 'buffer';
 
 // 每个 chunk 之间的最大空闲时间（5 分钟，兼容慢模型的首 token 等待）
 const CHUNK_IDLE_TIMEOUT_MS = 300_000;

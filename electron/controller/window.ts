@@ -5,13 +5,13 @@ import { BrowserWindow, IpcMainInvokeEvent } from 'electron';
 import { BaseController } from './base';
 
 class WindowController extends BaseController {
-  minimize(args: any, event?: IpcMainInvokeEvent) {
+  minimize(_args: any, event?: IpcMainInvokeEvent) {
     const win = event ? BrowserWindow.fromWebContents(event.sender) : null;
     if (win) win.minimize();
     return { success: true };
   }
 
-  maximize(args: any, event?: IpcMainInvokeEvent) {
+  maximize(_args: any, event?: IpcMainInvokeEvent) {
     const win = event ? BrowserWindow.fromWebContents(event.sender) : null;
     if (win) {
       if (win.isMaximized()) {
@@ -23,13 +23,13 @@ class WindowController extends BaseController {
     return { success: true };
   }
 
-  close(args: any, event?: IpcMainInvokeEvent) {
+  close(_args: any, event?: IpcMainInvokeEvent) {
     const win = event ? BrowserWindow.fromWebContents(event.sender) : null;
     if (win) win.close();
     return { success: true };
   }
 
-  isMaximized(args: any, event?: IpcMainInvokeEvent) {
+  isMaximized(_args: any, event?: IpcMainInvokeEvent) {
     const win = event ? BrowserWindow.fromWebContents(event.sender) : null;
     return { isMaximized: win ? win.isMaximized() : false };
   }

@@ -6,6 +6,7 @@ import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron';
 type Listener = (event: IpcRendererEvent, ...args: any[]) => void;
 
 const ALLOWED_INVOKE_CHANNELS = new Set([
+  'llm:query',
   'chat:session:create', 'chat:session:get', 'chat:session:dispose',
   'chat:session:list', 'chat:session:updateConfig',
   'chat:message:send', 'chat:message:sendStream', 'chat:message:cancel',
@@ -182,6 +183,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   net: {
     fetch: (args: { url: string; method?: string; headers?: Record<string, string>; body?: string }) =>
       invokeMain('controller/net/fetch', args),
+  },
+  llm: {
+    query: (request: any) => invokeMain('llm:query', request),
   },
   chat: {
     // 会话管理

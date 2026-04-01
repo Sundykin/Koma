@@ -57,56 +57,13 @@ export interface ChatMessage {
   id: string;
   role: MessageRole;
   content: string | ContentPart[];
-  reasoning?: string; // 思考过程内容
+  reasoning?: string;
   toolCalls?: ToolCall[];
   toolCallId?: string;
-  name?: string; // 工具名称（role=tool 时）
+  name?: string;
   metadata?: Record<string, unknown>;
   timestamp: number;
-  status?: MessageStatus; // 消息状态（乐观更新）
-}
-
-// 适配器能力
-export type AdapterCapability =
-  | 'streaming'
-  | 'function_call'
-  | 'vision'
-  | 'file_upload'
-  | 'structured_output';
-
-// 对话选项
-export interface ChatOptions {
-  temperature?: number;
-  maxTokens?: number;
-  topP?: number;
-  tools?: ToolDefinition[];
-  responseFormat?: {
-    type: 'json_object' | 'text';
-  };
-  signal?: AbortSignal;
-}
-
-// 对话响应
-export interface ChatResponse {
-  id: string;
-  content: string;
-  reasoning?: string; // 思考过程内容
-  toolCalls?: ToolCall[];
-  finishReason: 'stop' | 'tool_calls' | 'length' | 'error';
-  usage?: {
-    promptTokens: number;
-    completionTokens: number;
-    totalTokens: number;
-  };
-}
-
-// 流式块
-export interface ChatChunk {
-  id: string;
-  content: string;
-  reasoning?: string; // 思考过程内容
-  toolCalls?: Partial<ToolCall>[];
-  finishReason?: 'stop' | 'tool_calls' | 'length';
+  status?: MessageStatus;
 }
 
 // 错误码
@@ -131,14 +88,6 @@ export class ChatError extends Error {
     super(message);
     this.name = 'ChatError';
   }
-}
-
-// 会话选项
-export interface SessionOptions {
-  id?: string;
-  systemPrompt?: string;
-  maxHistoryLength?: number;
-  maxTokens?: number;
 }
 
 // 生成唯一 ID

@@ -1,8 +1,7 @@
 /**
  * 会话存储管理
  */
-import { BrowserWindow } from 'electron';
-import type { Session, SessionConfig, SessionSummary, ChatMessage, generateId } from './types';
+import type { Session, SessionConfig, SessionSummary, ChatMessage } from './types';
 import { generateId as genId } from './types';
 
 const SESSION_TTL = 30 * 60 * 1000; // 30 分钟

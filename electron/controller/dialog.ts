@@ -28,7 +28,7 @@ class DialogController extends BaseController {
     return result;
   }
 
-  async openDirectory(args: any, event?: IpcMainInvokeEvent) {
+  async openDirectory(_args: any, event?: IpcMainInvokeEvent) {
     const win = event ? BrowserWindow.fromWebContents(event.sender) : null;
     const result = await dialog.showOpenDialog(win!, {
       properties: ['openDirectory', 'createDirectory'],
