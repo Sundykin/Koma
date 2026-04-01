@@ -11,7 +11,7 @@ const pluginController = {
   /**
    * 验证插件包
    */
-  async validate({ zipPath }: { zipPath: string }, event?: IpcMainInvokeEvent) {
+  async validate({ zipPath }: { zipPath: string }, _event?: IpcMainInvokeEvent) {
     await ensureServicesReady();
     return pluginService.validate(zipPath);
   },
@@ -21,7 +21,7 @@ const pluginController = {
    */
   async install(
     { zipPath, manifest, stagingId }: { zipPath: string; manifest: any; stagingId?: string },
-    event?: IpcMainInvokeEvent
+    _event?: IpcMainInvokeEvent
   ) {
     await ensureServicesReady();
     // 如果是文件夹路径（开发模式）
@@ -35,7 +35,7 @@ const pluginController = {
   /**
    * 卸载插件
    */
-  async uninstall({ pluginPath }: { pluginPath: string }, event?: IpcMainInvokeEvent) {
+  async uninstall({ pluginPath }: { pluginPath: string }, _event?: IpcMainInvokeEvent) {
     await ensureServicesReady();
     return pluginService.uninstall(pluginPath);
   },
@@ -43,7 +43,7 @@ const pluginController = {
   /**
    * 列出已安装插件
    */
-  async list(_args: any, event?: IpcMainInvokeEvent) {
+  async list(_args: any, _event?: IpcMainInvokeEvent) {
     await ensureServicesReady();
     return pluginService.listInstalled();
   },
@@ -51,7 +51,7 @@ const pluginController = {
   /**
    * 打开插件目录
    */
-  async openFolder({ pluginPath }: { pluginPath: string }, event?: IpcMainInvokeEvent) {
+  async openFolder({ pluginPath }: { pluginPath: string }, _event?: IpcMainInvokeEvent) {
     shell.openPath(pluginPath);
     return { success: true };
   },
@@ -61,7 +61,7 @@ const pluginController = {
   /**
    * 激活插件
    */
-  async activate({ manifest }: { manifest: any }, event?: IpcMainInvokeEvent) {
+  async activate({ manifest }: { manifest: any }, _event?: IpcMainInvokeEvent) {
     await ensureServicesReady();
     return pluginService.loadAndActivate(manifest);
   },
@@ -69,7 +69,7 @@ const pluginController = {
   /**
    * 停用插件
    */
-  async deactivate({ pluginId }: { pluginId: string }, event?: IpcMainInvokeEvent) {
+  async deactivate({ pluginId }: { pluginId: string }, _event?: IpcMainInvokeEvent) {
     await ensureServicesReady();
     return pluginService.deactivate(pluginId);
   },
@@ -77,7 +77,7 @@ const pluginController = {
   /**
    * 获取插件运行状态
    */
-  async status({ pluginId }: { pluginId: string }, event?: IpcMainInvokeEvent) {
+  async status({ pluginId }: { pluginId: string }, _event?: IpcMainInvokeEvent) {
     await ensureServicesReady();
     return pluginService.getPluginStatus(pluginId);
   },
@@ -85,7 +85,7 @@ const pluginController = {
   /**
    * 列出活跃插件
    */
-  async listActive(_args: any, event?: IpcMainInvokeEvent) {
+  async listActive(_args: any, _event?: IpcMainInvokeEvent) {
     await ensureServicesReady();
     return pluginRuntime.listActivePlugins().map(p => ({
       id: p.manifest.id,
@@ -100,7 +100,7 @@ const pluginController = {
   /**
    * 列出插件系统注册的 MCP 工具
    */
-  async listMCPTools(_args: any, event?: IpcMainInvokeEvent) {
+  async listMCPTools(_args: any, _event?: IpcMainInvokeEvent) {
     await ensureServicesReady();
     return pluginBridge.listMCPTools();
   },
@@ -108,7 +108,7 @@ const pluginController = {
   /**
    * 调用插件 MCP 工具
    */
-  async callMCPTool({ name, args }: { name: string; args: unknown }, event?: IpcMainInvokeEvent) {
+  async callMCPTool({ name, args }: { name: string; args: unknown }, _event?: IpcMainInvokeEvent) {
     await ensureServicesReady();
     return pluginBridge.callMCPTool(name, args);
   },
@@ -122,7 +122,7 @@ const pluginController = {
    */
   async callProvider(
     { kind, type, method, args }: { kind: 'tti' | 'itv' | 'tts' | 'llm' | 'image-hosting'; type: string; method: string; args: unknown[] },
-    event?: IpcMainInvokeEvent
+    _event?: IpcMainInvokeEvent
   ) {
     await ensureServicesReady();
     try {
@@ -142,7 +142,7 @@ const pluginController = {
   /**
    * 列出可用 Worker Agent
    */
-  async listAgents(_args: any, event?: IpcMainInvokeEvent) {
+  async listAgents(_args: any, _event?: IpcMainInvokeEvent) {
     await ensureServicesReady();
     return pluginBridge.listAgents().map(a => ({
       id: a.id,

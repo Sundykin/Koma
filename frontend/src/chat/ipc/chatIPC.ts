@@ -165,6 +165,59 @@ function getElectronAPI() {
   return (window as any).electronAPI.chat;
 }
 
+// ========== 无状态 LLM 查询（供 workflow 服务使用） ==========
+
+export interface LLMQueryRequest {
+  messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>;
+  config: {
+    modelProvider?: 'openai' | 'anthropic' | 'google';
+    modelName?: string;
+    apiKey?: string;
+    baseUrl?: string;
+    temperature?: number;
+    maxTokens?: number;
+  };
+  options?: {
+    traceId?: string;
+    source?: string;
+    operation?: string;
+  };
+}
+
+// NOTE: Keep in sync with LLMQueryResponse in electron/service/chat/LLMQueryService.ts
+export interface LLMQueryResponse {
+  content: string;
+  error?: {
+    code: 'EMPTY_MESSAGES' | 'TIMEOUT' | 'ABORTED' | 'API_ERROR' | 'UNKNOWN';
+    message: string;
+  };
+  usage?: {
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+  };
+}
+
+function getLLMAPI() {
+  if (typeof window === 'undefined' || !(window as any).electronAPI?.llm) {
+    throw new Error('LLM IPC is only available in Electron environment');
+  }
+  return (window as any).electronAPI.llm;
+}
+
+export function isLLMIPCAvailable(): boolean {
+  return typeof window !== 'undefined' && !!(window as any).electronAPI?.llm;
+}
+
+export async function llmQuery(request: LLMQueryRequest): Promise<LLMQueryResponse> {
+  const api = getLLMAPI();
+  const response = await api.query(request);
+  if (response.error) {
+    throw new Error(response.error.message);
+  }
+  return response;
+}
+
 // ========== 会话管理 ==========
 
 export async function createSession(config?: SessionConfig): Promise<SessionSummary> {
@@ -300,6 +353,10 @@ export function createUserInput(content: string | ContentPart[]): ChatInput {
 // 导出所有
 export const chatIPC = {
   isElectron,
+  llm: {
+    query: llmQuery,
+    isAvailable: isLLMIPCAvailable,
+  },
   createSession,
   getSession,
   disposeSession,

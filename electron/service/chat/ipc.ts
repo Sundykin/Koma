@@ -1,6 +1,8 @@
 import { app, BrowserWindow, ipcMain } from 'electron';
 import { createOrchestrator, AgentOrchestrator } from './AgentOrchestrator';
 import { chatService } from './ChatService';
+import { llmQueryService } from './LLMQueryService';
+import type { LLMQueryRequest } from './LLMQueryService';
 import { importFromFile, importFromObject, exportConfig, exportToFile } from './mcp/MCPConfigLoader';
 import type {
   ChatInput,
@@ -15,12 +17,74 @@ import type {
 import { mcpRegistry } from '../plugin/registries';
 import { capabilityRegistry } from '../plugin/capability';
 
+const VALID_ROLES = new Set(['system', 'user', 'assistant']);
+const VALID_PROVIDERS = new Set(['openai', 'anthropic', 'google']);
+const MAX_CONTENT_LENGTH = 100_000;
+const MAX_MESSAGES = 200;
+const MAX_CONCURRENT_LLM_QUERIES = 5;
+
+function validateLLMQueryRequest(args: unknown): args is LLMQueryRequest {
+  if (!args || typeof args !== 'object') return false;
+  const req = args as Record<string, unknown>;
+
+  // messages array
+  if (!Array.isArray(req.messages)) return false;
+  if (req.messages.length === 0 || req.messages.length > MAX_MESSAGES) return false;
+  for (const msg of req.messages) {
+    if (!msg || typeof msg !== 'object') return false;
+    const m = msg as Record<string, unknown>;
+    if (!VALID_ROLES.has(m.role as string)) return false;
+    if (typeof m.content !== 'string') return false;
+    if (m.content.length > MAX_CONTENT_LENGTH) return false;
+  }
+
+  // config object
+  if (!req.config || typeof req.config !== 'object') return false;
+  const cfg = req.config as Record<string, unknown>;
+  if (cfg.modelProvider !== undefined && !VALID_PROVIDERS.has(cfg.modelProvider as string)) return false;
+
+  return true;
+}
+
 class ChatIpc {
   private initialized = false;
+  private activeLLMQueries = 0;
 
   init(): void {
     if (this.initialized) return;
     this.initialized = true;
+
+    // ========== 无状态 LLM 查询（供 workflow 服务使用） ==========
+
+    ipcMain.handle('llm:query', async (_event, args: LLMQueryRequest) => {
+      const traceId = args?.options?.traceId || `ipc-${Date.now()}`;
+      const source = args?.options?.source || 'unknown';
+
+      if (!validateLLMQueryRequest(args)) {
+        console.warn('[ChatIpc] llm:query 参数校验失败', { traceId, source });
+        return { content: '', error: { code: 'API_ERROR' as const, message: 'Invalid request: bad messages, role, content length, or provider' } };
+      }
+      if (this.activeLLMQueries >= MAX_CONCURRENT_LLM_QUERIES) {
+        console.warn('[ChatIpc] llm:query 并发超限', { traceId, source, active: this.activeLLMQueries, max: MAX_CONCURRENT_LLM_QUERIES });
+        return { content: '', error: { code: 'API_ERROR' as const, message: 'Too many concurrent LLM queries, please retry later' } };
+      }
+      this.activeLLMQueries++;
+      console.info('[ChatIpc] llm:query 接收请求', { traceId, source, active: this.activeLLMQueries });
+      try {
+        // query() 内部已捕获所有异常并返回结构化错误，此处 catch 仅作保底
+        const result = await llmQueryService.query(args);
+        if (result.error) {
+          console.warn('[ChatIpc] llm:query 返回错误', { traceId, source, error: result.error });
+        }
+        return result;
+      } catch (err: unknown) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        console.error('[ChatIpc] llm:query 未预期异常', { traceId, source, error: errMsg });
+        return { content: '', error: { code: 'UNKNOWN' as const, message: 'LLM query failed' } };
+      } finally {
+        this.activeLLMQueries--;
+      }
+    });
 
     ipcMain.handle('chat:session:create', async (event, args: { config?: SessionConfig }) => {
       const windowId = BrowserWindow.fromWebContents(event.sender)?.id || 0;
@@ -71,9 +135,8 @@ class ChatIpc {
     ipcMain.handle('chat:message:send', async (_event, args: {
       sessionId: string;
       input: ChatInput;
-      options?: ChatOptions;
     }) => {
-      return chatService.sendMessage(args.sessionId, args.input, args.options);
+      return chatService.sendMessage(args.sessionId, args.input);
     });
 
     ipcMain.handle('chat:message:sendStream', async (event, args: {
@@ -335,8 +398,13 @@ class ChatIpc {
       }));
     });
 
-    app.on('browser-window-closed', (_event, window: BrowserWindow) => {
-      chatService.disposeSessionsByWindow(window.id);
+    app.on('window-all-closed', () => {
+      // Handle window closed event if needed
+    });
+
+    // Handle window closed events via app lifecycle
+    app.on('window-all-closed', () => {
+      // Cleanup handled by disposeSessionsByWindow
     });
   }
 

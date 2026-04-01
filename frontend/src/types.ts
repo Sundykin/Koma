@@ -358,6 +358,8 @@ export interface ModelConfig {
   apiKey: string;
   baseUrl?: string;
   modelName: string;
+  temperature?: number;
+  maxTokens?: number;
 }
 
 export interface TTSConfig {

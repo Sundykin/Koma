@@ -3,11 +3,9 @@
  * 整合 SessionStore, MCPManager, AgentGraph, AgentOrchestrator, CapabilityRegistry
  */
 import { EventEmitter } from 'events';
-import { BrowserWindow, ipcMain } from 'electron';
-import { HumanMessage, AIMessage, SystemMessage, ToolMessage } from '@langchain/core/messages';
-import type { BaseMessage } from '@langchain/core/messages';
-import { sessionStore, SessionStore } from './SessionStore';
-import { mcpManager, MCPManager } from './mcp';
+import { HumanMessage, AIMessage } from '@langchain/core/messages';
+import { sessionStore } from './SessionStore';
+import { mcpManager } from './mcp';
 import { mcpRegistry } from '../plugin/registries';
 import { createLLM, createAgentGraph, createToolsFromMCP, streamAgentGraph } from './AgentGraph';
 import { createOrchestrator } from './AgentOrchestrator';
@@ -27,7 +25,7 @@ import type {
   MCPToolDefinition,
   AgentMode,
 } from './types';
-import { generateId as genId, createUserMessage, createAssistantMessage, createToolMessage } from './types';
+import { generateId as genId, createUserMessage, createAssistantMessage } from './types';
 import { onMCPConnectionChanged } from '../plugin/capability';
 
 export class ChatService extends EventEmitter {
@@ -86,8 +84,7 @@ export class ChatService extends EventEmitter {
 
   async sendMessage(
     sessionId: string,
-    input: ChatInput,
-    options?: ChatOptions
+    input: ChatInput
   ): Promise<ChatMessage | undefined> {
     const session = sessionStore.get(sessionId);
     if (!session) {
@@ -113,6 +110,7 @@ export class ChatService extends EventEmitter {
     // 执行
     const result = await graph.invoke({
       messages: session.langchainMessages,
+      pendingToolCalls: [],
     });
 
     // 提取结果

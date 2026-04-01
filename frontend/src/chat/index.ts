@@ -1,37 +1,16 @@
 /**
  * 对话模块
- * 通用多轮对话能力，支持流式输出、多模型适配、插件扩展
+ * 通过 IPC 与 Electron 主进程通信，支持流式输出、MCP 工具、多模型
  */
 
 // 核心类型
 export * from './types';
 
-// 会话管理 (Legacy)
-export { ChatSession } from './ChatSession';
-
-// 适配器 (Legacy - 仅兼容保留)
-export {
-  createChatAdapter,
-  createChatAdapterFromLLMConfig,
-  OpenAIAdapter,
-  GeminiAdapter,
-  ClaudeAdapter,
-} from './adapters';
-export type { ChatAdapter, AdapterConfig, AdapterType, CreateAdapterOptions } from './adapters';
-
-// 插件 (Legacy - 仅兼容保留)
-export {
-  PluginManager,
-  FunctionCallPlugin,
-  FileUploadPlugin,
-} from './plugins';
-export type { ChatPlugin, PluginContext, ToolHandler, MCPServerConfig } from './plugins';
-
-// Hooks (新版 IPC 驱动)
+// Hooks (IPC 驱动)
 export { useChat } from './hooks';
 export type { UseChatOptions, UseChatReturn } from './hooks';
 
-// IPC 客户端 (新架构) - 避免重复导出类型
+// IPC 客户端 - 避免重复导出类型
 export { chatIPC } from './ipc';
 export type {
   SessionConfig,
@@ -49,6 +28,8 @@ export type {
   ToolResult,
   StreamEventCallback,
   UnsubscribeFn,
+  LLMQueryRequest,
+  LLMQueryResponse,
 } from './ipc';
 export {
   createSession,
@@ -71,6 +52,8 @@ export {
   listAllTools,
   callTool,
   createUserInput,
+  llmQuery,
+  isLLMIPCAvailable,
 } from './ipc';
 
 // 组件

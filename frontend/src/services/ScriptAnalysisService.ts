@@ -15,9 +15,32 @@ import { parseLLMJSON } from '../utils/llmJsonParser';
 const logger = createLogger('ScriptAnalysisService');
 
 const CHUNK_MAX_RETRIES = 3;
+const CHUNK_CONCURRENCY = 3;
 
 function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/** 并发控制：最多 limit 个任务同时执行，参考 claude-code Promise.allSettled 模式 */
+async function runWithConcurrency<T>(
+  tasks: (() => Promise<T>)[],
+  limit: number
+): Promise<PromiseSettledResult<T>[]> {
+  const results: PromiseSettledResult<T>[] = new Array(tasks.length);
+  let index = 0;
+  async function next(): Promise<void> {
+    while (index < tasks.length) {
+      const i = index++;
+      try {
+        const value = await tasks[i]();
+        results[i] = { status: 'fulfilled', value };
+      } catch (reason) {
+        results[i] = { status: 'rejected', reason };
+      }
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, tasks.length) }, () => next()));
+  return results;
 }
 import { buildChunkContextPrompt, splitScriptIntoChunks } from './scriptAnalysisChunking';
 
@@ -194,6 +217,7 @@ const SHOTS_SCHEMA = {
 
 export class ScriptAnalysisService {
   private llmConfig: LLMModelConfig | null = null;
+  private llmProvider: ReturnType<typeof createLLMProvider> | null = null;
   private onProgress?: (progress: AnalysisProgress) => void;
   private episodeContext?: EpisodeContext;
   private styleSnapshot?: StyleSnapshotLike;
@@ -226,6 +250,16 @@ export class ScriptAnalysisService {
   // 设置 LLM 配置
   async setLLMConfig(configId?: string): Promise<boolean> {
     this.llmConfig = await getActiveLLMConfig(configId);
+    if (this.llmConfig) {
+      this.llmProvider = createLLMProvider({
+        provider: this.llmConfig.provider === 'openai-compatible' ? 'openai' : this.llmConfig.provider as any,
+        apiKey: this.llmConfig.apiKey,
+        baseUrl: this.llmConfig.baseUrl,
+        modelName: this.llmConfig.modelName,
+      });
+    } else {
+      this.llmProvider = null;
+    }
     return this.llmConfig !== null;
   }
 
@@ -240,16 +274,9 @@ export class ScriptAnalysisService {
     schema: any,
     templateMeta?: { templateId?: string; promptSource?: 'default' | 'custom' | 'finalized' }
   ): Promise<string> {
-    if (!this.llmConfig) {
+    if (!this.llmConfig || !this.llmProvider) {
       throw new Error('LLM 配置未设置');
     }
-
-    const provider = createLLMProvider({
-      provider: this.llmConfig.provider === 'openai-compatible' ? 'openai' : this.llmConfig.provider as any,
-      apiKey: this.llmConfig.apiKey,
-      baseUrl: this.llmConfig.baseUrl,
-      modelName: this.llmConfig.modelName,
-    });
 
     // 获取系统提示词模板，追加注入防御指令
     const resolvedSystemPrompt = await resolvePromptTemplate('script_analysis_system', {});
@@ -270,7 +297,7 @@ export class ScriptAnalysisService {
       }
     );
 
-    const result = await provider.generateText(fullPrompt, systemPrompt, {
+    const result = await this.llmProvider.generateText(fullPrompt, systemPrompt, {
       source: 'ScriptAnalysisService.callLLM',
       operation: 'script_analysis',
       targetName: this.episodeContext?.episodeName || '剧本解析',
@@ -295,33 +322,32 @@ export class ScriptAnalysisService {
   ): Promise<T[]> {
     const chunks = splitScriptIntoChunks(script);
     const collected = new Map<string, T>();
-    let failedChunks = 0;
 
-    for (const chunk of chunks) {
-      this.reportProgress(stage, 'running', `正在分析${label}...（${chunk.index}/${chunk.total}）`);
+    this.reportProgress(stage, 'running', `正在分析${label}...（共 ${chunks.length} 个分块，并发 ${CHUNK_CONCURRENCY}）`);
 
-      const resolvedPrompt = await resolvePromptTemplate(templateId, {
-        script: wrapUserContent(chunk.content),
-      });
-      const styledPrompt = this.appendStyleRequirement(resolvedPrompt.prompt);
-      const chunkPrompt = buildChunkContextPrompt(
-        styledPrompt,
-        label,
-        chunk,
-        Array.from(collected.keys())
-      );
+    // 预构建每个分块的 prompt（不依赖其他分块结果）
+    const chunkPrompts = await Promise.all(
+      chunks.map(async (chunk) => {
+        const resolvedPrompt = await resolvePromptTemplate(templateId, {
+          script: wrapUserContent(chunk.content),
+        });
+        const styledPrompt = this.appendStyleRequirement(resolvedPrompt.prompt);
+        // 并行模式下无法实时共享已识别实体，去重由最终 Map 保证
+        const chunkPrompt = buildChunkContextPrompt(styledPrompt, label, chunk, []);
+        return { chunk, chunkPrompt, resolvedPrompt };
+      })
+    );
 
-      let items: any[] | null = null;
+    // 并发执行分块 LLM 调用（带重试）
+    const tasks = chunkPrompts.map(({ chunk, chunkPrompt, resolvedPrompt }) => async () => {
       let lastError: unknown;
-
       for (let attempt = 0; attempt < CHUNK_MAX_RETRIES; attempt++) {
         try {
           const result = await this.callLLM(chunkPrompt, schema, {
             templateId: resolvedPrompt.template.id,
             promptSource: resolvedPrompt.source,
           });
-          items = parseItems(result);
-          break;
+          return { chunk, items: parseItems(result) };
         } catch (err: unknown) {
           lastError = err;
           if (attempt < CHUNK_MAX_RETRIES - 1) {
@@ -329,19 +355,24 @@ export class ScriptAnalysisService {
           }
         }
       }
+      throw lastError;
+    });
 
-      if (items === null) {
+    const results = await runWithConcurrency(tasks, CHUNK_CONCURRENCY);
+
+    let failedChunks = 0;
+    for (const result of results) {
+      if (result.status === 'rejected') {
         failedChunks++;
-        logger.warn(`${label}分块 ${chunk.index}/${chunk.total} 解析失败（已重试 ${CHUNK_MAX_RETRIES} 次）`, {
-          error: lastError instanceof Error ? lastError.message : String(lastError),
+        logger.warn(`${label}分块解析失败（已重试 ${CHUNK_MAX_RETRIES} 次）`, {
+          error: result.reason instanceof Error ? result.reason.message : String(result.reason),
         });
         continue;
       }
-
+      const { chunk, items } = result.value;
+      this.reportProgress(stage, 'running', `正在分析${label}...（${chunk.index}/${chunk.total} 完成）`);
       for (const item of items) {
-        if (!item?.name || collected.has(item.name)) {
-          continue;
-        }
+        if (!item?.name || collected.has(item.name)) continue;
         collected.set(item.name, mapItem(item, collected.size));
       }
     }
@@ -544,22 +575,27 @@ export class ScriptAnalysisService {
 
   // 完整解析流程
   async analyzeScript(script: string): Promise<ScriptAnalysisResult> {
-    // 提取角色
+    // 提取角色（必须先完成，分镜生成依赖角色列表）
     const charResult = await this.extractCharacters(script);
     if (!charResult.success || !charResult.data) {
       throw new Error(charResult.error || '角色提取失败');
     }
 
-    // 提取场景
-    const sceneResult = await this.extractScenes(script);
-    if (!sceneResult.success || !sceneResult.data) {
-      throw new Error(sceneResult.error || '场景提取失败');
-    }
+    // 场景和道具互不依赖，并行提取
+    const [sceneResult, propsResult] = await Promise.all([
+      this.extractScenes(script),
+      this.extractProps(script),
+    ]);
 
-    // 提取道具
-    const propsResult = await this.extractProps(script);
+    const errors: string[] = [];
+    if (!sceneResult.success || !sceneResult.data) {
+      errors.push(sceneResult.error || '场景提取失败');
+    }
     if (!propsResult.success || !propsResult.data) {
-      throw new Error(propsResult.error || '道具提取失败');
+      errors.push(propsResult.error || '道具提取失败');
+    }
+    if (errors.length > 0) {
+      throw new Error(errors.join('；'));
     }
 
     return {
@@ -771,42 +807,55 @@ export class BackgroundAnalysisService {
         completedStages.add('characters');
       }
 
-      if (!completedStages.has('scenes')) {
-        const sceneResult = await service.extractScenes(script);
-        if (!sceneResult.success || !sceneResult.data) {
-          throw new Error(sceneResult.error || '场景提取失败');
-        }
-        mergedScenes = this.mergeAssets(mergedScenes, sceneResult.data, 'name');
-        const sceneNameToId = new Map(mergedScenes.map(s => [s.name, s.id]));
-        sceneRefs = sceneResult.data.map(s => sceneNameToId.get(s.name) || s.id);
-        await this.persistStageResult(episodeId, episodeName, 'scenes', {
-          mergedChars,
-          mergedScenes,
-          mergedProps,
-          characterRefs,
-          sceneRefs,
-          propRefs,
-        });
-        completedStages.add('scenes');
-      }
+      if (!completedStages.has('scenes') || !completedStages.has('props')) {
+        // 场景和道具互不依赖，并行提取
+        const [sceneResult, propsResult] = await Promise.all([
+          !completedStages.has('scenes') ? service.extractScenes(script) : null,
+          !completedStages.has('props') ? service.extractProps(script) : null,
+        ]);
 
-      if (!completedStages.has('props')) {
-        const propsResult = await service.extractProps(script);
-        if (!propsResult.success || !propsResult.data) {
-          throw new Error(propsResult.error || '道具提取失败');
+        // 先检查错误，收集所有失败信息
+        const errors: string[] = [];
+        if (sceneResult && (!sceneResult.success || !sceneResult.data)) {
+          errors.push(sceneResult.error || '场景提取失败');
         }
-        mergedProps = this.mergeAssets(mergedProps, propsResult.data, 'name');
-        const propNameToId = new Map(mergedProps.map(p => [p.name, p.id]));
-        propRefs = propsResult.data.map(p => propNameToId.get(p.name) || p.id);
-        await this.persistStageResult(episodeId, episodeName, 'props', {
-          mergedChars,
-          mergedScenes,
-          mergedProps,
-          characterRefs,
-          sceneRefs,
-          propRefs,
-        });
-        completedStages.add('props');
+        if (propsResult && (!propsResult.success || !propsResult.data)) {
+          errors.push(propsResult.error || '道具提取失败');
+        }
+        if (errors.length > 0) {
+          throw new Error(errors.join('；'));
+        }
+
+        // 持久化成功的结果
+        if (sceneResult?.data) {
+          mergedScenes = this.mergeAssets(mergedScenes, sceneResult.data, 'name');
+          const sceneNameToId = new Map(mergedScenes.map(s => [s.name, s.id]));
+          sceneRefs = sceneResult.data.map(s => sceneNameToId.get(s.name) || s.id);
+          await this.persistStageResult(episodeId, episodeName, 'scenes', {
+            mergedChars,
+            mergedScenes,
+            mergedProps,
+            characterRefs,
+            sceneRefs,
+            propRefs,
+          });
+          completedStages.add('scenes');
+        }
+
+        if (propsResult?.data) {
+          mergedProps = this.mergeAssets(mergedProps, propsResult.data, 'name');
+          const propNameToId = new Map(mergedProps.map(p => [p.name, p.id]));
+          propRefs = propsResult.data.map(p => propNameToId.get(p.name) || p.id);
+          await this.persistStageResult(episodeId, episodeName, 'props', {
+            mergedChars,
+            mergedScenes,
+            mergedProps,
+            characterRefs,
+            sceneRefs,
+            propRefs,
+          });
+          completedStages.add('props');
+        }
       }
 
       // 更新任务完成

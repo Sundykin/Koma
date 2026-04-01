@@ -4,7 +4,7 @@
  */
 import * as path from 'path';
 import * as fs from 'fs/promises';
-import { spawn, ChildProcess } from 'child_process';
+import { spawn } from 'child_process';
 import { app } from 'electron';
 import { EventEmitter } from 'events';
 import type {
