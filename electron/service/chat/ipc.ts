@@ -4,6 +4,7 @@ import { chatService } from './ChatService';
 import { llmQueryService } from './LLMQueryService';
 import type { LLMConnectionTestRequest, LLMQueryRequest, LLMSaveProfileRequest } from './LLMQueryService';
 import { llmProfileStore } from './LLMProfileStore';
+import { llmChannelConfigTransactionService } from './LLMChannelConfigTransactionService';
 import { importFromFile, importFromObject, exportConfig, exportToFile } from './mcp/MCPConfigLoader';
 import type {
   ChatInput,
@@ -181,6 +182,18 @@ class ChatIpc {
 
     ipcMain.handle('llm:deleteProfile', async (_event, args: { profileId: string }) => {
       return { success: llmProfileStore.deleteProfile(args.profileId) };
+    });
+
+    ipcMain.handle('llm:saveChannelConfig', async (_event, args) => {
+      return llmChannelConfigTransactionService.saveChannelConfig(args);
+    });
+
+    ipcMain.handle('llm:deleteChannelConfig', async (_event, args) => {
+      return llmChannelConfigTransactionService.deleteChannelConfig(args);
+    });
+
+    ipcMain.handle('llm:migrateSettingsSecrets', async (_event, args) => {
+      return llmChannelConfigTransactionService.migrateSettingsSecrets(args);
     });
 
     ipcMain.handle('chat:session:create', async (event, args: { config?: SessionConfig }) => {

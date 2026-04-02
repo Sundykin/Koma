@@ -189,6 +189,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     testConnection: (request: any) => invokeMain('llm:testConnection', request),
     saveProfile: (request: any) => invokeMain('llm:saveProfile', request),
     deleteProfile: (profileId: string) => invokeMain('llm:deleteProfile', { profileId }),
+    saveChannelConfig: (request: any) => invokeMain('llm:saveChannelConfig', request),
+    deleteChannelConfig: (request: any) => invokeMain('llm:deleteChannelConfig', request),
+    migrateSettingsSecrets: (request: any) => invokeMain('llm:migrateSettingsSecrets', request),
   },
   chat: {
     // 会话管理

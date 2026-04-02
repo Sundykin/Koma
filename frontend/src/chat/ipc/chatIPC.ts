@@ -209,6 +209,30 @@ export interface LLMSaveProfileRequest {
   apiKey?: string;
 }
 
+export interface SaveLLMChannelConfigTransactionRequest {
+  rootPath: string;
+  editingChannelId?: string;
+  payload: Record<string, unknown>;
+  profileApiKey?: string;
+  shouldUpdateDefault: boolean;
+}
+
+export interface SaveLLMChannelConfigTransactionResponse {
+  success: boolean;
+  channel?: Record<string, unknown>;
+  error?: { message: string };
+}
+
+export interface DeleteLLMChannelConfigTransactionRequest {
+  rootPath: string;
+  channelId: string;
+}
+
+export interface MigrateLLMSecretsTransactionRequest {
+  rootPath: string;
+  settings: Record<string, unknown>;
+}
+
 // NOTE: Keep in sync with LLMQueryResponse in electron/service/chat/LLMQueryService.ts
 export interface LLMQueryResponse {
   content: string;
@@ -274,6 +298,32 @@ export async function deleteLLMProfile(profileId: string): Promise<boolean> {
     throw new Error(result?.error?.message || 'Failed to delete LLM profile');
   }
   return true;
+}
+
+
+export async function saveLLMChannelConfigTransaction(
+  request: SaveLLMChannelConfigTransactionRequest,
+): Promise<SaveLLMChannelConfigTransactionResponse> {
+  const api = getLLMAPI();
+  return api.saveChannelConfig(request);
+}
+
+export async function deleteLLMChannelConfigTransaction(
+  request: DeleteLLMChannelConfigTransactionRequest,
+): Promise<boolean> {
+  const api = getLLMAPI();
+  const result = await api.deleteChannelConfig(request);
+  if (!result?.success) {
+    throw new Error(result?.error?.message || 'Failed to delete LLM channel config');
+  }
+  return true;
+}
+
+export async function migrateLLMSecretsTransaction(
+  request: MigrateLLMSecretsTransactionRequest,
+): Promise<{ settings: Record<string, unknown>; migrated: boolean }> {
+  const api = getLLMAPI();
+  return api.migrateSettingsSecrets(request);
 }
 
 // ========== 会话管理 ==========

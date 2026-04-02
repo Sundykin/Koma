@@ -31,14 +31,10 @@ import {
 import type { AppSettings, LLMModelConfig } from '../../types';
 import { createLLMProvider } from '../../providers/llm';
 import { buildLLMConfigFromContext } from '../../providers/channel/resolver';
-import { deleteLLMProfile, saveLLMProfile } from '../../chat/ipc/chatIPC';
+import { deleteLLMChannelConfigTransaction, saveLLMChannelConfigTransaction } from '../../chat/ipc/chatIPC';
 import type { ChannelModelDefinition, ModelCapability } from '../../providers/channel/types';
 import {
-  addChannelConfig,
-  deleteChannelConfig,
   generateId,
-  setDefaultMediaModelSelection,
-  updateChannelConfig,
 } from '../../store/globalStore';
 import { ChannelModelsEditor } from './ChannelModelsEditor';
 import {
@@ -48,7 +44,7 @@ import {
   listBuiltInChannelOptions,
 } from './channelManagerShared';
 import { useMediaConfigManager } from './useMediaConfigManager';
-import { persistLLMChannelConfig } from './llmChannelPersistence';
+import { getStorageConfig } from '../../store/storageConfig';
 
 interface LLMConfigManagerProps {
   onConfigChange?: () => void;
@@ -250,41 +246,23 @@ export const LLMConfigManager: React.FC<LLMConfigManagerProps> = ({ onConfigChan
         source: 'builtin' as const,
       };
 
-      const nextApiKey = String(values.apiKey || '').trim();
+      const rootPath = getStorageConfig()?.rootPath;
+      if (!rootPath) {
+        throw new Error('未找到存储根目录配置');
+      }
 
-      const saved = await persistLLMChannelConfig({
-        editingChannel,
+      const nextApiKey = String(values.apiKey || '').trim();
+      const savedResult = await saveLLMChannelConfigTransaction({
+        rootPath,
+        ...(editingChannel ? { editingChannelId: editingChannel.id } : {}),
         payload,
-        profilePayload: (nextApiKey || editingHasStoredApiKey) && editingChannel
-          ? {
-              profileId: editingChannel.id,
-              ...(nextApiKey ? { apiKey: nextApiKey } : {}),
-              baseUrl: values.baseUrl,
-            }
-          : undefined,
+        ...(nextApiKey ? { profileApiKey: nextApiKey } : {}),
         shouldUpdateDefault: !settings?.mediaDefaults?.llm
           || settings.mediaDefaults.llm.channelId === (editingChannel?.id || 'PENDING_NEW_CHANNEL'),
-        deps: {
-          addChannelConfig,
-          updateChannelConfig,
-          deleteChannelConfig,
-          saveLLMProfile,
-          setDefaultMediaModelSelection,
-        },
       });
 
-      // 新建时 profileId 需要落到新生成的 channel id
-      if ((nextApiKey || editingHasStoredApiKey) && !editingChannel) {
-        try {
-          await saveLLMProfile({
-            profileId: saved.id,
-            ...(nextApiKey ? { apiKey: nextApiKey } : {}),
-            baseUrl: values.baseUrl,
-          });
-        } catch (profileErr) {
-          await deleteChannelConfig(saved.id);
-          throw profileErr;
-        }
+      if (!savedResult.success || !savedResult.channel) {
+        throw new Error(savedResult.error?.message || '保存渠道配置失败');
       }
 
       message.success(editingChannel ? '配置已更新' : '配置已添加');
@@ -299,8 +277,11 @@ export const LLMConfigManager: React.FC<LLMConfigManagerProps> = ({ onConfigChan
 
   const handleDelete = useCallback(async (id: string) => {
     try {
-      await deleteChannelConfig(id);
-      await deleteLLMProfile(id);
+      const rootPath = getStorageConfig()?.rootPath;
+      if (!rootPath) {
+        throw new Error('未找到存储根目录配置');
+      }
+      await deleteLLMChannelConfigTransaction({ rootPath, channelId: id });
       message.success('配置已删除');
       await loadConfigs();
       onConfigChange?.();

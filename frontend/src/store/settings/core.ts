@@ -8,8 +8,7 @@ import type { AppSettings } from '../../types';
 import { STORAGE_KEYS } from '../../constants/storageKeys';
 import { createLogger } from '../logger';
 import { encryptSettings, decryptSettings, initEncryption } from '../encryption';
-import { saveLLMProfile } from '../../chat/ipc/chatIPC';
-import { migrateLLMSecretsToProfiles } from './llmSecretMigration';
+import { migrateLLMSecretsTransaction } from '../../chat/ipc/chatIPC';
 
 const logger = createLogger('Settings');
 
@@ -87,10 +86,10 @@ export async function loadSettings(): Promise<AppSettings> {
       const decrypted = await decryptSettings(parsed);
       const merged = { ...DEFAULT_SETTINGS, ...decrypted };
       try {
-        const migration = await migrateLLMSecretsToProfiles(merged, saveLLMProfile);
+        const rootPath = config.rootPath;
+        const migration = await migrateLLMSecretsTransaction({ rootPath, settings: merged });
         if (migration.migrated) {
-          await saveSettings(migration.settings);
-          return migration.settings;
+          return migration.settings as AppSettings;
         }
       } catch (migrationErr) {
         logger.error('loadSettings migration error', migrationErr);
@@ -111,8 +110,7 @@ export async function saveSettings(settings: AppSettings): Promise<void> {
   }
 
   await ensureEncryption();
-  const migration = await migrateLLMSecretsToProfiles(settings, saveLLMProfile);
-  const encrypted = await encryptSettings(migration.settings);
+  const encrypted = await encryptSettings(settings);
   const path = await getGlobalPath('settings.json');
   await electronService.fs.writeFile(path, JSON.stringify(encrypted, null, 2));
 }
