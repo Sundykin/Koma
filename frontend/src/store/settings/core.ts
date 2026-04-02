@@ -77,6 +77,7 @@ export async function loadSettings(): Promise<AppSettings> {
 
   try {
     await ensureEncryption();
+    const storageConfig = getStorageConfig() || (await initStorageConfig());
     const path = await getGlobalPath('settings.json');
     const exists = await electronService.fs.exists(path);
     if (exists) {
@@ -86,7 +87,7 @@ export async function loadSettings(): Promise<AppSettings> {
       const decrypted = await decryptSettings(parsed);
       const merged = { ...DEFAULT_SETTINGS, ...decrypted };
       try {
-        const rootPath = config.rootPath;
+        const rootPath = storageConfig.rootPath;
         const migration = await migrateLLMSecretsTransaction({ rootPath, settings: merged });
         if (migration.migrated) {
           return migration.settings as AppSettings;
