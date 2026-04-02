@@ -2,7 +2,8 @@ import { app, BrowserWindow, ipcMain } from 'electron';
 import { createOrchestrator, AgentOrchestrator } from './AgentOrchestrator';
 import { chatService } from './ChatService';
 import { llmQueryService } from './LLMQueryService';
-import type { LLMQueryRequest } from './LLMQueryService';
+import type { LLMConnectionTestRequest, LLMQueryRequest, LLMSaveProfileRequest } from './LLMQueryService';
+import { llmProfileStore } from './LLMProfileStore';
 import { importFromFile, importFromObject, exportConfig, exportToFile } from './mcp/MCPConfigLoader';
 import type {
   ChatInput,
@@ -31,6 +32,14 @@ const WORKFLOW_SOURCE_PATTERNS = ['workflow', 'script', 'shot', 'entity', 'episo
 function isWorkflowSource(source: string): boolean {
   const lower = source.toLowerCase();
   return WORKFLOW_SOURCE_PATTERNS.some(p => lower.includes(p));
+}
+
+function validateLLMSaveProfileRequest(args: unknown): args is LLMSaveProfileRequest {
+  if (!args || typeof args !== 'object') return false;
+  const req = args as Record<string, unknown>;
+  if (typeof req.profileId !== 'string' || req.profileId.trim() === '') return false;
+  if (req.apiKey !== undefined && typeof req.apiKey !== 'string') return false;
+  return true;
 }
 
 function validateLLMQueryRequest(args: unknown): args is LLMQueryRequest {
@@ -148,6 +157,30 @@ class ChatIpc {
       } finally {
         this.releaseSlot(isWorkflow);
       }
+    });
+
+    ipcMain.handle('llm:testConnection', async (_event, args: LLMConnectionTestRequest) => {
+      try {
+        return await llmQueryService.testConnection(args);
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        return { success: false, error: { code: 'UNKNOWN' as const, message } };
+      }
+    });
+
+    ipcMain.handle('llm:saveProfile', async (_event, args: LLMSaveProfileRequest) => {
+      if (!validateLLMSaveProfileRequest(args)) {
+        return { success: false, error: { code: 'API_ERROR' as const, message: 'Invalid LLM profile payload' } };
+      }
+      const saved = llmProfileStore.saveProfile({
+        profileId: args.profileId,
+        apiKey: args.apiKey,
+      });
+      return { success: true, updatedAt: saved.updatedAt };
+    });
+
+    ipcMain.handle('llm:deleteProfile', async (_event, args: { profileId: string }) => {
+      return { success: llmProfileStore.deleteProfile(args.profileId) };
     });
 
     ipcMain.handle('chat:session:create', async (event, args: { config?: SessionConfig }) => {

@@ -4,7 +4,7 @@
  */
 import type { ModelConfig } from '../../types';
 import type { LLMProvider, ChatMessage, LLMCallOptions } from './types';
-import { llmQuery, isLLMIPCAvailable } from '../../chat/ipc/chatIPC';
+import { llmQuery, isLLMIPCAvailable, testLLMConnection } from '../../chat/ipc/chatIPC';
 
 export { isLLMIPCAvailable };
 
@@ -18,19 +18,23 @@ export class IPCLLMProvider implements LLMProvider {
 
   validate(): boolean {
     return Boolean(
-      this.config.apiKey &&
-      this.config.apiKey.length > 0 &&
+      ((this.config.profileId && this.config.profileId.length > 0)
+        || (this.config.apiKey && this.config.apiKey.length > 0)) &&
       String(this.config.modelName || '').trim()
     );
   }
 
   async testConnection(): Promise<boolean> {
-    try {
-      await this.generateText('Hi', undefined, { source: 'testConnection' });
-      return true;
-    } catch {
-      return false;
-    }
+    const result = await testLLMConnection({
+      modelProvider: this.mapProvider(this.config.provider),
+      profileId: this.config.profileId,
+      modelName: String(this.config.modelName || '').trim(),
+      apiKey: this.config.apiKey,
+      baseUrl: this.config.baseUrl,
+      temperature: this.config.temperature,
+      maxTokens: this.config.maxTokens,
+    });
+    return result.success;
   }
 
   async generateText(prompt: string, systemPrompt?: string, options?: LLMCallOptions): Promise<string> {
@@ -70,6 +74,7 @@ export class IPCLLMProvider implements LLMProvider {
 
   private buildConfig() {
     return {
+      profileId: this.config.profileId,
       modelProvider: this.mapProvider(this.config.provider),
       modelName: String(this.config.modelName || '').trim(),
       apiKey: this.config.apiKey,

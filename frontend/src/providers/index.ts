@@ -70,7 +70,7 @@ export {
 } from './registry';
 
 // 重新导出子目录内容
-export { createLLMProvider, GeminiProvider, OpenAIProvider, ClaudeProvider } from './llm';
+export { createLLMProvider } from './llm';
 export type { LLMProvider, ChatMessage } from './llm/types';
 export { createTTIProvider, ComfyUIProvider } from './tti';
 export type { TTIProvider, ImageResult, TTIOptions } from './tti/types';
@@ -93,6 +93,8 @@ export function createProvidersFromSettings(settings: AppSettings) {
   return {
     llm: defaultLLMConfig ? createLLMProvider({
       provider: defaultLLMConfig.provider as any,
+      profileId: defaultLLMConfig.profileId,
+      hasStoredCredential: defaultLLMConfig.hasStoredCredential,
       apiKey: defaultLLMConfig.apiKey,
       baseUrl: defaultLLMConfig.baseUrl,
       modelName: defaultLLMConfig.modelName,
@@ -245,6 +247,8 @@ export async function testTTIConnection(config: TTIModelConfig): Promise<{ succe
 export function createLLMProviderFromConfig(config: LLMModelConfig): LLMProvider {
   return createLLMProvider({
     provider: config.provider as any,
+    profileId: config.profileId,
+    hasStoredCredential: config.hasStoredCredential,
     apiKey: config.apiKey,
     baseUrl: config.baseUrl,
     modelName: config.modelName,

@@ -64,7 +64,7 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
     configRef.current = options.config;
   }, [options.config]);
 
-  // 初始化会话 - 需要有 apiKey 才创建
+  // 初始化会话 - 需要存在可用的 LLM 配置引用或旧版 apiKey
   useEffect(() => {
     if (!chatIPC.isElectron()) {
       logger.warn('Chat IPC is only available in Electron environment');
@@ -76,8 +76,7 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
       return;
     }
 
-    // 需要有 apiKey 才创建会话
-    if (!options.config?.apiKey) {
+    if (!options.config?.llmProfileId && !options.config?.apiKey) {
       return;
     }
 
@@ -105,7 +104,7 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
       unsubscribersRef.current.forEach(unsub => unsub());
       unsubscribersRef.current = [];
     };
-  }, [options.config?.apiKey]); // 依赖 apiKey
+  }, [options.config?.llmProfileId, options.config?.apiKey]);
 
   // 当配置变化时更新会话配置
   useEffect(() => {

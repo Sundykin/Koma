@@ -31,6 +31,7 @@ import {
 import type { AppSettings, LLMModelConfig } from '../../types';
 import { createLLMProvider } from '../../providers/llm';
 import { buildLLMConfigFromContext } from '../../providers/channel/resolver';
+import { deleteLLMProfile, saveLLMProfile } from '../../chat/ipc/chatIPC';
 import type { ChannelModelDefinition, ModelCapability } from '../../providers/channel/types';
 import {
   addChannelConfig,
@@ -47,6 +48,7 @@ import {
   listBuiltInChannelOptions,
 } from './channelManagerShared';
 import { useMediaConfigManager } from './useMediaConfigManager';
+import { persistLLMChannelConfig } from './llmChannelPersistence';
 
 interface LLMConfigManagerProps {
   onConfigChange?: () => void;
@@ -113,6 +115,7 @@ export const LLMConfigManager: React.FC<LLMConfigManagerProps> = ({ onConfigChan
   const currentProviderType = Form.useWatch('providerType', form) as string | undefined;
   const currentDefinition = currentProviderType ? definitionMap.get(currentProviderType) : undefined;
   const currentIsOpenAICompatible = currentDefinition?.runtimeProviderType === 'openai-compatible';
+  const editingHasStoredApiKey = Boolean(editingChannel && (editingChannel.providerConfig as Record<string, unknown> | undefined)?.hasApiKey);
   const watchedModels = Form.useWatch('models', form) as Array<Partial<ChannelModelDefinition>> | undefined;
   const modelOptions = useMemo(() => (
     (watchedModels || [])
@@ -238,8 +241,8 @@ export const LLMConfigManager: React.FC<LLMConfigManagerProps> = ({ onConfigChan
         category: 'llm' as const,
         providerType: definition.id,
         providerConfig: {
-          apiKey: values.apiKey,
           baseUrl: values.baseUrl,
+          hasApiKey: editingHasStoredApiKey || Boolean(String(values.apiKey || '').trim()),
         },
         defaultModelId,
         models,
@@ -247,18 +250,41 @@ export const LLMConfigManager: React.FC<LLMConfigManagerProps> = ({ onConfigChan
         source: 'builtin' as const,
       };
 
-      const saved = editingChannel
-        ? await updateChannelConfig(editingChannel.id, payload)
-        : await addChannelConfig(payload);
+      const nextApiKey = String(values.apiKey || '').trim();
 
-      if (!saved) {
-        throw new Error('保存渠道配置失败');
-      }
+      const saved = await persistLLMChannelConfig({
+        editingChannel,
+        payload,
+        profilePayload: (nextApiKey || editingHasStoredApiKey) && editingChannel
+          ? {
+              profileId: editingChannel.id,
+              ...(nextApiKey ? { apiKey: nextApiKey } : {}),
+              baseUrl: values.baseUrl,
+            }
+          : undefined,
+        shouldUpdateDefault: !settings?.mediaDefaults?.llm
+          || settings.mediaDefaults.llm.channelId === (editingChannel?.id || 'PENDING_NEW_CHANNEL'),
+        deps: {
+          addChannelConfig,
+          updateChannelConfig,
+          deleteChannelConfig,
+          saveLLMProfile,
+          setDefaultMediaModelSelection,
+        },
+      });
 
-      const shouldUpdateDefault = !settings?.mediaDefaults?.llm
-        || settings.mediaDefaults.llm.channelId === saved.id;
-      if (shouldUpdateDefault) {
-        await setDefaultMediaModelSelection('llm', { channelId: saved.id, modelId: defaultModelId });
+      // 新建时 profileId 需要落到新生成的 channel id
+      if ((nextApiKey || editingHasStoredApiKey) && !editingChannel) {
+        try {
+          await saveLLMProfile({
+            profileId: saved.id,
+            ...(nextApiKey ? { apiKey: nextApiKey } : {}),
+            baseUrl: values.baseUrl,
+          });
+        } catch (profileErr) {
+          await deleteChannelConfig(saved.id);
+          throw profileErr;
+        }
       }
 
       message.success(editingChannel ? '配置已更新' : '配置已添加');
@@ -274,6 +300,7 @@ export const LLMConfigManager: React.FC<LLMConfigManagerProps> = ({ onConfigChan
   const handleDelete = useCallback(async (id: string) => {
     try {
       await deleteChannelConfig(id);
+      await deleteLLMProfile(id);
       message.success('配置已删除');
       await loadConfigs();
       onConfigChange?.();
@@ -303,6 +330,8 @@ export const LLMConfigManager: React.FC<LLMConfigManagerProps> = ({ onConfigChan
     try {
       const provider = createLLMProvider({
         provider: config.resolvedConfig.provider,
+        profileId: config.channel.id,
+        hasStoredCredential: config.resolvedConfig.hasStoredCredential,
         apiKey: config.resolvedConfig.apiKey,
         baseUrl: config.resolvedConfig.baseUrl,
         modelName: config.resolvedConfig.modelName,
@@ -532,11 +561,11 @@ export const LLMConfigManager: React.FC<LLMConfigManagerProps> = ({ onConfigChan
                 name="apiKey"
                 label="API Key"
                 className="settings-grid-span-full"
-                required
-                rules={[{ required: true, message: '请输入 API Key' }]}
+                required={!editingHasStoredApiKey}
+                rules={[{ required: !editingHasStoredApiKey, message: '请输入 API Key' }]}
                 style={{ marginBottom: 0 }}
               >
-                <Input.Password prefix={<KeyOutlined />} placeholder="sk-..." />
+                <Input.Password prefix={<KeyOutlined />} placeholder={editingHasStoredApiKey ? '留空则保持现有 Key' : 'sk-...'} />
               </Form.Item>
             </div>
           </div>
