@@ -7,6 +7,8 @@ type Listener = (event: IpcRendererEvent, ...args: any[]) => void;
 
 const ALLOWED_INVOKE_CHANNELS = new Set([
   'llm:query',
+  'llm:testConnection', 'llm:saveProfile', 'llm:deleteProfile',
+  'llm:saveChannelConfig', 'llm:deleteChannelConfig', 'llm:migrateSettingsSecrets',
   'chat:session:create', 'chat:session:get', 'chat:session:dispose',
   'chat:session:list', 'chat:session:updateConfig',
   'chat:message:send', 'chat:message:sendStream', 'chat:message:cancel',

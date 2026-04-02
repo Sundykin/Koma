@@ -35,6 +35,7 @@ import { deleteLLMChannelConfigTransaction, saveLLMChannelConfigTransaction } fr
 import type { ChannelModelDefinition, ModelCapability } from '../../providers/channel/types';
 import {
   generateId,
+  setDefaultMediaModelSelection,
 } from '../../store/globalStore';
 import { ChannelModelsEditor } from './ChannelModelsEditor';
 import {
