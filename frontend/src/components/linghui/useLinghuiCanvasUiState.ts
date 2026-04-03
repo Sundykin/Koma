@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
+import type { Dispatch, SetStateAction } from 'react';
 import type {
   LinghuiCanvasMode,
   LinghuiCanvasSelection,
@@ -6,23 +7,93 @@ import type {
   LinghuiNodeToolState,
 } from '../../types/linghui';
 import type { LinghuiPendingGroupFrame } from './linghuiCanvasShared';
+import { useLinghuiCanvasStore } from './linghuiCanvasStore';
+
+function resolveSetterValue<T>(value: SetStateAction<T>, currentValue: T): T {
+  return typeof value === 'function'
+    ? (value as (previous: T) => T)(currentValue)
+    : value;
+}
 
 export function useLinghuiCanvasUiState({
 }: Record<string, never> = {}) {
-  const [, setSelection] = useState<LinghuiCanvasSelection>(null);
-  const [editorSelection, setEditorSelection] = useState<LinghuiCanvasSelection>(null);
-  const [activeNodeToolState, setActiveNodeToolState] = useState<LinghuiNodeToolState>(null);
   const hostRef = useRef<HTMLDivElement | null>(null);
-  const [canvasRect, setCanvasRect] = useState<DOMRect | null>(null);
-  const [canvasMode, setCanvasMode] = useState<LinghuiCanvasMode>('mouse');
-  const [pendingGroupFrame, setPendingGroupFrame] = useState<LinghuiPendingGroupFrame | null>(null);
-  const [gridSplitType, setGridSplitType] = useState<LinghuiGridType>('2x2');
-  const [gridSplitSelectedCells, setGridSplitSelectedCells] = useState<number[]>([]);
-  const [gridSplitUpscaleFactor, setGridSplitUpscaleFactor] = useState<2 | 4>(2);
-  const previousGridSplitToolRef = useRef<LinghuiNodeToolState>(null);
+  const editorSelection = useLinghuiCanvasStore(state => state.editorSelection);
+  const activeNodeTool = useLinghuiCanvasStore(state => state.activeNodeTool);
+  const canvasRect = useLinghuiCanvasStore(state => state.canvasRect);
+  const canvasMode = useLinghuiCanvasStore(state => state.canvasMode);
+  const pendingGroupFrame = useLinghuiCanvasStore(state => state.pendingGroupFrame);
+  const gridSplitType = useLinghuiCanvasStore(state => state.gridSplitType);
+  const gridSplitSelectedCells = useLinghuiCanvasStore(state => state.gridSplitSelectedCells);
+  const gridSplitUpscaleFactor = useLinghuiCanvasStore(state => state.gridSplitUpscaleFactor);
+
+  const storeSetSelection = useLinghuiCanvasStore(state => state.setSelection);
+  const storeSetEditorSelection = useLinghuiCanvasStore(state => state.setEditorSelection);
+  const storeSetActiveNodeTool = useLinghuiCanvasStore(state => state.setActiveNodeTool);
+  const storeSetCanvasRect = useLinghuiCanvasStore(state => state.setCanvasRect);
+  const storeSetCanvasMode = useLinghuiCanvasStore(state => state.setCanvasMode);
+  const storeSetPendingGroupFrame = useLinghuiCanvasStore(state => state.setPendingGroupFrame);
+  const storeSetGridSplitType = useLinghuiCanvasStore(state => state.setGridSplitType);
+  const storeSetGridSplitSelectedCells = useLinghuiCanvasStore(state => state.setGridSplitSelectedCells);
+  const storeSetGridSplitUpscaleFactor = useLinghuiCanvasStore(state => state.setGridSplitUpscaleFactor);
+  const toggleGridSplitCell = useLinghuiCanvasStore(state => state.toggleGridSplitCell);
+  const revertGridSplitTool = useLinghuiCanvasStore(state => state.revertGridSplitTool);
+  const resetCanvasUiState = useLinghuiCanvasStore(state => state.resetCanvasUiState);
+  const resetCanvasStore = useLinghuiCanvasStore(state => state.resetCanvasStore);
+
+  const setSelection = useCallback<Dispatch<SetStateAction<LinghuiCanvasSelection>>>((nextValue) => {
+    const currentValue = useLinghuiCanvasStore.getState().selection;
+    storeSetSelection(resolveSetterValue(nextValue, currentValue));
+  }, [storeSetSelection]);
+
+  const setEditorSelection = useCallback<Dispatch<SetStateAction<LinghuiCanvasSelection>>>((nextValue) => {
+    const currentValue = useLinghuiCanvasStore.getState().editorSelection;
+    storeSetEditorSelection(resolveSetterValue(nextValue, currentValue));
+  }, [storeSetEditorSelection]);
+
+  const setActiveNodeTool = useCallback<Dispatch<SetStateAction<LinghuiNodeToolState>>>((nextValue) => {
+    const currentValue = useLinghuiCanvasStore.getState().activeNodeTool;
+    storeSetActiveNodeTool(resolveSetterValue(nextValue, currentValue));
+  }, [storeSetActiveNodeTool]);
+
+  const setCanvasRect = useCallback<Dispatch<SetStateAction<DOMRect | null>>>((nextValue) => {
+    const currentValue = useLinghuiCanvasStore.getState().canvasRect;
+    storeSetCanvasRect(resolveSetterValue(nextValue, currentValue));
+  }, [storeSetCanvasRect]);
+
+  const setCanvasMode = useCallback<Dispatch<SetStateAction<LinghuiCanvasMode>>>((nextValue) => {
+    const currentValue = useLinghuiCanvasStore.getState().canvasMode;
+    storeSetCanvasMode(resolveSetterValue(nextValue, currentValue));
+  }, [storeSetCanvasMode]);
+
+  const setPendingGroupFrame = useCallback<Dispatch<SetStateAction<LinghuiPendingGroupFrame | null>>>((nextValue) => {
+    const currentValue = useLinghuiCanvasStore.getState().pendingGroupFrame;
+    storeSetPendingGroupFrame(resolveSetterValue(nextValue, currentValue));
+  }, [storeSetPendingGroupFrame]);
+
+  const setGridSplitType = useCallback<Dispatch<SetStateAction<LinghuiGridType>>>((nextValue) => {
+    const currentValue = useLinghuiCanvasStore.getState().gridSplitType;
+    storeSetGridSplitType(resolveSetterValue(nextValue, currentValue));
+  }, [storeSetGridSplitType]);
+
+  const setGridSplitSelectedCells = useCallback<Dispatch<SetStateAction<number[]>>>((nextValue) => {
+    const currentValue = useLinghuiCanvasStore.getState().gridSplitSelectedCells;
+    storeSetGridSplitSelectedCells(resolveSetterValue(nextValue, currentValue));
+  }, [storeSetGridSplitSelectedCells]);
+
+  const setGridSplitUpscaleFactor = useCallback<Dispatch<SetStateAction<2 | 4>>>((nextValue) => {
+    const currentValue = useLinghuiCanvasStore.getState().gridSplitUpscaleFactor;
+    storeSetGridSplitUpscaleFactor(resolveSetterValue(nextValue, currentValue));
+  }, [storeSetGridSplitUpscaleFactor]);
 
   useEffect(() => {
-    if (!hostRef.current) return;
+    resetCanvasStore();
+    const host = hostRef.current;
+    if (!host) {
+      return () => {
+        resetCanvasStore();
+      };
+    }
 
     const observer = new ResizeObserver(() => {
       if (hostRef.current) {
@@ -30,63 +101,25 @@ export function useLinghuiCanvasUiState({
       }
     });
 
-    observer.observe(hostRef.current);
-    setCanvasRect(hostRef.current.getBoundingClientRect());
+    observer.observe(host);
+    setCanvasRect(host.getBoundingClientRect());
 
-    return () => observer.disconnect();
-  }, []);
-
-  useEffect(() => {
-    if (!activeNodeToolState) return;
-    if (editorSelection?.kind !== 'node' || editorSelection.nodeId !== activeNodeToolState.nodeId) {
-      setActiveNodeTool(null);
-    }
-  }, [activeNodeToolState, editorSelection]);
-
-  const setActiveNodeTool = useCallback((tool: LinghuiNodeToolState) => {
-    setActiveNodeToolState(current => {
-      const enteringGridSplit = tool?.kind === 'image' && tool.tool === 'grid-split';
-      const alreadyInGridSplit = current?.kind === 'image' && current.tool === 'grid-split';
-      if (enteringGridSplit && !alreadyInGridSplit) {
-        previousGridSplitToolRef.current = current;
-      }
-      return tool;
-    });
-  }, []);
-
-  const revertGridSplitTool = useCallback(() => {
-    setGridSplitSelectedCells([]);
-    setActiveNodeToolState(previousGridSplitToolRef.current ?? null);
-  }, []);
-
-  const toggleGridSplitCell = useCallback((index: number) => {
-    setGridSplitSelectedCells(current => (
-      current.includes(index)
-        ? current.filter(item => item !== index)
-        : [...current, index].sort((a, b) => a - b)
-    ));
-  }, []);
-
-  useEffect(() => {
-    if (!activeNodeToolState || activeNodeToolState.kind !== 'image' || activeNodeToolState.tool !== 'grid-split') {
-      setGridSplitSelectedCells([]);
-    }
-  }, [activeNodeToolState]);
+    return () => {
+      observer.disconnect();
+      resetCanvasStore();
+    };
+  }, [resetCanvasStore, setCanvasRect]);
 
   const resetLocalCanvasUiState = useCallback(() => {
     setSelection(null);
-    setEditorSelection(null);
-    setActiveNodeToolState(null);
-    setPendingGroupFrame(null);
-    setGridSplitSelectedCells([]);
-    setGridSplitUpscaleFactor(2);
-  }, []);
+    resetCanvasUiState();
+  }, [resetCanvasUiState, setSelection]);
 
   return {
     setSelection,
     editorSelection,
     setEditorSelection,
-    activeNodeTool: activeNodeToolState,
+    activeNodeTool,
     setActiveNodeTool,
     revertGridSplitTool,
     hostRef,

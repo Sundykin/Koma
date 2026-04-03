@@ -1,16 +1,24 @@
 import type {
   LinghuiImageAssetItem,
+  LinghuiImageMediaItem,
   LinghuiImageNodeProperties,
   LinghuiMediaItem,
   LinghuiNodeData,
   LinghuiNodeResult,
 } from '../../types/linghui';
+import {
+  getLinghuiResultItems,
+  getLinghuiResultPrimaryMedia,
+  isLinghuiImageMediaItem,
+  isLinghuiImageCollectionResult,
+  isLinghuiImageResult,
+} from '../../types/linghui';
 
 export const MAX_LINGHUI_IMAGE_ITEMS = 4;
 
 export interface LinghuiResolvedImageCollection {
-  items: LinghuiMediaItem[];
-  primary: LinghuiMediaItem | null;
+  items: LinghuiImageMediaItem[];
+  primary: LinghuiImageMediaItem | null;
   mode: 'import' | 'result' | 'empty';
 }
 
@@ -89,20 +97,23 @@ export function resolveLinghuiImagePrimaryImportItem(
   return primary ?? items[0];
 }
 
-function resolveResultItems(result?: LinghuiNodeResult): LinghuiMediaItem[] {
+function resolveResultItems(result?: LinghuiNodeResult): LinghuiImageMediaItem[] {
   if (!result) {
     return [];
   }
 
-  const primary = result.primary?.kind === 'image' ? [result.primary] : [];
-  const items = (result.items ?? []).filter(item => item.kind === 'image');
+  const primaryMedia = getLinghuiResultPrimaryMedia(result);
+  const primary: LinghuiImageMediaItem[] = isLinghuiImageMediaItem(primaryMedia) ? [primaryMedia] : [];
+  const items = getLinghuiResultItems(result).filter(
+    (item): item is LinghuiImageMediaItem => item.kind === 'image',
+  );
 
   if (!primary.length) {
     return items;
   }
 
   const dedupe = new Set<string>();
-  const merged: LinghuiMediaItem[] = [];
+  const merged: LinghuiImageMediaItem[] = [];
   for (const item of [...primary, ...items]) {
     const key = `${item.source ?? ''}|${item.label ?? ''}`;
     if (dedupe.has(key)) continue;
@@ -115,10 +126,11 @@ function resolveResultItems(result?: LinghuiNodeResult): LinghuiMediaItem[] {
 export function resolveLinghuiImagePrimaryResultItem(
   properties: LinghuiImageNodeProperties,
   result?: LinghuiNodeResult,
-): LinghuiMediaItem | null {
+): LinghuiImageMediaItem | null {
   const items = resolveResultItems(result);
   if (!items.length) {
-    return result?.primary?.kind === 'image' ? result.primary : null;
+    const primary = getLinghuiResultPrimaryMedia(result);
+    return isLinghuiImageMediaItem(primary) ? primary : null;
   }
 
   const selected = items.find(item => item.source && item.source === properties.primaryResultSource);
@@ -173,7 +185,7 @@ export function resolveLinghuiImagePrimaryForNode(
   result?: LinghuiNodeResult,
 ): LinghuiMediaItem | null {
   if (nodeData.linghuiType !== 'linghui/image') {
-    return result?.primary ?? null;
+    return getLinghuiResultPrimaryMedia(result) ?? null;
   }
 
   return resolveLinghuiImageCollection(
@@ -195,11 +207,22 @@ export function resolveLinghuiImageResultWithSelectedPrimary(
     return result;
   }
 
-  return {
-    ...result,
-    primary: collection.primary,
-    items: collection.items.length > 1 ? collection.items : result.items,
-  };
+  if (isLinghuiImageCollectionResult(result)) {
+    return {
+      ...result,
+      primary: collection.primary,
+      items: collection.items.length > 0 ? collection.items : result.items,
+    };
+  }
+
+  if (isLinghuiImageResult(result)) {
+    return {
+      ...result,
+      primary: collection.primary,
+    };
+  }
+
+  return result;
 }
 
 export function createLinghuiImageImportProperties(

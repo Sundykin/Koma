@@ -15,6 +15,12 @@ import type {
   LinghuiVideoNodeProperties,
 } from '../../types/linghui';
 import {
+  getLinghuiResultDescriptionText,
+  getLinghuiResultItems,
+  getLinghuiResultPrimaryMedia,
+  getLinghuiResultText,
+} from '../../types/linghui';
+import {
   buildLinghuiPromptReferenceItems,
   getOrderedIncomingReferenceEdges,
   parseLinghuiPromptReferences,
@@ -24,6 +30,7 @@ import {
   resolveLinghuiImageCollection,
   resolveLinghuiImageResultWithSelectedPrimary,
 } from './linghuiImageCollections';
+import { parseLinghuiScriptContent } from './linghuiScriptNodeUtils';
 
 export const EXECUTION_PROJECT_ID = 'linghui';
 
@@ -107,12 +114,14 @@ export function createPlaceholderImage(params: {
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 }
 
-export function buildMediaItem(params: Partial<LinghuiMediaItem> & Pick<LinghuiMediaItem, 'kind'>): LinghuiMediaItem {
+export function buildMediaItem<TKind extends LinghuiMediaItem['kind']>(
+  params: Partial<LinghuiMediaItem> & { kind: TKind },
+): LinghuiMediaItem & { kind: TKind } {
   return {
     ...params,
     source: toPreviewSource(params.source),
     posterSource: toPreviewSource(params.posterSource),
-  };
+  } as LinghuiMediaItem & { kind: TKind };
 }
 
 export function createLog(level: LinghuiExecutionLogEntry['level'], message: string, nodeId?: string): LinghuiExecutionLogEntry {
@@ -124,6 +133,7 @@ export interface ExecutionNodeView {
   type: LinghuiNodeType;
   properties: Record<string, unknown>;
   title: string;
+  settingsSnapshot?: LinghuiExecutionContext['settingsSnapshot'];
   getAllInputResults: (slot: number) => LinghuiNodeResult[];
   getAllInputImages: () => LinghuiNodeResult[];
   getInputResult: (slot: number) => LinghuiNodeResult | undefined;
@@ -189,6 +199,7 @@ export function createNodeView(context: LinghuiExecutionContext, snapshot: Lingh
     type: snapshot.data.linghuiType,
     properties: snapshot.data.properties,
     title: snapshot.data.label,
+    settingsSnapshot: context.settingsSnapshot,
     getAllInputResults(slot) {
       return resolveAllInputResults(context, nodeId, `input-${slot}`);
     },
@@ -232,16 +243,25 @@ function resolveStaticNodeResult(snapshot?: LinghuiRFNodeSnapshot): LinghuiNodeR
     }
 
     const items = collection.items.map(item => buildMediaItem(item));
-    const primary = collection.primary ? buildMediaItem(collection.primary) : undefined;
+    const primary = buildMediaItem(collection.primary);
+    const metadata = {
+      source: primary.source,
+      mode: collection.mode,
+      itemCount: items.length,
+    };
+    if (items.length > 1) {
+      return {
+        kind: 'images',
+        primary,
+        items,
+        metadata,
+      };
+    }
+
     return {
-      kind: items.length > 1 ? 'images' : 'image',
+      kind: 'image',
       primary,
-      items: items.length > 1 ? items : undefined,
-      metadata: {
-        source: primary?.source,
-        mode: collection.mode,
-        itemCount: items.length,
-      },
+      metadata,
     };
   }
 
@@ -266,11 +286,19 @@ function resolveStaticNodeResult(snapshot?: LinghuiRFNodeSnapshot): LinghuiNodeR
       return undefined;
     }
 
+    const parsed = parseLinghuiScriptContent(content);
+    if (!parsed.shots.length) {
+      return undefined;
+    }
+
     return {
       kind: 'storyboard',
-      text: content,
+      text: parsed.formattedText || content,
+      primary: parsed.shots[0]?.image,
+      shots: parsed.shots,
       metadata: {
         mode: 'manual',
+        parseSource: parsed.source,
         rawContent: content,
       },
     };
@@ -332,8 +360,15 @@ export function collectReferenceSources(results: LinghuiNodeResult[]): string[] 
   };
 
   for (const result of results) {
-    if (result.primary?.kind === 'image') {
-      pushSource(result.primary.source);
+    const primary = getLinghuiResultPrimaryMedia(result);
+    if (primary?.kind === 'image') {
+      pushSource(primary.source);
+    }
+
+    for (const item of getLinghuiResultItems(result)) {
+      if (item.kind === 'image') {
+        pushSource(item.source);
+      }
     }
   }
 
@@ -350,11 +385,12 @@ export function collectVideoPosterSources(results: LinghuiNodeResult[]): string[
   };
 
   for (const result of results) {
-    if (result.primary?.kind === 'video') {
-      pushSource(result.primary.posterSource);
+    const primary = getLinghuiResultPrimaryMedia(result);
+    if (primary?.kind === 'video') {
+      pushSource(primary.posterSource);
     }
 
-    for (const item of result.items ?? []) {
+    for (const item of getLinghuiResultItems(result)) {
       if (item.kind === 'video') {
         pushSource(item.posterSource);
       }
@@ -384,12 +420,7 @@ export function collectTextSnippets(results: LinghuiNodeResult[]): string[] {
   const dedupe = new Set<string>();
 
   for (const result of results) {
-    const candidate = String(
-      result.text ??
-      result.metadata?.description ??
-      result.metadata?.note ??
-      '',
-    ).trim();
+    const candidate = String(getLinghuiResultText(result) ?? getLinghuiResultDescriptionText(result) ?? '').trim();
 
     if (!candidate || dedupe.has(candidate)) continue;
     dedupe.add(candidate);

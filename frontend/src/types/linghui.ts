@@ -1,3 +1,4 @@
+import type { AppSettings } from '../types';
 import type { VideoGenerationCapability } from './media';
 
 export type LinghuiNodeType =
@@ -127,6 +128,7 @@ export interface LinghuiAudioNodeProperties {
   source: string;
   prompt: string;
   ttsSelection: string;
+  voiceId: string;
 }
 
 // --- 通用 ---
@@ -166,21 +168,153 @@ export interface LinghuiMediaItem {
   metadata?: Record<string, unknown>;
 }
 
+export type LinghuiImageMediaItem = LinghuiMediaItem & { kind: 'image' };
+export type LinghuiVideoMediaItem = LinghuiMediaItem & { kind: 'video' };
+export type LinghuiAudioMediaItem = LinghuiMediaItem & { kind: 'audio' };
+
+export function isLinghuiImageMediaItem(item?: LinghuiMediaItem): item is LinghuiImageMediaItem {
+  return item?.kind === 'image';
+}
+
+export function isLinghuiVideoMediaItem(item?: LinghuiMediaItem): item is LinghuiVideoMediaItem {
+  return item?.kind === 'video';
+}
+
+export function isLinghuiAudioMediaItem(item?: LinghuiMediaItem): item is LinghuiAudioMediaItem {
+  return item?.kind === 'audio';
+}
+
 export interface LinghuiStoryboardFrame {
   id: string;
   title: string;
   description: string;
   durationSec: number;
-  image?: LinghuiMediaItem;
+  image?: LinghuiImageMediaItem;
 }
 
-export interface LinghuiNodeResult {
-  kind: LinghuiResultKind;
+export interface LinghuiNodeResultMetadata {
+  description?: string;
+  note?: string;
+  [key: string]: unknown;
+}
+
+export interface LinghuiTextResult {
+  kind: 'text';
+  text: string;
+  metadata?: LinghuiNodeResultMetadata;
+}
+
+export interface LinghuiImageResult {
+  kind: 'image' | 'shot';
+  primary: LinghuiImageMediaItem;
+  metadata?: LinghuiNodeResultMetadata;
+}
+
+export interface LinghuiImageCollectionResult {
+  kind: 'images' | 'grid';
+  primary: LinghuiImageMediaItem;
+  items: LinghuiImageMediaItem[];
+  metadata?: LinghuiNodeResultMetadata;
+}
+
+export interface LinghuiVideoResult {
+  kind: 'video';
+  primary: LinghuiVideoMediaItem;
+  metadata?: LinghuiNodeResultMetadata;
+}
+
+export interface LinghuiAudioResult {
+  kind: 'audio';
+  primary: LinghuiAudioMediaItem;
   text?: string;
-  primary?: LinghuiMediaItem;
-  items?: LinghuiMediaItem[];
-  shots?: LinghuiStoryboardFrame[];
-  metadata?: Record<string, unknown>;
+  metadata?: LinghuiNodeResultMetadata;
+}
+
+export interface LinghuiStoryboardResult {
+  kind: 'storyboard';
+  text: string;
+  shots: LinghuiStoryboardFrame[];
+  primary?: LinghuiImageMediaItem;
+  metadata?: LinghuiNodeResultMetadata;
+}
+
+export type LinghuiNodeResult =
+  | LinghuiTextResult
+  | LinghuiImageResult
+  | LinghuiImageCollectionResult
+  | LinghuiVideoResult
+  | LinghuiAudioResult
+  | LinghuiStoryboardResult;
+
+export function isLinghuiImageResult(result?: LinghuiNodeResult): result is LinghuiImageResult {
+  return result?.kind === 'image' || result?.kind === 'shot';
+}
+
+export function isLinghuiImageCollectionResult(result?: LinghuiNodeResult): result is LinghuiImageCollectionResult {
+  return result?.kind === 'images' || result?.kind === 'grid';
+}
+
+export function isLinghuiVideoResult(result?: LinghuiNodeResult): result is LinghuiVideoResult {
+  return result?.kind === 'video';
+}
+
+export function isLinghuiAudioResult(result?: LinghuiNodeResult): result is LinghuiAudioResult {
+  return result?.kind === 'audio';
+}
+
+export function isLinghuiStoryboardResult(result?: LinghuiNodeResult): result is LinghuiStoryboardResult {
+  return result?.kind === 'storyboard';
+}
+
+export function isLinghuiTextResult(result?: LinghuiNodeResult): result is LinghuiTextResult {
+  return result?.kind === 'text';
+}
+
+export function getLinghuiResultPrimaryMedia(result?: LinghuiNodeResult): LinghuiMediaItem | undefined {
+  if (
+    isLinghuiImageResult(result) ||
+    isLinghuiImageCollectionResult(result) ||
+    isLinghuiVideoResult(result) ||
+    isLinghuiAudioResult(result)
+  ) {
+    return result.primary;
+  }
+
+  if (isLinghuiStoryboardResult(result)) {
+    return result.primary;
+  }
+
+  return undefined;
+}
+
+export function getLinghuiResultItems(result?: LinghuiNodeResult): LinghuiMediaItem[] {
+  return isLinghuiImageCollectionResult(result) ? result.items : [];
+}
+
+export function getLinghuiResultShots(result?: LinghuiNodeResult): LinghuiStoryboardFrame[] {
+  return isLinghuiStoryboardResult(result) ? result.shots : [];
+}
+
+export function getLinghuiResultText(result?: LinghuiNodeResult): string | undefined {
+  if (isLinghuiTextResult(result) || isLinghuiStoryboardResult(result) || isLinghuiAudioResult(result)) {
+    return result.text;
+  }
+
+  return undefined;
+}
+
+export function getLinghuiResultDescriptionText(result?: LinghuiNodeResult): string | undefined {
+  const description = typeof result?.metadata?.description === 'string' ? result.metadata.description.trim() : '';
+  if (description) {
+    return description;
+  }
+
+  const note = typeof result?.metadata?.note === 'string' ? result.metadata.note.trim() : '';
+  return note || undefined;
+}
+
+export function getLinghuiResultItemCount(result?: LinghuiNodeResult): number {
+  return isLinghuiImageCollectionResult(result) ? result.items.length : 0;
 }
 
 export interface LinghuiNodeRunState {
@@ -215,6 +349,7 @@ export interface LinghuiExecutionQueueState {
   total: number;
   targetNodeIds: string[];
   queuedNodeIds: string[];
+  runningNodeIds: string[];
   runningNodeId?: string;
   completedNodeIds: string[];
   failedNodeIds: string[];
@@ -309,6 +444,7 @@ export interface LinghuiExecutionContext {
   nodes: LinghuiRFNodeSnapshot[];
   edges: LinghuiRFEdgeSnapshot[];
   nodeOutputs: Record<string, LinghuiNodeResult>;
+  settingsSnapshot?: AppSettings;
 }
 
 export type LinghuiCanvasSelection =
@@ -334,12 +470,28 @@ export const EMPTY_LINGHUI_EXECUTION_LOGS: LinghuiExecutionLogEntry[] = [];
 
 export const DEFAULT_LINGHUI_WORKSPACE_NAME = '未命名灵绘';
 
+const LINGHUI_TYPE_TO_RF_TYPE_MAP: Record<LinghuiNodeType, LinghuiRFNodeTypeKey> = {
+  'linghui/text': 'linghui-text',
+  'linghui/image': 'linghui-image',
+  'linghui/video': 'linghui-video',
+  'linghui/audio': 'linghui-audio',
+  'linghui/script': 'linghui-script',
+};
+
+const RF_TYPE_TO_LINGHUI_TYPE_MAP: Record<LinghuiRFNodeTypeKey, LinghuiNodeType> = {
+  'linghui-text': 'linghui/text',
+  'linghui-image': 'linghui/image',
+  'linghui-video': 'linghui/video',
+  'linghui-audio': 'linghui/audio',
+  'linghui-script': 'linghui/script',
+};
+
 export function linghuiTypeToRFType(type: LinghuiNodeType): LinghuiRFNodeTypeKey {
-  return type.replace(/\//g, '-') as LinghuiRFNodeTypeKey;
+  return LINGHUI_TYPE_TO_RF_TYPE_MAP[type];
 }
 
 export function rfTypeToLinghuiType(rfType: string): LinghuiNodeType {
-  return rfType.replace(/-/g, '/').replace('linghui/', 'linghui/') as LinghuiNodeType;
+  return RF_TYPE_TO_LINGHUI_TYPE_MAP[rfType as LinghuiRFNodeTypeKey] ?? 'linghui/text';
 }
 
 // 宫格尺寸映射

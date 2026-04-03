@@ -1,4 +1,4 @@
-import type { MediaAssetSource, ProviderAssetInput, VideoGenerationCapability } from '../../types';
+import type { AppSettings, MediaAssetSource, ProviderAssetInput, VideoGenerationCapability } from '../../types';
 import { getProjectITVProvider, getProjectLLMProvider, getProjectTTIProvider, getProjectTTSProvider } from '../../providers';
 import { resolveConfiguredChannelModel } from '../../providers/channel/resolver';
 import { DEFAULT_POLLING_CONFIG } from '../../providers/polling';
@@ -17,7 +17,7 @@ import {
 } from '../../services/promptCompilation/videoRequestCompiler';
 import { createLogger } from '../../store/logger';
 import { loadSettings } from '../../store/settings/core';
-import type { LinghuiMediaItem } from '../../types/linghui';
+import type { LinghuiAudioMediaItem, LinghuiImageMediaItem, LinghuiVideoMediaItem } from '../../types/linghui';
 import { sanitizeBodyForLog, truncateString } from '../../utils/logFormatting';
 import {
   createVideoTraceContext,
@@ -55,6 +55,10 @@ interface AsyncPollingLogContext {
   provider?: string;
   capability?: string;
   mediaKind: 'image' | 'video' | 'audio';
+}
+
+async function resolveExecutionSettings(settingsSnapshot?: AppSettings): Promise<AppSettings> {
+  return settingsSnapshot ?? await loadSettings();
 }
 
 async function ensureProviderAssetInputs(
@@ -171,12 +175,13 @@ export async function generateImageWithProvider(params: {
   accent?: string;
   ttiSelection?: string;
   promptReferences?: LinghuiPromptReferenceItem[];
+  settingsSnapshot?: AppSettings;
   multiAngle?: Omit<MultiAngleTTIRequest, 'originalPrompt' | 'anglePrompt' | 'compiledPrompt'> | null;
   signal?: AbortSignal;
-}): Promise<LinghuiMediaItem> {
+}): Promise<LinghuiImageMediaItem> {
   throwIfExecutionAborted(params.signal);
   const requestedCapability = params.multiAngle ? 'image.image-to-image' : 'image.text-to-image';
-  const settings = await loadSettings();
+  const settings = await resolveExecutionSettings(params.settingsSnapshot);
   const selectedContext = resolveConfiguredChannelModel(settings, 'tti', params.ttiSelection);
   const capableContext = resolveConfiguredChannelModel(settings, 'tti', params.ttiSelection, requestedCapability);
 
@@ -210,7 +215,11 @@ export async function generateImageWithProvider(params: {
     throw new Error('当前生图模型不支持图生图，请切换到支持图生图的渠道后重试');
   }
 
-  const provider = await getProjectTTIProvider(params.ttiSelection || undefined, requestedCapability);
+  const provider = await getProjectTTIProvider(
+    params.ttiSelection || undefined,
+    requestedCapability,
+    settings,
+  );
   if (!provider || !provider.validate()) {
     if (params.multiAngle) {
       imageLogger.error('灵绘多角度未找到可用 TTI Provider', {
@@ -273,13 +282,13 @@ export async function generateImageWithProvider(params: {
       }
 
       const compiledMultiAngle = compileLinghuiMultiAnglePrompt({
-        prompt: '',
+        prompt: params.prompt,
         config: params.multiAngle,
       });
       compiledPrompt = compiledMultiAngle.compiledPrompt;
       multiAngleRequest = {
         ...params.multiAngle,
-        originalPrompt: '',
+        originalPrompt: params.prompt,
         anglePrompt: compiledMultiAngle.anglePrompt,
         compiledPrompt,
       };
@@ -396,8 +405,9 @@ export async function generateVideoWithProvider(params: {
   itvSelection?: string;
   promptReferences?: LinghuiPromptReferenceItem[];
   primaryReferenceId?: string;
+  settingsSnapshot?: AppSettings;
   signal?: AbortSignal;
-}): Promise<LinghuiMediaItem> {
+}): Promise<LinghuiVideoMediaItem> {
   throwIfExecutionAborted(params.signal);
   const traceContext = createVideoTraceContext({
     prefix: 'linghui-video',
@@ -412,7 +422,7 @@ export async function generateVideoWithProvider(params: {
     ? toPreviewSource(previewSource)
     : createPlaceholderImage({ title: '视频预览占位', subtitle: '未配置 ITV 服务', accent: '#22c55e' });
 
-  const settings = await loadSettings();
+  const settings = await resolveExecutionSettings(params.settingsSnapshot);
   const selectedContext = resolveConfiguredChannelModel(settings, 'itv', params.itvSelection);
   if (selectedContext && !selectedContext.model.capabilities.includes(params.capability)) {
     logger.warn('灵绘视频能力校验失败', {
@@ -439,7 +449,11 @@ export async function generateVideoWithProvider(params: {
     hasEndFrame: Boolean(params.endFrameSource),
   });
 
-  const provider = await getProjectITVProvider(params.itvSelection || undefined, params.capability);
+  const provider = await getProjectITVProvider(
+    params.itvSelection || undefined,
+    params.capability,
+    settings,
+  );
   if (!provider || !provider.validate()) {
     logger.warn('灵绘视频未配置 ITV Provider，返回占位结果', {
       traceId: traceContext.traceId,
@@ -640,7 +654,15 @@ export async function generateVideoWithProvider(params: {
   });
 }
 
-async function resolveTTSVoiceId(provider: NonNullable<Awaited<ReturnType<typeof getProjectTTSProvider>>>): Promise<string> {
+async function resolveTTSVoiceId(
+  provider: NonNullable<Awaited<ReturnType<typeof getProjectTTSProvider>>>,
+  preferredVoiceId?: string,
+): Promise<string> {
+  const normalizedPreferred = String(preferredVoiceId ?? '').trim();
+  if (normalizedPreferred) {
+    return normalizedPreferred;
+  }
+
   if (provider.config?.defaultVoice) {
     return provider.config.defaultVoice;
   }
@@ -652,16 +674,22 @@ async function resolveTTSVoiceId(provider: NonNullable<Awaited<ReturnType<typeof
 export async function generateAudioWithProvider(params: {
   text: string;
   ttsSelection?: string;
+  voiceId?: string;
+  settingsSnapshot?: AppSettings;
   onProgress?: (progress: number, message?: string) => void;
   signal?: AbortSignal;
-}): Promise<LinghuiMediaItem> {
+}): Promise<LinghuiAudioMediaItem> {
   throwIfExecutionAborted(params.signal);
-  const provider = await getProjectTTSProvider(params.ttsSelection || undefined);
+  const provider = await getProjectTTSProvider(
+    params.ttsSelection || undefined,
+    'speech.text-to-speech',
+    params.settingsSnapshot,
+  );
   if (!provider || !provider.validate()) {
     throw new Error('未配置可用的 TTS 服务');
   }
 
-  const voiceId = await resolveTTSVoiceId(provider);
+  const voiceId = await resolveTTSVoiceId(provider, params.voiceId);
   const started = await provider.start({
     text: params.text,
     voiceId,
@@ -699,10 +727,15 @@ export async function generateTextWithProvider(params: {
   prompt: string;
   systemPrompt?: string;
   llmSelection?: string;
+  settingsSnapshot?: AppSettings;
   signal?: AbortSignal;
 }): Promise<string> {
   throwIfExecutionAborted(params.signal);
-  const provider = await getProjectLLMProvider(params.llmSelection || undefined);
+  const provider = await getProjectLLMProvider(
+    params.llmSelection || undefined,
+    'llm.chat',
+    params.settingsSnapshot,
+  );
   if (!provider || !provider.validate()) {
     throw new Error('未配置可用的 LLM 服务');
   }

@@ -1,9 +1,16 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { App, Button, Select } from 'antd';
 import { ArrowUp, Music4, Trash2, UploadCloud } from 'lucide-react';
-import type { LinghuiAudioNodeProperties, LinghuiNodeData, LinghuiNodeRunState } from '../../types/linghui';
+import {
+  getLinghuiResultPrimaryMedia,
+  getLinghuiResultText,
+  type LinghuiAudioNodeProperties,
+  type LinghuiNodeData,
+  type LinghuiNodeRunState,
+} from '../../types/linghui';
 import { loadSettings } from '../../store/settings/core';
 import { listConfiguredModelSelectOptions } from '../../providers/channel/resolver';
+import { getProjectTTSProvider } from '../../providers';
 import { electronService, openFileDialog } from '../../services/electronService';
 import { createLinghuiWorkspaceAsset, importLinghuiWorkspaceAsset } from '../../store/linghuiStorage';
 import { useLinghuiNodeMutation } from './nodes/LinghuiNodeRunsContext';
@@ -24,6 +31,11 @@ function getSourceName(source: string): string {
 }
 
 interface ProviderOption {
+  value: string;
+  label: string;
+}
+
+interface VoiceOption {
   value: string;
   label: string;
 }
@@ -53,14 +65,17 @@ export const AudioNodeEditor: React.FC<AudioNodeEditorProps> = ({
   const source = String(props.source ?? '');
   const prompt = String(props.prompt ?? '');
   const ttsSelection = String(props.ttsSelection ?? '');
+  const voiceId = String(props.voiceId ?? '');
   const previewSource = getPreviewSource(source);
   const sourceName = useMemo(() => getSourceName(source), [source]);
   const [providers, setProviders] = useState<ProviderOption[]>([]);
-  const generatedAudioSource = getPreviewSource(nodeRun?.result?.primary?.source);
-  const generatedAudioLabel = String(nodeRun?.result?.primary?.label ?? nodeData.label ?? '音频结果').trim();
-  const generatedAudioDuration = nodeRun?.result?.primary?.durationSec;
-  const generatedAudioText = String(nodeRun?.result?.text ?? '').trim();
-  const canReuseGeneratedAudio = !source && Boolean(nodeRun?.result?.primary?.source);
+  const [voiceOptions, setVoiceOptions] = useState<VoiceOption[]>([]);
+  const generatedAudio = getLinghuiResultPrimaryMedia(nodeRun?.result);
+  const generatedAudioSource = getPreviewSource(generatedAudio?.source);
+  const generatedAudioLabel = String(generatedAudio?.label ?? nodeData.label ?? '音频结果').trim();
+  const generatedAudioDuration = generatedAudio?.durationSec;
+  const generatedAudioText = String(getLinghuiResultText(nodeRun?.result) ?? '').trim();
+  const canReuseGeneratedAudio = !source && Boolean(generatedAudio?.source);
 
   const upstreamSummary = useMemo(() => {
     if (!promptReferences.length) return '';
@@ -91,6 +106,46 @@ export const AudioNodeEditor: React.FC<AudioNodeEditorProps> = ({
       })));
     });
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadVoices = async () => {
+      try {
+        const provider = await getProjectTTSProvider(ttsSelection || undefined);
+        if (!provider || !provider.validate()) {
+          if (!cancelled) {
+            setVoiceOptions(voiceId ? [{ value: voiceId, label: `自定义音色 / ${voiceId}` }] : []);
+          }
+          return;
+        }
+
+        const voices = await provider.listVoices();
+        if (cancelled) return;
+
+        const nextOptions = voices.map(voice => ({
+          value: voice.id,
+          label: `${voice.name} / ${voice.language}`,
+        }));
+
+        if (voiceId && !nextOptions.some(option => option.value === voiceId)) {
+          nextOptions.unshift({ value: voiceId, label: `自定义音色 / ${voiceId}` });
+        }
+
+        setVoiceOptions(nextOptions);
+      } catch {
+        if (!cancelled) {
+          setVoiceOptions(voiceId ? [{ value: voiceId, label: `自定义音色 / ${voiceId}` }] : []);
+        }
+      }
+    };
+
+    void loadVoices();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [ttsSelection, voiceId]);
 
   const updateProp = useCallback((key: string, value: unknown) => {
     updateNodeData(nodeId, prev => ({
@@ -181,7 +236,7 @@ export const AudioNodeEditor: React.FC<AudioNodeEditorProps> = ({
   }, [nodeId, updateNodeData]);
 
   const handleReuseGeneratedAudio = useCallback(() => {
-    const nextSource = String(nodeRun?.result?.primary?.source ?? '').trim();
+    const nextSource = String(generatedAudio?.source ?? '').trim();
     if (!nextSource) {
       message.info('当前还没有可复用的音频结果');
       return;
@@ -195,7 +250,7 @@ export const AudioNodeEditor: React.FC<AudioNodeEditorProps> = ({
       },
     }));
     message.success('已将生成结果写回当前节点素材');
-  }, [message, nodeId, nodeRun?.result?.primary?.source, updateNodeData]);
+  }, [generatedAudio?.source, message, nodeId, updateNodeData]);
 
   const handleCreateAudioAsset = useCallback(async () => {
     if (!workspaceId) {
@@ -324,6 +379,17 @@ export const AudioNodeEditor: React.FC<AudioNodeEditorProps> = ({
             placeholder="选择 TTS 渠道"
             onChange={value => updateProp('ttsSelection', value)}
             options={providers}
+            popupMatchSelectWidth={false}
+            style={{ minWidth: 160 }}
+          />
+          <Select
+            size="small"
+            className="linghuiEditorSelect"
+            value={voiceId || undefined}
+            placeholder="选择音色"
+            allowClear
+            onChange={value => updateProp('voiceId', value ?? '')}
+            options={voiceOptions}
             popupMatchSelectWidth={false}
             style={{ minWidth: 160 }}
           />

@@ -1,6 +1,6 @@
 import React, { memo } from 'react';
 import { Handle, Position, type NodeProps } from '@xyflow/react';
-import type { LinghuiNodeData, LinghuiRunStatus } from '../../../types/linghui';
+import { getLinghuiResultPrimaryMedia, type LinghuiNodeData, type LinghuiRunStatus } from '../../../types/linghui';
 import { useNodeRunState, useLinghuiNodeInteraction, useLinghuiNodeEditorVisibility } from './LinghuiNodeRunsContext';
 import { LinghuiNodeEditor } from '../LinghuiNodeEditor';
 import { EditableCompactNodeLabel } from './EditableCompactNodeLabel';
@@ -56,7 +56,7 @@ function AudioNodeInner({ id, data, selected }: NodeProps) {
   const status = runState?.status ?? 'idle';
   const statusColor = STATUS_COLORS[status] ?? STATUS_COLORS.idle;
   const hasUploadedSource = Boolean(String(props.source ?? '').trim());
-  const durationLabel = formatDuration(runState?.result?.primary?.durationSec);
+  const durationLabel = formatDuration(getLinghuiResultPrimaryMedia(runState?.result)?.durationSec);
   const modeLabel = hasUploadedSource
     ? '已挂载本地音频'
     : String(props.prompt ?? '').trim()

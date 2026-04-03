@@ -6,7 +6,7 @@ import {
   listLinghuiWorkspaces,
   loadLinghuiWorkspace,
 } from './linghuiStorage';
-import { DEFAULT_LINGHUI_WORKSPACE_NAME } from '../types/linghui';
+import { DEFAULT_LINGHUI_WORKSPACE_NAME, getLinghuiResultPrimaryMedia } from '../types/linghui';
 import { STORAGE_KEYS } from '../constants/storageKeys';
 
 describe('linghuiStorage', () => {
@@ -142,8 +142,8 @@ describe('linghuiStorage', () => {
     expect(result.record.source).toBe(
       `${rootPath}/linghui-workspaces/workspace-1/history/results/video/1774838708788-视频-${result.record.id}/video.mp4`,
     );
-    expect(result.materializedRun?.result?.primary?.source).toBe(result.record.source);
-    expect(result.materializedRun?.result?.primary?.posterSource).toBe(result.record.posterSource);
+    expect(getLinghuiResultPrimaryMedia(result.materializedRun?.result)?.source).toBe(result.record.source);
+    expect(getLinghuiResultPrimaryMedia(result.materializedRun?.result)?.posterSource).toBe(result.record.posterSource);
     expect(files.has(result.record.snapshotPath)).toBe(true);
   });
 });

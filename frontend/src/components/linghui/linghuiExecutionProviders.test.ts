@@ -1,7 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { AppSettings } from '../../types';
 
 const getProjectITVProviderMock = vi.fn();
+const getProjectLLMProviderMock = vi.fn();
 const getProjectTTIProviderMock = vi.fn();
+const getProjectTTSProviderMock = vi.fn();
 const loadSettingsMock = vi.fn();
 const resolveConfiguredChannelModelMock = vi.fn();
 const buildVideoCapabilityRequestMock = vi.fn();
@@ -13,9 +16,9 @@ const resolveVideoProtocolCompilationLimitMock = vi.fn();
 
 vi.mock('../../providers', () => ({
   getProjectITVProvider: (...args: unknown[]) => getProjectITVProviderMock(...args),
-  getProjectLLMProvider: vi.fn(),
+  getProjectLLMProvider: (...args: unknown[]) => getProjectLLMProviderMock(...args),
   getProjectTTIProvider: (...args: unknown[]) => getProjectTTIProviderMock(...args),
-  getProjectTTSProvider: vi.fn(),
+  getProjectTTSProvider: (...args: unknown[]) => getProjectTTSProviderMock(...args),
 }));
 
 vi.mock('../../providers/channel/resolver', () => ({
@@ -101,6 +104,44 @@ describe('linghuiExecutionProviders', () => {
     resolveVideoProtocolCompilationLimitMock.mockReturnValue(0);
   });
 
+  it('音频生成优先使用节点显式选择的 voiceId', async () => {
+    const provider = {
+      config: { provider: 'edge-tts', defaultVoice: 'zh-CN-YunxiNeural' },
+      validate: () => true,
+      listVoices: vi.fn(async () => [
+        { id: 'zh-CN-XiaoxiaoNeural', name: '晓晓', language: 'zh-CN', gender: 'female', provider: 'edge-tts' },
+      ]),
+      start: vi.fn(async () => ({
+        mode: 'immediate' as const,
+        output: {
+          path: '/tmp/audio.mp3',
+          duration: 4,
+          format: 'mp3',
+        },
+      })),
+    };
+
+    getProjectTTSProviderMock.mockResolvedValue(provider);
+
+    const { generateAudioWithProvider } = await import('./linghuiExecutionProviders');
+
+    const result = await generateAudioWithProvider({
+      text: '你好，欢迎来到灵绘',
+      ttsSelection: 'tts-main::edge-tts',
+      voiceId: 'zh-CN-XiaoxiaoNeural',
+    });
+
+    expect(provider.start).toHaveBeenCalledWith(expect.objectContaining({
+      text: '你好，欢迎来到灵绘',
+      voiceId: 'zh-CN-XiaoxiaoNeural',
+    }));
+    expect(provider.listVoices).not.toHaveBeenCalled();
+    expect(result.metadata).toEqual(expect.objectContaining({
+      voiceId: 'zh-CN-XiaoxiaoNeural',
+      format: 'mp3',
+    }));
+  });
+
   it('轮询异步视频任务时保留 provider 上下文', async () => {
     const validateContexts: unknown[] = [];
 
@@ -180,14 +221,22 @@ describe('linghuiExecutionProviders', () => {
       placeholderTitle: '多角度测试',
     });
 
-    expect(getProjectTTIProviderMock).toHaveBeenCalledWith('channel-image::model-image', 'image.image-to-image');
+    expect(getProjectTTIProviderMock).toHaveBeenCalledWith(
+      'channel-image::model-image',
+      'image.image-to-image',
+      expect.objectContaining({
+        channelConfigs: [],
+        mediaDefaults: {},
+        promptTemplates: {},
+      }),
+    );
     expect(provider.start).toHaveBeenCalledWith(expect.objectContaining({
-      prompt: '<sks> front-right quarter view elevated shot medium shot',
+      prompt: '角色设定图，保持服装一致\n<sks> front-right quarter view elevated shot medium shot',
       requestType: 'multi-angle',
       multiAngle: expect.objectContaining({
         endpointPath: '/v1/images/multi-angle',
         anglePrompt: '<sks> front-right quarter view elevated shot medium shot',
-        originalPrompt: '',
+        originalPrompt: '角色设定图，保持服装一致',
       }),
     }));
     expect(result.source).toBe('https://cdn.example.com/multi-angle.png');
@@ -225,9 +274,17 @@ describe('linghuiExecutionProviders', () => {
       placeholderTitle: '多角度回退测试',
     });
 
-    expect(getProjectTTIProviderMock).toHaveBeenCalledWith('channel-image::model-image', 'image.image-to-image');
+    expect(getProjectTTIProviderMock).toHaveBeenCalledWith(
+      'channel-image::model-image',
+      'image.image-to-image',
+      expect.objectContaining({
+        channelConfigs: [],
+        mediaDefaults: {},
+        promptTemplates: {},
+      }),
+    );
     expect(provider.start).toHaveBeenCalledWith(expect.objectContaining({
-      prompt: '<sks> front-right quarter view elevated shot medium shot',
+      prompt: '这段原始提示词不应该继续传给下游 provider\n<sks> front-right quarter view elevated shot medium shot',
       requestType: 'multi-angle',
       references: [
         expect.objectContaining({
@@ -238,10 +295,84 @@ describe('linghuiExecutionProviders', () => {
       multiAngle: expect.objectContaining({
         endpointPath: '/v1/images/multi-angle',
         anglePrompt: '<sks> front-right quarter view elevated shot medium shot',
-        compiledPrompt: '<sks> front-right quarter view elevated shot medium shot',
-        originalPrompt: '',
+        compiledPrompt: '这段原始提示词不应该继续传给下游 provider\n<sks> front-right quarter view elevated shot medium shot',
+        originalPrompt: '这段原始提示词不应该继续传给下游 provider',
       }),
     }));
     expect(result.source).toBe('https://cdn.example.com/multi-angle-fallback.png');
+  });
+
+  it('传入 settingsSnapshot 时会复用该快照解析图片 provider，而不再读取全局 settings', async () => {
+    const provider = {
+      type: 'openai-compatible-tti',
+      config: { provider: 'openai-compatible-tti' },
+      validate: () => true,
+      start: vi.fn(async () => ({
+        mode: 'immediate' as const,
+        output: {
+          url: 'https://cdn.example.com/snapshot-image.png',
+        },
+      })),
+    };
+    const settingsSnapshot: AppSettings = {
+      channelConfigs: [
+        {
+          id: 'channel-image',
+          name: 'Snapshot TTI',
+          category: 'tti',
+          providerType: 'openai-compatible-tti',
+          providerConfig: {},
+          defaultModelId: 'model-image',
+          models: [
+            {
+              id: 'model-image',
+              label: 'Snapshot Image',
+              capabilities: ['image.text-to-image', 'image.image-to-image'],
+            },
+          ],
+          enabled: true,
+          source: 'builtin',
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ],
+      mediaDefaults: {},
+      promptTemplates: {},
+    };
+
+    getProjectTTIProviderMock.mockResolvedValue(provider);
+    loadSettingsMock.mockImplementation(async () => {
+      throw new Error('loadSettings should not be called when snapshot is provided');
+    });
+
+    const { generateImageWithProvider } = await import('./linghuiExecutionProviders');
+
+    const result = await generateImageWithProvider({
+      prompt: '快照驱动的图片生成',
+      ttiSelection: 'channel-image::model-image',
+      settingsSnapshot,
+      placeholderTitle: 'snapshot test',
+    });
+
+    expect(loadSettingsMock).not.toHaveBeenCalled();
+    expect(resolveConfiguredChannelModelMock).toHaveBeenNthCalledWith(
+      1,
+      settingsSnapshot,
+      'tti',
+      'channel-image::model-image',
+    );
+    expect(resolveConfiguredChannelModelMock).toHaveBeenNthCalledWith(
+      2,
+      settingsSnapshot,
+      'tti',
+      'channel-image::model-image',
+      'image.text-to-image',
+    );
+    expect(getProjectTTIProviderMock).toHaveBeenCalledWith(
+      'channel-image::model-image',
+      'image.text-to-image',
+      settingsSnapshot,
+    );
+    expect(result.source).toBe('https://cdn.example.com/snapshot-image.png');
   });
 });

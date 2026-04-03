@@ -6,6 +6,7 @@ import type {
   LinghuiRunStatus,
   LinghuiVideoNodeProperties,
 } from '../../../types/linghui';
+import { getLinghuiResultPrimaryMedia } from '../../../types/linghui';
 import {
   useNodeRunState,
   useLinghuiNodeInteraction,
@@ -121,7 +122,7 @@ function VideoNodeInner({ id, data, selected }: NodeProps) {
   const [hasRenderableFrame, setHasRenderableFrame] = useState(false);
   const [hasMediaLoaded, setHasMediaLoaded] = useState(false);
 
-  const primaryVideo = runState?.result?.primary;
+  const primaryVideo = getLinghuiResultPrimaryMedia(runState?.result);
   const rawVideoSource = String(primaryVideo?.source ?? props.source ?? '').trim();
   const rawPosterSource = String(primaryVideo?.posterSource ?? props.posterSource ?? '').trim();
   const videoSource = getPreviewSource(rawVideoSource);

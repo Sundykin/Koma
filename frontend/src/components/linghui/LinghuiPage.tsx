@@ -53,8 +53,9 @@ import { LinghuiLibraryDrawer, type LinghuiAssetFilter, type LinghuiLibraryDrawe
 import LinghuiToolbar from './LinghuiToolbar';
 import { collectLinghuiDependentNodeIds, executeLinghuiWorkflow } from './linghuiExecution';
 import { exportLinghuiNodeResults } from './linghuiResultExport';
-import { detectCanvasMutationKind } from './linghuiCanvasShared';
+import { cloneSnapshotValue, detectCanvasMutationKind } from './linghuiCanvasShared';
 import { createLogger } from '../../store/logger';
+import { loadSettings } from '../../store/settings/core';
 import './LinghuiPage.css';
 
 function createLog(level: LinghuiExecutionLogEntry['level'], message: string, nodeId?: string): LinghuiExecutionLogEntry {
@@ -528,6 +529,17 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
         hasWorkspace: Boolean(current),
         targetNodeIds,
       });
+      return;
+    }
+
+    try {
+      context.settingsSnapshot = cloneSnapshotValue(await loadSettings());
+    } catch (error: any) {
+      workflowLogger.error('灵绘执行被阻止：读取 settings 快照失败', {
+        targetNodeIds,
+        error: error?.message || String(error),
+      });
+      message.error(error?.message || '读取执行配置失败');
       return;
     }
 

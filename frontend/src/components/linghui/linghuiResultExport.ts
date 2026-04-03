@@ -5,6 +5,13 @@ import type {
   LinghuiRFNodeSnapshot,
   LinghuiStoryboardFrame,
 } from '../../types/linghui';
+import {
+  getLinghuiResultItems,
+  getLinghuiResultPrimaryMedia,
+  getLinghuiResultShots,
+  getLinghuiResultText,
+  isLinghuiImageCollectionResult,
+} from '../../types/linghui';
 import { isBlobUri, isDataUri, isRemoteMediaUri } from '../../types';
 import { electronService, fsWriteFileBuffer } from '../../services/electronService';
 
@@ -176,9 +183,10 @@ function resolveNodeLabel(node: LinghuiRFNodeSnapshot, fallbackIndex: number): s
 
 function resolveNodeTextValue(nodeData: LinghuiNodeData, runState?: LinghuiNodeRunState): string {
   const properties = nodeData.properties as Record<string, unknown>;
+  const resultText = getLinghuiResultText(runState?.result);
 
-  if (typeof runState?.result?.text === 'string' && runState.result.text.trim()) {
-    return runState.result.text.trim();
+  if (typeof resultText === 'string' && resultText.trim()) {
+    return resultText.trim();
   }
   if (typeof properties.content === 'string' && properties.content.trim()) {
     return properties.content.trim();
@@ -194,8 +202,9 @@ function resolveNodeTextValue(nodeData: LinghuiNodeData, runState?: LinghuiNodeR
 }
 
 function resolvePrimaryMedia(nodeData: LinghuiNodeData, runState?: LinghuiNodeRunState): LinghuiMediaItem | undefined {
-  if (runState?.result?.primary?.source || runState?.result?.primary?.posterSource) {
-    return runState.result.primary;
+  const resultPrimary = getLinghuiResultPrimaryMedia(runState?.result);
+  if (resultPrimary?.source || resultPrimary?.posterSource) {
+    return resultPrimary;
   }
 
   const properties = nodeData.properties as Record<string, unknown>;
@@ -389,10 +398,11 @@ async function exportNodeTarget(
     }
   };
 
-  if (runResult?.kind === 'grid' || runResult?.kind === 'images') {
+  if (isLinghuiImageCollectionResult(runResult)) {
+    const resultPrimary = getLinghuiResultPrimaryMedia(runResult);
     const mediaItems = dedupeMediaItems([
-      ...(runResult.items ?? []),
-      ...(runResult.primary ? [runResult.primary] : []),
+      ...getLinghuiResultItems(runResult),
+      ...(resultPrimary ? [resultPrimary] : []),
     ]);
 
     for (const [itemIndex, item] of mediaItems.entries()) {
@@ -403,20 +413,21 @@ async function exportNodeTarget(
       );
     }
   } else if (runResult?.kind === 'storyboard') {
-    await pushTextFile('script.txt', runResult.text ?? textValue);
+    await pushTextFile('script.txt', getLinghuiResultText(runResult) ?? textValue);
 
-    if (runResult.shots?.length) {
-      await pushJsonFile('shots.json', runResult.shots);
+    const shots = getLinghuiResultShots(runResult);
+    if (shots.length) {
+      await pushJsonFile('shots.json', shots);
       await ensureNodeDir();
       files.push(...await exportStoryboardFrames({
         nodeDir,
         nodeDirName,
-        shots: runResult.shots,
+        shots,
       }));
     }
   } else if (runResult?.kind === 'text') {
-    await pushTextFile('content.txt', runResult.text ?? textValue);
-  } else if (runResult?.kind === 'video' && runResult.primary) {
+    await pushTextFile('content.txt', getLinghuiResultText(runResult) ?? textValue);
+  } else if (runResult?.kind === 'video') {
     await pushMediaFile('video', runResult.primary);
     if (runResult.primary.posterSource) {
       await pushMediaFile('poster', { ...runResult.primary, kind: 'image' }, { source: runResult.primary.posterSource });
@@ -424,50 +435,53 @@ async function exportNodeTarget(
     if (textValue) {
       await pushTextFile('notes.txt', textValue);
     }
-  } else if (runResult?.kind === 'audio' && runResult.primary) {
+  } else if (runResult?.kind === 'audio') {
     await pushMediaFile('audio', runResult.primary);
     if (textValue) {
       await pushTextFile('transcript.txt', textValue);
     }
-  } else if (runResult?.primary) {
-    await pushMediaFile('result', runResult.primary);
-    if (runResult.primary.posterSource) {
-      await pushMediaFile('poster', { ...runResult.primary, kind: 'image' }, { source: runResult.primary.posterSource });
-    }
-    if (textValue && runResult.kind !== 'image') {
-      await pushTextFile('notes.txt', textValue);
-    }
   } else {
-    switch (nodeData.linghuiType) {
-      case 'linghui/text':
-        await pushTextFile('content.txt', textValue);
-        break;
-      case 'linghui/script':
-        await pushTextFile('script.txt', textValue);
-        break;
-      case 'linghui/image':
-        if (primaryMedia) {
-          await pushMediaFile('result', { ...primaryMedia, kind: 'image' });
-        }
-        break;
-      case 'linghui/video':
-        if (primaryMedia) {
-          await pushMediaFile('video', { ...primaryMedia, kind: 'video' });
-          if (primaryMedia.posterSource) {
-            await pushMediaFile('poster', { ...primaryMedia, kind: 'image' }, { source: primaryMedia.posterSource });
+    const resultPrimary = getLinghuiResultPrimaryMedia(runResult);
+    if (resultPrimary) {
+      await pushMediaFile('result', resultPrimary);
+      if (resultPrimary.posterSource) {
+        await pushMediaFile('poster', { ...resultPrimary, kind: 'image' }, { source: resultPrimary.posterSource });
+      }
+      if (textValue && runResult?.kind !== 'image') {
+        await pushTextFile('notes.txt', textValue);
+      }
+    } else {
+      switch (nodeData.linghuiType) {
+        case 'linghui/text':
+          await pushTextFile('content.txt', textValue);
+          break;
+        case 'linghui/script':
+          await pushTextFile('script.txt', textValue);
+          break;
+        case 'linghui/image':
+          if (primaryMedia) {
+            await pushMediaFile('result', { ...primaryMedia, kind: 'image' });
           }
-        }
-        break;
-      case 'linghui/audio':
-        if (primaryMedia) {
-          await pushMediaFile('audio', { ...primaryMedia, kind: 'audio' });
-        }
-        if (textValue) {
-          await pushTextFile('transcript.txt', textValue);
-        }
-        break;
-      default:
-        break;
+          break;
+        case 'linghui/video':
+          if (primaryMedia) {
+            await pushMediaFile('video', { ...primaryMedia, kind: 'video' });
+            if (primaryMedia.posterSource) {
+              await pushMediaFile('poster', { ...primaryMedia, kind: 'image' }, { source: primaryMedia.posterSource });
+            }
+          }
+          break;
+        case 'linghui/audio':
+          if (primaryMedia) {
+            await pushMediaFile('audio', { ...primaryMedia, kind: 'audio' });
+          }
+          if (textValue) {
+            await pushTextFile('transcript.txt', textValue);
+          }
+          break;
+        default:
+          break;
+      }
     }
   }
 

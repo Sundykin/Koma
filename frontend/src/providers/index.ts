@@ -384,16 +384,18 @@ async function resolveConfiguredProviderContext(
   category: MediaCategory,
   selectionKey?: string,
   capability?: ModelCapability,
+  settingsSnapshot?: AppSettings,
 ) {
-  const settings = await loadSettings();
+  const settings = settingsSnapshot ?? await loadSettings();
   return resolveConfiguredChannelModel(settings, category, selectionKey, capability);
 }
 
 export async function getProjectLLMProvider(
   projectLLMSelection?: string,
   capability: 'llm.chat' = 'llm.chat',
+  settingsSnapshot?: AppSettings,
 ): Promise<LLMProvider | null> {
-  const context = await resolveConfiguredProviderContext('llm', projectLLMSelection, capability);
+  const context = await resolveConfiguredProviderContext('llm', projectLLMSelection, capability, settingsSnapshot);
   if (!context) return null;
   return createLLMProviderFromConfig(buildLLMConfigFromContext(context));
 }
@@ -401,8 +403,9 @@ export async function getProjectLLMProvider(
 export async function getProjectTTIProvider(
   projectTTISelection?: string,
   capability: 'image.text-to-image' | 'image.image-to-image' = 'image.text-to-image',
+  settingsSnapshot?: AppSettings,
 ): Promise<TTIProvider | null> {
-  const context = await resolveConfiguredProviderContext('tti', projectTTISelection, capability);
+  const context = await resolveConfiguredProviderContext('tti', projectTTISelection, capability, settingsSnapshot);
   if (!context) return null;
 
   if (context.channelConfig.source === 'plugin') {
@@ -415,8 +418,9 @@ export async function getProjectTTIProvider(
 export async function getProjectITVProvider(
   projectITVSelection?: string,
   capability: VideoGenerationCapability = 'video.image-to-video',
+  settingsSnapshot?: AppSettings,
 ): Promise<ITVProvider | null> {
-  const context = await resolveConfiguredProviderContext('itv', projectITVSelection, capability);
+  const context = await resolveConfiguredProviderContext('itv', projectITVSelection, capability, settingsSnapshot);
   if (!context) return null;
 
   if (context.channelConfig.source === 'plugin') {
@@ -429,8 +433,9 @@ export async function getProjectITVProvider(
 export async function getProjectTTSProvider(
   projectTTSSelection?: string,
   capability: 'speech.text-to-speech' = 'speech.text-to-speech',
+  settingsSnapshot?: AppSettings,
 ): Promise<TTSProvider | null> {
-  const context = await resolveConfiguredProviderContext('tts', projectTTSSelection, capability);
+  const context = await resolveConfiguredProviderContext('tts', projectTTSSelection, capability, settingsSnapshot);
   if (!context) return null;
 
   if (context.channelConfig.source === 'plugin') {
@@ -445,12 +450,12 @@ export async function getProjectProviders(project: {
   ttiSelection?: string;
   itvSelection?: string;
   ttsSelection?: string;
-}) {
+}, settingsSnapshot?: AppSettings) {
   const [llm, tti, itv, tts] = await Promise.all([
-    getProjectLLMProvider(project.llmSelection),
-    getProjectTTIProvider(project.ttiSelection),
-    getProjectITVProvider(project.itvSelection).catch(() => null),
-    getProjectTTSProvider(project.ttsSelection).catch(() => null),
+    getProjectLLMProvider(project.llmSelection, 'llm.chat', settingsSnapshot),
+    getProjectTTIProvider(project.ttiSelection, 'image.text-to-image', settingsSnapshot),
+    getProjectITVProvider(project.itvSelection, 'video.image-to-video', settingsSnapshot).catch(() => null),
+    getProjectTTSProvider(project.ttsSelection, 'speech.text-to-speech', settingsSnapshot).catch(() => null),
   ]);
   return { llm, tti, itv, tts };
 }

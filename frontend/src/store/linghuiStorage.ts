@@ -8,7 +8,21 @@ import {
   DEFAULT_LINGHUI_VIEWPORT,
   DEFAULT_LINGHUI_WORKSPACE_NAME,
   EMPTY_LINGHUI_GRAPH,
+  getLinghuiResultItemCount,
+  getLinghuiResultItems,
+  getLinghuiResultPrimaryMedia,
+  getLinghuiResultShots,
+  getLinghuiResultText,
+  isLinghuiAudioResult,
+  isLinghuiAudioMediaItem,
+  isLinghuiImageCollectionResult,
+  isLinghuiImageMediaItem,
+  isLinghuiImageResult,
+  isLinghuiStoryboardResult,
+  isLinghuiVideoMediaItem,
+  isLinghuiVideoResult,
   type LinghuiMediaItem,
+  type LinghuiNodeResult,
   type LinghuiGraphSnapshot,
   type LinghuiGraphStats,
   type LinghuiNodeData,
@@ -31,6 +45,22 @@ const logger = createLogger('LinghuiStorage');
 
 function clone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value));
+}
+
+function assignLinghuiResultPrimary(result: LinghuiNodeResult, primary: LinghuiMediaItem): void {
+  if ((isLinghuiImageResult(result) || isLinghuiImageCollectionResult(result) || isLinghuiStoryboardResult(result)) && isLinghuiImageMediaItem(primary)) {
+    result.primary = primary;
+    return;
+  }
+
+  if (isLinghuiVideoResult(result) && isLinghuiVideoMediaItem(primary)) {
+    result.primary = primary;
+    return;
+  }
+
+  if (isLinghuiAudioResult(result) && isLinghuiAudioMediaItem(primary)) {
+    result.primary = primary;
+  }
 }
 
 function sanitizeWorkspaceName(name?: string): string {
@@ -604,9 +634,10 @@ function getRawAssetSource(source?: string): string {
 
 function getNodeAssetTextValue(nodeData: LinghuiNodeData, nodeRun?: LinghuiNodeRunState): string {
   const properties = nodeData.properties as Record<string, unknown>;
+  const resultText = getLinghuiResultText(nodeRun?.result);
 
-  if (typeof nodeRun?.result?.text === 'string' && nodeRun.result.text.trim()) {
-    return nodeRun.result.text.trim();
+  if (typeof resultText === 'string' && resultText.trim()) {
+    return resultText.trim();
   }
   if (typeof properties.content === 'string' && properties.content.trim()) {
     return properties.content.trim();
@@ -622,7 +653,7 @@ function getNodeAssetTextValue(nodeData: LinghuiNodeData, nodeRun?: LinghuiNodeR
 
 function getPrimaryAssetMedia(nodeData: LinghuiNodeData, nodeRun?: LinghuiNodeRunState): LinghuiMediaItem | undefined {
   const properties = nodeData.properties as Record<string, unknown>;
-  const primary = nodeRun?.result?.primary;
+  const primary = getLinghuiResultPrimaryMedia(nodeRun?.result);
   if (primary?.source || primary?.posterSource) {
     return primary;
   }
@@ -1054,7 +1085,7 @@ export async function createLinghuiWorkspaceAsset(params: {
     metadata: {
       nodeLabel: nodeData.label,
       resultKind: nodeRun?.result?.kind,
-      itemCount: nodeRun?.result?.items?.length ?? 0,
+      itemCount: getLinghuiResultItemCount(nodeRun?.result),
       hasRunResult: Boolean(nodeRun?.result),
       prompt: typeof (nodeData.properties as Record<string, unknown>).prompt === 'string'
         ? (nodeData.properties as Record<string, unknown>).prompt
@@ -1132,10 +1163,10 @@ export async function createLinghuiWorkspaceHistoryRecord(params: {
   let persistedPosterSource: string | undefined;
   let persistedText = textValue || undefined;
 
-  const materializeMediaItem = async (
-    item: LinghuiMediaItem,
+  const materializeMediaItem = async <TMedia extends LinghuiMediaItem>(
+    item: TMedia,
     options: { filename: string; posterFilename?: string },
-  ): Promise<LinghuiMediaItem> => {
+  ): Promise<TMedia> => {
     const fallbackExt = item.kind === 'audio' ? 'mp3' : item.kind === 'video' ? 'mp4' : 'png';
     const nextSource = await materializeWorkspaceAssetSource({
       assetDir: historyDir,
@@ -1158,7 +1189,7 @@ export async function createLinghuiWorkspaceHistoryRecord(params: {
       ...item,
       source: nextSource ?? item.source,
       posterSource: nextPosterSource ?? item.posterSource,
-    };
+    } as TMedia;
   };
 
   if (kind === 'text') {
@@ -1168,13 +1199,17 @@ export async function createLinghuiWorkspaceHistoryRecord(params: {
       persistedSource = textPath;
     }
   } else {
-    if (materializedRun?.result?.primary) {
-      materializedRun.result.primary = await materializeMediaItem(materializedRun.result.primary, {
+    const resultPrimary = getLinghuiResultPrimaryMedia(materializedRun?.result);
+    if (materializedRun?.result && resultPrimary) {
+      const nextPrimary = await materializeMediaItem(resultPrimary, {
         filename: kind,
         posterFilename: kind === 'video' ? 'poster' : undefined,
       });
-      persistedSource = materializedRun.result.primary.source;
-      persistedPosterSource = kind === 'video' ? materializedRun.result.primary.posterSource : undefined;
+
+      assignLinghuiResultPrimary(materializedRun.result, nextPrimary);
+
+      persistedSource = nextPrimary.source;
+      persistedPosterSource = kind === 'video' ? nextPrimary.posterSource : undefined;
     } else if (media) {
       persistedSource = await materializeWorkspaceAssetSource({
         assetDir: historyDir,
@@ -1194,16 +1229,18 @@ export async function createLinghuiWorkspaceHistoryRecord(params: {
       }
     }
 
-    if (materializedRun?.result && !materializedRun.result.primary && persistedSource) {
-      materializedRun.result.primary = {
+    if (materializedRun?.result && !getLinghuiResultPrimaryMedia(materializedRun.result) && persistedSource) {
+      const fallbackPrimary = {
         kind: kind as 'image' | 'video' | 'audio',
         label: historyName,
         source: persistedSource,
         posterSource: persistedPosterSource,
       };
+
+      assignLinghuiResultPrimary(materializedRun.result, fallbackPrimary);
     }
 
-    if (materializedRun?.result?.items?.length) {
+    if (materializedRun?.result && isLinghuiImageCollectionResult(materializedRun.result) && getLinghuiResultItems(materializedRun.result).length) {
       materializedRun.result.items = await Promise.all(
         materializedRun.result.items.map(async (item, index) => {
           if (!item) return item;
@@ -1212,7 +1249,7 @@ export async function createLinghuiWorkspaceHistoryRecord(params: {
       );
     }
 
-    if (materializedRun?.result?.shots?.length) {
+    if (materializedRun?.result && isLinghuiStoryboardResult(materializedRun.result) && getLinghuiResultShots(materializedRun.result).length) {
       materializedRun.result.shots = await Promise.all(
         materializedRun.result.shots.map(async (shot, index) => {
           if (!shot || !shot.image) return shot;
@@ -1242,7 +1279,7 @@ export async function createLinghuiWorkspaceHistoryRecord(params: {
       nodeLabel: nodeData.label,
       resultKind: nodeRun?.result?.kind,
       upstreamIds: nodeRun?.upstreamIds ?? [],
-      itemCount: nodeRun?.result?.items?.length ?? 0,
+      itemCount: getLinghuiResultItemCount(nodeRun?.result),
       prompt: typeof (nodeData.properties as Record<string, unknown>).prompt === 'string'
         ? (nodeData.properties as Record<string, unknown>).prompt
         : undefined,

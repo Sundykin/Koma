@@ -1,5 +1,5 @@
 import React from 'react';
-import type { LinghuiNodeResult } from '../../../types/linghui';
+import type { LinghuiNodeResult, LinghuiStoryboardResult } from '../../../types/linghui';
 import { useNodeRunState } from './LinghuiNodeRunsContext';
 import { electronService } from '../../../services/electronService';
 
@@ -108,7 +108,7 @@ const ImageGrid: React.FC<{ items: Array<{ source?: string; label?: string }> }>
   </div>
 );
 
-const StoryboardPreview: React.FC<{ result: LinghuiNodeResult }> = ({ result }) => (
+const StoryboardPreview: React.FC<{ result: LinghuiStoryboardResult }> = ({ result }) => (
   <div className="linghuiNodeStoryboardList">
     {result.shots?.slice(0, 3).map(shot => {
       const src = getPreviewSource(shot.image?.source);
