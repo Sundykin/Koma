@@ -9,6 +9,12 @@ import type {
   TTIRequest as BaseTTIRequest,
 } from '../../types';
 import type { PollingConfig } from '../registry.types';
+import type {
+  LinghuiMultiAngleAzimuth,
+  LinghuiMultiAngleDistance,
+  LinghuiMultiAngleElevation,
+  LinghuiMultiAnglePromptProtocol,
+} from '../../types/linghui';
 
 export interface ImageResult {
   /**
@@ -37,11 +43,27 @@ export interface TTIOptions {
   imageSize?: string;   // nano-banana 用：1K, 2K, 4K
 }
 
-export type TTIRequest = BaseTTIRequest<ProviderAssetInput, TTIOptions>;
+export interface MultiAngleTTIRequest {
+  endpointPath?: string;
+  promptProtocol: LinghuiMultiAnglePromptProtocol;
+  azimuth: LinghuiMultiAngleAzimuth;
+  elevation: LinghuiMultiAngleElevation;
+  distance: LinghuiMultiAngleDistance;
+  sourceReferenceIndex?: number;
+  originalPrompt: string;
+  anglePrompt: string;
+  compiledPrompt: string;
+}
+
+export interface TTIRequest extends BaseTTIRequest<ProviderAssetInput, TTIOptions> {
+  requestType?: 'text-to-image' | 'multi-angle';
+  multiAngle?: MultiAngleTTIRequest;
+}
 
 export interface TTIProvider {
   type: string;
   config: TTIModelConfig;
+  supportsMultiAngle?: boolean;
 
   validate(): boolean;
   testConnection(): Promise<boolean>;
@@ -52,4 +74,3 @@ export interface TTIProvider {
 
   polling?: PollingConfig;
 }
-

@@ -63,6 +63,8 @@ interface TaskResponse {
 export class OpenAICompatibleTTIProvider implements TTIProvider {
   type = 'openai-compatible-tti' as const;
   config: TTIModelConfig;
+  supportsMultiAngle = true;
+  private readonly taskSnapshotPathById = new Map<string, string>();
 
   constructor(config: TTIModelConfig) {
     this.config = config;
@@ -78,6 +80,31 @@ export class OpenAICompatibleTTIProvider implements TTIProvider {
 
   private getBaseUrl(): string {
     return (this.config.baseUrl || '').replace(/\/+$/, '');
+  }
+
+  private normalizeEndpointPath(path?: string): string {
+    const normalized = String(path || '').trim() || '/v1/images/generations';
+    return normalized.startsWith('/') ? normalized : `/${normalized}`;
+  }
+
+  private buildTaskSnapshotCandidates(taskId: string): string[] {
+    const candidates: string[] = [];
+    const customPath = this.taskSnapshotPathById.get(taskId);
+    if (customPath) {
+      const normalizedCustomPath = this.normalizeEndpointPath(customPath).replace(/\/+$/, '');
+      candidates.push(`${this.getBaseUrl()}${normalizedCustomPath}/${encodeURIComponent(taskId)}`);
+
+      if (normalizedCustomPath.endsWith('/generations')) {
+        candidates.push(
+          `${this.getBaseUrl()}${normalizedCustomPath.replace(/\/generations$/, '')}/${encodeURIComponent(taskId)}`,
+        );
+      } else {
+        candidates.push(`${this.getBaseUrl()}${normalizedCustomPath}/generations/${encodeURIComponent(taskId)}`);
+      }
+    }
+
+    candidates.push(`${this.getBaseUrl()}/v1/images/generations/${encodeURIComponent(taskId)}`);
+    return [...new Set(candidates)];
   }
 
   private getHeaders(): Record<string, string> {
@@ -134,6 +161,7 @@ export class OpenAICompatibleTTIProvider implements TTIProvider {
     }
 
     const options: TTIOptions | undefined = request.options;
+    const isMultiAngle = request.requestType === 'multi-angle' && Boolean(request.multiAngle);
     const body: Record<string, any> = {
       model: this.getModelName(),
       prompt: request.prompt,
@@ -148,17 +176,48 @@ export class OpenAICompatibleTTIProvider implements TTIProvider {
       body.image_urls = request.references.map(item => ({ url: item.value }));
     }
 
+    if (isMultiAngle && request.multiAngle) {
+      const referenceUrls = (request.references ?? []).map(item => item.value);
+      if (!referenceUrls.length) {
+        throw new Error('多角度接口需要至少一张参考图片');
+      }
+
+      body.source_image = referenceUrls[request.multiAngle.sourceReferenceIndex ?? 0] ?? referenceUrls[0];
+      body.reference_images = referenceUrls;
+      if (request.multiAngle.originalPrompt) {
+        body.original_prompt = request.multiAngle.originalPrompt;
+      }
+      body.angle_prompt = request.multiAngle.anglePrompt;
+      body.compiled_prompt = request.multiAngle.compiledPrompt;
+      body.camera = {
+        azimuth: request.multiAngle.azimuth,
+        elevation: request.multiAngle.elevation,
+        distance: request.multiAngle.distance,
+        promptProtocol: request.multiAngle.promptProtocol,
+      };
+      body.multi_angle = {
+        enabled: true,
+        sourceReferenceIndex: request.multiAngle.sourceReferenceIndex ?? 0,
+        endpointPath: request.multiAngle.endpointPath,
+      };
+    }
+
     const protocol = (this.config as any)?.promptProtocol;
-    const debugBody = Boolean(protocol) || (import.meta as any)?.env?.DEV === true;
+    const debugBody = Boolean(protocol) || isMultiAngle || (import.meta as any)?.env?.DEV === true;
     if (debugBody) {
       logger.info('TTI start request body', {
         provider: this.config.provider,
         ...(protocol ? { promptProtocol: protocol } : undefined),
+        ...(isMultiAngle ? { requestType: 'multi-angle', endpointPath: request.multiAngle?.endpointPath } : undefined),
         body: sanitizeBodyForLog(body),
       });
     }
 
-    const response = await safeFetch(`${this.getBaseUrl()}/v1/images/generations`, {
+    const endpointPath = isMultiAngle
+      ? this.normalizeEndpointPath(request.multiAngle?.endpointPath || '/v1/images/multi-angle')
+      : '/v1/images/generations';
+
+    const response = await safeFetch(`${this.getBaseUrl()}${endpointPath.startsWith('/') ? endpointPath : `/${endpointPath}`}`, {
       method: 'POST',
       headers: {
         ...this.getHeaders(),
@@ -191,6 +250,9 @@ export class OpenAICompatibleTTIProvider implements TTIProvider {
 
     // 异步模式：返回 taskId
     if (data.id) {
+      if (isMultiAngle) {
+        this.taskSnapshotPathById.set(data.id, endpointPath);
+      }
       return { mode: 'async', taskId: data.id };
     }
 
@@ -201,14 +263,42 @@ export class OpenAICompatibleTTIProvider implements TTIProvider {
    * 轮询任务状态（异步模式）
    */
   async getTaskSnapshot(taskId: string): Promise<ProviderTaskSnapshot<ImageResult>> {
-    const response = await safeFetch(`${this.getBaseUrl()}/v1/images/generations/${taskId}`, {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${this.config.apiKey || ''}`,
-      },
-    });
+    const candidates = this.buildTaskSnapshotCandidates(taskId);
+    let data: TaskResponse | null = null;
+    let lastStatus = 0;
+    let matchedUrl = '';
 
-    if (!response.ok) {
+    for (const url of candidates) {
+      logger.info('TTI snapshot request', {
+        provider: this.config.provider,
+        taskId,
+        url,
+      });
+
+      const response = await safeFetch(url, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${this.config.apiKey || ''}`,
+        },
+      });
+
+      lastStatus = response.status;
+      if (!response.ok) {
+        continue;
+      }
+
+      data = await response.json();
+      matchedUrl = url;
+      break;
+    }
+
+    if (!data) {
+      logger.error('TTI snapshot request failed', {
+        provider: this.config.provider,
+        taskId,
+        candidates,
+        status: lastStatus,
+      });
       return {
         state: 'failed',
         progress: 0,
@@ -216,7 +306,13 @@ export class OpenAICompatibleTTIProvider implements TTIProvider {
       };
     }
 
-    const data: TaskResponse = await response.json();
+    logger.info('TTI snapshot response', {
+      provider: this.config.provider,
+      taskId,
+      url: matchedUrl,
+      status: data.status,
+      progress: data.progress,
+    });
 
     const stateMap: Record<string, ProviderTaskSnapshot<ImageResult>['state']> = {
       queued: 'queued',
@@ -235,12 +331,14 @@ export class OpenAICompatibleTTIProvider implements TTIProvider {
       if (items?.[0]) {
         const url = this.extractImageUrl(items[0]);
         if (url) {
+          this.taskSnapshotPathById.delete(taskId);
           snapshot.output = { path: url, url };
         }
       }
     }
 
     if (data.status === 'failed' && data.error) {
+      this.taskSnapshotPathById.delete(taskId);
       snapshot.error = data.error.message || '任务失败';
     }
 

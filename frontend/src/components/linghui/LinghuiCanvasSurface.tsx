@@ -70,6 +70,8 @@ export function LinghuiCanvasSurface({
     onGenerateScriptImages: overlayProps.onGenerateScriptImages,
     onGenerateScriptVideos: overlayProps.onGenerateScriptVideos,
     onCreateDerivedImportImages: overlayProps.onCreateDerivedImportImages,
+    onCreateDerivedMultiAngleImage: overlayProps.onCreateDerivedMultiAngleImage,
+    onExecuteMultiAngle: overlayProps.onExecuteMultiAngle,
     onApplyImageToolPreset: overlayProps.onApplyImageToolPreset,
     onSetGridSplitType: overlayProps.onSetGridSplitType,
     onClearGridSplitCells: overlayProps.onClearGridSplitCells,

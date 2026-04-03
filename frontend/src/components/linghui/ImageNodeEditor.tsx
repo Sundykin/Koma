@@ -3,6 +3,7 @@ import { App, Button, Select } from 'antd';
 import { nanoid } from 'nanoid';
 import { ArrowUp, Image as ImageIcon, Trash2, UploadCloud } from 'lucide-react';
 import type {
+  LinghuiExecuteMultiAngleOptions,
   LinghuiImageAssetItem,
   LinghuiImageNodeMode,
   LinghuiImageNodeProperties,
@@ -11,9 +12,11 @@ import type {
   LinghuiNodeRunState,
 } from '../../types/linghui';
 import {
+  DEFAULT_LINGHUI_MULTI_ANGLE_CONFIG,
   IMAGE_ASPECT_RATIOS,
   IMAGE_RESOLUTIONS,
   LINGHUI_IMAGE_BATCH_COUNTS,
+  normalizeLinghuiMultiAngleConfig,
 } from '../../types/linghui';
 import { electronService, openFileDialog } from '../../services/electronService';
 import {
@@ -23,9 +26,11 @@ import { loadSettings } from '../../store/settings/core';
 import { listConfiguredModelSelectOptions } from '../../providers/channel/resolver';
 import type { LinghuiPromptReferenceItem } from './linghuiPromptReferences';
 import { LinghuiPromptEditor } from './LinghuiPromptEditor';
+import { LinghuiMultiAngleModal } from './LinghuiMultiAngleModal';
 import { useLinghuiNodeMutation } from './nodes/LinghuiNodeRunsContext';
 import {
   createLinghuiImageImportProperties,
+  resolveLinghuiImageCollection,
   resolveImageAspectRatioLabel,
 } from './linghuiImageCollections';
 
@@ -71,6 +76,7 @@ export interface ImageNodeEditorProps {
   activeTool: LinghuiImageToolKey | null;
   onToolChange: (tool: LinghuiImageToolKey | null) => void;
   onCreateDerivedImportImages?: (items: LinghuiImageAssetItem[]) => void;
+  onExecuteMultiAngle?: (options?: LinghuiExecuteMultiAngleOptions) => void;
   onRun: () => void;
 }
 
@@ -110,6 +116,7 @@ export const ImageNodeEditor: React.FC<ImageNodeEditorProps> = ({
   activeTool,
   onToolChange,
   onCreateDerivedImportImages,
+  onExecuteMultiAngle,
   onRun,
 }) => {
   const { message } = App.useApp();
@@ -123,6 +130,14 @@ export const ImageNodeEditor: React.FC<ImageNodeEditorProps> = ({
   const resolution = String(props.resolution ?? 'auto');
   const batchCount = Number(props.batchCount ?? 1);
   const hasImportSource = Boolean(String(props.source ?? '').trim());
+  const imageCollection = useMemo(() => resolveLinghuiImageCollection(props, nodeRun?.result), [nodeRun?.result, props]);
+  const currentImage = imageCollection.primary;
+  const currentImageSource = String(currentImage?.source ?? props.source ?? '').trim();
+  const currentImagePreview = getPreviewSource(currentImageSource);
+  const hasCurrentImage = Boolean(currentImageSource);
+  const isMultiAngleToolOpen = activeTool === 'multi-angle' && hasCurrentImage;
+  const multiAngleConfig = normalizeLinghuiMultiAngleConfig(props.multiAngle ?? DEFAULT_LINGHUI_MULTI_ANGLE_CONFIG);
+  const multiAngleTTISelection = String(props.multiAngle?.ttiSelection ?? props.ttiSelection ?? '');
 
   const displayReferenceImages: DisplayReferenceImage[] = referenceImages.map((ref, index) => ({
     ...ref,
@@ -130,10 +145,15 @@ export const ImageNodeEditor: React.FC<ImageNodeEditorProps> = ({
   }));
 
   const [providers, setProviders] = useState<ProviderOption[]>([]);
+  const [multiAngleProviders, setMultiAngleProviders] = useState<ProviderOption[]>([]);
 
   useEffect(() => {
     loadSettings().then(settings => {
       setProviders(listConfiguredModelSelectOptions(settings, 'tti', 'image.text-to-image').map(option => ({
+        value: option.value,
+        label: `${option.channelLabel} / ${option.modelLabel}`,
+      })));
+      setMultiAngleProviders(listConfiguredModelSelectOptions(settings, 'tti', 'image.image-to-image').map(option => ({
         value: option.value,
         label: `${option.channelLabel} / ${option.modelLabel}`,
       })));
@@ -146,6 +166,51 @@ export const ImageNodeEditor: React.FC<ImageNodeEditorProps> = ({
       properties: { ...prev.properties, [key]: value },
     }), options);
   }, [nodeId, updateNodeData]);
+
+  const updateMultiAngle = useCallback((patch: Partial<typeof multiAngleConfig>) => {
+    updateProp('multiAngle', normalizeLinghuiMultiAngleConfig({
+      ...multiAngleConfig,
+      ...patch,
+    }));
+  }, [multiAngleConfig, updateProp]);
+
+  useEffect(() => {
+    if (multiAngleTTISelection || multiAngleProviders.length === 0) {
+      return;
+    }
+    updateMultiAngle({ ttiSelection: multiAngleProviders[0].value });
+  }, [multiAngleProviders, multiAngleTTISelection, updateMultiAngle]);
+
+  const handleConfirmMultiAngle = useCallback(() => {
+    const selectionKey = String(multiAngleTTISelection || multiAngleProviders[0]?.value || '').trim();
+    if (!selectionKey) {
+      message.info('请先配置或选择支持图生图的生图渠道');
+      return;
+    }
+
+    const nextMultiAngleConfig = normalizeLinghuiMultiAngleConfig({
+      ...multiAngleConfig,
+      ttiSelection: selectionKey,
+    });
+
+    if (selectionKey !== multiAngleTTISelection) {
+      updateMultiAngle({ ttiSelection: selectionKey });
+    }
+
+    onExecuteMultiAngle?.({
+      ttiSelection: selectionKey,
+      multiAngle: nextMultiAngleConfig,
+    });
+    onToolChange(null);
+  }, [
+    message,
+    multiAngleConfig,
+    multiAngleProviders,
+    multiAngleTTISelection,
+    onExecuteMultiAngle,
+    onToolChange,
+    updateMultiAngle,
+  ]);
 
   const handleReplaceImage = useCallback(async () => {
     try {
@@ -229,6 +294,18 @@ export const ImageNodeEditor: React.FC<ImageNodeEditorProps> = ({
             />
           </div>
         </div>
+        <LinghuiMultiAngleModal
+          open={isMultiAngleToolOpen}
+          sourceImage={currentImagePreview}
+          sourceLabel={currentImage?.label || nodeData.label}
+          config={multiAngleConfig}
+          providerOptions={multiAngleProviders}
+          ttiSelection={multiAngleTTISelection}
+          onChangeConfig={updateMultiAngle}
+          onChangeTTISelection={value => updateMultiAngle({ ttiSelection: value })}
+          onCancel={() => onToolChange(null)}
+          onConfirm={handleConfirmMultiAngle}
+        />
       </div>
     );
   }
@@ -317,6 +394,19 @@ export const ImageNodeEditor: React.FC<ImageNodeEditorProps> = ({
           />
         </div>
       </div>
+
+      <LinghuiMultiAngleModal
+        open={isMultiAngleToolOpen}
+        sourceImage={currentImagePreview}
+        sourceLabel={currentImage?.label || nodeData.label}
+        config={multiAngleConfig}
+        providerOptions={multiAngleProviders}
+        ttiSelection={multiAngleTTISelection}
+        onChangeConfig={updateMultiAngle}
+        onChangeTTISelection={value => updateMultiAngle({ ttiSelection: value })}
+        onCancel={() => onToolChange(null)}
+        onConfirm={handleConfirmMultiAngle}
+      />
     </div>
   );
 };

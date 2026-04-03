@@ -332,6 +332,8 @@ export interface LLMModelConfig {
   id: string;
   name: string;                              // 用户自定义名称
   provider: LLMProviderType;
+  profileId?: string;
+  hasStoredCredential?: boolean;
   baseUrl?: string;                          // API 地址，openai-compatible 必填
   apiKey: string;
   modelName: string;                         // 模型名称
@@ -355,6 +357,8 @@ export interface LLMChannelPreset {
 
 export interface ModelConfig {
   provider: ModelProviderType;
+  profileId?: string;
+  hasStoredCredential?: boolean;
   apiKey: string;
   baseUrl?: string;
   modelName: string;

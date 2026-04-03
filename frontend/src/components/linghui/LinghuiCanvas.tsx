@@ -182,6 +182,7 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
     deriveStoryboardVideosFromScript,
     createGroupFromSelection,
     createDerivedImageNodesFromNode,
+    createDerivedMultiAngleImageNodeFromNode,
     clearPendingGroupFrame,
   } = useLinghuiCanvasDocumentOps({
     reactFlow,
@@ -416,6 +417,7 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
     deriveStoryboardImagesFromScript,
     deriveStoryboardVideosFromScript,
     createDerivedImageNodesFromNode,
+    createDerivedMultiAngleImageNodeFromNode,
     copySelectionToClipboard,
     duplicateSelection,
     pasteClipboardSnapshot,

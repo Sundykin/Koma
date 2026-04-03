@@ -1,8 +1,10 @@
 import type {
   LinghuiCanvasSelection,
+  LinghuiExecuteMultiAngleOptions,
   LinghuiExecutionLogEntry,
   LinghuiGridType,
   LinghuiImageAssetItem,
+  LinghuiMultiAngleConfig,
   LinghuiImageNodeProperties,
   LinghuiNodeCatalogItem,
   LinghuiNodeRunState,
@@ -29,6 +31,13 @@ export interface LinghuiCanvasOverlaysProps {
   onGenerateScriptImages: (nodeId: string, shots: LinghuiStoryboardFrame[]) => void;
   onGenerateScriptVideos: (nodeId: string, shots: LinghuiStoryboardFrame[]) => void;
   onCreateDerivedImportImages: (nodeId: string, items: LinghuiImageAssetItem[]) => void;
+  onCreateDerivedMultiAngleImage?: (nodeId: string, options?: {
+    prompt?: string;
+    ttiSelection?: string;
+    multiAngle?: Partial<LinghuiMultiAngleConfig>;
+    label?: string;
+  }) => string | null;
+  onExecuteMultiAngle?: (options?: LinghuiExecuteMultiAngleOptions) => void;
   onApplyImageToolPreset: (preset: {
     promptSnippet: string;
     properties?: Partial<LinghuiImageNodeProperties>;

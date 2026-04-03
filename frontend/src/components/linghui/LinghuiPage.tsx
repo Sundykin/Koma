@@ -54,6 +54,7 @@ import LinghuiToolbar from './LinghuiToolbar';
 import { collectLinghuiDependentNodeIds, executeLinghuiWorkflow } from './linghuiExecution';
 import { exportLinghuiNodeResults } from './linghuiResultExport';
 import { detectCanvasMutationKind } from './linghuiCanvasShared';
+import { createLogger } from '../../store/logger';
 import './LinghuiPage.css';
 
 function createLog(level: LinghuiExecutionLogEntry['level'], message: string, nodeId?: string): LinghuiExecutionLogEntry {
@@ -103,6 +104,7 @@ const EMPTY_WORKSPACE_RUNTIME: LinghuiWorkspaceRuntimeState = {
   executionLogs: EMPTY_LINGHUI_EXECUTION_LOGS,
 };
 const WORKSPACE_SAVE_DEBOUNCE_MS = 2500;
+const workflowLogger = createLogger('LinghuiWorkflowExecution');
 
 export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
   const { message } = AntApp.useApp();
@@ -501,14 +503,63 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
       successMessage?: string;
     },
   ) => {
+    workflowLogger.info('灵绘执行入口', {
+      targetNodeIds,
+      resolveTargetsOnly: options?.resolveTargetsOnly ?? false,
+      hasAbortController: Boolean(executionAbortControllerRef.current),
+      abortControllerAborted: executionAbortControllerRef.current?.signal.aborted ?? null,
+      hasCanvasHandle: Boolean(canvasRef.current),
+      hasActiveWorkspace: Boolean(activeWorkspaceRef.current),
+    });
+
     if (executionAbortControllerRef.current && !executionAbortControllerRef.current.signal.aborted) {
+      workflowLogger.warn('灵绘执行被阻止：已有执行队列', {
+        targetNodeIds,
+      });
       message.info('当前已有执行队列，请先等待完成或取消');
       return;
     }
 
     const context = canvasRef.current?.getExecutionContext();
     const current = activeWorkspaceRef.current;
-    if (!context || !current) return;
+    if (!context || !current) {
+      workflowLogger.warn('灵绘执行被阻止：缺少执行上下文', {
+        hasContext: Boolean(context),
+        hasWorkspace: Boolean(current),
+        targetNodeIds,
+      });
+      return;
+    }
+
+    workflowLogger.info('灵绘执行上下文已就绪', {
+      targetNodeIds,
+      contextNodeCount: context.nodes.length,
+      contextEdgeCount: context.edges.length,
+      workspaceId: current.id,
+    });
+
+    const requestedTargetNodeIds = targetNodeIds?.length ? [...new Set(targetNodeIds)] : undefined;
+    const contextNodeIds = new Set(context.nodes.map(node => node.id));
+    const missingTargetNodeIds = requestedTargetNodeIds?.filter(nodeId => !contextNodeIds.has(nodeId)) ?? [];
+    const runnableTargetNodeIds = requestedTargetNodeIds?.filter(nodeId => contextNodeIds.has(nodeId));
+
+    if (missingTargetNodeIds.length > 0) {
+      workflowLogger.warn('灵绘执行目标节点缺失，可能尚未同步到画布', {
+        requestedTargetNodeIds,
+        runnableTargetNodeIds,
+        missingTargetNodeIds,
+        contextNodeCount: context.nodes.length,
+      });
+    }
+
+    if (requestedTargetNodeIds && runnableTargetNodeIds?.length === 0) {
+      workflowLogger.warn('灵绘执行被阻止：目标节点未进入执行上下文', {
+        requestedTargetNodeIds,
+        missingTargetNodeIds,
+      });
+      message.error('目标节点尚未同步到画布，请稍后重试');
+      return;
+    }
 
     let nextRuns = { ...current.nodeRuns };
     let nextLogs = [...current.executionLogs];
@@ -520,9 +571,13 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
     setExecutionQueue(null);
 
     try {
+      workflowLogger.info('灵绘开始执行工作流', {
+        targetNodeIds: runnableTargetNodeIds ?? targetNodeIds,
+        resolveTargetsOnly: options?.resolveTargetsOnly ?? false,
+      });
       const result = await executeLinghuiWorkflow({
         context,
-        targetNodeIds,
+        targetNodeIds: runnableTargetNodeIds ?? targetNodeIds,
         previousRuns: current.nodeRuns,
         resolveTargetsOnly: options?.resolveTargetsOnly,
         signal: abortController.signal,
@@ -543,6 +598,12 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
       });
 
       const finalRuns = result.runs;
+      workflowLogger.info('灵绘执行工作流结束', {
+        queueStatus: result.queue.status,
+        completedNodeIds: result.queue.completedNodeIds,
+        failedNodeIds: result.queue.failedNodeIds,
+        canceledNodeIds: result.queue.canceledNodeIds,
+      });
       nextRuns = finalRuns;
       updateWorkspaceExecution(nextRuns, nextLogs);
 
@@ -601,6 +662,10 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
         );
       }
     } catch (error: any) {
+      workflowLogger.error('灵绘执行工作流异常', {
+        targetNodeIds: runnableTargetNodeIds ?? targetNodeIds,
+        error: error?.message || String(error),
+      });
       const failureMessage = error?.message || '执行灵绘工作流失败';
       nextLogs = mergeExecutionLogs(nextLogs, createLog('error', failureMessage));
       updateWorkspaceExecution(nextRuns, nextLogs);
@@ -922,6 +987,9 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
   }, [runWorkflow]);
 
   const handleRunSingleNode = useCallback(async (nodeId: string) => {
+    workflowLogger.info('灵绘触发单节点执行', {
+      nodeId,
+    });
     await runWorkflow([nodeId], {
       resolveTargetsOnly: true,
       successMessage: '已执行当前节点',
@@ -936,6 +1004,11 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
       ? selectionIds
       : (canvasRef.current?.getSelectionIds() ?? []);
     const runnableIds = canvasRef.current?.resolveExecutionTargetIds(rawSelectionIds) ?? [];
+
+    workflowLogger.info('灵绘触发批量执行', {
+      rawSelectionIds,
+      runnableIds,
+    });
 
     if (!rawSelectionIds.length || !runnableIds.length) {
       message.info('请先选中需要执行的节点或工作流块');

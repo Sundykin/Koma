@@ -3,9 +3,10 @@ import { getProjectITVProvider, getProjectLLMProvider, getProjectTTIProvider, ge
 import { resolveConfiguredChannelModel } from '../../providers/channel/resolver';
 import { DEFAULT_POLLING_CONFIG } from '../../providers/polling';
 import type { ITVResult, ITVTaskSnapshotContext } from '../../providers/itv/types';
-import type { ImageResult } from '../../providers/tti/types';
+import type { ImageResult, MultiAngleTTIRequest } from '../../providers/tti/types';
 import type { AudioResult } from '../../providers/tts/types';
 import { resolveProviderAssetInput } from '../../services/mediaAssetResolver';
+import { compileLinghuiMultiAnglePrompt } from '../../services/promptCompilation/multiAnglePromptCompiler';
 import {
   buildVideoCapabilityRequest,
   compileWorkflowVideoDomainRequest,
@@ -38,6 +39,7 @@ import {
 import { getVideoCapabilityDescriptor } from './videoCapabilityUtils';
 
 const logger = createLogger('LinghuiVideoExecution');
+const imageLogger = createLogger('LinghuiImageExecution');
 
 type AsyncTaskSnapshot<T> = {
   state: string;
@@ -169,11 +171,59 @@ export async function generateImageWithProvider(params: {
   accent?: string;
   ttiSelection?: string;
   promptReferences?: LinghuiPromptReferenceItem[];
+  multiAngle?: Omit<MultiAngleTTIRequest, 'originalPrompt' | 'anglePrompt' | 'compiledPrompt'> | null;
   signal?: AbortSignal;
 }): Promise<LinghuiMediaItem> {
   throwIfExecutionAborted(params.signal);
-  const provider = await getProjectTTIProvider(params.ttiSelection || undefined);
+  const requestedCapability = params.multiAngle ? 'image.image-to-image' : 'image.text-to-image';
+  const settings = await loadSettings();
+  const selectedContext = resolveConfiguredChannelModel(settings, 'tti', params.ttiSelection);
+  const capableContext = resolveConfiguredChannelModel(settings, 'tti', params.ttiSelection, requestedCapability);
+
+  imageLogger.info('灵绘图片生成入口', {
+    selectionKey: params.ttiSelection,
+    capability: requestedCapability,
+    requestType: params.multiAngle ? 'multi-angle' : 'text-to-image',
+    channelId: capableContext?.channelConfig.id ?? selectedContext?.channelConfig.id,
+    modelId: capableContext?.model.id ?? selectedContext?.model.id,
+    prompt: truncateString(params.prompt || '', 600),
+    referenceCount: params.referenceSources?.length ?? 0,
+    silentReferenceCount: params.silentReferenceSources?.length ?? 0,
+    promptReferenceCount: params.promptReferences?.length ?? 0,
+    multiAngle: params.multiAngle ? {
+      azimuth: params.multiAngle.azimuth,
+      elevation: params.multiAngle.elevation,
+      distance: params.multiAngle.distance,
+      promptProtocol: params.multiAngle.promptProtocol,
+      endpointPath: params.multiAngle.endpointPath,
+    } : undefined,
+  });
+
+  if (params.multiAngle && selectedContext && !selectedContext.model.capabilities.includes('image.image-to-image')) {
+    imageLogger.warn('灵绘多角度能力校验失败', {
+      selectionKey: params.ttiSelection,
+      requestedCapability,
+      channelId: selectedContext.channelConfig.id,
+      modelId: selectedContext.model.id,
+      capabilities: selectedContext.model.capabilities,
+    });
+    throw new Error('当前生图模型不支持图生图，请切换到支持图生图的渠道后重试');
+  }
+
+  const provider = await getProjectTTIProvider(params.ttiSelection || undefined, requestedCapability);
   if (!provider || !provider.validate()) {
+    if (params.multiAngle) {
+      imageLogger.error('灵绘多角度未找到可用 TTI Provider', {
+        selectionKey: params.ttiSelection,
+        requestedCapability,
+      });
+      throw new Error('当前没有配置支持图生图的生图渠道，请先切换或配置支持图生图的模型');
+    }
+
+    imageLogger.warn('灵绘图片未配置 TTI Provider，返回占位结果', {
+      selectionKey: params.ttiSelection,
+      requestedCapability,
+    });
     return buildMediaItem({
       kind: 'image',
       source: createPlaceholderImage({
@@ -192,7 +242,7 @@ export async function generateImageWithProvider(params: {
     ? 'image-index'
     : 'readable-name';
 
-  if ((params.promptReferences?.length ?? 0) > 0) {
+  if (!params.multiAngle && (params.promptReferences?.length ?? 0) > 0) {
     const compiled = compileLinghuiPromptReferences({
       prompt: compiledPrompt,
       references: params.promptReferences ?? [],
@@ -203,14 +253,108 @@ export async function generateImageWithProvider(params: {
     referenceSources = compiled.compiledReferences;
   }
 
-  const references = [
-    ...await ensureProviderAssetInputs(referenceSources),
-    ...await ensureProviderAssetInputs(silentReferenceSources),
-  ];
-  const started = await provider.start({
-    prompt: compiledPrompt,
-    references,
-    options: { steps: params.steps },
+  let multiAngleRequest: MultiAngleTTIRequest | undefined;
+  let references: ProviderAssetInput[] = [];
+  try {
+    if (params.multiAngle) {
+      if (provider.supportsMultiAngle === false) {
+        throw new Error('当前生图渠道暂不支持多角度接口，请切换到支持多角度的渠道后重试');
+      }
+      if (!referenceSources.length) {
+        throw new Error('多角度生图需要至少一张上游参考图');
+      }
+
+      if (provider.supportsMultiAngle !== true) {
+        imageLogger.info('灵绘多角度将回退为通用图生图执行', {
+          selectionKey: params.ttiSelection,
+          capability: requestedCapability,
+          provider: provider.config?.provider,
+        });
+      }
+
+      const compiledMultiAngle = compileLinghuiMultiAnglePrompt({
+        prompt: '',
+        config: params.multiAngle,
+      });
+      compiledPrompt = compiledMultiAngle.compiledPrompt;
+      multiAngleRequest = {
+        ...params.multiAngle,
+        originalPrompt: '',
+        anglePrompt: compiledMultiAngle.anglePrompt,
+        compiledPrompt,
+      };
+    }
+
+    references = [
+      ...await ensureProviderAssetInputs(referenceSources),
+      ...await ensureProviderAssetInputs(silentReferenceSources),
+    ];
+
+    if (params.multiAngle && references.length === 0) {
+      throw new Error('多角度生图无法读取上游参考图，请确认当前图片文件仍可访问');
+    }
+  } catch (error) {
+    imageLogger.error('灵绘图片请求编译失败', {
+      selectionKey: params.ttiSelection,
+      capability: requestedCapability,
+      provider: provider.config?.provider,
+      requestType: params.multiAngle ? 'multi-angle' : 'text-to-image',
+      referenceCount: referenceSources.length,
+      silentReferenceCount: silentReferenceSources.length,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
+
+  imageLogger.info('灵绘图片请求已编译', {
+    selectionKey: params.ttiSelection,
+    capability: requestedCapability,
+    provider: provider.config?.provider,
+    prompt: truncateString(compiledPrompt, 600),
+    referenceCount: references.length,
+    request: sanitizeBodyForLog({
+      requestType: multiAngleRequest ? 'multi-angle' : 'text-to-image',
+      multiAngle: multiAngleRequest
+        ? {
+            azimuth: multiAngleRequest.azimuth,
+            elevation: multiAngleRequest.elevation,
+            distance: multiAngleRequest.distance,
+            promptProtocol: multiAngleRequest.promptProtocol,
+            endpointPath: multiAngleRequest.endpointPath,
+            anglePrompt: multiAngleRequest.anglePrompt,
+            compiledPrompt: multiAngleRequest.compiledPrompt,
+            originalPrompt: multiAngleRequest.originalPrompt,
+          }
+        : undefined,
+    }),
+  });
+
+  let started;
+  try {
+    started = await provider.start({
+      prompt: compiledPrompt,
+      references,
+      options: { steps: params.steps },
+      ...(multiAngleRequest ? { requestType: 'multi-angle' as const, multiAngle: multiAngleRequest } : undefined),
+    });
+  } catch (error) {
+    imageLogger.error('灵绘图片任务提交失败', {
+      selectionKey: params.ttiSelection,
+      capability: requestedCapability,
+      provider: provider.config?.provider,
+      error: error instanceof Error ? error.message : String(error),
+      requestType: multiAngleRequest ? 'multi-angle' : 'text-to-image',
+    });
+    throw error;
+  }
+
+  imageLogger.info('灵绘图片任务提交成功', {
+    selectionKey: params.ttiSelection,
+    capability: requestedCapability,
+    provider: provider.config?.provider,
+    mode: started.mode,
+    taskId: started.mode === 'async' ? started.taskId : undefined,
+    requestType: multiAngleRequest ? 'multi-angle' : 'text-to-image',
   });
   throwIfExecutionAborted(params.signal);
   const output = started.mode === 'immediate'

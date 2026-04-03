@@ -23,6 +23,10 @@ export type LinghuiImageNodeMode = 'import' | 'generate';
 export type LinghuiImageToolKey = 'multi-angle' | 'outpaint' | 'relight' | 'repaint' | 'grid-split';
 export type LinghuiVideoToolKey = 'upscale' | 'analyze' | 'compose';
 export type LinghuiNodeViewMode = 'collapsed' | 'light' | 'immersive';
+export type LinghuiMultiAngleAzimuth = 0 | 45 | 90 | 135 | 180 | 225 | 270 | 315;
+export type LinghuiMultiAngleElevation = -30 | 0 | 30 | 60;
+export type LinghuiMultiAngleDistance = 0.6 | 1 | 1.8;
+export type LinghuiMultiAnglePromptProtocol = 'sks-camera-v1' | 'descriptor-only-v1';
 export type LinghuiNodeToolState =
   | { kind: 'image'; nodeId: string; tool: LinghuiImageToolKey }
   | { kind: 'video'; nodeId: string; tool: LinghuiVideoToolKey }
@@ -83,6 +87,23 @@ export interface LinghuiImageNodeProperties extends LinghuiScriptDerivedProperti
   resolution: string;
   gridType: LinghuiGridType;
   batchCount: number;
+  multiAngle?: LinghuiMultiAngleConfig;
+}
+
+export interface LinghuiMultiAngleConfig {
+  enabled: boolean;
+  azimuth: LinghuiMultiAngleAzimuth;
+  elevation: LinghuiMultiAngleElevation;
+  distance: LinghuiMultiAngleDistance;
+  ttiSelection: string;
+  promptProtocol: LinghuiMultiAnglePromptProtocol;
+  endpointPath: string;
+}
+
+export interface LinghuiExecuteMultiAngleOptions {
+  ttiSelection?: string;
+  multiAngle?: Partial<LinghuiMultiAngleConfig>;
+  label?: string;
 }
 
 // --- 视频节点 ---
@@ -357,6 +378,94 @@ export const GRID_TYPES: Array<{ label: string; value: LinghuiGridType }> = [
 ];
 
 export const LINGHUI_IMAGE_BATCH_COUNTS = [1, 2, 3, 4] as const;
+export const DEFAULT_LINGHUI_MULTI_ANGLE_ENDPOINT = '/v1/images/multi-angle';
+
+export const LINGHUI_MULTI_ANGLE_AZIMUTHS: Array<{
+  value: LinghuiMultiAngleAzimuth;
+  label: string;
+  prompt: string;
+}> = [
+  { value: 0, label: '正面', prompt: 'front view' },
+  { value: 45, label: '前右 3/4', prompt: 'front-right quarter view' },
+  { value: 90, label: '右侧', prompt: 'right side view' },
+  { value: 135, label: '后右 3/4', prompt: 'back-right quarter view' },
+  { value: 180, label: '背面', prompt: 'back view' },
+  { value: 225, label: '后左 3/4', prompt: 'back-left quarter view' },
+  { value: 270, label: '左侧', prompt: 'left side view' },
+  { value: 315, label: '前左 3/4', prompt: 'front-left quarter view' },
+];
+
+export const LINGHUI_MULTI_ANGLE_ELEVATIONS: Array<{
+  value: LinghuiMultiAngleElevation;
+  label: string;
+  prompt: string;
+}> = [
+  { value: -30, label: '低角度', prompt: 'low-angle shot' },
+  { value: 0, label: '平视', prompt: 'eye-level shot' },
+  { value: 30, label: '稍高', prompt: 'elevated shot' },
+  { value: 60, label: '高角度', prompt: 'high-angle shot' },
+];
+
+export const LINGHUI_MULTI_ANGLE_DISTANCES: Array<{
+  value: LinghuiMultiAngleDistance;
+  label: string;
+  prompt: string;
+}> = [
+  { value: 0.6, label: '特写', prompt: 'close-up' },
+  { value: 1, label: '中景', prompt: 'medium shot' },
+  { value: 1.8, label: '广角', prompt: 'wide shot' },
+];
+
+export const LINGHUI_MULTI_ANGLE_PROMPT_PROTOCOLS: Array<{
+  value: LinghuiMultiAnglePromptProtocol;
+  label: string;
+}> = [
+  { value: 'sks-camera-v1', label: 'SKS 相机提示词' },
+  { value: 'descriptor-only-v1', label: '纯描述符' },
+];
+
+export const DEFAULT_LINGHUI_MULTI_ANGLE_CONFIG: LinghuiMultiAngleConfig = {
+  enabled: true,
+  azimuth: 0,
+  elevation: 0,
+  distance: 1,
+  ttiSelection: '',
+  promptProtocol: 'sks-camera-v1',
+  endpointPath: DEFAULT_LINGHUI_MULTI_ANGLE_ENDPOINT,
+};
+
+function normalizeAzimuth(value: unknown): LinghuiMultiAngleAzimuth {
+  return (LINGHUI_MULTI_ANGLE_AZIMUTHS.find(item => item.value === value)?.value ?? DEFAULT_LINGHUI_MULTI_ANGLE_CONFIG.azimuth);
+}
+
+function normalizeElevation(value: unknown): LinghuiMultiAngleElevation {
+  return (LINGHUI_MULTI_ANGLE_ELEVATIONS.find(item => item.value === value)?.value ?? DEFAULT_LINGHUI_MULTI_ANGLE_CONFIG.elevation);
+}
+
+function normalizeDistance(value: unknown): LinghuiMultiAngleDistance {
+  return (LINGHUI_MULTI_ANGLE_DISTANCES.find(item => item.value === value)?.value ?? DEFAULT_LINGHUI_MULTI_ANGLE_CONFIG.distance);
+}
+
+function normalizePromptProtocol(value: unknown): LinghuiMultiAnglePromptProtocol {
+  return (
+    LINGHUI_MULTI_ANGLE_PROMPT_PROTOCOLS.find(item => item.value === value)?.value
+    ?? DEFAULT_LINGHUI_MULTI_ANGLE_CONFIG.promptProtocol
+  );
+}
+
+export function normalizeLinghuiMultiAngleConfig(
+  value: Partial<LinghuiMultiAngleConfig> | null | undefined,
+): LinghuiMultiAngleConfig {
+  return {
+    enabled: value?.enabled !== false,
+    azimuth: normalizeAzimuth(value?.azimuth),
+    elevation: normalizeElevation(value?.elevation),
+    distance: normalizeDistance(value?.distance),
+    ttiSelection: String(value?.ttiSelection ?? '').trim(),
+    promptProtocol: normalizePromptProtocol(value?.promptProtocol),
+    endpointPath: String(value?.endpointPath ?? DEFAULT_LINGHUI_MULTI_ANGLE_ENDPOINT).trim() || DEFAULT_LINGHUI_MULTI_ANGLE_ENDPOINT,
+  };
+}
 
 export const VIDEO_ASPECT_RATIOS = [
   { label: '16:9', value: '16:9' },
