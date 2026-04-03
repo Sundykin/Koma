@@ -208,10 +208,14 @@ function mergeProviderConfig<T extends MediaProviderConfig>(
 
 export function buildLLMConfigFromContext(context: ResolvedChannelModelContext): LLMModelConfig {
   const provider = context.definition.runtimeProviderType || context.channelConfig.providerType;
+  const providerConfig = context.channelConfig.providerConfig || {};
   return mergeProviderConfig<LLMModelConfig>(context, {
     id: serializeMediaSelection({ channelId: context.channelConfig.id, modelId: context.model.id }) || context.channelConfig.id,
     name: context.channelConfig.name,
     provider: provider as LLMModelConfig['provider'],
+    profileId: context.channelConfig.id,
+    hasStoredCredential: Boolean(providerConfig.hasApiKey),
+    apiKey: String(providerConfig.apiKey || ''),
     modelName: String(context.model.providerModelName || ''),
     isDefault: false,
     createdAt: context.channelConfig.createdAt,

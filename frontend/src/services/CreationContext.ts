@@ -76,6 +76,8 @@ export async function createCreationContext(
 
   const llmProvider = createLLMProvider({
     provider: llmConfig.provider as any,
+    profileId: llmConfig.profileId,
+    hasStoredCredential: llmConfig.hasStoredCredential,
     apiKey: llmConfig.apiKey,
     baseUrl: llmConfig.baseUrl,
     modelName: llmConfig.modelName,

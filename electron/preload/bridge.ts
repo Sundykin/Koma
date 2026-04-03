@@ -7,6 +7,8 @@ type Listener = (event: IpcRendererEvent, ...args: any[]) => void;
 
 const ALLOWED_INVOKE_CHANNELS = new Set([
   'llm:query',
+  'llm:testConnection', 'llm:saveProfile', 'llm:deleteProfile',
+  'llm:saveChannelConfig', 'llm:deleteChannelConfig', 'llm:migrateSettingsSecrets',
   'chat:session:create', 'chat:session:get', 'chat:session:dispose',
   'chat:session:list', 'chat:session:updateConfig',
   'chat:message:send', 'chat:message:sendStream', 'chat:message:cancel',
@@ -186,6 +188,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   llm: {
     query: (request: any) => invokeMain('llm:query', request),
+    testConnection: (request: any) => invokeMain('llm:testConnection', request),
+    saveProfile: (request: any) => invokeMain('llm:saveProfile', request),
+    deleteProfile: (profileId: string) => invokeMain('llm:deleteProfile', { profileId }),
+    saveChannelConfig: (request: any) => invokeMain('llm:saveChannelConfig', request),
+    deleteChannelConfig: (request: any) => invokeMain('llm:deleteChannelConfig', request),
+    migrateSettingsSecrets: (request: any) => invokeMain('llm:migrateSettingsSecrets', request),
   },
   chat: {
     // 会话管理

@@ -10,10 +10,12 @@ import { HumanMessage, AIMessage, SystemMessage } from '@langchain/core/messages
 import type { BaseMessage } from '@langchain/core/messages';
 import { createLLM } from './AgentGraph';
 import type { SessionConfig } from './types';
+import { llmProfileStore } from './LLMProfileStore';
 
 export interface LLMQueryRequest {
   messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>;
   config: {
+    profileId?: string;
     modelProvider?: 'openai' | 'anthropic' | 'google';
     modelName?: string;
     apiKey?: string;
@@ -27,6 +29,43 @@ export interface LLMQueryRequest {
     operation?: string;
     /** 超时毫秒数，默认 60000 */
     timeoutMs?: number;
+  };
+}
+
+export interface LLMConnectionTestRequest {
+  profileId?: string;
+  modelProvider?: 'openai' | 'anthropic' | 'google';
+  modelName?: string;
+  apiKey?: string;
+  baseUrl?: string;
+  temperature?: number;
+  maxTokens?: number;
+}
+
+export interface LLMConnectionTestResponse {
+  success: boolean;
+  error?: {
+    code: 'EMPTY_MESSAGES' | 'TIMEOUT' | 'ABORTED' | 'API_ERROR' | 'UNKNOWN';
+    message: string;
+  };
+}
+
+export interface LLMSaveProfileRequest {
+  profileId: string;
+  apiKey?: string;
+}
+
+function resolveConfig(requestConfig: LLMQueryRequest['config'] | LLMConnectionTestRequest): SessionConfig {
+  const stored = requestConfig.profileId ? llmProfileStore.getProfile(requestConfig.profileId) : null;
+
+  return {
+    llmProfileId: requestConfig.profileId,
+    modelProvider: requestConfig.modelProvider,
+    modelName: requestConfig.modelName,
+    apiKey: stored?.apiKey || requestConfig.apiKey,
+    baseUrl: requestConfig.baseUrl,
+    temperature: requestConfig.temperature,
+    maxTokens: requestConfig.maxTokens,
   };
 }
 
@@ -125,6 +164,29 @@ function retryDelayMs(attempt: number): number {
 }
 
 export class LLMQueryService {
+  async testConnection(request: LLMConnectionTestRequest): Promise<LLMConnectionTestResponse> {
+    const result = await this.query({
+      messages: [{ role: 'user', content: 'ping' }],
+      config: {
+        profileId: request.profileId,
+        modelProvider: request.modelProvider,
+        modelName: request.modelName,
+        apiKey: request.apiKey,
+        baseUrl: request.baseUrl,
+        temperature: request.temperature,
+        maxTokens: request.maxTokens,
+      },
+      options: {
+        source: 'config-test',
+        operation: 'testConnection',
+      },
+    });
+
+    return result.error
+      ? { success: false, error: result.error }
+      : { success: true };
+  }
+
   /**
    * 执行无状态 LLM 查询。内部捕获所有异常，返回结构化错误而非抛出。
    */
@@ -137,14 +199,6 @@ export class LLMQueryService {
     const msgCount = request.messages?.length ?? 0;
 
     const logCtx = { traceId, source, operation, provider, model, msgCount };
-
-    if (request.config.baseUrl && isPrivateHost(request.config.baseUrl)) {
-      console.warn('[LLMQuery] 拒绝私有地址', { ...logCtx, baseUrl: request.config.baseUrl });
-      return {
-        content: '',
-        error: { code: 'API_ERROR', message: 'baseUrl points to a private/internal address' },
-      };
-    }
 
     if (!request.messages || request.messages.length === 0) {
       console.warn('[LLMQuery] 空消息数组', logCtx);
@@ -166,14 +220,15 @@ export class LLMQueryService {
       const timer = setTimeout(() => controller.abort(), timeoutMs);
 
       try {
-        const sessionConfig: SessionConfig = {
-          modelProvider: request.config.modelProvider,
-          modelName: request.config.modelName,
-          apiKey: request.config.apiKey,
-          baseUrl: request.config.baseUrl,
-          temperature: request.config.temperature,
-          maxTokens: request.config.maxTokens,
-        };
+        const sessionConfig = resolveConfig(request.config);
+
+        if (sessionConfig.baseUrl && isPrivateHost(sessionConfig.baseUrl)) {
+          console.warn('[LLMQuery] 拒绝私有地址', { ...logCtx, baseUrl: sessionConfig.baseUrl });
+          return {
+            content: '',
+            error: { code: 'API_ERROR', message: 'baseUrl points to a private/internal address' },
+          };
+        }
 
         const llm = createLLM(sessionConfig);
         const messages = toLangChainMessages(request.messages);

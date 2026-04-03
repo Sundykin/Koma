@@ -8,6 +8,7 @@ import type { AppSettings } from '../../types';
 import { STORAGE_KEYS } from '../../constants/storageKeys';
 import { createLogger } from '../logger';
 import { encryptSettings, decryptSettings, initEncryption } from '../encryption';
+import { migrateLLMSecretsTransaction } from '../../chat/ipc/chatIPC';
 
 const logger = createLogger('Settings');
 
@@ -76,6 +77,7 @@ export async function loadSettings(): Promise<AppSettings> {
 
   try {
     await ensureEncryption();
+    const storageConfig = getStorageConfig() || (await initStorageConfig());
     const path = await getGlobalPath('settings.json');
     const exists = await electronService.fs.exists(path);
     if (exists) {
@@ -83,7 +85,17 @@ export async function loadSettings(): Promise<AppSettings> {
       let parsed = JSON.parse(data);
       parsed = migrateEncryptedData(parsed);
       const decrypted = await decryptSettings(parsed);
-      return { ...DEFAULT_SETTINGS, ...decrypted };
+      const merged = { ...DEFAULT_SETTINGS, ...decrypted };
+      try {
+        const rootPath = storageConfig.rootPath;
+        const migration = await migrateLLMSecretsTransaction({ rootPath, settings: merged });
+        if (migration.migrated) {
+          return migration.settings as AppSettings;
+        }
+      } catch (migrationErr) {
+        logger.error('loadSettings migration error', migrationErr);
+      }
+      return merged;
     }
   } catch (err) {
     logger.error('loadSettings error', err);

@@ -57,6 +57,7 @@ export interface SessionConfig {
   temperature?: number;
   maxTokens?: number;
   enabledTools?: string[];
+  llmProfileId?: string;
   modelProvider?: 'openai' | 'anthropic' | 'google';
   modelName?: string;
   apiKey?: string;
@@ -170,6 +171,7 @@ function getElectronAPI() {
 export interface LLMQueryRequest {
   messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>;
   config: {
+    profileId?: string;
     modelProvider?: 'openai' | 'anthropic' | 'google';
     modelName?: string;
     apiKey?: string;
@@ -182,6 +184,53 @@ export interface LLMQueryRequest {
     source?: string;
     operation?: string;
   };
+}
+
+export interface LLMConnectionTestRequest {
+  profileId?: string;
+  modelProvider?: 'openai' | 'anthropic' | 'google';
+  modelName?: string;
+  apiKey?: string;
+  baseUrl?: string;
+  temperature?: number;
+  maxTokens?: number;
+}
+
+export interface LLMConnectionTestResponse {
+  success: boolean;
+  error?: {
+    code: 'EMPTY_MESSAGES' | 'TIMEOUT' | 'ABORTED' | 'API_ERROR' | 'UNKNOWN';
+    message: string;
+  };
+}
+
+export interface LLMSaveProfileRequest {
+  profileId: string;
+  apiKey?: string;
+}
+
+export interface SaveLLMChannelConfigTransactionRequest {
+  rootPath: string;
+  editingChannelId?: string;
+  payload: Record<string, unknown>;
+  profileApiKey?: string;
+  shouldUpdateDefault: boolean;
+}
+
+export interface SaveLLMChannelConfigTransactionResponse {
+  success: boolean;
+  channel?: Record<string, unknown>;
+  error?: { message: string };
+}
+
+export interface DeleteLLMChannelConfigTransactionRequest {
+  rootPath: string;
+  channelId: string;
+}
+
+export interface MigrateLLMSecretsTransactionRequest {
+  rootPath: string;
+  settings: Record<string, unknown>;
 }
 
 // NOTE: Keep in sync with LLMQueryResponse in electron/service/chat/LLMQueryService.ts
@@ -225,6 +274,56 @@ export async function llmQuery(request: LLMQueryRequest): Promise<LLMQueryRespon
     throw new LLMQueryError(response.error.code, response.error.message);
   }
   return response;
+}
+
+export async function testLLMConnection(
+  request: LLMConnectionTestRequest,
+): Promise<LLMConnectionTestResponse> {
+  const api = getLLMAPI();
+  return api.testConnection(request);
+}
+
+export async function saveLLMProfile(request: LLMSaveProfileRequest): Promise<void> {
+  const api = getLLMAPI();
+  const result = await api.saveProfile(request);
+  if (!result?.success) {
+    throw new Error(result?.error?.message || 'Failed to save LLM profile');
+  }
+}
+
+export async function deleteLLMProfile(profileId: string): Promise<boolean> {
+  const api = getLLMAPI();
+  const result = await api.deleteProfile(profileId);
+  if (!result?.success) {
+    throw new Error(result?.error?.message || 'Failed to delete LLM profile');
+  }
+  return true;
+}
+
+
+export async function saveLLMChannelConfigTransaction(
+  request: SaveLLMChannelConfigTransactionRequest,
+): Promise<SaveLLMChannelConfigTransactionResponse> {
+  const api = getLLMAPI();
+  return api.saveChannelConfig(request);
+}
+
+export async function deleteLLMChannelConfigTransaction(
+  request: DeleteLLMChannelConfigTransactionRequest,
+): Promise<boolean> {
+  const api = getLLMAPI();
+  const result = await api.deleteChannelConfig(request);
+  if (!result?.success) {
+    throw new Error(result?.error?.message || 'Failed to delete LLM channel config');
+  }
+  return true;
+}
+
+export async function migrateLLMSecretsTransaction(
+  request: MigrateLLMSecretsTransactionRequest,
+): Promise<{ settings: Record<string, unknown>; migrated: boolean }> {
+  const api = getLLMAPI();
+  return api.migrateSettingsSecrets(request);
 }
 
 // ========== 会话管理 ==========

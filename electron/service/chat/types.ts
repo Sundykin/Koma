@@ -45,6 +45,7 @@ export interface SessionConfig {
   temperature?: number;
   maxTokens?: number;
   enabledTools?: string[];
+  llmProfileId?: string;
   modelProvider?: 'openai' | 'anthropic' | 'google';
   modelName?: string;
   apiKey?: string;

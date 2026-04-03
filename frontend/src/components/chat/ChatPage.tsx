@@ -65,10 +65,9 @@ export const ChatPage: React.FC = () => {
 
     const config = {
       systemPrompt,
+      llmProfileId: selectedConfig.profileId,
       modelProvider: selectedConfig.provider as 'openai' | 'anthropic' | 'google',
       modelName: selectedConfig.modelName,
-      apiKey: selectedConfig.apiKey,
-      baseUrl: selectedConfig.baseUrl,
     };
     return config;
   }, [selectedConfig, systemPrompt]);
@@ -173,10 +172,9 @@ export const ChatPage: React.FC = () => {
     if (config && isReady) {
       try {
         await updateConfig({
+          llmProfileId: config.profileId,
           modelProvider: config.provider as 'openai' | 'anthropic' | 'google',
           modelName: config.modelName,
-          apiKey: config.apiKey,
-          baseUrl: config.baseUrl,
         });
       } catch (err: unknown) {
         const errorMessage = err instanceof Error ? err.message : String(err);
