@@ -3,6 +3,7 @@ import {
   getSuggestedITVFieldDefaults,
   getSuggestedITVModels,
   hasConfiguredITVModels,
+  normalizeITVModelsForProvider,
   shouldReplaceITVModelsOnProviderChange,
 } from './itvProviderSuggestions';
 
@@ -63,6 +64,31 @@ describe('itvProviderSuggestions', () => {
     });
   });
 
+  it('returns Seedance model suggestions sourced from the shared provider catalog', () => {
+    const models = getSuggestedITVModels('seedance');
+
+    expect(models.map((model) => model.providerModelName)).toEqual([
+      'seedance-2.0',
+      'seedance-2.0-fast',
+    ]);
+
+    expect(models.every((model) => model.capabilities.includes('video.text-to-video'))).toBe(true);
+    expect(models.every((model) => model.capabilities.includes('video.image-to-video'))).toBe(true);
+    expect(models.every((model) => model.capabilities.includes('video.reference-to-video'))).toBe(true);
+    expect(models.every((model) => model.capabilities.includes('video.start-end-to-video'))).toBe(true);
+    expect(models[0]?.defaults).toEqual({
+      defaultDuration: 5,
+      defaultResolution: '720p',
+    });
+  });
+
+  it('returns provider-level default form fields for Seedance', () => {
+    expect(getSuggestedITVFieldDefaults('seedance')).toEqual({
+      defaultDuration: 5,
+      defaultResolution: '720p',
+    });
+  });
+
   it('detects whether the current form already contains configured model names', () => {
     expect(hasConfiguredITVModels([
       { providerModelName: '' },
@@ -81,5 +107,22 @@ describe('itvProviderSuggestions', () => {
     expect(shouldReplaceITVModelsOnProviderChange([
       { providerModelName: 'kling-v1-6' },
     ], 'kling', 'kling')).toBe(false);
+  });
+
+  it('canonicalizes stale model ids to the selected provider suggestions before save', () => {
+    expect(normalizeITVModelsForProvider([
+      {
+        id: 'vidu1.5',
+        label: 'seedance-2.0',
+        providerModelName: 'seedance-2.0',
+        capabilities: ['video.reference-to-video'],
+      },
+    ] as any, 'seedance')).toEqual([
+      expect.objectContaining({
+        id: 'seedance-2.0',
+        providerModelName: 'seedance-2.0',
+        label: 'seedance-2.0',
+      }),
+    ]);
   });
 });

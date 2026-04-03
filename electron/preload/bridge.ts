@@ -183,7 +183,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
 	      invokeMain('controller/plugin/callProvider', payload),
 	  },
   net: {
-    fetch: (args: { url: string; method?: string; headers?: Record<string, string>; body?: string }) =>
+    fetch: (args: {
+      url: string;
+      method?: string;
+      headers?: Record<string, string>;
+      body?: string;
+      multipart?: {
+        fields: Array<
+          | { kind: 'text'; name: string; value: string }
+          | { kind: 'file'; name: string; filename: string; contentType?: string; base64: string; size: number }
+        >;
+      };
+    }) =>
       invokeMain('controller/net/fetch', args),
   },
   llm: {

@@ -49,6 +49,7 @@ export const ITV_PRESETS: ProviderPreset[] = [
     baseUrl: '',
   },
   { id: 'sora2', name: 'Sora 2', baseUrl: 'https://toapis.com' },
+  { id: 'seedance', name: 'Seedance 2.0', baseUrl: 'https://toapis.com' },
   { id: 'kling', name: '可灵 Kling', baseUrl: 'https://api.klingai.com' },
   { id: 'runway', name: 'Runway', baseUrl: 'https://api.runwayml.com' },
   { id: 'pika', name: 'Pika Labs', baseUrl: 'https://api.pika.art/v1' },

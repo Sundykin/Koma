@@ -167,6 +167,7 @@ export const NODE_PROPERTY_DEFAULTS: Record<LinghuiNodeType, Record<string, unkn
     source: '',
     prompt: '',
     ttsSelection: '',
+    voiceId: '',
   },
   'linghui/script': {
     mode: 'manual',
@@ -196,8 +197,29 @@ export function validateLinghuiConnection(params: {
   targetDataType: LinghuiSlotDataType;
   sourceNodeType?: LinghuiNodeType;
   targetNodeType?: LinghuiNodeType;
+  sourceSlotIndex?: number;
+  targetSlotIndex?: number;
 }): LinghuiConnectionValidationResult {
-  const { sourceDataType, targetDataType, sourceNodeType, targetNodeType } = params;
+  const {
+    sourceDataType,
+    targetDataType,
+    sourceNodeType,
+    targetNodeType,
+    targetSlotIndex,
+  } = params;
+
+  if (
+    sourceDataType === 'image'
+    && targetDataType === 'image'
+    && targetSlotIndex === 0
+    && (targetNodeType === 'linghui/text' || targetNodeType === 'linghui/audio' || targetNodeType === 'linghui/script')
+  ) {
+    const targetNodeLabel = NODE_META[targetNodeType]?.title ?? '当前节点';
+    return {
+      valid: false,
+      message: `${targetNodeLabel}节点当前不会消费图片输入，请改用可被执行层读取的文本或媒体结果。`,
+    };
+  }
 
   if (sourceDataType === targetDataType) {
     return { valid: true };
@@ -242,6 +264,8 @@ export function isLinghuiConnectionValid(
     targetDataType: targetSlot.dataType,
     sourceNodeType: sourceNode.data.linghuiType,
     targetNodeType: targetNode.data.linghuiType,
+    sourceSlotIndex: sourceHandle.index,
+    targetSlotIndex: targetHandle.index,
   });
 }
 

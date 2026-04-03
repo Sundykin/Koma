@@ -38,7 +38,7 @@ export function compileLinghuiMultiAnglePrompt(params: {
     : `<sks> ${azimuth.prompt} ${elevation.prompt} ${distance.prompt}`;
 
   return {
-    compiledPrompt: joinPromptLines([anglePrompt]),
+    compiledPrompt: joinPromptLines([params.prompt, anglePrompt]),
     anglePrompt,
     summary: `${azimuth.label} / ${elevation.label} / ${distance.label}`,
     tokens: {

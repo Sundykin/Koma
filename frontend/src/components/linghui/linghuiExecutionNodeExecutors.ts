@@ -1,4 +1,5 @@
 import {
+  getLinghuiResultPrimaryMedia,
   type LinghuiAudioNodeProperties,
   type LinghuiImageNodeProperties,
   type LinghuiNodeResult,
@@ -35,6 +36,9 @@ import {
   getVideoCapabilityInputError,
   resolveVideoCapabilitySources,
 } from './videoCapabilityUtils';
+import { createLogger } from '../../store/logger';
+
+const imageExecutionLogger = createLogger('LinghuiImageExecution');
 
 const DEFAULT_SCRIPT_SYSTEM_PROMPT = [
   '你是灵绘的分镜脚本助手。',
@@ -42,6 +46,19 @@ const DEFAULT_SCRIPT_SYSTEM_PROMPT = [
   '输出格式必须是 {"shots":[{"title":"镜头标题","description":"画面描述","durationSec":3}] }。',
   '至少生成 3 个镜头，描述需要明确主体、动作、构图和氛围。',
 ].join('\n');
+
+function buildScriptSystemPrompt(systemPrompt: string): string {
+  const normalized = String(systemPrompt).trim();
+  if (!normalized) {
+    return DEFAULT_SCRIPT_SYSTEM_PROMPT;
+  }
+
+  return [
+    DEFAULT_SCRIPT_SYSTEM_PROMPT,
+    '在严格遵守上述 JSON 输出要求的前提下，请额外满足以下要求：',
+    normalized,
+  ].join('\n\n');
+}
 
 export async function executeTextNode(
   node: ExecutionNodeView,
@@ -91,6 +108,7 @@ export async function executeTextNode(
     prompt: promptWithRefs,
     systemPrompt: String(systemPrompt).trim(),
     llmSelection: String(llmSelection),
+    settingsSnapshot: node.settingsSnapshot,
     signal,
   });
 
@@ -116,7 +134,7 @@ export async function executeImageNode(
   const prompt = String(node.properties.prompt ?? '').trim();
   const ttiSelection = String(node.properties.ttiSelection ?? '');
   const batchCount = Math.max(1, Math.min(4, Number(node.properties.batchCount ?? 1)));
-  const multiAngleConfig = properties.multiAngle?.enabled
+  const multiAngleConfig = properties.multiAngle?.enabled === true
     ? {
         endpointPath: properties.multiAngle.endpointPath,
         promptProtocol: properties.multiAngle.promptProtocol,
@@ -144,37 +162,53 @@ export async function executeImageNode(
       metadata: item.aspectRatio ? { aspectRatio: item.aspectRatio } : undefined,
     }));
     const primary = items.find(item => item.source === primaryImport?.source) ?? items[0];
+    const metadata = { source: primary?.source ?? source, mode: 'import', itemCount: items.length };
+
+    if (items.length > 1) {
+      return {
+        kind: 'images',
+        primary,
+        items,
+        metadata,
+      };
+    }
 
     return {
-      kind: items.length > 1 ? 'images' : 'image',
+      kind: 'image',
       primary,
-      items: items.length > 1 ? items : undefined,
-      metadata: { source: primary?.source ?? source, mode: 'import', itemCount: items.length },
+      metadata,
     };
   }
 
   const referenceSources = collectReferenceSources(node.getAllInputImages());
-  const silentReferenceSources: string[] = [];
   const textSnippets = collectTextSnippets(node.getAllInputResults(1));
   const promptReferences = node.getPromptReferences();
+  const explicitPrompt = mergePromptWithTextInputs(prompt, textSnippets);
   const effectivePrompt = mergePromptWithTextInputs(prompt || node.title, textSnippets);
   const count = batchCount;
 
   if (multiAngleConfig) {
     if (!referenceSources.length) {
+      imageExecutionLogger.warn('灵绘图片节点多角度执行缺少上游图片，保持失败', {
+        nodeId: node.id,
+        title: node.title,
+        promptLength: explicitPrompt.trim().length,
+        textInputCount: textSnippets.length,
+        ttiSelection,
+      });
       throw new Error('多角度生图需要先连接一张上游图片');
     }
 
     const image = await generateImageWithProvider({
-      prompt: '',
+      prompt: explicitPrompt,
       referenceSources,
-      silentReferenceSources,
       ttiSelection,
       promptReferences: [],
+      settingsSnapshot: node.settingsSnapshot,
       multiAngle: multiAngleConfig,
       onProgress,
       placeholderTitle: node.title,
-      placeholderSubtitle: '多角度图片占位预览',
+      placeholderSubtitle: prompt || '多角度图片占位预览',
       accent: '#4ade80',
       signal,
     });
@@ -183,7 +217,7 @@ export async function executeImageNode(
       kind: 'image',
       primary: image,
       metadata: {
-        prompt: '',
+        prompt,
         mode: 'multi-angle',
         multiAngle: properties.multiAngle,
       },
@@ -197,9 +231,9 @@ export async function executeImageNode(
         const image = await generateImageWithProvider({
           prompt: effectivePrompt,
           referenceSources,
-          silentReferenceSources,
           ttiSelection,
           promptReferences,
+          settingsSnapshot: node.settingsSnapshot,
           onProgress: progress => onProgress?.(Math.round((index / count) * 100 + progress / count), `${label} 生成中`),
           placeholderTitle: label,
           placeholderSubtitle: prompt || '占位预览',
@@ -221,9 +255,9 @@ export async function executeImageNode(
   const image = await generateImageWithProvider({
     prompt: effectivePrompt,
     referenceSources,
-    silentReferenceSources,
     ttiSelection,
     promptReferences,
+    settingsSnapshot: node.settingsSnapshot,
     onProgress,
     placeholderTitle: node.title,
     placeholderSubtitle: prompt || '图片占位预览',
@@ -286,8 +320,9 @@ export async function executeScriptNode(node: ExecutionNodeView, signal?: AbortS
 
   const generatedText = await generateTextWithProvider({
     prompt: compiledPrompt,
-    systemPrompt: String(systemPrompt).trim() || DEFAULT_SCRIPT_SYSTEM_PROMPT,
+    systemPrompt: buildScriptSystemPrompt(systemPrompt),
     llmSelection: String(llmSelection),
+    settingsSnapshot: node.settingsSnapshot,
     signal,
   });
   const parsed = parseLinghuiScriptContent(generatedText);
@@ -370,6 +405,7 @@ export async function executeVideoNode(
     itvSelection,
     promptReferences,
     primaryReferenceId,
+    settingsSnapshot: node.settingsSnapshot,
     onProgress,
     signal,
   });
@@ -383,7 +419,7 @@ export async function executeVideoNode(
       duration,
       aspectRatio,
       resolution,
-      audioSource: node.getInputResult(2)?.primary?.source,
+      audioSource: getLinghuiResultPrimaryMedia(node.getInputResult(2))?.source,
       visualReferenceCount: resolvedSources.visualSources.length,
       imageReferenceCount: imageReferenceSources.length,
       videoReferenceCount: videoPosterSources.length,
@@ -396,9 +432,15 @@ export async function executeAudioNode(
   onProgress?: (progress: number, message?: string) => void,
   signal?: AbortSignal,
 ): Promise<LinghuiNodeResult> {
-  const { source = '', prompt = '', ttsSelection = '' } = node.properties as unknown as LinghuiAudioNodeProperties;
+  const {
+    source = '',
+    prompt = '',
+    ttsSelection = '',
+    voiceId = '',
+  } = node.properties as unknown as LinghuiAudioNodeProperties;
   const normalizedSource = String(source).trim();
   const normalizedPrompt = String(prompt).trim();
+  const normalizedVoiceId = String(voiceId).trim();
 
   if (normalizedSource) {
     return {
@@ -446,6 +488,8 @@ export async function executeAudioNode(
   const audio = await generateAudioWithProvider({
     text: compiledPrompt,
     ttsSelection: String(ttsSelection),
+    voiceId: normalizedVoiceId || undefined,
+    settingsSnapshot: node.settingsSnapshot,
     onProgress,
     signal,
   });
@@ -460,6 +504,7 @@ export async function executeAudioNode(
     metadata: {
       prompt: normalizedPrompt,
       compiledPrompt,
+      voiceId: normalizedVoiceId || undefined,
       mode: 'tts',
       upstreamTextCount: textSnippets.length,
     },

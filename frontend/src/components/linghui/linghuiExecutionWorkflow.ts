@@ -61,12 +61,17 @@ function collectRequiredNodeIds(edges: LinghuiRFEdgeSnapshot[], targetNodeIds: s
   return [...required];
 }
 
-function topologicalSort(
+function compareExecutionNodePosition(a: LinghuiRFNodeSnapshot, b: LinghuiRFNodeSnapshot): number {
+  return a.position.x - b.position.x || a.position.y - b.position.y;
+}
+
+function buildTopologicalLayers(
   nodes: LinghuiRFNodeSnapshot[],
   edges: LinghuiRFEdgeSnapshot[],
   requiredNodeIds: Set<string>,
-): LinghuiRFNodeSnapshot[] {
+): LinghuiRFNodeSnapshot[][] {
   const filteredNodes = nodes.filter(node => requiredNodeIds.has(node.id));
+  const nodeById = new Map(filteredNodes.map(node => [node.id, node] as const));
   const indegree = new Map<string, number>();
   const adjacency = new Map<string, Set<string>>();
 
@@ -81,31 +86,54 @@ function topologicalSort(
     indegree.set(edge.target, (indegree.get(edge.target) ?? 0) + 1);
   }
 
-  const queue = filteredNodes
+  let currentLayer = filteredNodes
     .filter(node => (indegree.get(node.id) ?? 0) === 0)
-    .sort((a, b) => a.position.x - b.position.x || a.position.y - b.position.y);
+    .sort(compareExecutionNodePosition);
+  const layers: LinghuiRFNodeSnapshot[][] = [];
   const ordered: LinghuiRFNodeSnapshot[] = [];
 
-  while (queue.length > 0) {
-    const node = queue.shift()!;
-    ordered.push(node);
+  while (currentLayer.length > 0) {
+    layers.push(currentLayer);
+    ordered.push(...currentLayer);
 
-    for (const nextId of adjacency.get(node.id) ?? []) {
-      const nextDegree = (indegree.get(nextId) ?? 0) - 1;
-      indegree.set(nextId, nextDegree);
-      if (nextDegree === 0) {
-        const nextNode = filteredNodes.find(item => item.id === nextId);
-        if (nextNode) queue.push(nextNode);
+    const nextLayer: LinghuiRFNodeSnapshot[] = [];
+    for (const node of currentLayer) {
+      for (const nextId of adjacency.get(node.id) ?? []) {
+        const nextDegree = (indegree.get(nextId) ?? 0) - 1;
+        indegree.set(nextId, nextDegree);
+        if (nextDegree === 0) {
+          const nextNode = nodeById.get(nextId);
+          if (nextNode) nextLayer.push(nextNode);
+        }
       }
     }
+
+    currentLayer = nextLayer.sort(compareExecutionNodePosition);
   }
 
   if (ordered.length === filteredNodes.length) {
-    return ordered;
+    return layers;
   }
 
   const orderedSet = new Set(ordered.map(node => node.id));
-  return [...ordered, ...filteredNodes.filter(node => !orderedSet.has(node.id))];
+  const cyclicNodes = filteredNodes.filter(node => !orderedSet.has(node.id));
+  const cyclicNodeLabels = cyclicNodes.map(node => node.data.label || node.id);
+  throw new Error(`工作流存在循环依赖，请检查这些节点：${cyclicNodeLabels.join('、')}`);
+}
+
+function withRunningNodeIds(
+  queue: LinghuiExecutionQueueState,
+  runningNodeIds: string[],
+): LinghuiExecutionQueueState {
+  return {
+    ...queue,
+    runningNodeIds,
+    runningNodeId: runningNodeIds[0],
+  };
+}
+
+function withoutNodeId(items: string[], nodeId: string): string[] {
+  return items.filter(id => id !== nodeId);
 }
 
 export interface ExecuteLinghuiWorkflowOptions {
@@ -157,13 +185,15 @@ export async function executeLinghuiWorkflow(options: ExecuteLinghuiWorkflowOpti
       ? normalizedTargetIds
       : collectRequiredNodeIds(context.edges, normalizedTargetIds),
   );
-  const orderedNodes = topologicalSort(context.nodes, context.edges, requiredNodeIds);
+  const executionLayers = buildTopologicalLayers(context.nodes, context.edges, requiredNodeIds);
+  const orderedNodes = executionLayers.flat();
   const nextRuns: Record<string, LinghuiNodeRunState> = { ...previousRuns };
   let queueState: LinghuiExecutionQueueState = {
     status: orderedNodes.length > 0 ? 'running' : 'completed',
     total: orderedNodes.length,
     targetNodeIds: normalizedTargetIds,
     queuedNodeIds: orderedNodes.map(node => node.id),
+    runningNodeIds: [],
     runningNodeId: undefined,
     completedNodeIds: [],
     failedNodeIds: [],
@@ -180,20 +210,20 @@ export async function executeLinghuiWorkflow(options: ExecuteLinghuiWorkflowOpti
     onQueueChange?.(queueState);
   };
 
-  const cancelExecution = (currentNodeId?: string): ExecuteLinghuiWorkflowResult => {
+  const cancelExecution = (currentNodeIds: string[] = []): ExecuteLinghuiWorkflowResult => {
     const canceledIds = [
       ...queueState.canceledNodeIds,
-      ...(currentNodeId ? [currentNodeId] : []),
+      ...currentNodeIds,
+      ...queueState.runningNodeIds,
       ...queueState.queuedNodeIds,
     ];
 
-    emitQueueChange(current => ({
+    emitQueueChange(current => withRunningNodeIds({
       ...current,
       status: 'canceled',
       queuedNodeIds: [],
-      runningNodeId: undefined,
       canceledNodeIds: [...new Set(canceledIds)],
-    }));
+    }, []));
 
     return {
       runs: nextRuns,
@@ -210,139 +240,168 @@ export async function executeLinghuiWorkflow(options: ExecuteLinghuiWorkflowOpti
     };
   }
 
-  for (const snapshot of orderedNodes) {
+  for (const layer of executionLayers) {
     if (signal?.aborted) {
       onLog?.(createLog('info', '已取消当前执行队列'));
       return cancelExecution();
     }
 
-    const nodeId = snapshot.id;
-    const upstreamIds = getDirectUpstreamNodeIds(context.edges, nodeId);
-    const upstreamFailure = upstreamIds.find(upstreamId => nextRuns[upstreamId]?.status === 'failed');
+    const blockedNodeIds: string[] = [];
+    const runnableNodes = layer.flatMap(snapshot => {
+      const nodeId = snapshot.id;
+      const upstreamIds = getDirectUpstreamNodeIds(context.edges, nodeId);
+      const upstreamFailure = upstreamIds.find(upstreamId => nextRuns[upstreamId]?.status === 'failed');
 
-    if (upstreamFailure) {
-      const failedState: LinghuiNodeRunState = {
-        status: 'failed',
-        error: '上游节点执行失败',
-        updatedAt: Date.now(),
-        upstreamIds,
-      };
-      nextRuns[nodeId] = failedState;
-      onNodeStateChange?.(nodeId, failedState);
-      onLog?.(createLog('error', `${snapshot.data.label} 未执行：上游依赖失败`, nodeId));
-      emitQueueChange(current => ({
-        ...current,
-        queuedNodeIds: current.queuedNodeIds.filter(id => id !== nodeId),
-        failedNodeIds: [...current.failedNodeIds, nodeId],
-      }));
-      continue;
-    }
-
-    emitQueueChange(current => ({
-      ...current,
-      status: signal?.aborted ? 'canceling' : 'running',
-      queuedNodeIds: current.queuedNodeIds.filter(id => id !== nodeId),
-      runningNodeId: nodeId,
-    }));
-
-    const runningState: LinghuiNodeRunState = {
-      status: 'running',
-      progress: 0,
-      message: '准备执行',
-      startedAt: Date.now(),
-      updatedAt: Date.now(),
-      upstreamIds,
-      result: previousRuns[nodeId]?.result,
-    };
-    nextRuns[nodeId] = runningState;
-    onNodeStateChange?.(nodeId, runningState);
-    onLog?.(createLog('info', `开始执行 ${snapshot.data.label}`, nodeId));
-
-    const nodeView = createNodeView(context, snapshot);
-
-    try {
-      throwIfExecutionAborted(signal);
-      const result = await executeNode(nodeView, (progress, message) => {
-        throwIfExecutionAborted(signal);
-        const nextState: LinghuiNodeRunState = {
-          ...nextRuns[nodeId],
-          status: 'running',
-          progress,
-          message,
+      if (upstreamFailure) {
+        const failedState: LinghuiNodeRunState = {
+          status: 'failed',
+          error: '上游节点执行失败',
           updatedAt: Date.now(),
           upstreamIds,
         };
-        nextRuns[nodeId] = nextState;
-        onNodeStateChange?.(nodeId, nextState);
-      }, signal);
-      throwIfExecutionAborted(signal);
-
-      context.nodeOutputs[nodeId] = result;
-      const successState: LinghuiNodeRunState = {
-        status: 'succeeded',
-        progress: 100,
-        message: '执行完成',
-        result,
-        startedAt: runningState.startedAt,
-        updatedAt: Date.now(),
-        upstreamIds,
-      };
-      nextRuns[nodeId] = successState;
-      onNodeStateChange?.(nodeId, successState);
-      onLog?.(createLog('success', `${snapshot.data.label} 执行完成`, nodeId));
-      emitQueueChange(current => ({
-        ...current,
-        runningNodeId: undefined,
-        completedNodeIds: [...current.completedNodeIds, nodeId],
-      }));
-    } catch (error: unknown) {
-      if (isLinghuiExecutionCancelledError(error) || signal?.aborted) {
-        const fallbackState = previousRuns[nodeId]
-          ? {
-              ...previousRuns[nodeId],
-              message: '执行已取消',
-              updatedAt: Date.now(),
-              upstreamIds,
-            }
-          : {
-              status: 'idle' as const,
-              message: '执行已取消',
-              updatedAt: Date.now(),
-              upstreamIds,
-            };
-        nextRuns[nodeId] = fallbackState;
-        onNodeStateChange?.(nodeId, fallbackState);
-        onLog?.(createLog('info', `${snapshot.data.label} 已取消执行`, nodeId));
-        return cancelExecution(nodeId);
+        nextRuns[nodeId] = failedState;
+        onNodeStateChange?.(nodeId, failedState);
+        onLog?.(createLog('error', `${snapshot.data.label} 未执行：上游依赖失败`, nodeId));
+        blockedNodeIds.push(nodeId);
+        return [];
       }
 
-      const failedState: LinghuiNodeRunState = {
-        status: 'failed',
-        progress: 100,
-        error: (error as { message?: string } | undefined)?.message || '执行失败',
-        message: '执行失败',
-        result: previousRuns[nodeId]?.result,
-        startedAt: runningState.startedAt,
+      return [{ snapshot, nodeId, upstreamIds }];
+    });
+
+    if (blockedNodeIds.length > 0) {
+      const blockedNodeIdSet = new Set(blockedNodeIds);
+      emitQueueChange(current => withRunningNodeIds({
+        ...current,
+        queuedNodeIds: current.queuedNodeIds.filter(id => !blockedNodeIdSet.has(id)),
+        failedNodeIds: [...current.failedNodeIds, ...blockedNodeIds],
+      }, current.runningNodeIds));
+    }
+
+    if (!runnableNodes.length) {
+      continue;
+    }
+
+    const layerNodeIds = runnableNodes.map(node => node.nodeId);
+    const layerNodeIdSet = new Set(layerNodeIds);
+    emitQueueChange(current => withRunningNodeIds({
+      ...current,
+      status: signal?.aborted ? 'canceling' : 'running',
+      queuedNodeIds: current.queuedNodeIds.filter(id => !layerNodeIdSet.has(id)),
+    }, [...current.runningNodeIds, ...layerNodeIds]));
+
+    const outcomes = await Promise.all(runnableNodes.map(async ({
+      snapshot,
+      nodeId,
+      upstreamIds,
+    }) => {
+      const runningState: LinghuiNodeRunState = {
+        status: 'running',
+        progress: 0,
+        message: '准备执行',
+        startedAt: Date.now(),
         updatedAt: Date.now(),
         upstreamIds,
+        result: previousRuns[nodeId]?.result,
       };
-      nextRuns[nodeId] = failedState;
-      onNodeStateChange?.(nodeId, failedState);
-      onLog?.(createLog('error', `${snapshot.data.label} 执行失败：${failedState.error}`, nodeId));
-      emitQueueChange(current => ({
-        ...current,
-        runningNodeId: undefined,
-        failedNodeIds: [...current.failedNodeIds, nodeId],
-      }));
+      nextRuns[nodeId] = runningState;
+      onNodeStateChange?.(nodeId, runningState);
+      onLog?.(createLog('info', `开始执行 ${snapshot.data.label}`, nodeId));
+
+      const nodeView = createNodeView(context, snapshot);
+
+      try {
+        throwIfExecutionAborted(signal);
+        const result = await executeNode(nodeView, (progress, message) => {
+          throwIfExecutionAborted(signal);
+          const nextState: LinghuiNodeRunState = {
+            ...nextRuns[nodeId],
+            status: 'running',
+            progress,
+            message,
+            updatedAt: Date.now(),
+            upstreamIds,
+          };
+          nextRuns[nodeId] = nextState;
+          onNodeStateChange?.(nodeId, nextState);
+        }, signal);
+        throwIfExecutionAborted(signal);
+
+        context.nodeOutputs[nodeId] = result;
+        const successState: LinghuiNodeRunState = {
+          status: 'succeeded',
+          progress: 100,
+          message: '执行完成',
+          result,
+          startedAt: runningState.startedAt,
+          updatedAt: Date.now(),
+          upstreamIds,
+        };
+        nextRuns[nodeId] = successState;
+        onNodeStateChange?.(nodeId, successState);
+        onLog?.(createLog('success', `${snapshot.data.label} 执行完成`, nodeId));
+        emitQueueChange(current => withRunningNodeIds({
+          ...current,
+          completedNodeIds: [...current.completedNodeIds, nodeId],
+        }, withoutNodeId(current.runningNodeIds, nodeId)));
+        return { nodeId, status: 'succeeded' as const };
+      } catch (error: unknown) {
+        if (isLinghuiExecutionCancelledError(error) || signal?.aborted) {
+          const fallbackState = previousRuns[nodeId]
+            ? {
+                ...previousRuns[nodeId],
+                message: '执行已取消',
+                updatedAt: Date.now(),
+                upstreamIds,
+              }
+            : {
+                status: 'idle' as const,
+                message: '执行已取消',
+                updatedAt: Date.now(),
+                upstreamIds,
+              };
+          nextRuns[nodeId] = fallbackState;
+          onNodeStateChange?.(nodeId, fallbackState);
+          onLog?.(createLog('info', `${snapshot.data.label} 已取消执行`, nodeId));
+          emitQueueChange(current => withRunningNodeIds(current, withoutNodeId(current.runningNodeIds, nodeId)));
+          return { nodeId, status: 'canceled' as const };
+        }
+
+        const failedState: LinghuiNodeRunState = {
+          status: 'failed',
+          progress: 100,
+          error: (error as { message?: string } | undefined)?.message || '执行失败',
+          message: '执行失败',
+          result: previousRuns[nodeId]?.result,
+          startedAt: runningState.startedAt,
+          updatedAt: Date.now(),
+          upstreamIds,
+        };
+        nextRuns[nodeId] = failedState;
+        onNodeStateChange?.(nodeId, failedState);
+        onLog?.(createLog('error', `${snapshot.data.label} 执行失败：${failedState.error}`, nodeId));
+        emitQueueChange(current => withRunningNodeIds({
+          ...current,
+          failedNodeIds: [...current.failedNodeIds, nodeId],
+        }, withoutNodeId(current.runningNodeIds, nodeId)));
+        return { nodeId, status: 'failed' as const };
+      }
+    }));
+
+    const canceledNodeIds = outcomes
+      .filter(outcome => outcome.status === 'canceled')
+      .map(outcome => outcome.nodeId);
+    if (signal?.aborted || canceledNodeIds.length > 0) {
+      onLog?.(createLog('info', '已取消当前执行队列'));
+      return cancelExecution(canceledNodeIds);
     }
   }
 
-  emitQueueChange(current => ({
+  emitQueueChange(current => withRunningNodeIds({
     ...current,
     status: current.failedNodeIds.length > 0 ? 'failed' : 'completed',
-    runningNodeId: undefined,
     queuedNodeIds: [],
-  }));
+  }, []));
 
   return {
     runs: nextRuns,

@@ -16,6 +16,7 @@ import { createProviderInstance, getProjectImageHostingProvider, listProviders }
 import type { ImageHostingProvider, ImageHostingUploadOptions, ImageHostingUploadResult } from '../providers/imageHosting/types';
 
 const logger = createLogger('ImageHosting');
+const IMAGE_HOSTING_UPLOAD_TIMEOUT_MS = 60_000;
 
 let _recovering: Promise<void> | null = null;
 
@@ -23,6 +24,22 @@ import { base64ToBytes } from '../utils/encoding';
 
 function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(message)), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer) {
+      clearTimeout(timer);
+    }
+  }
 }
 
 export async function getActiveImageHostingChannel() {
@@ -194,15 +211,33 @@ export async function uploadBytesToImageHostingWithRetry(
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        const result = await electronService.ipc.invoke('controller/plugin/callProvider', {
-          kind: 'image-hosting',
-          type: channel.providerType,
-          method: 'uploadImage',
-          args: [channel.providerConfig || {}, payloadBytes, options],
+        logger.info('图床后端 Provider 上传开始', {
+          providerType: channel.providerType,
+          attempt,
+          bytes: payloadBytes.byteLength,
+          filename: options?.filename,
         });
+        const result = await withTimeout(
+          electronService.ipc.invoke('controller/plugin/callProvider', {
+            kind: 'image-hosting',
+            type: channel.providerType,
+            method: 'uploadImage',
+            args: [channel.providerConfig || {}, payloadBytes, options],
+          }),
+          IMAGE_HOSTING_UPLOAD_TIMEOUT_MS,
+          `图床上传超时（>${IMAGE_HOSTING_UPLOAD_TIMEOUT_MS / 1000} 秒）`,
+        );
 
         const normalized = result as ImageHostingUploadResult | null;
-        if (normalized?.success) return normalized;
+        if (normalized?.success) {
+          logger.info('图床后端 Provider 上传成功', {
+            providerType: channel.providerType,
+            attempt,
+            url: normalized.url,
+            filename: options?.filename,
+          });
+          return normalized;
+        }
         if (normalized && typeof normalized === 'object') {
           lastBackendError = normalized.error || `未返回 success=true，原始结果: ${JSON.stringify(normalized)}`;
           logger.warn('图床后端 Provider 返回非成功结果', {
@@ -275,8 +310,24 @@ export async function uploadBytesToImageHostingWithRetry(
   let lastError = '';
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      const result = await provider.uploadImage(bytes, options);
+      logger.info('图床前端 Provider 上传开始', {
+        providerType: provider.type,
+        attempt,
+        bytes: bytes instanceof Uint8Array ? bytes.byteLength : bytes.byteLength,
+        filename: options?.filename,
+      });
+      const result = await withTimeout(
+        provider.uploadImage(bytes, options),
+        IMAGE_HOSTING_UPLOAD_TIMEOUT_MS,
+        `图床上传超时（>${IMAGE_HOSTING_UPLOAD_TIMEOUT_MS / 1000} 秒）`,
+      );
       if (result.success) {
+        logger.info('图床前端 Provider 上传成功', {
+          providerType: provider.type,
+          attempt,
+          url: result.url,
+          filename: options?.filename,
+        });
         return result;
       }
       lastError = result.error || '未知错误';

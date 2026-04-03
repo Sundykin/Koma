@@ -104,4 +104,5 @@ describe('settings/core loadSettings', () => {
     });
     expect(settings.channelConfigs).toEqual([{ id: 'channel-1' }]);
   });
+
 });

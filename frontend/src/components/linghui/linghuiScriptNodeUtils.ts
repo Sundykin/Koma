@@ -1,5 +1,5 @@
 import type {
-  LinghuiMediaItem,
+  LinghuiImageMediaItem,
   LinghuiStoryboardFrame,
 } from '../../types/linghui';
 
@@ -16,7 +16,7 @@ function toDurationSec(value: unknown, fallback = 3): number {
   return Number.isFinite(normalized) && normalized > 0 ? normalized : fallback;
 }
 
-function normalizeMediaItem(value: unknown): LinghuiMediaItem | undefined {
+function normalizeMediaItem(value: unknown): LinghuiImageMediaItem | undefined {
   if (typeof value === 'string' && value.trim()) {
     return {
       kind: 'image',
@@ -208,7 +208,8 @@ function parsePlainTextToShots(text: string): LinghuiStoryboardFrame[] {
       .filter(Boolean) as LinghuiStoryboardFrame[];
   }
 
-  return parsePlainBlock(text, 0) ? [parsePlainBlock(text, 0)!] : [];
+  const parsed = parsePlainBlock(text, 0);
+  return parsed ? [parsed] : [];
 }
 
 export function formatLinghuiScriptShots(shots: LinghuiStoryboardFrame[]): string {

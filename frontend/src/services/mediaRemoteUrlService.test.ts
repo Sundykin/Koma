@@ -54,5 +54,30 @@ describe('mediaRemoteUrlService.ensureRemoteUrlForImageAsset', () => {
       })
     ).rejects.toThrow('nope');
   });
-});
 
+  it('uploads multiple image sources sequentially with unique filenames', async () => {
+    const { uploadBytesToImageHostingWithRetry } = await import('./imageHostingService');
+    const uploadMock = uploadBytesToImageHostingWithRetry as any;
+    uploadMock
+      .mockResolvedValueOnce({ success: true, url: 'https://cdn.example.com/1.png' })
+      .mockResolvedValueOnce({ success: true, url: 'https://cdn.example.com/2.png' });
+
+    const { ensureRemoteUrlForImageSources } = await import('./mediaRemoteUrlService');
+
+    const result = await ensureRemoteUrlForImageSources({
+      projectId: 'p1',
+      policy: 'required',
+      sources: [
+        'data:image/jpeg;base64,AA==',
+        'data:image/jpeg;base64,BB==',
+      ],
+    });
+
+    expect(result).toEqual([
+      'https://cdn.example.com/1.png',
+      'https://cdn.example.com/2.png',
+    ]);
+    expect(uploadMock.mock.calls[0][1]).toEqual({ filename: 'image-1.png' });
+    expect(uploadMock.mock.calls[1][1]).toEqual({ filename: 'image-2.png' });
+  });
+});

@@ -18,6 +18,7 @@ import type {
   LinghuiVideoNodeProperties,
   LinghuiVideoToolKey,
 } from '../../types/linghui';
+import { getLinghuiResultPrimaryMedia } from '../../types/linghui';
 import { AudioNodeEditor } from './AudioNodeEditor';
 import { ImageNodeEditor } from './ImageNodeEditor';
 import { ScriptNodeEditor } from './ScriptNodeEditor';
@@ -291,10 +292,11 @@ export const LinghuiNodeEditor: React.FC<LinghuiNodeEditorProps> = ({
       if (edge.targetHandle !== 'input-3') continue;
 
       const result = nodeRuns[edge.source]?.result;
+      const primary = getLinghuiResultPrimaryMedia(result);
       const sourceNodeData = nodeDataMap.get(edge.source);
       const props = sourceNodeData?.properties as unknown as LinghuiVideoNodeProperties | undefined;
-      const source = String(result?.primary?.source ?? props?.source ?? '').trim();
-      const posterSource = String(result?.primary?.posterSource ?? props?.posterSource ?? '').trim();
+      const source = String(primary?.source ?? props?.source ?? '').trim();
+      const posterSource = String(primary?.posterSource ?? props?.posterSource ?? '').trim();
       const key = posterSource || source;
 
       if (!key || dedupe.has(key)) continue;
@@ -303,7 +305,7 @@ export const LinghuiNodeEditor: React.FC<LinghuiNodeEditorProps> = ({
       refs.push({
         source,
         posterSource,
-        label: result?.primary?.label || sourceNodeData?.label || `视频 ${refs.length + 1}`,
+        label: primary?.label || sourceNodeData?.label || `视频 ${refs.length + 1}`,
       });
     }
 
@@ -326,15 +328,16 @@ export const LinghuiNodeEditor: React.FC<LinghuiNodeEditorProps> = ({
       if (edge.targetHandle !== 'input-2') continue;
 
       const result = nodeRuns[edge.source]?.result;
+      const primary = getLinghuiResultPrimaryMedia(result);
       const sourceNodeData = nodeDataMap.get(edge.source);
       const props = sourceNodeData?.properties as unknown as LinghuiAudioNodeProperties | undefined;
-      const source = String(result?.primary?.source ?? props?.source ?? '').trim();
+      const source = String(primary?.source ?? props?.source ?? '').trim();
       if (!source || dedupe.has(source)) continue;
 
       dedupe.add(source);
       refs.push({
         source,
-        label: result?.primary?.label || sourceNodeData?.label || `音频 ${refs.length + 1}`,
+        label: primary?.label || sourceNodeData?.label || `音频 ${refs.length + 1}`,
       });
     }
 

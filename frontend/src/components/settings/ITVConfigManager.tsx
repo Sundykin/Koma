@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback, useMemo, useRef } from 'react';
 import {
   App,
   Button,
@@ -53,6 +53,7 @@ import {
   getSuggestedITVFieldDefaults,
   getSuggestedITVModels,
   hasConfiguredITVModels,
+  normalizeITVModelsForProvider,
   shouldReplaceITVModelsOnProviderChange,
 } from './itvProviderSuggestions';
 import { useMediaConfigManager } from './useMediaConfigManager';
@@ -71,6 +72,7 @@ const CAPABILITY_LABELS: Record<string, string> = {
 function getProviderColor(provider: string) {
   switch (provider) {
     case 'vidu': return 'volcano';
+    case 'seedance': return 'cyan';
     case 'runway': return 'blue';
     case 'kling': return 'purple';
     case 'pika': return 'magenta';
@@ -135,6 +137,7 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
   } = useMediaConfigManager<ITVModelConfig>('itv', loadBuiltins, onConfigChange);
 
   const currentProviderType = Form.useWatch('providerType', form) as string | undefined;
+  const previousProviderTypeRef = useRef<string | undefined>(undefined);
   const currentDefinition = currentProviderType ? definitionMap.get(currentProviderType) : undefined;
   const watchedModels = Form.useWatch('models', form) as Array<Partial<ChannelModelDefinition>> | undefined;
   const modelOptions = useMemo(() => (
@@ -184,10 +187,14 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
       const formValues = buildChannelFormValues(config.channel, config.definition);
       const suggestedModels = getSuggestedITVModels(config.channel.providerType);
       const shouldUseSuggestedModels = suggestedModels.length > 0 && !hasConfiguredITVModels(config.channel.models);
-      const models = shouldUseSuggestedModels ? suggestedModels : formValues.models;
+      const models = normalizeITVModelsForProvider(
+        shouldUseSuggestedModels ? suggestedModels : formValues.models,
+        config.channel.providerType,
+      );
       const defaultModelId = models.some((model) => model.id === formValues.defaultModelId)
         ? formValues.defaultModelId
         : models[0]?.id;
+      previousProviderTypeRef.current = config.channel.providerType;
       form.setFieldsValue({
         ...getSuggestedITVFieldDefaults(config.channel.providerType),
         ...formValues,
@@ -200,6 +207,7 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
       const modelId = suggestedModels[0]?.id || generateId();
       setEditingChannel(null);
       form.resetFields();
+      previousProviderTypeRef.current = firstDefinition?.id;
       form.setFieldsValue({
         providerType: firstDefinition?.id,
         ...getChannelDefaults(firstDefinition),
@@ -226,21 +234,25 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
 
     const existingModels = form.getFieldValue('models');
     const suggestedModels = getSuggestedITVModels(providerType);
-    const previousProviderType = String(form.getFieldValue('providerType') || '').trim() || undefined;
-    const normalizedModels = suggestedModels.length > 0 && shouldReplaceITVModelsOnProviderChange(
+    const previousProviderType = previousProviderTypeRef.current;
+    const shouldReplace = suggestedModels.length > 0 && shouldReplaceITVModelsOnProviderChange(
       existingModels,
       providerType,
       previousProviderType,
-    )
-      ? suggestedModels
-      : Array.isArray(existingModels) && existingModels.length > 0
-        ? existingModels
-        : [{
-            id: generateId(),
-            providerModelName: '',
-            label: '',
-            capabilities: ['video.image-to-video'],
-          }];
+    );
+    const normalizedModels = normalizeITVModelsForProvider(
+      shouldReplace
+        ? suggestedModels
+        : Array.isArray(existingModels) && existingModels.length > 0
+          ? existingModels
+          : [{
+              id: generateId(),
+              providerModelName: '',
+              label: '',
+              capabilities: ['video.image-to-video'],
+            }],
+      providerType,
+    );
 
     const currentDefaultModelId = String(form.getFieldValue('defaultModelId') || '');
     const nextDefaultModelId = currentDefaultModelId && normalizedModels.some((model: any) => String(model?.id) === currentDefaultModelId)
@@ -248,6 +260,7 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
       : String(normalizedModels[0]?.id || '');
 
     const previousName = form.getFieldValue('name');
+    previousProviderTypeRef.current = providerType;
     form.setFieldsValue({
       providerType,
       name: previousName || definition.name,
@@ -257,6 +270,10 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
       defaultModelId: nextDefaultModelId,
     });
   }, [definitionMap, form]);
+
+  React.useEffect(() => {
+    previousProviderTypeRef.current = currentProviderType || previousProviderTypeRef.current;
+  }, [currentProviderType]);
 
   React.useEffect(() => {
     const models = watchedModels || [];
@@ -280,7 +297,7 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
         throw new Error('未找到对应的视频渠道定义');
       }
 
-      const models = normalizeModels(values.models);
+      const models = normalizeITVModelsForProvider(normalizeModels(values.models), values.providerType);
       const modelIdSet = new Set(models.map((model) => model.id));
       const defaultModelId = modelIdSet.has(values.defaultModelId)
         ? values.defaultModelId

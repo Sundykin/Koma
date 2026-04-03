@@ -140,6 +140,43 @@ export const VIDU_MODEL_SUGGESTIONS: ChannelModelDefinition[] = [
   },
 ];
 
+export const SEEDANCE_MODEL_SUGGESTIONS: ChannelModelDefinition[] = [
+  {
+    id: 'seedance-2.0',
+    label: 'Seedance 2.0',
+    providerModelName: 'seedance-2.0',
+    capabilities: [
+      'video.text-to-video',
+      'video.image-to-video',
+      'video.reference-to-video',
+      'video.start-end-to-video',
+    ],
+    defaults: {
+      defaultDuration: 5,
+      defaultResolution: '720p',
+    },
+  },
+  {
+    id: 'seedance-2.0-fast',
+    label: 'Seedance 2.0 Fast',
+    providerModelName: 'seedance-2.0-fast',
+    capabilities: [
+      'video.text-to-video',
+      'video.image-to-video',
+      'video.reference-to-video',
+      'video.start-end-to-video',
+    ],
+    defaults: {
+      defaultDuration: 5,
+      defaultResolution: '720p',
+    },
+  },
+];
+
 export function getSuggestedViduModels(): ChannelModelDefinition[] {
   return VIDU_MODEL_SUGGESTIONS.map(cloneModel);
+}
+
+export function getSuggestedSeedanceModels(): ChannelModelDefinition[] {
+  return SEEDANCE_MODEL_SUGGESTIONS.map(cloneModel);
 }

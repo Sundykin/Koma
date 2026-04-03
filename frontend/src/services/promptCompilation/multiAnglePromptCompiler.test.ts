@@ -13,7 +13,7 @@ describe('multiAnglePromptCompiler', () => {
     });
 
     expect(result.anglePrompt).toBe('<sks> front-right quarter view elevated shot medium shot');
-    expect(result.compiledPrompt).toBe(result.anglePrompt);
+    expect(result.compiledPrompt).toBe('角色设定图，保持服装与发型一致\n<sks> front-right quarter view elevated shot medium shot');
     expect(result.summary).toBe('前右 3/4 / 稍高 / 中景');
   });
 

@@ -23,4 +23,12 @@ describe('channel catalog (itv)', () => {
     expect(channel?.id).toBe('comfyui-animatediff');
     expect(channel?.models.length).toBe(0);
   });
+
+  it('declares provider template metadata for seedance channel', () => {
+    const channel = getBuiltInChannelDefinition('seedance');
+    expect(channel).toBeTruthy();
+    expect(channel?.category).toBe('itv');
+    expect(channel?.id).toBe('seedance');
+    expect(channel?.models.length).toBe(0);
+  });
 });

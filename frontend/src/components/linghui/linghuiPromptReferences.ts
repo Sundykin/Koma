@@ -8,6 +8,13 @@ import type {
   LinghuiVideoNodeProperties,
 } from '../../types/linghui';
 import {
+  getLinghuiResultDescriptionText,
+  getLinghuiResultItems,
+  getLinghuiResultPrimaryMedia,
+  getLinghuiResultShots,
+  getLinghuiResultText,
+} from '../../types/linghui';
+import {
   compilePromptReferences,
   parsePromptReferences,
   type ParsedPromptReference,
@@ -146,10 +153,13 @@ function buildResultReferences(
         result,
       ) ?? result
     : result;
-
-  const baseName = getDescriptionText(normalizedResult.primary?.label, nodeData.label) || nodeData.label;
+  const primary = getLinghuiResultPrimaryMedia(normalizedResult);
+  const items = getLinghuiResultItems(normalizedResult);
+  const shots = getLinghuiResultShots(normalizedResult);
+  const textValue = getLinghuiResultText(normalizedResult);
+  const baseName = getDescriptionText(primary?.label, nodeData.label) || nodeData.label;
   const baseDescription = `来自上游节点：${nodeData.label}`;
-  const primaryKind = normalizedResult.primary?.kind;
+  const primaryKind = primary?.kind;
 
   if (primaryKind === 'audio') {
     refs.push({
@@ -159,12 +169,11 @@ function buildResultReferences(
       name: baseName,
       description: baseDescription,
       textValue:
-        getDescriptionText(normalizedResult.text) ||
-        getDescriptionText(normalizedResult.metadata?.description) ||
-        getDescriptionText(normalizedResult.metadata?.note) ||
+        getDescriptionText(textValue) ||
+        getDescriptionText(getLinghuiResultDescriptionText(normalizedResult)) ||
         baseName,
     });
-  } else if (primaryKind === 'video' && !getMediaReferenceSource(normalizedResult.primary)) {
+  } else if (primaryKind === 'video' && !getMediaReferenceSource(primary)) {
     refs.push({
       id: nodeId,
       nodeId,
@@ -174,11 +183,11 @@ function buildResultReferences(
       textValue: baseName,
     });
   } else {
-    const primarySource = getMediaReferenceSource(normalizedResult.primary);
+    const primarySource = getMediaReferenceSource(primary);
     pushVisualReference(refs, {
       id: nodeId,
       nodeId,
-      kind: normalizedResult.primary?.kind === 'video' ? 'video' : 'image',
+      kind: primary?.kind === 'video' ? 'video' : 'image',
       name: baseName,
       description: baseDescription,
       source: primarySource,
@@ -187,9 +196,9 @@ function buildResultReferences(
   }
 
   if (nodeData.linghuiType !== 'linghui/image') {
-    normalizedResult.items?.forEach((item, index) => {
+    items.forEach((item, index) => {
       const itemSource = getMediaReferenceSource(item);
-      if (primaryKind !== 'audio' && index === 0 && itemSource && getMediaReferenceSource(normalizedResult.primary) === itemSource) {
+      if (primaryKind !== 'audio' && index === 0 && itemSource && getMediaReferenceSource(primary) === itemSource) {
         return;
       }
 
@@ -229,7 +238,7 @@ function buildResultReferences(
     });
   }
 
-  normalizedResult.shots?.forEach((shot, index) => {
+  shots.forEach((shot, index) => {
     const shotSource = getMediaReferenceSource(shot.image);
     const shotId = `${nodeId}__shot_${index + 1}`;
     const shotName = getDescriptionText(shot.title, `${baseName} 分镜 ${index + 1}`) || `${baseName} 分镜 ${index + 1}`;
@@ -263,9 +272,8 @@ function buildResultReferences(
     name: `${baseName} 文本`,
     description: baseDescription,
     textValue:
-      getDescriptionText(normalizedResult.text) ||
-      getDescriptionText(normalizedResult.metadata?.description) ||
-      getDescriptionText(normalizedResult.metadata?.note),
+      getDescriptionText(textValue) ||
+      getDescriptionText(getLinghuiResultDescriptionText(normalizedResult)),
   });
 
   return refs;

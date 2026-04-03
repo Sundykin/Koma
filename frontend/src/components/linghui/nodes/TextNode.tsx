@@ -5,6 +5,7 @@ import type {
   LinghuiRunStatus,
   LinghuiTextNodeProperties,
 } from '../../../types/linghui';
+import { getLinghuiResultText } from '../../../types/linghui';
 import { useLinghuiNodeInteraction, useLinghuiNodeEditorVisibility, useNodeRunState } from './LinghuiNodeRunsContext';
 import { LinghuiNodeEditor } from '../LinghuiNodeEditor';
 import { EditableCompactNodeLabel } from './EditableCompactNodeLabel';
@@ -46,7 +47,7 @@ function TextNodeInner({ id, data, selected }: NodeProps) {
   const status = runState?.status ?? 'idle';
   const statusColor = STATUS_COLORS[status] ?? STATUS_COLORS.idle;
   const previewText = String(
-    runState?.result?.text ??
+    getLinghuiResultText(runState?.result) ??
     (props.mode === 'manual' ? props.content : props.prompt) ??
     '',
   ).trim();

@@ -92,12 +92,13 @@ describe('executeVideoNode', () => {
       capability: 'video.reference-to-video',
       slot0: [
         {
-          kind: 'image',
-          primary: { kind: 'image', source: 'https://cdn.example.com/ref-1.png' },
-        },
-        {
-          kind: 'image',
+          kind: 'images',
           primary: { kind: 'image', source: 'https://cdn.example.com/ref-2.png' },
+          items: [
+            { kind: 'image', source: 'https://cdn.example.com/ref-2.png' },
+            { kind: 'image', source: 'https://cdn.example.com/ref-1.png' },
+            { kind: 'image', source: 'https://cdn.example.com/ref-3.png' },
+          ],
         },
       ],
       slot1: [
@@ -132,8 +133,9 @@ describe('executeVideoNode', () => {
         capability: 'video.reference-to-video',
         itvSelection: 'vidu-main::vidu-model-a',
         referenceImageSources: [
-          'https://cdn.example.com/ref-1.png',
           'https://cdn.example.com/ref-2.png',
+          'https://cdn.example.com/ref-1.png',
+          'https://cdn.example.com/ref-3.png',
           'https://cdn.example.com/poster-1.png',
         ],
         prompt: '夜色都市，雨后路面反光\n\n旁白：镜头缓慢推进\n\n主提示词',
@@ -143,8 +145,8 @@ describe('executeVideoNode', () => {
       expect.objectContaining({
         capability: 'video.reference-to-video',
         audioSource: 'https://cdn.example.com/voice.mp3',
-        visualReferenceCount: 3,
-        imageReferenceCount: 2,
+        visualReferenceCount: 4,
+        imageReferenceCount: 3,
         videoReferenceCount: 1,
       }),
     );
