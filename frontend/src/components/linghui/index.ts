@@ -1,2 +1,2 @@
-export { LinghuiPage } from './LinghuiPage';
+export { LinghuiPage } from './page/components/LinghuiPage';
 

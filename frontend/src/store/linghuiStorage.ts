@@ -35,7 +35,11 @@ import {
   type LinghuiWorkspaceDocument,
   type LinghuiWorkspaceMeta,
 } from '../types/linghui';
-import { createNewNodeData } from '../components/linghui/linghuiNodeDefs';
+import { createNewNodeData } from '../components/linghui/library/state/linghuiNodeDefs';
+import {
+  listBuiltinLinghuiRecipeTemplates,
+  type LinghuiRecipeTemplateKey,
+} from '../components/linghui/library/state/linghuiRecipeTemplates';
 import { resolveLinghuiWorkflowBlockLabel } from '../constants/linghuiWorkflowBlock';
 import type { LinghuiNodeType } from '../types/linghui';
 
@@ -670,11 +674,34 @@ function getPrimaryAssetMedia(nodeData: LinghuiNodeData, nodeRun?: LinghuiNodeRu
       ? 'audio'
       : 'image';
 
+  let width: number | undefined;
+  let height: number | undefined;
+  let aspectRatio: string | undefined;
+
+  if (inferredKind === 'image' && Array.isArray(properties.items)) {
+    const primaryAssetId = typeof properties.primaryAssetId === 'string' ? properties.primaryAssetId : '';
+    const matchedItem = properties.items.find(item => {
+      if (!item || typeof item !== 'object') return false;
+      const record = item as Record<string, unknown>;
+      if (primaryAssetId && record.id === primaryAssetId) {
+        return true;
+      }
+      return typeof record.source === 'string' && record.source === source;
+    }) as Record<string, unknown> | undefined;
+
+    width = typeof matchedItem?.width === 'number' ? matchedItem.width : undefined;
+    height = typeof matchedItem?.height === 'number' ? matchedItem.height : undefined;
+    aspectRatio = typeof matchedItem?.aspectRatio === 'string' ? matchedItem.aspectRatio : undefined;
+  }
+
   return {
     kind: inferredKind,
     source: source || undefined,
     posterSource: posterSource || undefined,
     label: nodeData.label,
+    width,
+    height,
+    metadata: aspectRatio ? { aspectRatio } : undefined,
   };
 }
 
@@ -834,6 +861,9 @@ export interface LinghuiWorkflowTemplateRecord {
   workspaceId: string;
   name: string;
   description?: string;
+  source: LinghuiWorkflowTemplateSource;
+  kind: LinghuiWorkflowTemplateKind;
+  recipeKey?: LinghuiRecipeTemplateKey;
   createdAt: number;
   updatedAt: number;
   sourceGroupId?: string;
@@ -844,6 +874,9 @@ export interface LinghuiWorkflowTemplateRecord {
   snapshotPath: string;
   snapshot: LinghuiSubgraphSnapshot;
 }
+
+export type LinghuiWorkflowTemplateSource = 'system' | 'workspace';
+export type LinghuiWorkflowTemplateKind = 'recipe' | 'saved-workflow';
 
 export interface LinghuiWorkspaceHistoryRecord {
   id: string;
@@ -882,6 +915,59 @@ export interface LinghuiWorkspaceAssetRecord {
   metadata?: Record<string, unknown>;
 }
 
+function isLinghuiRecipeTemplateKey(value: unknown): value is LinghuiRecipeTemplateKey {
+  return value === 'character-design-flow'
+    || value === 'storyboard-creation-flow'
+    || value === 'voiceover-workflow';
+}
+
+function normalizeLinghuiWorkflowTemplateRecord(
+  record: Omit<LinghuiWorkflowTemplateRecord, 'source' | 'kind' | 'recipeKey'> & Partial<Pick<LinghuiWorkflowTemplateRecord, 'source' | 'kind' | 'recipeKey'>>,
+): LinghuiWorkflowTemplateRecord {
+  return {
+    ...record,
+    source: record.source === 'system' ? 'system' : 'workspace',
+    kind: record.kind === 'recipe' ? 'recipe' : 'saved-workflow',
+    recipeKey: isLinghuiRecipeTemplateKey(record.recipeKey) ? record.recipeKey : undefined,
+  };
+}
+
+function createBuiltinLinghuiWorkflowTemplateRecords(workspaceId: string): LinghuiWorkflowTemplateRecord[] {
+  return listBuiltinLinghuiRecipeTemplates().map(template => {
+    const stats = buildSubgraphStats(template.snapshot);
+    return {
+      id: template.id,
+      workspaceId,
+      name: template.name,
+      description: template.description,
+      source: 'system',
+      kind: 'recipe',
+      recipeKey: template.recipeKey,
+      createdAt: template.sortOrder,
+      updatedAt: template.sortOrder,
+      nodeCount: stats.nodeCount,
+      linkCount: stats.linkCount,
+      groupCount: stats.groupCount,
+      sampleNodeLabels: template.snapshot.nodes
+        .map(node => node.data?.label?.trim())
+        .filter((label): label is string => Boolean(label))
+        .slice(0, 4),
+      snapshotPath: `builtin://linghui-recipes/${template.recipeKey}`,
+      snapshot: clone(template.snapshot),
+    };
+  });
+}
+
+function compareLinghuiWorkflowTemplateRecords(
+  left: LinghuiWorkflowTemplateRecord,
+  right: LinghuiWorkflowTemplateRecord,
+): number {
+  if (left.source !== right.source) {
+    return left.source === 'system' ? -1 : 1;
+  }
+  return right.updatedAt - left.updatedAt;
+}
+
 export async function listLinghuiWorkflowTemplates(workspaceId: string): Promise<LinghuiWorkflowTemplateRecord[]> {
   if (!workspaceId) return [];
 
@@ -892,10 +978,15 @@ export async function listLinghuiWorkflowTemplates(workspaceId: string): Promise
     electronIndexPath: indexPath,
     browserStorageKey: storageKey,
   });
+  const builtinTemplates = createBuiltinLinghuiWorkflowTemplateRecords(workspaceId);
+  const workspaceTemplates = items.map(item => normalizeLinghuiWorkflowTemplateRecord({
+    ...item,
+    workspaceId: item.workspaceId || workspaceId,
+  }));
 
-  return items
+  return dedupeAndLimitById([...builtinTemplates, ...workspaceTemplates], 400)
     .filter(Boolean)
-    .sort((left, right) => right.updatedAt - left.updatedAt);
+    .sort(compareLinghuiWorkflowTemplateRecords);
 }
 
 export async function createLinghuiWorkflowTemplate(params: {
@@ -926,6 +1017,8 @@ export async function createLinghuiWorkflowTemplate(params: {
     workspaceId: params.workspaceId,
     name: templateName,
     description: params.description?.trim() || undefined,
+    source: 'workspace',
+    kind: 'saved-workflow',
     createdAt,
     updatedAt: createdAt,
     sourceGroupId: params.sourceGroupId,
@@ -1087,6 +1180,9 @@ export async function createLinghuiWorkspaceAsset(params: {
       resultKind: nodeRun?.result?.kind,
       itemCount: getLinghuiResultItemCount(nodeRun?.result),
       hasRunResult: Boolean(nodeRun?.result),
+      width: typeof media?.width === 'number' ? media.width : undefined,
+      height: typeof media?.height === 'number' ? media.height : undefined,
+      aspectRatio: typeof media?.metadata?.aspectRatio === 'string' ? media.metadata.aspectRatio : undefined,
       prompt: typeof (nodeData.properties as Record<string, unknown>).prompt === 'string'
         ? (nodeData.properties as Record<string, unknown>).prompt
         : undefined,
@@ -1280,6 +1376,9 @@ export async function createLinghuiWorkspaceHistoryRecord(params: {
       resultKind: nodeRun?.result?.kind,
       upstreamIds: nodeRun?.upstreamIds ?? [],
       itemCount: getLinghuiResultItemCount(nodeRun?.result),
+      width: typeof media?.width === 'number' ? media.width : undefined,
+      height: typeof media?.height === 'number' ? media.height : undefined,
+      aspectRatio: typeof media?.metadata?.aspectRatio === 'string' ? media.metadata.aspectRatio : undefined,
       prompt: typeof (nodeData.properties as Record<string, unknown>).prompt === 'string'
         ? (nodeData.properties as Record<string, unknown>).prompt
         : undefined,

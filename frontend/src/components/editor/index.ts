@@ -16,4 +16,4 @@ export { useAssets } from './useAssets';
 export { useVideoFrames, useVideoFramesBatch, clearFrameCache } from './useVideoFrames';
 
 // 辅助组件
-export { PropertiesPanel } from './PropertiesPanel/index';
+export { PropertiesPanel } from './PropertiesPanel';

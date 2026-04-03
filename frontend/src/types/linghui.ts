@@ -3,6 +3,7 @@ import type { VideoGenerationCapability } from './media';
 
 export type LinghuiNodeType =
   | 'linghui/text'
+  | 'linghui/agent'
   | 'linghui/image'
   | 'linghui/video'
   | 'linghui/audio'
@@ -10,6 +11,7 @@ export type LinghuiNodeType =
 
 export type LinghuiRFNodeTypeKey =
   | 'linghui-text'
+  | 'linghui-agent'
   | 'linghui-image'
   | 'linghui-video'
   | 'linghui-audio'
@@ -53,6 +55,14 @@ export interface LinghuiTextNodeProperties extends LinghuiScriptDerivedPropertie
   prompt: string;
   systemPrompt: string;
   llmSelection: string;
+}
+
+export interface LinghuiAgentNodeProperties {
+  prompt: string;
+  systemPrompt: string;
+  llmSelection: string;
+  enabledTools: string[];
+  maxIterations: number;
 }
 
 export interface LinghuiScriptNodeProperties {
@@ -196,6 +206,38 @@ export interface LinghuiNodeResultMetadata {
   description?: string;
   note?: string;
   [key: string]: unknown;
+}
+
+export interface LinghuiAgentToolCallTrace {
+  kind: 'tool-call';
+  toolCallId: string;
+  name: string;
+  arguments: Record<string, unknown>;
+}
+
+export interface LinghuiAgentToolResultTrace {
+  kind: 'tool-result';
+  toolCallId: string;
+  name: string;
+  result?: unknown;
+  error?: string;
+}
+
+export type LinghuiAgentToolTraceEntry = LinghuiAgentToolCallTrace | LinghuiAgentToolResultTrace;
+
+export interface LinghuiAgentExecutionMetadata extends LinghuiNodeResultMetadata {
+  mode: 'agent';
+  prompt: string;
+  systemPrompt: string;
+  llmSelection: string;
+  enabledTools: string[];
+  maxIterations: number;
+  observedToolRounds: number;
+  finishReason?: string;
+  reasoning?: string;
+  toolTrace: LinghuiAgentToolTraceEntry[];
+  inputTextCount: number;
+  inputImageCount: number;
 }
 
 export interface LinghuiTextResult {
@@ -472,6 +514,7 @@ export const DEFAULT_LINGHUI_WORKSPACE_NAME = '未命名灵绘';
 
 const LINGHUI_TYPE_TO_RF_TYPE_MAP: Record<LinghuiNodeType, LinghuiRFNodeTypeKey> = {
   'linghui/text': 'linghui-text',
+  'linghui/agent': 'linghui-agent',
   'linghui/image': 'linghui-image',
   'linghui/video': 'linghui-video',
   'linghui/audio': 'linghui-audio',
@@ -480,6 +523,7 @@ const LINGHUI_TYPE_TO_RF_TYPE_MAP: Record<LinghuiNodeType, LinghuiRFNodeTypeKey>
 
 const RF_TYPE_TO_LINGHUI_TYPE_MAP: Record<LinghuiRFNodeTypeKey, LinghuiNodeType> = {
   'linghui-text': 'linghui/text',
+  'linghui-agent': 'linghui/agent',
   'linghui-image': 'linghui/image',
   'linghui-video': 'linghui/video',
   'linghui-audio': 'linghui/audio',
