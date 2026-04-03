@@ -3,6 +3,7 @@ import type { AppSettings } from '../../types';
 import {
   buildITVProviderConfigFromContext,
   getDefaultMediaSelection,
+  listCapabilityFallbackCandidates,
   listConfiguredModelSelectOptions,
   resolveConfiguredChannelModel,
 } from './resolver';
@@ -170,6 +171,44 @@ describe('channel resolver', () => {
     expect(options.length).toBeGreaterThan(0);
     expect(options.every(option => option.channelId === 'vidu-main')).toBe(true);
     expect(options.every(option => option.capabilities.includes('video.start-end-to-video'))).toBe(true);
+  });
+
+  it('Provider fallback 候选会优先保留当前选择并过滤能力不匹配项', () => {
+    const settings = createSettings();
+    settings.channelConfigs.push({
+      id: 'kling-main',
+      name: 'Kling',
+      category: 'itv',
+      providerType: 'kling',
+      providerConfig: { apiKey: 'kling-key' },
+      defaultModelId: 'kling-model-a',
+      models: [
+        {
+          id: 'kling-model-a',
+          label: 'kling-a',
+          providerModelName: 'kling-a',
+          capabilities: ['video.image-to-video'],
+        },
+      ],
+      enabled: true,
+      source: 'builtin',
+      createdAt: 4,
+      updatedAt: 4,
+    });
+
+    const candidates = listCapabilityFallbackCandidates(
+      settings,
+      'itv',
+      'video.image-to-video',
+      'kling-main::kling-model-a',
+    );
+
+    expect(candidates.map(item => item.selectionKey)).toEqual([
+      'kling-main::kling-model-a',
+      'runway-main::runway-model-a',
+      'vidu-main::vidu-model-a',
+    ]);
+    expect(candidates.every(item => item.capabilities.includes('video.image-to-video'))).toBe(true);
   });
 
   it('插件渠道也能走统一模型解析入口', () => {

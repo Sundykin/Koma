@@ -44,6 +44,17 @@ export interface ConfiguredModelSelectOption {
   capabilities: ModelCapability[];
 }
 
+export interface ProviderFallbackCandidate {
+  selection: MediaModelSelection;
+  selectionKey: string;
+  channelId: string;
+  modelId: string;
+  channelLabel: string;
+  modelLabel: string;
+  providerType: string;
+  capabilities: ModelCapability[];
+}
+
 export function serializeMediaSelection(selection?: MediaModelSelection | null): string | undefined {
   if (!selection?.channelId || !selection?.modelId) {
     return undefined;
@@ -281,6 +292,44 @@ export function getAvailableCapabilityModels(
   capability: ModelCapability,
 ): ConfiguredChannelModelOption[] {
   return listConfiguredChannelModels(settings, category, capability);
+}
+
+export function listCapabilityFallbackCandidates(
+  settings: AppSettings,
+  category: MediaCategory,
+  capability: ModelCapability,
+  preferredSelection?: MediaModelSelection | string,
+): ProviderFallbackCandidate[] {
+  const options = listConfiguredChannelModels(settings, category, capability).map((item) => ({
+    selection: item.selection,
+    selectionKey: serializeMediaSelection(item.selection) || '',
+    channelId: item.channelConfig.id,
+    modelId: item.model.id,
+    channelLabel: item.definition.name,
+    modelLabel: item.model.label,
+    providerType: item.definition.runtimeProviderType || item.channelConfig.providerType,
+    capabilities: item.model.capabilities,
+  }));
+
+  const normalizedPreferred = typeof preferredSelection === 'string'
+    ? parseMediaSelectionKey(preferredSelection)
+    : preferredSelection;
+  const resolvedPreferred = normalizedPreferred || getDefaultMediaSelection(settings, category, capability);
+  const preferredKey = serializeMediaSelection(resolvedPreferred);
+
+  if (!preferredKey) {
+    return options;
+  }
+
+  const preferred = options.find((item) => item.selectionKey === preferredKey);
+  if (!preferred) {
+    return options;
+  }
+
+  return [
+    preferred,
+    ...options.filter((item) => item.selectionKey !== preferredKey),
+  ];
 }
 
 export function listAvailableBuiltInChannels(category: MediaCategory): ChannelDefinition[] {

@@ -1,8 +1,10 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
+  createLinghuiWorkflowTemplate,
   createLinghuiWorkspace,
   createLinghuiWorkspaceHistoryRecord,
   deleteLinghuiWorkspace,
+  listLinghuiWorkflowTemplates,
   listLinghuiWorkspaces,
   loadLinghuiWorkspace,
 } from './linghuiStorage';
@@ -35,6 +37,71 @@ describe('linghuiStorage', () => {
     expect(window.localStorage.getItem(`koma.linghui.doc.workflow-index.${workspace.id}`)).toBeNull();
     expect(window.localStorage.getItem(`koma.linghui.doc.history-index.${workspace.id}`)).toBeNull();
     expect(window.localStorage.getItem(`koma.linghui.doc.asset-index.${workspace.id}`)).toBeNull();
+  });
+
+  it('会合并系统 Recipe 模板与工作区模板，并为新模板记录来源元数据', async () => {
+    const workspace = await createLinghuiWorkspace('Recipe 工作区');
+
+    await createLinghuiWorkflowTemplate({
+      workspaceId: workspace.id,
+      name: '我的自定义流程',
+      snapshot: {
+        nodes: [],
+        edges: [],
+        groups: [],
+      },
+    });
+
+    const templates = await listLinghuiWorkflowTemplates(workspace.id);
+    const builtinTemplates = templates.filter(template => template.source === 'system');
+    const workspaceTemplate = templates.find(template => template.name === '我的自定义流程');
+
+    expect(builtinTemplates.map(template => template.recipeKey)).toEqual([
+      'character-design-flow',
+      'storyboard-creation-flow',
+      'voiceover-workflow',
+    ]);
+    expect(workspaceTemplate).toEqual(expect.objectContaining({
+      source: 'workspace',
+      kind: 'saved-workflow',
+      workspaceId: workspace.id,
+    }));
+  });
+
+  it('会把旧版工作流模板记录归一化为工作区模板', async () => {
+    const workspace = await createLinghuiWorkspace('旧模板工作区');
+
+    window.localStorage.setItem(
+      `koma.linghui.doc.workflow-index.${workspace.id}`,
+      JSON.stringify([
+        {
+          id: 'legacy-workflow',
+          workspaceId: workspace.id,
+          name: '旧模板',
+          createdAt: 10,
+          updatedAt: 20,
+          nodeCount: 1,
+          linkCount: 0,
+          groupCount: 0,
+          sampleNodeLabels: ['旧节点'],
+          snapshotPath: '/legacy/workflow.json',
+          snapshot: {
+            nodes: [],
+            edges: [],
+            groups: [],
+          },
+        },
+      ]),
+    );
+
+    const templates = await listLinghuiWorkflowTemplates(workspace.id);
+    const legacyTemplate = templates.find(template => template.id === 'legacy-workflow');
+
+    expect(legacyTemplate).toEqual(expect.objectContaining({
+      source: 'workspace',
+      kind: 'saved-workflow',
+      recipeKey: undefined,
+    }));
   });
 
   it('会把远端视频历史结果物化到灵绘工作区本地文件', async () => {
