@@ -256,7 +256,7 @@ export type TTIProviderType =
   | 'comfyui' | 'jimeng' | 'qwen-image' | 'midjourney' | 'dall-e' | 'flux' | 'nano-banana' | 'gemini-3-pro' | 'gemini-native-tti' | 'openai-compatible-tti' | 'grok2api-imagine-tti'
   | (string & { __ttiPlugin?: never });
 export type ITVProviderType =
-  | 'runway' | 'kling' | 'pika' | 'minimax' | 'comfyui-animatediff' | 'sora2' | 'vidu' | 'custom' | 'grok2api-imagine-itv'
+  | 'runway' | 'kling' | 'pika' | 'minimax' | 'comfyui-animatediff' | 'sora2' | 'vidu' | 'seedance' | 'custom' | 'grok2api-imagine-itv'
   | (string & { __itvPlugin?: never });
 export type TTSProviderType =
   | 'edge-tts' | 'openai-tts' | 'fish-audio' | 'gpt-sovits' | 'doubao-tts'

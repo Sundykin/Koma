@@ -543,24 +543,40 @@ export async function generateVideoWithProvider(params: {
       : undefined,
   });
   const transportSupport = resolveITVTransportSupport(provider);
-  const providerRequest = await mapVideoRequestToProviderRequest({
-    projectId: EXECUTION_PROJECT_ID,
-    request: compiledDomainRequest.request,
-    transportSupport,
-    maxAdditionalReferences,
-    messages: {
-      missingPrimaryImage: '缺少主图输入',
-      missingReferenceImages: '缺少参考图输入',
-      missingStartEndFrames: '缺少首尾帧输入',
-      remotePrimary: params.capability === 'video.start-end-to-video'
-        ? '当前 ITV Provider 仅支持远程 URL 首帧'
-        : '当前 ITV Provider 仅支持远程 URL 主图',
-      remoteAdditional: '当前 ITV Provider 仅支持远程 URL 附加参考图',
-      remoteReference: '当前 ITV Provider 仅支持远程 URL 参考图',
-      remoteStart: '当前 ITV Provider 仅支持远程 URL 首帧',
-      remoteEnd: '当前 ITV Provider 仅支持远程 URL 尾帧',
-    },
-  });
+  let providerRequest;
+  try {
+    providerRequest = await mapVideoRequestToProviderRequest({
+      projectId: EXECUTION_PROJECT_ID,
+      request: compiledDomainRequest.request,
+      transportSupport,
+      maxAdditionalReferences,
+      messages: {
+        missingPrimaryImage: '缺少主图输入',
+        missingReferenceImages: '缺少参考图输入',
+        missingStartEndFrames: '缺少首尾帧输入',
+        remotePrimary: params.capability === 'video.start-end-to-video'
+          ? '当前 ITV Provider 仅支持远程 URL 首帧'
+          : '当前 ITV Provider 仅支持远程 URL 主图',
+        remoteAdditional: '当前 ITV Provider 仅支持远程 URL 附加参考图',
+        remoteReference: '当前 ITV Provider 仅支持远程 URL 参考图',
+        remoteStart: '当前 ITV Provider 仅支持远程 URL 首帧',
+        remoteEnd: '当前 ITV Provider 仅支持远程 URL 尾帧',
+      },
+    });
+  } catch (error) {
+      logger.error('灵绘视频 Provider 请求映射失败', {
+        traceId: traceContext.traceId,
+        selectionKey: params.itvSelection,
+        provider: provider.config?.provider,
+        capability: params.capability,
+      protocol: protocol || 'none',
+      transportSupport,
+      error: error instanceof Error ? error.message : String(error),
+      originalRequest: summarizeVideoRequestForLog(domainRequest),
+      compiledRequest: summarizeVideoRequestForLog(compiledDomainRequest.request),
+    });
+    throw error;
+  }
   const tracedProviderRequest = withVideoTrace(providerRequest, traceContext);
   logger.info('灵绘视频 Provider 请求已映射', {
     traceId: traceContext.traceId,

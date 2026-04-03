@@ -117,7 +117,7 @@ async function decryptValue(value: string, key: CryptoKey): Promise<string> {
 
 async function processObject<T>(obj: T, processor: (value: string) => Promise<string>): Promise<T> {
   if (Array.isArray(obj)) {
-    const result = [];
+    const result: unknown[] = [];
     for (const item of obj) result.push(await processObject(item, processor));
     return result as T;
   }

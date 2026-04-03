@@ -1,5 +1,5 @@
 import type { ChannelModelDefinition } from '../../providers/channel/types';
-import { getSuggestedViduModels } from '../../providers/itv/modelCatalog';
+import { getSuggestedSeedanceModels, getSuggestedViduModels } from '../../providers/itv/modelCatalog';
 
 const KLING_MODEL_SUGGESTIONS: ChannelModelDefinition[] = [
   {
@@ -49,11 +49,16 @@ const KLING_MODEL_SUGGESTIONS: ChannelModelDefinition[] = [
 
 const ITV_PROVIDER_MODEL_SUGGESTIONS: Record<string, ChannelModelDefinition[]> = {
   vidu: getSuggestedViduModels(),
+  seedance: getSuggestedSeedanceModels(),
   kling: KLING_MODEL_SUGGESTIONS,
 };
 
 const ITV_PROVIDER_FIELD_DEFAULTS: Record<string, Record<string, unknown>> = {
   vidu: {
+    defaultDuration: 5,
+    defaultResolution: '720p',
+  },
+  seedance: {
     defaultDuration: 5,
     defaultResolution: '720p',
   },
@@ -90,6 +95,39 @@ export function getSuggestedITVFieldDefaults(providerType?: string): Record<stri
     return {};
   }
   return { ...(ITV_PROVIDER_FIELD_DEFAULTS[providerType] || {}) };
+}
+
+export function normalizeITVModelsForProvider(
+  rawModels: ChannelModelDefinition[] | undefined,
+  providerType?: string,
+): ChannelModelDefinition[] {
+  const models = Array.isArray(rawModels) ? rawModels : [];
+  const suggestions = ITV_PROVIDER_MODEL_SUGGESTIONS[providerType || ''] || [];
+  if (!suggestions.length || !models.length) {
+    return models.map(cloneModel);
+  }
+
+  const suggestionMap = new Map(
+    suggestions.map(model => [String(model.providerModelName || '').trim(), model]),
+  );
+
+  return models.map((model) => {
+    const providerModelName = String(model.providerModelName || '').trim();
+    const suggestion = suggestionMap.get(providerModelName);
+    if (!suggestion) {
+      return cloneModel(model);
+    }
+    return {
+      ...cloneModel(model),
+      id: suggestion.id,
+      providerModelName: suggestion.providerModelName,
+      label: String(model.label || '').trim() || suggestion.label,
+      capabilities: Array.isArray(model.capabilities) && model.capabilities.length > 0
+        ? [...model.capabilities]
+        : [...suggestion.capabilities],
+      defaults: cloneDefaults(model.defaults) || cloneDefaults(suggestion.defaults),
+    };
+  });
 }
 
 export function hasConfiguredITVModels(rawModels: unknown): boolean {

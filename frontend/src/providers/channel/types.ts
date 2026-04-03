@@ -153,6 +153,7 @@ export function getChannelCategory(config: ChannelConfig): MediaCategory {
     case 'pika':
     case 'sora2':
     case 'custom':
+    case 'seedance':
     case 'grok2api-imagine-itv':
     case 'comfyui-animatediff':
       return 'itv';

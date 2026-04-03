@@ -9,6 +9,7 @@ import type {
   MediaCategory,
   MediaModelSelection,
 } from '../../providers/channel/types';
+import { getChannelCategory } from '../../providers/channel/types';
 import {
   getDefaultMediaSelection,
   resolveConfiguredChannelModel,
@@ -26,7 +27,7 @@ export async function getChannelConfigs(): Promise<ChannelConfig[]> {
 
 export async function getChannelsByCategory(category: MediaCategory): Promise<ChannelConfig[]> {
   const configs = await getChannelConfigs();
-  return configs.filter(c => c.category === category);
+  return configs.filter(config => getChannelCategory(config) === category);
 }
 
 /**
@@ -41,7 +42,7 @@ export async function getChannelsByCapability(
       return false;
     }
     if (capability === 'image-hosting') {
-      return config.category === 'image-hosting';
+      return getChannelCategory(config) === 'image-hosting';
     }
     const models = config.models || [];
     if (!models.length) {
@@ -197,15 +198,28 @@ export async function getDefaultChannelConfig(
       ? 'itv'
       : capability === 'tts'
         ? 'tts'
+        : capability === 'image-hosting'
+          ? 'image-hosting'
         : undefined;
   if (!category) {
     return null;
   }
+
+  if (category === 'image-hosting') {
+    return settings.channelConfigs.find(config => (
+      config.enabled &&
+      getChannelCategory(config) === 'image-hosting'
+    )) || null;
+  }
+
   const selection = getDefaultMediaSelection(settings, category);
   if (!selection) {
     return null;
   }
-  return settings.channelConfigs.find(c => c.id === selection.channelId) || null;
+  return settings.channelConfigs.find(config => (
+    config.id === selection.channelId &&
+    getChannelCategory(config) === category
+  )) || null;
 }
 
 export async function setDefaultMediaModelSelection(

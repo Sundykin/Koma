@@ -32,10 +32,10 @@ type AgentStateType = typeof AgentState.State;
 // 创建 LLM 实例
 export function createLLM(config: SessionConfig): BaseChatModel {
   const stored = config.llmProfileId ? llmProfileStore.getProfile(config.llmProfileId) : null;
-  const modelProvider = config.modelProvider || stored?.provider;
+  const modelProvider = config.modelProvider;
   const modelName = config.modelName;
   const apiKey = stored?.apiKey || config.apiKey;
-  const baseUrl = stored?.baseUrl ?? config.baseUrl;
+  const baseUrl = config.baseUrl;
   const { temperature = 0.7, maxTokens } = config;
 
   switch (modelProvider) {

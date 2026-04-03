@@ -425,7 +425,7 @@ export const LINGHUI_MULTI_ANGLE_PROMPT_PROTOCOLS: Array<{
 ];
 
 export const DEFAULT_LINGHUI_MULTI_ANGLE_CONFIG: LinghuiMultiAngleConfig = {
-  enabled: true,
+  enabled: false,
   azimuth: 0,
   elevation: 0,
   distance: 1,
@@ -457,7 +457,7 @@ export function normalizeLinghuiMultiAngleConfig(
   value: Partial<LinghuiMultiAngleConfig> | null | undefined,
 ): LinghuiMultiAngleConfig {
   return {
-    enabled: value?.enabled !== false,
+    enabled: value?.enabled === true,
     azimuth: normalizeAzimuth(value?.azimuth),
     elevation: normalizeElevation(value?.elevation),
     distance: normalizeDistance(value?.distance),

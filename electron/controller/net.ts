@@ -1,3 +1,4 @@
+import { net as electronNet } from 'electron';
 import { BaseController } from './base';
 import { validateUrl } from '../service/url-validator';
 
@@ -6,7 +7,17 @@ const CHUNK_IDLE_TIMEOUT_MS = 300_000;
 // 最大重试次数（应对代理断连 UND_ERR_SOCKET）
 const MAX_RETRIES = 2;
 // 可重试的错误码
-const RETRYABLE_CODES = new Set(['UND_ERR_SOCKET', 'ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT']);
+const RETRYABLE_CODES = new Set([
+  'UND_ERR_SOCKET',
+  'UND_ERR_CONNECT_TIMEOUT',
+  'ECONNRESET',
+  'ECONNREFUSED',
+  'ETIMEDOUT',
+  'ERR_CONNECTION_RESET',
+  'ERR_CONNECTION_REFUSED',
+  'ERR_CONNECTION_TIMED_OUT',
+  'ERR_TIMED_OUT',
+]);
 
 function getHeaderValue(headers: Record<string, string> | undefined, key: string): string | undefined {
   if (!headers) return undefined;
@@ -60,59 +71,68 @@ function stripContentType(headers: Record<string, string>): void {
   }
 }
 
+function stripContentLength(headers: Record<string, string>): void {
+  for (const k of Object.keys(headers)) {
+    if (k.toLowerCase() === 'content-length') delete headers[k];
+  }
+}
+
 function escapeHeaderValue(value: string): string {
   // Keep it minimal: prevent breaking out of quotes in Content-Disposition.
   return value.replace(/"/g, '_');
 }
 
-function buildMultipartBody(multipart?: MultipartPayload): { body: Buffer; contentType: string } {
-  // Some reverse proxies / deployments have issues with chunked multipart streaming.
-  // Build a raw multipart body so we can set Content-Length deterministically.
-  const boundary = `----komaFormBoundary${Date.now()}${Math.random().toString(16).slice(2)}`;
-  const chunks: Buffer[] = [];
-  const CRLF = Buffer.from([13, 10]);
-
-  const pushText = (text: string) => { chunks.push(Buffer.from(text, 'utf8')); };
-  const pushCRLF = () => { chunks.push(CRLF); };
-  const pushBoundaryLine = () => {
-    // Keep CRLF bytes explicit to avoid bundlers rewriting newline escapes into multiline template literals.
-    chunks.push(Buffer.from(`--${boundary}`, 'utf8'));
-    pushCRLF();
-  };
-
+function buildMultipartFormData(multipart?: MultipartPayload): FormData {
+  const formData = new FormData();
   for (const f of multipart?.fields || []) {
     if (!f?.name) continue;
-    pushBoundaryLine();
     if (f.kind === 'text') {
-      pushText(`Content-Disposition: form-data; name="${escapeHeaderValue(f.name)}"`);
-      pushCRLF();
-      pushCRLF();
-      pushText(String(f.value ?? ''));
-      pushCRLF();
+      formData.append(f.name, String(f.value ?? ''));
       continue;
     }
     if (f.kind === 'file') {
       const filename = escapeHeaderValue(String(f.filename || 'file'));
       const contentType = f.contentType ? String(f.contentType) : 'application/octet-stream';
-      pushText(`Content-Disposition: form-data; name="${escapeHeaderValue(f.name)}"; filename="${filename}"`);
-      pushCRLF();
-      pushText(`Content-Type: ${contentType}`);
-      pushCRLF();
-      pushCRLF();
-      chunks.push(Buffer.from(String(f.base64 ?? ''), 'base64'));
-      pushCRLF();
+      const bytes = Buffer.from(String(f.base64 ?? ''), 'base64');
+      formData.append(f.name, new Blob([bytes], { type: contentType }), filename);
     }
   }
-
-  chunks.push(Buffer.from(`--${boundary}--`, 'utf8'));
-  pushCRLF();
-  const body = Buffer.concat(chunks);
-  return { body, contentType: `multipart/form-data; boundary=${boundary}` };
+  return formData;
 }
 
 function isRetryable(err: any): boolean {
-  const code = err?.cause?.code || err?.code;
-  return RETRYABLE_CODES.has(code);
+  const codes = [err?.cause?.code, err?.code, err?.errno].filter(Boolean);
+  if (codes.some(code => RETRYABLE_CODES.has(code))) {
+    return true;
+  }
+  const message = [err?.message, err?.cause?.message].filter(Boolean).join(' ');
+  return /UND_ERR_CONNECT_TIMEOUT|ERR_CONNECTION_(?:TIMED_OUT|RESET|REFUSED)|timed out|ECONNRESET|ECONNREFUSED/i.test(message);
+}
+
+function getFetchTransport(): {
+  transport: 'electron-net' | 'global-fetch';
+  request: typeof fetch;
+} {
+  if (typeof electronNet?.fetch === 'function') {
+    return {
+      transport: 'electron-net',
+      request: electronNet.fetch.bind(electronNet) as typeof fetch,
+    };
+  }
+  return {
+    transport: 'global-fetch',
+    request: fetch.bind(globalThis),
+  };
+}
+
+function getMultipartFetchTransport(): {
+  transport: 'global-fetch';
+  request: typeof fetch;
+} {
+  return {
+    transport: 'global-fetch',
+    request: fetch.bind(globalThis),
+  };
 }
 
 /**
@@ -180,6 +200,9 @@ class NetController extends BaseController {
     // Debug header is for host-side logging only; never forward to upstream.
     delete headers['x-koma-debug-body'];
 
+    const initialTransport = args.multipart
+      ? getMultipartFetchTransport().transport
+      : getFetchTransport().transport;
     const logCtx = {
       traceId,
       source: traceSource,
@@ -187,6 +210,7 @@ class NetController extends BaseController {
       target: traceTarget,
       method: args.method || 'GET',
       url: args.url,
+      transport: initialTransport,
       ...(args.multipart ? summarizeMultipart(args.multipart) : summarizeBody(args.body)),
       ...(debugBody ? { bodyPreview: truncateString(args.body || '', 12_000) } : undefined),
     };
@@ -205,14 +229,17 @@ class NetController extends BaseController {
 
       try {
         let reqBody: any = args.body;
+        let transport: 'electron-net' | 'global-fetch';
+        let request: typeof fetch;
         if (args.multipart) {
           stripContentType(headers);
-          const built = buildMultipartBody(args.multipart);
-          headers['Content-Type'] = built.contentType;
-          headers['Content-Length'] = String(built.body.length);
-          reqBody = built.body;
+          stripContentLength(headers);
+          reqBody = buildMultipartFormData(args.multipart);
+          ({ transport, request } = getMultipartFetchTransport());
+        } else {
+          ({ transport, request } = getFetchTransport());
         }
-        const response = await fetch(args.url, {
+        const response = await request(args.url, {
           method: args.method || 'GET',
           headers,
           body: reqBody,
@@ -222,6 +249,7 @@ class NetController extends BaseController {
 
         console.info('[NetController] IPC 网络请求完成', {
           traceId,
+          transport,
           status: response.status,
           ok: response.ok,
           durationMs: Date.now() - startedAt,
@@ -244,6 +272,7 @@ class NetController extends BaseController {
           traceId,
           url: args.url,
           method: args.method || 'GET',
+          transport: args.multipart ? getMultipartFetchTransport().transport : getFetchTransport().transport,
           durationMs: Date.now() - startedAt,
           error: errMsg,
           causeCode,
@@ -258,8 +287,9 @@ class NetController extends BaseController {
 
     // 所有重试耗尽，返回结构化错误
     const cause = lastError?.cause;
-    const detail = cause?.code
-      ? `${lastError.message} (${cause.code})`
+    const errorCode = cause?.code || lastError?.code || lastError?.errno;
+    const detail = errorCode
+      ? `${lastError.message} (${errorCode})`
       : lastError?.message || String(lastError);
     return {
       ok: false,

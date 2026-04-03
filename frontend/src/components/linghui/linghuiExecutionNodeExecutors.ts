@@ -35,6 +35,9 @@ import {
   getVideoCapabilityInputError,
   resolveVideoCapabilitySources,
 } from './videoCapabilityUtils';
+import { createLogger } from '../../store/logger';
+
+const imageExecutionLogger = createLogger('LinghuiImageExecution');
 
 const DEFAULT_SCRIPT_SYSTEM_PROMPT = [
   '你是灵绘的分镜脚本助手。',
@@ -116,7 +119,7 @@ export async function executeImageNode(
   const prompt = String(node.properties.prompt ?? '').trim();
   const ttiSelection = String(node.properties.ttiSelection ?? '');
   const batchCount = Math.max(1, Math.min(4, Number(node.properties.batchCount ?? 1)));
-  const multiAngleConfig = properties.multiAngle?.enabled
+  const multiAngleConfig = properties.multiAngle?.enabled === true
     ? {
         endpointPath: properties.multiAngle.endpointPath,
         promptProtocol: properties.multiAngle.promptProtocol,
@@ -157,37 +160,53 @@ export async function executeImageNode(
   const silentReferenceSources: string[] = [];
   const textSnippets = collectTextSnippets(node.getAllInputResults(1));
   const promptReferences = node.getPromptReferences();
+  const explicitPrompt = mergePromptWithTextInputs(prompt, textSnippets);
   const effectivePrompt = mergePromptWithTextInputs(prompt || node.title, textSnippets);
   const count = batchCount;
 
   if (multiAngleConfig) {
     if (!referenceSources.length) {
-      throw new Error('多角度生图需要先连接一张上游图片');
-    }
+      if (!explicitPrompt.trim()) {
+        imageExecutionLogger.warn('灵绘图片节点多角度执行缺少上游图片，保持失败', {
+          nodeId: node.id,
+          title: node.title,
+          ttiSelection,
+        });
+        throw new Error('多角度生图需要先连接一张上游图片');
+      }
 
-    const image = await generateImageWithProvider({
-      prompt: '',
-      referenceSources,
-      silentReferenceSources,
-      ttiSelection,
-      promptReferences: [],
-      multiAngle: multiAngleConfig,
-      onProgress,
-      placeholderTitle: node.title,
-      placeholderSubtitle: '多角度图片占位预览',
-      accent: '#4ade80',
-      signal,
-    });
-
-    return {
-      kind: 'image',
-      primary: image,
-      metadata: {
+      imageExecutionLogger.warn('灵绘图片节点多角度缺少上游图片，回退到普通文生图', {
+        nodeId: node.id,
+        title: node.title,
+        promptLength: explicitPrompt.trim().length,
+        textInputCount: textSnippets.length,
+        ttiSelection,
+      });
+    } else {
+      const image = await generateImageWithProvider({
         prompt: '',
-        mode: 'multi-angle',
-        multiAngle: properties.multiAngle,
-      },
-    };
+        referenceSources,
+        silentReferenceSources,
+        ttiSelection,
+        promptReferences: [],
+        multiAngle: multiAngleConfig,
+        onProgress,
+        placeholderTitle: node.title,
+        placeholderSubtitle: '多角度图片占位预览',
+        accent: '#4ade80',
+        signal,
+      });
+
+      return {
+        kind: 'image',
+        primary: image,
+        metadata: {
+          prompt: '',
+          mode: 'multi-angle',
+          multiAngle: properties.multiAngle,
+        },
+      };
+    }
   }
 
   if (count > 1) {

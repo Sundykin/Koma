@@ -7,6 +7,7 @@ export { RunwayProvider } from './RunwayProvider';
 export { KlingProvider } from './KlingProvider';
 export { PikaProvider } from './PikaProvider';
 export { Sora2Provider } from './Sora2Provider';
+export { SeedanceProvider } from './SeedanceProvider';
 export { ViduProvider } from './ViduProvider';
 export { ComfyUIAnimateDiffProvider } from './ComfyUIAnimateDiffProvider';
 export { CustomITVProvider } from './CustomITVProvider';
@@ -18,6 +19,7 @@ import { RunwayProvider } from './RunwayProvider';
 import { KlingProvider } from './KlingProvider';
 import { PikaProvider } from './PikaProvider';
 import { Sora2Provider } from './Sora2Provider';
+import { SeedanceProvider } from './SeedanceProvider';
 import { ViduProvider } from './ViduProvider';
 import { ComfyUIAnimateDiffProvider } from './ComfyUIAnimateDiffProvider';
 import { CustomITVProvider } from './CustomITVProvider';
@@ -72,6 +74,20 @@ function registerBuiltinProviders() {
         interval: 5000,
         maxDuration: 600000,
         initialDelay: 3000,
+      },
+    },
+    {
+      type: 'seedance',
+      kind: 'itv',
+      name: 'Seedance 2.0',
+      description: '字节 Seedance 2.0 视频生成，支持文生、图生、参考生和首尾帧',
+      factory: (config) => new SeedanceProvider(config as ITVConfig),
+      contractVersion: MEDIA_PROVIDER_CONTRACT_VERSION,
+      capabilities: ['itv'],
+      polling: {
+        interval: 10000,
+        maxDuration: 600000,
+        initialDelay: 5000,
       },
     },
     {

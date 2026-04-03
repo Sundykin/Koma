@@ -23,10 +23,35 @@ const logger = createLogger('MediaRemoteUrl');
 export type RemoteUrlPolicy = 'best-effort' | 'required';
 
 function safeFilenameFromPath(path: string): string {
+  if (path.startsWith('data:')) return 'image.png';
   const name = path.split(/[/\\]/).pop() || 'image.png';
   // Avoid accidentally persisting huge data-url strings as a "filename".
   if (name.startsWith('data:')) return 'image.png';
   return name.length > 200 ? 'image.png' : name;
+}
+
+function appendIndexToFilename(filename: string, index: number): string {
+  const safe = filename || 'image.png';
+  const dot = safe.lastIndexOf('.');
+  if (dot <= 0) {
+    return `${safe}-${index + 1}`;
+  }
+  return `${safe.slice(0, dot)}-${index + 1}${safe.slice(dot)}`;
+}
+
+function inferFilenameHintFromSource(
+  source: MediaAssetSource | ProviderAssetInput | undefined,
+): string {
+  if (!source) {
+    return 'image.png';
+  }
+  if (typeof source === 'object' && 'value' in source) {
+    return safeFilenameFromPath(source.value);
+  }
+  if (typeof source === 'object') {
+    return safeFilenameFromPath(String(source.localPath || source.remoteUrl || 'image.png'));
+  }
+  return safeFilenameFromPath(source);
 }
 
 async function uploadImageBytesToRemoteUrl(
@@ -34,8 +59,20 @@ async function uploadImageBytesToRemoteUrl(
   filename: string,
   policy: RemoteUrlPolicy
 ): Promise<string | undefined> {
+  logger.info('开始上传图片到图床', {
+    filename,
+    bytes: bytes.byteLength,
+    policy,
+  });
   const result = await uploadBytesToImageHostingWithRetry(bytes, { filename });
-  if (result.success && result.url) return result.url;
+  if (result.success && result.url) {
+    logger.info('图片上传到图床成功', {
+      filename,
+      policy,
+      remoteUrl: result.url,
+    });
+    return result.url;
+  }
 
   if (policy === 'required') {
     throw new Error(result.error || '图床上传失败');
@@ -175,6 +212,26 @@ export async function ensureRemoteUrlForImageSources(params: {
   filenameHint?: string;
 }): Promise<Array<MediaAssetSource | ProviderAssetInput | undefined>> {
   const { sources, ...rest } = params;
-  return Promise.all(sources.map(source => ensureRemoteUrlForImageSource({ ...rest, source })));
-}
+  const results: Array<MediaAssetSource | ProviderAssetInput | undefined> = [];
 
+  for (let index = 0; index < sources.length; index += 1) {
+    const source = sources[index];
+    const indexedFilenameHint = appendIndexToFilename(
+      rest.filenameHint || inferFilenameHintFromSource(source),
+      index,
+    );
+    logger.info('准备归一化图片远程地址', {
+      index,
+      policy: rest.policy,
+      filenameHint: indexedFilenameHint,
+    });
+    const normalized = await ensureRemoteUrlForImageSource({
+      ...rest,
+      source,
+      filenameHint: indexedFilenameHint,
+    });
+    results.push(normalized);
+  }
+
+  return results;
+}
