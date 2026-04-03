@@ -3,8 +3,10 @@ import type { PointerEventHandler } from 'react';
 import type {
   LinghuiCanvasMode,
   LinghuiCanvasSelection,
+  LinghuiExecuteMultiAngleOptions,
   LinghuiGridType,
   LinghuiImageAssetItem,
+  LinghuiMultiAngleConfig,
   LinghuiImageNodeProperties,
   LinghuiImageToolKey,
   LinghuiNodeData,
@@ -168,6 +170,13 @@ export interface LinghuiNodeEditorApi {
   onGenerateScriptImages: (nodeId: string, shots: LinghuiStoryboardFrame[]) => void;
   onGenerateScriptVideos: (nodeId: string, shots: LinghuiStoryboardFrame[]) => void;
   onCreateDerivedImportImages: (nodeId: string, items: LinghuiImageAssetItem[]) => void;
+  onCreateDerivedMultiAngleImage?: (nodeId: string, options?: {
+    prompt?: string;
+    ttiSelection?: string;
+    multiAngle?: Partial<LinghuiMultiAngleConfig>;
+    label?: string;
+  }) => string | null;
+  onExecuteMultiAngle?: (options?: LinghuiExecuteMultiAngleOptions) => void;
   onApplyImageToolPreset?: (preset: {
     promptSnippet: string;
     properties?: Partial<LinghuiImageNodeProperties>;

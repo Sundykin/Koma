@@ -215,6 +215,7 @@ export const LinghuiNodeEditor: React.FC<LinghuiNodeEditorProps> = ({
     onGenerateScriptImages,
     onGenerateScriptVideos,
     onCreateDerivedImportImages,
+    onExecuteMultiAngle,
     onApplyImageToolPreset,
     onSetGridSplitType,
     onClearGridSplitCells,
@@ -358,6 +359,10 @@ export const LinghuiNodeEditor: React.FC<LinghuiNodeEditorProps> = ({
       },
     })
   ), [edges, nodeId, nodeRuns, nodes]);
+  const currentPrimaryImage = useMemo(() => (
+    nodeData ? resolveLinghuiImagePrimaryForNode(nodeData, nodeRuns[nodeId]?.result) : null
+  ), [nodeData, nodeId, nodeRuns]);
+  const hasCurrentImage = Boolean(String(currentPrimaryImage?.source ?? '').trim());
   const isVideoPassThroughNode = nodeType === 'linghui/video'
     && Boolean(String((nodeData?.properties as unknown as LinghuiVideoNodeProperties | undefined)?.source ?? '').trim());
 
@@ -442,6 +447,12 @@ export const LinghuiNodeEditor: React.FC<LinghuiNodeEditorProps> = ({
       setActiveTool(null);
     }
   }, [activeTool, isVideoPassThroughNode, nodeId, setActiveTool]);
+
+  useEffect(() => {
+    if (!hasCurrentImage && activeTool?.kind === 'image' && activeTool.nodeId === nodeId && activeTool.tool === 'multi-angle') {
+      setActiveTool(null);
+    }
+  }, [activeTool, hasCurrentImage, nodeId, setActiveTool]);
 
   const gridSplitMenuItems = useMemo<MenuProps['items']>(() => (
     GRID_SPLIT_OPTIONS.map(option => ({
@@ -568,25 +579,44 @@ export const LinghuiNodeEditor: React.FC<LinghuiNodeEditorProps> = ({
 
       return (
         <div className="linghuiNodeEditorToolRail">
-          {IMAGE_TOOLBAR_ITEMS.map(item => (
-            <Dropdown
-              key={item.key}
-              open={openDropdownKey === `image-tool:${item.key}`}
-              trigger={[]}
-              classNames={{ root: 'linghuiNodeEditorDropdownMenu' }}
-              getPopupContainer={resolveDropdownContainer}
-              onOpenChange={(nextOpen) => handleDropdownOpenChange(`image-tool:${item.key}`, nextOpen)}
-              menu={{ items: createPresetMenuItems(item.key) }}
-            >
-              <Button
-                size="small"
-                className={`linghuiNodeEditorToolButton ${activeImageTool === item.key ? 'isActive' : ''}`}
-                onClick={(event) => handleDropdownTriggerClick(event, `image-tool:${item.key}`)}
+          {IMAGE_TOOLBAR_ITEMS.map(item => {
+            if (item.key === 'multi-angle') {
+              if (!hasCurrentImage) {
+                return null;
+              }
+
+              return (
+                <Button
+                  key={item.key}
+                  size="small"
+                  className={`linghuiNodeEditorToolButton ${activeImageTool === item.key ? 'isActive' : ''}`}
+                  onClick={() => setActiveTool(activeImageTool === item.key ? null : { kind: 'image', nodeId, tool: item.key })}
+                >
+                  {item.label}
+                </Button>
+              );
+            }
+
+            return (
+              <Dropdown
+                key={item.key}
+                open={openDropdownKey === `image-tool:${item.key}`}
+                trigger={[]}
+                classNames={{ root: 'linghuiNodeEditorDropdownMenu' }}
+                getPopupContainer={resolveDropdownContainer}
+                onOpenChange={(nextOpen) => handleDropdownOpenChange(`image-tool:${item.key}`, nextOpen)}
+                menu={{ items: createPresetMenuItems(item.key) }}
               >
-                {item.label}
-              </Button>
-            </Dropdown>
-          ))}
+                <Button
+                  size="small"
+                  className={`linghuiNodeEditorToolButton ${activeImageTool === item.key ? 'isActive' : ''}`}
+                  onClick={(event) => handleDropdownTriggerClick(event, `image-tool:${item.key}`)}
+                >
+                  {item.label}
+                </Button>
+              </Dropdown>
+            );
+          })}
         </div>
       );
     }
@@ -678,6 +708,7 @@ export const LinghuiNodeEditor: React.FC<LinghuiNodeEditorProps> = ({
               activeTool={activeImageTool}
               onToolChange={tool => setActiveTool(tool ? { kind: 'image', nodeId, tool } : null)}
               onCreateDerivedImportImages={items => onCreateDerivedImportImages(nodeId, items)}
+              onExecuteMultiAngle={options => onExecuteMultiAngle?.(options)}
               onRun={() => onRunNode(nodeId)}
             />
           )}

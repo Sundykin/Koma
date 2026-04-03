@@ -5,16 +5,19 @@ import type { MessageInstance } from 'antd/es/message/interface';
 import type { ReactFlowInstance } from '@xyflow/react';
 import type {
   LinghuiCanvasSelection,
+  LinghuiExecuteMultiAngleOptions,
   LinghuiExecutionLogEntry,
   LinghuiImageAssetItem,
-  LinghuiImageNodeProperties,
   LinghuiGridType,
+  LinghuiImageNodeProperties,
+  LinghuiMultiAngleConfig,
   LinghuiNodeData,
   LinghuiNodeRunState,
   LinghuiNodeToolState,
   LinghuiNodeType,
   LinghuiStoryboardFrame,
 } from '../../types/linghui';
+import { normalizeLinghuiMultiAngleConfig } from '../../types/linghui';
 import {
   createLinghuiWorkflowTemplate,
   createLinghuiWorkspaceAsset,
@@ -22,6 +25,7 @@ import {
 } from '../../store/linghuiStorage';
 import { electronService } from '../../services/electronService';
 import { ffmpegManager } from '../../services/ffmpegManager';
+import { createLogger } from '../../store/logger';
 import { stripDataHeader } from '../../utils/encoding';
 import { LINGHUI_NODE_CATALOG } from './linghuiNodeDefs';
 import type { LinghuiCanvasMenuState, LinghuiClipboardSnapshot, QuickCreateState } from './linghuiCanvasShared';
@@ -32,6 +36,9 @@ import {
 } from './linghuiImageCollections';
 
 type LinghuiCanvasDrawer = 'add' | 'workflow' | 'asset' | 'history' | 'tutorial';
+
+const logger = createLogger('LinghuiImageExecution');
+const MULTI_ANGLE_RUN_SYNC_RETRY_LIMIT = 12;
 
 const GRID_SPLIT_SIZE_MAP: Record<Exclude<LinghuiGridType, 'none'>, 2 | 3 | 4 | 5> = {
   '2x2': 2,
@@ -227,6 +234,7 @@ interface UseLinghuiCanvasOverlayPropsParams {
   deriveStoryboardImagesFromScript: (nodeId: string, shots: LinghuiStoryboardFrame[]) => string[];
   deriveStoryboardVideosFromScript: (nodeId: string, shots: LinghuiStoryboardFrame[]) => string[];
   createDerivedImageNodesFromNode: (sourceNodeId: string, items: LinghuiImageAssetItem[]) => string[];
+  createDerivedMultiAngleImageNodeFromNode: (sourceNodeId: string, options?: LinghuiExecuteMultiAngleOptions) => string | null;
   copySelectionToClipboard: (requestedIds?: string[]) => boolean;
   duplicateSelection: (
     requestedIds?: string[],
@@ -289,6 +297,7 @@ export function useLinghuiCanvasOverlayProps({
   deriveStoryboardImagesFromScript,
   deriveStoryboardVideosFromScript,
   createDerivedImageNodesFromNode,
+  createDerivedMultiAngleImageNodeFromNode,
   copySelectionToClipboard,
   duplicateSelection,
   pasteClipboardSnapshot,
@@ -305,6 +314,44 @@ export function useLinghuiCanvasOverlayProps({
   const recentLogs = useMemo(() => (
     (executionLogs ?? []).slice(-8).reverse()
   ), [executionLogs]);
+
+  const runNodeWhenReady = useCallback((nodeId: string, attemptsLeft = MULTI_ANGLE_RUN_SYNC_RETRY_LIMIT) => {
+    requestAnimationFrame(() => {
+      const targetNode = reactFlow.getNode(nodeId);
+      if (targetNode && targetNode.type !== 'group') {
+        logger.info('灵绘多角度节点已同步到画布，准备执行', {
+          nodeId,
+          attemptsUsed: MULTI_ANGLE_RUN_SYNC_RETRY_LIMIT - attemptsLeft + 1,
+        });
+        requestAnimationFrame(() => {
+          if (onRunSingleNodeRef.current) {
+            logger.info('灵绘多角度节点走单节点执行通道', {
+              nodeId,
+            });
+            onRunSingleNodeRef.current(nodeId);
+            return;
+          }
+
+          logger.warn('灵绘多角度缺少单节点执行通道，回退到批量执行通道', {
+            nodeId,
+          });
+          onRunSelection?.([nodeId]);
+        });
+        return;
+      }
+
+      if (attemptsLeft <= 1) {
+        logger.error('灵绘多角度节点同步超时，未触发执行', {
+          nodeId,
+          attempts: MULTI_ANGLE_RUN_SYNC_RETRY_LIMIT,
+        });
+        message.error('多角度节点尚未完成同步，请重试');
+        return;
+      }
+
+      runNodeWhenReady(nodeId, attemptsLeft - 1);
+    });
+  }, [message, onRunSelection, onRunSingleNodeRef, reactFlow]);
 
   const contextMenuNode = useMemo(() => {
     if (!contextMenu?.nodeId) {
@@ -568,6 +615,65 @@ export function useLinghuiCanvasOverlayProps({
     workspaceId,
   ]);
 
+  const executeMultiAngle = useCallback((options?: LinghuiExecuteMultiAngleOptions) => {
+    if (!activeNodeTool || activeNodeTool.kind !== 'image' || activeNodeTool.tool !== 'multi-angle') {
+      return;
+    }
+
+    const targetNode = reactFlow.getNode(activeNodeTool.nodeId);
+    if (!targetNode || targetNode.type === 'group') {
+      message.info('当前节点不可执行多角度生图');
+      return;
+    }
+
+    const nodeData = targetNode.data as unknown as LinghuiNodeData;
+    const primaryImage = resolveLinghuiImagePrimaryForNode(nodeData, nodeRuns[activeNodeTool.nodeId]?.result);
+    if (!String(primaryImage?.source ?? '').trim()) {
+      message.info('当前图片节点没有可用于多角度的主图');
+      return;
+    }
+
+    const props = nodeData.properties as unknown as LinghuiImageNodeProperties;
+    const nextMultiAngle = normalizeLinghuiMultiAngleConfig({
+      ...props.multiAngle,
+      ...options?.multiAngle,
+    });
+    const createdId = createDerivedMultiAngleImageNodeFromNode(activeNodeTool.nodeId, {
+      ttiSelection: String(options?.ttiSelection ?? props.multiAngle?.ttiSelection ?? props.ttiSelection ?? ''),
+      multiAngle: nextMultiAngle,
+      label: String(options?.label ?? `${nodeData.label} 多角度`),
+    });
+
+    if (!createdId) {
+      message.info('创建多角度生图节点失败');
+      return;
+    }
+
+    logger.info('灵绘多角度节点已创建', {
+      sourceNodeId: activeNodeTool.nodeId,
+      createdNodeId: createdId,
+      selectionKey: String(options?.ttiSelection ?? props.multiAngle?.ttiSelection ?? props.ttiSelection ?? ''),
+      sourceImage: String(primaryImage?.source ?? ''),
+      multiAngle: {
+        azimuth: nextMultiAngle.azimuth,
+        elevation: nextMultiAngle.elevation,
+        distance: nextMultiAngle.distance,
+        promptProtocol: nextMultiAngle.promptProtocol,
+        endpointPath: nextMultiAngle.endpointPath,
+      },
+    });
+
+    runNodeWhenReady(createdId);
+    message.success('已创建多角度生图节点并开始执行');
+  }, [
+    activeNodeTool,
+    createDerivedMultiAngleImageNodeFromNode,
+    message,
+    nodeRuns,
+    reactFlow,
+    runNodeWhenReady,
+  ]);
+
   return {
     editorSelection,
     activeNodeTool,
@@ -607,6 +713,12 @@ export function useLinghuiCanvasOverlayProps({
     },
     onCreateDerivedImportImages(nodeId, items) {
       createDerivedImageNodesFromNode(nodeId, items);
+    },
+    onCreateDerivedMultiAngleImage(nodeId, options) {
+      return createDerivedMultiAngleImageNodeFromNode(nodeId, options);
+    },
+    onExecuteMultiAngle(options) {
+      executeMultiAngle(options);
     },
     onApplyImageToolPreset: applyImageToolPreset,
     onSetGridSplitType(type) {

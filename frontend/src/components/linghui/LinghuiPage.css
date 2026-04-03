@@ -3852,9 +3852,151 @@
   font-size: 12px;
 }
 
+.linghuiMultiAngleModal .ant-modal-content {
+  border-radius: 24px;
+  background:
+    radial-gradient(circle at top left, rgba(16, 185, 129, 0.08), transparent 24%),
+    linear-gradient(180deg, rgba(15, 23, 42, 0.98), rgba(9, 13, 18, 0.98));
+  border: 1px solid rgba(71, 85, 105, 0.48);
+  box-shadow: 0 28px 64px rgba(2, 6, 23, 0.56);
+}
+
+.linghuiMultiAngleModal .ant-modal-header {
+  background: transparent;
+  border-bottom: none;
+}
+
+.linghuiMultiAngleModal .ant-modal-title,
+.linghuiMultiAngleModal .ant-modal-close {
+  color: #f8fafc;
+}
+
+.linghuiMultiAngleModalBody {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) 312px;
+  gap: 18px;
+  align-items: stretch;
+}
+
+.linghuiMultiAngleStage {
+  position: relative;
+  min-height: 560px;
+  border-radius: 22px;
+  overflow: hidden;
+  border: 1px solid rgba(63, 63, 70, 0.62);
+  background: #0f172a;
+}
+
+.linghuiMultiAngle3DViewport {
+  position: absolute;
+  inset: 0;
+  border-radius: 22px;
+  overflow: hidden;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.linghuiMultiAngle3DViewport.isDragging {
+  cursor: grabbing;
+}
+
+.linghuiMultiAngle3DViewport canvas {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.linghuiMultiAngleStageHint {
+  position: absolute;
+  left: 16px;
+  top: 16px;
+  z-index: 3;
+  min-height: 28px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(71, 85, 105, 0.52);
+  background: rgba(15, 23, 42, 0.72);
+  color: #cbd5e1;
+  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  backdrop-filter: blur(12px);
+  pointer-events: none;
+}
+
+.linghuiMultiAngleSidebar {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.linghuiMultiAngleInfoCard,
+.linghuiMultiAngleControlBlock {
+  padding: 14px;
+  border-radius: 18px;
+  border: 1px solid rgba(63, 63, 70, 0.58);
+  background: rgba(9, 13, 18, 0.72);
+}
+
+.linghuiMultiAngleInfoTitle {
+  color: #94a3b8;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.linghuiMultiAngleInfoValue {
+  margin-top: 8px;
+  color: #f8fafc;
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.linghuiMultiAngleInfoMeta,
+.linghuiMultiAngleSidebarHint {
+  margin-top: 6px;
+  color: #cbd5e1;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.linghuiMultiAngleChipRow,
+.linghuiMultiAngleFooter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.linghuiMultiAngleChip {
+  min-height: 30px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(82, 82, 91, 0.74);
+  background: rgba(11, 15, 21, 0.9);
+  color: #d4d4d8;
+  font-size: 12px;
+  font-weight: 700;
+  transition: transform 160ms ease, border-color 160ms ease, background 160ms ease, color 160ms ease;
+}
+
+.linghuiMultiAngleChip:hover {
+  transform: translateY(-1px);
+  border-color: rgba(16, 185, 129, 0.54);
+}
+
 @media (max-width: 640px) {
   .linghuiEditorFieldGrid {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .linghuiMultiAngleModalBody {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .linghuiMultiAngleStage {
+    min-height: 420px;
   }
 }
 

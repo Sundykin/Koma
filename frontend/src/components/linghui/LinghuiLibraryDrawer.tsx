@@ -118,7 +118,7 @@ export function LinghuiLibraryDrawer({
     <Drawer
       title={getDrawerTitle(activeDrawer)}
       placement="right"
-      width={420}
+      size={420}
       open={activeDrawer !== null}
       onClose={onClose}
       className="linghuiLibraryDrawer"
