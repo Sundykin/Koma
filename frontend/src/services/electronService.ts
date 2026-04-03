@@ -29,7 +29,7 @@ interface ElectronAPI {
     minimize: () => Promise<void>;
     maximize: () => Promise<void>;
     close: () => Promise<void>;
-    isMaximized: () => Promise<boolean>;
+    isMaximized: () => Promise<boolean | { isMaximized: boolean }>;
   };
   dialog: {
     openFile: (options?: OpenFileOptions) => Promise<OpenDialogResult>;
@@ -151,7 +151,10 @@ export const windowClose = async (): Promise<void> => {
 export const windowIsMaximized = async (): Promise<boolean> => {
   const api = getElectronAPI();
   if (api) {
-    return await api.window.isMaximized();
+    const result = await api.window.isMaximized();
+    return typeof result === 'object' && result !== null && 'isMaximized' in result
+      ? Boolean(result.isMaximized)
+      : Boolean(result);
   }
   return false;
 };

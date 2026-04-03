@@ -3,7 +3,7 @@
  * 角色音色绑定、多角色对话合成、缓存、后处理
  */
 import type { AudioResult, Character } from '../../types';
-import { getProjectTTSProvider } from '../index';
+import { getProjectTTSProvider } from '..';
 import { electronService } from '../../services/electronService';
 import { persistMediaAsset } from '../../services/mediaPersistenceService';
 import type { TTSRequest } from './types';

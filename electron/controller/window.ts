@@ -4,6 +4,10 @@
 import { BrowserWindow, IpcMainInvokeEvent } from 'electron';
 import { BaseController } from './base';
 
+function isWindowExpanded(win: BrowserWindow): boolean {
+  return win.isMaximized() || win.isFullScreen();
+}
+
 class WindowController extends BaseController {
   minimize(_args: any, event?: IpcMainInvokeEvent) {
     const win = event ? BrowserWindow.fromWebContents(event.sender) : null;
@@ -14,7 +18,10 @@ class WindowController extends BaseController {
   maximize(_args: any, event?: IpcMainInvokeEvent) {
     const win = event ? BrowserWindow.fromWebContents(event.sender) : null;
     if (win) {
-      if (win.isMaximized()) {
+      // macOS green window button enters a dedicated fullscreen Space instead of a plain maximize.
+      if (process.platform === 'darwin') {
+        win.setFullScreen(!win.isFullScreen());
+      } else if (win.isMaximized()) {
         win.unmaximize();
       } else {
         win.maximize();
@@ -31,7 +38,7 @@ class WindowController extends BaseController {
 
   isMaximized(_args: any, event?: IpcMainInvokeEvent) {
     const win = event ? BrowserWindow.fromWebContents(event.sender) : null;
-    return { isMaximized: win ? win.isMaximized() : false };
+    return { isMaximized: win ? isWindowExpanded(win) : false };
   }
 }
 
