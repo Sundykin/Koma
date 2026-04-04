@@ -5,8 +5,9 @@ import {
   isStartEndToVideoRequest,
   isTextToVideoRequest,
 } from '../../types';
+import { parseMentions } from '../../editor/mentionTypes';
 import { resolveProviderAssetInput } from '../mediaAssetResolver';
-import { compileGrokITV } from './grokImageIndexCompiler';
+import { compileGrokITV, compileGrokTTI } from './grokImageIndexCompiler';
 import { compilePromptReferences } from './promptReferenceCompiler';
 import type { PromptCompilationDebug, PromptCompilationInput } from './types';
 
@@ -63,6 +64,74 @@ function supportsVisualReferenceCompilation(capability: VideoGenerationCapabilit
   return capability !== 'video.text-to-video';
 }
 
+function buildSelectedAssetMatchIds(
+  type: string,
+  assetId: string,
+  altIds?: string[],
+): Set<string> {
+  const ids = new Set<string>();
+
+  const add = (id?: string) => {
+    if (!id) return;
+    ids.add(id);
+    const prefix = `${type}_`;
+    if (id.startsWith(prefix)) {
+      ids.add(id.slice(prefix.length));
+    }
+  };
+
+  add(assetId);
+  for (const alt of altIds || []) {
+    add(alt);
+  }
+
+  return ids;
+}
+
+function compileReadableSelectedAssetMentions(params: {
+  prompt: string;
+  selectedAssets: NonNullable<PromptCompilationInput['selectedAssets']>;
+}): string {
+  const mentions = parseMentions(params.prompt);
+  if (!mentions.length) {
+    return params.prompt;
+  }
+
+  const replacements = mentions.map(mention => {
+    const hit = params.selectedAssets.find(asset => {
+      if (asset.type !== mention.type) {
+        return false;
+      }
+      return buildSelectedAssetMatchIds(asset.type, asset.assetId, asset.altIds).has(mention.id);
+    });
+    if (!hit) {
+      return null;
+    }
+
+    const replacement = String(hit.textValue || hit.name || '').trim();
+    if (!replacement) {
+      return null;
+    }
+
+    return {
+      from: mention.from,
+      to: mention.to,
+      replacement,
+    };
+  }).filter(Boolean) as Array<{ from: number; to: number; replacement: string }>;
+
+  if (!replacements.length) {
+    return params.prompt;
+  }
+
+  let compiledPrompt = params.prompt;
+  for (const item of replacements.sort((left, right) => right.from - left.from)) {
+    compiledPrompt = compiledPrompt.slice(0, item.from) + item.replacement + compiledPrompt.slice(item.to);
+  }
+
+  return compiledPrompt;
+}
+
 function supportsDataUrl(transports: ReadonlyArray<ProviderAssetTransport> | undefined): boolean {
   return Boolean(transports?.includes('data-url'));
 }
@@ -82,18 +151,24 @@ function toPositiveInt(value: unknown): number | undefined {
 
 async function ensureProviderAssetInput(
   source: VideoRequestAsset | undefined,
+  options?: {
+    preferLocalFile?: boolean;
+  },
 ): Promise<ProviderAssetInput | undefined> {
   if (!source) return undefined;
   if (typeof source === 'object' && 'transport' in source && 'value' in source) {
     return source as ProviderAssetInput;
   }
-  return resolveProviderAssetInput(source as MediaAssetSource);
+  return resolveProviderAssetInput(source as MediaAssetSource, options);
 }
 
 async function ensureProviderAssetInputs(
   sources: Array<VideoRequestAsset | undefined>,
+  options?: {
+    preferLocalFile?: boolean;
+  },
 ): Promise<ProviderAssetInput[]> {
-  const resolved = await Promise.all(sources.map(ensureProviderAssetInput));
+  const resolved = await Promise.all(sources.map(source => ensureProviderAssetInput(source, options)));
   return resolved.filter(Boolean) as ProviderAssetInput[];
 }
 
@@ -327,37 +402,113 @@ export function compileWorkflowVideoDomainRequest(params: {
   if (
     protocol === 'grok-image-index'
     && promptCompilation?.selectedAssets?.length
-    && isImageToVideoRequest(request)
-    && request.primaryImage
+    && (isImageToVideoRequest(request) || isReferenceToVideoRequest(request))
   ) {
-    const selectedAssets = maxAdditionalReferences != null
-      ? promptCompilation.selectedAssets.slice(0, maxAdditionalReferences)
-      : promptCompilation.selectedAssets;
-    const originalAdditional = request.additionalReferences || [];
-    const remainingForExtra = maxAdditionalReferences != null
-      ? Math.max(0, maxAdditionalReferences - selectedAssets.length)
-      : undefined;
-    const extraReferences = remainingForExtra != null
-      ? originalAdditional.slice(0, remainingForExtra)
-      : originalAdditional;
+    if (isImageToVideoRequest(request) && request.primaryImage) {
+      const selectedAssets = maxAdditionalReferences != null
+        ? promptCompilation.selectedAssets.slice(0, maxAdditionalReferences)
+        : promptCompilation.selectedAssets;
+      const originalAdditional = request.additionalReferences || [];
+      const remainingForExtra = maxAdditionalReferences != null
+        ? Math.max(0, maxAdditionalReferences - selectedAssets.length)
+        : undefined;
+      const extraReferences = remainingForExtra != null
+        ? originalAdditional.slice(0, remainingForExtra)
+        : originalAdditional;
 
-    const compiled = compileGrokITV({
-      prompt: originalPrompt,
-      primaryImage: request.primaryImage,
-      selectedAssets,
-      extraReferences,
+      const compiled = compileGrokITV({
+        prompt: originalPrompt,
+        primaryImage: request.primaryImage,
+        selectedAssets,
+        extraReferences,
+      });
+
+      const compiledAdditional = maxAdditionalReferences != null
+        ? compiled.compiledAdditionalReferences.slice(0, maxAdditionalReferences)
+        : compiled.compiledAdditionalReferences;
+
+      compiledRequest = {
+        ...request,
+        prompt: compiled.compiledPrompt,
+        additionalReferences: compiledAdditional,
+      };
+      compilationDebug = compiled.debug;
+    } else if (isReferenceToVideoRequest(request)) {
+      const hasPrimaryReference = Boolean(promptCompilation.primaryReferenceSource);
+      const selectedAssets = maxAdditionalReferences != null
+        ? promptCompilation.selectedAssets.slice(0, hasPrimaryReference ? maxAdditionalReferences : maxAdditionalReferences + 1)
+        : promptCompilation.selectedAssets;
+
+      if (hasPrimaryReference) {
+        const originalExtraReferences = request.referenceImages.slice(1);
+        const remainingForExtra = maxAdditionalReferences != null
+          ? Math.max(0, maxAdditionalReferences - selectedAssets.length)
+          : undefined;
+        const extraReferences = remainingForExtra != null
+          ? originalExtraReferences.slice(0, remainingForExtra)
+          : originalExtraReferences;
+
+        const compiled = compileGrokITV({
+          prompt: originalPrompt,
+          primaryImage: promptCompilation.primaryReferenceSource!,
+          selectedAssets,
+          extraReferences,
+        });
+
+        const compiledReferenceImages = [
+          promptCompilation.primaryReferenceSource!,
+          ...compiled.compiledAdditionalReferences,
+        ];
+
+        compiledRequest = {
+          ...request,
+          prompt: compiled.compiledPrompt,
+          referenceImages: compiledReferenceImages,
+        };
+        compilationDebug = compiled.debug;
+      } else {
+        const remainingForExtra = maxAdditionalReferences != null
+          ? Math.max(0, maxAdditionalReferences + 1 - selectedAssets.length)
+          : undefined;
+        const extraReferences = remainingForExtra != null
+          ? request.referenceImages.slice(0, remainingForExtra)
+          : request.referenceImages;
+
+        const compiled = compileGrokTTI({
+          prompt: originalPrompt,
+          selectedAssets,
+          extraReferences,
+        });
+
+        const compiledReferenceImages = maxAdditionalReferences != null
+          ? compiled.compiledReferences.slice(0, maxAdditionalReferences + 1)
+          : compiled.compiledReferences;
+
+        compiledRequest = {
+          ...request,
+          prompt: compiled.compiledPrompt,
+          referenceImages: compiledReferenceImages,
+        };
+        compilationDebug = compiled.debug;
+      }
+    }
+  }
+
+  if (
+    protocol !== 'grok-image-index'
+    && promptCompilation?.selectedAssets?.length
+  ) {
+    const readablePrompt = compileReadableSelectedAssetMentions({
+      prompt: compiledRequest.prompt,
+      selectedAssets: promptCompilation.selectedAssets,
     });
 
-    const compiledAdditional = maxAdditionalReferences != null
-      ? compiled.compiledAdditionalReferences.slice(0, maxAdditionalReferences)
-      : compiled.compiledAdditionalReferences;
-
-    compiledRequest = {
-      ...request,
-      prompt: compiled.compiledPrompt,
-      additionalReferences: compiledAdditional,
-    };
-    compilationDebug = compiled.debug;
+    if (readablePrompt !== compiledRequest.prompt) {
+      compiledRequest = {
+        ...compiledRequest,
+        prompt: readablePrompt,
+      };
+    }
   }
 
   const promptReferenceCompiled = compileVideoRequestPromptReferences({
@@ -380,6 +531,7 @@ export async function mapVideoRequestToProviderRequest(params: {
   transportSupport: ITVTransportSupport;
   maxAdditionalReferences?: number;
   messages?: VideoMappingMessageOverrides;
+  preferLocalAssetInput?: boolean;
 }): Promise<ITVRequest<ProviderAssetInput>> {
   const { projectId, request, transportSupport, maxAdditionalReferences } = params;
   const messages: Required<VideoMappingMessageOverrides> = {
@@ -423,9 +575,13 @@ export async function mapVideoRequestToProviderRequest(params: {
         })
       : additionalInput;
 
-    const primaryImage = await ensureProviderAssetInput(normalizedPrimary);
+    const primaryImage = await ensureProviderAssetInput(normalizedPrimary, {
+      preferLocalFile: params.preferLocalAssetInput,
+    });
     if (!primaryImage) throw new Error(messages.missingPrimaryImage);
-    const additionalReferences = await ensureProviderAssetInputs(normalizedAdditional);
+    const additionalReferences = await ensureProviderAssetInputs(normalizedAdditional, {
+      preferLocalFile: params.preferLocalAssetInput,
+    });
     if (!transportSupport.primary && primaryImage.transport !== 'remote-url') {
       throw new Error(messages.remotePrimary);
     }
@@ -453,7 +609,9 @@ export async function mapVideoRequestToProviderRequest(params: {
           policy: additionalPolicy,
         })
       : referenceSources;
-    const referenceImages = await ensureProviderAssetInputs(normalizedReferenceSources);
+    const referenceImages = await ensureProviderAssetInputs(normalizedReferenceSources, {
+      preferLocalFile: params.preferLocalAssetInput,
+    });
     if (!referenceImages.length) {
       throw new Error(messages.missingReferenceImages);
     }
@@ -485,8 +643,12 @@ export async function mapVideoRequestToProviderRequest(params: {
           policy: endPolicy,
         })
       : request.endFrame;
-    const startFrame = await ensureProviderAssetInput(normalizedStartFrame);
-    const endFrame = await ensureProviderAssetInput(normalizedEndFrame);
+    const startFrame = await ensureProviderAssetInput(normalizedStartFrame, {
+      preferLocalFile: params.preferLocalAssetInput,
+    });
+    const endFrame = await ensureProviderAssetInput(normalizedEndFrame, {
+      preferLocalFile: params.preferLocalAssetInput,
+    });
     if (!startFrame || !endFrame) {
       throw new Error(messages.missingStartEndFrames);
     }

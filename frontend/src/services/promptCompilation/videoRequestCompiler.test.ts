@@ -51,6 +51,63 @@ describe('videoRequestCompiler', () => {
     expect(compiled.compilationDebug?.protocol).toBe('grok-image-index');
   });
 
+  it('compileWorkflowVideoDomainRequest: compiles grok-image-index prompt for reference-to-video with primary image first', () => {
+    const primaryImage = 'https://cdn.example.com/shot.png';
+    const compiled = compileWorkflowVideoDomainRequest({
+      request: buildVideoCapabilityRequest({
+        capability: 'video.reference-to-video',
+        prompt: '让 @char_hero 在 @scene_city 夜景中移动',
+        referenceImages: [
+          primaryImage,
+          'https://cdn.example.com/manual-ref.png',
+        ],
+      }),
+      protocol: 'grok-image-index',
+      promptCompilation: {
+        selectedAssets: [
+          { type: 'char', assetId: 'char_hero', source: 'https://cdn.example.com/char.png' },
+          { type: 'scene', assetId: 'scene_city', source: 'https://cdn.example.com/scene.png' },
+        ],
+        primaryReferenceSource: primaryImage,
+      },
+      maxAdditionalReferences: 3,
+    });
+
+    expect(compiled.request.prompt).toContain('@Image 1');
+    expect(compiled.request.prompt).toContain('@Image 2');
+    expect(compiled.request.prompt).toContain('@Image 3');
+    expect(compiled.request.referenceImages).toEqual([
+      primaryImage,
+      'https://cdn.example.com/char.png',
+      'https://cdn.example.com/scene.png',
+      'https://cdn.example.com/manual-ref.png',
+    ]);
+    expect(compiled.compilationDebug?.protocol).toBe('grok-image-index');
+  });
+
+  it('compileWorkflowVideoDomainRequest: replaces shot asset mentions with readable text for non-grok video providers', () => {
+    const compiled = compileWorkflowVideoDomainRequest({
+      request: buildVideoCapabilityRequest({
+        capability: 'video.image-to-video',
+        prompt: '让 @char_hero 在 @scene_city 夜景中移动',
+        primaryImage: 'https://cdn.example.com/shot.png',
+        additionalReferences: [],
+      }),
+      promptCompilation: {
+        selectedAssets: [
+          { type: 'char', assetId: 'char_hero', name: '主角', textValue: '黑衣青年' },
+          { type: 'scene', assetId: 'scene_city', name: '城市夜景', textValue: '霓虹闪烁的城市夜景' },
+        ],
+      },
+    });
+
+    expect(compiled.request.prompt).toContain('黑衣青年');
+    expect(compiled.request.prompt).toContain('霓虹闪烁的城市夜景');
+    expect(compiled.request.prompt).not.toContain('@char_hero');
+    expect(compiled.request.prompt).not.toContain('@scene_city');
+    expect(compiled.request.additionalReferences).toEqual([]);
+  });
+
   it('resolveVideoProtocolCompilationLimit: supports config override and protocol default', () => {
     expect(resolveVideoProtocolCompilationLimit({
       protocol: 'grok-image-index',

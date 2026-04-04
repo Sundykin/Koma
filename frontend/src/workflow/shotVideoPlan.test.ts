@@ -97,8 +97,42 @@ function createSettings(): AppSettings {
   };
 }
 
+function createReferenceOnlySettings(): AppSettings {
+  return {
+    channelConfigs: [
+      {
+        id: 'ref-main',
+        name: 'ReferenceOnly',
+        category: 'itv',
+        providerType: 'custom',
+        providerConfig: { apiKey: 'ref-key', baseUrl: 'https://ref.example.com' },
+        defaultModelId: 'ref-model-a',
+        models: [
+          {
+            id: 'ref-model-a',
+            label: 'ref-a',
+            providerModelName: 'ref-a',
+            capabilities: ['video.reference-to-video'],
+          },
+        ],
+        enabled: true,
+        source: 'builtin',
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    ],
+    mediaDefaults: {
+      itv: {
+        channelId: 'ref-main',
+        modelId: 'ref-model-a',
+      },
+    },
+    promptTemplates: {},
+  };
+}
+
 describe('shotVideoPlan', () => {
-  it('有选中主图时优先走图生视频，并保留补充参考', () => {
+  it('有选中主图时按图生视频执行，角色资产只保留在提示词编译上下文', () => {
     const character: Character = {
       id: 'char-1',
       name: '角色A',
@@ -130,8 +164,15 @@ describe('shotVideoPlan', () => {
     expect(plan.capability).toBe('video.image-to-video');
     expect(plan.selectedImageSource).toBe('https://cdn.example.com/shot.png');
     expect(plan.additionalReferenceImages).toEqual([
-      'https://cdn.example.com/char.png',
       createImageAsset('https://cdn.example.com/manual-ref.png'),
+    ]);
+    expect(plan.selectedAssetsForCompilation).toEqual([
+      expect.objectContaining({
+        type: 'char',
+        assetId: 'char-1',
+        name: '角色A',
+        textValue: 'hero',
+      }),
     ]);
 
     expect(buildShotVideoRequest({
@@ -146,7 +187,44 @@ describe('shotVideoPlan', () => {
     });
   });
 
-  it('没有主图但有参考时走参考生视频', () => {
+  it('没有分镜主图时，选中的参考图会作为图生视频主图', () => {
+    const referenceAsset = createImageAsset('https://cdn.example.com/manual-ref.png');
+    const shot = createShot({
+      media: {
+        references: [referenceAsset],
+        selectedReferenceIndex: 0,
+      },
+    });
+
+    const plan = collectShotVideoPlan({
+      shot,
+      characters: [],
+      scenes: [],
+      props: [],
+    });
+
+    expect(plan.capability).toBe('video.image-to-video');
+    expect(plan.primaryImageInput).toBe(referenceAsset);
+    expect(plan.primaryImageSource).toBe('https://cdn.example.com/manual-ref.png');
+    expect(buildShotVideoRequest({
+      plan,
+      prompt: '让静帧角色轻微呼吸并看向镜头',
+      duration: 4,
+      aspectRatio: '16:9',
+    })).toEqual({
+      capability: 'video.image-to-video',
+      prompt: '让静帧角色轻微呼吸并看向镜头',
+      primaryImage: referenceAsset,
+      additionalReferences: [],
+      options: {
+        duration: 4,
+        motionPrompt: undefined,
+        aspectRatio: '16:9',
+      },
+    });
+  });
+
+  it('角色场景道具仅参与提示词编译，不直接变成视频参考图', () => {
     const prop: Prop = {
       id: 'prop-1',
       name: '道具A',
@@ -166,16 +244,24 @@ describe('shotVideoPlan', () => {
       props: [prop],
     });
 
-    expect(plan.capability).toBe('video.reference-to-video');
+    expect(plan.capability).toBe('video.text-to-video');
+    expect(plan.additionalReferenceImages).toEqual([]);
+    expect(plan.selectedAssetsForCompilation).toEqual([
+      expect.objectContaining({
+        type: 'prop',
+        assetId: 'prop-1',
+        name: '道具A',
+        textValue: 'sword',
+      }),
+    ]);
     expect(buildShotVideoRequest({
       plan,
       prompt: '展示道具细节',
       duration: 4,
       aspectRatio: '1:1',
     })).toEqual({
-      capability: 'video.reference-to-video',
+      capability: 'video.text-to-video',
       prompt: '展示道具细节',
-      referenceImages: ['https://cdn.example.com/prop.png'],
       options: {
         duration: 4,
         motionPrompt: undefined,
@@ -195,15 +281,25 @@ describe('shotVideoPlan', () => {
     expect(plan.capability).toBe('video.text-to-video');
   });
 
-  it('能力支持检查会给出清晰原因', () => {
+  it('能力支持检查会按当前项目选择直接校验，不再回退到其他模型', () => {
     const settings = createSettings();
 
-    const unsupportedBySelection = resolveShotVideoCapabilitySupport({
+    const supported = resolveShotVideoCapabilitySupport({
       settings,
       selectionKey: 'runway-main::runway-model-a',
+      capability: 'video.image-to-video',
+    });
+    expect(supported.disabledReason).toBeUndefined();
+    expect(supported.capability).toBe('video.image-to-video');
+    expect(supported.resolvedContext?.definition.id).toBe('runway');
+    expect(supported.effectiveSelectionKey).toBe('runway-main::runway-model-a');
+
+    const unsupportedBySelection = resolveShotVideoCapabilitySupport({
+      selectionKey: 'runway-main::runway-model-a',
+      settings,
       capability: 'video.text-to-video',
     });
-    expect(unsupportedBySelection.disabledReason).toBe('当前项目选择的视频模型不支持文生视频，请切换模型');
+    expect(unsupportedBySelection.disabledReason).toBe('当前选择的模型不支持文生视频，请切换模型');
 
     const unsupportedEverywhere = resolveShotVideoCapabilitySupport({
       settings: {
@@ -214,6 +310,21 @@ describe('shotVideoPlan', () => {
       capability: 'video.reference-to-video',
     });
     expect(unsupportedEverywhere.disabledReason).toBe('当前没有配置支持参考生视频的视频模型');
+  });
+
+  it('仅配置参考生视频模型时，不会把图生视频兼容成参考生视频', () => {
+    const support = resolveShotVideoCapabilitySupport({
+      settings: createReferenceOnlySettings(),
+      selectionKey: 'ref-main::ref-model-a',
+      capability: 'video.image-to-video',
+      visualInputCount: 1,
+    });
+
+    expect(support.disabledReason).toBe('当前没有配置支持图生视频的视频模型');
+    expect(support.requestedCapability).toBe('video.image-to-video');
+    expect(support.capability).toBe('video.image-to-video');
+    expect(support.capabilityLabel).toBe('图生视频');
+    expect(support.effectiveSelectionKey).toBe('ref-main::ref-model-a');
   });
 
   it('能力支持时返回解析后的模型上下文', () => {

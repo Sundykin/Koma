@@ -66,7 +66,7 @@ export const StagePlayer: React.FC<StagePlayerProps> = ({
   const playerRef = useRef<Player | null>(null);
   const [error, setError] = useState<string | null>(null);
   const resolvedSrc = useMemo(
-    () => resolveMediaSource(source || videoUrl || videoPath),
+    () => resolveMediaSource(source ?? videoPath ?? videoUrl),
     [source, videoPath, videoUrl],
   );
   const resolvedPoster = useMemo(() => resolveMediaSource(poster), [poster]);

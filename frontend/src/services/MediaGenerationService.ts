@@ -33,6 +33,7 @@ import { getProjectITVProvider, getProjectTTIProvider, getProjectTTSProvider } f
 import {
   listConfiguredModelSelectOptions,
   resolveConfiguredChannelModel,
+  resolveConfiguredChannelModelWithCapabilityFallback,
   serializeMediaSelection,
   type ResolvedChannelModelContext,
 } from '../providers/channel/resolver';
@@ -103,23 +104,43 @@ async function resolveProviderAndContext<T>(params: {
   category: MediaCategory;
   selectionKey?: string;
   capability: ModelCapability;
-  getProvider: (selectionKey?: string, capability?: ModelCapability) => Promise<T | null>;
+  getProvider: (
+    selectionKey?: string,
+    capability?: ModelCapability,
+    settingsSnapshot?: Awaited<ReturnType<typeof loadSettings>>,
+  ) => Promise<T | null>;
   missingError: string;
+  allowCapabilityFallback?: boolean;
 }): Promise<{ provider: T; resolvedContext?: ResolvedChannelModelContext }> {
   let resolvedContext: ResolvedChannelModelContext | undefined;
+  let resolvedSelectionKey = params.selectionKey;
   let capabilityError: string | undefined;
+  let settingsSnapshot: Awaited<ReturnType<typeof loadSettings>> | undefined;
   try {
     const canReadSettings = typeof window !== 'undefined'
       ? typeof window.localStorage !== 'undefined'
       : typeof localStorage !== 'undefined';
     if (canReadSettings) {
       const settings = await loadSettings();
-      resolvedContext = resolveConfiguredChannelModel(
-        settings,
-        params.category,
-        params.selectionKey,
-        params.capability,
-      );
+      settingsSnapshot = settings;
+      const resolved = params.allowCapabilityFallback
+        ? resolveConfiguredChannelModelWithCapabilityFallback(
+            settings,
+            params.category,
+            params.selectionKey,
+            params.capability,
+          )
+        : {
+            context: resolveConfiguredChannelModel(
+              settings,
+              params.category,
+              params.selectionKey,
+              params.capability,
+            ),
+            effectiveSelectionKey: params.selectionKey,
+          };
+      resolvedContext = resolved.context;
+      resolvedSelectionKey = resolved.effectiveSelectionKey || resolvedSelectionKey;
       if (!resolvedContext) {
         const capableModels = listConfiguredModelSelectOptions(
           settings,
@@ -143,7 +164,11 @@ async function resolveProviderAndContext<T>(params: {
     });
   }
 
-  const provider = await params.getProvider(params.selectionKey, params.capability);
+  const provider = await params.getProvider(
+    resolvedSelectionKey,
+    params.capability,
+    settingsSnapshot,
+  );
   if (!provider) {
     throw new Error(capabilityError || params.missingError);
   }
@@ -413,14 +438,24 @@ export class MediaGenerationService {
     promptCompilation?: PromptCompilationInput;
     itvSelection?: string;
     taskName?: string;
+    allowCapabilityFallback?: boolean;
   }): Promise<StoredMediaAsset> {
-    const { projectId, ownerRef, request, itvSelection, taskName, promptCompilation } = params;
+    const {
+      projectId,
+      ownerRef,
+      request,
+      itvSelection,
+      taskName,
+      promptCompilation,
+      allowCapabilityFallback = true,
+    } = params;
     const { provider, resolvedContext } = await resolveProviderAndContext({
       category: 'itv',
       selectionKey: itvSelection,
       capability: request.capability,
       getProvider: getProjectITVProvider,
       missingError: '未配置 ITV 服务',
+      allowCapabilityFallback,
     });
     const executionMetadata = buildExecutionMetadata(resolvedContext, request.capability);
     const traceContext = createVideoTraceContext({
@@ -500,6 +535,7 @@ export class MediaGenerationService {
       request: compiledDomainRequest.request,
       transportSupport,
       maxAdditionalReferences,
+      preferLocalAssetInput: provider.config?.provider === 'seedance',
     });
     const tracedProviderRequest = withVideoTrace(providerRequest, traceContext);
 

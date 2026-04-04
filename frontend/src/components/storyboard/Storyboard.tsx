@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import {
   Button,
@@ -33,6 +33,7 @@ import { ShotListEditor } from './ShotListEditor';
 import { ShotAssetPresetModal } from './ShotAssetPresetModal';
 import { useShotAssetSync } from '../../hooks/useShotAssetSync';
 import { createLogger } from '../../store/logger';
+import { loadSettings } from '../../store/globalStore';
 import {
   collectShotVideoPlan,
   resolveShotVideoCapabilitySupport,
@@ -116,6 +117,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
   onConfirmedShotsToTimeline: _onConfirmedShotsToTimeline,
 }) => {
   const { message } = App.useApp();
+  const [effectiveSettings, setEffectiveSettings] = useState<AppSettings>(settings);
   const [shots, setShots] = useState<Shot[]>([]);
   const [characters, setCharacters] = useState<Character[]>([]);
   const [scenes, setScenes] = useState<Scene[]>([]);
@@ -130,6 +132,8 @@ export const Storyboard: React.FC<StoryboardProps> = ({
   const [_renderStep, setRenderStep] = useState('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [batchProgress, setBatchProgress] = useState<{ current: number; total: number; step?: string } | undefined>();
+  const queuedShotsSaveRef = useRef<{ projectId: string; episodeId: string; shots: Shot[] } | null>(null);
+  const activeShotsSaveRef = useRef<Promise<void> | null>(null);
 
   // 预选资产弹窗
   const [presetModalOpen, setPresetModalOpen] = useState(false);
@@ -146,6 +150,34 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     () => styleSnapshot?.ttiStylePrefix?.trim() || '',
     [styleSnapshot]
   );
+
+  useEffect(() => {
+    setEffectiveSettings(settings);
+  }, [settings]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const syncLatestSettings = async () => {
+      try {
+        const latest = await loadSettings();
+        if (!cancelled) {
+          setEffectiveSettings(latest);
+        }
+      } catch (error) {
+        logger.warn('读取最新全局设置失败，继续使用当前快照', {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    };
+
+    void syncLatestSettings();
+    window.addEventListener('focus', syncLatestSettings);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('focus', syncLatestSettings);
+    };
+  }, []);
 
   // 获取当前激活的分镜对象
   const _activeShot = useMemo(() =>
@@ -208,13 +240,14 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     return new Map(shots.map(shot => {
       const plan = collectShotVideoPlan({ shot, characters, scenes, props });
       const support = resolveShotVideoCapabilitySupport({
-        settings,
+        settings: effectiveSettings,
         selectionKey: itvSelection,
         capability: plan.capability,
+        visualInputCount: plan.visualReferenceInputs.length,
       });
       return [shot.id, support] as const;
     }));
-  }, [shots, characters, scenes, props, settings, itvSelection]);
+  }, [shots, characters, scenes, props, effectiveSettings, itvSelection]);
 
   const buildUnsupportedShotVideoMessage = useCallback((targetShots: Shot[]) => {
     const unsupported = targetShots
@@ -295,6 +328,14 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     }
   }, [projectId, episodeId]);
 
+  const refreshShotsFromStore = useCallback(async () => {
+    if (!projectId || !episodeId) {
+      return;
+    }
+    const latestShots = await loadEpisodeShots(projectId, episodeId);
+    setShots(latestShots);
+  }, [projectId, episodeId]);
+
   useEffect(() => {
     loadData();
   }, [loadData]);
@@ -318,19 +359,51 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     return () => unsubscribe();
   }, [projectId, episodeId, loadData]);
 
+  const flushQueuedShotSaves = useCallback((): Promise<void> => {
+    if (activeShotsSaveRef.current) {
+      return activeShotsSaveRef.current;
+    }
+
+    const task = (async () => {
+      while (queuedShotsSaveRef.current) {
+        const snapshot = queuedShotsSaveRef.current;
+        queuedShotsSaveRef.current = null;
+        await saveEpisodeShots(snapshot.projectId, snapshot.episodeId, snapshot.shots);
+      }
+    })();
+
+    activeShotsSaveRef.current = task
+      .catch((error: unknown) => {
+        logger.error('保存分镜失败', error);
+        message.error('保存失败');
+      })
+      .finally(() => {
+        activeShotsSaveRef.current = null;
+        if (queuedShotsSaveRef.current) {
+          void flushQueuedShotSaves();
+        }
+      });
+
+    return activeShotsSaveRef.current;
+  }, [message]);
+
   // 保存分镜数据
-  const saveAllShots = useCallback(async (updatedShots: Shot[]) => {
+  const saveAllShots = useCallback((updatedShots: Shot[]) => {
     if (!episodeId) {
       message.warning('未选择剧集，无法保存分镜');
-      return;
+      return Promise.resolve();
     }
-    try {
-      await saveEpisodeShots(projectId, episodeId, updatedShots);
-      setShots(updatedShots);
-    } catch {
-      message.error('保存失败');
-    }
-  }, [projectId, episodeId]);
+
+    // 先本地更新，避免输入法组合输入被异步持久化回写打断。
+    setShots(updatedShots);
+    queuedShotsSaveRef.current = {
+      projectId,
+      episodeId,
+      shots: updatedShots,
+    };
+
+    return flushQueuedShotSaves();
+  }, [projectId, episodeId, message, flushQueuedShotSaves]);
 
   // ============ 回调函数 ============
 
@@ -421,7 +494,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
           projectId,
           episodeId,
           shot,
-          settings,
+          settings: effectiveSettings,
           aspectRatio,
           mediaSelections: {
             ttiSelection,
@@ -436,23 +509,10 @@ export const Storyboard: React.FC<StoryboardProps> = ({
         }
       );
       if (result.success && result.version) {
-        const newVideoAsset = result.version.media?.video;
-        const existingVideos = shot.media?.videos || [];
-        const updatedShots = shots.map(s =>
-          s.id === shotId ? {
-            ...s,
-            media: {
-              ...(s.media || {}),
-              videos: newVideoAsset ? [...existingVideos, newVideoAsset] : existingVideos,
-              currentVideoIndex: newVideoAsset ? existingVideos.length : (s.media?.currentVideoIndex ?? 0),
-            },
-          } : s
-        );
-        await saveAllShots(updatedShots);
+        await refreshShotsFromStore();
         message.success('分镜渲染完成');
       } else {
         message.error(result.error || '渲染失败');
-        loadData();
       }
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : String(err);
@@ -466,7 +526,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       setRenderProgress(0);
       setRenderStep('');
     }
-  }, [projectId, shots, shotVideoSupportMap, settings, ttiSelection, itvSelection, ttsSelection, saveAllShots, loadData, styleSnapshot, message]);
+  }, [projectId, episodeId, shots, shotVideoSupportMap, effectiveSettings, ttiSelection, itvSelection, ttsSelection, styleSnapshot, message, refreshShotsFromStore]);
 
   // 剧本内容变更
   const handleScriptChange = useCallback((shotId: string, scriptContent: string) => {
@@ -1340,8 +1400,9 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       const result = await batchRenderShots(
         {
           projectId,
+          episodeId,
           shots: confirmedToRender,
-          settings,
+          settings: effectiveSettings,
           aspectRatio,
           mediaSelections: {
             ttiSelection,
@@ -1355,24 +1416,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
           setRenderStep(`${current.step || ''} (${current.shotId})`);
         }
       );
-      // 更新所有成功渲染的 shot 的 videos 字段
-      const updatedShots = shots.map(s => {
-        const renderResult = result.results.find(r => r.shotId === s.id && r.success && r.version);
-        if (renderResult && renderResult.version) {
-          const newVideoAsset = renderResult.version.media?.video;
-          const existingVideos = s.media?.videos || [];
-          return {
-            ...s,
-            media: {
-              ...(s.media || {}),
-              videos: newVideoAsset ? [...existingVideos, newVideoAsset] : existingVideos,
-              currentVideoIndex: newVideoAsset ? existingVideos.length : (s.media?.currentVideoIndex ?? 0),
-            },
-          };
-        }
-        return s;
-      });
-      await saveAllShots(updatedShots);
+      await refreshShotsFromStore();
       message.success(`批量渲染完成: ${result.success} 成功, ${result.failed} 失败`);
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : String(err);
@@ -1382,7 +1426,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       setRenderProgress(0);
       setRenderStep('');
     }
-  }, [projectId, shots, settings, ttiSelection, itvSelection, ttsSelection, saveAllShots, styleSnapshot, buildUnsupportedShotVideoMessage, message]);
+  }, [projectId, episodeId, shots, effectiveSettings, ttiSelection, itvSelection, ttsSelection, styleSnapshot, buildUnsupportedShotVideoMessage, message, refreshShotsFromStore]);
 
   // 批量重新生成视频（已有视频的）
   const handleBatchReGenerateVideos = useCallback(async (targetShotIds?: string[]) => {
@@ -1407,8 +1451,9 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       const result = await batchRenderShots(
         {
           projectId,
+          episodeId,
           shots: shotsWithVideo,
-          settings,
+          settings: effectiveSettings,
           aspectRatio,
           mediaSelections: {
             ttiSelection,
@@ -1422,24 +1467,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
           setRenderStep(`${current.step || ''} (${current.shotId})`);
         }
       );
-      // 更新所有成功渲染的 shot 的 videos 字段
-      const updatedShots = shots.map(s => {
-        const renderResult = result.results.find(r => r.shotId === s.id && r.success && r.version);
-        if (renderResult && renderResult.version) {
-          const newVideoAsset = renderResult.version.media?.video;
-          const existingVideos = s.media?.videos || [];
-          return {
-            ...s,
-            media: {
-              ...(s.media || {}),
-              videos: newVideoAsset ? [...existingVideos, newVideoAsset] : existingVideos,
-              currentVideoIndex: newVideoAsset ? existingVideos.length : (s.media?.currentVideoIndex ?? 0),
-            },
-          };
-        }
-        return s;
-      });
-      await saveAllShots(updatedShots);
+      await refreshShotsFromStore();
       message.success(`批量重新渲染完成: ${result.success} 成功, ${result.failed} 失败`);
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : String(err);
@@ -1449,7 +1477,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       setRenderProgress(0);
       setRenderStep('');
     }
-  }, [projectId, shots, settings, ttiSelection, itvSelection, ttsSelection, saveAllShots, styleSnapshot, buildUnsupportedShotVideoMessage, message]);
+  }, [projectId, episodeId, shots, effectiveSettings, ttiSelection, itvSelection, ttsSelection, styleSnapshot, buildUnsupportedShotVideoMessage, message, refreshShotsFromStore]);
 
   // ============ 渲染 ============
 

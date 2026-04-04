@@ -2,7 +2,17 @@
  * 分镜视频生成工作流
  * 纯 ITV 调用：使用已有参考图片（可选）生成视频
  */
-import { getMediaAssetDisplaySource, type AppSettings, type Shot, type ShotVersion, type Character, type Prop, type Scene } from '../types';
+import {
+  getMediaAssetDisplaySource,
+  isImageToVideoRequest,
+  isReferenceToVideoRequest,
+  type AppSettings,
+  type Character,
+  type Prop,
+  type Scene,
+  type Shot,
+  type ShotVersion,
+} from '../types';
 import { getProjectTTSProvider } from '../providers';
 import { saveShotVersion, loadShotMeta, loadCharacters, loadProps, loadScenes } from '../store/projectStore';
 import { createLogger } from '../store/logger';
@@ -52,6 +62,7 @@ interface ShotRenderResult {
 
 interface BatchRenderParams {
   projectId: string;
+  episodeId?: string;
   shots: Shot[];
   settings?: AppSettings;
   aspectRatio?: '16:9' | '9:16';
@@ -103,12 +114,6 @@ export async function shotRenderWorkflow(
     scenes: [],
     props: [],
   });
-  logger.info('分镜视频能力推断', {
-    shotId: normalizedShot.id,
-    capability: videoPlan.capability,
-    selectedImage: Boolean(videoPlan.selectedImageAsset),
-    additionalReferences: videoPlan.additionalReferenceImages.length,
-  });
 
   try {
     // 获取视觉风格前缀（支持自定义预设）
@@ -140,6 +145,7 @@ export async function shotRenderWorkflow(
           settings,
           selectionKey: mediaSelections?.itvSelection,
           capability: resolvedVideoPlan.capability,
+          visualInputCount: resolvedVideoPlan.visualReferenceInputs.length,
         })
       : undefined;
     if (capabilitySupport?.disabledReason) {
@@ -148,6 +154,21 @@ export async function shotRenderWorkflow(
     if (capabilitySupport?.resolvedContext) {
       itvProviderName = `${capabilitySupport.resolvedContext.definition.name} / ${capabilitySupport.resolvedContext.model.label}`;
     }
+    const effectiveVideoCapability = capabilitySupport?.capability || resolvedVideoPlan.capability;
+    const effectiveCapabilityLabel = capabilitySupport?.capabilityLabel || resolvedVideoPlan.capabilityLabel;
+    const effectiveITVSelection = capabilitySupport?.effectiveSelectionKey || mediaSelections?.itvSelection;
+
+    logger.info('分镜视频能力推断', {
+      shotId: normalizedShot.id,
+      requestedCapability: videoPlan.capability,
+      effectiveCapability: effectiveVideoCapability,
+      effectiveCapabilityLabel,
+      selectedImage: Boolean(resolvedVideoPlan.selectedImageAsset),
+      primaryImage: Boolean(resolvedVideoPlan.primaryImageInput),
+      visualReferences: resolvedVideoPlan.visualReferenceInputs.length,
+      additionalReferences: resolvedVideoPlan.additionalReferenceImages.length,
+      itvSelection: effectiveITVSelection,
+    });
 
     // 构建视频 prompt：优先使用 shot.videoPrompt
     let videoPrompt: string;
@@ -170,25 +191,43 @@ export async function shotRenderWorkflow(
       promptSource = resolvedPrompt.source;
     }
 
+    const providerType = capabilitySupport?.resolvedContext?.definition.runtimeProviderType
+      || capabilitySupport?.resolvedContext?.channelConfig.providerType;
+    const compiledVideoRequest = compileShotVideoGenerationRequest({
+      plan: resolvedVideoPlan,
+      prompt: videoPrompt,
+      duration: normalizedShot.duration,
+      motionPrompt: normalizedShot.cameraMovement,
+      aspectRatio: params.aspectRatio || params.project?.aspectRatio || '16:9',
+      capability: effectiveVideoCapability,
+      providerType,
+    });
+    const providerSideReferenceCount = isImageToVideoRequest(compiledVideoRequest.request)
+      ? (compiledVideoRequest.request.additionalReferences || []).length
+      : isReferenceToVideoRequest(compiledVideoRequest.request)
+        ? Math.max(0, compiledVideoRequest.request.referenceImages.length - 1)
+        : 0;
+
     logger.info(`视频 prompt: ${videoPrompt}`);
-    if (resolvedVideoPlan.additionalReferenceImages.length > 0) {
+    if (providerSideReferenceCount > 0) {
       logger.info('额外参考图', {
-        count: resolvedVideoPlan.additionalReferenceImages.length,
-        capability: resolvedVideoPlan.capability,
+        count: providerSideReferenceCount,
+        capability: effectiveVideoCapability,
+        providerType: providerType || 'unknown',
       });
     }
 
     // 打印 ITV 调用日志（这里记录的是“原始来源”，实际传入 Provider 前会被 resolver 规范化）
     logITVCall(
       itvProviderName,
-      resolvedVideoPlan.selectedImageSource
+      resolvedVideoPlan.primaryImageSource
         || getMediaAssetDisplaySource(resolvedVideoPlan.additionalReferenceImages[0] as any)
         || String(resolvedVideoPlan.additionalReferenceImages[0] || ''),
       videoPrompt,
       {
         duration: normalizedShot.duration,
         motionPrompt: normalizedShot.cameraMovement,
-        capability: resolvedVideoPlan.capability,
+        capability: effectiveVideoCapability,
       },
       {
         projectId,
@@ -254,14 +293,7 @@ export async function shotRenderWorkflow(
     }
 
     // 步骤2: 生成视频 (45-95%)
-    onProgress(45, `生成${resolvedVideoPlan.capabilityLabel}...`);
-    const compiledVideoRequest = compileShotVideoGenerationRequest({
-      plan: resolvedVideoPlan,
-      prompt: videoPrompt,
-      duration: normalizedShot.duration,
-      motionPrompt: normalizedShot.cameraMovement,
-      aspectRatio: params.aspectRatio || params.project?.aspectRatio || '16:9',
-    });
+    onProgress(45, `生成${effectiveCapabilityLabel}...`);
 
     await mediaGenerationService.generateVideo({
       projectId,
@@ -270,14 +302,16 @@ export async function shotRenderWorkflow(
         ownerType: 'shot-version',
         ownerId: normalizedShot.id,
         slot: 'video',
+        episodeId,
         versionId,
       },
       request: compiledVideoRequest.request,
       promptCompilation: compiledVideoRequest.promptCompilation,
-      itvSelection: mediaSelections?.itvSelection,
+      itvSelection: effectiveITVSelection,
       taskName: `分镜视频: ${normalizedShot.id}`,
+      allowCapabilityFallback: false,
     });
-    onProgress(95, `${resolvedVideoPlan.capabilityLabel}完成`);
+    onProgress(95, `${effectiveCapabilityLabel}完成`);
 
     // reload: MediaGenerationService 绑定会直接写 shot.json
     const meta = await loadShotMeta(projectId, normalizedShot.id);
@@ -331,6 +365,7 @@ export async function batchRenderShots(
 ): Promise<BatchRenderResult> {
   const {
     projectId,
+    episodeId,
     shots,
     settings,
     aspectRatio,
@@ -351,7 +386,7 @@ export async function batchRenderShots(
     const shot = shots[i];
 
     const result = await shotRenderWorkflow(
-      { projectId, shot, settings, aspectRatio, mediaSelections, theme, stylePrompt, styleSnapshot, project },
+      { projectId, episodeId, shot, settings, aspectRatio, mediaSelections, theme, stylePrompt, styleSnapshot, project },
       (progress, step) => {
         const overall = Math.round(((completed + progress / 100) / shots.length) * 100);
         onProgress(overall, { shotId: shot.id, progress, step });

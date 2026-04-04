@@ -94,4 +94,18 @@ describe('StagePlayer', () => {
     }));
     expect(document.querySelector('video')).toBeFalsy();
   });
+
+  it('prefers local videoPath over remote videoUrl when both are provided', () => {
+    render(
+      <StagePlayer
+        videoPath="/tmp/local-video.mp4"
+        videoUrl="https://cdn.example.com/video.mp4"
+      />
+    );
+
+    const video = document.querySelector('video');
+    expect(video).toBeTruthy();
+    expect(video?.getAttribute('src')).toBe('koma-local:////tmp/local-video.mp4');
+    expect(playerConstructorMock).not.toHaveBeenCalled();
+  });
 });

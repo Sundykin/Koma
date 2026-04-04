@@ -22,6 +22,7 @@ import {
 } from './constants/appConstants';
 import { getThumbnailUrl } from './constants/dimensions';
 import { createLogger } from './store/logger';
+import { loadSettings } from './store/globalStore';
 
 const logger = createLogger('App');
 
@@ -84,6 +85,26 @@ const AppContent: React.FC = () => {
   const [scriptText, setScriptText] = useState(DEFAULT_SCRIPT);
   const [analysisData, setAnalysisData] = useState<ScriptAnalysisResult | null>(isVideoDevMode ? DEV_TEST_ANALYSIS : null);
   const lastNonLinghuiViewRef = useRef<AppView>('projects');
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const syncSettings = async () => {
+      try {
+        const nextSettings = await loadSettings();
+        if (!cancelled) {
+          setAppSettings(nextSettings);
+        }
+      } catch (error) {
+        logger.error('加载全局设置失败', error);
+      }
+    };
+
+    void syncSettings();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // 初始化 TaskManager
   useEffect(() => {
