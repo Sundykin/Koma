@@ -15,6 +15,28 @@ import { normalizeShotMediaState, normalizeShotVersionMediaState } from '../stor
 import { electronService } from './electronService';
 import { getProjectPath } from '../store/project/core';
 
+const shotCollectionWriteTails = new Map<string, Promise<void>>();
+const shotMetaWriteTails = new Map<string, Promise<void>>();
+
+function enqueueSerializedWrite<T>(
+  tails: Map<string, Promise<void>>,
+  key: string,
+  work: () => Promise<T>,
+): Promise<T> {
+  const previous = tails.get(key) || Promise.resolve();
+  const next = previous
+    .catch(() => {})
+    .then(work);
+  const tail = next.then(() => undefined, () => undefined);
+  tails.set(key, tail);
+  tail.finally(() => {
+    if (tails.get(key) === tail) {
+      tails.delete(key);
+    }
+  });
+  return next;
+}
+
 function slotKeyForOwnerSlot(slot: string): 'costumePhoto' | 'previewImage' | 'previewVideo' | 'referenceImage' | 'image' | 'video' | 'audio' | undefined {
   switch (slot) {
     case 'costumePhoto':
@@ -119,31 +141,112 @@ async function bindShotVersionMedia(
 ): Promise<void> {
   if (!electronService.isElectron()) return;
 
-  const projectPath = await getProjectPath(projectId);
-  const shotMetaPath = `${projectPath}/shots/${shotId}/shot.json`;
-  const exists = await electronService.fs.exists(shotMetaPath);
-  if (!exists) return;
+  const queueKey = `${projectId}:${shotId}`;
+  await enqueueSerializedWrite(shotMetaWriteTails, queueKey, async () => {
+    const projectPath = await getProjectPath(projectId);
+    const shotMetaPath = `${projectPath}/shots/${shotId}/shot.json`;
+    const exists = await electronService.fs.exists(shotMetaPath);
+    if (!exists) return;
 
-  const data = await electronService.fs.readFile(shotMetaPath);
-  const meta = JSON.parse(data) as ShotMeta;
+    const data = await electronService.fs.readFile(shotMetaPath);
+    const meta = JSON.parse(data) as ShotMeta;
 
-  const versionNumber = Number(versionId.replace(/^v/i, ''));
-  if (!Number.isFinite(versionNumber)) return;
+    const versionNumber = Number(versionId.replace(/^v/i, ''));
+    if (!Number.isFinite(versionNumber)) return;
 
-  const idx = Array.isArray(meta.versions) ? meta.versions.findIndex(v => v.version === versionNumber) : -1;
-  if (idx === -1) return;
+    const idx = Array.isArray(meta.versions) ? meta.versions.findIndex(v => v.version === versionNumber) : -1;
+    if (idx === -1) return;
 
-  const normalized = normalizeShotVersionMediaState(meta.versions[idx]);
-  const next = normalizeShotVersionMediaState({
-    ...normalized,
-    media: {
-      ...(normalized.media || {}),
-      [slot]: asset,
-    },
+    const normalized = normalizeShotVersionMediaState(meta.versions[idx]);
+    const next = normalizeShotVersionMediaState({
+      ...normalized,
+      media: {
+        ...(normalized.media || {}),
+        [slot]: asset,
+      },
+    });
+    meta.versions[idx] = next;
+
+    await electronService.fs.writeFile(shotMetaPath, JSON.stringify(meta, null, 2));
   });
-  meta.versions[idx] = next;
+}
 
-  await electronService.fs.writeFile(shotMetaPath, JSON.stringify(meta, null, 2));
+function buildAssetIdentity(asset: StoredMediaAsset): string {
+  return [
+    asset.providerTaskId,
+    asset.localPath,
+    asset.remoteUrl,
+    asset.createdAt,
+  ].filter(Boolean).join('|');
+}
+
+function appendUniqueMediaAsset(list: StoredMediaAsset[], asset: StoredMediaAsset): StoredMediaAsset[] {
+  const incomingKey = buildAssetIdentity(asset);
+  if (!incomingKey) {
+    return [...list, asset];
+  }
+  if (list.some(item => buildAssetIdentity(item) === incomingKey)) {
+    return list;
+  }
+  return [...list, asset];
+}
+
+async function bindShotAssetCollection(
+  projectId: string,
+  ownerRef: MediaOwnerRef,
+  slot: 'referenceImage' | 'image' | 'video',
+  asset: StoredMediaAsset,
+): Promise<void> {
+  const queueKey = `${projectId}:${ownerRef.episodeId || '__root__'}`;
+  await enqueueSerializedWrite(shotCollectionWriteTails, queueKey, async () => {
+    const shots = ownerRef.episodeId
+      ? await loadEpisodeShots(projectId, ownerRef.episodeId)
+      : await loadShots(projectId);
+
+    const idx = shots.findIndex(s => s.id === ownerRef.ownerId);
+    if (idx === -1) return;
+
+    const normalized = normalizeShotMediaState(shots[idx]);
+    const media = normalized.media || {};
+
+    if (slot === 'referenceImage') {
+      const next = appendUniqueMediaAsset(media.references || [], asset);
+      shots[idx] = normalizeShotMediaState({
+        ...normalized,
+        media: {
+          ...media,
+          references: next,
+          selectedReferenceIndex: next.length - 1,
+        },
+      });
+    } else if (slot === 'image') {
+      const next = appendUniqueMediaAsset(media.images || [], asset);
+      shots[idx] = normalizeShotMediaState({
+        ...normalized,
+        media: {
+          ...media,
+          images: next,
+          currentImageIndex: next.length - 1,
+        },
+      });
+    } else {
+      const next = appendUniqueMediaAsset(media.videos || [], asset);
+      shots[idx] = normalizeShotMediaState({
+        ...normalized,
+        media: {
+          ...media,
+          videos: next,
+          currentVideoIndex: next.length - 1,
+        },
+      });
+    }
+
+    if (ownerRef.episodeId) {
+      await saveEpisodeShots(projectId, ownerRef.episodeId, shots);
+    } else {
+      await saveShots(projectId, shots);
+    }
+  });
 }
 
 export async function bindCompletedMediaTask(
@@ -228,55 +331,10 @@ export async function bindOwnerRefMedia(
   }
 
   if (ownerRef.ownerType === 'shot') {
-    const shots = ownerRef.episodeId
-      ? await loadEpisodeShots(projectId, ownerRef.episodeId)
-      : await loadShots(projectId);
-
-    const idx = shots.findIndex(s => s.id === ownerRef.ownerId);
-    if (idx === -1) return;
-
-    const normalized = normalizeShotMediaState(shots[idx]);
-    const media = normalized.media || {};
-
-    if (slot === 'referenceImage') {
-      const next = [...(media.references || []), asset];
-      shots[idx] = normalizeShotMediaState({
-        ...normalized,
-        media: {
-          ...media,
-          references: next,
-          selectedReferenceIndex: next.length - 1,
-        },
-      });
-    } else if (slot === 'image') {
-      const next = [...(media.images || []), asset];
-      shots[idx] = normalizeShotMediaState({
-        ...normalized,
-        media: {
-          ...media,
-          images: next,
-          currentImageIndex: next.length - 1,
-        },
-      });
-    } else if (slot === 'video') {
-      const next = [...(media.videos || []), asset];
-      shots[idx] = normalizeShotMediaState({
-        ...normalized,
-        media: {
-          ...media,
-          videos: next,
-          currentVideoIndex: next.length - 1,
-        },
-      });
-    } else {
+    if (slot !== 'referenceImage' && slot !== 'image' && slot !== 'video') {
       return;
     }
-
-    if (ownerRef.episodeId) {
-      await saveEpisodeShots(projectId, ownerRef.episodeId, shots);
-    } else {
-      await saveShots(projectId, shots);
-    }
+    await bindShotAssetCollection(projectId, ownerRef, slot, asset);
     maybeRewriteTimelineSources();
     return;
   }
@@ -284,6 +342,13 @@ export async function bindOwnerRefMedia(
   if (ownerRef.ownerType === 'shot-version' && ownerRef.versionId) {
     if (slot !== 'image' && slot !== 'video' && slot !== 'audio') return;
     await bindShotVersionMedia(projectId, ownerRef.ownerId, ownerRef.versionId, slot, asset);
+    if (slot === 'video') {
+      await bindShotAssetCollection(projectId, {
+        ...ownerRef,
+        ownerType: 'shot',
+        slot: 'video',
+      }, 'video', asset);
+    }
     maybeRewriteTimelineSources();
   }
 }

@@ -55,6 +55,13 @@ export interface ProviderFallbackCandidate {
   capabilities: ModelCapability[];
 }
 
+export interface ResolvedChannelModelWithFallback {
+  context?: ResolvedChannelModelContext;
+  effectiveSelection?: MediaModelSelection;
+  effectiveSelectionKey?: string;
+  usedFallback: boolean;
+}
+
 export function serializeMediaSelection(selection?: MediaModelSelection | null): string | undefined {
   if (!selection?.channelId || !selection?.modelId) {
     return undefined;
@@ -200,6 +207,58 @@ export function resolveConfiguredChannelModel(
     channelConfig,
     definition,
     model,
+  };
+}
+
+export function resolveConfiguredChannelModelWithCapabilityFallback(
+  settings: AppSettings,
+  category: MediaCategory,
+  selection?: MediaModelSelection | string,
+  capability?: ModelCapability,
+): ResolvedChannelModelWithFallback {
+  const directContext = resolveConfiguredChannelModel(
+    settings,
+    category,
+    selection,
+    capability,
+  );
+  if (directContext) {
+    const effectiveSelection: MediaModelSelection = {
+      channelId: directContext.channelConfig.id,
+      modelId: directContext.model.id,
+    };
+    return {
+      context: directContext,
+      effectiveSelection,
+      effectiveSelectionKey: serializeMediaSelection(effectiveSelection),
+      usedFallback: false,
+    };
+  }
+
+  const fallbackSelection = getDefaultMediaSelection(settings, category, capability);
+  if (!fallbackSelection) {
+    return {
+      usedFallback: false,
+    };
+  }
+
+  const fallbackContext = resolveConfiguredChannelModel(
+    settings,
+    category,
+    fallbackSelection,
+    capability,
+  );
+  if (!fallbackContext) {
+    return {
+      usedFallback: false,
+    };
+  }
+
+  return {
+    context: fallbackContext,
+    effectiveSelection: fallbackSelection,
+    effectiveSelectionKey: serializeMediaSelection(fallbackSelection),
+    usedFallback: true,
   };
 }
 

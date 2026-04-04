@@ -2,7 +2,7 @@
  * 分镜卡片 - Compact Grid 布局
  * 操作按钮在左侧列直接显示，参考图使用引用样式
  */
-import React, { useMemo, useCallback, useState } from 'react';
+import React, { useMemo, useCallback, useEffect, useRef, useState } from 'react';
 import {
   Tag,
   Checkbox,
@@ -53,6 +53,56 @@ import { createStoredMediaAsset } from '../../utils/mediaAssets';
 import './ShotCard.css';
 
 const { TextArea } = Input;
+
+interface ShotScriptInputProps {
+  shotId: string;
+  value?: string;
+  onScriptChange: (shotId: string, script: string) => void;
+}
+
+function ShotScriptInput({ shotId, value, onScriptChange }: ShotScriptInputProps) {
+  const [scriptDraft, setScriptDraft] = useState(value || '');
+  const scriptDraftRef = useRef(scriptDraft);
+  const scriptDirtyRef = useRef(false);
+
+  useEffect(() => {
+    scriptDraftRef.current = scriptDraft;
+  }, [scriptDraft]);
+
+  useEffect(() => {
+    const externalScript = value || '';
+    if (!scriptDirtyRef.current) {
+      setScriptDraft(externalScript);
+      scriptDraftRef.current = externalScript;
+    }
+  }, [value]);
+
+  const flushScriptDraft = useCallback(() => {
+    const latestDraft = scriptDraftRef.current;
+    if (latestDraft !== (value || '')) {
+      onScriptChange(shotId, latestDraft);
+    }
+    scriptDirtyRef.current = false;
+  }, [onScriptChange, shotId, value]);
+
+  const handleScriptInputChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const nextValue = e.target.value;
+    setScriptDraft(nextValue);
+    scriptDraftRef.current = nextValue;
+    scriptDirtyRef.current = nextValue !== (value || '');
+  }, [value]);
+
+  return (
+    <TextArea
+      value={scriptDraft}
+      onChange={handleScriptInputChange}
+      onBlur={flushScriptDraft}
+      placeholder="剧本内容..."
+      className="w-full h-full bg-transparent border-none resize-none text-xs focus:ring-0 placeholder-zinc-600"
+      style={{ minHeight: '100%', padding: '4px 6px' }}
+    />
+  );
+}
 
 export interface ShotCardProps {
   projectId: string;
@@ -525,12 +575,10 @@ export const ShotCard: React.FC<ShotCardProps> = ({
         {/* 列1: 剧本 */}
         <div className={`${SHOT_LAYOUT.colScript} border-r border-zinc-800 flex flex-col`}>
           <div className="flex-1 p-1">
-            <TextArea
-              value={shot.scriptContent || ''}
-              onChange={(e) => onScriptChange(shot.id, e.target.value)}
-              placeholder="剧本内容..."
-              className="w-full h-full bg-transparent border-none resize-none text-xs focus:ring-0 placeholder-zinc-600"
-              style={{ minHeight: '100%', padding: '4px 6px' }}
+            <ShotScriptInput
+              shotId={shot.id}
+              value={shot.scriptContent}
+              onScriptChange={onScriptChange}
             />
           </div>
         </div>

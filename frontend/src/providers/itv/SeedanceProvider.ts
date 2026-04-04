@@ -11,7 +11,6 @@ import {
   isStartEndToVideoRequest,
   isTextToVideoRequest,
 } from '../../types';
-import { electronService } from '../../services/electronService';
 import { createLogger } from '../../store/logger';
 import { sanitizeBodyForLog } from '../../utils/logFormatting';
 import { base64ToBytes, stripDataHeader } from '../../utils/encoding';
@@ -320,6 +319,13 @@ function inferExtensionFromMimeType(mimeType?: string): string {
   }
 }
 
+function normalizeMimeType(value?: string): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+  return value.split(';')[0]?.trim() || undefined;
+}
+
 function inferFilenameFromAsset(asset: ProviderAssetInput, index: number): string {
   if (asset.transport === 'remote-url') {
     try {
@@ -434,27 +440,53 @@ export class SeedanceProvider implements ITVProvider {
     let resolvedMimeType: string | undefined;
 
     if (asset.transport === 'remote-url') {
-      if (!electronService.isElectron()) {
-        return asset.value;
+      logger.info('Seedance image download start', {
+        provider: this.config.provider,
+        filename,
+        index,
+        url: asset.value,
+      });
+
+      let response: Response;
+      try {
+        response = await fetch(asset.value, { method: 'GET' });
+      } catch (error) {
+        logger.error('Seedance image download failed', {
+          provider: this.config.provider,
+          filename,
+          index,
+          url: asset.value,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        throw new Error(`Seedance 远程图片下载失败：${asset.value}`);
       }
 
-      const tempDir = await electronService.app.getPath('temp');
-      const tempPath = `${tempDir}/koma-seedance-upload-${Date.now()}-${Math.random().toString(36).slice(2)}${inferExtensionFromMimeType(asset.mimeType)}`;
-      try {
-        const result = await electronService.fs.downloadFile(asset.value, tempPath);
-        if (!result.success) {
-          throw new Error('下载远程图片失败');
-        }
-        const base64 = await electronService.fs.readFileAsBase64(tempPath);
-        bytes = base64ToBytes(base64);
-        resolvedMimeType = asset.mimeType || inferMimeTypeFromFilename(filename);
-      } finally {
-        try {
-          await electronService.fs.remove(tempPath);
-        } catch {
-          // Ignore best-effort temp cleanup failures.
-        }
+      if (!response.ok) {
+        const raw = await response.text();
+        logger.error('Seedance image download failed', {
+          provider: this.config.provider,
+          filename,
+          index,
+          url: asset.value,
+          status: response.status,
+          response: raw.slice(0, 1200),
+        });
+        throw new Error(`Seedance 远程图片下载失败 (${response.status}): ${raw.slice(0, 300)}`);
       }
+
+      bytes = new Uint8Array(await response.arrayBuffer());
+      resolvedMimeType = normalizeMimeType(response.headers.get('content-type'))
+        || asset.mimeType
+        || inferMimeTypeFromFilename(filename);
+
+      logger.info('Seedance image download succeeded', {
+        provider: this.config.provider,
+        filename,
+        index,
+        url: asset.value,
+        bytes: bytes.byteLength,
+        mimeType: resolvedMimeType,
+      });
     } else {
       const { mimeType, base64 } = stripDataHeader(asset.value);
       bytes = base64ToBytes(base64);

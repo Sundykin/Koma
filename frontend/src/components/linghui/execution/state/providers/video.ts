@@ -161,6 +161,7 @@ async function executeVideoProviderAttempt(
       request: compiledDomainRequest.request,
       transportSupport,
       maxAdditionalReferences,
+      preferLocalAssetInput: provider.config?.provider === 'seedance',
       messages: {
         missingPrimaryImage: '缺少主图输入',
         missingReferenceImages: '缺少参考图输入',
