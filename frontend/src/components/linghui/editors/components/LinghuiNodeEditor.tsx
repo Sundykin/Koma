@@ -220,7 +220,6 @@ export const LinghuiNodeEditor: React.FC<LinghuiNodeEditorProps> = ({
     onDeriveScriptShots,
     onGenerateScriptImages,
     onGenerateScriptVideos,
-    onCreateDerivedImportImages,
     onExecuteMultiAngle,
     onApplyImageToolPreset,
     onSetGridSplitType,
@@ -371,8 +370,17 @@ export const LinghuiNodeEditor: React.FC<LinghuiNodeEditorProps> = ({
     nodeData ? resolveLinghuiImagePrimaryForNode(nodeData, nodeRuns[nodeId]?.result) : null
   ), [nodeData, nodeId, nodeRuns]);
   const hasCurrentImage = Boolean(String(currentPrimaryImage?.source ?? '').trim());
+  const currentPrimaryVideo = useMemo(() => (
+    nodeType === 'linghui/video' ? getLinghuiResultPrimaryMedia(nodeRuns[nodeId]?.result) : null
+  ), [nodeId, nodeRuns, nodeType]);
   const isVideoPassThroughNode = nodeType === 'linghui/video'
     && Boolean(String((nodeData?.properties as unknown as LinghuiVideoNodeProperties | undefined)?.source ?? '').trim());
+  const hasCurrentVideo = nodeType === 'linghui/video'
+    && Boolean(String(
+      currentPrimaryVideo?.source
+      ?? (nodeData?.properties as unknown as LinghuiVideoNodeProperties | undefined)?.source
+      ?? '',
+    ).trim());
   const isAgentNode = nodeType === 'linghui/agent';
 
   const activeImageTool = activeTool?.kind === 'image' && activeTool.nodeId === nodeId
@@ -382,6 +390,7 @@ export const LinghuiNodeEditor: React.FC<LinghuiNodeEditorProps> = ({
     ? activeTool.tool
     : null;
   const isGridSplitMode = nodeType === 'linghui/image' && activeImageTool === 'grid-split';
+  const useMinimalTopBar = nodeType === 'linghui/image' && !hasCurrentImage && !isGridSplitMode;
   const safeZoom = Number.isFinite(canvasZoom) && canvasZoom > 0 ? canvasZoom : 1;
   const inverseZoom = 1 / safeZoom;
   const [openDropdownKey, setOpenDropdownKey] = useState<string | null>(null);
@@ -394,9 +403,9 @@ export const LinghuiNodeEditor: React.FC<LinghuiNodeEditorProps> = ({
   const toolbarWidth = isGridSplitMode
     ? 720
     : nodeType === 'linghui/video'
-      ? (isVideoPassThroughNode ? 248 : Math.max(248, VIDEO_TOOLBAR_ITEMS.length * 88 + 108))
+      ? (isVideoPassThroughNode || !hasCurrentVideo ? 248 : Math.max(248, VIDEO_TOOLBAR_ITEMS.length * 88 + 108))
       : nodeType === 'linghui/image'
-        ? Math.max(248, IMAGE_TOOLBAR_ITEMS.length * 88 + 108)
+        ? (useMinimalTopBar ? 240 : Math.max(248, IMAGE_TOOLBAR_ITEMS.length * 88 + 108))
         : 248;
   const panelGap = nodeType === 'linghui/image' ? 0 : PANEL_GAP;
 
@@ -456,6 +465,12 @@ export const LinghuiNodeEditor: React.FC<LinghuiNodeEditorProps> = ({
       setActiveTool(null);
     }
   }, [activeTool, isVideoPassThroughNode, nodeId, setActiveTool]);
+
+  useEffect(() => {
+    if (!hasCurrentVideo && activeTool?.kind === 'video' && activeTool.nodeId === nodeId) {
+      setActiveTool(null);
+    }
+  }, [activeTool, hasCurrentVideo, nodeId, setActiveTool]);
 
   useEffect(() => {
     if (!hasCurrentImage && activeTool?.kind === 'image' && activeTool.nodeId === nodeId && activeTool.tool === 'multi-angle') {
@@ -521,6 +536,10 @@ export const LinghuiNodeEditor: React.FC<LinghuiNodeEditorProps> = ({
 
   const renderToolbar = () => {
     if (nodeType === 'linghui/image') {
+      if (!hasCurrentImage) {
+        return null;
+      }
+
       if (isGridSplitMode) {
         return (
           <div className="linghuiNodeEditorGridToolRail">
@@ -631,7 +650,7 @@ export const LinghuiNodeEditor: React.FC<LinghuiNodeEditorProps> = ({
     }
 
     if (nodeType === 'linghui/video') {
-      if (isVideoPassThroughNode) {
+      if (isVideoPassThroughNode || !hasCurrentVideo) {
         return null;
       }
 
@@ -658,10 +677,12 @@ export const LinghuiNodeEditor: React.FC<LinghuiNodeEditorProps> = ({
     return null;
   };
 
+  const toolbarContent = renderToolbar();
+
   return (
     <div className="linghuiNodeEditorContainer">
       <div
-        className="linghuiNodeEditorTopBar"
+        className={`linghuiNodeEditorTopBar ${useMinimalTopBar ? 'isMinimal' : ''}`}
         style={toolbarStyle}
         onClick={handleStopPropagation}
         onMouseDown={handleStopPropagation}
@@ -675,10 +696,12 @@ export const LinghuiNodeEditor: React.FC<LinghuiNodeEditorProps> = ({
             variant="editor"
             title="双击重命名节点"
           />
-          <div className="linghuiNodeEditorTopBarType">{getNodeTypeLabel(nodeType)}</div>
+          {!useMinimalTopBar && (
+            <div className="linghuiNodeEditorTopBarType">{getNodeTypeLabel(nodeType)}</div>
+          )}
         </div>
         <div className="linghuiNodeEditorTopBarActions">
-          {renderToolbar()}
+          {toolbarContent}
           <button
             type="button"
             className="linghuiNodeEditorCloseButton"
@@ -724,7 +747,6 @@ export const LinghuiNodeEditor: React.FC<LinghuiNodeEditorProps> = ({
               workspaceId={workspaceId}
               activeTool={activeImageTool}
               onToolChange={tool => setActiveTool(tool ? { kind: 'image', nodeId, tool } : null)}
-              onCreateDerivedImportImages={items => onCreateDerivedImportImages(nodeId, items)}
               onExecuteMultiAngle={options => onExecuteMultiAngle?.(options)}
               onRun={() => onRunNode(nodeId)}
             />

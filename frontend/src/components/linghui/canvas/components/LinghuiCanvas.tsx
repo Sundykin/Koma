@@ -34,8 +34,6 @@ import { useLinghuiCanvasUiState } from '../hooks/useLinghuiCanvasUiState';
 import { useLinghuiCanvasViewportControls } from '../hooks/useLinghuiCanvasViewportControls';
 import { type PendingConnectionCreateState } from '../state/linghuiCanvasShared';
 import type { LinghuiCanvasHandle, LinghuiCanvasProps } from '../state/linghuiCanvasTypes';
-import '../../page/components/LinghuiPage.css';
-
 const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(function LinghuiCanvasInner(
   {
     workspace,

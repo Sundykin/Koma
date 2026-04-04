@@ -4,6 +4,8 @@ import type {
   LinghuiVideoToolKey,
 } from '../../../../types/linghui';
 import { toFileSystemDisplayUrl } from '../../../../services/fileSystemPort';
+import { electronService } from '../../../../services/electronService';
+import { stripDataHeader } from '../../../../utils/encoding';
 import {
   VIDEO_CAPABILITY_LABELS,
   type LinghuiVideoCapability as SharedLinghuiVideoCapability,
@@ -11,6 +13,79 @@ import {
 
 export function getPreviewSource(source?: string): string {
   return toFileSystemDisplayUrl(source) || '';
+}
+
+export function decodeLinghuiMediaSource(source: string): string {
+  if (!source.startsWith('koma-local://')) {
+    return source;
+  }
+
+  const decoded = decodeURIComponent(source.replace(/^koma-local:\/\//, ''));
+  return decoded.replace(/^\/([A-Za-z]:\/)/, '$1');
+}
+
+function isRemoteMediaUri(source: string): boolean {
+  return /^https?:\/\//i.test(source);
+}
+
+function isDataUri(source: string): boolean {
+  return /^data:/i.test(source);
+}
+
+function isBlobUri(source: string): boolean {
+  return /^blob:/i.test(source);
+}
+
+export function sanitizeFileSegment(value: string, fallback: string): string {
+  const normalized = value.trim().replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, ' ');
+  return normalized || fallback;
+}
+
+function getFileExtensionFromMimeType(mimeType?: string, fallback = 'mp4'): string {
+  if (!mimeType) {
+    return fallback;
+  }
+
+  const normalized = mimeType.toLowerCase();
+  if (normalized.includes('webm')) return 'webm';
+  if (normalized.includes('quicktime') || normalized.includes('mov')) return 'mov';
+  if (normalized.includes('ogg')) return 'ogg';
+  if (normalized.includes('avi')) return 'avi';
+  if (normalized.includes('mpeg')) return 'mpeg';
+  if (normalized.includes('mp4')) return 'mp4';
+  return fallback;
+}
+
+export function getVideoFileExtensionFromSource(source: string, mimeType?: string): string {
+  const normalized = decodeLinghuiMediaSource(source);
+  const matched = normalized.match(/\.([a-zA-Z0-9]+)(?:$|[?#])/);
+  if (matched?.[1]) {
+    return matched[1].toLowerCase();
+  }
+  return getFileExtensionFromMimeType(mimeType, 'mp4');
+}
+
+export async function writeVideoSourceToPath(source: string, targetPath: string): Promise<void> {
+  const normalized = decodeLinghuiMediaSource(source);
+
+  if (isRemoteMediaUri(normalized)) {
+    await electronService.fs.downloadFile(normalized, targetPath);
+    return;
+  }
+
+  if (isDataUri(normalized)) {
+    await electronService.fs.writeFile(targetPath, stripDataHeader(normalized).base64, true);
+    return;
+  }
+
+  if (isBlobUri(normalized)) {
+    const response = await fetch(normalized);
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    await electronService.fs.writeFileBuffer(targetPath, bytes);
+    return;
+  }
+
+  await electronService.fs.copy(normalized, targetPath);
 }
 
 export interface ProviderOption {
@@ -34,6 +109,33 @@ export const DURATION_OPTIONS = [
   { value: 15, label: '15s' },
   { value: 30, label: '30s' },
 ];
+
+export const VIDEO_DURATION_MARKS = DURATION_OPTIONS.reduce<Record<number, string>>((marks, option) => {
+  marks[option.value] = option.label;
+  return marks;
+}, {});
+
+export function formatVideoResolutionLabel(value: string): string {
+  const normalized = String(value ?? '').trim();
+  if (!normalized) {
+    return '720P';
+  }
+  if (normalized.endsWith('p')) {
+    return normalized.toUpperCase();
+  }
+  return normalized.toUpperCase();
+}
+
+export function formatVideoParameterSummary(params: {
+  aspectRatio?: string;
+  resolution?: string;
+  duration?: number;
+}): string {
+  const aspectRatio = String(params.aspectRatio ?? '').trim() || '16:9';
+  const resolution = formatVideoResolutionLabel(String(params.resolution ?? '720p'));
+  const duration = Number(params.duration ?? 5);
+  return `${aspectRatio} · ${resolution} · ${duration}s`;
+}
 
 export interface VideoToolPreset {
   label: string;

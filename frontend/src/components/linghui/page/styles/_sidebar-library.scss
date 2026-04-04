@@ -1,0 +1,424 @@
+@use './tokens' as *;
+@use './mixins' as *;
+
+/* Sidebar, library, asset drawer */
+
+.linghuiSidebar {
+  min-height: 0;
+  @include lh-stack(0);
+  @include lh-glass-panel(rgba(14, 18, 25, 0.88), rgba(63, 63, 70, 0.9));
+
+  padding: 14px;
+
+  &Header {
+    padding: 14px;
+  }
+
+  &Title {
+    @include lh-text($lh-text-strong, 14px, 1.4, 700);
+  }
+
+  &Subtitle {
+    @include lh-text($lh-text-subtle);
+  }
+}
+
+.linghuiInspector {
+  &Section {
+    padding: 14px;
+  }
+
+  &Title {
+    @include lh-text($lh-text-strong, 14px, 1.4, 700);
+  }
+}
+
+.linghuiSelectionSubtitle,
+.linghuiNodeDescription,
+.linghuiEmptyInspector {
+  @include lh-text($lh-text-subtle);
+}
+
+.linghuiSearchInput {
+  margin: 0 14px 14px;
+}
+
+.linghuiNode {
+  &Groups {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    padding-right: 4px;
+  }
+
+  &Group {
+    @include lh-stack(8px);
+
+    margin-bottom: 16px;
+  }
+
+  &GroupTitle {
+    @include lh-text($lh-text-soft, 12px, 1.4, 700);
+
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+
+  &List {
+    @include lh-stack(8px);
+  }
+
+  &Card {
+    @include lh-inline(12px, nowrap, stretch);
+
+    width: 100%;
+    padding: 12px;
+    color: inherit;
+    text-align: left;
+    transition:
+      transform $lh-transition-base,
+      border-color $lh-transition-base,
+      box-shadow $lh-transition-base;
+    border: 1px solid rgba(63, 63, 70, 0.9);
+    border-radius: $lh-radius-card;
+    background: linear-gradient(180deg, rgba(24, 24, 27, 0.95), rgba(15, 23, 32, 0.95));
+
+    &:hover {
+      transform: translateY(-1px);
+      border-color: rgba(16, 185, 129, 0.65);
+      box-shadow: 0 12px 28px rgba(0, 0, 0, 0.22);
+    }
+  }
+
+  &Accent {
+    width: 6px;
+    border-radius: $lh-radius-pill;
+    flex: 0 0 6px;
+  }
+
+  &Content {
+    @include lh-stack(4px);
+  }
+
+  &Name {
+    @include lh-text($lh-text-primary, 14px, 1.4, 700);
+  }
+}
+
+.linghuiSelection {
+  &Title {
+    @include lh-text($lh-text-primary, 14px, 1.4, 700);
+  }
+}
+
+.linghuiCanvas {
+  &Panel {
+    min-width: 0;
+    min-height: 0;
+    height: 100%;
+    padding: 0;
+  }
+
+  &Workspace {
+    position: relative;
+    height: 100%;
+  }
+}
+
+.linghuiLibraryDrawer,
+.linghuiAssetDrawer {
+  .ant-drawer {
+    &-content,
+    &-header {
+      background: rgba(10, 14, 19, 0.98);
+      color: $lh-text-strong;
+    }
+
+    &-title,
+    &-close {
+      color: $lh-text-strong !important;
+    }
+
+    &-body {
+      @include lh-stack(14px);
+
+      background:
+        radial-gradient(circle at top left, rgba(16, 185, 129, 0.06), transparent 26%),
+        rgba(9, 13, 18, 0.98);
+    }
+  }
+}
+
+.linghuiLibrary {
+  &DrawerBody,
+  &Section,
+  &NodeList,
+  &CardList {
+    @include lh-stack;
+  }
+
+  &DrawerBody {
+    gap: 16px;
+  }
+
+  &Section,
+  &CardList {
+    gap: 12px;
+  }
+
+  &NodeList {
+    gap: 10px;
+  }
+
+  &SectionHeader {
+    @include lh-inline(12px, nowrap, flex-start, space-between);
+  }
+
+  &SectionTitle {
+    @include lh-text($lh-text-primary, 14px, 1.4, 700);
+  }
+
+  &SectionHint,
+  &NodeDesc,
+  &CardText {
+    @include lh-text($lh-text-muted);
+  }
+
+  &SectionHint {
+    margin-top: 4px;
+  }
+
+  &CardText {
+    color: $lh-text-soft;
+    line-height: 1.6;
+  }
+
+  &QuickActions,
+  &BadgeRow,
+  &TagRow {
+    @include lh-inline(8px);
+  }
+
+  &QuickActions {
+    gap: 10px;
+  }
+
+  &NodeButton {
+    @include lh-inline(10px, nowrap, flex-start);
+
+    width: 100%;
+    padding: 12px;
+    border: 1px solid rgba(63, 63, 70, 0.72);
+    border-radius: $lh-radius-card;
+    background: rgba(15, 23, 42, 0.68);
+    color: $lh-text-strong;
+    text-align: left;
+    transition:
+      transform $lh-transition-base,
+      border-color $lh-transition-base,
+      background $lh-transition-base;
+
+    &:hover {
+      transform: translateY(-1px);
+      border-color: rgba(16, 185, 129, 0.52);
+      background: rgba(15, 23, 42, 0.82);
+    }
+  }
+
+  &NodeDot {
+    width: 10px;
+    height: 10px;
+    margin-top: 6px;
+    border-radius: $lh-radius-pill;
+    flex: 0 0 10px;
+  }
+
+  &NodeBody,
+  &CardBody {
+    min-width: 0;
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+  }
+
+  &NodeBody {
+    gap: 4px;
+  }
+
+  &CardBody {
+    gap: 8px;
+  }
+
+  &NodeLabel,
+  &CardTitle {
+    color: #fafafa;
+    font-size: 14px;
+    font-weight: 700;
+    line-height: 1.45;
+  }
+
+  &NodeLabel {
+    font-size: 13px;
+    line-height: 1.4;
+  }
+
+  &CardMeta {
+    @include lh-inline(8px 12px);
+
+    color: $lh-text-muted;
+    font-size: 11px;
+  }
+
+  &TemplateCard {
+    @include lh-inline(12px, nowrap, flex-end, space-between);
+    @include lh-soft-card(12px);
+  }
+
+  &Badge,
+  &Tag {
+    @include lh-chip(24px, 0 10px, rgba(148, 163, 184, 0.12), $lh-text-secondary, 11px, 700);
+  }
+
+  &Badge {
+    &.isSystem {
+      background: rgba(59, 130, 246, 0.16);
+      color: $lh-text-info;
+    }
+
+    &.isWorkspace {
+      background: rgba(34, 197, 94, 0.14);
+      color: #dcfce7;
+    }
+  }
+
+  &Tag {
+    background: rgba(16, 185, 129, 0.12);
+    color: #d1fae5;
+    font-weight: 600;
+  }
+}
+
+.linghuiAssetDrawer {
+  &Toolbar {
+    @include lh-inline(10px, nowrap, center, space-between);
+  }
+
+  &Loading,
+  &Empty {
+    min-height: 320px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  &Card {
+    @include lh-soft-card(12px);
+
+    display: grid;
+    grid-template-columns: 112px minmax(0, 1fr);
+    gap: 12px;
+
+    &Body {
+      @include lh-stack;
+
+      min-width: 0;
+    }
+
+    &Title {
+      color: #fafafa;
+      font-size: 14px;
+      font-weight: 700;
+      line-height: 1.45;
+    }
+
+    &Meta {
+      @include lh-inline(8px 12px);
+
+      color: $lh-text-muted;
+      font-size: 11px;
+    }
+
+    &Text {
+      @include lh-text($lh-text-soft);
+
+      line-height: 1.6;
+      display: -webkit-box;
+      -webkit-line-clamp: 3;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      word-break: break-word;
+    }
+  }
+
+  &Preview {
+    min-height: 104px;
+    overflow: hidden;
+    border: 1px solid rgba(63, 63, 70, 0.5);
+    border-radius: 14px;
+    background: rgba(24, 24, 27, 0.92);
+
+    &.hasPreview img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    &Fallback {
+      @include lh-stack(8px);
+
+      height: 100%;
+      padding: 12px 10px;
+      justify-content: space-between;
+    }
+
+    &Kind {
+      @include lh-chip(24px, 4px 8px, rgba(16, 185, 129, 0.14), #a7f3d0, 11px, 700);
+
+      width: fit-content;
+    }
+
+    &Name {
+      @include lh-text(#e4e4e7);
+
+      word-break: break-word;
+    }
+  }
+}
+
+.linghuiTutorial,
+.linghuiShortcut {
+  &List {
+    @include lh-stack(10px);
+  }
+
+  &Item {
+    display: grid;
+    gap: 10px;
+    padding: 12px;
+    border: 1px solid rgba(63, 63, 70, 0.68);
+    border-radius: 14px;
+    background: rgba(15, 23, 42, 0.6);
+  }
+}
+
+.linghuiTutorial {
+  &Item {
+    @include lh-text(#cbd5e1);
+  }
+}
+
+.linghuiShortcut {
+  &Item {
+    grid-template-columns: 126px minmax(0, 1fr);
+    align-items: start;
+  }
+
+  &Key {
+    @include lh-text($lh-text-secondary, 12px, 1.5, 700);
+  }
+
+  &Desc {
+    @include lh-text(#cbd5e1);
+  }
+}
