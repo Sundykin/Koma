@@ -1,8 +1,8 @@
 /**
- * 素材管理
+ * 素材管理（通过 IPC 调后端 SQLite）
  */
 import { v4 as uuidv4 } from 'uuid';
-import { electronService } from '../../services/electronService';
+import { electronService, batchApi } from '../../services/electronService';
 import type { Asset } from '../../types';
 import { getProjectPath } from './core';
 
@@ -26,25 +26,6 @@ function hashString(str: string): string {
     hash = hash & hash;
   }
   return Math.abs(hash).toString(36);
-}
-
-async function saveAssetMeta(projectId: string, asset: Asset): Promise<void> {
-  const projectPath = await getProjectPath(projectId);
-  const assetsPath = `${projectPath}/assets.json`;
-
-  let assets: Asset[] = [];
-  try {
-    const data = await electronService.fs.readFile(assetsPath);
-    assets = JSON.parse(data);
-  } catch {
-    // 文件不存在
-  }
-
-  assets.push(asset);
-  await electronService.fs.writeFile(
-    assetsPath,
-    JSON.stringify(assets, null, 2)
-  );
 }
 
 export async function importAsset(
@@ -88,7 +69,10 @@ export async function importAsset(
     md5: fileHash,
   };
 
-  await saveAssetMeta(projectId, asset);
+  // 追加到数据库
+  const assets = await loadAssets(projectId);
+  assets.push(asset);
+  await saveAssets(projectId, assets);
 
   return asset;
 }
@@ -99,14 +83,62 @@ export async function loadAssets(projectId: string): Promise<Asset[]> {
   }
 
   try {
-    const projectPath = await getProjectPath(projectId);
-    const exists = await electronService.fs.exists(`${projectPath}/assets.json`);
-    if (!exists) return [];
-    const data = await electronService.fs.readFile(`${projectPath}/assets.json`);
-    const assets = JSON.parse(data);
-    return Array.isArray(assets) ? assets.filter(Boolean) : [];
+    const rows = await electronService.asset.list(projectId);
+    if (!Array.isArray(rows)) return [];
+    return rows.map((r: any) => {
+      return {
+        id: r.id,
+        name: r.name || '',
+        type: r.kind,
+        path: r.local_path || '',
+        thumbnailPath: r.thumbnail_path || undefined,
+        duration: typeof r.duration_ms === 'number' ? r.duration_ms / 1000 : undefined,
+        size: r.file_size || 0,
+        width: r.width || undefined,
+        height: r.height || undefined,
+        createdAt: r.created_at,
+        md5: r.fingerprint || undefined,
+        refCount: r.ref_count || 0,
+      };
+    }).filter(Boolean);
   } catch {
     return [];
+  }
+}
+
+async function saveAssets(projectId: string, assets: Asset[]): Promise<void> {
+  const db = electronService.asset;
+  const existing = await db.list(projectId);
+  const existingIds = new Set(existing.map((item: any) => item.id));
+  const nextIds = new Set(assets.map(asset => asset.id));
+
+  for (const item of existing) {
+    if (!nextIds.has(item.id)) {
+      await db.delete(item.id);
+    }
+  }
+
+  for (const asset of assets) {
+    const payload = {
+      id: asset.id,
+      project_id: projectId,
+      kind: asset.type || 'image',
+      name: asset.name,
+      local_path: asset.path,
+      thumbnail_path: asset.thumbnailPath,
+      duration_ms: typeof asset.duration === 'number' ? Math.round(asset.duration * 1000) : undefined,
+      file_size: asset.size,
+      width: asset.width,
+      height: asset.height,
+      fingerprint: asset.md5,
+      ref_count: asset.refCount || 0,
+      created_at: asset.createdAt || Date.now(),
+    };
+    if (existingIds.has(asset.id)) {
+      await db.update(asset.id, payload);
+    } else {
+      await db.create(payload);
+    }
   }
 }
 
@@ -135,14 +167,11 @@ export async function incrementAssetRef(
 ): Promise<void> {
   if (!electronService.isElectron()) return;
 
-  const projectPath = await getProjectPath(projectId);
-  const assetsPath = `${projectPath}/assets.json`;
   const assets = await loadAssets(projectId);
-
   const asset = assets.find(a => a.id === assetId);
   if (asset) {
     asset.refCount = (asset.refCount || 0) + 1;
-    await electronService.fs.writeFile(assetsPath, JSON.stringify(assets, null, 2));
+    await saveAssets(projectId, assets);
   }
 }
 
@@ -152,14 +181,11 @@ export async function decrementAssetRef(
 ): Promise<void> {
   if (!electronService.isElectron()) return;
 
-  const projectPath = await getProjectPath(projectId);
-  const assetsPath = `${projectPath}/assets.json`;
   const assets = await loadAssets(projectId);
-
   const asset = assets.find(a => a.id === assetId);
   if (asset && asset.refCount > 0) {
     asset.refCount -= 1;
-    await electronService.fs.writeFile(assetsPath, JSON.stringify(assets, null, 2));
+    await saveAssets(projectId, assets);
   }
 }
 
@@ -171,10 +197,7 @@ export async function getUnusedAssets(projectId: string): Promise<Asset[]> {
 export async function cleanUnusedAssets(projectId: string): Promise<number> {
   if (!electronService.isElectron()) return 0;
 
-  const projectPath = await getProjectPath(projectId);
-  const assetsPath = `${projectPath}/assets.json`;
   const assets = await loadAssets(projectId);
-
   const unusedAssets = assets.filter(a => (a.refCount || 0) === 0);
   const usedAssets = assets.filter(a => (a.refCount || 0) > 0);
 
@@ -186,7 +209,7 @@ export async function cleanUnusedAssets(projectId: string): Promise<number> {
     }
   }
 
-  await electronService.fs.writeFile(assetsPath, JSON.stringify(usedAssets, null, 2));
+  await saveAssets(projectId, usedAssets);
 
   return unusedAssets.length;
 }

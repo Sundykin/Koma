@@ -1,7 +1,7 @@
 /**
- * Manju-DSL 集成
+ * Manju-DSL 集成（通过 IPC 调后端 SQLite）
  */
-import { electronService, type ProjectMeta as ElectronProjectMeta } from '../../services/electronService';
+import { electronService, batchApi, type ProjectMeta as ElectronProjectMeta } from '../../services/electronService';
 import type { ProjectMeta, Character, Scene, Shot } from '../../types';
 import type { TimelineData } from '../../types/editor';
 import {
@@ -90,34 +90,16 @@ export async function importProjectFromManjuFile(filePath: string): Promise<Proj
     updatedAt: imported.project.updatedAt,
   } satisfies ElectronProjectMeta);
 
-  const projectPath = await getProjectPath(projectId);
-
-  await electronService.fs.writeFile(
-    `${projectPath}/meta.json`,
-    JSON.stringify(imported.project, null, 2)
-  );
-  await electronService.fs.writeFile(
-    `${projectPath}/project.json`,
-    JSON.stringify(imported.project, null, 2)
-  );
-
   if (imported.timeline) {
     warnDroppedTimelineBoundary();
   }
 
-  await electronService.fs.writeFile(
-    `${projectPath}/characters.json`,
-    JSON.stringify(imported.characters, null, 2)
-  );
-  await electronService.fs.writeFile(
-    `${projectPath}/scenes.json`,
-    JSON.stringify(imported.scenes, null, 2)
-  );
-  await electronService.fs.writeFile(
-    `${projectPath}/shots.json`,
-    JSON.stringify(imported.shots, null, 2)
-  );
-  await electronService.project.rebuildIndex();
+  // 保存实体数据到 SQLite（通过 IPC）
+  await batchApi.saveAllCharacters(projectId, imported.characters);
+  await batchApi.saveAllScenes(projectId, imported.scenes);
+  await batchApi.saveAllShots(projectId, imported.shots);
+
+  const projectPath = await getProjectPath(projectId);
 
   await addRecentProject({
     id: projectId,

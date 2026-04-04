@@ -7,9 +7,12 @@ import { projectService, ProjectService } from './project';
 import { ffmpegService, FFmpegService } from './ffmpeg';
 import { pluginService } from './plugin';
 import { chatService, ChatService } from './chat';
+import { linghuiService, LinghuiService } from './linghui';
+import { baseDB } from './storage';
 
 export const services = {
   project: projectService,
+  linghui: linghuiService,
   ffmpeg: ffmpegService,
   plugin: pluginService,
   chat: chatService,
@@ -24,6 +27,7 @@ export async function initServices(): Promise<void> {
 
   initPromise = (async () => {
     await services.project.init(path.join(app.getPath('home'), '.koma'));
+    services.linghui.init(services.project.getStorageRoot());
     await services.ffmpeg.init();
     await services.plugin.init();
     initialized = true;
@@ -41,5 +45,20 @@ export async function ensureServicesReady(): Promise<void> {
   await initPromise;
 }
 
-export { ProjectService, projectService, FFmpegService, ffmpegService, pluginService, ChatService, chatService };
+export function closeServices(): void {
+  baseDB.close();
+}
+
+export {
+  ProjectService,
+  projectService,
+  LinghuiService,
+  linghuiService,
+  FFmpegService,
+  ffmpegService,
+  pluginService,
+  ChatService,
+  chatService,
+  baseDB,
+};
 export default services;

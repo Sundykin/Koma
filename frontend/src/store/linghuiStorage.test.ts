@@ -1,61 +1,142 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  createLinghuiWorkflowTemplate,
   createLinghuiWorkspace,
   createLinghuiWorkspaceHistoryRecord,
+  createLinghuiWorkflowTemplate,
   deleteLinghuiWorkspace,
   listLinghuiWorkflowTemplates,
   listLinghuiWorkspaces,
   loadLinghuiWorkspace,
 } from './linghuiStorage';
-import { DEFAULT_LINGHUI_WORKSPACE_NAME, getLinghuiResultPrimaryMedia } from '../types/linghui';
-import { STORAGE_KEYS } from '../constants/storageKeys';
+import { DEFAULT_LINGHUI_WORKSPACE_NAME } from '../types/linghui';
+
+const { linghuiApiMock, saveFileMock } = vi.hoisted(() => ({
+  linghuiApiMock: {
+    listWorkspaces: vi.fn(),
+    loadWorkspace: vi.fn(),
+    saveWorkspace: vi.fn(),
+    createWorkspace: vi.fn(),
+    saveWorkspaceAs: vi.fn(),
+    deleteWorkspace: vi.fn(),
+    importWorkspace: vi.fn(),
+    exportWorkspace: vi.fn(),
+    getWorkspaceDir: vi.fn(),
+    listWorkflowTemplates: vi.fn(),
+    createWorkflowTemplate: vi.fn(),
+    listWorkspaceAssets: vi.fn(),
+    createWorkspaceAsset: vi.fn(),
+    listWorkspaceHistoryRecords: vi.fn(),
+    createWorkspaceHistoryRecord: vi.fn(),
+    importWorkspaceAsset: vi.fn(),
+  },
+  saveFileMock: vi.fn(),
+}));
+
+vi.mock('../services/electronService', () => ({
+  electronService: {
+    isElectron: () => true,
+    linghui: linghuiApiMock,
+    dialog: {
+      saveFile: saveFileMock,
+    },
+  },
+}));
 
 describe('linghuiStorage', () => {
   beforeEach(() => {
-    window.localStorage.clear();
-    delete (window as typeof window & { electronAPI?: unknown }).electronAPI;
+    Object.values(linghuiApiMock).forEach(mock => mock.mockReset());
+    saveFileMock.mockReset();
   });
 
-  it('为空工作区名称回退到未命名灵绘', async () => {
+  it('通过后端创建工作区并返回规范化名称', async () => {
+    linghuiApiMock.createWorkspace.mockResolvedValueOnce({
+      id: 'workspace-1',
+      name: DEFAULT_LINGHUI_WORKSPACE_NAME,
+      description: '',
+      createdAt: 1,
+      updatedAt: 1,
+      lastOpenedAt: 1,
+      viewport: { x: 0, y: 0, zoom: 1 },
+      graphData: { version: 2, nodes: [], edges: [], groups: [] },
+      nodeRuns: {},
+      executionLogs: [],
+      nodeCount: 0,
+      linkCount: 0,
+      groupCount: 0,
+    });
+
     const workspace = await createLinghuiWorkspace('   ');
 
+    expect(linghuiApiMock.createWorkspace).toHaveBeenCalledWith('   ');
     expect(workspace.name).toBe(DEFAULT_LINGHUI_WORKSPACE_NAME);
   });
 
-  it('删除工作区时会清理索引与关联的历史数据键', async () => {
-    const workspace = await createLinghuiWorkspace('测试灵绘');
-
-    window.localStorage.setItem(`koma.linghui.doc.workflow-index.${workspace.id}`, JSON.stringify([{ id: 'wf-1' }]));
-    window.localStorage.setItem(`koma.linghui.doc.history-index.${workspace.id}`, JSON.stringify([{ id: 'history-1' }]));
-    window.localStorage.setItem(`koma.linghui.doc.asset-index.${workspace.id}`, JSON.stringify([{ id: 'asset-1' }]));
-
-    await deleteLinghuiWorkspace(workspace.id);
-
-    expect(await listLinghuiWorkspaces()).toEqual([]);
-    expect(await loadLinghuiWorkspace(workspace.id)).toBeNull();
-    expect(window.localStorage.getItem(`koma.linghui.doc.workflow-index.${workspace.id}`)).toBeNull();
-    expect(window.localStorage.getItem(`koma.linghui.doc.history-index.${workspace.id}`)).toBeNull();
-    expect(window.localStorage.getItem(`koma.linghui.doc.asset-index.${workspace.id}`)).toBeNull();
-  });
-
-  it('会合并系统 Recipe 模板与工作区模板，并为新模板记录来源元数据', async () => {
-    const workspace = await createLinghuiWorkspace('Recipe 工作区');
-
-    await createLinghuiWorkflowTemplate({
-      workspaceId: workspace.id,
-      name: '我的自定义流程',
-      snapshot: {
-        nodes: [],
-        edges: [],
-        groups: [],
+  it('工作区列表与详情都通过后端读取', async () => {
+    linghuiApiMock.listWorkspaces.mockResolvedValueOnce([
+      {
+        id: 'workspace-1',
+        name: '镜头工作区',
+        createdAt: 1,
+        updatedAt: 2,
+        lastOpenedAt: 3,
+        nodeCount: 2,
+        linkCount: 1,
+        groupCount: 0,
       },
+    ]);
+    linghuiApiMock.loadWorkspace.mockResolvedValueOnce({
+      id: 'workspace-1',
+      name: '镜头工作区',
+      description: '',
+      createdAt: 1,
+      updatedAt: 2,
+      lastOpenedAt: 3,
+      viewport: { x: 0, y: 0, zoom: 1 },
+      graphData: { version: 2, nodes: [], edges: [], groups: [] },
+      nodeRuns: {},
+      executionLogs: [],
+      nodeCount: 2,
+      linkCount: 1,
+      groupCount: 0,
     });
 
-    const templates = await listLinghuiWorkflowTemplates(workspace.id);
-    const builtinTemplates = templates.filter(template => template.source === 'system');
-    const workspaceTemplate = templates.find(template => template.name === '我的自定义流程');
+    const list = await listLinghuiWorkspaces();
+    const detail = await loadLinghuiWorkspace('workspace-1');
 
+    expect(list).toHaveLength(1);
+    expect(detail?.id).toBe('workspace-1');
+    expect(linghuiApiMock.listWorkspaces).toHaveBeenCalledTimes(1);
+    expect(linghuiApiMock.loadWorkspace).toHaveBeenCalledWith('workspace-1');
+  });
+
+  it('会合并系统 Recipe 模板与后端工作区模板', async () => {
+    linghuiApiMock.listWorkflowTemplates.mockResolvedValueOnce([
+      {
+        id: 'workspace-template-1',
+        workspaceId: 'workspace-1',
+        name: '我的自定义流程',
+        source: 'workspace',
+        kind: 'saved-workflow',
+        createdAt: 10,
+        updatedAt: 20,
+        nodeCount: 1,
+        linkCount: 0,
+        groupCount: 0,
+        sampleNodeLabels: ['图片节点'],
+        snapshotPath: '/tmp/workflow.json',
+        snapshot: {
+          nodes: [],
+          edges: [],
+          groups: [],
+        },
+      },
+    ]);
+
+    const templates = await listLinghuiWorkflowTemplates('workspace-1');
+    const builtinTemplates = templates.filter(template => template.source === 'system');
+    const workspaceTemplate = templates.find(template => template.id === 'workspace-template-1');
+
+    expect(linghuiApiMock.listWorkflowTemplates).toHaveBeenCalledWith('workspace-1');
     expect(builtinTemplates.map(template => template.recipeKey)).toEqual([
       'character-design-flow',
       'storyboard-creation-flow',
@@ -64,108 +145,73 @@ describe('linghuiStorage', () => {
     expect(workspaceTemplate).toEqual(expect.objectContaining({
       source: 'workspace',
       kind: 'saved-workflow',
-      workspaceId: workspace.id,
+      workspaceId: 'workspace-1',
     }));
   });
 
-  it('会把旧版工作流模板记录归一化为工作区模板', async () => {
-    const workspace = await createLinghuiWorkspace('旧模板工作区');
-
-    window.localStorage.setItem(
-      `koma.linghui.doc.workflow-index.${workspace.id}`,
-      JSON.stringify([
-        {
-          id: 'legacy-workflow',
-          workspaceId: workspace.id,
-          name: '旧模板',
-          createdAt: 10,
-          updatedAt: 20,
-          nodeCount: 1,
-          linkCount: 0,
-          groupCount: 0,
-          sampleNodeLabels: ['旧节点'],
-          snapshotPath: '/legacy/workflow.json',
-          snapshot: {
-            nodes: [],
-            edges: [],
-            groups: [],
-          },
-        },
-      ]),
-    );
-
-    const templates = await listLinghuiWorkflowTemplates(workspace.id);
-    const legacyTemplate = templates.find(template => template.id === 'legacy-workflow');
-
-    expect(legacyTemplate).toEqual(expect.objectContaining({
+  it('创建工作流模板时直接委托后端存储', async () => {
+    linghuiApiMock.createWorkflowTemplate.mockResolvedValueOnce({
+      id: 'wf-1',
+      workspaceId: 'workspace-1',
+      name: '三镜头流程',
       source: 'workspace',
       kind: 'saved-workflow',
-      recipeKey: undefined,
-    }));
+      createdAt: 10,
+      updatedAt: 10,
+      nodeCount: 0,
+      linkCount: 0,
+      groupCount: 0,
+      sampleNodeLabels: [],
+      snapshotPath: '/tmp/wf.json',
+      snapshot: {
+        nodes: [],
+        edges: [],
+        groups: [],
+      },
+    });
+
+    const template = await createLinghuiWorkflowTemplate({
+      workspaceId: 'workspace-1',
+      name: '三镜头流程',
+      snapshot: { nodes: [], edges: [], groups: [] },
+    });
+
+    expect(template.name).toBe('三镜头流程');
+    expect(linghuiApiMock.createWorkflowTemplate).toHaveBeenCalledWith({
+      workspaceId: 'workspace-1',
+      name: '三镜头流程',
+      snapshot: { nodes: [], edges: [], groups: [] },
+    });
   });
 
-  it('会把远端视频历史结果物化到灵绘工作区本地文件', async () => {
-    const rootPath = '/tmp/koma-test';
-    const files = new Map<string, string>();
-    const downloads: Array<{ url: string; destPath: string }> = [];
-
-    window.localStorage.setItem(
-      STORAGE_KEYS.STORAGE_CONFIG,
-      JSON.stringify({ rootPath, version: 1 }),
-    );
-
-    (window as typeof window & { electronAPI?: unknown }).electronAPI = {
-      fs: {
-        readFile: async (path: string) => ({ content: files.get(path) ?? '' }),
-        readFileAsBase64: async () => ({ base64: '' }),
-        writeFile: async (path: string, data: string) => {
-          files.set(path, data);
-        },
-        downloadFile: async (url: string, destPath: string) => {
-          downloads.push({ url, destPath });
-          files.set(destPath, `downloaded:${url}`);
-          return { success: true, size: 1 };
-        },
-        exists: async (path: string) => ({ exists: files.has(path) }),
-        mkdir: async () => {},
-        readdir: async () => ({ files: [] }),
-        stat: async () => null,
-        remove: async () => {},
-        copy: async (src: string, dest: string) => {
-          files.set(dest, files.get(src) ?? '');
+  it('创建历史结果时保留后端物化后的 run 数据', async () => {
+    linghuiApiMock.createWorkspaceHistoryRecord.mockResolvedValueOnce({
+      record: {
+        id: 'history-1',
+        workspaceId: 'workspace-1',
+        nodeId: 'video-node-1',
+        nodeType: 'linghui/video',
+        kind: 'video',
+        name: '视频',
+        createdAt: 1774838708788,
+        source: '/tmp/video.mp4',
+        previewSource: '/tmp/poster.png',
+        posterSource: '/tmp/poster.png',
+        snapshotPath: '/tmp/history.json',
+      },
+      materializedRun: {
+        status: 'succeeded',
+        updatedAt: 1774838708788,
+        result: {
+          kind: 'video',
+          primary: {
+            kind: 'video',
+            source: '/tmp/video.mp4',
+            posterSource: '/tmp/poster.png',
+          },
         },
       },
-      app: {
-        getPath: async () => ({ path: '/tmp' }),
-        getVersion: async () => ({ version: '1.0.0' }),
-      },
-      dialog: {
-        openFile: async () => ({ canceled: true, filePaths: [] }),
-        openDirectory: async () => ({ canceled: true, filePaths: [] }),
-        saveFile: async () => ({ canceled: true }),
-      },
-      window: {
-        minimize: async () => {},
-        maximize: async () => {},
-        close: async () => {},
-        isMaximized: async () => false,
-      },
-      shell: {
-        openExternal: async () => {},
-        showItemInFolder: async () => {},
-      },
-      project: {
-        list: async () => [],
-        create: async () => { throw new Error('not implemented'); },
-        load: async () => { throw new Error('not implemented'); },
-        save: async () => ({ success: true }),
-        update: async () => { throw new Error('not implemented'); },
-        remove: async () => ({ success: true }),
-        rebuildIndex: async () => ({}),
-        export: async () => ({ success: true, path: '' }),
-        import: async () => ({ success: true, projectId: '', meta: {} }),
-      },
-    };
+    });
 
     const result = await createLinghuiWorkspaceHistoryRecord({
       workspaceId: 'workspace-1',
@@ -175,9 +221,7 @@ describe('linghuiStorage', () => {
         label: '视频',
         accent: '#22c55e',
         background: '#0f1720',
-        properties: {
-          prompt: '猫咪懒洋洋地起床',
-        },
+        properties: { prompt: '猫咪懒洋洋地起床' },
         inputs: [],
         outputs: [],
         active: false,
@@ -196,21 +240,16 @@ describe('linghuiStorage', () => {
       },
     });
 
-    expect(downloads).toEqual([
-      {
-        url: 'https://example.com/video.mp4',
-        destPath: `${rootPath}/linghui-workspaces/workspace-1/history/results/video/1774838708788-视频-${result.record.id}/video.mp4`,
-      },
-      {
-        url: 'https://example.com/poster.png',
-        destPath: `${rootPath}/linghui-workspaces/workspace-1/history/results/video/1774838708788-视频-${result.record.id}/poster.png`,
-      },
-    ]);
-    expect(result.record.source).toBe(
-      `${rootPath}/linghui-workspaces/workspace-1/history/results/video/1774838708788-视频-${result.record.id}/video.mp4`,
-    );
-    expect(getLinghuiResultPrimaryMedia(result.materializedRun?.result)?.source).toBe(result.record.source);
-    expect(getLinghuiResultPrimaryMedia(result.materializedRun?.result)?.posterSource).toBe(result.record.posterSource);
-    expect(files.has(result.record.snapshotPath)).toBe(true);
+    expect(result.record.source).toBe('/tmp/video.mp4');
+    expect((result.materializedRun?.result as any)?.primary?.posterSource).toBe('/tmp/poster.png');
+    expect(linghuiApiMock.createWorkspaceHistoryRecord).toHaveBeenCalledTimes(1);
+  });
+
+  it('删除工作区时通过后端删除', async () => {
+    linghuiApiMock.deleteWorkspace.mockResolvedValueOnce({ success: true });
+
+    await deleteLinghuiWorkspace('workspace-1');
+
+    expect(linghuiApiMock.deleteWorkspace).toHaveBeenCalledWith('workspace-1');
   });
 });

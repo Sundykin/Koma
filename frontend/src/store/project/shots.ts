@@ -1,7 +1,7 @@
 /**
- * 分镜版本管理
+ * 分镜版本管理（通过 IPC 调后端 SQLite）
  */
-import { electronService } from '../../services/electronService';
+import { electronService, batchApi } from '../../services/electronService';
 import type { ShotVersion, ShotMeta } from '../../types';
 import { getProjectPath } from './core';
 import { persistMediaAsset } from '../../services/mediaPersistenceService';
@@ -28,13 +28,9 @@ export async function saveShotVersion(
 
   let shotMeta: ShotMeta;
   try {
-    const shotMetaPath = `${shotPath}/shot.json`;
-    const exists = await electronService.fs.exists(shotMetaPath);
-    if (!exists) {
-      throw new Error('missing shot meta');
-    }
-    const data = await electronService.fs.readFile(shotMetaPath);
-    shotMeta = JSON.parse(data);
+    const loaded = await batchApi.loadShotMeta(projectId, shotId);
+    if (!loaded) throw new Error('missing');
+    shotMeta = loaded;
   } catch {
     shotMeta = {
       id: shotId,
@@ -121,10 +117,8 @@ export async function saveShotVersion(
   shotMeta.seed = version.seed;
   shotMeta.model = version.model;
 
-  await electronService.fs.writeFile(
-    `${shotPath}/shot.json`,
-    JSON.stringify(shotMeta, null, 2)
-  );
+  // 保存到 SQLite
+  await batchApi.saveShotMeta(projectId, shotId, shotMeta);
 
   return shotVersion;
 }
@@ -138,12 +132,8 @@ export async function loadShotMeta(
   }
 
   try {
-    const projectPath = await getProjectPath(projectId);
-    const shotMetaPath = `${projectPath}/shots/${shotId}/shot.json`;
-    const exists = await electronService.fs.exists(shotMetaPath);
-    if (!exists) return null;
-    const data = await electronService.fs.readFile(shotMetaPath);
-    const parsed = JSON.parse(data) as ShotMeta;
+    const parsed = await batchApi.loadShotMeta(projectId, shotId);
+    if (!parsed) return null;
     return {
       ...parsed,
       versions: normalizeShotVersionsMediaState(parsed.versions || []),
@@ -160,28 +150,12 @@ export async function listShots(projectId: string): Promise<ShotMeta[]> {
   }
 
   try {
-    const projectPath = await getProjectPath(projectId);
-    const shotsPath = `${projectPath}/shots`;
-    const entries = await electronService.fs.readdir(shotsPath);
-    const shots: ShotMeta[] = [];
-
-    for (const entry of entries) {
-      try {
-        const shotMetaPath = `${shotsPath}/${entry}/shot.json`;
-        const exists = await electronService.fs.exists(shotMetaPath);
-        if (!exists) continue;
-        const data = await electronService.fs.readFile(shotMetaPath);
-        const parsed = JSON.parse(data) as ShotMeta;
-        shots.push({
-          ...parsed,
-          versions: normalizeShotVersionsMediaState(parsed.versions || []),
-        });
-      } catch (err) {
-        logger.warn('跳过无效分镜条目', { entry, err });
-      }
-    }
-
-    return shots;
+    const metas = await batchApi.listShotMetas(projectId);
+    if (!Array.isArray(metas)) return [];
+    return metas.map((parsed: any) => ({
+      ...parsed,
+      versions: normalizeShotVersionsMediaState(parsed.versions || []),
+    }));
   } catch (err) {
     logger.warn('列举分镜失败', { projectId, err });
     return [];

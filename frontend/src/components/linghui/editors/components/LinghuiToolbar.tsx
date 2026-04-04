@@ -106,13 +106,6 @@ export const LinghuiToolbar: React.FC<LinghuiToolbarProps> = ({
         <div className="linghuiToolbarDrawerGroup">
           <Button
             size="small"
-            type={activeDrawer === 'add' ? 'primary' : 'default'}
-            onClick={() => onToggleDrawer('add')}
-          >
-            添加
-          </Button>
-          <Button
-            size="small"
             icon={<Boxes size={14} />}
             type={activeDrawer === 'workflow' ? 'primary' : 'default'}
             onClick={() => onToggleDrawer('workflow')}

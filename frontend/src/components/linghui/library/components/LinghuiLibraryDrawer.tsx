@@ -5,18 +5,18 @@ import type {
   LinghuiWorkspaceAssetRecord,
   LinghuiWorkspaceHistoryRecord,
 } from '../../../../store/linghuiStorage';
-import type { LinghuiNodeCatalogItem, LinghuiNodeType } from '../../../../types/linghui';
-import { toFileSystemDisplayUrl } from '../../../../services/fileSystemPort';
+import type { LinghuiNodeCatalogItem } from '../../../../types/linghui';
 import { LINGHUI_WORKFLOW_BLOCK_LABEL } from '../../../../constants/linghuiWorkflowBlock';
 import { LINGHUI_NODE_CATALOG } from '../state/linghuiNodeDefs';
 import { resolveLinghuiRecipeTemplateLabel } from '../state/linghuiRecipeTemplates';
+import { toFileSystemDisplayUrl } from '../../../../services/fileSystemPort';
 
 export type LinghuiAssetFilter = 'all' | 'image' | 'video' | 'audio' | 'text';
-export type LinghuiLibraryDrawerKey = 'add' | 'workflow' | 'asset' | 'history' | 'tutorial';
+export type LinghuiLibraryDrawerKey = 'workflow' | 'asset' | 'history' | 'tutorial';
 
 const LINGHUI_TUTORIAL_SHORTCUTS = [
   ['双击空白', '快速创建节点'],
-  ['右键画布', '打开添加 / 工作流 / 资产 / 历史 / 教程入口'],
+  ['右键画布', '打开工作流 / 资产 / 历史 / 教程入口'],
   ['Cmd/Ctrl + C / V', '复制、粘贴节点或工作流块'],
   ['Cmd/Ctrl + D', '为当前选中创建副本'],
   ['Delete / Backspace', '删除选中节点或工作流块'],
@@ -38,8 +38,6 @@ function toPreviewSource(source?: string): string {
 
 function getDrawerTitle(activeDrawer: LinghuiLibraryDrawerKey | null): string {
   switch (activeDrawer) {
-    case 'add':
-      return '添加到画布';
     case 'workflow':
       return '工作流模板';
     case 'asset':
@@ -95,8 +93,6 @@ interface LinghuiLibraryDrawerProps {
   nodeCatalog?: LinghuiNodeCatalogItem[];
   onClose: () => void;
   onAssetFilterChange: (filter: LinghuiAssetFilter) => void;
-  onImportMediaToCanvas: (kind: 'image' | 'video' | 'audio') => void;
-  onQuickAddNode: (type: LinghuiNodeType) => void;
   onRefreshWorkflows: () => void;
   onSendWorkflowToCanvas: (template: LinghuiWorkflowTemplateRecord) => void;
   onRefreshAssets: () => void;
@@ -117,8 +113,6 @@ export function LinghuiLibraryDrawer({
   nodeCatalog = LINGHUI_NODE_CATALOG,
   onClose,
   onAssetFilterChange,
-  onImportMediaToCanvas,
-  onQuickAddNode,
   onRefreshWorkflows,
   onSendWorkflowToCanvas,
   onRefreshAssets,
@@ -137,10 +131,6 @@ export function LinghuiLibraryDrawer({
 
   const workspaceWorkflowTemplates = useMemo(() => (
     workflowTemplates.filter(template => template.source !== 'system')
-  ), [workflowTemplates]);
-
-  const recentWorkflowTemplates = useMemo(() => (
-    workflowTemplates.slice(0, 4)
   ), [workflowTemplates]);
 
   const renderWorkflowTemplateCard = (template: LinghuiWorkflowTemplateRecord) => {
@@ -195,82 +185,6 @@ export function LinghuiLibraryDrawer({
       className="linghuiLibraryDrawer"
       rootClassName="linghuiLibraryDrawer"
     >
-      {activeDrawer === 'add' && (
-        <div className="linghuiLibraryDrawerBody">
-          <div className="linghuiLibrarySection">
-            <div className="linghuiLibrarySectionHeader">
-              <div>
-                <div className="linghuiLibrarySectionTitle">快速导入</div>
-                <div className="linghuiLibrarySectionHint">把本地素材直接送到画布中心。</div>
-              </div>
-            </div>
-            <div className="linghuiLibraryQuickActions">
-              <Button onClick={() => onImportMediaToCanvas('image')}>上传图片</Button>
-              <Button onClick={() => onImportMediaToCanvas('video')}>上传视频</Button>
-              <Button onClick={() => onImportMediaToCanvas('audio')}>上传音频</Button>
-            </div>
-          </div>
-
-          {(['creation', 'storyboard'] as const).map(category => (
-            <div key={category} className="linghuiLibrarySection">
-              <div className="linghuiLibrarySectionHeader">
-                <div>
-                  <div className="linghuiLibrarySectionTitle">
-                    {category === 'creation' ? '创作节点' : '分镜节点'}
-                  </div>
-                  <div className="linghuiLibrarySectionHint">
-                    {category === 'creation' ? '常用生成与素材节点。' : '用于镜头编排和分镜组织。'}
-                  </div>
-                </div>
-              </div>
-
-              <div className="linghuiLibraryNodeList">
-                {nodeCatalog.filter(item => item.category === category).map(item => (
-                  <button
-                    key={item.type}
-                    type="button"
-                    className="linghuiLibraryNodeButton"
-                    onClick={() => onQuickAddNode(item.type)}
-                  >
-                    <span className="linghuiLibraryNodeDot" style={{ background: item.accent }} />
-                    <span className="linghuiLibraryNodeBody">
-                      <span className="linghuiLibraryNodeLabel">{item.label}</span>
-                      <span className="linghuiLibraryNodeDesc">{item.description}</span>
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          ))}
-
-          <div className="linghuiLibrarySection">
-            <div className="linghuiLibrarySectionHeader">
-              <div>
-                <div className="linghuiLibrarySectionTitle">最近工作流</div>
-                <div className="linghuiLibrarySectionHint">常用模板可以一键重新发回画布。</div>
-              </div>
-              <Button size="small" onClick={onRefreshWorkflows}>
-                刷新
-              </Button>
-            </div>
-
-            {workflowLoading ? (
-              <div className="linghuiLibraryDrawerLoading">
-                <Spin size="large" />
-              </div>
-            ) : recentWorkflowTemplates.length === 0 ? (
-              <div className="linghuiLibraryDrawerEmpty">
-                <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="还没有已保存的工作流模板" />
-              </div>
-            ) : (
-              <div className="linghuiLibraryCardList">
-                {recentWorkflowTemplates.map(renderWorkflowTemplateCard)}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
       {activeDrawer === 'workflow' && (
         <div className="linghuiLibraryDrawerBody">
           <div className="linghuiLibrarySectionHeader">

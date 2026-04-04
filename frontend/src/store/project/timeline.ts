@@ -1,7 +1,7 @@
 /**
- * 时间线管理
+ * 时间线管理（通过 IPC 调后端 SQLite）
  */
-import { electronService } from '../../services/electronService';
+import { electronService, batchApi } from '../../services/electronService';
 import type { TimelineData } from '../../types/editor';
 import { getProjectPath } from './core';
 import { remapTimelineClipSourcesToLocal } from './mediaUrlRemap';
@@ -17,11 +17,9 @@ export async function loadTimeline(projectId: string): Promise<TimelineData | nu
   }
 
   try {
-    const projectPath = await getProjectPath(projectId);
-    const exists = await electronService.fs.exists(`${projectPath}/timeline.json`);
-    if (!exists) return null;
-    const data = await electronService.fs.readFile(`${projectPath}/timeline.json`);
-    return migrateTimelineData(JSON.parse(data));
+    const data = await batchApi.loadProjectTimeline(projectId);
+    if (!data) return null;
+    return migrateTimelineData(data);
   } catch (error) {
     if (shouldRethrowTimelineError(error)) {
       throw error;
@@ -40,10 +38,6 @@ export async function saveTimeline(
 
   const projectPath = await getProjectPath(projectId);
   const normalizedTimeline = prepareTimelineForSave(timeline);
-  // Persist timeline with local media sources when possible (avoid CORS in Electron).
   const { timeline: remapped } = await remapTimelineClipSourcesToLocal(projectPath, normalizedTimeline as any);
-  await electronService.fs.writeFile(
-    `${projectPath}/timeline.json`,
-    JSON.stringify(remapped || normalizedTimeline, null, 2)
-  );
+  await batchApi.saveProjectTimeline(projectId, remapped || normalizedTimeline);
 }

@@ -5,14 +5,13 @@
  * and to keep ffmpeg/canvas pipelines working reliably.
  *
  * However, timeline clips may persist remote URLs (http/https) directly.
- * This module builds a best-effort map { remoteUrl -> localPath } from project JSON
+ * This module builds a best-effort map { remoteUrl -> localPath } from project data
  * and rewrites timeline clip sources to local paths on load.
  */
-import { electronService } from '../../services/electronService';
+import { electronService, batchApi } from '../../services/electronService';
 
 function trimUrlTail(candidate: string): string {
   let s = String(candidate || '').trim();
-  // Strip common trailing chars and percent-encoded tails like %22%3E (">).
   for (let i = 0; i < 10; i += 1) {
     const before = s;
     s = s.replace(/[)"'<>.,;\]]+$/g, '');
@@ -54,46 +53,30 @@ function collectRemoteToLocalPairs(value: unknown, out: Map<string, string>): vo
   }
 }
 
-async function tryReadJson(path: string): Promise<any | null> {
-  try {
-    const exists = await electronService.fs.exists(path);
-    if (!exists) return null;
-    const raw = await electronService.fs.readFile(path);
-    return JSON.parse(raw);
-  } catch {
-    return null;
-  }
-}
-
 export async function buildProjectRemoteToLocalMap(projectPath: string): Promise<Map<string, string>> {
   const map = new Map<string, string>();
   if (!electronService.isElectron()) return map;
 
-  // Top-level entities contain most media assets (characters/scenes/props) + tasks.
-  const topLevelFiles = [
-    'characters.json',
-    'scenes.json',
-    'props.json',
-    'tasks.json',
-    'timeline.json',
-  ];
+  // 从项目路径提取 projectId
+  const parts = projectPath.replace(/\\/g, '/').split('/');
+  const projectId = parts[parts.length - 1] || '';
+  if (!projectId) return map;
 
-  for (const file of topLevelFiles) {
-    const obj = await tryReadJson(`${projectPath}/${file}`);
-    if (obj) collectRemoteToLocalPairs(obj, map);
-  }
-
-  // Shot versions are stored under shots/*/shot.json
+  // 从 SQLite 加载实体数据（通过 IPC）
   try {
-    const shotsDir = `${projectPath}/shots`;
-    const hasShots = await electronService.fs.exists(shotsDir);
-    if (hasShots) {
-      const shotEntries = await electronService.fs.readdir(shotsDir);
-      for (const entry of shotEntries) {
-        const shotJson = await tryReadJson(`${shotsDir}/${entry}/shot.json`);
-        if (shotJson) collectRemoteToLocalPairs(shotJson, map);
-      }
-    }
+    const [characters, scenes, props, timeline, shotMetas] = await Promise.all([
+      batchApi.loadAllCharacters(projectId),
+      batchApi.loadAllScenes(projectId),
+      batchApi.loadAllProps(projectId),
+      batchApi.loadProjectTimeline(projectId),
+      batchApi.listShotMetas(projectId),
+    ]);
+
+    if (characters) collectRemoteToLocalPairs(characters, map);
+    if (scenes) collectRemoteToLocalPairs(scenes, map);
+    if (props) collectRemoteToLocalPairs(props, map);
+    if (timeline) collectRemoteToLocalPairs(timeline, map);
+    if (shotMetas) collectRemoteToLocalPairs(shotMetas, map);
   } catch {
     // ignore
   }
@@ -138,4 +121,3 @@ export async function remapTimelineClipSourcesToLocal<T extends { tracks?: any[]
 
   return { timeline, changed };
 }
-

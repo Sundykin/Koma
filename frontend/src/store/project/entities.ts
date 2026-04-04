@@ -1,9 +1,9 @@
 /**
- * 角色/场景/道具/分镜 加载和保存
+ * 角色/场景/道具/分镜 加载和保存（通过 IPC 调后端 SQLite）
  */
+import { batchApi } from '../../services/electronService';
 import { electronService } from '../../services/electronService';
 import type { Character, Scene, Shot } from '../../types';
-import { getProjectPath } from './core';
 import {
   normalizeCharactersMediaState,
   normalizeScenesMediaState,
@@ -16,11 +16,7 @@ const logger = createLogger('ProjectEntities');
 export async function loadCharacters(projectId: string): Promise<Character[]> {
   if (!electronService.isElectron()) return [];
   try {
-    const projectPath = await getProjectPath(projectId);
-    const exists = await electronService.fs.exists(`${projectPath}/characters.json`);
-    if (!exists) return [];
-    const data = await electronService.fs.readFile(`${projectPath}/characters.json`);
-    const raw = JSON.parse(data);
+    const raw = await batchApi.loadAllCharacters(projectId);
     return Array.isArray(raw) ? normalizeCharactersMediaState(raw.filter(Boolean)) : [];
   } catch (err) {
     logger.warn('加载角色数据失败', err);
@@ -30,21 +26,13 @@ export async function loadCharacters(projectId: string): Promise<Character[]> {
 
 export async function saveCharacters(projectId: string, characters: Character[]): Promise<void> {
   if (!electronService.isElectron()) return;
-  const projectPath = await getProjectPath(projectId);
-  await electronService.fs.writeFile(
-    `${projectPath}/characters.json`,
-    JSON.stringify(normalizeCharactersMediaState(characters), null, 2)
-  );
+  await batchApi.saveAllCharacters(projectId, normalizeCharactersMediaState(characters));
 }
 
 export async function loadScenes(projectId: string): Promise<Scene[]> {
   if (!electronService.isElectron()) return [];
   try {
-    const projectPath = await getProjectPath(projectId);
-    const exists = await electronService.fs.exists(`${projectPath}/scenes.json`);
-    if (!exists) return [];
-    const data = await electronService.fs.readFile(`${projectPath}/scenes.json`);
-    const raw = JSON.parse(data);
+    const raw = await batchApi.loadAllScenes(projectId);
     return Array.isArray(raw) ? normalizeScenesMediaState(raw.filter(Boolean)) : [];
   } catch (err) {
     logger.warn('加载场景数据失败', err);
@@ -54,22 +42,13 @@ export async function loadScenes(projectId: string): Promise<Scene[]> {
 
 export async function saveScenes(projectId: string, scenes: Scene[]): Promise<void> {
   if (!electronService.isElectron()) return;
-  const projectPath = await getProjectPath(projectId);
-  await electronService.fs.writeFile(
-    `${projectPath}/scenes.json`,
-    JSON.stringify(normalizeScenesMediaState(scenes), null, 2)
-  );
+  await batchApi.saveAllScenes(projectId, normalizeScenesMediaState(scenes));
 }
 
 export async function loadShots(projectId: string): Promise<Shot[]> {
   if (!electronService.isElectron()) return [];
   try {
-    const projectPath = await getProjectPath(projectId);
-    const filePath = `${projectPath}/shots.json`;
-    const exists = await electronService.fs.exists(filePath);
-    if (!exists) return [];
-    const data = await electronService.fs.readFile(filePath);
-    const raw = JSON.parse(data);
+    const raw = await batchApi.loadAllShots(projectId);
     return Array.isArray(raw) ? normalizeShotsMediaState(raw.filter(Boolean)) : [];
   } catch (err) {
     logger.warn('加载分镜数据失败', err);
@@ -79,9 +58,5 @@ export async function loadShots(projectId: string): Promise<Shot[]> {
 
 export async function saveShots(projectId: string, shots: Shot[]): Promise<void> {
   if (!electronService.isElectron()) return;
-  const projectPath = await getProjectPath(projectId);
-  await electronService.fs.writeFile(
-    `${projectPath}/shots.json`,
-    JSON.stringify(normalizeShotsMediaState(shots), null, 2)
-  );
+  await batchApi.saveAllShots(projectId, normalizeShotsMediaState(shots));
 }

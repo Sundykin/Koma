@@ -18,7 +18,6 @@ import type {
   LinghuiExecutionQueueState,
   LinghuiGraphSnapshot,
   LinghuiGraphStats,
-  LinghuiNodeType,
   LinghuiNodeRunState,
   LinghuiViewportState,
   LinghuiWorkspaceDocument,
@@ -286,7 +285,7 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
   }, [message]);
 
   useEffect(() => {
-    if (activeDrawer !== 'workflow' && activeDrawer !== 'add') return;
+    if (activeDrawer !== 'workflow') return;
     void loadWorkflowLibrary(activeWorkspace?.id ?? null);
   }, [activeDrawer, activeWorkspace?.id, loadWorkflowLibrary]);
 
@@ -699,7 +698,7 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
       await loadAssetLibrary(activeWorkspaceRef.current?.id ?? null);
       return;
     }
-    if (drawer === 'workflow' || drawer === 'add') {
+    if (drawer === 'workflow') {
       await loadWorkflowLibrary(activeWorkspaceRef.current?.id ?? null);
       return;
     }
@@ -743,16 +742,6 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
     message.success(`已将历史结果 ${record.name} 发送到画布`);
   }, [message]);
 
-  const handleQuickAddNode = useCallback((type: LinghuiNodeType) => {
-    canvasRef.current?.addNode(type);
-    closeActiveDrawer();
-  }, [closeActiveDrawer]);
-
-  const handleImportMediaToCanvas = useCallback(async (kind: 'image' | 'video' | 'audio') => {
-    await canvasRef.current?.importMediaToCanvas(kind);
-    closeActiveDrawer();
-  }, [closeActiveDrawer]);
-
   const handleManualSave = useCallback(async () => {
     const success = await flushWorkspaceSave({
       notify: true,
@@ -764,6 +753,32 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
       setProjectPanelOpen(false);
     }
   }, [flushWorkspaceSave]);
+
+  const handleCreateWorkspace = useCallback(async () => {
+    const flushed = await flushWorkspaceSave({
+      syncActiveWorkspace: true,
+      refreshWorkspaceList: true,
+      showIndicator: true,
+    });
+    if (!flushed) {
+      return;
+    }
+
+    try {
+      const workspace = await createLinghuiWorkspace(DEFAULT_LINGHUI_WORKSPACE_NAME);
+      activateWorkspace(workspace);
+      await refreshWorkspaceList(workspace.id);
+      closeActiveDrawer();
+      setProjectPanelOpen(true);
+      message.success('已创建新的灵绘项目');
+      window.setTimeout(() => {
+        renameInputRef.current?.focus();
+        renameInputRef.current?.select();
+      }, 0);
+    } catch (error: any) {
+      message.error(error?.message || '创建新的灵绘项目失败');
+    }
+  }, [activateWorkspace, closeActiveDrawer, flushWorkspaceSave, message, refreshWorkspaceList]);
 
   const handleSelectWorkspace = useCallback(async (workspaceId: string) => {
     if (!workspaceId || workspaceId === activeWorkspaceRef.current?.id) {
@@ -1138,8 +1153,8 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
           onClick={() => {
             setProjectPanelOpen(current => !current);
           }}
-          title="打开历史项目列表"
-          aria-label="打开历史项目列表"
+          title="打开项目列表"
+          aria-label="打开项目列表"
         >
           <span className="linghuiCanvasRailIcon"><FolderOpen size={16} /></span>
           <span className="linghuiCanvasRailLabel">项目列表</span>
@@ -1159,13 +1174,15 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
         </button>
         <button
           type="button"
-          className={`linghuiCanvasRailButton ${activeDrawer === 'add' ? 'isActive' : ''}`}
-          onClick={() => handleToggleDrawer('add')}
-          title="打开添加面板"
-          aria-label="打开添加面板"
+          className="linghuiCanvasRailButton"
+          onClick={() => {
+            void handleCreateWorkspace();
+          }}
+          title="创建新的灵绘项目"
+          aria-label="创建新的灵绘项目"
         >
           <span className="linghuiCanvasRailIcon"><Plus size={16} /></span>
-          <span className="linghuiCanvasRailLabel">添加</span>
+          <span className="linghuiCanvasRailLabel">新建</span>
         </button>
         <button
           type="button"
@@ -1202,7 +1219,7 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
       {projectPanelOpen ? (
         <div className="linghuiCanvasProjectPanel nopan nowheel">
           <div className="linghuiCanvasProjectPanelHeader">
-            <div className="linghuiCanvasProjectPanelTitle">历史项目</div>
+            <div className="linghuiCanvasProjectPanelTitle">项目列表</div>
             <div className="linghuiCanvasProjectPanelMeta">
               {workspaceList.length} 个项目
               {lastSavedAt ? ` · 最近保存 ${new Date(lastSavedAt).toLocaleTimeString()}` : ''}
@@ -1213,39 +1230,39 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
             <label className="linghuiCanvasProjectFieldLabel" htmlFor="linghui-project-name">
               当前项目名称
             </label>
-            <input
-              id="linghui-project-name"
-              ref={renameInputRef}
-              className="linghuiCanvasProjectNameInput"
-              value={workspaceNameDraft}
-              placeholder={DEFAULT_LINGHUI_WORKSPACE_NAME}
-              onChange={event => setWorkspaceNameDraft(event.target.value)}
-              onBlur={() => commitWorkspaceRename()}
-              onKeyDown={event => {
-                if (event.key === 'Enter') {
-                  event.preventDefault();
-                  commitWorkspaceRename();
-                  event.currentTarget.blur();
-                } else if (event.key === 'Escape') {
-                  setWorkspaceNameDraft(activeWorkspace?.name ?? DEFAULT_LINGHUI_WORKSPACE_NAME);
-                  event.currentTarget.blur();
-                }
-              }}
-            />
-          </div>
-
-          <div className="linghuiCanvasProjectPanelActions">
-            <button
-              type="button"
-              className="linghuiCanvasProjectActionButton isPrimary"
-              onClick={() => {
-                void handleManualSave();
-              }}
-              disabled={saving}
-            >
-              <Save size={14} />
-              <span>{saving ? '保存中' : '保存当前项目'}</span>
-            </button>
+            <div className="linghuiCanvasProjectFieldRow">
+              <input
+                id="linghui-project-name"
+                ref={renameInputRef}
+                className="linghuiCanvasProjectNameInput"
+                value={workspaceNameDraft}
+                placeholder={DEFAULT_LINGHUI_WORKSPACE_NAME}
+                onChange={event => setWorkspaceNameDraft(event.target.value)}
+                onBlur={() => commitWorkspaceRename()}
+                onKeyDown={event => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault();
+                    commitWorkspaceRename();
+                    event.currentTarget.blur();
+                  } else if (event.key === 'Escape') {
+                    setWorkspaceNameDraft(activeWorkspace?.name ?? DEFAULT_LINGHUI_WORKSPACE_NAME);
+                    event.currentTarget.blur();
+                  }
+                }}
+              />
+              <button
+                type="button"
+                className="linghuiCanvasProjectActionButton isPrimary isIconOnly"
+                onClick={() => {
+                  void handleManualSave();
+                }}
+                disabled={saving}
+                title={saving ? '保存中' : '保存当前项目'}
+                aria-label={saving ? '保存中' : '保存当前项目'}
+              >
+                <Save size={14} />
+              </button>
+            </div>
           </div>
 
           <div className="linghuiCanvasProjectList">
@@ -1273,6 +1290,7 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
     activeWorkspace?.id,
     activeWorkspace?.name,
     commitWorkspaceRename,
+    handleCreateWorkspace,
     handleManualSave,
     handleSelectWorkspace,
     handleToggleDrawer,
@@ -1333,10 +1351,6 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
         workspaceHistory={workspaceHistory}
         onClose={closeActiveDrawer}
         onAssetFilterChange={setAssetFilter}
-        onImportMediaToCanvas={kind => {
-          void handleImportMediaToCanvas(kind);
-        }}
-        onQuickAddNode={handleQuickAddNode}
         onRefreshWorkflows={() => {
           void loadWorkflowLibrary(activeWorkspace?.id ?? null);
         }}

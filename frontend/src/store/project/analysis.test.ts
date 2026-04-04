@@ -1,23 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const fsExistsMock = vi.fn();
-const fsReadFileMock = vi.fn();
-const getProjectPathMock = vi.fn();
+const batchLoadEpisodeTimelineMock = vi.fn();
 
 vi.mock('../../services/electronService', () => ({
   electronService: {
     isElectron: vi.fn(() => true),
-    fs: {
-      exists: (...args: unknown[]) => fsExistsMock(...args),
-      readFile: (...args: unknown[]) => fsReadFileMock(...args),
-      writeFile: vi.fn(),
-      mkdir: vi.fn(),
-    },
+  },
+  batchApi: {
+    loadEpisodeTimeline: (...args: unknown[]) => batchLoadEpisodeTimelineMock(...args),
   },
 }));
 
 vi.mock('./core', () => ({
-  getProjectPath: (...args: unknown[]) => getProjectPathMock(...args),
+  getProjectPath: vi.fn(),
 }));
 
 vi.mock('./mediaUrlRemap', () => ({
@@ -35,15 +30,11 @@ vi.mock('./mediaState', () => ({
 describe('loadEpisodeTimeline future-version boundary', () => {
   beforeEach(() => {
     vi.resetModules();
-    fsExistsMock.mockReset();
-    fsReadFileMock.mockReset();
-    getProjectPathMock.mockReset();
+    batchLoadEpisodeTimelineMock.mockReset();
   });
 
   it('rethrows unsupported future timeline versions instead of swallowing them as null', async () => {
-    fsExistsMock.mockResolvedValue(true);
-    fsReadFileMock.mockResolvedValue(JSON.stringify({ version: 99, tracks: [] }));
-    getProjectPathMock.mockResolvedValue('/tmp/project-1');
+    batchLoadEpisodeTimelineMock.mockResolvedValue({ version: 99, tracks: [] });
 
     const { loadEpisodeTimeline } = await import('./analysis');
 
@@ -51,9 +42,7 @@ describe('loadEpisodeTimeline future-version boundary', () => {
   });
 
   it('still returns null for non-version-related read failures', async () => {
-    fsExistsMock.mockResolvedValue(true);
-    fsReadFileMock.mockRejectedValue(new Error('IO failed'));
-    getProjectPathMock.mockResolvedValue('/tmp/project-1');
+    batchLoadEpisodeTimelineMock.mockRejectedValue(new Error('IO failed'));
 
     const { loadEpisodeTimeline } = await import('./analysis');
 

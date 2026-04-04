@@ -1,172 +1,98 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const existsMock = vi.fn();
-const readFileMock = vi.fn();
-const writeFileMock = vi.fn();
-const loadEpisodeShotsMock = vi.fn();
-const saveEpisodeShotsMock = vi.fn();
-const loadShotsMock = vi.fn();
-const saveShotsMock = vi.fn();
+const bindOwnerRefMediaMock = vi.fn();
+const isElectronMock = vi.fn(() => true);
 
 vi.mock('../services/electronService', () => ({
   electronService: {
-    isElectron: vi.fn(() => true),
-    fs: {
-      exists: (path: string) => existsMock(path),
-      readFile: (path: string) => readFileMock(path),
-      writeFile: (path: string, data: string) => writeFileMock(path, data),
+    isElectron: (...args: unknown[]) => isElectronMock(...args),
+    project: {
+      bindOwnerRefMedia: (...args: unknown[]) => bindOwnerRefMediaMock(...args),
     },
   },
 }));
 
-vi.mock('../store/project/core', () => ({
-  getProjectPath: vi.fn(async () => '/project'),
-}));
-
-vi.mock('../store/projectStore', () => ({
-  loadCharacters: vi.fn(),
-  saveCharacters: vi.fn(),
-  loadScenes: vi.fn(),
-  saveScenes: vi.fn(),
-  loadProps: vi.fn(),
-  saveProps: vi.fn(),
-  loadEpisodeShots: (...args: any[]) => loadEpisodeShotsMock(...args),
-  saveEpisodeShots: (...args: any[]) => saveEpisodeShotsMock(...args),
-  loadShots: (...args: any[]) => loadShotsMock(...args),
-  saveShots: (...args: any[]) => saveShotsMock(...args),
-}));
-
-import { bindOwnerRefMedia } from './mediaTaskBindingService';
-
-function createShot(id: string) {
-  return {
-    id,
-    scriptContent: '镜头内容',
-    shotType: 'medium',
-    cameraMovement: 'static',
-    duration: 4,
-    characters: [],
-    scenes: [],
-    props: [],
-    media: {},
-  } as any;
-}
+import { bindCompletedMediaTask, bindOwnerRefMedia } from './mediaTaskBindingService';
 
 describe('mediaTaskBindingService', () => {
   beforeEach(() => {
-    existsMock.mockReset();
-    readFileMock.mockReset();
-    writeFileMock.mockReset();
-    loadEpisodeShotsMock.mockReset();
-    saveEpisodeShotsMock.mockReset();
-    loadShotsMock.mockReset();
-    saveShotsMock.mockReset();
+    bindOwnerRefMediaMock.mockReset();
+    isElectronMock.mockReset();
+    isElectronMock.mockReturnValue(true);
+    bindOwnerRefMediaMock.mockResolvedValue({ success: true });
   });
 
-  it('syncs shot-version video assets back into episode shot media', async () => {
-    existsMock.mockResolvedValue(true);
-    readFileMock.mockResolvedValue(JSON.stringify({
-      id: 'shot-1',
-      currentVersion: 1,
-      versions: [
-        {
-          version: 1,
-          media: {},
-          createdAt: 1,
-        },
-      ],
-    }));
-    loadEpisodeShotsMock.mockResolvedValue([createShot('shot-1')]);
-    saveEpisodeShotsMock.mockResolvedValue(undefined);
-
-    const asset = {
-      kind: 'video',
-      localPath: '/tmp/generated.mp4',
-      remoteUrl: 'https://cdn.example.com/generated.mp4',
-      createdAt: 1,
-    } as any;
-
-    await bindOwnerRefMedia('project-1', {
+  it('delegates owner media binding to electron project service', async () => {
+    const ownerRef = {
       projectId: 'project-1',
       ownerType: 'shot-version',
       ownerId: 'shot-1',
       slot: 'video',
       versionId: 'v1',
       episodeId: 'episode-1',
-    }, asset);
+    } as const;
+    const asset = {
+      kind: 'video',
+      localPath: '/tmp/generated.mp4',
+      remoteUrl: 'https://cdn.example.com/generated.mp4',
+      createdAt: 1,
+    } as const;
 
-    expect(writeFileMock).toHaveBeenCalledWith(
-      '/project/shots/shot-1/shot.json',
-      expect.stringContaining('"video"'),
-    );
-    expect(saveEpisodeShotsMock).toHaveBeenCalledWith(
-      'project-1',
-      'episode-1',
-      expect.arrayContaining([
-        expect.objectContaining({
-          id: 'shot-1',
-          media: expect.objectContaining({
-            videos: [asset],
-            currentVideoIndex: 0,
-          }),
-        }),
-      ]),
-    );
+    await bindOwnerRefMedia('project-1', ownerRef, asset);
+
+    expect(bindOwnerRefMediaMock).toHaveBeenCalledWith('project-1', ownerRef, asset);
   });
 
-  it('serializes concurrent shot media writes to avoid overwriting sibling video results', async () => {
-    let storedShots = [createShot('shot-1'), createShot('shot-2')];
-    loadEpisodeShotsMock.mockImplementation(async () => JSON.parse(JSON.stringify(storedShots)));
-
-    let releaseFirstSave: (() => void) | null = null;
-    const firstSaveGate = new Promise<void>(resolve => {
-      releaseFirstSave = resolve;
-    });
-
-    let saveCount = 0;
-    saveEpisodeShotsMock.mockImplementation(async (_projectId: string, _episodeId: string, shots: any[]) => {
-      saveCount += 1;
-      if (saveCount === 1) {
-        await firstSaveGate;
-      }
-      storedShots = JSON.parse(JSON.stringify(shots));
-    });
-
-    const assetA = {
-      kind: 'video',
-      localPath: '/tmp/a.mp4',
-      createdAt: 1,
-    } as any;
-    const assetB = {
-      kind: 'video',
-      localPath: '/tmp/b.mp4',
+  it('bindCompletedMediaTask forwards valid owner refs and ignores mismatched projects', async () => {
+    const asset = {
+      kind: 'image',
+      localPath: '/tmp/generated.png',
       createdAt: 2,
-    } as any;
+    } as const;
 
-    const first = bindOwnerRefMedia('project-1', {
-      projectId: 'project-1',
-      ownerType: 'shot',
-      ownerId: 'shot-1',
-      slot: 'video',
-      episodeId: 'episode-1',
-    }, assetA);
-    const second = bindOwnerRefMedia('project-1', {
-      projectId: 'project-1',
-      ownerType: 'shot',
-      ownerId: 'shot-2',
-      slot: 'video',
-      episodeId: 'episode-1',
-    }, assetB);
+    await bindCompletedMediaTask('project-1', {
+      id: 'task-1',
+      type: 'tti',
+      targetType: 'shot',
+      targetId: 'shot-1',
+      status: 'completed',
+      progress: 100,
+      createdAt: 1,
+      updatedAt: 2,
+      ownerRef: {
+        projectId: 'project-1',
+        ownerType: 'shot',
+        ownerId: 'shot-1',
+        slot: 'image',
+        episodeId: 'episode-1',
+      },
+    } as any, asset);
 
-    await Promise.resolve();
-    await Promise.resolve();
+    await bindCompletedMediaTask('project-1', {
+      id: 'task-2',
+      type: 'tti',
+      targetType: 'shot',
+      targetId: 'shot-2',
+      status: 'completed',
+      progress: 100,
+      createdAt: 1,
+      updatedAt: 2,
+      ownerRef: {
+        projectId: 'project-other',
+        ownerType: 'shot',
+        ownerId: 'shot-2',
+        slot: 'image',
+      },
+    } as any, asset);
 
-    expect(loadEpisodeShotsMock).toHaveBeenCalledTimes(1);
-
-    releaseFirstSave?.();
-    await Promise.all([first, second]);
-
-    expect(storedShots.find(shot => shot.id === 'shot-1')?.media?.videos).toEqual([assetA]);
-    expect(storedShots.find(shot => shot.id === 'shot-2')?.media?.videos).toEqual([assetB]);
+    expect(bindOwnerRefMediaMock).toHaveBeenCalledTimes(1);
+    expect(bindOwnerRefMediaMock).toHaveBeenCalledWith(
+      'project-1',
+      expect.objectContaining({
+        projectId: 'project-1',
+        ownerId: 'shot-1',
+      }),
+      asset,
+    );
   });
 });

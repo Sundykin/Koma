@@ -1,7 +1,7 @@
 /**
- * 剧集解析结果存储
+ * 剧集解析结果存储（通过 IPC 调后端 SQLite）
  */
-import { electronService } from '../../services/electronService';
+import { electronService, batchApi } from '../../services/electronService';
 import type { EpisodeAnalysis, Shot } from '../../types';
 import type { TimelineData } from '../../types/editor';
 import { getProjectPath } from './core';
@@ -24,8 +24,6 @@ export async function saveEpisodeAnalysis(
     throw new Error('仅支持 Electron 环境');
   }
 
-  const projectPath = await getProjectPath(projectId);
-  const episodePath = `${projectPath}/episodes/${episodeId}`;
   const now = Date.now();
 
   const existing = await loadEpisodeAnalysis(projectId, episodeId);
@@ -46,11 +44,7 @@ export async function saveEpisodeAnalysis(
     updatedAt: now,
   };
 
-  await electronService.fs.writeFile(
-    `${episodePath}/analysis.json`,
-    JSON.stringify(result, null, 2)
-  );
-
+  await batchApi.saveAnalysis(projectId, episodeId, result);
   await saveEpisode(projectId, episodeId, { hasAnalysis: true });
 
   return result;
@@ -63,12 +57,8 @@ export async function loadEpisodeAnalysis(
   if (!electronService.isElectron()) return null;
 
   try {
-    const projectPath = await getProjectPath(projectId);
-    const filePath = `${projectPath}/episodes/${episodeId}/analysis.json`;
-    const exists = await electronService.fs.exists(filePath);
-    if (!exists) return null;
-    const data = await electronService.fs.readFile(filePath);
-    const parsed = JSON.parse(data) as EpisodeAnalysis;
+    const parsed = await batchApi.loadAnalysis(projectId, episodeId);
+    if (!parsed) return null;
     return {
       ...parsed,
       shots: normalizeShotsMediaState(parsed.shots || []),
@@ -93,8 +83,6 @@ export async function saveEpisodeShots(
 ): Promise<void> {
   if (!electronService.isElectron()) return;
 
-  const projectPath = await getProjectPath(projectId);
-  const episodePath = `${projectPath}/episodes/${episodeId}`;
   const now = Date.now();
 
   let analysis = await loadEpisodeAnalysis(projectId, episodeId);
@@ -114,7 +102,7 @@ export async function saveEpisodeShots(
   analysis.shots = normalizeShotsMediaState(shots);
   analysis.updatedAt = now;
 
-  // 从 shots 中自动提取资产引用，合并到 refs（保留已有引用）
+  // 从 shots 中自动提取资产引用
   const charSet = new Set(analysis.characterRefs || []);
   const sceneSet = new Set(analysis.sceneRefs || []);
   const propSet = new Set(analysis.propRefs || []);
@@ -127,12 +115,7 @@ export async function saveEpisodeShots(
   analysis.sceneRefs = [...sceneSet];
   analysis.propRefs = [...propSet];
 
-  await electronService.fs.mkdir(episodePath);
-  await electronService.fs.writeFile(
-    `${episodePath}/analysis.json`,
-    JSON.stringify(analysis, null, 2)
-  );
-
+  await batchApi.saveAnalysis(projectId, episodeId, analysis);
   await saveEpisode(projectId, episodeId, { hasAnalysis: true });
 }
 
@@ -142,14 +125,10 @@ export async function loadEpisodeTimeline(
 ): Promise<TimelineData | null> {
   if (!electronService.isElectron()) return null;
 
-  const projectPath = await getProjectPath(projectId);
-  const timelinePath = `${projectPath}/episodes/${episodeId}/timeline.json`;
-
   try {
-    const exists = await electronService.fs.exists(timelinePath);
-    if (!exists) return null;
-    const content = await electronService.fs.readFile(timelinePath);
-    return migrateTimelineData(JSON.parse(content));
+    const data = await batchApi.loadEpisodeTimeline(projectId, episodeId);
+    if (!data) return null;
+    return migrateTimelineData(data);
   } catch (error) {
     if (shouldRethrowTimelineError(error)) {
       throw error;
@@ -166,21 +145,14 @@ export async function saveEpisodeTimeline(
   if (!electronService.isElectron()) return;
 
   const projectPath = await getProjectPath(projectId);
-  const episodePath = `${projectPath}/episodes/${episodeId}`;
 
   const timelineData = prepareTimelineForSave({
     ...data,
     updatedAt: Date.now(),
   });
 
-  // Persist with local media sources when possible (avoid CORS in Electron).
   const { timeline: remapped } = await remapTimelineClipSourcesToLocal(projectPath, timelineData as any);
-
-  await electronService.fs.mkdir(episodePath);
-  await electronService.fs.writeFile(
-    `${episodePath}/timeline.json`,
-    JSON.stringify((remapped || timelineData) as TimelineData, null, 2)
-  );
+  await batchApi.saveEpisodeTimeline(projectId, episodeId, remapped || timelineData);
 }
 
 export async function updateShot(
@@ -200,9 +172,6 @@ export async function updateShot(
   return updatedShot;
 }
 
-/**
- * 从指定剧集的分析数据中移除资产引用（refs + shot bindings）
- */
 export async function removeAssetFromAnalysis(
   projectId: string,
   episodeId: string,
@@ -240,8 +209,6 @@ export async function removeAssetFromAnalysis(
 
   if (!hadRef && !shotsModified) return;
 
-  const projectPath = await getProjectPath(projectId);
-  const episodePath = `${projectPath}/episodes/${episodeId}`;
   const updated = {
     ...analysis,
     [refsKey]: filteredRefs,
@@ -249,10 +216,7 @@ export async function removeAssetFromAnalysis(
     updatedAt: Date.now(),
   };
 
-  await electronService.fs.writeFile(
-    `${episodePath}/analysis.json`,
-    JSON.stringify(updated, null, 2)
-  );
+  await batchApi.saveAnalysis(projectId, episodeId, updated);
 }
 
 export async function deleteEpisodeAnalysis(
@@ -262,13 +226,9 @@ export async function deleteEpisodeAnalysis(
   if (!electronService.isElectron()) return false;
 
   try {
-    const projectPath = await getProjectPath(projectId);
-    const filePath = `${projectPath}/episodes/${episodeId}/analysis.json`;
-    const exists = await electronService.fs.exists(filePath);
-    if (exists) {
-      await electronService.fs.remove(filePath);
-      await saveEpisode(projectId, episodeId, { hasAnalysis: false });
-    }
+    // 清除分析数据
+    await batchApi.saveAnalysis(projectId, episodeId, null);
+    await saveEpisode(projectId, episodeId, { hasAnalysis: false });
     return true;
   } catch {
     return false;

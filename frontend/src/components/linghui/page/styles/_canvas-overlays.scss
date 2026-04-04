@@ -240,6 +240,15 @@
     &Label {
       @include lh-text(#cbd5e1, 12px, 1.4, 600);
     }
+
+    &Row {
+      @include lh-inline(10px, nowrap, center);
+
+      .linghuiCanvasProjectNameInput {
+        flex: 1 1 auto;
+        min-width: 0;
+      }
+    }
   }
 
   &ProjectNameInput {
@@ -297,6 +306,14 @@
       cursor: not-allowed;
       opacity: 0.7;
       transform: none;
+    }
+
+    &.isIconOnly {
+      width: 38px;
+      min-width: 38px;
+      min-height: 38px;
+      padding: 0;
+      flex: 0 0 38px;
     }
   }
 

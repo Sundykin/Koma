@@ -2,7 +2,7 @@
  * Electron API 服务封装
  * 在浏览器环境下提供 fallback 实现
  */
-import type { MediaModelSelection, ProjectStyleSnapshot } from '../types';
+import type { MediaModelSelection, MediaOwnerRef, ProjectStyleSnapshot, StoredMediaAsset } from '../types';
 
 // 类型定义
 export interface ProjectMeta {
@@ -60,12 +60,77 @@ interface ElectronAPI {
     list: () => Promise<ProjectMeta[]>;
     create: (meta: ProjectMeta) => Promise<ProjectMeta>;
     load: (projectId: string) => Promise<ProjectMeta>;
+    loadFull: (projectId: string) => Promise<any>;
+    bindOwnerRefMedia: (projectId: string, ownerRef: MediaOwnerRef, asset: StoredMediaAsset) => Promise<{ success: boolean }>;
     save: (projectId: string, data: any) => Promise<{ success: boolean }>;
     update: (projectId: string, updates: Partial<ProjectMeta>) => Promise<ProjectMeta>;
     remove: (projectId: string) => Promise<{ success: boolean }>;
     rebuildIndex: () => Promise<any>;
     export: (projectId: string, destPath: string, options?: ExportOptions) => Promise<{ success: boolean; path: string }>;
     import: (zipPath: string, newProjectId?: string) => Promise<{ success: boolean; projectId: string; meta: ProjectMeta }>;
+    // 实体 CRUD
+    characterList: (projectId: string) => Promise<any[]>;
+    characterGet: (id: string) => Promise<any>;
+    characterCreate: (data: any) => Promise<any>;
+    characterUpdate: (id: string, data: any) => Promise<any>;
+    characterDelete: (id: string) => Promise<any>;
+    sceneList: (projectId: string) => Promise<any[]>;
+    sceneGet: (id: string) => Promise<any>;
+    sceneCreate: (data: any) => Promise<any>;
+    sceneUpdate: (id: string, data: any) => Promise<any>;
+    sceneDelete: (id: string) => Promise<any>;
+    propList: (projectId: string) => Promise<any[]>;
+    propGet: (id: string) => Promise<any>;
+    propCreate: (data: any) => Promise<any>;
+    propUpdate: (id: string, data: any) => Promise<any>;
+    propDelete: (id: string) => Promise<any>;
+    shotList: (projectId: string) => Promise<any[]>;
+    shotGet: (id: string) => Promise<any>;
+    shotCreate: (data: any) => Promise<any>;
+    shotUpdate: (id: string, data: any) => Promise<any>;
+    shotDelete: (id: string) => Promise<any>;
+    shotVersionList: (shotId: string) => Promise<any[]>;
+    shotVersionCreate: (data: any) => Promise<any>;
+    shotVersionDelete: (id: string) => Promise<any>;
+    shotSetVersion: (shotId: string, versionNumber: number) => Promise<any>;
+    assetList: (projectId: string) => Promise<any[]>;
+    assetGet: (id: string) => Promise<any>;
+    assetCreate: (data: any) => Promise<any>;
+    assetUpdate: (id: string, data: any) => Promise<any>;
+    assetDelete: (id: string) => Promise<any>;
+    assetFindByFingerprint: (projectId: string, fingerprint: string) => Promise<any>;
+    assetListUnreferenced: (projectId: string) => Promise<any[]>;
+    episodeList: (projectId: string) => Promise<any[]>;
+    episodeGet: (id: string) => Promise<any>;
+    episodeCreate: (data: any) => Promise<any>;
+    episodeUpdate: (id: string, data: any) => Promise<any>;
+    episodeDelete: (id: string) => Promise<any>;
+    timelineGet: (projectId: string) => Promise<any>;
+    timelineUpdate: (id: string, data: any) => Promise<any>;
+    trackAdd: (data: any) => Promise<any>;
+    trackUpdate: (id: string, data: any) => Promise<any>;
+    trackDelete: (id: string) => Promise<any>;
+    clipAdd: (data: any) => Promise<any>;
+    clipUpdate: (id: string, data: any) => Promise<any>;
+    clipDelete: (id: string) => Promise<any>;
+  };
+  linghui?: {
+    listWorkspaces: () => Promise<any[]>;
+    loadWorkspace: (workspaceId: string) => Promise<any>;
+    saveWorkspace: (doc: any) => Promise<any>;
+    createWorkspace: (name?: string) => Promise<any>;
+    saveWorkspaceAs: (doc: any, name?: string) => Promise<any>;
+    deleteWorkspace: (workspaceId: string) => Promise<any>;
+    importWorkspace: (filePath: string) => Promise<any>;
+    exportWorkspace: (doc: any, destPath: string) => Promise<{ path: string }>;
+    getWorkspaceDir: (workspaceId: string) => Promise<string | { path: string }>;
+    listWorkflowTemplates: (workspaceId: string) => Promise<any[]>;
+    createWorkflowTemplate: (payload: any) => Promise<any>;
+    listWorkspaceAssets: (workspaceId: string) => Promise<any[]>;
+    createWorkspaceAsset: (payload: any) => Promise<any>;
+    listWorkspaceHistoryRecords: (workspaceId: string) => Promise<any[]>;
+    createWorkspaceHistoryRecord: (payload: any) => Promise<any>;
+    importWorkspaceAsset: (workspaceId: string, sourcePath: string, filenameHint?: string) => Promise<string | { path: string }>;
   };
 }
 
@@ -519,6 +584,288 @@ export const projectRebuildIndex = async (): Promise<any> => {
   throw new Error('Project index rebuild not available in browser');
 };
 
+export const projectLoadFull = async (projectId: string): Promise<any> => {
+  const api = getElectronAPI();
+  if (api) {
+    return await api.project.loadFull(projectId);
+  }
+  throw new Error('Project loadFull not available in browser');
+};
+
+export const projectBindOwnerRefMedia = async (
+  projectId: string,
+  ownerRef: MediaOwnerRef,
+  asset: StoredMediaAsset,
+): Promise<{ success: boolean }> => {
+  const api = getElectronAPI();
+  if (api) {
+    return await api.project.bindOwnerRefMedia(projectId, ownerRef, asset);
+  }
+  throw new Error('Project bindOwnerRefMedia not available in browser');
+};
+
+// ========== 批量实体操作（通过 IPC 调后端，匹配前端 save/load 模式） ==========
+
+export const batchApi = {
+  saveAllCharacters: async (projectId: string, items: any[]) => {
+    const a = getElectronAPI(); if (!a) return;
+    await (a.project as any).saveAllCharacters(projectId, items);
+  },
+  loadAllCharacters: async (projectId: string): Promise<any[]> => {
+    const a = getElectronAPI(); if (!a) return [];
+    return await (a.project as any).loadAllCharacters(projectId) ?? [];
+  },
+  saveAllScenes: async (projectId: string, items: any[]) => {
+    const a = getElectronAPI(); if (!a) return;
+    await (a.project as any).saveAllScenes(projectId, items);
+  },
+  loadAllScenes: async (projectId: string): Promise<any[]> => {
+    const a = getElectronAPI(); if (!a) return [];
+    return await (a.project as any).loadAllScenes(projectId) ?? [];
+  },
+  saveAllProps: async (projectId: string, items: any[]) => {
+    const a = getElectronAPI(); if (!a) return;
+    await (a.project as any).saveAllProps(projectId, items);
+  },
+  loadAllProps: async (projectId: string): Promise<any[]> => {
+    const a = getElectronAPI(); if (!a) return [];
+    return await (a.project as any).loadAllProps(projectId) ?? [];
+  },
+  saveAllShots: async (projectId: string, items: any[]) => {
+    const a = getElectronAPI(); if (!a) return;
+    await (a.project as any).saveAllShots(projectId, items);
+  },
+  loadAllShots: async (projectId: string): Promise<any[]> => {
+    const a = getElectronAPI(); if (!a) return [];
+    return await (a.project as any).loadAllShots(projectId) ?? [];
+  },
+  saveShotMeta: async (projectId: string, shotId: string, meta: any) => {
+    const a = getElectronAPI(); if (!a) return;
+    await (a.project as any).saveShotMeta(projectId, shotId, meta);
+  },
+  loadShotMeta: async (projectId: string, shotId: string): Promise<any | null> => {
+    const a = getElectronAPI(); if (!a) return null;
+    return await (a.project as any).loadShotMeta(projectId, shotId) ?? null;
+  },
+  listShotMetas: async (projectId: string): Promise<any[]> => {
+    const a = getElectronAPI(); if (!a) return [];
+    return await (a.project as any).listShotMetas(projectId) ?? [];
+  },
+  saveAnalysis: async (projectId: string, episodeId: string, analysis: any) => {
+    const a = getElectronAPI(); if (!a) return;
+    await (a.project as any).saveAnalysis(projectId, episodeId, analysis);
+  },
+  loadAnalysis: async (projectId: string, episodeId: string): Promise<any | null> => {
+    const a = getElectronAPI(); if (!a) return null;
+    return await (a.project as any).loadAnalysis(projectId, episodeId) ?? null;
+  },
+  saveProjectTimeline: async (projectId: string, timeline: any) => {
+    const a = getElectronAPI(); if (!a) return;
+    await (a.project as any).saveProjectTimeline(projectId, timeline);
+  },
+  loadProjectTimeline: async (projectId: string): Promise<any | null> => {
+    const a = getElectronAPI(); if (!a) return null;
+    return await (a.project as any).loadProjectTimeline(projectId) ?? null;
+  },
+  saveEpisodeTimeline: async (projectId: string, episodeId: string, timeline: any) => {
+    const a = getElectronAPI(); if (!a) return;
+    await (a.project as any).saveEpisodeTimeline(projectId, episodeId, timeline);
+  },
+  loadEpisodeTimeline: async (projectId: string, episodeId: string): Promise<any | null> => {
+    const a = getElectronAPI(); if (!a) return null;
+    return await (a.project as any).loadEpisodeTimeline(projectId, episodeId) ?? null;
+  },
+};
+
+// ========== 实体 CRUD（通过 IPC 调后端） ==========
+
+const makeEntityCrud = (prefix: string) => {
+  const api = () => getElectronAPI();
+  return {
+    list: async (projectId: string) => {
+      const a = api(); if (!a) return [];
+      return await (a.project as any)[`${prefix}List`](projectId);
+    },
+    get: async (id: string) => {
+      const a = api(); if (!a) return undefined;
+      return await (a.project as any)[`${prefix}Get`](id);
+    },
+    create: async (data: any) => {
+      const a = api(); if (!a) throw new Error('Not available');
+      return await (a.project as any)[`${prefix}Create`](data);
+    },
+    update: async (id: string, data: any) => {
+      const a = api(); if (!a) throw new Error('Not available');
+      return await (a.project as any)[`${prefix}Update`](id, data);
+    },
+    delete: async (id: string) => {
+      const a = api(); if (!a) throw new Error('Not available');
+      return await (a.project as any)[`${prefix}Delete`](id);
+    },
+  };
+};
+
+export const characterApi = makeEntityCrud('character');
+export const sceneApi = makeEntityCrud('scene');
+export const propApi = makeEntityCrud('prop');
+export const episodeApi = makeEntityCrud('episode');
+
+export const shotApi = {
+  ...makeEntityCrud('shot'),
+  listVersions: async (shotId: string) => {
+    const a = getElectronAPI(); if (!a) return [];
+    return await (a.project as any).shotVersionList(shotId);
+  },
+  createVersion: async (data: any) => {
+    const a = getElectronAPI(); if (!a) throw new Error('Not available');
+    return await (a.project as any).shotVersionCreate(data);
+  },
+  deleteVersion: async (id: string) => {
+    const a = getElectronAPI(); if (!a) throw new Error('Not available');
+    return await (a.project as any).shotVersionDelete(id);
+  },
+  setVersion: async (shotId: string, versionNumber: number) => {
+    const a = getElectronAPI(); if (!a) throw new Error('Not available');
+    return await (a.project as any).shotSetVersion(shotId, versionNumber);
+  },
+};
+
+export const assetApi = {
+  ...makeEntityCrud('asset'),
+  findByFingerprint: async (projectId: string, fingerprint: string) => {
+    const a = getElectronAPI(); if (!a) return undefined;
+    return await (a.project as any).assetFindByFingerprint(projectId, fingerprint);
+  },
+  listUnreferenced: async (projectId: string) => {
+    const a = getElectronAPI(); if (!a) return [];
+    return await (a.project as any).assetListUnreferenced(projectId);
+  },
+};
+
+export const timelineApi = {
+  get: async (projectId: string) => {
+    const a = getElectronAPI(); if (!a) return undefined;
+    return await (a.project as any).timelineGet(projectId);
+  },
+  update: async (id: string, data: any) => {
+    const a = getElectronAPI(); if (!a) throw new Error('Not available');
+    return await (a.project as any).timelineUpdate(id, data);
+  },
+  addTrack: async (data: any) => {
+    const a = getElectronAPI(); if (!a) throw new Error('Not available');
+    return await (a.project as any).trackAdd(data);
+  },
+  updateTrack: async (id: string, data: any) => {
+    const a = getElectronAPI(); if (!a) throw new Error('Not available');
+    return await (a.project as any).trackUpdate(id, data);
+  },
+  deleteTrack: async (id: string) => {
+    const a = getElectronAPI(); if (!a) throw new Error('Not available');
+    return await (a.project as any).trackDelete(id);
+  },
+  addClip: async (data: any) => {
+    const a = getElectronAPI(); if (!a) throw new Error('Not available');
+    return await (a.project as any).clipAdd(data);
+  },
+  updateClip: async (id: string, data: any) => {
+    const a = getElectronAPI(); if (!a) throw new Error('Not available');
+    return await (a.project as any).clipUpdate(id, data);
+  },
+  deleteClip: async (id: string) => {
+    const a = getElectronAPI(); if (!a) throw new Error('Not available');
+    return await (a.project as any).clipDelete(id);
+  },
+};
+
+export const linghuiApi = {
+  listWorkspaces: async () => {
+    const a = getElectronAPI();
+    if (!a?.linghui) throw new Error('Linghui API not available');
+    return await a.linghui.listWorkspaces();
+  },
+  loadWorkspace: async (workspaceId: string) => {
+    const a = getElectronAPI();
+    if (!a?.linghui) throw new Error('Linghui API not available');
+    return await a.linghui.loadWorkspace(workspaceId);
+  },
+  saveWorkspace: async (doc: any) => {
+    const a = getElectronAPI();
+    if (!a?.linghui) throw new Error('Linghui API not available');
+    return await a.linghui.saveWorkspace(doc);
+  },
+  createWorkspace: async (name?: string) => {
+    const a = getElectronAPI();
+    if (!a?.linghui) throw new Error('Linghui API not available');
+    return await a.linghui.createWorkspace(name);
+  },
+  saveWorkspaceAs: async (doc: any, name?: string) => {
+    const a = getElectronAPI();
+    if (!a?.linghui) throw new Error('Linghui API not available');
+    return await a.linghui.saveWorkspaceAs(doc, name);
+  },
+  deleteWorkspace: async (workspaceId: string) => {
+    const a = getElectronAPI();
+    if (!a?.linghui) throw new Error('Linghui API not available');
+    return await a.linghui.deleteWorkspace(workspaceId);
+  },
+  importWorkspace: async (filePath: string) => {
+    const a = getElectronAPI();
+    if (!a?.linghui) throw new Error('Linghui API not available');
+    return await a.linghui.importWorkspace(filePath);
+  },
+  exportWorkspace: async (doc: any, destPath: string) => {
+    const a = getElectronAPI();
+    if (!a?.linghui) throw new Error('Linghui API not available');
+    return await a.linghui.exportWorkspace(doc, destPath);
+  },
+  getWorkspaceDir: async (workspaceId: string) => {
+    const a = getElectronAPI();
+    if (!a?.linghui) throw new Error('Linghui API not available');
+    const result = await a.linghui.getWorkspaceDir(workspaceId);
+    return typeof result === 'object' && result !== null && 'path' in result
+      ? (result as { path: string }).path
+      : (result as string);
+  },
+  listWorkflowTemplates: async (workspaceId: string) => {
+    const a = getElectronAPI();
+    if (!a?.linghui) throw new Error('Linghui API not available');
+    return await a.linghui.listWorkflowTemplates(workspaceId);
+  },
+  createWorkflowTemplate: async (payload: any) => {
+    const a = getElectronAPI();
+    if (!a?.linghui) throw new Error('Linghui API not available');
+    return await a.linghui.createWorkflowTemplate(payload);
+  },
+  listWorkspaceAssets: async (workspaceId: string) => {
+    const a = getElectronAPI();
+    if (!a?.linghui) throw new Error('Linghui API not available');
+    return await a.linghui.listWorkspaceAssets(workspaceId);
+  },
+  createWorkspaceAsset: async (payload: any) => {
+    const a = getElectronAPI();
+    if (!a?.linghui) throw new Error('Linghui API not available');
+    return await a.linghui.createWorkspaceAsset(payload);
+  },
+  listWorkspaceHistoryRecords: async (workspaceId: string) => {
+    const a = getElectronAPI();
+    if (!a?.linghui) throw new Error('Linghui API not available');
+    return await a.linghui.listWorkspaceHistoryRecords(workspaceId);
+  },
+  createWorkspaceHistoryRecord: async (payload: any) => {
+    const a = getElectronAPI();
+    if (!a?.linghui) throw new Error('Linghui API not available');
+    return await a.linghui.createWorkspaceHistoryRecord(payload);
+  },
+  importWorkspaceAsset: async (workspaceId: string, sourcePath: string, filenameHint?: string) => {
+    const a = getElectronAPI();
+    if (!a?.linghui) throw new Error('Linghui API not available');
+    const result = await a.linghui.importWorkspaceAsset(workspaceId, sourcePath, filenameHint);
+    return typeof result === 'object' && result !== null && 'path' in result
+      ? (result as { path: string }).path
+      : (result as string);
+  },
+};
+
 // ========== 项目导入导出 ==========
 
 export const projectExport = async (
@@ -603,6 +950,8 @@ export const electronService = {
     list: projectList,
     create: projectCreate,
     load: projectLoad,
+    loadFull: projectLoadFull,
+    bindOwnerRefMedia: projectBindOwnerRefMedia,
     save: projectSave,
     update: projectUpdate,
     remove: projectDelete,
@@ -610,6 +959,17 @@ export const electronService = {
     export: projectExport,
     import: projectImport,
   },
+  // 批量实体 API
+  batch: batchApi,
+  // 实体 CRUD API（通过 IPC 调后端）
+  character: characterApi,
+  scene: sceneApi,
+  prop: propApi,
+  shot: shotApi,
+  asset: assetApi,
+  episode: episodeApi,
+  timeline: timelineApi,
+  linghui: linghuiApi,
   // 插件相关 API
   ipc: {
     invoke: async (channel: string, args?: any): Promise<any> => {

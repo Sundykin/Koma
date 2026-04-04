@@ -8,6 +8,7 @@ import {
 import { eventBus, Preload } from 'ee-core/app/events';
 import { createMainWindow, getMainWindow, loadServer, restoreMainWindow } from 'ee-core/electron/window';
 import { logger } from 'ee-core/log';
+import { closeServices } from '../service';
 
 const isMac = process.platform === 'darwin';
 
@@ -100,5 +101,6 @@ export class Lifecycle {
 
   beforeClose(): void {
     logger.info('[lifecycle] before-close');
+    closeServices();
   }
 }

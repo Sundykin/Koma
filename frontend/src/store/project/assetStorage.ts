@@ -1,13 +1,13 @@
 /**
- * 角色/场景/道具资产存储
+ * 角色/场景/道具资产存储（通过 IPC 调后端 SQLite）
  */
-import { electronService } from '../../services/electronService';
+import { electronService, batchApi } from '../../services/electronService';
 import type { Prop } from '../../types';
 import { getProjectPath } from './core';
 import { loadShotMeta } from './shots';
 import { normalizePropsMediaState } from './mediaState';
 
-// ========== 角色资产 ==========
+// ========== 角色资产（文件操作保留，元数据通过 IPC） ==========
 
 export async function saveCharacterCostumePhoto(
   projectId: string,
@@ -92,12 +92,8 @@ export async function savePropImage(
 export async function loadProps(projectId: string): Promise<Prop[]> {
   if (!electronService.isElectron()) return [];
   try {
-    const projectPath = await getProjectPath(projectId);
-    const exists = await electronService.fs.exists(`${projectPath}/props.json`);
-    if (!exists) return [];
-    const data = await electronService.fs.readFile(`${projectPath}/props.json`);
-    const props = JSON.parse(data);
-    return Array.isArray(props) ? normalizePropsMediaState(props.filter(Boolean)) : [];
+    const raw = await batchApi.loadAllProps(projectId);
+    return Array.isArray(raw) ? normalizePropsMediaState(raw.filter(Boolean)) : [];
   } catch {
     return [];
   }
@@ -105,14 +101,10 @@ export async function loadProps(projectId: string): Promise<Prop[]> {
 
 export async function saveProps(projectId: string, props: Prop[]): Promise<void> {
   if (!electronService.isElectron()) return;
-  const projectPath = await getProjectPath(projectId);
-  await electronService.fs.writeFile(
-    `${projectPath}/props.json`,
-    JSON.stringify(normalizePropsMediaState(props), null, 2)
-  );
+  await batchApi.saveAllProps(projectId, normalizePropsMediaState(props));
 }
 
-// ========== 分镜版本切换 ==========
+// ========== 分镜版本切换（通过 IPC） ==========
 
 export async function switchShotVersion(
   projectId: string,
@@ -134,12 +126,7 @@ export async function switchShotVersion(
   }
 
   shotMeta.currentVersion = version;
-
-  const projectPath = await getProjectPath(projectId);
-  await electronService.fs.writeFile(
-    `${projectPath}/shots/${shotId}/shot.json`,
-    JSON.stringify(shotMeta, null, 2)
-  );
+  await batchApi.saveShotMeta(projectId, shotId, shotMeta);
 }
 
 export async function deleteShotVersion(
@@ -165,9 +152,9 @@ export async function deleteShotVersion(
     throw new Error(`版本 ${version} 不存在`);
   }
 
+  // 删除版本文件
   const projectPath = await getProjectPath(projectId);
   const versionPath = `${projectPath}/shots/${shotId}/versions/v${version}`;
-
   try {
     await electronService.fs.remove(versionPath);
   } catch {
@@ -181,10 +168,7 @@ export async function deleteShotVersion(
     shotMeta.currentVersion = latestVersion;
   }
 
-  await electronService.fs.writeFile(
-    `${projectPath}/shots/${shotId}/shot.json`,
-    JSON.stringify(shotMeta, null, 2)
-  );
+  await batchApi.saveShotMeta(projectId, shotId, shotMeta);
 
   return true;
 }
