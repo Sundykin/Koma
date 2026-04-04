@@ -1,0 +1,201 @@
+@use './tokens' as *;
+
+@mixin lh-stack($gap: 8px) {
+  display: flex;
+  flex-direction: column;
+  gap: $gap;
+}
+
+@mixin lh-inline($gap: 8px, $wrap: wrap, $align: center, $justify: flex-start) {
+  display: flex;
+  align-items: $align;
+  justify-content: $justify;
+  gap: $gap;
+  flex-wrap: $wrap;
+}
+
+@mixin lh-ellipsis {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@mixin lh-text($color: $lh-text-muted, $size: 12px, $line-height: 1.5, $weight: null) {
+  color: $color;
+  font-size: $size;
+  line-height: $line-height;
+
+  @if $weight != null {
+    font-weight: $weight;
+  }
+}
+
+@mixin lh-glass-panel(
+  $background: $lh-bg-surface-panel,
+  $border: $lh-border-strong,
+  $radius: $lh-radius-panel,
+  $shadow: $lh-shadow-panel,
+  $blur: 18px
+) {
+  border: 1px solid $border;
+  border-radius: $radius;
+  background: $background;
+  box-shadow: $shadow;
+  backdrop-filter: blur($blur);
+}
+
+@mixin lh-soft-card(
+  $padding: null,
+  $background: $lh-bg-surface-card,
+  $border: $lh-border-medium,
+  $radius: $lh-radius-card
+) {
+  @if $padding != null {
+    padding: $padding;
+  }
+
+  border: 1px solid $border;
+  border-radius: $radius;
+  background: $background;
+}
+
+@mixin lh-plain-card(
+  $padding: null,
+  $background: $lh-bg-surface-soft,
+  $radius: $lh-radius-card
+) {
+  @if $padding != null {
+    padding: $padding;
+  }
+
+  border-radius: $radius;
+  background: $background;
+}
+
+@mixin lh-chip(
+  $min-height: 28px,
+  $padding: 0 12px,
+  $background: $lh-bg-surface-chip,
+  $color: $lh-text-secondary,
+  $font-size: 12px,
+  $font-weight: 600,
+  $shadow: null
+) {
+  min-height: $min-height;
+  padding: $padding;
+  border-radius: $lh-radius-pill;
+  display: inline-flex;
+  align-items: center;
+  background: $background;
+  color: $color;
+  font-size: $font-size;
+  font-weight: $font-weight;
+
+  @if $shadow != null {
+    box-shadow: $shadow;
+  }
+}
+
+@mixin lh-chip-button(
+  $min-height: 30px,
+  $padding: 0 12px,
+  $background: $lh-bg-surface-chip,
+  $color: $lh-text-soft,
+  $hover-background: $lh-bg-surface-chip-hover,
+  $active-background: rgba(16, 185, 129, 0.16),
+  $active-color: $lh-text-success,
+  $shadow: inset 0 0 0 1px $lh-border-soft,
+  $active-shadow: inset 0 0 0 1px rgba(52, 211, 153, 0.22)
+) {
+  @include lh-chip($min-height, $padding, $background, $color, 12px, 700, $shadow);
+
+  border: none;
+  cursor: pointer;
+  transition:
+    transform $lh-transition-base,
+    background $lh-transition-base,
+    color $lh-transition-base,
+    box-shadow $lh-transition-base;
+
+  &:hover {
+    transform: translateY(-1px);
+    background: $hover-background;
+  }
+
+  &.isActive {
+    background: $active-background;
+    color: $active-color;
+    box-shadow: $active-shadow;
+  }
+}
+
+@mixin lh-tile-button(
+  $background: $lh-bg-surface-chip,
+  $color: #cbd5e1,
+  $radius: 12px
+) {
+  border: none;
+  border-radius: $radius;
+  background: $background;
+  color: $color;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition:
+    background $lh-transition-base,
+    color $lh-transition-base,
+    transform $lh-transition-base,
+    box-shadow $lh-transition-base;
+  box-shadow: inset 0 0 0 1px $lh-border-soft;
+
+  &:hover,
+  &:focus-visible {
+    color: #ffffff;
+    background: rgba(255, 255, 255, 0.1);
+    transform: translateY(-1px);
+    outline: none;
+  }
+
+  &.isActive {
+    color: $lh-text-success;
+    background: rgba(16, 185, 129, 0.16);
+    box-shadow: inset 0 0 0 1px rgba(52, 211, 153, 0.24);
+  }
+}
+
+@mixin lh-input-shell(
+  $radius: 12px,
+  $background: rgba(255, 255, 255, 0.05),
+  $shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.1)
+) {
+  border: none;
+  border-radius: $radius;
+  background: $background;
+  color: $lh-text-primary;
+  outline: none;
+  box-shadow: $shadow;
+}
+
+@mixin lh-input-shell-important(
+  $radius: 12px,
+  $background: rgba(255, 255, 255, 0.05),
+  $shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.1)
+) {
+  border: none !important;
+  border-radius: $radius !important;
+  background: $background !important;
+  color: $lh-text-primary;
+  box-shadow: $shadow !important;
+}
+
+@mixin lh-focus-ring {
+  box-shadow:
+    inset 0 0 0 1px rgba(52, 211, 153, 0.28),
+    0 0 0 3px rgba(16, 185, 129, 0.1);
+}
+
+@mixin lh-focus-ring-important {
+  box-shadow:
+    inset 0 0 0 1px rgba(52, 211, 153, 0.28) !important,
+    0 0 0 3px rgba(16, 185, 129, 0.1) !important;
+}

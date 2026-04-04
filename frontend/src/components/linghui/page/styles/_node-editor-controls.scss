@@ -1,0 +1,195 @@
+@use './tokens' as *;
+@use './mixins' as *;
+
+/* Prompt area, summary controls, popovers, video parameter controls */
+
+.linghuiEditor,
+.linghuiVideoEditor {
+  &ControlRow {
+    @include lh-inline(10px);
+
+    padding: 12px 16px 0;
+  }
+
+  &ActionGroup {
+    @include lh-inline(8px, wrap, center, flex-end);
+
+    margin-left: auto;
+  }
+
+  &InlineTrigger {
+    min-height: 30px;
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: $lh-text-secondary;
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 1.4;
+    text-align: left;
+    cursor: pointer;
+    transition:
+      color $lh-transition-base,
+      opacity $lh-transition-base,
+      transform $lh-transition-base;
+
+    &:hover,
+    &:focus-visible {
+      color: #ffffff;
+      transform: translateY(-1px);
+      outline: none;
+    }
+
+    &.isDisabled {
+      color: #64748b;
+      cursor: not-allowed;
+      transform: none;
+    }
+  }
+
+  &Popover {
+    z-index: 1200;
+
+    .ant-popover {
+      &-inner {
+        padding: 0;
+        border-radius: 18px;
+        background: rgba(10, 14, 20, 0.96);
+        box-shadow: 0 22px 44px rgba(0, 0, 0, 0.34);
+        backdrop-filter: blur(20px);
+      }
+
+      &-arrow::before {
+        background: rgba(10, 14, 20, 0.96) !important;
+      }
+    }
+  }
+
+  &OptionGrid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
+
+    &.isCompact {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+  }
+
+  &OptionTile {
+    @include lh-tile-button;
+
+    min-height: 38px;
+    padding: 0 10px;
+  }
+}
+
+.linghuiEditor {
+  &Prompt {
+    position: relative;
+    z-index: 2;
+    padding: 12px 16px 0;
+  }
+
+  &CompactMetaSection,
+  &CompactPrompt {
+    padding-top: 10px;
+  }
+
+  &Settings {
+    &Popover {
+      @include lh-stack(14px);
+
+      width: min(420px, calc(100vw - 72px));
+      padding: 14px;
+    }
+
+    &Block {
+      @include lh-stack(10px);
+    }
+
+    &Label {
+      @include lh-text($lh-text-muted, 11px, 1.4, 700);
+
+      letter-spacing: 0.02em;
+    }
+
+    &Textarea {
+      min-height: 104px;
+    }
+
+    &Metrics {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    &Stat {
+      @include lh-chip(34px, 0 12px, rgba(255, 255, 255, 0.05), #cbd5e1, 12px, 600, inset 0 0 0 1px $lh-border-soft);
+
+      border-radius: 12px;
+    }
+  }
+}
+
+.linghuiVideoEditor {
+  &MetaSection,
+  &Prompt {
+    padding-top: 10px;
+  }
+
+  &DropdownMenu {
+    z-index: 1200;
+  }
+
+  &ParamsPopover {
+    @include lh-stack(14px);
+
+    width: min(420px, calc(100vw - 72px));
+    padding: 14px;
+  }
+
+  &ParamGroup {
+    @include lh-stack(10px);
+  }
+
+  &ParamLabel {
+    @include lh-text($lh-text-muted, 11px, 1.4, 700);
+
+    letter-spacing: 0.02em;
+  }
+
+  &DurationHeader {
+    @include lh-inline(8px, nowrap, center, space-between);
+  }
+
+  &DurationValue {
+    @include lh-text($lh-text-secondary, 13px, 1.4, 700);
+  }
+
+  &DurationSlider {
+    margin: 4px 4px 0 !important;
+
+    .ant-slider {
+      &-rail {
+        background: rgba(255, 255, 255, 0.08);
+      }
+
+      &-track {
+        background: rgba(16, 185, 129, 0.78);
+      }
+
+      &-handle::after {
+        box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.34);
+      }
+
+      &-mark-text {
+        color: #64748b;
+        font-size: 11px;
+
+        &-active {
+          color: #cbd5e1;
+        }
+      }
+    }
+  }
+}

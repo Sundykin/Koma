@@ -1,0 +1,415 @@
+@use './tokens' as *;
+@use './mixins' as *;
+
+/* Node editor panel layout, summary cards, player and asset panels */
+
+.linghuiEditor {
+  &Panel {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    box-sizing: border-box;
+    border: none;
+    border-radius: $lh-radius-editor;
+    background: rgba(9, 13, 18, 0.84);
+    box-shadow: $lh-shadow-panel-large;
+    backdrop-filter: blur(22px);
+    overflow: visible;
+    color: $lh-text-primary;
+  }
+
+  &PanelMain {
+    min-width: 0;
+    flex: 1;
+  }
+
+  &SplitLayout {
+    width: 100%;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+
+    &.hasToolSurface {
+      grid-template-columns: minmax(0, 1fr) minmax(248px, 280px);
+      align-items: start;
+    }
+  }
+
+  &ToolSurface {
+    min-width: 0;
+
+    .linghuiEditorToolPanel {
+      margin: 0;
+      min-height: 100%;
+    }
+  }
+
+  &Header {
+    @include lh-inline(12px, nowrap, flex-start, space-between);
+
+    padding: 14px 16px 0;
+    border: none;
+    background: none;
+    border-radius: 0;
+  }
+
+  &Title {
+    display: none;
+  }
+
+  &Subtitle,
+  &PromptHint {
+    @include lh-text($lh-text-muted);
+  }
+
+  &RefModes,
+  &ToolBar {
+    display: flex;
+    flex-wrap: wrap;
+    padding: 12px 16px 0;
+  }
+
+  &RefModes {
+    gap: 6px;
+  }
+
+  &ToolBar {
+    gap: 8px;
+  }
+
+  &ControlStack,
+  &Section,
+  &ToolPanel,
+  &ToolPresetList,
+  &ToolPresetBody,
+  &AssetGroup,
+  &PlayerCard {
+    @include lh-stack;
+  }
+
+  &ControlStack {
+    gap: 0;
+  }
+
+  &Section {
+    gap: 10px;
+    padding: 12px 16px 0;
+  }
+
+  &ToolSection {
+    padding-bottom: 0;
+
+    .linghuiEditorToolPanel {
+      margin: 0;
+    }
+  }
+
+  &SectionHeader {
+    @include lh-stack(4px);
+  }
+
+  &SectionTitle,
+  &AssetTitle {
+    @include lh-text($lh-text-primary, 12px, 1.4, 700);
+  }
+
+  &AssetTitle {
+    color: $lh-text-secondary;
+    padding: 0;
+  }
+
+  &EmptyState {
+    @include lh-text($lh-text-muted, 12px, 1.6);
+    @include lh-plain-card(12px 14px);
+  }
+
+  &LabelWithTooltip {
+    min-width: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: inherit;
+  }
+
+  &InfoIcon {
+    width: 16px;
+    height: 16px;
+    border-radius: $lh-radius-pill;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: $lh-text-muted;
+    background: rgba(30, 41, 59, 0.72);
+    font-size: 10px;
+    line-height: 1;
+    cursor: help;
+  }
+
+  &ToolChip,
+  &RefModeTab {
+    @include lh-chip-button;
+  }
+
+  &RefModeTab {
+    padding: 6px 14px;
+
+    &.isActive {
+      color: #f0fdf4;
+    }
+  }
+
+  &ToolPanel {
+    gap: 12px;
+    margin: 12px 16px 0;
+    @include lh-plain-card(14px);
+  }
+
+  &ToolPanelHeader {
+    @include lh-inline(12px, nowrap, flex-start, space-between);
+  }
+
+  &ToolPanelTitle,
+  &ToolPresetTitle {
+    @include lh-text($lh-text-primary, 13px, 1.4, 700);
+  }
+
+  &ToolPresetList {
+    gap: 10px;
+  }
+
+  &ToolPresetCard {
+    @include lh-inline(12px, nowrap, flex-start, space-between);
+    @include lh-plain-card(12px, rgba(255, 255, 255, 0.05), 14px);
+  }
+
+  &ToolPresetBody {
+    gap: 4px;
+    min-width: 0;
+    flex: 1;
+  }
+
+  &ToolPresetDesc {
+    @include lh-text($lh-text-muted);
+  }
+
+  &Refs,
+  &AssetList {
+    display: flex;
+    gap: 8px;
+    padding: 0 0 2px;
+    overflow-x: auto;
+  }
+
+  &SummaryRow {
+    @include lh-inline(8px);
+  }
+
+  &SummaryPill {
+    @include lh-chip(28px, 0 12px, rgba(255, 255, 255, 0.08), $lh-text-secondary, 12px, 600);
+
+    &.isMuted {
+      color: $lh-text-muted;
+      background: rgba(148, 163, 184, 0.08);
+    }
+  }
+
+  &PassThroughCard {
+    @include lh-stack(10px);
+    @include lh-plain-card(14px);
+  }
+
+  &PlayerCard {
+    gap: 10px;
+  }
+
+  &PlayerSurface {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    border-radius: 14px;
+    overflow: hidden;
+    background: rgba(2, 6, 23, 0.9);
+
+    &.isStatic {
+      display: flex;
+      align-items: stretch;
+      justify-content: center;
+    }
+
+    .stagePlayer {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      border-radius: 14px;
+    }
+
+    .xgplayer {
+      background: transparent;
+
+      .xgplayer-controls {
+        backdrop-filter: blur(12px);
+        background: linear-gradient(180deg, rgba(2, 6, 23, 0), rgba(2, 6, 23, 0.88));
+      }
+    }
+  }
+
+  &PlayerPoster {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+
+  &PlayerPlaceholder {
+    @include lh-stack(10px);
+
+    width: 100%;
+    height: 100%;
+    align-items: center;
+    justify-content: center;
+    color: #cbd5e1;
+    font-size: 13px;
+    text-align: center;
+    padding: 20px;
+  }
+
+  &PlayerOverlay,
+  &PlayerMetaRow {
+    @include lh-inline(8px);
+  }
+
+  &PlayerOverlay {
+    position: absolute;
+    inset: auto 12px 12px 12px;
+    align-items: center;
+  }
+
+  &PassThroughTitle {
+    @include lh-text($lh-text-primary, 13px, 1.4, 700);
+  }
+
+  &PassThroughMeta {
+    @include lh-text($lh-text-muted);
+
+    word-break: break-all;
+  }
+
+  &AssetCard {
+    @include lh-inline(10px, nowrap);
+    @include lh-plain-card(8px 10px, rgba(255, 255, 255, 0.05), 12px);
+
+    min-width: 156px;
+    max-width: 220px;
+
+    &.isAudio {
+      min-width: 168px;
+    }
+
+    &Thumb {
+      position: relative;
+      width: 44px;
+      height: 44px;
+      border-radius: 12px;
+      overflow: hidden;
+      flex: 0 0 44px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: $lh-text-info;
+      background: rgba(30, 41, 59, 0.92);
+
+      &.isAudio {
+        color: #fdba74;
+        background: rgba(124, 45, 18, 0.36);
+      }
+
+      img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+    }
+
+    &Badge {
+      position: absolute;
+      right: 4px;
+      bottom: 4px;
+      width: 16px;
+      height: 16px;
+      border-radius: $lh-radius-pill;
+      background: rgba(15, 23, 42, 0.88);
+      color: #ffffff;
+      font-size: 10px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    &Meta {
+      @include lh-stack(4px);
+
+      min-width: 0;
+    }
+
+    &Title {
+      @include lh-text($lh-text-primary, 12px, 1.4, 700);
+      @include lh-ellipsis;
+    }
+
+    &Hint {
+      @include lh-text($lh-text-muted, 11px, 1.45);
+    }
+  }
+
+  &RefThumb {
+    position: relative;
+    width: 64px;
+    height: 64px;
+    flex: 0 0 64px;
+    border-radius: 10px;
+    overflow: hidden;
+    background: $lh-bg-surface-chip;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: $lh-text-muted;
+
+    img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+  }
+
+  &RefBadge {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    border-radius: $lh-radius-pill;
+    background: $lh-accent-blue;
+    color: #ffffff;
+    font-size: 10px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    &.isRole {
+      top: auto;
+      bottom: 4px;
+      height: auto;
+      min-height: 16px;
+      background: rgba(15, 23, 42, 0.9);
+      border: 1px solid rgba(148, 163, 184, 0.36);
+      color: $lh-text-secondary;
+    }
+  }
+}
+
+.linghuiToolbarLogEmpty {
+  @include lh-text($lh-text-muted);
+}

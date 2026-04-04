@@ -1,6 +1,7 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { Button, InputNumber, Select } from 'antd';
-import { ArrowUp, Sparkles, Wrench } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Button, Dropdown, InputNumber, Popover, Select } from 'antd';
+import type { MenuProps } from 'antd';
+import { ArrowUp } from 'lucide-react';
 import { chatIPC, type MCPToolDefinition } from '../../../../chat/ipc';
 import type {
   LinghuiAgentNodeProperties,
@@ -15,6 +16,8 @@ import type { LinghuiPromptReferenceItem } from '../state/linghuiPromptReference
 interface ProviderOption {
   value: string;
   label: string;
+  channelLabel?: string;
+  modelLabel?: string;
 }
 
 interface AgentToolOption {
@@ -52,6 +55,8 @@ export const AgentNodeEditor: React.FC<AgentNodeEditorProps> = ({
       setProviders(listConfiguredModelSelectOptions(settings, 'llm', 'llm.chat').map(option => ({
         value: option.value,
         label: `${option.channelLabel} / ${option.modelLabel}`,
+        channelLabel: option.channelLabel,
+        modelLabel: option.modelLabel,
       })));
     });
   }, []);
@@ -86,65 +91,41 @@ export const AgentNodeEditor: React.FC<AgentNodeEditorProps> = ({
     }));
   }, [nodeId, updateNodeData]);
 
-  const promptHint = promptReferences.length > 0
-    ? '可输入 @ 引用上游文本或图片参考，运行时会把文本并入消息、把图片作为视觉参考发送给 Agent'
-    : '输入 Agent 任务说明，运行时会把上游文本并入消息、把上游图片作为视觉参考发送给 Agent';
+  const selectedProvider = useMemo(() => (
+    providers.find(option => option.value === llmSelection) ?? providers[0]
+  ), [llmSelection, providers]);
+  const modelSummary = selectedProvider?.label || '未配置 LLM';
+  const settingsSummary = `${maxIterations} 轮 · ${enabledTools.length > 0 ? `${enabledTools.length} 个工具` : '纯推理'}`;
 
-  return (
-    <div className="linghuiEditorPanel" onMouseDown={event => event.stopPropagation()}>
-      <div className="linghuiEditorHeader">
-        <div>
-          <div className="linghuiEditorTitle">Agent 节点</div>
-          <div className="linghuiEditorSubtitle">
-            复用 chat Agent 推理与工具调用能力，在画布里执行单 Agent 任务并输出文本结果
+  const providerMenuItems = useMemo<MenuProps['items']>(() => (
+    providers.map(provider => ({
+      key: provider.value,
+      label: (
+        <div className="linghuiNodeEditorDropdownOption">
+          <div className="linghuiNodeEditorDropdownTitle">{provider.modelLabel || provider.label}</div>
+          <div className="linghuiNodeEditorDropdownDesc">
+            {provider.channelLabel ? `${provider.channelLabel} / ${provider.label}` : provider.label}
           </div>
         </div>
-      </div>
+      ),
+      onClick: ({ domEvent }) => {
+        domEvent.stopPropagation();
+        updateProp('llmSelection', provider.value);
+      },
+    }))
+  ), [providers, updateProp]);
 
-      <div className="linghuiEditorPrompt">
-        <LinghuiPromptEditor
-          value={prompt}
-          onChange={value => updateProp('prompt', value)}
-          references={promptReferences}
-          placeholder="描述 Agent 目标、输出要求和可用上下文，输入 @ 引用上游产物"
-          darkTheme
-          minHeight="112px"
-          maxHeight="220px"
-        />
-        <div className="linghuiEditorPromptHint">{promptHint}</div>
-      </div>
-
-      <div className="linghuiEditorField">
-        <div className="linghuiEditorFieldLabel">系统提示</div>
-        <textarea
-          className="linghuiNodeTextarea"
-          placeholder="可选。约束 Agent 的角色、输出格式、工具使用边界或回答风格"
-          value={systemPrompt}
-          onChange={event => updateProp('systemPrompt', event.target.value)}
-          onMouseDown={event => event.stopPropagation()}
-          onKeyDown={event => event.stopPropagation()}
-          style={{ minHeight: 100 }}
-        />
-      </div>
-
-      <div className="linghuiEditorFieldGrid">
-        <div className="linghuiEditorField">
-          <div className="linghuiEditorFieldLabel">LLM 渠道</div>
-          <Select
-            size="small"
-            className="linghuiEditorSelect"
-            value={llmSelection || undefined}
-            placeholder="选择对话模型"
-            onChange={value => updateProp('llmSelection', value)}
-            options={providers}
-            popupMatchSelectWidth={false}
-          />
-        </div>
-
-        <div className="linghuiEditorField">
-          <div className="linghuiEditorFieldLabel">最大迭代数</div>
+  const settingsContent = (
+    <div
+      className="linghuiEditorSettingsPopover"
+      onClick={event => event.stopPropagation()}
+      onMouseDown={event => event.stopPropagation()}
+      onPointerDown={event => event.stopPropagation()}
+    >
+      <div className="linghuiEditorSettingsMetrics">
+        <div className="linghuiEditorSettingsBlock">
+          <div className="linghuiEditorSettingsLabel">最大迭代数</div>
           <InputNumber
-            size="small"
             min={1}
             max={24}
             value={maxIterations}
@@ -152,16 +133,33 @@ export const AgentNodeEditor: React.FC<AgentNodeEditorProps> = ({
             style={{ width: '100%' }}
           />
         </div>
+        <div className="linghuiEditorSettingsBlock">
+          <div className="linghuiEditorSettingsLabel">工具状态</div>
+          <div className="linghuiEditorSettingsStat">
+            {enabledTools.length > 0 ? `已开放 ${enabledTools.length} 个工具` : '当前为纯推理'}
+          </div>
+        </div>
       </div>
 
-      <div className="linghuiEditorField">
-        <div className="linghuiEditorFieldLabel">工具白名单</div>
+      <div className="linghuiEditorSettingsBlock">
+        <div className="linghuiEditorSettingsLabel">系统提示</div>
+        <textarea
+          className="linghuiNodeTextarea linghuiEditorSettingsTextarea"
+          placeholder="可选。约束 Agent 的角色、输出格式、工具边界或回答风格"
+          value={systemPrompt}
+          onChange={event => updateProp('systemPrompt', event.target.value)}
+          onMouseDown={event => event.stopPropagation()}
+          onKeyDown={event => event.stopPropagation()}
+        />
+      </div>
+
+      <div className="linghuiEditorSettingsBlock">
+        <div className="linghuiEditorSettingsLabel">工具白名单</div>
         <Select
           mode="multiple"
-          size="small"
           className="linghuiEditorSelect"
           value={enabledTools}
-          placeholder="选择允许当前 Agent 调用的工具，不选则仅做纯文本推理"
+          placeholder="选择允许当前 Agent 调用的工具"
           onChange={value => updateProp('enabledTools', value)}
           options={toolOptions}
           loading={toolsLoading}
@@ -172,32 +170,81 @@ export const AgentNodeEditor: React.FC<AgentNodeEditorProps> = ({
             || String((option as { searchText?: string } | undefined)?.searchText ?? '').includes(input.toLowerCase())
           )}
           style={{ width: '100%' }}
+          getPopupContainer={triggerNode => triggerNode.ownerDocument.body}
         />
-        <div className="linghuiEditorPromptHint">
-          只会向当前节点暴露这里选中的工具；未选工具不会进入本次 Agent 会话。
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="linghuiEditorPanel" onMouseDown={event => event.stopPropagation()}>
+      <div className="linghuiEditorHeader">
+        <div>
+          <div className="linghuiEditorTitle">Agent 节点</div>
+          <div className="linghuiEditorSubtitle">单 Agent 任务与工具推理</div>
         </div>
       </div>
 
-      <div className="linghuiEditorToolbar">
-        <div className="linghuiEditorToolbarLeft">
-          <span className="linghuiEditorInlineHint">
-            <Wrench size={14} />
-            {enabledTools.length > 0 ? `已开放 ${enabledTools.length} 个工具` : '未选工具时仅使用模型推理'}
-          </span>
-          <span className="linghuiEditorInlineHint">
-            <Sparkles size={14} />
-            首版仅支持文本结果，以及上游文本和图片输入
-          </span>
-        </div>
+      <div className="linghuiEditorPrompt linghuiEditorCompactPrompt">
+        <LinghuiPromptEditor
+          value={prompt}
+          onChange={value => updateProp('prompt', value)}
+          references={promptReferences}
+          placeholder="描述 Agent 目标、输出要求和可用上下文，输入 @ 引用上游产物"
+          darkTheme
+          surfaceStyle="fusion"
+          minHeight="124px"
+          maxHeight="240px"
+        />
+      </div>
 
-        <div className="linghuiEditorToolbarRight">
+      <div className="linghuiEditorControlRow">
+        <Dropdown
+          trigger={providers.length > 0 ? ['click'] : []}
+          menu={{
+            items: providerMenuItems,
+            selectable: true,
+            selectedKeys: selectedProvider ? [selectedProvider.value] : [],
+          }}
+          classNames={{ root: 'linghuiNodeEditorDropdownMenu' }}
+          getPopupContainer={triggerNode => triggerNode.ownerDocument.body}
+          styles={{ root: { zIndex: 1200 } }}
+        >
+          <button
+            type="button"
+            className={`linghuiEditorInlineTrigger ${providers.length === 0 ? 'isDisabled' : ''}`}
+            onClick={event => event.stopPropagation()}
+            disabled={providers.length === 0}
+          >
+            {modelSummary}
+          </button>
+        </Dropdown>
+
+        <Popover
+          trigger="click"
+          placement="bottomRight"
+          content={settingsContent}
+          overlayClassName="linghuiEditorPopover"
+          getPopupContainer={triggerNode => triggerNode.ownerDocument.body}
+          zIndex={1200}
+        >
+          <button
+            type="button"
+            className="linghuiEditorInlineTrigger"
+            onClick={event => event.stopPropagation()}
+          >
+            {settingsSummary}
+          </button>
+        </Popover>
+
+        <div className="linghuiEditorActionGroup">
           <Button
             type="primary"
-            size="small"
-            shape="circle"
-            icon={<ArrowUp size={16} />}
+            icon={<ArrowUp size={14} />}
             onClick={onRun}
-          />
+          >
+            执行
+          </Button>
         </div>
       </div>
     </div>

@@ -1,29 +1,30 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { InfoCircleOutlined } from '@ant-design/icons';
-import { App, Button, Select, Tooltip } from 'antd';
-import { ArrowUp, Film, Image as ImageIcon, Music4 } from 'lucide-react';
+import { App, Button, Dropdown, Popover, Slider, Tooltip } from 'antd';
+import type { MenuProps } from 'antd';
+import { ArrowUp, Download, Film } from 'lucide-react';
 import {
   VIDEO_ASPECT_RATIOS,
   VIDEO_RESOLUTIONS,
   type LinghuiVideoCapability,
   type LinghuiVideoToolKey,
 } from '../../../../types/linghui';
+import { electronService } from '../../../../services/electronService';
 import type { LinghuiPromptReferenceItem } from '../state/linghuiPromptReferences';
 import { LinghuiPromptEditor } from './LinghuiPromptEditor';
 import {
   DURATION_OPTIONS,
+  VIDEO_DURATION_MARKS,
   VIDEO_TOOL_PRESETS,
   type ProviderOption,
   type VideoToolPreset,
+  formatVideoParameterSummary,
   getPreviewSource,
 } from '../state/videoNodeEditorShared';
 import {
   getVideoCapabilityDescriptor,
-  getVisualReferenceRoleLabel,
-  type LinghuiVisualReferenceRole,
   type VideoCapabilityDescriptor,
 } from '../state/videoCapabilityUtils';
-import { electronService } from '../../../../services/electronService';
 
 function decodeKomaLocalSource(source: string): string {
   if (!source.startsWith('koma-local://')) return source;
@@ -44,6 +45,7 @@ interface VideoAccessCardProps {
   posterSource?: string;
   emptyDescription: string;
   pills?: string[];
+  onDownload?: () => void;
 }
 
 function VideoAccessCard({
@@ -51,6 +53,7 @@ function VideoAccessCard({
   posterSource,
   emptyDescription,
   pills = [],
+  onDownload,
 }: VideoAccessCardProps) {
   const { message } = App.useApp();
   const rawSource = source.startsWith('koma-local://') ? decodeKomaLocalSource(source) : source;
@@ -98,6 +101,11 @@ function VideoAccessCard({
         )}
         <div className="linghuiEditorPlayerOverlay">
           <span className="linghuiEditorSummaryPill">弹框内不嵌入播放器</span>
+          {onDownload ? (
+            <Button size="small" onClick={onDownload} icon={<Download size={14} />}>
+              下载
+            </Button>
+          ) : null}
           {canOpen ? (
             <Button size="small" type="primary" onClick={handleOpen}>
               {isRemoteSource(rawSource) ? '在浏览器打开' : '在系统播放器打开'}
@@ -200,11 +208,13 @@ export function VideoToolSection({
 interface VideoPassThroughPanelProps {
   source: string;
   posterSource?: string;
+  onDownload?: () => void;
 }
 
 export function VideoPassThroughPanel({
   source,
   posterSource,
+  onDownload,
 }: VideoPassThroughPanelProps) {
   return (
     <div className="linghuiEditorSection">
@@ -221,6 +231,7 @@ export function VideoPassThroughPanel({
           posterSource={posterSource}
           emptyDescription="当前没有可展示的封面"
           pills={['已挂载视频', '直接给下游', '不进入生成']}
+          onDownload={onDownload}
         />
       </div>
     </div>
@@ -235,16 +246,16 @@ interface VideoGeneratePanelProps {
   referenceImages: Array<{ source?: string; label?: string }>;
   referenceVideos: Array<{ source?: string; posterSource?: string; label?: string }>;
   referenceAudios: Array<{ source?: string; label?: string }>;
-  visualReferenceRoles: Map<string, LinghuiVisualReferenceRole>;
   prompt: string;
   onPromptChange: (value: string) => void;
   promptReferences: LinghuiPromptReferenceItem[];
-  mentionHint: string;
   providers: ProviderOption[];
   selectedProviderValue: string;
   aspectRatio: string;
   resolution: string;
   duration: number;
+  hasCurrentVideo: boolean;
+  onDownloadCurrentVideo: () => void;
   onUpdateProvider: (value: string) => void;
   onUpdateAspectRatio: (value: string) => void;
   onUpdateResolution: (value: string) => void;
@@ -260,16 +271,16 @@ export function VideoGeneratePanel({
   referenceImages,
   referenceVideos,
   referenceAudios,
-  visualReferenceRoles,
   prompt,
   onPromptChange,
   promptReferences,
-  mentionHint,
   providers,
   selectedProviderValue,
   aspectRatio,
   resolution,
   duration,
+  hasCurrentVideo,
+  onDownloadCurrentVideo,
   onUpdateProvider,
   onUpdateAspectRatio,
   onUpdateResolution,
@@ -282,174 +293,121 @@ export function VideoGeneratePanel({
     referenceAudios.length > 0 ? `${referenceAudios.length} 条音频` : '',
   ].filter(Boolean);
   const showCapabilitySwitcher = supportedCapabilities.length > 1;
+  const selectedProvider = providers.find(option => option.value === selectedProviderValue) ?? providers[0];
+  const modelSummary = selectedProvider?.label || '未配置视频模型';
+  const parameterSummary = formatVideoParameterSummary({ aspectRatio, resolution, duration });
 
-  const renderRoleHint = (role?: LinghuiVisualReferenceRole) => {
-    switch (role) {
-      case 'primary':
-        return '主图';
-      case 'reference':
-        return '参考';
-      case 'start':
-        return '首帧';
-      case 'end':
-        return '尾帧';
-      case 'prompt-only':
-        return '仅引用';
-      case 'unused':
-        return '当前忽略';
-      default:
-        return '参考';
-    }
-  };
+  const modelMenuItems = useMemo<MenuProps['items']>(() => (
+    providers.map(provider => ({
+      key: provider.value,
+      label: (
+        <div className="linghuiNodeEditorDropdownOption">
+          <div className="linghuiNodeEditorDropdownTitle">{provider.modelLabel || provider.label}</div>
+          <div className="linghuiNodeEditorDropdownDesc">
+            {provider.channelLabel ? `${provider.channelLabel} / ${provider.label}` : provider.label}
+          </div>
+        </div>
+      ),
+      onClick: ({ domEvent }) => {
+        domEvent.stopPropagation();
+        onUpdateProvider(provider.value);
+      },
+    }))
+  ), [onUpdateProvider, providers]);
+
+  const parameterContent = (
+    <div
+      className="linghuiVideoEditorParamsPopover"
+      onClick={event => event.stopPropagation()}
+      onMouseDown={event => event.stopPropagation()}
+      onPointerDown={event => event.stopPropagation()}
+    >
+      <div className="linghuiVideoEditorParamGroup">
+        <div className="linghuiVideoEditorParamLabel">比例</div>
+        <div className="linghuiVideoEditorOptionGrid">
+          {VIDEO_ASPECT_RATIOS.map(option => (
+            <button
+              key={option.value}
+              type="button"
+              className={`linghuiVideoEditorOptionTile ${aspectRatio === option.value ? 'isActive' : ''}`}
+              onClick={() => onUpdateAspectRatio(option.value)}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="linghuiVideoEditorParamGroup">
+        <div className="linghuiVideoEditorParamLabel">分辨率</div>
+        <div className="linghuiVideoEditorOptionGrid isCompact">
+          {VIDEO_RESOLUTIONS.map(option => (
+            <button
+              key={option.value}
+              type="button"
+              className={`linghuiVideoEditorOptionTile ${resolution === option.value ? 'isActive' : ''}`}
+              onClick={() => onUpdateResolution(option.value)}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="linghuiVideoEditorParamGroup">
+        <div className="linghuiVideoEditorDurationHeader">
+          <span className="linghuiVideoEditorParamLabel">视频时长</span>
+          <span className="linghuiVideoEditorDurationValue">{duration}s</span>
+        </div>
+        <Slider
+          className="linghuiVideoEditorDurationSlider"
+          min={DURATION_OPTIONS[0]?.value ?? 5}
+          max={DURATION_OPTIONS[DURATION_OPTIONS.length - 1]?.value ?? 30}
+          step={5}
+          marks={VIDEO_DURATION_MARKS}
+          value={duration}
+          onChange={value => onUpdateDuration(Number(value))}
+        />
+      </div>
+    </div>
+  );
 
   return (
     <>
-      <div className="linghuiEditorSection">
-        <div className="linghuiEditorSectionHeader">
-          <TooltipLabel
-            label="视频能力"
-            tooltip={capabilityDescriptor.shortDescription}
-          />
+      {showCapabilitySwitcher ? (
+        <div className="linghuiEditorRefModes">
+          {supportedCapabilities.map(capability => (
+            <button
+              key={capability}
+              type="button"
+              className={`linghuiEditorRefModeTab ${videoCapability === capability ? 'isActive' : ''}`}
+              onClick={() => onVideoCapabilityChange(capability)}
+            >
+              {getVideoCapabilityDescriptor(capability).label}
+            </button>
+          ))}
         </div>
+      ) : null}
 
-        {showCapabilitySwitcher ? (
-          <div className="linghuiEditorRefModes">
-            {supportedCapabilities.map(capability => (
-              <button
-                key={capability}
-                type="button"
-                className={`linghuiEditorRefModeTab ${videoCapability === capability ? 'isActive' : ''}`}
-                onClick={() => onVideoCapabilityChange(capability)}
-              >
-                {getVideoCapabilityDescriptor(capability).label}
-              </button>
-            ))}
-          </div>
-        ) : (
+      {(!showCapabilitySwitcher || upstreamSummary.length > 0 || hasCurrentVideo) ? (
+        <div className="linghuiEditorSection linghuiVideoEditorMetaSection">
           <div className="linghuiEditorSummaryRow">
-            <span className="linghuiEditorSummaryPill">{capabilityDescriptor.label}</span>
-          </div>
-        )}
-      </div>
-
-      <div className="linghuiEditorSection">
-        <div className="linghuiEditorSectionHeader">
-          <TooltipLabel
-            label="输入"
-            tooltip={capabilityDescriptor.inputHint}
-          />
-        </div>
-
-        {upstreamSummary.length > 0 ? (
-          <div className="linghuiEditorSummaryRow">
-            {upstreamSummary.map(item => (
+            {!showCapabilitySwitcher ? (
+              <span className="linghuiEditorSummaryPill">{capabilityDescriptor.label}</span>
+            ) : null}
+            {upstreamSummary.length > 0 ? upstreamSummary.map(item => (
               <span key={item} className="linghuiEditorSummaryPill">
                 {item}
               </span>
-            ))}
-          </div>
-        ) : (
-          <div className="linghuiEditorEmptyState">
-            <TooltipLabel
-              label="当前无上游输入"
-              tooltip={capabilityDescriptor.emptyStateHint}
-            />
-          </div>
-        )}
-      </div>
-
-      {referenceImages.length > 0 ? (
-        <div className="linghuiEditorAssetGroup">
-          <div className="linghuiEditorAssetTitle">
-            <TooltipLabel
-              label="图片参考"
-              tooltip="连接到图片输入槽的内容会按当前视频能力参与执行。"
-            />
-          </div>
-          <div className="linghuiEditorRefs">
-            {referenceImages.map((ref, index) => {
-              const src = getPreviewSource(ref.source);
-              const role = visualReferenceRoles.get(`image:${ref.source || ref.label || ''}`);
-              const roleLabel = role ? getVisualReferenceRoleLabel(role) : undefined;
-              return (
-                <div key={`${ref.source || ref.label || index}`} className="linghuiEditorRefThumb">
-                  {src ? <img src={src} alt={ref.label || `参考 ${index + 1}`} /> : <ImageIcon size={16} />}
-                  <span className="linghuiEditorRefBadge">{index + 1}</span>
-                  {roleLabel && (
-                    <span className="linghuiEditorRefBadge isRole">
-                      {roleLabel}
-                    </span>
-                  )}
-                </div>
-              );
-            })}
+            )) : null}
+            {hasCurrentVideo ? (
+              <span className="linghuiEditorSummaryPill">已有成片</span>
+            ) : null}
           </div>
         </div>
       ) : null}
 
-      {referenceVideos.length > 0 ? (
-        <div className="linghuiEditorAssetGroup">
-          <div className="linghuiEditorAssetTitle">
-            <TooltipLabel
-              label="视频参考"
-              tooltip="上游视频会以封面或参考帧的形式参与当前视频能力。"
-            />
-          </div>
-          <div className="linghuiEditorAssetList">
-            {referenceVideos.map((ref, index) => {
-              const poster = getPreviewSource(ref.posterSource || ref.source);
-              const role = visualReferenceRoles.get(`video:${ref.posterSource || ref.source || ref.label || ''}`);
-              return (
-                <div key={`${ref.posterSource || ref.source || ref.label || index}`} className="linghuiEditorAssetCard">
-                  <div className="linghuiEditorAssetCardThumb">
-                    {poster ? <img src={poster} alt={ref.label || `视频参考 ${index + 1}`} /> : <Film size={18} />}
-                    <span className="linghuiEditorAssetCardBadge">▶</span>
-                  </div>
-                  <div className="linghuiEditorAssetCardMeta">
-                    <div className="linghuiEditorAssetCardTitle">{ref.label || `视频参考 ${index + 1}`}</div>
-                    <div className="linghuiEditorAssetCardHint">{renderRoleHint(role)}</div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      ) : null}
-
-      {referenceAudios.length > 0 ? (
-        <div className="linghuiEditorAssetGroup">
-          <div className="linghuiEditorAssetTitle">
-            <TooltipLabel
-              label="音频输入"
-              tooltip="音频输入会以描述文本或节奏约束的方式参与视频生成。"
-            />
-          </div>
-          <div className="linghuiEditorAssetList">
-            {referenceAudios.map((ref, index) => (
-              <div key={`${ref.source || ref.label || index}`} className="linghuiEditorAssetCard isAudio">
-                <div className="linghuiEditorAssetCardThumb isAudio">
-                  <Music4 size={18} />
-                </div>
-                <div className="linghuiEditorAssetCardMeta">
-                  <div className="linghuiEditorAssetCardTitle">{ref.label || `音频 ${index + 1}`}</div>
-                  <div className="linghuiEditorAssetCardHint">已接入当前节点</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      ) : null}
-
-      <div className="linghuiEditorSection">
-        <div className="linghuiEditorSectionHeader">
-          <TooltipLabel
-            label="提示词"
-            tooltip={mentionHint}
-          />
-        </div>
-      </div>
-
-      <div className="linghuiEditorPrompt">
+      <div className="linghuiEditorPrompt linghuiVideoEditorPrompt">
         <LinghuiPromptEditor
           value={prompt}
           onChange={onPromptChange}
@@ -457,91 +415,59 @@ export function VideoGeneratePanel({
           placeholder="描述镜头动作、节奏和风格，输入 @ 引用上游产物"
           darkTheme
           surfaceStyle="fusion"
-          minHeight="96px"
-          maxHeight="188px"
+          minHeight="112px"
+          maxHeight="220px"
         />
       </div>
 
-      <div className="linghuiEditorSection">
-        <div className="linghuiEditorSectionHeader">
-          <TooltipLabel
-            label="模型与参数"
-            tooltip="模型、比例、分辨率和时长会直接参与本次视频请求。"
-          />
-        </div>
+      <div className="linghuiVideoEditorControlRow">
+        <Dropdown
+          trigger={providers.length > 0 ? ['click'] : []}
+          menu={{
+            items: modelMenuItems,
+            selectable: true,
+            selectedKeys: selectedProvider ? [selectedProvider.value] : [],
+          }}
+          classNames={{ root: 'linghuiNodeEditorDropdownMenu linghuiVideoEditorDropdownMenu' }}
+          getPopupContainer={triggerNode => triggerNode.ownerDocument.body}
+          styles={{ root: { zIndex: 1200 } }}
+        >
+          <button
+            type="button"
+            className={`linghuiVideoEditorInlineTrigger ${providers.length === 0 ? 'isDisabled' : ''}`}
+            onClick={event => event.stopPropagation()}
+            disabled={providers.length === 0}
+          >
+            {modelSummary}
+          </button>
+        </Dropdown>
 
-        <div className="linghuiEditorFieldGrid">
-          <div className="linghuiEditorSelectField">
-            <TooltipLabel
-              label="模型"
-              tooltip="这里显示当前已配置的视频渠道模型，只展示真实可用的模型。"
-            />
-            <Select
-              size="small"
-              className="linghuiEditorSelect"
-              value={selectedProviderValue || undefined}
-              placeholder="选择视频模型"
-              onChange={onUpdateProvider}
-              options={providers}
-              popupMatchSelectWidth={false}
-            />
-          </div>
-
-          <div className="linghuiEditorSelectField">
-            <TooltipLabel
-              label="比例"
-              tooltip="决定视频画面的宽高比例。"
-            />
-            <Select
-              size="small"
-              className="linghuiEditorSelect"
-              value={aspectRatio}
-              onChange={onUpdateAspectRatio}
-              options={VIDEO_ASPECT_RATIOS.map(option => ({
-                value: option.value,
-                label: option.label,
-              }))}
-              popupMatchSelectWidth={false}
-            />
-          </div>
-
-          <div className="linghuiEditorSelectField">
-            <TooltipLabel
-              label="分辨率"
-              tooltip="决定输出清晰度。"
-            />
-            <Select
-              size="small"
-              className="linghuiEditorSelect"
-              value={resolution}
-              onChange={onUpdateResolution}
-              options={VIDEO_RESOLUTIONS.map(option => ({
-                value: option.value,
-                label: option.label,
-              }))}
-              popupMatchSelectWidth={false}
-            />
-          </div>
-
-          <div className="linghuiEditorSelectField">
-            <TooltipLabel
-              label="时长"
-              tooltip="决定单次生成的视频长度。"
-            />
-            <Select
-              size="small"
-              className="linghuiEditorSelect"
-              value={duration}
-              onChange={value => onUpdateDuration(Number(value))}
-              options={DURATION_OPTIONS}
-              popupMatchSelectWidth={false}
-            />
-          </div>
-        </div>
-      </div>
-
-      <div className="linghuiEditorToolbar">
-        <div className="linghuiEditorToolbarRight">
+        <Popover
+          trigger="click"
+          placement="bottomRight"
+          content={parameterContent}
+          overlayClassName="linghuiVideoEditorPopover"
+          getPopupContainer={triggerNode => triggerNode.ownerDocument.body}
+          zIndex={1200}
+        >
+          <button
+            type="button"
+            className="linghuiVideoEditorInlineTrigger"
+            onClick={event => event.stopPropagation()}
+          >
+            {parameterSummary}
+          </button>
+        </Popover>
+        <div className="linghuiVideoEditorActionGroup">
+          {hasCurrentVideo ? (
+            <Button
+              size="middle"
+              icon={<Download size={14} />}
+              onClick={onDownloadCurrentVideo}
+            >
+              下载
+            </Button>
+          ) : null}
           <Button
             type="primary"
             icon={<ArrowUp size={14} />}

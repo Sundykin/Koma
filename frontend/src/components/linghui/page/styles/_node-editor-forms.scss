@@ -1,0 +1,265 @@
+@use './tokens' as *;
+@use './mixins' as *;
+
+/* Script panel, editor fields, select overrides and button polish */
+
+.linghuiEditor {
+  &PromptHint {
+    margin-top: 8px;
+  }
+
+  &Field {
+    @include lh-stack(8px);
+
+    padding: 12px 16px 0;
+  }
+
+  &FieldGrid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  &SelectField {
+    @include lh-stack(8px);
+
+    min-width: 0;
+  }
+
+  &FieldLabel {
+    @include lh-text($lh-text-secondary, 12px, 1.4, 700);
+  }
+
+  &InlineHint {
+    @include lh-inline(6px, nowrap);
+    @include lh-text($lh-text-muted);
+  }
+
+  &Toolbar {
+    @include lh-inline(10px, wrap, center, space-between);
+
+    padding: 14px 16px 16px;
+
+    &Left,
+    &Right {
+      @include lh-inline(8px);
+
+      &:empty {
+        display: none;
+      }
+    }
+  }
+
+  &Select {
+    font-size: 12px;
+  }
+
+  &Popover,
+  &Panel {
+    .ant-select {
+      .ant-select-selector {
+        min-height: 36px;
+        @include lh-input-shell-important;
+      }
+
+      .ant-select-selection-wrap,
+      .ant-select-selection-item,
+      .ant-select-selection-placeholder {
+        color: inherit !important;
+      }
+
+      .ant-select-selection-placeholder {
+        color: $lh-text-muted !important;
+      }
+
+      &.ant-select-focused .ant-select-selector {
+        @include lh-focus-ring-important;
+      }
+
+      .ant-select-arrow {
+        color: $lh-text-muted;
+      }
+    }
+
+    .ant-input-number {
+      min-height: 36px;
+      @include lh-input-shell-important;
+
+      &-input {
+        color: inherit !important;
+      }
+
+      &.ant-input-number-focused {
+        @include lh-focus-ring-important;
+      }
+    }
+  }
+
+  &Popover {
+    textarea,
+    input {
+      @include lh-input-shell(14px, $lh-bg-surface-soft, inset 0 0 0 1px rgba(148, 163, 184, 0.1));
+
+      width: 100%;
+      box-sizing: border-box;
+
+      &:focus {
+        @include lh-focus-ring;
+      }
+    }
+  }
+
+  &Panel {
+    .ant-btn {
+      border: none;
+      border-radius: $lh-radius-pill;
+      background: $lh-bg-surface-chip;
+      color: $lh-text-primary;
+      box-shadow: inset 0 0 0 1px $lh-border-soft;
+
+      &:hover,
+      &:focus {
+        background: rgba(255, 255, 255, 0.1) !important;
+        color: #ffffff !important;
+      }
+
+      &.ant-btn-primary {
+        background: rgba(16, 185, 129, 0.18);
+        color: $lh-text-success;
+        box-shadow: inset 0 0 0 1px rgba(52, 211, 153, 0.22);
+
+        &:hover,
+        &:focus {
+          background: rgba(16, 185, 129, 0.24) !important;
+        }
+      }
+
+      &.ant-btn-dangerous {
+        background: rgba(248, 113, 113, 0.12);
+        color: $lh-text-danger;
+        box-shadow: inset 0 0 0 1px rgba(248, 113, 113, 0.14);
+      }
+    }
+  }
+}
+
+.linghuiScript {
+  &Panel {
+    @include lh-stack(12px);
+
+    padding: 12px 16px 0;
+
+    &Header {
+      @include lh-inline(10px, wrap, center, space-between);
+    }
+
+    &Meta,
+    &Actions {
+      @include lh-inline(8px);
+    }
+
+    &Meta {
+      span {
+        @include lh-chip(24px, 0 10px, rgba(30, 41, 59, 0.78), #cbd5e1, 11px, 700);
+      }
+    }
+  }
+
+  &Shot {
+    &Grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    &Card {
+      @include lh-stack(8px);
+      @include lh-plain-card(12px, rgba(255, 255, 255, 0.05));
+
+      min-height: 132px;
+      transition:
+        transform $lh-transition-base,
+        background $lh-transition-base,
+        box-shadow $lh-transition-base;
+
+      &:hover {
+        transform: translateY(-1px);
+        box-shadow: inset 0 0 0 1px rgba(167, 139, 250, 0.18);
+      }
+
+      &.isSelected {
+        background: rgba(88, 28, 135, 0.18);
+        box-shadow: inset 0 0 0 1px rgba(167, 139, 250, 0.28);
+      }
+
+      &Header {
+        @include lh-inline(8px, nowrap);
+      }
+    }
+
+    &Index,
+    &Duration {
+      @include lh-text(#cbd5e1, 11px, 1.4, 700);
+    }
+
+    &Duration {
+      margin-left: auto;
+      color: $lh-text-muted;
+    }
+
+    &Preview {
+      width: 100%;
+      height: 96px;
+      border-radius: 12px;
+      overflow: hidden;
+      background: rgba(9, 13, 18, 0.82);
+
+      img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+    }
+
+    &Title {
+      @include lh-text($lh-text-primary, 13px, 1.4, 700);
+    }
+
+    &Description {
+      @include lh-text(#cbd5e1, 12px, 1.6);
+    }
+
+    &TableWrap {
+      overflow: auto;
+      border-radius: 14px;
+      background: $lh-bg-surface-soft;
+    }
+
+    &Table {
+      width: 100%;
+      border-collapse: collapse;
+      color: $lh-text-secondary;
+      font-size: 12px;
+
+      thead th {
+        padding: 10px 12px;
+        text-align: left;
+        color: $lh-text-muted;
+        font-size: 11px;
+        font-weight: 700;
+      }
+
+      tbody {
+        td {
+          padding: 11px 12px;
+          vertical-align: top;
+          line-height: 1.6;
+        }
+
+        tr.isSelected {
+          background: rgba(88, 28, 135, 0.18);
+        }
+      }
+    }
+  }
+}

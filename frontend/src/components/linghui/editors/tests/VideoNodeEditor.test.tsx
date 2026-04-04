@@ -21,17 +21,17 @@ const {
   updateNodeDataMock: vi.fn(),
 }));
 
-vi.mock('../../store/settings/core', () => ({
+vi.mock('../../../../store/settings/core', () => ({
   loadSettings: (...args: unknown[]) => loadSettingsMock(...args),
 }));
 
-vi.mock('../../providers/channel/resolver', () => ({
+vi.mock('../../../../providers/channel/resolver', () => ({
   getDefaultMediaSelection: (...args: unknown[]) => getDefaultMediaSelectionMock(...args),
   listConfiguredModelSelectOptions: (...args: unknown[]) => listConfiguredModelSelectOptionsMock(...args),
   serializeMediaSelection: (...args: unknown[]) => serializeMediaSelectionMock(...args),
 }));
 
-vi.mock('./LinghuiPromptEditor', () => ({
+vi.mock('../components/LinghuiPromptEditor', () => ({
   LinghuiPromptEditor: ({
     value,
     placeholder,
@@ -48,7 +48,7 @@ vi.mock('./LinghuiPromptEditor', () => ({
   ),
 }));
 
-vi.mock('./nodes/LinghuiNodeRunsContext', () => ({
+vi.mock('../../nodes/state/LinghuiNodeRunsContext', () => ({
   useLinghuiNodeMutation: () => ({
     clearNodeRunState: clearNodeRunStateMock,
     updateNodeData: updateNodeDataMock,
@@ -153,23 +153,22 @@ describe('VideoNodeEditor', () => {
     expect(screen.queryByRole('button', { name: '生成' })).not.toBeInTheDocument();
   });
 
-  it('生成态视频节点展示拆分后的模型与参数控件且不再渲染结果预览', async () => {
+  it('生成态视频节点改成摘要式模型与参数控件且不再渲染结果预览', async () => {
     renderEditor(createVideoNodeData());
 
     await waitFor(() => {
-      expect(screen.getByText('模型与参数')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Vidu / viduq3-pro' })).toBeInTheDocument();
     });
 
     expect(screen.getAllByText('图生视频').length).toBeGreaterThan(0);
-    expect(screen.getByText('模型')).toBeInTheDocument();
-    expect(screen.getByText('比例')).toBeInTheDocument();
-    expect(screen.getByText('分辨率')).toBeInTheDocument();
-    expect(screen.getByText('时长')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '16:9 · 720P · 5s' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '生成' })).toBeInTheDocument();
+    expect(screen.queryByText('提示词')).not.toBeInTheDocument();
+    expect(screen.queryByText('模型与参数')).not.toBeInTheDocument();
     expect(screen.queryByText('生成结果')).not.toBeInTheDocument();
   });
 
-  it('生成态视频节点即便已有输出结果也不再在编辑区保留结果入口', async () => {
+  it('生成态视频节点即便已有输出结果也只保留摘要和下载动作', async () => {
     render(
       <App>
         <VideoNodeEditor
@@ -199,10 +198,12 @@ describe('VideoNodeEditor', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText('模型与参数')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: '下载' })).toBeInTheDocument();
     });
 
     expect(screen.queryByText('生成结果')).not.toBeInTheDocument();
+    expect(screen.queryByText('模型与参数')).not.toBeInTheDocument();
+    expect(screen.getByText('已有成片')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '在浏览器打开' })).not.toBeInTheDocument();
     expect(screen.queryByText('请外部打开查看')).not.toBeInTheDocument();
   });

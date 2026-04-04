@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Button, Checkbox, Empty, Modal, Select } from 'antd';
-import { ArrowUp, Expand, Image as ImageIcon, LayoutGrid, Rows3, Sparkles, Video, Wand2 } from 'lucide-react';
+import { Button, Checkbox, Dropdown, Modal, Popover } from 'antd';
+import type { MenuProps } from 'antd';
+import { ArrowUp, Expand, Image as ImageIcon, LayoutGrid, Rows3, Video, Wand2 } from 'lucide-react';
 import type {
   LinghuiNodeData,
   LinghuiNodeRunState,
@@ -19,6 +20,8 @@ import { parseLinghuiScriptContent } from '../state/linghuiScriptNodeUtils';
 interface ProviderOption {
   value: string;
   label: string;
+  channelLabel?: string;
+  modelLabel?: string;
 }
 
 interface ScriptNodeEditorProps {
@@ -146,6 +149,8 @@ export const ScriptNodeEditor: React.FC<ScriptNodeEditorProps> = ({
       setProviders(listConfiguredModelSelectOptions(settings, 'llm', 'llm.chat').map(option => ({
         value: option.value,
         label: `${option.channelLabel} / ${option.modelLabel}`,
+        channelLabel: option.channelLabel,
+        modelLabel: option.modelLabel,
       })));
     });
   }, []);
@@ -202,17 +207,56 @@ export const ScriptNodeEditor: React.FC<ScriptNodeEditorProps> = ({
 
   const selectedCount = selectedShotIds.length;
   const shotCount = previewState.shots.length;
-  const generateHint = promptReferences.length > 0
-    ? '可直接输入 @ 引用上游图片、文本或视频结果，再整理成结构化镜头 JSON'
-    : '输入剧情、风格、角色和镜头需求，运行后会生成结构化脚本';
+  const selectedProvider = useMemo(() => (
+    providers.find(option => option.value === llmSelection) ?? providers[0]
+  ), [llmSelection, providers]);
+  const modelSummary = selectedProvider?.label || '未配置 LLM';
+  const scriptSettingsSummary = systemPrompt.trim() ? '系统提示 · 已设置' : '系统提示';
+  const providerMenuItems = useMemo<MenuProps['items']>(() => (
+    providers.map(provider => ({
+      key: provider.value,
+      label: (
+        <div className="linghuiNodeEditorDropdownOption">
+          <div className="linghuiNodeEditorDropdownTitle">{provider.modelLabel || provider.label}</div>
+          <div className="linghuiNodeEditorDropdownDesc">
+            {provider.channelLabel ? `${provider.channelLabel} / ${provider.label}` : provider.label}
+          </div>
+        </div>
+      ),
+      onClick: ({ domEvent }) => {
+        domEvent.stopPropagation();
+        updateProp('llmSelection', provider.value);
+      },
+    }))
+  ), [providers, updateProp]);
+
+  const scriptSettingsContent = (
+    <div
+      className="linghuiEditorSettingsPopover"
+      onClick={event => event.stopPropagation()}
+      onMouseDown={event => event.stopPropagation()}
+      onPointerDown={event => event.stopPropagation()}
+    >
+      <div className="linghuiEditorSettingsBlock">
+        <div className="linghuiEditorSettingsLabel">系统提示</div>
+        <textarea
+          className="linghuiNodeTextarea linghuiEditorSettingsTextarea"
+          placeholder="可选。约束输出格式、镜头粒度或风格口径"
+          value={systemPrompt}
+          onChange={event => updateProp('systemPrompt', event.target.value)}
+          onMouseDown={event => event.stopPropagation()}
+          onKeyDown={event => event.stopPropagation()}
+        />
+      </div>
+    </div>
+  );
 
   const renderShotView = (immersive = false) => {
     if (!previewState.shots.length) {
       return (
-        <Empty
-          image={Empty.PRESENTED_IMAGE_SIMPLE}
-          description={mode === 'manual' ? '输入脚本内容后会即时解析镜头' : '运行脚本节点后会在这里展示镜头列表'}
-        />
+        <div className="linghuiEditorEmptyState">
+          {mode === 'manual' ? '输入脚本后会在这里自动解析镜头。' : '运行后会在这里出现结构化镜头列表。'}
+        </div>
       );
     }
 
@@ -227,6 +271,22 @@ export const ScriptNodeEditor: React.FC<ScriptNodeEditorProps> = ({
             <span>{previewState.source === 'json' ? 'JSON 结构' : previewState.source === 'result' ? '运行结果' : '文本解析'}</span>
           </div>
           <div className="linghuiScriptPanelActions">
+            <button
+              type="button"
+              className={`linghuiEditorToolChip ${viewMode === 'cards' ? 'isActive' : ''}`}
+              onClick={() => updateProp('viewMode', 'cards')}
+            >
+              <LayoutGrid size={14} />
+              卡片
+            </button>
+            <button
+              type="button"
+              className={`linghuiEditorToolChip ${viewMode === 'table' ? 'isActive' : ''}`}
+              onClick={() => updateProp('viewMode', 'table')}
+            >
+              <Rows3 size={14} />
+              表格
+            </button>
             <Button size="small" onClick={() => setSelectedShotIds(previewState.shots.map(shot => shot.id))}>
               全选
             </Button>
@@ -299,33 +359,13 @@ export const ScriptNodeEditor: React.FC<ScriptNodeEditorProps> = ({
               className={`linghuiEditorRefModeTab ${mode === item.key ? 'isActive' : ''}`}
               onClick={() => updateProp('mode', item.key)}
             >
-              {item.label}
-            </button>
-          ))}
-        </div>
-
-        <div className="linghuiEditorToolBar">
-          <button
-            type="button"
-            className={`linghuiEditorToolChip ${viewMode === 'cards' ? 'isActive' : ''}`}
-            onClick={() => updateProp('viewMode', 'cards')}
-          >
-            <LayoutGrid size={14} />
-            卡片视图
+            {item.label}
           </button>
-          <button
-            type="button"
-            className={`linghuiEditorToolChip ${viewMode === 'table' ? 'isActive' : ''}`}
-            onClick={() => updateProp('viewMode', 'table')}
-          >
-            <Rows3 size={14} />
-            表格视图
-          </button>
-        </div>
+        ))}
+      </div>
 
         {mode === 'manual' ? (
           <div className="linghuiEditorField">
-            <div className="linghuiEditorFieldLabel">脚本内容</div>
             <textarea
               className="linghuiNodeTextarea"
               placeholder={'支持两种格式：\n1. JSON / ```json``` 结构\n2. 每段一个镜头，或使用 标题 | 描述 | 时长'}
@@ -335,73 +375,78 @@ export const ScriptNodeEditor: React.FC<ScriptNodeEditorProps> = ({
               onKeyDown={event => event.stopPropagation()}
               style={{ minHeight: 220 }}
             />
-            <div className="linghuiEditorPromptHint">每个镜头至少给出标题或画面描述，时长默认 3 秒。</div>
           </div>
         ) : (
           <>
-            <div className="linghuiEditorPrompt">
+            <div className="linghuiEditorPrompt linghuiEditorCompactPrompt">
               <LinghuiPromptEditor
                 value={prompt}
                 onChange={value => updateProp('prompt', value)}
                 references={promptReferences}
                 placeholder="描述剧情推进、角色关系、镜头节奏和画面风格，输入 @ 引用上游产物"
                 darkTheme
+                surfaceStyle="fusion"
                 minHeight="120px"
                 maxHeight="220px"
-              />
-              <div className="linghuiEditorPromptHint">{generateHint}</div>
-            </div>
-
-            <div className="linghuiEditorField">
-              <div className="linghuiEditorFieldLabel">系统提示</div>
-              <textarea
-                className="linghuiNodeTextarea"
-                placeholder="可选。约束输出格式、镜头粒度或风格口径"
-                value={systemPrompt}
-                onChange={event => updateProp('systemPrompt', event.target.value)}
-                onMouseDown={event => event.stopPropagation()}
-                onKeyDown={event => event.stopPropagation()}
-                style={{ minHeight: 96 }}
               />
             </div>
           </>
         )}
 
+        {mode === 'generate' ? (
+          <div className="linghuiEditorControlRow">
+            <Dropdown
+              trigger={providers.length > 0 ? ['click'] : []}
+              menu={{
+                items: providerMenuItems,
+                selectable: true,
+                selectedKeys: selectedProvider ? [selectedProvider.value] : [],
+              }}
+              classNames={{ root: 'linghuiNodeEditorDropdownMenu' }}
+              getPopupContainer={triggerNode => triggerNode.ownerDocument.body}
+              styles={{ root: { zIndex: 1200 } }}
+            >
+              <button
+                type="button"
+                className={`linghuiEditorInlineTrigger ${providers.length === 0 ? 'isDisabled' : ''}`}
+                onClick={event => event.stopPropagation()}
+                disabled={providers.length === 0}
+              >
+                {modelSummary}
+              </button>
+            </Dropdown>
+
+            <Popover
+              trigger="click"
+              placement="bottomRight"
+              content={scriptSettingsContent}
+              overlayClassName="linghuiEditorPopover"
+              getPopupContainer={triggerNode => triggerNode.ownerDocument.body}
+              zIndex={1200}
+            >
+              <button
+                type="button"
+                className="linghuiEditorInlineTrigger"
+                onClick={event => event.stopPropagation()}
+              >
+                {scriptSettingsSummary}
+              </button>
+            </Popover>
+
+            <div className="linghuiEditorActionGroup">
+              <Button
+                type="primary"
+                icon={<ArrowUp size={14} />}
+                onClick={onRun}
+              >
+                生成
+              </Button>
+            </div>
+          </div>
+        ) : null}
+
         <div className="linghuiScriptPanel">
           {renderShotView()}
-        </div>
-
-        <div className="linghuiEditorToolbar">
-          <div className="linghuiEditorToolbarLeft">
-            {mode === 'generate' && (
-              <>
-                <Select
-                size="small"
-                className="linghuiEditorSelect"
-                value={llmSelection || undefined}
-                placeholder="选择 LLM 渠道"
-                onChange={value => updateProp('llmSelection', value)}
-                options={providers}
-                  popupMatchSelectWidth={false}
-                  style={{ minWidth: 160 }}
-                />
-                <span className="linghuiEditorInlineHint">
-                  <Sparkles size={14} />
-                  结果会按结构化镜头列表展示
-                </span>
-              </>
-            )}
-          </div>
-
-          <div className="linghuiEditorToolbarRight">
-            <Button
-              type="primary"
-              size="small"
-              shape="circle"
-              icon={<ArrowUp size={16} />}
-              onClick={onRun}
-            />
-          </div>
         </div>
       </div>
 

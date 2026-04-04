@@ -1,9 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { App, Button, Select } from 'antd';
+import { App, Button, Dropdown, Popover, Select } from 'antd';
+import type { MenuProps } from 'antd';
 import { ArrowUp, Music4, Trash2, UploadCloud } from 'lucide-react';
 import {
   getLinghuiResultPrimaryMedia,
-  getLinghuiResultText,
   type LinghuiAudioNodeProperties,
   type LinghuiNodeData,
   type LinghuiNodeRunState,
@@ -32,6 +32,8 @@ function getSourceName(source: string): string {
 interface ProviderOption {
   value: string;
   label: string;
+  channelLabel?: string;
+  modelLabel?: string;
 }
 
 interface VoiceOption {
@@ -73,35 +75,15 @@ export const AudioNodeEditor: React.FC<AudioNodeEditorProps> = ({
   const generatedAudioSource = getPreviewSource(generatedAudio?.source);
   const generatedAudioLabel = String(generatedAudio?.label ?? nodeData.label ?? '音频结果').trim();
   const generatedAudioDuration = generatedAudio?.durationSec;
-  const generatedAudioText = String(getLinghuiResultText(nodeRun?.result) ?? '').trim();
   const canReuseGeneratedAudio = !source && Boolean(generatedAudio?.source);
-
-  const upstreamSummary = useMemo(() => {
-    if (!promptReferences.length) return '';
-
-    const imageCount = promptReferences.filter(item => item.kind === 'image').length;
-    const videoCount = promptReferences.filter(item => item.kind === 'video').length;
-    const audioCount = promptReferences.filter(item => item.kind === 'audio').length;
-    const textCount = promptReferences.filter(item => item.kind === 'text').length;
-    return [
-      imageCount > 0 ? `${imageCount} 个图片参考` : '',
-      videoCount > 0 ? `${videoCount} 个视频参考` : '',
-      audioCount > 0 ? `${audioCount} 条音频参考` : '',
-      textCount > 0 ? `${textCount} 段文本输入` : '',
-    ].filter(Boolean).join('、');
-  }, [promptReferences]);
-
-  const mentionHint = source
-    ? '当前节点已挂载本地音频，会以导入模式输出；清空素材后可切回文本转语音'
-    : promptReferences.length > 0
-      ? `输入 @ 可直接引用上游文本、图片、视频或音频参考${upstreamSummary ? `；当前已接入 ${upstreamSummary}` : ''}`
-    : '输入要合成的旁白、对白或提示文本，运行后会生成音频产物';
 
   useEffect(() => {
     loadSettings().then(settings => {
       setProviders(listConfiguredModelSelectOptions(settings, 'tts', 'speech.text-to-speech').map(option => ({
         value: option.value,
         label: `${option.channelLabel} / ${option.modelLabel}`,
+        channelLabel: option.channelLabel,
+        modelLabel: option.modelLabel,
       })));
     });
   }, []);
@@ -271,13 +253,77 @@ export const AudioNodeEditor: React.FC<AudioNodeEditorProps> = ({
     }
   }, [message, nodeData, nodeId, nodeRun, onAssetLibraryMutate, workspaceId]);
 
+  const selectedProvider = useMemo(() => (
+    providers.find(option => option.value === ttsSelection) ?? providers[0]
+  ), [providers, ttsSelection]);
+  const selectedVoice = useMemo(() => (
+    voiceOptions.find(option => option.value === voiceId)
+  ), [voiceId, voiceOptions]);
+  const modelSummary = selectedProvider?.label || '未配置 TTS';
+  const voiceSummary = selectedVoice?.label || (voiceId ? `音色 / ${voiceId}` : '默认音色');
+  const providerMenuItems = useMemo<MenuProps['items']>(() => (
+    providers.map(provider => ({
+      key: provider.value,
+      label: (
+        <div className="linghuiNodeEditorDropdownOption">
+          <div className="linghuiNodeEditorDropdownTitle">{provider.modelLabel || provider.label}</div>
+          <div className="linghuiNodeEditorDropdownDesc">
+            {provider.channelLabel ? `${provider.channelLabel} / ${provider.label}` : provider.label}
+          </div>
+        </div>
+      ),
+      onClick: ({ domEvent }) => {
+        domEvent.stopPropagation();
+        updateProp('ttsSelection', provider.value);
+      },
+    }))
+  ), [providers, updateProp]);
+
+  const audioSettingsContent = (
+    <div
+      className="linghuiEditorSettingsPopover"
+      onClick={event => event.stopPropagation()}
+      onMouseDown={event => event.stopPropagation()}
+      onPointerDown={event => event.stopPropagation()}
+    >
+      <div className="linghuiEditorSettingsBlock">
+        <div className="linghuiEditorSettingsLabel">音色</div>
+        <Select
+          className="linghuiEditorSelect"
+          value={voiceId || undefined}
+          placeholder="选择音色"
+          allowClear
+          onChange={value => updateProp('voiceId', value ?? '')}
+          options={voiceOptions}
+          popupMatchSelectWidth={false}
+          style={{ width: '100%' }}
+          getPopupContainer={triggerNode => triggerNode.ownerDocument.body}
+        />
+      </div>
+      {generatedAudioSource ? (
+        <div className="linghuiEditorSettingsMetrics">
+          <div className="linghuiEditorSettingsBlock">
+            <div className="linghuiEditorSettingsLabel">最近结果</div>
+            <div className="linghuiEditorSettingsStat">{generatedAudioLabel}</div>
+          </div>
+          {generatedAudioDuration ? (
+            <div className="linghuiEditorSettingsBlock">
+              <div className="linghuiEditorSettingsLabel">时长</div>
+              <div className="linghuiEditorSettingsStat">{Math.max(1, Math.round(generatedAudioDuration))} 秒</div>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+
   return (
     <div className="linghuiEditorPanel" onMouseDown={e => e.stopPropagation()}>
       <div className="linghuiEditorHeader">
         <div>
           <div className="linghuiEditorTitle">音频节点</div>
           <div className="linghuiEditorSubtitle">
-            {source ? '当前已接入本地音频素材，可直接作为上游音频产物输出' : '支持本地上传或文本转语音两种模式'}
+            {source ? '当前透传本地音频' : '上传音频或生成语音'}
           </div>
         </div>
       </div>
@@ -325,83 +371,101 @@ export const AudioNodeEditor: React.FC<AudioNodeEditorProps> = ({
         )}
       </div>
 
-      <div className="linghuiEditorPrompt">
-        <LinghuiPromptEditor
-          value={prompt}
-          onChange={value => updateProp('prompt', value)}
-          references={promptReferences}
-          placeholder="输入要合成的旁白、对白或音频描述，输入 @ 引用上游产物"
-          darkTheme
-          minHeight="80px"
-          maxHeight="160px"
-        />
-        <div className="linghuiEditorPromptHint">{mentionHint}</div>
-      </div>
+      {!source ? (
+        <div className="linghuiEditorPrompt linghuiEditorCompactPrompt">
+          <LinghuiPromptEditor
+            value={prompt}
+            onChange={value => updateProp('prompt', value)}
+            references={promptReferences}
+            placeholder="输入要合成的旁白、对白或音频描述，输入 @ 引用上游产物"
+            darkTheme
+            surfaceStyle="fusion"
+            minHeight="96px"
+            maxHeight="188px"
+          />
+        </div>
+      ) : null}
 
-      {!source && generatedAudioSource && (
-        <div className="linghuiEditorAssetGroup">
-          <div className="linghuiEditorAssetTitle">生成结果</div>
-          <div className="linghuiNodePreviewAudioWrap">
-            <audio className="linghuiNodePreviewAudio" src={generatedAudioSource} controls />
-            <div className="linghuiNodePreviewAudioMeta">
-              <span>{generatedAudioLabel}</span>
-              {generatedAudioDuration ? <span>{Math.max(1, Math.round(generatedAudioDuration))} 秒</span> : null}
-            </div>
-            {generatedAudioText ? <div className="linghuiNodePreviewText">{generatedAudioText}</div> : null}
-          </div>
-          <div className="linghuiEditorToolbar" style={{ marginTop: 10 }}>
-            <div className="linghuiEditorToolbarLeft">
+      <div className="linghuiEditorControlRow">
+        {source ? (
+          <span className="linghuiEditorSummaryPill">{sourceName}</span>
+        ) : (
+          <>
+            <Dropdown
+              trigger={providers.length > 0 ? ['click'] : []}
+              menu={{
+                items: providerMenuItems,
+                selectable: true,
+                selectedKeys: selectedProvider ? [selectedProvider.value] : [],
+              }}
+              classNames={{ root: 'linghuiNodeEditorDropdownMenu' }}
+              getPopupContainer={triggerNode => triggerNode.ownerDocument.body}
+              styles={{ root: { zIndex: 1200 } }}
+            >
+              <button
+                type="button"
+                className={`linghuiEditorInlineTrigger ${providers.length === 0 ? 'isDisabled' : ''}`}
+                onClick={event => event.stopPropagation()}
+                disabled={providers.length === 0}
+              >
+                {modelSummary}
+              </button>
+            </Dropdown>
+
+            <Popover
+              trigger="click"
+              placement="bottomRight"
+              content={audioSettingsContent}
+              overlayClassName="linghuiEditorPopover"
+              getPopupContainer={triggerNode => triggerNode.ownerDocument.body}
+              zIndex={1200}
+            >
+              <button
+                type="button"
+                className="linghuiEditorInlineTrigger"
+                onClick={event => event.stopPropagation()}
+              >
+                {voiceSummary}
+              </button>
+            </Popover>
+
+            {generatedAudioSource ? (
+              <span className="linghuiEditorSummaryPill">
+                {generatedAudioLabel}
+                {generatedAudioDuration ? ` · ${Math.max(1, Math.round(generatedAudioDuration))}秒` : ''}
+              </span>
+            ) : null}
+          </>
+        )}
+
+        <div className="linghuiEditorActionGroup">
+          <Button size="small" icon={<UploadCloud size={14} />} onClick={handleSelectAudio}>
+            {source ? '替换音频' : '上传音频'}
+          </Button>
+          {source ? (
+            <Button size="small" icon={<Trash2 size={14} />} danger onClick={handleClearAudio}>
+              清空素材
+            </Button>
+          ) : null}
+          {!source && generatedAudioSource ? (
+            <>
               <Button size="small" disabled={!canReuseGeneratedAudio} onClick={handleReuseGeneratedAudio}>
-                写回当前素材
+                写回素材
               </Button>
               <Button size="small" onClick={() => void handleCreateAudioAsset()}>
                 保存为资产
               </Button>
-            </div>
-          </div>
-          <div className="linghuiEditorPromptHint">可直接在这里试听、写回当前节点素材，或保存为资产后继续发送到画布。</div>
-        </div>
-      )}
-
-      <div className="linghuiEditorToolbar">
-        <div className="linghuiEditorToolbarLeft">
-          <Button size="small" icon={<UploadCloud size={14} />} onClick={handleSelectAudio}>
-            上传音频
-          </Button>
-          <Button size="small" icon={<Trash2 size={14} />} danger disabled={!source} onClick={handleClearAudio}>
-            清空素材
-          </Button>
-          <Select
-            size="small"
-            className="linghuiEditorSelect"
-            value={ttsSelection || undefined}
-            placeholder="选择 TTS 渠道"
-            onChange={value => updateProp('ttsSelection', value)}
-            options={providers}
-            popupMatchSelectWidth={false}
-            style={{ minWidth: 160 }}
-          />
-          <Select
-            size="small"
-            className="linghuiEditorSelect"
-            value={voiceId || undefined}
-            placeholder="选择音色"
-            allowClear
-            onChange={value => updateProp('voiceId', value ?? '')}
-            options={voiceOptions}
-            popupMatchSelectWidth={false}
-            style={{ minWidth: 160 }}
-          />
-        </div>
-
-        <div className="linghuiEditorToolbarRight">
-          <Button
-            type="primary"
-            size="small"
-            shape="circle"
-            icon={<ArrowUp size={16} />}
-            onClick={onRun}
-          />
+            </>
+          ) : null}
+          {!source ? (
+            <Button
+              type="primary"
+              icon={<ArrowUp size={14} />}
+              onClick={onRun}
+            >
+              生成
+            </Button>
+          ) : null}
         </div>
       </div>
     </div>

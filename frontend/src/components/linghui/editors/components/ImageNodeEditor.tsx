@@ -1,9 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { App, Button, Select } from 'antd';
+import { App, Button, Dropdown, Popover } from 'antd';
+import type { MenuProps } from 'antd';
 import { ArrowUp, Image as ImageIcon, Trash2, UploadCloud } from 'lucide-react';
 import type {
   LinghuiExecuteMultiAngleOptions,
-  LinghuiImageAssetItem,
   LinghuiImageNodeMode,
   LinghuiImageNodeProperties,
   LinghuiImageToolKey,
@@ -56,6 +56,8 @@ export function mergePromptSnippet(currentPrompt: string, snippet: string): stri
 interface ProviderOption {
   value: string;
   label: string;
+  channelLabel?: string;
+  modelLabel?: string;
 }
 
 interface DisplayReferenceImage {
@@ -73,7 +75,6 @@ export interface ImageNodeEditorProps {
   workspaceId?: string | null;
   activeTool: LinghuiImageToolKey | null;
   onToolChange: (tool: LinghuiImageToolKey | null) => void;
-  onCreateDerivedImportImages?: (items: LinghuiImageAssetItem[]) => void;
   onExecuteMultiAngle?: (options?: LinghuiExecuteMultiAngleOptions) => void;
   onRun: () => void;
 }
@@ -87,7 +88,6 @@ export const ImageNodeEditor: React.FC<ImageNodeEditorProps> = ({
   workspaceId = null,
   activeTool,
   onToolChange,
-  onCreateDerivedImportImages,
   onExecuteMultiAngle,
   onRun,
 }) => {
@@ -124,6 +124,8 @@ export const ImageNodeEditor: React.FC<ImageNodeEditorProps> = ({
       setProviders(listConfiguredModelSelectOptions(settings, 'tti', 'image.text-to-image').map(option => ({
         value: option.value,
         label: `${option.channelLabel} / ${option.modelLabel}`,
+        channelLabel: option.channelLabel,
+        modelLabel: option.modelLabel,
       })));
       setMultiAngleProviders(listConfiguredModelSelectOptions(settings, 'tti', 'image.image-to-image').map(option => ({
         value: option.value,
@@ -243,27 +245,135 @@ export const ImageNodeEditor: React.FC<ImageNodeEditorProps> = ({
     clearNodeRunState(nodeId);
   }, [clearNodeRunState, nodeId, updateNodeData]);
 
+  const selectedProvider = useMemo(() => (
+    providers.find(option => option.value === ttiSelection) ?? providers[0]
+  ), [providers, ttiSelection]);
+  const modelSummary = selectedProvider?.label || '未配置生图模型';
+  const parameterSummary = `${aspectRatio} · ${resolution} · ${batchCount}张`;
+  const providerMenuItems = useMemo<MenuProps['items']>(() => (
+    providers.map(provider => ({
+      key: provider.value,
+      label: (
+        <div className="linghuiNodeEditorDropdownOption">
+          <div className="linghuiNodeEditorDropdownTitle">{provider.modelLabel || provider.label}</div>
+          <div className="linghuiNodeEditorDropdownDesc">
+            {provider.channelLabel ? `${provider.channelLabel} / ${provider.label}` : provider.label}
+          </div>
+        </div>
+      ),
+      onClick: ({ domEvent }) => {
+        domEvent.stopPropagation();
+        updateProp('ttiSelection', provider.value);
+      },
+    }))
+  ), [providers, updateProp]);
+
+  const imageSettingsContent = (
+    <div
+      className="linghuiEditorSettingsPopover"
+      onClick={event => event.stopPropagation()}
+      onMouseDown={event => event.stopPropagation()}
+      onPointerDown={event => event.stopPropagation()}
+    >
+      <div className="linghuiEditorSettingsBlock">
+        <div className="linghuiEditorSettingsLabel">比例</div>
+        <div className="linghuiEditorOptionGrid">
+          {IMAGE_ASPECT_RATIOS.map(option => (
+            <button
+              key={option.value}
+              type="button"
+              className={`linghuiEditorOptionTile ${aspectRatio === option.value ? 'isActive' : ''}`}
+              onClick={() => updateProp('aspectRatio', option.value)}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="linghuiEditorSettingsBlock">
+        <div className="linghuiEditorSettingsLabel">分辨率</div>
+        <div className="linghuiEditorOptionGrid isCompact">
+          {IMAGE_RESOLUTIONS.map(option => (
+            <button
+              key={option.value}
+              type="button"
+              className={`linghuiEditorOptionTile ${resolution === option.value ? 'isActive' : ''}`}
+              onClick={() => updateProp('resolution', option.value)}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="linghuiEditorSettingsBlock">
+        <div className="linghuiEditorSettingsLabel">出图数量</div>
+        <div className="linghuiEditorOptionGrid">
+          {LINGHUI_IMAGE_BATCH_COUNTS.map(value => (
+            <button
+              key={value}
+              type="button"
+              className={`linghuiEditorOptionTile ${batchCount === value ? 'isActive' : ''}`}
+              onClick={() => updateProp('batchCount', value)}
+            >
+              {value}张
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+
   if (isImportMode) {
     return (
       <div className="linghuiEditorPanel" onMouseDown={event => event.stopPropagation()}>
-        <div className="linghuiEditorToolbar">
-          <div className="linghuiEditorToolbarLeft">
+        <div className="linghuiEditorSection">
+          <div
+            className={`linghuiReferenceDropzone linghuiImageImportSurface isCompact ${hasCurrentImage ? 'hasPreview' : ''}`}
+            onClick={() => void handleReplaceImage()}
+            role="button"
+            tabIndex={0}
+            onKeyDown={event => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                void handleReplaceImage();
+              }
+            }}
+          >
+            {hasCurrentImage ? (
+              <>
+                <img
+                  className="linghuiReferencePreview"
+                  src={currentImagePreview}
+                  alt={currentImage?.label || nodeData.label}
+                />
+                <div className="linghuiEditorPlayerOverlay">
+                  <span className="linghuiEditorSummaryPill">点击更换图片</span>
+                  <span className="linghuiEditorSummaryPill">{currentImage?.label || nodeData.label}</span>
+                </div>
+              </>
+            ) : (
+              <div className="linghuiReferencePlaceholder">
+                <UploadCloud size={28} />
+                <div>点击导入图片</div>
+                <div className="linghuiReferencePlaceholderHint">导入后节点会直接输出当前图片</div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="linghuiEditorControlRow">
+          {hasCurrentImage ? (
+            <span className="linghuiEditorSummaryPill">{currentImage?.label || nodeData.label}</span>
+          ) : null}
+          <div className="linghuiEditorActionGroup">
             <Button size="small" icon={<UploadCloud size={14} />} onClick={() => void handleReplaceImage()}>
-              替换图片
+              {hasCurrentImage ? '替换图片' : '导入图片'}
             </Button>
             <Button size="small" icon={<Trash2 size={14} />} danger disabled={!hasImportSource} onClick={handleClearImage}>
               清空
             </Button>
-          </div>
-
-          <div className="linghuiEditorToolbarRight">
-            <Button
-              type="primary"
-              size="small"
-              shape="circle"
-              icon={<ArrowUp size={16} />}
-              onClick={onRun}
-            />
           </div>
         </div>
         <LinghuiMultiAngleModal
@@ -313,57 +423,53 @@ export const ImageNodeEditor: React.FC<ImageNodeEditorProps> = ({
         />
       </div>
 
-      <div className="linghuiEditorToolbar">
-        <div className="linghuiEditorToolbarLeft">
-          <Select
-            size="small"
-            className="linghuiEditorSelect"
-            value={ttiSelection || undefined}
-            placeholder="选择生图渠道"
-            onChange={value => updateProp('ttiSelection', value)}
-            options={providers}
-            popupMatchSelectWidth={false}
-            style={{ minWidth: 140 }}
-          />
+      <div className="linghuiEditorControlRow">
+        <Dropdown
+          trigger={providers.length > 0 ? ['click'] : []}
+          menu={{
+            items: providerMenuItems,
+            selectable: true,
+            selectedKeys: selectedProvider ? [selectedProvider.value] : [],
+          }}
+          classNames={{ root: 'linghuiNodeEditorDropdownMenu' }}
+          getPopupContainer={triggerNode => triggerNode.ownerDocument.body}
+          styles={{ root: { zIndex: 1200 } }}
+        >
+          <button
+            type="button"
+            className={`linghuiEditorInlineTrigger ${providers.length === 0 ? 'isDisabled' : ''}`}
+            onClick={event => event.stopPropagation()}
+            disabled={providers.length === 0}
+          >
+            {modelSummary}
+          </button>
+        </Dropdown>
 
-          <Select
-            size="small"
-            className="linghuiEditorSelect"
-            value={aspectRatio}
-            onChange={value => updateProp('aspectRatio', value)}
-            options={IMAGE_ASPECT_RATIOS}
-            popupMatchSelectWidth={false}
-            style={{ minWidth: 72 }}
-          />
+        <Popover
+          trigger="click"
+          placement="bottomRight"
+          content={imageSettingsContent}
+          overlayClassName="linghuiEditorPopover"
+          getPopupContainer={triggerNode => triggerNode.ownerDocument.body}
+          zIndex={1200}
+        >
+          <button
+            type="button"
+            className="linghuiEditorInlineTrigger"
+            onClick={event => event.stopPropagation()}
+          >
+            {parameterSummary}
+          </button>
+        </Popover>
 
-          <Select
-            size="small"
-            className="linghuiEditorSelect"
-            value={resolution}
-            onChange={value => updateProp('resolution', value)}
-            options={IMAGE_RESOLUTIONS}
-            popupMatchSelectWidth={false}
-            style={{ minWidth: 80 }}
-          />
-        </div>
-
-        <div className="linghuiEditorToolbarRight">
-          <Select
-            size="small"
-            value={batchCount}
-            onChange={value => updateProp('batchCount', value)}
-            options={LINGHUI_IMAGE_BATCH_COUNTS.map(value => ({ value, label: `${value}张` }))}
-            popupMatchSelectWidth={false}
-            style={{ width: 72 }}
-          />
-
+        <div className="linghuiEditorActionGroup">
           <Button
             type="primary"
-            size="small"
-            shape="circle"
-            icon={<ArrowUp size={16} />}
+            icon={<ArrowUp size={14} />}
             onClick={onRun}
-          />
+          >
+            生成
+          </Button>
         </div>
       </div>
 

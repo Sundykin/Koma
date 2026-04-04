@@ -50,7 +50,7 @@ import { createLogger } from '../../../../store/logger';
 import { loadSettings } from '../../../../store/settings/core';
 import { resetLinghuiCanvasStore, useLinghuiCanvasStore } from '../../canvas/state/linghuiCanvasStore';
 import { LinghuiExecutionPlanModal } from '../../execution/components/LinghuiExecutionPlanModal';
-import './LinghuiPage.css';
+import '../styles/LinghuiPage.scss';
 
 function createLog(level: LinghuiExecutionLogEntry['level'], message: string, nodeId?: string): LinghuiExecutionLogEntry {
   return {
