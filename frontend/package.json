@@ -17,7 +17,6 @@
     "@codemirror/commands": "^6.10.1",
     "@codemirror/state": "^6.5.4",
     "@codemirror/view": "^6.39.11",
-    "@esbuild/darwin-arm64": "^0.28.0",
     "@google/genai": "^1.36.0",
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.5.0",
