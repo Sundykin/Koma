@@ -1,0 +1,218 @@
+@use './tokens' as *;
+@use './mixins' as *;
+
+/* Node editor shell, top bar, dropdown surface */
+
+.linghuiNodeEditor {
+  &Container {
+    position: absolute;
+    inset: 0;
+    z-index: 50;
+    pointer-events: none;
+    overflow: visible;
+    isolation: isolate;
+  }
+
+  &TopBar,
+  &MainSurface {
+    position: absolute;
+    pointer-events: auto;
+    will-change: transform;
+    box-sizing: border-box;
+  }
+
+  &TopBar {
+    @include lh-inline(12px, nowrap, center, space-between);
+
+    z-index: 2;
+    min-height: 42px;
+    padding: 7px 8px 7px 12px;
+    border: none;
+    border-radius: $lh-radius-panel;
+    background: rgba(7, 10, 16, 0.8);
+    box-shadow: $lh-shadow-panel-soft;
+    backdrop-filter: blur(20px);
+    transition: width 180ms ease, transform 180ms ease;
+
+    &.isMinimal {
+      min-height: 40px;
+    }
+  }
+
+  &TopBarMeta {
+    @include lh-stack(2px);
+
+    min-width: 0;
+  }
+
+  &TopBarLabel,
+  &TitleEditable {
+    @include lh-text($lh-text-primary, 13px, 1.3, 700);
+    @include lh-ellipsis;
+  }
+
+  &TitleEditable {
+    cursor: text;
+  }
+
+  &TitleInput {
+    @include lh-input-shell(12px, rgba(255, 255, 255, 0.05), inset 0 0 0 1px rgba(52, 211, 153, 0.18));
+    @include lh-text($lh-text-primary, 13px, 1.3, 700);
+
+    width: 100%;
+    min-width: 0;
+    padding: 5px 9px;
+  }
+
+  &TopBarType {
+    @include lh-text($lh-text-muted, 11px, 1.4);
+  }
+
+  &TopBarActions,
+  &ToolRail,
+  &GridToolRail {
+    min-width: 0;
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+
+  &TopBarActions {
+    align-items: center;
+    gap: 10px;
+  }
+
+  &ToolRail,
+  &GridToolRail {
+    flex-wrap: wrap;
+  }
+
+  &GridToolRail {
+    align-items: center;
+  }
+
+  &ToolButton {
+    @include lh-chip-button(30px, 0 12px);
+  }
+
+  &CloseButton {
+    @include lh-chip-button(30px, 0);
+
+    width: 30px;
+    height: 30px;
+    justify-content: center;
+    flex: 0 0 30px;
+  }
+
+  &GridStatus {
+    @include lh-chip(30px, 0 12px, $lh-bg-surface-chip, #cbd5e1, 12px, 600, inset 0 0 0 1px $lh-border-soft);
+  }
+
+  &DropdownMenu {
+    .ant-dropdown-menu {
+      min-width: 220px;
+      padding: 6px;
+      @include lh-glass-panel($lh-bg-surface-panel-strong, rgba(63, 63, 70, 0.84), 14px, 0 24px 48px rgba(0, 0, 0, 0.34));
+
+      &-item,
+      &-submenu-title {
+        border-radius: 10px;
+        color: $lh-text-primary;
+      }
+
+      &-item:hover,
+      &-submenu-title:hover,
+      &-item-active,
+      &-item-selected {
+        background: rgba(16, 185, 129, 0.14);
+      }
+    }
+  }
+
+  &DropdownOption {
+    @include lh-stack(2px);
+
+    min-width: 0;
+  }
+
+  &DropdownTitle {
+    @include lh-text($lh-text-strong, 12px, 1.4, 700);
+  }
+
+  &DropdownDesc {
+    @include lh-text($lh-text-muted, 11px, 1.4);
+  }
+
+  &MainSurface {
+    overflow: auto;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    z-index: 1;
+    transition: width 180ms ease, max-height 180ms ease, transform 180ms ease;
+
+    > .linghuiEditorPanel {
+      width: 100%;
+      min-width: 0;
+      max-width: 100%;
+      flex: 0 0 100%;
+      box-sizing: border-box;
+    }
+  }
+
+  &Backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 80;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    background: rgba(2, 6, 23, 0.62);
+    backdrop-filter: blur(12px);
+  }
+
+  &ImmersiveShell {
+    @include lh-stack(10px);
+
+    max-height: calc(100vh - 48px);
+    min-width: 0;
+  }
+
+  &ImmersiveBody {
+    min-height: 0;
+
+    .linghuiEditorPanel {
+      max-height: calc(100vh - 120px);
+      overflow: auto;
+    }
+  }
+
+  &ModeBar {
+    @include lh-inline(8px);
+
+    margin-left: auto;
+  }
+
+  &ModeButton {
+    @include lh-chip-button(
+      32px,
+      0 12px,
+      rgba(11, 15, 21, 0.92),
+      $lh-text-soft,
+      rgba(11, 15, 21, 0.98)
+    );
+
+    gap: 6px;
+    border: 1px solid rgba(82, 82, 91, 0.74);
+    background: rgba(11, 15, 21, 0.92);
+
+    &:hover {
+      border-color: rgba(16, 185, 129, 0.56);
+    }
+
+    &.isActive {
+      border-color: rgba(16, 185, 129, 0.72);
+    }
+  }
+}

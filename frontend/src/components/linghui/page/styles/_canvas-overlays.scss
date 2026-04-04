@@ -1,0 +1,916 @@
+@use './tokens' as *;
+@use './mixins' as *;
+
+/* Canvas shell, HUD, quick create, context menu, floating panels */
+
+.linghuiLibrary {
+  &Overlay {
+    position: absolute;
+    top: 14px;
+    left: 14px;
+    z-index: 35;
+    width: min(272px, calc(100% - 28px));
+    height: min(560px, calc(100% - 28px));
+
+    .linghuiSidebar {
+      height: 100%;
+    }
+  }
+
+  &Fab {
+    position: absolute;
+    top: 14px;
+    left: 14px;
+    z-index: 36;
+    border: 1px solid rgba(82, 82, 91, 0.85);
+    border-radius: $lh-radius-pill;
+    background: rgba(11, 15, 21, 0.92);
+    color: $lh-text-strong;
+    font-size: 12px;
+    line-height: 1;
+    padding: 10px 14px;
+    box-shadow: 0 14px 30px rgba(0, 0, 0, 0.24);
+    transition:
+      border-color $lh-transition-base,
+      transform $lh-transition-base,
+      background $lh-transition-base;
+
+    &:hover {
+      border-color: rgba(16, 185, 129, 0.65);
+      transform: translateY(-1px);
+    }
+
+    &.isCollapsed {
+      background: rgba(14, 18, 25, 0.98);
+    }
+  }
+}
+
+.linghuiCanvas {
+  &Root {
+    position: relative;
+    height: 100%;
+    overflow: visible;
+    isolation: isolate;
+    border: 0;
+    border-radius: 0;
+    background:
+      radial-gradient(circle at top, rgba(16, 185, 129, 0.05), transparent 32%),
+      linear-gradient(180deg, rgba(10, 14, 19, 0.96), rgba(6, 10, 14, 0.98));
+    box-shadow: none;
+
+    .react-flow {
+      position: relative;
+      z-index: 1;
+      overflow: hidden;
+      border-radius: inherit;
+
+      &__background {
+        opacity: 0.96;
+      }
+
+      &__background-pattern {
+        circle {
+          filter: drop-shadow(0 0 4px rgba(148, 163, 184, 0.24));
+        }
+      }
+    }
+
+    &.isHandMode {
+      cursor: grab;
+
+      &:active {
+        cursor: grabbing;
+      }
+    }
+
+    &.isMouseMode {
+      cursor: default;
+    }
+  }
+
+  &Hud {
+    display: contents;
+  }
+
+  &LeftRail {
+    position: absolute;
+    left: 18px;
+    top: 50%;
+    z-index: 38;
+    transform: translateY(-50%);
+    max-width: min(360px, calc(100vw - 36px));
+  }
+
+  &RailShell {
+    @include lh-inline(14px, nowrap, flex-start);
+
+    display: inline-flex;
+
+    &:hover,
+    &.isProjectPanelOpen {
+      .linghuiCanvasRailGroup {
+        width: 136px;
+        border-color: rgba(96, 165, 250, 0.26);
+        background: rgba(9, 13, 18, 0.82);
+        box-shadow: 0 24px 44px rgba(0, 0, 0, 0.28);
+      }
+
+      .linghuiCanvasRailLabel {
+        max-width: 72px;
+        opacity: 1;
+        transform: translateX(0);
+      }
+    }
+  }
+
+  &RailGroup {
+    @include lh-stack(10px);
+
+    width: 56px;
+    display: inline-flex;
+    padding: 8px;
+    overflow: hidden;
+    border: 1px solid rgba(63, 63, 70, 0.56);
+    border-radius: 20px;
+    background: rgba(9, 13, 18, 0.42);
+    backdrop-filter: blur(18px);
+    box-shadow: 0 18px 36px rgba(0, 0, 0, 0.22);
+    transition:
+      width 180ms ease,
+      background 180ms ease,
+      border-color 180ms ease,
+      box-shadow 180ms ease;
+  }
+
+  &RailButton {
+    @include lh-inline(10px, nowrap);
+
+    width: 100%;
+    min-height: 40px;
+    padding: 0 11px;
+    border: 1px solid rgba(82, 82, 91, 0.52);
+    border-radius: 12px;
+    background: rgba(24, 24, 27, 0.3);
+    color: $lh-text-strong;
+    overflow: hidden;
+    transition:
+      transform $lh-transition-base,
+      border-color $lh-transition-base,
+      background $lh-transition-base,
+      color $lh-transition-base;
+
+    &:hover {
+      transform: translateX(1px);
+      border-color: rgba(16, 185, 129, 0.6);
+      background: rgba(14, 19, 28, 0.88);
+    }
+
+    &.isActive {
+      background: rgba(16, 185, 129, 0.16);
+      border-color: rgba(16, 185, 129, 0.78);
+      color: $lh-text-success;
+    }
+
+    &:disabled {
+      cursor: not-allowed;
+      opacity: 0.72;
+      transform: none;
+    }
+  }
+
+  &RailIcon {
+    width: 16px;
+    height: 16px;
+    flex: 0 0 16px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  &RailLabel {
+    @include lh-text(inherit, 12px, 1.4, 600);
+
+    max-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    opacity: 0;
+    transform: translateX(-4px);
+    transition:
+      max-width 180ms ease,
+      opacity 140ms ease,
+      transform 180ms ease;
+  }
+
+  &ProjectPanel {
+    @include lh-stack(14px);
+
+    width: min(280px, calc(100vw - 120px));
+    max-height: min(68vh, 560px);
+    padding: 14px;
+    overflow: hidden;
+    border: 1px solid rgba(63, 63, 70, 0.72);
+    border-radius: 20px;
+    background:
+      radial-gradient(circle at top right, rgba(59, 130, 246, 0.12), transparent 36%),
+      rgba(9, 13, 18, 0.88);
+    backdrop-filter: blur(20px);
+    box-shadow: 0 24px 48px rgba(0, 0, 0, 0.28);
+
+    &Header {
+      @include lh-stack(4px);
+    }
+
+    &Title {
+      @include lh-text($lh-text-primary, 15px, 1.4, 700);
+    }
+
+    &Meta {
+      @include lh-text($lh-text-muted, 11px, 1.5);
+    }
+
+    &Actions {
+      @include lh-inline(10px, nowrap);
+    }
+  }
+
+  &ProjectField {
+    @include lh-stack(8px);
+
+    &Label {
+      @include lh-text(#cbd5e1, 12px, 1.4, 600);
+    }
+  }
+
+  &ProjectNameInput {
+    @include lh-input-shell(12px, rgba(15, 23, 42, 0.76), 0 0 0 1px rgba(71, 85, 105, 0.82));
+
+    width: 100%;
+    height: 38px;
+    padding: 0 12px;
+    transition:
+      background $lh-transition-base,
+      box-shadow $lh-transition-base;
+
+    &::placeholder {
+      color: rgba(148, 163, 184, 0.7);
+    }
+
+    &:focus {
+      background: rgba(15, 23, 42, 0.92);
+      box-shadow:
+        inset 0 0 0 1px rgba(96, 165, 250, 0.8),
+        0 0 0 3px rgba(59, 130, 246, 0.16);
+    }
+  }
+
+  &ProjectActionButton {
+    @include lh-inline(8px, nowrap, center, center);
+
+    width: 100%;
+    min-height: 38px;
+    padding: 0 14px;
+    border: 1px solid rgba(82, 82, 91, 0.68);
+    border-radius: 12px;
+    background: rgba(24, 24, 27, 0.7);
+    color: $lh-text-strong;
+    font-size: 12px;
+    font-weight: 700;
+    transition:
+      transform $lh-transition-base,
+      border-color $lh-transition-base,
+      background $lh-transition-base;
+
+    &:hover {
+      transform: translateY(-1px);
+      border-color: rgba(96, 165, 250, 0.52);
+      background: rgba(30, 41, 59, 0.88);
+    }
+
+    &.isPrimary {
+      border-color: rgba(59, 130, 246, 0.58);
+      background: rgba(30, 64, 175, 0.28);
+      color: #eff6ff;
+    }
+
+    &:disabled {
+      cursor: not-allowed;
+      opacity: 0.7;
+      transform: none;
+    }
+  }
+
+  &ProjectList {
+    @include lh-stack(10px);
+
+    min-height: 0;
+    overflow: auto;
+    padding-right: 2px;
+  }
+
+  &ProjectItem {
+    @include lh-stack(4px);
+
+    width: 100%;
+    align-items: flex-start;
+    padding: 11px 12px;
+    border: 1px solid rgba(63, 63, 70, 0.68);
+    border-radius: 14px;
+    background: rgba(15, 23, 42, 0.62);
+    color: $lh-text-primary;
+    text-align: left;
+    transition:
+      transform $lh-transition-base,
+      border-color $lh-transition-base,
+      background $lh-transition-base;
+
+    &:hover {
+      transform: translateY(-1px);
+      border-color: rgba(59, 130, 246, 0.48);
+      background: rgba(15, 23, 42, 0.82);
+    }
+
+    &.isActive {
+      border-color: rgba(16, 185, 129, 0.58);
+      background: linear-gradient(180deg, rgba(5, 150, 105, 0.18), rgba(15, 23, 42, 0.82));
+    }
+
+    &Name {
+      width: 100%;
+      color: inherit;
+      font-size: 13px;
+      font-weight: 700;
+      line-height: 1.45;
+      word-break: break-word;
+    }
+
+    &Meta {
+      @include lh-text($lh-text-muted, 11px, 1.5);
+    }
+  }
+
+  &StatusDock {
+    position: absolute;
+    left: 18px;
+    bottom: 18px;
+    z-index: 38;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    max-width: min(720px, calc(100vw - 160px));
+  }
+
+  &ProjectEntry,
+  &RunBadge,
+  &RunAction {
+    display: inline-flex;
+    align-items: center;
+    min-height: 36px;
+    border: 1px solid rgba(63, 63, 70, 0.82);
+    background: rgba(11, 15, 21, 0.92);
+    color: $lh-text-strong;
+    backdrop-filter: blur(16px);
+    box-shadow: 0 18px 36px rgba(0, 0, 0, 0.28);
+    transition:
+      transform $lh-transition-base,
+      border-color $lh-transition-base,
+      background $lh-transition-base,
+      color $lh-transition-base;
+  }
+
+  &ProjectEntry,
+  &RunBadge {
+    border-radius: $lh-radius-pill;
+    appearance: none;
+    cursor: pointer;
+
+    &:hover {
+      transform: translateY(-1px);
+      background: rgba(11, 15, 21, 0.98);
+    }
+  }
+
+  &ProjectEntry {
+    gap: 8px;
+    min-width: 0;
+    max-width: min(260px, calc(100vw - 120px));
+    padding: 0 12px;
+    font-size: 12px;
+    font-weight: 700;
+
+    &:hover {
+      border-color: rgba(96, 165, 250, 0.52);
+    }
+
+    &Label {
+      @include lh-ellipsis;
+
+      min-width: 0;
+    }
+  }
+
+  &RunBadge {
+    gap: 10px;
+    padding: 0 14px;
+    font-size: 12px;
+    font-weight: 600;
+
+    &:hover {
+      border-color: rgba(16, 185, 129, 0.5);
+    }
+
+    .isWarn {
+      color: #fca5a5;
+    }
+
+    .isMuted {
+      color: #fbbf24;
+    }
+  }
+
+  &RunAction {
+    padding: 0 12px;
+    border-radius: $lh-radius-pill;
+    font-size: 12px;
+    font-weight: 700;
+
+    &:hover {
+      transform: translateY(-1px);
+      background: rgba(11, 15, 21, 0.98);
+    }
+
+    &:disabled {
+      cursor: not-allowed;
+      opacity: 0.6;
+      transform: none;
+    }
+
+    &.isWarn {
+      color: $lh-text-danger;
+      border-color: rgba(248, 113, 113, 0.42);
+    }
+
+    &.isMuted {
+      color: $lh-text-warning;
+      border-color: rgba(251, 191, 36, 0.42);
+    }
+  }
+
+  &Tools {
+    @include lh-inline(6px, nowrap);
+
+    position: absolute;
+    top: 18px;
+    right: 18px;
+    z-index: 38;
+    padding: 6px;
+    border: 1px solid rgba(63, 63, 70, 0.82);
+    border-radius: 14px;
+    background: rgba(11, 15, 21, 0.92);
+    backdrop-filter: blur(14px);
+    box-shadow: 0 18px 36px rgba(0, 0, 0, 0.28);
+  }
+
+  &ToolButton {
+    width: 34px;
+    height: 34px;
+    border: 1px solid rgba(82, 82, 91, 0.72);
+    border-radius: 10px;
+    background: rgba(24, 24, 27, 0.72);
+    color: $lh-text-strong;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition:
+      transform $lh-transition-base,
+      border-color $lh-transition-base,
+      background $lh-transition-base;
+
+    &:hover {
+      transform: translateY(-1px);
+      border-color: rgba(16, 185, 129, 0.6);
+    }
+
+    &.isActive {
+      background: rgba(16, 185, 129, 0.16);
+      border-color: rgba(16, 185, 129, 0.78);
+      color: $lh-text-success;
+    }
+  }
+
+  &ToolDivider {
+    width: 1px;
+    align-self: stretch;
+    background: rgba(63, 63, 70, 0.82);
+    margin: 2px 2px;
+  }
+
+  &ZoomBadge {
+    min-width: 52px;
+    height: 34px;
+    padding: 0 10px;
+    border: 1px solid rgba(82, 82, 91, 0.72);
+    border-radius: 10px;
+    background: rgba(24, 24, 27, 0.72);
+    color: $lh-text-soft;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 700;
+  }
+
+  &MiniMap {
+    background: rgba(8, 12, 18, 0.9);
+    border: 1px solid rgba(63, 63, 70, 0.82);
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow: 0 18px 36px rgba(0, 0, 0, 0.28);
+
+    .react-flow__minimap-svg {
+      background: linear-gradient(180deg, rgba(10, 14, 19, 0.92), rgba(6, 10, 14, 0.98));
+    }
+  }
+}
+
+.linghuiPendingGroup {
+  &Frame {
+    position: absolute;
+    z-index: 34;
+    border: 1px dashed rgba(96, 165, 250, 0.9);
+    border-radius: 18px;
+    background: rgba(59, 130, 246, 0.08);
+    box-shadow: inset 0 0 0 1px rgba(147, 197, 253, 0.2);
+    pointer-events: none;
+  }
+
+  &Badge {
+    position: absolute;
+    top: -12px;
+    left: 12px;
+    padding: 4px 10px;
+    border-radius: $lh-radius-pill;
+    background: rgba(8, 47, 73, 0.94);
+    border: 1px solid rgba(56, 189, 248, 0.75);
+    color: #e0f2fe;
+    font-size: 11px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
+  &Actions {
+    @include lh-inline(8px, nowrap);
+
+    position: absolute;
+    z-index: 35;
+    padding: 6px;
+    border: 1px solid rgba(63, 63, 70, 0.84);
+    border-radius: 14px;
+    background: rgba(11, 15, 21, 0.94);
+    box-shadow: 0 16px 30px rgba(0, 0, 0, 0.32);
+    backdrop-filter: blur(18px);
+  }
+
+  &Action {
+    height: 32px;
+    padding: 0 14px;
+    border: 1px solid rgba(82, 82, 91, 0.72);
+    border-radius: 10px;
+    background: rgba(24, 24, 27, 0.76);
+    color: $lh-text-strong;
+    font-size: 12px;
+    font-weight: 600;
+    transition:
+      transform $lh-transition-base,
+      border-color $lh-transition-base,
+      background $lh-transition-base;
+
+    &:hover {
+      transform: translateY(-1px);
+      border-color: rgba(96, 165, 250, 0.56);
+    }
+
+    &.isPrimary {
+      border-color: rgba(56, 189, 248, 0.7);
+      background: rgba(8, 47, 73, 0.94);
+      color: #e0f2fe;
+    }
+  }
+}
+
+.linghuiQuickCreate {
+  position: absolute;
+  z-index: 44;
+  width: 304px;
+  max-height: min(72vh, 420px);
+  overflow: auto;
+  padding: 12px;
+  border: 1px solid rgba(63, 63, 70, 0.84);
+  border-radius: 18px;
+  background: rgba(11, 15, 21, 0.96);
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.34);
+  backdrop-filter: blur(18px);
+
+  &Header {
+    color: $lh-text-strong;
+    font-size: 14px;
+    font-weight: 700;
+    margin: 2px 4px 4px;
+  }
+
+  &Hint {
+    @include lh-text($lh-text-muted, 12px, 1.5);
+
+    margin: 0 4px 10px;
+  }
+
+  &Section + .linghuiQuickCreateSection {
+    margin-top: 12px;
+  }
+
+  &SectionTitle {
+    color: $lh-text-muted;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin: 0 4px 8px;
+  }
+
+  &Item {
+    @include lh-inline(10px, nowrap, flex-start);
+
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid transparent;
+    border-radius: 14px;
+    background: transparent;
+    color: $lh-text-strong;
+    text-align: left;
+    transition:
+      transform $lh-transition-base,
+      border-color $lh-transition-base,
+      background $lh-transition-base;
+
+    & + .linghuiQuickCreateItem {
+      margin-top: 6px;
+    }
+
+    &:hover {
+      transform: translateY(-1px);
+      background: rgba(24, 24, 27, 0.82);
+      border-color: rgba(56, 189, 248, 0.36);
+    }
+
+    &Body {
+      @include lh-stack(3px);
+
+      min-width: 0;
+      flex: 1;
+    }
+
+    &Label {
+      @include lh-text($lh-text-strong, 13px, 1.4, 700);
+    }
+
+    &Desc {
+      @include lh-text($lh-text-muted, 11px, 1.45);
+    }
+  }
+
+  &Empty {
+    padding: 10px 12px 4px;
+    color: $lh-text-muted;
+    font-size: 12px;
+    line-height: 1.5;
+  }
+}
+
+.linghuiContextMenu {
+  position: absolute;
+  z-index: 45;
+  width: 260px;
+  max-height: min(68vh, 560px);
+  overflow: auto;
+  padding: 10px;
+  border: 1px solid rgba(63, 63, 70, 0.84);
+  border-radius: 16px;
+  background: rgba(11, 15, 21, 0.96);
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.34);
+  backdrop-filter: blur(18px);
+
+  &Header {
+    color: #e4e4e7;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin: 2px 4px 8px;
+  }
+
+  &Section + .linghuiContextMenuSection {
+    margin-top: 10px;
+  }
+
+  &SectionTitle {
+    color: $lh-text-muted;
+    font-size: 11px;
+    margin: 0 4px 6px;
+  }
+
+  &Item {
+    @include lh-inline(8px, nowrap);
+
+    width: 100%;
+    padding: 9px 10px;
+    border: 1px solid transparent;
+    border-radius: 12px;
+    background: transparent;
+    color: $lh-text-strong;
+    text-align: left;
+    font-size: 13px;
+    transition:
+      background $lh-transition-base,
+      border-color $lh-transition-base,
+      transform $lh-transition-base,
+      opacity $lh-transition-base;
+
+    &:hover {
+      transform: translateY(-1px);
+      background: rgba(24, 24, 27, 0.82);
+      border-color: rgba(16, 185, 129, 0.4);
+    }
+
+    &.isDisabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+
+      &:hover {
+        transform: none;
+        background: transparent;
+        border-color: transparent;
+      }
+    }
+
+    &.isDanger {
+      color: $lh-text-danger;
+    }
+  }
+
+  &Dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex: 0 0 8px;
+  }
+
+  &Divider {
+    height: 1px;
+    margin: 10px 4px;
+    background: rgba(63, 63, 70, 0.72);
+  }
+
+  &Hint,
+  &Empty {
+    padding: 8px 10px;
+    color: $lh-text-muted;
+    font-size: 12px;
+    line-height: 1.5;
+  }
+
+  &Logs {
+    @include lh-stack(8px);
+
+    padding: 2px 4px 4px;
+  }
+
+  &LogItem {
+    display: grid;
+    grid-template-columns: 68px minmax(0, 1fr);
+    gap: 8px;
+    font-size: 12px;
+    color: $lh-text-soft;
+  }
+
+  &LogTime {
+    color: $lh-text-muted;
+  }
+
+  &LogMessage {
+    line-height: 1.45;
+  }
+}
+
+.linghuiFloatingPanel {
+  position: absolute;
+  pointer-events: auto;
+  z-index: 30;
+  width: 320px;
+  max-width: calc(100% - 24px);
+  border: 1px solid rgba(63, 63, 70, 0.78);
+  border-radius: 18px;
+  background: rgba(11, 15, 21, 0.88);
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.32);
+  backdrop-filter: blur(18px);
+  overflow: hidden;
+
+  &Header {
+    @include lh-inline(12px, nowrap, flex-start, space-between);
+
+    padding: 14px 16px;
+    border-bottom: 1px solid rgba(63, 63, 70, 0.58);
+    background: linear-gradient(180deg, rgba(22, 28, 36, 0.95), rgba(13, 17, 23, 0.92));
+  }
+
+  &Body {
+    max-height: 46vh;
+    overflow: auto;
+    padding: 14px 16px 16px;
+  }
+
+  &.isCollapsed {
+    .linghuiFloatingPanelBody {
+      display: none;
+    }
+  }
+}
+
+.linghuiWorkspacePanel {
+  top: 14px;
+  right: 14px;
+}
+
+.linghuiLogsPanel {
+  right: 14px;
+  bottom: 14px;
+}
+
+.linghuiFloatingToggle {
+  border: 1px solid rgba(82, 82, 91, 0.85);
+  border-radius: $lh-radius-pill;
+  background: rgba(24, 24, 27, 0.75);
+  color: #e4e4e7;
+  font-size: 12px;
+  padding: 4px 10px;
+  transition:
+    border-color $lh-transition-base,
+    transform $lh-transition-base;
+
+  &:hover {
+    border-color: rgba(16, 185, 129, 0.68);
+    transform: translateY(-1px);
+  }
+}
+
+@media (max-width: 900px) {
+  .linghuiCanvas {
+    &LeftRail {
+      top: 18px;
+      left: 18px;
+      transform: none;
+    }
+
+    &RailShell {
+      flex-direction: column;
+      gap: 10px;
+
+      &:hover,
+      &.isProjectPanelOpen {
+        .linghuiCanvasRailGroup {
+          width: auto;
+        }
+
+        .linghuiCanvasRailButton {
+          width: 124px;
+          justify-content: flex-start;
+        }
+      }
+    }
+
+    &RailGroup {
+      flex-direction: row;
+      width: auto;
+      max-width: calc(100vw - 36px);
+    }
+
+    &RailButton {
+      width: 40px;
+      min-width: 40px;
+      padding: 0 11px;
+      justify-content: center;
+    }
+
+    &ProjectPanel {
+      width: min(320px, calc(100vw - 36px));
+      max-height: min(52vh, 460px);
+    }
+
+    &StatusDock {
+      left: 18px;
+      right: 18px;
+      bottom: 18px;
+      max-width: none;
+    }
+  }
+}

@@ -752,16 +752,17 @@ export const LinghuiPromptEditor: React.FC<LinghuiPromptEditorProps> = ({
           height: minHeight,
           maxHeight,
           overflow: 'visible',
-          border: isFusionSurface
-            ? (darkTheme ? '1px solid rgba(148, 163, 184, 0.16)' : '1px solid rgba(148, 163, 184, 0.22)')
-            : (darkTheme ? '1px solid #3f3f46' : '1px solid #d4d4d8'),
-          borderRadius: isFusionSurface ? '16px' : '10px',
+          border: 'none',
+          borderRadius: isFusionSurface ? '16px' : '14px',
           fontFamily: 'system-ui, -apple-system, sans-serif',
           fontSize: '13px',
           lineHeight: '1.6',
           backgroundColor: isFusionSurface
-            ? (darkTheme ? 'rgba(255, 255, 255, 0.03)' : 'rgba(255, 255, 255, 0.92)')
-            : (darkTheme ? '#111827' : '#ffffff'),
+            ? 'transparent'
+            : (darkTheme ? 'rgba(255, 255, 255, 0.03)' : 'rgba(255, 255, 255, 0.92)'),
+          boxShadow: darkTheme
+            ? 'inset 0 0 0 1px rgba(148, 163, 184, 0.10)'
+            : 'inset 0 0 0 1px rgba(148, 163, 184, 0.16)',
         },
         '.cm-scroller': {
           overflow: 'auto',
@@ -778,12 +779,9 @@ export const LinghuiPromptEditor: React.FC<LinghuiPromptEditorProps> = ({
         },
         '&.cm-focused': {
           outline: 'none',
-          borderColor: isFusionSurface
-            ? (darkTheme ? 'rgba(52, 211, 153, 0.42)' : 'rgba(37, 99, 235, 0.42)')
-            : (darkTheme ? '#10b981' : '#2563eb'),
           boxShadow: darkTheme
-            ? (isFusionSurface ? '0 0 0 1px rgba(16, 185, 129, 0.14)' : '0 0 0 2px rgba(16, 185, 129, 0.18)')
-            : (isFusionSurface ? '0 0 0 1px rgba(37, 99, 235, 0.14)' : '0 0 0 2px rgba(37, 99, 235, 0.18)'),
+            ? 'inset 0 0 0 1px rgba(52, 211, 153, 0.28), 0 0 0 3px rgba(16, 185, 129, 0.10)'
+            : 'inset 0 0 0 1px rgba(37, 99, 235, 0.24), 0 0 0 3px rgba(37, 99, 235, 0.10)',
         },
         '.cm-activeLine': {
           backgroundColor: 'transparent',

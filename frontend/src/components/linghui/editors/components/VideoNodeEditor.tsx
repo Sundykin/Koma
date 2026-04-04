@@ -7,7 +7,10 @@ import type {
   LinghuiVideoNodeProperties,
   LinghuiVideoToolKey,
 } from '../../../../types/linghui';
+import { getLinghuiResultPrimaryMedia } from '../../../../types/linghui';
 import { loadSettings } from '../../../../store/settings/core';
+import { toFileSystemDisplayUrl } from '../../../../services/fileSystemPort';
+import { electronService } from '../../../../services/electronService';
 import {
   getDefaultMediaSelection,
   listConfiguredModelSelectOptions,
@@ -22,14 +25,17 @@ import {
 } from './VideoNodeEditorPanels';
 import {
   VIDEO_TOOL_PRESETS,
+  formatVideoParameterSummary,
+  getVideoFileExtensionFromSource,
   type ProviderOption,
   mergePromptSnippet,
+  sanitizeFileSegment,
+  writeVideoSourceToPath,
 } from '../state/videoNodeEditorShared';
 import {
   getVideoCapabilityDescriptor,
   listVideoCapabilities,
   resolveSupportedVideoCapability,
-  type LinghuiVisualReferenceRole,
 } from '../state/videoCapabilityUtils';
 
 interface VideoNodeEditorProps {
@@ -49,7 +55,7 @@ interface VideoNodeEditorProps {
 export const VideoNodeEditor: React.FC<VideoNodeEditorProps> = ({
   nodeId,
   nodeData,
-  nodeRun: _nodeRun,
+  nodeRun,
   referenceImages,
   referenceVideos,
   referenceAudios,
@@ -71,6 +77,11 @@ export const VideoNodeEditor: React.FC<VideoNodeEditorProps> = ({
   const duration = Number(props.duration ?? 5);
   const isPassThroughNode = Boolean(source);
   const passThroughPosterSource = String(props.posterSource ?? '').trim();
+  const primaryVideo = getLinghuiResultPrimaryMedia(nodeRun?.result);
+  const currentVideoSource = String(primaryVideo?.source ?? source ?? '').trim();
+  const currentVideoMimeType = String(primaryVideo?.mimeType ?? '').trim();
+  const currentVideoLabel = String(primaryVideo?.label ?? nodeData.label ?? 'video').trim() || 'video';
+  const hasCurrentVideo = Boolean(currentVideoSource);
 
   const [providers, setProviders] = useState<ProviderOption[]>([]);
   const [fallbackSelectionKey, setFallbackSelectionKey] = useState('');
@@ -97,48 +108,6 @@ export const VideoNodeEditor: React.FC<VideoNodeEditorProps> = ({
     () => getVideoCapabilityDescriptor(videoCapability),
     [videoCapability],
   );
-
-  const visualReferenceRoles = useMemo(() => {
-    const sequence = [
-      ...referenceImages.map(ref => ({ key: `image:${ref.source || ref.label || ''}` })),
-      ...referenceVideos.map(ref => ({ key: `video:${ref.posterSource || ref.source || ref.label || ''}` })),
-    ].filter(item => item.key.split(':')[1]);
-    const roleMap = new Map<string, LinghuiVisualReferenceRole>();
-
-    sequence.forEach(item => {
-      roleMap.set(item.key, 'reference');
-    });
-
-    if (!sequence.length) {
-      return roleMap;
-    }
-
-    if (videoCapability === 'video.text-to-video') {
-      sequence.forEach(item => {
-        roleMap.set(item.key, 'prompt-only');
-      });
-      return roleMap;
-    }
-
-    if (videoCapability === 'video.image-to-video') {
-      roleMap.set(sequence[0].key, 'primary');
-      return roleMap;
-    }
-
-    if (videoCapability === 'video.start-end-to-video') {
-      sequence.forEach(item => {
-        roleMap.set(item.key, 'unused');
-      });
-      roleMap.set(sequence[0].key, 'start');
-      roleMap.set(sequence[sequence.length - 1].key, sequence.length === 1 ? 'start' : 'end');
-    }
-
-    return roleMap;
-  }, [videoCapability, referenceImages, referenceVideos]);
-
-  const mentionHint = promptReferences.length > 0
-    ? `输入 @ 可直接引用上游图片、视频封面、音频描述和文本产物。${capabilityDescriptor.inputHint}`
-    : `连接图片、文本、音频或上游视频节点后，可在提示词中通过 @ 引用。${capabilityDescriptor.inputHint}`;
 
   useEffect(() => {
     loadSettings().then(settings => {
@@ -187,10 +156,10 @@ export const VideoNodeEditor: React.FC<VideoNodeEditorProps> = ({
   ]);
 
   useEffect(() => {
-    if (isPassThroughNode && activeTool) {
+    if ((isPassThroughNode || !hasCurrentVideo) && activeTool) {
       onToolChange(null);
     }
-  }, [activeTool, isPassThroughNode, onToolChange]);
+  }, [activeTool, hasCurrentVideo, isPassThroughNode, onToolChange]);
 
   const updateProp = useCallback((key: string, value: unknown) => {
     updateNodeData(nodeId, prev => ({
@@ -258,6 +227,48 @@ export const VideoNodeEditor: React.FC<VideoNodeEditorProps> = ({
     videoCapability,
   ]);
 
+  const handleDownloadCurrentVideo = useCallback(async () => {
+    if (!currentVideoSource) {
+      message.info('当前还没有可下载的视频');
+      return;
+    }
+
+    const extension = getVideoFileExtensionFromSource(currentVideoSource, currentVideoMimeType);
+    const filename = `${sanitizeFileSegment(currentVideoLabel || nodeData.label || 'video', 'video')}.${extension}`;
+
+    try {
+      if (!electronService.isElectron()) {
+        const anchor = document.createElement('a');
+        anchor.href = toFileSystemDisplayUrl(currentVideoSource) || currentVideoSource;
+        anchor.download = filename;
+        anchor.click();
+        message.success('视频已开始下载');
+        return;
+      }
+
+      const result = await electronService.dialog.saveFile({
+        title: '保存视频',
+        defaultPath: filename,
+        filters: [{ name: '视频', extensions: [extension] }],
+      });
+
+      if (!result.filePath) {
+        return;
+      }
+
+      await writeVideoSourceToPath(currentVideoSource, result.filePath);
+      message.success('视频已保存');
+    } catch (error: any) {
+      message.error(error?.message || '下载视频失败');
+    }
+  }, [
+    currentVideoLabel,
+    currentVideoMimeType,
+    currentVideoSource,
+    message,
+    nodeData.label,
+  ]);
+
   const activeToolPresets = activeTool
     ? VIDEO_TOOL_PRESETS[activeTool].buildPresets({
         imageCount: referenceImages.length,
@@ -273,12 +284,16 @@ export const VideoNodeEditor: React.FC<VideoNodeEditorProps> = ({
         <div>
           <div className="linghuiEditorTitle">视频节点</div>
           <div className="linghuiEditorSubtitle">
-            {isPassThroughNode ? '透传输出' : capabilityDescriptor.label}
+            {isPassThroughNode
+              ? '透传输出'
+              : hasCurrentVideo
+                ? `当前输出 · ${formatVideoParameterSummary({ aspectRatio, resolution, duration })}`
+                : capabilityDescriptor.label}
           </div>
         </div>
       </div>
 
-      {!isPassThroughNode && (
+      {!isPassThroughNode && hasCurrentVideo && (
         <VideoToolSection
           activeTool={activeTool}
           onClose={() => onToolChange(null)}
@@ -291,6 +306,7 @@ export const VideoNodeEditor: React.FC<VideoNodeEditorProps> = ({
         <VideoPassThroughPanel
           source={source}
           posterSource={passThroughPosterSource}
+          onDownload={handleDownloadCurrentVideo}
         />
       ) : (
         <VideoGeneratePanel
@@ -301,16 +317,16 @@ export const VideoNodeEditor: React.FC<VideoNodeEditorProps> = ({
           referenceImages={referenceImages}
           referenceVideos={referenceVideos}
           referenceAudios={referenceAudios}
-          visualReferenceRoles={visualReferenceRoles}
           prompt={prompt}
           onPromptChange={handlePromptChange}
           promptReferences={promptReferences}
-          mentionHint={mentionHint}
           providers={providers}
           selectedProviderValue={resolvedSelectionKey}
           aspectRatio={aspectRatio}
           resolution={resolution}
           duration={duration}
+          hasCurrentVideo={hasCurrentVideo}
+          onDownloadCurrentVideo={handleDownloadCurrentVideo}
           onUpdateProvider={handleProviderChange}
           onUpdateAspectRatio={value => updateProp('aspectRatio', value)}
           onUpdateResolution={value => updateProp('resolution', value)}
