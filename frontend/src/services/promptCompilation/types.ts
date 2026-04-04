@@ -5,6 +5,8 @@ export type PromptCompilationProtocol = 'grok-image-index';
 
 export interface PromptCompilationAsset {
   type: MentionType;
+  name?: string;
+  textValue?: string;
   /**
    * Asset primary ID (project internal).
    * Example: "char_1774162760773_0"
@@ -42,6 +44,10 @@ export interface PromptCompilationInput {
    * The order is the source of truth for @Image N index mapping in grok protocol.
    */
   selectedAssets?: PromptCompilationAsset[];
+  /**
+   * Optional leading visual reference that should occupy @Image 1 for reference-to-video compilation.
+   */
+  primaryReferenceSource?: MediaAssetSource | ProviderAssetInput;
   promptReferences?: PromptReferenceCompilationInput;
 }
 

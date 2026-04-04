@@ -1,16 +1,47 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const safeFetchMock = vi.fn();
+const nativeFetchMock = vi.fn();
 
 vi.mock('../../utils/safeFetch', () => ({
   safeFetch: (url: string, init?: RequestInit) => safeFetchMock(url, init),
 }));
 
+vi.stubGlobal('fetch', nativeFetchMock);
+
 import { SeedanceProvider } from './SeedanceProvider';
+
+function mockSeedanceUploadFlow(params: {
+  uploads: Record<string, { url: string; mimeType: string; size: number; id?: string }>;
+  generation: Record<string, unknown>;
+}) {
+  safeFetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
+    if (url === 'https://toapis.example.com/v1/uploads/images') {
+      const formData = init?.body as FormData;
+      const file = formData.get('file') as File | null;
+      const upload = file ? params.uploads[file.name] : undefined;
+      if (!file || !upload) {
+        throw new Error(`Unexpected Seedance upload file: ${file?.name || 'unknown'}`);
+      }
+      return new Response(JSON.stringify({
+        success: true,
+        data: {
+          id: upload.id || file.name,
+          url: upload.url,
+          mime_type: upload.mimeType,
+          size: upload.size,
+        },
+      }), { status: 200 });
+    }
+
+    return new Response(JSON.stringify(params.generation), { status: 200 });
+  });
+}
 
 describe('SeedanceProvider', () => {
   beforeEach(() => {
     safeFetchMock.mockReset();
+    nativeFetchMock.mockReset();
   });
 
   it('submits text-to-video requests to /v1/videos/generations', async () => {
@@ -38,8 +69,22 @@ describe('SeedanceProvider', () => {
     expect(body.image_with_roles).toBeUndefined();
   });
 
-  it('maps single image-to-video requests to first_frame mode', async () => {
-    safeFetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ id: 'task-seedance-image' }), { status: 200 }));
+  it('uploads remote primary image before submitting first_frame mode', async () => {
+    nativeFetchMock.mockResolvedValueOnce(new Response('primary-image-binary', {
+      status: 200,
+      headers: { 'Content-Type': 'image/png' },
+    }));
+    safeFetchMock
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        success: true,
+        data: {
+          id: 'upload-primary',
+          url: 'https://toapis.example.com/uploads/primary.png',
+          mime_type: 'image/png',
+          size: 20,
+        },
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: 'task-seedance-image' }), { status: 200 }));
 
     const provider = new SeedanceProvider({
       provider: 'seedance',
@@ -55,15 +100,42 @@ describe('SeedanceProvider', () => {
       options: { duration: 5, aspectRatio: 'adaptive', resolution: '480p' },
     } as any);
 
-    const body = JSON.parse((safeFetchMock.mock.calls[0][1] as RequestInit).body as string);
+    expect(nativeFetchMock).toHaveBeenCalledWith('https://cdn.example.com/primary.png', { method: 'GET' });
+    expect(safeFetchMock.mock.calls[0][0]).toBe('https://toapis.example.com/v1/uploads/images');
+    const body = JSON.parse((safeFetchMock.mock.calls[1][1] as RequestInit).body as string);
     expect(body.image_with_roles).toEqual([
-      { url: 'https://cdn.example.com/primary.png', role: 'first_frame' },
+      { url: 'https://toapis.example.com/uploads/primary.png', role: 'first_frame' },
     ]);
     expect(body.metadata).toEqual({ resolution: '480p' });
   });
 
   it('maps multi-reference image-to-video requests to reference_image mode', async () => {
-    safeFetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ id: 'task-seedance-reference' }), { status: 200 }));
+    nativeFetchMock
+      .mockResolvedValueOnce(new Response('primary-image-binary', {
+        status: 200,
+        headers: { 'Content-Type': 'image/png' },
+      }))
+      .mockResolvedValueOnce(new Response('ref-image-binary', {
+        status: 200,
+        headers: { 'Content-Type': 'image/png' },
+      }));
+    mockSeedanceUploadFlow({
+      uploads: {
+        'primary.png': {
+          url: 'https://toapis.example.com/uploads/primary.png',
+          mimeType: 'image/png',
+          size: 20,
+          id: 'upload-primary',
+        },
+        'ref-1.png': {
+          url: 'https://toapis.example.com/uploads/ref-1.png',
+          mimeType: 'image/png',
+          size: 18,
+          id: 'upload-ref-1',
+        },
+      },
+      generation: { id: 'task-seedance-reference' },
+    });
 
     const provider = new SeedanceProvider({
       provider: 'seedance',
@@ -82,10 +154,10 @@ describe('SeedanceProvider', () => {
       options: { duration: 5, aspectRatio: '9:16', resolution: '1280x720' },
     } as any);
 
-    const body = JSON.parse((safeFetchMock.mock.calls[0][1] as RequestInit).body as string);
+    const body = JSON.parse((safeFetchMock.mock.calls[2][1] as RequestInit).body as string);
     expect(body.image_with_roles).toEqual([
-      { url: 'https://cdn.example.com/primary.png', role: 'reference_image' },
-      { url: 'https://cdn.example.com/ref-1.png', role: 'reference_image' },
+      { url: 'https://toapis.example.com/uploads/primary.png', role: 'reference_image' },
+      { url: 'https://toapis.example.com/uploads/ref-1.png', role: 'reference_image' },
     ]);
     expect(body.metadata).toEqual({ resolution: '720p' });
   });
@@ -108,26 +180,23 @@ describe('SeedanceProvider', () => {
   });
 
   it('uploads data-url reference images through /v1/uploads/images before generation', async () => {
-    safeFetchMock
-      .mockResolvedValueOnce(new Response(JSON.stringify({
-        success: true,
-        data: {
-          id: 'upload-a',
+    mockSeedanceUploadFlow({
+      uploads: {
+        'seedance-upload-1.png': {
           url: 'https://toapis.example.com/uploads/ref-a.webp',
-          mime_type: 'image/webp',
+          mimeType: 'image/webp',
           size: 12,
+          id: 'upload-a',
         },
-      }), { status: 200 }))
-      .mockResolvedValueOnce(new Response(JSON.stringify({
-        success: true,
-        data: {
-          id: 'upload-b',
+        'seedance-upload-2.png': {
           url: 'https://toapis.example.com/uploads/ref-b.webp',
-          mime_type: 'image/webp',
+          mimeType: 'image/webp',
           size: 13,
+          id: 'upload-b',
         },
-      }), { status: 200 }))
-      .mockResolvedValueOnce(new Response(JSON.stringify({ id: 'task-seedance-uploaded-reference' }), { status: 200 }));
+      },
+      generation: { id: 'task-seedance-uploaded-reference' },
+    });
 
     const provider = new SeedanceProvider({
       provider: 'seedance',
@@ -164,8 +233,86 @@ describe('SeedanceProvider', () => {
     ]);
   });
 
-  it('maps reference-to-video requests to reference_image mode with remote URLs', async () => {
-    safeFetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ id: 'task-seedance-reference' }), { status: 200 }));
+  it('uploads remote primary image and local refs through seedance upload endpoint while preserving order', async () => {
+    nativeFetchMock.mockResolvedValueOnce(new Response('primary-image-binary', {
+      status: 200,
+      headers: { 'Content-Type': 'image/webp' },
+    }));
+    mockSeedanceUploadFlow({
+      uploads: {
+        'primary.webp': {
+          url: 'https://toapis.example.com/uploads/primary.webp',
+          mimeType: 'image/webp',
+          size: 21,
+          id: 'upload-primary',
+        },
+        'seedance-upload-2.png': {
+          url: 'https://toapis.example.com/uploads/scene.webp',
+          mimeType: 'image/webp',
+          size: 13,
+          id: 'upload-scene',
+        },
+      },
+      generation: { id: 'task-seedance-mixed-reference' },
+    });
+
+    const provider = new SeedanceProvider({
+      provider: 'seedance',
+      baseUrl: 'https://toapis.example.com',
+      apiKey: 'secret',
+      modelName: 'seedance-2.0',
+    } as any);
+
+    await provider.start({
+      capability: 'video.reference-to-video',
+      prompt: '主图在前，附加参考图继续保持一致性',
+      referenceImages: [
+        { transport: 'remote-url', value: 'https://cdn.example.com/primary.webp' },
+        { transport: 'data-url', value: 'data:image/png;base64,AA==' },
+      ],
+      options: { duration: 5, aspectRatio: '16:9', resolution: '720p' },
+    } as any);
+
+    expect(nativeFetchMock).toHaveBeenCalledWith('https://cdn.example.com/primary.webp', { method: 'GET' });
+    expect(safeFetchMock.mock.calls).toHaveLength(3);
+    expect(safeFetchMock.mock.calls[0][0]).toBe('https://toapis.example.com/v1/uploads/images');
+    expect(safeFetchMock.mock.calls[1][0]).toBe('https://toapis.example.com/v1/uploads/images');
+    expect(safeFetchMock.mock.calls[2][0]).toBe('https://toapis.example.com/v1/videos/generations');
+
+    const body = JSON.parse((safeFetchMock.mock.calls[2][1] as RequestInit).body as string);
+    expect(body.image_with_roles).toEqual([
+      { url: 'https://toapis.example.com/uploads/primary.webp', role: 'reference_image' },
+      { url: 'https://toapis.example.com/uploads/scene.webp', role: 'reference_image' },
+    ]);
+  });
+
+  it('maps reference-to-video requests to reference_image mode after uploading remote URLs', async () => {
+    nativeFetchMock
+      .mockResolvedValueOnce(new Response('ref-a-binary', {
+        status: 200,
+        headers: { 'Content-Type': 'image/png' },
+      }))
+      .mockResolvedValueOnce(new Response('ref-b-binary', {
+        status: 200,
+        headers: { 'Content-Type': 'image/jpeg' },
+      }));
+    mockSeedanceUploadFlow({
+      uploads: {
+        'ref-a.png': {
+          url: 'https://toapis.example.com/uploads/ref-a.png',
+          mimeType: 'image/png',
+          size: 12,
+          id: 'upload-ref-a',
+        },
+        'ref-b.jpg': {
+          url: 'https://toapis.example.com/uploads/ref-b.jpg',
+          mimeType: 'image/jpeg',
+          size: 13,
+          id: 'upload-ref-b',
+        },
+      },
+      generation: { id: 'task-seedance-reference' },
+    });
 
     const provider = new SeedanceProvider({
       provider: 'seedance',
@@ -184,15 +331,40 @@ describe('SeedanceProvider', () => {
       options: { duration: 5, aspectRatio: '16:9', resolution: '720p' },
     } as any);
 
-    const body = JSON.parse((safeFetchMock.mock.calls[0][1] as RequestInit).body as string);
+    const body = JSON.parse((safeFetchMock.mock.calls[2][1] as RequestInit).body as string);
     expect(body.image_with_roles).toEqual([
-      { url: 'https://cdn.example.com/ref-a.png', role: 'reference_image' },
-      { url: 'https://cdn.example.com/ref-b.jpg', role: 'reference_image' },
+      { url: 'https://toapis.example.com/uploads/ref-a.png', role: 'reference_image' },
+      { url: 'https://toapis.example.com/uploads/ref-b.jpg', role: 'reference_image' },
     ]);
   });
 
   it('maps start-end-to-video requests to first_frame and last_frame roles', async () => {
-    safeFetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ id: 'task-seedance-start-end' }), { status: 200 }));
+    nativeFetchMock
+      .mockResolvedValueOnce(new Response('start-frame-binary', {
+        status: 200,
+        headers: { 'Content-Type': 'image/png' },
+      }))
+      .mockResolvedValueOnce(new Response('end-frame-binary', {
+        status: 200,
+        headers: { 'Content-Type': 'image/png' },
+      }));
+    mockSeedanceUploadFlow({
+      uploads: {
+        'start.png': {
+          url: 'https://toapis.example.com/uploads/start.png',
+          mimeType: 'image/png',
+          size: 14,
+          id: 'upload-start',
+        },
+        'end.png': {
+          url: 'https://toapis.example.com/uploads/end.png',
+          mimeType: 'image/png',
+          size: 15,
+          id: 'upload-end',
+        },
+      },
+      generation: { id: 'task-seedance-start-end' },
+    });
 
     const provider = new SeedanceProvider({
       provider: 'seedance',
@@ -209,12 +381,12 @@ describe('SeedanceProvider', () => {
       options: { duration: 20, aspectRatio: '3:4', resolution: '1080p' },
     } as any);
 
-    const body = JSON.parse((safeFetchMock.mock.calls[0][1] as RequestInit).body as string);
+    const body = JSON.parse((safeFetchMock.mock.calls[2][1] as RequestInit).body as string);
     expect(body.duration).toBe(12);
     expect(body.metadata).toEqual({ resolution: '720p' });
     expect(body.image_with_roles).toEqual([
-      { url: 'https://cdn.example.com/start.png', role: 'first_frame' },
-      { url: 'https://cdn.example.com/end.png', role: 'last_frame' },
+      { url: 'https://toapis.example.com/uploads/start.png', role: 'first_frame' },
+      { url: 'https://toapis.example.com/uploads/end.png', role: 'last_frame' },
     ]);
   });
 
@@ -321,13 +493,23 @@ describe('SeedanceProvider', () => {
   });
 
   it('surfaces actionable model route errors from upstream', async () => {
-    safeFetchMock.mockResolvedValueOnce(new Response(JSON.stringify({
-      error: {
-        code: 'model_not_found',
-        message: '模型 seedance-2.0 未配置渠道能力（ChannelCapability），请联系管理员配置 SKU 路由',
-        type: 'new_api_error',
-      },
-    }), { status: 503 }));
+    safeFetchMock
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        success: true,
+        data: {
+          id: 'upload-ref-a',
+          url: 'https://toapis.example.com/uploads/ref-a.png',
+          mime_type: 'image/png',
+          size: 12,
+        },
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        error: {
+          code: 'model_not_found',
+          message: '模型 seedance-2.0 未配置渠道能力（ChannelCapability），请联系管理员配置 SKU 路由',
+          type: 'new_api_error',
+        },
+      }), { status: 503 }));
 
     const provider = new SeedanceProvider({
       provider: 'seedance',
@@ -340,7 +522,7 @@ describe('SeedanceProvider', () => {
       capability: 'video.reference-to-video',
       prompt: '保持人物一致性并生成自然镜头运动',
       referenceImages: [
-        { transport: 'remote-url', value: 'https://cdn.example.com/ref-a.png' },
+        { transport: 'data-url', value: 'data:image/png;base64,AA==' },
       ],
       options: { duration: 5, aspectRatio: '16:9', resolution: '720p' },
     } as any)).rejects.toThrow(
@@ -349,11 +531,21 @@ describe('SeedanceProvider', () => {
   });
 
   it('surfaces invalid image_url errors from upstream', async () => {
-    safeFetchMock.mockResolvedValueOnce(new Response(JSON.stringify({
-      code: 'fail_to_fetch_task',
-      message: '{"error":{"message":"invalid image_url","type":"BadRequest"}}',
-      data: null,
-    }), { status: 400 }));
+    safeFetchMock
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        success: true,
+        data: {
+          id: 'upload-ref-a',
+          url: 'https://toapis.example.com/uploads/ref-a.png',
+          mime_type: 'image/png',
+          size: 12,
+        },
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        code: 'fail_to_fetch_task',
+        message: '{"error":{"message":"invalid image_url","type":"BadRequest"}}',
+        data: null,
+      }), { status: 400 }));
 
     const provider = new SeedanceProvider({
       provider: 'seedance',
@@ -366,7 +558,7 @@ describe('SeedanceProvider', () => {
       capability: 'video.reference-to-video',
       prompt: '保持人物一致性并生成自然镜头运动',
       referenceImages: [
-        { transport: 'remote-url', value: 'https://cdn.example.com/ref-a.png' },
+        { transport: 'data-url', value: 'data:image/png;base64,AA==' },
       ],
       options: { duration: 5, aspectRatio: '16:9', resolution: '720p' },
     } as any)).rejects.toThrow(

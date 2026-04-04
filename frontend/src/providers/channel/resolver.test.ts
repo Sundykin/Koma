@@ -6,6 +6,7 @@ import {
   listCapabilityFallbackCandidates,
   listConfiguredModelSelectOptions,
   resolveConfiguredChannelModel,
+  resolveConfiguredChannelModelWithCapabilityFallback,
 } from './resolver';
 
 function createSettings(): AppSettings {
@@ -131,6 +132,20 @@ describe('channel resolver', () => {
     expect(resolved?.definition.id).toBe('vidu');
     expect(resolved?.model.id).toBe('vidu-model-a');
     expect(resolved?.model.capabilities).toContain('video.reference-to-video');
+  });
+
+  it('能力回退解析会保留兼容模型的实际选择键', () => {
+    const resolved = resolveConfiguredChannelModelWithCapabilityFallback(
+      createSettings(),
+      'itv',
+      { channelId: 'runway-main', modelId: 'runway-model-a' },
+      'video.reference-to-video',
+    );
+
+    expect(resolved.usedFallback).toBe(true);
+    expect(resolved.effectiveSelectionKey).toBe('vidu-main::vidu-model-a');
+    expect(resolved.context?.channelConfig.id).toBe('vidu-main');
+    expect(resolved.context?.model.id).toBe('vidu-model-a');
   });
 
   it('当选择的模型 ID 已失效时，会优先回退到渠道默认模型而不是列表首项', () => {

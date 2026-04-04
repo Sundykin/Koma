@@ -31,6 +31,9 @@ export interface ShotVideoPlan {
   shot: Shot;
   selectedImageAsset?: StoredMediaAsset;
   selectedImageSource?: string;
+  primaryImageInput?: MediaAssetSource;
+  primaryImageSource?: string;
+  visualReferenceInputs: MediaAssetSource[];
   additionalReferenceImages: MediaAssetSource[];
   selectedAssetsForCompilation: PromptCompilationAsset[];
   capability: VideoGenerationCapability;
@@ -38,10 +41,31 @@ export interface ShotVideoPlan {
 }
 
 export interface ShotVideoCapabilitySupport {
+  requestedCapability: VideoGenerationCapability;
   capability: VideoGenerationCapability;
   capabilityLabel: string;
   resolvedContext?: ResolvedChannelModelContext;
+  effectiveSelectionKey?: string;
   disabledReason?: string;
+}
+
+function getVideoThumbnailSource(asset?: StoredMediaAsset): string | undefined {
+  if (!asset || asset.kind !== 'video') return undefined;
+  const thumbnailPath = typeof asset.metadata?.thumbnailPath === 'string'
+    ? asset.metadata.thumbnailPath.trim()
+    : '';
+  return thumbnailPath || undefined;
+}
+
+function getVisualReferenceSource(source?: MediaAssetSource): string | undefined {
+  if (!source) return undefined;
+  if (typeof source === 'string') {
+    return source.trim() || undefined;
+  }
+  if (source.kind === 'video') {
+    return getVideoThumbnailSource(source);
+  }
+  return getMediaAssetDisplaySource(source)?.trim() || undefined;
 }
 
 function pushUniqueSource(
@@ -50,9 +74,7 @@ function pushUniqueSource(
   source?: MediaAssetSource,
   excludeKey?: string,
 ) {
-  const normalized = typeof source === 'string'
-    ? source.trim()
-    : getMediaAssetDisplaySource(source)?.trim();
+  const normalized = getVisualReferenceSource(source);
   if (!normalized || normalized === excludeKey || dedupe.has(normalized)) {
     return;
   }
@@ -70,25 +92,44 @@ export function collectShotVideoPlan(params: {
   const normalizedShot = normalizeShotMediaState(params.shot);
   const selectedImageIndex = normalizedShot.media?.currentImageIndex ?? 0;
   const selectedImageAsset = normalizedShot.media?.images?.[selectedImageIndex];
-  const selectedImageSource = getMediaAssetDisplaySource(selectedImageAsset);
+  const selectedImageSource = getVisualReferenceSource(selectedImageAsset);
+  const selectedReferenceIndex = normalizedShot.media?.selectedReferenceIndex ?? 0;
+  const selectedReferenceAsset = normalizedShot.media?.references?.[selectedReferenceIndex];
+  const selectedReferenceSource = getVisualReferenceSource(selectedReferenceAsset);
+  const currentVideoIndex = normalizedShot.media?.currentVideoIndex ?? 0;
+  const currentVideoAsset = normalizedShot.media?.videos?.[currentVideoIndex];
+  const currentVideoPosterSource = getVisualReferenceSource(currentVideoAsset);
 
   const {
-    displaySourceUrls: assetReferenceSources,
     compilationAssets,
   } = buildShotAssetReferences(normalizedShot, params.characters, params.scenes, params.props);
 
   const additionalReferenceImages: MediaAssetSource[] = [];
   const dedupe = new Set<string>();
+  const primaryImageInput = selectedImageAsset
+    || selectedReferenceAsset
+    || currentVideoPosterSource;
+  const primaryImageSource = getVisualReferenceSource(primaryImageInput);
 
-  assetReferenceSources.forEach(source => {
-    pushUniqueSource(additionalReferenceImages, dedupe, source, selectedImageSource);
+  (normalizedShot.media?.references || []).forEach((reference, index) => {
+    if (index === selectedReferenceIndex && primaryImageSource === selectedReferenceSource) {
+      return;
+    }
+    pushUniqueSource(additionalReferenceImages, dedupe, reference, primaryImageSource);
   });
 
-  (normalizedShot.media?.references || []).forEach(reference => {
-    pushUniqueSource(additionalReferenceImages, dedupe, reference, selectedImageSource);
+  (normalizedShot.media?.videos || []).forEach((video, index) => {
+    if (index === currentVideoIndex && primaryImageSource === currentVideoPosterSource) {
+      return;
+    }
+    pushUniqueSource(additionalReferenceImages, dedupe, getVideoThumbnailSource(video), primaryImageSource);
   });
 
-  const capability: VideoGenerationCapability = selectedImageAsset
+  const visualReferenceInputs: MediaAssetSource[] = primaryImageInput
+    ? [primaryImageInput, ...additionalReferenceImages]
+    : [...additionalReferenceImages];
+
+  const capability: VideoGenerationCapability = primaryImageInput
     ? 'video.image-to-video'
     : additionalReferenceImages.length > 0
       ? 'video.reference-to-video'
@@ -98,6 +139,9 @@ export function collectShotVideoPlan(params: {
     shot: normalizedShot,
     selectedImageAsset,
     selectedImageSource,
+    primaryImageInput,
+    primaryImageSource,
+    visualReferenceInputs,
     additionalReferenceImages,
     selectedAssetsForCompilation: compilationAssets,
     capability,
@@ -111,28 +155,30 @@ export function buildShotVideoRequest(params: {
   aspectRatio: string;
   duration: number;
   motionPrompt?: string;
+  capability?: VideoGenerationCapability;
 }): ITVRequest<MediaAssetSource> {
+  const capability = params.capability || params.plan.capability;
   const options = {
     duration: params.duration,
     motionPrompt: params.motionPrompt,
     aspectRatio: params.aspectRatio,
   };
 
-  if (params.plan.capability === 'video.image-to-video') {
+  if (capability === 'video.image-to-video') {
     return buildVideoCapabilityRequest<MediaAssetSource>({
-      capability: params.plan.capability,
+      capability,
       prompt: params.prompt,
-      primaryImage: params.plan.selectedImageAsset,
+      primaryImage: params.plan.primaryImageInput,
       additionalReferences: params.plan.additionalReferenceImages,
       options,
     });
   }
 
-  if (params.plan.capability === 'video.reference-to-video') {
+  if (capability === 'video.reference-to-video') {
     return buildVideoCapabilityRequest<MediaAssetSource>({
-      capability: params.plan.capability,
+      capability,
       prompt: params.prompt,
-      referenceImages: params.plan.additionalReferenceImages,
+      referenceImages: params.plan.visualReferenceInputs,
       options,
     });
   }
@@ -148,6 +194,7 @@ export function resolveShotVideoCapabilitySupport(params: {
   settings: AppSettings;
   selectionKey?: string;
   capability: VideoGenerationCapability;
+  visualInputCount?: number;
 }): ShotVideoCapabilitySupport {
   const resolvedContext = resolveConfiguredChannelModel(
     params.settings,
@@ -155,12 +202,13 @@ export function resolveShotVideoCapabilitySupport(params: {
     params.selectionKey,
     params.capability,
   );
-
   if (resolvedContext) {
     return {
+      requestedCapability: params.capability,
       capability: params.capability,
       capabilityLabel: SHOT_VIDEO_CAPABILITY_LABELS[params.capability],
       resolvedContext,
+      effectiveSelectionKey: params.selectionKey,
     };
   }
 
@@ -169,13 +217,19 @@ export function resolveShotVideoCapabilitySupport(params: {
     'itv',
     params.capability,
   );
-  const capabilityLabel = SHOT_VIDEO_CAPABILITY_LABELS[params.capability];
+  const targetCapability = params.capability;
+  const capabilityLabel = SHOT_VIDEO_CAPABILITY_LABELS[targetCapability];
+  const selectedContext = params.selectionKey
+    ? resolveConfiguredChannelModel(params.settings, 'itv', params.selectionKey)
+    : undefined;
 
   return {
-    capability: params.capability,
+    requestedCapability: params.capability,
+    capability: targetCapability,
     capabilityLabel,
-    disabledReason: availableModels.length > 0
-      ? `当前项目选择的视频模型不支持${capabilityLabel}，请切换模型`
+    effectiveSelectionKey: params.selectionKey,
+    disabledReason: selectedContext && availableModels.length > 0
+      ? `当前选择的模型不支持${capabilityLabel}，请切换模型`
       : `当前没有配置支持${capabilityLabel}的视频模型`,
   };
 }

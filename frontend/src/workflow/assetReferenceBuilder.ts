@@ -15,6 +15,25 @@ export interface AssetReferenceResult {
   compilationAssets: PromptCompilationAsset[];
 }
 
+function getVideoThumbnailSource(asset?: StoredMediaAsset): string | undefined {
+  if (!asset || asset.kind !== 'video') return undefined;
+  const thumbnailPath = typeof asset.metadata?.thumbnailPath === 'string'
+    ? asset.metadata.thumbnailPath.trim()
+    : '';
+  return thumbnailPath || undefined;
+}
+
+function getPreferredVisualSource(
+  primaryImage?: StoredMediaAsset,
+  fallbackVideo?: StoredMediaAsset,
+): StoredMediaAsset | string | undefined {
+  if (primaryImage) {
+    return primaryImage;
+  }
+
+  return getVideoThumbnailSource(fallbackVideo);
+}
+
 /**
  * 从 shot 关联的角色/场景/道具构建统一的资产引用。
  */
@@ -32,18 +51,24 @@ export function buildShotAssetReferences(
   for (const charId of shot.characters || []) {
     const char = characters.find(c => c.id === charId);
     if (!char) continue;
-    const photo = char.media?.costumePhoto;
-    if (photo) {
-      mediaReferences.push(photo);
-      const src = getMediaAssetDisplaySource(photo);
+    const visualSource = getPreferredVisualSource(char.media?.costumePhoto, char.media?.previewVideo);
+    if (visualSource) {
+      const src = typeof visualSource === 'string'
+        ? visualSource
+        : getMediaAssetDisplaySource(visualSource);
       if (src) displaySourceUrls.push(src);
     }
     compilationAssets.push({
       type: 'char',
+      name: char.name,
+      textValue: char.prompt || char.name,
       assetId: char.id,
       altIds: char.sora2CharacterId ? [char.sora2CharacterId] : undefined,
-      source: photo,
+      source: visualSource,
     });
+    if (visualSource && typeof visualSource !== 'string') {
+      mediaReferences.push(visualSource);
+    }
   }
 
   // 场景
@@ -58,6 +83,8 @@ export function buildShotAssetReferences(
     }
     compilationAssets.push({
       type: 'scene',
+      name: scene.name,
+      textValue: scene.prompt || scene.name,
       assetId: scene.id,
       source: preview,
     });
@@ -67,18 +94,24 @@ export function buildShotAssetReferences(
   for (const propId of shot.props || []) {
     const prop = props.find(p => p.id === propId);
     if (!prop) continue;
-    const preview = prop.media?.previewImage;
-    if (preview) {
-      mediaReferences.push(preview);
-      const src = getMediaAssetDisplaySource(preview);
+    const visualSource = getPreferredVisualSource(prop.media?.previewImage, prop.media?.previewVideo);
+    if (visualSource) {
+      const src = typeof visualSource === 'string'
+        ? visualSource
+        : getMediaAssetDisplaySource(visualSource);
       if (src) displaySourceUrls.push(src);
     }
     compilationAssets.push({
       type: 'prop',
+      name: prop.name,
+      textValue: prop.prompt || prop.name,
       assetId: prop.id,
       altIds: (prop as any).sora2PropId ? [(prop as any).sora2PropId] : undefined,
-      source: preview,
+      source: visualSource,
     });
+    if (visualSource && typeof visualSource !== 'string') {
+      mediaReferences.push(visualSource);
+    }
   }
 
   return { mediaReferences, displaySourceUrls, compilationAssets };

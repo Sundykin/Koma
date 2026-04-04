@@ -7,6 +7,10 @@ import {
 } from '../types';
 import { electronService } from './electronService';
 
+export interface ResolveProviderAssetInputOptions {
+  preferLocalFile?: boolean;
+}
+
 function inferMimeTypeFromSource(source: string, fallback = 'application/octet-stream'): string {
   if (source.startsWith('data:')) {
     const mime = source.slice(5, source.indexOf(';'));
@@ -45,68 +49,84 @@ function toDataUrl(bytes: Uint8Array, mimeType: string): string {
 }
 
 export async function resolveProviderAssetInput(
-  source: string | StoredMediaAsset | undefined
+  source: string | StoredMediaAsset | undefined,
+  options?: ResolveProviderAssetInputOptions,
 ): Promise<ProviderAssetInput | undefined> {
-  // Prefer a remote URL when available for remote providers (keeps payload small and avoids servers
-  // that do not accept data URLs).
-  const resolved = typeof source === 'string'
-    ? source
-    : (source.remoteUrl && isRemoteMediaUri(source.remoteUrl))
-      ? source.remoteUrl
-      : getMediaAssetSource(source);
-  if (!resolved) return undefined;
+  const candidates = typeof source === 'string'
+    ? [source]
+    : options?.preferLocalFile
+      ? [
+          getMediaAssetSource(source),
+          source.remoteUrl && isRemoteMediaUri(source.remoteUrl) ? source.remoteUrl : undefined,
+        ]
+      : [
+          source.remoteUrl && isRemoteMediaUri(source.remoteUrl) ? source.remoteUrl : undefined,
+          getMediaAssetSource(source),
+        ];
 
-  if (isRemoteMediaUri(resolved)) {
-    return {
-      transport: 'remote-url',
-      value: resolved,
-      mimeType: typeof source === 'string' ? inferMimeTypeFromSource(resolved) : source?.mimeType,
-    };
-  }
+  const visited = new Set<string>();
 
-  if (isDataUri(resolved)) {
+  for (const resolved of candidates) {
+    if (!resolved || visited.has(resolved)) {
+      continue;
+    }
+    visited.add(resolved);
+
+    if (isRemoteMediaUri(resolved)) {
+      return {
+        transport: 'remote-url',
+        value: resolved,
+        mimeType: typeof source === 'string' ? inferMimeTypeFromSource(resolved) : source?.mimeType,
+      };
+    }
+
+    if (isDataUri(resolved)) {
+      return {
+        transport: 'data-url',
+        value: resolved,
+        mimeType: typeof source === 'string' ? inferMimeTypeFromSource(resolved) : source?.mimeType,
+      };
+    }
+
+    if (isBlobUri(resolved)) {
+      const response = await fetch(resolved);
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      const mimeType = response.headers.get('content-type') || 'application/octet-stream';
+      return {
+        transport: 'data-url',
+        value: toDataUrl(bytes, mimeType),
+        mimeType,
+      };
+    }
+
+    if (!electronService.isElectron()) {
+      continue;
+    }
+
+    const exists = await electronService.fs.exists(resolved);
+    if (!exists) {
+      continue;
+    }
+
+    const base64 = await electronService.fs.readFileAsBase64(resolved);
+    const mimeType = typeof source === 'string'
+      ? inferMimeTypeFromSource(resolved)
+      : source?.mimeType || inferMimeTypeFromSource(resolved);
+
     return {
       transport: 'data-url',
-      value: resolved,
-      mimeType: typeof source === 'string' ? inferMimeTypeFromSource(resolved) : source?.mimeType,
-    };
-  }
-
-  if (isBlobUri(resolved)) {
-    const response = await fetch(resolved);
-    const bytes = new Uint8Array(await response.arrayBuffer());
-    const mimeType = response.headers.get('content-type') || 'application/octet-stream';
-    return {
-      transport: 'data-url',
-      value: toDataUrl(bytes, mimeType),
+      value: `data:${mimeType};base64,${base64}`,
       mimeType,
     };
   }
 
-  if (!electronService.isElectron()) {
-    return undefined;
-  }
-
-  const exists = await electronService.fs.exists(resolved);
-  if (!exists) {
-    return undefined;
-  }
-
-  const base64 = await electronService.fs.readFileAsBase64(resolved);
-  const mimeType = typeof source === 'string'
-    ? inferMimeTypeFromSource(resolved)
-    : source?.mimeType || inferMimeTypeFromSource(resolved);
-
-  return {
-    transport: 'data-url',
-    value: `data:${mimeType};base64,${base64}`,
-    mimeType,
-  };
+  return undefined;
 }
 
 export async function resolveProviderAssetInputs(
-  sources: Array<string | StoredMediaAsset | undefined>
+  sources: Array<string | StoredMediaAsset | undefined>,
+  options?: ResolveProviderAssetInputOptions,
 ): Promise<ProviderAssetInput[]> {
-  const resolved = await Promise.all(sources.map(resolveProviderAssetInput));
+  const resolved = await Promise.all(sources.map(source => resolveProviderAssetInput(source, options)));
   return resolved.filter(Boolean) as ProviderAssetInput[];
 }
