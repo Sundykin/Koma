@@ -24,73 +24,62 @@ TBD - created by archiving change add-antd-timeline-editor. Update Purpose after
 - **AND** 无效路径显示错误提示
 
 ### Requirement: Project Storage Structure
-系统 SHALL 为每个项目创建独立的存储目录。
+系统 SHALL 使用 SQLite 数据库作为项目数据的主存储引擎，替代原有的 JSON 文件存储。
 
-#### Scenario: 项目完整数据文件 (project.json)
+#### Scenario: 项目完整数据存储
 - **WHEN** 保存项目完整数据时
-- **THEN** project.json 包含：
-  - 剧本文本 (scriptText)
-  - 角色列表 (characters)
-  - 场景列表 (scenes)
-  - 道具列表 (props)
-  - 分镜列表 (shots)
-  - 项目级设置 (settings)
-  - **llmConfigId**: 关联的 LLM 配置 ID（可选，null 表示使用全局默认）
-- **AND** 此文件在打开项目时加载
+- **THEN** 项目元数据存储在 `projects` 表中
+- **AND** 角色列表存储在 `characters` 表中
+- **AND** 场景列表存储在 `scenes` 表中
+- **AND** 道具列表存储在 `props` 表中
+- **AND** 分镜列表存储在 `shots` 表和 `shot_versions` 表中
+- **AND** 时间线数据存储在 `timelines`、`timeline_tracks`、`timeline_clips` 表中
+- **AND** 所有表通过 `project_id` 外键关联
 
-#### Scenario: 项目元数据文件 (meta.json)
-- **WHEN** 保存项目元数据时
-- **THEN** meta.json 包含：
-  - id, title, genre, mode
-  - status: 'script' | 'storyboard' | 'generating' | 'completed'
-  - thumbnail: 项目封面路径
-  - episodes: 集数
-  - createdAt, updatedAt
-  - **llmConfigId**: 关联的 LLM 配置 ID（可选）
-- **AND** 此文件用于快速列表显示，不包含完整项目数据
+#### Scenario: 项目元数据查询
+- **WHEN** 需要列出项目时
+- **THEN** 直接查询 `projects` 表
+- **AND** 不再维护 `projects-index.json` 索引文件
+- **AND** 集数通过 `SELECT COUNT(*) FROM episodes WHERE project_id = ?` 动态计算
 
 ### Requirement: Asset Storage Management
-系统 SHALL 管理素材文件的存储和引用。
+系统 SHALL 通过数据库元数据管理素材引用，文件保持文件系统存储。
 
 #### Scenario: 导入素材
-- **WHEN** 用户导入外部媒体文件
-- **THEN** 复制文件到 `assets/{type}/` 目录
-- **AND** 生成唯一文件名（{timestamp}_{originalName}）
-- **AND** 在 assets.json 中记录元数据
+- **WHEN** 用户通过 IPC 调用导入外部媒体文件
+- **THEN** 后端复制文件到 `assets/{type}/` 目录
+- **AND** 在 `assets` 数据库表中插入元数据记录
+- **AND** 记录 local_path（相对路径）和 remote_url（如适用）
 
 #### Scenario: 素材去重
 - **WHEN** 导入已存在的素材时
-- **THEN** 计算文件 MD5 哈希值
-- **AND** 如果哈希匹配已有素材，复用现有文件
-- **AND** 显示提示告知用户
+- **THEN** 后端计算文件 MD5 哈希值
+- **AND** 查询 `assets` 表的 fingerprint 字段
+- **AND** 如果匹配则复用现有文件
 
 #### Scenario: 素材清理
-- **WHEN** 用户执行「清理未使用素材」
-- **THEN** 扫描所有素材文件
-- **AND** 删除未被任何 Clip 引用的素材
-- **AND** 显示将释放的空间大小
-- **AND** 需要用户确认
+- **WHEN** 用户通过 IPC 执行「清理未使用素材」
+- **THEN** 后端查询未被引用的资产记录
+- **AND** 删除对应文件和数据库记录
 
 ### Requirement: Shot Generation Storage
-系统 SHALL 管理分镜生成的中间产物。
+系统 SHALL 通过数据库管理分镜生成的版本数据。
 
 #### Scenario: 生成结果存储
 - **WHEN** 分镜生成完成时
-- **THEN** 按版本号存储到 `shots/{shotId}/versions/v{n}/`
-- **AND** 记录生成参数（prompt, seed, model, timestamp）
-- **AND** 更新 shot.json 中的 currentVersion 指针
+- **THEN** 后端在 `shot_versions` 表插入新版本记录
+- **AND** 记录 image/video/audio 的 local 路径和 remote URL
+- **AND** 记录生成参数（prompt、seed、model）
+- **AND** 更新 `shots` 表的 `current_version`
 
 #### Scenario: 版本切换
-- **WHEN** 用户切换到历史版本
-- **THEN** 更新 currentVersion 指针
-- **AND** 如果使用符号链接模式，更新链接目标
-- **AND** 时间线自动刷新显示
+- **WHEN** 前端通过 IPC 调用切换版本
+- **THEN** 后端 UPDATE shots SET current_version = ?
 
 #### Scenario: 版本清理
-- **WHEN** 用户删除某个版本
-- **THEN** 删除对应版本目录
-- **AND** 如果删除的是当前版本，自动切换到最近版本
-- **AND** 保留至少一个版本（最新版不可删除）
+- **WHEN** 前端通过 IPC 调用删除版本
+- **THEN** 后端 DELETE shot_versions 记录并删除本地文件
+- **AND** 如果删除当前版本，自动切换到最新版本
 
 ### Requirement: Cache Management
 系统 SHALL 管理缓存文件以优化性能。
@@ -191,71 +180,37 @@ TBD - created by archiving change add-antd-timeline-editor. Update Purpose after
 - **AND** 备份原 settings.json 为 settings.json.bak
 
 ### Requirement: Storage Migration
-系统 SHALL 支持存储格式迁移。
+系统 SHALL 不提供旧数据迁移能力。
 
-#### Scenario: 版本升级迁移
-- **WHEN** 应用更新��存储格式变化
-- **THEN** 检测存储版本号
-- **AND** 执行必要的数据迁移
-- **AND** 备份原数据
-- **AND** 更新版本号
+#### Scenario: 全新启动
+- **WHEN** 应用首次启动
+- **THEN** 创建空的 SQLite 数据库并初始化 schema
+- **AND** 不检测或迁移旧 JSON 数据
 
 #### Scenario: 项目导入
-- **WHEN** 用户导入外部项目包（.koma.zip）
-- **THEN** 解压到项目目录
-- **AND** 验证目录结构完整性
-- **AND** 注册到项目列表
+- **WHEN** 用户通过 IPC 导入项目包（.koma.zip）
+- **THEN** 后端解压文件、读取数据、插入 SQLite 数据库
 
 #### Scenario: 项目导出
-- **WHEN** 用户导出项目为包
-- **THEN** 打包整个项目目录为 .koma.zip
-- **AND** 包含所有素材和生成文件
-- **AND** 可选择排除缓存和临时文件
+- **WHEN** 用户通过 IPC 导出项目
+- **THEN** 后端从数据库查询数据，导出为可移植格式打包
 
 ### Requirement: Projects Index File
-系统 SHALL 维护一个项目索引文件以提升列表性能。
+系统 SHALL 不再维护独立的 `projects-index.json` 文件。
 
-#### Scenario: 索引文件结构
-- **WHEN** 系统需要列出项目时
-- **THEN** 读取 `{storageRoot}/projects-index.json`
-- **AND** 索引包含所有项目的摘要信息（id, title, genre, mode, status, thumbnail, createdAt, updatedAt）
-- **AND** 避免遍历项目目录读取每个 meta.json
-
-#### Scenario: 索引同步 - 创建
-- **WHEN** 创建新项目时
-- **THEN** 在项目目录创建 meta.json 后
-- **AND** 同步在索引文件中添加该项目条目
-
-#### Scenario: 索引同步 - 更新
-- **WHEN** 更新项目元数据时
-- **THEN** 更新项目目录下的 meta.json
-- **AND** 同步更新索引文件中对应条目
-
-#### Scenario: 索引同步 - 删除
-- **WHEN** 删除项目时
-- **THEN** 删除项目目录
-- **AND** 从索引文件中移除对应条目
-
-#### Scenario: 索引重建
-- **WHEN** 索引文件损坏或缺失
-- **THEN** 系统遍历 `projects/` 目录
-- **AND** 读取每个项目的 meta.json
-- **AND** 重建完整的索引文件
+#### Scenario: 项目列表查询
+- **WHEN** 前端通过 IPC 请求项目列表
+- **THEN** 后端直接查询 `projects` 表
+- **AND** 无需索引文件
 
 ### Requirement: Project Delete Operation
-系统 SHALL 支持完整删除项目。
+系统 SHALL 通过数据库级联删除实现项目删除。
 
 #### Scenario: 删除项目
-- **WHEN** 用户确认删除某个项目
-- **THEN** 递归删除 `{storageRoot}/projects/{projectId}/` 整个目录
-- **AND** 从 `projects-index.json` 移除该项目
-- **AND** 从 `recent-projects.json` 移除该项目（如果存在）
-
-#### Scenario: 删除确认
-- **WHEN** 用户点击删除按钮
-- **THEN** 显示确认对话框
-- **AND** 警告此操作不可恢复
-- **AND** 显示项目名称以防误删
+- **WHEN** 前端通过 IPC 调用删除项目
+- **THEN** 后端执行 `DELETE FROM projects WHERE id = ?`
+- **AND** 外键 CASCADE 自动级联删除所有关联数据
+- **AND** 后端删除文件系统中的项目目录
 
 ### Requirement: Project LLM Configuration
 系统 SHALL 支持项目级别的 LLM 模型配置。

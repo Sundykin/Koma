@@ -2,9 +2,7 @@
 
 ## Purpose
 TBD - updated by archiving changes refactor-image-node-editor and refactor-media-channel-model-capabilities. Refine Purpose after archive.
-
 ## Requirements
-
 ### Requirement: Image Node Collections
 灵绘 SHALL 区分导入节点和生成节点的图片集合规则：导入节点限制为单张图片，生成节点保持最多 4 张批量生成结果。
 
@@ -94,39 +92,54 @@ TBD - updated by archiving changes refactor-image-node-editor and refactor-media
 - **AND** 只有收起节点后再点击才会弹出编辑框
 
 ### Requirement: Mode-Adaptive Video Node Editing
-系统 SHALL 根据视频节点当前的“导入/生成”状态以及所选视频模型能力裁剪展示内容，而不是把所有视频模式混在同一张表单里。
 
-#### Scenario: 视频节点处于生成状态且模型仅支持一种能力
+系统 SHALL 根据视频节点的来源和所选视频模型能力隐式渲染不同的视频节点交互，不提供显式的“导入输出”模式切换，也不在编辑框中保留结果预览。
+
+#### Scenario: 视频生成节点处于生成状态且模型仅支持一种能力
 - **WHEN** 用户打开未挂载本地视频素材的视频节点
 - **AND** 当前视频模型仅声明一种视频生成能力
-- **THEN** 系统 MUST 直接展示该能力对应的编辑变体
+- **THEN** 系统 MUST 直接展示该能力对应的精简编辑变体
 - **AND** MUST 仅显示该能力所需的上游输入摘要、提示词区域和参数面板
+- **AND** 比例、分辨率、时长 MUST 分别使用独立选择器
 
-#### Scenario: 视频节点处于生成状态且模型支持多种能力
+#### Scenario: 视频生成节点处于生成状态且模型支持多种能力
 - **WHEN** 用户打开未挂载本地视频素材的视频节点
 - **AND** 当前视频模型支持多种视频生成能力
 - **THEN** 系统 MUST 展示能力切换器
 - **AND** 切换器 MUST 只列出该模型真实支持的能力模式
 - **AND** 切换能力后 MUST 更新必填输入、参数面板和校验结果
+- **AND** 比例、分辨率、时长 MUST 始终保持为三个独立控件
 
-#### Scenario: 视频节点处于导入状态
-- **WHEN** 用户打开已挂载本地视频素材的视频节点
-- **THEN** 系统展示视频预览、上传、替换和清空操作
-- **AND** 隐藏仅生成模式有意义的提示词和能力参数
+#### Scenario: 画布导入视频直接成为透传节点
+- **WHEN** 用户通过拖拽到画布、上传到画布或其他画布导入路径创建视频节点
+- **THEN** 系统 MUST 直接创建持有本地视频源的透传视频节点
+- **AND** 该节点 MUST 可立即连接给下游节点使用
+- **AND** 系统 MUST NOT 要求用户先在编辑框中切换到“导入输出”模式
+
+#### Scenario: 透传视频节点不进入生成编辑态
+- **WHEN** 用户选中一个由画布导入创建的透传视频节点
+- **THEN** 系统 MUST NOT 渲染提示词编辑器、能力切换器、工具预设或生成参数
+- **AND** 该节点 MUST 继续作为直接给下游复用的既有视频产物
 
 ### Requirement: Detached Image and Video Tool Surfaces
-系统 SHALL 将图片节点的工具预设面板改为 TopBar 按钮的 hover 悬浮下拉，不占用 MainSurface 空间。
+
+系统 SHALL 将图片节点和视频节点的工具预设面板统一为 TopBar 按钮的 hover 悬浮下拉，并把工具说明收口到 Tooltip，不占用 MainSurface 空间。
 
 #### Scenario: hover 触发工具预设面板
-- **WHEN** 用户将鼠标移入 TopBar 上的多角度、扩图、打光或重绘按钮
-- **THEN** 系统在该按钮正下方弹出悬浮预设面板
-- **AND** 面板展示工具标题、描述和预设列表（含应用按钮）
+- **WHEN** 用户将鼠标移入 TopBar 上的图片工具或视频工具按钮
+- **THEN** 系统在该按钮正下方弹出紧凑的悬浮预设面板
+- **AND** 面板只展示工具标题、预设列表与应用操作
 - **AND** MainSurface 内容不发生任何变化
 
 #### Scenario: 鼠标移出收起悬浮面板
 - **WHEN** 用户将鼠标从工具按钮和悬浮面板区域完全移出
 - **THEN** 系统立即收起悬浮面板
 - **AND** 无需点击关闭
+
+#### Scenario: 工具说明通过 Tooltip 暴露
+- **WHEN** 用户需要了解某个视频工具或参数的用途
+- **THEN** 系统 MUST 使用 Tooltip 展示补充说明
+- **AND** MUST NOT 在 MainSurface 中长期占用说明性文本区域
 
 ### Requirement: Integrated Prompt Editing Surface
 系统 SHALL 让节点弹窗中的提示词编辑器与外层浮层共享统一的视觉层级，并保留现有 `@` 引用能力。
@@ -340,3 +353,240 @@ TBD - updated by archiving changes refactor-image-node-editor and refactor-media
 - **WHEN** 当前执行请求的所有 Provider 尝试都失败
 - **THEN** 系统 MUST 将该节点标记为失败
 - **AND** MUST 在失败信息中包含已尝试 Provider 摘要与最后一次错误
+
+### Requirement: Video Node Inline Result Playback
+
+灵绘 SHALL 将视频生成结果的预览与播放交互收口到节点卡片本身，而不是继续放在视频编辑框里重复渲染。
+
+#### Scenario: 节点直接承载生成结果预览
+- **WHEN** 视频节点已经拥有生成成功的结果视频
+- **THEN** 节点卡片 MUST 直接渲染该视频结果的预览与播放入口
+- **AND** 编辑框 MainSurface MUST NOT 再渲染单独的结果预览区域
+
+#### Scenario: 点击播放按钮不弹出编辑框
+- **WHEN** 用户点击视频节点卡片上的播放按钮或播放覆盖控件
+- **THEN** 系统 MUST 只执行播放或暂停交互
+- **AND** MUST NOT 因该次点击而弹出视频编辑框
+
+### Requirement: Concise Video Editor Guidance
+
+灵绘 SHALL 移除视频编辑框中的常驻长文说明，并将必要解释统一收口为简洁标签配合 Ant Design Tooltip。
+
+#### Scenario: 需要解释能力或参数时
+- **WHEN** 视频编辑框中的能力、输入摘要、工具入口或参数项需要补充解释
+- **THEN** 系统 MUST 使用简洁标签或图标展示主信息
+- **AND** MUST 通过 Ant Design Tooltip 提供补充说明
+
+#### Scenario: 打开视频编辑框
+- **WHEN** 用户打开生成态的视频节点编辑框
+- **THEN** MainSurface MUST NOT 展示大段说明文案、教程式段落或难以理解的描述块
+- **AND** 仅保留执行当前生成任务必需的输入、提示词与参数控件
+
+### Requirement: Shared Canvas Interaction State
+
+灵绘画布 SHALL 通过共享状态容器提供编辑选中、工具态与临时交互状态，确保不同交互模块读取到一致的当前画布状态。
+
+#### Scenario: 编辑选中与工具态保持一致
+
+- **WHEN** 用户在画布中打开某个节点编辑器或切换节点工具面板
+- **THEN** 选择状态与当前激活工具 MUST 来自同一份共享画布状态
+- **AND** 当节点不再处于当前编辑选中时，相关工具态 MUST 被清理
+
+#### Scenario: 重置临时画布状态
+
+- **WHEN** 画布执行本地 UI 重置
+- **THEN** 系统 MUST 清理编辑选中、工具态、分组框与 grid-split 临时选择
+- **AND** 当前画布模式和其他持久的本地偏好 MUST 保持不变
+
+### Requirement: Shared Canvas Overlay State
+
+灵绘 SHALL 通过共享 canvas store 提供 `contextMenu`、`quickCreate` 和页面抽屉入口状态，确保 toolbar、canvas 与 overlay 面板读取的是同一份当前 UI 状态。
+
+#### Scenario: 上下文菜单与快速创建互斥
+
+- **WHEN** 用户在画布中打开上下文菜单或快速创建面板
+- **THEN** 当前打开的 overlay MUST 写入共享 canvas store
+- **AND** 打开其中一个 overlay 时 MUST 自动关闭另一个 overlay
+
+#### Scenario: 页面抽屉入口共享同一活动状态
+
+- **WHEN** 用户从 toolbar、项目菜单或画布右键入口打开添加 / 工作流 / 资产 / 历史 / 教程抽屉
+- **THEN** 系统 MUST 将当前活动抽屉写入共享 canvas store
+- **AND** 抽屉本体、toolbar 按钮高亮和画布侧入口 MUST 反映同一活动抽屉状态
+
+### Requirement: Scoped Canvas Store Reset
+
+灵绘 SHALL 区分画布局部 UI reset 与页面级完整 reset，避免页面级 drawer 状态被画布局部 reset 误清。
+
+#### Scenario: 画布局部 reset 清理临时 overlay
+
+- **WHEN** 画布执行局部 UI reset 或画布 surface 重建
+- **THEN** 系统 MUST 清理 `contextMenu` 与 `quickCreate` 等临时 overlay 状态
+- **AND** 页面级 `activeDrawer` MUST 保持不变
+
+#### Scenario: 离开灵绘页面时完整清理 store
+
+- **WHEN** 用户离开当前灵绘页面并销毁工作台
+- **THEN** 系统 MUST 执行完整 store reset
+- **AND** `activeDrawer` 与其他画布共享 UI 状态 MUST 一并恢复到初始状态
+
+### Requirement: Layered Parallel Linghui Execution
+
+灵绘 SHALL 按拓扑层级执行工作流，同一层内彼此无依赖的节点 MUST 可以并发运行。
+
+#### Scenario: 同层独立节点并发开始
+
+- **WHEN** 用户执行一个包含多个独立上游分支的工作流
+- **THEN** 系统 MUST 在同一拓扑层内并发启动这些节点
+- **AND** 下游节点 MUST 等待其直接上游全部完成后才开始执行
+
+#### Scenario: 同层分支失败不会中断其他分支
+
+- **WHEN** 同一拓扑层中的某个节点执行失败
+- **THEN** 该失败 MUST 仅影响依赖它的后续节点
+- **AND** 其他无依赖关系的并发节点 MUST 继续执行并产出各自结果
+
+### Requirement: Parallel Execution Queue State
+
+灵绘 SHALL 在执行队列状态中暴露并发运行信息，以支持页面和调试逻辑感知当前层的执行进度。
+
+#### Scenario: 队列状态反映多个运行中节点
+
+- **WHEN** 某个拓扑层中有多个节点正在执行
+- **THEN** 队列状态 MUST 暴露全部运行中节点 ID
+- **AND** 已完成、失败和取消的节点统计 MUST 继续保持准确
+
+### Requirement: Tagged Linghui Node Results
+
+灵绘 SHALL 使用以 `kind` 为判别字段的结构化节点结果契约，而不是“所有字段都可选”的宽泛结果对象。
+
+#### Scenario: 文本与分镜结果具备必需文本字段
+
+- **WHEN** 文本节点或脚本节点输出运行结果
+- **THEN** `text` 结果 MUST 包含非空 `text`
+- **AND** `storyboard` 结果 MUST 包含 `text` 和结构化 `shots`
+
+#### Scenario: 媒体结果具备必需主产物字段
+
+- **WHEN** 图片、视频或音频节点输出运行结果
+- **THEN** 单产物结果 MUST 包含与其 `kind` 对应的 `primary`
+- **AND** 多图结果 MUST 包含 `primary` 和 `items`
+
+#### Scenario: 静态结果与运行结果遵循同一契约
+
+- **WHEN** 系统解析导入节点或手动节点的静态结果
+- **THEN** 返回结果 MUST 与运行态结果使用相同的 `kind` 结构
+- **AND** 下游消费者 MUST 无需依赖“静态结果特判”访问核心字段
+
+### Requirement: Workflow Cycle Detection
+
+灵绘 SHALL 在执行工作流前显式检测待执行子图中的循环依赖。
+
+#### Scenario: 循环依赖图执行失败
+
+- **WHEN** 待执行节点及其依赖形成了有向环
+- **THEN** 系统 MUST 阻止执行
+- **AND** MUST 返回明确的循环依赖错误
+
+### Requirement: Explicit RF Type Mapping
+
+灵绘 SHALL 使用显式映射表完成 RF 节点类型和灵绘节点类型之间的转换。
+
+#### Scenario: 合法类型双向转换
+
+- **WHEN** 系统在 RF 类型和灵绘节点类型之间转换
+- **THEN** 已知节点类型 MUST 被稳定地双向映射
+
+#### Scenario: 边界类型输入
+
+- **WHEN** 系统收到未知或格式异常的 RF 类型字符串
+- **THEN** 系统 MUST 使用稳定、可预测的回退结果
+- **AND** MUST NOT 通过宽松字符串替换误判为其他合法节点类型
+
+### Requirement: Strict Multi-Angle Image Execution
+
+灵绘 SHALL 将多角度图片视为严格的参考图驱动执行模式，而不是在输入不完整时静默退回普通文生图。
+
+#### Scenario: 缺少参考图时明确失败
+
+- **WHEN** 图片节点显式开启了多角度能力
+- **AND** 当前没有连接任何上游图片参考
+- **THEN** 系统 MUST 阻止执行
+- **AND** MUST 返回清晰的缺失参考图错误
+- **AND** MUST NOT 回退为普通文生图
+
+#### Scenario: 多角度请求保留用户 prompt
+
+- **WHEN** 图片节点显式开启了多角度能力
+- **AND** 用户填写了主体或风格 prompt
+- **THEN** 系统 MUST 在请求编译中保留用户原始 prompt
+- **AND** MUST 同时附带由多角度参数生成的角度 prompt
+
+### Requirement: Batch Image References Propagate Downstream
+
+灵绘 SHALL 在下游消费图片参考时透传整组批量图片结果，而不是只传当前结果的单张主图。
+
+#### Scenario: 批量图片作为下游参考
+
+- **WHEN** 上游图片节点持有多张生成结果或导入结果
+- **AND** 下游图片节点或视频节点消费该节点的图片参考
+- **THEN** 系统 MUST 传递该组结果中的全部唯一图片源
+- **AND** 当前选中的主图 MUST 仍然排在参考列表前面
+
+### Requirement: Stable Script Output Contracts
+
+灵绘 SHALL 让脚本节点在生成态和静态解析态都输出稳定的结构化结果。
+
+#### Scenario: 自定义 system prompt 不破坏 JSON 约束
+
+- **WHEN** 用户为脚本节点填写了自定义 `systemPrompt`
+- **THEN** 系统 MUST 保留默认的 JSON 输出约束
+- **AND** MUST 将用户自定义要求追加到同一 system prompt 中
+
+#### Scenario: 手动脚本静态解析输出结构化 shots
+
+- **WHEN** 手动脚本节点通过静态解析路径被下游节点消费
+- **THEN** 系统 MUST 输出结构化 `shots`
+- **AND** MUST 输出统一格式化后的脚本文本
+
+### Requirement: Effective Slot Connections Only
+
+灵绘 SHALL 阻止用户创建那些执行层不会消费的无效节点连接。
+
+#### Scenario: 图片不能连接到无效图片槽位
+
+- **WHEN** 用户尝试把图片结果连接到 text / audio / script 节点的图片参考槽位
+- **THEN** 系统 MUST 阻止该连接
+- **AND** MUST 明确告知当前节点不会消费该图片输入
+
+### Requirement: Audio Node Voice Selection
+
+灵绘 SHALL 允许用户为音频节点显式选择 TTS 音色，而不是始终依赖 provider 默认值。
+
+#### Scenario: 用户显式选择音色
+
+- **WHEN** 用户在音频节点中选择了一个 `voiceId`
+- **THEN** 系统 MUST 在后续 TTS 请求中优先使用该 `voiceId`
+
+#### Scenario: 未选择音色时回退默认值
+
+- **WHEN** 用户没有为音频节点选择音色
+- **THEN** 系统 MAY 回退到 provider 默认音色或第一个可用音色
+- **AND** 节点仍然 MUST 可正常执行
+
+### Requirement: Workflow Execution Settings Snapshot
+
+灵绘 SHALL 在单次工作流执行开始时冻结一份 settings snapshot，并在该次执行期间将其作为执行上下文的一部分传递给所有节点 provider 解析路径。
+
+#### Scenario: 单次执行复用同一份设置快照
+
+- **WHEN** 用户开始执行一个灵绘工作流或其子图
+- **THEN** 系统 MUST 在执行开始时捕获一份 settings snapshot
+- **AND** 该次执行中的所有节点 MUST 复用这同一份 snapshot 解析媒体 provider
+
+#### Scenario: 执行期间设置发生变化
+
+- **WHEN** 工作流正在执行且全局 settings 在外部被修改
+- **THEN** 当前这次执行 MUST 继续使用启动时捕获的 snapshot
+- **AND** 系统 MUST NOT 为同一次执行中的后续节点重新读取全局 settings
+

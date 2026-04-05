@@ -159,5 +159,41 @@ TBD - updated by archiving change refactor-media-channel-model-capabilities. Ref
 ### Requirement: NanoBanana TTI Provider
 系统 SHALL 支持 NanoBanana 一类文生图渠道作为目录中的可选 TTI 渠道。
 
+#### Scenario: 解析 NanoBanana TTI 渠道
+- **WHEN** 调用方请求执行一个映射到 NanoBanana 渠道的 TTI 模型能力
+- **THEN** 系统 MUST 通过统一 provider 目录解析出对应的渠道定义、模型定义和能力定义
+- **AND** MUST 将该能力作为标准 TTI 执行上下文返回给调用方
+
+#### Scenario: 展示 NanoBanana 渠道配置
+- **WHEN** 用户在 TTI 渠道配置或项目模型选择界面查看可用渠道
+- **THEN** 系统 MUST 将 NanoBanana 渠道作为可选项展示
+- **AND** MUST 复用渠道级共享配置、模型目录和能力矩阵描述其能力边界
+
 ### Requirement: Sora2 Official ITV Provider
-系统 MAY 继续支持官方 Sora2 或兼容 ITV 渠道，但必须以渠道内模型和能力矩阵方式接入。
+系统 SHALL 支持官方 Sora2 或兼容 ITV 渠道，并且 MUST 以渠道内模型和能力矩阵方式接入。
+
+#### Scenario: 解析 Sora2 ITV 渠道
+- **WHEN** 调用方请求执行一个映射到 Sora2 或兼容 ITV 渠道的视频模型能力
+- **THEN** 系统 MUST 通过统一 provider 目录解析出对应的渠道定义、模型定义和能力定义
+- **AND** MUST 将该能力作为标准 ITV 执行上下文返回给调用方
+
+#### Scenario: 展示 Sora2 ITV 渠道配置
+- **WHEN** 用户在 ITV 渠道配置或项目模型选择界面查看可用渠道
+- **THEN** 系统 MUST 将官方 Sora2 或兼容 ITV 渠道作为可选项展示
+- **AND** MUST 使用渠道自己的模型目录和能力矩阵描述支持的生成模式
+
+### Requirement: Snapshot-Aware Project Provider Resolution
+
+系统 SHALL 支持调用方在解析项目级 LLM、TTI、ITV、TTS provider 时显式传入 settings snapshot。
+
+#### Scenario: 使用显式 settings snapshot 解析 provider
+
+- **WHEN** 调用方在解析项目级 provider 时提供 settings snapshot
+- **THEN** provider factory MUST 使用该 snapshot 解析渠道与模型
+- **AND** MUST NOT 为这次解析再读取全局 settings store
+
+#### Scenario: 未提供 settings snapshot 时保持兼容
+
+- **WHEN** 调用方在解析项目级 provider 时未提供 settings snapshot
+- **THEN** provider factory MUST 保持现有行为
+- **AND** MUST 从全局 settings store 读取当前配置后继续解析
