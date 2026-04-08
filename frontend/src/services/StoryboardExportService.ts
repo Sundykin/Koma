@@ -5,15 +5,13 @@
 import { v4 as uuidv4 } from 'uuid';
 import type { Shot } from '../types';
 import { getMediaAssetDisplaySource } from '../types';
-import { loadEpisodeShots, loadProject } from '../store/projectStore';
-import { createLogger } from '../store/logger';
+import type { StoredMediaAsset } from '../types/media';
+import { loadEpisodeShots, loadProject, loadShotMeta } from '../store/projectStore';
 import { electronService } from './electronService';
 import { JianyingExporter } from './draftExport';
 import { SimpleExportRenderer } from './simpleExportRenderer';
 import { getCanvasSize, type AspectRatio } from '../components/editor/aspectRatio';
 import { MediaType, type Track, type Clip } from '../types/editor';
-
-const logger = createLogger('StoryboardExport');
 
 type ResolutionPreset = '720p' | '1080p' | '4K';
 
@@ -79,9 +77,29 @@ export interface StoryboardManifest {
   totalDuration: number;
 }
 
+export interface StoryboardSubtitleCue {
+  index: number;
+  shotId: string;
+  start: number;
+  end: number;
+  text: string;
+}
+
 interface BuildTracksOptions {
   includeSubtitles: boolean;
   stillDuration: number;
+}
+
+interface BuildAuxiliaryTracksOptions extends BuildTracksOptions {
+  projectId: string;
+  includeAudio: boolean;
+}
+
+function getFFmpegAPI(): any | null {
+  if (typeof window !== 'undefined' && (window as any).electronAPI?.ffmpeg) {
+    return (window as any).electronAPI.ffmpeg;
+  }
+  return null;
 }
 
 function resolveAspectRatio(projectAspectRatio?: string): AspectRatio {
@@ -287,10 +305,158 @@ export function buildStoryboardTracks(
   };
 }
 
+function buildStoryboardSubtitleCues(
+  manifest: StoryboardManifest,
+  options: BuildTracksOptions,
+): StoryboardSubtitleCue[] {
+  const cues: StoryboardSubtitleCue[] = [];
+  let cursor = 0;
+
+  manifest.shots.forEach((item) => {
+    if (item.media.type === 'none') {
+      return;
+    }
+
+    const clipDuration = item.media.type === 'video'
+      ? Math.max(1, item.duration)
+      : Math.max(1, options.stillDuration || item.duration);
+
+    if (options.includeSubtitles && item.subtitle.trim()) {
+      cues.push({
+        index: cues.length + 1,
+        shotId: item.shot.id,
+        start: cursor,
+        end: cursor + clipDuration,
+        text: item.subtitle.trim(),
+      });
+    }
+
+    cursor += clipDuration;
+  });
+
+  return cues;
+}
+
+function formatSrtTimestamp(seconds: number): string {
+  const totalMilliseconds = Math.max(0, Math.round(seconds * 1000));
+  const hours = Math.floor(totalMilliseconds / 3600000);
+  const minutes = Math.floor((totalMilliseconds % 3600000) / 60000);
+  const secs = Math.floor((totalMilliseconds % 60000) / 1000);
+  const milliseconds = totalMilliseconds % 1000;
+
+  return [
+    String(hours).padStart(2, '0'),
+    String(minutes).padStart(2, '0'),
+    String(secs).padStart(2, '0'),
+  ].join(':') + `,${String(milliseconds).padStart(3, '0')}`;
+}
+
+export function buildStoryboardSubtitleContent(cues: StoryboardSubtitleCue[]): string {
+  return cues
+    .map((cue, index) => [
+      String(index + 1),
+      `${formatSrtTimestamp(cue.start)} --> ${formatSrtTimestamp(cue.end)}`,
+      cue.text,
+      '',
+    ].join('\n'))
+    .join('\n');
+}
+
+async function resolveCurrentShotVersionAudio(
+  projectId: string,
+  shotId: string,
+): Promise<StoredMediaAsset | null> {
+  const meta = await loadShotMeta(projectId, shotId).catch(() => null);
+  if (!meta?.versions?.length) {
+    return null;
+  }
+
+  const currentVersion = meta.versions.find((version) => version.version === meta.currentVersion)
+    || meta.versions[meta.versions.length - 1];
+  return currentVersion?.media?.audio || null;
+}
+
+export async function buildStoryboardAuxiliaryTracks(
+  manifest: StoryboardManifest,
+  options: BuildAuxiliaryTracksOptions,
+): Promise<{ tracks: Track[]; subtitleCues: StoryboardSubtitleCue[] }> {
+  const audioClips: Clip[] = [];
+  const subtitleCues = buildStoryboardSubtitleCues(manifest, options);
+  let cursor = 0;
+
+  for (const item of manifest.shots) {
+    if (item.media.type === 'none') {
+      continue;
+    }
+
+    const clipDuration = item.media.type === 'video'
+      ? Math.max(1, item.duration)
+      : Math.max(1, options.stillDuration || item.duration);
+
+    if (options.includeAudio && item.media.type !== 'video') {
+      const audioAsset = await resolveCurrentShotVersionAudio(options.projectId, item.shot.id);
+      const audioSource = audioAsset?.localPath || audioAsset?.remoteUrl;
+      if (audioSource) {
+        const audioDuration = audioAsset?.durationMs
+          ? Math.max(1, Math.round(audioAsset.durationMs / 100) / 10)
+          : clipDuration;
+
+        audioClips.push({
+          id: `storyboard-audio-${uuidv4()}`,
+          assetId: `storyboard-audio-${uuidv4()}`,
+          trackId: 'storyboard-audio-track',
+          start: cursor,
+          duration: Math.min(clipDuration, audioDuration),
+          offset: 0,
+          sourceDuration: audioDuration,
+          name: `Shot Audio ${item.index + 1}`,
+          type: MediaType.AUDIO,
+          src: audioSource,
+          x: 0,
+          y: 0,
+          scale: 1,
+          rotation: 0,
+          opacity: 1,
+        });
+      }
+    }
+
+    cursor += clipDuration;
+  }
+
+  const tracks: Track[] = audioClips.length > 0
+    ? [{
+      id: 'storyboard-audio-track',
+      type: 'audio',
+      clips: audioClips,
+      order: 5,
+      name: 'Storyboard Audio',
+    }]
+    : [];
+
+  return { tracks, subtitleCues };
+}
+
+async function writeSubtitleCompanionFile(basePath: string, cues: StoryboardSubtitleCue[]): Promise<string | null> {
+  if (!electronService.isElectron() || cues.length === 0) {
+    return null;
+  }
+
+  const subtitlePath = basePath.replace(/\.[^/.]+$/, '.srt');
+  await electronService.fs.writeFile(subtitlePath, buildStoryboardSubtitleContent(cues));
+  return subtitlePath;
+}
+
 export async function exportStoryboardVideo(options: VideoExportOptions): Promise<ExportResult> {
   const project = await resolveProjectExportContext(options.projectId);
   const manifest = await buildShotManifest(options);
   const { tracks, duration, exportedShotCount } = buildStoryboardTracks(manifest, {
+    includeSubtitles: options.includeSubtitles,
+    stillDuration: options.stillDuration,
+  });
+  const auxiliary = await buildStoryboardAuxiliaryTracks(manifest, {
+    projectId: options.projectId,
+    includeAudio: options.includeAudio,
     includeSubtitles: options.includeSubtitles,
     stillDuration: options.stillDuration,
   });
@@ -302,10 +468,6 @@ export async function exportStoryboardVideo(options: VideoExportOptions): Promis
       itemCount: 0,
       error: '没有可导出的分镜媒体',
     };
-  }
-
-  if (options.includeAudio) {
-    logger.warn('快速视频导出暂未接入独立音轨，当前将仅导出视频与字幕。');
   }
 
   const canvasSize = resolveCanvasSize(project.aspectRatio, options.resolution);
@@ -322,7 +484,10 @@ export async function exportStoryboardVideo(options: VideoExportOptions): Promis
     options.onProgress?.(progress.currentFrame, progress.totalFrames);
   });
 
-  await renderer.export(tracks, duration);
+  await renderer.export([...tracks, ...auxiliary.tracks], duration);
+  if (options.includeSubtitles) {
+    await writeSubtitleCompanionFile(options.outputPath, auxiliary.subtitleCues);
+  }
   return {
     success: true,
     outputPath: options.outputPath,
@@ -334,6 +499,12 @@ export async function exportStoryboardJianying(options: JianyingExportOptions): 
   const project = await resolveProjectExportContext(options.projectId);
   const manifest = await buildShotManifest(options);
   const { tracks, exportedShotCount } = buildStoryboardTracks(manifest, {
+    includeSubtitles: options.includeSubtitles,
+    stillDuration: options.stillDuration,
+  });
+  const auxiliary = await buildStoryboardAuxiliaryTracks(manifest, {
+    projectId: options.projectId,
+    includeAudio: options.includeAudio,
     includeSubtitles: options.includeSubtitles,
     stillDuration: options.stillDuration,
   });
@@ -362,7 +533,7 @@ export async function exportStoryboardJianying(options: JianyingExportOptions): 
   await ensureDirectory(outputDir);
 
   const exportResult = await exporter.export(
-    tracks,
+    [...tracks, ...auxiliary.tracks],
     {
       outputPath: outputDir,
       projectName: project.title,
@@ -394,9 +565,11 @@ export async function exportStoryboardJianying(options: JianyingExportOptions): 
     `${outputDir}/draft_meta_info.json`,
     JSON.stringify(resultWithDrafts.draftMetaInfo || {}, null, 2),
   );
-
-  if (options.includeAudio) {
-    logger.warn('剪映草稿导出当前不生成独立音频素材，只保留可用的视频/图片与字幕轨道。');
+  if (options.includeSubtitles) {
+    await electronService.fs.writeFile(
+      `${outputDir}/storyboard_subtitles.srt`,
+      buildStoryboardSubtitleContent(auxiliary.subtitleCues),
+    );
   }
 
   return {
@@ -430,20 +603,34 @@ export async function exportStoryboardImages(options: ImageSequenceExportOptions
 
   await ensureDirectory(options.outputDir);
 
-  if (options.superResolution) {
-    logger.warn('图片序列导出暂未接入超分辨率，当前导出原始已选图片。');
-  }
+  const ffmpegAPI = getFFmpegAPI();
 
   for (let index = 0; index < imageItems.length; index += 1) {
     const item = imageItems[index];
     const sourcePath = item.media.path;
     const sourceUrl = item.media.url;
     const targetPath = `${options.outputDir}/${String(index + 1).padStart(3, '0')}.${options.imageFormat}`;
+    const tempSourcePath = `${options.outputDir}/.__storyboard_source_${String(index + 1).padStart(3, '0')}.${options.imageFormat}`;
+    const workingSource = sourcePath || tempSourcePath;
 
-    if (sourcePath) {
+    if (!sourcePath && sourceUrl) {
+      await electronService.fs.downloadFile(sourceUrl, tempSourcePath);
+    }
+
+    if (options.superResolution && ffmpegAPI?.upscaleImage && workingSource) {
+      await ffmpegAPI.upscaleImage({
+        input: workingSource,
+        output: targetPath,
+        scaleFactor: 2,
+      });
+    } else if (sourcePath) {
       await electronService.fs.copy(sourcePath, targetPath);
     } else if (sourceUrl) {
       await electronService.fs.downloadFile(sourceUrl, targetPath);
+    }
+
+    if (!sourcePath && sourceUrl) {
+      await electronService.fs.remove(tempSourcePath).catch(() => undefined);
     }
 
     options.onProgress?.(index + 1, imageItems.length);
@@ -461,6 +648,8 @@ export const storyboardExportService = {
   getShotMediaSource,
   buildShotManifest,
   buildStoryboardTracks,
+  buildStoryboardAuxiliaryTracks,
+  buildStoryboardSubtitleContent,
   exportStoryboardVideo,
   exportStoryboardJianying,
   exportStoryboardImages,

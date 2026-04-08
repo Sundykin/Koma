@@ -90,7 +90,7 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   'controller/ffmpeg/isAvailable', 'controller/ffmpeg/getInfo',
   'controller/ffmpeg/extractFrames', 'controller/ffmpeg/splitGridImage',
   'controller/ffmpeg/waveform',
-  'controller/ffmpeg/splitAudio', 'controller/ffmpeg/composeVideo',
+  'controller/ffmpeg/splitAudio', 'controller/ffmpeg/upscaleImage', 'controller/ffmpeg/composeVideo',
   'controller/ffmpeg/getCacheDir', 'controller/ffmpeg/getTempDir',
   'controller/ffmpeg/ensureDir', 'controller/ffmpeg/saveFrame',
   'controller/ffmpeg/cleanupTemp', 'controller/ffmpeg/clearCache',
@@ -301,6 +301,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     waveform: (options: any) => invokeMain('controller/ffmpeg/waveform', options),
     splitAudio: (input: string, output: string) =>
       invokeMain('controller/ffmpeg/splitAudio', { input, output }),
+    upscaleImage: (options: any) => invokeMain('controller/ffmpeg/upscaleImage', options),
     composeVideo: (options: any) => invokeMain('controller/ffmpeg/composeVideo', options),
     getCacheDir: (subDir?: string) => invokeMain('controller/ffmpeg/getCacheDir', { subDir }),
     getTempDir: () => invokeMain('controller/ffmpeg/getTempDir', {}),

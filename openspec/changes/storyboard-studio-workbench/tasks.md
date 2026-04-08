@@ -12,8 +12,8 @@
 - [x] 2.3 实现 `ScriptStudioPanel` 的渐进式导入流程：导入 -> 精炼 -> 章节划分 -> 拆分分镜 -> 应用
 - [x] 2.4 实现 `ChapterInferencePanel` 的“生成草稿 -> 预览 -> 应用”流程，并支持当前分镜/选中分镜/当前章节/全部分镜范围
 - [x] 2.5 实现 `StyleSettingsPanel` 的风格影响评估与重新推理交接
-- [ ] 2.6 将资产面板和 AI 助手面板也接入统一 session 描述、作用范围和最近应用记录
-- [ ] 2.7 基于 `template/resources/official_prompt_templates/workflow_templates.json` 设计并接入“工作流预设/recipes”入口
+- [x] 2.6 将资产面板和 AI 助手面板也接入统一 session 描述、作用范围和最近应用记录
+- [x] 2.7 基于 `template/resources/official_prompt_templates/workflow_templates.json` 设计并接入“工作流预设/recipes”入口
 
 ## 3. 模板与创作操作器
 
@@ -30,7 +30,7 @@
 - [x] 4.3 在导出中心中保留导出模板与导出历史的会话态
 - [x] 4.4 提供“高级编辑器”入口，将时间线编辑器降为可选后续流程
 - [x] 4.5 补齐导出范围选择（当前分镜 / 选中分镜 / 当前章节 / 全部）和静帧时长等高级参数
-- [ ] 4.6 接入真实的独立音频拼装、字幕对齐和图片超分辨率执行链路
+- [x] 4.6 接入真实的独立音频拼装、字幕对齐和图片超分辨率执行链路
 - [x] 4.7 为 `StoryboardExportService` 的 manifest / track 构建逻辑补充单元测试
 
 ## 5. 验证与同步

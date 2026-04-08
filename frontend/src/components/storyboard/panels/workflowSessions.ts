@@ -6,6 +6,7 @@ export type WorkflowShotScope = 'current-shot' | 'current-chapter' | 'selected-s
 export type ScriptApplyMode = 'append' | 'replace';
 export type StyleImpactScope = 'future-only' | WorkflowShotScope;
 export type ExportExecutionType = 'video' | 'jianying' | 'images' | 'editor';
+export type AssetPanelTab = 'characters' | 'scenes' | 'props';
 
 export interface StoryboardWorkflowContext {
   activeShotId: string | null;
@@ -80,6 +81,22 @@ export interface StyleSettingsSession extends WorkflowSessionBase {
   pendingPlan?: StyleImpactPlan;
 }
 
+export interface AssetManagerSession extends WorkflowSessionBase {
+  activeTab: AssetPanelTab;
+  characterCount: number;
+  sceneCount: number;
+  propCount: number;
+}
+
+export interface AssistantWorkflowSession extends WorkflowSessionBase {
+  selectedRecipeId?: string;
+  selectedRecipeName?: string;
+  recentRecipeIds: string[];
+  availableRecipeCount: number;
+  templateAssetCount: number;
+  modelPresetCount: number;
+}
+
 export interface ExportSessionConfig {
   scope: WorkflowShotScope;
   stillDurationSeconds: number;
@@ -119,9 +136,11 @@ export interface ExportCenterSession extends WorkflowSessionBase {
 
 export interface WorkflowPanelSessions {
   script: ScriptStudioSession;
+  assets: AssetManagerSession;
   inference: ChapterInferenceSession;
   style: StyleSettingsSession;
   export: ExportCenterSession;
+  assistant: AssistantWorkflowSession;
 }
 
 export interface ResolvedWorkflowScope {
@@ -170,12 +189,34 @@ export function createDefaultChapterInferenceSession(): ChapterInferenceSession 
   };
 }
 
+export function createDefaultAssetManagerSession(): AssetManagerSession {
+  return {
+    currentStep: 0,
+    totalSteps: 2,
+    activeTab: 'characters',
+    characterCount: 0,
+    sceneCount: 0,
+    propCount: 0,
+  };
+}
+
 export function createDefaultStyleSettingsSession(): StyleSettingsSession {
   return {
     currentStep: 0,
     totalSteps: 2,
     impactScope: 'future-only',
     reinferenceLevel: 'advanced',
+  };
+}
+
+export function createDefaultAssistantWorkflowSession(): AssistantWorkflowSession {
+  return {
+    currentStep: 0,
+    totalSteps: 2,
+    recentRecipeIds: [],
+    availableRecipeCount: 0,
+    templateAssetCount: 0,
+    modelPresetCount: 0,
   };
 }
 
@@ -266,9 +307,11 @@ export function createDefaultExportCenterSession(): ExportCenterSession {
 export function createDefaultWorkflowPanelSessions(): WorkflowPanelSessions {
   return {
     script: createDefaultScriptStudioSession(),
+    assets: createDefaultAssetManagerSession(),
     inference: createDefaultChapterInferenceSession(),
     style: createDefaultStyleSettingsSession(),
     export: createDefaultExportCenterSession(),
+    assistant: createDefaultAssistantWorkflowSession(),
   };
 }
 
@@ -278,6 +321,7 @@ export function ensureWorkflowPanelSessions(
   const defaults = createDefaultWorkflowPanelSessions();
   return {
     script: { ...defaults.script, ...sessions?.script },
+    assets: { ...defaults.assets, ...sessions?.assets },
     inference: { ...defaults.inference, ...sessions?.inference },
     style: { ...defaults.style, ...sessions?.style },
     export: {
@@ -287,6 +331,7 @@ export function ensureWorkflowPanelSessions(
       history: sessions?.export?.history || defaults.export.history,
       templates: mergeExportTemplates(sessions?.export?.templates),
     },
+    assistant: { ...defaults.assistant, ...sessions?.assistant },
   };
 }
 
@@ -379,6 +424,26 @@ export function describeWorkflowSession(
     };
   }
 
+  if (panelId === 'assets') {
+    const session = sessions.assets;
+    const tabLabels: Record<AssetPanelTab, string> = {
+      characters: '角色资产',
+      scenes: '场景资产',
+      props: '道具资产',
+    };
+    return {
+      stepText: `${session.currentStep + 1}/${session.totalSteps}`,
+      draftText: `${session.characterCount} 角色 · ${session.sceneCount} 场景 · ${session.propCount} 道具`,
+      scopeText: [
+        session.affectedScopeLabel || '项目资产库',
+        `当前标签: ${tabLabels[session.activeTab]}`,
+      ].filter(Boolean).join(' · '),
+      lastAppliedText: session.lastApplied
+        ? `${session.lastApplied.summary}${formatAppliedTime(session.lastApplied.appliedAt) ? ` · ${formatAppliedTime(session.lastApplied.appliedAt)}` : ''}`
+        : undefined,
+    };
+  }
+
   if (panelId === 'style') {
     const session = sessions.style;
     return {
@@ -412,6 +477,26 @@ export function describeWorkflowSession(
       ].filter(Boolean).join(' · '),
       lastAppliedText: session.history[0]
         ? `${session.history[0].type} · ${session.history[0].count} 项 · ${session.history[0].time}`
+        : undefined,
+    };
+  }
+
+  if (panelId === 'assistant') {
+    const session = sessions.assistant;
+    const draftParts = [
+      session.availableRecipeCount > 0 ? `${session.availableRecipeCount} 个工作流预设` : undefined,
+      session.templateAssetCount > 0 ? `${session.templateAssetCount} 个默认模板资产` : undefined,
+      session.modelPresetCount > 0 ? `${session.modelPresetCount} 个模型预设` : undefined,
+    ].filter(Boolean);
+    return {
+      stepText: `${session.currentStep + 1}/${session.totalSteps}`,
+      draftText: draftParts.length > 0 ? draftParts.join(' · ') : undefined,
+      scopeText: [
+        session.selectedRecipeName ? `当前预设: ${session.selectedRecipeName}` : undefined,
+        session.affectedScopeLabel,
+      ].filter(Boolean).join(' · '),
+      lastAppliedText: session.lastApplied
+        ? `${session.lastApplied.summary}${formatAppliedTime(session.lastApplied.appliedAt) ? ` · ${formatAppliedTime(session.lastApplied.appliedAt)}` : ''}`
         : undefined,
     };
   }
