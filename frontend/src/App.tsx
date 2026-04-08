@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef, Suspense, lazy } from 'react';
-import { Project, ScriptAnalysisResult, EditorStep, AppSettings, Episode, EpisodeStepProgress } from './types';
+import { Project, ScriptAnalysisResult, AppSettings, Episode } from './types';
 import { ProjectList, CreateProjectModal, ProjectSettingsModal } from './components/project';
 import type { MentionItem } from './editor';
 import { getCharacterCostumePhotoSource } from './utils/mediaSelectors';
@@ -11,7 +11,7 @@ import { Sidebar } from './components/common/Sidebar';
 import type { AppView } from './components/common/Sidebar';
 import { useProjects } from './hooks/useProjects';
 import { TaskManager } from './services/TaskManager';
-import { loadCharacters, loadScenes, loadProps, loadShots, loadEpisode, loadEpisodeShots, saveEpisode } from './store/projectStore';
+import { loadCharacters, loadScenes, loadProps, loadShots, loadEpisode, loadEpisodeShots, saveEpisode, listEpisodes } from './store/projectStore';
 import { Spin, App as AntApp } from 'antd';
 import {
   DEV_TEST_PROJECT,
@@ -32,7 +32,7 @@ const SettingsPage = lazy(() => import('./components/settings').then(m => ({ def
 const PluginManager = lazy(() => import('./components/plugins').then(m => ({ default: m.PluginManager })));
 const PluginHost = lazy(() => import('./components/plugins').then(m => ({ default: m.PluginHost })));
 const ChatPage = lazy(() => import('./components/chat').then(m => ({ default: m.ChatPage })));
-const ProjectOverview = lazy(() => import('./components/project/ProjectOverview').then(m => ({ default: m.ProjectOverview })));
+
 const LinghuiPage = lazy(() => import('./components/linghui').then(m => ({ default: m.LinghuiPage })));
 
 // 加载中占位组件
@@ -74,11 +74,7 @@ const AppContent: React.FC = () => {
 
   const [view, setView] = useState<AppView>(isVideoDevMode ? 'editor' : 'projects');
   const [activeProject, setActiveProject] = useState<Project | null>(isVideoDevMode ? DEV_TEST_PROJECT : null);
-  const [editorStep, setEditorStep] = useState<EditorStep>(isVideoDevMode ? 'video' : 'assets');
   const [activeEpisode, setActiveEpisode] = useState<Episode | null>(null);
-  const [stepProgress, setStepProgress] = useState<EpisodeStepProgress>({
-    assets: 'pending', storyboard: 'pending', video: 'pending',
-  });
   const [appSettings, setAppSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isProjectSettingsOpen, setIsProjectSettingsOpen] = useState(false);
@@ -195,9 +191,9 @@ const AppContent: React.FC = () => {
     }
   }, [view]);
 
-  // 切换到视频步骤时加载 shots
+  // 加载 shots (进入编辑器时)
   useEffect(() => {
-    if (editorStep === 'video' && activeProject && activeEpisode && !isVideoDevMode) {
+    if (view === 'editor' && activeProject && activeEpisode && !isVideoDevMode) {
       loadEpisodeShots(activeProject.id, activeEpisode.id).then(shots => {
         if (shots.length > 0) {
           setAnalysisData(prev => ({
@@ -209,7 +205,7 @@ const AppContent: React.FC = () => {
         logger.error('加载剧集镜头失败', err);
       });
     }
-  }, [editorStep, activeProject?.id, activeEpisode?.id, isVideoDevMode]);
+  }, [view, activeProject?.id, activeEpisode?.id, isVideoDevMode]);
 
   // 转换项目显示格式
   const displayProjects: Project[] = projects
@@ -229,7 +225,6 @@ const AppContent: React.FC = () => {
   const handleEnterVideoTest = () => {
     setActiveProject(DEV_TEST_PROJECT);
     setAnalysisData(DEV_TEST_ANALYSIS);
-    setEditorStep('video');
     setView('editor');
   };
 
@@ -252,27 +247,56 @@ const AppContent: React.FC = () => {
         stylePrompt: created.stylePrompt,
       };
       setActiveProject(newProject);
-      setActiveEpisode(null);
-      setView('overview');
       setScriptText('');
       setAnalysisData(null);
       setIsCreateModalOpen(false);
       message.success('项目创建成功');
+
+      // 自动加载第一个剧集并进入分镜工作区
+      try {
+        const episodes = await listEpisodes(newProject.id);
+        if (episodes.length > 0) {
+          const ep = episodes[0];
+          setActiveEpisode(ep);
+          setScriptText(ep.scriptText || '');
+        }
+      } catch { /* ignore */ }
+      setView('editor');
     } catch (err: any) {
       message.error(err.message || '创建项目失败');
     }
   };
 
-  const handleSelectProject = (id: string) => {
+  const handleSelectProject = useCallback(async (id: string) => {
     const proj = displayProjects.find(p => p.id === id);
-    if (proj) {
-      setActiveProject(proj);
-      setActiveEpisode(null);
-      setView('overview');
-      setScriptText('');
-      setAnalysisData(null);
+    if (!proj) return;
+
+    setActiveProject(proj);
+    setScriptText('');
+    setAnalysisData(null);
+
+    // 直接进入分镜工作区：自动加载第一个剧集
+    try {
+      const episodes = await listEpisodes(id);
+      if (episodes.length > 0) {
+        // 按编号排序，取第一集
+        const sorted = [...episodes].sort((a, b) => a.number - b.number);
+        const firstEpisode = sorted[0];
+        const loaded = await loadEpisode(id, firstEpisode.id).catch(() => null);
+        const targetEpisode = loaded || firstEpisode;
+        setActiveEpisode(targetEpisode);
+        setScriptText(targetEpisode.scriptText || '');
+        setView('editor');
+        return;
+      }
+    } catch (err) {
+      logger.error('加载剧集列表失败', err);
     }
-  };
+
+    // 没有剧集也进入 editor，StoryboardWorkspace 会显示引导
+    setActiveEpisode(null);
+    setView('editor');
+  }, [displayProjects]);
 
   const handleEnterEpisode = useCallback(async (episode: Episode) => {
     const latestEpisode = activeProject
@@ -285,36 +309,9 @@ const AppContent: React.FC = () => {
 
     setActiveEpisode(targetEpisode);
     setView('editor');
-    const defaultProgress: EpisodeStepProgress = { assets: 'pending', storyboard: 'pending', video: 'pending' };
-    const progress = targetEpisode.stepProgress || defaultProgress;
-    setStepProgress(progress);
-    const steps: EditorStep[] = ['assets', 'storyboard', 'video'];
-    const firstPending = steps.find(s => progress[s] === 'pending') || 'assets';
-    setEditorStep(firstPending);
     setScriptText(targetEpisode.scriptText || '');
     setAnalysisData(null);
   }, [activeProject]);
-
-  const markStepCompleted = useCallback((step: EditorStep) => {
-    setStepProgress(prev => {
-      const updated = { ...prev, [step]: 'completed' as const };
-      if (activeProject && activeEpisode) {
-        setActiveEpisode({ ...activeEpisode, stepProgress: updated });
-        saveEpisode(activeProject.id, activeEpisode.id, { stepProgress: updated }).catch(err => logger.error('保存剧集失败', err));
-      }
-      return updated;
-    });
-  }, [activeProject, activeEpisode]);
-
-  const handleStepChangeWithMark = useCallback((targetStep: EditorStep) => {
-    const stepOrder: EditorStep[] = ['assets', 'storyboard', 'video'];
-    const currentIndex = stepOrder.indexOf(editorStep);
-    const targetIndex = stepOrder.indexOf(targetStep);
-    if (targetIndex > currentIndex) {
-      markStepCompleted(editorStep);
-    }
-    setEditorStep(targetStep);
-  }, [editorStep, markStepCompleted]);
 
   const handleDeleteProject = async (id: string) => {
     try {
@@ -392,31 +389,17 @@ const AppContent: React.FC = () => {
                 <PluginHost pluginId={view.replace('plugin:', '')} />
               </Suspense>
             )}
-            {view === 'overview' && activeProject && (
-              <Suspense fallback={<ViewLoading tip="加载中..." />}>
-                <ProjectOverview
-                  project={activeProject}
-                  onEnterEpisode={handleEnterEpisode}
-                  onProjectUpdate={(updates) => setActiveProject({ ...activeProject, ...updates })}
-                  onOpenProjectSettings={() => setIsProjectSettingsOpen(true)}
-                />
-              </Suspense>
-            )}
             {view === 'editor' && activeProject && (
               <Suspense fallback={<ViewLoading tip="加载中..." />}>
                 <EditorView
                   activeProject={activeProject}
                   activeEpisode={activeEpisode}
-                  editorStep={editorStep}
-                  stepProgress={stepProgress}
                   scriptText={scriptText}
                   analysisData={analysisData}
                   appSettings={appSettings}
                   mentionItems={mentionItems}
-                  onStepChange={setEditorStep}
-                  onStepChangeWithMark={handleStepChangeWithMark}
                   onViewChange={setView}
-                  onOpenProjectSettings={() => setIsProjectSettingsOpen(true)}
+                  onEpisodeChange={handleEnterEpisode}
                 />
               </Suspense>
             )}

@@ -37,7 +37,21 @@ export type PromptTemplateType =
   // ITV 视频生成模板
   | 'itv_shot_video'           // 分镜视频
   | 'itv_character_motion'     // 角色动态视频
-  | 'itv_prop_motion';         // 道具动态视频
+  | 'itv_prop_motion'          // 道具动态视频
+  // 剧本转换模板
+  | 'script_conversion_basic'       // 基础剧本转换
+  | 'script_conversion_advanced'    // 进阶剧本转换
+  | 'script_conversion_studio'      // 工作室级剧本转换
+  // 内容精炼模板
+  | 'content_condensation'          // 内容浓缩
+  | 'content_expansion'             // 内容扩写
+  | 'content_polish'                // 内容润色
+  // 章节划分模板
+  | 'chapter_division_smart'        // 智能章节划分
+  | 'chapter_division_even'         // 均匀章节划分
+  // 其他增强模板
+  | 'viral_opening'                 // 爆款开头
+  | 'batch_rewrite';                // 批量改写
 
 // Prompt 模板接口
 export interface PromptTemplate {
@@ -73,6 +87,35 @@ export interface ResolvedPromptTemplate {
   template: PromptTemplate;
   prompt: string;
   source: 'default' | 'custom';
+}
+
+export type CreativeOperatorPhase =
+  | 'script-import'
+  | 'script-refine'
+  | 'chapter-division'
+  | 'storyboard-inference'
+  | 'batch-rewrite'
+  | 'export';
+
+export type CreativeOperatorTask =
+  | 'script-conversion'
+  | 'content-refinement'
+  | 'chapter-division'
+  | 'prompt-inference'
+  | 'batch-rewrite'
+  | 'export';
+
+export type CreativeOperatorLevel = 'basic' | 'advanced' | 'studio';
+
+export interface CreativeOperatorDefinition {
+  id: string;
+  phase: CreativeOperatorPhase;
+  task: CreativeOperatorTask;
+  label: string;
+  description: string;
+  templateType?: PromptTemplateType;
+  level?: CreativeOperatorLevel;
+  extraInstruction?: string;
 }
 
 const COMMON_VARIABLE_DEFINITIONS: Record<string, Omit<PromptTemplateVariable, 'name'>> = {
@@ -1126,6 +1169,207 @@ The video plays out in a continuous 9-part sequence:
     variables: [variable('stylePrefix'), variable('description'), variable('motion')],
     isCustom: false,
   },
+
+  // ========== 剧本转换模板 ==========
+  script_conversion_basic: {
+    id: 'script_conversion_basic',
+    name: '基础剧本转换',
+    description: '将文本转换为简洁的场景-描述-对话格式分镜脚本',
+    template: `请将以下文本转换为分镜脚本。
+
+要求：
+- 每个分镜包含：场景、描述、对话
+- 每个分镜时长 15-30 秒
+- 使用简洁的叙事格式
+
+文本内容：
+{{script}}
+
+风格要求：{{stylePrefix}}`,
+    variables: [variable('script'), variable('stylePrefix')],
+    isCustom: false,
+  },
+
+  script_conversion_advanced: {
+    id: 'script_conversion_advanced',
+    name: '进阶剧本转换',
+    description: '使用专业镜头语言，包含机位、景别、运镜和情绪曲线',
+    template: `你是一位拥有 10 年经验的分镜导演。请将以下文本转换为专业分镜脚本。
+
+要求：
+- 每个分镜包含：景别（CU/MED/WIDE）、机位、运镜方式
+- 约 14 个分镜/千字的密度
+- 每 3-5 个镜头为一组，追踪情绪曲线
+- 每个完整镜头约 15 秒
+
+文本内容：
+{{script}}
+
+角色信息：{{characters}}
+场景信息：{{scenes}}
+风格要求：{{stylePrefix}}`,
+    variables: [variable('script'), variable('characters'), variable('scenes'), variable('stylePrefix')],
+    isCustom: false,
+  },
+
+  script_conversion_studio: {
+    id: 'script_conversion_studio',
+    name: '工作室级剧本转换',
+    description: '电影级导演视角分解，含完整空间架构和视觉叙事原则',
+    template: `你是一位资深电影导演和分镜师。请以最高专业标准将以下文本转换为分镜脚本。
+
+要求：
+- 完整镜头规格：景别、机位、运镜、镜头功能标签
+- 详细空间架构描述：空间关系、人物位置、光源
+- 视觉叙事原则：镜头类型和时长标注
+- 情绪曲线追踪：每 3-5 个镜头一组序列
+- 转场建议和节奏控制
+- 约 14 个分镜/千字（±5% 容差）
+
+文本内容：
+{{script}}
+
+角色信息：{{characters}}
+场景信息：{{scenes}}
+道具信息：{{props}}
+风格要求：{{stylePrefix}}`,
+    variables: [variable('script'), variable('characters'), variable('scenes'), variable('props'), variable('stylePrefix')],
+    isCustom: false,
+  },
+
+  // ========== 内容精炼模板 ==========
+  content_condensation: {
+    id: 'content_condensation',
+    name: '内容浓缩',
+    description: '去除冗余描述，保留核心剧情点',
+    template: `请对以下内容进行浓缩处理。
+
+要求：
+- 去除重复描述、过多修饰词、不必要的细节
+- 保留所有关键剧情点和重要信息
+- 保持逐行文本格式
+- 输出精炼后的完整文本
+
+原始内容：
+{{script}}`,
+    variables: [variable('script')],
+    isCustom: false,
+  },
+
+  content_expansion: {
+    id: 'content_expansion',
+    name: '内容扩写',
+    description: '扩展 200-300 字的新内容',
+    template: `请对以下内容进行扩写，增加 200-300 字。
+
+扩写方向：
+- 故事延续
+- 细节补充
+- 角色发展
+- 悬念铺设
+
+要求：新内容必须与原有剧情逻辑一致。
+
+原始内容：
+{{script}}`,
+    variables: [variable('script')],
+    isCustom: false,
+  },
+
+  content_polish: {
+    id: 'content_polish',
+    name: '内容润色',
+    description: '优化语言质量和可读性，行数保持不变',
+    template: `请对以下内容进行润色处理。
+
+要求：
+- 行数必须与原文保持一致
+- 优化词汇选择、句式结构
+- 增强细节描写和氛围渲染
+- 提升对话自然度
+
+原始内容：
+{{script}}`,
+    variables: [variable('script')],
+    isCustom: false,
+  },
+
+  // ========== 章节划分模板 ==========
+  chapter_division_smart: {
+    id: 'chapter_division_smart',
+    name: '智能章节划分',
+    description: '基于内容结构和语义的智能章节划分',
+    template: `请将以下内容进行智能章节划分。
+
+要求：
+- 每章不超过 50 个分镜
+- 长篇内容分为上/中/下部分
+- 完整的故事段落，避免在句子中间断开
+- 为每章生成标题和剧情概要
+- 输出 JSON 格式：[{"title": "章节标题", "start": 起始行, "end": 结束行, "plot": "剧情概要"}]
+
+内容：
+{{script}}`,
+    variables: [variable('script')],
+    isCustom: false,
+  },
+
+  chapter_division_even: {
+    id: 'chapter_division_even',
+    name: '均匀章节划分',
+    description: '将内容均匀分配为 4-6 个章节',
+    template: `请将以下内容均匀划分为 4-6 个章节。
+
+要求：
+- 每章分镜数量接近
+- 保持故事逻辑完整性
+- 为每章生成标题和剧情概要
+- 输出 JSON 格式：[{"title": "章节标题", "start": 起始行, "end": 结束行, "plot": "剧情概要"}]
+
+内容：
+{{script}}`,
+    variables: [variable('script')],
+    isCustom: false,
+  },
+
+  // ========== 其他增强模板 ==========
+  viral_opening: {
+    id: 'viral_opening',
+    name: '爆款开头',
+    description: '生成约 100 字的开头钩子，提升吸引力',
+    template: `请为以下内容创作一个约 100 字的爆款开头。
+
+要求：
+- 最大化观众参与度和点击率
+- 与原始剧情相关
+- 不使用标点符号，使用换行格式
+- 必须与原有剧情吻合
+
+原始内容：
+{{script}}`,
+    variables: [variable('script')],
+    isCustom: false,
+  },
+
+  batch_rewrite: {
+    id: 'batch_rewrite',
+    name: '批量改写',
+    description: '对分镜文案进行同义替换和句式重组，降低重复率',
+    template: `请对以下分镜文案进行改写。
+
+要求：
+- 改写后字数差异不超过 ±10%
+- 保留核心信息和情感基调
+- 使用同义替换、句式重组、语态转换等技巧
+- 保持自然流畅，与原文风格一致
+- 保持相邻分镜间的逻辑连贯性
+- 输出 JSON 格式：[{"panel_index": 序号, "text": "改写后文案"}]
+
+分镜文案列表：
+{{script}}`,
+    variables: [variable('script')],
+    isCustom: false,
+  },
 };
 
 // ========== 存储路径 ==========
@@ -1305,6 +1549,197 @@ function assertTemplateValidation(
   }
 }
 
+const CREATIVE_OPERATORS: CreativeOperatorDefinition[] = [
+  {
+    id: 'script-conversion-basic',
+    phase: 'script-import',
+    task: 'script-conversion',
+    level: 'basic',
+    label: '基础剧本转换',
+    description: '适合把原始文本快速转成可拆分的分镜剧本结构。',
+    templateType: 'script_conversion_basic',
+  },
+  {
+    id: 'script-conversion-advanced',
+    phase: 'script-import',
+    task: 'script-conversion',
+    level: 'advanced',
+    label: '进阶剧本转换',
+    description: '补充更多镜头语义和结构信息，方便后续分镜推理。',
+    templateType: 'script_conversion_advanced',
+  },
+  {
+    id: 'script-conversion-studio',
+    phase: 'script-import',
+    task: 'script-conversion',
+    level: 'studio',
+    label: '工作室级剧本转换',
+    description: '以更强的导演视角组织文本，为高质量分镜做准备。',
+    templateType: 'script_conversion_studio',
+  },
+  {
+    id: 'content-condensation',
+    phase: 'script-refine',
+    task: 'content-refinement',
+    label: '内容浓缩',
+    description: '压缩叙述冗余，保留视觉事实和剧情骨架。',
+    templateType: 'content_condensation',
+  },
+  {
+    id: 'content-expansion',
+    phase: 'script-refine',
+    task: 'content-refinement',
+    label: '内容扩写',
+    description: '补充画面动作和叙事细节，提升可拆分度。',
+    templateType: 'content_expansion',
+  },
+  {
+    id: 'content-polish',
+    phase: 'script-refine',
+    task: 'content-refinement',
+    label: '内容润色',
+    description: '优化措辞与镜头表达，统一叙事口径。',
+    templateType: 'content_polish',
+  },
+  {
+    id: 'chapter-division-smart',
+    phase: 'chapter-division',
+    task: 'chapter-division',
+    label: '智能章节划分',
+    description: '基于剧情节奏自动切出章节块。',
+    templateType: 'chapter_division_smart',
+  },
+  {
+    id: 'chapter-division-even',
+    phase: 'chapter-division',
+    task: 'chapter-division',
+    label: '均匀章节划分',
+    description: '按更均衡的段落长度切分长文本。',
+    templateType: 'chapter_division_even',
+  },
+  {
+    id: 'storyboard-inference-basic',
+    phase: 'storyboard-inference',
+    task: 'prompt-inference',
+    level: 'basic',
+    label: '基础推理',
+    description: '优先保证主体、动作、场景和构图准确。',
+    extraInstruction: '保持简洁、清晰、可执行的镜头描述，优先确保主体、动作、场景与构图信息准确，不要过度堆砌修饰词。',
+  },
+  {
+    id: 'storyboard-inference-advanced',
+    phase: 'storyboard-inference',
+    task: 'prompt-inference',
+    level: 'advanced',
+    label: '进阶推理',
+    description: '加入更专业的景别、机位和镜头调度语言。',
+    extraInstruction: '在保证清晰度的前提下加入更明确的景别、机位、构图与镜头运动语言，强化角色关系、空间层次与叙事重点。',
+  },
+  {
+    id: 'storyboard-inference-studio',
+    phase: 'storyboard-inference',
+    task: 'prompt-inference',
+    level: 'studio',
+    label: '工作室级推理',
+    description: '从导演分镜视角增强镜头连续性和视觉叙事。',
+    extraInstruction: '以导演分镜视角输出，强调镜头调度、前后景关系、光线氛围、视觉叙事和镜头连续性，让结果可直接用于高质量分镜生产。',
+  },
+  {
+    id: 'batch-rewrite-basic',
+    phase: 'batch-rewrite',
+    task: 'batch-rewrite',
+    level: 'basic',
+    label: '基础改写',
+    description: '在保留原意的前提下让文案更易拆分成镜头。',
+    templateType: 'batch_rewrite',
+    extraInstruction: '保持原有剧情顺序，优先让语句更利于镜头拆分和视觉执行。',
+  },
+  {
+    id: 'batch-rewrite-advanced',
+    phase: 'batch-rewrite',
+    task: 'batch-rewrite',
+    level: 'advanced',
+    label: '进阶改写',
+    description: '补充镜头调度相关的动作和空间表达。',
+    templateType: 'batch_rewrite',
+    extraInstruction: '强化动作、调度和空间关系表达，但不要改写剧情结论。',
+  },
+  {
+    id: 'batch-rewrite-studio',
+    phase: 'batch-rewrite',
+    task: 'batch-rewrite',
+    level: 'studio',
+    label: '工作室级改写',
+    description: '更强调导演意图、节奏和画面张力。',
+    templateType: 'batch_rewrite',
+    extraInstruction: '以导演分镜工作流为目标，输出更具节奏感和视觉调度感的文案，但必须保留原始剧情信息。',
+  },
+  {
+    id: 'export-quick-video',
+    phase: 'export',
+    task: 'export',
+    label: '快速视频直出',
+    description: '按分镜顺序直接拼接输出视频。',
+  },
+  {
+    id: 'export-jianying',
+    phase: 'export',
+    task: 'export',
+    label: '剪映草稿',
+    description: '输出到剪映草稿，进入高级剪辑流程。',
+  },
+  {
+    id: 'export-images',
+    phase: 'export',
+    task: 'export',
+    label: '图片序列',
+    description: '按分镜顺序导出静态图片。',
+  },
+];
+
+export function getAllCreativeOperators(): CreativeOperatorDefinition[] {
+  return [...CREATIVE_OPERATORS];
+}
+
+export function getCreativeOperatorsByPhase(
+  phase: CreativeOperatorPhase,
+  task?: CreativeOperatorTask,
+): CreativeOperatorDefinition[] {
+  return CREATIVE_OPERATORS.filter((operator) => operator.phase === phase && (!task || operator.task === task));
+}
+
+export function getCreativeOperatorsByTask(task: CreativeOperatorTask): CreativeOperatorDefinition[] {
+  return CREATIVE_OPERATORS.filter((operator) => operator.task === task);
+}
+
+export function getCreativeOperator(operatorId: string): CreativeOperatorDefinition | undefined {
+  return CREATIVE_OPERATORS.find((operator) => operator.id === operatorId);
+}
+
+export function resolveCreativeOperatorTemplate(params: {
+  operatorId?: string;
+  phase?: CreativeOperatorPhase;
+  task?: CreativeOperatorTask;
+  level?: CreativeOperatorLevel;
+}): CreativeOperatorDefinition | undefined {
+  if (params.operatorId) {
+    return getCreativeOperator(params.operatorId);
+  }
+
+  return CREATIVE_OPERATORS.find((operator) => {
+    if (params.phase && operator.phase !== params.phase) {
+      return false;
+    }
+    if (params.task && operator.task !== params.task) {
+      return false;
+    }
+    if (params.level && operator.level !== params.level) {
+      return false;
+    }
+    return true;
+  });
+}
+
 // ========== 模板管理函数 ==========
 
 /**
@@ -1462,6 +1897,11 @@ export async function resolvePromptTemplate(
 export default {
   loadPromptTemplates,
   getPromptTemplate,
+  getAllCreativeOperators,
+  getCreativeOperatorsByPhase,
+  getCreativeOperatorsByTask,
+  getCreativeOperator,
+  resolveCreativeOperatorTemplate,
   saveCustomTemplate,
   resetTemplate,
   resetAllTemplates,

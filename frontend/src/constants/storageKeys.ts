@@ -33,6 +33,7 @@ export const CHAT_STORAGE_KEYS = {
 // 项目相关键（带项目 ID 前缀）
 export const PROJECT_STORAGE_KEYS = {
   SCRIPT_VERSIONS_PREFIX: 'koma_script_versions_',
+  STORYBOARD_WORKSPACE_PREFIX: 'koma_storyboard_workspace_',
 } as const;
 
 // 生成带项目 ID 的键
@@ -43,6 +44,10 @@ export function getProjectStorageKey(prefix: string, projectId: string): string 
 // 生成脚本版本键
 export function getScriptVersionsKey(projectId: string): string {
   return getProjectStorageKey(PROJECT_STORAGE_KEYS.SCRIPT_VERSIONS_PREFIX, projectId);
+}
+
+export function getStoryboardWorkspaceKey(projectId: string, episodeId: string): string {
+  return `${PROJECT_STORAGE_KEYS.STORYBOARD_WORKSPACE_PREFIX}${projectId}_${episodeId}`;
 }
 
 // 生成会话数据键

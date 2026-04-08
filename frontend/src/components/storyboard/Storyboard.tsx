@@ -29,7 +29,9 @@ import { TaskManager } from '../../services/TaskManager';
 import { ScriptEditor } from '../../editor';
 import type { MentionItem } from '../../editor';
 import { StoryboardStudio } from './StoryboardStudio';
-import { ShotListEditor } from './ShotListEditor';
+import { ShotNavigator } from './ShotNavigator';
+import { CurrentShotStage } from './CurrentShotStage';
+import { CurrentShotInspector } from './CurrentShotInspector';
 import { ShotAssetPresetModal } from './ShotAssetPresetModal';
 import { useShotAssetSync } from '../../hooks/useShotAssetSync';
 import { createLogger } from '../../store/logger';
@@ -39,8 +41,8 @@ import {
   resolveShotVideoCapabilitySupport,
 } from '../../workflow/shotVideoPlan';
 import './Storyboard.css';
-import './ShotListEditor.css';
 import { getMediaAssetDisplaySource } from '../../types';
+import type { StoryboardWorkflowContext } from './panels/workflowSessions';
 
 const logger = createLogger('Storyboard');
 
@@ -99,6 +101,10 @@ interface StoryboardProps {
   styleSnapshot?: ProjectStyleSnapshot;
   mentionItems?: MentionItem[];
   onConfirmedShotsToTimeline?: (shots: Shot[]) => void;
+  onRequestScriptWorkflow?: () => void;
+  onStoryboardContextChange?: (context: StoryboardWorkflowContext) => void;
+  initialActiveShotId?: string | null;
+  initialSelectedShotIds?: string[];
 }
 
 export const Storyboard: React.FC<StoryboardProps> = ({
@@ -115,6 +121,10 @@ export const Storyboard: React.FC<StoryboardProps> = ({
   styleSnapshot,
   mentionItems = [],
   onConfirmedShotsToTimeline: _onConfirmedShotsToTimeline,
+  onRequestScriptWorkflow,
+  onStoryboardContextChange,
+  initialActiveShotId,
+  initialSelectedShotIds = [],
 }) => {
   const { message } = App.useApp();
   const [effectiveSettings, setEffectiveSettings] = useState<AppSettings>(settings);
@@ -145,7 +155,12 @@ export const Storyboard: React.FC<StoryboardProps> = ({
   const [editFormData, setEditFormData] = useState<Partial<Shot>>({});
 
   // 舞台区激活的分镜
-  const [activeShotId, setActiveShotId] = useState<string | null>(null);
+  const [activeShotId, setActiveShotId] = useState<string | null>(initialActiveShotId ?? null);
+  const [selectedShotIds, setSelectedShotIds] = useState<string[]>(initialSelectedShotIds);
+  const initialSelectedShotIdsKey = useMemo(
+    () => initialSelectedShotIds.join('|'),
+    [initialSelectedShotIds],
+  );
   const projectStylePrompt = useMemo(
     () => styleSnapshot?.ttiStylePrefix?.trim() || '',
     [styleSnapshot]
@@ -179,8 +194,13 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     };
   }, []);
 
+  useEffect(() => {
+    setActiveShotId(initialActiveShotId ?? null);
+    setSelectedShotIds([...initialSelectedShotIds]);
+  }, [episodeId, initialActiveShotId, initialSelectedShotIdsKey]);
+
   // 获取当前激活的分镜对象
-  const _activeShot = useMemo(() =>
+  const activeShot = useMemo(() =>
     shots.find(s => s.id === activeShotId) || null
   , [shots, activeShotId]);
 
@@ -339,6 +359,29 @@ export const Storyboard: React.FC<StoryboardProps> = ({
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  useEffect(() => {
+    if (shots.length === 0) {
+      setActiveShotId(null);
+      return;
+    }
+
+    if (!activeShotId || !shots.some((shot) => shot.id === activeShotId)) {
+      setActiveShotId(shots[0].id);
+    }
+  }, [shots, activeShotId]);
+
+  useEffect(() => {
+    setSelectedShotIds((prev) => prev.filter((shotId) => shots.some((shot) => shot.id === shotId)));
+  }, [shots]);
+
+  useEffect(() => {
+    onStoryboardContextChange?.({
+      activeShotId,
+      selectedShotIds,
+      shotCount: shots.length,
+    });
+  }, [activeShotId, selectedShotIds, shots.length, onStoryboardContextChange]);
 
   // 监听分析任务完成事件（媒体任务已收口到 taskQueueStore，不再走 TaskManager）
   useEffect(() => {
@@ -1502,9 +1545,15 @@ export const Storyboard: React.FC<StoryboardProps> = ({
               <Spin indicator={<LoadingOutlined style={{ fontSize: 24 }} spin />} />
             ) : (
               <Space direction="vertical" size="middle">
+                <Button
+                  type="primary"
+                  size="large"
+                  onClick={onRequestScriptWorkflow}
+                >
+                  从剧本工作流开始
+                </Button>
                 {script && episodeId && (
                   <Button
-                    type="primary"
                     size="large"
                     icon={<RobotOutlined />}
                     onClick={handleGenerateAIShots}
@@ -1517,7 +1566,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
                 </Button>
                 {!script && (
                   <Text type="secondary" style={{ fontSize: 12 }}>
-                    提示：需要先在剧本步骤输入内容才能使用 AI 生成
+                    需要先在剧本工作流中导入内容，才能继续做 AI 推理
                   </Text>
                 )}
               </Space>
@@ -1525,60 +1574,79 @@ export const Storyboard: React.FC<StoryboardProps> = ({
           </Empty>
         </div>
       ) : (
-        <StoryboardStudio>
-          <ShotListEditor
-            projectId={projectId}
-            shots={shots}
-            characters={characters}
-            scenes={scenes}
-            props={props}
-            mentionItems={actualMentionItems}
-            generatingImagePrompts={generatingImagePrompts}
-            generatingVideoPrompts={generatingVideoPrompts}
-            generatingImages={generatingShots}
-            generatingVideos={renderingShots}
-            batchProgress={batchProgress}
-            activeShotId={activeShotId}
-            onActiveShotChange={setActiveShotId}
-            onScriptChange={handleScriptChange}
-            onImagePromptChange={handleImagePromptChange}
-            onVideoPromptChange={handleVideoPromptChange}
-            onCharactersChange={handleCharactersChange}
-            onScenesChange={handleScenesChange}
-            onPropsChange={handlePropsChange}
-            onReferenceImagesChange={handleReferenceImagesChange}
-            onImagesChange={handleImagesChange}
-            onVideosChange={handleVideosChange}
-            onGenerateImagePrompt={handleGenerateImagePrompt}
-            onGenerateVideoPrompt={handleGenerateVideoPrompt}
-            onOptimizeImagePrompt={handleOptimizeImagePrompt}
-            onOptimizeVideoPrompt={handleOptimizeVideoPrompt}
-            onBatchGenerateImagePrompts={handleBatchGenerateImagePrompts}
-            onBatchReGenerateImagePrompts={handleBatchReGenerateImagePrompts}
-            onBatchGenerateVideoPrompts={handleBatchGenerateVideoPrompts}
-            onBatchReGenerateVideoPrompts={handleBatchReGenerateVideoPrompts}
-            onGenerateImage={handleGenerateShotImage}
-            onBatchGenerateImages={handleBatchGenerate}
-            onBatchReGenerateImages={handleBatchReGenerateImages}
-            onGenerateVideo={handleRenderShotVideo}
-            onBatchGenerateVideos={handleBatchRenderVideos}
-            onBatchReGenerateVideos={handleBatchReGenerateVideos}
-            getVideoCapabilityLabel={(shotId) => shotVideoSupportMap.get(shotId)?.capabilityLabel}
-            getVideoGenerateDisabledReason={(shotId) => shotVideoSupportMap.get(shotId)?.disabledReason}
-            onToggleConfirm={handleToggleConfirm}
-            onDelete={handleDeleteShot}
-            onBatchDelete={handleBatchDelete}
-            onBatchConfirm={handleBatchConfirm}
-            onMergeUp={handleMergeUp}
-            onMergeDown={handleMergeDown}
-            onMoveUp={handleMoveUp}
-            onMoveDown={handleMoveDown}
-            onAddShot={handleAddShot}
-            onInsertAbove={handleInsertAbove}
-            onInsertBelow={handleInsertBelow}
-            onShotImageModeChange={handleShotImageModeChange}
-          />
-        </StoryboardStudio>
+        <StoryboardStudio
+          navigator={(
+            <ShotNavigator
+              shots={shots}
+              activeShotId={activeShotId}
+              selectedShotIds={selectedShotIds}
+              onActiveShotChange={setActiveShotId}
+              onShotSelectionChange={(shotId, selected) => {
+                setSelectedShotIds(prev => selected
+                  ? Array.from(new Set([...prev, shotId]))
+                  : prev.filter((id) => id !== shotId));
+              }}
+              onAddShot={handleAddShot}
+            />
+          )}
+          stage={(
+            <CurrentShotStage
+              shot={activeShot}
+              shotIndex={Math.max(0, shots.findIndex((shot) => shot.id === activeShot?.id))}
+              onImageSelect={(index) => {
+                if (!activeShot) return;
+                handleImagesChange(activeShot.id, activeShot.media?.images || [], index);
+              }}
+              onVideoSelect={(index) => {
+                if (!activeShot) return;
+                handleVideosChange(activeShot.id, activeShot.media?.videos || [], index);
+              }}
+              onReferenceSelect={(index) => {
+                if (!activeShot) return;
+                handleReferenceImagesChange(activeShot.id, activeShot.media?.references || [], index);
+              }}
+              isGeneratingImage={activeShot ? generatingShots.has(activeShot.id) : false}
+              isGeneratingVideo={activeShot ? renderingShots.has(activeShot.id) : false}
+            />
+          )}
+          inspector={(
+            <CurrentShotInspector
+              shot={activeShot}
+              shotIndex={Math.max(0, shots.findIndex((shot) => shot.id === activeShot?.id))}
+              totalCount={shots.length}
+              characters={characters}
+              scenes={scenes}
+              props={props}
+              mentionItems={actualMentionItems}
+              isGeneratingImagePrompt={activeShot ? generatingImagePrompts.has(activeShot.id) : false}
+              isGeneratingVideoPrompt={activeShot ? generatingVideoPrompts.has(activeShot.id) : false}
+              isGeneratingImage={activeShot ? generatingShots.has(activeShot.id) : false}
+              isGeneratingVideo={activeShot ? renderingShots.has(activeShot.id) : false}
+              onScriptChange={handleScriptChange}
+              onImagePromptChange={handleImagePromptChange}
+              onVideoPromptChange={handleVideoPromptChange}
+              onImageModeChange={handleShotImageModeChange}
+              onCharactersChange={handleCharactersChange}
+              onScenesChange={handleScenesChange}
+              onPropsChange={handlePropsChange}
+              onShotMetaChange={handleShotMetaChange}
+              onGenerateImagePrompt={handleGenerateImagePrompt}
+              onGenerateVideoPrompt={handleGenerateVideoPrompt}
+              onOptimizeImagePrompt={handleOptimizeImagePrompt}
+              onOptimizeVideoPrompt={handleOptimizeVideoPrompt}
+              onGenerateImage={handleGenerateShotImage}
+              onGenerateVideo={handleRenderShotVideo}
+              videoCapabilityLabel={activeShot ? shotVideoSupportMap.get(activeShot.id)?.capabilityLabel : undefined}
+              videoGenerateDisabledReason={activeShot ? shotVideoSupportMap.get(activeShot.id)?.disabledReason : undefined}
+              onToggleConfirm={handleToggleConfirm}
+              onDelete={handleDeleteShot}
+              onMoveUp={handleMoveUp}
+              onMoveDown={handleMoveDown}
+              onInsertAbove={handleInsertAbove}
+              onInsertBelow={handleInsertBelow}
+            />
+          )}
+        />
       )}
 
       {/* 编辑/添加分镜弹窗 */}
