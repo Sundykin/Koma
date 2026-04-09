@@ -4,7 +4,7 @@
  */
 import type { ModelConfig } from '../../types';
 import type { LLMProvider, ChatMessage, LLMCallOptions } from './types';
-import { llmQuery, isLLMIPCAvailable, testLLMConnection } from '../../chat/ipc/chatIPC';
+import { llmQuery, llmQueryStream, isLLMIPCAvailable, testLLMConnection } from '../../chat/ipc/chatIPC';
 
 export { isLLMIPCAvailable };
 
@@ -53,6 +53,37 @@ export class IPCLLMProvider implements LLMProvider {
         operation: options?.operation || 'generateText',
       },
     });
+    return response.content;
+  }
+
+  /**
+   * 流式文本生成 — 无应用层超时，适用于长文本精炼等重量级任务。
+   * 通过 onChunk 回调实时推送生成内容。
+   */
+  async generateTextStream(
+    prompt: string,
+    systemPrompt?: string,
+    options?: LLMCallOptions,
+    onChunk?: (delta: string, accumulated: string) => void,
+  ): Promise<string> {
+    const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [];
+    if (systemPrompt) {
+      messages.push({ role: 'system', content: systemPrompt });
+    }
+    messages.push({ role: 'user', content: prompt });
+
+    const response = await llmQueryStream(
+      {
+        messages,
+        config: this.buildConfig(),
+        options: {
+          traceId: options?.traceId,
+          source: options?.source,
+          operation: options?.operation || 'generateTextStream',
+        },
+      },
+      onChunk,
+    );
     return response.content;
   }
 

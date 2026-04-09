@@ -24,5 +24,16 @@ export interface LLMProvider {
   validate(): boolean;
   testConnection(): Promise<boolean>;
   generateText(prompt: string, systemPrompt?: string, options?: LLMCallOptions): Promise<string>;
+  /**
+   * 流式文本生成 — 通过 onChunk 回调逐步推送内容，无应用层超时。
+   * 适用于长文本精炼、内容浓缩等重量级任务。
+   * 返回完整生成结果。
+   */
+  generateTextStream?(
+    prompt: string,
+    systemPrompt?: string,
+    options?: LLMCallOptions,
+    onChunk?: (delta: string, accumulated: string) => void,
+  ): Promise<string>;
   chat(messages: ChatMessage[], options?: LLMCallOptions): Promise<string>;
 }

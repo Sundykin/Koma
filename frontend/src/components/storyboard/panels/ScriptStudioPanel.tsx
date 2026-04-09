@@ -63,6 +63,7 @@ export const ScriptStudioPanel: React.FC<ScriptStudioPanelProps> = ({
 }) => {
   const { message } = App.useApp();
   const [isProcessing, setIsProcessing] = useState(false);
+  const [streamingPreview, setStreamingPreview] = useState<string>('');
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
 
   const refineOperators = useMemo(() => getCreativeOperatorsByPhase('script-refine'), []);
@@ -113,10 +114,27 @@ export const ScriptStudioPanel: React.FC<ScriptStudioPanelProps> = ({
     }
 
     setIsProcessing(true);
+    setStreamingPreview('');
     try {
       const ctx = await createCreationContext(projectId, episodeId);
       const resolved = await resolvePromptTemplate(operator.templateType, { script: scriptText });
-      const response = await ctx.llmProvider.generateText(resolved.prompt);
+
+      // 优先使用流式调用（无超时限制），降级为普通调用
+      let response: string;
+      if (ctx.llmProvider.generateTextStream) {
+        response = await ctx.llmProvider.generateTextStream(
+          resolved.prompt,
+          undefined,
+          { source: 'script-studio', operation: 'refine' },
+          (_delta, accumulated) => {
+            setStreamingPreview(accumulated);
+          },
+        );
+      } else {
+        response = await ctx.llmProvider.generateText(resolved.prompt);
+      }
+
+      setStreamingPreview('');
       updateSession({
         scriptText: response || scriptText,
         refinedPreview: response || scriptText,
@@ -130,6 +148,7 @@ export const ScriptStudioPanel: React.FC<ScriptStudioPanelProps> = ({
       message.error('处理失败: ' + (err.message || '未知错误'));
     } finally {
       setIsProcessing(false);
+      setStreamingPreview('');
     }
   }, [currentStep, episodeId, message, projectId, scriptText, trackOperator, updateSession]);
 
@@ -140,10 +159,26 @@ export const ScriptStudioPanel: React.FC<ScriptStudioPanelProps> = ({
     }
 
     setIsProcessing(true);
+    setStreamingPreview('');
     try {
       const ctx = await createCreationContext(projectId, episodeId);
       const resolved = await resolvePromptTemplate(operator.templateType, { script: scriptText });
-      const response = await ctx.llmProvider.generateText(resolved.prompt);
+
+      let response: string;
+      if (ctx.llmProvider.generateTextStream) {
+        response = await ctx.llmProvider.generateTextStream(
+          resolved.prompt,
+          undefined,
+          { source: 'script-studio', operation: 'chapter-division' },
+          (_delta, accumulated) => {
+            setStreamingPreview(accumulated);
+          },
+        );
+      } else {
+        response = await ctx.llmProvider.generateText(resolved.prompt);
+      }
+
+      setStreamingPreview('');
       updateSession({
         scriptText: response || scriptText,
         chapterPreview: response || scriptText,
@@ -157,6 +192,7 @@ export const ScriptStudioPanel: React.FC<ScriptStudioPanelProps> = ({
       message.error('划分失败: ' + (err.message || '未知错误'));
     } finally {
       setIsProcessing(false);
+      setStreamingPreview('');
     }
   }, [currentStep, episodeId, message, projectId, scriptText, trackOperator, updateSession]);
 
@@ -165,6 +201,7 @@ export const ScriptStudioPanel: React.FC<ScriptStudioPanelProps> = ({
       return;
     }
     setIsProcessing(true);
+    setStreamingPreview('');
     try {
       const ctx = await createCreationContext(projectId, episodeId);
       const resolved = await resolvePromptTemplate('shot_breakdown', {
@@ -173,7 +210,22 @@ export const ScriptStudioPanel: React.FC<ScriptStudioPanelProps> = ({
         scenes: '无',
         props: '无',
       });
-      const response = await ctx.llmProvider.generateText(resolved.prompt);
+
+      let response: string;
+      if (ctx.llmProvider.generateTextStream) {
+        response = await ctx.llmProvider.generateTextStream(
+          resolved.prompt,
+          undefined,
+          { source: 'script-studio', operation: 'shot-breakdown' },
+          (_delta, accumulated) => {
+            setStreamingPreview(accumulated);
+          },
+        );
+      } else {
+        response = await ctx.llmProvider.generateText(resolved.prompt);
+      }
+
+      setStreamingPreview('');
       let nextResults: string[] = [];
 
       try {
@@ -216,6 +268,7 @@ export const ScriptStudioPanel: React.FC<ScriptStudioPanelProps> = ({
       message.warning('AI 拆分失败，已按行拆分');
     } finally {
       setIsProcessing(false);
+      setStreamingPreview('');
     }
   }, [episodeId, message, projectId, scriptText, updateSession]);
 
@@ -344,7 +397,14 @@ export const ScriptStudioPanel: React.FC<ScriptStudioPanelProps> = ({
               ))}
             </Space>
             <Button type="link" onClick={handleSkipToSplit}>跳过，直接拆分分镜</Button>
-            <TextArea value={scriptText} onChange={e => updateSession({ scriptText: e.target.value })} rows={10} className="bg-zinc-900 border-zinc-700" />
+            {isProcessing && streamingPreview ? (
+              <div className="relative">
+                <TextArea value={streamingPreview} readOnly rows={10} className="bg-zinc-950 border-zinc-700 text-zinc-400" />
+                <Text type="secondary" className="absolute bottom-2 right-3 text-[11px]">生成中…</Text>
+              </div>
+            ) : (
+              <TextArea value={scriptText} onChange={e => updateSession({ scriptText: e.target.value })} rows={10} className="bg-zinc-900 border-zinc-700" />
+            )}
           </div>
         )}
 
@@ -360,7 +420,14 @@ export const ScriptStudioPanel: React.FC<ScriptStudioPanelProps> = ({
               ))}
             </Space>
             <Button type="link" onClick={handleSkipToSplit}>跳过，直接拆分分镜</Button>
-            <TextArea value={scriptText} onChange={e => updateSession({ scriptText: e.target.value })} rows={8} className="bg-zinc-900 border-zinc-700" />
+            {isProcessing && streamingPreview ? (
+              <div className="relative">
+                <TextArea value={streamingPreview} readOnly rows={8} className="bg-zinc-950 border-zinc-700 text-zinc-400" />
+                <Text type="secondary" className="absolute bottom-2 right-3 text-[11px]">生成中…</Text>
+              </div>
+            ) : (
+              <TextArea value={scriptText} onChange={e => updateSession({ scriptText: e.target.value })} rows={8} className="bg-zinc-900 border-zinc-700" />
+            )}
           </div>
         )}
 
@@ -371,9 +438,14 @@ export const ScriptStudioPanel: React.FC<ScriptStudioPanelProps> = ({
             <Button type="primary" icon={<ScissorOutlined />} onClick={handleAISplit} loading={isProcessing} disabled={!scriptText.trim()}>
               AI 拆分分镜
             </Button>
-            {splitResults.length > 0 && (
+            {isProcessing && streamingPreview ? (
+              <div className="relative">
+                <TextArea value={streamingPreview} readOnly rows={8} className="bg-zinc-950 border-zinc-700 text-zinc-400 font-mono text-xs" />
+                <Text type="secondary" className="absolute bottom-2 right-3 text-[11px]">拆分中…</Text>
+              </div>
+            ) : splitResults.length > 0 ? (
               <Text type="secondary">已暂存 {splitResults.length} 个分镜草稿</Text>
-            )}
+            ) : null}
           </div>
         )}
 

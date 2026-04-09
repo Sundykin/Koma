@@ -6,7 +6,7 @@ import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron';
 type Listener = (event: IpcRendererEvent, ...args: any[]) => void;
 
 const ALLOWED_INVOKE_CHANNELS = new Set([
-  'llm:query',
+  'llm:query', 'llm:queryStream',
   'llm:testConnection', 'llm:saveProfile', 'llm:deleteProfile',
   'llm:saveChannelConfig', 'llm:deleteChannelConfig', 'llm:migrateSettingsSecrets',
   'chat:session:create', 'chat:session:get', 'chat:session:dispose',
@@ -109,6 +109,7 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
 const ALLOWED_LISTEN_CHANNELS = new Set([
   'chat:stream:chunk', 'chat:stream:tool', 'chat:stream:done', 'chat:stream:error',
   'chat:tool:pending', 'chat:tool:approved', 'chat:tool:rejected',
+  'llm:stream:chunk', 'llm:stream:done', 'llm:stream:error',
 ]);
 
 function validateInvokeChannel(channel: string): void {
@@ -343,12 +344,25 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   llm: {
     query: (request: any) => invokeMain('llm:query', request),
+    queryStream: (request: any) => invokeMain('llm:queryStream', request),
     testConnection: (request: any) => invokeMain('llm:testConnection', request),
     saveProfile: (request: any) => invokeMain('llm:saveProfile', request),
     deleteProfile: (profileId: string) => invokeMain('llm:deleteProfile', { profileId }),
     saveChannelConfig: (request: any) => invokeMain('llm:saveChannelConfig', request),
     deleteChannelConfig: (request: any) => invokeMain('llm:deleteChannelConfig', request),
     migrateSettingsSecrets: (request: any) => invokeMain('llm:migrateSettingsSecrets', request),
+    onStreamChunk: (callback: (event: any, data: any) => void) => {
+      ipcRenderer.on('llm:stream:chunk', callback);
+      return () => ipcRenderer.removeListener('llm:stream:chunk', callback);
+    },
+    onStreamDone: (callback: (event: any, data: any) => void) => {
+      ipcRenderer.on('llm:stream:done', callback);
+      return () => ipcRenderer.removeListener('llm:stream:done', callback);
+    },
+    onStreamError: (callback: (event: any, data: any) => void) => {
+      ipcRenderer.on('llm:stream:error', callback);
+      return () => ipcRenderer.removeListener('llm:stream:error', callback);
+    },
   },
   chat: {
     // 会话管理
