@@ -2,14 +2,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Shot } from '../types';
 import { MediaType } from '../types/editor';
 
-const { loadEpisodeShotsMock, loadProjectMock } = vi.hoisted(() => ({
+const { loadEpisodeShotsMock, loadProjectMock, loadShotMetaMock } = vi.hoisted(() => ({
   loadEpisodeShotsMock: vi.fn(),
   loadProjectMock: vi.fn(),
+  loadShotMetaMock: vi.fn(),
 }));
 
 vi.mock('../store/projectStore', () => ({
   loadEpisodeShots: loadEpisodeShotsMock,
   loadProject: loadProjectMock,
+  loadShotMeta: loadShotMetaMock,
 }));
 
 vi.mock('./electronService', () => ({
@@ -20,6 +22,7 @@ vi.mock('./electronService', () => ({
       writeFile: vi.fn(),
       copy: vi.fn(),
       downloadFile: vi.fn(),
+      remove: vi.fn(),
     },
   },
 }));
@@ -41,6 +44,8 @@ vi.mock('../components/editor/aspectRatio', () => ({
 
 import {
   buildShotManifest,
+  buildStoryboardAuxiliaryTracks,
+  buildStoryboardSubtitleContent,
   buildStoryboardTracks,
   getShotMediaSource,
 } from './StoryboardExportService';
@@ -69,6 +74,7 @@ describe('StoryboardExportService', () => {
   beforeEach(() => {
     loadEpisodeShotsMock.mockReset();
     loadProjectMock.mockReset();
+    loadShotMetaMock.mockReset();
   });
 
   it('prefers the selected video source and falls back to image when needed', () => {
@@ -249,5 +255,81 @@ describe('StoryboardExportService', () => {
       start: 3,
       duration: 4,
     }));
+  });
+
+  it('builds auxiliary audio tracks from current shot versions and aligns subtitle cues', async () => {
+    loadShotMetaMock.mockResolvedValueOnce({
+      currentVersion: 2,
+      versions: [
+        { version: 1, media: {} },
+        {
+          version: 2,
+          media: {
+            audio: {
+              localPath: '/tmp/shot-image-audio.mp3',
+              durationMs: 2800,
+            },
+          },
+        },
+      ],
+    });
+
+    const manifest = {
+      shots: [
+        {
+          index: 0,
+          shot: createShot({ id: 'shot-image', scriptContent: '图像分镜' }),
+          media: { type: 'image' as const, path: '/tmp/shot-image.png', url: '/tmp/shot-image.png' },
+          duration: 5,
+          subtitle: '图像分镜',
+          hasMissingMedia: false,
+        },
+        {
+          index: 1,
+          shot: createShot({ id: 'shot-video', scriptContent: '视频分镜' }),
+          media: { type: 'video' as const, path: '/tmp/shot-video.mp4', url: '/tmp/shot-video.mp4', durationSeconds: 4 },
+          duration: 4,
+          subtitle: '视频分镜',
+          hasMissingMedia: false,
+        },
+      ],
+      totalDuration: 9,
+    };
+
+    const result = await buildStoryboardAuxiliaryTracks(manifest as any, {
+      projectId: 'project-1',
+      includeAudio: true,
+      includeSubtitles: true,
+      stillDuration: 3,
+    });
+
+    expect(loadShotMetaMock).toHaveBeenCalledTimes(1);
+    expect(result.tracks).toHaveLength(1);
+    expect(result.tracks[0]).toEqual(expect.objectContaining({
+      type: 'audio',
+      name: 'Storyboard Audio',
+    }));
+    expect(result.tracks[0].clips[0]).toEqual(expect.objectContaining({
+      type: MediaType.AUDIO,
+      src: '/tmp/shot-image-audio.mp3',
+      start: 0,
+      duration: 2.8,
+    }));
+    expect(result.subtitleCues).toEqual([
+      expect.objectContaining({ shotId: 'shot-image', start: 0, end: 3, text: '图像分镜' }),
+      expect.objectContaining({ shotId: 'shot-video', start: 3, end: 7, text: '视频分镜' }),
+    ]);
+  });
+
+  it('renders aligned subtitle cues into srt content', () => {
+    const content = buildStoryboardSubtitleContent([
+      { index: 1, shotId: 'shot-1', start: 0, end: 3.2, text: '第一句字幕' },
+      { index: 2, shotId: 'shot-2', start: 3.2, end: 7.05, text: '第二句字幕' },
+    ]);
+
+    expect(content).toContain('00:00:00,000 --> 00:00:03,200');
+    expect(content).toContain('00:00:03,200 --> 00:00:07,050');
+    expect(content).toContain('第一句字幕');
+    expect(content).toContain('第二句字幕');
   });
 });

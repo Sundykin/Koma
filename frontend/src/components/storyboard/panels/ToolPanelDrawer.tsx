@@ -10,6 +10,7 @@ import { ChapterInferencePanel } from './ChapterInferencePanel';
 import { ExportCenterPanel } from './ExportCenterPanel';
 import { ScriptStudioPanel } from './ScriptStudioPanel';
 import { StyleSettingsPanel } from './StyleSettingsPanel';
+import { WorkflowRecipesPanel } from './WorkflowRecipesPanel';
 import {
   describeWorkflowSession,
   type StoryboardWorkflowContext,
@@ -29,9 +30,11 @@ interface ToolPanelDrawerProps {
   workflowSessions: WorkflowPanelSessions;
   storyboardContext: StoryboardWorkflowContext;
   onScriptSessionChange: (updates: Partial<WorkflowPanelSessions['script']>) => void;
+  onAssetSessionChange: (updates: Partial<WorkflowPanelSessions['assets']>) => void;
   onInferenceSessionChange: (updates: Partial<WorkflowPanelSessions['inference']>) => void;
   onStyleSessionChange: (updates: Partial<WorkflowPanelSessions['style']>) => void;
   onExportSessionChange: (updates: Partial<WorkflowPanelSessions['export']>) => void;
+  onAssistantSessionChange: (updates: Partial<WorkflowPanelSessions['assistant']>) => void;
   onShotsChanged?: () => void;
   onOpenPanel?: (panelId: WorkflowPanelId) => void;
 }
@@ -48,9 +51,11 @@ export const ToolPanelDrawer: React.FC<ToolPanelDrawerProps> = ({
   workflowSessions,
   storyboardContext,
   onScriptSessionChange,
+  onAssetSessionChange,
   onInferenceSessionChange,
   onStyleSessionChange,
   onExportSessionChange,
+  onAssistantSessionChange,
   onShotsChanged,
   onOpenPanel,
 }) => {
@@ -66,7 +71,15 @@ export const ToolPanelDrawer: React.FC<ToolPanelDrawerProps> = ({
         onShotsImported={onShotsChanged}
       />
     ),
-    assets: <AssetManagerPanel projectId={projectId} episodeId={episodeId} onAssetsChanged={onShotsChanged} />,
+    assets: (
+      <AssetManagerPanel
+        projectId={projectId}
+        episodeId={episodeId}
+        session={workflowSessions.assets}
+        onSessionChange={onAssetSessionChange}
+        onAssetsChanged={onShotsChanged}
+      />
+    ),
     inference: (
       <ChapterInferencePanel
         projectId={projectId}
@@ -99,7 +112,19 @@ export const ToolPanelDrawer: React.FC<ToolPanelDrawerProps> = ({
         onSessionChange={onExportSessionChange}
       />
     ),
-    assistant: <div className="p-4 text-zinc-500">AI 助手面板（开发中）</div>,
+    assistant: (
+      <WorkflowRecipesPanel
+        workflowSessions={workflowSessions}
+        session={workflowSessions.assistant}
+        storyboardContext={storyboardContext}
+        onAssistantSessionChange={onAssistantSessionChange}
+        onScriptSessionChange={onScriptSessionChange}
+        onAssetSessionChange={onAssetSessionChange}
+        onInferenceSessionChange={onInferenceSessionChange}
+        onExportSessionChange={onExportSessionChange}
+        onOpenPanel={(nextPanelId) => onOpenPanel?.(nextPanelId)}
+      />
+    ),
   };
 
   return (

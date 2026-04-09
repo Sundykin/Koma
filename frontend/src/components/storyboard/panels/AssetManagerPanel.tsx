@@ -15,6 +15,7 @@ import { parseLLMJSON } from '../../../utils/llmJsonParser';
 import { createLogger } from '../../../store/logger';
 import { generateCostumePhoto } from '../../../workflow/characterAssetWorkflow';
 import { v4 as uuidv4 } from 'uuid';
+import type { AssetManagerSession, AssetPanelTab } from './workflowSessions';
 
 const logger = createLogger('AssetManagerPanel');
 const { Text } = Typography;
@@ -23,6 +24,8 @@ const { TextArea } = Input;
 interface AssetManagerPanelProps {
   projectId: string;
   episodeId: string;
+  session: AssetManagerSession;
+  onSessionChange: (updates: Partial<AssetManagerSession>) => void;
   onAssetsChanged?: () => void;
 }
 
@@ -36,7 +39,9 @@ interface EditingAsset {
 export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
   projectId,
   episodeId,
-  onAssetsChanged: _onAssetsChanged,
+  session,
+  onSessionChange,
+  onAssetsChanged,
 }) => {
   const { message } = App.useApp();
   const [characters, setCharacters] = useState<Character[]>([]);
@@ -46,6 +51,32 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
   const [extracting, setExtracting] = useState(false);
   const [generatingImage, setGeneratingImage] = useState(false);
   const [editingAsset, setEditingAsset] = useState<EditingAsset | null>(null);
+
+  const updateSession = useCallback((updates: Partial<AssetManagerSession>) => {
+    onSessionChange(updates);
+  }, [onSessionChange]);
+
+  const syncAssetSession = useCallback((
+    nextCharacters: Character[],
+    nextScenes: Scene[],
+    nextProps: Prop[],
+    updates: Partial<AssetManagerSession> = {},
+  ) => {
+    const nextSession: Partial<AssetManagerSession> = {
+      characterCount: nextCharacters.length,
+      sceneCount: nextScenes.length,
+      propCount: nextProps.length,
+      ...updates,
+    };
+    const shouldUpdate = nextSession.characterCount !== session.characterCount
+      || nextSession.sceneCount !== session.sceneCount
+      || nextSession.propCount !== session.propCount
+      || Object.keys(updates).length > 0;
+
+    if (shouldUpdate) {
+      updateSession(nextSession);
+    }
+  }, [session.characterCount, session.propCount, session.sceneCount, updateSession]);
 
   const loadAssets = useCallback(async () => {
     setLoading(true);
@@ -58,12 +89,13 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
       setCharacters(chars);
       setScenes(scns);
       setProps(prps);
+      syncAssetSession(chars, scns, prps);
     } catch {
       message.error('加载资产失败');
     } finally {
       setLoading(false);
     }
-  }, [projectId, message]);
+  }, [projectId, message, syncAssetSession]);
 
   useEffect(() => { loadAssets(); }, [loadAssets]);
 
@@ -124,22 +156,37 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
           prompt: p.prompt || '',
         }));
 
+      const nextCharacters = newChars.length > 0 ? [...characters, ...newChars] : characters;
+      const nextScenes = newScenes.length > 0 ? [...scenes, ...newScenes] : scenes;
+      const nextProps = newProps.length > 0 ? [...props, ...newProps] : props;
+
       if (newChars.length > 0) {
-        const allChars = [...characters, ...newChars];
-        await saveCharacters(projectId, allChars);
-        setCharacters(allChars);
+        await saveCharacters(projectId, nextCharacters);
+        setCharacters(nextCharacters);
       }
       if (newScenes.length > 0) {
-        const allScenes = [...scenes, ...newScenes];
-        await saveScenes(projectId, allScenes);
-        setScenes(allScenes);
+        await saveScenes(projectId, nextScenes);
+        setScenes(nextScenes);
       }
       if (newProps.length > 0) {
-        const allProps = [...props, ...newProps];
-        await saveProps(projectId, allProps);
-        setProps(allProps);
+        await saveProps(projectId, nextProps);
+        setProps(nextProps);
       }
 
+      const affectedCount = newChars.length + newScenes.length + newProps.length;
+      syncAssetSession(nextCharacters, nextScenes, nextProps, {
+        currentStep: affectedCount > 0 ? 1 : session.currentStep,
+        affectedScopeLabel: '项目资产库',
+        lastApplied: {
+          appliedAt: Date.now(),
+          summary: affectedCount > 0
+            ? `提取 ${newChars.length} 角色 · ${newScenes.length} 场景 · ${newProps.length} 道具`
+            : '已执行资产提取，未新增资产',
+          affectedCount,
+          scopeLabel: '项目资产库',
+        },
+      });
+      onAssetsChanged?.();
       message.success(`提取完成: ${newChars.length} 角色, ${newScenes.length} 场景, ${newProps.length} 道具`);
     } catch (err: any) {
       logger.error('资产提取失败', err);
@@ -147,7 +194,17 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
     } finally {
       setExtracting(false);
     }
-  }, [projectId, episodeId, characters, scenes, props, message]);
+  }, [
+    projectId,
+    episodeId,
+    characters,
+    scenes,
+    props,
+    message,
+    onAssetsChanged,
+    session.currentStep,
+    syncAssetSession,
+  ]);
 
   // Edit asset
   const handleOpenEdit = useCallback((type: 'character' | 'scene' | 'prop', index: number) => {
@@ -165,23 +222,54 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
         updated[editingAsset.index] = { ...updated[editingAsset.index], name: editingAsset.name, prompt: editingAsset.description };
         await saveCharacters(projectId, updated);
         setCharacters(updated);
+        syncAssetSession(updated, scenes, props, {
+          currentStep: 1,
+          affectedScopeLabel: '角色资产',
+          lastApplied: {
+            appliedAt: Date.now(),
+            summary: `已更新角色资产: ${editingAsset.name}`,
+            affectedCount: 1,
+            scopeLabel: '角色资产',
+          },
+        });
       } else if (editingAsset.type === 'scene') {
         const updated = [...scenes];
         updated[editingAsset.index] = { ...updated[editingAsset.index], name: editingAsset.name, prompt: editingAsset.description };
         await saveScenes(projectId, updated);
         setScenes(updated);
+        syncAssetSession(characters, updated, props, {
+          currentStep: 1,
+          affectedScopeLabel: '场景资产',
+          lastApplied: {
+            appliedAt: Date.now(),
+            summary: `已更新场景资产: ${editingAsset.name}`,
+            affectedCount: 1,
+            scopeLabel: '场景资产',
+          },
+        });
       } else {
         const updated = [...props];
         updated[editingAsset.index] = { ...updated[editingAsset.index], name: editingAsset.name, prompt: editingAsset.description };
         await saveProps(projectId, updated);
         setProps(updated);
+        syncAssetSession(characters, scenes, updated, {
+          currentStep: 1,
+          affectedScopeLabel: '道具资产',
+          lastApplied: {
+            appliedAt: Date.now(),
+            summary: `已更新道具资产: ${editingAsset.name}`,
+            affectedCount: 1,
+            scopeLabel: '道具资产',
+          },
+        });
       }
       setEditingAsset(null);
+      onAssetsChanged?.();
       message.success('已保存');
     } catch {
       message.error('保存失败');
     }
-  }, [editingAsset, characters, scenes, props, projectId, message]);
+  }, [editingAsset, characters, scenes, props, projectId, message, onAssetsChanged, syncAssetSession]);
 
   // Generate reference image for character
   const handleGenerateImage = useCallback(async (charIndex: number) => {
@@ -192,7 +280,18 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
       const result = await generateCostumePhoto({ projectId, character: char });
       if (result.success) {
         message.success(`已生成 ${char.name} 定妆照`);
+        updateSession({
+          currentStep: 1,
+          affectedScopeLabel: '角色资产',
+          lastApplied: {
+            appliedAt: Date.now(),
+            summary: `已生成 ${char.name} 定妆照`,
+            affectedCount: 1,
+            scopeLabel: '角色资产',
+          },
+        });
         await loadAssets();
+        onAssetsChanged?.();
       } else {
         message.error(result.error || '生成失败');
       }
@@ -201,7 +300,7 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
     } finally {
       setGeneratingImage(false);
     }
-  }, [characters, projectId, message, loadAssets]);
+  }, [characters, projectId, message, loadAssets, onAssetsChanged, updateSession]);
 
   const renderAssetCard = (type: 'character' | 'scene' | 'prop', index: number, name: string, description: string, image?: string) => (
     <Card
@@ -247,7 +346,8 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
       </div>
       <div className="flex-1 overflow-y-auto">
         <Tabs
-          defaultActiveKey="characters"
+          activeKey={session.activeTab}
+          onChange={(key) => updateSession({ activeTab: key as AssetPanelTab })}
           className="px-4"
           items={[
             { key: 'characters', label: `角色 (${characters.length})`, children: renderList('character', characters.map(c => ({ name: c.name, description: c.prompt, image: getCharacterCostumePhotoSource(c) }))) },

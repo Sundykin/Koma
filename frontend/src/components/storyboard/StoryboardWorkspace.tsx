@@ -45,7 +45,7 @@ const TOOL_BUTTONS: { id: ToolPanelId; label: string; icon: React.ReactNode }[] 
   { id: 'inference', label: '推理', icon: <ThunderboltOutlined /> },
   { id: 'style', label: '风格', icon: <FormatPainterOutlined /> },
   { id: 'export', label: '导出', icon: <ExportOutlined /> },
-  { id: 'assistant', label: 'AI', icon: <RobotOutlined /> },
+  { id: 'assistant', label: '流程', icon: <RobotOutlined /> },
 ];
 
 interface StoryboardWorkspaceProps {
@@ -243,7 +243,7 @@ export const StoryboardWorkspace: React.FC<StoryboardWorkspaceProps> = ({
     inference: '章节推理',
     style: '风格设置',
     export: '导出中心',
-    assistant: 'AI 助手',
+    assistant: '工作流预设',
   };
 
   // 加载中
@@ -349,9 +349,11 @@ export const StoryboardWorkspace: React.FC<StoryboardWorkspaceProps> = ({
         workflowSessions={activeWorkflowSessions}
         storyboardContext={storyboardContext}
         onScriptSessionChange={(updates) => updateWorkflowSession('script', updates)}
+        onAssetSessionChange={(updates) => updateWorkflowSession('assets', updates)}
         onInferenceSessionChange={(updates) => updateWorkflowSession('inference', updates)}
         onStyleSessionChange={(updates) => updateWorkflowSession('style', updates)}
         onExportSessionChange={(updates) => updateWorkflowSession('export', updates)}
+        onAssistantSessionChange={(updates) => updateWorkflowSession('assistant', updates)}
         onOpenPanel={openPanel}
       />
     </div>

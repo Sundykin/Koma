@@ -62,6 +62,12 @@ export interface WaveformOptions {
   backgroundColor?: string;
 }
 
+export interface UpscaleImageOptions {
+  input: string;
+  output: string;
+  scaleFactor?: number;
+}
+
 // 视频合成选项
 export interface ComposeVideoOptions {
   frameDir: string;           // 帧文件目录
@@ -86,7 +92,7 @@ export interface ComposeVideoOptions {
 }
 
 // 任务类型
-type TaskType = 'getInfo' | 'extractFrames' | 'splitGridImage' | 'waveform' | 'splitAudio' | 'export' | 'composeVideo';
+type TaskType = 'getInfo' | 'extractFrames' | 'splitGridImage' | 'waveform' | 'splitAudio' | 'upscaleImage' | 'export' | 'composeVideo';
 
 // 任务定义
 interface Task {
@@ -254,6 +260,13 @@ export class FFmpegService {
   }
 
   /**
+   * 图片超分辨率放大
+   */
+  async upscaleImage(options: UpscaleImageOptions): Promise<string> {
+    return this.queueTask<string>('upscaleImage', options);
+  }
+
+  /**
    * 合成视频（图片序列 + 音频 -> 视频文件）
    */
   async composeVideo(options: ComposeVideoOptions, onProgress?: ProgressCallback): Promise<string> {
@@ -305,6 +318,9 @@ export class FFmpegService {
           break;
         case 'splitAudio':
           result = await this.doSplitAudio(task.args.input, task.args.output);
+          break;
+        case 'upscaleImage':
+          result = await this.doUpscaleImage(task.args);
           break;
         case 'composeVideo':
           result = await this.doComposeVideo(task.args, task.onProgress);
@@ -592,6 +608,34 @@ export class FFmpegService {
       '-acodec', 'copy',  // 音频直接复制
       '-y',
       output
+    ];
+
+    await this.runFFmpeg(args);
+    return output;
+  }
+
+  /**
+   * 实际执行图片超分
+   */
+  private async doUpscaleImage(options: UpscaleImageOptions): Promise<string> {
+    if (!this.ffmpegPath) {
+      throw new Error('FFmpeg not available');
+    }
+
+    const {
+      input,
+      output,
+      scaleFactor = 2,
+    } = options;
+
+    await fs.promises.mkdir(path.dirname(output), { recursive: true });
+
+    const args = [
+      '-i', input,
+      '-vf', `scale=iw*${scaleFactor}:ih*${scaleFactor}:flags=lanczos,unsharp=5:5:0.8:3:3:0.4`,
+      '-frames:v', '1',
+      '-y',
+      output,
     ];
 
     await this.runFFmpeg(args);
