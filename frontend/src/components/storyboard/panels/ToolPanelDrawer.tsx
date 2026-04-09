@@ -113,11 +113,11 @@ export const ToolPanelDrawer: React.FC<ToolPanelDrawerProps> = ({
       forceRender
       styles={{
         header: { background: '#18181b', borderBottom: '1px solid #27272a', color: '#fff' },
-        body: { background: '#09090b', padding: 0 },
+        body: { background: '#09090b', padding: 0, display: 'flex', flexDirection: 'column' as const, overflow: 'hidden' },
       }}
     >
       {descriptor && (
-        <div className="px-4 py-3 border-b border-zinc-800 bg-zinc-950/80 flex flex-wrap items-center gap-2 text-xs">
+        <div className="px-4 py-3 border-b border-zinc-800 bg-zinc-950/80 flex flex-wrap items-center gap-2 text-xs shrink-0">
           <Tag className="m-0 border-zinc-700 bg-zinc-900 text-zinc-300">步骤 {descriptor.stepText}</Tag>
           {descriptor.draftText && (
             <Tag className="m-0 border-sky-800 bg-sky-950/30 text-sky-200">{descriptor.draftText}</Tag>
@@ -131,7 +131,7 @@ export const ToolPanelDrawer: React.FC<ToolPanelDrawerProps> = ({
         </div>
       )}
       {(Object.entries(panels) as Array<[WorkflowPanelId, React.ReactNode]>).map(([id, content]) => (
-        <div key={id} className={panelId === id ? 'h-full' : 'hidden'}>
+        <div key={id} className={panelId === id ? 'flex-1 min-h-0' : 'hidden'}>
           {content}
         </div>
       ))}

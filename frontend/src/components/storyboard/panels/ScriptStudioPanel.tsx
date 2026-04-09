@@ -312,7 +312,7 @@ export const ScriptStudioPanel: React.FC<ScriptStudioPanelProps> = ({
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4">
+      <div className="flex-1 min-h-0 overflow-y-auto p-4">
         {currentStep === 0 && (
           <div className="flex flex-col gap-4">
             <Title level={5} className="!text-zinc-300 !mb-0">导入剧本文本</Title>
@@ -420,7 +420,7 @@ export const ScriptStudioPanel: React.FC<ScriptStudioPanelProps> = ({
         )}
       </div>
 
-      <div className="px-4 py-3 border-t border-zinc-800 flex justify-between">
+      <div className="px-4 py-3 border-t border-zinc-800 flex justify-between shrink-0">
         <Button disabled={currentStep === 0} onClick={() => updateSession({ currentStep: Math.max(0, currentStep - 1) })}>上一步</Button>
         <Button type="primary" disabled={currentStep === STEPS.length - 1 || (currentStep === 0 && !scriptText.trim())} onClick={handleNextStep}>下一步</Button>
       </div>
