@@ -17,6 +17,17 @@ import { generateCostumePhoto } from '../../../workflow/characterAssetWorkflow';
 import { v4 as uuidv4 } from 'uuid';
 
 const logger = createLogger('AssetManagerPanel');
+
+/** LLM 可能返回对象包裹数组，强制提取为数组 */
+function coerceArray<T>(data: unknown): T[] {
+  if (Array.isArray(data)) return data;
+  if (data && typeof data === 'object') {
+    const values = Object.values(data as Record<string, unknown>);
+    const arr = values.find(v => Array.isArray(v));
+    if (arr) return arr as T[];
+  }
+  return [];
+}
 const { Text } = Typography;
 const { TextArea } = Input;
 
@@ -83,17 +94,17 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
       // Extract characters
       const charResolved = await resolvePromptTemplate('character_extraction', { script: scriptText });
       const charText = await ctx.llmProvider.generateText(charResolved.prompt);
-      const extractedChars = parseLLMJSON<Array<{ name: string; prompt: string }>>(charText) || [];
+      const extractedChars = coerceArray<{ name: string; prompt: string }>(parseLLMJSON(charText));
 
       // Extract scenes
       const sceneResolved = await resolvePromptTemplate('scene_extraction', { script: scriptText });
       const sceneText = await ctx.llmProvider.generateText(sceneResolved.prompt);
-      const extractedScenes = parseLLMJSON<Array<{ name: string; prompt: string }>>(sceneText) || [];
+      const extractedScenes = coerceArray<{ name: string; prompt: string }>(parseLLMJSON(sceneText));
 
       // Extract props
       const propResolved = await resolvePromptTemplate('prop_extraction', { script: scriptText });
       const propText = await ctx.llmProvider.generateText(propResolved.prompt);
-      const extractedProps = parseLLMJSON<Array<{ name: string; prompt: string }>>(propText) || [];
+      const extractedProps = coerceArray<{ name: string; prompt: string }>(parseLLMJSON(propText));
 
       // Merge with existing (avoid duplicates by name)
       const existingCharNames = new Set(characters.map(c => c.name));
