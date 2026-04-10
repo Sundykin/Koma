@@ -16,6 +16,10 @@ export interface LLMCallOptions {
   targetId?: string;
   targetName?: string;
   stream?: boolean;
+  /** 禁用长文本自动分段（章节划分等需要全文视角的任务） */
+  disableChunking?: boolean;
+  /** 请求超时 (ms)，覆盖后端默认值 */
+  timeoutMs?: number;
 }
 
 export interface LLMProvider {

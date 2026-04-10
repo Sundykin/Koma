@@ -51,6 +51,8 @@ export class IPCLLMProvider implements LLMProvider {
         traceId: options?.traceId,
         source: options?.source,
         operation: options?.operation || 'generateText',
+        disableChunking: options?.disableChunking,
+        timeoutMs: options?.timeoutMs,
       },
     });
     return response.content;
@@ -80,6 +82,8 @@ export class IPCLLMProvider implements LLMProvider {
           traceId: options?.traceId,
           source: options?.source,
           operation: options?.operation || 'generateTextStream',
+          disableChunking: options?.disableChunking,
+          timeoutMs: options?.timeoutMs,
         },
       },
       onChunk,
@@ -98,6 +102,8 @@ export class IPCLLMProvider implements LLMProvider {
         traceId: options?.traceId,
         source: options?.source,
         operation: options?.operation || 'chat',
+        disableChunking: options?.disableChunking,
+        timeoutMs: options?.timeoutMs,
       },
     });
     return response.content;

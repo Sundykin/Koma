@@ -37,6 +37,18 @@ export interface ScriptStudioSession extends WorkflowSessionBase {
   selectedOperatorIds: string[];
   refinedPreview?: string;
   chapterPreview?: string;
+  /** 预处理检测到的集标记列表，如 ["第1集 xxx", "第2集 yyy"] */
+  detectedEpisodes?: Array<{ index: number; name: string; lineStart: number }>;
+  /** 用户选择的章节粒度：每章约包含多少集 */
+  episodesPerChapter?: number;
+  /** Plan C 章节规划结果（结构化） */
+  chapterPlanningResult?: import('../../../services/chapterPlanning').ChapterPlanningResult;
+  /** 集边界检测状态 */
+  detectionStatus?: 'idle' | 'extracting' | 'done' | 'failed';
+  /** 检测来源 */
+  detectionSource?: 'regex' | 'llm' | 'user';
+  /** 检测到的集边界（管线输出） */
+  detectedBoundaries?: import('../../../services/episodeBoundaryDetector').EpisodeBoundary[];
 }
 
 export interface PromptDraftResult {
