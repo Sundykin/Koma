@@ -1298,37 +1298,81 @@ The video plays out in a continuous 9-part sequence:
   chapter_division_smart: {
     id: 'chapter_division_smart',
     name: '智能章节划分',
-    description: '基于内容结构和语义的智能章节划分',
-    template: `请将以下内容进行智能章节划分。
+    description: '基于剧集结构和剧情节奏的智能章节划分',
+    template: `你是一位专业影视剧本编辑。请根据以下剧集结构和内容，将剧本智能划分为章节。
 
-要求：
-- 每章不超过 50 个分镜
-- 长篇内容分为上/中/下部分
-- 完整的故事段落，避免在句子中间断开
-- 为每章生成标题和剧情概要
-- 输出 JSON 格式：[{"title": "章节标题", "start": 起始行, "end": 结束行, "plot": "剧情概要"}]
+## 剧集结构
+共 {{episode_count}} 集，建议划分为约 {{target_chapters}} 个章节。
+{{episode_list}}
 
-内容：
+## 划分原则
+1. **集是原子单位** — 章节边界必须落在"集"与"集"之间，绝不在集内部切断
+2. **尊重剧情弧线** — 按故事线、人物关系转折或重大事件节点划分
+3. **每章覆盖连续集** — 不跳集、不交叉
+4. **全覆盖** — 从第 1 集到第 {{episode_count}} 集，不遗漏
+
+## 输出格式
+严格输出 JSON 数组，不要添加其他文字：
+\`\`\`json
+[
+  {
+    "title": "章节标题（概括该段剧情主题）",
+    "start_episode": 起始集号（整数）,
+    "end_episode": 结束集号（整数）,
+    "plot": "该章节的剧情概要（50-100字）"
+  }
+]
+\`\`\`
+
+## 剧本内容
 {{script}}`,
-    variables: [variable('script')],
+    variables: [
+      variable('script'),
+      variable('episode_count', { label: '总集数', description: '脚本中检测到的集数', required: true }),
+      variable('episode_list', { label: '集目录', description: '预处理提取的集标记列表', required: true }),
+      variable('target_chapters', { label: '建议章节数', description: '基于集数动态计算的建议章节数', required: true }),
+    ],
     isCustom: false,
   },
 
   chapter_division_even: {
     id: 'chapter_division_even',
     name: '均匀章节划分',
-    description: '将内容均匀分配为 4-6 个章节',
-    template: `请将以下内容均匀划分为 4-6 个章节。
+    description: '按集数均匀分配章节',
+    template: `你是一位专业影视剧本编辑。请将以下剧本均匀划分为章节，确保每章包含大致相同数量的集。
 
-要求：
-- 每章分镜数量接近
-- 保持故事逻辑完整性
-- 为每章生成标题和剧情概要
-- 输出 JSON 格式：[{"title": "章节标题", "start": 起始行, "end": 结束行, "plot": "剧情概要"}]
+## 剧集结构
+共 {{episode_count}} 集，目标划分为 {{target_chapters}} 个章节（每章约 {{episodes_per_chapter}} 集）。
+{{episode_list}}
 
-内容：
+## 划分原则
+1. **集是原子单位** — 章节边界必须落在"集"与"集"之间
+2. **均匀分配** — 每章的集数尽量接近 {{episodes_per_chapter}} 集
+3. **允许微调** — 在均匀基础上，可小幅调整边界以避免在紧密相连的剧情中间断开
+4. **全覆盖** — 从第 1 集到第 {{episode_count}} 集，不遗漏
+
+## 输出格式
+严格输出 JSON 数组，不要添加其他文字：
+\`\`\`json
+[
+  {
+    "title": "章节标题（概括该段剧情主题）",
+    "start_episode": 起始集号（整数）,
+    "end_episode": 结束集号（整数）,
+    "plot": "该章节的剧情概要（50-100字）"
+  }
+]
+\`\`\`
+
+## 剧本内容
 {{script}}`,
-    variables: [variable('script')],
+    variables: [
+      variable('script'),
+      variable('episode_count', { label: '总集数', description: '脚本中检测到的集数', required: true }),
+      variable('episode_list', { label: '集目录', description: '预处理提取的集标记列表', required: true }),
+      variable('target_chapters', { label: '目标章节数', description: '用户选择或动态计算的目标章节数', required: true }),
+      variable('episodes_per_chapter', { label: '每章集数', description: '目标每章包含的集数', required: true }),
+    ],
     isCustom: false,
   },
 

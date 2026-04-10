@@ -2,9 +2,9 @@
  * ScriptStudioPanel - 剧本工作室面板
  * 支持文本导入、AI拆分分镜、渐进式处理流程
  */
-import React, { useCallback, useMemo, useState } from 'react';
-import { Button, Input, Upload, Steps, Space, Typography, App, List, Segmented, Tag } from 'antd';
-import { UploadOutlined, ScissorOutlined, CheckOutlined, DeleteOutlined, MergeCellsOutlined } from '@ant-design/icons';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Button, Input, Upload, Steps, Space, Typography, App, List, Segmented, Tag, InputNumber, Slider, Progress, Card, Collapse, Spin } from 'antd';
+import { UploadOutlined, ScissorOutlined, CheckOutlined, DeleteOutlined, MergeCellsOutlined, CheckCircleOutlined, ExclamationCircleOutlined, ClockCircleOutlined, RobotOutlined } from '@ant-design/icons';
 import { v4 as uuidv4 } from 'uuid';
 import type { Shot } from '../../../types';
 import { createCreationContext } from '../../../services/CreationContext';
@@ -17,6 +17,11 @@ import { saveEpisodeShots, loadEpisodeShots } from '../../../store/projectStore'
 import { createLogger } from '../../../store/logger';
 import type { ScriptStudioSession } from './workflowSessions';
 import { createDefaultScriptStudioSession } from './workflowSessions';
+import { planChapters } from '../../../services/chapterPlanning';
+import type { ChapterPlanningMode, ChapterPlanningProgress, ChapterPlanningStage, ChapterPreview } from '../../../services/chapterPlanning';
+import { detectExplicitEpisodeBoundaries } from '../../../services/episodeBoundaryDetector';
+import { detectEpisodeBoundaries } from '../../../services/episodeBoundaries';
+import type { PipelineSource } from '../../../services/episodeBoundaries';
 
 const logger = createLogger('ScriptStudioPanel');
 const { TextArea } = Input;
@@ -38,6 +43,30 @@ const STEPS = [
   { key: 'confirm', title: '确认写入' },
 ];
 
+/** 章节规划管线阶段信息映射 */
+const PLANNING_STAGES: Array<{
+  stage: ChapterPlanningStage;
+  title: string;
+  description: string;
+}> = [
+  { stage: 'building-units', title: '构建单元', description: '分析剧本结构' },
+  { stage: 'summarizing', title: '生成摘要', description: 'AI 为每集生成摘要' },
+  { stage: 'scoring-candidates', title: '评估切点', description: '多维度评分候选切点' },
+  { stage: 'llm-selecting', title: 'AI 选择', description: 'AI 选择最佳章节边界' },
+  { stage: 'validating', title: '校验修复', description: '校验结果并自动修复' },
+  { stage: 'materializing', title: '生成预览', description: '构建章节预览数据' },
+];
+
+function getPlanningStepIndex(stage: ChapterPlanningStage | undefined): number {
+  if (!stage) return -1;
+  if (stage === 'done') return PLANNING_STAGES.length;
+  if (stage === 'error') return -1;
+  // detecting-boundaries maps to building-units
+  if (stage === 'detecting-boundaries') return 0;
+  const idx = PLANNING_STAGES.findIndex(s => s.stage === stage);
+  return idx >= 0 ? idx : -1;
+}
+
 function createEmptyShot(scriptContent: string): Shot {
   return {
     id: uuidv4(),
@@ -54,6 +83,15 @@ function createEmptyShot(scriptContent: string): Shot {
   };
 }
 
+/** 根据总集数推算默认每章集数 */
+function defaultEpisodesPerChapter(totalEpisodes: number): number {
+  if (totalEpisodes <= 12) return 3;
+  if (totalEpisodes <= 30) return 5;
+  if (totalEpisodes <= 60) return 8;
+  if (totalEpisodes <= 100) return 10;
+  return 15;
+}
+
 export const ScriptStudioPanel: React.FC<ScriptStudioPanelProps> = ({
   projectId,
   episodeId,
@@ -64,6 +102,7 @@ export const ScriptStudioPanel: React.FC<ScriptStudioPanelProps> = ({
   const { message } = App.useApp();
   const [isProcessing, setIsProcessing] = useState(false);
   const [streamingPreview, setStreamingPreview] = useState<string>('');
+  const [planningProgress, setPlanningProgress] = useState<ChapterPlanningProgress | null>(null);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
 
   const refineOperators = useMemo(() => getCreativeOperatorsByPhase('script-refine'), []);
@@ -73,6 +112,132 @@ export const ScriptStudioPanel: React.FC<ScriptStudioPanelProps> = ({
   const scriptText = session.scriptText ?? '';
   const splitResults = session.splitResults ?? [];
   const applyMode = session.applyMode ?? 'append';
+  const chapterPreview = session.chapterPreview;
+  const episodesPerChapter = session.episodesPerChapter;
+  const chapterPlanningResult = session.chapterPlanningResult;
+
+  // ─── 集边界检测（同步 regex 即时显示 + 异步 LLM 后台增强） ───
+  const [detectionStatus, setDetectionStatus] = useState<'idle' | 'extracting' | 'done' | 'failed'>('idle');
+  const [detectionSource, setDetectionSource] = useState<PipelineSource>('none');
+  const abortRef = useRef<AbortController | null>(null);
+
+  // 同步 regex 快路径（即时展示）
+  const regexDetectedEpisodes = useMemo(() => {
+    if (!scriptText) return [];
+    const boundaries = detectExplicitEpisodeBoundaries(scriptText);
+    return boundaries.map((b, i) => ({
+      index: b.episodeNumber ?? i + 1,
+      name: b.title,
+      lineStart: scriptText.substring(0, b.start).split('\n').length,
+    }));
+  }, [scriptText]);
+
+  // 实际使用的检测结果（session 有缓存用缓存，否则用 regex）
+  const autoDetectedEpisodes = session.detectedBoundaries && session.detectedBoundaries.length > 0
+    ? session.detectedBoundaries.map((b, i) => ({
+      index: b.episodeNumber ?? i + 1,
+      name: b.title,
+      lineStart: scriptText.substring(0, b.start).split('\n').length,
+    }))
+    : regexDetectedEpisodes;
+
+  // 异步 LLM 管线（后台运行，只在 regex 不够确信时启动）
+  useEffect(() => {
+    // regex 已经检测到足够多集 → 不需要 LLM
+    if (regexDetectedEpisodes.length >= 2) {
+      setDetectionStatus('done');
+      setDetectionSource('regex');
+      // 把 regex 结果写入 session
+      if (!session.detectedBoundaries) {
+        const boundaries = detectExplicitEpisodeBoundaries(scriptText);
+        updateSession({ detectedBoundaries: boundaries, detectionStatus: 'done', detectionSource: 'regex' });
+      }
+      return;
+    }
+
+    if (!scriptText || scriptText.length < 50) {
+      setDetectionStatus('idle');
+      setDetectionSource('none');
+      return;
+    }
+
+    // 取消之前的检测
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    const timer = setTimeout(async () => {
+      setDetectionStatus('extracting');
+      try {
+        const ctx = await createCreationContext(projectId, episodeId);
+        const result = await detectEpisodeBoundaries(scriptText, {
+          provider: ctx.llmProvider,
+          callOptions: { source: 'script-studio', operation: 'episode-detection' },
+          signal: controller.signal,
+        });
+
+        if (controller.signal.aborted) return;
+
+        setDetectionSource(result.source);
+        if (result.boundaries.length > 0) {
+          updateSession({
+            detectedBoundaries: result.boundaries,
+            detectionStatus: 'done',
+            detectionSource: result.source === 'regex' || result.source === 'regex-fallback' ? 'regex' : 'llm',
+          });
+          setDetectionStatus('done');
+        } else {
+          setDetectionStatus('done');
+        }
+      } catch (err) {
+        if (controller.signal.aborted) return;
+        logger.error('LLM 集边界检测失败', err);
+        setDetectionStatus('failed');
+      }
+    }, 1500); // debounce
+
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scriptText]);
+
+  const totalEpisodes = autoDetectedEpisodes.length;
+  const effectiveEpisodesPerChapter = episodesPerChapter ?? defaultEpisodesPerChapter(totalEpisodes);
+  const suggestedChapters = totalEpisodes > 0 ? Math.max(1, Math.ceil(totalEpisodes / effectiveEpisodesPerChapter)) : 0;
+
+  // 从 Plan C 结构化结果或旧版 JSON 字符串中提取章节列表
+  const resolvedChapters: ChapterPreview[] | null = useMemo(() => {
+    // 优先使用 Plan C 结构化结果
+    if (chapterPlanningResult?.chapters && chapterPlanningResult.chapters.length > 0) {
+      return chapterPlanningResult.chapters;
+    }
+    // 降级：旧版 JSON 字符串
+    if (!chapterPreview) return null;
+    try {
+      const parsed = JSON.parse(chapterPreview);
+      if (Array.isArray(parsed)) {
+        return parsed.map((ch: any, index: number) => ({
+          chapterIndex: index + 1,
+          title: ch.title || `第${index + 1}章`,
+          startUnitIndex: 0,
+          endUnitIndex: 0,
+          unitLabels: [],
+          plotSummary: ch.plot || '',
+          charCount: 0,
+          startOffset: 0,
+          endOffset: 0,
+          _legacy: true,
+          _startEpisode: ch.start_episode,
+          _endEpisode: ch.end_episode,
+          _start: ch.start,
+          _end: ch.end,
+        } as ChapterPreview & { _legacy?: boolean; _startEpisode?: number; _endEpisode?: number; _start?: number; _end?: number }));
+      }
+    } catch { /* not valid JSON */ }
+    return null;
+  }, [chapterPlanningResult, chapterPreview]);
 
   const updateSession = useCallback((updates: Partial<ScriptStudioSession>) => {
     onSessionChange(updates);
@@ -158,18 +323,36 @@ export const ScriptStudioPanel: React.FC<ScriptStudioPanelProps> = ({
       return;
     }
 
+    // 使用实时检测结果
+    const episodes = autoDetectedEpisodes;
+
+    const epCount = episodes.length;
+    const perChapter = effectiveEpisodesPerChapter;
+    const targetChapters = epCount > 0 ? Math.max(1, Math.ceil(epCount / perChapter)) : 4;
+
+    // 构建集目录字符串
+    const episodeListStr = epCount > 0
+      ? episodes.map(ep => `第${ep.index}集: ${ep.name}`).join('\n')
+      : '（未检测到集标记）';
+
     setIsProcessing(true);
     setStreamingPreview('');
     try {
       const ctx = await createCreationContext(projectId, episodeId);
-      const resolved = await resolvePromptTemplate(operator.templateType, { script: scriptText });
+      const resolved = await resolvePromptTemplate(operator.templateType, {
+        script: scriptText,
+        episode_count: String(epCount || '未知'),
+        episode_list: episodeListStr,
+        target_chapters: String(targetChapters),
+        episodes_per_chapter: String(perChapter),
+      });
 
       let response: string;
       if (ctx.llmProvider.generateTextStream) {
         response = await ctx.llmProvider.generateTextStream(
           resolved.prompt,
           undefined,
-          { source: 'script-studio', operation: 'chapter-division' },
+          { source: 'script-studio', operation: 'chapter-division', disableChunking: true },
           (_delta, accumulated) => {
             setStreamingPreview(accumulated);
           },
@@ -179,9 +362,22 @@ export const ScriptStudioPanel: React.FC<ScriptStudioPanelProps> = ({
       }
 
       setStreamingPreview('');
+
+      // 解析 LLM 返回的 JSON 章节数组，不覆写原始 scriptText
+      let chapterData: string | undefined;
+      try {
+        const jsonBlock = response.match(/```json\s*([\s\S]*?)```/i)?.[1] || response;
+        const parsed = JSON.parse(jsonBlock.trim());
+        if (Array.isArray(parsed)) {
+          chapterData = JSON.stringify(parsed);
+        }
+      } catch {
+        // JSON 解析失败，将原始响应存储为 chapterPreview 供用户查看
+        chapterData = response;
+      }
+
       updateSession({
-        scriptText: response || scriptText,
-        chapterPreview: response || scriptText,
+        chapterPreview: chapterData || response,
         currentStep: Math.max(currentStep, 3),
         draftSummary: `${operator.label} 已生成章节预览`,
       });
@@ -194,7 +390,62 @@ export const ScriptStudioPanel: React.FC<ScriptStudioPanelProps> = ({
       setIsProcessing(false);
       setStreamingPreview('');
     }
-  }, [currentStep, episodeId, message, projectId, scriptText, trackOperator, updateSession]);
+  }, [autoDetectedEpisodes, currentStep, effectiveEpisodesPerChapter, episodeId, message, projectId, scriptText, trackOperator, updateSession]);
+
+  /** Plan C: 智能章节规划（规则候选切点 + LLM 选边界） */
+  const handleSmartChapterPlanning = useCallback(async (mode: ChapterPlanningMode) => {
+    if (!scriptText.trim()) return;
+
+    setIsProcessing(true);
+    setPlanningProgress(null);
+
+    try {
+      const ctx = await createCreationContext(projectId, episodeId);
+      const perChapter = effectiveEpisodesPerChapter;
+      const targetChapters = suggestedChapters > 0 ? suggestedChapters : undefined;
+
+      const result = await planChapters({
+        script: scriptText,
+        config: {
+          mode,
+          targetChapters,
+          unitsPerChapter: perChapter,
+          minUnitsPerChapter: 2,
+          maxUnitsPerChapter: 30,
+        },
+        provider: ctx.llmProvider,
+        callOptions: {
+          source: 'script-studio',
+          operation: 'chapter-planning',
+        },
+        overrideBoundaries: session.detectedBoundaries,
+        onProgress: (progress) => {
+          setPlanningProgress(progress);
+        },
+      });
+
+      updateSession({
+        chapterPlanningResult: result,
+        chapterPreview: JSON.stringify(result.chapters.map(ch => ({
+          title: ch.title,
+          plot: ch.plotSummary,
+          start_unit: ch.startUnitIndex,
+          end_unit: ch.endUnitIndex,
+        }))),
+        currentStep: Math.max(currentStep, 3),
+        draftSummary: `已生成 ${result.chapters.length} 章${result.usedFallback ? '（降级）' : ''}`,
+      });
+
+      message.success(`智能划分完成: ${result.chapters.length} 章`);
+    } catch (err: any) {
+      logger.error('智能章节规划失败', err);
+      message.error('规划失败: ' + (err.message || '未知错误'));
+    } finally {
+      setIsProcessing(false);
+      // Delay clearing so the final stage (done) renders briefly before disappearing
+      setTimeout(() => setPlanningProgress(null), 600);
+    }
+  }, [currentStep, effectiveEpisodesPerChapter, episodeId, message, projectId, scriptText, session.detectedBoundaries, suggestedChapters, updateSession]);
 
   const handleAISplit = useCallback(async () => {
     if (!scriptText.trim()) {
@@ -410,20 +661,199 @@ export const ScriptStudioPanel: React.FC<ScriptStudioPanelProps> = ({
 
         {currentStep === 2 && (
           <div className="flex flex-col gap-4">
-            <Title level={5} className="!text-zinc-300 !mb-0">章节划分（可选）</Title>
+            <div className="flex items-center justify-between">
+              <Title level={5} className="!text-zinc-300 !mb-0">章节划分</Title>
+              <Button type="link" size="small" onClick={handleSkipToSplit}>跳过划分</Button>
+            </div>
             <Text type="secondary">长文本建议先切出章节块，再进入拆分和推理。</Text>
-            <Space wrap>
-              {chapterOperators.map((operator) => (
-                <Button key={operator.id} onClick={() => handleChapterDivision(operator.id)} loading={isProcessing}>
-                  {operator.label}
+
+            {/* 配置面板 */}
+            <Card size="small" className="!bg-zinc-900 !border-zinc-700" styles={{ body: { padding: '12px 16px' } }}>
+              {totalEpisodes > 0 && (
+                <>
+                  <div className="flex items-center gap-2 mb-2">
+                    <Tag color={detectionSource === 'llm' || detectionSource === 'llm-repaired' ? 'green' : 'blue'}>
+                      检测到 {totalEpisodes} 集
+                    </Tag>
+                    {detectionStatus === 'extracting' && (
+                      <Tag icon={<Spin size="small" className="mr-1" />} className="!border-zinc-600 !bg-zinc-800 !text-zinc-400">
+                        AI 增强检测中
+                      </Tag>
+                    )}
+                    {detectionSource === 'llm' || detectionSource === 'llm-repaired' ? (
+                      <Tag icon={<RobotOutlined />} color="green" className="!m-0">AI</Tag>
+                    ) : detectionSource === 'regex' || detectionSource === 'regex-fallback' ? (
+                      <Tag className="!m-0 !border-zinc-600 !bg-zinc-800 !text-zinc-400">正则</Tag>
+                    ) : null}
+                    <Text type="secondary" className="text-xs">
+                      第{autoDetectedEpisodes[0]?.index}集 – 第{autoDetectedEpisodes[autoDetectedEpisodes.length - 1]?.index}集
+                    </Text>
+                  </div>
+                  <div className="flex items-center gap-3 mb-3">
+                    <Text type="secondary" className="text-xs shrink-0">每章约</Text>
+                    <Slider
+                      className="flex-1"
+                      min={1}
+                      max={Math.max(totalEpisodes, 2)}
+                      value={effectiveEpisodesPerChapter}
+                      onChange={(val) => updateSession({ episodesPerChapter: val })}
+                      disabled={isProcessing}
+                    />
+                    <InputNumber
+                      size="small"
+                      min={1}
+                      max={totalEpisodes}
+                      value={effectiveEpisodesPerChapter}
+                      onChange={(val) => val && updateSession({ episodesPerChapter: val })}
+                      className="!w-16"
+                      disabled={isProcessing}
+                    />
+                    <Text type="secondary" className="text-xs shrink-0">集 → 约 {suggestedChapters} 章</Text>
+                  </div>
+                </>
+              )}
+              {totalEpisodes === 0 && detectionStatus === 'extracting' && (
+                <div className="flex items-center gap-2 mb-2">
+                  <Spin size="small" />
+                  <Text type="secondary" className="text-xs">AI 正在检测集边界…</Text>
+                </div>
+              )}
+              {totalEpisodes === 0 && detectionStatus === 'failed' && (
+                <div className="flex items-center gap-2 mb-2">
+                  <Tag color="orange">未检测到集标记</Tag>
+                  <Text type="secondary" className="text-xs">将按整体文本处理</Text>
+                </div>
+              )}
+              <Space wrap>
+                <Button
+                  type="primary"
+                  onClick={() => handleSmartChapterPlanning('smart')}
+                  loading={isProcessing}
+                  disabled={!scriptText.trim() || isProcessing}
+                >
+                  AI 智能划分
                 </Button>
-              ))}
-            </Space>
-            <Button type="link" onClick={handleSkipToSplit}>跳过，直接拆分分镜</Button>
+                <Button
+                  onClick={() => handleSmartChapterPlanning('even')}
+                  loading={isProcessing}
+                  disabled={!scriptText.trim() || isProcessing}
+                >
+                  均匀划分
+                </Button>
+                {chapterOperators.map((operator) => (
+                  <Button key={operator.id} onClick={() => handleChapterDivision(operator.id)} loading={isProcessing} disabled={isProcessing}>
+                    {operator.label}
+                  </Button>
+                ))}
+              </Space>
+            </Card>
+
+            {/* 管线分步进度 */}
+            {isProcessing && planningProgress && (
+              <div className="bg-zinc-900 border border-zinc-700 rounded-lg p-4">
+                <Steps
+                  size="small"
+                  current={getPlanningStepIndex(planningProgress.stage)}
+                  items={PLANNING_STAGES.map(s => ({
+                    title: s.title,
+                    description: s.description,
+                  }))}
+                  direction="vertical"
+                  className="!mb-3"
+                />
+                <Progress percent={Math.round(planningProgress.progress * 100)} size="small" strokeColor="#1677ff" />
+                <Text type="secondary" className="text-xs mt-1 block">{planningProgress.message}</Text>
+              </div>
+            )}
+
             {isProcessing && streamingPreview ? (
               <div className="relative">
                 <TextArea value={streamingPreview} readOnly rows={8} className="bg-zinc-950 border-zinc-700 text-zinc-400" />
                 <Text type="secondary" className="absolute bottom-2 right-3 text-[11px]">生成中…</Text>
+              </div>
+            ) : resolvedChapters ? (
+              <div className="flex flex-col gap-2">
+                {/* 状态徽标栏 */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Text type="secondary">已划分 {resolvedChapters.length} 个章节</Text>
+                  {chapterPlanningResult?.validation?.valid ? (
+                    <Tag icon={<CheckCircleOutlined />} color="success">校验通过</Tag>
+                  ) : chapterPlanningResult?.validation?.issues && chapterPlanningResult.validation.issues.length > 0 ? (
+                    <Tag icon={<ExclamationCircleOutlined />} color="warning">
+                      {chapterPlanningResult.validation.issues.length} 个问题
+                    </Tag>
+                  ) : null}
+                  {chapterPlanningResult?.usedFallback && (
+                    <Tag color="orange">降级模式</Tag>
+                  )}
+                  {chapterPlanningResult?.durationMs != null && (
+                    <Tag icon={<ClockCircleOutlined />} className="!border-zinc-700 !bg-transparent !text-zinc-400">
+                      {(chapterPlanningResult.durationMs / 1000).toFixed(1)}s
+                    </Tag>
+                  )}
+                </div>
+
+                {/* 可折叠章节卡片 */}
+                <Collapse
+                  size="small"
+                  className="!bg-transparent !border-zinc-700 [&_.ant-collapse-panel]:!bg-zinc-900 [&_.ant-collapse-header]:!text-zinc-300"
+                  styles={{
+                    header: { color: '#d4d4d8' },
+                    body: { backgroundColor: '#18181b', color: '#a1a1aa', padding: '12px 16px' },
+                  }}
+                  items={resolvedChapters.map((ch, index) => {
+                    const isLegacy = '_legacy' in ch;
+                    const rangeText = isLegacy
+                      ? ((ch as any)._startEpisode != null && (ch as any)._endEpisode != null
+                          ? `第${(ch as any)._startEpisode}–${(ch as any)._endEpisode}集`
+                          : (ch as any)._start != null && (ch as any)._end != null
+                            ? `行 ${(ch as any)._start}–${(ch as any)._end}`
+                            : '')
+                      : ch.unitLabels.length > 0
+                        ? `${ch.unitLabels[0]} ~ ${ch.unitLabels[ch.unitLabels.length - 1]}`
+                        : '';
+                    const charInfo = ch.charCount > 0 ? `${(ch.charCount / 1000).toFixed(1)}K字` : '';
+                    const unitCount = ch.endUnitIndex - ch.startUnitIndex + 1;
+
+                    return {
+                      key: String(index),
+                      label: (
+                        <div className="flex items-center gap-2 min-w-0">
+                          <Tag className="!m-0 shrink-0">{index + 1}</Tag>
+                          <Text strong className="!text-zinc-200 truncate">{ch.title}</Text>
+                          {rangeText && <Tag className="!m-0 !border-zinc-600 !bg-zinc-800 !text-zinc-400 shrink-0">{rangeText}</Tag>}
+                        </div>
+                      ),
+                      children: (
+                        <div className="flex flex-col gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            {charInfo && <Tag className="!m-0 !border-zinc-600 !bg-zinc-800 !text-zinc-400">{charInfo}</Tag>}
+                            {unitCount > 0 && (
+                              <Tag className="!m-0 !border-zinc-600 !bg-zinc-800 !text-zinc-400">{unitCount} 个单元</Tag>
+                            )}
+                          </div>
+                          {ch.plotSummary ? (
+                            <div className="border-l-2 border-zinc-600 pl-3">
+                              <Text type="secondary" className="text-xs">{ch.plotSummary}</Text>
+                            </div>
+                          ) : (
+                            <Text type="secondary" className="text-xs">暂无摘要</Text>
+                          )}
+                          {/* 剧本文本预览（供用户审查章节划分是否合理） */}
+                          {ch.startOffset < ch.endOffset && scriptText && (
+                            <div className="mt-1">
+                              <Text type="secondary" className="text-[11px] mb-1 block">剧本内容预览</Text>
+                              <pre className="max-h-40 overflow-y-auto whitespace-pre-wrap break-all text-xs text-zinc-400 bg-zinc-900 border border-zinc-700 rounded p-2 m-0">
+                                {scriptText.slice(ch.startOffset, Math.min(ch.endOffset, ch.startOffset + 2000))}
+                                {ch.endOffset - ch.startOffset > 2000 ? '\n…（已截断）' : ''}
+                              </pre>
+                            </div>
+                          )}
+                        </div>
+                      ),
+                    };
+                  })}
+                />
               </div>
             ) : (
               <TextArea value={scriptText} onChange={e => updateSession({ scriptText: e.target.value })} rows={8} className="bg-zinc-900 border-zinc-700" />

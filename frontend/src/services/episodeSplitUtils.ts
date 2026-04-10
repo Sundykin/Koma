@@ -2,6 +2,8 @@
  * 自动剧集的本地切分工具
  */
 import { detectExplicitEpisodeBoundaries } from './episodeBoundaryDetector';
+import { detectEpisodeBoundaries } from './episodeBoundaries';
+import type { LLMProvider, LLMCallOptions } from '../providers/llm/types';
 
 const MIN_SPLIT_GAP_RATIO = 4;
 const MARKER_SEARCH_WINDOW_CHARS = 2400;
@@ -80,6 +82,36 @@ export function detectExplicitEpisodeAnalysis(script: string): SplitAnalysis | n
       ? `已根据原文场次编号识别出 ${boundaries.length} 个剧集边界，优先按原文结构拆分`
       : `已识别原文中的 ${boundaries.length} 个分集标题，优先按原文结构拆分`;
     return buildExplicitAnalysis(script, boundaries, reason);
+  }
+
+  return null;
+}
+
+/**
+ * 异步版集检测分析 — 先走 regex 快路径，不够则调用 LLM 管线。
+ */
+export async function detectExplicitEpisodeAnalysisAsync(
+  script: string,
+  provider: LLMProvider,
+  callOptions?: LLMCallOptions,
+  signal?: AbortSignal,
+): Promise<SplitAnalysis | null> {
+  // 先走同步 regex
+  const syncResult = detectExplicitEpisodeAnalysis(script);
+  if (syncResult) return syncResult;
+
+  // 调用 LLM 管线
+  const pipelineResult = await detectEpisodeBoundaries(script, {
+    provider,
+    callOptions,
+    signal,
+  });
+
+  if (pipelineResult.boundaries.length >= SINGLE_EPISODE_COUNT) {
+    const reason = pipelineResult.source === 'regex' || pipelineResult.source === 'regex-fallback'
+      ? `已根据正则识别出 ${pipelineResult.boundaries.length} 个剧集边界`
+      : `AI 识别出 ${pipelineResult.boundaries.length} 个剧集边界（来源: ${pipelineResult.source}）`;
+    return buildExplicitAnalysis(script, pipelineResult.boundaries, reason);
   }
 
   return null;

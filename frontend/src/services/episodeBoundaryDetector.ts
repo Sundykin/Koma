@@ -3,7 +3,6 @@
  * 优先匹配高置信的标题行和场次编号，再交由上层决定是否采用。
  */
 
-const BRACKET_TRIM_RE = /^[\s【\[<(（《]+|[\s】\]>)）》]+$/g;
 const CHINESE_DIGIT_MAP: Record<string, number> = {
   '零': 0,
   '〇': 0,
@@ -24,9 +23,14 @@ const CHINESE_UNIT_MAP: Record<string, number> = {
   '千': 1000,
 };
 const TITLE_PATTERNS = [
-  /^(?:第\s*([零〇一二三四五六七八九十百千两\d０-９]+)\s*[集回话章节卷部篇])(?:\s*[:：\-—–|｜]\s*.+)?$/i,
-  /^(?:第\s*([零〇一二三四五六七八九十百千两\d０-９]+)\s*季\s*)?(?:第\s*([零〇一二三四五六七八九十百千两\d０-９]+)\s*[集回话章节卷部篇])(?:\s*[:：\-—–|｜]\s*.+)?$/i,
-  /^(?:episode|ep\.?|chapter|part|vol\.?)\s*([0-9０-９]+)(?:\s*[:：\-—–|｜]\s*.+)?$/i,
+  // 第N集, 第N集：标题, 第N集 标题, 第N集（上）, etc.
+  // Trailing title requires a separator or whitespace — prevents matching "第一集场景。" as a title
+  /^(?:第\s*([零〇一二三四五六七八九十百千两\d０-９]+)\s*[集回话章节卷部篇])(?:\s*[)）】\]>》])?(?:\s*[（(].+?[)）])?(?:\s*[:：\-—–|｜、,，]\s*.+|\s+.+)?$/i,
+  // 第N季第N集 with optional title
+  /^(?:第\s*([零〇一二三四五六七八九十百千两\d０-９]+)\s*季\s*)?(?:第\s*([零〇一二三四五六七八九十百千两\d０-９]+)\s*[集回话章节卷部篇])(?:\s*[)）】\]>》])?(?:\s*[（(].+?[)）])?(?:\s*[:：\-—–|｜、,，]\s*.+|\s+.+)?$/i,
+  // Episode 1, EP.2, Chapter 3, etc.
+  /^(?:episode|ep\.?|chapter|part|vol\.?)\s*([0-9０-９]+)(?:\s*[:：\-—–|｜]\s*.+|\s+.+)?$/i,
+  // S1E3, s01e03, etc.
   /^s\s*([0-9０-９]+)\s*e\s*([0-9０-９]+)(?:\s*[:：\-—–|｜]\s*.+|\s+.+)?$/i,
 ];
 const SCENE_PATTERN = /^([0-9０-９]{1,4})\s*[-—–]\s*([0-9０-９]{1,4})(?:\s+.+)?$/;
@@ -49,7 +53,13 @@ function normalizeDigits(text: string): string {
 }
 
 function cleanLine(text: string): string {
-  return normalizeDigits(text).trim().replace(BRACKET_TRIM_RE, '').trim();
+  let cleaned = normalizeDigits(text).trim();
+  // Strip matching outer brackets: 【第40集】 → 第40集, 【第40集】冲破重围 → 第40集 冲破重围
+  const outerBracketMatch = cleaned.match(/^[【\[<（《](.+?)[】\]>）》](.*)$/);
+  if (outerBracketMatch) {
+    cleaned = (outerBracketMatch[1] + ' ' + outerBracketMatch[2]).trim();
+  }
+  return cleaned;
 }
 
 function toArabicNumber(raw: string): number | null {

@@ -579,6 +579,13 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     saveAllShots(updatedShots);
   }, [shots, saveAllShots]);
 
+  const handleShotMetaChange = useCallback((shotId: string, updates: Partial<Shot>) => {
+    const updatedShots = shots.map(s =>
+      s.id === shotId ? { ...s, ...updates } : s
+    );
+    saveAllShots(updatedShots);
+  }, [shots, saveAllShots]);
+
   // 资产同步 Hook
   const assets = useMemo(() => ({ characters, scenes, props }), [characters, scenes, props]);
   const { syncFromPrompt, handleAssetChange } = useShotAssetSync(assets);

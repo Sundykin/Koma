@@ -31,6 +31,8 @@ export interface LLMQueryRequest {
     operation?: string;
     /** 超时毫秒数，默认 60000 */
     timeoutMs?: number;
+    /** 禁用长文本自动分段（章节划分等需要全文视角的任务） */
+    disableChunking?: boolean;
   };
 }
 
@@ -424,7 +426,7 @@ export class LLMQueryService {
 
     // 判断是否需要分段处理
     const userContentLen = totalUserContentLength(request.messages);
-    if (userContentLen > CHUNK_CHAR_THRESHOLD) {
+    if (userContentLen > CHUNK_CHAR_THRESHOLD && !request.options?.disableChunking) {
       console.info('[LLMQuery] 长文本触发自动分段', { ...logCtx, userContentLen, threshold: CHUNK_CHAR_THRESHOLD });
       return this.queryStreamChunked(request, onChunk, onDone, onError, abortSignal);
     }

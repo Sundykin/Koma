@@ -183,6 +183,8 @@ export interface LLMQueryRequest {
     traceId?: string;
     source?: string;
     operation?: string;
+    disableChunking?: boolean;
+    timeoutMs?: number;
   };
 }
 
