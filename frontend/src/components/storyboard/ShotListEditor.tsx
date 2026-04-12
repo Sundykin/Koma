@@ -2,7 +2,7 @@
  * 分镜列表编辑器
  * 内联编辑模式，每行一个分镜
  */
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import { Button, Typography, Progress } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import { StoryboardLayout } from './StoryboardLayout';
@@ -27,7 +27,9 @@ export interface ShotListEditorProps {
   generatingVideos: Set<string>;
   batchProgress?: { current: number; total: number; step?: string };
   activeShotId?: string | null;
+  selectedShotIds?: string[];
   onActiveShotChange?: (shotId: string | null) => void;
+  onSelectedShotIdsChange?: (shotIds: string[]) => void;
   onScriptChange: (shotId: string, script: string) => void;
   onImagePromptChange: (shotId: string, imagePrompt: string) => void;
   onVideoPromptChange: (shotId: string, videoPrompt: string) => void;
@@ -81,7 +83,9 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
   generatingVideos,
   batchProgress,
   activeShotId,
+  selectedShotIds,
   onActiveShotChange,
+  onSelectedShotIdsChange,
   onScriptChange,
   onImagePromptChange,
   onVideoPromptChange,
@@ -120,74 +124,85 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
   onInsertBelow,
   onShotImageModeChange,
 }) => {
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [internalSelectedIds, setInternalSelectedIds] = useState<Set<string>>(new Set());
+  const selectedIdSet = useMemo(
+    () => (selectedShotIds ? new Set(selectedShotIds) : internalSelectedIds),
+    [internalSelectedIds, selectedShotIds],
+  );
 
-  const selectedCount = selectedIds.size;
+  const updateSelectedIds = useCallback((next: Set<string>) => {
+    if (selectedShotIds) {
+      onSelectedShotIdsChange?.(Array.from(next));
+      return;
+    }
+    setInternalSelectedIds(next);
+    onSelectedShotIdsChange?.(Array.from(next));
+  }, [onSelectedShotIdsChange, selectedShotIds]);
+
+  const selectedCount = selectedIdSet.size;
   const hasSelected = selectedCount > 0;
-  const isAllSelected = shots.length > 0 && selectedIds.size === shots.length;
-  const isIndeterminate = selectedIds.size > 0 && selectedIds.size < shots.length;
+  const isAllSelected = shots.length > 0 && selectedIdSet.size === shots.length;
+  const isIndeterminate = selectedIdSet.size > 0 && selectedIdSet.size < shots.length;
 
   // 全选
   const handleSelectAll = useCallback((checked: boolean) => {
     if (checked) {
-      setSelectedIds(new Set(shots.map(s => s.id)));
+      updateSelectedIds(new Set(shots.map(s => s.id)));
     } else {
-      setSelectedIds(new Set());
+      updateSelectedIds(new Set());
     }
-  }, [shots]);
+  }, [shots, updateSelectedIds]);
 
   // 单选
   const handleSelectChange = useCallback((shotId: string, selected: boolean) => {
-    setSelectedIds(prev => {
-      const next = new Set(prev);
-      if (selected) {
-        next.add(shotId);
-      } else {
-        next.delete(shotId);
-      }
-      return next;
-    });
-  }, []);
+    const next = new Set(selectedIdSet);
+    if (selected) {
+      next.add(shotId);
+    } else {
+      next.delete(shotId);
+    }
+    updateSelectedIds(next);
+  }, [selectedIdSet, updateSelectedIds]);
 
   // 批量操作
   const handleBatchPrompts = useCallback(() => {
-    onBatchGenerateImagePrompts(hasSelected ? Array.from(selectedIds) : undefined);
-  }, [hasSelected, selectedIds, onBatchGenerateImagePrompts]);
+    onBatchGenerateImagePrompts(hasSelected ? Array.from(selectedIdSet) : undefined);
+  }, [hasSelected, selectedIdSet, onBatchGenerateImagePrompts]);
 
   const handleBatchRePrompts = useCallback(() => {
-    onBatchReGenerateImagePrompts(hasSelected ? Array.from(selectedIds) : undefined);
-  }, [hasSelected, selectedIds, onBatchReGenerateImagePrompts]);
+    onBatchReGenerateImagePrompts(hasSelected ? Array.from(selectedIdSet) : undefined);
+  }, [hasSelected, selectedIdSet, onBatchReGenerateImagePrompts]);
 
   const handleBatchImages = useCallback(() => {
-    onBatchGenerateImages(hasSelected ? Array.from(selectedIds) : undefined);
-  }, [hasSelected, selectedIds, onBatchGenerateImages]);
+    onBatchGenerateImages(hasSelected ? Array.from(selectedIdSet) : undefined);
+  }, [hasSelected, selectedIdSet, onBatchGenerateImages]);
 
   const handleBatchReImages = useCallback(() => {
-    onBatchReGenerateImages(hasSelected ? Array.from(selectedIds) : undefined);
-  }, [hasSelected, selectedIds, onBatchReGenerateImages]);
+    onBatchReGenerateImages(hasSelected ? Array.from(selectedIdSet) : undefined);
+  }, [hasSelected, selectedIdSet, onBatchReGenerateImages]);
 
   const handleBatchVideos = useCallback(() => {
-    onBatchGenerateVideos(hasSelected ? Array.from(selectedIds) : undefined);
-  }, [hasSelected, selectedIds, onBatchGenerateVideos]);
+    onBatchGenerateVideos(hasSelected ? Array.from(selectedIdSet) : undefined);
+  }, [hasSelected, selectedIdSet, onBatchGenerateVideos]);
 
   const handleBatchReVideos = useCallback(() => {
-    onBatchReGenerateVideos(hasSelected ? Array.from(selectedIds) : undefined);
-  }, [hasSelected, selectedIds, onBatchReGenerateVideos]);
+    onBatchReGenerateVideos(hasSelected ? Array.from(selectedIdSet) : undefined);
+  }, [hasSelected, selectedIdSet, onBatchReGenerateVideos]);
 
   const handleBatchVideoPrompts = useCallback(() => {
-    onBatchGenerateVideoPrompts(hasSelected ? Array.from(selectedIds) : undefined);
-  }, [hasSelected, selectedIds, onBatchGenerateVideoPrompts]);
+    onBatchGenerateVideoPrompts(hasSelected ? Array.from(selectedIdSet) : undefined);
+  }, [hasSelected, selectedIdSet, onBatchGenerateVideoPrompts]);
 
   const handleBatchReVideoPrompts = useCallback(() => {
-    onBatchReGenerateVideoPrompts(hasSelected ? Array.from(selectedIds) : undefined);
-  }, [hasSelected, selectedIds, onBatchReGenerateVideoPrompts]);
+    onBatchReGenerateVideoPrompts(hasSelected ? Array.from(selectedIdSet) : undefined);
+  }, [hasSelected, selectedIdSet, onBatchReGenerateVideoPrompts]);
 
   const handleBatchDelete = useCallback(() => {
     if (hasSelected) {
-      onBatchDelete(Array.from(selectedIds));
-      setSelectedIds(new Set());
+      onBatchDelete(Array.from(selectedIdSet));
+      updateSelectedIds(new Set());
     }
-  }, [hasSelected, selectedIds, onBatchDelete]);
+  }, [hasSelected, selectedIdSet, onBatchDelete, updateSelectedIds]);
 
   return (
     <StoryboardLayout>
@@ -251,7 +266,7 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
                   scenes={scenes}
                   props={props}
                   mentionItems={mentionItems}
-                  isSelected={selectedIds.has(shot.id)}
+                  isSelected={selectedIdSet.has(shot.id)}
                   isActive={activeShotId === shot.id}
                   isGeneratingImagePrompt={generatingImagePrompts.has(shot.id)}
                   isGeneratingVideoPrompt={generatingVideoPrompts.has(shot.id)}
