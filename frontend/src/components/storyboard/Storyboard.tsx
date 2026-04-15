@@ -29,9 +29,7 @@ import { TaskManager } from '../../services/TaskManager';
 import { ScriptEditor } from '../../editor';
 import type { MentionItem } from '../../editor';
 import { StoryboardStudio } from './StoryboardStudio';
-import { ShotNavigator } from './ShotNavigator';
-import { CurrentShotStage } from './CurrentShotStage';
-import { CurrentShotInspector } from './CurrentShotInspector';
+import { ShotListEditor } from './ShotListEditor';
 import { ShotAssetPresetModal } from './ShotAssetPresetModal';
 import { useShotAssetSync } from '../../hooks/useShotAssetSync';
 import { createLogger } from '../../store/logger';
@@ -198,11 +196,6 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     setActiveShotId(initialActiveShotId ?? null);
     setSelectedShotIds([...initialSelectedShotIds]);
   }, [episodeId, initialActiveShotId, initialSelectedShotIdsKey]);
-
-  // 获取当前激活的分镜对象
-  const activeShot = useMemo(() =>
-    shots.find(s => s.id === activeShotId) || null
-  , [shots, activeShotId]);
 
   // 实际使用的 mentionItems
   // 允许在编辑器中 @ 引用所有资产（角色/场景/道具）。
@@ -1582,78 +1575,62 @@ export const Storyboard: React.FC<StoryboardProps> = ({
         </div>
       ) : (
         <StoryboardStudio
-          navigator={(
-            <ShotNavigator
-              shots={shots}
-              activeShotId={activeShotId}
-              selectedShotIds={selectedShotIds}
-              onActiveShotChange={setActiveShotId}
-              onShotSelectionChange={(shotId, selected) => {
-                setSelectedShotIds(prev => selected
-                  ? Array.from(new Set([...prev, shotId]))
-                  : prev.filter((id) => id !== shotId));
-              }}
-              onAddShot={handleAddShot}
-            />
-          )}
-          stage={(
-            <CurrentShotStage
-              shot={activeShot}
-              shotIndex={Math.max(0, shots.findIndex((shot) => shot.id === activeShot?.id))}
-              onImageSelect={(index) => {
-                if (!activeShot) return;
-                handleImagesChange(activeShot.id, activeShot.media?.images || [], index);
-              }}
-              onVideoSelect={(index) => {
-                if (!activeShot) return;
-                handleVideosChange(activeShot.id, activeShot.media?.videos || [], index);
-              }}
-              onReferenceSelect={(index) => {
-                if (!activeShot) return;
-                handleReferenceImagesChange(activeShot.id, activeShot.media?.references || [], index);
-              }}
-              isGeneratingImage={activeShot ? generatingShots.has(activeShot.id) : false}
-              isGeneratingVideo={activeShot ? renderingShots.has(activeShot.id) : false}
-            />
-          )}
-          inspector={(
-            <CurrentShotInspector
-              shot={activeShot}
-              shotIndex={Math.max(0, shots.findIndex((shot) => shot.id === activeShot?.id))}
-              totalCount={shots.length}
-              characters={characters}
-              scenes={scenes}
-              props={props}
-              mentionItems={actualMentionItems}
-              isGeneratingImagePrompt={activeShot ? generatingImagePrompts.has(activeShot.id) : false}
-              isGeneratingVideoPrompt={activeShot ? generatingVideoPrompts.has(activeShot.id) : false}
-              isGeneratingImage={activeShot ? generatingShots.has(activeShot.id) : false}
-              isGeneratingVideo={activeShot ? renderingShots.has(activeShot.id) : false}
-              onScriptChange={handleScriptChange}
-              onImagePromptChange={handleImagePromptChange}
-              onVideoPromptChange={handleVideoPromptChange}
-              onImageModeChange={handleShotImageModeChange}
-              onCharactersChange={handleCharactersChange}
-              onScenesChange={handleScenesChange}
-              onPropsChange={handlePropsChange}
-              onShotMetaChange={handleShotMetaChange}
-              onGenerateImagePrompt={handleGenerateImagePrompt}
-              onGenerateVideoPrompt={handleGenerateVideoPrompt}
-              onOptimizeImagePrompt={handleOptimizeImagePrompt}
-              onOptimizeVideoPrompt={handleOptimizeVideoPrompt}
-              onGenerateImage={handleGenerateShotImage}
-              onGenerateVideo={handleRenderShotVideo}
-              videoCapabilityLabel={activeShot ? shotVideoSupportMap.get(activeShot.id)?.capabilityLabel : undefined}
-              videoGenerateDisabledReason={activeShot ? shotVideoSupportMap.get(activeShot.id)?.disabledReason : undefined}
-              onToggleConfirm={handleToggleConfirm}
-              onDelete={handleDeleteShot}
-              onMoveUp={handleMoveUp}
-              onMoveDown={handleMoveDown}
-              onInsertAbove={handleInsertAbove}
-              onInsertBelow={handleInsertBelow}
-            />
-          )}
-        />
+        >
+          <ShotListEditor
+            projectId={projectId}
+            shots={shots}
+            characters={characters}
+            scenes={scenes}
+            props={props}
+            mentionItems={actualMentionItems}
+            generatingImagePrompts={generatingImagePrompts}
+            generatingVideoPrompts={generatingVideoPrompts}
+            generatingImages={generatingShots}
+            generatingVideos={renderingShots}
+            batchProgress={batchProgress}
+            activeShotId={activeShotId}
+            selectedShotIds={selectedShotIds}
+            onActiveShotChange={setActiveShotId}
+            onSelectedShotIdsChange={setSelectedShotIds}
+            onScriptChange={handleScriptChange}
+            onImagePromptChange={handleImagePromptChange}
+            onVideoPromptChange={handleVideoPromptChange}
+            onCharactersChange={handleCharactersChange}
+            onScenesChange={handleScenesChange}
+            onPropsChange={handlePropsChange}
+            onReferenceImagesChange={handleReferenceImagesChange}
+            onImagesChange={handleImagesChange}
+            onVideosChange={handleVideosChange}
+            onGenerateImagePrompt={handleGenerateImagePrompt}
+            onGenerateVideoPrompt={handleGenerateVideoPrompt}
+            onOptimizeImagePrompt={handleOptimizeImagePrompt}
+            onOptimizeVideoPrompt={handleOptimizeVideoPrompt}
+            onBatchGenerateImagePrompts={handleBatchGenerateImagePrompts}
+            onBatchReGenerateImagePrompts={handleBatchReGenerateImagePrompts}
+            onBatchGenerateVideoPrompts={handleBatchGenerateVideoPrompts}
+            onBatchReGenerateVideoPrompts={handleBatchReGenerateVideoPrompts}
+            onGenerateImage={handleGenerateShotImage}
+            onBatchGenerateImages={handleBatchGenerate}
+            onBatchReGenerateImages={handleBatchReGenerateImages}
+            onGenerateVideo={handleRenderShotVideo}
+            onBatchGenerateVideos={handleBatchRenderVideos}
+            onBatchReGenerateVideos={handleBatchReGenerateVideos}
+            getVideoCapabilityLabel={(shotId) => shotVideoSupportMap.get(shotId)?.capabilityLabel}
+            getVideoGenerateDisabledReason={(shotId) => shotVideoSupportMap.get(shotId)?.disabledReason}
+            onToggleConfirm={handleToggleConfirm}
+            onDelete={handleDeleteShot}
+            onBatchDelete={handleBatchDelete}
+            onBatchConfirm={handleBatchConfirm}
+            onMergeUp={handleMergeUp}
+            onMergeDown={handleMergeDown}
+            onMoveUp={handleMoveUp}
+            onMoveDown={handleMoveDown}
+            onAddShot={handleAddShot}
+            onInsertAbove={handleInsertAbove}
+            onInsertBelow={handleInsertBelow}
+            onShotImageModeChange={handleShotImageModeChange}
+          />
+        </StoryboardStudio>
       )}
 
       {/* 编辑/添加分镜弹窗 */}
