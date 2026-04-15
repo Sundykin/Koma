@@ -29,6 +29,43 @@ function coerceArray<T>(data: unknown): T[] {
   }
   return [];
 }
+
+function normalizeText(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function pickFirstText(...values: unknown[]): string {
+  return values.map(normalizeText).find(Boolean) || '';
+}
+
+function isSameText(a: unknown, b: unknown): boolean {
+  return normalizeText(a) === normalizeText(b);
+}
+
+type ExtractedCharacter = {
+  name?: string;
+  prompt?: string;
+  appearance?: string;
+  description?: string;
+  age?: string;
+  gender?: Character['gender'];
+  role?: Character['role'];
+};
+
+type ExtractedScene = {
+  name?: string;
+  prompt?: string;
+  description?: string;
+  time?: Scene['time'];
+  mood?: string;
+};
+
+type ExtractedProp = {
+  name?: string;
+  prompt?: string;
+  description?: string;
+  type?: string;
+};
 const { Text } = Typography;
 const { TextArea } = Input;
 
@@ -126,79 +163,182 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
       // Extract characters
       const charResolved = await resolvePromptTemplate('character_extraction', { script: scriptText });
       const charText = await ctx.llmProvider.generateText(charResolved.prompt);
-      const extractedChars = coerceArray<{ name: string; prompt: string }>(parseLLMJSON(charText));
+      const extractedChars = coerceArray<ExtractedCharacter>(parseLLMJSON(charText));
 
       // Extract scenes
       const sceneResolved = await resolvePromptTemplate('scene_extraction', { script: scriptText });
       const sceneText = await ctx.llmProvider.generateText(sceneResolved.prompt);
-      const extractedScenes = coerceArray<{ name: string; prompt: string }>(parseLLMJSON(sceneText));
+      const extractedScenes = coerceArray<ExtractedScene>(parseLLMJSON(sceneText));
 
       // Extract props
       const propResolved = await resolvePromptTemplate('prop_extraction', { script: scriptText });
       const propText = await ctx.llmProvider.generateText(propResolved.prompt);
-      const extractedProps = coerceArray<{ name: string; prompt: string }>(parseLLMJSON(propText));
+      const extractedProps = coerceArray<ExtractedProp>(parseLLMJSON(propText));
 
       // Merge with existing (avoid duplicates by name)
       const existingCharNames = new Set(characters.map(c => c.name));
+      const extractedCharMap = new Map(
+        extractedChars
+          .map(char => [normalizeText(char.name), char] as const)
+          .filter(([name]) => Boolean(name)),
+      );
+      let updatedCharCount = 0;
+      const mergedCharacters = characters.map((char) => {
+        const extracted = extractedCharMap.get(normalizeText(char.name));
+        if (!extracted) return char;
+
+        const nextChar: Character = {
+          ...char,
+          prompt: pickFirstText(char.prompt, extracted.prompt, extracted.appearance, extracted.description),
+          appearance: pickFirstText(char.appearance, extracted.appearance),
+          description: pickFirstText(char.description, extracted.description),
+          age: pickFirstText(char.age, extracted.age),
+          gender: char.gender || extracted.gender,
+          role: char.role || extracted.role || 'supporting',
+        };
+
+        if (
+          isSameText(nextChar.prompt, char.prompt)
+          && isSameText(nextChar.appearance, char.appearance)
+          && isSameText(nextChar.description, char.description)
+          && isSameText(nextChar.age, char.age)
+          && nextChar.gender === char.gender
+          && nextChar.role === char.role
+        ) {
+          return char;
+        }
+
+        updatedCharCount += 1;
+        return nextChar;
+      });
       const newChars: Character[] = extractedChars
         .filter(c => c.name && !existingCharNames.has(c.name))
         .map(c => ({
           id: uuidv4(),
-          name: c.name,
-          prompt: c.prompt || '',
-          role: 'supporting' as const,
+          name: normalizeText(c.name),
+          prompt: pickFirstText(c.prompt, c.appearance, c.description),
+          appearance: normalizeText(c.appearance),
+          description: normalizeText(c.description),
+          age: normalizeText(c.age),
+          gender: c.gender,
+          role: c.role || 'supporting',
         }));
 
       const existingSceneNames = new Set(scenes.map(s => s.name));
+      const extractedSceneMap = new Map(
+        extractedScenes
+          .map(scene => [normalizeText(scene.name), scene] as const)
+          .filter(([name]) => Boolean(name)),
+      );
+      let updatedSceneCount = 0;
+      const mergedScenes = scenes.map((scene) => {
+        const extracted = extractedSceneMap.get(normalizeText(scene.name));
+        if (!extracted) return scene;
+
+        const nextScene: Scene = {
+          ...scene,
+          prompt: pickFirstText(scene.prompt, extracted.prompt, extracted.description),
+          description: pickFirstText(scene.description, extracted.description),
+          time: scene.time || extracted.time,
+          mood: pickFirstText(scene.mood, extracted.mood),
+        };
+
+        if (
+          isSameText(nextScene.prompt, scene.prompt)
+          && isSameText(nextScene.description, scene.description)
+          && nextScene.time === scene.time
+          && isSameText(nextScene.mood, scene.mood)
+        ) {
+          return scene;
+        }
+
+        updatedSceneCount += 1;
+        return nextScene;
+      });
       const newScenes: Scene[] = extractedScenes
         .filter(s => s.name && !existingSceneNames.has(s.name))
         .map(s => ({
           id: uuidv4(),
-          name: s.name,
-          prompt: s.prompt || '',
+          name: normalizeText(s.name),
+          prompt: pickFirstText(s.prompt, s.description),
+          description: normalizeText(s.description),
+          time: s.time,
+          mood: normalizeText(s.mood),
         }));
 
       const existingPropNames = new Set(props.map(p => p.name));
+      const extractedPropMap = new Map(
+        extractedProps
+          .map(prop => [normalizeText(prop.name), prop] as const)
+          .filter(([name]) => Boolean(name)),
+      );
+      let updatedPropCount = 0;
+      const mergedProps = props.map((propItem) => {
+        const extracted = extractedPropMap.get(normalizeText(propItem.name));
+        if (!extracted) return propItem;
+
+        const nextProp: Prop = {
+          ...propItem,
+          prompt: pickFirstText(propItem.prompt, extracted.prompt, extracted.description),
+          description: pickFirstText(propItem.description, extracted.description),
+          type: pickFirstText(propItem.type, extracted.type),
+        };
+
+        if (
+          isSameText(nextProp.prompt, propItem.prompt)
+          && isSameText(nextProp.description, propItem.description)
+          && isSameText(nextProp.type, propItem.type)
+        ) {
+          return propItem;
+        }
+
+        updatedPropCount += 1;
+        return nextProp;
+      });
       const newProps: Prop[] = extractedProps
         .filter(p => p.name && !existingPropNames.has(p.name))
         .map(p => ({
           id: uuidv4(),
-          name: p.name,
-          prompt: p.prompt || '',
+          name: normalizeText(p.name),
+          prompt: pickFirstText(p.prompt, p.description),
+          description: normalizeText(p.description),
+          type: normalizeText(p.type),
         }));
 
-      const nextCharacters = newChars.length > 0 ? [...characters, ...newChars] : characters;
-      const nextScenes = newScenes.length > 0 ? [...scenes, ...newScenes] : scenes;
-      const nextProps = newProps.length > 0 ? [...props, ...newProps] : props;
+      const nextCharacters = updatedCharCount > 0 || newChars.length > 0 ? [...mergedCharacters, ...newChars] : characters;
+      const nextScenes = updatedSceneCount > 0 || newScenes.length > 0 ? [...mergedScenes, ...newScenes] : scenes;
+      const nextProps = updatedPropCount > 0 || newProps.length > 0 ? [...mergedProps, ...newProps] : props;
 
-      if (newChars.length > 0) {
+      if (updatedCharCount > 0 || newChars.length > 0) {
         await saveCharacters(projectId, nextCharacters);
         setCharacters(nextCharacters);
       }
-      if (newScenes.length > 0) {
+      if (updatedSceneCount > 0 || newScenes.length > 0) {
         await saveScenes(projectId, nextScenes);
         setScenes(nextScenes);
       }
-      if (newProps.length > 0) {
+      if (updatedPropCount > 0 || newProps.length > 0) {
         await saveProps(projectId, nextProps);
         setProps(nextProps);
       }
 
-      const affectedCount = newChars.length + newScenes.length + newProps.length;
+      const createdCount = newChars.length + newScenes.length + newProps.length;
+      const updatedCount = updatedCharCount + updatedSceneCount + updatedPropCount;
+      const affectedCount = createdCount + updatedCount;
       syncAssetSession(nextCharacters, nextScenes, nextProps, {
         currentStep: affectedCount > 0 ? 1 : session.currentStep,
         affectedScopeLabel: '项目资产库',
         lastApplied: {
           appliedAt: Date.now(),
           summary: affectedCount > 0
-            ? `提取 ${newChars.length} 角色 · ${newScenes.length} 场景 · ${newProps.length} 道具`
+            ? `新增 ${newChars.length} 角色 · ${newScenes.length} 场景 · ${newProps.length} 道具，回填 ${updatedCount} 条描述`
             : '已执行资产提取，未新增资产',
           affectedCount,
           scopeLabel: '项目资产库',
         },
       });
       onAssetsChanged?.();
-      message.success(`提取完成: ${newChars.length} 角色, ${newScenes.length} 场景, ${newProps.length} 道具`);
+      message.success(`提取完成: 新增 ${createdCount} 条，回填 ${updatedCount} 条描述`);
     } catch (err: any) {
       logger.error('资产提取失败', err);
       message.error('提取失败: ' + (err.message || '未知错误'));
@@ -361,9 +501,9 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
           onChange={(key) => updateSession({ activeTab: key as AssetPanelTab })}
           className="px-4"
           items={[
-            { key: 'characters', label: `角色 (${characters.length})`, children: renderList('character', characters.map(c => ({ name: c.name, description: c.prompt, image: getCharacterCostumePhotoSource(c) }))) },
-            { key: 'scenes', label: `场景 (${scenes.length})`, children: renderList('scene', scenes.map(s => ({ name: s.name, description: s.prompt, image: getMediaAssetDisplaySource(s.media?.previewImage) }))) },
-            { key: 'props', label: `道具 (${props.length})`, children: renderList('prop', props.map(p => ({ name: p.name, description: p.prompt, image: getMediaAssetDisplaySource(p.media?.previewImage) }))) },
+            { key: 'characters', label: `角色 (${characters.length})`, children: renderList('character', characters.map(c => ({ name: c.name, description: pickFirstText(c.prompt, c.appearance, c.description), image: getCharacterCostumePhotoSource(c) }))) },
+            { key: 'scenes', label: `场景 (${scenes.length})`, children: renderList('scene', scenes.map(s => ({ name: s.name, description: pickFirstText(s.prompt, s.description), image: getMediaAssetDisplaySource(s.media?.previewImage) }))) },
+            { key: 'props', label: `道具 (${props.length})`, children: renderList('prop', props.map(p => ({ name: p.name, description: pickFirstText(p.prompt, p.description), image: getMediaAssetDisplaySource(p.media?.previewImage) }))) },
           ]}
         />
       </div>
