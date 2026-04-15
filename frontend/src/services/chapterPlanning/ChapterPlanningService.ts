@@ -45,11 +45,12 @@ function materializeChapterRanges(
   const candidateMap = new Map(candidates.map(c => [c.id, c]));
   const summaryMap = new Map(summaries.map(s => [s.unitIndex, s]));
 
-  // Sort selected cut indices
-  const cutIndices = selectedIds
-    .map(id => candidateMap.get(id)?.afterUnitIndex ?? -1)
-    .filter(i => i >= 0)
-    .sort((a, b) => a - b);
+  // Sort selected cut indices and deduplicate
+  const cutIndices = [...new Set(
+    selectedIds
+      .map(id => candidateMap.get(id)?.afterUnitIndex ?? -1)
+      .filter(i => i >= 0),
+  )].sort((a, b) => a - b);
 
   // Build chapter boundaries: [0..cut1], [cut1+1..cut2], ..., [lastCut+1..end]
   const chapters: ChapterPreview[] = [];
@@ -74,6 +75,16 @@ function materializeChapterRanges(
       ? chapterUnits[0].label
       : `${chapterUnits[0].label} ~ ${chapterUnits[chapterUnits.length - 1].label}`;
 
+    // 确保 offset 有效：startOffset < endOffset
+    let startOffset = chapterUnits[0].startOffset;
+    let endOffset = chapterUnits[chapterUnits.length - 1].endOffset;
+
+    // 防御：如果 endOffset <= startOffset（空章节 edge case），
+    // 尝试用 unit 列表中最大的 endOffset 或下一章的 startOffset
+    if (endOffset <= startOffset && chapterUnits.length > 1) {
+      endOffset = Math.max(...chapterUnits.map(u => u.endOffset));
+    }
+
     chapters.push({
       chapterIndex: i + 1,
       title: chapterTitles?.[i] || defaultTitle,
@@ -82,8 +93,8 @@ function materializeChapterRanges(
       unitLabels: chapterUnits.map(u => u.label),
       plotSummary,
       charCount,
-      startOffset: chapterUnits[0].startOffset,
-      endOffset: chapterUnits[chapterUnits.length - 1].endOffset,
+      startOffset,
+      endOffset,
     });
   }
 

@@ -106,7 +106,6 @@ export const ScriptStudioPanel: React.FC<ScriptStudioPanelProps> = ({
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
 
   const refineOperators = useMemo(() => getCreativeOperatorsByPhase('script-refine'), []);
-  const chapterOperators = useMemo(() => getCreativeOperatorsByPhase('chapter-division'), []);
 
   const currentStep = session.currentStep ?? 0;
   const scriptText = session.scriptText ?? '';
@@ -317,81 +316,6 @@ export const ScriptStudioPanel: React.FC<ScriptStudioPanelProps> = ({
     }
   }, [currentStep, episodeId, message, projectId, scriptText, trackOperator, updateSession]);
 
-  const handleChapterDivision = useCallback(async (operatorId: string) => {
-    const operator = getCreativeOperator(operatorId);
-    if (!scriptText.trim() || !operator?.templateType) {
-      return;
-    }
-
-    // 使用实时检测结果
-    const episodes = autoDetectedEpisodes;
-
-    const epCount = episodes.length;
-    const perChapter = effectiveEpisodesPerChapter;
-    const targetChapters = epCount > 0 ? Math.max(1, Math.ceil(epCount / perChapter)) : 4;
-
-    // 构建集目录字符串
-    const episodeListStr = epCount > 0
-      ? episodes.map(ep => `第${ep.index}集: ${ep.name}`).join('\n')
-      : '（未检测到集标记）';
-
-    setIsProcessing(true);
-    setStreamingPreview('');
-    try {
-      const ctx = await createCreationContext(projectId, episodeId);
-      const resolved = await resolvePromptTemplate(operator.templateType, {
-        script: scriptText,
-        episode_count: String(epCount || '未知'),
-        episode_list: episodeListStr,
-        target_chapters: String(targetChapters),
-        episodes_per_chapter: String(perChapter),
-      });
-
-      let response: string;
-      if (ctx.llmProvider.generateTextStream) {
-        response = await ctx.llmProvider.generateTextStream(
-          resolved.prompt,
-          undefined,
-          { source: 'script-studio', operation: 'chapter-division', disableChunking: true },
-          (_delta, accumulated) => {
-            setStreamingPreview(accumulated);
-          },
-        );
-      } else {
-        response = await ctx.llmProvider.generateText(resolved.prompt);
-      }
-
-      setStreamingPreview('');
-
-      // 解析 LLM 返回的 JSON 章节数组，不覆写原始 scriptText
-      let chapterData: string | undefined;
-      try {
-        const jsonBlock = response.match(/```json\s*([\s\S]*?)```/i)?.[1] || response;
-        const parsed = JSON.parse(jsonBlock.trim());
-        if (Array.isArray(parsed)) {
-          chapterData = JSON.stringify(parsed);
-        }
-      } catch {
-        // JSON 解析失败，将原始响应存储为 chapterPreview 供用户查看
-        chapterData = response;
-      }
-
-      updateSession({
-        chapterPreview: chapterData || response,
-        currentStep: Math.max(currentStep, 3),
-        draftSummary: `${operator.label} 已生成章节预览`,
-      });
-      trackOperator(operatorId);
-      message.success('章节划分完成');
-    } catch (err: any) {
-      logger.error('章节划分失败', err);
-      message.error('划分失败: ' + (err.message || '未知错误'));
-    } finally {
-      setIsProcessing(false);
-      setStreamingPreview('');
-    }
-  }, [autoDetectedEpisodes, currentStep, effectiveEpisodesPerChapter, episodeId, message, projectId, scriptText, trackOperator, updateSession]);
-
   /** Plan C: 智能章节规划（规则候选切点 + LLM 选边界） */
   const handleSmartChapterPlanning = useCallback(async (mode: ChapterPlanningMode) => {
     if (!scriptText.trim()) return;
@@ -455,49 +379,110 @@ export const ScriptStudioPanel: React.FC<ScriptStudioPanelProps> = ({
     setStreamingPreview('');
     try {
       const ctx = await createCreationContext(projectId, episodeId);
-      const resolved = await resolvePromptTemplate('shot_breakdown', {
-        script: scriptText,
-        characters: '无',
-        scenes: '无',
-        props: '无',
+
+      // ─── 辅助函数：解析单段 LLM 响应为分镜文本数组 ───
+      const parseShotResponse = (response: string): string[] => {
+        try {
+          const jsonBlock = response.match(/```json\s*([\s\S]*?)```/i)?.[1] || response;
+          const parsed = JSON.parse(jsonBlock);
+          const shots = Array.isArray(parsed)
+            ? parsed
+            : Array.isArray(parsed?.shots)
+              ? parsed.shots
+              : [];
+          const results = shots
+            .map((item: any) => item?.scriptContent || item?.text || '')
+            .map((text: string) => text.trim())
+            .filter(Boolean);
+          if (results.length > 0) return results;
+        } catch { /* JSON parse failed, fallback below */ }
+        // fallback: 按行拆分
+        const lines = response.split('\n').map(line => line.trim()).filter(Boolean);
+        return lines.length > 0 ? lines : [response];
+      };
+
+      // ─── 辅助函数：对单段文本调用 LLM 拆分分镜 ───
+      const splitChunk = async (chunkScript: string, label: string): Promise<string[]> => {
+        const resolved = await resolvePromptTemplate('shot_breakdown', {
+          script: chunkScript,
+          characters: '无',
+          scenes: '无',
+          props: '无',
+        });
+
+        let response: string;
+        if (ctx.llmProvider.generateTextStream) {
+          response = await ctx.llmProvider.generateTextStream(
+            resolved.prompt,
+            undefined,
+            { source: 'script-studio', operation: 'shot-breakdown', disableChunking: true },
+            (_delta, accumulated) => {
+              setStreamingPreview(`${label}\n\n${accumulated}`);
+            },
+          );
+        } else {
+          response = await ctx.llmProvider.generateText(resolved.prompt);
+        }
+        return parseShotResponse(response);
+      };
+
+      let nextResults: string[] = [];
+
+      // ─── 逐章拆分（如果有章节划分结果） ───
+      // 修复无效 offset：用相邻章节信息推算，确保不丢失任何章节
+      const chapters = resolvedChapters ?? [];
+
+      logger.info('拆分前诊断', {
+        resolvedChaptersCount: chapters.length,
+        hasPlanC: !!chapterPlanningResult?.chapters?.length,
+        hasLegacyPreview: !!chapterPreview,
+        offsets: chapters.map(ch => ({ title: ch.title, start: ch.startOffset, end: ch.endOffset })),
       });
 
-      let response: string;
-      if (ctx.llmProvider.generateTextStream) {
-        response = await ctx.llmProvider.generateTextStream(
-          resolved.prompt,
-          undefined,
-          { source: 'script-studio', operation: 'shot-breakdown' },
-          (_delta, accumulated) => {
-            setStreamingPreview(accumulated);
-          },
-        );
+      // 构建修复后的 offset 列表：对无效 offset 的章节进行推算
+      const repairedChapters = chapters.length > 0 ? chapters.map((ch, idx) => {
+        const isValid = ch.startOffset != null && ch.endOffset != null && ch.endOffset > ch.startOffset;
+        if (isValid) return ch;
+
+        // 推算 offset：start = 前一章 endOffset，end = 后一章 startOffset 或文本末尾
+        const prevEnd = idx > 0 ? chapters[idx - 1].endOffset : 0;
+        const nextStart = idx < chapters.length - 1 ? chapters[idx + 1].startOffset : scriptText.length;
+        const repairedStart = (prevEnd != null && prevEnd > 0) ? prevEnd : 0;
+        const repairedEnd = (nextStart != null && nextStart > repairedStart) ? nextStart : scriptText.length;
+
+        logger.warn(`章节 ${idx + 1} "${ch.title}" offset 无效 (${ch.startOffset}-${ch.endOffset})，已推算为 ${repairedStart}-${repairedEnd}`);
+        return { ...ch, startOffset: repairedStart, endOffset: repairedEnd };
+      }) : [];
+
+      // 再次过滤：推算后仍无效（空文本）的章节跳过
+      const validChapters = repairedChapters.filter(ch => ch.endOffset > ch.startOffset);
+
+      if (validChapters.length > 0) {
+        for (let i = 0; i < validChapters.length; i++) {
+          const ch = validChapters[i];
+          const chapterScript = scriptText.slice(ch.startOffset, ch.endOffset);
+          if (!chapterScript.trim()) continue;
+
+          const label = `[第 ${i + 1}/${validChapters.length} 章] ${ch.title}`;
+          setStreamingPreview(`${label}\n\n准备中…`);
+
+          const chapterShots = await splitChunk(chapterScript, label);
+          nextResults.push(...chapterShots);
+
+          // 更新进度
+          setStreamingPreview(`已完成 ${i + 1}/${validChapters.length} 章，累计 ${nextResults.length} 个分镜`);
+        }
       } else {
-        response = await ctx.llmProvider.generateText(resolved.prompt);
+        // 无有效章节或无章节划分结果，整文处理
+        logger.warn('无有效章节 offset，fallback 到整文拆分');
+        nextResults = await splitChunk(scriptText, '[整文拆分]');
       }
 
       setStreamingPreview('');
-      let nextResults: string[] = [];
-
-      try {
-        const jsonBlock = response.match(/```json\s*([\s\S]*?)```/i)?.[1] || response;
-        const parsed = JSON.parse(jsonBlock);
-        const shots = Array.isArray(parsed)
-          ? parsed
-          : Array.isArray(parsed?.shots)
-            ? parsed.shots
-            : [];
-        nextResults = shots
-          .map((item: any) => item?.scriptContent || item?.text || '')
-          .map((text: string) => text.trim())
-          .filter(Boolean);
-      } catch {
-        nextResults = [];
-      }
 
       if (nextResults.length === 0) {
-        const lines = response.split('\n').map(line => line.trim()).filter(Boolean);
-        nextResults = lines.length > 0 ? lines : [response];
+        const lines = scriptText.split('\n').map(line => line.trim()).filter(Boolean);
+        nextResults = lines.length > 0 ? lines : [scriptText];
       }
 
       updateSession({
@@ -521,7 +506,7 @@ export const ScriptStudioPanel: React.FC<ScriptStudioPanelProps> = ({
       setIsProcessing(false);
       setStreamingPreview('');
     }
-  }, [episodeId, message, projectId, scriptText, updateSession]);
+  }, [chapterPlanningResult, chapterPreview, episodeId, message, projectId, resolvedChapters, scriptText, updateSession]);
 
   const handleDeleteSplit = useCallback((index: number) => {
     const nextResults = splitResults.filter((_, itemIndex) => itemIndex !== index);
@@ -740,11 +725,6 @@ export const ScriptStudioPanel: React.FC<ScriptStudioPanelProps> = ({
                 >
                   均匀划分
                 </Button>
-                {chapterOperators.map((operator) => (
-                  <Button key={operator.id} onClick={() => handleChapterDivision(operator.id)} loading={isProcessing} disabled={isProcessing}>
-                    {operator.label}
-                  </Button>
-                ))}
               </Space>
             </Card>
 
@@ -874,7 +854,26 @@ export const ScriptStudioPanel: React.FC<ScriptStudioPanelProps> = ({
                 <Text type="secondary" className="absolute bottom-2 right-3 text-[11px]">拆分中…</Text>
               </div>
             ) : splitResults.length > 0 ? (
-              <Text type="secondary">已暂存 {splitResults.length} 个分镜草稿</Text>
+              <div className="flex flex-col gap-2">
+                <Text type="secondary">已暂存 {splitResults.length} 个分镜草稿（到下一步可编辑和确认）</Text>
+                <List
+                  size="small"
+                  dataSource={splitResults.slice(0, 20)}
+                  renderItem={(item, index) => (
+                    <List.Item className="!border-zinc-800 !py-1">
+                      <div className="flex items-start gap-2 w-full min-w-0">
+                        <span className="text-zinc-500 text-xs shrink-0">#{index + 1}</span>
+                        <Text className="text-xs text-zinc-400 flex-1 min-w-0">
+                          {item.length > 80 ? `${item.slice(0, 80)}...` : item}
+                        </Text>
+                      </div>
+                    </List.Item>
+                  )}
+                />
+                {splitResults.length > 20 && (
+                  <Text type="secondary" className="text-xs">…还有 {splitResults.length - 20} 条，到下一步查看完整列表</Text>
+                )}
+              </div>
             ) : null}
           </div>
         )}
