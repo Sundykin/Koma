@@ -15,11 +15,13 @@ import {
 } from '../../../store/promptTemplates';
 import {
   createEpisode,
+  deleteEpisode,
   listEpisodes,
   loadEpisodeShots,
   saveEpisode,
   saveEpisodeShots,
 } from '../../../store/projectStore';
+import { findRemovableDefaultEpisodeIds } from '../../../store/project/episodePlaceholders';
 import { createLogger } from '../../../store/logger';
 import type { ScriptStudioSession } from './workflowSessions';
 import { createDefaultScriptStudioSession } from './workflowSessions';
@@ -572,12 +574,20 @@ export const ScriptStudioPanel: React.FC<ScriptStudioPanelProps> = ({
     try {
       if (episodeDrafts.length > 1) {
         const existingEpisodes = await listEpisodes(projectId);
-        const episodeByNumber = new Map(existingEpisodes.map(item => [item.number, item]));
+        const removablePlaceholderIds = await findRemovableDefaultEpisodeIds(projectId, existingEpisodes, {
+          excludeEpisodeIds: [episodeId],
+        });
+        for (const removableId of removablePlaceholderIds) {
+          await deleteEpisode(projectId, removableId);
+        }
+
+        const remainingEpisodes = existingEpisodes.filter(item => !removablePlaceholderIds.includes(item.id));
+        const episodeByNumber = new Map(remainingEpisodes.map(item => [item.number, item]));
 
         for (let index = 0; index < episodeDrafts.length; index++) {
           const draft = episodeDrafts[index];
           let targetEpisode = index === 0
-            ? existingEpisodes.find(item => item.id === episodeId) || null
+            ? remainingEpisodes.find(item => item.id === episodeId) || null
             : episodeByNumber.get(draft.episodeNumber) || null;
 
           if (!targetEpisode) {
