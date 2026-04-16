@@ -38,3 +38,6 @@ frontend/coverage
 # Local agent scratch prompts
 agent-prompts/
 .worktrees/
+
+# Local template scratch directory
+template_/
