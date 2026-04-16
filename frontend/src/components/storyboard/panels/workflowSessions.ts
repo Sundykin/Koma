@@ -33,6 +33,12 @@ export interface WorkflowSessionBase {
 export interface ScriptStudioSession extends WorkflowSessionBase {
   scriptText: string;
   splitResults: string[];
+  episodeDrafts?: Array<{
+    episodeNumber: number;
+    title: string;
+    scriptText: string;
+    splitResults: string[];
+  }>;
   applyMode: ScriptApplyMode;
   selectedOperatorIds: string[];
   refinedPreview?: string;

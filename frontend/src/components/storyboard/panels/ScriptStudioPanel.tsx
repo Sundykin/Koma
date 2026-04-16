@@ -13,7 +13,13 @@ import {
   getCreativeOperatorsByPhase,
   resolvePromptTemplate,
 } from '../../../store/promptTemplates';
-import { saveEpisodeShots, loadEpisodeShots } from '../../../store/projectStore';
+import {
+  createEpisode,
+  listEpisodes,
+  loadEpisodeShots,
+  saveEpisode,
+  saveEpisodeShots,
+} from '../../../store/projectStore';
 import { createLogger } from '../../../store/logger';
 import type { ScriptStudioSession } from './workflowSessions';
 import { createDefaultScriptStudioSession } from './workflowSessions';
@@ -22,6 +28,7 @@ import type { ChapterPlanningMode, ChapterPlanningProgress, ChapterPlanningStage
 import { detectExplicitEpisodeBoundaries } from '../../../services/episodeBoundaryDetector';
 import { detectEpisodeBoundaries } from '../../../services/episodeBoundaries';
 import type { PipelineSource } from '../../../services/episodeBoundaries';
+import { partitionScriptByEpisodeBoundaries } from '../../../services/episodeBoundarySplit';
 
 const logger = createLogger('ScriptStudioPanel');
 const { TextArea } = Input;
@@ -33,6 +40,7 @@ interface ScriptStudioPanelProps {
   session: ScriptStudioSession;
   onSessionChange: (updates: Partial<ScriptStudioSession>) => void;
   onShotsImported?: () => void;
+  onEpisodesChanged?: (preferredEpisodeId?: string) => void;
 }
 
 const STEPS = [
@@ -61,7 +69,6 @@ function getPlanningStepIndex(stage: ChapterPlanningStage | undefined): number {
   if (!stage) return -1;
   if (stage === 'done') return PLANNING_STAGES.length;
   if (stage === 'error') return -1;
-  // detecting-boundaries maps to building-units
   if (stage === 'detecting-boundaries') return 0;
   const idx = PLANNING_STAGES.findIndex(s => s.stage === stage);
   return idx >= 0 ? idx : -1;
@@ -98,6 +105,7 @@ export const ScriptStudioPanel: React.FC<ScriptStudioPanelProps> = ({
   session,
   onSessionChange,
   onShotsImported,
+  onEpisodesChanged,
 }) => {
   const { message } = App.useApp();
   const [isProcessing, setIsProcessing] = useState(false);
@@ -114,6 +122,7 @@ export const ScriptStudioPanel: React.FC<ScriptStudioPanelProps> = ({
   const chapterPreview = session.chapterPreview;
   const episodesPerChapter = session.episodesPerChapter;
   const chapterPlanningResult = session.chapterPlanningResult;
+  const episodeDrafts = session.episodeDrafts ?? [];
 
   // ─── 集边界检测（同步 regex 即时显示 + 异步 LLM 后台增强） ───
   const [detectionStatus, setDetectionStatus] = useState<'idle' | 'extracting' | 'done' | 'failed'>('idle');
@@ -206,13 +215,10 @@ export const ScriptStudioPanel: React.FC<ScriptStudioPanelProps> = ({
   const effectiveEpisodesPerChapter = episodesPerChapter ?? defaultEpisodesPerChapter(totalEpisodes);
   const suggestedChapters = totalEpisodes > 0 ? Math.max(1, Math.ceil(totalEpisodes / effectiveEpisodesPerChapter)) : 0;
 
-  // 从 Plan C 结构化结果或旧版 JSON 字符串中提取章节列表
   const resolvedChapters: ChapterPreview[] | null = useMemo(() => {
-    // 优先使用 Plan C 结构化结果
     if (chapterPlanningResult?.chapters && chapterPlanningResult.chapters.length > 0) {
       return chapterPlanningResult.chapters;
     }
-    // 降级：旧版 JSON 字符串
     if (!chapterPreview) return null;
     try {
       const parsed = JSON.parse(chapterPreview);
@@ -234,7 +240,7 @@ export const ScriptStudioPanel: React.FC<ScriptStudioPanelProps> = ({
           _end: ch.end,
         } as ChapterPreview & { _legacy?: boolean; _startEpisode?: number; _endEpisode?: number; _start?: number; _end?: number }));
       }
-    } catch { /* not valid JSON */ }
+    } catch { }
     return null;
   }, [chapterPlanningResult, chapterPreview]);
 
@@ -366,7 +372,6 @@ export const ScriptStudioPanel: React.FC<ScriptStudioPanelProps> = ({
       message.error('规划失败: ' + (err.message || '未知错误'));
     } finally {
       setIsProcessing(false);
-      // Delay clearing so the final stage (done) renders briefly before disappearing
       setTimeout(() => setPlanningProgress(null), 600);
     }
   }, [currentStep, effectiveEpisodesPerChapter, episodeId, message, projectId, scriptText, session.detectedBoundaries, suggestedChapters, updateSession]);
@@ -427,24 +432,13 @@ export const ScriptStudioPanel: React.FC<ScriptStudioPanelProps> = ({
       };
 
       let nextResults: string[] = [];
+      let nextEpisodeDrafts: NonNullable<ScriptStudioSession['episodeDrafts']> | undefined;
 
-      // ─── 逐章拆分（如果有章节划分结果） ───
-      // 修复无效 offset：用相邻章节信息推算，确保不丢失任何章节
       const chapters = resolvedChapters ?? [];
-
-      logger.info('拆分前诊断', {
-        resolvedChaptersCount: chapters.length,
-        hasPlanC: !!chapterPlanningResult?.chapters?.length,
-        hasLegacyPreview: !!chapterPreview,
-        offsets: chapters.map(ch => ({ title: ch.title, start: ch.startOffset, end: ch.endOffset })),
-      });
-
-      // 构建修复后的 offset 列表：对无效 offset 的章节进行推算
       const repairedChapters = chapters.length > 0 ? chapters.map((ch, idx) => {
         const isValid = ch.startOffset != null && ch.endOffset != null && ch.endOffset > ch.startOffset;
         if (isValid) return ch;
 
-        // 推算 offset：start = 前一章 endOffset，end = 后一章 startOffset 或文本末尾
         const prevEnd = idx > 0 ? chapters[idx - 1].endOffset : 0;
         const nextStart = idx < chapters.length - 1 ? chapters[idx + 1].startOffset : scriptText.length;
         const repairedStart = (prevEnd != null && prevEnd > 0) ? prevEnd : 0;
@@ -453,29 +447,54 @@ export const ScriptStudioPanel: React.FC<ScriptStudioPanelProps> = ({
         logger.warn(`章节 ${idx + 1} "${ch.title}" offset 无效 (${ch.startOffset}-${ch.endOffset})，已推算为 ${repairedStart}-${repairedEnd}`);
         return { ...ch, startOffset: repairedStart, endOffset: repairedEnd };
       }) : [];
+      const chapterSegments = repairedChapters
+        .filter(ch => ch.endOffset > ch.startOffset)
+        .map((ch, index) => ({
+          episodeNumber: ch.chapterIndex || index + 1,
+          title: (ch.title || `第${index + 1}集`).trim(),
+          scriptText: scriptText.slice(ch.startOffset, ch.endOffset).trim(),
+        }))
+        .filter(segment => segment.scriptText.length > 0);
 
-      // 再次过滤：推算后仍无效（空文本）的章节跳过
-      const validChapters = repairedChapters.filter(ch => ch.endOffset > ch.startOffset);
+      const multiEpisodeSegments = chapterSegments.length > 0
+        ? chapterSegments
+        : (session.detectedBoundaries && session.detectedBoundaries.length > 1
+          ? partitionScriptByEpisodeBoundaries(scriptText, session.detectedBoundaries)
+          : []);
 
-      if (validChapters.length > 0) {
-        for (let i = 0; i < validChapters.length; i++) {
-          const ch = validChapters[i];
-          const chapterScript = scriptText.slice(ch.startOffset, ch.endOffset);
-          if (!chapterScript.trim()) continue;
+      if (multiEpisodeSegments.length > 1) {
+        nextEpisodeDrafts = [];
 
-          const label = `[第 ${i + 1}/${validChapters.length} 章] ${ch.title}`;
+        for (let i = 0; i < multiEpisodeSegments.length; i++) {
+          const segment = multiEpisodeSegments[i];
+          const label = `[第 ${i + 1}/${multiEpisodeSegments.length} 集] ${segment.title}`;
           setStreamingPreview(`${label}\n\n准备中…`);
 
-          const chapterShots = await splitChunk(chapterScript, label);
-          nextResults.push(...chapterShots);
-
-          // 更新进度
-          setStreamingPreview(`已完成 ${i + 1}/${validChapters.length} 章，累计 ${nextResults.length} 个分镜`);
+          const episodeShots = await splitChunk(segment.scriptText, label);
+          nextEpisodeDrafts.push({
+            episodeNumber: segment.episodeNumber,
+            title: segment.title,
+            scriptText: segment.scriptText,
+            splitResults: episodeShots,
+          });
+          nextResults.push(...episodeShots);
+          setStreamingPreview(`已完成 ${i + 1}/${multiEpisodeSegments.length} 集，累计 ${nextResults.length} 个分镜`);
         }
       } else {
-        // 无有效章节或无章节划分结果，整文处理
-        logger.warn('无有效章节 offset，fallback 到整文拆分');
-        nextResults = await splitChunk(scriptText, '[整文拆分]');
+        logger.info('拆分前诊断', {
+          resolvedChaptersCount: chapters.length,
+          usableChapterSegments: chapterSegments.length,
+          hasPlanC: !!chapterPlanningResult?.chapters?.length,
+          hasLegacyPreview: !!chapterPreview,
+          offsets: chapters.map(ch => ({ title: ch.title, start: ch.startOffset, end: ch.endOffset })),
+        });
+
+        if (chapterSegments.length === 1) {
+          nextResults = await splitChunk(chapterSegments[0].scriptText, `[第 1/1 集] ${chapterSegments[0].title}`);
+        } else {
+          logger.warn('无有效章节结果，fallback 到整文拆分');
+          nextResults = await splitChunk(scriptText, '[整文拆分]');
+        }
       }
 
       setStreamingPreview('');
@@ -487,16 +506,20 @@ export const ScriptStudioPanel: React.FC<ScriptStudioPanelProps> = ({
 
       updateSession({
         splitResults: nextResults,
+        episodeDrafts: nextEpisodeDrafts,
         currentStep: 4,
         draftSummary: `暂存 ${nextResults.length} 条分镜草稿`,
         affectedCount: nextResults.length,
       });
-      message.success(`已拆分为 ${nextResults.length} 个分镜`);
+      message.success(nextEpisodeDrafts && nextEpisodeDrafts.length > 1
+        ? `已按 ${nextEpisodeDrafts.length} 集拆分，共 ${nextResults.length} 个分镜`
+        : `已拆分为 ${nextResults.length} 个分镜`);
     } catch (err: any) {
       logger.error('AI 分镜拆分失败', err);
       const fallbackResults = scriptText.split('\n').map(line => line.trim()).filter(Boolean);
       updateSession({
         splitResults: fallbackResults,
+        episodeDrafts: undefined,
         currentStep: 4,
         draftSummary: `按文本行回退拆分 ${fallbackResults.length} 条`,
         affectedCount: fallbackResults.length,
@@ -506,12 +529,13 @@ export const ScriptStudioPanel: React.FC<ScriptStudioPanelProps> = ({
       setIsProcessing(false);
       setStreamingPreview('');
     }
-  }, [chapterPlanningResult, chapterPreview, episodeId, message, projectId, resolvedChapters, scriptText, updateSession]);
+  }, [chapterPlanningResult, chapterPreview, episodeId, message, projectId, resolvedChapters, scriptText, session.detectedBoundaries, updateSession]);
 
   const handleDeleteSplit = useCallback((index: number) => {
     const nextResults = splitResults.filter((_, itemIndex) => itemIndex !== index);
     updateSession({
       splitResults: nextResults,
+      episodeDrafts: undefined,
       draftSummary: nextResults.length > 0 ? `暂存 ${nextResults.length} 条分镜草稿` : undefined,
       affectedCount: nextResults.length,
     });
@@ -526,6 +550,7 @@ export const ScriptStudioPanel: React.FC<ScriptStudioPanelProps> = ({
     nextResults.splice(index + 1, 1);
     updateSession({
       splitResults: nextResults,
+      episodeDrafts: undefined,
       draftSummary: `暂存 ${nextResults.length} 条分镜草稿`,
       affectedCount: nextResults.length,
     });
@@ -534,7 +559,7 @@ export const ScriptStudioPanel: React.FC<ScriptStudioPanelProps> = ({
   const handleEditSplit = useCallback((index: number, value: string) => {
     const nextResults = [...splitResults];
     nextResults[index] = value;
-    updateSession({ splitResults: nextResults });
+    updateSession({ splitResults: nextResults, episodeDrafts: undefined });
     setEditingIndex(null);
   }, [splitResults, updateSession]);
 
@@ -545,6 +570,57 @@ export const ScriptStudioPanel: React.FC<ScriptStudioPanelProps> = ({
     }
     setIsProcessing(true);
     try {
+      if (episodeDrafts.length > 1) {
+        const existingEpisodes = await listEpisodes(projectId);
+        const episodeByNumber = new Map(existingEpisodes.map(item => [item.number, item]));
+
+        for (let index = 0; index < episodeDrafts.length; index++) {
+          const draft = episodeDrafts[index];
+          let targetEpisode = index === 0
+            ? existingEpisodes.find(item => item.id === episodeId) || null
+            : episodeByNumber.get(draft.episodeNumber) || null;
+
+          if (!targetEpisode) {
+            targetEpisode = await createEpisode(projectId, {
+              number: draft.episodeNumber,
+              title: draft.title,
+              scriptText: draft.scriptText,
+              status: 'script',
+            });
+            episodeByNumber.set(targetEpisode.number, targetEpisode);
+          }
+
+          await saveEpisode(projectId, targetEpisode.id, {
+            title: draft.title,
+            scriptText: draft.scriptText,
+            status: 'storyboard',
+          });
+
+          const existingShots = applyMode === 'replace' ? [] : await loadEpisodeShots(projectId, targetEpisode.id);
+          const newShots = draft.splitResults.map(text => createEmptyShot(text));
+          await saveEpisodeShots(projectId, targetEpisode.id, [...existingShots, ...newShots]);
+        }
+
+        message.success(`已按 ${episodeDrafts.length} 集写入分镜`);
+        onSessionChange({
+          ...createDefaultScriptStudioSession(),
+          applyMode,
+          lastApplied: {
+            appliedAt: Date.now(),
+            summary: `按 ${episodeDrafts.length} 集写入 ${splitResults.length} 条分镜`,
+            affectedCount: splitResults.length,
+            scopeLabel: '自动分发到多集',
+          },
+        });
+        onEpisodesChanged?.(episodeId);
+        onShotsImported?.();
+        return;
+      }
+
+      await saveEpisode(projectId, episodeId, {
+        scriptText,
+        status: 'storyboard',
+      });
       const existingShots = applyMode === 'replace' ? [] : await loadEpisodeShots(projectId, episodeId);
       const newShots = splitResults.map(text => createEmptyShot(text));
       const allShots = [...existingShots, ...newShots];
@@ -564,6 +640,7 @@ export const ScriptStudioPanel: React.FC<ScriptStudioPanelProps> = ({
           scopeLabel: applyMode === 'replace' ? '替换本集分镜' : '追加到现有分镜',
         },
       });
+      onEpisodesChanged?.(episodeId);
       onShotsImported?.();
     } catch (err: any) {
       logger.error('导入分镜失败', err);
@@ -571,7 +648,7 @@ export const ScriptStudioPanel: React.FC<ScriptStudioPanelProps> = ({
     } finally {
       setIsProcessing(false);
     }
-  }, [applyMode, episodeId, message, onSessionChange, onShotsImported, projectId, splitResults]);
+  }, [applyMode, episodeDrafts, episodeId, message, onEpisodesChanged, onSessionChange, onShotsImported, projectId, scriptText, splitResults]);
 
   return (
     <div className="flex flex-col h-full">
@@ -652,7 +729,6 @@ export const ScriptStudioPanel: React.FC<ScriptStudioPanelProps> = ({
             </div>
             <Text type="secondary">长文本建议先切出章节块，再进入拆分和推理。</Text>
 
-            {/* 配置面板 */}
             <Card size="small" className="!bg-zinc-900 !border-zinc-700" styles={{ body: { padding: '12px 16px' } }}>
               {totalEpisodes > 0 && (
                 <>
@@ -728,8 +804,7 @@ export const ScriptStudioPanel: React.FC<ScriptStudioPanelProps> = ({
               </Space>
             </Card>
 
-            {/* 管线分步进度 */}
-            {isProcessing && planningProgress && (
+            {isProcessing && planningProgress ? (
               <div className="bg-zinc-900 border border-zinc-700 rounded-lg p-4">
                 <Steps
                   size="small"
@@ -744,16 +819,8 @@ export const ScriptStudioPanel: React.FC<ScriptStudioPanelProps> = ({
                 <Progress percent={Math.round(planningProgress.progress * 100)} size="small" strokeColor="#1677ff" />
                 <Text type="secondary" className="text-xs mt-1 block">{planningProgress.message}</Text>
               </div>
-            )}
-
-            {isProcessing && streamingPreview ? (
-              <div className="relative">
-                <TextArea value={streamingPreview} readOnly rows={8} className="bg-zinc-950 border-zinc-700 text-zinc-400" />
-                <Text type="secondary" className="absolute bottom-2 right-3 text-[11px]">生成中…</Text>
-              </div>
             ) : resolvedChapters ? (
               <div className="flex flex-col gap-2">
-                {/* 状态徽标栏 */}
                 <div className="flex items-center gap-2 flex-wrap">
                   <Text type="secondary">已划分 {resolvedChapters.length} 个章节</Text>
                   {chapterPlanningResult?.validation?.valid ? (
@@ -773,7 +840,6 @@ export const ScriptStudioPanel: React.FC<ScriptStudioPanelProps> = ({
                   )}
                 </div>
 
-                {/* 可折叠章节卡片 */}
                 <Collapse
                   size="small"
                   className="!bg-transparent !border-zinc-700 [&_.ant-collapse-panel]:!bg-zinc-900 [&_.ant-collapse-header]:!text-zinc-300"
@@ -819,7 +885,6 @@ export const ScriptStudioPanel: React.FC<ScriptStudioPanelProps> = ({
                           ) : (
                             <Text type="secondary" className="text-xs">暂无摘要</Text>
                           )}
-                          {/* 剧本文本预览（供用户审查章节划分是否合理） */}
                           {ch.startOffset < ch.endOffset && scriptText && (
                             <div className="mt-1">
                               <Text type="secondary" className="text-[11px] mb-1 block">剧本内容预览</Text>
@@ -856,6 +921,11 @@ export const ScriptStudioPanel: React.FC<ScriptStudioPanelProps> = ({
             ) : splitResults.length > 0 ? (
               <div className="flex flex-col gap-2">
                 <Text type="secondary">已暂存 {splitResults.length} 个分镜草稿（到下一步可编辑和确认）</Text>
+                {episodeDrafts.length > 1 && (
+                  <Text type="secondary" className="text-xs">
+                    当前已按 {episodeDrafts.length} 集拆分，将分别写入对应剧集。
+                  </Text>
+                )}
                 <List
                   size="small"
                   dataSource={splitResults.slice(0, 20)}
@@ -882,8 +952,16 @@ export const ScriptStudioPanel: React.FC<ScriptStudioPanelProps> = ({
           <div className="flex flex-col gap-4">
             <Title level={5} className="!text-zinc-300 !mb-0">确认并写入</Title>
             <Text type="secondary">
-              当前为 {applyMode === 'replace' ? '替换本集分镜' : '追加到现有分镜'} 模式，共 {splitResults.length} 个暂存分镜。
+              {episodeDrafts.length > 1
+                ? `将按检测到的 ${episodeDrafts.length} 集自动分发写入，共 ${splitResults.length} 个暂存分镜。`
+                : `当前为 ${applyMode === 'replace' ? '替换本集分镜' : '追加到现有分镜'} 模式，共 ${splitResults.length} 个暂存分镜。`}
             </Text>
+            {episodeDrafts.length > 1 && (
+              <div className="rounded border border-zinc-800 bg-zinc-900/70 p-3 text-xs text-zinc-400">
+                将更新第 {episodeDrafts[0]?.episodeNumber} 集到第 {episodeDrafts[episodeDrafts.length - 1]?.episodeNumber} 集，
+                不存在的剧集会自动创建，已存在的剧集会写入对应分镜。
+              </div>
+            )}
             <List
               size="small"
               dataSource={splitResults}
@@ -915,7 +993,9 @@ export const ScriptStudioPanel: React.FC<ScriptStudioPanelProps> = ({
               )}
             />
             <Button type="primary" icon={<CheckOutlined />} onClick={handleConfirmImport} loading={isProcessing} disabled={splitResults.length === 0} block>
-              确认写入 ({splitResults.length} 个分镜)
+              {episodeDrafts.length > 1
+                ? `确认写入 ${episodeDrafts.length} 集 (${splitResults.length} 个分镜)`
+                : `确认写入 (${splitResults.length} 个分镜)`}
             </Button>
           </div>
         )}
