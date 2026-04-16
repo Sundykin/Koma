@@ -36,6 +36,7 @@ interface ToolPanelDrawerProps {
   onExportSessionChange: (updates: Partial<WorkflowPanelSessions['export']>) => void;
   onAssistantSessionChange: (updates: Partial<WorkflowPanelSessions['assistant']>) => void;
   onShotsChanged?: () => void;
+  onEpisodesChanged?: (preferredEpisodeId?: string) => void;
   onOpenPanel?: (panelId: WorkflowPanelId) => void;
 }
 
@@ -57,6 +58,7 @@ export const ToolPanelDrawer: React.FC<ToolPanelDrawerProps> = ({
   onExportSessionChange,
   onAssistantSessionChange,
   onShotsChanged,
+  onEpisodesChanged,
   onOpenPanel,
 }) => {
   const descriptor = panelId ? describeWorkflowSession(panelId, workflowSessions) : null;
@@ -69,6 +71,7 @@ export const ToolPanelDrawer: React.FC<ToolPanelDrawerProps> = ({
         session={workflowSessions.script}
         onSessionChange={onScriptSessionChange}
         onShotsImported={onShotsChanged}
+        onEpisodesChanged={onEpisodesChanged}
       />
     ),
     assets: (

@@ -365,15 +365,21 @@ export class ProjectService {
     if (!shotIds.length) return map;
     const db = this.getDb();
     const key = table === 'shot_characters' ? 'character_id' : table === 'shot_scenes' ? 'scene_id' : 'prop_id';
-    const placeholders = shotIds.map(() => '?').join(',');
-    const rows = db.prepare(
-      `SELECT shot_id, ${key} as entity_id, sort_order FROM ${table} WHERE shot_id IN (${placeholders}) ORDER BY sort_order`
-    ).all(...shotIds) as ShotRelationRow[];
-    rows.forEach(row => {
-      const existing = map.get(row.shot_id) || [];
-      existing.push(row);
-      map.set(row.shot_id, existing);
-    });
+
+    const chunkSize = 500;
+    for (let start = 0; start < shotIds.length; start += chunkSize) {
+      const chunk = shotIds.slice(start, start + chunkSize);
+      const placeholders = chunk.map(() => '?').join(',');
+      const rows = db.prepare(
+        `SELECT shot_id, ${key} as entity_id, sort_order FROM ${table} WHERE shot_id IN (${placeholders}) ORDER BY sort_order`
+      ).all(...chunk) as ShotRelationRow[];
+      rows.forEach(row => {
+        const existing = map.get(row.shot_id) || [];
+        existing.push(row);
+        map.set(row.shot_id, existing);
+      });
+    }
+
     return map;
   }
 
@@ -409,15 +415,21 @@ export class ProjectService {
     const map = new Map<string, ShotMediaEntryRow[]>();
     if (!shotIds.length) return map;
     const db = this.getDb();
-    const placeholders = shotIds.map(() => '?').join(',');
-    const rows = db.prepare(
-      `SELECT * FROM shot_media_entries WHERE shot_id IN (${placeholders}) ORDER BY slot, sort_order`
-    ).all(...shotIds) as ShotMediaEntryRow[];
-    rows.forEach(row => {
-      const existing = map.get(row.shot_id) || [];
-      existing.push(row);
-      map.set(row.shot_id, existing);
-    });
+
+    const chunkSize = 500;
+    for (let start = 0; start < shotIds.length; start += chunkSize) {
+      const chunk = shotIds.slice(start, start + chunkSize);
+      const placeholders = chunk.map(() => '?').join(',');
+      const rows = db.prepare(
+        `SELECT * FROM shot_media_entries WHERE shot_id IN (${placeholders}) ORDER BY slot, sort_order`
+      ).all(...chunk) as ShotMediaEntryRow[];
+      rows.forEach(row => {
+        const existing = map.get(row.shot_id) || [];
+        existing.push(row);
+        map.set(row.shot_id, existing);
+      });
+    }
+
     return map;
   }
 
@@ -446,15 +458,21 @@ export class ProjectService {
     const map = new Map<string, ShotVersionMediaEntryRow[]>();
     if (!versionIds.length) return map;
     const db = this.getDb();
-    const placeholders = versionIds.map(() => '?').join(',');
-    const rows = db.prepare(
-      `SELECT * FROM shot_version_media_entries WHERE shot_version_id IN (${placeholders})`
-    ).all(...versionIds) as ShotVersionMediaEntryRow[];
-    rows.forEach(row => {
-      const existing = map.get(row.shot_version_id) || [];
-      existing.push(row);
-      map.set(row.shot_version_id, existing);
-    });
+
+    const chunkSize = 500;
+    for (let start = 0; start < versionIds.length; start += chunkSize) {
+      const chunk = versionIds.slice(start, start + chunkSize);
+      const placeholders = chunk.map(() => '?').join(',');
+      const rows = db.prepare(
+        `SELECT * FROM shot_version_media_entries WHERE shot_version_id IN (${placeholders})`
+      ).all(...chunk) as ShotVersionMediaEntryRow[];
+      rows.forEach(row => {
+        const existing = map.get(row.shot_version_id) || [];
+        existing.push(row);
+        map.set(row.shot_version_id, existing);
+      });
+    }
+
     return map;
   }
 
@@ -493,6 +511,10 @@ export class ProjectService {
     const rows = episodeId
       ? this.shotRepo.listByEpisode(projectId, episodeId)
       : this.shotRepo.listProjectLevel(projectId);
+    return this.mapShotRowsToEntities(rows);
+  }
+
+  private mapShotRowsToEntities(rows: ShotRow[]): any[] {
     const shotIds = rows.map(row => row.id);
     const characterRelations = this.listShotRelations('shot_characters', shotIds);
     const sceneRelations = this.listShotRelations('shot_scenes', shotIds);
@@ -1022,6 +1044,34 @@ export class ProjectService {
       scenes: sceneRefs,
       props: propRefs,
     }, row);
+  }
+
+  loadEpisodeAnalysisSummary(_projectId: string, episodeId: string): any | null {
+    const row = this.episodeRepo.getById(episodeId);
+    if (!row || !row.has_analysis) return null;
+    const refs = this.listEntityEpisodeRefs('character', undefined, episodeId);
+    const sceneRefs = this.listEntityEpisodeRefs('scene', undefined, episodeId);
+    const propRefs = this.listEntityEpisodeRefs('prop', undefined, episodeId);
+    return buildEpisodeAnalysis(episodeId, [], {
+      characters: refs,
+      scenes: sceneRefs,
+      props: propRefs,
+    }, row);
+  }
+
+  loadEpisodeShotsPage(projectId: string, episodeId: string, limit: number, offset: number) {
+    const normalizedLimit = Math.max(1, Math.min(limit || 100, 500));
+    const normalizedOffset = Math.max(0, offset || 0);
+    const total = this.shotRepo.countByEpisode(projectId, episodeId);
+    const rows = this.shotRepo.listByEpisodePage(projectId, episodeId, normalizedLimit, normalizedOffset);
+    const items = this.mapShotRowsToEntities(rows);
+    return {
+      items,
+      total,
+      limit: normalizedLimit,
+      offset: normalizedOffset,
+      hasMore: normalizedOffset + items.length < total,
+    };
   }
 
   private normalizeTimelinePayload(timeline: any): TimelineData {

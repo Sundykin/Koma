@@ -22,6 +22,19 @@ export class SqliteShotRepository implements IShotRepository {
     ).all(projectId, episodeId) as ShotRow[];
   }
 
+  listByEpisodePage(projectId: string, episodeId: string, limit: number, offset: number): ShotRow[] {
+    return this.db.prepare(
+      'SELECT * FROM shots WHERE project_id = ? AND episode_id = ? ORDER BY sort_order LIMIT ? OFFSET ?'
+    ).all(projectId, episodeId, limit, offset) as ShotRow[];
+  }
+
+  countByEpisode(projectId: string, episodeId: string): number {
+    const row = this.db.prepare(
+      'SELECT COUNT(*) as count FROM shots WHERE project_id = ? AND episode_id = ?'
+    ).get(projectId, episodeId) as { count?: number } | undefined;
+    return row?.count ?? 0;
+  }
+
   getById(id: string): ShotRow | undefined {
     return this.db.prepare('SELECT * FROM shots WHERE id = ?').get(id) as ShotRow | undefined;
   }

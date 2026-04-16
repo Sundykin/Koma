@@ -151,7 +151,7 @@ export interface ShotCardProps {
   onInsertBelow: (shotId: string) => void;
 }
 
-export const ShotCard: React.FC<ShotCardProps> = ({
+const ShotCardComponent: React.FC<ShotCardProps> = ({
   projectId,
   shot,
   index,
@@ -529,6 +529,10 @@ export const ShotCard: React.FC<ShotCardProps> = ({
     <div
       className={`shot-card ${isSelected ? 'selected' : ''} ${shot.confirmed ? 'confirmed' : ''} ${isActive ? 'active' : ''}`}
       onClick={handleCardClick}
+      style={{
+        contentVisibility: 'auto',
+        containIntrinsicSize: '420px',
+      }}
     >
       <div className="flex items-stretch min-h-[130px] bg-zinc-950">
         {/* 左侧操作列 - 全部显示 */}
@@ -936,3 +940,48 @@ export const ShotCard: React.FC<ShotCardProps> = ({
     </div>
   );
 };
+
+export const ShotCard = React.memo(ShotCardComponent, (prev, next) => {
+  return prev.projectId === next.projectId
+    && prev.shot === next.shot
+    && prev.index === next.index
+    && prev.totalCount === next.totalCount
+    && prev.characters === next.characters
+    && prev.scenes === next.scenes
+    && prev.props === next.props
+    && prev.mentionItems === next.mentionItems
+    && prev.isSelected === next.isSelected
+    && prev.isActive === next.isActive
+    && prev.isGeneratingImagePrompt === next.isGeneratingImagePrompt
+    && prev.isGeneratingVideoPrompt === next.isGeneratingVideoPrompt
+    && prev.isGeneratingImage === next.isGeneratingImage
+    && prev.isGeneratingVideo === next.isGeneratingVideo
+    && prev.videoCapabilityLabel === next.videoCapabilityLabel
+    && prev.videoGenerateDisabledReason === next.videoGenerateDisabledReason
+    && prev.onSelectChange === next.onSelectChange
+    && prev.onActivate === next.onActivate
+    && prev.onScriptChange === next.onScriptChange
+    && prev.onImagePromptChange === next.onImagePromptChange
+    && prev.onVideoPromptChange === next.onVideoPromptChange
+    && prev.onImageModeChange === next.onImageModeChange
+    && prev.onCharactersChange === next.onCharactersChange
+    && prev.onScenesChange === next.onScenesChange
+    && prev.onPropsChange === next.onPropsChange
+    && prev.onReferenceImagesChange === next.onReferenceImagesChange
+    && prev.onImagesChange === next.onImagesChange
+    && prev.onVideosChange === next.onVideosChange
+    && prev.onGenerateImagePrompt === next.onGenerateImagePrompt
+    && prev.onGenerateVideoPrompt === next.onGenerateVideoPrompt
+    && prev.onOptimizeImagePrompt === next.onOptimizeImagePrompt
+    && prev.onOptimizeVideoPrompt === next.onOptimizeVideoPrompt
+    && prev.onGenerateImage === next.onGenerateImage
+    && prev.onGenerateVideo === next.onGenerateVideo
+    && prev.onToggleConfirm === next.onToggleConfirm
+    && prev.onDelete === next.onDelete
+    && prev.onMergeUp === next.onMergeUp
+    && prev.onMergeDown === next.onMergeDown
+    && prev.onMoveUp === next.onMoveUp
+    && prev.onMoveDown === next.onMoveDown
+    && prev.onInsertAbove === next.onInsertAbove
+    && prev.onInsertBelow === next.onInsertBelow;
+});

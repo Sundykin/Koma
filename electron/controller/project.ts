@@ -141,6 +141,16 @@ class ProjectController extends BaseController {
     return services.project.loadEpisodeAnalysis(args.projectId, args.episodeId);
   }
 
+  async loadAnalysisSummary(args: { projectId: string; episodeId: string }) {
+    await ensureServicesReady();
+    return services.project.loadEpisodeAnalysisSummary(args.projectId, args.episodeId);
+  }
+
+  async loadEpisodeShotsPage(args: { projectId: string; episodeId: string; limit: number; offset: number }) {
+    await ensureServicesReady();
+    return services.project.loadEpisodeShotsPage(args.projectId, args.episodeId, args.limit, args.offset);
+  }
+
   async saveProjectTimeline(args: { projectId: string; timeline: any }) {
     await ensureServicesReady();
     services.project.saveProjectTimeline(args.projectId, args.timeline);

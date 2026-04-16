@@ -51,7 +51,9 @@ export {
 export {
   saveEpisodeAnalysis,
   loadEpisodeAnalysis,
+  loadEpisodeAnalysisSummary,
   loadEpisodeShots,
+  loadEpisodeShotsPage,
   saveEpisodeShots,
   loadEpisodeTimeline,
   saveEpisodeTimeline,

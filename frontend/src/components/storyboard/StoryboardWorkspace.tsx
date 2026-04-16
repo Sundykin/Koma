@@ -78,6 +78,27 @@ export const StoryboardWorkspace: React.FC<StoryboardWorkspaceProps> = ({
   const [restoredStoryboardContextByEpisode, setRestoredStoryboardContextByEpisode] = useState<Record<string, Pick<StoryboardWorkflowContext, 'activeShotId' | 'selectedShotIds'>>>({});
   const [hydratedEpisodes, setHydratedEpisodes] = useState<Record<string, boolean>>({});
 
+  const reloadEpisodes = useCallback(async (preferredEpisodeId?: string) => {
+    setLoadingEpisodes(true);
+    try {
+      const nextEpisodes = (await listEpisodes(activeProject.id)).sort((a, b) => a.number - b.number);
+      setEpisodes(nextEpisodes);
+
+      const targetId = preferredEpisodeId ?? activeEpisode?.id;
+      const targetEpisode = targetId
+        ? nextEpisodes.find(episode => episode.id === targetId)
+        : nextEpisodes[0];
+
+      if (targetEpisode) {
+        onEpisodeChange?.(targetEpisode);
+      }
+    } catch (err) {
+      logger.error('加载剧集列表失败', err);
+    } finally {
+      setLoadingEpisodes(false);
+    }
+  }, [activeEpisode?.id, activeProject.id, onEpisodeChange]);
+
   const handleShotsChanged = useCallback(() => {
     setStoryboardRefreshKey(prev => prev + 1);
   }, []);
@@ -314,7 +335,6 @@ export const StoryboardWorkspace: React.FC<StoryboardWorkspaceProps> = ({
       <div className="flex-1 overflow-hidden relative">
         <div className="absolute inset-0">
           <Storyboard
-            key={storyboardRefreshKey}
             projectId={activeProject.id}
             episodeId={activeEpisode.id}
             episodeName={activeEpisode.title || `第${activeEpisode.number}集`}
@@ -327,6 +347,7 @@ export const StoryboardWorkspace: React.FC<StoryboardWorkspaceProps> = ({
             settings={appSettings}
             styleSnapshot={styleSnapshot}
             mentionItems={mentionItems}
+            refreshToken={storyboardRefreshKey}
             onRequestScriptWorkflow={() => openPanel('script')}
             onStoryboardContextChange={setStoryboardContext}
             initialActiveShotId={restoredStoryboardContextByEpisode[activeEpisode.id]?.activeShotId ?? null}
@@ -354,6 +375,7 @@ export const StoryboardWorkspace: React.FC<StoryboardWorkspaceProps> = ({
         onStyleSessionChange={(updates) => updateWorkflowSession('style', updates)}
         onExportSessionChange={(updates) => updateWorkflowSession('export', updates)}
         onAssistantSessionChange={(updates) => updateWorkflowSession('assistant', updates)}
+        onEpisodesChanged={reloadEpisodes}
         onOpenPanel={openPanel}
       />
     </div>

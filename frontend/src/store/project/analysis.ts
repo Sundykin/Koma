@@ -10,6 +10,14 @@ import { saveEpisode } from './episodes';
 import { normalizeShotsMediaState } from './mediaState';
 import { migrateTimelineData, prepareTimelineForSave } from '../../features/transition/core';
 
+export interface EpisodeShotsPage {
+  items: Shot[];
+  total: number;
+  limit: number;
+  offset: number;
+  hasMore: boolean;
+}
+
 function shouldRethrowTimelineError(error: unknown): boolean {
   return error instanceof Error && error.message.startsWith('Unsupported timeline version:');
 }
@@ -66,6 +74,45 @@ export async function loadEpisodeAnalysis(
   } catch {
     return null;
   }
+}
+
+export async function loadEpisodeAnalysisSummary(
+  projectId: string,
+  episodeId: string
+): Promise<EpisodeAnalysis | null> {
+  if (!electronService.isElectron()) return null;
+
+  try {
+    const parsed = await batchApi.loadAnalysisSummary(projectId, episodeId);
+    if (!parsed) return null;
+    return {
+      ...parsed,
+      shots: [],
+    };
+  } catch {
+    return null;
+  }
+}
+
+export async function loadEpisodeShotsPage(
+  projectId: string,
+  episodeId: string,
+  limit: number,
+  offset: number,
+): Promise<EpisodeShotsPage> {
+  if (!electronService.isElectron()) {
+    return { items: [], total: 0, limit, offset, hasMore: false };
+  }
+
+  const parsed = await batchApi.loadEpisodeShotsPage(projectId, episodeId, limit, offset);
+  const items = Array.isArray(parsed?.items) ? normalizeShotsMediaState(parsed.items.filter(Boolean)) : [];
+  return {
+    items,
+    total: typeof parsed?.total === 'number' ? parsed.total : items.length,
+    limit: typeof parsed?.limit === 'number' ? parsed.limit : limit,
+    offset: typeof parsed?.offset === 'number' ? parsed.offset : offset,
+    hasMore: Boolean(parsed?.hasMore),
+  };
 }
 
 export async function loadEpisodeShots(

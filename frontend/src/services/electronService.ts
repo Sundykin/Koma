@@ -659,6 +659,14 @@ export const batchApi = {
     const a = getElectronAPI(); if (!a) return null;
     return await (a.project as any).loadAnalysis(projectId, episodeId) ?? null;
   },
+  loadAnalysisSummary: async (projectId: string, episodeId: string): Promise<any | null> => {
+    const a = getElectronAPI(); if (!a) return null;
+    return await (a.project as any).loadAnalysisSummary(projectId, episodeId) ?? null;
+  },
+  loadEpisodeShotsPage: async (projectId: string, episodeId: string, limit: number, offset: number): Promise<any | null> => {
+    const a = getElectronAPI(); if (!a) return null;
+    return await (a.project as any).loadEpisodeShotsPage(projectId, episodeId, limit, offset) ?? null;
+  },
   saveProjectTimeline: async (projectId: string, timeline: any) => {
     const a = getElectronAPI(); if (!a) return;
     await (a.project as any).saveProjectTimeline(projectId, timeline);

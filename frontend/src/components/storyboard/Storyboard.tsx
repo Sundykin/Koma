@@ -19,7 +19,7 @@ import {
   RobotOutlined,
 } from '@ant-design/icons';
 import type { Shot, Character, Scene, Prop, AppSettings, StoredMediaAsset, ProjectStyleSnapshot } from '../../types';
-import { loadEpisodeShots, saveEpisodeShots, loadCharacters, loadScenes, loadProps, loadEpisodeAnalysis } from '../../store/projectStore';
+import { loadEpisodeShotsPage, saveEpisodeShots, loadCharacters, loadScenes, loadProps, loadEpisodeAnalysisSummary } from '../../store/projectStore';
 import { generateShotImage, batchGenerateShotImages } from '../../services/ShotGenerationService';
 import { shotRenderWorkflow, batchRenderShots } from '../../workflow/shotRenderWorkflow';
 import { startShotAnalysis } from '../../services/ShotAnalysisService';
@@ -43,6 +43,7 @@ import { getMediaAssetDisplaySource } from '../../types';
 import type { StoryboardWorkflowContext } from './panels/workflowSessions';
 
 const logger = createLogger('Storyboard');
+const SHOT_PAGE_SIZE = 200;
 
 const { Text } = Typography;
 const { TextArea } = Input;
@@ -89,6 +90,7 @@ interface StoryboardProps {
   projectId: string;
   episodeId?: string;
   episodeName?: string;
+  refreshToken?: number;
   script?: string;
   aspectRatio?: '16:9' | '9:16';
   llmSelection?: string;
@@ -109,6 +111,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
   projectId,
   episodeId,
   episodeName,
+  refreshToken = 0,
   script,
   aspectRatio,
   llmSelection,
@@ -131,6 +134,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
   const [scenes, setScenes] = useState<Scene[]>([]);
   const [props, setProps] = useState<Prop[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingDescription, setLoadingDescription] = useState('加载分镜数据...');
   const [generatingShots, setGeneratingShots] = useState<Set<string>>(new Set());
   // 状态拆分：图片/视频提示词独立追踪
   const [generatingImagePrompts, setGeneratingImagePrompts] = useState<Set<string>>(new Set());
@@ -142,6 +146,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
   const [batchProgress, setBatchProgress] = useState<{ current: number; total: number; step?: string } | undefined>();
   const queuedShotsSaveRef = useRef<{ projectId: string; episodeId: string; shots: Shot[] } | null>(null);
   const activeShotsSaveRef = useRef<Promise<void> | null>(null);
+  const loadRequestIdRef = useRef(0);
 
   // 预选资产弹窗
   const [presetModalOpen, setPresetModalOpen] = useState(false);
@@ -284,18 +289,61 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     return `${unsupported[0].support?.disabledReason}。受影响分镜：${sample}${suffix}`;
   }, [shotVideoSupportMap, shots]);
 
+  const loadAllEpisodeShotsPaged = useCallback(async (
+    currentProjectId: string,
+    currentEpisodeId: string,
+    requestId: number,
+  ): Promise<Shot[]> => {
+    const allShots: Shot[] = [];
+    let offset = 0;
+    let total = 0;
+    let hasMore = true;
+
+    while (hasMore) {
+      const page = await loadEpisodeShotsPage(currentProjectId, currentEpisodeId, SHOT_PAGE_SIZE, offset);
+      if (requestId !== loadRequestIdRef.current) {
+        return allShots;
+      }
+      allShots.push(...page.items);
+      total = page.total;
+      offset += page.items.length;
+      hasMore = page.hasMore;
+      setLoadingDescription(total > 0
+        ? `加载分镜数据... (${Math.min(offset, total)}/${total})`
+        : '加载分镜数据...');
+
+      if (page.items.length === 0) {
+        break;
+      }
+    }
+
+    return allShots;
+  }, []);
+
   // 加载数据
   const loadData = useCallback(async () => {
     if (!projectId) return;
+    const requestId = ++loadRequestIdRef.current;
     setLoading(true);
+    setLoadingDescription('加载分镜数据...');
     try {
-      const loadedShots = episodeId ? await loadEpisodeShots(projectId, episodeId) : [];
+      setShots([]);
       const [loadedCharacters, loadedScenes, loadedProps, episodeAnalysis] = await Promise.all([
         loadCharacters(projectId),
         loadScenes(projectId),
         loadProps(projectId),
-        episodeId ? loadEpisodeAnalysis(projectId, episodeId) : Promise.resolve(null),
+        episodeId ? loadEpisodeAnalysisSummary(projectId, episodeId) : Promise.resolve(null),
       ]);
+      if (requestId !== loadRequestIdRef.current) {
+        return;
+      }
+
+      const loadedShots = episodeId
+        ? await loadAllEpisodeShotsPaged(projectId, episodeId, requestId)
+        : [];
+      if (requestId !== loadRequestIdRef.current) {
+        return;
+      }
 
       // 根据剧集分析结果筛选资产
       let filteredCharacters = loadedCharacters;
@@ -337,21 +385,24 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       logger.error('加载失败', err);
       message.error('加载分镜数据失败');
     } finally {
-      setLoading(false);
+      if (requestId === loadRequestIdRef.current) {
+        setLoading(false);
+        setLoadingDescription('加载分镜数据...');
+      }
     }
-  }, [projectId, episodeId]);
+  }, [projectId, episodeId, loadAllEpisodeShotsPaged, message]);
 
   const refreshShotsFromStore = useCallback(async () => {
     if (!projectId || !episodeId) {
       return;
     }
-    const latestShots = await loadEpisodeShots(projectId, episodeId);
+    const latestShots = await loadAllEpisodeShotsPaged(projectId, episodeId, ++loadRequestIdRef.current);
     setShots(latestShots);
-  }, [projectId, episodeId]);
+  }, [projectId, episodeId, loadAllEpisodeShotsPaged]);
 
   useEffect(() => {
     loadData();
-  }, [loadData]);
+  }, [loadData, refreshToken]);
 
   useEffect(() => {
     if (shots.length === 0) {
@@ -1527,7 +1578,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
   if (loading) {
     return (
       <div className="storyboardContainer w-500" style={{ justifyContent: 'center', alignItems: 'center' }}>
-        <Spin size="large" description="加载分镜数据...">
+        <Spin size="large" description={loadingDescription}>
         </Spin>
       </div>
     );

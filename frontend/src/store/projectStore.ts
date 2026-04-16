@@ -42,7 +42,9 @@ export {
   // 剧集解析结果
   saveEpisodeAnalysis,
   loadEpisodeAnalysis,
+  loadEpisodeAnalysisSummary,
   loadEpisodeShots,
+  loadEpisodeShotsPage,
   saveEpisodeShots,
   loadEpisodeTimeline,
   saveEpisodeTimeline,

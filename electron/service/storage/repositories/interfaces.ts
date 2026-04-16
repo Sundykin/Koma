@@ -299,6 +299,8 @@ export interface IShotRepository {
   list(projectId: string): ShotRow[];
   listProjectLevel(projectId: string): ShotRow[];
   listByEpisode(projectId: string, episodeId: string): ShotRow[];
+  listByEpisodePage(projectId: string, episodeId: string, limit: number, offset: number): ShotRow[];
+  countByEpisode(projectId: string, episodeId: string): number;
   getById(id: string): ShotRow | undefined;
   create(data: ShotRow): void;
   update(id: string, data: Partial<ShotRow>): void;
