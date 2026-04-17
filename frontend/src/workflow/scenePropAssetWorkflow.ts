@@ -129,7 +129,7 @@ export async function generateSceneImage(
       'tti_scene_preview',
       buildScenePreviewTemplateVariables(scene, stylePrefix || '')
     );
-    const prompt = resolvedPrompt.prompt;
+    const prompt = applyStylePrefix(resolvedPrompt.prompt, stylePrefix);
 
     onProgress?.(10, '调用 TTI 服务...');
 
@@ -234,7 +234,7 @@ export async function generatePropImage(
       'tti_prop_reference',
       buildPropReferenceTemplateVariables(prop, stylePrefix || '')
     );
-    const prompt = resolvedPrompt.prompt;
+    const prompt = applyStylePrefix(resolvedPrompt.prompt, stylePrefix);
 
     onProgress?.(10, '调用 TTI 服务...');
 

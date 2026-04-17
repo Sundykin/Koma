@@ -38,6 +38,7 @@ interface ToolPanelDrawerProps {
   onAssistantSessionChange: (updates: Partial<WorkflowPanelSessions['assistant']>) => void;
   onShotsChanged?: () => void;
   onAssetsChanged?: () => void;
+  onProjectStyleApplied?: (updates: { stylePresetId: string; styleSnapshot: ProjectStyleSnapshot }) => void;
   onEpisodesChanged?: (preferredEpisodeId?: string) => void;
   onOpenPanel?: (panelId: WorkflowPanelId) => void;
 }
@@ -62,6 +63,7 @@ export const ToolPanelDrawer: React.FC<ToolPanelDrawerProps> = ({
   onAssistantSessionChange,
   onShotsChanged,
   onAssetsChanged,
+  onProjectStyleApplied,
   onEpisodesChanged,
   onOpenPanel,
 }) => {
@@ -110,6 +112,7 @@ export const ToolPanelDrawer: React.FC<ToolPanelDrawerProps> = ({
         onSessionChange={onStyleSessionChange}
         onPrepareInferencePlan={onInferenceSessionChange}
         onOpenInference={() => onOpenPanel?.('inference')}
+        onProjectStyleApplied={onProjectStyleApplied}
       />
     ),
     export: (

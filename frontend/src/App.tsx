@@ -400,6 +400,18 @@ const AppContent: React.FC = () => {
                   mentionItems={mentionItems}
                   onViewChange={setView}
                   onEpisodeChange={handleEnterEpisode}
+                  onProjectStyleApplied={({ stylePresetId, styleSnapshot }) => {
+                    setActiveProject((prev) => {
+                      if (!prev) {
+                        return prev;
+                      }
+                      return {
+                        ...prev,
+                        stylePresetId,
+                        styleSnapshot,
+                      };
+                    });
+                  }}
                 />
               </Suspense>
             )}

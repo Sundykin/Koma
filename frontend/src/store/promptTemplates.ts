@@ -978,7 +978,7 @@ The video plays out in a continuous 9-part sequence:
     id: 'prop_extraction',
     name: '道具提取',
     description: '从剧本中提取道具信息',
-    template: `分析以下剧本，提取所有重要道具信息。
+    template: `分析以下剧本，提取“真正的道具”信息。
 
 剧本：
 {{script}}
@@ -986,16 +986,24 @@ The video plays out in a continuous 9-part sequence:
 请以 JSON 格式输出道具列表：
 
 要求：
-1. description 字段只写形状、材质、结构、颜色、磨损、尺寸感和表面细节
-2. 不要写道具在剧情中的象征意义，不要复述它推动了什么事件
-3. description 字段禁止出现人物、角色名、手持/使用动作、对白和表情
+1. 只有“人能拿在手里、握持、挥动、佩戴、使用”的物件才算道具
+2. 武器、法器、护符、卷轴、钥匙、手机、杯子、信件、手提包、工具等可手持物件可以算道具
+3. 家具、门窗、桌椅、床、柜子、建筑、道路、山川、车辆、大型机器、房间陈设、环境摆件，一律不算道具
+4. 只有当物件在剧情中被人物直接持有、使用、携带，或它本身就是明确的武器/法器时，才输出
+5. 如果某个名词更像环境元素或布景，而不是可携带物件，必须忽略，不要输出
+6. prompt 和 description 字段只写客观可见外观：形状、材质、结构、颜色、磨损、尺寸感、表面细节
+7. prompt 和 description 禁止出现人物、角色名、对白、情绪、剧情作用、手持动作描述
+8. type 字段使用简短类别，例如 weapon / magical-item / tool / document / accessory / handheld-item
+9. 宁缺毋滥；拿不准是否属于可手持道具时，直接不输出
 
 \`\`\`json
 {
   "props": [
     {
       "name": "道具名称",
-      "description": "道具详细描述，中文描述",
+      "type": "weapon",
+      "prompt": "用于生图的客观外观短描述，中文描述",
+      "description": "道具详细外观描述，中文描述",
       "importance": "high/medium/low",
       "scenes": ["出现的场景列表"]
     }

@@ -30,6 +30,10 @@ interface StyleSettingsPanelProps {
   onSessionChange: (updates: Partial<StyleSettingsSession>) => void;
   onPrepareInferencePlan?: (updates: Partial<ChapterInferenceSession>) => void;
   onOpenInference?: () => void;
+  onProjectStyleApplied?: (updates: {
+    stylePresetId: string;
+    styleSnapshot: ProjectStyleSnapshot;
+  }) => void;
 }
 
 export const StyleSettingsPanel: React.FC<StyleSettingsPanelProps> = ({
@@ -42,6 +46,7 @@ export const StyleSettingsPanel: React.FC<StyleSettingsPanelProps> = ({
   onSessionChange,
   onPrepareInferencePlan,
   onOpenInference,
+  onProjectStyleApplied,
 }) => {
   const { message } = App.useApp();
   const [presets, setPresets] = useState<ThemePresetCatalogItem[]>([]);
@@ -90,6 +95,10 @@ export const StyleSettingsPanel: React.FC<StyleSettingsPanelProps> = ({
       project.stylePresetId = selectedPreset.id;
       project.styleSnapshot = styleSnapshot;
       await saveProject(project);
+      onProjectStyleApplied?.({
+        stylePresetId: selectedPreset.id,
+        styleSnapshot,
+      });
 
       const shots = await loadEpisodeShots(projectId, episodeId);
       const resolvedScope = session.impactScope === 'future-only'
@@ -136,7 +145,7 @@ export const StyleSettingsPanel: React.FC<StyleSettingsPanelProps> = ({
     } catch (err: any) {
       message.error(err?.message || '应用风格失败');
     }
-  }, [episodeId, message, onPrepareInferencePlan, onSessionChange, projectId, selectedPreset, session.impactScope, session.reinferenceLevel, storyboardContext]);
+  }, [episodeId, message, onPrepareInferencePlan, onProjectStyleApplied, onSessionChange, projectId, selectedPreset, session.impactScope, session.reinferenceLevel, storyboardContext]);
 
   const handleCreateStyle = useCallback(async () => {
     try {

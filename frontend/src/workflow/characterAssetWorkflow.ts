@@ -57,7 +57,10 @@ export async function generateCostumePhoto(
       'tti_character_costume',
       buildCharacterCostumeTemplateVariables(character, stylePrefix || '')
     );
-    const prompt = resolvedPrompt.prompt;
+    const prompt = enforceCharacterCostumePromptRequirements(
+      resolvedPrompt.prompt,
+      stylePrefix,
+    );
 
     onProgress?.(10, '调用 TTI 服务...');
 
@@ -290,23 +293,8 @@ export async function extractAndBindCharacter(
  * 注意：实际生成时优先使用 promptTemplates 中的 tti_character_costume 模板
  */
 export function buildCostumePhotoPrompt(character: Character, stylePrefix: string): string {
-  // 固定模板部分（不可编辑）
-  const templateParts = [
-    stylePrefix,
-    'character turnaround sheet',
-    'white background',
-    'front view | side view | back view',
-    'three poses in one image',
-    'character design reference sheet',
-    'full body',
-    'standing pose',
-  ];
-  // 可变部分：外貌描述
-  const parts = [
-    ...templateParts,
-    buildCharacterCostumeTemplateVariables(character, stylePrefix).appearance,
-  ];
-  return parts.filter(Boolean).join(', ');
+  const appearance = buildCharacterCostumeTemplateVariables(character, stylePrefix).appearance;
+  return enforceCharacterCostumePromptRequirements(appearance, stylePrefix);
 }
 
 /**
@@ -397,4 +385,33 @@ function buildCharacterPreviewPrompt(character: Character, stylePrefix: string):
     'natural eye movement',
     'steady camera',
   ].filter(Boolean).join(', ');
+}
+
+function applyStylePrefix(prompt: string, stylePrefix?: string): string {
+  const basePrompt = prompt.trim();
+  const prefix = (stylePrefix || '').trim();
+  if (!prefix) {
+    return basePrompt;
+  }
+  if (basePrompt.startsWith(prefix)) {
+    return basePrompt;
+  }
+  const normalizedPrefix = prefix.endsWith(',') ? prefix : `${prefix},`;
+  return `${normalizedPrefix} ${basePrompt}`;
+}
+
+function enforceCharacterCostumePromptRequirements(prompt: string, stylePrefix?: string): string {
+  const basePrompt = applyStylePrefix(prompt, stylePrefix);
+  const hardRequirements = [
+    'must be a single character turnaround sheet',
+    'exactly three full-body views of the same character in one image',
+    'left-to-right layout: front view, side view, back view',
+    'white background',
+    'neutral standing pose',
+    'full body character design reference',
+    'same outfit and same character design across all three views',
+    'no extra characters, no extra panels, no props-only crop',
+    '必须是同一角色三视图定妆照：正面、侧面、背面，同一张图内横向排布',
+  ];
+  return [...hardRequirements, basePrompt].filter(Boolean).join(', ');
 }

@@ -67,6 +67,7 @@ interface StoryboardWorkspaceProps {
   styleSnapshot?: ProjectStyleSnapshot;
   onViewChange: (view: 'projects') => void;
   onEpisodeChange?: (episode: Episode) => void;
+  onProjectStyleApplied?: (updates: { stylePresetId: string; styleSnapshot: ProjectStyleSnapshot }) => void;
 }
 
 export const StoryboardWorkspace: React.FC<StoryboardWorkspaceProps> = ({
@@ -78,6 +79,7 @@ export const StoryboardWorkspace: React.FC<StoryboardWorkspaceProps> = ({
   styleSnapshot,
   onViewChange,
   onEpisodeChange,
+  onProjectStyleApplied,
 }) => {
   const { message } = App.useApp();
   const [activePanel, setActivePanel] = useState<ToolPanelId | null>(null);
@@ -486,6 +488,7 @@ export const StoryboardWorkspace: React.FC<StoryboardWorkspaceProps> = ({
         styleSnapshot={styleSnapshot}
         onShotsChanged={handleShotsChanged}
         onAssetsChanged={handleAssetsChanged}
+        onProjectStyleApplied={onProjectStyleApplied}
         workflowSessions={activeWorkflowSessions}
         storyboardContext={storyboardContext}
         onScriptSessionChange={(updates) => updateWorkflowSession('script', updates)}

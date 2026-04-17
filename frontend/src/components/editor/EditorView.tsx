@@ -12,6 +12,7 @@ interface EditorViewProps {
   mentionItems: MentionItem[];
   onViewChange: (view: 'projects') => void;
   onEpisodeChange?: (episode: Episode) => void;
+  onProjectStyleApplied?: (updates: { stylePresetId: string; styleSnapshot: ProjectStyleSnapshot }) => void;
 }
 
 export const EditorView: React.FC<EditorViewProps> = ({
@@ -22,6 +23,7 @@ export const EditorView: React.FC<EditorViewProps> = ({
   mentionItems,
   onViewChange,
   onEpisodeChange,
+  onProjectStyleApplied,
 }) => {
   const styleSnapshot: ProjectStyleSnapshot | undefined = activeProject.styleSnapshot;
 
@@ -35,6 +37,7 @@ export const EditorView: React.FC<EditorViewProps> = ({
       styleSnapshot={styleSnapshot}
       onViewChange={onViewChange}
       onEpisodeChange={onEpisodeChange}
+      onProjectStyleApplied={onProjectStyleApplied}
     />
   );
 };
