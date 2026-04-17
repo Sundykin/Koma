@@ -180,10 +180,11 @@ export const CurrentShotInspector: React.FC<CurrentShotInspectorProps> = ({
             <div>
               <div className="mb-1 text-xs uppercase tracking-[0.14em] text-zinc-500">镜头时长</div>
               <InputNumber
-                min={1}
-                max={60}
+                min={0.5}
+                step={0.5}
+                precision={1}
                 value={shot.duration}
-                onChange={(value) => onShotMetaChange(shot.id, { duration: Number(value) || 1 })}
+                onChange={(value) => onShotMetaChange(shot.id, { duration: Number(value) || 0.5 })}
                 className="w-full"
               />
             </div>

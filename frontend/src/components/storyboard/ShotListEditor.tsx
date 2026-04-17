@@ -70,6 +70,7 @@ export interface ShotListEditorProps {
   onInsertAbove: (shotId: string) => void;
   onInsertBelow: (shotId: string) => void;
   onShotImageModeChange: (shotId: string, mode: 'normal' | 'grid') => void;
+  onDurationChange: (shotId: string, duration: number) => void;
 }
 
 export const ShotListEditor: React.FC<ShotListEditorProps> = ({
@@ -125,6 +126,7 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
   onInsertAbove,
   onInsertBelow,
   onShotImageModeChange,
+  onDurationChange,
 }) => {
   const [internalSelectedIds, setInternalSelectedIds] = useState<Set<string>>(new Set());
   const selectedIdSet = useMemo(
@@ -250,6 +252,7 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
       onMoveDown={onMoveDown}
       onInsertAbove={onInsertAbove}
       onInsertBelow={onInsertBelow}
+      onDurationChange={onDurationChange}
     />
   ), [
     activeShotId,
@@ -285,6 +288,7 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
     onScriptChange,
     onShotImageModeChange,
     onToggleConfirm,
+    onDurationChange,
     onVideoPromptChange,
     onVideosChange,
     projectId,

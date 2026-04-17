@@ -116,6 +116,16 @@
   padding: 0 !important;
 }
 
+.shot-duration-input {
+  width: 44px;
+}
+
+.shot-duration-input .ant-input-number-input {
+  text-align: center;
+  font-size: 10px;
+  padding-inline: 2px;
+}
+
 /* Custom Scrollbar for columns */
 .custom-scrollbar::-webkit-scrollbar {
   width: 4px;

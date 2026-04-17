@@ -10,6 +10,7 @@ import {
   Button,
   Popconfirm,
   Input,
+  InputNumber,
   Modal,
   Spin,
   Segmented,
@@ -24,6 +25,7 @@ import {
   MergeCellsOutlined,
   ArrowUpOutlined,
   ArrowDownOutlined,
+  MinusOutlined,
   PlayCircleFilled,
   PictureOutlined,
   VideoCameraOutlined,
@@ -53,6 +55,21 @@ import { createStoredMediaAsset } from '../../utils/mediaAssets';
 import './ShotCard.css';
 
 const { TextArea } = Input;
+
+function normalizeShotDuration(value?: number | null, fallback = 3): number {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return fallback;
+  }
+  return Math.max(0.5, Math.round(numeric * 10) / 10);
+}
+
+function formatShotDuration(value?: number | null): string {
+  const normalized = normalizeShotDuration(value);
+  return Number.isInteger(normalized)
+    ? String(normalized)
+    : normalized.toFixed(1).replace(/\.0$/, '');
+}
 
 interface ShotScriptInputProps {
   shotId: string;
@@ -104,6 +121,78 @@ function ShotScriptInput({ shotId, value, onScriptChange }: ShotScriptInputProps
   );
 }
 
+interface ShotDurationInputProps {
+  shotId: string;
+  value: number;
+  onDurationChange: (shotId: string, duration: number) => void;
+}
+
+function ShotDurationInput({ shotId, value, onDurationChange }: ShotDurationInputProps) {
+  const [durationDraft, setDurationDraft] = useState<number | null>(normalizeShotDuration(value));
+  const durationDirtyRef = useRef(false);
+
+  useEffect(() => {
+    if (!durationDirtyRef.current) {
+      setDurationDraft(normalizeShotDuration(value));
+    }
+  }, [value]);
+
+  const commitDuration = useCallback((nextValue?: number | null) => {
+    const normalized = normalizeShotDuration(nextValue ?? durationDraft ?? value, value);
+    setDurationDraft(normalized);
+    durationDirtyRef.current = false;
+    if (normalized !== value) {
+      onDurationChange(shotId, normalized);
+    }
+  }, [durationDraft, onDurationChange, shotId, value]);
+
+  const adjustDuration = useCallback((delta: number) => {
+    const nextValue = normalizeShotDuration((durationDraft ?? value) + delta, value);
+    setDurationDraft(nextValue);
+    durationDirtyRef.current = false;
+    if (nextValue !== value) {
+      onDurationChange(shotId, nextValue);
+    }
+  }, [durationDraft, onDurationChange, shotId, value]);
+
+  return (
+    <div className="flex flex-col items-center gap-0.5 mt-1 w-full">
+      <span className="text-[9px] text-zinc-500 leading-none">时长</span>
+      <InputNumber
+        size="small"
+        controls={false}
+        min={0.5}
+        step={0.5}
+        precision={1}
+        value={durationDraft}
+        onChange={(nextValue) => {
+          durationDirtyRef.current = true;
+          setDurationDraft(typeof nextValue === 'number' ? nextValue : null);
+        }}
+        onBlur={() => commitDuration()}
+        onPressEnter={() => commitDuration()}
+        className="shot-duration-input"
+      />
+      <div className="flex items-center gap-0.5">
+        <Button
+          size="small"
+          type="text"
+          className="w-5 h-5 p-0 text-[10px]"
+          icon={<MinusOutlined />}
+          onClick={() => adjustDuration(-0.5)}
+        />
+        <Button
+          size="small"
+          type="text"
+          className="w-5 h-5 p-0 text-[10px]"
+          icon={<PlusOutlined />}
+          onClick={() => adjustDuration(0.5)}
+        />
+      </div>
+    </div>
+  );
+}
+
 export interface ShotCardProps {
   projectId: string;
   shot: Shot;
@@ -149,6 +238,7 @@ export interface ShotCardProps {
   onMoveDown: (shotId: string) => void;
   onInsertAbove: (shotId: string) => void;
   onInsertBelow: (shotId: string) => void;
+  onDurationChange: (shotId: string, duration: number) => void;
 }
 
 const ShotCardComponent: React.FC<ShotCardProps> = ({
@@ -194,6 +284,7 @@ const ShotCardComponent: React.FC<ShotCardProps> = ({
   onMoveDown,
   onInsertAbove,
   onInsertBelow,
+  onDurationChange,
 }) => {
   const { message } = App.useApp();
   const [videoModalOpen, setVideoModalOpen] = useState(false);
@@ -233,7 +324,7 @@ const ShotCardComponent: React.FC<ShotCardProps> = ({
   }, [shot.id, shot.videoPrompt, hasVideoPrompt, onOptimizeVideoPrompt, onGenerateVideoPrompt]);
 
   const handleCardClick = useCallback((e: React.MouseEvent) => {
-    if ((e.target as HTMLElement).closest('.ant-btn, .ant-checkbox, .ant-input, .ant-select, .ant-tabs, .cm-editor, .ant-modal, .ant-popover')) {
+    if ((e.target as HTMLElement).closest('.ant-btn, .ant-checkbox, .ant-input, .ant-input-number, .ant-select, .ant-tabs, .cm-editor, .ant-modal, .ant-popover')) {
       return;
     }
     onActivate?.(shot.id);
@@ -538,7 +629,12 @@ const ShotCardComponent: React.FC<ShotCardProps> = ({
             onChange={(e) => onSelectChange(shot.id, e.target.checked)}
           />
           <span className="text-[11px] font-semibold text-zinc-400">#{index + 1}</span>
-          <Tag className="m-0 text-[9px] px-1" color="blue">{shot.duration}s</Tag>
+          <Tag className="m-0 text-[9px] px-1" color="blue">{formatShotDuration(shot.duration)}s</Tag>
+          <ShotDurationInput
+            shotId={shot.id}
+            value={shot.duration}
+            onDurationChange={onDurationChange}
+          />
 
           {/* 操作按钮 - 直接显示 */}
           <div className="flex flex-col gap-0.5 mt-1">
@@ -979,5 +1075,6 @@ export const ShotCard = React.memo(ShotCardComponent, (prev, next) => {
     && prev.onMoveUp === next.onMoveUp
     && prev.onMoveDown === next.onMoveDown
     && prev.onInsertAbove === next.onInsertAbove
-    && prev.onInsertBelow === next.onInsertBelow;
+    && prev.onInsertBelow === next.onInsertBelow
+    && prev.onDurationChange === next.onDurationChange;
 });

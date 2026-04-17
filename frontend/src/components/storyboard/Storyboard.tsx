@@ -7,6 +7,7 @@ import {
   Select,
   Typography,
   Input,
+  InputNumber,
   Modal,
   Form,
   Spin,
@@ -83,6 +84,14 @@ function mergeShots(target: Shot, source: Shot): Shot {
     props: [...new Set([...(target.props || []), ...(source.props || [])])],
     media: mergedMedia,
   };
+}
+
+function normalizeShotDuration(value?: number | null, fallback = 3): number {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return fallback;
+  }
+  return Math.max(0.5, Math.round(numeric * 10) / 10);
 }
 
 // ============ 主组件 ============
@@ -622,11 +631,20 @@ export const Storyboard: React.FC<StoryboardProps> = ({
   }, [shots, saveAllShots]);
 
   const handleShotMetaChange = useCallback((shotId: string, updates: Partial<Shot>) => {
+    const nextUpdates = 'duration' in updates
+      ? { ...updates, duration: normalizeShotDuration(updates.duration, 3) }
+      : updates;
     const updatedShots = shots.map(s =>
-      s.id === shotId ? { ...s, ...updates } : s
+      s.id === shotId ? { ...s, ...nextUpdates } : s
     );
     saveAllShots(updatedShots);
   }, [shots, saveAllShots]);
+
+  const handleShotDurationChange = useCallback((shotId: string, duration: number) => {
+    handleShotMetaChange(shotId, {
+      duration: normalizeShotDuration(duration, 3),
+    });
+  }, [handleShotMetaChange]);
 
   // 资产同步 Hook
   const assets = useMemo(() => ({ characters, scenes, props }), [characters, scenes, props]);
@@ -1329,7 +1347,11 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       message.warning('请输入画面描述');
       return;
     }
-    const updatedShot: Shot = { ...editingShot!, ...editFormData } as Shot;
+    const updatedShot: Shot = {
+      ...editingShot!,
+      ...editFormData,
+      duration: normalizeShotDuration(editFormData.duration ?? editingShot?.duration, 3),
+    } as Shot;
     const isNew = !shots.find(s => s.id === editingShot!.id);
     let updatedShots: Shot[];
     if (isNew) {
@@ -1678,6 +1700,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
             onInsertAbove={handleInsertAbove}
             onInsertBelow={handleInsertBelow}
             onShotImageModeChange={handleShotImageModeChange}
+            onDurationChange={handleShotDurationChange}
           />
         </StoryboardStudio>
       )}
@@ -1734,12 +1757,15 @@ export const Storyboard: React.FC<StoryboardProps> = ({
             </Form.Item>
 
             <Form.Item label="时长（秒）" style={{ marginBottom: 0 }}>
-              <Input
-                type="number"
-                min={1}
-                max={60}
+              <InputNumber
+                min={0.5}
+                step={0.5}
+                precision={1}
                 value={editFormData.duration || 3}
-                onChange={(e) => setEditFormData(prev => ({ ...prev, duration: parseInt(e.target.value) || 3 }))}
+                onChange={(value) => setEditFormData(prev => ({
+                  ...prev,
+                  duration: normalizeShotDuration(typeof value === 'number' ? value : 3, 3),
+                }))}
                 style={{ width: 80 }}
               />
             </Form.Item>
