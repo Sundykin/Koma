@@ -2,10 +2,10 @@
  * AssetManagerPanel - 资产管理面板
  * 角色/场景/道具的查看、提取和编辑
  */
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Tabs, Button, Card, Empty, Spin, Typography, Space, App, Input, Modal } from 'antd';
-import { RobotOutlined, EditOutlined } from '@ant-design/icons';
-import type { Character, Scene, Prop } from '../../../types';
+import { RobotOutlined, EditOutlined, ThunderboltOutlined, LoadingOutlined } from '@ant-design/icons';
+import type { Character, Scene, Prop, ProjectStyleSnapshot } from '../../../types';
 import { getMediaAssetDisplaySource } from '../../../types';
 import { loadCharacters, loadScenes, loadProps, saveCharacters, saveScenes, saveProps, loadEpisodeShots } from '../../../store/projectStore';
 import { getCharacterCostumePhotoSource } from '../../../utils/mediaSelectors';
@@ -14,8 +14,16 @@ import { resolvePromptTemplate } from '../../../store/promptTemplates';
 import { parseLLMJSON } from '../../../utils/llmJsonParser';
 import { createLogger } from '../../../store/logger';
 import { generateCostumePhoto } from '../../../workflow/characterAssetWorkflow';
+import { generateSceneImage, generatePropImage } from '../../../workflow/scenePropAssetWorkflow';
+import {
+  createStoredMediaAsset,
+  updateCharacterMedia,
+  updateSceneMedia,
+  updatePropMedia,
+} from '../../../utils/mediaAssets';
 import { v4 as uuidv4 } from 'uuid';
 import type { AssetManagerSession, AssetPanelTab } from './workflowSessions';
+import { resolveStoryboardMediaSource } from '../storyboardMedia';
 
 const logger = createLogger('AssetManagerPanel');
 
@@ -72,21 +80,35 @@ const { TextArea } = Input;
 interface AssetManagerPanelProps {
   projectId: string;
   episodeId: string;
+  ttiSelection?: string;
+  styleSnapshot?: ProjectStyleSnapshot;
   session: AssetManagerSession;
   onSessionChange: (updates: Partial<AssetManagerSession>) => void;
   onAssetsChanged?: () => void;
 }
 
+type AssetKind = 'character' | 'scene' | 'prop';
+
 interface EditingAsset {
-  type: 'character' | 'scene' | 'prop';
+  type: AssetKind;
   index: number;
   name: string;
   description: string;
 }
 
+interface AssetListItem {
+  id: string;
+  index: number;
+  name: string;
+  description: string;
+  image?: string;
+}
+
 export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
   projectId,
   episodeId,
+  ttiSelection,
+  styleSnapshot,
   session,
   onSessionChange,
   onAssetsChanged,
@@ -97,7 +119,8 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
   const [props, setProps] = useState<Prop[]>([]);
   const [loading, setLoading] = useState(true);
   const [extracting, setExtracting] = useState(false);
-  const [generatingImage, setGeneratingImage] = useState(false);
+  const [generatingPreviewKey, setGeneratingPreviewKey] = useState<string | null>(null);
+  const [batchGeneratingTab, setBatchGeneratingTab] = useState<AssetPanelTab | null>(null);
   const [editingAsset, setEditingAsset] = useState<EditingAsset | null>(null);
 
   const updateSession = useCallback((updates: Partial<AssetManagerSession>) => {
@@ -146,6 +169,67 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
   }, [projectId, message, syncAssetSession]);
 
   useEffect(() => { loadAssets(); }, [loadAssets]);
+
+  const updateLastApplied = useCallback((
+    scopeLabel: string,
+    summary: string,
+    affectedCount: number,
+    nextCharacters: Character[] = characters,
+    nextScenes: Scene[] = scenes,
+    nextProps: Prop[] = props,
+  ) => {
+    syncAssetSession(nextCharacters, nextScenes, nextProps, {
+      currentStep: 1,
+      affectedScopeLabel: scopeLabel,
+      lastApplied: {
+        appliedAt: Date.now(),
+        summary,
+        affectedCount,
+        scopeLabel,
+      },
+    });
+  }, [characters, props, scenes, syncAssetSession]);
+
+  const characterItems = useMemo<AssetListItem[]>(
+    () => characters.map((char, index) => ({
+      id: char.id,
+      index,
+      name: char.name,
+      description: pickFirstText(char.prompt, char.appearance, char.description),
+      image: getCharacterCostumePhotoSource(char),
+    })),
+    [characters],
+  );
+
+  const sceneItems = useMemo<AssetListItem[]>(
+    () => scenes.map((scene, index) => ({
+      id: scene.id,
+      index,
+      name: scene.name,
+      description: pickFirstText(scene.prompt, scene.description),
+      image: getMediaAssetDisplaySource(scene.media?.previewImage),
+    })),
+    [scenes],
+  );
+
+  const propItems = useMemo<AssetListItem[]>(
+    () => props.map((propItem, index) => ({
+      id: propItem.id,
+      index,
+      name: propItem.name,
+      description: pickFirstText(propItem.prompt, propItem.description),
+      image: getMediaAssetDisplaySource(propItem.media?.previewImage),
+    })),
+    [props],
+  );
+
+  const tabGenerateLabel: Record<AssetPanelTab, string> = useMemo(() => ({
+    characters: '补全角色定妆照',
+    scenes: '补全场景预览图',
+    props: '补全道具预览图',
+  }), []);
+
+  const buildPreviewKey = useCallback((type: AssetKind, assetId: string) => `${type}:${assetId}`, []);
 
   // Extract assets from script using LLM
   const handleExtractFromScript = useCallback(async () => {
@@ -358,7 +442,7 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
   ]);
 
   // Edit asset
-  const handleOpenEdit = useCallback((type: 'character' | 'scene' | 'prop', index: number) => {
+  const handleOpenEdit = useCallback((type: AssetKind, index: number) => {
     const list = type === 'character' ? characters : type === 'scene' ? scenes : props;
     const item = list[index];
     if (!item) return;
@@ -422,65 +506,347 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
     }
   }, [editingAsset, characters, scenes, props, projectId, message, onAssetsChanged, syncAssetSession]);
 
-  // Generate reference image for character
-  const handleGenerateImage = useCallback(async (charIndex: number) => {
-    const char = characters[charIndex];
-    if (!char) return;
-    setGeneratingImage(true);
-    try {
-      const result = await generateCostumePhoto({ projectId, character: char });
-      if (result.success) {
-        message.success(`已生成 ${char.name} 定妆照`);
-        updateSession({
-          currentStep: 1,
-          affectedScopeLabel: '角色资产',
-          lastApplied: {
-            appliedAt: Date.now(),
-            summary: `已生成 ${char.name} 定妆照`,
-            affectedCount: 1,
-            scopeLabel: '角色资产',
-          },
+  const handleGeneratePreview = useCallback(async (type: AssetKind, index: number) => {
+    if (type === 'character') {
+      const target = characters[index];
+      if (!target) return;
+      setGeneratingPreviewKey(buildPreviewKey(type, target.id));
+      try {
+        const result = await generateCostumePhoto({
+          projectId,
+          character: target,
+          styleSnapshot,
+          ttiSelection,
         });
-        await loadAssets();
-        onAssetsChanged?.();
-      } else {
-        message.error(result.error || '生成失败');
-      }
-    } catch (err: any) {
-      message.error('生成失败: ' + (err.message || '未知错误'));
-    } finally {
-      setGeneratingImage(false);
-    }
-  }, [characters, projectId, message, loadAssets, onAssetsChanged, updateSession]);
 
-  const renderAssetCard = (type: 'character' | 'scene' | 'prop', index: number, name: string, description: string, image?: string) => (
+        if (!result.success || !result.path) {
+          message.error(result.error || '角色定妆照生成失败');
+          return;
+        }
+
+        const updatedCharacter = updateCharacterMedia(target, {
+          costumePhoto: createStoredMediaAsset('image', {
+            localPath: result.path,
+            remoteUrl: result.url,
+            createdAt: target.media?.costumePhoto?.createdAt,
+          }),
+        });
+        const nextCharacters = [...characters];
+        nextCharacters[index] = updatedCharacter;
+        await saveCharacters(projectId, nextCharacters);
+        setCharacters(nextCharacters);
+        updateLastApplied('角色资产', `已生成 ${target.name} 定妆照`, 1, nextCharacters, scenes, props);
+        onAssetsChanged?.();
+        message.success(`已生成 ${target.name} 定妆照`);
+      } catch (err: any) {
+        message.error(`角色定妆照生成失败: ${err.message || '未知错误'}`);
+      } finally {
+        setGeneratingPreviewKey(null);
+      }
+      return;
+    }
+
+    if (type === 'scene') {
+      const target = scenes[index];
+      if (!target) return;
+      setGeneratingPreviewKey(buildPreviewKey(type, target.id));
+      try {
+        const result = await generateSceneImage({
+          projectId,
+          scene: target,
+          styleSnapshot,
+          ttiSelection,
+        });
+
+        if (!result.success || !result.path) {
+          message.error(result.error || '场景预览图生成失败');
+          return;
+        }
+
+        const updatedScene = updateSceneMedia(target, {
+          previewImage: createStoredMediaAsset('image', {
+            localPath: result.path,
+            remoteUrl: result.url,
+            createdAt: target.media?.previewImage?.createdAt,
+          }),
+        });
+        const nextScenes = [...scenes];
+        nextScenes[index] = updatedScene;
+        await saveScenes(projectId, nextScenes);
+        setScenes(nextScenes);
+        updateLastApplied('场景资产', `已生成 ${target.name} 场景预览图`, 1, characters, nextScenes, props);
+        onAssetsChanged?.();
+        message.success(`已生成 ${target.name} 场景预览图`);
+      } catch (err: any) {
+        message.error(`场景预览图生成失败: ${err.message || '未知错误'}`);
+      } finally {
+        setGeneratingPreviewKey(null);
+      }
+      return;
+    }
+
+    const target = props[index];
+    if (!target) return;
+    setGeneratingPreviewKey(buildPreviewKey(type, target.id));
+    try {
+      const result = await generatePropImage({
+        projectId,
+        prop: target,
+        styleSnapshot,
+        ttiSelection,
+      });
+
+      if (!result.success || !result.path) {
+        message.error(result.error || '道具预览图生成失败');
+        return;
+      }
+
+      const updatedProp = updatePropMedia(target, {
+        previewImage: createStoredMediaAsset('image', {
+          localPath: result.path,
+          remoteUrl: result.url,
+          createdAt: target.media?.previewImage?.createdAt,
+        }),
+      });
+      const nextProps = [...props];
+      nextProps[index] = updatedProp;
+      await saveProps(projectId, nextProps);
+      setProps(nextProps);
+      updateLastApplied('道具资产', `已生成 ${target.name} 道具预览图`, 1, characters, scenes, nextProps);
+      onAssetsChanged?.();
+      message.success(`已生成 ${target.name} 道具预览图`);
+    } catch (err: any) {
+      message.error(`道具预览图生成失败: ${err.message || '未知错误'}`);
+    } finally {
+      setGeneratingPreviewKey(null);
+    }
+  }, [
+    buildPreviewKey,
+    characters,
+    message,
+    onAssetsChanged,
+    projectId,
+    props,
+    scenes,
+    styleSnapshot,
+    ttiSelection,
+    updateLastApplied,
+  ]);
+
+  const handleGenerateMissingPreviews = useCallback(async () => {
+    const activeTab = session.activeTab;
+    setBatchGeneratingTab(activeTab);
+
+    try {
+      if (activeTab === 'characters') {
+        const targets = characters
+          .map((character, index) => ({ character, index }))
+          .filter(({ character }) => !getCharacterCostumePhotoSource(character));
+
+        if (targets.length === 0) {
+          message.info('当前角色都已有定妆照');
+          return;
+        }
+
+        const nextCharacters = [...characters];
+        let successCount = 0;
+        for (const { character, index } of targets) {
+          setGeneratingPreviewKey(buildPreviewKey('character', character.id));
+          const result = await generateCostumePhoto({
+            projectId,
+            character: nextCharacters[index],
+            styleSnapshot,
+            ttiSelection,
+          });
+          if (!result.success || !result.path) {
+            logger.warn('批量生成角色定妆照失败', { characterId: character.id, error: result.error });
+            continue;
+          }
+          nextCharacters[index] = updateCharacterMedia(nextCharacters[index], {
+            costumePhoto: createStoredMediaAsset('image', {
+              localPath: result.path,
+              remoteUrl: result.url,
+              createdAt: nextCharacters[index].media?.costumePhoto?.createdAt,
+            }),
+          });
+          successCount += 1;
+        }
+        setGeneratingPreviewKey(null);
+
+        if (successCount === 0) {
+          message.warning('角色定妆照生成失败，请检查图像模型配置');
+          return;
+        }
+
+        await saveCharacters(projectId, nextCharacters);
+        setCharacters(nextCharacters);
+        updateLastApplied('角色资产', `已补全 ${successCount} 个角色定妆照`, successCount, nextCharacters, scenes, props);
+        onAssetsChanged?.();
+        message.success(`已补全 ${successCount} 个角色定妆照`);
+        return;
+      }
+
+      if (activeTab === 'scenes') {
+        const targets = scenes
+          .map((scene, index) => ({ scene, index }))
+          .filter(({ scene }) => !getMediaAssetDisplaySource(scene.media?.previewImage));
+
+        if (targets.length === 0) {
+          message.info('当前场景都已有预览图');
+          return;
+        }
+
+        const nextScenes = [...scenes];
+        let successCount = 0;
+        for (const { scene, index } of targets) {
+          setGeneratingPreviewKey(buildPreviewKey('scene', scene.id));
+          const result = await generateSceneImage({
+            projectId,
+            scene: nextScenes[index],
+            styleSnapshot,
+            ttiSelection,
+          });
+          if (!result.success || !result.path) {
+            logger.warn('批量生成场景预览图失败', { sceneId: scene.id, error: result.error });
+            continue;
+          }
+          nextScenes[index] = updateSceneMedia(nextScenes[index], {
+            previewImage: createStoredMediaAsset('image', {
+              localPath: result.path,
+              remoteUrl: result.url,
+              createdAt: nextScenes[index].media?.previewImage?.createdAt,
+            }),
+          });
+          successCount += 1;
+        }
+        setGeneratingPreviewKey(null);
+
+        if (successCount === 0) {
+          message.warning('场景预览图生成失败，请检查图像模型配置');
+          return;
+        }
+
+        await saveScenes(projectId, nextScenes);
+        setScenes(nextScenes);
+        updateLastApplied('场景资产', `已补全 ${successCount} 个场景预览图`, successCount, characters, nextScenes, props);
+        onAssetsChanged?.();
+        message.success(`已补全 ${successCount} 个场景预览图`);
+        return;
+      }
+
+      const targets = props
+        .map((propItem, index) => ({ propItem, index }))
+        .filter(({ propItem }) => !getMediaAssetDisplaySource(propItem.media?.previewImage));
+
+      if (targets.length === 0) {
+        message.info('当前道具都已有预览图');
+        return;
+      }
+
+      const nextProps = [...props];
+      let successCount = 0;
+      for (const { propItem, index } of targets) {
+        setGeneratingPreviewKey(buildPreviewKey('prop', propItem.id));
+        const result = await generatePropImage({
+          projectId,
+          prop: nextProps[index],
+          styleSnapshot,
+          ttiSelection,
+        });
+        if (!result.success || !result.path) {
+          logger.warn('批量生成道具预览图失败', { propId: propItem.id, error: result.error });
+          continue;
+        }
+        nextProps[index] = updatePropMedia(nextProps[index], {
+          previewImage: createStoredMediaAsset('image', {
+            localPath: result.path,
+            remoteUrl: result.url,
+            createdAt: nextProps[index].media?.previewImage?.createdAt,
+          }),
+        });
+        successCount += 1;
+      }
+      setGeneratingPreviewKey(null);
+
+      if (successCount === 0) {
+        message.warning('道具预览图生成失败，请检查图像模型配置');
+        return;
+      }
+
+      await saveProps(projectId, nextProps);
+      setProps(nextProps);
+      updateLastApplied('道具资产', `已补全 ${successCount} 个道具预览图`, successCount, characters, scenes, nextProps);
+      onAssetsChanged?.();
+      message.success(`已补全 ${successCount} 个道具预览图`);
+    } catch (err: any) {
+      message.error(`批量生成预览失败: ${err.message || '未知错误'}`);
+    } finally {
+      setGeneratingPreviewKey(null);
+      setBatchGeneratingTab(null);
+    }
+  }, [
+    buildPreviewKey,
+    characters,
+    message,
+    onAssetsChanged,
+    projectId,
+    props,
+    scenes,
+    session.activeTab,
+    styleSnapshot,
+    ttiSelection,
+    updateLastApplied,
+  ]);
+
+  const renderAssetCard = (type: AssetKind, item: AssetListItem) => (
     <Card
       size="small"
       className="bg-zinc-900 border-zinc-700 cursor-pointer hover:border-zinc-500 transition-colors"
       styles={{ body: { padding: '8px 12px' } }}
-      onClick={() => handleOpenEdit(type, index)}
+      onClick={() => handleOpenEdit(type, item.index)}
     >
       <div className="flex items-center gap-3">
-        {image ? (
-          <img src={image} alt={name} className="w-10 h-10 rounded object-cover" />
+        {item.image ? (
+          <img
+            src={resolveStoryboardMediaSource(item.image)}
+            alt={item.name}
+            className="w-10 h-10 rounded object-cover"
+          />
         ) : (
           <div className="w-10 h-10 rounded bg-zinc-800 flex items-center justify-center text-zinc-600 text-xs">N/A</div>
         )}
         <div className="flex-1 min-w-0">
-          <Text className="text-zinc-200 block truncate">{name}</Text>
-          <Text type="secondary" className="text-xs block truncate">{description || '无描述'}</Text>
+          <Text className="text-zinc-200 block truncate">{item.name}</Text>
+          <Text type="secondary" className="text-xs block truncate">{item.description || '无描述'}</Text>
         </div>
-        <EditOutlined className="text-zinc-500 text-xs" />
+        <Space size={4} onClick={(event) => event.stopPropagation()}>
+          <Button
+            size="small"
+            icon={
+              generatingPreviewKey === buildPreviewKey(type, item.id)
+                ? <LoadingOutlined />
+                : <ThunderboltOutlined />
+            }
+            loading={generatingPreviewKey === buildPreviewKey(type, item.id)}
+            disabled={extracting || batchGeneratingTab !== null}
+            onClick={() => void handleGeneratePreview(type, item.index)}
+          >
+            {item.image ? '重生成' : '生成'}
+          </Button>
+          <Button size="small" icon={<EditOutlined />} disabled={batchGeneratingTab !== null} onClick={() => handleOpenEdit(type, item.index)}>
+            编辑
+          </Button>
+        </Space>
       </div>
     </Card>
   );
 
-  const renderList = (type: 'character' | 'scene' | 'prop', items: { name: string; description?: string; image?: string }[]) => {
+  const renderList = (type: AssetKind, items: AssetListItem[]) => {
     if (items.length === 0) return <Empty description="暂无数据" image={Empty.PRESENTED_IMAGE_SIMPLE} />;
     return (
       <div className="flex flex-col gap-2">
-        {items.map((item, i) => (
-          <div key={i}>{renderAssetCard(type, i, item.name, item.description || '', item.image)}</div>
+        {items.map((item) => (
+          <div key={item.id}>{renderAssetCard(type, item)}</div>
         ))}
       </div>
     );
@@ -491,9 +857,20 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
   return (
     <div className="flex flex-col h-full">
       <div className="px-4 pt-3 pb-2 border-b border-zinc-800">
-        <Button icon={<RobotOutlined />} size="small" onClick={handleExtractFromScript} loading={extracting}>
-          从剧本提取
-        </Button>
+        <Space wrap>
+          <Button icon={<RobotOutlined />} size="small" onClick={handleExtractFromScript} loading={extracting} disabled={batchGeneratingTab !== null}>
+            从剧本提取
+          </Button>
+          <Button
+            icon={<ThunderboltOutlined />}
+            size="small"
+            onClick={() => void handleGenerateMissingPreviews()}
+            loading={batchGeneratingTab === session.activeTab}
+            disabled={extracting || generatingPreviewKey !== null}
+          >
+            {tabGenerateLabel[session.activeTab]}
+          </Button>
+        </Space>
       </div>
       <div className="flex-1 overflow-y-auto">
         <Tabs
@@ -501,9 +878,9 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
           onChange={(key) => updateSession({ activeTab: key as AssetPanelTab })}
           className="px-4"
           items={[
-            { key: 'characters', label: `角色 (${characters.length})`, children: renderList('character', characters.map(c => ({ name: c.name, description: pickFirstText(c.prompt, c.appearance, c.description), image: getCharacterCostumePhotoSource(c) }))) },
-            { key: 'scenes', label: `场景 (${scenes.length})`, children: renderList('scene', scenes.map(s => ({ name: s.name, description: pickFirstText(s.prompt, s.description), image: getMediaAssetDisplaySource(s.media?.previewImage) }))) },
-            { key: 'props', label: `道具 (${props.length})`, children: renderList('prop', props.map(p => ({ name: p.name, description: pickFirstText(p.prompt, p.description), image: getMediaAssetDisplaySource(p.media?.previewImage) }))) },
+            { key: 'characters', label: `角色 (${characters.length})`, children: renderList('character', characterItems) },
+            { key: 'scenes', label: `场景 (${scenes.length})`, children: renderList('scene', sceneItems) },
+            { key: 'props', label: `道具 (${props.length})`, children: renderList('prop', propItems) },
           ]}
         />
       </div>

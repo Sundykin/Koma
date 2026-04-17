@@ -529,10 +529,6 @@ const ShotCardComponent: React.FC<ShotCardProps> = ({
     <div
       className={`shot-card ${isSelected ? 'selected' : ''} ${shot.confirmed ? 'confirmed' : ''} ${isActive ? 'active' : ''}`}
       onClick={handleCardClick}
-      style={{
-        contentVisibility: 'auto',
-        containIntrinsicSize: '420px',
-      }}
     >
       <div className="flex items-stretch min-h-[130px] bg-zinc-950">
         {/* 左侧操作列 - 全部显示 */}

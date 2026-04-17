@@ -2,9 +2,10 @@
  * 分镜列表编辑器
  * 内联编辑模式，每行一个分镜
  */
-import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import { Button, Typography, Progress } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
+import { Virtuoso } from 'react-virtuoso';
 import { StoryboardLayout } from './StoryboardLayout';
 import { ShotListHeader } from './ShotListHeader';
 import type { MentionItem } from '../../editor';
@@ -13,7 +14,6 @@ import { ShotCard } from './ShotCard';
 
 const { Text } = Typography;
 const DEFAULT_VIRTUAL_ROW_HEIGHT = 138;
-const VIRTUAL_OVERSCAN = 6;
 
 export interface ShotListEditorProps {
   projectId: string;
@@ -127,88 +127,10 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
   onShotImageModeChange,
 }) => {
   const [internalSelectedIds, setInternalSelectedIds] = useState<Set<string>>(new Set());
-  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
-  const firstVisibleCardRef = useRef<HTMLDivElement | null>(null);
-  const [scrollTop, setScrollTop] = useState(0);
-  const [viewportHeight, setViewportHeight] = useState(800);
-  const [virtualRowHeight, setVirtualRowHeight] = useState(DEFAULT_VIRTUAL_ROW_HEIGHT);
   const selectedIdSet = useMemo(
     () => (selectedShotIds ? new Set(selectedShotIds) : internalSelectedIds),
     [internalSelectedIds, selectedShotIds],
   );
-  const totalHeight = shots.length * virtualRowHeight;
-  const visibleRange = useMemo(() => {
-    const startIndex = Math.max(0, Math.floor(scrollTop / virtualRowHeight) - VIRTUAL_OVERSCAN);
-    const endIndex = Math.min(
-      shots.length,
-      Math.ceil((scrollTop + viewportHeight) / virtualRowHeight) + VIRTUAL_OVERSCAN,
-    );
-
-    return {
-      startIndex,
-      endIndex,
-    };
-  }, [scrollTop, viewportHeight, shots.length, virtualRowHeight]);
-  const virtualShots = useMemo(
-    () => shots.slice(visibleRange.startIndex, visibleRange.endIndex),
-    [shots, visibleRange.endIndex, visibleRange.startIndex],
-  );
-
-  useEffect(() => {
-    setScrollTop(0);
-    const container = scrollContainerRef.current;
-    if (container) {
-      container.scrollTop = 0;
-      setViewportHeight(container.clientHeight || 800);
-    }
-  }, [shots]);
-
-  useEffect(() => {
-    const container = scrollContainerRef.current;
-    if (!container) {
-      return;
-    }
-
-    const updateViewport = () => {
-      setViewportHeight(container.clientHeight || 800);
-    };
-
-    updateViewport();
-
-    const resizeObserver = new ResizeObserver(() => {
-      updateViewport();
-    });
-    resizeObserver.observe(container);
-
-    return () => {
-      resizeObserver.disconnect();
-    };
-  }, []);
-
-  useEffect(() => {
-    const card = firstVisibleCardRef.current;
-    if (!card) {
-      return;
-    }
-
-    const updateHeight = () => {
-      const nextHeight = Math.ceil(card.getBoundingClientRect().height) + 4;
-      if (nextHeight > 0 && Math.abs(nextHeight - virtualRowHeight) > 2) {
-        setVirtualRowHeight(nextHeight);
-      }
-    };
-
-    updateHeight();
-
-    const resizeObserver = new ResizeObserver(() => {
-      updateHeight();
-    });
-    resizeObserver.observe(card);
-
-    return () => {
-      resizeObserver.disconnect();
-    };
-  }, [virtualShots, virtualRowHeight]);
 
   const updateSelectedIds = useCallback((next: Set<string>) => {
     if (selectedShotIds) {
@@ -284,6 +206,94 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
     }
   }, [hasSelected, selectedIdSet, onBatchDelete, updateSelectedIds]);
 
+  const renderShotRow = useCallback((actualIndex: number, shot: Shot) => (
+    <ShotCard
+      projectId={projectId}
+      shot={shot}
+      index={actualIndex}
+      totalCount={shots.length}
+      characters={characters}
+      scenes={scenes}
+      props={props}
+      mentionItems={mentionItems}
+      isSelected={selectedIdSet.has(shot.id)}
+      isActive={activeShotId === shot.id}
+      isGeneratingImagePrompt={generatingImagePrompts.has(shot.id)}
+      isGeneratingVideoPrompt={generatingVideoPrompts.has(shot.id)}
+      isGeneratingImage={generatingImages.has(shot.id)}
+      isGeneratingVideo={generatingVideos.has(shot.id)}
+      onSelectChange={handleSelectChange}
+      onActivate={onActiveShotChange}
+      onScriptChange={onScriptChange}
+      onImagePromptChange={onImagePromptChange}
+      onVideoPromptChange={onVideoPromptChange}
+      onImageModeChange={onShotImageModeChange}
+      onCharactersChange={onCharactersChange}
+      onScenesChange={onScenesChange}
+      onPropsChange={onPropsChange}
+      onReferenceImagesChange={onReferenceImagesChange}
+      onImagesChange={onImagesChange}
+      onVideosChange={onVideosChange}
+      onGenerateImagePrompt={onGenerateImagePrompt}
+      onGenerateVideoPrompt={onGenerateVideoPrompt}
+      onOptimizeImagePrompt={onOptimizeImagePrompt}
+      onOptimizeVideoPrompt={onOptimizeVideoPrompt}
+      onGenerateImage={onGenerateImage}
+      onGenerateVideo={onGenerateVideo}
+      videoCapabilityLabel={getVideoCapabilityLabel?.(shot.id)}
+      videoGenerateDisabledReason={getVideoGenerateDisabledReason?.(shot.id)}
+      onToggleConfirm={onToggleConfirm}
+      onDelete={onDelete}
+      onMergeUp={onMergeUp}
+      onMergeDown={onMergeDown}
+      onMoveUp={onMoveUp}
+      onMoveDown={onMoveDown}
+      onInsertAbove={onInsertAbove}
+      onInsertBelow={onInsertBelow}
+    />
+  ), [
+    activeShotId,
+    characters,
+    generatingImagePrompts,
+    generatingImages,
+    generatingVideoPrompts,
+    generatingVideos,
+    getVideoCapabilityLabel,
+    getVideoGenerateDisabledReason,
+    handleSelectChange,
+    mentionItems,
+    onActiveShotChange,
+    onCharactersChange,
+    onDelete,
+    onGenerateImage,
+    onGenerateImagePrompt,
+    onGenerateVideo,
+    onGenerateVideoPrompt,
+    onImagePromptChange,
+    onImagesChange,
+    onInsertAbove,
+    onInsertBelow,
+    onMergeDown,
+    onMergeUp,
+    onMoveDown,
+    onMoveUp,
+    onOptimizeImagePrompt,
+    onOptimizeVideoPrompt,
+    onPropsChange,
+    onReferenceImagesChange,
+    onScenesChange,
+    onScriptChange,
+    onShotImageModeChange,
+    onToggleConfirm,
+    onVideoPromptChange,
+    onVideosChange,
+    projectId,
+    props,
+    scenes,
+    selectedIdSet,
+    shots.length,
+  ]);
+
   return (
     <StoryboardLayout>
       <div className="flex flex-col h-full">
@@ -334,76 +344,21 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
             />
             <div className="px-3 py-2 border-b border-zinc-800 bg-zinc-950/80 shrink-0">
               <Text type="secondary" style={{ fontSize: 12 }}>
-                已加载 {shots.length} 条分镜，当前渲染 {virtualShots.length} 条可视内容
+                已加载 {shots.length} 条分镜，虚拟滚动已启用
               </Text>
             </div>
-            <div
-              ref={scrollContainerRef}
-              className="flex-1 overflow-y-auto"
-              onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
-            >
-              <div style={{ height: totalHeight, position: 'relative' }}>
-                <div
-                  style={{
-                    position: 'absolute',
-                    top: visibleRange.startIndex * virtualRowHeight,
-                    left: 0,
-                    right: 0,
-                  }}
-                >
-                  {virtualShots.map((shot, index) => {
-                    const actualIndex = visibleRange.startIndex + index;
-                    return (
-                      <div key={shot.id} ref={index === 0 ? firstVisibleCardRef : undefined}>
-                        <ShotCard
-                          projectId={projectId}
-                          shot={shot}
-                          index={actualIndex}
-                          totalCount={shots.length}
-                          characters={characters}
-                          scenes={scenes}
-                          props={props}
-                          mentionItems={mentionItems}
-                          isSelected={selectedIdSet.has(shot.id)}
-                          isActive={activeShotId === shot.id}
-                          isGeneratingImagePrompt={generatingImagePrompts.has(shot.id)}
-                          isGeneratingVideoPrompt={generatingVideoPrompts.has(shot.id)}
-                          isGeneratingImage={generatingImages.has(shot.id)}
-                          isGeneratingVideo={generatingVideos.has(shot.id)}
-                          onSelectChange={handleSelectChange}
-                          onActivate={onActiveShotChange}
-                          onScriptChange={onScriptChange}
-                          onImagePromptChange={onImagePromptChange}
-                          onVideoPromptChange={onVideoPromptChange}
-                          onImageModeChange={onShotImageModeChange}
-                          onCharactersChange={onCharactersChange}
-                          onScenesChange={onScenesChange}
-                          onPropsChange={onPropsChange}
-                          onReferenceImagesChange={onReferenceImagesChange}
-                          onImagesChange={onImagesChange}
-                          onVideosChange={onVideosChange}
-                          onGenerateImagePrompt={onGenerateImagePrompt}
-                          onGenerateVideoPrompt={onGenerateVideoPrompt}
-                          onOptimizeImagePrompt={onOptimizeImagePrompt}
-                          onOptimizeVideoPrompt={onOptimizeVideoPrompt}
-                          onGenerateImage={onGenerateImage}
-                          onGenerateVideo={onGenerateVideo}
-                          videoCapabilityLabel={getVideoCapabilityLabel?.(shot.id)}
-                          videoGenerateDisabledReason={getVideoGenerateDisabledReason?.(shot.id)}
-                          onToggleConfirm={onToggleConfirm}
-                          onDelete={onDelete}
-                          onMergeUp={onMergeUp}
-                          onMergeDown={onMergeDown}
-                          onMoveUp={onMoveUp}
-                          onMoveDown={onMoveDown}
-                          onInsertAbove={onInsertAbove}
-                          onInsertBelow={onInsertBelow}
-                        />
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
+            <div className="flex-1 min-h-0">
+              <Virtuoso
+                style={{ height: '100%' }}
+                data={shots}
+                defaultItemHeight={DEFAULT_VIRTUAL_ROW_HEIGHT}
+                increaseViewportBy={{
+                  top: DEFAULT_VIRTUAL_ROW_HEIGHT * 2,
+                  bottom: DEFAULT_VIRTUAL_ROW_HEIGHT * 4,
+                }}
+                computeItemKey={(_, shot) => shot.id}
+                itemContent={(index, shot) => renderShotRow(index, shot)}
+              />
             </div>
           </>
         )}

@@ -19,7 +19,7 @@ import {
   RobotOutlined,
 } from '@ant-design/icons';
 import type { Shot, Character, Scene, Prop, AppSettings, StoredMediaAsset, ProjectStyleSnapshot } from '../../types';
-import { loadEpisodeShotsPage, saveEpisodeShots, loadCharacters, loadScenes, loadProps, loadEpisodeAnalysisSummary } from '../../store/projectStore';
+import { loadEpisodeShotsPage, saveEpisodeShots, loadCharacters, loadScenes, loadProps } from '../../store/projectStore';
 import { generateShotImage, batchGenerateShotImages } from '../../services/ShotGenerationService';
 import { shotRenderWorkflow, batchRenderShots } from '../../workflow/shotRenderWorkflow';
 import { startShotAnalysis } from '../../services/ShotAnalysisService';
@@ -91,6 +91,7 @@ interface StoryboardProps {
   episodeId?: string;
   episodeName?: string;
   refreshToken?: number;
+  assetRefreshToken?: number;
   script?: string;
   aspectRatio?: '16:9' | '9:16';
   llmSelection?: string;
@@ -112,6 +113,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
   episodeId,
   episodeName,
   refreshToken = 0,
+  assetRefreshToken = 0,
   script,
   aspectRatio,
   llmSelection,
@@ -327,12 +329,10 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     setLoading(true);
     setLoadingDescription('加载分镜数据...');
     try {
-      setShots([]);
-      const [loadedCharacters, loadedScenes, loadedProps, episodeAnalysis] = await Promise.all([
+      const [loadedCharacters, loadedScenes, loadedProps] = await Promise.all([
         loadCharacters(projectId),
         loadScenes(projectId),
         loadProps(projectId),
-        episodeId ? loadEpisodeAnalysisSummary(projectId, episodeId) : Promise.resolve(null),
       ]);
       if (requestId !== loadRequestIdRef.current) {
         return;
@@ -345,41 +345,11 @@ export const Storyboard: React.FC<StoryboardProps> = ({
         return;
       }
 
-      // 根据剧集分析结果筛选资产
-      let filteredCharacters = loadedCharacters;
-      let filteredScenes = loadedScenes;
-      let filteredProps = loadedProps;
-
-      if (episodeAnalysis) {
-        // 构建 refs 集合：从 episodeAnalysis.xxxRefs + shots 中的资产 ID 合并
-        const charRefs = new Set(episodeAnalysis.characterRefs || []);
-        const sceneRefs = new Set(episodeAnalysis.sceneRefs || []);
-        const propRefs = new Set(episodeAnalysis.propRefs || []);
-
-        // 补充：从 shots 中提取所有引用的资产 ID（兜底 refs 为空的情况）
-        for (const shot of loadedShots) {
-          for (const id of shot.characters || []) { if (id) charRefs.add(id); }
-          for (const id of shot.scenes || []) { if (id) sceneRefs.add(id); }
-          for (const id of shot.props || []) { if (id) propRefs.add(id); }
-        }
-
-        // 仅在有 refs 时过滤，否则保留全部资产
-        if (charRefs.size > 0) {
-          filteredCharacters = loadedCharacters.filter(c => charRefs.has(c.id));
-        }
-        if (sceneRefs.size > 0) {
-          filteredScenes = loadedScenes.filter(s => sceneRefs.has(s.id));
-        }
-        if (propRefs.size > 0) {
-          filteredProps = loadedProps.filter(p => propRefs.has(p.id));
-        }
-      }
-
-      // 一刀切：移除旧数据迁移/修复逻辑。分镜资产绑定与提示词 @mention 统一使用项目内 ID。
+      // 分镜编辑器需要始终允许选择项目中的任意资产，避免被章节分析 refs 卡住。
       setShots(loadedShots);
-      setCharacters(filteredCharacters);
-      setScenes(filteredScenes);
-      setProps(filteredProps);
+      setCharacters(loadedCharacters);
+      setScenes(loadedScenes);
+      setProps(loadedProps);
 
     } catch (err) {
       logger.error('加载失败', err);
@@ -400,9 +370,37 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     setShots(latestShots);
   }, [projectId, episodeId, loadAllEpisodeShotsPaged]);
 
+  const refreshAssetsFromStore = useCallback(async () => {
+    if (!projectId) {
+      return;
+    }
+
+    try {
+      const [loadedCharacters, loadedScenes, loadedProps] = await Promise.all([
+        loadCharacters(projectId),
+        loadScenes(projectId),
+        loadProps(projectId),
+      ]);
+      setCharacters(loadedCharacters);
+      setScenes(loadedScenes);
+      setProps(loadedProps);
+    } catch (err) {
+      logger.error('刷新分镜资产失败', err);
+      message.error('刷新资产失败');
+    }
+  }, [projectId, message]);
+
   useEffect(() => {
     loadData();
   }, [loadData, refreshToken]);
+
+  useEffect(() => {
+    if (assetRefreshToken === 0) {
+      return;
+    }
+
+    void refreshAssetsFromStore();
+  }, [assetRefreshToken, refreshAssetsFromStore]);
 
   useEffect(() => {
     if (shots.length === 0) {

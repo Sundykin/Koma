@@ -25,6 +25,7 @@ interface ToolPanelDrawerProps {
   panelId: WorkflowPanelId | null;
   projectId: string;
   episodeId: string;
+  ttiSelection?: string;
   activeStylePresetId?: string;
   styleSnapshot?: ProjectStyleSnapshot;
   workflowSessions: WorkflowPanelSessions;
@@ -36,6 +37,7 @@ interface ToolPanelDrawerProps {
   onExportSessionChange: (updates: Partial<WorkflowPanelSessions['export']>) => void;
   onAssistantSessionChange: (updates: Partial<WorkflowPanelSessions['assistant']>) => void;
   onShotsChanged?: () => void;
+  onAssetsChanged?: () => void;
   onEpisodesChanged?: (preferredEpisodeId?: string) => void;
   onOpenPanel?: (panelId: WorkflowPanelId) => void;
 }
@@ -47,6 +49,7 @@ export const ToolPanelDrawer: React.FC<ToolPanelDrawerProps> = ({
   panelId,
   projectId,
   episodeId,
+  ttiSelection,
   activeStylePresetId,
   styleSnapshot,
   workflowSessions,
@@ -58,6 +61,7 @@ export const ToolPanelDrawer: React.FC<ToolPanelDrawerProps> = ({
   onExportSessionChange,
   onAssistantSessionChange,
   onShotsChanged,
+  onAssetsChanged,
   onEpisodesChanged,
   onOpenPanel,
 }) => {
@@ -78,9 +82,11 @@ export const ToolPanelDrawer: React.FC<ToolPanelDrawerProps> = ({
       <AssetManagerPanel
         projectId={projectId}
         episodeId={episodeId}
+        ttiSelection={ttiSelection}
+        styleSnapshot={styleSnapshot}
         session={workflowSessions.assets}
         onSessionChange={onAssetSessionChange}
-        onAssetsChanged={onShotsChanged}
+        onAssetsChanged={onAssetsChanged}
       />
     ),
     inference: (

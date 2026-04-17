@@ -4,7 +4,7 @@
  * 包含：顶部工具栏（含剧集切换）+ 分镜列表 + 右侧工具面板
  */
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
-import { Button, Empty, Select, Spin } from 'antd';
+import { Button, Empty, Select, Spin, Tooltip, App } from 'antd';
 import {
   FileTextOutlined,
   TeamOutlined,
@@ -14,14 +14,23 @@ import {
   RobotOutlined,
   PlusOutlined,
   SettingOutlined,
+  ExperimentOutlined,
+  PictureOutlined,
+  VideoCameraOutlined,
+  SoundOutlined,
 } from '@ant-design/icons';
-import type { Project, Episode, AppSettings, ProjectStyleSnapshot } from '../../types';
+import type { Project, Episode, AppSettings, ProjectStyleSnapshot, MediaModelSelection } from '../../types';
 import type { MentionItem } from '../../editor';
 import { Storyboard } from './Storyboard';
 import { ToolPanelDrawer } from './panels/ToolPanelDrawer';
-import { serializeMediaSelection } from '../../providers/channel/resolver';
-import { listEpisodes, createEpisode } from '../../store/projectStore';
+import { serializeMediaSelection, parseMediaSelectionKey } from '../../providers/channel/resolver';
+import { listEpisodes, createEpisode, loadProject, saveProject } from '../../store/projectStore';
 import { createLogger } from '../../store/logger';
+import {
+  buildProjectMediaCategoryState,
+  PROJECT_MEDIA_BASE_REQUIREMENTS,
+  type ProjectMediaCategoryKey,
+} from '../project/projectMediaSelectionState';
 import {
   createDefaultStoryboardWorkflowContext,
   createDefaultWorkflowPanelSessions,
@@ -38,6 +47,7 @@ import {
 const logger = createLogger('StoryboardWorkspace');
 
 export type ToolPanelId = WorkflowPanelId;
+type ProjectMediaSelections = Partial<Record<ProjectMediaCategoryKey, MediaModelSelection>>;
 
 const TOOL_BUTTONS: { id: ToolPanelId; label: string; icon: React.ReactNode }[] = [
   { id: 'script', label: '剧本', icon: <FileTextOutlined /> },
@@ -69,10 +79,13 @@ export const StoryboardWorkspace: React.FC<StoryboardWorkspaceProps> = ({
   onViewChange,
   onEpisodeChange,
 }) => {
+  const { message } = App.useApp();
   const [activePanel, setActivePanel] = useState<ToolPanelId | null>(null);
   const [episodes, setEpisodes] = useState<Episode[]>([]);
   const [loadingEpisodes, setLoadingEpisodes] = useState(false);
   const [storyboardRefreshKey, setStoryboardRefreshKey] = useState(0);
+  const [storyboardAssetRefreshKey, setStoryboardAssetRefreshKey] = useState(0);
+  const [projectMediaSelections, setProjectMediaSelections] = useState<ProjectMediaSelections>(activeProject.mediaSelections || {});
   const [workflowSessionsByEpisode, setWorkflowSessionsByEpisode] = useState<Record<string, Partial<WorkflowPanelSessions>>>({});
   const [storyboardContext, setStoryboardContext] = useState<StoryboardWorkflowContext>(createDefaultStoryboardWorkflowContext());
   const [restoredStoryboardContextByEpisode, setRestoredStoryboardContextByEpisode] = useState<Record<string, Pick<StoryboardWorkflowContext, 'activeShotId' | 'selectedShotIds'>>>({});
@@ -103,10 +116,108 @@ export const StoryboardWorkspace: React.FC<StoryboardWorkspaceProps> = ({
     setStoryboardRefreshKey(prev => prev + 1);
   }, []);
 
-  const llmSelection = serializeMediaSelection(activeProject.mediaSelections?.llm);
-  const ttiSelection = serializeMediaSelection(activeProject.mediaSelections?.tti);
-  const itvSelection = serializeMediaSelection(activeProject.mediaSelections?.itv);
-  const ttsSelection = serializeMediaSelection(activeProject.mediaSelections?.tts);
+  const handleAssetsChanged = useCallback(() => {
+    setStoryboardAssetRefreshKey(prev => prev + 1);
+  }, []);
+
+  useEffect(() => {
+    setProjectMediaSelections(activeProject.mediaSelections || {});
+  }, [activeProject.id, activeProject.mediaSelections]);
+
+  const mediaSelectionStates = useMemo(() => ({
+    llm: buildProjectMediaCategoryState({
+      settings: appSettings,
+      category: 'llm',
+      explicitSelection: projectMediaSelections.llm,
+      requirement: PROJECT_MEDIA_BASE_REQUIREMENTS.llm,
+    }),
+    tti: buildProjectMediaCategoryState({
+      settings: appSettings,
+      category: 'tti',
+      explicitSelection: projectMediaSelections.tti,
+      requirement: PROJECT_MEDIA_BASE_REQUIREMENTS.tti,
+    }),
+    itv: buildProjectMediaCategoryState({
+      settings: appSettings,
+      category: 'itv',
+      explicitSelection: projectMediaSelections.itv,
+    }),
+    tts: buildProjectMediaCategoryState({
+      settings: appSettings,
+      category: 'tts',
+      explicitSelection: projectMediaSelections.tts,
+      requirement: PROJECT_MEDIA_BASE_REQUIREMENTS.tts,
+    }),
+  }), [appSettings, projectMediaSelections]);
+
+  const llmSelection = serializeMediaSelection(projectMediaSelections.llm);
+  const ttiSelection = serializeMediaSelection(projectMediaSelections.tti);
+  const itvSelection = serializeMediaSelection(projectMediaSelections.itv);
+  const ttsSelection = serializeMediaSelection(projectMediaSelections.tts);
+
+  const handleMediaSelectionChange = useCallback(async (category: ProjectMediaCategoryKey, value?: string) => {
+    const parsed = parseMediaSelectionKey(value);
+    const nextSelections: ProjectMediaSelections = {
+      ...projectMediaSelections,
+    };
+    if (parsed) {
+      nextSelections[category] = parsed;
+    } else {
+      delete nextSelections[category];
+    }
+
+    setProjectMediaSelections(nextSelections);
+    try {
+      const project = await loadProject(activeProject.id);
+      if (!project) {
+        throw new Error('项目不存在');
+      }
+      project.mediaSelections = nextSelections;
+      await saveProject(project);
+    } catch (error: any) {
+      setProjectMediaSelections(activeProject.mediaSelections || {});
+      message.error(`更新模型配置失败: ${error?.message || '未知错误'}`);
+    }
+  }, [activeProject.id, activeProject.mediaSelections, message, projectMediaSelections]);
+
+  const renderQuickSelector = useCallback((
+    category: ProjectMediaCategoryKey,
+    icon: React.ReactNode,
+    colorClassName: string,
+    emptyTitle: string,
+    readyTitle: string,
+  ) => {
+    const state = mediaSelectionStates[category];
+    const tooltipLines = [
+      state.options.length === 0 ? emptyTitle : readyTitle,
+      state.requirement?.description,
+      state.fallbackLabel ? `全局默认: ${state.fallbackLabel}` : undefined,
+      state.warning,
+    ].filter(Boolean);
+
+    return (
+      <Tooltip key={category} title={tooltipLines.join('；')}>
+        <div className="flex items-center gap-1">
+          <span className={colorClassName}>{icon}</span>
+          <Select
+            value={state.explicitSupported ? state.explicitValue : undefined}
+            onChange={(nextValue) => void handleMediaSelectionChange(category, nextValue)}
+            placeholder={state.fallbackLabel ? `默认 · ${state.fallbackLabel}` : '默认'}
+            allowClear
+            size="small"
+            status={state.warning ? 'warning' : undefined}
+            className="!w-36"
+            popupMatchSelectWidth={false}
+            options={state.options.map((option) => ({
+              value: option.value,
+              label: `${option.channelLabel} / ${option.modelLabel}`,
+            }))}
+            notFoundContent="请先在设置中配置"
+          />
+        </div>
+      </Tooltip>
+    );
+  }, [handleMediaSelectionChange, mediaSelectionStates]);
 
   useEffect(() => {
     if (!activeEpisode) {
@@ -305,7 +416,12 @@ export const StoryboardWorkspace: React.FC<StoryboardWorkspaceProps> = ({
           ))}
         </div>
 
-        <div className="flex-1" />
+        <div className="flex-1 flex items-center justify-center gap-2 overflow-x-auto px-4">
+          {renderQuickSelector('llm', <ExperimentOutlined />, 'text-blue-400', '请先在设置中配置 LLM 模型', 'LLM 大语言模型')}
+          {renderQuickSelector('tti', <PictureOutlined />, 'text-purple-400', '请先在设置中配置 TTI 服务', '文生图 TTI')}
+          {renderQuickSelector('itv', <VideoCameraOutlined />, 'text-orange-400', '请先在设置中配置 ITV 服务', '项目视频模型')}
+          {renderQuickSelector('tts', <SoundOutlined />, 'text-emerald-400', '请先在设置中配置 TTS 服务', '语音合成 TTS')}
+        </div>
 
         {/* 剧集切换器 */}
         <Select
@@ -348,6 +464,7 @@ export const StoryboardWorkspace: React.FC<StoryboardWorkspaceProps> = ({
             styleSnapshot={styleSnapshot}
             mentionItems={mentionItems}
             refreshToken={storyboardRefreshKey}
+            assetRefreshToken={storyboardAssetRefreshKey}
             onRequestScriptWorkflow={() => openPanel('script')}
             onStoryboardContextChange={setStoryboardContext}
             initialActiveShotId={restoredStoryboardContextByEpisode[activeEpisode.id]?.activeShotId ?? null}
@@ -364,9 +481,11 @@ export const StoryboardWorkspace: React.FC<StoryboardWorkspaceProps> = ({
         panelId={activePanel}
         projectId={activeProject.id}
         episodeId={activeEpisode.id}
+        ttiSelection={ttiSelection}
         activeStylePresetId={activeProject.stylePresetId}
         styleSnapshot={styleSnapshot}
         onShotsChanged={handleShotsChanged}
+        onAssetsChanged={handleAssetsChanged}
         workflowSessions={activeWorkflowSessions}
         storyboardContext={storyboardContext}
         onScriptSessionChange={(updates) => updateWorkflowSession('script', updates)}
