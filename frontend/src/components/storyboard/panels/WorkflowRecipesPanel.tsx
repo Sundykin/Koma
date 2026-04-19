@@ -199,7 +199,7 @@ export const WorkflowRecipesPanel: React.FC<WorkflowRecipesPanelProps> = ({
     .filter((item): item is WorkflowRecipeDefinition => Boolean(item));
 
   return (
-    <div className="h-full overflow-y-auto px-4 py-4">
+    <div className="h-full">
       <Space direction="vertical" size={16} className="w-full">
         <Card className="border-zinc-800 bg-zinc-950" styles={{ body: { padding: 16 } }}>
           <Space direction="vertical" size={12} className="w-full">
@@ -230,7 +230,7 @@ export const WorkflowRecipesPanel: React.FC<WorkflowRecipesPanelProps> = ({
                 return (
                   <Card
                     key={recipe.id}
-                    className={isActive ? 'border-sky-700 bg-sky-950/10' : 'border-zinc-800 bg-zinc-900/70'}
+                    className={`cursor-pointer transition-colors hover:bg-zinc-800/80 ${isActive ? 'border-blue-500 bg-blue-950/10' : 'border-zinc-800 bg-zinc-900/70'}`}
                     styles={{ body: { padding: 16 } }}
                   >
                     <Space direction="vertical" size={10} className="w-full">

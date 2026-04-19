@@ -190,7 +190,7 @@ export const StyleSettingsPanel: React.FC<StyleSettingsPanelProps> = ({
 
   return (
     <div className="flex flex-col h-full">
-      <div className="px-4 pt-3 pb-2 border-b border-zinc-800 flex gap-2">
+      <div className="pb-4 border-b border-zinc-800 mb-4 flex gap-2">
         <Search
           placeholder="搜索风格..."
           value={searchQuery}
@@ -207,7 +207,7 @@ export const StyleSettingsPanel: React.FC<StyleSettingsPanelProps> = ({
           新建
         </Button>
       </div>
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div className="flex-1 space-y-4">
         {filteredPresets.length === 0 ? (
           <Empty description="暂无风格预设，点击新建创建一个" image={Empty.PRESENTED_IMAGE_SIMPLE}>
             <Button type="primary" size="small" onClick={() => setCreateModalOpen(true)}>
@@ -222,9 +222,9 @@ export const StyleSettingsPanel: React.FC<StyleSettingsPanelProps> = ({
                 <Card
                   key={preset.id}
                   size="small"
-                  className={`bg-zinc-900 cursor-pointer transition-colors ${
+                  className={`bg-zinc-900 cursor-pointer transition-colors hover:bg-zinc-800/80 ${
                     isActive
-                      ? 'border-emerald-600'
+                      ? 'border-blue-500'
                       : 'border-zinc-700 hover:border-zinc-500'
                   }`}
                   styles={{ body: { padding: '10px 14px' } }}
@@ -254,7 +254,7 @@ export const StyleSettingsPanel: React.FC<StyleSettingsPanelProps> = ({
 
         <div className="rounded border border-zinc-800 bg-zinc-950/60 p-3 space-y-3">
           <div>
-            <Text className="text-zinc-300 text-xs uppercase tracking-[0.14em]">影响范围</Text>
+            <Text className="text-zinc-400 text-xs">影响范围</Text>
             <Segmented
               className="mt-2"
               block
@@ -264,7 +264,7 @@ export const StyleSettingsPanel: React.FC<StyleSettingsPanelProps> = ({
             />
           </div>
           <div>
-            <Text className="text-zinc-300 text-xs uppercase tracking-[0.14em]">重推理档位</Text>
+            <Text className="text-zinc-400 text-xs">重推理档位</Text>
             <Segmented
               className="mt-2"
               value={session.reinferenceLevel}

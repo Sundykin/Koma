@@ -97,7 +97,7 @@ export const ChapterInferencePanel: React.FC<ChapterInferencePanelProps> = ({
           ctx.characters,
           ctx.styleSnapshot?.ttiStylePrefix || '',
           { image: true, video: true },
-          { extraInstruction: operator?.extraInstruction },
+          { force: true },
           ctx.styleSnapshot,
         );
         drafts.push({
@@ -287,7 +287,7 @@ export const ChapterInferencePanel: React.FC<ChapterInferencePanelProps> = ({
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-4">
+      <div className="flex-1 flex flex-col gap-4">
         <Title level={5} className="!text-zinc-300 !mb-0">章节推理</Title>
         <Text type="secondary">所有结果先暂存为草稿，再按范围应用到分镜。</Text>
 
@@ -326,9 +326,12 @@ export const ChapterInferencePanel: React.FC<ChapterInferencePanelProps> = ({
         </Space>
 
         {(inferring || rewriting) && (
-          <div>
-            <Text type="secondary" className="text-xs">处理中</Text>
-            <Progress percent={progress} size="small" />
+          <div className="bg-zinc-900 border border-zinc-700 rounded-lg p-3 transition-all duration-300">
+            <div className="flex justify-between items-center mb-1">
+              <Text type="secondary" className="text-xs">{inferring ? '正在推理提示词...' : '正在改写文案...'}</Text>
+              <Text className="text-xs text-blue-400">{Math.round(progress)}%</Text>
+            </div>
+            <Progress percent={progress} size="small" showInfo={false} strokeColor="#3b82f6" />
           </div>
         )}
 
@@ -356,7 +359,7 @@ export const ChapterInferencePanel: React.FC<ChapterInferencePanelProps> = ({
               dataSource={session.promptDrafts}
               renderItem={(item, index) => (
                 <List.Item
-                  className={`!border-zinc-800 ${item.accepted ? '!bg-emerald-950/20' : ''}`}
+                  className={`!border-y-zinc-800 !border-r-zinc-800 transition-colors pl-3 ${item.accepted ? 'border-l-2 !border-l-blue-500 bg-zinc-900/30' : 'border-l-2 !border-l-transparent'}`}
                   actions={[
                     <Button
                       key="accept"
@@ -367,15 +370,15 @@ export const ChapterInferencePanel: React.FC<ChapterInferencePanelProps> = ({
                     />,
                   ]}
                 >
-                  <div className="flex flex-col gap-2 w-full min-w-0">
-                    <Text type="secondary" className="text-[10px]">#{item.shotIndex} {item.scriptContent || '暂无文案'}</Text>
-                    <div className="rounded border border-zinc-800 bg-zinc-950/70 p-2">
-                      <Text className="text-[11px] text-zinc-400">图片提示词</Text>
-                      <div className="mt-1 text-xs text-zinc-200 whitespace-pre-wrap">{item.imagePrompt || '未生成'}</div>
+                  <div className="flex flex-col gap-1 w-full min-w-0">
+                    <Text type="secondary" className="text-[10px] mb-1">#{item.shotIndex} {item.scriptContent || '暂无文案'}</Text>
+                    <div className="border-t border-zinc-800/50 pt-2">
+                      <Text className="text-[11px] text-zinc-500 block mb-1">图片提示词</Text>
+                      <div className="text-xs text-zinc-300 whitespace-pre-wrap leading-relaxed">{item.imagePrompt || '未生成'}</div>
                     </div>
-                    <div className="rounded border border-zinc-800 bg-zinc-950/70 p-2">
-                      <Text className="text-[11px] text-zinc-400">视频提示词</Text>
-                      <div className="mt-1 text-xs text-zinc-200 whitespace-pre-wrap">{item.videoPrompt || '未生成'}</div>
+                    <div className="border-t border-zinc-800/50 pt-2 mt-1">
+                      <Text className="text-[11px] text-zinc-500 block mb-1">视频提示词</Text>
+                      <div className="text-xs text-zinc-300 whitespace-pre-wrap leading-relaxed">{item.videoPrompt || '未生成'}</div>
                     </div>
                   </div>
                 </List.Item>
@@ -409,7 +412,7 @@ export const ChapterInferencePanel: React.FC<ChapterInferencePanelProps> = ({
               dataSource={session.rewriteResults}
               renderItem={(item, index) => (
                 <List.Item
-                  className={`!border-zinc-800 ${item.accepted ? '!bg-emerald-950/20' : ''}`}
+                  className={`!border-y-zinc-800 !border-r-zinc-800 transition-colors pl-3 ${item.accepted ? 'border-l-2 !border-l-blue-500 bg-zinc-900/30' : 'border-l-2 !border-l-transparent'}`}
                   actions={[
                     <Button
                       key="accept"
@@ -421,9 +424,11 @@ export const ChapterInferencePanel: React.FC<ChapterInferencePanelProps> = ({
                   ]}
                 >
                   <div className="flex flex-col gap-1 w-full min-w-0">
-                    <Text type="secondary" className="text-[10px]">#{item.shotIndex}</Text>
-                    <Text type="secondary" className="text-[10px] line-through">{item.original}</Text>
-                    <Text className="text-xs text-zinc-200">{item.rewritten}</Text>
+                    <Text type="secondary" className="text-[10px] mb-1">#{item.shotIndex}</Text>
+                    <div className="border-t border-zinc-800/50 pt-2">
+                      <Text type="secondary" className="text-[10px] line-through block mb-1">{item.original}</Text>
+                      <Text className="text-xs text-zinc-300 leading-relaxed block">{item.rewritten}</Text>
+                    </div>
                   </div>
                 </List.Item>
               )}

@@ -169,7 +169,7 @@ export const ToolPanelDrawer: React.FC<ToolPanelDrawerProps> = ({
         </div>
       )}
       {(Object.entries(panels) as Array<[WorkflowPanelId, React.ReactNode]>).map(([id, content]) => (
-        <div key={id} className={panelId === id ? 'flex-1 min-h-0' : 'hidden'}>
+        <div key={id} className={panelId === id ? 'flex-1 min-h-0 p-4 overflow-y-auto' : 'hidden'}>
           {content}
         </div>
       ))}

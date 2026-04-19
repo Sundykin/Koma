@@ -933,7 +933,7 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
   const renderAssetCard = (type: AssetKind, item: AssetListItem) => (
     <Card
       size="small"
-      className="bg-zinc-900 border-zinc-700 cursor-pointer hover:border-zinc-500 transition-colors"
+      className="bg-zinc-900 border-zinc-700 cursor-pointer hover:border-zinc-500 hover:bg-zinc-800/80 transition-colors"
       styles={{ body: { padding: '8px 12px' } }}
       onClick={() => handleOpenEdit(type, item.index)}
     >
@@ -951,7 +951,7 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
           <Text className="text-zinc-200 block truncate">{item.name}</Text>
           <Text type="secondary" className="text-xs block truncate">{item.description || '无描述'}</Text>
         </div>
-        <Space size={4} onClick={(event) => event.stopPropagation()}>
+        <Space size={8} onClick={(event) => event.stopPropagation()}>
           <Button
             size="small"
             icon={
@@ -974,7 +974,13 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
   );
 
   const renderList = (type: AssetKind, items: AssetListItem[]) => {
-    if (items.length === 0) return <Empty description="暂无数据" image={Empty.PRESENTED_IMAGE_SIMPLE} />;
+    if (items.length === 0) return (
+      <Empty description="暂无数据" image={Empty.PRESENTED_IMAGE_SIMPLE}>
+        <Button type="primary" icon={<PlusOutlined />} onClick={handleOpenCreate}>
+          立即创建
+        </Button>
+      </Empty>
+    );
     return (
       <div className="flex flex-col gap-2">
         {items.map((item) => (
@@ -988,7 +994,7 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
 
   return (
     <div className="flex flex-col h-full">
-      <div className="px-4 pt-3 pb-2 border-b border-zinc-800">
+      <div className="pb-4 border-b border-zinc-800 mb-4">
         <Space wrap>
           <Button icon={<RobotOutlined />} size="small" onClick={handleExtractFromScript} loading={extracting} disabled={batchGeneratingTab !== null}>
             从剧本提取
@@ -1025,7 +1031,6 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
         <Tabs
           activeKey={session.activeTab}
           onChange={(key) => updateSession({ activeTab: key as AssetPanelTab })}
-          className="px-4"
           items={[
             { key: 'characters', label: `角色 (${characters.length})`, children: renderList('character', characterItems) },
             { key: 'scenes', label: `场景 (${scenes.length})`, children: renderList('scene', sceneItems) },

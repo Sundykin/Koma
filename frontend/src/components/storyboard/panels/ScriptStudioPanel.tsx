@@ -696,7 +696,7 @@ export const ScriptStudioPanel: React.FC<ScriptStudioPanelProps> = ({
               value={scriptText}
               onChange={e => updateSession({ scriptText: e.target.value })}
               placeholder="粘贴剧本文本到这里..."
-              rows={12}
+              autoSize={{ minRows: 8, maxRows: 24 }}
               className="bg-zinc-900 border-zinc-700"
             />
             <Space>
@@ -722,11 +722,11 @@ export const ScriptStudioPanel: React.FC<ScriptStudioPanelProps> = ({
             <Button type="link" onClick={handleSkipToSplit}>跳过，直接拆分分镜</Button>
             {isProcessing && streamingPreview ? (
               <div className="relative">
-                <TextArea value={streamingPreview} readOnly rows={10} className="bg-zinc-950 border-zinc-700 text-zinc-400" />
+                <TextArea value={streamingPreview} readOnly autoSize={{ minRows: 4, maxRows: 16 }} className="bg-zinc-950 border-zinc-700 text-zinc-400" />
                 <Text type="secondary" className="absolute bottom-2 right-3 text-[11px]">生成中…</Text>
               </div>
             ) : (
-              <TextArea value={scriptText} onChange={e => updateSession({ scriptText: e.target.value })} rows={10} className="bg-zinc-900 border-zinc-700" />
+              <TextArea value={scriptText} onChange={e => updateSession({ scriptText: e.target.value })} autoSize={{ minRows: 4, maxRows: 16 }} className="bg-zinc-900 border-zinc-700" />
             )}
           </div>
         )}
@@ -852,7 +852,7 @@ export const ScriptStudioPanel: React.FC<ScriptStudioPanelProps> = ({
 
                 <Collapse
                   size="small"
-                  className="!bg-transparent !border-zinc-700 [&_.ant-collapse-panel]:!bg-zinc-900 [&_.ant-collapse-header]:!text-zinc-300"
+                  className="bg-transparent border-zinc-700"
                   styles={{
                     header: { color: '#d4d4d8' },
                     body: { backgroundColor: '#18181b', color: '#a1a1aa', padding: '12px 16px' },
@@ -873,6 +873,8 @@ export const ScriptStudioPanel: React.FC<ScriptStudioPanelProps> = ({
 
                     return {
                       key: String(index),
+                      className: 'bg-zinc-900 border-zinc-700',
+                      style: { color: '#d4d4d8' },
                       label: (
                         <div className="flex items-center gap-2 min-w-0">
                           <Tag className="!m-0 shrink-0">{index + 1}</Tag>
@@ -911,7 +913,7 @@ export const ScriptStudioPanel: React.FC<ScriptStudioPanelProps> = ({
                 />
               </div>
             ) : (
-              <TextArea value={scriptText} onChange={e => updateSession({ scriptText: e.target.value })} rows={8} className="bg-zinc-900 border-zinc-700" />
+              <TextArea value={scriptText} onChange={e => updateSession({ scriptText: e.target.value })} autoSize={{ minRows: 4, maxRows: 16 }} className="bg-zinc-900 border-zinc-700" />
             )}
           </div>
         )}
@@ -925,7 +927,7 @@ export const ScriptStudioPanel: React.FC<ScriptStudioPanelProps> = ({
             </Button>
             {isProcessing && streamingPreview ? (
               <div className="relative">
-                <TextArea value={streamingPreview} readOnly rows={8} className="bg-zinc-950 border-zinc-700 text-zinc-400 font-mono text-xs" />
+                <TextArea value={streamingPreview} readOnly autoSize={{ minRows: 4, maxRows: 16 }} className="bg-zinc-950 border-zinc-700 text-zinc-400 font-mono text-xs" />
                 <Text type="secondary" className="absolute bottom-2 right-3 text-[11px]">拆分中…</Text>
               </div>
             ) : splitResults.length > 0 ? (
@@ -984,20 +986,25 @@ export const ScriptStudioPanel: React.FC<ScriptStudioPanelProps> = ({
                   ]}
                 >
                   <div className="flex items-start gap-2 w-full min-w-0">
-                    <span className="text-zinc-500 text-xs shrink-0">#{index + 1}</span>
-                    {editingIndex === index ? (
-                      <TextArea
-                        autoFocus
-                        defaultValue={item}
-                        rows={2}
-                        className="bg-zinc-900 border-zinc-700 text-xs"
-                        onBlur={(event) => handleEditSplit(index, event.target.value)}
-                      />
-                    ) : (
-                      <Text className="text-xs text-zinc-300 cursor-pointer hover:text-zinc-100 flex-1 min-w-0" onClick={() => setEditingIndex(index)}>
-                        {item.length > 100 ? `${item.slice(0, 100)}...` : item}
-                      </Text>
-                    )}
+                    <span className="text-zinc-500 text-xs shrink-0 pt-1">#{index + 1}</span>
+                    <div className="flex-1 min-w-0 transition-all duration-300">
+                      {editingIndex === index ? (
+                        <TextArea
+                          autoFocus
+                          defaultValue={item}
+                          autoSize={{ minRows: 1, maxRows: 10 }}
+                          className="bg-zinc-900 border-zinc-700 text-xs !min-h-[32px]"
+                          onBlur={(event) => handleEditSplit(index, event.target.value)}
+                        />
+                      ) : (
+                        <div
+                          className="text-xs text-zinc-300 cursor-pointer hover:text-zinc-100 whitespace-pre-wrap break-words rounded px-2 py-1 hover:bg-zinc-800/50 min-h-[32px]"
+                          onClick={() => setEditingIndex(index)}
+                        >
+                          {item}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </List.Item>
               )}

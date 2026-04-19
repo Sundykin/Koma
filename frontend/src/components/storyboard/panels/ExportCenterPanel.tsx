@@ -358,7 +358,7 @@ export const ExportCenterPanel: React.FC<ExportCenterPanelProps> = ({
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-4">
+      <div className="flex-1 flex flex-col gap-4">
         <Title level={5} className="!text-zinc-300 !mb-0">导出中心</Title>
         <Text type="secondary">导出配置、模板资产和历史记录会在工作区中持续保留。</Text>
 
@@ -367,8 +367,8 @@ export const ExportCenterPanel: React.FC<ExportCenterPanelProps> = ({
             <Card
               key={option.key}
               size="small"
-              className={`bg-zinc-900 border-zinc-700 cursor-pointer hover:border-zinc-500 transition-colors ${
-                session.activeExport === option.key ? 'border-blue-600' : ''
+              className={`bg-zinc-900 border-zinc-700 cursor-pointer hover:border-zinc-500 hover:bg-zinc-800/80 transition-colors ${
+                session.activeExport === option.key ? 'border-blue-500' : ''
               }`}
               styles={{ body: { padding: '14px 16px' } }}
               onClick={() => {
@@ -431,89 +431,96 @@ export const ExportCenterPanel: React.FC<ExportCenterPanelProps> = ({
             </div>
 
             {session.activeExport === 'images' && (
-              <>
-                <div className="flex items-center gap-2">
-                  <Text type="secondary" className="text-xs w-20">图片格式</Text>
-                  <Select
-                    size="small"
-                    value={session.config.imageFormat}
-                    onChange={(value) => updateConfig({ imageFormat: value })}
-                    options={[{ value: 'png', label: 'PNG' }, { value: 'jpeg', label: 'JPEG' }]}
-                    className="w-24"
-                  />
-                </div>
-                <div className="flex items-center gap-2">
-                  <Text type="secondary" className="text-xs w-20">超分辨率</Text>
+              <div className="grid grid-cols-[auto_1fr] gap-y-3 gap-x-4 items-center">
+                <Text type="secondary" className="text-xs text-right">图片格式</Text>
+                <Select
+                  size="small"
+                  value={session.config.imageFormat}
+                  onChange={(value) => updateConfig({ imageFormat: value })}
+                  options={[{ value: 'png', label: 'PNG' }, { value: 'jpeg', label: 'JPEG' }]}
+                  className="w-24"
+                />
+
+                <Text type="secondary" className="text-xs text-right">超分辨率</Text>
+                <div className="flex items-center">
                   <Switch size="small" checked={session.config.superResolution} onChange={(checked) => updateConfig({ superResolution: checked })} />
                 </div>
-                <Button type="primary" onClick={handleImageExport} loading={exporting}>
-                  开始导出图片序列
-                </Button>
-              </>
+
+                <div className="col-span-2 mt-2">
+                  <Button type="primary" block onClick={handleImageExport} loading={exporting}>
+                    开始导出图片序列
+                  </Button>
+                </div>
+              </div>
             )}
 
             {(session.activeExport === 'video' || session.activeExport === 'jianying') && (
-              <>
-                <div className="flex items-center gap-2">
-                  <Text type="secondary" className="text-xs w-20">静帧时长</Text>
-                  <InputNumber
-                    min={1}
-                    max={30}
-                    value={session.config.stillDurationSeconds}
-                    onChange={(value) => updateConfig({ stillDurationSeconds: Number(value) || 5 })}
-                    className="w-28"
-                  />
-                </div>
+              <div className="grid grid-cols-[auto_1fr] gap-y-3 gap-x-4 items-center">
+                <Text type="secondary" className="text-xs text-right">静帧时长</Text>
+                <InputNumber
+                  min={1}
+                  max={30}
+                  value={session.config.stillDurationSeconds}
+                  onChange={(value) => updateConfig({ stillDurationSeconds: Number(value) || 5 })}
+                  className="w-28"
+                />
+
                 {session.activeExport === 'video' && (
                   <>
-                    <div className="flex items-center gap-2">
-                      <Text type="secondary" className="text-xs w-20">分辨率</Text>
-                      <Select
-                        size="small"
-                        value={session.config.videoResolution}
-                        onChange={(value) => updateConfig({ videoResolution: value })}
-                        options={[
-                          { value: '720p', label: '720p' },
-                          { value: '1080p', label: '1080p' },
-                          { value: '4K', label: '4K' },
-                        ]}
-                        className="w-28"
-                      />
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Text type="secondary" className="text-xs w-20">视频格式</Text>
-                      <Select
-                        size="small"
-                        value={session.config.videoFormat}
-                        onChange={(value) => updateConfig({ videoFormat: value })}
-                        options={[
-                          { value: 'mp4', label: 'MP4' },
-                          { value: 'webm', label: 'WebM' },
-                        ]}
-                        className="w-28"
-                      />
-                    </div>
+                    <Text type="secondary" className="text-xs text-right">分辨率</Text>
+                    <Select
+                      size="small"
+                      value={session.config.videoResolution}
+                      onChange={(value) => updateConfig({ videoResolution: value })}
+                      options={[
+                        { value: '720p', label: '720p' },
+                        { value: '1080p', label: '1080p' },
+                        { value: '4K', label: '4K' },
+                      ]}
+                      className="w-28"
+                    />
+
+                    <Text type="secondary" className="text-xs text-right">视频格式</Text>
+                    <Select
+                      size="small"
+                      value={session.config.videoFormat}
+                      onChange={(value) => updateConfig({ videoFormat: value })}
+                      options={[
+                        { value: 'mp4', label: 'MP4' },
+                        { value: 'webm', label: 'WebM' },
+                      ]}
+                      className="w-28"
+                    />
                   </>
                 )}
-                <div className="flex items-center gap-2">
-                  <Text type="secondary" className="text-xs w-20">字幕</Text>
+
+                <Text type="secondary" className="text-xs text-right">字幕</Text>
+                <div className="flex items-center">
                   <Switch size="small" checked={session.config.includeSubtitles} onChange={(checked) => updateConfig({ includeSubtitles: checked })} />
                 </div>
-                <div className="flex items-center gap-2">
-                  <Text type="secondary" className="text-xs w-20">独立音频</Text>
+
+                <Text type="secondary" className="text-xs text-right">独立音频</Text>
+                <div className="flex items-center">
                   <Switch size="small" checked={session.config.includeAudio} onChange={(checked) => updateConfig({ includeAudio: checked })} />
                 </div>
-                <Text type="secondary" className="text-[11px]">
-                  直出默认按分镜顺序生成结果；独立音频暂未单独拼装，优先导出图片/视频和字幕。
-                </Text>
-                <Button
-                  type="primary"
-                  onClick={session.activeExport === 'video' ? handleVideoExport : handleJianyingExport}
-                  loading={exporting}
-                >
-                  {session.activeExport === 'video' ? '开始导出快速视频' : '开始导出剪映草稿'}
-                </Button>
-              </>
+
+                <div className="col-span-2">
+                  <Text type="secondary" className="text-[11px]">
+                    直出默认按分镜顺序生成结果；独立音频暂未单独拼装，优先导出图片/视频和字幕。
+                  </Text>
+                </div>
+
+                <div className="col-span-2 mt-2">
+                  <Button
+                    type="primary"
+                    block
+                    onClick={session.activeExport === 'video' ? handleVideoExport : handleJianyingExport}
+                    loading={exporting}
+                  >
+                    {session.activeExport === 'video' ? '开始导出快速视频' : '开始导出剪映草稿'}
+                  </Button>
+                </div>
+              </div>
             )}
           </div>
         )}
