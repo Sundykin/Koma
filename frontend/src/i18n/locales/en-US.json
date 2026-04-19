@@ -231,6 +231,7 @@
     "deselectAll": "Deselect All",
     "generateEmpty": "Generate Empty",
     "regenerateAll": "Regenerate All",
+    "generateAllShots": "Generate All Shots",
     "generateConfirmed": "Generate Confirmed",
     "addShot": "Add Shot",
     "deleteSelected": "Delete",

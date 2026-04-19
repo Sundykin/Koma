@@ -30,6 +30,7 @@ interface ShotListHeaderProps {
   onBatchImages: () => void;
   onBatchReImages: () => void;
   onBatchVideos: () => void;
+  onBatchGenerateAllVideos: () => void;
   onBatchReVideos: () => void;
   onBatchVideoPrompts: () => void;
   onBatchReVideoPrompts: () => void;
@@ -51,6 +52,7 @@ export const ShotListHeader: React.FC<ShotListHeaderProps> = ({
   onBatchImages,
   onBatchReImages,
   onBatchVideos,
+  onBatchGenerateAllVideos,
   onBatchReVideos,
   onBatchVideoPrompts,
   onBatchReVideoPrompts,
@@ -76,6 +78,7 @@ export const ShotListHeader: React.FC<ShotListHeaderProps> = ({
   ];
 
   const videoMenuItems: MenuProps['items'] = [
+    { key: 'all', label: t('storyboard.generateAllShots'), onClick: onBatchGenerateAllVideos },
     { key: 'gen', label: t('storyboard.generateConfirmed'), onClick: onBatchVideos },
     { key: 'regen', label: t('storyboard.regenerateAll'), onClick: onBatchReVideos },
   ];

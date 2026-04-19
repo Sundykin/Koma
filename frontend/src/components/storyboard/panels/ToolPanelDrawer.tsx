@@ -89,6 +89,7 @@ export const ToolPanelDrawer: React.FC<ToolPanelDrawerProps> = ({
         session={workflowSessions.assets}
         onSessionChange={onAssetSessionChange}
         onAssetsChanged={onAssetsChanged}
+        onShotsChanged={onShotsChanged}
       />
     ),
     inference: (

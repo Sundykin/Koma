@@ -100,6 +100,7 @@ export async function saveEpisode(
   };
 
   await episodeApi.update(episodeId, {
+    episode_number: updatedEpisode.number,
     title: updatedEpisode.title,
     script_text: updatedEpisode.scriptText,
     status: updatedEpisode.status,

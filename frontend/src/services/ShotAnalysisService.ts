@@ -128,23 +128,14 @@ export class ShotAnalysisService {
       // 解析结果
       const parsed = this.parseJSON<{ shots: any[] }>(result);
 
-      // 将角色名/道具名映射到 ID
-      // 优先使用预选资产的 Sora2 ID，其次使用已绑定的 Sora2 ID，最后使用自定义 ID
-      const presetCharacterIds = new Set(this.presetAssets?.characterIds || []);
-      const presetPropIds = new Set(this.presetAssets?.propIds || []);
-
-      const getCharId = (c: typeof characters[0]) => {
-        if (c.sora2CharacterId && presetCharacterIds.has(c.sora2CharacterId)) {
-          return c.sora2CharacterId;
+      // 分镜里统一保存项目资产 ID。
+      // 如果当前还匹配不到资产，则沿用旧实现先保留名称，后续在 Storyboard/资产面板中再做修复回填。
+      const normalizeAssetRef = (name: string, matchedId?: string): string | undefined => {
+        if (matchedId) {
+          return matchedId;
         }
-        return c.sora2CharacterId || c.id;
-      };
-
-      const getPropId = (p: typeof props[0]) => {
-        if (p.sora2PropId && presetPropIds.has(p.sora2PropId)) {
-          return p.sora2PropId;
-        }
-        return p.sora2PropId || p.id;
+        const trimmed = name?.trim();
+        return trimmed || undefined;
       };
 
       // 模糊匹配：支持 LLM 返回的名称包含描述后缀（如 "宁卓（侠客）"）或微小差异
@@ -177,7 +168,7 @@ export class ShotAnalysisService {
         characters: (s.characters || [])
           .map((name: string) => {
             const match = fuzzyMatchAsset(name, characters);
-            return match ? getCharId(match) : undefined;
+            return normalizeAssetRef(name, match?.id);
           })
           .filter((id: string | undefined): id is string => id !== undefined),
         dialogue: s.dialogue || '',
@@ -185,13 +176,13 @@ export class ShotAnalysisService {
         props: (s.props || [])
           .map((name: string) => {
             const match = fuzzyMatchAsset(name, props);
-            return match ? getPropId(match) : undefined;
+            return normalizeAssetRef(name, match?.id);
           })
           .filter((id: string | undefined): id is string => id !== undefined),
         scenes: (s.scenes || [])
           .map((name: string) => {
             const match = fuzzyMatchAsset(name, scenes);
-            return match ? match.id : undefined;
+            return normalizeAssetRef(name, match?.id);
           })
           .filter((id: string | undefined): id is string => id !== undefined),
         confirmed: false,

@@ -231,6 +231,7 @@
     "deselectAll": "取消全选",
     "generateEmpty": "生成空白项",
     "regenerateAll": "重新生成全部",
+    "generateAllShots": "一键生成整集",
     "generateConfirmed": "生成已确认项",
     "addShot": "添加分镜",
     "deleteSelected": "删除",

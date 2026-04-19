@@ -4,7 +4,7 @@
  * 包含：顶部工具栏（含剧集切换）+ 分镜列表 + 右侧工具面板
  */
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
-import { Button, Empty, Select, Spin, Tooltip, App } from 'antd';
+import { Button, Empty, Select, Spin, Tooltip, App, Modal, Form, Input, InputNumber } from 'antd';
 import {
   FileTextOutlined,
   TeamOutlined,
@@ -18,13 +18,14 @@ import {
   PictureOutlined,
   VideoCameraOutlined,
   SoundOutlined,
+  EditOutlined,
 } from '@ant-design/icons';
 import type { Project, Episode, AppSettings, ProjectStyleSnapshot, MediaModelSelection } from '../../types';
 import type { MentionItem } from '../../editor';
 import { Storyboard } from './Storyboard';
 import { ToolPanelDrawer } from './panels/ToolPanelDrawer';
 import { serializeMediaSelection, parseMediaSelectionKey } from '../../providers/channel/resolver';
-import { listEpisodes, createEpisode, loadProject, saveProject } from '../../store/projectStore';
+import { listEpisodes, createEpisode, loadProject, saveProject, saveEpisode } from '../../store/projectStore';
 import { createLogger } from '../../store/logger';
 import {
   buildProjectMediaCategoryState,
@@ -82,9 +83,12 @@ export const StoryboardWorkspace: React.FC<StoryboardWorkspaceProps> = ({
   onProjectStyleApplied,
 }) => {
   const { message } = App.useApp();
+  const [episodeForm] = Form.useForm();
   const [activePanel, setActivePanel] = useState<ToolPanelId | null>(null);
   const [episodes, setEpisodes] = useState<Episode[]>([]);
   const [loadingEpisodes, setLoadingEpisodes] = useState(false);
+  const [editingEpisode, setEditingEpisode] = useState<Episode | null>(null);
+  const [episodeEditOpen, setEpisodeEditOpen] = useState(false);
   const [storyboardRefreshKey, setStoryboardRefreshKey] = useState(0);
   const [storyboardAssetRefreshKey, setStoryboardAssetRefreshKey] = useState(0);
   const [projectMediaSelections, setProjectMediaSelections] = useState<ProjectMediaSelections>(activeProject.mediaSelections || {});
@@ -348,6 +352,57 @@ export const StoryboardWorkspace: React.FC<StoryboardWorkspaceProps> = ({
     }
   }, [episodes, activeProject.id, onEpisodeChange]);
 
+  const handleEditEpisode = useCallback(() => {
+    if (!activeEpisode) {
+      return;
+    }
+    setEditingEpisode(activeEpisode);
+    episodeForm.setFieldsValue({
+      number: activeEpisode.number,
+      title: activeEpisode.title,
+    });
+    setEpisodeEditOpen(true);
+  }, [activeEpisode, episodeForm]);
+
+  const handleSaveEpisodeEdit = useCallback(async () => {
+    if (!editingEpisode) {
+      return;
+    }
+
+    try {
+      const values = await episodeForm.validateFields();
+      const nextNumber = Number(values.number);
+      if (episodes.some((episode) => episode.id !== editingEpisode.id && episode.number === nextNumber)) {
+        message.error(`第 ${nextNumber} 集已存在，请使用其他集数`);
+        return;
+      }
+
+      const updated = await saveEpisode(activeProject.id, editingEpisode.id, {
+        number: nextNumber,
+        title: values.title,
+      });
+      if (!updated) {
+        throw new Error('剧集保存失败');
+      }
+
+      const nextEpisodes = episodes
+        .map((episode) => episode.id === updated.id ? updated : episode)
+        .sort((a, b) => a.number - b.number);
+      setEpisodes(nextEpisodes);
+      onEpisodeChange?.(updated);
+      setEpisodeEditOpen(false);
+      setEditingEpisode(null);
+      episodeForm.resetFields();
+      message.success('剧集已更新');
+    } catch (error: any) {
+      if (error?.errorFields) {
+        return;
+      }
+      logger.error('编辑剧集失败', error);
+      message.error(error?.message || '编辑剧集失败');
+    }
+  }, [activeProject.id, editingEpisode, episodeForm, episodes, message, onEpisodeChange]);
+
   const updateWorkflowSession = useCallback(<K extends keyof WorkflowPanelSessions,>(
     panelId: K,
     updates: Partial<WorkflowPanelSessions[K]>,
@@ -447,6 +502,9 @@ export const StoryboardWorkspace: React.FC<StoryboardWorkspaceProps> = ({
             </>
           )}
         />
+        <Button size="small" icon={<EditOutlined />} onClick={handleEditEpisode}>
+          编辑
+        </Button>
       </div>
 
       {/* 分镜列表主区域 */}
@@ -500,6 +558,46 @@ export const StoryboardWorkspace: React.FC<StoryboardWorkspaceProps> = ({
         onEpisodesChanged={reloadEpisodes}
         onOpenPanel={openPanel}
       />
+
+      <Modal
+        title={`编辑剧集 · ${editingEpisode?.title || ''}`}
+        open={episodeEditOpen}
+        onOk={() => void handleSaveEpisodeEdit()}
+        onCancel={() => {
+          setEpisodeEditOpen(false);
+          setEditingEpisode(null);
+          episodeForm.resetFields();
+        }}
+        okText="保存"
+        cancelText="取消"
+        width={520}
+      >
+        <Form form={episodeForm} layout="vertical" className="mt-4">
+          <Form.Item
+            name="number"
+            label="集数"
+            rules={[
+              { required: true, message: '请输入剧集编号' },
+              {
+                validator: async (_, value) => {
+                  if (!Number.isInteger(Number(value)) || Number(value) < 1) {
+                    throw new Error('集数必须为大于 0 的整数');
+                  }
+                },
+              },
+            ]}
+          >
+            <InputNumber min={1} precision={0} className="!w-full" placeholder="请输入集数" />
+          </Form.Item>
+          <Form.Item
+            name="title"
+            label="剧集标题"
+            rules={[{ required: true, message: '请输入剧集标题' }]}
+          >
+            <Input placeholder="请输入剧集标题" />
+          </Form.Item>
+        </Form>
+      </Modal>
     </div>
   );
 };

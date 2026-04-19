@@ -10,10 +10,11 @@
  * 3. (已修复并删除) useStoryboardHandlers 中的 handler 无条件覆盖资产
  * 4. episodeAnalysis 的 refs 为空 → 资产面板不显示
  */
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useShotAssetSync } from '../../../hooks/useShotAssetSync';
 import type { Shot, Character, Scene, Prop, EpisodeAnalysis } from '../../../types';
+import { repairShotAssetBindings } from '../../../services/shotAssetBindingRepair';
 
 // === 测试数据工厂 ===
 
@@ -139,62 +140,6 @@ function filterAssetsByEpisodeAnalysis(
     props: propRefs.size > 0 ? allProps.filter(p => propRefs.has(p.id)) : allProps,
   };
 }
-
-// === 模拟旧数据修复逻辑 ===
-// 提取自 Storyboard.tsx (dd7bf47 修复)
-
-function repairLegacyShotAssets(
-  shots: Shot[],
-  characters: Character[],
-  scenes: Scene[],
-  props: Prop[]
-): { shots: Shot[]; needsSave: boolean } {
-  const allCharIds = new Set(characters.map(c => c.id));
-  const allSceneIds = new Set(scenes.map(s => s.id));
-  const allPropIds = new Set(props.map(p => p.id));
-  characters.forEach(c => { if ((c as any).sora2CharacterId) allCharIds.add((c as any).sora2CharacterId); });
-  props.forEach(p => { if ((p as any).sora2PropId) allPropIds.add((p as any).sora2PropId); });
-
-  const fuzzyMatch = <T extends { name: string }>(name: string, assets: T[]): T | undefined => {
-    if (!name) return undefined;
-    const trimmed = name.trim();
-    return assets.find(a => a.name === trimmed)
-      || assets.find(a => trimmed.includes(a.name))
-      || assets.find(a => a.name.includes(trimmed));
-  };
-
-  let needsSave = false;
-  const repairedShots = shots.map(shot => {
-    let changed = false;
-    const fixedChars = (shot.characters || []).map(ref => {
-      if (allCharIds.has(ref)) return ref;
-      const match = fuzzyMatch(ref, characters);
-      if (match) { changed = true; return (match as any).sora2CharacterId || match.id; }
-      changed = true; return undefined;
-    }).filter((id): id is string => id !== undefined);
-
-    const fixedScenes = (shot.scenes || []).map(ref => {
-      if (allSceneIds.has(ref)) return ref;
-      const match = fuzzyMatch(ref, scenes);
-      if (match) { changed = true; return match.id; }
-      changed = true; return undefined;
-    }).filter((id): id is string => id !== undefined);
-
-    const fixedProps = (shot.props || []).map(ref => {
-      if (allPropIds.has(ref)) return ref;
-      const match = fuzzyMatch(ref, props);
-      if (match) { changed = true; return (match as any).sora2PropId || match.id; }
-      changed = true; return undefined;
-    }).filter((id): id is string => id !== undefined);
-
-    if (!changed) return shot;
-    needsSave = true;
-    return { ...shot, characters: fixedChars, scenes: fixedScenes, props: fixedProps };
-  });
-
-  return { shots: repairedShots, needsSave };
-}
-
 
 // ============================================================
 // 测试场景 1: 单个 shot 生成图像提示词后，资产是否保留
@@ -553,8 +498,107 @@ describe('场景5: 加载项目后资产面板正确显示', () => {
 // 测试场景 6: 旧数据修复（名称字符串 → ID 映射）
 // ============================================================
 describe('场景6: 旧数据资产绑定修复', () => {
-  it('TC-INT-016: 旧数据迁移逻辑已移除（不再在前端做名称到 ID 的修复）', () => {
-    // 按“一刀切”策略：不再在运行时修复旧的名称字符串引用，提示词与绑定一律使用项目内 ID。
-    expect(true).toBe(true);
+  it('TC-INT-016: 旧数据中角色名称字符串应被修复为当前项目资产 ID', () => {
+    const shot = createShot({
+      characters: ['小明'],
+      scenes: ['森林'],
+      props: ['宝剑'],
+    });
+
+    const result = repairShotAssetBindings(
+      [shot],
+      {
+        characters: [createCharacter()],
+        scenes: [createScene()],
+        props: [createProp()],
+      }
+    );
+
+    expect(result.changedShotCount).toBe(1);
+    expect(result.repairedReferenceCount).toBe(3);
+    expect(result.shots[0].characters).toEqual(['char-001']);
+    expect(result.shots[0].scenes).toEqual(['scene-001']);
+    expect(result.shots[0].props).toEqual(['prop-001']);
+  });
+
+  it('TC-INT-017: 已经是当前项目资产 ID 的数据不应被修改', () => {
+    const shot = createShot({
+      characters: ['char-001'],
+      scenes: ['scene-001'],
+      props: ['prop-001'],
+    });
+
+    const result = repairShotAssetBindings(
+      [shot],
+      {
+        characters: [createCharacter()],
+        scenes: [createScene()],
+        props: [createProp()],
+      }
+    );
+
+    expect(result.changedShotCount).toBe(0);
+    expect(result.repairedReferenceCount).toBe(0);
+    expect(result.shots[0]).toBe(shot);
+  });
+
+  it('TC-INT-018: 旧 provider ID 应被归一化为当前项目资产 ID', () => {
+    const shot = createShot({
+      characters: ['sora2-c1'],
+      props: ['sora2-p1'],
+    });
+
+    const result = repairShotAssetBindings(
+      [shot],
+      {
+        characters: [createCharacter({ sora2CharacterId: 'sora2-c1' })],
+        scenes: [createScene()],
+        props: [createProp({ sora2PropId: 'sora2-p1' })],
+      }
+    );
+
+    expect(result.changedShotCount).toBe(1);
+    expect(result.repairedReferenceCount).toBe(2);
+    expect(result.shots[0].characters).toEqual(['char-001']);
+    expect(result.shots[0].props).toEqual(['prop-001']);
+  });
+
+  it('TC-INT-019: 无法匹配的名称应被过滤掉', () => {
+    const shot = createShot({
+      characters: ['不存在的角色'],
+      scenes: ['scene-001'],
+    });
+
+    const result = repairShotAssetBindings(
+      [shot],
+      {
+        characters: [createCharacter()],
+        scenes: [createScene()],
+        props: [createProp()],
+      }
+    );
+
+    expect(result.changedShotCount).toBe(1);
+    expect(result.repairedReferenceCount).toBe(1);
+    expect(result.shots[0].characters).toEqual([]);
+    expect(result.shots[0].scenes).toEqual(['scene-001']);
+  });
+
+  it('TC-INT-020: 模糊匹配应支持包含关系', () => {
+    const shot = createShot({
+      characters: ['小明同学'],
+    });
+
+    const result = repairShotAssetBindings(
+      [shot],
+      {
+        characters: [createCharacter({ id: 'char-001', name: '小明', sora2CharacterId: 'sora2-c1' })],
+        scenes: [createScene()],
+        props: [createProp()],
+      }
+    );
+
+    expect(result.changedShotCount).toBe(1);
+    expect(result.shots[0].characters).toEqual(['char-001']);
   });
 });

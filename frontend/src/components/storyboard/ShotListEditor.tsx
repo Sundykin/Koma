@@ -55,6 +55,7 @@ export interface ShotListEditorProps {
   onBatchReGenerateImages: (shotIds?: string[]) => void;
   onGenerateVideo: (shotId: string) => void;
   onBatchGenerateVideos: (shotIds?: string[]) => void;
+  onBatchGenerateAllVideos: () => void;
   onBatchReGenerateVideos: (shotIds?: string[]) => void;
   getVideoCapabilityLabel?: (shotId: string) => string | undefined;
   getVideoGenerateDisabledReason?: (shotId: string) => string | undefined;
@@ -111,6 +112,7 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
   onBatchReGenerateImages,
   onGenerateVideo,
   onBatchGenerateVideos,
+  onBatchGenerateAllVideos,
   onBatchReGenerateVideos,
   getVideoCapabilityLabel,
   getVideoGenerateDisabledReason,
@@ -340,6 +342,7 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
               onBatchImages={handleBatchImages}
               onBatchReImages={handleBatchReImages}
               onBatchVideos={handleBatchVideos}
+              onBatchGenerateAllVideos={onBatchGenerateAllVideos}
               onBatchReVideos={handleBatchReVideos}
               onBatchVideoPrompts={handleBatchVideoPrompts}
               onBatchReVideoPrompts={handleBatchReVideoPrompts}

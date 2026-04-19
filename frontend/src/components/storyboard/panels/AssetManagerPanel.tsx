@@ -4,10 +4,10 @@
  */
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Tabs, Button, Card, Empty, Spin, Typography, Space, App, Input, Modal } from 'antd';
-import { RobotOutlined, EditOutlined, ThunderboltOutlined, LoadingOutlined } from '@ant-design/icons';
+import { RobotOutlined, EditOutlined, ThunderboltOutlined, LoadingOutlined, PlusOutlined, LinkOutlined } from '@ant-design/icons';
 import type { Character, Scene, Prop, ProjectStyleSnapshot } from '../../../types';
 import { getMediaAssetDisplaySource } from '../../../types';
-import { loadCharacters, loadScenes, loadProps, saveCharacters, saveScenes, saveProps, loadEpisodeShots } from '../../../store/projectStore';
+import { loadCharacters, loadScenes, loadProps, saveCharacters, saveScenes, saveProps, loadEpisodeShots, saveEpisodeShots } from '../../../store/projectStore';
 import { getCharacterCostumePhotoSource } from '../../../utils/mediaSelectors';
 import { createCreationContext } from '../../../services/CreationContext';
 import { resolvePromptTemplate } from '../../../store/promptTemplates';
@@ -24,6 +24,7 @@ import {
 import { v4 as uuidv4 } from 'uuid';
 import type { AssetManagerSession, AssetPanelTab } from './workflowSessions';
 import { resolveStoryboardMediaSource } from '../storyboardMedia';
+import { repairShotAssetBindings, type RepairShotAssetBindingsResult } from '../../../services/shotAssetBindingRepair';
 
 const logger = createLogger('AssetManagerPanel');
 
@@ -85,11 +86,13 @@ interface AssetManagerPanelProps {
   session: AssetManagerSession;
   onSessionChange: (updates: Partial<AssetManagerSession>) => void;
   onAssetsChanged?: () => void;
+  onShotsChanged?: () => void;
 }
 
 type AssetKind = 'character' | 'scene' | 'prop';
 
 interface EditingAsset {
+  mode: 'create' | 'edit';
   type: AssetKind;
   index: number;
   name: string;
@@ -112,6 +115,7 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
   session,
   onSessionChange,
   onAssetsChanged,
+  onShotsChanged,
 }) => {
   const { message } = App.useApp();
   const [characters, setCharacters] = useState<Character[]>([]);
@@ -121,6 +125,7 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
   const [extracting, setExtracting] = useState(false);
   const [generatingPreviewKey, setGeneratingPreviewKey] = useState<string | null>(null);
   const [batchGeneratingTab, setBatchGeneratingTab] = useState<AssetPanelTab | null>(null);
+  const [repairingShotBindings, setRepairingShotBindings] = useState(false);
   const [editingAsset, setEditingAsset] = useState<EditingAsset | null>(null);
 
   const updateSession = useCallback((updates: Partial<AssetManagerSession>) => {
@@ -229,7 +234,80 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
     props: '补全道具预览图',
   }), []);
 
+  const tabCreateLabel: Record<AssetPanelTab, string> = useMemo(() => ({
+    characters: '新增角色',
+    scenes: '新增场景',
+    props: '新增道具',
+  }), []);
+
+  const activeAssetKind = useMemo<AssetKind>(() => {
+    if (session.activeTab === 'characters') return 'character';
+    if (session.activeTab === 'scenes') return 'scene';
+    return 'prop';
+  }, [session.activeTab]);
+
   const buildPreviewKey = useCallback((type: AssetKind, assetId: string) => `${type}:${assetId}`, []);
+
+  const persistRepairedShotBindings = useCallback(async (
+    nextCharacters: Character[] = characters,
+    nextScenes: Scene[] = scenes,
+    nextProps: Prop[] = props,
+  ): Promise<RepairShotAssetBindingsResult> => {
+    const currentShots = await loadEpisodeShots(projectId, episodeId);
+    if (currentShots.length === 0) {
+      return {
+        shots: currentShots,
+        changedShotCount: 0,
+        repairedReferenceCount: 0,
+      };
+    }
+
+    const result = repairShotAssetBindings(currentShots, {
+      characters: nextCharacters,
+      scenes: nextScenes,
+      props: nextProps,
+    });
+
+    if (result.changedShotCount > 0) {
+      await saveEpisodeShots(projectId, episodeId, result.shots);
+      onShotsChanged?.();
+    }
+
+    return result;
+  }, [characters, episodeId, onShotsChanged, projectId, props, scenes]);
+
+  const handleOpenCreate = useCallback(() => {
+    setEditingAsset({
+      mode: 'create',
+      type: activeAssetKind,
+      index: -1,
+      name: '',
+      description: '',
+    });
+  }, [activeAssetKind]);
+
+  const handleRepairShotBindings = useCallback(async () => {
+    setRepairingShotBindings(true);
+    try {
+      const result = await persistRepairedShotBindings();
+      if (result.changedShotCount === 0) {
+        message.info('当前分镜没有可修复的资产绑定');
+        return;
+      }
+
+      updateLastApplied(
+        '分镜资产绑定修复',
+        `已修复 ${result.repairedReferenceCount} 处分镜资产绑定，涉及 ${result.changedShotCount} 条分镜`,
+        result.repairedReferenceCount,
+      );
+      message.success(`已修复 ${result.repairedReferenceCount} 处分镜资产绑定，涉及 ${result.changedShotCount} 条分镜`);
+    } catch (err: any) {
+      logger.error('修复分镜资产绑定失败', err);
+      message.error(`修复失败: ${err?.message || '未知错误'}`);
+    } finally {
+      setRepairingShotBindings(false);
+    }
+  }, [message, persistRepairedShotBindings, updateLastApplied]);
 
   // Extract assets from script using LLM
   const handleExtractFromScript = useCallback(async () => {
@@ -406,23 +484,24 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
         setProps(nextProps);
       }
 
+      const repairResult = await persistRepairedShotBindings(nextCharacters, nextScenes, nextProps);
       const createdCount = newChars.length + newScenes.length + newProps.length;
       const updatedCount = updatedCharCount + updatedSceneCount + updatedPropCount;
-      const affectedCount = createdCount + updatedCount;
+      const affectedCount = createdCount + updatedCount + repairResult.repairedReferenceCount;
       syncAssetSession(nextCharacters, nextScenes, nextProps, {
         currentStep: affectedCount > 0 ? 1 : session.currentStep,
-        affectedScopeLabel: '项目资产库',
+        affectedScopeLabel: repairResult.changedShotCount > 0 ? '项目资产库 / 分镜资产绑定修复' : '项目资产库',
         lastApplied: {
           appliedAt: Date.now(),
           summary: affectedCount > 0
-            ? `新增 ${newChars.length} 角色 · ${newScenes.length} 场景 · ${newProps.length} 道具，回填 ${updatedCount} 条描述`
+            ? `新增 ${newChars.length} 角色 · ${newScenes.length} 场景 · ${newProps.length} 道具，回填 ${updatedCount} 条描述${repairResult.changedShotCount > 0 ? `，修复 ${repairResult.repairedReferenceCount} 处分镜资产绑定` : ''}`
             : '已执行资产提取，未新增资产',
           affectedCount,
-          scopeLabel: '项目资产库',
+          scopeLabel: repairResult.changedShotCount > 0 ? '项目资产库 / 分镜资产绑定修复' : '项目资产库',
         },
       });
       onAssetsChanged?.();
-      message.success(`提取完成: 新增 ${createdCount} 条，回填 ${updatedCount} 条描述`);
+      message.success(`提取完成: 新增 ${createdCount} 条，回填 ${updatedCount} 条描述${repairResult.changedShotCount > 0 ? `，修复 ${repairResult.repairedReferenceCount} 处分镜资产绑定` : ''}`);
     } catch (err: any) {
       logger.error('资产提取失败', err);
       message.error('提取失败: ' + (err.message || '未知错误'));
@@ -437,6 +516,7 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
     props,
     message,
     onAssetsChanged,
+    persistRepairedShotBindings,
     session.currentStep,
     syncAssetSession,
   ]);
@@ -446,65 +526,117 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
     const list = type === 'character' ? characters : type === 'scene' ? scenes : props;
     const item = list[index];
     if (!item) return;
-    setEditingAsset({ type, index, name: item.name, description: item.prompt || '' });
+    setEditingAsset({ mode: 'edit', type, index, name: item.name, description: item.prompt || '' });
   }, [characters, scenes, props]);
 
   const handleSaveEdit = useCallback(async () => {
     if (!editingAsset) return;
     try {
+      const trimmedName = editingAsset.name.trim();
+      if (!trimmedName) {
+        message.warning('请输入资产名称');
+        return;
+      }
+
       if (editingAsset.type === 'character') {
         const updated = [...characters];
-        updated[editingAsset.index] = { ...updated[editingAsset.index], name: editingAsset.name, prompt: editingAsset.description };
+        const nextCharacter: Character = editingAsset.mode === 'create'
+          ? {
+              id: uuidv4(),
+              name: trimmedName,
+              prompt: editingAsset.description,
+              description: '',
+              role: 'supporting',
+            } as Character
+          : { ...updated[editingAsset.index], name: trimmedName, prompt: editingAsset.description };
+
+        if (editingAsset.mode === 'create') {
+          updated.push(nextCharacter);
+        } else {
+          updated[editingAsset.index] = nextCharacter;
+        }
+
         await saveCharacters(projectId, updated);
+        const repairResult = await persistRepairedShotBindings(updated, scenes, props);
         setCharacters(updated);
         syncAssetSession(updated, scenes, props, {
           currentStep: 1,
-          affectedScopeLabel: '角色资产',
+          affectedScopeLabel: repairResult.changedShotCount > 0 ? '角色资产 / 分镜资产绑定修复' : '角色资产',
           lastApplied: {
             appliedAt: Date.now(),
-            summary: `已更新角色资产: ${editingAsset.name}`,
-            affectedCount: 1,
-            scopeLabel: '角色资产',
+            summary: `${editingAsset.mode === 'create' ? '已新增' : '已更新'}角色资产: ${trimmedName}${repairResult.changedShotCount > 0 ? `，修复 ${repairResult.repairedReferenceCount} 处分镜资产绑定` : ''}`,
+            affectedCount: 1 + repairResult.repairedReferenceCount,
+            scopeLabel: repairResult.changedShotCount > 0 ? '角色资产 / 分镜资产绑定修复' : '角色资产',
           },
         });
       } else if (editingAsset.type === 'scene') {
         const updated = [...scenes];
-        updated[editingAsset.index] = { ...updated[editingAsset.index], name: editingAsset.name, prompt: editingAsset.description };
+        const nextScene: Scene = editingAsset.mode === 'create'
+          ? {
+              id: uuidv4(),
+              name: trimmedName,
+              prompt: editingAsset.description,
+              description: '',
+            } as Scene
+          : { ...updated[editingAsset.index], name: trimmedName, prompt: editingAsset.description };
+
+        if (editingAsset.mode === 'create') {
+          updated.push(nextScene);
+        } else {
+          updated[editingAsset.index] = nextScene;
+        }
+
         await saveScenes(projectId, updated);
+        const repairResult = await persistRepairedShotBindings(characters, updated, props);
         setScenes(updated);
         syncAssetSession(characters, updated, props, {
           currentStep: 1,
-          affectedScopeLabel: '场景资产',
+          affectedScopeLabel: repairResult.changedShotCount > 0 ? '场景资产 / 分镜资产绑定修复' : '场景资产',
           lastApplied: {
             appliedAt: Date.now(),
-            summary: `已更新场景资产: ${editingAsset.name}`,
-            affectedCount: 1,
-            scopeLabel: '场景资产',
+            summary: `${editingAsset.mode === 'create' ? '已新增' : '已更新'}场景资产: ${trimmedName}${repairResult.changedShotCount > 0 ? `，修复 ${repairResult.repairedReferenceCount} 处分镜资产绑定` : ''}`,
+            affectedCount: 1 + repairResult.repairedReferenceCount,
+            scopeLabel: repairResult.changedShotCount > 0 ? '场景资产 / 分镜资产绑定修复' : '场景资产',
           },
         });
       } else {
         const updated = [...props];
-        updated[editingAsset.index] = { ...updated[editingAsset.index], name: editingAsset.name, prompt: editingAsset.description };
+        const nextProp: Prop = editingAsset.mode === 'create'
+          ? {
+              id: uuidv4(),
+              name: trimmedName,
+              prompt: editingAsset.description,
+              description: '',
+            } as Prop
+          : { ...updated[editingAsset.index], name: trimmedName, prompt: editingAsset.description };
+
+        if (editingAsset.mode === 'create') {
+          updated.push(nextProp);
+        } else {
+          updated[editingAsset.index] = nextProp;
+        }
+
         await saveProps(projectId, updated);
+        const repairResult = await persistRepairedShotBindings(characters, scenes, updated);
         setProps(updated);
         syncAssetSession(characters, scenes, updated, {
           currentStep: 1,
-          affectedScopeLabel: '道具资产',
+          affectedScopeLabel: repairResult.changedShotCount > 0 ? '道具资产 / 分镜资产绑定修复' : '道具资产',
           lastApplied: {
             appliedAt: Date.now(),
-            summary: `已更新道具资产: ${editingAsset.name}`,
-            affectedCount: 1,
-            scopeLabel: '道具资产',
+            summary: `${editingAsset.mode === 'create' ? '已新增' : '已更新'}道具资产: ${trimmedName}${repairResult.changedShotCount > 0 ? `，修复 ${repairResult.repairedReferenceCount} 处分镜资产绑定` : ''}`,
+            affectedCount: 1 + repairResult.repairedReferenceCount,
+            scopeLabel: repairResult.changedShotCount > 0 ? '道具资产 / 分镜资产绑定修复' : '道具资产',
           },
         });
       }
       setEditingAsset(null);
       onAssetsChanged?.();
-      message.success('已保存');
-    } catch {
-      message.error('保存失败');
+      message.success(editingAsset.mode === 'create' ? '已新增资产' : '已保存资产');
+    } catch (error: any) {
+      message.error(error?.message || '保存失败');
     }
-  }, [editingAsset, characters, scenes, props, projectId, message, onAssetsChanged, syncAssetSession]);
+  }, [editingAsset, characters, scenes, props, projectId, message, onAssetsChanged, persistRepairedShotBindings, syncAssetSession]);
 
   const handleGeneratePreview = useCallback(async (type: AssetKind, index: number) => {
     if (type === 'character') {
@@ -862,11 +994,28 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
             从剧本提取
           </Button>
           <Button
+            icon={<PlusOutlined />}
+            size="small"
+            onClick={handleOpenCreate}
+            disabled={extracting || batchGeneratingTab !== null || repairingShotBindings}
+          >
+            {tabCreateLabel[session.activeTab]}
+          </Button>
+          <Button
+            icon={<LinkOutlined />}
+            size="small"
+            onClick={() => void handleRepairShotBindings()}
+            loading={repairingShotBindings}
+            disabled={extracting || batchGeneratingTab !== null || generatingPreviewKey !== null}
+          >
+            修复分镜资产绑定
+          </Button>
+          <Button
             icon={<ThunderboltOutlined />}
             size="small"
             onClick={() => void handleGenerateMissingPreviews()}
             loading={batchGeneratingTab === session.activeTab}
-            disabled={extracting || generatingPreviewKey !== null}
+            disabled={extracting || generatingPreviewKey !== null || repairingShotBindings}
           >
             {tabGenerateLabel[session.activeTab]}
           </Button>
@@ -884,7 +1033,14 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
           ]}
         />
       </div>
-      <Modal title="编辑资产" open={!!editingAsset} onOk={handleSaveEdit} onCancel={() => setEditingAsset(null)} okText="保存" cancelText="取消">
+      <Modal
+        title={editingAsset?.mode === 'create' ? '新增资产' : '编辑资产'}
+        open={!!editingAsset}
+        onOk={handleSaveEdit}
+        onCancel={() => setEditingAsset(null)}
+        okText={editingAsset?.mode === 'create' ? '新增' : '保存'}
+        cancelText="取消"
+      >
         {editingAsset && (
           <div className="flex flex-col gap-3">
             <div>

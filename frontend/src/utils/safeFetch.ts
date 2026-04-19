@@ -24,6 +24,10 @@ const electronAPI = (window as any).electronAPI as
   | undefined;
 
 const logger = createLogger('SafeFetch');
+const RETRYABLE_STATUS_CODES = new Set([408, 425, 429, 500, 502, 503, 504]);
+const IDEMPOTENT_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+const DEFAULT_MAX_RETRIES = 2;
+const RETRY_BASE_DELAY_MS = 350;
 
 function sanitizeHeaders(headers: Record<string, string>): Record<string, string> {
   const sanitized = { ...headers };
@@ -116,75 +120,116 @@ function summarizeBody(body?: string): Record<string, any> {
   }
 }
 
-/**
- * 与原生 fetch 签名一致的包装函数
- * 在 Electron 环境中自动通过主进程发送请求
- */
-export async function safeFetch(url: string, init?: RequestInit): Promise<Response> {
-  if (electronAPI?.net?.fetch) {
-    const headers: Record<string, string> = {};
-    if (init?.headers) {
-      if (init.headers instanceof Headers) {
-        init.headers.forEach((v, k) => { headers[k] = v; });
-      } else if (Array.isArray(init.headers)) {
-        init.headers.forEach(([k, v]) => { headers[k] = v; });
-      } else {
-        Object.assign(headers, init.headers);
-      }
-    }
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+}
 
-    const traceId = headers['x-koma-trace-id'];
-    const debugBody = headers['x-koma-debug-body'] === '1' || headers['x-koma-debug-body'] === 'true';
-    const isMultipart = isFormDataBody(init?.body);
-    const multipart = isMultipart ? await serializeFormDataForIpc(init!.body as FormData) : undefined;
-    const payloadSummary = isMultipart
-      ? summarizeMultipart(multipart)
-      : summarizeBody(typeof init?.body === 'string' ? init.body : undefined);
-    const payloadPreview = isMultipart
-      ? summarizeMultipartPreview(multipart, debugBody)
-      : summarizeBodyPreview(typeof init?.body === 'string' ? init.body : undefined, debugBody);
+function getAttemptDelay(attempt: number): number {
+  return RETRY_BASE_DELAY_MS * (attempt + 1);
+}
 
-    let result: IpcFetchResult;
-    try {
-      result = await electronAPI.net.fetch({
-        url,
-        method: init?.method || 'GET',
-        headers,
-        body: typeof init?.body === 'string' ? init.body : undefined,
-        multipart,
-      });
-    } catch (error) {
-      logger.error('IPC 代理网络请求失败', {
-        traceId,
-        url,
-        method: init?.method || 'GET',
-        headers: sanitizeHeaders(headers),
-        ...payloadSummary,
-        ...payloadPreview,
-        error: error instanceof Error ? error.message : String(error),
-        transport: 'ipc',
-      });
-      throw error;
-    }
+function getMethod(init?: RequestInit): string {
+  return (init?.method || 'GET').toUpperCase();
+}
 
-    logger.info('通过 IPC 代理网络请求', {
+function getHeaderValue(headers: Record<string, string>, key: string): string | undefined {
+  const lowerKey = key.toLowerCase();
+  const matched = Object.entries(headers).find(([headerKey]) => headerKey.toLowerCase() === lowerKey);
+  return matched?.[1];
+}
+
+function shouldRetryResponse(method: string, status: number, headers: Record<string, string>): boolean {
+  if (!RETRYABLE_STATUS_CODES.has(status)) {
+    return false;
+  }
+  if (IDEMPOTENT_METHODS.has(method)) {
+    return true;
+  }
+  const unsafeRetry = getHeaderValue(headers, 'x-koma-retry-unsafe');
+  return unsafeRetry === '1' || unsafeRetry === 'true';
+}
+
+function shouldRetryTransportError(method: string, headers: Record<string, string>, error: unknown): boolean {
+  const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+  const transportPatterns = [
+    'failed to fetch',
+    'networkerror',
+    'network request failed',
+    'socket hang up',
+    'econnreset',
+    'etimedout',
+    'timeout',
+    'eai_again',
+    'enotfound',
+    'fetch failed',
+  ];
+  if (!transportPatterns.some((pattern) => message.includes(pattern))) {
+    return false;
+  }
+  if (IDEMPOTENT_METHODS.has(method)) {
+    return true;
+  }
+  const unsafeRetry = getHeaderValue(headers, 'x-koma-retry-unsafe');
+  return unsafeRetry === '1' || unsafeRetry === 'true';
+}
+
+async function ipcFetch(url: string, init: RequestInit | undefined, headers: Record<string, string>): Promise<Response> {
+  const traceId = getHeaderValue(headers, 'x-koma-trace-id');
+  const debugBody = getHeaderValue(headers, 'x-koma-debug-body');
+  const debugEnabled = debugBody === '1' || debugBody === 'true';
+  const isMultipart = isFormDataBody(init?.body);
+  const multipart = isMultipart ? await serializeFormDataForIpc(init!.body as FormData) : undefined;
+  const payloadSummary = isMultipart
+    ? summarizeMultipart(multipart)
+    : summarizeBody(typeof init?.body === 'string' ? init.body : undefined);
+  const payloadPreview = isMultipart
+    ? summarizeMultipartPreview(multipart, debugEnabled)
+    : summarizeBodyPreview(typeof init?.body === 'string' ? init.body : undefined, debugEnabled);
+
+  let result: IpcFetchResult;
+  try {
+    result = await electronAPI.net!.fetch({
+      url,
+      method: init?.method || 'GET',
+      headers,
+      body: typeof init?.body === 'string' ? init.body : undefined,
+      multipart,
+    });
+  } catch (error) {
+    logger.error('IPC 代理网络请求失败', {
       traceId,
       url,
       method: init?.method || 'GET',
       headers: sanitizeHeaders(headers),
       ...payloadSummary,
       ...payloadPreview,
-      status: result.status,
-      ok: result.ok,
+      error: error instanceof Error ? error.message : String(error),
       transport: 'ipc',
     });
-
-    return new Response(result.body, {
-      status: result.status,
-      statusText: result.statusText,
-    });
+    throw error;
   }
 
+  logger.info('通过 IPC 代理网络请求', {
+    traceId,
+    url,
+    method: init?.method || 'GET',
+    headers: sanitizeHeaders(headers),
+    ...payloadSummary,
+    ...payloadPreview,
+    status: result.status,
+    ok: result.ok,
+    transport: 'ipc',
+  });
+
+  return new Response(result.body, {
+    status: result.status,
+    statusText: result.statusText,
+  });
+}
+
+function directFetch(url: string, init?: RequestInit): Promise<Response> {
   const traceId = init?.headers && !(init.headers instanceof Headers) && !Array.isArray(init.headers)
     ? (init.headers as Record<string, string>)['x-koma-trace-id']
     : undefined;
@@ -199,4 +244,67 @@ export async function safeFetch(url: string, init?: RequestInit): Promise<Respon
     transport: 'direct',
   });
   return fetch(url, init);
+}
+
+/**
+ * 与原生 fetch 签名一致的包装函数
+ * 在 Electron 环境中自动通过主进程发送请求
+ */
+export async function safeFetch(url: string, init?: RequestInit): Promise<Response> {
+  const traceId = init?.headers && !(init.headers instanceof Headers) && !Array.isArray(init.headers)
+    ? (init.headers as Record<string, string>)['x-koma-trace-id']
+    : undefined;
+  const headers: Record<string, string> = {};
+  if (init?.headers) {
+    if (init.headers instanceof Headers) {
+      init.headers.forEach((v, k) => { headers[k] = v; });
+    } else if (Array.isArray(init.headers)) {
+      init.headers.forEach(([k, v]) => { headers[k] = v; });
+    } else {
+      Object.assign(headers, init.headers);
+    }
+  }
+
+  const method = getMethod(init);
+
+  for (let attempt = 0; attempt <= DEFAULT_MAX_RETRIES; attempt += 1) {
+    try {
+      const response = electronAPI?.net?.fetch
+        ? await ipcFetch(url, init, headers)
+        : await directFetch(url, init);
+
+      if (attempt < DEFAULT_MAX_RETRIES && shouldRetryResponse(method, response.status, headers)) {
+        const delay = getAttemptDelay(attempt);
+        logger.warn('网络请求返回可重试状态，准备重试', {
+          traceId,
+          url,
+          method,
+          status: response.status,
+          attempt: attempt + 1,
+          delay,
+        });
+        await sleep(delay);
+        continue;
+      }
+
+      return response;
+    } catch (error) {
+      if (attempt < DEFAULT_MAX_RETRIES && shouldRetryTransportError(method, headers, error)) {
+        const delay = getAttemptDelay(attempt);
+        logger.warn('网络请求遇到瞬时错误，准备重试', {
+          traceId,
+          url,
+          method,
+          attempt: attempt + 1,
+          delay,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        await sleep(delay);
+        continue;
+      }
+      throw error;
+    }
+  }
+
+  throw new Error('网络请求重试后仍然失败');
 }

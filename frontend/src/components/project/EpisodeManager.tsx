@@ -85,7 +85,10 @@ export const EpisodeManager = forwardRef<EpisodeManagerRef, EpisodeManagerProps>
   const handleEditClick = (episode: Episode, e: React.MouseEvent) => {
     e.stopPropagation();
     setEditingEpisode(episode);
-    form.setFieldsValue({ title: episode.title });
+    form.setFieldsValue({
+      number: episode.number,
+      title: episode.title,
+    });
     setEditDialogOpen(true);
   };
 
@@ -93,15 +96,24 @@ export const EpisodeManager = forwardRef<EpisodeManagerRef, EpisodeManagerProps>
     if (!editingEpisode) return;
     try {
       const values = await form.validateFields();
+      const nextNumber = Number(values.number);
+      if (episodes.some(ep => ep.id !== editingEpisode.id && ep.number === nextNumber)) {
+        message.error(`第 ${nextNumber} 集已存在，请使用其他集数`);
+        return;
+      }
       const updated = await saveEpisode(projectId, editingEpisode.id, {
+        number: nextNumber,
         title: values.title,
       });
       if (updated) {
-        setEpisodes(episodes.map(ep => ep.id === updated.id ? updated : ep));
+        setEpisodes(episodes
+          .map(ep => ep.id === updated.id ? updated : ep)
+          .sort((a, b) => a.number - b.number));
         onEpisodeUpdate?.(updated);
       }
       setEditDialogOpen(false);
       setEditingEpisode(null);
+      form.resetFields();
       message.success('剧集已保存');
     } catch (err: any) {
       if (err?.errorFields) return;
@@ -284,12 +296,32 @@ export const EpisodeManager = forwardRef<EpisodeManagerRef, EpisodeManagerProps>
         title={`编辑 - 第 ${editingEpisode?.number} 集`}
         open={editDialogOpen}
         onOk={handleSaveEdit}
-        onCancel={() => setEditDialogOpen(false)}
+        onCancel={() => {
+          setEditDialogOpen(false);
+          setEditingEpisode(null);
+          form.resetFields();
+        }}
         okText="保存"
         cancelText="取消"
         width={520}
       >
         <Form form={form} layout="vertical" className="mt-4">
+          <Form.Item
+            name="number"
+            label="集数"
+            rules={[
+              { required: true, message: '请输入剧集编号' },
+              {
+                validator: async (_, value) => {
+                  if (!Number.isInteger(Number(value)) || Number(value) < 1) {
+                    throw new Error('集数必须为大于 0 的整数');
+                  }
+                },
+              },
+            ]}
+          >
+            <InputNumber min={1} precision={0} className="!w-full" placeholder="请输入集数" />
+          </Form.Item>
           <Form.Item
             name="title"
             label="剧集标题"

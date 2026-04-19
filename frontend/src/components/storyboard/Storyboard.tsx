@@ -29,6 +29,7 @@ import { generateShotPrompt, batchGenerateShotPrompts } from '../../services/Sho
 import { TaskManager } from '../../services/TaskManager';
 import { ScriptEditor } from '../../editor';
 import type { MentionItem } from '../../editor';
+import { repairShotAssetBindings } from '../../services/shotAssetBindingRepair';
 import { StoryboardStudio } from './StoryboardStudio';
 import { ShotListEditor } from './ShotListEditor';
 import { ShotAssetPresetModal } from './ShotAssetPresetModal';
@@ -354,8 +355,28 @@ export const Storyboard: React.FC<StoryboardProps> = ({
         return;
       }
 
+      const repairedShotResult = repairShotAssetBindings(loadedShots, {
+        characters: loadedCharacters,
+        scenes: loadedScenes,
+        props: loadedProps,
+      });
+
+      if (requestId !== loadRequestIdRef.current) {
+        return;
+      }
+
+      if (episodeId && repairedShotResult.changedShotCount > 0) {
+        void saveEpisodeShots(projectId, episodeId, repairedShotResult.shots).catch((error) => {
+          logger.warn('回写修复后的分镜资产绑定失败', {
+            error: error instanceof Error ? error.message : String(error),
+            episodeId,
+            changedShotCount: repairedShotResult.changedShotCount,
+          });
+        });
+      }
+
       // 分镜编辑器需要始终允许选择项目中的任意资产，避免被章节分析 refs 卡住。
-      setShots(loadedShots);
+      setShots(repairedShotResult.shots);
       setCharacters(loadedCharacters);
       setScenes(loadedScenes);
       setProps(loadedProps);
@@ -1542,6 +1563,62 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     }
   }, [projectId, episodeId, shots, effectiveSettings, ttiSelection, itvSelection, ttsSelection, styleSnapshot, buildUnsupportedShotVideoMessage, message, refreshShotsFromStore]);
 
+  const handleBatchRenderAllVideos = useCallback(async () => {
+    const shotsWithoutVideo = shots.filter((shot) => (shot.media?.videos?.length || 0) === 0);
+    if (shotsWithoutVideo.length === 0) {
+      message.info('当前剧集的分镜都已有视频');
+      return;
+    }
+
+    const supportedShots = shotsWithoutVideo.filter((shot) => !shotVideoSupportMap.get(shot.id)?.disabledReason);
+    const skippedCount = shotsWithoutVideo.length - supportedShots.length;
+    if (supportedShots.length === 0) {
+      const unsupportedMessage = buildUnsupportedShotVideoMessage(shotsWithoutVideo);
+      message.error(unsupportedMessage || '当前没有可生成视频的分镜');
+      return;
+    }
+
+    const shotIds = supportedShots.map((shot) => shot.id);
+    setRenderingShots(new Set(shotIds));
+    setRenderProgress(0);
+    setRenderStep('准备整集一键生成视频...');
+    try {
+      const result = await batchRenderShots(
+        {
+          projectId,
+          episodeId,
+          shots: supportedShots,
+          settings: effectiveSettings,
+          aspectRatio,
+          mediaSelections: {
+            ttiSelection,
+            itvSelection,
+            ttsSelection,
+          },
+          styleSnapshot,
+        },
+        (overall, current) => {
+          setRenderProgress(overall);
+          setRenderStep(`${current.step || ''} (${current.shotId})`);
+        }
+      );
+      await refreshShotsFromStore();
+
+      if (skippedCount > 0 || result.failed > 0) {
+        message.warning(`整集视频生成完成: ${result.success} 成功, ${result.failed} 失败，跳过 ${skippedCount} 条暂不支持的分镜`);
+      } else {
+        message.success(`整集视频生成完成: ${result.success} 成功`);
+      }
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      message.error(errorMessage || '整集视频生成失败');
+    } finally {
+      setRenderingShots(new Set());
+      setRenderProgress(0);
+      setRenderStep('');
+    }
+  }, [aspectRatio, buildUnsupportedShotVideoMessage, effectiveSettings, episodeId, itvSelection, message, projectId, refreshShotsFromStore, shotVideoSupportMap, shots, styleSnapshot, ttiSelection, ttsSelection]);
+
   // 批量重新生成视频（已有视频的）
   const handleBatchReGenerateVideos = useCallback(async (targetShotIds?: string[]) => {
     const baseShots = targetShotIds
@@ -1685,6 +1762,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
             onBatchReGenerateImages={handleBatchReGenerateImages}
             onGenerateVideo={handleRenderShotVideo}
             onBatchGenerateVideos={handleBatchRenderVideos}
+            onBatchGenerateAllVideos={handleBatchRenderAllVideos}
             onBatchReGenerateVideos={handleBatchReGenerateVideos}
             getVideoCapabilityLabel={(shotId) => shotVideoSupportMap.get(shotId)?.capabilityLabel}
             getVideoGenerateDisabledReason={(shotId) => shotVideoSupportMap.get(shotId)?.disabledReason}
