@@ -550,6 +550,15 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     saveAllShots(updatedShots);
   }, [shots, saveAllShots]);
 
+  // 分镜时长变更
+  const handleDurationChange = useCallback((shotId: string, duration: number) => {
+    const safeDuration = Number.isFinite(duration) ? Math.max(1, Math.round(duration)) : 1;
+    const updatedShots = shots.map(s =>
+      s.id === shotId ? { ...s, duration: safeDuration } : s
+    );
+    saveAllShots(updatedShots);
+  }, [shots, saveAllShots]);
+
   // 资产同步 Hook
   const assets = useMemo(() => ({ characters, scenes, props }), [characters, scenes, props]);
   const { syncFromPrompt, handleAssetChange } = useShotAssetSync(assets);
@@ -1574,6 +1583,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
             onScriptChange={handleScriptChange}
             onImagePromptChange={handleImagePromptChange}
             onVideoPromptChange={handleVideoPromptChange}
+            onDurationChange={handleDurationChange}
             onCharactersChange={handleCharactersChange}
             onScenesChange={handleScenesChange}
             onPropsChange={handlePropsChange}
