@@ -29,6 +29,8 @@ export interface LLMQueryRequest {
     operation?: string;
     /** 超时毫秒数，默认 60000 */
     timeoutMs?: number;
+    /** 强制 LLM 返回格式，仅 OpenAI 兼容服务生效 */
+    responseFormat?: 'json_object' | 'text';
   };
 }
 
@@ -238,20 +240,39 @@ export class LLMQueryService {
           };
         }
 
-        const llm = createLLM(sessionConfig);
+        const baseLlm = createLLM(sessionConfig);
         const messages = toLangChainMessages(request.messages);
+
+        // responseFormat: 目前仅 OpenAI 兼容服务（含默认 fallback）支持原生 JSON 强制模式，
+        // 其他 provider 静默忽略，避免破坏请求
+        const wantsJsonObject = request.options?.responseFormat === 'json_object';
+        const canBindResponseFormat =
+          wantsJsonObject &&
+          (!sessionConfig.modelProvider || sessionConfig.modelProvider === 'openai');
+        const llm = canBindResponseFormat
+          ? (baseLlm as any).bind({ response_format: { type: 'json_object' } })
+          : baseLlm;
+
+        if (wantsJsonObject && !canBindResponseFormat) {
+          console.info('[LLMQuery] responseFormat=json_object 已忽略（provider 不支持）', {
+            ...logCtx,
+          });
+        } else if (canBindResponseFormat) {
+          console.info('[LLMQuery] 启用 response_format=json_object', logCtx);
+        }
 
         // 打印实际发送的参数，排查兼容性问题
         if (sessionConfig.baseUrl) {
           try {
             const SENSITIVE_KEYS = new Set(['apikey', 'api_key', 'authorization', 'token', 'secret']);
-            const params = (llm as any).invocationParams?.() ?? {};
+            const params = (baseLlm as any).invocationParams?.() ?? {};
             console.debug('[LLMQuery] OpenAI-compatible 请求参数', {
               ...logCtx,
               baseUrl: sessionConfig.baseUrl,
               invocationParams: Object.fromEntries(
                 Object.entries(params).filter(([k, v]) => v !== undefined && !SENSITIVE_KEYS.has(k.toLowerCase()))
               ),
+              responseFormat: canBindResponseFormat ? 'json_object' : undefined,
             });
           } catch { /* ignore */ }
         }

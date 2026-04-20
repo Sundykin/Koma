@@ -183,6 +183,8 @@ export interface LLMQueryRequest {
     traceId?: string;
     source?: string;
     operation?: string;
+    /** 强制 LLM 返回格式，目前仅 OpenAI 兼容服务生效 */
+    responseFormat?: 'json_object' | 'text';
   };
 }
 

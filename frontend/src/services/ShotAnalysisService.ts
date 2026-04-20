@@ -142,7 +142,13 @@ export class ShotAnalysisService {
           { role: 'system', content: systemPrompt },
           { role: 'user', content: styledPrompt },
         ],
-        { traceId, source: 'shot-analysis', operation: 'breakdown' },
+        {
+          traceId,
+          source: 'shot-analysis',
+          operation: 'breakdown',
+          // 强制 OpenAI 兼容服务以合法 JSON 返回，避免字符串内未转义引号导致解析失败
+          responseFormat: 'json_object',
+        },
       );
 
       logger.info('LLM 返回完成', {

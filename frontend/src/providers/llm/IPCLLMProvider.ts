@@ -67,6 +67,7 @@ export class IPCLLMProvider implements LLMProvider {
         traceId: options?.traceId,
         source: options?.source,
         operation: options?.operation || 'chat',
+        responseFormat: options?.responseFormat,
       },
     });
     return response.content;

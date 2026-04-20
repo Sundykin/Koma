@@ -16,6 +16,8 @@ export interface LLMCallOptions {
   targetId?: string;
   targetName?: string;
   stream?: boolean;
+  /** 强制 LLM 返回格式，目前仅 OpenAI 兼容服务生效 */
+  responseFormat?: 'json_object' | 'text';
 }
 
 export interface LLMProvider {
