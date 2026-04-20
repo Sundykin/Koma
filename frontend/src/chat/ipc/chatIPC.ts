@@ -183,7 +183,9 @@ export interface LLMQueryRequest {
     traceId?: string;
     source?: string;
     operation?: string;
-    /** 强制 LLM 返回格式，目前仅 OpenAI 兼容服务生效 */
+    disableChunking?: boolean;
+    timeoutMs?: number;
+    /** 强制 LLM 返回格式，仅 OpenAI 兼容服务生效 */
     responseFormat?: 'json_object' | 'text';
   };
 }
@@ -276,6 +278,96 @@ export async function llmQuery(request: LLMQueryRequest): Promise<LLMQueryRespon
     throw new LLMQueryError(response.error.code, response.error.message);
   }
   return response;
+}
+
+/**
+ * 流式 LLM 查询 — 通过 IPC 事件逐 chunk 推送结果，无应用层超时。
+ * 返回 Promise<string>，在流式完成后 resolve 完整内容。
+ * onChunk 回调可用于实时更新 UI。
+ */
+export async function llmQueryStream(
+  request: LLMQueryRequest,
+  onChunk?: (delta: string, accumulated: string) => void,
+): Promise<LLMQueryResponse> {
+  const api = getLLMAPI();
+
+  return new Promise<LLMQueryResponse>((resolve, reject) => {
+    let accumulated = '';
+    let streamId: string | undefined;
+    let pendingChunks: Array<{ streamId: string; delta: string }> = [];
+    let pendingDone: { streamId: string; content: string; usage?: LLMQueryResponse['usage'] } | undefined;
+    let pendingError: { streamId: string; error: { code: string; message: string } } | undefined;
+
+    const cleanupFns: Array<() => void> = [];
+    const cleanup = () => cleanupFns.forEach(fn => fn());
+
+    // 处理 streamId 设置后的缓冲事件
+    const flushPending = () => {
+      for (const data of pendingChunks) {
+        if (data.streamId === streamId) {
+          accumulated += data.delta;
+          onChunk?.(data.delta, accumulated);
+        }
+      }
+      pendingChunks = [];
+
+      if (pendingDone && pendingDone.streamId === streamId) {
+        cleanup();
+        resolve({ content: pendingDone.content || accumulated, usage: pendingDone.usage });
+        return;
+      }
+      if (pendingError && pendingError.streamId === streamId) {
+        cleanup();
+        reject(new LLMQueryError(pendingError.error.code, pendingError.error.message));
+      }
+    };
+
+    // 注册流式事件监听
+    const unsubChunk = api.onStreamChunk((_event: any, data: { streamId: string; delta: string }) => {
+      if (streamId && data.streamId === streamId) {
+        accumulated += data.delta;
+        onChunk?.(data.delta, accumulated);
+      } else if (!streamId) {
+        pendingChunks.push(data);
+      }
+    });
+    cleanupFns.push(unsubChunk);
+
+    const unsubDone = api.onStreamDone((_event: any, data: { streamId: string; content: string; usage?: LLMQueryResponse['usage'] }) => {
+      if (streamId && data.streamId === streamId) {
+        cleanup();
+        resolve({ content: data.content || accumulated, usage: data.usage });
+      } else if (!streamId) {
+        pendingDone = data;
+      }
+    });
+    cleanupFns.push(unsubDone);
+
+    const unsubError = api.onStreamError((_event: any, data: { streamId: string; error: { code: string; message: string } }) => {
+      if (streamId && data.streamId === streamId) {
+        cleanup();
+        reject(new LLMQueryError(data.error.code, data.error.message));
+      } else if (!streamId) {
+        pendingError = data;
+      }
+    });
+    cleanupFns.push(unsubError);
+
+    // 发起流式请求
+    api.queryStream(request).then((response: any) => {
+      if (response.error) {
+        cleanup();
+        reject(new LLMQueryError(response.error.code, response.error.message));
+        return;
+      }
+      streamId = response.streamId;
+      // 处理在 streamId 设置前到达的缓冲事件
+      flushPending();
+    }).catch((err: any) => {
+      cleanup();
+      reject(err);
+    });
+  });
 }
 
 export async function testLLMConnection(
@@ -465,6 +557,7 @@ export const chatIPC = {
   isElectron,
   llm: {
     query: llmQuery,
+    queryStream: llmQueryStream,
     isAvailable: isLLMIPCAvailable,
   },
   createSession,

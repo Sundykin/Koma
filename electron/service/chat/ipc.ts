@@ -160,6 +160,63 @@ class ChatIpc {
       }
     });
 
+    // ========== 流式 LLM 查询（供长文本精炼等重量级任务使用） ==========
+
+    ipcMain.handle('llm:queryStream', async (event, args: LLMQueryRequest) => {
+      const traceId = args?.options?.traceId || `ipc-stream-${Date.now()}`;
+      const source = args?.options?.source || 'unknown';
+      const isWorkflow = isWorkflowSource(source);
+
+      if (!validateLLMQueryRequest(args)) {
+        console.warn('[ChatIpc] llm:queryStream 参数校验失败', { traceId, source });
+        return { content: '', error: { code: 'API_ERROR' as const, message: 'Invalid request' } };
+      }
+
+      const acquired = await this.waitForSlot(isWorkflow);
+      if (!acquired) {
+        return { content: '', error: { code: 'API_ERROR' as const, message: 'LLM query queue timeout' } };
+      }
+
+      const sender = event.sender;
+      const streamId = traceId;
+
+      console.info('[ChatIpc] llm:queryStream 接收请求', { traceId, source, isWorkflow });
+
+      // Fire-and-forget: 先返回 streamId，让前端注册监听后再接收流式事件
+      void (async () => {
+        try {
+          await llmQueryService.queryStream(
+            args,
+            (delta) => {
+              if (!sender.isDestroyed()) {
+                sender.send('llm:stream:chunk', { streamId, delta });
+              }
+            },
+            (result) => {
+              if (!sender.isDestroyed()) {
+                sender.send('llm:stream:done', { streamId, content: result.content, usage: result.usage });
+              }
+            },
+            (error) => {
+              if (!sender.isDestroyed()) {
+                sender.send('llm:stream:error', { streamId, error });
+              }
+            },
+          );
+        } catch (err: unknown) {
+          const errMsg = err instanceof Error ? err.message : String(err);
+          console.error('[ChatIpc] llm:queryStream 未预期异常', { traceId, source, error: errMsg });
+          if (!sender.isDestroyed()) {
+            sender.send('llm:stream:error', { streamId, error: { code: 'UNKNOWN', message: 'LLM stream query failed' } });
+          }
+        } finally {
+          this.releaseSlot(isWorkflow);
+        }
+      })();
+
+      return { streamId, accepted: true };
+    });
+
     ipcMain.handle('llm:testConnection', async (_event, args: LLMConnectionTestRequest) => {
       try {
         return await llmQueryService.testConnection(args);

@@ -6,7 +6,7 @@ import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron';
 type Listener = (event: IpcRendererEvent, ...args: any[]) => void;
 
 const ALLOWED_INVOKE_CHANNELS = new Set([
-  'llm:query',
+  'llm:query', 'llm:queryStream',
   'llm:testConnection', 'llm:saveProfile', 'llm:deleteProfile',
   'llm:saveChannelConfig', 'llm:deleteChannelConfig', 'llm:migrateSettingsSecrets',
   'chat:session:create', 'chat:session:get', 'chat:session:dispose',
@@ -42,6 +42,7 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   'controller/project/saveShotMeta', 'controller/project/loadShotMeta',
   'controller/project/listShotMetas',
   'controller/project/saveAnalysis', 'controller/project/loadAnalysis',
+  'controller/project/loadAnalysisSummary', 'controller/project/loadEpisodeShotsPage',
   'controller/project/saveProjectTimeline', 'controller/project/loadProjectTimeline',
   'controller/project/saveEpisodeTimeline', 'controller/project/loadEpisodeTimeline',
   'controller/project/bindOwnerRefMedia',
@@ -90,7 +91,7 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   'controller/ffmpeg/isAvailable', 'controller/ffmpeg/getInfo',
   'controller/ffmpeg/extractFrames', 'controller/ffmpeg/splitGridImage',
   'controller/ffmpeg/waveform',
-  'controller/ffmpeg/splitAudio', 'controller/ffmpeg/composeVideo',
+  'controller/ffmpeg/splitAudio', 'controller/ffmpeg/upscaleImage', 'controller/ffmpeg/composeVideo',
   'controller/ffmpeg/getCacheDir', 'controller/ffmpeg/getTempDir',
   'controller/ffmpeg/ensureDir', 'controller/ffmpeg/saveFrame',
   'controller/ffmpeg/cleanupTemp', 'controller/ffmpeg/clearCache',
@@ -109,6 +110,7 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
 const ALLOWED_LISTEN_CHANNELS = new Set([
   'chat:stream:chunk', 'chat:stream:tool', 'chat:stream:done', 'chat:stream:error',
   'chat:tool:pending', 'chat:tool:approved', 'chat:tool:rejected',
+  'llm:stream:chunk', 'llm:stream:done', 'llm:stream:error',
 ]);
 
 function validateInvokeChannel(channel: string): void {
@@ -217,6 +219,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     listShotMetas: (projectId: string) => invokeMain('controller/project/listShotMetas', { projectId }),
     saveAnalysis: (projectId: string, episodeId: string, analysis: any) => invokeMain('controller/project/saveAnalysis', { projectId, episodeId, analysis }),
     loadAnalysis: (projectId: string, episodeId: string) => invokeMain('controller/project/loadAnalysis', { projectId, episodeId }),
+    loadAnalysisSummary: (projectId: string, episodeId: string) => invokeMain('controller/project/loadAnalysisSummary', { projectId, episodeId }),
+    loadEpisodeShotsPage: (projectId: string, episodeId: string, limit: number, offset: number) => invokeMain('controller/project/loadEpisodeShotsPage', { projectId, episodeId, limit, offset }),
     saveProjectTimeline: (projectId: string, timeline: any) => invokeMain('controller/project/saveProjectTimeline', { projectId, timeline }),
     loadProjectTimeline: (projectId: string) => invokeMain('controller/project/loadProjectTimeline', { projectId }),
     saveEpisodeTimeline: (projectId: string, episodeId: string, timeline: any) => invokeMain('controller/project/saveEpisodeTimeline', { projectId, episodeId, timeline }),
@@ -301,6 +305,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     waveform: (options: any) => invokeMain('controller/ffmpeg/waveform', options),
     splitAudio: (input: string, output: string) =>
       invokeMain('controller/ffmpeg/splitAudio', { input, output }),
+    upscaleImage: (options: any) => invokeMain('controller/ffmpeg/upscaleImage', options),
     composeVideo: (options: any) => invokeMain('controller/ffmpeg/composeVideo', options),
     getCacheDir: (subDir?: string) => invokeMain('controller/ffmpeg/getCacheDir', { subDir }),
     getTempDir: () => invokeMain('controller/ffmpeg/getTempDir', {}),
@@ -343,12 +348,25 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   llm: {
     query: (request: any) => invokeMain('llm:query', request),
+    queryStream: (request: any) => invokeMain('llm:queryStream', request),
     testConnection: (request: any) => invokeMain('llm:testConnection', request),
     saveProfile: (request: any) => invokeMain('llm:saveProfile', request),
     deleteProfile: (profileId: string) => invokeMain('llm:deleteProfile', { profileId }),
     saveChannelConfig: (request: any) => invokeMain('llm:saveChannelConfig', request),
     deleteChannelConfig: (request: any) => invokeMain('llm:deleteChannelConfig', request),
     migrateSettingsSecrets: (request: any) => invokeMain('llm:migrateSettingsSecrets', request),
+    onStreamChunk: (callback: (event: any, data: any) => void) => {
+      ipcRenderer.on('llm:stream:chunk', callback);
+      return () => ipcRenderer.removeListener('llm:stream:chunk', callback);
+    },
+    onStreamDone: (callback: (event: any, data: any) => void) => {
+      ipcRenderer.on('llm:stream:done', callback);
+      return () => ipcRenderer.removeListener('llm:stream:done', callback);
+    },
+    onStreamError: (callback: (event: any, data: any) => void) => {
+      ipcRenderer.on('llm:stream:error', callback);
+      return () => ipcRenderer.removeListener('llm:stream:error', callback);
+    },
   },
   chat: {
     // 会话管理

@@ -21,7 +21,8 @@ import type { Episode } from '../../types';
 import { EpisodeSplitService } from '../../services/EpisodeSplitService';
 import type { SplitAnalysis, SplitResult } from '../../services/EpisodeSplitService';
 import { createCreationContext } from '../../services/CreationContext';
-import { createEpisode } from '../../store/projectStore';
+import { createEpisode, deleteEpisode, listEpisodes } from '../../store/projectStore';
+import { findRemovableDefaultEpisodeIds } from '../../store/project/episodePlaceholders';
 
 const { Text, Paragraph } = Typography;
 
@@ -97,6 +98,12 @@ export const EpisodeSplitWizard: React.FC<EpisodeSplitWizardProps> = ({
     setStep('creating');
 
     try {
+      const existingEpisodes = await listEpisodes(projectId);
+      const removablePlaceholderIds = await findRemovableDefaultEpisodeIds(projectId, existingEpisodes);
+      for (const removableId of removablePlaceholderIds) {
+        await deleteEpisode(projectId, removableId);
+      }
+
       const createdEpisodes: Episode[] = [];
 
       for (let i = 0; i < splitResults.length; i++) {
