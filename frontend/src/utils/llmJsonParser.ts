@@ -78,11 +78,30 @@ export function parseLLMJSON<T>(text: string): T {
     return result;
   } catch (finalError) {
     const errMsg = finalError instanceof Error ? finalError.message : String(finalError);
+    // 从错误信息里抠 position，输出 ±200 字符上下文，标记 ⟦HERE⟧ 指向失败字符
+    const posMatch = errMsg.match(/position\s+(\d+)/i);
+    const errorContext = posMatch
+      ? buildPositionContext(cleaned || text.trim(), Number(posMatch[1]))
+      : undefined;
     logger.error('三级降级全部失败', {
       error: errMsg,
       raw: previewText(text),
       cleaned: previewText(cleaned),
+      errorContext,
     });
     throw new Error(`JSON 解析失败: ${errMsg}`);
   }
+}
+
+function buildPositionContext(source: string, position: number, windowSize = 200) {
+  if (position < 0 || position > source.length) {
+    return { position, window: '<position out of range>' };
+  }
+  const before = source.slice(Math.max(0, position - windowSize), position);
+  const after = source.slice(position, Math.min(source.length, position + windowSize));
+  return {
+    position,
+    sourceLength: source.length,
+    window: `${before}⟦HERE⟧${after}`,
+  };
 }
