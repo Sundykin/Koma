@@ -38,6 +38,7 @@ import {
   collectShotVideoPlan,
   resolveShotVideoCapabilitySupport,
 } from '../../workflow/shotVideoPlan';
+import { resolveConfiguredChannelModel } from '../../providers/channel/resolver';
 import './Storyboard.css';
 import './ShotListEditor.css';
 import { getMediaAssetDisplaySource } from '../../types';
@@ -236,9 +237,22 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     });
   }, [characters.length, scenes.length, props.length, actualMentionItems.length]);
 
+  // 当前选中 ITV 模型的能力矩阵；用于告诉 collectShotVideoPlan 能否走参考生视频，
+  // 避免没有真主图时被迫降级到图生视频。
+  const selectedItvModelCapabilities = useMemo(() => {
+    const ctx = resolveConfiguredChannelModel(effectiveSettings, 'itv', itvSelection);
+    return ctx?.model.capabilities;
+  }, [effectiveSettings, itvSelection]);
+
   const shotVideoSupportMap = useMemo(() => {
     return new Map(shots.map(shot => {
-      const plan = collectShotVideoPlan({ shot, characters, scenes, props });
+      const plan = collectShotVideoPlan({
+        shot,
+        characters,
+        scenes,
+        props,
+        modelCapabilities: selectedItvModelCapabilities,
+      });
       const support = resolveShotVideoCapabilitySupport({
         settings: effectiveSettings,
         selectionKey: itvSelection,
@@ -247,7 +261,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       });
       return [shot.id, support] as const;
     }));
-  }, [shots, characters, scenes, props, effectiveSettings, itvSelection]);
+  }, [shots, characters, scenes, props, effectiveSettings, itvSelection, selectedItvModelCapabilities]);
 
   const buildUnsupportedShotVideoMessage = useCallback((targetShots: Shot[]) => {
     const unsupported = targetShots

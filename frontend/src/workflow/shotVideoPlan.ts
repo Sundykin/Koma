@@ -10,6 +10,7 @@ import type {
   VideoGenerationCapability,
 } from '../types';
 import { getMediaAssetDisplaySource } from '../types';
+import type { ModelCapability } from '../providers/channel/types';
 import type { PromptCompilationAsset } from '../services/promptCompilation/types';
 import { buildVideoCapabilityRequest } from '../services/promptCompilation/videoRequestCompiler';
 import { normalizeShotMediaState } from '../store/project/mediaState';
@@ -88,6 +89,12 @@ export function collectShotVideoPlan(params: {
   characters: Character[];
   scenes: Scene[];
   props: Prop[];
+  /**
+   * 当前选中 ITV 模型的能力矩阵。传入后：若没有真主图（selectedImageAsset）
+   * 但模型支持 video.reference-to-video，则不再把首个参考图/视频缩略图
+   * 伪装成主图，而是直接走参考生视频。未传入时保持旧有的兼容降级路径。
+   */
+  modelCapabilities?: ModelCapability[];
 }): ShotVideoPlan {
   const normalizedShot = normalizeShotMediaState(params.shot);
   const selectedImageIndex = normalizedShot.media?.currentImageIndex ?? 0;
@@ -104,12 +111,69 @@ export function collectShotVideoPlan(params: {
     compilationAssets,
   } = buildShotAssetReferences(normalizedShot, params.characters, params.scenes, params.props);
 
+  const modelSupportsReferenceToVideo = params.modelCapabilities
+    ? params.modelCapabilities.includes('video.reference-to-video')
+    : false;
+
+  // 仅当用户在「图像设计」列明确选中一张时才算真主图；参考图/视频缩略图/资产图不充当主图。
+  const realPrimaryImage = selectedImageAsset;
+  // 兼容降级：模型不支持参考生视频时，沿用老逻辑把首个可用参考图/视频缩略图当作主图。
+  // 资产图（角色/场景/道具）不走这条兜底——历史上它们只参与提示词编译，不直接充当主图。
+  const legacyFallbackPrimary = selectedReferenceAsset || currentVideoPosterSource;
+
+  // 从关联的角色/场景/道具里提取可作为视觉参考的源（costumePhoto / previewImage / 视频封面）。
+  // 历史默认：资产图仅参与提示词编译，不直接进视频请求。只有在「模型声明支持参考生视频」
+  // 时才升级为真正的视觉输入，避免对没有传入 modelCapabilities 的调用路径产生副作用。
+  const assetVisualSources: MediaAssetSource[] = [];
+  if (modelSupportsReferenceToVideo) {
+    for (const asset of compilationAssets) {
+      const rawSource = asset.source;
+      if (!rawSource) continue;
+      if (typeof rawSource === 'string') {
+        if (rawSource.trim()) assetVisualSources.push(rawSource);
+        continue;
+      }
+      // ProviderAssetInput 只在已提交过的 provider 请求上下文里出现，分镜
+      // 采集阶段不会塞这种类型；过滤掉以满足 MediaAssetSource 收窄。
+      if ('transport' in rawSource) continue;
+      if (getVisualReferenceSource(rawSource)) {
+        assetVisualSources.push(rawSource);
+      }
+    }
+  }
+
+  // 是否有任何可用视觉输入
+  const hasAnyVisualInput = Boolean(
+    selectedReferenceAsset
+    || currentVideoPosterSource
+    || (normalizedShot.media?.references?.length ?? 0) > 0
+    || (normalizedShot.media?.videos?.length ?? 0) > 0
+    || assetVisualSources.length > 0,
+  );
+
+  let capability: VideoGenerationCapability;
+  let primaryImageInput: MediaAssetSource | undefined;
+
+  if (realPrimaryImage) {
+    capability = 'video.image-to-video';
+    primaryImageInput = realPrimaryImage;
+  } else if (hasAnyVisualInput && modelSupportsReferenceToVideo) {
+    // 新规则：无真主图 + 模型支持参考生视频 → 走参考生视频，不强占主图位。
+    capability = 'video.reference-to-video';
+    primaryImageInput = undefined;
+  } else if (legacyFallbackPrimary) {
+    // 兼容老模型：只会图生不会参考生，仍把首个参考图当主图。
+    capability = 'video.image-to-video';
+    primaryImageInput = legacyFallbackPrimary;
+  } else {
+    capability = 'video.text-to-video';
+    primaryImageInput = undefined;
+  }
+
+  const primaryImageSource = getVisualReferenceSource(primaryImageInput);
+
   const additionalReferenceImages: MediaAssetSource[] = [];
   const dedupe = new Set<string>();
-  const primaryImageInput = selectedImageAsset
-    || selectedReferenceAsset
-    || currentVideoPosterSource;
-  const primaryImageSource = getVisualReferenceSource(primaryImageInput);
 
   (normalizedShot.media?.references || []).forEach((reference, index) => {
     if (index === selectedReferenceIndex && primaryImageSource === selectedReferenceSource) {
@@ -125,15 +189,14 @@ export function collectShotVideoPlan(params: {
     pushUniqueSource(additionalReferenceImages, dedupe, getVideoThumbnailSource(video), primaryImageSource);
   });
 
+  // 资产图（角色/场景/道具）：去重后追加，保证没有 shot.media 参考图时也能凑出 referenceImages。
+  for (const assetSource of assetVisualSources) {
+    pushUniqueSource(additionalReferenceImages, dedupe, assetSource, primaryImageSource);
+  }
+
   const visualReferenceInputs: MediaAssetSource[] = primaryImageInput
     ? [primaryImageInput, ...additionalReferenceImages]
     : [...additionalReferenceImages];
-
-  const capability: VideoGenerationCapability = primaryImageInput
-    ? 'video.image-to-video'
-    : additionalReferenceImages.length > 0
-      ? 'video.reference-to-video'
-      : 'video.text-to-video';
 
   return {
     shot: normalizedShot,
