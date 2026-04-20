@@ -79,8 +79,19 @@ function getProviderColor(provider: string) {
     case 'sora2': return 'geekblue';
     case 'comfyui-animatediff': return 'orange';
     case 'grok2api-imagine-itv': return 'green';
+    case 'koma-official': return 'gold';
     default: return 'default';
   }
+}
+
+function readLockedBaseUrl(
+  definition?: { configSchema?: Record<string, unknown> },
+): string | undefined {
+  const schema = definition?.configSchema as
+    | { baseUrlLocked?: boolean; fixedBaseUrl?: string; properties?: { baseUrl?: { default?: string } } }
+    | undefined;
+  if (!schema?.baseUrlLocked) return undefined;
+  return schema.fixedBaseUrl || schema.properties?.baseUrl?.default || undefined;
 }
 
 function getChannelDefaults(definition?: ReturnType<typeof listBuiltInChannelOptions>[number]) {
@@ -304,13 +315,16 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
         : models[0]?.id;
       if (!defaultModelId) throw new Error('请至少添加一个模型');
 
+      const lockedBaseUrl = readLockedBaseUrl(definition);
       const payload = {
         name: values.name,
         description: definition.description,
         category: 'itv' as const,
         providerType: definition.id,
         providerConfig: {
-          baseUrl: values.baseUrl,
+          // 若渠道定义声明 baseUrlLocked，强制使用 schema 中的固定域名，
+          // 防止用户绕过 UI 直接改写 localStorage。
+          baseUrl: lockedBaseUrl || values.baseUrl,
           apiKey: values.apiKey,
           promptProtocol: values.promptProtocol || undefined,
           defaultDuration: values.defaultDuration || undefined,
@@ -709,8 +723,12 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
                 name="baseUrl"
                 label={t('settings.apiAddress')}
                 rules={[{ required: true, message: `${t('settings.pleaseEnter')} ${t('settings.apiAddress')}` }]}
+                extra={readLockedBaseUrl(currentDefinition) ? '官方渠道地址不可修改' : undefined}
               >
-                <Input placeholder="https://api.klingai.com" />
+                <Input
+                  placeholder="https://api.klingai.com"
+                  disabled={Boolean(readLockedBaseUrl(currentDefinition))}
+                />
               </Form.Item>
 
               <Form.Item name="defaultDuration" label={`${t('settings.defaultDuration')} (s)`}>

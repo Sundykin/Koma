@@ -12,6 +12,7 @@ export { ViduProvider } from './ViduProvider';
 export { ComfyUIAnimateDiffProvider } from './ComfyUIAnimateDiffProvider';
 export { CustomITVProvider } from './CustomITVProvider';
 export { Grok2ApiImagineITVProvider } from './Grok2ApiImagineITVProvider';
+export { KomaOfficialProvider } from './KomaOfficialProvider';
 
 import type { ITVConfig } from '../../types';
 import type { ITVProvider } from './types';
@@ -24,6 +25,7 @@ import { ViduProvider } from './ViduProvider';
 import { ComfyUIAnimateDiffProvider } from './ComfyUIAnimateDiffProvider';
 import { CustomITVProvider } from './CustomITVProvider';
 import { Grok2ApiImagineITVProvider } from './Grok2ApiImagineITVProvider';
+import { KomaOfficialProvider } from './KomaOfficialProvider';
 import type { ProviderDefinition } from '../registry.types';
 import { DEFAULT_POLLING_CONFIG, MEDIA_PROVIDER_CONTRACT_VERSION } from '../registry.types';
 import { itvRegistry } from '../registry';
@@ -141,6 +143,20 @@ function registerBuiltinProviders() {
       contractVersion: MEDIA_PROVIDER_CONTRACT_VERSION,
       capabilities: ['itv'],
       polling: DEFAULT_POLLING_CONFIG,
+    },
+    {
+      type: 'koma-official',
+      kind: 'itv',
+      name: 'Koma 官方',
+      description: 'Koma 官方聚合视频渠道（NewAPI 协议，/v1/videos 异步 + chat 兜底）',
+      factory: (config) => new KomaOfficialProvider(config as ITVConfig),
+      contractVersion: MEDIA_PROVIDER_CONTRACT_VERSION,
+      capabilities: ['itv'],
+      polling: {
+        interval: 8000,
+        maxDuration: 1800000,
+        initialDelay: 5000,
+      },
     },
   ];
 

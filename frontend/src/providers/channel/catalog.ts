@@ -90,21 +90,31 @@ const ttiChannels: ChannelDefinition[] = [
   })),
 ];
 
-const itvChannels: ChannelDefinition[] = ITV_PRESETS.map((preset) => ({
-  id: preset.id,
-  category: 'itv' as const,
-  vendor: preset.name,
-  name: preset.name,
-  runtimeProviderType: preset.id,
-  models: [],
-  configSchema: {
-    required: preset.id === 'comfyui-animatediff' ? ['baseUrl'] : ['apiKey'],
-    properties: {
-      baseUrl: { type: 'string', default: preset.baseUrl || '' },
-      apiKey: { type: 'string' },
+const itvChannels: ChannelDefinition[] = ITV_PRESETS.map((preset) => {
+  const isLocalOnly = preset.id === 'comfyui-animatediff';
+  // koma-official 官方渠道：baseUrl 固定，UI 不再允许用户改写。
+  const baseUrlLocked = preset.id === 'koma-official';
+  return {
+    id: preset.id,
+    category: 'itv' as const,
+    vendor: preset.name,
+    name: preset.name,
+    runtimeProviderType: preset.id,
+    models: [],
+    configSchema: {
+      required: isLocalOnly ? ['baseUrl'] : ['apiKey'],
+      properties: {
+        baseUrl: {
+          type: 'string',
+          default: preset.baseUrl || '',
+          ...(baseUrlLocked ? { locked: true, fixed: preset.baseUrl } : {}),
+        },
+        apiKey: { type: 'string' },
+      },
+      ...(baseUrlLocked ? { baseUrlLocked: true, fixedBaseUrl: preset.baseUrl } : {}),
     },
-  },
-}));
+  };
+});
 
 const ttsChannels: ChannelDefinition[] = TTS_PRESETS.map((preset) => ({
   id: preset.id,

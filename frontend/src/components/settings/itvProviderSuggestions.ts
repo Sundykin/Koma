@@ -47,10 +47,54 @@ const KLING_MODEL_SUGGESTIONS: ChannelModelDefinition[] = [
   },
 ];
 
+const KOMA_OFFICIAL_MODEL_SUGGESTIONS: ChannelModelDefinition[] = [
+  {
+    id: 'jimeng-video-3.0-fast',
+    label: '即梦 3.0 Fast',
+    providerModelName: 'jimeng-video-3.0-fast',
+    capabilities: [
+      'video.text-to-video',
+      'video.image-to-video',
+      'video.start-end-to-video',
+    ],
+    defaults: { defaultDuration: 5, defaultResolution: '720p' },
+  },
+  {
+    id: 'jimeng-video-3.0',
+    label: '即梦 3.0',
+    providerModelName: 'jimeng-video-3.0',
+    capabilities: [
+      'video.text-to-video',
+      'video.image-to-video',
+      'video.start-end-to-video',
+    ],
+    defaults: { defaultDuration: 5, defaultResolution: '720p' },
+  },
+  {
+    id: 'jimeng-video-sora2',
+    label: 'Sora 2',
+    providerModelName: 'jimeng-video-sora2',
+    capabilities: ['video.text-to-video', 'video.image-to-video'],
+    defaults: { defaultDuration: 8, defaultResolution: '720p' },
+  },
+  {
+    id: 'grok-imagine-1.0-video',
+    label: 'Grok Imagine Video',
+    providerModelName: 'grok-imagine-1.0-video',
+    capabilities: [
+      'video.text-to-video',
+      'video.image-to-video',
+      'video.reference-to-video',
+    ],
+    defaults: { defaultDuration: 6, defaultResolution: '720p' },
+  },
+];
+
 const ITV_PROVIDER_MODEL_SUGGESTIONS: Record<string, ChannelModelDefinition[]> = {
   vidu: getSuggestedViduModels(),
   seedance: getSuggestedSeedanceModels(),
   kling: KLING_MODEL_SUGGESTIONS,
+  'koma-official': KOMA_OFFICIAL_MODEL_SUGGESTIONS,
 };
 
 const ITV_PROVIDER_FIELD_DEFAULTS: Record<string, Record<string, unknown>> = {
@@ -65,6 +109,11 @@ const ITV_PROVIDER_FIELD_DEFAULTS: Record<string, Record<string, unknown>> = {
   kling: {
     defaultDuration: 5,
     defaultResolution: '1280x720',
+  },
+  'koma-official': {
+    defaultDuration: 5,
+    defaultResolution: '720p',
+    baseUrl: 'https://api.568069.xyz',
   },
 };
 
