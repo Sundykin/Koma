@@ -96,8 +96,10 @@ export async function shotImageWorkflow(params: {
       promptSource = resolved.source;
     } else {
       // 保留 @char/@scene/@prop（供渠道编译协议处理，例如 grok-image-index）。
-      // 如果这里把 @ 引用替换成纯文字描述，会导致编译器无法提取 @ 资产并完成 @Image N 映射。
-      prompt = normalizedShot.imagePrompt;
+      // 将项目风格前缀拼接到已有 imagePrompt 前，确保 TTI 模型遵循风格设定
+      prompt = stylePrefix
+        ? `${stylePrefix}, ${normalizedShot.imagePrompt}`
+        : normalizedShot.imagePrompt;
     }
   } else {
     const resolved = await resolvePromptTemplate('tti_shot_image', buildShotImageTemplateVariables({
