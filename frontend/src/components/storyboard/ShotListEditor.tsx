@@ -2,9 +2,10 @@
  * 分镜列表编辑器
  * 内联编辑模式，每行一个分镜
  */
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { Button, Typography, Progress } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
+import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso';
 import { StoryboardLayout } from './StoryboardLayout';
 import { ShotListHeader } from './ShotListHeader';
 import type { MentionItem } from '../../editor';
@@ -121,6 +122,7 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
   onShotImageModeChange,
 }) => {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const virtuosoRef = useRef<VirtuosoHandle>(null);
 
   const selectedCount = selectedIds.size;
   const hasSelected = selectedCount > 0;
@@ -189,6 +191,109 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
     }
   }, [hasSelected, selectedIds, onBatchDelete]);
 
+  // 当外部切换 activeShotId 时，把对应行滚动到可视区域内
+  useEffect(() => {
+    if (!activeShotId) return;
+    const idx = shots.findIndex((s) => s.id === activeShotId);
+    if (idx < 0) return;
+    virtuosoRef.current?.scrollIntoView({
+      index: idx,
+      align: 'center',
+      behavior: 'smooth',
+    });
+  }, [activeShotId, shots]);
+
+  const renderShotRow = useCallback(
+    (index: number, shot: Shot) => (
+      <ShotCard
+        projectId={projectId}
+        shot={shot}
+        index={index}
+        totalCount={shots.length}
+        characters={characters}
+        scenes={scenes}
+        props={props}
+        mentionItems={mentionItems}
+        isSelected={selectedIds.has(shot.id)}
+        isActive={activeShotId === shot.id}
+        isGeneratingImagePrompt={generatingImagePrompts.has(shot.id)}
+        isGeneratingVideoPrompt={generatingVideoPrompts.has(shot.id)}
+        isGeneratingImage={generatingImages.has(shot.id)}
+        isGeneratingVideo={generatingVideos.has(shot.id)}
+        onSelectChange={handleSelectChange}
+        onActivate={onActiveShotChange}
+        onScriptChange={onScriptChange}
+        onImagePromptChange={onImagePromptChange}
+        onVideoPromptChange={onVideoPromptChange}
+        onImageModeChange={onShotImageModeChange}
+        onCharactersChange={onCharactersChange}
+        onScenesChange={onScenesChange}
+        onPropsChange={onPropsChange}
+        onReferenceImagesChange={onReferenceImagesChange}
+        onImagesChange={onImagesChange}
+        onVideosChange={onVideosChange}
+        onGenerateImagePrompt={onGenerateImagePrompt}
+        onGenerateVideoPrompt={onGenerateVideoPrompt}
+        onOptimizeImagePrompt={onOptimizeImagePrompt}
+        onOptimizeVideoPrompt={onOptimizeVideoPrompt}
+        onGenerateImage={onGenerateImage}
+        onGenerateVideo={onGenerateVideo}
+        videoCapabilityLabel={getVideoCapabilityLabel?.(shot.id)}
+        videoGenerateDisabledReason={getVideoGenerateDisabledReason?.(shot.id)}
+        onToggleConfirm={onToggleConfirm}
+        onDelete={onDelete}
+        onMergeUp={onMergeUp}
+        onMergeDown={onMergeDown}
+        onMoveUp={onMoveUp}
+        onMoveDown={onMoveDown}
+        onInsertAbove={onInsertAbove}
+        onInsertBelow={onInsertBelow}
+      />
+    ),
+    [
+      projectId,
+      shots.length,
+      characters,
+      scenes,
+      props,
+      mentionItems,
+      selectedIds,
+      activeShotId,
+      generatingImagePrompts,
+      generatingVideoPrompts,
+      generatingImages,
+      generatingVideos,
+      handleSelectChange,
+      onActiveShotChange,
+      onScriptChange,
+      onImagePromptChange,
+      onVideoPromptChange,
+      onShotImageModeChange,
+      onCharactersChange,
+      onScenesChange,
+      onPropsChange,
+      onReferenceImagesChange,
+      onImagesChange,
+      onVideosChange,
+      onGenerateImagePrompt,
+      onGenerateVideoPrompt,
+      onOptimizeImagePrompt,
+      onOptimizeVideoPrompt,
+      onGenerateImage,
+      onGenerateVideo,
+      getVideoCapabilityLabel,
+      getVideoGenerateDisabledReason,
+      onToggleConfirm,
+      onDelete,
+      onMergeUp,
+      onMergeDown,
+      onMoveUp,
+      onMoveDown,
+      onInsertAbove,
+      onInsertBelow,
+    ],
+  );
+
   return (
     <StoryboardLayout>
       <div className="flex flex-col h-full">
@@ -208,88 +313,47 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
         )}
 
         {/* 分镜列表 */}
-        <div className="flex-1 overflow-y-auto">
-          {shots.length === 0 ? (
-            <div className="h-full flex flex-col items-center justify-center">
-              <Text type="secondary">暂无分镜数据</Text>
-              <Button type="primary" icon={<PlusOutlined />} onClick={onAddShot} style={{ marginTop: 12 }}>
-                添加分镜
-              </Button>
-            </div>
-          ) : (
-            <div className="flex flex-col">
-              {/* 公共表头 - 集成全选和批量操作 */}
-              <ShotListHeader
-                totalCount={shots.length}
-                selectedCount={selectedCount}
-                isAllSelected={isAllSelected}
-                isIndeterminate={isIndeterminate}
-                generatingPrompts={generatingImagePrompts.size > 0 || generatingVideoPrompts.size > 0}
-                generatingImages={generatingImages.size > 0}
-                generatingVideos={generatingVideos.size > 0}
-                onSelectAll={handleSelectAll}
-                onBatchPrompts={handleBatchPrompts}
-                onBatchRePrompts={handleBatchRePrompts}
-                onBatchImages={handleBatchImages}
-                onBatchReImages={handleBatchReImages}
-                onBatchVideos={handleBatchVideos}
-                onBatchReVideos={handleBatchReVideos}
-                onBatchVideoPrompts={handleBatchVideoPrompts}
-                onBatchReVideoPrompts={handleBatchReVideoPrompts}
-                onAddShot={onAddShot}
-                onBatchDelete={handleBatchDelete}
-              />
-              {/* 分镜行 */}
-              {shots.map((shot, index) => (
-                <ShotCard
-                  key={shot.id}
-                  projectId={projectId}
-                  shot={shot}
-                  index={index}
-                  totalCount={shots.length}
-                  characters={characters}
-                  scenes={scenes}
-                  props={props}
-                  mentionItems={mentionItems}
-                  isSelected={selectedIds.has(shot.id)}
-                  isActive={activeShotId === shot.id}
-                  isGeneratingImagePrompt={generatingImagePrompts.has(shot.id)}
-                  isGeneratingVideoPrompt={generatingVideoPrompts.has(shot.id)}
-                  isGeneratingImage={generatingImages.has(shot.id)}
-                  isGeneratingVideo={generatingVideos.has(shot.id)}
-                  onSelectChange={handleSelectChange}
-                  onActivate={onActiveShotChange}
-                  onScriptChange={onScriptChange}
-                  onImagePromptChange={onImagePromptChange}
-                  onVideoPromptChange={onVideoPromptChange}
-                  onImageModeChange={onShotImageModeChange}
-                  onCharactersChange={onCharactersChange}
-                  onScenesChange={onScenesChange}
-                  onPropsChange={onPropsChange}
-                  onReferenceImagesChange={onReferenceImagesChange}
-                  onImagesChange={onImagesChange}
-                  onVideosChange={onVideosChange}
-                  onGenerateImagePrompt={onGenerateImagePrompt}
-                  onGenerateVideoPrompt={onGenerateVideoPrompt}
-                  onOptimizeImagePrompt={onOptimizeImagePrompt}
-                  onOptimizeVideoPrompt={onOptimizeVideoPrompt}
-                  onGenerateImage={onGenerateImage}
-                  onGenerateVideo={onGenerateVideo}
-                  videoCapabilityLabel={getVideoCapabilityLabel?.(shot.id)}
-                  videoGenerateDisabledReason={getVideoGenerateDisabledReason?.(shot.id)}
-                  onToggleConfirm={onToggleConfirm}
-                  onDelete={onDelete}
-                  onMergeUp={onMergeUp}
-                  onMergeDown={onMergeDown}
-                  onMoveUp={onMoveUp}
-                  onMoveDown={onMoveDown}
-                  onInsertAbove={onInsertAbove}
-                  onInsertBelow={onInsertBelow}
-                />
-              ))}
-            </div>
-          )}
-        </div>
+        {shots.length === 0 ? (
+          <div className="flex-1 flex flex-col items-center justify-center">
+            <Text type="secondary">暂无分镜数据</Text>
+            <Button type="primary" icon={<PlusOutlined />} onClick={onAddShot} style={{ marginTop: 12 }}>
+              添加分镜
+            </Button>
+          </div>
+        ) : (
+          <div className="flex flex-col flex-1 min-h-0">
+            {/* 公共表头 - 集成全选和批量操作；置于虚拟滚动外，长列表滚动时常驻可见 */}
+            <ShotListHeader
+              totalCount={shots.length}
+              selectedCount={selectedCount}
+              isAllSelected={isAllSelected}
+              isIndeterminate={isIndeterminate}
+              generatingPrompts={generatingImagePrompts.size > 0 || generatingVideoPrompts.size > 0}
+              generatingImages={generatingImages.size > 0}
+              generatingVideos={generatingVideos.size > 0}
+              onSelectAll={handleSelectAll}
+              onBatchPrompts={handleBatchPrompts}
+              onBatchRePrompts={handleBatchRePrompts}
+              onBatchImages={handleBatchImages}
+              onBatchReImages={handleBatchReImages}
+              onBatchVideos={handleBatchVideos}
+              onBatchReVideos={handleBatchReVideos}
+              onBatchVideoPrompts={handleBatchVideoPrompts}
+              onBatchReVideoPrompts={handleBatchReVideoPrompts}
+              onAddShot={onAddShot}
+              onBatchDelete={handleBatchDelete}
+            />
+            {/* 虚拟滚动：变高行由 react-virtuoso 自动测量 */}
+            <Virtuoso
+              ref={virtuosoRef}
+              data={shots}
+              computeItemKey={(_, shot) => shot.id}
+              itemContent={renderShotRow}
+              increaseViewportBy={400}
+              style={{ flex: 1 }}
+            />
+          </div>
+        )}
       </div>
     </StoryboardLayout>
   );
