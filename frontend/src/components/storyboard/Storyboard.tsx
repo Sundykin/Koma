@@ -1207,12 +1207,28 @@ export const Storyboard: React.FC<StoryboardProps> = ({
 
   const handleGenerateAIShots = useCallback(async () => {
     if (!episodeId || !script) {
+      logger.warn('AI 生成被拒：缺少必要参数', {
+        hasEpisodeId: !!episodeId,
+        hasScript: !!script,
+      });
       message.warning('缺少剧集信息或剧本内容');
       return;
     }
     // 检查是否有已绑定 Sora2 的资产，如有则打开预选对话框
     const hasBoundCharacters = characters.some(c => c.sora2CharacterId);
     const hasBoundProps = props.some(p => p.sora2PropId);
+    logger.info('点击 AI 智能生成分镜', {
+      projectId,
+      episodeId,
+      episodeName,
+      scriptLength: script.length,
+      llmSelection,
+      charactersCount: characters.length,
+      propsCount: props.length,
+      hasBoundCharacters,
+      hasBoundProps,
+      branch: hasBoundCharacters || hasBoundProps ? 'preset-modal' : 'direct',
+    });
     if (hasBoundCharacters || hasBoundProps) {
       setPresetModalOpen(true);
     } else {
@@ -1222,6 +1238,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
         await startShotAnalysis(projectId, episodeId, episodeName || `剧集 ${episodeId}`, script, llmSelection, undefined, styleSnapshot);
         message.info('AI 分镜生成任务已启动，可在状态栏查看进度');
       } catch (err: any) {
+        logger.error('启动 AI 分镜生成失败', err);
         message.error(err.message || '启动生成失败');
         setIsAnalyzing(false);
       }

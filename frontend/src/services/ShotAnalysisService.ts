@@ -89,10 +89,21 @@ export class ShotAnalysisService {
     episodeId: string,
     script: string,
   ): Promise<void> {
+    const traceId = `shot-analysis-${taskId}`;
     try {
       TaskManager.updateTask(taskId, { progress: 10 });
 
       const { characters, scenes, props } = this.ctx;
+
+      logger.info('开始分镜生成', {
+        traceId,
+        episodeId,
+        scriptLength: script.length,
+        charactersCount: characters.length,
+        scenesCount: scenes.length,
+        propsCount: props.length,
+        hasPresetAssets: !!this.presetAssets,
+      });
 
       TaskManager.updateTask(taskId, { progress: 20 });
 
@@ -118,15 +129,51 @@ export class ShotAnalysisService {
       const resolvedSystemPrompt = await resolvePromptTemplate('shot_breakdown_system', {});
       const systemPrompt = resolvedSystemPrompt.prompt;
 
-      const result = await this.ctx.llmProvider.chat([
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: styledPrompt },
-      ]);
+      logger.info('准备调用 LLM', {
+        traceId,
+        systemPromptLength: systemPrompt.length,
+        userPromptLength: styledPrompt.length,
+        userPromptHead: styledPrompt.slice(0, 200),
+      });
+
+      const llmStart = Date.now();
+      const result = await this.ctx.llmProvider.chat(
+        [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: styledPrompt },
+        ],
+        { traceId, source: 'shot-analysis', operation: 'breakdown' },
+      );
+
+      logger.info('LLM 返回完成', {
+        traceId,
+        durationMs: Date.now() - llmStart,
+        responseLength: result.length,
+        responseHead: result.slice(0, 200),
+        responseTail: result.length > 200 ? result.slice(-200) : '',
+      });
 
       TaskManager.updateTask(taskId, { progress: 70 });
 
       // 解析结果
-      const parsed = this.parseJSON<{ shots: any[] }>(result);
+      let parsed: { shots: any[] };
+      try {
+        parsed = this.parseJSON<{ shots: any[] }>(result);
+        logger.info('JSON 解析成功', { traceId, shotsCount: parsed.shots?.length ?? 0 });
+      } catch (parseErr) {
+        // 解析失败：把完整原始响应分块写入日志，便于人工排查
+        const errMsg = parseErr instanceof Error ? parseErr.message : String(parseErr);
+        logger.error('分镜 JSON 解析失败', { traceId, error: errMsg, responseLength: result.length });
+        const CHUNK = 1000;
+        for (let i = 0; i < result.length; i += CHUNK) {
+          logger.error('原始响应片段', {
+            traceId,
+            range: `${i}-${Math.min(i + CHUNK, result.length)}`,
+            content: result.slice(i, i + CHUNK),
+          });
+        }
+        throw parseErr;
+      }
 
       // 将角色名/道具名映射到 ID
       // 优先使用预选资产的 Sora2 ID，其次使用已绑定的 Sora2 ID，最后使用自定义 ID

@@ -211,7 +211,15 @@ export class LLMQueryService {
     const timeoutMs = request.options?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     const startTime = Date.now();
 
-    console.info('[LLMQuery] 请求开始', { ...logCtx, timeoutMs });
+    console.info('[LLMQuery] 请求开始', {
+      ...logCtx,
+      timeoutMs,
+      messages: request.messages.map(m => ({
+        role: m.role,
+        length: m.content.length,
+        head: m.content.slice(0, 200),
+      })),
+    });
 
     let retryCount = 0;
 
@@ -267,6 +275,8 @@ export class LLMQueryService {
           ...logCtx,
           durationMs,
           contentLength: content.length,
+          contentHead: content.slice(0, 200),
+          contentTail: content.length > 200 ? content.slice(-200) : '',
           retryCount,
           ...(usage ? { inputTokens: usage.promptTokens, outputTokens: usage.completionTokens } : {}),
         });
