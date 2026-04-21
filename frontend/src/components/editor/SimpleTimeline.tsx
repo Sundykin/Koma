@@ -170,15 +170,15 @@ const Filmstrip: React.FC<{ clip: Clip; frames?: string[]; pixelsPerSecond: numb
           <div key={i} className="flex-shrink-0 h-full border-r border-white/20 relative bg-zinc-800" style={{ width: frameWidth }}>
             <img
               src={frameSrc}
-              className="w-full h-full object-cover opacity-90"
+              className="w-full h-full object-cover opacity-90 relative z-10"
               alt=""
               draggable={false}
               onError={(e) => {
                 const target = e.target as HTMLImageElement;
-                target.style.opacity = '0';
+                target.style.display = 'none';
               }}
             />
-            <div className="absolute inset-0 bg-gradient-to-br from-blue-900/30 to-blue-800/20 -z-10" />
+            <div className="absolute inset-0 bg-gradient-to-br from-blue-900/30 to-blue-800/20" />
           </div>
         );
       })}
@@ -931,7 +931,7 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
             >
               {/* 轨道头部 */}
               <div
-                className="sticky left-0 w-[200px] flex-shrink-0 bg-[#18181b] border-r border-[#27272a] z-20 flex flex-col justify-center px-3"
+                className="sticky left-0 w-[200px] flex-shrink-0 bg-[#18181b] border-r border-[#27272a] z-30 flex flex-col justify-center px-3"
                 onContextMenu={(e) => handleTrackContextMenu(e, track)}
               >
                 <div className="flex items-center justify-between gap-1">
@@ -1013,7 +1013,7 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
               </div>
 
               {/* 轨道内容 */}
-              <div className="relative flex-1 h-full" style={{ width: totalWidth }}>
+              <div className="relative flex-1 h-full overflow-clip" style={{ width: totalWidth }}>
                 {(() => {
                   const resolvedTrack = resolvedTracksMap.get(track.id);
                   const clipWindows = new Map(
