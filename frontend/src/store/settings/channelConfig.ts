@@ -325,3 +325,251 @@ export async function cleanupLegacyConfigs(): Promise<{
 
   return result;
 }
+
+// ========== Koma 官方渠道统一激活 ==========
+
+const KOMA_BASE_URL = 'https://api.568069.xyz';
+
+const KOMA_OFFICIAL_CHANNELS = {
+  llm: {
+    providerType: 'koma-official-llm',
+    category: 'llm' as MediaCategory,
+    name: 'Koma 官方',
+    baseUrl: `${KOMA_BASE_URL}/v1`,
+    defaultModels: [
+      { id: 'gpt-4o', name: 'GPT-4o', capabilities: ['chat'] as string[] },
+      { id: 'claude-sonnet-4-20250514', name: 'Claude Sonnet 4', capabilities: ['chat'] as string[] },
+    ],
+  },
+  tti: {
+    providerType: 'koma-official-tti',
+    category: 'tti' as MediaCategory,
+    name: 'Koma 官方（文生图）',
+    baseUrl: KOMA_BASE_URL,
+    defaultModels: [
+      { id: 'gpt-image-1', name: 'GPT Image 1', capabilities: ['image.text-to-image'] as string[] },
+    ],
+  },
+  itv: {
+    providerType: 'koma-official',
+    category: 'itv' as MediaCategory,
+    name: 'Koma 官方',
+    baseUrl: KOMA_BASE_URL,
+    defaultModels: [
+      { id: 'vidu-2.0', name: 'Vidu 2.0', capabilities: ['video.image-to-video'] as string[] },
+    ],
+  },
+} as const;
+
+/**
+ * 通过 IPC 桥接发起外部 HTTP 请求（绕过渲染进程 CORS 限制）
+ */
+async function ipcFetch(url: string, headers?: Record<string, string>): Promise<{
+  ok: boolean;
+  status: number;
+  body: string;
+}> {
+  if (typeof window !== 'undefined' && (window as any).electron?.ipcRenderer) {
+    return (window as any).electron.ipcRenderer.invoke('controller/net/fetch', {
+      url,
+      method: 'GET',
+      headers,
+    });
+  }
+  // fallback: 非 Electron 环境直接 fetch
+  const resp = await fetch(url, { headers });
+  return { ok: resp.ok, status: resp.status, body: await resp.text() };
+}
+
+/**
+ * 测试 API Key 是否有效（调用 /v1/models）
+ */
+export async function testKomaApiKey(apiKey: string): Promise<boolean> {
+  try {
+    const resp = await ipcFetch(`${KOMA_BASE_URL}/v1/models`, {
+      Authorization: `Bearer ${apiKey}`,
+    });
+    return resp.ok;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 查询 new-api 额度
+ * 1. 优先 /api/user/self（需 session token，部分部署支持 API key）
+ * 2. fallback 到 billing 端点（subscription + usage，token 级别额度）
+ */
+export async function queryKomaQuota(apiKey: string): Promise<{
+  quota: number;
+  usedQuota: number;
+  balanceUSD: number;
+} | null> {
+  const bearerHeader = { Authorization: `Bearer ${apiKey}` };
+
+  // 方式 1：/api/user/self —— 返回用户级完整额度（需 session token）
+  for (const headers of [bearerHeader, { Authorization: apiKey }]) {
+    try {
+      const resp = await ipcFetch(`${KOMA_BASE_URL}/api/user/self`, headers);
+      if (!resp.ok) continue;
+      const json = JSON.parse(resp.body);
+      if (json.success === false) continue;
+      const data = json.data ?? json;
+      if (data.quota !== undefined) {
+        const quota = data.quota ?? 0;
+        const usedQuota = data.used_quota ?? 0;
+        return { quota, usedQuota, balanceUSD: (quota - usedQuota) / 500000 };
+      }
+    } catch { /* try next */ }
+  }
+
+  // 方式 2：billing 端点 —— token 级别额度
+  try {
+    const subResp = await ipcFetch(
+      `${KOMA_BASE_URL}/v1/dashboard/billing/subscription`,
+      bearerHeader,
+    );
+    if (subResp.ok) {
+      const subJson = JSON.parse(subResp.body);
+      const limitUSD = subJson.hard_limit_usd ?? 0;
+
+      let usedUSD = 0;
+      try {
+        const usageResp = await ipcFetch(
+          `${KOMA_BASE_URL}/v1/dashboard/billing/usage?start_date=2000-01-01&end_date=2099-12-31`,
+          bearerHeader,
+        );
+        if (usageResp.ok) {
+          const usageJson = JSON.parse(usageResp.body);
+          usedUSD = (usageJson.total_usage ?? 0) / 100; // cents → USD
+        }
+      } catch { /* usage query failed, show limit only */ }
+
+      return {
+        quota: limitUSD * 500000,
+        usedQuota: usedUSD * 500000,
+        balanceUSD: limitUSD - usedUSD,
+      };
+    }
+  } catch { /* give up */ }
+
+  return null;
+}
+
+/**
+ * 激活 Koma 官方渠道
+ * 测试 API Key → 创建/更新三个 ChannelConfig
+ */
+export async function activateKomaOfficial(apiKey: string): Promise<{
+  activated: string[];
+  errors: string[];
+}> {
+  const activated: string[] = [];
+  const errors: string[] = [];
+
+  const settings = await loadSettings();
+  if (!settings.channelConfigs) settings.channelConfigs = [];
+
+  for (const [key, def] of Object.entries(KOMA_OFFICIAL_CHANNELS)) {
+    try {
+      const existing = settings.channelConfigs.find(
+        c => c.providerType === def.providerType && c.source === 'builtin'
+      );
+
+      if (existing) {
+        // 更新 apiKey 和 models
+        existing.providerConfig = { ...existing.providerConfig, apiKey, baseUrl: def.baseUrl };
+        existing.models = def.defaultModels.map(m => ({ ...m }));
+        existing.enabled = true;
+        existing.updatedAt = Date.now();
+      } else {
+        const now = Date.now();
+        const newConfig: ChannelConfig = {
+          id: `channel_koma_${key}_${now}`,
+          providerType: def.providerType,
+          name: def.name,
+          source: 'builtin',
+          category: def.category,
+          enabled: true,
+          providerConfig: { apiKey, baseUrl: def.baseUrl },
+          models: def.defaultModels.map(m => ({ ...m })),
+          createdAt: now,
+          updatedAt: now,
+        };
+        settings.channelConfigs.push(newConfig);
+      }
+
+      // 如果该 category 没有默认选择，设为默认
+      const cat = def.category;
+      if (cat !== 'llm' && !settings.mediaDefaults?.[cat]) {
+        const ch = settings.channelConfigs.find(
+          c => c.providerType === def.providerType && c.source === 'builtin'
+        );
+        if (ch && def.defaultModels[0]) {
+          settings.mediaDefaults = {
+            ...(settings.mediaDefaults || {}),
+            [cat]: { channelId: ch.id, modelId: def.defaultModels[0].id },
+          };
+        }
+      }
+
+      activated.push(key);
+    } catch (e) {
+      errors.push(`${key}: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+
+  await saveSettings(settings);
+  return { activated, errors };
+}
+
+/**
+ * 取消激活 Koma 官方渠道
+ * 禁用所有官方 ChannelConfig，清除对应 mediaDefaults
+ */
+export async function deactivateKomaOfficial(): Promise<void> {
+  const settings = await loadSettings();
+  if (!settings.channelConfigs) return;
+
+  const officialProviders: string[] = Object.values(KOMA_OFFICIAL_CHANNELS).map(d => d.providerType);
+
+  for (const config of settings.channelConfigs) {
+    if (officialProviders.includes(config.providerType) && config.source === 'builtin') {
+      config.enabled = false;
+      config.updatedAt = Date.now();
+    }
+  }
+
+  // 清除指向官方渠道的 mediaDefaults
+  if (settings.mediaDefaults) {
+    for (const category of Object.keys(settings.mediaDefaults) as MediaCategory[]) {
+      const sel = settings.mediaDefaults[category];
+      if (sel) {
+        const ch = settings.channelConfigs.find(c => c.id === sel.channelId);
+        if (ch && officialProviders.includes(ch.providerType) && ch.source === 'builtin') {
+          delete settings.mediaDefaults[category];
+        }
+      }
+    }
+  }
+
+  await saveSettings(settings);
+}
+
+/**
+ * 获取官方渠道激活状态
+ */
+export async function getKomaOfficialStatus(): Promise<{
+  activated: boolean;
+  apiKey: string | null;
+}> {
+  const configs = await getChannelConfigs();
+  const officialProviders: string[] = Object.values(KOMA_OFFICIAL_CHANNELS).map(d => d.providerType);
+  const found = configs.find(
+    c => officialProviders.includes(c.providerType) && c.source === 'builtin' && c.enabled
+  );
+  return {
+    activated: !!found,
+    apiKey: (found?.providerConfig?.apiKey as string) ?? null,
+  };
+}

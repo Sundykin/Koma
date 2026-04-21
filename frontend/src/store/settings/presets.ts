@@ -6,6 +6,11 @@ import type { LLMChannelPreset, ProviderPreset } from '../../types';
 // OpenAI 兼容渠道预设
 export const LLM_CHANNEL_PRESETS: LLMChannelPreset[] = [
   {
+    id: 'koma-official-llm',
+    name: 'Koma 官方',
+    baseUrl: 'https://api.568069.xyz/v1',
+  },
+  {
     id: 'openai',
     name: 'OpenAI',
     baseUrl: 'https://api.openai.com/v1',
@@ -34,6 +39,7 @@ export const LLM_CHANNEL_PRESETS: LLMChannelPreset[] = [
 
 // TTI 厂商预设
 export const TTI_PRESETS: ProviderPreset[] = [
+  { id: 'koma-official-tti', name: 'Koma 官方（文生图）', baseUrl: 'https://api.568069.xyz' },
   { id: 'nano-banana', name: 'Nano-Banana（官方）', baseUrl: 'http://ai.hsxbk.top' },
   { id: 'gemini-3-pro', name: 'Gemini-3-Pro (toapis)', baseUrl: 'https://toapis.com' },
   { id: 'openai-compatible-tti', name: '自定义服务商（OpenAI 兼容）', baseUrl: '' },

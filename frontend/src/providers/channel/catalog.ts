@@ -10,22 +10,30 @@ import { LLM_CHANNEL_PRESETS, TTI_PRESETS, ITV_PRESETS, TTS_PRESETS } from '../.
  */
 
 const llmChannels: ChannelDefinition[] = [
-  ...LLM_CHANNEL_PRESETS.map((preset) => ({
-    id: preset.id,
-    category: 'llm' as const,
-    vendor: preset.name,
-    name: preset.name,
-    description: 'OpenAI 兼容对话渠道',
-    runtimeProviderType: 'openai-compatible',
-    models: [],
-    configSchema: {
-      required: ['apiKey'],
-      properties: {
-        baseUrl: { type: 'string', default: preset.baseUrl },
-        apiKey: { type: 'string' },
+  ...LLM_CHANNEL_PRESETS.map((preset) => {
+    const baseUrlLocked = preset.id === 'koma-official-llm';
+    return {
+      id: preset.id,
+      category: 'llm' as const,
+      vendor: preset.name,
+      name: preset.name,
+      description: 'OpenAI 兼容对话渠道',
+      runtimeProviderType: 'openai-compatible',
+      models: [],
+      configSchema: {
+        required: ['apiKey'] as string[],
+        properties: {
+          baseUrl: {
+            type: 'string',
+            default: preset.baseUrl,
+            ...(baseUrlLocked ? { locked: true, fixed: preset.baseUrl } : {}),
+          },
+          apiKey: { type: 'string' },
+        },
+        ...(baseUrlLocked ? { baseUrlLocked: true, fixedBaseUrl: preset.baseUrl } : {}),
       },
-    },
-  })),
+    };
+  }),
   {
     id: 'gemini',
     category: 'llm',
@@ -73,21 +81,29 @@ const ttiChannels: ChannelDefinition[] = [
       },
     },
   },
-  ...TTI_PRESETS.map((preset) => ({
-    id: preset.id,
-    category: 'tti' as const,
-    vendor: preset.name,
-    name: preset.name,
-    runtimeProviderType: preset.id,
-    models: [],
-    configSchema: {
-      required: preset.id === 'comfyui' ? ['baseUrl'] : ['apiKey'],
-      properties: {
-        baseUrl: { type: 'string', default: preset.baseUrl || '' },
-        apiKey: { type: 'string' },
+  ...TTI_PRESETS.map((preset) => {
+    const baseUrlLocked = preset.id === 'koma-official-tti';
+    return {
+      id: preset.id,
+      category: 'tti' as const,
+      vendor: preset.name,
+      name: preset.name,
+      runtimeProviderType: preset.id,
+      models: [],
+      configSchema: {
+        required: (preset.id === 'comfyui' ? ['baseUrl'] : ['apiKey']) as string[],
+        properties: {
+          baseUrl: {
+            type: 'string',
+            default: preset.baseUrl || '',
+            ...(baseUrlLocked ? { locked: true, fixed: preset.baseUrl } : {}),
+          },
+          apiKey: { type: 'string' },
+        },
+        ...(baseUrlLocked ? { baseUrlLocked: true, fixedBaseUrl: preset.baseUrl } : {}),
       },
-    },
-  })),
+    };
+  }),
 ];
 
 const itvChannels: ChannelDefinition[] = ITV_PRESETS.map((preset) => {
