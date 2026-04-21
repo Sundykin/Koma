@@ -1,7 +1,7 @@
 /**
  * Electron-Egg 预加载脚本 (TypeScript)
  */
-import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron';
+import { contextBridge, ipcRenderer, IpcRendererEvent, webUtils } from 'electron';
 
 type Listener = (event: IpcRendererEvent, ...args: any[]) => void;
 
@@ -190,6 +190,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
   app: {
     getPath: (name: string) => invokeMain('controller/app/getPath', { name }),
     getVersion: () => invokeMain('controller/app/getVersion', {}),
+  },
+  // 渲染进程读取 File 绝对路径的官方 API（Electron 32+ 已移除 File.path 扩展）
+  webUtils: {
+    getPathForFile: (file: File): string => {
+      try {
+        return webUtils.getPathForFile(file) || '';
+      } catch {
+        return '';
+      }
+    },
   },
   project: {
     list: () => invokeMain('controller/project/list', {}),

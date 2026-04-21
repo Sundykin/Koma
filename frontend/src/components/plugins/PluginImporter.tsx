@@ -44,8 +44,12 @@ export const PluginImporter: React.FC<PluginImporterProps> = ({ onImportSuccess 
     setLoading(true);
 
     try {
-      // 获取文件路径 (Electron 环境)
-      const filePath = (file as any).path;
+      // 获取文件绝对路径。
+      // Electron 32+ 已移除 File.path 扩展属性，需改用官方 webUtils.getPathForFile，
+      // 由 preload 暴露在 window.electronAPI.webUtils 上。保留 (file as any).path
+      // 作为兜底，兼容老版本 Electron/Web 环境。
+      const win = window as unknown as { electronAPI?: { webUtils?: { getPathForFile?: (f: File) => string } } };
+      const filePath = win.electronAPI?.webUtils?.getPathForFile?.(file) || (file as any).path;
       if (!filePath) {
         message.error(t('plugin.cannotGetFilePath'));
         return false;
