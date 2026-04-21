@@ -32,6 +32,7 @@ import {
   resolveShotVideoCapabilitySupport,
 } from './shotVideoPlan';
 import { compileShotVideoGenerationRequest } from './videoGenerationRequests';
+import { resolveConfiguredChannelModel } from '../providers/channel/resolver';
 import type { StyleSnapshotLike } from '../utils/promptNormalize';
 
 const logger = createLogger('ShotRender');
@@ -134,11 +135,15 @@ export async function shotRenderWorkflow(
       // 忽略
     }
 
+    const selectedItvModelCapabilities = settings
+      ? resolveConfiguredChannelModel(settings, 'itv', mediaSelections?.itvSelection)?.model.capabilities
+      : undefined;
     const resolvedVideoPlan = collectShotVideoPlan({
       shot: normalizedShot,
       characters,
       scenes: projectScenes,
       props: projectProps,
+      modelCapabilities: selectedItvModelCapabilities,
     });
     const capabilitySupport = settings
       ? resolveShotVideoCapabilitySupport({

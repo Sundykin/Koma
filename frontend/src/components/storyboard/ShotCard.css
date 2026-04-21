@@ -116,6 +116,27 @@
   padding: 0 !important;
 }
 
+/* 左侧操作列里的 duration 输入框：极紧凑，让 1-3 位数字能完整展示 */
+.shot-duration-input.ant-input-number {
+  width: 34px;
+  min-width: 34px;
+  background: rgba(59, 130, 246, 0.12);
+  border-color: rgba(59, 130, 246, 0.35);
+  border-radius: 2px;
+}
+.shot-duration-input.ant-input-number .ant-input-number-input-wrap,
+.shot-duration-input.ant-input-number .ant-input-number-input {
+  height: 18px;
+  padding: 0 2px;
+  font-size: 10px;
+  line-height: 18px;
+  text-align: center;
+  color: #93c5fd;
+}
+.shot-duration-input.ant-input-number-focused {
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.25);
+}
+
 /* Custom Scrollbar for columns */
 .custom-scrollbar::-webkit-scrollbar {
   width: 4px;

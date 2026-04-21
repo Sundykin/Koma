@@ -10,6 +10,7 @@ import {
   Button,
   Popconfirm,
   Input,
+  InputNumber,
   Modal,
   Spin,
   Segmented,
@@ -125,6 +126,7 @@ export interface ShotCardProps {
   onScriptChange: (shotId: string, script: string) => void;
   onImagePromptChange: (shotId: string, imagePrompt: string) => void;
   onVideoPromptChange: (shotId: string, videoPrompt: string) => void;
+  onDurationChange?: (shotId: string, duration: number) => void;
   onImageModeChange: (shotId: string, mode: 'normal' | 'grid') => void;
   onCharactersChange: (shotId: string, characterIds: string[]) => void;
   onScenesChange?: (shotId: string, sceneIds: string[]) => void;
@@ -171,6 +173,7 @@ export const ShotCard: React.FC<ShotCardProps> = ({
   onScriptChange,
   onImagePromptChange,
   onVideoPromptChange,
+  onDurationChange,
   onImageModeChange,
   onCharactersChange,
   onScenesChange,
@@ -538,7 +541,33 @@ export const ShotCard: React.FC<ShotCardProps> = ({
             onChange={(e) => onSelectChange(shot.id, e.target.checked)}
           />
           <span className="text-[11px] font-semibold text-zinc-400">#{index + 1}</span>
-          <Tag className="m-0 text-[9px] px-1" color="blue">{shot.duration}s</Tag>
+          {onDurationChange ? (
+            <Tooltip title="分镜时长（秒）" placement="right">
+              <div className="flex items-center gap-0.5">
+                <InputNumber
+                  size="small"
+                  min={1}
+                  max={600}
+                  step={1}
+                  controls={false}
+                  value={shot.duration}
+                  onChange={(value) => {
+                    const next = typeof value === 'number' && Number.isFinite(value)
+                      ? Math.max(1, Math.round(value))
+                      : shot.duration;
+                    if (next !== shot.duration) {
+                      onDurationChange(shot.id, next);
+                    }
+                  }}
+                  className="shot-duration-input"
+                  onClick={(e) => e.stopPropagation()}
+                />
+                <span className="text-[9px] text-zinc-400 leading-none">s</span>
+              </div>
+            </Tooltip>
+          ) : (
+            <Tag className="m-0 text-[9px] px-1" color="blue">{shot.duration}s</Tag>
+          )}
 
           {/* 操作按钮 - 直接显示 */}
           <div className="flex flex-col gap-0.5 mt-1">

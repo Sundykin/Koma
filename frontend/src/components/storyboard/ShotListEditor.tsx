@@ -32,6 +32,7 @@ export interface ShotListEditorProps {
   onScriptChange: (shotId: string, script: string) => void;
   onImagePromptChange: (shotId: string, imagePrompt: string) => void;
   onVideoPromptChange: (shotId: string, videoPrompt: string) => void;
+  onDurationChange?: (shotId: string, duration: number) => void;
   onCharactersChange: (shotId: string, characterIds: string[]) => void;
   onScenesChange?: (shotId: string, sceneIds: string[]) => void;
   onPropsChange?: (shotId: string, propIds: string[]) => void;
@@ -86,6 +87,7 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
   onScriptChange,
   onImagePromptChange,
   onVideoPromptChange,
+  onDurationChange,
   onCharactersChange,
   onScenesChange,
   onPropsChange,
@@ -225,6 +227,7 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
         onScriptChange={onScriptChange}
         onImagePromptChange={onImagePromptChange}
         onVideoPromptChange={onVideoPromptChange}
+        onDurationChange={onDurationChange}
         onImageModeChange={onShotImageModeChange}
         onCharactersChange={onCharactersChange}
         onScenesChange={onScenesChange}
@@ -268,6 +271,7 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
       onScriptChange,
       onImagePromptChange,
       onVideoPromptChange,
+      onDurationChange,
       onShotImageModeChange,
       onCharactersChange,
       onScenesChange,
