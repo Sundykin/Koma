@@ -36,3 +36,18 @@ export { SqliteShotRepository } from './repositories/SqliteShotRepository';
 export { SqliteAssetRepository } from './repositories/SqliteAssetRepository';
 export { SqliteEpisodeRepository } from './repositories/SqliteEpisodeRepository';
 export { SqliteTimelineRepository } from './repositories/SqliteTimelineRepository';
+
+// 全局 Settings 数据库（独立于项目级 baseDB）
+export { SettingsDB, settingsDB } from './SettingsDB';
+export type {
+  IChannelConfigRepository,
+  IMediaDefaultsRepository,
+  IAppSettingsKvRepository,
+  ChannelConfigRow,
+  MediaDefaultRow,
+  AppSettingRow,
+  MediaCategory,
+} from './repositories/settingsInterfaces';
+export { SqliteChannelConfigRepository } from './repositories/SqliteChannelConfigRepository';
+export { SqliteMediaDefaultsRepository } from './repositories/SqliteMediaDefaultsRepository';
+export { SqliteAppSettingsKvRepository } from './repositories/SqliteAppSettingsKvRepository';
