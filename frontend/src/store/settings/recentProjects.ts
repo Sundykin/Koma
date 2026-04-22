@@ -1,10 +1,32 @@
 /**
  * 最近项目管理
+ * 存储：主进程 app_settings_kv 表（key = 'recent-projects', value = RecentProject[]）
+ * 非 Electron 环境降级到 localStorage。
  */
 import { electronService } from '../../services/electronService';
-import { getGlobalPath } from './core';
 import type { RecentProject } from '../../types';
 import { STORAGE_KEYS } from '../../constants/storageKeys';
+
+const KV_KEY = 'recent-projects';
+
+type IpcResult<T> =
+  | { ok: true; data: T }
+  | { ok: false; code: string; message: string };
+
+async function kvGet<T>(key: string): Promise<T | null> {
+  const res = (await electronService.ipc.invoke('app-kv:get', { key })) as IpcResult<{ value: T | null; updatedAt: number | null }>;
+  if (!res || typeof res !== 'object' || !('ok' in res) || res.ok === false) {
+    return null;
+  }
+  return res.data?.value ?? null;
+}
+
+async function kvSet<T>(key: string, value: T): Promise<void> {
+  const res = (await electronService.ipc.invoke('app-kv:set', { key, value })) as IpcResult<unknown>;
+  if (!res || typeof res !== 'object' || !('ok' in res) || res.ok === false) {
+    throw new Error(`app-kv:set failed for ${key}`);
+  }
+}
 
 export async function loadRecentProjects(): Promise<RecentProject[]> {
   if (!electronService.isElectron()) {
@@ -20,16 +42,11 @@ export async function loadRecentProjects(): Promise<RecentProject[]> {
   }
 
   try {
-    const path = await getGlobalPath('recent-projects.json');
-    const exists = await electronService.fs.exists(path);
-    if (exists) {
-      const data = await electronService.fs.readFile(path);
-      return JSON.parse(data);
-    }
+    const list = await kvGet<RecentProject[]>(KV_KEY);
+    return Array.isArray(list) ? list : [];
   } catch {
-    // ignore
+    return [];
   }
-  return [];
 }
 
 export async function saveRecentProjects(projects: RecentProject[]): Promise<void> {
@@ -40,8 +57,7 @@ export async function saveRecentProjects(projects: RecentProject[]): Promise<voi
     return;
   }
 
-  const path = await getGlobalPath('recent-projects.json');
-  await electronService.fs.writeFile(path, JSON.stringify(trimmed, null, 2));
+  await kvSet(KV_KEY, trimmed);
 }
 
 export async function addRecentProject(project: RecentProject): Promise<void> {
