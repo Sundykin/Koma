@@ -11,15 +11,31 @@
 import { HumanMessage, AIMessage, SystemMessage } from '@langchain/core/messages';
 import type { BaseMessage } from '@langchain/core/messages';
 import { createLLM } from './AgentGraph';
-import { ChatOpenAI } from '@langchain/openai';
+import { llmProviderRegistry } from './providers';
 import type { SessionConfig } from './types';
-import { llmProfileStore } from './LLMProfileStore';
+import { getDecryptedApiKey } from '../settings/ChannelConfigService';
+
+/**
+ * 从 SQLite 读取解密后的 apiKey。profileId 即 channel config id（一对一）。
+ */
+function resolveApiKeyForProfile(profileId?: string): string | null {
+  if (!profileId) return null;
+  try {
+    return getDecryptedApiKey(profileId) ?? null;
+  } catch {
+    return null;
+  }
+}
 
 export interface LLMQueryRequest {
   messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>;
   config: {
     profileId?: string;
-    modelProvider?: 'openai' | 'anthropic' | 'google';
+    /**
+     * 放宽为任意非空 string：'openai'|'anthropic'|'google'|'openai-compatible'|'claude'|'gemini'|<plugin-id>
+     * 由 {@link createLLM} / llmProviderRegistry 决定具体路由。
+     */
+    modelProvider?: string;
     modelName?: string;
     apiKey?: string;
     baseUrl?: string;
@@ -41,7 +57,8 @@ export interface LLMQueryRequest {
 
 export interface LLMConnectionTestRequest {
   profileId?: string;
-  modelProvider?: 'openai' | 'anthropic' | 'google';
+  /** 同 {@link LLMQueryRequest.config.modelProvider} */
+  modelProvider?: string;
   modelName?: string;
   apiKey?: string;
   baseUrl?: string;
@@ -57,19 +74,20 @@ export interface LLMConnectionTestResponse {
   };
 }
 
-export interface LLMSaveProfileRequest {
-  profileId: string;
-  apiKey?: string;
+function normalizeProvider(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
 }
 
 function resolveConfig(requestConfig: LLMQueryRequest['config'] | LLMConnectionTestRequest): SessionConfig {
-  const stored = requestConfig.profileId ? llmProfileStore.getProfile(requestConfig.profileId) : null;
+  const storedApiKey = resolveApiKeyForProfile(requestConfig.profileId);
 
   return {
     llmProfileId: requestConfig.profileId,
-    modelProvider: requestConfig.modelProvider,
+    modelProvider: normalizeProvider(requestConfig.modelProvider),
     modelName: requestConfig.modelName,
-    apiKey: stored?.apiKey || requestConfig.apiKey,
+    apiKey: storedApiKey || requestConfig.apiKey,
     baseUrl: requestConfig.baseUrl,
     temperature: requestConfig.temperature,
     maxTokens: requestConfig.maxTokens,
@@ -318,14 +336,16 @@ export class LLMQueryService {
 
         let llm;
         if (canUseResponseFormat) {
-          // 直接构造带 response_format 的 ChatOpenAI 实例（Runnable.bind 在 @langchain/core v1 中已移除）
-          const stored = sessionConfig.llmProfileId ? llmProfileStore.getProfile(sessionConfig.llmProfileId) : null;
-          llm = new ChatOpenAI({
-            model: sessionConfig.modelName || 'gpt-4o',
-            apiKey: stored?.apiKey || sessionConfig.apiKey,
-            temperature: sessionConfig.temperature ?? 0.7,
+          // 通过 registry 构造带 response_format 的 LLM 实例，避免硬编码 ChatOpenAI
+          const storedApiKey = resolveApiKeyForProfile(sessionConfig.llmProfileId);
+          const providerType = sessionConfig.modelProvider || 'openai';
+          const resolvedType = llmProviderRegistry.has(providerType) ? providerType : 'openai-compatible';
+          llm = llmProviderRegistry.create(resolvedType, {
+            modelName: sessionConfig.modelName,
+            apiKey: storedApiKey || sessionConfig.apiKey,
+            baseUrl: sessionConfig.baseUrl,
+            temperature: sessionConfig.temperature,
             maxTokens: sessionConfig.maxTokens,
-            configuration: sessionConfig.baseUrl ? { baseURL: sessionConfig.baseUrl } : undefined,
             modelKwargs: { response_format: { type: 'json_object' } },
           });
           console.info('[LLMQuery] 启用 response_format=json_object', logCtx);

@@ -5,15 +5,13 @@
 import { StateGraph, END, START, Annotation } from '@langchain/langgraph';
 import { BaseMessage, AIMessage, ToolMessage, SystemMessage } from '@langchain/core/messages';
 import { BaseChatModel } from '@langchain/core/language_models/chat_models';
-import { ChatOpenAI } from '@langchain/openai';
-import { ChatAnthropic } from '@langchain/anthropic';
-import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
 import { DynamicStructuredTool } from '@langchain/core/tools';
 import { z } from 'zod';
 import type { SessionConfig, MCPToolDefinition, ToolCall, ToolResult } from './types';
 import { mcpManager } from './mcp';
 import { mcpRegistry } from '../plugin/registries';
-import { llmProfileStore } from './LLMProfileStore';
+import { getDecryptedApiKey } from '../settings/ChannelConfigService';
+import { llmProviderRegistry } from './providers';
 
 // 状态定义
 const AgentState = Annotation.Root({
@@ -29,51 +27,31 @@ const AgentState = Annotation.Root({
 
 type AgentStateType = typeof AgentState.State;
 
-// 创建 LLM 实例
+/**
+ * 创建 LLM 实例
+ * 从 LLMProviderRegistry 获取 Provider，不再硬编码 switch-case。
+ * 未知 providerType 降级为 'openai-compatible'（兼容自定义 OpenAI 网关）。
+ */
 export function createLLM(config: SessionConfig): BaseChatModel {
-  const stored = config.llmProfileId ? llmProfileStore.getProfile(config.llmProfileId) : null;
-  const modelProvider = config.modelProvider;
-  const modelName = config.modelName;
-  const apiKey = stored?.apiKey || config.apiKey;
-  const baseUrl = config.baseUrl;
-  const { temperature = 0.7, maxTokens } = config;
+  const storedApiKey = config.llmProfileId
+    ? (() => {
+        try { return getDecryptedApiKey(config.llmProfileId); }
+        catch { return null; }
+      })()
+    : null;
 
-  switch (modelProvider) {
-    case 'openai':
-      return new ChatOpenAI({
-        model: modelName || 'gpt-4o',
-        apiKey,
-        temperature,
-        maxTokens,
-        configuration: baseUrl ? { baseURL: baseUrl } : undefined,
-      });
+  const providerType = config.modelProvider || 'openai';
+  const resolvedType = llmProviderRegistry.has(providerType)
+    ? providerType
+    : 'openai-compatible';
 
-    case 'anthropic':
-      return new ChatAnthropic({
-        model: modelName || 'claude-sonnet-4-20250514',
-        apiKey,
-        temperature,
-        maxTokens,
-      });
-
-    case 'google':
-      return new ChatGoogleGenerativeAI({
-        model: modelName || 'gemini-2.0-flash',
-        apiKey,
-        temperature,
-        maxOutputTokens: maxTokens,
-      });
-
-    default:
-      // 默认使用 OpenAI 兼容接口
-      return new ChatOpenAI({
-        model: modelName || 'gpt-4o',
-        apiKey,
-        temperature,
-        maxTokens,
-        configuration: baseUrl ? { baseURL: baseUrl } : undefined,
-      });
-  }
+  return llmProviderRegistry.create(resolvedType, {
+    modelName: config.modelName,
+    apiKey: storedApiKey || config.apiKey,
+    baseUrl: config.baseUrl,
+    temperature: config.temperature,
+    maxTokens: config.maxTokens,
+  });
 }
 
 // JSON Schema 转 Zod Schema (简化版)
