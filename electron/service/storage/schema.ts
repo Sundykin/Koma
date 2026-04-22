@@ -2,7 +2,7 @@
  * SQLite 数据库 Schema 定义
  */
 
-export const CURRENT_SCHEMA_VERSION = 4;
+export const CURRENT_SCHEMA_VERSION = 5;
 
 export const CREATE_TABLES_SQL = `
 -- 项目表
@@ -570,6 +570,108 @@ CREATE TABLE IF NOT EXISTS linghui_workspace_history_records (
   metadata_json TEXT
 );
 
+-- ========== 应用级配置存储 ==========
+-- LLM/TTI/ITV/TTS 渠道配置（统一表，用 kind 区分）
+CREATE TABLE IF NOT EXISTS channel_configs (
+  id TEXT PRIMARY KEY,
+  kind TEXT NOT NULL CHECK(kind IN ('llm','tti','itv','tts')),
+  name TEXT NOT NULL,
+  provider TEXT NOT NULL,
+  base_url TEXT,
+  api_key TEXT,
+  model_name TEXT,
+  is_default INTEGER DEFAULT 0,
+  meta_json TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+-- Prompt 模板（默认 + 自定义）
+CREATE TABLE IF NOT EXISTS prompt_templates (
+  id TEXT PRIMARY KEY,
+  type TEXT NOT NULL,
+  name TEXT NOT NULL,
+  description TEXT,
+  template TEXT NOT NULL,
+  variables_json TEXT,
+  is_builtin INTEGER DEFAULT 0,
+  user_modified_at INTEGER,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+-- 视觉风格预设
+CREATE TABLE IF NOT EXISTS visual_style_presets (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  description TEXT,
+  tti_prefix TEXT,
+  llm_suffix TEXT,
+  thumbnail_path TEXT,
+  is_builtin INTEGER DEFAULT 0,
+  sort_order INTEGER DEFAULT 0,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+-- 插件注册表（元数据；二进制包在文件系统）
+CREATE TABLE IF NOT EXISTS plugin_registry (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  version TEXT NOT NULL,
+  source TEXT NOT NULL CHECK(source IN ('local','url','builtin')),
+  source_ref TEXT,
+  enabled INTEGER DEFAULT 1,
+  manifest_json TEXT NOT NULL,
+  permissions_json TEXT,
+  installed_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+-- MCP Server 配置
+CREATE TABLE IF NOT EXISTS mcp_servers (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  transport TEXT NOT NULL CHECK(transport IN ('stdio','sse','http')),
+  command TEXT,
+  args_json TEXT,
+  env_json TEXT,
+  url TEXT,
+  auth_token TEXT,
+  enabled INTEGER DEFAULT 1,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+-- Agent 编排配置
+CREATE TABLE IF NOT EXISTS agent_profiles (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  description TEXT,
+  system_prompt TEXT,
+  tools_json TEXT,
+  channel_config_id TEXT,
+  is_builtin INTEGER DEFAULT 0,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+-- 最近项目（跨窗口共享）
+CREATE TABLE IF NOT EXISTS recent_projects (
+  project_id TEXT PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
+  last_opened_at INTEGER NOT NULL,
+  pinned INTEGER DEFAULT 0
+);
+
+-- 通用键值配置兜底
+CREATE TABLE IF NOT EXISTS kv_configs (
+  namespace TEXT NOT NULL,
+  key TEXT NOT NULL,
+  value_json TEXT NOT NULL,
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (namespace, key)
+);
+
 -- Schema 版本管理
 CREATE TABLE IF NOT EXISTS schema_version (
   version INTEGER PRIMARY KEY,
@@ -615,6 +717,16 @@ CREATE INDEX IF NOT EXISTS idx_linghui_template_nodes_template ON linghui_workfl
 CREATE INDEX IF NOT EXISTS idx_linghui_template_edges_template ON linghui_workflow_template_edges(template_id, sort_order);
 CREATE INDEX IF NOT EXISTS idx_linghui_assets_workspace ON linghui_workspace_assets(workspace_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_linghui_history_workspace ON linghui_workspace_history_records(workspace_id, created_at DESC);
+
+-- 配置表索引
+CREATE INDEX IF NOT EXISTS idx_channel_configs_kind_default ON channel_configs(kind, is_default);
+CREATE INDEX IF NOT EXISTS idx_channel_configs_kind ON channel_configs(kind, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_prompt_templates_type ON prompt_templates(type);
+CREATE INDEX IF NOT EXISTS idx_visual_style_presets_sort ON visual_style_presets(is_builtin DESC, sort_order ASC);
+CREATE INDEX IF NOT EXISTS idx_plugin_registry_enabled ON plugin_registry(enabled, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_mcp_servers_enabled ON mcp_servers(enabled);
+CREATE INDEX IF NOT EXISTS idx_recent_projects_opened ON recent_projects(last_opened_at DESC);
+CREATE INDEX IF NOT EXISTS idx_kv_configs_namespace ON kv_configs(namespace);
 `;
 
 /**
@@ -1082,6 +1194,112 @@ CREATE INDEX IF NOT EXISTS idx_linghui_template_nodes_template ON linghui_workfl
 CREATE INDEX IF NOT EXISTS idx_linghui_template_edges_template ON linghui_workflow_template_edges(template_id, sort_order);
 CREATE INDEX IF NOT EXISTS idx_linghui_assets_workspace ON linghui_workspace_assets(workspace_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_linghui_history_workspace ON linghui_workspace_history_records(workspace_id, created_at DESC);
+`,
+  },
+  5: {
+    description: 'Unify application configuration storage in SQLite (channels, templates, styles, plugins, mcp, agents, recent projects, kv).',
+    sql: `
+CREATE TABLE IF NOT EXISTS channel_configs (
+  id TEXT PRIMARY KEY,
+  kind TEXT NOT NULL CHECK(kind IN ('llm','tti','itv','tts')),
+  name TEXT NOT NULL,
+  provider TEXT NOT NULL,
+  base_url TEXT,
+  api_key TEXT,
+  model_name TEXT,
+  is_default INTEGER DEFAULT 0,
+  meta_json TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS prompt_templates (
+  id TEXT PRIMARY KEY,
+  type TEXT NOT NULL,
+  name TEXT NOT NULL,
+  description TEXT,
+  template TEXT NOT NULL,
+  variables_json TEXT,
+  is_builtin INTEGER DEFAULT 0,
+  user_modified_at INTEGER,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS visual_style_presets (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  description TEXT,
+  tti_prefix TEXT,
+  llm_suffix TEXT,
+  thumbnail_path TEXT,
+  is_builtin INTEGER DEFAULT 0,
+  sort_order INTEGER DEFAULT 0,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS plugin_registry (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  version TEXT NOT NULL,
+  source TEXT NOT NULL CHECK(source IN ('local','url','builtin')),
+  source_ref TEXT,
+  enabled INTEGER DEFAULT 1,
+  manifest_json TEXT NOT NULL,
+  permissions_json TEXT,
+  installed_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS mcp_servers (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  transport TEXT NOT NULL CHECK(transport IN ('stdio','sse','http')),
+  command TEXT,
+  args_json TEXT,
+  env_json TEXT,
+  url TEXT,
+  auth_token TEXT,
+  enabled INTEGER DEFAULT 1,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS agent_profiles (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  description TEXT,
+  system_prompt TEXT,
+  tools_json TEXT,
+  channel_config_id TEXT,
+  is_builtin INTEGER DEFAULT 0,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS recent_projects (
+  project_id TEXT PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
+  last_opened_at INTEGER NOT NULL,
+  pinned INTEGER DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS kv_configs (
+  namespace TEXT NOT NULL,
+  key TEXT NOT NULL,
+  value_json TEXT NOT NULL,
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (namespace, key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_channel_configs_kind_default ON channel_configs(kind, is_default);
+CREATE INDEX IF NOT EXISTS idx_channel_configs_kind ON channel_configs(kind, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_prompt_templates_type ON prompt_templates(type);
+CREATE INDEX IF NOT EXISTS idx_visual_style_presets_sort ON visual_style_presets(is_builtin DESC, sort_order ASC);
+CREATE INDEX IF NOT EXISTS idx_plugin_registry_enabled ON plugin_registry(enabled, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_mcp_servers_enabled ON mcp_servers(enabled);
+CREATE INDEX IF NOT EXISTS idx_recent_projects_opened ON recent_projects(last_opened_at DESC);
+CREATE INDEX IF NOT EXISTS idx_kv_configs_namespace ON kv_configs(namespace);
 `,
   },
 };

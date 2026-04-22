@@ -3,8 +3,9 @@ import { createOrchestrator, AgentOrchestrator } from './AgentOrchestrator';
 import { chatService } from './ChatService';
 import { llmQueryService } from './LLMQueryService';
 import type { LLMConnectionTestRequest, LLMQueryRequest, LLMSaveProfileRequest } from './LLMQueryService';
-import { llmProfileStore } from './LLMProfileStore';
 import { llmChannelConfigTransactionService } from './LLMChannelConfigTransactionService';
+import { ensureServicesReady, services } from '../index';
+import { encryptField, isEncrypted } from '../storage/fieldCrypto';
 import { importFromFile, importFromObject, exportConfig, exportToFile } from './mcp/MCPConfigLoader';
 import type {
   ChatInput,
@@ -226,19 +227,47 @@ class ChatIpc {
       }
     });
 
+    // 保留的 profile IPC：现在 profileId=channelId，直接更新 channel_configs.api_key。
+    // 旧调用路径仍可工作；新前端应改调 config:channel.upsert。
     ipcMain.handle('llm:saveProfile', async (_event, args: LLMSaveProfileRequest) => {
       if (!validateLLMSaveProfileRequest(args)) {
         return { success: false, error: { code: 'API_ERROR' as const, message: 'Invalid LLM profile payload' } };
       }
-      const saved = llmProfileStore.saveProfile({
-        profileId: args.profileId,
-        apiKey: args.apiKey,
-      });
-      return { success: true, updatedAt: saved.updatedAt };
+      await ensureServicesReady();
+      const existing = services.config.channel.getById(args.profileId);
+      if (!existing) {
+        return { success: false, error: { code: 'API_ERROR' as const, message: 'Channel not found' } };
+      }
+      const apiKey = args.apiKey && args.apiKey.trim() ? args.apiKey.trim() : existing.api_key;
+      const now = Date.now();
+      services.config.writeTx(
+        { domain: 'channel', action: 'upsert', id: args.profileId },
+        () => {
+          services.config.channel.upsert({
+            ...existing,
+            api_key: apiKey && !isEncrypted(apiKey) ? encryptField(apiKey) : apiKey,
+            updated_at: now,
+          });
+        },
+      );
+      return { success: true, updatedAt: now };
     });
 
     ipcMain.handle('llm:deleteProfile', async (_event, args: { profileId: string }) => {
-      return { success: llmProfileStore.deleteProfile(args.profileId) };
+      await ensureServicesReady();
+      const existing = services.config.channel.getById(args.profileId);
+      if (!existing) return { success: false };
+      services.config.writeTx(
+        { domain: 'channel', action: 'upsert', id: args.profileId },
+        () => {
+          services.config.channel.upsert({
+            ...existing,
+            api_key: undefined,
+            updated_at: Date.now(),
+          });
+        },
+      );
+      return { success: true };
     });
 
     ipcMain.handle('llm:saveChannelConfig', async (_event, args) => {
@@ -249,8 +278,9 @@ class ChatIpc {
       return llmChannelConfigTransactionService.deleteChannelConfig(args);
     });
 
-    ipcMain.handle('llm:migrateSettingsSecrets', async (_event, args) => {
-      return llmChannelConfigTransactionService.migrateSettingsSecrets(args);
+    // llm:migrateSettingsSecrets 已废弃：旧 settings.json 不再被读取；保留空回应避免旧前端报错。
+    ipcMain.handle('llm:migrateSettingsSecrets', async () => {
+      return { settings: { channelConfigs: [], mediaDefaults: {}, promptTemplates: {} }, migrated: false };
     });
 
     ipcMain.handle('chat:session:create', async (event, args: { config?: SessionConfig }) => {

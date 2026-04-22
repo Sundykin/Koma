@@ -13,7 +13,7 @@ import type { BaseMessage } from '@langchain/core/messages';
 import { createLLM } from './AgentGraph';
 import { ChatOpenAI } from '@langchain/openai';
 import type { SessionConfig } from './types';
-import { llmProfileStore } from './LLMProfileStore';
+import { services } from '../index';
 
 export interface LLMQueryRequest {
   messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>;
@@ -63,13 +63,13 @@ export interface LLMSaveProfileRequest {
 }
 
 function resolveConfig(requestConfig: LLMQueryRequest['config'] | LLMConnectionTestRequest): SessionConfig {
-  const stored = requestConfig.profileId ? llmProfileStore.getProfile(requestConfig.profileId) : null;
+  const channel = requestConfig.profileId ? services.config.channel.getById(requestConfig.profileId) : undefined;
 
   return {
     llmProfileId: requestConfig.profileId,
     modelProvider: requestConfig.modelProvider,
     modelName: requestConfig.modelName,
-    apiKey: stored?.apiKey || requestConfig.apiKey,
+    apiKey: channel?.api_key || requestConfig.apiKey,
     baseUrl: requestConfig.baseUrl,
     temperature: requestConfig.temperature,
     maxTokens: requestConfig.maxTokens,
@@ -319,10 +319,10 @@ export class LLMQueryService {
         let llm;
         if (canUseResponseFormat) {
           // 直接构造带 response_format 的 ChatOpenAI 实例（Runnable.bind 在 @langchain/core v1 中已移除）
-          const stored = sessionConfig.llmProfileId ? llmProfileStore.getProfile(sessionConfig.llmProfileId) : null;
+          const channel = sessionConfig.llmProfileId ? services.config.channel.getById(sessionConfig.llmProfileId) : undefined;
           llm = new ChatOpenAI({
             model: sessionConfig.modelName || 'gpt-4o',
-            apiKey: stored?.apiKey || sessionConfig.apiKey,
+            apiKey: channel?.api_key || sessionConfig.apiKey,
             temperature: sessionConfig.temperature ?? 0.7,
             maxTokens: sessionConfig.maxTokens,
             configuration: sessionConfig.baseUrl ? { baseURL: sessionConfig.baseUrl } : undefined,

@@ -105,12 +105,32 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
 	  // backend provider invocation (used by image-hosting fallback)
 	  'controller/plugin/callProvider',
 	  'controller/net/fetch',
+  // config:* 统一应用配置存储
+  'controller/config/bootstrap',
+  'controller/config/channelList', 'controller/config/channelGetDefault',
+  'controller/config/channelUpsert', 'controller/config/channelDelete',
+  'controller/config/channelSetDefault',
+  'controller/config/promptList', 'controller/config/promptUpsert',
+  'controller/config/promptReset', 'controller/config/promptDelete',
+  'controller/config/styleList', 'controller/config/styleUpsert',
+  'controller/config/styleDelete',
+  'controller/config/pluginList', 'controller/config/pluginUpsert',
+  'controller/config/pluginSetEnabled', 'controller/config/pluginDelete',
+  'controller/config/mcpList', 'controller/config/mcpUpsert',
+  'controller/config/mcpDelete',
+  'controller/config/agentList', 'controller/config/agentUpsert',
+  'controller/config/agentDelete',
+  'controller/config/kvGet', 'controller/config/kvListNamespace',
+  'controller/config/kvSet', 'controller/config/kvDelete',
+  'controller/config/recentList', 'controller/config/recentTouch',
+  'controller/config/recentRemove', 'controller/config/recentSetPinned',
 	]);
 
 const ALLOWED_LISTEN_CHANNELS = new Set([
   'chat:stream:chunk', 'chat:stream:tool', 'chat:stream:done', 'chat:stream:error',
   'chat:tool:pending', 'chat:tool:approved', 'chat:tool:rejected',
   'llm:stream:chunk', 'llm:stream:done', 'llm:stream:error',
+  'config:changed',
 ]);
 
 function validateInvokeChannel(channel: string): void {
@@ -355,6 +375,68 @@ contextBridge.exposeInMainWorld('electronAPI', {
       };
     }) =>
       invokeMain('controller/net/fetch', args),
+  },
+  config: {
+    bootstrap: () => invokeMain('controller/config/bootstrap', {}),
+    channel: {
+      list: (kind: 'llm' | 'tti' | 'itv' | 'tts') =>
+        invokeMain('controller/config/channelList', { kind }),
+      getDefault: (kind: 'llm' | 'tti' | 'itv' | 'tts') =>
+        invokeMain('controller/config/channelGetDefault', { kind }),
+      upsert: (row: any) => invokeMain('controller/config/channelUpsert', { row }),
+      delete: (id: string) => invokeMain('controller/config/channelDelete', { id }),
+      setDefault: (kind: 'llm' | 'tti' | 'itv' | 'tts', id: string) =>
+        invokeMain('controller/config/channelSetDefault', { kind, id }),
+    },
+    prompt: {
+      list: () => invokeMain('controller/config/promptList', {}),
+      upsert: (row: any) => invokeMain('controller/config/promptUpsert', { row }),
+      reset: (id: string) => invokeMain('controller/config/promptReset', { id }),
+      delete: (id: string) => invokeMain('controller/config/promptDelete', { id }),
+    },
+    style: {
+      list: () => invokeMain('controller/config/styleList', {}),
+      upsert: (row: any) => invokeMain('controller/config/styleUpsert', { row }),
+      delete: (id: string) => invokeMain('controller/config/styleDelete', { id }),
+    },
+    plugin: {
+      list: () => invokeMain('controller/config/pluginList', {}),
+      upsert: (row: any) => invokeMain('controller/config/pluginUpsert', { row }),
+      setEnabled: (id: string, enabled: boolean) =>
+        invokeMain('controller/config/pluginSetEnabled', { id, enabled }),
+      delete: (id: string) => invokeMain('controller/config/pluginDelete', { id }),
+    },
+    mcp: {
+      list: () => invokeMain('controller/config/mcpList', {}),
+      upsert: (row: any) => invokeMain('controller/config/mcpUpsert', { row }),
+      delete: (id: string) => invokeMain('controller/config/mcpDelete', { id }),
+    },
+    agent: {
+      list: () => invokeMain('controller/config/agentList', {}),
+      upsert: (row: any) => invokeMain('controller/config/agentUpsert', { row }),
+      delete: (id: string) => invokeMain('controller/config/agentDelete', { id }),
+    },
+    kv: {
+      get: (namespace: string, key: string) =>
+        invokeMain('controller/config/kvGet', { namespace, key }),
+      listNamespace: (namespace: string) =>
+        invokeMain('controller/config/kvListNamespace', { namespace }),
+      set: (namespace: string, key: string, value: unknown) =>
+        invokeMain('controller/config/kvSet', { namespace, key, value }),
+      delete: (namespace: string, key: string) =>
+        invokeMain('controller/config/kvDelete', { namespace, key }),
+    },
+    recent: {
+      list: (limit?: number) => invokeMain('controller/config/recentList', { limit }),
+      touch: (projectId: string) => invokeMain('controller/config/recentTouch', { projectId }),
+      remove: (projectId: string) => invokeMain('controller/config/recentRemove', { projectId }),
+      setPinned: (projectId: string, pinned: boolean) =>
+        invokeMain('controller/config/recentSetPinned', { projectId, pinned }),
+    },
+    onChanged: (callback: (event: any, data: any) => void) => {
+      ipcRenderer.on('config:changed', callback);
+      return () => ipcRenderer.removeListener('config:changed', callback);
+    },
   },
   llm: {
     query: (request: any) => invokeMain('llm:query', request),

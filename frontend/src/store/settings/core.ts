@@ -1,117 +1,138 @@
 /**
- * 核心设置存储
- * 负责设置的加载和保存
+ * 核心设置适配层
+ *
+ * 新版本：所有配置都落在 SQLite，状态由 `useConfigStore` 持有。
+ * 本文件仅提供 `loadSettings` / `saveSettings` 等**兼容签名**函数，内部转发到
+ * 对应 IPC。旧调用者的"加载 -> 修改 -> 回写"模式仍可工作，但每次 save 会触发
+ * 多次 IPC；新代码应直接调用 `electronAPI.config.*`。
  */
-import { electronService } from '../../services/electronService';
-import { getStorageConfig, initStorageConfig } from '../storageConfig';
 import type { AppSettings } from '../../types';
-import { STORAGE_KEYS } from '../../constants/storageKeys';
-import { createLogger } from '../logger';
-import { encryptSettings, decryptSettings, initEncryption } from '../encryption';
-import { migrateLLMSecretsTransaction } from '../../chat/ipc/chatIPC';
+import type { ChannelConfig } from '../../providers/channel/types';
+import { ensureConfigReady, useConfigStore } from '../useConfigStore';
+import { getConfigAPI } from '../../services/configBridge';
+import { channelConfigToRow, rowToChannelConfig } from '../../providers/channel/rowMapper';
 
-const logger = createLogger('Settings');
-
-// 路径工具
-export async function getGlobalPath(filename: string): Promise<string> {
-  const config = getStorageConfig() || (await initStorageConfig());
-  return `${config.rootPath}/${filename}`;
-}
-
-// 默认设置
 export const DEFAULT_SETTINGS: AppSettings = {
   channelConfigs: [],
   mediaDefaults: {},
   promptTemplates: {},
 };
 
-// 生成唯一 ID
 export function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
-// 迁移旧的加密数据格式
-function migrateEncryptedData<T>(data: T): T {
-  if (Array.isArray(data)) {
-    return data.map(item => migrateEncryptedData(item)) as T;
-  }
-  if (data && typeof data === 'object') {
-    const result = { ...data } as Record<string, any>;
-    for (const key of Object.keys(result)) {
-      const value = result[key];
-      if (value && typeof value === 'object' && value.encrypted === true) {
-        result[key] = '';
-      } else if (value && typeof value === 'object') {
-        result[key] = migrateEncryptedData(value);
+/**
+ * @deprecated 保留路径工具以兼容残留调用方；存储根目录相关操作应走 `electronAPI.config.kv` (namespace=`storage`)
+ */
+export async function getGlobalPath(filename: string): Promise<string> {
+  const api = getConfigAPI();
+  const root = await api.kv.get<string>('storage', 'rootPath');
+  return `${root || ''}/${filename}`;
+}
+
+function synthesizeSettings(): AppSettings {
+  const state = useConfigStore.getState();
+  const channels: ChannelConfig[] = [
+    ...state.channels.llm,
+    ...state.channels.tti,
+    ...state.channels.itv,
+    ...state.channels.tts,
+  ].map(rowToChannelConfig);
+
+  const mediaDefaults: AppSettings['mediaDefaults'] = {};
+  const channelKv = state.kv['channel'] || [];
+  for (const entry of channelKv) {
+    // key 格式: default.llm / default.tti / ...
+    if (typeof entry.key === 'string' && entry.key.startsWith('default.')) {
+      const kind = entry.key.slice('default.'.length) as 'llm' | 'tti' | 'itv' | 'tts';
+      if (entry.value && typeof entry.value === 'object') {
+        mediaDefaults![kind] = entry.value as { channelId: string; modelId: string };
       }
     }
-    return result as T;
   }
-  return data;
+
+  const promptTemplates: Record<string, { template: string; updatedAt: number }> = {};
+  for (const row of state.prompts) {
+    promptTemplates[row.type] = { template: row.template, updatedAt: row.updated_at };
+  }
+
+  return {
+    channelConfigs: channels,
+    mediaDefaults,
+    promptTemplates,
+  };
 }
 
-// 确保加密模块已初始化
-let _encryptionReady = false;
-async function ensureEncryption(): Promise<void> {
-  if (_encryptionReady) return;
-  const machineId = await electronService.getMachineId();
-  await initEncryption(machineId);
-  _encryptionReady = true;
-}
-
-// 加载设置
 export async function loadSettings(): Promise<AppSettings> {
-  if (!electronService.isElectron()) {
-    try {
-      const data = localStorage.getItem(STORAGE_KEYS.SETTINGS);
-      if (data) {
-        let parsed = JSON.parse(data);
-        parsed = migrateEncryptedData(parsed);
-        return { ...DEFAULT_SETTINGS, ...parsed };
-      }
-    } catch (err) {
-      logger.error('loadSettings error', err);
-    }
-    return DEFAULT_SETTINGS;
-  }
-
-  try {
-    await ensureEncryption();
-    const storageConfig = getStorageConfig() || (await initStorageConfig());
-    const path = await getGlobalPath('settings.json');
-    const exists = await electronService.fs.exists(path);
-    if (exists) {
-      const data = await electronService.fs.readFile(path);
-      let parsed = JSON.parse(data);
-      parsed = migrateEncryptedData(parsed);
-      const decrypted = await decryptSettings(parsed);
-      const merged = { ...DEFAULT_SETTINGS, ...decrypted };
-      try {
-        const rootPath = storageConfig.rootPath;
-        const migration = await migrateLLMSecretsTransaction({ rootPath, settings: merged });
-        if (migration.migrated) {
-          return migration.settings as AppSettings;
-        }
-      } catch (migrationErr) {
-        logger.error('loadSettings migration error', migrationErr);
-      }
-      return merged;
-    }
-  } catch (err) {
-    logger.error('loadSettings error', err);
-  }
-  return DEFAULT_SETTINGS;
+  await ensureConfigReady();
+  return synthesizeSettings();
 }
 
-// 保存设置
+/**
+ * 写回整组设置：拆成 channel / kv / prompt 三条 IPC 线。
+ * 保持旧调用者的"load → mutate → save"语义。
+ */
 export async function saveSettings(settings: AppSettings): Promise<void> {
-  if (!electronService.isElectron()) {
-    localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(settings));
-    return;
+  await ensureConfigReady();
+  const api = getConfigAPI();
+  const state = useConfigStore.getState();
+
+  // 1) 渠道配置
+  const existingIds = new Set(
+    [...state.channels.llm, ...state.channels.tti, ...state.channels.itv, ...state.channels.tts].map((r) => r.id),
+  );
+  const incomingIds = new Set((settings.channelConfigs ?? []).map((c) => c.id));
+
+  for (const channel of settings.channelConfigs ?? []) {
+    await api.channel.upsert(channelConfigToRow(channel));
+  }
+  // 删除本次 save 缺失的渠道
+  for (const id of existingIds) {
+    if (!incomingIds.has(id)) {
+      await api.channel.delete(id);
+    }
   }
 
-  await ensureEncryption();
-  const encrypted = await encryptSettings(settings);
-  const path = await getGlobalPath('settings.json');
-  await electronService.fs.writeFile(path, JSON.stringify(encrypted, null, 2));
+  // 2) 媒体默认值
+  for (const kind of ['llm', 'tti', 'itv', 'tts'] as const) {
+    const selection = settings.mediaDefaults?.[kind];
+    if (selection) {
+      await api.kv.set('channel', `default.${kind}`, selection);
+    } else {
+      await api.kv.delete('channel', `default.${kind}`);
+    }
+  }
+
+  // 3) Prompt 模板覆写
+  if (settings.promptTemplates) {
+    for (const [type, payload] of Object.entries(settings.promptTemplates)) {
+      const existing = state.prompts.find((r) => r.type === type);
+      const now = Date.now();
+      await api.prompt.upsert({
+        id: existing?.id ?? `tpl_${type}`,
+        type,
+        name: existing?.name ?? type,
+        template: payload.template,
+        variables_json: existing?.variables_json,
+        description: existing?.description,
+        is_builtin: existing?.is_builtin ?? 0,
+        user_modified_at: now,
+        created_at: existing?.created_at ?? now,
+        updated_at: now,
+      });
+    }
+  }
+
+  // 注意：customThemePresets / stylePrompts 等字段若存在应通过各自的 store
+  // (themePresets.ts) 写入；本适配层不再直接处理，避免双写。
+
+  // 强制刷新本地 store：config:changed 事件是异步投递的，调用方紧随其后的
+  // loadSettings() 可能读到旧数据。显式 refresh 确保写入立即反映。
+  const store = useConfigStore.getState();
+  await Promise.all([
+    store.refreshDomain('channel'),
+    store.refreshDomain('prompt'),
+    store.refreshDomain('kv'),
+  ]);
 }

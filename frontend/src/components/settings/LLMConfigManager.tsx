@@ -247,10 +247,8 @@ export const LLMConfigManager: React.FC<LLMConfigManagerProps> = ({ onConfigChan
         source: 'builtin' as const,
       };
 
-      const rootPath = getStorageConfig()?.rootPath;
-      if (!rootPath) {
-        throw new Error('未找到存储根目录配置');
-      }
+      // 配置持久化已迁入 SQLite；rootPath 不再参与保存流程（后端忽略此字段）。
+      const rootPath = getStorageConfig()?.rootPath ?? '';
 
       const nextApiKey = String(values.apiKey || '').trim();
       const savedResult = await saveLLMChannelConfigTransaction({
@@ -278,10 +276,7 @@ export const LLMConfigManager: React.FC<LLMConfigManagerProps> = ({ onConfigChan
 
   const handleDelete = useCallback(async (id: string) => {
     try {
-      const rootPath = getStorageConfig()?.rootPath;
-      if (!rootPath) {
-        throw new Error('未找到存储根目录配置');
-      }
+      const rootPath = getStorageConfig()?.rootPath ?? '';
       await deleteLLMChannelConfigTransaction({ rootPath, channelId: id });
       message.success('配置已删除');
       await loadConfigs();

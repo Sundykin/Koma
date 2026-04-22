@@ -5,6 +5,7 @@ import Database from 'better-sqlite3';
 import * as fs from 'fs';
 import * as path from 'path';
 import { CURRENT_SCHEMA_VERSION, CREATE_TABLES_SQL, CREATE_INDEXES_SQL, MIGRATIONS } from './schema';
+import { seedConfigDefaults } from './configSeed';
 
 export class BaseDB {
   private db: Database.Database | null = null;
@@ -80,6 +81,7 @@ export class BaseDB {
       db.prepare(
         'INSERT INTO schema_version (version, applied_at, description) VALUES (?, ?, ?)'
       ).run(CURRENT_SCHEMA_VERSION, Date.now(), 'Initial schema');
+      seedConfigDefaults(db);
       return;
     }
 
@@ -107,6 +109,9 @@ export class BaseDB {
 
       currentVersion = nextVersion;
     }
+
+    // 幂等 seed：已存在的 id 不会被覆盖
+    seedConfigDefaults(db);
   }
 }
 

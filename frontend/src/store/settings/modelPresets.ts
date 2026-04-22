@@ -1,76 +1,50 @@
 /**
  * 模型预设管理
+ *
+ * 本变更中"预设"概念已被"渠道配置"取代（channel_configs 包含完整渠道定义）。
+ * 保留导出以兼容旧调用方；内部读取全部渠道作为预设视图；写入走 channel IPC。
  */
-import { electronService } from '../../services/electronService';
-import { getGlobalPath } from './core';
-import { STORAGE_KEYS } from '../../constants/storageKeys';
+import { ensureConfigReady, useConfigStore } from '../useConfigStore';
+import { getConfigAPI } from '../../services/configBridge';
+import { channelConfigToRow, rowToChannelConfig } from '../../providers/channel/rowMapper';
+import type { ChannelConfig } from '../../providers/channel/types';
 
 export interface ModelPreset {
   name: string;
   type: 'llm' | 'tti' | 'tts' | 'itv';
-  config: any;
+  config: ChannelConfig;
+}
+
+function rowsToPresets(): ModelPreset[] {
+  const s = useConfigStore.getState();
+  const result: ModelPreset[] = [];
+  for (const kind of ['llm', 'tti', 'itv', 'tts'] as const) {
+    for (const row of s.channels[kind]) {
+      const config = rowToChannelConfig(row);
+      result.push({ name: config.name, type: kind, config });
+    }
+  }
+  return result;
 }
 
 export async function loadPresets(): Promise<ModelPreset[]> {
-  if (!electronService.isElectron()) {
-    try {
-      const data = localStorage.getItem(STORAGE_KEYS.PRESETS);
-      if (data) {
-        return JSON.parse(data);
-      }
-    } catch {
-      // ignore
-    }
-    return [];
-  }
-
-  try {
-    const presetsDir = await getGlobalPath('model-presets');
-    const exists = await electronService.fs.exists(presetsDir);
-    if (!exists) {
-      return [];
-    }
-
-    const files = await electronService.fs.readdir(presetsDir);
-    const presets: ModelPreset[] = [];
-
-    for (const file of files) {
-      if (file.endsWith('.json')) {
-        const data = await electronService.fs.readFile(`${presetsDir}/${file}`);
-        presets.push(JSON.parse(data));
-      }
-    }
-
-    return presets;
-  } catch {
-    return [];
-  }
+  await ensureConfigReady();
+  return rowsToPresets();
 }
 
 export async function savePreset(preset: ModelPreset): Promise<void> {
-  if (!electronService.isElectron()) {
-    const presets = await loadPresets();
-    const filtered = presets.filter((p) => p.name !== preset.name);
-    filtered.push(preset);
-    localStorage.setItem(STORAGE_KEYS.PRESETS, JSON.stringify(filtered));
-    return;
-  }
-
-  const presetsDir = await getGlobalPath('model-presets');
-  await electronService.fs.mkdir(presetsDir);
-  const path = `${presetsDir}/${preset.name}.json`;
-  await electronService.fs.writeFile(path, JSON.stringify(preset, null, 2));
+  const api = getConfigAPI();
+  await api.channel.upsert(channelConfigToRow(preset.config));
+  await useConfigStore.getState().refreshDomain('channel');
 }
 
 export async function deletePreset(presetName: string): Promise<void> {
-  if (!electronService.isElectron()) {
-    const presets = await loadPresets();
-    const filtered = presets.filter((p) => p.name !== presetName);
-    localStorage.setItem(STORAGE_KEYS.PRESETS, JSON.stringify(filtered));
-    return;
+  await ensureConfigReady();
+  const presets = rowsToPresets();
+  const target = presets.find((p) => p.name === presetName);
+  if (target) {
+    const api = getConfigAPI();
+    await api.channel.delete(target.config.id);
+    await useConfigStore.getState().refreshDomain('channel');
   }
-
-  const presetsDir = await getGlobalPath('model-presets');
-  const path = `${presetsDir}/${presetName}.json`;
-  await electronService.fs.remove(path);
 }

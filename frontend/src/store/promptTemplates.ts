@@ -2,10 +2,7 @@
  * Prompt 模板管理
  * 默认模板和自定义模板支持
  */
-import { electronService } from '../services/electronService';
-import { getStorageConfig, initStorageConfig } from './storageConfig';
 import { loadSettings, saveSettings } from './globalStore';
-import { STORAGE_KEYS } from '../constants/storageKeys';
 import type { AppSettings } from '../types';
 
 // Prompt 模板类型
@@ -1136,13 +1133,6 @@ description 字段要求：
   },
 };
 
-// ========== 存储路径 ==========
-
-async function getTemplatesPath(): Promise<string> {
-  const config = getStorageConfig() || (await initStorageConfig());
-  return `${config.rootPath}/prompt-templates.json`;
-}
-
 const PLACEHOLDER_REGEX = /\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g;
 
 function extractTemplateVariables(templateText: string): string[] {
@@ -1204,22 +1194,6 @@ function normalizeLegacyPromptTemplates(
   return normalized;
 }
 
-function mergePromptTemplateOverrides(
-  current: Partial<Record<PromptTemplateType, PromptTemplateOverride>>,
-  incoming: Partial<Record<PromptTemplateType, PromptTemplateOverride>>
-): Partial<Record<PromptTemplateType, PromptTemplateOverride>> {
-  const merged = { ...current };
-  for (const [key, value] of Object.entries(incoming)) {
-    if (!value) {
-      continue;
-    }
-    if (!merged[key as PromptTemplateType]) {
-      merged[key as PromptTemplateType] = value;
-    }
-  }
-  return merged;
-}
-
 async function persistPromptTemplateOverrides(
   settings: AppSettings,
   overrides: Partial<Record<PromptTemplateType, PromptTemplateOverride>>
@@ -1230,69 +1204,12 @@ async function persistPromptTemplateOverrides(
   });
 }
 
-async function migrateLegacyPromptTemplates(
-  settings?: AppSettings
-): Promise<AppSettings> {
-  const currentSettings = settings || await loadSettings();
-  let overrides = normalizeLegacyPromptTemplates(currentSettings.promptTemplates);
-  let shouldPersist = Object.keys(overrides).length !== Object.keys(currentSettings.promptTemplates || {}).length;
-
-  if (!electronService.isElectron()) {
-    try {
-      const legacyData = localStorage.getItem(STORAGE_KEYS.PROMPT_TEMPLATES);
-      if (legacyData) {
-        const legacyOverrides = normalizeLegacyPromptTemplates(JSON.parse(legacyData));
-        const mergedOverrides = mergePromptTemplateOverrides(overrides, legacyOverrides);
-        if (JSON.stringify(mergedOverrides) !== JSON.stringify(overrides)) {
-          overrides = mergedOverrides;
-          shouldPersist = true;
-        }
-        localStorage.removeItem(STORAGE_KEYS.PROMPT_TEMPLATES);
-      }
-    } catch {
-      // ignore
-    }
-
-    if (shouldPersist) {
-      await persistPromptTemplateOverrides(currentSettings, overrides);
-      return { ...currentSettings, promptTemplates: overrides };
-    }
-
-    return { ...currentSettings, promptTemplates: overrides };
-  }
-
-  try {
-    const path = await getTemplatesPath();
-    const exists = await electronService.fs.exists(path);
-    if (exists) {
-      const data = await electronService.fs.readFile(path);
-      const legacyOverrides = normalizeLegacyPromptTemplates(JSON.parse(data));
-      const mergedOverrides = mergePromptTemplateOverrides(overrides, legacyOverrides);
-      if (JSON.stringify(mergedOverrides) !== JSON.stringify(overrides)) {
-        overrides = mergedOverrides;
-        shouldPersist = true;
-      }
-
-      if (shouldPersist) {
-        await persistPromptTemplateOverrides(currentSettings, overrides);
-      }
-
-      await electronService.fs.remove(path);
-      return { ...currentSettings, promptTemplates: overrides };
-    }
-  } catch {
-    // ignore
-  }
-
-  if (shouldPersist) {
-    await persistPromptTemplateOverrides(currentSettings, overrides);
-  }
-
-  return { ...currentSettings, promptTemplates: overrides };
-}
-
+/**
+ * 本变更不再迁移旧 localStorage / JSON 文件中的模板覆写，因此这里直接读取
+ * settings（已由 `useConfigStore` 从 SQLite 同步）。
+ */
 async function loadPromptTemplateOverrides(): Promise<Partial<Record<PromptTemplateType, PromptTemplateOverride>>> {
-  const settings = await migrateLegacyPromptTemplates();
+  const settings = await loadSettings();
   return normalizeLegacyPromptTemplates(settings.promptTemplates);
 }
 
@@ -1350,7 +1267,7 @@ export async function getPromptTemplate(type: PromptTemplateType): Promise<Promp
  */
 export async function saveCustomTemplate(template: PromptTemplate): Promise<void> {
   assertTemplateValidation(template.id, template.template);
-  const settings = await migrateLegacyPromptTemplates();
+  const settings = await loadSettings();
   const overrides = normalizeLegacyPromptTemplates(settings.promptTemplates);
   overrides[template.id] = {
     template: template.template,
@@ -1363,7 +1280,7 @@ export async function saveCustomTemplate(template: PromptTemplate): Promise<void
  * 重置模板为默认
  */
 export async function resetTemplate(type: PromptTemplateType): Promise<PromptTemplate> {
-  const settings = await migrateLegacyPromptTemplates();
+  const settings = await loadSettings();
   const overrides = normalizeLegacyPromptTemplates(settings.promptTemplates);
   delete overrides[type];
   await persistPromptTemplateOverrides(settings, overrides);
@@ -1374,7 +1291,7 @@ export async function resetTemplate(type: PromptTemplateType): Promise<PromptTem
  * 重置所有模板为默认
  */
 export async function resetAllTemplates(): Promise<void> {
-  const settings = await migrateLegacyPromptTemplates();
+  const settings = await loadSettings();
   await persistPromptTemplateOverrides(settings, {});
 }
 

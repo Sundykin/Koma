@@ -9,6 +9,7 @@ import { pluginService } from './plugin';
 import { chatService, ChatService } from './chat';
 import { linghuiService, LinghuiService } from './linghui';
 import { baseDB } from './storage';
+import { configService, ConfigService } from './config';
 
 export const services = {
   project: projectService,
@@ -16,6 +17,7 @@ export const services = {
   ffmpeg: ffmpegService,
   plugin: pluginService,
   chat: chatService,
+  config: configService,
 };
 
 let initialized = false;
@@ -26,7 +28,9 @@ export async function initServices(): Promise<void> {
   if (initPromise) return initPromise;
 
   initPromise = (async () => {
-    await services.project.init(path.join(app.getPath('home'), '.koma'));
+    const storageRoot = path.join(app.getPath('home'), '.koma');
+    await services.project.init(storageRoot);
+    services.config.init(storageRoot);
     services.linghui.init(services.project.getStorageRoot());
     await services.ffmpeg.init();
     await services.plugin.init();
@@ -59,6 +63,8 @@ export {
   pluginService,
   ChatService,
   chatService,
+  ConfigService,
+  configService,
   baseDB,
 };
 export default services;

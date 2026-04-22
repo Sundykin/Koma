@@ -1,58 +1,52 @@
 /**
- * 最近项目管理
+ * 最近项目管理（SQLite 版本）
  */
-import { electronService } from '../../services/electronService';
-import { getGlobalPath } from './core';
 import type { RecentProject } from '../../types';
-import { STORAGE_KEYS } from '../../constants/storageKeys';
+import { getConfigAPI } from '../../services/configBridge';
+import { ensureConfigReady, useConfigStore } from '../useConfigStore';
+
+async function rowToEntry(projectId: string, lastOpenedAt: number): Promise<RecentProject> {
+  // RecentProject 的完整元数据需要从 projects 表取。本 store 只维护 {id, lastOpened}，
+  // 富字段（title/thumbnail/...）在消费端按需二次解析。
+  return {
+    id: projectId,
+    title: projectId,
+    lastOpened: lastOpenedAt,
+  } as RecentProject;
+}
 
 export async function loadRecentProjects(): Promise<RecentProject[]> {
-  if (!electronService.isElectron()) {
-    try {
-      const data = localStorage.getItem(STORAGE_KEYS.RECENT_PROJECTS);
-      if (data) {
-        return JSON.parse(data);
-      }
-    } catch {
-      // ignore
-    }
-    return [];
-  }
-
-  try {
-    const path = await getGlobalPath('recent-projects.json');
-    const exists = await electronService.fs.exists(path);
-    if (exists) {
-      const data = await electronService.fs.readFile(path);
-      return JSON.parse(data);
-    }
-  } catch {
-    // ignore
-  }
-  return [];
+  await ensureConfigReady();
+  const rows = useConfigStore.getState().recent;
+  return Promise.all(rows.map((r) => rowToEntry(r.project_id, r.last_opened_at)));
 }
 
 export async function saveRecentProjects(projects: RecentProject[]): Promise<void> {
-  const trimmed = projects.slice(0, 20);
+  // SQLite 后端以 touch/remove 粒度写；此处遍历目标列表逐项 touch，
+  // 并删除现有列表里缺失的条目。
+  const api = getConfigAPI();
+  await ensureConfigReady();
+  const current = useConfigStore.getState().recent;
+  const incomingIds = new Set(projects.map((p) => p.id));
 
-  if (!electronService.isElectron()) {
-    localStorage.setItem(STORAGE_KEYS.RECENT_PROJECTS, JSON.stringify(trimmed));
-    return;
+  for (const row of current) {
+    if (!incomingIds.has(row.project_id)) {
+      await api.recent.remove(row.project_id);
+    }
   }
-
-  const path = await getGlobalPath('recent-projects.json');
-  await electronService.fs.writeFile(path, JSON.stringify(trimmed, null, 2));
+  for (const project of projects) {
+    await api.recent.touch(project.id);
+  }
 }
 
 export async function addRecentProject(project: RecentProject): Promise<void> {
-  const projects = await loadRecentProjects();
-  const filtered = projects.filter((p) => p.id !== project.id);
-  filtered.unshift({ ...project, lastOpened: Date.now() });
-  await saveRecentProjects(filtered);
+  const api = getConfigAPI();
+  await api.recent.touch(project.id);
+  await useConfigStore.getState().refreshDomain('recent');
 }
 
 export async function removeRecentProject(projectId: string): Promise<void> {
-  const projects = await loadRecentProjects();
-  const filtered = projects.filter((p) => p.id !== projectId);
-  await saveRecentProjects(filtered);
+  const api = getConfigAPI();
+  await api.recent.remove(projectId);
+  await useConfigStore.getState().refreshDomain('recent');
 }

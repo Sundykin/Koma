@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
+  Alert,
   Button,
   App,
   Statistic,
@@ -139,7 +140,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
         cancelText: t('settings.onlyChange'),
         onOk: async () => {
           try {
-            await updateStoragePath(newPath, true);
+            await updateStoragePath(newPath);
             setStoragePath(newPath);
             calcStorageSize(newPath);
             message.success(t('settings.storageChangedMigrated'));
@@ -149,7 +150,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
         },
         onCancel: async () => {
           try {
-            await updateStoragePath(newPath, false);
+            await updateStoragePath(newPath);
             setStoragePath(newPath);
             calcStorageSize(newPath);
             message.success(t('settings.storageChanged'));
@@ -323,6 +324,19 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
               {t('settings.allSettingsDesc', { defaultValue: 'Manage all application settings in one place' })}
             </Text>
           </div>
+
+          <Alert
+            type="info"
+            showIcon
+            style={{ marginBottom: 16 }}
+            message={t('settings.sqliteNoticeTitle', {
+              defaultValue: '配置已迁入 SQLite 存储',
+            })}
+            description={t('settings.sqliteNoticeDesc', {
+              defaultValue:
+                '此版本起，所有配置（渠道、Prompt 模板、视觉风格、插件/MCP/Agent、最近项目等）统一保存在数据库中。旧的 settings.json / llm-profiles.json / provider-configs.json 不再被读取；如从旧版本升级，请重新录入所需配置。',
+            })}
+          />
 
           {/* All sections */}
           {sections.map((section, idx) => {

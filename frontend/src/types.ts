@@ -384,6 +384,14 @@ export interface ITVConfig {
   defaultResolution?: string; // 默认分辨率
 }
 
+/**
+ * 应用设置。配置持久化已全面迁入 SQLite；此类型作为 loadSettings/saveSettings
+ * 兼容层的投影形状：channelConfigs ← channel_configs 表、mediaDefaults ← kv_configs
+ * (namespace=channel)、promptTemplates ← prompt_templates 表。
+ *
+ * `customThemePresets` 与 `stylePrompts` 已从本结构移除——视觉风格预设直接通过
+ * `electronAPI.config.style.*` / useConfigStore 访问，不再挂在 settings 上。
+ */
 export interface AppSettings {
   channelConfigs: ChannelConfig[];
   mediaDefaults?: MediaDefaults;
@@ -391,8 +399,6 @@ export interface AppSettings {
     template: string;
     updatedAt: number;
   }>;
-  customThemePresets?: ThemePreset[];  // 用户自定义视觉风格预设
-  stylePrompts?: { prompt: string; isDefault?: boolean }[];  // 风格提示词列表
 }
 
 // ========== 时间线相关类型 ==========

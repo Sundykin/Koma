@@ -6,6 +6,7 @@ import type {
   MediaCategory,
 } from '../../providers/channel/types';
 import { loadSettings } from '../../store/globalStore';
+import { useConfigStore } from '../../store/useConfigStore';
 import type { ManagedChannelCard } from './channelManagerShared';
 
 export function useMediaConfigManager<TConfig>(
@@ -27,6 +28,9 @@ export function useMediaConfigManager<TConfig>(
   const loadConfigs = useCallback(async () => {
     setLoading(true);
     try {
+      // 显式从后端拉一次最新渠道数据：config:changed 事件是异步的，
+      // 写操作 IPC resolve 后立即 loadConfigs 可能读到旧 store。
+      await useConfigStore.getState().refreshDomain('channel');
       const nextSettings = await loadSettings();
       setSettings(nextSettings);
       setConfigs(loadBuiltins(nextSettings));

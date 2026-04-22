@@ -13,7 +13,7 @@ import { z } from 'zod';
 import type { SessionConfig, MCPToolDefinition, ToolCall, ToolResult } from './types';
 import { mcpManager } from './mcp';
 import { mcpRegistry } from '../plugin/registries';
-import { llmProfileStore } from './LLMProfileStore';
+import { services } from '../index';
 
 // 状态定义
 const AgentState = Annotation.Root({
@@ -31,10 +31,10 @@ type AgentStateType = typeof AgentState.State;
 
 // 创建 LLM 实例
 export function createLLM(config: SessionConfig): BaseChatModel {
-  const stored = config.llmProfileId ? llmProfileStore.getProfile(config.llmProfileId) : null;
+  const channel = config.llmProfileId ? services.config.channel.getById(config.llmProfileId) : undefined;
   const modelProvider = config.modelProvider;
   const modelName = config.modelName;
-  const apiKey = stored?.apiKey || config.apiKey;
+  const apiKey = channel?.api_key || config.apiKey;
   const baseUrl = config.baseUrl;
   const { temperature = 0.7, maxTokens } = config;
 

@@ -1,6 +1,36 @@
 # Store Module
 
-The store module provides centralized state management and data persistence for the Koma application. It uses a hybrid approach combining Zustand for reactive state, Electron filesystem for project data, and localStorage for browser-compatible persistence.
+The store module provides centralized state management and data persistence for the Koma application. **All configuration data (LLM/TTI/ITV/TTS channels, prompt templates, visual styles, plugin registry, MCP servers, agent profiles, recent projects, storage paths) is persisted in the backend SQLite database** via `electronAPI.config.*` IPC; localStorage is reserved for pure UI state (e.g., `app-language`).
+
+## Configuration Flow
+
+```
+┌────────────── Renderer ──────────────┐        ┌──────── Main process ────────┐
+│                                      │        │                              │
+│  useConfigStore (Zustand)            │        │  ConfigService               │
+│   ├─ bootstrap() on first access ────┼────────┼──> config:bootstrap IPC      │
+│   ├─ receives `config:changed`       │<───────┤  BrowserWindow.webContents   │
+│   └─ selectors for each domain       │        │                              │
+│                                      │        │  Repositories (SQLite)       │
+│  Compat shims                        │        │   ├─ ChannelConfig           │
+│   ├─ loadSettings() → synthesize     │        │   ├─ PromptTemplate          │
+│   │   AppSettings from store         │        │   ├─ VisualStylePreset       │
+│   └─ saveSettings() → fan out to     │────────┼──> channel / kv / prompt     │
+│       channel/kv/prompt IPC writes   │        │   ├─ PluginRegistry          │
+│                                      │        │   ├─ MCPServer               │
+│  electronAPI.config.* (preferred     │        │   ├─ AgentProfile            │
+│   for new code)                      │────────┼──> direct per-domain IPC     │
+│                                      │        │   ├─ RecentProject           │
+└──────────────────────────────────────┘        │   └─ KvConfig                │
+                                                │                              │
+                                                │  koma.db (single file)       │
+                                                └──────────────────────────────┘
+```
+
+- **Reads**: `useConfigStore` is populated once on boot via `bootstrap()` and kept in sync via a single `config:changed` event stream. Legacy `loadSettings()` callers are transparently served from the store.
+- **Writes**: new code should call `electronAPI.config.<domain>.*` directly; legacy `saveSettings(settings)` is preserved as a compat adapter that fans out to per-domain IPCs.
+- **No config localStorage**: `koma_settings` / `koma_recent_projects` / `koma_presets` / `koma_prompt_templates` / `koma_storage_config` have been removed. Only `app-language` and chat session keys remain.
+- **Encryption**: sensitive fields (`api_key`, `auth_token`) are encrypted at the Repository boundary in the main process (`electron/service/storage/fieldCrypto.ts`); the frontend never handles ciphertext.
 
 ## Architecture Overview
 

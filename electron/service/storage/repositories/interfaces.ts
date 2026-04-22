@@ -329,6 +329,170 @@ export interface IEpisodeRepository {
   count(projectId: string): number;
 }
 
+// ========== 配置域数据类型 ==========
+
+export type ChannelKind = 'llm' | 'tti' | 'itv' | 'tts';
+
+export interface ChannelConfigRow {
+  id: string;
+  kind: ChannelKind;
+  name: string;
+  provider: string;
+  base_url?: string;
+  api_key?: string;
+  model_name?: string;
+  is_default?: number;
+  meta_json?: string;
+  created_at: number;
+  updated_at: number;
+}
+
+export interface PromptTemplateRow {
+  id: string;
+  type: string;
+  name: string;
+  description?: string;
+  template: string;
+  variables_json?: string;
+  is_builtin?: number;
+  user_modified_at?: number | null;
+  created_at: number;
+  updated_at: number;
+}
+
+export interface VisualStylePresetRow {
+  id: string;
+  name: string;
+  description?: string;
+  tti_prefix?: string;
+  llm_suffix?: string;
+  thumbnail_path?: string;
+  is_builtin?: number;
+  sort_order?: number;
+  created_at: number;
+  updated_at: number;
+}
+
+export interface PluginRegistryRow {
+  id: string;
+  name: string;
+  version: string;
+  source: 'local' | 'url' | 'builtin';
+  source_ref?: string;
+  enabled?: number;
+  manifest_json: string;
+  permissions_json?: string;
+  installed_at: number;
+  updated_at: number;
+}
+
+export interface MCPServerRow {
+  id: string;
+  name: string;
+  transport: 'stdio' | 'sse' | 'http';
+  command?: string;
+  args_json?: string;
+  env_json?: string;
+  url?: string;
+  auth_token?: string;
+  enabled?: number;
+  created_at: number;
+  updated_at: number;
+}
+
+export interface AgentProfileRow {
+  id: string;
+  name: string;
+  description?: string;
+  system_prompt?: string;
+  tools_json?: string;
+  channel_config_id?: string;
+  is_builtin?: number;
+  created_at: number;
+  updated_at: number;
+}
+
+export interface RecentProjectRow {
+  project_id: string;
+  last_opened_at: number;
+  pinned?: number;
+}
+
+export interface KvConfigRow {
+  namespace: string;
+  key: string;
+  value_json: string;
+  updated_at: number;
+}
+
+// ========== 配置 Repository 接口 ==========
+
+export interface IChannelConfigRepository {
+  list(kind: ChannelKind): ChannelConfigRow[];
+  listAll(): ChannelConfigRow[];
+  getById(id: string): ChannelConfigRow | undefined;
+  getDefault(kind: ChannelKind): ChannelConfigRow | undefined;
+  upsert(row: ChannelConfigRow): void;
+  delete(id: string): void;
+  /** 事务内：清空同 kind 的 is_default，设置目标 id 的 is_default=1 */
+  setDefault(kind: ChannelKind, id: string): void;
+}
+
+export interface IPromptTemplateRepository {
+  list(): PromptTemplateRow[];
+  listByType(type: string): PromptTemplateRow[];
+  getById(id: string): PromptTemplateRow | undefined;
+  upsert(row: PromptTemplateRow): void;
+  /** 重置为内置模板：将 template / variables_json 恢复为 seed 值并清空 user_modified_at。
+   *  仅对 is_builtin=1 的行有意义；不存在 seed 数据时返回 false。 */
+  reset(id: string): boolean;
+  delete(id: string): void;
+}
+
+export interface IVisualStylePresetRepository {
+  list(): VisualStylePresetRow[];
+  getById(id: string): VisualStylePresetRow | undefined;
+  upsert(row: VisualStylePresetRow): void;
+  /** 拒绝删除 is_builtin=1 的预设；返回是否删除成功 */
+  delete(id: string): boolean;
+}
+
+export interface IPluginRegistryRepository {
+  list(): PluginRegistryRow[];
+  getById(id: string): PluginRegistryRow | undefined;
+  upsert(row: PluginRegistryRow): void;
+  setEnabled(id: string, enabled: boolean): void;
+  delete(id: string): void;
+}
+
+export interface IMCPServerRepository {
+  list(): MCPServerRow[];
+  getById(id: string): MCPServerRow | undefined;
+  upsert(row: MCPServerRow): void;
+  delete(id: string): void;
+}
+
+export interface IAgentProfileRepository {
+  list(): AgentProfileRow[];
+  getById(id: string): AgentProfileRow | undefined;
+  upsert(row: AgentProfileRow): void;
+  delete(id: string): void;
+}
+
+export interface IRecentProjectRepository {
+  list(limit?: number): RecentProjectRow[];
+  touch(projectId: string): void;
+  remove(projectId: string): void;
+  setPinned(projectId: string, pinned: boolean): void;
+}
+
+export interface IKvConfigRepository {
+  get<T = unknown>(namespace: string, key: string): T | undefined;
+  listNamespace<T = unknown>(namespace: string): Array<{ key: string; value: T }>;
+  set<T = unknown>(namespace: string, key: string, value: T): void;
+  delete(namespace: string, key: string): void;
+}
+
 export interface ITimelineRepository {
   getByProjectId(projectId: string): TimelineData | undefined;
   getProjectTimeline(projectId: string): TimelineData | undefined;

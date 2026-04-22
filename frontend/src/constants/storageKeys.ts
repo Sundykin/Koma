@@ -1,25 +1,13 @@
 /**
  * localStorage 键常量
- * 统一管理所有 localStorage 键名，避免硬编码和键名冲突
+ *
+ * 纯 UI 客户端态。配置数据（SETTINGS / RECENT_PROJECTS / PRESETS /
+ * PROMPT_TEMPLATES / STORAGE_CONFIG 等）已迁入 SQLite，经 `electronAPI.config.*`
+ * 访问，不再出现在此文件中。
  */
 
 // 应用级配置
 export const STORAGE_KEYS = {
-  // 存储配置
-  STORAGE_CONFIG: 'koma_storage_config',
-
-  // 应用设置
-  SETTINGS: 'koma_settings',
-
-  // 最近项目
-  RECENT_PROJECTS: 'koma_recent_projects',
-
-  // 模型预设
-  PRESETS: 'koma_presets',
-
-  // 提示词模板
-  PROMPT_TEMPLATES: 'koma_prompt_templates',
-
   // 语言设置
   LANGUAGE: 'app-language',
 } as const;
