@@ -157,7 +157,9 @@ export class Grok2ApiImagineTTIProvider implements TTIProvider {
   config: TTIModelConfig;
 
   constructor(config: TTIModelConfig) {
-    this.config = config;
+    // grok2api-imagine-tti 协议固有需要 grok-image-index 编译（@角色名 → @Image N 且 refs 自动限 3）。
+    // 与 Grok2ApiImagineITVProvider 对称硬绑，避免用户漏配导致上游 400。
+    this.config = { ...config, promptProtocol: config.promptProtocol ?? 'grok-image-index' };
   }
 
   private getModelName(): string {
@@ -169,10 +171,15 @@ export class Grok2ApiImagineTTIProvider implements TTIProvider {
   }
 
   validate(): boolean {
-    return Boolean(this.config.apiKey && this.config.baseUrl && String(this.config.modelName || '').trim());
+    const hasCredentialRef = Boolean(this.config.profileId) || Boolean(this.config.apiKey);
+    return hasCredentialRef && Boolean(this.config.baseUrl) && Boolean(String(this.config.modelName || '').trim());
   }
 
   private getHeaders(): Record<string, string> {
+    // 优先走 channelId 代理（主进程解密注入 Authorization）；回退到明文 apiKey（历史路径）
+    if (this.config.profileId) {
+      return { 'x-koma-channel-id': this.config.profileId };
+    }
     return {
       Authorization: `Bearer ${this.config.apiKey || ''}`,
     };
@@ -190,7 +197,7 @@ export class Grok2ApiImagineTTIProvider implements TTIProvider {
     try {
       const resp = await safeFetch(joinUrl(this.config.baseUrl || '', '/v1/models'), {
         method: 'GET',
-        headers: { Authorization: `Bearer ${this.config.apiKey || ''}` },
+        headers: this.getHeaders(),
       });
       return resp.status !== 401 && resp.status !== 403;
     } catch {
@@ -199,7 +206,7 @@ export class Grok2ApiImagineTTIProvider implements TTIProvider {
   }
 
   async start(request: TTIRequest): Promise<ProviderStartResult<ImageResult>> {
-    if (!this.config.apiKey || !this.config.baseUrl) {
+    if ((!this.config.apiKey && !this.config.profileId) || !this.config.baseUrl) {
       throw new Error('API Key 或 API 地址未配置');
     }
     const modelName = this.getModelName();
@@ -239,7 +246,7 @@ export class Grok2ApiImagineTTIProvider implements TTIProvider {
       const resp = await safeFetch(joinUrl(this.config.baseUrl || '', '/v1/images/generations'), {
         method: 'POST',
         headers: {
-          ...this.getHeaders(),
+          ...this.getJsonHeaders(),
           ...(debugBody ? { 'x-koma-debug-body': '1' } : undefined),
           ...(debugBody ? { 'x-koma-trace-operation': 'tti.generations' } : undefined),
         },

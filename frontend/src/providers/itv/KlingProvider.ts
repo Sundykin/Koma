@@ -101,7 +101,8 @@ export class KlingProvider implements ITVProvider {
   }
 
   validate(): boolean {
-    return Boolean(this.config.apiKey && String(this.config.modelName || '').trim());
+    const hasCredentialRef = Boolean(this.config.profileId) || Boolean(this.config.apiKey);
+    return hasCredentialRef && Boolean(String(this.config.modelName || '').trim());
   }
 
   private getBaseUrl(): string {
@@ -117,11 +118,26 @@ export class KlingProvider implements ITVProvider {
   }
 
   private getHeaders(): Record<string, string> {
+    if (this.config.profileId) {
+      return {
+        'x-koma-channel-id': this.config.profileId,
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      };
+    }
     return {
       Authorization: `Bearer ${this.config.apiKey || ''}`,
       Accept: 'application/json',
       'Content-Type': 'application/json',
     };
+  }
+
+  private getAuthOnlyHeaders(withAccept = false): Record<string, string> {
+    const accept = withAccept ? { Accept: 'application/json' } : {};
+    if (this.config.profileId) {
+      return { 'x-koma-channel-id': this.config.profileId, ...accept };
+    }
+    return { Authorization: `Bearer ${this.config.apiKey || ''}`, ...accept };
   }
 
   private buildUrl(endpoint: string): string {
@@ -416,10 +432,7 @@ export class KlingProvider implements ITVProvider {
     try {
       const response = await safeFetch(this.buildUrl('images/text2video/test'), {
         method: 'GET',
-        headers: {
-          Authorization: `Bearer ${this.config.apiKey || ''}`,
-          Accept: 'application/json',
-        },
+        headers: this.getAuthOnlyHeaders(true),
       });
       return response.status !== 401 && response.status !== 403;
     } catch {
@@ -467,10 +480,7 @@ export class KlingProvider implements ITVProvider {
       try {
         const response = await safeFetch(this.buildUrl(endpoint), {
           method: 'GET',
-          headers: {
-            Authorization: `Bearer ${this.config.apiKey || ''}`,
-            Accept: 'application/json',
-          },
+          headers: this.getAuthOnlyHeaders(true),
         });
 
         if (!response.ok) {
@@ -514,9 +524,7 @@ export class KlingProvider implements ITVProvider {
       try {
         const response = await safeFetch(url, {
           method: 'POST',
-          headers: {
-            Authorization: `Bearer ${this.config.apiKey || ''}`,
-          },
+          headers: this.getAuthOnlyHeaders(),
         });
         if (response.ok) return;
       } catch {

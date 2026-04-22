@@ -12,6 +12,8 @@
 import type { TTIModelConfig, ProviderStartResult } from '../../types';
 import type { TTIProvider, TTIRequest, ImageResult } from './types';
 import { safeFetch } from '../../utils/safeFetch';
+import { fetchWithChannelAuth } from '../channel/auth';
+import { isChannelNetError } from '../netError';
 import { createLogger } from '../../store/logger';
 import { sanitizeBodyForLog } from '../../utils/logFormatting';
 import { electronService } from '../../services/electronService';
@@ -185,7 +187,10 @@ export class GeminiNativeTTIProvider implements TTIProvider {
   }
 
   validate(): boolean {
-    return Boolean(this.config.apiKey && String(this.config.modelName || '').trim());
+    return Boolean(
+      (this.config.profileId || this.config.apiKey)
+      && String(this.config.modelName || '').trim(),
+    );
   }
 
   async testConnection(): Promise<boolean> {
@@ -194,25 +199,34 @@ export class GeminiNativeTTIProvider implements TTIProvider {
     try {
       const url = joinUrl(
         this.getBaseUrl(),
-        `/v1beta/models/${this.getModel()}:generateContent?key=${this.config.apiKey}`,
+        `/v1beta/models/${this.getModel()}:generateContent`,
       );
       const body: GeminiGenerateContentRequest = {
         contents: [{ parts: [{ text: 'Hello' }] }],
         generationConfig: { maxOutputTokens: 10 },
       };
-      const resp = await safeFetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
+      const resp = await fetchWithChannelAuth(url, {
+        channelId: this.config.profileId,
+        apiKey: this.config.apiKey,
+        mode: 'query-key',
+        queryKeyName: 'key',
+        fetchOptions: {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        },
       });
       return resp.status !== 401 && resp.status !== 403;
-    } catch {
+    } catch (err) {
+      if (isChannelNetError(err) && (err.status === 401 || err.status === 403)) {
+        return false;
+      }
       return false;
     }
   }
 
   async start(request: TTIRequest): Promise<ProviderStartResult<ImageResult>> {
-    if (!this.config.apiKey) {
+    if (!this.config.profileId && !this.config.apiKey) {
       throw new Error('API Key 未配置');
     }
     if (!String(this.config.modelName || '').trim()) {
@@ -255,7 +269,7 @@ export class GeminiNativeTTIProvider implements TTIProvider {
       },
     };
 
-    const url = joinUrl(baseUrl, `/v1beta/models/${model}:generateContent?key=${this.config.apiKey}`);
+    const url = joinUrl(baseUrl, `/v1beta/models/${model}:generateContent`);
 
     logger.info('Gemini Native TTI request', {
       provider: this.config.provider,
@@ -263,14 +277,34 @@ export class GeminiNativeTTIProvider implements TTIProvider {
       baseUrl,
       referencesCount: request.references?.length || 0,
       promptPreview: request.prompt.slice(0, 200),
+      useChannelProxy: Boolean(this.config.profileId),
       body: sanitizeBodyForLog(requestBody as any),
     });
 
-    const resp = await safeFetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(requestBody),
-    });
+    let resp: Response;
+    try {
+      resp = await fetchWithChannelAuth(url, {
+        channelId: this.config.profileId,
+        apiKey: this.config.apiKey,
+        mode: 'query-key',
+        queryKeyName: 'key',
+        fetchOptions: {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(requestBody),
+        },
+      });
+    } catch (err) {
+      if (isChannelNetError(err)) {
+        logger.error('Gemini Native TTI request failed', {
+          status: err.status,
+          code: err.code,
+          response: err.raw?.slice(0, 1200),
+        });
+        throw new Error(`Gemini 生图请求失败 (${err.status}): ${err.message}`);
+      }
+      throw err;
+    }
 
     const raw = await resp.text();
 

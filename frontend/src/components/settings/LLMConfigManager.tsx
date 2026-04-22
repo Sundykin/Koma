@@ -31,21 +31,24 @@ import {
 import type { AppSettings, LLMModelConfig } from '../../types';
 import { createLLMProvider } from '../../providers/llm';
 import { buildLLMConfigFromContext } from '../../providers/channel/resolver';
-import { deleteLLMChannelConfigTransaction, saveLLMChannelConfigTransaction } from '../../chat/ipc/chatIPC';
 import type { ChannelModelDefinition, ModelCapability } from '../../providers/channel/types';
 import {
   generateId,
   setDefaultMediaModelSelection,
+  addChannelConfig,
+  updateChannelConfig,
+  deleteChannelConfig,
 } from '../../store/globalStore';
 import { ChannelModelsEditor } from './ChannelModelsEditor';
+import { useTranslation } from 'react-i18next';
 import {
   buildChannelFormValues,
   buildManagedChannelCards,
+  formatChannelError,
   getPreferredChannelModelId,
   listBuiltInChannelOptions,
 } from './channelManagerShared';
 import { useMediaConfigManager } from './useMediaConfigManager';
-import { getStorageConfig } from '../../store/storageConfig';
 
 interface LLMConfigManagerProps {
   onConfigChange?: () => void;
@@ -82,6 +85,7 @@ function getChannelDefaults(definition?: ReturnType<typeof listBuiltInChannelOpt
 }
 
 export const LLMConfigManager: React.FC<LLMConfigManagerProps> = ({ onConfigChange }) => {
+  const { t } = useTranslation();
   const { message } = App.useApp();
 
   const channelDefinitions = useMemo(() => listBuiltInChannelOptions('llm'), []);
@@ -239,7 +243,9 @@ export const LLMConfigManager: React.FC<LLMConfigManagerProps> = ({ onConfigChan
         providerType: definition.id,
         providerConfig: {
           baseUrl: values.baseUrl,
-          hasApiKey: editingHasStoredApiKey || Boolean(String(values.apiKey || '').trim()),
+          ...(String(values.apiKey || '').trim()
+            ? { apiKey: String(values.apiKey).trim() }
+            : {}),
         },
         defaultModelId,
         models,
@@ -247,23 +253,19 @@ export const LLMConfigManager: React.FC<LLMConfigManagerProps> = ({ onConfigChan
         source: 'builtin' as const,
       };
 
-      const rootPath = getStorageConfig()?.rootPath;
-      if (!rootPath) {
-        throw new Error('未找到存储根目录配置');
+      const saved = editingChannel
+        ? await updateChannelConfig(editingChannel.id, payload)
+        : await addChannelConfig(payload);
+
+      if (!saved) {
+        throw new Error('保存渠道配置失败');
       }
 
-      const nextApiKey = String(values.apiKey || '').trim();
-      const savedResult = await saveLLMChannelConfigTransaction({
-        rootPath,
-        ...(editingChannel ? { editingChannelId: editingChannel.id } : {}),
-        payload,
-        ...(nextApiKey ? { profileApiKey: nextApiKey } : {}),
-        shouldUpdateDefault: !settings?.mediaDefaults?.llm
-          || settings.mediaDefaults.llm.channelId === (editingChannel?.id || 'PENDING_NEW_CHANNEL'),
-      });
-
-      if (!savedResult.success || !savedResult.channel) {
-        throw new Error(savedResult.error?.message || '保存渠道配置失败');
+      const shouldUpdateDefault =
+        !settings?.mediaDefaults?.llm
+        || settings.mediaDefaults.llm.channelId === (editingChannel?.id || 'PENDING_NEW_CHANNEL');
+      if (shouldUpdateDefault) {
+        await setDefaultMediaModelSelection('llm', { channelId: saved.id, modelId: defaultModelId });
       }
 
       message.success(editingChannel ? '配置已更新' : '配置已添加');
@@ -272,22 +274,18 @@ export const LLMConfigManager: React.FC<LLMConfigManagerProps> = ({ onConfigChan
       onConfigChange?.();
     } catch (err: any) {
       if (err?.errorFields) return;
-      message.error(`保存失败: ${err?.message || String(err)}`);
+      message.error(`保存失败: ${formatChannelError(err, t)}`);
     }
   }, [definitionMap, editingChannel, form, loadConfigs, message, onConfigChange, setModalVisible, settings?.mediaDefaults?.llm]);
 
   const handleDelete = useCallback(async (id: string) => {
     try {
-      const rootPath = getStorageConfig()?.rootPath;
-      if (!rootPath) {
-        throw new Error('未找到存储根目录配置');
-      }
-      await deleteLLMChannelConfigTransaction({ rootPath, channelId: id });
+      await deleteChannelConfig(id);
       message.success('配置已删除');
       await loadConfigs();
       onConfigChange?.();
     } catch (err: any) {
-      message.error(`删除失败: ${err?.message || String(err)}`);
+      message.error(`删除失败: ${formatChannelError(err, t)}`);
     }
   }, [loadConfigs, message, onConfigChange]);
 
@@ -328,7 +326,7 @@ export const LLMConfigManager: React.FC<LLMConfigManagerProps> = ({ onConfigChan
         message.error(`"${config.channel.name}" 连接失败，请检查配置`);
       }
     } catch (err: any) {
-      message.error(`连接测试失败: ${err?.message || String(err)}`);
+      message.error(`连接测试失败: ${formatChannelError(err, t)}`);
     } finally {
       setTestingId(null);
     }

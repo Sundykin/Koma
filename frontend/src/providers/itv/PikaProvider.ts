@@ -18,11 +18,18 @@ export class PikaProvider implements ITVProvider {
   }
 
   validate(): boolean {
-    return !!this.config.apiKey;
+    return Boolean(this.config.profileId) || Boolean(this.config.apiKey);
   }
 
   private getBaseUrl(): string {
     return this.config.baseUrl || 'https://api.pika.art/v1';
+  }
+
+  private getAuthOnlyHeaders(): Record<string, string> {
+    if (this.config.profileId) {
+      return { 'x-koma-channel-id': this.config.profileId };
+    }
+    return { Authorization: `Bearer ${this.config.apiKey || ''}` };
   }
 
   async testConnection(): Promise<boolean> {
@@ -30,9 +37,7 @@ export class PikaProvider implements ITVProvider {
 
     try {
       const response = await safeFetch(`${this.getBaseUrl()}/health`, {
-        headers: {
-          Authorization: `Bearer ${this.config.apiKey}`,
-        },
+        headers: this.getAuthOnlyHeaders(),
       });
       return response.ok;
     } catch {
@@ -65,9 +70,7 @@ export class PikaProvider implements ITVProvider {
 
     const response = await safeFetch(`${this.getBaseUrl()}/generate`, {
       method: 'POST',
-      headers: {
-        Authorization: `Bearer ${this.config.apiKey}`,
-      },
+      headers: this.getAuthOnlyHeaders(),
       body: formData,
     });
 
@@ -87,9 +90,7 @@ export class PikaProvider implements ITVProvider {
 
   async getTaskSnapshot(taskId: string): Promise<ProviderTaskSnapshot<ITVResult>> {
     const response = await safeFetch(`${this.getBaseUrl()}/tasks/${taskId}`, {
-      headers: {
-        Authorization: `Bearer ${this.config.apiKey}`,
-      },
+      headers: this.getAuthOnlyHeaders(),
     });
 
     if (!response.ok) {
@@ -120,9 +121,7 @@ export class PikaProvider implements ITVProvider {
   async cancelTask(taskId: string): Promise<void> {
     await safeFetch(`${this.getBaseUrl()}/tasks/${taskId}/cancel`, {
       method: 'POST',
-      headers: {
-        Authorization: `Bearer ${this.config.apiKey}`,
-      },
+      headers: this.getAuthOnlyHeaders(),
     });
   }
 

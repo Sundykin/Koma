@@ -821,6 +821,8 @@ export class BackgroundAnalysisService {
 
   /**
    * 合并资产，按名称去重
+   * 同名资产采取 upsert 语义：用新提取的描述字段覆盖旧记录，但保留旧的 id / createdAt / 已生成的 media
+   * 以避免 entity_episode_refs 外键引用失效与媒体资产丢失
    */
   private mergeAssets<T extends { id: string; name: string }>(
     existing: T[],
@@ -830,7 +832,17 @@ export class BackgroundAnalysisService {
     const existingMap = new Map(existing.map(item => [item[key], item]));
 
     for (const item of newItems) {
-      if (!existingMap.has(item[key])) {
+      const prev = existingMap.get(item[key]);
+      if (prev) {
+        const prevAny = prev as any;
+        existingMap.set(item[key], {
+          ...prev,
+          ...item,
+          id: prevAny.id,
+          createdAt: prevAny.createdAt ?? (item as any).createdAt,
+          media: prevAny.media ?? (item as any).media,
+        } as T);
+      } else {
         existingMap.set(item[key], item);
       }
     }

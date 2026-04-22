@@ -34,7 +34,7 @@ export class RunwayProvider implements ITVProvider {
   }
 
   validate(): boolean {
-    return !!this.config.apiKey;
+    return Boolean(this.config.profileId) || Boolean(this.config.apiKey);
   }
 
   private getBaseUrl(): string {
@@ -42,6 +42,13 @@ export class RunwayProvider implements ITVProvider {
   }
 
   private getHeaders(): Record<string, string> {
+    if (this.config.profileId) {
+      return {
+        'x-koma-channel-id': this.config.profileId,
+        'Content-Type': 'application/json',
+        'X-Runway-Version': '2024-11-06',
+      };
+    }
     return {
       'Authorization': `Bearer ${this.config.apiKey || ''}`,
       'Content-Type': 'application/json',

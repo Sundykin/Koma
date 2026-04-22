@@ -79,7 +79,8 @@ export class CustomITVProvider implements ITVProvider {
   }
 
   validate(): boolean {
-    return !!this.config.apiKey && !!this.config.baseUrl;
+    const hasCredentialRef = Boolean(this.config.profileId) || Boolean(this.config.apiKey);
+    return hasCredentialRef && Boolean(this.config.baseUrl);
   }
 
   private getBaseUrl(): string {
@@ -127,7 +128,7 @@ export class CustomITVProvider implements ITVProvider {
       try {
         const resp = await safeFetch(`${baseUrl}/openapi.json`, {
           method: 'GET',
-          headers: { Authorization: `Bearer ${this.config.apiKey || ''}` },
+          headers: this.getAuthOnlyHeaders(),
         });
         if (!resp.ok) continue;
 
@@ -190,17 +191,30 @@ export class CustomITVProvider implements ITVProvider {
   }
 
   private getHeaders(): Record<string, string> {
+    if (this.config.profileId) {
+      return {
+        'x-koma-channel-id': this.config.profileId,
+        'Content-Type': 'application/json',
+      };
+    }
     return {
       Authorization: `Bearer ${this.config.apiKey || ''}`,
       'Content-Type': 'application/json',
     };
   }
 
+  private getAuthOnlyHeaders(): Record<string, string> {
+    if (this.config.profileId) {
+      return { 'x-koma-channel-id': this.config.profileId };
+    }
+    return { Authorization: `Bearer ${this.config.apiKey || ''}` };
+  }
+
   async testConnection(): Promise<boolean> {
     if (!this.validate()) return false;
     try {
       const resp = await safeFetch(`${this.getBaseUrl()}/v1/models`, {
-        headers: { Authorization: `Bearer ${this.config.apiKey || ''}` },
+        headers: this.getAuthOnlyHeaders(),
       });
       return resp.ok;
     } catch {
@@ -355,7 +369,7 @@ export class CustomITVProvider implements ITVProvider {
       const resp = await safeFetch(
         `${this.joinUrl(ssePath)}?task_id=${taskId}`,
         {
-          headers: { Authorization: `Bearer ${this.config.apiKey || ''}` },
+          headers: this.getAuthOnlyHeaders(),
           signal: controller.signal,
         } as RequestInit
       );
@@ -369,7 +383,7 @@ export class CustomITVProvider implements ITVProvider {
           const fallbackResp = await safeFetch(
             `${this.joinUrl(fallbackSsePath)}?task_id=${taskId}`,
             {
-              headers: { Authorization: `Bearer ${this.config.apiKey || ''}` },
+              headers: this.getAuthOnlyHeaders(),
               signal: controller.signal,
             } as RequestInit
           );
@@ -400,7 +414,7 @@ export class CustomITVProvider implements ITVProvider {
             const overrideResp = await safeFetch(
               `${this.joinUrl(this.apiOverride.ssePath)}?task_id=${taskId}`,
               {
-                headers: { Authorization: `Bearer ${this.config.apiKey || ''}` },
+                headers: this.getAuthOnlyHeaders(),
                 signal: controller.signal,
               } as RequestInit
             );

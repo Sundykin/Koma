@@ -124,11 +124,10 @@ export class IPCLLMProvider implements LLMProvider {
     };
   }
 
-  private mapProvider(provider: string): 'openai' | 'anthropic' | 'google' {
+  private mapProvider(provider: string): string {
+    // 别名归一化；任意其它字符串原样透传（openai-compatible / plugin provider / registry 扩展）
     if (provider === 'claude') return 'anthropic';
     if (provider === 'gemini') return 'google';
-    if (provider === 'openai') return 'openai';
-    if (provider === 'openai-compatible') return 'openai';
-    throw new Error(`Unknown LLM provider: "${provider}"`);
+    return provider;
   }
 }

@@ -135,13 +135,17 @@ export class ViduProvider implements ITVProvider {
   }
 
   validate(): boolean {
-    return Boolean(this.config.baseUrl && this.config.apiKey && String(this.config.modelName || '').trim());
+    const hasCredentialRef = Boolean(this.config.profileId) || Boolean(this.config.apiKey);
+    return Boolean(this.config.baseUrl) && hasCredentialRef && Boolean(String(this.config.modelName || '').trim());
   }
 
   private getHeaders(request?: ITVRequest): Record<string, string> {
     const traceContext = request ? readVideoTraceContext(request) : undefined;
+    const authHeader: Record<string, string> = this.config.profileId
+      ? { 'x-koma-channel-id': this.config.profileId }
+      : { Authorization: `Bearer ${this.config.apiKey || ''}` };
     return {
-      Authorization: `Bearer ${this.config.apiKey || ''}`,
+      ...authHeader,
       Accept: 'application/json',
       'Content-Type': 'application/json',
       ...buildAITraceHeaders(traceContext),

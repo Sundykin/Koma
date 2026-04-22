@@ -170,7 +170,9 @@ export class Grok2ApiImagineITVProvider implements ITVProvider {
   };
 
   constructor(config: ITVConfig) {
-    this.config = config;
+    // grok2api-imagine-itv 协议固有需要 grok-image-index 编译（@角色名 → @Image N 且 refs 自动限 3）。
+    // 这里硬绑定协议，避免用户漏配导致送上游的 messages content 索引对不上而 400。
+    this.config = { ...config, promptProtocol: config.promptProtocol ?? 'grok-image-index' };
   }
 
   private getModelName(): string {
@@ -237,14 +239,28 @@ export class Grok2ApiImagineITVProvider implements ITVProvider {
   }
 
   validate(): boolean {
-    return Boolean(this.config.apiKey && this.config.baseUrl && String(this.config.modelName || '').trim());
+    const hasCredentialRef = Boolean(this.config.profileId) || Boolean(this.config.apiKey);
+    return hasCredentialRef && Boolean(this.config.baseUrl) && Boolean(String(this.config.modelName || '').trim());
   }
 
   private getHeaders(): Record<string, string> {
+    if (this.config.profileId) {
+      return {
+        'x-koma-channel-id': this.config.profileId,
+        'Content-Type': 'application/json',
+      };
+    }
     return {
       Authorization: `Bearer ${this.config.apiKey || ''}`,
       'Content-Type': 'application/json',
     };
+  }
+
+  private getAuthOnlyHeaders(): Record<string, string> {
+    if (this.config.profileId) {
+      return { 'x-koma-channel-id': this.config.profileId };
+    }
+    return { Authorization: `Bearer ${this.config.apiKey || ''}` };
   }
 
   async testConnection(): Promise<boolean> {
@@ -252,7 +268,7 @@ export class Grok2ApiImagineITVProvider implements ITVProvider {
     try {
       const resp = await safeFetch(joinUrl(this.config.baseUrl || '', '/v1/models'), {
         method: 'GET',
-        headers: { Authorization: `Bearer ${this.config.apiKey || ''}` },
+        headers: this.getAuthOnlyHeaders(),
       });
       return resp.status !== 401 && resp.status !== 403;
     } catch {
@@ -261,7 +277,7 @@ export class Grok2ApiImagineITVProvider implements ITVProvider {
   }
 
   async start(request: ITVRequest): Promise<ProviderStartResult<ITVResult>> {
-    if (!this.config.apiKey || !this.config.baseUrl) {
+    if ((!this.config.apiKey && !this.config.profileId) || !this.config.baseUrl) {
       throw new Error('API Key 或 API 地址未配置');
     }
     const modelName = this.getModelName();

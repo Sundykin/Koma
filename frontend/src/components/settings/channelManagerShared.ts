@@ -8,6 +8,24 @@ import type {
 import { getBuiltInChannelDefinition, listBuiltInChannelDefinitions } from '../../providers/channel/catalog';
 import { resolveConfiguredChannelModel } from '../../providers/channel/resolver';
 import { generateId } from '../../store/globalStore';
+import { isChannelNetError } from '../../providers/netError';
+
+/**
+ * 把任意 error 转成面向用户的友好文案。
+ * 优先识别 ChannelNetError（主进程结构化 code）→ i18n；否则降级为 err.message。
+ */
+export function formatChannelError(err: unknown, t: (key: string) => string): string {
+  if (isChannelNetError(err)) {
+    const translated = t(err.i18nKey);
+    // i18n 未命中时（t 返回 key 本身），降级为 err.message
+    if (translated && translated !== err.i18nKey) {
+      return translated;
+    }
+    return err.message;
+  }
+  if (err instanceof Error) return err.message;
+  return String(err);
+}
 
 export interface ManagedChannelCard<TConfig> {
   channel: ChannelConfig;

@@ -16,6 +16,12 @@ import { sanitizeBodyForLog } from '../../utils/logFormatting';
 import { base64ToBytes, stripDataHeader } from '../../utils/encoding';
 import { safeFetch } from '../../utils/safeFetch';
 import {
+  fsDownloadFile,
+  fsReadFileAsBase64,
+  fsRemove,
+  appGetPath,
+} from '../../services/electronService';
+import {
   assertSupportedVideoCapabilities,
   type ITVProvider,
   type ITVRequest,
@@ -319,13 +325,6 @@ function inferExtensionFromMimeType(mimeType?: string): string {
   }
 }
 
-function normalizeMimeType(value?: string): string | undefined {
-  if (!value) {
-    return undefined;
-  }
-  return value.split(';')[0]?.trim() || undefined;
-}
-
 function inferFilenameFromAsset(asset: ProviderAssetInput, index: number): string {
   if (asset.transport === 'remote-url') {
     try {
@@ -376,6 +375,12 @@ export class SeedanceProvider implements ITVProvider {
   }
 
   private getHeaders(): Record<string, string> {
+    if (this.config.profileId) {
+      return {
+        'x-koma-channel-id': this.config.profileId,
+        'Content-Type': 'application/json',
+      };
+    }
     return {
       Authorization: `Bearer ${this.config.apiKey || ''}`,
       'Content-Type': 'application/json',
@@ -383,9 +388,19 @@ export class SeedanceProvider implements ITVProvider {
   }
 
   private getUploadHeaders(): Record<string, string> {
+    if (this.config.profileId) {
+      return { 'x-koma-channel-id': this.config.profileId };
+    }
     return {
       Authorization: `Bearer ${this.config.apiKey || ''}`,
     };
+  }
+
+  private getAuthOnlyHeaders(): Record<string, string> {
+    if (this.config.profileId) {
+      return { 'x-koma-channel-id': this.config.profileId };
+    }
+    return { Authorization: `Bearer ${this.config.apiKey || ''}` };
   }
 
   private getModelName(): string {
@@ -397,7 +412,8 @@ export class SeedanceProvider implements ITVProvider {
   }
 
   validate(): boolean {
-    return Boolean(this.config.apiKey && String(this.config.modelName || '').trim());
+    const hasCredentialRef = Boolean(this.config.profileId) || Boolean(this.config.apiKey);
+    return hasCredentialRef && Boolean(String(this.config.modelName || '').trim());
   }
 
   async testConnection(): Promise<boolean> {
@@ -447,9 +463,19 @@ export class SeedanceProvider implements ITVProvider {
         url: asset.value,
       });
 
-      let response: Response;
+      // SSRF 防护：走主进程 fs.downloadFile（自带 validateUrl + 每次重定向复检）
+      // 先下载到 temp，再读回 base64，最后清理；避免裸 fetch 绕过安全边界。
+      const tempRoot = await appGetPath('temp');
+      const tempFile = `${tempRoot}/koma-seedance-${Date.now()}-${index}-${Math.random().toString(36).slice(2, 8)}`;
+      let cleanupNeeded = false;
       try {
-        response = await fetch(asset.value, { method: 'GET' });
+        const res = await fsDownloadFile(asset.value, tempFile);
+        cleanupNeeded = true;
+        if (!res?.success) {
+          throw new Error(`Seedance 远程图片下载失败：${asset.value}`);
+        }
+        const base64 = await fsReadFileAsBase64(tempFile);
+        bytes = base64ToBytes(base64);
       } catch (error) {
         logger.error('Seedance image download failed', {
           provider: this.config.provider,
@@ -458,26 +484,16 @@ export class SeedanceProvider implements ITVProvider {
           url: asset.value,
           error: error instanceof Error ? error.message : String(error),
         });
-        throw new Error(`Seedance 远程图片下载失败：${asset.value}`);
+        if (cleanupNeeded) {
+          try { await fsRemove(tempFile); } catch { /* ignore */ }
+        }
+        throw error instanceof Error
+          ? error
+          : new Error(`Seedance 远程图片下载失败：${asset.value}`);
       }
+      try { await fsRemove(tempFile); } catch { /* ignore */ }
 
-      if (!response.ok) {
-        const raw = await response.text();
-        logger.error('Seedance image download failed', {
-          provider: this.config.provider,
-          filename,
-          index,
-          url: asset.value,
-          status: response.status,
-          response: raw.slice(0, 1200),
-        });
-        throw new Error(`Seedance 远程图片下载失败 (${response.status}): ${raw.slice(0, 300)}`);
-      }
-
-      bytes = new Uint8Array(await response.arrayBuffer());
-      resolvedMimeType = normalizeMimeType(response.headers.get('content-type'))
-        || asset.mimeType
-        || inferMimeTypeFromFilename(filename);
+      resolvedMimeType = asset.mimeType || inferMimeTypeFromFilename(filename);
 
       logger.info('Seedance image download succeeded', {
         provider: this.config.provider,
@@ -486,6 +502,7 @@ export class SeedanceProvider implements ITVProvider {
         url: asset.value,
         bytes: bytes.byteLength,
         mimeType: resolvedMimeType,
+        transport: 'fs.downloadFile',
       });
     } else {
       const { mimeType, base64 } = stripDataHeader(asset.value);
@@ -657,9 +674,7 @@ export class SeedanceProvider implements ITVProvider {
   async getTaskSnapshot(taskId: string): Promise<ProviderTaskSnapshot<ITVResult>> {
     const response = await safeFetch(joinUrl(this.getBaseUrl(), `/v1/videos/generations/${taskId}`), {
       method: 'GET',
-      headers: {
-        Authorization: `Bearer ${this.config.apiKey || ''}`,
-      },
+      headers: this.getAuthOnlyHeaders(),
     });
 
     if (!response.ok) {

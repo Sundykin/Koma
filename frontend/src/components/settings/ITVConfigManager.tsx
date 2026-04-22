@@ -79,7 +79,6 @@ function getProviderColor(provider: string) {
     case 'sora2': return 'geekblue';
     case 'comfyui-animatediff': return 'orange';
     case 'grok2api-imagine-itv': return 'green';
-    case 'koma-official': return 'gold';
     default: return 'default';
   }
 }
@@ -149,6 +148,7 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
 
   const currentProviderType = Form.useWatch('providerType', form) as string | undefined;
   const previousProviderTypeRef = useRef<string | undefined>(undefined);
+  const editingHasStoredApiKey = Boolean(editingChannel && (editingChannel.providerConfig as Record<string, unknown> | undefined)?.hasApiKey);
   const currentDefinition = currentProviderType ? definitionMap.get(currentProviderType) : undefined;
   const watchedModels = Form.useWatch('models', form) as Array<Partial<ChannelModelDefinition>> | undefined;
   const modelOptions = useMemo(() => (
@@ -713,9 +713,12 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
                 <Form.Item
                   name="apiKey"
                   label={t('settings.apiKey')}
-                  rules={[{ required: currentProviderType !== 'comfyui-animatediff', message: `${t('settings.pleaseEnter')} ${t('settings.apiKey')}` }]}
+                  rules={[{
+                    required: currentProviderType !== 'comfyui-animatediff' && !editingHasStoredApiKey,
+                    message: `${t('settings.pleaseEnter')} ${t('settings.apiKey')}`,
+                  }]}
                 >
-                  <Input.Password placeholder={t('settings.enterApiKey')} />
+                  <Input.Password placeholder={editingHasStoredApiKey ? t('settings.apiKeyStoredPlaceholder') : t('settings.enterApiKey')} />
                 </Form.Item>
               )}
 

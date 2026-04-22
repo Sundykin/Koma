@@ -133,10 +133,23 @@ export class Sora2Provider implements ITVProvider {
   }
 
   private getHeaders(): Record<string, string> {
+    if (this.config.profileId) {
+      return {
+        'x-koma-channel-id': this.config.profileId,
+        'Content-Type': 'application/json',
+      };
+    }
     return {
       'Authorization': `Bearer ${this.config.apiKey || ''}`,
       'Content-Type': 'application/json',
     };
+  }
+
+  private getAuthOnlyHeaders(): Record<string, string> {
+    if (this.config.profileId) {
+      return { 'x-koma-channel-id': this.config.profileId };
+    }
+    return { 'Authorization': `Bearer ${this.config.apiKey || ''}` };
   }
 
   private getModelName(): string {
@@ -148,7 +161,8 @@ export class Sora2Provider implements ITVProvider {
   }
 
   validate(): boolean {
-    return Boolean(this.config.apiKey && String(this.config.modelName || '').trim());
+    const hasCredentialRef = Boolean(this.config.profileId) || Boolean(this.config.apiKey);
+    return hasCredentialRef && Boolean(String(this.config.modelName || '').trim());
   }
 
   async testConnection(): Promise<boolean> {
@@ -173,7 +187,7 @@ export class Sora2Provider implements ITVProvider {
   }
 
   async start(request: ITVRequest): Promise<ProviderStartResult<ITVResult>> {
-    if (!this.config.apiKey) {
+    if (!this.config.apiKey && !this.config.profileId) {
       throw new Error('API Key 未配置');
     }
     assertSupportedVideoCapabilities(request, 'Sora2', ['video.image-to-video']);
@@ -275,9 +289,7 @@ export class Sora2Provider implements ITVProvider {
   async getTaskSnapshot(taskId: string): Promise<ProviderTaskSnapshot<ITVResult>> {
     const response = await safeFetch(`${this.getBaseUrl()}/v1/videos/generations/${taskId}`, {
       method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${this.config.apiKey || ''}`,
-      },
+      headers: this.getAuthOnlyHeaders(),
     });
 
     if (!response.ok) {
@@ -332,7 +344,7 @@ export class Sora2Provider implements ITVProvider {
     timestamps: string;
     model?: string;
   }): Promise<string> {
-    if (!this.config.apiKey) {
+    if (!this.config.apiKey && !this.config.profileId) {
       throw new Error('API Key 未配置');
     }
 
@@ -375,9 +387,7 @@ export class Sora2Provider implements ITVProvider {
   async checkCharacterProgress(taskId: string): Promise<CharacterProgressInfo> {
     const response = await safeFetch(`${this.getBaseUrl()}/v1/characters_tasks/${taskId}`, {
       method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${this.config.apiKey || ''}`,
-      },
+      headers: this.getAuthOnlyHeaders(),
     });
 
     if (!response.ok) {
@@ -428,7 +438,7 @@ export class Sora2Provider implements ITVProvider {
    * @returns 混音任务 ID
    */
   async remixVideo(videoId: string, options: RemixOptions): Promise<string> {
-    if (!this.config.apiKey) {
+    if (!this.config.apiKey && !this.config.profileId) {
       throw new Error('API Key 未配置');
     }
 

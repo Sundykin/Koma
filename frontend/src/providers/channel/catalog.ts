@@ -10,30 +10,22 @@ import { LLM_CHANNEL_PRESETS, TTI_PRESETS, ITV_PRESETS, TTS_PRESETS } from '../.
  */
 
 const llmChannels: ChannelDefinition[] = [
-  ...LLM_CHANNEL_PRESETS.map((preset) => {
-    const baseUrlLocked = preset.id === 'koma-official-llm';
-    return {
-      id: preset.id,
-      category: 'llm' as const,
-      vendor: preset.name,
-      name: preset.name,
-      description: 'OpenAI 兼容对话渠道',
-      runtimeProviderType: 'openai-compatible',
-      models: [],
-      configSchema: {
-        required: ['apiKey'] as string[],
-        properties: {
-          baseUrl: {
-            type: 'string',
-            default: preset.baseUrl,
-            ...(baseUrlLocked ? { locked: true, fixed: preset.baseUrl } : {}),
-          },
-          apiKey: { type: 'string' },
-        },
-        ...(baseUrlLocked ? { baseUrlLocked: true, fixedBaseUrl: preset.baseUrl } : {}),
+  ...LLM_CHANNEL_PRESETS.map((preset) => ({
+    id: preset.id,
+    category: 'llm' as const,
+    vendor: preset.name,
+    name: preset.name,
+    description: 'OpenAI 兼容对话渠道',
+    runtimeProviderType: 'openai-compatible',
+    models: [],
+    configSchema: {
+      required: ['apiKey'] as string[],
+      properties: {
+        baseUrl: { type: 'string', default: preset.baseUrl },
+        apiKey: { type: 'string' },
       },
-    };
-  }),
+    },
+  })),
   {
     id: 'gemini',
     category: 'llm',
@@ -81,35 +73,25 @@ const ttiChannels: ChannelDefinition[] = [
       },
     },
   },
-  ...TTI_PRESETS.map((preset) => {
-    const baseUrlLocked = preset.id === 'koma-official-tti';
-    return {
-      id: preset.id,
-      category: 'tti' as const,
-      vendor: preset.name,
-      name: preset.name,
-      runtimeProviderType: preset.id,
-      models: [],
-      configSchema: {
-        required: (preset.id === 'comfyui' ? ['baseUrl'] : ['apiKey']) as string[],
-        properties: {
-          baseUrl: {
-            type: 'string',
-            default: preset.baseUrl || '',
-            ...(baseUrlLocked ? { locked: true, fixed: preset.baseUrl } : {}),
-          },
-          apiKey: { type: 'string' },
-        },
-        ...(baseUrlLocked ? { baseUrlLocked: true, fixedBaseUrl: preset.baseUrl } : {}),
+  ...TTI_PRESETS.map((preset) => ({
+    id: preset.id,
+    category: 'tti' as const,
+    vendor: preset.name,
+    name: preset.name,
+    runtimeProviderType: preset.id,
+    models: [],
+    configSchema: {
+      required: (preset.id === 'comfyui' ? ['baseUrl'] : ['apiKey']) as string[],
+      properties: {
+        baseUrl: { type: 'string', default: preset.baseUrl || '' },
+        apiKey: { type: 'string' },
       },
-    };
-  }),
+    },
+  })),
 ];
 
 const itvChannels: ChannelDefinition[] = ITV_PRESETS.map((preset) => {
   const isLocalOnly = preset.id === 'comfyui-animatediff';
-  // koma-official 官方渠道：baseUrl 固定，UI 不再允许用户改写。
-  const baseUrlLocked = preset.id === 'koma-official';
   return {
     id: preset.id,
     category: 'itv' as const,
@@ -120,14 +102,9 @@ const itvChannels: ChannelDefinition[] = ITV_PRESETS.map((preset) => {
     configSchema: {
       required: isLocalOnly ? ['baseUrl'] : ['apiKey'],
       properties: {
-        baseUrl: {
-          type: 'string',
-          default: preset.baseUrl || '',
-          ...(baseUrlLocked ? { locked: true, fixed: preset.baseUrl } : {}),
-        },
+        baseUrl: { type: 'string', default: preset.baseUrl || '' },
         apiKey: { type: 'string' },
       },
-      ...(baseUrlLocked ? { baseUrlLocked: true, fixedBaseUrl: preset.baseUrl } : {}),
     },
   };
 });
@@ -165,4 +142,3 @@ export function listBuiltInChannelDefinitions(category?: MediaCategory): Channel
 export function getBuiltInChannelDefinition(channelId: string): ChannelDefinition | undefined {
   return BUILTIN_CHANNELS.find((item) => item.id === channelId);
 }
-
