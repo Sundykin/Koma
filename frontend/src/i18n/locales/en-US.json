@@ -308,6 +308,18 @@
     "configNamePlaceholder": "e.g.: My Fish Audio",
     "apiKey": "API Key",
     "enterApiKey": "Enter API Key",
+    "apiKeyStoredPlaceholder": "Stored (leave blank to keep)",
+    "error": {
+      "channel_api_key_missing": "Channel API Key missing — please configure",
+      "conflict_auth_mode": "Conflicting auth modes",
+      "duplicate_sensitive_header": "Duplicate sensitive header",
+      "missing_channel_id_for_query_key": "Missing channel ID for query-key mode",
+      "missing_channel_id_for_raw_authorization": "Missing channel ID for raw-authorization mode",
+      "invalid_query_key_name": "Invalid query-key parameter name",
+      "channel_api_key_decrypt_failed": "Failed to decrypt stored API key",
+      "invalid_url": "Invalid URL",
+      "unknown_error": "Request failed"
+    },
     "apiAddress": "API Address",
     "enterApiAddress": "Enter API address",
     "defaultVoice": "Default Voice",

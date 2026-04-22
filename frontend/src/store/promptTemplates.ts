@@ -1006,9 +1006,15 @@ description 字段要求：
     id: 'tti_character_costume',
     name: '角色定妆照（三视图）',
     description: '生成角色三视图定妆照',
-    template: '{{stylePrefix}}, character turnaround sheet, white background, front view | side view | back view, three poses in one image, full body standing reference, neutral stance, clear silhouette, clothing layers visible, objective appearance details only, {{appearance}}',
+    template: '{{stylePrefix}}, character turnaround sheet, white background, front view | side view | back view, three poses in one image, full body standing reference, neutral stance, clear silhouette, clothing layers visible, objective appearance details only, {{gender}} {{age}} {{appearance}}',
     variables: [
       variable('stylePrefix'),
+      variable('gender', {
+        description: '角色性别英文标签（male/female/androgynous），自动从 Character.gender 映射。未知或空值会跳过。',
+      }),
+      variable('age', {
+        description: '角色年龄的英文描述。纯数字会转为 "N years old"；"未知" 等占位值会跳过。',
+      }),
       variable('appearance', {
         description: '角色当前用于生图的客观外观描述，只能包含脸部、发型、服装、材质、配色、体态等可见信息。',
       }),

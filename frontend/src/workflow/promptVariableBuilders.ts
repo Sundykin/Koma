@@ -163,6 +163,27 @@ function getCharacterAppearance(character?: Character): string {
   return sanitizeCharacterAppearance(character.prompt, character.name);
 }
 
+const GENDER_EN: Record<string, string> = {
+  male: 'male',
+  female: 'female',
+  neutral: 'androgynous',
+  unknown: '',
+};
+
+function formatGenderClause(gender?: string): string {
+  if (!gender) return '';
+  const en = GENDER_EN[gender];
+  return en ? `${en},` : '';
+}
+
+function formatAgeClause(age?: string): string {
+  const trimmed = cleanText(age);
+  if (!trimmed) return '';
+  if (/^(未知|unknown|n\/?a)$/i.test(trimmed)) return '';
+  const en = /^\d+$/.test(trimmed) ? `${trimmed} years old` : trimmed;
+  return `${en},`;
+}
+
 function getSceneVisualDescription(scene?: Scene): string {
   if (!scene) return '';
   return sanitizeSceneDescription(
@@ -247,6 +268,8 @@ export function buildCharacterCostumeTemplateVariables(
 ): Record<string, string> {
   return {
     stylePrefix: cleanText(stylePrefix),
+    gender: formatGenderClause(character.gender),
+    age: formatAgeClause(character.age),
     appearance: getCharacterAppearance(character),
   };
 }
