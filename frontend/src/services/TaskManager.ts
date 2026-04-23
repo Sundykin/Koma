@@ -45,6 +45,7 @@ export interface TaskRecoveryOptions {
 export interface Task {
   id: string;
   projectId: string;
+  sessionId?: string;
   // 新增分类字段
   category?: TaskCategory;
   subType?: TaskSubType;
@@ -115,6 +116,7 @@ class TaskManagerClass {
   private pollingInterval: NodeJS.Timeout | null = null;
   private initialized = false;
   private currentProjectId: string | null = null;
+  private readonly sessionId = uuidv4();
 
   private async getTasksPath(projectId: string): Promise<string> {
     const config = getStorageConfig() || (await initStorageConfig());
@@ -131,9 +133,27 @@ class TaskManagerClass {
 
     this.currentProjectId = projectId;
     await this.loadTasks(projectId);
-    await this.recoverTasks(projectId, options || DEFAULT_RECOVERY_OPTIONS);
+    await this.reconcileInterruptedTasks(projectId);
+    if (options) {
+      await this.recoverTasks(projectId, options || DEFAULT_RECOVERY_OPTIONS);
+    }
     this.startPolling();
     this.initialized = true;
+  }
+
+  private async reconcileInterruptedTasks(projectId: string): Promise<void> {
+    const interruptedTasks = Array.from(this.tasks.values()).filter(task => {
+      if (task.projectId !== projectId) return false;
+      if (task.sessionId === this.sessionId) return false;
+      return task.status === 'pending' || task.status === 'running' || task.status === 'processing';
+    });
+
+    for (const task of interruptedTasks) {
+      this.updateTask(task.id, {
+        status: 'failed',
+        error: '任务在软件重启后中断',
+      });
+    }
   }
 
   /**
@@ -159,6 +179,7 @@ class TaskManagerClass {
     const task: Task = {
       id: uuidv4(),
       projectId: params.projectId,
+      sessionId: this.sessionId,
       type: type || 'shot-analysis',
       category,
       subType,
