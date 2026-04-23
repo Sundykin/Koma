@@ -160,11 +160,11 @@ export const ScriptNodeEditor: React.FC<ScriptNodeEditorProps> = ({
       return parseLinghuiScriptContent(content);
     }
 
-    if (nodeRun?.result?.kind === 'storyboard' && (nodeRun.result.shots?.length ?? 0) > 0) {
+    if (nodeRun?.result?.kind === 'storyboard') {
       return {
         shots: nodeRun.result.shots ?? [],
         formattedText: String(nodeRun.result.text ?? ''),
-        source: 'result' as const,
+        source: (nodeRun.status === 'running' ? 'stream' : 'result') as 'stream' | 'result',
       };
     }
 
@@ -253,6 +253,23 @@ export const ScriptNodeEditor: React.FC<ScriptNodeEditorProps> = ({
 
   const renderShotView = (immersive = false) => {
     if (!previewState.shots.length) {
+      if (mode === 'generate' && previewState.formattedText.trim()) {
+        return (
+          <div className="linghuiEditorField" style={{ marginBottom: 0 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+              <span className="linghuiEditorSettingsLabel">{nodeRun?.status === 'running' ? '实时脚本输出' : '生成结果'}</span>
+              <span className="linghuiEditorSummaryPill">{previewState.formattedText.trim().length} 字</span>
+            </div>
+            <div
+              className="linghuiNodeTextarea"
+              style={{ minHeight: immersive ? 420 : 260, overflow: 'auto', whiteSpace: 'pre-wrap', color: '#e4e4e7' }}
+            >
+              {previewState.formattedText}
+            </div>
+          </div>
+        );
+      }
+
       return (
         <div className="linghuiEditorEmptyState">
           {mode === 'manual' ? '输入脚本后会在这里自动解析镜头。' : '运行后会在这里出现结构化镜头列表。'}
@@ -268,7 +285,7 @@ export const ScriptNodeEditor: React.FC<ScriptNodeEditorProps> = ({
           <div className="linghuiScriptPanelMeta">
             <span>{shotCount} 个镜头</span>
             <span>{selectedCount} 个已选</span>
-            <span>{previewState.source === 'json' ? 'JSON 结构' : previewState.source === 'result' ? '运行结果' : '文本解析'}</span>
+            <span>{previewState.source === 'json' ? 'JSON 结构' : previewState.source === 'stream' ? '实时输出' : previewState.source === 'result' ? '运行结果' : '文本解析'}</span>
           </div>
           <div className="linghuiScriptPanelActions">
             <button

@@ -26,7 +26,11 @@ export interface LLMCallOptions {
   disableChunking?: boolean;
   /** 请求超时 (ms)，覆盖后端默认值 */
   timeoutMs?: number;
+  /** 流式增量回调；提供后会优先走流式请求 */
+  onChunk?: LLMStreamChunkHandler;
 }
+
+export type LLMStreamChunkHandler = (delta: string, accumulated: string) => void;
 
 export interface LLMProvider {
   type: string;
@@ -43,7 +47,7 @@ export interface LLMProvider {
     prompt: string,
     systemPrompt?: string,
     options?: LLMCallOptions,
-    onChunk?: (delta: string, accumulated: string) => void,
+    onChunk?: LLMStreamChunkHandler,
   ): Promise<string>;
-  chat(messages: ChatMessage[], options?: LLMCallOptions): Promise<string>;
+  chat(messages: ChatMessage[], options?: LLMCallOptions, onChunk?: LLMStreamChunkHandler): Promise<string>;
 }

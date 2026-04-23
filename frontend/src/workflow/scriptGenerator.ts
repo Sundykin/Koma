@@ -4,7 +4,7 @@
  */
 import type { AppSettings, Character, Scene } from '../types';
 import { getProjectLLMProvider } from '../providers';
-import type { LLMCallOptions } from '../providers/llm/types';
+import type { LLMCallOptions, LLMStreamChunkHandler } from '../providers/llm/types';
 import { resolvePromptTemplate } from '../store/promptTemplates';
 import { logLLMCall } from '../store/aiCallLogger';
 import { createLogger } from '../store/logger';
@@ -19,7 +19,9 @@ interface StyleContext {
   project?: { styleSnapshot?: StyleSnapshotLike };
 }
 
-type ScriptLLMCallOptions = LLMCallOptions & StyleContext;
+type ScriptLLMCallOptions = LLMCallOptions & StyleContext & {
+  onChunk?: LLMStreamChunkHandler;
+};
 
 interface ScriptGeneratorParams {
   settings: AppSettings;
@@ -169,7 +171,10 @@ export async function generateRandomScript(
   onProgress?.(15, '正在生成随机剧本...');
   const response = await provider.chat([
     { role: 'user', content: finalPrompt },
-  ], finalTraceContext);
+  ], {
+    ...finalTraceContext,
+    stream: typeof traceContext?.onChunk === 'function',
+  }, traceContext?.onChunk);
 
   onProgress?.(100, '剧本生成完成');
   logger.info('随机生成剧本完成', {
@@ -234,7 +239,8 @@ export async function polishScript(
   script: string,
   requirements: string = '使语言更加生动，对话更自然',
   onProgress: (progress: number, step?: string) => void,
-  styleContext?: StyleContext
+  styleContext?: StyleContext,
+  onChunk?: LLMStreamChunkHandler,
 ): Promise<string> {
   const provider = await getProjectLLMProvider();
   if (!provider) {
@@ -258,7 +264,7 @@ export async function polishScript(
     taskProfileId: 'script-polish-stream',
     targetName: '剧本润色',
     stream: true,
-  });
+  }, onChunk);
 
   onProgress(100, '润色完成');
   return response;

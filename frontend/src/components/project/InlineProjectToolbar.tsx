@@ -97,23 +97,23 @@ export const InlineProjectToolbar: React.FC<InlineProjectToolbarProps> = ({
         </div>
 
         {/* 开始制作按钮 */}
-        <Tooltip title={!episode ? "请先选择剧集" : "手动保存当前剧本"}>
+        <Tooltip title={!episode ? "请先选择剧集" : anyBusy ? "AI 处理中，请稍候" : "手动保存当前剧本"}>
           <Button
             size="small"
             icon={isSaving ? <LoadingOutlined spin /> : <SaveOutlined />}
             onClick={onSave}
-            disabled={!episode || isSaving}
+            disabled={!episode || isSaving || anyBusy}
           >
             {isSaving ? '保存中...' : '保存'}
           </Button>
         </Tooltip>
-        <Tooltip title={!episode ? "请先选择剧集" : "进入分镜制作"}>
+        <Tooltip title={!episode ? "请先选择剧集" : anyBusy ? "AI 处理中，请稍候" : "进入分镜制作"}>
           <Button
             type="primary"
             size="small"
             icon={<Play className="w-3.5 h-3.5" />}
             onClick={onStartProduction}
-            disabled={!episode}
+            disabled={!episode || anyBusy}
             className="bg-emerald-600 hover:bg-emerald-500 border-none"
           >
             开始制作

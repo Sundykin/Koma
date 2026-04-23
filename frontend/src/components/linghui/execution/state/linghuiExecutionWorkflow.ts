@@ -212,13 +212,14 @@ export async function executeLinghuiWorkflow(options: ExecuteLinghuiWorkflowOpti
 
       try {
         throwIfExecutionAborted(signal);
-        const result = await executeNode(nodeView, (progress, message) => {
+        const result = await executeNode(nodeView, (progress, message, partialResult) => {
           throwIfExecutionAborted(signal);
           const nextState: LinghuiNodeRunState = {
             ...nextRuns[nodeId],
             status: 'running',
             progress,
             message,
+            result: partialResult ?? nextRuns[nodeId]?.result,
             updatedAt: Date.now(),
             upstreamIds,
           };

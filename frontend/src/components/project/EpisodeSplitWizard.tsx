@@ -52,6 +52,7 @@ export const EpisodeSplitWizard: React.FC<EpisodeSplitWizardProps> = ({
   const [analysis, setAnalysis] = useState<SplitAnalysis | null>(null);
   const [splitResults, setSplitResults] = useState<SplitResult[]>([]);
   const [service, setService] = useState<EpisodeSplitService | null>(null);
+  const [analysisPreview, setAnalysisPreview] = useState('');
 
   // 开始分析
   const handleStartAnalysis = useCallback(async () => {
@@ -61,6 +62,7 @@ export const EpisodeSplitWizard: React.FC<EpisodeSplitWizardProps> = ({
     }
 
     setStep('analyzing');
+    setAnalysisPreview('');
 
     try {
       const ctx = await createCreationContext(projectId, '');
@@ -71,8 +73,12 @@ export const EpisodeSplitWizard: React.FC<EpisodeSplitWizardProps> = ({
       const result = await splitService.analyzeScript(script, {
         targetEpisodeCount: targetCount,
         splitStrategy,
+        onChunk: (_delta, accumulated) => {
+          setAnalysisPreview(accumulated);
+        },
       });
 
+      setAnalysisPreview(JSON.stringify(result, null, 2));
       setAnalysis(result);
 
       // 执行分割
@@ -133,6 +139,7 @@ export const EpisodeSplitWizard: React.FC<EpisodeSplitWizardProps> = ({
     setStep('config');
     setAnalysis(null);
     setSplitResults([]);
+    setAnalysisPreview('');
     onCancel();
   }, [service, onCancel]);
 
@@ -218,14 +225,38 @@ export const EpisodeSplitWizard: React.FC<EpisodeSplitWizardProps> = ({
 
       {/* 步骤2：分析中 */}
       {step === 'analyzing' && (
-        <div className="py-12 text-center">
-          <Spin size="large" />
-          <div className="mt-4">
-            <Text>AI 正在分析剧本并规划剧集...</Text>
+        <div className="py-2">
+          <div className="py-6 text-center">
+            <Spin size="large" />
+            <div className="mt-4">
+              <Text>AI 正在分析剧本并规划剧集...</Text>
+            </div>
+            <div className="mt-2">
+              <Text type="secondary">分析结果会实时显示，不再等到结束后一次性返回</Text>
+            </div>
           </div>
-          <div className="mt-2">
-            <Text type="secondary">这可能需要一些时间</Text>
-          </div>
+
+          <Card size="small" style={{ background: '#111827', borderColor: '#303030' }}>
+            <div className="flex items-center justify-between mb-2">
+              <Text strong style={{ color: '#e5e7eb' }}>实时分析输出</Text>
+              <Text type="secondary">{analysisPreview.length} 字符</Text>
+            </div>
+            <pre
+              style={{
+                margin: 0,
+                maxHeight: 260,
+                overflow: 'auto',
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+                color: '#d1d5db',
+                fontSize: 12,
+                lineHeight: 1.7,
+                fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+              }}
+            >
+              {analysisPreview || '正在等待模型返回首段分析内容...'}
+            </pre>
+          </Card>
         </div>
       )}
 

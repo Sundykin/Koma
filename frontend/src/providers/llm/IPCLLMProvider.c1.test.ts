@@ -14,7 +14,7 @@ const testLLMConnectionMock = vi.fn();
 
 vi.mock('../../chat/ipc/chatIPC', () => ({
   llmQuery: (req: any) => llmQueryMock(req),
-  llmQueryStream: (req: any) => llmQueryStreamMock(req),
+  llmQueryStream: (req: any, onChunk?: any) => llmQueryStreamMock(req, onChunk),
   isLLMIPCAvailable: () => true,
   testLLMConnection: (req: any) => testLLMConnectionMock(req),
 }));

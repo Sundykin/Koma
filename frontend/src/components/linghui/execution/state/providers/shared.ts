@@ -63,7 +63,7 @@ export function createTaskSnapshotGetter<T>(
 export async function resolveAsyncProviderResult<T>(
   taskId: string,
   getTaskSnapshot: AsyncTaskSnapshotGetter<T> | undefined,
-  onProgress?: (progress: number, message?: string) => void,
+  onProgress?: (progress: number, message?: string, partialResult?: unknown) => void,
   signal?: AbortSignal,
   logContext?: AsyncPollingLogContext,
 ): Promise<T> {

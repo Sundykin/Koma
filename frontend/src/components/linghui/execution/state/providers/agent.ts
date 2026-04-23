@@ -82,7 +82,8 @@ export async function runAgentWithProvider(params: {
   imageSources?: string[];
   inputTextCount?: number;
   settingsSnapshot?: AppSettings;
-  onProgress?: (progress: number, message?: string) => void;
+  onChunk?: (delta: string, accumulated: string) => void;
+  onProgress?: (progress: number, message?: string, partialResult?: unknown) => void;
   signal?: AbortSignal;
 }): Promise<{ text: string; metadata: LinghuiAgentExecutionMetadata }> {
   throwIfExecutionAborted(params.signal);
@@ -171,6 +172,7 @@ export async function runAgentWithProvider(params: {
           return;
         }
         fullContent += event.delta || '';
+        params.onChunk?.(event.delta || '', fullContent);
         if (event.reasoning) {
           fullReasoning += event.reasoning;
         }

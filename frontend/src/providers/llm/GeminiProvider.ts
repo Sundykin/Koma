@@ -1,5 +1,5 @@
 import type { ModelConfig } from '../../types';
-import type { ChatMessage, LLMCallOptions, LLMProvider } from './types';
+import type { ChatMessage, LLMCallOptions, LLMProvider, LLMStreamChunkHandler } from './types';
 
 function createDirectProviderRemovedError(providerName: string): Error {
   return new Error(`[${providerName}] Frontend direct LLM providers have been removed. Use Electron IPC / createLLMProvider() instead.`);
@@ -26,7 +26,7 @@ export class GeminiProvider implements LLMProvider {
     throw createDirectProviderRemovedError('Gemini');
   }
 
-  async chat(_messages: ChatMessage[], _options?: LLMCallOptions): Promise<string> {
+  async chat(_messages: ChatMessage[], _options?: LLMCallOptions, _onChunk?: LLMStreamChunkHandler): Promise<string> {
     throw createDirectProviderRemovedError('Gemini');
   }
 }

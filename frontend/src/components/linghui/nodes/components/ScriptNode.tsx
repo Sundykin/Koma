@@ -51,7 +51,10 @@ function ScriptNodeInner({ id, data, selected }: NodeProps) {
   const shots = runState?.result?.kind === 'storyboard'
     ? (runState.result.shots ?? [])
     : fallbackShots;
-  const previewLine = shots[0]?.description || shots[0]?.title || String(props.prompt ?? '').trim();
+  const previewLine = shots[0]?.description
+    || shots[0]?.title
+    || (runState?.result?.kind === 'storyboard' ? String(runState.result.text ?? '').trim() : '')
+    || String(props.prompt ?? '').trim();
   const modeLabel = props.mode === 'generate' ? '脚本生成' : '结构化脚本';
   const viewLabel = props.viewMode === 'table' ? '表格视图' : '卡片视图';
   const viewMode = resolveLinghuiNodeViewMode(nodeData.viewMode);

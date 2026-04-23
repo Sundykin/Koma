@@ -25,6 +25,7 @@ export interface LLMProvider {
       targetId?: string;
       targetName?: string;
       stream?: boolean;
+      onChunk?: (delta: string, accumulated: string) => void;
     }
   ): Promise<string>;
   chat?(
@@ -37,6 +38,7 @@ export interface LLMProvider {
       targetId?: string;
       targetName?: string;
       stream?: boolean;
+      onChunk?: (delta: string, accumulated: string) => void;
     }
   ): Promise<string>;
 }

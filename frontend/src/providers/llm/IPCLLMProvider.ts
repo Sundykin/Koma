@@ -3,7 +3,7 @@
  * 通过 Electron IPC 调用主进程的 LLMExecutionEngine，替代前端直连 LLM API
  */
 import type { ModelConfig } from '../../types';
-import type { LLMProvider, ChatMessage, LLMCallOptions } from './types';
+import type { LLMProvider, ChatMessage, LLMCallOptions, LLMStreamChunkHandler } from './types';
 import { llmQuery, llmQueryStream, isLLMIPCAvailable, testLLMConnection } from '../../chat/ipc/chatIPC';
 
 export { isLLMIPCAvailable };
@@ -44,7 +44,7 @@ export class IPCLLMProvider implements LLMProvider {
     }
     messages.push({ role: 'user', content: prompt });
 
-    const response = await llmQuery({
+    const request = {
       messages,
       config: this.buildConfig(),
       options: {
@@ -57,7 +57,11 @@ export class IPCLLMProvider implements LLMProvider {
         timeoutMs: options?.timeoutMs,
         responseFormat: options?.responseFormat,
       },
-    });
+    };
+
+    const response = (options?.stream || typeof options?.onChunk === 'function')
+      ? await llmQueryStream(request, options?.onChunk)
+      : await llmQuery(request);
     return response.content;
   }
 
@@ -69,7 +73,7 @@ export class IPCLLMProvider implements LLMProvider {
     prompt: string,
     systemPrompt?: string,
     options?: LLMCallOptions,
-    onChunk?: (delta: string, accumulated: string) => void,
+    onChunk?: LLMStreamChunkHandler,
   ): Promise<string> {
     const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [];
     if (systemPrompt) {
@@ -92,12 +96,16 @@ export class IPCLLMProvider implements LLMProvider {
           responseFormat: options?.responseFormat,
         },
       },
-      onChunk,
+      onChunk || options?.onChunk,
     );
     return response.content;
   }
 
-  async chat(messages: ChatMessage[], options?: LLMCallOptions): Promise<string> {
+  async chat(
+    messages: ChatMessage[],
+    options?: LLMCallOptions,
+    onChunk?: LLMStreamChunkHandler,
+  ): Promise<string> {
     const request = {
       messages: messages.map(m => ({
         role: m.role as 'system' | 'user' | 'assistant',
@@ -117,7 +125,7 @@ export class IPCLLMProvider implements LLMProvider {
     };
 
     const response = options?.stream
-      ? await llmQueryStream(request)
+      ? await llmQueryStream(request, onChunk || options?.onChunk)
       : await llmQuery(request);
     return response.content;
   }
