@@ -135,7 +135,21 @@ class ChatIpc {
       }
       const acquired = await this.waitForSlot(isWorkflow);
       if (!acquired) {
-        console.warn('[ChatIpc] llm:query 排队超时', { traceId, source, isWorkflow, active: this.activeLLMQueries });
+        console.warn('[ChatIpc] llm:query 排队超时', {
+          traceId,
+          source,
+          isWorkflow,
+          active: this.activeLLMQueries,
+          activeWorkflow: this.activeWorkflowQueries,
+          activeUser: this.activeUserQueries,
+          queued: this.waitQueue.length,
+          limits: {
+            total: MAX_CONCURRENT_LLM_QUERIES,
+            workflow: MAX_CONCURRENT_WORKFLOW_QUERIES,
+            user: MAX_CONCURRENT_USER_QUERIES,
+            queueTimeoutMs: QUEUE_TIMEOUT_MS,
+          },
+        });
         return { content: '', error: { code: 'API_ERROR' as const, message: 'LLM query queue timeout, please retry later' } };
       }
       console.info('[ChatIpc] llm:query 接收请求', { traceId, source, isWorkflow, active: this.activeLLMQueries, activeWorkflow: this.activeWorkflowQueries, activeUser: this.activeUserQueries });
@@ -169,6 +183,21 @@ class ChatIpc {
 
       const acquired = await this.waitForSlot(isWorkflow);
       if (!acquired) {
+        console.warn('[ChatIpc] llm:queryStream 排队超时', {
+          traceId,
+          source,
+          isWorkflow,
+          active: this.activeLLMQueries,
+          activeWorkflow: this.activeWorkflowQueries,
+          activeUser: this.activeUserQueries,
+          queued: this.waitQueue.length,
+          limits: {
+            total: MAX_CONCURRENT_LLM_QUERIES,
+            workflow: MAX_CONCURRENT_WORKFLOW_QUERIES,
+            user: MAX_CONCURRENT_USER_QUERIES,
+            queueTimeoutMs: QUEUE_TIMEOUT_MS,
+          },
+        });
         return { content: '', error: { code: 'API_ERROR' as const, message: 'LLM query queue timeout' } };
       }
 
