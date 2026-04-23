@@ -136,6 +136,8 @@ async function extractSingleChunk(
   const opts: LLMCallOptions = {
     ...callOptions,
     operation: 'episode-boundary-extract',
+    taskKind: 'extract',
+    taskProfileId: 'episode-boundary-extract',
     disableChunking: true,
     timeoutMs: config.extractTimeoutMs,
   };

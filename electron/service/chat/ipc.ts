@@ -1,8 +1,8 @@
 import { app, BrowserWindow, ipcMain } from 'electron';
 import { createOrchestrator, AgentOrchestrator } from './AgentOrchestrator';
 import { chatService } from './ChatService';
-import { llmQueryService } from './LLMQueryService';
-import type { LLMConnectionTestRequest, LLMQueryRequest } from './LLMQueryService';
+import { llmExecutionEngine } from '../llm';
+import type { LLMConnectionTestRequest, LLMQueryRequest } from '../llm';
 import { importFromFile, importFromObject, exportConfig, exportToFile } from './mcp/MCPConfigLoader';
 import type {
   ChatInput,
@@ -141,7 +141,7 @@ class ChatIpc {
       console.info('[ChatIpc] llm:query 接收请求', { traceId, source, isWorkflow, active: this.activeLLMQueries, activeWorkflow: this.activeWorkflowQueries, activeUser: this.activeUserQueries });
       try {
         // query() 内部已捕获所有异常并返回结构化错误，此处 catch 仅作保底
-        const result = await llmQueryService.query(args);
+        const result = await llmExecutionEngine.query(args);
         if (result.error) {
           console.warn('[ChatIpc] llm:query 返回错误', { traceId, source, error: result.error });
         }
@@ -180,24 +180,23 @@ class ChatIpc {
       // Fire-and-forget: 先返回 streamId，让前端注册监听后再接收流式事件
       void (async () => {
         try {
-          await llmQueryService.queryStream(
-            args,
-            (delta) => {
+          await llmExecutionEngine.queryStream(args, {
+            onChunk: (delta) => {
               if (!sender.isDestroyed()) {
                 sender.send('llm:stream:chunk', { streamId, delta });
               }
             },
-            (result) => {
+            onDone: (result) => {
               if (!sender.isDestroyed()) {
                 sender.send('llm:stream:done', { streamId, content: result.content, usage: result.usage });
               }
             },
-            (error) => {
+            onError: (error) => {
               if (!sender.isDestroyed()) {
                 sender.send('llm:stream:error', { streamId, error });
               }
             },
-          );
+          });
         } catch (err: unknown) {
           const errMsg = err instanceof Error ? err.message : String(err);
           console.error('[ChatIpc] llm:queryStream 未预期异常', { traceId, source, error: errMsg });
@@ -214,7 +213,7 @@ class ChatIpc {
 
     ipcMain.handle('llm:testConnection', async (_event, args: LLMConnectionTestRequest) => {
       try {
-        return await llmQueryService.testConnection(args);
+        return await llmExecutionEngine.testConnection(args);
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err);
         return { success: false, error: { code: 'UNKNOWN' as const, message } };

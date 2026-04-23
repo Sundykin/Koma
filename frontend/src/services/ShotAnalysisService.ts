@@ -146,6 +146,8 @@ export class ShotAnalysisService {
           traceId,
           source: 'shot-analysis',
           operation: 'breakdown',
+          taskKind: 'structured',
+          taskProfileId: 'shot-breakdown',
           // 强制 OpenAI 兼容服务以合法 JSON 返回，避免字符串内未转义引号导致解析失败
           responseFormat: 'json_object',
         },

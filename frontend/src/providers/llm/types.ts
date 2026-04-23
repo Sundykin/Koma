@@ -3,6 +3,8 @@
  */
 import type { ModelConfig } from '../../types';
 
+export type LLMTaskKind = 'chat' | 'extract' | 'analyze' | 'rewrite' | 'generate' | 'structured';
+
 export interface ChatMessage {
   role: 'user' | 'assistant' | 'system';
   content: string;
@@ -12,6 +14,8 @@ export interface LLMCallOptions {
   traceId?: string;
   source?: string;
   operation?: string;
+  taskKind?: LLMTaskKind;
+  taskProfileId?: string;
   projectId?: string;
   targetId?: string;
   targetName?: string;

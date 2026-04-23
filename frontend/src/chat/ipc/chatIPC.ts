@@ -183,6 +183,8 @@ export interface LLMQueryRequest {
     traceId?: string;
     source?: string;
     operation?: string;
+    taskKind?: 'chat' | 'extract' | 'analyze' | 'rewrite' | 'generate' | 'structured';
+    taskProfileId?: string;
     disableChunking?: boolean;
     timeoutMs?: number;
     /** 强制 LLM 返回格式，仅 OpenAI 兼容服务生效 */
@@ -208,7 +210,7 @@ export interface LLMConnectionTestResponse {
   };
 }
 
-// NOTE: Keep in sync with LLMQueryResponse in electron/service/chat/LLMQueryService.ts
+// NOTE: Keep in sync with LLMQueryResponse in electron/service/llm/types.ts
 export interface LLMQueryResponse {
   content: string;
   error?: {

@@ -253,9 +253,11 @@ export async function polishScript(
     { role: 'user', content: finalPrompt },
   ], {
     source: 'scriptGenerator.polishScript',
-    operation: 'script_polish',
+    operation: 'script_polish_stream',
+    taskKind: 'rewrite',
+    taskProfileId: 'script-polish-stream',
     targetName: '剧本润色',
-    stream: false,
+    stream: true,
   });
 
   onProgress(100, '润色完成');

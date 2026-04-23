@@ -222,6 +222,8 @@ export class ScriptAnalysisService {
     const result = await this.ctx.llmProvider.generateText(fullPrompt, systemPrompt, {
       source: 'ScriptAnalysisService.callLLM',
       operation: 'script_analysis',
+      taskKind: 'analyze',
+      taskProfileId: 'script-analysis',
       targetName: this.episodeContext?.episodeName || '剧本解析',
       stream: false,
     });

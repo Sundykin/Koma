@@ -1,6 +1,6 @@
 /**
  * IPC LLM Provider
- * 通过 Electron IPC 调用主进程的 LLMQueryService，替代前端直连 LLM API
+ * 通过 Electron IPC 调用主进程的 LLMExecutionEngine，替代前端直连 LLM API
  */
 import type { ModelConfig } from '../../types';
 import type { LLMProvider, ChatMessage, LLMCallOptions } from './types';
@@ -51,6 +51,8 @@ export class IPCLLMProvider implements LLMProvider {
         traceId: options?.traceId,
         source: options?.source,
         operation: options?.operation || 'generateText',
+        taskKind: options?.taskKind,
+        taskProfileId: options?.taskProfileId,
         disableChunking: options?.disableChunking,
         timeoutMs: options?.timeoutMs,
         responseFormat: options?.responseFormat,
@@ -83,6 +85,8 @@ export class IPCLLMProvider implements LLMProvider {
           traceId: options?.traceId,
           source: options?.source,
           operation: options?.operation || 'generateTextStream',
+          taskKind: options?.taskKind,
+          taskProfileId: options?.taskProfileId,
           disableChunking: options?.disableChunking,
           timeoutMs: options?.timeoutMs,
           responseFormat: options?.responseFormat,
@@ -94,7 +98,7 @@ export class IPCLLMProvider implements LLMProvider {
   }
 
   async chat(messages: ChatMessage[], options?: LLMCallOptions): Promise<string> {
-    const response = await llmQuery({
+    const request = {
       messages: messages.map(m => ({
         role: m.role as 'system' | 'user' | 'assistant',
         content: m.content,
@@ -104,11 +108,17 @@ export class IPCLLMProvider implements LLMProvider {
         traceId: options?.traceId,
         source: options?.source,
         operation: options?.operation || 'chat',
+        taskKind: options?.taskKind,
+        taskProfileId: options?.taskProfileId,
         disableChunking: options?.disableChunking,
         timeoutMs: options?.timeoutMs,
         responseFormat: options?.responseFormat,
       },
-    });
+    };
+
+    const response = options?.stream
+      ? await llmQueryStream(request)
+      : await llmQuery(request);
     return response.content;
   }
 
