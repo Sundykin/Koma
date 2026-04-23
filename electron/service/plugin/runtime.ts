@@ -22,10 +22,21 @@ import type {
 } from './types';
 import { providerRegistry, mcpRegistry, agentRegistry } from './registries';
 import { syncProviders, syncAllMCP, capabilityRegistry } from './capability';
+import {
+  createChannelConfig,
+  getDecryptedApiKey,
+  listChannelConfigs,
+  updateChannelConfig,
+} from '../settings/ChannelConfigService';
+import type {
+  ChannelConfigDTO,
+  ChannelConfigInput,
+} from '../settings/ChannelConfigService';
+import type { MediaCategory } from '../storage/repositories/settingsInterfaces';
 
-// Provider 配置存储
-class ProviderConfigStore {
-  private configPath: string = '';
+// 仅作为兼容迁移来源：旧版插件配置文件（provider-configs.json）。
+class LegacyProviderConfigStore {
+  private configPath = '';
   private configs: Map<string, Record<string, unknown>> = new Map();
   private initialized = false;
 
@@ -40,7 +51,12 @@ class ProviderConfigStore {
     try {
       const content = await fs.readFile(this.configPath, 'utf-8');
       const data = JSON.parse(content);
-      this.configs = new Map(Object.entries(data));
+      this.configs = new Map(
+        Object.entries(data).filter((entry): entry is [string, Record<string, unknown>] => {
+          const [, value] = entry;
+          return value != null && typeof value === 'object' && !Array.isArray(value);
+        }),
+      );
     } catch {
       this.configs = new Map();
     }
@@ -56,14 +72,155 @@ class ProviderConfigStore {
     return this.configs.get(type) || null;
   }
 
-  async set(type: string, config: Record<string, unknown>): Promise<void> {
+  async remove(type: string): Promise<void> {
     await this.init();
-    this.configs.set(type, config);
+    if (!this.configs.delete(type)) return;
     await this.save();
   }
 }
 
-const providerConfigStore = new ProviderConfigStore();
+const legacyProviderConfigStore = new LegacyProviderConfigStore();
+
+function resolvePluginProviderCategory(manifest: PluginManifest, type: string): MediaCategory {
+  const category = manifest.providerMeta?.channelType;
+  if (!category) {
+    throw new Error(`Plugin "${manifest.id}" provider "${type}" 缺少 providerMeta.channelType，无法持久化配置`);
+  }
+  return category;
+}
+
+function pickLatestPluginChannelConfig(
+  pluginId: string,
+  type: string,
+): ChannelConfigDTO | null {
+  const matches = listChannelConfigs().filter(
+    (config) => config.pluginId === pluginId && config.providerType === type,
+  );
+  if (matches.length === 0) return null;
+  matches.sort((a, b) => b.updatedAt - a.updatedAt);
+  return matches[0];
+}
+
+function buildPluginRuntimeConfig(dto: ChannelConfigDTO): Record<string, unknown> {
+  const config: Record<string, unknown> = { ...(dto.providerConfig || {}) };
+  if (dto.baseUrl) {
+    config.baseUrl = dto.baseUrl;
+  }
+  try {
+    const apiKey = getDecryptedApiKey(dto.id);
+    if (apiKey) {
+      config.apiKey = apiKey;
+    }
+  } catch (err: any) {
+    console.warn('[PluginRuntime] Failed to decrypt plugin provider apiKey', {
+      channelId: dto.id,
+      providerType: dto.providerType,
+      error: err?.message || String(err),
+    });
+  }
+  return config;
+}
+
+function splitRuntimeProviderConfig(config: Record<string, unknown>): {
+  baseUrl: string | null;
+  providerConfig: Record<string, unknown>;
+} {
+  const providerConfig: Record<string, unknown> = { ...(config || {}) };
+  const baseUrlRaw = providerConfig.baseUrl;
+  const baseUrl = typeof baseUrlRaw === 'string' ? baseUrlRaw : null;
+  delete providerConfig.baseUrl;
+  delete providerConfig.hasApiKey;
+
+  const keyRaw = providerConfig.apiKey;
+  if (typeof keyRaw !== 'string' || keyRaw.length === 0) {
+    delete providerConfig.apiKey;
+  }
+
+  return { baseUrl, providerConfig };
+}
+
+function buildPluginChannelInput(
+  manifest: PluginManifest,
+  type: string,
+  config: Record<string, unknown>,
+): ChannelConfigInput {
+  const normalized = splitRuntimeProviderConfig(config);
+  return {
+    category: resolvePluginProviderCategory(manifest, type),
+    providerType: type,
+    name: manifest.name || type,
+    description: manifest.description ?? null,
+    baseUrl: normalized.baseUrl,
+    providerConfig: normalized.providerConfig,
+    models: [],
+    capabilities: manifest.providerMeta?.capabilities || [],
+    polling: null,
+    defaultModelId: null,
+    source: 'plugin',
+    pluginId: manifest.id,
+    enabled: true,
+    isDefault: false,
+    sortOrder: 0,
+  };
+}
+
+function upsertPluginProviderConfig(
+  manifest: PluginManifest,
+  type: string,
+  config: Record<string, unknown>,
+): ChannelConfigDTO {
+  const existing = pickLatestPluginChannelConfig(manifest.id, type);
+  if (existing) {
+    const normalized = splitRuntimeProviderConfig(config);
+    return updateChannelConfig(existing.id, {
+      baseUrl: normalized.baseUrl,
+      providerConfig: normalized.providerConfig,
+      source: 'plugin',
+      pluginId: manifest.id,
+    });
+  }
+  return createChannelConfig(buildPluginChannelInput(manifest, type, config));
+}
+
+async function getPluginProviderConfig(
+  manifest: PluginManifest,
+  type: string,
+): Promise<Record<string, unknown> | null> {
+  const existing = pickLatestPluginChannelConfig(manifest.id, type);
+  if (existing) {
+    return buildPluginRuntimeConfig(existing);
+  }
+
+  const legacy = await legacyProviderConfigStore.get(type);
+  if (!legacy) return null;
+
+  try {
+    const migrated = upsertPluginProviderConfig(manifest, type, legacy);
+    await legacyProviderConfigStore.remove(type);
+    console.info('[PluginRuntime] Migrated legacy provider config to SQLite', {
+      pluginId: manifest.id,
+      providerType: type,
+      channelId: migrated.id,
+    });
+    return buildPluginRuntimeConfig(migrated);
+  } catch (err: any) {
+    console.warn('[PluginRuntime] Failed to migrate legacy provider config, fallback to legacy payload', {
+      pluginId: manifest.id,
+      providerType: type,
+      error: err?.message || String(err),
+    });
+    return legacy;
+  }
+}
+
+async function savePluginProviderConfig(
+  manifest: PluginManifest,
+  type: string,
+  config: Record<string, unknown>,
+): Promise<void> {
+  upsertPluginProviderConfig(manifest, type, config);
+  await legacyProviderConfigStore.remove(type);
+}
 
 class ElectronPluginRuntime extends EventEmitter {
   private plugins = new Map<string, LoadedPlugin>();
@@ -341,10 +498,10 @@ class ElectronPluginRuntime extends EventEmitter {
           return providerRegistry.list();
         },
         getProviderConfig: async (type: string) => {
-          return providerConfigStore.get(type);
+          return getPluginProviderConfig(manifest, type);
         },
         updateProviderConfig: async (type: string, config: Record<string, unknown>) => {
-          await providerConfigStore.set(type, config);
+          await savePluginProviderConfig(manifest, type, config);
         },
       },
 
