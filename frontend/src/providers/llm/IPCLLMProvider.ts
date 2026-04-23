@@ -65,42 +65,6 @@ export class IPCLLMProvider implements LLMProvider {
     return response.content;
   }
 
-  /**
-   * 流式文本生成 — 无应用层超时，适用于长文本精炼等重量级任务。
-   * 通过 onChunk 回调实时推送生成内容。
-   */
-  async generateTextStream(
-    prompt: string,
-    systemPrompt?: string,
-    options?: LLMCallOptions,
-    onChunk?: LLMStreamChunkHandler,
-  ): Promise<string> {
-    const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [];
-    if (systemPrompt) {
-      messages.push({ role: 'system', content: systemPrompt });
-    }
-    messages.push({ role: 'user', content: prompt });
-
-    const response = await llmQueryStream(
-      {
-        messages,
-        config: this.buildConfig(),
-        options: {
-          traceId: options?.traceId,
-          source: options?.source,
-          operation: options?.operation || 'generateTextStream',
-          taskKind: options?.taskKind,
-          taskProfileId: options?.taskProfileId,
-          disableChunking: options?.disableChunking,
-          timeoutMs: options?.timeoutMs,
-          responseFormat: options?.responseFormat,
-        },
-      },
-      onChunk || options?.onChunk,
-    );
-    return response.content;
-  }
-
   async chat(
     messages: ChatMessage[],
     options?: LLMCallOptions,
