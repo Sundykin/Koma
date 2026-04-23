@@ -9,7 +9,6 @@ import { ChevronRight, Home } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Project, Episode, EditorStep, EpisodeStepProgress } from '../../types';
 import { StepNavigator } from './StepNavigator';
-import { TaskStatusBar } from './TaskStatusBar';
 
 interface HeaderProps {
   view: 'projects' | 'overview' | 'editor' | 'settings';
@@ -130,7 +129,6 @@ export const Header: React.FC<HeaderProps> = ({
               ) : null
             }
           />
-          {activeProject && <TaskStatusBar projectId={activeProject.id} />}
         </>
       )}
     </header>

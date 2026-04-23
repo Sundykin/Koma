@@ -3,12 +3,13 @@
  * 右下角悬浮显示当前运行中的后台任务进度
  */
 import React, { useState, useEffect, useMemo } from 'react';
-import { Progress, Typography, Tag, Button, Empty, Tabs, Tooltip } from 'antd';
+import { Progress, Typography, Tag, Button, Empty, Tooltip } from 'antd';
 import { ReloadOutlined, StopOutlined } from '@ant-design/icons';
 import { Loader2, CheckCircle2, XCircle, ChevronDown, ChevronUp, FileText, Video, Cpu, Box, Download, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { TaskManager } from '../../services/TaskManager';
-import type { Task as ManagerTask, TaskStatus } from '../../services/TaskManager';
+import type { Task as ManagerTask } from '../../services/TaskManager';
+import { buildScriptAnalysisOverallProgress } from '../../services/scriptAnalysisProgress';
 import type { AsyncTask } from '../../types';
 import { listTasks as listAsyncTasks } from '../../store/taskQueueStore';
 
@@ -22,6 +23,7 @@ interface TaskStatusBarProps {
 
 type StatusBarCategory = 'prompt' | 'analysis' | 'asset' | 'script' | 'export' | 'media';
 type StatusBarStatus = 'pending' | 'running' | 'processing' | 'completed' | 'failed';
+type FilterKey = 'all' | 'running' | 'completed' | 'failed';
 
 interface StatusBarTask {
   id: string;
@@ -45,6 +47,39 @@ interface StatusBarTask {
   source: 'task-manager' | 'task-queue';
   raw?: ManagerTask;
 }
+
+type ScriptStageKey = 'plan' | 'characters' | 'scenes' | 'props';
+
+interface ScriptStageState {
+  status?: 'pending' | 'running' | 'completed' | 'failed';
+  progress?: number;
+  chunkIndex?: number;
+  chunkTotal?: number;
+  retryAttempt?: number;
+  retryMax?: number;
+  retryDelayMs?: number;
+  message?: string;
+}
+
+interface ScriptStagePresentation {
+  stages: Array<{ key: ScriptStageKey; state: ScriptStageState }>;
+  currentStage?: ScriptStageKey;
+  currentState?: ScriptStageState;
+  progress: number;
+  summary: string;
+  detail?: string;
+  completedCount: number;
+  totalCount: number;
+}
+
+const SCRIPT_STAGE_ORDER: ScriptStageKey[] = ['plan', 'characters', 'scenes', 'props'];
+
+const SCRIPT_STAGE_LABELS: Record<ScriptStageKey, string> = {
+  plan: '规划',
+  characters: '角色',
+  scenes: '场景',
+  props: '道具',
+};
 
 const useCategoryConfig = () => {
   const { t } = useTranslation();
@@ -80,13 +115,47 @@ const formatDuration = (startedAt?: number, completedAt?: number): string => {
   return `${minutes}m ${seconds % 60}s`;
 };
 
+const isRunning = (status: StatusBarStatus) => status === 'running' || status === 'processing' || status === 'pending';
+
+const getProgressStrokeColor = (status: StatusBarStatus) => {
+  switch (status) {
+    case 'failed':
+      return '#ef4444';
+    case 'completed':
+      return '#22c55e';
+    default:
+      return '#10b981';
+  }
+};
+
+const getTaskCardClassName = (status: StatusBarStatus, featured = false) => {
+  const base = featured
+    ? 'rounded-xl border px-3 py-3 shadow-[0_0_0_1px_rgba(24,24,27,0.5)]'
+    : 'rounded-xl border px-3 py-2.5 transition-colors';
+
+  switch (status) {
+    case 'failed':
+      return `${base} border-red-500/20 bg-red-500/5 hover:bg-red-500/10`;
+    case 'completed':
+      return `${base} border-emerald-500/10 bg-emerald-500/5 hover:bg-emerald-500/10`;
+    default:
+      return `${base} border-zinc-700/80 bg-zinc-800/50 hover:bg-zinc-800/70`;
+  }
+};
+
+const formatCountdown = (ms?: number) => {
+  if (!ms || ms <= 0) return '即将重试';
+  const seconds = Math.max(1, Math.ceil(ms / 1000));
+  return `${seconds}s 后重试`;
+};
+
 export const TaskStatusBar: React.FC<TaskStatusBarProps> = ({ projectId, onRetry, onCancel }) => {
   const { t } = useTranslation();
   const CATEGORY_CONFIG = useCategoryConfig();
 
   const [tasks, setTasks] = useState<StatusBarTask[]>([]);
   const [expanded, setExpanded] = useState(false);
-  const [activeTab, setActiveTab] = useState<string>('all');
+  const [activeTab, setActiveTab] = useState<FilterKey>('all');
   const [dismissed, setDismissed] = useState(false);
 
   const getSubTypeLabel = (subType?: string): string => {
@@ -183,7 +252,7 @@ export const TaskStatusBar: React.FC<TaskStatusBarProps> = ({ projectId, onRetry
       }
 
       const merged = Array.from(mergedById.values())
-        .sort((a, b) => b.createdAt - a.createdAt)
+        .sort((a, b) => b.updatedAt - a.updatedAt)
         .slice(0, 20);
 
       if (disposed) return;
@@ -230,169 +299,389 @@ export const TaskStatusBar: React.FC<TaskStatusBarProps> = ({ projectId, onRetry
 
   const mainTask = runningTasks[0];
 
-  const isRunning = (s: StatusBarStatus) => s === 'running' || s === 'processing' || s === 'pending';
+  const filterItems: Array<{ key: FilterKey; label: string; count: number }> = [
+    { key: 'all', label: t('common.all'), count: tasks.length },
+    { key: 'running', label: t('task.running'), count: runningTasks.length },
+    { key: 'completed', label: t('task.completed'), count: completedTasks.length },
+    { key: 'failed', label: t('task.failed'), count: failedTasks.length },
+  ];
 
-  const renderTaskItem = (task: StatusBarTask) => (
-    <div key={task.id} className="py-1.5 px-2 rounded hover:bg-zinc-800/50">
-      {/* 第一行：图标 + 标签 + 名称 + 时间/操作 */}
-      <div className="flex items-center gap-2">
-        {getStatusIcon(task.status)}
-        {task.category && CATEGORY_CONFIG[task.category] && (
-          <Tag color={CATEGORY_CONFIG[task.category].color} className="text-[10px] px-1 py-0 leading-tight shrink-0">
-            <div className="flex items-center gap-0.5">
-              {CATEGORY_CONFIG[task.category].icon}
-              <span className="ml-0.5">{getSubTypeLabel(task.subType)}</span>
+  const visibleTasks = expanded && mainTask
+    ? allFilteredTasks.filter(task => task.id !== mainTask.id)
+    : allFilteredTasks;
+
+  const getScriptStagePresentation = (task: StatusBarTask): ScriptStagePresentation | null => {
+    if (task.source !== 'task-manager') return null;
+
+    const result = (task.raw as any)?.result as {
+      currentStage?: ScriptStageKey;
+      stageStates?: Partial<Record<ScriptStageKey, ScriptStageState>>;
+      stageMessage?: string;
+    } | undefined;
+
+    const stageStates = result?.stageStates;
+    if (!stageStates || typeof stageStates !== 'object') return null;
+
+    const planState = stageStates.plan;
+    const includePlan = Boolean(
+      planState && (
+        result?.currentStage === 'plan'
+        || (typeof planState.message === 'string' && planState.message.trim().length > 0)
+        || planState.status !== 'completed'
+        || (typeof planState.progress === 'number' && planState.progress < 1)
+      )
+    );
+
+    const stages = SCRIPT_STAGE_ORDER
+      .filter((key) => key !== 'plan' || includePlan)
+      .filter((key) => stageStates[key])
+      .map((key) => ({ key, state: stageStates[key] as ScriptStageState }));
+
+    if (stages.length === 0) return null;
+
+    const currentStage = (result?.currentStage && stageStates[result.currentStage])
+      ? result.currentStage
+      : stages.find(({ state }) => state.status === 'failed')?.key
+        || stages.find(({ state }) => state.status === 'running')?.key
+        || stages.find(({ state }) => state.status === 'pending')?.key
+        || stages[stages.length - 1]?.key;
+
+    const currentState = currentStage ? stageStates[currentStage] : undefined;
+    const completedCount = stages.filter(({ state }) => state.status === 'completed').length;
+    const totalCount = stages.length;
+
+    let detail = '';
+    if (currentStage && currentState) {
+      const label = SCRIPT_STAGE_LABELS[currentStage];
+      const stateMessage = currentState.message?.trim();
+      const retryDelayMs = currentState.retryDelayMs
+        ? Math.max(0, currentState.retryDelayMs - (Date.now() - task.updatedAt))
+        : 0;
+
+      if (retryDelayMs > 0) {
+        detail = `${label} · ${formatCountdown(retryDelayMs)}`;
+      } else if (currentState.status === 'failed' && stateMessage) {
+        detail = stateMessage;
+      } else if (currentState.status === 'completed' && stateMessage) {
+        detail = stateMessage;
+      } else if (currentState.chunkTotal) {
+        const chunkIndex = Math.min(currentState.chunkIndex || 0, currentState.chunkTotal);
+        detail = `${label} · 分块 ${chunkIndex}/${currentState.chunkTotal}`;
+      } else if (currentState.status === 'completed') {
+        detail = `${label} · 已完成`;
+      } else if (currentState.status === 'failed') {
+        detail = `${label} · 失败`;
+      } else {
+        detail = `${label} · 处理中`;
+      }
+    }
+
+    return {
+      stages,
+      currentStage,
+      currentState,
+      progress: buildScriptAnalysisOverallProgress(stageStates as any, { includePlan }),
+      summary: result?.stageMessage || `已完成 ${completedCount}/${totalCount} 阶段`,
+      detail: detail || result?.stageMessage,
+      completedCount,
+      totalCount,
+    };
+  };
+
+  const getStageMessage = (task: StatusBarTask) => {
+    if (task.source !== 'task-manager') return '';
+    return ((task.raw as any)?.result?.stageMessage as string | undefined) || '';
+  };
+
+  const mainTaskStagePresentation = mainTask ? getScriptStagePresentation(mainTask) : null;
+
+  const renderTaskItem = (task: StatusBarTask, featured = false) => {
+    const stageMessage = getStageMessage(task);
+    const stagePresentation = getScriptStagePresentation(task);
+    const displayProgress = stagePresentation?.progress ?? task.progress;
+    const shouldShowScriptStages = Boolean(stagePresentation) && (isRunning(task.status) || task.status === 'failed');
+    const detailText = task.status === 'failed'
+      ? task.error || stagePresentation?.detail || stagePresentation?.summary || stageMessage
+      : stagePresentation?.detail || stageMessage;
+
+    return (
+      <div key={task.id} className={getTaskCardClassName(task.status, featured)}>
+        <div className="flex items-start gap-2.5">
+          <div className="mt-0.5 shrink-0">{getStatusIcon(task.status)}</div>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-start gap-2">
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {task.category && CATEGORY_CONFIG[task.category] && (
+                    <Tag color={CATEGORY_CONFIG[task.category].color} className="text-[10px] px-1.5 py-0 leading-tight shrink-0 rounded-full">
+                      <div className="flex items-center gap-1">
+                        {CATEGORY_CONFIG[task.category].icon}
+                        <span>{getSubTypeLabel(task.subType)}</span>
+                      </div>
+                    </Tag>
+                  )}
+                  {task.recoverable && task.attempt && task.attempt > 0 && (
+                    <Tooltip title={`${t('common.retry')}: ${task.attempt}/${task.maxRetries}`}>
+                      <Tag color="warning" className="text-[10px] px-1.5 py-0 shrink-0 rounded-full">#{task.attempt}</Tag>
+                    </Tooltip>
+                  )}
+                </div>
+                <div className={`${featured ? 'mt-1.5 text-sm font-medium text-zinc-100' : 'mt-1 text-sm text-zinc-200'} break-words`}>
+                  {task.targetName || getTaskLabel(task)}
+                </div>
+              </div>
+              <div className="flex items-center gap-1 shrink-0">
+                {task.startedAt && (
+                  <Text className="text-zinc-500 text-xs tabular-nums">
+                    {formatDuration(task.startedAt, task.completedAt)}
+                  </Text>
+                )}
+                {task.status === 'failed' && task.source === 'task-manager' && task.raw && onRetry && (
+                  <Button
+                    type="text"
+                    size="small"
+                    icon={<ReloadOutlined />}
+                    className="text-zinc-500 hover:text-blue-400 shrink-0 !w-7 !h-7"
+                    onClick={(e) => { e.stopPropagation(); onRetry(task.raw!); }}
+                  />
+                )}
+                {isRunning(task.status) && task.source === 'task-manager' && task.raw && onCancel && (
+                  <Button
+                    type="text"
+                    size="small"
+                    icon={<StopOutlined />}
+                    className="text-zinc-500 hover:text-red-400 shrink-0 !w-7 !h-7"
+                    onClick={(e) => { e.stopPropagation(); onCancel(task.raw!); }}
+                  />
+                )}
+              </div>
             </div>
-          </Tag>
-        )}
-        <Text className="text-zinc-300 text-sm truncate flex-1 min-w-0">
-          {task.targetName || getTaskLabel(task)}
-        </Text>
-        {task.recoverable && task.attempt && task.attempt > 0 && (
-          <Tooltip title={`${t('common.retry')}: ${task.attempt}/${task.maxRetries}`}>
-            <Tag color="warning" className="text-[10px] px-1 py-0 shrink-0">#{task.attempt}</Tag>
-          </Tooltip>
-        )}
-        {task.startedAt && (
-          <Text className="text-zinc-600 text-xs shrink-0 tabular-nums">
-            {formatDuration(task.startedAt, task.completedAt)}
-          </Text>
-        )}
-        {task.status === 'failed' && task.source === 'task-manager' && task.raw && onRetry && (
-          <Button type="text" size="small" icon={<ReloadOutlined />}
-            className="text-zinc-500 hover:text-blue-400 shrink-0 !w-6 !h-6"
-            onClick={(e) => { e.stopPropagation(); onRetry(task.raw!); }}
-          />
-        )}
-        {isRunning(task.status) && task.source === 'task-manager' && task.raw && onCancel && (
-          <Button type="text" size="small" icon={<StopOutlined />}
-            className="text-zinc-500 hover:text-red-400 shrink-0 !w-6 !h-6"
-            onClick={(e) => { e.stopPropagation(); onCancel(task.raw!); }}
-          />
-        )}
-      </div>
-      {/* 第二行：进度条 / 阶段信息 / 错误 */}
-      {isRunning(task.status) ? (
-        <div className="mt-1 ml-6 space-y-0.5">
-          <div className="flex items-center gap-2">
-            <Progress percent={task.progress} size="small" showInfo={false}
-              className="flex-1" strokeColor="#10b981" trailColor="#3f3f46" />
-            <Text className="text-zinc-500 text-xs shrink-0 tabular-nums">{task.progress}%</Text>
+            {shouldShowScriptStages ? (
+              <div className="mt-2 space-y-1.5">
+                {isRunning(task.status) && (
+                  <div className="flex items-center gap-2">
+                    <Progress
+                      percent={displayProgress}
+                      size="small"
+                      showInfo={false}
+                      className="flex-1"
+                      strokeColor={getProgressStrokeColor(task.status)}
+                      trailColor="#3f3f46"
+                    />
+                    <Text className="text-zinc-400 text-xs shrink-0 tabular-nums">{displayProgress}%</Text>
+                  </div>
+                )}
+                {stagePresentation && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {stagePresentation.stages.map(({ key, state }) => {
+                      const retryDelayMs = state.retryDelayMs
+                        ? Math.max(0, state.retryDelayMs - (Date.now() - task.updatedAt))
+                        : 0;
+                      const isActiveStage = key === stagePresentation.currentStage;
+                      const toneClass = state.status === 'failed'
+                        ? 'border-red-500/30 bg-red-500/10 text-red-300'
+                        : state.status === 'completed'
+                          ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+                          : isActiveStage
+                            ? 'border-cyan-500/30 bg-cyan-500/10 text-cyan-200'
+                            : 'border-zinc-700 bg-zinc-800/40 text-zinc-400';
+
+                      let label = SCRIPT_STAGE_LABELS[key];
+                      if (retryDelayMs > 0) {
+                        label += ` ${formatCountdown(retryDelayMs)}`;
+                      } else if (state.chunkTotal) {
+                        label += ` ${Math.min(state.chunkIndex || 0, state.chunkTotal)}/${state.chunkTotal}`;
+                      }
+
+                      return (
+                        <span
+                          key={key}
+                          className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] leading-5 ${toneClass}`}
+                        >
+                          {label}
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
+                {detailText && (
+                  <div className={`text-xs leading-5 break-words ${task.status === 'failed' ? 'text-red-400' : 'text-zinc-400'}`}>
+                    {detailText}
+                  </div>
+                )}
+              </div>
+            ) : task.status === 'failed' && task.error ? (
+              <div className="mt-2 text-xs leading-5 text-red-400 break-words">
+                {task.error}
+              </div>
+            ) : null}
           </div>
-          {task.source === 'task-manager' && (task.raw as any)?.result?.stageMessage && (
-            <Text className="text-zinc-500 text-xs truncate block">{(task.raw as any).result.stageMessage}</Text>
-          )}
         </div>
-      ) : task.status === 'failed' && task.error ? (
-        <Text className="text-red-400 text-xs truncate block mt-0.5 ml-6">{task.error}</Text>
-      ) : null}
-    </div>
-  );
+      </div>
+    );
+  };
 
   return (
     <div
-      className={`fixed bottom-4 right-4 z-50 ${expanded ? 'w-80' : 'w-40'} bg-zinc-900/95 backdrop-blur border border-zinc-700 rounded-lg shadow-2xl overflow-hidden transition-all duration-300 ease-in-out`}
+      className={`fixed bottom-4 right-4 z-50 ${expanded ? 'w-[28rem] max-w-[calc(100vw-2rem)]' : 'w-[21rem] max-w-[calc(100vw-2rem)]'} bg-zinc-900/95 backdrop-blur border border-zinc-700/80 rounded-2xl shadow-2xl overflow-hidden transition-all duration-300 ease-in-out`}
     >
-      {mainTask ? (
-        <div
-          className="px-3 py-2.5 flex items-center gap-2 cursor-pointer hover:bg-zinc-800/50"
-          onClick={() => setExpanded(!expanded)}
-        >
-          {getStatusIcon(mainTask.status)}
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-1.5">
-              {mainTask.category && CATEGORY_CONFIG[mainTask.category] && (
-                <Tag color={CATEGORY_CONFIG[mainTask.category].color} className="text-[10px] px-1 py-0">
-                  {getSubTypeLabel(mainTask.subType)}
-                </Tag>
-              )}
-              <Text className="text-zinc-300 text-sm truncate">
-                {mainTask.targetName || getTaskLabel(mainTask)}
-              </Text>
+      {expanded ? (
+        <div className="border-b border-zinc-700/80 px-3.5 py-3">
+          <div className="flex items-start gap-3">
+            <div className="min-w-0 flex-1">
+              <div className="text-sm font-semibold text-zinc-100">{t('task.title')}</div>
+              <div className="mt-1 text-xs text-zinc-500 break-words">
+                {`${t('common.all')} ${tasks.length} · ${t('task.running')} ${runningTasks.length} · ${t('task.completed')} ${completedTasks.length} · ${t('task.failed')} ${failedTasks.length}`}
+              </div>
             </div>
-            <div className="flex items-center gap-2 mt-1">
-              <Progress percent={mainTask.progress} size="small" showInfo={false}
-                className="flex-1" strokeColor="#10b981" trailColor="#3f3f46" />
-              <Text className="text-zinc-500 text-xs">{mainTask.progress}%</Text>
-            </div>
-          </div>
-          <div className="flex items-center gap-1">
-            {runningTasks.length > 1 && (
-              <Tag color="blue" className="text-xs">+{runningTasks.length - 1}</Tag>
-            )}
-            {expanded ? <ChevronDown className="w-4 h-4 text-zinc-500" /> : <ChevronUp className="w-4 h-4 text-zinc-500" />}
-          </div>
-          <Button type="text" size="small" icon={<X className="w-3.5 h-3.5" />}
-            className="text-zinc-500 hover:text-zinc-300 ml-1"
-            onClick={(e) => { e.stopPropagation(); setDismissed(true); }}
-          />
-        </div>
-      ) : tasks.length > 0 ? (
-        <div
-          className="px-3 py-2.5 flex items-center justify-between cursor-pointer hover:bg-zinc-800/50"
-          onClick={() => setExpanded(!expanded)}
-        >
-          <div className="flex items-center gap-2">
-            {failedTasks.length > 0 ? (
-              <>
-                <XCircle className="w-4 h-4 text-red-500" />
-                <Text className="text-zinc-400 text-sm">{failedTasks.length} {t('task.failed')}</Text>
-              </>
-            ) : (
-              <>
-                <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                <Text className="text-zinc-400 text-sm">{completedTasks.length} {t('task.completed')}</Text>
-              </>
-            )}
-          </div>
-          <div className="flex items-center gap-1">
-            {expanded ? <ChevronDown className="w-4 h-4 text-zinc-500" /> : <ChevronUp className="w-4 h-4 text-zinc-500" />}
-            <Button type="text" size="small" icon={<X className="w-3.5 h-3.5" />}
-              className="text-zinc-500 hover:text-zinc-300"
-              onClick={(e) => { e.stopPropagation(); setDismissed(true); }}
-            />
-          </div>
-        </div>
-      ) : null}
-
-      <div className={`border-t border-zinc-700 overflow-hidden transition-all duration-300 ease-in-out ${expanded ? 'max-h-[400px] opacity-100' : 'max-h-0 opacity-0'}`}>
-        {expanded && (
-          <div className="p-2">
-            <div className="mb-2">
-              <Tabs 
-                size="small" 
-                activeKey={activeTab} 
-                onChange={setActiveTab}
-                items={[
-                  { key: 'all', label: `${t('common.all')} (${tasks.length})` },
-                  { key: 'running', label: `${t('task.running')} (${runningTasks.length})` },
-                  { key: 'completed', label: `${t('task.completed')} (${completedTasks.length})` },
-                  { key: 'failed', label: `${t('task.failed')} (${failedTasks.length})` },
-                ]}
-                className="task-status-tabs [&_.ant-tabs-nav]:!mb-0 [&_.ant-tabs-tab]:transition-colors [&_.ant-tabs-tab-active]:text-emerald-400"
+            <div className="flex items-center gap-1 shrink-0">
+              <Button
+                type="text"
+                size="small"
+                icon={<ChevronDown className="w-4 h-4" />}
+                className="text-zinc-500 hover:text-zinc-200 !w-8 !h-8"
+                onClick={() => setExpanded(false)}
+              />
+              <Button
+                type="text"
+                size="small"
+                icon={<X className="w-3.5 h-3.5" />}
+                className="text-zinc-500 hover:text-zinc-200 !w-8 !h-8"
+                onClick={() => setDismissed(true)}
               />
             </div>
-            <div className="max-h-[300px] overflow-y-auto custom-scrollbar">
-              {allFilteredTasks.length > 0 ? (
-                <div className="space-y-0.5">
-                  {allFilteredTasks.map((task, index) => (
-                    <div 
-                      key={task.id} 
-                      className="transition-all duration-300 ease-in-out transform"
-                      style={{
-                        opacity: 1,
-                        transform: 'translateY(0)',
-                        transitionDelay: `${index * 50}ms`
-                      }}
-                    >
-                      {renderTaskItem(task)}
-                    </div>
-                  ))}
+          </div>
+        </div>
+      ) : (
+        <div
+          className="px-3.5 py-3 cursor-pointer hover:bg-zinc-800/40"
+          onClick={() => setExpanded(true)}
+        >
+          {mainTask ? (
+            (() => {
+              const mainTaskProgress = mainTaskStagePresentation?.progress ?? mainTask.progress;
+              return (
+            <div className="flex items-start gap-3">
+              <div className="mt-0.5 shrink-0">{getStatusIcon(mainTask.status)}</div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {mainTask.category && CATEGORY_CONFIG[mainTask.category] && (
+                    <Tag color={CATEGORY_CONFIG[mainTask.category].color} className="text-[10px] px-1.5 py-0 rounded-full">
+                      {getSubTypeLabel(mainTask.subType)}
+                    </Tag>
+                  )}
+                  {runningTasks.length > 1 && (
+                    <Tag color="blue" className="text-[10px] px-1.5 py-0 rounded-full">+{runningTasks.length - 1}</Tag>
+                  )}
+                </div>
+                <div className="mt-1 text-sm text-zinc-100 truncate">
+                  {mainTask.targetName || getTaskLabel(mainTask)}
+                </div>
+                <div className="mt-2 flex items-center gap-2">
+                  <Progress
+                    percent={mainTaskProgress}
+                    size="small"
+                    showInfo={false}
+                    className="flex-1"
+                    strokeColor={getProgressStrokeColor(mainTask.status)}
+                    trailColor="#3f3f46"
+                  />
+                  <Text className="text-zinc-400 text-xs tabular-nums">{mainTaskProgress}%</Text>
+                </div>
+                {(mainTaskStagePresentation?.detail || mainTaskStagePresentation?.summary) && (
+                  <div className="mt-1 text-xs text-zinc-500 break-words">
+                    {mainTaskStagePresentation?.detail || mainTaskStagePresentation?.summary}
+                  </div>
+                )}
+              </div>
+              <div className="flex items-center gap-1 shrink-0">
+                <ChevronUp className="w-4 h-4 text-zinc-500" />
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<X className="w-3.5 h-3.5" />}
+                  className="text-zinc-500 hover:text-zinc-200 !w-8 !h-8"
+                  onClick={(e) => { e.stopPropagation(); setDismissed(true); }}
+                />
+              </div>
+            </div>
+              );
+            })()
+          ) : (
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0 flex items-center gap-2">
+                {failedTasks.length > 0 ? (
+                  <XCircle className="w-4 h-4 text-red-500 shrink-0" />
+                ) : (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                )}
+                <div className="text-sm text-zinc-300 truncate">
+                  {failedTasks.length > 0
+                    ? `${t('task.failed')} ${failedTasks.length}`
+                    : `${t('task.completed')} ${completedTasks.length}`}
+                </div>
+              </div>
+              <div className="flex items-center gap-1 shrink-0">
+                <ChevronUp className="w-4 h-4 text-zinc-500" />
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<X className="w-3.5 h-3.5" />}
+                  className="text-zinc-500 hover:text-zinc-200 !w-8 !h-8"
+                  onClick={(e) => { e.stopPropagation(); setDismissed(true); }}
+                />
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className={`overflow-hidden transition-all duration-300 ease-in-out ${expanded ? 'max-h-[520px] opacity-100' : 'max-h-0 opacity-0'}`}>
+        {expanded && (
+          <div className="p-3">
+            {mainTask && (
+              <div className="mb-3">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <Text className="text-[11px] uppercase tracking-[0.14em] text-zinc-500">{t('task.running')}</Text>
+                  {mainTask.startedAt && (
+                    <Text className="text-[11px] text-zinc-500 tabular-nums">
+                      {formatDuration(mainTask.startedAt, mainTask.completedAt)}
+                    </Text>
+                  )}
+                </div>
+                {renderTaskItem(mainTask, true)}
+              </div>
+            )}
+
+            <div className="mb-3 flex flex-wrap gap-2">
+              {filterItems.map((item) => {
+                const active = item.key === activeTab;
+                return (
+                  <button
+                    key={item.key}
+                    type="button"
+                    onClick={() => setActiveTab(item.key)}
+                    className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs transition-colors ${active
+                      ? 'border-emerald-500/40 bg-emerald-500/15 text-emerald-300'
+                      : 'border-zinc-700/80 bg-zinc-800/40 text-zinc-400 hover:border-zinc-600 hover:text-zinc-200'
+                    }`}
+                  >
+                    <span>{item.label}</span>
+                    <span className="tabular-nums">{item.count}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="max-h-[320px] overflow-y-auto custom-scrollbar">
+              {visibleTasks.length > 0 ? (
+                <div className="space-y-2">
+                  {visibleTasks.map((task) => renderTaskItem(task))}
                 </div>
               ) : (
-                <Empty 
-                  description={t('task.noTasks')} 
-                  className="py-3 opacity-0 animate-fade-in" 
+                <Empty
+                  description={t('task.noTasks')}
+                  className="py-5"
                   imageStyle={{ height: 40 }}
                 />
               )}
