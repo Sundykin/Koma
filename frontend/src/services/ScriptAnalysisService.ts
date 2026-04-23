@@ -17,6 +17,7 @@ const logger = createLogger('ScriptAnalysisService');
 
 const CHUNK_MAX_RETRIES = 3;
 const CHUNK_CONCURRENCY = 3;
+const SCRIPT_ANALYSIS_TIMEOUT_MS = 180_000;
 
 function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -226,6 +227,7 @@ export class ScriptAnalysisService {
       taskProfileId: 'script-analysis',
       targetName: this.episodeContext?.episodeName || '剧本解析',
       stream: false,
+      timeoutMs: SCRIPT_ANALYSIS_TIMEOUT_MS,
     });
     return result;
   }
