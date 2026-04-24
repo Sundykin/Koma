@@ -12,7 +12,8 @@ import type { AppView } from './components/common/Sidebar';
 import { useProjects } from './hooks/useProjects';
 import { TaskManager } from './services/TaskManager';
 import { loadCharacters, loadScenes, loadProps, loadShots, loadEpisode, loadEpisodeShots, saveEpisode } from './store/projectStore';
-import { Spin, App as AntApp } from 'antd';
+import { Spin, App as AntApp, Typography } from 'antd';
+import { LockOutlined } from '@ant-design/icons';
 import {
   DEV_TEST_PROJECT,
   DEV_TEST_ANALYSIS,
@@ -23,6 +24,10 @@ import {
 import { getThumbnailUrl } from './constants/dimensions';
 import { createLogger } from './store/logger';
 import { loadSettings } from './store/globalStore';
+import { activationService, ActivationInfo } from './services/activationService';
+import { useTranslation } from 'react-i18next';
+
+const { Title, Paragraph, Text } = Typography;
 
 const logger = createLogger('App');
 
@@ -57,11 +62,24 @@ function isDisplayableProject(project: unknown): project is NonNullable<ReturnTy
 
 const AppContent: React.FC = () => {
   const { message } = AntApp.useApp();
+  const { t } = useTranslation();
 
   // 开发模式检测
   const urlParams = new URLSearchParams(window.location.search);
   const devMode = urlParams.get('dev');
   const isVideoDevMode = devMode === 'video';
+
+  // 激活状态
+  const [activationInfo, setActivationInfo] = useState<ActivationInfo | null>(null);
+  const [activationLoading, setActivationLoading] = useState(true);
+
+  useEffect(() => {
+    activationService.getActivationInfo()
+      .then(info => setActivationInfo(info))
+      .finally(() => setActivationLoading(false));
+  }, []);
+
+  const activationLocked = !activationLoading && !activationInfo;
 
   // 项目管理 Hook
   const {
@@ -193,7 +211,15 @@ const AppContent: React.FC = () => {
     if (view !== 'linghui') {
       lastNonLinghuiViewRef.current = view;
     }
-  }, [view]);
+    // 锁定状态禁止留在灵绘，且关闭所有残留弹窗/任务状态
+    if (activationLocked) {
+      setIsCreateModalOpen(false);
+      setIsProjectSettingsOpen(false);
+      if (view === 'linghui') {
+        setView('projects');
+      }
+    }
+  }, [view, activationLocked]);
 
   // 切换到视频步骤时加载 shots
   useEffect(() => {
@@ -336,11 +362,30 @@ const AppContent: React.FC = () => {
     }
   };
 
+  const ActivationLockedView = (
+    <div className="h-full flex flex-col items-center justify-center p-8 bg-zinc-950">
+      <div className="max-w-md w-full bg-zinc-900/50 border border-zinc-800 rounded-3xl p-10 flex flex-col items-center text-center shadow-2xl">
+        <div className="w-20 h-20 bg-emerald-500/10 rounded-full flex items-center justify-center mb-6">
+          <LockOutlined className="text-4xl text-emerald-500" />
+        </div>
+        <Title level={3} className="!text-zinc-100 !mb-4">{t('activation.lockedTitle')}</Title>
+        <Paragraph className="text-zinc-400 text-base leading-relaxed mb-8">
+          {t('activation.lockedDescription')}
+        </Paragraph>
+        <div className="w-full p-5 bg-zinc-800/50 rounded-2xl border border-zinc-700/50">
+          <Text className="text-zinc-500 text-sm">
+            {t('activation.lockedHint')}
+          </Text>
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <div className="flex flex-col h-screen bg-zinc-950 text-zinc-100 font-sans selection:bg-emerald-500/30">
       <WindowControls />
       <div className="flex flex-1 min-h-0">
-        {view !== 'linghui' && (
+        {(activationLocked || view !== 'linghui') && (
           <Sidebar
             view={view}
             activeProject={activeProject}
@@ -348,92 +393,109 @@ const AppContent: React.FC = () => {
             onViewChange={setView}
             onEnterVideoTest={handleEnterVideoTest}
             onConfigChange={() => { /* ConfigManagers reload on mount */ }}
+            activationInfo={activationInfo}
+            activationLocked={activationLocked}
+            onActivationChange={setActivationInfo}
           />
         )}
         <div className="flex-1 flex flex-col min-w-0 transition-all duration-300">
           <main className="flex-1 overflow-hidden relative bg-zinc-950">
+            {activationLoading ? (
+              <div className="flex h-full items-center justify-center">
+                <Spin size="large" description="检查激活状态..."><div className="p-12" /></Spin>
+              </div>
+            ) : activationLocked ? (
+              ActivationLockedView
+            ) : (
+              <>
                 {view === 'projects' && (
-              projectsLoading ? (
-                <div className="flex h-full items-center justify-center">
-                  <Spin size="large" description="加载项目列表..."><div className="p-12" /></Spin>
-                </div>
-              ) : (
-                <ProjectList
-                  projects={displayProjects}
-                  onSelectProject={handleSelectProject}
-                  onCreateProject={() => setIsCreateModalOpen(true)}
-                  onDeleteProject={handleDeleteProject}
-                />
-              )
-            )}
-            {view === 'settings' && (
-              <Suspense fallback={<ViewLoading tip="加载设置页面..." />}>
-                <SettingsPage settings={appSettings} onSave={setAppSettings} />
-              </Suspense>
-            )}
-            {view === 'plugins' && (
-              <Suspense fallback={<ViewLoading tip="加载插件管理..." />}>
-                <PluginManager />
-              </Suspense>
-            )}
-            {view === 'chat' && (
-              <Suspense fallback={<ViewLoading tip="加载对话页面..." />}>
-                <ChatPage />
-              </Suspense>
-            )}
-            {view === 'linghui' && (
-              <Suspense fallback={<ViewLoading tip="加载灵绘工作台..." />}>
-                <LinghuiPage
-                  onExit={() => setView(lastNonLinghuiViewRef.current === 'linghui' ? 'projects' : lastNonLinghuiViewRef.current)}
-                />
-              </Suspense>
-            )}
-            {view.startsWith('plugin:') && (
-              <Suspense fallback={<ViewLoading tip="加载插件..." />}>
-                <PluginHost pluginId={view.replace('plugin:', '')} />
-              </Suspense>
-            )}
-            {view === 'overview' && activeProject && (
-              <Suspense fallback={<ViewLoading tip="加载中..." />}>
-                <ProjectOverview
-                  project={activeProject}
-                  onEnterEpisode={handleEnterEpisode}
-                  onProjectUpdate={(updates) => setActiveProject({ ...activeProject, ...updates })}
-                  onOpenProjectSettings={() => setIsProjectSettingsOpen(true)}
-                />
-              </Suspense>
-            )}
-            {view === 'editor' && activeProject && (
-              <Suspense fallback={<ViewLoading tip="加载中..." />}>
-                <EditorView
-                  activeProject={activeProject}
-                  activeEpisode={activeEpisode}
-                  editorStep={editorStep}
-                  stepProgress={stepProgress}
-                  scriptText={scriptText}
-                  analysisData={analysisData}
-                  appSettings={appSettings}
-                  mentionItems={mentionItems}
-                  onStepChange={setEditorStep}
-                  onStepChangeWithMark={handleStepChangeWithMark}
-                  onViewChange={setView}
-                  onOpenProjectSettings={() => setIsProjectSettingsOpen(true)}
-                />
-              </Suspense>
+                  projectsLoading ? (
+                    <div className="flex h-full items-center justify-center">
+                      <Spin size="large" description="加载项目列表..."><div className="p-12" /></Spin>
+                    </div>
+                  ) : (
+                    <ProjectList
+                      projects={displayProjects}
+                      onSelectProject={handleSelectProject}
+                      onCreateProject={() => setIsCreateModalOpen(true)}
+                      onDeleteProject={handleDeleteProject}
+                    />
+                  )
+                )}
+                {view === 'settings' && (
+                  <Suspense fallback={<ViewLoading tip="加载设置页面..." />}>
+                    <SettingsPage settings={appSettings} onSave={setAppSettings} />
+                  </Suspense>
+                )}
+                {view === 'plugins' && (
+                  <Suspense fallback={<ViewLoading tip="加载插件管理..." />}>
+                    <PluginManager />
+                  </Suspense>
+                )}
+                {view === 'chat' && (
+                  <Suspense fallback={<ViewLoading tip="加载对话页面..." />}>
+                    <ChatPage />
+                  </Suspense>
+                )}
+                {view === 'linghui' && (
+                  <Suspense fallback={<ViewLoading tip="加载灵绘工作台..." />}>
+                    <LinghuiPage
+                      onExit={() => setView(lastNonLinghuiViewRef.current === 'linghui' ? 'projects' : lastNonLinghuiViewRef.current)}
+                    />
+                  </Suspense>
+                )}
+                {view.startsWith('plugin:') && (
+                  <Suspense fallback={<ViewLoading tip="加载插件..." />}>
+                    <PluginHost pluginId={view.replace('plugin:', '')} />
+                  </Suspense>
+                )}
+                {view === 'overview' && activeProject && (
+                  <Suspense fallback={<ViewLoading tip="加载中..." />}>
+                    <ProjectOverview
+                      project={activeProject}
+                      onEnterEpisode={handleEnterEpisode}
+                      onProjectUpdate={(updates) => setActiveProject({ ...activeProject, ...updates })}
+                      onOpenProjectSettings={() => setIsProjectSettingsOpen(true)}
+                    />
+                  </Suspense>
+                )}
+                {view === 'editor' && activeProject && (
+                  <Suspense fallback={<ViewLoading tip="加载中..." />}>
+                    <EditorView
+                      activeProject={activeProject}
+                      activeEpisode={activeEpisode}
+                      editorStep={editorStep}
+                      stepProgress={stepProgress}
+                      scriptText={scriptText}
+                      analysisData={analysisData}
+                      appSettings={appSettings}
+                      mentionItems={mentionItems}
+                      onStepChange={setEditorStep}
+                      onStepChangeWithMark={handleStepChangeWithMark}
+                      onViewChange={setView}
+                      onOpenProjectSettings={() => setIsProjectSettingsOpen(true)}
+                    />
+                  </Suspense>
+                )}
+              </>
             )}
           </main>
         </div>
       </div>
-      <CreateProjectModal isOpen={isCreateModalOpen} onClose={() => setIsCreateModalOpen(false)} onCreate={handleCreateProject} />
-      <ProjectSettingsModal
-        project={activeProject}
-        open={isProjectSettingsOpen}
-        onClose={() => setIsProjectSettingsOpen(false)}
-        onSave={handleProjectSettingsSave}
-        onGoToGlobalSettings={() => { setIsProjectSettingsOpen(false); setView('settings'); }}
-      />
+      {!activationLocked && (
+        <>
+          <CreateProjectModal isOpen={isCreateModalOpen} onClose={() => setIsCreateModalOpen(false)} onCreate={handleCreateProject} />
+          <ProjectSettingsModal
+            project={activeProject}
+            open={isProjectSettingsOpen}
+            onClose={() => setIsProjectSettingsOpen(false)}
+            onSave={handleProjectSettingsSave}
+            onGoToGlobalSettings={() => { setIsProjectSettingsOpen(false); setView('settings'); }}
+          />
+        </>
+      )}
       {/* 全局任务状态悬浮通知 */}
-      {activeProject && <TaskStatusBar projectId={activeProject.id} />}
+      {!activationLocked && activeProject && <TaskStatusBar projectId={activeProject.id} />}
     </div>
   );
 };

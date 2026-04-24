@@ -1,10 +1,13 @@
-import React, { useMemo, useState } from 'react';
-import { Avatar, Tooltip, Popover } from 'antd';
-import { UserOutlined } from '@ant-design/icons';
+import React, { useMemo, useState, useEffect } from 'react';
+import { Avatar, Tooltip, Popover, Input, Button, message, Divider, Tag, Typography } from 'antd';
+import { UserOutlined, CheckCircleFilled, CloseCircleFilled, KeyOutlined, ReloadOutlined, DeleteOutlined, EditOutlined } from '@ant-design/icons';
 import { LayoutGrid, Scissors, Settings, Puzzle, MessageCircle, PenTool } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Project, Episode } from '../../types';
 import { usePluginStore } from '../../store/pluginStore';
+import { activationService, ActivationInfo, TokenUsageInfo } from '../../services/activationService';
+
+const { Text } = Typography;
 
 // 视图类型：支持插件路由
 export type AppView = 'projects' | 'overview' | 'editor' | 'settings' | 'plugins' | 'chat' | 'linghui' | `plugin:${string}`;
@@ -16,6 +19,9 @@ interface SidebarProps {
   onViewChange: (view: AppView) => void;
   onEnterVideoTest: () => void;
   onConfigChange?: () => void;
+  activationInfo?: ActivationInfo | null;
+  activationLocked?: boolean;
+  onActivationChange?: (info: ActivationInfo | null) => void;
 }
 
 // 导航项组件
@@ -56,12 +62,263 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onViewChange,
   onEnterVideoTest,
   onConfigChange: _onConfigChange,
+  activationInfo,
+  activationLocked,
+  onActivationChange,
 }) => {
   const { t } = useTranslation();
   const plugins = usePluginStore(state => state.plugins);
 
-  // 左下角头像 Popover 开关状态（容器骨架，内容由后续功能注入）
+  // 左下角头像 Popover 开关状态
   const [avatarPopoverOpen, setAvatarPopoverOpen] = useState(false);
+  
+  // 激活状态
+  const [activation, setActivation] = useState<ActivationInfo | null>(activationInfo || null);
+  const [inputKey, setInputKey] = useState('');
+  const [verifying, setVerifying] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+
+  // 同步外部 activationInfo 到内部 state
+  useEffect(() => {
+    if (activationInfo !== undefined) {
+      setActivation(activationInfo);
+    }
+  }, [activationInfo]);
+
+  // 余额信息
+  const [balanceInfo, setBalanceInfo] = useState<TokenUsageInfo | null>(null);
+  const [refreshingBalance, setRefreshingBalance] = useState(false);
+  const [lastBalanceRefresh, setLastBalanceRefresh] = useState<number | null>(null);
+
+  const fetchBalance = async (apiKey: string) => {
+    setRefreshingBalance(true);
+    const result = await activationService.getTokenUsage(apiKey);
+    setRefreshingBalance(false);
+    if (result.success && result.data) {
+      setBalanceInfo(result.data);
+      setLastBalanceRefresh(Date.now());
+    } else {
+      message.error(t('activation.balanceRefreshFailed'));
+    }
+  };
+
+  // 初始化加载激活状态
+  useEffect(() => {
+    activationService.getActivationInfo().then(info => {
+      setActivation(info);
+      onActivationChange?.(info);
+      if (info?.apiKey) {
+        fetchBalance(info.apiKey);
+      }
+    });
+  }, []);
+
+  const handleActivate = async () => {
+    if (!inputKey.trim()) {
+      message.warning(t('activation.emptyKey'));
+      return;
+    }
+
+    setVerifying(true);
+    const result = await activationService.verifyApiKey(inputKey);
+    setVerifying(false);
+
+    if (result.success) {
+      const apiKey = inputKey.trim();
+      const info: ActivationInfo = {
+        apiKey,
+        activatedAt: Date.now(),
+        lastValidatedAt: Date.now(),
+      };
+      await activationService.saveActivationInfo(info);
+      setActivation(info);
+      onActivationChange?.(info);
+      setInputKey('');
+      setIsEditing(false);
+      message.success(t('activation.verifySuccess'));
+      // 激活成功后加载余额
+      fetchBalance(apiKey);
+    } else {
+      if (result.error === 'invalid_key') {
+        message.error(t('activation.invalidKey'));
+      } else {
+        message.error(t('activation.verifyFailed'));
+      }
+    }
+  };
+
+  const handleDeactivate = async () => {
+    await activationService.clearActivationInfo();
+    setActivation(null);
+    onActivationChange?.(null);
+    setBalanceInfo(null);
+    setLastBalanceRefresh(null);
+    setInputKey('');
+    setIsEditing(false);
+    message.info(t('activation.deactivate'));
+  };
+
+  const handleVerify = async () => {
+    if (!activation) return;
+    setVerifying(true);
+    const result = await activationService.verifyApiKey(activation.apiKey);
+    setVerifying(false);
+
+    if (result.success) {
+      const updated = { ...activation, lastValidatedAt: Date.now() };
+      await activationService.saveActivationInfo(updated);
+      setActivation(updated);
+      onActivationChange?.(updated);
+      message.success(t('activation.verifySuccess'));
+      // 重新验证后顺便刷新余额
+      fetchBalance(activation.apiKey);
+    } else {
+      message.error(t('activation.verifyFailed'));
+    }
+  };
+
+  const popoverContent = (
+    <div style={{ width: 280 }} className="p-1">
+      <div className="flex items-center justify-between mb-3">
+        <Text strong className="text-zinc-200">{t('activation.title')}</Text>
+        {activation ? (
+          <Tag color="success" icon={<CheckCircleFilled />}>{t('activation.activated')}</Tag>
+        ) : (
+          <Tag color="default" icon={<CloseCircleFilled />}>{t('activation.notActivated')}</Tag>
+        )}
+      </div>
+
+      {!activation || isEditing ? (
+        <div className="space-y-3">
+          <Text type="secondary" className="block text-xs">
+            {t('activation.description')}
+          </Text>
+          <Input.Password
+            placeholder={t('activation.apiKeyPlaceholder')}
+            value={inputKey}
+            onChange={e => setInputKey(e.target.value)}
+            onPressEnter={handleActivate}
+            prefix={<KeyOutlined className="text-zinc-500" />}
+            className="bg-zinc-800 border-zinc-700 text-zinc-200"
+          />
+          <div className="flex gap-2">
+            <Button
+              type="primary"
+              block
+              loading={verifying}
+              onClick={handleActivate}
+              className="bg-emerald-600 hover:bg-emerald-500 border-none"
+            >
+              {verifying ? t('activation.activating') : t('activation.activate')}
+            </Button>
+            {isEditing && (
+              <Button onClick={() => setIsEditing(false)}>
+                {t('common.cancel')}
+              </Button>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          <div className="bg-zinc-900/50 p-3 rounded-lg border border-zinc-800 space-y-2.5">
+            <div className="flex justify-between items-center">
+              <Text type="secondary" className="text-xs">{t('settings.apiKey')}</Text>
+              <Text className="text-xs font-mono text-zinc-300">
+                {activationService.maskApiKey(activation.apiKey)}
+              </Text>
+            </div>
+            
+            <Divider className="my-1 border-zinc-800/50" />
+            
+            <div className="flex justify-between items-center">
+              <Text type="secondary" className="text-xs font-medium">{t('activation.balanceTitle')}</Text>
+              <Button 
+                type="text" 
+                size="small" 
+                icon={<ReloadOutlined spin={refreshingBalance} />} 
+                onClick={() => fetchBalance(activation.apiKey)}
+                className="text-zinc-500 hover:text-emerald-400 p-0 h-auto"
+              />
+            </div>
+
+            {balanceInfo ? (
+              <div className="space-y-2">
+                <div className="flex flex-col">
+                  <Text type="secondary" className="text-[11px] mb-0.5">{t('activation.remainingQuota')}</Text>
+                  <Text className="text-lg font-bold text-emerald-400 leading-tight">
+                    {balanceInfo.unlimitedQuota ? t('activation.unlimitedQuota') : activationService.formatUsdQuota(balanceInfo.totalAvailable, balanceInfo.quotaPerUnit)}
+                  </Text>
+                </div>
+                
+                <div className="grid grid-cols-2 gap-2 pt-1 border-t border-zinc-800/50">
+                  <div className="flex flex-col">
+                    <Text type="secondary" className="text-[10px]">{t('activation.usedQuota')}</Text>
+                    <Text className="text-[11px] text-zinc-400 font-medium">
+                      {activationService.formatUsdQuota(balanceInfo.totalUsed, balanceInfo.quotaPerUnit)}
+                    </Text>
+                  </div>
+                  <div className="flex flex-col items-end">
+                    <Text type="secondary" className="text-[10px]">{t('activation.totalQuota')}</Text>
+                    <Text className="text-[11px] text-zinc-500 font-medium">
+                      {activationService.formatUsdQuota(balanceInfo.totalGranted, balanceInfo.quotaPerUnit)}
+                    </Text>
+                  </div>
+                </div>
+
+                {lastBalanceRefresh && (
+                  <div className="pt-1 text-right">
+                    <Text className="text-[10px] text-zinc-600">
+                      {t('activation.lastBalanceRefresh')}: {new Date(lastBalanceRefresh).toLocaleTimeString()}
+                    </Text>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="py-2 text-center">
+                <Text type="secondary" className="text-[11px] italic">
+                  {refreshingBalance ? t('common.loading') : '-'}
+                </Text>
+              </div>
+            )}
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            <Button
+              size="small"
+              icon={<ReloadOutlined />}
+              loading={verifying}
+              onClick={handleVerify}
+            >
+              {t('activation.verify')}
+            </Button>
+            <Button
+              size="small"
+              icon={<EditOutlined />}
+              onClick={() => {
+                setInputKey('');
+                setIsEditing(true);
+              }}
+            >
+              {t('activation.changeKey')}
+            </Button>
+          </div>
+          
+          <Divider className="my-2 border-zinc-800" />
+          
+          <Button
+            danger
+            block
+            size="small"
+            type="text"
+            icon={<DeleteOutlined />}
+            onClick={handleDeactivate}
+          >
+            {t('activation.deactivate')}
+          </Button>
+        </div>
+      )}
+    </div>
+  );
 
   const globalPlugins = useMemo(
     () => plugins.filter(p => p.category === 'global' && p.isEnabled),
@@ -91,6 +348,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
   ];
 
   const handleNavClick = (key: string, _isAction?: boolean) => {
+    if (activationLocked) {
+      message.warning(t('activation.activationRequired'));
+      setAvatarPopoverOpen(true);
+      return;
+    }
     if (key === 'video-test') {
       onEnterVideoTest();
     } else {
@@ -168,19 +430,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
       </nav>
 
-      {/* 底部头像入口（容器骨架 — 内容由后续功能挂入） */}
+      {/* 底部头像入口 */}
       <div className="p-3 border-t border-zinc-800 flex items-center justify-center">
         <Popover
           open={avatarPopoverOpen}
           onOpenChange={setAvatarPopoverOpen}
           trigger="click"
           placement="rightBottom"
-          content={<div style={{ width: 220 }} />}
+          content={popoverContent}
+          overlayClassName="activation-popover"
         >
           <Avatar
             size={36}
             style={{
-              background: 'linear-gradient(135deg, #8b5cf6, #3b82f6)',
+              background: activation 
+                ? 'linear-gradient(135deg, #10b981, #059669)' 
+                : 'linear-gradient(135deg, #8b5cf6, #3b82f6)',
               cursor: 'pointer',
             }}
             icon={<UserOutlined />}
