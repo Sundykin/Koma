@@ -397,12 +397,12 @@ export const activationService = {
           defaultSize: '720x1280',
           defaultSteps: 20,
         }),
-        defaultModelId: 'grok-imagine-image-lite',
+        defaultModelId: 'grok-image-all',
         models: [
           {
-            id: 'grok-imagine-image-lite',
-            label: 'grok-imagine-image-lite',
-            providerModelName: 'grok-imagine-image-lite',
+            id: 'grok-image-all',
+            label: 'grok-image-all',
+            providerModelName: 'grok-image-all',
             capabilities: [
               'image.text-to-image' as ModelCapability,
               'image.image-to-image' as ModelCapability,

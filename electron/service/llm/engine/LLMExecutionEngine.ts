@@ -380,7 +380,31 @@ export class LLMExecutionEngine {
 
   private async queryStreamSingle(request: LLMQueryRequest, callbacks: StreamCallbacks, logCtx: QueryLogContext): Promise<void> {
     const startTime = Date.now();
-    console.info('[LLMQuery] 流式请求开始', logCtx);
+    const timeoutMs = request.options?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+    const controller = new AbortController();
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, timeoutMs);
+    const abortFromClient = () => {
+      clearTimeout(timer);
+      if (!controller.signal.aborted) {
+        controller.abort();
+      }
+    };
+
+    console.info('[LLMQuery] 流式请求开始', { ...logCtx, timeoutMs });
+
+    if (callbacks.abortSignal?.aborted) {
+      clearTimeout(timer);
+      console.warn('[LLMQuery] 流式请求被中止', { ...logCtx, durationMs: Date.now() - startTime });
+      callbacks.onError({ code: 'ABORTED', message: 'Stream aborted by client' });
+      return;
+    }
+
+    callbacks.abortSignal?.addEventListener('abort', abortFromClient, { once: true });
+
     try {
       const sessionConfig = resolveConfig(request.config);
       if (sessionConfig.baseUrl && isPrivateHost(sessionConfig.baseUrl)) {
@@ -390,8 +414,14 @@ export class LLMExecutionEngine {
       const llm = createLLM(sessionConfig as any);
       const messages = contextManager.toLangChainMessages(request.messages);
       let fullContent = '';
-      const stream = await llm.stream(messages, { signal: callbacks.abortSignal });
+      const stream = await llm.stream(messages, { signal: controller.signal });
       for await (const chunk of stream) {
+        if (timedOut) {
+          const durationMs = Date.now() - startTime;
+          console.error('[LLMQuery] 流式请求超时', { ...logCtx, durationMs, timeoutMs });
+          callbacks.onError({ code: 'TIMEOUT', message: `LLM stream query timed out after ${timeoutMs}ms` });
+          return;
+        }
         if (callbacks.abortSignal?.aborted) {
           console.warn('[LLMQuery] 流式请求被中止', { ...logCtx, durationMs: Date.now() - startTime });
           callbacks.onError({ code: 'ABORTED', message: 'Stream aborted by client' });
@@ -404,12 +434,27 @@ export class LLMExecutionEngine {
         }
       }
       const durationMs = Date.now() - startTime;
+      if (timedOut) {
+        console.error('[LLMQuery] 流式请求超时', { ...logCtx, durationMs, timeoutMs });
+        callbacks.onError({ code: 'TIMEOUT', message: `LLM stream query timed out after ${timeoutMs}ms` });
+        return;
+      }
+      if (callbacks.abortSignal?.aborted) {
+        console.warn('[LLMQuery] 流式请求被中止', { ...logCtx, durationMs });
+        callbacks.onError({ code: 'ABORTED', message: 'Stream aborted by client' });
+        return;
+      }
       console.info('[LLMQuery] 流式请求完成', { ...logCtx, durationMs, contentLength: fullContent.length });
       logQueryCompletion('stream', 'direct', { ...logCtx, durationMs, contentLength: fullContent.length });
       callbacks.onDone({ content: fullContent });
     } catch (err: unknown) {
       const durationMs = Date.now() - startTime;
       const errMsg = err instanceof Error ? err.message : String(err);
+      if (timedOut) {
+        console.error('[LLMQuery] 流式请求超时', { ...logCtx, durationMs, timeoutMs, error: errMsg });
+        callbacks.onError({ code: 'TIMEOUT', message: `LLM stream query timed out after ${timeoutMs}ms` });
+        return;
+      }
       if (callbacks.abortSignal?.aborted || (err instanceof Error && err.name === 'AbortError')) {
         console.warn('[LLMQuery] 流式请求被中止', { ...logCtx, durationMs });
         callbacks.onError({ code: 'ABORTED', message: 'Stream aborted' });
@@ -417,6 +462,9 @@ export class LLMExecutionEngine {
       }
       console.error('[LLMQuery] 流式请求异常', { ...logCtx, durationMs, error: errMsg });
       callbacks.onError({ code: 'API_ERROR', message: sanitizeErrorMessage(errMsg) });
+    } finally {
+      clearTimeout(timer);
+      callbacks.abortSignal?.removeEventListener('abort', abortFromClient);
     }
   }
 
@@ -464,17 +512,24 @@ export class LLMExecutionEngine {
       const contextPrefix = `${summary ? `【全文结构摘要】\n${summary}\n\n` : ''}【当前处理进度】${chunkLabel}，共 ${plan.chunks.length} 段\n\n${index > 0 ? '请保持与前文一致的风格和术语，延续上文的处理。\n\n' : ''}`;
       const chunkUserContent = plan.lastUserMessage.content.replace(plan.longText, contextPrefix + chunkContent);
       console.info('[LLMQuery] 处理分段', { ...logCtx, chunk: index + 1, total: plan.chunks.length, chunkLen: chunkContent.length });
-      await new Promise<void>((resolve, reject) => {
-        this.queryStreamSingle({ ...request, messages: [...plan.systemMessages, ...plan.prefixUserMessages, { role: 'user', content: chunkUserContent }], options: { ...request.options, traceId: `${logCtx.traceId}-chunk${index + 1}` } }, {
+      const chunkResult = await new Promise<{ ok: true } | { ok: false; error: { code: string; message: string } }>((resolve) => {
+        void this.queryStreamSingle({ ...request, messages: [...plan.systemMessages, ...plan.prefixUserMessages, { role: 'user', content: chunkUserContent }], options: { ...request.options, traceId: `${logCtx.traceId}-chunk${index + 1}` } }, {
           onChunk: (delta) => {
             fullContent += delta;
             callbacks.onChunk(delta);
           },
-          onDone: () => resolve(),
-          onError: (error) => reject(new Error(`${chunkLabel} ${error.message}`)),
+          onDone: () => resolve({ ok: true }),
+          onError: (error) => resolve({ ok: false, error: { code: error.code, message: `${chunkLabel} ${error.message}` } }),
           abortSignal: callbacks.abortSignal,
-        }, logCtx);
+        }, logCtx).catch((err: unknown) => {
+          const message = err instanceof Error ? err.message : String(err);
+          resolve({ ok: false, error: { code: 'UNKNOWN', message: `${chunkLabel} ${message}` } });
+        });
       });
+      if (!chunkResult.ok) {
+        callbacks.onError(chunkResult.error);
+        return;
+      }
     }
 
     const durationMs = Date.now() - startTime;

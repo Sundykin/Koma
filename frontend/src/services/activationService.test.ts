@@ -367,4 +367,28 @@ describe('activationService ensureDefaultModelChannels', () => {
       true,
     ]);
   });
+
+  it('激活时创建/更新 TTI 渠道使用新的默认模型 grok-image-all', async () => {
+    mocks.ipcInvoke.mockImplementation(async (channel: string, args?: any) => {
+      if (channel === 'channel:get') {
+        return { ok: true, data: null };
+      }
+      if (channel === 'channel:create') {
+        return { ok: true, data: makeChannelDto(args) };
+      }
+      if (channel === 'channel:setDefault') {
+        return { ok: true, data: { updatedAt: Date.now() } };
+      }
+      throw new Error(`unexpected ipc channel: ${channel}`);
+    });
+
+    await activationService.ensureDefaultModelChannels(FAKE_LEGACY_KEY);
+
+    const createCalls = mocks.ipcInvoke.mock.calls.filter(([channel]) => channel === 'channel:create');
+    const ttiCreateCall = createCalls.find(([, args]) => args.id === KOMAAPI_ACTIVATION_CHANNEL_IDS.tti);
+
+    expect(ttiCreateCall).toBeDefined();
+    expect(ttiCreateCall?.[1].defaultModelId).toBe('grok-image-all');
+    expect(ttiCreateCall?.[1].models[0].id).toBe('grok-image-all');
+  });
 });

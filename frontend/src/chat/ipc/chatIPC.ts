@@ -254,7 +254,8 @@ export async function llmQuery(request: LLMQueryRequest): Promise<LLMQueryRespon
 }
 
 /**
- * 流式 LLM 查询 — 通过 IPC 事件逐 chunk 推送结果，无应用层超时。
+ * 流式 LLM 查询 — 通过 IPC 事件逐 chunk 推送结果。
+ * request.options.timeoutMs 由主进程流式执行引擎处理。
  * 返回 Promise<string>，在流式完成后 resolve 完整内容。
  * onChunk 回调可用于实时更新 UI。
  */

@@ -13,6 +13,7 @@ import { extractErrorMessage } from '../utils/errorHandler';
 import { appendStyleRequirement, type StyleSnapshotLike } from '../utils/promptNormalize';
 
 const logger = createLogger('ShotAnalysis');
+const SHOT_ANALYSIS_LLM_TIMEOUT_MS = 300_000;
 
 // 预选资产类型
 export interface PresetAssets {
@@ -148,6 +149,8 @@ export class ShotAnalysisService {
           operation: 'breakdown',
           taskKind: 'structured',
           taskProfileId: 'shot-breakdown',
+          stream: true,
+          timeoutMs: SHOT_ANALYSIS_LLM_TIMEOUT_MS,
           // 强制 OpenAI 兼容服务以合法 JSON 返回，避免字符串内未转义引号导致解析失败
           responseFormat: 'json_object',
         },
