@@ -417,7 +417,7 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
 - scriptContent: 对应的剧本原文
 - shotType: 景别（close-up特写/medium中景/wide全景/extreme-wide大全景）
 - cameraMovement: 运镜方式（static固定/pan摇镜/zoom-in推镜/tracking跟随/handheld手持）
-- duration: 预估时长（秒），约 10 秒，每个镜头控制在10秒左右
+- duration: 预估时长（秒），最大 15 秒，每个镜头控制在 15 秒以内
 - characters: 出现的角色名列表
 - dialogue: 角色台词，格式为"角色名（情绪）：台词内容"
 - emotion: 画面情绪氛围
@@ -552,7 +552,7 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
     template: `你是一位专业的分镜师。请将以下剧本拆解为分镜列表。
 
 【时长要求】
-每个镜头时长控制在10秒左右，duration 建议填写约 10 秒。
+每个镜头时长控制在 15 秒以内，duration 建议填写 15 以内的数字。
 
 【情绪词列表】
 高兴、愤怒、悲伤、恐惧、反感、低落、惊讶、自然、急切、平静、激动、呵斥、关心、严肃
@@ -575,8 +575,8 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
       "scriptContent": "对应的剧本原文片段",
       "shotType": "close-up/medium/wide/extreme-wide",
       "cameraMovement": "static/pan/zoom-in/tracking/handheld",
-      "duration": 10,
-      "dialogue": "角色名（情绪）：\\"台词内容\\"",
+      "duration": 15,
+      "dialogue": "角色名（情绪）：“台词内容”",
       "characters": ["已知角色名称"],
       "emotion": "情绪标签",
       "props": ["已知道具名称"],

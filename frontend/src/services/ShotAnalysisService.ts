@@ -14,7 +14,7 @@ import { appendStyleRequirement, type StyleSnapshotLike } from '../utils/promptN
 
 const logger = createLogger('ShotAnalysis');
 const SHOT_ANALYSIS_LLM_TIMEOUT_MS = 300_000;
-const DEFAULT_SHOT_DURATION_SECONDS = 10;
+const DEFAULT_SHOT_DURATION_SECONDS = 15;
 
 export function normalizeShotDuration(duration: unknown): number {
   if (typeof duration === 'number') {
