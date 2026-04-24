@@ -470,6 +470,7 @@
   },
   "activation": {
     "title": "Software Activation",
+    "openKomaApi": "KomaAPI",
     "description": "Enter API Key to activate all features",
     "apiKeyPlaceholder": "Enter API Key (sk-...)",
     "activate": "Activate",

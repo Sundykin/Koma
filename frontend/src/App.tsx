@@ -25,6 +25,7 @@ import { getThumbnailUrl } from './constants/dimensions';
 import { createLogger } from './store/logger';
 import { loadSettings } from './store/globalStore';
 import { activationService, ActivationInfo } from './services/activationService';
+import { resolveEpisodeEditorEntry, type EpisodeEditorEntryOptions } from './workflow/episodeEditorEntry';
 import { useTranslation } from 'react-i18next';
 
 const { Title, Paragraph, Text } = Typography;
@@ -293,7 +294,7 @@ const AppContent: React.FC = () => {
     }
   };
 
-  const handleEnterEpisode = useCallback(async (episode: Episode) => {
+  const handleEnterEpisode = useCallback(async (episode: Episode, options: EpisodeEditorEntryOptions = {}) => {
     const latestEpisode = activeProject
       ? await loadEpisode(activeProject.id, episode.id).catch(err => {
         logger.error('加载最新剧集失败', err);
@@ -304,12 +305,9 @@ const AppContent: React.FC = () => {
 
     setActiveEpisode(targetEpisode);
     setView('editor');
-    const defaultProgress: EpisodeStepProgress = { assets: 'pending', storyboard: 'pending', video: 'pending' };
-    const progress = targetEpisode.stepProgress || defaultProgress;
-    setStepProgress(progress);
-    const steps: EditorStep[] = ['assets', 'storyboard', 'video'];
-    const firstPending = steps.find(s => progress[s] === 'pending') || 'assets';
-    setEditorStep(firstPending);
+    const entry = resolveEpisodeEditorEntry(targetEpisode.stepProgress, options);
+    setStepProgress(entry.stepProgress);
+    setEditorStep(entry.initialStep);
     setScriptText(targetEpisode.scriptText || '');
     setAnalysisData(null);
   }, [activeProject]);

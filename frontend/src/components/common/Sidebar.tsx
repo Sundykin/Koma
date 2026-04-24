@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { Project, Episode } from '../../types';
 import { usePluginStore } from '../../store/pluginStore';
 import { activationService, ActivationInfo, TokenUsageInfo } from '../../services/activationService';
+import { electronService } from '../../services/electronService';
 
 const { Text } = Typography;
 
@@ -203,7 +204,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const popoverContent = (
     <div style={{ width: 280 }} className="p-1">
       <div className="flex items-center justify-between mb-3">
-        <Text strong className="text-zinc-200">{t('activation.title')}</Text>
+        <div className="flex items-center gap-2">
+          <Text strong className="text-zinc-200">{t('activation.title')}</Text>
+          <Button
+            type="link"
+            size="small"
+            className="px-0 h-auto text-zinc-500 hover:text-emerald-400 text-[11px]"
+            onClick={() => electronService.shell.openExternal('https://komaapi.com')}
+          >
+            {t('activation.openKomaApi')}
+          </Button>
+        </div>
         {activation ? (
           <Tag color="success" icon={<CheckCircleFilled />}>{t('activation.activated')}</Tag>
         ) : (

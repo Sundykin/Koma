@@ -470,6 +470,7 @@
   },
   "activation": {
     "title": "软件激活",
+    "openKomaApi": "官网",
     "description": "请输入 API Key 以激活全部功能",
     "apiKeyPlaceholder": "输入 API Key (sk-...)",
     "activate": "激活软件",

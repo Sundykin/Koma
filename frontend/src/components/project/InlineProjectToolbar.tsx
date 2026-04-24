@@ -107,7 +107,7 @@ export const InlineProjectToolbar: React.FC<InlineProjectToolbarProps> = ({
             {isSaving ? '保存中...' : '保存'}
           </Button>
         </Tooltip>
-        <Tooltip title={!episode ? "请先选择剧集" : anyBusy ? "AI 处理中，请稍候" : "进入分镜制作"}>
+        <Tooltip title={!episode ? "请先选择剧集" : anyBusy ? "AI 处理中，请稍候" : "进入角色场景处理"}>
           <Button
             type="primary"
             size="small"

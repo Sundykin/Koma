@@ -14,6 +14,27 @@ import { appendStyleRequirement, type StyleSnapshotLike } from '../utils/promptN
 
 const logger = createLogger('ShotAnalysis');
 const SHOT_ANALYSIS_LLM_TIMEOUT_MS = 300_000;
+const DEFAULT_SHOT_DURATION_SECONDS = 10;
+
+export function normalizeShotDuration(duration: unknown): number {
+  if (typeof duration === 'number') {
+    return Number.isFinite(duration) && duration > 0
+      ? duration
+      : DEFAULT_SHOT_DURATION_SECONDS;
+  }
+
+  if (typeof duration === 'string') {
+    const trimmed = duration.trim();
+    if (trimmed.length > 0) {
+      const parsed = Number(trimmed);
+      return Number.isFinite(parsed) && parsed > 0
+        ? parsed
+        : DEFAULT_SHOT_DURATION_SECONDS;
+    }
+  }
+
+  return DEFAULT_SHOT_DURATION_SECONDS;
+}
 
 // 预选资产类型
 export interface PresetAssets {
@@ -230,7 +251,7 @@ export class ShotAnalysisService {
         scriptContent: s.scriptContent || '',
         shotType: s.shotType || 'medium',
         cameraMovement: s.cameraMovement || 'static',
-        duration: s.duration || 3,
+        duration: normalizeShotDuration(s.duration),
         description: undefined,  // 后续手动生成提示词
         characters: (s.characters || [])
           .map((name: string) => {
