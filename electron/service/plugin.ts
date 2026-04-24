@@ -127,11 +127,21 @@ class PluginService {
     for (const p of candidates) {
       try {
         const manifestPath = path.join(p, 'manifest.json');
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
-        require('fs').statSync(manifestPath);
+        const manifest = JSON.parse(require('fs').readFileSync(manifestPath, 'utf-8')) as PluginManifest;
+        const entryPaths = [
+          manifest.entry?.frontend,
+          manifest.entry?.backend,
+          manifest.entry?.logic,
+          manifest.entry?.ui,
+        ].filter(Boolean) as string[];
+
+        for (const entryPath of entryPaths) {
+          require('fs').statSync(path.join(p, entryPath));
+        }
         console.log(`[PluginService] found builtin source: ${pluginId} at ${p}`);
         return p;
-      } catch {
+      } catch (err: any) {
+        console.warn(`[PluginService] skip invalid builtin source: ${pluginId} at ${p}`, err?.message || err);
         // continue
       }
     }
@@ -150,6 +160,9 @@ class PluginService {
         const dstDir = path.join(this.pluginsDir, pluginId);
 
         // 复制 manifest.json + dist/ + README.md（不含 node_modules/src）
+        if (await this.fileExists(dstDir)) {
+          await this.forceRemoveDir(dstDir);
+        }
         await fs.mkdir(dstDir, { recursive: true });
         const items = ['manifest.json', 'README.md', 'dist'];
         for (const item of items) {
@@ -461,8 +474,8 @@ class PluginService {
    */
   async uninstall(pluginPath: string): Promise<{ success: boolean; error?: string }> {
     try {
-      // 从插件路径提取 pluginId
-      const pluginId = path.basename(pluginPath);
+      const pluginDir = this.resolveInstalledPluginDir(pluginPath);
+      const pluginId = path.basename(pluginDir);
 
       // 禁止删除内置插件
       if (this._builtinPluginIds().includes(pluginId)) {
@@ -472,8 +485,8 @@ class PluginService {
       // 先从运行时卸载
       await pluginRuntime.unloadPlugin(pluginId);
 
-      if (await this.fileExists(pluginPath)) {
-        await this.forceRemoveDir(pluginPath);
+      if (await this.fileExists(pluginDir)) {
+        await this.forceRemoveDir(pluginDir);
       }
       return { success: true };
     } catch (err: any) {
@@ -519,7 +532,7 @@ class PluginService {
    * 获取已安装插件列表
    */
   async listInstalled(): Promise<PluginManifest[]> {
-    const plugins: PluginManifest[] = [];
+    const plugins: Array<PluginManifest & { rootPath?: string; isBuiltin?: boolean }> = [];
     const builtinIds = new Set(this._builtinPluginIds());
 
     try {
@@ -531,6 +544,7 @@ class PluginService {
           try {
             const content = await fs.readFile(manifestPath, 'utf-8');
             const manifest = JSON.parse(content) as PluginManifest & { isBuiltin?: boolean };
+            manifest.rootPath = path.join(this.pluginsDir, entry);
             if (builtinIds.has(manifest.id)) {
               manifest.isBuiltin = true;
             }
@@ -579,6 +593,25 @@ class PluginService {
         await fs.copyFile(srcPath, destPath);
       }
     }
+  }
+
+  /**
+   * 将前端传来的插件 ID、相对路径或绝对路径统一解析到 pluginsDir 下。
+   */
+  resolveInstalledPluginDir(pluginPathOrId: string): string {
+    const input = pluginPathOrId || '';
+    const pluginId = path.basename(input);
+    if (!pluginId || pluginId === '.' || pluginId === '..') {
+      throw new Error('无效的插件路径');
+    }
+
+    const resolved = path.resolve(this.pluginsDir, pluginId);
+    const pluginsRoot = path.resolve(this.pluginsDir);
+    if (resolved !== pluginsRoot && resolved.startsWith(pluginsRoot + path.sep)) {
+      return resolved;
+    }
+
+    throw new Error('插件路径不在允许目录内');
   }
 
   /**

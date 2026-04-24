@@ -51,6 +51,11 @@ export const PROJECT_MEDIA_BASE_REQUIREMENTS: Partial<Record<ProjectMediaCategor
     label: '文生图',
     description: '仅显示支持文生图的模型',
   },
+  itv: {
+    capability: 'video.reference-to-video',
+    label: '参考生视频',
+    description: '仅显示支持参考生视频的模型',
+  },
   tts: {
     capability: 'speech.text-to-speech',
     label: '语音合成',

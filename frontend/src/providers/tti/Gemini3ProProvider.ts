@@ -5,6 +5,7 @@
 import type { TTIModelConfig, ProviderStartResult, ProviderTaskSnapshot } from '../../types';
 import type { TTIProvider, TTIOptions, TTIRequest, ImageResult } from './types';
 import { safeFetch } from '../../utils/safeFetch';
+import { resolveTTISize } from './utils/ttiSize';
 
 // API 响应类型
 interface Gemini3ProCreateResponse {
@@ -123,9 +124,10 @@ export class Gemini3ProProvider implements TTIProvider {
       n: 1,
     };
 
-    // 尺寸比例
-    if (options?.aspectRatio) {
-      body.size = options.aspectRatio;
+    // OpenAI-compatible image APIs expect WxH size, not raw aspect ratio.
+    const size = resolveTTISize(options, this.config.defaultSize);
+    if (size) {
+      body.size = size;
     }
 
     // 参考图（图生图）

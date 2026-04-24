@@ -7,6 +7,7 @@ import type { TTIModelConfig, ProviderStartResult, ProviderTaskSnapshot } from '
 import type { TTIProvider, TTIOptions, TTIRequest, ImageResult } from './types';
 import { safeFetch } from '../../utils/safeFetch';
 import { createLogger } from '../../store/logger';
+import { resolveTTISize } from './utils/ttiSize';
 
 const logger = createLogger('OpenAICompatibleTTI');
 
@@ -180,8 +181,9 @@ export class OpenAICompatibleTTIProvider implements TTIProvider {
       n: 1,
     };
 
-    if (options?.aspectRatio) {
-      body.size = options.aspectRatio;
+    const size = resolveTTISize(options, this.config.defaultSize);
+    if (size) {
+      body.size = size;
     }
 
     if (request.references && request.references.length > 0) {
@@ -221,6 +223,9 @@ export class OpenAICompatibleTTIProvider implements TTIProvider {
         provider: this.config.provider,
         ...(protocol ? { promptProtocol: protocol } : undefined),
         ...(isMultiAngle ? { requestType: 'multi-angle', endpointPath: request.multiAngle?.endpointPath } : undefined),
+        size,
+        requestedAspectRatio: options?.aspectRatio,
+        defaultSize: this.config.defaultSize,
         body: sanitizeBodyForLog(body),
       });
     }

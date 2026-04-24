@@ -251,6 +251,39 @@ function getOptionNumber(
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 }
 
+function summarizeImageSource(source: string | undefined): Record<string, unknown> {
+  if (!source) return { present: false };
+  if (source.startsWith('data:')) {
+    return {
+      present: true,
+      kind: 'data-url',
+      length: source.length,
+      preview: truncateString(source, 120),
+    };
+  }
+  return {
+    present: true,
+    kind: /^https?:\/\//i.test(source) ? 'remote-url' : 'path',
+    value: truncateString(source, 500),
+  };
+}
+
+function summarizeImageAsset(asset: StoredMediaAsset): Record<string, unknown> {
+  return {
+    kind: asset.kind,
+    localPath: asset.localPath,
+    remoteUrl: asset.remoteUrl,
+    mimeType: asset.mimeType,
+    provider: asset.provider,
+    providerTaskId: asset.providerTaskId,
+    channelId: asset.channelId,
+    modelId: asset.modelId,
+    width: asset.width,
+    height: asset.height,
+    capability: asset.capability,
+  };
+}
+
 function resolveTaskSelectionKey(task: AsyncTask, fallbackSelection?: string): string | undefined {
   if (task.channelId && task.modelId) {
     return serializeMediaSelection({
@@ -330,21 +363,66 @@ export class MediaGenerationService {
       });
     }
 
-    const references = await ensureProviderAssetInputs(compileReferences);
-    if (protocol === 'grok-image-index') {
-      logger.info('TTI start payload (post-compile)', sanitizeBodyForLog({
+    let references: ProviderAssetInput[];
+    try {
+      references = await ensureProviderAssetInputs(compileReferences);
+      logger.info('TTI references resolved', sanitizeBodyForLog({
+        ownerRef,
         provider: provider.config?.provider,
-        promptProtocol: protocol,
-        prompt: compiledPrompt,
-        references: references.map(r => ({ transport: r.transport, value: r.value, mimeType: r.mimeType })),
-        options: request.options,
+        protocol: protocol || 'none',
+        requestedReferences: compileReferences.length,
+        resolvedReferences: references.map(r => ({ transport: r.transport, value: r.value, mimeType: r.mimeType })),
       }));
+    } catch (error) {
+      logger.error('TTI reference resolve failed', {
+        ownerRef,
+        provider: provider.config?.provider,
+        protocol: protocol || 'none',
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
     }
-    const started = await provider.start({
+
+    logger.info('TTI provider.start payload', sanitizeBodyForLog({
+      ownerRef,
+      provider: provider.config?.provider,
+      channelId: executionMetadata.channelId,
+      modelId: executionMetadata.modelId,
+      promptProtocol: protocol || 'none',
       prompt: compiledPrompt,
-      references,
+      references: references.map(r => ({ transport: r.transport, value: r.value, mimeType: r.mimeType })),
       options: request.options,
-    });
+    }));
+
+    let started: Awaited<ReturnType<typeof provider.start>>;
+    try {
+      started = await provider.start({
+        prompt: compiledPrompt,
+        references,
+        options: request.options,
+      });
+      logger.info('TTI provider.start succeeded', {
+        ownerRef,
+        provider: provider.config?.provider,
+        mode: started.mode,
+        taskId: started.mode === 'async' ? started.taskId : (started.output as any).taskId,
+        outputSource: started.mode === 'immediate'
+          ? summarizeImageSource(started.output.url || started.output.path)
+          : undefined,
+        outputWidth: started.mode === 'immediate' ? started.output.width : undefined,
+        outputHeight: started.mode === 'immediate' ? started.output.height : undefined,
+      });
+    } catch (error) {
+      logger.error('TTI provider.start failed', {
+        ownerRef,
+        provider: provider.config?.provider,
+        channelId: executionMetadata.channelId,
+        modelId: executionMetadata.modelId,
+        protocol: protocol || 'none',
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
 
     const kind: MediaKind = 'image';
     const options = request.options as Record<string, unknown> | undefined;
@@ -355,6 +433,19 @@ export class MediaGenerationService {
     if (started.mode === 'immediate') {
       const output = started.output;
       const source = output.url || output.path;
+      if (!source) {
+        logger.error('TTI immediate output missing source', {
+          ownerRef,
+          provider: provider.config?.provider,
+          output: sanitizeBodyForLog(output as any),
+        });
+        throw new Error('图片生成完成但未返回结果地址');
+      }
+      logger.info('TTI immediate persist start', {
+        ownerRef,
+        provider: provider.config?.provider,
+        source: summarizeImageSource(source),
+      });
       const persisted = await persistMediaAsset({
         projectId,
         kind,
@@ -374,11 +465,20 @@ export class MediaGenerationService {
           ...(optionSeed !== undefined ? { seed: optionSeed } : undefined),
         },
       });
+      logger.info('TTI immediate persisted', {
+        ownerRef,
+        asset: summarizeImageAsset(persisted),
+      });
 
       const normalized = await ensureRemoteUrlForImageAsset({
         projectId,
         asset: persisted,
         policy: 'best-effort',
+      });
+      logger.info('TTI immediate remote-url normalized', {
+        ownerRef,
+        before: summarizeImageAsset(persisted),
+        after: summarizeImageAsset(normalized),
       });
 
       const finalAsset = mergeMediaMetadata(normalized, {
@@ -387,7 +487,15 @@ export class MediaGenerationService {
         height: optionHeight ?? output.height ?? normalized.height,
       });
 
+      logger.info('TTI immediate bind owner start', {
+        ownerRef,
+        asset: summarizeImageAsset(finalAsset),
+      });
       await bindOwnerRefMedia(projectId, ownerRef, finalAsset);
+      logger.info('TTI immediate bind owner done', {
+        ownerRef,
+        asset: summarizeImageAsset(finalAsset),
+      });
       return finalAsset;
     }
 
@@ -397,6 +505,14 @@ export class MediaGenerationService {
       remoteTaskId: started.taskId,
       taskName: taskName || '图片生成',
       ...executionMetadata,
+    });
+    logger.info('TTI async task created', {
+      localTaskId: task.id,
+      remoteTaskId: started.taskId,
+      ownerRef,
+      provider: provider.config?.provider,
+      channelId: executionMetadata.channelId,
+      modelId: executionMetadata.modelId,
     });
 
     return this.pollAndFinalizeTask({
@@ -881,6 +997,17 @@ export class MediaGenerationService {
       const snapshot = await getSnapshot(task.remoteTaskId);
       const mapped = mapSnapshotToTaskStatus(snapshot);
 
+      if (kind === 'image') {
+        logger.info('TTI task snapshot', {
+          localTaskId: task.id,
+          remoteTaskId: task.remoteTaskId,
+          state: snapshot.state,
+          progress: snapshot.progress,
+          outputSource: snapshot.output ? summarizeImageSource(extractSource(snapshot.output)) : undefined,
+          error: snapshot.error,
+        });
+      }
+
       if (mapped.status === 'processing' || mapped.status === 'pending') {
         if (typeof mapped.progress === 'number') {
           await updateTaskProgress(projectId, task.id, mapped.progress);
@@ -898,9 +1025,22 @@ export class MediaGenerationService {
         const source = snapshot.output ? extractSource(snapshot.output) : undefined;
         if (!source) {
           const error = '任务完成但未返回结果地址';
+          logger.error('媒体任务完成但缺少结果地址', {
+            localTaskId: task.id,
+            remoteTaskId: task.remoteTaskId,
+            kind,
+            output: snapshot.output ? sanitizeBodyForLog(snapshot.output as any) : undefined,
+          });
           await markTaskFailed(projectId, task.id, error);
           throw new Error(error);
         }
+
+        logger.info('媒体任务结果落盘开始', {
+          localTaskId: task.id,
+          remoteTaskId: task.remoteTaskId,
+          kind,
+          source: kind === 'image' ? summarizeImageSource(source) : truncateString(source, 500),
+        });
 
         const persisted = await persistMediaAsset({
           projectId,
@@ -922,6 +1062,14 @@ export class MediaGenerationService {
         const finalAsset = kind === 'image'
           ? await ensureRemoteUrlForImageAsset({ projectId, asset: enriched, policy: 'best-effort' })
           : enriched;
+        if (kind === 'image') {
+          logger.info('TTI async finalized asset', {
+            localTaskId: task.id,
+            remoteTaskId: task.remoteTaskId,
+            persisted: summarizeImageAsset(persisted),
+            finalAsset: summarizeImageAsset(finalAsset),
+          });
+        }
         await markTaskCompleted(projectId, task.id, finalAsset);
 
         if (task.ownerRef) {

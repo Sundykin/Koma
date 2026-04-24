@@ -135,9 +135,16 @@ export async function shotRenderWorkflow(
       // 忽略
     }
 
-    const selectedItvModelCapabilities = settings
-      ? resolveConfiguredChannelModel(settings, 'itv', mediaSelections?.itvSelection)?.model.capabilities
+    const initialVideoPlan = collectShotVideoPlan({
+      shot: normalizedShot,
+      characters,
+      scenes: projectScenes,
+      props: projectProps,
+    });
+    const selectedItvContext = settings
+      ? resolveConfiguredChannelModel(settings, 'itv', mediaSelections?.itvSelection, initialVideoPlan.capability)
       : undefined;
+    const selectedItvModelCapabilities = selectedItvContext?.model.capabilities;
     const resolvedVideoPlan = collectShotVideoPlan({
       shot: normalizedShot,
       characters,
@@ -153,6 +160,16 @@ export async function shotRenderWorkflow(
           visualInputCount: resolvedVideoPlan.visualReferenceInputs.length,
         })
       : undefined;
+    logger.info('分镜视频模型选择解析', {
+      shotId: normalizedShot.id,
+      requestedSelection: mediaSelections?.itvSelection,
+      requestedCapability: resolvedVideoPlan.capability,
+      selectedModelCapabilities: selectedItvModelCapabilities,
+      resolvedSelection: capabilitySupport?.effectiveSelectionKey,
+      resolvedModelId: capabilitySupport?.resolvedContext?.model.id,
+      resolvedCapabilities: capabilitySupport?.resolvedContext?.model.capabilities,
+      disabledReason: capabilitySupport?.disabledReason,
+    });
     if (capabilitySupport?.disabledReason) {
       throw new Error(capabilitySupport.disabledReason);
     }

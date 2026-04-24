@@ -127,9 +127,15 @@ function getFetchTransport(): {
 }
 
 function getMultipartFetchTransport(): {
-  transport: 'global-fetch';
+  transport: 'electron-net' | 'global-fetch';
   request: typeof fetch;
 } {
+  if (typeof electronNet?.fetch === 'function') {
+    return {
+      transport: 'electron-net',
+      request: electronNet.fetch.bind(electronNet) as typeof fetch,
+    };
+  }
   return {
     transport: 'global-fetch',
     request: fetch.bind(globalThis),

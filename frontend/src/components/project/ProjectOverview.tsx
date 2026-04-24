@@ -95,6 +95,7 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
         settings,
         category: 'itv',
         explicitSelection: project.mediaSelections?.itv,
+        requirement: PROJECT_MEDIA_BASE_REQUIREMENTS.itv,
       }),
       tts: buildProjectMediaCategoryState({
         settings,

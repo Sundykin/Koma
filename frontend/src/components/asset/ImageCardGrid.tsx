@@ -28,6 +28,13 @@ import './ImageCardGrid.css';
 
 const { Text } = Typography;
 
+function toDisplayUrl(source: string): string {
+  if (/^https?:\/\//i.test(source) || source.startsWith('data:') || source.startsWith('blob:') || source.startsWith('koma-local://')) {
+    return source;
+  }
+  return electronService.fs.toLocalUrl(source);
+}
+
 export interface ImageCardGridProps {
   images: string[];
   selectedIndex?: number;
@@ -112,7 +119,7 @@ export const ImageCardGrid: React.FC<ImageCardGridProps> = ({
       key: `char-${asset.id}`,
       label: (
         <Space size={8}>
-          <img src={electronService.fs.toLocalUrl(source)} alt={asset.name}
+          <img src={toDisplayUrl(source)} alt={asset.name}
             style={{ width: 24, height: 24, objectFit: 'cover', borderRadius: 2 }} />
           <span>{asset.name}</span>
         </Space>
@@ -131,7 +138,7 @@ export const ImageCardGrid: React.FC<ImageCardGridProps> = ({
       key: `scene-${asset.id}`,
       label: (
         <Space size={8}>
-          <img src={electronService.fs.toLocalUrl(source)} alt={asset.name}
+          <img src={toDisplayUrl(source)} alt={asset.name}
             style={{ width: 24, height: 24, objectFit: 'cover', borderRadius: 2 }} />
           <span>{asset.name}</span>
         </Space>
@@ -150,7 +157,7 @@ export const ImageCardGrid: React.FC<ImageCardGridProps> = ({
       key: `prop-${asset.id}`,
       label: (
         <Space size={8}>
-          <img src={electronService.fs.toLocalUrl(source)} alt={asset.name}
+          <img src={toDisplayUrl(source)} alt={asset.name}
             style={{ width: 24, height: 24, objectFit: 'cover', borderRadius: 2 }} />
           <span>{asset.name}</span>
         </Space>

@@ -41,6 +41,14 @@ const pluginController = {
   },
 
   /**
+   * 通过插件 ID 卸载插件
+   */
+  async uninstallById({ pluginId }: { pluginId: string }, _event?: IpcMainInvokeEvent) {
+    await ensureServicesReady();
+    return pluginService.uninstall(pluginId);
+  },
+
+  /**
    * 列出已安装插件
    */
   async list(_args: any, _event?: IpcMainInvokeEvent) {

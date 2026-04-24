@@ -1,34 +1,25 @@
 /**
  * Grok2API Imagine ITV Provider
  *
- * Uses Grok2API reverse-engineered multimodal `/v1/chat/completions` endpoint for i2v.
+ * Uses Grok2API/NewAPI `/v1/videos` endpoint for async video generation.
  * We intentionally keep this provider isolated to avoid impacting existing ITV providers.
  */
 import type { ITVConfig, ProviderStartResult, ProviderTaskSnapshot } from '../../types';
 import {
   assertSupportedVideoCapabilities,
-  requirePrimaryImage,
   type ITVProvider,
   type ITVRequest,
   type ITVResult,
 } from './types';
+import { isImageToVideoRequest, isReferenceToVideoRequest } from '../../types';
 import { safeFetch } from '../../utils/safeFetch';
 import { createLogger } from '../../store/logger';
 import { sanitizeBodyForLog } from '../../utils/logFormatting';
 
 const logger = createLogger('Grok2ApiImagineITV');
 
-type ChatContentBlock =
-  | { type: 'text'; text: string }
-  | { type: 'image_url'; image_url: { url: string } };
-
-type ChatCompletionsResponse = {
-  choices?: Array<{
-    message?: {
-      content?: unknown;
-    };
-  }>;
-};
+type VideoCreateResponse = Record<string, unknown>;
+type VideoTaskResponse = Record<string, unknown>;
 
 function joinUrl(baseUrl: string, path: string): string {
   const b = baseUrl.replace(/\/+$/, '');
@@ -71,6 +62,8 @@ function normalizeCandidateUrl(candidate: string, baseUrl: string): string | nul
 function extractUrlsFromText(text: string, baseUrl: string): string[] {
   if (!text) return [];
   const out: string[] = [];
+  const direct = normalizeCandidateUrl(text, baseUrl);
+  if (direct) out.push(direct);
 
   // href/src="..."
   for (const m of text.matchAll(/(?:href|src)\s*=\s*"([^"]+)"/gi)) {
@@ -167,6 +160,7 @@ export class Grok2ApiImagineITVProvider implements ITVProvider {
   assetTransports = {
     primaryImage: ['remote-url', 'data-url'] as const,
     additionalReferences: ['remote-url', 'data-url'] as const,
+    referenceImages: ['remote-url', 'data-url'] as const,
   };
 
   constructor(config: ITVConfig) {
@@ -185,20 +179,7 @@ export class Grok2ApiImagineITVProvider implements ITVProvider {
 
   private normalizeVideoLengthSeconds(value: number | undefined): number | undefined {
     if (typeof value !== 'number' || !Number.isFinite(value)) return undefined;
-    // grok2api reverse-engineered constraints:
-    // video_length is a discrete enum: 6 / 10 / 15 (seconds).
-    // We choose the nearest supported value to reduce "invalid_video_length" errors.
-    const supported = [6, 10, 15] as const;
-    let best: number = supported[0];
-    let bestDist = Math.abs(value - best);
-    for (const s of supported.slice(1)) {
-      const dist = Math.abs(value - s);
-      if (dist < bestDist) {
-        best = s;
-        bestDist = dist;
-      }
-    }
-    return best;
+    return Math.min(Math.max(Math.round(value), 5), 20);
   }
 
   private normalizeAspectRatio(value: string | undefined): string | undefined {
@@ -225,17 +206,48 @@ export class Grok2ApiImagineITVProvider implements ITVProvider {
     return `${Math.round(w / g)}:${Math.round(h / g)}`;
   }
 
-  private normalizeResolutionName(value: string | undefined): '480p' | '720p' | undefined {
-    if (!value || typeof value !== 'string') return undefined;
-    const v = value.trim().toLowerCase();
-    if (v === '480p' || v === '720p') return v as any;
-    // Map any WxH aspect ratios into the closest supported resolution bucket.
-    const m = v.match(/^(\d{3,5})x(\d{3,5})$/);
-    if (!m) return undefined;
-    const w = Number(m[1]);
-    const h = Number(m[2]);
-    const shortEdge = Math.min(w, h);
-    return shortEdge <= 480 ? '480p' : '720p';
+  private resolveGrokSize(aspectRatio: string | undefined): string {
+    const ratio = this.normalizeAspectRatio(aspectRatio) || '16:9';
+    const sizes: Record<string, string> = {
+      '1:1': '1024x1024',
+      '16:9': '1280x720',
+      '9:16': '720x1280',
+      '4:3': '1152x864',
+      '3:4': '864x1152',
+      '21:9': '1680x720',
+    };
+    return sizes[ratio] || sizes['16:9'];
+  }
+
+  private resolveGrokQuality(value: string | undefined): 'standard' | 'high' {
+    const raw = String(value || '').trim().toLowerCase();
+    return ['720p', '1080p', 'hd', 'high', '高清'].includes(raw) ? 'high' : 'standard';
+  }
+
+  private extractTaskId(value: unknown): string | undefined {
+    if (!value || typeof value !== 'object') return undefined;
+    const obj = value as Record<string, unknown>;
+    const direct = obj.id || obj.task_id || obj.taskId;
+    if (typeof direct === 'string' && direct.trim()) return direct.trim();
+    const data = obj.data;
+    if (data && typeof data === 'object') {
+      const nested = data as Record<string, unknown>;
+      const nestedId = nested.id || nested.task_id || nested.taskId;
+      if (typeof nestedId === 'string' && nestedId.trim()) return nestedId.trim();
+    }
+    return undefined;
+  }
+
+  private mapTaskState(value: unknown): ProviderTaskSnapshot<ITVResult>['state'] {
+    const status = String(value || '').trim().toLowerCase();
+    if (['completed', 'succeeded', 'success', 'done'].includes(status)) return 'succeeded';
+    if (['failed', 'error', 'cancelled', 'canceled'].includes(status)) return 'failed';
+    if (['queued', 'pending', 'created', 'submitted'].includes(status)) return 'queued';
+    return 'running';
+  }
+
+  private buildTaskContentUrl(taskId: string): string {
+    return joinUrl(this.config.baseUrl || '', `/v1/videos/${encodeURIComponent(taskId)}/content`);
   }
 
   validate(): boolean {
@@ -245,15 +257,9 @@ export class Grok2ApiImagineITVProvider implements ITVProvider {
 
   private getHeaders(): Record<string, string> {
     if (this.config.profileId) {
-      return {
-        'x-koma-channel-id': this.config.profileId,
-        'Content-Type': 'application/json',
-      };
+      return { 'x-koma-channel-id': this.config.profileId };
     }
-    return {
-      Authorization: `Bearer ${this.config.apiKey || ''}`,
-      'Content-Type': 'application/json',
-    };
+    return { Authorization: `Bearer ${this.config.apiKey || ''}` };
   }
 
   private getAuthOnlyHeaders(): Record<string, string> {
@@ -281,93 +287,172 @@ export class Grok2ApiImagineITVProvider implements ITVProvider {
       throw new Error('API Key 或 API 地址未配置');
     }
     const modelName = this.getModelName();
-    assertSupportedVideoCapabilities(request, 'Grok2API Imagine Video', ['video.image-to-video']);
-    const primaryImage = requirePrimaryImage(request, 'Grok2API Imagine Video');
+    assertSupportedVideoCapabilities(request, 'Grok2API Imagine Video', [
+      'video.image-to-video',
+      'video.reference-to-video',
+    ]);
+    const imageInputs = isReferenceToVideoRequest(request)
+      ? request.referenceImages
+      : isImageToVideoRequest(request)
+        ? [request.primaryImage, ...(request.additionalReferences || [])]
+        : [];
+    if (imageInputs.length === 0) {
+      throw new Error('Grok2API Imagine Video 需要至少一张参考图');
+    }
 
     const protocol = (this.config as any)?.promptProtocol;
     const debugBody = Boolean(protocol) || (import.meta as any)?.env?.DEV === true;
-
-    const blocks: ChatContentBlock[] = [];
-    // Doc-aligned ordering: text first, then images.
-    blocks.push({ type: 'text', text: request.prompt });
-    blocks.push({ type: 'image_url', image_url: { url: primaryImage.value } });
-    for (const ref of request.additionalReferences || []) blocks.push({ type: 'image_url', image_url: { url: ref.value } });
-
     const opts = request.options || {};
     const durationRaw = typeof opts.duration === 'number' ? opts.duration : this.config.defaultDuration;
-    const duration = this.normalizeVideoLengthSeconds(durationRaw);
-
-    // Koma's ITV settings UI uses "1280x720" etc as the "resolution" selector.
-    // grok2api expects that value in `video_config.aspect_ratio`, and only supports
-    // a small enum for `video_config.resolution_name` (480p / 720p).
+    const duration = this.normalizeVideoLengthSeconds(durationRaw) || 5;
     const resolutionRaw = typeof opts.resolution === 'string'
       ? opts.resolution
       : this.config.defaultResolution;
-    const aspectRatio = this.normalizeAspectRatio(resolutionRaw);
-    const resolutionName = this.normalizeResolutionName(resolutionRaw);
+    const aspectRatio = this.normalizeAspectRatio(
+      typeof opts.aspectRatio === 'string' ? opts.aspectRatio : undefined,
+    ) || this.normalizeAspectRatio(resolutionRaw) || '16:9';
+    const size = this.resolveGrokSize(aspectRatio);
+    const quality = this.resolveGrokQuality(resolutionRaw);
 
-    const body: Record<string, any> = {
+    const imageReference = imageInputs.map(imageInput => ({
+      type: 'image_url',
+      image_url: { url: imageInput.value },
+    }));
+    const bodyForLog: Record<string, any> = {
       model: modelName,
-      stream: false,
-      messages: [{ role: 'user', content: blocks }],
-      video_config: {
-        ...(duration ? { video_length: duration } : undefined),
-        ...(aspectRatio ? { aspect_ratio: aspectRatio } : undefined),
-        ...(resolutionName ? { resolution_name: resolutionName } : undefined),
-        preset: 'custom',
-      },
+      prompt: request.prompt,
+      size,
+      seconds: String(duration),
+      quality,
+      image_reference: imageReference,
+      input_reference: imageInputs[0]?.value ? { image_url: imageInputs[0].value } : undefined,
     };
 
+    const form = new FormData();
+    form.append('model', modelName);
+    form.append('prompt', request.prompt);
+    form.append('size', size);
+    form.append('seconds', String(duration));
+    form.append('quality', quality);
+    if (imageInputs[0]?.value) {
+      form.append('input_reference[image_url]', imageInputs[0].value);
+    }
+    if (imageReference.length > 0) {
+      form.append('image_reference', JSON.stringify(imageReference));
+    }
+
     if (debugBody) {
-      logger.info('ITV chat (video) request body', {
+      logger.info('ITV videos request body', {
         provider: this.config.provider,
+        contentType: 'multipart/form-data',
         ...(protocol ? { promptProtocol: protocol } : undefined),
-        body: sanitizeBodyForLog(body),
+        requestedDuration: durationRaw,
+        normalizedDuration: duration,
+        requestedAspectRatio: opts.aspectRatio,
+        normalizedAspectRatio: aspectRatio,
+        requestedResolution: resolutionRaw,
+        normalizedSize: size,
+        normalizedQuality: quality,
+        imageReferenceCount: imageInputs.length,
+        body: sanitizeBodyForLog(bodyForLog),
       });
     }
 
-    const resp = await safeFetch(joinUrl(this.config.baseUrl || '', '/v1/chat/completions'), {
+    const resp = await safeFetch(joinUrl(this.config.baseUrl || '', '/v1/videos'), {
       method: 'POST',
       headers: {
         ...this.getHeaders(),
+        'Connection': 'close',
+        'User-Agent': 'jimeng-newapi-bridge/koma-builtin',
         ...(debugBody ? { 'x-koma-debug-body': '1' } : undefined),
-        ...(debugBody ? { 'x-koma-trace-operation': 'itv.chat.video' } : undefined),
+        ...(debugBody ? { 'x-koma-trace-operation': 'itv.videos.create' } : undefined),
       },
-      body: JSON.stringify(body),
+      body: form,
     });
     const raw = await resp.text();
     if (!resp.ok) throw new Error(`提交视频任务失败 (${resp.status}): ${raw.slice(0, 1200)}`);
 
-    let data: ChatCompletionsResponse | null = null;
+    let data: VideoCreateResponse | null = null;
     try {
-      data = JSON.parse(raw) as ChatCompletionsResponse;
+      data = JSON.parse(raw) as VideoCreateResponse;
     } catch {
-      // Some grok2api deployments may return HTML snippets.
       const { best, candidates } = findBestMediaUrlDeep(raw, this.config.baseUrl || '');
       if (!best || scoreMediaUrl(best) <= 0) {
-        logger.warn('ITV chat response is not JSON and has no detectable video url', {
+        logger.warn('ITV videos create response is not JSON and has no detectable video url', {
           rawPreview: raw.slice(0, 1200),
           candidates,
         });
-        throw new Error('API 返回了无法识别的视频响应（chat/completions，非 JSON）');
+        throw new Error('API 返回了无法识别的视频响应（/v1/videos，非 JSON）');
       }
-      return { mode: 'immediate', output: { source: best } };
+      return { mode: 'immediate', output: { source: best, durationSec: duration } };
     }
 
     const { best, candidates } = findBestMediaUrlDeep(data, this.config.baseUrl || '');
-    if (!best || scoreMediaUrl(best) <= 0) {
-      logger.warn('ITV chat response has no detectable video url', {
+    if (best && scoreMediaUrl(best) > 0) {
+      return { mode: 'immediate', output: { source: best, durationSec: duration } };
+    }
+
+    const taskId = this.extractTaskId(data);
+    if (!taskId) {
+      logger.warn('ITV videos create response missing task id/video url', {
         provider: this.config.provider,
         response: sanitizeBodyForLog(data as any),
         rawPreview: raw.slice(0, 1200),
         candidates,
       });
-      throw new Error('API 返回了无法识别的视频响应（chat/completions）');
+      throw new Error('API 返回了无法识别的视频任务响应（缺少 task id）');
     }
-    return { mode: 'immediate', output: { source: best } };
+
+    return { mode: 'async', taskId };
   }
 
-  async getTaskSnapshot(_taskId: string): Promise<ProviderTaskSnapshot<ITVResult>> {
-    return { state: 'failed', progress: 0, error: 'Grok2API ITV does not support task snapshots' };
+  async getTaskSnapshot(taskId: string): Promise<ProviderTaskSnapshot<ITVResult>> {
+    const resp = await safeFetch(joinUrl(this.config.baseUrl || '', `/v1/videos/${encodeURIComponent(taskId)}`), {
+      method: 'GET',
+      headers: this.getAuthOnlyHeaders(),
+    });
+    const raw = await resp.text();
+    if (!resp.ok) {
+      return { state: 'failed', progress: 0, error: `查询视频任务失败 (${resp.status}): ${raw.slice(0, 600)}` };
+    }
+
+    let data: VideoTaskResponse;
+    try {
+      data = JSON.parse(raw) as VideoTaskResponse;
+    } catch {
+      return { state: 'failed', progress: 0, error: `API 返回了非 JSON 视频任务响应: ${raw.slice(0, 300)}` };
+    }
+
+    const status = (data.status ?? (data.data as any)?.status) as unknown;
+    const state = this.mapTaskState(status);
+    const progressRaw = data.progress ?? (data.data as any)?.progress;
+    const progress = typeof progressRaw === 'number'
+      ? Math.max(0, Math.min(100, progressRaw))
+      : state === 'succeeded'
+        ? 100
+        : 0;
+
+    const { best, candidates } = findBestMediaUrlDeep(data, this.config.baseUrl || '');
+    if (state === 'succeeded') {
+      if (best && scoreMediaUrl(best) > 0) {
+        return { state: 'succeeded', progress: 100, output: { source: best } };
+      }
+      const contentUrl = this.buildTaskContentUrl(taskId);
+      logger.info('ITV videos task completed without video url; using content endpoint', {
+        provider: this.config.provider,
+        taskId,
+        contentUrl,
+        response: sanitizeBodyForLog(data as any),
+        candidates,
+      });
+      return { state: 'succeeded', progress: 100, output: { source: contentUrl, taskId } };
+    }
+
+    if (state === 'failed') {
+      const error = String((data.error as any)?.message || data.error || data.message || '视频任务失败');
+      return { state: 'failed', progress, error };
+    }
+
+    return { state, progress };
   }
 }

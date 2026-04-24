@@ -14,6 +14,7 @@ import { createLogger } from '../../store/logger';
 import { electronService } from '../../services/electronService';
 import { base64ToBytes, parseDataUrl } from '../../utils/encoding';
 import { sanitizeBodyForLog } from '../../utils/logFormatting';
+import { resolveTTISize } from './utils/ttiSize';
 
 const logger = createLogger('Grok2ApiImagineTTI');
 
@@ -215,15 +216,8 @@ export class Grok2ApiImagineTTIProvider implements TTIProvider {
     const protocol = (this.config as any)?.promptProtocol;
     const debugBody = Boolean(protocol) || (import.meta as any)?.env?.DEV === true;
 
-    // 解析尺寸：优先 width/height，其次 aspectRatio 映射
-    const resolveSize = (): string | undefined => {
-      const w = request.options?.width;
-      const h = request.options?.height;
-      if (typeof w === 'number' && typeof h === 'number') return `${w}x${h}`;
-      const ar = request.options?.aspectRatio || '16:9';
-      if (ar === '9:16') return '1080x1920';
-      return '1920x1080'; // 16:9 default
-    };
+    // 解析尺寸：优先显式 width/height，其次请求比例，最后渠道默认尺寸。
+    const resolveSize = (): string | undefined => resolveTTISize(request.options, this.config.defaultSize);
 
     // 1) No references: call OpenAI-compatible images generation endpoint
     if (!hasRefs) {
@@ -239,6 +233,9 @@ export class Grok2ApiImagineTTIProvider implements TTIProvider {
         logger.info('TTI generations request body', {
           provider: this.config.provider,
           ...(protocol ? { promptProtocol: protocol } : undefined),
+          size,
+          requestedAspectRatio: request.options?.aspectRatio,
+          defaultSize: this.config.defaultSize,
           body: sanitizeBodyForLog(body),
         });
       }
@@ -292,6 +289,9 @@ export class Grok2ApiImagineTTIProvider implements TTIProvider {
         logger.info('TTI chat(edit) request body', {
           provider: this.config.provider,
           ...(protocol ? { promptProtocol: protocol } : undefined),
+          size,
+          requestedAspectRatio: request.options?.aspectRatio,
+          defaultSize: this.config.defaultSize,
           body: sanitizeBodyForLog(body),
         });
       }
@@ -369,6 +369,9 @@ export class Grok2ApiImagineTTIProvider implements TTIProvider {
         provider: this.config.provider,
         ...(protocol ? { promptProtocol: protocol } : undefined),
         model: modelName,
+        size: resolveSize(),
+        requestedAspectRatio: request.options?.aspectRatio,
+        defaultSize: this.config.defaultSize,
         prompt,
         images: refsAll.map((r, i) => ({
           i: i + 1,
