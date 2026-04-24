@@ -167,6 +167,39 @@ async function reconcilePluginStore(): Promise<void> {
         store.unregisterPlugin(p.id);
       }
     }
+
+    // 将后端已安装但 store 缺失的插件（如内置插件）注册到 store，保证首次启动就能激活
+    const storeIds = new Set(store.plugins.map(p => p.id));
+    const missing = (installedManifests || []).filter((m: any) => m?.id && !storeIds.has(m.id));
+    if (missing.length > 0) {
+      logger.info(`发现 ${missing.length} 个后端已安装但未注册的插件，自动注册`, missing.map((m: any) => m.id));
+      for (const manifest of missing) {
+        try {
+          // rootPath: plugins-runtime/<pluginId>（与后端一致，前端展示用）
+          const rootPath = `plugins-runtime/${manifest.id}`;
+          store.registerPlugin(manifest, rootPath);
+          if (manifest.isBuiltin) {
+            // 内置插件确保 isBuiltin 字段写入
+            const updated = usePluginStore.getState().plugins.map(p =>
+              p.id === manifest.id ? { ...p, isBuiltin: true } : p,
+            );
+            usePluginStore.setState({ plugins: updated });
+          }
+        } catch (e) {
+          logger.warn(`注册插件失败: ${manifest?.id}`, e);
+        }
+      }
+    } else {
+      // 对内置字段做一次校准
+      const withBuiltinPatched = store.plugins.map(p => {
+        const m = (installedManifests || []).find((x: any) => x.id === p.id);
+        if (m?.isBuiltin && !p.isBuiltin) return { ...p, isBuiltin: true };
+        return p;
+      });
+      if (withBuiltinPatched.some((p, i) => p !== store.plugins[i])) {
+        usePluginStore.setState({ plugins: withBuiltinPatched });
+      }
+    }
   } catch (err) {
     // 对账失败不阻塞启动
     logger.warn('插件对账失败，跳过', err);

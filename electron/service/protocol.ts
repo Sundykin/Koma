@@ -42,6 +42,12 @@ export function registerLocalProtocol(): void {
         filePath = filePath.slice(1);
       }
 
+      // 特殊处理：plugins-runtime/ 开头的相对路径，解析为 userData/plugins-runtime/
+      if (filePath.startsWith('plugins-runtime/') || filePath.startsWith('/plugins-runtime/')) {
+        const relativePath = filePath.replace(/^\/?(plugins-runtime\/.*)$/, '$1');
+        filePath = path.join(app.getPath('userData'), relativePath);
+      }
+
       const resolvedPath = path.resolve(filePath);
       if (!isPathAllowed(resolvedPath)) {
         return new Response('Forbidden', { status: 403 });

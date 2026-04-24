@@ -57,14 +57,18 @@ export const PluginCard: React.FC<PluginCardProps> = ({
       label: t('plugin.openFolder'),
       onClick: () => onOpenFolder?.(plugin.id),
     },
-    { type: 'divider' },
-    {
-      key: 'remove',
-      icon: <DeleteOutlined />,
-      label: t('plugin.uninstallPlugin'),
-      danger: true,
-      onClick: () => onRemove(plugin.id),
-    },
+    ...(plugin.isBuiltin
+      ? []
+      : [
+          { type: 'divider' as const },
+          {
+            key: 'remove',
+            icon: <DeleteOutlined />,
+            label: t('plugin.uninstallPlugin'),
+            danger: true,
+            onClick: () => onRemove(plugin.id),
+          },
+        ]),
   ];
 
   return (
@@ -84,6 +88,11 @@ export const PluginCard: React.FC<PluginCardProps> = ({
             >
               {categoryLabels[plugin.category]}
             </Tag>
+            {plugin.isBuiltin && (
+              <Tag color="gold" className="text-xs">
+                {t('plugin.builtin', '内置')}
+              </Tag>
+            )}
           </div>
 
           <Paragraph

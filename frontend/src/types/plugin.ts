@@ -109,6 +109,7 @@ export interface InstalledPlugin extends PluginManifest {
   isEnabled: boolean;            // 是否启用
   installedAt: number;           // 安装时间戳
   lastUpdatedAt?: number;        // 最后更新时间
+  isBuiltin?: boolean;           // 是否为内置插件（不允许删除）
 }
 
 // 插件加载状态

@@ -95,7 +95,93 @@ class PluginService {
 
     // 清理过期的 staging 缓存
     this._purgeExpiredStaging();
+
+    // 同步内置插件（如七牛云图床）到 pluginsDir，随后由 PluginInitializer 自动加载激活
+    await this._syncBuiltinPlugins();
   }
+
+  /**
+   * 内置插件列表。每次启动都会覆盖 pluginsDir 中对应目录，
+   * 确保升级后用户拿到最新版本；用户配置（apiKey 等）通过 provider-configs.json 保留。
+   */
+  private _builtinPluginIds(): string[] {
+    return ['com.koma.qiniu-image-hosting'];
+  }
+
+  private _resolveBuiltinSourceDir(pluginId: string): string | null {
+    // 开发态：packages/plugins/<slug>
+    // 生产态：resources/extraResources/builtin-plugins/<slug>（由打包脚本复制）
+    const slug = pluginId.replace(/^com\.koma\./, '');
+    const candidates = [
+      // 生产环境（electron-builder extraResources）
+      path.join(process.resourcesPath || '', 'extraResources', 'builtin-plugins', slug),
+      path.join(process.resourcesPath || '', 'builtin-plugins', slug),
+      // 开发环境：stage 产物（和生产态一致，便于本地验证）
+      path.join(app.getAppPath(), 'build', 'extraResources', 'builtin-plugins', slug),
+      path.join(app.getAppPath(), '..', 'build', 'extraResources', 'builtin-plugins', slug),
+      // 开发环境：直接从源码目录读取（monorepo）
+      path.join(app.getAppPath(), 'packages', 'plugins', slug),
+      path.join(app.getAppPath(), '..', 'packages', 'plugins', slug),
+      path.join(app.getAppPath(), '..', '..', 'packages', 'plugins', slug),
+    ];
+    for (const p of candidates) {
+      try {
+        const manifestPath = path.join(p, 'manifest.json');
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        require('fs').statSync(manifestPath);
+        console.log(`[PluginService] found builtin source: ${pluginId} at ${p}`);
+        return p;
+      } catch {
+        // continue
+      }
+    }
+    console.warn(`[PluginService] builtin source not found: ${pluginId}, tried:`, candidates);
+    return null;
+  }
+
+  private async _syncBuiltinPlugins(): Promise<void> {
+    for (const pluginId of this._builtinPluginIds()) {
+      try {
+        const srcDir = this._resolveBuiltinSourceDir(pluginId);
+        if (!srcDir) {
+          console.warn(`[PluginService] builtin source not found: ${pluginId}`);
+          continue;
+        }
+        const dstDir = path.join(this.pluginsDir, pluginId);
+
+        // 复制 manifest.json + dist/ + README.md（不含 node_modules/src）
+        await fs.mkdir(dstDir, { recursive: true });
+        const items = ['manifest.json', 'README.md', 'dist'];
+        for (const item of items) {
+          const s = path.join(srcDir, item);
+          const d = path.join(dstDir, item);
+          try {
+            await fs.access(s);
+          } catch {
+            continue;
+          }
+          await this._copyRecursive(s, d);
+        }
+        console.log(`[PluginService] synced builtin plugin: ${pluginId}`);
+      } catch (err) {
+        console.error(`[PluginService] sync builtin failed (${pluginId}):`, err);
+      }
+    }
+  }
+
+  private async _copyRecursive(src: string, dst: string): Promise<void> {
+    const stat = await fs.stat(src);
+    if (stat.isDirectory()) {
+      await fs.mkdir(dst, { recursive: true });
+      const entries = await fs.readdir(src);
+      for (const entry of entries) {
+        await this._copyRecursive(path.join(src, entry), path.join(dst, entry));
+      }
+    } else {
+      await fs.copyFile(src, dst);
+    }
+  }
+
 
   /**
    * 清理过期的 staging 缓存
@@ -378,6 +464,11 @@ class PluginService {
       // 从插件路径提取 pluginId
       const pluginId = path.basename(pluginPath);
 
+      // 禁止删除内置插件
+      if (this._builtinPluginIds().includes(pluginId)) {
+        return { success: false, error: '内置插件不允许删除' };
+      }
+
       // 先从运行时卸载
       await pluginRuntime.unloadPlugin(pluginId);
 
@@ -429,6 +520,7 @@ class PluginService {
    */
   async listInstalled(): Promise<PluginManifest[]> {
     const plugins: PluginManifest[] = [];
+    const builtinIds = new Set(this._builtinPluginIds());
 
     try {
       const entries = await fs.readdir(this.pluginsDir);
@@ -438,7 +530,11 @@ class PluginService {
         if (await this.fileExists(manifestPath)) {
           try {
             const content = await fs.readFile(manifestPath, 'utf-8');
-            plugins.push(JSON.parse(content));
+            const manifest = JSON.parse(content) as PluginManifest & { isBuiltin?: boolean };
+            if (builtinIds.has(manifest.id)) {
+              manifest.isBuiltin = true;
+            }
+            plugins.push(manifest);
           } catch {
             // 忽略无效的插件
           }
