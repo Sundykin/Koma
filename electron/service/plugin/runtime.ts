@@ -33,6 +33,33 @@ import type {
   ChannelConfigInput,
 } from '../settings/ChannelConfigService';
 import type { MediaCategory } from '../storage/repositories/settingsInterfaces';
+import { SqliteAppSettingsKvRepository } from '../storage/repositories/SqliteAppSettingsKvRepository';
+
+// 激活信息存储 Key，必须与前端 activationService.STORAGE_KEY 保持一致。
+const ACTIVATION_STORAGE_KEY = 'koma-activation';
+
+interface StoredActivationInfo {
+  apiKey: string;
+  activatedAt: number;
+  lastValidatedAt: number;
+}
+
+const activationKvRepo = new SqliteAppSettingsKvRepository();
+
+function readActivationInfo(): StoredActivationInfo | null {
+  try {
+    const row = activationKvRepo.get(ACTIVATION_STORAGE_KEY);
+    if (!row?.value_json) return null;
+    const parsed = JSON.parse(row.value_json);
+    if (parsed && typeof parsed.apiKey === 'string') {
+      return parsed as StoredActivationInfo;
+    }
+    return null;
+  } catch (err: any) {
+    console.warn('[PluginRuntime] Failed to read activation info', err?.message || err);
+    return null;
+  }
+}
 
 // 仅作为兼容迁移来源：旧版插件配置文件（provider-configs.json）。
 class LegacyProviderConfigStore {
@@ -556,6 +583,11 @@ class ElectronPluginRuntime extends EventEmitter {
         info: (...args) => console.info(`[Plugin:${pluginId}]`, ...args),
         warn: (...args) => console.warn(`[Plugin:${pluginId}]`, ...args),
         error: (...args) => console.error(`[Plugin:${pluginId}]`, ...args),
+      },
+
+      activation: {
+        getApiKey: async () => readActivationInfo()?.apiKey || null,
+        getInfo: async () => readActivationInfo(),
       },
     };
   }

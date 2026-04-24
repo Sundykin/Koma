@@ -1,20 +1,19 @@
 /**
  * 七牛云图床 Provider - Backend Module
- * 使用 new-api 上传接口，API Key 即激活 Key
+ * 固定经由 Koma 激活通道（https://komaapi.com）的上传接口，
+ * API Key 即用户在应用内填写的激活 Key，由宿主通过 api.activation 注入。
  */
 
 import type { ElectronPluginAPI } from '@komastudio/plugin-sdk';
 
 interface QiniuConfig {
   enabled: boolean;
-  apiEndpoint: string;
-  apiKey: string; // 激活 key (new-api 的 sk-xxx)
 }
+
+const KOMA_UPLOAD_ENDPOINT = 'https://komaapi.com/v1/uploads/image';
 
 const DEFAULT_CONFIG: QiniuConfig = {
   enabled: true,
-  apiEndpoint: 'http://192.227.192.228:3000/v1/uploads/image',
-  apiKey: 'sk-I5kyGgOb0ie9PGclXHYZEzkZrzoDIVXeXrkcgX7uWj8B584B',
 };
 
 interface UploadResult {
@@ -31,13 +30,24 @@ interface UploadResult {
 
 class QiniuImageHostingProvider {
   private config: QiniuConfig;
+  private readonly api: ElectronPluginAPI | null;
 
-  constructor(config: Record<string, unknown>) {
+  constructor(config: Record<string, unknown>, api: ElectronPluginAPI | null) {
     this.config = { ...DEFAULT_CONFIG, ...config } as QiniuConfig;
+    this.api = api;
   }
 
   validate(): boolean {
-    return Boolean(this.config.enabled && this.config.apiEndpoint && this.config.apiKey);
+    return Boolean(this.config.enabled);
+  }
+
+  private async resolveApiKey(): Promise<string | null> {
+    if (!this.api) return null;
+    try {
+      return await this.api.activation.getApiKey();
+    } catch {
+      return null;
+    }
   }
 
   async uploadImage(
@@ -45,7 +55,12 @@ class QiniuImageHostingProvider {
     options?: { filename?: string; mimeType?: string }
   ): Promise<UploadResult> {
     if (!this.validate()) {
-      return { success: false, error: '图床未启用或未配置 apiKey' };
+      return { success: false, error: '图床未启用' };
+    }
+
+    const apiKey = await this.resolveApiKey();
+    if (!apiKey) {
+      return { success: false, error: '未检测到激活 Key，请先在应用中完成激活' };
     }
 
     try {
@@ -58,10 +73,10 @@ class QiniuImageHostingProvider {
       const formData = new FormData();
       formData.append('file', blob, filename);
 
-      const resp = await fetch(this.config.apiEndpoint, {
+      const resp = await fetch(KOMA_UPLOAD_ENDPOINT, {
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${this.config.apiKey}`,
+          Authorization: `Bearer ${apiKey}`,
         },
         body: formData,
       });
@@ -107,9 +122,10 @@ class QiniuImageHostingProvider {
   }
 
   async testConnection(): Promise<boolean> {
-    if (!this.config.apiEndpoint || !this.config.apiKey) return false;
+    if (!this.validate()) return false;
+    const apiKey = await this.resolveApiKey();
+    if (!apiKey) return false;
     try {
-      // 1x1 透明 png
       const testBase64 =
         'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
       const buf = Buffer.from(testBase64, 'base64');
@@ -153,14 +169,14 @@ export async function onActivate(api: ElectronPluginAPI): Promise<void> {
     type: 'qiniu-image-hosting',
     kind: 'image-hosting' as const,
     name: '七牛云图床（内置）',
-    description: '基于 new-api 上传接口的七牛云图床，支持时间戳防盗链',
+    description: '经由 Koma 激活通道 (https://komaapi.com) 上传到七牛云 Kodo，支持时间戳防盗链',
     capabilities: ['image-hosting'],
     defaultConfig: DEFAULT_CONFIG,
     factory: async (config: Record<string, unknown>) => {
       const saved = await api.channels.getProviderConfig('qiniu-image-hosting');
       const merged = { ...DEFAULT_CONFIG, ...saved, ...config };
-      api.log.info('[Qiniu] create provider', { enabled: merged.enabled, hasApiKey: !!merged.apiKey });
-      return new QiniuImageHostingProvider(merged);
+      api.log.info('[Qiniu] create provider', { enabled: merged.enabled });
+      return new QiniuImageHostingProvider(merged, api);
     },
   };
 
@@ -172,5 +188,5 @@ export async function onDeactivate(): Promise<void> {
 }
 
 export function createProvider(config: Record<string, unknown>): QiniuImageHostingProvider {
-  return new QiniuImageHostingProvider(config);
+  return new QiniuImageHostingProvider(config, pluginApi);
 }

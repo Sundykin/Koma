@@ -133,6 +133,13 @@ export interface HostInfo {
   electronVersion: string;
 }
 
+// 激活信息（不含密钥明文时由宿主按需返回）
+export interface ActivationInfo {
+  apiKey: string;
+  activatedAt: number;
+  lastValidatedAt: number;
+}
+
 // 项目过滤器
 export interface ProjectFilter {
   status?: 'active' | 'archived';
@@ -252,6 +259,15 @@ export interface PluginAPI {
     showModal(options: ModalOptions): Promise<boolean>;
     registerMenuItem(item: MenuItem): void;
     removeMenuItem(key: string): void;
+  };
+
+  /**
+   * 激活信息读取。仅返回 Koma 激活 Key；未激活时返回 null。
+   * 所有内置渠道都应使用该 Key 作为请求凭证，请求 https://komaapi.com。
+   */
+  activation: {
+    getApiKey(): Promise<string | null>;
+    getInfo(): Promise<ActivationInfo | null>;
   };
 }
 

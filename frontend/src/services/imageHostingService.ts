@@ -50,7 +50,7 @@ export async function getActiveImageHostingChannel() {
 
 async function tryCreateProviderFallback(channel: any): Promise<ImageHostingProvider | null> {
   if (!channel) return null;
-  if (channel.providerType !== 'scdn-image-hosting' && !listProviders('image-hosting').some(p => p.type === channel.providerType)) {
+  if (!listProviders('image-hosting').some(p => p.type === channel.providerType)) {
     return null;
   }
 

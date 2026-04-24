@@ -1,8 +1,6 @@
 #!/usr/bin/env node
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
-const fsp = require('node:fs/promises');
-const os = require('node:os');
 const path = require('node:path');
 const { EventEmitter } = require('node:events');
 const ts = require('typescript');
@@ -251,6 +249,15 @@ function createHarness(options = {}) {
         };
       }
       if (specifier === '../settings/ChannelConfigService') return channelConfigService;
+      if (specifier === '../storage/repositories/SqliteAppSettingsKvRepository') {
+        return {
+          SqliteAppSettingsKvRepository: class {
+            get() { return null; }
+            set() {}
+            delete() { return false; }
+          },
+        };
+      }
       throw new Error(`Unsupported mock require: ${specifier}`);
     };
 
@@ -399,275 +406,13 @@ async function runLegacyMigrationScenario() {
   assert.equal(legacyJson.vectorengine, undefined, '迁移后应移除旧 JSON 条目');
 }
 
-async function runRealPluginBackendScenario() {
-  const originalFetch = global.fetch;
-  const fetchCalls = [];
-  global.fetch = async (url, init = {}) => {
-    fetchCalls.push({ url: String(url), init });
-    return {
-      ok: true,
-      status: 200,
-      async text() { return ''; },
-      async json() { return {}; },
-    };
-  };
-
-  try {
-    const cases = [
-      {
-        label: 'Seedream backend',
-        backendPath: path.resolve(__dirname, '../packages/plugins/seedream-tti-provider/src/backend.ts'),
-        manifest: makeManifest({
-          id: 'com.koma.seedream-backend-test',
-          name: 'Seedream Backend Test',
-          description: 'backend smoke',
-          providerMeta: { channelType: 'tti', capabilities: ['tti'] },
-        }),
-        providerType: 'seedream-tti',
-        config: {
-          baseUrl: 'https://seedream.example.com',
-          apiKey: 'seedream-secret',
-          watermark: false,
-        },
-        expectedAuth: 'Bearer seedream-secret',
-        expectedUrl: 'https://seedream.example.com/v1/images/generations',
-      },
-      {
-        label: 'VectorEngine backend',
-        backendPath: path.resolve(__dirname, '../packages/plugins/vectorengine-provider/src/backend.ts'),
-        manifest: makeManifest({
-          id: 'com.koma.vectorengine-backend-test',
-          name: 'VectorEngine Backend Test',
-          description: 'backend smoke',
-          providerMeta: { channelType: 'itv', capabilities: ['itv'] },
-        }),
-        providerType: 'vectorengine',
-        config: {
-          baseUrl: 'https://vectorengine.example.com',
-          apiKey: 'vector-secret',
-          defaultDuration: 7,
-        },
-        expectedAuth: 'Bearer vector-secret',
-        expectedUrl: 'https://vectorengine.example.com/v1/video/query?id=test',
-      },
-    ];
-
-    for (const item of cases) {
-      const harness = createHarness();
-      let { pluginRuntime } = harness.loadRuntimeModule();
-      await pluginRuntime.init();
-      const api = pluginRuntime.createPluginAPI(item.manifest);
-      await api.channels.updateProviderConfig(item.providerType, item.config);
-
-      ({ pluginRuntime } = harness.loadRuntimeModule());
-      await pluginRuntime.init();
-      const apiAfterRestart = pluginRuntime.createPluginAPI(item.manifest);
-      const backendModule = harness.loadTypeScriptModule(item.backendPath);
-      await backendModule.onActivate(apiAfterRestart);
-
-      const providerDef = harness.providerDefs.get(item.providerType);
-      assert(providerDef, `${item.label} 应完成 provider 注册`);
-      const provider = await providerDef.factory({});
-      assert.equal(provider.validate(), true, `${item.label} 应读取 SQLite 中的 apiKey/baseUrl`);
-      assert.equal(await provider.testConnection(), true, `${item.label} 应能用持久化配置执行连接测试`);
-
-      const lastCall = fetchCalls.at(-1);
-      assert(lastCall, `${item.label} 应触发网络调用`);
-      const headers = lastCall.init && lastCall.init.headers ? lastCall.init.headers : {};
-      assert.equal(lastCall.url, item.expectedUrl, `${item.label} 应使用持久化 baseUrl`);
-      assert.equal(headers.Authorization, item.expectedAuth, `${item.label} 应使用持久化 apiKey 构建 Authorization`);
-    }
-  } finally {
-    global.fetch = originalFetch;
-  }
-}
-
-async function runControllerPluginSmokeScenario() {
-  const harness = createHarness();
-  const originalFetch = global.fetch;
-  const fetchCalls = [];
-  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'koma-plugin-controller-selfcheck-'));
-  const userDataDir = path.join(tempRoot, 'userData');
-  fs.mkdirSync(userDataDir, { recursive: true });
-
-  const manifest = makeManifest({
-    id: 'com.koma.seedream-controller-test',
-    name: 'Seedream Controller Test',
-    description: 'controller smoke',
-    providerMeta: { channelType: 'tti', capabilities: ['tti'] },
-  });
-  const backendSourcePath = path.resolve(__dirname, '../packages/plugins/seedream-tti-provider/src/backend.ts');
-  const pluginRoot = path.join(userDataDir, 'plugins-runtime', manifest.id);
-  const backendOutPath = path.join(pluginRoot, 'dist', 'backend.js');
-  const sdkStubPath = path.join(pluginRoot, 'node_modules', '@komastudio', 'plugin-sdk', 'index.js');
-
-  fs.mkdirSync(path.dirname(backendOutPath), { recursive: true });
-  fs.mkdirSync(path.dirname(sdkStubPath), { recursive: true });
-  const backendSource = fs.readFileSync(backendSourcePath, 'utf8');
-  const transpiledBackend = ts.transpileModule(backendSource, {
-    compilerOptions: {
-      module: ts.ModuleKind.CommonJS,
-      target: ts.ScriptTarget.ES2020,
-      esModuleInterop: true,
-    },
-    fileName: backendSourcePath,
-  }).outputText;
-  fs.writeFileSync(backendOutPath, transpiledBackend, 'utf8');
-  fs.writeFileSync(
-    sdkStubPath,
-    "module.exports = { MEDIA_PROVIDER_CONTRACT_VERSION: 'selfcheck-contract' };\n",
-    'utf8',
-  );
-
-  const electronMock = {
-    app: {
-      getPath(name) {
-        if (name !== 'userData') throw new Error(`unexpected app.getPath(${name})`);
-        return userDataDir;
-      },
-      getVersion() { return 'selfcheck'; },
-    },
-    shell: {
-      openPath() { return ''; },
-    },
-  };
-
-  const registriesMock = {
-    providerRegistry: harness.providerRegistry,
-    mcpRegistry: harness.noopRegistry,
-    agentRegistry: harness.noopRegistry,
-  };
-  const capabilityMock = {
-    syncProviders() {},
-    syncAllMCP() {},
-    capabilityRegistry: {
-      list() { return []; },
-      resolve() { return []; },
-      invoke() { return null; },
-    },
-  };
-
-  const moduleCache = new Map();
-  function loadProjectTs(modulePath, extraMocks = {}) {
-    const resolvedPath = path.resolve(modulePath);
-    if (moduleCache.has(resolvedPath)) {
-      return moduleCache.get(resolvedPath).exports;
-    }
-
-    const source = fs.readFileSync(resolvedPath, 'utf8');
-    const transpiled = ts.transpileModule(source, {
-      compilerOptions: {
-        module: ts.ModuleKind.CommonJS,
-        target: ts.ScriptTarget.ES2020,
-        esModuleInterop: true,
-      },
-      fileName: resolvedPath,
-    }).outputText;
-
-    const module = { exports: {} };
-    moduleCache.set(resolvedPath, module);
-    const localRequire = (specifier) => {
-      if (specifier in extraMocks) return extraMocks[specifier];
-      if (specifier === 'electron') return electronMock;
-      if (specifier === 'fs/promises') return fsp;
-      if (specifier === './registries') return registriesMock;
-      if (specifier === './capability') return capabilityMock;
-      if (specifier === '../settings/ChannelConfigService') return harness.channelConfigService;
-      if (specifier === './plugin/runtime') return loadRuntime();
-      if (specifier === '../service/plugin') return loadPluginService();
-      if (specifier === '../service/plugin/runtime') return loadRuntime();
-      if (specifier === '../service/plugin/bridge') return loadBridge();
-      if (specifier === '../service') return { ensureServicesReady };
-      if (specifier.startsWith('node:')) return require(specifier);
-      return require(specifier);
-    };
-
-    const fn = new Function('require', 'module', 'exports', '__dirname', '__filename', transpiled);
-    fn(localRequire, module, module.exports, path.dirname(resolvedPath), resolvedPath);
-    return module.exports;
-  }
-
-  function loadRuntime() {
-    return loadProjectTs(runtimePath);
-  }
-  function loadBridge() {
-    return loadProjectTs(bridgePath);
-  }
-  function loadPluginService() {
-    return loadProjectTs(pluginServicePath);
-  }
-
-  let ready = false;
-  async function ensureServicesReady() {
-    if (ready) return;
-    await loadPluginService().pluginService.init();
-    ready = true;
-  }
-
-  global.fetch = async (url, init = {}) => {
-    fetchCalls.push({ url: String(url), init });
-    return {
-      ok: true,
-      status: 200,
-      async text() { return ''; },
-      async json() { return {}; },
-    };
-  };
-
-  try {
-    harness.channelConfigService.createChannelConfig({
-      category: 'tti',
-      providerType: 'seedream-tti',
-      name: 'Seedream Controller Channel',
-      description: 'controller path',
-      baseUrl: 'https://controller-seedream.example.com',
-      providerConfig: {
-        apiKey: 'controller-secret',
-        watermark: false,
-      },
-      source: 'plugin',
-      pluginId: manifest.id,
-      models: [],
-      capabilities: ['tti'],
-      enabled: true,
-    });
-
-    const controller = loadProjectTs(pluginControllerPath);
-    const activateResult = await controller.activate({ manifest });
-    assert.deepEqual(activateResult, { success: true }, 'controller.activate 应成功加载并激活插件');
-
-    const activeList = await controller.listActive({});
-    assert.equal(activeList.length, 1, 'controller.listActive 应返回活跃插件');
-    assert.equal(activeList[0].id, manifest.id);
-
-    const callResult = await controller.callProvider({
-      kind: 'tti',
-      type: 'seedream-tti',
-      method: 'testConnection',
-      args: [{}],
-    });
-    assert.equal(callResult, true, 'controller.callProvider 应通过 pluginBridge 调用真实 provider');
-
-    const lastCall = fetchCalls.at(-1);
-    assert(lastCall, 'controller.callProvider 应触发真实 backend provider 的网络调用');
-    const headers = lastCall.init && lastCall.init.headers ? lastCall.init.headers : {};
-    assert.equal(lastCall.url, 'https://controller-seedream.example.com/v1/images/generations');
-    assert.equal(headers.Authorization, 'Bearer controller-secret');
-
-    const status = await controller.status({ pluginId: manifest.id });
-    assert(status && status.status === 'active', 'controller.status 应反映 active 状态');
-  } finally {
-    global.fetch = originalFetch;
-    fs.rmSync(tempRoot, { recursive: true, force: true });
-  }
-}
-
 (async () => {
+  // 注：原有的 "真实 backend 插件读取 SQLite 配置" 与 "controller/plugin 激活 + 调用 provider"
+  // 两条场景依赖已被移除的 seedream-tti-provider / vectorengine-provider 插件源码，故一同移除。
+  // 通用的 SQLite 持久化与 legacy 迁移流程仍由下列两条场景覆盖。
   const checks = [
     ['SQLite 持久化 + 重启 + backend 读取', runSqlitePersistenceScenario],
     ['legacy provider-configs.json 迁移', runLegacyMigrationScenario],
-    ['真实 backend 插件读取 SQLite 配置', runRealPluginBackendScenario],
-    ['controller/plugin 激活 + 调用 provider', runControllerPluginSmokeScenario],
   ];
 
   try {

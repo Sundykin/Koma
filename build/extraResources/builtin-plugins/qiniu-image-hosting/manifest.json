@@ -2,7 +2,7 @@
   "id": "com.koma.qiniu-image-hosting",
   "name": "七牛云图床（内置）",
   "version": "1.0.0",
-  "description": "七牛云图床服务，使用 new-api 上传接口，支持时间戳防盗链，作为默认图床",
+  "description": "七牛云图床服务（内置，经由 Koma 激活通道），支持时间戳防盗链，作为默认图床",
   "author": {
     "name": "Koma Team",
     "url": "https://github.com/koma-studio"
@@ -27,9 +27,7 @@
     "capabilities": ["image-hosting"],
     "configPanel": true,
     "defaultConfig": {
-      "enabled": true,
-      "apiEndpoint": "http://192.227.192.228:3000/v1/uploads/image",
-      "apiKey": ""
+      "enabled": true
     }
   }
 }

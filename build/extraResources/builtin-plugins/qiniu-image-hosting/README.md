@@ -1,11 +1,12 @@
 # 七牛云图床插件（内置）
 
-Koma Studio 内置图床插件，使用 [new-api](https://github.com/QuantumNous/new-api) 的 `/v1/uploads/image` 接口将图片上传到七牛云 Kodo，返回带时间戳防盗链签名的外链 URL。
+Koma Studio 内置图床插件，调用 Koma 激活通道 (`https://komaapi.com/v1/uploads/image`) 将图片上传到七牛云 Kodo，返回带时间戳防盗链签名的外链 URL。
 
 ## 特性
 
 - ✅ **内置**：无需用户手动安装，首次启动自动激活
-- ✅ **激活 Key 即 API Key**：复用 Koma 激活 Key（`sk-xxx`），不消耗额度
+- ✅ **自动复用激活 Key**：通过 `api.activation.getApiKey()` 动态获取，不再硬编码
+- ✅ **固定走 komaapi.com**：上传地址由插件内部锁定，用户无法修改
 - ✅ **时间戳防盗链**：默认 3 天有效期
 - ✅ **自动重试**：上传失败最多重试 3 次
 
@@ -14,8 +15,8 @@ Koma Studio 内置图床插件，使用 [new-api](https://github.com/QuantumNous
 | 字段 | 默认值 | 说明 |
 |------|--------|------|
 | `enabled` | `true` | 是否启用 |
-| `apiEndpoint` | `http://192.227.192.228:3000/v1/uploads/image` | new-api 上传接口地址 |
-| `apiKey` | `sk-I5kyGgOb0ie9PGclXHYZEzkZrzoDIVXeXrkcgX7uWj8B584B` | API Key（激活 Key） |
+
+> 上传接口、API Key 均由宿主注入，不暴露在配置里。
 
 ## 目录结构
 
@@ -43,4 +44,4 @@ npm run build
 
 `electron/service/plugin.ts` 的 `PluginService.init()` 在启动时会把本插件从 `packages/plugins/qiniu-image-hosting` 同步到用户数据目录 `plugins-runtime/com.koma.qiniu-image-hosting`，随后由前端 `PluginInitializer` 自动加载并激活。
 
-用户通过 UI 修改的配置（`apiKey` 等）保存在 `provider-configs.json` 中，启动时覆盖不会影响用户自定义配置。
+插件配置保存在 SQLite 的 `channel_configs` 表，激活 Key 保存在 SQLite 的 `app_settings_kv` 表（key = `koma-activation`），二者互不混用。
