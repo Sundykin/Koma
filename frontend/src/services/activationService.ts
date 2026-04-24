@@ -343,12 +343,12 @@ export const activationService = {
         providerType: 'openai',
         name: 'OpenAI',
         providerConfig: { baseUrl: 'https://komaapi.com/v1', apiKey },
-        defaultModelId: 'GLM-5',
+        defaultModelId: 'glm-5',
         models: [
           {
-            id: 'GLM-5',
-            label: 'GLM-5',
-            providerModelName: 'GLM-5',
+            id: 'glm-5',
+            label: 'glm-5',
+            providerModelName: 'glm-5',
             capabilities: ['llm.chat' as ModelCapability],
           },
         ],
