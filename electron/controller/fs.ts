@@ -8,8 +8,9 @@ import * as path from 'path';
 import { app, net as electronNet } from 'electron';
 import { BaseController } from './base';
 import { validateUrl } from '../service/url-validator';
+import { getDecryptedApiKey } from '../service/settings/ChannelConfigService';
 
-const DOWNLOAD_TIMEOUT_MS = 60_000;
+const DOWNLOAD_TIMEOUT_MS = 180_000;
 
 function isPathAllowed(filePath: string): boolean {
   const normalized = path.resolve(filePath);
@@ -46,12 +47,29 @@ class FsController extends BaseController {
     return path.join(parsed.dir, `${parsed.name}.${extension}`);
   }
 
-  private static buildDownloadHeaders(): Record<string, string> {
+  private static buildDownloadHeaders(extraHeaders?: Record<string, string>): Record<string, string> {
     return {
       'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Koma/1.0 Safari/537.36',
-      'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+      'Accept': 'video/mp4,video/*,image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
       'Connection': 'close',
+      ...(extraHeaders || {}),
     };
+  }
+
+  private static buildAuthHeaders(args: { headers?: Record<string, string>; channelId?: string }): Record<string, string> {
+    const out: Record<string, string> = {};
+    const input = args.headers || {};
+    for (const [key, value] of Object.entries(input)) {
+      const normalized = key.toLowerCase();
+      if (normalized === 'authorization' || normalized === 'x-koma-channel-id') {
+        out[key] = String(value);
+      }
+    }
+    if (!Object.keys(out).some(k => k.toLowerCase() === 'authorization') && args.channelId) {
+      const apiKey = getDecryptedApiKey(args.channelId);
+      if (apiKey) out.Authorization = `Bearer ${apiKey}`;
+    }
+    return out;
   }
 
   private static async writeResponseToFile(response: Response, requestedPath: string): Promise<{ success: true; size: number; path: string; mimeType?: string }> {
@@ -66,7 +84,7 @@ class FsController extends BaseController {
     return { success: true, size: bytes.byteLength, path: destPath, mimeType };
   }
 
-  private static async downloadWithFetch(url: string, requestedPath: string): Promise<{ success: true; size: number; path: string; mimeType?: string }> {
+  private static async downloadWithFetch(url: string, requestedPath: string, headers?: Record<string, string>): Promise<{ success: true; size: number; path: string; mimeType?: string }> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), DOWNLOAD_TIMEOUT_MS);
     try {
@@ -76,7 +94,7 @@ class FsController extends BaseController {
       const response = await request(url, {
         method: 'GET',
         redirect: 'follow',
-        headers: FsController.buildDownloadHeaders(),
+        headers: FsController.buildDownloadHeaders(headers),
         signal: controller.signal,
       });
       if (!response.ok) {
@@ -120,14 +138,15 @@ class FsController extends BaseController {
   // 最大重定向次数
   private static readonly MAX_REDIRECTS = 5;
 
-  async downloadFile(args: { url: string; destPath: string }): Promise<{ success: boolean; size: number; path: string; mimeType?: string }> {
+  async downloadFile(args: { url: string; destPath: string; headers?: Record<string, string>; channelId?: string }): Promise<{ success: boolean; size: number; path: string; mimeType?: string }> {
     assertPathAllowed(args.destPath);
     let currentUrl = args.url;
+    const authHeaders = FsController.buildAuthHeaders({ headers: args.headers, channelId: args.channelId });
 
     await validateUrl(currentUrl);
     try {
-      console.info('[FsController:downloadFile] fetch url:', currentUrl, 'timeout:', DOWNLOAD_TIMEOUT_MS);
-      return await FsController.downloadWithFetch(currentUrl, args.destPath);
+      console.info('[FsController:downloadFile] fetch url:', currentUrl, 'timeout:', DOWNLOAD_TIMEOUT_MS, 'hasAuth:', Boolean(authHeaders.Authorization));
+      return await FsController.downloadWithFetch(currentUrl, args.destPath, authHeaders);
     } catch (err: any) {
       console.warn('[FsController:downloadFile] fetch 下载失败，回退 http.get:', err?.message || err);
     }
@@ -144,7 +163,7 @@ class FsController extends BaseController {
       >((resolve, reject) => {
         const protocol = currentUrl.startsWith('https') ? https : http;
 
-        const request = protocol.get(currentUrl, { headers: FsController.buildDownloadHeaders(), timeout: DOWNLOAD_TIMEOUT_MS }, (response) => {
+        const request = protocol.get(currentUrl, { headers: FsController.buildDownloadHeaders(authHeaders), timeout: DOWNLOAD_TIMEOUT_MS }, (response) => {
           if (response.statusCode === 301 || response.statusCode === 302 || response.statusCode === 307 || response.statusCode === 308) {
             const redirectUrl = response.headers.location;
             response.resume(); // drain response

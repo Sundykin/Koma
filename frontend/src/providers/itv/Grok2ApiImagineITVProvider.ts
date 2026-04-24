@@ -288,15 +288,21 @@ export class Grok2ApiImagineITVProvider implements ITVProvider {
     }
     const modelName = this.getModelName();
     assertSupportedVideoCapabilities(request, 'Grok2API Imagine Video', [
+      'video.text-to-video',
       'video.image-to-video',
       'video.reference-to-video',
     ]);
+    const mode = request.capability === 'video.text-to-video'
+      ? 'text_to_video'
+      : request.capability === 'video.reference-to-video'
+        ? 'reference_to_video'
+        : 'image_to_video';
     const imageInputs = isReferenceToVideoRequest(request)
       ? request.referenceImages
       : isImageToVideoRequest(request)
         ? [request.primaryImage, ...(request.additionalReferences || [])]
         : [];
-    if (imageInputs.length === 0) {
+    if (mode !== 'text_to_video' && imageInputs.length === 0) {
       throw new Error('Grok2API Imagine Video 需要至少一张参考图');
     }
 
@@ -344,6 +350,8 @@ export class Grok2ApiImagineITVProvider implements ITVProvider {
     if (debugBody) {
       logger.info('ITV videos request body', {
         provider: this.config.provider,
+        mode,
+        capability: request.capability,
         contentType: 'multipart/form-data',
         ...(protocol ? { promptProtocol: protocol } : undefined),
         requestedDuration: durationRaw,
@@ -354,6 +362,7 @@ export class Grok2ApiImagineITVProvider implements ITVProvider {
         normalizedSize: size,
         normalizedQuality: quality,
         imageReferenceCount: imageInputs.length,
+        hasInputReference: Boolean(imageInputs[0]?.value),
         body: sanitizeBodyForLog(bodyForLog),
       });
     }

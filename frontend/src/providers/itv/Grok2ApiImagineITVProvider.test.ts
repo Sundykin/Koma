@@ -90,6 +90,46 @@ describe('Grok2ApiImagineITVProvider', () => {
     expect(res).toEqual({ mode: 'async', taskId: 'task-1' });
   });
 
+
+
+  it('supports text-to-video without image references', async () => {
+    (safeFetch as any).mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ id: 'task-text' }),
+    });
+
+    const p = new Grok2ApiImagineITVProvider({
+      id: 'i1',
+      name: 'grok2v',
+      provider: 'grok2api-imagine-itv' as any,
+      baseUrl: 'http://127.0.0.1:8000',
+      apiKey: 'k',
+      isDefault: true,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      modelName: 'grok-imagine-video',
+      defaultDuration: 5,
+      defaultResolution: '720p',
+    } as any);
+
+    const res = await p.start({
+      capability: 'video.text-to-video',
+      prompt: 'A calico cat playing a piano on stage',
+      options: { duration: 5, aspectRatio: '9:16', resolution: '720p' },
+    } as any);
+
+    const form = (safeFetch as any).mock.calls[0][1].body as FormData;
+    expect(form.get('model')).toBe('grok-imagine-video');
+    expect(form.get('prompt')).toBe('A calico cat playing a piano on stage');
+    expect(form.get('size')).toBe('720x1280');
+    expect(form.get('seconds')).toBe('5');
+    expect(form.get('quality')).toBe('high');
+    expect(form.get('input_reference[image_url]')).toBeNull();
+    expect(form.get('image_reference')).toBeNull();
+    expect(res).toEqual({ mode: 'async', taskId: 'task-text' });
+  });
+
   it('extracts immediate video url but avoids preview images', async () => {
     (safeFetch as any).mockResolvedValueOnce({
       ok: true,

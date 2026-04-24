@@ -129,6 +129,15 @@ function stripDataHeader(dataUrl: string): string {
   return index >= 0 ? dataUrl.slice(index + 1) : dataUrl;
 }
 
+function requiresAuthenticatedDownload(source: string): boolean {
+  try {
+    const url = new URL(source);
+    return /\/v1\/videos\/[^/]+\/content$/i.test(url.pathname);
+  } catch {
+    return false;
+  }
+}
+
 export async function persistMediaAsset({
   projectId,
   kind,
@@ -179,8 +188,9 @@ export async function persistMediaAsset({
 
   try {
     if (isRemoteMediaUri(assetSource)) {
-      const result = await electronService.fs.downloadFile(assetSource, targetPath);
-      logger.info('远程媒体下载完成', { targetPath, size: result?.size, success: result?.success });
+      const authDownload = Boolean(channelId) && requiresAuthenticatedDownload(assetSource);
+      const result = await electronService.fs.downloadFile(assetSource, targetPath, authDownload ? { channelId } : undefined);
+      logger.info('远程媒体下载完成', { targetPath, size: result?.size, success: result?.success, authDownload });
       if (result?.path) {
         targetPath = result.path;
       }
