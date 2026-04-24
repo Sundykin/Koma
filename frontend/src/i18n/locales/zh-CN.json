@@ -499,6 +499,7 @@
     "activationRequired": "请先激活软件",
     "lockedTitle": "请先激活 Koma",
     "lockedDescription": "激活后才能使用项目、编辑器、对话、灵绘和插件等功能。",
-    "lockedHint": "点击左下角头像，输入 KomaAPI Key 完成激活。"
+    "lockedHint": "点击左下角头像，输入 KomaAPI Key 完成激活。",
+    "defaultChannelsFailed": "默认模型渠道创建失败，请稍后重试"
   }
 }

@@ -499,6 +499,7 @@
     "activationRequired": "Activation required",
     "lockedTitle": "Activate Koma first",
     "lockedDescription": "Activate Koma before using projects, editor, chat, Linghui, plugins, and other features.",
-    "lockedHint": "Click the avatar in the lower-left corner and enter your KomaAPI Key to activate."
+    "lockedHint": "Click the avatar in the lower-left corner and enter your KomaAPI Key to activate.",
+    "defaultChannelsFailed": "Failed to create default model channels. Please try again later."
   }
 }

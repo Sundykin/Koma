@@ -71,7 +71,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   // 左下角头像 Popover 开关状态
   const [avatarPopoverOpen, setAvatarPopoverOpen] = useState(false);
-  
+
   // 激活状态
   const [activation, setActivation] = useState<ActivationInfo | null>(activationInfo || null);
   const [inputKey, setInputKey] = useState('');
@@ -90,9 +90,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [refreshingBalance, setRefreshingBalance] = useState(false);
   const [lastBalanceRefresh, setLastBalanceRefresh] = useState<number | null>(null);
 
-  const fetchBalance = async (apiKey: string) => {
+  const fetchBalance = async (apiKey?: string, channelId?: string) => {
     setRefreshingBalance(true);
-    const result = await activationService.getTokenUsage(apiKey);
+    let result;
+    const targetChannelId = channelId || activation?.defaultChannelIds?.llm;
+
+    if (apiKey) {
+      result = await activationService.getTokenUsage(apiKey);
+    } else if (targetChannelId) {
+      result = await activationService.getStoredTokenUsage(targetChannelId);
+    } else {
+      setRefreshingBalance(false);
+      return;
+    }
+
     setRefreshingBalance(false);
     if (result.success && result.data) {
       setBalanceInfo(result.data);
@@ -107,8 +118,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
     activationService.getActivationInfo().then(info => {
       setActivation(info);
       onActivationChange?.(info);
-      if (info?.apiKey) {
-        fetchBalance(info.apiKey);
+      if (info?.defaultChannelIds?.llm) {
+        fetchBalance(undefined, info.defaultChannelIds.llm);
       }
     });
   }, []);
@@ -125,19 +136,30 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
     if (result.success) {
       const apiKey = inputKey.trim();
+
+      // 自动创建/更新默认渠道
+      const channelResult = await activationService.ensureDefaultModelChannels(apiKey);
+      if (!channelResult.success) {
+        message.error(t('activation.defaultChannelsFailed'));
+        return;
+      }
+
       const info: ActivationInfo = {
-        apiKey,
         activatedAt: Date.now(),
         lastValidatedAt: Date.now(),
+        maskedKey: activationService.maskApiKey(apiKey),
+        defaultChannelIds: channelResult.channelIds!,
       };
+
       await activationService.saveActivationInfo(info);
       setActivation(info);
       onActivationChange?.(info);
+      _onConfigChange?.();
       setInputKey('');
       setIsEditing(false);
       message.success(t('activation.verifySuccess'));
       // 激活成功后加载余额
-      fetchBalance(apiKey);
+      fetchBalance(apiKey, channelResult.channelIds!.llm);
     } else {
       if (result.error === 'invalid_key') {
         message.error(t('activation.invalidKey'));
@@ -156,12 +178,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
     setInputKey('');
     setIsEditing(false);
     message.info(t('activation.deactivate'));
+    _onConfigChange?.();
   };
 
   const handleVerify = async () => {
-    if (!activation) return;
+    if (!activation?.defaultChannelIds?.llm) return;
     setVerifying(true);
-    const result = await activationService.verifyApiKey(activation.apiKey);
+    const result = await activationService.verifyStoredActivation(activation.defaultChannelIds.llm);
     setVerifying(false);
 
     if (result.success) {
@@ -171,7 +194,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       onActivationChange?.(updated);
       message.success(t('activation.verifySuccess'));
       // 重新验证后顺便刷新余额
-      fetchBalance(activation.apiKey);
+      fetchBalance(undefined, activation.defaultChannelIds.llm);
     } else {
       message.error(t('activation.verifyFailed'));
     }
@@ -224,19 +247,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <div className="flex justify-between items-center">
               <Text type="secondary" className="text-xs">{t('settings.apiKey')}</Text>
               <Text className="text-xs font-mono text-zinc-300">
-                {activationService.maskApiKey(activation.apiKey)}
+                {activation.maskedKey}
               </Text>
             </div>
-            
+
             <Divider className="my-1 border-zinc-800/50" />
-            
+
             <div className="flex justify-between items-center">
               <Text type="secondary" className="text-xs font-medium">{t('activation.balanceTitle')}</Text>
-              <Button 
-                type="text" 
-                size="small" 
-                icon={<ReloadOutlined spin={refreshingBalance} />} 
-                onClick={() => fetchBalance(activation.apiKey)}
+              <Button
+                type="text"
+                size="small"
+                icon={<ReloadOutlined spin={refreshingBalance} />}
+                onClick={() => fetchBalance()}
                 className="text-zinc-500 hover:text-emerald-400 p-0 h-auto"
               />
             </div>
@@ -249,7 +272,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     {balanceInfo.unlimitedQuota ? t('activation.unlimitedQuota') : activationService.formatUsdQuota(balanceInfo.totalAvailable, balanceInfo.quotaPerUnit)}
                   </Text>
                 </div>
-                
+
                 <div className="grid grid-cols-2 gap-2 pt-1 border-t border-zinc-800/50">
                   <div className="flex flex-col">
                     <Text type="secondary" className="text-[10px]">{t('activation.usedQuota')}</Text>
@@ -302,9 +325,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
               {t('activation.changeKey')}
             </Button>
           </div>
-          
+
           <Divider className="my-2 border-zinc-800" />
-          
+
           <Button
             danger
             block
@@ -443,8 +466,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <Avatar
             size={36}
             style={{
-              background: activation 
-                ? 'linear-gradient(135deg, #10b981, #059669)' 
+              background: activation
+                ? 'linear-gradient(135deg, #10b981, #059669)'
                 : 'linear-gradient(135deg, #8b5cf6, #3b82f6)',
               cursor: 'pointer',
             }}

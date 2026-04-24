@@ -53,7 +53,7 @@ function broadcastChannelChanged(payload: Record<string, unknown>): void {
       wc.send('channel:changed', payload);
     }
   } catch (err) {
-    logger.error('[settings-ipc] broadcast channel:changed failed', err);
+    logger.error('[settings-ipc] broadcast channel:changed failed');
   }
 }
 

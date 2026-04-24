@@ -1,10 +1,17 @@
 import { safeFetch } from '../utils/safeFetch';
 import { electronService } from './electronService';
+import * as channelConfigService from './channelConfigService';
+import type { ModelCapability } from '../providers/channel/types';
 
 export interface ActivationInfo {
-  apiKey: string;
   activatedAt: number;
   lastValidatedAt: number;
+  maskedKey: string;
+  defaultChannelIds: {
+    llm: string;
+    tti: string;
+    itv: string;
+  };
 }
 
 const STORAGE_KEY = 'koma-activation';
@@ -20,6 +27,7 @@ export interface TokenUsageInfo {
 }
 
 export const DEFAULT_QUOTA_PER_UNIT = 500000;
+export const KOMAAPI_ACTIVATION_CHANNEL_ID = 'komaapi-default-llm';
 
 export const activationService = {
   /**
@@ -36,17 +44,65 @@ export const activationService = {
    */
   async getActivationInfo(): Promise<ActivationInfo | null> {
     try {
+      let data: any = null;
       if (electronService.isElectron()) {
         const res = await electronService.ipc.invoke('app-kv:get', { key: STORAGE_KEY });
         if (res && res.ok && res.data) {
-          return res.data.value || null;
+          data = res.data.value;
         }
-        return null;
       } else {
         const stored = localStorage.getItem(STORAGE_KEY);
-        return stored ? JSON.parse(stored) : null;
+        if (stored) {
+          data = JSON.parse(stored);
+        }
       }
+
+      if (!data) return null;
+
+      // 1. 如果已经是新格式 (包含 maskedKey 和 defaultChannelIds.llm)，直接返回
+      if (data.maskedKey && data.defaultChannelIds?.llm) {
+        return data as ActivationInfo;
+      }
+
+      // 2. 如果是包含 apiKey 的旧格式，先补齐默认渠道，再进行脱敏迁移
+      if (typeof data.apiKey === 'string') {
+        const trimmedKey = data.apiKey.trim();
+        if (!trimmedKey) {
+          return null;
+        }
+
+        let defaultChannelIds: ActivationInfo['defaultChannelIds'] = {
+          llm: KOMAAPI_ACTIVATION_CHANNEL_ID,
+          tti: 'komaapi-default-tti',
+          itv: 'komaapi-default-itv'
+        };
+
+        if (electronService.isElectron()) {
+          const channelResult = await activationService.ensureDefaultModelChannels(trimmedKey);
+          if (!channelResult.success) {
+            // 保持旧记录不覆盖，避免写入缺少加密渠道 key 的脱敏激活态
+            return null;
+          }
+          defaultChannelIds = channelResult.channelIds ?? defaultChannelIds;
+        }
+
+        const now = Date.now();
+        const activatedAt = data.activatedAt || now;
+        const sanitized: ActivationInfo = {
+          activatedAt,
+          lastValidatedAt: data.lastValidatedAt || activatedAt,
+          maskedKey: activationService.maskApiKey(trimmedKey),
+          defaultChannelIds
+        };
+        // 将脱敏后的信息存回，从而移除存储中的 full apiKey
+        await activationService.saveActivationInfo(sanitized);
+        return sanitized;
+      }
+
+      // 格式不匹配
+      return null;
     } catch (err) {
+      // 不记录 err 对象或 apiKey
       console.error('Failed to get activation info');
       return null;
     }
@@ -89,7 +145,7 @@ export const activationService = {
   },
 
   /**
-   * 验证 API Key
+   * 验证 API Key (用于新输入 Key 激活时)
    */
   async verifyApiKey(apiKey: string): Promise<{ success: boolean; status?: number; error?: string }> {
     const trimmedKey = apiKey.trim();
@@ -124,7 +180,39 @@ export const activationService = {
   },
 
   /**
-   * 获取 API Key 额度信息
+   * 验证已保存的激活信息 (使用加密渠道 Key)
+   */
+  async verifyStoredActivation(channelId: string): Promise<{ success: boolean; status?: number; error?: string }> {
+    if (channelId !== KOMAAPI_ACTIVATION_CHANNEL_ID) {
+      return { success: false, error: 'invalid_channel' };
+    }
+
+    try {
+      const response = await safeFetch('https://komaapi.com/v1/models', {
+        method: 'GET',
+        headers: {
+          'x-koma-channel-id': channelId,
+          'Accept': 'application/json',
+        },
+      });
+
+      if (response.ok) {
+        return { success: true, status: response.status };
+      }
+
+      if (response.status === 401 || response.status === 403) {
+        return { success: false, status: response.status, error: 'invalid_key' };
+      }
+
+      return { success: false, status: response.status, error: 'verify_failed' };
+    } catch (err) {
+      console.error('Network error during stored activation verification');
+      return { success: false, error: 'network_error' };
+    }
+  },
+
+  /**
+   * 获取 API Key 额度信息 (用于新输入 Key 激活时)
    */
   async getTokenUsage(apiKey: string): Promise<{ success: boolean; data?: TokenUsageInfo; status?: number; error?: 'invalid_key' | 'network_error' | 'usage_failed' | 'empty_key' }> {
     const trimmedKey = apiKey.trim();
@@ -151,7 +239,7 @@ export const activationService = {
 
       const resData = await response.json();
       const isSuccess = resData.code === true || resData.success === true;
-      
+
       if (isSuccess && resData.data) {
         const d = resData.data;
         return {
@@ -170,8 +258,57 @@ export const activationService = {
 
       return { success: false, error: 'usage_failed' };
     } catch (err) {
-      // 不打印 err 对象，保护隐私
       console.error('Network error during token usage check');
+      return { success: false, error: 'network_error' };
+    }
+  },
+
+  /**
+   * 获取已保存的 API Key 额度信息 (使用加密渠道 Key)
+   */
+  async getStoredTokenUsage(channelId: string): Promise<{ success: boolean; data?: TokenUsageInfo; status?: number; error?: string }> {
+    if (channelId !== KOMAAPI_ACTIVATION_CHANNEL_ID) {
+      return { success: false, error: 'invalid_channel' };
+    }
+
+    try {
+      const response = await safeFetch('https://komaapi.com/api/usage/token', {
+        method: 'GET',
+        headers: {
+          'x-koma-channel-id': channelId,
+          'Accept': 'application/json',
+        },
+      });
+
+      if (response.status === 401 || response.status === 403) {
+        return { success: false, status: response.status, error: 'invalid_key' };
+      }
+
+      if (!response.ok) {
+        return { success: false, status: response.status, error: 'usage_failed' };
+      }
+
+      const resData = await response.json();
+      const isSuccess = resData.code === true || resData.success === true;
+
+      if (isSuccess && resData.data) {
+        const d = resData.data;
+        return {
+          success: true,
+          data: {
+            name: d.name,
+            totalGranted: d.total_granted,
+            totalUsed: d.total_used,
+            totalAvailable: d.total_available,
+            unlimitedQuota: d.unlimited_quota,
+            expiresAt: d.expires_at,
+            quotaPerUnit: DEFAULT_QUOTA_PER_UNIT,
+          }
+        };
+      }
+      return { success: false, error: 'usage_failed' };
+    } catch (err) {
+      console.error('Network error during stored token usage check');
       return { success: false, error: 'network_error' };
     }
   },
@@ -182,5 +319,128 @@ export const activationService = {
   maskApiKey(key: string): string {
     if (key.length <= 10) return '***';
     return `${key.slice(0, 6)}...${key.slice(-4)}`;
-  }
+  },
+
+  /**
+   * 确保默认模型渠道存在（激活成功后调用）
+   */
+  async ensureDefaultModelChannels(apiKey: string): Promise<{ success: boolean; channelIds?: { llm: string; tti: string; itv: string }; error?: string }> {
+    if (!electronService.isElectron()) {
+      return {
+        success: true,
+        channelIds: {
+          llm: KOMAAPI_ACTIVATION_CHANNEL_ID,
+          tti: 'komaapi-default-tti',
+          itv: 'komaapi-default-itv'
+        }
+      };
+    }
+
+    const configs = [
+      {
+        id: KOMAAPI_ACTIVATION_CHANNEL_ID,
+        category: 'llm' as const,
+        providerType: 'openai',
+        name: 'OpenAI',
+        providerConfig: { baseUrl: 'https://komaapi.com/v1', apiKey },
+        defaultModelId: 'GLM-5',
+        models: [
+          {
+            id: 'GLM-5',
+            label: 'GLM-5',
+            providerModelName: 'GLM-5',
+            capabilities: ['llm.chat' as ModelCapability],
+          },
+        ],
+        enabled: true,
+        source: 'builtin' as const,
+      },
+      {
+        id: 'komaapi-default-tti',
+        category: 'tti' as const,
+        providerType: 'grok2api-imagine-tti',
+        name: 'Grok2API Imagine（多参考）',
+        providerConfig: {
+          baseUrl: 'https://komaapi.com',
+          apiKey,
+          promptProtocol: 'grok-image-index',
+          defaultSize: '720x1280',
+          defaultSteps: 20,
+        },
+        defaultModelId: 'grok-imagine-image-lite',
+        models: [
+          {
+            id: 'grok-imagine-image-lite',
+            label: 'grok-imagine-image-lite',
+            providerModelName: 'grok-imagine-image-lite',
+            capabilities: [
+              'image.text-to-image' as ModelCapability,
+              'image.image-to-image' as ModelCapability,
+            ],
+          },
+        ],
+        enabled: true,
+        source: 'builtin' as const,
+      },
+      {
+        id: 'komaapi-default-itv',
+        category: 'itv' as const,
+        providerType: 'grok2api-imagine-itv',
+        name: 'Grok2API Imagine Video',
+        providerConfig: {
+          baseUrl: 'https://komaapi.com',
+          apiKey,
+          promptProtocol: 'grok-image-index',
+          defaultDuration: 10,
+          defaultResolution: '720p',
+        },
+        defaultModelId: 'grok-imagine-video',
+        models: [
+          {
+            id: 'grok-imagine-video',
+            label: 'grok-imagine-video',
+            providerModelName: 'grok-imagine-video',
+            capabilities: [
+              'video.text-to-video' as ModelCapability,
+              'video.image-to-video' as ModelCapability,
+              'video.reference-to-video' as ModelCapability,
+            ],
+          },
+        ],
+        enabled: true,
+        source: 'builtin' as const,
+      },
+    ];
+
+    try {
+      for (const cfg of configs) {
+        const existing = await channelConfigService.getChannel(cfg.id);
+        if (existing) {
+          await channelConfigService.updateChannel(cfg.id, {
+            ...cfg,
+            // providerConfig 包含 apiKey，updateChannel 会处理加密
+          });
+        } else {
+          await channelConfigService.createChannel(cfg);
+        }
+
+        // 设置为该类型的默认
+        await channelConfigService.setMediaDefault(cfg.category, {
+          channelId: cfg.id,
+          modelId: cfg.defaultModelId,
+        });
+      }
+      return {
+        success: true,
+        channelIds: {
+          llm: 'komaapi-default-llm',
+          tti: 'komaapi-default-tti',
+          itv: 'komaapi-default-itv'
+        }
+      };
+    } catch (err) {
+      console.error('Failed to ensure default model channels');
+      return { success: false, error: 'default_channels_failed' };
+    }
+  },
 };

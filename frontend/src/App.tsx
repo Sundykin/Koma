@@ -104,25 +104,18 @@ const AppContent: React.FC = () => {
   const [analysisData, setAnalysisData] = useState<ScriptAnalysisResult | null>(isVideoDevMode ? DEV_TEST_ANALYSIS : null);
   const lastNonLinghuiViewRef = useRef<AppView>('projects');
 
-  useEffect(() => {
-    let cancelled = false;
-
-    const syncSettings = async () => {
-      try {
-        const nextSettings = await loadSettings();
-        if (!cancelled) {
-          setAppSettings(nextSettings);
-        }
-      } catch (error) {
-        logger.error('加载全局设置失败', error);
-      }
-    };
-
-    void syncSettings();
-    return () => {
-      cancelled = true;
-    };
+  const reloadSettings = useCallback(async () => {
+    try {
+      const nextSettings = await loadSettings();
+      setAppSettings(nextSettings);
+    } catch (error) {
+      logger.error('加载全局设置失败', error);
+    }
   }, []);
+
+  useEffect(() => {
+    void reloadSettings();
+  }, [reloadSettings]);
 
   // 初始化 TaskManager
   useEffect(() => {
@@ -392,7 +385,7 @@ const AppContent: React.FC = () => {
             activeEpisode={activeEpisode}
             onViewChange={setView}
             onEnterVideoTest={handleEnterVideoTest}
-            onConfigChange={() => { /* ConfigManagers reload on mount */ }}
+            onConfigChange={reloadSettings}
             activationInfo={activationInfo}
             activationLocked={activationLocked}
             onActivationChange={setActivationInfo}

@@ -21,6 +21,7 @@ import { getThemeStylePrefix, getThemeStylePrefixAsync } from '../config/themePr
 import { createLogger } from '../store/logger';
 import { logTTICall, logITVCall } from '../store/aiCallLogger';
 import { resolvePromptTemplate } from '../store/promptTemplates';
+import { getActiveITVConfig } from '../store/settings/mediaConfig';
 import { IMAGE_GENERATION_SIZES } from '../constants/dimensions';
 import { mediaGenerationService } from '../services/MediaGenerationService';
 import {
@@ -351,19 +352,31 @@ export async function generatePropPreviewVideo(
   try {
     onProgress?.(10, '调用 ITV 服务...');
 
+    // 获取渠道配置中的默认时长
+    let previewDuration = 10;
+    try {
+      const itvConfig = await getActiveITVConfig(itvSelection);
+      if (itvConfig && typeof itvConfig.defaultDuration === 'number' && Number.isFinite(itvConfig.defaultDuration) && itvConfig.defaultDuration > 0) {
+        previewDuration = itvConfig.defaultDuration;
+      }
+    } catch (e) {
+      logger.warn('获取 ITV 配置失败，使用默认时长 10s');
+    }
+
     // 构建道具视频提示词
     const resolvedStylePrefix = await getResolvedTTIStylePrefix(styleSnapshot || project?.styleSnapshot, theme, stylePrompt);
     const compiledRequest = await compilePropPreviewVideoRequest({
       prop,
       primaryImage: rawImageSource,
       stylePrefix: resolvedStylePrefix,
+      duration: previewDuration,
     });
 
     logITVCall(
       'ITV',
       rawImageSource,
       compiledRequest.prompt,
-      { duration: 4, aspectRatio: '1:1' },
+      { duration: previewDuration, aspectRatio: '1:1' },
       {
         projectId,
         targetId: prop.id,
