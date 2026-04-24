@@ -17,9 +17,19 @@ vi.mock('./electronService', () => ({
 }));
 
 import { activationService, KOMAAPI_ACTIVATION_CHANNEL_ID } from './activationService';
+import {
+  KOMA_ACTIVATION_MANAGED_BY,
+  KOMAAPI_ACTIVATION_CHANNEL_IDS,
+  isKomaActivationManagedChannel,
+} from '../utils/activationManagedChannels';
 
 const STORAGE_KEY = 'koma-activation';
 const FAKE_LEGACY_KEY = 'test-key-value-1234';
+const ACTIVATION_CATEGORY_BY_ID: Record<string, 'llm' | 'tti' | 'itv'> = {
+  [KOMAAPI_ACTIVATION_CHANNEL_IDS.llm]: 'llm',
+  [KOMAAPI_ACTIVATION_CHANNEL_IDS.tti]: 'tti',
+  [KOMAAPI_ACTIVATION_CHANNEL_IDS.itv]: 'itv',
+};
 
 function makeChannelDto(input: any) {
   return {
@@ -43,6 +53,21 @@ function makeChannelDto(input: any) {
     sortOrder: input.sortOrder ?? 0,
     createdAt: 1,
     updatedAt: 2,
+  };
+}
+
+function makeActivationChannelDto(id: string, providerConfig: Record<string, unknown>) {
+  return {
+    ...makeChannelDto({
+      id,
+      category: ACTIVATION_CATEGORY_BY_ID[id],
+      providerType: 'openai',
+      name: 'Koma官方',
+      providerConfig,
+      defaultModelId: 'test-model',
+      models: [],
+    }),
+    providerConfig,
   };
 }
 
@@ -87,6 +112,85 @@ afterEach(() => {
   localStorage.clear();
 });
 
+describe('activation managed channel markers', () => {
+  it('只通过 providerConfig marker 识别激活渠道，不通过固定 id 识别', () => {
+    const channelWithDefaultIdOnly = {
+      id: KOMAAPI_ACTIVATION_CHANNEL_IDS.llm,
+      providerConfig: {},
+    };
+
+    expect(isKomaActivationManagedChannel(channelWithDefaultIdOnly)).toBe(false);
+    expect(isKomaActivationManagedChannel({
+      providerConfig: { managedBy: KOMA_ACTIVATION_MANAGED_BY },
+    })).toBe(true);
+    expect(isKomaActivationManagedChannel({
+      providerConfig: { activationManaged: true },
+    })).toBe(true);
+  });
+});
+
+describe('activationService clearActivationInfo', () => {
+  it('取消激活会删除三个带 marker 的默认渠道，并删除 koma-activation app-kv', async () => {
+    mocks.ipcInvoke.mockImplementation(async (channel: string, args?: any) => {
+      if (channel === 'channel:get') {
+        return {
+          ok: true,
+          data: makeActivationChannelDto(args.id, {
+            managedBy: KOMA_ACTIVATION_MANAGED_BY,
+            activationManaged: true,
+          }),
+        };
+      }
+      if (channel === 'channel:delete') {
+        return { ok: true, data: true };
+      }
+      if (channel === 'app-kv:delete') {
+        return { ok: true, data: true };
+      }
+      throw new Error(`unexpected ipc channel: ${channel}`);
+    });
+
+    await activationService.clearActivationInfo();
+
+    const expectedIds = Object.values(KOMAAPI_ACTIVATION_CHANNEL_IDS);
+    const getCalls = mocks.ipcInvoke.mock.calls.filter(([channel]) => channel === 'channel:get');
+    const deleteCalls = mocks.ipcInvoke.mock.calls.filter(([channel]) => channel === 'channel:delete');
+    const appKvDeleteCalls = mocks.ipcInvoke.mock.calls.filter(([channel]) => channel === 'app-kv:delete');
+
+    expect(getCalls.map(([, args]) => args.id)).toEqual(expectedIds);
+    expect(deleteCalls.map(([, args]) => args.id)).toEqual(expectedIds);
+    expect(appKvDeleteCalls).toHaveLength(1);
+    expect(appKvDeleteCalls[0][1]).toEqual({ key: STORAGE_KEY });
+  });
+
+  it('固定 id 渠道没有 marker 时不删除，并仍删除 koma-activation app-kv', async () => {
+    mocks.ipcInvoke.mockImplementation(async (channel: string, args?: any) => {
+      if (channel === 'channel:get') {
+        return { ok: true, data: makeActivationChannelDto(args.id, {}) };
+      }
+      if (channel === 'channel:delete') {
+        throw new Error('channel:delete should not be called');
+      }
+      if (channel === 'app-kv:delete') {
+        return { ok: true, data: true };
+      }
+      throw new Error(`unexpected ipc channel: ${channel}`);
+    });
+
+    await activationService.clearActivationInfo();
+
+    const expectedIds = Object.values(KOMAAPI_ACTIVATION_CHANNEL_IDS);
+    const getCalls = mocks.ipcInvoke.mock.calls.filter(([channel]) => channel === 'channel:get');
+    const deleteCalls = mocks.ipcInvoke.mock.calls.filter(([channel]) => channel === 'channel:delete');
+    const appKvDeleteCalls = mocks.ipcInvoke.mock.calls.filter(([channel]) => channel === 'app-kv:delete');
+
+    expect(getCalls.map(([, args]) => args.id)).toEqual(expectedIds);
+    expect(deleteCalls).toHaveLength(0);
+    expect(appKvDeleteCalls).toHaveLength(1);
+    expect(appKvDeleteCalls[0][1]).toEqual({ key: STORAGE_KEY });
+  });
+});
+
 describe('activationService legacy activation migration', () => {
   it('Electron 旧明文格式迁移前先用 trimmed key 补齐默认渠道，再保存脱敏激活信息', async () => {
     mockSuccessfulElectronMigration({
@@ -103,8 +207,8 @@ describe('activationService legacy activation migration', () => {
       maskedKey: activationService.maskApiKey(FAKE_LEGACY_KEY),
       defaultChannelIds: {
         llm: KOMAAPI_ACTIVATION_CHANNEL_ID,
-        tti: 'komaapi-default-tti',
-        itv: 'komaapi-default-itv',
+        tti: KOMAAPI_ACTIVATION_CHANNEL_IDS.tti,
+        itv: KOMAAPI_ACTIVATION_CHANNEL_IDS.itv,
       },
     });
 
@@ -114,6 +218,21 @@ describe('activationService legacy activation migration', () => {
       FAKE_LEGACY_KEY,
       FAKE_LEGACY_KEY,
       FAKE_LEGACY_KEY,
+    ]);
+    expect(createCalls.map(([, args]) => args.name)).toEqual([
+      'Koma官方',
+      'Koma官方',
+      'Koma官方',
+    ]);
+    expect(createCalls.map(([, args]) => args.providerConfig.managedBy)).toEqual([
+      KOMA_ACTIVATION_MANAGED_BY,
+      KOMA_ACTIVATION_MANAGED_BY,
+      KOMA_ACTIVATION_MANAGED_BY,
+    ]);
+    expect(createCalls.map(([, args]) => args.providerConfig.activationManaged)).toEqual([
+      true,
+      true,
+      true,
     ]);
 
     const saveCallIndex = mocks.ipcInvoke.mock.calls.findIndex(([channel]) => channel === 'app-kv:set');
@@ -174,8 +293,8 @@ describe('activationService legacy activation migration', () => {
 
     expect(info?.defaultChannelIds).toEqual({
       llm: KOMAAPI_ACTIVATION_CHANNEL_ID,
-      tti: 'komaapi-default-tti',
-      itv: 'komaapi-default-itv',
+      tti: KOMAAPI_ACTIVATION_CHANNEL_IDS.tti,
+      itv: KOMAAPI_ACTIVATION_CHANNEL_IDS.itv,
     });
     expect(info?.maskedKey).toBe(activationService.maskApiKey(FAKE_LEGACY_KEY));
     expect(mocks.ipcInvoke).not.toHaveBeenCalled();
@@ -183,5 +302,69 @@ describe('activationService legacy activation migration', () => {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}');
     expect(saved.apiKey).toBeUndefined();
     expect(JSON.stringify(saved)).not.toContain(FAKE_LEGACY_KEY);
+  });
+});
+
+describe('activationService ensureDefaultModelChannels', () => {
+  it('默认渠道已存在时也会更新激活 marker', async () => {
+    const categoryById: Record<string, 'llm' | 'tti' | 'itv'> = {
+      [KOMAAPI_ACTIVATION_CHANNEL_IDS.llm]: 'llm',
+      [KOMAAPI_ACTIVATION_CHANNEL_IDS.tti]: 'tti',
+      [KOMAAPI_ACTIVATION_CHANNEL_IDS.itv]: 'itv',
+    };
+
+    mocks.ipcInvoke.mockImplementation(async (channel: string, args?: any) => {
+      if (channel === 'channel:get') {
+        return {
+          ok: true,
+          data: makeChannelDto({
+            id: args.id,
+            category: categoryById[args.id],
+            providerType: 'existing-provider',
+            name: 'Existing Channel',
+            providerConfig: {},
+            defaultModelId: 'existing-model',
+            models: [],
+          }),
+        };
+      }
+      if (channel === 'channel:update') {
+        return { ok: true, data: makeChannelDto({ id: args.id, ...args.patch }) };
+      }
+      if (channel === 'channel:setDefault') {
+        return {
+          ok: true,
+          data: {
+            category: args.category,
+            channelId: args.channelId,
+            modelId: args.modelId,
+            payload: {},
+            updatedAt: 3,
+          },
+        };
+      }
+      throw new Error(`unexpected ipc channel: ${channel}`);
+    });
+
+    const result = await activationService.ensureDefaultModelChannels(FAKE_LEGACY_KEY);
+
+    expect(result.success).toBe(true);
+    const updateCalls = mocks.ipcInvoke.mock.calls.filter(([channel]) => channel === 'channel:update');
+    expect(updateCalls).toHaveLength(3);
+    expect(updateCalls.map(([, args]) => args.patch.name)).toEqual([
+      'Koma官方',
+      'Koma官方',
+      'Koma官方',
+    ]);
+    expect(updateCalls.map(([, args]) => args.patch.providerConfig.managedBy)).toEqual([
+      KOMA_ACTIVATION_MANAGED_BY,
+      KOMA_ACTIVATION_MANAGED_BY,
+      KOMA_ACTIVATION_MANAGED_BY,
+    ]);
+    expect(updateCalls.map(([, args]) => args.patch.providerConfig.activationManaged)).toEqual([
+      true,
+      true,
+      true,
+    ]);
   });
 });

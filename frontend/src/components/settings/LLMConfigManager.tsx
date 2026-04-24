@@ -49,6 +49,10 @@ import {
   listBuiltInChannelOptions,
 } from './channelManagerShared';
 import { useMediaConfigManager } from './useMediaConfigManager';
+import {
+  isKomaActivationManagedChannel,
+  withKomaActivationChannelMarker,
+} from '../../utils/activationManagedChannels';
 
 interface LLMConfigManagerProps {
   onConfigChange?: () => void;
@@ -113,7 +117,9 @@ export const LLMConfigManager: React.FC<LLMConfigManagerProps> = ({ onConfigChan
     loadConfigs,
   } = useMediaConfigManager<LLMModelConfig>('llm', loadBuiltins, onConfigChange);
 
-  const currentProviderType = Form.useWatch('providerType', form) as string | undefined;
+  const watchedProviderType = Form.useWatch('providerType', form) as string | undefined;
+  const isEditingActivationChannel = isKomaActivationManagedChannel(editingChannel);
+  const currentProviderType = isEditingActivationChannel ? editingChannel?.providerType : watchedProviderType;
   const currentDefinition = currentProviderType ? definitionMap.get(currentProviderType) : undefined;
   const currentIsOpenAICompatible = currentDefinition?.runtimeProviderType === 'openai-compatible';
   const editingHasStoredApiKey = Boolean(editingChannel && (editingChannel.providerConfig as Record<string, unknown> | undefined)?.hasApiKey);
@@ -224,7 +230,11 @@ export const LLMConfigManager: React.FC<LLMConfigManagerProps> = ({ onConfigChan
   const handleSave = useCallback(async () => {
     try {
       const values = await form.validateFields();
-      const definition = definitionMap.get(values.providerType);
+      const isActivationChannel = isKomaActivationManagedChannel(editingChannel);
+      const effectiveProviderType = isActivationChannel && editingChannel
+        ? editingChannel.providerType
+        : values.providerType;
+      const definition = definitionMap.get(effectiveProviderType);
       if (!definition) {
         throw new Error('未找到对应的 LLM 渠道定义');
       }
@@ -236,17 +246,23 @@ export const LLMConfigManager: React.FC<LLMConfigManagerProps> = ({ onConfigChan
         : models[0]?.id;
       if (!defaultModelId) throw new Error('请至少添加一个模型');
 
+      const providerConfig = isActivationChannel && editingChannel
+        ? withKomaActivationChannelMarker({
+            baseUrl: editingChannel.providerConfig?.baseUrl,
+          })
+        : {
+            baseUrl: values.baseUrl,
+            ...(String(values.apiKey || '').trim()
+              ? { apiKey: String(values.apiKey).trim() }
+              : {}),
+          };
+
       const payload = {
-        name: values.name,
+        name: isActivationChannel && editingChannel ? editingChannel.name : values.name,
         description: definition.description,
         category: 'llm' as const,
-        providerType: definition.id,
-        providerConfig: {
-          baseUrl: values.baseUrl,
-          ...(String(values.apiKey || '').trim()
-            ? { apiKey: String(values.apiKey).trim() }
-            : {}),
-        },
+        providerType: effectiveProviderType,
+        providerConfig,
         defaultModelId,
         models,
         enabled: true,
@@ -469,10 +485,10 @@ export const LLMConfigManager: React.FC<LLMConfigManagerProps> = ({ onConfigChan
               <Form.Item
                 name="providerType"
                 label="模型渠道"
-                required
-                rules={[{ required: true, message: '请选择模型渠道' }]}
+                required={!isEditingActivationChannel}
+                rules={[{ required: !isEditingActivationChannel, message: '请选择模型渠道' }]}
               >
-                <Select onChange={handleProviderChange}>
+                <Select onChange={handleProviderChange} disabled={isEditingActivationChannel}>
                   {channelDefinitions.map((definition) => (
                     <Select.Option key={definition.id} value={definition.id}>
                       {definition.name}
@@ -484,10 +500,10 @@ export const LLMConfigManager: React.FC<LLMConfigManagerProps> = ({ onConfigChan
               <Form.Item
                 name="name"
                 label="配置名称"
-                required
-                rules={[{ required: true, message: '请输入配置名称' }]}
+                required={!isEditingActivationChannel}
+                rules={[{ required: !isEditingActivationChannel, message: '请输入配置名称' }]}
               >
-                <Input placeholder="如: DeepSeek 团队账号" />
+                <Input placeholder="如: DeepSeek 团队账号" disabled={isEditingActivationChannel} />
               </Form.Item>
             </div>
           </div>
@@ -529,11 +545,12 @@ export const LLMConfigManager: React.FC<LLMConfigManagerProps> = ({ onConfigChan
                     {!currentIsOpenAICompatible && <span className="text-zinc-500 ml-2 text-xs">(可选，用于代理)</span>}
                   </span>
                 )}
-                rules={[{ required: currentIsOpenAICompatible, message: '请输入 API 地址' }]}
+                rules={[{ required: currentIsOpenAICompatible && !isEditingActivationChannel, message: '请输入 API 地址' }]}
               >
                 <Input
                   prefix={<ApiOutlined />}
                   placeholder={currentIsOpenAICompatible ? 'https://api.deepseek.com/v1' : '可留空使用官方地址'}
+                  disabled={isEditingActivationChannel}
                 />
               </Form.Item>
 
@@ -541,11 +558,15 @@ export const LLMConfigManager: React.FC<LLMConfigManagerProps> = ({ onConfigChan
                 name="apiKey"
                 label="API Key"
                 className="settings-grid-span-full"
-                required={!editingHasStoredApiKey}
-                rules={[{ required: !editingHasStoredApiKey, message: '请输入 API Key' }]}
+                required={!editingHasStoredApiKey && !isEditingActivationChannel}
+                rules={[{ required: !editingHasStoredApiKey && !isEditingActivationChannel, message: '请输入 API Key' }]}
                 style={{ marginBottom: 0 }}
               >
-                <Input.Password prefix={<KeyOutlined />} placeholder={editingHasStoredApiKey ? '留空则保持现有 Key' : 'sk-...'} />
+                <Input.Password
+                  prefix={<KeyOutlined />}
+                  placeholder={editingHasStoredApiKey ? '留空则保持现有 Key' : 'sk-...'}
+                  disabled={isEditingActivationChannel}
+                />
               </Form.Item>
             </div>
           </div>

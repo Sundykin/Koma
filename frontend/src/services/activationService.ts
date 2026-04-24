@@ -2,6 +2,11 @@ import { safeFetch } from '../utils/safeFetch';
 import { electronService } from './electronService';
 import * as channelConfigService from './channelConfigService';
 import type { ModelCapability } from '../providers/channel/types';
+import {
+  KOMAAPI_ACTIVATION_CHANNEL_IDS,
+  isKomaActivationManagedChannel,
+  withKomaActivationChannelMarker,
+} from '../utils/activationManagedChannels';
 
 export interface ActivationInfo {
   activatedAt: number;
@@ -16,6 +21,20 @@ export interface ActivationInfo {
 
 const STORAGE_KEY = 'koma-activation';
 
+async function deleteActivationManagedChannels(): Promise<void> {
+  if (!electronService.isElectron()) return;
+
+  for (const id of Object.values(KOMAAPI_ACTIVATION_CHANNEL_IDS)) {
+    try {
+      const channel = await channelConfigService.getChannel(id);
+      if (!isKomaActivationManagedChannel(channel)) continue;
+      await channelConfigService.deleteChannel(id);
+    } catch {
+      console.error('Failed to delete activation managed channel');
+    }
+  }
+}
+
 export interface TokenUsageInfo {
   name?: string;
   totalGranted?: number;
@@ -27,7 +46,7 @@ export interface TokenUsageInfo {
 }
 
 export const DEFAULT_QUOTA_PER_UNIT = 500000;
-export const KOMAAPI_ACTIVATION_CHANNEL_ID = 'komaapi-default-llm';
+export const KOMAAPI_ACTIVATION_CHANNEL_ID = KOMAAPI_ACTIVATION_CHANNEL_IDS.llm;
 
 export const activationService = {
   /**
@@ -73,8 +92,8 @@ export const activationService = {
 
         let defaultChannelIds: ActivationInfo['defaultChannelIds'] = {
           llm: KOMAAPI_ACTIVATION_CHANNEL_ID,
-          tti: 'komaapi-default-tti',
-          itv: 'komaapi-default-itv'
+          tti: KOMAAPI_ACTIVATION_CHANNEL_IDS.tti,
+          itv: KOMAAPI_ACTIVATION_CHANNEL_IDS.itv
         };
 
         if (electronService.isElectron()) {
@@ -130,16 +149,27 @@ export const activationService = {
    * 清除激活信息
    */
   async clearActivationInfo(): Promise<void> {
-    try {
-      if (electronService.isElectron()) {
+    if (electronService.isElectron()) {
+      try {
+        await deleteActivationManagedChannels();
+      } catch {
+        console.error('Failed to delete activation managed channels');
+      }
+
+      try {
         const res = await electronService.ipc.invoke('app-kv:delete', { key: STORAGE_KEY });
         if (res && !res.ok) {
           throw new Error(res.error || 'Unknown error');
         }
-      } else {
-        localStorage.removeItem(STORAGE_KEY);
+      } catch {
+        console.error('Failed to clear activation info');
       }
-    } catch (err) {
+      return;
+    }
+
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+    } catch {
       console.error('Failed to clear activation info');
     }
   },
@@ -330,8 +360,8 @@ export const activationService = {
         success: true,
         channelIds: {
           llm: KOMAAPI_ACTIVATION_CHANNEL_ID,
-          tti: 'komaapi-default-tti',
-          itv: 'komaapi-default-itv'
+          tti: KOMAAPI_ACTIVATION_CHANNEL_IDS.tti,
+          itv: KOMAAPI_ACTIVATION_CHANNEL_IDS.itv
         }
       };
     }
@@ -341,8 +371,8 @@ export const activationService = {
         id: KOMAAPI_ACTIVATION_CHANNEL_ID,
         category: 'llm' as const,
         providerType: 'openai',
-        name: 'OpenAI',
-        providerConfig: { baseUrl: 'https://komaapi.com/v1', apiKey },
+        name: 'Koma官方',
+        providerConfig: withKomaActivationChannelMarker({ baseUrl: 'https://komaapi.com/v1', apiKey }),
         defaultModelId: 'glm-5',
         models: [
           {
@@ -356,17 +386,17 @@ export const activationService = {
         source: 'builtin' as const,
       },
       {
-        id: 'komaapi-default-tti',
+        id: KOMAAPI_ACTIVATION_CHANNEL_IDS.tti,
         category: 'tti' as const,
         providerType: 'grok2api-imagine-tti',
-        name: 'Grok2API Imagine（多参考）',
-        providerConfig: {
+        name: 'Koma官方',
+        providerConfig: withKomaActivationChannelMarker({
           baseUrl: 'https://komaapi.com',
           apiKey,
           promptProtocol: 'grok-image-index',
           defaultSize: '720x1280',
           defaultSteps: 20,
-        },
+        }),
         defaultModelId: 'grok-imagine-image-lite',
         models: [
           {
@@ -383,17 +413,17 @@ export const activationService = {
         source: 'builtin' as const,
       },
       {
-        id: 'komaapi-default-itv',
+        id: KOMAAPI_ACTIVATION_CHANNEL_IDS.itv,
         category: 'itv' as const,
         providerType: 'grok2api-imagine-itv',
-        name: 'Grok2API Imagine Video',
-        providerConfig: {
+        name: 'Koma官方',
+        providerConfig: withKomaActivationChannelMarker({
           baseUrl: 'https://komaapi.com',
           apiKey,
           promptProtocol: 'grok-image-index',
           defaultDuration: 10,
           defaultResolution: '720p',
-        },
+        }),
         defaultModelId: 'grok-imagine-video',
         models: [
           {
@@ -433,9 +463,9 @@ export const activationService = {
       return {
         success: true,
         channelIds: {
-          llm: 'komaapi-default-llm',
-          tti: 'komaapi-default-tti',
-          itv: 'komaapi-default-itv'
+          llm: KOMAAPI_ACTIVATION_CHANNEL_IDS.llm,
+          tti: KOMAAPI_ACTIVATION_CHANNEL_IDS.tti,
+          itv: KOMAAPI_ACTIVATION_CHANNEL_IDS.itv
         }
       };
     } catch (err) {

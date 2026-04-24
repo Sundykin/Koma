@@ -57,6 +57,10 @@ import {
   shouldReplaceITVModelsOnProviderChange,
 } from './itvProviderSuggestions';
 import { useMediaConfigManager } from './useMediaConfigManager';
+import {
+  isKomaActivationManagedChannel,
+  withKomaActivationChannelMarker,
+} from '../../utils/activationManagedChannels';
 
 interface ITVConfigManagerProps {
   onConfigChange?: () => void;
@@ -146,7 +150,9 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
     handlePluginConfigSaved,
   } = useMediaConfigManager<ITVModelConfig>('itv', loadBuiltins, onConfigChange);
 
-  const currentProviderType = Form.useWatch('providerType', form) as string | undefined;
+  const watchedProviderType = Form.useWatch('providerType', form) as string | undefined;
+  const isEditingActivationChannel = isKomaActivationManagedChannel(editingChannel);
+  const currentProviderType = isEditingActivationChannel ? editingChannel?.providerType : watchedProviderType;
   const previousProviderTypeRef = useRef<string | undefined>(undefined);
   const editingHasStoredApiKey = Boolean(editingChannel && (editingChannel.providerConfig as Record<string, unknown> | undefined)?.hasApiKey);
   const currentDefinition = currentProviderType ? definitionMap.get(currentProviderType) : undefined;
@@ -303,12 +309,16 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
   const handleSave = useCallback(async () => {
     try {
       const values = await form.validateFields();
-      const definition = definitionMap.get(values.providerType);
+      const isActivationChannel = isKomaActivationManagedChannel(editingChannel);
+      const effectiveProviderType = isActivationChannel && editingChannel
+        ? editingChannel.providerType
+        : values.providerType;
+      const definition = definitionMap.get(effectiveProviderType);
       if (!definition) {
         throw new Error('未找到对应的视频渠道定义');
       }
 
-      const models = normalizeITVModelsForProvider(normalizeModels(values.models), values.providerType);
+      const models = normalizeITVModelsForProvider(normalizeModels(values.models), effectiveProviderType);
       const modelIdSet = new Set(models.map((model) => model.id));
       const defaultModelId = modelIdSet.has(values.defaultModelId)
         ? values.defaultModelId
@@ -316,20 +326,29 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
       if (!defaultModelId) throw new Error('请至少添加一个模型');
 
       const lockedBaseUrl = readLockedBaseUrl(definition);
+      const providerConfig = isActivationChannel && editingChannel
+        ? withKomaActivationChannelMarker({
+            baseUrl: editingChannel.providerConfig?.baseUrl,
+            promptProtocol: values.promptProtocol || undefined,
+            defaultDuration: values.defaultDuration || undefined,
+            defaultResolution: values.defaultResolution || undefined,
+          })
+        : {
+            // 若渠道定义声明 baseUrlLocked，强制使用 schema 中的固定域名，
+            // 防止用户绕过 UI 直接改写 localStorage。
+            baseUrl: lockedBaseUrl || values.baseUrl,
+            apiKey: values.apiKey,
+            promptProtocol: values.promptProtocol || undefined,
+            defaultDuration: values.defaultDuration || undefined,
+            defaultResolution: values.defaultResolution || undefined,
+          };
+
       const payload = {
-        name: values.name,
+        name: isActivationChannel && editingChannel ? editingChannel.name : values.name,
         description: definition.description,
         category: 'itv' as const,
-        providerType: definition.id,
-        providerConfig: {
-          // 若渠道定义声明 baseUrlLocked，强制使用 schema 中的固定域名，
-          // 防止用户绕过 UI 直接改写 localStorage。
-          baseUrl: lockedBaseUrl || values.baseUrl,
-          apiKey: values.apiKey,
-          promptProtocol: values.promptProtocol || undefined,
-          defaultDuration: values.defaultDuration || undefined,
-          defaultResolution: values.defaultResolution || undefined,
-        },
+        providerType: effectiveProviderType,
+        providerConfig,
         defaultModelId,
         models,
         enabled: true,
@@ -639,11 +658,15 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
             <div className="settings-modal-grid">
               <Form.Item
                 name="providerType"
-                label={t('settings.provider')}
-                required
-                rules={[{ required: true, message: `${t('settings.pleaseSelect')} ${t('settings.provider')}` }]}
+                label="模型渠道"
+                required={!isEditingActivationChannel}
+                rules={[{ required: !isEditingActivationChannel, message: '请选择模型渠道' }]}
               >
-                <Select placeholder={t('settings.selectITVProvider')} onChange={handleProviderChange}>
+                <Select
+                  placeholder={t('settings.selectITVProvider')}
+                  onChange={handleProviderChange}
+                  disabled={isEditingActivationChannel}
+                >
                   {channelDefinitions.map((definition) => (
                     <Select.Option key={definition.id} value={definition.id}>
                       {definition.name}
@@ -655,10 +678,10 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
               <Form.Item
                 name="name"
                 label={t('settings.configName')}
-                required
-                rules={[{ required: true, message: `${t('settings.pleaseEnter')} ${t('settings.configName')}` }]}
+                required={!isEditingActivationChannel}
+                rules={[{ required: !isEditingActivationChannel, message: `${t('settings.pleaseEnter')} ${t('settings.configName')}` }]}
               >
-                <Input placeholder={t('settings.configNamePlaceholder')} />
+                <Input placeholder={t('settings.configNamePlaceholder')} disabled={isEditingActivationChannel} />
               </Form.Item>
             </div>
           </div>
@@ -714,23 +737,26 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
                   name="apiKey"
                   label={t('settings.apiKey')}
                   rules={[{
-                    required: currentProviderType !== 'comfyui-animatediff' && !editingHasStoredApiKey,
+                    required: currentProviderType !== 'comfyui-animatediff' && !editingHasStoredApiKey && !isEditingActivationChannel,
                     message: `${t('settings.pleaseEnter')} ${t('settings.apiKey')}`,
                   }]}
                 >
-                  <Input.Password placeholder={editingHasStoredApiKey ? t('settings.apiKeyStoredPlaceholder') : t('settings.enterApiKey')} />
+                  <Input.Password
+                    placeholder={editingHasStoredApiKey ? t('settings.apiKeyStoredPlaceholder') : t('settings.enterApiKey')}
+                    disabled={isEditingActivationChannel}
+                  />
                 </Form.Item>
               )}
 
               <Form.Item
                 name="baseUrl"
                 label={t('settings.apiAddress')}
-                rules={[{ required: true, message: `${t('settings.pleaseEnter')} ${t('settings.apiAddress')}` }]}
+                rules={[{ required: !isEditingActivationChannel, message: `${t('settings.pleaseEnter')} ${t('settings.apiAddress')}` }]}
                 extra={readLockedBaseUrl(currentDefinition) ? '官方渠道地址不可修改' : undefined}
               >
                 <Input
                   placeholder="https://api.klingai.com"
-                  disabled={Boolean(readLockedBaseUrl(currentDefinition))}
+                  disabled={isEditingActivationChannel || Boolean(readLockedBaseUrl(currentDefinition))}
                 />
               </Form.Item>
 
