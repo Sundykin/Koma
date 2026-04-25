@@ -46,7 +46,8 @@ const imageExecutionLogger = createLogger('LinghuiImageExecution');
 const DEFAULT_SCRIPT_SYSTEM_PROMPT = [
   '你是灵绘的分镜脚本助手。',
   '请只输出 JSON，不要附加解释。',
-  '输出格式必须是 {"shots":[{"title":"镜头标题","description":"画面描述","durationSec":3}] }。',
+  '输出格式必须是 {"shots":[{"title":"镜头标题","description":"画面描述","durationSec":10}] }。',
+  'durationSec 只能填写 6、10、12、16、20 之一；无法判断时填写 10。',
   '至少生成 3 个镜头，描述需要明确主体、动作、构图和氛围。',
 ].join('\n');
 

@@ -2,6 +2,7 @@ import type {
   LinghuiImageMediaItem,
   LinghuiStoryboardFrame,
 } from '../../../../types/linghui';
+import { normalizeVideoDurationSeconds } from '../../../../utils/videoDuration';
 
 export interface LinghuiScriptParseResult {
   shots: LinghuiStoryboardFrame[];
@@ -9,11 +10,8 @@ export interface LinghuiScriptParseResult {
   source: 'json' | 'plain';
 }
 
-function toDurationSec(value: unknown, fallback = 3): number {
-  const normalized = typeof value === 'string'
-    ? Number(value.replace(/秒|s$/gi, '').trim())
-    : Number(value);
-  return Number.isFinite(normalized) && normalized > 0 ? normalized : fallback;
+function toDurationSec(value: unknown, fallback = 10): number {
+  return normalizeVideoDurationSeconds(value, normalizeVideoDurationSeconds(fallback));
 }
 
 function normalizeMediaItem(value: unknown): LinghuiImageMediaItem | undefined {
@@ -56,7 +54,7 @@ function normalizeShotRecord(value: unknown, index: number): LinghuiStoryboardFr
       id: `shot-${index + 1}`,
       title: `镜头 ${index + 1}`,
       description,
-      durationSec: 3,
+      durationSec: toDurationSec(undefined),
     };
   }
 
@@ -88,7 +86,7 @@ function normalizeShotRecord(value: unknown, index: number): LinghuiStoryboardFr
     id: typeof record.id === 'string' && record.id.trim() ? record.id.trim() : `shot-${index + 1}`,
     title,
     description: description || title,
-    durationSec: toDurationSec(record.durationSec ?? record.duration ?? record.seconds, 3),
+    durationSec: toDurationSec(record.durationSec ?? record.duration ?? record.seconds),
     image: normalizeMediaItem(record.image ?? record.referenceImage ?? record.thumbnail),
   };
 }
@@ -140,7 +138,7 @@ function parsePlainBlock(block: string, index: number): LinghuiStoryboardFrame |
       id: `shot-${index + 1}`,
       title: stripLeadingIndex(rawTitle) || `镜头 ${index + 1}`,
       description: rawDescription || stripLeadingIndex(rawTitle) || `镜头 ${index + 1}`,
-      durationSec: toDurationSec(rawDuration, 3),
+      durationSec: toDurationSec(rawDuration),
     };
   }
 
@@ -154,8 +152,8 @@ function parsePlainBlock(block: string, index: number): LinghuiStoryboardFrame |
 
   const durationLineIndex = lines.findIndex(line => /^(?:时长|duration)\s*[:：]/i.test(line));
   const durationSec = durationLineIndex >= 0
-    ? toDurationSec(lines[durationLineIndex].split(/[:：]/).slice(1).join(' '), 3)
-    : 3;
+    ? toDurationSec(lines[durationLineIndex].split(/[:：]/).slice(1).join(' '))
+    : toDurationSec(undefined);
   const contentLines = durationLineIndex >= 0
     ? lines.filter((_, lineIndex) => lineIndex !== durationLineIndex)
     : lines;
@@ -217,7 +215,7 @@ export function formatLinghuiScriptShots(shots: LinghuiStoryboardFrame[]): strin
     .map((shot, index) => {
       const title = shot.title?.trim() || `镜头 ${index + 1}`;
       const description = shot.description?.trim() || title;
-      return `${index + 1}. ${title}\n画面：${description}\n时长：${toDurationSec(shot.durationSec, 3)} 秒`;
+      return `${index + 1}. ${title}\n画面：${description}\n时长：${toDurationSec(shot.durationSec)} 秒`;
     })
     .join('\n\n');
 }

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef, Suspense, lazy } from 'react';
-import { Project, ScriptAnalysisResult, EditorStep, AppSettings, Episode, EpisodeStepProgress } from './types';
+import { Project, ScriptAnalysisResult, EditorStep, AppSettings, Episode, EpisodeStepProgress, AsyncTask } from './types';
 import { ProjectList, CreateProjectModal, ProjectSettingsModal } from './components/project';
 import type { MentionItem } from './editor';
 import { getCharacterCostumePhotoSource } from './utils/mediaSelectors';
@@ -11,8 +11,16 @@ import { Sidebar } from './components/common/Sidebar';
 import type { AppView } from './components/common/Sidebar';
 import { useProjects } from './hooks/useProjects';
 import { TaskManager } from './services/TaskManager';
+import {
+  deletePendingMediaTasks,
+  failPendingMediaTasks,
+  inspectPendingMediaTasks,
+  recoverProjectPendingMediaTasks,
+  setCurrentProject,
+  USER_INTERRUPTED_REASON,
+} from './store/projectOpenService';
 import { loadCharacters, loadScenes, loadProps, loadShots, loadEpisode, loadEpisodeShots, saveEpisode } from './store/projectStore';
-import { Spin, App as AntApp, Typography } from 'antd';
+import { Spin, App as AntApp, Typography, Button } from 'antd';
 import { LockOutlined } from '@ant-design/icons';
 import {
   DEV_TEST_PROJECT,
@@ -31,6 +39,36 @@ import { useTranslation } from 'react-i18next';
 const { Title, Paragraph, Text } = Typography;
 
 const logger = createLogger('App');
+
+type PendingMediaTaskPromptState = {
+  projectId: string;
+  tasks: AsyncTask[];
+};
+
+type PendingMediaTaskAction = 'recover' | 'fail' | 'delete';
+
+const MEDIA_TASK_TYPE_LABELS: Record<AsyncTask['type'], string> = {
+  tti: '图片生成',
+  itv: '图生视频',
+  tts: '语音生成',
+  'character-extraction': '角色提取',
+};
+
+function buildPendingMediaTaskSignature(projectId: string, tasks: AsyncTask[]): string {
+  const taskIds = tasks.map(task => task.id).sort().join(',');
+  return `${projectId}:${taskIds}`;
+}
+
+function summarizePendingMediaTasks(tasks: AsyncTask[]): string {
+  const counts = new Map<string, number>();
+  for (const task of tasks) {
+    const label = MEDIA_TASK_TYPE_LABELS[task.type] || '媒体任务';
+    counts.set(label, (counts.get(label) || 0) + 1);
+  }
+  return Array.from(counts.entries())
+    .map(([label, count]) => `${count} 个${label}`)
+    .join('、');
+}
 
 // 懒加载重型组件
 const EditorView = lazy(() => import('./components/editor/EditorView').then(m => ({ default: m.EditorView })));
@@ -104,6 +142,10 @@ const AppContent: React.FC = () => {
   const [scriptText, setScriptText] = useState(DEFAULT_SCRIPT);
   const [analysisData, setAnalysisData] = useState<ScriptAnalysisResult | null>(isVideoDevMode ? DEV_TEST_ANALYSIS : null);
   const lastNonLinghuiViewRef = useRef<AppView>('projects');
+  const promptedPendingMediaSignaturesRef = useRef<Set<string>>(new Set());
+  const [pendingMediaPrompt, setPendingMediaPrompt] = useState<PendingMediaTaskPromptState | null>(null);
+  const [pendingMediaAction, setPendingMediaAction] = useState<PendingMediaTaskAction | null>(null);
+  const [taskStatusRefreshKey, setTaskStatusRefreshKey] = useState(0);
 
   const reloadSettings = useCallback(async () => {
     try {
@@ -118,15 +160,48 @@ const AppContent: React.FC = () => {
     void reloadSettings();
   }, [reloadSettings]);
 
-  // 初始化 TaskManager
+  // 初始化 TaskManager，并同步当前项目上下文
   useEffect(() => {
     if (activeProject) {
+      setCurrentProject(activeProject.id);
       TaskManager.initialize(activeProject.id).catch(err => {
         logger.error('TaskManager 初始化失败', err);
       });
+    } else {
+      setCurrentProject(null);
     }
-    return () => { TaskManager.dispose(); };
+
+    return () => {
+      TaskManager.dispose();
+      setCurrentProject(null);
+    };
   }, [activeProject?.id]);
+
+  // 启动/激活项目时检查未完成媒体任务，由用户决定是否恢复
+  useEffect(() => {
+    if (!activeProject || activationLocked) return;
+
+    let disposed = false;
+    const projectId = activeProject.id;
+
+    inspectPendingMediaTasks(projectId)
+      .then(tasks => {
+        if (disposed || tasks.length === 0) return;
+
+        const signature = buildPendingMediaTaskSignature(projectId, tasks);
+        if (promptedPendingMediaSignaturesRef.current.has(signature)) return;
+
+        promptedPendingMediaSignaturesRef.current.add(signature);
+        setPendingMediaPrompt({ projectId, tasks });
+      })
+      .catch(err => {
+        logger.error('检查未完成媒体任务失败', err);
+      });
+
+    return () => {
+      disposed = true;
+    };
+  }, [activeProject?.id, activationLocked]);
 
   // 从存储加载分析数据
   const loadAnalysisData = useCallback(async (projectId: string) => {
@@ -353,6 +428,78 @@ const AppContent: React.FC = () => {
     }
   };
 
+  const refreshTaskStatusBar = useCallback(() => {
+    setTaskStatusRefreshKey(key => key + 1);
+  }, []);
+
+  const handleRecoverPendingMediaTasks = useCallback(() => {
+    if (!pendingMediaPrompt || pendingMediaAction) return;
+
+    const { projectId, tasks } = pendingMediaPrompt;
+    setPendingMediaAction('recover');
+    setPendingMediaPrompt(null);
+    setPendingMediaAction(null);
+    message.loading(`正在后台恢复 ${tasks.length} 个未完成媒体任务...`);
+
+    void recoverProjectPendingMediaTasks(projectId)
+      .then(result => {
+        refreshTaskStatusBar();
+        if (result.recovered > 0) {
+          message.success(`已恢复 ${result.recovered} 个媒体任务`);
+        } else if (result.failed > 0) {
+          message.warning(`媒体任务恢复完成，${result.failed} 个任务恢复失败`);
+        } else {
+          message.info('没有需要恢复的媒体任务');
+        }
+      })
+      .catch(err => {
+        refreshTaskStatusBar();
+        logger.error('恢复未完成媒体任务失败', err);
+        message.error(err?.message || '恢复未完成媒体任务失败');
+      });
+  }, [pendingMediaPrompt, pendingMediaAction, message, refreshTaskStatusBar]);
+
+  const handleFailPendingMediaTasks = useCallback(async () => {
+    if (!pendingMediaPrompt || pendingMediaAction) return;
+
+    setPendingMediaAction('fail');
+    try {
+      const failedCount = await failPendingMediaTasks(
+        pendingMediaPrompt.projectId,
+        pendingMediaPrompt.tasks,
+        USER_INTERRUPTED_REASON
+      );
+      setPendingMediaPrompt(null);
+      refreshTaskStatusBar();
+      message.warning(`已将 ${failedCount} 个未完成媒体任务标记为失败`);
+    } catch (err: any) {
+      logger.error('标记未完成媒体任务失败', err);
+      message.error(err?.message || '标记任务失败失败');
+    } finally {
+      setPendingMediaAction(null);
+    }
+  }, [pendingMediaPrompt, pendingMediaAction, message, refreshTaskStatusBar]);
+
+  const handleDeletePendingMediaTasks = useCallback(async () => {
+    if (!pendingMediaPrompt || pendingMediaAction) return;
+
+    setPendingMediaAction('delete');
+    try {
+      const deletedCount = await deletePendingMediaTasks(pendingMediaPrompt.projectId, pendingMediaPrompt.tasks);
+      setPendingMediaPrompt(null);
+      refreshTaskStatusBar();
+      message.success(`已删除 ${deletedCount} 条本地任务记录；这不会取消远端生成`);
+    } catch (err: any) {
+      logger.error('删除未完成媒体任务记录失败', err);
+      message.error(err?.message || '删除本地任务记录失败');
+    } finally {
+      setPendingMediaAction(null);
+    }
+  }, [pendingMediaPrompt, pendingMediaAction, message, refreshTaskStatusBar]);
+
+  const pendingMediaTaskSummary = pendingMediaPrompt
+    ? summarizePendingMediaTasks(pendingMediaPrompt.tasks)
+    : '';
   const ActivationLockedView = (
     <div className="h-full flex flex-col items-center justify-center p-8 bg-zinc-950">
       <div className="max-w-md w-full bg-zinc-900/50 border border-zinc-800 rounded-3xl p-10 flex flex-col items-center text-center shadow-2xl">
@@ -483,10 +630,64 @@ const AppContent: React.FC = () => {
             onSave={handleProjectSettingsSave}
             onGoToGlobalSettings={() => { setIsProjectSettingsOpen(false); setView('settings'); }}
           />
+          {pendingMediaPrompt && (
+            <div
+              role="status"
+              aria-live="polite"
+              className="fixed bottom-28 right-4 z-40 w-[22rem] max-w-[calc(100vw-2rem)] rounded-2xl border border-amber-400/20 bg-zinc-900/95 p-4 text-sm shadow-2xl shadow-black/30 backdrop-blur"
+            >
+              <div className="flex items-start gap-3">
+                <div className="mt-1 h-2 w-2 shrink-0 rounded-full bg-amber-300 shadow-[0_0_12px_rgba(252,211,77,0.55)]" />
+                <div className="min-w-0 flex-1">
+                  <div className="font-medium text-zinc-100">发现未完成任务</div>
+                  <div className="mt-1.5 leading-5 text-zinc-300">
+                    上次还有 {pendingMediaPrompt.tasks.length} 个媒体任务未完成。
+                  </div>
+                  {pendingMediaTaskSummary && (
+                    <div className="mt-1 text-xs leading-5 text-zinc-500">
+                      {pendingMediaTaskSummary}
+                    </div>
+                  )}
+                  <div className="mt-2 text-xs leading-5 text-amber-200/80">
+                    删除本地记录不会取消远端生成。
+                  </div>
+                  <div className="mt-3 flex flex-wrap justify-end gap-2">
+                    <Button
+                      size="small"
+                      danger
+                      loading={pendingMediaAction === 'delete'}
+                      disabled={Boolean(pendingMediaAction) && pendingMediaAction !== 'delete'}
+                      onClick={handleDeletePendingMediaTasks}
+                    >
+                      删除本地记录
+                    </Button>
+                    <Button
+                      size="small"
+                      loading={pendingMediaAction === 'fail'}
+                      disabled={Boolean(pendingMediaAction) && pendingMediaAction !== 'fail'}
+                      onClick={handleFailPendingMediaTasks}
+                    >
+                      标记失败
+                    </Button>
+                    <Button
+                      size="small"
+                      type="primary"
+                      disabled={Boolean(pendingMediaAction) && pendingMediaAction !== 'recover'}
+                      onClick={handleRecoverPendingMediaTasks}
+                    >
+                      继续恢复
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </>
       )}
       {/* 全局任务状态悬浮通知 */}
-      {!activationLocked && activeProject && <TaskStatusBar projectId={activeProject.id} />}
+      {!activationLocked && activeProject && (
+        <TaskStatusBar key={`${activeProject.id}:${taskStatusRefreshKey}`} projectId={activeProject.id} />
+      )}
     </div>
   );
 };

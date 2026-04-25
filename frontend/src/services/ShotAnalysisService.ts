@@ -11,29 +11,18 @@ import { saveEpisodeShots } from '../store/projectStore';
 import { createLogger } from '../store/logger';
 import { extractErrorMessage } from '../utils/errorHandler';
 import { appendStyleRequirement, type StyleSnapshotLike } from '../utils/promptNormalize';
+import {
+  DEFAULT_VIDEO_DURATION_SECONDS,
+  normalizeVideoDurationSeconds,
+  type AllowedVideoDurationSeconds,
+} from '../utils/videoDuration';
 
 const logger = createLogger('ShotAnalysis');
 const SHOT_ANALYSIS_LLM_TIMEOUT_MS = 300_000;
-const DEFAULT_SHOT_DURATION_SECONDS = 15;
+const DEFAULT_SHOT_DURATION_SECONDS: AllowedVideoDurationSeconds = DEFAULT_VIDEO_DURATION_SECONDS;
 
-export function normalizeShotDuration(duration: unknown): number {
-  if (typeof duration === 'number') {
-    return Number.isFinite(duration) && duration > 0
-      ? duration
-      : DEFAULT_SHOT_DURATION_SECONDS;
-  }
-
-  if (typeof duration === 'string') {
-    const trimmed = duration.trim();
-    if (trimmed.length > 0) {
-      const parsed = Number(trimmed);
-      return Number.isFinite(parsed) && parsed > 0
-        ? parsed
-        : DEFAULT_SHOT_DURATION_SECONDS;
-    }
-  }
-
-  return DEFAULT_SHOT_DURATION_SECONDS;
+export function normalizeShotDuration(duration: unknown): AllowedVideoDurationSeconds {
+  return normalizeVideoDurationSeconds(duration, DEFAULT_SHOT_DURATION_SECONDS);
 }
 
 // 预选资产类型
@@ -54,7 +43,7 @@ const _SHOTS_SCHEMA = {
           scriptContent: { type: 'string', description: '对应剧本原文' },
           shotType: { type: 'string', enum: ['close-up', 'medium', 'wide', 'extreme-wide'] },
           cameraMovement: { type: 'string', enum: ['static', 'pan', 'zoom-in', 'tracking', 'handheld'] },
-          duration: { type: 'number', description: '持续时长(秒)' },
+          duration: { type: 'number', description: '持续时长(秒)，只能是 6、10、12、16、20 之一' },
           characters: { type: 'array', items: { type: 'string' }, description: '涉及的角色名' },
           dialogue: { type: 'string', description: '台词' },
           emotion: { type: 'string', description: '情绪氛围' },

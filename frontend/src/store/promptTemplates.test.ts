@@ -2,16 +2,22 @@ import { describe, expect, it } from 'vitest';
 import { getDefaultTemplate } from './promptTemplates';
 
 describe('default shot breakdown prompt templates', () => {
-  it('要求镜头时长控制在 15 秒以内', () => {
+  it('要求镜头时长只能填写上游允许的白名单值', () => {
     const systemTemplate = getDefaultTemplate('shot_breakdown_system').template;
     const userTemplate = getDefaultTemplate('shot_breakdown').template;
+    const combined = `${systemTemplate}\n${userTemplate}`;
 
-    expect(systemTemplate).toContain('duration: 预估时长（秒），最大 15 秒');
-    expect(systemTemplate).toContain('每个镜头控制在 15 秒以内');
-    expect(userTemplate).toContain('每个镜头时长控制在 15 秒以内');
-    expect(userTemplate).toContain('duration 建议填写 15 以内的数字');
-    expect(userTemplate).toContain('"duration": 15');
-    expect(`${systemTemplate}\n${userTemplate}`).not.toContain('10秒左右');
-    expect(`${systemTemplate}\n${userTemplate}`).not.toContain('约 10 秒');
+    expect(systemTemplate).toContain('只能填写 6、10、12、16、20 之一');
+    expect(systemTemplate).toContain('推荐默认 10 秒');
+    expect(userTemplate).toContain('duration 只能填写 6、10、12、16、20 之一');
+    expect(userTemplate).toContain('无法判断时填写 10');
+    expect(userTemplate).toContain('"duration": 10');
+    const durationVariable = getDefaultTemplate('shot_video_prompt_generation')
+      .variables.find(variable => variable.name === 'durationSeconds');
+    expect(durationVariable?.description).toContain('只能是 6、10、12、16、20 之一');
+    expect(durationVariable?.example).toBe('10');
+    expect(combined).not.toContain('15 秒以内');
+    expect(combined).not.toContain('最大 15 秒');
+    expect(combined).not.toContain('"duration": 15');
   });
 });

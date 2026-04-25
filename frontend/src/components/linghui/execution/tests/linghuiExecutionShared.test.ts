@@ -26,7 +26,7 @@ describe('createNodeView', () => {
             background: '#0f1720',
             properties: {
               mode: 'manual',
-              content: '{"shots":[{"title":"开场","description":"雨夜街头，镜头跟随主角前行","durationSec":3},{"title":"回望","description":"主角停下脚步回头看向灯光","durationSec":4}]}',
+              content: '{"shots":[{"title":"开场","description":"雨夜街头，镜头跟随主角前行","durationSec":6},{"title":"回望","description":"主角停下脚步回头看向灯光","durationSec":10}]}',
               prompt: '',
               systemPrompt: '',
               llmSelection: '',
@@ -99,6 +99,7 @@ describe('createNodeView', () => {
     expect(input.shots).toHaveLength(2);
     expect(input.text).toContain('1. 开场');
     expect(input.text).toContain('2. 回望');
+    expect(input.shots.map(shot => shot.durationSec)).toEqual([6, 10]);
     expect(input.metadata).toEqual(expect.objectContaining({
       mode: 'manual',
       parseSource: 'json',

@@ -15,6 +15,11 @@ import { isImageToVideoRequest, isReferenceToVideoRequest } from '../../types';
 import { safeFetch } from '../../utils/safeFetch';
 import { createLogger } from '../../store/logger';
 import { sanitizeBodyForLog } from '../../utils/logFormatting';
+import {
+  DEFAULT_VIDEO_DURATION_SECONDS,
+  normalizeVideoDurationSeconds,
+  type AllowedVideoDurationSeconds,
+} from '../../utils/videoDuration';
 
 const logger = createLogger('Grok2ApiImagineITV');
 
@@ -180,9 +185,8 @@ export class Grok2ApiImagineITVProvider implements ITVProvider {
     return value;
   }
 
-  private normalizeVideoLengthSeconds(value: number | undefined): number | undefined {
-    if (typeof value !== 'number' || !Number.isFinite(value)) return undefined;
-    return Math.min(Math.max(Math.round(value), 5), 20);
+  private normalizeVideoLengthSeconds(value: unknown): AllowedVideoDurationSeconds {
+    return normalizeVideoDurationSeconds(value, DEFAULT_VIDEO_DURATION_SECONDS);
   }
 
   private normalizeAspectRatio(value: string | undefined): string | undefined {
@@ -319,8 +323,8 @@ export class Grok2ApiImagineITVProvider implements ITVProvider {
     const protocol = (this.config as any)?.promptProtocol;
     const debugBody = Boolean(protocol) || (import.meta as any)?.env?.DEV === true;
     const opts = request.options || {};
-    const durationRaw = typeof opts.duration === 'number' ? opts.duration : this.config.defaultDuration;
-    const duration = this.normalizeVideoLengthSeconds(durationRaw) || 5;
+    const durationRaw = opts.duration ?? this.config.defaultDuration;
+    const duration = this.normalizeVideoLengthSeconds(durationRaw);
     const resolutionRaw = typeof opts.resolution === 'string'
       ? opts.resolution
       : this.config.defaultResolution;

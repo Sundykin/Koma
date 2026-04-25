@@ -60,7 +60,7 @@ describe('Grok2ApiImagineITVProvider', () => {
       createdAt: Date.now(),
       updatedAt: Date.now(),
       modelName: 'grok-imagine-video',
-      defaultDuration: 5,
+      defaultDuration: 6,
       defaultResolution: '720p',
     } as any);
 
@@ -71,7 +71,7 @@ describe('Grok2ApiImagineITVProvider', () => {
       additionalReferences: [
         { transport: 'remote-url', value: 'https://img.example.com/2.jpg' },
       ],
-      options: { duration: 5, aspectRatio: '16:9', resolution: '720p' },
+      options: { duration: 6, aspectRatio: '16:9', resolution: '720p' },
     } as any);
 
     expect((safeFetch as any).mock.calls[0][0]).toContain('/v1/videos');
@@ -81,7 +81,7 @@ describe('Grok2ApiImagineITVProvider', () => {
     expect(body.model).toBe('grok-imagine-video');
     expect(body.prompt).toBe('p');
     expect(body.size).toBe('1280x720');
-    expect(body.seconds).toBe('5');
+    expect(body.seconds).toBe('6');
     expect(body.quality).toBeUndefined();
     expect(body.input_reference).toBeUndefined();
     expect(body.image_reference).toBeUndefined();
@@ -109,7 +109,7 @@ describe('Grok2ApiImagineITVProvider', () => {
       createdAt: Date.now(),
       updatedAt: Date.now(),
       modelName: 'grok-imagine-video',
-      defaultDuration: 5,
+      defaultDuration: 10,
       defaultResolution: '720p',
     } as any);
 
@@ -122,7 +122,7 @@ describe('Grok2ApiImagineITVProvider', () => {
       capability: 'video.reference-to-video',
       prompt: 'p',
       referenceImages: refs,
-      options: { duration: 5, aspectRatio: '9:16' },
+      options: { duration: 10, aspectRatio: '9:16' },
     } as any);
 
     const body = JSON.parse((safeFetch as any).mock.calls[0][1].body as string);
@@ -152,21 +152,21 @@ describe('Grok2ApiImagineITVProvider', () => {
       createdAt: Date.now(),
       updatedAt: Date.now(),
       modelName: 'grok-imagine-video',
-      defaultDuration: 5,
+      defaultDuration: 10,
       defaultResolution: '720p',
     } as any);
 
     const res = await p.start({
       capability: 'video.text-to-video',
       prompt: 'A calico cat playing a piano on stage',
-      options: { duration: 5, aspectRatio: '9:16', resolution: '720p' },
+      options: { duration: 10, aspectRatio: '9:16', resolution: '720p' },
     } as any);
 
     const body = JSON.parse((safeFetch as any).mock.calls[0][1].body as string);
     expect(body.model).toBe('grok-imagine-video');
     expect(body.prompt).toBe('A calico cat playing a piano on stage');
     expect(body.size).toBe('720x1280');
-    expect(body.seconds).toBe('5');
+    expect(body.seconds).toBe('10');
     expect(body.quality).toBeUndefined();
     expect(body.input_reference).toBeUndefined();
     expect(body.images).toBeUndefined();
@@ -206,7 +206,7 @@ describe('Grok2ApiImagineITVProvider', () => {
     expect((res as any).output.source).toBe('http://x/y/out.mp4');
   });
 
-  it('prefers request aspectRatio over channel defaultResolution and clamps duration', async () => {
+  it('prefers request aspectRatio over channel defaultResolution and normalizes short duration to whitelist', async () => {
     (safeFetch as any).mockResolvedValueOnce({
       ok: true,
       status: 200,
@@ -235,9 +235,70 @@ describe('Grok2ApiImagineITVProvider', () => {
     } as any);
 
     const body = JSON.parse((safeFetch as any).mock.calls[0][1].body as string);
-    expect(body.seconds).toBe('5');
+    expect(body.seconds).toBe('6');
     expect(body.size).toBe('720x1280');
     expect(body.quality).toBeUndefined();
+  });
+
+  it('normalizes legacy illegal duration inputs before submitting seconds', async () => {
+    (safeFetch as any).mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ id: 'task-duration-normalized' }),
+    });
+
+    const p = new Grok2ApiImagineITVProvider({
+      id: 'i1',
+      name: 'grok2v',
+      provider: 'grok2api-imagine-itv' as any,
+      baseUrl: 'http://127.0.0.1:8000',
+      apiKey: 'k',
+      isDefault: true,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      modelName: 'grok-imagine-video',
+      defaultDuration: 10,
+    } as any);
+
+    await p.start({
+      capability: 'video.image-to-video',
+      prompt: 'p',
+      primaryImage: { transport: 'remote-url', value: 'https://img.example.com/1.jpg' },
+      additionalReferences: [],
+      options: { duration: 15 },
+    } as any);
+
+    const body = JSON.parse((safeFetch as any).mock.calls[0][1].body as string);
+    expect(body.seconds).toBe('16');
+  });
+
+  it('falls back to 10 seconds when duration is missing or invalid', async () => {
+    (safeFetch as any).mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ id: 'task-duration-default' }),
+    });
+
+    const p = new Grok2ApiImagineITVProvider({
+      id: 'i1',
+      name: 'grok2v',
+      provider: 'grok2api-imagine-itv' as any,
+      baseUrl: 'http://127.0.0.1:8000',
+      apiKey: 'k',
+      isDefault: true,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      modelName: 'grok-imagine-video',
+    } as any);
+
+    await p.start({
+      capability: 'video.text-to-video',
+      prompt: 'p',
+      options: { duration: Number.NaN },
+    } as any);
+
+    const body = JSON.parse((safeFetch as any).mock.calls[0][1].body as string);
+    expect(body.seconds).toBe('10');
   });
 
   it('keeps built-in Grok model name unchanged', async () => {
@@ -264,7 +325,7 @@ describe('Grok2ApiImagineITVProvider', () => {
       prompt: 'p',
       primaryImage: { transport: 'remote-url', value: 'https://img.example.com/1.jpg' },
       additionalReferences: [],
-      options: { duration: 5 },
+      options: { duration: 6 },
     } as any);
 
     const body = JSON.parse((safeFetch as any).mock.calls[0][1].body as string);
