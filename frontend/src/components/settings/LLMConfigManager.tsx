@@ -23,7 +23,6 @@ import {
   EditOutlined,
   KeyOutlined,
   LoadingOutlined,
-  PlusOutlined,
   RobotOutlined,
   StarFilled,
   StarOutlined,
@@ -366,9 +365,6 @@ export const LLMConfigManager: React.FC<LLMConfigManagerProps> = ({ onConfigChan
             已配置 <strong>{configs.length}</strong> 个渠道
           </span>
         </div>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => openModal()}>
-          添加渠道
-        </Button>
       </div>
 
       {loading ? (
@@ -380,11 +376,7 @@ export const LLMConfigManager: React.FC<LLMConfigManagerProps> = ({ onConfigChan
           image={Empty.PRESENTED_IMAGE_SIMPLE}
           description="还没有配置任何 LLM 渠道"
           className="settings-empty-state"
-        >
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => openModal()}>
-            添加第一个渠道
-          </Button>
-        </Empty>
+        />
       ) : (
         <Row gutter={[12, 12]}>
           {configs.map((config) => {

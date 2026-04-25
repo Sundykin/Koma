@@ -25,7 +25,6 @@ import {
   LoadingOutlined,
   NodeIndexOutlined,
   PictureOutlined,
-  PlusOutlined,
   SettingOutlined,
   StarFilled,
   StarOutlined,
@@ -418,9 +417,6 @@ export const TTIConfigManager: React.FC<TTIConfigManagerProps> = ({ onConfigChan
             {pluginChannels.length > 0 && <span>，{t('settings.pluginChannels', { count: pluginChannels.length })}</span>}
           </span>
         </div>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => openModal()}>
-          {t('settings.addConfig')}
-        </Button>
       </div>
 
       {loading ? (
@@ -432,11 +428,7 @@ export const TTIConfigManager: React.FC<TTIConfigManagerProps> = ({ onConfigChan
           image={Empty.PRESENTED_IMAGE_SIMPLE}
           description={t('settings.noTTIConfigs')}
           className="settings-empty-state"
-        >
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => openModal()}>
-            {t('settings.addBuiltinService')}
-          </Button>
-        </Empty>
+        />
       ) : (
         <Row gutter={[12, 12]}>
           {configs.map((config) => {
