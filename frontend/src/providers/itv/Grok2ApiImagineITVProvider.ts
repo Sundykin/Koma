@@ -18,6 +18,9 @@ import { sanitizeBodyForLog } from '../../utils/logFormatting';
 
 const logger = createLogger('Grok2ApiImagineITV');
 
+// 对齐 video_plugin_疾刃API 的 _GROK_MAX_REFERENCE_IMAGES：grok2api 单次最多 7 张参考图。
+const GROK_MAX_REFERENCE_IMAGES = 7;
+
 type VideoCreateResponse = Record<string, unknown>;
 type VideoTaskResponse = Record<string, unknown>;
 
@@ -219,11 +222,6 @@ export class Grok2ApiImagineITVProvider implements ITVProvider {
     return sizes[ratio] || sizes['16:9'];
   }
 
-  private resolveGrokQuality(value: string | undefined): 'standard' | 'high' {
-    const raw = String(value || '').trim().toLowerCase();
-    return ['720p', '1080p', 'hd', 'high', '高清'].includes(raw) ? 'high' : 'standard';
-  }
-
   private extractTaskId(value: unknown): string | undefined {
     if (!value || typeof value !== 'object') return undefined;
     const obj = value as Record<string, unknown>;
@@ -256,10 +254,11 @@ export class Grok2ApiImagineITVProvider implements ITVProvider {
   }
 
   private getHeaders(): Record<string, string> {
+    const base: Record<string, string> = { 'Content-Type': 'application/json' };
     if (this.config.profileId) {
-      return { 'x-koma-channel-id': this.config.profileId };
+      return { ...base, 'x-koma-channel-id': this.config.profileId };
     }
-    return { Authorization: `Bearer ${this.config.apiKey || ''}` };
+    return { ...base, Authorization: `Bearer ${this.config.apiKey || ''}` };
   }
 
   private getAuthOnlyHeaders(): Record<string, string> {
@@ -297,11 +296,22 @@ export class Grok2ApiImagineITVProvider implements ITVProvider {
       : request.capability === 'video.reference-to-video'
         ? 'reference_to_video'
         : 'image_to_video';
-    const imageInputs = isReferenceToVideoRequest(request)
+    // 对齐 Python 参考实现 _submit_video_task_grok + _merge_image_paths：
+    // 参考图/首帧按顺序合并，去重后截到 7 张；mode 本身不下发到 upstream。
+    const rawImageInputs = isReferenceToVideoRequest(request)
       ? request.referenceImages
       : isImageToVideoRequest(request)
         ? [request.primaryImage, ...(request.additionalReferences || [])]
         : [];
+    const seenImageValues = new Set<string>();
+    const imageInputs: typeof rawImageInputs = [];
+    for (const item of rawImageInputs) {
+      const value = item?.value;
+      if (!value || seenImageValues.has(value)) continue;
+      seenImageValues.add(value);
+      imageInputs.push(item);
+      if (imageInputs.length >= GROK_MAX_REFERENCE_IMAGES) break;
+    }
     if (mode !== 'text_to_video' && imageInputs.length === 0) {
       throw new Error('Grok2API Imagine Video 需要至少一张参考图');
     }
@@ -318,33 +328,18 @@ export class Grok2ApiImagineITVProvider implements ITVProvider {
       typeof opts.aspectRatio === 'string' ? opts.aspectRatio : undefined,
     ) || this.normalizeAspectRatio(resolutionRaw) || '16:9';
     const size = this.resolveGrokSize(aspectRatio);
-    const quality = this.resolveGrokQuality(resolutionRaw);
 
-    const imageReference = imageInputs.map(imageInput => ({
-      type: 'image_url',
-      image_url: { url: imageInput.value },
-    }));
-    const bodyForLog: Record<string, any> = {
+    // new-api /v1/videos (TaskSubmitReq) 使用 images: string[]，不是 Python 疾刃插件的
+    // image_reference 对象数组。字段对齐 relay/common/relay_info.go:TaskSubmitReq。
+    const images = imageInputs.map(imageInput => imageInput.value);
+    const body: Record<string, any> = {
       model: modelName,
       prompt: request.prompt,
       size,
       seconds: String(duration),
-      quality,
-      image_reference: imageReference,
-      input_reference: imageInputs[0]?.value ? { image_url: imageInputs[0].value } : undefined,
     };
-
-    const form = new FormData();
-    form.append('model', modelName);
-    form.append('prompt', request.prompt);
-    form.append('size', size);
-    form.append('seconds', String(duration));
-    form.append('quality', quality);
-    if (imageInputs[0]?.value) {
-      form.append('input_reference[image_url]', imageInputs[0].value);
-    }
-    if (imageReference.length > 0) {
-      form.append('image_reference', JSON.stringify(imageReference));
+    if (images.length > 0) {
+      body.images = images;
     }
 
     if (debugBody) {
@@ -352,7 +347,7 @@ export class Grok2ApiImagineITVProvider implements ITVProvider {
         provider: this.config.provider,
         mode,
         capability: request.capability,
-        contentType: 'multipart/form-data',
+        contentType: 'application/json',
         ...(protocol ? { promptProtocol: protocol } : undefined),
         requestedDuration: durationRaw,
         normalizedDuration: duration,
@@ -360,10 +355,8 @@ export class Grok2ApiImagineITVProvider implements ITVProvider {
         normalizedAspectRatio: aspectRatio,
         requestedResolution: resolutionRaw,
         normalizedSize: size,
-        normalizedQuality: quality,
-        imageReferenceCount: imageInputs.length,
-        hasInputReference: Boolean(imageInputs[0]?.value),
-        body: sanitizeBodyForLog(bodyForLog),
+        imagesCount: images.length,
+        body: sanitizeBodyForLog(body),
       });
     }
 
@@ -376,7 +369,7 @@ export class Grok2ApiImagineITVProvider implements ITVProvider {
         ...(debugBody ? { 'x-koma-debug-body': '1' } : undefined),
         ...(debugBody ? { 'x-koma-trace-operation': 'itv.videos.create' } : undefined),
       },
-      body: form,
+      body: JSON.stringify(body),
     });
     const raw = await resp.text();
     if (!resp.ok) throw new Error(`提交视频任务失败 (${resp.status}): ${raw.slice(0, 1200)}`);
