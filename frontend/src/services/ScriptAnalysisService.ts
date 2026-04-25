@@ -5,18 +5,33 @@
  */
 import type { Character, Scene, Prop, Shot, ScriptAnalysisResult } from '../types';
 import { resolvePromptTemplate } from '../store/promptTemplates';
+import type { ResolvedPromptTemplate } from '../store/promptTemplates';
 import { logLLMCall } from '../store/aiCallLogger';
 import { createLogger } from '../store/logger';
 import { TaskManager, Task } from './TaskManager';
 import { parseLLMJSON } from '../utils/llmJsonParser';
 import { cleanText, splitVisualClauses, CHARACTER_STORY_TOKENS, sanitizeCharacterAppearance } from '../utils/textUtils';
-import { runWithConcurrency } from '../utils/concurrency';
 import { INJECTION_GUARD, wrapUserContent, appendStyleRequirement, type StyleSnapshotLike } from '../utils/promptNormalize';
+import {
+  buildScriptAnalysisOverallProgress,
+  buildScriptAnalysisStatusLine,
+  createInitialScriptAnalysisStageStates,
+  getPrimaryScriptAnalysisStage,
+} from './scriptAnalysisProgress';
+import {
+  buildScriptAnalysisChunkFailureMessage,
+  formatScriptAnalysisChunkError,
+  type ScriptAnalysisChunkFailure,
+} from './scriptAnalysisErrorSummary';
 
 const logger = createLogger('ScriptAnalysisService');
 
-const CHUNK_MAX_RETRIES = 3;
-const CHUNK_CONCURRENCY = 3;
+const CHUNK_MAX_ATTEMPTS = 2;
+const CHUNK_RETRY_BASE_DELAY_MS = 1200;
+const CHUNK_CONCURRENCY = 1;
+const SCRIPT_ANALYSIS_TIMEOUT_MS = 180_000;
+const PLAN_MIN_SCRIPT_LENGTH = 6_000;
+const PLAN_MIN_CHUNK_COUNT = 4;
 
 function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -38,6 +53,17 @@ import {
   addPropEpisodeRef,
 } from '../store/projectStore';
 
+function serviceShouldGeneratePlan(
+  script: string,
+  completedStages: Set<'characters' | 'scenes' | 'props'>,
+): boolean {
+  if (completedStages.has('characters') && completedStages.has('scenes') && completedStages.has('props')) {
+    return false;
+  }
+  const chunks = splitScriptIntoChunks(script);
+  return script.length >= PLAN_MIN_SCRIPT_LENGTH || chunks.length >= PLAN_MIN_CHUNK_COUNT;
+}
+
 // 解析阶段
 export type AnalysisStage = 'characters' | 'scenes' | 'props' | 'shots';
 
@@ -53,6 +79,12 @@ export interface AnalysisProgress {
   stage: AnalysisStage;
   status: 'pending' | 'running' | 'completed' | 'failed';
   message?: string;
+  stageProgress?: number;
+  chunkIndex?: number;
+  chunkTotal?: number;
+  retryAttempt?: number;
+  retryMax?: number;
+  retryDelayMs?: number;
 }
 
 // 分步解析结果
@@ -157,6 +189,7 @@ export class ScriptAnalysisService {
   private episodeContext?: EpisodeContext;
   private styleSnapshot?: StyleSnapshotLike;
   private creationPlan?: CreationPlan;
+  private systemPromptPromise?: Promise<ResolvedPromptTemplate>;
 
   constructor(
     ctx: import('./CreationContext').CreationContext,
@@ -190,8 +223,24 @@ export class ScriptAnalysisService {
   }
 
   // 报告进度
-  private reportProgress(stage: AnalysisStage, status: AnalysisProgress['status'], message?: string) {
-    this.onProgress?.({ stage, status, message });
+  private reportProgress(
+    stage: AnalysisStage,
+    status: AnalysisProgress['status'],
+    message?: string,
+    details?: Omit<AnalysisProgress, 'stage' | 'status' | 'message'>,
+  ) {
+    this.onProgress?.({ stage, status, message, ...details });
+  }
+
+  private getSystemPromptTemplate(): Promise<ResolvedPromptTemplate> {
+    if (!this.systemPromptPromise) {
+      this.systemPromptPromise = resolvePromptTemplate('script_analysis_system', {});
+    }
+    return this.systemPromptPromise;
+  }
+
+  private stringifySchema(schema: unknown): string {
+    return JSON.stringify(schema);
   }
 
   // 调用 LLM
@@ -201,11 +250,11 @@ export class ScriptAnalysisService {
     templateMeta?: { templateId?: string; promptSource?: 'default' | 'custom' | 'finalized' }
   ): Promise<string> {
     // 获取系统提示词模板，追加注入防御指令
-    const resolvedSystemPrompt = await resolvePromptTemplate('script_analysis_system', {});
+    const resolvedSystemPrompt = await this.getSystemPromptTemplate();
     const systemPrompt = resolvedSystemPrompt.prompt + INJECTION_GUARD;
 
     // 构建带 JSON Schema 约束的 prompt
-    const fullPrompt = `${prompt}\n\n请严格按以下 JSON Schema 格式输出：\n${JSON.stringify(schema, null, 2)}`;
+    const fullPrompt = `${prompt}\n\n你必须只返回一个合法 JSON 对象，并严格满足这个 JSON Schema：\n${this.stringifySchema(schema)}`;
 
     // 打印 LLM 调用日志
     logLLMCall(
@@ -222,8 +271,13 @@ export class ScriptAnalysisService {
     const result = await this.ctx.llmProvider.generateText(fullPrompt, systemPrompt, {
       source: 'ScriptAnalysisService.callLLM',
       operation: 'script_analysis',
+      taskKind: 'analyze',
+      taskProfileId: 'script-analysis',
       targetName: this.episodeContext?.episodeName || '剧本解析',
       stream: false,
+      disableChunking: true,
+      timeoutMs: SCRIPT_ANALYSIS_TIMEOUT_MS,
+      responseFormat: 'json_object',
     });
     return result;
   }
@@ -244,8 +298,13 @@ export class ScriptAnalysisService {
   ): Promise<T[]> {
     const chunks = splitScriptIntoChunks(script);
     const collected = new Map<string, T>();
+    let completedChunks = 0;
 
-    this.reportProgress(stage, 'running', `正在分析${label}...（共 ${chunks.length} 个分块，并发 ${CHUNK_CONCURRENCY}）`);
+    this.reportProgress(stage, 'running', `正在分析${label}...（共 ${chunks.length} 个分块，并发 ${CHUNK_CONCURRENCY}）`, {
+      stageProgress: 0,
+      chunkIndex: 0,
+      chunkTotal: chunks.length,
+    });
 
     // 预构建每个分块的 prompt（不依赖其他分块结果）
     // 如果有 CreationPlan，将全局规划信息注入每个 chunk 的 prompt
@@ -267,39 +326,65 @@ export class ScriptAnalysisService {
       })
     );
 
-    // 并发执行分块 LLM 调用（带重试）
-    const tasks = chunkPrompts.map(({ chunk, chunkPrompt, resolvedPrompt }) => async () => {
+    let failedChunks = 0;
+    const chunkFailures: ScriptAnalysisChunkFailure[] = [];
+    for (const { chunk, chunkPrompt, resolvedPrompt } of chunkPrompts) {
+      this.reportProgress(stage, 'running', `正在分析${label}...（${chunk.index}/${chunk.total}）`, {
+        stageProgress: completedChunks / chunks.length,
+        chunkIndex: chunk.index,
+        chunkTotal: chunk.total,
+      });
+
+      let items: any[] | null = null;
       let lastError: unknown;
-      for (let attempt = 0; attempt < CHUNK_MAX_RETRIES; attempt++) {
+      for (let attempt = 0; attempt < CHUNK_MAX_ATTEMPTS; attempt++) {
         try {
           const result = await this.callLLM(chunkPrompt, schema, {
             templateId: resolvedPrompt.template.id,
             promptSource: resolvedPrompt.source,
           });
-          return { chunk, items: parseItems(result) };
+          items = parseItems(result);
+          break;
         } catch (err: unknown) {
           lastError = err;
-          if (attempt < CHUNK_MAX_RETRIES - 1) {
-            await delay(1000 * (attempt + 1));
+          if (attempt < CHUNK_MAX_ATTEMPTS - 1) {
+            const retryDelayMs = CHUNK_RETRY_BASE_DELAY_MS * (attempt + 1);
+            this.reportProgress(stage, 'running', `正在重试${label}分块 ${chunk.index}/${chunk.total}...`, {
+              stageProgress: completedChunks / chunks.length,
+              chunkIndex: chunk.index,
+              chunkTotal: chunk.total,
+              retryAttempt: attempt + 2,
+              retryMax: CHUNK_MAX_ATTEMPTS,
+              retryDelayMs,
+            });
+            await delay(retryDelayMs);
           }
         }
       }
-      throw lastError;
-    });
 
-    const results = await runWithConcurrency(tasks, CHUNK_CONCURRENCY);
-
-    let failedChunks = 0;
-    for (const result of results) {
-      if (result.status === 'rejected') {
+      if (!items) {
         failedChunks++;
-        logger.warn(`${label}分块解析失败（已重试 ${CHUNK_MAX_RETRIES} 次）`, {
-          error: result.reason instanceof Error ? result.reason.message : String(result.reason),
+        const chunkError = formatScriptAnalysisChunkError(lastError);
+        chunkFailures.push({
+          chunkIndex: chunk.index,
+          chunkTotal: chunk.total,
+          error: lastError,
+        });
+        logger.warn(`${label}分块解析失败（已重试 ${CHUNK_MAX_ATTEMPTS} 次）`, {
+          chunkIndex: chunk.index,
+          chunkTotal: chunk.total,
+          error: chunkError,
         });
         continue;
       }
-      const { chunk, items } = result.value;
-      this.reportProgress(stage, 'running', `正在分析${label}...（${chunk.index}/${chunk.total} 完成）`);
+
+      completedChunks++;
+      this.reportProgress(stage, 'running', `正在分析${label}...（${completedChunks}/${chunk.total} 完成）`, {
+        stageProgress: completedChunks / chunks.length,
+        chunkIndex: completedChunks,
+        chunkTotal: chunk.total,
+      });
+
       for (const item of items) {
         if (!item?.name || collected.has(item.name)) continue;
         collected.set(item.name, mapItem(item, collected.size));
@@ -307,7 +392,7 @@ export class ScriptAnalysisService {
     }
 
     if (collected.size === 0 && failedChunks > 0) {
-      throw new Error(`所有分块均解析失败，共 ${failedChunks} 个分块`);
+      throw new Error(buildScriptAnalysisChunkFailureMessage(label, chunkFailures));
     }
 
     return Array.from(collected.values());
@@ -365,11 +450,11 @@ export class ScriptAnalysisService {
         })
       );
 
-      this.reportProgress('characters', 'completed', `识别到 ${characters.length} 个角色`);
+      this.reportProgress('characters', 'completed', `识别到 ${characters.length} 个角色`, { stageProgress: 1 });
       return { success: true, data: characters, episodeId: this.episodeContext?.episodeId };
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      this.reportProgress('characters', 'failed', errorMessage);
+      this.reportProgress('characters', 'failed', errorMessage, { stageProgress: 1 });
       return { success: false, error: errorMessage };
     }
   }
@@ -405,11 +490,11 @@ export class ScriptAnalysisService {
         })
       );
 
-      this.reportProgress('scenes', 'completed', `识别到 ${scenes.length} 个场景`);
+      this.reportProgress('scenes', 'completed', `识别到 ${scenes.length} 个场景`, { stageProgress: 1 });
       return { success: true, data: scenes, episodeId: this.episodeContext?.episodeId };
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      this.reportProgress('scenes', 'failed', errorMessage);
+      this.reportProgress('scenes', 'failed', errorMessage, { stageProgress: 1 });
       return { success: false, error: errorMessage };
     }
   }
@@ -443,11 +528,11 @@ export class ScriptAnalysisService {
         })
       );
 
-      this.reportProgress('props', 'completed', `识别到 ${props.length} 个道具`);
+      this.reportProgress('props', 'completed', `识别到 ${props.length} 个道具`, { stageProgress: 1 });
       return { success: true, data: props, episodeId: this.episodeContext?.episodeId };
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      this.reportProgress('props', 'failed', errorMessage);
+      this.reportProgress('props', 'failed', errorMessage, { stageProgress: 1 });
       return { success: false, error: errorMessage };
     }
   }
@@ -667,28 +752,68 @@ export class BackgroundAnalysisService {
         styleSnapshot,
       });
 
+      const existingAnalysis = await loadEpisodeAnalysis(this.projectId, episodeId);
+      const completedStages = new Set(
+        (existingAnalysis?.completedStages || []).filter(
+          (stage): stage is 'characters' | 'scenes' | 'props' => stage === 'characters' || stage === 'scenes' || stage === 'props',
+        ),
+      );
+      const includePlanStage = serviceShouldGeneratePlan(script, completedStages);
+      const stageStates = createInitialScriptAnalysisStageStates({
+        includePlan: includePlanStage,
+        completedStages: Array.from(completedStages),
+      });
+
+      let mergedChars = ctx.characters;
+      let mergedScenes = ctx.scenes;
+      let mergedProps = ctx.props;
+      let characterRefs: string[] = existingAnalysis?.characterRefs || [];
+      let sceneRefs: string[] = existingAnalysis?.sceneRefs || [];
+      let propRefs: string[] = existingAnalysis?.propRefs || [];
+
+      const syncTaskProgress = (override?: {
+        stage?: 'plan' | AnalysisStage;
+        status?: 'pending' | 'running' | 'completed' | 'failed';
+        detailMessage?: string;
+      }) => {
+        const currentStage = override?.stage ?? getPrimaryScriptAnalysisStage(stageStates, { includePlan: includePlanStage });
+        const statusLine = buildScriptAnalysisStatusLine(stageStates, { includePlan: includePlanStage });
+        const detailMessage = override?.detailMessage || stageStates[currentStage]?.message;
+        const stageMessage = detailMessage && detailMessage !== statusLine
+          ? `${statusLine} · ${detailMessage}`
+          : statusLine;
+
+        TaskManager.updateTask(taskId, {
+          progress: buildScriptAnalysisOverallProgress(stageStates, { includePlan: includePlanStage }),
+          result: {
+            currentStage,
+            stageStatus: override?.status ?? stageStates[currentStage]?.status ?? 'running',
+            stageMessage,
+            stageStates,
+          },
+        });
+      };
+
       // 创建解析服务
       const service = new ScriptAnalysisService(ctx, {
         onProgress: (progress) => {
-          const stageProgress: Record<AnalysisStage, number> = {
-            characters: 30,
-            scenes: 55,
-            props: 100,
-            shots: 100,
+          stageStates[progress.stage] = {
+            ...stageStates[progress.stage],
+            status: progress.status,
+            progress: typeof progress.stageProgress === 'number'
+              ? progress.stageProgress
+              : stageStates[progress.stage]?.progress || 0,
+            chunkIndex: progress.chunkIndex,
+            chunkTotal: progress.chunkTotal,
+            retryAttempt: progress.retryAttempt,
+            retryMax: progress.retryMax,
+            retryDelayMs: progress.retryDelayMs,
+            message: progress.message,
           };
-          // plan 阶段占前 5%，后续阶段从 5% 开始
-          const baseProgress = 5 + (stageProgress[progress.stage] - 33) * 0.95;
-          const currentProgress = progress.status === 'completed'
-            ? 5 + stageProgress[progress.stage] * 0.95
-            : baseProgress + 15;
-
-          TaskManager.updateTask(taskId, {
-            progress: Math.round(currentProgress),
-            result: {
-              currentStage: progress.stage,
-              stageStatus: progress.status,
-              stageMessage: progress.message,
-            },
+          syncTaskProgress({
+            stage: progress.stage,
+            status: progress.status,
+            detailMessage: progress.message,
           });
         },
         episodeContext: {
@@ -698,78 +823,68 @@ export class BackgroundAnalysisService {
         },
       });
 
+      syncTaskProgress();
+
       // 在分块分析前生成全局创作规划，注入到后续所有 chunk prompt
-      if (script.length > 3000) {
+      if (includePlanStage) {
         try {
-          TaskManager.updateTask(taskId, {
-            progress: 2,
-            result: { currentStage: 'plan', stageStatus: 'running', stageMessage: '正在生成全局创作规划...' },
-          });
+          stageStates.plan = {
+            status: 'running',
+            progress: 0.15,
+            message: '正在生成全局创作规划...',
+          };
+          syncTaskProgress({ stage: 'plan', status: 'running', detailMessage: '正在生成全局创作规划...' });
           const plan = await generateCreationPlan(ctx, script);
           service.setCreationPlan(plan);
-          TaskManager.updateTask(taskId, {
-            progress: 5,
-            result: { currentStage: 'plan', stageStatus: 'completed', stageMessage: '全局规划完成' },
-          });
+          stageStates.plan = {
+            status: 'completed',
+            progress: 1,
+            message: '全局规划完成',
+          };
+          syncTaskProgress({ stage: 'plan', status: 'completed', detailMessage: '全局规划完成' });
           logger.info('CreationPlan 生成完成', { planId: plan.id, style: plan.style.visualStyle });
         } catch (planError) {
           // 规划生成失败不阻断主流程，降级继续
           logger.warn('CreationPlan 生成失败，跳过规划注入', planError);
+          stageStates.plan = {
+            status: 'completed',
+            progress: 1,
+            message: '已跳过全局规划',
+          };
+          syncTaskProgress({ stage: 'plan', status: 'completed', detailMessage: '已跳过全局规划' });
         }
       }
 
-      let mergedChars = ctx.characters;
-      let mergedScenes = ctx.scenes;
-      let mergedProps = ctx.props;
-      let characterRefs: string[] = [];
-      let sceneRefs: string[] = [];
-      let propRefs: string[] = [];
-      const existingAnalysis = await loadEpisodeAnalysis(this.projectId, episodeId);
-      const completedStages = new Set(existingAnalysis?.completedStages || []);
-      characterRefs = existingAnalysis?.characterRefs || [];
-      sceneRefs = existingAnalysis?.sceneRefs || [];
-      propRefs = existingAnalysis?.propRefs || [];
+      const stageTasks: Array<Promise<{ stage: 'characters' | 'scenes' | 'props'; success: boolean; error?: string }>> = [];
 
       if (!completedStages.has('characters')) {
-        const charResult = await service.extractCharacters(script);
-        if (!charResult.success || !charResult.data) {
-          throw new Error(charResult.error || '角色提取失败');
-        }
-        mergedChars = this.mergeAssets(mergedChars, charResult.data, 'name');
-        const charNameToId = new Map(mergedChars.map(c => [c.name, c.id]));
-        characterRefs = charResult.data.map(c => charNameToId.get(c.name) || c.id);
-        await this.persistStageResult(episodeId, episodeName, 'characters', {
-          mergedChars,
-          mergedScenes,
-          mergedProps,
-          characterRefs,
-          sceneRefs,
-          propRefs,
-        });
-        completedStages.add('characters');
+        stageTasks.push((async () => {
+          const charResult = await service.extractCharacters(script);
+          if (!charResult.success || !charResult.data) {
+            return { stage: 'characters' as const, success: false, error: charResult.error || '角色提取失败' };
+          }
+          mergedChars = this.mergeAssets(mergedChars, charResult.data, 'name');
+          const charNameToId = new Map(mergedChars.map(c => [c.name, c.id]));
+          characterRefs = charResult.data.map(c => charNameToId.get(c.name) || c.id);
+          await this.persistStageResult(episodeId, episodeName, 'characters', {
+            mergedChars,
+            mergedScenes,
+            mergedProps,
+            characterRefs,
+            sceneRefs,
+            propRefs,
+          });
+          completedStages.add('characters');
+          return { stage: 'characters' as const, success: true };
+        })());
       }
 
-      if (!completedStages.has('scenes') || !completedStages.has('props')) {
-        // 场景和道具互不依赖，并行提取
-        const [sceneResult, propsResult] = await Promise.all([
-          !completedStages.has('scenes') ? service.extractScenes(script) : null,
-          !completedStages.has('props') ? service.extractProps(script) : null,
-        ]);
-
-        // 先检查错误，收集所有失败信息
-        const errors: string[] = [];
-        if (sceneResult && (!sceneResult.success || !sceneResult.data)) {
-          errors.push(sceneResult.error || '场景提取失败');
-        }
-        if (propsResult && (!propsResult.success || !propsResult.data)) {
-          errors.push(propsResult.error || '道具提取失败');
-        }
-        if (errors.length > 0) {
-          throw new Error(errors.join('；'));
-        }
-
-        // 持久化成功的结果
-        if (sceneResult?.data) {
+      if (!completedStages.has('scenes')) {
+        stageTasks.push((async () => {
+          const sceneResult = await service.extractScenes(script);
+          if (!sceneResult.success || !sceneResult.data) {
+            return { stage: 'scenes' as const, success: false, error: sceneResult.error || '场景提取失败' };
+          }
           mergedScenes = this.mergeAssets(mergedScenes, sceneResult.data, 'name');
           const sceneNameToId = new Map(mergedScenes.map(s => [s.name, s.id]));
           sceneRefs = sceneResult.data.map(s => sceneNameToId.get(s.name) || s.id);
@@ -782,9 +897,16 @@ export class BackgroundAnalysisService {
             propRefs,
           });
           completedStages.add('scenes');
-        }
+          return { stage: 'scenes' as const, success: true };
+        })());
+      }
 
-        if (propsResult?.data) {
+      if (!completedStages.has('props')) {
+        stageTasks.push((async () => {
+          const propsResult = await service.extractProps(script);
+          if (!propsResult.success || !propsResult.data) {
+            return { stage: 'props' as const, success: false, error: propsResult.error || '道具提取失败' };
+          }
           mergedProps = this.mergeAssets(mergedProps, propsResult.data, 'name');
           const propNameToId = new Map(mergedProps.map(p => [p.name, p.id]));
           propRefs = propsResult.data.map(p => propNameToId.get(p.name) || p.id);
@@ -797,14 +919,26 @@ export class BackgroundAnalysisService {
             propRefs,
           });
           completedStages.add('props');
-        }
+          return { stage: 'props' as const, success: true };
+        })());
+      }
+
+      const stageResults = await Promise.all(stageTasks);
+      const errors = stageResults.filter(result => !result.success).map(result => result.error || `${result.stage} 提取失败`);
+      if (errors.length > 0) {
+        throw new Error(errors.join('；'));
       }
 
       // 更新任务完成
+      syncTaskProgress({ status: 'completed', detailMessage: '解析完成' });
       TaskManager.updateTask(taskId, {
         status: 'completed',
         progress: 100,
         result: {
+          currentStage: getPrimaryScriptAnalysisStage(stageStates, { includePlan: includePlanStage }),
+          stageStatus: 'completed',
+          stageMessage: '解析完成',
+          stageStates,
           charactersCount: characterRefs.length,
           scenesCount: sceneRefs.length,
           propsCount: propRefs.length,
@@ -821,6 +955,8 @@ export class BackgroundAnalysisService {
 
   /**
    * 合并资产，按名称去重
+   * 同名资产采取 upsert 语义：用新提取的描述字段覆盖旧记录，但保留旧的 id / createdAt / 已生成的 media
+   * 以避免 entity_episode_refs 外键引用失效与媒体资产丢失
    */
   private mergeAssets<T extends { id: string; name: string }>(
     existing: T[],
@@ -830,7 +966,17 @@ export class BackgroundAnalysisService {
     const existingMap = new Map(existing.map(item => [item[key], item]));
 
     for (const item of newItems) {
-      if (!existingMap.has(item[key])) {
+      const prev = existingMap.get(item[key]);
+      if (prev) {
+        const prevAny = prev as any;
+        existingMap.set(item[key], {
+          ...prev,
+          ...item,
+          id: prevAny.id,
+          createdAt: prevAny.createdAt ?? (item as any).createdAt,
+          media: prevAny.media ?? (item as any).media,
+        } as T);
+      } else {
         existingMap.set(item[key], item);
       }
     }

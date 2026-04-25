@@ -7,6 +7,7 @@ import type { TTIModelConfig, ProviderStartResult, ProviderTaskSnapshot } from '
 import type { TTIProvider, TTIOptions, TTIRequest, ImageResult } from './types';
 import { safeFetch } from '../../utils/safeFetch';
 import { createLogger } from '../../store/logger';
+import { resolveTTISize } from './utils/ttiSize';
 
 const logger = createLogger('OpenAICompatibleTTI');
 
@@ -108,14 +109,28 @@ export class OpenAICompatibleTTIProvider implements TTIProvider {
   }
 
   private getHeaders(): Record<string, string> {
+    if (this.config.profileId) {
+      return {
+        'x-koma-channel-id': this.config.profileId,
+        'Content-Type': 'application/json',
+      };
+    }
     return {
       'Authorization': `Bearer ${this.config.apiKey || ''}`,
       'Content-Type': 'application/json',
     };
   }
 
+  private getAuthOnlyHeaders(): Record<string, string> {
+    if (this.config.profileId) {
+      return { 'x-koma-channel-id': this.config.profileId };
+    }
+    return { 'Authorization': `Bearer ${this.config.apiKey || ''}` };
+  }
+
   validate(): boolean {
-    return Boolean(this.config.apiKey && this.config.baseUrl && String(this.config.modelName || '').trim());
+    const hasCredentialRef = Boolean(this.config.profileId) || Boolean(this.config.apiKey);
+    return hasCredentialRef && Boolean(this.config.baseUrl) && Boolean(String(this.config.modelName || '').trim());
   }
 
   async testConnection(): Promise<boolean> {
@@ -124,9 +139,7 @@ export class OpenAICompatibleTTIProvider implements TTIProvider {
     try {
       const response = await safeFetch(`${this.getBaseUrl()}/v1/models`, {
         method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${this.config.apiKey || ''}`,
-        },
+        headers: this.getAuthOnlyHeaders(),
       });
       return response.status !== 401 && response.status !== 403;
     } catch {
@@ -153,7 +166,7 @@ export class OpenAICompatibleTTIProvider implements TTIProvider {
    * 同步返回（直接拿到结果）或异步（返回 taskId 轮询）
    */
   async start(request: TTIRequest): Promise<ProviderStartResult<ImageResult>> {
-    if (!this.config.apiKey || !this.config.baseUrl) {
+    if ((!this.config.apiKey && !this.config.profileId) || !this.config.baseUrl) {
       throw new Error('API Key 或 API 地址未配置');
     }
     if (!String(this.config.modelName || '').trim()) {
@@ -168,8 +181,9 @@ export class OpenAICompatibleTTIProvider implements TTIProvider {
       n: 1,
     };
 
-    if (options?.aspectRatio) {
-      body.size = options.aspectRatio;
+    const size = resolveTTISize(options, this.config.defaultSize);
+    if (size) {
+      body.size = size;
     }
 
     if (request.references && request.references.length > 0) {
@@ -209,6 +223,9 @@ export class OpenAICompatibleTTIProvider implements TTIProvider {
         provider: this.config.provider,
         ...(protocol ? { promptProtocol: protocol } : undefined),
         ...(isMultiAngle ? { requestType: 'multi-angle', endpointPath: request.multiAngle?.endpointPath } : undefined),
+        size,
+        requestedAspectRatio: options?.aspectRatio,
+        defaultSize: this.config.defaultSize,
         body: sanitizeBodyForLog(body),
       });
     }
@@ -277,9 +294,7 @@ export class OpenAICompatibleTTIProvider implements TTIProvider {
 
       const response = await safeFetch(url, {
         method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${this.config.apiKey || ''}`,
-        },
+        headers: this.getAuthOnlyHeaders(),
       });
 
       lastStatus = response.status;

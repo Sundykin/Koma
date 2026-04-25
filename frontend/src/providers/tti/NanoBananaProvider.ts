@@ -1,10 +1,17 @@
 /**
  * Nano-Banana TTI Provider
  * 官方文生图服务
+ *
+ * 凭据走 ChannelAuth Strategy（Round3）：
+ *   - 默认 mode='raw-authorization'（NanoBanana 上游接受裸 apiKey，非 Bearer）
+ *   - profileId 存在 → 主进程 x-koma-channel-raw-authorization 代理
+ *   - 回退 → Authorization: <apiKey>（直接明文，不加 Bearer 前缀）
+ * NOTE: 若 B4a 验证结果显示上游也接受 Bearer，可把 mode 改为 'bearer-header' 以统一语义。
  */
 import type { TTIModelConfig, ProviderStartResult, ProviderTaskSnapshot } from '../../types';
 import type { TTIProvider, TTIOptions, TTIRequest, ImageResult } from './types';
-import { safeFetch } from '../../utils/safeFetch';
+import { fetchWithChannelAuth } from '../channel/auth';
+import { isChannelNetError } from '../netError';
 
 // API 响应类型
 interface NanoBananaResponse {
@@ -37,6 +44,8 @@ interface BalanceResponse {
   };
 }
 
+const AUTH_MODE = 'raw-authorization' as const;
+
 export class NanoBananaProvider implements TTIProvider {
   type = 'nano-banana' as const;
   config: TTIModelConfig;
@@ -57,24 +66,22 @@ export class NanoBananaProvider implements TTIProvider {
     return this.config.baseUrl || 'http://ai.hsxbk.top';
   }
 
-  private getHeaders(): Record<string, string> {
-    return {
-      'Authorization': this.config.apiKey || '',
-      'Content-Type': 'application/json',
-    };
-  }
-
   validate(): boolean {
-    return Boolean(this.config.apiKey && String(this.config.modelName || '').trim());
+    return Boolean(
+      (this.config.profileId || this.config.apiKey)
+      && String(this.config.modelName || '').trim(),
+    );
   }
 
   async testConnection(): Promise<boolean> {
     if (!this.validate()) return false;
 
     try {
-      const response = await safeFetch(`${this.getBaseUrl()}/api/user/balance`, {
-        method: 'GET',
-        headers: { 'Authorization': this.config.apiKey || '' },
+      const response = await fetchWithChannelAuth(`${this.getBaseUrl()}/api/user/balance`, {
+        channelId: this.config.profileId,
+        apiKey: this.config.apiKey,
+        mode: AUTH_MODE,
+        fetchOptions: { method: 'GET' },
       });
       const data: BalanceResponse = await response.json();
       return data.code === 200;
@@ -87,7 +94,7 @@ export class NanoBananaProvider implements TTIProvider {
    * 创建图片生成任务
    */
   async start(request: TTIRequest): Promise<ProviderStartResult<ImageResult>> {
-    if (!this.config.apiKey) {
+    if (!this.config.profileId && !this.config.apiKey) {
       throw new Error('API Key 未配置');
     }
     if (!String(this.config.modelName || '').trim()) {
@@ -111,11 +118,24 @@ export class NanoBananaProvider implements TTIProvider {
       body.image_urls = request.references.map(item => item.value);
     }
 
-    const response = await safeFetch(`${this.getBaseUrl()}/api/nano-banana`, {
-      method: 'POST',
-      headers: this.getHeaders(),
-      body: JSON.stringify(body),
-    });
+    let response: Response;
+    try {
+      response = await fetchWithChannelAuth(`${this.getBaseUrl()}/api/nano-banana`, {
+        channelId: this.config.profileId,
+        apiKey: this.config.apiKey,
+        mode: AUTH_MODE,
+        fetchOptions: {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        },
+      });
+    } catch (err) {
+      if (isChannelNetError(err)) {
+        throw new Error(`NanoBanana 请求失败 (${err.status}): ${err.message}`);
+      }
+      throw err;
+    }
 
     const data: NanoBananaResponse = await response.json();
 
@@ -130,10 +150,24 @@ export class NanoBananaProvider implements TTIProvider {
    * 轮询任务状态
    */
   async getTaskSnapshot(taskId: string): Promise<ProviderTaskSnapshot<ImageResult>> {
-    const response = await safeFetch(`${this.getBaseUrl()}/api/nano-banana/task/${taskId}`, {
-      method: 'GET',
-      headers: { 'Authorization': this.config.apiKey || '' },
-    });
+    let response: Response;
+    try {
+      response = await fetchWithChannelAuth(`${this.getBaseUrl()}/api/nano-banana/task/${taskId}`, {
+        channelId: this.config.profileId,
+        apiKey: this.config.apiKey,
+        mode: AUTH_MODE,
+        fetchOptions: { method: 'GET' },
+      });
+    } catch (err) {
+      if (isChannelNetError(err)) {
+        return {
+          state: 'failed',
+          progress: 0,
+          error: `NanoBanana 查询失败 (${err.status}): ${err.message}`,
+        };
+      }
+      throw err;
+    }
 
     const data: NanoBananaTaskResponse = await response.json();
 

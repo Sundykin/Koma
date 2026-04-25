@@ -147,7 +147,7 @@ export async function shotImageWorkflow(params: {
     request: {
       prompt,
       references,
-      options: { width: 1280, height: 720 },
+      options: { aspectRatio: finalAspectRatio },
     },
     promptCompilation: {
       selectedAssets: selectedAssetsForCompilation,

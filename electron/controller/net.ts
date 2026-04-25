@@ -1,6 +1,7 @@
 import { net as electronNet } from 'electron';
 import { BaseController } from './base';
 import { validateUrl } from '../service/url-validator';
+import { getDecryptedApiKey } from '../service/settings/ChannelConfigService';
 
 // 每个 chunk 之间的最大空闲时间（5 分钟，兼容慢模型的首 token 等待）
 const CHUNK_IDLE_TIMEOUT_MS = 300_000;
@@ -126,9 +127,15 @@ function getFetchTransport(): {
 }
 
 function getMultipartFetchTransport(): {
-  transport: 'global-fetch';
+  transport: 'electron-net' | 'global-fetch';
   request: typeof fetch;
 } {
+  if (typeof electronNet?.fetch === 'function') {
+    return {
+      transport: 'electron-net',
+      request: electronNet.fetch.bind(electronNet) as typeof fetch,
+    };
+  }
   return {
     transport: 'global-fetch',
     request: fetch.bind(globalThis),
@@ -192,6 +199,106 @@ class NetController extends BaseController {
     const traceOperation = getHeaderValue(args.headers, 'x-koma-trace-operation');
     const traceTarget = getHeaderValue(args.headers, 'x-koma-trace-target');
     const debugBody = getHeaderValue(args.headers, 'x-koma-debug-body');
+
+    // ---------- Sensitive header 校验（敏感头重复/冲突 → 400） ----------
+    // 用于检测同一语义 header 的大小写变体重复
+    const SENSITIVE_HEADER_NAMES = [
+      'authorization',
+      'x-koma-channel-id',
+      'x-koma-channel-query-key-name',
+      'x-koma-channel-raw-authorization',
+    ];
+    const rawHeaderKeys = Object.keys(args.headers || {});
+    for (const sensitive of SENSITIVE_HEADER_NAMES) {
+      const matches = rawHeaderKeys.filter(k => k.toLowerCase() === sensitive);
+      if (matches.length > 1) {
+        console.warn('[NetController] 敏感 header 重复键', { traceId, sensitive, matches });
+        return {
+          ok: false,
+          status: 400,
+          statusText: 'Bad Request',
+          body: JSON.stringify({
+            error: {
+              code: 'duplicate_sensitive_header',
+              message: `sensitive header "${sensitive}" 不允许大小写变体重复出现`,
+              type: 'koma_client_error',
+            },
+          }),
+        };
+      }
+    }
+
+    const channelId = getHeaderValue(args.headers, 'x-koma-channel-id');
+    const queryKeyName = getHeaderValue(args.headers, 'x-koma-channel-query-key-name');
+    const rawAuthMarker = getHeaderValue(args.headers, 'x-koma-channel-raw-authorization');
+    const rawAuthorization = ['1', 'true', 'yes'].includes(
+      String(rawAuthMarker ?? '').trim().toLowerCase(),
+    );
+
+    // 代理模式与明文 Authorization 互斥
+    const hasExplicitAuth = rawHeaderKeys.some(k => k.toLowerCase() === 'authorization');
+    if ((channelId || queryKeyName || rawAuthorization) && hasExplicitAuth) {
+      console.warn('[NetController] 代理模式与 Authorization 冲突', { traceId, channelId, queryKeyName, rawAuthorization });
+      return {
+        ok: false,
+        status: 400,
+        statusText: 'Bad Request',
+        body: JSON.stringify({
+          error: {
+            code: 'conflict_auth_mode',
+            message: 'x-koma-channel-* 代理模式与显式 Authorization 不允许同时出现',
+            type: 'koma_client_error',
+          },
+        }),
+      };
+    }
+
+    // query-key 代理也要求同时带 channelId（需知从哪个 channel 解密）
+    if (queryKeyName && !channelId) {
+      return {
+        ok: false,
+        status: 400,
+        statusText: 'Bad Request',
+        body: JSON.stringify({
+          error: {
+            code: 'missing_channel_id_for_query_key',
+            message: 'x-koma-channel-query-key-name 必须与 x-koma-channel-id 配对使用',
+            type: 'koma_client_error',
+          },
+        }),
+      };
+    }
+
+    // raw-authorization 代理同理需要 channelId；且与 query-key 互斥
+    if (rawAuthorization && !channelId) {
+      return {
+        ok: false,
+        status: 400,
+        statusText: 'Bad Request',
+        body: JSON.stringify({
+          error: {
+            code: 'missing_channel_id_for_raw_authorization',
+            message: 'x-koma-channel-raw-authorization 必须与 x-koma-channel-id 配对使用',
+            type: 'koma_client_error',
+          },
+        }),
+      };
+    }
+    if (rawAuthorization && queryKeyName) {
+      return {
+        ok: false,
+        status: 400,
+        statusText: 'Bad Request',
+        body: JSON.stringify({
+          error: {
+            code: 'conflict_auth_mode',
+            message: 'x-koma-channel-query-key-name 与 x-koma-channel-raw-authorization 互斥',
+            type: 'koma_client_error',
+          },
+        }),
+      };
+    }
+
     const headers = { ...(args.headers || {}) };
     delete headers['x-koma-trace-id'];
     delete headers['x-koma-trace-source'];
@@ -199,6 +306,91 @@ class NetController extends BaseController {
     delete headers['x-koma-trace-target'];
     // Debug header is for host-side logging only; never forward to upstream.
     delete headers['x-koma-debug-body'];
+    // Channel marker 系列：main-process only, 永远不得转发到上游
+    for (const k of Object.keys(headers)) {
+      const lk = k.toLowerCase();
+      if (
+        lk === 'x-koma-channel-id'
+        || lk === 'x-koma-channel-query-key-name'
+        || lk === 'x-koma-channel-raw-authorization'
+      ) {
+        delete headers[k];
+      }
+    }
+
+    // apiKey 注入：只有通过代理 header 带入时才解密
+    let injectedUrl = args.url;
+    if (channelId) {
+      let plainKey: string | null = null;
+      try {
+        plainKey = getDecryptedApiKey(channelId);
+      } catch (err) {
+        console.error('[NetController] apiKey 解密失败', {
+          traceId,
+          channelId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+      if (!plainKey) {
+        console.warn('[NetController] 渠道缺少 apiKey，拒绝发出请求', { traceId, channelId, url: args.url });
+        return {
+          ok: false,
+          status: 401,
+          statusText: 'Unauthorized',
+          body: JSON.stringify({
+            error: {
+              code: 'channel_api_key_missing',
+              message: `渠道 ${channelId} 未配置 apiKey，请在设置中补全`,
+              type: 'koma_client_error',
+            },
+          }),
+        };
+      }
+
+      if (queryKeyName) {
+        // query-key 模式：把 apiKey 注入到 URL query（参数名由 header 指定）
+        // 防御性：query 参数名必须是合法字符，不允许包含 & = ? # 空格
+        if (!/^[A-Za-z0-9_\-]+$/.test(queryKeyName)) {
+          return {
+            ok: false,
+            status: 400,
+            statusText: 'Bad Request',
+            body: JSON.stringify({
+              error: {
+                code: 'invalid_query_key_name',
+                message: `x-koma-channel-query-key-name 非法字符：${queryKeyName}`,
+                type: 'koma_client_error',
+              },
+            }),
+          };
+        }
+        try {
+          const urlObj = new URL(args.url);
+          urlObj.searchParams.set(queryKeyName, plainKey);
+          injectedUrl = urlObj.toString();
+        } catch (err) {
+          console.error('[NetController] 构造 query-key URL 失败', { traceId, channelId, url: args.url, err });
+          return {
+            ok: false,
+            status: 400,
+            statusText: 'Bad Request',
+            body: JSON.stringify({
+              error: { code: 'invalid_url', message: 'URL 解析失败', type: 'koma_client_error' },
+            }),
+          };
+        }
+      } else if (rawAuthorization) {
+        // raw-authorization 模式：直接把 apiKey 作为 Authorization 值（不加 Bearer）
+        // 仅用于少数上游接受裸 key 的服务（如 NanoBanana）
+        headers['Authorization'] = plainKey;
+      } else {
+        // 默认 Bearer 模式
+        headers['Authorization'] = `Bearer ${plainKey}`;
+      }
+    }
+
+    // 使用注入后的 URL 继续后续发送流程（query-key 模式会带上 ?key=xxx）
+    const requestUrl = injectedUrl;
 
     const initialTransport = args.multipart
       ? getMultipartFetchTransport().transport
@@ -239,7 +431,7 @@ class NetController extends BaseController {
         } else {
           ({ transport, request } = getFetchTransport());
         }
-        const response = await request(args.url, {
+        const response = await request(requestUrl, {
           method: args.method || 'GET',
           headers,
           body: reqBody,

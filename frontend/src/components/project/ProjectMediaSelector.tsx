@@ -129,7 +129,7 @@ export const ProjectMediaSelector: React.FC<ProjectMediaSelectorProps> = ({
         settings,
         category: 'itv',
         explicitSelection: mediaSelections?.itv,
-        requirement: requirements?.itv,
+        requirement: requirements?.itv || PROJECT_MEDIA_BASE_REQUIREMENTS.itv,
       }),
       tts: buildProjectMediaCategoryState({
         settings,

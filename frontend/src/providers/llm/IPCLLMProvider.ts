@@ -1,9 +1,9 @@
 /**
  * IPC LLM Provider
- * 通过 Electron IPC 调用主进程的 LLMQueryService，替代前端直连 LLM API
+ * 通过 Electron IPC 调用主进程的 LLMExecutionEngine，替代前端直连 LLM API
  */
 import type { ModelConfig } from '../../types';
-import type { LLMProvider, ChatMessage, LLMCallOptions } from './types';
+import type { LLMProvider, ChatMessage, LLMCallOptions, LLMStreamChunkHandler } from './types';
 import { llmQuery, llmQueryStream, isLLMIPCAvailable, testLLMConnection } from '../../chat/ipc/chatIPC';
 
 export { isLLMIPCAvailable };
@@ -44,57 +44,33 @@ export class IPCLLMProvider implements LLMProvider {
     }
     messages.push({ role: 'user', content: prompt });
 
-    const response = await llmQuery({
+    const request = {
       messages,
       config: this.buildConfig(),
       options: {
         traceId: options?.traceId,
         source: options?.source,
         operation: options?.operation || 'generateText',
+        taskKind: options?.taskKind,
+        taskProfileId: options?.taskProfileId,
         disableChunking: options?.disableChunking,
         timeoutMs: options?.timeoutMs,
         responseFormat: options?.responseFormat,
       },
-    });
+    };
+
+    const response = (options?.stream || typeof options?.onChunk === 'function')
+      ? await llmQueryStream(request, options?.onChunk)
+      : await llmQuery(request);
     return response.content;
   }
 
-  /**
-   * 流式文本生成 — 无应用层超时，适用于长文本精炼等重量级任务。
-   * 通过 onChunk 回调实时推送生成内容。
-   */
-  async generateTextStream(
-    prompt: string,
-    systemPrompt?: string,
+  async chat(
+    messages: ChatMessage[],
     options?: LLMCallOptions,
-    onChunk?: (delta: string, accumulated: string) => void,
+    onChunk?: LLMStreamChunkHandler,
   ): Promise<string> {
-    const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [];
-    if (systemPrompt) {
-      messages.push({ role: 'system', content: systemPrompt });
-    }
-    messages.push({ role: 'user', content: prompt });
-
-    const response = await llmQueryStream(
-      {
-        messages,
-        config: this.buildConfig(),
-        options: {
-          traceId: options?.traceId,
-          source: options?.source,
-          operation: options?.operation || 'generateTextStream',
-          disableChunking: options?.disableChunking,
-          timeoutMs: options?.timeoutMs,
-          responseFormat: options?.responseFormat,
-        },
-      },
-      onChunk,
-    );
-    return response.content;
-  }
-
-  async chat(messages: ChatMessage[], options?: LLMCallOptions): Promise<string> {
-    const response = await llmQuery({
+    const request = {
       messages: messages.map(m => ({
         role: m.role as 'system' | 'user' | 'assistant',
         content: m.content,
@@ -104,11 +80,17 @@ export class IPCLLMProvider implements LLMProvider {
         traceId: options?.traceId,
         source: options?.source,
         operation: options?.operation || 'chat',
+        taskKind: options?.taskKind,
+        taskProfileId: options?.taskProfileId,
         disableChunking: options?.disableChunking,
         timeoutMs: options?.timeoutMs,
         responseFormat: options?.responseFormat,
       },
-    });
+    };
+
+    const response = options?.stream
+      ? await llmQueryStream(request, onChunk || options?.onChunk)
+      : await llmQuery(request);
     return response.content;
   }
 
@@ -124,11 +106,10 @@ export class IPCLLMProvider implements LLMProvider {
     };
   }
 
-  private mapProvider(provider: string): 'openai' | 'anthropic' | 'google' {
+  private mapProvider(provider: string): string {
+    // 别名归一化；任意其它字符串原样透传（openai-compatible / plugin provider / registry 扩展）
     if (provider === 'claude') return 'anthropic';
     if (provider === 'gemini') return 'google';
-    if (provider === 'openai') return 'openai';
-    if (provider === 'openai-compatible') return 'openai';
-    throw new Error(`Unknown LLM provider: "${provider}"`);
+    return provider;
   }
 }

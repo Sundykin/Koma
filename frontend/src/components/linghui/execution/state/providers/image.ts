@@ -38,7 +38,7 @@ async function executeImageProviderAttempt(
     referenceSources?: string[];
     silentReferenceSources?: string[];
     steps?: number;
-    onProgress?: (progress: number, message?: string) => void;
+    onProgress?: (progress: number, message?: string, partialResult?: unknown) => void;
     placeholderTitle: string;
     placeholderSubtitle?: string;
     accent?: string;
@@ -201,7 +201,7 @@ export async function generateImageWithProvider(params: {
   referenceSources?: string[];
   silentReferenceSources?: string[];
   steps?: number;
-  onProgress?: (progress: number, message?: string) => void;
+  onProgress?: (progress: number, message?: string, partialResult?: unknown) => void;
   placeholderTitle: string;
   placeholderSubtitle?: string;
   accent?: string;

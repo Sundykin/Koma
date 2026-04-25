@@ -149,6 +149,7 @@ export async function compileCharacterPreviewVideoRequest(params: {
   character: Character;
   primaryImage: MediaAssetSource;
   stylePrefix: string;
+  duration?: number;
 }): Promise<CompiledVideoGenerationRequest> {
   const visualPrompt = params.character.prompt || params.character.name;
   const resolvedPrompt = await resolvePromptTemplate('itv_character_motion', {
@@ -157,6 +158,10 @@ export async function compileCharacterPreviewVideoRequest(params: {
     action: `${visualPrompt}, character showcase, subtle breathing, natural eye movement, steady camera`,
   });
 
+  const finalDuration = typeof params.duration === 'number' && Number.isFinite(params.duration) && params.duration > 0
+    ? params.duration
+    : 10;
+
   return {
     prompt: resolvedPrompt.prompt,
     request: {
@@ -164,7 +169,7 @@ export async function compileCharacterPreviewVideoRequest(params: {
       prompt: resolvedPrompt.prompt,
       primaryImage: params.primaryImage,
       additionalReferences: [],
-      options: { duration: 4, aspectRatio: '9:16' },
+      options: { duration: finalDuration, aspectRatio: '9:16' },
     },
     templateId: resolvedPrompt.template.id,
     promptSource: normalizePromptSource(resolvedPrompt.source),
@@ -175,12 +180,17 @@ export async function compilePropPreviewVideoRequest(params: {
   prop: Prop;
   primaryImage: MediaAssetSource;
   stylePrefix: string;
+  duration?: number;
 }): Promise<CompiledVideoGenerationRequest> {
   const resolvedPrompt = await resolvePromptTemplate('itv_prop_motion', {
     stylePrefix: params.stylePrefix,
     description: params.prop.prompt || params.prop.name,
     motion: 'prop showcase, rotating slowly, detailed view',
   });
+
+  const finalDuration = typeof params.duration === 'number' && Number.isFinite(params.duration) && params.duration > 0
+    ? params.duration
+    : 10;
 
   return {
     prompt: resolvedPrompt.prompt,
@@ -189,7 +199,7 @@ export async function compilePropPreviewVideoRequest(params: {
       prompt: resolvedPrompt.prompt,
       primaryImage: params.primaryImage,
       additionalReferences: [],
-      options: { duration: 4, aspectRatio: '1:1' },
+      options: { duration: finalDuration, aspectRatio: '1:1' },
     },
     templateId: resolvedPrompt.template.id,
     promptSource: normalizePromptSource(resolvedPrompt.source),

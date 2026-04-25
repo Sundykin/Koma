@@ -18,6 +18,7 @@ import type {
 } from '../../types/plugin';
 import { validateOperation, validateStoragePath, createSandboxedFetch, hasScope } from './PluginSandbox';
 import { electronService } from '../electronService';
+import { activationService } from '../activationService';
 import { message, Modal } from 'antd';
 import { createLogger } from '../../store/logger';
 import type { ChannelCapability } from '../../providers/registry.types';
@@ -713,6 +714,17 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
             items.splice(idx, 1);
           }
         }
+      },
+    },
+
+    // ========== Activation ==========
+    activation: {
+      async getApiKey() {
+        const info = await activationService.getActivationInfo();
+        return info?.apiKey || null;
+      },
+      async getInfo() {
+        return activationService.getActivationInfo();
       },
     },
   };

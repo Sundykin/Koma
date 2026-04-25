@@ -68,5 +68,4 @@ export {
   setDefaultMediaModelSelection,
   getDefaultMediaModelSelection,
   cleanupDuplicateChannels,
-  cleanupLegacyConfigs,
 } from './channelConfig';

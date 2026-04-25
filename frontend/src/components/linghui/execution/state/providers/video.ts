@@ -55,7 +55,7 @@ async function executeVideoProviderAttempt(
     duration?: number;
     aspectRatio?: string;
     resolution?: string;
-    onProgress?: (progress: number, message?: string) => void;
+    onProgress?: (progress: number, message?: string, partialResult?: unknown) => void;
     itvSelection?: string;
     promptReferences?: LinghuiPromptReferenceItem[];
     primaryReferenceId?: string;
@@ -265,7 +265,7 @@ export async function generateVideoWithProvider(params: {
   duration?: number;
   aspectRatio?: string;
   resolution?: string;
-  onProgress?: (progress: number, message?: string) => void;
+  onProgress?: (progress: number, message?: string, partialResult?: unknown) => void;
   itvSelection?: string;
   promptReferences?: LinghuiPromptReferenceItem[];
   primaryReferenceId?: string;

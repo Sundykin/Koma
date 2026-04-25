@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ExecutionNodeView } from '../state/linghuiExecutionShared';
 
-vi.mock('./linghuiExecutionProviders', () => ({
+vi.mock('../state/linghuiExecutionProviders', () => ({
   generateAudioWithProvider: vi.fn(),
   generateImageWithProvider: vi.fn(),
   generateTextWithProvider: vi.fn(),
@@ -49,7 +49,7 @@ describe('executeScriptNode', () => {
     const executionProviders = await import('../state/linghuiExecutionProviders');
 
     vi.mocked(executionProviders.generateTextWithProvider).mockResolvedValue(
-      '{"shots":[{"title":"镜头 1","description":"古城街道上，主角回头望向远处灯火","durationSec":4}]}',
+      '{"shots":[{"title":"镜头 1","description":"古城街道上，主角回头望向远处灯火","durationSec":10}]}',
     );
 
     const node = createNode();
@@ -59,6 +59,7 @@ describe('executeScriptNode', () => {
     expect(request?.prompt).toBe('生成一段古风短剧分镜');
     expect(request?.systemPrompt).toContain('请只输出 JSON');
     expect(request?.systemPrompt).toContain('输出格式必须是 {"shots"');
+    expect(request?.systemPrompt).toContain('durationSec 只能填写 6、10、12、16、20 之一');
     expect(request?.systemPrompt).toContain('注意中国古代场景和服装细节');
     expect(result.kind).toBe('storyboard');
     if (result.kind !== 'storyboard') {

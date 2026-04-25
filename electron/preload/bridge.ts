@@ -7,8 +7,7 @@ type Listener = (event: IpcRendererEvent, ...args: any[]) => void;
 
 const ALLOWED_INVOKE_CHANNELS = new Set([
   'llm:query', 'llm:queryStream',
-  'llm:testConnection', 'llm:saveProfile', 'llm:deleteProfile',
-  'llm:saveChannelConfig', 'llm:deleteChannelConfig', 'llm:migrateSettingsSecrets',
+  'llm:testConnection',
   'chat:session:create', 'chat:session:get', 'chat:session:dispose',
   'chat:session:list', 'chat:session:updateConfig',
   'chat:message:send', 'chat:message:sendStream', 'chat:message:cancel',
@@ -17,6 +16,12 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   'chat:tool:approve', 'chat:tool:reject', 'chat:tool:listPending',
   'chat:tools:list', 'chat:tools:call',
   'chat:capability:list', 'chat:capability:invoke', 'chat:capability:resolve',
+  // 全局渠道配置 (settings.db)
+  'channel:list', 'channel:get', 'channel:count',
+  'channel:create', 'channel:update', 'channel:delete', 'channel:bulkImport',
+  'channel:setDefault', 'channel:getDefault', 'channel:listDefaults', 'channel:deleteDefault',
+  // 全局 KV
+  'app-kv:get', 'app-kv:set', 'app-kv:delete',
   // controller/* 显式白名单
   'controller/window/minimize', 'controller/window/maximize',
   'controller/window/close', 'controller/window/isMaximized',
@@ -111,6 +116,7 @@ const ALLOWED_LISTEN_CHANNELS = new Set([
   'chat:stream:chunk', 'chat:stream:tool', 'chat:stream:done', 'chat:stream:error',
   'chat:tool:pending', 'chat:tool:approved', 'chat:tool:rejected',
   'llm:stream:chunk', 'llm:stream:done', 'llm:stream:error',
+  'channel:changed',
 ]);
 
 function validateInvokeChannel(channel: string): void {
@@ -174,8 +180,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     readFileAsBase64: (path: string) => invokeMain('controller/fs/readFileAsBase64', { filePath: path }),
     writeFile: (path: string, data: string, binary?: boolean) =>
       invokeMain('controller/fs/writeFile', { filePath: path, data, binary }),
-    downloadFile: (url: string, destPath: string) =>
-      invokeMain('controller/fs/downloadFile', { url, destPath }),
+    downloadFile: (url: string, destPath: string, options?: { headers?: Record<string, string>; channelId?: string }) =>
+      invokeMain('controller/fs/downloadFile', { url, destPath, ...(options || {}) }),
     exists: (path: string) => invokeMain('controller/fs/exists', { filePath: path }),
     mkdir: (path: string) => invokeMain('controller/fs/mkdir', { dirPath: path }),
     readdir: (path: string) => invokeMain('controller/fs/readdir', { dirPath: path }),
@@ -360,11 +366,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     query: (request: any) => invokeMain('llm:query', request),
     queryStream: (request: any) => invokeMain('llm:queryStream', request),
     testConnection: (request: any) => invokeMain('llm:testConnection', request),
-    saveProfile: (request: any) => invokeMain('llm:saveProfile', request),
-    deleteProfile: (profileId: string) => invokeMain('llm:deleteProfile', { profileId }),
-    saveChannelConfig: (request: any) => invokeMain('llm:saveChannelConfig', request),
-    deleteChannelConfig: (request: any) => invokeMain('llm:deleteChannelConfig', request),
-    migrateSettingsSecrets: (request: any) => invokeMain('llm:migrateSettingsSecrets', request),
     onStreamChunk: (callback: (event: any, data: any) => void) => {
       ipcRenderer.on('llm:stream:chunk', callback);
       return () => ipcRenderer.removeListener('llm:stream:chunk', callback);

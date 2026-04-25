@@ -27,7 +27,7 @@ export async function generateAudioWithProvider(params: {
   ttsSelection?: string;
   voiceId?: string;
   settingsSnapshot?: AppSettings;
-  onProgress?: (progress: number, message?: string) => void;
+  onProgress?: (progress: number, message?: string, partialResult?: unknown) => void;
   signal?: AbortSignal;
 }): Promise<LinghuiAudioMediaItem> {
   throwIfExecutionAborted(params.signal);

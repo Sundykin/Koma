@@ -43,8 +43,6 @@ export const TTI_PRESETS: ProviderPreset[] = [
 
 // ITV 厂商预设
 export const ITV_PRESETS: ProviderPreset[] = [
-  // 官方内置渠道，baseUrl 锁死在 catalog.ts 中的 configSchema.baseUrlLocked
-  { id: 'koma-official', name: 'Koma 官方', baseUrl: 'https://api.568069.xyz' },
   {
     id: 'vidu',
     name: 'Vidu',

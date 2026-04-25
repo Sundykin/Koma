@@ -46,6 +46,8 @@
   background-color: #27272a;
   border: 1px solid #3f3f46;
   color: #fafafa;
+  font-size: 13px;
+  line-height: 1.55;
   word-break: break-word;
 }
 
@@ -57,6 +59,229 @@
 
 .userBubble .messageBody :global(.ds-markdown) {
   color: white;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.userBubble .messageBody :global(.ds-markdown p),
+.userBubble .messageBody :global(.ds-markdown .ds-markdown-paragraph),
+.userBubble .messageBody :global(.ds-markdown li) {
+  line-height: 1.55;
+}
+
+.userBubble .messageBody :global(.ds-markdown pre) {
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.userBubble .messageBody :global(.ds-markdown code) {
+  font-size: 12px;
+}
+
+.assistantBubble .messageBody :global(.ds-markdown),
+.streamingContent :global(.ds-markdown) {
+  --ds-rgb-primary: 16 185 129;
+  --ds-rgb-label-1: 250 250 250;
+  --ds-rgb-label-2: 212 212 216;
+  --ds-rgb-label-3: 161 161 170;
+  --ds-rgb-link: 52 211 153;
+  --dsr-bg: transparent;
+  --dsr-border-1: #52525b;
+  --dsr-border-2: #3f3f46;
+  --ds-button-hover-color: rgba(255, 255, 255, 0.08);
+  --ds-md-inline-code-color: rgba(255, 255, 255, 0.1);
+  --ds-thinking-border-color: #3f3f46;
+  color: #fafafa;
+  background: transparent;
+  background-color: transparent;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.assistantBubble .messageBody :global(.ds-markdown *),
+.streamingContent :global(.ds-markdown *) {
+  box-sizing: border-box;
+}
+
+.assistantBubble .messageBody :global(.ds-markdown p),
+.assistantBubble .messageBody :global(.ds-markdown .ds-markdown-paragraph),
+.streamingContent :global(.ds-markdown p),
+.streamingContent :global(.ds-markdown .ds-markdown-paragraph) {
+  margin: 0 0 8px;
+  color: #fafafa;
+  background: transparent;
+  line-height: 1.55;
+}
+
+.assistantBubble .messageBody :global(.ds-markdown pre),
+.streamingContent :global(.ds-markdown pre) {
+  margin: 12px 0;
+  padding: 12px;
+  background: #18181b;
+  background-color: #18181b;
+  border: 1px solid #3f3f46;
+  border-radius: 8px;
+  color: #e4e4e7;
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-x: auto;
+}
+
+.assistantBubble .messageBody :global(.ds-markdown .md-code-block),
+.streamingContent :global(.ds-markdown .md-code-block),
+.assistantBubble .messageBody :global(.ds-markdown .md-code-block-light),
+.streamingContent :global(.ds-markdown .md-code-block-light),
+.assistantBubble .messageBody :global(.ds-markdown .md-code-block-dark),
+.streamingContent :global(.ds-markdown .md-code-block-dark) {
+  --ds-md-code-block-border-color: #3f3f46;
+  --ds-md-code-block-banner-wrap-background-color: #18181b;
+  --ds-md-code-banner-background-color: #27272a;
+  margin: 12px 0;
+  background: #18181b;
+  background-color: #18181b;
+  border: 1px solid #3f3f46;
+  border-radius: 10px;
+  color: #e4e4e7;
+  overflow: hidden;
+}
+
+.assistantBubble .messageBody :global(.ds-markdown .md-code-block-banner-wrap),
+.assistantBubble .messageBody :global(.ds-markdown .md-code-block-banner),
+.assistantBubble .messageBody :global(.ds-markdown .md-code-block-footer),
+.streamingContent :global(.ds-markdown .md-code-block-banner-wrap),
+.streamingContent :global(.ds-markdown .md-code-block-banner),
+.streamingContent :global(.ds-markdown .md-code-block-footer) {
+  background: #27272a;
+  background-color: #27272a;
+  color: #d4d4d8;
+}
+
+.assistantBubble .messageBody :global(.ds-markdown .md-code-block-language),
+.streamingContent :global(.ds-markdown .md-code-block-language) {
+  color: #a1a1aa;
+}
+
+.assistantBubble .messageBody :global(.ds-markdown .md-code-block-content),
+.streamingContent :global(.ds-markdown .md-code-block-content) {
+  background: #18181b;
+  background-color: #18181b;
+}
+
+.assistantBubble .messageBody :global(.ds-markdown .md-code-block pre),
+.streamingContent :global(.ds-markdown .md-code-block pre) {
+  margin: 0;
+  padding: 12px;
+  background: transparent;
+  background-color: transparent;
+  border: none;
+  border-radius: 0;
+}
+
+.assistantBubble .messageBody :global(.ds-markdown .md-code-block-action-btn),
+.streamingContent :global(.ds-markdown .md-code-block-action-btn) {
+  color: #d4d4d8;
+}
+
+.assistantBubble .messageBody :global(.ds-markdown .md-code-block-action-btn:hover),
+.streamingContent :global(.ds-markdown .md-code-block-action-btn:hover) {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fafafa;
+}
+
+.assistantBubble .messageBody :global(.ds-markdown code),
+.streamingContent :global(.ds-markdown code) {
+  padding: 2px 5px;
+  background: rgba(255, 255, 255, 0.1);
+  color: #f4f4f5;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.assistantBubble .messageBody :global(.ds-markdown pre code),
+.streamingContent :global(.ds-markdown pre code) {
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  border-radius: 0;
+  white-space: pre;
+}
+
+.assistantBubble .messageBody :global(.ds-markdown blockquote),
+.streamingContent :global(.ds-markdown blockquote) {
+  margin: 10px 0;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border-left: 3px solid #10b981;
+  color: #d4d4d8;
+}
+
+.assistantBubble .messageBody :global(.ds-markdown a),
+.streamingContent :global(.ds-markdown a) {
+  color: #34d399;
+}
+
+.assistantBubble .messageBody :global(.ds-markdown ul),
+.assistantBubble .messageBody :global(.ds-markdown ol),
+.streamingContent :global(.ds-markdown ul),
+.streamingContent :global(.ds-markdown ol) {
+  margin: 8px 0;
+  padding-left: 24px;
+  color: #fafafa;
+}
+
+.assistantBubble .messageBody :global(.ds-markdown li),
+.streamingContent :global(.ds-markdown li) {
+  margin-top: 4px;
+  line-height: 1.55;
+}
+
+.assistantBubble .messageBody :global(.ds-markdown table),
+.streamingContent :global(.ds-markdown table) {
+  width: 100%;
+  margin: 12px 0;
+  border-collapse: collapse;
+  color: #fafafa;
+  background: transparent;
+}
+
+.assistantBubble .messageBody :global(.ds-markdown th),
+.assistantBubble .messageBody :global(.ds-markdown td),
+.streamingContent :global(.ds-markdown th),
+.streamingContent :global(.ds-markdown td) {
+  padding: 6px 10px;
+  border: 1px solid #3f3f46;
+}
+
+.assistantBubble .messageBody :global(.ds-markdown th),
+.streamingContent :global(.ds-markdown th) {
+  background: rgba(255, 255, 255, 0.06);
+  background-color: rgba(255, 255, 255, 0.06);
+  color: #fafafa;
+}
+
+.assistantBubble .messageBody :global(.ds-markdown .markdown-table-wrapper),
+.streamingContent :global(.ds-markdown .markdown-table-wrapper) {
+  margin: 12px 0;
+  background: transparent;
+  background-color: transparent;
+}
+
+.assistantBubble .messageBody :global(.ds-markdown hr),
+.streamingContent :global(.ds-markdown hr) {
+  height: 1px;
+  margin: 16px 0;
+  background-color: #3f3f46;
+  border: none;
+}
+
+.assistantBubble .messageBody :global(.ds-markdown > :first-child),
+.streamingContent :global(.ds-markdown > :first-child) {
+  margin-top: 0;
+}
+
+.assistantBubble .messageBody :global(.ds-markdown > :last-child),
+.streamingContent :global(.ds-markdown > :last-child) {
+  margin-bottom: 0;
 }
 
 .messageActions {
@@ -130,6 +355,8 @@
   background-color: #27272a;
   border: 1px solid #3f3f46;
   color: #fafafa;
+  font-size: 13px;
+  line-height: 1.55;
 }
 
 .thinkingIndicator {

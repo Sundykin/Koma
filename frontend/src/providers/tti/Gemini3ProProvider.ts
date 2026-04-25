@@ -5,6 +5,7 @@
 import type { TTIModelConfig, ProviderStartResult, ProviderTaskSnapshot } from '../../types';
 import type { TTIProvider, TTIOptions, TTIRequest, ImageResult } from './types';
 import { safeFetch } from '../../utils/safeFetch';
+import { resolveTTISize } from './utils/ttiSize';
 
 // API 响应类型
 interface Gemini3ProCreateResponse {
@@ -60,14 +61,28 @@ export class Gemini3ProProvider implements TTIProvider {
   }
 
   private getHeaders(): Record<string, string> {
+    if (this.config.profileId) {
+      return {
+        'x-koma-channel-id': this.config.profileId,
+        'Content-Type': 'application/json',
+      };
+    }
     return {
       'Authorization': `Bearer ${this.config.apiKey || ''}`,
       'Content-Type': 'application/json',
     };
   }
 
+  private getAuthOnlyHeaders(): Record<string, string> {
+    if (this.config.profileId) {
+      return { 'x-koma-channel-id': this.config.profileId };
+    }
+    return { 'Authorization': `Bearer ${this.config.apiKey || ''}` };
+  }
+
   validate(): boolean {
-    return Boolean(this.config.apiKey && String(this.config.modelName || '').trim());
+    const hasCredentialRef = Boolean(this.config.profileId) || Boolean(this.config.apiKey);
+    return hasCredentialRef && Boolean(String(this.config.modelName || '').trim());
   }
 
   async testConnection(): Promise<boolean> {
@@ -95,7 +110,7 @@ export class Gemini3ProProvider implements TTIProvider {
    * 创建图片生成任务
    */
   async start(request: TTIRequest): Promise<ProviderStartResult<ImageResult>> {
-    if (!this.config.apiKey) {
+    if (!this.config.apiKey && !this.config.profileId) {
       throw new Error('API Key 未配置');
     }
     if (!String(this.config.modelName || '').trim()) {
@@ -109,9 +124,10 @@ export class Gemini3ProProvider implements TTIProvider {
       n: 1,
     };
 
-    // 尺寸比例
-    if (options?.aspectRatio) {
-      body.size = options.aspectRatio;
+    // OpenAI-compatible image APIs expect WxH size, not raw aspect ratio.
+    const size = resolveTTISize(options, this.config.defaultSize);
+    if (size) {
+      body.size = size;
     }
 
     // 参考图（图生图）
@@ -140,9 +156,7 @@ export class Gemini3ProProvider implements TTIProvider {
   async getTaskSnapshot(taskId: string): Promise<ProviderTaskSnapshot<ImageResult>> {
     const response = await safeFetch(`${this.getBaseUrl()}/v1/images/generations/${taskId}`, {
       method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${this.config.apiKey || ''}`,
-      },
+      headers: this.getAuthOnlyHeaders(),
     });
 
     if (!response.ok) {

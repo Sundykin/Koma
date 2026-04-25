@@ -21,6 +21,7 @@ export interface SplitOptions {
   targetEpisodeCount?: number;
   maxEpisodeDuration?: number;
   splitStrategy: 'auto' | 'scene' | 'chapter';
+  onChunk?: (delta: string, accumulated: string) => void;
 }
 
 export type { EpisodeBlueprint, SplitAnalysis, SplitPoint, SplitResult } from './episodeSplitUtils';
@@ -217,7 +218,14 @@ export class EpisodeSplitService {
 
     const response = await this.provider.generateText(
       buildSplitPrompt(script, options),
-      systemPrompt
+      systemPrompt,
+      {
+        source: 'EpisodeSplitService.analyzeScript',
+        operation: 'episode_split_analysis',
+        taskKind: 'analyze',
+        stream: typeof options.onChunk === 'function',
+        onChunk: options.onChunk,
+      },
     );
 
     if (this.aborted) {

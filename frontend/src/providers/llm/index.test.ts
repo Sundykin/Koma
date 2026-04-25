@@ -33,12 +33,6 @@ describe('createLLMProvider', () => {
     expect(IPCLLMProvider).not.toHaveBeenCalled();
   });
 
-  it('深路径导入的直连 provider 也必须不可用', async () => {
-    const { ClaudeProvider } = await import('./ClaudeProvider');
-
-    expect(() => new ClaudeProvider({ provider: 'claude', apiKey: 'key', modelName: 'model' } as any)).toThrow(/removed|移除|IPC/i);
-  });
-
   it('IPCLLMProvider 在存在 profileId 时不要求前端 apiKey', async () => {
     const { IPCLLMProvider } = await vi.importActual<typeof import('./IPCLLMProvider')>('./IPCLLMProvider');
 

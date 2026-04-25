@@ -6,6 +6,8 @@ import type { ProviderStartResult } from '../../types';
 import type { TTSProvider, TTSRequest } from './types';
 import { electronService } from '../../services/electronService';
 import { createLogger } from '../../store/logger';
+import { fetchWithChannelAuth } from '../channel/auth';
+import { isChannelNetError } from '../netError';
 
 const logger = createLogger('OpenAITTSProvider');
 
@@ -35,42 +37,51 @@ export class OpenAITTSProvider implements TTSProvider {
   }
 
   validate(): boolean {
-    return Boolean(this.config.apiKey && String(this.config.modelName || '').trim());
+    return Boolean(
+      (this.config.profileId || this.config.apiKey)
+      && String(this.config.modelName || '').trim(),
+    );
   }
 
   async testConnection(): Promise<boolean> {
-    // 简单验证 API Key 格式
+    // 简单验证凭据 + 模型格式
     return this.validate();
   }
 
   async start(request: TTSRequest): Promise<ProviderStartResult<AudioResult>> {
     const { text, voiceId, options } = request;
-    if (!this.config.apiKey) {
+    if (!this.config.profileId && !this.config.apiKey) {
       throw new Error('OpenAI API Key 未配置');
     }
     if (!String(this.config.modelName || '').trim()) {
       throw new Error('OpenAI TTS 模型未配置');
     }
 
-    const response = await fetch(
-      `${this.config.baseUrl || 'https://api.openai.com/v1'}/audio/speech`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${this.config.apiKey}`,
+    let response: Response;
+    try {
+      response = await fetchWithChannelAuth(
+        `${this.config.baseUrl || 'https://api.openai.com/v1'}/audio/speech`,
+        {
+          channelId: this.config.profileId,
+          apiKey: this.config.apiKey,
+          mode: 'bearer-header',
+          fetchOptions: {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              model: this.getModelName(),
+              input: text,
+              voice: voiceId,
+              speed: options?.rate || 1.0,
+            }),
+          },
         },
-        body: JSON.stringify({
-          model: this.getModelName(),
-          input: text,
-          voice: voiceId,
-          speed: options?.rate || 1.0,
-        }),
+      );
+    } catch (err) {
+      if (isChannelNetError(err)) {
+        throw new Error(`OpenAI TTS 合成失败 (${err.status}): ${err.message}`);
       }
-    );
-
-    if (!response.ok) {
-      throw new Error(`OpenAI TTS 合成失败: ${response.statusText}`);
+      throw err;
     }
 
     const blob = await response.blob();

@@ -269,6 +269,13 @@ export interface MediaProviderConfig {
   apiKey?: string;
   baseUrl?: string;
   /**
+   * 主进程侧 ChannelConfig 主键；由前端 resolver 填入。
+   * Provider 发起 HTTP 请求时应通过 `x-koma-channel-id` Header 携带此值，
+   * 由主进程 NetController 解密后自动注入 Authorization。
+   * 明文 apiKey 不出主进程。
+   */
+  profileId?: string;
+  /**
    * Optional prompt compilation protocol.
    * When set, MediaGenerationService may compile prompt + align reference arrays before provider.start().
    */
@@ -372,6 +379,7 @@ export interface TTSConfig {
   baseUrl?: string;
   modelName?: string;
   defaultVoice?: string;
+  profileId?: string; // 渠道凭据代理 ID（与 ITVConfig/TTIModelConfig 对齐）；仅远程 TTS（OpenAI/Fish）使用
 }
 
 export interface ITVConfig {
@@ -382,6 +390,13 @@ export interface ITVConfig {
   modelName?: string;
   defaultDuration?: number;  // 默认视频时长（秒）
   defaultResolution?: string; // 默认分辨率
+  profileId?: string; // 渠道凭据代理 ID（与 MediaProviderConfig 对齐），主进程通过 x-koma-channel-id 解密注入 Authorization
+  /**
+   * Optional prompt compilation protocol.
+   * When set, videoRequestCompiler will compile @mentions into protocol-specific tokens
+   * (e.g. 'grok-image-index' rewrites `@角色名` → `@Image N` and caps additionalReferences to 3).
+   */
+  promptProtocol?: 'grok-image-index';
 }
 
 export interface AppSettings {

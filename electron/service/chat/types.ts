@@ -46,7 +46,12 @@ export interface SessionConfig {
   maxTokens?: number;
   enabledTools?: string[];
   llmProfileId?: string;
-  modelProvider?: 'openai' | 'anthropic' | 'google';
+  /**
+   * LLM provider 类型（= LLMProviderRegistry.type）
+   * 内置：'openai' / 'openai-compatible' / 'anthropic' / 'google'
+   * 插件可注册任意 string type；未知 type 自动降级为 'openai-compatible'
+   */
+  modelProvider?: string;
   modelName?: string;
   apiKey?: string;
   baseUrl?: string;
@@ -201,7 +206,7 @@ export interface AgentTemplate {
   // LLM 配置
   temperature?: number;
   maxTokens?: number;
-  modelProvider?: 'openai' | 'anthropic' | 'google';
+  modelProvider?: string;
   modelName?: string;
   // UI
   icon?: string;

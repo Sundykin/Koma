@@ -127,4 +127,31 @@ describe('OpenAICompatibleTTIProvider', () => {
       },
     });
   });
+
+  it('sends OpenAI-compatible size as WxH instead of raw aspectRatio', async () => {
+    (safeFetch as any).mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({ data: [{ url: 'https://cdn.example.com/square.png' }] }),
+    });
+
+    const provider = new OpenAICompatibleTTIProvider({
+      id: 'c1',
+      name: 'openai-compatible',
+      provider: 'openai-compatible-tti' as any,
+      baseUrl: 'https://api.example.com',
+      apiKey: 'k',
+      isDefault: true,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      modelName: 'image-model',
+      defaultSize: '720x1280',
+    } as any);
+
+    await provider.start({ prompt: 'p', options: { aspectRatio: '1:1' } } as any);
+
+    const body = JSON.parse((safeFetch as any).mock.calls[0][1].body);
+    expect(body.size).toBe('1024x1024');
+  });
+
 });

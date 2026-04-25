@@ -1,10 +1,8 @@
 import { app, BrowserWindow, ipcMain } from 'electron';
 import { createOrchestrator, AgentOrchestrator } from './AgentOrchestrator';
 import { chatService } from './ChatService';
-import { llmQueryService } from './LLMQueryService';
-import type { LLMConnectionTestRequest, LLMQueryRequest, LLMSaveProfileRequest } from './LLMQueryService';
-import { llmProfileStore } from './LLMProfileStore';
-import { llmChannelConfigTransactionService } from './LLMChannelConfigTransactionService';
+import { llmExecutionEngine } from '../llm';
+import type { LLMConnectionTestRequest, LLMQueryRequest } from '../llm';
 import { importFromFile, importFromObject, exportConfig, exportToFile } from './mcp/MCPConfigLoader';
 import type {
   ChatInput,
@@ -20,7 +18,6 @@ import { mcpRegistry } from '../plugin/registries';
 import { capabilityRegistry } from '../plugin/capability';
 
 const VALID_ROLES = new Set(['system', 'user', 'assistant']);
-const VALID_PROVIDERS = new Set(['openai', 'anthropic', 'google']);
 const MAX_CONTENT_LENGTH = 100_000;
 const MAX_MESSAGES = 200;
 const MAX_CONCURRENT_LLM_QUERIES = 5;
@@ -33,14 +30,6 @@ const WORKFLOW_SOURCE_PATTERNS = ['workflow', 'script', 'shot', 'entity', 'episo
 function isWorkflowSource(source: string): boolean {
   const lower = source.toLowerCase();
   return WORKFLOW_SOURCE_PATTERNS.some(p => lower.includes(p));
-}
-
-function validateLLMSaveProfileRequest(args: unknown): args is LLMSaveProfileRequest {
-  if (!args || typeof args !== 'object') return false;
-  const req = args as Record<string, unknown>;
-  if (typeof req.profileId !== 'string' || req.profileId.trim() === '') return false;
-  if (req.apiKey !== undefined && typeof req.apiKey !== 'string') return false;
-  return true;
 }
 
 function validateLLMQueryRequest(args: unknown): args is LLMQueryRequest {
@@ -61,7 +50,13 @@ function validateLLMQueryRequest(args: unknown): args is LLMQueryRequest {
   // config object
   if (!req.config || typeof req.config !== 'object') return false;
   const cfg = req.config as Record<string, unknown>;
-  if (cfg.modelProvider !== undefined && !VALID_PROVIDERS.has(cfg.modelProvider as string)) return false;
+  // modelProvider 放宽为任意非空 string（放行 openai-compatible / 插件 provider / registry 扩展）
+  if (
+    cfg.modelProvider !== undefined
+    && (typeof cfg.modelProvider !== 'string' || cfg.modelProvider.trim().length === 0)
+  ) {
+    return false;
+  }
 
   return true;
 }
@@ -140,13 +135,27 @@ class ChatIpc {
       }
       const acquired = await this.waitForSlot(isWorkflow);
       if (!acquired) {
-        console.warn('[ChatIpc] llm:query 排队超时', { traceId, source, isWorkflow, active: this.activeLLMQueries });
+        console.warn('[ChatIpc] llm:query 排队超时', {
+          traceId,
+          source,
+          isWorkflow,
+          active: this.activeLLMQueries,
+          activeWorkflow: this.activeWorkflowQueries,
+          activeUser: this.activeUserQueries,
+          queued: this.waitQueue.length,
+          limits: {
+            total: MAX_CONCURRENT_LLM_QUERIES,
+            workflow: MAX_CONCURRENT_WORKFLOW_QUERIES,
+            user: MAX_CONCURRENT_USER_QUERIES,
+            queueTimeoutMs: QUEUE_TIMEOUT_MS,
+          },
+        });
         return { content: '', error: { code: 'API_ERROR' as const, message: 'LLM query queue timeout, please retry later' } };
       }
       console.info('[ChatIpc] llm:query 接收请求', { traceId, source, isWorkflow, active: this.activeLLMQueries, activeWorkflow: this.activeWorkflowQueries, activeUser: this.activeUserQueries });
       try {
         // query() 内部已捕获所有异常并返回结构化错误，此处 catch 仅作保底
-        const result = await llmQueryService.query(args);
+        const result = await llmExecutionEngine.query(args);
         if (result.error) {
           console.warn('[ChatIpc] llm:query 返回错误', { traceId, source, error: result.error });
         }
@@ -174,6 +183,21 @@ class ChatIpc {
 
       const acquired = await this.waitForSlot(isWorkflow);
       if (!acquired) {
+        console.warn('[ChatIpc] llm:queryStream 排队超时', {
+          traceId,
+          source,
+          isWorkflow,
+          active: this.activeLLMQueries,
+          activeWorkflow: this.activeWorkflowQueries,
+          activeUser: this.activeUserQueries,
+          queued: this.waitQueue.length,
+          limits: {
+            total: MAX_CONCURRENT_LLM_QUERIES,
+            workflow: MAX_CONCURRENT_WORKFLOW_QUERIES,
+            user: MAX_CONCURRENT_USER_QUERIES,
+            queueTimeoutMs: QUEUE_TIMEOUT_MS,
+          },
+        });
         return { content: '', error: { code: 'API_ERROR' as const, message: 'LLM query queue timeout' } };
       }
 
@@ -185,24 +209,23 @@ class ChatIpc {
       // Fire-and-forget: 先返回 streamId，让前端注册监听后再接收流式事件
       void (async () => {
         try {
-          await llmQueryService.queryStream(
-            args,
-            (delta) => {
+          await llmExecutionEngine.queryStream(args, {
+            onChunk: (delta) => {
               if (!sender.isDestroyed()) {
                 sender.send('llm:stream:chunk', { streamId, delta });
               }
             },
-            (result) => {
+            onDone: (result) => {
               if (!sender.isDestroyed()) {
                 sender.send('llm:stream:done', { streamId, content: result.content, usage: result.usage });
               }
             },
-            (error) => {
+            onError: (error) => {
               if (!sender.isDestroyed()) {
                 sender.send('llm:stream:error', { streamId, error });
               }
             },
-          );
+          });
         } catch (err: unknown) {
           const errMsg = err instanceof Error ? err.message : String(err);
           console.error('[ChatIpc] llm:queryStream 未预期异常', { traceId, source, error: errMsg });
@@ -219,38 +242,11 @@ class ChatIpc {
 
     ipcMain.handle('llm:testConnection', async (_event, args: LLMConnectionTestRequest) => {
       try {
-        return await llmQueryService.testConnection(args);
+        return await llmExecutionEngine.testConnection(args);
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err);
         return { success: false, error: { code: 'UNKNOWN' as const, message } };
       }
-    });
-
-    ipcMain.handle('llm:saveProfile', async (_event, args: LLMSaveProfileRequest) => {
-      if (!validateLLMSaveProfileRequest(args)) {
-        return { success: false, error: { code: 'API_ERROR' as const, message: 'Invalid LLM profile payload' } };
-      }
-      const saved = llmProfileStore.saveProfile({
-        profileId: args.profileId,
-        apiKey: args.apiKey,
-      });
-      return { success: true, updatedAt: saved.updatedAt };
-    });
-
-    ipcMain.handle('llm:deleteProfile', async (_event, args: { profileId: string }) => {
-      return { success: llmProfileStore.deleteProfile(args.profileId) };
-    });
-
-    ipcMain.handle('llm:saveChannelConfig', async (_event, args) => {
-      return llmChannelConfigTransactionService.saveChannelConfig(args);
-    });
-
-    ipcMain.handle('llm:deleteChannelConfig', async (_event, args) => {
-      return llmChannelConfigTransactionService.deleteChannelConfig(args);
-    });
-
-    ipcMain.handle('llm:migrateSettingsSecrets', async (_event, args) => {
-      return llmChannelConfigTransactionService.migrateSettingsSecrets(args);
     });
 
     ipcMain.handle('chat:session:create', async (event, args: { config?: SessionConfig }) => {

@@ -299,6 +299,7 @@ export function buildTTIConfigFromContext(context: ResolvedChannelModelContext):
     id: serializeMediaSelection({ channelId: context.channelConfig.id, modelId: context.model.id }) || context.channelConfig.id,
     name: context.channelConfig.name,
     provider: provider as TTIModelConfig['provider'],
+    profileId: context.channelConfig.id,
     modelName: context.model.providerModelName,
     isDefault: false,
     createdAt: context.channelConfig.createdAt,
@@ -312,6 +313,7 @@ export function buildITVConfigFromContext(context: ResolvedChannelModelContext):
     id: serializeMediaSelection({ channelId: context.channelConfig.id, modelId: context.model.id }) || context.channelConfig.id,
     name: context.channelConfig.name,
     provider: provider as ITVModelConfig['provider'],
+    profileId: context.channelConfig.id,
     modelName: context.model.providerModelName,
     isDefault: false,
     createdAt: context.channelConfig.createdAt,
@@ -329,6 +331,7 @@ export function buildITVProviderConfigFromContext(context: ResolvedChannelModelC
     modelName: config.modelName,
     defaultDuration: config.defaultDuration,
     defaultResolution: config.defaultResolution,
+    profileId: config.profileId,
   };
 }
 
@@ -339,6 +342,7 @@ export function buildTTSConfigFromContext(context: ResolvedChannelModelContext):
     name: context.channelConfig.name,
     provider: provider as TTSModelConfig['provider'],
     modelName: context.model.providerModelName,
+    profileId: context.channelConfig.id,
     isDefault: false,
     createdAt: context.channelConfig.createdAt,
     updatedAt: context.channelConfig.updatedAt,

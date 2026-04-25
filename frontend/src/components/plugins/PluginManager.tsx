@@ -71,7 +71,10 @@ export const PluginManager: React.FC = () => {
           cleanupPluginResources(id);
 
           // 删除插件文件
-          await electronService.ipc.invoke('controller/plugin/uninstall', { pluginPath: plugin.rootPath });
+          const result = await electronService.ipc.invoke('controller/plugin/uninstallById', { pluginId: id });
+          if (!result?.success) {
+            throw new Error(result?.error || t('error.deleteFailed'));
+          }
 
           // 从 store 移除
           unregisterPlugin(id);

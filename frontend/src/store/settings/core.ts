@@ -1,6 +1,12 @@
 /**
  * 核心设置存储
- * 负责设置的加载和保存
+ *
+ * 数据分层（最终形态）：
+ *   渠道类：channelConfigs / mediaDefaults → {userData}/settings.db (via channel:* IPC)
+ *   其它类：promptTemplates / customThemePresets / stylePrompts → {storageRoot}/settings.json
+ *
+ * loadSettings 负责把两处数据拼成一个 AppSettings 返回，让上游消费者透明。
+ * saveSettings 只写 json；channelConfigs/mediaDefaults 由 channelConfigService 负责。
  */
 import { electronService } from '../../services/electronService';
 import { getStorageConfig, initStorageConfig } from '../storageConfig';
@@ -8,7 +14,7 @@ import type { AppSettings } from '../../types';
 import { STORAGE_KEYS } from '../../constants/storageKeys';
 import { createLogger } from '../logger';
 import { encryptSettings, decryptSettings, initEncryption } from '../encryption';
-import { migrateLLMSecretsTransaction } from '../../chat/ipc/chatIPC';
+import * as channelService from '../../services/channelConfigService';
 
 const logger = createLogger('Settings');
 
@@ -59,8 +65,35 @@ async function ensureEncryption(): Promise<void> {
   _encryptionReady = true;
 }
 
+/**
+ * 把 SQLite 里的渠道配置与默认值覆盖到 settings 对象上。
+ * 仅在 Electron 环境执行。
+ */
+async function applyChannelStore(settings: AppSettings): Promise<AppSettings> {
+  if (!electronService.isElectron()) return settings;
+  try {
+    const [channelConfigs, mediaDefaults] = await Promise.all([
+      channelService.listChannels(),
+      channelService.listMediaDefaults(),
+    ]);
+    return {
+      ...settings,
+      channelConfigs,
+      mediaDefaults,
+    };
+  } catch (err) {
+    logger.error('applyChannelStore failed', err);
+    return {
+      ...settings,
+      channelConfigs: settings.channelConfigs ?? [],
+      mediaDefaults: settings.mediaDefaults ?? {},
+    };
+  }
+}
+
 // 加载设置
 export async function loadSettings(): Promise<AppSettings> {
+  // 浏览器 fallback —— 开发调试/测试用，渠道配置不可用
   if (!electronService.isElectron()) {
     try {
       const data = localStorage.getItem(STORAGE_KEYS.SETTINGS);
@@ -75,9 +108,11 @@ export async function loadSettings(): Promise<AppSettings> {
     return DEFAULT_SETTINGS;
   }
 
+  // Electron 正式路径
+  let base: AppSettings = { ...DEFAULT_SETTINGS };
+
   try {
     await ensureEncryption();
-    const storageConfig = getStorageConfig() || (await initStorageConfig());
     const path = await getGlobalPath('settings.json');
     const exists = await electronService.fs.exists(path);
     if (exists) {
@@ -85,25 +120,17 @@ export async function loadSettings(): Promise<AppSettings> {
       let parsed = JSON.parse(data);
       parsed = migrateEncryptedData(parsed);
       const decrypted = await decryptSettings(parsed);
-      const merged = { ...DEFAULT_SETTINGS, ...decrypted };
-      try {
-        const rootPath = storageConfig.rootPath;
-        const migration = await migrateLLMSecretsTransaction({ rootPath, settings: merged });
-        if (migration.migrated) {
-          return migration.settings as AppSettings;
-        }
-      } catch (migrationErr) {
-        logger.error('loadSettings migration error', migrationErr);
-      }
-      return merged;
+      base = { ...DEFAULT_SETTINGS, ...decrypted };
     }
   } catch (err) {
     logger.error('loadSettings error', err);
   }
-  return DEFAULT_SETTINGS;
+
+  // 无论 json 是否存在，都以 SQLite 为真值填充渠道类字段
+  return applyChannelStore(base);
 }
 
-// 保存设置
+// 保存设置 —— 仅持久化非渠道字段到 settings.json
 export async function saveSettings(settings: AppSettings): Promise<void> {
   if (!electronService.isElectron()) {
     localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(settings));
@@ -111,7 +138,12 @@ export async function saveSettings(settings: AppSettings): Promise<void> {
   }
 
   await ensureEncryption();
-  const encrypted = await encryptSettings(settings);
+
+  // 剥离由 SQLite 托管的字段，避免 json 与 db 双写
+  const { channelConfigs: _chs, mediaDefaults: _md, ...rest } = settings;
+  const toPersist = rest as AppSettings;
+
+  const encrypted = await encryptSettings(toPersist);
   const path = await getGlobalPath('settings.json');
   await electronService.fs.writeFile(path, JSON.stringify(encrypted, null, 2));
 }

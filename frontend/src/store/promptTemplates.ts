@@ -204,9 +204,9 @@ const COMMON_VARIABLE_DEFINITIONS: Record<string, Omit<PromptTemplateVariable, '
   },
   durationSeconds: {
     label: '镜头时长',
-    description: '当前镜头的总时长，用于视频提示词的时间片段规划。',
+    description: '当前镜头的总时长，用于视频提示词的时间片段规划；只能是 6、10、12、16、20 之一。',
     format: '秒数字符串',
-    example: '4',
+    example: '10',
     required: true,
   },
   imageMode: {
@@ -417,7 +417,7 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
 - scriptContent: 对应的剧本原文
 - shotType: 景别（close-up特写/medium中景/wide全景/extreme-wide大全景）
 - cameraMovement: 运镜方式（static固定/pan摇镜/zoom-in推镜/tracking跟随/handheld手持）
-- duration: 预估时长（秒），控制在10秒以内
+- duration: 预估时长（秒），只能填写 6、10、12、16、20 之一，推荐默认 10 秒
 - characters: 出现的角色名列表
 - dialogue: 角色台词，格式为"角色名（情绪）：台词内容"
 - emotion: 画面情绪氛围
@@ -552,7 +552,7 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
     template: `你是一位专业的分镜师。请将以下剧本拆解为分镜列表。
 
 【时长要求】
-每个镜头控制在10秒以内。
+每个镜头的 duration 只能填写 6、10、12、16、20 之一；无法判断时填写 10。
 
 【情绪词列表】
 高兴、愤怒、悲伤、恐惧、反感、低落、惊讶、自然、急切、平静、激动、呵斥、关心、严肃
@@ -575,8 +575,8 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
       "scriptContent": "对应的剧本原文片段",
       "shotType": "close-up/medium/wide/extreme-wide",
       "cameraMovement": "static/pan/zoom-in/tracking/handheld",
-      "duration": 5,
-      "dialogue": "角色名（情绪）：\\"台词内容\\"",
+      "duration": 10,
+      "dialogue": "角色名（情绪）：“台词内容”",
       "characters": ["已知角色名称"],
       "emotion": "情绪标签",
       "props": ["已知道具名称"],
@@ -1006,9 +1006,15 @@ description 字段要求：
     id: 'tti_character_costume',
     name: '角色定妆照（三视图）',
     description: '生成角色三视图定妆照',
-    template: '{{stylePrefix}}, character turnaround sheet, white background, front view | side view | back view, three poses in one image, full body standing reference, neutral stance, clear silhouette, clothing layers visible, objective appearance details only, {{appearance}}',
+    template: '{{stylePrefix}}, character turnaround sheet, white background, front view | side view | back view, three poses in one image, full body standing reference, neutral stance, clear silhouette, clothing layers visible, objective appearance details only, {{gender}} {{age}} {{appearance}}',
     variables: [
       variable('stylePrefix'),
+      variable('gender', {
+        description: '角色性别英文标签（male/female/androgynous），自动从 Character.gender 映射。未知或空值会跳过。',
+      }),
+      variable('age', {
+        description: '角色年龄的英文描述。纯数字会转为 "N years old"；"未知" 等占位值会跳过。',
+      }),
       variable('appearance', {
         description: '角色当前用于生图的客观外观描述，只能包含脸部、发型、服装、材质、配色、体态等可见信息。',
       }),

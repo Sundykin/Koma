@@ -6,7 +6,9 @@ import { chatIPC, type MCPToolDefinition } from '../../../../chat/ipc';
 import type {
   LinghuiAgentNodeProperties,
   LinghuiNodeData,
+  LinghuiNodeRunState,
 } from '../../../../types/linghui';
+import { getLinghuiResultText } from '../../../../types/linghui';
 import { loadSettings } from '../../../../store/settings/core';
 import { listConfiguredModelSelectOptions } from '../../../../providers/channel/resolver';
 import { useLinghuiNodeMutation } from '../../nodes/state/LinghuiNodeRunsContext';
@@ -29,6 +31,7 @@ interface AgentToolOption {
 interface AgentNodeEditorProps {
   nodeId: string;
   nodeData: LinghuiNodeData;
+  nodeRun?: LinghuiNodeRunState;
   promptReferences?: LinghuiPromptReferenceItem[];
   onRun: () => void;
 }
@@ -36,6 +39,7 @@ interface AgentNodeEditorProps {
 export const AgentNodeEditor: React.FC<AgentNodeEditorProps> = ({
   nodeId,
   nodeData,
+  nodeRun,
   promptReferences = [],
   onRun,
 }) => {
@@ -49,6 +53,8 @@ export const AgentNodeEditor: React.FC<AgentNodeEditorProps> = ({
   const [providers, setProviders] = useState<ProviderOption[]>([]);
   const [toolOptions, setToolOptions] = useState<AgentToolOption[]>([]);
   const [toolsLoading, setToolsLoading] = useState(false);
+  const outputText = String(getLinghuiResultText(nodeRun?.result) ?? '').trim();
+  const isStreaming = nodeRun?.status === 'running';
 
   useEffect(() => {
     loadSettings().then(settings => {
@@ -196,6 +202,19 @@ export const AgentNodeEditor: React.FC<AgentNodeEditorProps> = ({
           minHeight="124px"
           maxHeight="240px"
         />
+      </div>
+
+      <div className="linghuiEditorField">
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+          <span className="linghuiEditorSettingsLabel">实时输出</span>
+          <span className="linghuiEditorSummaryPill">{outputText.length} 字</span>
+        </div>
+        <div
+          className="linghuiNodeTextarea"
+          style={{ minHeight: 172, overflow: 'auto', whiteSpace: 'pre-wrap', color: '#e4e4e7' }}
+        >
+          {outputText || (isStreaming ? '正在等待 Agent 返回首段内容...' : '执行后会在这里显示实时输出')}
+        </div>
       </div>
 
       <div className="linghuiEditorControlRow">

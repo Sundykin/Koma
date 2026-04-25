@@ -91,7 +91,12 @@ export async function generateCreationPlan(
   const response = await ctx.llmProvider.chat([
     { role: 'system', content: '你是一个专业的影视创作顾问，擅长分析剧本并制定创作计划。只返回合法 JSON。' },
     { role: 'user', content: prompt },
-  ]);
+  ], {
+    source: 'ScriptAnalysisService.creationPlan',
+    operation: 'creation_plan',
+    taskKind: 'analyze',
+    taskProfileId: 'script-analysis',
+  });
 
   const data = parseLLMJSON<Omit<CreationPlan, 'id' | 'projectId' | 'status' | 'createdAt'>>(response);
 

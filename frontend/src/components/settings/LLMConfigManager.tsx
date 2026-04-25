@@ -23,7 +23,6 @@ import {
   EditOutlined,
   KeyOutlined,
   LoadingOutlined,
-  PlusOutlined,
   RobotOutlined,
   StarFilled,
   StarOutlined,
@@ -31,21 +30,28 @@ import {
 import type { AppSettings, LLMModelConfig } from '../../types';
 import { createLLMProvider } from '../../providers/llm';
 import { buildLLMConfigFromContext } from '../../providers/channel/resolver';
-import { deleteLLMChannelConfigTransaction, saveLLMChannelConfigTransaction } from '../../chat/ipc/chatIPC';
 import type { ChannelModelDefinition, ModelCapability } from '../../providers/channel/types';
 import {
   generateId,
   setDefaultMediaModelSelection,
+  addChannelConfig,
+  updateChannelConfig,
+  deleteChannelConfig,
 } from '../../store/globalStore';
 import { ChannelModelsEditor } from './ChannelModelsEditor';
+import { useTranslation } from 'react-i18next';
 import {
   buildChannelFormValues,
   buildManagedChannelCards,
+  formatChannelError,
   getPreferredChannelModelId,
   listBuiltInChannelOptions,
 } from './channelManagerShared';
 import { useMediaConfigManager } from './useMediaConfigManager';
-import { getStorageConfig } from '../../store/storageConfig';
+import {
+  isKomaActivationManagedChannel,
+  withKomaActivationChannelMarker,
+} from '../../utils/activationManagedChannels';
 
 interface LLMConfigManagerProps {
   onConfigChange?: () => void;
@@ -82,6 +88,7 @@ function getChannelDefaults(definition?: ReturnType<typeof listBuiltInChannelOpt
 }
 
 export const LLMConfigManager: React.FC<LLMConfigManagerProps> = ({ onConfigChange }) => {
+  const { t } = useTranslation();
   const { message } = App.useApp();
 
   const channelDefinitions = useMemo(() => listBuiltInChannelOptions('llm'), []);
@@ -109,7 +116,9 @@ export const LLMConfigManager: React.FC<LLMConfigManagerProps> = ({ onConfigChan
     loadConfigs,
   } = useMediaConfigManager<LLMModelConfig>('llm', loadBuiltins, onConfigChange);
 
-  const currentProviderType = Form.useWatch('providerType', form) as string | undefined;
+  const watchedProviderType = Form.useWatch('providerType', form) as string | undefined;
+  const isEditingActivationChannel = isKomaActivationManagedChannel(editingChannel);
+  const currentProviderType = isEditingActivationChannel ? editingChannel?.providerType : watchedProviderType;
   const currentDefinition = currentProviderType ? definitionMap.get(currentProviderType) : undefined;
   const currentIsOpenAICompatible = currentDefinition?.runtimeProviderType === 'openai-compatible';
   const editingHasStoredApiKey = Boolean(editingChannel && (editingChannel.providerConfig as Record<string, unknown> | undefined)?.hasApiKey);
@@ -220,7 +229,11 @@ export const LLMConfigManager: React.FC<LLMConfigManagerProps> = ({ onConfigChan
   const handleSave = useCallback(async () => {
     try {
       const values = await form.validateFields();
-      const definition = definitionMap.get(values.providerType);
+      const isActivationChannel = isKomaActivationManagedChannel(editingChannel);
+      const effectiveProviderType = isActivationChannel && editingChannel
+        ? editingChannel.providerType
+        : values.providerType;
+      const definition = definitionMap.get(effectiveProviderType);
       if (!definition) {
         throw new Error('未找到对应的 LLM 渠道定义');
       }
@@ -232,38 +245,42 @@ export const LLMConfigManager: React.FC<LLMConfigManagerProps> = ({ onConfigChan
         : models[0]?.id;
       if (!defaultModelId) throw new Error('请至少添加一个模型');
 
+      const providerConfig = isActivationChannel && editingChannel
+        ? withKomaActivationChannelMarker({
+            baseUrl: editingChannel.providerConfig?.baseUrl,
+          })
+        : {
+            baseUrl: values.baseUrl,
+            ...(String(values.apiKey || '').trim()
+              ? { apiKey: String(values.apiKey).trim() }
+              : {}),
+          };
+
       const payload = {
-        name: values.name,
+        name: isActivationChannel && editingChannel ? editingChannel.name : values.name,
         description: definition.description,
         category: 'llm' as const,
-        providerType: definition.id,
-        providerConfig: {
-          baseUrl: values.baseUrl,
-          hasApiKey: editingHasStoredApiKey || Boolean(String(values.apiKey || '').trim()),
-        },
+        providerType: effectiveProviderType,
+        providerConfig,
         defaultModelId,
         models,
         enabled: true,
         source: 'builtin' as const,
       };
 
-      const rootPath = getStorageConfig()?.rootPath;
-      if (!rootPath) {
-        throw new Error('未找到存储根目录配置');
+      const saved = editingChannel
+        ? await updateChannelConfig(editingChannel.id, payload)
+        : await addChannelConfig(payload);
+
+      if (!saved) {
+        throw new Error('保存渠道配置失败');
       }
 
-      const nextApiKey = String(values.apiKey || '').trim();
-      const savedResult = await saveLLMChannelConfigTransaction({
-        rootPath,
-        ...(editingChannel ? { editingChannelId: editingChannel.id } : {}),
-        payload,
-        ...(nextApiKey ? { profileApiKey: nextApiKey } : {}),
-        shouldUpdateDefault: !settings?.mediaDefaults?.llm
-          || settings.mediaDefaults.llm.channelId === (editingChannel?.id || 'PENDING_NEW_CHANNEL'),
-      });
-
-      if (!savedResult.success || !savedResult.channel) {
-        throw new Error(savedResult.error?.message || '保存渠道配置失败');
+      const shouldUpdateDefault =
+        !settings?.mediaDefaults?.llm
+        || settings.mediaDefaults.llm.channelId === (editingChannel?.id || 'PENDING_NEW_CHANNEL');
+      if (shouldUpdateDefault) {
+        await setDefaultMediaModelSelection('llm', { channelId: saved.id, modelId: defaultModelId });
       }
 
       message.success(editingChannel ? '配置已更新' : '配置已添加');
@@ -272,22 +289,18 @@ export const LLMConfigManager: React.FC<LLMConfigManagerProps> = ({ onConfigChan
       onConfigChange?.();
     } catch (err: any) {
       if (err?.errorFields) return;
-      message.error(`保存失败: ${err?.message || String(err)}`);
+      message.error(`保存失败: ${formatChannelError(err, t)}`);
     }
   }, [definitionMap, editingChannel, form, loadConfigs, message, onConfigChange, setModalVisible, settings?.mediaDefaults?.llm]);
 
   const handleDelete = useCallback(async (id: string) => {
     try {
-      const rootPath = getStorageConfig()?.rootPath;
-      if (!rootPath) {
-        throw new Error('未找到存储根目录配置');
-      }
-      await deleteLLMChannelConfigTransaction({ rootPath, channelId: id });
+      await deleteChannelConfig(id);
       message.success('配置已删除');
       await loadConfigs();
       onConfigChange?.();
     } catch (err: any) {
-      message.error(`删除失败: ${err?.message || String(err)}`);
+      message.error(`删除失败: ${formatChannelError(err, t)}`);
     }
   }, [loadConfigs, message, onConfigChange]);
 
@@ -328,7 +341,7 @@ export const LLMConfigManager: React.FC<LLMConfigManagerProps> = ({ onConfigChan
         message.error(`"${config.channel.name}" 连接失败，请检查配置`);
       }
     } catch (err: any) {
-      message.error(`连接测试失败: ${err?.message || String(err)}`);
+      message.error(`连接测试失败: ${formatChannelError(err, t)}`);
     } finally {
       setTestingId(null);
     }
@@ -352,9 +365,6 @@ export const LLMConfigManager: React.FC<LLMConfigManagerProps> = ({ onConfigChan
             已配置 <strong>{configs.length}</strong> 个渠道
           </span>
         </div>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => openModal()}>
-          添加渠道
-        </Button>
       </div>
 
       {loading ? (
@@ -366,11 +376,7 @@ export const LLMConfigManager: React.FC<LLMConfigManagerProps> = ({ onConfigChan
           image={Empty.PRESENTED_IMAGE_SIMPLE}
           description="还没有配置任何 LLM 渠道"
           className="settings-empty-state"
-        >
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => openModal()}>
-            添加第一个渠道
-          </Button>
-        </Empty>
+        />
       ) : (
         <Row gutter={[12, 12]}>
           {configs.map((config) => {
@@ -471,10 +477,10 @@ export const LLMConfigManager: React.FC<LLMConfigManagerProps> = ({ onConfigChan
               <Form.Item
                 name="providerType"
                 label="模型渠道"
-                required
-                rules={[{ required: true, message: '请选择模型渠道' }]}
+                required={!isEditingActivationChannel}
+                rules={[{ required: !isEditingActivationChannel, message: '请选择模型渠道' }]}
               >
-                <Select onChange={handleProviderChange}>
+                <Select onChange={handleProviderChange} disabled={isEditingActivationChannel}>
                   {channelDefinitions.map((definition) => (
                     <Select.Option key={definition.id} value={definition.id}>
                       {definition.name}
@@ -486,10 +492,10 @@ export const LLMConfigManager: React.FC<LLMConfigManagerProps> = ({ onConfigChan
               <Form.Item
                 name="name"
                 label="配置名称"
-                required
-                rules={[{ required: true, message: '请输入配置名称' }]}
+                required={!isEditingActivationChannel}
+                rules={[{ required: !isEditingActivationChannel, message: '请输入配置名称' }]}
               >
-                <Input placeholder="如: DeepSeek 团队账号" />
+                <Input placeholder="如: DeepSeek 团队账号" disabled={isEditingActivationChannel} />
               </Form.Item>
             </div>
           </div>
@@ -531,11 +537,12 @@ export const LLMConfigManager: React.FC<LLMConfigManagerProps> = ({ onConfigChan
                     {!currentIsOpenAICompatible && <span className="text-zinc-500 ml-2 text-xs">(可选，用于代理)</span>}
                   </span>
                 )}
-                rules={[{ required: currentIsOpenAICompatible, message: '请输入 API 地址' }]}
+                rules={[{ required: currentIsOpenAICompatible && !isEditingActivationChannel, message: '请输入 API 地址' }]}
               >
                 <Input
                   prefix={<ApiOutlined />}
                   placeholder={currentIsOpenAICompatible ? 'https://api.deepseek.com/v1' : '可留空使用官方地址'}
+                  disabled={isEditingActivationChannel}
                 />
               </Form.Item>
 
@@ -543,11 +550,15 @@ export const LLMConfigManager: React.FC<LLMConfigManagerProps> = ({ onConfigChan
                 name="apiKey"
                 label="API Key"
                 className="settings-grid-span-full"
-                required={!editingHasStoredApiKey}
-                rules={[{ required: !editingHasStoredApiKey, message: '请输入 API Key' }]}
+                required={!editingHasStoredApiKey && !isEditingActivationChannel}
+                rules={[{ required: !editingHasStoredApiKey && !isEditingActivationChannel, message: '请输入 API Key' }]}
                 style={{ marginBottom: 0 }}
               >
-                <Input.Password prefix={<KeyOutlined />} placeholder={editingHasStoredApiKey ? '留空则保持现有 Key' : 'sk-...'} />
+                <Input.Password
+                  prefix={<KeyOutlined />}
+                  placeholder={editingHasStoredApiKey ? '留空则保持现有 Key' : 'sk-...'}
+                  disabled={isEditingActivationChannel}
+                />
               </Form.Item>
             </div>
           </div>

@@ -1,5 +1,6 @@
 import {
   getLinghuiResultPrimaryMedia,
+  type LinghuiAgentExecutionMetadata,
   type LinghuiAgentNodeProperties,
   type LinghuiAudioNodeProperties,
   type LinghuiImageNodeProperties,
@@ -45,7 +46,8 @@ const imageExecutionLogger = createLogger('LinghuiImageExecution');
 const DEFAULT_SCRIPT_SYSTEM_PROMPT = [
   '你是灵绘的分镜脚本助手。',
   '请只输出 JSON，不要附加解释。',
-  '输出格式必须是 {"shots":[{"title":"镜头标题","description":"画面描述","durationSec":3}] }。',
+  '输出格式必须是 {"shots":[{"title":"镜头标题","description":"画面描述","durationSec":10}] }。',
+  'durationSec 只能填写 6、10、12、16、20 之一；无法判断时填写 10。',
   '至少生成 3 个镜头，描述需要明确主体、动作、构图和氛围。',
 ].join('\n');
 
@@ -62,8 +64,15 @@ function buildScriptSystemPrompt(systemPrompt: string): string {
   ].join('\n\n');
 }
 
+type NodeExecutionProgressHandler = (progress: number, message?: string, partialResult?: LinghuiNodeResult) => void;
+
+function resolveStreamingProgress(accumulated: string, base = 18, cap = 92): number {
+  return Math.max(base, Math.min(cap, base + Math.floor(accumulated.trim().length / 48)));
+}
+
 export async function executeTextNode(
   node: ExecutionNodeView,
+  onProgress?: NodeExecutionProgressHandler,
   signal?: AbortSignal,
 ): Promise<LinghuiNodeResult> {
   const {
@@ -111,6 +120,22 @@ export async function executeTextNode(
     systemPrompt: String(systemPrompt).trim(),
     llmSelection: String(llmSelection),
     settingsSnapshot: node.settingsSnapshot,
+    onChunk: (_delta, accumulated) => {
+      onProgress?.(
+        resolveStreamingProgress(accumulated),
+        '文本生成中',
+        {
+          kind: 'text',
+          text: accumulated,
+          metadata: {
+            mode: 'generate',
+            prompt: String(prompt).trim(),
+            systemPrompt: String(systemPrompt).trim(),
+            partial: true,
+          },
+        },
+      );
+    },
     signal,
   });
 
@@ -127,7 +152,7 @@ export async function executeTextNode(
 
 export async function executeAgentNode(
   node: ExecutionNodeView,
-  onProgress?: (progress: number, message?: string) => void,
+  onProgress?: NodeExecutionProgressHandler,
   signal?: AbortSignal,
 ): Promise<LinghuiNodeResult> {
   const {
@@ -163,6 +188,29 @@ export async function executeAgentNode(
     imageSources,
     inputTextCount: textSnippets.length,
     settingsSnapshot: node.settingsSnapshot,
+    onChunk: (_delta, accumulated) => {
+      onProgress?.(
+        resolveStreamingProgress(accumulated, 20, 95),
+        'Agent 输出中',
+        {
+          kind: 'text',
+          text: accumulated,
+          metadata: {
+            mode: 'agent',
+            prompt: String(prompt).trim(),
+            systemPrompt: String(systemPrompt).trim(),
+            llmSelection: String(llmSelection),
+            enabledTools: Array.isArray(enabledTools) ? enabledTools.map(item => String(item)) : [],
+            maxIterations: Number(maxIterations ?? 6),
+            observedToolRounds: 0,
+            toolTrace: [],
+            inputTextCount: textSnippets.length,
+            inputImageCount: imageSources.length,
+            partial: true,
+          } as LinghuiAgentExecutionMetadata,
+        },
+      );
+    },
     onProgress,
     signal,
   });
@@ -176,7 +224,7 @@ export async function executeAgentNode(
 
 export async function executeImageNode(
   node: ExecutionNodeView,
-  onProgress?: (progress: number, message?: string) => void,
+  onProgress?: NodeExecutionProgressHandler,
   signal?: AbortSignal,
 ): Promise<LinghuiNodeResult> {
   const source = String(node.properties.source ?? '').trim();
@@ -323,7 +371,11 @@ export async function executeImageNode(
   };
 }
 
-export async function executeScriptNode(node: ExecutionNodeView, signal?: AbortSignal): Promise<LinghuiNodeResult> {
+export async function executeScriptNode(
+  node: ExecutionNodeView,
+  onProgress?: NodeExecutionProgressHandler,
+  signal?: AbortSignal,
+): Promise<LinghuiNodeResult> {
   const {
     mode = 'manual',
     content = '',
@@ -374,6 +426,27 @@ export async function executeScriptNode(node: ExecutionNodeView, signal?: AbortS
     systemPrompt: buildScriptSystemPrompt(systemPrompt),
     llmSelection: String(llmSelection),
     settingsSnapshot: node.settingsSnapshot,
+    onChunk: (_delta, accumulated) => {
+      const partialParsed = parseLinghuiScriptContent(accumulated);
+      onProgress?.(
+        resolveStreamingProgress(accumulated, 20, 94),
+        '脚本整理中',
+        {
+          kind: 'storyboard',
+          text: partialParsed.formattedText || accumulated,
+          shots: partialParsed.shots,
+          primary: partialParsed.shots[0]?.image,
+          metadata: {
+            mode: 'generate',
+            parseSource: partialParsed.source,
+            prompt: String(prompt).trim(),
+            systemPrompt: String(systemPrompt).trim(),
+            rawGeneratedText: accumulated,
+            partial: true,
+          },
+        },
+      );
+    },
     signal,
   });
   const parsed = parseLinghuiScriptContent(generatedText);
@@ -399,7 +472,7 @@ export async function executeScriptNode(node: ExecutionNodeView, signal?: AbortS
 
 export async function executeVideoNode(
   node: ExecutionNodeView,
-  onProgress?: (progress: number, message?: string) => void,
+  onProgress?: NodeExecutionProgressHandler,
   signal?: AbortSignal,
 ): Promise<LinghuiNodeResult> {
   const source = String(node.properties.source ?? '').trim();
@@ -480,7 +553,7 @@ export async function executeVideoNode(
 
 export async function executeAudioNode(
   node: ExecutionNodeView,
-  onProgress?: (progress: number, message?: string) => void,
+  onProgress?: NodeExecutionProgressHandler,
   signal?: AbortSignal,
 ): Promise<LinghuiNodeResult> {
   const {
@@ -564,12 +637,12 @@ export async function executeAudioNode(
 
 export async function executeNode(
   node: ExecutionNodeView,
-  onProgress?: (progress: number, message?: string) => void,
+  onProgress?: NodeExecutionProgressHandler,
   signal?: AbortSignal,
 ): Promise<LinghuiNodeResult> {
   switch (node.type) {
     case 'linghui/text':
-      return executeTextNode(node, signal);
+      return executeTextNode(node, onProgress, signal);
     case 'linghui/agent':
       return executeAgentNode(node, onProgress, signal);
     case 'linghui/image':
@@ -579,7 +652,7 @@ export async function executeNode(
     case 'linghui/audio':
       return executeAudioNode(node, onProgress, signal);
     case 'linghui/script':
-      return executeScriptNode(node, signal);
+      return executeScriptNode(node, onProgress, signal);
     default:
       throw new Error(`暂不支持执行节点类型：${node.type}`);
   }

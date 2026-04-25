@@ -5,9 +5,12 @@ import * as fs from 'fs';
 import * as https from 'https';
 import * as http from 'http';
 import * as path from 'path';
-import { app } from 'electron';
+import { app, net as electronNet } from 'electron';
 import { BaseController } from './base';
 import { validateUrl } from '../service/url-validator';
+import { getDecryptedApiKey } from '../service/settings/ChannelConfigService';
+
+const DOWNLOAD_TIMEOUT_MS = 180_000;
 
 function isPathAllowed(filePath: string): boolean {
   const normalized = path.resolve(filePath);
@@ -26,6 +29,88 @@ function assertPathAllowed(filePath: string): void {
 }
 
 class FsController extends BaseController {
+  private static getExtensionFromContentType(contentType?: string | string[]): string | null {
+    const raw = Array.isArray(contentType) ? contentType[0] : contentType;
+    const mimeType = String(raw || '').split(';')[0].trim().toLowerCase();
+    if (mimeType === 'image/jpeg') return 'jpg';
+    if (mimeType === 'image/png') return 'png';
+    if (mimeType === 'image/webp') return 'webp';
+    if (mimeType === 'image/gif') return 'gif';
+    if (mimeType === 'video/mp4') return 'mp4';
+    if (mimeType === 'audio/mpeg') return 'mp3';
+    if (mimeType === 'audio/wav') return 'wav';
+    return null;
+  }
+
+  private static replaceExtension(filePath: string, extension: string): string {
+    const parsed = path.parse(filePath);
+    return path.join(parsed.dir, `${parsed.name}.${extension}`);
+  }
+
+  private static buildDownloadHeaders(extraHeaders?: Record<string, string>): Record<string, string> {
+    return {
+      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Koma/1.0 Safari/537.36',
+      'Accept': 'video/mp4,video/*,image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+      'Connection': 'close',
+      ...(extraHeaders || {}),
+    };
+  }
+
+  private static buildAuthHeaders(args: { headers?: Record<string, string>; channelId?: string }): Record<string, string> {
+    const out: Record<string, string> = {};
+    const input = args.headers || {};
+    for (const [key, value] of Object.entries(input)) {
+      const normalized = key.toLowerCase();
+      if (normalized === 'authorization' || normalized === 'x-koma-channel-id') {
+        out[key] = String(value);
+      }
+    }
+    if (!Object.keys(out).some(k => k.toLowerCase() === 'authorization') && args.channelId) {
+      const apiKey = getDecryptedApiKey(args.channelId);
+      if (apiKey) out.Authorization = `Bearer ${apiKey}`;
+    }
+    return out;
+  }
+
+  private static async writeResponseToFile(response: Response, requestedPath: string): Promise<{ success: true; size: number; path: string; mimeType?: string }> {
+    const mimeType = String(response.headers.get('content-type') || '').split(';')[0].trim().toLowerCase() || undefined;
+    const extension = FsController.getExtensionFromContentType(mimeType);
+    const destPath = extension ? FsController.replaceExtension(requestedPath, extension) : requestedPath;
+    assertPathAllowed(destPath);
+
+    const bytes = Buffer.from(await response.arrayBuffer());
+    await fs.promises.writeFile(destPath, bytes);
+    console.info('[FsController:downloadFile] 下载完成，大小:', bytes.byteLength, 'path:', destPath, 'mime:', mimeType);
+    return { success: true, size: bytes.byteLength, path: destPath, mimeType };
+  }
+
+  private static async downloadWithFetch(url: string, requestedPath: string, headers?: Record<string, string>): Promise<{ success: true; size: number; path: string; mimeType?: string }> {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), DOWNLOAD_TIMEOUT_MS);
+    try {
+      const request = typeof electronNet?.fetch === 'function'
+        ? electronNet.fetch.bind(electronNet) as typeof fetch
+        : fetch.bind(globalThis);
+      const response = await request(url, {
+        method: 'GET',
+        redirect: 'follow',
+        headers: FsController.buildDownloadHeaders(headers),
+        signal: controller.signal,
+      });
+      if (!response.ok) {
+        throw new Error(`下载失败: HTTP ${response.status}`);
+      }
+      return FsController.writeResponseToFile(response, requestedPath);
+    } catch (err: any) {
+      if (err?.name === 'AbortError') {
+        throw new Error(`下载超时 (${DOWNLOAD_TIMEOUT_MS}ms)`);
+      }
+      throw err;
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
   async readFile(args: { filePath: string; encoding?: BufferEncoding }) {
     assertPathAllowed(args.filePath);
     const content = await fs.promises.readFile(args.filePath, args.encoding || 'utf-8');
@@ -53,9 +138,18 @@ class FsController extends BaseController {
   // 最大重定向次数
   private static readonly MAX_REDIRECTS = 5;
 
-  async downloadFile(args: { url: string; destPath: string }): Promise<{ success: boolean; size: number }> {
+  async downloadFile(args: { url: string; destPath: string; headers?: Record<string, string>; channelId?: string }): Promise<{ success: boolean; size: number; path: string; mimeType?: string }> {
     assertPathAllowed(args.destPath);
     let currentUrl = args.url;
+    const authHeaders = FsController.buildAuthHeaders({ headers: args.headers, channelId: args.channelId });
+
+    await validateUrl(currentUrl);
+    try {
+      console.info('[FsController:downloadFile] fetch url:', currentUrl, 'timeout:', DOWNLOAD_TIMEOUT_MS, 'hasAuth:', Boolean(authHeaders.Authorization));
+      return await FsController.downloadWithFetch(currentUrl, args.destPath, authHeaders);
+    } catch (err: any) {
+      console.warn('[FsController:downloadFile] fetch 下载失败，回退 http.get:', err?.message || err);
+    }
 
     for (let redirectCount = 0; redirectCount <= FsController.MAX_REDIRECTS; redirectCount++) {
       // SSRF 防护：每次请求（含重定向）都校验 URL
@@ -65,11 +159,11 @@ class FsController extends BaseController {
 
       const result = await new Promise<
         | { redirect: string }
-        | { success: true; size: number }
+        | { success: true; size: number; path: string; mimeType?: string }
       >((resolve, reject) => {
         const protocol = currentUrl.startsWith('https') ? https : http;
 
-        protocol.get(currentUrl, (response) => {
+        const request = protocol.get(currentUrl, { headers: FsController.buildDownloadHeaders(authHeaders), timeout: DOWNLOAD_TIMEOUT_MS }, (response) => {
           if (response.statusCode === 301 || response.statusCode === 302 || response.statusCode === 307 || response.statusCode === 308) {
             const redirectUrl = response.headers.location;
             response.resume(); // drain response
@@ -89,7 +183,12 @@ class FsController extends BaseController {
             return;
           }
 
-          const fileStream = fs.createWriteStream(args.destPath);
+          const mimeType = String(response.headers['content-type'] || '').split(';')[0].trim().toLowerCase() || undefined;
+          const extension = FsController.getExtensionFromContentType(response.headers['content-type']);
+          const destPath = extension ? FsController.replaceExtension(args.destPath, extension) : args.destPath;
+          assertPathAllowed(destPath);
+
+          const fileStream = fs.createWriteStream(destPath);
           let downloadedSize = 0;
 
           response.on('data', (chunk: Buffer) => {
@@ -100,14 +199,16 @@ class FsController extends BaseController {
 
           fileStream.on('finish', () => {
             fileStream.close();
-            console.info('[FsController:downloadFile] 下载完成，大小:', downloadedSize);
-            resolve({ success: true, size: downloadedSize });
+            console.info('[FsController:downloadFile] 下载完成，大小:', downloadedSize, 'path:', destPath, 'mime:', mimeType);
+            resolve({ success: true, size: downloadedSize, path: destPath, mimeType });
           });
 
           fileStream.on('error', (err) => {
-            fs.unlink(args.destPath, () => {});
+            fs.unlink(destPath, () => {});
             reject(err);
           });
+        }).on('timeout', () => {
+          request.destroy(new Error(`下载超时 (${DOWNLOAD_TIMEOUT_MS}ms)`));
         }).on('error', (err) => {
           reject(err);
         });

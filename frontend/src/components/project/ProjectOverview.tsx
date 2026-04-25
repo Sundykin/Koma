@@ -10,6 +10,7 @@ import {
   PanelLeftClose, PanelRightClose, Pencil, Brain, Image, Video, Volume2,
 } from 'lucide-react';
 import type { Project, Episode } from '../../types';
+import type { EpisodeEditorEntryOptions } from '../../workflow/episodeEditorEntry';
 import { EpisodeManager, EpisodeManagerRef } from './EpisodeManager';
 import { EpisodeSplitWizard } from './EpisodeSplitWizard';
 import { ProjectAssetOverview, type ProjectAssetOverviewRef } from './ProjectAssetOverview';
@@ -35,7 +36,7 @@ const logger = createLogger('ProjectOverview');
 
 interface ProjectOverviewProps {
   project: Project;
-  onEnterEpisode: (episode: Episode) => void;
+  onEnterEpisode: (episode: Episode, options?: EpisodeEditorEntryOptions) => void;
   onProjectUpdate: (updates: Partial<Project>) => void;
   onOpenProjectSettings?: () => void;
 }
@@ -94,6 +95,7 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
         settings,
         category: 'itv',
         explicitSelection: project.mediaSelections?.itv,
+        requirement: PROJECT_MEDIA_BASE_REQUIREMENTS.itv,
       }),
       tts: buildProjectMediaCategoryState({
         settings,
@@ -139,7 +141,7 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
     const nextEpisode = flushedEpisode || selectedEpisode;
 
     setSelectedEpisode(nextEpisode);
-    onEnterEpisode(nextEpisode);
+    onEnterEpisode(nextEpisode, { mode: 'start-production' });
   }, [selectedEpisode, onEnterEpisode]);
 
   // 剧本内容变更（自动保存后回调）

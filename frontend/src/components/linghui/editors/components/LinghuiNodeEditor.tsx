@@ -725,6 +725,7 @@ export const LinghuiNodeEditor: React.FC<LinghuiNodeEditorProps> = ({
             <TextNodeEditor
               nodeId={nodeId}
               nodeData={nodeData}
+              nodeRun={nodeRuns[nodeId]}
               promptReferences={promptReferences}
               onRun={() => onRunNode(nodeId)}
             />
@@ -733,6 +734,7 @@ export const LinghuiNodeEditor: React.FC<LinghuiNodeEditorProps> = ({
             <AgentNodeEditor
               nodeId={nodeId}
               nodeData={nodeData}
+              nodeRun={nodeRuns[nodeId]}
               promptReferences={promptReferences}
               onRun={() => onRunNode(nodeId)}
             />

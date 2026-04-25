@@ -25,7 +25,6 @@ import {
   LoadingOutlined,
   NodeIndexOutlined,
   PictureOutlined,
-  PlusOutlined,
   SettingOutlined,
   StarFilled,
   StarOutlined,
@@ -52,6 +51,10 @@ import {
   listBuiltInChannelOptions,
 } from './channelManagerShared';
 import { useMediaConfigManager } from './useMediaConfigManager';
+import {
+  isKomaActivationManagedChannel,
+  withKomaActivationChannelMarker,
+} from '../../utils/activationManagedChannels';
 
 interface TTIConfigManagerProps {
   onConfigChange?: () => void;
@@ -132,8 +135,11 @@ export const TTIConfigManager: React.FC<TTIConfigManagerProps> = ({ onConfigChan
     handlePluginConfigSaved,
   } = useMediaConfigManager<TTIModelConfig>('tti', loadBuiltins, onConfigChange);
 
-  const currentProviderType = Form.useWatch('providerType', form) as string | undefined;
+  const watchedProviderType = Form.useWatch('providerType', form) as string | undefined;
+  const isEditingActivationChannel = isKomaActivationManagedChannel(editingChannel);
+  const currentProviderType = isEditingActivationChannel ? editingChannel?.providerType : watchedProviderType;
   const currentDefinition = currentProviderType ? definitionMap.get(currentProviderType) : undefined;
+  const editingHasStoredApiKey = Boolean(editingChannel && (editingChannel.providerConfig as Record<string, unknown> | undefined)?.hasApiKey);
   const watchedModels = Form.useWatch('models', form) as Array<Partial<ChannelModelDefinition>> | undefined;
   const modelOptions = useMemo(() => (
     (watchedModels || [])
@@ -252,7 +258,11 @@ export const TTIConfigManager: React.FC<TTIConfigManagerProps> = ({ onConfigChan
   const handleSave = useCallback(async () => {
     try {
       const values = await form.validateFields();
-      const definition = definitionMap.get(values.providerType);
+      const isActivationChannel = isKomaActivationManagedChannel(editingChannel);
+      const effectiveProviderType = isActivationChannel && editingChannel
+        ? editingChannel.providerType
+        : values.providerType;
+      const definition = definitionMap.get(effectiveProviderType);
       if (!definition) {
         throw new Error('未找到对应的图片渠道定义');
       }
@@ -264,21 +274,30 @@ export const TTIConfigManager: React.FC<TTIConfigManagerProps> = ({ onConfigChan
         : models[0]?.id;
       if (!defaultModelId) throw new Error('请至少添加一个模型');
 
-      const providerConfig = {
-        baseUrl: values.baseUrl,
-        apiKey: values.apiKey,
-        promptProtocol: values.promptProtocol || undefined,
-        defaultSize: values.defaultSize || undefined,
-        defaultSteps: values.defaultSteps || undefined,
-        workflowPath: workflowData.workflowPath,
-        workflowMapping: workflowData.workflowMapping,
-      };
+      const providerConfig = isActivationChannel && editingChannel
+        ? withKomaActivationChannelMarker({
+            baseUrl: editingChannel.providerConfig?.baseUrl,
+            promptProtocol: values.promptProtocol || undefined,
+            defaultSize: values.defaultSize || undefined,
+            defaultSteps: values.defaultSteps || undefined,
+            workflowPath: workflowData.workflowPath,
+            workflowMapping: workflowData.workflowMapping,
+          })
+        : {
+            baseUrl: values.baseUrl,
+            apiKey: values.apiKey,
+            promptProtocol: values.promptProtocol || undefined,
+            defaultSize: values.defaultSize || undefined,
+            defaultSteps: values.defaultSteps || undefined,
+            workflowPath: workflowData.workflowPath,
+            workflowMapping: workflowData.workflowMapping,
+          };
 
       const payload = {
-        name: values.name,
+        name: isActivationChannel && editingChannel ? editingChannel.name : values.name,
         description: definition.description,
         category: 'tti' as const,
-        providerType: definition.id,
+        providerType: effectiveProviderType,
         providerConfig,
         defaultModelId,
         models,
@@ -398,9 +417,6 @@ export const TTIConfigManager: React.FC<TTIConfigManagerProps> = ({ onConfigChan
             {pluginChannels.length > 0 && <span>，{t('settings.pluginChannels', { count: pluginChannels.length })}</span>}
           </span>
         </div>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => openModal()}>
-          {t('settings.addConfig')}
-        </Button>
       </div>
 
       {loading ? (
@@ -412,11 +428,7 @@ export const TTIConfigManager: React.FC<TTIConfigManagerProps> = ({ onConfigChan
           image={Empty.PRESENTED_IMAGE_SIMPLE}
           description={t('settings.noTTIConfigs')}
           className="settings-empty-state"
-        >
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => openModal()}>
-            {t('settings.addBuiltinService')}
-          </Button>
-        </Empty>
+        />
       ) : (
         <Row gutter={[12, 12]}>
           {configs.map((config) => {
@@ -590,11 +602,15 @@ export const TTIConfigManager: React.FC<TTIConfigManagerProps> = ({ onConfigChan
             <div className="settings-modal-grid">
               <Form.Item
                 name="providerType"
-                label={t('settings.provider')}
-                required
-                rules={[{ required: true, message: `${t('settings.pleaseSelect')} ${t('settings.provider')}` }]}
+                label="模型渠道"
+                required={!isEditingActivationChannel}
+                rules={[{ required: !isEditingActivationChannel, message: '请选择模型渠道' }]}
               >
-                <Select placeholder={t('settings.selectTTIProvider')} onChange={handleProviderChange}>
+                <Select
+                  placeholder={t('settings.selectTTIProvider')}
+                  onChange={handleProviderChange}
+                  disabled={isEditingActivationChannel}
+                >
                   {channelDefinitions.map((definition) => (
                     <Select.Option key={definition.id} value={definition.id}>
                       {definition.name}
@@ -606,10 +622,10 @@ export const TTIConfigManager: React.FC<TTIConfigManagerProps> = ({ onConfigChan
               <Form.Item
                 name="name"
                 label={t('settings.configName')}
-                required
-                rules={[{ required: true, message: `${t('settings.pleaseEnter')} ${t('settings.configName')}` }]}
+                required={!isEditingActivationChannel}
+                rules={[{ required: !isEditingActivationChannel, message: `${t('settings.pleaseEnter')} ${t('settings.configName')}` }]}
               >
-                <Input placeholder={t('settings.configNamePlaceholder')} />
+                <Input placeholder={t('settings.configNamePlaceholder')} disabled={isEditingActivationChannel} />
               </Form.Item>
             </div>
           </div>
@@ -662,18 +678,24 @@ export const TTIConfigManager: React.FC<TTIConfigManagerProps> = ({ onConfigChan
                 <Form.Item
                   name="apiKey"
                   label={t('settings.apiKey')}
-                  rules={[{ required: currentProviderType !== 'comfyui', message: `${t('settings.pleaseEnter')} ${t('settings.apiKey')}` }]}
+                  rules={[{
+                    required: currentProviderType !== 'comfyui' && !editingHasStoredApiKey && !isEditingActivationChannel,
+                    message: `${t('settings.pleaseEnter')} ${t('settings.apiKey')}`,
+                  }]}
                 >
-                  <Input.Password placeholder={t('settings.enterApiKey')} />
+                  <Input.Password
+                    placeholder={editingHasStoredApiKey ? t('settings.apiKeyStoredPlaceholder') : t('settings.enterApiKey')}
+                    disabled={isEditingActivationChannel}
+                  />
                 </Form.Item>
               )}
 
               <Form.Item
                 name="baseUrl"
                 label={t('settings.apiAddress')}
-                rules={[{ required: true, message: `${t('settings.pleaseEnter')} ${t('settings.apiAddress')}` }]}
+                rules={[{ required: !isEditingActivationChannel, message: `${t('settings.pleaseEnter')} ${t('settings.apiAddress')}` }]}
               >
-                <Input placeholder="http://127.0.0.1:8188" />
+                <Input placeholder="http://127.0.0.1:8188" disabled={isEditingActivationChannel} />
               </Form.Item>
 
               <Form.Item name="defaultSize" label={t('settings.defaultSize')}>

@@ -8,7 +8,7 @@ import { ffmpegService, FFmpegService } from './ffmpeg';
 import { pluginService } from './plugin';
 import { chatService, ChatService } from './chat';
 import { linghuiService, LinghuiService } from './linghui';
-import { baseDB } from './storage';
+import { baseDB, settingsDB } from './storage';
 
 export const services = {
   project: projectService,
@@ -26,6 +26,8 @@ export async function initServices(): Promise<void> {
   if (initPromise) return initPromise;
 
   initPromise = (async () => {
+    // 全局 settings.db 与项目无关，先行初始化
+    settingsDB.init();
     await services.project.init(path.join(app.getPath('home'), '.koma'));
     services.linghui.init(services.project.getStorageRoot());
     await services.ffmpeg.init();
@@ -47,6 +49,7 @@ export async function ensureServicesReady(): Promise<void> {
 
 export function closeServices(): void {
   baseDB.close();
+  settingsDB.close();
 }
 
 export {
@@ -60,5 +63,6 @@ export {
   ChatService,
   chatService,
   baseDB,
+  settingsDB,
 };
 export default services;

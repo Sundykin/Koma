@@ -2,14 +2,38 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const safeFetchMock = vi.fn();
 const nativeFetchMock = vi.fn();
+const fsDownloadFileMock = vi.fn();
+const fsReadFileAsBase64Mock = vi.fn();
+const fsRemoveMock = vi.fn();
+const appGetPathMock = vi.fn();
 
 vi.mock('../../utils/safeFetch', () => ({
   safeFetch: (url: string, init?: RequestInit) => safeFetchMock(url, init),
 }));
 
+vi.mock('../../services/electronService', () => ({
+  fsDownloadFile: (url: string, destPath: string) => fsDownloadFileMock(url, destPath),
+  fsReadFileAsBase64: (path: string) => fsReadFileAsBase64Mock(path),
+  fsRemove: (path: string) => fsRemoveMock(path),
+  appGetPath: (name: string) => appGetPathMock(name),
+  // logger 需要 electronService.isElectron() 做分支；测试环境返回 false 即可
+  electronService: {
+    isElectron: () => false,
+  },
+}));
+
 vi.stubGlobal('fetch', nativeFetchMock);
 
 import { SeedanceProvider } from './SeedanceProvider';
+import { bytesToBase64 } from '../../utils/encoding';
+
+function setupRemoteDownloadMocks(name: string, payload: Uint8Array) {
+  appGetPathMock.mockResolvedValue('/tmp/koma-test');
+  fsDownloadFileMock.mockResolvedValueOnce({ success: true, size: payload.byteLength });
+  fsReadFileAsBase64Mock.mockResolvedValueOnce(bytesToBase64(payload));
+  fsRemoveMock.mockResolvedValue(undefined);
+  return name;
+}
 
 function mockSeedanceUploadFlow(params: {
   uploads: Record<string, { url: string; mimeType: string; size: number; id?: string }>;
@@ -42,6 +66,15 @@ describe('SeedanceProvider', () => {
   beforeEach(() => {
     safeFetchMock.mockReset();
     nativeFetchMock.mockReset();
+    fsDownloadFileMock.mockReset();
+    fsReadFileAsBase64Mock.mockReset();
+    fsRemoveMock.mockReset();
+    appGetPathMock.mockReset();
+    // 默认：fs.downloadFile 成功 + 读回任意 base64（具体字节由各用例覆盖）
+    appGetPathMock.mockResolvedValue('/tmp/koma-test');
+    fsDownloadFileMock.mockResolvedValue({ success: true, size: 20 });
+    fsReadFileAsBase64Mock.mockResolvedValue(bytesToBase64(new Uint8Array([1, 2, 3])));
+    fsRemoveMock.mockResolvedValue(undefined);
   });
 
   it('submits text-to-video requests to /v1/videos/generations', async () => {
@@ -100,7 +133,7 @@ describe('SeedanceProvider', () => {
       options: { duration: 5, aspectRatio: 'adaptive', resolution: '480p' },
     } as any);
 
-    expect(nativeFetchMock).toHaveBeenCalledWith('https://cdn.example.com/primary.png', { method: 'GET' });
+    expect(fsDownloadFileMock).toHaveBeenCalledWith('https://cdn.example.com/primary.png', expect.any(String));
     expect(safeFetchMock.mock.calls[0][0]).toBe('https://toapis.example.com/v1/uploads/images');
     const body = JSON.parse((safeFetchMock.mock.calls[1][1] as RequestInit).body as string);
     expect(body.image_with_roles).toEqual([
@@ -273,7 +306,7 @@ describe('SeedanceProvider', () => {
       options: { duration: 5, aspectRatio: '16:9', resolution: '720p' },
     } as any);
 
-    expect(nativeFetchMock).toHaveBeenCalledWith('https://cdn.example.com/primary.webp', { method: 'GET' });
+    expect(fsDownloadFileMock).toHaveBeenCalledWith('https://cdn.example.com/primary.webp', expect.any(String));
     expect(safeFetchMock.mock.calls).toHaveLength(3);
     expect(safeFetchMock.mock.calls[0][0]).toBe('https://toapis.example.com/v1/uploads/images');
     expect(safeFetchMock.mock.calls[1][0]).toBe('https://toapis.example.com/v1/uploads/images');

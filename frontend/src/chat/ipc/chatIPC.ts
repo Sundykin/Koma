@@ -58,7 +58,7 @@ export interface SessionConfig {
   maxTokens?: number;
   enabledTools?: string[];
   llmProfileId?: string;
-  modelProvider?: 'openai' | 'anthropic' | 'google';
+  modelProvider?: string;
   modelName?: string;
   apiKey?: string;
   baseUrl?: string;
@@ -172,7 +172,7 @@ export interface LLMQueryRequest {
   messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>;
   config: {
     profileId?: string;
-    modelProvider?: 'openai' | 'anthropic' | 'google';
+    modelProvider?: string;
     modelName?: string;
     apiKey?: string;
     baseUrl?: string;
@@ -183,6 +183,8 @@ export interface LLMQueryRequest {
     traceId?: string;
     source?: string;
     operation?: string;
+    taskKind?: 'chat' | 'extract' | 'analyze' | 'rewrite' | 'generate' | 'structured';
+    taskProfileId?: string;
     disableChunking?: boolean;
     timeoutMs?: number;
     /** 强制 LLM 返回格式，仅 OpenAI 兼容服务生效 */
@@ -192,7 +194,7 @@ export interface LLMQueryRequest {
 
 export interface LLMConnectionTestRequest {
   profileId?: string;
-  modelProvider?: 'openai' | 'anthropic' | 'google';
+  modelProvider?: string;
   modelName?: string;
   apiKey?: string;
   baseUrl?: string;
@@ -208,36 +210,7 @@ export interface LLMConnectionTestResponse {
   };
 }
 
-export interface LLMSaveProfileRequest {
-  profileId: string;
-  apiKey?: string;
-}
-
-export interface SaveLLMChannelConfigTransactionRequest {
-  rootPath: string;
-  editingChannelId?: string;
-  payload: Record<string, unknown>;
-  profileApiKey?: string;
-  shouldUpdateDefault: boolean;
-}
-
-export interface SaveLLMChannelConfigTransactionResponse {
-  success: boolean;
-  channel?: Record<string, unknown>;
-  error?: { message: string };
-}
-
-export interface DeleteLLMChannelConfigTransactionRequest {
-  rootPath: string;
-  channelId: string;
-}
-
-export interface MigrateLLMSecretsTransactionRequest {
-  rootPath: string;
-  settings: Record<string, unknown>;
-}
-
-// NOTE: Keep in sync with LLMQueryResponse in electron/service/chat/LLMQueryService.ts
+// NOTE: Keep in sync with LLMQueryResponse in electron/service/llm/types.ts
 export interface LLMQueryResponse {
   content: string;
   error?: {
@@ -281,7 +254,8 @@ export async function llmQuery(request: LLMQueryRequest): Promise<LLMQueryRespon
 }
 
 /**
- * 流式 LLM 查询 — 通过 IPC 事件逐 chunk 推送结果，无应用层超时。
+ * 流式 LLM 查询 — 通过 IPC 事件逐 chunk 推送结果。
+ * request.options.timeoutMs 由主进程流式执行引擎处理。
  * 返回 Promise<string>，在流式完成后 resolve 完整内容。
  * onChunk 回调可用于实时更新 UI。
  */
@@ -375,49 +349,6 @@ export async function testLLMConnection(
 ): Promise<LLMConnectionTestResponse> {
   const api = getLLMAPI();
   return api.testConnection(request);
-}
-
-export async function saveLLMProfile(request: LLMSaveProfileRequest): Promise<void> {
-  const api = getLLMAPI();
-  const result = await api.saveProfile(request);
-  if (!result?.success) {
-    throw new Error(result?.error?.message || 'Failed to save LLM profile');
-  }
-}
-
-export async function deleteLLMProfile(profileId: string): Promise<boolean> {
-  const api = getLLMAPI();
-  const result = await api.deleteProfile(profileId);
-  if (!result?.success) {
-    throw new Error(result?.error?.message || 'Failed to delete LLM profile');
-  }
-  return true;
-}
-
-
-export async function saveLLMChannelConfigTransaction(
-  request: SaveLLMChannelConfigTransactionRequest,
-): Promise<SaveLLMChannelConfigTransactionResponse> {
-  const api = getLLMAPI();
-  return api.saveChannelConfig(request);
-}
-
-export async function deleteLLMChannelConfigTransaction(
-  request: DeleteLLMChannelConfigTransactionRequest,
-): Promise<boolean> {
-  const api = getLLMAPI();
-  const result = await api.deleteChannelConfig(request);
-  if (!result?.success) {
-    throw new Error(result?.error?.message || 'Failed to delete LLM channel config');
-  }
-  return true;
-}
-
-export async function migrateLLMSecretsTransaction(
-  request: MigrateLLMSecretsTransactionRequest,
-): Promise<{ settings: Record<string, unknown>; migrated: boolean }> {
-  const api = getLLMAPI();
-  return api.migrateSettingsSecrets(request);
 }
 
 // ========== 会话管理 ==========

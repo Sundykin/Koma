@@ -7,6 +7,7 @@ export async function generateTextWithProvider(params: {
   systemPrompt?: string;
   llmSelection?: string;
   settingsSnapshot?: AppSettings;
+  onChunk?: (delta: string, accumulated: string) => void;
   signal?: AbortSignal;
 }): Promise<string> {
   throwIfExecutionAborted(params.signal);
@@ -26,6 +27,8 @@ export async function generateTextWithProvider(params: {
       source: 'linghui',
       operation: 'text-node-generate',
       projectId: EXECUTION_PROJECT_ID,
+      stream: typeof params.onChunk === 'function',
+      onChunk: params.onChunk,
     },
   );
   throwIfExecutionAborted(params.signal);

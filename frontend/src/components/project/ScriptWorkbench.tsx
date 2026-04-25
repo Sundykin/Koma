@@ -4,7 +4,7 @@
  */
 import React, { useState, useEffect, useCallback, useRef, forwardRef, useImperativeHandle } from 'react';
 import { App } from 'antd';
-import { Film } from 'lucide-react';
+import { Film, Loader2 } from 'lucide-react';
 import { InlineProjectToolbar } from './InlineProjectToolbar';
 import { ScriptEditor } from '../../editor';
 import { saveEpisode, loadEpisodeAnalysis, saveEpisodeAnalysis } from '../../store/projectStore';
@@ -42,8 +42,11 @@ export const ScriptWorkbench = forwardRef<ScriptWorkbenchRef, ScriptWorkbenchPro
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isPolishing, setIsPolishing] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [streamingMode, setStreamingMode] = useState<'generate' | 'polish' | null>(null);
+  const [streamingPreview, setStreamingPreview] = useState('');
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastSavedRef = useRef(episode?.scriptText || '');
+  const streamingPreviewRef = useRef<HTMLDivElement | null>(null);
 
   // 同步外部 episode 变化（仅在剧集 ID 切换时重置本地内容）
   useEffect(() => {
@@ -76,6 +79,11 @@ export const ScriptWorkbench = forwardRef<ScriptWorkbenchRef, ScriptWorkbenchPro
 
     return () => unsubscribe();
   }, [project.id, episode?.id]);
+
+  useEffect(() => {
+    if (!streamingPreviewRef.current) return;
+    streamingPreviewRef.current.scrollTop = streamingPreviewRef.current.scrollHeight;
+  }, [streamingPreview]);
 
   // 自动保存 (防抖 2s)
   const saveScript = useCallback(async (text: string): Promise<Episode | null> => {
@@ -165,6 +173,8 @@ export const ScriptWorkbench = forwardRef<ScriptWorkbenchRef, ScriptWorkbenchPro
   const handleRandomGenerate = async () => {
     const traceId = createAITraceId('random-script');
     setIsGenerating(true);
+    setStreamingMode('generate');
+    setStreamingPreview('');
     try {
       logger.info('用户触发随机生成剧本', {
         traceId,
@@ -181,7 +191,11 @@ export const ScriptWorkbench = forwardRef<ScriptWorkbenchRef, ScriptWorkbenchPro
         targetName: episode?.title || `第${episode?.number || 0}集`,
         styleSnapshot: project.styleSnapshot,
         project,
+        onChunk: (_delta, accumulated) => {
+          setStreamingPreview(accumulated);
+        },
       });
+      setStreamingPreview(script);
       setLocalScript(script);
       await saveScript(script);
       logger.info('随机生成剧本成功', {
@@ -199,6 +213,8 @@ export const ScriptWorkbench = forwardRef<ScriptWorkbenchRef, ScriptWorkbenchPro
       message.error('剧本生成失败，请检查 LLM 配置后重试');
     } finally {
       setIsGenerating(false);
+      setStreamingMode(null);
+      setStreamingPreview('');
     }
   };
 
@@ -209,14 +225,20 @@ export const ScriptWorkbench = forwardRef<ScriptWorkbenchRef, ScriptWorkbenchPro
       return;
     }
     setIsPolishing(true);
+    setStreamingMode('polish');
+    setStreamingPreview('');
     try {
       const polished = await polishScript(
         {} as AppSettings,
         localScript,
         '使语言更加生动，对话更自然，情节更紧凑',
         () => {},
-        { styleSnapshot: project.styleSnapshot, project }
+        { styleSnapshot: project.styleSnapshot, project },
+        (_delta, accumulated) => {
+          setStreamingPreview(accumulated);
+        }
       );
+      setStreamingPreview(polished);
       setLocalScript(polished);
       await saveScript(polished);
       message.success('润色完成！');
@@ -225,6 +247,8 @@ export const ScriptWorkbench = forwardRef<ScriptWorkbenchRef, ScriptWorkbenchPro
       message.error(classifyAIError(err).userMessage);
     } finally {
       setIsPolishing(false);
+      setStreamingMode(null);
+      setStreamingPreview('');
     }
   };
 
@@ -324,16 +348,45 @@ export const ScriptWorkbench = forwardRef<ScriptWorkbenchRef, ScriptWorkbenchPro
 
       {/* 剧本编辑器 */}
       <div className="flex-1 p-4 overflow-hidden">
-        <ScriptEditor
-          value={localScript}
-          onChange={handleScriptChange}
-          placeholder="在此开始创作剧本... (支持 Markdown 格式)"
-          minHeight="100%"
-          maxHeight="100%"
-          showLineNumbers={true}
-          darkTheme={true}
-          style={{ height: '100%', flex: 1 }}
-        />
+        {streamingMode ? (
+          <div className="h-full flex flex-col overflow-hidden rounded-lg border border-emerald-500/20 bg-zinc-950">
+            <div className="flex items-center justify-between gap-4 border-b border-zinc-800 bg-zinc-900/80 px-4 py-3">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 text-sm font-medium text-zinc-200">
+                  <Loader2 className="h-4 w-4 animate-spin text-emerald-400" />
+                  <span>{streamingMode === 'generate' ? 'AI 正在生成剧本' : 'AI 正在润色剧本'}</span>
+                </div>
+                <p className="mt-1 text-xs text-zinc-500">
+                  {streamingMode === 'generate'
+                    ? '内容会实时显示，完成后自动写入编辑器。'
+                    : '润色结果会实时预览，完成后再覆盖当前剧本。'}
+                </p>
+              </div>
+              <span className="shrink-0 text-xs text-zinc-500">{streamingPreview.length} 字符</span>
+            </div>
+            <div
+              ref={streamingPreviewRef}
+              className="flex-1 overflow-auto bg-[#1a1a1a]"
+            >
+              <pre className="min-h-full whitespace-pre-wrap break-words px-4 py-3 font-sans text-[13px] leading-6 text-zinc-200">
+                {streamingPreview || (streamingMode === 'generate'
+                  ? '正在等待模型返回首段内容...'
+                  : '正在等待模型返回润色结果...')}
+              </pre>
+            </div>
+          </div>
+        ) : (
+          <ScriptEditor
+            value={localScript}
+            onChange={handleScriptChange}
+            placeholder="在此开始创作剧本... (支持 Markdown 格式)"
+            minHeight="100%"
+            maxHeight="100%"
+            showLineNumbers={true}
+            darkTheme={true}
+            style={{ height: '100%', flex: 1 }}
+          />
+        )}
       </div>
 
       {/* 底部状态栏 */}
@@ -342,7 +395,7 @@ export const ScriptWorkbench = forwardRef<ScriptWorkbenchRef, ScriptWorkbenchPro
           第 {episode.number} 集: {episode.title}
         </span>
         <span>
-          {localScript.length} 字符
+          {(streamingMode ? streamingPreview.length : localScript.length)} 字符
         </span>
       </div>
     </div>

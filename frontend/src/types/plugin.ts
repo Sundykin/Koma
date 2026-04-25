@@ -109,6 +109,7 @@ export interface InstalledPlugin extends PluginManifest {
   isEnabled: boolean;            // 是否启用
   installedAt: number;           // 安装时间戳
   lastUpdatedAt?: number;        // 最后更新时间
+  isBuiltin?: boolean;           // 是否为内置插件（不允许删除）
 }
 
 // 插件加载状态
@@ -264,6 +265,19 @@ export interface PluginAPI {
     registerMenuItem(item: MenuItem): void;
     removeMenuItem(key: string): void;
   };
+
+  // 激活信息 —— 内置渠道（请求 https://komaapi.com）用它取激活 Key
+  activation: {
+    getApiKey(): Promise<string | null>;
+    getInfo(): Promise<ActivationInfo | null>;
+  };
+}
+
+// 激活信息
+export interface ActivationInfo {
+  apiKey: string;
+  activatedAt: number;
+  lastValidatedAt: number;
 }
 
 // 插件导出接口

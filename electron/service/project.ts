@@ -971,13 +971,25 @@ export class ProjectService {
         return;
       }
 
-      const completedStages = new Set(Array.isArray(analysis.completedStages) ? analysis.completedStages : []);
+      const hasExplicitStages = Array.isArray(analysis.completedStages);
+      const completedStages = new Set(hasExplicitStages ? analysis.completedStages : []);
+      const assetsCompleted = completedStages.has('characters')
+        || completedStages.has('scenes')
+        || completedStages.has('props');
+      const storyboardCompleted = completedStages.has('shots');
       this.episodeRepo.update(episodeId, {
         has_analysis: 1,
-        step_assets: completedStages.has('characters') || completedStages.has('scenes') || completedStages.has('props')
+        // 前端显式传入 completedStages（含空数组 reset 信号）时以其为准；未传字段才沿用旧值
+        step_assets: assetsCompleted
           ? 'completed'
-          : episode?.step_assets ?? 'pending',
-        step_storyboard: completedStages.has('shots') ? 'completed' : episode?.step_storyboard ?? 'pending',
+          : hasExplicitStages
+            ? 'pending'
+            : episode?.step_assets ?? 'pending',
+        step_storyboard: storyboardCompleted
+          ? 'completed'
+          : hasExplicitStages
+            ? 'pending'
+            : episode?.step_storyboard ?? 'pending',
         updated_at: Date.now(),
       });
 

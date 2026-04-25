@@ -19,6 +19,7 @@ import { getThemeStylePrefix, getThemeStylePrefixAsync } from '../config/themePr
 import { createLogger } from '../store/logger';
 import { logTTICall, logITVCall } from '../store/aiCallLogger';
 import { resolvePromptTemplate } from '../store/promptTemplates';
+import { getActiveITVConfig } from '../store/settings/mediaConfig';
 import { mediaGenerationService } from '../services/MediaGenerationService';
 import { buildCharacterCostumeTemplateVariables } from './promptVariableBuilders';
 import { compileCharacterPreviewVideoRequest } from './videoGenerationRequests';
@@ -124,11 +125,23 @@ export async function generateCharacterPreviewVideo(
   try {
     onProgress?.(10, '调用 ITV 服务...');
 
+    // 获取渠道配置中的默认时长
+    let previewDuration = 10;
+    try {
+      const itvConfig = await getActiveITVConfig(itvSelection);
+      if (itvConfig && typeof itvConfig.defaultDuration === 'number' && Number.isFinite(itvConfig.defaultDuration) && itvConfig.defaultDuration > 0) {
+        previewDuration = itvConfig.defaultDuration;
+      }
+    } catch (e) {
+      logger.warn('获取 ITV 配置失败，使用默认时长 10s');
+    }
+
     const resolvedStylePrefix = await getResolvedTTIStylePrefix(styleSnapshot || project?.styleSnapshot, theme, stylePrompt);
     const compiledRequest = await compileCharacterPreviewVideoRequest({
       character,
       primaryImage: rawImageSource,
       stylePrefix: resolvedStylePrefix,
+      duration: previewDuration,
     });
 
     // 打印完整提示词日志
@@ -136,7 +149,7 @@ export async function generateCharacterPreviewVideo(
       'ITV',
       rawImageSource,
       compiledRequest.prompt,
-      { duration: 4, aspectRatio: '9:16' },
+      { duration: previewDuration, aspectRatio: '9:16' },
       {
         projectId,
         targetId: character.id,

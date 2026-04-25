@@ -11,6 +11,9 @@ import {
 } from '../types';
 import { electronService, fsWriteFileBuffer } from './electronService';
 import { getProjectPath } from '../store/project/core';
+import { createLogger } from '../store/logger';
+
+const logger = createLogger('MediaPersistence');
 
 interface PersistMediaParams {
   projectId: string;
@@ -126,6 +129,15 @@ function stripDataHeader(dataUrl: string): string {
   return index >= 0 ? dataUrl.slice(index + 1) : dataUrl;
 }
 
+function requiresAuthenticatedDownload(source: string): boolean {
+  try {
+    const url = new URL(source);
+    return /\/v1\/videos\/[^/]+\/content$/i.test(url.pathname);
+  } catch {
+    return false;
+  }
+}
+
 export async function persistMediaAsset({
   projectId,
   kind,
@@ -149,22 +161,101 @@ export async function persistMediaAsset({
     throw new Error('缺少可持久化的媒体来源');
   }
 
-  const finalMimeType = mimeType || (typeof source === 'string' ? undefined : source.mimeType);
-  const targetPath = destPath || await buildDefaultDestPath(projectId, kind, ownerRef, assetSource, finalMimeType);
+  let finalMimeType = mimeType || (typeof source === 'string' ? undefined : source.mimeType);
+  let targetPath = destPath || await buildDefaultDestPath(projectId, kind, ownerRef, assetSource, finalMimeType);
+
+  logger.info('媒体落盘开始', {
+    projectId,
+    kind,
+    ownerRef,
+    sourceKind: isRemoteMediaUri(assetSource)
+      ? 'remote-url'
+      : isDataUri(assetSource)
+        ? 'data-url'
+        : isBlobUri(assetSource)
+          ? 'blob-url'
+          : 'path',
+    sourcePreview: isDataUri(assetSource) ? `${assetSource.slice(0, 120)}...(data-url ${assetSource.length} chars)` : assetSource,
+    targetPath,
+    provider,
+    providerTaskId,
+    channelId,
+    modelId,
+    capability,
+  });
 
   await ensureParentDirectory(targetPath);
 
-  if (isRemoteMediaUri(assetSource)) {
-    await electronService.fs.downloadFile(assetSource, targetPath);
-  } else if (isDataUri(assetSource)) {
-    await electronService.fs.writeFile(targetPath, stripDataHeader(assetSource), true);
-  } else if (isBlobUri(assetSource)) {
-    const response = await fetch(assetSource);
-    const bytes = new Uint8Array(await response.arrayBuffer());
-    await fsWriteFileBuffer(targetPath, bytes);
-  } else {
-    await electronService.fs.copy(assetSource, targetPath);
+  try {
+    if (isRemoteMediaUri(assetSource)) {
+      const authDownload = Boolean(channelId) && requiresAuthenticatedDownload(assetSource);
+      const result = await electronService.fs.downloadFile(assetSource, targetPath, authDownload ? { channelId } : undefined);
+      logger.info('远程媒体下载完成', { targetPath, size: result?.size, success: result?.success, authDownload });
+      if (result?.path) {
+        targetPath = result.path;
+      }
+      if (result?.mimeType) {
+        finalMimeType = result.mimeType;
+      }
+    } else if (isDataUri(assetSource)) {
+      await electronService.fs.writeFile(targetPath, stripDataHeader(assetSource), true);
+    } else if (isBlobUri(assetSource)) {
+      const response = await fetch(assetSource);
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      await fsWriteFileBuffer(targetPath, bytes);
+    } else {
+      await electronService.fs.copy(assetSource, targetPath);
+    }
+  } catch (error) {
+    logger.error('媒体落盘失败', {
+      projectId,
+      kind,
+      ownerRef,
+      targetPath,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    if (isRemoteMediaUri(assetSource)) {
+      logger.warn('远程媒体落盘失败，使用远程 URL 作为显示兜底', {
+        projectId,
+        kind,
+        ownerRef,
+        remoteUrl: assetSource,
+      });
+      return {
+        kind,
+        remoteUrl: assetSource,
+        provider: provider || (typeof source === 'string' ? undefined : source.provider),
+        providerTaskId: providerTaskId || (typeof source === 'string' ? undefined : source.providerTaskId),
+        width: typeof source === 'string' ? undefined : source.width,
+        height: typeof source === 'string' ? undefined : source.height,
+        durationMs: typeof source === 'string' ? undefined : source.durationMs,
+        fps: typeof source === 'string' ? undefined : source.fps,
+        channelId: channelId || (typeof source === 'string' ? undefined : source.channelId),
+        modelId: modelId || (typeof source === 'string' ? undefined : source.modelId),
+        capability: capability || (typeof source === 'string' ? undefined : source.capability),
+        mimeType: finalMimeType || (typeof source === 'string' ? undefined : source.mimeType),
+        metadata: {
+          ...(typeof source === 'string' ? undefined : source.metadata),
+          ...metadata,
+          localPersistFailed: true,
+          localPersistError: error instanceof Error ? error.message : String(error),
+          attemptedLocalPath: targetPath,
+        },
+        createdAt: Date.now(),
+      };
+    }
+    throw error;
   }
+
+  logger.info('媒体落盘完成', {
+    projectId,
+    kind,
+    ownerRef,
+    localPath: targetPath,
+    remoteUrl: typeof source === 'string'
+      ? (isRemoteMediaUri(source) ? source : undefined)
+      : source.remoteUrl,
+  });
 
   return {
     kind,

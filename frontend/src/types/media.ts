@@ -197,6 +197,10 @@ export function getMediaAssetDisplaySource(asset?: StoredMediaAsset): string | u
   // Electron should prefer local files to avoid CORS and to keep ffmpeg/canvas pipelines working.
   // Browser mode cannot access localPath, so prefer remoteUrl there.
   const isElectronEnv = typeof window !== 'undefined' && Boolean((window as any).electronAPI);
+  const localMissing = Boolean(asset.localPath && asset.metadata?.localPersistFailed);
+  if (isElectronEnv && localMissing) {
+    return asset.remoteUrl || asset.localPath;
+  }
   return isElectronEnv
     ? (asset.localPath || asset.remoteUrl)
     : (asset.remoteUrl || asset.localPath);

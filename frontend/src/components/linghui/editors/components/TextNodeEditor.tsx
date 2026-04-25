@@ -4,9 +4,11 @@ import type { MenuProps } from 'antd';
 import { ArrowUp } from 'lucide-react';
 import type {
   LinghuiNodeData,
+  LinghuiNodeRunState,
   LinghuiTextNodeMode,
   LinghuiTextNodeProperties,
 } from '../../../../types/linghui';
+import { getLinghuiResultText } from '../../../../types/linghui';
 import { loadSettings } from '../../../../store/settings/core';
 import { listConfiguredModelSelectOptions } from '../../../../providers/channel/resolver';
 import { useLinghuiNodeMutation } from '../../nodes/state/LinghuiNodeRunsContext';
@@ -23,6 +25,7 @@ interface ProviderOption {
 interface TextNodeEditorProps {
   nodeId: string;
   nodeData: LinghuiNodeData;
+  nodeRun?: LinghuiNodeRunState;
   promptReferences?: LinghuiPromptReferenceItem[];
   onRun: () => void;
 }
@@ -35,6 +38,7 @@ const TEXT_MODES: Array<{ key: LinghuiTextNodeMode; label: string }> = [
 export const TextNodeEditor: React.FC<TextNodeEditorProps> = ({
   nodeId,
   nodeData,
+  nodeRun,
   promptReferences = [],
   onRun,
 }) => {
@@ -71,6 +75,8 @@ export const TextNodeEditor: React.FC<TextNodeEditorProps> = ({
   const modelSummary = selectedProvider?.label || '未配置 LLM';
   const systemPromptSummary = systemPrompt.trim() ? '系统提示 · 已设置' : '系统提示';
   const contentSummary = content.trim() ? `${content.trim().length} 字` : '手动文本';
+  const outputText = String(getLinghuiResultText(nodeRun?.result) ?? '').trim();
+  const isStreaming = nodeRun?.status === 'running' && mode === 'generate';
 
   const providerMenuItems = useMemo<MenuProps['items']>(() => (
     providers.map(provider => ({
@@ -147,18 +153,33 @@ export const TextNodeEditor: React.FC<TextNodeEditorProps> = ({
           />
         </div>
       ) : (
-        <div className="linghuiEditorPrompt linghuiEditorCompactPrompt">
-          <LinghuiPromptEditor
-            value={prompt}
-            onChange={value => updateProp('prompt', value)}
-            references={promptReferences}
-            placeholder="描述要生成什么文本，输入 @ 引用上游产物"
-            darkTheme
-            surfaceStyle="fusion"
-            minHeight="112px"
-            maxHeight="220px"
-          />
-        </div>
+        <>
+          <div className="linghuiEditorPrompt linghuiEditorCompactPrompt">
+            <LinghuiPromptEditor
+              value={prompt}
+              onChange={value => updateProp('prompt', value)}
+              references={promptReferences}
+              placeholder="描述要生成什么文本，输入 @ 引用上游产物"
+              darkTheme
+              surfaceStyle="fusion"
+              minHeight="112px"
+              maxHeight="220px"
+            />
+          </div>
+
+          <div className="linghuiEditorField">
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+              <span className="linghuiEditorSettingsLabel">实时输出</span>
+              <span className="linghuiEditorSummaryPill">{outputText.length} 字</span>
+            </div>
+            <div
+              className="linghuiNodeTextarea"
+              style={{ minHeight: 196, overflow: 'auto', whiteSpace: 'pre-wrap', color: '#e4e4e7' }}
+            >
+              {outputText || (isStreaming ? '正在等待模型返回首段内容...' : '运行后会在这里显示实时文本结果')}
+            </div>
+          </div>
+        </>
       )}
 
       <div className="linghuiEditorControlRow">

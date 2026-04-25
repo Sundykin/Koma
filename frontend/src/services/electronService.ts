@@ -40,7 +40,7 @@ interface ElectronAPI {
     readFile: (path: string) => Promise<string | { content: string }>;
     readFileAsBase64: (path: string) => Promise<string | { base64: string }>;
     writeFile: (path: string, data: string, binary?: boolean) => Promise<void>;
-    downloadFile: (url: string, destPath: string) => Promise<{ success: boolean; size: number }>;
+    downloadFile: (url: string, destPath: string, options?: { headers?: Record<string, string>; channelId?: string }) => Promise<{ success: boolean; size: number; path?: string; mimeType?: string }>;
     exists: (path: string) => Promise<boolean | { exists: boolean }>;
     mkdir: (path: string) => Promise<void>;
     readdir: (path: string) => Promise<string[] | { files: string[] }>;
@@ -402,11 +402,19 @@ export const fsDirSize = async (dirPath: string): Promise<number> => {
 // 从 URL 下载文件到本地（绕过 CORS）
 export const fsDownloadFile = async (
   url: string,
-  destPath: string
-): Promise<{ success: boolean; size: number }> => {
+  destPath: string,
+  options?: { headers?: Record<string, string>; channelId?: string }
+): Promise<{ success: boolean; size: number; path?: string; mimeType?: string }> => {
   const api = getElectronAPI();
   if (api) {
-    return await api.fs.downloadFile(url, destPath);
+    const result = await api.fs.downloadFile(url, destPath, options) as any;
+    if (result?.success === false) {
+      throw new Error(result.error || result.message || '文件下载失败');
+    }
+    if (!result?.success) {
+      throw new Error('文件下载失败：IPC 未返回成功状态');
+    }
+    return result;
   }
   throw new Error('File download not available in browser');
 };

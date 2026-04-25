@@ -77,7 +77,9 @@ window['@ant-design/icons']  // Ant Design 图标库
 
 ## 配置持久化
 
-使用 `channels.getProviderConfig` / `channels.updateProviderConfig` 管理配置：
+使用 `channels.getProviderConfig` / `channels.updateProviderConfig` 管理配置。
+宿主会把 Provider 配置统一持久化到全局 `settings.db` 的 `channel_configs` 表；
+其中 `apiKey` 会在主进程加密后存储，并在 Electron backend 插件侧按需解密回填：
 
 ```typescript
 // 读取配置

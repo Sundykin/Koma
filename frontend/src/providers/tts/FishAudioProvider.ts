@@ -1,10 +1,16 @@
 /**
  * Fish Audio TTS Provider
  * https://fish.audio/
+ *
+ * 凭据走 ChannelAuth Strategy：
+ *   - profileId 存在 → x-koma-channel-id 主进程代理 Bearer
+ *   - 回退 → 明文 Authorization: Bearer <apiKey>
  */
 import type { TTSConfig, AudioResult, Voice } from '../../types';
 import type { ProviderStartResult } from '../../types';
 import type { TTSProvider, TTSRequest } from './types';
+import { fetchWithChannelAuth } from '../channel/auth';
+import { isChannelNetError } from '../netError';
 
 export class FishAudioProvider implements TTSProvider {
   type = 'fish-audio' as const;
@@ -15,18 +21,18 @@ export class FishAudioProvider implements TTSProvider {
   }
 
   validate(): boolean {
-    return !!this.config.apiKey;
+    return Boolean(this.config.profileId || this.config.apiKey);
   }
 
   async testConnection(): Promise<boolean> {
     if (!this.validate()) return false;
 
     try {
-      const response = await fetch(`${this.getBaseUrl()}/model`, {
-        method: 'GET',
-        headers: {
-          Authorization: `Bearer ${this.config.apiKey}`,
-        },
+      const response = await fetchWithChannelAuth(`${this.getBaseUrl()}/model`, {
+        channelId: this.config.profileId,
+        apiKey: this.config.apiKey,
+        mode: 'bearer-header',
+        fetchOptions: { method: 'GET' },
       });
       return response.ok;
     } catch {
@@ -44,25 +50,30 @@ export class FishAudioProvider implements TTSProvider {
       throw new Error('Fish Audio API Key 未配置');
     }
 
-    const response = await fetch(`${this.getBaseUrl()}/tts`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${this.config.apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        text,
-        reference_id: voiceId,
-        format: 'mp3',
-        latency: 'normal',
-        streaming: false,
-        ...(options?.rate && { speed: options.rate }),
-      }),
-    });
-
-    if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`Fish Audio 合成失败: ${error}`);
+    let response: Response;
+    try {
+      response = await fetchWithChannelAuth(`${this.getBaseUrl()}/tts`, {
+        channelId: this.config.profileId,
+        apiKey: this.config.apiKey,
+        mode: 'bearer-header',
+        fetchOptions: {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            text,
+            reference_id: voiceId,
+            format: 'mp3',
+            latency: 'normal',
+            streaming: false,
+            ...(options?.rate && { speed: options.rate }),
+          }),
+        },
+      });
+    } catch (err) {
+      if (isChannelNetError(err)) {
+        throw new Error(`Fish Audio 合成失败 (${err.status}): ${err.message}`);
+      }
+      throw err;
     }
 
     const audioBlob = await response.blob();
@@ -87,11 +98,11 @@ export class FishAudioProvider implements TTSProvider {
     }
 
     try {
-      const response = await fetch(`${this.getBaseUrl()}/model`, {
-        method: 'GET',
-        headers: {
-          Authorization: `Bearer ${this.config.apiKey}`,
-        },
+      const response = await fetchWithChannelAuth(`${this.getBaseUrl()}/model`, {
+        channelId: this.config.profileId,
+        apiKey: this.config.apiKey,
+        mode: 'bearer-header',
+        fetchOptions: { method: 'GET' },
       });
 
       if (!response.ok) {

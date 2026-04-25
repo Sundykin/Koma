@@ -11,9 +11,10 @@ import { ChatRenderer } from '../../chat';
 import { useChat, chatIPC } from '../../chat/ipc';
 import type { SessionConfig, ContentPart } from '../../chat/ipc';
 import { loadSettings } from '../../store/globalStore';
+import { activationService } from '../../services/activationService';
 import { useChatHistoryStore } from '../../store/chatHistoryStore';
 import { saveMCPServers, saveAgentTemplates, setActiveAgentId as persistActiveAgentId } from '../../store/settings/chatSettings';
-import type { AppSettings, LLMModelConfig } from '../../types';
+import type { AppSettings } from '../../types';
 import { ChatLayout } from './ChatLayout';
 import { ChatComposer } from './ChatComposer';
 import type { AttachmentFile } from './ChatComposer';
@@ -26,10 +27,15 @@ import { createLogger } from '../../store/logger';
 import styles from './ChatPage.module.css';
 import {
   buildLLMConfigFromContext,
-  getDefaultMediaSelection,
   listConfiguredModelSelectOptions,
   resolveConfiguredChannelModel,
+  serializeMediaSelection,
 } from '../../providers/channel/resolver';
+import {
+  buildChatSessionConfig,
+  formatChatErrorMessage,
+  resolveInitialChatLLMSelection,
+} from './chatPageUtils';
 
 const logger = createLogger('ChatPage');
 
@@ -52,25 +58,15 @@ export const ChatPage: React.FC = () => {
 
   // 获取当前选中的 LLM 配置
   const selectedConfig = useMemo(() => {
-    if (!settings) return null;
+    if (!settings || !selectedSelectionKey) return null;
     const context = resolveConfiguredChannelModel(settings, 'llm', selectedSelectionKey, 'llm.chat');
     return context ? buildLLMConfigFromContext(context) : null;
   }, [settings, selectedSelectionKey]);
 
   // 构建 Session 配置
-  const sessionConfig = useMemo((): SessionConfig => {
-    if (!selectedConfig) {
-      return { systemPrompt };
-    }
-
-    const config = {
-      systemPrompt,
-      llmProfileId: selectedConfig.profileId,
-      modelProvider: selectedConfig.provider as 'openai' | 'anthropic' | 'google',
-      modelName: selectedConfig.modelName,
-    };
-    return config;
-  }, [selectedConfig, systemPrompt]);
+  const sessionConfig = useMemo((): SessionConfig => (
+    buildChatSessionConfig(systemPrompt, selectedConfig)
+  ), [selectedConfig, systemPrompt]);
 
   // 使用 IPC 版本的 useChat
   const {
@@ -88,7 +84,7 @@ export const ChatPage: React.FC = () => {
   } = useChat({
     config: sessionConfig,
     onError: (err) => {
-      message.error(err.message);
+      message.error(formatChatErrorMessage(err));
     },
   });
 
@@ -96,6 +92,7 @@ export const ChatPage: React.FC = () => {
   useEffect(() => {
     const loadConfigs = async () => {
       try {
+        const activationInfo = await activationService.getActivationInfo();
         const settings = await loadSettings();
         setSettings(settings);
         const options = listConfiguredModelSelectOptions(settings, 'llm', 'llm.chat');
@@ -104,9 +101,10 @@ export const ChatPage: React.FC = () => {
         setAgentTemplates((settings as any).agentTemplates || []);
         setActiveAgentId((settings as any).activeAgentId || null);
 
-        const activeSelection = getDefaultMediaSelection(settings, 'llm', 'llm.chat');
-        if (activeSelection) {
-          setSelectedSelectionKey(`${activeSelection.channelId}::${activeSelection.modelId}`);
+        const activeSelection = resolveInitialChatLLMSelection(settings, activationInfo);
+        const activeSelectionKey = serializeMediaSelection(activeSelection);
+        if (activeSelectionKey) {
+          setSelectedSelectionKey(activeSelectionKey);
         }
 
         setIsConfigLoaded(true);
@@ -171,17 +169,13 @@ export const ChatPage: React.FC = () => {
       : null;
     if (config && isReady) {
       try {
-        await updateConfig({
-          llmProfileId: config.profileId,
-          modelProvider: config.provider as 'openai' | 'anthropic' | 'google',
-          modelName: config.modelName,
-        });
+        await updateConfig(buildChatSessionConfig(systemPrompt, config));
       } catch (err: unknown) {
-        const errorMessage = err instanceof Error ? err.message : String(err);
+        const errorMessage = formatChatErrorMessage(err);
         message.error(t('chat.configUpdateFailed', { error: errorMessage }));
       }
     }
-  }, [isReady, settings, updateConfig, t]);
+  }, [isReady, settings, systemPrompt, updateConfig, t]);
 
   // 发送消息
   const handleSend = useCallback(async (text: string, attachments?: AttachmentFile[]) => {
@@ -230,7 +224,7 @@ export const ChatPage: React.FC = () => {
 
       await sendStream(content);
     } catch (err: unknown) {
-      const errorMessage = err instanceof Error ? err.message : String(err);
+      const errorMessage = formatChatErrorMessage(err);
       message.error(t('chat.sendFailed', { error: errorMessage }));
       logger.error('发送消息失败', err);
     }
@@ -267,7 +261,7 @@ export const ChatPage: React.FC = () => {
       await clear();
       message.success(t('chat.newChatCreated'));
     } catch (err: unknown) {
-      const errorMessage = err instanceof Error ? err.message : String(err);
+      const errorMessage = formatChatErrorMessage(err);
       message.error(t('chat.createChatFailed', { error: errorMessage }));
     }
   }, [createHistorySession, setCurrentSession, clear, t]);
@@ -307,7 +301,7 @@ export const ChatPage: React.FC = () => {
         }
       }
     } catch (err: unknown) {
-      const errorMessage = err instanceof Error ? err.message : String(err);
+      const errorMessage = formatChatErrorMessage(err);
       message.error(t('chat.mcpSaveFailed', { error: errorMessage }));
       logger.error('保存 MCP 配置失败', err);
     }
@@ -319,7 +313,7 @@ export const ChatPage: React.FC = () => {
       setAgentTemplates(templates);
       await saveAgentTemplates(templates);
     } catch (err: unknown) {
-      const errorMessage = err instanceof Error ? err.message : String(err);
+      const errorMessage = formatChatErrorMessage(err);
       message.error(t('chat.templateSaveFailed', { error: errorMessage }));
     }
   }, [t]);
@@ -336,7 +330,7 @@ export const ChatPage: React.FC = () => {
         await updateConfig({ enabledTools: template.tools });
       }
     } catch (err: unknown) {
-      const errorMessage = err instanceof Error ? err.message : String(err);
+      const errorMessage = formatChatErrorMessage(err);
       message.error(t('chat.agentSelectFailed', { error: errorMessage }));
     }
   }, [isReady, updateConfig, t]);
@@ -407,7 +401,7 @@ export const ChatPage: React.FC = () => {
                 await updateConfig({ agentMode: 'orchestrated' });
                 message.success(t('chat.multiAgentEnabled'));
               } catch (err: any) {
-                message.error(t('chat.configUpdateFailed', { error: err.message }));
+                message.error(t('chat.configUpdateFailed', { error: formatChatErrorMessage(err) }));
               }
             }}
           />
@@ -442,7 +436,7 @@ export const ChatPage: React.FC = () => {
                 await clear(); 
                 message.success(t('chat.chatCleared')); 
               } catch (err: unknown) {
-                const errorMessage = err instanceof Error ? err.message : String(err);
+                const errorMessage = formatChatErrorMessage(err);
                 message.error(t('chat.clearFailed', { error: errorMessage }));
               }
             }}
