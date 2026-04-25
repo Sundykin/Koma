@@ -51,6 +51,7 @@ import { getProjectPath } from '../../store/projectStore';
 import { SHOT_LAYOUT, COL_ACTION_WIDTH } from '../../constants/storyboardConstants';
 import { AssetSelector } from './components/AssetSelector';
 import { createStoredMediaAsset } from '../../utils/mediaAssets';
+import { ALLOWED_VIDEO_DURATIONS, normalizeVideoDurationSeconds } from '../../utils/videoDuration';
 import './ShotCard.css';
 
 const { TextArea } = Input;
@@ -546,15 +547,13 @@ export const ShotCard: React.FC<ShotCardProps> = ({
               <div className="flex items-center gap-0.5">
                 <InputNumber
                   size="small"
-                  min={1}
-                  max={600}
+                  min={ALLOWED_VIDEO_DURATIONS[0]}
+                  max={ALLOWED_VIDEO_DURATIONS[ALLOWED_VIDEO_DURATIONS.length - 1]}
                   step={1}
                   controls={false}
                   value={shot.duration}
                   onChange={(value) => {
-                    const next = typeof value === 'number' && Number.isFinite(value)
-                      ? Math.max(1, Math.round(value))
-                      : shot.duration;
+                    const next = normalizeVideoDurationSeconds(value, shot.duration);
                     if (next !== shot.duration) {
                       onDurationChange(shot.id, next);
                     }

@@ -1,4 +1,5 @@
 import type { Character, Prop, Scene, Shot } from '../types';
+import { normalizeVideoDurationSeconds } from '../utils/videoDuration';
 
 function cleanText(value?: string): string {
   return (value || '').replace(/\s+/g, ' ').replace(/\s*,\s*/g, ', ').trim();
@@ -244,7 +245,7 @@ function getShotVisibleAction(shot: Shot): string {
 }
 
 function buildMotionTimeline(durationSeconds: number, action: string, cameraMovement: string): string {
-  const duration = Math.max(1, Math.round(durationSeconds || 4));
+  const duration = normalizeVideoDurationSeconds(durationSeconds);
   const segments: Array<[number, number]> = duration <= 2
     ? [[0, duration]]
     : duration <= 4
@@ -343,7 +344,7 @@ export function buildShotVideoTemplateVariables(params: {
     description,
     shotType: formatShotType(shot.shotType),
     cameraMovement: cleanText(cameraMovement),
-    durationSeconds: String(Math.max(1, Math.round(shot.duration || 4))),
+    durationSeconds: String(normalizeVideoDurationSeconds(shot.duration)),
     motionTimeline,
   };
 }

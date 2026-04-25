@@ -185,7 +185,7 @@ describe('shotRenderWorkflow video chain', () => {
     vi.clearAllMocks();
   });
 
-  it('分镜主图场景按图生视频执行，资产引用不会直接塞进 provider 参考图', async () => {
+  it('无真主图且模型支持参考生视频时，参考图和资产引用进入 reference-to-video', async () => {
     const { shotRenderWorkflow } = await import('./shotRenderWorkflow');
     const { mediaGenerationService } = await import('../services/MediaGenerationService');
     const projectStore = await import('../store/projectStore');
@@ -250,10 +250,10 @@ describe('shotRenderWorkflow video chain', () => {
           slot: 'video',
         }),
         request: expect.objectContaining({
-          capability: 'video.image-to-video',
+          capability: 'video.reference-to-video',
           prompt: '已有视频提示词',
-          primaryImage: referenceAsset,
-          additionalReferences: [],
+          referenceImages: expect.arrayContaining([referenceAsset]),
+          options: expect.objectContaining({ duration: 6 }),
         }),
         itvSelection: 'vidu-main::vidu-model-a',
         allowCapabilityFallback: false,
@@ -433,7 +433,7 @@ describe('shotRenderWorkflow video chain', () => {
     expect(mediaGenerationService.generateVideo).not.toHaveBeenCalled();
   });
 
-  it('只有角色场景道具时不会直接生成参考生视频请求', async () => {
+  it('只有角色场景道具且模型支持参考生视频时，资产图作为 referenceImages 而不是主图', async () => {
     const { shotRenderWorkflow } = await import('./shotRenderWorkflow');
     const { mediaGenerationService } = await import('../services/MediaGenerationService');
     const projectStore = await import('../store/projectStore');
@@ -485,12 +485,16 @@ describe('shotRenderWorkflow video chain', () => {
     expect(mediaGenerationService.generateVideo).toHaveBeenCalledWith(
       expect.objectContaining({
         request: expect.objectContaining({
-          capability: 'video.text-to-video',
+          capability: 'video.reference-to-video',
           prompt: '已有视频提示词',
+          referenceImages: expect.arrayContaining([
+            expect.objectContaining({ remoteUrl: 'https://cdn.example.com/prop.png' }),
+          ]),
+          options: expect.objectContaining({ duration: 6 }),
         }),
         allowCapabilityFallback: false,
       }),
     );
-    expect((vi.mocked(mediaGenerationService.generateVideo).mock.calls.at(-1)?.[0] as any)?.request.referenceImages).toBeUndefined();
+    expect((vi.mocked(mediaGenerationService.generateVideo).mock.calls.at(-1)?.[0] as any)?.request.primaryImage).toBeUndefined();
   });
 });

@@ -26,6 +26,23 @@ describe('videoRequestCompiler', () => {
     })).toThrow('缺少首尾帧输入');
   });
 
+  it('buildVideoCapabilityRequest: normalizes duration options to supported AI video values', () => {
+    const imageRequest = buildVideoCapabilityRequest({
+      capability: 'video.image-to-video',
+      prompt: 'demo',
+      primaryImage: 'https://cdn.example.com/shot.png',
+      options: { duration: 4, aspectRatio: '16:9' },
+    });
+    expect(imageRequest.options?.duration).toBe(6);
+
+    const textRequest = buildVideoCapabilityRequest({
+      capability: 'video.text-to-video',
+      prompt: 'demo',
+      options: { duration: 18, aspectRatio: '9:16' },
+    });
+    expect(textRequest.options?.duration).toBe(20);
+  });
+
   it('compileWorkflowVideoDomainRequest: compiles grok-image-index prompt for image-to-video', () => {
     const compiled = compileWorkflowVideoDomainRequest({
       request: buildVideoCapabilityRequest({

@@ -42,6 +42,7 @@ import { resolveConfiguredChannelModel } from '../../providers/channel/resolver'
 import './Storyboard.css';
 import './ShotListEditor.css';
 import { getMediaAssetDisplaySource } from '../../types';
+import { ALLOWED_VIDEO_DURATIONS, normalizeVideoDurationSeconds } from '../../utils/videoDuration';
 
 const logger = createLogger('Storyboard');
 
@@ -77,7 +78,7 @@ function mergeShots(target: Shot, source: Shot): Shot {
     ...target,
     scriptContent: [target.scriptContent, source.scriptContent].filter(Boolean).join('\n'),
     imagePrompt: [target.imagePrompt, source.imagePrompt].filter(Boolean).join('\n\n'),
-    duration: target.duration + source.duration,
+    duration: normalizeVideoDurationSeconds(target.duration + source.duration),
     characters: [...new Set([...target.characters, ...source.characters])],
     dialogue: [target.dialogue, source.dialogue].filter(Boolean).join('\n'),
     props: [...new Set([...(target.props || []), ...(source.props || [])])],
@@ -329,7 +330,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       }
 
       // 一刀切：移除旧数据迁移/修复逻辑。分镜资产绑定与提示词 @mention 统一使用项目内 ID。
-      setShots(loadedShots);
+      setShots(loadedShots.map(shot => ({ ...shot, duration: normalizeVideoDurationSeconds(shot.duration) })));
       setCharacters(filteredCharacters);
       setScenes(filteredScenes);
       setProps(filteredProps);
@@ -347,7 +348,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       return;
     }
     const latestShots = await loadEpisodeShots(projectId, episodeId);
-    setShots(latestShots);
+    setShots(latestShots.map(shot => ({ ...shot, duration: normalizeVideoDurationSeconds(shot.duration) })));
   }, [projectId, episodeId]);
 
   useEffect(() => {
@@ -408,12 +409,17 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       return Promise.resolve();
     }
 
+    const normalizedShots = updatedShots.map(shot => ({
+      ...shot,
+      duration: normalizeVideoDurationSeconds(shot.duration),
+    }));
+
     // 先本地更新，避免输入法组合输入被异步持久化回写打断。
-    setShots(updatedShots);
+    setShots(normalizedShots);
     queuedShotsSaveRef.current = {
       projectId,
       episodeId,
-      shots: updatedShots,
+      shots: normalizedShots,
     };
 
     return flushQueuedShotSaves();
@@ -488,7 +494,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
         return next;
       });
     }
-  }, [projectId, episodeId, characters, scenes, ttiSelection, styleSnapshot]);
+  }, [projectId, episodeId, characters, scenes, ttiSelection, aspectRatio, styleSnapshot]);
 
   // 渲染视频
   const handleRenderShotVideo = useCallback(async (shotId: string) => {
@@ -540,7 +546,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       setRenderProgress(0);
       setRenderStep('');
     }
-  }, [projectId, episodeId, shots, shotVideoSupportMap, effectiveSettings, ttiSelection, itvSelection, ttsSelection, styleSnapshot, message, refreshShotsFromStore]);
+  }, [projectId, episodeId, shots, shotVideoSupportMap, effectiveSettings, ttiSelection, itvSelection, ttsSelection, aspectRatio, styleSnapshot, message, refreshShotsFromStore]);
 
   // 剧本内容变更
   const handleScriptChange = useCallback((shotId: string, scriptContent: string) => {
@@ -552,7 +558,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
 
   // 分镜时长变更
   const handleDurationChange = useCallback((shotId: string, duration: number) => {
-    const safeDuration = Number.isFinite(duration) ? Math.max(1, Math.round(duration)) : 1;
+    const safeDuration = normalizeVideoDurationSeconds(duration);
     const updatedShots = shots.map(s =>
       s.id === shotId ? { ...s, duration: safeDuration } : s
     );
@@ -1156,7 +1162,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     scriptContent: '',
     shotType: 'medium',
     cameraMovement: 'static',
-    duration: 3,
+    duration: 10,
     imagePrompt: '',
     imageMode: 'normal',
     characters: [],
@@ -1277,7 +1283,11 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       message.warning('请输入画面描述');
       return;
     }
-    const updatedShot: Shot = { ...editingShot!, ...editFormData } as Shot;
+    const updatedShot: Shot = {
+      ...editingShot!,
+      ...editFormData,
+      duration: normalizeVideoDurationSeconds(editFormData.duration, editingShot?.duration),
+    } as Shot;
     const isNew = !shots.find(s => s.id === editingShot!.id);
     let updatedShots: Shot[];
     if (isNew) {
@@ -1354,7 +1364,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       setGeneratingShots(new Set());
       setBatchProgress(undefined);
     }
-  }, [projectId, episodeId, shots, characters, scenes, ttiSelection, styleSnapshot]);
+  }, [projectId, episodeId, shots, characters, scenes, ttiSelection, aspectRatio, styleSnapshot]);
 
   // 批量重新生成图片（强制重新生成已有图片的）
   const handleBatchReGenerateImages = useCallback(async (targetShotIds?: string[]) => {
@@ -1415,7 +1425,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       setGeneratingShots(new Set());
       setBatchProgress(undefined);
     }
-  }, [projectId, episodeId, shots, characters, scenes, ttiSelection, styleSnapshot]);
+  }, [projectId, episodeId, shots, characters, scenes, ttiSelection, aspectRatio, styleSnapshot]);
 
   // 批量渲染视频（已确认的）
   const handleBatchRenderVideos = useCallback(async (targetShotIds?: string[]) => {
@@ -1466,7 +1476,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       setRenderProgress(0);
       setRenderStep('');
     }
-  }, [projectId, episodeId, shots, effectiveSettings, ttiSelection, itvSelection, ttsSelection, styleSnapshot, buildUnsupportedShotVideoMessage, message, refreshShotsFromStore]);
+  }, [projectId, episodeId, shots, effectiveSettings, ttiSelection, itvSelection, ttsSelection, aspectRatio, styleSnapshot, buildUnsupportedShotVideoMessage, message, refreshShotsFromStore]);
 
   // 批量重新生成视频（已有视频的）
   const handleBatchReGenerateVideos = useCallback(async (targetShotIds?: string[]) => {
@@ -1517,7 +1527,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       setRenderProgress(0);
       setRenderStep('');
     }
-  }, [projectId, episodeId, shots, effectiveSettings, ttiSelection, itvSelection, ttsSelection, styleSnapshot, buildUnsupportedShotVideoMessage, message, refreshShotsFromStore]);
+  }, [projectId, episodeId, shots, effectiveSettings, ttiSelection, itvSelection, ttsSelection, aspectRatio, styleSnapshot, buildUnsupportedShotVideoMessage, message, refreshShotsFromStore]);
 
   // ============ 渲染 ============
 
@@ -1676,10 +1686,14 @@ export const Storyboard: React.FC<StoryboardProps> = ({
             <Form.Item label="时长（秒）" style={{ marginBottom: 0 }}>
               <Input
                 type="number"
-                min={1}
-                max={60}
-                value={editFormData.duration || 3}
-                onChange={(e) => setEditFormData(prev => ({ ...prev, duration: parseInt(e.target.value) || 3 }))}
+                min={ALLOWED_VIDEO_DURATIONS[0]}
+                max={ALLOWED_VIDEO_DURATIONS[ALLOWED_VIDEO_DURATIONS.length - 1]}
+                step={1}
+                value={editFormData.duration || 10}
+                onChange={(e) => setEditFormData(prev => ({
+                  ...prev,
+                  duration: normalizeVideoDurationSeconds(e.target.value, prev.duration),
+                }))}
                 style={{ width: 80 }}
               />
             </Form.Item>

@@ -1,50 +1,59 @@
-export const ALLOWED_VIDEO_DURATION_SECONDS = [6, 10, 12, 16, 20] as const;
+export const ALLOWED_VIDEO_DURATIONS = [6, 10, 12, 16, 20] as const;
+export const ALLOWED_VIDEO_DURATION_SECONDS = ALLOWED_VIDEO_DURATIONS;
 
-export type AllowedVideoDurationSeconds = (typeof ALLOWED_VIDEO_DURATION_SECONDS)[number];
+export type AllowedVideoDurationSeconds = typeof ALLOWED_VIDEO_DURATIONS[number];
 
 export const DEFAULT_VIDEO_DURATION_SECONDS: AllowedVideoDurationSeconds = 10;
 
-function parsePositiveDurationSeconds(value: unknown): number | undefined {
-  if (typeof value === 'number') {
-    return Number.isFinite(value) && value > 0 ? value : undefined;
+function coerceFiniteNumber(value: unknown): number | undefined {
+  let parsed: number | undefined;
+
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    parsed = value;
+  } else if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return undefined;
+    }
+    const directNumber = Number(trimmed);
+    if (Number.isFinite(directNumber)) {
+      parsed = directNumber;
+    } else {
+      const numericText = trimmed.match(/[-+]?\d+(?:\.\d+)?/)?.[0];
+      if (numericText) {
+        const extractedNumber = Number(numericText);
+        parsed = Number.isFinite(extractedNumber) ? extractedNumber : undefined;
+      }
+    }
   }
 
-  if (typeof value !== 'string') {
-    return undefined;
-  }
+  return parsed != null && parsed > 0 ? parsed : undefined;
+}
 
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return undefined;
-  }
-
-  const match = trimmed.match(/[-+]?\d+(?:\.\d+)?/);
-  if (!match) {
-    return undefined;
-  }
-
-  const parsed = Number(match[0]);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+function nearestAllowedVideoDuration(value: number): AllowedVideoDurationSeconds {
+  return ALLOWED_VIDEO_DURATIONS.reduce<AllowedVideoDurationSeconds>((nearest, current) => {
+    const currentDistance = Math.abs(current - value);
+    const nearestDistance = Math.abs(nearest - value);
+    if (currentDistance < nearestDistance) {
+      return current;
+    }
+    // 固定平局策略：选择较大的档位，例如 8 -> 10，18 -> 20。
+    if (currentDistance === nearestDistance && current > nearest) {
+      return current;
+    }
+    return nearest;
+  }, ALLOWED_VIDEO_DURATIONS[0]);
 }
 
 export function normalizeVideoDurationSeconds(
   value: unknown,
-  fallback: AllowedVideoDurationSeconds = DEFAULT_VIDEO_DURATION_SECONDS,
+  fallback: unknown = 10,
 ): AllowedVideoDurationSeconds {
-  const parsed = parsePositiveDurationSeconds(value);
-  if (parsed === undefined) {
-    return fallback;
+  const numericValue = coerceFiniteNumber(value);
+  if (numericValue != null) {
+    return nearestAllowedVideoDuration(numericValue);
   }
 
-  return ALLOWED_VIDEO_DURATION_SECONDS.reduce<AllowedVideoDurationSeconds>((nearest, candidate) => {
-    const currentDistance = Math.abs(parsed - nearest);
-    const candidateDistance = Math.abs(parsed - candidate);
-    if (candidateDistance < currentDistance) {
-      return candidate;
-    }
-    if (candidateDistance === currentDistance && candidate > nearest) {
-      return candidate;
-    }
-    return nearest;
-  }, ALLOWED_VIDEO_DURATION_SECONDS[0]);
+  const numericFallback = coerceFiniteNumber(fallback);
+  return nearestAllowedVideoDuration(numericFallback ?? 10);
 }

@@ -23,6 +23,7 @@ import {
   formatScriptAnalysisChunkError,
   type ScriptAnalysisChunkFailure,
 } from './scriptAnalysisErrorSummary';
+import { normalizeVideoDurationSeconds } from '../utils/videoDuration';
 
 const logger = createLogger('ScriptAnalysisService');
 
@@ -574,7 +575,7 @@ export class ScriptAnalysisService {
         scriptContent: s.scriptContent,
         shotType: s.shotType || 'medium',
         cameraMovement: s.cameraMovement || 'static',
-        duration: s.duration || 3,
+        duration: normalizeVideoDurationSeconds(s.duration),
         characters: (s.characters || []).map((name: string) => charNameToId.get(name) || name),
         dialogue: s.dialogue || '',
         emotion: s.emotion || '',

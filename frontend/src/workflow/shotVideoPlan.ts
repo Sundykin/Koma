@@ -10,6 +10,7 @@ import type {
   VideoGenerationCapability,
 } from '../types';
 import { getMediaAssetDisplaySource } from '../types';
+import { normalizeVideoDurationSeconds } from '../utils/videoDuration';
 import type { ModelCapability } from '../providers/channel/types';
 import type { PromptCompilationAsset } from '../services/promptCompilation/types';
 import { buildVideoCapabilityRequest } from '../services/promptCompilation/videoRequestCompiler';
@@ -222,7 +223,7 @@ export function buildShotVideoRequest(params: {
 }): ITVRequest<MediaAssetSource> {
   const capability = params.capability || params.plan.capability;
   const options = {
-    duration: params.duration,
+    duration: normalizeVideoDurationSeconds(params.duration),
     motionPrompt: params.motionPrompt,
     aspectRatio: params.aspectRatio,
   };

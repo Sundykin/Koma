@@ -59,7 +59,7 @@ describe('asset preview video workflows', () => {
     vi.clearAllMocks();
   });
 
-  it('角色预览视频会编译图生视频标准请求并从渠道配置读取时长', async () => {
+  it('角色预览视频会编译图生视频标准请求并归一渠道配置时长', async () => {
     const { generateCharacterPreviewVideo } = await import('./characterAssetWorkflow');
     const { resolvePromptTemplate } = await import('../store/promptTemplates');
     const { mediaGenerationService } = await import('../services/MediaGenerationService');
@@ -114,7 +114,7 @@ describe('asset preview video workflows', () => {
           capability: 'video.image-to-video',
           primaryImage: 'https://cdn.example.com/char.png',
           options: expect.objectContaining({
-            duration: 15,
+            duration: 16,
             aspectRatio: '9:16',
           }),
         }),

@@ -11,6 +11,7 @@ import { createLogger } from '../store/logger';
 import { createMentionString } from '../editor/mentionTypes';
 import { runWithConcurrency } from '../utils/concurrency';
 import type { StyleSnapshotLike } from '../utils/promptNormalize';
+import { normalizeVideoDurationSeconds } from '../utils/videoDuration';
 
 const logger = createLogger('ShotPrompt');
 
@@ -194,7 +195,7 @@ export class ShotPromptService {
     if (type === 'video') {
       templateVariables.cameraOptions = CAMERA_OPTIONS.join(', ');
       templateVariables.cameraMovementHint = shot.cameraMovement || 'static';
-      templateVariables.durationSeconds = String(Math.max(1, Math.round(shot.duration || 4)));
+      templateVariables.durationSeconds = String(normalizeVideoDurationSeconds(shot.duration));
       templateVariables.imageMode = shot.imageMode || 'normal';
       templateVariables.gridSequencePrompt = shot.imagePrompt?.trim() || '无';
     } else {

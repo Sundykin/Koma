@@ -34,6 +34,7 @@ import {
 import { compileShotVideoGenerationRequest } from './videoGenerationRequests';
 import { resolveConfiguredChannelModel } from '../providers/channel/resolver';
 import type { StyleSnapshotLike } from '../utils/promptNormalize';
+import { normalizeVideoDurationSeconds } from '../utils/videoDuration';
 
 const logger = createLogger('ShotRender');
 
@@ -215,10 +216,11 @@ export async function shotRenderWorkflow(
 
     const providerType = capabilitySupport?.resolvedContext?.definition.runtimeProviderType
       || capabilitySupport?.resolvedContext?.channelConfig.providerType;
+    const videoDuration = normalizeVideoDurationSeconds(normalizedShot.duration);
     const compiledVideoRequest = compileShotVideoGenerationRequest({
       plan: resolvedVideoPlan,
       prompt: videoPrompt,
-      duration: normalizedShot.duration,
+      duration: videoDuration,
       motionPrompt: normalizedShot.cameraMovement,
       aspectRatio: params.aspectRatio || params.project?.aspectRatio || '16:9',
       capability: effectiveVideoCapability,
@@ -247,7 +249,7 @@ export async function shotRenderWorkflow(
         || String(resolvedVideoPlan.additionalReferenceImages[0] || ''),
       videoPrompt,
       {
-        duration: normalizedShot.duration,
+        duration: videoDuration,
         motionPrompt: normalizedShot.cameraMovement,
         capability: effectiveVideoCapability,
       },
