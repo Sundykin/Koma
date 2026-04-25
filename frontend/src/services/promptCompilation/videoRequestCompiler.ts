@@ -10,6 +10,7 @@ import { resolveProviderAssetInput } from '../mediaAssetResolver';
 import { compileGrokITV, compileGrokTTI } from './grokImageIndexCompiler';
 import { compilePromptReferences } from './promptReferenceCompiler';
 import type { PromptCompilationDebug, PromptCompilationInput } from './types';
+import { normalizeVideoDurationSeconds } from '../../utils/videoDuration';
 
 type VideoRequestAsset = MediaAssetSource | ProviderAssetInput;
 type ProviderAssetTransport = ProviderAssetInput['transport'];
@@ -190,6 +191,21 @@ async function ensureRemoteUrlForMultipleSources(params: {
   return ensureRemoteUrlForImageSources(params);
 }
 
+function normalizeVideoRequestOptions(
+  options?: Record<string, unknown>,
+): Record<string, unknown> | undefined {
+  if (!options) {
+    return undefined;
+  }
+  if (!Object.prototype.hasOwnProperty.call(options, 'duration')) {
+    return options;
+  }
+  return {
+    ...options,
+    duration: normalizeVideoDurationSeconds(options.duration),
+  };
+}
+
 function createVideoRequest<TAsset extends VideoRequestAsset>(
   capability: VideoGenerationCapability,
   params: {
@@ -202,11 +218,12 @@ function createVideoRequest<TAsset extends VideoRequestAsset>(
     endFrame?: TAsset;
   },
 ): ITVRequest<TAsset> {
+  const options = normalizeVideoRequestOptions(params.options);
   if (capability === 'video.text-to-video') {
     return {
       capability,
       prompt: params.prompt,
-      options: params.options,
+      options,
     };
   }
 
@@ -219,7 +236,7 @@ function createVideoRequest<TAsset extends VideoRequestAsset>(
       prompt: params.prompt,
       primaryImage: params.primaryImage,
       additionalReferences: params.additionalReferences || [],
-      options: params.options,
+      options,
     };
   }
 
@@ -231,7 +248,7 @@ function createVideoRequest<TAsset extends VideoRequestAsset>(
       capability,
       prompt: params.prompt,
       referenceImages: params.referenceImages,
-      options: params.options,
+      options,
     };
   }
 
@@ -243,7 +260,7 @@ function createVideoRequest<TAsset extends VideoRequestAsset>(
     prompt: params.prompt,
     startFrame: params.startFrame,
     endFrame: params.endFrame,
-    options: params.options,
+    options,
   };
 }
 

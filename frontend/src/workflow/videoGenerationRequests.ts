@@ -9,6 +9,7 @@ import {
   buildShotVideoRequest,
   type ShotVideoPlan,
 } from './shotVideoPlan';
+import { normalizeVideoDurationSeconds } from '../utils/videoDuration';
 
 export interface CompiledVideoGenerationRequest {
   prompt: string;
@@ -125,7 +126,7 @@ export function compileShotVideoGenerationRequest(params: {
   const request = buildShotVideoRequest({
     plan: params.plan,
     prompt: params.prompt,
-    duration: params.duration,
+    duration: normalizeVideoDurationSeconds(params.duration),
     motionPrompt: params.motionPrompt,
     aspectRatio: params.aspectRatio,
     capability: params.capability,
@@ -158,9 +159,7 @@ export async function compileCharacterPreviewVideoRequest(params: {
     action: `${visualPrompt}, character showcase, subtle breathing, natural eye movement, steady camera`,
   });
 
-  const finalDuration = typeof params.duration === 'number' && Number.isFinite(params.duration) && params.duration > 0
-    ? params.duration
-    : 10;
+  const finalDuration = normalizeVideoDurationSeconds(params.duration);
 
   return {
     prompt: resolvedPrompt.prompt,
@@ -188,9 +187,7 @@ export async function compilePropPreviewVideoRequest(params: {
     motion: 'prop showcase, rotating slowly, detailed view',
   });
 
-  const finalDuration = typeof params.duration === 'number' && Number.isFinite(params.duration) && params.duration > 0
-    ? params.duration
-    : 10;
+  const finalDuration = normalizeVideoDurationSeconds(params.duration);
 
   return {
     prompt: resolvedPrompt.prompt,

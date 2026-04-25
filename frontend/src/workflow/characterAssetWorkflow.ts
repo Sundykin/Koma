@@ -24,6 +24,7 @@ import { mediaGenerationService } from '../services/MediaGenerationService';
 import { buildCharacterCostumeTemplateVariables } from './promptVariableBuilders';
 import { compileCharacterPreviewVideoRequest } from './videoGenerationRequests';
 import type { StyleSnapshotLike } from '../utils/promptNormalize';
+import { normalizeVideoDurationSeconds } from '../utils/videoDuration';
 
 const logger = createLogger('CharacterAsset');
 
@@ -135,6 +136,7 @@ export async function generateCharacterPreviewVideo(
     } catch (e) {
       logger.warn('获取 ITV 配置失败，使用默认时长 10s');
     }
+    previewDuration = normalizeVideoDurationSeconds(previewDuration);
 
     const resolvedStylePrefix = await getResolvedTTIStylePrefix(styleSnapshot || project?.styleSnapshot, theme, stylePrompt);
     const compiledRequest = await compileCharacterPreviewVideoRequest({

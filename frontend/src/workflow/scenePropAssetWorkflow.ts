@@ -30,6 +30,7 @@ import {
 } from './promptVariableBuilders';
 import { compilePropPreviewVideoRequest } from './videoGenerationRequests';
 import type { StyleSnapshotLike } from '../utils/promptNormalize';
+import { normalizeVideoDurationSeconds } from '../utils/videoDuration';
 
 const logger = createLogger('ScenePropAsset');
 
@@ -362,6 +363,7 @@ export async function generatePropPreviewVideo(
     } catch (e) {
       logger.warn('获取 ITV 配置失败，使用默认时长 10s');
     }
+    previewDuration = normalizeVideoDurationSeconds(previewDuration);
 
     // 构建道具视频提示词
     const resolvedStylePrefix = await getResolvedTTIStylePrefix(styleSnapshot || project?.styleSnapshot, theme, stylePrompt);

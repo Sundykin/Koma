@@ -537,6 +537,7 @@ export interface ProjectMeta {
   updatedAt: number;
   thumbnailPath?: string;
   mediaSelections?: Partial<Record<'llm' | 'tti' | 'itv' | 'tts', MediaModelSelection>>;
+  aspectRatio?: '16:9' | '9:16';
   stylePresetId?: string; // 选中的全局风格 ID
   styleSnapshot?: ProjectStyleSnapshot;
   // @deprecated 遗留字段，仅保留给未改造调用点过渡
