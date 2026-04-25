@@ -3,6 +3,7 @@ import { Minus, Square, X, Maximize2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { electronService } from '../../services/electronService';
 import { createLogger } from '../../store/logger';
+import { AppLogo } from './AppLogo';
 
 const logger = createLogger('WindowControls');
 
@@ -52,7 +53,7 @@ export const WindowControls: React.FC = () => {
     <div className="h-8 bg-zinc-950 flex items-center justify-between select-none drag-region">
       {/* 左侧 Logo */}
       <div className="flex items-center h-full px-3 no-drag">
-        <div className="w-5 h-5 bg-emerald-600 rounded flex items-center justify-center text-white font-bold text-xs shadow-sm shadow-emerald-900/30">K</div>
+        <AppLogo variant="titlebar" />
         <span className="ml-2 text-xs text-zinc-400 font-medium">Koma</span>
       </div>
 
