@@ -3,16 +3,91 @@
  * 显示项目中所有角色、场景、道具及其跨集使用情况
  */
 import React, { useState, useEffect, useCallback, useImperativeHandle, forwardRef } from 'react';
-import { Tabs, Avatar, Empty, Spin, Tooltip } from 'antd';
-import { User, MapPin, Box, Link } from 'lucide-react';
+import { Tabs, Avatar, Empty, Spin, Tooltip, Popconfirm, Button, message } from 'antd';
+import { User, MapPin, Box, Link, Trash2 } from 'lucide-react';
 import type { Character, Scene, Prop, EpisodeRef } from '../../types';
-import { loadCharacters, loadScenes, loadProps, getOrphanedAssets, repairAssetEpisodeRefs } from '../../store/projectStore';
+import { isBlobUri, isDataUri, isRemoteMediaUri } from '../../types';
+import {
+  loadCharacters,
+  saveCharacters,
+  loadScenes,
+  saveScenes,
+  loadProps,
+  saveProps,
+  getOrphanedAssets,
+  repairAssetEpisodeRefs,
+  listEpisodes,
+  removeAssetFromAnalysis,
+} from '../../store/projectStore';
 import { electronService } from '../../services/electronService';
 import { createLogger } from '../../store/logger';
 import { TaskManager } from '../../services/TaskManager';
 import { getCharacterCostumePhotoSource } from '../../utils/mediaSelectors';
 
 const logger = createLogger('ProjectAssetOverview');
+
+type ProjectAssetType = 'character' | 'scene' | 'prop';
+type ProjectAsset = Character | Scene | Prop;
+
+const assetTypeLabel: Record<ProjectAssetType, string> = {
+  character: '角色',
+  scene: '场景',
+  prop: '道具',
+};
+
+function isSkippableMediaUri(value?: string): boolean {
+  const trimmed = value?.trim();
+  return Boolean(
+    trimmed && (
+      isRemoteMediaUri(trimmed) ||
+      isDataUri(trimmed) ||
+      isBlobUri(trimmed) ||
+      /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed)
+    )
+  );
+}
+
+function isDeletableLocalPath(value?: string): value is string {
+  const trimmed = value?.trim();
+  return Boolean(trimmed && !isSkippableMediaUri(trimmed));
+}
+
+function getLocalMediaPaths(asset: ProjectAsset, type: ProjectAssetType): string[] {
+  if (type === 'character') {
+    const character = asset as Character;
+    return [
+      character.media?.costumePhoto?.localPath,
+      character.media?.previewVideo?.localPath,
+    ].filter(isDeletableLocalPath);
+  }
+
+  if (type === 'scene') {
+    const scene = asset as Scene;
+    return [scene.media?.previewImage?.localPath].filter(isDeletableLocalPath);
+  }
+
+  const prop = asset as Prop;
+  return [
+    prop.media?.previewImage?.localPath,
+    prop.media?.previewVideo?.localPath,
+  ].filter(isDeletableLocalPath);
+}
+
+async function removeLocalMediaFiles(paths: string[]): Promise<string[]> {
+  const failures: string[] = [];
+  const uniquePaths = Array.from(new Set(paths));
+
+  await Promise.all(uniquePaths.map(async (path) => {
+    try {
+      await electronService.fs.remove(path);
+    } catch (error) {
+      failures.push(path);
+      logger.warn('删除项目资产本地媒体失败:', path, error);
+    }
+  }));
+
+  return failures;
+}
 
 interface ProjectAssetOverviewProps {
   projectId: string;
@@ -32,6 +107,7 @@ export const ProjectAssetOverview = forwardRef<ProjectAssetOverviewRef, ProjectA
   const [scenes, setScenes] = useState<Scene[]>([]);
   const [props, setProps] = useState<Prop[]>([]);
   const [orphanedCount, setOrphanedCount] = useState(0);
+  const [deletingAssetIds, setDeletingAssetIds] = useState<Set<string>>(() => new Set());
 
   const loadAssets = useCallback(async () => {
     setLoading(true);
@@ -71,6 +147,110 @@ export const ProjectAssetOverview = forwardRef<ProjectAssetOverviewRef, ProjectA
     });
     return () => unsubscribe();
   }, [projectId, loadAssets]);
+
+  const setAssetDeleting = useCallback((assetKey: string, deleting: boolean) => {
+    setDeletingAssetIds((prev) => {
+      const next = new Set(prev);
+      if (deleting) {
+        next.add(assetKey);
+      } else {
+        next.delete(assetKey);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleDeleteAsset = useCallback(async (type: ProjectAssetType, assetId: string) => {
+    const assetKey = `${type}:${assetId}`;
+    setAssetDeleting(assetKey, true);
+
+    try {
+      let target: ProjectAsset | undefined;
+      let nextCharacters: Character[] | undefined;
+      let nextScenes: Scene[] | undefined;
+      let nextProps: Prop[] | undefined;
+
+      if (type === 'character') {
+        const current = await loadCharacters(projectId);
+        target = current.find((item) => item.id === assetId);
+        nextCharacters = current.filter((item) => item.id !== assetId);
+      } else if (type === 'scene') {
+        const current = await loadScenes(projectId);
+        target = current.find((item) => item.id === assetId);
+        nextScenes = current.filter((item) => item.id !== assetId);
+      } else {
+        const current = await loadProps(projectId);
+        target = current.find((item) => item.id === assetId);
+        nextProps = current.filter((item) => item.id !== assetId);
+      }
+
+      if (!target) {
+        message.warning('资产不存在或已被删除');
+        await loadAssets();
+        return;
+      }
+
+      const episodes = await listEpisodes(projectId);
+      await Promise.all(episodes.map((episode) => (
+        removeAssetFromAnalysis(projectId, episode.id, assetId, type)
+      )));
+
+      if (type === 'character' && nextCharacters) {
+        await saveCharacters(projectId, nextCharacters);
+      } else if (type === 'scene' && nextScenes) {
+        await saveScenes(projectId, nextScenes);
+      } else if (type === 'prop' && nextProps) {
+        await saveProps(projectId, nextProps);
+      }
+
+      const mediaFailures = await removeLocalMediaFiles(getLocalMediaPaths(target, type));
+      await loadAssets();
+
+      if (mediaFailures.length > 0) {
+        message.warning('资产已删除，部分本地媒体文件删除失败');
+      } else {
+        message.success(`${assetTypeLabel[type]}已删除`);
+      }
+    } catch (error) {
+      logger.error('删除项目资产失败:', error);
+      message.error(`删除${assetTypeLabel[type]}失败`);
+    } finally {
+      setAssetDeleting(assetKey, false);
+    }
+  }, [loadAssets, projectId, setAssetDeleting]);
+
+  const renderDeleteButton = (type: ProjectAssetType, asset: ProjectAsset) => {
+    const assetKey = `${type}:${asset.id}`;
+
+    return (
+      <Popconfirm
+        title={`永久删除${assetTypeLabel[type]}？`}
+        description={(
+          <div className="max-w-[280px] text-xs leading-5">
+            会从项目资产库永久删除，并移除所有剧集/分镜引用；
+            关联本地媒体文件也会删除；无法恢复。远程媒体不会被本地删除。
+          </div>
+        )}
+        okText="永久删除"
+        cancelText="取消"
+        okButtonProps={{ danger: true }}
+        placement="left"
+        onConfirm={() => handleDeleteAsset(type, asset.id)}
+      >
+        <Button
+          type="text"
+          danger
+          size="small"
+          icon={<Trash2 className="w-3.5 h-3.5" />}
+          loading={deletingAssetIds.has(assetKey)}
+          onClick={(event) => event.stopPropagation()}
+          className="flex-shrink-0 opacity-80 hover:opacity-100"
+          aria-label={`删除${assetTypeLabel[type]} ${asset.name}`}
+          title={`删除${assetTypeLabel[type]}`}
+        />
+      </Popconfirm>
+    );
+  };
 
   const renderEpisodeRefs = (refs?: EpisodeRef[]) => {
     if (!refs || refs.length === 0) {
@@ -177,6 +357,7 @@ export const ProjectAssetOverview = forwardRef<ProjectAssetOverviewRef, ProjectA
                           <div className="text-sm text-zinc-200 truncate">{char.name}</div>
                           {renderEpisodeRefs(char.episodeRefs)}
                         </div>
+                        {renderDeleteButton('character', char)}
                       </div>
                     ))}
                   </div>
@@ -211,6 +392,7 @@ export const ProjectAssetOverview = forwardRef<ProjectAssetOverviewRef, ProjectA
                           <div className="text-sm text-zinc-200 truncate">{scene.name}</div>
                           {renderEpisodeRefs(scene.episodeRefs)}
                         </div>
+                        {renderDeleteButton('scene', scene)}
                       </div>
                     ))}
                   </div>
@@ -245,6 +427,7 @@ export const ProjectAssetOverview = forwardRef<ProjectAssetOverviewRef, ProjectA
                           <div className="text-sm text-zinc-200 truncate">{prop.name}</div>
                           {renderEpisodeRefs(prop.episodeRefs)}
                         </div>
+                        {renderDeleteButton('prop', prop)}
                       </div>
                     ))}
                   </div>
