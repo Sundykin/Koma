@@ -48,6 +48,20 @@ function toDataUrl(bytes: Uint8Array, mimeType: string): string {
   return `data:${mimeType};base64,${btoa(binary)}`;
 }
 
+// 把 electronService.fs.toLocalUrl 产出的 `koma-local:///encoded/path` 还原为真实
+// 文件系统路径（含 URL-encoded 段的解码）。其他形态的字符串原样返回。
+export function decodeKomaLocalToFsPath(value: string): string {
+  if (!value.startsWith('koma-local://')) return value;
+  // 协议头之后剩下的部分即原始路径片段（toLocalUrl 对每段做了 encodeURIComponent，
+  // `/` 未被编码，因此整体 decodeURIComponent 安全）。
+  const remainder = value.slice('koma-local:///'.length);
+  try {
+    return decodeURIComponent(remainder);
+  } catch {
+    return remainder;
+  }
+}
+
 export async function resolveProviderAssetInput(
   source: string | StoredMediaAsset | undefined,
   options?: ResolveProviderAssetInputOptions,
@@ -103,15 +117,18 @@ export async function resolveProviderAssetInput(
       continue;
     }
 
-    const exists = await electronService.fs.exists(resolved);
+    // 上游灵绘节点的产物经 buildMediaItem→toPreviewSource 包装为 `koma-local://...`，
+    // 这里需要还原为真实路径才能落到 fs.exists / readFileAsBase64。
+    const fsPath = decodeKomaLocalToFsPath(resolved);
+    const exists = await electronService.fs.exists(fsPath);
     if (!exists) {
       continue;
     }
 
-    const base64 = await electronService.fs.readFileAsBase64(resolved);
+    const base64 = await electronService.fs.readFileAsBase64(fsPath);
     const mimeType = typeof source === 'string'
-      ? inferMimeTypeFromSource(resolved)
-      : source?.mimeType || inferMimeTypeFromSource(resolved);
+      ? inferMimeTypeFromSource(fsPath)
+      : source?.mimeType || inferMimeTypeFromSource(fsPath);
 
     return {
       transport: 'data-url',

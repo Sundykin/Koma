@@ -164,11 +164,13 @@ export class Grok2ApiImagineITVProvider implements ITVProvider {
   type = 'grok2api-imagine-itv' as const;
   config: ITVConfig;
 
-  // Grok2API accepts URL or data-uri (base64) for images.
+  // Grok2API 接收 URL 或 data-uri（base64），但 data-uri 会让 prompt body 暴增、
+  // 且部分代理对超长 base64 直接 413/超时。这里仅声明 remote-url，让上游管线
+  // 通过 ensureRemoteUrlForSingleSource/Multiple 把本地图片先上传到图床（七牛云 OSS 等）。
   assetTransports = {
-    primaryImage: ['remote-url', 'data-url'] as const,
-    additionalReferences: ['remote-url', 'data-url'] as const,
-    referenceImages: ['remote-url', 'data-url'] as const,
+    primaryImage: ['remote-url'] as const,
+    additionalReferences: ['remote-url'] as const,
+    referenceImages: ['remote-url'] as const,
   };
 
   constructor(config: ITVConfig) {

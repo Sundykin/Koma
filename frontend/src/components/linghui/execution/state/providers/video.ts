@@ -27,10 +27,12 @@ import {
   toPreviewSource,
 } from '../linghuiExecutionShared';
 import { getVideoCapabilityDescriptor } from '../../../editors/state/videoCapabilityUtils';
+import { persistMediaAsset } from '../../../../../services/mediaPersistenceService';
 import {
   executeWithProviderFallback,
   summarizeProviderFallbackMetadata,
   withProviderFallbackMetadata,
+  type LinghuiProviderFallbackCandidate,
 } from './fallback';
 import {
   createTaskSnapshotGetter,
@@ -44,6 +46,7 @@ async function executeVideoProviderAttempt(
   provider: NonNullable<Awaited<ReturnType<typeof getProjectITVProvider>>>,
   traceContext: ReturnType<typeof createVideoTraceContext>,
   placeholderPoster: string,
+  candidate: LinghuiProviderFallbackCandidate,
   params: {
     capability: VideoGenerationCapability;
     prompt: string;
@@ -242,15 +245,77 @@ async function executeVideoProviderAttempt(
       );
   throwIfExecutionAborted(params.signal);
 
+  // 把视频结果落盘到 EXECUTION_PROJECT_ID 项目目录下，避免远程链接（包括需要 channel
+  // 鉴权的 /v1/videos/{id}/content 端点）失效；channelId 透传给 mediaPersistenceService，
+  // 由其按需附加 Authorization 头下载。
+  const remoteTaskId = started.mode === 'async'
+    ? started.taskId
+    : (started.output as { taskId?: string }).taskId;
+  let persistedSource = output.source;
+  let persistedMimeType = output.mimeType;
+  let persistMetadata: Record<string, unknown> | undefined;
+  try {
+    const persisted = await persistMediaAsset({
+      projectId: EXECUTION_PROJECT_ID,
+      kind: 'video',
+      source: output.source,
+      mimeType: output.mimeType,
+      provider: provider.config?.provider,
+      providerTaskId: remoteTaskId,
+      channelId: candidate.channelId,
+      modelId: candidate.modelId,
+      capability: params.capability,
+      metadata: {
+        traceId: traceContext.traceId,
+        selectionKey: candidate.selectionKey,
+      },
+    });
+    persistedSource = persisted.localPath || persisted.remoteUrl || output.source;
+    persistedMimeType = persisted.mimeType || output.mimeType;
+    persistMetadata = {
+      localPath: persisted.localPath,
+      remoteUrl: persisted.remoteUrl,
+      ...(persisted.metadata?.localPersistFailed
+        ? { localPersistFailed: true, localPersistError: persisted.metadata.localPersistError }
+        : undefined),
+    };
+    logger.info('灵绘视频中间产物落盘完成', {
+      traceId: traceContext.traceId,
+      provider: provider.config?.provider,
+      capability: params.capability,
+      remoteTaskId,
+      localPath: persisted.localPath,
+      remoteUrl: persisted.remoteUrl,
+      localPersistFailed: Boolean(persisted.metadata?.localPersistFailed),
+    });
+  } catch (error) {
+    // 落盘失败不阻塞流程，回落到上游返回的远程地址。
+    logger.warn('灵绘视频中间产物落盘失败，回落到远程链接', {
+      traceId: traceContext.traceId,
+      provider: provider.config?.provider,
+      capability: params.capability,
+      remoteTaskId,
+      source: output.source,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    persistMetadata = {
+      localPersistFailed: true,
+      localPersistError: error instanceof Error ? error.message : String(error),
+    };
+  }
+
   return buildMediaItem({
     kind: 'video',
-    source: output.source,
+    source: persistedSource,
     posterSource: placeholderPoster,
     durationSec: output.durationSec,
     width: output.width,
     height: output.height,
-    mimeType: output.mimeType,
-    metadata: output.metadata,
+    mimeType: persistedMimeType,
+    metadata: {
+      ...output.metadata,
+      ...(persistMetadata ? { persist: persistMetadata } : undefined),
+    },
   });
 }
 
@@ -343,7 +408,8 @@ export async function generateVideoWithProvider(params: {
     signal: params.signal,
     loadProvider: selectionKey => getProjectITVProvider(selectionKey, params.capability, settings),
     validateProvider: provider => provider.validate(),
-    execute: provider => executeVideoProviderAttempt(provider, traceContext, placeholderPoster, params),
+    execute: (provider, candidate) =>
+      executeVideoProviderAttempt(provider, traceContext, placeholderPoster, candidate, params),
   });
 
   return withProviderFallbackMetadata(

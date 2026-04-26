@@ -161,6 +161,10 @@ function formatEmotionCue(emotion?: string): string {
 
 function getCharacterAppearance(character?: Character): string {
   if (!character) return '';
+  // 优先使用结构化提取出来的 appearance；用户在角色面板里手动改的也会回写到 appearance。
+  // prompt 历史上是 appearance 的镜像，作为兜底；最后用 name 兜底防止全空。
+  const primary = sanitizeCharacterAppearance(character.appearance, '');
+  if (primary) return primary;
   return sanitizeCharacterAppearance(character.prompt, character.name);
 }
 
@@ -196,6 +200,38 @@ function formatAgeClause(age?: string): string {
   const trimmed = cleanText(age);
   if (!trimmed || UNKNOWN_AGE_PATTERN.test(trimmed)) return '';
   return `${normalizeAgeToYearsOld(trimmed)},`;
+}
+
+// 把数字/区间年龄转换为 TTI 模型更容易理解的英语年龄段名词，
+// 用于和 gender 拼成一个紧凑的人物身份短语（如 "young adult male"）。
+function ageBucketLabel(age?: string): string {
+  const trimmed = cleanText(age);
+  if (!trimmed) return '';
+  if (/^(未知|unknown|n\/?a)$/i.test(trimmed)) return '';
+  const match = /(\d+)/.exec(trimmed);
+  if (!match) return '';
+  const value = Number(match[1]);
+  if (!Number.isFinite(value) || value <= 0) return '';
+  if (value < 13) return 'child';
+  if (value < 20) return 'teenager';
+  if (value < 30) return 'young adult';
+  if (value < 50) return 'adult';
+  if (value < 65) return 'middle-aged';
+  return 'elderly';
+}
+
+// 把 gender + age 合成一个具象人物名词短语，便于 TTI 模型把性别 / 年龄锁进主体；
+// 同时保留精确年龄词以提供细节，例如 "young adult male, 28 years old"。
+function formatDemographicClause(gender?: string, age?: string): string {
+  const genderEn = GENDER_EN[gender || ''] || '';
+  const bucket = ageBucketLabel(age);
+  const subjectParts = [bucket, genderEn].filter(Boolean);
+  const subject = subjectParts.length ? subjectParts.join(' ') : 'person';
+  const trimmedAge = cleanText(age);
+  const explicitAge = trimmedAge && !/^(未知|unknown|n\/?a)$/i.test(trimmedAge)
+    ? (/^\d+$/.test(trimmedAge) ? `${trimmedAge} years old` : trimmedAge)
+    : '';
+  return joinClauses([subject, explicitAge]);
 }
 
 function getSceneVisualDescription(scene?: Scene): string {
@@ -282,6 +318,8 @@ export function buildCharacterCostumeTemplateVariables(
 ): Record<string, string> {
   return {
     stylePrefix: cleanText(stylePrefix),
+    demographic: formatDemographicClause(character.gender, character.age),
+    // gender / age 仍然透传，方便老的自定义模板覆盖继续生效。
     gender: formatGenderClause(character.gender),
     age: formatAgeClause(character.age),
     appearance: getCharacterAppearance(character),
