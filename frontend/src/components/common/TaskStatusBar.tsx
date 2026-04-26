@@ -2,7 +2,7 @@
  * 任务状态悬浮通知组件
  * 右下角悬浮显示当前运行中的后台任务进度
  */
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Progress, Typography, Tag, Button, Empty, Tooltip } from 'antd';
 import { ReloadOutlined, StopOutlined } from '@ant-design/icons';
 import { Loader2, CheckCircle2, XCircle, ChevronDown, ChevronUp, FileText, Video, Cpu, Box, Download, X } from 'lucide-react';
@@ -157,6 +157,7 @@ export const TaskStatusBar: React.FC<TaskStatusBarProps> = ({ projectId, onRetry
   const [expanded, setExpanded] = useState(false);
   const [activeTab, setActiveTab] = useState<FilterKey>('all');
   const [dismissed, setDismissed] = useState(false);
+  const activeTaskIdsRef = useRef('');
 
   const getSubTypeLabel = (subType?: string): string => {
     const labels: Record<string, string> = {
@@ -258,7 +259,21 @@ export const TaskStatusBar: React.FC<TaskStatusBarProps> = ({ projectId, onRetry
       if (disposed) return;
       setTasks(merged);
 
-      if (merged.some(t => t.status === 'running' || t.status === 'pending' || t.status === 'processing')) {
+      const activeTaskIds = merged
+        .filter(task => isRunning(task.status))
+        .map(task => task.id)
+        .sort()
+        .join('|');
+
+      if (!activeTaskIds) {
+        activeTaskIdsRef.current = '';
+        setDismissed(false);
+        setExpanded(false);
+        return;
+      }
+
+      if (activeTaskIds !== activeTaskIdsRef.current) {
+        activeTaskIdsRef.current = activeTaskIds;
         setDismissed(false);
       }
     };
@@ -295,9 +310,9 @@ export const TaskStatusBar: React.FC<TaskStatusBarProps> = ({ projectId, onRetry
     return { runningTasks: running, completedTasks: completed, failedTasks: failed, allFilteredTasks: filtered };
   }, [tasks, activeTab]);
 
-  if (tasks.length === 0 || dismissed) return null;
-
   const mainTask = runningTasks[0];
+
+  if (!mainTask || dismissed) return null;
 
   const filterItems: Array<{ key: FilterKey; label: string; count: number }> = [
     { key: 'all', label: t('common.all'), count: tasks.length },
@@ -557,82 +572,55 @@ export const TaskStatusBar: React.FC<TaskStatusBarProps> = ({ projectId, onRetry
           className="px-3.5 py-3 cursor-pointer hover:bg-zinc-800/40"
           onClick={() => setExpanded(true)}
         >
-          {mainTask ? (
-            (() => {
-              const mainTaskProgress = mainTaskStagePresentation?.progress ?? mainTask.progress;
-              return (
-            <div className="flex items-start gap-3">
-              <div className="mt-0.5 shrink-0">{getStatusIcon(mainTask.status)}</div>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  {mainTask.category && CATEGORY_CONFIG[mainTask.category] && (
-                    <Tag color={CATEGORY_CONFIG[mainTask.category].color} className="text-[10px] px-1.5 py-0 rounded-full">
-                      {getSubTypeLabel(mainTask.subType)}
-                    </Tag>
-                  )}
-                  {runningTasks.length > 1 && (
-                    <Tag color="blue" className="text-[10px] px-1.5 py-0 rounded-full">+{runningTasks.length - 1}</Tag>
-                  )}
-                </div>
-                <div className="mt-1 text-sm text-zinc-100 truncate">
-                  {mainTask.targetName || getTaskLabel(mainTask)}
-                </div>
-                <div className="mt-2 flex items-center gap-2">
-                  <Progress
-                    percent={mainTaskProgress}
-                    size="small"
-                    showInfo={false}
-                    className="flex-1"
-                    strokeColor={getProgressStrokeColor(mainTask.status)}
-                    trailColor="#3f3f46"
-                  />
-                  <Text className="text-zinc-400 text-xs tabular-nums">{mainTaskProgress}%</Text>
-                </div>
-                {(mainTaskStagePresentation?.detail || mainTaskStagePresentation?.summary) && (
-                  <div className="mt-1 text-xs text-zinc-500 break-words">
-                    {mainTaskStagePresentation?.detail || mainTaskStagePresentation?.summary}
+          {(() => {
+            const mainTaskProgress = mainTaskStagePresentation?.progress ?? mainTask.progress;
+            return (
+              <div className="flex items-start gap-3">
+                <div className="mt-0.5 shrink-0">{getStatusIcon(mainTask.status)}</div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {mainTask.category && CATEGORY_CONFIG[mainTask.category] && (
+                      <Tag color={CATEGORY_CONFIG[mainTask.category].color} className="text-[10px] px-1.5 py-0 rounded-full">
+                        {getSubTypeLabel(mainTask.subType)}
+                      </Tag>
+                    )}
+                    {runningTasks.length > 1 && (
+                      <Tag color="blue" className="text-[10px] px-1.5 py-0 rounded-full">+{runningTasks.length - 1}</Tag>
+                    )}
                   </div>
-                )}
-              </div>
-              <div className="flex items-center gap-1 shrink-0">
-                <ChevronUp className="w-4 h-4 text-zinc-500" />
-                <Button
-                  type="text"
-                  size="small"
-                  icon={<X className="w-3.5 h-3.5" />}
-                  className="text-zinc-500 hover:text-zinc-200 !w-8 !h-8"
-                  onClick={(e) => { e.stopPropagation(); setDismissed(true); }}
-                />
-              </div>
-            </div>
-              );
-            })()
-          ) : (
-            <div className="flex items-center justify-between gap-3">
-              <div className="min-w-0 flex items-center gap-2">
-                {failedTasks.length > 0 ? (
-                  <XCircle className="w-4 h-4 text-red-500 shrink-0" />
-                ) : (
-                  <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
-                )}
-                <div className="text-sm text-zinc-300 truncate">
-                  {failedTasks.length > 0
-                    ? `${t('task.failed')} ${failedTasks.length}`
-                    : `${t('task.completed')} ${completedTasks.length}`}
+                  <div className="mt-1 text-sm text-zinc-100 truncate">
+                    {mainTask.targetName || getTaskLabel(mainTask)}
+                  </div>
+                  <div className="mt-2 flex items-center gap-2">
+                    <Progress
+                      percent={mainTaskProgress}
+                      size="small"
+                      showInfo={false}
+                      className="flex-1"
+                      strokeColor={getProgressStrokeColor(mainTask.status)}
+                      trailColor="#3f3f46"
+                    />
+                    <Text className="text-zinc-400 text-xs tabular-nums">{mainTaskProgress}%</Text>
+                  </div>
+                  {(mainTaskStagePresentation?.detail || mainTaskStagePresentation?.summary) && (
+                    <div className="mt-1 text-xs text-zinc-500 break-words">
+                      {mainTaskStagePresentation?.detail || mainTaskStagePresentation?.summary}
+                    </div>
+                  )}
+                </div>
+                <div className="flex items-center gap-1 shrink-0">
+                  <ChevronUp className="w-4 h-4 text-zinc-500" />
+                  <Button
+                    type="text"
+                    size="small"
+                    icon={<X className="w-3.5 h-3.5" />}
+                    className="text-zinc-500 hover:text-zinc-200 !w-8 !h-8"
+                    onClick={(e) => { e.stopPropagation(); setDismissed(true); }}
+                  />
                 </div>
               </div>
-              <div className="flex items-center gap-1 shrink-0">
-                <ChevronUp className="w-4 h-4 text-zinc-500" />
-                <Button
-                  type="text"
-                  size="small"
-                  icon={<X className="w-3.5 h-3.5" />}
-                  className="text-zinc-500 hover:text-zinc-200 !w-8 !h-8"
-                  onClick={(e) => { e.stopPropagation(); setDismissed(true); }}
-                />
-              </div>
-            </div>
-          )}
+            );
+          })()}
         </div>
       )}
 

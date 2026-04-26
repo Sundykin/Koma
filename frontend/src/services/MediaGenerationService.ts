@@ -318,8 +318,21 @@ export class MediaGenerationService {
     promptCompilation?: PromptCompilationInput;
     ttiSelection?: string;
     taskName?: string;
+    destPath?: string;
+    bindOwner?: boolean;
+    normalizeRemoteUrl?: boolean;
   }): Promise<StoredMediaAsset> {
-    const { projectId, ownerRef, request, ttiSelection, taskName, promptCompilation } = params;
+    const {
+      projectId,
+      ownerRef,
+      request,
+      ttiSelection,
+      taskName,
+      promptCompilation,
+      destPath,
+      bindOwner = true,
+      normalizeRemoteUrl = true,
+    } = params;
     const { provider, resolvedContext } = await resolveProviderAndContext({
       category: 'tti',
       selectionKey: ttiSelection,
@@ -450,6 +463,7 @@ export class MediaGenerationService {
         projectId,
         kind,
         source,
+        destPath,
         ownerRef,
         provider: provider.config?.provider,
         channelId: executionMetadata.channelId,
@@ -470,16 +484,25 @@ export class MediaGenerationService {
         asset: summarizeImageAsset(persisted),
       });
 
-      const normalized = await ensureRemoteUrlForImageAsset({
-        projectId,
-        asset: persisted,
-        policy: 'best-effort',
-      });
-      logger.info('TTI immediate remote-url normalized', {
-        ownerRef,
-        before: summarizeImageAsset(persisted),
-        after: summarizeImageAsset(normalized),
-      });
+      const normalized = normalizeRemoteUrl
+        ? await ensureRemoteUrlForImageAsset({
+            projectId,
+            asset: persisted,
+            policy: 'best-effort',
+          })
+        : persisted;
+      if (normalizeRemoteUrl) {
+        logger.info('TTI immediate remote-url normalized', {
+          ownerRef,
+          before: summarizeImageAsset(persisted),
+          after: summarizeImageAsset(normalized),
+        });
+      } else {
+        logger.info('TTI immediate remote-url normalization skipped', {
+          ownerRef,
+          asset: summarizeImageAsset(persisted),
+        });
+      }
 
       const finalAsset = mergeMediaMetadata(normalized, {
         provider: provider.config?.provider,
@@ -491,11 +514,18 @@ export class MediaGenerationService {
         ownerRef,
         asset: summarizeImageAsset(finalAsset),
       });
-      await bindOwnerRefMedia(projectId, ownerRef, finalAsset);
-      logger.info('TTI immediate bind owner done', {
-        ownerRef,
-        asset: summarizeImageAsset(finalAsset),
-      });
+      if (bindOwner) {
+        await bindOwnerRefMedia(projectId, ownerRef, finalAsset);
+        logger.info('TTI immediate bind owner done', {
+          ownerRef,
+          asset: summarizeImageAsset(finalAsset),
+        });
+      } else {
+        logger.info('TTI immediate bind owner skipped', {
+          ownerRef,
+          asset: summarizeImageAsset(finalAsset),
+        });
+      }
       return finalAsset;
     }
 
@@ -543,6 +573,9 @@ export class MediaGenerationService {
         },
       }),
       providerTaskId: started.taskId,
+      destPath,
+      bindOwner,
+      normalizeRemoteUrl,
       ...executionMetadata,
     });
   }
@@ -985,9 +1018,27 @@ export class MediaGenerationService {
     channelId?: string;
     modelId?: string;
     capability?: string;
+    destPath?: string;
+    bindOwner?: boolean;
+    normalizeRemoteUrl?: boolean;
     onProgress?: (task: AsyncTask, progress: number) => void;
   }): Promise<StoredMediaAsset> {
-    const { projectId, kind, task, getSnapshot, extractSource, enrichAsset, providerTaskId, channelId, modelId, capability, onProgress } = params;
+    const {
+      projectId,
+      kind,
+      task,
+      getSnapshot,
+      extractSource,
+      enrichAsset,
+      providerTaskId,
+      channelId,
+      modelId,
+      capability,
+      destPath,
+      bindOwner = true,
+      normalizeRemoteUrl = true,
+      onProgress,
+    } = params;
 
     const pollIntervalMs = DEFAULT_POLLING_CONFIG.interval;
     const maxPollMs = DEFAULT_POLLING_CONFIG.maxDuration;
@@ -1046,6 +1097,7 @@ export class MediaGenerationService {
           projectId,
           kind,
           source,
+          destPath,
           ownerRef: task.ownerRef,
           providerTaskId: providerTaskId || task.remoteTaskId,
           channelId,
@@ -1059,7 +1111,7 @@ export class MediaGenerationService {
         });
 
         const enriched = enrichAsset(persisted);
-        const finalAsset = kind === 'image'
+        const finalAsset = kind === 'image' && normalizeRemoteUrl
           ? await ensureRemoteUrlForImageAsset({ projectId, asset: enriched, policy: 'best-effort' })
           : enriched;
         if (kind === 'image') {
@@ -1068,11 +1120,12 @@ export class MediaGenerationService {
             remoteTaskId: task.remoteTaskId,
             persisted: summarizeImageAsset(persisted),
             finalAsset: summarizeImageAsset(finalAsset),
+            normalizeRemoteUrl,
           });
         }
         await markTaskCompleted(projectId, task.id, finalAsset);
 
-        if (task.ownerRef) {
+        if (bindOwner && task.ownerRef) {
           await bindOwnerRefMedia(projectId, task.ownerRef, finalAsset);
         }
 

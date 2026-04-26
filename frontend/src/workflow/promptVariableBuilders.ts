@@ -171,18 +171,31 @@ const GENDER_EN: Record<string, string> = {
   unknown: '',
 };
 
+const UNKNOWN_AGE_PATTERN = /^(未知|unknown|n\/?a)$/i;
+const NUMERIC_AGE_PATTERN = /^\d+$/;
+const CHINESE_AGE_PATTERN = /^(\d+)\s*岁$/i;
+const YEARS_OLD_PATTERN = /^(\d+)\s*years?\s+old$/i;
+
 function formatGenderClause(gender?: string): string {
   if (!gender) return '';
   const en = GENDER_EN[gender];
   return en ? `${en},` : '';
 }
 
+function normalizeAgeToYearsOld(age: string): string {
+  if (NUMERIC_AGE_PATTERN.test(age)) {
+    return `${age} years old`;
+  }
+
+  return age
+    .replace(CHINESE_AGE_PATTERN, '$1 years old')
+    .replace(YEARS_OLD_PATTERN, '$1 years old');
+}
+
 function formatAgeClause(age?: string): string {
   const trimmed = cleanText(age);
-  if (!trimmed) return '';
-  if (/^(未知|unknown|n\/?a)$/i.test(trimmed)) return '';
-  const en = /^\d+$/.test(trimmed) ? `${trimmed} years old` : trimmed;
-  return `${en},`;
+  if (!trimmed || UNKNOWN_AGE_PATTERN.test(trimmed)) return '';
+  return `${normalizeAgeToYearsOld(trimmed)},`;
 }
 
 function getSceneVisualDescription(scene?: Scene): string {

@@ -34,6 +34,14 @@ import { normalizeVideoDurationSeconds } from '../utils/videoDuration';
 
 const logger = createLogger('ScenePropAsset');
 
+function appendCandidateVariationPrompt(prompt: string, variationPrompt?: string): string {
+  const trimmedVariation = variationPrompt?.trim();
+  if (!trimmedVariation) {
+    return prompt;
+  }
+  return `${prompt}\n\nCandidate variation instructions:\n${trimmedVariation}\nKeep the same asset identity and do not change the character/person/object/scene identity.`;
+}
+
 // ========== 提示词获取（供外部组件使用）==========
 
 /**
@@ -107,6 +115,11 @@ interface GenerateOptions {
   styleSnapshot?: StyleSnapshotLike;
   project?: { styleSnapshot?: StyleSnapshotLike; aspectRatio?: '16:9' | '9:16' };
   ttiSelection?: string;
+  seed?: number;
+  variationPrompt?: string;
+  destPath?: string;
+  bindOwner?: boolean;
+  normalizeRemoteUrl?: boolean;
   onProgress?: (progress: number, step: string) => void;
 }
 
@@ -118,7 +131,7 @@ interface GenerateOptions {
 export async function generateSceneImage(
   options: GenerateOptions & { scene: Scene }
 ): Promise<{ success: boolean; path?: string; url?: string; error?: string }> {
-  const { projectId, scene, aspectRatio, theme, stylePrompt, styleSnapshot, project, ttiSelection, onProgress } = options;
+  const { projectId, scene, aspectRatio, theme, stylePrompt, styleSnapshot, project, ttiSelection, seed, variationPrompt, destPath, bindOwner, normalizeRemoteUrl, onProgress } = options;
   const finalAspectRatio = aspectRatio || project?.aspectRatio || '16:9';
 
   logger.info(`开始生成场景预览图: ${scene.name}`);
@@ -131,7 +144,7 @@ export async function generateSceneImage(
       'tti_scene_preview',
       buildScenePreviewTemplateVariables(scene, stylePrefix || '')
     );
-    const prompt = resolvedPrompt.prompt;
+    const prompt = appendCandidateVariationPrompt(resolvedPrompt.prompt, variationPrompt);
 
     onProgress?.(10, '调用 TTI 服务...');
 
@@ -139,7 +152,10 @@ export async function generateSceneImage(
     logTTICall(
       'TTI',
       prompt,
-      { aspectRatio: finalAspectRatio },
+      {
+        aspectRatio: finalAspectRatio,
+        ...(seed !== undefined ? { seed } : undefined),
+      },
       {
         projectId,
         targetId: scene.id,
@@ -162,9 +178,13 @@ export async function generateSceneImage(
         references: [],
         options: {
           aspectRatio: finalAspectRatio,
+          ...(seed !== undefined ? { seed } : undefined),
         },
       },
       ttiSelection,
+      destPath,
+      bindOwner,
+      normalizeRemoteUrl,
       taskName: `场景: ${scene.name}`,
     });
     onProgress?.(100, '完成');
@@ -224,7 +244,7 @@ export async function generateAllSceneImages(
 export async function generatePropImage(
   options: GenerateOptions & { prop: Prop }
 ): Promise<{ success: boolean; path?: string; url?: string; error?: string }> {
-  const { projectId, prop, theme, stylePrompt, styleSnapshot, project, ttiSelection, onProgress } = options;
+  const { projectId, prop, theme, stylePrompt, styleSnapshot, project, ttiSelection, seed, variationPrompt, destPath, bindOwner, normalizeRemoteUrl, onProgress } = options;
 
   logger.info(`开始生成道具参考图: ${prop.name}`);
   onProgress?.(0, '准备生成道具图...');
@@ -236,7 +256,7 @@ export async function generatePropImage(
       'tti_prop_reference',
       buildPropReferenceTemplateVariables(prop, stylePrefix || '')
     );
-    const prompt = resolvedPrompt.prompt;
+    const prompt = appendCandidateVariationPrompt(resolvedPrompt.prompt, variationPrompt);
 
     onProgress?.(10, '调用 TTI 服务...');
 
@@ -244,7 +264,10 @@ export async function generatePropImage(
     logTTICall(
       'TTI',
       prompt,
-      IMAGE_GENERATION_SIZES.square,
+      {
+        ...IMAGE_GENERATION_SIZES.square,
+        ...(seed !== undefined ? { seed } : undefined),
+      },
       {
         projectId,
         targetId: prop.id,
@@ -267,9 +290,13 @@ export async function generatePropImage(
         references: [],
         options: {
           ...IMAGE_GENERATION_SIZES.square,
+          ...(seed !== undefined ? { seed } : undefined),
         },
       },
       ttiSelection,
+      destPath,
+      bindOwner,
+      normalizeRemoteUrl,
       taskName: `道具: ${prop.name}`,
     });
     onProgress?.(100, '完成');
