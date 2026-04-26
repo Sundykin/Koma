@@ -818,29 +818,38 @@ The video plays out in a continuous 9-part sequence:
     id: 'character_extraction',
     name: '角色提取',
     description: '从剧本中提取角色信息',
-    template: `分析以下剧本，提取所有角色信息。
-
-【核心任务】
-分析剧本文本，提取所有角色的结构化资料与视觉形象方案。必须提取剧本中出现的所有人物角色，无论是主角、配角还是仅有少量描述的次要角色。
+    template: `分析以下剧本，提取所有角色信息，输出结构化资料用于后续 AI 文生图。必须提取剧本中出现的所有人物角色（主角、反派、配角、仅有少量描写的次要人物均要覆盖）。
 
 【字段要求】
-1. “name”：角色名称
-2. “age”：年龄，能判断时必须填写；无法判断时填写 "未知"
-3. “gender”：只能填写 "male"、"female"、"neutral"、"unknown"
-4. “role”：只能填写 "protagonist"、"antagonist"、"supporting"
-5. “appearance”：只写客观可见外观，包括脸型、瞳色、发型发色、服装配饰、体态、材质与配色
-6. “description”：只写角色识别信息或人物小传，不得替代 “appearance” 承担视觉描述职责
+1. "name"：角色名称
+2. "age"：年龄
+   - 必须依据剧本线索（职业、身份、社会角色、对白语气、家庭关系、场景、年代背景）尽量给出具体年龄或区间
+   - 可写形式示例："28岁"、"约30岁"、"40岁出头"、"10岁左右的少年"、"60岁以上的老人"
+   - 仅当剧本完全没有任何线索可推断时才允许填 "未知"，正常情况下禁止使用 "未知"
+3. "gender"：只能填写 "male"、"female"、"neutral"、"unknown"
+4. "role"：只能填写 "protagonist"、"antagonist"、"supporting"
+5. "appearance"：纯客观可见外观，作为文生图的核心提示词
+   - 必须详细到能直接驱动 AI 文生图，建议总长度 ≥ 60 字
+   - 必须覆盖以下维度（按重要性顺序）：
+     a. 脸部：脸型、眉型、眼型、瞳色、鼻型、嘴唇、肤色
+     b. 头发：长度、发型、发色、发质（含发饰，如有）
+     c. 体态：身高感、身材体型、姿势惯性
+     d. 服装：上装、下装、鞋履，每件都给出【颜色】+【款式】+【材质】
+     e. 配饰：眼镜、首饰、围巾、手套、武器/法器（仅造型部分），均带【材质】
+     f. 身体可见特征痕迹：疤痕、纹身、胎记、刺青、穿孔（仅限脸/颈/手/小臂等衣物外暴露部位）
+   - 剧本未明说的视觉细节，可以基于人物身份做合理推断（例如年代、职业惯用穿着）
+6. "description"：≤ 20 字的极简身份/职业标签，仅用于 LLM 上下文识别，禁止任何剧情、性格、心理、过往经历
 
-【appearance 红线规则】
-1. 服装描述需包含【颜色】、【款式】、【材质】三个维度
-2. 严禁使用性格、情绪、气质、命运等抽象词汇
-3. 严禁使用"好看的"、"普通的"等模糊词
-4. 输出为中文描述
-
-【appearance 禁止内容（必须剔除）】
-- 职业/身份/社会关系（如：店主、老板、养父、继承）
-- 超自然/能力/设定（如：能看见鬼魂、通灵、诅咒）
-- 经历/背景/事件（如：火场被救、全家遇难、身世成谜）
+【appearance 红线规则（违反任何一条都视为不合格）】
+1. 只描述视觉可见的客观特征，禁止性格、情绪、气质、命运、心理、思想等抽象词汇
+2. 服装材质禁止 "职业套装"、"日常服"、"休闲装" 等模糊词，必须给出具体材质（如：棉布 / 呢料 / 皮革 / 亚麻 / 丝绸 / 牛仔 / 工装布 / 针织 / 化纤）
+3. 禁止描述被衣物遮挡的身体特征（如：胸口胎记、腰背纹身、内衣、私处、隐藏部位的旧伤），只写衣物外可见的痕迹
+4. 禁止 "好看的"、"普通的"、"帅气的"、"美丽的"、"清秀的" 等主观或模糊词汇
+5. 禁止职业/身份/社会关系叙述（如：店主、老板、养父）；这些写到 description 字段
+6. 禁止超自然 / 能力 / 设定（如：能看见鬼魂、通灵、被诅咒）
+7. 禁止经历背景事件（如：火场被救、全家遇难、身世成谜）
+8. 必须输出中文描述
+9. 任何无法在画面中直接看到的内容一律剔除
 
 剧本：
 {{script}}
@@ -851,12 +860,12 @@ The video plays out in a continuous 9-part sequence:
 {
   "characters": [
     {
-      "name": "角色名称",
+      "name": "顾行",
       "age": "28岁",
       "gender": "male",
       "role": "protagonist",
-      "appearance": "窄长脸，深棕色瞳孔，黑色短发，深灰色长风衣，内搭白色衬衫，黑色长裤，皮质短靴，衣料略有雨水反光",
-      "description": "年轻调查员，长期独自追查旧案"
+      "appearance": "窄长脸，剑眉，深棕色丹凤眼，挺直鼻梁，薄唇，小麦色肤；黑色微卷短发；中等偏高身高，瘦削紧实身形，肩背挺拔；上身穿深灰色羊毛长风衣，内搭白色棉质立领衬衫；下身黑色斜纹布修身长裤；脚踩黑色牛皮短靴；左手腕戴一只银色金属机械表；左眉尾一道浅淡旧疤",
+      "description": "年轻调查员"
     }
   ]
 }
@@ -1006,17 +1015,24 @@ description 字段要求：
     id: 'tti_character_costume',
     name: '角色定妆照（三视图）',
     description: '生成角色三视图定妆照',
-    template: '{{stylePrefix}}, character turnaround sheet, white background, front view | side view | back view, three poses in one image, full body standing reference, neutral stance, clear silhouette, clothing layers visible, objective appearance details only, {{gender}} {{age}} {{appearance}}',
+    // 把人物 demographic + appearance 前置，让 TTI 模型先锁定主体身份与可见特征，
+    // 再施加技术约束（三视图布局、纯色背景、配光、跨视图一致性）。
+    template: '{{stylePrefix}}, character turnaround sheet of a {{demographic}}, {{appearance}}, full body standing reference, neutral A-pose, three poses in one image: front view | three-quarter side view | back view, identical character identity / face / hair / skin / clothing / accessories repeated across all three views, plain pure white seamless background, soft even studio lighting, no cast shadows on background, clear silhouette, all clothing layers visible, objective visible appearance only, no props, no environment, no narrative, no text, no extra characters',
     variables: [
       variable('stylePrefix'),
-      variable('gender', {
-        description: '角色性别英文标签（male/female/androgynous），自动从 Character.gender 映射。未知或空值会跳过。',
-      }),
-      variable('age', {
-        description: '角色年龄的英文描述。纯数字会转为 "N years old"；"未知" 等占位值会跳过。',
+      variable('demographic', {
+        description: '角色 gender + age 合成的英文人物短语，例如 "young adult male, 28 years old"；buildCharacterCostumeTemplateVariables 自动生成。',
       }),
       variable('appearance', {
-        description: '角色当前用于生图的客观外观描述，只能包含脸部、发型、服装、材质、配色、体态等可见信息。',
+        description: '角色当前用于生图的客观外观描述（脸/发/体态/服装/配饰/可见痕迹），只允许画面可见信息。',
+      }),
+      variable('gender', {
+        description: '兼容字段：原 gender 短语，已被 demographic 取代；保留给历史自定义模板。',
+        required: false,
+      }),
+      variable('age', {
+        description: '兼容字段：原 age 短语，已被 demographic 取代；保留给历史自定义模板。',
+        required: false,
       }),
     ],
     isCustom: false,

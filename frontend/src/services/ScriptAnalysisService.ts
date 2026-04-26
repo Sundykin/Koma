@@ -106,11 +106,20 @@ const CHARACTERS_SCHEMA = {
         type: 'object',
         properties: {
           name: { type: 'string', description: '角色名称' },
-          age: { type: 'string', description: '年龄描述' },
+          age: {
+            type: 'string',
+            description: '年龄。须根据剧本线索（职业/身份/家庭/对白/年代等）尽量推断具体年龄或区间，例如 "28岁"、"40岁出头"、"约30岁"、"60岁以上的老人"；只有完全无任何线索时才允许填 "未知"。',
+          },
           gender: { type: 'string', enum: ['male', 'female', 'neutral', 'unknown'], description: '角色性别' },
           role: { type: 'string', enum: ['protagonist', 'antagonist', 'supporting'], description: '角色定位' },
-          description: { type: 'string', description: '人物小传' },
-          appearance: { type: 'string', description: 'AI绘图用的外貌描述，中文' },
+          description: {
+            type: 'string',
+            description: '≤ 20 字的极简身份/职业标签，仅供 LLM 上下文识别；禁止剧情、性格、心理、过往经历。',
+          },
+          appearance: {
+            type: 'string',
+            description: 'AI 文生图用的纯客观可见外观描述（中文，建议 ≥ 60 字）。必须覆盖：脸部（脸型/眉/眼/瞳色/鼻/嘴/肤色）、头发、体态、上下装与鞋履（每件给【颜色】+【款式】+【材质】）、配饰、衣物外可见的疤痕/纹身/胎记/穿孔。禁止性格情绪、被衣物遮挡的隐藏部位特征、职业身份叙述、模糊词。',
+          },
         },
         required: ['name', 'age', 'gender', 'role', 'description', 'appearance'],
       },
