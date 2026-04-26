@@ -11,7 +11,10 @@ import {
   compileLinghuiPromptReferences,
   type LinghuiPromptReferenceItem,
 } from '../../../editors/state/linghuiPromptReferences';
+import { ensureRemoteUrlForImageSources } from '../../../../../services/mediaRemoteUrlService';
+import { persistMediaAsset } from '../../../../../services/mediaPersistenceService';
 import {
+  EXECUTION_PROJECT_ID,
   buildMediaItem,
   createPlaceholderImage,
   throwIfExecutionAborted,
@@ -20,6 +23,7 @@ import {
   executeWithProviderFallback,
   summarizeProviderFallbackMetadata,
   withProviderFallbackMetadata,
+  type LinghuiProviderFallbackCandidate,
 } from './fallback';
 import {
   createTaskSnapshotGetter,
@@ -33,6 +37,7 @@ const imageLogger = createLogger('LinghuiImageExecution');
 async function executeImageProviderAttempt(
   provider: NonNullable<Awaited<ReturnType<typeof getProjectTTIProvider>>>,
   requestedCapability: 'image.text-to-image' | 'image.image-to-image',
+  candidate: LinghuiProviderFallbackCandidate,
   params: {
     prompt: string;
     referenceSources?: string[];
@@ -99,9 +104,31 @@ async function executeImageProviderAttempt(
       };
     }
 
+    // grok 协议下，data-uri 会让 chat/completions body 暴增（部分代理 413/超时），
+    // 这里先尝试把本地参考图上传到图床（best-effort），失败则回落到原始 data-url。
+    const requiresRemoteUrlUpload = replacementStrategy === 'image-index';
+    const [resolvedReferenceSources, resolvedSilentReferenceSources] = requiresRemoteUrlUpload
+      ? await Promise.all([
+          ensureRemoteUrlForImageSources({
+            projectId: EXECUTION_PROJECT_ID,
+            sources: referenceSources,
+            policy: 'best-effort',
+          }),
+          ensureRemoteUrlForImageSources({
+            projectId: EXECUTION_PROJECT_ID,
+            sources: silentReferenceSources,
+            policy: 'best-effort',
+          }),
+        ])
+      : [referenceSources, silentReferenceSources];
+
     references = [
-      ...await ensureProviderAssetInputs(referenceSources),
-      ...await ensureProviderAssetInputs(silentReferenceSources),
+      ...await ensureProviderAssetInputs(
+        resolvedReferenceSources.filter(Boolean) as Array<MediaAssetSource | ProviderAssetInput>,
+      ),
+      ...await ensureProviderAssetInputs(
+        resolvedSilentReferenceSources.filter(Boolean) as Array<MediaAssetSource | ProviderAssetInput>,
+      ),
     ];
 
     if (params.multiAngle && references.length === 0) {
@@ -186,13 +213,67 @@ async function executeImageProviderAttempt(
       );
   throwIfExecutionAborted(params.signal);
 
+  // 把生成的图片落盘到 EXECUTION_PROJECT_ID 项目目录下，避免远程链接（包括需要
+  // channel 鉴权的端点）失效；channelId 透传给 mediaPersistenceService 用于按需鉴权下载。
+  const rawSource = output.url || output.path;
+  let persistedSource = rawSource;
+  let persistedMimeType = output.mimeType;
+  let persistMetadata: Record<string, unknown> | undefined;
+  try {
+    const persisted = await persistMediaAsset({
+      projectId: EXECUTION_PROJECT_ID,
+      kind: 'image',
+      source: rawSource,
+      mimeType: output.mimeType,
+      provider: provider.config?.provider,
+      channelId: candidate.channelId,
+      modelId: candidate.modelId,
+      capability: requestedCapability,
+      metadata: {
+        selectionKey: candidate.selectionKey,
+      },
+    });
+    persistedSource = persisted.localPath || persisted.remoteUrl || rawSource;
+    persistedMimeType = persisted.mimeType || output.mimeType;
+    persistMetadata = {
+      localPath: persisted.localPath,
+      remoteUrl: persisted.remoteUrl,
+      ...(persisted.metadata?.localPersistFailed
+        ? { localPersistFailed: true, localPersistError: persisted.metadata.localPersistError }
+        : undefined),
+    };
+    imageLogger.info('灵绘图片中间产物落盘完成', {
+      selectionKey: params.ttiSelection,
+      capability: requestedCapability,
+      provider: provider.config?.provider,
+      localPath: persisted.localPath,
+      remoteUrl: persisted.remoteUrl,
+      localPersistFailed: Boolean(persisted.metadata?.localPersistFailed),
+    });
+  } catch (error) {
+    imageLogger.warn('灵绘图片中间产物落盘失败，回落到原始链接', {
+      selectionKey: params.ttiSelection,
+      capability: requestedCapability,
+      provider: provider.config?.provider,
+      source: rawSource,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    persistMetadata = {
+      localPersistFailed: true,
+      localPersistError: error instanceof Error ? error.message : String(error),
+    };
+  }
+
   return buildMediaItem({
     kind: 'image',
-    source: output.url || output.path,
-    mimeType: output.mimeType,
+    source: persistedSource,
+    mimeType: persistedMimeType,
     width: output.width,
     height: output.height,
-    metadata: output.metadata,
+    metadata: {
+      ...output.metadata,
+      ...(persistMetadata ? { persist: persistMetadata } : undefined),
+    },
   });
 }
 
@@ -289,7 +370,8 @@ export async function generateImageWithProvider(params: {
     signal: params.signal,
     loadProvider: selectionKey => getProjectTTIProvider(selectionKey, requestedCapability, settings),
     validateProvider: provider => provider.validate(),
-    execute: provider => executeImageProviderAttempt(provider, requestedCapability, params),
+    execute: (provider, candidate) =>
+      executeImageProviderAttempt(provider, requestedCapability, candidate, params),
   });
 
   return withProviderFallbackMetadata(

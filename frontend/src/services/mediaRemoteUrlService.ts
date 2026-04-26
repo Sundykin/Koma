@@ -17,6 +17,7 @@ import { electronService } from './electronService';
 import { createLogger } from '../store/logger';
 import { uploadBytesToImageHostingWithRetry } from './imageHostingService';
 import { base64ToBytes, stripDataHeader } from '../utils/encoding';
+import { decodeKomaLocalToFsPath } from './mediaAssetResolver';
 
 const logger = createLogger('MediaRemoteUrl');
 
@@ -87,12 +88,15 @@ async function readBytesFromLocalFile(path: string): Promise<Uint8Array> {
     throw new Error('不支持的环境（需要 Electron）');
   }
 
-  const exists = await electronService.fs.exists(path);
+  // 上游产物可能是 `koma-local://...` 显示 URL，先还原为真实文件系统路径。
+  const fsPath = decodeKomaLocalToFsPath(path);
+
+  const exists = await electronService.fs.exists(fsPath);
   if (!exists) {
-    throw new Error(`本地文件不存在: ${path}`);
+    throw new Error(`本地文件不存在: ${fsPath}`);
   }
 
-  const base64 = await electronService.fs.readFileAsBase64(path);
+  const base64 = await electronService.fs.readFileAsBase64(fsPath);
   return base64ToBytes(base64);
 }
 
