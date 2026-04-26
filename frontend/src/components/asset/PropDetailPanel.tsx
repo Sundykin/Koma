@@ -247,6 +247,7 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
     runningImageDrawSessionRef.current = sessionId;
     setGenerating('image');
     setProgress(0);
+    setProgressStep(formatDrawProgressStep(0));
 
     const isCurrentSession = () => (
       runningImageDrawSessionRef.current === sessionId &&
@@ -875,6 +876,8 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
         open={imageDrawOpen}
         candidates={imageDrawCandidates}
         generating={generating === 'image'}
+        progress={progress}
+        progressStep={progressStep}
         applying={imageDrawApplying}
         onCancel={handleCancelImageDraw}
         onRedraw={handleRedrawImageDraw}

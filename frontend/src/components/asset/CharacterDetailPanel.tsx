@@ -294,6 +294,7 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
     runningImageDrawSessionRef.current = sessionId;
     setGenerating('costume');
     setProgress(0);
+    setProgressStep(formatDrawProgressStep(0));
 
     const isCurrentSession = () => (
       runningImageDrawSessionRef.current === sessionId &&
@@ -1023,6 +1024,8 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
         candidates={imageDrawCandidates}
         ownerType="character"
         generating={generating === 'costume'}
+        progress={progress}
+        progressStep={progressStep}
         applying={imageDrawApplying}
         onCancel={handleCancelImageDraw}
         onRedraw={handleRedrawImageDraw}

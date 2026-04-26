@@ -1,10 +1,83 @@
-import { describe, expect, it } from 'vitest';
-import {
+import React from 'react';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import AssetImageDrawModal, {
   generateImageDrawCandidates,
   getImageDrawVariation,
+  type AssetImageDrawCandidate,
   type AssetImageDrawIdentitySpec,
   type AssetImageDrawVariation,
 } from './AssetImageDrawModal';
+
+
+vi.mock('react-i18next', () => ({
+  useTranslation: () => ({
+    t: (key: string, params?: Record<string, unknown>) => {
+      const index = params?.index ?? '';
+      const current = params?.current ?? '';
+      const total = params?.total ?? '';
+      const translations: Record<string, string> = {
+        'asset.imageDrawTitle': 'Choose an image candidate',
+        'asset.imageDrawHint': 'Choose a candidate.',
+        'asset.imageCandidatePreviewHint': 'Click a candidate to select it; use Preview for the large image.',
+        'asset.imageCandidateSelectAlt': `Select image candidate ${index}`,
+        'asset.imageCandidatePreviewAlt': `Preview image candidate ${index}`,
+        'asset.imageCandidateAlt': `Image candidate ${index}`,
+        'asset.imageCandidatePreviewTitle': 'Image candidate preview',
+        'asset.characterDirectionSelectAlt': `Select character direction ${index}`,
+        'asset.characterDirectionPreviewAlt': `Preview character direction ${index}`,
+        'asset.characterDirectionAlt': `Character direction ${index}`,
+        'asset.characterDirectionCardTitle': `Character direction ${current}/${total}`,
+        'asset.previewImage': 'Preview',
+        'asset.drawImageCandidates': 'Generating 9 image candidates...',
+        'asset.drawCharacterDirections': 'Drawing 9 character directions...',
+        'asset.noImageCandidates': 'No image candidates',
+        'asset.redrawCandidates': 'Redraw 9 candidates',
+        'asset.useSelectedImage': 'Use selected image',
+        'common.cancel': 'Cancel',
+        'common.close': 'Close',
+      };
+      return translations[key] ?? key;
+    },
+  }),
+}));
+
+beforeAll(() => {
+  const originalGetComputedStyle = window.getComputedStyle.bind(window);
+  Object.defineProperty(window, 'getComputedStyle', {
+    writable: true,
+    value: (element: Element) => originalGetComputedStyle(element),
+  });
+
+  Object.defineProperty(window, 'matchMedia', {
+    writable: true,
+    value: vi.fn().mockImplementation((query: string) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })),
+  });
+
+  if (!('ResizeObserver' in window)) {
+    Object.defineProperty(window, 'ResizeObserver', {
+      writable: true,
+      value: class ResizeObserver {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      },
+    });
+  }
+});
+
+afterEach(() => {
+  cleanup();
+});
 
 const IDENTITY_SPEC_SHAPE = {
   faceShape: expect.any(String),
@@ -78,5 +151,65 @@ describe('asset image draw character identity metadata', () => {
       identitySpec,
       metadata: { candidateKind: 'characterIdentityDirection' },
     }));
+  });
+});
+
+describe('AssetImageDrawModal interactions', () => {
+  const candidates: AssetImageDrawCandidate[] = [
+    {
+      id: 'candidate-1',
+      sessionId: 'session-1',
+      ownerType: 'scene',
+      ownerId: 'scene-1',
+      localPath: 'candidate-1.png',
+      seed: 101,
+    },
+    {
+      id: 'candidate-2',
+      sessionId: 'session-1',
+      ownerType: 'scene',
+      ownerId: 'scene-1',
+      localPath: 'candidate-2.png',
+      seed: 202,
+    },
+  ];
+
+  it('keeps selection and preview separate while showing redraw progress over existing candidates', () => {
+    const onUseSelected = vi.fn();
+    const baseProps = {
+      open: true,
+      candidates,
+      onCancel: vi.fn(),
+      onRedraw: vi.fn(),
+      onUseSelected,
+    };
+
+    const { rerender } = render(React.createElement(AssetImageDrawModal, {
+      ...baseProps,
+      generating: true,
+      progress: 33,
+      progressStep: 'Drawing 3/9 · Calling TTI service...',
+    }));
+
+    expect(screen.getByRole('status')).toHaveTextContent('Drawing 3/9 · Calling TTI service...');
+    expect(screen.getByRole('status')).toHaveTextContent('33%');
+
+    rerender(React.createElement(AssetImageDrawModal, {
+      ...baseProps,
+      generating: false,
+    }));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Select image candidate 2' }));
+    expect(screen.queryByText('Image candidate preview')).not.toBeInTheDocument();
+
+    const previewButton = screen.getByRole('button', { name: 'Preview image candidate 1' });
+    fireEvent.click(previewButton);
+
+    expect(screen.getByText('Image candidate preview')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Use selected image' }));
+
+    expect(onUseSelected).toHaveBeenCalledTimes(1);
+    expect(onUseSelected).toHaveBeenCalledWith(expect.objectContaining({ id: 'candidate-2' }));
   });
 });

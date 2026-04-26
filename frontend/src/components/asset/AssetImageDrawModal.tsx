@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Button, Empty, Modal, Spin, Tag, Typography } from 'antd';
+import { Button, Empty, Modal, Progress, Spin, Tag, Typography } from 'antd';
 import { CheckCircleFilled, ReloadOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import type { MediaOwnerRef } from '../../types';
@@ -340,6 +340,8 @@ interface AssetImageDrawModalProps {
   useLabel?: React.ReactNode;
   redrawLabel?: React.ReactNode;
   applyingLabel?: React.ReactNode;
+  progress?: number;
+  progressStep?: React.ReactNode;
   candidates: AssetImageDrawCandidate[];
   ownerType?: AssetImageDrawOwnerType;
   generating?: boolean;
@@ -536,6 +538,8 @@ export const AssetImageDrawModal: React.FC<AssetImageDrawModalProps> = ({
   useLabel,
   redrawLabel,
   applyingLabel,
+  progress,
+  progressStep,
   candidates,
   ownerType,
   generating = false,
@@ -572,6 +576,8 @@ export const AssetImageDrawModal: React.FC<AssetImageDrawModalProps> = ({
   const isCharacterDraw = effectiveOwnerType === 'character';
   const previewSrc = previewCandidate ? getAssetImageDrawCandidateSource(previewCandidate) : '';
   const previewIsCharacter = previewCandidate?.ownerType === 'character';
+  const progressPercent = Math.max(0, Math.min(100, Math.round(progress ?? 0)));
+  const progressText = progressStep || (isCharacterDraw ? t('asset.drawCharacterDirections') : t('asset.drawImageCandidates'));
 
   return (
     <>
@@ -619,6 +625,21 @@ export const AssetImageDrawModal: React.FC<AssetImageDrawModalProps> = ({
           </div>
         </div>
 
+        {generating && (
+          <div className="asset-image-draw-progress" role="status" aria-live="polite">
+            <div className="asset-image-draw-progress-header">
+              <Text>{progressText}</Text>
+              <Text type="secondary">{progressPercent}%</Text>
+            </div>
+            <Progress
+              percent={progressPercent}
+              size="small"
+              showInfo={false}
+              status={progressPercent >= 100 ? 'success' : 'active'}
+            />
+          </div>
+        )}
+
         {generating && candidates.length === 0 ? (
           <div className="asset-image-draw-loading">
             <Spin />
@@ -636,44 +657,57 @@ export const AssetImageDrawModal: React.FC<AssetImageDrawModalProps> = ({
                 : String(index + 1);
               const seedTitle = candidate.seed !== undefined ? `seed ${candidate.seed}` : undefined;
               return (
-                <button
+                <div
                   key={candidate.id}
-                  type="button"
                   className={`asset-image-draw-card${selected ? ' selected' : ''}`}
-                  onClick={() => {
-                    setSelectedId(candidate.id);
-                    setPreviewCandidate(candidate);
-                  }}
-                  aria-pressed={selected}
-                  aria-label={isCharacterCandidate
-                    ? t('asset.characterDirectionPreviewAlt', { index: index + 1 })
-                    : t('asset.imageCandidatePreviewAlt', { index: index + 1 })}
                   title={isCharacterCandidate ? [candidate.variationLabel, seedTitle].filter(Boolean).join(' · ') : seedTitle}
                 >
-                  <img
-                    src={getAssetImageDrawCandidateSource(candidate)}
-                    alt={isCharacterCandidate
-                      ? t('asset.characterDirectionAlt', { index: index + 1 })
-                      : t('asset.imageCandidateAlt', { index: index + 1 })}
-                  />
-                  <div className="asset-image-draw-card-meta">
-                    <Tag color={selected ? 'blue' : 'default'}>{candidateTitle}</Tag>
-                    {candidate.variationLabel && (
-                      <span className="asset-image-draw-variation" title={candidate.variationLabel}>
-                        {candidate.variationLabel}
-                      </span>
+                  <button
+                    type="button"
+                    className="asset-image-draw-select-button"
+                    onClick={() => {
+                      setSelectedId(candidate.id);
+                    }}
+                    aria-pressed={selected}
+                    aria-label={isCharacterCandidate
+                      ? t('asset.characterDirectionSelectAlt', { index: index + 1 })
+                      : t('asset.imageCandidateSelectAlt', { index: index + 1 })}
+                  >
+                    <img
+                      src={getAssetImageDrawCandidateSource(candidate)}
+                      alt={isCharacterCandidate
+                        ? t('asset.characterDirectionAlt', { index: index + 1 })
+                        : t('asset.imageCandidateAlt', { index: index + 1 })}
+                    />
+                    <div className="asset-image-draw-card-meta">
+                      <Tag color={selected ? 'blue' : 'default'}>{candidateTitle}</Tag>
+                      {candidate.variationLabel && (
+                        <span className="asset-image-draw-variation" title={candidate.variationLabel}>
+                          {candidate.variationLabel}
+                        </span>
+                      )}
+                      {!isCharacterCandidate && candidate.seed !== undefined && (
+                        <span className="asset-image-draw-seed">seed {candidate.seed}</span>
+                      )}
+                    </div>
+                    {selected && (
+                      <CheckCircleFilled className="asset-image-draw-selected-icon" />
                     )}
-                    {!isCharacterCandidate && candidate.seed !== undefined && (
-                      <span className="asset-image-draw-seed">seed {candidate.seed}</span>
-                    )}
-                  </div>
-                  <span className="asset-image-draw-preview-badge">
+                  </button>
+                  <button
+                    type="button"
+                    className="asset-image-draw-preview-badge"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setPreviewCandidate(candidate);
+                    }}
+                    aria-label={isCharacterCandidate
+                      ? t('asset.characterDirectionPreviewAlt', { index: index + 1 })
+                      : t('asset.imageCandidatePreviewAlt', { index: index + 1 })}
+                  >
                     {t('asset.previewImage')}
-                  </span>
-                  {selected && (
-                    <CheckCircleFilled className="asset-image-draw-selected-icon" />
-                  )}
-                </button>
+                  </button>
+                </div>
               );
             })}
           </div>
