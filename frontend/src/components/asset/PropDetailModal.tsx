@@ -40,6 +40,7 @@ import { electronService, openFileDialog, fsCopy, fsMkdir, fsExists } from '../.
 import { getStorageConfig, initStorageConfig } from '../../store/storageConfig';
 import { saveProps, loadProps } from '../../store/projectStore';
 import { createStoredMediaAsset, updatePropMedia } from '../../utils/mediaAssets';
+import { mergeEpisodeRefs } from './assetEpisodeRefs';
 import {
   getPropPreviewImageSource,
   getPropPreviewVideoSource,
@@ -122,18 +123,24 @@ export const PropDetailModal: React.FC<PropDetailModalProps> = ({
 
     try {
       const values = await form.validateFields();
+      const props = await loadProps(projectId);
+      const index = props.findIndex(p => p.id === editedProp.id);
+      if (index === -1) {
+        throw new Error('保存失败');
+      }
+
+      const storedProp = props[index];
       const updatedProp: Prop = {
+        ...storedProp,
         ...editedProp,
         ...values,
         prompt: values.prompt || '',
+        media: storedProp.media ?? editedProp.media,
+        episodeRefs: mergeEpisodeRefs(storedProp.episodeRefs, editedProp.episodeRefs),
       };
 
-      const props = await loadProps(projectId);
-      const index = props.findIndex(p => p.id === editedProp.id);
-      if (index !== -1) {
-        props[index] = updatedProp;
-        await saveProps(projectId, props);
-      }
+      props[index] = updatedProp;
+      await saveProps(projectId, props);
 
       setEditedProp(updatedProp);
       onUpdate(updatedProp);

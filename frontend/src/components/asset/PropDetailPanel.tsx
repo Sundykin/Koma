@@ -34,17 +34,19 @@ import {
 } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import type { ProjectStyleSnapshot, Prop } from '../../types';
+import { isRemoteMediaUri } from '../../types';
 import {
   generatePropImage,
   generatePropPreviewVideo,
   extractAndBindProp,
 } from '../../workflow/scenePropAssetWorkflow';
-import { electronService, openFileDialog, fsCopy, fsMkdir, fsExists } from '../../services/electronService';
+import { electronService, openFileDialog, fsCopy, fsMkdir, fsExists, fsRemove } from '../../services/electronService';
 import { getStorageConfig, initStorageConfig } from '../../store/storageConfig';
 import { saveProps, loadProps } from '../../store/projectStore';
 import { useActiveConfig } from '../../hooks/useActiveConfig';
 import { uploadLocalFileToImageHosting, isImageHostingEnabled } from '../../services/imageHostingService';
 import { createStoredMediaAsset, updatePropMedia } from '../../utils/mediaAssets';
+import { mergeEpisodeRefs } from './assetEpisodeRefs';
 import {
   getPropPreviewImageSource,
   getPropPreviewVideoSource,
@@ -129,18 +131,24 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
   const handleSave = useCallback(async () => {
     try {
       const values = await form.validateFields();
+      const props = await loadProps(projectId);
+      const index = props.findIndex(p => p.id === editedProp.id);
+      if (index === -1) {
+        throw new Error(t('asset.saveFailed'));
+      }
+
+      const storedProp = props[index];
       const updatedProp: Prop = {
+        ...storedProp,
         ...editedProp,
         ...values,
         prompt: values.prompt,
+        media: storedProp.media ?? editedProp.media,
+        episodeRefs: mergeEpisodeRefs(storedProp.episodeRefs, editedProp.episodeRefs),
       };
 
-      const props = await loadProps(projectId);
-      const index = props.findIndex(p => p.id === editedProp.id);
-      if (index !== -1) {
-        props[index] = updatedProp;
-        await saveProps(projectId, props);
-      }
+      props[index] = updatedProp;
+      await saveProps(projectId, props);
 
       setEditedProp(updatedProp);
       onUpdate(updatedProp);
@@ -255,6 +263,40 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
       message.error(`${t('asset.uploadFailed')}: ${err.message}`);
     }
   }, [editedProp, getAssetPath, projectId, onUpdate, message, t]);
+
+  const handleRemovePropImage = useCallback(async () => {
+    try {
+      const previewImage = editedProp.media?.previewImage;
+      const localPath = previewImage?.localPath;
+      const shouldDeleteLocalFile = Boolean(localPath && !isRemoteMediaUri(localPath));
+
+      const props = await loadProps(projectId);
+      const index = props.findIndex(p => p.id === editedProp.id);
+      if (index === -1) {
+        throw new Error(t('asset.saveFailed'));
+      }
+
+      if (shouldDeleteLocalFile && localPath) {
+        await fsRemove(localPath);
+      }
+
+      const updated = updatePropMedia(editedProp, { previewImage: undefined });
+      props[index] = updated;
+      await saveProps(projectId, props);
+
+      setEditedProp(updated);
+      onUpdate(updated);
+      setPreviewImage(null);
+
+      if (shouldDeleteLocalFile) {
+        message.success(t('asset.imageDeleted'));
+      } else {
+        message.warning(t('asset.remoteImageReferenceRemoved'));
+      }
+    } catch (err: any) {
+      message.error(err.message || t('asset.saveFailed'));
+    }
+  }, [editedProp, projectId, onUpdate, message, t]);
 
   const handleGenerateVideo = useCallback(async () => {
     if (!getPropPreviewImageSource(editedProp)) {
@@ -399,12 +441,12 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
               <Button type="text" size="small" icon={<SaveOutlined />} onClick={handleSave} />
             </Tooltip>
             <Popconfirm
-              title={t('asset.confirmDeleteProp')}
-              description={t('asset.cannotUndo')}
+              title={t('asset.confirmRemovePropFromEpisode')}
+              description={t('asset.removeFromEpisodeDescription')}
               onConfirm={handleDelete}
               okButtonProps={{ danger: true }}
             >
-              <Tooltip title={t('common.delete')}>
+              <Tooltip title={t('asset.removeFromEpisode')}>
                 <Button type="text" danger size="small" icon={<DeleteOutlined />} />
               </Tooltip>
             </Popconfirm>
@@ -518,6 +560,23 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
                 aria-label={viewMode === 'image' ? t('asset.uploadPropImage') : t('asset.uploadVideo')}
               />
             </Tooltip>
+            {viewMode === 'image' && getPropPreviewImageSource(editedProp) && (
+              <Popconfirm
+                title={t('asset.removePropImage')}
+                description={t('asset.removeImageOnlyDescription')}
+                onConfirm={handleRemovePropImage}
+                okButtonProps={{ danger: true }}
+              >
+                <Tooltip title={t('asset.removePropImage')}>
+                  <Button
+                    type="text"
+                    danger
+                    icon={<DeleteOutlined />}
+                    aria-label={t('asset.removePropImage')}
+                  />
+                </Tooltip>
+              </Popconfirm>
+            )}
             <Tooltip title={t('asset.enlargePreview')}>
               <Button
                 type="text"

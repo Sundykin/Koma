@@ -19,12 +19,16 @@ import {
   loadCharacters,
   loadScenes,
   loadProps,
-  saveCharacters,
-  saveScenes,
-  saveProps,
   loadEpisodeAnalysis,
+  saveEpisodeAnalysis,
   loadEpisodeShots,
   removeAssetFromAnalysis,
+  addCharacterEpisodeRef,
+  addSceneEpisodeRef,
+  addPropEpisodeRef,
+  removeCharacterEpisodeRef,
+  removeSceneEpisodeRef,
+  removePropEpisodeRef,
 } from '../../store/projectStore';
 import { startShotAnalysis } from '../../services/ShotAnalysisService';
 import { AssetListPanel, AssetType } from './AssetListPanel';
@@ -32,9 +36,24 @@ import { CharacterDetailPanel } from './CharacterDetailPanel';
 import { SceneDetailPanel } from './SceneDetailPanel';
 import { PropDetailPanel } from './PropDetailPanel';
 import { AssetGenerationWizard } from './AssetGenerationWizard';
+import {
+  addAssetIdToEpisodeAnalysisRefs,
+  filterAssetsForEpisode,
+  getUnboundAssetsForEpisode,
+  withEpisodeRef,
+  withoutEpisodeRef,
+} from './assetEpisodeRefs';
+import type { EpisodeRefsKey } from './assetEpisodeRefs';
 import { parseMediaSelectionKey } from '../../providers/channel/resolver';
 import type { Project } from '../../types';
 import './AssetManager.css';
+
+
+function upsertAssetById<T extends { id: string }>(items: T[], item: T): T[] {
+  return items.some(existing => existing.id === item.id)
+    ? items.map(existing => existing.id === item.id ? item : existing)
+    : [...items, item];
+}
 
 interface AssetManagerPanelProps {
   projectId: string;
@@ -88,6 +107,14 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
     () => styleSnapshot?.ttiStylePrefix?.trim() || legacyStylePrompt?.trim() || '',
     [styleSnapshot, legacyStylePrompt]
   );
+  const currentEpisodeRef = useMemo(() => {
+    if (!episodeId) return null;
+    return {
+      episodeId,
+      episodeName: episodeName || `${t('editor.episode')} ${episodeId}`,
+      firstAppearance: true,
+    };
+  }, [episodeId, episodeName, t]);
 
   // 加载资产数据
   const loadAssets = useCallback(async () => {
@@ -121,24 +148,18 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
   // 筛选后的资产
   const filteredCharacters = useMemo(() => {
     if (!showCurrentEpisodeOnly || !episodeAnalysis) return characters;
-    const refs = episodeAnalysis.characterRefs;
-    if (!refs || refs.length === 0) return characters;
-    return characters.filter(c => new Set(refs).has(c.id));
-  }, [characters, showCurrentEpisodeOnly, episodeAnalysis]);
+    return filterAssetsForEpisode(characters, episodeAnalysis.characterRefs, episodeId);
+  }, [characters, showCurrentEpisodeOnly, episodeAnalysis, episodeId]);
 
   const filteredScenes = useMemo(() => {
     if (!showCurrentEpisodeOnly || !episodeAnalysis) return scenes;
-    const refs = episodeAnalysis.sceneRefs;
-    if (!refs || refs.length === 0) return scenes;
-    return scenes.filter(s => new Set(refs).has(s.id));
-  }, [scenes, showCurrentEpisodeOnly, episodeAnalysis]);
+    return filterAssetsForEpisode(scenes, episodeAnalysis.sceneRefs, episodeId);
+  }, [scenes, showCurrentEpisodeOnly, episodeAnalysis, episodeId]);
 
   const filteredProps = useMemo(() => {
     if (!showCurrentEpisodeOnly || !episodeAnalysis) return props;
-    const refs = episodeAnalysis.propRefs;
-    if (!refs || refs.length === 0) return props;
-    return props.filter(p => new Set(refs).has(p.id));
-  }, [props, showCurrentEpisodeOnly, episodeAnalysis]);
+    return filterAssetsForEpisode(props, episodeAnalysis.propRefs, episodeId);
+  }, [props, showCurrentEpisodeOnly, episodeAnalysis, episodeId]);
 
   // 获取当前选中的资产
   const selectedCharacter = useMemo(
@@ -154,71 +175,251 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
     [props, selectedId]
   );
 
+  const characterBindCandidates = useMemo(() => (
+    getUnboundAssetsForEpisode(characters, episodeAnalysis?.characterRefs, episodeId)
+  ), [characters, episodeAnalysis?.characterRefs, episodeId]);
+
+  const sceneBindCandidates = useMemo(() => (
+    getUnboundAssetsForEpisode(scenes, episodeAnalysis?.sceneRefs, episodeId)
+  ), [scenes, episodeAnalysis?.sceneRefs, episodeId]);
+
+  const propBindCandidates = useMemo(() => (
+    getUnboundAssetsForEpisode(props, episodeAnalysis?.propRefs, episodeId)
+  ), [props, episodeAnalysis?.propRefs, episodeId]);
+
+  const syncAssetWithCurrentEpisode = useCallback(async <T extends Character | Scene | Prop,>(
+    asset: T,
+    refsKey: EpisodeRefsKey,
+    addEpisodeRef: (projectId: string, assetId: string, episodeRef: NonNullable<typeof currentEpisodeRef>) => Promise<void>
+  ): Promise<T> => {
+    if (!episodeId || !episodeAnalysis || !currentEpisodeRef) return asset;
+
+    const latestAnalysis = await loadEpisodeAnalysis(projectId, episodeId);
+    const baseAnalysis = latestAnalysis || episodeAnalysis;
+    const updatedAnalysis = addAssetIdToEpisodeAnalysisRefs(baseAnalysis, refsKey, asset.id);
+
+    const [savedAnalysis] = await Promise.all([
+      saveEpisodeAnalysis(projectId, episodeId, {
+        characterRefs: updatedAnalysis.characterRefs,
+        sceneRefs: updatedAnalysis.sceneRefs,
+        propRefs: updatedAnalysis.propRefs,
+        completedStages: updatedAnalysis.completedStages,
+        shots: updatedAnalysis.shots,
+      }),
+      addEpisodeRef(projectId, asset.id, currentEpisodeRef),
+    ]);
+
+    setEpisodeAnalysis(savedAnalysis);
+    return withEpisodeRef(asset, currentEpisodeRef);
+  }, [currentEpisodeRef, episodeAnalysis, episodeId, projectId]);
+
+  const handleBindExistingCharacter = useCallback(async (character: Character) => {
+    try {
+      const syncedChar = await syncAssetWithCurrentEpisode(
+        character,
+        'characterRefs',
+        addCharacterEpisodeRef
+      );
+      setCharacters(prev => upsertAssetById(prev, syncedChar));
+      setSelectedType('character');
+      setSelectedId(character.id);
+      message.success(t('asset.addedToEpisode'));
+    } catch (err) {
+      logger.error('绑定已有角色到当前集失败:', err);
+      message.error(t('asset.saveFailed'));
+    }
+  }, [message, syncAssetWithCurrentEpisode, t]);
+
+  const handleBindExistingScene = useCallback(async (scene: Scene) => {
+    try {
+      const syncedScene = await syncAssetWithCurrentEpisode(
+        scene,
+        'sceneRefs',
+        addSceneEpisodeRef
+      );
+      setScenes(prev => upsertAssetById(prev, syncedScene));
+      setSelectedType('scene');
+      setSelectedId(scene.id);
+      message.success(t('asset.addedToEpisode'));
+    } catch (err) {
+      logger.error('绑定已有场景到当前集失败:', err);
+      message.error(t('asset.saveFailed'));
+    }
+  }, [message, syncAssetWithCurrentEpisode, t]);
+
+  const handleBindExistingProp = useCallback(async (prop: Prop) => {
+    try {
+      const syncedProp = await syncAssetWithCurrentEpisode(
+        prop,
+        'propRefs',
+        addPropEpisodeRef
+      );
+      setProps(prev => upsertAssetById(prev, syncedProp));
+      setSelectedType('prop');
+      setSelectedId(prop.id);
+      message.success(t('asset.addedToEpisode'));
+    } catch (err) {
+      logger.error('绑定已有道具到当前集失败:', err);
+      message.error(t('asset.saveFailed'));
+    }
+  }, [message, syncAssetWithCurrentEpisode, t]);
+
+  const updateAssetWithCurrentEpisode = useCallback(<T extends Character | Scene | Prop,>(
+    updated: T,
+    refsKey: EpisodeRefsKey,
+    addEpisodeRef: (projectId: string, assetId: string, episodeRef: NonNullable<typeof currentEpisodeRef>) => Promise<void>,
+    setAssets: React.Dispatch<React.SetStateAction<T[]>>,
+    errorMessage: string
+  ) => {
+    setAssets(prev => upsertAssetById(prev, updated));
+
+    if (!showCurrentEpisodeOnly || !episodeId || !episodeAnalysis || !currentEpisodeRef) return;
+
+    void (async () => {
+      try {
+        const syncedAsset = await syncAssetWithCurrentEpisode(updated, refsKey, addEpisodeRef);
+        setAssets(prev => upsertAssetById(prev, syncedAsset));
+      } catch (err) {
+        logger.error(errorMessage, err);
+      }
+    })();
+  }, [currentEpisodeRef, episodeAnalysis, episodeId, showCurrentEpisodeOnly, syncAssetWithCurrentEpisode]);
+
   // 资产更新回调
   const handleCharacterUpdate = useCallback((updated: Character) => {
-    setCharacters(prev => prev.map(c => c.id === updated.id ? updated : c));
-  }, []);
+    updateAssetWithCurrentEpisode(
+      updated,
+      'characterRefs',
+      addCharacterEpisodeRef,
+      setCharacters,
+      '同步角色剧集引用失败:'
+    );
+  }, [updateAssetWithCurrentEpisode]);
 
   const handleSceneUpdate = useCallback((updated: Scene) => {
-    setScenes(prev => prev.map(s => s.id === updated.id ? updated : s));
-  }, []);
+    updateAssetWithCurrentEpisode(
+      updated,
+      'sceneRefs',
+      addSceneEpisodeRef,
+      setScenes,
+      '同步场景剧集引用失败:'
+    );
+  }, [updateAssetWithCurrentEpisode]);
 
   const handlePropUpdate = useCallback((updated: Prop) => {
-    setProps(prev => prev.map(p => p.id === updated.id ? updated : p));
-  }, []);
+    updateAssetWithCurrentEpisode(
+      updated,
+      'propRefs',
+      addPropEpisodeRef,
+      setProps,
+      '同步道具剧集引用失败:'
+    );
+  }, [updateAssetWithCurrentEpisode]);
 
-  // 资产删除回调
-  const handleCharacterDelete = useCallback(async (id: string) => {
-    const updatedList = characters.filter(c => c.id !== id);
-    await saveCharacters(projectId, updatedList);
-    if (episodeId) {
-      await removeAssetFromAnalysis(projectId, episodeId, id, 'character');
+  // 从当前集移除资产绑定，不删除项目公共资产本体
+  const removeAssetFromCurrentEpisode = useCallback(async <T extends Character | Scene | Prop,>(
+    id: string,
+    type: AssetType,
+    removeEpisodeRef: (projectId: string, assetId: string, episodeId: string) => Promise<void>,
+    setAssets: React.Dispatch<React.SetStateAction<T[]>>
+  ) => {
+    if (!episodeId) {
+      if (selectedId === id) setSelectedId(null);
+      message.warning(t('asset.cannotRemoveWithoutEpisode'));
+      return;
     }
-    setCharacters(updatedList);
-    if (selectedId === id) setSelectedId(null);
-    message.success(t('asset.characterDeleted'));
-  }, [characters, projectId, episodeId, selectedId, message, t]);
+
+    try {
+      await Promise.all([
+        removeAssetFromAnalysis(projectId, episodeId, id, type),
+        removeEpisodeRef(projectId, id, episodeId),
+      ]);
+
+      const latestAnalysis = await loadEpisodeAnalysis(projectId, episodeId);
+      setEpisodeAnalysis(latestAnalysis);
+      setAssets(prev => prev.map(asset => (
+        asset.id === id ? withoutEpisodeRef(asset, episodeId) : asset
+      )));
+      if (selectedId === id) setSelectedId(null);
+      message.success(t('asset.removedFromEpisode'));
+    } catch (err) {
+      logger.error('从当前集移除资产失败:', err);
+      message.error(t('asset.saveFailed'));
+    }
+  }, [episodeId, message, projectId, selectedId, t]);
+
+  const handleCharacterDelete = useCallback(async (id: string) => {
+    await removeAssetFromCurrentEpisode(id, 'character', removeCharacterEpisodeRef, setCharacters);
+  }, [removeAssetFromCurrentEpisode]);
 
   const handleSceneDelete = useCallback(async (id: string) => {
-    const updatedList = scenes.filter(s => s.id !== id);
-    await saveScenes(projectId, updatedList);
-    if (episodeId) {
-      await removeAssetFromAnalysis(projectId, episodeId, id, 'scene');
-    }
-    setScenes(updatedList);
-    if (selectedId === id) setSelectedId(null);
-    message.success(t('asset.sceneDeleted'));
-  }, [scenes, projectId, episodeId, selectedId, message, t]);
+    await removeAssetFromCurrentEpisode(id, 'scene', removeSceneEpisodeRef, setScenes);
+  }, [removeAssetFromCurrentEpisode]);
 
   const handlePropDelete = useCallback(async (id: string) => {
-    const updatedList = props.filter(p => p.id !== id);
-    await saveProps(projectId, updatedList);
-    if (episodeId) {
-      await removeAssetFromAnalysis(projectId, episodeId, id, 'prop');
-    }
-    setProps(updatedList);
-    if (selectedId === id) setSelectedId(null);
-    message.success(t('asset.propDeleted'));
-  }, [props, projectId, episodeId, selectedId, message, t]);
+    await removeAssetFromCurrentEpisode(id, 'prop', removePropEpisodeRef, setProps);
+  }, [removeAssetFromCurrentEpisode]);
 
   // 新建资产回调
   const handleCharacterCreate = useCallback((newChar: Character) => {
-    setCharacters(prev => [...prev, newChar]);
-    setSelectedType('character');
-    setSelectedId(newChar.id);
-  }, []);
+    void (async () => {
+      try {
+        const syncedChar = await syncAssetWithCurrentEpisode(
+          newChar,
+          'characterRefs',
+          addCharacterEpisodeRef
+        );
+        setCharacters(prev => upsertAssetById(prev, syncedChar));
+      } catch (err) {
+        logger.error('同步新角色剧集引用失败:', err);
+        message.error(t('asset.saveFailed'));
+        setCharacters(prev => upsertAssetById(prev, newChar));
+      } finally {
+        setSelectedType('character');
+        setSelectedId(newChar.id);
+      }
+    })();
+  }, [message, syncAssetWithCurrentEpisode, t]);
 
   const handleSceneCreate = useCallback((newScene: Scene) => {
-    setScenes(prev => [...prev, newScene]);
-    setSelectedType('scene');
-    setSelectedId(newScene.id);
-  }, []);
+    void (async () => {
+      try {
+        const syncedScene = await syncAssetWithCurrentEpisode(
+          newScene,
+          'sceneRefs',
+          addSceneEpisodeRef
+        );
+        setScenes(prev => upsertAssetById(prev, syncedScene));
+      } catch (err) {
+        logger.error('同步新场景剧集引用失败:', err);
+        message.error(t('asset.saveFailed'));
+        setScenes(prev => upsertAssetById(prev, newScene));
+      } finally {
+        setSelectedType('scene');
+        setSelectedId(newScene.id);
+      }
+    })();
+  }, [message, syncAssetWithCurrentEpisode, t]);
 
   const handlePropCreate = useCallback((newProp: Prop) => {
-    setProps(prev => [...prev, newProp]);
-    setSelectedType('prop');
-    setSelectedId(newProp.id);
-  }, []);
+    void (async () => {
+      try {
+        const syncedProp = await syncAssetWithCurrentEpisode(
+          newProp,
+          'propRefs',
+          addPropEpisodeRef
+        );
+        setProps(prev => upsertAssetById(prev, syncedProp));
+      } catch (err) {
+        logger.error('同步新道具剧集引用失败:', err);
+        message.error(t('asset.saveFailed'));
+        setProps(prev => upsertAssetById(prev, newProp));
+      } finally {
+        setSelectedType('prop');
+        setSelectedId(newProp.id);
+      }
+    })();
+  }, [message, syncAssetWithCurrentEpisode, t]);
 
   // 选择资产
   const handleSelect = useCallback((type: AssetType, id: string | null) => {
@@ -287,6 +488,13 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
           onCreateCharacter={handleCharacterCreate}
           onCreateScene={handleSceneCreate}
           onCreateProp={handlePropCreate}
+          canBindExisting={!!episodeId && !!episodeAnalysis}
+          existingCharacterCandidates={characterBindCandidates}
+          existingSceneCandidates={sceneBindCandidates}
+          existingPropCandidates={propBindCandidates}
+          onBindExistingCharacter={handleBindExistingCharacter}
+          onBindExistingScene={handleBindExistingScene}
+          onBindExistingProp={handleBindExistingProp}
           projectId={projectId}
         />
         {/* 筛选开关 */}

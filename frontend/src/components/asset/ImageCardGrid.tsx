@@ -40,7 +40,7 @@ export interface ImageCardGridProps {
   selectedIndex?: number;
   onSelect: (index: number) => void;
   onAdd: (imagePath: string) => void;
-  onDelete: (index: number) => void;
+  onDelete: (index: number) => void | Promise<void>;
   onSplitGrid?: (index: number) => void;
   onGenerate?: () => void;
   isGenerating?: boolean;
@@ -64,6 +64,7 @@ export const ImageCardGrid: React.FC<ImageCardGridProps> = ({
   characters = [],
   scenes = [],
   props: propsList = [],
+  compact = false,
 }) => {
   const { message } = App.useApp();
   const [previewVisible, setPreviewVisible] = useState(false);
@@ -178,7 +179,7 @@ export const ImageCardGrid: React.FC<ImageCardGridProps> = ({
 
   const handleDelete = (index: number, e: React.MouseEvent) => {
     e.stopPropagation();
-    onDelete(index);
+    void onDelete(index);
   };
 
   const handlePreviewClick = (index: number, e: React.MouseEvent) => {
@@ -191,8 +192,12 @@ export const ImageCardGrid: React.FC<ImageCardGridProps> = ({
     onSplitGrid?.(index);
   };
 
+  const hasImages = images.length > 0;
+  const generateLabel = hasImages ? '重新生成' : 'AI生成';
+  const generatingLabel = hasImages ? '重新生成中' : '生成中';
+
   return (
-    <div className="imageCardGrid">
+    <div className={`imageCardGrid ${compact ? 'compact' : ''}`.trim()}>
       <div className="imageCards">
         {images.map((img, idx) => (
           <div
@@ -201,16 +206,18 @@ export const ImageCardGrid: React.FC<ImageCardGridProps> = ({
             onClick={() => onSelect(idx)}
             onDoubleClick={() => handlePreview(idx)}
           >
-            <img src={electronService.fs.toLocalUrl(img)} alt={`img-${idx}`} />
+            <img src={toDisplayUrl(img)} alt={`img-${idx}`} />
             {idx === selectedIndex && <CheckCircleFilled className="selectedIcon" />}
             <div className="cardOverlay">
-              <Tooltip title="预览">
+              <Tooltip title="预览图像">
                 <Button
                   type="text"
                   size="small"
                   icon={<EyeOutlined />}
                   onClick={(e) => handlePreviewClick(idx, e)}
                   className="overlayBtn"
+                  title="预览图像"
+                  aria-label="预览图像"
                 />
               </Tooltip>
               {onSplitGrid && (
@@ -221,10 +228,12 @@ export const ImageCardGrid: React.FC<ImageCardGridProps> = ({
                     icon={<AppstoreOutlined />}
                     onClick={(e) => handleSplitGridClick(idx, e)}
                     className="overlayBtn"
+                    title="拆分九宫格"
+                    aria-label="拆分九宫格"
                   />
                 </Tooltip>
               )}
-              <Tooltip title="删除">
+              <Tooltip title="删除此图像">
                 <Button
                   type="text"
                   size="small"
@@ -232,6 +241,8 @@ export const ImageCardGrid: React.FC<ImageCardGridProps> = ({
                   icon={<DeleteOutlined />}
                   onClick={(e) => handleDelete(idx, e)}
                   className="overlayBtn"
+                  title="删除此图像"
+                  aria-label="删除此图像"
                 />
               </Tooltip>
             </div>
@@ -257,7 +268,7 @@ export const ImageCardGrid: React.FC<ImageCardGridProps> = ({
           disabled={isGenerating || disabled}
           className="generateBtn"
         >
-          {isGenerating ? '生成中' : 'AI生成'}
+          {isGenerating ? generatingLabel : generateLabel}
         </Button>
       )}
 
@@ -270,7 +281,7 @@ export const ImageCardGrid: React.FC<ImageCardGridProps> = ({
         }}
       >
         {images.map((img, idx) => (
-          <Image key={idx} src={electronService.fs.toLocalUrl(img)} style={{ display: 'none' }} />
+          <Image key={idx} src={toDisplayUrl(img)} style={{ display: 'none' }} />
         ))}
       </Image.PreviewGroup>
     </div>

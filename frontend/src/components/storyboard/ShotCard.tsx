@@ -3,6 +3,7 @@
  * 操作按钮在左侧列直接显示，参考图使用引用样式
  */
 import React, { useMemo, useCallback, useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Tag,
   Checkbox,
@@ -43,7 +44,7 @@ import type { MentionItem } from '../../editor';
 import { ImageCardGrid } from '../asset/ImageCardGrid';
 import { VideoCardGrid } from '../asset/VideoCardGrid';
 import { StagePlayer } from '../video/StagePlayer';
-import { electronService } from '../../services/electronService';
+import { electronService, fsRemove } from '../../services/electronService';
 import { ffmpegManager } from '../../services/ffmpegManager';
 import { persistMediaAsset } from '../../services/mediaPersistenceService';
 import { ensureRemoteUrlForImageAsset } from '../../services/mediaRemoteUrlService';
@@ -200,6 +201,7 @@ export const ShotCard: React.FC<ShotCardProps> = ({
   onInsertBelow,
 }) => {
   const { message } = App.useApp();
+  const { t } = useTranslation();
   const [videoModalOpen, setVideoModalOpen] = useState(false);
   const [isSplittingGridImage, setIsSplittingGridImage] = useState(false);
   const [gridSplitModalOpen, setGridSplitModalOpen] = useState(false);
@@ -320,10 +322,30 @@ export const ShotCard: React.FC<ShotCardProps> = ({
     ];
     onImagesChange(shot.id, newImages, newImages.length - 1);
   };
-  const handleImageDelete = (idx: number) => {
-    const newImages = images.filter((_, i) => i !== idx);
-    const newIdx = Math.min(shot.media?.currentImageIndex || 0, newImages.length - 1);
-    onImagesChange(shot.id, newImages, Math.max(0, newIdx));
+  const handleImageDelete = async (idx: number) => {
+    const target = images[idx];
+    if (!target) return;
+
+    const localPath = target.localPath;
+    const shouldDeleteLocalFile = Boolean(localPath && !isRemoteMediaUri(localPath));
+
+    try {
+      if (shouldDeleteLocalFile && localPath) {
+        await fsRemove(localPath);
+      }
+
+      const newImages = images.filter((_, i) => i !== idx);
+      const newIdx = Math.min(shot.media?.currentImageIndex || 0, newImages.length - 1);
+      onImagesChange(shot.id, newImages, Math.max(0, newIdx));
+
+      if (shouldDeleteLocalFile) {
+        message.success(t('asset.imageDeleted'));
+      } else {
+        message.warning(t('asset.remoteImageReferenceRemoved'));
+      }
+    } catch (err: any) {
+      message.error(err.message || t('error.deleteFailed'));
+    }
   };
 
   const handleOpenGridSplitPreview = useCallback((idx: number) => {
@@ -731,6 +753,7 @@ export const ShotCard: React.FC<ShotCardProps> = ({
                   onSplitGrid={shot.imageMode === 'grid' && electronService.isElectron()
                     ? handleOpenGridSplitPreview
                     : undefined}
+                  onGenerate={() => onGenerateImage(shot.id)}
                   isGenerating={isGeneratingImage}
                   disabled={!hasImagePrompt}
                   characters={characters}

@@ -1,10 +1,11 @@
-import React from 'react';
-import { Tabs, Button, Typography, Empty, Tooltip } from 'antd';
+import React, { useMemo, useState } from 'react';
+import { Tabs, Button, Typography, Empty, Tooltip, Modal, Checkbox, List, Avatar, Space, Input } from 'antd';
 import {
   UserOutlined,
   EnvironmentOutlined,
   InboxOutlined,
   PlusOutlined,
+  PlusCircleOutlined,
   CheckCircleOutlined,
   InfoCircleOutlined,
 } from '@ant-design/icons';
@@ -33,6 +34,13 @@ interface AssetListPanelProps {
   onCreateCharacter: (char: Character) => void;
   onCreateScene: (scene: Scene) => void;
   onCreateProp: (prop: Prop) => void;
+  canBindExisting?: boolean;
+  existingCharacterCandidates?: Character[];
+  existingSceneCandidates?: Scene[];
+  existingPropCandidates?: Prop[];
+  onBindExistingCharacter?: (character: Character) => Promise<void> | void;
+  onBindExistingScene?: (scene: Scene) => Promise<void> | void;
+  onBindExistingProp?: (prop: Prop) => Promise<void> | void;
   projectId: string;
 }
 
@@ -46,9 +54,95 @@ export const AssetListPanel: React.FC<AssetListPanelProps> = ({
   onCreateCharacter,
   onCreateScene,
   onCreateProp,
+  canBindExisting = false,
+  existingCharacterCandidates = [],
+  existingSceneCandidates = [],
+  existingPropCandidates = [],
+  onBindExistingCharacter,
+  onBindExistingScene,
+  onBindExistingProp,
   projectId,
 }) => {
   const { t } = useTranslation();
+  const [bindModalType, setBindModalType] = useState<AssetType | null>(null);
+  const [selectedExistingIds, setSelectedExistingIds] = useState<string[]>([]);
+  const [bindingExisting, setBindingExisting] = useState(false);
+  const [bindSearchText, setBindSearchText] = useState('');
+
+  const currentExistingCandidates = useMemo<(Character | Scene | Prop)[]>(() => {
+    if (bindModalType === 'character') return existingCharacterCandidates;
+    if (bindModalType === 'scene') return existingSceneCandidates;
+    if (bindModalType === 'prop') return existingPropCandidates;
+    return [];
+  }, [bindModalType, existingCharacterCandidates, existingSceneCandidates, existingPropCandidates]);
+
+  const filteredExistingCandidates = useMemo<(Character | Scene | Prop)[]>(() => {
+    const keyword = bindSearchText.trim().toLowerCase();
+    if (!keyword) return currentExistingCandidates;
+
+    return currentExistingCandidates.filter((asset) => {
+      const fields: Array<string | undefined> = [asset.name, asset.prompt, asset.description];
+
+      if (bindModalType === 'character') {
+        const character = asset as Character;
+        fields.push(character.role, character.gender, character.age, character.appearance);
+      } else if (bindModalType === 'scene') {
+        const scene = asset as Scene;
+        fields.push(scene.location, scene.time, scene.mood);
+      } else if (bindModalType === 'prop') {
+        const prop = asset as Prop;
+        fields.push(prop.type);
+      }
+
+      return fields.some((field) => field?.toLowerCase().includes(keyword));
+    });
+  }, [bindModalType, bindSearchText, currentExistingCandidates]);
+
+  const openBindExistingModal = (type: AssetType) => {
+    setBindModalType(type);
+    setSelectedExistingIds([]);
+    setBindSearchText('');
+  };
+
+  const closeBindExistingModal = () => {
+    if (bindingExisting) return;
+    setBindModalType(null);
+    setSelectedExistingIds([]);
+    setBindSearchText('');
+  };
+
+  const handleToggleExistingAsset = (assetId: string, checked: boolean) => {
+    setSelectedExistingIds(prev => checked
+      ? Array.from(new Set([...prev, assetId]))
+      : prev.filter(id => id !== assetId)
+    );
+  };
+
+  const handleConfirmBindExisting = async () => {
+    if (!bindModalType || selectedExistingIds.length === 0) return;
+
+    const selectedIdSet = new Set(selectedExistingIds);
+    const selectedAssets = currentExistingCandidates.filter(asset => selectedIdSet.has(asset.id));
+
+    setBindingExisting(true);
+    try {
+      for (const asset of selectedAssets) {
+        if (bindModalType === 'character') {
+          await onBindExistingCharacter?.(asset as Character);
+        } else if (bindModalType === 'scene') {
+          await onBindExistingScene?.(asset as Scene);
+        } else {
+          await onBindExistingProp?.(asset as Prop);
+        }
+      }
+      setBindModalType(null);
+      setSelectedExistingIds([]);
+      setBindSearchText('');
+    } finally {
+      setBindingExisting(false);
+    }
+  };
+
   const toLocalUrl = (path?: string) => {
     if (!path) return '';
     if (/^https?:\/\//i.test(path) || path.startsWith('data:') || path.startsWith('blob:')) {
@@ -103,6 +197,172 @@ export const AssetListPanel: React.FC<AssetListPanelProps> = ({
       default: return t('asset.supporting');
     }
   };
+
+  const getAssetTypeLabel = (type: AssetType | null) => {
+    if (type === 'character') return t('asset.character');
+    if (type === 'scene') return t('asset.scene');
+    if (type === 'prop') return t('asset.prop');
+    return t('asset.title');
+  };
+
+  const getExistingCandidates = (type: AssetType): (Character | Scene | Prop)[] => {
+    if (type === 'character') return existingCharacterCandidates;
+    if (type === 'scene') return existingSceneCandidates;
+    return existingPropCandidates;
+  };
+
+  const renderHeaderActions = (type: AssetType, onCreate: () => void) => {
+    const candidateCount = getExistingCandidates(type).length;
+
+    return (
+      <Space size={4}>
+        {canBindExisting && (
+          <Tooltip title={candidateCount === 0 ? t('asset.noExistingAssetsToAdd') : t('asset.addExistingFromProject')}>
+            <Button
+              size="small"
+              icon={<PlusCircleOutlined />}
+              onClick={() => openBindExistingModal(type)}
+              disabled={candidateCount === 0}
+              ghost
+            >
+              {t('asset.addExisting')}
+            </Button>
+          </Tooltip>
+        )}
+        <Button
+          type="primary"
+          size="small"
+          icon={<PlusOutlined />}
+          onClick={onCreate}
+          ghost
+        >
+          {t('asset.new')}
+        </Button>
+      </Space>
+    );
+  };
+
+  const getExistingAssetMeta = (asset: Character | Scene | Prop) => {
+    if (bindModalType === 'character') {
+      const character = asset as Character;
+      return {
+        imagePath: getCharacterCostumePhotoSource(character),
+        subtitle: getRoleLabel(character.role || 'supporting'),
+        description: character.description,
+        icon: <UserOutlined />,
+      };
+    }
+    if (bindModalType === 'scene') {
+      const scene = asset as Scene;
+      return {
+        imagePath: getScenePreviewImageSource(scene),
+        subtitle: scene.location,
+        description: scene.description,
+        icon: <EnvironmentOutlined />,
+      };
+    }
+
+    const prop = asset as Prop;
+    return {
+      imagePath: getPropPreviewImageSource(prop),
+      subtitle: prop.type,
+      description: prop.description,
+      icon: <InboxOutlined />,
+    };
+  };
+
+  const existingAssetEmptyDescription = bindSearchText.trim()
+    ? t('asset.noMatchingExistingAssets')
+    : t('asset.noExistingAssetsToAdd');
+
+  const renderExistingAssetModal = () => (
+    <Modal
+      open={!!bindModalType}
+      title={t('asset.addExistingTitle', { type: getAssetTypeLabel(bindModalType) })}
+      okText={t('asset.addToEpisode')}
+      cancelText={t('common.cancel')}
+      onOk={handleConfirmBindExisting}
+      onCancel={closeBindExistingModal}
+      okButtonProps={{ disabled: selectedExistingIds.length === 0, loading: bindingExisting }}
+      cancelButtonProps={{ disabled: bindingExisting }}
+      destroyOnHidden
+    >
+      {currentExistingCandidates.length > 0 ? (
+        <>
+          <Text type="secondary" className="block mb-3">
+            {t('asset.selectExistingAssetsHint')}
+          </Text>
+          <Input.Search
+            allowClear
+            className="mb-3"
+            placeholder={t('common.search')}
+            value={bindSearchText}
+            onChange={(event) => setBindSearchText(event.target.value)}
+            disabled={bindingExisting}
+          />
+          <List
+            dataSource={filteredExistingCandidates}
+            locale={{
+              emptyText: (
+                <Empty
+                  image={Empty.PRESENTED_IMAGE_SIMPLE}
+                  description={existingAssetEmptyDescription}
+                />
+              ),
+            }}
+            renderItem={(asset) => {
+              const meta = getExistingAssetMeta(asset);
+              const checked = selectedExistingIds.includes(asset.id);
+              const imageSrc = meta.imagePath ? toLocalUrl(meta.imagePath) : undefined;
+
+              return (
+                <List.Item
+                  key={asset.id}
+                  className="cursor-pointer"
+                  onClick={() => handleToggleExistingAsset(asset.id, !checked)}
+                >
+                  <List.Item.Meta
+                    avatar={
+                      <Space size={8}>
+                        <Checkbox
+                          checked={checked}
+                          onClick={(event) => event.stopPropagation()}
+                          onChange={(event) => handleToggleExistingAsset(asset.id, event.target.checked)}
+                        />
+                        <Avatar
+                          shape="square"
+                          size={48}
+                          src={imageSrc}
+                          icon={!imageSrc ? meta.icon : undefined}
+                          style={{ background: '#18181b' }}
+                        />
+                      </Space>
+                    }
+                    title={<Text>{asset.name}</Text>}
+                    description={
+                      <Space direction="vertical" size={0}>
+                        {meta.subtitle && <Text type="secondary">{meta.subtitle}</Text>}
+                        {meta.description && (
+                          <Text type="secondary" ellipsis={{ tooltip: meta.description }}>
+                            {meta.description}
+                          </Text>
+                        )}
+                      </Space>
+                    }
+                  />
+                </List.Item>
+              );
+            }}
+          />
+          <Text type="secondary">
+            {t('asset.selectedExistingCount', { count: selectedExistingIds.length })}
+          </Text>
+        </>
+      ) : (
+        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('asset.noExistingAssetsToAdd')} />
+      )}
+    </Modal>
+  );
 
   // 资产卡片项
   const renderAssetCard = (
@@ -177,15 +437,7 @@ export const AssetListPanel: React.FC<AssetListPanelProps> = ({
     <div className="h-full flex flex-col">
       <div className="p-2 border-b border-zinc-800 flex justify-between items-center bg-zinc-900/50">
         <span className="text-xs text-zinc-500">{t('asset.totalCharacters', { count: characters.length })}</span>
-        <Button
-          type="primary"
-          size="small"
-          icon={<PlusOutlined />}
-          onClick={handleCreateCharacter}
-          ghost
-        >
-          {t('asset.new')}
-        </Button>
+        {renderHeaderActions('character', handleCreateCharacter)}
       </div>
       <div className="flex-1 overflow-y-auto p-2 custom-scrollbar">
         {characters.length > 0 ? (
@@ -213,15 +465,7 @@ export const AssetListPanel: React.FC<AssetListPanelProps> = ({
     <div className="h-full flex flex-col">
       <div className="p-2 border-b border-zinc-800 flex justify-between items-center bg-zinc-900/50">
         <span className="text-xs text-zinc-500">{t('asset.totalScenes', { count: scenes.length })}</span>
-        <Button
-          type="primary"
-          size="small"
-          icon={<PlusOutlined />}
-          onClick={handleCreateScene}
-          ghost
-        >
-          {t('asset.new')}
-        </Button>
+        {renderHeaderActions('scene', handleCreateScene)}
       </div>
       <div className="flex-1 overflow-y-auto p-2 custom-scrollbar">
         {scenes.length > 0 ? (
@@ -249,15 +493,7 @@ export const AssetListPanel: React.FC<AssetListPanelProps> = ({
     <div className="h-full flex flex-col">
       <div className="p-2 border-b border-zinc-800 flex justify-between items-center bg-zinc-900/50">
         <span className="text-xs text-zinc-500">{t('asset.totalProps', { count: props.length })}</span>
-        <Button
-          type="primary"
-          size="small"
-          icon={<PlusOutlined />}
-          onClick={handleCreateProp}
-          ghost
-        >
-          {t('asset.new')}
-        </Button>
+        {renderHeaderActions('prop', handleCreateProp)}
       </div>
       <div className="flex-1 overflow-y-auto p-2 custom-scrollbar">
         {props.length > 0 ? (
@@ -311,6 +547,7 @@ export const AssetListPanel: React.FC<AssetListPanelProps> = ({
         type="card"
         tabBarStyle={{ margin: 0, padding: '4px 4px 0', background: '#18181b', borderBottom: '1px solid #27272a' }}
       />
+      {renderExistingAssetModal()}
       <style>{`
         .asset-panel-tabs .ant-tabs-content {
           height: calc(100% - 38px);

@@ -95,3 +95,25 @@
   padding: 0 6px;
   height: 22px;
 }
+
+.imageCardGrid.compact .imageCard .cardOverlay {
+  opacity: 0.95;
+  align-items: flex-end;
+  justify-content: flex-end;
+  padding: 2px;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.58), rgba(0, 0, 0, 0.08) 55%, transparent);
+  pointer-events: none;
+}
+
+.imageCardGrid.compact .imageCard .cardOverlay .overlayBtn {
+  pointer-events: auto;
+  width: 22px;
+  height: 22px;
+  min-width: 22px;
+  background: rgba(0, 0, 0, 0.46);
+}
+
+.imageCardGrid.compact .imageCard:hover .cardOverlay .overlayBtn,
+.imageCardGrid.compact .imageCard .cardOverlay .overlayBtn:focus-visible {
+  background: rgba(0, 0, 0, 0.68);
+}

@@ -37,17 +37,19 @@ import {
 } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import type { Character, CharacterGender, ProjectStyleSnapshot } from '../../types';
+import { isRemoteMediaUri } from '../../types';
 import {
   generateCostumePhoto,
   generateCharacterPreviewVideo,
   extractAndBindCharacter,
 } from '../../workflow/characterAssetWorkflow';
-import { electronService, openFileDialog, fsCopy, fsMkdir, fsExists } from '../../services/electronService';
+import { electronService, openFileDialog, fsCopy, fsMkdir, fsExists, fsRemove } from '../../services/electronService';
 import { getStorageConfig, initStorageConfig } from '../../store/storageConfig';
 import { saveCharacters, loadCharacters } from '../../store/projectStore';
 import { useActiveConfig } from '../../hooks/useActiveConfig';
 import { uploadLocalFileToImageHosting, isImageHostingEnabled } from '../../services/imageHostingService';
 import { createStoredMediaAsset, updateCharacterMedia } from '../../utils/mediaAssets';
+import { mergeEpisodeRefs } from './assetEpisodeRefs';
 import {
   getCharacterCostumePhotoSource,
   getCharacterPreviewVideoSource,
@@ -135,18 +137,24 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
   const handleSave = useCallback(async () => {
     try {
       const values = await form.validateFields();
+      const characters = await loadCharacters(projectId);
+      const index = characters.findIndex(c => c.id === editedCharacter.id);
+      if (index === -1) {
+        throw new Error(t('asset.saveFailed'));
+      }
+
+      const storedCharacter = characters[index];
       const updatedCharacter: Character = {
+        ...storedCharacter,
         ...editedCharacter,
         ...values,
         prompt: values.prompt,
+        media: storedCharacter.media ?? editedCharacter.media,
+        episodeRefs: mergeEpisodeRefs(storedCharacter.episodeRefs, editedCharacter.episodeRefs),
       };
 
-      const characters = await loadCharacters(projectId);
-      const index = characters.findIndex(c => c.id === editedCharacter.id);
-      if (index !== -1) {
-        characters[index] = updatedCharacter;
-        await saveCharacters(projectId, characters);
-      }
+      characters[index] = updatedCharacter;
+      await saveCharacters(projectId, characters);
 
       setEditedCharacter(updatedCharacter);
       onUpdate(updatedCharacter);
@@ -259,6 +267,40 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
       message.error(`${t('asset.uploadFailed')}: ${err.message}`);
     }
   }, [editedCharacter, getAssetPath, projectId, onUpdate, message, t]);
+
+  const handleRemoveCostumePhoto = useCallback(async () => {
+    try {
+      const costumePhoto = editedCharacter.media?.costumePhoto;
+      const localPath = costumePhoto?.localPath;
+      const shouldDeleteLocalFile = Boolean(localPath && !isRemoteMediaUri(localPath));
+
+      const characters = await loadCharacters(projectId);
+      const index = characters.findIndex(c => c.id === editedCharacter.id);
+      if (index === -1) {
+        throw new Error(t('asset.saveFailed'));
+      }
+
+      if (shouldDeleteLocalFile && localPath) {
+        await fsRemove(localPath);
+      }
+
+      const updated = updateCharacterMedia(editedCharacter, { costumePhoto: undefined });
+      characters[index] = updated;
+      await saveCharacters(projectId, characters);
+
+      setEditedCharacter(updated);
+      onUpdate(updated);
+      setPreviewImage(null);
+
+      if (shouldDeleteLocalFile) {
+        message.success(t('asset.imageDeleted'));
+      } else {
+        message.warning(t('asset.remoteImageReferenceRemoved'));
+      }
+    } catch (err: any) {
+      message.error(err.message || t('asset.saveFailed'));
+    }
+  }, [editedCharacter, projectId, onUpdate, message, t]);
 
   const handleGenerateVideo = useCallback(async () => {
     if (!getCharacterCostumePhotoSource(editedCharacter)) {
@@ -421,12 +463,12 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
               <Button type="text" size="small" icon={<SaveOutlined />} onClick={handleSave} />
             </Tooltip>
             <Popconfirm
-              title={t('asset.confirmDeleteCharacter')}
-              description={t('asset.cannotUndo')}
+              title={t('asset.confirmRemoveCharacterFromEpisode')}
+              description={t('asset.removeFromEpisodeDescription')}
               onConfirm={handleDelete}
               okButtonProps={{ danger: true }}
             >
-              <Tooltip title={t('common.delete')}>
+              <Tooltip title={t('asset.removeFromEpisode')}>
                 <Button type="text" danger size="small" icon={<DeleteOutlined />} />
               </Tooltip>
             </Popconfirm>
@@ -498,7 +540,7 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
                 loading={generating === 'costume'}
                 disabled={generating !== null || !supportsTextToImage}
               >
-                {t('asset.generateCostumePhoto')}
+                {getCharacterCostumePhotoSource(editedCharacter) ? t('asset.regenerateCostumePhoto') : t('asset.generateCostumePhoto')}
               </Button>
             </Tooltip>
 
@@ -571,6 +613,23 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
                 aria-label={viewMode === 'costume' ? t('asset.uploadCostumePhoto') : t('asset.uploadVideo')}
               />
             </Tooltip>
+            {viewMode === 'costume' && getCharacterCostumePhotoSource(editedCharacter) && (
+              <Popconfirm
+                title={t('asset.removeCostumePhoto')}
+                description={t('asset.removeImageOnlyDescription')}
+                onConfirm={handleRemoveCostumePhoto}
+                okButtonProps={{ danger: true }}
+              >
+                <Tooltip title={t('asset.removeCostumePhoto')}>
+                  <Button
+                    type="text"
+                    danger
+                    icon={<DeleteOutlined />}
+                    aria-label={t('asset.removeCostumePhoto')}
+                  />
+                </Tooltip>
+              </Popconfirm>
+            )}
             <Tooltip title={
               viewMode === 'video' ? t('asset.switchToCostumeMode') :
               !getCharacterCostumePhotoSource(editedCharacter) ? t('asset.noCostumePhoto') :

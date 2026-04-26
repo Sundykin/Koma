@@ -29,13 +29,15 @@ import {
 } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import type { ProjectStyleSnapshot, Scene } from '../../types';
+import { isRemoteMediaUri } from '../../types';
 import { generateSceneImage } from '../../workflow/scenePropAssetWorkflow';
-import { electronService, openFileDialog, fsCopy, fsMkdir, fsExists } from '../../services/electronService';
+import { electronService, openFileDialog, fsCopy, fsMkdir, fsExists, fsRemove } from '../../services/electronService';
 import { getStorageConfig, initStorageConfig } from '../../store/storageConfig';
 import { saveScenes, loadScenes } from '../../store/projectStore';
 import { useActiveConfig } from '../../hooks/useActiveConfig';
 import { uploadLocalFileToImageHosting, isImageHostingEnabled } from '../../services/imageHostingService';
 import { createStoredMediaAsset, updateSceneMedia } from '../../utils/mediaAssets';
+import { mergeEpisodeRefs } from './assetEpisodeRefs';
 import { getScenePreviewImageSource } from '../../utils/mediaSelectors';
 
 const { TextArea } = Input;
@@ -99,18 +101,24 @@ export const SceneDetailPanel: React.FC<SceneDetailPanelProps> = ({
   const handleSave = useCallback(async () => {
     try {
       const values = await form.validateFields();
+      const scenes = await loadScenes(projectId);
+      const index = scenes.findIndex(s => s.id === editedScene.id);
+      if (index === -1) {
+        throw new Error(t('asset.saveFailed'));
+      }
+
+      const storedScene = scenes[index];
       const updatedScene: Scene = {
+        ...storedScene,
         ...editedScene,
         ...values,
         prompt: values.prompt,
+        media: storedScene.media ?? editedScene.media,
+        episodeRefs: mergeEpisodeRefs(storedScene.episodeRefs, editedScene.episodeRefs),
       };
 
-      const scenes = await loadScenes(projectId);
-      const index = scenes.findIndex(s => s.id === editedScene.id);
-      if (index !== -1) {
-        scenes[index] = updatedScene;
-        await saveScenes(projectId, scenes);
-      }
+      scenes[index] = updatedScene;
+      await saveScenes(projectId, scenes);
 
       setEditedScene(updatedScene);
       onUpdate(updatedScene);
@@ -224,6 +232,40 @@ export const SceneDetailPanel: React.FC<SceneDetailPanelProps> = ({
     }
   }, [editedScene, getAssetPath, projectId, onUpdate, message, t]);
 
+  const handleRemoveSceneImage = useCallback(async () => {
+    try {
+      const previewImage = editedScene.media?.previewImage;
+      const localPath = previewImage?.localPath;
+      const shouldDeleteLocalFile = Boolean(localPath && !isRemoteMediaUri(localPath));
+
+      const scenes = await loadScenes(projectId);
+      const index = scenes.findIndex(s => s.id === editedScene.id);
+      if (index === -1) {
+        throw new Error(t('asset.saveFailed'));
+      }
+
+      if (shouldDeleteLocalFile && localPath) {
+        await fsRemove(localPath);
+      }
+
+      const updated = updateSceneMedia(editedScene, { previewImage: undefined });
+      scenes[index] = updated;
+      await saveScenes(projectId, scenes);
+
+      setEditedScene(updated);
+      onUpdate(updated);
+      setPreviewImage(null);
+
+      if (shouldDeleteLocalFile) {
+        message.success(t('asset.imageDeleted'));
+      } else {
+        message.warning(t('asset.remoteImageReferenceRemoved'));
+      }
+    } catch (err: any) {
+      message.error(err.message || t('asset.saveFailed'));
+    }
+  }, [editedScene, projectId, onUpdate, message, t]);
+
   const handleDelete = useCallback(async () => {
     onDelete(editedScene.id);
   }, [editedScene.id, onDelete]);
@@ -244,12 +286,12 @@ export const SceneDetailPanel: React.FC<SceneDetailPanelProps> = ({
               <Button type="text" size="small" icon={<SaveOutlined />} onClick={handleSave} />
             </Tooltip>
             <Popconfirm
-              title={t('asset.confirmDeleteScene')}
-              description={t('asset.cannotUndo')}
+              title={t('asset.confirmRemoveSceneFromEpisode')}
+              description={t('asset.removeFromEpisodeDescription')}
               onConfirm={handleDelete}
               okButtonProps={{ danger: true }}
             >
-              <Tooltip title={t('common.delete')}>
+              <Tooltip title={t('asset.removeFromEpisode')}>
                 <Button type="text" danger size="small" icon={<DeleteOutlined />} />
               </Tooltip>
             </Popconfirm>
@@ -317,6 +359,23 @@ export const SceneDetailPanel: React.FC<SceneDetailPanelProps> = ({
             <Tooltip title={t('asset.uploadSceneImage')}>
               <Button type="text" icon={<UploadOutlined />} onClick={handleUploadImage} aria-label={t('asset.uploadSceneImage')} />
             </Tooltip>
+            {getScenePreviewImageSource(editedScene) && (
+              <Popconfirm
+                title={t('asset.removeSceneImage')}
+                description={t('asset.removeImageOnlyDescription')}
+                onConfirm={handleRemoveSceneImage}
+                okButtonProps={{ danger: true }}
+              >
+                <Tooltip title={t('asset.removeSceneImage')}>
+                  <Button
+                    type="text"
+                    danger
+                    icon={<DeleteOutlined />}
+                    aria-label={t('asset.removeSceneImage')}
+                  />
+                </Tooltip>
+              </Popconfirm>
+            )}
             <Tooltip title={t('asset.enlargePreview')}>
               <Button
                 type="text"

@@ -40,6 +40,7 @@ import { electronService, openFileDialog, fsCopy, fsMkdir, fsExists } from '../.
 import { getStorageConfig, initStorageConfig } from '../../store/storageConfig';
 import { saveCharacters, loadCharacters } from '../../store/projectStore';
 import { createStoredMediaAsset, updateCharacterMedia } from '../../utils/mediaAssets';
+import { mergeEpisodeRefs } from './assetEpisodeRefs';
 import {
   getCharacterCostumePhotoSource,
   getCharacterPreviewVideoSource,
@@ -124,19 +125,26 @@ export const CharacterDetailModal: React.FC<CharacterDetailModalProps> = ({
 
     try {
       const values = await form.validateFields();
-      const updatedCharacter: Character = {
-        ...editedCharacter,
-        ...values,
-        prompt: values.prompt || '',
-      };
 
       // 更新存储
       const characters = await loadCharacters(projectId);
       const index = characters.findIndex(c => c.id === editedCharacter.id);
-      if (index !== -1) {
-        characters[index] = updatedCharacter;
-        await saveCharacters(projectId, characters);
+      if (index === -1) {
+        throw new Error('保存失败');
       }
+
+      const storedCharacter = characters[index];
+      const updatedCharacter: Character = {
+        ...storedCharacter,
+        ...editedCharacter,
+        ...values,
+        prompt: values.prompt || '',
+        media: storedCharacter.media ?? editedCharacter.media,
+        episodeRefs: mergeEpisodeRefs(storedCharacter.episodeRefs, editedCharacter.episodeRefs),
+      };
+
+      characters[index] = updatedCharacter;
+      await saveCharacters(projectId, characters);
 
       setEditedCharacter(updatedCharacter);
       onUpdate(updatedCharacter);
