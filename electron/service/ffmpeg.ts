@@ -117,10 +117,11 @@ export class FFmpegService {
    * 初始化服务
    */
   async init(workDir?: string): Promise<void> {
-    if (this.initialized) return;
+    const nextWorkDir = workDir || path.join(app.getPath('userData'), 'ffmpeg-cache');
+    if (this.initialized && this.workDir === nextWorkDir) return;
 
     // 设置工作目录
-    this.workDir = workDir || path.join(app.getPath('userData'), 'ffmpeg-cache');
+    this.workDir = nextWorkDir;
     await fs.promises.mkdir(this.workDir, { recursive: true });
 
     // 检测 FFmpeg 路径

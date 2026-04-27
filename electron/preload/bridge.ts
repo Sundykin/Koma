@@ -33,6 +33,7 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   'controller/fs/stat', 'controller/fs/remove', 'controller/fs/copy',
   'controller/app/openExternal', 'controller/app/showItemInFolder',
   'controller/app/getPath', 'controller/app/getVersion',
+  'controller/project/setStorageRoot',
   'controller/project/list', 'controller/project/create',
   'controller/project/load', 'controller/project/loadFull',
   'controller/project/save',
@@ -208,6 +209,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
   },
   project: {
+    setStorageRoot: (rootPath: string) => invokeMain('controller/project/setStorageRoot', { rootPath }),
     list: () => invokeMain('controller/project/list', {}),
     create: (meta: any) => invokeMain('controller/project/create', meta),
     load: (projectId: string) => invokeMain('controller/project/load', { projectId }),

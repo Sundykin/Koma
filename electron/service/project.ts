@@ -281,6 +281,13 @@ export class ProjectService {
     return this.storageRoot;
   }
 
+  async setStorageRoot(rootPath: string): Promise<string> {
+    if (rootPath === this.storageRoot) {
+      return this.storageRoot;
+    }
+    return this.init(rootPath);
+  }
+
   getStorageRoot(): string {
     return this.storageRoot;
   }
