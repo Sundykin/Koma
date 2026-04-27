@@ -4,15 +4,15 @@ import { join } from 'node:path';
 import { Lifecycle } from './preload/lifecycle';
 import { preload } from './preload';
 
+const APP_DISPLAY_NAME = 'Koma Studio';
 const ELECTRON_REMOTE_DEBUGGING_PORT = process.env.KOMA_ELECTRON_REMOTE_DEBUGGING_PORT || '9333';
 const isDev = process.env.NODE_ENV === 'development' || !electronApp.isPackaged;
 
+electronApp.setName(APP_DISPLAY_NAME);
+electronApp.setPath('userData', join(electronApp.getPath('home'), '.koma'));
+
 if (isDev) {
   electronApp.commandLine.appendSwitch('remote-debugging-port', ELECTRON_REMOTE_DEBUGGING_PORT);
-  electronApp.setPath(
-    'userData',
-    join(electronApp.getPath('appData'), `koma-electron-mcp-dev-${ELECTRON_REMOTE_DEBUGGING_PORT}`)
-  );
 
   console.info(
     `[electron-devtools] chrome-devtools-mcp browser-url=http://127.0.0.1:${ELECTRON_REMOTE_DEBUGGING_PORT}`

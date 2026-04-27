@@ -3,7 +3,7 @@
   "private": true,
   "version": "1.0.0",
   "author": "Koma Studio",
-  "description": "Koma Studio - AI Drama Creation Tool",
+  "description": "AI 视频创作与分镜制作工具。",
   "main": "./public/electron/main.js",
   "scripts": {
     "dev": "npm run build-builtin-plugins && ee-bin dev",

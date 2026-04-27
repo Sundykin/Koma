@@ -1,7 +1,6 @@
 /**
  * 服务层索引
  */
-import path from 'path';
 import { app } from 'electron';
 import { projectService, ProjectService } from './project';
 import { ffmpegService, FFmpegService } from './ffmpeg';
@@ -28,7 +27,7 @@ export async function initServices(): Promise<void> {
   initPromise = (async () => {
     // 全局 settings.db 与项目无关，先行初始化
     settingsDB.init();
-    await services.project.init(path.join(app.getPath('home'), '.koma'));
+    await services.project.init(app.getPath('userData'));
     services.linghui.init(services.project.getStorageRoot());
     await services.ffmpeg.init();
     await services.plugin.init();
