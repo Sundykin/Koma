@@ -64,8 +64,7 @@
     "linghui": "灵绘",
     "settings": "全局设置",
     "plugins": "插件管理",
-    "chat": "AI 对话",
-    "videoTest": "剪辑测试"
+    "chat": "AI 对话"
   },
   "project": {
     "title": "项目",
