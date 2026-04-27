@@ -20,8 +20,8 @@ import {
   USER_INTERRUPTED_REASON,
 } from './store/projectOpenService';
 import { loadCharacters, loadScenes, loadProps, loadShots, loadEpisode, loadEpisodeShots, saveEpisode } from './store/projectStore';
-import { Spin, App as AntApp, Typography, Button } from 'antd';
-import { LockOutlined } from '@ant-design/icons';
+import { Spin, App as AntApp, Button, Input, Typography } from 'antd';
+import { KeyOutlined } from '@ant-design/icons';
 import {
   DEV_TEST_PROJECT,
   DEV_TEST_ANALYSIS,
@@ -33,10 +33,11 @@ import { getThumbnailUrl } from './constants/dimensions';
 import { createLogger } from './store/logger';
 import { loadSettings } from './store/globalStore';
 import { activationService, ActivationInfo } from './services/activationService';
+import { electronService } from './services/electronService';
 import { resolveEpisodeEditorEntry, type EpisodeEditorEntryOptions } from './workflow/episodeEditorEntry';
 import { useTranslation } from 'react-i18next';
 
-const { Title, Paragraph, Text } = Typography;
+const { Text } = Typography;
 
 const logger = createLogger('App');
 
@@ -111,6 +112,8 @@ const AppContent: React.FC = () => {
   // 激活状态
   const [activationInfo, setActivationInfo] = useState<ActivationInfo | null>(null);
   const [activationLoading, setActivationLoading] = useState(true);
+  const [activationInputKey, setActivationInputKey] = useState('');
+  const [activationVerifying, setActivationVerifying] = useState(false);
 
   useEffect(() => {
     activationService.getActivationInfo()
@@ -159,6 +162,50 @@ const AppContent: React.FC = () => {
   useEffect(() => {
     void reloadSettings();
   }, [reloadSettings]);
+
+  const openKomaApi = useCallback(() => {
+    void electronService.shell.openExternal('https://komaapi.com');
+  }, []);
+
+  const handleActivateFromLockedView = useCallback(async () => {
+    const apiKey = activationInputKey.trim();
+    if (!apiKey) {
+      message.warning(t('activation.emptyKey'));
+      return;
+    }
+
+    setActivationVerifying(true);
+    try {
+      const verifyResult = await activationService.verifyApiKey(apiKey);
+      if (!verifyResult.success) {
+        message.error(verifyResult.error === 'invalid_key'
+          ? t('activation.invalidKey')
+          : t('activation.verifyFailed'));
+        return;
+      }
+
+      const channelResult = await activationService.ensureDefaultModelChannels(apiKey);
+      if (!channelResult.success || !channelResult.channelIds) {
+        message.error(t('activation.defaultChannelsFailed'));
+        return;
+      }
+
+      const info: ActivationInfo = {
+        activatedAt: Date.now(),
+        lastValidatedAt: Date.now(),
+        maskedKey: activationService.maskApiKey(apiKey),
+        defaultChannelIds: channelResult.channelIds,
+      };
+
+      await activationService.saveActivationInfo(info);
+      setActivationInfo(info);
+      setActivationInputKey('');
+      await reloadSettings();
+      message.success(t('activation.verifySuccess'));
+    } finally {
+      setActivationVerifying(false);
+    }
+  }, [activationInputKey, message, reloadSettings, t]);
 
   // 初始化 TaskManager，并同步当前项目上下文
   useEffect(() => {
@@ -321,13 +368,6 @@ const AppContent: React.FC = () => {
     theme: p.theme,
     stylePrompt: p.stylePrompt,
   }));
-
-  const handleEnterVideoTest = () => {
-    setActiveProject(DEV_TEST_PROJECT);
-    setAnalysisData(DEV_TEST_ANALYSIS);
-    setEditorStep('video');
-    setView('editor');
-  };
 
   const handleCreateProject = async (data: {
     title: string;
@@ -509,20 +549,42 @@ const AppContent: React.FC = () => {
     ? summarizePendingMediaTasks(pendingMediaPrompt.tasks)
     : '';
   const ActivationLockedView = (
-    <div className="h-full flex flex-col items-center justify-center p-8 bg-zinc-950">
-      <div className="max-w-md w-full bg-zinc-900/50 border border-zinc-800 rounded-3xl p-10 flex flex-col items-center text-center shadow-2xl">
-        <div className="w-20 h-20 bg-emerald-500/10 rounded-full flex items-center justify-center mb-6">
-          <LockOutlined className="text-4xl text-emerald-500" />
-        </div>
-        <Title level={3} className="!text-zinc-100 !mb-4">{t('activation.lockedTitle')}</Title>
-        <Paragraph className="text-zinc-400 text-base leading-relaxed mb-8">
-          {t('activation.lockedDescription')}
-        </Paragraph>
-        <div className="w-full p-5 bg-zinc-800/50 rounded-2xl border border-zinc-700/50">
-          <Text className="text-zinc-500 text-sm">
-            {t('activation.lockedHint')}
+    <div className="h-full flex items-center justify-center bg-zinc-950 p-6">
+      <div className="w-full max-w-sm rounded-3xl border border-zinc-800 bg-zinc-900/50 p-6 shadow-2xl shadow-black/30">
+        <div className="mb-5 text-center">
+          <div className="text-lg font-semibold text-zinc-100">激活 Koma Studio</div>
+          <Text className="mt-2 block text-sm leading-6 text-zinc-400">
+            请输入你的 KomaAPI 激活码。还没有激活码？可以前往官网获取后再回来激活。
           </Text>
         </div>
+        <Input.Password
+          autoFocus
+          size="large"
+          placeholder={t('activation.apiKeyPlaceholder')}
+          value={activationInputKey}
+          onChange={event => setActivationInputKey(event.target.value)}
+          onPressEnter={handleActivateFromLockedView}
+          prefix={<KeyOutlined className="text-zinc-500" />}
+          className="bg-zinc-950 border-zinc-700 text-zinc-100"
+        />
+        <Button
+          type="primary"
+          size="large"
+          block
+          loading={activationVerifying}
+          onClick={handleActivateFromLockedView}
+          className="mt-3 bg-emerald-600 hover:bg-emerald-500 border-none"
+        >
+          {activationVerifying ? t('activation.activating') : t('activation.activate')}
+        </Button>
+        <Button
+          type="link"
+          block
+          onClick={openKomaApi}
+          className="mt-2 text-zinc-400 hover:text-emerald-400"
+        >
+          前往官网获取激活码
+        </Button>
       </div>
     </div>
   );
@@ -531,13 +593,12 @@ const AppContent: React.FC = () => {
     <div className="flex flex-col h-screen bg-zinc-950 text-zinc-100 font-sans selection:bg-emerald-500/30">
       <WindowControls />
       <div className="flex flex-1 min-h-0">
-        {(activationLocked || view !== 'linghui') && (
+        {!activationLocked && view !== 'linghui' && (
           <Sidebar
             view={view}
             activeProject={activeProject}
             activeEpisode={activeEpisode}
             onViewChange={setView}
-            onEnterVideoTest={handleEnterVideoTest}
             onConfigChange={reloadSettings}
             activationInfo={activationInfo}
             activationLocked={activationLocked}

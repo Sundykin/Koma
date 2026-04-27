@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { Avatar, Tooltip, Popover, Input, Button, message, Divider, Tag, Typography } from 'antd';
 import { UserOutlined, CheckCircleFilled, CloseCircleFilled, KeyOutlined, ReloadOutlined, DeleteOutlined, EditOutlined } from '@ant-design/icons';
-import { LayoutGrid, Scissors, Settings, Puzzle, MessageCircle, PenTool } from 'lucide-react';
+import { LayoutGrid, Settings, Puzzle, MessageCircle, PenTool } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Project, Episode } from '../../types';
 import { usePluginStore } from '../../store/pluginStore';
@@ -19,7 +19,6 @@ interface SidebarProps {
   activeProject: Project | null;
   activeEpisode: Episode | null;
   onViewChange: (view: AppView) => void;
-  onEnterVideoTest: () => void;
   onConfigChange?: () => void;
   activationInfo?: ActivationInfo | null;
   activationLocked?: boolean;
@@ -62,7 +61,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
   activeProject: _activeProject,
   activeEpisode: _activeEpisode,
   onViewChange,
-  onEnterVideoTest,
   onConfigChange: _onConfigChange,
   activationInfo,
   activationLocked,
@@ -366,10 +364,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { key: 'chat', icon: <MessageCircle size={22} />, label: t('chat.title') },
   ];
 
-  const toolNavItems = [
-    { key: 'video-test', icon: <Scissors size={22} />, label: t('sidebar.videoTest'), isAction: true },
-  ];
-
   const pluginNavItems = globalPlugins
     .sort((a, b) => (a.globalMeta?.navigation?.order || 50) - (b.globalMeta?.navigation?.order || 50))
     .map(plugin => ({
@@ -382,17 +376,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { key: 'settings', icon: <Settings size={22} />, label: t('sidebar.settings') },
   ];
 
-  const handleNavClick = (key: string, _isAction?: boolean) => {
+  const handleNavClick = (key: string) => {
     if (activationLocked) {
       message.warning(t('activation.activationRequired'));
       setAvatarPopoverOpen(true);
       return;
     }
-    if (key === 'video-test') {
-      onEnterVideoTest();
-    } else {
-      onViewChange(key as AppView);
-    }
+    onViewChange(key as AppView);
   };
 
   return (
@@ -412,20 +402,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
               icon={item.icon}
               label={item.label}
               onClick={() => handleNavClick(item.key)}
-            />
-          ))}
-        </div>
-
-        <div className="mx-4 my-3 border-t border-zinc-800" />
-
-        <div className="space-y-1">
-          {toolNavItems.map(item => (
-            <NavItem
-              key={item.key}
-              active={view === item.key}
-              icon={item.icon}
-              label={item.label}
-              onClick={() => handleNavClick(item.key, item.isAction)}
             />
           ))}
         </div>

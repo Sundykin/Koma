@@ -11,15 +11,32 @@ import { logger } from 'ee-core/log';
 import { closeServices } from '../service';
 
 const isMac = process.platform === 'darwin';
+const APP_DISPLAY_NAME = 'Koma Studio';
+const APP_DESCRIPTION = 'AI 视频创作与分镜制作工具。';
+
+function configureAboutPanel(): void {
+  if (!isMac) return;
+
+  electronApp.setAboutPanelOptions({
+    applicationName: APP_DISPLAY_NAME,
+    applicationVersion: electronApp.getVersion(),
+    version: electronApp.getVersion(),
+    credits: APP_DESCRIPTION,
+    copyright: '© 2026 Koma Studio',
+  });
+}
 
 function configureApplicationMenu(): void {
   if (!isMac) return;
 
   const template: MenuItemConstructorOptions[] = [
     {
-      label: electronApp.name,
+      label: APP_DISPLAY_NAME,
       submenu: [
-        { role: 'about' },
+        {
+          label: `About ${APP_DISPLAY_NAME}`,
+          click: () => electronApp.showAboutPanel(),
+        },
         { type: 'separator' },
         { role: 'hide' },
         { role: 'hideOthers' },
@@ -63,6 +80,7 @@ export class Lifecycle {
 
   electronAppReady(): void {
     logger.info('[lifecycle] electron-app-ready');
+    configureAboutPanel();
     configureApplicationMenu();
 
     electronApp.on('second-instance', () => {
@@ -87,6 +105,8 @@ export class Lifecycle {
 
     const win = getMainWindow();
     if (!win) return;
+    configureAboutPanel();
+    configureApplicationMenu();
     hideMacWindowControls();
 
     win.webContents.on('before-input-event', (_event: ElectronEvent, input: Input) => {
