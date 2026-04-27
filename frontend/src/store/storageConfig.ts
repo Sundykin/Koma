@@ -84,6 +84,7 @@ export async function initStorageConfig(): Promise<StorageConfig> {
   // 确保存储目录存在
   if (config.rootPath && electronService.isElectron()) {
     await electronService.fs.mkdir(config.rootPath);
+    await electronService.project.setStorageRoot(config.rootPath);
   }
 
   return config;
@@ -192,6 +193,10 @@ export async function updateStoragePath(
     rootPath: newPath,
     version: STORAGE_VERSION,
   });
+
+  if (electronService.isElectron()) {
+    await electronService.project.setStorageRoot(newPath);
+  }
 }
 
 export default {

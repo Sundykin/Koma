@@ -12,6 +12,13 @@ import type {
 
 class ProjectController extends BaseController {
 
+  async setStorageRoot(args: { rootPath: string }): Promise<{ success: boolean; rootPath: string }> {
+    await ensureServicesReady();
+    const rootPath = await services.project.setStorageRoot(args.rootPath);
+    services.ffmpeg.init(`${rootPath}/cache/ffmpeg`).catch(() => undefined);
+    return { success: true, rootPath };
+  }
+
   // ========== 项目 ==========
 
   async list(): Promise<ProjectMeta[]> {

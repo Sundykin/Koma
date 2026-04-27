@@ -534,6 +534,14 @@ export const getMachineId = async (): Promise<string> => {
 
 // ========== 项目 CRUD ==========
 
+export const projectSetStorageRoot = async (rootPath: string): Promise<{ success: boolean; rootPath: string }> => {
+  const api = getElectronAPI();
+  if (api) {
+    return await api.project.setStorageRoot(rootPath);
+  }
+  return { success: true, rootPath };
+};
+
 export const projectList = async (): Promise<ProjectMeta[]> => {
   const api = getElectronAPI();
   if (api) {

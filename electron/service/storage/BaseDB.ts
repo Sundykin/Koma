@@ -17,7 +17,13 @@ export class BaseDB {
     const dbDir = path.join(storageRoot, 'db');
     fs.mkdirSync(dbDir, { recursive: true });
 
-    this.dbPath = path.join(dbDir, 'koma.db');
+    const nextDbPath = path.join(dbDir, 'koma.db');
+    if (this.db && this.dbPath === nextDbPath) {
+      return;
+    }
+    this.close();
+
+    this.dbPath = nextDbPath;
     this.db = new Database(this.dbPath, { timeout: 6000 });
 
     // 启用 WAL 模式和外键约束
