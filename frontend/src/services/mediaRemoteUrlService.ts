@@ -23,6 +23,14 @@ const logger = createLogger('MediaRemoteUrl');
 
 export type RemoteUrlPolicy = 'best-effort' | 'required';
 
+export interface RemoteUrlUploadFailureOptions {
+  /**
+   * Keep the original source instead of throwing when a required image-hosting upload fails.
+   * Default is false to preserve strict required behavior outside explicit fallback paths.
+   */
+  fallbackToSourceOnUploadFailure?: boolean;
+}
+
 function safeFilenameFromPath(path: string): string {
   if (path.startsWith('data:')) return 'image.png';
   const name = path.split(/[/\\]/).pop() || 'image.png';
@@ -55,17 +63,36 @@ function inferFilenameHintFromSource(
   return safeFilenameFromPath(source);
 }
 
+function stringifyUploadError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 async function uploadImageBytesToRemoteUrl(
   bytes: Uint8Array,
   filename: string,
-  policy: RemoteUrlPolicy
+  policy: RemoteUrlPolicy,
+  options?: RemoteUrlUploadFailureOptions
 ): Promise<string | undefined> {
   logger.info('开始上传图片到图床', {
     filename,
     bytes: bytes.byteLength,
     policy,
   });
-  const result = await uploadBytesToImageHostingWithRetry(bytes, { filename });
+  let result: Awaited<ReturnType<typeof uploadBytesToImageHostingWithRetry>>;
+  try {
+    result = await uploadBytesToImageHostingWithRetry(bytes, { filename });
+  } catch (error: unknown) {
+    if (policy === 'required' && options?.fallbackToSourceOnUploadFailure) {
+      logger.warn('图床 required 上传失败，已按方案 B fallback 到 data-url', {
+        filename,
+        policy,
+        error: stringifyUploadError(error),
+      });
+      return undefined;
+    }
+    throw error;
+  }
+
   if (result.success && result.url) {
     logger.info('图片上传到图床成功', {
       filename,
@@ -76,6 +103,14 @@ async function uploadImageBytesToRemoteUrl(
   }
 
   if (policy === 'required') {
+    if (options?.fallbackToSourceOnUploadFailure) {
+      logger.warn('图床 required 上传失败，已按方案 B fallback 到 data-url', {
+        filename,
+        policy,
+        error: result.error || '图床上传失败',
+      });
+      return undefined;
+    }
     throw new Error(result.error || '图床上传失败');
   }
 
@@ -114,8 +149,8 @@ export async function ensureRemoteUrlForImageAsset(params: {
   asset: StoredMediaAsset;
   policy: RemoteUrlPolicy;
   filenameHint?: string;
-}): Promise<StoredMediaAsset> {
-  const { asset, policy, filenameHint } = params;
+} & RemoteUrlUploadFailureOptions): Promise<StoredMediaAsset> {
+  const { asset, policy, filenameHint, fallbackToSourceOnUploadFailure } = params;
 
   if (asset.kind !== 'image') return asset;
 
@@ -147,7 +182,9 @@ export async function ensureRemoteUrlForImageAsset(params: {
   }
 
   const filename = filenameHint || safeFilenameFromPath(source);
-  const remoteUrl = await uploadImageBytesToRemoteUrl(bytes, filename, policy);
+  const remoteUrl = await uploadImageBytesToRemoteUrl(bytes, filename, policy, {
+    fallbackToSourceOnUploadFailure,
+  });
   if (!remoteUrl) return asset;
 
   return {
@@ -168,8 +205,8 @@ export async function ensureRemoteUrlForImageSource(params: {
   source: MediaAssetSource | ProviderAssetInput | undefined;
   policy: RemoteUrlPolicy;
   filenameHint?: string;
-}): Promise<MediaAssetSource | ProviderAssetInput | undefined> {
-  const { source, policy, filenameHint } = params;
+} & RemoteUrlUploadFailureOptions): Promise<MediaAssetSource | ProviderAssetInput | undefined> {
+  const { source, policy, filenameHint, fallbackToSourceOnUploadFailure } = params;
   if (!source) return undefined;
 
   // Provider boundary input
@@ -178,7 +215,9 @@ export async function ensureRemoteUrlForImageSource(params: {
     // data-url -> remote-url
     const bytes = await readBytesFromDataUrl(source.value);
     const filename = filenameHint || 'image.png';
-    const remoteUrl = await uploadImageBytesToRemoteUrl(bytes, filename, policy);
+    const remoteUrl = await uploadImageBytesToRemoteUrl(bytes, filename, policy, {
+      fallbackToSourceOnUploadFailure,
+    });
     if (!remoteUrl) return source;
     return {
       transport: 'remote-url',
@@ -194,6 +233,7 @@ export async function ensureRemoteUrlForImageSource(params: {
       asset: source as StoredMediaAsset,
       policy,
       filenameHint,
+      fallbackToSourceOnUploadFailure,
     });
   }
 
@@ -205,7 +245,9 @@ export async function ensureRemoteUrlForImageSource(params: {
     : await readBytesFromLocalFile(source);
 
   const filename = filenameHint || safeFilenameFromPath(source);
-  const remoteUrl = await uploadImageBytesToRemoteUrl(bytes, filename, policy);
+  const remoteUrl = await uploadImageBytesToRemoteUrl(bytes, filename, policy, {
+    fallbackToSourceOnUploadFailure,
+  });
   return remoteUrl || source;
 }
 
@@ -214,7 +256,7 @@ export async function ensureRemoteUrlForImageSources(params: {
   sources: Array<MediaAssetSource | ProviderAssetInput | undefined>;
   policy: RemoteUrlPolicy;
   filenameHint?: string;
-}): Promise<Array<MediaAssetSource | ProviderAssetInput | undefined>> {
+} & RemoteUrlUploadFailureOptions): Promise<Array<MediaAssetSource | ProviderAssetInput | undefined>> {
   const { sources, ...rest } = params;
   const results: Array<MediaAssetSource | ProviderAssetInput | undefined> = [];
 
