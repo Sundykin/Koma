@@ -344,6 +344,35 @@ export const activationService = {
   },
 
   /**
+   * 取已激活的 API Key 明文（仅 Electron 环境）。
+   * 主进程会兼容老格式 kv 与新格式（加密渠道）；未激活返回 null。
+   */
+  async getApiKey(): Promise<string | null> {
+    if (!electronService.isElectron()) {
+      // Web 端没有加密渠道，仅当 kv 还存着旧格式 apiKey 时能拿到明文
+      try {
+        const stored = localStorage.getItem(STORAGE_KEY);
+        if (!stored) return null;
+        const data = JSON.parse(stored);
+        return typeof data?.apiKey === 'string' && data.apiKey ? data.apiKey : null;
+      } catch {
+        return null;
+      }
+    }
+
+    try {
+      const res = await electronService.ipc.invoke('activation:get-api-key');
+      if (res && res.ok) {
+        const apiKey = res.data?.apiKey;
+        return typeof apiKey === 'string' && apiKey ? apiKey : null;
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  },
+
+  /**
    * 脱敏 API Key
    */
   maskApiKey(key: string): string {

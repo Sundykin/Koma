@@ -22,6 +22,8 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   'channel:setDefault', 'channel:getDefault', 'channel:listDefaults', 'channel:deleteDefault',
   // 全局 KV
   'app-kv:get', 'app-kv:set', 'app-kv:delete',
+  // 激活信息
+  'activation:get-api-key',
   // controller/* 显式白名单
   'controller/window/minimize', 'controller/window/maximize',
   'controller/window/close', 'controller/window/isMaximized',

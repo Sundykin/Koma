@@ -133,11 +133,16 @@ export interface HostInfo {
   electronVersion: string;
 }
 
-// 激活信息（不含密钥明文时由宿主按需返回）
+// 激活信息（不含明文 apiKey；要拿明文请用 api.activation.getApiKey()）
 export interface ActivationInfo {
-  apiKey: string;
   activatedAt: number;
   lastValidatedAt: number;
+  maskedKey: string;
+  defaultChannelIds: {
+    llm: string;
+    tti: string;
+    itv: string;
+  };
 }
 
 // 项目过滤器
