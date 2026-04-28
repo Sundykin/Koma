@@ -36,6 +36,7 @@ import {
   deleteMediaDefault,
 } from './ChannelConfigService';
 import { SqliteAppSettingsKvRepository } from '../storage/repositories/SqliteAppSettingsKvRepository';
+import { readActivationApiKey } from './activationKey';
 
 function ok<T>(data: T) {
   return { ok: true as const, data };
@@ -234,6 +235,16 @@ export function registerSettingsIpc(): void {
     } catch (err: any) {
       logger.error('[app-kv:delete]', err);
       return fail('KV_DELETE_ERROR', err.message ?? String(err));
+    }
+  });
+
+  ipcMain.handle('activation:get-api-key', async () => {
+    try {
+      await ensureServicesReady();
+      return ok({ apiKey: readActivationApiKey() });
+    } catch (err: any) {
+      logger.error('[activation:get-api-key]', err);
+      return fail('ACTIVATION_GET_KEY_ERROR', err.message ?? String(err));
     }
   });
 }

@@ -720,8 +720,7 @@ export function createPluginAPI(plugin: InstalledPlugin): PluginAPI {
     // ========== Activation ==========
     activation: {
       async getApiKey() {
-        const info = await activationService.getActivationInfo();
-        return info?.apiKey || null;
+        return activationService.getApiKey();
       },
       async getInfo() {
         return activationService.getActivationInfo();
