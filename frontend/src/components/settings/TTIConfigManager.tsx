@@ -1,3 +1,4 @@
+/// <reference types="vite/client" />
 import React, { useCallback, useMemo, useState } from 'react';
 import {
   App,
@@ -25,6 +26,7 @@ import {
   LoadingOutlined,
   NodeIndexOutlined,
   PictureOutlined,
+  PlusOutlined,
   SettingOutlined,
   StarFilled,
   StarOutlined,
@@ -135,6 +137,7 @@ export const TTIConfigManager: React.FC<TTIConfigManagerProps> = ({ onConfigChan
     handlePluginConfigSaved,
   } = useMediaConfigManager<TTIModelConfig>('tti', loadBuiltins, onConfigChange);
 
+  const showChannelConfigCreateEntry = import.meta.env.DEV;
   const watchedProviderType = Form.useWatch('providerType', form) as string | undefined;
   const isEditingActivationChannel = isKomaActivationManagedChannel(editingChannel);
   const currentProviderType = isEditingActivationChannel ? editingChannel?.providerType : watchedProviderType;
@@ -417,6 +420,11 @@ export const TTIConfigManager: React.FC<TTIConfigManagerProps> = ({ onConfigChan
             {pluginChannels.length > 0 && <span>，{t('settings.pluginChannels', { count: pluginChannels.length })}</span>}
           </span>
         </div>
+        {showChannelConfigCreateEntry && (
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => openModal()}>
+            {t('settings.addConfig')}
+          </Button>
+        )}
       </div>
 
       {loading ? (
@@ -428,7 +436,13 @@ export const TTIConfigManager: React.FC<TTIConfigManagerProps> = ({ onConfigChan
           image={Empty.PRESENTED_IMAGE_SIMPLE}
           description={t('settings.noTTIConfigs')}
           className="settings-empty-state"
-        />
+        >
+          {showChannelConfigCreateEntry && (
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => openModal()}>
+              {t('settings.addBuiltinService')}
+            </Button>
+          )}
+        </Empty>
       ) : (
         <Row gutter={[12, 12]}>
           {configs.map((config) => {
