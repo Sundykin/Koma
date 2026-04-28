@@ -4,7 +4,7 @@
  *
  * 工作流程：
  *   1. 读取 INTERNAL_PLUGINS 列表
- *   2. 对每个插件执行 npm run build（若存在 dist 则跳过构建，可通过 --force 强制）
+ *   2. 对每个插件执行 npm run build（dist 缺失或源码/manifest/package 更新时重建，可通过 --force 强制）
  *   3. 将 manifest.json + dist/ + README.md 复制到 build/extraResources/builtin-plugins/<slug>/
  *
  * 在 `npm run build` 之前自动运行；用户也可单独执行：
@@ -59,6 +59,38 @@ function ensureDependencies(pluginPath) {
   });
 }
 
+function newestMtimeMs(target) {
+  if (!fs.existsSync(target)) return 0;
+
+  const stat = fs.statSync(target);
+  if (!stat.isDirectory()) return stat.mtimeMs;
+
+  let newest = stat.mtimeMs;
+  for (const entry of fs.readdirSync(target)) {
+    newest = Math.max(newest, newestMtimeMs(path.join(target, entry)));
+  }
+  return newest;
+}
+
+function oldestMtimeMs(files) {
+  let oldest = Infinity;
+  for (const file of files) {
+    if (!fs.existsSync(file)) return 0;
+    oldest = Math.min(oldest, fs.statSync(file).mtimeMs);
+  }
+  return oldest === Infinity ? 0 : oldest;
+}
+
+function getBuildInputMtime(pluginPath) {
+  return Math.max(
+    newestMtimeMs(path.join(pluginPath, 'src')),
+    newestMtimeMs(path.join(pluginPath, 'manifest.json')),
+    newestMtimeMs(path.join(pluginPath, 'package.json')),
+    newestMtimeMs(path.join(pluginPath, 'package-lock.json')),
+    newestMtimeMs(path.join(pluginPath, 'tsconfig.json'))
+  );
+}
+
 function buildPlugin(slug) {
   const pluginPath = path.join(PLUGINS_DIR, slug);
   if (!fs.existsSync(pluginPath)) {
@@ -72,20 +104,26 @@ function buildPlugin(slug) {
   const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
 
   const distPath = path.join(pluginPath, 'dist');
-  const hasDist =
-    fs.existsSync(path.join(distPath, 'backend.js')) &&
-    fs.existsSync(path.join(distPath, 'ui', 'main.js'));
+  const requiredDistFiles = [
+    path.join(distPath, 'backend.js'),
+    path.join(distPath, 'ui', 'main.js'),
+  ];
+  const hasDist = requiredDistFiles.every((file) => fs.existsSync(file));
+  const inputMtime = getBuildInputMtime(pluginPath);
+  const outputMtime = hasDist ? oldestMtimeMs(requiredDistFiles) : 0;
+  const isStale = hasDist && inputMtime > outputMtime;
 
-  if (FORCE || !hasDist) {
+  if (FORCE || !hasDist || isStale) {
     if (pkg.scripts && pkg.scripts.build) {
       ensureDependencies(pluginPath);
-      log(`build plugin: ${slug}`);
+      const reason = FORCE ? 'force' : !hasDist ? 'missing dist' : 'source changed';
+      log(`build plugin: ${slug} (${reason})`);
       execSync('npm run build', { cwd: pluginPath, stdio: 'inherit' });
     } else {
       log(`skip build (no build script): ${slug}`);
     }
   } else {
-    log(`reuse dist: ${slug} (use --force to rebuild)`);
+    log(`reuse dist: ${slug} (up to date; use --force to rebuild)`);
   }
 }
 

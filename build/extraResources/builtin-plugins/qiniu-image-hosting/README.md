@@ -1,12 +1,13 @@
 # 七牛云图床插件（内置）
 
-Koma Studio 内置图床插件，调用 Koma 激活通道 (`https://komaapi.com/v1/uploads/image`) 将图片上传到七牛云 Kodo，返回带时间戳防盗链签名的外链 URL。
+Koma Studio 内置图床插件，使用 Koma 激活 Key 调用 ToAPIs 图片上传接口 (`https://toapis.com/v1/uploads/images`) 将图片上传到七牛云 Kodo，返回带时间戳防盗链签名的外链 URL。
 
 ## 特性
 
 - ✅ **内置**：无需用户手动安装，首次启动自动激活
 - ✅ **自动复用激活 Key**：通过 `api.activation.getApiKey()` 动态获取，不再硬编码
-- ✅ **固定走 komaapi.com**：上传地址由插件内部锁定，用户无法修改
+- ✅ **使用 ToAPIs 上传接口**：上传地址由插件内部锁定为官方图片上传接口，用户无法修改
+- ✅ **返回七牛 Kodo 外链**：上传成功后返回可直接访问的图片 URL
 - ✅ **时间戳防盗链**：默认 3 天有效期
 - ✅ **自动重试**：上传失败最多重试 3 次
 
@@ -16,7 +17,7 @@ Koma Studio 内置图床插件，调用 Koma 激活通道 (`https://komaapi.com/
 |------|--------|------|
 | `enabled` | `true` | 是否启用 |
 
-> 上传接口、API Key 均由宿主注入，不暴露在配置里。
+> 上传接口固定为 ToAPIs 官方图片上传接口，API Key 由宿主注入，不暴露在配置里。
 
 ## 目录结构
 
