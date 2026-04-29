@@ -20,6 +20,7 @@ import type {
   SpawnOptions,
   ChildProcessHandle,
 } from './types';
+import { MEDIA_PROVIDER_CONTRACT_VERSION, requiresMediaContractVersion } from './types';
 import { providerRegistry, mcpRegistry, agentRegistry } from './registries';
 import { syncProviders, syncAllMCP, capabilityRegistry } from './capability';
 import {
@@ -367,14 +368,19 @@ class ElectronPluginRuntime extends EventEmitter {
       case 'provider':
         // Provider 插件：如果提供了 createProvider 工厂
         if (module?.createProvider && manifest.providerMeta) {
+          const kind = manifest.providerMeta.channelType;
           const def: ProviderDefinition = {
             type: manifest.id,
-            kind: manifest.providerMeta.channelType,
+            kind,
             name: manifest.name,
             capabilities: manifest.providerMeta.capabilities,
             factory: module.createProvider,
             defaultConfig: manifest.providerMeta.defaultConfig,
             pluginId: manifest.id,
+            // 媒体 Provider 必填契约版本；image-hosting / llm 不强制
+            contractVersion: requiresMediaContractVersion(kind)
+              ? MEDIA_PROVIDER_CONTRACT_VERSION
+              : undefined,
           };
           console.log(`[PluginRuntime] Registering provider: ${def.type}, kind: ${def.kind}`);
           providerRegistry.register(def);

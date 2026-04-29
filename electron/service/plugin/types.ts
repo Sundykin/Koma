@@ -145,6 +145,23 @@ export interface ProviderDefinition {
   configSchema?: Record<string, unknown>;
   defaultConfig?: Record<string, unknown>;
   pluginId?: string;
+  /**
+   * 媒体 Provider 契约版本。tti/itv/tts 必填，需与运行时
+   * MEDIA_PROVIDER_CONTRACT_VERSION（'media-request-v1'）一致；
+   * 与前端 frontend/src/providers/registry.types.ts 中的同名字段保持对齐，
+   * 由 Electron 端 ProviderRegistry 在注册时强制校验。
+   */
+  contractVersion?: string;
+}
+
+/**
+ * 媒体 Provider 契约版本。Electron 与前端必须保持完全一致；
+ * 升级契约时同步修改 frontend/src/providers/registry.types.ts。
+ */
+export const MEDIA_PROVIDER_CONTRACT_VERSION = 'media-request-v1';
+
+export function requiresMediaContractVersion(kind: ProviderDefinition['kind']): boolean {
+  return kind === 'tti' || kind === 'itv' || kind === 'tts';
 }
 
 // Agent Worker 定义
