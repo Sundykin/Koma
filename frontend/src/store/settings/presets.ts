@@ -1,68 +1,33 @@
 /**
  * 模型预设常量
+ *
+ * 重构（P0#1 阶段 B/C）：所有渠道预设完全从 ProviderRegistry 派生，
+ * frontend/src/providers/{llm,tti,itv,tts}/index.ts 中注册的 def 是唯一真源。
+ * 添加新渠道厂商只需在对应 index.ts 加 def，下拉自动出现。
  */
 import type { LLMChannelPreset, ProviderPreset } from '../../types';
+import { listPresets, getRegistry } from '../../providers/registry';
 
-// OpenAI 兼容渠道预设
-export const LLM_CHANNEL_PRESETS: LLMChannelPreset[] = [
-  {
-    id: 'openai',
-    name: 'OpenAI',
-    baseUrl: 'https://api.openai.com/v1',
-  },
-  {
-    id: 'deepseek',
-    name: 'DeepSeek',
-    baseUrl: 'https://api.deepseek.com/v1',
-  },
-  {
-    id: 'qwen',
-    name: '通义千问',
-    baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
-  },
-  {
-    id: 'zhipu',
-    name: '智谱 AI',
-    baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
-  },
-  {
-    id: 'moonshot',
-    name: '月之暗面',
-    baseUrl: 'https://api.moonshot.cn/v1',
-  },
-];
+// 触发内置 Provider 注册副作用
+import '../../providers/llm';
+import '../../providers/tti';
+import '../../providers/itv';
+import '../../providers/tts';
 
-// TTI 厂商预设
-export const TTI_PRESETS: ProviderPreset[] = [
-  { id: 'nano-banana', name: 'Nano-Banana（官方）', baseUrl: 'http://ai.hsxbk.top' },
-  { id: 'gemini-3-pro', name: 'Gemini-3-Pro (toapis)', baseUrl: 'https://toapis.com' },
-  { id: 'openai-compatible-tti', name: '自定义服务商（OpenAI 兼容）', baseUrl: '' },
-  { id: 'grok2api-imagine-tti', name: 'Grok2API Imagine（多参考）', baseUrl: '' },
-  { id: 'gemini-native-tti', name: 'Gemini Native（谷歌原生）', baseUrl: 'https://generativelanguage.googleapis.com' },
-];
+// LLM 渠道预设：仅展示 OpenAI 兼容协议的渠道（gemini/claude 走专属配置 UI，由 catalog 直出）
+export const LLM_CHANNEL_PRESETS: LLMChannelPreset[] = getRegistry('llm')
+  .list()
+  .filter(def => def.runtimeProviderType === 'openai-compatible')
+  .map(def => ({
+    id: def.type,
+    name: def.name,
+    baseUrl: def.presetBaseUrl ?? '',
+  }));
 
-// ITV 厂商预设
-export const ITV_PRESETS: ProviderPreset[] = [
-  {
-    id: 'vidu',
-    name: 'Vidu',
-    baseUrl: '',
-  },
-  { id: 'sora2', name: 'Sora 2', baseUrl: 'https://toapis.com' },
-  { id: 'seedance', name: 'Seedance 2.0', baseUrl: 'https://toapis.com' },
-  { id: 'kling', name: '可灵 Kling', baseUrl: 'https://api.klingai.com' },
-  { id: 'runway', name: 'Runway', baseUrl: 'https://api.runwayml.com' },
-  { id: 'pika', name: 'Pika Labs', baseUrl: 'https://api.pika.art/v1' },
-  { id: 'comfyui-animatediff', name: 'ComfyUI AnimateDiff', baseUrl: 'http://127.0.0.1:8188' },
-  { id: 'custom', name: '自定义 / Grok2API', baseUrl: '' },
-  { id: 'grok2api-imagine-itv', name: 'Grok2API Imagine Video', baseUrl: '' },
-];
+function fromRegistry(kind: 'tti' | 'itv' | 'tts'): ProviderPreset[] {
+  return listPresets(kind).map(p => ({ id: p.id, name: p.name, baseUrl: p.baseUrl }));
+}
 
-// TTS 厂商预设
-export const TTS_PRESETS: ProviderPreset[] = [
-  { id: 'edge-tts', name: 'Edge TTS (免费)' },
-  { id: 'openai-tts', name: 'OpenAI TTS', baseUrl: 'https://api.openai.com/v1' },
-  { id: 'doubao-tts', name: '豆包 TTS', baseUrl: 'https://openspeech.bytedance.com' },
-  { id: 'fish-audio', name: 'Fish Audio', baseUrl: 'https://api.fish.audio' },
-  { id: 'gpt-sovits', name: 'GPT-SoVITS (本地)', baseUrl: 'http://127.0.0.1:9880' },
-];
+export const TTI_PRESETS: ProviderPreset[] = fromRegistry('tti');
+export const ITV_PRESETS: ProviderPreset[] = fromRegistry('itv');
+export const TTS_PRESETS: ProviderPreset[] = fromRegistry('tts');

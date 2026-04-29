@@ -1,5 +1,12 @@
 import type { ChannelDefinition, MediaCategory } from './types';
-import { LLM_CHANNEL_PRESETS, TTI_PRESETS, ITV_PRESETS, TTS_PRESETS } from '../../store/settings/presets';
+import type { ProviderDefinition, ChannelKind } from '../registry.types';
+import { getRegistry } from '../registry';
+
+// 触发内置 Provider 注册副作用（顺序无关，模块顶层 registerBuiltinProviders 会执行）
+import '../llm';
+import '../tti';
+import '../itv';
+import '../tts';
 
 /**
  * Built-in channel definitions are provider templates only.
@@ -9,136 +16,62 @@ import { LLM_CHANNEL_PRESETS, TTI_PRESETS, ITV_PRESETS, TTS_PRESETS } from '../.
  * without shipping a new app build.
  */
 
-const llmChannels: ChannelDefinition[] = [
-  ...LLM_CHANNEL_PRESETS.map((preset) => ({
-    id: preset.id,
-    category: 'llm' as const,
-    vendor: preset.name,
-    name: preset.name,
-    description: 'OpenAI 兼容对话渠道',
-    runtimeProviderType: 'openai-compatible',
-    models: [],
-    configSchema: {
-      required: ['apiKey'] as string[],
-      properties: {
-        baseUrl: { type: 'string', default: preset.baseUrl },
-        apiKey: { type: 'string' },
-      },
-    },
-  })),
-  {
-    id: 'gemini',
-    category: 'llm',
-    vendor: 'Google',
-    name: 'Gemini',
-    runtimeProviderType: 'gemini',
-    models: [],
-    configSchema: {
-      required: ['apiKey'],
-      properties: {
-        baseUrl: { type: 'string', default: 'https://generativelanguage.googleapis.com' },
-        apiKey: { type: 'string' },
-      },
-    },
-  },
-  {
-    id: 'claude',
-    category: 'llm',
-    vendor: 'Anthropic',
-    name: 'Claude',
-    runtimeProviderType: 'claude',
-    models: [],
-    configSchema: {
-      required: ['apiKey'],
-      properties: {
-        baseUrl: { type: 'string', default: 'https://api.anthropic.com' },
-        apiKey: { type: 'string' },
-      },
-    },
-  },
-];
+/**
+ * 从 ProviderDefinition.auth 推导 configSchema.required[]。
+ * 默认按"远程付费服务"语义：apiKey 必填、baseUrl 可选。
+ */
+function deriveRequiredFields(def: ProviderDefinition<any>): string[] {
+  const required: string[] = [];
+  const apiKey = def.auth?.apiKey ?? 'required';
+  const baseUrl = def.auth?.baseUrl ?? 'optional';
+  if (baseUrl === 'required') required.push('baseUrl');
+  if (apiKey === 'required') required.push('apiKey');
+  return required;
+}
 
-const ttiChannels: ChannelDefinition[] = [
-  {
-    id: 'comfyui',
-    category: 'tti',
-    vendor: 'ComfyUI',
-    name: 'ComfyUI',
-    runtimeProviderType: 'comfyui',
-    models: [],
-    configSchema: {
-      required: ['baseUrl'],
-      properties: {
-        baseUrl: { type: 'string', default: 'http://127.0.0.1:8188' },
-      },
-    },
-  },
-  ...TTI_PRESETS.map((preset) => ({
-    id: preset.id,
-    category: 'tti' as const,
-    vendor: preset.name,
-    name: preset.name,
-    runtimeProviderType: preset.id,
-    models: [],
-    configSchema: {
-      required: (preset.id === 'comfyui' ? ['baseUrl'] : ['apiKey']) as string[],
-      properties: {
-        baseUrl: { type: 'string', default: preset.baseUrl || '' },
-        apiKey: { type: 'string' },
-      },
-    },
-  })),
-];
-
-const itvChannels: ChannelDefinition[] = ITV_PRESETS.map((preset) => {
-  const isLocalOnly = preset.id === 'comfyui-animatediff';
+function defToChannel(category: MediaCategory, def: ProviderDefinition<any>): ChannelDefinition {
   return {
-    id: preset.id,
-    category: 'itv' as const,
-    vendor: preset.name,
-    name: preset.name,
-    runtimeProviderType: preset.id,
+    id: def.type,
+    category,
+    vendor: def.name,
+    name: def.name,
+    description: def.description,
+    runtimeProviderType: def.runtimeProviderType ?? def.type,
     models: [],
     configSchema: {
-      required: isLocalOnly ? ['baseUrl'] : ['apiKey'],
+      required: deriveRequiredFields(def),
       properties: {
-        baseUrl: { type: 'string', default: preset.baseUrl || '' },
+        baseUrl: { type: 'string', default: def.presetBaseUrl ?? '' },
         apiKey: { type: 'string' },
       },
     },
   };
-});
+}
 
-const ttsChannels: ChannelDefinition[] = TTS_PRESETS.map((preset) => ({
-  id: preset.id,
-  category: 'tts' as const,
-  vendor: preset.name,
-  name: preset.name,
-  runtimeProviderType: preset.id,
-  models: [],
-  configSchema: {
-    required: preset.id === 'edge-tts' || preset.id === 'gpt-sovits' ? [] : ['apiKey'],
-    properties: {
-      baseUrl: { type: 'string', default: preset.baseUrl || '' },
-      apiKey: { type: 'string' },
-    },
-  },
-}));
+function listChannelsFromRegistry(category: MediaCategory): ChannelDefinition[] {
+  const kind = category as ChannelKind;
+  const defs = getRegistry(kind).list().filter(def => !def.pluginId);
+  return defs.map(def => defToChannel(category, def));
+}
 
-const BUILTIN_CHANNELS: ChannelDefinition[] = [
-  ...llmChannels,
-  ...ttiChannels,
-  ...itvChannels,
-  ...ttsChannels,
-];
-
+/**
+ * 列出所有内置渠道定义。
+ *
+ * 不再缓存为模块级常量，避免插件运行时注册新 Provider 后此列表失效。
+ * 当下游需要稳定快照时，应在调用点自行缓存。
+ */
 export function listBuiltInChannelDefinitions(category?: MediaCategory): ChannelDefinition[] {
-  if (!category) {
-    return BUILTIN_CHANNELS;
+  if (category) {
+    return listChannelsFromRegistry(category);
   }
-  return BUILTIN_CHANNELS.filter((item) => item.category === category);
+  return [
+    ...listChannelsFromRegistry('llm'),
+    ...listChannelsFromRegistry('tti'),
+    ...listChannelsFromRegistry('itv'),
+    ...listChannelsFromRegistry('tts'),
+  ];
 }
 
 export function getBuiltInChannelDefinition(channelId: string): ChannelDefinition | undefined {
-  return BUILTIN_CHANNELS.find((item) => item.id === channelId);
+  return listBuiltInChannelDefinitions().find((item) => item.id === channelId);
 }

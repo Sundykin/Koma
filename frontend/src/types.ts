@@ -249,18 +249,19 @@ export type EditorStep = 'assets' | 'storyboard' | 'video';
 
 // ========== 模型设置相关类型 ==========
 
-export type ModelProviderType = 'gemini' | 'openai' | 'openai-compatible' | 'claude' | 'runway' | 'midjourney' | 'comfyui';
-export type LLMProviderType = 'openai-compatible' | 'gemini' | 'claude';
-// 扩展支持插件动态类型
-export type TTIProviderType =
-  | 'comfyui' | 'jimeng' | 'qwen-image' | 'midjourney' | 'dall-e' | 'flux' | 'nano-banana' | 'gemini-3-pro' | 'gemini-native-tti' | 'openai-compatible-tti' | 'grok2api-imagine-tti'
-  | (string & { __ttiPlugin?: never });
-export type ITVProviderType =
-  | 'runway' | 'kling' | 'pika' | 'minimax' | 'comfyui-animatediff' | 'sora2' | 'vidu' | 'seedance' | 'custom' | 'grok2api-imagine-itv'
-  | (string & { __itvPlugin?: never });
-export type TTSProviderType =
-  | 'edge-tts' | 'openai-tts' | 'fish-audio' | 'gpt-sovits' | 'doubao-tts'
-  | (string & { __ttsPlugin?: never });
+/**
+ * Provider 类型标识。真源是 frontend/src/providers/{llm,tti,itv,tts}/index.ts 中
+ * 注册到 ProviderRegistry 的 ProviderDefinition.type；Registry 同时承载内置与插件，
+ * 因此这里不再维护字面量 union（避免与 Registry 漂移），保留语义别名供调用点标注。
+ *
+ * - LLMProviderType  使用底层协议路由标识（'openai-compatible' | 'gemini' | 'claude'）
+ * - ModelProviderType / TTI / ITV / TTS  使用渠道 ID（'sora2' / 'kling' / 'edge-tts' …）
+ */
+export type ModelProviderType = string;
+export type LLMProviderType = string;
+export type TTIProviderType = string;
+export type ITVProviderType = string;
+export type TTSProviderType = string;
 
 // 通用媒体配置基类
 export interface MediaProviderConfig {

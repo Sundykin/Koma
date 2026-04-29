@@ -41,16 +41,20 @@ function registerBuiltinProviders() {
       contractVersion: MEDIA_PROVIDER_CONTRACT_VERSION,
       capabilities: ['itv'],
       polling: DEFAULT_POLLING_CONFIG,
+      presetBaseUrl: 'https://api.runwayml.com',
+      auth: { apiKey: 'required', baseUrl: 'optional' },
     },
     {
       type: 'kling',
       kind: 'itv',
-      name: 'Kling AI',
+      name: '可灵 Kling',
       description: '快手可灵视频生成',
       factory: (config) => new KlingProvider(config as ITVConfig),
       contractVersion: MEDIA_PROVIDER_CONTRACT_VERSION,
       capabilities: ['itv'],
       polling: DEFAULT_POLLING_CONFIG,
+      presetBaseUrl: 'https://api.klingai.com',
+      auth: { apiKey: 'required', baseUrl: 'optional' },
     },
     {
       type: 'pika',
@@ -61,6 +65,8 @@ function registerBuiltinProviders() {
       contractVersion: MEDIA_PROVIDER_CONTRACT_VERSION,
       capabilities: ['itv'],
       polling: DEFAULT_POLLING_CONFIG,
+      presetBaseUrl: 'https://api.pika.art/v1',
+      auth: { apiKey: 'required', baseUrl: 'optional' },
     },
     {
       type: 'sora2',
@@ -75,6 +81,8 @@ function registerBuiltinProviders() {
         maxDuration: 600000,
         initialDelay: 3000,
       },
+      presetBaseUrl: 'https://toapis.com',
+      auth: { apiKey: 'required', baseUrl: 'optional' },
     },
     {
       type: 'seedance',
@@ -89,6 +97,8 @@ function registerBuiltinProviders() {
         maxDuration: 600000,
         initialDelay: 5000,
       },
+      presetBaseUrl: 'https://toapis.com',
+      auth: { apiKey: 'required', baseUrl: 'optional' },
     },
     {
       type: 'vidu',
@@ -103,6 +113,8 @@ function registerBuiltinProviders() {
         maxDuration: 600000,
         initialDelay: 3000,
       },
+      presetBaseUrl: '',
+      auth: { apiKey: 'required', baseUrl: 'optional' },
     },
     {
       type: 'comfyui-animatediff',
@@ -117,11 +129,13 @@ function registerBuiltinProviders() {
         maxDuration: 300000,
         initialDelay: 1000,
       },
+      presetBaseUrl: 'http://127.0.0.1:8188',
+      auth: { apiKey: 'none', baseUrl: 'required' },
     },
     {
       type: 'custom',
       kind: 'itv',
-      name: '自定义',
+      name: '自定义 / Grok2API',
       description: '自定义视频生成 API（兼容多种接口格式）',
       factory: (config) => new CustomITVProvider(config as ITVConfig),
       contractVersion: MEDIA_PROVIDER_CONTRACT_VERSION,
@@ -131,6 +145,8 @@ function registerBuiltinProviders() {
         maxDuration: 600000,
         initialDelay: 3000,
       },
+      presetBaseUrl: '',
+      auth: { apiKey: 'required', baseUrl: 'optional' },
     },
     {
       type: 'grok2api-imagine-itv',
@@ -141,6 +157,8 @@ function registerBuiltinProviders() {
       contractVersion: MEDIA_PROVIDER_CONTRACT_VERSION,
       capabilities: ['itv'],
       polling: DEFAULT_POLLING_CONFIG,
+      presetBaseUrl: '',
+      auth: { apiKey: 'required', baseUrl: 'optional' },
     },
   ];
 

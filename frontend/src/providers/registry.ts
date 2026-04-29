@@ -12,10 +12,21 @@ export type {
   ChannelCapability,
   ProviderContext,
   ProviderDefinition,
+  ProviderAuthRequirements,
   IProviderRegistry,
   PollingConfig
 } from './registry.types';
 export { DEFAULT_POLLING_CONFIG } from './registry.types';
+
+/**
+ * UI 预设条目（从 ProviderDefinition 派生）。
+ * 兼容 store/settings/presets.ts 的 ProviderPreset 形状。
+ */
+export interface ProviderPresetEntry {
+  id: string;
+  name: string;
+  baseUrl?: string;
+}
 
 import type {
   ChannelKind,
@@ -81,6 +92,7 @@ class ProviderRegistryImpl<T> implements IProviderRegistry<T> {
 }
 
 // 全局注册表实例
+export const llmRegistry = new ProviderRegistryImpl<any>();
 export const ttiRegistry = new ProviderRegistryImpl<any>();
 export const itvRegistry = new ProviderRegistryImpl<any>();
 export const ttsRegistry = new ProviderRegistryImpl<any>();
@@ -89,6 +101,7 @@ export const imageHostingRegistry = new ProviderRegistryImpl<any>();
 // 获取注册表
 export function getRegistry(kind: ChannelKind): IProviderRegistry<any> {
   switch (kind) {
+    case 'llm': return llmRegistry;
     case 'tti': return ttiRegistry;
     case 'itv': return itvRegistry;
     case 'tts': return ttsRegistry;
@@ -110,6 +123,7 @@ export function unregisterProvider(kind: ChannelKind, type: string): void {
 
 // 反注册插件的所有 Provider
 export function unregisterProvidersByPlugin(pluginId: string): void {
+  llmRegistry.unregisterByPlugin(pluginId);
   ttiRegistry.unregisterByPlugin(pluginId);
   itvRegistry.unregisterByPlugin(pluginId);
   ttsRegistry.unregisterByPlugin(pluginId);
@@ -122,11 +136,31 @@ export function listProviders(kind?: ChannelKind): ProviderDefinition<any>[] {
     return getRegistry(kind).list();
   }
   return [
+    ...llmRegistry.list(),
     ...ttiRegistry.list(),
     ...itvRegistry.list(),
     ...ttsRegistry.list(),
     ...imageHostingRegistry.list(),
   ];
+}
+
+/**
+ * 列出某 ChannelKind 下所有 Provider 的 UI 预设。
+ * 输出顺序与注册顺序一致，让内置 def 中的字段成为下拉真源，避免与
+ * store/settings/presets.ts 的常量漂移。
+ */
+export function listPresets(kind: ChannelKind): ProviderPresetEntry[] {
+  return getRegistry(kind).list().map(def => ({
+    id: def.type,
+    name: def.name,
+    baseUrl: def.presetBaseUrl,
+  }));
+}
+
+export function getPresetEntry(kind: ChannelKind, id: string): ProviderPresetEntry | undefined {
+  const def = getRegistry(kind).get(id);
+  if (!def) return undefined;
+  return { id: def.type, name: def.name, baseUrl: def.presetBaseUrl };
 }
 
 // 创建 Provider 实例（强制要求 kind）

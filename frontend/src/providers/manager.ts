@@ -2,6 +2,7 @@
  * ProviderManager - 统一 Provider 管理入口
  * 作为唯一的 Provider 创建入口，强制要求 kind 参数
  */
+import type { LLMProvider } from './llm/types';
 import type { TTIProvider } from './tti/types';
 import type { ITVProvider } from './itv/types';
 import type { TTSProvider } from './tts/types';
@@ -11,6 +12,7 @@ import {
   type ProviderDefinition,
   type ProviderContext,
   type IProviderRegistry,
+  llmRegistry,
   ttiRegistry,
   itvRegistry,
   ttsRegistry,
@@ -19,6 +21,7 @@ import {
 
 // 类型安全映射
 export type ProviderKindMap = {
+  llm: LLMProvider;
   tti: TTIProvider;
   itv: ITVProvider;
   tts: TTSProvider;
@@ -27,13 +30,14 @@ export type ProviderKindMap = {
 
 /**
  * Provider 管理器
- * 统一管理 TTI/ITV/TTS 三种类型的 Provider
+ * 统一管理 LLM/TTI/ITV/TTS/image-hosting 五种类型的 Provider
  */
 export class ProviderManager {
   private readonly registries: Record<ChannelKind, IProviderRegistry<any>>;
 
   constructor() {
     this.registries = {
+      llm: llmRegistry,
       tti: ttiRegistry,
       itv: itvRegistry,
       tts: ttsRegistry,
@@ -117,9 +121,11 @@ export class ProviderManager {
    */
   listAll(): ProviderDefinition<any>[] {
     return [
+      ...this.registries.llm.list(),
       ...this.registries.tti.list(),
       ...this.registries.itv.list(),
       ...this.registries.tts.list(),
+      ...this.registries['image-hosting'].list(),
     ];
   }
 
