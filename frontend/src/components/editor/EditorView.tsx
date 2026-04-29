@@ -1,19 +1,20 @@
 import React from 'react';
 import { Button } from 'antd';
-import {
-  Users,
-  Clapperboard,
-  Scissors,
-} from 'lucide-react';
+import { Users } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { Project, Episode, EditorStep, EpisodeStepProgress, ScriptAnalysisResult, AppSettings, ProjectStyleSnapshot } from '../../types';
+import {
+  Project, Episode, EditorStep, EpisodeStepProgress,
+  ScriptAnalysisResult, AppSettings, ProjectStyleSnapshot,
+} from '../../types';
 import type { MentionItem } from '../../editor';
-import { SimpleEditor } from './index';
-import { AssetManager } from '../asset/AssetManager';
-import { Storyboard } from '../storyboard/Storyboard';
 import { StepNavigator } from '../common/StepNavigator';
 import { serializeMediaSelection } from '../../providers/channel/resolver';
-import { getEditorStep } from '../../workflow/editorStepRegistry';
+import {
+  getEditorStep,
+  type EditorStepContext,
+} from '../../workflow/editorStepRegistry';
+// 副作用 import：把各步骤 Component 注入到 registry
+import './steps';
 
 interface EditorViewProps {
   activeProject: Project;
@@ -66,6 +67,27 @@ export const EditorView: React.FC<EditorViewProps> = ({
     );
   };
 
+  // 构造 step 渲染上下文
+  const ctx: EditorStepContext = {
+    activeProject,
+    activeEpisode,
+    scriptText,
+    analysisData,
+    appSettings,
+    mentionItems,
+    styleSnapshot,
+    llmSelection,
+    ttiSelection,
+    itvSelection,
+    ttsSelection,
+    onStepChange: (id) => onStepChange(id as EditorStep),
+    onViewChange,
+  };
+
+  // 数据驱动：从 registry 取当前 step 的 Component
+  const stepDef = getEditorStep(editorStep);
+  const StepComponent = stepDef?.Component;
+
   return (
     <div className="flex flex-col h-full">
       {/* 嵌入式步骤导航 */}
@@ -78,76 +100,15 @@ export const EditorView: React.FC<EditorViewProps> = ({
 
       {/* 主内容区 */}
       <div className="flex-1 overflow-hidden relative">
-        {/* 资产管理视图 */}
-        {editorStep === 'assets' && (
-          activeProject ? (
-              <AssetManager
-                projectId={activeProject.id}
-                ttiSelection={ttiSelection}
-                itvSelection={itvSelection}
-                styleSnapshot={styleSnapshot}
-                episodeId={activeEpisode?.id}
-                episodeName={activeEpisode?.title || (activeEpisode ? `第${activeEpisode.number}集` : undefined)}
-                script={scriptText}
-                llmSelection={llmSelection}
-              characters={analysisData?.characters}
-              scenes={analysisData?.scenes}
-              props={analysisData?.props}
-              onNext={() => onStepChange('storyboard')}
-            />
-          ) : (
-            <div className="flex h-full items-center justify-center text-zinc-500 flex-col gap-4">
-              <Users className="w-16 h-16 opacity-10" />
-              <p>请先选择项目。</p>
-              <Button type="link" onClick={() => onViewChange('projects')}>返回项目列表</Button>
-            </div>
-          )
-        )}
-
-        {/* 分镜视图 */}
-        {editorStep === 'storyboard' && (
-          activeProject ? (
-            <div className="absolute inset-0">
-              <Storyboard
-                projectId={activeProject.id}
-                episodeId={activeEpisode?.id}
-                episodeName={activeEpisode?.title || (activeEpisode ? `第${activeEpisode.number}集` : undefined)}
-                script={scriptText}
-                aspectRatio={activeProject.aspectRatio || '16:9'}
-                llmSelection={llmSelection}
-                ttiSelection={ttiSelection}
-                itvSelection={itvSelection}
-                ttsSelection={ttsSelection}
-                settings={appSettings}
-                styleSnapshot={styleSnapshot}
-                mentionItems={mentionItems}
-              />
-            </div>
-          ) : (
-            <div className="flex h-full items-center justify-center text-zinc-500 flex-col gap-4">
-              <Clapperboard className="w-16 h-16 opacity-10" />
-              <p>请先选择项目。</p>
-              <Button type="link" onClick={() => onViewChange('projects')}>返回项目列表</Button>
-            </div>
-          )
-        )}
-
-        {/* 剪辑视图 */}
-        {editorStep === 'video' && (
-          analysisData ? (
-            <SimpleEditor
-              shots={analysisData.shots}
-              projectId={activeProject?.id}
-              episodeId={activeEpisode?.id}
-              aspectRatio={activeProject?.aspectRatio || '16:9'}
-            />
-          ) : (
-            <div className="flex h-full items-center justify-center text-zinc-500 flex-col gap-4">
-              <Scissors className="w-16 h-16 opacity-10" />
-              <p>需完成分镜生成后才能进入剪辑环节。</p>
-              <Button type="link" onClick={() => onStepChange('storyboard')}>返回分镜</Button>
-            </div>
-          )
+        {StepComponent ? (
+          <StepComponent ctx={ctx} />
+        ) : (
+          // 未实现/未注册 Component 的 step：fallback
+          <div className="flex h-full items-center justify-center text-zinc-500 flex-col gap-4">
+            <Users className="w-16 h-16 opacity-10" />
+            <p>步骤 "{editorStep}" 未实现。</p>
+            <Button type="link" onClick={() => onViewChange('projects')}>返回项目列表</Button>
+          </div>
         )}
       </div>
     </div>

@@ -18,14 +18,45 @@
  *
  * 删除步骤需要数据迁移评估，暂不支持。
  */
+import type { ComponentType } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import { Users, Clapperboard, Scissors } from 'lucide-react';
+import type {
+  Project,
+  Episode,
+  ScriptAnalysisResult,
+  AppSettings,
+  ProjectStyleSnapshot,
+} from '../types';
+import type { MentionItem } from '../editor';
 
 export interface EditorStepNextAction {
   /** 跳转目标步骤 id（必须与 registry 中已注册的 id 匹配） */
   targetStepId: string;
   /** "下一步"按钮文案的 i18n key */
   labelKey: string;
+}
+
+/**
+ * 编辑器步骤组件接收的统一上下文。
+ *
+ * 各 step component 自由从 ctx 取所需字段渲染，无需 EditorView 知道每个 component
+ * 实际需要哪些 props。新增 step 时增 wrapper component + register，无需改 EditorView。
+ */
+export interface EditorStepContext {
+  activeProject: Project;
+  activeEpisode: Episode | null;
+  scriptText: string;
+  analysisData: ScriptAnalysisResult | null;
+  appSettings: AppSettings;
+  mentionItems: MentionItem[];
+  styleSnapshot?: ProjectStyleSnapshot;
+  llmSelection?: string;
+  ttiSelection?: string;
+  itvSelection?: string;
+  ttsSelection?: string;
+  onStepChange: (stepId: string) => void;
+  onViewChange: (view: 'projects') => void;
 }
 
 export interface EditorStepDefinition {
@@ -37,6 +68,12 @@ export interface EditorStepDefinition {
   labelKey: string;
   /** "下一步"按钮配置；最末步骤可省略 */
   nextAction?: EditorStepNextAction;
+  /**
+   * 步骤主视图组件。由 components/editor/steps/index.ts 通过
+   * setStepComponent(id, Component) 在内置元数据基础上 patch 注入。
+   * 缺失时 EditorView 渲染 fallback。
+   */
+  Component?: ComponentType<{ ctx: EditorStepContext }>;
 }
 
 class EditorStepRegistryImpl {
@@ -82,6 +119,22 @@ export function listEditorStepIds(): string[] {
 
 export function getEditorStep(id: string): EditorStepDefinition | undefined {
   return editorStepRegistry.get(id);
+}
+
+/**
+ * 给已注册步骤补充/替换 Component。
+ * 设计目的：工作流注册（id/order/icon/labelKey/nextAction）住在 workflow 层，
+ * UI 渲染（Component）住在 components/editor/steps/，通过此函数桥接两层。
+ */
+export function setStepComponent(
+  id: string,
+  Component: ComponentType<{ ctx: EditorStepContext }>,
+): void {
+  const def = editorStepRegistry.get(id);
+  if (!def) {
+    throw new Error(`Cannot set component for unregistered step "${id}"`);
+  }
+  def.Component = Component;
 }
 
 // ========== 内置三步注册 ==========
