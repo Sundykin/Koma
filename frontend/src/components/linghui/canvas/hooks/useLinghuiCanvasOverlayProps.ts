@@ -5,6 +5,7 @@ import type { MessageInstance } from 'antd/es/message/interface';
 import type { ReactFlowInstance } from '@xyflow/react';
 import type {
   LinghuiCanvasSelection,
+  LinghuiExecutionQueueState,
   LinghuiExecuteMultiAngleOptions,
   LinghuiImageAssetItem,
   LinghuiGridType,
@@ -168,6 +169,7 @@ interface UseLinghuiCanvasOverlayPropsParams {
   revertGridSplitTool: () => void;
   onCloseEditor: () => void;
   nodeRuns: Record<string, LinghuiNodeRunState>;
+  executionQueue?: LinghuiExecutionQueueState | null;
   workspaceId: string | null;
   updateNodeData: (
     nodeId: string,
@@ -245,6 +247,7 @@ export function useLinghuiCanvasOverlayProps({
   revertGridSplitTool,
   onCloseEditor,
   nodeRuns,
+  executionQueue,
   workspaceId,
   updateNodeData,
   canvasRect,
@@ -660,6 +663,7 @@ export function useLinghuiCanvasOverlayProps({
     setActiveNodeTool,
     onCloseEditor,
     nodeRuns,
+    executionQueue,
     workspaceId,
     onAssetLibraryMutate,
     canvasRect,

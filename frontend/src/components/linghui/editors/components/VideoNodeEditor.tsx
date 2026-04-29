@@ -17,7 +17,7 @@ import {
   serializeMediaSelection,
 } from '../../../../providers/channel/resolver';
 import type { LinghuiPromptReferenceItem } from '../state/linghuiPromptReferences';
-import { useLinghuiNodeMutation } from '../../nodes/state/LinghuiNodeRunsContext';
+import { useLinghuiNodeEditorApi, useLinghuiNodeMutation } from '../../nodes/state/LinghuiNodeRunsContext';
 import {
   VideoGeneratePanel,
   VideoPassThroughPanel,
@@ -66,6 +66,7 @@ export const VideoNodeEditor: React.FC<VideoNodeEditorProps> = ({
   onRun,
 }) => {
   const { message } = App.useApp();
+  const { executionQueue } = useLinghuiNodeEditorApi();
   const { clearNodeRunState, updateNodeData } = useLinghuiNodeMutation();
   const props = nodeData.properties as unknown as LinghuiVideoNodeProperties;
   const source = String(props.source ?? '').trim();
@@ -82,6 +83,25 @@ export const VideoNodeEditor: React.FC<VideoNodeEditorProps> = ({
   const currentVideoMimeType = String(primaryVideo?.mimeType ?? '').trim();
   const currentVideoLabel = String(primaryVideo?.label ?? nodeData.label ?? 'video').trim() || 'video';
   const hasCurrentVideo = Boolean(currentVideoSource);
+  const isExecutionQueueActive = executionQueue?.status === 'running' || executionQueue?.status === 'canceling';
+  const isNodeQueuedByExecutionQueue = Boolean(isExecutionQueueActive && executionQueue?.queuedNodeIds.includes(nodeId));
+  const isNodeRunningByExecutionQueue = Boolean(isExecutionQueueActive && executionQueue?.runningNodeIds.includes(nodeId));
+  const isVideoGenerating = nodeRun?.status === 'running' || isNodeRunningByExecutionQueue || isNodeQueuedByExecutionQueue;
+  const generateProgressText = nodeRun?.status === 'running'
+    && typeof nodeRun.progress === 'number'
+    && Number.isFinite(nodeRun.progress)
+    && nodeRun.progress > 0
+    ? ` ${Math.max(0, Math.min(100, Math.round(nodeRun.progress)))}%`
+    : '';
+  const normalizedRunMessage = String(nodeRun?.message ?? '').trim();
+  const generateStateLabel = isNodeQueuedByExecutionQueue && nodeRun?.status !== 'running'
+    ? '等待视频生成…'
+    : normalizedRunMessage && normalizedRunMessage !== '准备执行'
+      ? normalizedRunMessage
+      : isVideoGenerating
+        ? '生成中…'
+        : '生成';
+  const generateButtonText = isVideoGenerating ? `${generateStateLabel}${generateProgressText}` : '生成';
 
   const [providers, setProviders] = useState<ProviderOption[]>([]);
   const [fallbackSelectionKey, setFallbackSelectionKey] = useState('');
@@ -269,6 +289,13 @@ export const VideoNodeEditor: React.FC<VideoNodeEditorProps> = ({
     nodeData.label,
   ]);
 
+  const handleRun = useCallback(() => {
+    if (isVideoGenerating) {
+      return;
+    }
+    onRun();
+  }, [isVideoGenerating, onRun]);
+
   const activeToolPresets = activeTool
     ? VIDEO_TOOL_PRESETS[activeTool].buildPresets({
         imageCount: referenceImages.length,
@@ -286,9 +313,11 @@ export const VideoNodeEditor: React.FC<VideoNodeEditorProps> = ({
           <div className="linghuiEditorSubtitle">
             {isPassThroughNode
               ? '透传输出'
-              : hasCurrentVideo
-                ? `当前输出 · ${formatVideoParameterSummary({ aspectRatio, resolution, duration })}`
-                : capabilityDescriptor.label}
+              : isVideoGenerating
+                ? generateButtonText
+                : hasCurrentVideo
+                  ? `当前输出 · ${formatVideoParameterSummary({ aspectRatio, resolution, duration })}`
+                  : capabilityDescriptor.label}
           </div>
         </div>
       </div>
@@ -326,12 +355,14 @@ export const VideoNodeEditor: React.FC<VideoNodeEditorProps> = ({
           resolution={resolution}
           duration={duration}
           hasCurrentVideo={hasCurrentVideo}
+          isGenerating={isVideoGenerating}
+          generateButtonText={generateButtonText}
           onDownloadCurrentVideo={handleDownloadCurrentVideo}
           onUpdateProvider={handleProviderChange}
           onUpdateAspectRatio={value => updateProp('aspectRatio', value)}
           onUpdateResolution={value => updateProp('resolution', value)}
           onUpdateDuration={value => updateProp('duration', value)}
-          onRun={onRun}
+          onRun={handleRun}
         />
       )}
     </div>

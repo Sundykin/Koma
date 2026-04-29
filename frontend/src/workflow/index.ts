@@ -18,6 +18,7 @@ export {
 export {
   generateCostumePhoto,
   generateCharacterFaceCandidate,
+  generateCharacterFaceCandidatesBatch,
   generateCharacterPreviewVideo,
   extractAndBindCharacter,
   buildCostumePhotoPrompt,

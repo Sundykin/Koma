@@ -2,9 +2,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ExecutionNodeView } from '../state/linghuiExecutionShared';
 import type { LinghuiNodeResult } from '../../../../types/linghui';
 
-vi.mock('./linghuiExecutionProviders', () => ({
+vi.mock('../state/linghuiExecutionProviders', () => ({
   generateAudioWithProvider: vi.fn(),
   generateImageWithProvider: vi.fn(),
+  generateImageVariantsWithProvider: vi.fn(),
+  generateImagesWithProvider: vi.fn(),
   generateTextWithProvider: vi.fn(),
   generateVideoWithProvider: vi.fn(),
   runAgentWithProvider: vi.fn(),

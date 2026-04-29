@@ -255,6 +255,8 @@ interface VideoGeneratePanelProps {
   resolution: string;
   duration: number;
   hasCurrentVideo: boolean;
+  isGenerating: boolean;
+  generateButtonText: string;
   onDownloadCurrentVideo: () => void;
   onUpdateProvider: (value: string) => void;
   onUpdateAspectRatio: (value: string) => void;
@@ -280,6 +282,8 @@ export function VideoGeneratePanel({
   resolution,
   duration,
   hasCurrentVideo,
+  isGenerating,
+  generateButtonText,
   onDownloadCurrentVideo,
   onUpdateProvider,
   onUpdateAspectRatio,
@@ -403,6 +407,9 @@ export function VideoGeneratePanel({
             {hasCurrentVideo ? (
               <span className="linghuiEditorSummaryPill">已有成片</span>
             ) : null}
+            {isGenerating ? (
+              <span className="linghuiEditorSummaryPill">{generateButtonText}</span>
+            ) : null}
           </div>
         </div>
       ) : null}
@@ -470,10 +477,12 @@ export function VideoGeneratePanel({
           ) : null}
           <Button
             type="primary"
-            icon={<ArrowUp size={14} />}
+            icon={isGenerating ? undefined : <ArrowUp size={14} />}
             onClick={onRun}
+            loading={isGenerating}
+            disabled={isGenerating}
           >
-            生成
+            {generateButtonText}
           </Button>
         </div>
       </div>

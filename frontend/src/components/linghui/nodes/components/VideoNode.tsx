@@ -1,6 +1,6 @@
 import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { Handle, Position, type NodeProps } from '@xyflow/react';
-import { Pause, Play } from 'lucide-react';
+import { LoaderCircle, Pause, Play } from 'lucide-react';
 import type {
   LinghuiNodeData,
   LinghuiRunStatus,
@@ -198,6 +198,15 @@ function VideoNodeInner({ id, data, selected }: NodeProps) {
       : String(props.aspectRatio ?? '16:9'),
   }).style;
   const isEditorVisible = useLinghuiNodeEditorVisibility(id, 'linghui/video');
+  const normalizedRunProgress = typeof runState?.progress === 'number' && Number.isFinite(runState.progress)
+    ? Math.max(0, Math.min(100, Math.round(runState.progress)))
+    : 0;
+  const normalizedRunMessage = String(runState?.message ?? '').trim();
+  const footerCaption = status === 'running'
+    ? `${normalizedRunMessage && normalizedRunMessage !== '准备执行' ? normalizedRunMessage : '等待视频生成…'}${normalizedRunProgress > 0 ? ` · ${normalizedRunProgress}%` : ''}`
+    : hasUploadedSource
+      ? '透传输出'
+      : modeLabel;
 
   const syncVideoFrame = useCallback(() => {
     const video = videoRef.current;
@@ -452,8 +461,9 @@ function VideoNodeInner({ id, data, selected }: NodeProps) {
           </div>
         </div>
         <div className="linghuiCompactThumbFooter">
-          <span className="linghuiCompactThumbCaption">
-            {hasUploadedSource ? '透传输出' : modeLabel}
+          <span className={`linghuiCompactThumbCaption ${status === 'running' ? 'isRunning' : ''}`}>
+            {status === 'running' ? <LoaderCircle size={12} className="linghuiCompactInlineSpinner" aria-hidden="true" /> : null}
+            {footerCaption}
           </span>
         </div>
         {status === 'running' && (

@@ -11,6 +11,8 @@ import { resolveTTISize } from './utils/ttiSize';
 
 const logger = createLogger('OpenAICompatibleTTI');
 
+const OPENAI_COMPATIBLE_MAX_BATCH_IMAGES = 10;
+
 function sanitizeBodyForLog(body: Record<string, any>): Record<string, any> {
   const walk = (v: any): any => {
     if (typeof v === 'string') {
@@ -147,18 +149,47 @@ export class OpenAICompatibleTTIProvider implements TTIProvider {
     }
   }
 
+  private clampCount(value: unknown, max = OPENAI_COMPATIBLE_MAX_BATCH_IMAGES): number {
+    const normalized = Number(value);
+    if (!Number.isFinite(normalized)) return 1;
+    return Math.max(1, Math.min(max, Math.floor(normalized)));
+  }
+
   /**
-   * 从 ImageData 中提取可用的图片 URL
+   * 从 ImageData 中提取可用的图片结果
    * 支持 url 和 b64_json 两种格式
    */
-  private extractImageUrl(item: ImageData): string | null {
+  private extractImageResult(item: ImageData): ImageResult | null {
     if (item.url) {
-      return item.url;
+      return {
+        path: item.url,
+        url: item.url,
+      };
     }
     if (item.b64_json) {
-      return `data:image/jpeg;base64,${item.b64_json}`;
+      const dataUrl = `data:image/jpeg;base64,${item.b64_json}`;
+      return {
+        path: dataUrl,
+        url: dataUrl,
+      };
     }
     return null;
+  }
+
+  private createImmediateOutput(items?: ImageData[]): ImageResult | null {
+    const images = (items ?? [])
+      .map(item => this.extractImageResult(item))
+      .filter(Boolean) as ImageResult[];
+    const first = images[0];
+    if (!first) return null;
+    if (images.length === 1) return first;
+    return {
+      ...first,
+      metadata: {
+        ...(first.metadata ?? {}),
+        batchImages: images,
+      },
+    };
   }
 
   /**
@@ -175,10 +206,11 @@ export class OpenAICompatibleTTIProvider implements TTIProvider {
 
     const options: TTIOptions | undefined = request.options;
     const isMultiAngle = request.requestType === 'multi-angle' && Boolean(request.multiAngle);
+    const count = this.clampCount(request.count);
     const body: Record<string, any> = {
       model: this.getModelName(),
       prompt: request.prompt,
-      n: 1,
+      n: count,
     };
 
     const size = resolveTTISize(options, this.config.defaultSize);
@@ -253,14 +285,11 @@ export class OpenAICompatibleTTIProvider implements TTIProvider {
 
     // 同步模式：响应中直接包含图片数据
     if (data.data?.[0]) {
-      const imageUrl = this.extractImageUrl(data.data[0]);
-      if (imageUrl) {
+      const output = this.createImmediateOutput(data.data);
+      if (output) {
         return {
           mode: 'immediate',
-          output: {
-            path: imageUrl,
-            url: imageUrl,
-          },
+          output,
         };
       }
     }
@@ -344,10 +373,10 @@ export class OpenAICompatibleTTIProvider implements TTIProvider {
     if (data.status === 'completed') {
       const items = data.result?.data || data.data;
       if (items?.[0]) {
-        const url = this.extractImageUrl(items[0]);
-        if (url) {
+        const output = this.createImmediateOutput(items);
+        if (output) {
           this.taskSnapshotPathById.delete(taskId);
-          snapshot.output = { path: url, url };
+          snapshot.output = output;
         }
       }
     }

@@ -31,6 +31,7 @@ import {
 import {
   generateAudioWithProvider,
   generateImageWithProvider,
+  generateImageVariantsWithProvider,
   generateTextWithProvider,
   runAgentWithProvider,
   generateVideoWithProvider,
@@ -65,6 +66,60 @@ function buildScriptSystemPrompt(systemPrompt: string): string {
 }
 
 type NodeExecutionProgressHandler = (progress: number, message?: string, partialResult?: LinghuiNodeResult) => void;
+
+const IMAGE_BATCH_VARIANT_PRESETS = [
+  {
+    key: 'composition-depth',
+    label: '构图层次',
+    instruction: '保持主体和主要求不变，重点改变构图留白、前后景层次与背景组织，让画面空间关系更清晰。',
+  },
+  {
+    key: 'lighting-contrast',
+    label: '光线体积',
+    instruction: '保持主体一致，重点改变主光方向、明暗对比和轮廓光组织，增强体积感与氛围差异。',
+  },
+  {
+    key: 'expression-pose',
+    label: '表情姿态',
+    instruction: '保持人物身份、服装和主动作一致，仅通过细微表情、视线、手势或身体重心制造不同瞬间感。',
+  },
+  {
+    key: 'material-atmosphere',
+    label: '材质氛围',
+    instruction: '保持同一主题和主体关系，重点强化材质纹理、空气透视、景深与环境细节层次。',
+  },
+] as const;
+
+function buildImageBatchVariantPlans(prompt: string, count: number): Array<{
+  label: string;
+  prompt: string;
+  metadata: Record<string, unknown>;
+}> {
+  const normalizedPrompt = String(prompt).trim();
+
+  return Array.from({ length: count }, (_, index) => {
+    const preset = IMAGE_BATCH_VARIANT_PRESETS[index % IMAGE_BATCH_VARIANT_PRESETS.length];
+    const cycle = Math.floor(index / IMAGE_BATCH_VARIANT_PRESETS.length);
+    const variantLabel = cycle > 0 ? `${preset.label} ${cycle + 1}` : preset.label;
+
+    return {
+      label: `#${index + 1}`,
+      prompt: [
+        normalizedPrompt,
+        '',
+        `灵绘批量变体 ${index + 1}（${variantLabel}）`,
+        '保持原提示词中已经明确指定的主体身份、服装、场景、时代、主视角与关键动作不变，不要改成不同人物、不同题材或不同故事阶段。',
+        `本张仅重点变化：${preset.instruction}`,
+        '请让这一张与同批次其他结果在构图、光线、表情/姿态、材质细节或空气层次上具有清晰可辨的差异，但仍然是同一主题下的有效画面变体。',
+      ].join('\n'),
+      metadata: {
+        variantIndex: index + 1,
+        variantKey: preset.key,
+        variantLabel,
+      },
+    };
+  });
+}
 
 function resolveStreamingProgress(accumulated: string, base = 18, cap = 92): number {
   return Math.max(base, Math.min(cap, base + Math.floor(accumulated.trim().length / 48)));
@@ -324,30 +379,38 @@ export async function executeImageNode(
   }
 
   if (count > 1) {
-    const items = await Promise.all(
-      Array.from({ length: count }, (_, i) => i).map(async index => {
-        const label = `#${index + 1}`;
-        const image = await generateImageWithProvider({
-          prompt: effectivePrompt,
-          referenceSources,
-          ttiSelection,
-          promptReferences,
-          settingsSnapshot: node.settingsSnapshot,
-          onProgress: progress => onProgress?.(Math.round((index / count) * 100 + progress / count), `${label} 生成中`),
-          placeholderTitle: label,
-          placeholderSubtitle: prompt || '占位预览',
-          accent: '#4ade80',
-          signal,
-        });
-        return { ...image, label };
-      }),
-    );
+    const variants = buildImageBatchVariantPlans(effectivePrompt, count);
+    const items = (await generateImageVariantsWithProvider({
+      variants,
+      referenceSources,
+      ttiSelection,
+      promptReferences,
+      settingsSnapshot: node.settingsSnapshot,
+      onProgress,
+      placeholderTitle: node.title,
+      placeholderSubtitle: prompt || '图片占位预览',
+      accent: '#4ade80',
+      signal,
+    }))
+      .slice(0, count)
+      .map((image, index) => ({ ...image, label: image.label || `#${index + 1}` }));
+
+    const primary = items[0];
+    if (!primary) {
+      throw new Error('图片生成未返回有效结果');
+    }
 
     return {
       kind: 'images',
-      primary: items[0],
+      primary,
       items,
-      metadata: { prompt, batchCount: count, mode: 'generate' },
+      metadata: {
+        prompt,
+        batchCount: count,
+        batchMode: 'variant-prompts',
+        variantStrategy: 'linghui-image-batch-diversity-v1',
+        mode: 'generate',
+      },
     };
   }
 

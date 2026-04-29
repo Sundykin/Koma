@@ -151,6 +151,18 @@ export const AssetListPanel: React.FC<AssetListPanelProps> = ({
     return electronService.fs.toLocalUrl(path);
   };
 
+  const appendImageVersion = (url: string, version?: string | number) => {
+    if (version === undefined || version === null || version === '') return url;
+    const [base, hash = ''] = url.split('#', 2);
+    const separator = base.includes('?') ? '&' : '?';
+    return `${base}${separator}v=${encodeURIComponent(String(version))}${hash ? `#${hash}` : ''}`;
+  };
+
+  const toVersionedImageUrl = (path?: string, version?: string | number) => {
+    const url = toLocalUrl(path);
+    return url ? appendImageVersion(url, version) : '';
+  };
+
   // 新建角色
   const handleCreateCharacter = async () => {
     const newChar: Character = {
@@ -371,7 +383,8 @@ export const AssetListPanel: React.FC<AssetListPanelProps> = ({
     imagePath?: string,
     isBound?: boolean,
     subtitle?: string,
-    extraInfo?: string
+    extraInfo?: string,
+    imageVersion?: string | number,
   ) => {
     const isSelected = selectedId === id;
     return (
@@ -386,7 +399,7 @@ export const AssetListPanel: React.FC<AssetListPanelProps> = ({
         <div className="aspect-video w-full bg-zinc-950 relative overflow-hidden">
           {imagePath ? (
             <img
-              src={toLocalUrl(imagePath)}
+              src={toVersionedImageUrl(imagePath, imageVersion)}
               alt={name}
               className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
             />
@@ -448,7 +461,8 @@ export const AssetListPanel: React.FC<AssetListPanelProps> = ({
               getCharacterCostumePhotoSource(char),
               !!char.sora2CharacterId,
               getRoleLabel(char.role || 'supporting'),
-              char.description
+              char.description,
+              char.media?.costumePhoto?.createdAt,
             ))}
           </div>
         ) : (

@@ -293,6 +293,26 @@ interface AssetImageDrawResult {
   path?: string;
   url?: string;
   error?: string;
+  index?: number;
+  seed?: number;
+}
+
+export interface GenerateImageDrawBatchOptions {
+  startIndex: number;
+  batchSize: number;
+  seeds: number[];
+  destPaths: string[];
+  variations: Array<AssetImageDrawVariation | undefined>;
+}
+
+export interface ValidateImageDrawCandidateResultOptions {
+  candidate: AssetImageDrawCandidate;
+  result: AssetImageDrawResult;
+  index: number;
+  seed: number;
+  destPath: string;
+  variation?: AssetImageDrawVariation;
+  phase: 'batch' | 'single';
 }
 
 export interface GenerateImageDrawCandidatesOptions {
@@ -304,6 +324,8 @@ export interface GenerateImageDrawCandidatesOptions {
   getCandidatePath: (seed: number, index: number) => Promise<string>;
   getVariation?: (index: number) => AssetImageDrawVariation | undefined;
   generate: (seed: number, index: number, destPath: string, variation?: AssetImageDrawVariation) => Promise<AssetImageDrawResult>;
+  generateBatch?: (options: GenerateImageDrawBatchOptions) => Promise<AssetImageDrawResult[]>;
+  validateCandidateResult?: (options: ValidateImageDrawCandidateResultOptions) => Promise<boolean | string> | boolean | string;
   shouldContinue?: () => boolean;
   onCandidateProgress?: (progress: number, index: number, step: string) => void;
 }
@@ -432,11 +454,20 @@ export async function generateImageDrawCandidates({
   getCandidatePath,
   getVariation,
   generate,
+  generateBatch,
+  validateCandidateResult,
   shouldContinue,
   onCandidateProgress,
 }: GenerateImageDrawCandidatesOptions): Promise<GenerateImageDrawCandidatesResult> {
   if (!sessionId || !ownerType || !ownerId) {
     throw new Error('Image draw candidates require sessionId and owner information');
+  }
+
+  interface CandidateGenerationContext {
+    index: number;
+    seed: number;
+    variation?: AssetImageDrawVariation;
+    destPath: string;
   }
 
   const candidates: AssetImageDrawCandidate[] = [];
@@ -452,10 +483,75 @@ export async function generateImageDrawCandidates({
     };
   };
 
-  for (let index = 0; index < count; index += 1) {
-    if (!hasActiveSession()) {
-      return cleanupAndCancel();
+  const removeCandidatePath = async (destPath?: string): Promise<void> => {
+    if (!isRemovableLocalPath(destPath)) {
+      return;
     }
+    try {
+      await fsRemove(destPath!);
+    } catch {
+      // ignore missing/partial candidate files
+    }
+  };
+
+  const removeCandidateArtifacts = async (...paths: Array<string | undefined>): Promise<void> => {
+    const uniquePaths = Array.from(new Set(paths.filter((path): path is string => Boolean(path))));
+    await Promise.all(uniquePaths.map((path) => removeCandidatePath(path)));
+  };
+
+  const createCandidate = (
+    context: CandidateGenerationContext,
+    result: AssetImageDrawResult,
+  ): AssetImageDrawCandidate => ({
+    id: `${sessionId}-${context.index}-${result.seed ?? context.seed}`,
+    sessionId,
+    ownerType,
+    ownerId,
+    projectId,
+    localPath: result.path,
+    remoteUrl: result.url,
+    seed: result.seed ?? context.seed,
+    ...getVariationCandidateMetadata(context.variation),
+  });
+
+  const validateGeneratedCandidate = async (
+    context: CandidateGenerationContext,
+    result: AssetImageDrawResult,
+    phase: 'batch' | 'single',
+  ): Promise<{ candidate?: AssetImageDrawCandidate; error?: string }> => {
+    const candidate = createCandidate(context, result);
+    if (!validateCandidateResult) {
+      return { candidate };
+    }
+
+    try {
+      const validationResult = await validateCandidateResult({
+        candidate,
+        result,
+        index: context.index,
+        seed: result.seed ?? context.seed,
+        destPath: context.destPath,
+        variation: context.variation,
+        phase,
+      });
+
+      if (validationResult === false || typeof validationResult === 'string') {
+        await removeCandidateArtifacts(context.destPath, result.path, candidate.localPath);
+        return {
+          error: typeof validationResult === 'string' && validationResult.trim()
+            ? validationResult.trim()
+            : 'Candidate validation failed',
+        };
+      }
+
+      return { candidate };
+    } catch (error) {
+      await removeCandidateArtifacts(context.destPath, result.path, candidate.localPath);
+      return { error: error instanceof Error ? error.message : String(error) };
+    }
+  };
+
+  const createContext = async (index: number): Promise<CandidateGenerationContext | null> => {
     let seed = createImageDrawSeed();
     while (usedSeeds.has(seed)) {
       seed = createImageDrawSeed();
@@ -464,55 +560,187 @@ export async function generateImageDrawCandidates({
     const variation = getVariation?.(index);
     const destPath = await getCandidatePath(seed, index);
     if (!hasActiveSession()) {
-      if (isRemovableLocalPath(destPath)) {
-        try {
-          await fsRemove(destPath);
-        } catch {
-          // ignore missing/partial candidate files
-        }
+      await removeCandidatePath(destPath);
+      return null;
+    }
+    return {
+      index,
+      seed,
+      variation,
+      destPath,
+    };
+  };
+
+  const runSingleGeneration = async (
+    context: CandidateGenerationContext,
+  ): Promise<{ candidate?: AssetImageDrawCandidate; error?: string }> => {
+    try {
+      const result = await generate(context.seed, context.index, context.destPath, context.variation);
+      if (result.success && (result.path || result.url)) {
+        return validateGeneratedCandidate(context, result, 'single');
       }
+      await removeCandidatePath(context.destPath);
+      return { error: result.error || 'Generation failed' };
+    } catch (error) {
+      await removeCandidatePath(context.destPath);
+      return { error: error instanceof Error ? error.message : String(error) };
+    }
+  };
+
+  const getBatchStartIndex = (batchContexts: CandidateGenerationContext[]): number => {
+    if (batchContexts.length === 0) {
+      return 0;
+    }
+    const maxIndex = batchContexts[batchContexts.length - 1]?.index ?? batchContexts[0].index;
+    return Math.max(0, maxIndex - batchContexts.length + 1);
+  };
+
+  const runBatchGeneration = async (
+    batchContexts: CandidateGenerationContext[],
+  ): Promise<{
+    generatedCandidates: AssetImageDrawCandidate[];
+    fallbackContexts: CandidateGenerationContext[];
+  }> => {
+    if (!generateBatch || batchContexts.length === 0) {
+      return {
+        generatedCandidates: [],
+        fallbackContexts: batchContexts,
+      };
+    }
+
+    let batchResults: AssetImageDrawResult[] = [];
+    try {
+      batchResults = await generateBatch({
+        startIndex: getBatchStartIndex(batchContexts),
+        batchSize: batchContexts.length,
+        seeds: batchContexts.map((context) => context.seed),
+        destPaths: batchContexts.map((context) => context.destPath),
+        variations: batchContexts.map((context) => context.variation),
+      });
+    } catch {
+      batchResults = [];
+    }
+
+    if (!hasActiveSession()) {
+      return {
+        generatedCandidates: [],
+        fallbackContexts: batchContexts,
+      };
+    }
+
+    const contextIndexSet = new Set(batchContexts.map((context) => context.index));
+    const indexedResults = new Map<number, AssetImageDrawResult>();
+    const orderedResults: AssetImageDrawResult[] = [];
+    for (const result of batchResults) {
+      if (
+        typeof result.index === 'number'
+        && contextIndexSet.has(result.index)
+        && !indexedResults.has(result.index)
+      ) {
+        indexedResults.set(result.index, result);
+      } else {
+        orderedResults.push(result);
+      }
+    }
+
+    const generatedCandidates: AssetImageDrawCandidate[] = [];
+    const fallbackContexts: CandidateGenerationContext[] = [];
+    for (const context of batchContexts) {
+      const result = indexedResults.get(context.index) ?? orderedResults.shift();
+      if (result?.success && (result.path || result.url)) {
+        const validatedResult = await validateGeneratedCandidate(context, result, 'batch');
+        if (validatedResult.candidate) {
+          generatedCandidates.push(validatedResult.candidate);
+        } else {
+          fallbackContexts.push(context);
+        }
+      } else {
+        fallbackContexts.push(context);
+      }
+    }
+
+    return {
+      generatedCandidates,
+      fallbackContexts,
+    };
+  };
+
+  for (let index = 0; index < count;) {
+    if (!hasActiveSession()) {
       return cleanupAndCancel();
     }
+
+    const remaining = count - index;
+    const batchSize = generateBatch
+      ? (ownerType === 'character' ? remaining : Math.min(4, remaining))
+      : 1;
+    const contexts: CandidateGenerationContext[] = [];
+
+    for (let offset = 0; offset < batchSize; offset += 1) {
+      const context = await createContext(index + offset);
+      if (!context) {
+        return cleanupAndCancel();
+      }
+      contexts.push(context);
+    }
+
     onCandidateProgress?.((index / count) * 100, index, '');
 
-    try {
-      const result = await generate(seed, index, destPath, variation);
-      if (result.success && (result.path || result.url)) {
-        const candidate: AssetImageDrawCandidate = {
-          id: `${sessionId}-${index}-${seed}`,
-          sessionId,
-          ownerType,
-          ownerId,
-          projectId,
-          localPath: result.path,
-          remoteUrl: result.url,
-          seed,
-          ...getVariationCandidateMetadata(variation),
-        };
+    if (generateBatch && contexts.length > 1) {
+      const initialBatchResult = await runBatchGeneration(contexts);
+      for (const candidate of initialBatchResult.generatedCandidates) {
         if (!hasActiveSession()) {
           return cleanupAndCancel([candidate]);
         }
         candidates.push(candidate);
-      } else {
-        errors.push(result.error || 'Generation failed');
-        if (isRemovableLocalPath(destPath)) {
-          try {
-            await fsRemove(destPath);
-          } catch {
-            // ignore missing/partial candidate files
+      }
+
+      let remainingFallbackContexts = initialBatchResult.fallbackContexts;
+      if (remainingFallbackContexts.length > 0) {
+        const retryBatchResult = await runBatchGeneration(remainingFallbackContexts);
+        for (const candidate of retryBatchResult.generatedCandidates) {
+          if (!hasActiveSession()) {
+            return cleanupAndCancel([candidate]);
           }
+          candidates.push(candidate);
+        }
+        remainingFallbackContexts = retryBatchResult.fallbackContexts;
+      }
+
+      for (const context of remainingFallbackContexts) {
+        if (!hasActiveSession()) {
+          return cleanupAndCancel();
+        }
+        const singleResult = await runSingleGeneration(context);
+        if (singleResult.candidate) {
+          if (!hasActiveSession()) {
+            return cleanupAndCancel([singleResult.candidate]);
+          }
+          candidates.push(singleResult.candidate);
+        } else if (singleResult.error) {
+          errors.push(singleResult.error);
         }
       }
-    } catch (error) {
-      errors.push(error instanceof Error ? error.message : String(error));
-      if (isRemovableLocalPath(destPath)) {
-        try {
-          await fsRemove(destPath);
-        } catch {
-          // ignore missing/partial candidate files
-        }
+
+      index += contexts.length;
+      if (!hasActiveSession()) {
+        return cleanupAndCancel();
       }
+      onCandidateProgress?.((Math.min(index, count) / count) * 100, Math.min(index, count) - 1, '');
+      continue;
     }
+
+    const singleResult = await runSingleGeneration(contexts[0]);
+    if (singleResult.candidate) {
+      if (!hasActiveSession()) {
+        return cleanupAndCancel([singleResult.candidate]);
+      }
+      candidates.push(singleResult.candidate);
+    } else if (singleResult.error) {
+      errors.push(singleResult.error);
+    }
+
+    index += 1;
 
     if (!hasActiveSession()) {
       return cleanupAndCancel();

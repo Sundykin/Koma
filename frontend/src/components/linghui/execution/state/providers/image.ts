@@ -34,26 +34,174 @@ import {
 
 const imageLogger = createLogger('LinghuiImageExecution');
 
+type GenerateImageWithProviderParams = {
+  prompt: string;
+  referenceSources?: string[];
+  silentReferenceSources?: string[];
+  steps?: number;
+  count?: number;
+  onProgress?: (progress: number, message?: string, partialResult?: unknown) => void;
+  placeholderTitle: string;
+  placeholderSubtitle?: string;
+  accent?: string;
+  ttiSelection?: string;
+  promptReferences?: LinghuiPromptReferenceItem[];
+  settingsSnapshot?: AppSettings;
+  multiAngle?: Omit<MultiAngleTTIRequest, 'originalPrompt' | 'anglePrompt' | 'compiledPrompt'> | null;
+  signal?: AbortSignal;
+};
+
+interface GenerateImageVariantRequest {
+  label?: string;
+  prompt: string;
+  placeholderTitle?: string;
+  placeholderSubtitle?: string;
+  metadata?: Record<string, unknown>;
+}
+
+type GenerateImageVariantsWithProviderParams = Omit<GenerateImageWithProviderParams, 'prompt' | 'count'> & {
+  variants: GenerateImageVariantRequest[];
+};
+
+function isImageResult(value: unknown): value is ImageResult {
+  if (!value || typeof value !== 'object') return false;
+  const candidate = value as Partial<ImageResult>;
+  return typeof candidate.path === 'string' || typeof candidate.url === 'string';
+}
+
+function omitBatchImagesMetadata(metadata?: ImageResult['metadata']): Record<string, unknown> | undefined {
+  if (!metadata) return undefined;
+  const { batchImages: _batchImages, ...rest } = metadata;
+  return Object.keys(rest).length > 0 ? rest : undefined;
+}
+
+function extractProviderImageResults(output: ImageResult): ImageResult[] {
+  const batchImages = Array.isArray(output.metadata?.batchImages)
+    ? output.metadata.batchImages.filter(isImageResult)
+    : [];
+  return batchImages.length > 0 ? batchImages : [output];
+}
+
+function clampProgressValue(progress?: number): number {
+  const numeric = Number(progress);
+  if (!Number.isFinite(numeric)) {
+    return 0;
+  }
+  return Math.max(0, Math.min(100, Math.round(numeric)));
+}
+
+function resolveAverageVariantProgress(progresses: number[]): number {
+  if (!progresses.length) {
+    return 0;
+  }
+  return Math.round(progresses.reduce((sum, value) => sum + clampProgressValue(value), 0) / progresses.length);
+}
+
+function withVariantImageMetadata(
+  item: LinghuiImageMediaItem,
+  variant: GenerateImageVariantRequest,
+  index: number,
+): LinghuiImageMediaItem {
+  const mergedMetadata = {
+    ...(item.metadata ?? {}),
+    variantIndex: index + 1,
+    ...(variant.metadata ?? {}),
+  };
+
+  return {
+    ...item,
+    label: String(variant.label ?? '').trim() || item.label || `#${index + 1}`,
+    metadata: Object.keys(mergedMetadata).length > 0 ? mergedMetadata : undefined,
+  };
+}
+
+async function persistImageResult(
+  output: ImageResult,
+  provider: NonNullable<Awaited<ReturnType<typeof getProjectTTIProvider>>>,
+  requestedCapability: 'image.text-to-image' | 'image.image-to-image',
+  candidate: LinghuiProviderFallbackCandidate,
+  params: GenerateImageWithProviderParams,
+): Promise<LinghuiImageMediaItem> {
+  const rawSource = output.url || output.path;
+  const imageMetadata = omitBatchImagesMetadata(output.metadata);
+  let persistedSource = rawSource;
+  let persistedMimeType = output.mimeType;
+  let persistMetadata: Record<string, unknown> | undefined;
+  try {
+    const persisted = await persistMediaAsset({
+      projectId: EXECUTION_PROJECT_ID,
+      kind: 'image',
+      source: rawSource,
+      mimeType: output.mimeType,
+      provider: provider.config?.provider,
+      channelId: candidate.channelId,
+      modelId: candidate.modelId,
+      capability: requestedCapability,
+      metadata: {
+        selectionKey: candidate.selectionKey,
+      },
+    });
+    persistedSource = persisted.localPath || persisted.remoteUrl || rawSource;
+    persistedMimeType = persisted.mimeType || output.mimeType;
+    persistMetadata = {
+      localPath: persisted.localPath,
+      remoteUrl: persisted.remoteUrl,
+      ...(persisted.metadata?.localPersistFailed
+        ? { localPersistFailed: true, localPersistError: persisted.metadata.localPersistError }
+        : undefined),
+    };
+    imageLogger.info('灵绘图片中间产物落盘完成', {
+      selectionKey: params.ttiSelection,
+      capability: requestedCapability,
+      provider: provider.config?.provider,
+      localPath: persisted.localPath,
+      remoteUrl: persisted.remoteUrl,
+      localPersistFailed: Boolean(persisted.metadata?.localPersistFailed),
+    });
+  } catch (error) {
+    imageLogger.warn('灵绘图片中间产物落盘失败，回落到原始链接', {
+      selectionKey: params.ttiSelection,
+      capability: requestedCapability,
+      provider: provider.config?.provider,
+      source: rawSource,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    persistMetadata = {
+      localPersistFailed: true,
+      localPersistError: error instanceof Error ? error.message : String(error),
+    };
+  }
+
+  return buildMediaItem({
+    kind: 'image',
+    source: persistedSource,
+    mimeType: persistedMimeType,
+    width: output.width,
+    height: output.height,
+    metadata: {
+      ...(imageMetadata ?? {}),
+      ...(persistMetadata ? { persist: persistMetadata } : undefined),
+    },
+  });
+}
+
+async function persistImageResults(
+  output: ImageResult,
+  provider: NonNullable<Awaited<ReturnType<typeof getProjectTTIProvider>>>,
+  requestedCapability: 'image.text-to-image' | 'image.image-to-image',
+  candidate: LinghuiProviderFallbackCandidate,
+  params: GenerateImageWithProviderParams,
+): Promise<LinghuiImageMediaItem[]> {
+  const results = extractProviderImageResults(output);
+  return Promise.all(results.map(item => persistImageResult(item, provider, requestedCapability, candidate, params)));
+}
+
 async function executeImageProviderAttempt(
   provider: NonNullable<Awaited<ReturnType<typeof getProjectTTIProvider>>>,
   requestedCapability: 'image.text-to-image' | 'image.image-to-image',
   candidate: LinghuiProviderFallbackCandidate,
-  params: {
-    prompt: string;
-    referenceSources?: string[];
-    silentReferenceSources?: string[];
-    steps?: number;
-    onProgress?: (progress: number, message?: string, partialResult?: unknown) => void;
-    placeholderTitle: string;
-    placeholderSubtitle?: string;
-    accent?: string;
-    ttiSelection?: string;
-    promptReferences?: LinghuiPromptReferenceItem[];
-    settingsSnapshot?: AppSettings;
-    multiAngle?: Omit<MultiAngleTTIRequest, 'originalPrompt' | 'anglePrompt' | 'compiledPrompt'> | null;
-    signal?: AbortSignal;
-  },
-): Promise<LinghuiImageMediaItem> {
+  params: GenerateImageWithProviderParams,
+): Promise<LinghuiImageMediaItem[]> {
   let compiledPrompt = params.prompt || params.placeholderTitle;
   let referenceSources: Array<MediaAssetSource | ProviderAssetInput> = params.referenceSources ?? [];
   const silentReferenceSources = params.silentReferenceSources ?? [];
@@ -153,6 +301,7 @@ async function executeImageProviderAttempt(
     provider: provider.config?.provider,
     prompt: truncateString(compiledPrompt, 600),
     referenceCount: references.length,
+    count: Math.max(1, Math.floor(Number(params.count ?? 1) || 1)),
     request: sanitizeBodyForLog({
       requestType: multiAngleRequest ? 'multi-angle' : 'text-to-image',
       multiAngle: multiAngleRequest
@@ -175,6 +324,7 @@ async function executeImageProviderAttempt(
     started = await provider.start({
       prompt: compiledPrompt,
       references,
+      count: Math.max(1, Math.floor(Number(params.count ?? 1) || 1)),
       options: { steps: params.steps },
       ...(multiAngleRequest ? { requestType: 'multi-angle' as const, multiAngle: multiAngleRequest } : undefined),
     });
@@ -215,83 +365,10 @@ async function executeImageProviderAttempt(
 
   // 把生成的图片落盘到 EXECUTION_PROJECT_ID 项目目录下，避免远程链接（包括需要
   // channel 鉴权的端点）失效；channelId 透传给 mediaPersistenceService 用于按需鉴权下载。
-  const rawSource = output.url || output.path;
-  let persistedSource = rawSource;
-  let persistedMimeType = output.mimeType;
-  let persistMetadata: Record<string, unknown> | undefined;
-  try {
-    const persisted = await persistMediaAsset({
-      projectId: EXECUTION_PROJECT_ID,
-      kind: 'image',
-      source: rawSource,
-      mimeType: output.mimeType,
-      provider: provider.config?.provider,
-      channelId: candidate.channelId,
-      modelId: candidate.modelId,
-      capability: requestedCapability,
-      metadata: {
-        selectionKey: candidate.selectionKey,
-      },
-    });
-    persistedSource = persisted.localPath || persisted.remoteUrl || rawSource;
-    persistedMimeType = persisted.mimeType || output.mimeType;
-    persistMetadata = {
-      localPath: persisted.localPath,
-      remoteUrl: persisted.remoteUrl,
-      ...(persisted.metadata?.localPersistFailed
-        ? { localPersistFailed: true, localPersistError: persisted.metadata.localPersistError }
-        : undefined),
-    };
-    imageLogger.info('灵绘图片中间产物落盘完成', {
-      selectionKey: params.ttiSelection,
-      capability: requestedCapability,
-      provider: provider.config?.provider,
-      localPath: persisted.localPath,
-      remoteUrl: persisted.remoteUrl,
-      localPersistFailed: Boolean(persisted.metadata?.localPersistFailed),
-    });
-  } catch (error) {
-    imageLogger.warn('灵绘图片中间产物落盘失败，回落到原始链接', {
-      selectionKey: params.ttiSelection,
-      capability: requestedCapability,
-      provider: provider.config?.provider,
-      source: rawSource,
-      error: error instanceof Error ? error.message : String(error),
-    });
-    persistMetadata = {
-      localPersistFailed: true,
-      localPersistError: error instanceof Error ? error.message : String(error),
-    };
-  }
-
-  return buildMediaItem({
-    kind: 'image',
-    source: persistedSource,
-    mimeType: persistedMimeType,
-    width: output.width,
-    height: output.height,
-    metadata: {
-      ...output.metadata,
-      ...(persistMetadata ? { persist: persistMetadata } : undefined),
-    },
-  });
+  return persistImageResults(output, provider, requestedCapability, candidate, params);
 }
 
-export async function generateImageWithProvider(params: {
-  prompt: string;
-  referenceSources?: string[];
-  silentReferenceSources?: string[];
-  steps?: number;
-  onProgress?: (progress: number, message?: string, partialResult?: unknown) => void;
-  placeholderTitle: string;
-  placeholderSubtitle?: string;
-  accent?: string;
-  ttiSelection?: string;
-  promptReferences?: LinghuiPromptReferenceItem[];
-  settingsSnapshot?: AppSettings;
-  multiAngle?: Omit<MultiAngleTTIRequest, 'originalPrompt' | 'anglePrompt' | 'compiledPrompt'> | null;
-  signal?: AbortSignal;
-}): Promise<LinghuiImageMediaItem> {
+export async function generateImagesWithProvider(params: GenerateImageWithProviderParams): Promise<LinghuiImageMediaItem[]> {
   throwIfExecutionAborted(params.signal);
   const requestedCapability = params.multiAngle ? 'image.image-to-image' : 'image.text-to-image';
   const settings = await resolveExecutionSettings(params.settingsSnapshot);
@@ -305,6 +382,7 @@ export async function generateImageWithProvider(params: {
     channelId: capableContext?.channelConfig.id ?? selectedContext?.channelConfig.id,
     modelId: capableContext?.model.id ?? selectedContext?.model.id,
     prompt: truncateString(params.prompt || '', 600),
+    count: Math.max(1, Math.floor(Number(params.count ?? 1) || 1)),
     referenceCount: params.referenceSources?.length ?? 0,
     silentReferenceCount: params.silentReferenceSources?.length ?? 0,
     promptReferenceCount: params.promptReferences?.length ?? 0,
@@ -350,7 +428,7 @@ export async function generateImageWithProvider(params: {
       selectionKey: params.ttiSelection,
       requestedCapability,
     });
-    return buildMediaItem({
+    return [buildMediaItem({
       kind: 'image',
       source: createPlaceholderImage({
         title: params.placeholderTitle,
@@ -358,7 +436,7 @@ export async function generateImageWithProvider(params: {
         accent: params.accent,
       }),
       placeholder: true,
-    });
+    })];
   }
 
   const execution = await executeWithProviderFallback({
@@ -374,13 +452,68 @@ export async function generateImageWithProvider(params: {
       executeImageProviderAttempt(provider, requestedCapability, candidate, params),
   });
 
-  return withProviderFallbackMetadata(
-    execution.result,
-    summarizeProviderFallbackMetadata(
-      'tti',
-      requestedCapability,
-      execution.attempts,
-      execution.finalCandidate,
-    ),
+  const providerFallback = summarizeProviderFallbackMetadata(
+    'tti',
+    requestedCapability,
+    execution.attempts,
+    execution.finalCandidate,
   );
+
+  return execution.result.map(item => withProviderFallbackMetadata(item, providerFallback));
+}
+
+export async function generateImageVariantsWithProvider(
+  params: GenerateImageVariantsWithProviderParams,
+): Promise<LinghuiImageMediaItem[]> {
+  const { variants, onProgress, ...sharedParams } = params;
+  const normalizedVariants = variants
+    .map((variant, index) => ({
+      ...variant,
+      label: String(variant.label ?? '').trim() || `#${index + 1}`,
+      prompt: String(variant.prompt ?? '').trim(),
+    }))
+    .filter(variant => variant.prompt);
+
+  if (!normalizedVariants.length) {
+    return [];
+  }
+
+  const progressByIndex = Array.from({ length: normalizedVariants.length }, () => 0);
+  const emitVariantProgress = (index: number, progress: number, message?: string) => {
+    progressByIndex[index] = clampProgressValue(progress);
+    const aggregateProgress = resolveAverageVariantProgress(progressByIndex);
+    const label = normalizedVariants[index]?.label || `#${index + 1}`;
+    const normalizedMessage = String(message ?? '').trim();
+    onProgress?.(
+      aggregateProgress,
+      normalizedMessage ? `${label} · ${normalizedMessage}` : `${label} 生成中`,
+    );
+  };
+
+  return Promise.all(normalizedVariants.map(async (variant, index) => {
+    emitVariantProgress(index, 0, '准备生成');
+
+    const image = await generateImageWithProvider({
+      ...sharedParams,
+      prompt: variant.prompt,
+      onProgress: (progress, message) => emitVariantProgress(index, progress, message),
+      placeholderTitle: variant.placeholderTitle ?? sharedParams.placeholderTitle,
+      placeholderSubtitle: variant.placeholderSubtitle ?? sharedParams.placeholderSubtitle,
+    });
+
+    emitVariantProgress(index, 100, '已完成');
+    return withVariantImageMetadata(image, variant, index);
+  }));
+}
+
+export async function generateImageWithProvider(params: GenerateImageWithProviderParams): Promise<LinghuiImageMediaItem> {
+  const items = await generateImagesWithProvider({
+    ...params,
+    count: 1,
+  });
+  const first = items[0];
+  if (!first) {
+    throw new Error('图片生成未返回有效结果');
+  }
+  return first;
 }

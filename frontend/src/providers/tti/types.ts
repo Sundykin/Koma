@@ -16,6 +16,10 @@ import type {
   LinghuiMultiAnglePromptProtocol,
 } from '../../types/linghui';
 
+export interface ImageResultMetadata extends Record<string, unknown> {
+  batchImages?: ImageResult[];
+}
+
 export interface ImageResult {
   /**
    * 生成结果来源：
@@ -29,7 +33,7 @@ export interface ImageResult {
   height?: number;
   seed?: number;
   mimeType?: string;
-  metadata?: Record<string, unknown>;
+  metadata?: ImageResultMetadata;
 }
 
 export interface TTIOptions {
@@ -56,6 +60,7 @@ export interface MultiAngleTTIRequest {
 }
 
 export interface TTIRequest extends BaseTTIRequest<ProviderAssetInput, TTIOptions> {
+  count?: number;
   requestType?: 'text-to-image' | 'multi-angle';
   multiAngle?: MultiAngleTTIRequest;
 }

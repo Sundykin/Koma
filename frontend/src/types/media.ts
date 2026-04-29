@@ -73,6 +73,7 @@ export interface TTIRequest<TAsset = ProviderAssetInput, TOptions = Record<strin
   prompt: string;
   references?: TAsset[];
   options?: TOptions;
+  count?: number;
 }
 
 export type VideoGenerationCapability =

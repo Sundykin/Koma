@@ -14,11 +14,14 @@ describe('Grok2ApiImagineTTIProvider', () => {
     (safeFetch as any).mockReset();
   });
 
-  it('uses /v1/images/generations when no references exist', async () => {
+  it('uses /v1/images/generations when no references exist and forwards batch n=9', async () => {
+    const imageUrls = Array.from({ length: 9 }, (_, index) => `https://cdn.example.com/${index + 1}.jpg`);
     (safeFetch as any).mockResolvedValueOnce({
       ok: true,
       status: 200,
-      text: async () => JSON.stringify({ data: [{ url: 'https://cdn.example.com/a.jpg' }] }),
+      text: async () => JSON.stringify({
+        data: imageUrls.map(url => ({ url })),
+      }),
     });
 
     const p = new Grok2ApiImagineTTIProvider({
@@ -33,18 +36,27 @@ describe('Grok2ApiImagineTTIProvider', () => {
       modelName: 'grok-imagine-1.0',
     } as any);
 
-    const result = await p.start({ prompt: 'p', references: [] } as any);
+    const result = await p.start({ prompt: 'p', count: 9, references: [] } as any);
     expect((safeFetch as any).mock.calls[0][0]).toContain('/v1/images/generations');
+    const init = (safeFetch as any).mock.calls[0][1];
+    const body = JSON.parse(init.body);
+    expect(body.n).toBe(9);
     expect(result.mode).toBe('immediate');
-    expect((result as any).output.url).toBe('https://cdn.example.com/a.jpg');
+    expect((result as any).output.url).toBe(imageUrls[0]);
+    expect((result as any).output.metadata?.batchImages).toHaveLength(9);
   });
 
-  it('uses /v1/chat/completions when references exist (JSON body) and extracts url from response', async () => {
+  it('uses /v1/chat/completions when references exist (JSON body) and forwards image_config.n=9', async () => {
+    const imageUrls = Array.from({ length: 9 }, (_, index) => `https://cdn.example.com/chat-${index + 1}.png`);
     (safeFetch as any).mockResolvedValueOnce({
       ok: true,
       status: 200,
       text: async () => JSON.stringify({
-        choices: [{ message: { content: 'ok ![x](https://cdn.example.com/x.png)' } }],
+        choices: [{
+          message: {
+            content: `ok ${imageUrls.map((url, index) => `![img-${index + 1}](${url})`).join(' ')}`,
+          },
+        }],
       }),
     });
 
@@ -62,6 +74,7 @@ describe('Grok2ApiImagineTTIProvider', () => {
 
     const result = await p.start({
       prompt: 'p',
+      count: 9,
       references: [
         { transport: 'data-url', value: 'data:image/png;base64,AAAA' },
       ],
@@ -72,8 +85,10 @@ describe('Grok2ApiImagineTTIProvider', () => {
     const body = JSON.parse(init.body);
     expect(body.messages[0].content[0].type).toBe('text');
     expect(body.messages[0].content[1].type).toBe('image_url');
+    expect(body.image_config.n).toBe(9);
     expect(result.mode).toBe('immediate');
-    expect((result as any).output.url).toBe('https://cdn.example.com/x.png');
+    expect((result as any).output.url).toBe(imageUrls[0]);
+    expect((result as any).output.metadata?.batchImages).toHaveLength(9);
   });
 
   it('extracts url from non-standard response shape (deep scan)', async () => {
