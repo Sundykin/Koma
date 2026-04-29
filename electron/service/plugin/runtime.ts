@@ -27,6 +27,7 @@ import {
   validatePluginCompatibility,
   formatCompatibilityErrors,
   requirePluginScope,
+  validateManifestShape,
   type CompatibilityReport,
 } from './compatibility';
 import {
@@ -243,7 +244,25 @@ class ElectronPluginRuntime extends EventEmitter {
    * 加载插件
    */
   async loadPlugin(manifest: PluginManifest): Promise<LoadedPlugin> {
-    const pluginId = manifest.id;
+    const pluginId = manifest.id || '<unknown>';
+
+    // 必填字段校验。errors 必定阻断加载，避免 require 时才崩出非定向错误。
+    const shapeReport = validateManifestShape(manifest);
+    for (const w of shapeReport.warnings) {
+      console.warn(`[PluginRuntime] manifest warning for "${pluginId}": ${w}`);
+    }
+    if (shapeReport.errors.length > 0) {
+      const message = shapeReport.errors.join('; ');
+      console.error(`[PluginRuntime] manifest invalid for "${pluginId}": ${message}`);
+      const failed: LoadedPlugin = {
+        manifest,
+        module: null,
+        status: 'error',
+        error: `manifest invalid: ${message}`,
+      };
+      this.plugins.set(pluginId, failed);
+      throw new Error(`manifest invalid: ${message}`);
+    }
 
     // 检查是否已加载
     if (this.plugins.has(pluginId)) {

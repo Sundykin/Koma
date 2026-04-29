@@ -168,6 +168,67 @@ if (!setEqual(sdkFields, electronFields)) {
   );
 }
 
+// 4. ElectronPluginAPI 顶层 namespace 对账（SDK backend.ts vs electron types.ts）
+const SDK_BACKEND_FILE = path.join(ROOT, 'packages/plugin-sdk/src/backend.ts');
+function extractInterfaceTopLevelKeys(src, interfaceName, label) {
+  const start = src.search(new RegExp(`interface\\s+${interfaceName}\\b`));
+  if (start === -1) {
+    console.error(`[parity] ${label}: interface ${interfaceName} not found`);
+    process.exit(3);
+  }
+  const open = src.indexOf('{', start);
+  let depth = 0;
+  let close = -1;
+  for (let i = open; i < src.length; i++) {
+    if (src[i] === '{') depth++;
+    else if (src[i] === '}') {
+      depth--;
+      if (depth === 0) { close = i; break; }
+    }
+  }
+  const body = src.slice(open + 1, close);
+  // 用行起始时的深度判断顶层 key（嵌套对象 `key: { ... }` 的 key 行起始 depth=0）
+  const keys = new Set();
+  let d = 0;
+  let lineStart = 0;
+  let lineDepthAtStart = 0;
+  const flushLine = (endIdx) => {
+    const line = body.slice(lineStart, endIdx)
+      .replace(/\/\/.*$/, '')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .trim();
+    if (lineDepthAtStart === 0 && line && !line.startsWith('*') && !line.startsWith('/')) {
+      const m = line.match(/^([a-zA-Z_][a-zA-Z0-9_]*)\??\s*:/);
+      if (m) keys.add(m[1]);
+    }
+  };
+  for (let i = 0; i < body.length; i++) {
+    const ch = body[i];
+    if (ch === '\n') {
+      flushLine(i);
+      lineStart = i + 1;
+      lineDepthAtStart = d;
+    } else if (ch === '{') {
+      d++;
+    } else if (ch === '}') {
+      d--;
+    }
+  }
+  flushLine(body.length);
+  return keys;
+}
+
+const sdkBackendSrc = read(SDK_BACKEND_FILE);
+const sdkApiKeys = extractInterfaceTopLevelKeys(sdkBackendSrc, 'ElectronPluginAPI', 'SDK backend');
+const electronApiKeys = extractInterfaceTopLevelKeys(electronSrc, 'ElectronPluginAPI', 'electron types');
+
+if (!setEqual(sdkApiKeys, electronApiKeys)) {
+  const d = diffSets(sdkApiKeys, electronApiKeys);
+  failures.push(
+    `ElectronPluginAPI namespace mismatch (SDK vs electron): only-SDK=[${d.onlyA.join(',')}] only-electron=[${d.onlyB.join(',')}]`,
+  );
+}
+
 if (failures.length > 0) {
   console.error('[plugin-sdk parity] FAILURES:');
   for (const f of failures) console.error(`  - ${f}`);
@@ -175,6 +236,7 @@ if (failures.length > 0) {
 }
 
 console.log('[plugin-sdk parity] OK');
-console.log(`  contractVersion: ${sdkVersion}`);
-console.log(`  channelKinds:    ${[...sdkKinds].join(', ')}`);
-console.log(`  fields:          ${sdkFields.size}`);
+console.log(`  contractVersion:        ${sdkVersion}`);
+console.log(`  channelKinds:           ${[...sdkKinds].join(', ')}`);
+console.log(`  ProviderDefinition:     ${sdkFields.size} fields`);
+console.log(`  ElectronPluginAPI:      ${[...sdkApiKeys].join(', ')}`);

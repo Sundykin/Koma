@@ -174,3 +174,82 @@ export function requirePluginScope(
     );
   }
 }
+
+/**
+ * 必填字段校验。loadPlugin 在 require backend module 之前执行，
+ * 失败则插件不会进入 plugins map（保持 'installed' 之外的状态由调用方决定）。
+ *
+ * 检查项：
+ *  - id / name / version / category / entry 存在
+ *  - category=provider 必须有 entry.backend 或 entry.frontend，且必须有 providerMeta.channelType
+ *  - category=mcp 必须有 entry.backend，且必须有 mcpMeta.transport
+ *  - category=agent 必须有 entry.backend
+ *  - category=global 必须有 entry.frontend，且必须有 globalMeta.entryRoute
+ *  - engine.sdkVersion / minAppVersion 应当存在（若缺则 warn）
+ */
+export interface ManifestValidationResult {
+  errors: string[];
+  warnings: string[];
+}
+
+export function validateManifestShape(manifest: PluginManifest): ManifestValidationResult {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+
+  if (!manifest.id) errors.push('manifest.id is required');
+  if (!manifest.name) errors.push('manifest.name is required');
+  if (!manifest.version) errors.push('manifest.version is required');
+  if (!manifest.category) errors.push('manifest.category is required');
+  if (!manifest.entry || (typeof manifest.entry === 'object' && Object.keys(manifest.entry).length === 0)) {
+    errors.push('manifest.entry must declare at least one of {backend,frontend}');
+  }
+
+  if (!manifest.engine?.sdkVersion) warnings.push('manifest.engine.sdkVersion missing — compatibility check will be skipped');
+  if (!manifest.engine?.minAppVersion) warnings.push('manifest.engine.minAppVersion missing — app version check will be skipped');
+
+  switch (manifest.category) {
+    case 'provider': {
+      if (!manifest.entry?.backend && !manifest.entry?.frontend) {
+        errors.push('provider plugin must declare entry.backend or entry.frontend');
+      }
+      if (!manifest.providerMeta?.channelType) {
+        errors.push('provider plugin must declare providerMeta.channelType');
+      }
+      break;
+    }
+    case 'mcp': {
+      if (!manifest.entry?.backend) {
+        errors.push('mcp plugin must declare entry.backend');
+      }
+      if (!manifest.mcpMeta?.transport) {
+        errors.push('mcp plugin must declare mcpMeta.transport');
+      }
+      break;
+    }
+    case 'agent': {
+      if (!manifest.entry?.backend) {
+        errors.push('agent plugin must declare entry.backend');
+      }
+      break;
+    }
+    case 'global': {
+      if (!manifest.entry?.frontend) {
+        errors.push('global plugin must declare entry.frontend');
+      }
+      if (!manifest.globalMeta?.entryRoute) {
+        errors.push('global plugin must declare globalMeta.entryRoute');
+      }
+      break;
+    }
+    case 'tool': {
+      if (!manifest.entry?.frontend) {
+        errors.push('tool plugin must declare entry.frontend');
+      }
+      break;
+    }
+    default:
+      errors.push(`unknown manifest.category: ${manifest.category}`);
+  }
+
+  return { errors, warnings };
+}
