@@ -23,6 +23,12 @@ import type {
 import { providerRegistry, mcpRegistry, agentRegistry } from './registries';
 import { syncProviders, syncAllMCP, capabilityRegistry } from './capability';
 import {
+  validatePluginCompatibility,
+  formatCompatibilityErrors,
+  requirePluginScope,
+  type CompatibilityReport,
+} from './compatibility';
+import {
   createChannelConfig,
   getDecryptedApiKey,
   listChannelConfigs,
@@ -306,6 +312,21 @@ class ElectronPluginRuntime extends EventEmitter {
       throw new Error(`Plugin "${pluginId}" is in error state: ${plugin.error}`);
     }
 
+    // 兼容性校验：在调用 onActivate 之前拦截 minAppVersion / sdkVersion 不兼容
+    const report: CompatibilityReport = validatePluginCompatibility(plugin.manifest);
+    if (report.warnings.length > 0) {
+      for (const w of report.warnings) {
+        console.warn(`[PluginRuntime] ${w.message}`);
+      }
+    }
+    if (report.fatal.length > 0) {
+      const message = formatCompatibilityErrors(report);
+      plugin.status = 'error';
+      plugin.error = message;
+      console.error(`[PluginRuntime] Activation aborted (incompatible): ${message}`);
+      throw new Error(message);
+    }
+
     try {
       // 创建插件 API
       const api = this.createPluginAPI(plugin.manifest);
@@ -449,19 +470,23 @@ class ElectronPluginRuntime extends EventEmitter {
 
       fs: {
         readFile: async (filePath: string) => {
+          requirePluginScope(manifest, 'storage:limited', 'fs.readFile');
           const fullPath = this.resolveSandboxPath(dataDir, filePath);
           return fs.readFile(fullPath, 'utf-8');
         },
         writeFile: async (filePath: string, content: string) => {
+          requirePluginScope(manifest, 'storage:limited', 'fs.writeFile');
           const fullPath = this.resolveSandboxPath(dataDir, filePath);
           await fs.mkdir(path.dirname(fullPath), { recursive: true });
           await fs.writeFile(fullPath, content, 'utf-8');
         },
         deleteFile: async (filePath: string) => {
+          requirePluginScope(manifest, 'storage:limited', 'fs.deleteFile');
           const fullPath = this.resolveSandboxPath(dataDir, filePath);
           await fs.unlink(fullPath);
         },
         exists: async (filePath: string) => {
+          requirePluginScope(manifest, 'storage:limited', 'fs.exists');
           const fullPath = this.resolveSandboxPath(dataDir, filePath);
           try {
             await fs.access(fullPath);
@@ -471,16 +496,21 @@ class ElectronPluginRuntime extends EventEmitter {
           }
         },
         listDir: async (dirPath: string) => {
+          requirePluginScope(manifest, 'storage:limited', 'fs.listDir');
           const fullPath = this.resolveSandboxPath(dataDir, dirPath);
           return fs.readdir(fullPath);
         },
       },
 
       net: {
-        fetch: globalThis.fetch,
+        fetch: ((input: RequestInfo | URL, init?: RequestInit) => {
+          requirePluginScope(manifest, 'network:external', 'net.fetch');
+          return globalThis.fetch(input, init);
+        }) as typeof fetch,
       },
 
       spawn: (command: string, args?: string[], options?: SpawnOptions): ChildProcessHandle => {
+        requirePluginScope(manifest, 'spawn:process', 'spawn');
         return this.createChildProcess(command, args, options);
       },
 
