@@ -6,7 +6,16 @@
  */
 import type { MediaOwnerRef, StoredMediaAsset } from './media';
 
-export type AsyncTaskType = 'tti' | 'itv' | 'tts' | 'character-extraction';
+/**
+ * 任务类型标识。真源是 frontend/src/services/taskHandlers/ 下注册到
+ * taskHandlerRegistry 的 TaskHandler.type；Registry 同时承载内置与未来扩展，
+ * 因此这里不再维护字面量 union（避免与 Registry 漂移），保留语义别名。
+ *
+ * 内置类型：'tti' | 'itv' | 'tts'。
+ * 'character-extraction' 等其他任务类型如要启用，需在 taskHandlers/ 中
+ * 添加对应 TaskHandler 并注册。
+ */
+export type AsyncTaskType = string;
 export type AsyncTaskStatus = 'pending' | 'processing' | 'completed' | 'failed';
 export type AsyncTaskTargetType = 'character' | 'scene' | 'prop' | 'shot';
 
