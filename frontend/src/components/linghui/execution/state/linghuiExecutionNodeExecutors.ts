@@ -44,7 +44,11 @@ import {
   getVideoCapabilityInputError,
   resolveVideoCapabilitySources,
 } from '../../editors/state/videoCapabilityUtils';
-import { analyzeLinghuiImageBatchSimilarity } from './linghuiImageSimilarity';
+import {
+  analyzeLinghuiImageBatchSimilarity,
+  analyzeLinghuiImageCandidateQuality,
+  type LinghuiImageCandidateQualityResult,
+} from './linghuiImageSimilarity';
 import { createLogger } from '../../../../store/logger';
 
 const imageExecutionLogger = createLogger('LinghuiImageExecution');
@@ -121,24 +125,79 @@ function appendSingleCandidateOutputConstraint(prompt: string): string {
   return `${normalizedPrompt}\n\n${IMAGE_SINGLE_CANDIDATE_OUTPUT_CONSTRAINT}`;
 }
 
-const IMAGE_BATCH_VARIANT_STRATEGY = 'linghui-parallel-diverse-prompts-v3';
-const IMAGE_SIMILARITY_DEDUPE_MAX_RETRIES = 2;
+const IMAGE_BATCH_VARIANT_STRATEGY = 'linghui-parallel-diverse-prompts-v4';
+const IMAGE_BATCH_CANDIDATE_SELECTION_MAX_RETRIES = 2;
+const IMAGE_BATCH_MIN_REROLL_BUFFER = 2;
+const IMAGE_BATCH_QUALITY_GUARDRAILS = [
+  'Produce a concrete non-abstract character image.',
+  'Ensure a clear readable subject with one concrete character or portrait as the obvious focus.',
+  'no abstract texture.',
+  'no symbolic pattern.',
+  'no empty scene.',
+  'Avoid subjectless backgrounds, texture-only compositions, flat color fields, placeholder silhouettes, and unreadable noisy artifacts.',
+] as const;
 
 type LinghuiBatchVariantRequest = Parameters<typeof generateImageVariantsWithProvider>[0]['variants'][number];
 type LinghuiBatchVariantSharedParams = Omit<Parameters<typeof generateImageVariantsWithProvider>[0], 'variants'>;
-type LinghuiBatchSimilarityDedupeMetadata = {
+type LinghuiBatchCandidateSelectionMetadata = {
   enabled: true;
   status: 'ok' | 'unknown';
   attempts: number;
   maxAttempts: number;
   rerolledCount: number;
   unresolvedDuplicateCount: number;
+  candidatePoolSize: number;
+  selectedCount: number;
+  invalidRejectedCount: number;
+  similarRejectedCount: number;
+  qualityUnknownCount: number;
   reason?: string;
+};
+type LinghuiBatchCandidateRecord = {
+  item: LinghuiImageMediaItem;
+  quality: LinghuiImageCandidateQualityResult;
+  poolCandidateIndex: number;
+};
+type LinghuiBatchCandidateSelectionPass = {
+  status: 'ok' | 'unknown';
+  reason?: string;
+  qualityApproved: LinghuiBatchCandidateRecord[];
+  uniqueSelected: LinghuiBatchCandidateRecord[];
+  similarFallbackCandidates: LinghuiBatchCandidateRecord[];
+  invalidRejectedCount: number;
+  similarRejectedCount: number;
+  qualityUnknownCount: number;
 };
 
 function resolveBatchVariantBlueprint(index: number) {
   return IMAGE_BATCH_VARIATION_OPTION_BLUEPRINTS[
     index % IMAGE_BATCH_VARIATION_OPTION_BLUEPRINTS.length
+  ];
+}
+
+function resolveInitialCandidatePoolSize(count: number): number {
+  return Math.max(count, Math.min(count * 2, count + 4));
+}
+
+function resolveRerollCandidateCount(missingCount: number): number {
+  return Math.max(IMAGE_BATCH_MIN_REROLL_BUFFER, missingCount * 2);
+}
+
+function buildBatchIdentityExtensionInstructions(params: {
+  candidateOrdinal: number;
+  requestedCount: number;
+  blueprintIndex: number;
+  rerollAttempt: number;
+}): string[] {
+  const blueprintCycle = Math.floor(params.blueprintIndex / IMAGE_BATCH_VARIATION_OPTION_BLUEPRINTS.length);
+  if (blueprintCycle <= 0) {
+    return [];
+  }
+
+  const alternateSeed = `${params.candidateOrdinal}-${params.requestedCount}-${params.rerollAttempt}-${blueprintCycle}`;
+  return [
+    `Alternate identity seed ${alternateSeed}. This candidate extends beyond the base blueprint list.`,
+    'Treat the repeated blueprint only as a loose direction; invent a fresh facial template with different facial geometry, eye spacing, nose bridge, mouth shape, jawline rhythm, hairline silhouette, and thumbnail silhouette.',
   ];
 }
 
@@ -160,38 +219,54 @@ function buildBatchVariantPromptFromBlueprint(
     'Preserve the original clothing category, narrative premise, and rendering style while only changing the candidate-specific facial identity recipe and compatible styling accents.',
     'Make this candidate visibly different from the other batch candidates at thumbnail size.',
     'Forbidden: no grid, no collage, no contact sheet, no multi-panel, no identical clone, no same face repeated.',
+    ...IMAGE_BATCH_QUALITY_GUARDRAILS,
     ...extraInstructions,
   ].join('\n');
 }
 
-function buildBatchVariantPrompt(prompt: string, count: number, index: number): string {
-  const candidateIndex = index + 1;
-  return buildBatchVariantPromptFromBlueprint(
-    prompt,
-    count,
-    candidateIndex,
-    resolveBatchVariantBlueprint(index),
-  );
-}
+function buildBatchVariantPrompt(params: {
+  prompt: string;
+  requestedCount: number;
+  totalCandidateCountHint: number;
+  candidateOrdinal: number;
+  rerollAttempt?: number;
+  fillSlot?: number;
+}): string {
+  const rerollAttempt = Math.max(0, Number(params.rerollAttempt ?? 0));
+  const blueprintIndex = (params.candidateOrdinal - 1) + (rerollAttempt * params.requestedCount);
+  const extraInstructions = [
+    ...buildBatchIdentityExtensionInstructions({
+      candidateOrdinal: params.candidateOrdinal,
+      requestedCount: params.requestedCount,
+      blueprintIndex,
+      rerollAttempt,
+    }),
+  ];
 
-function buildBatchRerollPrompt(prompt: string, count: number, index: number, attempt: number): string {
-  const candidateIndex = index + 1;
-  const backupBlueprintIndex = index
-    + (attempt * count)
-    + Math.ceil(IMAGE_BATCH_VARIATION_OPTION_BLUEPRINTS.length / 2);
-
-  return buildBatchVariantPromptFromBlueprint(
-    prompt,
-    count,
-    candidateIndex,
-    resolveBatchVariantBlueprint(backupBlueprintIndex),
-    [
-      `REROLL candidate #${candidateIndex} because previous result looked too similar to another candidate.`,
-      `Retry round ${attempt} of ${IMAGE_SIMILARITY_DEDUPE_MAX_RETRIES}.`,
+  if (rerollAttempt > 0) {
+    const fillSlot = Math.max(1, Math.min(params.requestedCount, Number(params.fillSlot ?? 1)));
+    extraInstructions.push(
+      `REROLL fill slot #${fillSlot} for requested batch of ${params.requestedCount}.`,
+      `Retry round ${rerollAttempt} of ${IMAGE_BATCH_CANDIDATE_SELECTION_MAX_RETRIES}.`,
+      'avoid abstract output.',
+      'must show a concrete character/portrait.',
+      'avoid same facial template.',
       'use an aggressively different facial identity recipe.',
-      'Push the facial geometry farther away from the previous candidate by changing face shape, orbital structure, nose bridge, mouth proportions, jawline, cheekbone rhythm, perceived age cues, and hairline silhouette while keeping the same subject, outfit category, and world setting.',
+      'Push the facial geometry farther away from previous candidates by changing face shape, orbital structure, nose bridge, mouth proportions, jawline, cheekbone rhythm, perceived age cues, and hairline silhouette while keeping the same subject, outfit category, and world setting.',
       'Anti-clone enforcement: avoid same person energy, same facial geometry, same crop rhythm, same lighting rhythm, and same thumbnail silhouette as any previous candidate in this batch.',
-    ],
+    );
+  } else if (params.candidateOrdinal > params.requestedCount) {
+    extraInstructions.push(
+      `Oversampled candidate pool entry #${params.candidateOrdinal}. This candidate exists to enlarge the candidate pool for quality and diversity selection; push stronger facial divergence while preserving the same core subject, outfit category, and world setting.`,
+    );
+  }
+
+  return buildBatchVariantPromptFromBlueprint(
+    params.prompt,
+    params.totalCandidateCountHint,
+    params.candidateOrdinal,
+    resolveBatchVariantBlueprint(blueprintIndex),
+    extraInstructions,
   );
 }
 
@@ -205,32 +280,128 @@ function buildBatchVariantMetadata(extraMetadata?: Record<string, unknown>): Rec
 
 function createBatchVariantRequest(params: {
   prompt: string;
-  count: number;
-  index: number;
+  requestedCount: number;
+  totalCandidateCountHint: number;
+  candidateOrdinal: number;
   title: string;
   placeholderBase: string;
   rerollAttempt?: number;
+  fillSlot?: number;
 }): LinghuiBatchVariantRequest {
-  const candidateIndex = params.index + 1;
   const rerollAttempt = Math.max(0, Number(params.rerollAttempt ?? 0));
+  const fillSlot = params.fillSlot ? Math.max(1, Math.min(params.requestedCount, params.fillSlot)) : undefined;
 
   return {
-    label: `#${candidateIndex}`,
-    prompt: rerollAttempt > 0
-      ? buildBatchRerollPrompt(params.prompt, params.count, params.index, rerollAttempt)
-      : buildBatchVariantPrompt(params.prompt, params.count, params.index),
+    label: `#${params.candidateOrdinal}`,
+    prompt: buildBatchVariantPrompt({
+      prompt: params.prompt,
+      requestedCount: params.requestedCount,
+      totalCandidateCountHint: params.totalCandidateCountHint,
+      candidateOrdinal: params.candidateOrdinal,
+      rerollAttempt,
+      fillSlot,
+    }),
     placeholderTitle: params.title,
     placeholderSubtitle: rerollAttempt > 0
-      ? `${params.placeholderBase} · 候选 #${candidateIndex} · 重抽 ${rerollAttempt}`
-      : `${params.placeholderBase} · 候选 #${candidateIndex}`,
+      ? `${params.placeholderBase} · 候选 #${params.candidateOrdinal} · 补位 #${fillSlot ?? 1} · 重抽 ${rerollAttempt}`
+      : `${params.placeholderBase} · 候选 #${params.candidateOrdinal}`,
     metadata: buildBatchVariantMetadata({
-      candidateIndex,
+      candidateIndex: params.candidateOrdinal,
+      requestedBatchCount: params.requestedCount,
+      totalCandidateCountHint: params.totalCandidateCountHint,
+      ...(typeof fillSlot === 'number' ? { fillSlot } : {}),
       ...(rerollAttempt > 0 ? { similarityRerollAttempt: rerollAttempt } : {}),
     }),
   };
 }
 
-async function generateBatchImagesWithSimilarityDedupe(params: {
+function relabelSelectedBatchItem(
+  record: LinghuiBatchCandidateRecord,
+  index: number,
+): LinghuiImageMediaItem {
+  const originalLabel = String(record.item.label ?? `#${record.poolCandidateIndex}`).trim() || `#${record.poolCandidateIndex}`;
+
+  return {
+    ...record.item,
+    label: `#${index + 1}`,
+    metadata: {
+      ...(record.item.metadata ?? {}),
+      candidateSelection: {
+        originalLabel,
+        poolCandidateIndex: record.poolCandidateIndex,
+        qualityStatus: record.quality.status,
+        qualityVerdict: record.quality.verdict,
+        qualityClassification: record.quality.classification,
+        ...(record.quality.reason ? { qualityReason: record.quality.reason } : {}),
+      },
+    },
+  };
+}
+
+async function evaluateBatchCandidatePool(
+  records: LinghuiBatchCandidateRecord[],
+): Promise<LinghuiBatchCandidateSelectionPass> {
+  const qualityApproved: LinghuiBatchCandidateRecord[] = [];
+  let invalidRejectedCount = 0;
+  let qualityUnknownCount = 0;
+
+  records.forEach((record) => {
+    if (record.quality.status === 'unknown') {
+      qualityUnknownCount += 1;
+      qualityApproved.push(record);
+      return;
+    }
+
+    if (record.quality.verdict === 'reject') {
+      invalidRejectedCount += 1;
+      return;
+    }
+
+    qualityApproved.push(record);
+  });
+
+  if (qualityApproved.length < 2) {
+    return {
+      status: 'ok',
+      qualityApproved,
+      uniqueSelected: qualityApproved,
+      similarFallbackCandidates: [],
+      invalidRejectedCount,
+      similarRejectedCount: 0,
+      qualityUnknownCount,
+    };
+  }
+
+  const analysis = await analyzeLinghuiImageBatchSimilarity(qualityApproved.map(record => record.item));
+  if (analysis.status === 'unknown') {
+    return {
+      status: 'unknown',
+      reason: analysis.reason,
+      qualityApproved,
+      uniqueSelected: qualityApproved,
+      similarFallbackCandidates: [],
+      invalidRejectedCount,
+      similarRejectedCount: 0,
+      qualityUnknownCount,
+    };
+  }
+
+  const duplicateIndices = new Set<number>(analysis.duplicates.map(item => item.duplicateIndex));
+  const uniqueSelected = qualityApproved.filter((_record, index) => !duplicateIndices.has(index));
+  const similarFallbackCandidates = qualityApproved.filter((_record, index) => duplicateIndices.has(index));
+
+  return {
+    status: 'ok',
+    qualityApproved,
+    uniqueSelected,
+    similarFallbackCandidates,
+    invalidRejectedCount,
+    similarRejectedCount: duplicateIndices.size,
+    qualityUnknownCount,
+  };
+}
+
+async function generateBatchImagesWithCandidateSelection(params: {
   prompt: string;
   count: number;
   title: string;
@@ -238,89 +409,135 @@ async function generateBatchImagesWithSimilarityDedupe(params: {
   sharedParams: LinghuiBatchVariantSharedParams;
 }): Promise<{
   items: LinghuiImageMediaItem[];
-  similarityDedupe: LinghuiBatchSimilarityDedupeMetadata;
+  candidateSelection: LinghuiBatchCandidateSelectionMetadata;
 }> {
-  const initialVariants = Array.from({ length: params.count }, (_unused, index) => createBatchVariantRequest({
-    prompt: params.prompt,
-    count: params.count,
-    index,
-    title: params.title,
-    placeholderBase: params.placeholderBase,
-  }));
-
-  const items = await generateImageVariantsWithProvider({
-    ...params.sharedParams,
-    variants: initialVariants,
-  });
-
-  const similarityDedupe: LinghuiBatchSimilarityDedupeMetadata = {
+  const candidateSelection: LinghuiBatchCandidateSelectionMetadata = {
     enabled: true,
     status: 'ok',
     attempts: 0,
-    maxAttempts: IMAGE_SIMILARITY_DEDUPE_MAX_RETRIES,
+    maxAttempts: IMAGE_BATCH_CANDIDATE_SELECTION_MAX_RETRIES,
     rerolledCount: 0,
     unresolvedDuplicateCount: 0,
+    candidatePoolSize: 0,
+    selectedCount: 0,
+    invalidRejectedCount: 0,
+    similarRejectedCount: 0,
+    qualityUnknownCount: 0,
   };
+  const candidateRecords: LinghuiBatchCandidateRecord[] = [];
+  let nextCandidateOrdinal = 1;
 
-  let analysis = await analyzeLinghuiImageBatchSimilarity(items);
-  if (analysis.status === 'unknown') {
-    return {
-      items,
-      similarityDedupe: {
-        ...similarityDedupe,
-        status: 'unknown',
-        reason: analysis.reason,
-      },
-    };
-  }
-
-  let duplicates = analysis.duplicates;
-  for (let attempt = 1; attempt <= IMAGE_SIMILARITY_DEDUPE_MAX_RETRIES && duplicates.length > 0; attempt += 1) {
-    const retryIndices = duplicates.map(item => item.duplicateIndex);
-    const retryVariants = retryIndices.map(index => createBatchVariantRequest({
+  const appendCandidateBatch = async (options: {
+    batchSize: number;
+    rerollAttempt?: number;
+    selectedCount?: number;
+    missingCount?: number;
+  }): Promise<void> => {
+    const rerollAttempt = Math.max(0, Number(options.rerollAttempt ?? 0));
+    const selectedCount = Math.max(0, Number(options.selectedCount ?? 0));
+    const missingCount = Math.max(1, Number(options.missingCount ?? Math.max(1, params.count - selectedCount)));
+    const totalCandidateCountHint = nextCandidateOrdinal + options.batchSize - 1;
+    const variants = Array.from({ length: options.batchSize }, (_unused, index) => createBatchVariantRequest({
       prompt: params.prompt,
-      count: params.count,
-      index,
+      requestedCount: params.count,
+      totalCandidateCountHint,
+      candidateOrdinal: nextCandidateOrdinal + index,
       title: params.title,
       placeholderBase: params.placeholderBase,
-      rerollAttempt: attempt,
+      rerollAttempt,
+      fillSlot: rerollAttempt > 0
+        ? Math.min(params.count, selectedCount + 1 + (index % missingCount))
+        : undefined,
     }));
 
-    const rerolledItems = await generateImageVariantsWithProvider({
-      ...params.sharedParams,
-      variants: retryVariants,
-    });
-
-    retryIndices.forEach((itemIndex, retryIndex) => {
-      const nextItem = rerolledItems[retryIndex];
-      if (nextItem) {
-        items[itemIndex] = nextItem;
-      }
-    });
-
-    similarityDedupe.attempts = attempt;
-    similarityDedupe.rerolledCount += retryIndices.length;
-
-    analysis = await analyzeLinghuiImageBatchSimilarity(items);
-    if (analysis.status === 'unknown') {
-      return {
-        items,
-        similarityDedupe: {
-          ...similarityDedupe,
-          status: 'unknown',
-          unresolvedDuplicateCount: 0,
-          reason: analysis.reason,
-        },
-      };
+    if (rerollAttempt > 0) {
+      candidateSelection.attempts = rerollAttempt;
+      candidateSelection.rerolledCount += variants.length;
     }
 
-    duplicates = analysis.duplicates;
+    const items = await generateImageVariantsWithProvider({
+      ...params.sharedParams,
+      variants,
+    });
+    const qualities = await Promise.all(items.map(item => analyzeLinghuiImageCandidateQuality(item)));
+
+    items.forEach((item, index) => {
+      const quality = qualities[index] ?? {
+        status: 'unknown',
+        verdict: 'unknown',
+        classification: 'unknown',
+        reason: 'quality-analysis-missing',
+      } as LinghuiImageCandidateQualityResult;
+
+      candidateRecords.push({
+        item,
+        quality,
+        poolCandidateIndex: nextCandidateOrdinal + index,
+      });
+    });
+
+    nextCandidateOrdinal += variants.length;
+    candidateSelection.candidatePoolSize = candidateRecords.length;
+  };
+
+  await appendCandidateBatch({
+    batchSize: resolveInitialCandidatePoolSize(params.count),
+  });
+
+  let selectionPass = await evaluateBatchCandidatePool(candidateRecords);
+  if (selectionPass.status === 'unknown') {
+    candidateSelection.status = 'unknown';
+    candidateSelection.reason = selectionPass.reason;
   }
 
-  similarityDedupe.unresolvedDuplicateCount = duplicates.length;
+  for (
+    let attempt = 1;
+    attempt <= IMAGE_BATCH_CANDIDATE_SELECTION_MAX_RETRIES && selectionPass.uniqueSelected.length < params.count;
+    attempt += 1
+  ) {
+    const missingCount = params.count - selectionPass.uniqueSelected.length;
+    await appendCandidateBatch({
+      batchSize: resolveRerollCandidateCount(missingCount),
+      rerollAttempt: attempt,
+      selectedCount: selectionPass.uniqueSelected.length,
+      missingCount,
+    });
+
+    selectionPass = await evaluateBatchCandidatePool(candidateRecords);
+    if (selectionPass.status === 'unknown') {
+      candidateSelection.status = 'unknown';
+      candidateSelection.reason = selectionPass.reason;
+    }
+  }
+
+  candidateSelection.invalidRejectedCount = selectionPass.invalidRejectedCount;
+  candidateSelection.similarRejectedCount = selectionPass.similarRejectedCount;
+  candidateSelection.qualityUnknownCount = selectionPass.qualityUnknownCount;
+
+  const uniqueSelected = selectionPass.uniqueSelected.slice(0, params.count);
+  const usedPoolIndices = new Set(uniqueSelected.map(record => record.poolCandidateIndex));
+  const preferredFallbackPoolIndices = new Set(selectionPass.similarFallbackCandidates.map(record => record.poolCandidateIndex));
+  const preferredFallbackCandidates = selectionPass.similarFallbackCandidates.filter(
+    record => !usedPoolIndices.has(record.poolCandidateIndex),
+  );
+  const secondaryFallbackCandidates = candidateRecords.filter(
+    record => !usedPoolIndices.has(record.poolCandidateIndex)
+      && !preferredFallbackPoolIndices.has(record.poolCandidateIndex),
+  );
+
+  candidateSelection.unresolvedDuplicateCount = Math.max(0, params.count - uniqueSelected.length);
+
+  const items = uniqueSelected
+    .concat(preferredFallbackCandidates)
+    .concat(secondaryFallbackCandidates)
+    .slice(0, params.count)
+    .map((record, index) => relabelSelectedBatchItem(record, index));
+
+  candidateSelection.selectedCount = items.length;
+
   return {
     items,
-    similarityDedupe,
+    candidateSelection,
   };
 }
 
@@ -584,7 +801,7 @@ export async function executeImageNode(
   }
 
   if (count > 1) {
-    const batchResult = await generateBatchImagesWithSimilarityDedupe({
+    const batchResult = await generateBatchImagesWithCandidateSelection({
       prompt: effectivePrompt,
       count,
       title: node.title,
@@ -616,7 +833,8 @@ export async function executeImageNode(
         batchCount: count,
         batchMode: 'parallel-variant-prompts',
         variantStrategy: IMAGE_BATCH_VARIANT_STRATEGY,
-        similarityDedupe: batchResult.similarityDedupe,
+        candidateSelection: batchResult.candidateSelection,
+        similarityDedupe: batchResult.candidateSelection,
         mode: 'generate',
       },
     };

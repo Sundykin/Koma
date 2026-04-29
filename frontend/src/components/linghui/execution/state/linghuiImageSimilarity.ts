@@ -40,6 +40,8 @@ const UPPER_FRAME_LUMA_MAX_DELTA = 24;
 const FACE_CONTRAST_MAX_DELTA = 22;
 const UPPER_FRAME_CONTRAST_MAX_DELTA = 24;
 const DUPLICATE_SCORE_THRESHOLD = 11;
+const QUALITY_EDGE_THRESHOLD = 18;
+const QUALITY_NOISE_EDGE_THRESHOLD = 24;
 
 type CropRect = {
   x: number;
@@ -54,6 +56,12 @@ interface ImageSampleSignature {
   meanLuma: number;
   meanColor: [number, number, number];
   contrast: number;
+  lumaRange: number;
+  edgeDensity: number;
+  edgeEnergy: number;
+  dominantColorRatio: number;
+  colorSpread: number;
+  noiseRatio: number;
 }
 
 interface LinghuiImageSignature {
@@ -105,6 +113,34 @@ export interface LinghuiImageBatchSimilarityResult {
   reason?: string;
 }
 
+export interface LinghuiImageQualityMetrics {
+  frameContrast: number;
+  frameLumaRange: number;
+  frameEdgeDensity: number;
+  frameEdgeEnergy: number;
+  frameDominantColorRatio: number;
+  frameColorSpread: number;
+  frameNoiseRatio: number;
+  upperFrameContrast: number;
+  upperFrameLumaRange: number;
+  upperFrameEdgeDensity: number;
+  upperFrameEdgeEnergy: number;
+  upperFrameDominantColorRatio: number;
+  upperFrameColorSpread: number;
+  faceContrast: number;
+  faceLumaRange: number;
+  faceEdgeDensity: number;
+  faceEdgeEnergy: number;
+}
+
+export interface LinghuiImageCandidateQualityResult {
+  status: 'ok' | 'unknown';
+  verdict: 'accept' | 'reject' | 'unknown';
+  classification: 'valid' | 'invalid' | 'abstract' | 'no-subject' | 'noisy' | 'unknown';
+  reason?: string;
+  metrics?: LinghuiImageQualityMetrics;
+}
+
 function createCanvasContext(width: number, height: number): CanvasRenderingContext2D | null {
   if (typeof document === 'undefined' || typeof document.createElement !== 'function') {
     return null;
@@ -137,10 +173,14 @@ async function loadImageElement(source: string): Promise<HTMLImageElement | null
 
 function buildSampleSignature(data: Uint8ClampedArray, width: number, height: number): ImageSampleSignature {
   const grayscale: number[] = [];
+  const colors: Array<[number, number, number]> = [];
+  const colorBucketCounts = new Map<string, number>();
   let totalLuma = 0;
   let totalRed = 0;
   let totalGreen = 0;
   let totalBlue = 0;
+  let minLuma = Number.POSITIVE_INFINITY;
+  let maxLuma = Number.NEGATIVE_INFINITY;
 
   for (let index = 0; index < data.length; index += 4) {
     const red = data[index] ?? 0;
@@ -148,17 +188,32 @@ function buildSampleSignature(data: Uint8ClampedArray, width: number, height: nu
     const blue = data[index + 2] ?? 0;
     const luma = (red * 0.299) + (green * 0.587) + (blue * 0.114);
     grayscale.push(luma);
+    colors.push([red, green, blue]);
     totalLuma += luma;
     totalRed += red;
     totalGreen += green;
     totalBlue += blue;
+    minLuma = Math.min(minLuma, luma);
+    maxLuma = Math.max(maxLuma, luma);
+
+    const bucketKey = `${Math.floor(red / 64)}-${Math.floor(green / 64)}-${Math.floor(blue / 64)}`;
+    colorBucketCounts.set(bucketKey, (colorBucketCounts.get(bucketKey) ?? 0) + 1);
   }
 
   const sampleCount = Math.max(1, grayscale.length);
   const meanLuma = totalLuma / sampleCount;
+  const meanColor: [number, number, number] = [
+    totalRed / sampleCount,
+    totalGreen / sampleCount,
+    totalBlue / sampleCount,
+  ];
   const contrast = Math.sqrt(
     grayscale.reduce((sum, value) => sum + ((value - meanLuma) ** 2), 0) / sampleCount,
   );
+  const colorSpread = colors.reduce(
+    (sum, [red, green, blue]) => sum + Math.hypot(red - meanColor[0], green - meanColor[1], blue - meanColor[2]),
+    0,
+  ) / sampleCount;
 
   let hash = '';
   for (let row = 0; row < height; row += 1) {
@@ -174,16 +229,82 @@ function buildSampleSignature(data: Uint8ClampedArray, width: number, height: nu
     averageHash += value >= meanLuma ? '1' : '0';
   });
 
+  const resolveGrayscale = (row: number, column: number) => grayscale[(row * width) + column] ?? 0;
+  let edgeCount = 0;
+  let edgeEnergyTotal = 0;
+  let transitionCount = 0;
+  let noiseAlternationCount = 0;
+  let alternationCount = 0;
+
+  for (let row = 0; row < height; row += 1) {
+    for (let column = 0; column < width - 1; column += 1) {
+      const diff = Math.abs(resolveGrayscale(row, column) - resolveGrayscale(row, column + 1));
+      edgeEnergyTotal += diff;
+      transitionCount += 1;
+      if (diff >= QUALITY_EDGE_THRESHOLD) {
+        edgeCount += 1;
+      }
+    }
+  }
+
+  for (let row = 0; row < height - 1; row += 1) {
+    for (let column = 0; column < width; column += 1) {
+      const diff = Math.abs(resolveGrayscale(row, column) - resolveGrayscale(row + 1, column));
+      edgeEnergyTotal += diff;
+      transitionCount += 1;
+      if (diff >= QUALITY_EDGE_THRESHOLD) {
+        edgeCount += 1;
+      }
+    }
+  }
+
+  for (let row = 0; row < height; row += 1) {
+    for (let column = 0; column < width - 2; column += 1) {
+      const leftDiff = resolveGrayscale(row, column + 1) - resolveGrayscale(row, column);
+      const rightDiff = resolveGrayscale(row, column + 2) - resolveGrayscale(row, column + 1);
+      alternationCount += 1;
+      if (
+        Math.abs(leftDiff) >= QUALITY_NOISE_EDGE_THRESHOLD
+        && Math.abs(rightDiff) >= QUALITY_NOISE_EDGE_THRESHOLD
+        && Math.sign(leftDiff) !== Math.sign(rightDiff)
+      ) {
+        noiseAlternationCount += 1;
+      }
+    }
+  }
+
+  for (let row = 0; row < height - 2; row += 1) {
+    for (let column = 0; column < width; column += 1) {
+      const topDiff = resolveGrayscale(row + 1, column) - resolveGrayscale(row, column);
+      const bottomDiff = resolveGrayscale(row + 2, column) - resolveGrayscale(row + 1, column);
+      alternationCount += 1;
+      if (
+        Math.abs(topDiff) >= QUALITY_NOISE_EDGE_THRESHOLD
+        && Math.abs(bottomDiff) >= QUALITY_NOISE_EDGE_THRESHOLD
+        && Math.sign(topDiff) !== Math.sign(bottomDiff)
+      ) {
+        noiseAlternationCount += 1;
+      }
+    }
+  }
+
+  const dominantColorRatio = Array.from(colorBucketCounts.values()).reduce(
+    (maxCount, count) => Math.max(maxCount, count),
+    0,
+  ) / sampleCount;
+
   return {
     hash,
     averageHash,
     meanLuma,
-    meanColor: [
-      totalRed / sampleCount,
-      totalGreen / sampleCount,
-      totalBlue / sampleCount,
-    ],
+    meanColor,
     contrast,
+    lumaRange: Math.max(0, maxLuma - minLuma),
+    edgeDensity: edgeCount / Math.max(1, transitionCount),
+    edgeEnergy: edgeEnergyTotal / Math.max(1, transitionCount),
+    dominantColorRatio,
+    colorSpread,
+    noiseRatio: noiseAlternationCount / Math.max(1, alternationCount),
   };
 }
 
@@ -307,6 +428,120 @@ function buildDuplicateMetrics(
   };
 }
 
+function buildQualityMetrics(signature: LinghuiImageSignature): LinghuiImageQualityMetrics {
+  return {
+    frameContrast: signature.frame.contrast,
+    frameLumaRange: signature.frame.lumaRange,
+    frameEdgeDensity: signature.frame.edgeDensity,
+    frameEdgeEnergy: signature.frame.edgeEnergy,
+    frameDominantColorRatio: signature.frame.dominantColorRatio,
+    frameColorSpread: signature.frame.colorSpread,
+    frameNoiseRatio: signature.frame.noiseRatio,
+    upperFrameContrast: signature.upperFrame.contrast,
+    upperFrameLumaRange: signature.upperFrame.lumaRange,
+    upperFrameEdgeDensity: signature.upperFrame.edgeDensity,
+    upperFrameEdgeEnergy: signature.upperFrame.edgeEnergy,
+    upperFrameDominantColorRatio: signature.upperFrame.dominantColorRatio,
+    upperFrameColorSpread: signature.upperFrame.colorSpread,
+    faceContrast: signature.face.contrast,
+    faceLumaRange: signature.face.lumaRange,
+    faceEdgeDensity: signature.face.edgeDensity,
+    faceEdgeEnergy: signature.face.edgeEnergy,
+  };
+}
+
+function resolveImageQualityDecision(metrics: LinghuiImageQualityMetrics): {
+  isValid: boolean;
+  classification: LinghuiImageCandidateQualityResult['classification'];
+  reason?: string;
+} {
+  const lowStructure = metrics.frameEdgeDensity <= 0.11
+    && metrics.upperFrameEdgeDensity <= 0.12
+    && metrics.faceEdgeDensity <= 0.12
+    && metrics.frameEdgeEnergy <= 14
+    && metrics.upperFrameEdgeEnergy <= 14;
+
+  if (
+    (metrics.frameDominantColorRatio >= 0.82 && metrics.frameColorSpread <= 18)
+    || (metrics.frameDominantColorRatio >= 0.72 && metrics.frameLumaRange <= 22 && metrics.frameEdgeDensity <= 0.1)
+  ) {
+    return {
+      isValid: false,
+      classification: 'invalid',
+      reason: 'solid-color-block',
+    };
+  }
+
+  if (metrics.frameContrast <= 8 && metrics.frameLumaRange <= 20) {
+    return {
+      isValid: false,
+      classification: 'invalid',
+      reason: 'low-contrast',
+    };
+  }
+
+  if (lowStructure) {
+    return {
+      isValid: false,
+      classification: 'abstract',
+      reason: 'low-structure',
+    };
+  }
+
+  if (
+    metrics.frameEdgeDensity >= 0.6
+    && metrics.frameNoiseRatio >= 0.34
+    && metrics.frameColorSpread >= 55
+  ) {
+    return {
+      isValid: false,
+      classification: 'noisy',
+      reason: 'noisy-texture',
+    };
+  }
+
+  if (
+    metrics.frameContrast >= 92
+    && metrics.frameNoiseRatio >= 0.26
+    && metrics.upperFrameEdgeDensity <= 0.1
+  ) {
+    return {
+      isValid: false,
+      classification: 'abstract',
+      reason: 'abstract-high-contrast',
+    };
+  }
+
+  if (
+    metrics.upperFrameEdgeDensity <= 0.08
+    && metrics.faceEdgeDensity <= 0.08
+    && metrics.frameEdgeDensity <= 0.16
+  ) {
+    return {
+      isValid: false,
+      classification: 'no-subject',
+      reason: 'no-subject',
+    };
+  }
+
+  if (
+    metrics.frameDominantColorRatio >= 0.6
+    && metrics.frameColorSpread <= 26
+    && metrics.upperFrameEdgeDensity <= 0.1
+  ) {
+    return {
+      isValid: false,
+      classification: 'abstract',
+      reason: 'abstract-pattern',
+    };
+  }
+
+  return {
+    isValid: true,
+    classification: 'valid',
+  };
+}
+
 function resolveSignalScore(
   value: number,
   strictMax: number,
@@ -404,6 +639,40 @@ export function __testOnlyResolveLinghuiImageDuplicateDecision(
     upperFrameLumaDelta: metrics.upperFrameLumaDelta ?? Number.POSITIVE_INFINITY,
     upperFrameContrastDelta: metrics.upperFrameContrastDelta ?? Number.POSITIVE_INFINITY,
   });
+}
+
+export function __testOnlyResolveLinghuiImageQualityDecision(
+  metrics: LinghuiImageQualityMetrics,
+): {
+  isValid: boolean;
+  classification: LinghuiImageCandidateQualityResult['classification'];
+  reason?: string;
+} {
+  return resolveImageQualityDecision(metrics);
+}
+
+export async function analyzeLinghuiImageCandidateQuality(
+  item: LinghuiImageMediaItem,
+): Promise<LinghuiImageCandidateQualityResult> {
+  const signatureResult = await createImageSignature(item);
+  if (isSignatureFailure(signatureResult)) {
+    return {
+      status: 'unknown',
+      verdict: 'unknown',
+      classification: 'unknown',
+      reason: signatureResult.reason,
+    };
+  }
+
+  const metrics = buildQualityMetrics(signatureResult.signature);
+  const decision = resolveImageQualityDecision(metrics);
+  return {
+    status: 'ok',
+    verdict: decision.isValid ? 'accept' : 'reject',
+    classification: decision.classification,
+    reason: decision.reason,
+    metrics,
+  };
 }
 
 function isLikelyDuplicate(metrics: LinghuiImageSimilarityMetrics): boolean {
