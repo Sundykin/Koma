@@ -24,20 +24,20 @@ const streamToolListeners: Array<(event: unknown, data: any) => void> = [];
 const streamDoneListeners: Array<(event: unknown, data: any) => void> = [];
 const streamErrorListeners: Array<(event: unknown, data: any) => void> = [];
 
-vi.mock('../../providers', () => ({
+vi.mock('../../../../providers', () => ({
   getProjectITVProvider: (...args: unknown[]) => getProjectITVProviderMock(...args),
   getProjectLLMProvider: (...args: unknown[]) => getProjectLLMProviderMock(...args),
   getProjectTTIProvider: (...args: unknown[]) => getProjectTTIProviderMock(...args),
   getProjectTTSProvider: (...args: unknown[]) => getProjectTTSProviderMock(...args),
 }));
 
-vi.mock('../../providers/channel/resolver', () => ({
+vi.mock('../../../../providers/channel/resolver', () => ({
   resolveConfiguredChannelModel: (...args: unknown[]) => resolveConfiguredChannelModelMock(...args),
   buildLLMConfigFromContext: (...args: unknown[]) => buildLLMConfigFromContextMock(...args),
   listCapabilityFallbackCandidates: (...args: unknown[]) => listCapabilityFallbackCandidatesMock(...args),
 }));
 
-vi.mock('../../providers/polling', () => ({
+vi.mock('../../../../providers/polling', () => ({
   DEFAULT_POLLING_CONFIG: {
     interval: 0,
     maxDuration: 100,
@@ -45,11 +45,11 @@ vi.mock('../../providers/polling', () => ({
   },
 }));
 
-vi.mock('../../store/settings/core', () => ({
+vi.mock('../../../../store/settings/core', () => ({
   loadSettings: (...args: unknown[]) => loadSettingsMock(...args),
 }));
 
-vi.mock('../../chat/ipc', () => ({
+vi.mock('../../../../chat/ipc', () => ({
   createSession: (...args: unknown[]) => createSessionMock(...args),
   disposeSession: (...args: unknown[]) => disposeSessionMock(...args),
   sendMessageStream: (...args: unknown[]) => sendMessageStreamMock(...args),
@@ -85,7 +85,7 @@ vi.mock('../../chat/ipc', () => ({
   },
 }));
 
-vi.mock('../../services/promptCompilation/videoRequestCompiler', () => ({
+vi.mock('../../../../services/promptCompilation/videoRequestCompiler', () => ({
   buildVideoCapabilityRequest: (...args: unknown[]) => buildVideoCapabilityRequestMock(...args),
   compileWorkflowVideoDomainRequest: (...args: unknown[]) => compileWorkflowVideoDomainRequestMock(...args),
   getPromptProtocol: (...args: unknown[]) => getPromptProtocolMock(...args),

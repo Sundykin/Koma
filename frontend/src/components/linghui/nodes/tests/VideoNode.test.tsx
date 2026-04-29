@@ -23,17 +23,17 @@ vi.mock('@xyflow/react', () => ({
   },
 }));
 
-vi.mock('./LinghuiNodeRunsContext', () => ({
+vi.mock('../state/LinghuiNodeRunsContext', () => ({
   useNodeRunState: (...args: unknown[]) => useNodeRunStateMock(...args),
   useLinghuiNodeInteraction: (...args: unknown[]) => useLinghuiNodeInteractionMock(...args),
   useLinghuiNodeEditorVisibility: (...args: unknown[]) => useLinghuiNodeEditorVisibilityMock(...args),
 }));
 
-vi.mock('../LinghuiNodeEditor', () => ({
+vi.mock('../../editors/components/LinghuiNodeEditor', () => ({
   LinghuiNodeEditor: () => <div data-testid="video-node-editor" />,
 }));
 
-vi.mock('./EditableCompactNodeLabel', () => ({
+vi.mock('../components/EditableCompactNodeLabel', () => ({
   EditableCompactNodeLabel: ({ label, fallbackLabel }: { label: string; fallbackLabel?: string }) => (
     <span>{label || fallbackLabel}</span>
   ),

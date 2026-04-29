@@ -13,6 +13,9 @@ const fsReadFileMock = vi.fn();
 const fsExistsMock = vi.fn();
 const projectCreateMock = vi.fn();
 const rebuildIndexMock = vi.fn();
+const batchSaveAllCharactersMock = vi.fn();
+const batchSaveAllScenesMock = vi.fn();
+const batchSaveAllShotsMock = vi.fn();
 
 vi.mock('../../manju-dsl/protocol', () => ({
   exportToManjuDSL: (...args: unknown[]) => exportToManjuDSLMock(...args),
@@ -45,6 +48,11 @@ vi.mock('../../services/electronService', () => ({
       create: (...args: unknown[]) => projectCreateMock(...args),
       rebuildIndex: (...args: unknown[]) => rebuildIndexMock(...args),
     },
+  },
+  batchApi: {
+    saveAllCharacters: (...args: unknown[]) => batchSaveAllCharactersMock(...args),
+    saveAllScenes: (...args: unknown[]) => batchSaveAllScenesMock(...args),
+    saveAllShots: (...args: unknown[]) => batchSaveAllShotsMock(...args),
   },
 }));
 
