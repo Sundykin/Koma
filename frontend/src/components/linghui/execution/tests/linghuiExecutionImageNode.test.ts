@@ -4,8 +4,8 @@ import type { ExecutionNodeView } from '../state/linghuiExecutionShared';
 vi.mock('../state/linghuiExecutionProviders', () => ({
   generateAudioWithProvider: vi.fn(),
   generateImageWithProvider: vi.fn(),
-  generateImageVariantsWithProvider: vi.fn(),
   generateImagesWithProvider: vi.fn(),
+  generateImageVariantsWithProvider: vi.fn(),
   generateTextWithProvider: vi.fn(),
   generateVideoWithProvider: vi.fn(),
 }));
@@ -42,45 +42,48 @@ describe('executeImageNode', () => {
     vi.clearAllMocks();
   });
 
-  it('batchCount > 1 时会改走变体 prompt 批量生成，避免完全同 prompt 克隆', async () => {
+  it('batchCount=4 时走单次 provider count 批量请求并返回 4 张结果', async () => {
     const { executeImageNode } = await import('../state/linghuiExecutionNodeExecutors');
     const executionProviders = await import('../state/linghuiExecutionProviders');
 
-    vi.mocked(executionProviders.generateImageVariantsWithProvider).mockResolvedValue([
-      { kind: 'image', source: 'https://cdn.example.com/1.png' } as any,
-      { kind: 'image', source: 'https://cdn.example.com/2.png' } as any,
-      { kind: 'image', source: 'https://cdn.example.com/3.png' } as any,
+    vi.mocked(executionProviders.generateImagesWithProvider).mockResolvedValue([
+      { kind: 'image', source: 'https://cdn.example.com/1.png', label: 'provider-1' } as any,
+      { kind: 'image', source: 'https://cdn.example.com/2.png', label: 'provider-2' } as any,
+      { kind: 'image', source: 'https://cdn.example.com/3.png', label: 'provider-3' } as any,
+      { kind: 'image', source: 'https://cdn.example.com/4.png', label: 'provider-4' } as any,
     ]);
 
-    const result = await executeImageNode(createNode(3));
+    const result = await executeImageNode(createNode(4));
 
-    expect(executionProviders.generateImageVariantsWithProvider).toHaveBeenCalledTimes(1);
-    expect(executionProviders.generateImagesWithProvider).not.toHaveBeenCalled();
-    expect(executionProviders.generateImageWithProvider).not.toHaveBeenCalled();
-
-    const variantRequest = vi.mocked(executionProviders.generateImageVariantsWithProvider).mock.calls[0]?.[0];
-    expect(variantRequest).toEqual(expect.objectContaining({
+    expect(executionProviders.generateImagesWithProvider).toHaveBeenCalledTimes(1);
+    expect(executionProviders.generateImagesWithProvider).toHaveBeenCalledWith(expect.objectContaining({
+      count: 4,
       ttiSelection: 'channel-image::model-image',
       placeholderTitle: '图片节点',
+      prompt: expect.stringContaining('API count creates separate independent image files'),
     }));
-    expect(variantRequest?.variants).toHaveLength(3);
-    const variantPrompts = variantRequest?.variants.map(item => item.prompt) ?? [];
-    expect(new Set(variantPrompts).size).toBe(3);
-    expect(variantPrompts.every(prompt => prompt.includes('灵绘批量变体'))).toBe(true);
+    expect(executionProviders.generateImageVariantsWithProvider).not.toHaveBeenCalled();
+    expect(executionProviders.generateImageWithProvider).not.toHaveBeenCalled();
 
     expect(result).toEqual(expect.objectContaining({
       kind: 'images',
-      items: expect.arrayContaining([
+      primary: expect.objectContaining({ source: 'https://cdn.example.com/1.png', label: '#1' }),
+      items: [
         expect.objectContaining({ source: 'https://cdn.example.com/1.png', label: '#1' }),
         expect.objectContaining({ source: 'https://cdn.example.com/2.png', label: '#2' }),
         expect.objectContaining({ source: 'https://cdn.example.com/3.png', label: '#3' }),
-      ]),
+        expect.objectContaining({ source: 'https://cdn.example.com/4.png', label: '#4' }),
+      ],
       metadata: expect.objectContaining({
-        batchCount: 3,
-        batchMode: 'variant-prompts',
-        variantStrategy: 'linghui-image-batch-diversity-v1',
+        batchCount: 4,
+        batchMode: 'provider-count',
+        mode: 'generate',
       }),
     }));
+    expect(result.kind).toBe('images');
+    if (result.kind === 'images') {
+      expect(result.items).toHaveLength(4);
+    }
   });
 
   it('单张生成仍保持原有 generateImageWithProvider 路径', async () => {
@@ -98,6 +101,7 @@ describe('executeImageNode', () => {
       prompt: '主提示词',
       ttiSelection: 'channel-image::model-image',
     }));
+    expect(executionProviders.generateImagesWithProvider).not.toHaveBeenCalled();
     expect(executionProviders.generateImageVariantsWithProvider).not.toHaveBeenCalled();
     expect(result).toEqual(expect.objectContaining({
       kind: 'image',

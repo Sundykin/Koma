@@ -27,7 +27,7 @@ import { listConfiguredModelSelectOptions } from '../../../../providers/channel/
 import type { LinghuiPromptReferenceItem } from '../state/linghuiPromptReferences';
 import { LinghuiPromptEditor } from './LinghuiPromptEditor';
 import { LinghuiMultiAngleModal } from './LinghuiMultiAngleModal';
-import { useLinghuiNodeMutation } from '../../nodes/state/LinghuiNodeRunsContext';
+import { useLinghuiNodeEditorApi, useLinghuiNodeMutation } from '../../nodes/state/LinghuiNodeRunsContext';
 import {
   createLinghuiImageAssetItemFromSource,
   createLinghuiImageImportProperties,
@@ -92,6 +92,7 @@ export const ImageNodeEditor: React.FC<ImageNodeEditorProps> = ({
   onRun,
 }) => {
   const { message } = App.useApp();
+  const { executionQueue } = useLinghuiNodeEditorApi();
   const { clearNodeRunState, updateNodeData } = useLinghuiNodeMutation();
   const props = nodeData.properties as unknown as LinghuiImageNodeProperties;
   const mode = resolveImageNodeMode(props);
@@ -107,6 +108,25 @@ export const ImageNodeEditor: React.FC<ImageNodeEditorProps> = ({
   const currentImageSource = String(currentImage?.source ?? props.source ?? '').trim();
   const currentImagePreview = getPreviewSource(currentImageSource);
   const hasCurrentImage = Boolean(currentImageSource);
+  const isExecutionQueueActive = executionQueue?.status === 'running' || executionQueue?.status === 'canceling';
+  const isNodeQueuedByExecutionQueue = Boolean(isExecutionQueueActive && executionQueue?.queuedNodeIds.includes(nodeId));
+  const isNodeRunningByExecutionQueue = Boolean(isExecutionQueueActive && executionQueue?.runningNodeIds.includes(nodeId));
+  const isImageGenerating = nodeRun?.status === 'running' || isNodeRunningByExecutionQueue || isNodeQueuedByExecutionQueue;
+  const generateProgressText = nodeRun?.status === 'running'
+    && typeof nodeRun.progress === 'number'
+    && Number.isFinite(nodeRun.progress)
+    && nodeRun.progress > 0
+    ? ` ${Math.max(0, Math.min(100, Math.round(nodeRun.progress)))}%`
+    : '';
+  const normalizedRunMessage = String(nodeRun?.message ?? '').trim();
+  const generateStateLabel = isNodeQueuedByExecutionQueue && nodeRun?.status !== 'running'
+    ? '等待图片生成…'
+    : normalizedRunMessage && normalizedRunMessage !== '准备执行'
+      ? normalizedRunMessage
+      : isImageGenerating
+        ? '图片生成中'
+        : '生成';
+  const generateButtonText = isImageGenerating ? `${generateStateLabel}${generateProgressText}` : '生成';
   const isMultiAngleToolOpen = activeTool === 'multi-angle' && hasCurrentImage;
   const multiAngleConfig = normalizeLinghuiMultiAngleConfig(props.multiAngle ?? DEFAULT_LINGHUI_MULTI_ANGLE_CONFIG);
   const multiAngleTTISelection = String(props.multiAngle?.ttiSelection ?? props.ttiSelection ?? '');
@@ -467,8 +487,10 @@ export const ImageNodeEditor: React.FC<ImageNodeEditorProps> = ({
             type="primary"
             icon={<ArrowUp size={14} />}
             onClick={onRun}
+            disabled={isImageGenerating}
+            loading={isImageGenerating}
           >
-            生成
+            {generateButtonText}
           </Button>
         </div>
       </div>
