@@ -30,8 +30,8 @@ import {
 } from '../../editors/state/linghuiImageCollections';
 import {
   generateAudioWithProvider,
+  generateImageVariantsWithProvider,
   generateImageWithProvider,
-  generateImagesWithProvider,
   generateTextWithProvider,
   runAgentWithProvider,
   generateVideoWithProvider,
@@ -67,11 +67,12 @@ function buildScriptSystemPrompt(systemPrompt: string): string {
 
 type NodeExecutionProgressHandler = (progress: number, message?: string, partialResult?: LinghuiNodeResult) => void;
 
-const IMAGE_BATCH_SEPARATE_OUTPUT_CONSTRAINT = [
-  '批量出图时请为每个 count 输出独立成品文件。',
-  'API count creates separate independent image files.',
+const IMAGE_SINGLE_CANDIDATE_OUTPUT_CONSTRAINT = [
+  '批量抽卡时每个请求只生成一张独立候选图。',
+  'This request generates exactly one candidate image only.',
+  'Return exactly one finished image composition for this request.',
   'Do not create a grid, collage, contact sheet, diptych, triptych, multi-panel layout, or multiple images inside one canvas.',
-  'Each output must contain exactly one finished image composition.',
+  'Do not create identical clone compositions or same face repeated within the image.',
 ].join('\n');
 
 const IMAGE_BATCH_VARIATION_OPTION_BLUEPRINTS = [
@@ -101,59 +102,36 @@ const IMAGE_BATCH_VARIATION_OPTION_BLUEPRINTS = [
   ],
 ] as const;
 
-function appendIndependentBatchOutputConstraint(prompt: string): string {
+function appendSingleCandidateOutputConstraint(prompt: string): string {
   const normalizedPrompt = String(prompt).trim();
 
   if (!normalizedPrompt) {
-    return IMAGE_BATCH_SEPARATE_OUTPUT_CONSTRAINT;
+    return IMAGE_SINGLE_CANDIDATE_OUTPUT_CONSTRAINT;
   }
 
-  if (normalizedPrompt.includes('API count creates separate independent image files')) {
+  if (normalizedPrompt.includes('This request generates exactly one candidate image only.')) {
     return normalizedPrompt;
   }
 
-  return `${normalizedPrompt}\n\n${IMAGE_BATCH_SEPARATE_OUTPUT_CONSTRAINT}`;
+  return `${normalizedPrompt}\n\n${IMAGE_SINGLE_CANDIDATE_OUTPUT_CONSTRAINT}`;
 }
 
-function buildBatchVariationInstructions(count: number): string {
-  const normalizedCount = Math.max(1, Math.floor(Number(count) || 1));
-  const outputAssignments = Array.from(
-    { length: normalizedCount },
-    (_unused, index) => `Output ${index + 1} -> Variation option ${index + 1}`,
-  ).join('; ');
-  const optionBlocks = Array.from({ length: normalizedCount }, (_unused, index) => {
-    const blueprint = IMAGE_BATCH_VARIATION_OPTION_BLUEPRINTS[
-      index % IMAGE_BATCH_VARIATION_OPTION_BLUEPRINTS.length
-    ];
-
-    return [
-      `Variation option ${index + 1}:`,
-      `- ${blueprint[0]}`,
-      `- ${blueprint[1]}`,
-    ].join('\n');
-  }).join('\n\n');
+function buildBatchVariantPrompt(prompt: string, count: number, index: number): string {
+  const candidateIndex = index + 1;
+  const blueprint = IMAGE_BATCH_VARIATION_OPTION_BLUEPRINTS[
+    index % IMAGE_BATCH_VARIATION_OPTION_BLUEPRINTS.length
+  ];
 
   return [
-    'Variation options for separate batch outputs:',
-    `There will be ${normalizedCount} independent API outputs. Assign a different variation option to each output: ${outputAssignments}.`,
-    'Each independent output must choose exactly one variation option, and each variation option may be used by only one output in this batch.',
-    'Do not treat the variation list as a single-image layout instruction. Do not turn it into a grid, collage, contact sheet, multi-panel canvas, or one image containing multiple candidates.',
+    appendSingleCandidateOutputConstraint(prompt),
+    `Linghui draw candidate #${candidateIndex} of ${count}.`,
+    `This request generates candidate #${candidateIndex} only.`,
+    `Variation option ${candidateIndex}: ${blueprint[0]}`,
+    blueprint[1],
     'Keep the original prompt locked on the same main subject, gender, age range, outfit category, world setting, and overall style/theme. Do not drift into a different subject, costume class, or genre.',
-    'Use character/gacha differentiation axes where relevant: identity cues, face silhouette, facial structure, hair silhouette, expression/pose, wardrobe/accessory detail, lighting/composition, background atmosphere.',
-    optionBlocks,
-    'Across outputs, the differences must be distinct, significant, and immediately recognizable at thumbnail size.',
-    'No identical outputs. No cloned composition. No same face repeated. No near-duplicate pose or camera framing across the batch.',
+    'Make this candidate visibly different from the other batch candidates at thumbnail size.',
+    'Forbidden: no grid, no collage, no contact sheet, no multi-panel, no identical clone, no same face repeated.',
   ].join('\n');
-}
-
-function appendBatchVariationConstraint(prompt: string, count: number): string {
-  const promptWithIndependentOutputConstraint = appendIndependentBatchOutputConstraint(prompt);
-
-  if (promptWithIndependentOutputConstraint.includes('Variation options for separate batch outputs:')) {
-    return promptWithIndependentOutputConstraint;
-  }
-
-  return `${promptWithIndependentOutputConstraint}\n\n${buildBatchVariationInstructions(count)}`;
 }
 
 function resolveStreamingProgress(accumulated: string, base = 18, cap = 92): number {
@@ -414,8 +392,18 @@ export async function executeImageNode(
   }
 
   if (count > 1) {
-    const items = (await generateImagesWithProvider({
-      prompt: appendBatchVariationConstraint(effectivePrompt, count),
+    const variants = Array.from({ length: count }, (_unused, index) => ({
+      label: `#${index + 1}`,
+      prompt: buildBatchVariantPrompt(effectivePrompt, count, index),
+      placeholderTitle: node.title,
+      placeholderSubtitle: `${prompt || '图片占位预览'} · 候选 #${index + 1}`,
+      metadata: {
+        batchMode: 'parallel-variant-prompts',
+        variantStrategy: 'linghui-parallel-diverse-prompts-v2',
+      },
+    }));
+    const items = await generateImageVariantsWithProvider({
+      variants,
       referenceSources,
       ttiSelection,
       promptReferences,
@@ -424,11 +412,8 @@ export async function executeImageNode(
       placeholderTitle: node.title,
       placeholderSubtitle: prompt || '图片占位预览',
       accent: '#4ade80',
-      count,
       signal,
-    }))
-      .slice(0, count)
-      .map((image, index) => ({ ...image, label: `#${index + 1}` }));
+    });
 
     const primary = items[0];
     if (!primary) {
@@ -442,7 +427,8 @@ export async function executeImageNode(
       metadata: {
         prompt,
         batchCount: count,
-        batchMode: 'provider-count',
+        batchMode: 'parallel-variant-prompts',
+        variantStrategy: 'linghui-parallel-diverse-prompts-v2',
         mode: 'generate',
       },
     };

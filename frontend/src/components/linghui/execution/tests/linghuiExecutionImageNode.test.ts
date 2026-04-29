@@ -42,43 +42,44 @@ describe('executeImageNode', () => {
     vi.clearAllMocks();
   });
 
-  it('batchCount=4 时走单次 provider count 批量请求并返回 4 张结果', async () => {
+  it('batchCount=4 时走并发 variants 批量请求，并为每张候选生成独立 prompt', async () => {
     const { executeImageNode } = await import('../state/linghuiExecutionNodeExecutors');
     const executionProviders = await import('../state/linghuiExecutionProviders');
 
-    vi.mocked(executionProviders.generateImagesWithProvider).mockResolvedValue([
-      { kind: 'image', source: 'https://cdn.example.com/1.png', label: 'provider-1' } as any,
-      { kind: 'image', source: 'https://cdn.example.com/2.png', label: 'provider-2' } as any,
-      { kind: 'image', source: 'https://cdn.example.com/3.png', label: 'provider-3' } as any,
-      { kind: 'image', source: 'https://cdn.example.com/4.png', label: 'provider-4' } as any,
+    vi.mocked(executionProviders.generateImageVariantsWithProvider).mockResolvedValue([
+      { kind: 'image', source: 'https://cdn.example.com/1.png', label: '#1' } as any,
+      { kind: 'image', source: 'https://cdn.example.com/2.png', label: '#2' } as any,
+      { kind: 'image', source: 'https://cdn.example.com/3.png', label: '#3' } as any,
+      { kind: 'image', source: 'https://cdn.example.com/4.png', label: '#4' } as any,
     ]);
 
     const result = await executeImageNode(createNode(4));
 
-    expect(executionProviders.generateImagesWithProvider).toHaveBeenCalledTimes(1);
-    const batchCall = vi.mocked(executionProviders.generateImagesWithProvider).mock.calls[0]?.[0];
+    expect(executionProviders.generateImageVariantsWithProvider).toHaveBeenCalledTimes(1);
+    const batchCall = vi.mocked(executionProviders.generateImageVariantsWithProvider).mock.calls[0]?.[0];
     expect(batchCall).toEqual(expect.objectContaining({
-      count: 4,
       ttiSelection: 'channel-image::model-image',
       placeholderTitle: '图片节点',
     }));
-    expect(batchCall?.prompt).toContain('API count creates separate independent image files');
-    expect(batchCall?.prompt).toContain('Variation options for separate batch outputs');
-    expect(batchCall?.prompt).toContain('Variation option 1');
-    expect(batchCall?.prompt).toContain('Variation option 2');
-    expect(batchCall?.prompt).toContain('Variation option 3');
-    expect(batchCall?.prompt).toContain('Variation option 4');
-    expect(batchCall?.prompt).toContain('choose exactly one variation option');
-    expect(batchCall?.prompt).toContain('Assign a different variation option to each output');
-    expect(batchCall?.prompt).toContain('identity cues');
-    expect(batchCall?.prompt).toContain('wardrobe/accessory detail');
-    expect(batchCall?.prompt).toContain('background atmosphere');
-    expect(batchCall?.prompt).toContain('distinct, significant');
-    expect(batchCall?.prompt).toContain('No identical outputs');
-    expect(batchCall?.prompt).toContain('No cloned composition');
-    expect(batchCall?.prompt).toContain('Do not create a grid, collage, contact sheet');
-    expect(batchCall?.prompt).toContain('Do not treat the variation list as a single-image layout instruction');
-    expect(executionProviders.generateImageVariantsWithProvider).not.toHaveBeenCalled();
+    expect(batchCall?.variants).toHaveLength(4);
+    expect(batchCall?.variants.map(variant => variant.label)).toEqual(['#1', '#2', '#3', '#4']);
+
+    const prompts = batchCall?.variants.map(variant => variant.prompt) ?? [];
+    expect(new Set(prompts).size).toBe(4);
+    prompts.forEach((variantPrompt, index) => {
+      const candidateIndex = index + 1;
+      expect(variantPrompt).toContain('主提示词');
+      expect(variantPrompt).toContain(`Linghui draw candidate #${candidateIndex}`);
+      expect(variantPrompt).toContain(`This request generates candidate #${candidateIndex} only`);
+      expect(variantPrompt).toContain(`Variation option ${candidateIndex}`);
+      expect(variantPrompt).toContain('This request generates exactly one candidate image only.');
+      expect(variantPrompt).toContain('Do not create a grid, collage, contact sheet');
+      expect(variantPrompt).toContain('no multi-panel');
+      expect(variantPrompt).toContain('no identical clone');
+      expect(variantPrompt).toContain('no same face repeated');
+    });
+
+    expect(executionProviders.generateImagesWithProvider).not.toHaveBeenCalled();
     expect(executionProviders.generateImageWithProvider).not.toHaveBeenCalled();
 
     expect(result).toEqual(expect.objectContaining({
@@ -92,7 +93,8 @@ describe('executeImageNode', () => {
       ],
       metadata: expect.objectContaining({
         batchCount: 4,
-        batchMode: 'provider-count',
+        batchMode: 'parallel-variant-prompts',
+        variantStrategy: 'linghui-parallel-diverse-prompts-v2',
         mode: 'generate',
       }),
     }));
