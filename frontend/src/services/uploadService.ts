@@ -28,8 +28,8 @@ function getFileType(filename: string): 'video' | 'image' | 'audio' | null {
 
 // Electron API 接口
 const getAssetAPI = (): any => {
-  if (isElectron() && (window as any).electronAPI?.assets) {
-    return (window as any).electronAPI.assets;
+  if (isElectron() && window.electronAPI?.assets) {
+    return window.electronAPI.assets;
   }
   return null;
 };

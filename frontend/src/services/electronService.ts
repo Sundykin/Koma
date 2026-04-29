@@ -183,7 +183,7 @@ export const normalizePath = (path: string): string => {
 // 获取 Electron API（如果可用）
 const getElectronAPI = (): ElectronAPI | null => {
   if (isElectron()) {
-    return (window as any).electronAPI as ElectronAPI;
+    return window.electronAPI as ElectronAPI;
   }
   return null;
 };
@@ -1020,8 +1020,8 @@ export const electronService = {
         }
       }
       // 通用 IPC 调用（通过 window.electron）
-      if (typeof window !== 'undefined' && (window as any).electron?.ipcRenderer) {
-        return (window as any).electron.ipcRenderer.invoke(channel, args);
+      if (typeof window !== 'undefined' && window.electron?.ipcRenderer) {
+        return window.electron.ipcRenderer.invoke(channel, args);
       }
       throw new Error(`IPC not available: ${channel}`);
     },

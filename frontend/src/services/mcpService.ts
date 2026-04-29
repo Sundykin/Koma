@@ -43,8 +43,8 @@ interface ElectronMCPAPI {
 
 // 获取 Electron API
 function getElectronAPI(): ElectronMCPAPI | null {
-  if (typeof window !== 'undefined' && (window as any).electronAPI?.chat) {
-    return (window as any).electronAPI.chat as ElectronMCPAPI;
+  if (typeof window !== 'undefined' && window.electronAPI?.chat) {
+    return window.electronAPI.chat as ElectronMCPAPI;
   }
   return null;
 }

@@ -208,7 +208,7 @@ type ChannelChangedHandler = (event: ChannelChangedEvent) => void;
  * 浏览器 fallback：返回 noop 取消函数（事件源不存在时静默）。
  */
 export function subscribeChannelChanges(handler: ChannelChangedHandler): () => void {
-  const ipc = (typeof window !== 'undefined' ? (window as any).electron?.ipcRenderer : null) as
+  const ipc = (typeof window !== 'undefined' ? window.electron?.ipcRenderer : null) as
     | {
         on: (channel: string, listener: (...args: any[]) => void) => void;
         removeListener: (channel: string, listener: (...args: any[]) => void) => void;

@@ -90,8 +90,8 @@ export interface ComposeVideoOptions {
 
 // 获取 FFmpeg API
 const getFFmpegAPI = (): any => {
-  if (isElectron() && (window as any).electronAPI?.ffmpeg) {
-    return (window as any).electronAPI.ffmpeg;
+  if (isElectron() && window.electronAPI?.ffmpeg) {
+    return window.electronAPI.ffmpeg;
   }
   return null;
 };

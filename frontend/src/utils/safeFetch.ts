@@ -19,7 +19,7 @@ type IpcMultipartField =
 
 type IpcMultipartPayload = { fields: IpcMultipartField[] };
 
-const electronAPI = (window as any).electronAPI as
+const electronAPI = window.electronAPI as
   | { net?: { fetch: (args: any) => Promise<IpcFetchResult> } }
   | undefined;
 
