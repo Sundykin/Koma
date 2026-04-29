@@ -1,5 +1,11 @@
 /**
  * Manju-DSL 集成（通过 IPC 调后端 SQLite）
+ *
+ * 注：当前 Manju-DSL 不处理 timeline payload（应用内 timeline 数据模型已迁移到
+ * types/editor.ts，与原 protocol 中的 Timeline 字段不兼容）。如需 round-trip
+ * 应基于 types/editor.ts 的 Track/Clip 在 manju-dsl 中重写转换。
+ *
+ * 当前行为：检测到 timeline 时仅 warn 提示用户被丢弃，不参与导入导出。
  */
 import { electronService, batchApi, type ProjectMeta as ElectronProjectMeta } from '../../services/electronService';
 import type { ProjectMeta, Character, Scene, Shot } from '../../types';

@@ -1,23 +1,25 @@
 /**
  * 应用类型 entry point
  *
- * P1#4 重构：原 types.ts (700 行上帝文件) 物理拆分到 types/ 子目录的多个主题文件，
+ * P1#4 拆分 + 阶段 1 清理后：原 700 行上帝文件已物理拆分到 types/ 子目录，
+ * 死代码（与 types/editor.ts 字段不兼容的旧 Clip/Track/Timeline/Keyframe/
+ * MediaType/EasingType + 0 消费者的 CacheInfo/VideoResult）已删除。
+ *
  * 本文件保留作为兼容的统一 import path（"import { X } from '../types'" 不变），
- * 仅做 re-export + 保留 timeline / workflow / voice / 结果 等少量未拆分的杂项。
+ * 主要做 re-export + 少量未拆分小类型（EditorStep / WorkflowProgress / AppPage /
+ * Voice / TTSOptions / AudioResult / ITVOptions / ProgressInfo）。
  *
  * 已拆出主题：
  *   types/project.ts          Project / Episode / ThemePreset / ProjectMeta / SaveStatus 等
  *   types/scene-character.ts  Character / Scene / Prop / Shot / ShotVersion 等
  *   types/task.ts             AsyncTask 系列
  *   types/provider-config.ts  各 Config / AppSettings / *ProviderType 等
+ *   types/asset-library.ts    Asset (项目级素材库；与 types/editor.ts 的 Asset 不同实体)
  *   types/media.ts            StoredMediaAsset / Provider*Request / MediaSlots 等
  *
- * 仍留在本文件的：
- *   - 旧 timeline 数据模型（Clip / Track / Timeline / Keyframe / MediaType / EasingType）
- *     注意：与 types/editor.ts 中同名定义并行存在，且 EasingType 一边是 type union
- *     一边是 enum；统一属于"数据模型重构"epic，不在本次拆分范围内
- *   - WorkflowProgress / EditorStep / AppPage / Voice / Asset / CacheInfo / VideoResult
- *     等独立小类型
+ * 应用内 timeline 数据模型现住在 types/editor.ts (Clip/Track/Asset 剪映兼容形态)
+ * 与 types/track.ts (TrackLine/TrackKeyframe 形态)，分别服务不同 UI 通路；
+ * 它们的统一属于独立"数据模型重构"epic（阶段 2，待讨论）。
  */
 
 // ========== Re-export from types/ subdirectory ==========
@@ -122,93 +124,9 @@ export type {
 // 编辑器当前的步骤状态 (3步流程)
 export type EditorStep = 'assets' | 'storyboard' | 'video';
 
-// ========== 时间线相关类型（旧数据模型）==========
-//
-// TODO: 与 types/editor.ts 中的同名定义重复（且 EasingType 一边是 type 一边是 enum）。
-// 当前两套数据模型并行使用：本文件的供 trackStore；types/editor.ts 的供 SimpleEditor。
-// 统一属于独立"数据模型重构"epic，不在 P1#4 范围内。
+// ========== 项目素材库 ==========
 
-export type MediaType = 'video' | 'audio' | 'image' | 'text' | 'subtitle' | 'sticker';
-
-export type EasingType =
-  | 'linear'
-  | 'ease'
-  | 'ease-in'
-  | 'ease-out'
-  | 'ease-in-out'
-  | 'cubic-bezier';
-
-export interface Keyframe {
-  id: string;
-  time: number;           // 相对于 clip 起点的时间（毫秒）
-  property: string;       // 属性名：position.x, scale, rotation, opacity 等
-  value: number;
-  easing: EasingType;
-  bezierPoints?: [number, number, number, number]; // cubic-bezier 控制点
-}
-
-export interface Clip {
-  id: string;
-  trackId: string;
-  type: MediaType;
-  name: string;
-  startTime: number;      // 在时间线上的起始位置（毫秒）
-  duration: number;       // 持续时长（毫秒）
-  sourceStart?: number;   // 素材内的起始位置（毫秒）
-  sourceDuration?: number;// 素材原始时长（毫秒）
-  sourcePath: string;     // 素材文件路径
-  thumbnailPath?: string; // 缩略图路径
-  // 变换属性
-  position: { x: number; y: number };
-  scale: number;
-  rotation: number;
-  opacity: number;
-  // 关键帧
-  keyframes: Keyframe[];
-  // 文字/字幕专用
-  text?: string;
-  fontFamily?: string;
-  fontSize?: number;
-  fontColor?: string;
-  backgroundColor?: string;
-}
-
-export interface Track {
-  id: string;
-  name: string;
-  type: 'video' | 'audio' | 'subtitle';
-  order?: number;           // 轨道层级顺序
-  muted: boolean;
-  locked: boolean;
-  visible: boolean;
-  height: number;         // 轨道显示高度
-  clips: Clip[];
-}
-
-export interface Timeline {
-  id: string;
-  duration: number;       // 总时长（毫秒）
-  tracks: Track[];
-  fps: number;            // 帧率
-  resolution: { width: number; height: number };
-}
-
-// ========== 素材库类型 ==========
-
-export interface Asset {
-  id: string;
-  name: string;
-  type: MediaType;
-  path: string;           // 文件路径
-  thumbnailPath?: string;
-  duration?: number;      // 视频/音频时长
-  size: number;           // 文件大小（字节）
-  width?: number;
-  height?: number;
-  createdAt: number;
-  md5?: string;           // 用于去重
-  refCount: number;       // 引用计数
-}
+export type { Asset } from './types/asset-library';
 
 // ========== 工作流类型 ==========
 
@@ -236,16 +154,6 @@ export type AppPage =
   | 'editor'              // 编辑器
   | 'settings'            // 设置
   | 'export';             // 导出
-
-// ========== 缓存信息 ==========
-
-export interface CacheInfo {
-  type: 'thumbnail' | 'waveform' | 'preview';
-  hash: string;
-  path: string;
-  size: number;
-  createdAt: number;
-}
 
 // ========== TTS 类型 ==========
 
@@ -300,16 +208,6 @@ export interface ITVOptions {
   width?: number;
   height?: number;
   seed?: number;
-}
-
-export interface VideoResult {
-  url: string;
-  path: string;
-  duration: number;
-  width: number;
-  height: number;
-  fps: number;
-  taskId?: string;
 }
 
 export interface ProgressInfo {
