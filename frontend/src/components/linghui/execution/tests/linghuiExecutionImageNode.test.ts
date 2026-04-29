@@ -65,18 +65,38 @@ describe('executeImageNode', () => {
     expect(batchCall?.variants.map(variant => variant.label)).toEqual(['#1', '#2', '#3', '#4']);
 
     const prompts = batchCall?.variants.map(variant => variant.prompt) ?? [];
+    const identityBlueprintKeywords = [
+      ['long oval face shape', 'almond eyes', 'narrow nose bridge', 'thin lips', 'refined jawline'],
+      ['rounder heart-shaped face', 'large round eyes', 'small button nose', 'fuller lips', 'soft tapered jawline'],
+      ['square face shape', 'deep-set eyes', 'prominent straight nose bridge', 'firm mouth', 'strong jawline'],
+      ['sharp V-shaped face', 'upturned eyes', 'refined narrow nose bridge', 'medium lips', 'pointed chin'],
+    ];
+
     expect(new Set(prompts).size).toBe(4);
     prompts.forEach((variantPrompt, index) => {
       const candidateIndex = index + 1;
       expect(variantPrompt).toContain('主提示词');
       expect(variantPrompt).toContain(`Linghui draw candidate #${candidateIndex}`);
       expect(variantPrompt).toContain(`This request generates candidate #${candidateIndex} only`);
+      expect(variantPrompt).toContain(`candidate #${candidateIndex}`);
+      expect(variantPrompt).toContain('distinct facial identity');
+      expect(variantPrompt).toContain('do not reuse the same face template');
+      expect(variantPrompt).toContain('face shape');
+      expect(variantPrompt).toContain('eye shape');
+      expect(variantPrompt).toContain('nose');
+      expect(variantPrompt).toContain('mouth');
+      expect(variantPrompt).toContain('jawline');
       expect(variantPrompt).toContain(`Variation option ${candidateIndex}`);
       expect(variantPrompt).toContain('This request generates exactly one candidate image only.');
       expect(variantPrompt).toContain('Do not create a grid, collage, contact sheet');
       expect(variantPrompt).toContain('no multi-panel');
       expect(variantPrompt).toContain('no identical clone');
       expect(variantPrompt).toContain('no same face repeated');
+    });
+    identityBlueprintKeywords.forEach((keywords, index) => {
+      keywords.forEach((keyword) => {
+        expect(prompts[index]).toContain(keyword);
+      });
     });
 
     expect(executionProviders.generateImagesWithProvider).not.toHaveBeenCalled();

@@ -77,28 +77,28 @@ const IMAGE_SINGLE_CANDIDATE_OUTPUT_CONSTRAINT = [
 
 const IMAGE_BATCH_VARIATION_OPTION_BLUEPRINTS = [
   [
-    'Variation direction: identity cues, face silhouette, facial structure.',
-    'Keep the same prompt-locked subject, but vary signature markers, head silhouette, jawline, cheekbone, brow, eye, nose, and mouth relationships for a clearly different candidate read.',
+    'Variation direction: candidate #1 distinct facial identity blueprint.',
+    'Identity recipe: long oval face shape, high cheekbones, almond eyes, straight brows over a clean brow bone, narrow nose bridge with a tapered tip, thin lips with a restrained mouth shape, refined jawline with a slim chin, smooth high hairline with an elongated hair silhouette, calm and aloof temperament. Facial identity must not match any other candidate in this draw; do not reuse the same face template.',
   ],
   [
-    'Variation direction: hair silhouette, expression, pose.',
-    'Keep the same gender, age range, and outfit category, but vary hairstyle silhouette, bangs/volume/flow, facial expression, gesture, posture, and body rhythm.',
+    'Variation direction: candidate #2 distinct facial identity blueprint.',
+    'Identity recipe: rounder heart-shaped face, softly raised cheekbones, large round eyes, soft arched brows with a gentle brow bone, small button nose with a short bridge, fuller lips with a bright mouth shape, soft tapered jawline with a neat chin, rounded hairline with a buoyant hair silhouette, warm and bright temperament. Facial identity must not match any other candidate in this draw; do not reuse the same face template.',
   ],
   [
-    'Variation direction: wardrobe/accessory detail, lighting, composition.',
-    'Keep the same clothing category and world setting, but vary garment cut emphasis, material layering, accessory hierarchy, lighting direction, value grouping, crop, and framing.',
+    'Variation direction: candidate #3 distinct facial identity blueprint.',
+    'Identity recipe: square face shape, angular cheekbones, deep-set eyes, thick straight brows with a pronounced brow bone, prominent straight nose bridge with a firm tip, firm mouth with medium-thin lips, strong jawline with a broad chin, low squared hairline with a blocky hair silhouette, stern and disciplined temperament. Facial identity must not match any other candidate in this draw; do not reuse the same face template.',
   ],
   [
-    'Variation direction: background atmosphere, camera angle, staging.',
-    'Keep the same style and genre, but vary background mood, environmental accents, camera angle, depth staging, foreground/background separation, and composition energy.',
+    'Variation direction: candidate #4 distinct facial identity blueprint.',
+    'Identity recipe: sharp V-shaped face, carved cheekbones, upturned eyes, sharply arched brows over a lifted brow bone, refined narrow nose bridge with a pointed tip, medium lips with a sly mouth shape, crisp jawline with a pointed chin, clean widow peak hairline with a tapered hair silhouette, sly and confident temperament. Facial identity must not match any other candidate in this draw; do not reuse the same face template.',
   ],
   [
-    'Variation direction: profile read, emotion intensity, hand posing.',
-    'Keep the same character identity, but vary three-quarter/profile read, emotional tone, hand pose, negative space, and rim-light treatment.',
+    'Variation direction: candidate #5 distinct facial identity blueprint.',
+    'Identity recipe: broad face shape, low wide cheekbones, hooded eyes, heavy brows with a dense brow bone, blunt nose bridge with a broad tip, wide mouth with flatter lips, sturdy jawline with a blunt chin, low straight hairline with a wide hair silhouette, grounded and stoic temperament. Facial identity must not match any other candidate in this draw; do not reuse the same face template.',
   ],
   [
-    'Variation direction: accessory hierarchy, fabric motion, scene mood.',
-    'Keep the same subject and costume class, but vary emblem placement, prop prominence, cloth flow, atmospheric effects, and color temperature.',
+    'Variation direction: candidate #6 distinct facial identity blueprint.',
+    'Identity recipe: delicate narrow face, gentle cheekbones, drooping eyes, soft low brows with a subtle brow bone, small narrow nose bridge with a softened tip, small mouth with soft lips, slim jawline with a short rounded chin, wispy uneven hairline with a compact hair silhouette, gentle and melancholic temperament. Facial identity must not match any other candidate in this draw; do not reuse the same face template.',
   ],
 ] as const;
 
@@ -126,9 +126,11 @@ function buildBatchVariantPrompt(prompt: string, count: number, index: number): 
     appendSingleCandidateOutputConstraint(prompt),
     `Linghui draw candidate #${candidateIndex} of ${count}.`,
     `This request generates candidate #${candidateIndex} only.`,
+    `Design a distinct facial identity for candidate #${candidateIndex}. Do not share face shape, eye shape, nose, mouth, jawline, eyebrow structure, cheekbone pattern, hairline silhouette, or overall face template with other candidates. Facial identity must not match any other candidate in this draw; do not reuse the same face template.`,
     `Variation option ${candidateIndex}: ${blueprint[0]}`,
     blueprint[1],
-    'Keep the original prompt locked on the same main subject, gender, age range, outfit category, world setting, and overall style/theme. Do not drift into a different subject, costume class, or genre.',
+    'Keep the original prompt locked on the same main subject, gender, age range, outfit category, world setting, and overall style/theme. Do not drift into a different gender, age group, species, subject, costume class, or genre.',
+    'Preserve the original clothing category, narrative premise, and rendering style while only changing the candidate-specific facial identity recipe and compatible styling accents.',
     'Make this candidate visibly different from the other batch candidates at thumbnail size.',
     'Forbidden: no grid, no collage, no contact sheet, no multi-panel, no identical clone, no same face repeated.',
   ].join('\n');
