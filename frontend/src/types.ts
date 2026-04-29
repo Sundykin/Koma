@@ -1,17 +1,26 @@
-import type {
-  CharacterMediaSlots,
-  MediaOwnerRef,
-  PropMediaSlots,
-  SceneMediaSlots,
-  ShotMediaState,
-  ShotVersionMediaState,
-  StoredMediaAsset,
-} from './types/media';
-import type {
-  ChannelConfig,
-  MediaDefaults,
-  MediaModelSelection,
-} from './providers/channel/types';
+/**
+ * 应用类型 entry point
+ *
+ * P1#4 重构：原 types.ts (700 行上帝文件) 物理拆分到 types/ 子目录的多个主题文件，
+ * 本文件保留作为兼容的统一 import path（"import { X } from '../types'" 不变），
+ * 仅做 re-export + 保留 timeline / workflow / voice / 结果 等少量未拆分的杂项。
+ *
+ * 已拆出主题：
+ *   types/project.ts          Project / Episode / ThemePreset / ProjectMeta / SaveStatus 等
+ *   types/scene-character.ts  Character / Scene / Prop / Shot / ShotVersion 等
+ *   types/task.ts             AsyncTask 系列
+ *   types/provider-config.ts  各 Config / AppSettings / *ProviderType 等
+ *   types/media.ts            StoredMediaAsset / Provider*Request / MediaSlots 等
+ *
+ * 仍留在本文件的：
+ *   - 旧 timeline 数据模型（Clip / Track / Timeline / Keyframe / MediaType / EasingType）
+ *     注意：与 types/editor.ts 中同名定义并行存在，且 EasingType 一边是 type union
+ *     一边是 enum；统一属于"数据模型重构"epic，不在本次拆分范围内
+ *   - WorkflowProgress / EditorStep / AppPage / Voice / Asset / CacheInfo / VideoResult
+ *     等独立小类型
+ */
+
+// ========== Re-export from types/ subdirectory ==========
 
 export type {
   MediaKind,
@@ -50,368 +59,74 @@ export {
   isRemoteMediaUri,
 } from './types/media';
 
-export type StylePresetSourceType = 'builtin' | 'custom';
+export type {
+  StylePresetSourceType,
+  ProjectStyleSnapshot,
+  Project,
+  EpisodeStepProgress,
+  Episode,
+  EpisodeAnalysis,
+  EpisodeRef,
+  ThemePreset,
+  StorageConfig,
+  ProjectMeta,
+  RecentProject,
+  SaveStatus,
+  ProjectSaveState,
+} from './types/project';
 
-export interface ProjectStyleSnapshot {
-  id: string;
-  name: string;
-  description: string;
-  ttiStylePrefix: string;
-  llmPromptSuffix: string;
-  sourceType: StylePresetSourceType;
-  sourcePresetId: string;
-  createdAt: number;
-}
+export type {
+  AssetTimestampRange,
+  CharacterGender,
+  Character,
+  Scene,
+  Prop,
+  ShotVideo,
+  Shot,
+  ScriptAnalysisResult,
+  ShotVersion,
+  ShotMeta,
+} from './types/scene-character';
 
-// 项目接口定义
-export interface Project {
-  id: string;
-  title: string;
-  genre: string;     // 题材类型
-  mode?: 'drama' | 'narration'; // 叙事模式：剧情模式 | 旁白解说模式
-  episodes: number;  // 集数
-  lastEdited: string;// 最后编辑时间
-  thumbnail: string; // 封面图
-  status: 'script' | 'storyboard' | 'generating' | 'completed'; // 项目状态
-  mediaSelections?: Partial<Record<'llm' | 'tti' | 'itv' | 'tts', MediaModelSelection>>;
-  aspectRatio?: '16:9' | '9:16'; // 项目画面比例（创建时确定，不可更改）
-  stylePresetId?: string;   // 选中的全局风格 ID
-  styleSnapshot?: ProjectStyleSnapshot; // 项目风格快照
-  // @deprecated 遗留字段，仅保留给未改造调用点过渡
-  theme?: string;
-  // @deprecated 遗留字段，仅保留给未改造调用点过渡
-  stylePrompt?: string;
-  episodeCount?: number;    // 实际剧集数（用于剧集管理）
-}
+export type {
+  AsyncTaskType,
+  AsyncTaskStatus,
+  AsyncTaskTargetType,
+  AsyncTask,
+} from './types/task';
 
-// 剧集步骤进度 (3步流程: assets → storyboard → video)
-export interface EpisodeStepProgress {
-  assets: 'pending' | 'completed';
-  storyboard: 'pending' | 'completed';
-  video: 'pending' | 'completed';
-}
+export type {
+  ModelProviderType,
+  LLMProviderType,
+  TTIProviderType,
+  ITVProviderType,
+  TTSProviderType,
+  MediaProviderConfig,
+  TTIModelConfig,
+  ITVModelConfig,
+  TTSModelConfig,
+  ResolvedTTIConfig,
+  ResolvedITVConfig,
+  ResolvedTTSConfig,
+  ProviderPreset,
+  LLMModelConfig,
+  LLMChannelPreset,
+  ModelConfig,
+  TTSConfig,
+  ITVConfig,
+  AppSettings,
+} from './types/provider-config';
 
-// 剧集接口定义
-export interface Episode {
-  id: string;
-  projectId: string;
-  number: number;           // 集数编号
-  title: string;            // 剧集标题
-  scriptText?: string;      // 本集剧本
-  status: 'draft' | 'script' | 'storyboard' | 'generating' | 'completed';
-  stepProgress?: EpisodeStepProgress;  // 各步骤完成状态
-  createdAt: number;
-  updatedAt: number;
-  // 剧集解析数据引用（实际数据存储在 episodes/{id}/analysis.json）
-  hasAnalysis?: boolean;
-}
-
-// 剧集解析结果（存储在 episodes/{id}/analysis.json）
-export interface EpisodeAnalysis {
-  episodeId: string;
-  // 引用项目级资产（ID 引用，非复制）
-  characterRefs: string[];
-  sceneRefs: string[];
-  propRefs: string[];
-  completedStages?: Array<'characters' | 'scenes' | 'props' | 'shots'>;
-  // 剧集特有的分镜
-  shots: Shot[];
-  createdAt: number;
-  updatedAt: number;
-}
-
-// 资产引用追踪
-export interface EpisodeRef {
-  episodeId: string;
-  episodeName: string;
-  firstAppearance: boolean;
-  shotIds?: string[];
-}
-
-// 主题预设接口
-export interface ThemePreset {
-  id: string;
-  name: string;
-  description: string;
-  ttiStylePrefix: string;   // TTI 提示词风格前缀
-  llmPromptSuffix: string;  // LLM 提示词风格后缀
-  previewImage?: string;    // 预览图
-}
-
-// 资产时间戳范围（用于 Sora2 角色提取）
-export interface AssetTimestampRange {
-  start: number; // 起始时间（秒）
-  end: number;   // 结束时间（秒），与 start 间隔不超过 3 秒
-}
-
-export type CharacterGender = 'male' | 'female' | 'neutral' | 'unknown';
-
-// 角色接口定义
-export interface Character {
-  id: string;
-  name: string;
-  role: 'protagonist' | 'antagonist' | 'supporting'; // 主角 | 反派 | 配角
-  prompt: string;      // 核心视觉提示词
-
-  age?: string;
-  gender?: CharacterGender;
-  description?: string; 
-  appearance?: string;
-  
-  voiceId?: string;    // TTS 音色 ID
-  media?: CharacterMediaSlots; // 结构化媒体槽位
-  sora2CharacterId?: string;  // 角色提取API返回的ID
-  timestampRange?: AssetTimestampRange; // Sora2 提取时间范围
-  // 剧集引用追踪
-  episodeRefs?: EpisodeRef[];
-  fingerprint?: string;       // 资产指纹（用于去重）
-}
-
-// 场景接口定义
-export interface Scene {
-  id: string;
-  name: string;
-  prompt: string;     // 核心提示词
-
-  location?: string;
-  time?: 'day' | 'night' | 'twilight'; 
-  mood?: string;
-  description?: string;
-
-  media?: SceneMediaSlots; // 结构化媒体槽位
-  // 剧集引用追踪
-  episodeRefs?: EpisodeRef[];
-  fingerprint?: string;
-}
-
-// 道具接口定义
-export interface Prop {
-  id: string;
-  name: string;
-  prompt: string;     // 核心提示词
-
-  type?: string;
-  description?: string;
-
-  media?: PropMediaSlots; // 结构化媒体槽位
-  // Sora2 绑定相关
-  sora2PropId?: string;        // Sora2 道具 ID
-  timestampRange?: AssetTimestampRange; // Sora2 提取时间范围
-  // 剧集引用追踪
-  episodeRefs?: EpisodeRef[];
-  fingerprint?: string;
-}
-
-// 分镜视频版本
-export interface ShotVideo {
-  path: string;
-  url?: string;        // 远程URL
-  thumbnailPath?: string;
-  prompt?: string;
-  seed?: number;
-  model?: string;
-  asset?: StoredMediaAsset;
-  createdAt: number;
-}
-
-// 分镜/镜头接口定义
-export interface Shot {
-  id: string;
-  scriptContent: string; // 对应的剧本原文
-  shotType: 'close-up' | 'medium' | 'wide' | 'extreme-wide'; // 特写 | 中景 | 全景 | 大全景
-  cameraMovement: 'static' | 'pan' | 'zoom-in' | 'tracking' | 'handheld'; // 固定 | 摇镜 | 推镜 | 跟随 | 手持
-  duration: number;      // 持续时长(秒)
-  imagePrompt?: string;  // 图片生成提示词
-  videoPrompt?: string;  // 视频生成提示词
-  imageMode?: 'normal' | 'grid'; // 图片生成模式：普通模式 | 九宫格模式（默认 normal）
-  media?: ShotMediaState; // 结构化媒体槽位
-  // 关联资产
-  characters: string[];  // 涉及的角色ID
-  scenes?: string[];     // 涉及的场景ID（可在 UI 中编辑）
-  dialogue?: string;     // 台词（用于 TTS）
-  emotion?: string;      // 情绪标签
-  props?: string[];      // 涉及的道具ID
-  confirmed?: boolean;   // 是否已确认（用于入轨）
-  seed?: number;         // 生成种子（用于复现）
-  currentVersion?: number; // 当前版本号（兼容旧数据）
-}
-
-// 剧本分析结果接口
-export interface ScriptAnalysisResult {
-  characters: Character[];
-  scenes: Scene[];
-  props: Prop[];
-  shots: Shot[];
-}
+// ========== 编辑器步骤（待 P0#3 续刀彻底数据驱动） ==========
 
 // 编辑器当前的步骤状态 (3步流程)
 export type EditorStep = 'assets' | 'storyboard' | 'video';
 
-// ========== 模型设置相关类型 ==========
-
-/**
- * Provider 类型标识。真源是 frontend/src/providers/{llm,tti,itv,tts}/index.ts 中
- * 注册到 ProviderRegistry 的 ProviderDefinition.type；Registry 同时承载内置与插件，
- * 因此这里不再维护字面量 union（避免与 Registry 漂移），保留语义别名供调用点标注。
- *
- * - LLMProviderType  使用底层协议路由标识（'openai-compatible' | 'gemini' | 'claude'）
- * - ModelProviderType / TTI / ITV / TTS  使用渠道 ID（'sora2' / 'kling' / 'edge-tts' …）
- */
-export type ModelProviderType = string;
-export type LLMProviderType = string;
-export type TTIProviderType = string;
-export type ITVProviderType = string;
-export type TTSProviderType = string;
-
-// 通用媒体配置基类
-export interface MediaProviderConfig {
-  id: string;
-  name: string;
-  apiKey?: string;
-  baseUrl?: string;
-  /**
-   * 主进程侧 ChannelConfig 主键；由前端 resolver 填入。
-   * Provider 发起 HTTP 请求时应通过 `x-koma-channel-id` Header 携带此值，
-   * 由主进程 NetController 解密后自动注入 Authorization。
-   * 明文 apiKey 不出主进程。
-   */
-  profileId?: string;
-  /**
-   * Optional prompt compilation protocol.
-   * When set, MediaGenerationService may compile prompt + align reference arrays before provider.start().
-   */
-  promptProtocol?: 'grok-image-index';
-  isDefault: boolean;
-  createdAt: number;
-  updatedAt: number;
-}
-
-// TTI 配置（文生图）
-export interface TTIModelConfig extends MediaProviderConfig {
-  provider: TTIProviderType;
-  workflowPath?: string;           // ComfyUI 工作流文件路径
-  workflowMapping?: Record<string, string>; // 节点映射 { prompt: "node_id", negative: "node_id", ... }
-  modelName?: string;
-  defaultSize?: string;            // "1024x1024"
-  defaultSteps?: number;
-}
-
-// ITV 配置（图生视频）
-export interface ITVModelConfig extends MediaProviderConfig {
-  provider: ITVProviderType;
-  modelName?: string;
-  workflowPath?: string;           // ComfyUI AnimateDiff 工作流
-  workflowMapping?: Record<string, string>;
-  defaultDuration?: number;        // 默认时长（秒）
-  defaultResolution?: string;      // "1280x720"
-}
-
-// 解析后的配置类型（区分内置和插件渠道）
-export type ResolvedTTIConfig =
-  | (TTIModelConfig & { source: 'builtin' })
-  | (TTIModelConfig & { source: 'channel'; channelConfig: import('./providers/channel/types').ChannelConfig });
-
-export type ResolvedITVConfig =
-  | (ITVModelConfig & { source: 'builtin' })
-  | (ITVModelConfig & { source: 'channel'; channelConfig: import('./providers/channel/types').ChannelConfig });
-
-export type ResolvedTTSConfig =
-  | (TTSModelConfig & { source: 'builtin' })
-  | (TTSModelConfig & { source: 'channel'; channelConfig: import('./providers/channel/types').ChannelConfig });
-
-// TTS 配置（语音合成）
-export interface TTSModelConfig extends MediaProviderConfig {
-  provider: TTSProviderType;
-  modelName?: string;
-  defaultVoice?: string;
-  defaultSpeed?: number;           // 0.5-2.0
-}
-
-// 厂商预设
-export interface ProviderPreset {
-  id: string;
-  name: string;
-  baseUrl?: string;
-  models?: string[];
-}
-
-// LLM 模型配置（新版，支持多模型管理）
-export interface LLMModelConfig {
-  id: string;
-  name: string;                              // 用户自定义名称
-  provider: LLMProviderType;
-  profileId?: string;
-  hasStoredCredential?: boolean;
-  baseUrl?: string;                          // API 地址，openai-compatible 必填
-  apiKey: string;
-  modelName: string;                         // 模型名称
-  isDefault: boolean;
-  createdAt: number;
-  updatedAt: number;
-}
-
-// OpenAI 兼容渠道预设
-export interface LLMChannelPreset {
-  id: string;
-  name: string;
-  baseUrl: string;
-  /**
-   * Optional suggestion list. Do not rely on this for actual runtime models.
-   * Models are maintained per-channel in settings (ChannelConfig.models).
-   */
-  models?: string[];
-}
-
-
-export interface ModelConfig {
-  provider: ModelProviderType;
-  profileId?: string;
-  hasStoredCredential?: boolean;
-  apiKey: string;
-  baseUrl?: string;
-  modelName: string;
-  temperature?: number;
-  maxTokens?: number;
-}
-
-export interface TTSConfig {
-  provider: TTSProviderType;
-  apiKey?: string;
-  baseUrl?: string;
-  modelName?: string;
-  defaultVoice?: string;
-  profileId?: string; // 渠道凭据代理 ID（与 ITVConfig/TTIModelConfig 对齐）；仅远程 TTS（OpenAI/Fish）使用
-}
-
-export interface ITVConfig {
-  provider: ITVProviderType;
-  name?: string;
-  apiKey?: string;
-  baseUrl?: string;
-  modelName?: string;
-  defaultDuration?: number;  // 默认视频时长（秒）
-  defaultResolution?: string; // 默认分辨率
-  profileId?: string; // 渠道凭据代理 ID（与 MediaProviderConfig 对齐），主进程通过 x-koma-channel-id 解密注入 Authorization
-  /**
-   * Optional prompt compilation protocol.
-   * When set, videoRequestCompiler will compile @mentions into protocol-specific tokens
-   * (e.g. 'grok-image-index' rewrites `@角色名` → `@Image N` and caps additionalReferences to 3).
-   */
-  promptProtocol?: 'grok-image-index';
-}
-
-export interface AppSettings {
-  channelConfigs: ChannelConfig[];
-  mediaDefaults?: MediaDefaults;
-  promptTemplates?: Record<string, {
-    template: string;
-    updatedAt: number;
-  }>;
-  customThemePresets?: ThemePreset[];  // 用户自定义视觉风格预设
-  stylePrompts?: { prompt: string; isDefault?: boolean }[];  // 风格提示词列表
-}
-
-// ========== 时间线相关类型 ==========
+// ========== 时间线相关类型（旧数据模型）==========
+//
+// TODO: 与 types/editor.ts 中的同名定义重复（且 EasingType 一边是 type 一边是 enum）。
+// 当前两套数据模型并行使用：本文件的供 trackStore；types/editor.ts 的供 SimpleEditor。
+// 统一属于独立"数据模型重构"epic，不在 P1#4 范围内。
 
 export type MediaType = 'video' | 'audio' | 'image' | 'text' | 'subtitle' | 'sticker';
 
@@ -522,56 +237,7 @@ export type AppPage =
   | 'settings'            // 设置
   | 'export';             // 导出
 
-// ========== 存储相关类型 ==========
-
-export interface StorageConfig {
-  rootPath: string;       // 存储根目录
-  version: number;        // 存储格式版本
-}
-
-export interface ProjectMeta {
-  id: string;
-  title: string;
-  genre: string;
-  mode: 'drama' | 'narration';
-  createdAt: number;
-  updatedAt: number;
-  thumbnailPath?: string;
-  mediaSelections?: Partial<Record<'llm' | 'tti' | 'itv' | 'tts', MediaModelSelection>>;
-  aspectRatio?: '16:9' | '9:16';
-  stylePresetId?: string; // 选中的全局风格 ID
-  styleSnapshot?: ProjectStyleSnapshot;
-  // @deprecated 遗留字段，仅保留给未改造调用点过渡
-  theme?: string;
-  // @deprecated 遗留字段，仅保留给未改造调用点过渡
-  stylePrompt?: string;
-}
-
-export interface RecentProject {
-  id: string;
-  title: string;
-  path: string;
-  lastOpened: number;
-  thumbnailPath?: string;
-}
-
-export interface ShotVersion {
-  version: number;
-  media?: ShotVersionMediaState; // 结构化媒体槽位
-  prompt: string;
-  seed: number;
-  model: string;
-  createdAt: number;
-}
-
-export interface ShotMeta {
-  id: string;
-  prompt: string;
-  seed: number;
-  model: string;
-  currentVersion: number;
-  versions: ShotVersion[];
-}
+// ========== 缓存信息 ==========
 
 export interface CacheInfo {
   type: 'thumbnail' | 'waveform' | 'preview';
@@ -582,6 +248,8 @@ export interface CacheInfo {
 }
 
 // ========== TTS 类型 ==========
+
+import type { TTSProviderType } from './types/provider-config';
 
 export interface Voice {
   id: string;
@@ -650,51 +318,5 @@ export interface ProgressInfo {
   progress: number;
   estimatedTime?: number;
   resultUrl?: string;
-  error?: string;
-}
-
-// ========== 异步任务类型 ==========
-
-export type AsyncTaskType = 'tti' | 'itv' | 'tts' | 'character-extraction';
-export type AsyncTaskStatus = 'pending' | 'processing' | 'completed' | 'failed';
-export type AsyncTaskTargetType = 'character' | 'scene' | 'prop' | 'shot';
-
-export interface AsyncTask {
-  id: string;
-  projectId: string;
-  type: AsyncTaskType;
-  targetType: AsyncTaskTargetType;
-  targetId: string;
-  targetName?: string;        // 用于显示通知
-  remoteTaskId: string;       // 远程API返回的任务ID
-  channelId?: string;
-  modelId?: string;
-  capability?: string;
-  /**
-   * 任务结果的归属信息，用于重启恢复后把结果回写到对应实体的结构化媒体槽位。
-   * 新创建的媒体任务 SHOULD 设置该字段，避免在各工作流/Provider 层写兼容分支。
-   */
-  ownerRef?: MediaOwnerRef;
-  status: AsyncTaskStatus;
-  progress: number;
-  /**
-   * 物化后的结构化媒体资产。用于恢复后绑定与后续链路统一读取。
-   */
-  resultAsset?: StoredMediaAsset;
-  error?: string;
-  retryCount: number;
-  maxRetries: number;
-  createdAt: number;
-  updatedAt: number;
-}
-
-// ========== 保存状态类型 ==========
-
-export type SaveStatus = 'saved' | 'saving' | 'dirty' | 'error';
-
-export interface ProjectSaveState {
-  projectId: string;
-  status: SaveStatus;
-  lastSavedAt?: number;
   error?: string;
 }
