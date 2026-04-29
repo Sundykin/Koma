@@ -1,7 +1,7 @@
 /**
  * 历史对话侧边栏
  */
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useEffect, useCallback, useMemo } from 'react';
 import { Button, Empty, Tooltip, Popconfirm } from 'antd';
 import { PlusOutlined, DeleteOutlined, MessageOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
@@ -37,40 +37,39 @@ function _useFormatTime() {
   };
 }
 
-// 按时间分组
-function useGroupSessions() {
-  const { t } = useTranslation();
+// 按时间分组（纯函数；i18n label 由调用方注入，避免依赖不稳定的 t 引用）
+function groupSessionsByTime(
+  sessions: SessionMeta[],
+  labels: { today: string; yesterday: string; last7Days: string; earlier: string },
+): { label: string; sessions: SessionMeta[] }[] {
+  const now = Date.now();
+  const day = 24 * 60 * 60 * 1000;
 
-  return (sessions: SessionMeta[]): { label: string; sessions: SessionMeta[] }[] => {
-    const now = Date.now();
-    const day = 24 * 60 * 60 * 1000;
+  const today: SessionMeta[] = [];
+  const yesterday: SessionMeta[] = [];
+  const week: SessionMeta[] = [];
+  const older: SessionMeta[] = [];
 
-    const today: SessionMeta[] = [];
-    const yesterday: SessionMeta[] = [];
-    const week: SessionMeta[] = [];
-    const older: SessionMeta[] = [];
-
-    for (const session of sessions) {
-      const diff = now - session.updatedAt;
-      if (diff < day) {
-        today.push(session);
-      } else if (diff < 2 * day) {
-        yesterday.push(session);
-      } else if (diff < 7 * day) {
-        week.push(session);
-      } else {
-        older.push(session);
-      }
+  for (const session of sessions) {
+    const diff = now - session.updatedAt;
+    if (diff < day) {
+      today.push(session);
+    } else if (diff < 2 * day) {
+      yesterday.push(session);
+    } else if (diff < 7 * day) {
+      week.push(session);
+    } else {
+      older.push(session);
     }
+  }
 
-    const groups: { label: string; sessions: SessionMeta[] }[] = [];
-    if (today.length > 0) groups.push({ label: t('chat.today'), sessions: today });
-    if (yesterday.length > 0) groups.push({ label: t('chat.yesterday'), sessions: yesterday });
-    if (week.length > 0) groups.push({ label: t('chat.last7Days'), sessions: week });
-    if (older.length > 0) groups.push({ label: t('chat.earlier'), sessions: older });
+  const groups: { label: string; sessions: SessionMeta[] }[] = [];
+  if (today.length > 0) groups.push({ label: labels.today, sessions: today });
+  if (yesterday.length > 0) groups.push({ label: labels.yesterday, sessions: yesterday });
+  if (week.length > 0) groups.push({ label: labels.last7Days, sessions: week });
+  if (older.length > 0) groups.push({ label: labels.earlier, sessions: older });
 
-    return groups;
-  };
+  return groups;
 }
 
 export const HistorySidebar: React.FC<HistorySidebarProps> = ({
@@ -79,9 +78,7 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
   onNewChat,
 }) => {
   const { t } = useTranslation();
-  const groupSessions = useGroupSessions();
   const { sessions, currentSessionId: storeCurrentSessionId, loadSessions, deleteSession, setCurrentSession } = useChatHistoryStore();
-  const [groups, setGroups] = useState<{ label: string; sessions: SessionMeta[] }[]>([]);
 
   // 优先使用 props 传入的 currentSessionId
   const currentSessionId = propCurrentSessionId ?? storeCurrentSessionId;
@@ -91,10 +88,16 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
     loadSessions();
   }, [loadSessions]);
 
-  // 分组会话
-  useEffect(() => {
-    setGroups(groupSessions(sessions));
-  }, [sessions, groupSessions]);
+  // 分组会话（用 useMemo 替代 useState + useEffect 同步，避免 t 引用每次变化导致死循环）
+  const groups = useMemo(
+    () => groupSessionsByTime(sessions, {
+      today: t('chat.today'),
+      yesterday: t('chat.yesterday'),
+      last7Days: t('chat.last7Days'),
+      earlier: t('chat.earlier'),
+    }),
+    [sessions, t],
+  );
 
   // 选择会话
   const handleSelect = useCallback((session: SessionMeta) => {
