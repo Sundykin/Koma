@@ -10,7 +10,10 @@ import {
   type LinghuiTextNodeProperties,
   type LinghuiVideoCapability,
 } from '../../../../types/linghui';
-import { compileLinghuiPromptReferences } from '../../editors/state/linghuiPromptReferences';
+import {
+  collectLinghuiPromptReferenceImageSources,
+  compileLinghuiPromptReferences,
+} from '../../editors/state/linghuiPromptReferences';
 import {
   formatLinghuiScriptShots,
   parseLinghuiScriptContent,
@@ -534,15 +537,17 @@ export async function executeImageNode(
     };
   }
 
-  const referenceSources = collectReferenceSources(node.getAllInputImages());
+  const upstreamReferenceSources = collectReferenceSources(node.getAllInputImages());
   const textSnippets = collectTextSnippets(node.getAllInputResults(1));
   const promptReferences = node.getPromptReferences();
+  const promptReferenceSources = collectLinghuiPromptReferenceImageSources(promptReferences);
+  const referenceSources = mergeUniqueSources(upstreamReferenceSources, promptReferenceSources);
   const explicitPrompt = mergePromptWithTextInputs(prompt, textSnippets);
   const effectivePrompt = mergePromptWithTextInputs(prompt || node.title, textSnippets);
   const count = batchCount;
 
   if (multiAngleConfig) {
-    if (!referenceSources.length) {
+    if (!upstreamReferenceSources.length) {
       imageExecutionLogger.warn('灵绘图片节点多角度执行缺少上游图片，保持失败', {
         nodeId: node.id,
         title: node.title,
@@ -555,7 +560,7 @@ export async function executeImageNode(
 
     const image = await generateImageWithProvider({
       prompt: explicitPrompt,
-      referenceSources,
+      referenceSources: upstreamReferenceSources,
       ttiSelection,
       promptReferences: [],
       settingsSnapshot: node.settingsSnapshot,

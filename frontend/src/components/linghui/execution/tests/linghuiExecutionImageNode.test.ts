@@ -18,7 +18,20 @@ vi.mock('../state/linghuiImageSimilarity', () => ({
   analyzeLinghuiImageBatchSimilarity: (...args: unknown[]) => analyzeLinghuiImageBatchSimilarityMock(...args),
 }));
 
-function createNode(batchCount: number): ExecutionNodeView {
+function createNode(
+  batchCount: number,
+  options: {
+    prompt?: string;
+    inputImages?: ReturnType<ExecutionNodeView['getAllInputImages']>;
+    promptReferences?: ReturnType<ExecutionNodeView['getPromptReferences']>;
+  } = {},
+): ExecutionNodeView {
+  const {
+    prompt = '主提示词',
+    inputImages = [],
+    promptReferences = [],
+  } = options;
+
   return {
     id: 'image-node-1',
     type: 'linghui/image',
@@ -26,7 +39,7 @@ function createNode(batchCount: number): ExecutionNodeView {
     properties: {
       mode: 'generate',
       source: '',
-      prompt: '主提示词',
+      prompt,
       ttiSelection: 'channel-image::model-image',
       batchCount,
     },
@@ -34,13 +47,13 @@ function createNode(batchCount: number): ExecutionNodeView {
       return [];
     },
     getAllInputImages() {
-      return [];
+      return inputImages;
     },
     getInputResult() {
       return undefined;
     },
     getPromptReferences() {
-      return [];
+      return promptReferences;
     },
   };
 }
@@ -146,6 +159,66 @@ describe('executeImageNode', () => {
     }
   });
 
+  it('批量 variants 会把 prompt editor 里的图片引用并入 referenceSources', async () => {
+    const { executeImageNode } = await import('../state/linghuiExecutionNodeExecutors');
+    const executionProviders = await import('../state/linghuiExecutionProviders');
+    const promptReferences = [
+      {
+        id: 'prompt-ref-1',
+        nodeId: 'ref-node',
+        kind: 'image',
+        name: '角色参考图',
+        source: {
+          kind: 'image',
+          remoteUrl: 'https://cdn.example.com/prompt-ref.png',
+          localPath: '/tmp/prompt-ref.png',
+          createdAt: 1,
+        },
+      },
+      {
+        id: 'prompt-ref-2',
+        nodeId: 'ref-node',
+        kind: 'image',
+        name: '上游重复图',
+        source: 'https://cdn.example.com/upstream.png',
+      },
+      {
+        id: 'prompt-ref-text',
+        nodeId: 'text-node',
+        kind: 'text',
+        name: '文案引用',
+        textValue: '忽略这个文本引用',
+      },
+    ] as any;
+    const inputImages = [
+      {
+        kind: 'image',
+        primary: {
+          kind: 'image',
+          source: 'https://cdn.example.com/upstream.png',
+        },
+      },
+    ] as any;
+
+    vi.mocked(executionProviders.generateImageVariantsWithProvider).mockResolvedValue([
+      { kind: 'image', source: 'https://cdn.example.com/1.png', label: '#1' } as any,
+      { kind: 'image', source: 'https://cdn.example.com/2.png', label: '#2' } as any,
+      { kind: 'image', source: 'https://cdn.example.com/3.png', label: '#3' } as any,
+      { kind: 'image', source: 'https://cdn.example.com/4.png', label: '#4' } as any,
+    ]);
+
+    await executeImageNode(createNode(4, { inputImages, promptReferences }));
+
+    expect(executionProviders.generateImageVariantsWithProvider).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(executionProviders.generateImageVariantsWithProvider).mock.calls[0]?.[0]).toEqual(expect.objectContaining({
+      promptReferences,
+      referenceSources: [
+        'https://cdn.example.com/upstream.png',
+        'https://cdn.example.com/prompt-ref.png',
+      ],
+    }));
+  });
+
   it('检测到重复候选时只重抽重复位置，并用更强 retry prompt 替换结果', async () => {
     const { executeImageNode } = await import('../state/linghuiExecutionNodeExecutors');
     const executionProviders = await import('../state/linghuiExecutionProviders');
@@ -216,20 +289,43 @@ describe('executeImageNode', () => {
     }
   });
 
-  it('单张生成仍保持原有 generateImageWithProvider 路径', async () => {
+  it('单张生成会把 prompt editor 里的图片引用并入 provider referenceSources', async () => {
     const { executeImageNode } = await import('../state/linghuiExecutionNodeExecutors');
     const executionProviders = await import('../state/linghuiExecutionProviders');
+    const promptReferences = [
+      {
+        id: 'prompt-ref-local',
+        nodeId: 'ref-node',
+        kind: 'image',
+        name: '本地参考图',
+        source: '/tmp/prompt-local.png',
+      },
+    ] as any;
+    const inputImages = [
+      {
+        kind: 'image',
+        primary: {
+          kind: 'image',
+          source: 'https://cdn.example.com/upstream.png',
+        },
+      },
+    ] as any;
 
     vi.mocked(executionProviders.generateImageWithProvider).mockResolvedValue(
       { kind: 'image', source: 'https://cdn.example.com/single.png' } as any,
     );
 
-    const result = await executeImageNode(createNode(1));
+    const result = await executeImageNode(createNode(1, { inputImages, promptReferences }));
 
     expect(executionProviders.generateImageWithProvider).toHaveBeenCalledTimes(1);
     expect(executionProviders.generateImageWithProvider).toHaveBeenCalledWith(expect.objectContaining({
       prompt: '主提示词',
       ttiSelection: 'channel-image::model-image',
+      promptReferences,
+      referenceSources: [
+        'https://cdn.example.com/upstream.png',
+        '/tmp/prompt-local.png',
+      ],
     }));
     expect(executionProviders.generateImagesWithProvider).not.toHaveBeenCalled();
     expect(executionProviders.generateImageVariantsWithProvider).not.toHaveBeenCalled();

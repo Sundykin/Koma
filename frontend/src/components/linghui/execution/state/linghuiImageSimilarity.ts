@@ -9,6 +9,12 @@ const FACE_CROP = {
   width: 0.6,
   height: 0.6,
 } as const;
+const UPPER_FRAME_CROP = {
+  x: 0.12,
+  y: 0,
+  width: 0.76,
+  height: 0.52,
+} as const;
 const FULL_CROP = {
   x: 0,
   y: 0,
@@ -16,14 +22,24 @@ const FULL_CROP = {
   height: 1,
 } as const;
 
-const FACE_HASH_MAX_DISTANCE = 6;
-const FACE_HASH_STRICT_MAX_DISTANCE = 4;
-const FRAME_HASH_MAX_DISTANCE = 8;
-const FRAME_HASH_STRICT_MAX_DISTANCE = 12;
-const FACE_COLOR_MAX_DISTANCE = 42;
-const FACE_COLOR_STRICT_MAX_DISTANCE = 28;
-const FACE_LUMA_MAX_DELTA = 18;
-const FACE_CONTRAST_MAX_DELTA = 18;
+const FACE_HASH_MAX_DISTANCE = 8;
+const FACE_HASH_STRICT_MAX_DISTANCE = 5;
+const FACE_AVERAGE_HASH_MAX_DISTANCE = 10;
+const FACE_AVERAGE_HASH_STRICT_MAX_DISTANCE = 6;
+const FRAME_HASH_MAX_DISTANCE = 10;
+const FRAME_HASH_STRICT_MAX_DISTANCE = 7;
+const FRAME_AVERAGE_HASH_MAX_DISTANCE = 12;
+const UPPER_FRAME_HASH_MAX_DISTANCE = 10;
+const UPPER_FRAME_HASH_STRICT_MAX_DISTANCE = 7;
+const UPPER_FRAME_AVERAGE_HASH_MAX_DISTANCE = 10;
+const FACE_COLOR_MAX_DISTANCE = 52;
+const FACE_COLOR_STRICT_MAX_DISTANCE = 34;
+const UPPER_FRAME_COLOR_MAX_DISTANCE = 56;
+const FACE_LUMA_MAX_DELTA = 22;
+const UPPER_FRAME_LUMA_MAX_DELTA = 24;
+const FACE_CONTRAST_MAX_DELTA = 22;
+const UPPER_FRAME_CONTRAST_MAX_DELTA = 24;
+const DUPLICATE_SCORE_THRESHOLD = 11;
 
 type CropRect = {
   x: number;
@@ -34,6 +50,7 @@ type CropRect = {
 
 interface ImageSampleSignature {
   hash: string;
+  averageHash: string;
   meanLuma: number;
   meanColor: [number, number, number];
   contrast: number;
@@ -41,6 +58,7 @@ interface ImageSampleSignature {
 
 interface LinghuiImageSignature {
   face: ImageSampleSignature;
+  upperFrame: ImageSampleSignature;
   frame: ImageSampleSignature;
 }
 
@@ -68,6 +86,16 @@ export interface LinghuiImageSimilarityDuplicate {
   faceColorDistance: number;
   faceLumaDelta: number;
   faceContrastDelta: number;
+}
+
+interface LinghuiImageSimilarityMetrics extends LinghuiImageSimilarityDuplicate {
+  faceAverageHashDistance: number;
+  frameAverageHashDistance: number;
+  upperFrameHashDistance: number;
+  upperFrameAverageHashDistance: number;
+  upperFrameColorDistance: number;
+  upperFrameLumaDelta: number;
+  upperFrameContrastDelta: number;
 }
 
 export interface LinghuiImageBatchSimilarityResult {
@@ -141,8 +169,14 @@ function buildSampleSignature(data: Uint8ClampedArray, width: number, height: nu
     }
   }
 
+  let averageHash = '';
+  grayscale.forEach((value) => {
+    averageHash += value >= meanLuma ? '1' : '0';
+  });
+
   return {
     hash,
+    averageHash,
     meanLuma,
     meanColor: [
       totalRed / sampleCount,
@@ -206,14 +240,16 @@ async function createImageSignature(item: LinghuiImageMediaItem): Promise<Signat
   }
 
   const face = sampleImageRegion(image, FACE_CROP);
+  const upperFrame = sampleImageRegion(image, UPPER_FRAME_CROP);
   const frame = sampleImageRegion(image, FULL_CROP);
-  if (!face || !frame) {
+  if (!face || !upperFrame || !frame) {
     return { signature: null, reason: 'canvas-read-failed' };
   }
 
   return {
     signature: {
       face,
+      upperFrame,
       frame,
     },
   };
@@ -246,32 +282,132 @@ function buildDuplicateMetrics(
   duplicateIndex: number,
   original: LinghuiImageSignature,
   candidate: LinghuiImageSignature,
-): LinghuiImageSimilarityDuplicate {
+): LinghuiImageSimilarityMetrics {
   return {
     originalIndex,
     duplicateIndex,
     faceHashDistance: computeHammingDistance(original.face.hash, candidate.face.hash),
+    faceAverageHashDistance: computeHammingDistance(original.face.averageHash, candidate.face.averageHash),
     frameHashDistance: computeHammingDistance(original.frame.hash, candidate.frame.hash),
+    frameAverageHashDistance: computeHammingDistance(original.frame.averageHash, candidate.frame.averageHash),
+    upperFrameHashDistance: computeHammingDistance(original.upperFrame.hash, candidate.upperFrame.hash),
+    upperFrameAverageHashDistance: computeHammingDistance(
+      original.upperFrame.averageHash,
+      candidate.upperFrame.averageHash,
+    ),
     faceColorDistance: computeColorDistance(original.face.meanColor, candidate.face.meanColor),
     faceLumaDelta: Math.abs(original.face.meanLuma - candidate.face.meanLuma),
     faceContrastDelta: Math.abs(original.face.contrast - candidate.face.contrast),
+    upperFrameColorDistance: computeColorDistance(
+      original.upperFrame.meanColor,
+      candidate.upperFrame.meanColor,
+    ),
+    upperFrameLumaDelta: Math.abs(original.upperFrame.meanLuma - candidate.upperFrame.meanLuma),
+    upperFrameContrastDelta: Math.abs(original.upperFrame.contrast - candidate.upperFrame.contrast),
   };
 }
 
-function isLikelyDuplicate(metrics: LinghuiImageSimilarityDuplicate): boolean {
-  const conservativeMatch = metrics.faceHashDistance <= FACE_HASH_MAX_DISTANCE
-    && metrics.frameHashDistance <= FRAME_HASH_MAX_DISTANCE
-    && metrics.faceColorDistance <= FACE_COLOR_MAX_DISTANCE
+function resolveSignalScore(
+  value: number,
+  strictMax: number,
+  relaxedMax: number,
+  strictScore: number,
+  relaxedScore: number,
+): number {
+  if (value <= strictMax) {
+    return strictScore;
+  }
+  if (value <= relaxedMax) {
+    return relaxedScore;
+  }
+  return 0;
+}
+
+function resolveDuplicateSignalScore(metrics: LinghuiImageSimilarityMetrics): number {
+  return (
+    resolveSignalScore(metrics.faceHashDistance, FACE_HASH_STRICT_MAX_DISTANCE, FACE_HASH_MAX_DISTANCE, 4, 3)
+    + resolveSignalScore(
+      metrics.faceAverageHashDistance,
+      FACE_AVERAGE_HASH_STRICT_MAX_DISTANCE,
+      FACE_AVERAGE_HASH_MAX_DISTANCE,
+      4,
+      3,
+    )
+    + resolveSignalScore(metrics.upperFrameHashDistance, UPPER_FRAME_HASH_STRICT_MAX_DISTANCE, UPPER_FRAME_HASH_MAX_DISTANCE, 3, 2)
+    + resolveSignalScore(metrics.upperFrameAverageHashDistance, 6, UPPER_FRAME_AVERAGE_HASH_MAX_DISTANCE, 3, 2)
+    + resolveSignalScore(metrics.frameHashDistance, FRAME_HASH_STRICT_MAX_DISTANCE, FRAME_HASH_MAX_DISTANCE, 2, 1)
+    + resolveSignalScore(metrics.frameAverageHashDistance, 8, FRAME_AVERAGE_HASH_MAX_DISTANCE, 2, 1)
+    + resolveSignalScore(metrics.faceColorDistance, FACE_COLOR_STRICT_MAX_DISTANCE, FACE_COLOR_MAX_DISTANCE, 2, 1)
+    + resolveSignalScore(metrics.upperFrameColorDistance, 40, UPPER_FRAME_COLOR_MAX_DISTANCE, 1, 1)
+    + resolveSignalScore(metrics.faceLumaDelta, 12, FACE_LUMA_MAX_DELTA, 1, 1)
+    + resolveSignalScore(metrics.upperFrameLumaDelta, 14, UPPER_FRAME_LUMA_MAX_DELTA, 1, 1)
+    + resolveSignalScore(metrics.faceContrastDelta, 12, FACE_CONTRAST_MAX_DELTA, 1, 1)
+    + resolveSignalScore(metrics.upperFrameContrastDelta, 14, UPPER_FRAME_CONTRAST_MAX_DELTA, 1, 1)
+  );
+}
+
+function resolveDuplicateDecision(metrics: LinghuiImageSimilarityMetrics): { isDuplicate: boolean; score: number } {
+  const faceStructuralMatch = metrics.faceHashDistance <= FACE_HASH_MAX_DISTANCE
+    && metrics.faceAverageHashDistance <= FACE_AVERAGE_HASH_MAX_DISTANCE;
+  const upperStructuralMatch = metrics.upperFrameHashDistance <= UPPER_FRAME_HASH_MAX_DISTANCE
+    || metrics.upperFrameAverageHashDistance <= UPPER_FRAME_AVERAGE_HASH_MAX_DISTANCE;
+  const frameStructuralMatch = metrics.frameHashDistance <= FRAME_HASH_MAX_DISTANCE
+    || metrics.frameAverageHashDistance <= FRAME_AVERAGE_HASH_MAX_DISTANCE;
+  const faceAppearanceMatch = metrics.faceColorDistance <= FACE_COLOR_MAX_DISTANCE
     && metrics.faceLumaDelta <= FACE_LUMA_MAX_DELTA
     && metrics.faceContrastDelta <= FACE_CONTRAST_MAX_DELTA;
+  const upperAppearanceMatch = metrics.upperFrameColorDistance <= UPPER_FRAME_COLOR_MAX_DISTANCE
+    && metrics.upperFrameLumaDelta <= UPPER_FRAME_LUMA_MAX_DELTA
+    && metrics.upperFrameContrastDelta <= UPPER_FRAME_CONTRAST_MAX_DELTA;
 
-  const strictFaceMatch = metrics.faceHashDistance <= FACE_HASH_STRICT_MAX_DISTANCE
-    && metrics.frameHashDistance <= FRAME_HASH_STRICT_MAX_DISTANCE
-    && metrics.faceColorDistance <= FACE_COLOR_STRICT_MAX_DISTANCE
-    && metrics.faceLumaDelta <= FACE_LUMA_MAX_DELTA
-    && metrics.faceContrastDelta <= FACE_CONTRAST_MAX_DELTA;
+  const aggressiveFaceMatch = metrics.faceHashDistance <= FACE_HASH_STRICT_MAX_DISTANCE
+    && metrics.faceAverageHashDistance <= FACE_AVERAGE_HASH_STRICT_MAX_DISTANCE
+    && upperStructuralMatch;
 
-  return conservativeMatch || strictFaceMatch;
+  const portraitMatch = faceStructuralMatch
+    && (upperStructuralMatch || frameStructuralMatch)
+    && (faceAppearanceMatch || upperAppearanceMatch);
+
+  const compositionMatch = metrics.frameHashDistance <= FRAME_HASH_MAX_DISTANCE
+    && metrics.upperFrameHashDistance <= UPPER_FRAME_HASH_MAX_DISTANCE
+    && metrics.faceAverageHashDistance <= FACE_AVERAGE_HASH_MAX_DISTANCE;
+
+  const score = resolveDuplicateSignalScore(metrics);
+
+  return {
+    isDuplicate: aggressiveFaceMatch
+      || portraitMatch
+      || compositionMatch
+      || (score >= DUPLICATE_SCORE_THRESHOLD && faceStructuralMatch && (upperStructuralMatch || frameStructuralMatch)),
+    score,
+  };
+}
+
+export function __testOnlyResolveLinghuiImageDuplicateDecision(
+  metrics: LinghuiImageSimilarityDuplicate & {
+    faceAverageHashDistance?: number;
+    frameAverageHashDistance?: number;
+    upperFrameHashDistance?: number;
+    upperFrameAverageHashDistance?: number;
+    upperFrameColorDistance?: number;
+    upperFrameLumaDelta?: number;
+    upperFrameContrastDelta?: number;
+  },
+): { isDuplicate: boolean; score: number } {
+  return resolveDuplicateDecision({
+    ...metrics,
+    faceAverageHashDistance: metrics.faceAverageHashDistance ?? Number.POSITIVE_INFINITY,
+    frameAverageHashDistance: metrics.frameAverageHashDistance ?? Number.POSITIVE_INFINITY,
+    upperFrameHashDistance: metrics.upperFrameHashDistance ?? Number.POSITIVE_INFINITY,
+    upperFrameAverageHashDistance: metrics.upperFrameAverageHashDistance ?? Number.POSITIVE_INFINITY,
+    upperFrameColorDistance: metrics.upperFrameColorDistance ?? Number.POSITIVE_INFINITY,
+    upperFrameLumaDelta: metrics.upperFrameLumaDelta ?? Number.POSITIVE_INFINITY,
+    upperFrameContrastDelta: metrics.upperFrameContrastDelta ?? Number.POSITIVE_INFINITY,
+  });
+}
+
+function isLikelyDuplicate(metrics: LinghuiImageSimilarityMetrics): boolean {
+  return resolveDuplicateDecision(metrics).isDuplicate;
 }
 
 export async function analyzeLinghuiImageBatchSimilarity(
