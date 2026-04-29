@@ -1,29 +1,16 @@
 /**
  * Engine 模块统一导出
+ *
+ * P1#2 清理：MediaEngine / PlaybackEngine / VideoRenderer / AudioController /
+ * KeyframeInterpolator / SnapEngine 在 src 中无任何消费者，作为死码删除。
+ *
+ * 当前实际在用：
+ *  - SimpleMediaEngine / SimpleVideoRenderer / SimpleAudioController（simpleEngine.ts）
+ *    由 components/editor/SimplePlayer.tsx 直接 new
+ *  - simpleKeyframe（用于 Clip 数据模型 / SimplePlayer 等）
+ *  - keyframe（用于 TrackLine 数据模型 / trackStore）
  */
 export * from './keyframe';
-export { VideoRenderer } from './VideoRenderer';
-export { AudioController } from './AudioController';
-export { MediaEngine } from './MediaEngine';
-export { PlaybackEngine } from './PlaybackEngine';
-export { KeyframeInterpolator } from './KeyframeInterpolator';
-export { SnapEngine, snapEngine } from './SnapEngine';
-export type { SnapPoint, SnapResult, SnapEngineOptions } from './SnapEngine';
-export type { PlaybackState, PlaybackCallback } from './MediaEngine';
-export type {
-  PlaybackConfig,
-  PlaybackState as NewPlaybackState,
-  PlaybackCallback as NewPlaybackCallback
-} from './PlaybackEngine';
-export type { KeyframeValues } from './KeyframeInterpolator';
-
 import keyframe from './keyframe';
-import VideoRenderer from './VideoRenderer';
-import AudioController from './AudioController';
-import MediaEngine from './MediaEngine';
-import PlaybackEngine from './PlaybackEngine';
-import KeyframeInterpolator from './KeyframeInterpolator';
-import { SnapEngine, snapEngine } from './SnapEngine';
-
 export { keyframe };
-export default { keyframe, VideoRenderer, AudioController, MediaEngine, PlaybackEngine, KeyframeInterpolator, SnapEngine, snapEngine };
+export default { keyframe };
