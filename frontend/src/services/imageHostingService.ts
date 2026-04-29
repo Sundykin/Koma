@@ -14,6 +14,7 @@ import { electronService } from './electronService';
 import { getDefaultChannelConfig, getChannelsByCapability } from '../store/globalStore';
 import { createProviderInstance, getProjectImageHostingProvider, listProviders } from '../providers';
 import type { ImageHostingProvider, ImageHostingUploadOptions, ImageHostingUploadResult } from '../providers/imageHosting/types';
+import { withRetry, withTimeout } from '../utils/retry';
 
 const logger = createLogger('ImageHosting');
 const IMAGE_HOSTING_UPLOAD_TIMEOUT_MS = 60_000;
@@ -22,24 +23,9 @@ let _recovering: Promise<void> | null = null;
 
 import { base64ToBytes } from '../utils/encoding';
 
-function delay(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  try {
-    return await Promise.race([
-      promise,
-      new Promise<T>((_, reject) => {
-        timer = setTimeout(() => reject(new Error(message)), timeoutMs);
-      }),
-    ]);
-  } finally {
-    if (timer) {
-      clearTimeout(timer);
-    }
-  }
+/** 后端 Provider 不存在时使用，从重试循环中拆出来用作"切换到前端 Provider"的信号。 */
+class BackendProviderMissingError extends Error {
+  readonly name = 'BackendProviderMissingError';
 }
 
 export async function getActiveImageHostingChannel() {
@@ -206,86 +192,84 @@ export async function uploadBytesToImageHostingWithRetry(
   // This avoids renderer CSP restrictions and keeps upload transport centralized.
   if (electronService.isElectron() && channel.source === 'plugin') {
     const payloadBytes = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
-    let lastBackendError = '';
-    let backendProviderMissing = false;
-
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      try {
-        logger.info('图床后端 Provider 上传开始', {
-          providerType: channel.providerType,
-          attempt,
-          bytes: payloadBytes.byteLength,
-          filename: options?.filename,
-        });
-        const result = await withTimeout(
-          electronService.ipc.invoke('controller/plugin/callProvider', {
-            kind: 'image-hosting',
-            type: channel.providerType,
-            method: 'uploadImage',
-            args: [channel.providerConfig || {}, payloadBytes, options],
-          }),
-          IMAGE_HOSTING_UPLOAD_TIMEOUT_MS,
-          `图床上传超时（>${IMAGE_HOSTING_UPLOAD_TIMEOUT_MS / 1000} 秒）`,
-        );
-
-        const normalized = result as ImageHostingUploadResult | null;
-        if (normalized?.success) {
-          logger.info('图床后端 Provider 上传成功', {
+    try {
+      return await withRetry(
+        async (attempt) => {
+          logger.info('图床后端 Provider 上传开始', {
             providerType: channel.providerType,
             attempt,
-            url: normalized.url,
+            bytes: payloadBytes.byteLength,
             filename: options?.filename,
           });
-          return normalized;
-        }
-        if (normalized && typeof normalized === 'object') {
-          lastBackendError = normalized.error || `未返回 success=true，原始结果: ${JSON.stringify(normalized)}`;
+          let result: ImageHostingUploadResult | null;
+          try {
+            result = await withTimeout(
+              electronService.ipc.invoke('controller/plugin/callProvider', {
+                kind: 'image-hosting',
+                type: channel.providerType,
+                method: 'uploadImage',
+                args: [channel.providerConfig || {}, payloadBytes, options],
+              }),
+              IMAGE_HOSTING_UPLOAD_TIMEOUT_MS,
+              `图床上传超时（>${IMAGE_HOSTING_UPLOAD_TIMEOUT_MS / 1000} 秒）`,
+            ) as ImageHostingUploadResult | null;
+          } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : String(err);
+            // 后端 Provider 不存在（仅前端入口的插件）— 跳出重试，回退到前端 Provider
+            if (msg.includes('Provider "') && msg.includes('not found')) {
+              throw new BackendProviderMissingError(msg);
+            }
+            logger.error('图床后端 Provider 调用抛错', {
+              providerType: channel.providerType,
+              attempt,
+              error: msg,
+              stack: err instanceof Error ? err.stack : undefined,
+            });
+            throw err instanceof Error ? err : new Error(msg);
+          }
+          if (result?.success) {
+            logger.info('图床后端 Provider 上传成功', {
+              providerType: channel.providerType,
+              attempt,
+              url: result.url,
+              filename: options?.filename,
+            });
+            return result;
+          }
+          const errMsg = result && typeof result === 'object'
+            ? (result.error || `未返回 success=true，原始结果: ${JSON.stringify(result)}`)
+            : `返回了不可识别结果: ${String(result)}`;
           logger.warn('图床后端 Provider 返回非成功结果', {
-            providerType: channel.providerType,
-            attempt,
-            result: normalized,
-          });
-        } else {
-          lastBackendError = `返回了不可识别结果: ${String(result)}`;
-          logger.warn('图床后端 Provider 返回不可识别结果', {
             providerType: channel.providerType,
             attempt,
             result,
           });
-        }
-      } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : String(err);
-        // Backend provider may not exist (e.g. plugin only has frontend entry). Only then
-        // should we fall back to renderer-side provider resolution.
-        if (msg.includes('Provider "') && msg.includes('not found')) {
-          backendProviderMissing = true;
-          lastBackendError = '';
-          logger.warn('图床后端 Provider 不存在，回退到前端 Provider', {
-            providerType: channel.providerType,
-          });
-          break;
-        }
-        logger.error('图床后端 Provider 调用抛错', {
+          throw new Error(errMsg);
+        },
+        {
+          maxAttempts: maxRetries,
+          initialDelayMs: 1000,
+          backoffMultiplier: 2,
+          shouldRetry: (err) => !(err instanceof BackendProviderMissingError),
+          onRetry: (err, attempt, wait) => {
+            const msg = err instanceof Error ? err.message : String(err);
+            logger.warn(`图床上传失败 (后端 Provider 尝试 ${attempt}/${maxRetries})，${wait}ms 后重试: ${msg}`);
+          },
+        },
+      );
+    } catch (err: unknown) {
+      if (err instanceof BackendProviderMissingError) {
+        logger.warn('图床后端 Provider 不存在，回退到前端 Provider', {
           providerType: channel.providerType,
-          attempt,
-          error: msg,
-          stack: err instanceof Error ? err.stack : undefined,
         });
-        lastBackendError = msg;
+        // 继续走前端 Provider 路径
+      } else {
+        const msg = err instanceof Error ? err.message : String(err);
+        return {
+          success: false,
+          error: `上传失败，已重试 ${maxRetries} 次: ${msg || '未知错误'}`,
+        };
       }
-
-      logger.warn(`图床上传失败 (后端 Provider 尝试 ${attempt}/${maxRetries}): ${lastBackendError}`);
-      if (attempt < maxRetries) {
-        const wait = 1000 * Math.pow(2, attempt - 1);
-        await delay(wait);
-      }
-    }
-
-    if (!backendProviderMissing) {
-      return {
-        success: false,
-        error: `上传失败，已重试 ${maxRetries} 次: ${lastBackendError || '未知错误'}`,
-      };
     }
   }
 
@@ -307,45 +291,48 @@ export async function uploadBytesToImageHostingWithRetry(
     };
   }
 
-  let lastError = '';
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    try {
-      logger.info('图床前端 Provider 上传开始', {
-        providerType: provider.type,
-        attempt,
-        bytes: bytes instanceof Uint8Array ? bytes.byteLength : bytes.byteLength,
-        filename: options?.filename,
-      });
-      const result = await withTimeout(
-        provider.uploadImage(bytes, options),
-        IMAGE_HOSTING_UPLOAD_TIMEOUT_MS,
-        `图床上传超时（>${IMAGE_HOSTING_UPLOAD_TIMEOUT_MS / 1000} 秒）`,
-      );
-      if (result.success) {
-        logger.info('图床前端 Provider 上传成功', {
+  try {
+    return await withRetry(
+      async (attempt) => {
+        logger.info('图床前端 Provider 上传开始', {
           providerType: provider.type,
           attempt,
-          url: result.url,
+          bytes: bytes instanceof Uint8Array ? bytes.byteLength : bytes.byteLength,
           filename: options?.filename,
         });
-        return result;
-      }
-      lastError = result.error || '未知错误';
-    } catch (err: unknown) {
-      lastError = err instanceof Error ? err.message : String(err);
-    }
-
-    logger.warn(`图床上传失败 (尝试 ${attempt}/${maxRetries}): ${lastError}`);
-    if (attempt < maxRetries) {
-      const wait = 1000 * Math.pow(2, attempt - 1);
-      await delay(wait);
-    }
+        const result = await withTimeout(
+          provider.uploadImage(bytes, options),
+          IMAGE_HOSTING_UPLOAD_TIMEOUT_MS,
+          `图床上传超时（>${IMAGE_HOSTING_UPLOAD_TIMEOUT_MS / 1000} 秒）`,
+        );
+        if (result.success) {
+          logger.info('图床前端 Provider 上传成功', {
+            providerType: provider.type,
+            attempt,
+            url: result.url,
+            filename: options?.filename,
+          });
+          return result;
+        }
+        throw new Error(result.error || '未知错误');
+      },
+      {
+        maxAttempts: maxRetries,
+        initialDelayMs: 1000,
+        backoffMultiplier: 2,
+        onRetry: (err, attempt, wait) => {
+          const msg = err instanceof Error ? err.message : String(err);
+          logger.warn(`图床上传失败 (尝试 ${attempt}/${maxRetries})，${wait}ms 后重试: ${msg}`);
+        },
+      },
+    );
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return {
+      success: false,
+      error: `上传失败，已重试 ${maxRetries} 次: ${msg}`,
+    };
   }
-
-  return {
-    success: false,
-    error: `上传失败，已重试 ${maxRetries} 次: ${lastError}`,
-  };
 }
 
 export async function uploadLocalFileToImageHosting(
