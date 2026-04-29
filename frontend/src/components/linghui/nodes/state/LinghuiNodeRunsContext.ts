@@ -3,6 +3,7 @@ import type { PointerEventHandler } from 'react';
 import type {
   LinghuiCanvasMode,
   LinghuiCanvasSelection,
+  LinghuiExecutionQueueState,
   LinghuiExecuteMultiAngleOptions,
   LinghuiGridType,
   LinghuiImageAssetItem,
@@ -163,6 +164,7 @@ export interface LinghuiNodeEditorApi {
   setActiveTool: (tool: LinghuiNodeToolState) => void;
   closeEditor: () => void;
   nodeRuns: Record<string, LinghuiNodeRunState>;
+  executionQueue?: LinghuiExecutionQueueState | null;
   workspaceId: string | null;
   onAssetLibraryMutate?: () => void;
   onRunNode: (nodeId: string) => void;
@@ -195,6 +197,7 @@ const noopNodeEditorApi: LinghuiNodeEditorApi = {
   setActiveTool: () => undefined,
   closeEditor: () => undefined,
   nodeRuns: {},
+  executionQueue: null,
   workspaceId: null,
   onRunNode: () => undefined,
   onDeriveScriptShots: () => undefined,

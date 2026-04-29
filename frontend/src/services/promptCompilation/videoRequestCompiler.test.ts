@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { uploadBytesToImageHostingWithRetry } from '../imageHostingService';
 import {
   buildVideoCapabilityRequest,
   compileWorkflowVideoDomainRequest,
@@ -6,7 +7,22 @@ import {
   resolveVideoProtocolCompilationLimit,
 } from './videoRequestCompiler';
 
+vi.mock('../imageHostingService', () => ({
+  uploadBytesToImageHostingWithRetry: vi.fn(async () => ({
+    success: false,
+    error: 'HTTP 404',
+  })),
+}));
+
 describe('videoRequestCompiler', () => {
+  beforeEach(() => {
+    vi.mocked(uploadBytesToImageHostingWithRetry).mockClear();
+    vi.mocked(uploadBytesToImageHostingWithRetry).mockResolvedValue({
+      success: false,
+      error: 'HTTP 404',
+    });
+  });
+
   it('buildVideoCapabilityRequest: validates capability-specific required fields', () => {
     expect(() => buildVideoCapabilityRequest({
       capability: 'video.image-to-video',
@@ -138,6 +154,31 @@ describe('videoRequestCompiler', () => {
         },
       },
     })).toBe(5);
+  });
+
+  it('mapVideoRequestToProviderRequest: falls back to data-url when required image-hosting upload fails', async () => {
+    const request = await mapVideoRequestToProviderRequest({
+      projectId: 'p1',
+      request: buildVideoCapabilityRequest({
+        capability: 'video.image-to-video',
+        prompt: 'demo',
+        primaryImage: { transport: 'data-url', value: 'data:image/png;base64,AA==' },
+        additionalReferences: [
+          { transport: 'data-url', value: 'data:image/png;base64,AQ==' },
+        ],
+      }),
+      transportSupport: {
+        primary: false,
+        additional: false,
+        reference: true,
+        start: true,
+        end: true,
+      },
+    });
+
+    expect(uploadBytesToImageHostingWithRetry).toHaveBeenCalledTimes(2);
+    expect(request.primaryImage?.transport).toBe('data-url');
+    expect(request.additionalReferences?.[0]?.transport).toBe('data-url');
   });
 
   it('mapVideoRequestToProviderRequest: respects capability shape and optional max reference cap', async () => {

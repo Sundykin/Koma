@@ -60,6 +60,45 @@ export function createLinghuiPromptReferenceString(id: string): string {
   return `@ref_${id}`;
 }
 
+function resolvePromptReferenceSourceValue(source?: MediaAssetSource): string | undefined {
+  if (!source) return undefined;
+  if (typeof source === 'string') {
+    const normalized = source.trim();
+    return normalized || undefined;
+  }
+
+  const remoteUrl = typeof source.remoteUrl === 'string' ? source.remoteUrl.trim() : '';
+  if (remoteUrl) {
+    return remoteUrl;
+  }
+
+  const localPath = typeof source.localPath === 'string' ? source.localPath.trim() : '';
+  return localPath || undefined;
+}
+
+export function collectLinghuiPromptReferenceImageSources(
+  references: LinghuiPromptReferenceItem[],
+): string[] {
+  const sources: string[] = [];
+  const dedupe = new Set<string>();
+  const pushSource = (candidate?: string) => {
+    const normalized = String(candidate ?? '').trim();
+    if (!normalized || dedupe.has(normalized)) return;
+    dedupe.add(normalized);
+    sources.push(normalized);
+  };
+
+  for (const item of references) {
+    if (item.kind !== 'image') {
+      continue;
+    }
+
+    pushSource(resolvePromptReferenceSourceValue(item.source) ?? item.previewSource);
+  }
+
+  return sources;
+}
+
 function buildRefKey(ref: MediaAssetSource | ProviderAssetInput): string {
   if (typeof ref === 'string') return ref;
   if (ref && typeof ref === 'object' && 'transport' in ref && 'value' in ref) {

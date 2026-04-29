@@ -1,6 +1,6 @@
 /**
  * 七牛云图床 Provider - 前端 UI + Runtime
- * 使用 Koma 激活 Key，请求 https://komaapi.com。配置面板不暴露 endpoint 与 apiKey。
+ * 使用 Koma 激活 Key 调用 ToAPIs 图片上传接口。配置面板不暴露 endpoint 与 apiKey。
  */
 
 import type { PluginAPI } from '@komastudio/plugin-sdk';
@@ -21,7 +21,7 @@ const { Title, Text, Paragraph } = Typography;
 
 // ========== 常量 ==========
 
-const KOMA_UPLOAD_ENDPOINT = 'https://komaapi.com/v1/uploads/image';
+const UPLOAD_ENDPOINT = 'https://toapis.com/v1/uploads/images';
 
 interface QiniuConfig {
   enabled: boolean;
@@ -30,6 +30,62 @@ interface QiniuConfig {
 const DEFAULT_CONFIG: QiniuConfig = {
   enabled: true,
 };
+
+interface UploadResponseBody {
+  success?: boolean;
+  message?: string;
+  error?: string | { message?: string };
+  msg?: string;
+  url?: string;
+  data?: {
+    url?: string;
+    filename?: string;
+    key?: string;
+    hash?: string;
+    size?: number;
+  };
+}
+
+async function parseUploadResponse(resp: Response): Promise<UploadResponseBody | null> {
+  let text = '';
+  try {
+    text = await resp.text();
+  } catch {
+    return null;
+  }
+
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+
+  try {
+    return JSON.parse(trimmed) as UploadResponseBody;
+  } catch {
+    return { message: trimmed };
+  }
+}
+
+function extractUploadMessage(result: UploadResponseBody | null): string {
+  const candidates = [
+    result?.message,
+    typeof result?.error === 'string' ? result.error : result?.error?.message,
+    result?.msg,
+  ];
+  const message = candidates.find((item) => typeof item === 'string' && item.trim());
+  return typeof message === 'string' ? message.trim() : '';
+}
+
+function formatUploadError(resp: Response, result: UploadResponseBody | null): string {
+  if (resp.status === 401 || resp.status === 403) {
+    return `激活 Key 无效或无图床权限，请重新激活/检查套餐权限 (HTTP ${resp.status})`;
+  }
+
+  if (resp.status === 404) {
+    return `上传接口不存在/端点配置错误: ${UPLOAD_ENDPOINT} (HTTP ${resp.status})`;
+  }
+
+  const message = extractUploadMessage(result);
+  return message ? `${message} (HTTP ${resp.status})` : `上传失败 (HTTP ${resp.status})`;
+}
 
 // ========== UI 组件 ==========
 
@@ -134,7 +190,7 @@ function QiniuProvider({ api }: QiniuProviderProps) {
       '七牛云图床（内置）'
     ),
     React.createElement(Paragraph, { type: 'secondary' },
-      '默认图床。调用 Koma 激活通道 (komaapi.com) 将图片上传到七牛云 Kodo，返回带时间戳防盗链签名的 URL（默认 3 天有效期）。API Key 自动复用您的激活 Key，无需额外填写。'
+      '默认图床。使用激活 Key 调用 ToAPIs 上传接口，将图片上传到七牛云 Kodo，返回带时间戳防盗链签名的 URL（默认 3 天有效期）。无需额外填写 API Key。'
     ),
 
     React.createElement(Divider),
@@ -181,13 +237,13 @@ function QiniuProvider({ api }: QiniuProviderProps) {
           name: 'enabled',
           label: '启用图床',
           valuePropName: 'checked',
-          extra: '启用后，手动上传的图片资产将自动经由 Koma 激活通道上传到七牛云',
+          extra: '启用后，手动上传的图片资产将自动通过 ToAPIs 上传到七牛云 Kodo',
         }, React.createElement(Switch, { checkedChildren: '已启用', unCheckedChildren: '已禁用' })),
 
         React.createElement(Form.Item, {
           label: '上传接口',
-          extra: '固定使用 Koma 激活通道，无法修改',
-        }, React.createElement(Text, { code: true }, KOMA_UPLOAD_ENDPOINT)),
+          extra: '固定使用 ToAPIs 官方图片上传接口，无法修改',
+        }, React.createElement(Text, { code: true }, UPLOAD_ENDPOINT)),
 
         React.createElement(Form.Item, {
           label: 'API Key',
@@ -225,7 +281,7 @@ function QiniuProvider({ api }: QiniuProviderProps) {
       message: '使用说明',
       description: React.createElement('ul', { style: { margin: 0, paddingLeft: 20 } },
         React.createElement('li', null, '本插件为内置图床，无需单独安装'),
-        React.createElement('li', null, 'API Key 即 Koma 激活 Key，上传调用不消耗额度'),
+        React.createElement('li', null, 'API Key 即 Koma 激活 Key，上传调用由 ToAPIs 图床接口校验'),
         React.createElement('li', null, '上传失败会自动重试 3 次'),
         React.createElement('li', null, '返回的 URL 自带时间戳防盗链签名，有效期 3 天')
       ),
@@ -300,16 +356,17 @@ class QiniuImageHostingRuntime {
       const formData = new FormData();
       formData.append('file', blob, filename);
 
-      const resp = await this.fetcher(KOMA_UPLOAD_ENDPOINT, {
+      const resp = await this.fetcher(UPLOAD_ENDPOINT, {
         method: 'POST',
         headers: { Authorization: `Bearer ${apiKey}` },
         body: formData,
       });
-      const result = (await resp.json()) as any;
-      if (result?.success && result?.data?.url) {
-        return { success: true, url: result.data.url, data: result.data };
+      const result = await parseUploadResponse(resp);
+      const uploadedUrl = result?.data?.url || result?.url;
+      if (result?.success && uploadedUrl) {
+        return { success: true, url: uploadedUrl, data: result.data || { url: uploadedUrl } };
       }
-      return { success: false, error: result?.message || `上传失败 (HTTP ${resp.status})` };
+      return { success: false, error: formatUploadError(resp, result) };
     } catch (err: any) {
       return { success: false, error: err?.message || '网络请求失败' };
     }
@@ -334,7 +391,7 @@ async function onActivate(api: PluginAPI) {
       type: 'qiniu-image-hosting',
       kind: 'image-hosting' as any,
       name: '七牛云图床（内置）',
-      description: '经由 Koma 激活通道 (https://komaapi.com) 上传到七牛云 Kodo，支持时间戳防盗链',
+      description: '使用激活 Key 调用 ToAPIs 上传接口，返回七牛云 Kodo 外链并支持时间戳防盗链',
       capabilities: ['image-hosting'] as any[],
       defaultConfig: DEFAULT_CONFIG,
       factory: (config: any, ctx: any) => new QiniuImageHostingRuntime(config, { ...ctx, api }),

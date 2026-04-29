@@ -1,5 +1,6 @@
 import type {
   LinghuiCanvasSelection,
+  LinghuiExecutionQueueState,
   LinghuiExecuteMultiAngleOptions,
   LinghuiGridType,
   LinghuiImageAssetItem,
@@ -22,6 +23,7 @@ export interface LinghuiCanvasOverlaysProps {
   setActiveNodeTool: (tool: LinghuiNodeToolState) => void;
   onCloseEditor: () => void;
   nodeRuns: Record<string, LinghuiNodeRunState>;
+  executionQueue?: LinghuiExecutionQueueState | null;
   workspaceId: string | null;
   onAssetLibraryMutate?: () => void;
   canvasRect: DOMRect | null;

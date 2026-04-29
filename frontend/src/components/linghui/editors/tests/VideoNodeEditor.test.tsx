@@ -1,6 +1,6 @@
 import React from 'react';
 import { App } from 'antd';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { LinghuiNodeData, LinghuiNodeRunState } from '../../../../types/linghui';
 import { VideoNodeEditor } from '../components/VideoNodeEditor';
@@ -12,6 +12,7 @@ const {
   serializeMediaSelectionMock,
   clearNodeRunStateMock,
   updateNodeDataMock,
+  useLinghuiNodeEditorApiMock,
 } = vi.hoisted(() => ({
   loadSettingsMock: vi.fn(),
   listConfiguredModelSelectOptionsMock: vi.fn(),
@@ -19,6 +20,7 @@ const {
   serializeMediaSelectionMock: vi.fn(),
   clearNodeRunStateMock: vi.fn(),
   updateNodeDataMock: vi.fn(),
+  useLinghuiNodeEditorApiMock: vi.fn(),
 }));
 
 vi.mock('../../../../store/settings/core', () => ({
@@ -53,6 +55,7 @@ vi.mock('../../nodes/state/LinghuiNodeRunsContext', () => ({
     clearNodeRunState: clearNodeRunStateMock,
     updateNodeData: updateNodeDataMock,
   }),
+  useLinghuiNodeEditorApi: () => useLinghuiNodeEditorApiMock(),
 }));
 
 function createVideoNodeData(overrides?: Partial<LinghuiNodeData['properties']>): LinghuiNodeData {
@@ -89,6 +92,7 @@ function renderEditor(
     activeTool?: 'upscale' | 'analyze' | 'compose' | null;
     onToolChange?: (tool: any) => void;
     nodeRun?: LinghuiNodeRunState;
+    onRun?: () => void;
   },
 ) {
   return render(
@@ -103,7 +107,7 @@ function renderEditor(
         promptReferences={[]}
         activeTool={options?.activeTool ?? null}
         onToolChange={options?.onToolChange ?? vi.fn()}
-        onRun={vi.fn()}
+        onRun={options?.onRun ?? vi.fn()}
       />
     </App>
   );
@@ -124,6 +128,7 @@ describe('VideoNodeEditor', () => {
     ]);
     getDefaultMediaSelectionMock.mockReturnValue(null);
     serializeMediaSelectionMock.mockReturnValue('');
+    useLinghuiNodeEditorApiMock.mockReturnValue({ executionQueue: null });
   });
 
   it('带本地 source 的视频节点直接进入透传态并清空激活工具', async () => {
@@ -166,6 +171,56 @@ describe('VideoNodeEditor', () => {
     expect(screen.queryByText('提示词')).not.toBeInTheDocument();
     expect(screen.queryByText('模型与参数')).not.toBeInTheDocument();
     expect(screen.queryByText('生成结果')).not.toBeInTheDocument();
+  });
+
+  it('命中当前执行队列时会禁用生成按钮并显示等待文案', async () => {
+    const onRun = vi.fn();
+    useLinghuiNodeEditorApiMock.mockReturnValue({
+      executionQueue: {
+        status: 'running',
+        total: 1,
+        targetNodeIds: ['video-node-1'],
+        queuedNodeIds: ['video-node-1'],
+        runningNodeIds: [],
+        completedNodeIds: [],
+        failedNodeIds: [],
+        canceledNodeIds: [],
+      },
+    });
+
+    renderEditor(createVideoNodeData(), { onRun });
+
+    const button = await screen.findByRole('button', { name: /等待视频生成/ });
+    expect(button).toBeDisabled();
+    fireEvent.click(button);
+    expect(onRun).not.toHaveBeenCalled();
+    expect(screen.getAllByText('等待视频生成…').length).toBeGreaterThan(0);
+  });
+
+  it('运行中时会把进度文案显示到生成按钮上', async () => {
+    useLinghuiNodeEditorApiMock.mockReturnValue({
+      executionQueue: {
+        status: 'running',
+        total: 1,
+        targetNodeIds: ['video-node-1'],
+        queuedNodeIds: [],
+        runningNodeIds: ['video-node-1'],
+        completedNodeIds: [],
+        failedNodeIds: [],
+        canceledNodeIds: [],
+      },
+    });
+
+    renderEditor(createVideoNodeData(), {
+      nodeRun: {
+        status: 'running',
+        progress: 42,
+        message: '视频生成中',
+      },
+    });
+
+    const button = await screen.findByRole('button', { name: /视频生成中 42%/ });
+    expect(button).toBeDisabled();
   });
 
   it('生成态视频节点即便已有输出结果也只保留摘要和下载动作', async () => {

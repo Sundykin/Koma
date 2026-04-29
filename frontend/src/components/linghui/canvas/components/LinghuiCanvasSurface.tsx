@@ -63,6 +63,7 @@ export function LinghuiCanvasSurface({
     setActiveTool: overlayProps.setActiveNodeTool,
     closeEditor: overlayProps.onCloseEditor,
     nodeRuns: overlayProps.nodeRuns,
+    executionQueue: overlayProps.executionQueue,
     workspaceId: overlayProps.workspaceId,
     onAssetLibraryMutate: overlayProps.onAssetLibraryMutate,
     onRunNode: overlayProps.onRunNode,

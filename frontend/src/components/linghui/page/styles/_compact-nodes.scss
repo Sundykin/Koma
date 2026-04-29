@@ -3,6 +3,12 @@
 
 /* Compact node presentation and grid split overlay */
 
+@keyframes linghuiCompactSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .linghuiCompactNode,
 .linghuiRFNode {
   &[data-view-mode='collapsed']::after,
@@ -607,8 +613,18 @@
   &ThumbCaption {
     @include lh-chip(28px, 0 12px, rgba(9, 13, 18, 0.68), #e2e8f0, 12px, 600);
 
+    gap: 6px;
     line-height: 1.35;
     backdrop-filter: blur(10px);
+
+    &.isRunning {
+      background: rgba(29, 78, 216, 0.26);
+      color: #dbeafe;
+    }
+  }
+
+  &InlineSpinner {
+    animation: linghuiCompactSpin 1s linear infinite;
   }
 
   &TextThumb,

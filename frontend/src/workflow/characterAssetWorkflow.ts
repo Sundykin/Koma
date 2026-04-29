@@ -34,6 +34,7 @@ const ADULT_AGE_THRESHOLD = 18;
 const YEARS_OLD_AGE_PATTERN = /\b(\d{1,3})\s+years old\b/i;
 const STRUCTURED_GENDER_AGE_LOCK_LABEL = 'Structured gender and age lock (MANDATORY)';
 const GENDER_AGE_OVERRIDE_TEXT = 'Structured gender/age fields override conflicting free-text details, role notes, appearance notes, and candidate variation wording.';
+const AGE_CLASS_LOCK_TEXT = 'Do not age up, age down, or switch age class.';
 const COSTUME_VARIATION_ROLE_LOCK = 'Keep the same role brief, occupation, costume direction, three-view model-sheet structure and project style; do not turn this into a different character role or asset type.';
 
 const BINARY_GENDER_LOCK_TEXT = {
@@ -41,13 +42,13 @@ const BINARY_GENDER_LOCK_TEXT = {
     adult: 'adult male / adult man',
     nonAdultOrUnknownAge: 'male character',
     readableAs: 'male',
-    negativeLock: 'Negative gender lock: not female, not woman, not girl, not female-coded.',
+    negativeLock: 'Negative gender lock: not female, not woman, not girl, not female-coded, not feminine body, not female clothing.',
   },
   female: {
     adult: 'adult female / adult woman',
     nonAdultOrUnknownAge: 'female character',
     readableAs: 'female',
-    negativeLock: 'Negative gender lock: not male, not man, not boy, not male-coded.',
+    negativeLock: 'Negative gender lock: not male, not man, not boy, not male-coded, not masculine body, not male clothing.',
   },
 } as const;
 
@@ -84,9 +85,11 @@ const FACE_CANDIDATE_ROLE_LOCK_CLAUSES = [
   'costume collar and shoulder details may appear only as category cues, not as full outfit design',
 ];
 
+const FACE_CANDIDATE_NOISE_NEGATIVE_CONSTRAINTS = 'no visual noise, no TV static, no glitch, no corrupted image, no abstract texture-only output, no random pixel pattern';
+
 const FACE_CANDIDATE_CLOSING_CLAUSES = [
   'plain neutral background, studio concept art, high readability',
-  'negative constraints: no three-view turnaround, no front/side/back layout, no full body, no full-body model sheet, no final costume sheet, no character turnaround sheet, no multiple poses, no group shot',
+  `negative constraints: no three-view turnaround, no front/side/back layout, no full body, no full-body model sheet, no final costume sheet, no character turnaround sheet, no multiple poses, no group shot, ${FACE_CANDIDATE_NOISE_NEGATIVE_CONSTRAINTS}`,
 ];
 
 function appendCandidateVariationPrompt(prompt: string, variationPrompt?: string): string {
@@ -181,14 +184,15 @@ function buildCharacterCandidateGenderAgeGuardrail(character: Character, ageClau
       return [
         `${STRUCTURED_GENDER_AGE_LOCK_LABEL}: ${getBinaryGenderLockTerms(gender, ageClause)}${ageText}; the face must clearly read as ${lockText.readableAs}.`,
         lockText.negativeLock,
+        AGE_CLASS_LOCK_TEXT,
         GENDER_AGE_OVERRIDE_TEXT,
       ].join(' ');
     }
     case 'neutral':
-      return `${STRUCTURED_GENDER_AGE_LOCK_LABEL}: gender-neutral / androgynous presentation${ageText}; keep the face within this structured neutral gender presentation. ${GENDER_AGE_OVERRIDE_TEXT}`;
+      return `${STRUCTURED_GENDER_AGE_LOCK_LABEL}: gender-neutral / androgynous presentation${ageText}; keep the face within this structured neutral gender presentation. ${AGE_CLASS_LOCK_TEXT} ${GENDER_AGE_OVERRIDE_TEXT}`;
     case 'unknown':
     default:
-      return `${STRUCTURED_GENDER_AGE_LOCK_LABEL}: gender unspecified${ageText}; do not infer, rewrite, or change gender from candidate variation aesthetics, softness, elegance, hairstyle, costume, or free-text appearance words. ${GENDER_AGE_OVERRIDE_TEXT}`;
+      return `${STRUCTURED_GENDER_AGE_LOCK_LABEL}: gender unspecified${ageText}; do not infer, rewrite, or change gender from candidate variation aesthetics, softness, elegance, hairstyle, costume, or free-text appearance words. ${AGE_CLASS_LOCK_TEXT} ${GENDER_AGE_OVERRIDE_TEXT}`;
   }
 }
 
@@ -240,6 +244,51 @@ export function buildCharacterFaceCandidatePrompt(character: Character, stylePre
   return appendFaceCandidateVariationPrompt(prompt, variationPrompt, genderAgeGuardrail);
 }
 
+interface CharacterFaceBatchVariation {
+  label?: string;
+  prompt?: string;
+}
+
+function buildCharacterFaceCandidatesBatchPrompt(
+  character: Character,
+  stylePrefix: string,
+  variations: Array<CharacterFaceBatchVariation | undefined>,
+  batchCount: number,
+): string {
+  const variables = buildCharacterCostumeTemplateVariables(character, stylePrefix || '');
+  const ageClause = stripTrailingComma(variables.age);
+  const genderAgeGuardrail = buildCharacterCandidateGenderAgeGuardrail(character, ageClause);
+  const roleBrief = buildFaceCandidateRoleBrief(character, variables, ageClause);
+  const variationLines = variations
+    .slice(0, batchCount)
+    .map((variation, index) => {
+      const direction = variation?.prompt?.trim()
+        || 'Create one clearly different selectable face identity direction for this sampled output while keeping the same locked role brief and guardrails.';
+      const labelPrefix = variation?.label ? `${variation.label}: ` : '';
+      return `Variation option ${index + 1}: ${labelPrefix}${direction}`;
+    });
+
+  return [
+    normalizePromptClause(variables.stylePrefix),
+    'P0 face-candidate stage: write one single-image portrait prompt and rely on API count-based sampling for multiple candidates.',
+    'This is a single-output prompt.',
+    'Generate exactly one standalone single-character portrait per API output.',
+    'The API request count creates multiple separate image files; never describe, request, or imply a grid, collage, contact sheet, montage, or multi-panel layout inside the prompt.',
+    'Each generated output must contain exactly one person: a clear head-and-shoulders or bust portrait with readable facial features, front-facing or slight three-quarter view.',
+    'Cross-output diversity is mandatory across the sampled results: use explicit facial structure choices, not seed-only drift, outfit-only swaps, expression-only changes, hairstyle-only changes, or lighting-only changes as the main difference.',
+    'Do not rely on random seed variation as the identity mechanism; identity must be deliberately specified in the prompt.',
+    'Explicitly design identity dimensions for each sampled output: face shape, eye shape/eyes, eyebrow shape/eyebrows, nose bridge/tip, mouth/lip shape, cheekbones, jawline/chin, age impression, temperament/personality, hairline/hair silhouette, and distinctive facial marks if appropriate.',
+    genderAgeGuardrail,
+    roleBrief ? `Locked character identity fields for every generated output: ${roleBrief}. Preserve name, gender, age, role, brief and appearance exactly; do not drift into another person, another gender presentation, or another age class.` : 'Locked character identity fields for every generated output: preserve the same character name, gender, age, role, brief and appearance from the structured inputs; do not drift into another person, another gender presentation, or another age class.',
+    'Keep the same story role, occupation/profession, costume category cues, story setting and project style across every generated output.',
+    'For each generated output, choose exactly one variation option as sampling guidance; never combine multiple options in one image.',
+    'Never treat the variations list as a layout instruction inside a single image.',
+    'Variation options:',
+    ...variationLines,
+    `Negative constraints for every generated output: no 3x3 grid, no nine-grid, no grid layout, no collage, no contact sheet, no montage, no puzzle, no tiled layout, no multi-panel, no split-screen, no multiple people, no group shot, no crowd, no duplicate same face, no repeated face identity across outputs, no extra character, no full body, no three-view turnaround, no turnaround layout, no lineup presentation, no mirrored duplicate person, ${FACE_CANDIDATE_NOISE_NEGATIVE_CONSTRAINTS}.`,
+  ].filter(Boolean).join('\n');
+}
+
 interface GenerateOptions {
   projectId: string;
   character: Character;
@@ -256,6 +305,13 @@ interface GenerateOptions {
   normalizeRemoteUrl?: boolean;
   faceReference?: MediaAssetSource | ProviderAssetInput;
   onProgress?: (progress: number, step: string) => void;
+}
+
+interface GenerateBatchOptions extends Omit<GenerateOptions, 'seed' | 'variationPrompt' | 'destPath'> {
+  batchCount: number;
+  seeds?: number[];
+  destPaths?: string[];
+  variations?: Array<CharacterFaceBatchVariation | undefined>;
 }
 
 /**
@@ -397,6 +453,97 @@ export async function generateCharacterFaceCandidate(
   } catch (err: any) {
     logger.error(`生成人脸候选失败: ${character.name}`, { error: err.message });
     return { success: false, error: err.message };
+  }
+}
+
+export async function generateCharacterFaceCandidatesBatch(
+  options: GenerateBatchOptions
+): Promise<Array<{ success: boolean; path?: string; url?: string; error?: string; seed?: number }>> {
+  const {
+    projectId,
+    character,
+    theme,
+    stylePrompt,
+    styleSnapshot,
+    project,
+    ttiSelection,
+    bindOwner,
+    normalizeRemoteUrl,
+    onProgress,
+    batchCount,
+    seeds = [],
+    destPaths = [],
+    variations = [],
+  } = options;
+
+  const resolvedBatchCount = Math.max(1, Math.floor(batchCount || 1));
+
+  logger.info(`开始批量生成角色人脸候选: ${character.name}`, {
+    batchCount: resolvedBatchCount,
+  });
+  onProgress?.(0, '准备批量生成人脸方案...');
+
+  try {
+    const stylePrefix = await getResolvedTTIStylePrefix(styleSnapshot || project?.styleSnapshot, theme, stylePrompt);
+    const prompt = buildCharacterFaceCandidatesBatchPrompt(
+      character,
+      stylePrefix || '',
+      variations,
+      resolvedBatchCount,
+    );
+
+    onProgress?.(10, '调用 TTI 服务...');
+
+    logTTICall(
+      'TTI',
+      prompt,
+      {
+        width: 1024,
+        height: 1024,
+        count: resolvedBatchCount,
+      },
+      {
+        projectId,
+        targetId: character.id,
+        targetName: `${character.name} 人脸候选批量`,
+        promptSource: 'default',
+      }
+    );
+
+    const assets = await mediaGenerationService.generateImages({
+      projectId,
+      ownerRef: {
+        projectId,
+        ownerType: 'character',
+        ownerId: character.id,
+        slot: 'costumePhoto',
+      },
+      request: {
+        prompt,
+        references: [],
+        count: resolvedBatchCount,
+        options: {
+          width: 1024,
+          height: 1024,
+        },
+      },
+      ttiSelection,
+      destPath: (index) => destPaths[index],
+      bindOwner,
+      normalizeRemoteUrl,
+      taskName: `${character.name} 人脸方案批量`,
+    });
+
+    onProgress?.(100, '完成');
+    return assets.map((asset, index) => ({
+      success: true,
+      path: asset.localPath,
+      url: asset.remoteUrl,
+      seed: seeds[index],
+    }));
+  } catch (err: any) {
+    logger.error(`批量生成人脸候选失败: ${character.name}`, { error: err.message, batchCount: resolvedBatchCount });
+    throw err;
   }
 }
 

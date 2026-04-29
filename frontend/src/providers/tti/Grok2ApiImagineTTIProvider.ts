@@ -18,6 +18,9 @@ import { resolveTTISize } from './utils/ttiSize';
 
 const logger = createLogger('Grok2ApiImagineTTI');
 
+const GROK2API_MAX_BATCH_IMAGES = 10;
+const GROK2API_LITE_MAX_EDIT_BATCH_IMAGES = 4;
+
 type ImageGenResponse = {
   data?: Array<{ url?: string; b64_json?: string }>;
   id?: string;
@@ -49,11 +52,20 @@ function joinUrl(baseUrl: string, path: string): string {
   return `${b}${p}`;
 }
 
-function tryExtractMarkdownUrl(text: string): string | null {
-  // ![alt](url) or [text](url)
-  const m = text.match(/\[[^\]]*\]\(([^)]+)\)|!\[[^\]]*\]\(([^)]+)\)/);
-  const url = (m?.[1] || m?.[2] || '').trim();
-  return url || null;
+function clampCount(value: unknown, max: number): number {
+  const normalized = Number(value);
+  if (!Number.isFinite(normalized)) return 1;
+  return Math.max(1, Math.min(max, Math.floor(normalized)));
+}
+
+function isLiteImageModel(modelName: string): boolean {
+  return /(?:^|[-_\s])lite(?:$|[-_\s])/i.test(modelName);
+}
+
+function extractMarkdownUrls(text: string): string[] {
+  return Array.from(text.matchAll(/(?:!\[[^\]]*\]|\[[^\]]*\])\(([^)]+)\)/g))
+    .map(match => (match[1] || '').trim())
+    .filter(Boolean);
 }
 
 function normalizeCandidateUrl(candidate: string, baseUrl: string): string | null {
@@ -81,31 +93,35 @@ function normalizeCandidateUrl(candidate: string, baseUrl: string): string | nul
   return null;
 }
 
-function extractFirstUrlFromText(text: string, baseUrl: string): string | null {
-  if (!text) return null;
+function extractUrlsFromText(text: string, baseUrl: string): string[] {
+  if (!text) return [];
 
-  const md = tryExtractMarkdownUrl(text);
-  if (md) {
-    const normalized = normalizeCandidateUrl(md, baseUrl);
-    if (normalized) return normalized;
+  const candidates = [
+    ...extractMarkdownUrls(text),
+    ...Array.from(text.matchAll(/data:[^ \n\r\t]+/g)).map(match => match[0]),
+    ...Array.from(text.matchAll(/https?:\/\/[^\s)]+/g)).map(match => match[0]),
+    ...Array.from(text.matchAll(/(?:^|[\s(])(\/[^\s)]+\.(?:png|jpg|jpeg|webp|gif)(?:\?[^\s)]*)?)/gi)).map(match => match[1] || ''),
+  ];
+
+  const seen = new Set<string>();
+  const urls: string[] = [];
+  for (const candidate of candidates) {
+    const normalized = normalizeCandidateUrl(candidate, baseUrl);
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    urls.push(normalized);
   }
-
-  // Prefer data: URLs first
-  const dataMatch = text.match(/data:[^ \n\r\t]+/);
-  if (dataMatch?.[0]) return normalizeCandidateUrl(dataMatch[0], baseUrl);
-
-  const httpMatch = text.match(/https?:\/\/[^\s)]+/);
-  if (httpMatch?.[0]) return normalizeCandidateUrl(httpMatch[0], baseUrl);
-
-  // Relative media URLs in plain text
-  const relMatch = text.match(/(\/[^\s)]+\.(png|jpg|jpeg|webp|gif)(\?[^\s)]*)?)/i);
-  if (relMatch?.[1]) return normalizeCandidateUrl(relMatch[1], baseUrl);
-
-  return null;
+  return urls;
 }
 
-function findMediaUrlDeep(value: unknown, baseUrl: string): string | null {
+function extractFirstUrlFromText(text: string, baseUrl: string): string | null {
+  return extractUrlsFromText(text, baseUrl)[0] ?? null;
+}
+
+function findMediaUrlsDeep(value: unknown, baseUrl: string): string[] {
   const visited = new Set<any>();
+  const seen = new Set<string>();
+  const urls: string[] = [];
   const stack: unknown[] = [value];
   let steps = 0;
 
@@ -113,8 +129,16 @@ function findMediaUrlDeep(value: unknown, baseUrl: string): string | null {
     steps += 1;
     const cur = stack.pop();
     if (typeof cur === 'string') {
-      const url = extractFirstUrlFromText(cur, baseUrl) || normalizeCandidateUrl(cur, baseUrl);
-      if (url) return url;
+      for (const url of extractUrlsFromText(cur, baseUrl)) {
+        if (seen.has(url)) continue;
+        seen.add(url);
+        urls.push(url);
+      }
+      const normalized = normalizeCandidateUrl(cur, baseUrl);
+      if (normalized && !seen.has(normalized)) {
+        seen.add(normalized);
+        urls.push(normalized);
+      }
       continue;
     }
     if (!cur || typeof cur !== 'object') continue;
@@ -135,7 +159,11 @@ function findMediaUrlDeep(value: unknown, baseUrl: string): string | null {
     for (const v of Object.values(obj)) stack.push(v);
   }
 
-  return null;
+  return urls;
+}
+
+function findMediaUrlDeep(value: unknown, baseUrl: string): string | null {
+  return findMediaUrlsDeep(value, baseUrl)[0] ?? null;
 }
 
 function dropOverflowImageTags(prompt: string, maxImages: number): string {
@@ -145,12 +173,39 @@ function dropOverflowImageTags(prompt: string, maxImages: number): string {
   return out.replace(/\s{2,}/g, ' ').trim();
 }
 
-function extractImageUrlFromGen(resp: ImageGenResponse): string | null {
-  const item = resp.data?.[0];
-  if (!item) return null;
-  if (item.url) return item.url;
-  if (item.b64_json) return `data:image/jpeg;base64,${item.b64_json}`;
-  return null;
+function stripBatchMetadata(image: ImageResult): ImageResult {
+  const metadata = image.metadata ? { ...image.metadata } : undefined;
+  if (metadata?.batchImages) {
+    delete metadata.batchImages;
+  }
+  return metadata ? { ...image, metadata } : { ...image };
+}
+
+function createImmediateImageResult(images: ImageResult[]): ImageResult {
+  const normalized = images.map(stripBatchMetadata);
+  const first = normalized[0];
+  if (!first) {
+    throw new Error('API 返回了无法识别的图片响应');
+  }
+  if (normalized.length === 1) {
+    return first;
+  }
+  return {
+    ...first,
+    metadata: {
+      ...(first.metadata ?? {}),
+      batchImages: normalized,
+    },
+  };
+}
+
+function extractImageResultsFromGen(resp: ImageGenResponse): ImageResult[] {
+  return (resp.data ?? [])
+    .map(item => {
+      const url = item.url || (item.b64_json ? `data:image/jpeg;base64,${item.b64_json}` : null);
+      return url ? { path: url, url } : null;
+    })
+    .filter(Boolean) as ImageResult[];
 }
 
 export class Grok2ApiImagineTTIProvider implements TTIProvider {
@@ -218,6 +273,12 @@ export class Grok2ApiImagineTTIProvider implements TTIProvider {
 
     // 解析尺寸：优先显式 width/height，其次请求比例，最后渠道默认尺寸。
     const resolveSize = (): string | undefined => resolveTTISize(request.options, this.config.defaultSize);
+    const generationCount = clampCount(request.count, GROK2API_MAX_BATCH_IMAGES);
+    const chatCount = clampCount(request.count, GROK2API_MAX_BATCH_IMAGES);
+    const editCount = clampCount(
+      request.count,
+      isLiteImageModel(modelName) ? GROK2API_LITE_MAX_EDIT_BATCH_IMAGES : GROK2API_MAX_BATCH_IMAGES,
+    );
 
     // 1) No references: call OpenAI-compatible images generation endpoint
     if (!hasRefs) {
@@ -225,7 +286,7 @@ export class Grok2ApiImagineTTIProvider implements TTIProvider {
       const body: Record<string, any> = {
         model: modelName,
         prompt: request.prompt,
-        n: 1,
+        n: generationCount,
         ...(size ? { size } : undefined),
       };
 
@@ -259,9 +320,9 @@ export class Grok2ApiImagineTTIProvider implements TTIProvider {
         logger.warn('TTI generations response is not JSON', { preview: raw.slice(0, 1200) });
         throw new Error('API 返回了无法识别的图片响应（images/generations，非 JSON）');
       }
-      const url = extractImageUrlFromGen(data);
-      if (!url) throw new Error('API 返回了无法识别的图片响应');
-      return { mode: 'immediate', output: { path: url, url } };
+      const images = extractImageResultsFromGen(data);
+      if (!images.length) throw new Error('API 返回了无法识别的图片响应');
+      return { mode: 'immediate', output: createImmediateImageResult(images) };
     }
 
     // 2) With references:
@@ -282,7 +343,10 @@ export class Grok2ApiImagineTTIProvider implements TTIProvider {
         model: modelName,
         stream: false,
         messages: [{ role: 'user', content }],
-        ...(size ? { image_config: { n: 1, size } } : undefined),
+        image_config: {
+          n: chatCount,
+          ...(size ? { size } : undefined),
+        },
       };
 
       if (debugBody) {
@@ -315,10 +379,10 @@ export class Grok2ApiImagineTTIProvider implements TTIProvider {
         throw new Error(`chat/edit non-json: ${raw.slice(0, 600)}`);
       }
 
-      const candidate = findMediaUrlDeep(data, this.config.baseUrl || '');
-      const url = candidate ? (normalizeCandidateUrl(candidate, this.config.baseUrl || '') || candidate) : null;
-      if (!url) throw new Error('chat/edit has no media url');
-      return { mode: 'immediate', output: { path: url, url } };
+      const images = findMediaUrlsDeep(data, this.config.baseUrl || '')
+        .map(url => ({ path: url, url } satisfies ImageResult));
+      if (!images.length) throw new Error('chat/edit has no media url');
+      return { mode: 'immediate', output: createImmediateImageResult(images) };
     } catch (err: any) {
       logger.warn('TTI chat(edit) failed; falling back to images/edits multipart', {
         provider: this.config.provider,
@@ -330,6 +394,7 @@ export class Grok2ApiImagineTTIProvider implements TTIProvider {
     const form = new FormData();
     form.append('model', modelName);
     form.append('prompt', prompt);
+    form.append('n', String(editCount));
 
     for (let i = 0; i < refs.length; i += 1) {
       const ref = refs[i];
@@ -403,9 +468,12 @@ export class Grok2ApiImagineTTIProvider implements TTIProvider {
     }
 
     // Most deployments keep OpenAI-like shape: { data: [{url|b64_json}] }
-    const candidate = extractImageUrlFromGen(data as ImageGenResponse) || findMediaUrlDeep(data, this.config.baseUrl || '');
-    const url = candidate ? (normalizeCandidateUrl(candidate, this.config.baseUrl || '') || candidate) : null;
-    if (!url) {
+    let images = extractImageResultsFromGen(data as ImageGenResponse);
+    if (!images.length) {
+      images = findMediaUrlsDeep(data, this.config.baseUrl || '')
+        .map(url => ({ path: url, url } satisfies ImageResult));
+    }
+    if (!images.length) {
       logger.warn('TTI images/edits response has no detectable media url', {
         provider: this.config.provider,
         response: sanitizeBodyForLog(data as any),
@@ -413,7 +481,7 @@ export class Grok2ApiImagineTTIProvider implements TTIProvider {
       });
       throw new Error('API 返回了无法识别的图片响应（images/edits）');
     }
-    return { mode: 'immediate', output: { path: url, url } };
+    return { mode: 'immediate', output: createImmediateImageResult(images) };
   }
 
   // Grok2API endpoints are typically immediate; keep snapshot unimplemented for now.

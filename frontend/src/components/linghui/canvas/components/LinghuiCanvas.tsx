@@ -376,6 +376,7 @@ const LinghuiCanvasInner = forwardRef<LinghuiCanvasHandle, LinghuiCanvasProps>(f
       setActiveNodeTool(null);
     },
     nodeRuns,
+    executionQueue,
     workspaceId: workspace?.id ?? null,
     updateNodeData: updateLinghuiNodeData,
     canvasRect,

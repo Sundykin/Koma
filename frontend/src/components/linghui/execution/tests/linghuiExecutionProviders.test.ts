@@ -412,6 +412,46 @@ describe('linghuiExecutionProviders', () => {
     expect(result.source).toBe('https://cdn.example.com/multi-angle-fallback.png');
   });
 
+  it('generateImagesWithProvider 会展开 provider 返回的 batchImages', async () => {
+    const provider = {
+      type: 'openai-compatible-tti',
+      config: { provider: 'openai-compatible-tti' },
+      validate: () => true,
+      start: vi.fn(async () => ({
+        mode: 'immediate' as const,
+        output: {
+          url: 'https://cdn.example.com/batch-1.png',
+          path: 'https://cdn.example.com/batch-1.png',
+          metadata: {
+            batchImages: [
+              { path: 'https://cdn.example.com/batch-1.png', url: 'https://cdn.example.com/batch-1.png' },
+              { path: 'https://cdn.example.com/batch-2.png', url: 'https://cdn.example.com/batch-2.png' },
+            ],
+          },
+        },
+      })),
+    };
+
+    getProjectTTIProviderMock.mockResolvedValue(provider);
+
+    const { generateImagesWithProvider } = await import('../state/linghuiExecutionProviders');
+
+    const result = await generateImagesWithProvider({
+      prompt: '批量图片生成',
+      ttiSelection: 'channel-image::model-image',
+      count: 2,
+      placeholderTitle: 'batch test',
+    });
+
+    expect(provider.start).toHaveBeenCalledWith(expect.objectContaining({
+      prompt: '批量图片生成',
+      count: 2,
+    }));
+    expect(result).toHaveLength(2);
+    expect(result[0]).toEqual(expect.objectContaining({ source: 'https://cdn.example.com/batch-1.png' }));
+    expect(result[1]).toEqual(expect.objectContaining({ source: 'https://cdn.example.com/batch-2.png' }));
+  });
+
   it('传入 settingsSnapshot 时会复用该快照解析图片 provider，而不再读取全局 settings', async () => {
     const provider = {
       type: 'openai-compatible-tti',
