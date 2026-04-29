@@ -56,12 +56,28 @@ describe('executeImageNode', () => {
     const result = await executeImageNode(createNode(4));
 
     expect(executionProviders.generateImagesWithProvider).toHaveBeenCalledTimes(1);
-    expect(executionProviders.generateImagesWithProvider).toHaveBeenCalledWith(expect.objectContaining({
+    const batchCall = vi.mocked(executionProviders.generateImagesWithProvider).mock.calls[0]?.[0];
+    expect(batchCall).toEqual(expect.objectContaining({
       count: 4,
       ttiSelection: 'channel-image::model-image',
       placeholderTitle: '图片节点',
-      prompt: expect.stringContaining('API count creates separate independent image files'),
     }));
+    expect(batchCall?.prompt).toContain('API count creates separate independent image files');
+    expect(batchCall?.prompt).toContain('Variation options for separate batch outputs');
+    expect(batchCall?.prompt).toContain('Variation option 1');
+    expect(batchCall?.prompt).toContain('Variation option 2');
+    expect(batchCall?.prompt).toContain('Variation option 3');
+    expect(batchCall?.prompt).toContain('Variation option 4');
+    expect(batchCall?.prompt).toContain('choose exactly one variation option');
+    expect(batchCall?.prompt).toContain('Assign a different variation option to each output');
+    expect(batchCall?.prompt).toContain('identity cues');
+    expect(batchCall?.prompt).toContain('wardrobe/accessory detail');
+    expect(batchCall?.prompt).toContain('background atmosphere');
+    expect(batchCall?.prompt).toContain('distinct, significant');
+    expect(batchCall?.prompt).toContain('No identical outputs');
+    expect(batchCall?.prompt).toContain('No cloned composition');
+    expect(batchCall?.prompt).toContain('Do not create a grid, collage, contact sheet');
+    expect(batchCall?.prompt).toContain('Do not treat the variation list as a single-image layout instruction');
     expect(executionProviders.generateImageVariantsWithProvider).not.toHaveBeenCalled();
     expect(executionProviders.generateImageWithProvider).not.toHaveBeenCalled();
 

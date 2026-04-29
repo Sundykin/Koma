@@ -74,6 +74,33 @@ const IMAGE_BATCH_SEPARATE_OUTPUT_CONSTRAINT = [
   'Each output must contain exactly one finished image composition.',
 ].join('\n');
 
+const IMAGE_BATCH_VARIATION_OPTION_BLUEPRINTS = [
+  [
+    'Variation direction: identity cues, face silhouette, facial structure.',
+    'Keep the same prompt-locked subject, but vary signature markers, head silhouette, jawline, cheekbone, brow, eye, nose, and mouth relationships for a clearly different candidate read.',
+  ],
+  [
+    'Variation direction: hair silhouette, expression, pose.',
+    'Keep the same gender, age range, and outfit category, but vary hairstyle silhouette, bangs/volume/flow, facial expression, gesture, posture, and body rhythm.',
+  ],
+  [
+    'Variation direction: wardrobe/accessory detail, lighting, composition.',
+    'Keep the same clothing category and world setting, but vary garment cut emphasis, material layering, accessory hierarchy, lighting direction, value grouping, crop, and framing.',
+  ],
+  [
+    'Variation direction: background atmosphere, camera angle, staging.',
+    'Keep the same style and genre, but vary background mood, environmental accents, camera angle, depth staging, foreground/background separation, and composition energy.',
+  ],
+  [
+    'Variation direction: profile read, emotion intensity, hand posing.',
+    'Keep the same character identity, but vary three-quarter/profile read, emotional tone, hand pose, negative space, and rim-light treatment.',
+  ],
+  [
+    'Variation direction: accessory hierarchy, fabric motion, scene mood.',
+    'Keep the same subject and costume class, but vary emblem placement, prop prominence, cloth flow, atmospheric effects, and color temperature.',
+  ],
+] as const;
+
 function appendIndependentBatchOutputConstraint(prompt: string): string {
   const normalizedPrompt = String(prompt).trim();
 
@@ -86,6 +113,47 @@ function appendIndependentBatchOutputConstraint(prompt: string): string {
   }
 
   return `${normalizedPrompt}\n\n${IMAGE_BATCH_SEPARATE_OUTPUT_CONSTRAINT}`;
+}
+
+function buildBatchVariationInstructions(count: number): string {
+  const normalizedCount = Math.max(1, Math.floor(Number(count) || 1));
+  const outputAssignments = Array.from(
+    { length: normalizedCount },
+    (_unused, index) => `Output ${index + 1} -> Variation option ${index + 1}`,
+  ).join('; ');
+  const optionBlocks = Array.from({ length: normalizedCount }, (_unused, index) => {
+    const blueprint = IMAGE_BATCH_VARIATION_OPTION_BLUEPRINTS[
+      index % IMAGE_BATCH_VARIATION_OPTION_BLUEPRINTS.length
+    ];
+
+    return [
+      `Variation option ${index + 1}:`,
+      `- ${blueprint[0]}`,
+      `- ${blueprint[1]}`,
+    ].join('\n');
+  }).join('\n\n');
+
+  return [
+    'Variation options for separate batch outputs:',
+    `There will be ${normalizedCount} independent API outputs. Assign a different variation option to each output: ${outputAssignments}.`,
+    'Each independent output must choose exactly one variation option, and each variation option may be used by only one output in this batch.',
+    'Do not treat the variation list as a single-image layout instruction. Do not turn it into a grid, collage, contact sheet, multi-panel canvas, or one image containing multiple candidates.',
+    'Keep the original prompt locked on the same main subject, gender, age range, outfit category, world setting, and overall style/theme. Do not drift into a different subject, costume class, or genre.',
+    'Use character/gacha differentiation axes where relevant: identity cues, face silhouette, facial structure, hair silhouette, expression/pose, wardrobe/accessory detail, lighting/composition, background atmosphere.',
+    optionBlocks,
+    'Across outputs, the differences must be distinct, significant, and immediately recognizable at thumbnail size.',
+    'No identical outputs. No cloned composition. No same face repeated. No near-duplicate pose or camera framing across the batch.',
+  ].join('\n');
+}
+
+function appendBatchVariationConstraint(prompt: string, count: number): string {
+  const promptWithIndependentOutputConstraint = appendIndependentBatchOutputConstraint(prompt);
+
+  if (promptWithIndependentOutputConstraint.includes('Variation options for separate batch outputs:')) {
+    return promptWithIndependentOutputConstraint;
+  }
+
+  return `${promptWithIndependentOutputConstraint}\n\n${buildBatchVariationInstructions(count)}`;
 }
 
 function resolveStreamingProgress(accumulated: string, base = 18, cap = 92): number {
@@ -347,7 +415,7 @@ export async function executeImageNode(
 
   if (count > 1) {
     const items = (await generateImagesWithProvider({
-      prompt: appendIndependentBatchOutputConstraint(effectivePrompt),
+      prompt: appendBatchVariationConstraint(effectivePrompt, count),
       referenceSources,
       ttiSelection,
       promptReferences,
