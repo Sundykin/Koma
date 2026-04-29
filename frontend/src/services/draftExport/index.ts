@@ -38,7 +38,7 @@ export {
 export {
   secondsToMicroseconds,
   pixelToHalfCanvas,
-  buildKeyframeLists,
+  buildKeyframeListsFromClip,
   buildFilter,
   buildAnimations,
   buildAudioFade,

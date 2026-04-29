@@ -10,7 +10,6 @@ import {
   clipToRow,
   episodeRowToEntity,
   episodeToRow,
-  jianyingTrackToRows,
   keyframeToRow,
   parseShotIdsCsv,
   propRowToEntity,
@@ -379,15 +378,6 @@ describe('projectPersistenceHelpers', () => {
                 size: 0.8,
                 feather: 30,
               },
-              jianyingKeyframeTracks: [
-                {
-                  property: 'position_x',
-                  keyframes: [
-                    { time: 0.2, value: 10, curveType: 'Line' },
-                    { time: 0.8, value: 22, curveType: 'Bezier' },
-                  ],
-                },
-              ],
             },
             {
               id: 'clip-video-2',
@@ -459,20 +449,12 @@ describe('projectPersistenceHelpers', () => {
         (clip.animations || []).map((animation, index) => animationToRow(clip.id, animation, index))
       )
     );
-    const jianyingRows = timeline.tracks.flatMap(track =>
-      track.clips.flatMap(clip =>
-        (clip.jianyingKeyframeTracks || []).map((jianyingTrack, index) => jianyingTrackToRows(clip.id, jianyingTrack, index))
-      )
-    );
-
     const rebuilt = buildTimelineData(
       timelineRow,
       trackRows,
       clipRows,
       transitionRows,
       keyframeRows,
-      jianyingRows.map(item => item.trackRow),
-      jianyingRows.flatMap(item => item.keyframeRows),
       animationRows,
     );
 
@@ -504,15 +486,6 @@ describe('projectPersistenceHelpers', () => {
       filter: expect.objectContaining({ id: 'filter-a' }),
       animations: [expect.objectContaining({ effectId: 'anim-in' })],
       mask: expect.objectContaining({ type: 'circle' }),
-      jianyingKeyframeTracks: [
-        expect.objectContaining({
-          property: 'position_x',
-          keyframes: expect.arrayContaining([
-            expect.objectContaining({ value: 10 }),
-            expect.objectContaining({ value: 22 }),
-          ]),
-        }),
-      ],
     }));
     expect(rebuilt.tracks[1]).toEqual(expect.objectContaining({
       id: 'track-text',

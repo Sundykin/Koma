@@ -4,14 +4,15 @@
  */
 
 import type {
-  JianyingKeyframeTrack,
-  JianyingKeyframe,
+  Clip,
+  Keyframe,
   ClipFilter,
   ClipAnimation,
   AudioFade,
   ClipMask,
   Transition,
 } from '../../types/editor';
+import { EasingType } from '../../types/editor';
 import { generateHexId } from './coordinateTransform';
 
 // ========== 时间/坐标转换 ==========
@@ -31,23 +32,22 @@ export function pixelToHalfCanvas(pixel: number, canvasSize: number): number {
   return pixel / (canvasSize / 2);
 }
 
-// ========== 关键帧属性类型映射 ==========
-
-const KEYFRAME_PROPERTY_MAP: Record<string, string> = {
-  position_x: 'KFTypePositionX',
-  position_y: 'KFTypePositionY',
-  rotation: 'KFTypeRotation',
-  scale_x: 'KFTypeScaleX',
-  scale_y: 'KFTypeScaleY',
-  uniform_scale: 'UNIFORM_SCALE',
-  alpha: 'KFTypeAlpha',
-  saturation: 'KFTypeSaturation',
-  contrast: 'KFTypeContrast',
-  brightness: 'KFTypeBrightness',
-  volume: 'KFTypeVolume',
-};
-
 // ========== 关键帧导出 ==========
+//
+// 阶段 2-B 改造：原从 Clip.jianyingKeyframeTracks（per-property timeline 表示）
+// 直接构建。但该字段在生产代码中无 UI 写入路径，永远 undefined，导出关键帧
+// 始终为空。改为从 Clip.keyframes（属性快照模型 [{time,x,y,scale,rotation,
+// opacity,easing}]）派生 transform 类剪映关键帧。
+//
+// 派生规则：每个剪映 property 由对应快照属性切片而成。
+//   x        → KFTypePositionX
+//   y        → KFTypePositionY
+//   scale    → UNIFORM_SCALE
+//   rotation → KFTypeRotation
+//   opacity  → KFTypeAlpha
+//
+// saturation / contrast / brightness / volume 等属性通用 Keyframe 不携带，
+// UI 也无编辑入口，故剪映导出不再产生这些属性的关键帧。
 
 interface JianyingKeyframeExport {
   id: string;
@@ -66,34 +66,46 @@ interface JianyingKeyframeListExport {
   property_type: string;
 }
 
-/**
- * 构建单个关键帧
- */
-function buildKeyframe(kf: JianyingKeyframe): JianyingKeyframeExport {
+function easingToCurveType(easing: EasingType): 'Line' | 'Bezier' {
+  return easing === EasingType.LINEAR ? 'Line' : 'Bezier';
+}
+
+function buildKeyframeFromSnapshot(time: number, value: number, easing: EasingType): JianyingKeyframeExport {
   return {
     id: generateHexId(),
-    curveType: kf.curveType || 'Line',
+    curveType: easingToCurveType(easing),
     graphID: '',
     left_control: { x: 0.0, y: 0.0 },
     right_control: { x: 0.0, y: 0.0 },
-    time_offset: secondsToMicroseconds(kf.time),
-    values: [kf.value],
+    time_offset: secondsToMicroseconds(time),
+    values: [value],
   };
 }
 
 /**
- * 构建关键帧列表
+ * 从 Clip 的属性快照关键帧派生剪映 per-property 关键帧列表。
+ * 仅产生 transform 类属性（x/y/scale/rotation/opacity），其他属性需扩展 Keyframe 类型。
  */
-export function buildKeyframeLists(
-  tracks: JianyingKeyframeTrack[] | undefined
-): JianyingKeyframeListExport[] {
-  if (!tracks || tracks.length === 0) return [];
+export function buildKeyframeListsFromClip(clip: Clip): JianyingKeyframeListExport[] {
+  const keyframes = clip.keyframes;
+  if (!keyframes || keyframes.length === 0) return [];
 
-  return tracks.map((track) => ({
+  type Slice = { property: string; pick: (kf: Keyframe) => number };
+  const slices: Slice[] = [
+    { property: 'KFTypePositionX', pick: (kf) => kf.x },
+    { property: 'KFTypePositionY', pick: (kf) => kf.y },
+    { property: 'UNIFORM_SCALE',   pick: (kf) => kf.scale },
+    { property: 'KFTypeRotation',  pick: (kf) => kf.rotation },
+    { property: 'KFTypeAlpha',     pick: (kf) => kf.opacity },
+  ];
+
+  return slices.map((slice) => ({
     id: generateHexId(),
-    keyframe_list: track.keyframes.map(buildKeyframe),
+    keyframe_list: keyframes.map((kf) =>
+      buildKeyframeFromSnapshot(kf.time, slice.pick(kf), kf.easing),
+    ),
     material_id: '',
-    property_type: KEYFRAME_PROPERTY_MAP[track.property] || track.property,
+    property_type: slice.property,
   }));
 }
 

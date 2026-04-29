@@ -13,7 +13,6 @@ import type {
 import type {
   Clip,
   ClipAnimation,
-  JianyingKeyframeTrack,
   Keyframe,
   TimelineData,
   Track,
@@ -114,22 +113,6 @@ export interface TimelineClipKeyframeRow {
   rotation: number;
   opacity: number;
   easing: string;
-  sort_order: number;
-}
-
-export interface TimelineClipJianyingTrackRow {
-  id: string;
-  clip_id: string;
-  property: string;
-  sort_order: number;
-}
-
-export interface TimelineClipJianyingKeyframeRow {
-  id: string;
-  jianying_track_id: string;
-  time: number;
-  value: number;
-  curve_type?: string | null;
   sort_order: number;
 }
 
@@ -748,38 +731,9 @@ function makeClipKeyframes(rows: TimelineClipKeyframeRow[] | undefined): Keyfram
     }));
 }
 
-function makeJianyingKeyframeTracks(
-  trackRows: TimelineClipJianyingTrackRow[] | undefined,
-  keyframeRows: TimelineClipJianyingKeyframeRow[] | undefined,
-): JianyingKeyframeTrack[] | undefined {
-  if (!trackRows?.length) return undefined;
-  const keyframesByTrack = new Map<string, TimelineClipJianyingKeyframeRow[]>();
-  for (const row of keyframeRows || []) {
-    const bucket = keyframesByTrack.get(row.jianying_track_id) ?? [];
-    bucket.push(row);
-    keyframesByTrack.set(row.jianying_track_id, bucket);
-  }
-  return trackRows
-    .slice()
-    .sort((a, b) => a.sort_order - b.sort_order)
-    .map(row => ({
-      property: row.property as JianyingKeyframeTrack['property'],
-      keyframes: (keyframesByTrack.get(row.id) || [])
-        .slice()
-        .sort((a, b) => a.sort_order - b.sort_order)
-        .map(frame => ({
-          time: frame.time,
-          value: frame.value,
-          curveType: frame.curve_type as 'Line' | 'Bezier' | undefined,
-        })),
-    }));
-}
-
 function buildClipEntity(
   row: ClipRow,
   keyframes: TimelineClipKeyframeRow[] | undefined,
-  jianyingTracks: TimelineClipJianyingTrackRow[] | undefined,
-  jianyingKeyframes: TimelineClipJianyingKeyframeRow[] | undefined,
   animations: TimelineClipAnimationRow[] | undefined,
 ): Clip {
   return {
@@ -809,7 +763,6 @@ function buildClipEntity(
     backgroundColor: row.background_color ?? undefined,
     textPosition: row.text_position ?? undefined,
     textAlign: row.text_align ?? undefined,
-    jianyingKeyframeTracks: makeJianyingKeyframeTracks(jianyingTracks, jianyingKeyframes),
     filter: makeClipFilter(row),
     animations: makeClipAnimations(animations),
     audioFade: makeAudioFade(row),
@@ -823,8 +776,6 @@ export function buildTimelineData(
   clipRows: ClipRow[],
   transitionRows: TimelineTrackTransitionRow[] | undefined,
   keyframeRows: TimelineClipKeyframeRow[] | undefined,
-  jianyingTrackRows: TimelineClipJianyingTrackRow[] | undefined,
-  jianyingKeyframeRows: TimelineClipJianyingKeyframeRow[] | undefined,
   animationRows: TimelineClipAnimationRow[] | undefined,
 ): TimelineData {
   const clipsByTrack = new Map<string, ClipRow[]>();
@@ -839,22 +790,6 @@ export function buildTimelineData(
     const bucket = keyframesByClip.get(row.clip_id) ?? [];
     bucket.push(row);
     keyframesByClip.set(row.clip_id, bucket);
-  }
-
-  const jianyingTracksByClip = new Map<string, TimelineClipJianyingTrackRow[]>();
-  for (const row of jianyingTrackRows || []) {
-    const bucket = jianyingTracksByClip.get(row.clip_id) ?? [];
-    bucket.push(row);
-    jianyingTracksByClip.set(row.clip_id, bucket);
-  }
-
-  const jianyingTrackIds = new Set((jianyingTrackRows || []).map(row => row.id));
-  const jianyingKeyframesByTrack = new Map<string, TimelineClipJianyingKeyframeRow[]>();
-  for (const row of jianyingKeyframeRows || []) {
-    if (!jianyingTrackIds.has(row.jianying_track_id)) continue;
-    const bucket = jianyingKeyframesByTrack.get(row.jianying_track_id) ?? [];
-    bucket.push(row);
-    jianyingKeyframesByTrack.set(row.jianying_track_id, bucket);
   }
 
   const animationsByClip = new Map<string, TimelineClipAnimationRow[]>();
@@ -878,19 +813,11 @@ export function buildTimelineData(
       const clips = (clipsByTrack.get(row.id) || [])
         .slice()
         .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
-        .map(clipRow => {
-          const clipJianyingTracks = jianyingTracksByClip.get(clipRow.id) || [];
-          const flatJianyingKeyframes = clipJianyingTracks.flatMap(track =>
-            jianyingKeyframesByTrack.get(track.id) || []
-          );
-          return buildClipEntity(
-            clipRow,
-            keyframesByClip.get(clipRow.id),
-            clipJianyingTracks,
-            flatJianyingKeyframes,
-            animationsByClip.get(clipRow.id),
-          );
-        });
+        .map(clipRow => buildClipEntity(
+          clipRow,
+          keyframesByClip.get(clipRow.id),
+          animationsByClip.get(clipRow.id),
+        ));
 
       const transitions = (transitionsByTrack.get(row.id) || [])
         .slice()
@@ -1063,29 +990,8 @@ export function animationToRow(
   };
 }
 
-export function jianyingTrackToRows(
-  clipId: string,
-  track: JianyingKeyframeTrack,
-  sortOrder: number,
-): {
-  trackRow: TimelineClipJianyingTrackRow;
-  keyframeRows: TimelineClipJianyingKeyframeRow[];
-} {
-  const trackId = `${clipId}:jianying:${track.property}:${sortOrder}`;
-  return {
-    trackRow: {
-      id: trackId,
-      clip_id: clipId,
-      property: track.property,
-      sort_order: sortOrder,
-    },
-    keyframeRows: (track.keyframes || []).map((frame, frameIndex) => ({
-      id: `${trackId}:keyframe:${frameIndex}`,
-      jianying_track_id: trackId,
-      time: frame.time,
-      value: frame.value,
-      curve_type: frame.curveType ?? null,
-      sort_order: frameIndex,
-    })),
-  };
-}
+// 阶段 2-B 清理：jianyingTrackToRows / TimelineClipJianyingTrackRow /
+// TimelineClipJianyingKeyframeRow 已删除。原 schema 中的
+// timeline_clip_jianying_tracks / timeline_clip_jianying_keyframes 两表也一并删除
+// （见 electron/service/storage/schema.ts），剪映关键帧改由导出器从
+// Clip.keyframes 派生。
