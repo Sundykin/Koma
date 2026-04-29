@@ -14,7 +14,8 @@
     "allowJs": true,
     "jsx": "react-jsx",
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@komastudio/plugin-sdk": ["../packages/plugin-sdk/src/index.ts"]
     },
     "baseUrl": ".",
     "allowImportingTsExtensions": true,

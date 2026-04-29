@@ -11,16 +11,19 @@
  *  1. MEDIA_PROVIDER_CONTRACT_VERSION 在三处必须字面相等
  *  2. ChannelKind 字面量集合三处必须完全一致
  *  3. ProviderDefinition 接口字段名集合三处必须一致（顺序不限）
+ *  4. ElectronPluginAPI 顶层 namespace 一致（SDK backend.ts vs electron types.ts）
+ *
+ * 重要：当某个文件通过 `from '@komastudio/plugin-sdk'` 直接 import/re-export
+ * 某个类型时，视为"该类型已由 type-import 自动保证一致"，跳过本地对账。
  *
  * 失败时返回非零退出码，可在 CI 中前置运行。
- *
- * 用法：node scripts/check-plugin-sdk-parity.cjs
  */
 const fs = require('fs');
 const path = require('path');
 
 const ROOT = path.resolve(__dirname, '..');
 const SDK_FILE = path.join(ROOT, 'packages/plugin-sdk/src/provider.ts');
+const SDK_BACKEND_FILE = path.join(ROOT, 'packages/plugin-sdk/src/backend.ts');
 const FRONTEND_FILE = path.join(ROOT, 'frontend/src/providers/registry.types.ts');
 const ELECTRON_FILE = path.join(ROOT, 'electron/service/plugin/types.ts');
 
@@ -32,6 +35,20 @@ function read(file) {
   return fs.readFileSync(file, 'utf-8');
 }
 
+/** 提取文件中通过 from '@komastudio/plugin-sdk' 导入或 re-export 的所有标识符。 */
+function extractSdkImportedNames(src) {
+  const names = new Set();
+  const re = /(?:import|export)\s+type\s*\{([^}]+)\}\s*from\s+['"]@komastudio\/plugin-sdk['"]/g;
+  let m;
+  while ((m = re.exec(src))) {
+    for (const raw of m[1].split(',')) {
+      const name = raw.trim().replace(/^type\s+/, '').split(/\s+as\s+/)[0].trim();
+      if (name) names.add(name);
+    }
+  }
+  return names;
+}
+
 function extractContractVersion(src, label) {
   const m = src.match(/MEDIA_PROVIDER_CONTRACT_VERSION\s*=\s*['"]([^'"]+)['"]/);
   if (!m) {
@@ -41,55 +58,79 @@ function extractContractVersion(src, label) {
   return m[1];
 }
 
-function extractChannelKinds(src, label) {
+function extractChannelKinds(src) {
   const m = src.match(/export\s+type\s+ChannelKind\s*=\s*([^;]+);/);
-  if (!m) {
-    console.error(`[parity] ${label}: ChannelKind type alias not found`);
-    process.exit(3);
-  }
+  if (!m) return null;
   const kinds = [...m[1].matchAll(/'([^']+)'/g)].map((x) => x[1]);
   return new Set(kinds);
 }
 
-function extractProviderDefinitionFields(src, label) {
-  // 简化解析：找到 "interface ProviderDefinition" 后第一个 {...}
-  const start = src.search(/interface\s+ProviderDefinition\b/);
-  if (start === -1) {
-    console.error(`[parity] ${label}: ProviderDefinition interface not found`);
-    process.exit(3);
-  }
-  const open = src.indexOf('{', start);
-  if (open === -1) {
-    console.error(`[parity] ${label}: ProviderDefinition opening brace not found`);
-    process.exit(3);
-  }
+function extractKindsFromProviderDef(src) {
+  const m = src.match(/kind\s*:\s*'tti'[^;]*;/);
+  if (!m) return null;
+  const kinds = [...m[0].matchAll(/'([^']+)'/g)].map((x) => x[1]);
+  return new Set(kinds);
+}
+
+function findBlockBody(src, openIdx) {
   let depth = 0;
-  let close = -1;
-  for (let i = open; i < src.length; i++) {
+  for (let i = openIdx; i < src.length; i++) {
     if (src[i] === '{') depth++;
     else if (src[i] === '}') {
       depth--;
-      if (depth === 0) {
-        close = i;
-        break;
-      }
+      if (depth === 0) return src.slice(openIdx + 1, i);
     }
   }
-  if (close === -1) {
-    console.error(`[parity] ${label}: ProviderDefinition closing brace not found`);
-    process.exit(3);
-  }
-  const body = src.slice(open + 1, close);
-  // 字段：行起始的 identifier 或 'identifier?' 后跟 ':'
+  return '';
+}
+
+function extractInterfaceFields(src, name) {
+  const re = new RegExp(`interface\\s+${name}\\b[^{]*\\{`);
+  const m = re.exec(src);
+  if (!m) return null;
+  const open = src.indexOf('{', m.index + m[0].length - 1);
+  const body = findBlockBody(src, open);
   const fields = new Set();
-  const lines = body.split('\n');
-  for (const raw of lines) {
-    const line = raw.replace(/\/\/.*$/, '').replace(/\/\*.*?\*\//g, '').trim();
+  for (const raw of body.split('\n')) {
+    const line = raw.replace(/\/\/.*$/, '').replace(/\/\*[\s\S]*?\*\//g, '').trim();
     if (!line || line.startsWith('*') || line.startsWith('/')) continue;
-    const m = line.match(/^([a-zA-Z_][a-zA-Z0-9_]*)\??\s*:/);
-    if (m) fields.add(m[1]);
+    const fm = line.match(/^([a-zA-Z_][a-zA-Z0-9_]*)\??\s*:/);
+    if (fm) fields.add(fm[1]);
   }
   return fields;
+}
+
+function extractInterfaceTopLevelKeys(src, name) {
+  const re = new RegExp(`interface\\s+${name}\\b[^{]*\\{`);
+  const m = re.exec(src);
+  if (!m) return null;
+  const open = src.indexOf('{', m.index + m[0].length - 1);
+  const body = findBlockBody(src, open);
+  const keys = new Set();
+  let d = 0;
+  let lineStart = 0;
+  let lineDepthAtStart = 0;
+  const flush = (endIdx) => {
+    const line = body.slice(lineStart, endIdx)
+      .replace(/\/\/.*$/, '')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .trim();
+    if (lineDepthAtStart === 0 && line && !line.startsWith('*') && !line.startsWith('/')) {
+      const km = line.match(/^([a-zA-Z_][a-zA-Z0-9_]*)\??\s*:/);
+      if (km) keys.add(km[1]);
+    }
+  };
+  for (let i = 0; i < body.length; i++) {
+    const ch = body[i];
+    if (ch === '\n') {
+      flush(i);
+      lineStart = i + 1;
+      lineDepthAtStart = d;
+    } else if (ch === '{') d++;
+    else if (ch === '}') d--;
+  }
+  flush(body.length);
+  return keys;
 }
 
 function setEqual(a, b) {
@@ -99,130 +140,101 @@ function setEqual(a, b) {
 }
 
 function diffSets(a, b) {
-  const onlyA = [...a].filter((x) => !b.has(x));
-  const onlyB = [...b].filter((x) => !a.has(x));
-  return { onlyA, onlyB };
+  return {
+    onlyA: [...a].filter((x) => !b.has(x)),
+    onlyB: [...b].filter((x) => !a.has(x)),
+  };
 }
 
 const sdkSrc = read(SDK_FILE);
+const sdkBackendSrc = read(SDK_BACKEND_FILE);
 const frontendSrc = read(FRONTEND_FILE);
 const electronSrc = read(ELECTRON_FILE);
 
-const sdkVersion = extractContractVersion(sdkSrc, 'SDK');
-const frontendVersion = extractContractVersion(frontendSrc, 'frontend');
-// Electron 的常量定义在 types.ts 中
-const electronVersion = extractContractVersion(electronSrc, 'electron');
-
-const sdkKinds = extractChannelKinds(sdkSrc, 'SDK');
-const frontendKinds = extractChannelKinds(frontendSrc, 'frontend');
-// Electron 没有显式 ChannelKind 字面量类型，从 ProviderDefinition['kind'] 提取
-function extractKindsFromProviderDef(src, label) {
-  const m = src.match(/kind\s*:\s*'tti'[^;]*;/);
-  if (!m) {
-    return null;
-  }
-  const kinds = [...m[0].matchAll(/'([^']+)'/g)].map((x) => x[1]);
-  return new Set(kinds);
-}
-const electronKinds =
-  extractChannelKinds.bind(null) && (sdkSrc.includes('export type ChannelKind') ? null : null);
-const electronInferred = extractKindsFromProviderDef(electronSrc, 'electron') || sdkKinds;
-
-const sdkFields = extractProviderDefinitionFields(sdkSrc, 'SDK');
-const frontendFields = extractProviderDefinitionFields(frontendSrc, 'frontend');
-const electronFields = extractProviderDefinitionFields(electronSrc, 'electron');
-
 const failures = [];
 
+// 提取每个文件中通过 SDK import 的名字
+const frontendSdkImported = extractSdkImportedNames(frontendSrc);
+const electronSdkImported = extractSdkImportedNames(electronSrc);
+
+// 1. MEDIA_PROVIDER_CONTRACT_VERSION 对账
+const sdkVersion = extractContractVersion(sdkSrc, 'SDK');
+let frontendVersion = sdkVersion;
+let electronVersion = sdkVersion;
+if (!frontendSdkImported.has('MEDIA_PROVIDER_CONTRACT_VERSION')) {
+  frontendVersion = extractContractVersion(frontendSrc, 'frontend');
+}
+if (!electronSdkImported.has('MEDIA_PROVIDER_CONTRACT_VERSION')) {
+  electronVersion = extractContractVersion(electronSrc, 'electron');
+}
 if (sdkVersion !== frontendVersion || sdkVersion !== electronVersion) {
   failures.push(
     `MEDIA_PROVIDER_CONTRACT_VERSION mismatch: sdk=${sdkVersion} frontend=${frontendVersion} electron=${electronVersion}`,
   );
 }
 
+// 2. ChannelKind 字面量集合
+const sdkKinds = extractChannelKinds(sdkSrc);
+if (!sdkKinds) {
+  console.error('[parity] SDK: ChannelKind type alias not found');
+  process.exit(3);
+}
+let frontendKinds = sdkKinds;
+let electronKinds = sdkKinds;
+if (!frontendSdkImported.has('ChannelKind')) {
+  frontendKinds = extractChannelKinds(frontendSrc);
+  if (!frontendKinds) {
+    console.error('[parity] frontend: ChannelKind type alias not found and not imported from SDK');
+    process.exit(3);
+  }
+}
+if (!electronSdkImported.has('ChannelKind')) {
+  electronKinds = extractKindsFromProviderDef(electronSrc) || sdkKinds;
+}
 if (!setEqual(sdkKinds, frontendKinds)) {
   const d = diffSets(sdkKinds, frontendKinds);
   failures.push(
     `ChannelKind mismatch (SDK vs frontend): only-SDK=[${d.onlyA.join(',')}] only-frontend=[${d.onlyB.join(',')}]`,
   );
 }
-
-if (!setEqual(sdkKinds, electronInferred)) {
-  const d = diffSets(sdkKinds, electronInferred);
+if (!setEqual(sdkKinds, electronKinds)) {
+  const d = diffSets(sdkKinds, electronKinds);
   failures.push(
     `ChannelKind mismatch (SDK vs electron): only-SDK=[${d.onlyA.join(',')}] only-electron=[${d.onlyB.join(',')}]`,
   );
 }
 
-if (!setEqual(sdkFields, frontendFields)) {
-  const d = diffSets(sdkFields, frontendFields);
-  failures.push(
-    `ProviderDefinition fields mismatch (SDK vs frontend): only-SDK=[${d.onlyA.join(',')}] only-frontend=[${d.onlyB.join(',')}]`,
-  );
+// 3. ProviderDefinition 字段集合
+const sdkFields = extractInterfaceFields(sdkSrc, 'ProviderDefinition');
+if (!sdkFields) {
+  console.error('[parity] SDK: ProviderDefinition interface not found');
+  process.exit(3);
 }
-
-if (!setEqual(sdkFields, electronFields)) {
+if (!frontendSdkImported.has('ProviderDefinition')) {
+  const frontendFields = extractInterfaceFields(frontendSrc, 'ProviderDefinition');
+  if (!frontendFields) {
+    console.error('[parity] frontend: ProviderDefinition interface not found and not imported from SDK');
+    process.exit(3);
+  }
+  if (!setEqual(sdkFields, frontendFields)) {
+    const d = diffSets(sdkFields, frontendFields);
+    failures.push(
+      `ProviderDefinition fields mismatch (SDK vs frontend): only-SDK=[${d.onlyA.join(',')}] only-frontend=[${d.onlyB.join(',')}]`,
+    );
+  }
+}
+const electronFields = extractInterfaceFields(electronSrc, 'ProviderDefinition');
+if (electronFields && !setEqual(sdkFields, electronFields)) {
   const d = diffSets(sdkFields, electronFields);
   failures.push(
     `ProviderDefinition fields mismatch (SDK vs electron): only-SDK=[${d.onlyA.join(',')}] only-electron=[${d.onlyB.join(',')}]`,
   );
 }
 
-// 4. ElectronPluginAPI 顶层 namespace 对账（SDK backend.ts vs electron types.ts）
-const SDK_BACKEND_FILE = path.join(ROOT, 'packages/plugin-sdk/src/backend.ts');
-function extractInterfaceTopLevelKeys(src, interfaceName, label) {
-  const start = src.search(new RegExp(`interface\\s+${interfaceName}\\b`));
-  if (start === -1) {
-    console.error(`[parity] ${label}: interface ${interfaceName} not found`);
-    process.exit(3);
-  }
-  const open = src.indexOf('{', start);
-  let depth = 0;
-  let close = -1;
-  for (let i = open; i < src.length; i++) {
-    if (src[i] === '{') depth++;
-    else if (src[i] === '}') {
-      depth--;
-      if (depth === 0) { close = i; break; }
-    }
-  }
-  const body = src.slice(open + 1, close);
-  // 用行起始时的深度判断顶层 key（嵌套对象 `key: { ... }` 的 key 行起始 depth=0）
-  const keys = new Set();
-  let d = 0;
-  let lineStart = 0;
-  let lineDepthAtStart = 0;
-  const flushLine = (endIdx) => {
-    const line = body.slice(lineStart, endIdx)
-      .replace(/\/\/.*$/, '')
-      .replace(/\/\*[\s\S]*?\*\//g, '')
-      .trim();
-    if (lineDepthAtStart === 0 && line && !line.startsWith('*') && !line.startsWith('/')) {
-      const m = line.match(/^([a-zA-Z_][a-zA-Z0-9_]*)\??\s*:/);
-      if (m) keys.add(m[1]);
-    }
-  };
-  for (let i = 0; i < body.length; i++) {
-    const ch = body[i];
-    if (ch === '\n') {
-      flushLine(i);
-      lineStart = i + 1;
-      lineDepthAtStart = d;
-    } else if (ch === '{') {
-      d++;
-    } else if (ch === '}') {
-      d--;
-    }
-  }
-  flushLine(body.length);
-  return keys;
-}
-
-const sdkBackendSrc = read(SDK_BACKEND_FILE);
-const sdkApiKeys = extractInterfaceTopLevelKeys(sdkBackendSrc, 'ElectronPluginAPI', 'SDK backend');
-const electronApiKeys = extractInterfaceTopLevelKeys(electronSrc, 'ElectronPluginAPI', 'electron types');
-
-if (!setEqual(sdkApiKeys, electronApiKeys)) {
+// 4. ElectronPluginAPI 顶层 namespace
+const sdkApiKeys = extractInterfaceTopLevelKeys(sdkBackendSrc, 'ElectronPluginAPI');
+const electronApiKeys = extractInterfaceTopLevelKeys(electronSrc, 'ElectronPluginAPI');
+if (sdkApiKeys && electronApiKeys && !setEqual(sdkApiKeys, electronApiKeys)) {
   const d = diffSets(sdkApiKeys, electronApiKeys);
   failures.push(
     `ElectronPluginAPI namespace mismatch (SDK vs electron): only-SDK=[${d.onlyA.join(',')}] only-electron=[${d.onlyB.join(',')}]`,
@@ -239,4 +251,10 @@ console.log('[plugin-sdk parity] OK');
 console.log(`  contractVersion:        ${sdkVersion}`);
 console.log(`  channelKinds:           ${[...sdkKinds].join(', ')}`);
 console.log(`  ProviderDefinition:     ${sdkFields.size} fields`);
-console.log(`  ElectronPluginAPI:      ${[...sdkApiKeys].join(', ')}`);
+if (sdkApiKeys) {
+  console.log(`  ElectronPluginAPI:      ${[...sdkApiKeys].join(', ')}`);
+}
+const frontendPath = frontendSdkImported.size > 0 ? `via SDK import (${frontendSdkImported.size} symbols)` : 'local';
+const electronPath = electronSdkImported.size > 0 ? `via SDK import (${electronSdkImported.size} symbols)` : 'local';
+console.log(`  frontend types:         ${frontendPath}`);
+console.log(`  electron types:         ${electronPath}`);

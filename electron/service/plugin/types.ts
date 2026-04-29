@@ -141,21 +141,16 @@ export interface MCPServerDefinition {
   pluginId?: string;
 }
 
-/**
- * 凭据/连接要求声明（与 SDK ProviderAuthRequirements 同步）。
- */
-export interface ProviderAuthRequirements {
-  apiKey?: 'required' | 'optional' | 'none';
-  baseUrl?: 'required' | 'optional' | 'none';
-}
-
-export interface ProviderModelDefinition {
-  id: string;
-  label: string;
-  description?: string;
-  capabilities: string[];
-  defaults?: Record<string, unknown>;
-}
+// 凭据/连接要求声明 + 模型定义：直接从 SDK type-import，不再维护本地副本。
+// 主进程仅做类型层引用，编译后 erase，无运行时 SDK 依赖。
+import type {
+  ProviderAuthRequirements,
+  ProviderModelDefinition,
+} from '@komastudio/plugin-sdk';
+export type {
+  ProviderAuthRequirements,
+  ProviderModelDefinition,
+} from '@komastudio/plugin-sdk';
 
 export interface PluginPollingConfig {
   interval: number;
