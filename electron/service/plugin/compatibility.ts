@@ -116,9 +116,12 @@ export function validatePluginCompatibility(
 
   const minApp = manifest.engine?.minAppVersion;
   if (minApp && compareSemver(runtime.appVersion, minApp) < 0) {
-    fatal.push({
+    // minAppVersion 是建议提示，不构成硬兼容性边界（真正的 API 契约由 sdkVersion 守护）。
+    // 现实场景：插件作者可能用模板里的占位版本，未对每个发布精确更新。
+    // 不阻断激活，仅 warn 让插件作者/用户感知。
+    warnings.push({
       code: 'app_too_old',
-      message: `plugin "${manifest.id}" requires app >= ${minApp}, current ${runtime.appVersion}`,
+      message: `plugin "${manifest.id}" suggests app >= ${minApp}, current ${runtime.appVersion}; activation continues but plugin may not work as intended`,
     });
   }
 

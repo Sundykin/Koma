@@ -67,7 +67,8 @@ function validate(manifest, runtime) {
   ];
   if (manifest.engine?.minAppVersion) {
     if (compareSemver(runtime.appVersion, manifest.engine.minAppVersion) < 0) {
-      fatal.push('app_too_old');
+      // minAppVersion 是建议提示，仅 warn 不阻断
+      warnings.push('app_too_old');
     }
   }
   if (manifest.engine?.sdkVersion) {
@@ -84,11 +85,10 @@ function validate(manifest, runtime) {
 
 const runtime = { appVersion: '1.0.0', sdkVersion: '1.1.0' };
 
-// app 太老
-assert.deepStrictEqual(
-  validate({ engine: { minAppVersion: '2.0.0', sdkVersion: '1.0.0' }, scopes: [] }, runtime).fatal,
-  ['app_too_old'],
-);
+// app 太老 → warn 不阻断
+const appTooOld = validate({ engine: { minAppVersion: '2.0.0', sdkVersion: '1.0.0' }, scopes: [] }, runtime);
+assert.deepStrictEqual(appTooOld.fatal, []);
+assert.deepStrictEqual(appTooOld.warnings, ['app_too_old']);
 
 // SDK major 不一致
 assert.deepStrictEqual(
