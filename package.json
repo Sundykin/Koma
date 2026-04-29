@@ -37,7 +37,9 @@
     "verify:plugin-sqlite-flow": "node scripts/plugin-sqlite-selfcheck.cjs",
     "verify:plugin-sdk-parity": "node scripts/check-plugin-sdk-parity.cjs",
     "verify:plugin-compatibility": "node scripts/test-plugin-compatibility.cjs",
-    "verify:plugin": "npm run verify:plugin-sdk-parity && npm run verify:plugin-compatibility"
+    "verify:plugin": "npm run verify:plugin-sdk-parity && npm run verify:plugin-compatibility",
+    "verify:ipc-whitelist": "node scripts/check-ipc-whitelist.cjs",
+    "verify:all": "npm run verify:plugin && npm run verify:ipc-whitelist"
   },
   "dependencies": {
     "@langchain/anthropic": "^1.3.12",

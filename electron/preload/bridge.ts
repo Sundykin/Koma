@@ -50,7 +50,6 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   'controller/project/saveShotMeta', 'controller/project/loadShotMeta',
   'controller/project/listShotMetas',
   'controller/project/saveAnalysis', 'controller/project/loadAnalysis',
-  'controller/project/loadAnalysisSummary', 'controller/project/loadEpisodeShotsPage',
   'controller/project/saveProjectTimeline', 'controller/project/loadProjectTimeline',
   'controller/project/saveEpisodeTimeline', 'controller/project/loadEpisodeTimeline',
   'controller/project/bindOwnerRefMedia',
@@ -99,19 +98,22 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   'controller/ffmpeg/isAvailable', 'controller/ffmpeg/getInfo',
   'controller/ffmpeg/extractFrames', 'controller/ffmpeg/splitGridImage',
   'controller/ffmpeg/waveform',
-  'controller/ffmpeg/splitAudio', 'controller/ffmpeg/upscaleImage', 'controller/ffmpeg/composeVideo',
+  'controller/ffmpeg/splitAudio', 'controller/ffmpeg/composeVideo',
   'controller/ffmpeg/getCacheDir', 'controller/ffmpeg/getTempDir',
   'controller/ffmpeg/ensureDir', 'controller/ffmpeg/saveFrame',
   'controller/ffmpeg/cleanupTemp', 'controller/ffmpeg/clearCache',
   'controller/ffmpeg/cancelTask', 'controller/ffmpeg/clearQueue',
 	  'controller/plugin/validate', 'controller/plugin/install',
-	  'controller/plugin/uninstall', 'controller/plugin/list',
-	  'controller/plugin/openFolder',
+	  'controller/plugin/uninstall', 'controller/plugin/uninstallById',
+	  'controller/plugin/list', 'controller/plugin/openFolder',
 	  // runtime lifecycle
 	  'controller/plugin/activate', 'controller/plugin/deactivate',
 	  'controller/plugin/status', 'controller/plugin/listActive',
 	  // backend provider invocation (used by image-hosting fallback)
 	  'controller/plugin/callProvider',
+	  // tools / agents 查询
+	  'controller/plugin/listMCPTools', 'controller/plugin/callMCPTool',
+	  'controller/plugin/listAgents',
 	  'controller/net/fetch',
 	]);
 
