@@ -1,6 +1,15 @@
 /**
- * Provider 注册表类型定义
- * 用于静态导入，避免动态/静态导入冲突
+ * Provider 注册表类型定义（前端运行时副本）
+ *
+ * 规格真源：packages/plugin-sdk/src/provider.ts。
+ * 任何 ProviderDefinition / ChannelKind / ChannelCapability /
+ * ProviderAuthRequirements / ProviderContext / MEDIA_PROVIDER_CONTRACT_VERSION
+ * 字段变更都必须先在 SDK 中落地，并同步：
+ *   - electron/service/plugin/types.ts
+ *   - 本文件
+ * 然后升级 packages/plugin-sdk/package.json:version。
+ *
+ * 前端独有：IProviderRegistry 接口（注册表实现细节）。
  */
 import type { PollingConfig } from './polling';
 
