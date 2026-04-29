@@ -1,12 +1,11 @@
 import type { EditorStep, EpisodeStepProgress } from '../types';
+import { listEditorStepIds } from './editorStepRegistry';
 
 const defaultStepProgress: EpisodeStepProgress = {
   assets: 'pending',
   storyboard: 'pending',
   video: 'pending',
 };
-
-const stepOrder: EditorStep[] = ['assets', 'storyboard', 'video'];
 
 export type EpisodeEditorEntryMode = 'resume-progress' | 'start-production';
 
@@ -19,11 +18,13 @@ export function resolveEpisodeEditorEntry(
   options: EpisodeEditorEntryOptions = {},
 ): { stepProgress: EpisodeStepProgress; initialStep: EditorStep } {
   const progress = stepProgress || { ...defaultStepProgress };
+  const stepOrder = listEditorStepIds();
+  const fallbackStep = (stepOrder[0] || 'assets') as EditorStep;
 
   if (options.mode === 'start-production') {
-    return { stepProgress: progress, initialStep: 'assets' };
+    return { stepProgress: progress, initialStep: fallbackStep };
   }
 
-  const initialStep = stepOrder.find(step => progress[step] === 'pending') || 'assets';
-  return { stepProgress: progress, initialStep };
+  const pending = stepOrder.find((step) => progress[step as EditorStep] === 'pending');
+  return { stepProgress: progress, initialStep: (pending ?? fallbackStep) as EditorStep };
 }

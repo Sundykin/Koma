@@ -9,6 +9,7 @@ import { ChevronRight, Home } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Project, Episode, EditorStep, EpisodeStepProgress } from '../../types';
 import { StepNavigator } from './StepNavigator';
+import { getEditorStep } from '../../workflow/editorStepRegistry';
 
 interface HeaderProps {
   view: 'projects' | 'overview' | 'editor' | 'settings';
@@ -109,25 +110,19 @@ export const Header: React.FC<HeaderProps> = ({
             currentStep={editorStep}
             onStepChange={onStepChange}
             stepProgress={stepProgress}
-            actionButton={
-              editorStep === 'assets' ? (
+            actionButton={(() => {
+              const next = getEditorStep(editorStep)?.nextAction;
+              if (!next) return null;
+              return (
                 <Button
                   type="primary"
-                  onClick={() => onStepChangeWithMark('storyboard')}
+                  onClick={() => onStepChangeWithMark(next.targetStepId as EditorStep)}
                   className="bg-green-600 hover:bg-green-500 border-none"
                 >
-                  {t('editor.nextStoryboard')}
+                  {t(next.labelKey)}
                 </Button>
-              ) : editorStep === 'storyboard' ? (
-                <Button
-                  type="primary"
-                  onClick={() => onStepChangeWithMark('video')}
-                  className="bg-green-600 hover:bg-green-500 border-none"
-                >
-                  {t('editor.nextVideo')}
-                </Button>
-              ) : null
-            }
+              );
+            })()}
           />
         </>
       )}

@@ -5,6 +5,7 @@ import {
   Clapperboard,
   Scissors,
 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { Project, Episode, EditorStep, EpisodeStepProgress, ScriptAnalysisResult, AppSettings, ProjectStyleSnapshot } from '../../types';
 import type { MentionItem } from '../../editor';
 import { SimpleEditor } from './index';
@@ -12,6 +13,7 @@ import { AssetManager } from '../asset/AssetManager';
 import { Storyboard } from '../storyboard/Storyboard';
 import { StepNavigator } from '../common/StepNavigator';
 import { serializeMediaSelection } from '../../providers/channel/resolver';
+import { getEditorStep } from '../../workflow/editorStepRegistry';
 
 interface EditorViewProps {
   activeProject: Project;
@@ -42,36 +44,26 @@ export const EditorView: React.FC<EditorViewProps> = ({
   onViewChange,
   onOpenProjectSettings: _onOpenProjectSettings,
 }) => {
+  const { t } = useTranslation();
   const styleSnapshot: ProjectStyleSnapshot | undefined = activeProject.styleSnapshot;
   const llmSelection = serializeMediaSelection(activeProject.mediaSelections?.llm);
   const ttiSelection = serializeMediaSelection(activeProject.mediaSelections?.tti);
   const itvSelection = serializeMediaSelection(activeProject.mediaSelections?.itv);
   const ttsSelection = serializeMediaSelection(activeProject.mediaSelections?.tts);
 
+  // 数据驱动："下一步"按钮从 editorStepRegistry.nextAction 派生
   const getActionButton = () => {
-    if (editorStep === 'assets') {
-      return (
-        <Button
-          type="primary"
-          onClick={() => onStepChangeWithMark('storyboard')}
-          className="bg-emerald-600 hover:bg-emerald-500 border-none"
-        >
-          下一步：AI分镜
-        </Button>
-      );
-    }
-    if (editorStep === 'storyboard') {
-      return (
-        <Button
-          type="primary"
-          onClick={() => onStepChangeWithMark('video')}
-          className="bg-emerald-600 hover:bg-emerald-500 border-none"
-        >
-          下一步：后期剪辑
-        </Button>
-      );
-    }
-    return null;
+    const next = getEditorStep(editorStep)?.nextAction;
+    if (!next) return null;
+    return (
+      <Button
+        type="primary"
+        onClick={() => onStepChangeWithMark(next.targetStepId as EditorStep)}
+        className="bg-emerald-600 hover:bg-emerald-500 border-none"
+      >
+        {t(next.labelKey)}
+      </Button>
+    );
   };
 
   return (

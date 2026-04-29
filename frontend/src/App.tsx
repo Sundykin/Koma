@@ -35,6 +35,7 @@ import { loadSettings } from './store/globalStore';
 import { activationService, ActivationInfo } from './services/activationService';
 import { electronService } from './services/electronService';
 import { resolveEpisodeEditorEntry, type EpisodeEditorEntryOptions } from './workflow/episodeEditorEntry';
+import { listEditorStepIds } from './workflow/editorStepRegistry';
 import { useTranslation } from 'react-i18next';
 
 const { Text } = Typography;
@@ -447,7 +448,7 @@ const AppContent: React.FC = () => {
   }, [activeProject, activeEpisode]);
 
   const handleStepChangeWithMark = useCallback((targetStep: EditorStep) => {
-    const stepOrder: EditorStep[] = ['assets', 'storyboard', 'video'];
+    const stepOrder = listEditorStepIds();
     const currentIndex = stepOrder.indexOf(editorStep);
     const targetIndex = stepOrder.indexOf(targetStep);
     if (targetIndex > currentIndex) {
