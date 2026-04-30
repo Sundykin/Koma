@@ -106,6 +106,7 @@
   },
   "editor": {
     "title": "编辑器",
+    "stepScript": "剧本",
     "stepAssets": "角色场景",
     "stepStoryboard": "AI分镜",
     "stepVideo": "后期剪辑",
@@ -113,6 +114,7 @@
     "narrationMode": "旁白解说",
     "analyzing": "解析中...",
     "startAnalysis": "开始智能解析",
+    "nextAssets": "下一步：角色场景",
     "nextStoryboard": "下一步：AI分镜",
     "nextVideo": "下一步：后期剪辑"
   },

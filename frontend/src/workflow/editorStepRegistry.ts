@@ -20,7 +20,7 @@
  */
 import type { ComponentType } from 'react';
 import type { LucideIcon } from 'lucide-react';
-import { Users, Clapperboard, Scissors } from 'lucide-react';
+import { FileText, Users, Clapperboard, Scissors } from 'lucide-react';
 import type {
   Project,
   Episode,
@@ -57,6 +57,14 @@ export interface EditorStepContext {
   ttsSelection?: string;
   onStepChange: (stepId: string) => void;
   onViewChange: (view: 'projects') => void;
+  /** 剧本步骤把编辑后的内容回写到上层；其他步骤可不消费 */
+  onScriptChange?: (text: string) => void;
+  /** 项目元信息更新（如标题、模型选择等）；'script' 步把它透给 ProjectOverview */
+  onProjectUpdate?: (updates: Partial<Project>) => void;
+  /** 项目设置入口（顶部面包屑或工具栏按钮触发） */
+  onOpenProjectSettings?: () => void;
+  /** 'script' 步选剧集时把当前剧集同步到上层；其它步骤渲染时依赖此值 */
+  onActiveEpisodeChange?: (episode: Episode) => void;
 }
 
 export interface EditorStepDefinition {
@@ -137,11 +145,20 @@ export function setStepComponent(
   def.Component = Component;
 }
 
-// ========== 内置三步注册 ==========
+// ========== 内置四步注册 ==========
+
+// 第一步：剧本（含写剧本 / AI 解析 / 推文文案 / 导入剧本）
+registerEditorStep({
+  id: 'script',
+  order: 0,
+  icon: FileText,
+  labelKey: 'editor.stepScript',
+  nextAction: { targetStepId: 'assets', labelKey: 'editor.nextAssets' },
+});
 
 registerEditorStep({
   id: 'assets',
-  order: 0,
+  order: 1,
   icon: Users,
   labelKey: 'editor.stepAssets',
   nextAction: { targetStepId: 'storyboard', labelKey: 'editor.nextStoryboard' },
@@ -149,7 +166,7 @@ registerEditorStep({
 
 registerEditorStep({
   id: 'storyboard',
-  order: 1,
+  order: 2,
   icon: Clapperboard,
   labelKey: 'editor.stepStoryboard',
   nextAction: { targetStepId: 'video', labelKey: 'editor.nextVideo' },
@@ -157,7 +174,7 @@ registerEditorStep({
 
 registerEditorStep({
   id: 'video',
-  order: 2,
+  order: 3,
   icon: Scissors,
   labelKey: 'editor.stepVideo',
   // 末步骤无 nextAction

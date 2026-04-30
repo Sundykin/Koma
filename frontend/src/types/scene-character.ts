@@ -33,6 +33,8 @@ export interface Character {
   gender?: CharacterGender;
   description?: string;
   appearance?: string;
+  /** 该人物在原文中的全部代称，多个用英文逗号分隔；无代称为空字符串 */
+  aliases?: string;
 
   voiceId?: string;    // TTS 音色 ID
   media?: CharacterMediaSlots; // 结构化媒体槽位
@@ -53,6 +55,8 @@ export interface Scene {
   time?: 'day' | 'night' | 'twilight';
   mood?: string;
   description?: string;
+  /** 该场景在原文中的全部代称，多个用英文逗号分隔；无代称为空字符串 */
+  aliases?: string;
 
   media?: SceneMediaSlots; // 结构化媒体槽位
   // 剧集引用追踪
@@ -68,6 +72,8 @@ export interface Prop {
 
   type?: string;
   description?: string;
+  /** 该道具在原文中的全部代称，多个用英文逗号分隔；无代称为空字符串 */
+  aliases?: string;
 
   media?: PropMediaSlots; // 结构化媒体槽位
   // Sora2 绑定相关
@@ -90,6 +96,11 @@ export interface ShotVideo {
   createdAt: number;
 }
 
+// 分镜视频推理模式：
+// - multi-ref：多参照模式，提示词内会出现 @角色/@场景/@道具 映射，依赖映射基准库
+// - first-frame：首帧延展模式，以单图为锚做微动延展，提示词不出现 @ 映射
+export type ShotVideoMode = 'multi-ref' | 'first-frame';
+
 // 分镜/镜头接口定义
 export interface Shot {
   id: string;
@@ -100,6 +111,8 @@ export interface Shot {
   imagePrompt?: string;  // 图片生成提示词
   videoPrompt?: string;  // 视频生成提示词
   imageMode?: 'normal' | 'grid'; // 图片生成模式：普通模式 | 九宫格模式（默认 normal）
+  videoMode?: ShotVideoMode; // 视频推理模式（默认 'multi-ref'）
+  tweetCopy?: string;    // 分镜级推文文案（1-3 句解说台词，作为 TTS 旁白源）
   media?: ShotMediaState; // 结构化媒体槽位
   // 关联资产
   characters: string[];  // 涉及的角色ID

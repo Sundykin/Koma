@@ -169,6 +169,20 @@ export interface AppSettings {
     template: string;
     updatedAt: number;
   }>;
+  /**
+   * 用户手动新增的提示词模板（id 不在 PromptTemplateType union 中）。
+   * 与 promptTemplates（覆盖默认模板）互补：promptTemplates 是 override，本字段是 new。
+   */
+  customPromptTemplates?: Array<{
+    id: string;                  // 用户自定义的唯一 id（不能与默认模板 id 冲突）
+    name: string;
+    category: string;            // PromptTemplateCategory（用 string 是为了避免类型循环依赖）
+    description: string;
+    template: string;
+    variables?: Array<{ name: string; required?: boolean }>;
+    createdAt: number;
+    updatedAt: number;
+  }>;
   customThemePresets?: ThemePreset[];  // 用户自定义视觉风格预设
   stylePrompts?: { prompt: string; isDefault?: boolean }[];  // 风格提示词列表
 }

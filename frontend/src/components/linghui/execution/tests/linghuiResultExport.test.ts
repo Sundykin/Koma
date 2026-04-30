@@ -79,7 +79,7 @@ describe('exportLinghuiNodeResults', () => {
         kind: 'image',
         primary: {
           kind: 'image',
-          source: 'koma-local:///fixtures/cat.png',
+          source: 'koma-local://files/fixtures/cat.png',
           label: '主图',
         },
       },

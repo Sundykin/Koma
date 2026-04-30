@@ -338,10 +338,22 @@ class FFmpegManager {
     const cacheKey = `${resourceId}:${timeRange?.join('-') || 'all'}`;
 
     if (this.frameCache.has(cacheKey)) {
-      return this.frameCache.get(cacheKey)!;
+      const cached = this.frameCache.get(cacheKey)!;
+      logger.info('[getFrames] memory cache hit', { resourceId, count: cached.length });
+      return cached;
+    }
+
+    if (!this.cacheDir) {
+      logger.warn('[getFrames] cacheDir 为空，init 是否成功？', { resourceId, filePath });
     }
 
     const resourceCacheDir = `${this.cacheDir}/${resourceId}/frames`;
+    logger.info('[getFrames] extracting', {
+      resourceId,
+      filePath,
+      outputDir: resourceCacheDir,
+      timeRange,
+    });
 
     const frames = await this.extractFrames({
       input: filePath,
@@ -349,6 +361,12 @@ class FFmpegManager {
       fps: 1,
       startTime: timeRange?.[0],
       endTime: timeRange?.[1]
+    });
+
+    logger.info('[getFrames] extracted', {
+      resourceId,
+      count: Array.isArray(frames) ? frames.length : 0,
+      first: Array.isArray(frames) ? frames[0] : undefined,
     });
 
     return frames;

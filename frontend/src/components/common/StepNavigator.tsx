@@ -10,17 +10,39 @@ interface StepNavigatorProps {
   onStepChange: (step: EditorStep) => void;
   stepProgress?: EpisodeStepProgress;
   actionButton?: ReactNode;
+  /**
+   * 'script' 步骤不持久化到 EpisodeStepProgress（数据 schema 保持不变），
+   * 它的"已完成"状态由当前剧本是否非空在运行时派生。
+   */
+  scriptText?: string;
 }
 
 const defaultProgress: EpisodeStepProgress = {
   assets: 'pending', storyboard: 'pending', video: 'pending',
 };
 
+/**
+ * 派生指定步骤的完成状态：
+ * - 'script' 由 scriptText 是否非空运行时计算（不持久化）
+ * - 其他三步走 EpisodeStepProgress
+ */
+function isStepCompleted(
+  stepId: string,
+  stepProgress: EpisodeStepProgress,
+  scriptText?: string,
+): boolean {
+  if (stepId === 'script') {
+    return !!(scriptText && scriptText.trim().length > 0);
+  }
+  return stepProgress[stepId as keyof EpisodeStepProgress] === 'completed';
+}
+
 export const StepNavigator: React.FC<StepNavigatorProps> = ({
   currentStep,
   onStepChange,
   stepProgress = defaultProgress,
   actionButton,
+  scriptText,
 }) => {
   const { t } = useTranslation();
 
@@ -34,10 +56,10 @@ export const StepNavigator: React.FC<StepNavigatorProps> = ({
     if (stepId === currentStep) return true;
     // 当前步骤之前的步骤始终可以返回
     if (index < _currentIndex) return true;
-    if (stepProgress[stepId as EditorStep] === 'completed') return true;
+    if (isStepCompleted(stepId, stepProgress, scriptText)) return true;
     if (index > 0) {
       const prevStep = stepOrder[index - 1];
-      if (stepProgress[prevStep as EditorStep] === 'completed') return true;
+      if (isStepCompleted(prevStep, stepProgress, scriptText)) return true;
     }
     return false;
   };
@@ -55,7 +77,7 @@ export const StepNavigator: React.FC<StepNavigatorProps> = ({
         <div className="flex items-center flex-1">
           {steps.map((step, index) => {
             const isActive = step.id === currentStep;
-            const isCompleted = stepProgress[step.id as EditorStep] === 'completed';
+            const isCompleted = isStepCompleted(step.id, stepProgress, scriptText);
             const clickable = isStepClickable(step.id, index);
             const isLocked = !clickable && !isActive;
             const Icon = step.icon;
@@ -111,7 +133,7 @@ export const StepNavigator: React.FC<StepNavigatorProps> = ({
                   <div className="flex-1 h-[2px] mx-3 bg-zinc-800 relative rounded-full overflow-hidden min-w-[40px]">
                     <div
                       className="absolute top-0 left-0 h-full bg-emerald-600 transition-all duration-500 ease-in-out"
-                      style={{ width: stepProgress[step.id as EditorStep] === 'completed' ? '100%' : '0%' }}
+                      style={{ width: isStepCompleted(step.id, stepProgress, scriptText) ? '100%' : '0%' }}
                     />
                   </div>
                 )}

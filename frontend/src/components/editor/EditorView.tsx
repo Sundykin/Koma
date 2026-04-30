@@ -1,5 +1,5 @@
-import React from 'react';
-import { Button } from 'antd';
+import React, { useEffect, useState } from 'react';
+import { Button, Tooltip } from 'antd';
 import { Users } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -13,6 +13,8 @@ import {
   getEditorStep,
   type EditorStepContext,
 } from '../../workflow/editorStepRegistry';
+import { loadEpisodeAnalysis } from '../../store/projectStore';
+import { TaskManager } from '../../services/TaskManager';
 // 副作用 import：把各步骤 Component 注入到 registry
 import './steps';
 
@@ -29,6 +31,12 @@ interface EditorViewProps {
   onStepChangeWithMark: (step: EditorStep) => void;
   onViewChange: (view: 'projects') => void;
   onOpenProjectSettings: () => void;
+  /** 'script' 步骤把编辑后的剧本回写到 App 顶层 state */
+  onScriptChange?: (text: string) => void;
+  /** 'script' 步骤里 ProjectOverview 修改项目元信息时回写 */
+  onProjectUpdate?: (updates: Partial<Project>) => void;
+  /** 'script' 步骤里选剧集时把当前剧集回写到 App 顶层 state */
+  onActiveEpisodeChange?: (episode: Episode) => void;
 }
 
 export const EditorView: React.FC<EditorViewProps> = ({
@@ -43,7 +51,10 @@ export const EditorView: React.FC<EditorViewProps> = ({
   onStepChange,
   onStepChangeWithMark,
   onViewChange,
-  onOpenProjectSettings: _onOpenProjectSettings,
+  onOpenProjectSettings,
+  onScriptChange,
+  onProjectUpdate,
+  onActiveEpisodeChange,
 }) => {
   const { t } = useTranslation();
   const styleSnapshot: ProjectStyleSnapshot | undefined = activeProject.styleSnapshot;
@@ -52,19 +63,66 @@ export const EditorView: React.FC<EditorViewProps> = ({
   const itvSelection = serializeMediaSelection(activeProject.mediaSelections?.itv);
   const ttsSelection = serializeMediaSelection(activeProject.mediaSelections?.tts);
 
+  // 'script' 步：跟踪当前剧集的解析就绪状态（剧本必须解析过才能进入下一步）
+  // 派生顺序：episode.hasAnalysis → 兜底走 loadEpisodeAnalysis 的 completedStages 长度
+  const [scriptAnalysisReady, setScriptAnalysisReady] = useState(false);
+  useEffect(() => {
+    if (!activeEpisode) {
+      setScriptAnalysisReady(false);
+      return;
+    }
+    let cancelled = false;
+    const initial = !!activeEpisode.hasAnalysis;
+    setScriptAnalysisReady(initial);
+    // 兜底：从分析数据派生（避免 episode 字段未及时刷新）
+    if (!initial) {
+      loadEpisodeAnalysis(activeProject.id, activeEpisode.id)
+        .then((analysis) => {
+          if (cancelled) return;
+          const stages = analysis?.completedStages || [];
+          if (stages.length > 0) setScriptAnalysisReady(true);
+        })
+        .catch(() => {/* 加载失败时按未就绪处理 */});
+    }
+    // 监听后台解析任务完成事件
+    const unsubscribe = TaskManager.addListener((task) => {
+      if (task.projectId !== activeProject.id) return;
+      if (task.type !== 'script-analysis') return;
+      if (task.targetId !== activeEpisode.id) return;
+      // 任务完成时标记就绪
+      if (task.status === 'completed') {
+        setScriptAnalysisReady(true);
+      }
+    });
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, [activeProject.id, activeEpisode]);
+
   // 数据驱动："下一步"按钮从 editorStepRegistry.nextAction 派生
   const getActionButton = () => {
     const next = getEditorStep(editorStep)?.nextAction;
     if (!next) return null;
-    return (
+
+    // 'script' 步：必须先解析剧本才能进入下一步
+    const blockedByAnalysis = editorStep === 'script' && !scriptAnalysisReady;
+    const tooltip = blockedByAnalysis
+      ? '请先点击右侧资产面板的「解析剧本」完成解析'
+      : undefined;
+
+    const button = (
       <Button
         type="primary"
+        disabled={blockedByAnalysis}
         onClick={() => onStepChangeWithMark(next.targetStepId as EditorStep)}
-        className="bg-emerald-600 hover:bg-emerald-500 border-none"
+        className={blockedByAnalysis ? '' : 'bg-emerald-600 hover:bg-emerald-500 border-none'}
       >
         {t(next.labelKey)}
       </Button>
     );
+
+    return tooltip ? <Tooltip title={tooltip}>{button}</Tooltip> : button;
   };
 
   // 构造 step 渲染上下文
@@ -82,6 +140,10 @@ export const EditorView: React.FC<EditorViewProps> = ({
     ttsSelection,
     onStepChange: (id) => onStepChange(id as EditorStep),
     onViewChange,
+    onScriptChange,
+    onProjectUpdate,
+    onOpenProjectSettings,
+    onActiveEpisodeChange,
   };
 
   // 数据驱动：从 registry 取当前 step 的 Component
@@ -95,6 +157,7 @@ export const EditorView: React.FC<EditorViewProps> = ({
         currentStep={editorStep}
         onStepChange={onStepChange}
         stepProgress={stepProgress}
+        scriptText={scriptText}
         actionButton={getActionButton()}
       />
 

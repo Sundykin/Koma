@@ -6,6 +6,7 @@ import {
   isRemoteMediaUri,
 } from '../types';
 import { electronService } from './electronService';
+import { fromKomaLocalUrl } from '../utils/urlUtils';
 
 export interface ResolveProviderAssetInputOptions {
   preferLocalFile?: boolean;
@@ -48,19 +49,9 @@ function toDataUrl(bytes: Uint8Array, mimeType: string): string {
   return `data:${mimeType};base64,${btoa(binary)}`;
 }
 
-// 把 electronService.fs.toLocalUrl 产出的 `koma-local:///encoded/path` 还原为真实
-// 文件系统路径（含 URL-encoded 段的解码）。其他形态的字符串原样返回。
-export function decodeKomaLocalToFsPath(value: string): string {
-  if (!value.startsWith('koma-local://')) return value;
-  // 协议头之后剩下的部分即原始路径片段（toLocalUrl 对每段做了 encodeURIComponent，
-  // `/` 未被编码，因此整体 decodeURIComponent 安全）。
-  const remainder = value.slice('koma-local:///'.length);
-  try {
-    return decodeURIComponent(remainder);
-  } catch {
-    return remainder;
-  }
-}
+// 把 electronService.fs.toLocalUrl 产出的 koma-local://files/<encoded path> 还原为真实
+// 文件系统路径。其他形态的字符串原样返回。
+export const decodeKomaLocalToFsPath = fromKomaLocalUrl;
 
 export async function resolveProviderAssetInput(
   source: string | StoredMediaAsset | undefined,

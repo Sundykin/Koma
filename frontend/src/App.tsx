@@ -78,7 +78,6 @@ const SettingsPage = lazy(() => import('./components/settings').then(m => ({ def
 const PluginManager = lazy(() => import('./components/plugins').then(m => ({ default: m.PluginManager })));
 const PluginHost = lazy(() => import('./components/plugins').then(m => ({ default: m.PluginHost })));
 const ChatPage = lazy(() => import('./components/chat').then(m => ({ default: m.ChatPage })));
-const ProjectOverview = lazy(() => import('./components/project/ProjectOverview').then(m => ({ default: m.ProjectOverview })));
 const LinghuiPage = lazy(() => import('./components/linghui').then(m => ({ default: m.LinghuiPage })));
 
 // 加载中占位组件
@@ -135,7 +134,7 @@ const AppContent: React.FC = () => {
 
   const [view, setView] = useState<AppView>(isVideoDevMode ? 'editor' : 'projects');
   const [activeProject, setActiveProject] = useState<Project | null>(isVideoDevMode ? DEV_TEST_PROJECT : null);
-  const [editorStep, setEditorStep] = useState<EditorStep>(isVideoDevMode ? 'video' : 'assets');
+  const [editorStep, setEditorStep] = useState<EditorStep>(isVideoDevMode ? 'video' : 'script');
   const [activeEpisode, setActiveEpisode] = useState<Episode | null>(null);
   const [stepProgress, setStepProgress] = useState<EpisodeStepProgress>({
     assets: 'pending', storyboard: 'pending', video: 'pending',
@@ -397,7 +396,9 @@ const AppContent: React.FC = () => {
       };
       setActiveProject(newProject);
       setActiveEpisode(null);
-      setView('overview');
+      setEditorStep('script');
+      setStepProgress({ assets: 'pending', storyboard: 'pending', video: 'pending' });
+      setView('editor');
       setScriptText('');
       setAnalysisData(null);
       setIsCreateModalOpen(false);
@@ -412,7 +413,9 @@ const AppContent: React.FC = () => {
     if (proj) {
       setActiveProject(proj);
       setActiveEpisode(null);
-      setView('overview');
+      setEditorStep('script');
+      setStepProgress({ assets: 'pending', storyboard: 'pending', video: 'pending' });
+      setView('editor');
       setScriptText('');
       setAnalysisData(null);
     }
@@ -429,7 +432,10 @@ const AppContent: React.FC = () => {
 
     setActiveEpisode(targetEpisode);
     setView('editor');
-    const entry = resolveEpisodeEditorEntry(targetEpisode.stepProgress, options);
+    const entry = resolveEpisodeEditorEntry(targetEpisode.stepProgress, {
+      ...options,
+      scriptText: targetEpisode.scriptText || '',
+    });
     setStepProgress(entry.stepProgress);
     setEditorStep(entry.initialStep);
     setScriptText(targetEpisode.scriptText || '');
@@ -657,16 +663,6 @@ const AppContent: React.FC = () => {
                     <PluginHost pluginId={view.replace('plugin:', '')} />
                   </Suspense>
                 )}
-                {view === 'overview' && activeProject && (
-                  <Suspense fallback={<ViewLoading tip="加载中..." />}>
-                    <ProjectOverview
-                      project={activeProject}
-                      onEnterEpisode={handleEnterEpisode}
-                      onProjectUpdate={(updates) => setActiveProject({ ...activeProject, ...updates })}
-                      onOpenProjectSettings={() => setIsProjectSettingsOpen(true)}
-                    />
-                  </Suspense>
-                )}
                 {view === 'editor' && activeProject && (
                   <Suspense fallback={<ViewLoading tip="加载中..." />}>
                     <EditorView
@@ -682,6 +678,9 @@ const AppContent: React.FC = () => {
                       onStepChangeWithMark={handleStepChangeWithMark}
                       onViewChange={setView}
                       onOpenProjectSettings={() => setIsProjectSettingsOpen(true)}
+                      onScriptChange={setScriptText}
+                      onProjectUpdate={(updates) => setActiveProject(prev => prev ? { ...prev, ...updates } : prev)}
+                      onActiveEpisodeChange={setActiveEpisode}
                     />
                   </Suspense>
                 )}

@@ -14,6 +14,7 @@ import {
 } from '../../../../types/linghui';
 import { isBlobUri, isDataUri, isRemoteMediaUri } from '../../../../types';
 import { getFileSystemPort } from '../../../../services/fileSystemPort';
+import { fromKomaLocalUrl } from '../../../../utils/urlUtils';
 
 export interface LinghuiResultExportTarget {
   node: LinghuiRFNodeSnapshot;
@@ -150,14 +151,7 @@ function inferExtension(source: string | undefined, mimeType: string | undefined
   return getFileExtensionFromMimeType(mimeType, fallback);
 }
 
-function decodeLinghuiSource(source: string): string {
-  if (!source.startsWith('koma-local://')) {
-    return source;
-  }
-
-  const decoded = decodeURIComponent(source.replace(/^koma-local:\/\//, ''));
-  return decoded.replace(/^\/([A-Za-z]:\/)/, '$1');
-}
+const decodeLinghuiSource = fromKomaLocalUrl;
 
 async function writeBinarySource(source: string, targetPath: string): Promise<void> {
   const fileSystemPort = getFileSystemPort();

@@ -9,12 +9,14 @@
  * EditorView 自身无需改动。
  */
 import { setStepComponent } from '../../../workflow/editorStepRegistry';
+import { ScriptStep } from './ScriptStep';
 import { AssetsStep } from './AssetsStep';
 import { StoryboardStep } from './StoryboardStep';
 import { VideoStep } from './VideoStep';
 
+setStepComponent('script', ScriptStep);
 setStepComponent('assets', AssetsStep);
 setStepComponent('storyboard', StoryboardStep);
 setStepComponent('video', VideoStep);
 
-export { AssetsStep, StoryboardStep, VideoStep };
+export { ScriptStep, AssetsStep, StoryboardStep, VideoStep };

@@ -85,6 +85,7 @@ export type {
   Prop,
   ShotVideo,
   Shot,
+  ShotVideoMode,
   ScriptAnalysisResult,
   ShotVersion,
   ShotMeta,
@@ -122,7 +123,7 @@ export type {
 // ========== 编辑器步骤（待 P0#3 续刀彻底数据驱动） ==========
 
 // 编辑器当前的步骤状态 (3步流程)
-export type EditorStep = 'assets' | 'storyboard' | 'video';
+export type EditorStep = 'script' | 'assets' | 'storyboard' | 'video';
 
 // ========== 项目素材库 ==========
 

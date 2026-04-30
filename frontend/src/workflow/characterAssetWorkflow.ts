@@ -23,6 +23,7 @@ import { logTTICall, logITVCall } from '../store/aiCallLogger';
 import { resolvePromptTemplate } from '../store/promptTemplates';
 import { getActiveITVConfig } from '../store/settings/mediaConfig';
 import { mediaGenerationService } from '../services/MediaGenerationService';
+import { runWithTask } from '../services/taskRunner';
 import { buildCharacterCostumeTemplateVariables } from './promptVariableBuilders';
 import { compileCharacterPreviewVideoRequest } from './videoGenerationRequests';
 import type { StyleSnapshotLike } from '../utils/promptNormalize';
@@ -305,6 +306,8 @@ interface GenerateOptions {
   normalizeRemoteUrl?: boolean;
   faceReference?: MediaAssetSource | ProviderAssetInput;
   onProgress?: (progress: number, step: string) => void;
+  /** 批量场景下父 task 已包装，子调用传 true 跳过单独的 task 创建 */
+  disableTask?: boolean;
 }
 
 interface GenerateBatchOptions extends Omit<GenerateOptions, 'seed' | 'variationPrompt' | 'destPath'> {
@@ -321,7 +324,7 @@ interface GenerateBatchOptions extends Omit<GenerateOptions, 'seed' | 'variation
 export async function generateCostumePhoto(
   options: GenerateOptions
 ): Promise<{ success: boolean; path?: string; url?: string; error?: string }> {
-  const { projectId, character, theme, stylePrompt, styleSnapshot, project, ttiSelection, seed, variationPrompt, destPath, bindOwner, normalizeRemoteUrl, faceReference, onProgress } = options;
+  const { projectId, character, theme, stylePrompt, styleSnapshot, project, ttiSelection, seed, variationPrompt, destPath, bindOwner, normalizeRemoteUrl, faceReference, onProgress, disableTask } = options;
 
   logger.info(`开始生成角色定妆照: ${character.name}`);
   onProgress?.(0, '准备生成定妆照...');
@@ -358,28 +361,45 @@ export async function generateCostumePhoto(
       }
     );
 
-    const asset = await mediaGenerationService.generateImage({
+    // 用 runWithTask 包"用户级"生成动作：同步 provider 也能在任务面板可见。
+    // 异步 provider 内部仍会 createMediaTask 并写入 taskQueueStore，由 polling 链路接管。
+    const { result: asset } = await runWithTask({
+      disabled: disableTask,
       projectId,
-      ownerRef: {
-        projectId,
-        ownerType: 'character',
-        ownerId: character.id,
-        slot: 'costumePhoto',
+      category: 'asset',
+      subType: 'asset-generation',
+      targetType: 'character',
+      targetId: character.id,
+      targetName: `${character.name} 定妆照`,
+      type: 'asset-generation',
+      execute: async (ctx) => {
+        ctx.progress(10, '调用 TTI 服务...');
+        const a = await mediaGenerationService.generateImage({
+          projectId,
+          ownerRef: {
+            projectId,
+            ownerType: 'character',
+            ownerId: character.id,
+            slot: 'costumePhoto',
+          },
+          request: {
+            prompt,
+            references,
+            options: {
+              width: 1536,
+              height: 1024,
+              ...(seed !== undefined ? { seed } : undefined),
+            },
+          },
+          ttiSelection,
+          destPath,
+          bindOwner,
+          normalizeRemoteUrl,
+          taskName: `${character.name} 定妆照`,
+        });
+        ctx.progress(100, '完成');
+        return a;
       },
-      request: {
-        prompt,
-        references,
-        options: {
-          width: 1536,
-          height: 1024,
-          ...(seed !== undefined ? { seed } : undefined),
-        },
-      },
-      ttiSelection,
-      destPath,
-      bindOwner,
-      normalizeRemoteUrl,
-      taskName: `${character.name} 定妆照`,
     });
 
     onProgress?.(100, '完成');
@@ -397,7 +417,7 @@ export async function generateCostumePhoto(
 export async function generateCharacterFaceCandidate(
   options: GenerateOptions
 ): Promise<{ success: boolean; path?: string; url?: string; error?: string }> {
-  const { projectId, character, theme, stylePrompt, styleSnapshot, project, ttiSelection, seed, variationPrompt, destPath, bindOwner, normalizeRemoteUrl, onProgress } = options;
+  const { projectId, character, theme, stylePrompt, styleSnapshot, project, ttiSelection, seed, variationPrompt, destPath, bindOwner, normalizeRemoteUrl, onProgress, disableTask } = options;
 
   logger.info(`开始生成角色人脸候选: ${character.name}`);
   onProgress?.(0, '准备生成人脸方案...');
@@ -424,28 +444,43 @@ export async function generateCharacterFaceCandidate(
       }
     );
 
-    const asset = await mediaGenerationService.generateImage({
+    const { result: asset } = await runWithTask({
+      disabled: disableTask,
       projectId,
-      ownerRef: {
-        projectId,
-        ownerType: 'character',
-        ownerId: character.id,
-        slot: 'costumePhoto',
+      category: 'asset',
+      subType: 'asset-generation',
+      targetType: 'character',
+      targetId: character.id,
+      targetName: `${character.name} 人脸抽卡`,
+      type: 'asset-generation',
+      execute: async (ctx) => {
+        ctx.progress(10, '调用 TTI 服务...');
+        const a = await mediaGenerationService.generateImage({
+          projectId,
+          ownerRef: {
+            projectId,
+            ownerType: 'character',
+            ownerId: character.id,
+            slot: 'costumePhoto',
+          },
+          request: {
+            prompt,
+            references: [],
+            options: {
+              width: 1024,
+              height: 1024,
+              ...(seed !== undefined ? { seed } : undefined),
+            },
+          },
+          ttiSelection,
+          destPath,
+          bindOwner,
+          normalizeRemoteUrl,
+          taskName: `${character.name} 人脸方案`,
+        });
+        ctx.progress(100, '完成');
+        return a;
       },
-      request: {
-        prompt,
-        references: [],
-        options: {
-          width: 1024,
-          height: 1024,
-          ...(seed !== undefined ? { seed } : undefined),
-        },
-      },
-      ttiSelection,
-      destPath,
-      bindOwner,
-      normalizeRemoteUrl,
-      taskName: `${character.name} 人脸方案`,
     });
 
     onProgress?.(100, '完成');
@@ -474,6 +509,7 @@ export async function generateCharacterFaceCandidatesBatch(
     seeds = [],
     destPaths = [],
     variations = [],
+    disableTask,
   } = options;
 
   const resolvedBatchCount = Math.max(1, Math.floor(batchCount || 1));
@@ -510,28 +546,44 @@ export async function generateCharacterFaceCandidatesBatch(
       }
     );
 
-    const assets = await mediaGenerationService.generateImages({
+    const { result: assets } = await runWithTask({
+      disabled: disableTask,
       projectId,
-      ownerRef: {
-        projectId,
-        ownerType: 'character',
-        ownerId: character.id,
-        slot: 'costumePhoto',
+      category: 'asset',
+      subType: 'asset-generation',
+      targetType: 'character',
+      targetId: character.id,
+      targetName: `${character.name} 人脸抽卡 ×${resolvedBatchCount}`,
+      type: 'asset-generation',
+      metadata: { batchCount: resolvedBatchCount },
+      execute: async (ctx) => {
+        ctx.progress(10, '调用 TTI 服务...');
+        const a = await mediaGenerationService.generateImages({
+          projectId,
+          ownerRef: {
+            projectId,
+            ownerType: 'character',
+            ownerId: character.id,
+            slot: 'costumePhoto',
+          },
+          request: {
+            prompt,
+            references: [],
+            count: resolvedBatchCount,
+            options: {
+              width: 1024,
+              height: 1024,
+            },
+          },
+          ttiSelection,
+          destPath: (index) => destPaths[index],
+          bindOwner,
+          normalizeRemoteUrl,
+          taskName: `${character.name} 人脸方案批量`,
+        });
+        ctx.progress(100, '完成');
+        return a;
       },
-      request: {
-        prompt,
-        references: [],
-        count: resolvedBatchCount,
-        options: {
-          width: 1024,
-          height: 1024,
-        },
-      },
-      ttiSelection,
-      destPath: (index) => destPaths[index],
-      bindOwner,
-      normalizeRemoteUrl,
-      taskName: `${character.name} 人脸方案批量`,
     });
 
     onProgress?.(100, '完成');
@@ -554,7 +606,7 @@ export async function generateCharacterFaceCandidatesBatch(
 export async function generateCharacterPreviewVideo(
   options: GenerateOptions
 ): Promise<{ success: boolean; path?: string; taskId?: string; error?: string }> {
-  const { projectId, character, theme, stylePrompt, styleSnapshot, project, itvSelection, onProgress } = options;
+  const { projectId, character, theme, stylePrompt, styleSnapshot, project, itvSelection, onProgress, disableTask } = options;
 
   logger.info(`开始生成角色预览视频: ${character.name}`);
   onProgress?.(0, '准备生成预览视频...');
@@ -603,17 +655,32 @@ export async function generateCharacterPreviewVideo(
       }
     );
 
-    const asset = await mediaGenerationService.generateVideo({
+    const { result: asset } = await runWithTask({
+      disabled: disableTask,
       projectId,
-      ownerRef: {
-        projectId,
-        ownerType: 'character',
-        ownerId: character.id,
-        slot: 'previewVideo',
+      category: 'asset',
+      subType: 'asset-generation',
+      targetType: 'character',
+      targetId: character.id,
+      targetName: `${character.name} 预览视频`,
+      type: 'asset-generation',
+      execute: async (ctx) => {
+        ctx.progress(10, '调用 ITV 服务...');
+        const a = await mediaGenerationService.generateVideo({
+          projectId,
+          ownerRef: {
+            projectId,
+            ownerType: 'character',
+            ownerId: character.id,
+            slot: 'previewVideo',
+          },
+          request: compiledRequest.request,
+          itvSelection,
+          taskName: `${character.name} 预览视频`,
+        });
+        ctx.progress(100, '完成');
+        return a;
       },
-      request: compiledRequest.request,
-      itvSelection,
-      taskName: `${character.name} 预览视频`,
     });
 
     onProgress?.(100, '完成');

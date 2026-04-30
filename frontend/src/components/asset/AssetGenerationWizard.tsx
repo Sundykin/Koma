@@ -39,6 +39,7 @@ import {
   generateCharacterPreviewVideo,
 } from '../../workflow/characterAssetWorkflow';
 import { generateSceneImage, generatePropImage, generatePropPreviewVideo } from '../../workflow/scenePropAssetWorkflow';
+import { runWithTask } from '../../services/taskRunner';
 import {
   getCharacterCostumePhotoSource,
   getCharacterPreviewVideoSource,
@@ -73,7 +74,8 @@ const stepConfig = [
   { key: 'characters', title: '角色定妆照', icon: <UserOutlined /> },
   { key: 'scenes', title: '场景预览图', icon: <EnvironmentOutlined /> },
   { key: 'props', title: '道具参考图', icon: <AppstoreOutlined /> },
-  { key: 'videos', title: '预览视频', icon: <VideoCameraOutlined /> },
+  // 预览视频步骤暂时隐藏（功能保留，未来恢复时取消注释）
+  // { key: 'videos', title: '预览视频', icon: <VideoCameraOutlined /> },
 ];
 
 export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
@@ -221,6 +223,8 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
     stepKey: WizardStep,
     setter: React.Dispatch<React.SetStateAction<ItemStatus[]>>,
     onProgress: (progress: number, step: string) => void,
+    /** 在批量场景下传 true：让单 item 不创建独立 task（外层批量 task 已包装） */
+    disableTask = false,
   ): Promise<{ success: boolean; path?: string; error?: string }> => {
     const ttiSelection = serializeMediaSelection(project.mediaSelections?.tti);
     const itvSelection = serializeMediaSelection(project.mediaSelections?.itv);
@@ -235,6 +239,7 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
           styleSnapshot: project.styleSnapshot,
           ttiSelection,
           onProgress,
+          disableTask,
         });
       }
       case 'scenes': {
@@ -247,6 +252,7 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
           styleSnapshot: project.styleSnapshot,
           ttiSelection,
           onProgress,
+          disableTask,
         });
       }
       case 'props': {
@@ -259,6 +265,7 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
           styleSnapshot: project.styleSnapshot,
           ttiSelection,
           onProgress,
+          disableTask,
         });
       }
       case 'videos': {
@@ -272,6 +279,7 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
             styleSnapshot: project.styleSnapshot,
             itvSelection,
             onProgress,
+            disableTask,
           });
         } else {
           const chars = await loadCharacters(project.id);
@@ -283,6 +291,7 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
             styleSnapshot: project.styleSnapshot,
             itvSelection,
             onProgress,
+            disableTask,
           });
         }
       }
@@ -326,42 +335,74 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
         break;
     }
 
-    for (let i = 0; i < items.length; i++) {
-      const item = items[i];
-      setCurrentItem(item.name);
+    if (items.length === 0) {
+      setGenerating(false);
+      return;
+    }
 
-      // 更新状态为生成中
-      setter(prev => prev.map(it =>
-        it.id === item.id ? { ...it, status: 'generating', progress: 0 } : it
-      ));
+    // 批量任务名（用于任务面板）
+    const stepLabel = stepConfig[currentStep].title || stepKey;
+    const targetType: 'character' | 'scene' | 'prop' = stepKey === 'scenes'
+      ? 'scene'
+      : stepKey === 'props'
+        ? 'prop'
+        : 'character';
 
-      let result: { success: boolean; path?: string; error?: string };
+    // 用 runWithTask 包"批量"操作，子 generateOneItem 传 disableTask=true 避免任务面板被 N 个独立任务刷屏
+    try {
+      await runWithTask({
+        projectId: project.id,
+        category: 'asset',
+        subType: 'asset-generation',
+        targetType,
+        targetId: items[0].id,
+        targetName: `批量${stepLabel}（${items.length} 个）`,
+        type: 'asset-generation',
+        metadata: { batchCount: items.length, stepKey },
+        execute: async (taskCtx) => {
+          for (let i = 0; i < items.length; i++) {
+            const item = items[i];
+            setCurrentItem(item.name);
 
-      try {
-        const onProgress = (progress: number, _step: string) => {
-          setter(prev => prev.map(it =>
-            it.id === item.id ? { ...it, progress } : it
-          ));
-          setOverallProgress(((i + progress / 100) / items.length) * 100);
-        };
+            setter(prev => prev.map(it =>
+              it.id === item.id ? { ...it, status: 'generating', progress: 0 } : it
+            ));
 
-        result = await generateOneItem(item, stepKey, setter, onProgress);
-      } catch (err: any) {
-        result = { success: false, error: err.message };
-      }
+            let result: { success: boolean; path?: string; error?: string };
 
-      // 更新状态
-      setter(prev => prev.map(it =>
-        it.id === item.id
-          ? {
-              ...it,
-              status: result.success ? 'completed' : 'failed',
-              progress: result.success ? 100 : 0,
-              error: result.error,
-              imagePath: result.path || it.imagePath,
+            try {
+              const onProgress = (progress: number, step: string) => {
+                setter(prev => prev.map(it =>
+                  it.id === item.id ? { ...it, progress } : it
+                ));
+                const overall = ((i + progress / 100) / items.length) * 100;
+                setOverallProgress(overall);
+                taskCtx.progress(overall, `${item.name}: ${step}`);
+              };
+
+              // disableTask=true：批量场景不为每个 item 单独建 task
+              result = await generateOneItem(item, stepKey, setter, onProgress, true);
+            } catch (err: any) {
+              result = { success: false, error: err.message };
             }
-          : it
-      ));
+
+            setter(prev => prev.map(it =>
+              it.id === item.id
+                ? {
+                    ...it,
+                    status: result.success ? 'completed' : 'failed',
+                    progress: result.success ? 100 : 0,
+                    error: result.error,
+                    imagePath: result.path || it.imagePath,
+                  }
+                : it
+            ));
+          }
+        },
+      });
+    } catch (err: any) {
+      // 单 item 失败已记录在 setter 状态里；这里捕获是为了防止整个批量崩
+      message.error(`批量生成异常: ${err.message || err}`);
     }
 
     setGenerating(false);

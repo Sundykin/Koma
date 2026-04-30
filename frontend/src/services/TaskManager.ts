@@ -14,7 +14,7 @@ const logger = createLogger('TaskManager');
 // ========== 任务分类 ==========
 
 // 任务大类
-export type TaskCategory = 'prompt' | 'analysis' | 'asset' | 'script' | 'export';
+export type TaskCategory = 'prompt' | 'analysis' | 'asset' | 'script' | 'export' | 'linghui';
 
 // 任务子类型
 export type TaskSubType =
@@ -22,18 +22,21 @@ export type TaskSubType =
   | 'shot-analysis' | 'shot-generation'        // analysis 类
   | 'script-analysis'                          // script 类
   | 'asset-generation' | 'character-extraction' // asset 类
-  | 'prompt-generation' | 'prompt-optimization'; // prompt 操作
+  | 'prompt-generation' | 'prompt-optimization' // prompt 操作
+  | 'linghui-text' | 'linghui-image' | 'linghui-video'
+  | 'linghui-audio' | 'linghui-agent' | 'linghui-script'; // 灵绘节点执行
 
 // 旧版任务类型（兼容）
 export type TaskType = 'script-analysis' | 'asset-generation' | 'shot-generation' | 'shot-analysis'
   | 'prompt-generation:image' | 'prompt-generation:video'
-  | 'prompt-optimization:image' | 'prompt-optimization:video';
+  | 'prompt-optimization:image' | 'prompt-optimization:video'
+  | 'linghui-execution';
 
 // 任务状态
 export type TaskStatus = 'pending' | 'running' | 'processing' | 'completed' | 'failed';
 
 // 目标类型
-export type TaskTargetType = 'episode' | 'character' | 'scene' | 'prop' | 'shot';
+export type TaskTargetType = 'episode' | 'character' | 'scene' | 'prop' | 'shot' | 'linghui-node';
 
 // 任务恢复选项
 export interface TaskRecoveryOptions {
@@ -264,18 +267,26 @@ class TaskManagerClass {
     });
 
     for (const task of staleTasks) {
-      if (task.recoverable && (task.attempt || 0) < (task.maxRetries || 3)) {
-        // 可恢复：转为 pending 重入队
+      // 仅"远程异步任务"（含 remoteTaskId）才适合自动恢复 — 这类任务即使本地进程重启
+      // 也能通过 polling 远端继续追踪结果。
+      // 本地长任务（如 LLM 同步调用、剧本/分镜分析）天然不可恢复：上下文已丢失，
+      // 重新进入 pending 也没有 worker 消费 → 直接标 failed 让用户决定是否重试。
+      const canResume = task.recoverable
+        && !!task.remoteTaskId
+        && (task.attempt || 0) < (task.maxRetries || 3);
+
+      if (canResume) {
         this.updateTask(task.id, {
           status: 'pending',
           attempt: (task.attempt || 0) + 1,
           error: undefined,
         });
       } else {
-        // 不可恢复：标记为 failed
         this.updateTask(task.id, {
           status: 'failed',
-          error: '任务在软件重启后中断',
+          error: task.remoteTaskId
+            ? '任务在软件重启后中断（已超出重试上限）'
+            : '任务在软件重启后中断（无法自动恢复，请重新触发）',
         });
       }
     }
@@ -289,12 +300,53 @@ class TaskManagerClass {
   }
 
   /**
+   * 删除单个任务（用户从任务面板手动清除）
+   * 不取消远程异步任务的 polling 流程；仅从本地任务列表移除。
+   */
+  removeTask(taskId: string): boolean {
+    const task = this.tasks.get(taskId);
+    if (!task) return false;
+    this.tasks.delete(taskId);
+    this.saveTasks(task.projectId);
+    // 通知监听器，把"已删除"作为状态变更广播（用 failed 占位让 UI 自动移除）
+    this.notifyListeners(task);
+    return true;
+  }
+
+  /**
+   * 清空指定项目的已完成 / 已失败任务记录（保留运行中的）
+   */
+  clearFinishedTasks(projectId: string): number {
+    let removed = 0;
+    for (const [id, task] of Array.from(this.tasks.entries())) {
+      if (task.projectId !== projectId) continue;
+      if (task.status === 'completed' || task.status === 'failed') {
+        this.tasks.delete(id);
+        removed++;
+        this.notifyListeners(task);
+      }
+    }
+    if (removed > 0) {
+      this.saveTasks(projectId);
+    }
+    return removed;
+  }
+
+  /**
    * 获取项目的所有任务
    */
   getProjectTasks(projectId: string): Task[] {
     return Array.from(this.tasks.values())
       .filter(t => t.projectId === projectId)
       .sort((a, b) => b.createdAt - a.createdAt);
+  }
+
+  /**
+   * 获取内存中的所有任务（跨项目）。
+   * 注意：只看当前已 init/load 进内存的项目；磁盘上未加载项目的任务不会出现。
+   */
+  getAllTasks(): Task[] {
+    return Array.from(this.tasks.values()).sort((a, b) => b.createdAt - a.createdAt);
   }
 
   /**

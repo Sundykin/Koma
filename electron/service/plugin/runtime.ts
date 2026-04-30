@@ -7,6 +7,7 @@ import * as fs from 'fs/promises';
 import { spawn } from 'child_process';
 import { app } from 'electron';
 import { EventEmitter } from 'events';
+import { getPluginProviderConfigPath, getPluginsRuntimeDir } from '../paths';
 import type {
   PluginManifest,
   PluginModule,
@@ -51,7 +52,7 @@ class LegacyProviderConfigStore {
 
   async init(): Promise<void> {
     if (this.initialized) return;
-    this.configPath = path.join(app.getPath('userData'), 'provider-configs.json');
+    this.configPath = getPluginProviderConfigPath();
     await this.load();
     this.initialized = true;
   }
@@ -236,7 +237,7 @@ class ElectronPluginRuntime extends EventEmitter {
   private pluginsDir: string = '';
 
   async init(): Promise<void> {
-    this.pluginsDir = path.join(app.getPath('userData'), 'plugins-runtime');
+    this.pluginsDir = getPluginsRuntimeDir();
     await fs.mkdir(this.pluginsDir, { recursive: true });
   }
 
@@ -292,12 +293,23 @@ class ElectronPluginRuntime extends EventEmitter {
 
         // 动态加载模块
         // 使用 require 而非 import 以支持 CommonJS
+        // 强制清 require cache：内置插件每次启动会被 _syncBuiltinPlugins 覆盖，
+        // 但 dev 模式下 electron watch 可能因端口/SingletonLock 冲突导致主进程未真正重启，
+        // 旧的 require cache 还会持有上一次的 backend module。每次 load 前清掉，确保拿到最新代码。
+        try {
+          const resolved = require.resolve(modulePath);
+          if (require.cache[resolved]) {
+            delete require.cache[resolved];
+          }
+        } catch {
+          // resolve 失败说明从未 require 过，忽略
+        }
         const module = require(modulePath) as PluginModule;
         plugin.module = module;
         plugin.status = 'loaded';
         plugin.loadedAt = Date.now();
 
-        console.log(`[PluginRuntime] Loaded plugin: ${pluginId}`);
+        console.log(`[PluginRuntime] Loaded plugin: ${pluginId} (modulePath=${modulePath})`);
       } else {
         // 没有 backend 入口，标记为已加载
         plugin.status = 'loaded';

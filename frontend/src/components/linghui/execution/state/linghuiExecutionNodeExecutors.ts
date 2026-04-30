@@ -50,8 +50,20 @@ import {
   type LinghuiImageCandidateQualityResult,
 } from './linghuiImageSimilarity';
 import { createLogger } from '../../../../store/logger';
+import { runWithTask } from '../../../../services/taskRunner';
+import type { TaskSubType } from '../../../../services/TaskManager';
 
 const imageExecutionLogger = createLogger('LinghuiImageExecution');
+
+// 节点类型 → TaskManager subType 映射，便于面板按图标分组
+const LINGHUI_NODE_TASK_SUBTYPE: Record<string, TaskSubType> = {
+  'linghui/text': 'linghui-text',
+  'linghui/agent': 'linghui-agent',
+  'linghui/image': 'linghui-image',
+  'linghui/video': 'linghui-video',
+  'linghui/audio': 'linghui-audio',
+  'linghui/script': 'linghui-script',
+};
 
 const DEFAULT_SCRIPT_SYSTEM_PROMPT = [
   '你是灵绘的分镜脚本助手。',
@@ -1124,7 +1136,7 @@ export async function executeAudioNode(
   };
 }
 
-export async function executeNode(
+async function executeNodeInner(
   node: ExecutionNodeView,
   onProgress?: NodeExecutionProgressHandler,
   signal?: AbortSignal,
@@ -1145,4 +1157,46 @@ export async function executeNode(
     default:
       throw new Error(`暂不支持执行节点类型：${node.type}`);
   }
+}
+
+/**
+ * 执行单个灵绘节点。
+ *
+ * 入口包了 runWithTask：所有 6 类节点（text/agent/image/video/audio/script）的执行
+ * 都会作为一条 Task 出现在统一任务面板里，进度通过 ctx.progress 桥接。
+ *
+ * `taskMeta.projectId` 取激活的灵绘 workspace id（无独立项目时即等于 workspace id），
+ * 即用户拍板的"workspaceId 当 projectId 兜底"最简策略。
+ */
+export async function executeNode(
+  node: ExecutionNodeView,
+  onProgress?: NodeExecutionProgressHandler,
+  signal?: AbortSignal,
+  taskMeta?: { projectId: string; nodeLabel?: string },
+): Promise<LinghuiNodeResult> {
+  // 没有 projectId 兜底（极少见，比如未激活 workspace 直接执行）则跳过 task 包装
+  if (!taskMeta?.projectId) {
+    return executeNodeInner(node, onProgress, signal);
+  }
+
+  const subType = LINGHUI_NODE_TASK_SUBTYPE[node.type] ?? 'linghui-text';
+  const { result } = await runWithTask({
+    projectId: taskMeta.projectId,
+    category: 'linghui',
+    subType,
+    type: 'linghui-execution',
+    targetType: 'linghui-node',
+    targetId: node.id,
+    targetName: taskMeta.nodeLabel || node.title || node.id,
+    metadata: { nodeType: node.type },
+    execute: async (ctx) => {
+      // 把节点 onProgress 桥接到 TaskManager；既保留原有 React state 更新，又同步任务面板
+      const wrappedProgress: NodeExecutionProgressHandler = (progress, message, partialResult) => {
+        ctx.progress(progress, message);
+        onProgress?.(progress, message, partialResult);
+      };
+      return executeNodeInner(node, wrappedProgress, signal);
+    },
+  });
+  return result;
 }

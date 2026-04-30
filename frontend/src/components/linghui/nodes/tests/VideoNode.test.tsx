@@ -276,8 +276,8 @@ describe('VideoNode', () => {
         kind: 'video',
         primary: {
           kind: 'video',
-          source: 'koma-local:///tmp/generated-video.mp4',
-          posterSource: 'koma-local:///tmp/generated-video.jpg',
+          source: 'koma-local://files/tmp/generated-video.mp4',
+          posterSource: 'koma-local://files/tmp/generated-video.jpg',
           mimeType: 'video/mp4',
         },
         metadata: {

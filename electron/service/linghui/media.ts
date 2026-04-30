@@ -42,10 +42,19 @@ function getExtensionFromMimeType(mimeType: string | undefined, fallback = 'bin'
   }
 }
 
+// 与前端 utils/urlUtils.ts 严格对称：唯一规范 koma-local://files/<encoded path>。
+// 不接受其它格式（无兼容）。
 function decodeKomaLocalSource(source: string): string {
-  if (!source.startsWith('koma-local://')) return source;
-  const decoded = decodeURIComponent(source.replace(/^koma-local:\/\//, ''));
-  return decoded.replace(/^\/([A-Za-z]:\/)/, '$1');
+  if (!source.startsWith('koma-local://files/')) return source;
+  const tail = source.slice('koma-local://files'.length); // '/Users/...' 或 '/C:/...'
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(tail);
+  } catch {
+    decoded = tail;
+  }
+  if (/^\/[a-zA-Z]:\//.test(decoded)) return decoded.slice(1);
+  return decoded;
 }
 
 function getRawAssetSource(source?: string): string {

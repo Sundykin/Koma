@@ -70,9 +70,12 @@ export interface EpisodeAnalysis {
   characterRefs: string[];
   sceneRefs: string[];
   propRefs: string[];
-  completedStages?: Array<'characters' | 'scenes' | 'props' | 'shots'>;
+  completedStages?: Array<'characters' | 'scenes' | 'props' | 'shots' | 'tweet'>;
   // 剧集特有的分镜
   shots: Shot[];
+  // 剧集级推文文案：基于 scriptText 提炼出的连续推文旁白脚本，
+  // 后续可分发到每个 Shot.tweetCopy 作为分镜级解说台词的来源
+  tweetScript?: string;
   createdAt: number;
   updatedAt: number;
 }

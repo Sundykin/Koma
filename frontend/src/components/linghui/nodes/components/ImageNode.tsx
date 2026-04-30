@@ -19,6 +19,7 @@ import { LinghuiNodeEditor } from '../../editors/components/LinghuiNodeEditor';
 import { electronService } from '../../../../services/electronService';
 import { toFileSystemDisplayUrl } from '../../../../services/fileSystemPort';
 import { stripDataHeader } from '../../../../utils/encoding';
+import { fromKomaLocalUrl } from '../../../../utils/urlUtils';
 import { EditableCompactNodeLabel } from './EditableCompactNodeLabel';
 import { resolveLinghuiNodeViewMode } from '../../editors/state/linghuiNodeViewMode';
 import {
@@ -58,14 +59,7 @@ function sanitizeFileSegment(value: string, fallback: string): string {
   return normalized || fallback;
 }
 
-function decodeLinghuiSource(source: string): string {
-  if (!source.startsWith('koma-local://')) {
-    return source;
-  }
-
-  const decoded = decodeURIComponent(source.replace(/^koma-local:\/\//, ''));
-  return decoded.replace(/^\/([A-Za-z]:\/)/, '$1');
-}
+const decodeLinghuiSource = fromKomaLocalUrl;
 
 function isRemoteMediaUri(source: string): boolean {
   return /^https?:\/\//i.test(source);

@@ -24,6 +24,7 @@ import { resolvePromptTemplate } from '../store/promptTemplates';
 import { getActiveITVConfig } from '../store/settings/mediaConfig';
 import { IMAGE_GENERATION_SIZES } from '../constants/dimensions';
 import { mediaGenerationService } from '../services/MediaGenerationService';
+import { runWithTask } from '../services/taskRunner';
 import {
   buildPropReferenceTemplateVariables,
   buildScenePreviewTemplateVariables,
@@ -129,9 +130,9 @@ interface GenerateOptions {
  * 生成场景预览图
  */
 export async function generateSceneImage(
-  options: GenerateOptions & { scene: Scene }
+  options: GenerateOptions & { scene: Scene; disableTask?: boolean }
 ): Promise<{ success: boolean; path?: string; url?: string; error?: string }> {
-  const { projectId, scene, aspectRatio, theme, stylePrompt, styleSnapshot, project, ttiSelection, seed, variationPrompt, destPath, bindOwner, normalizeRemoteUrl, onProgress } = options;
+  const { projectId, scene, aspectRatio, theme, stylePrompt, styleSnapshot, project, ttiSelection, seed, variationPrompt, destPath, bindOwner, normalizeRemoteUrl, onProgress, disableTask } = options;
   const finalAspectRatio = aspectRatio || project?.aspectRatio || '16:9';
 
   logger.info(`开始生成场景预览图: ${scene.name}`);
@@ -165,27 +166,42 @@ export async function generateSceneImage(
       }
     );
 
-    const asset = await mediaGenerationService.generateImage({
+    const { result: asset } = await runWithTask({
+      disabled: disableTask,
       projectId,
-      ownerRef: {
-        projectId,
-        ownerType: 'scene',
-        ownerId: scene.id,
-        slot: 'previewImage',
+      category: 'asset',
+      subType: 'asset-generation',
+      targetType: 'scene',
+      targetId: scene.id,
+      targetName: `场景: ${scene.name}`,
+      type: 'asset-generation',
+      execute: async (ctx) => {
+        ctx.progress(10, '调用 TTI 服务...');
+        const a = await mediaGenerationService.generateImage({
+          projectId,
+          ownerRef: {
+            projectId,
+            ownerType: 'scene',
+            ownerId: scene.id,
+            slot: 'previewImage',
+          },
+          request: {
+            prompt,
+            references: [],
+            options: {
+              aspectRatio: finalAspectRatio,
+              ...(seed !== undefined ? { seed } : undefined),
+            },
+          },
+          ttiSelection,
+          destPath,
+          bindOwner,
+          normalizeRemoteUrl,
+          taskName: `场景: ${scene.name}`,
+        });
+        ctx.progress(100, '完成');
+        return a;
       },
-      request: {
-        prompt,
-        references: [],
-        options: {
-          aspectRatio: finalAspectRatio,
-          ...(seed !== undefined ? { seed } : undefined),
-        },
-      },
-      ttiSelection,
-      destPath,
-      bindOwner,
-      normalizeRemoteUrl,
-      taskName: `场景: ${scene.name}`,
     });
     onProgress?.(100, '完成');
     return { success: true, path: asset.localPath, url: asset.remoteUrl };
@@ -203,37 +219,49 @@ export async function generateAllSceneImages(
 ): Promise<{ success: number; failed: number; results: Array<{ sceneId: string; success: boolean; path?: string; error?: string }> }> {
   const { projectId, scenes, aspectRatio, theme, stylePrompt, project, ttiSelection, onProgress } = options;
 
-  const results: Array<{ sceneId: string; success: boolean; path?: string; error?: string }> = [];
-  let success = 0;
-  let failed = 0;
+  if (scenes.length === 0) return { success: 0, failed: 0, results: [] };
 
-  for (let i = 0; i < scenes.length; i++) {
-    const scene = scenes[i];
-    const baseProgress = (i / scenes.length) * 100;
+  const { result } = await runWithTask({
+    projectId,
+    category: 'asset',
+    subType: 'asset-generation',
+    targetType: 'scene',
+    targetId: scenes[0].id,
+    targetName: `批量场景图（${scenes.length} 个）`,
+    type: 'asset-generation',
+    metadata: { batchCount: scenes.length },
+    execute: async (taskCtx) => {
+      const out: Array<{ sceneId: string; success: boolean; path?: string; error?: string }> = [];
+      let success = 0;
+      let failed = 0;
 
-    const result = await generateSceneImage({
-      projectId,
-      scene,
-      aspectRatio,
-      theme,
-      stylePrompt,
-      project,
-      ttiSelection,
-      onProgress: (p, step) => {
-        const overall = baseProgress + (p / scenes.length);
-        onProgress?.(overall, `${scene.name}: ${step}`);
-      },
-    });
+      for (let i = 0; i < scenes.length; i++) {
+        const scene = scenes[i];
+        const baseProgress = (i / scenes.length) * 100;
 
-    results.push({ sceneId: scene.id, ...result });
-    if (result.success) {
-      success++;
-    } else {
-      failed++;
-    }
-  }
+        const r = await generateSceneImage({
+          projectId,
+          scene,
+          aspectRatio,
+          theme,
+          stylePrompt,
+          project,
+          ttiSelection,
+          disableTask: true, // 批量场景下子任务不再单独建 task，避免任务面板被刷屏
+          onProgress: (p, step) => {
+            const overall = baseProgress + (p / scenes.length);
+            onProgress?.(overall, `${scene.name}: ${step}`);
+            taskCtx.progress(overall, `${scene.name}: ${step}`);
+          },
+        });
 
-  return { success, failed, results };
+        out.push({ sceneId: scene.id, ...r });
+        if (r.success) success++; else failed++;
+      }
+      return { success, failed, results: out };
+    },
+  });
+  return result;
 }
 
 // ========== 道具图片生成 ==========
@@ -242,9 +270,9 @@ export async function generateAllSceneImages(
  * 生成道具参考图
  */
 export async function generatePropImage(
-  options: GenerateOptions & { prop: Prop }
+  options: GenerateOptions & { prop: Prop; disableTask?: boolean }
 ): Promise<{ success: boolean; path?: string; url?: string; error?: string }> {
-  const { projectId, prop, theme, stylePrompt, styleSnapshot, project, ttiSelection, seed, variationPrompt, destPath, bindOwner, normalizeRemoteUrl, onProgress } = options;
+  const { projectId, prop, theme, stylePrompt, styleSnapshot, project, ttiSelection, seed, variationPrompt, destPath, bindOwner, normalizeRemoteUrl, onProgress, disableTask } = options;
 
   logger.info(`开始生成道具参考图: ${prop.name}`);
   onProgress?.(0, '准备生成道具图...');
@@ -277,27 +305,42 @@ export async function generatePropImage(
       }
     );
 
-    const asset = await mediaGenerationService.generateImage({
+    const { result: asset } = await runWithTask({
+      disabled: disableTask,
       projectId,
-      ownerRef: {
-        projectId,
-        ownerType: 'prop',
-        ownerId: prop.id,
-        slot: 'previewImage',
+      category: 'asset',
+      subType: 'asset-generation',
+      targetType: 'prop',
+      targetId: prop.id,
+      targetName: `道具: ${prop.name}`,
+      type: 'asset-generation',
+      execute: async (ctx) => {
+        ctx.progress(10, '调用 TTI 服务...');
+        const a = await mediaGenerationService.generateImage({
+          projectId,
+          ownerRef: {
+            projectId,
+            ownerType: 'prop',
+            ownerId: prop.id,
+            slot: 'previewImage',
+          },
+          request: {
+            prompt,
+            references: [],
+            options: {
+              ...IMAGE_GENERATION_SIZES.square,
+              ...(seed !== undefined ? { seed } : undefined),
+            },
+          },
+          ttiSelection,
+          destPath,
+          bindOwner,
+          normalizeRemoteUrl,
+          taskName: `道具: ${prop.name}`,
+        });
+        ctx.progress(100, '完成');
+        return a;
       },
-      request: {
-        prompt,
-        references: [],
-        options: {
-          ...IMAGE_GENERATION_SIZES.square,
-          ...(seed !== undefined ? { seed } : undefined),
-        },
-      },
-      ttiSelection,
-      destPath,
-      bindOwner,
-      normalizeRemoteUrl,
-      taskName: `道具: ${prop.name}`,
     });
     onProgress?.(100, '完成');
     return { success: true, path: asset.localPath, url: asset.remoteUrl };
@@ -315,35 +358,47 @@ export async function generateAllPropImages(
 ): Promise<{ success: number; failed: number; results: Array<{ propId: string; success: boolean; path?: string; error?: string }> }> {
   const { projectId, props, theme, stylePrompt, ttiSelection, onProgress } = options;
 
-  const results: Array<{ propId: string; success: boolean; path?: string; error?: string }> = [];
-  let success = 0;
-  let failed = 0;
+  if (props.length === 0) return { success: 0, failed: 0, results: [] };
 
-  for (let i = 0; i < props.length; i++) {
-    const prop = props[i];
-    const baseProgress = (i / props.length) * 100;
+  const { result } = await runWithTask({
+    projectId,
+    category: 'asset',
+    subType: 'asset-generation',
+    targetType: 'prop',
+    targetId: props[0].id,
+    targetName: `批量道具图（${props.length} 个）`,
+    type: 'asset-generation',
+    metadata: { batchCount: props.length },
+    execute: async (taskCtx) => {
+      const out: Array<{ propId: string; success: boolean; path?: string; error?: string }> = [];
+      let success = 0;
+      let failed = 0;
 
-    const result = await generatePropImage({
-      projectId,
-      prop,
-      theme,
-      stylePrompt,
-      ttiSelection,
-      onProgress: (p, step) => {
-        const overall = baseProgress + (p / props.length);
-        onProgress?.(overall, `${prop.name}: ${step}`);
-      },
-    });
+      for (let i = 0; i < props.length; i++) {
+        const prop = props[i];
+        const baseProgress = (i / props.length) * 100;
 
-    results.push({ propId: prop.id, ...result });
-    if (result.success) {
-      success++;
-    } else {
-      failed++;
-    }
-  }
+        const r = await generatePropImage({
+          projectId,
+          prop,
+          theme,
+          stylePrompt,
+          ttiSelection,
+          disableTask: true, // 批量场景下子任务不单独建 task
+          onProgress: (p, step) => {
+            const overall = baseProgress + (p / props.length);
+            onProgress?.(overall, `${prop.name}: ${step}`);
+            taskCtx.progress(overall, `${prop.name}: ${step}`);
+          },
+        });
 
-  return { success, failed, results };
+        out.push({ propId: prop.id, ...r });
+        if (r.success) success++; else failed++;
+      }
+      return { success, failed, results: out };
+    },
+  });
+  return result;
 }
 
 // ========== 道具预览视频生成 ==========
@@ -357,6 +412,8 @@ interface PropVideoOptions {
   project?: { styleSnapshot?: StyleSnapshotLike };
   itvSelection?: string;
   onProgress?: (progress: number, step: string) => void;
+  /** 批量场景下父 task 已包装，子调用传 true 跳过单独的 task 创建 */
+  disableTask?: boolean;
 }
 
 /**
@@ -366,7 +423,7 @@ interface PropVideoOptions {
 export async function generatePropPreviewVideo(
   options: PropVideoOptions
 ): Promise<{ success: boolean; path?: string; taskId?: string; error?: string }> {
-  const { projectId, prop, theme, stylePrompt, styleSnapshot, project, itvSelection, onProgress } = options;
+  const { projectId, prop, theme, stylePrompt, styleSnapshot, project, itvSelection, onProgress, disableTask } = options;
 
   logger.info(`开始生成道具预览视频: ${prop.name}`);
   onProgress?.(0, '准备生成预览视频...');
@@ -415,17 +472,32 @@ export async function generatePropPreviewVideo(
       }
     );
 
-    const asset = await mediaGenerationService.generateVideo({
+    const { result: asset } = await runWithTask({
+      disabled: disableTask,
       projectId,
-      ownerRef: {
-        projectId,
-        ownerType: 'prop',
-        ownerId: prop.id,
-        slot: 'previewVideo',
+      category: 'asset',
+      subType: 'asset-generation',
+      targetType: 'prop',
+      targetId: prop.id,
+      targetName: `${prop.name} 预览视频`,
+      type: 'asset-generation',
+      execute: async (ctx) => {
+        ctx.progress(10, '调用 ITV 服务...');
+        const a = await mediaGenerationService.generateVideo({
+          projectId,
+          ownerRef: {
+            projectId,
+            ownerType: 'prop',
+            ownerId: prop.id,
+            slot: 'previewVideo',
+          },
+          request: compiledRequest.request,
+          itvSelection,
+          taskName: `${prop.name} 预览视频`,
+        });
+        ctx.progress(100, '完成');
+        return a;
       },
-      request: compiledRequest.request,
-      itvSelection,
-      taskName: `${prop.name} 预览视频`,
     });
 
     onProgress?.(100, '完成');

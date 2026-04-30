@@ -3,6 +3,7 @@
  * 在浏览器环境下提供 fallback 实现
  */
 import type { MediaModelSelection, MediaOwnerRef, ProjectStyleSnapshot, StoredMediaAsset } from '../types';
+import { toKomaLocalUrl } from '../utils/urlUtils';
 
 // 类型定义
 export interface ProjectMeta {
@@ -505,15 +506,15 @@ export const appGetVersion = async (): Promise<string> => {
   return '0.0.0';
 };
 
-// 获取存储根路径
+// 获取存储根路径（业务根：~/.koma/storage —— 与 userData 子目录隔离）
 export const getStoragePath = async (): Promise<string> => {
   const api = getElectronAPI();
   if (api) {
-    const userData = await api.app.getPath('userData');
-    const path = typeof userData === 'object' && userData !== null && 'path' in userData
-      ? (userData as { path: string }).path
-      : (userData as string);
-    return `${path}/storage`;
+    const home = await api.app.getPath('home');
+    const homePath = typeof home === 'object' && home !== null && 'path' in home
+      ? (home as { path: string }).path
+      : (home as string);
+    return `${homePath}/.koma/storage`;
   }
   return '';
 };
@@ -939,16 +940,7 @@ export const electronService = {
       if (!filePath) return '';
       // 浏览器模式直接返回（应该是网络 URL）
       if (!isElectron()) return filePath;
-      // 如果已经是 URL，直接返回
-      if (filePath.startsWith('http://') || filePath.startsWith('https://') || filePath.startsWith('koma-local://')) {
-        return filePath;
-      }
-      // 将本地路径转换为 koma-local:// 协议
-      // Windows 路径需要处理反斜杠，并对整个路径进行 URL 编码
-      const normalizedPath = filePath.replace(/\\/g, '/');
-      // 对路径进行编码，但保留斜杠
-      const encodedPath = normalizedPath.split('/').map(segment => encodeURIComponent(segment)).join('/');
-      return `koma-local:///${encodedPath}`;
+      return toKomaLocalUrl(filePath);
     },
   },
   shell: {

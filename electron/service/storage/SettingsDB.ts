@@ -1,11 +1,11 @@
 /**
  * 全局 Settings SQLite 连接（独立于项目级 baseDB）
- * 路径：{userData}/settings.db
+ * 路径：{businessRoot}/settings.db （= ~/.koma/settings.db）
  */
 import Database from 'better-sqlite3';
-import { app } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
+import { getSettingsDir } from '../paths';
 import {
   CURRENT_SETTINGS_SCHEMA_VERSION,
   CREATE_SETTINGS_TABLES_SQL,
@@ -19,13 +19,13 @@ export class SettingsDB {
 
   /**
    * 初始化全局 settings 数据库。
-   * 不接收外部 root：固定落在 Electron userData 目录下，确保跨项目共享。
+   * 不接收外部 root：固定落在业务根目录下，确保跨项目共享。
    */
   init(): void {
-    const userData = app.getPath('userData');
-    fs.mkdirSync(userData, { recursive: true });
+    const dir = getSettingsDir();
+    fs.mkdirSync(dir, { recursive: true });
 
-    this.dbPath = path.join(userData, 'settings.db');
+    this.dbPath = path.join(dir, 'settings.db');
     this.db = new Database(this.dbPath, { timeout: 6000 });
 
     this.db.pragma('journal_mode = WAL');

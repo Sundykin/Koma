@@ -68,6 +68,8 @@ export interface ShotListEditorProps {
   onInsertAbove: (shotId: string) => void;
   onInsertBelow: (shotId: string) => void;
   onShotImageModeChange: (shotId: string, mode: 'normal' | 'grid') => void;
+  onShotVideoModeChange?: (shotId: string, mode: 'multi-ref' | 'first-frame') => void;
+  onBulkVideoModeChange?: (mode: 'multi-ref' | 'first-frame') => void;
 }
 
 export const ShotListEditor: React.FC<ShotListEditorProps> = ({
@@ -122,6 +124,8 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
   onInsertAbove,
   onInsertBelow,
   onShotImageModeChange,
+  onShotVideoModeChange,
+  onBulkVideoModeChange,
 }) => {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const virtuosoRef = useRef<VirtuosoHandle>(null);
@@ -229,6 +233,7 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
         onVideoPromptChange={onVideoPromptChange}
         onDurationChange={onDurationChange}
         onImageModeChange={onShotImageModeChange}
+        onVideoModeChange={onShotVideoModeChange}
         onCharactersChange={onCharactersChange}
         onScenesChange={onScenesChange}
         onPropsChange={onPropsChange}
@@ -273,6 +278,7 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
       onVideoPromptChange,
       onDurationChange,
       onShotImageModeChange,
+      onShotVideoModeChange,
       onCharactersChange,
       onScenesChange,
       onPropsChange,
@@ -344,6 +350,7 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
               onBatchReVideos={handleBatchReVideos}
               onBatchVideoPrompts={handleBatchVideoPrompts}
               onBatchReVideoPrompts={handleBatchReVideoPrompts}
+              onBulkVideoModeChange={onBulkVideoModeChange}
               onAddShot={onAddShot}
               onBatchDelete={handleBatchDelete}
             />

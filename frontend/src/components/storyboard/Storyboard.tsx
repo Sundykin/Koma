@@ -22,6 +22,7 @@ import type { Shot, Character, Scene, Prop, AppSettings, StoredMediaAsset, Proje
 import { loadEpisodeShots, saveEpisodeShots, loadCharacters, loadScenes, loadProps, loadEpisodeAnalysis } from '../../store/projectStore';
 import { generateShotImage, batchGenerateShotImages } from '../../services/ShotGenerationService';
 import { shotRenderWorkflow, batchRenderShots } from '../../workflow/shotRenderWorkflow';
+import { runWithTask } from '../../services/taskRunner';
 import { startShotAnalysis } from '../../services/ShotAnalysisService';
 import type { PresetAssets } from '../../services/ShotAnalysisService';
 import { generateShotPrompt, batchGenerateShotPrompts } from '../../services/ShotPromptService';
@@ -509,25 +510,35 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     setRenderProgress(0);
     setRenderStep('准备渲染...');
     try {
-      const result = await shotRenderWorkflow(
-        {
-          projectId,
-          episodeId,
-          shot,
-          settings: effectiveSettings,
-          aspectRatio,
-          mediaSelections: {
-            ttiSelection,
-            itvSelection,
-            ttsSelection,
+      const { result } = await runWithTask({
+        projectId,
+        category: 'analysis',
+        subType: 'shot-generation',
+        targetType: 'shot',
+        targetId: shotId,
+        targetName: `分镜 #${shotId.slice(-6)} 视频生成`,
+        type: 'shot-generation',
+        execute: async (taskCtx) => shotRenderWorkflow(
+          {
+            projectId,
+            episodeId,
+            shot,
+            settings: effectiveSettings,
+            aspectRatio,
+            mediaSelections: {
+              ttiSelection,
+              itvSelection,
+              ttsSelection,
+            },
+            styleSnapshot,
           },
-          styleSnapshot,
-        },
-        (progress, step) => {
-          setRenderProgress(progress);
-          setRenderStep(step || '');
-        }
-      );
+          (progress, step) => {
+            setRenderProgress(progress);
+            setRenderStep(step || '');
+            taskCtx.progress(progress, step);
+          }
+        ),
+      });
       if (result.success && result.version) {
         await refreshShotsFromStore();
         message.success('分镜渲染完成');
@@ -1184,6 +1195,20 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     saveAllShots(updatedShots);
   }, [shots, saveAllShots]);
 
+  const handleShotVideoModeChange = useCallback((shotId: string, mode: 'multi-ref' | 'first-frame') => {
+    const updatedShots = shots.map(s =>
+      s.id === shotId ? { ...s, videoMode: mode } : s
+    );
+    saveAllShots(updatedShots);
+  }, [shots, saveAllShots]);
+
+  /** 批量切换：把当前剧集所有分镜的 videoMode 改为同一值 */
+  const handleBulkVideoModeChange = useCallback((mode: 'multi-ref' | 'first-frame') => {
+    if (!shots.length) return;
+    const updatedShots = shots.map(s => ({ ...s, videoMode: mode }));
+    saveAllShots(updatedShots);
+  }, [shots, saveAllShots]);
+
   // 在指定位置上方插入
   const handleInsertAbove = useCallback(async (shotId: string) => {
     const index = shots.findIndex(s => s.id === shotId);
@@ -1447,25 +1472,36 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     setRenderProgress(0);
     setRenderStep('准备批量渲染...');
     try {
-      const result = await batchRenderShots(
-        {
-          projectId,
-          episodeId,
-          shots: confirmedToRender,
-          settings: effectiveSettings,
-          aspectRatio,
-          mediaSelections: {
-            ttiSelection,
-            itvSelection,
-            ttsSelection,
+      const { result } = await runWithTask({
+        projectId,
+        category: 'analysis',
+        subType: 'shot-generation',
+        targetType: 'episode',
+        targetId: episodeId,
+        targetName: `批量视频渲染（${confirmedToRender.length} 个分镜）`,
+        type: 'shot-generation',
+        metadata: { shotCount: confirmedToRender.length },
+        execute: async (taskCtx) => batchRenderShots(
+          {
+            projectId,
+            episodeId,
+            shots: confirmedToRender,
+            settings: effectiveSettings,
+            aspectRatio,
+            mediaSelections: {
+              ttiSelection,
+              itvSelection,
+              ttsSelection,
+            },
+            styleSnapshot,
           },
-          styleSnapshot,
-        },
-        (overall, current) => {
-          setRenderProgress(overall);
-          setRenderStep(`${current.step || ''} (${current.shotId})`);
-        }
-      );
+          (overall, current) => {
+            setRenderProgress(overall);
+            setRenderStep(`${current.step || ''} (${current.shotId})`);
+            taskCtx.progress(overall, `${current.shotId.slice(-6)}: ${current.step || ''}`);
+          }
+        ),
+      });
       await refreshShotsFromStore();
       message.success(`批量渲染完成: ${result.success} 成功, ${result.failed} 失败`);
     } catch (err: unknown) {
@@ -1498,25 +1534,36 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     setRenderProgress(0);
     setRenderStep('准备批量重新渲染...');
     try {
-      const result = await batchRenderShots(
-        {
-          projectId,
-          episodeId,
-          shots: shotsWithVideo,
-          settings: effectiveSettings,
-          aspectRatio,
-          mediaSelections: {
-            ttiSelection,
-            itvSelection,
-            ttsSelection,
+      const { result } = await runWithTask({
+        projectId,
+        category: 'analysis',
+        subType: 'shot-generation',
+        targetType: 'episode',
+        targetId: episodeId,
+        targetName: `批量重新渲染视频（${shotsWithVideo.length} 个分镜）`,
+        type: 'shot-generation',
+        metadata: { shotCount: shotsWithVideo.length, regenerate: true },
+        execute: async (taskCtx) => batchRenderShots(
+          {
+            projectId,
+            episodeId,
+            shots: shotsWithVideo,
+            settings: effectiveSettings,
+            aspectRatio,
+            mediaSelections: {
+              ttiSelection,
+              itvSelection,
+              ttsSelection,
+            },
+            styleSnapshot,
           },
-          styleSnapshot,
-        },
-        (overall, current) => {
-          setRenderProgress(overall);
-          setRenderStep(`${current.step || ''} (${current.shotId})`);
-        }
-      );
+          (overall, current) => {
+            setRenderProgress(overall);
+            setRenderStep(`${current.step || ''} (${current.shotId})`);
+            taskCtx.progress(overall, `${current.shotId.slice(-6)}: ${current.step || ''}`);
+          }
+        ),
+      });
       await refreshShotsFromStore();
       message.success(`批量重新渲染完成: ${result.success} 成功, ${result.failed} 失败`);
     } catch (err: unknown) {
@@ -1628,6 +1675,8 @@ export const Storyboard: React.FC<StoryboardProps> = ({
             onInsertAbove={handleInsertAbove}
             onInsertBelow={handleInsertBelow}
             onShotImageModeChange={handleShotImageModeChange}
+            onShotVideoModeChange={handleShotVideoModeChange}
+            onBulkVideoModeChange={handleBulkVideoModeChange}
           />
         </StoryboardStudio>
       )}

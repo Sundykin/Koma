@@ -1167,12 +1167,14 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
             onChange={(val) => setViewMode(val as ViewMode)}
             options={[
               { label: t('asset.costumePhoto'), value: 'costume', icon: <UserOutlined /> },
-              { label: t('asset.previewVideo'), value: 'video', icon: <PlayCircleOutlined /> },
+              // 预览视频 Tab 暂时隐藏（功能保留）
+              // { label: t('asset.previewVideo'), value: 'video', icon: <PlayCircleOutlined /> },
             ]}
           />
 
           <Space>
-            {editedCharacter.sora2CharacterId ? (
+            {/* 角色绑定按钮暂时隐藏（依赖预览视频） */}
+            {false && (editedCharacter.sora2CharacterId ? (
               <Tag color="success" icon={<CheckCircleOutlined />}>
                 {t('asset.boundTo')}: {editedCharacter.sora2CharacterId.substring(0, 8)}...
               </Tag>
@@ -1194,7 +1196,7 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
                   {t('asset.extractAndBindCharacter')}
                 </Button>
               </Tooltip>
-            )}
+            ))}
 
             <div className="toolbarDivider" />
 

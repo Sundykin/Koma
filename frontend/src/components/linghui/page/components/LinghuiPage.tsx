@@ -593,6 +593,8 @@ export const LinghuiPage: React.FC<LinghuiPageProps> = ({ onExit }) => {
         previousRuns: current.nodeRuns,
         resolveTargetsOnly: options?.resolveTargetsOnly,
         signal: abortController.signal,
+        // workspaceId 当 projectId 兜底，节点执行会进统一任务面板
+        workspaceId: activeWorkspaceRef.current?.id,
         onNodeStateChange(nodeId, nextState) {
           nextRuns = {
             ...nextRuns,

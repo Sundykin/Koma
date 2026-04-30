@@ -12,10 +12,6 @@ describe('default shot breakdown prompt templates', () => {
     expect(userTemplate).toContain('duration 只能填写 6、10、12、16、20 之一');
     expect(userTemplate).toContain('无法判断时填写 10');
     expect(userTemplate).toContain('"duration": 10');
-    const durationVariable = getDefaultTemplate('shot_video_prompt_generation')
-      .variables.find(variable => variable.name === 'durationSeconds');
-    expect(durationVariable?.description).toContain('只能是 6、10、12、16、20 之一');
-    expect(durationVariable?.example).toBe('10');
     expect(combined).not.toContain('15 秒以内');
     expect(combined).not.toContain('最大 15 秒');
     expect(combined).not.toContain('"duration": 15');

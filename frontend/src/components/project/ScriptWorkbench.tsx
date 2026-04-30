@@ -6,6 +6,7 @@ import React, { useState, useEffect, useCallback, useRef, forwardRef, useImperat
 import { App } from 'antd';
 import { Film, Loader2 } from 'lucide-react';
 import { InlineProjectToolbar } from './InlineProjectToolbar';
+import { TweetScriptModal } from './TweetScriptModal';
 import { ScriptEditor } from '../../editor';
 import { saveEpisode, loadEpisodeAnalysis, saveEpisodeAnalysis } from '../../store/projectStore';
 import { generateRandomScript, polishScript } from '../../workflow/scriptGenerator';
@@ -23,18 +24,24 @@ interface ScriptWorkbenchProps {
   project: Project;
   episode: Episode | null;
   onScriptChange: (text: string) => void;
-  onStartProduction: () => void;
+  /** 工具栏是否显示"导入剧本"按钮（项目级操作）；点击后触发外部导入对话框 */
+  onImportScript?: () => void;
+  /** 解析状态变更上报；外部据此控制"解析剧本"按钮的 loading 态 */
+  onAnalyzingChange?: (isAnalyzing: boolean) => void;
 }
 
 export interface ScriptWorkbenchRef {
   flushSave: () => Promise<Episode | null>;
+  /** 触发当前剧集的剧本解析（先 flushSave 再 startBackgroundAnalysis） */
+  analyze: () => Promise<void>;
 }
 
 export const ScriptWorkbench = forwardRef<ScriptWorkbenchRef, ScriptWorkbenchProps>(({
   project,
   episode,
   onScriptChange,
-  onStartProduction,
+  onImportScript,
+  onAnalyzingChange,
 }, ref) => {
   const { message } = App.useApp();
   const [localScript, setLocalScript] = useState(episode?.scriptText || '');
@@ -44,6 +51,7 @@ export const ScriptWorkbench = forwardRef<ScriptWorkbenchRef, ScriptWorkbenchPro
   const [isGenerating, setIsGenerating] = useState(false);
   const [streamingMode, setStreamingMode] = useState<'generate' | 'polish' | null>(null);
   const [streamingPreview, setStreamingPreview] = useState('');
+  const [tweetModalOpen, setTweetModalOpen] = useState(false);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastSavedRef = useRef(episode?.scriptText || '');
   const streamingPreviewRef = useRef<HTMLDivElement | null>(null);
@@ -129,9 +137,10 @@ export const ScriptWorkbench = forwardRef<ScriptWorkbenchRef, ScriptWorkbenchPro
     message.error('保存失败，请重试');
   }, [episode, flushSave, message]);
 
-  useImperativeHandle(ref, () => ({
-    flushSave,
-  }), [flushSave]);
+  // 上报解析状态变更
+  useEffect(() => {
+    onAnalyzingChange?.(isAnalyzing);
+  }, [isAnalyzing, onAnalyzingChange]);
 
   const handleScriptChange = useCallback((text: string) => {
     setLocalScript(text);
@@ -253,7 +262,7 @@ export const ScriptWorkbench = forwardRef<ScriptWorkbenchRef, ScriptWorkbenchPro
   };
 
   // 解析剧本
-  const handleAnalyze = async () => {
+  const handleAnalyze = useCallback(async () => {
     if (!episode || !localScript.trim()) {
       message.warning('请先输入剧本内容');
       return;
@@ -271,18 +280,14 @@ export const ScriptWorkbench = forwardRef<ScriptWorkbenchRef, ScriptWorkbenchPro
 
     setIsAnalyzing(true);
     try {
-      // 先保存当前剧本
       await saveScript(localScript);
-      // 备份旧分析数据，以便分析启动失败时恢复
       const previousAnalysis = await loadEpisodeAnalysis(project.id, episode.id);
-      // 重置 completedStages（保留 shots 数据），确保重新分析能执行
       if (previousAnalysis) {
         await saveEpisodeAnalysis(project.id, episode.id, {
           ...previousAnalysis,
           completedStages: [],
         }, { resetStages: true });
       }
-      // 启动后台解析
       try {
         const task = await startBackgroundAnalysis(
           project.id,
@@ -298,7 +303,6 @@ export const ScriptWorkbench = forwardRef<ScriptWorkbenchRef, ScriptWorkbenchPro
         }
         message.success('解析任务已启动，可在状态栏查看进度');
       } catch (analysisErr: unknown) {
-        // 分析启动失败，恢复旧的分析数据
         if (previousAnalysis) {
           await saveEpisodeAnalysis(project.id, episode.id, previousAnalysis, { resetStages: true });
         }
@@ -310,7 +314,12 @@ export const ScriptWorkbench = forwardRef<ScriptWorkbenchRef, ScriptWorkbenchPro
     } finally {
       setIsAnalyzing(false);
     }
-  };
+  }, [episode, localScript, project, message, saveScript]);
+
+  useImperativeHandle(ref, () => ({
+    flushSave,
+    analyze: handleAnalyze,
+  }), [flushSave, handleAnalyze]);
 
   // 空状态
   if (!episode) {
@@ -336,14 +345,21 @@ export const ScriptWorkbench = forwardRef<ScriptWorkbenchRef, ScriptWorkbenchPro
         episode={episode}
         hasScript={!!localScript.trim()}
         isSaving={isSaving}
-        isAnalyzing={isAnalyzing}
         isGenerating={isGenerating}
         isPolishing={isPolishing}
         onSave={handleManualSave}
         onPolish={handlePolish}
         onRandomGenerate={handleRandomGenerate}
-        onAnalyze={handleAnalyze}
-        onStartProduction={onStartProduction}
+        onTweetCopy={() => setTweetModalOpen(true)}
+        onImportScript={onImportScript}
+      />
+
+      <TweetScriptModal
+        open={tweetModalOpen}
+        project={project}
+        episode={episode}
+        scriptText={localScript}
+        onClose={() => setTweetModalOpen(false)}
       />
 
       {/* 剧本编辑器 */}

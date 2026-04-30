@@ -106,6 +106,7 @@
   },
   "editor": {
     "title": "Editor",
+    "stepScript": "Script",
     "stepAssets": "Assets",
     "stepStoryboard": "Storyboard",
     "stepVideo": "Video",
@@ -113,6 +114,7 @@
     "narrationMode": "Narration",
     "analyzing": "Analyzing...",
     "startAnalysis": "Start Analysis",
+    "nextAssets": "Next: Assets",
     "nextStoryboard": "Next: Storyboard",
     "nextVideo": "Next: Video Edit"
   },
