@@ -31,7 +31,11 @@ vi.mock('xgplayer', () => ({
 vi.mock('../../services/electronService', () => ({
   electronService: {
     fs: {
-      toLocalUrl: (value: string) => `koma-local:///${value.replace(/\\/g, '/')}`,
+      toLocalUrl: (value: string) => {
+        const normalized = value.replace(/\\/g, '/');
+        const withSlash = normalized.startsWith('/') ? normalized : `/${normalized}`;
+        return `koma-local://files${withSlash}`;
+      },
     },
   },
 }));
@@ -69,8 +73,8 @@ describe('StagePlayer', () => {
 
     const video = document.querySelector('video');
     expect(video).toBeTruthy();
-    expect(video?.getAttribute('src')).toBe('koma-local:////tmp/example.mp4');
-    expect(video?.getAttribute('poster')).toBe('koma-local:////tmp/poster.png');
+    expect(video?.getAttribute('src')).toBe('koma-local://files/tmp/example.mp4');
+    expect(video?.getAttribute('poster')).toBe('koma-local://files/tmp/poster.png');
     expect(playerConstructorMock).not.toHaveBeenCalled();
 
     Object.defineProperty(video, 'currentTime', { configurable: true, value: 2.5 });
@@ -105,7 +109,7 @@ describe('StagePlayer', () => {
 
     const video = document.querySelector('video');
     expect(video).toBeTruthy();
-    expect(video?.getAttribute('src')).toBe('koma-local:////tmp/local-video.mp4');
+    expect(video?.getAttribute('src')).toBe('koma-local://files/tmp/local-video.mp4');
     expect(playerConstructorMock).not.toHaveBeenCalled();
   });
 });

@@ -130,6 +130,7 @@ export interface ShotCardProps {
   onVideoPromptChange: (shotId: string, videoPrompt: string) => void;
   onDurationChange?: (shotId: string, duration: number) => void;
   onImageModeChange: (shotId: string, mode: 'normal' | 'grid') => void;
+  onVideoModeChange?: (shotId: string, mode: 'multi-ref' | 'first-frame') => void;
   onCharactersChange: (shotId: string, characterIds: string[]) => void;
   onScenesChange?: (shotId: string, sceneIds: string[]) => void;
   onPropsChange?: (shotId: string, propIds: string[]) => void;
@@ -177,6 +178,7 @@ export const ShotCard: React.FC<ShotCardProps> = ({
   onVideoPromptChange,
   onDurationChange,
   onImageModeChange,
+  onVideoModeChange,
   onCharactersChange,
   onScenesChange,
   onPropsChange,
@@ -768,6 +770,21 @@ export const ShotCard: React.FC<ShotCardProps> = ({
 
         {/* 列5: 视频设计 */}
         <div className={`${SHOT_LAYOUT.colVideoDesign} border-r border-zinc-800 flex flex-col`}>
+          {/* 视频模式切换：multi-ref 多参（带 @映射） / first-frame 首帧延展（以单图为锚） */}
+          <div className="flex items-center justify-between gap-2 border-b border-zinc-800 px-2 py-1">
+            <span className="text-[10px] text-zinc-400">视频模式</span>
+            <Segmented
+              size="small"
+              value={shot.videoMode || 'multi-ref'}
+              onChange={(value) => onVideoModeChange?.(shot.id, value as 'multi-ref' | 'first-frame')}
+              options={[
+                { value: 'multi-ref', label: '多参' },
+                { value: 'first-frame', label: '首帧' },
+              ]}
+              className="text-[10px]"
+              disabled={!onVideoModeChange}
+            />
+          </div>
           {/* 提示词编辑器 + 浮动按钮 */}
           <div className="flex-1 p-1 min-h-0 relative">
             <ScriptEditor

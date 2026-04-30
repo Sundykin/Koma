@@ -11,6 +11,7 @@ import type {
 import { usePluginStore } from '../../store/pluginStore';
 import { clearPluginInitialized } from './PluginInitializer';
 import { createLogger } from '../../store/logger';
+import { toKomaLocalUrl } from '../../utils/urlUtils';
 
 const logger = createLogger('PluginLoader');
 
@@ -234,13 +235,9 @@ async function loadUMDModule(path: string, pluginId: string): Promise<any> {
   await ensurePluginUmdGlobals();
 
   // 使用 koma-local:// 自定义协议加载本地文件（绕过 file:// 安全限制）
-  // 路径需要编码，避免 C: 被解析为协议
-  let normalizedPath = path.replace(/\\/g, '/');
-  // 移除路径中的 /./
-  normalizedPath = normalizedPath.replace(/\/\.\//g, '/');
-  // 对路径进行编码（保留斜杠）
-  const encodedPath = normalizedPath.split('/').map(segment => encodeURIComponent(segment)).join('/');
-  const fileUrl = `koma-local:///${encodedPath}`;
+  // 路径归一化（移除 /./），URL 编码统一交给 toKomaLocalUrl
+  const cleanedPath = path.replace(/\\/g, '/').replace(/\/\.\//g, '/');
+  const fileUrl = toKomaLocalUrl(cleanedPath);
 
   // 创建 script 标签动态加载
   return new Promise((resolve, reject) => {

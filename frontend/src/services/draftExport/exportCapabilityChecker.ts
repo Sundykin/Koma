@@ -18,7 +18,6 @@ export const CAPABILITY_BOUNDARIES: CapabilityOutcome[] = [
 
 // 高级特性类型
 export type AdvancedFeature =
-  | 'jianyingKeyframes'   // 剪映关键帧
   | 'filter'              // 滤镜
   | 'animation'           // 动画
   | 'audioFade'           // 音频淡入淡出
@@ -27,7 +26,6 @@ export type AdvancedFeature =
 
 // 特性显示名称
 const FEATURE_NAMES: Record<AdvancedFeature, string> = {
-  jianyingKeyframes: '剪映关键帧',
   filter: '滤镜',
   animation: '动画效果',
   audioFade: '音频淡入淡出',
@@ -54,7 +52,6 @@ function getNativeOutcome(support: FeatureSupport): CapabilityOutcome {
 }
 
 const FEATURE_SUPPORT: Record<AdvancedFeature, FeatureSupport> = {
-  jianyingKeyframes: { native: false, jianying: true },
   filter: { native: false, jianying: true },
   animation: { native: false, jianying: true },
   audioFade: { native: false, jianying: true },
@@ -85,9 +82,6 @@ export interface CompatibilityReport {
 function detectClipFeatures(clip: Clip): AdvancedFeature[] {
   const features: AdvancedFeature[] = [];
 
-  if (clip.jianyingKeyframeTracks && clip.jianyingKeyframeTracks.length > 0) {
-    features.push('jianyingKeyframes');
-  }
   if (clip.filter) {
     features.push('filter');
   }

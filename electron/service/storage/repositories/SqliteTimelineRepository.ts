@@ -4,14 +4,11 @@ import {
   animationToRow,
   buildTimelineData,
   clipToRow,
-  jianyingTrackToRows,
   keyframeToRow,
   timelineToRow,
   trackToRow,
   transitionToRow,
   type TimelineClipAnimationRow,
-  type TimelineClipJianyingKeyframeRow,
-  type TimelineClipJianyingTrackRow,
   type TimelineClipKeyframeRow,
   type TimelineTrackTransitionRow,
 } from '../projectPersistenceHelpers';
@@ -290,8 +287,6 @@ export class SqliteTimelineRepository implements ITimelineRepository {
     const clipRows: ClipRow[] = [];
     const transitionRows: TimelineTrackTransitionRow[] = [];
     const keyframeRows: TimelineClipKeyframeRow[] = [];
-    const jianyingTrackRows: TimelineClipJianyingTrackRow[] = [];
-    const jianyingKeyframeRows: TimelineClipJianyingKeyframeRow[] = [];
     const animationRows: TimelineClipAnimationRow[] = [];
 
     timeline.tracks.forEach((track, trackIndex) => {
@@ -305,11 +300,6 @@ export class SqliteTimelineRepository implements ITimelineRepository {
         });
         (clip.animations || []).forEach((animation, animationIndex) => {
           animationRows.push(animationToRow(clip.id, animation, animationIndex));
-        });
-        (clip.jianyingKeyframeTracks || []).forEach((jianyingTrack, jianyingIndex) => {
-          const rows = jianyingTrackToRows(clip.id, jianyingTrack, jianyingIndex);
-          jianyingTrackRows.push(rows.trackRow);
-          jianyingKeyframeRows.push(...rows.keyframeRows);
         });
       });
 
@@ -370,24 +360,6 @@ export class SqliteTimelineRepository implements ITimelineRepository {
       `);
       for (const row of keyframeRows) insertKeyframe.run(row);
 
-      const insertJianyingTrack = this.db.prepare(`
-        INSERT INTO timeline_clip_jianying_tracks (
-          id, clip_id, property, sort_order
-        ) VALUES (
-          @id, @clip_id, @property, @sort_order
-        )
-      `);
-      for (const row of jianyingTrackRows) insertJianyingTrack.run(row);
-
-      const insertJianyingKeyframe = this.db.prepare(`
-        INSERT INTO timeline_clip_jianying_keyframes (
-          id, jianying_track_id, time, value, curve_type, sort_order
-        ) VALUES (
-          @id, @jianying_track_id, @time, @value, @curve_type, @sort_order
-        )
-      `);
-      for (const row of jianyingKeyframeRows) insertJianyingKeyframe.run(row);
-
       const insertAnimation = this.db.prepare(`
         INSERT INTO timeline_clip_animations (
           id, clip_id, animation_type, effect_id, name, duration, sort_order
@@ -425,18 +397,6 @@ export class SqliteTimelineRepository implements ITimelineRepository {
           `SELECT * FROM timeline_clip_keyframes WHERE clip_id IN (${clipIds.map(() => '?').join(',')}) ORDER BY sort_order`
         ).all(...clipIds) as TimelineClipKeyframeRow[]
       : [];
-    const jianyingTrackRows = clipIds.length > 0
-      ? this.db.prepare(
-          `SELECT * FROM timeline_clip_jianying_tracks WHERE clip_id IN (${clipIds.map(() => '?').join(',')}) ORDER BY sort_order`
-        ).all(...clipIds) as TimelineClipJianyingTrackRow[]
-      : [];
-
-    const jianyingTrackIds = jianyingTrackRows.map(track => track.id);
-    const jianyingKeyframeRows = jianyingTrackIds.length > 0
-      ? this.db.prepare(
-          `SELECT * FROM timeline_clip_jianying_keyframes WHERE jianying_track_id IN (${jianyingTrackIds.map(() => '?').join(',')}) ORDER BY sort_order`
-        ).all(...jianyingTrackIds) as TimelineClipJianyingKeyframeRow[]
-      : [];
     const animationRows = clipIds.length > 0
       ? this.db.prepare(
           `SELECT * FROM timeline_clip_animations WHERE clip_id IN (${clipIds.map(() => '?').join(',')}) ORDER BY sort_order`
@@ -449,8 +409,6 @@ export class SqliteTimelineRepository implements ITimelineRepository {
       clipRows,
       transitionRows,
       keyframeRows,
-      jianyingTrackRows,
-      jianyingKeyframeRows,
       animationRows,
     );
   }

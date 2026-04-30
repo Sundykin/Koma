@@ -15,7 +15,11 @@
     "noImplicitAny": false,
     "noImplicitReturns": true,
     "noFallthroughCasesInSwitch": true,
-    "forceConsistentCasingInFileNames": true
+    "forceConsistentCasingInFileNames": true,
+    "baseUrl": ".",
+    "paths": {
+      "@komastudio/plugin-sdk": ["./packages/plugin-sdk/src/index.ts"]
+    }
   },
   "include": [
     "./electron/**/*"

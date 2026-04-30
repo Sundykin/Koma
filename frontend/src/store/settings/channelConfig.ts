@@ -176,6 +176,60 @@ export async function getDefaultMediaModelSelection(
   return svc.getMediaDefault(category);
 }
 
+// ========== 跨进程事件订阅 ==========
+
+/**
+ * 渠道变更事件载荷。与 electron/service/settings/ipc.ts 中
+ * broadcastChannelChanged() 发送的 payload 形状对齐。
+ */
+export interface ChannelChangedEvent {
+  type: 'create' | 'update' | 'delete' | 'bulkImport' | 'setDefault' | 'deleteDefault';
+  category?: MediaCategory;
+  id?: string;
+  channelId?: string;
+  imported?: number;
+}
+
+type ChannelChangedHandler = (event: ChannelChangedEvent) => void;
+
+/**
+ * 订阅主进程广播的 channel:changed 事件。
+ *
+ * 修复点：electron/service/settings/ipc.ts 在每次 channel 增删改后
+ * 通过 broadcastChannelChanged 向所有 webContents 推送 'channel:changed'，
+ * 但前端历来无人监听 —— 多窗口或外部修改时 UI 不会自动刷新。
+ *
+ * 用法：
+ *   const unsubscribe = subscribeChannelChanges((event) => {
+ *     // 重新拉取或递增本地 cache version
+ *   });
+ *   // 在组件 unmount 时调用 unsubscribe()
+ *
+ * 浏览器 fallback：返回 noop 取消函数（事件源不存在时静默）。
+ */
+export function subscribeChannelChanges(handler: ChannelChangedHandler): () => void {
+  const ipc = (typeof window !== 'undefined' ? window.electron?.ipcRenderer : null) as
+    | {
+        on: (channel: string, listener: (...args: any[]) => void) => void;
+        removeListener: (channel: string, listener: (...args: any[]) => void) => void;
+      }
+    | null;
+  if (!ipc) {
+    return () => undefined;
+  }
+  const wrapped = (_event: unknown, payload: ChannelChangedEvent) => {
+    try {
+      handler(payload);
+    } catch {
+      // listener 异常不能阻止其他订阅者
+    }
+  };
+  ipc.on('channel:changed', wrapped);
+  return () => {
+    ipc.removeListener('channel:changed', wrapped);
+  };
+}
+
 // ========== 清理 ==========
 
 export async function cleanupDuplicateChannels(): Promise<number> {

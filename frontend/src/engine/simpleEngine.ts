@@ -8,6 +8,7 @@ import { Track, Clip, MediaType } from '../types/editor';
 import { getAnimatedProperties } from './simpleKeyframe';
 import { handleError } from '../utils/errorHandler';
 import { createLogger } from '../store/logger';
+import { toKomaLocalUrl } from '../utils/urlUtils';
 import {
   getClipOpacityFromPlans,
   getClipAudioFade,
@@ -183,6 +184,19 @@ export class SimpleVideoRenderer {
     this.ctx.fillRect(0, 0, this.width, this.height);
   }
 
+  /**
+   * 同步画布尺寸（aspectRatio 切换时由 SimplePlayer 调用）。
+   * 之前 width/height 写死 1920/1080，9:16 时画布是 1080x1920，但 renderer
+   * 内部仍按 1920/1080 算中心点 → 视频被画到画布外 → 看似"偏移很多"。
+   */
+  setSize(width: number, height: number): void {
+    this.width = width;
+    this.height = height;
+    this.canvas.width = width;
+    this.canvas.height = height;
+    this.renderFrame();
+  }
+
   private setupEngineListeners(): void {
     this.engine.on('play', () => this.startRenderLoop());
     this.engine.on('pause', () => this.stopRenderLoop());
@@ -228,10 +242,8 @@ export class SimpleVideoRenderer {
   private preloadMedia(clip: Clip): void {
     if (this.mediaCache.has(clip.id)) return;
 
-    // 直接转换为 koma-local:// 协议（与 PlaybackEngine 一致）
-    const mediaSrc = clip.src.startsWith('http://') || clip.src.startsWith('https://') || clip.src.startsWith('koma-local://')
-      ? clip.src
-      : `koma-local:///${clip.src.replace(/\\/g, '/')}`;
+    // 转换为 koma-local:// 协议（toKomaLocalUrl 走固定 host=files，避免 GURL 把 path 第一段当 host）
+    const mediaSrc = toKomaLocalUrl(clip.src);
 
     if (clip.type === MediaType.IMAGE) {
       const img = new Image();
@@ -592,9 +604,7 @@ export class SimpleAudioController {
     if (this.mediaMap.has(clip.id)) return;
 
     // 转换为 koma-local:// 协议
-    const mediaSrc = clip.src.startsWith('http://') || clip.src.startsWith('https://') || clip.src.startsWith('koma-local://')
-      ? clip.src
-      : `koma-local:///${clip.src.replace(/\\/g, '/')}`;
+    const mediaSrc = toKomaLocalUrl(clip.src);
 
     const audio = new Audio();
     audio.src = mediaSrc;

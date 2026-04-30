@@ -773,12 +773,14 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
             onChange={(val) => setViewMode(val as ViewMode)}
             options={[
               { label: t('asset.propImage'), value: 'image', icon: <InboxOutlined /> },
-              { label: t('asset.previewVideo'), value: 'video', icon: <PlayCircleOutlined /> },
+              // 预览视频 Tab 暂时隐藏
+              // { label: t('asset.previewVideo'), value: 'video', icon: <PlayCircleOutlined /> },
             ]}
           />
 
           <Space>
-            {editedProp.sora2PropId ? (
+            {/* 道具绑定按钮暂时隐藏（依赖预览视频） */}
+            {false && (editedProp.sora2PropId ? (
               <Tag color="success" icon={<CheckCircleOutlined />}>
                 {t('asset.boundTo')}: {editedProp.sora2PropId.substring(0, 8)}...
               </Tag>
@@ -794,7 +796,7 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
               >
                 {t('asset.extractAndBindProp')}
               </Button>
-            )}
+            ))}
 
             <div className="toolbarDivider" />
 

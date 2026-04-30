@@ -30,6 +30,8 @@ import { resolveProviderAssetInput, resolveProviderAssetInputs } from './mediaAs
 import { persistMediaAsset } from './mediaPersistenceService';
 import { bindOwnerRefMedia } from './mediaTaskBindingService';
 import { getProjectITVProvider, getProjectTTIProvider, getProjectTTSProvider } from '../providers';
+import { taskHandlerRegistry } from './taskHandlerRegistry';
+import './taskHandlers'; // 副作用 import：注册内置 TTI/ITV/TTS 任务处理器
 import {
   listConfiguredModelSelectOptions,
   resolveConfiguredChannelModel,
@@ -178,9 +180,7 @@ async function resolveProviderAndContext<T>(params: {
 }
 
 function inferTaskType(kind: MediaKind): AsyncTaskType {
-  if (kind === 'video') return 'itv';
-  if (kind === 'audio') return 'tts';
-  return 'tti';
+  return taskHandlerRegistry.findByKind(kind)?.type ?? 'tti';
 }
 
 function inferTargetType(ownerRef: MediaOwnerRef): AsyncTaskTargetType {
@@ -379,16 +379,7 @@ function resolveTaskCapability(task: AsyncTask): ModelCapability {
   if (task.capability) {
     return task.capability as ModelCapability;
   }
-
-  switch (task.type) {
-    case 'tts':
-      return 'speech.text-to-speech';
-    case 'itv':
-      return 'video.image-to-video';
-    case 'tti':
-    default:
-      return 'image.text-to-image';
-  }
+  return taskHandlerRegistry.get(task.type)?.defaultCapability ?? 'image.text-to-image';
 }
 
 export class MediaGenerationService {
@@ -1074,43 +1065,30 @@ export class MediaGenerationService {
   }): Promise<StoredMediaAsset | null> {
     const { projectId, task, ttiSelection, itvSelection, ttsSelection, onProgress } = params;
     if (!task.remoteTaskId) return null;
-    const kind: MediaKind = task.type === 'itv' ? 'video' : task.type === 'tts' ? 'audio' : 'image';
-    const taskCapability = resolveTaskCapability(task);
-    const resolvedTTISelection = resolveTaskSelectionKey(task, ttiSelection);
-    const resolvedITVSelection = resolveTaskSelectionKey(task, itvSelection);
-    const resolvedTTSSelection = resolveTaskSelectionKey(task, ttsSelection);
 
-    const getSnapshot = async (remoteTaskId: string): Promise<ProviderTaskSnapshot<any>> => {
-      if (task.type === 'tti') {
-        const provider = await getProjectTTIProvider(
-          resolvedTTISelection,
-          taskCapability === 'image.image-to-image' ? 'image.image-to-image' : 'image.text-to-image',
-        );
-        if (!provider?.getTaskSnapshot) throw new Error('TTI Provider 不可用');
-        return provider.getTaskSnapshot(remoteTaskId);
-      }
-      if (task.type === 'itv') {
-        const provider = await getProjectITVProvider(resolvedITVSelection, taskCapability as any);
-        if (!provider?.getTaskSnapshot) throw new Error('ITV Provider 不可用');
-        return provider.getTaskSnapshot(remoteTaskId, {
-          capability: taskCapability as any,
-        });
-      }
-      const provider = await getProjectTTSProvider(resolvedTTSSelection, 'speech.text-to-speech');
-      if (!provider?.getTaskSnapshot) throw new Error('TTS Provider 不可用');
-      return provider.getTaskSnapshot(remoteTaskId);
+    const handler = taskHandlerRegistry.get(task.type);
+    if (!handler) throw new Error(`未知任务类型: ${task.type}`);
+
+    const kind = handler.kind;
+    const taskCapability = resolveTaskCapability(task);
+
+    // 按 handler.kind 选择对应的 selection；为兼容历史调用约定，三个 selection 仍分别接收
+    const selectionByKind: Record<MediaKind, string | undefined> = {
+      image: ttiSelection,
+      video: itvSelection,
+      audio: ttsSelection,
     };
+    const handlerSelection = resolveTaskSelectionKey(task, selectionByKind[kind]);
+
+    const getSnapshot = (_remoteTaskId: string): Promise<ProviderTaskSnapshot<any>> =>
+      handler.getSnapshot(task, { selection: handlerSelection, capability: taskCapability });
 
     return this.pollAndFinalizeTask({
       projectId,
       kind,
       task,
       getSnapshot,
-      extractSource: (output: any) => {
-        if (kind === 'video') return output?.source;
-        if (kind === 'audio') return output?.path;
-        return output?.url || output?.path;
-      },
+      extractSource: (output: any) => handler.extractSource(output),
       enrichAsset: (asset) => mergeMediaMetadata(asset, {
         providerTaskId: task.remoteTaskId,
         channelId: task.channelId,

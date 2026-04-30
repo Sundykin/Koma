@@ -28,6 +28,15 @@ interface TasksFile {
   version: number;
 }
 
+/**
+ * 任务文件 schema 版本。
+ * 升级时必须同步：
+ *   1) 提升此常量
+ *   2) 在 loadAllTasks 中加 v(N-1) → v(N) 迁移
+ * 当前未上线，无 v0 数据，仅校验 version 合法性。
+ */
+const CURRENT_TASKS_FILE_VERSION = 1;
+
 // ========== 任务 CRUD ==========
 
 /**
@@ -272,8 +281,22 @@ async function loadAllTasks(projectId: string): Promise<AsyncTask[]> {
 
     const data = await electronService.fs.readFile(filePath);
     const parsed: TasksFile = JSON.parse(data);
+
+    const fileVersion = typeof parsed.version === 'number' ? parsed.version : 0;
+    if (fileVersion > CURRENT_TASKS_FILE_VERSION) {
+      // 比当前 runtime 新的版本：拒绝静默兼容（避免未来 schema 变化破坏数据）
+      logger.warn('tasks.json 版本高于当前 runtime，跳过加载', {
+        projectId,
+        fileVersion,
+        runtime: CURRENT_TASKS_FILE_VERSION,
+      });
+      return [];
+    }
+    // fileVersion < current：本应在此调用 v(N-1) → v(N) 迁移；当前未上线无 v0 数据。
+
     return parsed.tasks || [];
-  } catch {
+  } catch (err) {
+    logger.warn('加载任务文件失败', { projectId, error: (err as Error)?.message });
     return [];
   }
 }
@@ -282,7 +305,7 @@ async function saveTasks(projectId: string, tasks: AsyncTask[]): Promise<void> {
   const filePath = await getTasksFilePath(projectId);
   const data: TasksFile = {
     tasks,
-    version: 1,
+    version: CURRENT_TASKS_FILE_VERSION,
   };
   await electronService.fs.writeFile(filePath, JSON.stringify(data, null, 2));
 }

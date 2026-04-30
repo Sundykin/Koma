@@ -170,26 +170,9 @@ function computeChainAwareMaxDuration(normalizedTrack: Track, transitionId: stri
   return Math.max(0, Math.min(baseMax, fromClipBudget, toClipBudget) - MIN_VISIBLE_DURATION);
 }
 
-function deriveLegacyTransitions(track: Track): Transition[] {
-  const sortedClips = getSortedTrackClips(track);
-
-  return sortedClips.flatMap((clip, index) => {
-    if (!clip.transition || index === 0 || clip.transition.duration <= 0) {
-      return [];
-    }
-
-    const previousClip = sortedClips[index - 1];
-    return [
-      {
-        id: `legacy-transition-${previousClip.id}-${clip.id}`,
-        fromClipId: previousClip.id,
-        toClipId: clip.id,
-        type: TRANSITION_TYPE_FADE,
-        duration: clip.transition.duration,
-      },
-    ];
-  });
-}
+// 阶段 2-B 清理：原 deriveLegacyTransitions 从已删除的 Clip.transition 字段
+// 派生 Transition[]。Clip.transition 在生产代码中无写入路径（仅 0 个消费者），
+// 且产品未上线无存量数据，整个 legacy 兼容路径删除。
 
 function validateTransitions(track: Track, transitions: Transition[]): {
   valid: Transition[];
@@ -278,14 +261,12 @@ function normalizeTrackTransitionsWithInvalid(track: Track): {
   invalidTransitions: Transition[];
   clampedIds: Set<string>;
 } {
-  const explicitTransitions = track.transitions ?? deriveLegacyTransitions(track);
+  const explicitTransitions = track.transitions ?? [];
   const { valid, invalid, clampedIds } = validateTransitions(track, explicitTransitions);
-  const clips = track.clips.map(({ transition: _legacyTransition, ...clip }) => clip);
 
   return {
     track: {
       ...track,
-      clips,
       transitions: valid,
     },
     invalidTransitions: invalid,

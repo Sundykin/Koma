@@ -1,9 +1,10 @@
 /**
- * 项目设置弹窗
- * 允许编辑项目信息和媒体配置
+ * 项目设置侧边栏
+ * 整合项目基本信息（项目名 / 题材 / 画面比例 / 风格）+ 媒体模型配置（LLM/TTI/ITV/TTS）
+ * 通过抽屉形式从右侧滑出，作为项目工作台的统一配置入口
  */
 import React, { useState, useEffect } from 'react';
-import { Modal, Form, Input, Tabs, Select } from 'antd';
+import { Drawer, Form, Input, Tabs, Select, Button, Space } from 'antd';
 import type { MediaModelSelection, Project } from '../../types';
 import { ProjectMediaSelector } from './ProjectMediaSelector';
 import type { ProjectMediaCategoryKey, ProjectMediaRequirement } from './projectMediaSelectionState';
@@ -155,23 +156,28 @@ export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({
   ];
 
   return (
-    <Modal
+    <Drawer
       title="项目设置"
       open={open}
-      onOk={handleSave}
-      onCancel={onClose}
-      okText="保存"
-      cancelText="取消"
-      width={600}
-      mask={{ closable: false }}
-      destroyOnHidden
+      onClose={onClose}
+      width={520}
+      destroyOnClose
+      placement="right"
+      maskClosable={false}
+      footer={
+        <div style={{ textAlign: 'right' }}>
+          <Space>
+            <Button onClick={onClose}>取消</Button>
+            <Button type="primary" onClick={handleSave}>保存</Button>
+          </Space>
+        </div>
+      }
     >
       <Tabs
         activeKey={activeTab}
         onChange={setActiveTab}
         items={tabItems}
-        style={{ marginTop: 8 }}
       />
-    </Modal>
+    </Drawer>
   );
 };

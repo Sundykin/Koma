@@ -43,6 +43,11 @@ export function getStorageConfig(): StorageConfig | null {
     const data = localStorage.getItem(STORAGE_KEYS.STORAGE_CONFIG);
     if (data) {
       const config = JSON.parse(data) as StorageConfig;
+      // 校验版本：高于当前 runtime 的配置不加载（避免静默兼容未来 schema）
+      const fileVersion = typeof config.version === 'number' ? config.version : 0;
+      if (fileVersion > STORAGE_VERSION) {
+        return null;
+      }
       // 统一路径斜杠
       config.rootPath = normalizePath(config.rootPath);
       // 验证路径有效性

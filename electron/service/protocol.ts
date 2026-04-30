@@ -1,6 +1,7 @@
 import { app, protocol } from 'electron';
 import fs from 'fs';
 import path from 'path';
+import { getBusinessRoot, getPluginsRuntimeDir } from './paths';
 
 const mimeTypes: Record<string, string> = {
   '.png': 'image/png',
@@ -23,7 +24,8 @@ function isPathAllowed(filePath: string): boolean {
   const appData = app.getPath('appData');
   const userData = app.getPath('userData');
   const temp = app.getPath('temp');
-  const allowedRoots = [home, appData, userData, temp];
+  const businessRoot = getBusinessRoot();
+  const allowedRoots = [home, appData, userData, temp, businessRoot];
   return allowedRoots.some(root => normalized.startsWith(root + path.sep) || normalized === root);
 }
 
@@ -42,10 +44,10 @@ export function registerLocalProtocol(): void {
         filePath = filePath.slice(1);
       }
 
-      // 特殊处理：plugins-runtime/ 开头的相对路径，解析为 userData/plugins-runtime/
+      // 特殊处理：plugins-runtime/ 开头的相对路径，解析为业务根/plugins-runtime/
       if (filePath.startsWith('plugins-runtime/') || filePath.startsWith('/plugins-runtime/')) {
-        const relativePath = filePath.replace(/^\/?(plugins-runtime\/.*)$/, '$1');
-        filePath = path.join(app.getPath('userData'), relativePath);
+        const sub = filePath.replace(/^\/?plugins-runtime\//, '');
+        filePath = path.join(getPluginsRuntimeDir(), sub);
       }
 
       const resolvedPath = path.resolve(filePath);
@@ -58,6 +60,16 @@ export function registerLocalProtocol(): void {
       const ext = path.extname(resolvedPath).toLowerCase();
       const mimeType = mimeTypes[ext] || 'application/octet-stream';
       const rangeHeader = request.headers.get('range');
+
+      // 通用 CORS 头：让 <video crossOrigin="anonymous"> 等元素能正常加载
+      // 不加这些头时，video 元素的 onloadeddata 不会触发 → 渲染器永远 isReady=false → 黑屏不播放
+      const baseHeaders: Record<string, string> = {
+        'Content-Type': mimeType,
+        'Accept-Ranges': 'bytes',
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Range',
+      };
 
       if (rangeHeader) {
         const match = rangeHeader.match(/bytes=(\d*)-(\d*)/);
@@ -73,10 +85,9 @@ export function registerLocalProtocol(): void {
           return new Response(buffer, {
             status: 206,
             headers: {
-              'Content-Type': mimeType,
+              ...baseHeaders,
               'Content-Length': String(chunkSize),
               'Content-Range': `bytes ${start}-${end}/${fileSize}`,
-              'Accept-Ranges': 'bytes',
             },
           });
         }
@@ -86,12 +97,14 @@ export function registerLocalProtocol(): void {
       return new Response(buffer, {
         status: 200,
         headers: {
-          'Content-Type': mimeType,
+          ...baseHeaders,
           'Content-Length': String(fileSize),
-          'Accept-Ranges': 'bytes',
         },
       });
-    } catch {
+    } catch (err) {
+      // 错误打日志便于诊断（之前是静默 404，路径错误时无法定位）
+      // eslint-disable-next-line no-console
+      console.warn('[koma-local] file fetch failed:', request.url, err instanceof Error ? err.message : err);
       return new Response('File not found', { status: 404 });
     }
   });

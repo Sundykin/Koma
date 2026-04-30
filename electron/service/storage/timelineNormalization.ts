@@ -3,7 +3,6 @@ import type { Clip, TimelineData, Track, Transition, TransitionType } from '../.
 const CURRENT_TIMELINE_VERSION = 1;
 const MIN_VISIBLE_DURATION = 0.1;
 const TIME_EPSILON = 1e-6;
-const TRANSITION_TYPE_FADE: TransitionType = 'fade';
 const SUPPORTED_TRANSITION_TYPES: ReadonlySet<TransitionType> = new Set<TransitionType>(['fade']);
 
 function clipOrder(a: Clip, b: Clip): number {
@@ -47,24 +46,8 @@ function getMaxTransitionDuration(track: Track, fromClipId: string, toClipId: st
   return Math.max(0, Math.min(fromClip.duration, toClip.duration));
 }
 
-function deriveLegacyTransitions(track: Track): Transition[] {
-  const sortedClips = getSortedTrackClips(track);
-
-  return sortedClips.flatMap((clip, index) => {
-    if (!clip.transition || index === 0 || clip.transition.duration <= 0) {
-      return [];
-    }
-
-    const previousClip = sortedClips[index - 1];
-    return [{
-      id: `legacy-transition-${previousClip.id}-${clip.id}`,
-      fromClipId: previousClip.id,
-      toClipId: clip.id,
-      type: TRANSITION_TYPE_FADE,
-      duration: clip.transition.duration,
-    }];
-  });
-}
+// 阶段 2-B 清理：原 deriveLegacyTransitions 已删除（Clip.transition 字段已移除，
+// 产品未上线无存量数据）。Transition 现仅来源于 Track.transitions[]。
 
 function validateTransitions(track: Track, transitions: Transition[]): Transition[] {
   if (track.type !== 'video') {
@@ -135,13 +118,11 @@ function validateTransitions(track: Track, transitions: Transition[]): Transitio
 }
 
 function normalizeTrackTransitions(track: Track): Track {
-  const explicitTransitions = track.transitions ?? deriveLegacyTransitions(track);
+  const explicitTransitions = track.transitions ?? [];
   const transitions = validateTransitions(track, explicitTransitions);
-  const clips = track.clips.map(({ transition: _legacyTransition, ...clip }) => clip);
 
   return {
     ...track,
-    clips,
     transitions,
   };
 }

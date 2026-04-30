@@ -7,6 +7,7 @@ import * as fs from 'fs/promises';
 import { spawn } from 'child_process';
 import { app } from 'electron';
 import { EventEmitter } from 'events';
+import { getPluginProviderConfigPath, getPluginsRuntimeDir } from '../paths';
 import type {
   PluginManifest,
   PluginModule,
@@ -20,8 +21,16 @@ import type {
   SpawnOptions,
   ChildProcessHandle,
 } from './types';
+import { MEDIA_PROVIDER_CONTRACT_VERSION, requiresMediaContractVersion } from './types';
 import { providerRegistry, mcpRegistry, agentRegistry } from './registries';
 import { syncProviders, syncAllMCP, capabilityRegistry } from './capability';
+import {
+  validatePluginCompatibility,
+  formatCompatibilityErrors,
+  requirePluginScope,
+  validateManifestShape,
+  type CompatibilityReport,
+} from './compatibility';
 import {
   createChannelConfig,
   getDecryptedApiKey,
@@ -43,7 +52,7 @@ class LegacyProviderConfigStore {
 
   async init(): Promise<void> {
     if (this.initialized) return;
-    this.configPath = path.join(app.getPath('userData'), 'provider-configs.json');
+    this.configPath = getPluginProviderConfigPath();
     await this.load();
     this.initialized = true;
   }
@@ -228,7 +237,7 @@ class ElectronPluginRuntime extends EventEmitter {
   private pluginsDir: string = '';
 
   async init(): Promise<void> {
-    this.pluginsDir = path.join(app.getPath('userData'), 'plugins-runtime');
+    this.pluginsDir = getPluginsRuntimeDir();
     await fs.mkdir(this.pluginsDir, { recursive: true });
   }
 
@@ -236,7 +245,25 @@ class ElectronPluginRuntime extends EventEmitter {
    * 加载插件
    */
   async loadPlugin(manifest: PluginManifest): Promise<LoadedPlugin> {
-    const pluginId = manifest.id;
+    const pluginId = manifest.id || '<unknown>';
+
+    // 必填字段校验。errors 必定阻断加载，避免 require 时才崩出非定向错误。
+    const shapeReport = validateManifestShape(manifest);
+    for (const w of shapeReport.warnings) {
+      console.warn(`[PluginRuntime] manifest warning for "${pluginId}": ${w}`);
+    }
+    if (shapeReport.errors.length > 0) {
+      const message = shapeReport.errors.join('; ');
+      console.error(`[PluginRuntime] manifest invalid for "${pluginId}": ${message}`);
+      const failed: LoadedPlugin = {
+        manifest,
+        module: null,
+        status: 'error',
+        error: `manifest invalid: ${message}`,
+      };
+      this.plugins.set(pluginId, failed);
+      throw new Error(`manifest invalid: ${message}`);
+    }
 
     // 检查是否已加载
     if (this.plugins.has(pluginId)) {
@@ -266,12 +293,23 @@ class ElectronPluginRuntime extends EventEmitter {
 
         // 动态加载模块
         // 使用 require 而非 import 以支持 CommonJS
+        // 强制清 require cache：内置插件每次启动会被 _syncBuiltinPlugins 覆盖，
+        // 但 dev 模式下 electron watch 可能因端口/SingletonLock 冲突导致主进程未真正重启，
+        // 旧的 require cache 还会持有上一次的 backend module。每次 load 前清掉，确保拿到最新代码。
+        try {
+          const resolved = require.resolve(modulePath);
+          if (require.cache[resolved]) {
+            delete require.cache[resolved];
+          }
+        } catch {
+          // resolve 失败说明从未 require 过，忽略
+        }
         const module = require(modulePath) as PluginModule;
         plugin.module = module;
         plugin.status = 'loaded';
         plugin.loadedAt = Date.now();
 
-        console.log(`[PluginRuntime] Loaded plugin: ${pluginId}`);
+        console.log(`[PluginRuntime] Loaded plugin: ${pluginId} (modulePath=${modulePath})`);
       } else {
         // 没有 backend 入口，标记为已加载
         plugin.status = 'loaded';
@@ -304,6 +342,21 @@ class ElectronPluginRuntime extends EventEmitter {
 
     if (plugin.status === 'error') {
       throw new Error(`Plugin "${pluginId}" is in error state: ${plugin.error}`);
+    }
+
+    // 兼容性校验：在调用 onActivate 之前拦截 minAppVersion / sdkVersion 不兼容
+    const report: CompatibilityReport = validatePluginCompatibility(plugin.manifest);
+    if (report.warnings.length > 0) {
+      for (const w of report.warnings) {
+        console.warn(`[PluginRuntime] ${w.message}`);
+      }
+    }
+    if (report.fatal.length > 0) {
+      const message = formatCompatibilityErrors(report);
+      plugin.status = 'error';
+      plugin.error = message;
+      console.error(`[PluginRuntime] Activation aborted (incompatible): ${message}`);
+      throw new Error(message);
     }
 
     try {
@@ -346,14 +399,19 @@ class ElectronPluginRuntime extends EventEmitter {
       case 'provider':
         // Provider 插件：如果提供了 createProvider 工厂
         if (module?.createProvider && manifest.providerMeta) {
+          const kind = manifest.providerMeta.channelType;
           const def: ProviderDefinition = {
             type: manifest.id,
-            kind: manifest.providerMeta.channelType,
+            kind,
             name: manifest.name,
             capabilities: manifest.providerMeta.capabilities,
             factory: module.createProvider,
             defaultConfig: manifest.providerMeta.defaultConfig,
             pluginId: manifest.id,
+            // 媒体 Provider 必填契约版本；image-hosting / llm 不强制
+            contractVersion: requiresMediaContractVersion(kind)
+              ? MEDIA_PROVIDER_CONTRACT_VERSION
+              : undefined,
           };
           console.log(`[PluginRuntime] Registering provider: ${def.type}, kind: ${def.kind}`);
           providerRegistry.register(def);
@@ -449,19 +507,23 @@ class ElectronPluginRuntime extends EventEmitter {
 
       fs: {
         readFile: async (filePath: string) => {
+          requirePluginScope(manifest, 'storage:limited', 'fs.readFile');
           const fullPath = this.resolveSandboxPath(dataDir, filePath);
           return fs.readFile(fullPath, 'utf-8');
         },
         writeFile: async (filePath: string, content: string) => {
+          requirePluginScope(manifest, 'storage:limited', 'fs.writeFile');
           const fullPath = this.resolveSandboxPath(dataDir, filePath);
           await fs.mkdir(path.dirname(fullPath), { recursive: true });
           await fs.writeFile(fullPath, content, 'utf-8');
         },
         deleteFile: async (filePath: string) => {
+          requirePluginScope(manifest, 'storage:limited', 'fs.deleteFile');
           const fullPath = this.resolveSandboxPath(dataDir, filePath);
           await fs.unlink(fullPath);
         },
         exists: async (filePath: string) => {
+          requirePluginScope(manifest, 'storage:limited', 'fs.exists');
           const fullPath = this.resolveSandboxPath(dataDir, filePath);
           try {
             await fs.access(fullPath);
@@ -471,16 +533,21 @@ class ElectronPluginRuntime extends EventEmitter {
           }
         },
         listDir: async (dirPath: string) => {
+          requirePluginScope(manifest, 'storage:limited', 'fs.listDir');
           const fullPath = this.resolveSandboxPath(dataDir, dirPath);
           return fs.readdir(fullPath);
         },
       },
 
       net: {
-        fetch: globalThis.fetch,
+        fetch: ((input: RequestInfo | URL, init?: RequestInit) => {
+          requirePluginScope(manifest, 'network:external', 'net.fetch');
+          return globalThis.fetch(input, init);
+        }) as typeof fetch,
       },
 
       spawn: (command: string, args?: string[], options?: SpawnOptions): ChildProcessHandle => {
+        requirePluginScope(manifest, 'spawn:process', 'spawn');
         return this.createChildProcess(command, args, options);
       },
 

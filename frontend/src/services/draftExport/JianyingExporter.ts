@@ -34,7 +34,7 @@ import {
   isVideoFile,
 } from './coordinateTransform';
 import {
-  buildKeyframeLists,
+  buildKeyframeListsFromClip,
   buildFilter,
   buildAnimations,
   buildAudioFade,
@@ -536,8 +536,8 @@ export class JianyingExporter implements DraftExporter {
     // 使用预先收集的素材引用列表
     const extraMaterialRefs: string[] = extraMaterialRefsList || [];
 
-    // 构建关键帧
-    const commonKeyframes = buildKeyframeLists(clip.jianyingKeyframeTracks);
+    // 构建关键帧（从 Clip.keyframes 属性快照派生 per-property timeline）
+    const commonKeyframes = buildKeyframeListsFromClip(clip);
 
     return {
       id: segmentId,

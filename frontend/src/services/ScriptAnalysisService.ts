@@ -10,6 +10,7 @@ import { logLLMCall } from '../store/aiCallLogger';
 import { createLogger } from '../store/logger';
 import { TaskManager, Task } from './TaskManager';
 import { parseLLMJSON } from '../utils/llmJsonParser';
+import { runWithConcurrency } from '../utils/concurrency';
 import { cleanText, splitVisualClauses, CHARACTER_STORY_TOKENS, sanitizeCharacterAppearance } from '../utils/textUtils';
 import { INJECTION_GUARD, wrapUserContent, appendStyleRequirement, type StyleSnapshotLike } from '../utils/promptNormalize';
 import {
@@ -29,7 +30,11 @@ const logger = createLogger('ScriptAnalysisService');
 
 const CHUNK_MAX_ATTEMPTS = 2;
 const CHUNK_RETRY_BASE_DELAY_MS = 1200;
-const CHUNK_CONCURRENCY = 1;
+// 单 stage 内并行处理的 chunk 数。4 是经验值：
+// - 太小（1）→ 大剧本解析串行很慢
+// - 太大（>8）→ 容易触发 LLM provider 的速率限制（429）
+// 三个 stage（characters/scenes/props）已在外层全并行，所以同时进行的 LLM 调用 = 4 × 3 = 12
+const CHUNK_CONCURRENCY = 4;
 const SCRIPT_ANALYSIS_TIMEOUT_MS = 180_000;
 const PLAN_MIN_SCRIPT_LENGTH = 6_000;
 const PLAN_MIN_CHUNK_COUNT = 4;
@@ -200,18 +205,26 @@ export class ScriptAnalysisService {
   private styleSnapshot?: StyleSnapshotLike;
   private creationPlan?: CreationPlan;
   private systemPromptPromise?: Promise<ResolvedPromptTemplate>;
+  /** 整集推文旁白；用于注入到 character/scene/prop 提取模板的 {{tweetScript}} 占位符 */
+  private tweetScript?: string;
+  /** 剧情主线摘要；用于注入到提取模板的 {{plotSummary}} 占位符 */
+  private plotSummary?: string;
 
   constructor(
     ctx: import('./CreationContext').CreationContext,
     options?: {
       onProgress?: (progress: AnalysisProgress) => void;
       episodeContext?: EpisodeContext;
+      tweetScript?: string;
+      plotSummary?: string;
     },
   ) {
     this.ctx = ctx;
     this.onProgress = options?.onProgress;
     this.episodeContext = options?.episodeContext;
     this.styleSnapshot = ctx.styleSnapshot;
+    this.tweetScript = options?.tweetScript;
+    this.plotSummary = options?.plotSummary;
   }
 
   // 设置剧集上下文
@@ -225,6 +238,14 @@ export class ScriptAnalysisService {
 
   setCreationPlan(plan: CreationPlan) {
     this.creationPlan = plan;
+  }
+
+  setTweetScript(tweetScript?: string) {
+    this.tweetScript = tweetScript;
+  }
+
+  setPlotSummary(plotSummary?: string) {
+    this.plotSummary = plotSummary;
   }
 
   // 获取当前使用的剧本（优先剧集剧本）
@@ -322,10 +343,19 @@ export class ScriptAnalysisService {
       ? `【全局创作规划】\n${planToStylePrefix(this.creationPlan)}\n${planToRelationshipContext(this.creationPlan)}\n\n`
       : '';
 
+    // 提取阶段的辅助上下文：推文旁白 / 剧情摘要 / 项目视觉风格
+    // 三者均为可选，未提供时占位符会被 resolvePromptTemplate 内部清理
+    const extractionAuxVariables: Record<string, string> = {
+      tweetScript: this.tweetScript ?? '',
+      plotSummary: this.plotSummary ?? '',
+      stylePrefix: this.styleSnapshot?.ttiStylePrefix ?? '',
+    };
+
     const chunkPrompts = await Promise.all(
       chunks.map(async (chunk) => {
         const resolvedPrompt = await resolvePromptTemplate(templateId, {
           script: wrapUserContent(chunk.content),
+          ...extractionAuxVariables,
         });
         const styledPrompt = this.appendStyleRequirement(resolvedPrompt.prompt);
         // 并行模式下无法实时共享已识别实体，去重由最终 Map 保证
@@ -336,42 +366,67 @@ export class ScriptAnalysisService {
       })
     );
 
+    // chunks 内并行执行：runWithConcurrency 控制同时运行不超过 CHUNK_CONCURRENCY 个，
+    // 每个 chunk 内部仍保留 retry。结果按原始 chunk 顺序返回。
     let failedChunks = 0;
     const chunkFailures: ScriptAnalysisChunkFailure[] = [];
-    for (const { chunk, chunkPrompt, resolvedPrompt } of chunkPrompts) {
-      this.reportProgress(stage, 'running', `正在分析${label}...（${chunk.index}/${chunk.total}）`, {
-        stageProgress: completedChunks / chunks.length,
-        chunkIndex: chunk.index,
-        chunkTotal: chunk.total,
-      });
 
-      let items: any[] | null = null;
-      let lastError: unknown;
-      for (let attempt = 0; attempt < CHUNK_MAX_ATTEMPTS; attempt++) {
-        try {
-          const result = await this.callLLM(chunkPrompt, schema, {
-            templateId: resolvedPrompt.template.id,
-            promptSource: resolvedPrompt.source,
-          });
-          items = parseItems(result);
-          break;
-        } catch (err: unknown) {
-          lastError = err;
-          if (attempt < CHUNK_MAX_ATTEMPTS - 1) {
-            const retryDelayMs = CHUNK_RETRY_BASE_DELAY_MS * (attempt + 1);
-            this.reportProgress(stage, 'running', `正在重试${label}分块 ${chunk.index}/${chunk.total}...`, {
-              stageProgress: completedChunks / chunks.length,
-              chunkIndex: chunk.index,
-              chunkTotal: chunk.total,
-              retryAttempt: attempt + 2,
-              retryMax: CHUNK_MAX_ATTEMPTS,
-              retryDelayMs,
+    const chunkResults = await runWithConcurrency(
+      chunkPrompts.map(({ chunk, chunkPrompt, resolvedPrompt }) => async () => {
+        let items: any[] | null = null;
+        let lastError: unknown;
+        for (let attempt = 0; attempt < CHUNK_MAX_ATTEMPTS; attempt++) {
+          try {
+            const result = await this.callLLM(chunkPrompt, schema, {
+              templateId: resolvedPrompt.template.id,
+              promptSource: resolvedPrompt.source,
             });
-            await delay(retryDelayMs);
+            items = parseItems(result);
+            break;
+          } catch (err: unknown) {
+            lastError = err;
+            if (attempt < CHUNK_MAX_ATTEMPTS - 1) {
+              const retryDelayMs = CHUNK_RETRY_BASE_DELAY_MS * (attempt + 1);
+              this.reportProgress(stage, 'running', `正在重试${label}分块 ${chunk.index}/${chunk.total}...`, {
+                stageProgress: completedChunks / chunks.length,
+                chunkIndex: chunk.index,
+                chunkTotal: chunk.total,
+                retryAttempt: attempt + 2,
+                retryMax: CHUNK_MAX_ATTEMPTS,
+                retryDelayMs,
+              });
+              await delay(retryDelayMs);
+            }
           }
         }
-      }
+        // 单 chunk 完成后报告进度（并发场景下原子计数）
+        if (items) {
+          completedChunks++;
+          this.reportProgress(stage, 'running', `正在分析${label}...（${completedChunks}/${chunk.total} 完成）`, {
+            stageProgress: completedChunks / chunks.length,
+            chunkIndex: completedChunks,
+            chunkTotal: chunk.total,
+          });
+        }
+        return { chunk, items, lastError };
+      }),
+      CHUNK_CONCURRENCY
+    );
 
+    // 汇总结果（按原顺序）
+    for (const settled of chunkResults) {
+      if (settled.status !== 'fulfilled') {
+        // runWithConcurrency 内部 try 已捕获 task() 抛错；fulfilled 永远为真，
+        // 但保险起见仍处理 rejected 分支
+        failedChunks++;
+        chunkFailures.push({
+          chunkIndex: -1,
+          chunkTotal: chunks.length,
+          error: settled.reason,
+        });
+        continue;
+      }
+      const { chunk, items, lastError } = settled.value;
       if (!items) {
         failedChunks++;
         const chunkError = formatScriptAnalysisChunkError(lastError);
@@ -387,14 +442,6 @@ export class ScriptAnalysisService {
         });
         continue;
       }
-
-      completedChunks++;
-      this.reportProgress(stage, 'running', `正在分析${label}...（${completedChunks}/${chunk.total} 完成）`, {
-        stageProgress: completedChunks / chunks.length,
-        chunkIndex: completedChunks,
-        chunkTotal: chunk.total,
-      });
-
       for (const item of items) {
         if (!item?.name || collected.has(item.name)) continue;
         collected.set(item.name, mapItem(item, collected.size));
@@ -456,6 +503,7 @@ export class ScriptAnalysisService {
           age: c.age || '未知',
           gender: ['male', 'female', 'neutral', 'unknown'].includes(c.gender) ? c.gender : 'unknown',
           role: c.role || 'supporting',
+          aliases: typeof c.aliases === 'string' ? c.aliases.trim() : (Array.isArray(c.aliases) ? c.aliases.join(',') : ''),
           episodeId: this.episodeContext?.episodeId,
         })
       );
@@ -496,6 +544,7 @@ export class ScriptAnalysisService {
           location: s.location,
           time: s.time || 'day',
           mood: s.mood,
+          aliases: typeof s.aliases === 'string' ? s.aliases.trim() : (Array.isArray(s.aliases) ? s.aliases.join(',') : ''),
           episodeId: this.episodeContext?.episodeId,
         })
       );
@@ -534,6 +583,8 @@ export class ScriptAnalysisService {
           name: p.name,
           prompt: p.description || p.name,
           type: p.type,
+          description: p.description || '',
+          aliases: typeof p.aliases === 'string' ? p.aliases.trim() : (Array.isArray(p.aliases) ? p.aliases.join(',') : ''),
           episodeId: this.episodeContext?.episodeId,
         })
       );
@@ -604,19 +655,18 @@ export class ScriptAnalysisService {
 
   // 完整解析流程
   async analyzeScript(script: string): Promise<ScriptAnalysisResult> {
-    // 提取角色（必须先完成，分镜生成依赖角色列表）
-    const charResult = await this.extractCharacters(script);
-    if (!charResult.success || !charResult.data) {
-      throw new Error(charResult.error || '角色提取失败');
-    }
-
-    // 场景和道具互不依赖，并行提取
-    const [sceneResult, propsResult] = await Promise.all([
+    // 三个 stage（角色 / 场景 / 道具）相互独立，全部并行
+    // 单 stage 内的 chunk 也并行（CHUNK_CONCURRENCY），整体并发 = 3 × CHUNK_CONCURRENCY
+    const [charResult, sceneResult, propsResult] = await Promise.all([
+      this.extractCharacters(script),
       this.extractScenes(script),
       this.extractProps(script),
     ]);
 
     const errors: string[] = [];
+    if (!charResult.success || !charResult.data) {
+      errors.push(charResult.error || '角色提取失败');
+    }
     if (!sceneResult.success || !sceneResult.data) {
       errors.push(sceneResult.error || '场景提取失败');
     }
@@ -628,9 +678,9 @@ export class ScriptAnalysisService {
     }
 
     return {
-      characters: charResult.data,
-      scenes: sceneResult.data,
-      props: propsResult.data,
+      characters: charResult.data!,
+      scenes: sceneResult.data!,
+      props: propsResult.data!,
       shots: [],
     };
   }
@@ -804,7 +854,7 @@ export class BackgroundAnalysisService {
         });
       };
 
-      // 创建解析服务
+      // 创建解析服务；自动注入已存在的推文旁白作为提取阶段的辅助上下文
       const service = new ScriptAnalysisService(ctx, {
         onProgress: (progress) => {
           stageStates[progress.stage] = {
@@ -831,6 +881,7 @@ export class BackgroundAnalysisService {
           episodeName,
           episodeScript: script,
         },
+        tweetScript: existingAnalysis?.tweetScript,
       });
 
       syncTaskProgress();

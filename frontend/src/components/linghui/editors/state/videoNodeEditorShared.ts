@@ -6,6 +6,7 @@ import type {
 import { toFileSystemDisplayUrl } from '../../../../services/fileSystemPort';
 import { electronService } from '../../../../services/electronService';
 import { stripDataHeader } from '../../../../utils/encoding';
+import { fromKomaLocalUrl } from '../../../../utils/urlUtils';
 import {
   VIDEO_CAPABILITY_LABELS,
   type LinghuiVideoCapability as SharedLinghuiVideoCapability,
@@ -15,14 +16,7 @@ export function getPreviewSource(source?: string): string {
   return toFileSystemDisplayUrl(source) || '';
 }
 
-export function decodeLinghuiMediaSource(source: string): string {
-  if (!source.startsWith('koma-local://')) {
-    return source;
-  }
-
-  const decoded = decodeURIComponent(source.replace(/^koma-local:\/\//, ''));
-  return decoded.replace(/^\/([A-Za-z]:\/)/, '$1');
-}
+export const decodeLinghuiMediaSource = fromKomaLocalUrl;
 
 function isRemoteMediaUri(source: string): boolean {
   return /^https?:\/\//i.test(source);

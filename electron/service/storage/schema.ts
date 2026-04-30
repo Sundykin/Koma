@@ -288,22 +288,6 @@ CREATE TABLE IF NOT EXISTS timeline_clip_keyframes (
   sort_order INTEGER DEFAULT 0
 );
 
-CREATE TABLE IF NOT EXISTS timeline_clip_jianying_tracks (
-  id TEXT PRIMARY KEY,
-  clip_id TEXT NOT NULL REFERENCES timeline_clips(id) ON DELETE CASCADE,
-  property TEXT NOT NULL,
-  sort_order INTEGER DEFAULT 0
-);
-
-CREATE TABLE IF NOT EXISTS timeline_clip_jianying_keyframes (
-  id TEXT PRIMARY KEY,
-  jianying_track_id TEXT NOT NULL REFERENCES timeline_clip_jianying_tracks(id) ON DELETE CASCADE,
-  time REAL NOT NULL,
-  value REAL NOT NULL,
-  curve_type TEXT,
-  sort_order INTEGER DEFAULT 0
-);
-
 CREATE TABLE IF NOT EXISTS timeline_clip_animations (
   id TEXT PRIMARY KEY,
   clip_id TEXT NOT NULL REFERENCES timeline_clips(id) ON DELETE CASCADE,
@@ -594,8 +578,6 @@ CREATE INDEX IF NOT EXISTS idx_timeline_tracks_timeline ON timeline_tracks(timel
 CREATE INDEX IF NOT EXISTS idx_timeline_clips_track ON timeline_clips(track_id);
 CREATE INDEX IF NOT EXISTS idx_timeline_track_transitions_track ON timeline_track_transitions(track_id, sort_order);
 CREATE INDEX IF NOT EXISTS idx_timeline_clip_keyframes_clip ON timeline_clip_keyframes(clip_id, sort_order);
-CREATE INDEX IF NOT EXISTS idx_timeline_clip_jianying_tracks_clip ON timeline_clip_jianying_tracks(clip_id, sort_order);
-CREATE INDEX IF NOT EXISTS idx_timeline_clip_jianying_keyframes_track ON timeline_clip_jianying_keyframes(jianying_track_id, sort_order);
 CREATE INDEX IF NOT EXISTS idx_timeline_clip_animations_clip ON timeline_clip_animations(clip_id, sort_order);
 CREATE INDEX IF NOT EXISTS idx_entity_episode_refs_episode ON entity_episode_refs(episode_id, entity_type);
 CREATE INDEX IF NOT EXISTS idx_shot_characters_shot ON shot_characters(shot_id, sort_order);
@@ -855,22 +837,6 @@ CREATE TABLE IF NOT EXISTS timeline_clip_keyframes (
   sort_order INTEGER DEFAULT 0
 );
 
-CREATE TABLE IF NOT EXISTS timeline_clip_jianying_tracks (
-  id TEXT PRIMARY KEY,
-  clip_id TEXT NOT NULL REFERENCES timeline_clips(id) ON DELETE CASCADE,
-  property TEXT NOT NULL,
-  sort_order INTEGER DEFAULT 0
-);
-
-CREATE TABLE IF NOT EXISTS timeline_clip_jianying_keyframes (
-  id TEXT PRIMARY KEY,
-  jianying_track_id TEXT NOT NULL REFERENCES timeline_clip_jianying_tracks(id) ON DELETE CASCADE,
-  time REAL NOT NULL,
-  value REAL NOT NULL,
-  curve_type TEXT,
-  sort_order INTEGER DEFAULT 0
-);
-
 CREATE TABLE IF NOT EXISTS timeline_clip_animations (
   id TEXT PRIMARY KEY,
   clip_id TEXT NOT NULL REFERENCES timeline_clips(id) ON DELETE CASCADE,
@@ -884,8 +850,6 @@ CREATE TABLE IF NOT EXISTS timeline_clip_animations (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_timelines_scope ON timelines(scope_type, scope_id);
 CREATE INDEX IF NOT EXISTS idx_timeline_track_transitions_track ON timeline_track_transitions(track_id, sort_order);
 CREATE INDEX IF NOT EXISTS idx_timeline_clip_keyframes_clip ON timeline_clip_keyframes(clip_id, sort_order);
-CREATE INDEX IF NOT EXISTS idx_timeline_clip_jianying_tracks_clip ON timeline_clip_jianying_tracks(clip_id, sort_order);
-CREATE INDEX IF NOT EXISTS idx_timeline_clip_jianying_keyframes_track ON timeline_clip_jianying_keyframes(jianying_track_id, sort_order);
 CREATE INDEX IF NOT EXISTS idx_timeline_clip_animations_clip ON timeline_clip_animations(clip_id, sort_order);
 `,
   },

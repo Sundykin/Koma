@@ -1,6 +1,6 @@
 /**
  * 七牛云图床 Provider - 前端 UI + Runtime
- * 使用 Koma 激活 Key 调用 ToAPIs 图片上传接口。配置面板不暴露 endpoint 与 apiKey。
+ * 固定经由 Koma 激活通道（https://komaapi.com）上传。配置面板不暴露 endpoint 与 apiKey。
  */
 
 import type { PluginAPI } from '@komastudio/plugin-sdk';
@@ -21,7 +21,7 @@ const { Title, Text, Paragraph } = Typography;
 
 // ========== 常量 ==========
 
-const UPLOAD_ENDPOINT = 'https://toapis.com/v1/uploads/images';
+const UPLOAD_ENDPOINT = 'https://komaapi.com/v1/uploads/images';
 
 interface QiniuConfig {
   enabled: boolean;
@@ -190,7 +190,7 @@ function QiniuProvider({ api }: QiniuProviderProps) {
       '七牛云图床（内置）'
     ),
     React.createElement(Paragraph, { type: 'secondary' },
-      '默认图床。使用激活 Key 调用 ToAPIs 上传接口，将图片上传到七牛云 Kodo，返回带时间戳防盗链签名的 URL（默认 3 天有效期）。无需额外填写 API Key。'
+      '默认图床。调用 Koma 激活通道 (komaapi.com) 将图片上传到七牛云 Kodo，返回带时间戳防盗链签名的 URL（默认 3 天有效期）。API Key 自动复用您的激活 Key，无需额外填写。'
     ),
 
     React.createElement(Divider),
@@ -237,12 +237,12 @@ function QiniuProvider({ api }: QiniuProviderProps) {
           name: 'enabled',
           label: '启用图床',
           valuePropName: 'checked',
-          extra: '启用后，手动上传的图片资产将自动通过 ToAPIs 上传到七牛云 Kodo',
+          extra: '启用后，手动上传的图片资产将自动通过 komaapi.com 上传到七牛云 Kodo',
         }, React.createElement(Switch, { checkedChildren: '已启用', unCheckedChildren: '已禁用' })),
 
         React.createElement(Form.Item, {
           label: '上传接口',
-          extra: '固定使用 ToAPIs 官方图片上传接口，无法修改',
+          extra: '固定使用 Koma 官方图片上传接口（komaapi.com），无法修改',
         }, React.createElement(Text, { code: true }, UPLOAD_ENDPOINT)),
 
         React.createElement(Form.Item, {
@@ -281,7 +281,7 @@ function QiniuProvider({ api }: QiniuProviderProps) {
       message: '使用说明',
       description: React.createElement('ul', { style: { margin: 0, paddingLeft: 20 } },
         React.createElement('li', null, '本插件为内置图床，无需单独安装'),
-        React.createElement('li', null, 'API Key 即 Koma 激活 Key，上传调用由 ToAPIs 图床接口校验'),
+        React.createElement('li', null, 'API Key 即 Koma 激活 Key，上传调用由 komaapi.com 图床接口校验'),
         React.createElement('li', null, '上传失败会自动重试 3 次'),
         React.createElement('li', null, '返回的 URL 自带时间戳防盗链签名，有效期 3 天')
       ),
@@ -391,7 +391,7 @@ async function onActivate(api: PluginAPI) {
       type: 'qiniu-image-hosting',
       kind: 'image-hosting' as any,
       name: '七牛云图床（内置）',
-      description: '使用激活 Key 调用 ToAPIs 上传接口，返回七牛云 Kodo 外链并支持时间戳防盗链',
+      description: '使用激活 Key 调用 Koma 官方上传接口（komaapi.com），返回七牛云 Kodo 外链并支持时间戳防盗链',
       capabilities: ['image-hosting'] as any[],
       defaultConfig: DEFAULT_CONFIG,
       factory: (config: any, ctx: any) => new QiniuImageHostingRuntime(config, { ...ctx, api }),

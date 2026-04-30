@@ -26,19 +26,12 @@ function makeClip(id: string, start: number, duration: number, extra?: Record<st
 }
 
 // ========== v0 fixtures ==========
+// 阶段 2-B 后：v0 仅指"version 字段缺失或显式为 0 的旧文件"，迁移逻辑已删除
+// （Clip.transition 字段已移除，无 legacy 转换）。fixture 仅用于测试 version 检测。
 const v0WithLegacyTransition = asRaw({
-  // 无 version 字段 → v0
   tracks: [
-    {
-      id: 'track-1',
-      type: 'video',
-      order: 0,
-      isMainTrack: true,
-      clips: [
-        makeClip('clip-a', 0, 5),
-        makeClip('clip-b', 5, 5, { transition: { effectId: 'fade', duration: 1 } }),
-      ],
-    },
+    { id: 'track-1', type: 'video', order: 0, isMainTrack: true,
+      clips: [makeClip('clip-a', 0, 5), makeClip('clip-b', 5, 5)] },
   ],
   createdAt: 1000,
   updatedAt: 2000,
@@ -47,16 +40,8 @@ const v0WithLegacyTransition = asRaw({
 const v0Explicit = asRaw({
   version: 0,
   tracks: [
-    {
-      id: 'track-1',
-      type: 'video',
-      order: 0,
-      isMainTrack: true,
-      clips: [
-        makeClip('clip-a', 0, 5),
-        makeClip('clip-b', 5, 5, { transition: { effectId: 'fade', duration: 2 } }),
-      ],
-    },
+    { id: 'track-1', type: 'video', order: 0, isMainTrack: true,
+      clips: [makeClip('clip-a', 0, 5), makeClip('clip-b', 5, 5)] },
   ],
   createdAt: 1000,
   updatedAt: 2000,
@@ -119,22 +104,8 @@ const corruptedZeroDuration = asRaw({
   updatedAt: 2000,
 });
 
-const corruptedNegativeDuration = asRaw({
-  version: 0,
-  tracks: [
-    {
-      id: 'track-1',
-      type: 'video',
-      order: 0,
-      clips: [
-        makeClip('clip-a', 0, 5),
-        makeClip('clip-b', 5, 5, { transition: { effectId: 'fade', duration: -1 } }),
-      ],
-    },
-  ],
-  createdAt: 1000,
-  updatedAt: 2000,
-});
+// 阶段 2-B 清理：corruptedNegativeDuration fixture 已删除（其测试用例
+// 也已删除，迁移路径不再过滤 legacy clip.transition）。
 
 // ========== Tests ==========
 describe('migrateTimelineData', () => {
@@ -193,33 +164,8 @@ describe('migrateTimelineData', () => {
     });
   });
 
-  describe('v0 → v1 迁移', () => {
-    it('Clip.transition 转换为 Track.transitions[]', () => {
-      const result = migrateTimelineData(v0WithLegacyTransition);
-      const track = result.tracks[0];
-      expect(track.transitions).toBeDefined();
-      expect(track.transitions!.length).toBe(1);
-      expect(track.transitions![0].fromClipId).toBe('clip-a');
-      expect(track.transitions![0].toClipId).toBe('clip-b');
-      expect(track.transitions![0].duration).toBe(1);
-      expect(track.transitions![0].type).toBe('fade');
-    });
-
-    it('迁移后 clip 上的 legacy transition 字段被清除', () => {
-      const result = migrateTimelineData(v0WithLegacyTransition);
-      const clips = result.tracks[0].clips;
-      clips.forEach((clip) => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- 验证 legacy 字段已被清除，需要跳过类型约束
-        expect((clip as any).transition).toBeUndefined();
-      });
-    });
-
-    it('v0 负数 duration 的 legacy transition 被过滤', () => {
-      const result = migrateTimelineData(corruptedNegativeDuration);
-      const track = result.tracks[0];
-      expect(track.transitions?.length ?? 0).toBe(0);
-    });
-  });
+  // 阶段 2-B 清理：v0 → v1 迁移路径已删除（Clip.transition 字段在产品未上线时
+  // 整体移除，无存量数据需要迁移）。原 v0 → v1 三组测试一并删除。
 
   describe('v1 数据校验', () => {
     it('v1 正常数据保持 transitions 不变', () => {

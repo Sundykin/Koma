@@ -1,17 +1,19 @@
 /**
- * 任务状态悬浮通知组件
- * 右下角悬浮显示当前运行中的后台任务进度
+ * 任务面板 Drawer 组件
+ * 唯一入口在左侧 Sidebar 的"任务"按钮，通过 taskPanelStore 控制开关。
+ * 没有顶部指示器（删了），所有交互都从 Sidebar 进。
  */
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Progress, Typography, Tag, Button, Empty, Tooltip } from 'antd';
+import { Progress, Typography, Tag, Button, Empty, Tooltip, Drawer } from 'antd';
 import { ReloadOutlined, StopOutlined } from '@ant-design/icons';
-import { Loader2, CheckCircle2, XCircle, ChevronDown, ChevronUp, FileText, Video, Cpu, Box, Download, X } from 'lucide-react';
+import { Loader2, CheckCircle2, XCircle, FileText, Video, Cpu, Box, Download, Trash2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { TaskManager } from '../../services/TaskManager';
 import type { Task as ManagerTask } from '../../services/TaskManager';
 import { buildScriptAnalysisOverallProgress } from '../../services/scriptAnalysisProgress';
 import type { AsyncTask } from '../../types';
-import { listTasks as listAsyncTasks } from '../../store/taskQueueStore';
+import { listTasks as listAsyncTasks, deleteTask as deleteAsyncTask, clearCompletedTasks as clearCompletedAsyncTasks } from '../../store/taskQueueStore';
+import { useTaskPanelStore } from '../../store/taskPanelStore';
 
 const { Text } = Typography;
 
@@ -154,9 +156,11 @@ export const TaskStatusBar: React.FC<TaskStatusBarProps> = ({ projectId, onRetry
   const CATEGORY_CONFIG = useCategoryConfig();
 
   const [tasks, setTasks] = useState<StatusBarTask[]>([]);
-  const [expanded, setExpanded] = useState(false);
+  const drawerOpen = useTaskPanelStore(s => s.open);
+  const setDrawerOpen = useTaskPanelStore(s => s.setOpen);
   const [activeTab, setActiveTab] = useState<FilterKey>('all');
-  const [dismissed, setDismissed] = useState(false);
+  // 项目维度筛选：默认"当前项目"，可切到"全部"看跨项目（含灵绘 workspace 兜底）的任务
+  const [projectFilter, setProjectFilter] = useState<'current' | 'all'>('current');
   const activeTaskIdsRef = useRef('');
 
   const getSubTypeLabel = (subType?: string): string => {
@@ -230,7 +234,12 @@ export const TaskStatusBar: React.FC<TaskStatusBarProps> = ({ projectId, onRetry
     });
 
     const loadTasks = async () => {
-      const managerTasks = TaskManager.getProjectTasks(projectId).map(mapManagerTask);
+      // 项目筛选：'current' 仅当前项目；'all' 跨项目（含 projectId=空 / 灵绘 workspace 兜底）
+      const managerTasks = (projectFilter === 'all'
+        ? TaskManager.getAllTasks()
+        : TaskManager.getProjectTasks(projectId)
+      ).map(mapManagerTask);
+      // taskQueueStore 的存储是按项目分文件，跨项目暂不聚合（只看当前项目的远端媒体任务）
       const queueTasks = await listAsyncTasks(projectId)
         .then(list => list
           // Defensive: tasks.json is reserved for media tasks. If older builds wrote other task shapes,
@@ -267,21 +276,18 @@ export const TaskStatusBar: React.FC<TaskStatusBarProps> = ({ projectId, onRetry
 
       if (!activeTaskIds) {
         activeTaskIdsRef.current = '';
-        setDismissed(false);
-        setExpanded(false);
         return;
       }
 
       if (activeTaskIds !== activeTaskIdsRef.current) {
         activeTaskIdsRef.current = activeTaskIds;
-        setDismissed(false);
       }
     };
 
     loadTasks();
 
     const unsubscribe = TaskManager.addListener((task) => {
-      if (task.projectId === projectId) {
+      if (projectFilter === 'all' || task.projectId === projectId) {
         loadTasks();
       }
     });
@@ -294,7 +300,7 @@ export const TaskStatusBar: React.FC<TaskStatusBarProps> = ({ projectId, onRetry
       unsubscribe();
       clearInterval(timer);
     };
-  }, [projectId]);
+  }, [projectId, projectFilter]);
 
   const { runningTasks, completedTasks, failedTasks, allFilteredTasks } = useMemo(() => {
     const running = tasks.filter(t => t.status === 'pending' || t.status === 'running' || t.status === 'processing');
@@ -312,8 +318,6 @@ export const TaskStatusBar: React.FC<TaskStatusBarProps> = ({ projectId, onRetry
 
   const mainTask = runningTasks[0];
 
-  if (!mainTask || dismissed) return null;
-
   const filterItems: Array<{ key: FilterKey; label: string; count: number }> = [
     { key: 'all', label: t('common.all'), count: tasks.length },
     { key: 'running', label: t('task.running'), count: runningTasks.length },
@@ -321,7 +325,8 @@ export const TaskStatusBar: React.FC<TaskStatusBarProps> = ({ projectId, onRetry
     { key: 'failed', label: t('task.failed'), count: failedTasks.length },
   ];
 
-  const visibleTasks = expanded && mainTask
+  // Drawer 内除"运行中主任务卡"外，其他任务列表
+  const visibleTasks = mainTask
     ? allFilteredTasks.filter(task => task.id !== mainTask.id)
     : allFilteredTasks;
 
@@ -469,6 +474,27 @@ export const TaskStatusBar: React.FC<TaskStatusBarProps> = ({ projectId, onRetry
                     onClick={(e) => { e.stopPropagation(); onCancel(task.raw!); }}
                   />
                 )}
+                {/* 单任务删除：仅完成 / 失败状态可删；运行中需先取消才能删 */}
+                {(task.status === 'completed' || task.status === 'failed') && (
+                  <Tooltip title="从任务列表移除（不影响远端）">
+                    <Button
+                      type="text"
+                      size="small"
+                      icon={<Trash2 className="w-3.5 h-3.5" />}
+                      className="text-zinc-500 hover:text-red-400 shrink-0 !w-7 !h-7"
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        if (task.source === 'task-manager') {
+                          TaskManager.removeTask(task.id);
+                        } else {
+                          await deleteAsyncTask(task.projectId, task.id);
+                        }
+                        // 立刻从本地列表移除（监听器/轮询会同步，但提前移除避免视觉抖动）
+                        setTasks(prev => prev.filter(t => t.id !== task.id));
+                      }}
+                    />
+                  </Tooltip>
+                )}
               </div>
             </div>
             {shouldShowScriptStages ? (
@@ -537,147 +563,123 @@ export const TaskStatusBar: React.FC<TaskStatusBarProps> = ({ projectId, onRetry
   };
 
   return (
-    <div
-      className={`fixed bottom-4 right-4 z-50 ${expanded ? 'w-[28rem] max-w-[calc(100vw-2rem)]' : 'w-[21rem] max-w-[calc(100vw-2rem)]'} bg-zinc-900/95 backdrop-blur border border-zinc-700/80 rounded-2xl shadow-2xl overflow-hidden transition-all duration-300 ease-in-out`}
-    >
-      {expanded ? (
-        <div className="border-b border-zinc-700/80 px-3.5 py-3">
-          <div className="flex items-start gap-3">
-            <div className="min-w-0 flex-1">
-              <div className="text-sm font-semibold text-zinc-100">{t('task.title')}</div>
-              <div className="mt-1 text-xs text-zinc-500 break-words">
-                {`${t('common.all')} ${tasks.length} · ${t('task.running')} ${runningTasks.length} · ${t('task.completed')} ${completedTasks.length} · ${t('task.failed')} ${failedTasks.length}`}
-              </div>
-            </div>
-            <div className="flex items-center gap-1 shrink-0">
+    <>
+      {/* 任务列表抽屉：从右侧滑入，关闭后释放渲染。入口在 Sidebar，本组件不再渲染顶栏指示器 */}
+      <Drawer
+        title={
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-sm font-semibold text-zinc-100">{t('task.title')}</span>
+            <span className="text-xs text-zinc-500 font-normal tabular-nums">
+              {t('task.running')} {runningTasks.length} · {t('task.completed')} {completedTasks.length} · {t('task.failed')} {failedTasks.length}
+            </span>
+          </div>
+        }
+        extra={
+          (completedTasks.length > 0 || failedTasks.length > 0) && (
+            <Tooltip title="清空已完成和失败的任务记录">
               <Button
-                type="text"
                 size="small"
-                icon={<ChevronDown className="w-4 h-4" />}
-                className="text-zinc-500 hover:text-zinc-200 !w-8 !h-8"
-                onClick={() => setExpanded(false)}
-              />
-              <Button
-                type="text"
-                size="small"
-                icon={<X className="w-3.5 h-3.5" />}
-                className="text-zinc-500 hover:text-zinc-200 !w-8 !h-8"
-                onClick={() => setDismissed(true)}
-              />
-            </div>
+                icon={<Trash2 className="w-3.5 h-3.5" />}
+                onClick={async () => {
+                  const removedManager = TaskManager.clearFinishedTasks(projectId);
+                  const removedAsync = await clearCompletedAsyncTasks(projectId).catch(() => 0);
+                  // 立刻从本地状态移除，让 UI 即时反馈
+                  setTasks(prev => prev.filter(t => t.status !== 'completed' && t.status !== 'failed'));
+                  // 留个日志便于调试（不弹 toast 避免噪音）
+                  if (removedManager + removedAsync > 0) {
+                    // eslint-disable-next-line no-console
+                    console.info(`[TaskStatusBar] 清空已完成任务：${removedManager + removedAsync} 条`);
+                  }
+                }}
+              >
+                清空已完成
+              </Button>
+            </Tooltip>
+          )
+        }
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        placement="right"
+        width={460}
+        destroyOnClose
+        styles={{ body: { padding: '12px 16px' } }}
+      >
+        {/* 项目维度筛选 */}
+        <div className="mb-3 flex items-center gap-2">
+          <Text className="text-[11px] uppercase tracking-[0.14em] text-zinc-500 shrink-0">项目</Text>
+          <div className="flex flex-wrap gap-2">
+            {(['current', 'all'] as const).map((key) => {
+              const active = projectFilter === key;
+              const label = key === 'current' ? '当前项目' : '全部';
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setProjectFilter(key)}
+                  className={`inline-flex items-center rounded-full border px-3 py-1 text-xs transition-colors ${active
+                    ? 'border-cyan-500/40 bg-cyan-500/15 text-cyan-200'
+                    : 'border-zinc-700/80 bg-zinc-800/40 text-zinc-400 hover:border-zinc-600 hover:text-zinc-200'
+                  }`}
+                >
+                  {label}
+                </button>
+              );
+            })}
           </div>
         </div>
-      ) : (
-        <div
-          className="px-3.5 py-3 cursor-pointer hover:bg-zinc-800/40"
-          onClick={() => setExpanded(true)}
-        >
-          {(() => {
-            const mainTaskProgress = mainTaskStagePresentation?.progress ?? mainTask.progress;
-            return (
-              <div className="flex items-start gap-3">
-                <div className="mt-0.5 shrink-0">{getStatusIcon(mainTask.status)}</div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    {mainTask.category && CATEGORY_CONFIG[mainTask.category] && (
-                      <Tag color={CATEGORY_CONFIG[mainTask.category].color} className="text-[10px] px-1.5 py-0 rounded-full">
-                        {getSubTypeLabel(mainTask.subType)}
-                      </Tag>
-                    )}
-                    {runningTasks.length > 1 && (
-                      <Tag color="blue" className="text-[10px] px-1.5 py-0 rounded-full">+{runningTasks.length - 1}</Tag>
-                    )}
-                  </div>
-                  <div className="mt-1 text-sm text-zinc-100 truncate">
-                    {mainTask.targetName || getTaskLabel(mainTask)}
-                  </div>
-                  <div className="mt-2 flex items-center gap-2">
-                    <Progress
-                      percent={mainTaskProgress}
-                      size="small"
-                      showInfo={false}
-                      className="flex-1"
-                      strokeColor={getProgressStrokeColor(mainTask.status)}
-                      trailColor="#3f3f46"
-                    />
-                    <Text className="text-zinc-400 text-xs tabular-nums">{mainTaskProgress}%</Text>
-                  </div>
-                  {(mainTaskStagePresentation?.detail || mainTaskStagePresentation?.summary) && (
-                    <div className="mt-1 text-xs text-zinc-500 break-words">
-                      {mainTaskStagePresentation?.detail || mainTaskStagePresentation?.summary}
-                    </div>
-                  )}
-                </div>
-                <div className="flex items-center gap-1 shrink-0">
-                  <ChevronUp className="w-4 h-4 text-zinc-500" />
-                  <Button
-                    type="text"
-                    size="small"
-                    icon={<X className="w-3.5 h-3.5" />}
-                    className="text-zinc-500 hover:text-zinc-200 !w-8 !h-8"
-                    onClick={(e) => { e.stopPropagation(); setDismissed(true); }}
-                  />
-                </div>
-              </div>
-            );
-          })()}
-        </div>
-      )}
 
-      <div className={`overflow-hidden transition-all duration-300 ease-in-out ${expanded ? 'max-h-[520px] opacity-100' : 'max-h-0 opacity-0'}`}>
-        {expanded && (
-          <div className="p-3">
-            {mainTask && (
-              <div className="mb-3">
-                <div className="mb-2 flex items-center justify-between gap-2">
-                  <Text className="text-[11px] uppercase tracking-[0.14em] text-zinc-500">{t('task.running')}</Text>
-                  {mainTask.startedAt && (
-                    <Text className="text-[11px] text-zinc-500 tabular-nums">
-                      {formatDuration(mainTask.startedAt, mainTask.completedAt)}
-                    </Text>
-                  )}
-                </div>
-                {renderTaskItem(mainTask, true)}
-              </div>
-            )}
-
-            <div className="mb-3 flex flex-wrap gap-2">
-              {filterItems.map((item) => {
-                const active = item.key === activeTab;
-                return (
-                  <button
-                    key={item.key}
-                    type="button"
-                    onClick={() => setActiveTab(item.key)}
-                    className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs transition-colors ${active
-                      ? 'border-emerald-500/40 bg-emerald-500/15 text-emerald-300'
-                      : 'border-zinc-700/80 bg-zinc-800/40 text-zinc-400 hover:border-zinc-600 hover:text-zinc-200'
-                    }`}
-                  >
-                    <span>{item.label}</span>
-                    <span className="tabular-nums">{item.count}</span>
-                  </button>
-                );
-              })}
-            </div>
-
-            <div className="max-h-[320px] overflow-y-auto custom-scrollbar">
-              {visibleTasks.length > 0 ? (
-                <div className="space-y-2">
-                  {visibleTasks.map((task) => renderTaskItem(task))}
-                </div>
-              ) : (
-                <Empty
-                  description={t('task.noTasks')}
-                  className="py-5"
-                  imageStyle={{ height: 40 }}
-                />
+        {/* 主运行任务卡（如果有） */}
+        {mainTask && (
+          <div className="mb-3">
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <Text className="text-[11px] uppercase tracking-[0.14em] text-zinc-500">{t('task.running')}</Text>
+              {mainTask.startedAt && (
+                <Text className="text-[11px] text-zinc-500 tabular-nums">
+                  {formatDuration(mainTask.startedAt, mainTask.completedAt)}
+                </Text>
               )}
             </div>
+            {renderTaskItem(mainTask, true)}
           </div>
         )}
-      </div>
-    </div>
+
+        {/* tab 筛选 */}
+        <div className="mb-3 flex flex-wrap gap-2">
+          {filterItems.map((item) => {
+            const active = item.key === activeTab;
+            return (
+              <button
+                key={item.key}
+                type="button"
+                onClick={() => setActiveTab(item.key)}
+                className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs transition-colors ${active
+                  ? 'border-emerald-500/40 bg-emerald-500/15 text-emerald-300'
+                  : 'border-zinc-700/80 bg-zinc-800/40 text-zinc-400 hover:border-zinc-600 hover:text-zinc-200'
+                }`}
+              >
+                <span>{item.label}</span>
+                <span className="tabular-nums">{item.count}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* 列表 */}
+        <div className="overflow-y-auto custom-scrollbar" style={{ maxHeight: 'calc(100vh - 260px)' }}>
+          {visibleTasks.length > 0 ? (
+            <div className="space-y-2">
+              {visibleTasks.map((task) => renderTaskItem(task))}
+            </div>
+          ) : (
+            <Empty
+              description={t('task.noTasks')}
+              className="py-5"
+              imageStyle={{ height: 40 }}
+            />
+          )}
+        </div>
+      </Drawer>
+    </>
   );
 };
 

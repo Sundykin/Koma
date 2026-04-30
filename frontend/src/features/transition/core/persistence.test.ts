@@ -40,23 +40,7 @@ describe('timeline persistence boundary', () => {
     expect(prepared.updatedAt).toBeGreaterThan(0);
   });
 
-  it('prepareTimelineForSave clears legacy clip.transition during save', () => {
-    const prepared = prepareTimelineForSave({
-      version: 0,
-      tracks: [{
-        id: 'track-1',
-        type: 'video',
-        order: 0,
-        clips: [
-          makeClip('clip-a', 0, 5),
-          makeClip('clip-b', 5, 5, { transition: { effectId: 'fade', duration: 1 } }),
-        ],
-      }],
-    } as Partial<TimelineData> & Pick<TimelineData, 'tracks'>);
-
-    expect(prepared.tracks[0].transitions?.length).toBe(1);
-    expect((prepared.tracks[0].clips[1] as any).transition).toBeUndefined();
-  });
+  // 阶段 2-B 清理：legacy clip.transition 字段已移除，对应 test 删除。
 
   it('save boundary and load boundary are idempotent for normalized timelines', () => {
     const once = prepareTimelineForSave({

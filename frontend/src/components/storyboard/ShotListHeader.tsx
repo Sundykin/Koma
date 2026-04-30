@@ -33,6 +33,7 @@ interface ShotListHeaderProps {
   onBatchReVideos: () => void;
   onBatchVideoPrompts: () => void;
   onBatchReVideoPrompts: () => void;
+  onBulkVideoModeChange?: (mode: 'multi-ref' | 'first-frame') => void;
   onAddShot: () => void;
   onBatchDelete: () => void;
 }
@@ -54,6 +55,7 @@ export const ShotListHeader: React.FC<ShotListHeaderProps> = ({
   onBatchReVideos,
   onBatchVideoPrompts,
   onBatchReVideoPrompts,
+  onBulkVideoModeChange,
   onAddShot,
   onBatchDelete,
 }) => {
@@ -73,6 +75,19 @@ export const ShotListHeader: React.FC<ShotListHeaderProps> = ({
   const videoPromptMenuItems: MenuProps['items'] = [
     { key: 'gen', label: t('storyboard.generateEmpty'), onClick: onBatchVideoPrompts },
     { key: 'regen', label: t('storyboard.regenerateAll'), onClick: onBatchReVideoPrompts },
+  ];
+
+  const videoModeMenuItems: MenuProps['items'] = [
+    {
+      key: 'multi-ref',
+      label: '全部切到 · 多参模式',
+      onClick: () => onBulkVideoModeChange?.('multi-ref'),
+    },
+    {
+      key: 'first-frame',
+      label: '全部切到 · 首帧模式',
+      onClick: () => onBulkVideoModeChange?.('first-frame'),
+    },
   ];
 
   const videoMenuItems: MenuProps['items'] = [
@@ -139,20 +154,35 @@ export const ShotListHeader: React.FC<ShotListHeaderProps> = ({
         </Dropdown>
       </div>
 
-      {/* 视频设计 + 批量生成 */}
+      {/* 视频设计 + 批量生成 + 视频模式批量切换 */}
       <div className={`${SHOT_LAYOUT.colVideoDesign} ${cellClass} justify-between`}>
         <span>{t('storyboard.videoDesign')}</span>
-        <Dropdown menu={{ items: videoPromptMenuItems }} trigger={['click']}>
-          <Button
-            type="text"
-            size="small"
-            className="h-5 px-1 text-[10px]"
-            icon={<ThunderboltOutlined />}
-            loading={generatingPrompts}
-          >
-            AI{targetLabel} <DownOutlined className="text-[8px]" />
-          </Button>
-        </Dropdown>
+        <div className="flex items-center gap-0.5">
+          {onBulkVideoModeChange && (
+            <Tooltip title="批量切换全部分镜的视频推理模式">
+              <Dropdown menu={{ items: videoModeMenuItems }} trigger={['click']}>
+                <Button
+                  type="text"
+                  size="small"
+                  className="h-5 px-1 text-[10px]"
+                >
+                  模式 <DownOutlined className="text-[8px]" />
+                </Button>
+              </Dropdown>
+            </Tooltip>
+          )}
+          <Dropdown menu={{ items: videoPromptMenuItems }} trigger={['click']}>
+            <Button
+              type="text"
+              size="small"
+              className="h-5 px-1 text-[10px]"
+              icon={<ThunderboltOutlined />}
+              loading={generatingPrompts}
+            >
+              AI{targetLabel} <DownOutlined className="text-[8px]" />
+            </Button>
+          </Dropdown>
+        </div>
       </div>
 
       {/* 视频结果 + 批量生成 + 添加按钮 */}

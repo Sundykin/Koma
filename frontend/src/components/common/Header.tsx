@@ -9,16 +9,17 @@ import { ChevronRight, Home } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Project, Episode, EditorStep, EpisodeStepProgress } from '../../types';
 import { StepNavigator } from './StepNavigator';
+import { getEditorStep } from '../../workflow/editorStepRegistry';
 
 interface HeaderProps {
-  view: 'projects' | 'overview' | 'editor' | 'settings';
+  view: 'projects' | 'editor' | 'settings';
   activeProject: Project | null;
   activeEpisode: Episode | null;
   editorStep: EditorStep;
   stepProgress: EpisodeStepProgress;
   isAnalyzing: boolean;
   scriptText: string;
-  onViewChange: (view: 'projects' | 'overview') => void;
+  onViewChange: (view: 'projects') => void;
   onStepChange: (step: EditorStep) => void;
   onStepChangeWithMark: (step: EditorStep) => void;
   onOpenProjectSettings: () => void;
@@ -50,28 +51,15 @@ export const Header: React.FC<HeaderProps> = ({
             <Home className="w-4 h-4 mr-2" />
             <span className="hidden sm:inline">{t('common.home')}</span>
           </button>
-          {/* 项目概览视图面包屑 */}
-          {view === 'overview' && activeProject && (
-            <>
-              <ChevronRight className="w-4 h-4 mx-2 text-zinc-600" />
-              <span className="text-white font-bold">{activeProject.title}</span>
-              <span className="ml-2 text-xs bg-zinc-800 border border-zinc-700 text-zinc-300 px-2 py-0.5 rounded shadow-sm">{t('common.overview')}</span>
-            </>
-          )}
-          {/* 编辑视图面包屑 */}
+          {/* 编辑视图面包屑：项目名 → 当前剧集（项目工作台已合并到编辑器第一步） */}
           {view === 'editor' && activeProject && (
             <>
               <ChevronRight className="w-4 h-4 mx-2 text-zinc-600" />
-              <button
-                onClick={() => onViewChange('overview')}
-                className="hover:text-white transition-colors"
-              >
-                {activeProject.title}
-              </button>
+              <span className="text-white font-bold">{activeProject.title}</span>
               {activeEpisode && (
                 <>
                   <ChevronRight className="w-4 h-4 mx-2 text-zinc-600" />
-                  <span className="text-white font-bold">{t('editor.episode')} {activeEpisode.number}</span>
+                  <span className="text-zinc-300">{t('editor.episode')} {activeEpisode.number}</span>
                 </>
               )}
               {activeProject.mode === 'narration' && (
@@ -109,25 +97,19 @@ export const Header: React.FC<HeaderProps> = ({
             currentStep={editorStep}
             onStepChange={onStepChange}
             stepProgress={stepProgress}
-            actionButton={
-              editorStep === 'assets' ? (
+            actionButton={(() => {
+              const next = getEditorStep(editorStep)?.nextAction;
+              if (!next) return null;
+              return (
                 <Button
                   type="primary"
-                  onClick={() => onStepChangeWithMark('storyboard')}
+                  onClick={() => onStepChangeWithMark(next.targetStepId as EditorStep)}
                   className="bg-green-600 hover:bg-green-500 border-none"
                 >
-                  {t('editor.nextStoryboard')}
+                  {t(next.labelKey)}
                 </Button>
-              ) : editorStep === 'storyboard' ? (
-                <Button
-                  type="primary"
-                  onClick={() => onStepChangeWithMark('video')}
-                  className="bg-green-600 hover:bg-green-500 border-none"
-                >
-                  {t('editor.nextVideo')}
-                </Button>
-              ) : null
-            }
+              );
+            })()}
           />
         </>
       )}

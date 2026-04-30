@@ -72,6 +72,8 @@ export type {
 export type {
   ProviderDefinition,
   ProviderContext,
+  ProviderAuthRequirements,
+  ProviderModelDefinition,
   ChannelKind,
   ChannelCapability,
   PollingConfig,
@@ -80,7 +82,10 @@ export type {
   ProviderTaskSnapshot,
   TTSRequest,
 } from './provider';
-export { MEDIA_PROVIDER_CONTRACT_VERSION } from './provider';
+export {
+  MEDIA_PROVIDER_CONTRACT_VERSION,
+  requiresMediaContractVersion,
+} from './provider';
 
 // TTI Provider 类型
 export type {

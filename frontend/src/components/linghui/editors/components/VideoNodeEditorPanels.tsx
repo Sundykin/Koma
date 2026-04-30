@@ -10,6 +10,7 @@ import {
   type LinghuiVideoToolKey,
 } from '../../../../types/linghui';
 import { electronService } from '../../../../services/electronService';
+import { fromKomaLocalUrl } from '../../../../utils/urlUtils';
 import type { LinghuiPromptReferenceItem } from '../state/linghuiPromptReferences';
 import { LinghuiPromptEditor } from './LinghuiPromptEditor';
 import {
@@ -26,11 +27,7 @@ import {
   type VideoCapabilityDescriptor,
 } from '../state/videoCapabilityUtils';
 
-function decodeKomaLocalSource(source: string): string {
-  if (!source.startsWith('koma-local://')) return source;
-  const decoded = decodeURIComponent(source.replace(/^koma-local:\/\//, ''));
-  return decoded.replace(/^\/([A-Za-z]:\/)/, '$1');
-}
+const decodeKomaLocalSource = fromKomaLocalUrl;
 
 function isRemoteSource(source: string): boolean {
   return /^https?:\/\//i.test(source);

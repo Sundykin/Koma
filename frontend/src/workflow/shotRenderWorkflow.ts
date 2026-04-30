@@ -26,6 +26,7 @@ import {
   normalizeShotMediaState,
 } from '../store/project/mediaState';
 import { mediaGenerationService } from '../services/MediaGenerationService';
+import { runWithTask } from '../services/taskRunner';
 import { buildShotVideoTemplateVariables } from './promptVariableBuilders';
 import {
   collectShotVideoPlan,

@@ -6,6 +6,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { spawn, ChildProcess } from 'child_process';
 import { app } from 'electron';
+import { getFfmpegBinDir, getFfmpegCacheDir } from './paths';
 
 // 媒体信息接口
 export interface MediaInfo {
@@ -117,7 +118,7 @@ export class FFmpegService {
    * 初始化服务
    */
   async init(workDir?: string): Promise<void> {
-    const nextWorkDir = workDir || path.join(app.getPath('userData'), 'ffmpeg-cache');
+    const nextWorkDir = workDir || getFfmpegCacheDir();
     if (this.initialized && this.workDir === nextWorkDir) return;
 
     // 设置工作目录
@@ -153,8 +154,8 @@ export class FFmpegService {
       // 1. 应用内置路径
       path.join(app.getAppPath(), 'resources', 'ffmpeg', execName),
       path.join(app.getAppPath(), '..', 'ffmpeg', execName),
-      // 2. 用户数据目录
-      path.join(app.getPath('userData'), 'ffmpeg', execName),
+      // 2. 业务根目录
+      path.join(getFfmpegBinDir(), execName),
       // 3. 系统路径（通过 which/where 查找）
     ];
     if (name === 'ffprobe' && !isX64) {
@@ -375,6 +376,7 @@ export class FFmpegService {
    */
   private async doExtractFrames(options: ExtractFramesOptions): Promise<string[]> {
     if (!this.ffmpegPath) {
+      console.warn('[FFmpegService] extractFrames: FFmpeg not available', { input: options.input });
       throw new Error('FFmpeg not available');
     }
 
@@ -387,6 +389,8 @@ export class FFmpegService {
       width,
       quality = 5
     } = options;
+
+    console.log('[FFmpegService] extractFrames start', { input, outputDir, fps, startTime, endTime, width });
 
     // 确保输出目录存在
     await fs.promises.mkdir(outputDir, { recursive: true });
@@ -414,14 +418,23 @@ export class FFmpegService {
     args.push('-f', 'image2');
     args.push(path.join(outputDir, 'frame_%06d.jpg'));
 
-    await this.runFFmpeg(args);
+    try {
+      await this.runFFmpeg(args);
+    } catch (err) {
+      console.error('[FFmpegService] extractFrames ffmpeg failed', { input, outputDir, err: err instanceof Error ? err.message : err });
+      throw err;
+    }
 
     // 返回生成的帧文件列表
     const files = await fs.promises.readdir(outputDir);
-    return files
+    const frameFiles = files
       .filter(f => f.startsWith('frame_') && f.endsWith('.jpg'))
       .sort()
       .map(f => path.join(outputDir, f));
+
+    console.log('[FFmpegService] extractFrames done', { input, outputDir, count: frameFiles.length, first: frameFiles[0] });
+
+    return frameFiles;
   }
 
   private buildGridSplitBounds(total: number, gridSize: number): number[] {
@@ -681,12 +694,21 @@ export class FFmpegService {
     }
 
     // 视频编码设置
+    // 关键：恒定帧率 + 显式输出 fps + GOP 控制，否则导出后播放会卡顿
+    // - `-r {fps}` 显式输出帧率，避免与输入 -framerate 不一致导致时间戳错乱
+    // - `-vsync cfr` 强制恒定帧率，避免 FFmpeg 自动插帧/丢帧引入 stutter
+    // - `-g {fps*2}` 限制关键帧间隔最大 2 秒，避免长 GOP 在 seek/解码时卡
+    // - `-movflags +faststart` mp4 metadata 前置，加快 video element 起播
     if (format === 'mp4') {
       const codec = videoCodec === 'h265' ? 'libx265' : 'libx264';
       args.push('-c:v', codec);
       args.push('-preset', 'medium');
       args.push('-b:v', `${videoBitrate}k`);
       args.push('-pix_fmt', 'yuv420p');
+      args.push('-r', String(fps));
+      args.push('-vsync', 'cfr');
+      args.push('-g', String(Math.max(2, Math.round(fps * 2))));
+      args.push('-movflags', '+faststart');
       if (audioTracks.length > 0) {
         args.push('-c:a', 'aac');
         args.push('-b:a', `${audioBitrate}k`);
@@ -694,6 +716,9 @@ export class FFmpegService {
     } else if (format === 'webm') {
       args.push('-c:v', 'libvpx-vp9');
       args.push('-b:v', `${videoBitrate}k`);
+      args.push('-r', String(fps));
+      args.push('-vsync', 'cfr');
+      args.push('-g', String(Math.max(2, Math.round(fps * 2))));
       if (audioTracks.length > 0) {
         args.push('-c:a', 'libopus');
         args.push('-b:a', `${audioBitrate}k`);

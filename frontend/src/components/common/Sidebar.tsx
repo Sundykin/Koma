@@ -1,12 +1,13 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { Avatar, Tooltip, Popover, Input, Button, message, Divider, Tag, Typography } from 'antd';
 import { UserOutlined, CheckCircleFilled, CloseCircleFilled, KeyOutlined, ReloadOutlined, DeleteOutlined, EditOutlined } from '@ant-design/icons';
-import { LayoutGrid, Settings, Puzzle, MessageCircle, PenTool } from 'lucide-react';
+import { LayoutGrid, Settings, Puzzle, MessageCircle, PenTool, ListChecks } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Project, Episode } from '../../types';
 import { usePluginStore } from '../../store/pluginStore';
 import { activationService, ActivationInfo, TokenUsageInfo } from '../../services/activationService';
 import { electronService } from '../../services/electronService';
+import { useTaskPanelStore } from '../../store/taskPanelStore';
 import { AppLogo } from './AppLogo';
 
 const { Text } = Typography;
@@ -358,6 +359,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
     [plugins]
   );
 
+  const taskPanelOpen = useTaskPanelStore(s => s.open);
+  const toggleTaskPanel = useTaskPanelStore(s => s.toggle);
+
   const mainNavItems = [
     { key: 'projects', icon: <LayoutGrid size={22} />, label: t('sidebar.projects') },
     { key: 'linghui', icon: <PenTool size={22} />, label: t('sidebar.linghui') },
@@ -404,6 +408,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
               onClick={() => handleNavClick(item.key)}
             />
           ))}
+          {/* 任务面板入口：点击仅 toggle Drawer，不切 view */}
+          <NavItem
+            active={taskPanelOpen}
+            icon={<ListChecks size={22} />}
+            label={t('task.title')}
+            onClick={toggleTaskPanel}
+          />
         </div>
 
         {pluginNavItems.length > 0 && (

@@ -10,7 +10,7 @@
 
   "category": "global",
   "engine": {
-    "minAppVersion": "2.5.0",
+    "minAppVersion": "1.0.0",
     "sdkVersion": "1.0.0"
   },
 

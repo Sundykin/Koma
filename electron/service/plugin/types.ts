@@ -1,6 +1,13 @@
 /**
- * 统一插件系统类型定义
+ * 统一插件系统类型定义（Electron 运行时副本）
  * 支持 Provider / Global / Tool / MCP / Agent 五种插件类型
+ *
+ * Provider 部分的规格真源：packages/plugin-sdk/src/provider.ts。
+ * 修改 ProviderDefinition / MEDIA_PROVIDER_CONTRACT_VERSION /
+ * requiresMediaContractVersion 时必须先在 SDK 落地，并同步：
+ *   - frontend/src/providers/registry.types.ts
+ *   - 本文件
+ * 然后升级 packages/plugin-sdk/package.json:version。
  */
 
 // ========== 基础类型 ==========
@@ -134,6 +141,23 @@ export interface MCPServerDefinition {
   pluginId?: string;
 }
 
+// 凭据/连接要求声明 + 模型定义：直接从 SDK type-import，不再维护本地副本。
+// 主进程仅做类型层引用，编译后 erase，无运行时 SDK 依赖。
+import type {
+  ProviderAuthRequirements,
+  ProviderModelDefinition,
+} from '@komastudio/plugin-sdk';
+export type {
+  ProviderAuthRequirements,
+  ProviderModelDefinition,
+} from '@komastudio/plugin-sdk';
+
+export interface PluginPollingConfig {
+  interval: number;
+  maxDuration: number;
+  initialDelay?: number;
+}
+
 // Provider 定义
 export interface ProviderDefinition {
   type: string;
@@ -145,6 +169,27 @@ export interface ProviderDefinition {
   configSchema?: Record<string, unknown>;
   defaultConfig?: Record<string, unknown>;
   pluginId?: string;
+  /**
+   * 媒体 Provider 契约版本。tti/itv/tts 必填，需与运行时
+   * MEDIA_PROVIDER_CONTRACT_VERSION（'media-request-v1'）一致；
+   * 由 Electron 端 ProviderRegistry 在注册时强制校验。
+   */
+  contractVersion?: string;
+  models?: ProviderModelDefinition[];
+  polling?: PluginPollingConfig;
+  presetBaseUrl?: string;
+  auth?: ProviderAuthRequirements;
+  runtimeProviderType?: string;
+}
+
+/**
+ * 媒体 Provider 契约版本。Electron 与前端必须保持完全一致；
+ * 升级契约时同步修改 frontend/src/providers/registry.types.ts。
+ */
+export const MEDIA_PROVIDER_CONTRACT_VERSION = 'media-request-v1';
+
+export function requiresMediaContractVersion(kind: ProviderDefinition['kind']): boolean {
+  return kind === 'tti' || kind === 'itv' || kind === 'tts';
 }
 
 // Agent Worker 定义

@@ -39,6 +39,7 @@ export default defineConfig(({ mode }) => {
     resolve: {
       alias: {
         '@': path.resolve(__dirname, './src'),
+        '@komastudio/plugin-sdk': path.resolve(__dirname, '../packages/plugin-sdk/src/index.ts'),
       },
     },
   };

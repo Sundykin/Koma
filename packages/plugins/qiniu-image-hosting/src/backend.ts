@@ -1,6 +1,6 @@
 /**
  * 七牛云图床 Provider - Backend Module
- * 使用 Koma 激活 Key 调用 ToAPIs 图片上传接口，
+ * 固定经由 Koma 激活通道（https://komaapi.com）上传图片，
  * API Key 即用户在应用内填写的激活 Key，由宿主通过 api.activation 注入。
  */
 
@@ -10,7 +10,7 @@ interface QiniuConfig {
   enabled: boolean;
 }
 
-const UPLOAD_ENDPOINT = 'https://toapis.com/v1/uploads/images';
+const UPLOAD_ENDPOINT = 'https://komaapi.com/v1/uploads/images';
 
 const DEFAULT_CONFIG: QiniuConfig = {
   enabled: true,
@@ -227,7 +227,7 @@ export async function onActivate(api: ElectronPluginAPI): Promise<void> {
     type: 'qiniu-image-hosting',
     kind: 'image-hosting' as const,
     name: '七牛云图床（内置）',
-    description: '使用激活 Key 调用 ToAPIs 上传接口，返回七牛云 Kodo 外链并支持时间戳防盗链',
+    description: '使用激活 Key 调用 Koma 官方上传接口（komaapi.com），返回七牛云 Kodo 外链并支持时间戳防盗链',
     capabilities: ['image-hosting'],
     defaultConfig: DEFAULT_CONFIG,
     factory: async (config: Record<string, unknown>) => {

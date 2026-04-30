@@ -23,17 +23,17 @@ vi.mock('@xyflow/react', () => ({
   },
 }));
 
-vi.mock('./LinghuiNodeRunsContext', () => ({
+vi.mock('../state/LinghuiNodeRunsContext', () => ({
   useNodeRunState: (...args: unknown[]) => useNodeRunStateMock(...args),
   useLinghuiNodeInteraction: (...args: unknown[]) => useLinghuiNodeInteractionMock(...args),
   useLinghuiNodeEditorVisibility: (...args: unknown[]) => useLinghuiNodeEditorVisibilityMock(...args),
 }));
 
-vi.mock('../LinghuiNodeEditor', () => ({
+vi.mock('../../editors/components/LinghuiNodeEditor', () => ({
   LinghuiNodeEditor: () => <div data-testid="video-node-editor" />,
 }));
 
-vi.mock('./EditableCompactNodeLabel', () => ({
+vi.mock('../components/EditableCompactNodeLabel', () => ({
   EditableCompactNodeLabel: ({ label, fallbackLabel }: { label: string; fallbackLabel?: string }) => (
     <span>{label || fallbackLabel}</span>
   ),
@@ -276,8 +276,8 @@ describe('VideoNode', () => {
         kind: 'video',
         primary: {
           kind: 'video',
-          source: 'koma-local:///tmp/generated-video.mp4',
-          posterSource: 'koma-local:///tmp/generated-video.jpg',
+          source: 'koma-local://files/tmp/generated-video.mp4',
+          posterSource: 'koma-local://files/tmp/generated-video.jpg',
           mimeType: 'video/mp4',
         },
         metadata: {

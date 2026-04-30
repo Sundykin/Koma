@@ -157,12 +157,13 @@ export const SimplePlayer: React.FC<PlayerProps> = ({
     };
   }, []);
 
-  // 更新画布尺寸
+  // 更新画布尺寸（同时同步给 renderer，避免 renderer 内部 width/height 与 DOM 失配）
   useEffect(() => {
-    if (canvasRef.current) {
+    if (rendererRef.current) {
+      rendererRef.current.setSize(canvasSize.width, canvasSize.height);
+    } else if (canvasRef.current) {
       canvasRef.current.width = canvasSize.width;
       canvasRef.current.height = canvasSize.height;
-      rendererRef.current?.renderFrame();
     }
   }, [canvasSize]);
 

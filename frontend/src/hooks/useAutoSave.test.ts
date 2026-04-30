@@ -55,10 +55,6 @@ function createTimelineData(): TimelineData {
             scale: 1,
             rotation: 0,
             opacity: 1,
-            transition: {
-              effectId: 'legacy-fade',
-              duration: 1,
-            },
           },
         ],
       },

@@ -48,23 +48,8 @@ function createTrack(): Track {
 }
 
 describe('transitionResolver', () => {
-  it('normalizes legacy clip transitions into track transitions', () => {
-    const track = createTrack();
-    track.clips[1].transition = {
-      effectId: 'legacy-fade',
-      duration: 0.5,
-    };
-
-    const normalized = normalizeTrackTransitions(track);
-    expect(normalized.transitions).toHaveLength(1);
-    expect(normalized.transitions?.[0]).toMatchObject({
-      fromClipId: 'clip-a',
-      toClipId: 'clip-b',
-      type: 'fade',
-      duration: 0.5,
-    });
-    expect(normalized.clips[1].transition).toBeUndefined();
-  });
+  // 阶段 2-B 清理：legacy clip.transition 字段已删除，原 'normalizes legacy
+  // clip transitions into track transitions' 测试也一并删除。
 
   it('rejects non-adjacent transitions but allows chain transitions', () => {
     const track = createTrack();
@@ -384,7 +369,9 @@ describe('transitionResolver', () => {
 
   it('normalizeTimelineTracks normalizes all tracks', () => {
     const videoTrack = createTrack();
-    videoTrack.clips[1].transition = { effectId: 'legacy', duration: 0.5 };
+    videoTrack.transitions = [
+      { id: 't1', fromClipId: 'clip-a', toClipId: 'clip-b', type: 'fade', duration: 0.5 },
+    ];
     const audioTrack: Track = {
       id: 'track-audio',
       type: 'audio',
@@ -684,20 +671,7 @@ describe('transitionResolver', () => {
       expect(normalized2[0].transitions).toEqual(normalized1[0].transitions);
     });
 
-    it('normalizeTimelineTracks strips legacy clip.transition after normalization', () => {
-      const track: Track = {
-        id: 'track-1', type: 'video', order: 0,
-        clips: [
-          createClip('clip-a', 0, 3),
-          { ...createClip('clip-b', 3, 2), transition: { effectId: 'fade', duration: 0.5 } },
-        ],
-      };
-      const [normalized] = normalizeTimelineTracks([track]);
-      for (const clip of normalized.clips) {
-        expect(clip).not.toHaveProperty('transition');
-      }
-      expect(normalized.transitions?.length).toBe(1);
-    });
+    // 阶段 2-B 清理：legacy clip.transition 字段已删除，对应 test 一并删除。
   });
 
   describe('batchChainAwareMaxDurations', () => {

@@ -14,6 +14,7 @@ import {
 } from '../state/LinghuiNodeRunsContext';
 import { LinghuiNodeEditor } from '../../editors/components/LinghuiNodeEditor';
 import { toFileSystemDisplayUrl } from '../../../../services/fileSystemPort';
+import { fromKomaLocalUrl } from '../../../../utils/urlUtils';
 import { EditableCompactNodeLabel } from './EditableCompactNodeLabel';
 import { resolveLinghuiNodeViewMode } from '../../editors/state/linghuiNodeViewMode';
 import { resolveMediaCardSize } from '../state/linghuiNodeCardSizing';
@@ -33,14 +34,7 @@ function getPreviewSource(source?: string): string {
   return toFileSystemDisplayUrl(source) || '';
 }
 
-function decodeLinghuiSource(source: string): string {
-  if (!source.startsWith('koma-local://')) {
-    return source;
-  }
-
-  const decoded = decodeURIComponent(source.replace(/^koma-local:\/\//, ''));
-  return decoded.replace(/^\/([A-Za-z]:\/)/, '$1');
-}
+const decodeLinghuiSource = fromKomaLocalUrl;
 
 function isPlayableUrlSource(source: string): boolean {
   return (

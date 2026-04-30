@@ -18,7 +18,9 @@ function isPathAllowed(filePath: string): boolean {
   const appData = app.getPath('appData');
   const userData = app.getPath('userData');
   const temp = app.getPath('temp');
-  const allowedRoots = [home, appData, userData, temp];
+  // 业务根（~/.koma）与 userData 已分离，必须显式加进允许列表
+  const businessRoot = path.join(home, '.koma');
+  const allowedRoots = [home, appData, userData, temp, businessRoot];
   return allowedRoots.some(root => normalized.startsWith(root + path.sep) || normalized === root);
 }
 
@@ -249,14 +251,26 @@ class FsController extends BaseController {
 
   async stat(args: { filePath: string }) {
     assertPathAllowed(args.filePath);
-    const stats = await fs.promises.stat(args.filePath);
-    return {
-      size: stats.size,
-      isDirectory: stats.isDirectory(),
-      isFile: stats.isFile(),
-      createdAt: stats.birthtimeMs,
-      modifiedAt: stats.mtimeMs,
-    };
+    try {
+      const stats = await fs.promises.stat(args.filePath);
+      return {
+        size: stats.size,
+        isDirectory: stats.isDirectory(),
+        isFile: stats.isFile(),
+        createdAt: stats.birthtimeMs,
+        modifiedAt: stats.mtimeMs,
+      };
+    } catch (err: unknown) {
+      // 与 frontend 调用方约定一致：文件不存在 / 悬挂符号链接 / 权限受限等"正常缺失"
+      // 类错误返回 null（所有调用点已用 `if (!stat)` 或 `stat?.` 适配）。
+      // 这样 ee-core 的 ipcMain.handle 不会再把这些"非异常"打成 error 日志。
+      // 典型场景：扫描 userData 目录时遇到 Chromium 创建的 SingletonLock 悬挂符号链接。
+      const code = (err as NodeJS.ErrnoException | undefined)?.code;
+      if (code === 'ENOENT' || code === 'ELOOP' || code === 'EACCES' || code === 'EPERM') {
+        return null;
+      }
+      throw err;
+    }
   }
 
   async remove(args: { filePath: string; recursive?: boolean }) {

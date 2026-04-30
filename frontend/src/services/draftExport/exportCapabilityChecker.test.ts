@@ -146,24 +146,8 @@ describe('checkExportCompatibility', () => {
     expect(report.featureDetails.find((detail) => detail.feature === 'transition')?.support.native).toBe(true);
   });
 
-  it('keeps legacy clip.transition readable through normalization', () => {
-    const clips = [createClip('clip-a', 0, 3), createClip('clip-b', 3, 3)];
-    clips[1].transition = {
-      effectId: 'legacy-fade',
-      duration: 0.75,
-    };
-
-    const track: Track = {
-      id: 'track-1',
-      type: 'video',
-      order: 0,
-      clips,
-    };
-
-    const report = checkExportCompatibility([track]);
-    expect(report.usedFeatures).toContain('transition');
-    expect(report.featureDetails.find((detail) => detail.feature === 'transition')?.clipCount).toBe(1);
-  });
+  // 阶段 2-B 清理：legacy clip.transition 字段已删除，对应 test 删除
+  // （该测试原本验证从 clip.transition → Track.transitions 的迁移行为）。
 
   it('reports empty transitions array as no transition feature', () => {
     const track: Track = {

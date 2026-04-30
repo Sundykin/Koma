@@ -126,16 +126,16 @@ export function validateManjuProject(data: any): data is ManjuProject {
 }
 
 // ========== 导入导出 ==========
+//
+// 注意：ManjuTimeline / ManjuTrack / ManjuClip / ManjuKeyframe 等接口保留为协议定义
+// （未来恢复 timeline round-trip 时使用），但当前 export/import 路径不处理 timeline。
+// 应用内 timeline 实际数据模型见 types/editor.ts。
 
 import type {
   ProjectMeta,
-  Timeline,
-  Track,
-  Clip,
   Character,
   Scene,
   Shot,
-  EasingType,
 } from '../types';
 import {
   getCharacterCostumePhotoSource,
@@ -144,19 +144,6 @@ import {
 } from '../utils/mediaSelectors';
 import { createStoredMediaAsset } from '../utils/mediaAssets';
 
-// 有效的 easing 类型列表
-const VALID_EASING_TYPES: EasingType[] = ['linear', 'ease', 'ease-in', 'ease-out', 'ease-in-out', 'cubic-bezier'];
-
-/**
- * 将字符串转换为 EasingType，无效值返回默认值
- */
-function toEasingType(value: string | undefined): EasingType {
-  if (value && VALID_EASING_TYPES.includes(value as EasingType)) {
-    return value as EasingType;
-  }
-  return 'linear';
-}
-
 /**
  * 将内部项目数据转换为 Manju-DSL 格式
  */
@@ -164,8 +151,7 @@ export function exportToManjuDSL(
   project: ProjectMeta,
   characters: Character[],
   scenes: Scene[],
-  shots: Shot[],
-  timeline?: Timeline
+  shots: Shot[]
 ): ManjuProject {
   // 转换元数据
   const meta: ManjuMeta = {
@@ -224,55 +210,13 @@ export function exportToManjuDSL(
     };
   });
 
-  // 转换时间线
-  let manjuTimeline: ManjuTimeline | undefined;
-  if (timeline) {
-    manjuTimeline = {
-      fps: timeline.fps,
-      resolution: timeline.resolution,
-      tracks: timeline.tracks.map((track) => convertTrackToManju(track)),
-    };
-  }
-
   return {
     version: MANJU_DSL_VERSION,
     meta,
     characters: manjuCharacters,
     scenes: manjuScenes,
     shots: manjuShots,
-    timeline: manjuTimeline,
-  };
-}
-
-function convertTrackToManju(track: Track): ManjuTrack {
-  return {
-    id: track.id,
-    name: track.name,
-    type: track.type,
-    clips: track.clips.map((clip) => convertClipToManju(clip)),
-  };
-}
-
-function convertClipToManju(clip: Clip): ManjuClip {
-  return {
-    id: clip.id,
-    startTime: clip.startTime,
-    duration: clip.duration,
-    source: clip.sourcePath,
-    transform: {
-      x: clip.position.x,
-      y: clip.position.y,
-      scale: clip.scale,
-      rotation: clip.rotation,
-      opacity: clip.opacity,
-    },
-    keyframes: clip.keyframes.map((kf) => ({
-      time: kf.time,
-      property: kf.property,
-      value: kf.value,
-      easing: kf.easing,
-    })),
-    text: clip.text,
+    // timeline: 暂不支持 round-trip，保持 undefined
   };
 }
 
@@ -284,7 +228,12 @@ export interface ImportedProjectData {
   characters: Character[];
   scenes: Scene[];
   shots: Shot[];
-  timeline?: Timeline;
+  /**
+   * @deprecated importFromManjuDSL 不再生产 timeline；保留字段作为"manju 文件中
+   * 包含 timeline 但当前不支持 round-trip"的信号位，让 importProjectFromManjuFile
+   * 等消费方能 warn 用户。具体类型不限，存在即触发 warn。
+   */
+  timeline?: unknown;
 }
 
 export function importFromManjuDSL(manju: ManjuProject): ImportedProjectData {
@@ -367,73 +316,16 @@ export function importFromManjuDSL(manju: ManjuProject): ImportedProjectData {
       : undefined,
   }));
 
-  // 转换时间线
-  let timeline: Timeline | undefined;
+  // 当前不处理 manju.timeline；保留信号位让消费方知道 timeline 被丢弃。
+  const result: ImportedProjectData = { project, characters, scenes, shots };
   if (manju.timeline) {
-    timeline = {
-      id: manju.meta.id + '-timeline',
-      duration: calculateTimelineDuration(manju.timeline),
-      fps: manju.timeline.fps,
-      resolution: manju.timeline.resolution,
-      tracks: manju.timeline.tracks.map((track) => convertManjuToTrack(track)),
-    };
+    result.timeline = manju.timeline;
   }
-
-  return { project, characters, scenes, shots, timeline };
+  return result;
 }
 
-function calculateTimelineDuration(timeline: ManjuTimeline): number {
-  let maxEnd = 0;
-  for (const track of timeline.tracks) {
-    for (const clip of track.clips) {
-      const clipEnd = clip.startTime + clip.duration;
-      if (clipEnd > maxEnd) maxEnd = clipEnd;
-    }
-  }
-  return maxEnd;
-}
-
-function convertManjuToTrack(manjuTrack: ManjuTrack): Track {
-  return {
-    id: manjuTrack.id,
-    name: manjuTrack.name,
-    type: manjuTrack.type,
-    muted: false,
-    locked: false,
-    visible: true,
-    height: manjuTrack.type === 'video' ? 60 : manjuTrack.type === 'audio' ? 40 : 30,
-    clips: manjuTrack.clips.map((clip) => convertManjuToClip(clip, manjuTrack.id, manjuTrack.type)),
-  };
-}
-
-function convertManjuToClip(
-  manjuClip: ManjuClip,
-  trackId: string,
-  trackType: 'video' | 'audio' | 'subtitle'
-): Clip {
-  const clipType = trackType === 'subtitle' ? 'subtitle' : trackType;
-  return {
-    id: manjuClip.id,
-    trackId,
-    type: clipType,
-    name: manjuClip.source || manjuClip.text || 'Clip',
-    startTime: manjuClip.startTime,
-    duration: manjuClip.duration,
-    sourcePath: manjuClip.source || '',
-    position: {
-      x: manjuClip.transform?.x ?? 0,
-      y: manjuClip.transform?.y ?? 0,
-    },
-    scale: manjuClip.transform?.scale ?? 1,
-    rotation: manjuClip.transform?.rotation ?? 0,
-    opacity: manjuClip.transform?.opacity ?? 1,
-    keyframes: (manjuClip.keyframes || []).map((kf, idx) => ({
-      id: `${manjuClip.id}-kf-${idx}`,
-      time: kf.time,
-      property: kf.property,
-      value: kf.value,
-      easing: toEasingType(kf.easing),
-    })),
-    text: manjuClip.text,
-  };
-}
+// 历史 timeline 转换函数（convertTrackToManju / convertClipToManju /
+// convertManjuToTrack / convertManjuToClip / calculateTimelineDuration /
+// toEasingType）已删除：types.ts 旧 timeline 数据模型与 types/editor.ts
+// 实际数据模型字段不一致，转换从未生效。如需恢复 round-trip，应基于
+// types/editor.ts 的 Track/Clip 重写。

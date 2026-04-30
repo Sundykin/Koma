@@ -44,8 +44,8 @@ const QUALITY_PRESETS: Record<string, { videoBitrate: number; audioBitrate: numb
 
 // FFmpeg API 接口
 const getFFmpegAPI = (): any => {
-  if (typeof window !== 'undefined' && (window as any).electronAPI?.ffmpeg) {
-    return (window as any).electronAPI.ffmpeg;
+  if (typeof window !== 'undefined' && window.electronAPI?.ffmpeg) {
+    return window.electronAPI.ffmpeg;
   }
   return null;
 };

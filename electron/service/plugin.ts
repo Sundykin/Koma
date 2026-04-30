@@ -7,6 +7,7 @@ import * as fs from 'fs/promises';
 import { app } from 'electron';
 import AdmZip from 'adm-zip';
 import { pluginRuntime } from './plugin/runtime';
+import { getPluginsRuntimeDir, getPluginsStagingDir } from './paths';
 import type { PluginManifest } from './plugin/types';
 
 // 必填字段
@@ -82,9 +83,8 @@ class PluginService {
   _stagingTtlMs = 10 * 60 * 1000; // 10 分钟过期
 
   async init(): Promise<void> {
-    const userDataPath = app.getPath('userData');
-    this.pluginsDir = path.join(userDataPath, 'plugins-runtime');
-    this.stagingDir = path.join(userDataPath, 'plugins-staging');
+    this.pluginsDir = getPluginsRuntimeDir();
+    this.stagingDir = getPluginsStagingDir();
 
     // 确保目录存在
     await fs.mkdir(this.pluginsDir, { recursive: true });

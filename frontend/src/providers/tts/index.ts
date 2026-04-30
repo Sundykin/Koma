@@ -71,6 +71,7 @@ function registerBuiltinTTSProviders() {
       contractVersion: MEDIA_PROVIDER_CONTRACT_VERSION,
       capabilities: ['tts'],
       configSchema: edgeTTSSchema,
+      auth: { apiKey: 'none', baseUrl: 'none' },
     },
     {
       type: 'openai-tts',
@@ -81,6 +82,8 @@ function registerBuiltinTTSProviders() {
       contractVersion: MEDIA_PROVIDER_CONTRACT_VERSION,
       capabilities: ['tts'],
       configSchema: openAITTSSchema,
+      presetBaseUrl: 'https://api.openai.com/v1',
+      auth: { apiKey: 'required', baseUrl: 'optional' },
     },
     {
       type: 'fish-audio',
@@ -91,6 +94,8 @@ function registerBuiltinTTSProviders() {
       contractVersion: MEDIA_PROVIDER_CONTRACT_VERSION,
       capabilities: ['tts'],
       configSchema: fishAudioSchema,
+      presetBaseUrl: 'https://api.fish.audio',
+      auth: { apiKey: 'required', baseUrl: 'optional' },
     },
     {
       type: 'gpt-sovits',
@@ -101,6 +106,8 @@ function registerBuiltinTTSProviders() {
       contractVersion: MEDIA_PROVIDER_CONTRACT_VERSION,
       capabilities: ['tts'],
       configSchema: gptSovitsSchema,
+      presetBaseUrl: 'http://127.0.0.1:9880',
+      auth: { apiKey: 'none', baseUrl: 'required' },
     },
   ];
 

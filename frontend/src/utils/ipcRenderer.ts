@@ -4,7 +4,7 @@
  */
 
 // 获取 Electron 对象
-const Renderer = (window as any).electron || {};
+const Renderer: Partial<NonNullable<Window['electron']>> = window.electron || {};
 
 /**
  * IPC 对象
@@ -73,7 +73,7 @@ export async function invokeController<T = any>(
   channel: string,
   args?: Record<string, any>
 ): Promise<T> {
-  return ipc.invoke(channel, args);
+  return ipc.invoke(channel, args) as Promise<T>;
 }
 
 export default {

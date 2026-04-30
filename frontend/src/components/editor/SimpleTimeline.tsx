@@ -173,10 +173,8 @@ const Filmstrip: React.FC<{ clip: Clip; frames?: string[]; pixelsPerSecond: numb
               className="w-full h-full object-cover opacity-90 relative z-10"
               alt=""
               draggable={false}
-              onError={(e) => {
-                const target = e.target as HTMLImageElement;
-                target.style.display = 'none';
-              }}
+              loading="lazy"
+              decoding="async"
             />
             <div className="absolute inset-0 bg-gradient-to-br from-blue-900/30 to-blue-800/20" />
           </div>

@@ -25,6 +25,7 @@ import {
 } from '../../../../store/linghuiStorage';
 import { getFileSystemPort, toFileSystemDisplayUrl } from '../../../../services/fileSystemPort';
 import { ffmpegManager } from '../../../../services/ffmpegManager';
+import { fromKomaLocalUrl } from '../../../../utils/urlUtils';
 import { createLogger } from '../../../../store/logger';
 import { stripDataHeader } from '../../../../utils/encoding';
 import { LINGHUI_NODE_CATALOG } from '../../library/state/linghuiNodeDefs';
@@ -57,14 +58,7 @@ function getPreviewSource(source?: string): string {
   return toFileSystemDisplayUrl(source) || '';
 }
 
-function decodeLinghuiLocalSource(source: string): string {
-  if (!source.startsWith('koma-local://')) {
-    return source;
-  }
-
-  const decoded = decodeURIComponent(source.replace(/^koma-local:\/\//, ''));
-  return decoded.replace(/^\/([A-Za-z]:\/)/, '$1');
-}
+const decodeLinghuiLocalSource = fromKomaLocalUrl;
 
 function getFileExtension(source: string, fallback = 'png'): string {
   const normalized = decodeLinghuiLocalSource(source).split('?')[0].split('#')[0];

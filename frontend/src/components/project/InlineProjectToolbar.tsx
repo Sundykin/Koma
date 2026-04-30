@@ -1,58 +1,63 @@
 /**
  * 内联项目工具栏
  * 显示在剧本编辑器上方，提供 AI 辅助和操作按钮
+ *
+ * 注：解析剧本按钮已移到右侧资产面板顶部；"开始制作"按钮已删除（顶部步骤导航
+ * 的"下一步"按钮承担同样职责）。
  */
 import React from 'react';
 import { Button, Tooltip } from 'antd';
 import { ThunderboltOutlined, HighlightOutlined, LoadingOutlined, SaveOutlined } from '@ant-design/icons';
-import { Sparkles, Play, Check, Loader2 } from 'lucide-react';
+import { Check, Loader2, MessageSquareQuote, Upload } from 'lucide-react';
 import type { Episode } from '../../types';
 
 interface InlineProjectToolbarProps {
   episode: Episode | null;
   hasScript: boolean;
   isSaving: boolean;
-  isAnalyzing: boolean;
   isGenerating?: boolean;
   isPolishing?: boolean;
   onSave: () => void;
   onPolish: () => void;
   onRandomGenerate: () => void;
-  onAnalyze: () => void;
-  onStartProduction: () => void;
+  onTweetCopy: () => void;
+  /** 项目级导入剧本（替换全部剧集 + AI 自动分集），可选 */
+  onImportScript?: () => void;
 }
 
 export const InlineProjectToolbar: React.FC<InlineProjectToolbarProps> = ({
   episode,
   hasScript,
   isSaving,
-  isAnalyzing,
   isGenerating = false,
   isPolishing = false,
   onSave,
   onPolish,
   onRandomGenerate,
-  onAnalyze,
-  onStartProduction,
+  onTweetCopy,
+  onImportScript,
 }) => {
-  const anyBusy = isGenerating || isPolishing || isAnalyzing;
+  const anyBusy = isGenerating || isPolishing;
 
   return (
     <div className="h-12 px-4 flex items-center justify-between border-b border-zinc-800 bg-zinc-900/50">
       {/* Left: AI 辅助工具 */}
       <div className="flex items-center gap-1">
-        <Tooltip title={isGenerating ? "正在生成中..." : "AI 随机生成剧本"}>
-          <Button
-            type="text"
-            size="small"
-            icon={isGenerating ? <LoadingOutlined spin /> : <ThunderboltOutlined />}
-            onClick={onRandomGenerate}
-            disabled={anyBusy}
-            className="text-zinc-400 hover:text-purple-400"
-          >
-            {isGenerating ? '生成中...' : '随机生成'}
-          </Button>
-        </Tooltip>
+        {/* 随机生成按钮：暂时隐藏（保留 onRandomGenerate 钩子，未来可恢复） */}
+        {false && (
+          <Tooltip title={isGenerating ? "正在生成中..." : "AI 随机生成剧本"}>
+            <Button
+              type="text"
+              size="small"
+              icon={isGenerating ? <LoadingOutlined spin /> : <ThunderboltOutlined />}
+              onClick={onRandomGenerate}
+              disabled={anyBusy}
+              className="text-zinc-400 hover:text-purple-400"
+            >
+              {isGenerating ? '生成中...' : '随机生成'}
+            </Button>
+          </Tooltip>
+        )}
         <Tooltip title={!hasScript ? "请先输入剧本内容" : isPolishing ? "正在润色中..." : "AI 润色优化"}>
           <Button
             type="text"
@@ -65,23 +70,36 @@ export const InlineProjectToolbar: React.FC<InlineProjectToolbarProps> = ({
             {isPolishing ? '润色中...' : 'AI 润色'}
           </Button>
         </Tooltip>
-        <Tooltip title={!hasScript ? "请先输入剧本内容" : isAnalyzing ? "正在解析中..." : "解析剧本提取角色场景"}>
+        <Tooltip title={!episode ? "请先选择剧集" : "查看 / 生成推文文案，可分发到分镜"}>
           <Button
             type="text"
             size="small"
-            icon={isAnalyzing ? <LoadingOutlined spin /> : <Sparkles className="w-4 h-4" />}
-            onClick={onAnalyze}
-            disabled={!hasScript || isAnalyzing}
-            className="text-zinc-400 hover:text-emerald-400"
+            icon={<MessageSquareQuote className="w-4 h-4" />}
+            onClick={onTweetCopy}
+            disabled={!episode || anyBusy}
+            className="text-zinc-400 hover:text-amber-400"
           >
-            {isAnalyzing ? '解析中...' : '解析剧本'}
+            推文文案
           </Button>
         </Tooltip>
+        {onImportScript && (
+          <Tooltip title="导入完整剧本并 AI 自动分集（会替换项目中所有剧集）">
+            <Button
+              type="text"
+              size="small"
+              icon={<Upload className="w-4 h-4" />}
+              onClick={onImportScript}
+              disabled={anyBusy}
+              className="text-zinc-400 hover:text-cyan-400"
+            >
+              导入剧本
+            </Button>
+          </Tooltip>
+        )}
       </div>
 
-      {/* Right: 状态与操作 */}
+      {/* Right: 保存状态与按钮 */}
       <div className="flex items-center gap-3">
-        {/* 保存状态 */}
         <div className="flex items-center gap-1.5 text-xs">
           {isSaving ? (
             <>
@@ -96,7 +114,6 @@ export const InlineProjectToolbar: React.FC<InlineProjectToolbarProps> = ({
           )}
         </div>
 
-        {/* 开始制作按钮 */}
         <Tooltip title={!episode ? "请先选择剧集" : anyBusy ? "AI 处理中，请稍候" : "手动保存当前剧本"}>
           <Button
             size="small"
@@ -105,18 +122,6 @@ export const InlineProjectToolbar: React.FC<InlineProjectToolbarProps> = ({
             disabled={!episode || isSaving || anyBusy}
           >
             {isSaving ? '保存中...' : '保存'}
-          </Button>
-        </Tooltip>
-        <Tooltip title={!episode ? "请先选择剧集" : anyBusy ? "AI 处理中，请稍候" : "进入角色场景处理"}>
-          <Button
-            type="primary"
-            size="small"
-            icon={<Play className="w-3.5 h-3.5" />}
-            onClick={onStartProduction}
-            disabled={!episode || anyBusy}
-            className="bg-emerald-600 hover:bg-emerald-500 border-none"
-          >
-            开始制作
           </Button>
         </Tooltip>
       </div>

@@ -46,6 +46,11 @@ export interface ExecuteLinghuiWorkflowOptions {
   onNodeStateChange?: (nodeId: string, nextState: LinghuiNodeRunState) => void;
   onLog?: (entry: LinghuiExecutionLogEntry) => void;
   onQueueChange?: (queue: LinghuiExecutionQueueState) => void;
+  /**
+   * 灵绘 workspace ID，用于把节点执行任务挂到统一任务面板（projectId 兜底）。
+   * 不传则节点执行不会出现在任务面板里（保持向后兼容）。
+   */
+  workspaceId?: string;
 }
 
 export interface ExecuteLinghuiWorkflowResult {
@@ -78,6 +83,7 @@ export async function executeLinghuiWorkflow(options: ExecuteLinghuiWorkflowOpti
     onNodeStateChange,
     onLog,
     onQueueChange,
+    workspaceId,
   } = options;
   const normalizedTargetIds = targetNodeIds?.length ? targetNodeIds : context.nodes.map(node => node.id);
   const requiredNodeIds = new Set(
@@ -225,7 +231,7 @@ export async function executeLinghuiWorkflow(options: ExecuteLinghuiWorkflowOpti
           };
           nextRuns[nodeId] = nextState;
           onNodeStateChange?.(nodeId, nextState);
-        }, signal);
+        }, signal, workspaceId ? { projectId: workspaceId, nodeLabel: snapshot.data.label } : undefined);
         throwIfExecutionAborted(signal);
 
         context.nodeOutputs[nodeId] = result;

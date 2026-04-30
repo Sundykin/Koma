@@ -40,6 +40,7 @@ export async function saveEpisodeAnalysis(
     propRefs: analysis.propRefs ?? existing?.propRefs ?? [],
     completedStages,
     shots: normalizeShotsMediaState(analysis.shots ?? existing?.shots ?? []),
+    tweetScript: analysis.tweetScript ?? existing?.tweetScript,
     createdAt: existing?.createdAt || now,
     updatedAt: now,
   };

@@ -97,11 +97,11 @@ async function assetToInlineDataPart(
   }
 
   if (asset.transport === 'remote-url') {
-    // Electron 环境：通过主进程 downloadFile 下载到 userData 临时目录，再读取 base64
+    // Electron 环境：通过主进程 downloadFile 下载到 OS 临时目录，再读取 base64
     if (electronService.isElectron()) {
-      const userDataResult = await electronService.app.getPath('userData');
+      const tempResult = await electronService.app.getPath('temp');
       // eslint-disable-next-line @typescript-eslint/no-base-to-string
-      const dir = typeof userDataResult === 'string' ? userDataResult : (userDataResult as any)?.path ?? '';
+      const dir = typeof tempResult === 'string' ? tempResult : (tempResult as any)?.path ?? '';
       const tmpPath = `${dir.replace(/\/+$/, '')}/tmp-gemini-ref-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.bin`;
       const dl = await electronService.fs.downloadFile(asset.value, tmpPath);
       if (!dl?.success) {

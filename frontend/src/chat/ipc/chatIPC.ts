@@ -155,7 +155,7 @@ export interface MCPConnection {
 
 // 检查是否在 Electron 环境
 function isElectron(): boolean {
-  return typeof window !== 'undefined' && !!(window as any).electronAPI?.chat;
+  return typeof window !== 'undefined' && !!window.electronAPI?.chat;
 }
 
 // 获取 Electron API
@@ -163,7 +163,7 @@ function getElectronAPI() {
   if (!isElectron()) {
     throw new Error('Chat IPC is only available in Electron environment');
   }
-  return (window as any).electronAPI.chat;
+  return window.electronAPI.chat;
 }
 
 // ========== 无状态 LLM 查询（供 workflow 服务使用） ==========
@@ -225,14 +225,14 @@ export interface LLMQueryResponse {
 }
 
 function getLLMAPI() {
-  if (typeof window === 'undefined' || !(window as any).electronAPI?.llm) {
+  if (typeof window === 'undefined' || !window.electronAPI?.llm) {
     throw new Error('LLM IPC is only available in Electron environment');
   }
-  return (window as any).electronAPI.llm;
+  return window.electronAPI.llm;
 }
 
 export function isLLMIPCAvailable(): boolean {
-  return typeof window !== 'undefined' && !!(window as any).electronAPI?.llm;
+  return typeof window !== 'undefined' && !!window.electronAPI?.llm;
 }
 
 export class LLMQueryError extends Error {

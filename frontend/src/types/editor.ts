@@ -76,14 +76,13 @@ export interface Clip {
   backgroundColor?: string; // 背景色 (可选)
   textPosition?: 'top' | 'center' | 'bottom'; // 预设位置
   textAlign?: 'left' | 'center' | 'right';    // 文本对齐
-  // ========== 剪映高级属性 ==========
-  jianyingKeyframeTracks?: JianyingKeyframeTrack[]; // 剪映关键帧轨道
-  filter?: ClipFilter;           // 滤镜
-  animations?: ClipAnimation[];  // 动画（入场/出场/组合）
-  audioFade?: AudioFade;         // 音频淡入淡出（仅音频片段）
-  mask?: ClipMask;               // 蒙版
-  /** @deprecated 旧项目兼容读取，新代码请使用 Track.transitions[] */
-  transition?: ClipTransition;   // 旧项目兼容读取：应用到前一个片段
+  // ========== 编辑器扩展属性 ==========
+  // 滤镜 / 动画 / 音频淡入淡出 / 蒙版：UI 在 SimplePropertiesPanel 中编辑，
+  // 剪映导出器据此生成对应的剪映工程参数。
+  filter?: ClipFilter;
+  animations?: ClipAnimation[];
+  audioFade?: AudioFade;          // 仅音频片段
+  mask?: ClipMask;
 }
 
 export type TransitionType = 'fade';
@@ -161,29 +160,16 @@ export interface FrameCacheMeta {
   createdAt: number;
 }
 
-// ========== 剪映高级属性类型 ==========
-
-// 剪映关键帧属性类型
-export type JianyingKeyframeProperty =
-  | 'position_x' | 'position_y'
-  | 'rotation'
-  | 'scale_x' | 'scale_y' | 'uniform_scale'
-  | 'alpha'
-  | 'saturation' | 'contrast' | 'brightness'
-  | 'volume';
-
-// 剪映关键帧
-export interface JianyingKeyframe {
-  time: number;           // 时间点（秒）
-  value: number;          // 属性值
-  curveType?: 'Line' | 'Bezier';  // 插值类型，默认 Line
-}
-
-// 剪映关键帧轨道
-export interface JianyingKeyframeTrack {
-  property: JianyingKeyframeProperty;
-  keyframes: JianyingKeyframe[];
-}
+// ========== 编辑器扩展属性类型 ==========
+//
+// 阶段 2-B 清理：JianyingKeyframe / JianyingKeyframeTrack / JianyingKeyframeProperty /
+// ClipTransition 已删除，因 0 写入路径（无 UI 编辑入口、生产代码从未赋值；测试中
+// 仅作为 mock 数据存在）。剪映导出器现从 Clip.keyframes 派生 transform 关键帧，
+// 不再消费 jianyingKeyframeTracks 字段。
+//
+// 保留的字段（filter/animations/audioFade/mask）UI 在 SimplePropertiesPanel
+// 真实编辑，其 ID/effectId/resourceId 虽然指向剪映资源系统，但作为编辑器内部
+// 数据模型保留（语义为"用户在 UI 编辑的剪映导出参数"）。
 
 // 滤镜定义
 export interface ClipFilter {
@@ -224,13 +210,4 @@ export interface ClipMask {
   feather?: number;       // 羽化 0-100
   invert?: boolean;       // 是否反转
   roundCorner?: number;   // 圆角（仅矩形蒙版，0-100）
-}
-
-// 转场定义
-/** @deprecated 旧项目兼容，新代码请使用 Track.transitions[] + Transition 接口 */
-export interface ClipTransition {
-  effectId: string;       // 转场效果 ID
-  name?: string;          // 显示名称
-  resourceId?: string;    // 剪映资源 ID
-  duration: number;       // 持续时间（秒）
 }

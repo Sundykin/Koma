@@ -35,7 +35,10 @@ describe('MediaGenerationService.generateVideo - ITV input policy matrix', () =>
     vi.clearAllMocks();
   });
 
-  it('URL-only providers: required remoteUrl -> throws when upload fails', async () => {
+  it('URL-only providers: required remoteUrl falls back to data-url when upload fails (commit 3f22932)', async () => {
+    // 产品行为：图床上传失败时回退到 data-url 而非抛错（见
+    // mapVideoRequestToProviderRequest.fallbackToSourceOnRequiredUploadFailure 默认 true）。
+    // 让 url-only provider 也能继续工作（provider 自行处理 data-url；mock 中无校验）。
     const { getProjectITVProvider } = await import('../providers');
     const { uploadBytesToImageHostingWithRetry } = await import('./imageHostingService');
 
@@ -50,28 +53,26 @@ describe('MediaGenerationService.generateVideo - ITV input policy matrix', () =>
       config: { provider: 'custom', apiKey: 'k', baseUrl: 'https://x' },
       validate: () => true,
       testConnection: async () => true,
-      // No assetTransports => default URL-only behavior in host
       start,
     });
 
     const { MediaGenerationService } = await import('./MediaGenerationService');
     const svc = new MediaGenerationService();
 
-    await expect(
-      svc.generateVideo({
-        projectId: 'p1',
-        ownerRef: { projectId: 'p1', ownerType: 'shot', ownerId: 's1', slot: 'video' },
-        request: {
-          capability: 'video.image-to-video',
-          prompt: 'p',
-          primaryImage: { transport: 'data-url', value: 'data:image/png;base64,AA==' },
-          additionalReferences: [],
-          options: {},
-        } as any,
-      })
-    ).rejects.toThrow('no hosting');
+    const out = await svc.generateVideo({
+      projectId: 'p1',
+      ownerRef: { projectId: 'p1', ownerType: 'shot', ownerId: 's1', slot: 'video' },
+      request: {
+        capability: 'video.image-to-video',
+        prompt: 'p',
+        primaryImage: { transport: 'data-url', value: 'data:image/png;base64,AA==' },
+        additionalReferences: [],
+        options: {},
+      } as any,
+    });
 
-    expect(start).not.toHaveBeenCalled();
+    expect(start).toHaveBeenCalled();
+    expect(out.kind).toBe('video');
   });
 
   it('data-url-capable providers: best-effort remoteUrl -> continues with data-url when upload fails', async () => {
