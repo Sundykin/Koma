@@ -8,7 +8,7 @@ import {
   onProjectOpen,
   USER_INTERRUPTED_REASON,
 } from './projectOpenService';
-import { listTasks } from './taskQueueStore';
+import { listTasks, __resetTaskQueueCacheForTesting } from './taskQueueStore';
 import { configureLogger } from './logger';
 
 const ROOT_PATH = '/tmp/koma-project-open-service-tests';
@@ -48,6 +48,7 @@ describe('projectOpenService pending media task handling', () => {
   beforeEach(() => {
     configureLogger({ enableFile: false });
     files.clear();
+    __resetTaskQueueCacheForTesting();
     localStorage.clear();
     localStorage.setItem(STORAGE_KEYS.STORAGE_CONFIG, JSON.stringify({
       rootPath: ROOT_PATH,

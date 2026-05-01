@@ -233,7 +233,11 @@ export class ShotPromptService {
     stylePrefix: string,
   ): Promise<string> {
     const videoMode: ShotVideoMode = shot.videoMode || 'multi-ref';
-    const templateKey = selectVideoTemplateKey(shot.duration, videoMode);
+    const projectSelections = this.ctx.videoPromptDurationSelections;
+    const modeSelections = videoMode === 'first-frame'
+      ? projectSelections?.firstFrame
+      : projectSelections?.multiRef;
+    const templateKey = selectVideoTemplateKey(shot.duration, videoMode, modeSelections);
 
     // 邻接分镜上下文：按需 load 同剧集的所有分镜，定位 prev2 / prev1 / next
     const adjacency = await this.loadAdjacentShots(shot);
@@ -267,18 +271,17 @@ export class ShotPromptService {
     // @char_<id> / @scene_<id> / @prop_<id>。在 user 区追加一段映射约定，让 LLM 输出
     // 时直接使用项目协议形式，下游 mention 解析才能正确识别。
     const mappingSchemaNote = buildMappingSchemaNote(characterRefs, sceneRefs, propRefs);
+    const dialogueGuardNote = buildDialogueGuardNote(
+      shot.scriptContent || '',
+      shotCharacters.map(character => character.name),
+    );
 
     const result = await this.ctx.llmProvider.chat([
       { role: 'system', content: systemPrompt },
-      { role: 'user', content: `${userPrompt}\n\n${mappingSchemaNote}` },
+      { role: 'user', content: `${userPrompt}\n\n${dialogueGuardNote}\n\n${mappingSchemaNote}` },
     ]);
 
-    let cleanedResult = result.trim();
-    if (cleanedResult.startsWith('"') && cleanedResult.endsWith('"')) {
-      cleanedResult = cleanedResult.slice(1, -1);
-    }
-
-    return cleanedResult;
+    return sanitizeVideoPromptResult(result);
   }
 
   /**
@@ -525,16 +528,89 @@ export class ShotPromptService {
  *
  * 没有匹配项时回退到旧通用模板 shot_video_prompt_generation。
  */
-function selectVideoTemplateKey(duration: number, mode: ShotVideoMode): PromptTemplateType {
-  const d = typeof duration === 'number' && duration > 0 ? duration : 6;
-  if (mode === 'first-frame') {
-    if (d <= 6) return 'shot_video_6s_firstframe';
-    return 'shot_video_10s_firstframe'; // 首帧模式没有 15s 版本，>10s 时兜底到 10s
+/**
+ * 视频提示词响应清洗：仅去掉模板包裹符号，不做硬截断。
+ * 字数控制交给模板里给 LLM 的软约束（"应尽量精简，强烈建议控制在 4000 以内"），
+ * 截断会切掉句尾导致语意残缺，宁可让 LLM 自己写得短一些。
+ */
+function sanitizeVideoPromptResult(raw: string): string {
+  let s = raw.trim();
+  if (s.startsWith('"') && s.endsWith('"')) {
+    s = s.slice(1, -1).trim();
   }
-  // multi-ref
-  if (d <= 6) return 'shot_video_6s_multi';
-  if (d <= 10) return 'shot_video_10s_multi';
-  return 'shot_video_15s_multi';
+  s = s.replace(/_::~OUTPUT_START::~_/g, '');
+  s = s.replace(/_::~OUTPUT_END::~_/g, '');
+  s = s.replace(/^[ \t]*Grok视频生成\d+秒分镜单元【[^】]*】[ \t]*\r?\n?/gm, '');
+  s = s.replace(/\n{3,}/g, '\n\n').trim();
+  return s;
+}
+
+// ========== 模板池 + 档位选择 ==========
+
+/**
+ * 模板池：按 (mode × 时长) 维护对应的 PromptTemplateType。
+ * 时长档位是模板的"内置档位"，与视频模型 spec（如 grok enum / 即梦 range）独立。
+ *
+ *   - multi-ref：6 / 10 / 15 / 20s（4 档）
+ *   - first-frame：6 / 10 / 16 / 20s（4 档）
+ *
+ * 项目级配置（ProjectMeta.videoPromptDurationSelections）从中各自勾选启用的档位；
+ * 默认全选。运行时按 shot.duration 在勾选档位中找最近的档位匹配模板，避免落空。
+ */
+export const VIDEO_TEMPLATE_BUCKETS = {
+  'multi-ref': [
+    { duration: 6, key: 'shot_video_6s_multi' as const },
+    { duration: 10, key: 'shot_video_10s_multi' as const },
+    { duration: 15, key: 'shot_video_15s_multi' as const },
+    { duration: 20, key: 'shot_video_20s_multi' as const },
+  ],
+  'first-frame': [
+    { duration: 6, key: 'shot_video_6s_firstframe' as const },
+    { duration: 10, key: 'shot_video_10s_firstframe' as const },
+    { duration: 16, key: 'shot_video_16s_firstframe' as const },
+    { duration: 20, key: 'shot_video_20s_firstframe' as const },
+  ],
+} as const;
+
+/** 默认勾选 = 当前模式下的全部档位 */
+export function getDefaultVideoTemplateSelections(mode: ShotVideoMode): number[] {
+  return VIDEO_TEMPLATE_BUCKETS[mode].map((b) => b.duration);
+}
+
+/**
+ * 选模板：在 mode 对应的模板池中，按"项目级勾选档位"过滤后，找跟 shot.duration
+ * 距离最近的档位。距离平局时取较小档位（避免不必要的拉长）。
+ *
+ * 当 selections 为空 / 未提供 / 与当前模板池没有交集时，回退到模式默认全选档位 —
+ * 防止因配置异常导致落空。
+ */
+function selectVideoTemplateKey(
+  duration: number,
+  mode: ShotVideoMode,
+  selections?: number[],
+): PromptTemplateType {
+  const bucket = VIDEO_TEMPLATE_BUCKETS[mode];
+  const allDurations = bucket.map((b) => b.duration);
+  const requested = Array.isArray(selections) && selections.length > 0
+    ? selections.filter((d) => allDurations.includes(d))
+    : [];
+  const enabled = requested.length > 0 ? requested : allDurations;
+  const target = typeof duration === 'number' && duration > 0 ? duration : 6;
+
+  // 在 enabled 中找最近的档位；平局取较小档位
+  let best = enabled[0];
+  let bestDist = Math.abs(best - target);
+  for (const d of enabled.slice(1)) {
+    const dist = Math.abs(d - target);
+    if (dist < bestDist || (dist === bestDist && d < best)) {
+      best = d;
+      bestDist = dist;
+    }
+  }
+  const matched = bucket.find((b) => b.duration === best);
+  if (matched) return matched.key;
+  // 理论上不会到这（enabled 始终命中 bucket 至少 1 项），保留兜底
+  return bucket[0].key;
 }
 
 /**
@@ -614,6 +690,93 @@ function formatShotContextInfo(
     lines.push(`已生成提示词：${prompt || '（尚未生成）'}`);
   }
   return lines.join('\n');
+}
+
+function escapeRegex(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function normalizeDialogueText(text: string): string {
+  return text
+    .trim()
+    .replace(/^[“”「」『』"']+|[“”「」『』"']+$/g, '')
+    .trim();
+}
+
+function pushUniqueDialogue(target: string[], text: string | undefined): void {
+  const normalized = normalizeDialogueText(text || '');
+  if (!normalized || target.includes(normalized)) return;
+  target.push(normalized);
+}
+
+function extractExplicitDialogueEvidence(
+  scriptContent: string,
+  characterNames: string[],
+): { spoken: string[]; voiceover: string[] } {
+  const spoken: string[] = [];
+  const voiceover: string[] = [];
+  const lines = scriptContent
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .filter(Boolean);
+
+  const sortedNames = characterNames
+    .map(name => name.trim())
+    .filter(Boolean)
+    .sort((a, b) => b.length - a.length);
+  const speakerPattern = sortedNames.length > 0
+    ? new RegExp(`^(?:${sortedNames.map(escapeRegex).join('|')})\\s*[：:]\\s*(.+)$`)
+    : null;
+  const voiceoverPattern = /^(?:OS|OV|旁白|画外音|内心OS|内心独白|内心旁白)\s*[：:]\s*(.+)$/i;
+  const speechCuePattern = /(?:自言自语|喃喃|嘀咕|低声说|轻声说|沉声说|说道|说|问道|问|答道|答|喊道|喊|叫道|叫)\s*[：:,，]\s*(.+)$/;
+
+  for (const line of lines) {
+    const voiceoverMatch = line.match(voiceoverPattern);
+    if (voiceoverMatch) {
+      pushUniqueDialogue(voiceover, voiceoverMatch[1]);
+      continue;
+    }
+
+    const speakerMatch = speakerPattern?.exec(line);
+    if (speakerMatch) {
+      pushUniqueDialogue(spoken, speakerMatch[1]);
+      continue;
+    }
+
+    const speechCueMatch = line.match(speechCuePattern);
+    if (speechCueMatch) {
+      pushUniqueDialogue(spoken, speechCueMatch[1]);
+    }
+  }
+
+  for (const match of scriptContent.matchAll(/[“「『"]([^“”「」『"\r\n]{1,80})[”」』"]/g)) {
+    const quoted = normalizeDialogueText(match[1] || '');
+    if (!quoted) continue;
+    const idx = match.index ?? 0;
+    const prefix = scriptContent.slice(Math.max(0, idx - 16), idx);
+    if (/(?:OS|OV|旁白|画外音|内心OS|内心独白|内心旁白)/i.test(prefix)) {
+      pushUniqueDialogue(voiceover, quoted);
+    } else {
+      pushUniqueDialogue(spoken, quoted);
+    }
+  }
+
+  return { spoken, voiceover };
+}
+
+export function buildDialogueGuardNote(scriptContent: string, characterNames: string[]): string {
+  const { spoken, voiceover } = extractExplicitDialogueEvidence(scriptContent, characterNames);
+  return [
+    '【口播台词判定（高优先级，覆盖模板里的“台词”占位习惯）】',
+    '只有输入文案原文明确出现口播证据时，才允许生成开口台词。口播证据仅包括：直接引语、角色名+冒号、或明确“说/问/喊/自言自语”等发声动作。',
+    '第三人称叙述、心理活动、认知句、环境说明、作者说明都不是口播台词，禁止改写成角色开口；尤其不要把“她/他/她的/他的/这不是她的卧室”这类叙述句改写成自言自语或对话。',
+    spoken.length > 0
+      ? `本分镜显式口播台词：\n${spoken.map(text => `- ${text}`).join('\n')}`
+      : '本分镜显式口播台词：无。若要表现人物认知/情绪，只能通过表情、视线、动作、停顿体现，不得补写台词。',
+    voiceover.length > 0
+      ? `本分镜显式 OS/OV / 旁白：\n${voiceover.map(text => `- ${text}`).join('\n')}`
+      : '本分镜显式 OS/OV / 旁白：无。',
+  ].join('\n');
 }
 
 /**

@@ -6,7 +6,7 @@
 import type { Shot } from '../types';
 import { resolvePromptTemplate } from '../store/promptTemplates';
 import { TaskManager, Task } from './TaskManager';
-import { parseLLMJSON } from '../utils/llmJsonParser';
+import { parseLLMJSONWithMeta } from '../utils/llmJsonParser';
 import { saveEpisodeShots } from '../store/projectStore';
 import { createLogger } from '../store/logger';
 import { extractErrorMessage } from '../utils/errorHandler';
@@ -16,13 +16,91 @@ import {
   normalizeVideoDurationSeconds,
   type AllowedVideoDurationSeconds,
 } from '../utils/videoDuration';
+import { formatSpecPromptHint } from '../providers/itv/durationSpec';
 
 const logger = createLogger('ShotAnalysis');
 const SHOT_ANALYSIS_LLM_TIMEOUT_MS = 300_000;
 const DEFAULT_SHOT_DURATION_SECONDS: AllowedVideoDurationSeconds = DEFAULT_VIDEO_DURATION_SECONDS;
+const SHOT_ANALYSIS_CHUNK_THRESHOLD_CHARS = 3500;
+const SHOT_ANALYSIS_CHUNK_TARGET_CHARS = 2400;
+
+interface ScriptAnalysisChunk {
+  index: number;
+  total: number;
+  text: string;
+}
 
 export function normalizeShotDuration(duration: unknown): AllowedVideoDurationSeconds {
   return normalizeVideoDurationSeconds(duration, DEFAULT_SHOT_DURATION_SECONDS);
+}
+
+function normalizeForCoverage(text: string): string {
+  return text
+    .replace(/\s+/g, '')
+    .replace(/[，。！？、；：“”‘’「」『』（）()《》<>\[\]【】\-—…,.!?;:'"`~]/g, '');
+}
+
+function splitCoverageUnits(script: string): string[] {
+  return script
+    .split(/[\n。！？!?；;]+/)
+    .map(unit => normalizeForCoverage(unit))
+    .filter(unit => unit.length >= 6);
+}
+
+export function buildShotCoverageReport(script: string, shots: Pick<Shot, 'scriptContent'>[]): {
+  totalUnits: number;
+  coveredUnits: number;
+  coverageRatio: number;
+  missingSamples: string[];
+} {
+  const units = splitCoverageUnits(script);
+  if (!units.length) {
+    return { totalUnits: 0, coveredUnits: 0, coverageRatio: 1, missingSamples: [] };
+  }
+
+  const shotText = normalizeForCoverage(shots.map(shot => shot.scriptContent || '').join('\n'));
+  const missing = units.filter(unit => !shotText.includes(unit));
+  const coveredUnits = units.length - missing.length;
+  return {
+    totalUnits: units.length,
+    coveredUnits,
+    coverageRatio: coveredUnits / units.length,
+    missingSamples: missing.slice(0, 8),
+  };
+}
+
+export function splitScriptForShotAnalysis(script: string): string[] {
+  const normalized = script.trim();
+  if (!normalized) return [];
+  if (normalized.length <= SHOT_ANALYSIS_CHUNK_THRESHOLD_CHARS) return [normalized];
+
+  const paragraphs = normalized
+    .split(/\n{2,}/)
+    .map(p => p.trim())
+    .filter(Boolean);
+  const units = paragraphs.length > 1
+    ? paragraphs
+    : normalized
+      .split(/(?<=[。！？!?；;])/)
+      .map(p => p.trim())
+      .filter(Boolean);
+
+  const chunks: string[] = [];
+  let current = '';
+  for (const unit of units) {
+    if (!current) {
+      current = unit;
+      continue;
+    }
+    if (current.length + unit.length + 2 <= SHOT_ANALYSIS_CHUNK_TARGET_CHARS) {
+      current += `${paragraphs.length > 1 ? '\n\n' : ''}${unit}`;
+    } else {
+      chunks.push(current);
+      current = unit;
+    }
+  }
+  if (current) chunks.push(current);
+  return chunks;
 }
 
 // 预选资产类型
@@ -118,83 +196,26 @@ export class ShotAnalysisService {
 
       TaskManager.updateTask(taskId, { progress: 20 });
 
-      // 构建提示词（只传名称，描述作为参考放在括号内，名称需精确匹配）
-      const resolvedPrompt = await resolvePromptTemplate('shot_breakdown', {
-        script,
-        characters: characters.length > 0
-          ? characters.map(c => c.description ? `${c.name}（${c.description}）` : c.name).join('\n')
-          : '无',
-        scenes: scenes.length > 0
-          ? scenes.map(s => s.description ? `${s.name}（${s.description}）` : s.name).join('\n')
-          : '无',
-        props: props.length > 0
-          ? props.map(p => p.description ? `${p.name}（${p.description}）` : p.name).join('\n')
-          : '无',
-      });
-      const styledPrompt = this.appendStyleRequirement(resolvedPrompt.prompt);
-
-      TaskManager.updateTask(taskId, { progress: 30 });
-
-      // 调用 LLM
-      // 获取系统提示词模板
-      const resolvedSystemPrompt = await resolvePromptTemplate('shot_breakdown_system', {});
-      const systemPrompt = resolvedSystemPrompt.prompt;
-
-      logger.info('准备调用 LLM', {
+      const chunks = splitScriptForShotAnalysis(script).map((text, index, arr): ScriptAnalysisChunk => ({
+        index,
+        total: arr.length,
+        text,
+      }));
+      logger.info('分镜生成分块计划', {
         traceId,
-        systemPromptLength: systemPrompt.length,
-        userPromptLength: styledPrompt.length,
-        userPromptHead: styledPrompt.slice(0, 200),
+        chunkCount: chunks.length,
+        chunkLengths: chunks.map(chunk => chunk.text.length),
       });
 
-      const llmStart = Date.now();
-      const result = await this.ctx.llmProvider.chat(
-        [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: styledPrompt },
-        ],
-        {
-          traceId,
-          source: 'shot-analysis',
-          operation: 'breakdown',
-          taskKind: 'structured',
-          taskProfileId: 'shot-breakdown',
-          stream: true,
-          timeoutMs: SHOT_ANALYSIS_LLM_TIMEOUT_MS,
-          // 强制 OpenAI 兼容服务以合法 JSON 返回，避免字符串内未转义引号导致解析失败
-          responseFormat: 'json_object',
-        },
-      );
-
-      logger.info('LLM 返回完成', {
-        traceId,
-        durationMs: Date.now() - llmStart,
-        responseLength: result.length,
-        responseHead: result.slice(0, 200),
-        responseTail: result.length > 200 ? result.slice(-200) : '',
-      });
-
-      TaskManager.updateTask(taskId, { progress: 70 });
-
-      // 解析结果
-      let parsed: { shots: any[] };
-      try {
-        parsed = this.parseJSON<{ shots: any[] }>(result);
-        logger.info('JSON 解析成功', { traceId, shotsCount: parsed.shots?.length ?? 0 });
-      } catch (parseErr) {
-        // 解析失败：把完整原始响应分块写入日志，便于人工排查
-        const errMsg = parseErr instanceof Error ? parseErr.message : String(parseErr);
-        logger.error('分镜 JSON 解析失败', { traceId, error: errMsg, responseLength: result.length });
-        const CHUNK = 1000;
-        for (let i = 0; i < result.length; i += CHUNK) {
-          logger.error('原始响应片段', {
-            traceId,
-            range: `${i}-${Math.min(i + CHUNK, result.length)}`,
-            content: result.slice(i, i + CHUNK),
-          });
-        }
-        throw parseErr;
+      const parsedShotPayloads: any[] = [];
+      for (const chunk of chunks) {
+        const progressBase = 20 + Math.floor((chunk.index / Math.max(chunks.length, 1)) * 55);
+        TaskManager.updateTask(taskId, { progress: progressBase });
+        const chunkShots = await this.generateShotPayloadsForChunk(traceId, chunk);
+        parsedShotPayloads.push(...chunkShots);
       }
+
+      TaskManager.updateTask(taskId, { progress: 75 });
 
       // 将角色名/道具名映射到 ID
       // 优先使用预选资产的 Sora2 ID，其次使用已绑定的 Sora2 ID，最后使用自定义 ID
@@ -235,7 +256,7 @@ export class ShotAnalysisService {
       };
 
       // 分镜拆解时 description 为 undefined，后续手动生成
-      const shots: Shot[] = parsed.shots.map((s, index) => ({
+      const shots: Shot[] = parsedShotPayloads.map((s, index) => ({
         id: `shot_${Date.now()}_${index}`,
         scriptContent: s.scriptContent || '',
         shotType: s.shotType || 'medium',
@@ -266,6 +287,23 @@ export class ShotAnalysisService {
         episodeId,
       }));
 
+      const coverage = buildShotCoverageReport(script, shots);
+      logger.info('分镜覆盖率检查', {
+        traceId,
+        shotsCount: shots.length,
+        totalUnits: coverage.totalUnits,
+        coveredUnits: coverage.coveredUnits,
+        coverageRatio: Number(coverage.coverageRatio.toFixed(3)),
+        missingSamples: coverage.missingSamples,
+      });
+      if (coverage.totalUnits > 0 && coverage.coverageRatio < 0.85) {
+        logger.warn('分镜可能漏掉剧本内容：覆盖率低于阈值，但仍保存结果供用户检查', {
+          traceId,
+          coverageRatio: Number(coverage.coverageRatio.toFixed(3)),
+          missingSamples: coverage.missingSamples,
+        });
+      }
+
       TaskManager.updateTask(taskId, { progress: 85 });
 
       // 保存分镜到剧集
@@ -285,11 +323,121 @@ export class ShotAnalysisService {
     }
   }
 
-  /**
-   * 解析 JSON 结果（委托给 parseLLMJSON 工具函数）
-   */
-  private parseJSON<T>(text: string): T {
-    return parseLLMJSON<T>(text);
+  private async generateShotPayloadsForChunk(
+    traceId: string,
+    chunk: ScriptAnalysisChunk,
+  ): Promise<any[]> {
+    const durationSpec = this.ctx.itvDurationSpec;
+    const durationConstraint = formatSpecPromptHint(durationSpec);
+    const durationDefault = String(durationSpec.default);
+    const { characters, scenes, props } = this.ctx;
+    const chunkLabel = chunk.total > 1 ? `（第 ${chunk.index + 1}/${chunk.total} 段）` : '';
+    const scriptForPrompt = chunk.total > 1
+      ? [
+        `【当前拆解范围${chunkLabel}】`,
+        '只拆解下面这一段文本；不要补写其他分段内容。当前段内必须从头到尾完整覆盖，不得丢细节。',
+        chunk.text,
+      ].join('\n')
+      : chunk.text;
+
+    const resolvedPrompt = await resolvePromptTemplate('shot_breakdown', {
+      script: scriptForPrompt,
+      characters: characters.length > 0
+        ? characters.map(c => c.description ? `${c.name}（${c.description}）` : c.name).join('\n')
+        : '无',
+      scenes: scenes.length > 0
+        ? scenes.map(s => s.description ? `${s.name}（${s.description}）` : s.name).join('\n')
+        : '无',
+      props: props.length > 0
+        ? props.map(p => p.description ? `${p.name}（${p.description}）` : p.name).join('\n')
+        : '无',
+      durationConstraint,
+      durationDefault,
+    });
+    const styledPrompt = this.appendStyleRequirement(resolvedPrompt.prompt);
+
+    const resolvedSystemPrompt = await resolvePromptTemplate('shot_breakdown_system', {
+      durationConstraint,
+      durationDefault,
+    });
+    const systemPrompt = resolvedSystemPrompt.prompt;
+
+    const chunkTraceId = chunk.total > 1 ? `${traceId}-chunk-${chunk.index + 1}` : traceId;
+    logger.info('准备调用 LLM', {
+      traceId: chunkTraceId,
+      parentTraceId: traceId,
+      chunkIndex: chunk.index + 1,
+      chunkTotal: chunk.total,
+      scriptLength: chunk.text.length,
+      systemPromptLength: systemPrompt.length,
+      userPromptLength: styledPrompt.length,
+      userPromptHead: styledPrompt.slice(0, 200),
+    });
+
+    const llmStart = Date.now();
+    const result = await this.ctx.llmProvider.chat(
+      [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: styledPrompt },
+      ],
+      {
+        traceId: chunkTraceId,
+        source: 'shot-analysis',
+        operation: chunk.total > 1 ? 'breakdown-chunk' : 'breakdown',
+        taskKind: 'structured',
+        taskProfileId: 'shot-breakdown',
+        stream: true,
+        timeoutMs: SHOT_ANALYSIS_LLM_TIMEOUT_MS,
+        responseFormat: 'json_object',
+      },
+    );
+
+    logger.info('LLM 返回完成', {
+      traceId: chunkTraceId,
+      parentTraceId: traceId,
+      durationMs: Date.now() - llmStart,
+      responseLength: result.length,
+      responseHead: result.slice(0, 200),
+      responseTail: result.length > 200 ? result.slice(-200) : '',
+    });
+
+    try {
+      const parseResult = parseLLMJSONWithMeta<{ shots: any[] }>(result);
+      const parsed = parseResult.data;
+      const shotsCount = parsed.shots?.length ?? 0;
+      logger.info('JSON 解析成功', {
+        traceId: chunkTraceId,
+        parentTraceId: traceId,
+        shotsCount,
+        parseMethod: parseResult.method,
+        rawLength: parseResult.rawLength,
+        cleanedLength: parseResult.cleanedLength,
+        repairedLength: parseResult.repairedLength,
+      });
+      if (parseResult.method !== 'direct') {
+        logger.warn('分镜 JSON 经过修复后解析成功，结果可能是不完整的半截数组，请核对 shotsCount 与剧本覆盖率', {
+          traceId: chunkTraceId,
+          parentTraceId: traceId,
+          parseMethod: parseResult.method,
+          shotsCount,
+          responseTail: result.slice(-300),
+        });
+      }
+      return Array.isArray(parsed.shots) ? parsed.shots : [];
+    } catch (parseErr) {
+      const errMsg = parseErr instanceof Error ? parseErr.message : String(parseErr);
+      logger.error('分镜 JSON 解析失败', { traceId: chunkTraceId, parentTraceId: traceId, error: errMsg, responseLength: result.length });
+      const CHUNK = 1000;
+      for (let i = 0; i < result.length; i += CHUNK) {
+        logger.error('原始响应片段', {
+          traceId: chunkTraceId,
+          parentTraceId: traceId,
+          range: `${i}-${Math.min(i + CHUNK, result.length)}`,
+          content: result.slice(i, i + CHUNK),
+        });
+      }
+      throw parseErr;
+    }
   }
 
   private appendStyleRequirement(prompt: string): string {

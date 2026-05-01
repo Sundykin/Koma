@@ -180,3 +180,45 @@ export function getSuggestedViduModels(): ChannelModelDefinition[] {
 export function getSuggestedSeedanceModels(): ChannelModelDefinition[] {
   return SEEDANCE_MODEL_SUGGESTIONS.map(cloneModel);
 }
+
+/**
+ * 从渠道模型读取支持的视频时长枚举。
+ *
+ * 优先级：
+ *  1. model.defaults.durations: number[]（任何 provider 都可以填）
+ *  2. VIDU_MODEL_RULES（按 model.id 命中）
+ *  3. 兜底（[5, 8, 10]）
+ */
+export function getITVModelDurations(model: ChannelModelDefinition | undefined | null): number[] {
+  if (!model) return [5, 8, 10];
+
+  const fromDefaults = (model.defaults as { durations?: unknown } | undefined)?.durations;
+  if (Array.isArray(fromDefaults) && fromDefaults.every(d => typeof d === 'number')) {
+    return [...new Set(fromDefaults as number[])].sort((a, b) => a - b);
+  }
+
+  const idCandidates = [model.id, model.providerModelName].filter(Boolean) as string[];
+  for (const id of idCandidates) {
+    const rule = VIDU_MODEL_RULES[id];
+    if (rule?.durations?.length) return [...rule.durations];
+  }
+
+  return [5, 8, 10];
+}
+
+/**
+ * 类似时长，从渠道模型读取支持的分辨率列表。
+ */
+export function getITVModelResolutions(model: ChannelModelDefinition | undefined | null): string[] | undefined {
+  if (!model) return undefined;
+  const fromDefaults = (model.defaults as { resolutions?: unknown } | undefined)?.resolutions;
+  if (Array.isArray(fromDefaults) && fromDefaults.every(r => typeof r === 'string')) {
+    return [...new Set(fromDefaults as string[])];
+  }
+  const idCandidates = [model.id, model.providerModelName].filter(Boolean) as string[];
+  for (const id of idCandidates) {
+    const rule = VIDU_MODEL_RULES[id];
+    if (rule?.resolutions?.length) return [...rule.resolutions];
+  }
+  return undefined;
+}

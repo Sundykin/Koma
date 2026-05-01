@@ -1,3 +1,8 @@
+/**
+ * @deprecated 历史 grok 风格枚举。新代码应使用 VideoDurationSpec（providers/itv/durationSpec.ts）
+ * 按当前选择的 ITV 渠道动态计算允许值。这里仅作为兜底默认值，
+ * 在没有 ctx / 找不到渠道 spec 时使用。
+ */
 export const ALLOWED_VIDEO_DURATIONS = [6, 10, 12, 16, 20] as const;
 export const ALLOWED_VIDEO_DURATION_SECONDS = ALLOWED_VIDEO_DURATIONS;
 

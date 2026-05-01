@@ -13,6 +13,8 @@ import {
   Input,
   InputNumber,
   Modal,
+  Progress,
+  Select,
   Spin,
   Segmented,
   App,
@@ -53,6 +55,10 @@ import { SHOT_LAYOUT, COL_ACTION_WIDTH } from '../../constants/storyboardConstan
 import { AssetSelector } from './components/AssetSelector';
 import { createStoredMediaAsset } from '../../utils/mediaAssets';
 import { ALLOWED_VIDEO_DURATIONS, normalizeVideoDurationSeconds } from '../../utils/videoDuration';
+import {
+  clampDurationToSpec,
+  type VideoDurationSpec,
+} from '../../providers/itv/durationSpec';
 import './ShotCard.css';
 
 const { TextArea } = Input;
@@ -154,6 +160,18 @@ export interface ShotCardProps {
   onMoveDown: (shotId: string) => void;
   onInsertAbove: (shotId: string) => void;
   onInsertBelow: (shotId: string) => void;
+  /**
+   * 当前项目选择的 ITV 渠道支持的时长规格。
+   * - enum：渲染 Select（如 grok 6/12/16/20）
+   * - range：渲染 InputNumber min/max/step（如 即梦 4-16）
+   * 不传则用 ALLOWED_VIDEO_DURATIONS 兜底（向后兼容）。
+   */
+  durationSpec?: VideoDurationSpec;
+  /**
+   * 单镜头视频生成进度。父组件按 shotId 维护一个 Map，传当前 shot 对应的项；
+   * 不在生成中时为 undefined。用于在视频结果区域渲染百分比 + 阶段文本。
+   */
+  videoProgress?: { progress: number; step: string };
 }
 
 export const ShotCard: React.FC<ShotCardProps> = ({
@@ -201,6 +219,8 @@ export const ShotCard: React.FC<ShotCardProps> = ({
   onMoveDown,
   onInsertAbove,
   onInsertBelow,
+  durationSpec,
+  videoProgress,
 }) => {
   const { message } = App.useApp();
   const { t } = useTranslation();
@@ -569,22 +589,51 @@ export const ShotCard: React.FC<ShotCardProps> = ({
           {onDurationChange ? (
             <Tooltip title="分镜时长（秒）" placement="right">
               <div className="flex items-center gap-0.5">
-                <InputNumber
-                  size="small"
-                  min={ALLOWED_VIDEO_DURATIONS[0]}
-                  max={ALLOWED_VIDEO_DURATIONS[ALLOWED_VIDEO_DURATIONS.length - 1]}
-                  step={1}
-                  controls={false}
-                  value={shot.duration}
-                  onChange={(value) => {
-                    const next = normalizeVideoDurationSeconds(value, shot.duration);
-                    if (next !== shot.duration) {
-                      onDurationChange(shot.id, next);
-                    }
-                  }}
-                  className="shot-duration-input"
-                  onClick={(e) => e.stopPropagation()}
-                />
+                {durationSpec?.kind === 'enum' ? (
+                  <Select
+                    size="small"
+                    value={shot.duration}
+                    onChange={(value) => {
+                      const next = clampDurationToSpec(value, durationSpec);
+                      if (next !== shot.duration) onDurationChange(shot.id, next);
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                    options={durationSpec.values.map((v) => ({ value: v, label: `${v}` }))}
+                    className="shot-duration-input"
+                    style={{ width: 56 }}
+                  />
+                ) : durationSpec?.kind === 'range' ? (
+                  <InputNumber
+                    size="small"
+                    min={durationSpec.min}
+                    max={durationSpec.max}
+                    step={durationSpec.step}
+                    controls={false}
+                    value={shot.duration}
+                    onChange={(value) => {
+                      const next = clampDurationToSpec(value, durationSpec);
+                      if (next !== shot.duration) onDurationChange(shot.id, next);
+                    }}
+                    className="shot-duration-input"
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                ) : (
+                  // 兜底：未传 spec 时沿用历史枚举（向后兼容）
+                  <InputNumber
+                    size="small"
+                    min={ALLOWED_VIDEO_DURATIONS[0]}
+                    max={ALLOWED_VIDEO_DURATIONS[ALLOWED_VIDEO_DURATIONS.length - 1]}
+                    step={1}
+                    controls={false}
+                    value={shot.duration}
+                    onChange={(value) => {
+                      const next = normalizeVideoDurationSeconds(value, shot.duration);
+                      if (next !== shot.duration) onDurationChange(shot.id, next);
+                    }}
+                    className="shot-duration-input"
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                )}
                 <span className="text-[9px] text-zinc-400 leading-none">s</span>
               </div>
             </Tooltip>
@@ -874,6 +923,26 @@ export const ShotCard: React.FC<ShotCardProps> = ({
                     icon={<PlayCircleFilled />}
                     onClick={() => setVideoModalOpen(true)}
                   />
+                )}
+                {/* 进度覆盖层：仅在生成中显示，避免遮挡已存视频 */}
+                {isGeneratingVideo && videoProgress && (
+                  <div className="absolute inset-x-0 bottom-0 px-1.5 py-1 bg-zinc-950/80 backdrop-blur-sm flex flex-col gap-0.5 z-10">
+                    <Progress
+                      percent={Math.max(0, Math.min(100, videoProgress.progress))}
+                      size="small"
+                      showInfo={false}
+                      strokeColor="#10b981"
+                      trailColor="#3f3f46"
+                    />
+                    <div className="flex items-center justify-between gap-1 text-[10px] text-zinc-300 leading-tight">
+                      <span className="truncate flex-1" title={videoProgress.step}>
+                        {videoProgress.step || '处理中...'}
+                      </span>
+                      <span className="tabular-nums shrink-0">
+                        {Math.round(videoProgress.progress)}%
+                      </span>
+                    </div>
+                  </div>
                 )}
               </div>
             )}

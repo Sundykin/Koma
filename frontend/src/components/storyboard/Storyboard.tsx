@@ -40,6 +40,10 @@ import {
   resolveShotVideoCapabilitySupport,
 } from '../../workflow/shotVideoPlan';
 import { resolveConfiguredChannelModel } from '../../providers/channel/resolver';
+import {
+  getDurationSpecForModel,
+  getDurationSpecForProviderType,
+} from '../../providers/itv/durationSpec';
 import './Storyboard.css';
 import './ShotListEditor.css';
 import { getMediaAssetDisplaySource } from '../../types';
@@ -131,8 +135,8 @@ export const Storyboard: React.FC<StoryboardProps> = ({
   const [generatingImagePrompts, setGeneratingImagePrompts] = useState<Set<string>>(new Set());
   const [generatingVideoPrompts, setGeneratingVideoPrompts] = useState<Set<string>>(new Set());
   const [renderingShots, setRenderingShots] = useState<Set<string>>(new Set());
-  const [_renderProgress, setRenderProgress] = useState(0);
-  const [_renderStep, setRenderStep] = useState('');
+  // 单镜头视频生成进度（按 shotId 聚合，避免多镜头并跑时进度被覆盖）
+  const [shotVideoProgress, setShotVideoProgress] = useState<Map<string, { progress: number; step: string }>>(new Map());
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [batchProgress, setBatchProgress] = useState<{ current: number; total: number; step?: string } | undefined>();
   const queuedShotsSaveRef = useRef<{ projectId: string; episodeId: string; shots: Shot[] } | null>(null);
@@ -244,6 +248,16 @@ export const Storyboard: React.FC<StoryboardProps> = ({
   const selectedItvModelCapabilities = useMemo(() => {
     const ctx = resolveConfiguredChannelModel(effectiveSettings, 'itv', itvSelection);
     return ctx?.model.capabilities;
+  }, [effectiveSettings, itvSelection]);
+
+  // 当前 ITV 渠道的时长规格：决定分镜编辑控件是 Select（grok 枚举）还是 InputNumber（即梦范围）
+  // 优先按 modelId 命中（Koma 内置即梦渠道复用 grok runtime 但模型是 seedance-*）
+  const itvDurationSpec = useMemo(() => {
+    const ctx = resolveConfiguredChannelModel(effectiveSettings, 'itv', itvSelection);
+    return (
+      getDurationSpecForModel(ctx?.model.id)
+      ?? getDurationSpecForProviderType(ctx?.channelConfig.providerType)
+    );
   }, [effectiveSettings, itvSelection]);
 
   const shotVideoSupportMap = useMemo(() => {
@@ -507,8 +521,11 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       return;
     }
     setRenderingShots(prev => new Set(prev).add(shotId));
-    setRenderProgress(0);
-    setRenderStep('准备渲染...');
+    setShotVideoProgress(prev => {
+      const next = new Map(prev);
+      next.set(shotId, { progress: 0, step: '准备渲染...' });
+      return next;
+    });
     try {
       const { result } = await runWithTask({
         projectId,
@@ -533,8 +550,11 @@ export const Storyboard: React.FC<StoryboardProps> = ({
             styleSnapshot,
           },
           (progress, step) => {
-            setRenderProgress(progress);
-            setRenderStep(step || '');
+            setShotVideoProgress(prev => {
+              const next = new Map(prev);
+              next.set(shotId, { progress, step: step || '' });
+              return next;
+            });
             taskCtx.progress(progress, step);
           }
         ),
@@ -554,8 +574,11 @@ export const Storyboard: React.FC<StoryboardProps> = ({
         next.delete(shotId);
         return next;
       });
-      setRenderProgress(0);
-      setRenderStep('');
+      setShotVideoProgress(prev => {
+        const next = new Map(prev);
+        next.delete(shotId);
+        return next;
+      });
     }
   }, [projectId, episodeId, shots, shotVideoSupportMap, effectiveSettings, ttiSelection, itvSelection, ttsSelection, aspectRatio, styleSnapshot, message, refreshShotsFromStore]);
 
@@ -1634,6 +1657,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
             generatingVideoPrompts={generatingVideoPrompts}
             generatingImages={generatingShots}
             generatingVideos={renderingShots}
+            videoProgressMap={shotVideoProgress}
             batchProgress={batchProgress}
             activeShotId={activeShotId}
             onActiveShotChange={setActiveShotId}
@@ -1677,6 +1701,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
             onShotImageModeChange={handleShotImageModeChange}
             onShotVideoModeChange={handleShotVideoModeChange}
             onBulkVideoModeChange={handleBulkVideoModeChange}
+            durationSpec={itvDurationSpec}
           />
         </StoryboardStudio>
       )}

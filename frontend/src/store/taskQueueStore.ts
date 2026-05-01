@@ -69,6 +69,13 @@ export async function createTask(
 
 /**
  * 更新任务状态
+ *
+ * 写盘策略：
+ * - 状态变更（updates.status 提供）→ 立即写盘（保证恢复时能看到最新最终态）
+ * - 仅进度变更 → 节流写盘（合并 200ms 内多次进度更新）
+ *
+ * 内存缓存是权威：scheduleFlush 把 tasks 数组放进 memoryTasks，
+ * 后续 loadAllTasks 直接读内存，避免 IPC 读盘风暴。
  */
 export async function updateTask(
   projectId: string,
@@ -88,7 +95,14 @@ export async function updateTask(
   };
   tasks[index] = updatedTask;
 
-  await saveTasks(projectId, tasks);
+  // 状态变更（创建后第一次进 processing/completed/failed）必须立即落盘；
+  // 仅 progress 跳动则合并写盘
+  const hasStatusChange = 'status' in updates && updates.status !== undefined;
+  if (hasStatusChange) {
+    await saveTasks(projectId, tasks);
+  } else {
+    scheduleFlush(projectId, tasks);
+  }
   logger.info(`更新任务: ${taskId}`, { status: updates.status, progress: updates.progress });
   return updatedTask;
 }
@@ -273,11 +287,35 @@ export async function updateTaskProgress(
 
 // ========== 内部函数 ==========
 
+// 内存权威缓存：高频 progress 更新只命中内存，写盘按 projectId 节流
+// 解决：抽卡 9 张并发时，每张图 polling 进度都 read+write 整个 tasks.json，
+// 200+ 次主进程 IPC 抢主线程，导致 renderer 卡死（生成实际成功）
+const memoryTasks = new Map<string, AsyncTask[]>();
+const flushTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const FLUSH_DEBOUNCE_MS = 200;
+
+/**
+ * 仅用于单元测试：清空内存缓存与挂起的 flush，确保测试间互不干扰。
+ * 生产代码不要调用。
+ */
+export function __resetTaskQueueCacheForTesting(): void {
+  for (const timer of flushTimers.values()) clearTimeout(timer);
+  flushTimers.clear();
+  memoryTasks.clear();
+}
+
 async function loadAllTasks(projectId: string): Promise<AsyncTask[]> {
+  // 内存优先：本会话内已经读过/写过的项目直接返回，避免每次 IPC 读盘
+  if (memoryTasks.has(projectId)) {
+    return memoryTasks.get(projectId)!;
+  }
   try {
     const filePath = await getTasksFilePath(projectId);
     const exists = await electronService.fs.exists(filePath);
-    if (!exists) return [];
+    if (!exists) {
+      memoryTasks.set(projectId, []);
+      return [];
+    }
 
     const data = await electronService.fs.readFile(filePath);
     const parsed: TasksFile = JSON.parse(data);
@@ -290,24 +328,61 @@ async function loadAllTasks(projectId: string): Promise<AsyncTask[]> {
         fileVersion,
         runtime: CURRENT_TASKS_FILE_VERSION,
       });
+      memoryTasks.set(projectId, []);
       return [];
     }
     // fileVersion < current：本应在此调用 v(N-1) → v(N) 迁移；当前未上线无 v0 数据。
 
-    return parsed.tasks || [];
+    const tasks = parsed.tasks || [];
+    memoryTasks.set(projectId, tasks);
+    return tasks;
   } catch (err) {
     logger.warn('加载任务文件失败', { projectId, error: (err as Error)?.message });
+    memoryTasks.set(projectId, []);
     return [];
   }
 }
 
-async function saveTasks(projectId: string, tasks: AsyncTask[]): Promise<void> {
+async function flushTasks(projectId: string, tasks: AsyncTask[]): Promise<void> {
   const filePath = await getTasksFilePath(projectId);
   const data: TasksFile = {
     tasks,
     version: CURRENT_TASKS_FILE_VERSION,
   };
   await electronService.fs.writeFile(filePath, JSON.stringify(data, null, 2));
+}
+
+/**
+ * 节流写盘：内存立即落地，文件 IO 合并 200ms 内的多次写。
+ * 用于 progress 等高频路径。
+ */
+function scheduleFlush(projectId: string, tasks: AsyncTask[]): void {
+  memoryTasks.set(projectId, tasks);
+  const existing = flushTimers.get(projectId);
+  if (existing) clearTimeout(existing);
+  flushTimers.set(projectId, setTimeout(async () => {
+    flushTimers.delete(projectId);
+    const latest = memoryTasks.get(projectId) || [];
+    try {
+      await flushTasks(projectId, latest);
+    } catch (err) {
+      logger.warn('节流写盘失败', { projectId, error: (err as Error)?.message });
+    }
+  }, FLUSH_DEBOUNCE_MS));
+}
+
+/**
+ * 强制立即写盘 + 取消挂起的节流。
+ * 用于结构变更（创建/删除/清空）和最终态（completed/failed），保证落地不丢。
+ */
+async function saveTasks(projectId: string, tasks: AsyncTask[]): Promise<void> {
+  memoryTasks.set(projectId, tasks);
+  const pending = flushTimers.get(projectId);
+  if (pending) {
+    clearTimeout(pending);
+    flushTimers.delete(projectId);
+  }
+  await flushTasks(projectId, tasks);
 }
 
 // ========== 任务统计 ==========

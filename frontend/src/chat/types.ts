@@ -25,7 +25,14 @@ export interface FileContentPart {
   mimeType: string;
 }
 
-export type ContentPart = TextContentPart | ImageContentPart | FileContentPart;
+export interface VideoContentPart {
+  type: 'video';
+  videoUrl: string;
+  mimeType?: string;
+  poster?: string;
+}
+
+export type ContentPart = TextContentPart | ImageContentPart | FileContentPart | VideoContentPart;
 
 // 工具调用
 export interface ToolCall {

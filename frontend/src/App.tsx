@@ -36,6 +36,11 @@ import { activationService, ActivationInfo } from './services/activationService'
 import { electronService } from './services/electronService';
 import { resolveEpisodeEditorEntry, type EpisodeEditorEntryOptions } from './workflow/episodeEditorEntry';
 import { listEditorStepIds } from './workflow/editorStepRegistry';
+import { resolveConfiguredChannelModel, serializeMediaSelection } from './providers/channel/resolver';
+import {
+  getDurationSpecForModel,
+  getDurationSpecForProviderType,
+} from './providers/itv/durationSpec';
 import { useTranslation } from 'react-i18next';
 
 const { Text } = Typography;
@@ -166,6 +171,18 @@ const AppContent: React.FC = () => {
   const openKomaApi = useCallback(() => {
     void electronService.shell.openExternal('https://komaapi.com');
   }, []);
+
+  // 当前项目 ITV 渠道的时长规格 — 传给 ProjectSettingsModal 让"视频提示词"档位 checkbox
+  // 把不在 spec 范围内的档位灰显（model 优先 > providerType > default）
+  const projectItvDurationSpec = useMemo(() => {
+    if (!activeProject) return undefined;
+    const itvSelection = serializeMediaSelection(activeProject.mediaSelections?.itv);
+    const ctx = resolveConfiguredChannelModel(appSettings, 'itv', itvSelection);
+    return (
+      getDurationSpecForModel(ctx?.model.id)
+      ?? getDurationSpecForProviderType(ctx?.channelConfig.providerType)
+    );
+  }, [activeProject, appSettings]);
 
   const handleActivateFromLockedView = useCallback(async () => {
     const apiKey = activationInputKey.trim();
@@ -698,6 +715,7 @@ const AppContent: React.FC = () => {
             onClose={() => setIsProjectSettingsOpen(false)}
             onSave={handleProjectSettingsSave}
             onGoToGlobalSettings={() => { setIsProjectSettingsOpen(false); setView('settings'); }}
+            itvDurationSpec={projectItvDurationSpec}
           />
           {pendingMediaPrompt && (
             <div

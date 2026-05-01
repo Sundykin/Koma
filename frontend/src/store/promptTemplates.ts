@@ -29,8 +29,11 @@ export type PromptTemplateType =
   | 'shot_video_6s_multi'          // 分镜视频提示词 · 多参模式 · 6 秒
   | 'shot_video_10s_multi'         // 分镜视频提示词 · 多参模式 · 10 秒
   | 'shot_video_15s_multi'         // 分镜视频提示词 · 多参模式 · 15 秒
+  | 'shot_video_20s_multi'         // 分镜视频提示词 · 多参模式 · 20 秒
   | 'shot_video_6s_firstframe'     // 分镜视频提示词 · 首帧延展模式 · 6 秒
   | 'shot_video_10s_firstframe'    // 分镜视频提示词 · 首帧延展模式 · 10 秒
+  | 'shot_video_16s_firstframe'    // 分镜视频提示词 · 首帧延展模式 · 16 秒
+  | 'shot_video_20s_firstframe'    // 分镜视频提示词 · 首帧延展模式 · 20 秒
   | 'grid_shot_prompt_generation'  // 九宫格分镜提示词生成（将单个分镜扩展为9个连续画面）
   | 'character_extraction'     // 角色提取
   | 'scene_extraction'         // 场景提取
@@ -259,10 +262,24 @@ const COMMON_VARIABLE_DEFINITIONS: Record<string, Omit<PromptTemplateVariable, '
   },
   durationSeconds: {
     label: '镜头时长',
-    description: '当前镜头的总时长，用于视频提示词的时间片段规划；只能是 6、10、12、16、20 之一。',
+    description: '当前镜头的总时长，用于视频提示词的时间片段规划。允许值随当前选择的视频渠道（{{durationConstraint}}）变化。',
     format: '秒数字符串',
     example: '10',
     required: true,
+  },
+  durationConstraint: {
+    label: '时长约束描述',
+    description: '运行时根据当前选择的 ITV 视频渠道生成的时长约束句（如"只能填写 6、12、16、20 之一" / "必须在 4–16 秒范围内"）。由调用方注入，无需在用户编辑模板时填写。',
+    format: '自然语言短句',
+    example: '只能填写 6、12、16、20 之一',
+    required: false,
+  },
+  durationDefault: {
+    label: '默认时长',
+    description: '运行时根据当前 ITV 视频渠道给出的推荐默认时长（秒）。无法判断时使用。',
+    format: '秒数字符串',
+    example: '10',
+    required: false,
   },
   imageMode: {
     label: '图片模式',
@@ -617,7 +634,7 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
 - scriptContent: 对应的剧本原文
 - shotType: 景别（close-up特写/medium中景/wide全景/extreme-wide大全景）
 - cameraMovement: 运镜方式（static固定/pan摇镜/zoom-in推镜/tracking跟随/handheld手持）
-- duration: 预估时长（秒），只能填写 6、10、12、16、20 之一，推荐默认 10 秒
+- duration: 预估时长（秒），{{durationConstraint}}，无法判断时填写 {{durationDefault}} 秒
 - characters: 出现的角色名列表
 - dialogue: 角色台词，格式为"角色名（情绪）：台词内容"
 - emotion: 画面情绪氛围
@@ -626,9 +643,16 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
 【情绪词列表】
 高兴、愤怒、悲伤、恐惧、反感、低落、惊讶、自然、急切、平静、激动、呵斥、关心、严肃
 
-注意：不需要生成画面描述(description)提示词，这将在后续步骤生成。
-请确保分镜覆盖剧本的所有重要内容。`,
-    variables: [],
+【完整覆盖硬性规则】
+1. 必须按剧本原文顺序从头到尾拆解，不能跳段、不能只挑“重要情节”、不能摘要式合并中间动作。
+2. 每个原文句子/动作/环境变化/视线变化/停顿/台词都必须归入某一个 shot.scriptContent；没有画面变化但承接关系重要的句子也要保留在相邻分镜中。
+3. shot.scriptContent 必须优先复制原文连续片段，允许带少量相邻上下文，但禁止改写成概括句；禁止把多个相距较远的原文段落揉成一个摘要。
+4. 当同一段里出现“新动作 / 新视线目标 / 新道具状态 / 新场景空间 / 新说话人 / 情绪转折 / 时间推进”时，应优先拆成新的分镜，不要为了减少数量而合并。
+5. 如果剧本文本很长，也必须继续输出完整 shots 数组直到覆盖末尾；宁可分镜多，也不要丢失细节。
+6. 输出前自检：把所有 shot.scriptContent 连起来，应能覆盖原剧本的主干顺序；若发现遗漏，必须补齐后再返回。
+
+注意：不需要生成画面描述(description)提示词，这将在后续步骤生成。`,
+    variables: [variable('durationConstraint'), variable('durationDefault')],
     isCustom: false,
   },
 
@@ -757,7 +781,7 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
     template: `你是一位专业的分镜师。请将以下剧本拆解为分镜列表。
 
 【时长要求】
-每个镜头的 duration 只能填写 6、10、12、16、20 之一；无法判断时填写 10。
+每个镜头的 duration {{durationConstraint}}；无法判断时填写 {{durationDefault}}。
 
 【情绪词列表】
 高兴、愤怒、悲伤、恐惧、反感、低落、惊讶、自然、急切、平静、激动、呵斥、关心、严肃
@@ -770,6 +794,13 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
 
 剧本：
 {{script}}
+
+【拆解原则】
+1. 必须按剧本原文顺序从头到尾覆盖，不得跳过中间段落，不得只抽取“大事件”。
+2. 每个原文句子/动作/环境变化/视线变化/停顿/台词都必须归入某个分镜的 scriptContent；不要把细节当成可省略的摘要素材。
+3. scriptContent 必须优先复制原文连续片段，禁止改写成概括句；禁止把相距较远的原文段落揉成一个镜头。
+4. 出现新动作、新视线目标、新道具状态、新空间、新说话人、情绪转折或时间推进时，优先拆成新分镜；宁可多分镜，也不要丢细节。
+5. 输出前自检：所有 shot.scriptContent 按顺序拼接后，应覆盖原剧本主干直到末尾。
 
 请以 JSON 格式输出分镜列表：
 
@@ -791,7 +822,14 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
 }
 \`\`\`
 `,
-    variables: [variable('script'), variable('characters'), variable('scenes'), variable('props')],
+    variables: [
+      variable('script'),
+      variable('characters'),
+      variable('scenes'),
+      variable('props'),
+      variable('durationConstraint'),
+      variable('durationDefault'),
+    ],
     isCustom: false,
   },
 
@@ -904,6 +942,24 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
     isCustom: false,
   },
 
+  shot_video_20s_multi: {
+    id: 'shot_video_20s_multi',
+    category: 'inference-video',
+    name: '视频推理 · 多参 · 20 秒',
+    description: '多参照模式 20 秒分镜：含 @角色/@场景/@道具 映射；上下文衔接段使用 prevShot2Info / prevShot1Info / nextShotInfo',
+    template: VIDEO_REASONING_TEMPLATE_CONTENT.shot_video_20s_multi,
+    variables: [
+      variable('scriptContent'),
+      variable('characters'),
+      variable('scenes'),
+      variable('props'),
+      variable('prevShot2Info', { required: false }),
+      variable('prevShot1Info', { required: false }),
+      variable('nextShotInfo', { required: false }),
+    ],
+    isCustom: false,
+  },
+
   // ========== 视频推理 · 首帧延展模式（以单图为锚做微动延展，不带 @ 映射） ==========
 
   shot_video_6s_firstframe: {
@@ -928,6 +984,38 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
     name: '视频推理 · 首帧 · 10 秒',
     description: '首帧延展模式 10 秒分镜：以单图为锚做微动延展；上下文衔接使用紧跨度的 prevShotInfo / nextShotInfo',
     template: VIDEO_REASONING_TEMPLATE_CONTENT.shot_video_10s_firstframe,
+    variables: [
+      variable('scriptContent'),
+      variable('characters'),
+      variable('scenes'),
+      variable('prevShotInfo', { required: false }),
+      variable('nextShotInfo', { required: false }),
+    ],
+    isCustom: false,
+  },
+
+  shot_video_16s_firstframe: {
+    id: 'shot_video_16s_firstframe',
+    category: 'inference-video',
+    name: '视频推理 · 首帧 · 16 秒',
+    description: '首帧延展模式 16 秒分镜：以单图为锚做微动延展；上下文衔接使用紧跨度的 prevShotInfo / nextShotInfo',
+    template: VIDEO_REASONING_TEMPLATE_CONTENT.shot_video_16s_firstframe,
+    variables: [
+      variable('scriptContent'),
+      variable('characters'),
+      variable('scenes'),
+      variable('prevShotInfo', { required: false }),
+      variable('nextShotInfo', { required: false }),
+    ],
+    isCustom: false,
+  },
+
+  shot_video_20s_firstframe: {
+    id: 'shot_video_20s_firstframe',
+    category: 'inference-video',
+    name: '视频推理 · 首帧 · 20 秒',
+    description: '首帧延展模式 20 秒分镜：以单图为锚做微动延展；上下文衔接使用紧跨度的 prevShotInfo / nextShotInfo',
+    template: VIDEO_REASONING_TEMPLATE_CONTENT.shot_video_20s_firstframe,
     variables: [
       variable('scriptContent'),
       variable('characters'),

@@ -103,7 +103,7 @@ describe('chatPageUtils', () => {
     expect(selectedConfig.profileId).toBe(KOMA_OFFICIAL_LLM_CHANNEL_ID);
     expect(selectedConfig.baseUrl).toBe('https://komaapi.com/v1');
 
-    const sessionConfig = buildChatSessionConfig('system prompt', selectedConfig);
+    const sessionConfig = buildChatSessionConfig(selectedConfig);
     expect(sessionConfig).toMatchObject({
       llmProfileId: KOMA_OFFICIAL_LLM_CHANNEL_ID,
       modelProvider: 'openai-compatible',

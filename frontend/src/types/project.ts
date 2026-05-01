@@ -117,6 +117,16 @@ export interface ProjectMeta {
   aspectRatio?: '16:9' | '9:16';
   stylePresetId?: string; // 选中的全局风格 ID
   styleSnapshot?: ProjectStyleSnapshot;
+  /**
+   * 视频提示词模板档位选择（项目级）。
+   * 模板池：multi-ref 含 [6,10,15,20]、first-frame 含 [6,10,16,20]，每模式都可单独勾选。
+   * 不设置 / 数组空时回退到默认全选。运行时按 shot.duration 在勾选档位中找最近的档位匹配模板，
+   * 避免落空（详见 ShotPromptService.selectVideoTemplateKey）。
+   */
+  videoPromptDurationSelections?: {
+    multiRef?: number[];
+    firstFrame?: number[];
+  };
   // @deprecated 遗留字段，仅保留给未改造调用点过渡
   theme?: string;
   // @deprecated 遗留字段，仅保留给未改造调用点过渡

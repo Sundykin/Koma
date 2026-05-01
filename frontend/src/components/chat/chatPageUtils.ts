@@ -83,15 +83,13 @@ export function resolveInitialChatLLMSelection(
 }
 
 export function buildChatSessionConfig(
-  systemPrompt: string,
   selectedConfig?: LLMConfigForSession | null,
 ): SessionConfig {
   if (!selectedConfig) {
-    return { systemPrompt };
+    return {};
   }
 
   return {
-    systemPrompt,
     llmProfileId: selectedConfig.profileId,
     modelProvider: selectedConfig.provider,
     modelName: selectedConfig.modelName,

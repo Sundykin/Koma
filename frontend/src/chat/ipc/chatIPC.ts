@@ -25,7 +25,14 @@ export interface FileContentPart {
   mimeType: string;
 }
 
-export type ContentPart = TextContentPart | ImageContentPart | FileContentPart;
+export interface VideoContentPart {
+  type: 'video';
+  videoUrl: string;
+  mimeType?: string;
+  poster?: string;
+}
+
+export type ContentPart = TextContentPart | ImageContentPart | FileContentPart | VideoContentPart;
 
 export interface ToolCall {
   id: string;
@@ -48,6 +55,7 @@ export interface ChatMessage {
   toolResults?: ToolResult[];
   reasoning?: string;
   timestamp: number;
+  metadata?: Record<string, unknown>;
 }
 
 export type AgentMode = 'single' | 'orchestrated';
@@ -473,6 +481,56 @@ export async function callTool(name: string, args: Record<string, unknown>): Pro
   return api.tools.call(name, args);
 }
 
+// ========== 聊天历史持久化（SQLite settings.db） ==========
+
+export interface ChatSessionRow {
+  id: string;
+  title: string;
+  created_at: number;
+  updated_at: number;
+  message_count: number;
+}
+
+export interface ChatMessageRow {
+  id: string;
+  session_id: string;
+  seq: number;
+  role: string;
+  content_json: string;
+  reasoning: string | null;
+  extras_json: string | null;
+  created_at: number;
+}
+
+function getHistoryAPI(): {
+  listSessions: () => Promise<ChatSessionRow[]>;
+  getSession: (sessionId: string) => Promise<{ session: ChatSessionRow; messages: ChatMessageRow[] } | null>;
+  saveSession: (session: ChatSessionRow, messages: ChatMessageRow[]) => Promise<{ success: boolean }>;
+  deleteSession: (sessionId: string) => Promise<{ success: boolean }>;
+} {
+  const api = getElectronAPI() as any;
+  if (!api.history) {
+    throw new Error('Chat history IPC is not available — preload bridge missing');
+  }
+  return api.history;
+}
+
+export async function listChatHistorySessions(): Promise<ChatSessionRow[]> {
+  return getHistoryAPI().listSessions();
+}
+
+export async function getChatHistorySession(sessionId: string) {
+  return getHistoryAPI().getSession(sessionId);
+}
+
+export async function saveChatHistorySession(session: ChatSessionRow, messages: ChatMessageRow[]) {
+  return getHistoryAPI().saveSession(session, messages);
+}
+
+export async function deleteChatHistorySession(sessionId: string) {
+  return getHistoryAPI().deleteSession(sessionId);
+}
+
 // ========== 辅助工具 ==========
 
 export function generateId(): string {
@@ -513,6 +571,12 @@ export const chatIPC = {
   tools: {
     listAll: listAllTools,
     call: callTool,
+  },
+  history: {
+    listSessions: listChatHistorySessions,
+    getSession: getChatHistorySession,
+    saveSession: saveChatHistorySession,
+    deleteSession: deleteChatHistorySession,
   },
   generateId,
   createUserInput,

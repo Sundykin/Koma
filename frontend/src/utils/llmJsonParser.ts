@@ -30,13 +30,23 @@ function extractJSON(text: string): string {
   return raw.trim().replace(/^[^{[]*/, '').replace(/[^}\]]*$/, '');
 }
 
+export type LLMJSONParseMethod = 'direct' | 'repair-cleaned' | 'repair-raw';
+
+export interface LLMJSONParseResult<T> {
+  data: T;
+  method: LLMJSONParseMethod;
+  rawLength: number;
+  cleanedLength: number;
+  repairedLength?: number;
+}
+
 /**
  * 解析 LLM 返回的 JSON，带三级降级：
  * 1. 直接 JSON.parse（提取后的文本）
  * 2. jsonrepair 修复后解析（提取后的文本）
  * 3. jsonrepair 直接处理原始文本（绕过提取逻辑）
  */
-export function parseLLMJSON<T>(text: string): T {
+export function parseLLMJSONWithMeta<T>(text: string): LLMJSONParseResult<T> {
   if (!text || !text.trim()) {
     logger.warn('解析终止：LLM 返回为空');
     throw new Error('JSON 解析失败: LLM 返回内容为空');
@@ -52,9 +62,9 @@ export function parseLLMJSON<T>(text: string): T {
   if (cleaned) {
     // 第一级：直接解析提取结果
     try {
-      const result = JSON.parse(cleaned) as T;
+      const data = JSON.parse(cleaned) as T;
       logger.debug('一级解析成功（直接 JSON.parse）');
-      return result;
+      return { data, method: 'direct', rawLength: text.length, cleanedLength: cleaned.length };
     } catch (err) {
       logger.debug('一级解析失败', { error: (err as Error).message });
     }
@@ -62,9 +72,15 @@ export function parseLLMJSON<T>(text: string): T {
     // 第二级：jsonrepair 修复提取结果后解析
     try {
       const repaired = jsonrepair(cleaned);
-      const result = JSON.parse(repaired) as T;
+      const data = JSON.parse(repaired) as T;
       logger.info('二级解析成功（jsonrepair 提取文本）', { repairedLength: repaired.length });
-      return result;
+      return {
+        data,
+        method: 'repair-cleaned',
+        rawLength: text.length,
+        cleanedLength: cleaned.length,
+        repairedLength: repaired.length,
+      };
     } catch (err) {
       logger.debug('二级解析失败', { error: (err as Error).message });
     }
@@ -73,9 +89,15 @@ export function parseLLMJSON<T>(text: string): T {
   // 第三级：对原始文本尝试 jsonrepair（extractJSON 可能提取为空或截断有误）
   try {
     const repaired = jsonrepair(text.trim());
-    const result = JSON.parse(repaired) as T;
+    const data = JSON.parse(repaired) as T;
     logger.info('三级解析成功（jsonrepair 原始文本）', { repairedLength: repaired.length });
-    return result;
+    return {
+      data,
+      method: 'repair-raw',
+      rawLength: text.length,
+      cleanedLength: cleaned.length,
+      repairedLength: repaired.length,
+    };
   } catch (finalError) {
     const errMsg = finalError instanceof Error ? finalError.message : String(finalError);
     // 从错误信息里抠 position，输出 ±200 字符上下文，标记 ⟦HERE⟧ 指向失败字符
@@ -91,6 +113,10 @@ export function parseLLMJSON<T>(text: string): T {
     });
     throw new Error(`JSON 解析失败: ${errMsg}`);
   }
+}
+
+export function parseLLMJSON<T>(text: string): T {
+  return parseLLMJSONWithMeta<T>(text).data;
 }
 
 function buildPositionContext(source: string, position: number, windowSize = 200) {

@@ -32,12 +32,13 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
 
   // 检测从无消息到有消息的过渡
   useEffect(() => {
-    if (!prevHasMessages.current && hasMessages) {
+    const wasEmpty = !prevHasMessages.current;
+    prevHasMessages.current = hasMessages; // 始终更新 ref，避免后续过渡判断失效
+    if (wasEmpty && hasMessages) {
       setIsTransitioning(true);
       const timer = setTimeout(() => setIsTransitioning(false), 500);
       return () => clearTimeout(timer);
     }
-    prevHasMessages.current = hasMessages;
   }, [hasMessages]);
 
   return (

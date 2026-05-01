@@ -120,6 +120,10 @@ class TaskManagerClass {
   private initialized = false;
   private currentProjectId: string | null = null;
   private readonly sessionId = uuidv4();
+  // 写盘节流：高频 progress 推进时合并多次 saveTasks 为一次最终 IPC，
+  // 避免 9 张抽卡并发等场景下 fire-and-forget IPC 在事件循环中堆积
+  private flushTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
+  private readonly FLUSH_DEBOUNCE_MS = 200;
 
   private async getTasksPath(projectId: string): Promise<string> {
     const config = getStorageConfig() || (await initStorageConfig());
@@ -231,7 +235,9 @@ class TaskManagerClass {
     }
 
     this.tasks.set(taskId, updatedTask);
-    this.saveTasks(task.projectId);
+    // 终态（completed/failed）立即写盘，其他更新（progress/metadata）走 200ms 节流
+    const isTerminal = updates.status === 'completed' || updates.status === 'failed';
+    this.saveTasks(task.projectId, isTerminal);
     this.notifyListeners(updatedTask);
 
     return updatedTask;
@@ -431,9 +437,23 @@ class TaskManagerClass {
 
   /**
    * 保存任务到项目目录
+   *
+   * 默认走节流写盘（合并 200ms 内多次调用为一次 IPC）。调用方传 immediate=true
+   * 用于结构性变更（创建/删除/最终态完成）保证不丢。
    */
-  private async saveTasks(projectId: string): Promise<void> {
+  private async saveTasks(projectId: string, immediate = false): Promise<void> {
     if (!electronService.isElectron()) return;
+
+    if (!immediate) {
+      const existing = this.flushTimers.get(projectId);
+      if (existing) clearTimeout(existing);
+      this.flushTimers.set(projectId, setTimeout(() => {
+        this.flushTimers.delete(projectId);
+        // 节流路径同样调底层 flush；忽略错误（已在 try/catch 内）
+        this.saveTasks(projectId, true).catch(() => undefined);
+      }, this.FLUSH_DEBOUNCE_MS));
+      return;
+    }
 
     try {
       const tasksPath = await this.getTasksPath(projectId);

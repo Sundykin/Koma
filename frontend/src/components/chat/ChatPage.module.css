@@ -26,52 +26,6 @@
   gap: 4px;
 }
 
-/* 智能体徽章 */
-.agentBadge {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 4px 12px;
-  background-color: #27272a;
-  border-radius: 6px;
-  border: 1px solid #3f3f46;
-  cursor: pointer;
-  transition: all 0.2s;
-  height: 32px;
-}
-
-.agentBadge:hover {
-  background-color: #3f3f46;
-  border-color: #10b981;
-}
-
-.agentIcon {
-  font-size: 16px;
-}
-
-.agentName {
-  font-size: 14px;
-  font-weight: 500;
-  color: #fafafa;
-}
-
-.settingsPanel {
-  padding: 16px;
-  border-bottom: 1px solid #27272a;
-  background-color: #0f0f11;
-}
-
-.settingsItem {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.settingsItem label {
-  font-size: 13px;
-  color: #a1a1aa;
-}
-
 .chatArea {
   flex: 1;
   overflow: hidden;

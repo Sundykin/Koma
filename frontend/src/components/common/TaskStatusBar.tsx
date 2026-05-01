@@ -286,9 +286,20 @@ export const TaskStatusBar: React.FC<TaskStatusBarProps> = ({ projectId, onRetry
 
     loadTasks();
 
+    // 暴风通知合并：批量场景（如 9 张抽卡并发）下 listener 高频触发，
+    // 把短时间内的多次 loadTasks 合并成一次 trailing 调用，避免 IPC + setState 风暴卡前端
+    let scheduleHandle: number | null = null;
+    const scheduleLoadTasks = () => {
+      if (scheduleHandle != null) return;
+      scheduleHandle = (setTimeout(() => {
+        scheduleHandle = null;
+        if (!disposed) loadTasks();
+      }, 80) as unknown) as number;
+    };
+
     const unsubscribe = TaskManager.addListener((task) => {
       if (projectFilter === 'all' || task.projectId === projectId) {
-        loadTasks();
+        scheduleLoadTasks();
       }
     });
 
@@ -299,6 +310,7 @@ export const TaskStatusBar: React.FC<TaskStatusBarProps> = ({ projectId, onRetry
       disposed = true;
       unsubscribe();
       clearInterval(timer);
+      if (scheduleHandle != null) clearTimeout(scheduleHandle);
     };
   }, [projectId, projectFilter]);
 

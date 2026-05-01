@@ -1,0 +1,179 @@
+/**
+ * 视频时长规格（VideoDurationSpec）
+ *
+ * 不同 ITV 渠道对生成视频的"时长"参数支持方式不同：
+ *   - 部分模型只接受**枚举**（如 grok-imagine-video：6 / 12 / 16 / 20）
+ *   - 部分模型接受**连续范围**（如 Seedance 2.0：4–16s）
+ *
+ * 历史上整个工程把 grok 风格的 [6,10,12,16,20] 写死在多处：
+ *   - utils/videoDuration.ts 的 ALLOWED_VIDEO_DURATIONS
+ *   - storyboard/ShotCard.tsx 的 InputNumber min/max
+ *   - ShotAnalysisService schema 的 duration 描述
+ *   - promptTemplates 里若干模板字面量
+ *
+ * 这导致切到即梦后输入 5 秒会被强制吸附到 6，且 prompt 里仍写"只能填 6/10/12/16/20"。
+ *
+ * 这里抽象 VideoDurationSpec 作为运行时配置：
+ *   - Provider 注册时声明自己的 spec
+ *   - Storyboard / 提示词编译都按当前选择的 ITV channel 解析出 spec 再用
+ */
+
+export type VideoDurationSpec =
+  | { kind: 'enum'; values: number[]; default: number }
+  | { kind: 'range'; min: number; max: number; step: number; default: number };
+
+/**
+ * 兜底 spec：保留历史 grok-imagine 风格枚举。
+ * 找不到 provider 或 selection 没设时使用。
+ */
+export const DEFAULT_VIDEO_DURATION_SPEC: VideoDurationSpec = {
+  kind: 'enum',
+  values: [6, 10, 12, 16, 20],
+  default: 10,
+};
+
+/**
+ * 把任意输入吸附到 spec 允许的最近值。
+ * - enum：吸附到最近枚举值（平局取较大）
+ * - range：clamp + step 对齐
+ * 任何无法解析的输入返回 spec.default。
+ */
+export function clampDurationToSpec(value: unknown, spec: VideoDurationSpec): number {
+  const numeric = coerceFiniteNumber(value);
+  if (numeric == null) return spec.default;
+
+  if (spec.kind === 'enum') {
+    return spec.values.reduce((nearest, current) => {
+      const distNearest = Math.abs(nearest - numeric);
+      const distCurrent = Math.abs(current - numeric);
+      if (distCurrent < distNearest) return current;
+      if (distCurrent === distNearest && current > nearest) return current;
+      return nearest;
+    }, spec.values[0] ?? spec.default);
+  }
+
+  // range
+  const { min, max, step } = spec;
+  const clamped = Math.min(Math.max(numeric, min), max);
+  if (step <= 0) return clamped;
+  const stepsFromMin = Math.round((clamped - min) / step);
+  const aligned = min + stepsFromMin * step;
+  return Math.min(Math.max(aligned, min), max);
+}
+
+export function isAllowedDurationForSpec(value: number, spec: VideoDurationSpec): boolean {
+  if (!Number.isFinite(value)) return false;
+  if (spec.kind === 'enum') return spec.values.includes(value);
+  if (value < spec.min || value > spec.max) return false;
+  if (spec.step > 0) {
+    const offsetSteps = (value - spec.min) / spec.step;
+    return Math.abs(offsetSteps - Math.round(offsetSteps)) < 1e-6;
+  }
+  return true;
+}
+
+/**
+ * 提供给模板编译时注入的人类可读约束描述。
+ * 用于 LLM prompt 里告诉模型"duration 只能填什么"。
+ */
+export function formatSpecPromptHint(spec: VideoDurationSpec): string {
+  if (spec.kind === 'enum') {
+    return `只能填写 ${spec.values.join('、')} 之一`;
+  }
+  const { min, max, step } = spec;
+  if (step <= 0 || step === 1) {
+    return `必须在 ${min}–${max} 秒范围内（整数）`;
+  }
+  return `必须在 ${min}–${max} 秒范围内（步长 ${step}）`;
+}
+
+/**
+ * UI 输入控件需要的 min/max/step bound。
+ * enum 时 step 给 1（占位，UI 应优先用 Select 而非 InputNumber），
+ * 但如果实在用 InputNumber，会被 clamp 到 enum 区间。
+ */
+export function specToInputBounds(spec: VideoDurationSpec): { min: number; max: number; step: number } {
+  if (spec.kind === 'enum') {
+    const values = spec.values.length > 0 ? spec.values : [spec.default];
+    return { min: Math.min(...values), max: Math.max(...values), step: 1 };
+  }
+  return { min: spec.min, max: spec.max, step: spec.step };
+}
+
+/**
+ * ITV providerType → 时长 spec 映射（兜底层）。
+ *
+ * 注意：spec 实际上跟"模型"挂钩而非"provider runtime"。例如 Koma 官方的"即梦"渠道
+ * 复用 grok2api-imagine-itv runtime 但用 seedance-2.0 模型，上游路由完全不同，
+ * 时长能力也不同。所以 lookup 优先走 modelId 命中，再回落到 providerType。
+ */
+const ITV_DURATION_SPECS_BY_PROVIDER: Record<string, VideoDurationSpec> = {
+  // grok-imagine-video：上游仅接受 6/12/16/20；10 是 UI 兜底默认
+  'grok2api-imagine-itv': { kind: 'enum', values: [6, 10, 12, 16, 20], default: 10 },
+  // Koma 官方-即梦（穗禾）：上游约束 4-15s 连续（参考 new-api/relay/channel/task/suihe/constants.go）
+  // 注意 modelId 前缀映射会进一步细化（seedance-2.0-fast 仅到 12s）
+  'koma-suihe-itv': { kind: 'range', min: 4, max: 15, step: 1, default: 5 },
+  // 旧的独立 seedance（直连 toapis.com）保留映射，避免回归
+  'seedance': { kind: 'range', min: 4, max: 15, step: 1, default: 5 },
+};
+
+/**
+ * modelId 前缀 → 时长 spec。匹配优先级高于 providerType（按数组顺序首匹配胜出，
+ * 所以更具体的前缀必须放在前面）。
+ *
+ * Seedance 上游约束（SeedanceProvider.ts:172 normalizeDuration）：
+ *   - seedance-2.0-fast: 4-12s
+ *   - seedance-2.0:      4-15s
+ */
+const ITV_DURATION_SPECS_BY_MODEL_PREFIX: Array<{ prefix: string; spec: VideoDurationSpec }> = [
+  { prefix: 'seedance-2.0-fast', spec: { kind: 'range', min: 4, max: 12, step: 1, default: 5 } },
+  { prefix: 'seedance', spec: { kind: 'range', min: 4, max: 15, step: 1, default: 5 } },
+];
+
+export function getDurationSpecForProviderType(providerType: string | undefined): VideoDurationSpec {
+  if (!providerType) return DEFAULT_VIDEO_DURATION_SPEC;
+  return ITV_DURATION_SPECS_BY_PROVIDER[providerType] ?? DEFAULT_VIDEO_DURATION_SPEC;
+}
+
+export function getDurationSpecForModel(modelId: string | undefined): VideoDurationSpec | undefined {
+  if (!modelId) return undefined;
+  const matched = ITV_DURATION_SPECS_BY_MODEL_PREFIX.find((entry) => modelId.startsWith(entry.prefix));
+  return matched?.spec;
+}
+
+/**
+ * 通过 itv selection key（"channelId::modelId"）+ 当前 ITV channel 列表反查 spec。
+ * 优先级：modelId 前缀 > providerType > DEFAULT。
+ * 调用方负责异步拿到 channels；这里是同步纯函数便于 React 渲染。
+ */
+export function getDurationSpecForITVSelection(
+  selectionKey: string | undefined | null,
+  channels: ReadonlyArray<{ id: string; providerType: string }>,
+): VideoDurationSpec {
+  if (!selectionKey) return DEFAULT_VIDEO_DURATION_SPEC;
+  const sepIndex = selectionKey.indexOf('::');
+  const channelId = sepIndex > 0 ? selectionKey.slice(0, sepIndex) : selectionKey;
+  const modelId = sepIndex > 0 ? selectionKey.slice(sepIndex + 2) : undefined;
+
+  const byModel = getDurationSpecForModel(modelId);
+  if (byModel) return byModel;
+
+  const channel = channels.find((c) => c.id === channelId);
+  return getDurationSpecForProviderType(channel?.providerType);
+}
+
+function coerceFiniteNumber(value: unknown): number | undefined {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return undefined;
+    const direct = Number(trimmed);
+    if (Number.isFinite(direct)) return direct;
+    const matched = trimmed.match(/[-+]?\d+(?:\.\d+)?/)?.[0];
+    if (matched) {
+      const n = Number(matched);
+      if (Number.isFinite(n)) return n;
+    }
+  }
+  return undefined;
+}

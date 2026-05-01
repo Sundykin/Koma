@@ -43,6 +43,11 @@ export interface UseChatReturn {
   stop: () => void;
   updateConfig: (config: Partial<SessionConfig>) => Promise<void>;
   loadSession: (sessionId: string) => Promise<void>;
+  appendAssistantMessage: (content: string | ContentPart[]) => ChatMessage;
+  appendUserMessage: (content: string | ContentPart[]) => ChatMessage;
+  updateMessage: (id: string, updater: (msg: ChatMessage) => ChatMessage) => void;
+  removeMessage: (id: string) => void;
+  restoreMessages: (messages: ChatMessage[]) => void;
 }
 
 export function useChat(options: UseChatOptions = {}): UseChatReturn {
@@ -315,6 +320,44 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
     }
   }, []);
 
+  const appendAssistantMessage = useCallback((content: string | ContentPart[]): ChatMessage => {
+    const message: ChatMessage = {
+      id: generateId(),
+      role: 'assistant',
+      content,
+      timestamp: Date.now(),
+    };
+    setMessages(prev => [...prev, message]);
+    return message;
+  }, []);
+
+  const appendUserMessage = useCallback((content: string | ContentPart[]): ChatMessage => {
+    const message: ChatMessage = {
+      id: generateId(),
+      role: 'user',
+      content,
+      timestamp: Date.now(),
+    };
+    setMessages(prev => [...prev, message]);
+    return message;
+  }, []);
+
+  const updateMessage = useCallback((id: string, updater: (msg: ChatMessage) => ChatMessage) => {
+    setMessages(prev => prev.map(msg => (msg.id === id ? updater(msg) : msg)));
+  }, []);
+
+  const removeMessage = useCallback((id: string) => {
+    setMessages(prev => prev.filter(msg => msg.id !== id));
+  }, []);
+
+  /** 从历史持久化恢复消息列表（不影响 Electron 主进程的活会话） */
+  const restoreMessages = useCallback((restored: ChatMessage[]) => {
+    setMessages(restored);
+    setError(null);
+    setStreamingContent('');
+    setStreamingReasoning('');
+  }, []);
+
   return {
     messages,
     isLoading,
@@ -331,6 +374,11 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
     stop,
     updateConfig,
     loadSession,
+    appendAssistantMessage,
+    appendUserMessage,
+    updateMessage,
+    removeMessage,
+    restoreMessages,
   };
 }
 

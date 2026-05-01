@@ -20,6 +20,11 @@ export interface ChatRendererProps {
   onCopy?: (content: string) => void;
   renderAvatar?: (role: string) => React.ReactNode;
   renderToolCall?: (toolCall: ToolCall) => React.ReactNode;
+  onRemoveContentPart?: (messageId: string, partIndex: number) => void;
+  onMediaReedit?: (messageId: string) => void;
+  onMediaRegenerate?: (messageId: string) => void;
+  onMediaDelete?: (messageId: string) => void;
+  onMediaUseAsReference?: (messageId: string, images: import('../../components/chat/chatMediaGeneration').ChatImageRef[]) => void;
   emptyText?: string;
 }
 
@@ -85,6 +90,11 @@ export const ChatRenderer: React.FC<ChatRendererProps> = ({
   onCopy,
   renderAvatar,
   renderToolCall,
+  onRemoveContentPart,
+  onMediaReedit,
+  onMediaRegenerate,
+  onMediaDelete,
+  onMediaUseAsReference,
   emptyText,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -120,6 +130,11 @@ export const ChatRenderer: React.FC<ChatRendererProps> = ({
           renderAvatar={renderAvatar}
           renderToolCall={renderToolCall}
           renderContent={(content) => renderMarkdownContent(content, msg.role === 'user')}
+          onRemoveContentPart={onRemoveContentPart ? (partIndex) => onRemoveContentPart(msg.id, partIndex) : undefined}
+          onMediaReedit={onMediaReedit ? () => onMediaReedit(msg.id) : undefined}
+          onMediaRegenerate={onMediaRegenerate ? () => onMediaRegenerate(msg.id) : undefined}
+          onMediaDelete={onMediaDelete ? () => onMediaDelete(msg.id) : undefined}
+          onMediaUseAsReference={onMediaUseAsReference ? (imgs) => onMediaUseAsReference(msg.id, imgs) : undefined}
         />
       ))}
 

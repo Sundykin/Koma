@@ -6,6 +6,9 @@ export const KOMAAPI_ACTIVATION_CHANNEL_IDS = {
   llm: 'komaapi-default-llm',
   tti: 'komaapi-default-tti',
   itv: 'komaapi-default-itv',
+  // 即梦视频（穗禾上游 seedance）：与 grok 视频共用 OpenAI /v1/videos 协议，
+  // 通过 model 字段在 new-api 端分流到不同上游渠道。
+  itvJimeng: 'komaapi-default-itv-jimeng',
 } as const;
 
 type ActivationProviderConfig = Record<string, unknown> | null | undefined;
