@@ -86,6 +86,26 @@ class FsController extends BaseController {
     return { success: true, size: bytes.byteLength, path: destPath, mimeType };
   }
 
+  /**
+   * 某些 CDN（典型如火山引擎 TOS 上 Doubao/Seedance 视频）会在 Content-Disposition 等
+   * 响应头里夹带原始 UTF-8 中文字节，未走 RFC 5987 编码。Electron net 的 Headers 严格
+   * 走 ByteString，会抛 `Cannot convert argument to a ByteString` —— 这种 host 整批
+   * 都跑不通 fetch，直接走 Node http 模块更稳。
+   */
+  private static readonly FETCH_INCOMPATIBLE_HOSTS = [
+    'tos-cn-beijing.volces.com',
+    'ark-acg-cn-beijing.tos-cn-beijing.volces.com',
+  ];
+
+  private static shouldSkipFetchForHost(url: string): boolean {
+    try {
+      const host = new URL(url).host.toLowerCase();
+      return FsController.FETCH_INCOMPATIBLE_HOSTS.some(h => host.endsWith(h));
+    } catch {
+      return false;
+    }
+  }
+
   private static async downloadWithFetch(url: string, requestedPath: string, headers?: Record<string, string>): Promise<{ success: true; size: number; path: string; mimeType?: string }> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), DOWNLOAD_TIMEOUT_MS);
@@ -146,11 +166,15 @@ class FsController extends BaseController {
     const authHeaders = FsController.buildAuthHeaders({ headers: args.headers, channelId: args.channelId });
 
     await validateUrl(currentUrl);
-    try {
-      console.info('[FsController:downloadFile] fetch url:', currentUrl, 'timeout:', DOWNLOAD_TIMEOUT_MS, 'hasAuth:', Boolean(authHeaders.Authorization));
-      return await FsController.downloadWithFetch(currentUrl, args.destPath, authHeaders);
-    } catch (err: any) {
-      console.warn('[FsController:downloadFile] fetch 下载失败，回退 http.get:', err?.message || err);
+    if (FsController.shouldSkipFetchForHost(currentUrl)) {
+      console.info('[FsController:downloadFile] host 在 fetch 不兼容名单，直接走 http.get:', currentUrl);
+    } else {
+      try {
+        console.info('[FsController:downloadFile] fetch url:', currentUrl, 'timeout:', DOWNLOAD_TIMEOUT_MS, 'hasAuth:', Boolean(authHeaders.Authorization));
+        return await FsController.downloadWithFetch(currentUrl, args.destPath, authHeaders);
+      } catch (err: any) {
+        console.warn('[FsController:downloadFile] fetch 下载失败，回退 http.get:', err?.message || err);
+      }
     }
 
     for (let redirectCount = 0; redirectCount <= FsController.MAX_REDIRECTS; redirectCount++) {

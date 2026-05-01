@@ -2,6 +2,10 @@ import { getProjectITVProvider, getProjectTTIProvider } from '../../providers';
 import type { ProviderAssetInput } from '../../types';
 import type { AttachmentFile } from './ChatComposer';
 import { uploadBytesToImageHostingWithRetry } from '../../services/imageHostingService';
+import { ensureRemoteUrlForImageSource } from '../../services/mediaRemoteUrlService';
+import { createLogger } from '../../store/logger';
+
+const logger = createLogger('ChatMediaGeneration');
 
 export type ChatMediaMode =
   | 'chat'
@@ -28,7 +32,18 @@ export function videoSubModeToCapability(sub: VideoSubMode): Exclude<ChatMediaMo
 export interface ChatImageRef {
   id: string;
   label: string;
+  /**
+   * 用于前端展示的源地址。优先级：
+   *  - 直接上传 → 图床返回的 https URL
+   *  - 历史生成 → koma-local:// 本地协议（带 Authorization）
+   * 引用给 provider 之前会先看 remoteUrl，没有才回退用 source 走图床上传。
+   */
   source: string;
+  /**
+   * 远程可访问 URL（生成路径在落盘前从 provider 拿到的原始 URL）。
+   * 作为参考图传给上游时优先使用，避免每次都重新上传图床。
+   */
+  remoteUrl?: string;
   mimeType?: string;
   origin: 'upload' | 'generated';
   /** 是否还未跟随消息送出（true=本次输入暂存，false=已经在对话历史里） */
@@ -39,6 +54,29 @@ export interface ChatGeneratedMediaResult {
   images: ChatImageRef[];
   video?: string;
 }
+
+/**
+ * generateChatMedia 调用结果：
+ * - immediate：provider 直接返回结果，无需轮询
+ * - async：拿到 taskId，调用方负责后续轮询（chatTaskRecovery）
+ *
+ * 不论同步异步，都带 taskKind / taskCapability / modelSelectionKey 给恢复用。
+ */
+export type ChatMediaStartResult =
+  | {
+      mode: 'immediate';
+      images: ChatImageRef[];
+      video?: string;
+      taskKind: 'image' | 'video';
+      taskCapability: string;
+    }
+  | {
+      mode: 'async';
+      taskId: string;
+      taskKind: 'image' | 'video';
+      taskCapability: string;
+      modelSelectionKey?: string;
+    };
 
 /** 用户在输入框上选择的生图/生视频参数 */
 export interface ChatMediaParams {
@@ -71,6 +109,19 @@ export interface MediaResultMeta {
   video?: string;
   /** 触发时使用的源参考图（用于"再次生成"复刻） */
   sourceImageRefs?: ChatImageRef[];
+
+  /**
+   * 远程异步任务 ID（provider.start 返回 mode='async' 时存）。
+   * 重启后凭此调 taskHandlerRegistry.getSnapshot 恢复轮询。
+   */
+  taskId?: string;
+  /** 任务媒体类型，决定调哪个 TaskHandler（'image' → tti，'video' → itv） */
+  taskKind?: 'image' | 'video' | 'audio';
+  /** 任务能力，传给 provider.getTaskSnapshot 时需要 */
+  taskCapability?: string;
+
+  /** ReAct 意图路由产生的"思考"——为什么走当前 mode */
+  thought?: string;
 }
 
 export const ASPECT_RATIO_OPTIONS = ['1:1', '21:9', '16:9', '3:2', '4:3', '3:4', '2:3', '9:16'] as const;
@@ -163,7 +214,11 @@ export async function uploadAttachmentImagesToHosting(
   return urls;
 }
 
-function getImageOutputSources(output: any): string[] {
+/**
+ * 从 TTI Provider 的 ImageResult 中拆出全部图源（含 metadata.batchImages 多张）。
+ * 与分镜路径 (MediaGenerationService.getImmediateImageOutputs) 对齐，避免多图被截断成单图。
+ */
+export function getImageOutputSources(output: any): string[] {
   const batchImages = output?.metadata?.batchImages;
   if (Array.isArray(batchImages) && batchImages.length > 0) {
     return batchImages.map((item) => item.url || item.path).filter(Boolean);
@@ -180,6 +235,8 @@ export function createChatImageRefs(params: {
   origin: ChatImageRef['origin'];
   existingCount: number;
   mimeTypes?: Array<string | undefined>;
+  /** 与 sources 一一对应的远程地址；缺省表示该位置没有远程 URL（落盘后会丢） */
+  remoteUrls?: Array<string | undefined>;
 }): ChatImageRef[] {
   return params.sources.map((source, index) => {
     const number = params.existingCount + index + 1;
@@ -187,32 +244,94 @@ export function createChatImageRefs(params: {
       id: `chat-image-${Date.now()}-${number}-${Math.random().toString(36).slice(2, 8)}`,
       label: `图片${number}`,
       source,
+      remoteUrl: params.remoteUrls?.[index],
       mimeType: params.mimeTypes?.[index],
       origin: params.origin,
     };
   });
 }
 
-export async function generateChatMedia(params: {
+/**
+ * 启动一次媒体生成 — 不阻塞 polling。
+ * - immediate：直接返回 images/video
+ * - async：返回 taskId，调用方通过 chatTaskRecovery.pollChatMediaTask 轮询
+ *
+ * 旧的 generateChatMedia 函数（带 120 次硬编码 polling）已被替换；如有外部
+ * 兼容需求，可在调用层 await polling 自行包装。
+ */
+export async function startChatMedia(params: {
   text: string;
   mode: Exclude<ChatMediaMode, 'chat'>;
   attachments: AttachmentFile[];
   imageRefs: ChatImageRef[];
+  /**
+   * 调用方已算好的"本次精确携带的图"（按顺序：pending + @ 引用 合并去重）。
+   * 传了优先用；不传才回落 resolveChatImageReferences（仅看 @）。
+   * 这是为了让 pending 但未 @ 的上传图也能进 provider request（reference-to-video 必需）。
+   */
+  refsToSend?: ChatImageRef[];
   ttiSelection?: string;
   itvSelection?: string;
   existingImageCount: number;
   mediaParams?: ChatMediaParams;
-}): Promise<ChatGeneratedMediaResult> {
+}): Promise<ChatMediaStartResult> {
   const attachmentDataUrls = await imageAttachmentsToDataUrls(params.attachments);
   const prompt = stripChatImageMentions(params.text);
-  const referenceSources = resolveChatImageReferences({
-    text: params.text,
-    attachments: params.attachments,
-    imageRefs: params.imageRefs,
-    attachmentDataUrls,
+
+  // 取参考图：优先使用 ref.remoteUrl（生成时拿到的远程 URL），没有再用 ref.source。
+  // ref.source 可能是 koma-local://（历史生成，落盘了）或 https://（直接上传）或 data:（即时上传）。
+  type RefCandidate = { remoteUrl?: string; source: string };
+  const rawCandidates: RefCandidate[] = (params.refsToSend && params.refsToSend.length > 0)
+    ? params.refsToSend.map(r => ({ remoteUrl: r.remoteUrl, source: r.source }))
+    : resolveChatImageReferences({
+        text: params.text,
+        attachments: params.attachments,
+        imageRefs: params.imageRefs,
+        attachmentDataUrls,
+      }).map(s => {
+        // 通过 source 反查 ChatImageRef 拿 remoteUrl
+        const ref = params.imageRefs.find(r => r.source === s);
+        return { remoteUrl: ref?.remoteUrl, source: s };
+      });
+
+  // 归一化：上游 provider 拿不到 koma-local:// 这种本地协议。
+  // 优先级：ref.remoteUrl（最快）> source 已经是 https（放行）> 其他（本地/data-url）走图床上传
+  const referenceSources: string[] = [];
+  for (const cand of rawCandidates) {
+    if (cand.remoteUrl && /^https?:\/\//i.test(cand.remoteUrl)) {
+      referenceSources.push(cand.remoteUrl);
+      continue;
+    }
+    if (/^https?:\/\//i.test(cand.source)) {
+      referenceSources.push(cand.source);
+      continue;
+    }
+    const normalized = await ensureRemoteUrlForImageSource({
+      projectId: '__chat__',
+      source: cand.source,
+      policy: 'required',
+    });
+    if (typeof normalized === 'string' && /^https?:\/\//i.test(normalized)) {
+      referenceSources.push(normalized);
+    } else {
+      throw new Error('上传参考图到图床失败：上游 API 需要可访问的远程 URL，请检查图床插件配置');
+    }
+  }
+  const rawReferenceSources = rawCandidates.map(c => c.source);
+
+  // 诊断：startChatMedia 内部看到的最终输入
+  logger.info('startChatMedia 入口', {
+    mode: params.mode,
+    promptPreview: prompt.slice(0, 80),
+    refsToSendCount: params.refsToSend?.length ?? 0,
+    rawReferenceSourcesPreview: rawReferenceSources.map(s => s.slice(0, 80)),
+    referenceSourcesPreview: referenceSources.map(s => s.slice(0, 80)),
+    ttiSelection: params.ttiSelection,
+    itvSelection: params.itvSelection,
+    mediaParams: params.mediaParams,
   });
 
-  const generatedImages: ChatImageRef[] = [];
+  // ─── 图片生成 ─────────────────────────────────────
   if (params.mode === 'text-to-image' || params.mode === 'image-to-image') {
     if (params.mode === 'image-to-image' && referenceSources.length === 0) {
       throw new Error('图生图需要上传图片或使用 @图片 引用历史图片');
@@ -229,102 +348,112 @@ export async function generateChatMedia(params: {
       count: requestedCount,
       options: Object.keys(ttiOptions).length > 0 ? ttiOptions as any : undefined,
     });
-    if (started.mode !== 'immediate') {
-      throw new Error('当前 TTI 渠道返回异步任务，对话内暂不支持等待该任务完成');
+    if (started.mode === 'immediate') {
+      const sources = getImageOutputSources(started.output);
+      // provider 直接返回的 sources 通常是远程 URL —— 在这里就把它当 remoteUrl 存上，
+      // 之后 ChatPage 落盘时会把 source 改成 koma-local://，但 remoteUrl 保留供下次引用直接用。
+      const images = createChatImageRefs({
+        sources,
+        origin: 'generated',
+        existingCount: params.existingImageCount,
+        remoteUrls: sources.map(s => (/^https?:\/\//i.test(s) ? s : undefined)),
+      });
+      return {
+        mode: 'immediate',
+        images,
+        taskKind: 'image',
+        taskCapability: 'image.text-to-image',
+      };
     }
-    const sources = getImageOutputSources(started.output);
-    generatedImages.push(...createChatImageRefs({
-      sources,
-      origin: 'generated',
-      existingCount: params.existingImageCount,
-    }));
-  }
-
-  let video: string | undefined;
-  const isVideoMode = params.mode === 'text-to-video'
-    || params.mode === 'image-to-video'
-    || params.mode === 'start-end-to-video'
-    || params.mode === 'reference-to-video';
-  if (isVideoMode) {
-    // 入参校验
-    if (params.mode === 'image-to-video' && referenceSources.length === 0) {
-      throw new Error('图生视频需要至少 1 张参考图');
-    }
-    if (params.mode === 'start-end-to-video' && referenceSources.length < 2) {
-      throw new Error('首尾帧视频需要按顺序提供 2 张参考图（首帧、尾帧）');
-    }
-    if (params.mode === 'reference-to-video' && referenceSources.length === 0) {
-      throw new Error('多参考视频至少需要 1 张参考图');
-    }
-
-    const capabilityFor = `video.${params.mode}` as
-      | 'video.text-to-video' | 'video.image-to-video'
-      | 'video.start-end-to-video' | 'video.reference-to-video';
-    const provider = await getProjectITVProvider(params.itvSelection, capabilityFor);
-    if (!provider) throw new Error('未配置 ITV 视频生成服务（或当前模型不支持该子模式）');
-
-    const itvOptions: Record<string, unknown> = {
-      duration: params.mediaParams?.duration ?? 5,
+    return {
+      mode: 'async',
+      taskId: started.taskId,
+      taskKind: 'image',
+      taskCapability: 'image.text-to-image',
+      modelSelectionKey: params.ttiSelection,
     };
-    if (params.mediaParams?.aspectRatio) itvOptions.aspectRatio = params.mediaParams.aspectRatio;
-
-    // 按 capability 构造不同的 ITVRequest shape
-    let request: any;
-    if (params.mode === 'text-to-video') {
-      request = {
-        capability: 'video.text-to-video',
-        prompt,
-        options: itvOptions,
-      };
-    } else if (params.mode === 'image-to-video') {
-      const [primary, ...rest] = referenceSources;
-      request = {
-        capability: 'video.image-to-video',
-        prompt,
-        primaryImage: sourceToProviderInput(primary),
-        additionalReferences: rest.map(sourceToProviderInput),
-        options: itvOptions,
-      };
-    } else if (params.mode === 'start-end-to-video') {
-      // 仅取前 2 张：首帧 + 尾帧（按 @ 顺序由调用方保证）
-      const [start, end] = referenceSources;
-      request = {
-        capability: 'video.start-end-to-video',
-        prompt,
-        startFrame: sourceToProviderInput(start),
-        endFrame: sourceToProviderInput(end),
-        options: itvOptions,
-      };
-    } else {
-      // reference-to-video
-      request = {
-        capability: 'video.reference-to-video',
-        prompt,
-        referenceImages: referenceSources.map(sourceToProviderInput),
-        options: itvOptions,
-      };
-    }
-
-    const started = await provider.start(request);
-    if (started.mode !== 'immediate') {
-      if (!provider.getTaskSnapshot) {
-        throw new Error('当前 ITV 渠道返回异步任务，但不支持任务查询');
-      }
-      let snapshot;
-      for (let i = 0; i < 120; i += 1) {
-        snapshot = await provider.getTaskSnapshot(started.taskId, { capability: capabilityFor });
-        if (snapshot.state === 'succeeded') break;
-        if (snapshot.state === 'failed') throw new Error(snapshot.error || '视频生成失败');
-        await new Promise(resolve => setTimeout(resolve, 2000));
-      }
-      if (snapshot?.state !== 'succeeded' || !snapshot.output?.source) {
-        throw new Error('视频生成超时，请稍后在任务记录中查看');
-      }
-      video = snapshot.output.source;
-    } else {
-      video = started.output.source;
-    }
   }
 
-  return { images: generatedImages, video };
+  // ─── 视频生成 ─────────────────────────────────────
+  // 入参校验
+  if (params.mode === 'image-to-video' && referenceSources.length === 0) {
+    throw new Error('图生视频需要至少 1 张参考图');
+  }
+  if (params.mode === 'start-end-to-video' && referenceSources.length < 2) {
+    throw new Error('首尾帧视频需要按顺序提供 2 张参考图（首帧、尾帧）');
+  }
+  if (params.mode === 'reference-to-video' && referenceSources.length === 0) {
+    throw new Error('多参考视频至少需要 1 张参考图');
+  }
+
+  const capabilityFor = `video.${params.mode}` as
+    | 'video.text-to-video' | 'video.image-to-video'
+    | 'video.start-end-to-video' | 'video.reference-to-video';
+  const provider = await getProjectITVProvider(params.itvSelection, capabilityFor);
+  if (!provider) throw new Error('未配置 ITV 视频生成服务（或当前模型不支持该子模式）');
+
+  const itvOptions: Record<string, unknown> = {
+    duration: params.mediaParams?.duration ?? 5,
+  };
+  if (params.mediaParams?.aspectRatio) itvOptions.aspectRatio = params.mediaParams.aspectRatio;
+
+  let request: any;
+  if (params.mode === 'text-to-video') {
+    request = { capability: 'video.text-to-video', prompt, options: itvOptions };
+  } else if (params.mode === 'image-to-video') {
+    const [primary, ...rest] = referenceSources;
+    request = {
+      capability: 'video.image-to-video', prompt,
+      primaryImage: sourceToProviderInput(primary),
+      additionalReferences: rest.map(sourceToProviderInput),
+      options: itvOptions,
+    };
+  } else if (params.mode === 'start-end-to-video') {
+    const [start, end] = referenceSources;
+    request = {
+      capability: 'video.start-end-to-video', prompt,
+      startFrame: sourceToProviderInput(start),
+      endFrame: sourceToProviderInput(end),
+      options: itvOptions,
+    };
+  } else {
+    request = {
+      capability: 'video.reference-to-video', prompt,
+      referenceImages: referenceSources.map(sourceToProviderInput),
+      options: itvOptions,
+    };
+  }
+
+  // 诊断：把交给 ITV provider 的最终 request 打出来（裁剪长字段），定位"首帧没传 / 比例没生效"
+  logger.info('ITV provider.start 调用前', {
+    capability: capabilityFor,
+    itvSelection: params.itvSelection,
+    options: itvOptions,
+    primaryImagePreview: (request.primaryImage?.value ?? '').slice(0, 80),
+    additionalReferencesCount: request.additionalReferences?.length ?? 0,
+    referenceImagesCount: request.referenceImages?.length ?? 0,
+    startFramePreview: (request.startFrame?.value ?? '').slice(0, 80),
+    endFramePreview: (request.endFrame?.value ?? '').slice(0, 80),
+  });
+  const started = await provider.start(request);
+  if (started.mode === 'immediate') {
+    return {
+      mode: 'immediate',
+      images: [],
+      video: started.output.source,
+      taskKind: 'video',
+      taskCapability: capabilityFor,
+    };
+  }
+
+  if (!provider.getTaskSnapshot) {
+    throw new Error('当前 ITV 渠道返回异步任务，但不支持任务查询');
+  }
+  return {
+    mode: 'async',
+    taskId: started.taskId,
+    taskKind: 'video',
+    taskCapability: capabilityFor,
+    modelSelectionKey: params.itvSelection,
+  };
 }

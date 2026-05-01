@@ -249,12 +249,22 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
     if (disabled || isLoading) return;
     const hasImageInput = pendingImageRefs.length > 0 || /@图片\d+/.test(trimmed);
     const chatMediaMode = toChatMediaMode(mode, videoSubMode, hasImageInput);
-    onSend(trimmed, chatMediaMode, {
+    const payload: ChatMediaParams = {
       aspectRatio,
       resolution,
       duration,
       count: mode === 'image' ? count : undefined,
+    };
+    // 诊断：把组件实际派发的参数打到 console，便于排查"参数被吃掉"问题
+    console.info('[ChatComposer] send', {
+      composerMode: mode,
+      videoSubMode,
+      chatMediaMode,
+      pendingImageCount: pendingImageRefs.length,
+      pendingImageLabels: pendingImageRefs.map(r => r.label),
+      payload,
     });
+    onSend(trimmed, chatMediaMode, payload);
     setText('');
     textareaRef.current?.focus();
   }, [text, pendingImageRefs, disabled, isLoading, onSend, mode, videoSubMode, aspectRatio, resolution, duration, count]);
@@ -409,20 +419,17 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
   // 当前 ITV 模型支持的子模式（按 capability 过滤）
   const availableVideoSubModes = useMemo<VideoSubMode[]>(() => {
     const caps = new Set(itvCapabilities ?? []);
-    const out: VideoSubMode[] = [];
-    (['text', 'image', 'first-last', 'multi-ref'] as VideoSubMode[]).forEach(sub => {
-      if (caps.size === 0 || caps.has(VIDEO_SUB_META[sub].capability)) out.push(sub);
-    });
-    return out.length > 0 ? out : ['multi-ref'];
+    // 所有 4 个子模式都展示，让用户能自由选择。
+    // 模型如果实际不支持某个 capability，由 provider 在 start() 抛错，UI 不预先过滤。
+    // （之前过滤导致渠道 model.capabilities 声明不全时 multi-ref 被隐藏，看起来"多参考无效"）
+    const allSubModes: VideoSubMode[] = ['text', 'image', 'first-last', 'multi-ref'];
+    if (caps.size === 0) return allSubModes;
+    // 渠道有声明：仅在声明的能力上加视觉标注（不过滤），保留所有选项可见
+    return allSubModes;
   }, [itvCapabilities]);
 
-  // 切换 ITV 模型后，若当前 videoSub 不在新模型支持范围内，自动切到第一个可用项
-  useEffect(() => {
-    if (mode !== 'video') return;
-    if (!availableVideoSubModes.includes(videoSubMode)) {
-      setVideoSubMode(availableVideoSubModes[0]);
-    }
-  }, [availableVideoSubModes, videoSubMode, mode]);
+  // 不再自动切换 sub-mode（之前会把用户选的 multi-ref 在某些模型下偷偷切到 image，
+  // 导致以为"选了多参考但没生效"）
 
   return (
     <div
