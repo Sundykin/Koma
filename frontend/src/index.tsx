@@ -6,7 +6,6 @@ import App from './App';
 import './index.css';
 import './i18n'; // i18n 初始化
 import { antdTheme } from './theme';
-import { cleanupDuplicateChannels } from './store/globalStore';
 import { initializeProviderPlugins } from './services/plugin/PluginInitializer';
 import { createLogger } from './store/logger';
 
@@ -14,16 +13,10 @@ const logger = createLogger('Startup');
 
 // 应用启动时初始化
 async function bootstrap() {
-  // 1. 清理重复的渠道配置
-  try {
-    const count = await cleanupDuplicateChannels();
-    if (count > 0) {
-    }
-  } catch (err) {
-    logger.warn('清理渠道配置失败', err);
-  }
-
-  // 2. 初始化所有已启用的插件（注册 Provider 和渠道配置）
+  // 初始化所有已启用的插件（注册 Provider 和渠道配置）
+  // 注：原本这里有 cleanupDuplicateChannels()，按 (providerType, pluginId) 去重；
+  //   v2 SQLite 之后渠道以 id 作为身份、同 providerType 多渠道（多套 OpenAI 兼容端点）
+  //   是合法用法，那个去重会把用户新增的同 providerType 渠道误删。已下线。
   try {
     const result = await initializeProviderPlugins();
     if (result.total > 0) {

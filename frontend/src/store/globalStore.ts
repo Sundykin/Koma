@@ -61,7 +61,6 @@ export {
   getDefaultChannelConfig,
   setDefaultMediaModelSelection,
   getDefaultMediaModelSelection,
-  cleanupDuplicateChannels,
 } from './settings';
 
 // 重新导出类型（用于外部引用）

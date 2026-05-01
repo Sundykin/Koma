@@ -401,6 +401,13 @@ export class ShotAnalysisService {
       responseTail: result.length > 200 ? result.slice(-200) : '',
     });
 
+    // 主进程已会把 0 字节流转成 EMPTY_RESPONSE 错误抛上来；这里再补一道兜底，
+    // 防止某些自定义 provider 路径绕过了主进程守卫
+    if (result.trim().length === 0) {
+      logger.error('LLM 返回内容为空（兜底）', { traceId: chunkTraceId, parentTraceId: traceId });
+      throw new Error('LLM 返回内容为空，请检查所选 LLM 渠道的模型名 / 接口路径 / 配额是否可用');
+    }
+
     try {
       const parseResult = parseLLMJSONWithMeta<{ shots: any[] }>(result);
       const parsed = parseResult.data;

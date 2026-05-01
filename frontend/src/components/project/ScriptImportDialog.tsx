@@ -196,6 +196,9 @@ export const ScriptImportDialog: React.FC<ScriptImportDialogProps> = ({
           placeholder={`粘贴或从文件导入完整剧本内容...\n\n提示：\n- 支持 .txt / .md 文件，点击右上角"从文件导入"\n- 使用 ## 标记场景\n- 使用 **角色名**：标记对话\n- 文本请用"第n章/集"分割，系统将自动识别剧集`}
           minHeight="400px"
           maxHeight="500px"
+          showLineNumbers={true}
+          darkTheme={true}
+          enableCameraCommands={false}
         />
       </Modal>
 

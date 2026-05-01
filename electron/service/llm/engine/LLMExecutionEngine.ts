@@ -159,6 +159,17 @@ export class LLMExecutionEngine {
       try {
         const response = await this.invokeOnce(effectiveRequest, controller.signal, logCtx);
         const durationMs = Date.now() - startTime;
+        // 上游 200 但 content 为空 — 与流式分支同口径，转成 EMPTY_RESPONSE 让上层拿到清晰错误
+        if (typeof response.content === 'string' && response.content.trim().length === 0) {
+          console.error('[LLMQuery] 请求返回为空', { ...logCtx, durationMs, contentLength: 0, retryCount });
+          return {
+            content: '',
+            error: {
+              code: 'EMPTY_RESPONSE',
+              message: 'LLM 返回内容为空，请检查所选 LLM 渠道的模型名 / 接口路径 / 配额是否可用',
+            },
+          };
+        }
         console.info('[LLMQuery] 请求完成', { ...logCtx, durationMs, contentLength: response.content.length, retryCount, ...(response.usage ? { inputTokens: response.usage.promptTokens, outputTokens: response.usage.completionTokens } : {}) });
         logQueryCompletion('query', effectiveRequest === request ? 'direct' : 'compact-first', {
           ...logCtx,
@@ -444,6 +455,16 @@ export class LLMExecutionEngine {
         callbacks.onError({ code: 'ABORTED', message: 'Stream aborted by client' });
         return;
       }
+      // 流结束但 0 字节 — 上游 200 但实际无内容（模型名错误 / response_format 不被支持后空返回 / 上游路由失败 / 内容过滤）
+      // 直接当作失败上抛，避免下游把空字符串当成功 resolve、再死在 JSON 解析"返回为空"分支
+      if (fullContent.trim().length === 0) {
+        console.error('[LLMQuery] 流式请求返回为空', { ...logCtx, durationMs, contentLength: 0 });
+        callbacks.onError({
+          code: 'EMPTY_RESPONSE',
+          message: 'LLM 返回内容为空，请检查所选 LLM 渠道的模型名 / 接口路径 / 配额是否可用',
+        });
+        return;
+      }
       console.info('[LLMQuery] 流式请求完成', { ...logCtx, durationMs, contentLength: fullContent.length });
       logQueryCompletion('stream', 'direct', { ...logCtx, durationMs, contentLength: fullContent.length });
       callbacks.onDone({ content: fullContent });
@@ -533,6 +554,14 @@ export class LLMExecutionEngine {
     }
 
     const durationMs = Date.now() - startTime;
+    if (fullContent.trim().length === 0) {
+      console.error('[LLMQuery] 分段流式请求返回为空', { ...logCtx, durationMs, chunkCount: plan.chunks.length, contentLength: 0 });
+      callbacks.onError({
+        code: 'EMPTY_RESPONSE',
+        message: 'LLM 返回内容为空，请检查所选 LLM 渠道的模型名 / 接口路径 / 配额是否可用',
+      });
+      return;
+    }
     console.info('[LLMQuery] 分段流式处理全部完成', { ...logCtx, durationMs, chunkCount: plan.chunks.length, contentLength: fullContent.length });
     logQueryCompletion('stream', 'chunked', { ...logCtx, durationMs, chunkCount: plan.chunks.length, summaryGenerated: Boolean(summary), contentLength: fullContent.length });
     callbacks.onDone({ content: fullContent });

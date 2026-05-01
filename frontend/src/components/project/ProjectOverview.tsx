@@ -3,10 +3,10 @@
  * 三栏式工作台布局：左侧剧集导航(360px) | 中间剧本编辑区 | 右侧资产面板(340px)
  */
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { Button, Tag, Tooltip, App } from 'antd';
-import { SettingOutlined, LoadingOutlined } from '@ant-design/icons';
+import { Button, Tooltip, App } from 'antd';
+import { LoadingOutlined } from '@ant-design/icons';
 import {
-  Film, Package, ChevronLeft, ChevronRight,
+  Package, ChevronLeft, ChevronRight,
   PanelLeftClose, PanelRightClose, Sparkles,
 } from 'lucide-react';
 import type { Project, Episode } from '../../types';
@@ -24,21 +24,25 @@ interface ProjectOverviewProps {
   project: Project;
   onEnterEpisode: (episode: Episode, options?: EpisodeEditorEntryOptions) => void;
   onProjectUpdate: (updates: Partial<Project>) => void;
-  onOpenProjectSettings?: () => void;
   /**
    * 当中间剧本面板里的 scriptText 发生变化时回调到外层。
    * 当 ProjectOverview 内嵌到 EditorView 'script' 步时，由 ScriptStep 透传给上层
    * 让顶部 StepNavigator 能据此派生 'script' 步的"已完成"状态。
    */
   onScriptChange?: (text: string) => void;
+  /**
+   * 来自顶部步骤条"导入剧本"按钮的递增信号；每次自增触发打开导入对话框。
+   * 信号模式而非函数 ref：避免把 dialog 提到 EditorView 后还要重新搭刷新通道。
+   */
+  openImportSignal?: number;
 }
 
 export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
   project,
   onEnterEpisode,
   onProjectUpdate: _onProjectUpdate,
-  onOpenProjectSettings,
   onScriptChange,
+  openImportSignal,
 }) => {
   const { message } = App.useApp();
   const episodeManagerRef = useRef<EpisodeManagerRef>(null);
@@ -109,34 +113,16 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
     setSelectedEpisode(episodes.length > 0 ? episodes[0] : null);
   }, []);
 
-  const openScriptImport = useCallback(() => {
-    setScriptImportVisible(true);
-  }, []);
+  // 监听上层"导入剧本"按钮触发的信号；初始 0 → 0 不触发，仅自增触发
+  useEffect(() => {
+    if (openImportSignal && openImportSignal > 0) {
+      setScriptImportVisible(true);
+    }
+  }, [openImportSignal]);
 
   return (
     <div className="h-full flex flex-col bg-zinc-950 overflow-hidden">
-      {/* HeaderBar — 极简版：项目标识 + 项目设置（合并了项目名 / 题材 / 风格 / 模型选择） */}
-      <div className="flex-shrink-0 h-12 px-4 flex items-center justify-between border-b border-zinc-800/80 bg-zinc-900">
-        <div className="flex items-center gap-3">
-          <div className="w-7 h-7 bg-gradient-to-br from-emerald-500 to-emerald-700 rounded-lg flex items-center justify-center">
-            <Film className="w-3.5 h-3.5 text-white" />
-          </div>
-          <span className="text-sm font-medium text-zinc-200">{project.title}</span>
-          <Tag className="!m-0 !text-xs !bg-emerald-900/30 !text-emerald-400 !border-emerald-800/50">
-            {project.genre || '未分类'}
-          </Tag>
-        </div>
-        <button
-          onClick={() => onOpenProjectSettings?.()}
-          className="flex items-center gap-1.5 px-2.5 py-1 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded text-xs text-zinc-300 transition-colors"
-          title="项目名 / 题材 / 风格 / 模型选择 都在这里"
-        >
-          <SettingOutlined />
-          项目设置
-        </button>
-      </div>
-
-      {/* Three-Column Body */}
+      {/* Three-Column Body（项目标识与项目设置已合并到顶部 StepNavigator） */}
       <div className="flex-1 flex overflow-hidden">
         {/* Left: EpisodePanel - 360px */}
         <div className={`bg-zinc-900 flex flex-col transition-all duration-300 ${
@@ -183,7 +169,6 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
             project={project}
             episode={selectedEpisode}
             onScriptChange={handleScriptChange}
-            onImportScript={openScriptImport}
             onAnalyzingChange={setIsAnalyzing}
           />
         </div>

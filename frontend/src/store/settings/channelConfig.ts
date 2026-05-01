@@ -230,23 +230,4 @@ export function subscribeChannelChanges(handler: ChannelChangedHandler): () => v
   };
 }
 
-// ========== 清理 ==========
-
-export async function cleanupDuplicateChannels(): Promise<number> {
-  const configs = await getChannelConfigs();
-  if (configs.length === 0) return 0;
-
-  const seen = new Map<string, ChannelConfig>();
-  const toRemove: string[] = [];
-  const sorted = [...configs].sort((a, b) => b.updatedAt - a.updatedAt);
-  for (const config of sorted) {
-    const key = `${config.providerType}:${config.pluginId || 'builtin'}`;
-    if (seen.has(key)) toRemove.push(config.id);
-    else seen.set(key, config);
-  }
-  for (const id of toRemove) {
-    await deleteChannelConfig(id);
-  }
-  return toRemove.length;
-}
 

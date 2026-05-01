@@ -35,7 +35,7 @@ export interface LLMQueryRequest {
 export interface LLMConnectionTestRequest extends LLMRequestConfig {}
 
 export interface LLMServiceError {
-  code: 'EMPTY_MESSAGES' | 'TIMEOUT' | 'ABORTED' | 'API_ERROR' | 'UNKNOWN';
+  code: 'EMPTY_MESSAGES' | 'EMPTY_RESPONSE' | 'TIMEOUT' | 'ABORTED' | 'API_ERROR' | 'UNKNOWN';
   message: string;
 }
 

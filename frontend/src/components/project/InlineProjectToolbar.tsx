@@ -8,7 +8,7 @@
 import React from 'react';
 import { Button, Tooltip } from 'antd';
 import { ThunderboltOutlined, HighlightOutlined, LoadingOutlined, SaveOutlined } from '@ant-design/icons';
-import { Check, Loader2, MessageSquareQuote, Upload } from 'lucide-react';
+import { Check, Loader2, MessageSquareQuote } from 'lucide-react';
 import type { Episode } from '../../types';
 
 interface InlineProjectToolbarProps {
@@ -21,8 +21,6 @@ interface InlineProjectToolbarProps {
   onPolish: () => void;
   onRandomGenerate: () => void;
   onTweetCopy: () => void;
-  /** 项目级导入剧本（替换全部剧集 + AI 自动分集），可选 */
-  onImportScript?: () => void;
 }
 
 export const InlineProjectToolbar: React.FC<InlineProjectToolbarProps> = ({
@@ -35,7 +33,6 @@ export const InlineProjectToolbar: React.FC<InlineProjectToolbarProps> = ({
   onPolish,
   onRandomGenerate,
   onTweetCopy,
-  onImportScript,
 }) => {
   const anyBusy = isGenerating || isPolishing;
 
@@ -82,20 +79,6 @@ export const InlineProjectToolbar: React.FC<InlineProjectToolbarProps> = ({
             推文文案
           </Button>
         </Tooltip>
-        {onImportScript && (
-          <Tooltip title="导入完整剧本并 AI 自动分集（会替换项目中所有剧集）">
-            <Button
-              type="text"
-              size="small"
-              icon={<Upload className="w-4 h-4" />}
-              onClick={onImportScript}
-              disabled={anyBusy}
-              className="text-zinc-400 hover:text-cyan-400"
-            >
-              导入剧本
-            </Button>
-          </Tooltip>
-        )}
       </div>
 
       {/* Right: 保存状态与按钮 */}

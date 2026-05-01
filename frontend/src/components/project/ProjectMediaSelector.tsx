@@ -69,7 +69,7 @@ function renderOptionLabel(option: ReturnType<typeof buildProjectMediaCategorySt
       </Space>
       <Space size={4} wrap>
         {option.capabilities.map((capability) => (
-          <Tag key={capability} bordered={false} color={capability.startsWith('video.') ? 'magenta' : 'default'}>
+          <Tag key={capability} variant="filled" color={capability.startsWith('video.') ? 'magenta' : 'default'}>
             {PROJECT_MEDIA_CAPABILITY_LABELS[capability] || capability}
           </Tag>
         ))}

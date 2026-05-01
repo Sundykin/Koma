@@ -1234,6 +1234,17 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
 4. 原文未把场景描写得很完整时，结合剧情语境、场景用途、时代背景、生活常识做合理保守的可视化补全；不得补出超出剧情常识的夸张设定。
 5. 写法风格统一，优先采用"空间结构 + 地面 / 墙面 / 陈设 + 光线 / 氛围 + 可识别细节"的方式描述。
 
+【室内场景特殊要求 — 为后续场景图透视全貌取景预留素材】
+后续场景参考图会以"强透视 + 全貌取景"方式渲染，让下游视频模型不需要凭空想象未入画的部分。
+因此对所有 description 中能判定为**室内**的场景，必须显式写明以下要素：
+   a. 至少两面相邻墙体的位置与材质（如"左侧水泥墙、正面贴白色瓷砖的承重墙"）
+   b. 地面材质与图案（如"灰色水磨石地面，带浅色拼缝"）
+   c. 天花板状态（吊顶 / 露梁 / 裸顶管线 / 高度感）
+   d. 全部主要开口的相对位置：门 / 窗 / 拱门 / 走廊入口（如"正面墙居中有一扇木门，右侧墙开两扇窄窗"）
+   e. 房间整体布局轮廓（开间形状、深度方向、家具分布的相对位置）
+若原文未明说，按场景用途与时代背景做合理保守补全；不得为了缩短描述而省略墙体 / 地面 / 天花板 / 开口任一项。
+室外场景不强制以上 a–e 项，但仍需写清地面、主要建筑立面、纵深方向上的可见物，便于建立透视纵深。
+
 【输出要求】
 - 只输出 JSON，可包裹在 \`\`\`json 代码块中；禁止输出任何解释、前言、备注、Markdown 标题。
 - JSON 必须严格遵循下方示例的结构（顶层对象包含 \`scenes\` 数组）。
@@ -1254,11 +1265,11 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
     {
       "name": "家中客厅内部",
       "aliases": "家里,客厅",
-      "description": "一间普通住宅的客厅内部，时间偏傍晚，氛围安静而生活化。地面铺着浅色木地板，中央摆放布艺沙发和低矮茶几，墙边设有电视柜或收纳柜，顶部灯光偏暖，空间布局紧凑，带有明显的居家生活痕迹。",
+      "description": "一间长方形的普通住宅客厅内部，时间偏傍晚，氛围安静而生活化。开间略呈横向，深度方向通向居室内侧。左侧为整面浅米色乳胶漆墙，墙上挂一幅小尺寸装饰画；正面墙体为浅灰色乳胶漆，墙面居中摆一台低矮的胡桃木电视柜，右上方开一扇方形落地窗，窗外可见暖色傍晚天光；右侧墙体为同色乳胶漆，靠墙位置设一组米色布艺三人沙发，沙发后通向走廊的拱形门洞位于右后角。地面铺设浅栎木色实木地板，带细密拼缝。顶部为简洁白色平吊顶，中央嵌一盏圆形吸顶暖光灯，灯光向四周扩散在墙面留下柔和过渡。中央区域摆放低矮深木色茶几，茶几与沙发、电视柜共同构成紧凑的居家生活动线。",
       "time": "twilight",
       "weather": "",
       "mood": "暖色调灯光、安静、居家",
-      "keyElements": ["浅色木地板", "布艺沙发", "低矮茶几", "电视柜"]
+      "keyElements": ["浅栎木地板", "米色布艺沙发", "胡桃木电视柜", "白色平吊顶圆形吸顶灯", "正面墙落地窗", "右后角拱形门洞"]
     }
   ]
 }
@@ -1483,12 +1494,17 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
     id: 'tti_scene_preview',
     category: 'tti',
     name: '场景预览图',
-    description: '生成场景参考图',
-    template: '{{stylePrefix}}, environment concept art, no people, no character action, establishing shot, wide frame, objective environmental details only, {{description}}, location: {{location}}, visible time cues: {{time}}, visible atmosphere cues: {{mood}}, layered depth, architectural and material details, cinematic composition',
+    description: '生成场景参考图：强透视全貌取景；室内必须显式露出至少两面墙 + 地面 + 天花板，让下游视频模型不需要凭空想象未拍到的空间。',
+    // 设计目标：把场景图当作"空间锚定"参考图给后续 ITV 视频模型用。
+    // - 透视技法（perspective drawing technique）需要被显式声明，避免出现没有纵深、像贴图一样的平面图。
+    // - 室内必须给出全貌：corner vantage / two-point perspective + wide-angle 让两面墙 + 地面 + 天花板都进画面，
+    //   连同所有门 / 窗 / 通道；任何被裁切的墙都会让视频模型在生视频时自由发挥，造成空间漂移。
+    // - 外景给出 full establishing shot + 强透视线，建立纵深和清晰的可视边界。
+    template: '{{stylePrefix}}, environment concept art reference plate, no people, no character, no character action, full establishing shot, wide-angle lens, strong perspective drawing technique with clearly visible perspective lines (orthogonal lines / vanishing points), complete spatial layout fully revealed in frame, objective environmental details only, {{description}}, location: {{location}}, visible time cues: {{time}}, visible atmosphere cues: {{mood}}, for INTERIOR locations: corner vantage using two-point perspective from a slightly raised eye-level, at least two full adjacent walls visible together with the floor and the ceiling, all major openings (doors, windows, archways, corridors) included in frame, room footprint fully readable, no cropped walls, no missing ceiling, no missing floor; for EXTERIOR locations: wide establishing view with one-point or two-point perspective revealing the full ground plane, key façades and the surrounding spatial extent; sharp depth cues (foreground / midground / background), architectural and material details, accurate proportions, no off-screen guesswork, cinematic composition, 4k high detail',
     variables: [
       variable('stylePrefix'),
       variable('description', {
-        description: '场景中的客观环境细节，只描述空间、建筑、地面、植被、天气痕迹、陈设等可见内容，禁止出现人物、角色名、人物动作和对白。',
+        description: '场景中的客观环境细节，只描述空间、建筑、地面、植被、天气痕迹、陈设等可见内容；室内必须含可见的墙面 / 地面 / 天花板与门窗位置，以便下游视频模型不需要凭空想象不可见区域。禁止出现人物、角色名、人物动作和对白。',
       }),
       variable('location'),
       variable('time', {

@@ -28,8 +28,8 @@ export const ScriptStep: React.FC<{ ctx: EditorStepContext }> = ({ ctx }) => {
         }
       }}
       onProjectUpdate={(updates: Partial<Project>) => ctx.onProjectUpdate?.(updates)}
-      onOpenProjectSettings={ctx.onOpenProjectSettings}
       onScriptChange={(text) => ctx.onScriptChange?.(text)}
+      openImportSignal={ctx.scriptImportSignal}
     />
   );
 };
