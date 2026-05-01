@@ -16,6 +16,8 @@ import type {
 } from './types';
 import { mcpRegistry } from '../plugin/registries';
 import { capabilityRegistry } from '../plugin/capability';
+import { sqliteChatHistoryRepository } from '../storage';
+import type { ChatMessageRow, ChatSessionRow } from '../storage';
 
 const VALID_ROLES = new Set(['system', 'user', 'assistant']);
 const MAX_CONTENT_LENGTH = 100_000;
@@ -559,6 +561,49 @@ class ChatIpc {
         systemPrompt: worker.systemPrompt,
         pluginId: worker.pluginId,
       }));
+    });
+
+    // ========== 聊天历史持久化（SQLite settings.db） ==========
+
+    ipcMain.handle('chat:history:listSessions', async () => {
+      return sqliteChatHistoryRepository.listSessions();
+    });
+
+    ipcMain.handle('chat:history:getSession', async (_event, args: { sessionId: string }) => {
+      const session = sqliteChatHistoryRepository.getSession(args.sessionId);
+      if (!session) return null;
+      const messages = sqliteChatHistoryRepository.listMessages(args.sessionId);
+      return { session, messages };
+    });
+
+    ipcMain.handle('chat:history:saveSession', async (_event, args: {
+      session: ChatSessionRow;
+      messages: ChatMessageRow[];
+    }) => {
+      try {
+        // 原子保存：session + messages 同进同退，避免"session 存在但消息为空"的旧 bug
+        sqliteChatHistoryRepository.saveSessionAtomic(args.session, args.messages);
+        console.info('[ChatHistory] saveSession ok', {
+          id: args.session.id,
+          title: args.session.title,
+          messageCount: args.messages.length,
+        });
+        return { success: true };
+      } catch (err: unknown) {
+        const errorMessage = err instanceof Error ? err.message : String(err);
+        console.error('[ChatHistory] saveSession 失败', {
+          id: args.session.id,
+          messageCount: args.messages.length,
+          error: errorMessage,
+          stack: err instanceof Error ? err.stack : undefined,
+        });
+        return { success: false, error: errorMessage };
+      }
+    });
+
+    ipcMain.handle('chat:history:deleteSession', async (_event, args: { sessionId: string }) => {
+      const ok = sqliteChatHistoryRepository.deleteSession(args.sessionId);
+      return { success: ok };
     });
 
     app.on('window-all-closed', () => {

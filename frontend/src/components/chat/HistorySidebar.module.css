@@ -43,11 +43,12 @@
   padding: 10px 12px;
   border-radius: 8px;
   cursor: pointer;
-  transition: background-color 0.2s;
+  transition: background-color 0.18s ease, transform 0.18s ease;
 }
 
 .sessionItem:hover {
   background-color: #27272a;
+  transform: translateX(2px);
 }
 
 .sessionItem.active {

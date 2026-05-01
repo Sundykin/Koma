@@ -16,9 +16,12 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   'chat:tool:approve', 'chat:tool:reject', 'chat:tool:listPending',
   'chat:tools:list', 'chat:tools:call',
   'chat:capability:list', 'chat:capability:invoke', 'chat:capability:resolve',
+  'chat:history:listSessions', 'chat:history:getSession',
+  'chat:history:saveSession', 'chat:history:deleteSession',
   // 全局渠道配置 (settings.db)
   'channel:list', 'channel:get', 'channel:count',
   'channel:create', 'channel:update', 'channel:delete', 'channel:bulkImport',
+  'channel:reconcileActivation',
   'channel:setDefault', 'channel:getDefault', 'channel:listDefaults', 'channel:deleteDefault',
   // 全局 KV
   'app-kv:get', 'app-kv:set', 'app-kv:delete',
@@ -461,6 +464,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
       list: (filter?: any) => invokeMain('chat:capability:list', filter),
       invoke: (id: string, args: any) => invokeMain('chat:capability:invoke', { id, arguments: args }),
       resolve: (requirements: string[]) => invokeMain('chat:capability:resolve', { requirements }),
+    },
+
+    // 聊天历史持久化（SQLite settings.db）
+    history: {
+      listSessions: () => invokeMain('chat:history:listSessions', {}),
+      getSession: (sessionId: string) => invokeMain('chat:history:getSession', { sessionId }),
+      saveSession: (session: any, messages: any[]) =>
+        invokeMain('chat:history:saveSession', { session, messages }),
+      deleteSession: (sessionId: string) => invokeMain('chat:history:deleteSession', { sessionId }),
     },
   },
 });

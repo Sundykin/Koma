@@ -12,6 +12,7 @@ export { ViduProvider } from './ViduProvider';
 export { ComfyUIAnimateDiffProvider } from './ComfyUIAnimateDiffProvider';
 export { CustomITVProvider } from './CustomITVProvider';
 export { Grok2ApiImagineITVProvider } from './Grok2ApiImagineITVProvider';
+export { SuiheITVProvider } from './SuiheITVProvider';
 
 import type { ITVConfig } from '../../types';
 import type { ITVProvider } from './types';
@@ -24,6 +25,7 @@ import { ViduProvider } from './ViduProvider';
 import { ComfyUIAnimateDiffProvider } from './ComfyUIAnimateDiffProvider';
 import { CustomITVProvider } from './CustomITVProvider';
 import { Grok2ApiImagineITVProvider } from './Grok2ApiImagineITVProvider';
+import { SuiheITVProvider } from './SuiheITVProvider';
 import type { ProviderDefinition } from '../registry.types';
 import { DEFAULT_POLLING_CONFIG, MEDIA_PROVIDER_CONTRACT_VERSION } from '../registry.types';
 import { itvRegistry } from '../registry';
@@ -158,6 +160,23 @@ function registerBuiltinProviders() {
       capabilities: ['itv'],
       polling: DEFAULT_POLLING_CONFIG,
       presetBaseUrl: '',
+      auth: { apiKey: 'required', baseUrl: 'optional' },
+    },
+    {
+      type: 'koma-suihe-itv',
+      kind: 'itv',
+      name: 'Koma 官方 - 即梦（穗禾）',
+      description: 'Koma 官方激活通道下的穗禾即梦视频生成（seedance-2.0 / -fast）。'
+        + '协议为 OpenAI 标准视频 API JSON，由 komaapi.com 网关转换为穗禾上游 multipart。',
+      factory: (config) => new SuiheITVProvider(config as ITVConfig),
+      contractVersion: MEDIA_PROVIDER_CONTRACT_VERSION,
+      capabilities: ['itv'],
+      polling: {
+        interval: 5000,
+        maxDuration: 600000,
+        initialDelay: 3000,
+      },
+      presetBaseUrl: 'https://komaapi.com',
       auth: { apiKey: 'required', baseUrl: 'optional' },
     },
   ];

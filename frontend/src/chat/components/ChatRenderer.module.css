@@ -7,10 +7,16 @@
   height: 100%;
 }
 
+@keyframes messageBubbleIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 .messageBubble {
   display: flex;
   gap: 12px;
   max-width: 85%;
+  animation: messageBubbleIn 0.25s ease-out;
 }
 
 .userBubble {
@@ -455,4 +461,116 @@
   color: #a1a1aa;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+/* 消息附件：图片 / 文件 */
+.attachmentImages {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.attachmentImage {
+  max-width: 200px;
+  max-height: 200px;
+  border-radius: 8px;
+  object-fit: cover;
+  border: 1px solid #3f3f46;
+}
+
+.attachmentImageWrapper,
+.attachmentVideoWrapper {
+  position: relative;
+  display: inline-flex;
+}
+
+.attachmentVideos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.attachmentVideo {
+  max-width: 320px;
+  border-radius: 8px;
+  background: #09090b;
+  border: 1px solid #3f3f46;
+}
+
+.attachmentRemove {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: rgba(15, 15, 17, 0.85);
+  color: #fafafa;
+  cursor: pointer;
+  font-size: 12px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.attachmentImageWrapper:hover .attachmentRemove,
+.attachmentVideoWrapper:hover .attachmentRemove {
+  opacity: 1;
+}
+
+.attachmentRemove:hover {
+  background: rgba(220, 38, 38, 0.85);
+}
+
+.attachmentRemoveInline {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: #71717a;
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.attachmentRemoveInline:hover {
+  background: #3f3f46;
+  color: #fafafa;
+}
+
+.attachmentFiles {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.attachmentFile {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: #27272a;
+  border: 1px solid #3f3f46;
+  border-radius: 6px;
+  color: #d4d4d8;
+  font-size: 12px;
+  max-width: 100%;
+}
+
+.attachmentFileName {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }

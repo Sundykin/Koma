@@ -70,6 +70,10 @@ export interface ShotListEditorProps {
   onShotImageModeChange: (shotId: string, mode: 'normal' | 'grid') => void;
   onShotVideoModeChange?: (shotId: string, mode: 'multi-ref' | 'first-frame') => void;
   onBulkVideoModeChange?: (mode: 'multi-ref' | 'first-frame') => void;
+  /** 当前项目选择的 ITV 渠道时长规格，透传给 ShotCard 决定时长控件渲染方式 */
+  durationSpec?: import('../../providers/itv/durationSpec').VideoDurationSpec;
+  /** 单镜头视频生成进度（按 shotId 聚合），透传给 ShotCard 渲染百分比与阶段文本 */
+  videoProgressMap?: Map<string, { progress: number; step: string }>;
 }
 
 export const ShotListEditor: React.FC<ShotListEditorProps> = ({
@@ -126,6 +130,8 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
   onShotImageModeChange,
   onShotVideoModeChange,
   onBulkVideoModeChange,
+  durationSpec,
+  videoProgressMap,
 }) => {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const virtuosoRef = useRef<VirtuosoHandle>(null);
@@ -256,6 +262,8 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
         onMoveDown={onMoveDown}
         onInsertAbove={onInsertAbove}
         onInsertBelow={onInsertBelow}
+        durationSpec={durationSpec}
+        videoProgress={videoProgressMap?.get(shot.id)}
       />
     ),
     [

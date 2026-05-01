@@ -78,8 +78,15 @@ export const activationService = {
 
       if (!data) return null;
 
-      // 1. 如果已经是新格式 (包含 maskedKey 和 defaultChannelIds.llm)，直接返回
+      // 1. 如果已经是新格式 (包含 maskedKey 和 defaultChannelIds.llm)，
+      //    再做一次补齐：新版本可能加了 koma-activation 管理渠道（如 itvJimeng），
+      //    老用户激活时还没有，启动时默默给补建出来（apiKey 从已存在的同批渠道继承）。
       if (data.maskedKey && data.defaultChannelIds?.llm) {
+        if (electronService.isElectron()) {
+          await activationService.reconcileMissingManagedChannels().catch((err) => {
+            console.warn('reconcileMissingManagedChannels failed (ignored)', err?.message || err);
+          });
+        }
         return data as ActivationInfo;
       }
 
@@ -469,6 +476,49 @@ export const activationService = {
         enabled: true,
         source: 'builtin' as const,
       },
+      // 即梦视频（穗禾 seedance）：用独立的 SeedanceProvider runtime，不复用 grok2api。
+      // 上游路径都是 OpenAI 兼容的 /v1/videos/generations，但 grok2api 内部
+      // 会强制注入 grok-image-index 协议、特殊 ratio 处理等，与穗禾参数不兼容。
+      // 参数参考 new-api/relay/channel/task/suihe/constants.go：
+      //   - 上游当前阶段强制锁定 480p（suiheLockedResolution）
+      //   - 时长 seedance-2.0: 4-15s, seedance-2.0-fast: 4-12s（缺省 5s）
+      // baseUrl 走 komaapi.com（new-api 网关），通过 model 字段路由到穗禾上游渠道。
+      {
+        id: KOMAAPI_ACTIVATION_CHANNEL_IDS.itvJimeng,
+        category: 'itv' as const,
+        providerType: 'koma-suihe-itv',
+        name: 'Koma官方-即梦',
+        providerConfig: withKomaActivationChannelMarker({
+          baseUrl: 'https://komaapi.com',
+          apiKey,
+          defaultDuration: 5,
+          defaultResolution: '480p',
+        }),
+        defaultModelId: 'seedance-2.0',
+        models: [
+          {
+            id: 'seedance-2.0',
+            label: 'Seedance 2.0',
+            providerModelName: 'seedance-2.0',
+            capabilities: [
+              'video.text-to-video' as ModelCapability,
+              'video.image-to-video' as ModelCapability,
+            ],
+          },
+          {
+            id: 'seedance-2.0-fast',
+            label: 'Seedance 2.0 Fast',
+            providerModelName: 'seedance-2.0-fast',
+            capabilities: [
+              'video.text-to-video' as ModelCapability,
+              'video.image-to-video' as ModelCapability,
+            ],
+          },
+        ],
+        enabled: true,
+        // 不抢占 itv 默认渠道；保持 grok 为默认，用户可在设置里切换。
+        source: 'builtin' as const,
+      },
     ];
 
     try {
@@ -483,7 +533,11 @@ export const activationService = {
           await channelConfigService.createChannel(cfg);
         }
 
-        // 设置为该类型的默认
+        // 设置为该类型的默认；同一 category 下后注册的渠道不抢占默认。
+        // 即梦渠道作为 grok 的并行选项，仅在用户手动切换时生效。
+        if (cfg.id === KOMAAPI_ACTIVATION_CHANNEL_IDS.itvJimeng) {
+          continue;
+        }
         await channelConfigService.setMediaDefault(cfg.category, {
           channelId: cfg.id,
           modelId: cfg.defaultModelId,
@@ -501,5 +555,101 @@ export const activationService = {
       console.error('Failed to ensure default model channels');
       return { success: false, error: 'default_channels_failed' };
     }
+  },
+
+  /**
+   * 补齐 / 修正已激活老用户的 koma-activation 管理渠道。
+   *
+   * 启动时检测两类问题，通过后端 `channel:reconcileActivation` 自动处理：
+   *   1) **缺失**：v1 激活流程只创建 llm/tti/itv 三个渠道；后续版本新增 itvJimeng 等管理渠道，
+   *      老用户重启后 getActivationInfo 走"新格式直接返回"分支，不会重跑 ensureDefaultModelChannels。
+   *   2) **providerType 漂移**：早期错误把即梦渠道 providerType 写成 grok2api-imagine-itv / seedance
+   *      等，需要纠正为 koma-suihe-itv（独立 runtime）。仅按 id+providerType 期望值校验，
+   *      不匹配就强制 update 修正（apiKey 由后端从同批管理渠道解密继承，不需要前端持有明文）。
+   *
+   * 失败/部分失败都不影响应用启动（仅 console.warn）。
+   */
+  async reconcileMissingManagedChannels(): Promise<void> {
+    if (!electronService.isElectron()) return;
+
+    // 期望状态：每个管理渠道应该是哪个 providerType + 配套的完整配置
+    const itvJimengCfg: Parameters<typeof channelConfigService.reconcileActivationChannels>[0][number] = {
+      id: KOMAAPI_ACTIVATION_CHANNEL_IDS.itvJimeng,
+      category: 'itv',
+      providerType: 'koma-suihe-itv',
+      name: 'Koma官方-即梦',
+      providerConfig: withKomaActivationChannelMarker({
+        baseUrl: 'https://komaapi.com',
+        // apiKey 由后端从 sourceChannelIds 解密继承
+        defaultDuration: 5,
+        defaultResolution: '480p',
+      }),
+      defaultModelId: 'seedance-2.0',
+      models: [
+        {
+          id: 'seedance-2.0',
+          label: 'Seedance 2.0',
+          providerModelName: 'seedance-2.0',
+          capabilities: [
+            'video.text-to-video' as ModelCapability,
+            'video.image-to-video' as ModelCapability,
+          ],
+        },
+        {
+          id: 'seedance-2.0-fast',
+          label: 'Seedance 2.0 Fast',
+          providerModelName: 'seedance-2.0-fast',
+          capabilities: [
+            'video.text-to-video' as ModelCapability,
+            'video.image-to-video' as ModelCapability,
+          ],
+        },
+      ],
+      enabled: true,
+      source: 'builtin',
+    };
+
+    // 期望管理渠道清单：[(id, expected providerType, 期望完整配置)]
+    const expected = [
+      { id: itvJimengCfg.id!, providerType: itvJimengCfg.providerType, cfg: itvJimengCfg },
+      // 其它管理渠道（llm/tti/itv）原 ensureDefaultModelChannels 已建出，
+      // 这里也可以加进来作为额外保护（落入 update 路径），但目前没有 providerType 漂移问题，先不加。
+    ];
+
+    // 拉取现状
+    const allManagedIds = Object.values(KOMAAPI_ACTIVATION_CHANNEL_IDS);
+    const channelMap = new Map<string, Awaited<ReturnType<typeof channelConfigService.getChannel>>>();
+    await Promise.all(
+      allManagedIds.map(async (id) => {
+        const channel = await channelConfigService.getChannel(id);
+        channelMap.set(id, channel);
+      }),
+    );
+
+    // 计算需要 reconcile 的 cfg：缺失 OR providerType 不匹配
+    const reconcileConfigs: Parameters<typeof channelConfigService.reconcileActivationChannels>[0] = [];
+    for (const entry of expected) {
+      const existing = channelMap.get(entry.id);
+      if (!existing) {
+        reconcileConfigs.push(entry.cfg);
+        continue;
+      }
+      if (existing.providerType !== entry.providerType) {
+        console.info(
+          `[activation] managed channel ${entry.id} providerType drift detected: ${existing.providerType} → ${entry.providerType}, fixing`,
+        );
+        reconcileConfigs.push(entry.cfg);
+      }
+    }
+    if (reconcileConfigs.length === 0) return;
+
+    // 用所有"已存在"的管理渠道做 apiKey 继承源（含被纠正的渠道本身——它们也已经有密文 apiKey）
+    const sourceChannelIds = allManagedIds.filter((id) => channelMap.get(id));
+    if (sourceChannelIds.length === 0) {
+      console.warn('[activation] no source channel to inherit apiKey, skipping reconcile');
+      return;
+    }
+    await channelConfigService.reconcileActivationChannels(reconcileConfigs, sourceChannelIds);
+    console.info(`[activation] reconciled ${reconcileConfigs.length} managed channel(s)`);
   },
 };

@@ -5,9 +5,16 @@
  * v1 → v2:
  *   channel_configs 扩列：source / plugin_id / default_model_id / provider_config_json
  *   目的：与前端 ChannelConfig 字段平铺对齐，减少 extras_json 黑盒
+ *
+ * v2 → v3:
+ *   新增 chat_sessions / chat_messages 表，将聊天历史从 localStorage 迁到 SQLite
+ *
+ * v3 → v4:
+ *   chat_messages 列名从 tool_calls_json 改为 extras_json（开发期重命名）
+ *   该表无重要业务数据，直接 DROP+CREATE 重建（清空已有 chat_messages）
  */
 
-export const CURRENT_SETTINGS_SCHEMA_VERSION = 2;
+export const CURRENT_SETTINGS_SCHEMA_VERSION = 4;
 
 export const CREATE_SETTINGS_TABLES_SQL = `
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -54,6 +61,28 @@ CREATE TABLE IF NOT EXISTS app_settings_kv (
   value_json TEXT NOT NULL,
   updated_at INTEGER NOT NULL
 );
+
+-- 聊天会话元数据
+CREATE TABLE IF NOT EXISTS chat_sessions (
+  id            TEXT PRIMARY KEY,
+  title         TEXT NOT NULL,
+  created_at    INTEGER NOT NULL,
+  updated_at    INTEGER NOT NULL,
+  message_count INTEGER NOT NULL DEFAULT 0
+);
+
+-- 聊天消息明细
+-- content_json：序列化后的 ChatMessage.content（string | ContentPart[]）
+CREATE TABLE IF NOT EXISTS chat_messages (
+  id            TEXT PRIMARY KEY,
+  session_id    TEXT NOT NULL REFERENCES chat_sessions(id) ON DELETE CASCADE,
+  seq           INTEGER NOT NULL,
+  role          TEXT NOT NULL,
+  content_json  TEXT NOT NULL,
+  reasoning     TEXT,
+  extras_json   TEXT,
+  created_at    INTEGER NOT NULL
+);
 `;
 
 export const CREATE_SETTINGS_INDEXES_SQL = `
@@ -61,6 +90,10 @@ CREATE INDEX IF NOT EXISTS idx_channel_configs_category
   ON channel_configs(category, sort_order);
 CREATE INDEX IF NOT EXISTS idx_channel_configs_source
   ON channel_configs(source, plugin_id);
+CREATE INDEX IF NOT EXISTS idx_chat_sessions_updated_at
+  ON chat_sessions(updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_chat_messages_session_seq
+  ON chat_messages(session_id, seq);
 `;
 
 export interface SettingsMigration {
@@ -85,6 +118,47 @@ export const SETTINGS_MIGRATIONS: Record<number, SettingsMigration> = {
       ALTER TABLE channel_configs ADD COLUMN plugin_id TEXT;
       ALTER TABLE channel_configs ADD COLUMN is_default INTEGER NOT NULL DEFAULT 0;
       CREATE INDEX IF NOT EXISTS idx_channel_configs_source ON channel_configs(source, plugin_id);
+    `,
+  },
+  3: {
+    description: 'v3: add chat_sessions / chat_messages tables for SQLite-backed chat history',
+    sql: `
+      CREATE TABLE IF NOT EXISTS chat_sessions (
+        id            TEXT PRIMARY KEY,
+        title         TEXT NOT NULL,
+        created_at    INTEGER NOT NULL,
+        updated_at    INTEGER NOT NULL,
+        message_count INTEGER NOT NULL DEFAULT 0
+      );
+      CREATE TABLE IF NOT EXISTS chat_messages (
+        id            TEXT PRIMARY KEY,
+        session_id    TEXT NOT NULL REFERENCES chat_sessions(id) ON DELETE CASCADE,
+        seq           INTEGER NOT NULL,
+        role          TEXT NOT NULL,
+        content_json  TEXT NOT NULL,
+        reasoning     TEXT,
+        extras_json   TEXT,
+        created_at    INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_chat_sessions_updated_at ON chat_sessions(updated_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_chat_messages_session_seq ON chat_messages(session_id, seq);
+    `,
+  },
+  4: {
+    description: 'v4: rebuild chat_messages with extras_json column (rename from tool_calls_json)',
+    sql: `
+      DROP TABLE IF EXISTS chat_messages;
+      CREATE TABLE chat_messages (
+        id            TEXT PRIMARY KEY,
+        session_id    TEXT NOT NULL REFERENCES chat_sessions(id) ON DELETE CASCADE,
+        seq           INTEGER NOT NULL,
+        role          TEXT NOT NULL,
+        content_json  TEXT NOT NULL,
+        reasoning     TEXT,
+        extras_json   TEXT,
+        created_at    INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_chat_messages_session_seq ON chat_messages(session_id, seq);
     `,
   },
 };

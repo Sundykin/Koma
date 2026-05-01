@@ -477,6 +477,9 @@ export async function generateCharacterFaceCandidate(
           bindOwner,
           normalizeRemoteUrl,
           taskName: `${character.name} 人脸方案`,
+          // 把生成内部的真实进度（调用 provider/下载/持久化/绑定）桥接到任务面板。
+          // 否则 task 只在 10% / 100% 两点跳，期间几十秒下载远端图都看起来"卡住"。
+          onProgress: (percent, stage) => ctx.progress(percent, stage),
         });
         ctx.progress(100, '完成');
         return a;
@@ -580,6 +583,8 @@ export async function generateCharacterFaceCandidatesBatch(
           bindOwner,
           normalizeRemoteUrl,
           taskName: `${character.name} 人脸方案批量`,
+          // 桥接生成内部的细粒度进度，避免任务面板长时间停在 10%
+          onProgress: (percent, stage) => ctx.progress(percent, stage),
         });
         ctx.progress(100, '完成');
         return a;

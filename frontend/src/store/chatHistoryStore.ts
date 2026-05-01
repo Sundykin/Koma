@@ -1,18 +1,16 @@
 /**
  * 对话历史存储
- * 使用 Zustand + localStorage 管理会话历史
+ *
+ * 使用 Zustand 管理 UI 状态；持久层通过 chatIPC.history.* 走 SQLite（settings.db）。
+ * Zustand 中只缓存元数据列表与当前会话，消息明细按需从 SQLite 拉取。
  */
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
 import type { ChatMessage } from '../chat/types';
-import { extractThinkFromText } from '../chat/utils/messageUtils';
-import { CHAT_STORAGE_KEYS } from '../constants/storageKeys';
+import type { ChatMessageRow, ChatSessionRow } from '../chat/ipc';
+import { chatIPC } from '../chat/ipc';
 import { createLogger } from './logger';
 
 const logger = createLogger('ChatHistory');
-
-// 当前 schema 版本
-const SCHEMA_VERSION = 2;
 
 const MAX_TITLE_LENGTH = 30;
 
@@ -28,32 +26,21 @@ export interface SessionMeta {
 // 完整会话数据
 export interface SessionData extends SessionMeta {
   messages: ChatMessage[];
-  systemPrompt?: string;
-  schemaVersion?: number;
 }
 
-// Store 状态
 interface ChatHistoryState {
   sessions: SessionMeta[];
   currentSessionId: string | null;
 
-  // 操作
-  loadSessions: () => void;
+  loadSessions: () => Promise<void>;
   createSession: (title?: string) => string;
-  updateSession: (id: string, data: Partial<SessionMeta>) => void;
   deleteSession: (id: string) => Promise<void>;
   setCurrentSession: (id: string | null) => void;
 
-  // 消息操作
-  saveMessages: (sessionId: string, messages: ChatMessage[], systemPrompt?: string) => void;
-  loadMessages: (sessionId: string) => SessionData | null;
+  saveMessages: (sessionId: string, messages: ChatMessage[]) => Promise<void>;
+  loadMessages: (sessionId: string) => Promise<SessionData | null>;
 }
 
-// 存储键
-const SESSIONS_KEY = CHAT_STORAGE_KEYS.SESSIONS;
-const SESSION_DATA_PREFIX = CHAT_STORAGE_KEYS.SESSION_DATA_PREFIX;
-
-// 规范化标题
 function normalizeTitle(text: string): string {
   const cleaned = text.replace(/\s+/g, ' ').trim();
   if (!cleaned) return '';
@@ -62,12 +49,8 @@ function normalizeTitle(text: string): string {
     : cleaned;
 }
 
-// 提取消息文本内容
 function extractMessageText(message: ChatMessage): string {
   if (typeof message.content === 'string') {
-    if (message.role === 'assistant') {
-      return extractThinkFromText(message.content).content;
-    }
     return message.content;
   }
   return message.content.reduce((acc, part) => {
@@ -78,7 +61,6 @@ function extractMessageText(message: ChatMessage): string {
   }, '');
 }
 
-// 生成会话标题（优先使用 AI 回答）
 function generateTitle(messages: ChatMessage[]): string {
   const firstAssistantMsg = messages.find(m => m.role === 'assistant');
   if (firstAssistantMsg) {
@@ -93,171 +75,173 @@ function generateTitle(messages: ChatMessage[]): string {
   return '新对话';
 }
 
-/**
- * 迁移旧版本会话数据
- * v1 -> v2: 从 content 中提取 <think> 标签到 reasoning 字段
- */
-function migrateSessionData(data: SessionData): SessionData {
-  // 已是最新版本
-  if (data.schemaVersion === SCHEMA_VERSION) {
-    return data;
-  }
-
-  // 迁移消息
-  const migratedMessages = data.messages.map(msg => {
-    // 只处理 assistant 消息且没有 reasoning 的
-    if (msg.role === 'assistant' && !msg.reasoning && typeof msg.content === 'string') {
-      const { content, reasoning } = extractThinkFromText(msg.content);
-      if (reasoning) {
-        return { ...msg, content, reasoning };
-      }
-    }
-    return msg;
-  });
-
+function rowToSessionMeta(row: ChatSessionRow): SessionMeta {
   return {
-    ...data,
-    messages: migratedMessages,
-    schemaVersion: SCHEMA_VERSION,
+    id: row.id,
+    title: row.title,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    messageCount: row.message_count,
   };
 }
 
-export const useChatHistoryStore = create<ChatHistoryState>()(
-  persist(
-    (set, get) => ({
-      sessions: [],
-      currentSessionId: null,
+function rowToChatMessage(row: ChatMessageRow): ChatMessage {
+  let content: ChatMessage['content'];
+  try {
+    const parsed = JSON.parse(row.content_json);
+    content = typeof parsed === 'string' ? parsed : (parsed as ChatMessage['content']);
+  } catch {
+    content = row.content_json;
+  }
 
-      loadSessions: () => {
-        try {
-          const stored = localStorage.getItem(SESSIONS_KEY);
-          if (stored) {
-            const sessions = JSON.parse(stored) as SessionMeta[];
-            // 按更新时间排序
-            sessions.sort((a, b) => b.updatedAt - a.updatedAt);
-            set({ sessions });
-          }
-        } catch (e) {
-          logger.error('加载会话列表失败', e);
-        }
-      },
-
-      createSession: (title?: string) => {
-        const id = `session_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-        const now = Date.now();
-        const session: SessionMeta = {
-          id,
-          title: title || '新对话',
-          createdAt: now,
-          updatedAt: now,
-          messageCount: 0,
-        };
-
-        set(state => {
-          const sessions = [session, ...state.sessions];
-          localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions));
-          return { sessions, currentSessionId: id };
-        });
-
-        return id;
-      },
-
-      updateSession: (id, data) => {
-        set(state => {
-          const sessions = state.sessions.map(s =>
-            s.id === id ? { ...s, ...data, updatedAt: Date.now() } : s
-          );
-          sessions.sort((a, b) => b.updatedAt - a.updatedAt);
-          localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions));
-          return { sessions };
-        });
-      },
-
-      deleteSession: async (id) => {
-        // 删除会话数据
-        localStorage.removeItem(`${SESSION_DATA_PREFIX}${id}`);
-
-        set(state => {
-          const sessions = state.sessions.filter(s => s.id !== id);
-          localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions));
-          return {
-            sessions,
-            currentSessionId: state.currentSessionId === id ? null : state.currentSessionId,
-          };
-        });
-      },
-
-      setCurrentSession: (id) => {
-        set({ currentSessionId: id });
-      },
-
-      saveMessages: (sessionId, messages, systemPrompt) => {
-        const { sessions, updateSession } = get();
-        const session = sessions.find(s => s.id === sessionId);
-
-        // 保存消息数据（包含 schema 版本）
-        const data: SessionData = {
-          id: sessionId,
-          title: session?.title || generateTitle(messages),
-          createdAt: session?.createdAt || Date.now(),
-          updatedAt: Date.now(),
-          messageCount: messages.length,
-          messages,
-          systemPrompt,
-          schemaVersion: SCHEMA_VERSION,
-        };
-
-        localStorage.setItem(`${SESSION_DATA_PREFIX}${sessionId}`, JSON.stringify(data));
-
-        // 更新会话元数据
-        if (session) {
-          updateSession(sessionId, {
-            title: data.title,
-            messageCount: messages.length,
-          });
-        } else {
-          // 新会话
-          set(state => {
-            const newSession: SessionMeta = {
-              id: sessionId,
-              title: data.title,
-              createdAt: data.createdAt,
-              updatedAt: data.updatedAt,
-              messageCount: messages.length,
-            };
-            const sessions = [newSession, ...state.sessions];
-            localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions));
-            return { sessions };
-          });
-        }
-      },
-
-      loadMessages: (sessionId) => {
-        try {
-          const stored = localStorage.getItem(`${SESSION_DATA_PREFIX}${sessionId}`);
-          if (stored) {
-            const data = JSON.parse(stored) as SessionData;
-            // 懒迁移：加载时检查并迁移旧版本数据
-            const migratedData = migrateSessionData(data);
-            // 如果进行了迁移，写回存储
-            if (data.schemaVersion !== migratedData.schemaVersion) {
-              localStorage.setItem(`${SESSION_DATA_PREFIX}${sessionId}`, JSON.stringify(migratedData));
-            }
-            return migratedData;
-          }
-        } catch (e) {
-          logger.error('加载会话数据失败', e);
-        }
-        return null;
-      },
-    }),
-    {
-      name: 'chat-history',
-      partialize: (state) => ({
-        currentSessionId: state.currentSessionId,
-      }),
+  let extras: Partial<ChatMessage> = {};
+  if (row.extras_json) {
+    try {
+      extras = JSON.parse(row.extras_json) as Partial<ChatMessage>;
+    } catch (e) {
+      logger.warn('解析 extras_json 失败', e);
     }
-  )
-);
+  }
+
+  return {
+    id: row.id,
+    role: row.role as ChatMessage['role'],
+    content,
+    reasoning: row.reasoning ?? undefined,
+    timestamp: row.created_at,
+    ...extras,
+  };
+}
+
+function chatMessageToRow(
+  message: ChatMessage,
+  sessionId: string,
+  seq: number,
+): ChatMessageRow {
+  const { id, role, content, reasoning, timestamp, ...rest } = message;
+  // extras 收纳 toolCalls / toolCallId / name / metadata / status 等长尾字段
+  const extras = Object.keys(rest).length > 0 ? JSON.stringify(rest) : null;
+  return {
+    id,
+    session_id: sessionId,
+    seq,
+    role,
+    content_json: JSON.stringify(content),
+    reasoning: reasoning ?? null,
+    extras_json: extras,
+    created_at: timestamp,
+  };
+}
+
+function newSessionId(): string {
+  return `session_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+export const useChatHistoryStore = create<ChatHistoryState>()((set, get) => ({
+  sessions: [],
+  currentSessionId: null,
+
+  loadSessions: async () => {
+    try {
+      const rows = await chatIPC.history.listSessions();
+      const sessions = rows.map(rowToSessionMeta);
+      set({ sessions });
+    } catch (e) {
+      logger.error('加载会话列表失败', e);
+    }
+  },
+
+  createSession: (title?: string) => {
+    const id = newSessionId();
+    const now = Date.now();
+    const session: SessionMeta = {
+      id,
+      title: title || '新对话',
+      createdAt: now,
+      updatedAt: now,
+      messageCount: 0,
+    };
+    set(state => ({
+      sessions: [session, ...state.sessions],
+      currentSessionId: id,
+    }));
+    // 注意：不立即落库，等到 saveMessages 时才写入；空会话不进 SQLite
+    return id;
+  },
+
+  deleteSession: async (id) => {
+    try {
+      await chatIPC.history.deleteSession(id);
+    } catch (e) {
+      logger.error('删除会话失败', e);
+    }
+    set(state => ({
+      sessions: state.sessions.filter(s => s.id !== id),
+      currentSessionId: state.currentSessionId === id ? null : state.currentSessionId,
+    }));
+  },
+
+  setCurrentSession: (id) => {
+    set({ currentSessionId: id });
+  },
+
+  saveMessages: async (sessionId, messages) => {
+    if (messages.length === 0) return;
+    const state = get();
+    const existing = state.sessions.find(s => s.id === sessionId);
+    const now = Date.now();
+    const meta: SessionMeta = {
+      id: sessionId,
+      title: existing?.title && existing.title !== '新对话' ? existing.title : generateTitle(messages),
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+      messageCount: messages.length,
+    };
+
+    const sessionRow: ChatSessionRow = {
+      id: meta.id,
+      title: meta.title,
+      created_at: meta.createdAt,
+      updated_at: meta.updatedAt,
+      message_count: meta.messageCount,
+    };
+    const messageRows = messages.map((msg, idx) => chatMessageToRow(msg, sessionId, idx));
+
+    try {
+      const result = await chatIPC.history.saveSession(sessionRow, messageRows);
+      if (!result?.success) {
+        logger.error('保存会话失败（IPC 返回 success=false）', {
+          sessionId,
+          messageCount: messageRows.length,
+          error: (result as any)?.error,
+        });
+        return;
+      }
+      logger.info('保存会话成功', { sessionId, messageCount: messageRows.length });
+    } catch (e) {
+      logger.error('保存会话异常', e);
+      return;
+    }
+
+    set(state => {
+      const others = state.sessions.filter(s => s.id !== sessionId);
+      return { sessions: [meta, ...others] };
+    });
+  },
+
+  loadMessages: async (sessionId) => {
+    try {
+      const result = await chatIPC.history.getSession(sessionId);
+      if (!result) return null;
+      return {
+        ...rowToSessionMeta(result.session),
+        messages: result.messages.map(rowToChatMessage),
+      };
+    } catch (e) {
+      logger.error('加载会话数据失败', e);
+      return null;
+    }
+  },
+}));
 
 export default useChatHistoryStore;

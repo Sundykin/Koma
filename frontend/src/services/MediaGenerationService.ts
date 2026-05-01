@@ -27,6 +27,7 @@ import {
 } from '../store/taskQueueStore';
 import { loadSettings } from '../store/globalStore';
 import { resolveProviderAssetInput, resolveProviderAssetInputs } from './mediaAssetResolver';
+import { runWithConcurrency } from '../utils/concurrency';
 import { persistMediaAsset } from './mediaPersistenceService';
 import { bindOwnerRefMedia } from './mediaTaskBindingService';
 import { getProjectITVProvider, getProjectTTIProvider, getProjectTTSProvider } from '../providers';
@@ -393,6 +394,12 @@ export class MediaGenerationService {
     destPath?: ImageDestPathResolver;
     bindOwner?: boolean;
     normalizeRemoteUrl?: boolean;
+    /**
+     * 进度回调：把 immediate 路径中"调用 provider / 下载 / 持久化 / 绑定"分阶段
+     * 暴露给外层（runWithTask 的 ctx.progress / character workflow 的 onProgress）。
+     * percent 是 [0,100] 范围。stage 仅日志用。
+     */
+    onProgress?: (percent: number, stage: string) => void;
   }): Promise<StoredMediaAsset[]> {
     const {
       projectId,
@@ -404,6 +411,7 @@ export class MediaGenerationService {
       destPath,
       bindOwner = true,
       normalizeRemoteUrl = true,
+      onProgress,
     } = params;
     const { provider, resolvedContext } = await resolveProviderAndContext({
       category: 'tti',
@@ -481,6 +489,7 @@ export class MediaGenerationService {
       options: request.options,
     }));
 
+    onProgress?.(15, '调用 provider');
     let started: Awaited<ReturnType<typeof provider.start>>;
     try {
       started = await provider.start({
@@ -489,6 +498,7 @@ export class MediaGenerationService {
         options: request.options,
         count: request.count,
       });
+      onProgress?.(40, 'provider 已返回');
       logger.info('TTI provider.start succeeded', {
         ownerRef,
         provider: provider.config?.provider,
@@ -521,7 +531,6 @@ export class MediaGenerationService {
 
     if (started.mode === 'immediate') {
       const outputs = getImmediateImageOutputs(started.output);
-      const finalAssets: StoredMediaAsset[] = [];
 
       logger.info('TTI immediate outputs resolved', {
         ownerRef,
@@ -530,7 +539,11 @@ export class MediaGenerationService {
         outputCount: outputs.length,
       });
 
-      for (const [index, output] of outputs.entries()) {
+      // 串行 persist 在 batch=9 时是阻塞主路径的元凶：
+      // 每张要 IPC 下载远端 URL + 写文件 + bindOwner SQLite。一张卡住整个循环不推进，
+      // runWithTask 的外层 ctx.progress(100) 永远不调，任务卡 10%、UI 永远不展示。
+      // 改成并发持久化（最多 4 路并行，避免一次性发起 9 个 IPC 抢占主线程）。
+      const persistTasks = outputs.map((output, index) => async (): Promise<StoredMediaAsset> => {
         const source = output.url || output.path;
         if (!source) {
           logger.error('TTI immediate output missing source', {
@@ -602,12 +615,55 @@ export class MediaGenerationService {
           });
         }
 
-        const finalAsset = mergeMediaMetadata(normalized, {
+        return mergeMediaMetadata(normalized, {
           provider: provider.config?.provider,
           width: optionWidth ?? output.width ?? normalized.width,
           height: optionHeight ?? output.height ?? normalized.height,
         });
-        finalAssets.push(finalAsset);
+      });
+
+      // 并发跑（最多 4 路），任一失败抛出（保留 Promise.all 语义）。
+      // 失败时已 persist 的图保留在落盘目录里，下游决定是否清理。
+      // 包一层 progress 反馈：每张完成都把进度往前推，避免外层 task 长时间停留在 40%。
+      let completedCount = 0;
+      const persistTasksWithProgress = persistTasks.map((task) => async () => {
+        try {
+          return await task();
+        } finally {
+          completedCount += 1;
+          // 40% (provider 已返回) → 90% (全部 persist 完)
+          const span = 90 - 40;
+          const next = 40 + Math.round(span * (completedCount / outputs.length));
+          onProgress?.(next, `持久化 ${completedCount}/${outputs.length}`);
+        }
+      });
+      const settled = await runWithConcurrency(persistTasksWithProgress, 4);
+      const finalAssets: StoredMediaAsset[] = [];
+      const failures: Array<{ index: number; error: unknown }> = [];
+      settled.forEach((res, index) => {
+        if (res.status === 'fulfilled') {
+          finalAssets.push(res.value);
+        } else {
+          failures.push({ index, error: res.reason });
+        }
+      });
+      if (failures.length > 0) {
+        logger.error('TTI immediate persist partial failure', {
+          ownerRef,
+          provider: provider.config?.provider,
+          totalCount: outputs.length,
+          successCount: finalAssets.length,
+          failureCount: failures.length,
+          firstError: failures[0].error instanceof Error
+            ? failures[0].error.message
+            : String(failures[0].error),
+        });
+        // 全失败抛错；部分成功只警告（保留已落盘的）
+        if (finalAssets.length === 0) {
+          throw failures[0].error instanceof Error
+            ? failures[0].error
+            : new Error(String(failures[0].error));
+        }
       }
 
       if (finalAssets.length === 0) {
@@ -633,6 +689,7 @@ export class MediaGenerationService {
           asset: summarizeImageAsset(finalAssets[0]),
         });
       }
+      onProgress?.(100, '完成');
       return finalAssets;
     }
 
@@ -711,6 +768,7 @@ export class MediaGenerationService {
     destPath?: string;
     bindOwner?: boolean;
     normalizeRemoteUrl?: boolean;
+    onProgress?: (percent: number, stage: string) => void;
   }): Promise<StoredMediaAsset> {
     const assets = await this.generateImages({
       ...params,

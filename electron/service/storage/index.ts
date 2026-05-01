@@ -51,3 +51,5 @@ export type {
 export { SqliteChannelConfigRepository } from './repositories/SqliteChannelConfigRepository';
 export { SqliteMediaDefaultsRepository } from './repositories/SqliteMediaDefaultsRepository';
 export { SqliteAppSettingsKvRepository } from './repositories/SqliteAppSettingsKvRepository';
+export { SqliteChatHistoryRepository, sqliteChatHistoryRepository } from './repositories/SqliteChatHistoryRepository';
+export type { ChatSessionRow, ChatMessageRow } from './repositories/SqliteChatHistoryRepository';

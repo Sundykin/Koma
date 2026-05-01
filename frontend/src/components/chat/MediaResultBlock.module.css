@@ -1,0 +1,207 @@
+@keyframes mediaCardFadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: #1c1c20;
+  border: 1px solid #27272a;
+  width: 100%;
+  max-width: 860px;
+  animation: mediaCardFadeIn 0.3s ease-out;
+}
+
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.prompt {
+  font-size: 14px;
+  color: #fafafa;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.metaLine {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #a1a1aa;
+}
+
+.metaDivider {
+  color: #52525b;
+}
+
+.body {
+  width: 100%;
+}
+
+/* 缩略图固定大小：每张 160×160（含 1×1 比例）。点击走 AntImage Preview 大图查看。 */
+.imageGrid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.imageItem {
+  position: relative;
+  flex: 0 0 auto;
+  width: 160px;
+  height: 160px;
+}
+
+.imageWrapper {
+  flex: 0 0 auto;
+}
+
+.image {
+  width: 160px !important;
+  height: 160px !important;
+  border-radius: 10px;
+  object-fit: cover;
+  background: #09090b;
+  border: 1px solid #27272a;
+  cursor: zoom-in;
+  transition: transform 0.2s;
+}
+
+.imageItem:hover .image {
+  transform: scale(1.02);
+}
+
+.imageOverlay {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.15s;
+  z-index: 2;
+}
+
+.imageItem:hover .imageOverlay {
+  opacity: 1;
+}
+
+.imageOverlayBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  background: rgba(15, 15, 17, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  color: #fafafa;
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.15s;
+}
+
+.imageOverlayBtn:hover {
+  background: #06b6d4;
+  color: #fff;
+  border-color: #06b6d4;
+  transform: scale(1.05);
+}
+
+.videoItem {
+  position: relative;
+  display: inline-block;
+}
+
+.videoOverlay {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.videoItem:hover .videoOverlay {
+  opacity: 1;
+}
+
+.video {
+  width: 320px;
+  height: 180px;
+  border-radius: 10px;
+  background: #09090b;
+  border: 1px solid #27272a;
+  object-fit: cover;
+}
+
+.placeholder {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 200px;
+  padding: 0 16px;
+  border-radius: 10px;
+  background: #18181b;
+  color: #d4d4d8;
+  font-size: 14px;
+}
+
+.errorBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 16px;
+  border-radius: 10px;
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  color: #fca5a5;
+}
+
+.errorMsg {
+  font-size: 12px;
+  color: #f87171;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.actionButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  background: #27272a;
+  border: 1px solid #3f3f46;
+  border-radius: 8px;
+  color: #d4d4d8;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.actionButton:hover {
+  border-color: #52525b;
+  background: #3f3f46;
+  color: #fafafa;
+}
+
+.actionDanger:hover {
+  border-color: rgba(239, 68, 68, 0.5);
+  background: rgba(239, 68, 68, 0.1);
+  color: #fca5a5;
+}

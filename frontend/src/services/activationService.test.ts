@@ -213,8 +213,10 @@ describe('activationService legacy activation migration', () => {
     });
 
     const createCalls = mocks.ipcInvoke.mock.calls.filter(([channel]) => channel === 'channel:create');
-    expect(createCalls).toHaveLength(3);
+    // 4 个 koma-activation 管理渠道：llm / tti / itv（grok）/ itvJimeng（即梦）
+    expect(createCalls).toHaveLength(4);
     expect(createCalls.map(([, args]) => args.providerConfig.apiKey)).toEqual([
+      FAKE_LEGACY_KEY,
       FAKE_LEGACY_KEY,
       FAKE_LEGACY_KEY,
       FAKE_LEGACY_KEY,
@@ -223,13 +225,16 @@ describe('activationService legacy activation migration', () => {
       'Koma官方',
       'Koma官方',
       'Koma官方',
+      'Koma官方-即梦',
     ]);
     expect(createCalls.map(([, args]) => args.providerConfig.managedBy)).toEqual([
       KOMA_ACTIVATION_MANAGED_BY,
       KOMA_ACTIVATION_MANAGED_BY,
       KOMA_ACTIVATION_MANAGED_BY,
+      KOMA_ACTIVATION_MANAGED_BY,
     ]);
     expect(createCalls.map(([, args]) => args.providerConfig.activationManaged)).toEqual([
+      true,
       true,
       true,
       true,
@@ -350,18 +355,22 @@ describe('activationService ensureDefaultModelChannels', () => {
 
     expect(result.success).toBe(true);
     const updateCalls = mocks.ipcInvoke.mock.calls.filter(([channel]) => channel === 'channel:update');
-    expect(updateCalls).toHaveLength(3);
+    // 4 个管理渠道：llm / tti / itv（grok） / itvJimeng（即梦）
+    expect(updateCalls).toHaveLength(4);
     expect(updateCalls.map(([, args]) => args.patch.name)).toEqual([
       'Koma官方',
       'Koma官方',
       'Koma官方',
+      'Koma官方-即梦',
     ]);
     expect(updateCalls.map(([, args]) => args.patch.providerConfig.managedBy)).toEqual([
       KOMA_ACTIVATION_MANAGED_BY,
       KOMA_ACTIVATION_MANAGED_BY,
       KOMA_ACTIVATION_MANAGED_BY,
+      KOMA_ACTIVATION_MANAGED_BY,
     ]);
     expect(updateCalls.map(([, args]) => args.patch.providerConfig.activationManaged)).toEqual([
+      true,
       true,
       true,
       true,

@@ -3,12 +3,12 @@
   background-color: #27272a;
   border: 1px solid #3f3f46;
   border-radius: 16px;
-  transition: border-color 0.2s, box-shadow 0.2s;
+  transition: border-color 0.25s ease, box-shadow 0.25s ease, transform 0.2s ease;
 }
 
 .composer:focus-within {
-  border-color: #10b981;
-  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.1);
+  border-color: #06b6d4;
+  box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.12);
 }
 
 .dragging {
@@ -16,7 +16,6 @@
   border-style: dashed;
 }
 
-/* 拖拽提示 */
 .dropOverlay {
   position: absolute;
   inset: 0;
@@ -37,100 +36,147 @@
   font-size: 24px;
 }
 
-/* 附件预览区 */
-.attachments {
+/* ── 主输入区：左侧缩略图叠加 + 添加按钮 + textarea ── */
+
+.mainRow {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  padding: 12px 12px 0;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 16px 4px;
 }
 
-.attachmentItem {
+.thumbStack {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  flex-wrap: nowrap;
+  max-width: 320px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 2px;
+  scrollbar-width: thin;
+  scrollbar-color: #3f3f46 transparent;
+}
+
+.thumbStack::-webkit-scrollbar {
+  height: 4px;
+}
+.thumbStack::-webkit-scrollbar-thumb {
+  background: #3f3f46;
+  border-radius: 2px;
+}
+
+.thumbItem {
   position: relative;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 28px 6px 8px;
-  background-color: #3f3f46;
+  width: 56px;
+  height: 56px;
+  flex: 0 0 56px;
   border-radius: 8px;
-  max-width: 200px;
+  border: 1.5px solid #3f3f46;
+  background: #18181b;
+  cursor: pointer;
+  transition: all 0.15s ease;
 }
 
-.attachmentImage {
-  width: 32px;
-  height: 32px;
+.thumbItem img {
+  width: 100%;
+  height: 100%;
+  border-radius: 7px;
   object-fit: cover;
-  border-radius: 4px;
+  display: block;
 }
 
-.attachmentFile {
-  width: 32px;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background-color: #52525b;
-  border-radius: 4px;
-  color: #a1a1aa;
+/* 选中（待发送）：青色边框 + 满色 */
+.thumbPending {
+  border-color: #06b6d4;
+  box-shadow: 0 0 0 1px rgba(6, 182, 212, 0.3);
 }
 
-.attachmentName {
-  font-size: 12px;
-  color: #d4d4d8;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+/* 未选中（仅在 @ 池中可被引用）：灰边 + 半透明 */
+.thumbDimmed img {
+  opacity: 0.55;
+}
+.thumbDimmed {
+  border-color: #3f3f46;
+}
+.thumbDimmed:hover img {
+  opacity: 0.85;
 }
 
-.attachmentRemove {
+.thumbLabel {
   position: absolute;
-  top: 4px;
-  right: 4px;
-  width: 20px;
-  height: 20px;
-  display: flex;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 1px 4px;
+  font-size: 10px;
+  text-align: center;
+  background: rgba(0, 0, 0, 0.65);
+  color: #fafafa;
+  border-bottom-left-radius: 7px;
+  border-bottom-right-radius: 7px;
+  pointer-events: none;
+}
+
+.thumbRemove {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  background-color: #52525b;
   border: none;
   border-radius: 50%;
-  color: #a1a1aa;
+  background: rgba(15, 15, 17, 0.95);
+  color: #fafafa;
+  font-size: 9px;
   cursor: pointer;
-  transition: background-color 0.2s, color 0.2s;
+  box-shadow: 0 0 0 1px #3f3f46;
 }
 
-.attachmentRemove:hover {
-  background-color: #ef4444;
-  color: white;
+.thumbRemove:hover {
+  background: #ef4444;
 }
 
-/* 输入行 */
-.inputRow {
-  display: flex;
-  align-items: flex-end; /* 多行文本时让按钮底部对齐 */
-  gap: 12px;
-  padding: 12px 16px;
+.thumbAdd {
+  width: 56px;
+  height: 56px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed #52525b;
+  border-radius: 8px;
+  background: transparent;
+  color: #71717a;
+  cursor: pointer;
+  font-size: 16px;
+  transition: all 0.15s;
 }
 
-.attachButton {
-  flex-shrink: 0;
-  color: #a1a1aa !important;
+.thumbAdd:hover:not(:disabled) {
+  border-color: #06b6d4;
+  color: #06b6d4;
+  background: rgba(6, 182, 212, 0.05);
 }
 
-.attachButton:hover {
-  color: #10b981 !important;
+.thumbAdd:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .textarea {
   flex: 1;
-  min-height: 36px; /* 匹配单行高度 (24px line-height + 12px padding) */
+  min-height: 56px;
   max-height: 200px;
   padding: 6px 0;
   background: transparent;
   border: none;
   outline: none;
   resize: none;
-  overflow-y: hidden; /* 默认隐藏滚动轴，交由 JS 处理 */
+  overflow-y: hidden;
   font-size: 15px;
   line-height: 1.6;
   color: #fafafa;
@@ -145,6 +191,473 @@
   opacity: 0.5;
 }
 
+/* CodeMirror 输入框包装 */
+.editorWrap {
+  flex: 1;
+  display: flex;
+  align-items: stretch;
+  min-height: 56px;
+  position: relative;
+}
+
+.editorWrap :global(.cm-editor) {
+  flex: 1;
+  background: transparent;
+}
+
+.editorWrap :global(.cm-editor.cm-focused) {
+  outline: none !important;
+}
+
+.editorWrap :global(.cm-scroller) {
+  font-family: inherit;
+  line-height: 1.6;
+}
+
+/* placeholder 通过 data-attr 实现（CodeMirror 没自带 placeholder） */
+.editorWrap :global(.cm-content[aria-readonly="false"]:empty)::before,
+.editorWrap :global(.cm-line:only-child:empty)::before {
+  content: attr(data-placeholder);
+  color: #71717a;
+  pointer-events: none;
+}
+
+/* Mentions（旧组件，保留 CSS 兼容） */
+.mentions {
+  flex: 1;
+  min-height: 56px;
+  background: transparent !important;
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.mentions :global(.ant-mentions) {
+  background: transparent !important;
+}
+
+.mentions :global(textarea) {
+  background: transparent !important;
+  color: #fafafa !important;
+  font-size: 15px !important;
+  line-height: 1.6 !important;
+  font-family: inherit !important;
+  resize: none !important;
+  padding: 6px 0 !important;
+}
+
+.mentions :global(textarea::placeholder) {
+  color: #71717a !important;
+}
+
+.mentionDropdownItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.mentionDropdownItem img {
+  width: 28px;
+  height: 28px;
+  border-radius: 4px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.mentionDropdownItem span:nth-child(2) {
+  flex: 1;
+  font-size: 13px;
+}
+
+.mentionDropdownBadge {
+  font-size: 11px;
+  color: #71717a;
+  padding: 2px 6px;
+  background: #27272a;
+  border-radius: 4px;
+}
+
+/* 文本中已 @ 的引用 token 列表（输入框上方） */
+.mentionTokenRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px 0;
+  animation: tokenRowFadeIn 0.2s ease-out;
+}
+
+@keyframes tokenRowFadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.mentionTokenLabel {
+  font-size: 12px;
+  color: #71717a;
+}
+
+.mentionToken {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px 2px 2px;
+  border: 1px solid rgba(6, 182, 212, 0.4);
+  border-radius: 999px;
+  background: rgba(6, 182, 212, 0.08);
+  color: #67e8f9;
+  font-size: 12px;
+  cursor: default;
+  transition: all 0.15s;
+}
+
+.mentionToken:hover {
+  background: rgba(6, 182, 212, 0.18);
+  border-color: #06b6d4;
+}
+
+.mentionToken img {
+  width: 22px;
+  height: 22px;
+  object-fit: cover;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* ── 底部控件栏（仿即梦） ───────────────── */
+
+.controlsRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px 12px;
+  border-top: 1px solid rgba(63, 63, 70, 0.6);
+  margin-top: 4px;
+  flex-wrap: wrap;
+}
+
+.controlsSpacer {
+  flex: 1;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  background: #18181b;
+  border: 1px solid #3f3f46;
+  border-radius: 8px;
+  color: #d4d4d8;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.18s ease;
+  max-width: 240px;
+  white-space: nowrap;
+}
+
+.chip:hover:not(:disabled) {
+  border-color: #52525b;
+  background: #27272a;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+}
+
+.chip:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.chip:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.chipPrimary {
+  color: #06b6d4;
+  border-color: rgba(6, 182, 212, 0.3);
+}
+
+.chipPrimary:hover:not(:disabled) {
+  border-color: #06b6d4;
+  background: rgba(6, 182, 212, 0.08);
+}
+
+.chipModelLabel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 180px;
+}
+
+.chipCaret {
+  font-size: 10px;
+  color: #71717a;
+}
+
+.chipDivider {
+  color: #52525b;
+  margin: 0 2px;
+}
+
+.chipIconRotated {
+  transform: rotate(45deg);
+  font-size: 14px;
+}
+
+.chipIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 32px;
+  width: 32px;
+  padding: 0;
+  background: #18181b;
+  border: 1px solid #3f3f46;
+  border-radius: 8px;
+  color: #a1a1aa;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.chipIcon:hover:not(:disabled) {
+  border-color: #52525b;
+  color: #fafafa;
+}
+
+.chipIcon:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.modeMenuItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .sendButton {
   flex-shrink: 0;
+}
+
+/* ── 比例 popover ──────────────────────────── */
+
+.ratioPopover {
+  width: 360px;
+  padding: 4px;
+}
+
+.popoverSectionLabel {
+  font-size: 12px;
+  color: #a1a1aa;
+  margin-bottom: 8px;
+}
+
+.ratioGrid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  margin-bottom: 16px;
+}
+
+.ratioOption {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 56px;
+  padding: 4px;
+  background: transparent;
+  border: 1px solid #3f3f46;
+  border-radius: 8px;
+  color: #d4d4d8;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.ratioOption:hover {
+  border-color: #52525b;
+  background: #27272a;
+}
+
+.ratioOptionActive {
+  border-color: #06b6d4;
+  background: rgba(6, 182, 212, 0.08);
+  color: #fafafa;
+}
+
+.ratioBox {
+  background: currentColor;
+  border-radius: 2px;
+  opacity: 0.7;
+}
+
+.resolutionRow {
+  display: flex;
+  gap: 6px;
+}
+
+.resolutionOption {
+  flex: 1;
+  height: 36px;
+  padding: 0 12px;
+  background: transparent;
+  border: 1px solid #3f3f46;
+  border-radius: 8px;
+  color: #d4d4d8;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.resolutionOption:hover {
+  border-color: #52525b;
+  background: #27272a;
+}
+
+.resolutionOptionActive {
+  border-color: #06b6d4;
+  background: rgba(6, 182, 212, 0.08);
+  color: #fafafa;
+}
+
+/* ── 时长 popover ──────────────────────────── */
+
+.durationPopover {
+  width: 200px;
+  padding: 4px;
+}
+
+.durationList {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.durationOption {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 36px;
+  padding: 0 12px;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: #d4d4d8;
+  font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s;
+}
+
+.durationOption:hover {
+  background: #27272a;
+}
+
+.durationOptionActive {
+  background: rgba(6, 182, 212, 0.08);
+  color: #fafafa;
+}
+
+.durationOption :global(.anticon) {
+  color: #71717a;
+}
+
+/* ── 数量 popover ──────────────────────── */
+
+.countPopover {
+  width: 220px;
+  padding: 4px;
+}
+
+.countGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.countOption {
+  height: 36px;
+  background: transparent;
+  border: 1px solid #3f3f46;
+  border-radius: 6px;
+  color: #d4d4d8;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.countOption:hover {
+  border-color: #52525b;
+  background: #27272a;
+}
+
+.countOptionActive {
+  border-color: #06b6d4;
+  background: rgba(6, 182, 212, 0.08);
+  color: #fafafa;
+}
+
+/* ── @ 引用 popover ─────────────────────── */
+
+.mentionPopover {
+  width: 300px;
+  padding: 4px;
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+.mentionEmpty {
+  padding: 16px 8px;
+  color: #71717a;
+  font-size: 13px;
+  text-align: center;
+}
+
+.mentionList {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.mentionItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 48px;
+  padding: 4px 8px;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  color: #d4d4d8;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s;
+}
+
+.mentionItem:hover {
+  background: #27272a;
+}
+
+.mentionItem img {
+  width: 36px;
+  height: 36px;
+  object-fit: cover;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+
+.mentionItemLabel {
+  flex: 1;
+  font-size: 13px;
+  color: #fafafa;
+}
+
+.mentionItemBadge {
+  font-size: 11px;
+  color: #71717a;
+  padding: 2px 6px;
+  background: #27272a;
+  border-radius: 4px;
 }
