@@ -37,7 +37,7 @@ export interface UseChatReturn {
   isReady: boolean;
 
   send: (content: string | ContentPart[]) => Promise<void>;
-  sendStream: (content: string | ContentPart[]) => Promise<void>;
+  sendStream: (content: string | ContentPart[], streamOpts?: { skipUserMessage?: boolean }) => Promise<void>;
   retry: (messageId: string) => Promise<void>;
   clear: () => void;
   stop: () => void;
@@ -212,7 +212,10 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
     }
   }, [sessionId, isReady, options.onError]);
 
-  const sendStream = useCallback(async (content: string | ContentPart[]) => {
+  const sendStream = useCallback(async (
+    content: string | ContentPart[],
+    streamOpts?: { skipUserMessage?: boolean },
+  ) => {
     if (!sessionId || !isReady) return;
 
     setIsLoading(true);
@@ -222,14 +225,16 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
     setError(null);
     options.onStreamStart?.();
 
-    // 乐观更新：添加用户消息
-    const userMessage: ChatMessage = {
-      id: generateId(),
-      role: 'user',
-      content,
-      timestamp: Date.now(),
-    };
-    setMessages(prev => [...prev, userMessage]);
+    // 乐观更新：添加用户消息（调用方已显式 append 时跳过，避免重复）
+    if (!streamOpts?.skipUserMessage) {
+      const userMessage: ChatMessage = {
+        id: generateId(),
+        role: 'user',
+        content,
+        timestamp: Date.now(),
+      };
+      setMessages(prev => [...prev, userMessage]);
+    }
 
     try {
       await chatIPC.sendMessageStream(sessionId, { role: 'user', content });

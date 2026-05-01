@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { Button, Tooltip } from 'antd';
-import { Users } from 'lucide-react';
-import { useTranslation } from 'react-i18next';
+import { Button, Tag, Tooltip } from 'antd';
+import { SettingOutlined, UploadOutlined } from '@ant-design/icons';
+import { Film, Users } from 'lucide-react';
 import {
   Project, Episode, EditorStep, EpisodeStepProgress,
   ScriptAnalysisResult, AppSettings, ProjectStyleSnapshot,
@@ -56,12 +56,15 @@ export const EditorView: React.FC<EditorViewProps> = ({
   onProjectUpdate,
   onActiveEpisodeChange,
 }) => {
-  const { t } = useTranslation();
   const styleSnapshot: ProjectStyleSnapshot | undefined = activeProject.styleSnapshot;
   const llmSelection = serializeMediaSelection(activeProject.mediaSelections?.llm);
   const ttiSelection = serializeMediaSelection(activeProject.mediaSelections?.tti);
   const itvSelection = serializeMediaSelection(activeProject.mediaSelections?.itv);
   const ttsSelection = serializeMediaSelection(activeProject.mediaSelections?.tts);
+
+  // 'script' 步：导入剧本对话框由 ProjectOverview 渲染；EditorView 顶部按钮通过递增信号
+  // 触发其打开（避免把 dialog 提到这一层后还要重新搭刷新 EpisodeManager / AssetOverview 的通道）
+  const [scriptImportSignal, setScriptImportSignal] = useState(0);
 
   // 'script' 步：跟踪当前剧集的解析就绪状态（剧本必须解析过才能进入下一步）
   // 派生顺序：episode.hasAnalysis → 兜底走 loadEpisodeAnalysis 的 completedStages 长度
@@ -118,7 +121,7 @@ export const EditorView: React.FC<EditorViewProps> = ({
         onClick={() => onStepChangeWithMark(next.targetStepId as EditorStep)}
         className={blockedByAnalysis ? '' : 'bg-emerald-600 hover:bg-emerald-500 border-none'}
       >
-        {t(next.labelKey)}
+        下一步
       </Button>
     );
 
@@ -144,6 +147,7 @@ export const EditorView: React.FC<EditorViewProps> = ({
     onProjectUpdate,
     onOpenProjectSettings,
     onActiveEpisodeChange,
+    scriptImportSignal,
   };
 
   // 数据驱动：从 registry 取当前 step 的 Component
@@ -152,13 +156,53 @@ export const EditorView: React.FC<EditorViewProps> = ({
 
   return (
     <div className="flex flex-col h-full">
-      {/* 嵌入式步骤导航 */}
+      {/* 嵌入式步骤导航：左侧项目标识 + 步骤条 + 右侧（剧本步:导入剧本） / 主操作按钮 / 项目设置图标 */}
       <StepNavigator
         currentStep={editorStep}
         onStepChange={onStepChange}
         stepProgress={stepProgress}
         scriptText={scriptText}
-        actionButton={getActionButton()}
+        leftContent={(
+          <div className="flex items-center gap-1.5 min-w-0">
+            <div className="w-5 h-5 bg-gradient-to-br from-emerald-500 to-emerald-700 rounded flex items-center justify-center flex-shrink-0">
+              <Film className="w-2.5 h-2.5 text-white" />
+            </div>
+            <span className="text-xs font-medium text-zinc-200 truncate max-w-[140px]" title={activeProject.title}>
+              {activeProject.title}
+            </span>
+            <Tag className="!m-0 !text-[10px] !leading-4 !px-1.5 !bg-emerald-900/30 !text-emerald-400 !border-emerald-800/50">
+              {activeProject.genre || '未分类'}
+            </Tag>
+          </div>
+        )}
+        actionButton={(
+          <>
+            {getActionButton()}
+            {editorStep === 'script' && (
+              <Tooltip title="导入完整剧本并 AI 自动分集（会替换项目中所有剧集）">
+                <Button
+                  size="small"
+                  icon={<UploadOutlined />}
+                  onClick={() => setScriptImportSignal((s) => s + 1)}
+                  className="!text-zinc-300 !border-zinc-700 !bg-zinc-800 hover:!text-cyan-300 hover:!border-cyan-600"
+                >
+                  导入剧本
+                </Button>
+              </Tooltip>
+            )}
+          </>
+        )}
+        extraButton={(
+          <Tooltip title="项目设置（项目名 / 题材 / 风格 / 模型选择）">
+            <button
+              onClick={() => onOpenProjectSettings()}
+              className="flex items-center justify-center w-7 h-7 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded text-zinc-300 transition-colors"
+              aria-label="项目设置"
+            >
+              <SettingOutlined />
+            </button>
+          </Tooltip>
+        )}
       />
 
       {/* 主内容区 */}

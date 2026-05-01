@@ -18,7 +18,7 @@ import { ChatLayout } from './ChatLayout';
 import { ChatComposer } from './ChatComposer';
 import type { AttachmentFile } from './ChatComposer';
 import {
-  generateChatMedia,
+  startChatMedia,
   uploadAttachmentImagesToHosting,
   extractChatImageMentionLabels,
   type ChatImageRef,
@@ -27,6 +27,12 @@ import {
   type MediaResultMeta,
 } from './chatMediaGeneration';
 import { classifyChatIntent } from '../../services/chatIntentRouter';
+import {
+  pollChatMediaTask,
+  recoverPendingChatTasks,
+  type ChatTaskCancel,
+} from '../../services/chatTaskRecovery';
+import { persistChatMediaToLocal } from '../../services/chatMediaPersistence';
 import { HistorySidebar } from './HistorySidebar';
 import { MCPSettings } from './MCPSettings';
 import type { MCPServerConfig } from '../../chat/ipc';
@@ -220,6 +226,7 @@ export const ChatPage: React.FC = () => {
           id: `chat-image-${Date.now()}-${number}-${Math.random().toString(36).slice(2, 8)}`,
           label: `图片${number}`,
           source: url,
+          remoteUrl: /^https?:\/\//i.test(url) ? url : undefined,
           mimeType: file.type,
           origin: 'upload',
           pending: true,
@@ -233,10 +240,7 @@ export const ChatPage: React.FC = () => {
     }
   }, []);
 
-  // 用 ref 把 handleSend 暴露给前面定义的 handleMediaRegenerate（避免循环依赖）
-  const handleSendRef = useRef<((text: string, mode?: ChatMediaMode, mediaParams?: ChatMediaParams) => Promise<void>) | null>(null);
-
-  // 历史存储（提前到 handleSend 之前，让 handleSend 能在入口处主动建 session）
+  // 历史存储（提前到 polling/handleSend 之前，让所有 callback 闭包能拿到 currentSessionId）
   const {
     loadMessages: loadHistoryMessages,
     saveMessages,
@@ -246,12 +250,89 @@ export const ChatPage: React.FC = () => {
     loadSessions: reloadSessionsList,
   } = useChatHistoryStore();
 
+  // 用 ref 把 handleSend 暴露给前面定义的 handleMediaRegenerate（避免循环依赖）
+  const handleSendRef = useRef<((text: string, mode?: ChatMediaMode, mediaParams?: ChatMediaParams) => Promise<void>) | null>(null);
+
+  // 活跃的 chat 任务轮询（messageId → cancel）。session 切换 / 组件卸载时全部 cancel。
+  const activePollsRef = useRef<Map<string, ChatTaskCancel>>(new Map());
+
+  // 共用的 polling 回调写法：完成时改 metadata.mediaResult、清 activePolls 条目
+  const startPollingForMessage = useCallback((messageId: string, meta: MediaResultMeta) => {
+    if (!meta.taskId || !meta.taskKind || !meta.taskCapability) return;
+    // 同一 messageId 已有轮询在跑则跳过
+    if (activePollsRef.current.has(messageId)) return;
+    const cancel = pollChatMediaTask({
+      taskId: meta.taskId,
+      taskKind: meta.taskKind,
+      taskCapability: meta.taskCapability,
+      modelSelectionKey: meta.modelSelectionKey,
+      context: { sessionId: currentSessionId ?? undefined, messageId },
+      callbacks: {
+        onComplete: (result) => {
+          activePollsRef.current.delete(messageId);
+          // 把异步生图结果加到 @ 引用池（与 immediate 路径保持一致）
+          if (result.images && result.images.length > 0) {
+            setChatImageRefs(prev => [...prev, ...result.images!]);
+          }
+          updateMessage(messageId, (msg) => {
+            const cur = (msg.metadata as { mediaResult?: MediaResultMeta } | undefined)?.mediaResult;
+            if (!cur) return msg;
+            return {
+              ...msg,
+              metadata: {
+                ...(msg.metadata || {}),
+                mediaResult: {
+                  ...cur,
+                  generating: false,
+                  video: result.video ?? cur.video,
+                  images: result.images && result.images.length > 0 ? result.images : cur.images,
+                },
+              },
+            };
+          });
+        },
+        onError: (errorMessage) => {
+          activePollsRef.current.delete(messageId);
+          updateMessage(messageId, (msg) => {
+            const cur = (msg.metadata as { mediaResult?: MediaResultMeta } | undefined)?.mediaResult;
+            if (!cur) return msg;
+            return {
+              ...msg,
+              metadata: {
+                ...(msg.metadata || {}),
+                mediaResult: { ...cur, generating: false, error: errorMessage },
+              },
+            };
+          });
+        },
+      },
+    });
+    activePollsRef.current.set(messageId, cancel);
+  }, [updateMessage, currentSessionId]);
+
+  // 组件卸载时取消所有活跃轮询
+  useEffect(() => () => {
+    activePollsRef.current.forEach(cancel => cancel());
+    activePollsRef.current.clear();
+  }, []);
+
+  // 历史存储（提前到 handleSend 之前，让 handleSend 能在入口处主动建 session）
   // 发送消息
   const handleSend = useCallback(async (
     text: string,
     selectedMode: ChatMediaMode = 'chat',
     mediaParams: ChatMediaParams = {},
   ) => {
+    // 诊断：handleSend 入口看到的所有参数 + 当前选中的模型 key
+    logger.info('handleSend 入口', {
+      text: text.slice(0, 80),
+      selectedMode,
+      mediaParams,
+      ttiSelectionKey,
+      itvSelectionKey,
+      chatImageRefsCount: chatImageRefs.length,
+      pendingImageRefsCount: chatImageRefs.filter(r => r.pending).length,
+    });
     // 触发任何对话前确保有 currentSessionId，新对话则立即建一个，立即写入侧栏
     if (!currentSessionId) {
       const newId = createHistorySession();
@@ -277,18 +358,36 @@ export const ChatPage: React.FC = () => {
       ? dedupKeepOrder(mentionedRefs)
       : pendingImageRefs;
 
-    // 意图路由
-    const hasImageInput = refsToSend.length > 0;
-    const inferredMode: ChatMediaMode = selectedMode !== 'chat'
-      ? selectedMode
-      : selectedConfig
-        ? await classifyChatIntent({ text, hasImageInput, llmConfig: selectedConfig })
-        : 'chat';
+    // ★ 用户消息立即出现 — 不等任何路由 / IPC，先把消息塞进对话流
+    const userParts: ContentPart[] = [];
+    if (text) userParts.push({ type: 'text', text });
+    refsToSend.forEach(ref => {
+      userParts.push({ type: 'image', imageUrl: ref.source, mimeType: ref.mimeType });
+    });
+    const userContentForSend: string | ContentPart[] = userParts.length === 0
+      ? ''
+      : (userParts.length === 1 && userParts[0].type === 'text' ? userParts[0].text : userParts);
+    if (userParts.length > 0) {
+      appendUserMessage(userContentForSend);
+    }
+    // pending → 翻成已发送（仅 pending 那批；@ 引用的本来就 pending=false）
+    setChatImageRefs(prev => prev.map(r => (r.pending ? { ...r, pending: false } : r)));
 
-    // pending → 翻成已发送（仅 pending 那批，@ 引用的早就 pending=false 不影响）
-    const consumePending = () => {
-      setChatImageRefs(prev => prev.map(r => (r.pending ? { ...r, pending: false } : r)));
-    };
+    // ReAct 意图路由：LLM 输出 thought + mode（用户能看到推理过程）
+    // 传精确 imageCount（不只 boolean），让 LLM 区分 image-to-video（1 张）vs reference-to-video（多张）
+    const imageCount = refsToSend.length;
+    let inferredMode: ChatMediaMode;
+    let routeThought: string | undefined;
+    if (selectedMode !== 'chat') {
+      inferredMode = selectedMode;
+      routeThought = `用户显式选择 ${selectedMode} 模式`;
+    } else if (selectedConfig) {
+      const decision = await classifyChatIntent({ text, imageCount, llmConfig: selectedConfig });
+      inferredMode = decision.mode;
+      routeThought = decision.thought;
+    } else {
+      inferredMode = 'chat';
+    }
 
     if (inferredMode !== 'chat') {
       // 当前选中的模型 label / selectionKey（用于 metadata）
@@ -301,18 +400,8 @@ export const ChatPage: React.FC = () => {
         : ttiModelOptions.find(o => o.value === ttiSelectionKey)?.label;
       const modelSelectionKey = isVideoMode ? itvSelectionKey : ttiSelectionKey;
 
-      // 1. 用户消息进对话流（文字 + 本次精确携带的图）
-      const userParts: ContentPart[] = [];
-      if (text) userParts.push({ type: 'text', text });
-      refsToSend.forEach(ref => {
-        userParts.push({ type: 'image', imageUrl: ref.source, mimeType: ref.mimeType });
-      });
-      if (userParts.length > 0) {
-        appendUserMessage(userParts.length === 1 && userParts[0].type === 'text' ? userParts[0].text : userParts);
-      }
-      consumePending();
-
-      // 2. 占位 assistant 消息：用 metadata.mediaResult 标识，UI 走专用卡片渲染
+      // 用户消息已在 handleSend 入口立即 append；这里只建 placeholder assistant
+      // 占位 assistant 消息：用 metadata.mediaResult 标识，UI 走专用卡片渲染
       const initialMeta: MediaResultMeta = {
         kind: 'media-result',
         mode: inferredMode,
@@ -325,6 +414,7 @@ export const ChatPage: React.FC = () => {
         count: mediaParams.count,
         generating: true,
         sourceImageRefs: refsToSend.map(r => ({ ...r, pending: false })),
+        thought: routeThought,
       };
       const placeholder = appendAssistantMessage('');
       updateMessage(placeholder.id, (msg) => ({
@@ -334,29 +424,86 @@ export const ChatPage: React.FC = () => {
 
       setIsGeneratingMedia(true);
       try {
-        const result = await generateChatMedia({
+        // 诊断：紧贴 startChatMedia 调用前打一次最终参数
+        logger.info('startChatMedia 调用前', {
+          mode: inferredMode,
+          refsToSendCount: refsToSend.length,
+          refsToSendLabels: refsToSend.map(r => r.label),
+          refsToSendSourcesPreview: refsToSend.map(r => r.source.slice(0, 80)),
+          ttiSelection: ttiSelectionKey,
+          itvSelection: itvSelectionKey,
+          mediaParams,
+        });
+        const started = await startChatMedia({
           text,
           attachments: [],
           mode: inferredMode,
           imageRefs: chatImageRefs,
+          refsToSend, // ★ 把"本次精确携带的图"透传，确保 pending 即使没 @ 也送给 provider
           ttiSelection: ttiSelectionKey,
           itvSelection: itvSelectionKey,
           existingImageCount: chatImageRefs.length,
           mediaParams,
         });
-        if (result.images.length > 0) {
-          setChatImageRefs(prev => [...prev, ...result.images]);
+
+        if (started.mode === 'immediate') {
+          // 即使是 immediate，video URL 也可能需要鉴权（如 Koma 的 /v1/videos/*/content）
+          // 把每个远程源都过一遍 persistChatMediaToLocal 转成 koma-local:// 本地播放
+          // 关键：把 provider 返回的原始远程 URL 存到 remoteUrl 字段（落盘后 source 是本地路径，
+          // 之后再次引用为参考图时优先用 remoteUrl，不必重新走图床上传）
+          const localizedImages: ChatImageRef[] = [];
+          for (const img of started.images) {
+            const remoteUrl = img.remoteUrl || (/^https?:\/\//i.test(img.source) ? img.source : undefined);
+            const localized = await persistChatMediaToLocal({
+              remoteUrl: img.source,
+              kind: 'image',
+              modelSelectionKey: ttiSelectionKey,
+              sessionId: currentSessionId ?? undefined,
+              messageId: placeholder.id,
+            });
+            localizedImages.push({ ...img, source: localized, remoteUrl });
+          }
+          const localizedVideo = started.video
+            ? await persistChatMediaToLocal({
+                remoteUrl: started.video,
+                kind: 'video',
+                modelSelectionKey: itvSelectionKey,
+                sessionId: currentSessionId ?? undefined,
+                messageId: placeholder.id,
+              })
+            : undefined;
+
+          if (localizedImages.length > 0) {
+            setChatImageRefs(prev => [...prev, ...localizedImages]);
+          }
+          const finalMeta: MediaResultMeta = {
+            ...initialMeta,
+            generating: false,
+            images: localizedImages,
+            video: localizedVideo,
+            taskKind: started.taskKind,
+            taskCapability: started.taskCapability,
+          };
+          updateMessage(placeholder.id, (msg) => ({
+            ...msg,
+            metadata: { ...(msg.metadata || {}), mediaResult: finalMeta },
+          }));
+        } else {
+          // async：把 taskId 和 polling 必需信息写进 metadata（落库），然后启动轮询
+          const asyncMeta: MediaResultMeta = {
+            ...initialMeta,
+            generating: true,
+            taskId: started.taskId,
+            taskKind: started.taskKind,
+            taskCapability: started.taskCapability,
+            modelSelectionKey: started.modelSelectionKey ?? initialMeta.modelSelectionKey,
+          };
+          updateMessage(placeholder.id, (msg) => ({
+            ...msg,
+            metadata: { ...(msg.metadata || {}), mediaResult: asyncMeta },
+          }));
+          startPollingForMessage(placeholder.id, asyncMeta);
         }
-        const finalMeta: MediaResultMeta = {
-          ...initialMeta,
-          generating: false,
-          images: result.images,
-          video: result.video,
-        };
-        updateMessage(placeholder.id, (msg) => ({
-          ...msg,
-          metadata: { ...(msg.metadata || {}), mediaResult: finalMeta },
-        }));
       } catch (err: unknown) {
         const errorMessage = err instanceof Error ? err.message : String(err);
         message.error(`媒体生成失败：${errorMessage}`);
@@ -372,35 +519,24 @@ export const ChatPage: React.FC = () => {
     }
 
     if (!isReady) {
-      message.warning(t('chat.sessionNotReady'));
+      // 用户消息已经显示了，但 session 还没就绪 → assistant 加一条提示而不是 toast 后什么都不做
+      appendAssistantMessage(t('chat.sessionNotReady') as string);
       return;
     }
     if (!selectedConfig) {
-      message.warning(t('chat.configLLMFirst'));
+      appendAssistantMessage(t('chat.configLLMFirst') as string);
       return;
     }
 
     try {
-      // 构建 chat user content（pending + @ 引用合并去重）
-      let content: string | ContentPart[];
-      if (refsToSend.length > 0) {
-        const parts: ContentPart[] = [];
-        if (text) parts.push({ type: 'text', text });
-        refsToSend.forEach(ref => {
-          parts.push({ type: 'image', imageUrl: ref.source, mimeType: ref.mimeType });
-        });
-        content = parts;
-      } else {
-        content = text;
-      }
-      consumePending();
-      await sendStream(content);
+      // 用户消息已在入口立即 appendUserMessage，这里只走流式（skipUserMessage 避免重复）
+      await sendStream(userContentForSend, { skipUserMessage: true });
     } catch (err: unknown) {
       const errorMessage = formatChatErrorMessage(err);
       message.error(t('chat.sendFailed', { error: errorMessage }));
       logger.error('发送消息失败', err);
     }
-  }, [appendAssistantMessage, appendUserMessage, chatImageRefs, isReady, itvSelectionKey, selectedConfig, sendStream, t, ttiSelectionKey, updateMessage, ttiModelOptions, itvModelOptions]);
+  }, [appendAssistantMessage, appendUserMessage, chatImageRefs, isReady, itvSelectionKey, selectedConfig, sendStream, t, ttiSelectionKey, updateMessage, ttiModelOptions, itvModelOptions, startPollingForMessage]);
 
   // 把 handleSend 暴露到 ref 给前面定义的 handleMediaRegenerate 使用
   useEffect(() => {
@@ -423,11 +559,12 @@ export const ChatPage: React.FC = () => {
         title: sessionData.title,
         messageCount: sessionData.messages.length,
       });
-      // 重启后中断处理：已落库为"生成中"的媒体卡片必然是上次未完成的（应用已重启，无法收到结果），
-      // 恢复时把 generating:true 全部转成 error，避免界面卡在"正在创作..."。
+      // 重启后处理 generating=true 的媒体卡片：
+      //  - 有 taskId：保留 generating 状态，下面会启动 recoverPendingChatTasks 接续轮询
+      //  - 无 taskId（旧数据）：转为 error 提示用户重新生成
       const recoveredMessages = sessionData.messages.map((msg) => {
         const meta = (msg.metadata as { mediaResult?: MediaResultMeta } | undefined)?.mediaResult;
-        if (meta?.generating) {
+        if (meta?.generating && !meta.taskId) {
           return {
             ...msg,
             metadata: {
@@ -435,22 +572,32 @@ export const ChatPage: React.FC = () => {
               mediaResult: {
                 ...meta,
                 generating: false,
-                error: '任务被中断（应用已重启），请使用"再次生成"重试',
+                error: '任务被中断（缺少恢复信息），请使用"再次生成"重试',
               },
             },
           };
         }
         return msg;
       });
+      // 切 session 前先取消旧 session 的所有活跃轮询
+      activePollsRef.current.forEach(cancel => cancel());
+      activePollsRef.current.clear();
       // 顺序：先标记当前会话，再灌入消息（避免后续 auto-save 因 sessionId 缺失重建）
       setCurrentSession(historySessionId);
       restoreMessages(recoveredMessages);
+      // 接续未完成任务的轮询（异步，不 await）
+      const cancels = recoverPendingChatTasks({
+        messages: recoveredMessages,
+        sessionId: historySessionId,
+        updateMessage,
+      });
+      cancels.forEach((cancel, msgId) => activePollsRef.current.set(msgId, cancel));
       // 加载成功不弹 toast，避免打扰
     } catch (err) {
       logger.error('加载历史会话失败', err);
       message.error(t('chat.loadChatFailed'));
     }
-  }, [loadHistoryMessages, restoreMessages, setCurrentSession, reloadSessionsList, t]);
+  }, [loadHistoryMessages, restoreMessages, setCurrentSession, reloadSessionsList, updateMessage, t]);
 
   // 新建对话
   const handleNewChat = useCallback(async () => {
@@ -596,6 +743,40 @@ export const ChatPage: React.FC = () => {
     removeMessage(messageId);
   }, [removeMessage]);
 
+  /**
+   * 综合"停止生成"：
+   *  1) 取消 chat 流式 IPC（useChat.stop）
+   *  2) 取消所有活跃的媒体轮询（activePolls）
+   *  3) 把对话中所有 generating=true 的占位卡片标记为"已取消"
+   *  4) 复位 isGeneratingMedia
+   */
+  const handleStop = useCallback(() => {
+    // 1) 取消 chat 流式
+    stop();
+    // 2) 取消所有 polling
+    activePollsRef.current.forEach(cancel => cancel());
+    activePollsRef.current.clear();
+    // 3) 找到所有还在 generating 的媒体卡片，标 error
+    messages.forEach(msg => {
+      const m = (msg.metadata as { mediaResult?: MediaResultMeta } | undefined)?.mediaResult;
+      if (m?.generating) {
+        updateMessage(msg.id, (curMsg) => {
+          const cur = (curMsg.metadata as { mediaResult?: MediaResultMeta } | undefined)?.mediaResult;
+          if (!cur) return curMsg;
+          return {
+            ...curMsg,
+            metadata: {
+              ...(curMsg.metadata || {}),
+              mediaResult: { ...cur, generating: false, error: '已取消' },
+            },
+          };
+        });
+      }
+    });
+    // 4) 复位
+    setIsGeneratingMedia(false);
+  }, [stop, messages, updateMessage]);
+
   // 把生成结果作为参考图加到下次输入（pending=true）
   const handleMediaUseAsReference = useCallback((_messageId: string, images: ChatImageRef[]) => {
     if (!images.length) return;
@@ -693,7 +874,7 @@ export const ChatPage: React.FC = () => {
     <ChatComposer
       onUploadImage={handleUploadImage}
       onSend={handleSend}
-      onStop={stop}
+      onStop={handleStop}
       isLoading={isLoading || isGeneratingMedia}
       isStreaming={isStreaming || isGeneratingMedia}
       disabled={!isReady || !selectedConfig || isGeneratingMedia}

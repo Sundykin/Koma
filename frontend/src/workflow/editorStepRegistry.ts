@@ -65,6 +65,12 @@ export interface EditorStepContext {
   onOpenProjectSettings?: () => void;
   /** 'script' 步选剧集时把当前剧集同步到上层；其它步骤渲染时依赖此值 */
   onActiveEpisodeChange?: (episode: Episode) => void;
+  /**
+   * 'script' 步：顶部步骤条上的"导入剧本"按钮触发的信号；
+   * 每次自增时 ProjectOverview 应打开导入剧本对话框（保留对话框在 ProjectOverview 内
+   * 是为了直接复用其 episodeManagerRef / assetOverviewRef 的刷新通道）。
+   */
+  scriptImportSignal?: number;
 }
 
 export interface EditorStepDefinition {

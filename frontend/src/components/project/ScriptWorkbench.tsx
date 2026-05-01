@@ -24,8 +24,6 @@ interface ScriptWorkbenchProps {
   project: Project;
   episode: Episode | null;
   onScriptChange: (text: string) => void;
-  /** 工具栏是否显示"导入剧本"按钮（项目级操作）；点击后触发外部导入对话框 */
-  onImportScript?: () => void;
   /** 解析状态变更上报；外部据此控制"解析剧本"按钮的 loading 态 */
   onAnalyzingChange?: (isAnalyzing: boolean) => void;
 }
@@ -40,7 +38,6 @@ export const ScriptWorkbench = forwardRef<ScriptWorkbenchRef, ScriptWorkbenchPro
   project,
   episode,
   onScriptChange,
-  onImportScript,
   onAnalyzingChange,
 }, ref) => {
   const { message } = App.useApp();
@@ -351,7 +348,6 @@ export const ScriptWorkbench = forwardRef<ScriptWorkbenchRef, ScriptWorkbenchPro
         onPolish={handlePolish}
         onRandomGenerate={handleRandomGenerate}
         onTweetCopy={() => setTweetModalOpen(true)}
-        onImportScript={onImportScript}
       />
 
       <TweetScriptModal
@@ -400,6 +396,7 @@ export const ScriptWorkbench = forwardRef<ScriptWorkbenchRef, ScriptWorkbenchPro
             maxHeight="100%"
             showLineNumbers={true}
             darkTheme={true}
+            enableCameraCommands={false}
             style={{ height: '100%', flex: 1 }}
           />
         )}

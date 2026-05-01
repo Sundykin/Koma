@@ -10,6 +10,7 @@ import { Spin, Image as AntImage, message } from 'antd';
 import { LoadingOutlined, EditOutlined, ReloadOutlined, DeleteOutlined, DownloadOutlined, PaperClipOutlined } from '@ant-design/icons';
 import type { ChatImageRef, MediaResultMeta } from './chatMediaGeneration';
 import { electronService } from '../../services/electronService';
+import { fromKomaLocalUrl } from '../../utils/urlUtils';
 import styles from './MediaResultBlock.module.css';
 
 interface MediaResultBlockProps {
@@ -21,12 +22,25 @@ interface MediaResultBlockProps {
   onUseAsReference?: (refs: ChatImageRef[]) => void;
 }
 
-/** 下载远程 URL 到用户选择的本地路径 */
-async function downloadMediaToLocal(url: string, suggestedName: string): Promise<void> {
+/**
+ * 下载媒体到用户选择的路径。来源可能有三种：
+ *   1. koma-local://...  → 已落盘，直接 fs.copy（最可靠，绕过所有网络）
+ *   2. https://...       → 走 fs.downloadFile（带 channelId 鉴权）
+ *   3. data: / blob:     → 浏览器 anchor download fallback
+ *
+ * 之前只走 downloadFile，遇到 koma-local:// 在 main 进程被当作 http URL 提交给
+ * electronNet.fetch，要么 fetch 抛错 fallback http.get 又因 scheme 不对失败，
+ * 要么 volces TOS 类响应头夹杂中文导致 ByteString 报错 → 用户看到"弹了选保存路径
+ * 但是没文件"。
+ */
+async function downloadMediaToLocal(
+  primaryUrl: string,
+  suggestedName: string,
+  fallbackRemoteUrl?: string,
+): Promise<void> {
   if (!electronService.isElectron()) {
-    // 浏览器：用 anchor download
     const a = document.createElement('a');
-    a.href = url;
+    a.href = primaryUrl;
     a.download = suggestedName;
     a.target = '_blank';
     document.body.appendChild(a);
@@ -39,12 +53,51 @@ async function downloadMediaToLocal(url: string, suggestedName: string): Promise
     title: '保存到本地',
   });
   if (saveResult?.canceled || !saveResult?.filePath) return;
-  const result = await electronService.fs.downloadFile(url, saveResult.filePath);
-  if (!result?.success) {
-    message.error('下载失败');
-    return;
+
+  try {
+    // 1. koma-local:// → 直接 fs.copy
+    if (primaryUrl.startsWith('koma-local://')) {
+      const fsPath = fromKomaLocalUrl(primaryUrl);
+      await electronService.fs.copy(fsPath, saveResult.filePath);
+      message.success(`已保存到 ${saveResult.filePath}`);
+      return;
+    }
+    // 2. http(s):// → 走 downloadFile
+    if (/^https?:\/\//i.test(primaryUrl)) {
+      const result = await electronService.fs.downloadFile(primaryUrl, saveResult.filePath);
+      if (!result?.success) {
+        // 远程下载失败 → 如果有 fallback（应该不会到这里，因为 primary 已经是 remote）
+        if (fallbackRemoteUrl && fallbackRemoteUrl !== primaryUrl) {
+          const fb = await electronService.fs.downloadFile(fallbackRemoteUrl, saveResult.filePath);
+          if (fb?.success) {
+            message.success(`已保存到 ${saveResult.filePath}`);
+            return;
+          }
+        }
+        message.error('下载失败');
+        return;
+      }
+      message.success(`已保存到 ${saveResult.filePath}`);
+      return;
+    }
+    // 3. 其它（data: / blob:） — 不在 Electron 里支持
+    message.error('不支持的下载源类型');
+  } catch (err: unknown) {
+    const errMsg = err instanceof Error ? err.message : String(err);
+    // 主路径失败且有 fallback remote URL，再尝试一次
+    if (fallbackRemoteUrl && fallbackRemoteUrl !== primaryUrl && /^https?:\/\//i.test(fallbackRemoteUrl)) {
+      try {
+        const fb = await electronService.fs.downloadFile(fallbackRemoteUrl, saveResult.filePath);
+        if (fb?.success) {
+          message.success(`已保存到 ${saveResult.filePath}`);
+          return;
+        }
+      } catch {
+        // ignore，落到下面 toast
+      }
+    }
+    message.error(`下载失败：${errMsg}`);
   }
-  message.success(`已保存到 ${saveResult.filePath}`);
 }
 
 const MODE_LABEL: Record<MediaResultMeta['mode'], string> = {
@@ -63,9 +116,13 @@ export const MediaResultBlock: React.FC<MediaResultBlockProps> = ({
   onDelete,
   onUseAsReference,
 }) => {
-  const handleDownloadOne = useCallback(async (url: string, mimeType: string | undefined, idx: number) => {
-    const ext = mimeType?.includes('png') ? 'png' : mimeType?.includes('webp') ? 'webp' : 'jpg';
-    await downloadMediaToLocal(url, `koma-image-${Date.now()}-${idx + 1}.${ext}`);
+  const handleDownloadOne = useCallback(async (img: ChatImageRef, idx: number) => {
+    const ext = img.mimeType?.includes('png') ? 'png' : img.mimeType?.includes('webp') ? 'webp' : 'jpg';
+    await downloadMediaToLocal(
+      img.source,
+      `koma-image-${Date.now()}-${idx + 1}.${ext}`,
+      img.remoteUrl,
+    );
   }, []);
   const handleDownloadVideo = useCallback(async () => {
     if (!meta.video) return;
@@ -82,7 +139,7 @@ export const MediaResultBlock: React.FC<MediaResultBlockProps> = ({
 
   return (
     <div className={styles.card}>
-      {/* 头部：prompt + 元信息 */}
+      {/* 头部：prompt + 元信息 + ReAct 思考 */}
       <div className={styles.header}>
         <div className={styles.prompt}>{meta.prompt || `（${MODE_LABEL[meta.mode]}）`}</div>
         {metaLine.length > 0 && (
@@ -93,6 +150,12 @@ export const MediaResultBlock: React.FC<MediaResultBlockProps> = ({
                 <span>{t}</span>
               </React.Fragment>
             ))}
+          </div>
+        )}
+        {meta.thought && (
+          <div className={styles.thought}>
+            <span className={styles.thoughtLabel}>💭 推理</span>
+            <span>{meta.thought}</span>
           </div>
         )}
       </div>
@@ -146,7 +209,7 @@ export const MediaResultBlock: React.FC<MediaResultBlockProps> = ({
                       className={styles.imageOverlayBtn}
                       onClick={(e) => {
                         e.stopPropagation();
-                        void handleDownloadOne(img.source, img.mimeType, idx);
+                        void handleDownloadOne(img, idx);
                       }}
                       title="下载到本地"
                     >
@@ -165,6 +228,11 @@ export const MediaResultBlock: React.FC<MediaResultBlockProps> = ({
               className={styles.video}
               src={meta.video}
               controls
+              // 屏蔽 Chromium 原生 3-dot 菜单的"下载" —— 它对 koma-local:// 协议不工作。
+              // 用户走我们下方的下载按钮（走 fs.copy / fs.downloadFile）。
+              controlsList="nodownload noremoteplayback"
+              disablePictureInPicture
+              onContextMenu={(e) => e.preventDefault()}
               poster={meta.images?.[0]?.source}
             />
             <div className={styles.videoOverlay}>

@@ -10,6 +10,10 @@ interface StepNavigatorProps {
   onStepChange: (step: EditorStep) => void;
   stepProgress?: EpisodeStepProgress;
   actionButton?: ReactNode;
+  /** 左侧槽位：通常是项目标识（图标 + 标题 + 题材） */
+  leftContent?: ReactNode;
+  /** 右侧附加按钮，渲染在 actionButton 之前（通常是项目设置） */
+  extraButton?: ReactNode;
   /**
    * 'script' 步骤不持久化到 EpisodeStepProgress（数据 schema 保持不变），
    * 它的"已完成"状态由当前剧本是否非空在运行时派生。
@@ -42,6 +46,8 @@ export const StepNavigator: React.FC<StepNavigatorProps> = ({
   onStepChange,
   stepProgress = defaultProgress,
   actionButton,
+  leftContent,
+  extraButton,
   scriptText,
 }) => {
   const { t } = useTranslation();
@@ -72,9 +78,16 @@ export const StepNavigator: React.FC<StepNavigatorProps> = ({
 
   return (
     <div className="w-full bg-zinc-900 border-b border-zinc-800 shadow-lg z-30">
-      <div className="flex items-center justify-between w-full max-w-5xl mx-auto py-3 px-4">
+      <div className="flex items-center w-full py-1.5 px-3 gap-3">
+        {/* 左侧槽位：项目标识 */}
+        {leftContent && (
+          <div className="flex items-center flex-shrink-0 min-w-0">
+            {leftContent}
+          </div>
+        )}
+
         {/* 步骤条 */}
-        <div className="flex items-center flex-1">
+        <div className="flex items-center flex-1 min-w-0">
           {steps.map((step, index) => {
             const isActive = step.id === currentStep;
             const isCompleted = isStepCompleted(step.id, stepProgress, scriptText);
@@ -85,12 +98,12 @@ export const StepNavigator: React.FC<StepNavigatorProps> = ({
             const stepNode = (
               <div
                 onClick={() => handleStepClick(step.id, index)}
-                className={`flex items-center gap-2 group relative z-10 select-none transition-opacity ${
+                className={`flex items-center gap-1.5 group relative z-10 select-none transition-opacity ${
                   clickable ? 'cursor-pointer' : 'cursor-not-allowed'
                 } ${isLocked ? 'opacity-40' : ''}`}
               >
                 <div
-                  className={`w-8 h-8 rounded-full flex items-center justify-center border-2 transition-all duration-300 ${
+                  className={`w-7 h-7 rounded-full flex items-center justify-center border-2 transition-all duration-300 ${
                     isActive
                       ? 'bg-emerald-600 border-emerald-500 text-white scale-105 ring-4 ring-emerald-500/20'
                       : isCompleted
@@ -99,16 +112,16 @@ export const StepNavigator: React.FC<StepNavigatorProps> = ({
                   }`}
                 >
                   {isCompleted && !isActive ? (
-                    <Check className="w-4 h-4 stroke-[3px]" />
+                    <Check className="w-3.5 h-3.5 stroke-[3px]" />
                   ) : isLocked ? (
                     <Lock className="w-3 h-3" />
                   ) : (
-                    <Icon className="w-4 h-4" />
+                    <Icon className="w-3.5 h-3.5" />
                   )}
                 </div>
 
                 <span
-                  className={`text-sm font-medium transition-colors duration-300 ${
+                  className={`text-xs font-medium transition-colors duration-300 ${
                     isActive ? 'text-white' : isCompleted ? 'text-emerald-500' : 'text-zinc-500'
                   }`}
                 >
@@ -130,7 +143,7 @@ export const StepNavigator: React.FC<StepNavigatorProps> = ({
 
                 {/* 连接线 */}
                 {index < steps.length - 1 && (
-                  <div className="flex-1 h-[2px] mx-3 bg-zinc-800 relative rounded-full overflow-hidden min-w-[40px]">
+                  <div className="flex-1 h-[2px] mx-1.5 bg-zinc-800 relative rounded-full overflow-hidden min-w-[16px]">
                     <div
                       className="absolute top-0 left-0 h-full bg-emerald-600 transition-all duration-500 ease-in-out"
                       style={{ width: isStepCompleted(step.id, stepProgress, scriptText) ? '100%' : '0%' }}
@@ -142,10 +155,11 @@ export const StepNavigator: React.FC<StepNavigatorProps> = ({
           })}
         </div>
 
-        {/* 操作按钮区域 */}
-        {actionButton && (
-          <div className="ml-4 flex-shrink-0">
+        {/* 右侧操作区：主操作按钮（如下一步） + 附加图标按钮（如项目设置） */}
+        {(extraButton || actionButton) && (
+          <div className="flex items-center gap-1.5 flex-shrink-0">
             {actionButton}
+            {extraButton}
           </div>
         )}
       </div>
