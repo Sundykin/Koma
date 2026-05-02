@@ -67,7 +67,19 @@ interface ItemStatus {
   progress: number;
   error?: string;
   imagePath?: string;
+  /**
+   * 缓存绕过键。同名文件被覆盖（再次抽卡/重试）后 imagePath 不变但内容变了，
+   * 浏览器按 URL 缓存仍然显示旧图。每次刷新 imagePath 时同步 bump 这个键，
+   * 渲染时拼到 `?t=` 上让 koma-local 协议返回新内容。
+   */
+  imageCacheKey?: number;
   sourceType?: 'character' | 'prop'; // 视频步骤区分角色/道具
+}
+
+/** 把 cacheKey 拼到 koma-local URL 末尾。protocol.handle 仅消费 pathname，query 字符串安全忽略。*/
+function appendImageCacheBust(url: string, key?: number): string {
+  if (!url || !key) return url;
+  return `${url}${url.includes('?') ? '&' : '?'}t=${key}`;
 }
 
 const stepConfig = [
@@ -110,6 +122,9 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
           loadProps(project.id),
         ]);
 
+        // 每次打开向导时打一个共享时间戳作为 cacheKey 起点，让上次抽卡之后磁盘被覆盖的同路径图能重新拉取
+        const reopenCacheKey = Date.now();
+
         setCharacters(chars.map(c => ({
           id: c.id,
           name: c.name,
@@ -117,6 +132,7 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
           status: getCharacterCostumePhotoSource(c) ? 'completed' : 'pending',
           progress: getCharacterCostumePhotoSource(c) ? 100 : 0,
           imagePath: getCharacterCostumePhotoSource(c),
+          imageCacheKey: reopenCacheKey,
         })));
 
         setScenes(scns.map(s => ({
@@ -126,6 +142,7 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
           status: getScenePreviewImageSource(s) ? 'completed' : 'pending',
           progress: getScenePreviewImageSource(s) ? 100 : 0,
           imagePath: getScenePreviewImageSource(s),
+          imageCacheKey: reopenCacheKey,
         })));
 
         setProps(prps.map(p => ({
@@ -135,6 +152,7 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
           status: getPropPreviewImageSource(p) ? 'completed' : 'pending',
           progress: getPropPreviewImageSource(p) ? 100 : 0,
           imagePath: getPropPreviewImageSource(p),
+          imageCacheKey: reopenCacheKey,
         })));
 
         // 视频步骤：有定妆照的角色 + 有参考图的道具
@@ -147,6 +165,7 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
           status: getCharacterPreviewVideoSource(c) ? 'completed' : 'pending',
           progress: getCharacterPreviewVideoSource(c) ? 100 : 0,
           imagePath: getCharacterPreviewVideoSource(c),
+          imageCacheKey: reopenCacheKey,
           sourceType: 'character' as const,
         }));
         const propVideos: ItemStatus[] = prps
@@ -158,6 +177,7 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
           status: getPropPreviewVideoSource(p) ? 'completed' : 'pending',
           progress: getPropPreviewVideoSource(p) ? 100 : 0,
           imagePath: getPropPreviewVideoSource(p),
+          imageCacheKey: reopenCacheKey,
           sourceType: 'prop' as const,
         }));
         setVideoItems([...charVideos, ...propVideos]);
@@ -400,6 +420,8 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
                     progress: result.success ? 100 : 0,
                     error: result.error,
                     imagePath: result.path || it.imagePath,
+                    // 同名文件被覆盖也要拉新内容，bump 缓存键
+                    imageCacheKey: result.success ? Date.now() : it.imageCacheKey,
                   }
                 : it
             ));
@@ -452,6 +474,7 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
             progress: result.success ? 100 : 0,
             error: result.error,
             imagePath: result.path || it.imagePath,
+            imageCacheKey: result.success ? Date.now() : it.imageCacheKey,
           }
         : it
     ));
@@ -556,12 +579,12 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
           <div style={{ width: 60, height: 60, marginLeft: 12 }}>
             {type === 'videos' ? (
               <video
-                src={toLocalUrl(item.imagePath)}
+                src={appendImageCacheBust(toLocalUrl(item.imagePath), item.imageCacheKey)}
                 style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 4 }}
               />
             ) : (
               <Image
-                src={toLocalUrl(item.imagePath)}
+                src={appendImageCacheBust(toLocalUrl(item.imagePath), item.imageCacheKey)}
                 style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 4 }}
                 preview={{ mask: null }}
               />
