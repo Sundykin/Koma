@@ -14,12 +14,69 @@ import { createLogger } from '../../store/logger';
 import { electronService } from '../../services/electronService';
 import { base64ToBytes, parseDataUrl } from '../../utils/encoding';
 import { sanitizeBodyForLog } from '../../utils/logFormatting';
-import { resolveTTISize } from './utils/ttiSize';
 
 const logger = createLogger('Grok2ApiImagineTTI');
 
 const GROK2API_MAX_BATCH_IMAGES = 10;
 const GROK2API_LITE_MAX_EDIT_BATCH_IMAGES = 4;
+
+// Grok2API 上游 _ALLOWED_SIZES（grok2api/app/products/openai/router.py:213）唯一接受这一组：
+// 1280x720 / 720x1280 / 1792x1024 / 1024x1792 / 1024x1024。
+// resolve_aspect_ratio(size) 落不到表里就回到 "2:3" — 之前送 1920x1080 就是这条路，被默默改成 2:3。
+const GROK_IMAGINE_GEN_ASPECT_TO_SIZE: Record<string, string> = {
+  '1:1': '1024x1024',
+  '16:9': '1280x720',
+  '9:16': '720x1280',
+  '3:2': '1792x1024',
+  '2:3': '1024x1792',
+};
+
+// /v1/images/edits（含 chat/completions 命中 image_to_image 走 grok-imagine-image-edit）
+// 上游 _normalize_edit_size 硬编码只接受 "1024x1024"。其他值直接 400。
+// 所以任何带参考图的请求注定 1:1 — 这是上游 grok-image-all 别名 image_to_image 路由的限制。
+const GROK_IMAGINE_EDIT_FORCED_SIZE = '1024x1024';
+
+function reduceAspectRatio(width: number, height: number): string | undefined {
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return undefined;
+  const gcd = (a: number, b: number): number => (b === 0 ? a : gcd(b, a % b));
+  const divisor = gcd(Math.round(width), Math.round(height));
+  return `${Math.round(width / divisor)}:${Math.round(height / divisor)}`;
+}
+
+function normalizeAspectRatioInput(value: string | undefined): string | undefined {
+  const raw = String(value || '').trim().toLowerCase();
+  if (!raw) return undefined;
+  const direct = raw.match(/^(\d{1,3})\s*:\s*(\d{1,3})$/);
+  if (direct) return reduceAspectRatio(Number(direct[1]), Number(direct[2]));
+  const wxh = raw.match(/^(\d{2,5})x(\d{2,5})$/);
+  if (wxh) return reduceAspectRatio(Number(wxh[1]), Number(wxh[2]));
+  return undefined;
+}
+
+/**
+ * 文生图（无参考图）路径用的尺寸解析。
+ * 优先级：显式 width/height（仅当落在上游允许集合内）> options.aspectRatio > defaultSize > 16:9 兜底。
+ */
+function resolveGenSize(
+  options: { width?: number; height?: number; aspectRatio?: string } | undefined,
+  defaultSize: string | undefined,
+): string {
+  const w = options?.width;
+  const h = options?.height;
+  if (typeof w === 'number' && typeof h === 'number' && w > 0 && h > 0) {
+    const explicit = `${Math.round(w)}x${Math.round(h)}`;
+    const allowed = Object.values(GROK_IMAGINE_GEN_ASPECT_TO_SIZE);
+    if (allowed.includes(explicit)) return explicit;
+  }
+  const ratio = normalizeAspectRatioInput(options?.aspectRatio);
+  if (ratio && GROK_IMAGINE_GEN_ASPECT_TO_SIZE[ratio]) {
+    return GROK_IMAGINE_GEN_ASPECT_TO_SIZE[ratio];
+  }
+  if (defaultSize && Object.values(GROK_IMAGINE_GEN_ASPECT_TO_SIZE).includes(defaultSize)) {
+    return defaultSize;
+  }
+  return GROK_IMAGINE_GEN_ASPECT_TO_SIZE['16:9'];
+}
 
 type ImageGenResponse = {
   data?: Array<{ url?: string; b64_json?: string }>;
@@ -271,8 +328,11 @@ export class Grok2ApiImagineTTIProvider implements TTIProvider {
     const protocol = (this.config as any)?.promptProtocol;
     const debugBody = Boolean(protocol) || (import.meta as any)?.env?.DEV === true;
 
-    // 解析尺寸：优先显式 width/height，其次请求比例，最后渠道默认尺寸。
-    const resolveSize = (): string | undefined => resolveTTISize(request.options, this.config.defaultSize);
+    // 文生图（无参考）走 grok-imagine-image-pro，支持上游 _ALLOWED_SIZES；
+    // 图生图（带参考）路由到 grok-imagine-image-edit，硬编码只接受 1024x1024 — 一律送 1024x1024。
+    const resolveSize = (): string => hasRefs
+      ? GROK_IMAGINE_EDIT_FORCED_SIZE
+      : resolveGenSize(request.options, this.config.defaultSize);
     const generationCount = clampCount(request.count, GROK2API_MAX_BATCH_IMAGES);
     const chatCount = clampCount(request.count, GROK2API_MAX_BATCH_IMAGES);
     const editCount = clampCount(
@@ -287,7 +347,7 @@ export class Grok2ApiImagineTTIProvider implements TTIProvider {
         model: modelName,
         prompt: request.prompt,
         n: generationCount,
-        ...(size ? { size } : undefined),
+        size,
       };
 
       if (debugBody) {
@@ -337,15 +397,16 @@ export class Grok2ApiImagineTTIProvider implements TTIProvider {
         ...refs.map(r => ({ type: 'image_url', image_url: { url: r.value } })),
       ];
 
+      // 带参考图：上游 chat/completions 命中 image_to_image alias 走 grok-imagine-image-edit，
+      // image_config.size 由 _normalize_edit_size 强制为 1024x1024，发别的会 400 — 索性老老实实送 1024x1024。
       const size = resolveSize();
-
       const body: Record<string, any> = {
         model: modelName,
         stream: false,
         messages: [{ role: 'user', content }],
         image_config: {
           n: chatCount,
-          ...(size ? { size } : undefined),
+          size,
         },
       };
 
@@ -391,10 +452,13 @@ export class Grok2ApiImagineTTIProvider implements TTIProvider {
     }
 
     // 2.2) Fallback: use /v1/images/edits (multipart)
+    // 上游 _normalize_edit_size 硬编码 1024x1024，其他值 400。直接送 1024x1024 避免回落失败。
+    const editSize = resolveSize();
     const form = new FormData();
     form.append('model', modelName);
     form.append('prompt', prompt);
     form.append('n', String(editCount));
+    form.append('size', editSize);
 
     for (let i = 0; i < refs.length; i += 1) {
       const ref = refs[i];

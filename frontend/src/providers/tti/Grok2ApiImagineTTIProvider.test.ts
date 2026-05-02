@@ -152,8 +152,13 @@ describe('Grok2ApiImagineTTIProvider', () => {
 
     const firstBody = JSON.parse((safeFetch as any).mock.calls[0][1].body);
     const secondBody = JSON.parse((safeFetch as any).mock.calls[1][1].body);
-    expect(firstBody.size).toBe('1080x1920');
+    // 上游 grok2api/openai/router.py _ALLOWED_SIZES 只接受 1280x720 / 720x1280 / 1024x1024 等 HD 档；
+    // 9:16 → 720x1280，没显式 aspectRatio 时退到渠道 defaultSize（这里是 720x1280，本身就是 HD 允许档）。
+    expect(firstBody.size).toBe('720x1280');
     expect(secondBody.size).toBe('720x1280');
+    // aspect_ratio 字段不再写入 — 上游 ImageConfig 只有 size 字段，多传也是被 extra=ignore 忽略
+    expect(firstBody.aspect_ratio).toBeUndefined();
+    expect(secondBody.aspect_ratio).toBeUndefined();
   });
 
 });

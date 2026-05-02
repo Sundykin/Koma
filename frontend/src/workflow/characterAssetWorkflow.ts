@@ -293,10 +293,15 @@ function buildCharacterFaceCandidatesBatchPrompt(
 interface GenerateOptions {
   projectId: string;
   character: Character;
+  /**
+   * 项目全局画面比例。角色定妆照/人脸候选作为分镜的参考图，必须与项目比例一致；
+   * 否则下游分镜走 image-to-image 时输出比例会跟着参考图，不会跟项目走。
+   */
+  aspectRatio?: '16:9' | '9:16';
   theme?: string;
   stylePrompt?: string;
   styleSnapshot?: StyleSnapshotLike;
-  project?: { styleSnapshot?: StyleSnapshotLike };
+  project?: { styleSnapshot?: StyleSnapshotLike; aspectRatio?: '16:9' | '9:16' };
   ttiSelection?: string;
   itvSelection?: string;
   seed?: number;
@@ -324,9 +329,10 @@ interface GenerateBatchOptions extends Omit<GenerateOptions, 'seed' | 'variation
 export async function generateCostumePhoto(
   options: GenerateOptions
 ): Promise<{ success: boolean; path?: string; url?: string; error?: string }> {
-  const { projectId, character, theme, stylePrompt, styleSnapshot, project, ttiSelection, seed, variationPrompt, destPath, bindOwner, normalizeRemoteUrl, faceReference, onProgress, disableTask } = options;
+  const { projectId, character, aspectRatio, theme, stylePrompt, styleSnapshot, project, ttiSelection, seed, variationPrompt, destPath, bindOwner, normalizeRemoteUrl, faceReference, onProgress, disableTask } = options;
+  const finalAspectRatio = aspectRatio || project?.aspectRatio || '16:9';
 
-  logger.info(`开始生成角色定妆照: ${character.name}`);
+  logger.info(`开始生成角色定妆照: ${character.name}`, { aspectRatio: finalAspectRatio });
   onProgress?.(0, '准备生成定妆照...');
 
   try {
@@ -348,8 +354,7 @@ export async function generateCostumePhoto(
       'TTI',
       prompt,
       {
-        width: 1536,
-        height: 1024,
+        aspectRatio: finalAspectRatio,
         ...(seed !== undefined ? { seed } : undefined),
       },
       {
@@ -386,8 +391,7 @@ export async function generateCostumePhoto(
             prompt,
             references,
             options: {
-              width: 1536,
-              height: 1024,
+              aspectRatio: finalAspectRatio,
               ...(seed !== undefined ? { seed } : undefined),
             },
           },
@@ -417,9 +421,10 @@ export async function generateCostumePhoto(
 export async function generateCharacterFaceCandidate(
   options: GenerateOptions
 ): Promise<{ success: boolean; path?: string; url?: string; error?: string }> {
-  const { projectId, character, theme, stylePrompt, styleSnapshot, project, ttiSelection, seed, variationPrompt, destPath, bindOwner, normalizeRemoteUrl, onProgress, disableTask } = options;
+  const { projectId, character, aspectRatio, theme, stylePrompt, styleSnapshot, project, ttiSelection, seed, variationPrompt, destPath, bindOwner, normalizeRemoteUrl, onProgress, disableTask } = options;
+  const finalAspectRatio = aspectRatio || project?.aspectRatio || '16:9';
 
-  logger.info(`开始生成角色人脸候选: ${character.name}`);
+  logger.info(`开始生成角色人脸候选: ${character.name}`, { aspectRatio: finalAspectRatio });
   onProgress?.(0, '准备生成人脸方案...');
 
   try {
@@ -432,8 +437,7 @@ export async function generateCharacterFaceCandidate(
       'TTI',
       prompt,
       {
-        width: 1024,
-        height: 1024,
+        aspectRatio: finalAspectRatio,
         ...(seed !== undefined ? { seed } : undefined),
       },
       {
@@ -467,8 +471,7 @@ export async function generateCharacterFaceCandidate(
             prompt,
             references: [],
             options: {
-              width: 1024,
-              height: 1024,
+              aspectRatio: finalAspectRatio,
               ...(seed !== undefined ? { seed } : undefined),
             },
           },
@@ -500,6 +503,7 @@ export async function generateCharacterFaceCandidatesBatch(
   const {
     projectId,
     character,
+    aspectRatio,
     theme,
     stylePrompt,
     styleSnapshot,
@@ -514,11 +518,13 @@ export async function generateCharacterFaceCandidatesBatch(
     variations = [],
     disableTask,
   } = options;
+  const finalAspectRatio = aspectRatio || project?.aspectRatio || '16:9';
 
   const resolvedBatchCount = Math.max(1, Math.floor(batchCount || 1));
 
   logger.info(`开始批量生成角色人脸候选: ${character.name}`, {
     batchCount: resolvedBatchCount,
+    aspectRatio: finalAspectRatio,
   });
   onProgress?.(0, '准备批量生成人脸方案...');
 
@@ -537,8 +543,7 @@ export async function generateCharacterFaceCandidatesBatch(
       'TTI',
       prompt,
       {
-        width: 1024,
-        height: 1024,
+        aspectRatio: finalAspectRatio,
         count: resolvedBatchCount,
       },
       {
@@ -574,8 +579,7 @@ export async function generateCharacterFaceCandidatesBatch(
             references: [],
             count: resolvedBatchCount,
             options: {
-              width: 1024,
-              height: 1024,
+              aspectRatio: finalAspectRatio,
             },
           },
           ttiSelection,

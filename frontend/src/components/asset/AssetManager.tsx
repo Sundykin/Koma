@@ -9,6 +9,7 @@ import './AssetManager.css';
 
 interface AssetManagerProps {
   projectId: string;
+  aspectRatio?: '16:9' | '9:16';
   ttiSelection?: string;
   itvSelection?: string;
   theme?: string;

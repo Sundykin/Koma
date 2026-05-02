@@ -22,7 +22,6 @@ import { createLogger } from '../store/logger';
 import { logTTICall, logITVCall } from '../store/aiCallLogger';
 import { resolvePromptTemplate } from '../store/promptTemplates';
 import { getActiveITVConfig } from '../store/settings/mediaConfig';
-import { IMAGE_GENERATION_SIZES } from '../constants/dimensions';
 import { mediaGenerationService } from '../services/MediaGenerationService';
 import { runWithTask } from '../services/taskRunner';
 import {
@@ -272,9 +271,11 @@ export async function generateAllSceneImages(
 export async function generatePropImage(
   options: GenerateOptions & { prop: Prop; disableTask?: boolean }
 ): Promise<{ success: boolean; path?: string; url?: string; error?: string }> {
-  const { projectId, prop, theme, stylePrompt, styleSnapshot, project, ttiSelection, seed, variationPrompt, destPath, bindOwner, normalizeRemoteUrl, onProgress, disableTask } = options;
+  const { projectId, prop, aspectRatio, theme, stylePrompt, styleSnapshot, project, ttiSelection, seed, variationPrompt, destPath, bindOwner, normalizeRemoteUrl, onProgress, disableTask } = options;
+  // 道具参考图必须与项目比例一致 — 否则下游分镜走 image-to-image 时输出比例会跟着参考图走，不会跟项目走。
+  const finalAspectRatio = aspectRatio || project?.aspectRatio || '16:9';
 
-  logger.info(`开始生成道具参考图: ${prop.name}`);
+  logger.info(`开始生成道具参考图: ${prop.name}`, { aspectRatio: finalAspectRatio });
   onProgress?.(0, '准备生成道具图...');
 
   try {
@@ -293,7 +294,7 @@ export async function generatePropImage(
       'TTI',
       prompt,
       {
-        ...IMAGE_GENERATION_SIZES.square,
+        aspectRatio: finalAspectRatio,
         ...(seed !== undefined ? { seed } : undefined),
       },
       {
@@ -328,7 +329,7 @@ export async function generatePropImage(
             prompt,
             references: [],
             options: {
-              ...IMAGE_GENERATION_SIZES.square,
+              aspectRatio: finalAspectRatio,
               ...(seed !== undefined ? { seed } : undefined),
             },
           },
@@ -356,7 +357,7 @@ export async function generatePropImage(
 export async function generateAllPropImages(
   options: GenerateOptions & { props: Prop[] }
 ): Promise<{ success: number; failed: number; results: Array<{ propId: string; success: boolean; path?: string; error?: string }> }> {
-  const { projectId, props, theme, stylePrompt, ttiSelection, onProgress } = options;
+  const { projectId, props, aspectRatio, theme, stylePrompt, project, ttiSelection, onProgress } = options;
 
   if (props.length === 0) return { success: 0, failed: 0, results: [] };
 
@@ -381,8 +382,10 @@ export async function generateAllPropImages(
         const r = await generatePropImage({
           projectId,
           prop,
+          aspectRatio,
           theme,
           stylePrompt,
+          project,
           ttiSelection,
           disableTask: true, // 批量场景下子任务不单独建 task
           onProgress: (p, step) => {
