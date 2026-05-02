@@ -110,7 +110,7 @@ export function specToInputBounds(spec: VideoDurationSpec): { min: number; max: 
 const ITV_DURATION_SPECS_BY_PROVIDER: Record<string, VideoDurationSpec> = {
   // grok-imagine-video：上游仅接受 6/12/16/20；10 是 UI 兜底默认
   'grok2api-imagine-itv': { kind: 'enum', values: [6, 10, 12, 16, 20], default: 10 },
-  // Koma 官方-即梦（穗禾）：上游约束 4-15s 连续（参考 new-api/relay/channel/task/suihe/constants.go）
+  // Koma 官方：上游约束 4-15s 连续（参考 new-api/relay/channel/task/suihe/constants.go）
   // 注意 modelId 前缀映射会进一步细化（seedance-2.0-fast 仅到 12s）
   'koma-suihe-itv': { kind: 'range', min: 4, max: 15, step: 1, default: 5 },
   // 旧的独立 seedance（直连 toapis.com）保留映射，避免回归
@@ -122,10 +122,15 @@ const ITV_DURATION_SPECS_BY_PROVIDER: Record<string, VideoDurationSpec> = {
  * 所以更具体的前缀必须放在前面）。
  *
  * Seedance 上游约束（SeedanceProvider.ts:172 normalizeDuration）：
- *   - seedance-2.0-fast: 4-12s
- *   - seedance-2.0:      4-15s
+ *   - seedance-2.0-f / seedance-2.0-fast: 4-12s（Fast 档）
+ *   - seedance-2.0-r / seedance-2.0:      4-15s（Pro/Regular 档）
+ *
+ * Koma 官方激活默认采用 `-r` / `-f` 短后缀；旧 ID `seedance-2.0` / `seedance-2.0-fast`
+ * 仍保留命中以避免老激活配置回归到 grok 兜底枚举。
  */
 const ITV_DURATION_SPECS_BY_MODEL_PREFIX: Array<{ prefix: string; spec: VideoDurationSpec }> = [
+  // Fast 档（更窄）必须放在 Pro 档之前，避免被前缀通配吃掉
+  { prefix: 'seedance-2.0-f', spec: { kind: 'range', min: 4, max: 12, step: 1, default: 5 } },
   { prefix: 'seedance-2.0-fast', spec: { kind: 'range', min: 4, max: 12, step: 1, default: 5 } },
   { prefix: 'seedance', spec: { kind: 'range', min: 4, max: 15, step: 1, default: 5 } },
 ];
