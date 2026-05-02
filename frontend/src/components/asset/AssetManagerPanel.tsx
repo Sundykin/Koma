@@ -600,6 +600,7 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
           lastEdited: '',
           thumbnail: '',
           status: 'script',
+          aspectRatio,
           mediaSelections: {
             ...(ttiSelection ? { tti: parseMediaSelectionKey(ttiSelection) } : undefined),
             ...(itvSelection ? { itv: parseMediaSelectionKey(itvSelection) } : undefined),
@@ -607,7 +608,9 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
           styleSnapshot,
         } as Project}
         open={wizardOpen}
-        onClose={() => setWizardOpen(false)}
+        // 关闭时无条件重载父级资产 — wizard.onComplete 只在用户点完最后一步才触发，
+        // 期间用户中途关掉（X / 取消 / ESC）会导致左侧资产列表停留在旧数据。
+        onClose={() => { setWizardOpen(false); loadAssets(); }}
         onComplete={loadAssets}
       />
     </div>
