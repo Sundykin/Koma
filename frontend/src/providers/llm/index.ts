@@ -24,14 +24,13 @@ interface LLMChannelDef {
   runtimeProtocol: 'openai-compatible' | 'gemini' | 'claude';   // 主进程路由协议
 }
 
+// 内置 LLM 渠道收敛为三个标准协议，全部默认走 https://komaapi.com 网关。
+// 之前注册过的 deepseek / qwen / zhipu / moonshot 已下线；用户旧渠道仍存于
+// SQLite，但 IPCLLMProvider 主进程侧仍按 runtimeProtocol 决定调用通路。
 const BUILTIN_LLM_CHANNELS: LLMChannelDef[] = [
-  { type: 'openai',    name: 'OpenAI',     presetBaseUrl: 'https://api.openai.com/v1',                          runtimeProtocol: 'openai-compatible' },
-  { type: 'deepseek',  name: 'DeepSeek',   presetBaseUrl: 'https://api.deepseek.com/v1',                        runtimeProtocol: 'openai-compatible' },
-  { type: 'qwen',      name: '通义千问',     presetBaseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', runtimeProtocol: 'openai-compatible' },
-  { type: 'zhipu',     name: '智谱 AI',     presetBaseUrl: 'https://open.bigmodel.cn/api/paas/v4',               runtimeProtocol: 'openai-compatible' },
-  { type: 'moonshot',  name: '月之暗面',     presetBaseUrl: 'https://api.moonshot.cn/v1',                         runtimeProtocol: 'openai-compatible' },
-  { type: 'gemini',    name: 'Gemini',     presetBaseUrl: 'https://generativelanguage.googleapis.com',          runtimeProtocol: 'gemini' },
-  { type: 'claude',    name: 'Claude',     presetBaseUrl: 'https://api.anthropic.com',                          runtimeProtocol: 'claude' },
+  { type: 'openai', name: 'OpenAI',  presetBaseUrl: 'https://komaapi.com', runtimeProtocol: 'openai-compatible' },
+  { type: 'claude', name: 'Claude',  presetBaseUrl: 'https://komaapi.com', runtimeProtocol: 'claude' },
+  { type: 'gemini', name: 'Gemini',  presetBaseUrl: 'https://komaapi.com', runtimeProtocol: 'gemini' },
 ];
 
 function registerBuiltinLLMProviders() {

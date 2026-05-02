@@ -72,7 +72,7 @@ export {
 // 重新导出子目录内容
 export { createLLMProvider } from './llm';
 export type { LLMProvider, ChatMessage } from './llm/types';
-export { createTTIProvider, ComfyUIProvider } from './tti';
+export { createTTIProvider } from './tti';
 export type { TTIProvider, ImageResult, TTIOptions } from './tti/types';
 export { createTTSProvider } from './tts';
 export type { TTSProvider, TTSRequest, AudioResult, TTSOptions } from './tts/types';

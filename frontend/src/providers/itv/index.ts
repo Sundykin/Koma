@@ -1,29 +1,21 @@
 /**
  * ITV Provider 模块导出
  * 重构版：注册到 ProviderRegistry
+ *
+ * 当前内置渠道收敛为 2 个，都默认指向 https://komaapi.com：
+ *   - grok2api-imagine-itv  → Koma官方 Grok（图生视频）
+ *   - koma-suihe-itv        → Koma 官方 - 即梦（穗禾 Seedance）
+ *
+ * 之前注册过的 runway / kling / pika / sora2 / seedance / vidu /
+ * comfyui-animatediff / custom 已下线；用户旧渠道仍存于 SQLite，
+ * 但 createITVProvider 不再认识这些 providerType。
  */
 export * from './types';
-export { RunwayProvider } from './RunwayProvider';
-export { KlingProvider } from './KlingProvider';
-export { PikaProvider } from './PikaProvider';
-export { Sora2Provider } from './Sora2Provider';
-export { SeedanceProvider } from './SeedanceProvider';
-export { ViduProvider } from './ViduProvider';
-export { ComfyUIAnimateDiffProvider } from './ComfyUIAnimateDiffProvider';
-export { CustomITVProvider } from './CustomITVProvider';
 export { Grok2ApiImagineITVProvider } from './Grok2ApiImagineITVProvider';
 export { SuiheITVProvider } from './SuiheITVProvider';
 
 import type { ITVConfig } from '../../types';
 import type { ITVProvider } from './types';
-import { RunwayProvider } from './RunwayProvider';
-import { KlingProvider } from './KlingProvider';
-import { PikaProvider } from './PikaProvider';
-import { Sora2Provider } from './Sora2Provider';
-import { SeedanceProvider } from './SeedanceProvider';
-import { ViduProvider } from './ViduProvider';
-import { ComfyUIAnimateDiffProvider } from './ComfyUIAnimateDiffProvider';
-import { CustomITVProvider } from './CustomITVProvider';
 import { Grok2ApiImagineITVProvider } from './Grok2ApiImagineITVProvider';
 import { SuiheITVProvider } from './SuiheITVProvider';
 import type { ProviderDefinition } from '../registry.types';
@@ -35,138 +27,22 @@ import { safeFetch } from '../../utils/safeFetch';
 function registerBuiltinProviders() {
   const builtins: ProviderDefinition<ITVProvider>[] = [
     {
-      type: 'runway',
-      kind: 'itv',
-      name: 'Runway',
-      description: 'Runway Gen-2 视频生成',
-      factory: (config) => new RunwayProvider(config as ITVConfig),
-      contractVersion: MEDIA_PROVIDER_CONTRACT_VERSION,
-      capabilities: ['itv'],
-      polling: DEFAULT_POLLING_CONFIG,
-      presetBaseUrl: 'https://api.runwayml.com',
-      auth: { apiKey: 'required', baseUrl: 'optional' },
-    },
-    {
-      type: 'kling',
-      kind: 'itv',
-      name: '可灵 Kling',
-      description: '快手可灵视频生成',
-      factory: (config) => new KlingProvider(config as ITVConfig),
-      contractVersion: MEDIA_PROVIDER_CONTRACT_VERSION,
-      capabilities: ['itv'],
-      polling: DEFAULT_POLLING_CONFIG,
-      presetBaseUrl: 'https://api.klingai.com',
-      auth: { apiKey: 'required', baseUrl: 'optional' },
-    },
-    {
-      type: 'pika',
-      kind: 'itv',
-      name: 'Pika Labs',
-      description: 'Pika 视频生成',
-      factory: (config) => new PikaProvider(config as ITVConfig),
-      contractVersion: MEDIA_PROVIDER_CONTRACT_VERSION,
-      capabilities: ['itv'],
-      polling: DEFAULT_POLLING_CONFIG,
-      presetBaseUrl: 'https://api.pika.art/v1',
-      auth: { apiKey: 'required', baseUrl: 'optional' },
-    },
-    {
-      type: 'sora2',
-      kind: 'itv',
-      name: 'Sora 2',
-      description: 'OpenAI Sora 2 视频生成，支持角色提取',
-      factory: (config) => new Sora2Provider(config as ITVConfig),
-      contractVersion: MEDIA_PROVIDER_CONTRACT_VERSION,
-      capabilities: ['itv'],
-      polling: {
-        interval: 5000,
-        maxDuration: 600000,
-        initialDelay: 3000,
-      },
-      presetBaseUrl: 'https://toapis.com',
-      auth: { apiKey: 'required', baseUrl: 'optional' },
-    },
-    {
-      type: 'seedance',
-      kind: 'itv',
-      name: 'Seedance 2.0',
-      description: '字节 Seedance 2.0 视频生成，支持文生、图生、参考生和首尾帧',
-      factory: (config) => new SeedanceProvider(config as ITVConfig),
-      contractVersion: MEDIA_PROVIDER_CONTRACT_VERSION,
-      capabilities: ['itv'],
-      polling: {
-        interval: 10000,
-        maxDuration: 600000,
-        initialDelay: 5000,
-      },
-      presetBaseUrl: 'https://toapis.com',
-      auth: { apiKey: 'required', baseUrl: 'optional' },
-    },
-    {
-      type: 'vidu',
-      kind: 'itv',
-      name: 'Vidu',
-      description: 'Vidu 视频生成，支持文生视频、图生视频、参考生视频、首尾帧视频',
-      factory: (config) => new ViduProvider(config as ITVConfig),
-      contractVersion: MEDIA_PROVIDER_CONTRACT_VERSION,
-      capabilities: ['itv'],
-      polling: {
-        interval: 5000,
-        maxDuration: 600000,
-        initialDelay: 3000,
-      },
-      presetBaseUrl: '',
-      auth: { apiKey: 'required', baseUrl: 'optional' },
-    },
-    {
-      type: 'comfyui-animatediff',
-      kind: 'itv',
-      name: 'ComfyUI AnimateDiff',
-      description: '本地 ComfyUI AnimateDiff 视频生成',
-      factory: (config) => new ComfyUIAnimateDiffProvider(config as ITVConfig),
-      contractVersion: MEDIA_PROVIDER_CONTRACT_VERSION,
-      capabilities: ['itv'],
-      polling: {
-        interval: 2000,
-        maxDuration: 300000,
-        initialDelay: 1000,
-      },
-      presetBaseUrl: 'http://127.0.0.1:8188',
-      auth: { apiKey: 'none', baseUrl: 'required' },
-    },
-    {
-      type: 'custom',
-      kind: 'itv',
-      name: '自定义 / Grok2API',
-      description: '自定义视频生成 API（兼容多种接口格式）',
-      factory: (config) => new CustomITVProvider(config as ITVConfig),
-      contractVersion: MEDIA_PROVIDER_CONTRACT_VERSION,
-      capabilities: ['itv'],
-      polling: {
-        interval: 5000,
-        maxDuration: 600000,
-        initialDelay: 3000,
-      },
-      presetBaseUrl: '',
-      auth: { apiKey: 'required', baseUrl: 'optional' },
-    },
-    {
       type: 'grok2api-imagine-itv',
       kind: 'itv',
-      name: 'Grok2API Imagine Video',
-      description: 'Grok2API 逆向接口：图生视频（chat/completions）',
+      name: 'Koma官方 Grok',
+      description: 'Koma 官方 Grok 图生视频（chat/completions）',
       factory: (config) => new Grok2ApiImagineITVProvider(config as ITVConfig),
       contractVersion: MEDIA_PROVIDER_CONTRACT_VERSION,
       capabilities: ['itv'],
       polling: DEFAULT_POLLING_CONFIG,
-      presetBaseUrl: '',
+      presetBaseUrl: 'https://komaapi.com',
       auth: { apiKey: 'required', baseUrl: 'optional' },
     },
     {
       type: 'koma-suihe-itv',
       kind: 'itv',
-      name: 'Koma 官方 - 即梦（穗禾）',
-      description: 'Koma 官方激活通道下的穗禾即梦视频生成（seedance-2.0 / -fast）。'
+      name: 'Koma 官方 - 即梦',
+      description: 'Koma 官方激活通道下的即梦视频生成（seedance-2.0-r / -f）。'
         + '协议为 OpenAI 标准视频 API JSON，由 komaapi.com 网关转换为穗禾上游 multipart。',
       factory: (config) => new SuiheITVProvider(config as ITVConfig),
       contractVersion: MEDIA_PROVIDER_CONTRACT_VERSION,

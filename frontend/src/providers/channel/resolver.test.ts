@@ -16,7 +16,7 @@ function createSettings(): AppSettings {
         id: 'runway-main',
         name: 'Runway',
         category: 'itv',
-        providerType: 'runway',
+        providerType: 'grok2api-imagine-itv',
         providerConfig: { apiKey: 'runway-key' },
         defaultModelId: 'runway-model-a',
         models: [
@@ -36,7 +36,7 @@ function createSettings(): AppSettings {
         id: 'vidu-main',
         name: 'Vidu',
         category: 'itv',
-        providerType: 'vidu',
+        providerType: 'koma-suihe-itv',
         providerConfig: {
           apiKey: 'vidu-key',
           baseUrl: 'https://vidu.example.com',
@@ -129,7 +129,7 @@ describe('channel resolver', () => {
       'video.reference-to-video',
     );
 
-    expect(resolved?.definition.id).toBe('vidu');
+    expect(resolved?.definition.id).toBe('koma-suihe-itv');
     expect(resolved?.model.id).toBe('vidu-model-a');
     expect(resolved?.model.capabilities).toContain('video.reference-to-video');
   });
@@ -194,7 +194,7 @@ describe('channel resolver', () => {
       id: 'kling-main',
       name: 'Kling',
       category: 'itv',
-      providerType: 'kling',
+      providerType: 'plugin-itv-mock',
       providerConfig: { apiKey: 'kling-key' },
       defaultModelId: 'kling-model-a',
       models: [
@@ -206,7 +206,11 @@ describe('channel resolver', () => {
         },
       ],
       enabled: true,
-      source: 'builtin',
+      // 内置 ITV registry 收敛后只保留 grok2api-imagine-itv / koma-suihe-itv 两类，
+      // 这里用 source: 'plugin' 让 getChannelDefinitionForConfig 走插件分支，避免
+      // builtin 分支对未注册 providerType 返回 undefined。
+      source: 'plugin',
+      pluginId: 'com.example.itv.mock',
       createdAt: 4,
       updatedAt: 4,
     });

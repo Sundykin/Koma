@@ -171,7 +171,8 @@ export class GeminiNativeTTIProvider implements TTIProvider {
   config: TTIModelConfig;
 
   constructor(config: TTIModelConfig) {
-    this.config = config;
+    // 默认启用 Koma 协议（grok-image-index），与 Koma官方Grok / OpenAI 标准协议一致。
+    this.config = { ...config, promptProtocol: config.promptProtocol ?? 'grok-image-index' };
   }
 
   private getBaseUrl(): string {
