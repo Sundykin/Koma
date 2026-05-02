@@ -1,12 +1,18 @@
 /**
  * TTI Provider 工厂和导出
  * 重构版：注册到 ProviderRegistry
+ *
+ * 当前内置渠道收敛为 3 个，统一以 https://komaapi.com 作为默认 baseUrl，
+ * 三者都默认启用 Koma 协议（内部仍用 'grok-image-index' 作为编译标识）：
+ *   - openai-compatible-tti  → OpenAI 标准协议
+ *   - grok2api-imagine-tti   → Koma官方Grok（多参考 chat/completions）
+ *   - gemini-native-tti      → Koma官方Nano banana（Gemini 原生 generateContent）
+ *
+ * 之前注册过的 nano-banana / comfyui / gemini-3-pro 已下线；用户旧渠道
+ * 仍存于 SQLite 但不会再被工厂创建（createTTIProvider 会抛"未知服务商"）。
  */
 import type { TTIModelConfig } from '../../types';
 import type { TTIProvider } from './types';
-import { ComfyUIProvider } from './ComfyUIProvider';
-import { NanoBananaProvider } from './NanoBananaProvider';
-import { Gemini3ProProvider } from './Gemini3ProProvider';
 import { OpenAICompatibleTTIProvider } from './OpenAICompatibleTTIProvider';
 import { Grok2ApiImagineTTIProvider } from './Grok2ApiImagineTTIProvider';
 import { GeminiNativeTTIProvider } from './GeminiNativeTTIProvider';
@@ -15,9 +21,6 @@ import { DEFAULT_POLLING_CONFIG, MEDIA_PROVIDER_CONTRACT_VERSION } from '../regi
 import { ttiRegistry } from '../registry';
 
 export type { TTIProvider, ImageResult, TTIOptions } from './types';
-export { ComfyUIProvider } from './ComfyUIProvider';
-export { NanoBananaProvider } from './NanoBananaProvider';
-export { Gemini3ProProvider } from './Gemini3ProProvider';
 export { OpenAICompatibleTTIProvider } from './OpenAICompatibleTTIProvider';
 export { Grok2ApiImagineTTIProvider } from './Grok2ApiImagineTTIProvider';
 export { GeminiNativeTTIProvider } from './GeminiNativeTTIProvider';
@@ -26,78 +29,38 @@ export { GeminiNativeTTIProvider } from './GeminiNativeTTIProvider';
 function registerBuiltinProviders() {
   const builtins: ProviderDefinition<TTIProvider>[] = [
     {
-      type: 'nano-banana',
-      kind: 'tti',
-      name: 'Nano-Banana（官方）',
-      description: 'NanoBanana 文生图服务',
-      factory: (config) => new NanoBananaProvider(config as TTIModelConfig),
-      contractVersion: MEDIA_PROVIDER_CONTRACT_VERSION,
-      capabilities: ['tti'],
-      polling: DEFAULT_POLLING_CONFIG,
-      presetBaseUrl: 'http://ai.hsxbk.top',
-      auth: { apiKey: 'required', baseUrl: 'optional' },
-    },
-    {
-      type: 'comfyui',
-      kind: 'tti',
-      name: 'ComfyUI',
-      description: '本地 ComfyUI 文生图',
-      factory: (config) => new ComfyUIProvider(config as TTIModelConfig),
-      contractVersion: MEDIA_PROVIDER_CONTRACT_VERSION,
-      capabilities: ['tti'],
-      polling: {
-        interval: 2000,
-        maxDuration: 300000,
-        initialDelay: 1000,
-      },
-      presetBaseUrl: 'http://127.0.0.1:8188',
-      auth: { apiKey: 'none', baseUrl: 'required' },
-    },
-    {
-      type: 'gemini-3-pro',
-      kind: 'tti',
-      name: 'Gemini-3-Pro (toapis)',
-      description: 'Google Gemini 3 Pro 图像生成',
-      factory: (config) => new Gemini3ProProvider(config as TTIModelConfig),
-      contractVersion: MEDIA_PROVIDER_CONTRACT_VERSION,
-      capabilities: ['tti'],
-      polling: DEFAULT_POLLING_CONFIG,
-      presetBaseUrl: 'https://toapis.com',
-      auth: { apiKey: 'required', baseUrl: 'optional' },
-    },
-    {
       type: 'openai-compatible-tti',
       kind: 'tti',
-      name: '自定义服务商（OpenAI 兼容）',
-      description: '兼容 OpenAI 接口的自定义文生图服务',
+      name: 'OpenAI 标准协议',
+      description: 'OpenAI 兼容文生图（/v1/images/generations 等）',
       factory: (config) => new OpenAICompatibleTTIProvider(config as TTIModelConfig),
       contractVersion: MEDIA_PROVIDER_CONTRACT_VERSION,
       capabilities: ['tti'],
       polling: DEFAULT_POLLING_CONFIG,
-      presetBaseUrl: '',
+      presetBaseUrl: 'https://komaapi.com',
       auth: { apiKey: 'required', baseUrl: 'optional' },
     },
     {
       type: 'grok2api-imagine-tti',
       kind: 'tti',
-      name: 'Grok2API Imagine（多参考）',
-      description: 'Grok2API 逆向接口：文生图 + 多参考图（chat/completions）',
+      name: 'Koma官方Grok',
+      description: 'Koma 官方 Grok 文生图（多参考 chat/completions）',
       factory: (config) => new Grok2ApiImagineTTIProvider(config as TTIModelConfig),
       contractVersion: MEDIA_PROVIDER_CONTRACT_VERSION,
       capabilities: ['tti'],
       polling: DEFAULT_POLLING_CONFIG,
-      presetBaseUrl: '',
+      presetBaseUrl: 'https://komaapi.com',
       auth: { apiKey: 'required', baseUrl: 'optional' },
     },
     {
       type: 'gemini-native-tti',
       kind: 'tti',
-      name: 'Gemini Native（谷歌原生）',
-      description: 'Google Gemini 原生 generateContent 图像生成（支持多图参考）',
+      name: 'Koma官方Nano banana',
+      description: 'Koma 官方 Nano banana 文生图（Gemini 原生 generateContent，支持多图参考）',
       factory: (config) => new GeminiNativeTTIProvider(config as TTIModelConfig),
       contractVersion: MEDIA_PROVIDER_CONTRACT_VERSION,
       capabilities: ['tti'],
-      presetBaseUrl: 'https://generativelanguage.googleapis.com',
+      presetBaseUrl: 'https://komaapi.com',
       auth: { apiKey: 'required', baseUrl: 'optional' },
     },
   ];

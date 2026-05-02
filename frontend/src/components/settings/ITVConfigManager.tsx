@@ -731,10 +731,10 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
               <Form.Item
                 name="promptProtocol"
                 label="Prompt 编译协议"
-                tooltip="为特定渠道启用提示词编译与参考图数组对齐。"
+                tooltip="启用后会把 @角色名 / @场景名 / @道具名 编译为 @Image N，并按渠道上限对齐参考图数量。"
               >
                 <Select allowClear placeholder="不启用（默认）">
-                  <Select.Option value="grok-image-index">grok-image-index (@Image N)</Select.Option>
+                  <Select.Option value="grok-image-index">Koma 协议</Select.Option>
                 </Select>
               </Form.Item>
 

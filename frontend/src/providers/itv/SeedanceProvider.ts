@@ -169,7 +169,10 @@ function normalizeDuration(model: string, value: unknown): number {
       : NaN;
   const fallback = 5;
   const resolved = Number.isFinite(parsed) ? Math.floor(parsed) : fallback;
-  const maxDuration = model === 'seedance-2.0-fast' ? 12 : 15;
+  // Fast 档上限 12s，Pro/Regular 档 15s。Koma 激活默认用短后缀 `-f` / `-r`；
+  // `seedance-2.0-fast` 是早期 ID，留作兼容判断。
+  const isFast = model === 'seedance-2.0-f' || model === 'seedance-2.0-fast';
+  const maxDuration = isFast ? 12 : 15;
   return Math.min(Math.max(resolved, 4), maxDuration);
 }
 

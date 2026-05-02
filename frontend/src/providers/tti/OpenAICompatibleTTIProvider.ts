@@ -70,7 +70,9 @@ export class OpenAICompatibleTTIProvider implements TTIProvider {
   private readonly taskSnapshotPathById = new Map<string, string>();
 
   constructor(config: TTIModelConfig) {
-    this.config = config;
+    // 默认启用 Koma 协议（grok-image-index）：把 @角色名/@场景名/@道具名 编译为
+    // @Image N 并对齐参考图上限，保持与 Koma官方Grok / Koma官方Nano banana 一致。
+    this.config = { ...config, promptProtocol: config.promptProtocol ?? 'grok-image-index' };
   }
 
   private getModelName(): string {

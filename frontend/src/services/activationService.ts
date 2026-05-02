@@ -481,8 +481,10 @@ export const activationService = {
       // 会强制注入 grok-image-index 协议、特殊 ratio 处理等，与穗禾参数不兼容。
       // 参数参考 new-api/relay/channel/task/suihe/constants.go：
       //   - 上游当前阶段强制锁定 480p（suiheLockedResolution）
-      //   - 时长 seedance-2.0: 4-15s, seedance-2.0-fast: 4-12s（缺省 5s）
+      //   - 时长 seedance-2.0-r: 4-15s, seedance-2.0-f: 4-12s（缺省 5s）
       // baseUrl 走 komaapi.com（new-api 网关），通过 model 字段路由到穗禾上游渠道。
+      // 注：上游模型名为 `seedance-2.0-r` / `seedance-2.0-f`，UI label 仍展示
+      //     "Seedance 2.0" / "Seedance 2.0 Fast" 两个友好名。
       {
         id: KOMAAPI_ACTIVATION_CHANNEL_IDS.itvJimeng,
         category: 'itv' as const,
@@ -494,21 +496,21 @@ export const activationService = {
           defaultDuration: 5,
           defaultResolution: '480p',
         }),
-        defaultModelId: 'seedance-2.0',
+        defaultModelId: 'seedance-2.0-r',
         models: [
           {
-            id: 'seedance-2.0',
+            id: 'seedance-2.0-r',
             label: 'Seedance 2.0',
-            providerModelName: 'seedance-2.0',
+            providerModelName: 'seedance-2.0-r',
             capabilities: [
               'video.text-to-video' as ModelCapability,
               'video.image-to-video' as ModelCapability,
             ],
           },
           {
-            id: 'seedance-2.0-fast',
+            id: 'seedance-2.0-f',
             label: 'Seedance 2.0 Fast',
-            providerModelName: 'seedance-2.0-fast',
+            providerModelName: 'seedance-2.0-f',
             capabilities: [
               'video.text-to-video' as ModelCapability,
               'video.image-to-video' as ModelCapability,
@@ -584,21 +586,21 @@ export const activationService = {
         defaultDuration: 5,
         defaultResolution: '480p',
       }),
-      defaultModelId: 'seedance-2.0',
+      defaultModelId: 'seedance-2.0-r',
       models: [
         {
-          id: 'seedance-2.0',
+          id: 'seedance-2.0-r',
           label: 'Seedance 2.0',
-          providerModelName: 'seedance-2.0',
+          providerModelName: 'seedance-2.0-r',
           capabilities: [
             'video.text-to-video' as ModelCapability,
             'video.image-to-video' as ModelCapability,
           ],
         },
         {
-          id: 'seedance-2.0-fast',
+          id: 'seedance-2.0-f',
           label: 'Seedance 2.0 Fast',
-          providerModelName: 'seedance-2.0-fast',
+          providerModelName: 'seedance-2.0-f',
           capabilities: [
             'video.text-to-video' as ModelCapability,
             'video.image-to-video' as ModelCapability,
