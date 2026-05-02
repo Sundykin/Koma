@@ -69,6 +69,12 @@ export interface TTIProvider {
   type: string;
   config: TTIModelConfig;
   supportsMultiAngle?: boolean;
+  /**
+   * 是否能直接吃 koma-local:// / data-url 等本地参考。
+   * true：调用方（如 chat）可以跳过图床上传，直接把本地字节当 data-url 喂进来。
+   * 默认 undefined/false：保守起见，调用方应先把本地文件转为公网可访问的 URL。
+   */
+  supportsLocalReferences?: boolean;
 
   validate(): boolean;
   testConnection(): Promise<boolean>;

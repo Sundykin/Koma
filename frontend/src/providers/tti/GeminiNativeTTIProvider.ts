@@ -169,6 +169,8 @@ function extractImageFromResponse(resp: GeminiGenerateContentResponse): ImageRes
 export class GeminiNativeTTIProvider implements TTIProvider {
   type = 'gemini-native-tti' as const;
   config: TTIModelConfig;
+  /** Gemini generateContent 用 inlineData (base64)，data-url 直接拆出 mimeType+data 喂入。 */
+  supportsLocalReferences = true;
 
   constructor(config: TTIModelConfig) {
     // 默认启用 Koma 协议（grok-image-index），与 Koma官方Grok / OpenAI 标准协议一致。

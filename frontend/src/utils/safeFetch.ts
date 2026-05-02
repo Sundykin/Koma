@@ -4,12 +4,13 @@
  */
 import { createLogger } from '../store/logger';
 import { truncateString } from './logFormatting';
-import { bytesToBase64 } from './encoding';
+import { bytesToBase64, base64ToBytes } from './encoding';
 
 interface IpcFetchResult {
   ok: boolean;
   status: number;
   statusText: string;
+  /** base64 编码的响应字节。主进程统一 base64 透传以保留二进制保真度（PNG/JPG 等）。 */
   body: string;
 }
 
@@ -179,7 +180,20 @@ export async function safeFetch(url: string, init?: RequestInit): Promise<Respon
       transport: 'ipc',
     });
 
-    return new Response(result.body, {
+    // result.body 是 base64 字节；用 Uint8Array 构造 Response，让 .text()/.json()/.arrayBuffer()
+    // 各自按需解码，避免之前 string-body 路径丢失二进制保真度的问题。
+    let bodyBytes: Uint8Array;
+    try {
+      bodyBytes = base64ToBytes(result.body || '');
+    } catch (err) {
+      logger.error('IPC 响应 base64 解码失败', {
+        traceId,
+        url,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      bodyBytes = new Uint8Array(0);
+    }
+    return new Response(bodyBytes, {
       status: result.status,
       statusText: result.statusText,
     });

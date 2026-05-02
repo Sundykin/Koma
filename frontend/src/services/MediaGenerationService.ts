@@ -207,7 +207,10 @@ async function ensureProviderAssetInput(
   if (typeof source === 'object' && 'transport' in source && 'value' in source) {
     return source as ProviderAssetInput;
   }
-  return resolveProviderAssetInput(source as MediaAssetSource);
+  // TTI 参考图统一走 local-first：项目内角色/场景/道具/分镜的预览图都已落盘，
+  // 没必要再让 provider 去远端拉一次（CSP / fs allowed-path / 速度都是问题）。
+  // 只有当 asset 没有 localPath 时才退到 remote-url。
+  return resolveProviderAssetInput(source as MediaAssetSource, { preferLocalFile: true });
 }
 
 async function ensureProviderAssetInputs(
