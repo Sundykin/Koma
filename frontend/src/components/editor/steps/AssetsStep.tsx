@@ -10,6 +10,7 @@ export const AssetsStep: React.FC<{ ctx: EditorStepContext }> = ({ ctx }) => {
   return (
     <AssetManager
       projectId={ctx.activeProject.id}
+      aspectRatio={ctx.activeProject.aspectRatio || '16:9'}
       ttiSelection={ctx.ttiSelection}
       itvSelection={ctx.itvSelection}
       styleSnapshot={ctx.styleSnapshot}

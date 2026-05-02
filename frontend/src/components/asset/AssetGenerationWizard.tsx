@@ -228,6 +228,9 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
   ): Promise<{ success: boolean; path?: string; error?: string }> => {
     const ttiSelection = serializeMediaSelection(project.mediaSelections?.tti);
     const itvSelection = serializeMediaSelection(project.mediaSelections?.itv);
+    // 项目全局比例 — 角色 / 场景 / 道具的参考图必须落在这个比例上，
+    // 否则下游分镜走 image-to-image 时输出比例会被参考图带跑。
+    const aspectRatio = project.aspectRatio || '16:9';
     switch (stepKey) {
       case 'characters': {
         const chars = await loadCharacters(project.id);
@@ -236,6 +239,7 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
         return generateCostumePhoto({
           projectId: project.id,
           character: char,
+          aspectRatio,
           styleSnapshot: project.styleSnapshot,
           ttiSelection,
           onProgress,
@@ -249,6 +253,7 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
         return generateSceneImage({
           projectId: project.id,
           scene,
+          aspectRatio,
           styleSnapshot: project.styleSnapshot,
           ttiSelection,
           onProgress,
@@ -262,6 +267,7 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
         return generatePropImage({
           projectId: project.id,
           prop,
+          aspectRatio,
           styleSnapshot: project.styleSnapshot,
           ttiSelection,
           onProgress,

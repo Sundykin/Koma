@@ -56,6 +56,8 @@ const { Text } = Typography;
 interface SceneDetailPanelProps {
   scene: Scene;
   projectId: string;
+  /** 项目全局比例 — 透传给 generateSceneImage，让场景预览图与项目比例一致 */
+  aspectRatio?: '16:9' | '9:16';
   theme?: string;
   stylePrompt?: string;
   styleSnapshot?: ProjectStyleSnapshot;
@@ -67,6 +69,7 @@ interface SceneDetailPanelProps {
 export const SceneDetailPanel: React.FC<SceneDetailPanelProps> = ({
   scene,
   projectId,
+  aspectRatio,
   theme,
   stylePrompt,
   styleSnapshot,
@@ -239,6 +242,7 @@ export const SceneDetailPanel: React.FC<SceneDetailPanelProps> = ({
         generate: (seed, index, destPath, variation) => generateSceneImage({
           projectId,
           scene: sceneWithPrompt,
+          aspectRatio,
           theme,
           stylePrompt,
           styleSnapshot,

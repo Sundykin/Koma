@@ -69,6 +69,8 @@ const { Text } = Typography;
 interface PropDetailPanelProps {
   prop: Prop;
   projectId: string;
+  /** 项目全局比例 — 透传给 generatePropImage，让道具参考图与项目比例一致 */
+  aspectRatio?: '16:9' | '9:16';
   theme?: string;
   stylePrompt?: string;
   styleSnapshot?: ProjectStyleSnapshot;
@@ -84,6 +86,7 @@ type ViewMode = 'image' | 'video';
 export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
   prop,
   projectId,
+  aspectRatio,
   theme,
   stylePrompt,
   styleSnapshot,
@@ -270,6 +273,7 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
         generate: (seed, index, destPath, variation) => generatePropImage({
           projectId,
           prop: propWithPrompt,
+          aspectRatio,
           theme,
           stylePrompt,
           styleSnapshot,

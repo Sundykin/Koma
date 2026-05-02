@@ -57,6 +57,8 @@ function upsertAssetById<T extends { id: string }>(items: T[], item: T): T[] {
 
 interface AssetManagerPanelProps {
   projectId: string;
+  /** 项目全局比例 — 透传给角色/场景/道具的生图调用，让参考图与项目比例一致 */
+  aspectRatio?: '16:9' | '9:16';
   ttiSelection?: string;
   itvSelection?: string;
   theme?: string;
@@ -71,6 +73,7 @@ interface AssetManagerPanelProps {
 
 export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
   projectId,
+  aspectRatio,
   ttiSelection,
   itvSelection,
   theme,
@@ -523,6 +526,7 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
             key={selectedCharacter.id}
             character={selectedCharacter}
             projectId={projectId}
+            aspectRatio={aspectRatio}
             theme={theme}
             stylePrompt={stylePrompt}
             styleSnapshot={styleSnapshot}
@@ -537,6 +541,7 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
             key={selectedScene.id}
             scene={selectedScene}
             projectId={projectId}
+            aspectRatio={aspectRatio}
             theme={theme}
             stylePrompt={stylePrompt}
             styleSnapshot={styleSnapshot}
@@ -550,6 +555,7 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
             key={selectedProp.id}
             prop={selectedProp}
             projectId={projectId}
+            aspectRatio={aspectRatio}
             theme={theme}
             stylePrompt={stylePrompt}
             styleSnapshot={styleSnapshot}

@@ -75,6 +75,9 @@ const { Text } = Typography;
 interface CharacterDetailPanelProps {
   character: Character;
   projectId: string;
+  /** 项目全局比例 — 透传给 generateCostumePhoto / generateCharacterFaceCandidate(s)
+   *  让定妆照与人脸候选都落在项目比例上，否则下游分镜走 image-to-image 时输出会跟着参考图比例。 */
+  aspectRatio?: '16:9' | '9:16';
   theme?: string;
   stylePrompt?: string;
   styleSnapshot?: ProjectStyleSnapshot;
@@ -332,6 +335,7 @@ async function validateCharacterDrawCandidateImage(
 export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
   character,
   projectId,
+  aspectRatio,
   theme,
   stylePrompt,
   styleSnapshot,
@@ -523,6 +527,7 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
           const batchResults = await generateCharacterFaceCandidatesBatch({
             projectId,
             character: charWithPrompt,
+            aspectRatio,
             theme,
             stylePrompt,
             styleSnapshot,
@@ -548,6 +553,7 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
         generate: (seed, index, destPath, variation) => generateCharacterFaceCandidate({
           projectId,
           character: charWithPrompt,
+          aspectRatio,
           theme,
           stylePrompt,
           styleSnapshot,
@@ -723,6 +729,7 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
       const result = await generateCostumePhoto({
         projectId,
         character: charWithPrompt,
+        aspectRatio,
         theme,
         stylePrompt,
         styleSnapshot,
