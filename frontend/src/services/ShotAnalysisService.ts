@@ -16,7 +16,7 @@ import {
   normalizeVideoDurationSeconds,
   type AllowedVideoDurationSeconds,
 } from '../utils/videoDuration';
-import { formatSpecPromptHint } from '../providers/itv/durationSpec';
+import { clampDurationToSpec, formatSpecPromptHint } from '../providers/itv/durationSpec';
 
 const logger = createLogger('ShotAnalysis');
 const SHOT_ANALYSIS_LLM_TIMEOUT_MS = 300_000;
@@ -256,12 +256,14 @@ export class ShotAnalysisService {
       };
 
       // 分镜拆解时 description 为 undefined，后续手动生成
+      // 时长按当前项目选择的 ITV 渠道 spec 吸附（grok 渠道 → 6/10/12/16/20；seedance → 4-15 范围），
+      // 之前一律走 normalizeShotDuration（grok 枚举）会把 seedance 渠道的有效值 5 强制吸到 6
       const shots: Shot[] = parsedShotPayloads.map((s, index) => ({
         id: `shot_${Date.now()}_${index}`,
         scriptContent: s.scriptContent || '',
         shotType: s.shotType || 'medium',
         cameraMovement: s.cameraMovement || 'static',
-        duration: normalizeShotDuration(s.duration),
+        duration: clampDurationToSpec(s.duration, this.ctx.itvDurationSpec),
         description: undefined,  // 后续手动生成提示词
         characters: (s.characters || [])
           .map((name: string) => {

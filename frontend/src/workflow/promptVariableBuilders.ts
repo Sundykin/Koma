@@ -1,5 +1,18 @@
 import type { Character, Prop, Scene, Shot } from '../types';
-import { normalizeVideoDurationSeconds } from '../utils/videoDuration';
+import { DEFAULT_VIDEO_DURATION_SECONDS } from '../utils/videoDuration';
+
+// shot.duration 在创建 / 编辑 / AI 生成时已按当前 ITV 渠道 spec 吸附（见 Storyboard / ShotAnalysisService）。
+// 这一层只做最低限度的数值兜底，不再吸附到 grok 枚举（之前用 normalizeVideoDurationSeconds 会把 seedance 的 5 推回 6）。
+function coerceShotDurationSeconds(value: unknown): number {
+  if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
+    return Math.max(1, Math.round(value));
+  }
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed) && parsed > 0) return Math.max(1, Math.round(parsed));
+  }
+  return DEFAULT_VIDEO_DURATION_SECONDS;
+}
 
 function cleanText(value?: string): string {
   return (value || '').replace(/\s+/g, ' ').replace(/\s*,\s*/g, ', ').trim();
@@ -294,7 +307,7 @@ function getShotVisibleAction(shot: Shot): string {
 }
 
 function buildMotionTimeline(durationSeconds: number, action: string, cameraMovement: string): string {
-  const duration = normalizeVideoDurationSeconds(durationSeconds);
+  const duration = coerceShotDurationSeconds(durationSeconds);
   const segments: Array<[number, number]> = duration <= 2
     ? [[0, duration]]
     : duration <= 4
@@ -395,7 +408,7 @@ export function buildShotVideoTemplateVariables(params: {
     description,
     shotType: formatShotType(shot.shotType),
     cameraMovement: cleanText(cameraMovement),
-    durationSeconds: String(normalizeVideoDurationSeconds(shot.duration)),
+    durationSeconds: String(coerceShotDurationSeconds(shot.duration)),
     motionTimeline,
   };
 }

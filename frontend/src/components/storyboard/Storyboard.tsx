@@ -41,13 +41,15 @@ import {
 } from '../../workflow/shotVideoPlan';
 import { resolveConfiguredChannelModel } from '../../providers/channel/resolver';
 import {
+  clampDurationToSpec,
   getDurationSpecForModel,
   getDurationSpecForProviderType,
+  specToInputBounds,
+  type VideoDurationSpec,
 } from '../../providers/itv/durationSpec';
 import './Storyboard.css';
 import './ShotListEditor.css';
 import { getMediaAssetDisplaySource } from '../../types';
-import { ALLOWED_VIDEO_DURATIONS, normalizeVideoDurationSeconds } from '../../utils/videoDuration';
 
 const logger = createLogger('Storyboard');
 
@@ -69,8 +71,8 @@ const CAMERA_OPTIONS = [
   { label: '手持晃动', value: 'handheld' },
 ];
 
-// 合并两个分镜
-function mergeShots(target: Shot, source: Shot): Shot {
+// 合并两个分镜（duration 按当前 ITV 渠道 spec 吸附；不再硬编码到 grok 枚举）
+function mergeShots(target: Shot, source: Shot, durationSpec: VideoDurationSpec): Shot {
   const mergedMedia = {
     references: [...(target.media?.references || []), ...(source.media?.references || [])],
     images: [...(target.media?.images || []), ...(source.media?.images || [])],
@@ -83,7 +85,7 @@ function mergeShots(target: Shot, source: Shot): Shot {
     ...target,
     scriptContent: [target.scriptContent, source.scriptContent].filter(Boolean).join('\n'),
     imagePrompt: [target.imagePrompt, source.imagePrompt].filter(Boolean).join('\n\n'),
-    duration: normalizeVideoDurationSeconds(target.duration + source.duration),
+    duration: clampDurationToSpec(target.duration + source.duration, durationSpec),
     characters: [...new Set([...target.characters, ...source.characters])],
     dialogue: [target.dialogue, source.dialogue].filter(Boolean).join('\n'),
     props: [...new Set([...(target.props || []), ...(source.props || [])])],
@@ -345,7 +347,8 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       }
 
       // 一刀切：移除旧数据迁移/修复逻辑。分镜资产绑定与提示词 @mention 统一使用项目内 ID。
-      setShots(loadedShots.map(shot => ({ ...shot, duration: normalizeVideoDurationSeconds(shot.duration) })));
+      // duration 按当前 ITV 渠道 spec 吸附（grok 枚举 / seedance 范围），不再固定 grok
+      setShots(loadedShots.map(shot => ({ ...shot, duration: clampDurationToSpec(shot.duration, itvDurationSpec) })));
       setCharacters(filteredCharacters);
       setScenes(filteredScenes);
       setProps(filteredProps);
@@ -356,15 +359,15 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     } finally {
       setLoading(false);
     }
-  }, [projectId, episodeId]);
+  }, [projectId, episodeId, itvDurationSpec]);
 
   const refreshShotsFromStore = useCallback(async () => {
     if (!projectId || !episodeId) {
       return;
     }
     const latestShots = await loadEpisodeShots(projectId, episodeId);
-    setShots(latestShots.map(shot => ({ ...shot, duration: normalizeVideoDurationSeconds(shot.duration) })));
-  }, [projectId, episodeId]);
+    setShots(latestShots.map(shot => ({ ...shot, duration: clampDurationToSpec(shot.duration, itvDurationSpec) })));
+  }, [projectId, episodeId, itvDurationSpec]);
 
   useEffect(() => {
     loadData();
@@ -426,7 +429,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
 
     const normalizedShots = updatedShots.map(shot => ({
       ...shot,
-      duration: normalizeVideoDurationSeconds(shot.duration),
+      duration: clampDurationToSpec(shot.duration, itvDurationSpec),
     }));
 
     // 先本地更新，避免输入法组合输入被异步持久化回写打断。
@@ -438,7 +441,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     };
 
     return flushQueuedShotSaves();
-  }, [projectId, episodeId, message, flushQueuedShotSaves]);
+  }, [projectId, episodeId, message, flushQueuedShotSaves, itvDurationSpec]);
 
   // ============ 回调函数 ============
 
@@ -592,12 +595,12 @@ export const Storyboard: React.FC<StoryboardProps> = ({
 
   // 分镜时长变更
   const handleDurationChange = useCallback((shotId: string, duration: number) => {
-    const safeDuration = normalizeVideoDurationSeconds(duration);
+    const safeDuration = clampDurationToSpec(duration, itvDurationSpec);
     const updatedShots = shots.map(s =>
       s.id === shotId ? { ...s, duration: safeDuration } : s
     );
     saveAllShots(updatedShots);
-  }, [shots, saveAllShots]);
+  }, [shots, saveAllShots, itvDurationSpec]);
 
   // 资产同步 Hook
   const assets = useMemo(() => ({ characters, scenes, props }), [characters, scenes, props]);
@@ -776,13 +779,13 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     if (index <= 0) return;
     const target = shots[index - 1];
     const source = shots[index];
-    const merged = mergeShots(target, source);
+    const merged = mergeShots(target, source, itvDurationSpec);
     const updatedShots = shots.filter((_, i) => i !== index).map((s, i) =>
       i === index - 1 ? merged : s
     );
     await saveAllShots(updatedShots);
     message.success('分镜已向上合并');
-  }, [shots, saveAllShots]);
+  }, [shots, saveAllShots, itvDurationSpec]);
 
   // 向下合并
   const handleMergeDown = useCallback(async (shotId: string) => {
@@ -790,13 +793,13 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     if (index < 0 || index >= shots.length - 1) return;
     const target = shots[index];
     const source = shots[index + 1];
-    const merged = mergeShots(target, source);
+    const merged = mergeShots(target, source, itvDurationSpec);
     const updatedShots = shots.filter((_, i) => i !== index + 1).map((s, i) =>
       i === index ? merged : s
     );
     await saveAllShots(updatedShots);
     message.success('分镜已向下合并');
-  }, [shots, saveAllShots]);
+  }, [shots, saveAllShots, itvDurationSpec]);
 
   // 上移
   const handleMoveUp = useCallback(async (shotId: string) => {
@@ -1334,7 +1337,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     const updatedShot: Shot = {
       ...editingShot!,
       ...editFormData,
-      duration: normalizeVideoDurationSeconds(editFormData.duration, editingShot?.duration),
+      duration: clampDurationToSpec(editFormData.duration ?? editingShot?.duration, itvDurationSpec),
     } as Shot;
     const isNew = !shots.find(s => s.id === editingShot!.id);
     let updatedShots: Shot[];
@@ -1349,7 +1352,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     setEditModalOpen(false);
     setEditingShot(null);
     setEditFormData({});
-  }, [editFormData, editingShot, shots, saveAllShots]);
+  }, [editFormData, editingShot, shots, saveAllShots, itvDurationSpec]);
 
   // 批量生成图片（跳过已有图片的）
   const handleBatchGenerate = useCallback(async (targetShotIds?: string[]) => {
@@ -1760,13 +1763,13 @@ export const Storyboard: React.FC<StoryboardProps> = ({
             <Form.Item label="时长（秒）" style={{ marginBottom: 0 }}>
               <Input
                 type="number"
-                min={ALLOWED_VIDEO_DURATIONS[0]}
-                max={ALLOWED_VIDEO_DURATIONS[ALLOWED_VIDEO_DURATIONS.length - 1]}
-                step={1}
-                value={editFormData.duration || 10}
+                min={specToInputBounds(itvDurationSpec).min}
+                max={specToInputBounds(itvDurationSpec).max}
+                step={specToInputBounds(itvDurationSpec).step}
+                value={editFormData.duration ?? itvDurationSpec.default}
                 onChange={(e) => setEditFormData(prev => ({
                   ...prev,
-                  duration: normalizeVideoDurationSeconds(e.target.value, prev.duration),
+                  duration: clampDurationToSpec(e.target.value, itvDurationSpec),
                 }))}
                 style={{ width: 80 }}
               />
