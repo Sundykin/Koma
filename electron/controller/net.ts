@@ -143,17 +143,20 @@ function getMultipartFetchTransport(): {
 }
 
 /**
- * 用 ReadableStream reader 逐块读取响应体
- * 保持连接活跃，避免 Cloudflare 524 超时
+ * 用 ReadableStream reader 逐块读取响应体到 Uint8Array。
+ * 不再用 TextDecoder——之前对二进制响应（PNG/JPG）会把非 UTF-8 字节替换为 U+FFFD，
+ * arrayBuffer() 拿到的是乱码 string 的 UTF-8 编码、跟原始字节完全不同。
+ * 这里返回原始字节，IPC 层再统一 base64 透传给 renderer。
  */
-async function readBodyChunked(response: Response): Promise<string> {
+async function readBodyChunked(response: Response): Promise<Uint8Array> {
   const reader = response.body?.getReader();
   if (!reader) {
-    return response.text();
+    const ab = await response.arrayBuffer();
+    return new Uint8Array(ab);
   }
 
-  const decoder = new TextDecoder();
-  const chunks: string[] = [];
+  const chunks: Uint8Array[] = [];
+  let total = 0;
 
   while (true) {
     const timer = setTimeout(() => reader.cancel('chunk idle timeout'), CHUNK_IDLE_TIMEOUT_MS);
@@ -170,12 +173,29 @@ async function readBodyChunked(response: Response): Promise<string> {
     clearTimeout(timer);
 
     if (result.done) break;
-    chunks.push(decoder.decode(result.value, { stream: true }));
+    if (result.value && result.value.length > 0) {
+      chunks.push(result.value);
+      total += result.value.length;
+    }
   }
 
-  // flush decoder
-  chunks.push(decoder.decode());
-  return chunks.join('');
+  if (chunks.length === 1) return chunks[0];
+  const combined = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    combined.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return combined;
+}
+
+/** 主进程产出的错误响应也通过同一个 base64 通道，避免 renderer 端再分支。 */
+function textToBase64(text: string): string {
+  return Buffer.from(text, 'utf-8').toString('base64');
+}
+
+function jsonErrorBase64(payload: unknown): string {
+  return textToBase64(JSON.stringify(payload));
 }
 
 function truncateString(value: string, max = 6000): string {
@@ -217,7 +237,7 @@ class NetController extends BaseController {
           ok: false,
           status: 400,
           statusText: 'Bad Request',
-          body: JSON.stringify({
+          body: jsonErrorBase64({
             error: {
               code: 'duplicate_sensitive_header',
               message: `sensitive header "${sensitive}" 不允许大小写变体重复出现`,
@@ -243,7 +263,7 @@ class NetController extends BaseController {
         ok: false,
         status: 400,
         statusText: 'Bad Request',
-        body: JSON.stringify({
+        body: jsonErrorBase64({
           error: {
             code: 'conflict_auth_mode',
             message: 'x-koma-channel-* 代理模式与显式 Authorization 不允许同时出现',
@@ -259,7 +279,7 @@ class NetController extends BaseController {
         ok: false,
         status: 400,
         statusText: 'Bad Request',
-        body: JSON.stringify({
+        body: jsonErrorBase64({
           error: {
             code: 'missing_channel_id_for_query_key',
             message: 'x-koma-channel-query-key-name 必须与 x-koma-channel-id 配对使用',
@@ -275,7 +295,7 @@ class NetController extends BaseController {
         ok: false,
         status: 400,
         statusText: 'Bad Request',
-        body: JSON.stringify({
+        body: jsonErrorBase64({
           error: {
             code: 'missing_channel_id_for_raw_authorization',
             message: 'x-koma-channel-raw-authorization 必须与 x-koma-channel-id 配对使用',
@@ -289,7 +309,7 @@ class NetController extends BaseController {
         ok: false,
         status: 400,
         statusText: 'Bad Request',
-        body: JSON.stringify({
+        body: jsonErrorBase64({
           error: {
             code: 'conflict_auth_mode',
             message: 'x-koma-channel-query-key-name 与 x-koma-channel-raw-authorization 互斥',
@@ -337,7 +357,7 @@ class NetController extends BaseController {
           ok: false,
           status: 401,
           statusText: 'Unauthorized',
-          body: JSON.stringify({
+          body: jsonErrorBase64({
             error: {
               code: 'channel_api_key_missing',
               message: `渠道 ${channelId} 未配置 apiKey，请在设置中补全`,
@@ -355,7 +375,7 @@ class NetController extends BaseController {
             ok: false,
             status: 400,
             statusText: 'Bad Request',
-            body: JSON.stringify({
+            body: jsonErrorBase64({
               error: {
                 code: 'invalid_query_key_name',
                 message: `x-koma-channel-query-key-name 非法字符：${queryKeyName}`,
@@ -374,7 +394,7 @@ class NetController extends BaseController {
             ok: false,
             status: 400,
             statusText: 'Bad Request',
-            body: JSON.stringify({
+            body: jsonErrorBase64({
               error: { code: 'invalid_url', message: 'URL 解析失败', type: 'koma_client_error' },
             }),
           };
@@ -437,7 +457,7 @@ class NetController extends BaseController {
           body: reqBody,
         });
 
-        const body = await readBodyChunked(response);
+        const bodyBytes = await readBodyChunked(response);
 
         console.info('[NetController] IPC 网络请求完成', {
           traceId,
@@ -445,7 +465,7 @@ class NetController extends BaseController {
           status: response.status,
           ok: response.ok,
           durationMs: Date.now() - startedAt,
-          responseLength: body.length,
+          responseLength: bodyBytes.length,
           attempts: attempt + 1,
         });
 
@@ -453,7 +473,7 @@ class NetController extends BaseController {
           ok: response.ok,
           status: response.status,
           statusText: response.statusText,
-          body,
+          body: Buffer.from(bodyBytes).toString('base64'),
         };
       } catch (err: any) {
         lastError = err;
@@ -487,7 +507,7 @@ class NetController extends BaseController {
       ok: false,
       status: 502,
       statusText: 'Network Error',
-      body: `网络请求失败: ${detail}`,
+      body: textToBase64(`网络请求失败: ${detail}`),
     };
   }
 }

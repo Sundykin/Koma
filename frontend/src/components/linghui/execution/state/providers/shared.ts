@@ -43,7 +43,8 @@ export async function ensureProviderAssetInputs(
       if (source && typeof source === 'object' && 'transport' in source && 'value' in source) {
         return source as ProviderAssetInput;
       }
-      return resolveProviderAssetInput(source as MediaAssetSource);
+      // 灵绘节点产物本地都已落盘，refs 优先用本地文件，避免 provider 再去远端拉一次
+      return resolveProviderAssetInput(source as MediaAssetSource, { preferLocalFile: true });
     }),
   );
 

@@ -268,6 +268,8 @@ function extractImageResultsFromGen(resp: ImageGenResponse): ImageResult[] {
 export class Grok2ApiImagineTTIProvider implements TTIProvider {
   type = 'grok2api-imagine-tti' as const;
   config: TTIModelConfig;
+  /** /v1/images/edits 走 multipart，参考图通过 parseDataUrl 解出字节，本地直传无需图床。 */
+  supportsLocalReferences = true;
 
   constructor(config: TTIModelConfig) {
     // grok2api-imagine-tti 协议固有需要 grok-image-index 编译（@角色名 → @Image N 且 refs 自动限 3）。

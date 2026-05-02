@@ -3,6 +3,7 @@ import type { ProviderAssetInput } from '../../types';
 import type { AttachmentFile } from './ChatComposer';
 import { uploadBytesToImageHostingWithRetry } from '../../services/imageHostingService';
 import { ensureRemoteUrlForImageSource } from '../../services/mediaRemoteUrlService';
+import { resolveProviderAssetInput } from '../../services/mediaAssetResolver';
 import { createLogger } from '../../store/logger';
 
 const logger = createLogger('ChatMediaGeneration');
@@ -181,6 +182,45 @@ function sourceToProviderInput(source: string): ProviderAssetInput {
   return dataUrlToProviderInput(source);
 }
 
+/**
+ * Chat 参考图 → ProviderAssetInput。
+ *  - preferLocal=true（provider 已声明 supportsLocalReferences）：
+ *      koma-local:// 直接读盘转 data-url，绕开图床上传。https/data: 直接透传。
+ *  - preferLocal=false（视频路径或未审计的 provider）：
+ *      仍要求公网 URL，本地资产必须先上传图床。
+ */
+async function resolveChatReferenceForProvider(opts: {
+  cand: { remoteUrl?: string; source: string };
+  preferLocal: boolean;
+}): Promise<ProviderAssetInput> {
+  const { cand, preferLocal } = opts;
+
+  if (preferLocal) {
+    const resolved = await resolveProviderAssetInput(cand.source, { preferLocalFile: true });
+    if (resolved) return resolved;
+    if (cand.remoteUrl && /^https?:\/\//i.test(cand.remoteUrl)) {
+      return { transport: 'remote-url', value: cand.remoteUrl };
+    }
+    throw new Error(`无法解析参考图：${cand.source.slice(0, 80)}`);
+  }
+
+  if (cand.remoteUrl && /^https?:\/\//i.test(cand.remoteUrl)) {
+    return { transport: 'remote-url', value: cand.remoteUrl };
+  }
+  if (/^https?:\/\//i.test(cand.source)) {
+    return { transport: 'remote-url', value: cand.source };
+  }
+  const normalized = await ensureRemoteUrlForImageSource({
+    projectId: '__chat__',
+    source: cand.source,
+    policy: 'required',
+  });
+  if (typeof normalized === 'string' && /^https?:\/\//i.test(normalized)) {
+    return { transport: 'remote-url', value: normalized };
+  }
+  throw new Error('上传参考图到图床失败：上游 API 需要可访问的远程 URL，请检查图床插件配置');
+}
+
 export async function imageAttachmentsToDataUrls(attachments: AttachmentFile[]): Promise<string[]> {
   return Promise.all(
     attachments
@@ -294,57 +334,45 @@ export async function startChatMedia(params: {
         return { remoteUrl: ref?.remoteUrl, source: s };
       });
 
-  // 归一化：上游 provider 拿不到 koma-local:// 这种本地协议。
-  // 优先级：ref.remoteUrl（最快）> source 已经是 https（放行）> 其他（本地/data-url）走图床上传
-  const referenceSources: string[] = [];
-  for (const cand of rawCandidates) {
-    if (cand.remoteUrl && /^https?:\/\//i.test(cand.remoteUrl)) {
-      referenceSources.push(cand.remoteUrl);
-      continue;
-    }
-    if (/^https?:\/\//i.test(cand.source)) {
-      referenceSources.push(cand.source);
-      continue;
-    }
-    const normalized = await ensureRemoteUrlForImageSource({
-      projectId: '__chat__',
-      source: cand.source,
-      policy: 'required',
-    });
-    if (typeof normalized === 'string' && /^https?:\/\//i.test(normalized)) {
-      referenceSources.push(normalized);
-    } else {
-      throw new Error('上传参考图到图床失败：上游 API 需要可访问的远程 URL，请检查图床插件配置');
-    }
-  }
   const rawReferenceSources = rawCandidates.map(c => c.source);
 
-  // 诊断：startChatMedia 内部看到的最终输入
-  logger.info('startChatMedia 入口', {
-    mode: params.mode,
-    promptPreview: prompt.slice(0, 80),
-    refsToSendCount: params.refsToSend?.length ?? 0,
-    rawReferenceSourcesPreview: rawReferenceSources.map(s => s.slice(0, 80)),
-    referenceSourcesPreview: referenceSources.map(s => s.slice(0, 80)),
-    ttiSelection: params.ttiSelection,
-    itvSelection: params.itvSelection,
-    mediaParams: params.mediaParams,
-  });
-
   // ─── 图片生成 ─────────────────────────────────────
+  // TTI 路径：先取 provider，按 provider.supportsLocalReferences 决定要不要上传图床。
+  // OpenAI/Grok2/Gemini 这三家都直接吃 data-url，避免每次生图都重复走图床（也绕开 koma-local
+  // 那条 IPC 二进制下载链路上的潜在故障）。
   if (params.mode === 'text-to-image' || params.mode === 'image-to-image') {
-    if (params.mode === 'image-to-image' && referenceSources.length === 0) {
-      throw new Error('图生图需要上传图片或使用 @图片 引用历史图片');
-    }
     const provider = await getProjectTTIProvider(params.ttiSelection, 'image.text-to-image');
     if (!provider) throw new Error('未配置 TTI 生图服务');
+    const preferLocal = Boolean((provider as { supportsLocalReferences?: boolean }).supportsLocalReferences);
+
+    const referenceInputs: ProviderAssetInput[] = [];
+    for (const cand of rawCandidates) {
+      const input = await resolveChatReferenceForProvider({ cand, preferLocal });
+      referenceInputs.push(input);
+    }
+
+    if (params.mode === 'image-to-image' && referenceInputs.length === 0) {
+      throw new Error('图生图需要上传图片或使用 @图片 引用历史图片');
+    }
+
+    logger.info('startChatMedia TTI 入口', {
+      mode: params.mode,
+      promptPreview: prompt.slice(0, 80),
+      refsToSendCount: params.refsToSend?.length ?? 0,
+      rawReferenceSourcesPreview: rawReferenceSources.map(s => s.slice(0, 80)),
+      referenceInputsPreview: referenceInputs.map(r => `${r.transport}:${r.value.slice(0, 80)}`),
+      preferLocal,
+      ttiSelection: params.ttiSelection,
+      mediaParams: params.mediaParams,
+    });
+
     const ttiOptions: Record<string, unknown> = {};
     if (params.mediaParams?.aspectRatio) ttiOptions.aspectRatio = params.mediaParams.aspectRatio;
     if (params.mediaParams?.resolution) ttiOptions.imageSize = params.mediaParams.resolution;
     const requestedCount = Math.min(Math.max(params.mediaParams?.count ?? 1, 1), 9);
     const started = await provider.start({
       prompt,
-      references: referenceSources.map(sourceToProviderInput),
+      references: referenceInputs,
       count: requestedCount,
       options: Object.keys(ttiOptions).length > 0 ? ttiOptions as any : undefined,
     });
@@ -375,6 +403,39 @@ export async function startChatMedia(params: {
   }
 
   // ─── 视频生成 ─────────────────────────────────────
+  // ITV provider 还没声明 supportsLocalReferences，保守地仍要求公网 URL：本地素材先走图床。
+  const referenceSources: string[] = [];
+  for (const cand of rawCandidates) {
+    if (cand.remoteUrl && /^https?:\/\//i.test(cand.remoteUrl)) {
+      referenceSources.push(cand.remoteUrl);
+      continue;
+    }
+    if (/^https?:\/\//i.test(cand.source)) {
+      referenceSources.push(cand.source);
+      continue;
+    }
+    const normalized = await ensureRemoteUrlForImageSource({
+      projectId: '__chat__',
+      source: cand.source,
+      policy: 'required',
+    });
+    if (typeof normalized === 'string' && /^https?:\/\//i.test(normalized)) {
+      referenceSources.push(normalized);
+    } else {
+      throw new Error('上传参考图到图床失败：上游 API 需要可访问的远程 URL，请检查图床插件配置');
+    }
+  }
+
+  logger.info('startChatMedia ITV 入口', {
+    mode: params.mode,
+    promptPreview: prompt.slice(0, 80),
+    refsToSendCount: params.refsToSend?.length ?? 0,
+    rawReferenceSourcesPreview: rawReferenceSources.map(s => s.slice(0, 80)),
+    referenceSourcesPreview: referenceSources.map(s => s.slice(0, 80)),
+    itvSelection: params.itvSelection,
+    mediaParams: params.mediaParams,
+  });
+
   // 入参校验
   if (params.mode === 'image-to-video' && referenceSources.length === 0) {
     throw new Error('图生视频需要至少 1 张参考图');
