@@ -94,13 +94,16 @@ export function LinghuiCanvasStage({
       maxZoom={2.5}
       deleteKeyCode={null}
       nodesDraggable
+      // ComfyUI 风格：滚轮始终只做缩放（不平移）。
+      //  - hand 模式：左键拖动空白处即平移（用于查看放大后超出视口的内容）
+      //  - mouse 模式：左键拖动框选；同时给中键/右键拖动作为兜底平移手段
+      // Shift + 拖动 仍可触发框选（React Flow 默认 selectionKeyCode='Shift'），不破坏多选。
       selectionOnDrag={canvasMode === 'mouse'}
-      panOnDrag={canvasMode === 'hand'}
-      panOnScroll={canvasMode === 'mouse'}
-      zoomOnScroll={canvasMode === 'hand'}
+      panOnDrag={canvasMode === 'hand' ? true : [1, 2]}
+      panOnScroll={false}
+      zoomOnScroll
       zoomOnPinch
       zoomOnDoubleClick={false}
-      panOnScrollSpeed={0.8}
       panActivationKeyCode={null}
       zoomActivationKeyCode={null}
       nodeDragThreshold={8}
