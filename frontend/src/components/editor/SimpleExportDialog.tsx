@@ -249,35 +249,63 @@ export function SimpleExportDialog({ open, onClose, tracks, duration, canvasSize
 
           const materials = exportResult.draftContent.materials;
 
-          // 复制视频/图片素材
+          // 复制策略（解决"多片段同名 video.mp4 互相覆盖"问题）：
+          //  - 同一源文件（path 完全相同）→ 仅复制一次，所有引用该 path 的素材记录共享同一目标，
+          //    避免重复 IO；
+          //  - 不同源文件但 basename 相同（典型：每个分镜下都叫 video.mp4）→ 给后续命中
+          //    者拼上 material id 段（`name__<id8>.ext`），仍冲突再追加 -2 / -3，保证落盘
+          //    文件名唯一，避免互相覆盖导致草稿里多个时间线片段共用一份资源。
+          const sourceToDest = new Map<string, string>();
+          const takenDestNames = new Set<string>();
+
+          const allocateDestName = (srcPath: string, materialId: string, fallbackPrefix: string): string => {
+            const baseName = srcPath.split(/[/\\]/).pop() || `${fallbackPrefix}_${materialId}`;
+            if (!takenDestNames.has(baseName)) {
+              return baseName;
+            }
+            const dotIdx = baseName.lastIndexOf('.');
+            const stem = dotIdx > 0 ? baseName.slice(0, dotIdx) : baseName;
+            const ext = dotIdx > 0 ? baseName.slice(dotIdx) : '';
+            const idSlug = (materialId || '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 8) || String(takenDestNames.size + 1);
+            let candidate = `${stem}__${idSlug}${ext}`;
+            let n = 2;
+            while (takenDestNames.has(candidate)) {
+              candidate = `${stem}__${idSlug}-${n}${ext}`;
+              n += 1;
+            }
+            return candidate;
+          };
+
+          const copyOnce = async (srcPath: string, materialId: string, fallbackPrefix: string): Promise<string | null> => {
+            const cached = sourceToDest.get(srcPath);
+            if (cached) return cached;
+            try {
+              if (!(await fsExists(srcPath))) return null;
+              const destName = allocateDestName(srcPath, materialId, fallbackPrefix);
+              takenDestNames.add(destName);
+              const destPath = `${materialsDir}/${destName}`;
+              await fsCopy(srcPath, destPath);
+              sourceToDest.set(srcPath, destPath);
+              return destPath;
+            } catch (e) {
+              logger.warn(`复制素材失败: ${srcPath}`, e);
+              return null;
+            }
+          };
+
+          // 复制视频 / 图片素材（剪映 materials.videos 同时承载 video / photo 两类）
           for (const video of materials.videos || []) {
             if (video.path && !video.path.startsWith('http')) {
-              const fileName = video.path.split(/[/\\]/).pop() || `video_${video.id}`;
-              const newPath = `${materialsDir}/${fileName}`;
-              try {
-                if (await fsExists(video.path)) {
-                  await fsCopy(video.path, newPath);
-                  video.path = newPath;
-                }
-              } catch (e) {
-                logger.warn(`复制素材失败: ${video.path}`, e);
-              }
+              const dest = await copyOnce(video.path, video.id, 'video');
+              if (dest) video.path = dest;
             }
           }
 
           // 复制音频素材
           for (const audio of materials.audios || []) {
             if (audio.path && !audio.path.startsWith('http')) {
-              const fileName = audio.path.split(/[/\\]/).pop() || `audio_${audio.id}`;
-              const newPath = `${materialsDir}/${fileName}`;
-              try {
-                if (await fsExists(audio.path)) {
-                  await fsCopy(audio.path, newPath);
-                  audio.path = newPath;
-                }
-              } catch (e) {
-                logger.warn(`复制素材失败: ${audio.path}`, e);
-              }
+              const dest = await copyOnce(audio.path, audio.id, 'audio');
+              if (dest) audio.path = dest;
             }
           }
         }
