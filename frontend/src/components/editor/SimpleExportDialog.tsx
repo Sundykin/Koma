@@ -17,6 +17,26 @@ import { createLogger } from '../../store/logger';
 
 const logger = createLogger('SimpleExportDialog');
 
+/** 今天的日期，固定 YYYY-MM-DD 格式，避免 toLocaleDateString() 在中文 locale 输出 2026/5/3 这种含斜杠形式
+ *  导致后续 mkdir 把斜杠当成路径分隔符建出嵌套子目录。*/
+function todayStamp(): string {
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+/** 清洗草稿/项目名，防止用户输入或默认值包含 / \ : * ? " < > | 等路径非法字符
+ *  造成 createSubfolder 时 mkdir(recursive) 建出多层意外目录。
+ *  规则：把所有路径分隔符与 Windows 文件名禁用字符替换为连字符；折叠重复连字符；去掉首尾的 `.` 和空白。
+ *  保留普通空格（macOS / Windows 都允许带空格的目录名）。*/
+function sanitizeFolderName(raw: string): string {
+  const cleaned = (raw || '')
+    .replace(/[\\/:*?"<>|-]+/g, '-')
+    .replace(/-{2,}/g, '-')
+    .replace(/^[.\s-]+|[.\s-]+$/g, '');
+  return cleaned || `export_${Date.now()}`;
+}
+
 interface SimpleExportDialogProps {
   open: boolean;
   onClose: () => void;
@@ -87,7 +107,7 @@ export function SimpleExportDialog({ open, onClose, tracks, duration, canvasSize
       const defaultDraftFormat = draftExporters[0]?.format || 'jianying';
       draftForm.setFieldsValue({
         draftFormat: defaultDraftFormat,
-        projectName: `导出_${new Date().toLocaleDateString()}`,
+        projectName: `导出_${todayStamp()}`,
         draftOutputPath: '',
         copyMaterials: true,
         createSubfolder: false,
@@ -219,8 +239,11 @@ export function SimpleExportDialog({ open, onClose, tracks, duration, canvasSize
       setExporting(true);
 
       // 根据选项决定草稿目录路径
+      // createSubfolder=true 时**只新增一层**子目录；项目名先经 sanitizeFolderName 清洗，
+      // 防止用户输入或默认值里的 / \ : * ? 等字符被 mkdir(recursive) 当成路径分隔符建出多层嵌套。
+      const safeFolderName = sanitizeFolderName(values.projectName);
       const draftFolderPath = values.createSubfolder
-        ? `${values.draftOutputPath}/${values.projectName}`
+        ? `${values.draftOutputPath}/${safeFolderName}`
         : values.draftOutputPath;
       const options: DraftExportOptions = {
         outputPath: draftFolderPath,
@@ -566,7 +589,7 @@ export function SimpleExportDialog({ open, onClose, tracks, duration, canvasSize
               layout="vertical"
               initialValues={{
                 draftFormat: 'jianying',
-                projectName: `导出_${new Date().toLocaleDateString()}`,
+                projectName: `导出_${todayStamp()}`,
                 draftOutputPath: '',
                 copyMaterials: true,
                 createSubfolder: false,
