@@ -27,7 +27,7 @@ import { submitShotAnalysisTask } from '../../services/analysisTaskClient';
 import type { PresetAssets } from '../../services/ShotAnalysisService';
 import { generateShotPrompt, batchGenerateShotPrompts } from '../../services/ShotPromptService';
 import { TaskManager } from '../../services/TaskManager';
-import { useActiveTask, useTaskTransitions } from '../../hooks';
+import { useActiveTask, useTaskTransitions, useTasks } from '../../hooks';
 import { ScriptEditor } from '../../editor';
 import type { MentionItem } from '../../editor';
 import { StoryboardStudio } from './StoryboardStudio';
@@ -134,11 +134,72 @@ export const Storyboard: React.FC<StoryboardProps> = ({
   const [scenes, setScenes] = useState<Scene[]>([]);
   const [props, setProps] = useState<Prop[]>([]);
   const [loading, setLoading] = useState(true);
-  const [generatingShots, setGeneratingShots] = useState<Set<string>>(new Set());
-  // 状态拆分：图片/视频提示词独立追踪
-  const [generatingImagePrompts, setGeneratingImagePrompts] = useState<Set<string>>(new Set());
-  const [generatingVideoPrompts, setGeneratingVideoPrompts] = useState<Set<string>>(new Set());
-  const [renderingShots, setRenderingShots] = useState<Set<string>>(new Set());
+  // 本地"提交中"短暂兜底集合：点击到主进程任务真正落库 (~50-100ms IPC roundtrip)
+  // 之间，UI 立即显示 loading；任务进 DB 后由下面 useTasks 派生的集合接管。
+  // 切走再回来时，DB 派生的集合还在 → UI 自动恢复；本地 Set 丢失也不影响。
+  // 批量场景下 (runWithTask 只创一个 episode-level 父任务) 仍主要靠本地 Set 体现 per-shot loading。
+  const [submittingShots, setSubmittingShots] = useState<Set<string>>(new Set());
+  const [submittingImagePrompts, setSubmittingImagePrompts] = useState<Set<string>>(new Set());
+  const [submittingVideoPrompts, setSubmittingVideoPrompts] = useState<Set<string>>(new Set());
+  const [submittingRenderShots, setSubmittingRenderShots] = useState<Set<string>>(new Set());
+
+  // 从主进程任务表派生 active 集合（pending/running/processing），切回页面时自动恢复
+  const projectActiveTasks = useTasks({
+    scope: `project:${projectId}`,
+    activeOnly: true,
+  });
+  const activeImagePromptShots = useMemo(() => {
+    const set = new Set<string>();
+    for (const t of projectActiveTasks) {
+      if ((t.type === 'prompt-generation:image' || t.type === 'prompt-optimization:image')
+          && t.targetKind === 'shot' && t.targetId) {
+        set.add(t.targetId);
+      }
+    }
+    return set;
+  }, [projectActiveTasks]);
+  const activeVideoPromptShots = useMemo(() => {
+    const set = new Set<string>();
+    for (const t of projectActiveTasks) {
+      if ((t.type === 'prompt-generation:video' || t.type === 'prompt-optimization:video')
+          && t.targetKind === 'shot' && t.targetId) {
+        set.add(t.targetId);
+      }
+    }
+    return set;
+  }, [projectActiveTasks]);
+  const activeImageGenShots = useMemo(() => {
+    const set = new Set<string>();
+    for (const t of projectActiveTasks) {
+      if (t.type === 'tti' && t.targetKind === 'shot' && t.targetId) set.add(t.targetId);
+    }
+    return set;
+  }, [projectActiveTasks]);
+  const activeVideoGenShots = useMemo(() => {
+    const set = new Set<string>();
+    for (const t of projectActiveTasks) {
+      if (t.type === 'itv' && t.targetKind === 'shot' && t.targetId) set.add(t.targetId);
+    }
+    return set;
+  }, [projectActiveTasks]);
+
+  // 实际给 UI 用的合并集合：DB 派生 + 本地短暂兜底
+  const generatingShots = useMemo(
+    () => new Set<string>([...submittingShots, ...activeImageGenShots]),
+    [submittingShots, activeImageGenShots],
+  );
+  const generatingImagePrompts = useMemo(
+    () => new Set<string>([...submittingImagePrompts, ...activeImagePromptShots]),
+    [submittingImagePrompts, activeImagePromptShots],
+  );
+  const generatingVideoPrompts = useMemo(
+    () => new Set<string>([...submittingVideoPrompts, ...activeVideoPromptShots]),
+    [submittingVideoPrompts, activeVideoPromptShots],
+  );
+  const renderingShots = useMemo(
+    () => new Set<string>([...submittingRenderShots, ...activeVideoGenShots]),
+    [submittingRenderShots, activeVideoGenShots],
+  );
   // 单镜头视频生成进度（按 shotId 聚合，避免多镜头并跑时进度被覆盖）
   const [shotVideoProgress, setShotVideoProgress] = useState<Map<string, { progress: number; step: string }>>(new Map());
   // 点击到任务真正落库之间的短暂"提交中"窗口；任务创建后由 activeAnalysisTask 接管
@@ -505,7 +566,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       message.warning('未选择剧集');
       return;
     }
-    setGeneratingShots(prev => new Set(prev).add(shotId));
+    setSubmittingShots(prev => new Set(prev).add(shotId));
     try {
       const shot = shots.find(s => s.id === shotId);
       if (!shot) {
@@ -532,7 +593,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       const errorMessage = err instanceof Error ? err.message : String(err);
       message.error(errorMessage || '启动生成失败');
     } finally {
-      setGeneratingShots(prev => {
+      setSubmittingShots(prev => {
         const next = new Set(prev);
         next.delete(shotId);
         return next;
@@ -549,7 +610,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       message.error(support.disabledReason);
       return;
     }
-    setRenderingShots(prev => new Set(prev).add(shotId));
+    setSubmittingRenderShots(prev => new Set(prev).add(shotId));
     setShotVideoProgress(prev => {
       const next = new Map(prev);
       next.set(shotId, { progress: 0, step: '准备渲染...' });
@@ -598,7 +659,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       const errorMessage = err instanceof Error ? err.message : String(err);
       message.error(errorMessage || '渲染失败');
     } finally {
-      setRenderingShots(prev => {
+      setSubmittingRenderShots(prev => {
         const next = new Set(prev);
         next.delete(shotId);
         return next;
@@ -853,7 +914,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     }
     const shot = shots.find(s => s.id === shotId);
     if (!shot) return;
-    setGeneratingImagePrompts(prev => new Set(prev).add(shotId));
+    setSubmittingImagePrompts(prev => new Set(prev).add(shotId));
     try {
       const result = await generateShotPrompt(
         projectId,
@@ -878,7 +939,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       const errorMessage = err instanceof Error ? err.message : String(err);
       message.error(errorMessage || '生成失败');
     } finally {
-      setGeneratingImagePrompts(prev => {
+      setSubmittingImagePrompts(prev => {
         const next = new Set(prev);
         next.delete(shotId);
         return next;
@@ -894,7 +955,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     }
     const shot = shots.find(s => s.id === shotId);
     if (!shot) return;
-    setGeneratingVideoPrompts(prev => new Set(prev).add(shotId));
+    setSubmittingVideoPrompts(prev => new Set(prev).add(shotId));
     try {
       const result = await generateShotPrompt(
         projectId,
@@ -919,7 +980,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       const errorMessage = err instanceof Error ? err.message : String(err);
       message.error(errorMessage || '生成失败');
     } finally {
-      setGeneratingVideoPrompts(prev => {
+      setSubmittingVideoPrompts(prev => {
         const next = new Set(prev);
         next.delete(shotId);
         return next;
@@ -935,7 +996,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     }
     const shot = shots.find(s => s.id === shotId);
     if (!shot) return;
-    setGeneratingImagePrompts(prev => new Set(prev).add(shotId));
+    setSubmittingImagePrompts(prev => new Set(prev).add(shotId));
     try {
       const result = await generateShotPrompt(
         projectId,
@@ -960,7 +1021,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       const errorMessage = err instanceof Error ? err.message : String(err);
       message.error(errorMessage || '优化失败');
     } finally {
-      setGeneratingImagePrompts(prev => {
+      setSubmittingImagePrompts(prev => {
         const next = new Set(prev);
         next.delete(shotId);
         return next;
@@ -976,7 +1037,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     }
     const shot = shots.find(s => s.id === shotId);
     if (!shot) return;
-    setGeneratingVideoPrompts(prev => new Set(prev).add(shotId));
+    setSubmittingVideoPrompts(prev => new Set(prev).add(shotId));
     try {
       const result = await generateShotPrompt(
         projectId,
@@ -1001,7 +1062,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       const errorMessage = err instanceof Error ? err.message : String(err);
       message.error(errorMessage || '优化失败');
     } finally {
-      setGeneratingVideoPrompts(prev => {
+      setSubmittingVideoPrompts(prev => {
         const next = new Set(prev);
         next.delete(shotId);
         return next;
@@ -1024,7 +1085,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       return;
     }
     const shotIds = shotsWithoutPrompt.map(s => s.id);
-    setGeneratingImagePrompts(new Set(shotIds));
+    setSubmittingImagePrompts(new Set(shotIds));
     setBatchProgress({ current: 0, total: shotsWithoutPrompt.length, step: '准备生成...' });
     try {
       const results = await batchGenerateShotPrompts(
@@ -1056,7 +1117,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       const errorMessage = err instanceof Error ? err.message : String(err);
       message.error(errorMessage || '批量生成失败');
     } finally {
-      setGeneratingImagePrompts(new Set());
+      setSubmittingImagePrompts(new Set());
       setBatchProgress(undefined);
     }
   }, [projectId, episodeId, shots, llmSelection, projectStylePrompt, styleSnapshot]);
@@ -1076,7 +1137,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       return;
     }
     const shotIds = shotsWithPrompt.map(s => s.id);
-    setGeneratingImagePrompts(new Set(shotIds));
+    setSubmittingImagePrompts(new Set(shotIds));
     setBatchProgress({ current: 0, total: shotsWithPrompt.length, step: '准备重新生成...' });
     try {
       const results = await batchGenerateShotPrompts(
@@ -1109,7 +1170,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       const errorMessage = err instanceof Error ? err.message : String(err);
       message.error(errorMessage || '批量重新生成失败');
     } finally {
-      setGeneratingImagePrompts(new Set());
+      setSubmittingImagePrompts(new Set());
       setBatchProgress(undefined);
     }
   }, [projectId, episodeId, shots, llmSelection, projectStylePrompt, styleSnapshot]);
@@ -1129,7 +1190,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       return;
     }
     const shotIds = shotsWithoutPrompt.map(s => s.id);
-    setGeneratingVideoPrompts(new Set(shotIds));
+    setSubmittingVideoPrompts(new Set(shotIds));
     setBatchProgress({ current: 0, total: shotsWithoutPrompt.length, step: '准备生成...' });
     try {
       const results = await batchGenerateShotPrompts(
@@ -1161,7 +1222,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       const errorMessage = err instanceof Error ? err.message : String(err);
       message.error(errorMessage || '批量生成失败');
     } finally {
-      setGeneratingVideoPrompts(new Set());
+      setSubmittingVideoPrompts(new Set());
       setBatchProgress(undefined);
     }
   }, [projectId, episodeId, shots, llmSelection, projectStylePrompt, styleSnapshot]);
@@ -1181,7 +1242,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       return;
     }
     const shotIds = shotsWithPrompt.map(s => s.id);
-    setGeneratingVideoPrompts(new Set(shotIds));
+    setSubmittingVideoPrompts(new Set(shotIds));
     setBatchProgress({ current: 0, total: shotsWithPrompt.length, step: '准备重新生成...' });
     try {
       const results = await batchGenerateShotPrompts(
@@ -1214,7 +1275,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       const errorMessage = err instanceof Error ? err.message : String(err);
       message.error(errorMessage || '批量重新生成失败');
     } finally {
-      setGeneratingVideoPrompts(new Set());
+      setSubmittingVideoPrompts(new Set());
       setBatchProgress(undefined);
     }
   }, [projectId, episodeId, shots, llmSelection, projectStylePrompt, styleSnapshot]);
@@ -1445,7 +1506,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       return;
     }
     const shotIds = shotsWithoutImage.map(s => s.id);
-    setGeneratingShots(new Set(shotIds));
+    setSubmittingShots(new Set(shotIds));
     try {
       const indexMap = new Map(shotIds.map((id, idx) => [id, idx]));
       setBatchProgress({ current: 0, total: shotIds.length, step: '准备生成...' });
@@ -1488,7 +1549,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       const errorMessage = err instanceof Error ? err.message : String(err);
       message.error(errorMessage || '批量生成失败');
     } finally {
-      setGeneratingShots(new Set());
+      setSubmittingShots(new Set());
       setBatchProgress(undefined);
     }
   }, [projectId, episodeId, shots, characters, scenes, ttiSelection, aspectRatio, styleSnapshot]);
@@ -1508,7 +1569,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       return;
     }
     const shotIds = shotsWithImage.map(s => s.id);
-    setGeneratingShots(new Set(shotIds));
+    setSubmittingShots(new Set(shotIds));
     try {
       const indexMap = new Map(shotIds.map((id, idx) => [id, idx]));
       setBatchProgress({ current: 0, total: shotIds.length, step: '准备生成...' });
@@ -1549,7 +1610,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     } catch (err: any) {
       message.error(err.message || '批量重新生成失败');
     } finally {
-      setGeneratingShots(new Set());
+      setSubmittingShots(new Set());
       setBatchProgress(undefined);
     }
   }, [projectId, episodeId, shots, characters, scenes, ttiSelection, aspectRatio, styleSnapshot]);
@@ -1570,7 +1631,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       return;
     }
     const shotIds = shotsWithoutVideo.map(s => s.id);
-    setRenderingShots(new Set(shotIds));
+    setSubmittingRenderShots(new Set(shotIds));
     setBatchProgress({ current: 0, total: shotIds.length, step: '准备批量渲染...' });
     try {
       const indexMap = new Map(shotIds.map((id, idx) => [id, idx]));
@@ -1614,7 +1675,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       const errorMessage = err instanceof Error ? err.message : String(err);
       message.error(errorMessage || '批量渲染失败');
     } finally {
-      setRenderingShots(new Set());
+      setSubmittingRenderShots(new Set());
       setBatchProgress(undefined);
     }
   }, [projectId, episodeId, shots, effectiveSettings, ttiSelection, itvSelection, ttsSelection, aspectRatio, styleSnapshot, buildUnsupportedShotVideoMessage, message, refreshShotsFromStore]);
@@ -1635,7 +1696,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       return;
     }
     const shotIds = shotsWithVideo.map(s => s.id);
-    setRenderingShots(new Set(shotIds));
+    setSubmittingRenderShots(new Set(shotIds));
     setBatchProgress({ current: 0, total: shotIds.length, step: '准备批量重新渲染...' });
     try {
       const indexMap = new Map(shotIds.map((id, idx) => [id, idx]));
@@ -1679,7 +1740,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       const errorMessage = err instanceof Error ? err.message : String(err);
       message.error(errorMessage || '批量重新渲染失败');
     } finally {
-      setRenderingShots(new Set());
+      setSubmittingRenderShots(new Set());
       setBatchProgress(undefined);
     }
   }, [projectId, episodeId, shots, effectiveSettings, ttiSelection, itvSelection, ttsSelection, aspectRatio, styleSnapshot, buildUnsupportedShotVideoMessage, message, refreshShotsFromStore]);
