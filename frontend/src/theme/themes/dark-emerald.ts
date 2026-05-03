@@ -31,12 +31,14 @@ export const darkEmeraldTheme = {
       base: emerald[500],
       hover: emerald[600],
       glow: 'rgba(16, 185, 129, 0.2)',
+      onAccent: '#ffffff',
     },
     status: {
       success: emerald[500],
       info: blue[500],
       warning: amber[500],
       error: red[500],
+      onStatus: '#ffffff',
     },
     radius: {
       sm: 6,

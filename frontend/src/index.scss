@@ -19,11 +19,22 @@
 
   --color-text-primary: var(--token-text-primary);
   --color-text-secondary: var(--token-text-secondary);
+  --color-text-tertiary: var(--token-text-tertiary);
   --color-text-muted: var(--token-text-muted);
 
   --color-accent: var(--token-accent-base);
   --color-accent-hover: var(--token-accent-hover);
   --color-accent-glow: var(--token-accent-glow);
+  /* "在 accent 实色背景上的对比文字"——配合 bg-accent / bg-accent-hover 使用 */
+  --color-on-accent: var(--token-on-accent);
+
+  /* 状态色（让 Tailwind 出 bg-status-success / text-status-error 等语义类） */
+  --color-status-success: var(--token-status-success);
+  --color-status-info: var(--token-status-info);
+  --color-status-warning: var(--token-status-warning);
+  --color-status-error: var(--token-status-error);
+  /* "在 status 实色背景上的对比文字"——配合 bg-status-error / bg-status-success 使用 */
+  --color-on-status: var(--token-on-status);
 
   --space-xs: var(--token-space-xs);
   --space-sm: var(--token-space-sm);
@@ -55,11 +66,13 @@
   --token-accent-base: #10b981;
   --token-accent-hover: #059669;
   --token-accent-glow: rgba(16, 185, 129, 0.2);
+  --token-on-accent: #ffffff;
 
   --token-status-success: #10b981;
   --token-status-info: #3b82f6;
   --token-status-warning: #f59e0b;
   --token-status-error: #ef4444;
+  --token-on-status: #ffffff;
 
   --token-space-xs: 4px;
   --token-space-sm: 8px;
@@ -767,7 +780,9 @@ body {
   height: 22px;
   border-radius: 50%;
   background: var(--token-accent-base);
-  color: var(--token-bg-app);
+  /* accent 实色圆圈：必须用 onAccent 对比文字；
+     之前用 bg-app 作文字色，在亮主题下 bg-app 是浅灰 → 蓝底浅灰字对比不足 */
+  color: var(--token-on-accent);
   font-size: 12px;
 }
 

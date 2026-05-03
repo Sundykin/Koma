@@ -266,7 +266,7 @@ export const PromptStudio: React.FC = () => {
               allowClear
               value={searchText}
               onChange={e => setSearchText(e.target.value)}
-              prefix={<SearchOutlined className="text-zinc-500" />}
+              prefix={<SearchOutlined className="text-text-tertiary" />}
               size="small"
             />
             <Tooltip title="新建自定义模板">
@@ -288,14 +288,14 @@ export const PromptStudio: React.FC = () => {
             return (
               <div key={cat} className="prompt-studio-category">
                 <div
-                  className="flex items-center justify-between px-2 py-1.5 cursor-pointer hover:bg-zinc-800/50 rounded select-none"
+                  className="flex items-center justify-between px-2 py-1.5 cursor-pointer hover:bg-bg-elevated/50 rounded select-none"
                   onClick={() => !isSearching && toggleCategory(cat)}
                   title={meta.description}
                 >
                   <div className="flex items-center gap-1.5 text-xs">
                     {!isSearching && (isCollapsed ? <CaretRightOutlined /> : <CaretDownOutlined />)}
-                    <span className="text-zinc-300 font-medium">{meta.label}</span>
-                    <span className="text-zinc-600">({list.length})</span>
+                    <span className="text-text-secondary font-medium">{meta.label}</span>
+                    <span className="text-text-muted">({list.length})</span>
                   </div>
                 </div>
                 {!isCollapsed && (
@@ -307,7 +307,7 @@ export const PromptStudio: React.FC = () => {
                         className={`prompt-studio-list-item${selectedId === item.id ? ' is-active' : ''}`}
                       >
                         <div className="flex justify-between items-center mb-1 gap-2">
-                          <span className={`font-medium text-sm truncate ${selectedId === item.id ? 'text-emerald-400' : 'text-zinc-200'}`}>
+                          <span className={`font-medium text-sm truncate ${selectedId === item.id ? 'text-accent' : 'text-text-primary'}`}>
                             {item.name}
                           </span>
                           <div className="flex items-center gap-1 shrink-0">
@@ -319,7 +319,7 @@ export const PromptStudio: React.FC = () => {
                             )}
                           </div>
                         </div>
-                        <div className="text-xs text-zinc-500 overflow-hidden text-ellipsis whitespace-nowrap">
+                        <div className="text-xs text-text-tertiary overflow-hidden text-ellipsis whitespace-nowrap">
                           {item.description}
                         </div>
                       </div>
@@ -332,7 +332,7 @@ export const PromptStudio: React.FC = () => {
           {/* 空态：搜索无匹配 */}
           {isSearching && ALL_CATEGORIES.every(cat => groupedTemplates[cat].length === 0) && (
             <div className="px-3 py-6 text-center">
-              <Empty description={<span className="text-xs text-zinc-500">没有匹配的模板</span>} image={Empty.PRESENTED_IMAGE_SIMPLE} />
+              <Empty description={<span className="text-xs text-text-tertiary">没有匹配的模板</span>} image={Empty.PRESENTED_IMAGE_SIMPLE} />
             </div>
           )}
         </div>
@@ -345,15 +345,15 @@ export const PromptStudio: React.FC = () => {
             <div className="prompt-studio-editor-header">
               <div className="prompt-studio-editor-meta">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <Title level={5} className="!m-0 !text-zinc-100">{selectedTemplate.name}</Title>
+                  <Title level={5} className="!m-0 !text-text-primary">{selectedTemplate.name}</Title>
                   <Tag color="default" className="!m-0">{PROMPT_CATEGORY_META[selectedTemplate.category]?.label || selectedTemplate.category}</Tag>
                   {!isDefaultTemplateId(selectedTemplate.id) && <Tag color="cyan">自定义</Tag>}
                   {selectedTemplate.isCustom && isDefaultTemplateId(selectedTemplate.id) && <Tag color="orange">已修改</Tag>}
                   {hasUnsavedChanges && <Tag color="warning">未保存</Tag>}
                 </div>
-                <Text className="text-xs !text-zinc-500">
+                <Text className="text-xs !text-text-tertiary">
                   {selectedTemplate.description}
-                  <span className="ml-2 text-zinc-600 font-mono text-[11px]">id: {selectedTemplate.id}</span>
+                  <span className="ml-2 text-text-muted font-mono text-[11px]">id: {selectedTemplate.id}</span>
                 </Text>
               </div>
               <Space size="small" wrap>
@@ -406,7 +406,7 @@ export const PromptStudio: React.FC = () => {
                   value={editingContent}
                   onChange={handleContentChange}
                   autoSize={false}
-                  className="!bg-zinc-900 !text-zinc-200 !border-none settings-full-height"
+                  className="!bg-bg-surface !text-text-primary !border-none settings-full-height"
                   spellCheck={false}
                 />
               </div>
@@ -414,8 +414,8 @@ export const PromptStudio: React.FC = () => {
               {selectedTemplate.variables.length > 0 && (
                 <div className="prompt-studio-vars">
                   <div className="flex items-center gap-2 mb-2">
-                    <CodeOutlined className="text-emerald-500" />
-                    <Text strong className="text-xs !text-emerald-500 uppercase">可用变量</Text>
+                    <CodeOutlined className="text-accent" />
+                    <Text strong className="text-xs !text-accent uppercase">可用变量</Text>
                   </div>
                   <div className="prompt-studio-vars-grid">
                     {selectedTemplate.variables.map(v => (
@@ -437,11 +437,11 @@ export const PromptStudio: React.FC = () => {
                             {v.required === false ? '选填' : '必填'}
                           </Tag>
                         </div>
-                        <div className="text-sm text-zinc-100 mb-1">{v.label}</div>
-                        <div className="text-xs text-zinc-400 mb-2">{v.description}</div>
-                        <div className="text-[11px] text-zinc-500">格式：{v.format}</div>
+                        <div className="text-sm text-text-primary mb-1">{v.label}</div>
+                        <div className="text-xs text-text-secondary mb-2">{v.description}</div>
+                        <div className="text-[11px] text-text-tertiary">格式：{v.format}</div>
                         {v.example && (
-                          <div className="text-[11px] text-zinc-500 mt-1 break-all">
+                          <div className="text-[11px] text-text-tertiary mt-1 break-all">
                             示例：{v.example}
                           </div>
                         )}

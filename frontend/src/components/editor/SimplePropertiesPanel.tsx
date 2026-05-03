@@ -114,7 +114,7 @@ export const SimplePropertiesPanel: React.FC<PropertiesPanelProps> = ({
 
   if (!selectedClip || !currentProps) {
     return (
-      <div className={`${styles.panel} w-72 p-6 flex flex-col items-center justify-center text-zinc-500`}>
+      <div className={`${styles.panel} w-72 p-6 flex flex-col items-center justify-center text-text-tertiary`}>
         <div className="w-12 h-12 mb-4 opacity-20 border-2 border-current rounded" />
         <p className="text-sm">选择片段以编辑属性</p>
       </div>
@@ -250,10 +250,10 @@ export const SimplePropertiesPanel: React.FC<PropertiesPanelProps> = ({
   return (
     <div className={`${styles.panel} w-72 flex flex-col overflow-y-auto`}>
       <div className={`${styles.header} p-3 flex justify-between items-center`}>
-        <h3 className="font-semibold text-zinc-100 text-sm">属性</h3>
+        <h3 className="font-semibold text-text-primary text-sm">属性</h3>
         <button
           onClick={onDeleteClip}
-          className="p-1.5 hover:bg-red-900/30 text-red-400 rounded transition-colors"
+          className="p-1.5 hover:bg-status-error/12 text-status-error rounded transition-colors"
           title="删除片段"
         >
           <Trash2 size={14} />
@@ -264,13 +264,13 @@ export const SimplePropertiesPanel: React.FC<PropertiesPanelProps> = ({
       {isTextClip && (
         <div className={`${styles.section} p-3 space-y-3`}>
           <div className="flex items-center gap-2">
-            <Type size={14} className="text-cyan-400" />
-            <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-wider">字幕</h4>
+            <Type size={14} className="text-status-info" />
+            <h4 className="text-xs font-bold text-text-secondary uppercase tracking-wider">字幕</h4>
           </div>
 
           {/* 字幕文本 */}
           <div className="space-y-1">
-            <label className="text-xs text-zinc-400">文本内容</label>
+            <label className="text-xs text-text-secondary">文本内容</label>
             <textarea
               value={selectedClip.text || selectedClip.src || ''}
               onChange={(e) => handleTextUpdate({ text: e.target.value, src: e.target.value })}
@@ -283,7 +283,7 @@ export const SimplePropertiesPanel: React.FC<PropertiesPanelProps> = ({
           {/* 字体选择 */}
           <div className="grid grid-cols-2 gap-2">
             <div className="space-y-1">
-              <label className="text-xs text-zinc-400">字体</label>
+              <label className="text-xs text-text-secondary">字体</label>
               <select
                 value={selectedClip.fontFamily || 'Arial, sans-serif'}
                 onChange={(e) => handleTextUpdate({ fontFamily: e.target.value })}
@@ -295,7 +295,7 @@ export const SimplePropertiesPanel: React.FC<PropertiesPanelProps> = ({
               </select>
             </div>
             <div className="space-y-1">
-              <label className="text-xs text-zinc-400">字号</label>
+              <label className="text-xs text-text-secondary">字号</label>
               <select
                 value={selectedClip.fontSize || 48}
                 onChange={(e) => handleTextUpdate({ fontSize: parseInt(e.target.value) })}
@@ -311,7 +311,7 @@ export const SimplePropertiesPanel: React.FC<PropertiesPanelProps> = ({
           {/* 颜色选择 */}
           <div className="grid grid-cols-2 gap-2">
             <div className="space-y-1">
-              <label className="text-xs text-zinc-400">文字颜色</label>
+              <label className="text-xs text-text-secondary">文字颜色</label>
               <div className="flex items-center gap-1">
                 <input
                   type="color"
@@ -328,7 +328,7 @@ export const SimplePropertiesPanel: React.FC<PropertiesPanelProps> = ({
               </div>
             </div>
             <div className="space-y-1">
-              <label className="text-xs text-zinc-400">背景颜色</label>
+              <label className="text-xs text-text-secondary">背景颜色</label>
               <div className="flex items-center gap-1">
                 <input
                   type="color"
@@ -338,7 +338,7 @@ export const SimplePropertiesPanel: React.FC<PropertiesPanelProps> = ({
                 />
                 <button
                   onClick={() => handleTextUpdate({ backgroundColor: undefined })}
-                  className="px-1.5 py-0.5 text-xs bg-zinc-700 rounded hover:bg-zinc-600"
+                  className="px-1.5 py-0.5 text-xs bg-bg-hover rounded hover:bg-bg-hover"
                   title="清除背景"
                 >
                   ×
@@ -349,7 +349,7 @@ export const SimplePropertiesPanel: React.FC<PropertiesPanelProps> = ({
 
           {/* 位置预设 */}
           <div className="space-y-1">
-            <label className="text-xs text-zinc-400">位置</label>
+            <label className="text-xs text-text-secondary">位置</label>
             <div className="flex gap-1">
               {(['top', 'center', 'bottom'] as const).map(pos => (
                 <button
@@ -357,8 +357,8 @@ export const SimplePropertiesPanel: React.FC<PropertiesPanelProps> = ({
                   onClick={() => handleTextUpdate({ textPosition: pos })}
                   className={`flex-1 px-2 py-1 text-xs rounded transition-colors ${
                     (selectedClip.textPosition || 'bottom') === pos
-                      ? 'bg-cyan-500/30 text-cyan-300 border border-cyan-500/50'
-                      : 'bg-zinc-700 text-zinc-400 hover:bg-zinc-600'
+                      ? 'bg-status-info/30 text-status-info border border-status-info/50'
+                      : 'bg-bg-hover text-text-secondary hover:bg-bg-hover'
                   }`}
                 >
                   {pos === 'top' ? '顶部' : pos === 'center' ? '居中' : '底部'}
@@ -369,7 +369,7 @@ export const SimplePropertiesPanel: React.FC<PropertiesPanelProps> = ({
 
           {/* 对齐方式 */}
           <div className="space-y-1">
-            <label className="text-xs text-zinc-400">对齐</label>
+            <label className="text-xs text-text-secondary">对齐</label>
             <div className="flex gap-1">
               {(['left', 'center', 'right'] as const).map(align => (
                 <button
@@ -377,8 +377,8 @@ export const SimplePropertiesPanel: React.FC<PropertiesPanelProps> = ({
                   onClick={() => handleTextUpdate({ textAlign: align })}
                   className={`flex-1 px-2 py-1 text-xs rounded transition-colors ${
                     (selectedClip.textAlign || 'center') === align
-                      ? 'bg-cyan-500/30 text-cyan-300 border border-cyan-500/50'
-                      : 'bg-zinc-700 text-zinc-400 hover:bg-zinc-600'
+                      ? 'bg-status-info/30 text-status-info border border-status-info/50'
+                      : 'bg-bg-hover text-text-secondary hover:bg-bg-hover'
                   }`}
                 >
                   {align === 'left' ? '左' : align === 'center' ? '中' : '右'}
@@ -393,8 +393,8 @@ export const SimplePropertiesPanel: React.FC<PropertiesPanelProps> = ({
       {supportsKeyframes && (
         <div className={`${styles.section} p-3 space-y-2`}>
           <div className="flex items-center justify-between">
-            <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-wider">关键帧</h4>
-            <span className="text-xs text-zinc-500">{clipLocalTime.toFixed(2)}s</span>
+            <h4 className="text-xs font-bold text-text-secondary uppercase tracking-wider">关键帧</h4>
+            <span className="text-xs text-text-tertiary">{clipLocalTime.toFixed(2)}s</span>
           </div>
 
           <div className="flex items-center gap-2">
@@ -403,8 +403,8 @@ export const SimplePropertiesPanel: React.FC<PropertiesPanelProps> = ({
               disabled={!isInClipRange}
               className={`flex items-center gap-1.5 px-2 py-1 rounded text-xs font-medium transition-colors
                 ${isInClipRange
-                  ? 'bg-yellow-500/20 text-yellow-300 hover:bg-yellow-500/30 border border-yellow-500/50'
-                  : 'bg-zinc-800 text-zinc-600 cursor-not-allowed'}
+                  ? 'bg-status-warning/20 text-status-warning hover:bg-status-warning/30 border border-status-warning/50'
+                  : 'bg-bg-elevated text-text-muted cursor-not-allowed'}
               `}
             >
               <svg viewBox="0 0 12 12" className="w-2.5 h-2.5">
@@ -414,7 +414,7 @@ export const SimplePropertiesPanel: React.FC<PropertiesPanelProps> = ({
             </button>
 
             {keyframeAtCurrentTime && (
-              <span className="text-xs text-cyan-400 flex items-center gap-1">
+              <span className="text-xs text-status-info flex items-center gap-1">
                 <svg viewBox="0 0 12 12" className="w-2 h-2">
                   <path d="M6 0L12 6L6 12L0 6Z" fill="currentColor" />
                 </svg>
@@ -424,16 +424,16 @@ export const SimplePropertiesPanel: React.FC<PropertiesPanelProps> = ({
           </div>
 
           {selectedKeyframe && (
-            <div className="bg-cyan-500/10 border border-cyan-500/30 rounded p-1.5 text-xs text-cyan-300">
+            <div className="bg-status-info/10 border border-status-info/30 rounded p-1.5 text-xs text-status-info">
               已选中关键帧 @ {selectedKeyframe.time.toFixed(2)}s
             </div>
           )}
 
           {hasKeyframes(selectedClip) && (
-            <div className="text-xs text-zinc-500">
+            <div className="text-xs text-text-tertiary">
               共 {selectedClip.keyframes?.length || 0} 个关键帧
               {(selectedClip.keyframes?.length || 0) < 2 && (
-                <span className="text-yellow-500 ml-1">（需≥2个）</span>
+                <span className="text-status-warning ml-1">（需≥2个）</span>
               )}
             </div>
           )}
@@ -443,10 +443,10 @@ export const SimplePropertiesPanel: React.FC<PropertiesPanelProps> = ({
       <div className="p-3 space-y-4">
         {/* 变换 */}
         <div className="space-y-3">
-          <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-wider">变换</h4>
+          <h4 className="text-xs font-bold text-text-secondary uppercase tracking-wider">变换</h4>
 
           <div className="space-y-1">
-            <label className="text-xs text-zinc-400 flex justify-between">
+            <label className="text-xs text-text-secondary flex justify-between">
               缩放 <span>{Math.round(currentProps.scale * 100)}%</span>
             </label>
             <input
@@ -456,13 +456,13 @@ export const SimplePropertiesPanel: React.FC<PropertiesPanelProps> = ({
               step="0.1"
               value={currentProps.scale}
               onChange={(e) => handlePropertyChange('scale', parseFloat(e.target.value))}
-              className="w-full accent-cyan-500 h-1 bg-zinc-700 rounded-lg appearance-none cursor-pointer"
+              className="w-full accent-status-info h-1 bg-bg-hover rounded-lg appearance-none cursor-pointer"
             />
           </div>
 
           <div className="grid grid-cols-2 gap-2">
             <div className="space-y-1">
-              <label className="text-xs text-zinc-400">X</label>
+              <label className="text-xs text-text-secondary">X</label>
               <input
                 type="number"
                 value={Math.round(currentProps.x)}
@@ -471,7 +471,7 @@ export const SimplePropertiesPanel: React.FC<PropertiesPanelProps> = ({
               />
             </div>
             <div className="space-y-1">
-              <label className="text-xs text-zinc-400">Y</label>
+              <label className="text-xs text-text-secondary">Y</label>
               <input
                 type="number"
                 value={Math.round(currentProps.y)}
@@ -482,7 +482,7 @@ export const SimplePropertiesPanel: React.FC<PropertiesPanelProps> = ({
           </div>
 
           <div className="space-y-1">
-            <label className="text-xs text-zinc-400">旋转</label>
+            <label className="text-xs text-text-secondary">旋转</label>
             <div className="flex items-center gap-2">
               <input
                 type="range"
@@ -490,7 +490,7 @@ export const SimplePropertiesPanel: React.FC<PropertiesPanelProps> = ({
                 max="180"
                 value={currentProps.rotation}
                 onChange={(e) => handlePropertyChange('rotation', parseInt(e.target.value))}
-                className="flex-1 accent-cyan-500 h-1 bg-zinc-700 rounded-lg appearance-none cursor-pointer"
+                className="flex-1 accent-status-info h-1 bg-bg-hover rounded-lg appearance-none cursor-pointer"
               />
               <span className="text-xs w-8 text-right">{Math.round(currentProps.rotation)}°</span>
             </div>
@@ -499,9 +499,9 @@ export const SimplePropertiesPanel: React.FC<PropertiesPanelProps> = ({
 
         {/* 不透明度 */}
         <div className={`${styles.subsection} space-y-3 pt-3`}>
-          <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-wider">混合</h4>
+          <h4 className="text-xs font-bold text-text-secondary uppercase tracking-wider">混合</h4>
           <div className="space-y-1">
-            <label className="text-xs text-zinc-400 flex justify-between">
+            <label className="text-xs text-text-secondary flex justify-between">
               不透明度 <span>{Math.round(currentProps.opacity * 100)}%</span>
             </label>
             <input
@@ -511,7 +511,7 @@ export const SimplePropertiesPanel: React.FC<PropertiesPanelProps> = ({
               step="0.01"
               value={currentProps.opacity}
               onChange={(e) => handlePropertyChange('opacity', parseFloat(e.target.value))}
-              className="w-full accent-cyan-500 h-1 bg-zinc-700 rounded-lg appearance-none cursor-pointer"
+              className="w-full accent-status-info h-1 bg-bg-hover rounded-lg appearance-none cursor-pointer"
             />
           </div>
         </div>
@@ -520,12 +520,12 @@ export const SimplePropertiesPanel: React.FC<PropertiesPanelProps> = ({
         {supportsKeyframes && (
           <div className={`${styles.subsection} space-y-3 pt-3`}>
             <div className="flex items-center gap-2">
-              <Sparkles size={14} className="text-purple-400" />
-              <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-wider">滤镜</h4>
+              <Sparkles size={14} className="text-accent" />
+              <h4 className="text-xs font-bold text-text-secondary uppercase tracking-wider">滤镜</h4>
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs text-zinc-400">滤镜效果</label>
+              <label className="text-xs text-text-secondary">滤镜效果</label>
               <select
                 value={selectedClip.filter?.id || 'none'}
                 onChange={(e) => handleFilterChange(e.target.value)}
@@ -539,7 +539,7 @@ export const SimplePropertiesPanel: React.FC<PropertiesPanelProps> = ({
 
             {selectedClip.filter && (
               <div className="space-y-1">
-                <label className="text-xs text-zinc-400 flex justify-between">
+                <label className="text-xs text-text-secondary flex justify-between">
                   强度 <span>{Math.round((selectedClip.filter.intensity || 1) * 100)}%</span>
                 </label>
                 <input
@@ -549,7 +549,7 @@ export const SimplePropertiesPanel: React.FC<PropertiesPanelProps> = ({
                   step="0.01"
                   value={selectedClip.filter.intensity || 1}
                   onChange={(e) => handleFilterIntensityChange(parseFloat(e.target.value))}
-                  className="w-full accent-purple-500 h-1 bg-zinc-700 rounded-lg appearance-none cursor-pointer"
+                  className="w-full accent-accent h-1 bg-bg-hover rounded-lg appearance-none cursor-pointer"
                 />
               </div>
             )}
@@ -560,13 +560,13 @@ export const SimplePropertiesPanel: React.FC<PropertiesPanelProps> = ({
         {supportsAnimation && (
           <div className={`${styles.subsection} space-y-3 pt-3`}>
             <div className="flex items-center gap-2">
-              <Play size={14} className="text-green-400" />
-              <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-wider">动画</h4>
+              <Play size={14} className="text-status-success" />
+              <h4 className="text-xs font-bold text-text-secondary uppercase tracking-wider">动画</h4>
             </div>
 
             {/* 入场动画 */}
             <div className="space-y-1">
-              <label className="text-xs text-zinc-400">入场动画</label>
+              <label className="text-xs text-text-secondary">入场动画</label>
               <div className="flex gap-1">
                 <select
                   value={selectedClip.animations?.find(a => a.type === 'in')?.effectId || 'none'}
@@ -595,7 +595,7 @@ export const SimplePropertiesPanel: React.FC<PropertiesPanelProps> = ({
 
             {/* 出场动画 */}
             <div className="space-y-1">
-              <label className="text-xs text-zinc-400">出场动画</label>
+              <label className="text-xs text-text-secondary">出场动画</label>
               <div className="flex gap-1">
                 <select
                   value={selectedClip.animations?.find(a => a.type === 'out')?.effectId || 'none'}
@@ -628,12 +628,12 @@ export const SimplePropertiesPanel: React.FC<PropertiesPanelProps> = ({
         {isAudioClip && (
           <div className={`${styles.subsection} space-y-3 pt-3`}>
             <div className="flex items-center gap-2">
-              <Volume2 size={14} className="text-orange-400" />
-              <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-wider">音频效果</h4>
+              <Volume2 size={14} className="text-status-warning" />
+              <h4 className="text-xs font-bold text-text-secondary uppercase tracking-wider">音频效果</h4>
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs text-zinc-400 flex justify-between">
+              <label className="text-xs text-text-secondary flex justify-between">
                 淡入 <span>{(selectedClip.audioFade?.fadeIn || 0).toFixed(1)}s</span>
               </label>
               <input
@@ -643,12 +643,12 @@ export const SimplePropertiesPanel: React.FC<PropertiesPanelProps> = ({
                 step="0.1"
                 value={selectedClip.audioFade?.fadeIn || 0}
                 onChange={(e) => handleAudioFadeChange(parseFloat(e.target.value), undefined)}
-                className="w-full accent-orange-500 h-1 bg-zinc-700 rounded-lg appearance-none cursor-pointer"
+                className="w-full accent-status-warning h-1 bg-bg-hover rounded-lg appearance-none cursor-pointer"
               />
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs text-zinc-400 flex justify-between">
+              <label className="text-xs text-text-secondary flex justify-between">
                 淡出 <span>{(selectedClip.audioFade?.fadeOut || 0).toFixed(1)}s</span>
               </label>
               <input
@@ -658,7 +658,7 @@ export const SimplePropertiesPanel: React.FC<PropertiesPanelProps> = ({
                 step="0.1"
                 value={selectedClip.audioFade?.fadeOut || 0}
                 onChange={(e) => handleAudioFadeChange(undefined, parseFloat(e.target.value))}
-                className="w-full accent-orange-500 h-1 bg-zinc-700 rounded-lg appearance-none cursor-pointer"
+                className="w-full accent-status-warning h-1 bg-bg-hover rounded-lg appearance-none cursor-pointer"
               />
             </div>
           </div>
@@ -668,12 +668,12 @@ export const SimplePropertiesPanel: React.FC<PropertiesPanelProps> = ({
         {supportsKeyframes && (
           <div className={`${styles.subsection} space-y-3 pt-3`}>
             <div className="flex items-center gap-2">
-              <Square size={14} className="text-blue-400" />
-              <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-wider">蒙版</h4>
+              <Square size={14} className="text-status-info" />
+              <h4 className="text-xs font-bold text-text-secondary uppercase tracking-wider">蒙版</h4>
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs text-zinc-400">蒙版类型</label>
+              <label className="text-xs text-text-secondary">蒙版类型</label>
               <select
                 value={selectedClip.mask?.type || 'none'}
                 onChange={(e) => handleMaskTypeChange(e.target.value as MaskType | 'none')}
@@ -689,7 +689,7 @@ export const SimplePropertiesPanel: React.FC<PropertiesPanelProps> = ({
             {selectedClip.mask && (
               <>
                 <div className="space-y-1">
-                  <label className="text-xs text-zinc-400 flex justify-between">
+                  <label className="text-xs text-text-secondary flex justify-between">
                     大小 <span>{Math.round((selectedClip.mask.size || 0.5) * 100)}%</span>
                   </label>
                   <input
@@ -699,12 +699,12 @@ export const SimplePropertiesPanel: React.FC<PropertiesPanelProps> = ({
                     step="0.01"
                     value={selectedClip.mask.size || 0.5}
                     onChange={(e) => handleMaskPropertyChange('size', parseFloat(e.target.value))}
-                    className="w-full accent-blue-500 h-1 bg-zinc-700 rounded-lg appearance-none cursor-pointer"
+                    className="w-full accent-status-info h-1 bg-bg-hover rounded-lg appearance-none cursor-pointer"
                   />
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-xs text-zinc-400 flex justify-between">
+                  <label className="text-xs text-text-secondary flex justify-between">
                     羽化 <span>{Math.round((selectedClip.mask.feather || 0) * 100)}%</span>
                   </label>
                   <input
@@ -714,12 +714,12 @@ export const SimplePropertiesPanel: React.FC<PropertiesPanelProps> = ({
                     step="0.01"
                     value={selectedClip.mask.feather || 0}
                     onChange={(e) => handleMaskPropertyChange('feather', parseFloat(e.target.value))}
-                    className="w-full accent-blue-500 h-1 bg-zinc-700 rounded-lg appearance-none cursor-pointer"
+                    className="w-full accent-status-info h-1 bg-bg-hover rounded-lg appearance-none cursor-pointer"
                   />
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-xs text-zinc-400 flex justify-between">
+                  <label className="text-xs text-text-secondary flex justify-between">
                     旋转 <span>{Math.round(selectedClip.mask.rotation || 0)}°</span>
                   </label>
                   <input
@@ -729,7 +729,7 @@ export const SimplePropertiesPanel: React.FC<PropertiesPanelProps> = ({
                     step="1"
                     value={selectedClip.mask.rotation || 0}
                     onChange={(e) => handleMaskPropertyChange('rotation', parseInt(e.target.value))}
-                    className="w-full accent-blue-500 h-1 bg-zinc-700 rounded-lg appearance-none cursor-pointer"
+                    className="w-full accent-status-info h-1 bg-bg-hover rounded-lg appearance-none cursor-pointer"
                   />
                 </div>
 
@@ -739,9 +739,9 @@ export const SimplePropertiesPanel: React.FC<PropertiesPanelProps> = ({
                     id="maskInvert"
                     checked={selectedClip.mask.invert || false}
                     onChange={(e) => handleMaskPropertyChange('invert', e.target.checked)}
-                    className="accent-blue-500"
+                    className="accent-status-info"
                   />
-                  <label htmlFor="maskInvert" className="text-xs text-zinc-400">反转蒙版</label>
+                  <label htmlFor="maskInvert" className="text-xs text-text-secondary">反转蒙版</label>
                 </div>
               </>
             )}
@@ -749,10 +749,10 @@ export const SimplePropertiesPanel: React.FC<PropertiesPanelProps> = ({
         )}
 
         {/* 信息 */}
-        <div className={`${styles.subsection} pt-3 text-xs text-zinc-500 space-y-1`}>
-          <p>素材: <span className="text-zinc-300 truncate block">{selectedClip.name}</span></p>
-          <p>时长: <span className="text-zinc-300">{selectedClip.duration.toFixed(1)}s</span></p>
-          <p>起始: <span className="text-zinc-300">{selectedClip.start.toFixed(1)}s</span></p>
+        <div className={`${styles.subsection} pt-3 text-xs text-text-tertiary space-y-1`}>
+          <p>素材: <span className="text-text-secondary truncate block">{selectedClip.name}</span></p>
+          <p>时长: <span className="text-text-secondary">{selectedClip.duration.toFixed(1)}s</span></p>
+          <p>起始: <span className="text-text-secondary">{selectedClip.start.toFixed(1)}s</span></p>
         </div>
       </div>
     </div>

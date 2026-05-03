@@ -317,7 +317,7 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
       <div className="flex flex-col h-full">
         {/* 批量进度 */}
         {batchProgress && batchProgress.total > 0 && (
-          <div className="px-3 py-1.5 bg-zinc-900 border-b border-zinc-800">
+          <div className="px-3 py-1.5 bg-bg-surface border-b border-border-subtle">
             <Progress
               percent={Math.round((batchProgress.current / batchProgress.total) * 100)}
               size="small"

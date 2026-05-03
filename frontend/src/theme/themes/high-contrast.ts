@@ -31,12 +31,16 @@ export const highContrastTheme = {
       base: amber[300],
       hover: amber[200],
       glow: 'rgba(252, 211, 77, 0.34)',
+      // accent 是亮黄色，白底白文不可读 → 用纯黑做对比文字（21:1）
+      onAccent: '#000000',
     },
     status: {
       success: emerald[300],
       info: blue[300],
       warning: amber[300],
       error: red[300],
+      // 高对比所有 status 用 300 档（浅亮色），实色背景上须配深文字
+      onStatus: '#000000',
     },
     radius: {
       sm: 4,

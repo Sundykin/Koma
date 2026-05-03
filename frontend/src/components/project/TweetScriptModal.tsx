@@ -244,7 +244,7 @@ export const TweetScriptModal: React.FC<TweetScriptModalProps> = ({
           disabled={anyBusy}
         />
         {progress && (
-          <div className="text-xs text-zinc-500 flex items-center gap-2">
+          <div className="text-xs text-text-tertiary flex items-center gap-2">
             <Loader2 className="w-3 h-3 animate-spin" />
             <span>{progress.step}</span>
             <span>{Math.round(progress.percent)}%</span>

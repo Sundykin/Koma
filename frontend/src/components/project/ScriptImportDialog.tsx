@@ -172,7 +172,7 @@ export const ScriptImportDialog: React.FC<ScriptImportDialogProps> = ({
         mask={{ closable: false }}
       >
         <div className="flex items-center justify-between mb-3 gap-3">
-          <p className="text-xs text-zinc-500 m-0 flex-1">
+          <p className="text-xs text-text-tertiary m-0 flex-1">
             输入完整剧本后点击"AI 自动分集"，系统将智能拆分为多个剧集
           </p>
           <Space>

@@ -131,7 +131,9 @@
 
 .imageOverlayBtn:hover {
   background: var(--token-status-info);
-  color: var(--token-text-primary);
+  /* status-info 实色背景 → onStatus 对比文字（亮主题下 status-info 是 700 档深蓝，
+     原来的 text-primary 是接近黑色，对比不足） */
+  color: var(--token-on-status);
   border-color: var(--token-status-info);
   transform: scale(1.05);
 }

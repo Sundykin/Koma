@@ -9,6 +9,7 @@ import { Markdown } from 'ds-markdown';
 import 'ds-markdown/style.css';
 import type { ChatMessage, ToolCall } from '../types';
 import { MessageBubble } from './MessageBubble';
+import { useTheme } from '../../theme';
 import styles from './ChatRenderer.module.scss';
 
 export interface ChatRendererProps {
@@ -41,7 +42,7 @@ const ThinkingIndicator: React.FC = () => (
 );
 
 // 流式消息组件
-const StreamingMessage: React.FC<{ content: string; reasoning?: string }> = ({ content, reasoning }) => {
+const StreamingMessage: React.FC<{ content: string; reasoning?: string; mdTheme: 'light' | 'dark' }> = ({ content, reasoning, mdTheme }) => {
   if (!content && !reasoning) {
     return (
       <div className={styles.streamingMessage}>
@@ -67,7 +68,7 @@ const StreamingMessage: React.FC<{ content: string; reasoning?: string }> = ({ c
             </div>
           </div>
         )}
-        <Markdown interval={0} disableTyping theme="dark">{content}</Markdown>
+        <Markdown interval={0} disableTyping theme={mdTheme}>{content}</Markdown>
       </div>
     </div>
   );
@@ -98,6 +99,9 @@ export const ChatRenderer: React.FC<ChatRendererProps> = ({
   emptyText,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
+  const { theme: activeTheme } = useTheme();
+  // ds-markdown 接收 'light' | 'dark' 字面量；按当前主题 mode 派发，避免亮主题下出现暗 markdown 块
+  const mdTheme: 'light' | 'dark' = activeTheme.meta.mode === 'light' ? 'light' : 'dark';
 
   // 自动滚动到底部
   useEffect(() => {
@@ -112,7 +116,7 @@ export const ChatRenderer: React.FC<ChatRendererProps> = ({
     if (isUser) {
       return <span>{content}</span>;
     }
-    return <Markdown interval={0} disableTyping theme="dark">{content}</Markdown>;
+    return <Markdown interval={0} disableTyping theme={mdTheme}>{content}</Markdown>;
   };
 
   if (messages.length === 0 && !streaming) {
@@ -139,7 +143,7 @@ export const ChatRenderer: React.FC<ChatRendererProps> = ({
       ))}
 
       {streaming && (
-        <StreamingMessage content={streamingContent || ''} reasoning={streamingReasoning} />
+        <StreamingMessage content={streamingContent || ''} reasoning={streamingReasoning} mdTheme={mdTheme} />
       )}
     </div>
   );

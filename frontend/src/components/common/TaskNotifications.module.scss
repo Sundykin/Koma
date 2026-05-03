@@ -82,7 +82,9 @@
   border: none;
   border-radius: 4px;
   background: var(--token-status-error);
-  color: var(--token-bg-app);
+  /* status-error 实色按钮 → onStatus（白色）。
+     之前用 bg-app 作文字色，亮主题下 bg-app 是浅灰 → 红底浅灰字对比不足 */
+  color: var(--token-on-status);
   font-size: 12px;
   cursor: pointer;
 }

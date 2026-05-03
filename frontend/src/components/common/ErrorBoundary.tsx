@@ -40,7 +40,7 @@ export class ErrorBoundary extends Component<Props, State> {
     if (this.state.hasError) {
       const t = i18n.t.bind(i18n);
       return (
-        <div className="flex items-center justify-center h-screen bg-zinc-950">
+        <div className="flex items-center justify-center h-screen bg-bg-app">
           <Result
             status="error"
             title={t('common.error')}

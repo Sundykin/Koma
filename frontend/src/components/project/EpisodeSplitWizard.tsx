@@ -253,7 +253,7 @@ export const EpisodeSplitWizard: React.FC<EpisodeSplitWizardProps> = ({
       {step === 'preview' && (
         <div className="space-y-4">
           {analysis && (
-            <Card size="small" className="bg-blue-50">
+            <Card size="small" className="!bg-status-info/10">
               <Text strong>分析结果：</Text>
               <Paragraph className="mt-2 mb-0" type="secondary">
                 {analysis.reasoning}

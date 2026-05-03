@@ -143,6 +143,9 @@
 
 .thumbRemove:hover {
   background: var(--token-status-error);
+  /* 红底 → onStatus 白字（亮主题下 text-primary 是接近黑色，红底黑字在小尺寸图标上对比仍足，
+     但显式锁定 onStatus 保证视觉一致） */
+  color: var(--token-on-status);
 }
 
 .thumbAdd {

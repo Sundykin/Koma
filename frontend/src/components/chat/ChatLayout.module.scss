@@ -59,7 +59,9 @@
   background: linear-gradient(135deg, var(--token-accent-base) 0%, var(--token-accent-hover) 100%);
   border-radius: 20px;
   font-size: 36px;
-  color: var(--token-text-primary);
+  /* accent 渐变实色 → onAccent 对比文字（亮主题下 text-primary 是 slate-900 接近黑色，
+     蓝渐变底 + 黑字看不见） */
+  color: var(--token-on-accent);
 }
 
 .heroTitle {

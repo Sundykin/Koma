@@ -102,11 +102,11 @@ const getStatusIcon = (status: StatusBarStatus) => {
     case 'pending':
     case 'running':
     case 'processing':
-      return <Loader2 className="w-4 h-4 animate-spin text-emerald-400" />;
+      return <Loader2 className="w-4 h-4 animate-spin text-accent" />;
     case 'completed':
-      return <CheckCircle2 className="w-4 h-4 text-emerald-500" />;
+      return <CheckCircle2 className="w-4 h-4 text-accent" />;
     case 'failed':
-      return <XCircle className="w-4 h-4 text-red-500" />;
+      return <XCircle className="w-4 h-4 text-status-error" />;
   }
 };
 
@@ -139,11 +139,11 @@ const getTaskCardClassName = (status: StatusBarStatus, featured = false) => {
 
   switch (status) {
     case 'failed':
-      return `${base} border-red-500/20 bg-red-500/5 hover:bg-red-500/10`;
+      return `${base} border-status-error/20 bg-status-error/5 hover:bg-status-error/10`;
     case 'completed':
-      return `${base} border-emerald-500/10 bg-emerald-500/5 hover:bg-emerald-500/10`;
+      return `${base} border-accent/10 bg-accent/5 hover:bg-accent/10`;
     default:
-      return `${base} border-zinc-700/80 bg-zinc-800/50 hover:bg-zinc-800/70`;
+      return `${base} border-border/80 bg-bg-elevated/50 hover:bg-bg-elevated/70`;
   }
 };
 
@@ -422,13 +422,13 @@ export const TaskStatusBar: React.FC<TaskStatusBarProps> = ({ projectId, onRetry
                     </Tooltip>
                   )}
                 </div>
-                <div className={`${featured ? 'mt-1.5 text-sm font-medium text-zinc-100' : 'mt-1 text-sm text-zinc-200'} break-words`}>
+                <div className={`${featured ? 'mt-1.5 text-sm font-medium text-text-primary' : 'mt-1 text-sm text-text-primary'} break-words`}>
                   {task.targetName || getTaskLabel(task)}
                 </div>
               </div>
               <div className="flex items-center gap-1 shrink-0">
                 {task.startedAt && (
-                  <Text className="text-zinc-500 text-xs tabular-nums">
+                  <Text className="text-text-tertiary text-xs tabular-nums">
                     {formatDuration(task.startedAt, task.completedAt)}
                   </Text>
                 )}
@@ -437,7 +437,7 @@ export const TaskStatusBar: React.FC<TaskStatusBarProps> = ({ projectId, onRetry
                     type="text"
                     size="small"
                     icon={<ReloadOutlined />}
-                    className="text-zinc-500 hover:text-blue-400 shrink-0 !w-7 !h-7"
+                    className="text-text-tertiary hover:text-status-info shrink-0 !w-7 !h-7"
                     onClick={(e) => { e.stopPropagation(); onRetry(task.raw!); }}
                   />
                 )}
@@ -447,7 +447,7 @@ export const TaskStatusBar: React.FC<TaskStatusBarProps> = ({ projectId, onRetry
                       type="text"
                       size="small"
                       icon={<StopOutlined />}
-                      className="text-zinc-500 hover:text-red-400 shrink-0 !w-7 !h-7"
+                      className="text-text-tertiary hover:text-status-error shrink-0 !w-7 !h-7"
                       onClick={async (e) => {
                         e.stopPropagation();
                         // 优先走 IPC 主进程取消（能 abort main-side handler 与 renderer-side 业务订阅）
@@ -467,7 +467,7 @@ export const TaskStatusBar: React.FC<TaskStatusBarProps> = ({ projectId, onRetry
                       type="text"
                       size="small"
                       icon={<Trash2 className="w-3.5 h-3.5" />}
-                      className="text-zinc-500 hover:text-red-400 shrink-0 !w-7 !h-7"
+                      className="text-text-tertiary hover:text-status-error shrink-0 !w-7 !h-7"
                       onClick={async (e) => {
                         e.stopPropagation();
                         if (task.source === 'task-manager') {
@@ -499,7 +499,7 @@ export const TaskStatusBar: React.FC<TaskStatusBarProps> = ({ projectId, onRetry
                       strokeColor={getProgressStrokeColor(task.status)}
                       trailColor="var(--token-border-base)"
                     />
-                    <Text className="text-zinc-400 text-xs shrink-0 tabular-nums">{displayProgress}%</Text>
+                    <Text className="text-text-secondary text-xs shrink-0 tabular-nums">{displayProgress}%</Text>
                   </div>
                 )}
                 {stagePresentation && (
@@ -510,12 +510,12 @@ export const TaskStatusBar: React.FC<TaskStatusBarProps> = ({ projectId, onRetry
                         : 0;
                       const isActiveStage = key === stagePresentation.currentStage;
                       const toneClass = state.status === 'failed'
-                        ? 'border-red-500/30 bg-red-500/10 text-red-300'
+                        ? 'border-status-error/30 bg-status-error/10 text-status-error'
                         : state.status === 'completed'
-                          ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+                          ? 'border-accent/30 bg-accent/10 text-accent'
                           : isActiveStage
-                            ? 'border-cyan-500/30 bg-cyan-500/10 text-cyan-200'
-                            : 'border-zinc-700 bg-zinc-800/40 text-zinc-400';
+                            ? 'border-status-info/30 bg-status-info/10 text-status-info'
+                            : 'border-border bg-bg-elevated/40 text-text-secondary';
 
                       let label = SCRIPT_STAGE_LABELS[key];
                       if (retryDelayMs > 0) {
@@ -536,13 +536,13 @@ export const TaskStatusBar: React.FC<TaskStatusBarProps> = ({ projectId, onRetry
                   </div>
                 )}
                 {detailText && (
-                  <div className={`text-xs leading-5 break-words ${task.status === 'failed' ? 'text-red-400' : 'text-zinc-400'}`}>
+                  <div className={`text-xs leading-5 break-words ${task.status === 'failed' ? 'text-status-error' : 'text-text-secondary'}`}>
                     {detailText}
                   </div>
                 )}
               </div>
             ) : task.status === 'failed' && task.error ? (
-              <div className="mt-2 text-xs leading-5 text-red-400 break-words">
+              <div className="mt-2 text-xs leading-5 text-status-error break-words">
                 {task.error}
               </div>
             ) : null}
@@ -558,8 +558,8 @@ export const TaskStatusBar: React.FC<TaskStatusBarProps> = ({ projectId, onRetry
       <Drawer
         title={
           <div className="flex items-center justify-between gap-3">
-            <span className="text-sm font-semibold text-zinc-100">{t('task.title')}</span>
-            <span className="text-xs text-zinc-500 font-normal tabular-nums">
+            <span className="text-sm font-semibold text-text-primary">{t('task.title')}</span>
+            <span className="text-xs text-text-tertiary font-normal tabular-nums">
               {t('task.running')} {runningTasks.length} · {t('task.completed')} {completedTasks.length} · {t('task.failed')} {failedTasks.length}
             </span>
           </div>
@@ -602,7 +602,7 @@ export const TaskStatusBar: React.FC<TaskStatusBarProps> = ({ projectId, onRetry
       >
         {/* 项目维度筛选 */}
         <div className="mb-3 flex items-center gap-2">
-          <Text className="text-[11px] uppercase tracking-[0.14em] text-zinc-500 shrink-0">项目</Text>
+          <Text className="text-[11px] uppercase tracking-[0.14em] text-text-tertiary shrink-0">项目</Text>
           <div className="flex flex-wrap gap-2">
             {(['current', 'all'] as const).map((key) => {
               const active = projectFilter === key;
@@ -613,8 +613,8 @@ export const TaskStatusBar: React.FC<TaskStatusBarProps> = ({ projectId, onRetry
                   type="button"
                   onClick={() => setProjectFilter(key)}
                   className={`inline-flex items-center rounded-full border px-3 py-1 text-xs transition-colors ${active
-                    ? 'border-cyan-500/40 bg-cyan-500/15 text-cyan-200'
-                    : 'border-zinc-700/80 bg-zinc-800/40 text-zinc-400 hover:border-zinc-600 hover:text-zinc-200'
+                    ? 'border-status-info/40 bg-status-info/15 text-status-info'
+                    : 'border-border/80 bg-bg-elevated/40 text-text-secondary hover:border-border hover:text-text-primary'
                   }`}
                 >
                   {label}
@@ -628,9 +628,9 @@ export const TaskStatusBar: React.FC<TaskStatusBarProps> = ({ projectId, onRetry
         {mainTask && (
           <div className="mb-3">
             <div className="mb-2 flex items-center justify-between gap-2">
-              <Text className="text-[11px] uppercase tracking-[0.14em] text-zinc-500">{t('task.running')}</Text>
+              <Text className="text-[11px] uppercase tracking-[0.14em] text-text-tertiary">{t('task.running')}</Text>
               {mainTask.startedAt && (
-                <Text className="text-[11px] text-zinc-500 tabular-nums">
+                <Text className="text-[11px] text-text-tertiary tabular-nums">
                   {formatDuration(mainTask.startedAt, mainTask.completedAt)}
                 </Text>
               )}
@@ -649,8 +649,8 @@ export const TaskStatusBar: React.FC<TaskStatusBarProps> = ({ projectId, onRetry
                 type="button"
                 onClick={() => setActiveTab(item.key)}
                 className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs transition-colors ${active
-                  ? 'border-emerald-500/40 bg-emerald-500/15 text-emerald-300'
-                  : 'border-zinc-700/80 bg-zinc-800/40 text-zinc-400 hover:border-zinc-600 hover:text-zinc-200'
+                  ? 'border-accent/40 bg-accent/15 text-accent'
+                  : 'border-border/80 bg-bg-elevated/40 text-text-secondary hover:border-border hover:text-text-primary'
                 }`}
               >
                 <span>{item.label}</span>

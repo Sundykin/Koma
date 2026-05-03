@@ -50,32 +50,32 @@ export const WindowControls: React.FC = () => {
   };
 
   return (
-    <div className="h-8 bg-zinc-950 flex items-center justify-between select-none drag-region">
+    <div className="h-8 bg-bg-app flex items-center justify-between select-none drag-region">
       {/* 左侧 Logo */}
       <div className="flex items-center h-full px-3 no-drag">
         <AppLogo variant="titlebar" />
-        <span className="ml-2 text-xs text-zinc-400 font-medium">Koma</span>
+        <span className="ml-2 text-xs text-text-secondary font-medium">Koma</span>
       </div>
 
       {/* 右侧窗口控制按钮 */}
       <div className="flex h-full no-drag">
         <button
           onClick={handleMinimize}
-          className="w-12 h-full flex items-center justify-center text-zinc-400 hover:bg-zinc-700 hover:text-white transition-colors"
+          className="w-12 h-full flex items-center justify-center text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
           title={t('window.minimize')}
         >
           <Minus className="w-4 h-4" />
         </button>
         <button
           onClick={handleMaximize}
-          className="w-12 h-full flex items-center justify-center text-zinc-400 hover:bg-zinc-700 hover:text-white transition-colors"
+          className="w-12 h-full flex items-center justify-center text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
           title={isMaximized ? t('window.restore') : t('window.maximize')}
         >
           {isMaximized ? <Square className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
         </button>
         <button
           onClick={handleClose}
-          className="w-12 h-full flex items-center justify-center text-zinc-400 hover:bg-red-600 hover:text-white transition-colors"
+          className="w-12 h-full flex items-center justify-center text-text-secondary hover:bg-status-error hover:text-on-status transition-colors"
           title={t('window.close')}
         >
           <X className="w-4 h-4" />

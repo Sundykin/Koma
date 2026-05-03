@@ -121,19 +121,19 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
   }, [openImportSignal]);
 
   return (
-    <div className="h-full flex flex-col bg-zinc-950 overflow-hidden">
+    <div className="h-full flex flex-col bg-bg-app overflow-hidden">
       {/* Three-Column Body（项目标识与项目设置已合并到顶部 StepNavigator） */}
       <div className="flex-1 flex overflow-hidden">
         {/* Left: EpisodePanel - 360px */}
-        <div className={`bg-zinc-900 flex flex-col transition-all duration-300 ${
+        <div className={`bg-bg-surface flex flex-col transition-all duration-300 ${
           leftCollapsed ? 'w-0 overflow-hidden' : 'w-[360px]'
         }`}>
           {/* Panel Header - 48px */}
-          <div className="h-12 px-4 flex items-center justify-between border-b border-zinc-800/80">
-            <span className="text-sm font-medium text-zinc-400">剧集管理</span>
+          <div className="h-12 px-4 flex items-center justify-between border-b border-border-subtle/80">
+            <span className="text-sm font-medium text-text-secondary">剧集管理</span>
             <button
               onClick={() => setLeftCollapsed(true)}
-              className="p-1.5 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 rounded transition-colors"
+              className="p-1.5 text-text-tertiary hover:text-text-secondary hover:bg-bg-elevated rounded transition-colors"
             >
               <PanelLeftClose className="w-4 h-4" />
             </button>
@@ -152,10 +152,10 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
 
         {/* Left Collapse Button */}
         {leftCollapsed && (
-          <div className="flex items-center border-r border-zinc-800">
+          <div className="flex items-center border-r border-border-subtle">
             <button
               onClick={() => setLeftCollapsed(false)}
-              className="h-full px-1 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
+              className="h-full px-1 text-text-tertiary hover:text-text-secondary hover:bg-bg-elevated transition-colors"
             >
               <ChevronRight className="w-4 h-4" />
             </button>
@@ -163,7 +163,7 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
         )}
 
         {/* Center: Script Workbench */}
-        <div className="flex-1 flex flex-col min-w-[400px] overflow-hidden border-x border-zinc-800/50">
+        <div className="flex-1 flex flex-col min-w-[400px] overflow-hidden border-x border-border-subtle/50">
           <ScriptWorkbench
             ref={scriptWorkbenchRef}
             project={project}
@@ -175,10 +175,10 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
 
         {/* Right Collapse Button */}
         {rightCollapsed && (
-          <div className="flex items-center border-l border-zinc-800">
+          <div className="flex items-center border-l border-border-subtle">
             <button
               onClick={() => setRightCollapsed(false)}
-              className="h-full px-1 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors"
+              className="h-full px-1 text-text-tertiary hover:text-text-secondary hover:bg-bg-elevated transition-colors"
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
@@ -186,24 +186,24 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
         )}
 
         {/* Right: AssetPanel - 340px */}
-        <div className={`bg-zinc-900 flex flex-col transition-all duration-300 ${
+        <div className={`bg-bg-surface flex flex-col transition-all duration-300 ${
           rightCollapsed ? 'w-0 overflow-hidden' : 'w-[340px]'
         }`}>
           {/* Panel Header - 48px */}
-          <div className="h-12 px-4 flex items-center justify-between border-b border-zinc-800/80">
-            <span className="text-sm font-medium text-zinc-400 flex items-center gap-2">
+          <div className="h-12 px-4 flex items-center justify-between border-b border-border-subtle/80">
+            <span className="text-sm font-medium text-text-secondary flex items-center gap-2">
               <Package className="w-4 h-4" />
               项目资产
             </span>
             <button
               onClick={() => setRightCollapsed(true)}
-              className="p-1.5 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 rounded transition-colors"
+              className="p-1.5 text-text-tertiary hover:text-text-secondary hover:bg-bg-elevated rounded transition-colors"
             >
               <PanelRightClose className="w-4 h-4" />
             </button>
           </div>
           {/* 解析剧本入口（取代原工具栏的解析按钮，挂到资产面板上方） */}
-          <div className="px-3 py-2 border-b border-zinc-800/80">
+          <div className="px-3 py-2 border-b border-border-subtle/80">
             <Tooltip
               title={!selectedEpisode
                 ? '请先选择剧集'
@@ -224,7 +224,7 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
                   || !(selectedEpisode.scriptText && selectedEpisode.scriptText.trim())
                   || isAnalyzing
                 }
-                className="bg-emerald-600 hover:!bg-emerald-500 border-none"
+                className="bg-accent-hover hover:!bg-accent border-none"
               >
                 {isAnalyzing ? '解析中...' : '解析剧本'}
               </Button>

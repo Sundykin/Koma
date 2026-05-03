@@ -23,12 +23,14 @@ export const tokenVarNames = {
     base: '--token-accent-base',
     hover: '--token-accent-hover',
     glow: '--token-accent-glow',
+    onAccent: '--token-on-accent',
   },
   status: {
     success: '--token-status-success',
     info: '--token-status-info',
     warning: '--token-status-warning',
     error: '--token-status-error',
+    onStatus: '--token-on-status',
   },
   radius: {
     sm: '--token-radius-sm',

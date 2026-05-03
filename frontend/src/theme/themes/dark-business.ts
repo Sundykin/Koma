@@ -31,12 +31,14 @@ export const darkBusinessTheme = {
       base: blue[500],
       hover: blue[600],
       glow: 'rgba(59, 130, 246, 0.22)',
+      onAccent: '#ffffff',
     },
     status: {
       success: emerald[500],
       info: blue[500],
       warning: amber[500],
       error: red[500],
+      onStatus: '#ffffff',
     },
     radius: {
       sm: 6,

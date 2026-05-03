@@ -7,7 +7,7 @@ import type { EditorStepContext } from '../../../workflow/editorStepRegistry';
 export const VideoStep: React.FC<{ ctx: EditorStepContext }> = ({ ctx }) => {
   if (!ctx.analysisData) {
     return (
-      <div className="flex h-full items-center justify-center text-zinc-500 flex-col gap-4">
+      <div className="flex h-full items-center justify-center text-text-tertiary flex-col gap-4">
         <Scissors className="w-16 h-16 opacity-10" />
         <p>需完成分镜生成后才能进入剪辑环节。</p>
         <Button type="link" onClick={() => ctx.onStepChange('storyboard')}>返回分镜</Button>

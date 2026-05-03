@@ -90,7 +90,7 @@ const LinghuiPage = lazy(() => import('./components/linghui').then(m => ({ defau
 
 // 加载中占位组件
 const ViewLoading: React.FC<{ tip?: string }> = ({ tip = '加载中...' }) => (
-  <div className="flex h-full items-center justify-center whitespace-nowrap bg-zinc-950">
+  <div className="flex h-full items-center justify-center whitespace-nowrap bg-bg-app">
     <Spin size="large" description={tip}><div className="p-12" /></Spin>
   </div>
 );
@@ -585,11 +585,11 @@ const AppContent: React.FC = () => {
     ? summarizePendingMediaTasks(pendingMediaPrompt.tasks)
     : '';
   const ActivationLockedView = (
-    <div className="h-full flex items-center justify-center bg-zinc-950 p-6">
-      <div className="w-full max-w-sm rounded-3xl border border-zinc-800 bg-zinc-900/50 p-6 shadow-2xl shadow-black/30">
+    <div className="h-full flex items-center justify-center bg-bg-app p-6">
+      <div className="w-full max-w-sm rounded-3xl border border-border-subtle bg-bg-surface/50 p-6 shadow-2xl shadow-black/30">
         <div className="mb-5 text-center">
-          <div className="text-lg font-semibold text-zinc-100">激活 Koma Studio</div>
-          <Text className="mt-2 block text-sm leading-6 text-zinc-400">
+          <div className="text-lg font-semibold text-text-primary">激活 Koma Studio</div>
+          <Text className="mt-2 block text-sm leading-6 text-text-secondary">
             请输入你的 KomaAPI 激活码。还没有激活码？可以前往官网获取后再回来激活。
           </Text>
         </div>
@@ -600,8 +600,8 @@ const AppContent: React.FC = () => {
           value={activationInputKey}
           onChange={event => setActivationInputKey(event.target.value)}
           onPressEnter={handleActivateFromLockedView}
-          prefix={<KeyOutlined className="text-zinc-500" />}
-          className="bg-zinc-950 border-zinc-700 text-zinc-100"
+          prefix={<KeyOutlined className="text-text-tertiary" />}
+          className="bg-bg-app border-border text-text-primary"
         />
         <Button
           type="primary"
@@ -609,7 +609,7 @@ const AppContent: React.FC = () => {
           block
           loading={activationVerifying}
           onClick={handleActivateFromLockedView}
-          className="mt-3 bg-emerald-600 hover:bg-emerald-500 border-none"
+          className="mt-3 bg-accent-hover hover:bg-accent border-none"
         >
           {activationVerifying ? t('activation.activating') : t('activation.activate')}
         </Button>
@@ -617,7 +617,7 @@ const AppContent: React.FC = () => {
           type="link"
           block
           onClick={openKomaApi}
-          className="mt-2 text-zinc-400 hover:text-emerald-400"
+          className="mt-2 text-text-secondary hover:text-accent"
         >
           前往官网获取激活码
         </Button>
@@ -626,7 +626,7 @@ const AppContent: React.FC = () => {
   );
 
   return (
-    <div className="flex flex-col h-screen bg-zinc-950 text-zinc-100 font-sans selection:bg-emerald-500/30">
+    <div className="flex flex-col h-screen bg-bg-app text-text-primary font-sans selection:bg-accent/30">
       <WindowControls />
       <div className="flex flex-1 min-h-0">
         {!activationLocked && view !== 'linghui' && (
@@ -642,7 +642,7 @@ const AppContent: React.FC = () => {
           />
         )}
         <div className="flex-1 flex flex-col min-w-0 transition-all duration-300">
-          <main className="flex-1 overflow-hidden relative bg-zinc-950">
+          <main className="flex-1 overflow-hidden relative bg-bg-app">
             {activationLoading ? (
               <div className="flex h-full items-center justify-center">
                 <Spin size="large" description="检查激活状态..."><div className="p-12" /></Spin>
@@ -733,21 +733,21 @@ const AppContent: React.FC = () => {
             <div
               role="status"
               aria-live="polite"
-              className="fixed bottom-28 right-4 z-40 w-[22rem] max-w-[calc(100vw-2rem)] rounded-2xl border border-amber-400/20 bg-zinc-900/95 p-4 text-sm shadow-2xl shadow-black/30 backdrop-blur"
+              className="fixed bottom-28 right-4 z-40 w-[22rem] max-w-[calc(100vw-2rem)] rounded-2xl border border-status-warning/30 bg-bg-surface/95 p-4 text-sm shadow-2xl backdrop-blur"
             >
               <div className="flex items-start gap-3">
-                <div className="mt-1 h-2 w-2 shrink-0 rounded-full bg-amber-300 shadow-[0_0_12px_color-mix(in_srgb,var(--token-status-warning)_55%,transparent)]" />
+                <div className="mt-1 h-2 w-2 shrink-0 rounded-full bg-status-warning shadow-[0_0_12px_color-mix(in_srgb,var(--token-status-warning)_55%,transparent)]" />
                 <div className="min-w-0 flex-1">
-                  <div className="font-medium text-zinc-100">发现未完成任务</div>
-                  <div className="mt-1.5 leading-5 text-zinc-300">
+                  <div className="font-medium text-text-primary">发现未完成任务</div>
+                  <div className="mt-1.5 leading-5 text-text-secondary">
                     上次还有 {pendingMediaPrompt.tasks.length} 个媒体任务未完成。
                   </div>
                   {pendingMediaTaskSummary && (
-                    <div className="mt-1 text-xs leading-5 text-zinc-500">
+                    <div className="mt-1 text-xs leading-5 text-text-tertiary">
                       {pendingMediaTaskSummary}
                     </div>
                   )}
-                  <div className="mt-2 text-xs leading-5 text-amber-200/80">
+                  <div className="mt-2 text-xs leading-5 text-status-warning/80">
                     删除本地记录不会取消远端生成。
                   </div>
                   <div className="mt-3 flex flex-wrap justify-end gap-2">

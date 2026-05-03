@@ -123,25 +123,25 @@ const formatTime = (seconds: number): string => {
 const Filmstrip: React.FC<{ clip: Clip; frames?: string[]; pixelsPerSecond: number }> = ({ clip, frames, pixelsPerSecond }) => {
   if (clip.type === MediaType.TEXT) {
     return (
-      <div className="w-full h-full flex items-center px-2 pointer-events-none overflow-hidden bg-purple-900/40">
-        <span className="text-[10px] text-zinc-200 truncate">{clip.name}</span>
+      <div className="w-full h-full flex items-center px-2 pointer-events-none overflow-hidden bg-accent/15">
+        <span className="text-[10px] text-text-primary truncate">{clip.name}</span>
       </div>
     );
   }
 
   if (clip.type === MediaType.AUDIO) {
     return (
-      <div className="w-full h-full flex items-center overflow-hidden bg-green-900/40 pointer-events-none px-1">
+      <div className="w-full h-full flex items-center overflow-hidden bg-status-success/14 pointer-events-none px-1">
         <div className="flex gap-0.5 h-1/2 w-full items-center">
           {Array.from({ length: Math.ceil(clip.duration * 5) }).map((_, i) => (
             <div
               key={i}
-              className={`${styles.waveformBar} w-1 bg-green-400/50 rounded-full flex-shrink-0`}
+              className={`${styles.waveformBar} w-1 bg-status-success/50 rounded-full flex-shrink-0`}
               style={cssVars({ '--waveform-height': `${20 + Math.random() * 80}%` })}
             />
           ))}
         </div>
-        <span className="absolute left-2 text-[10px] text-zinc-300 drop-shadow truncate">{clip.name}</span>
+        <span className="absolute left-2 text-[10px] text-text-secondary drop-shadow truncate">{clip.name}</span>
       </div>
     );
   }
@@ -160,7 +160,7 @@ const Filmstrip: React.FC<{ clip: Clip; frames?: string[]; pixelsPerSecond: numb
   const timePerFrame = frameWidth / pixelsPerSecond;
 
   return (
-    <div className="flex h-full w-full pointer-events-none select-none overflow-hidden bg-blue-900/20">
+    <div className="flex h-full w-full pointer-events-none select-none overflow-hidden bg-status-info/10">
       {Array.from({ length: frameCount }).map((_, i) => {
         // 计算该位置对应的片段内时间（秒）
         const positionTime = i * timePerFrame;
@@ -175,7 +175,7 @@ const Filmstrip: React.FC<{ clip: Clip; frames?: string[]; pixelsPerSecond: numb
         return (
           <div
             key={i}
-            className={`${styles.filmFrame} flex-shrink-0 h-full border-r border-white/20 relative bg-zinc-800`}
+            className={`${styles.filmFrame} flex-shrink-0 h-full border-r border-white/20 relative bg-bg-elevated`}
             style={cssVars({ '--film-frame-width': `${frameWidth}px` })}
           >
             <img
@@ -186,7 +186,7 @@ const Filmstrip: React.FC<{ clip: Clip; frames?: string[]; pixelsPerSecond: numb
               loading="lazy"
               decoding="async"
             />
-            <div className="absolute inset-0 bg-gradient-to-br from-blue-900/30 to-blue-800/20" />
+            <div className="absolute inset-0 bg-gradient-to-br from-accent/20 to-accent/10" />
           </div>
         );
       })}
@@ -758,8 +758,8 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
           className={`${styles.marker} absolute top-0 h-full flex flex-col justify-end pb-1 select-none pointer-events-none`}
           style={cssVars({ '--marker-left': `${i * pixelsPerSecond}px` })}
         >
-          <div className="h-3 border-l border-zinc-500" />
-          <span className="text-[10px] text-zinc-500 pl-1 whitespace-nowrap">{formatTime(i)}</span>
+          <div className="h-3 border-l border-border" />
+          <span className="text-[10px] text-text-tertiary pl-1 whitespace-nowrap">{formatTime(i)}</span>
         </div>
       );
       // 添加中间小刻度
@@ -772,7 +772,7 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
                 className={`${styles.marker} absolute top-0 h-full flex flex-col justify-end pb-1 select-none pointer-events-none`}
                 style={cssVars({ '--marker-left': `${(i + j) * pixelsPerSecond}px` })}
               >
-                <div className="h-2 border-l border-zinc-700" />
+                <div className="h-2 border-l border-border" />
               </div>
             );
           }
@@ -787,12 +787,12 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
       {/* 工具栏 */}
       <div className={`${styles.toolbar} h-10 flex items-center px-4 justify-between flex-shrink-0 z-50 overflow-x-auto gap-2`}>
         <div className="flex items-center gap-4">
-          <button onClick={togglePlay} className="text-zinc-300 hover:text-white transition-colors">
+          <button onClick={togglePlay} className="text-text-secondary hover:text-text-primary transition-colors">
             {isPlaying ? <Pause size={18} /> : <Play size={18} />}
           </button>
-          <span className="text-xs font-mono text-cyan-400">{formatTime(currentTime)}</span>
-          <span className="text-xs text-zinc-600">/</span>
-          <span className="text-xs font-mono text-zinc-500">{formatTime(duration)}</span>
+          <span className="text-xs font-mono text-status-info">{formatTime(currentTime)}</span>
+          <span className="text-xs text-text-muted">/</span>
+          <span className="text-xs font-mono text-text-tertiary">{formatTime(duration)}</span>
         </div>
 
         {/* 缩放和吸附控件 */}
@@ -802,7 +802,7 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
             type="button"
             disabled={mainTrackAddableCount === 0}
             onClick={() => mainTrack && onAddAllTransitions?.(mainTrack.id)}
-            className="flex items-center gap-1 rounded px-2 py-1 text-xs bg-zinc-700 hover:bg-zinc-600 text-zinc-200 disabled:opacity-40 disabled:cursor-not-allowed"
+            className="flex items-center gap-1 rounded px-2 py-1 text-xs bg-bg-hover hover:bg-bg-hover text-text-primary disabled:opacity-40 disabled:cursor-not-allowed"
             title={mainTrackClipCount <= 1 ? '需要至少 2 个相邻片段' : mainTrackAddableCount === 0 ? '暂无可添加转场的切点' : '一键转场'}
           >
             <Wand2 size={14} />
@@ -821,7 +821,7 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
             <button
               type="button"
               disabled={mainTrackTransitionCount === 0}
-              className="flex items-center gap-1 rounded px-2 py-1 text-xs text-zinc-500 hover:text-red-400 disabled:opacity-40 disabled:cursor-not-allowed"
+              className="flex items-center gap-1 rounded px-2 py-1 text-xs text-text-tertiary hover:text-status-error disabled:opacity-40 disabled:cursor-not-allowed"
               title={mainTrackTransitionCount === 0 ? '无转场可清除' : '清除转场'}
             >
               <Eraser size={14} />
@@ -834,8 +834,8 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
             onClick={() => setSnapEnabled(!snapEnabled)}
             className={`flex items-center gap-1.5 px-2 py-1 rounded text-xs transition-colors ${
               snapEnabled
-                ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/50'
-                : 'bg-zinc-800 text-zinc-500 hover:text-zinc-300'
+                ? 'bg-status-info/20 text-status-info border border-status-info/50'
+                : 'bg-bg-elevated text-text-tertiary hover:text-text-secondary'
             }`}
             title="吸附对齐"
           >
@@ -844,10 +844,10 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
           </button>
 
           {/* 缩放控件 */}
-          <div className="flex items-center gap-1 bg-zinc-800 rounded px-1">
+          <div className="flex items-center gap-1 bg-bg-elevated rounded px-1">
             <button
               onClick={handleZoomOut}
-              className="p-1 text-zinc-400 hover:text-white transition-colors"
+              className="p-1 text-text-secondary hover:text-text-primary transition-colors"
               title="缩小"
             >
               <ZoomOut size={14} />
@@ -861,18 +861,18 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
               step={ZOOM_STEP}
               value={zoom}
               onChange={(e) => setZoom(parseFloat(e.target.value))}
-              className="w-20 h-1 accent-cyan-500 cursor-pointer"
+              className="w-20 h-1 accent-status-info cursor-pointer"
             />
 
             <button
               onClick={handleZoomIn}
-              className="p-1 text-zinc-400 hover:text-white transition-colors"
+              className="p-1 text-text-secondary hover:text-text-primary transition-colors"
               title="放大"
             >
               <ZoomIn size={14} />
             </button>
 
-            <span className="text-xs text-zinc-400 w-10 text-center">{Math.round(zoom * 100)}%</span>
+            <span className="text-xs text-text-secondary w-10 text-center">{Math.round(zoom * 100)}%</span>
           </div>
 
           {/* 缩放预设 */}
@@ -883,8 +883,8 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
                 onClick={() => handleZoomPreset(preset)}
                 className={`px-1.5 py-0.5 text-[10px] rounded transition-colors ${
                   Math.abs(zoom - preset) < 0.05
-                    ? 'bg-cyan-500/30 text-cyan-300'
-                    : 'bg-zinc-800 text-zinc-500 hover:text-zinc-300'
+                    ? 'bg-status-info/30 text-status-info'
+                    : 'bg-bg-elevated text-text-tertiary hover:text-text-secondary'
                 }`}
               >
                 {preset}x
@@ -892,13 +892,13 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
             ))}
           </div>
 
-          <span className="text-xs text-zinc-400">{tracks.length} 轨道</span>
+          <span className="text-xs text-text-secondary">{tracks.length} 轨道</span>
 
           {/* 导出按钮 */}
           {onExport && (
             <button
               onClick={onExport}
-              className="ml-2 px-3 py-1 bg-cyan-600 hover:bg-cyan-500 text-white text-xs rounded transition-colors"
+              className="ml-2 px-3 py-1 bg-status-info hover:bg-status-info text-on-status text-xs rounded transition-colors"
             >
               导出
             </button>
@@ -925,7 +925,7 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
                   className={`absolute top-0 left-0 -translate-x-1/2 transition-transform ${isDraggingPlayhead ? 'scale-110 cursor-grabbing' : 'hover:scale-105 cursor-grab'}`}
                   onMouseDown={handlePlayheadMouseDown}
                 >
-                  <svg width="12" height="16" viewBox="0 0 12 16" className="text-cyan-400">
+                  <svg width="12" height="16" viewBox="0 0 12 16" className="text-status-info">
                     <path d="M1 1C1 0.447715 1.44772 0 2 0H10C10.5523 0 11 0.447715 11 1V11.382C11 11.7607 10.786 12.107 10.4472 12.2764L6.44721 14.2764C6.16569 14.4172 5.83431 14.4172 5.55279 14.2764L1.55279 12.2764C1.214 12.107 1 11.7607 1 11.382V1Z" fill="currentColor" />
                   </svg>
                 </div>
@@ -939,7 +939,7 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
               key={track.id}
               data-track-id={track.id}
               className={`${styles.trackRow} flex group/track relative transition-all ${
-                highlightedTrackId === track.id ? 'bg-cyan-500/20 ring-1 ring-cyan-500/50' : 'bg-zinc-900/20 hover:bg-zinc-900/40'
+                highlightedTrackId === track.id ? 'bg-status-info/20 ring-1 ring-status-info/50' : 'bg-bg-surface/20 hover:bg-bg-surface/40'
               } ${track.isMainTrack ? 'border-l-4 border-l-blue-500' : ''}`}
               style={cssVars({ '--track-height': `${TRACK_HEIGHT}px` })}
               onDragOver={(e) => handleDragOver(e, track.id)}
@@ -951,10 +951,10 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
                 onContextMenu={(e) => handleTrackContextMenu(e, track)}
               >
                 <div className="flex items-center justify-between gap-1">
-                  <div className="flex items-center gap-2 text-zinc-400 text-xs font-medium flex-1 min-w-0">
-                    {track.type === 'video' && <Film size={14} className="text-blue-400 flex-shrink-0" />}
-                    {track.type === 'audio' && <Music size={14} className="text-green-400 flex-shrink-0" />}
-                    {track.type === 'text' && <Type size={14} className="text-purple-400 flex-shrink-0" />}
+                  <div className="flex items-center gap-2 text-text-secondary text-xs font-medium flex-1 min-w-0">
+                    {track.type === 'video' && <Film size={14} className="text-status-info flex-shrink-0" />}
+                    {track.type === 'audio' && <Music size={14} className="text-status-success flex-shrink-0" />}
+                    {track.type === 'text' && <Type size={14} className="text-accent flex-shrink-0" />}
                     {editingTrackId === track.id ? (
                       <input
                         type="text"
@@ -973,11 +973,11 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
                           setEditingTrackId(null);
                         }}
                         autoFocus
-                        className="bg-zinc-700 text-zinc-200 text-xs px-1 py-0.5 rounded w-full outline-none border border-cyan-500"
+                        className="bg-bg-hover text-text-primary text-xs px-1 py-0.5 rounded w-full outline-none border border-status-info"
                       />
                     ) : (
                       <span
-                        className="truncate cursor-pointer hover:text-zinc-200"
+                        className="truncate cursor-pointer hover:text-text-primary"
                         onDoubleClick={() => {
                           if (onUpdateTrack) {
                             setEditingTrackId(track.id);
@@ -995,7 +995,7 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
                       <button
                         onClick={() => onUpdateTrack(track.id, { muted: !track.muted })}
                         className={`p-1 rounded transition-colors ${
-                          track.muted ? 'text-red-400 bg-red-500/20' : 'text-zinc-500 hover:text-zinc-300'
+                          track.muted ? 'text-status-error bg-status-error/20' : 'text-text-tertiary hover:text-text-secondary'
                         }`}
                         title={track.muted ? '取消静音' : '静音'}
                       >
@@ -1007,7 +1007,7 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
                       <button
                         onClick={() => onUpdateTrack(track.id, { hidden: !track.hidden })}
                         className={`p-1 rounded transition-colors ${
-                          track.hidden ? 'text-orange-400 bg-orange-500/20' : 'text-zinc-500 hover:text-zinc-300'
+                          track.hidden ? 'text-status-warning bg-status-warning/20' : 'text-text-tertiary hover:text-text-secondary'
                         }`}
                         title={track.hidden ? '显示轨道' : '隐藏轨道'}
                       >
@@ -1018,7 +1018,7 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
                     {!track.isMainTrack && (
                       <button
                         onClick={() => onDeleteTrack(track.id)}
-                        className="opacity-0 group-hover/track:opacity-100 text-red-400 hover:text-red-300 p-1 rounded"
+                        className="opacity-0 group-hover/track:opacity-100 text-status-error hover:text-status-error p-1 rounded"
                         title="删除轨道"
                       >
                         <Trash2 size={12} />
@@ -1064,9 +1064,9 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
                         onMouseDown={(e) => handleClipMouseDown(e, clip)}
                         onContextMenu={(e) => handleClipContextMenu(e, clip)}
                         className={`${styles.clipBlock} absolute top-2 bottom-2 rounded-md overflow-hidden transition-shadow border shadow-sm group/clip select-none
-                          ${selectedClipId === clip.id ? 'border-cyan-400 ring-2 ring-cyan-500/20 z-10' : 'border-transparent hover:border-zinc-500 z-0'}
+                          ${selectedClipId === clip.id ? 'border-status-info ring-2 ring-status-info/20 z-10' : 'border-transparent hover:border-border z-0'}
                           ${dragState?.clipId === clip.id ? 'cursor-grabbing opacity-90 shadow-xl' : 'cursor-grab'}
-                          ${dragState?.clipId === clip.id && dragState.hasCollision ? 'border-red-500 ring-2 ring-red-500/50' : ''}
+                          ${dragState?.clipId === clip.id && dragState.hasCollision ? 'border-status-error ring-2 ring-status-error/50' : ''}
                         `}
                         style={cssVars({
                           '--clip-left': `${clipLeft}px`,
@@ -1100,10 +1100,10 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
 
                         {selectedClipId === clip.id && (
                           <>
-                            <div className="absolute left-0 top-0 bottom-0 w-3 cursor-w-resize hover:bg-cyan-400/50 z-20 flex items-center justify-center" onMouseDown={(e) => handleResizeMouseDown(e, clip, 'start')}>
+                            <div className="absolute left-0 top-0 bottom-0 w-3 cursor-w-resize hover:bg-status-info/50 z-20 flex items-center justify-center" onMouseDown={(e) => handleResizeMouseDown(e, clip, 'start')}>
                               <div className="w-1 h-4 bg-white/80 rounded-full" />
                             </div>
-                            <div className="absolute right-0 top-0 bottom-0 w-3 cursor-e-resize hover:bg-cyan-400/50 z-20 flex items-center justify-center" onMouseDown={(e) => handleResizeMouseDown(e, clip, 'end')}>
+                            <div className="absolute right-0 top-0 bottom-0 w-3 cursor-e-resize hover:bg-status-info/50 z-20 flex items-center justify-center" onMouseDown={(e) => handleResizeMouseDown(e, clip, 'end')}>
                               <div className="w-1 h-4 bg-white/80 rounded-full" />
                             </div>
                           </>
@@ -1119,7 +1119,7 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
           {/* 新建轨道区域 */}
           <div className="flex h-24 group" onDragOver={(e) => handleDragOver(e)} onDrop={(e) => handleDrop(e)}>
             <div className={`${styles.trackHeaderSpacer} sticky left-0 w-[200px] flex-shrink-0 z-20`} />
-            <div className="flex-1 border-t-2 border-dashed border-zinc-800 m-2 rounded flex items-center justify-center text-zinc-700 transition-colors group-hover:border-zinc-600">
+            <div className="flex-1 border-t-2 border-dashed border-border-subtle m-2 rounded flex items-center justify-center text-text-muted transition-colors group-hover:border-border">
               拖入素材创建新轨道
             </div>
           </div>
@@ -1129,7 +1129,7 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
       {/* 播放头竖线 */}
       {playheadX > 0 && playheadPositionRef.current.lineTop > 0 && (
         <div
-          className={`${styles.playheadLine} fixed bg-cyan-400 pointer-events-none z-20`}
+          className={`${styles.playheadLine} fixed bg-status-info pointer-events-none z-20`}
           style={cssVars({
             '--line-left': `${playheadX}px`,
             '--line-top': `${playheadPositionRef.current.lineTop}px`,
@@ -1154,7 +1154,7 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
           className={`${styles.dragPreview} fixed pointer-events-none z-[9999] transform -translate-x-1/2 -translate-y-1/2`}
           style={cssVars({ '--preview-left': `${mousePos.x}px`, '--preview-top': `${mousePos.y}px` })}
         >
-          <div className="bg-cyan-500/90 text-white text-xs px-3 py-2 rounded-lg shadow-xl flex items-center gap-2 whitespace-nowrap">
+          <div className="bg-status-info/90 text-on-status text-xs px-3 py-2 rounded-lg shadow-xl flex items-center gap-2 whitespace-nowrap">
             {(draggingAsset.type === MediaType.VIDEO || draggingAsset.type === MediaType.IMAGE) && <Film size={14} />}
             {draggingAsset.type === MediaType.AUDIO && <Music size={14} />}
             {draggingAsset.type === MediaType.TEXT && <Type size={14} />}
@@ -1166,7 +1166,7 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
       {/* 右键菜单 */}
       {contextMenu && (
         <div
-          className={`${styles.contextMenu} fixed z-[10000] bg-zinc-900 border border-zinc-700 rounded-lg shadow-2xl py-1 min-w-[160px]`}
+          className={`${styles.contextMenu} fixed z-[10000] bg-bg-surface border border-border rounded-lg shadow-2xl py-1 min-w-[160px]`}
           style={cssVars({ '--menu-left': `${contextMenu.x}px`, '--menu-top': `${contextMenu.y}px` })}
           onClick={(e) => e.stopPropagation()}
         >
@@ -1175,14 +1175,14 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
               {/* 添加关键帧 */}
               {onAddKeyframe && contextMenu.clipLocalTime !== undefined && (
                 <button
-                  className="w-full px-3 py-1.5 text-left text-xs text-zinc-200 hover:bg-zinc-800 flex items-center gap-2"
+                  className="w-full px-3 py-1.5 text-left text-xs text-text-primary hover:bg-bg-elevated flex items-center gap-2"
                   onClick={() => {
                     onAddKeyframe(contextMenu.clipId, contextMenu.clipLocalTime!);
                     closeContextMenu();
                   }}
                 >
                   <svg viewBox="0 0 12 12" className="w-3 h-3">
-                    <path d="M6 0L12 6L6 12L0 6Z" fill="currentColor" className="text-yellow-400" />
+                    <path d="M6 0L12 6L6 12L0 6Z" fill="currentColor" className="text-status-warning" />
                   </svg>
                   添加关键帧
                 </button>
@@ -1191,7 +1191,7 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
               {/* 复制片段 */}
               {onDuplicateClip && (
                 <button
-                  className="w-full px-3 py-1.5 text-left text-xs text-zinc-200 hover:bg-zinc-800 flex items-center gap-2"
+                  className="w-full px-3 py-1.5 text-left text-xs text-text-primary hover:bg-bg-elevated flex items-center gap-2"
                   onClick={() => {
                     onDuplicateClip(contextMenu.clipId);
                     closeContextMenu();
@@ -1202,7 +1202,7 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
                 </button>
               )}
 
-              <div className="my-1 border-t border-zinc-800" />
+              <div className="my-1 border-t border-border-subtle" />
 
               {/* 转场操作 */}
               {(() => {
@@ -1227,7 +1227,7 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
                   <>
                     {!existingTransition && canAddTransition && onAddTransition && (
                       <button
-                        className="w-full px-3 py-1.5 text-left text-xs text-zinc-200 hover:bg-zinc-800 flex items-center gap-2"
+                        className="w-full px-3 py-1.5 text-left text-xs text-text-primary hover:bg-bg-elevated flex items-center gap-2"
                         onClick={() => {
                           onAddTransition(track.id, clip.id, nextClip.id);
                           closeContextMenu();
@@ -1239,7 +1239,7 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
                     )}
                     {existingTransition && onDeleteTransition && (
                       <button
-                        className="w-full px-3 py-1.5 text-left text-xs text-zinc-200 hover:bg-zinc-800 flex items-center gap-2"
+                        className="w-full px-3 py-1.5 text-left text-xs text-text-primary hover:bg-bg-elevated flex items-center gap-2"
                         onClick={() => {
                           onDeleteTransition(track.id, existingTransition.id);
                           closeContextMenu();
@@ -1249,7 +1249,7 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
                         删除此转场
                       </button>
                     )}
-                    <div className="my-1 border-t border-zinc-800" />
+                    <div className="my-1 border-t border-border-subtle" />
                   </>
                 );
               })()}
@@ -1257,7 +1257,7 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
               {/* 删除片段 */}
               {onDeleteClip && (
                 <button
-                  className="w-full px-3 py-1.5 text-left text-xs text-red-400 hover:bg-red-900/30 flex items-center gap-2"
+                  className="w-full px-3 py-1.5 text-left text-xs text-status-error hover:bg-status-error/12 flex items-center gap-2"
                   onClick={() => {
                     onDeleteClip(contextMenu.clipId);
                     closeContextMenu();
@@ -1282,7 +1282,7 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
               <>
                 {onUpdateTrack && (
                   <button
-                    className="w-full px-3 py-1.5 text-left text-xs text-zinc-200 hover:bg-zinc-800"
+                    className="w-full px-3 py-1.5 text-left text-xs text-text-primary hover:bg-bg-elevated"
                     onClick={() => {
                       setEditingTrackId(track.id);
                       setEditingTrackName(track.name || (track.isMainTrack ? '主轨道' : track.type.toUpperCase()));
@@ -1295,9 +1295,9 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
 
                 {isMainVideoTrack && (
                   <>
-                    <div className="my-1 border-t border-zinc-800" />
+                    <div className="my-1 border-t border-border-subtle" />
                     <button
-                      className="w-full px-3 py-1.5 text-left text-xs text-zinc-200 hover:bg-zinc-800 disabled:text-zinc-500 disabled:hover:bg-transparent"
+                      className="w-full px-3 py-1.5 text-left text-xs text-text-primary hover:bg-bg-elevated disabled:text-text-tertiary disabled:hover:bg-transparent"
                       disabled={addableCount === 0}
                       onClick={() => {
                         onAddAllTransitions?.(track.id);
@@ -1318,7 +1318,7 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
                       disabled={existingCount === 0}
                     >
                       <button
-                        className="w-full px-3 py-1.5 text-left text-xs text-zinc-200 hover:bg-zinc-800 disabled:text-zinc-500 disabled:hover:bg-transparent"
+                        className="w-full px-3 py-1.5 text-left text-xs text-text-primary hover:bg-bg-elevated disabled:text-text-tertiary disabled:hover:bg-transparent"
                         disabled={existingCount === 0}
                       >
                         清除转场 ({existingCount})
@@ -1333,11 +1333,11 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
           {contextMenu.type === 'keyframe' && contextMenu.keyframeId && (
             <>
               {/* 缓动类型 */}
-              <div className="px-3 py-1 text-[10px] text-zinc-500 uppercase tracking-wider">缓动类型</div>
+              <div className="px-3 py-1 text-[10px] text-text-tertiary uppercase tracking-wider">缓动类型</div>
               {EASING_OPTIONS.map(opt => (
                 <button
                   key={opt.value}
-                  className="w-full px-3 py-1.5 text-left text-xs text-zinc-200 hover:bg-zinc-800"
+                  className="w-full px-3 py-1.5 text-left text-xs text-text-primary hover:bg-bg-elevated"
                   onClick={() => {
                     onUpdateKeyframeEasing?.(contextMenu.clipId, contextMenu.keyframeId!, opt.value);
                     closeContextMenu();
@@ -1347,12 +1347,12 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
                 </button>
               ))}
 
-              <div className="my-1 border-t border-zinc-800" />
+              <div className="my-1 border-t border-border-subtle" />
 
               {/* 删除关键帧 */}
               {onDeleteKeyframe && (
                 <button
-                  className="w-full px-3 py-1.5 text-left text-xs text-red-400 hover:bg-red-900/30 flex items-center gap-2"
+                  className="w-full px-3 py-1.5 text-left text-xs text-status-error hover:bg-status-error/12 flex items-center gap-2"
                   onClick={() => {
                     onDeleteKeyframe(contextMenu.clipId, contextMenu.keyframeId!);
                     closeContextMenu();

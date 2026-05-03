@@ -120,7 +120,7 @@ export const EditorView: React.FC<EditorViewProps> = ({
         type="primary"
         disabled={blockedByAnalysis}
         onClick={() => onStepChangeWithMark(next.targetStepId as EditorStep)}
-        className={blockedByAnalysis ? '' : 'bg-emerald-600 hover:bg-emerald-500 border-none'}
+        className={blockedByAnalysis ? '' : 'bg-accent-hover hover:bg-accent border-none'}
       >
         下一步
       </Button>
@@ -165,13 +165,13 @@ export const EditorView: React.FC<EditorViewProps> = ({
         scriptText={scriptText}
         leftContent={(
           <div className="flex items-center gap-1.5 min-w-0">
-            <div className="w-5 h-5 bg-gradient-to-br from-emerald-500 to-emerald-700 rounded flex items-center justify-center flex-shrink-0">
-              <Film className="w-2.5 h-2.5 text-white" />
+            <div className="w-5 h-5 bg-gradient-to-br from-accent to-accent-hover rounded flex items-center justify-center flex-shrink-0">
+              <Film className="w-2.5 h-2.5 text-on-accent" />
             </div>
-            <span className="text-xs font-medium text-zinc-200 truncate max-w-[140px]" title={activeProject.title}>
+            <span className="text-xs font-medium text-text-primary truncate max-w-[140px]" title={activeProject.title}>
               {activeProject.title}
             </span>
-            <Tag className="!m-0 !text-[10px] !leading-4 !px-1.5 !bg-emerald-900/30 !text-emerald-400 !border-emerald-800/50">
+            <Tag className="!m-0 !text-[10px] !leading-4 !px-1.5 !bg-accent/15 !text-accent !border-accent/30">
               {activeProject.genre || '未分类'}
             </Tag>
           </div>
@@ -185,7 +185,7 @@ export const EditorView: React.FC<EditorViewProps> = ({
                   size="small"
                   icon={<UploadOutlined />}
                   onClick={() => setScriptImportSignal((s) => s + 1)}
-                  className="!text-zinc-300 !border-zinc-700 !bg-zinc-800 hover:!text-cyan-300 hover:!border-cyan-600"
+                  className="!text-text-secondary !border-border !bg-bg-elevated hover:!text-status-info hover:!border-status-info"
                 >
                   导入剧本
                 </Button>
@@ -197,7 +197,7 @@ export const EditorView: React.FC<EditorViewProps> = ({
           <Tooltip title="项目设置（项目名 / 题材 / 风格 / 模型选择）">
             <button
               onClick={() => onOpenProjectSettings()}
-              className="flex items-center justify-center w-7 h-7 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded text-zinc-300 transition-colors"
+              className="flex items-center justify-center w-7 h-7 bg-bg-elevated hover:bg-bg-hover border border-border rounded text-text-secondary transition-colors"
               aria-label="项目设置"
             >
               <SettingOutlined />
@@ -212,7 +212,7 @@ export const EditorView: React.FC<EditorViewProps> = ({
           <StepComponent ctx={ctx} />
         ) : (
           // 未实现/未注册 Component 的 step：fallback
-          <div className="flex h-full items-center justify-center text-zinc-500 flex-col gap-4">
+          <div className="flex h-full items-center justify-center text-text-tertiary flex-col gap-4">
             <Users className="w-16 h-16 opacity-10" />
             <p>步骤 "{editorStep}" 未实现。</p>
             <Button type="link" onClick={() => onViewChange('projects')}>返回项目列表</Button>

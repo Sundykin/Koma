@@ -37,7 +37,7 @@ export const InlineProjectToolbar: React.FC<InlineProjectToolbarProps> = ({
   const anyBusy = isGenerating || isPolishing;
 
   return (
-    <div className="h-12 px-4 flex items-center justify-between border-b border-zinc-800 bg-zinc-900/50">
+    <div className="h-12 px-4 flex items-center justify-between border-b border-border-subtle bg-bg-surface/50">
       {/* Left: AI 辅助工具 */}
       <div className="flex items-center gap-1">
         {/* 随机生成按钮：暂时隐藏（保留 onRandomGenerate 钩子，未来可恢复） */}
@@ -49,7 +49,7 @@ export const InlineProjectToolbar: React.FC<InlineProjectToolbarProps> = ({
               icon={isGenerating ? <LoadingOutlined spin /> : <ThunderboltOutlined />}
               onClick={onRandomGenerate}
               disabled={anyBusy}
-              className="text-zinc-400 hover:text-purple-400"
+              className="text-text-secondary hover:text-accent"
             >
               {isGenerating ? '生成中...' : '随机生成'}
             </Button>
@@ -62,7 +62,7 @@ export const InlineProjectToolbar: React.FC<InlineProjectToolbarProps> = ({
             icon={isPolishing ? <LoadingOutlined spin /> : <HighlightOutlined />}
             onClick={onPolish}
             disabled={!hasScript || anyBusy}
-            className="text-zinc-400 hover:text-blue-400"
+            className="text-text-secondary hover:text-status-info"
           >
             {isPolishing ? '润色中...' : 'AI 润色'}
           </Button>
@@ -74,7 +74,7 @@ export const InlineProjectToolbar: React.FC<InlineProjectToolbarProps> = ({
             icon={<MessageSquareQuote className="w-4 h-4" />}
             onClick={onTweetCopy}
             disabled={!episode || anyBusy}
-            className="text-zinc-400 hover:text-amber-400"
+            className="text-text-secondary hover:text-status-warning"
           >
             推文文案
           </Button>
@@ -86,13 +86,13 @@ export const InlineProjectToolbar: React.FC<InlineProjectToolbarProps> = ({
         <div className="flex items-center gap-1.5 text-xs">
           {isSaving ? (
             <>
-              <Loader2 className="w-3 h-3 animate-spin text-zinc-500" />
-              <span className="text-zinc-500">保存中...</span>
+              <Loader2 className="w-3 h-3 animate-spin text-text-tertiary" />
+              <span className="text-text-tertiary">保存中...</span>
             </>
           ) : (
             <>
-              <Check className="w-3 h-3 text-emerald-500" />
-              <span className="text-zinc-500">已保存</span>
+              <Check className="w-3 h-3 text-accent" />
+              <span className="text-text-tertiary">已保存</span>
             </>
           )}
         </div>

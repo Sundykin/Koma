@@ -103,7 +103,7 @@ export const PluginCard: React.FC<PluginCardProps> = ({
             {plugin.description || t('plugin.noDescription')}
           </Paragraph>
 
-          <div className="flex items-center gap-2 text-xs text-gray-400">
+          <div className="flex items-center gap-2 text-xs text-text-secondary">
             <span>v{plugin.version}</span>
             {plugin.author && (
               <>

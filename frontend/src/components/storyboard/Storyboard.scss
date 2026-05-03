@@ -111,7 +111,8 @@
 
 .shotCard.selected .shotIndex .ant-badge-count {
   background: var(--token-accent-base);
-  color: var(--token-text-primary);
+  /* 选中分镜的 badge：accent 实色背景 → 必须配 onAccent 对比文字（亮主题下 text-primary 是深色 = 蓝底黑字看不见） */
+  color: var(--token-on-accent);
   border-color: var(--token-accent-base);
 }
 
@@ -331,7 +332,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--token-text-primary);
+  /* accent 渐变实色 → onAccent 对比文字 */
+  color: var(--token-on-accent);
   font-weight: bold;
   font-size: 11px;
   box-shadow: 0 2px 8px color-mix(in srgb, var(--token-accent-base) 30%, transparent);
@@ -392,8 +394,15 @@
 }
 
 .storyboardContainer .ant-segmented-item-selected {
+  /* 选中态：accent 实色背景必须配 onAccent 对比文字（在亮主题深蓝底上白字，
+     不能用 text-primary —— 那在亮主题下是深色 = 蓝底黑字看不见） */
   background: var(--token-accent-base);
-  color: var(--token-text-primary);
+  color: var(--token-on-accent);
+}
+
+.storyboardContainer .ant-segmented-item-selected .ant-segmented-item-label,
+.storyboardContainer .ant-segmented-item-selected .ant-segmented-item-icon {
+  color: var(--token-on-accent);
 }
 
 .storyboardContainer .ant-select-selector {

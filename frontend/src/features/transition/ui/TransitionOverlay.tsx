@@ -82,7 +82,7 @@ export const TransitionOverlay: React.FC<TransitionOverlayProps> = React.memo(({
                   const transitionStartTime = toWindow?.resolvedStart ?? (cutPointTime - transition.duration);
                   return (
                     <div
-                      className={`${styles.region} absolute top-0 h-full border-x border-cyan-400/40 bg-cyan-400/12 pointer-events-none`}
+                      className={`${styles.region} absolute top-0 h-full border-x border-status-info/40 bg-status-info/12 pointer-events-none`}
                       style={cssVars({
                         '--transition-region-left': `${(transitionStartTime - cutPointTime) * pixelsPerSecond}px`,
                         '--transition-region-width': `${transition.duration * pixelsPerSecond}px`,
@@ -103,11 +103,11 @@ export const TransitionOverlay: React.FC<TransitionOverlayProps> = React.memo(({
                   className={`rounded-full px-2 py-0.5 text-[10px] font-medium shadow ${
                     isInvalid
                       ? isDragging
-                        ? 'border border-orange-500/50 bg-orange-500/20 text-orange-300 opacity-60 pointer-events-none transition-colors duration-200 delay-200'
-                        : 'border border-orange-500/45 bg-orange-500/15 text-orange-200 pointer-events-none transition-colors duration-200'
+                        ? 'border border-status-warning/50 bg-status-warning/20 text-status-warning opacity-60 pointer-events-none transition-colors duration-200 delay-200'
+                        : 'border border-status-warning/45 bg-status-warning/15 text-status-warning pointer-events-none transition-colors duration-200'
                       : selectedTransitionId === transition.id
-                        ? 'bg-cyan-500 text-black'
-                        : 'bg-zinc-800/90 text-cyan-200 hover:bg-zinc-700'
+                        ? 'bg-status-info text-on-status'
+                        : 'bg-bg-elevated/90 text-status-info hover:bg-bg-hover'
                   }`}
                   title={isInvalid ? '失效转场' : '编辑转场'}
                 >
@@ -128,12 +128,12 @@ export const TransitionOverlay: React.FC<TransitionOverlayProps> = React.memo(({
                               const newDuration = Math.max(sliderMin, transition.duration - 0.1);
                               onUpdateTransitionDuration?.(track.id, transition.id, newDuration);
                             }}
-                            className="rounded bg-zinc-700 px-1 text-[10px] text-white hover:bg-zinc-600"
+                            className="rounded bg-bg-hover px-1 text-[10px] text-text-primary hover:bg-bg-elevated"
                             title="减少 0.1s"
                           >
                             −
                           </button>
-                          <span className="min-w-[2rem] text-center text-[10px] text-zinc-400">
+                          <span className="min-w-[2rem] text-center text-[10px] text-text-secondary">
                             {transition.duration.toFixed(1)}s
                           </span>
                           <button
@@ -143,7 +143,7 @@ export const TransitionOverlay: React.FC<TransitionOverlayProps> = React.memo(({
                               const newDuration = Math.min(sliderMax, transition.duration + 0.1);
                               onUpdateTransitionDuration?.(track.id, transition.id, newDuration);
                             }}
-                            className="rounded bg-zinc-700 px-1 text-[10px] text-white hover:bg-zinc-600"
+                            className="rounded bg-bg-hover px-1 text-[10px] text-text-primary hover:bg-bg-elevated"
                             title="增加 0.1s"
                           >
                             +
@@ -161,10 +161,10 @@ export const TransitionOverlay: React.FC<TransitionOverlayProps> = React.memo(({
                               e.stopPropagation();
                               onUpdateTransitionDuration?.(track.id, transition.id, Number(e.target.value));
                             }}
-                            className="h-1 w-16 accent-cyan-500"
+                            className="h-1 w-16 accent-status-info"
                             title={`转场时长: ${transition.duration.toFixed(1)}s`}
                           />
-                          <span className="min-w-[2rem] text-center text-[10px] text-zinc-400">
+                          <span className="min-w-[2rem] text-center text-[10px] text-text-secondary">
                             {transition.duration.toFixed(1)}s
                           </span>
                         </>
@@ -175,7 +175,7 @@ export const TransitionOverlay: React.FC<TransitionOverlayProps> = React.memo(({
                           e.stopPropagation();
                           onDeleteTransition?.(track.id, transition.id);
                         }}
-                        className="rounded bg-red-600 px-1 text-[10px] text-white hover:bg-red-500"
+                        className="rounded bg-status-error px-1 text-[10px] text-on-status hover:bg-status-error"
                         title="删除转场"
                       >
                         ×
@@ -192,7 +192,7 @@ export const TransitionOverlay: React.FC<TransitionOverlayProps> = React.memo(({
                     event.stopPropagation();
                     onAddTransition?.(track.id, fromClip.id, toClip.id);
                   }}
-                  className="rounded-full bg-zinc-800/80 px-2 py-0.5 text-[10px] text-zinc-300 hover:bg-cyan-600 hover:text-white"
+                  className="rounded-full bg-bg-elevated/80 px-2 py-0.5 text-[10px] text-text-secondary hover:bg-status-info hover:text-on-status"
                   title={`添加淡变（默认 ${DEFAULT_TRANSITION_DURATION.toFixed(1)}s）`}
                 >
                   + 转场

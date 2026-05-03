@@ -8,8 +8,8 @@ interface AppLogoProps extends Omit<React.HTMLAttributes<HTMLDivElement>, 'child
 }
 
 const variantClassNames: Record<AppLogoVariant, string> = {
-  titlebar: 'w-5 h-5 rounded shadow-sm shadow-emerald-900/30',
-  sidebar: 'w-10 h-10 rounded-xl shadow-lg shadow-emerald-900/40',
+  titlebar: 'w-5 h-5 rounded shadow-sm shadow-accent/15',
+  sidebar: 'w-10 h-10 rounded-xl shadow-lg shadow-accent/20',
 };
 
 /**

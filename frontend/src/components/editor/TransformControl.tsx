@@ -191,7 +191,7 @@ export const TransformControl: React.FC<TransformControlProps> = ({
     >
       {/* 边框 */}
       <div
-        className="absolute inset-0 border-2 border-cyan-400 pointer-events-auto cursor-move"
+        className="absolute inset-0 border-2 border-status-info pointer-events-auto cursor-move"
         onMouseDown={(e) => handleMouseDown(e, 'move')}
       />
 
@@ -219,7 +219,7 @@ export const TransformControl: React.FC<TransformControlProps> = ({
       >
         {/* 连接线 */}
         <div
-          className={`${styles.rotateStem} absolute left-1/2 -translate-x-1/2 bg-cyan-400`}
+          className={`${styles.rotateStem} absolute left-1/2 -translate-x-1/2 bg-status-info`}
         />
         {/* 旋转手柄 */}
         <div

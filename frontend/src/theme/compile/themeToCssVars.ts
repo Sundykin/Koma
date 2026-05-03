@@ -27,11 +27,13 @@ export function themeToCssVars(tokens: SemanticTokens): CssVarMap {
     [tokenVarNames.accent.base]: tokens.accent.base,
     [tokenVarNames.accent.hover]: tokens.accent.hover,
     [tokenVarNames.accent.glow]: tokens.accent.glow,
+    [tokenVarNames.accent.onAccent]: tokens.accent.onAccent,
 
     [tokenVarNames.status.success]: tokens.status.success,
     [tokenVarNames.status.info]: tokens.status.info,
     [tokenVarNames.status.warning]: tokens.status.warning,
     [tokenVarNames.status.error]: tokens.status.error,
+    [tokenVarNames.status.onStatus]: tokens.status.onStatus,
 
     [tokenVarNames.radius.sm]: px(tokens.radius.sm),
     [tokenVarNames.radius.base]: px(tokens.radius.base),

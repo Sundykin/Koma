@@ -328,22 +328,22 @@ export const SimplePlayer: React.FC<PlayerProps> = ({
       {/* 工具栏 */}
       <div className={`${styles.toolbar} h-10 flex items-center px-4 justify-between flex-shrink-0`}>
         <div className="flex items-center gap-2">
-          <Maximize2 size={14} className="text-zinc-500" />
+          <Maximize2 size={14} className="text-text-tertiary" />
           {onAspectRatioChange ? (
             <select
               value={aspectRatio}
               onChange={(e) => onAspectRatioChange(e.target.value as AspectRatio)}
-              className="bg-zinc-800 text-zinc-300 text-xs px-2 py-1 rounded border border-zinc-700 focus:outline-none focus:border-cyan-500"
+              className="bg-bg-elevated text-text-secondary text-xs px-2 py-1 rounded border border-border focus:outline-none focus:border-status-info"
             >
               {ASPECT_RATIOS.map(r => (
                 <option key={r.value} value={r.value}>{r.label}</option>
               ))}
             </select>
           ) : (
-            <span className="text-zinc-400 text-xs px-2 py-1">{aspectRatio}</span>
+            <span className="text-text-secondary text-xs px-2 py-1">{aspectRatio}</span>
           )}
         </div>
-        <div className="text-xs text-zinc-500">
+        <div className="text-xs text-text-tertiary">
           {canvasSize.width} × {canvasSize.height}
         </div>
       </div>
@@ -381,7 +381,7 @@ export const SimplePlayer: React.FC<PlayerProps> = ({
           )}
 
           {tracks.every(t => t.clips.length === 0) && (
-            <div className="absolute inset-0 flex items-center justify-center text-zinc-600 pointer-events-none">
+            <div className="absolute inset-0 flex items-center justify-center text-text-muted pointer-events-none">
               <div className="text-center">
                 <div className="text-4xl mb-2">🎬</div>
                 <span className="text-sm tracking-widest uppercase">拖入素材开始编辑</span>

@@ -413,7 +413,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         {pluginNavItems.length > 0 && (
           <>
-            <div className="mx-4 my-3 border-t border-zinc-800" />
+            <div className="mx-4 my-3 border-t border-border-subtle" />
             <div className="space-y-1">
               {pluginNavItems.map(item => (
                 <NavItem
@@ -429,7 +429,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         )}
 
         <div className="flex-1" />
-        <div className="mx-4 my-3 border-t border-zinc-800" />
+        <div className="mx-4 my-3 border-t border-border-subtle" />
 
         <div className="space-y-1">
           {bottomNavItems.map(item => (
@@ -445,7 +445,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       </nav>
 
       {/* 底部头像入口 */}
-      <div className="p-3 border-t border-zinc-800 flex items-center justify-center">
+      <div className="p-3 border-t border-border-subtle flex items-center justify-center">
         <Popover
           open={avatarPopoverOpen}
           onOpenChange={setAvatarPopoverOpen}

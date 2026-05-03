@@ -34,14 +34,14 @@ export const ReferenceBadge: React.FC<ReferenceBadgeProps> = ({
 
   const content = (
     <div className="w-[320px]">
-      <div className="text-xs text-zinc-400 mb-2">参考图用于 ControlNet 控制生成</div>
+      <div className="text-xs text-text-secondary mb-2">参考图用于 ControlNet 控制生成</div>
       {images.length > 0 ? (
         <div className="flex gap-2 flex-wrap">
           {images.map((img, idx) => (
             <div
               key={idx}
               className={`relative h-16 aspect-square rounded overflow-hidden cursor-pointer border-2 ${
-                idx === selectedIndex ? 'border-blue-500' : 'border-zinc-700 hover:border-zinc-500'
+                idx === selectedIndex ? 'border-status-info' : 'border-border hover:border-border'
               }`}
               onClick={() => onSelect(idx)}
             >
@@ -51,7 +51,7 @@ export const ReferenceBadge: React.FC<ReferenceBadgeProps> = ({
                 alt=""
               />
               <button
-                className="absolute top-0 right-0 w-5 h-5 bg-red-500/80 text-white text-xs rounded-bl hover:bg-red-500 transition-colors"
+                className="absolute top-0 right-0 w-5 h-5 bg-status-error/80 text-on-status text-xs rounded-bl hover:bg-status-error transition-colors"
                 onClick={(e) => {
                   e.stopPropagation();
                   onDelete(idx);
@@ -61,8 +61,8 @@ export const ReferenceBadge: React.FC<ReferenceBadgeProps> = ({
               </button>
             </div>
           ))}
-          <label className="h-16 aspect-square border border-dashed border-zinc-600 rounded flex items-center justify-center cursor-pointer hover:border-zinc-500 transition-colors">
-            <PictureOutlined className="text-zinc-500" />
+          <label className="h-16 aspect-square border border-dashed border-border rounded flex items-center justify-center cursor-pointer hover:border-border transition-colors">
+            <PictureOutlined className="text-text-tertiary" />
             <input
               type="file"
               accept="image/*"
@@ -72,9 +72,9 @@ export const ReferenceBadge: React.FC<ReferenceBadgeProps> = ({
           </label>
         </div>
       ) : (
-        <label className="w-full h-20 border border-dashed border-zinc-600 rounded flex flex-col items-center justify-center cursor-pointer hover:border-zinc-500 transition-colors gap-1">
-          <PictureOutlined className="text-zinc-500 text-lg" />
-          <span className="text-zinc-500 text-xs">点击添加参考图</span>
+        <label className="w-full h-20 border border-dashed border-border rounded flex flex-col items-center justify-center cursor-pointer hover:border-border transition-colors gap-1">
+          <PictureOutlined className="text-text-tertiary text-lg" />
+          <span className="text-text-tertiary text-xs">点击添加参考图</span>
           <input
             type="file"
             accept="image/*"
@@ -99,8 +99,8 @@ export const ReferenceBadge: React.FC<ReferenceBadgeProps> = ({
           <div
             className={`h-6 px-2 rounded flex items-center gap-1.5 text-xs border transition-colors ${
               count > 0
-                ? 'bg-blue-500/20 border-blue-500/50 text-blue-300'
-                : 'bg-zinc-800/80 border-zinc-700 text-zinc-500 group-hover:text-zinc-300'
+                ? 'bg-status-info/15 border-status-info/50 text-status-info'
+                : 'bg-bg-elevated/80 border-border text-text-tertiary group-hover:text-text-secondary'
             }`}
           >
             <PictureOutlined />

@@ -165,7 +165,7 @@ export const StoryboardToolbar: React.FC<StoryboardToolbarProps> = ({
           </Tooltip>
         </Space.Compact>
 
-        <div className="h-4 w-px bg-zinc-700" />
+        <div className="h-4 w-px bg-bg-hover" />
 
         <Button type="primary" icon={<PlusOutlined />} onClick={onAddShot}>
           添加分镜
@@ -175,7 +175,7 @@ export const StoryboardToolbar: React.FC<StoryboardToolbarProps> = ({
       {hasSelected && (
         <Space className="selection-actions">
           <Text type="secondary">已选 {selectedCount} 项</Text>
-          <div className="h-4 w-px bg-zinc-700" />
+          <div className="h-4 w-px bg-bg-hover" />
           <Button size="small" onClick={() => onBatchConfirm(true)}>批量确认</Button>
           <Button size="small" onClick={() => onBatchConfirm(false)}>取消确认</Button>
           <Popconfirm title={`删除 ${selectedCount} 个分镜？`} onConfirm={onBatchDelete}>
