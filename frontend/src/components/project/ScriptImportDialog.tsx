@@ -22,6 +22,7 @@ import { listEpisodes, deleteEpisode, saveCharacters, saveScenes, saveProps } fr
 import { TaskManager } from '../../services/TaskManager';
 import { ScriptEditor } from '../../editor';
 import { EpisodeSplitWizard } from './EpisodeSplitWizard';
+import { useTheme } from '../../theme/runtime';
 import { createLogger } from '../../store/logger';
 
 const logger = createLogger('ScriptImportDialog');
@@ -44,6 +45,8 @@ export const ScriptImportDialog: React.FC<ScriptImportDialogProps> = ({
   onImported,
 }) => {
   const { message } = App.useApp();
+  const { theme } = useTheme();
+  const isDarkTheme = theme.meta.mode === 'dark';
   const [tempScript, setTempScript] = useState('');
   const [fullScript, setFullScript] = useState('');
   const [splitWizardVisible, setSplitWizardVisible] = useState(false);
@@ -169,7 +172,7 @@ export const ScriptImportDialog: React.FC<ScriptImportDialogProps> = ({
         mask={{ closable: false }}
       >
         <div className="flex items-center justify-between mb-3 gap-3">
-          <p className="text-xs text-zinc-500 m-0 flex-1">
+          <p className="text-xs text-text-tertiary m-0 flex-1">
             输入完整剧本后点击"AI 自动分集"，系统将智能拆分为多个剧集
           </p>
           <Space>
@@ -186,7 +189,7 @@ export const ScriptImportDialog: React.FC<ScriptImportDialogProps> = ({
             ref={fileInputRef}
             type="file"
             accept=".txt,.md,.markdown,text/plain,text/markdown"
-            style={{ display: 'none' }}
+            className="hidden"
             onChange={handleFileChange}
           />
         </div>
@@ -197,7 +200,7 @@ export const ScriptImportDialog: React.FC<ScriptImportDialogProps> = ({
           minHeight="400px"
           maxHeight="500px"
           showLineNumbers={true}
-          darkTheme={true}
+          darkTheme={isDarkTheme}
           enableCameraCommands={false}
         />
       </Modal>

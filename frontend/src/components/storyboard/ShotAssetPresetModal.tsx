@@ -23,6 +23,7 @@ import type { Character, Prop } from '../../types';
 import type { PresetAssets } from '../../services/ShotAnalysisService';
 import { electronService } from '../../services/electronService';
 import { getMediaAssetDisplaySource } from '../../types';
+import styles from './ShotAssetPresetModal.module.scss';
 
 const { Text } = Typography;
 
@@ -118,61 +119,28 @@ export const ShotAssetPresetModal: React.FC<ShotAssetPresetModalProps> = ({
     <div
       key={id}
       onClick={onClick}
-      style={{
-        position: 'relative',
-        padding: 8,
-        borderRadius: 8,
-        border: `2px solid ${selected ? '#52c41a' : '#27272a'}`,
-        background: selected ? 'rgba(82, 196, 26, 0.1)' : '#18181b',
-        cursor: 'pointer',
-        transition: 'all 0.2s',
-      }}
+      className={`${styles.assetCard} ${selected ? styles.assetCardSelected : ''}`}
     >
       {/* 选中标记 */}
       {selected && (
-        <CheckCircleOutlined
-          style={{
-            position: 'absolute',
-            top: 4,
-            right: 4,
-            color: '#52c41a',
-            fontSize: 16,
-            zIndex: 1,
-          }}
-        />
+        <CheckCircleOutlined className={styles.checkIcon} />
       )}
       {/* 图片 */}
-      <div
-        style={{
-          aspectRatio: '1/1',
-          background: '#0a0a0a',
-          borderRadius: 4,
-          overflow: 'hidden',
-          marginBottom: 8,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
-      >
+      <div className={styles.imageFrame}>
         {imagePath ? (
           <Image
             src={toAssetUrl(imagePath)}
             alt={name}
             preview={false}
-            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+            className={styles.image}
           />
         ) : (
-          <Text type="secondary" style={{ fontSize: 12 }}>无图片</Text>
+          <Text type="secondary" className={styles.emptyText}>无图片</Text>
         )}
       </div>
       {/* 名称 */}
       <Text
-        style={{
-          display: 'block',
-          textAlign: 'center',
-          fontSize: 12,
-          color: selected ? '#52c41a' : '#a1a1aa',
-        }}
+        className={`${styles.assetName} ${selected ? styles.assetNameSelected : ''}`}
         ellipsis
       >
         {name}
@@ -194,8 +162,8 @@ export const ShotAssetPresetModal: React.FC<ShotAssetPresetModalProps> = ({
       }}
     >
       {/* 角色区域 */}
-      <div style={{ marginBottom: 16 }}>
-        <Space style={{ marginBottom: 12 }}>
+      <div className={styles.section}>
+        <Space className={styles.sectionHeader}>
           <UserOutlined />
           <Text strong>角色</Text>
           {boundCharacters.length > 0 && (
@@ -210,7 +178,7 @@ export const ShotAssetPresetModal: React.FC<ShotAssetPresetModalProps> = ({
               全选
             </Checkbox>
           )}
-          <Text type="secondary" style={{ fontSize: 12 }}>
+          <Text type="secondary" className={styles.countText}>
             已选 {selectedCharacterIds.length}/{boundCharacters.length}
           </Text>
         </Space>
@@ -233,16 +201,16 @@ export const ShotAssetPresetModal: React.FC<ShotAssetPresetModalProps> = ({
           <Empty
             image={Empty.PRESENTED_IMAGE_SIMPLE}
             description="暂无已绑定 Sora2 的角色"
-            style={{ padding: '16px 0' }}
+            className={styles.empty}
           />
         )}
       </div>
 
-      <Divider style={{ margin: '16px 0' }} />
+      <Divider className={styles.divider} />
 
       {/* 道具区域 */}
       <div>
-        <Space style={{ marginBottom: 12 }}>
+        <Space className={styles.sectionHeader}>
           <InboxOutlined />
           <Text strong>道具</Text>
           {boundProps.length > 0 && (
@@ -257,7 +225,7 @@ export const ShotAssetPresetModal: React.FC<ShotAssetPresetModalProps> = ({
               全选
             </Checkbox>
           )}
-          <Text type="secondary" style={{ fontSize: 12 }}>
+          <Text type="secondary" className={styles.countText}>
             已选 {selectedPropIds.length}/{boundProps.length}
           </Text>
         </Space>
@@ -280,7 +248,7 @@ export const ShotAssetPresetModal: React.FC<ShotAssetPresetModalProps> = ({
           <Empty
             image={Empty.PRESENTED_IMAGE_SIMPLE}
             description="暂无已绑定 Sora2 的道具"
-            style={{ padding: '16px 0' }}
+            className={styles.empty}
           />
         )}
       </div>
@@ -288,7 +256,7 @@ export const ShotAssetPresetModal: React.FC<ShotAssetPresetModalProps> = ({
       {/* 提示信息 */}
       <Text
         type="secondary"
-        style={{ display: 'block', marginTop: 16, fontSize: 12 }}
+        className={styles.note}
       >
         提示：选中的资产将优先出现在 AI 生成的分镜中。未绑定 Sora2 的资产不会显示在此列表。
       </Text>

@@ -1,4 +1,4 @@
-import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
+import React, { memo, useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { Handle, Position, type NodeProps } from '@xyflow/react';
 import { LoaderCircle, Pause, Play } from 'lucide-react';
 import type {
@@ -21,13 +21,14 @@ import { resolveMediaCardSize } from '../state/linghuiNodeCardSizing';
 import { getVideoCapabilityDescriptor } from '../../editors/state/videoCapabilityUtils';
 import { electronService } from '../../../../services/electronService';
 import { base64ToBytes } from '../../../../utils/encoding';
+import { cssVars } from '../../../../theme/runtime';
 
 const STATUS_COLORS: Record<LinghuiRunStatus, string> = {
-  idle: '#64748b',
-  running: '#3b82f6',
-  succeeded: '#22c55e',
-  failed: '#ef4444',
-  stale: '#f97316',
+  idle: 'var(--token-text-muted)',
+  running: 'var(--token-status-info)',
+  succeeded: 'var(--token-status-success)',
+  failed: 'var(--token-status-error)',
+  stale: 'var(--token-status-warning)',
 };
 
 function getPreviewSource(source?: string): string {
@@ -96,11 +97,11 @@ function resolveHandleTop(index: number, total: number): string {
 function getHandleColor(dataType: LinghuiNodeData['inputs'][number]['dataType'], accent: string): string {
   switch (dataType) {
     case 'text':
-      return '#f59e0b';
+      return 'var(--token-status-warning)';
     case 'audio':
-      return '#f97316';
+      return 'var(--token-status-warning)';
     case 'video':
-      return '#38bdf8';
+      return 'var(--token-status-info)';
     default:
       return accent;
   }
@@ -134,7 +135,7 @@ function drawVideoFrame(video: HTMLVideoElement, canvas: HTMLCanvasElement): boo
 
   context.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
   context.clearRect(0, 0, width, height);
-  context.fillStyle = '#020617';
+  context.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--token-bg-app').trim() || 'Canvas';
   context.fillRect(0, 0, width, height);
 
   const sourceRatio = video.videoWidth / video.videoHeight;
@@ -191,6 +192,16 @@ function VideoNodeInner({ id, data, selected }: NodeProps) {
       ? runState.result.metadata.aspectRatio
       : String(props.aspectRatio ?? '16:9'),
   }).style;
+  const nodeStyle = cssVars({
+    ...mediaCardStyle,
+    '--linghui-node-shadow': status !== 'idle'
+      ? `0 0 0 1px color-mix(in srgb, ${statusColor} 66%, transparent), 0 12px 28px color-mix(in srgb, var(--token-bg-app) 32%, transparent)`
+      : selected
+        ? '0 0 0 1px color-mix(in srgb, var(--token-text-primary) 8%, transparent), 0 12px 24px color-mix(in srgb, var(--token-bg-app) 26%, transparent)'
+        : 'none',
+    '--linghui-accent': nodeData.accent,
+    '--linghui-progress': `${runState?.progress ?? 0}%`,
+  });
   const isEditorVisible = useLinghuiNodeEditorVisibility(id, 'linghui/video');
   const normalizedRunProgress = typeof runState?.progress === 'number' && Number.isFinite(runState.progress)
     ? Math.max(0, Math.min(100, Math.round(runState.progress)))
@@ -344,14 +355,7 @@ function VideoNodeInner({ id, data, selected }: NodeProps) {
     <div
       className={`linghuiCompactNode nopan ${selected ? 'isSelected' : ''} ${viewMode === 'collapsed' ? 'isCollapsed' : ''} ${isEditorVisible ? 'hasInlineEditor' : ''}`}
       data-view-mode={viewMode}
-      style={{
-        ...mediaCardStyle,
-        boxShadow: status !== 'idle'
-          ? `0 0 0 1px ${statusColor}66, 0 12px 28px rgba(2, 6, 23, 0.32)`
-          : selected
-            ? '0 0 0 1px rgba(255, 255, 255, 0.08), 0 12px 24px rgba(2, 6, 23, 0.26)'
-            : undefined,
-      }}
+      style={nodeStyle}
       {...interactionHandlers}
     >
       {nodeData.inputs.map((slot, index) => (
@@ -361,7 +365,10 @@ function VideoNodeInner({ id, data, selected }: NodeProps) {
           position={Position.Left}
           id={`input-${index}`}
           className="linghuiCompactHandle"
-          style={{ background: getHandleColor(slot.dataType, nodeData.accent), top: resolveHandleTop(index, nodeData.inputs.length) }}
+          style={{
+            '--linghui-handle-bg': getHandleColor(slot.dataType, nodeData.accent),
+            '--linghui-handle-top': resolveHandleTop(index, nodeData.inputs.length),
+          } as CSSProperties}
           isConnectable
         />
       ))}
@@ -371,7 +378,7 @@ function VideoNodeInner({ id, data, selected }: NodeProps) {
         position={Position.Right}
         id="output-0"
         className="linghuiCompactHandle"
-        style={{ background: nodeData.accent }}
+        style={{ '--linghui-handle-bg': nodeData.accent } as CSSProperties}
       />
 
       <div className="linghuiCompactThumb">
@@ -411,7 +418,7 @@ function VideoNodeInner({ id, data, selected }: NodeProps) {
               />
             ) : null}
             {!isPlaying && !hasRenderableFrame && !posterSource ? (
-              <div className="linghuiCompactThumbEmpty" style={{ background: `${nodeData.accent}18` }}>
+              <div className="linghuiCompactThumbEmpty">
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
                   <rect x="3" y="3" width="18" height="18" rx="3" stroke={nodeData.accent} strokeWidth="1.5" strokeOpacity="0.6" />
                   <polygon points="10,8 16,12 10,16" fill={nodeData.accent} fillOpacity="0.5" />
@@ -435,7 +442,7 @@ function VideoNodeInner({ id, data, selected }: NodeProps) {
         ) : posterSource ? (
           <img src={posterSource} alt="preview" draggable={false} />
         ) : (
-          <div className="linghuiCompactThumbEmpty" style={{ background: `${nodeData.accent}18` }}>
+          <div className="linghuiCompactThumbEmpty">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
               <rect x="3" y="3" width="18" height="18" rx="3" stroke={nodeData.accent} strokeWidth="1.5" strokeOpacity="0.6" />
               <polygon points="10,8 16,12 10,16" fill={nodeData.accent} fillOpacity="0.5" />
@@ -462,7 +469,7 @@ function VideoNodeInner({ id, data, selected }: NodeProps) {
         </div>
         {status === 'running' && (
           <div className="linghuiCompactThumbProgress">
-            <div className="linghuiCompactProgressBar" style={{ width: `${runState?.progress ?? 0}%` }} />
+            <div className="linghuiCompactProgressBar" />
           </div>
         )}
       </div>

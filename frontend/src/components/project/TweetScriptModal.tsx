@@ -107,13 +107,21 @@ export const TweetScriptModal: React.FC<TweetScriptModalProps> = ({
     }
     setIsGenerating(true);
     setProgress({ percent: 0, step: '准备中...' });
+    // 流式开始前先清空 textarea，避免新内容追加在旧文案后面
+    setTweetScript('');
     try {
       const ctx = await createCreationContext(project.id, episode.id, {
         styleSnapshot: project.styleSnapshot,
       });
-      const result = await generateTweetScript(ctx, scriptText, (percent, step) => {
-        setProgress({ percent, step: step || '生成中...' });
-      });
+      // 流式：onStream 每次拿到 accumulated（LLM 已生成的全文累积）覆盖 textarea，
+      // 形成"打字机"实时效果；onProgress 仅推进度条。
+      const result = await generateTweetScript(
+        ctx,
+        scriptText,
+        (percent, step) => setProgress({ percent, step: step || '生成中...' }),
+        (_delta, accumulated) => setTweetScript(accumulated),
+      );
+      // 流式完成后再用 service 清洗过的最终版本覆盖一次（service 内已会发送一次空 delta + 清洗后的 accumulated）
       setTweetScript(result);
       const ok = await persist(result);
       if (ok) {
@@ -244,7 +252,7 @@ export const TweetScriptModal: React.FC<TweetScriptModalProps> = ({
           disabled={anyBusy}
         />
         {progress && (
-          <div className="text-xs text-zinc-500 flex items-center gap-2">
+          <div className="text-xs text-text-tertiary flex items-center gap-2">
             <Loader2 className="w-3 h-3 animate-spin" />
             <span>{progress.step}</span>
             <span>{Math.round(progress.percent)}%</span>

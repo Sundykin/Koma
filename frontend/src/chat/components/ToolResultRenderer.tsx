@@ -6,7 +6,8 @@ import React from 'react';
 import { Image, Typography, Table, Alert } from 'antd';
 
 
-import styles from './ToolResultRenderer.module.css';
+import styles from './ToolResultRenderer.module.scss';
+import { cssVars } from '../../theme/runtime';
 
 const { Text } = Typography;
 
@@ -63,6 +64,8 @@ export const ToolResultRenderer: React.FC<ToolResultRendererProps> = ({
   error,
   maxHeight = 300,
 }) => {
+  const maxHeightStyle = cssVars({ '--tool-result-max-height': `${maxHeight}px` });
+
   if (error) {
     return (
       <Alert
@@ -113,7 +116,7 @@ export const ToolResultRenderer: React.FC<ToolResultRendererProps> = ({
         ellipsis: true,
       }));
       return (
-        <div className={styles.tableContainer} style={{ maxHeight }}>
+        <div className={styles.tableContainer} style={maxHeightStyle}>
           <Table
             dataSource={data.map((item, i) => ({ ...item, key: i }))}
             columns={columns}
@@ -128,7 +131,7 @@ export const ToolResultRenderer: React.FC<ToolResultRendererProps> = ({
     case 'text': {
       const text = String(result);
       return (
-        <pre className={styles.text} style={{ maxHeight }}>
+        <pre className={styles.text} style={maxHeightStyle}>
           {text}
         </pre>
       );
@@ -138,7 +141,7 @@ export const ToolResultRenderer: React.FC<ToolResultRendererProps> = ({
     default: {
       const json = JSON.stringify(result, null, 2);
       return (
-        <pre className={styles.json} style={{ maxHeight }}>
+        <pre className={styles.json} style={maxHeightStyle}>
           {json}
         </pre>
       );

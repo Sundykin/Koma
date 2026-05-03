@@ -21,7 +21,10 @@ interface ShotListHeaderProps {
   selectedCount: number;
   isAllSelected: boolean;
   isIndeterminate: boolean;
-  generatingPrompts: boolean;
+  /** 图像设计：批量生成/优化 prompt 的运行态 */
+  generatingImagePrompts: boolean;
+  /** 视频设计：批量生成/优化 prompt 的运行态 */
+  generatingVideoPrompts: boolean;
   generatingImages: boolean;
   generatingVideos: boolean;
   onSelectAll: (checked: boolean) => void;
@@ -43,7 +46,8 @@ export const ShotListHeader: React.FC<ShotListHeaderProps> = ({
   selectedCount,
   isAllSelected,
   isIndeterminate,
-  generatingPrompts,
+  generatingImagePrompts,
+  generatingVideoPrompts,
   generatingImages,
   generatingVideos,
   onSelectAll,
@@ -60,7 +64,7 @@ export const ShotListHeader: React.FC<ShotListHeaderProps> = ({
   onBatchDelete,
 }) => {
   const { t } = useTranslation();
-  const cellClass = "px-2 py-1.5 text-xs font-medium text-zinc-400 border-r border-zinc-800 flex items-center";
+  const cellClass = "px-2 py-1.5 text-xs font-medium text-text-secondary border-r border-border-subtle flex items-center";
 
   const imagePromptMenuItems: MenuProps['items'] = [
     { key: 'gen', label: t('storyboard.generateEmpty'), onClick: onBatchPrompts },
@@ -99,9 +103,9 @@ export const ShotListHeader: React.FC<ShotListHeaderProps> = ({
   const targetLabel = hasSelected ? `(${selectedCount})` : '';
 
   return (
-    <div className="sticky top-0 z-20 flex items-stretch bg-zinc-900 border-b border-zinc-700 w-full">
+    <div className="sticky top-0 z-20 flex items-stretch bg-bg-surface border-b border-border w-full">
       {/* 操作列 - 全选 + 批量删除 */}
-      <div className={`${COL_ACTION_WIDTH} shrink-0 border-r border-zinc-800 flex flex-col items-center justify-center gap-0.5 py-1`}>
+      <div className={`${COL_ACTION_WIDTH} shrink-0 border-r border-border-subtle flex flex-col items-center justify-center gap-0.5 py-1`}>
         <Tooltip title={isAllSelected ? t('storyboard.deselectAll') : `${t('storyboard.selectAll')} (${totalCount})`}>
           <Checkbox
             checked={isAllSelected}
@@ -131,7 +135,7 @@ export const ShotListHeader: React.FC<ShotListHeaderProps> = ({
             size="small"
             className="h-5 px-1 text-[10px]"
             icon={<ThunderboltOutlined />}
-            loading={generatingPrompts}
+            loading={generatingImagePrompts}
           >
             AI{targetLabel} <DownOutlined className="text-[8px]" />
           </Button>
@@ -177,7 +181,7 @@ export const ShotListHeader: React.FC<ShotListHeaderProps> = ({
               size="small"
               className="h-5 px-1 text-[10px]"
               icon={<ThunderboltOutlined />}
-              loading={generatingPrompts}
+              loading={generatingVideoPrompts}
             >
               AI{targetLabel} <DownOutlined className="text-[8px]" />
             </Button>

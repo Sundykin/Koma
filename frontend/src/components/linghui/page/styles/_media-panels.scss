@@ -7,10 +7,10 @@
   .ant-modal-content {
     border-radius: 24px;
     background:
-      radial-gradient(circle at top left, rgba(16, 185, 129, 0.08), transparent 24%),
-      linear-gradient(180deg, rgba(15, 23, 42, 0.98), rgba(9, 13, 18, 0.98));
-    border: 1px solid rgba(71, 85, 105, 0.48);
-    box-shadow: 0 28px 64px rgba(2, 6, 23, 0.56);
+      radial-gradient(circle at top left, color-mix(in srgb, var(--token-accent-base) 8%, transparent), transparent 24%),
+      linear-gradient(180deg, color-mix(in srgb, var(--token-bg-card) 98%, transparent), color-mix(in srgb, var(--token-bg-app) 98%, transparent));
+    border: 1px solid color-mix(in srgb, var(--token-border-base) 48%, transparent);
+    box-shadow: 0 28px 64px color-mix(in srgb, var(--token-bg-app) 56%, transparent);
   }
 
   .ant-modal-header {
@@ -37,18 +37,18 @@
     min-height: 560px;
     border-radius: 22px;
     overflow: hidden;
-    border: 1px solid rgba(63, 63, 70, 0.62);
-    background: #0f172a;
+    border: 1px solid color-mix(in srgb, var(--token-border-base) 62%, transparent);
+    background: var(--token-bg-card);
   }
 
   &StageHint {
-    @include lh-chip(28px, 0 12px, rgba(15, 23, 42, 0.72), #cbd5e1, 12px, 500);
+    @include lh-chip(28px, 0 12px, color-mix(in srgb, var(--token-bg-card) 72%, transparent), $lh-text-secondary, 12px, 500);
 
     position: absolute;
     top: 16px;
     left: 16px;
     z-index: 3;
-    border: 1px solid rgba(71, 85, 105, 0.52);
+    border: 1px solid color-mix(in srgb, var(--token-border-base) 52%, transparent);
     backdrop-filter: blur(12px);
     pointer-events: none;
   }
@@ -61,7 +61,7 @@
 
   &InfoCard,
   &ControlBlock {
-    @include lh-soft-card(14px, rgba(9, 13, 18, 0.72), rgba(63, 63, 70, 0.58), 18px);
+    @include lh-soft-card(14px, color-mix(in srgb, var(--token-bg-app) 72%, transparent), color-mix(in srgb, var(--token-border-base) 58%, transparent), 18px);
   }
 
   &InfoTitle {
@@ -78,7 +78,7 @@
   &InfoMeta,
   &SidebarHint {
     margin-top: 6px;
-    color: #cbd5e1;
+    color: $lh-text-secondary;
     font-size: 12px;
     line-height: 1.6;
   }
@@ -91,9 +91,9 @@
   }
 
   &Chip {
-    @include lh-chip(30px, 0 12px, rgba(11, 15, 21, 0.9), $lh-text-soft, 12px, 700);
+    @include lh-chip(30px, 0 12px, color-mix(in srgb, var(--token-bg-surface) 90%, transparent), $lh-text-soft, 12px, 700);
 
-    border: 1px solid rgba(82, 82, 91, 0.74);
+    border: 1px solid color-mix(in srgb, var(--token-border-base) 74%, transparent);
     transition:
       transform $lh-transition-base,
       border-color $lh-transition-base,
@@ -102,7 +102,7 @@
 
     &:hover {
       transform: translateY(-1px);
-      border-color: rgba(16, 185, 129, 0.54);
+      border-color: color-mix(in srgb, var(--token-accent-base) 54%, transparent);
     }
   }
 }
@@ -115,6 +115,7 @@
   cursor: grab;
   touch-action: none;
   user-select: none;
+  background: var(--token-bg-elevated);
 
   &.isDragging {
     cursor: grabbing;
@@ -133,7 +134,7 @@
   min-height: 210px;
   border-radius: 16px;
   border: none;
-  background: rgba(255, 255, 255, 0.05);
+  background: color-mix(in srgb, var(--token-text-primary) 5%, transparent);
   overflow: hidden;
   display: flex;
   align-items: center;
@@ -143,7 +144,7 @@
     transform $lh-transition-base,
     box-shadow $lh-transition-base,
     background $lh-transition-base;
-  box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.12);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--token-text-tertiary) 12%, transparent);
 
   &.isCompact {
     min-height: 168px;
@@ -151,7 +152,7 @@
 
   &:hover {
     transform: translateY(-1px);
-    background: rgba(255, 255, 255, 0.07);
+    background: color-mix(in srgb, var(--token-text-primary) 7%, transparent);
   }
 }
 
@@ -170,7 +171,7 @@
     text-align: center;
 
     &Hint {
-      color: #93c5fd;
+      color: $lh-text-info;
       font-size: 12px;
     }
   }
@@ -195,15 +196,15 @@
     border: none;
     border-radius: 14px;
     overflow: hidden;
-    background: rgba(255, 255, 255, 0.05);
+    background: color-mix(in srgb, var(--token-text-primary) 5%, transparent);
     transition:
       transform $lh-transition-base,
       box-shadow $lh-transition-base;
-    box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.12);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--token-text-tertiary) 12%, transparent);
 
     &:hover {
       transform: translateY(-1px);
-      box-shadow: inset 0 0 0 1px rgba(74, 222, 128, 0.22);
+      box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--token-status-success) 22%, transparent);
     }
 
     img {
@@ -231,18 +232,18 @@
   &Index {
     top: 8px;
     left: 8px;
-    background: rgba(15, 23, 42, 0.74);
+    background: color-mix(in srgb, var(--token-bg-card) 74%, transparent);
   }
 
   &Primary {
     right: 8px;
     bottom: 8px;
-    background: rgba(22, 163, 74, 0.82);
+    background: color-mix(in srgb, var(--token-status-success) 82%, transparent);
   }
 
   &Meta {
     @include lh-inline(8px, nowrap);
-    @include lh-text(#cbd5e1, 11px, 1.4);
+    @include lh-text($lh-text-secondary, 11px, 1.4);
 
     min-width: 0;
 
@@ -259,8 +260,8 @@
     height: 20px;
     border: none;
     border-radius: $lh-radius-pill;
-    background: rgba(15, 23, 42, 0.78);
-    color: #cbd5e1;
+    background: color-mix(in srgb, var(--token-bg-card) 78%, transparent);
+    color: $lh-text-secondary;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -270,14 +271,14 @@
       background $lh-transition-base;
 
     &:hover {
-      background: rgba(127, 29, 29, 0.54);
+      background: color-mix(in srgb, var(--token-status-error) 54%, transparent);
       color: $lh-text-danger;
     }
   }
 
   &.isPrimary {
     .linghuiEditorImageTileButton {
-      box-shadow: inset 0 0 0 1px rgba(74, 222, 128, 0.32);
+      box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--token-status-success) 32%, transparent);
     }
   }
 }
@@ -298,8 +299,8 @@
     width: 44px;
     height: 44px;
     border-radius: 14px;
-    background: rgba(249, 115, 22, 0.14);
-    color: #fdba74;
+    background: color-mix(in srgb, var(--token-status-warning) 14%, transparent);
+    color: $lh-text-warning;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -310,11 +311,11 @@
   }
 
   &UploadTitle {
-    @include lh-text(#fff7ed, 13px, 1.4, 700);
+    @include lh-text($lh-text-warning, 13px, 1.4, 700);
   }
 
   &UploadHint {
-    @include lh-text(#fdba74, 12px, 1.5);
+    @include lh-text($lh-text-warning, 12px, 1.5);
   }
 }
 
@@ -331,7 +332,7 @@
     gap: 8px;
     padding: 8px 0;
     font-size: 12px;
-    border-bottom: 1px dashed rgba(63, 63, 70, 0.4);
+    border-bottom: 1px dashed color-mix(in srgb, var(--token-border-base) 40%, transparent);
 
     &:last-child {
       border-bottom: none;
@@ -342,7 +343,7 @@
 .linghuiScriptImmersiveModal {
   .ant-modal-content,
   .ant-modal-header {
-    background: rgba(9, 13, 18, 0.98);
+    background: color-mix(in srgb, var(--token-bg-app) 98%, transparent);
     color: $lh-text-primary;
   }
 

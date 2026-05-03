@@ -1,0 +1,123 @@
+/* VideoCardGrid 多视频卡片网格样式 */
+
+.videoCardGrid {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  height: 100%;
+  overflow: hidden;
+}
+
+.videoCards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  flex: 1;
+  overflow-y: auto;
+  align-content: flex-start;
+}
+
+.videoCard {
+  width: 80px;
+  height: 56px;
+  border-radius: 4px;
+  overflow: hidden;
+  cursor: pointer;
+  position: relative;
+  border: 2px solid transparent;
+  background: var(--token-bg-card);
+  transition: border-color 0.2s;
+}
+
+.videoCard:hover {
+  border-color: var(--token-border-base);
+}
+
+.videoCard.selected {
+  border-color: var(--token-accent-base);
+}
+
+.videoCard img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.videoCard .videoPlaceholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--token-text-muted);
+  font-size: 18px;
+}
+
+.videoCard .versionLabel {
+  position: absolute;
+  bottom: 2px;
+  left: 2px;
+  font-size: 9px;
+  color: var(--token-text-primary);
+  background: color-mix(in srgb, var(--token-bg-app) 60%, transparent);
+  padding: 0 4px;
+  border-radius: 2px;
+}
+
+.videoCard .selectedIcon {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  color: var(--token-accent-base);
+  font-size: 12px;
+  background: color-mix(in srgb, var(--token-bg-app) 60%, transparent);
+  border-radius: 50%;
+}
+
+.videoCard .cardOverlay {
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, var(--token-bg-app) 50%, transparent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.videoCard:hover .cardOverlay {
+  opacity: 1;
+}
+
+.videoCard .overlayBtn {
+  color: var(--token-text-primary);
+  padding: 2px;
+}
+
+.videoCard.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed var(--token-border-base);
+  color: var(--token-text-muted);
+  gap: 2px;
+  cursor: default;
+}
+
+.emptyVideoText {
+  font-size: 10px;
+}
+
+.videoCardGrid .generateBtn {
+  align-self: flex-start;
+  font-size: 11px;
+  padding: 0 6px;
+  height: 22px;
+}
+
+.videoPreviewPlayer {
+  width: 100%;
+  max-height: 60vh;
+}

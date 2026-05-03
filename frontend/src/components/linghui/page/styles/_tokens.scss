@@ -1,35 +1,43 @@
-$lh-bg-page: #090d12;
+$lh-bg-page: var(--token-bg-app);
 
-$lh-bg-surface-deep: rgba(9, 13, 18, 0.88);
-$lh-bg-surface-panel: rgba(11, 15, 21, 0.92);
-$lh-bg-surface-panel-strong: rgba(11, 15, 21, 0.96);
-$lh-bg-surface-card: rgba(15, 23, 42, 0.72);
-$lh-bg-surface-soft: rgba(255, 255, 255, 0.04);
-$lh-bg-surface-soft-strong: rgba(255, 255, 255, 0.05);
-$lh-bg-surface-chip: rgba(255, 255, 255, 0.06);
-$lh-bg-surface-chip-hover: rgba(255, 255, 255, 0.09);
+$lh-bg-surface-deep: color-mix(in srgb, var(--token-bg-app) 88%, transparent);
+$lh-bg-surface-panel: color-mix(in srgb, var(--token-bg-surface) 92%, transparent);
+$lh-bg-surface-panel-strong: color-mix(in srgb, var(--token-bg-surface) 96%, transparent);
+$lh-bg-surface-card: color-mix(in srgb, var(--token-bg-card) 72%, transparent);
+$lh-bg-surface-card-strong: color-mix(in srgb, var(--token-bg-card) 90%, transparent);
+$lh-bg-surface-soft: color-mix(in srgb, var(--token-overlay-on-bg) 50%, transparent);
+$lh-bg-surface-soft-strong: color-mix(in srgb, var(--token-overlay-on-bg) 62%, transparent);
+$lh-bg-surface-chip: color-mix(in srgb, var(--token-overlay-on-bg) 75%, transparent);
+$lh-bg-surface-chip-hover: color-mix(in srgb, var(--token-overlay-on-bg) 100%, transparent);
+$lh-bg-surface-hover: color-mix(in srgb, var(--token-bg-hover) 72%, transparent);
 
-$lh-text-primary: #f8fafc;
-$lh-text-strong: #f4f4f5;
-$lh-text-secondary: #e2e8f0;
-$lh-text-soft: #d4d4d8;
-$lh-text-muted: #94a3b8;
-$lh-text-subtle: #a1a1aa;
-$lh-text-success: #ecfdf5;
-$lh-text-info: #dbeafe;
-$lh-text-warning: #fde68a;
-$lh-text-danger: #fecaca;
+$lh-text-primary: var(--token-text-primary);
+$lh-text-strong: var(--token-text-primary);
+$lh-text-secondary: var(--token-text-secondary);
+$lh-text-soft: color-mix(in srgb, var(--token-text-secondary) 86%, var(--token-text-primary));
+$lh-text-muted: var(--token-text-tertiary);
+$lh-text-subtle: var(--token-text-muted);
+$lh-text-success: color-mix(in srgb, var(--token-status-success) 24%, var(--token-text-primary));
+$lh-text-info: color-mix(in srgb, var(--token-status-info) 24%, var(--token-text-primary));
+$lh-text-warning: color-mix(in srgb, var(--token-status-warning) 36%, var(--token-text-primary));
+$lh-text-danger: color-mix(in srgb, var(--token-status-error) 28%, var(--token-text-primary));
 
-$lh-accent-primary: #10b981;
-$lh-accent-blue: #3b82f6;
+$lh-accent-primary: var(--token-accent-base);
+$lh-accent-primary-hover: var(--token-accent-hover);
+$lh-accent-blue: var(--token-status-info);
+$lh-accent-success: var(--token-status-success);
+$lh-accent-warning: var(--token-status-warning);
+$lh-accent-danger: var(--token-status-error);
 
-$lh-border-strong: rgba(63, 63, 70, 0.82);
-$lh-border-medium: rgba(63, 63, 70, 0.72);
-$lh-border-soft: rgba(148, 163, 184, 0.08);
+$lh-border-strong: color-mix(in srgb, var(--token-border-base) 82%, transparent);
+$lh-border-medium: color-mix(in srgb, var(--token-border-base) 72%, transparent);
+$lh-border-soft: color-mix(in srgb, var(--token-border-base) 18%, transparent);
+$lh-border-focus-soft: color-mix(in srgb, var(--token-border-focus) 42%, transparent);
 
-$lh-shadow-panel: 0 24px 48px rgba(0, 0, 0, 0.32);
-$lh-shadow-panel-soft: 0 16px 34px rgba(0, 0, 0, 0.24);
-$lh-shadow-panel-large: 0 28px 56px rgba(0, 0, 0, 0.28);
+$lh-shadow-panel: var(--token-shadow-lg);
+$lh-shadow-panel-soft: var(--token-shadow-md);
+$lh-shadow-panel-large: var(--token-shadow-lg);
+$lh-shadow-glow: var(--token-shadow-glow);
 
 $lh-radius-pill: 999px;
 $lh-radius-card: 16px;

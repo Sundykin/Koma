@@ -428,7 +428,7 @@ export const TTIConfigManager: React.FC<TTIConfigManagerProps> = ({ onConfigChan
       </div>
 
       {loading ? (
-        <div style={{ textAlign: 'center', padding: 40 }}>
+        <div className="settings-loading-state">
           <Spin />
         </div>
       ) : configs.length === 0 && pluginChannels.length === 0 ? (
@@ -455,11 +455,11 @@ export const TTIConfigManager: React.FC<TTIConfigManagerProps> = ({ onConfigChan
                   title={(
                     <Space>
                       {config.isDefault ? (
-                        <StarFilled style={{ color: '#faad14' }} />
+                        <StarFilled className="settings-default-star" />
                       ) : (
                         <Tooltip title={t('settings.setAsDefault')}>
                           <StarOutlined
-                            style={{ cursor: 'pointer', color: '#d9d9d9' }}
+                            className="settings-default-star-button"
                             onClick={() => handleSetDefault(config.channel, preferredModelId)}
                           />
                         </Tooltip>
@@ -551,11 +551,11 @@ export const TTIConfigManager: React.FC<TTIConfigManagerProps> = ({ onConfigChan
                 title={(
                   <Space>
                     {settings?.mediaDefaults?.tti?.channelId === channel.id ? (
-                      <StarFilled style={{ color: '#faad14' }} />
+                      <StarFilled className="settings-default-star" />
                     ) : (
                       <Tooltip title={t('settings.setAsDefault')}>
                         <StarOutlined
-                          style={{ cursor: 'pointer', color: '#d9d9d9' }}
+                          className="settings-default-star-button"
                           onClick={() => handleSetPluginDefault(channel)}
                         />
                       </Tooltip>
@@ -649,7 +649,7 @@ export const TTIConfigManager: React.FC<TTIConfigManagerProps> = ({ onConfigChan
             <Form.Item
               label="模型列表"
               required
-              style={{ marginBottom: 0 }}
+              className="settings-form-item-flush"
             >
               <ChannelModelsEditor
                 capabilityOptions={[
@@ -724,7 +724,7 @@ export const TTIConfigManager: React.FC<TTIConfigManagerProps> = ({ onConfigChan
                 </Select>
               </Form.Item>
 
-              <Form.Item name="defaultSteps" label={t('settings.defaultSteps')} style={{ marginBottom: 0 }}>
+              <Form.Item name="defaultSteps" label={t('settings.defaultSteps')} className="settings-form-item-flush">
                 <InputNumber min={1} max={150} placeholder="20" />
               </Form.Item>
             </div>

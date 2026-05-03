@@ -684,7 +684,7 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
         <div className="creatorSidebarHeader">
           <Space>
             <InboxOutlined />
-            <Text strong style={{ fontSize: 16 }}>{editedProp.name}</Text>
+            <Text strong className="creatorSidebarTitle">{editedProp.name}</Text>
           </Space>
           <Space>
             <Tooltip title={t('common.save')}>
@@ -724,11 +724,11 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
                 <div className="creatorProgressHeader">
                   <Space>
                     <LoadingOutlined />
-                    <Text style={{ fontSize: 12 }}>{progressStep}</Text>
+                    <Text className="creatorProgressText">{progressStep}</Text>
                   </Space>
-                  <Text type="secondary" style={{ fontSize: 12 }}>{Math.round(progress)}%</Text>
+                  <Text type="secondary" className="creatorProgressText">{Math.round(progress)}%</Text>
                 </div>
-                <Progress percent={Math.round(progress)} strokeColor="#52c41a" size="small" showInfo={false} />
+                <Progress percent={Math.round(progress)} strokeColor="var(--token-status-success)" size="small" showInfo={false} />
               </div>
             )}
 
@@ -853,7 +853,7 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
                 <img
                   src={toLocalUrl(getPropPreviewImageSource(editedProp))}
                   alt={t('asset.propImage')}
-                  style={{ cursor: 'pointer' }}
+                  className="creatorMediaPreview"
                   onDoubleClick={() => setPreviewImage(toLocalUrl(getPropPreviewImageSource(editedProp)))}
                 />
               ) : (
@@ -897,7 +897,6 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
         footer={null}
         centered
         width="auto"
-        styles={{ body: { padding: 0, background: 'transparent' } }}
         className="transparent-modal"
         closeIcon={null}
       >
@@ -905,7 +904,7 @@ export const PropDetailPanel: React.FC<PropDetailPanelProps> = ({
           <img
             src={previewImage}
             alt="Preview"
-            style={{ maxWidth: '95vw', maxHeight: '95vh', cursor: 'pointer' }}
+            className="transparentPreviewImage"
             onClick={() => setPreviewImage(null)}
           />
         )}

@@ -45,6 +45,7 @@ import {
   getPropPreviewImageSource,
   getPropPreviewVideoSource,
 } from '../../utils/mediaSelectors';
+import styles from './DetailModal.module.scss';
 
 const { TextArea } = Input;
 const { Text } = Typography;
@@ -386,7 +387,7 @@ export const PropDetailModal: React.FC<PropDetailModalProps> = ({
         onCancel={onClose}
         width={900}
         footer={
-          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+          <div className={styles.footerActions}>
             <Popconfirm
               title="确定删除此道具？"
               description="删除后无法恢复"
@@ -410,31 +411,24 @@ export const PropDetailModal: React.FC<PropDetailModalProps> = ({
       >
         {/* 生成进度 */}
         {generating && (
-          <div style={{ marginBottom: 16 }}>
-            <Space style={{ marginBottom: 8 }}>
+          <div className={styles.progressBlock}>
+            <Space className={styles.progressLabel}>
               <Spin indicator={<LoadingOutlined spin />} size="small" />
               <Text>{progressStep}</Text>
             </Space>
-            <Progress percent={Math.round(progress)} strokeColor="#52c41a" />
+            <Progress percent={Math.round(progress)} strokeColor="var(--token-status-success)" />
           </div>
         )}
 
         <Row gutter={24}>
           {/* 左侧：道具图片 */}
           <Col span={10}>
-            <div style={{ marginBottom: 16 }}>
-              <Text strong style={{ display: 'block', marginBottom: 8 }}>道具图片</Text>
+            <div className={styles.assetBlock}>
+              <Text strong className={styles.sectionTitle}>道具图片</Text>
               <div
-                style={{
-                  aspectRatio: '1/1',
-                  background: '#1a1a1a',
-                  borderRadius: 8,
-                  overflow: 'hidden',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  cursor: getPropPreviewImageSource(editedProp) ? 'pointer' : 'default',
-                }}
+                className={`${styles.mediaFrame} ${styles.squareFrame} ${
+                  getPropPreviewImageSource(editedProp) ? styles.clickable : ''
+                }`}
                 onClick={() => {
                   const previewImageSource = getPropPreviewImageSource(editedProp);
                   if (previewImageSource) setPreviewImage(toLocalUrl(previewImageSource));
@@ -444,13 +438,13 @@ export const PropDetailModal: React.FC<PropDetailModalProps> = ({
                   <img
                     src={toLocalUrl(getPropPreviewImageSource(editedProp))}
                     alt="道具图"
-                    style={{ width: '100%', height: '100%', objectFit: 'contain', padding: 8 }}
+                    className={`${styles.media} ${styles.paddedMedia}`}
                   />
                 ) : (
                   <Text type="secondary">未生成</Text>
                 )}
               </div>
-              <Space style={{ marginTop: 8, width: '100%' }} wrap>
+              <Space className={styles.mediaActions} wrap>
                 <Button
                   icon={generating === 'image' ? <LoadingOutlined /> : <ThunderboltOutlined />}
                   onClick={handleGenerateImage}
@@ -492,30 +486,21 @@ export const PropDetailModal: React.FC<PropDetailModalProps> = ({
         {/* 预览视频 & 道具提取 */}
         <Row gutter={24}>
           <Col span={12}>
-            <Text strong style={{ display: 'block', marginBottom: 8 }}>预览视频</Text>
+            <Text strong className={styles.sectionTitle}>预览视频</Text>
             <div
-              style={{
-                aspectRatio: '1/1',
-                maxHeight: 200,
-                background: '#1a1a1a',
-                borderRadius: 8,
-                overflow: 'hidden',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
+              className={`${styles.mediaFrame} ${styles.videoFrame} ${styles.squareFrame}`}
             >
               {getPropPreviewVideoSource(editedProp) ? (
                 <video
                   src={toLocalUrl(getPropPreviewVideoSource(editedProp))}
                   controls
-                  style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                  className={styles.media}
                 />
               ) : (
                 <Text type="secondary">未生成</Text>
               )}
             </div>
-            <Space style={{ marginTop: 8 }}>
+            <Space className={styles.mediaActions}>
               <Button
                 icon={generating === 'video' ? <LoadingOutlined /> : <PlayCircleOutlined />}
                 onClick={handleGenerateVideo}
@@ -530,44 +515,33 @@ export const PropDetailModal: React.FC<PropDetailModalProps> = ({
           </Col>
 
           <Col span={12}>
-            <Text strong style={{ display: 'block', marginBottom: 8 }}>Sora2 道具绑定</Text>
-            <div
-              style={{
-                padding: 16,
-                background: '#1a1a1a',
-                borderRadius: 8,
-                minHeight: 120,
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
+            <Text strong className={styles.sectionTitle}>Sora2 道具绑定</Text>
+            <div className={`${styles.bindingCard} ${styles.bindingCardCentered}`}>
               {editedProp.sora2PropId ? (
                 <>
-                  <CheckCircleOutlined style={{ fontSize: 24, color: '#52c41a', marginBottom: 8 }} />
+                  <CheckCircleOutlined className={styles.successIcon} />
                   <Text type="success">已绑定</Text>
-                  <Text type="secondary" style={{ fontSize: 10, wordBreak: 'break-all', marginTop: 4 }}>
+                  <Text type="secondary" className={styles.smallCode}>
                     {editedProp.sora2PropId}
                   </Text>
                 </>
               ) : (
                 <>
-                  <LinkOutlined style={{ fontSize: 24, color: '#52525b', marginBottom: 8 }} />
+                  <LinkOutlined className={styles.mutedIcon} />
                   <Text type="secondary">未绑定</Text>
                 </>
               )}
             </div>
             <Button
               block
-              style={{ marginTop: 8 }}
+              className={styles.extractButton}
               icon={generating === 'extract' ? <LoadingOutlined /> : <LinkOutlined />}
               onClick={handleExtractProp}
               disabled={generating !== null || !getPropPreviewVideoSource(editedProp)}
             >
               {editedProp.sora2PropId ? '重新提取' : '提取道具'}
             </Button>
-            <Text type="secondary" style={{ fontSize: 11, display: 'block', marginTop: 4 }}>
+            <Text type="secondary" className={styles.smallHint}>
               需要先生成预览视频才能提取
             </Text>
           </Col>
@@ -581,10 +555,10 @@ export const PropDetailModal: React.FC<PropDetailModalProps> = ({
         footer={null}
         centered
         width="auto"
-        styles={{ body: { padding: 0 } }}
+        className={styles.previewModal}
       >
         {previewImage && (
-          <img src={previewImage} alt="Preview" style={{ maxWidth: '90vw', maxHeight: '85vh' }} />
+          <img src={previewImage} alt="Preview" className={styles.previewImage} />
         )}
       </Modal>
     </>

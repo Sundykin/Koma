@@ -8,7 +8,7 @@ import type { ChatMessage, ToolCall, ImageContentPart, FileContentPart, VideoCon
 import { normalizeMessage } from '../utils/messageUtils';
 import { MediaResultBlock } from '../../components/chat/MediaResultBlock';
 import type { MediaResultMeta } from '../../components/chat/chatMediaGeneration';
-import styles from './ChatRenderer.module.css';
+import styles from './ChatRenderer.module.scss';
 
 const { Text } = Typography;
 
@@ -240,7 +240,9 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
           ))}
         </div>
 
-        {isAssistant && (
+        {/* 操作区：assistant 与 user 都给"复制"，仅 assistant 给"重新生成"。
+            之前 isAssistant 包了整个块导致用户消息无法复制——回归到"复制对所有消息可用"。*/}
+        {(isAssistant || isUser) && displayContent && (
           <div className={styles.messageActions}>
             <Tooltip title="复制">
               <Button
@@ -250,7 +252,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                 onClick={handleCopy}
               />
             </Tooltip>
-            {onRetry && (
+            {isAssistant && onRetry && (
               <Tooltip title="重新生成">
                 <Button
                   type="text"

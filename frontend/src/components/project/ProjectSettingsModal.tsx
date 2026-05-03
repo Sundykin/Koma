@@ -26,6 +26,7 @@ import {
 } from '../../providers/itv/durationSpec';
 import { ipc, ipcApiRoute } from '../../utils/ipcRenderer';
 import { toKomaLocalUrl } from '../../utils/urlUtils';
+import styles from './ProjectSettingsModal.module.scss';
 
 // 项目级风格参考图上传：与全局栅格图同列表（svg 不能图生图）
 const SUPPORTED_PROJECT_STYLE_EXTS = new Set(['png', 'jpg', 'jpeg', 'webp']);
@@ -81,22 +82,11 @@ const ProjectStyleReferenceSlot: React.FC<ProjectStyleReferenceSlotProps> = ({
   const hasOverride = Boolean(overrideUrl);
 
   return (
-    <div style={{ marginTop: 4 }}>
+    <div className={styles.styleReferenceRoot}>
       <div
-        style={{
-          width: '100%',
-          aspectRatio: '16 / 9',
-          background: 'rgba(255,255,255,0.04)',
-          border: hasOverride
-            ? '1px solid rgba(24,144,255,0.4)'
-            : '1px dashed rgba(255,255,255,0.18)',
-          borderRadius: 6,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          overflow: 'hidden',
-          position: 'relative',
-        }}
+        className={`${styles.styleReferenceFrame} ${
+          hasOverride ? styles.styleReferenceFrameOverride : styles.styleReferenceFrameFallback
+        }`}
       >
         {busy ? (
           <Spin size="small" />
@@ -104,16 +94,16 @@ const ProjectStyleReferenceSlot: React.FC<ProjectStyleReferenceSlotProps> = ({
           <img
             src={displayUrl}
             alt="项目风格参考图"
-            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+            className={styles.styleReferenceImage}
             draggable={false}
           />
         ) : (
-          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+          <Typography.Text type="secondary" className={styles.styleReferenceEmpty}>
             未设置项目风格图（将沿用所选风格预设的默认图）
           </Typography.Text>
         )}
 
-        <Space size={6} style={{ position: 'absolute', right: 8, bottom: 8, zIndex: 2 }}>
+        <Space size={6} className={styles.styleReferenceActions}>
           <Tooltip title={hasOverride ? '替换项目风格参考图' : '上传项目风格参考图'}>
             <Upload
               beforeUpload={beforeUpload}
@@ -124,11 +114,7 @@ const ProjectStyleReferenceSlot: React.FC<ProjectStyleReferenceSlotProps> = ({
                 size="small"
                 shape="circle"
                 icon={<UploadOutlined />}
-                style={{
-                  background: 'rgba(0,0,0,0.55)',
-                  borderColor: 'rgba(255,255,255,0.25)',
-                  color: '#fff',
-                }}
+                className={styles.overlayButton}
               />
             </Upload>
           </Tooltip>
@@ -142,11 +128,7 @@ const ProjectStyleReferenceSlot: React.FC<ProjectStyleReferenceSlotProps> = ({
                 e.stopPropagation();
                 if (displayUrl) setPreviewVisible(true);
               }}
-              style={{
-                background: 'rgba(0,0,0,0.55)',
-                borderColor: 'rgba(255,255,255,0.25)',
-                color: displayUrl ? '#fff' : 'rgba(255,255,255,0.35)',
-              }}
+              className={`${styles.overlayButton} ${!displayUrl ? styles.overlayButtonDisabled : ''}`}
             />
           </Tooltip>
         </Space>
@@ -164,15 +146,7 @@ const ProjectStyleReferenceSlot: React.FC<ProjectStyleReferenceSlotProps> = ({
                 size="small"
                 shape="circle"
                 icon={<ReloadOutlined />}
-                style={{
-                  position: 'absolute',
-                  left: 8,
-                  top: 8,
-                  zIndex: 2,
-                  background: 'rgba(0,0,0,0.55)',
-                  borderColor: 'rgba(255,255,255,0.25)',
-                  color: '#fff',
-                }}
+                className={`${styles.overlayButton} ${styles.styleReferenceRestore}`}
               />
             </Popconfirm>
           </Tooltip>
@@ -183,7 +157,7 @@ const ProjectStyleReferenceSlot: React.FC<ProjectStyleReferenceSlotProps> = ({
         <AntImage
           src={displayUrl}
           alt="项目风格参考图预览"
-          style={{ display: 'none' }}
+          className={styles.hiddenImage}
           preview={{
             visible: previewVisible,
             src: displayUrl,
@@ -192,7 +166,7 @@ const ProjectStyleReferenceSlot: React.FC<ProjectStyleReferenceSlotProps> = ({
         />
       )}
 
-      <Typography.Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 6 }}>
+      <Typography.Text type="secondary" className={styles.styleReferenceHint}>
         项目级风格图优先级最高，仅本项目生效；未上传时使用所选风格预设的默认图。
       </Typography.Text>
     </div>
@@ -414,7 +388,7 @@ export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({
             <Input
               value={project?.aspectRatio === '9:16' ? '9:16 竖屏' : '16:9 横屏'}
               disabled
-              style={{ color: '#999' }}
+              className={styles.disabledInput}
             />
           </Form.Item>
 
@@ -451,7 +425,7 @@ export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({
       label: '媒体配置',
       children: (
         <>
-          <div style={{ marginBottom: 16, color: '#888', fontSize: 13 }}>
+          <div className={styles.tabIntro}>
             选择此项目使用的媒体生成服务，留空则使用全局默认配置。
           </div>
           <ProjectMediaSelector
@@ -488,7 +462,7 @@ export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({
       placement="right"
       maskClosable={false}
       footer={
-        <div style={{ textAlign: 'right' }}>
+        <div className={styles.drawerFooter}>
           <Space>
             <Button onClick={onClose}>取消</Button>
             <Button type="primary" onClick={handleSave}>保存</Button>
@@ -540,9 +514,9 @@ const VideoPromptSelectionTab: React.FC<VideoPromptSelectionTabProps> = ({
       onChange(next.length > 0 ? next : bucket.map((b) => b.duration));
     };
     return (
-      <div style={{ marginBottom: 24 }}>
-        <div style={{ fontWeight: 600, marginBottom: 4 }}>{label}</div>
-        <div style={{ color: '#888', fontSize: 12, marginBottom: 12 }}>{description}</div>
+      <div className={styles.modeBlock}>
+        <div className={styles.modeTitle}>{label}</div>
+        <div className={styles.modeDescription}>{description}</div>
         <Space wrap>
           {bucket.map(({ duration }) => {
             const isSelected = selected.includes(duration);
@@ -551,7 +525,7 @@ const VideoPromptSelectionTab: React.FC<VideoPromptSelectionTabProps> = ({
               <Checkbox
                 checked={isSelected}
                 onChange={(e) => toggle(duration, e.target.checked)}
-                style={inSpec ? undefined : { opacity: 0.5 }}
+                className={inSpec ? undefined : styles.disabledDuration}
               >
                 {duration}s
               </Checkbox>
@@ -575,7 +549,7 @@ const VideoPromptSelectionTab: React.FC<VideoPromptSelectionTabProps> = ({
 
   return (
     <>
-      <div style={{ color: '#888', fontSize: 13, marginBottom: 16 }}>
+      <div className={styles.tabIntro}>
         勾选每种模式启用的时长档位（默认全选）。运行时按分镜时长在勾选档位中找<strong>最近</strong>的档位匹配模板，
         不要求严格相等。<strong>清空所有勾选会自动回退到全选</strong>避免落空。
       </div>

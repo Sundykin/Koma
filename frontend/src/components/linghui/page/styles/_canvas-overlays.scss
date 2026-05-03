@@ -22,26 +22,26 @@
     top: 14px;
     left: 14px;
     z-index: 36;
-    border: 1px solid rgba(82, 82, 91, 0.85);
+    border: 1px solid color-mix(in srgb, var(--token-border-base) 85%, transparent);
     border-radius: $lh-radius-pill;
-    background: rgba(11, 15, 21, 0.92);
+    background: color-mix(in srgb, var(--token-bg-surface) 92%, transparent);
     color: $lh-text-strong;
     font-size: 12px;
     line-height: 1;
     padding: 10px 14px;
-    box-shadow: 0 14px 30px rgba(0, 0, 0, 0.24);
+    box-shadow: 0 14px 30px color-mix(in srgb, var(--token-bg-app) 24%, transparent);
     transition:
       border-color $lh-transition-base,
       transform $lh-transition-base,
       background $lh-transition-base;
 
     &:hover {
-      border-color: rgba(16, 185, 129, 0.65);
+      border-color: color-mix(in srgb, var(--token-accent-base) 65%, transparent);
       transform: translateY(-1px);
     }
 
     &.isCollapsed {
-      background: rgba(14, 18, 25, 0.98);
+      background: color-mix(in srgb, var(--token-bg-surface) 98%, transparent);
     }
   }
 }
@@ -55,8 +55,8 @@
     border: 0;
     border-radius: 0;
     background:
-      radial-gradient(circle at top, rgba(16, 185, 129, 0.05), transparent 32%),
-      linear-gradient(180deg, rgba(10, 14, 19, 0.96), rgba(6, 10, 14, 0.98));
+      radial-gradient(circle at top, color-mix(in srgb, var(--token-accent-base) 5%, transparent), transparent 32%),
+      linear-gradient(180deg, color-mix(in srgb, var(--token-bg-app) 96%, transparent), color-mix(in srgb, var(--token-bg-app) 98%, transparent));
     box-shadow: none;
 
     .react-flow {
@@ -71,7 +71,7 @@
 
       &__background-pattern {
         circle {
-          filter: drop-shadow(0 0 4px rgba(148, 163, 184, 0.24));
+          filter: drop-shadow(0 0 4px color-mix(in srgb, var(--token-text-tertiary) 24%, transparent));
         }
       }
     }
@@ -111,9 +111,9 @@
     &.isProjectPanelOpen {
       .linghuiCanvasRailGroup {
         width: 136px;
-        border-color: rgba(96, 165, 250, 0.26);
-        background: rgba(9, 13, 18, 0.82);
-        box-shadow: 0 24px 44px rgba(0, 0, 0, 0.28);
+        border-color: color-mix(in srgb, var(--token-status-info) 26%, transparent);
+        background: color-mix(in srgb, var(--token-bg-app) 82%, transparent);
+        box-shadow: 0 24px 44px color-mix(in srgb, var(--token-bg-app) 28%, transparent);
       }
 
       .linghuiCanvasRailLabel {
@@ -131,11 +131,11 @@
     display: inline-flex;
     padding: 8px;
     overflow: hidden;
-    border: 1px solid rgba(63, 63, 70, 0.56);
+    border: 1px solid color-mix(in srgb, var(--token-border-base) 56%, transparent);
     border-radius: 20px;
-    background: rgba(9, 13, 18, 0.42);
+    background: color-mix(in srgb, var(--token-bg-app) 42%, transparent);
     backdrop-filter: blur(18px);
-    box-shadow: 0 18px 36px rgba(0, 0, 0, 0.22);
+    box-shadow: 0 18px 36px color-mix(in srgb, var(--token-bg-app) 22%, transparent);
     transition:
       width 180ms ease,
       background 180ms ease,
@@ -149,9 +149,9 @@
     width: 100%;
     min-height: 40px;
     padding: 0 11px;
-    border: 1px solid rgba(82, 82, 91, 0.52);
+    border: 1px solid color-mix(in srgb, var(--token-border-base) 52%, transparent);
     border-radius: 12px;
-    background: rgba(24, 24, 27, 0.3);
+    background: color-mix(in srgb, var(--token-bg-elevated) 30%, transparent);
     color: $lh-text-strong;
     overflow: hidden;
     transition:
@@ -162,13 +162,13 @@
 
     &:hover {
       transform: translateX(1px);
-      border-color: rgba(16, 185, 129, 0.6);
-      background: rgba(14, 19, 28, 0.88);
+      border-color: color-mix(in srgb, var(--token-accent-base) 60%, transparent);
+      background: color-mix(in srgb, var(--token-bg-hover) 88%, transparent);
     }
 
     &.isActive {
-      background: rgba(16, 185, 129, 0.16);
-      border-color: rgba(16, 185, 129, 0.78);
+      background: color-mix(in srgb, var(--token-accent-base) 16%, transparent);
+      border-color: color-mix(in srgb, var(--token-accent-base) 78%, transparent);
       color: $lh-text-success;
     }
 
@@ -209,13 +209,13 @@
     max-height: min(68vh, 560px);
     padding: 14px;
     overflow: hidden;
-    border: 1px solid rgba(63, 63, 70, 0.72);
+    border: 1px solid color-mix(in srgb, var(--token-border-base) 72%, transparent);
     border-radius: 20px;
     background:
-      radial-gradient(circle at top right, rgba(59, 130, 246, 0.12), transparent 36%),
-      rgba(9, 13, 18, 0.88);
+      radial-gradient(circle at top right, color-mix(in srgb, var(--token-status-info) 12%, transparent), transparent 36%),
+      color-mix(in srgb, var(--token-bg-app) 88%, transparent);
     backdrop-filter: blur(20px);
-    box-shadow: 0 24px 48px rgba(0, 0, 0, 0.28);
+    box-shadow: 0 24px 48px color-mix(in srgb, var(--token-bg-app) 28%, transparent);
 
     &Header {
       @include lh-stack(4px);
@@ -238,7 +238,7 @@
     @include lh-stack(8px);
 
     &Label {
-      @include lh-text(#cbd5e1, 12px, 1.4, 600);
+      @include lh-text($lh-text-secondary, 12px, 1.4, 600);
     }
 
     &Row {
@@ -252,7 +252,7 @@
   }
 
   &ProjectNameInput {
-    @include lh-input-shell(12px, rgba(15, 23, 42, 0.76), 0 0 0 1px rgba(71, 85, 105, 0.82));
+    @include lh-input-shell(12px, color-mix(in srgb, var(--token-bg-card) 76%, transparent), 0 0 0 1px color-mix(in srgb, var(--token-border-base) 82%, transparent));
 
     width: 100%;
     height: 38px;
@@ -262,14 +262,14 @@
       box-shadow $lh-transition-base;
 
     &::placeholder {
-      color: rgba(148, 163, 184, 0.7);
+      color: color-mix(in srgb, var(--token-text-tertiary) 70%, transparent);
     }
 
     &:focus {
-      background: rgba(15, 23, 42, 0.92);
+      background: color-mix(in srgb, var(--token-bg-card) 92%, transparent);
       box-shadow:
-        inset 0 0 0 1px rgba(96, 165, 250, 0.8),
-        0 0 0 3px rgba(59, 130, 246, 0.16);
+        inset 0 0 0 1px color-mix(in srgb, var(--token-status-info) 80%, transparent),
+        0 0 0 3px color-mix(in srgb, var(--token-status-info) 16%, transparent);
     }
   }
 
@@ -279,9 +279,9 @@
     width: 100%;
     min-height: 38px;
     padding: 0 14px;
-    border: 1px solid rgba(82, 82, 91, 0.68);
+    border: 1px solid color-mix(in srgb, var(--token-border-base) 68%, transparent);
     border-radius: 12px;
-    background: rgba(24, 24, 27, 0.7);
+    background: color-mix(in srgb, var(--token-bg-elevated) 70%, transparent);
     color: $lh-text-strong;
     font-size: 12px;
     font-weight: 700;
@@ -292,14 +292,14 @@
 
     &:hover {
       transform: translateY(-1px);
-      border-color: rgba(96, 165, 250, 0.52);
-      background: rgba(30, 41, 59, 0.88);
+      border-color: color-mix(in srgb, var(--token-status-info) 52%, transparent);
+      background: color-mix(in srgb, var(--token-bg-hover) 88%, transparent);
     }
 
     &.isPrimary {
-      border-color: rgba(59, 130, 246, 0.58);
-      background: rgba(30, 64, 175, 0.28);
-      color: #eff6ff;
+      border-color: color-mix(in srgb, var(--token-status-info) 58%, transparent);
+      background: color-mix(in srgb, var(--token-status-info) 28%, transparent);
+      color: var(--token-accent-base);
     }
 
     &:disabled {
@@ -331,9 +331,9 @@
     width: 100%;
     align-items: flex-start;
     padding: 11px 12px;
-    border: 1px solid rgba(63, 63, 70, 0.68);
+    border: 1px solid color-mix(in srgb, var(--token-border-base) 68%, transparent);
     border-radius: 14px;
-    background: rgba(15, 23, 42, 0.62);
+    background: color-mix(in srgb, var(--token-bg-card) 62%, transparent);
     color: $lh-text-primary;
     text-align: left;
     transition:
@@ -343,13 +343,13 @@
 
     &:hover {
       transform: translateY(-1px);
-      border-color: rgba(59, 130, 246, 0.48);
-      background: rgba(15, 23, 42, 0.82);
+      border-color: color-mix(in srgb, var(--token-status-info) 48%, transparent);
+      background: color-mix(in srgb, var(--token-bg-card) 82%, transparent);
     }
 
     &.isActive {
-      border-color: rgba(16, 185, 129, 0.58);
-      background: linear-gradient(180deg, rgba(5, 150, 105, 0.18), rgba(15, 23, 42, 0.82));
+      border-color: color-mix(in srgb, var(--token-accent-base) 58%, transparent);
+      background: linear-gradient(180deg, color-mix(in srgb, var(--token-accent-hover) 18%, transparent), color-mix(in srgb, var(--token-bg-card) 82%, transparent));
     }
 
     &Name {
@@ -384,11 +384,11 @@
     display: inline-flex;
     align-items: center;
     min-height: 36px;
-    border: 1px solid rgba(63, 63, 70, 0.82);
-    background: rgba(11, 15, 21, 0.92);
+    border: 1px solid color-mix(in srgb, var(--token-border-base) 82%, transparent);
+    background: color-mix(in srgb, var(--token-bg-surface) 92%, transparent);
     color: $lh-text-strong;
     backdrop-filter: blur(16px);
-    box-shadow: 0 18px 36px rgba(0, 0, 0, 0.28);
+    box-shadow: 0 18px 36px color-mix(in srgb, var(--token-bg-app) 28%, transparent);
     transition:
       transform $lh-transition-base,
       border-color $lh-transition-base,
@@ -404,7 +404,7 @@
 
     &:hover {
       transform: translateY(-1px);
-      background: rgba(11, 15, 21, 0.98);
+      background: color-mix(in srgb, var(--token-bg-surface) 98%, transparent);
     }
   }
 
@@ -417,7 +417,7 @@
     font-weight: 700;
 
     &:hover {
-      border-color: rgba(96, 165, 250, 0.52);
+      border-color: color-mix(in srgb, var(--token-status-info) 52%, transparent);
     }
 
     &Label {
@@ -434,15 +434,15 @@
     font-weight: 600;
 
     &:hover {
-      border-color: rgba(16, 185, 129, 0.5);
+      border-color: color-mix(in srgb, var(--token-accent-base) 50%, transparent);
     }
 
     .isWarn {
-      color: #fca5a5;
+      color: $lh-text-danger;
     }
 
     .isMuted {
-      color: #fbbf24;
+      color: var(--token-accent-base);
     }
   }
 
@@ -454,7 +454,7 @@
 
     &:hover {
       transform: translateY(-1px);
-      background: rgba(11, 15, 21, 0.98);
+      background: color-mix(in srgb, var(--token-bg-surface) 98%, transparent);
     }
 
     &:disabled {
@@ -465,12 +465,12 @@
 
     &.isWarn {
       color: $lh-text-danger;
-      border-color: rgba(248, 113, 113, 0.42);
+      border-color: color-mix(in srgb, var(--token-status-error) 42%, transparent);
     }
 
     &.isMuted {
       color: $lh-text-warning;
-      border-color: rgba(251, 191, 36, 0.42);
+      border-color: color-mix(in srgb, var(--token-status-warning) 42%, transparent);
     }
   }
 
@@ -482,19 +482,19 @@
     right: 18px;
     z-index: 38;
     padding: 6px;
-    border: 1px solid rgba(63, 63, 70, 0.82);
+    border: 1px solid color-mix(in srgb, var(--token-border-base) 82%, transparent);
     border-radius: 14px;
-    background: rgba(11, 15, 21, 0.92);
+    background: color-mix(in srgb, var(--token-bg-surface) 92%, transparent);
     backdrop-filter: blur(14px);
-    box-shadow: 0 18px 36px rgba(0, 0, 0, 0.28);
+    box-shadow: 0 18px 36px color-mix(in srgb, var(--token-bg-app) 28%, transparent);
   }
 
   &ToolButton {
     width: 34px;
     height: 34px;
-    border: 1px solid rgba(82, 82, 91, 0.72);
+    border: 1px solid color-mix(in srgb, var(--token-border-base) 72%, transparent);
     border-radius: 10px;
-    background: rgba(24, 24, 27, 0.72);
+    background: color-mix(in srgb, var(--token-bg-elevated) 72%, transparent);
     color: $lh-text-strong;
     display: inline-flex;
     align-items: center;
@@ -506,12 +506,12 @@
 
     &:hover {
       transform: translateY(-1px);
-      border-color: rgba(16, 185, 129, 0.6);
+      border-color: color-mix(in srgb, var(--token-accent-base) 60%, transparent);
     }
 
     &.isActive {
-      background: rgba(16, 185, 129, 0.16);
-      border-color: rgba(16, 185, 129, 0.78);
+      background: color-mix(in srgb, var(--token-accent-base) 16%, transparent);
+      border-color: color-mix(in srgb, var(--token-accent-base) 78%, transparent);
       color: $lh-text-success;
     }
   }
@@ -519,7 +519,7 @@
   &ToolDivider {
     width: 1px;
     align-self: stretch;
-    background: rgba(63, 63, 70, 0.82);
+    background: color-mix(in srgb, var(--token-border-base) 82%, transparent);
     margin: 2px 2px;
   }
 
@@ -527,9 +527,9 @@
     min-width: 52px;
     height: 34px;
     padding: 0 10px;
-    border: 1px solid rgba(82, 82, 91, 0.72);
+    border: 1px solid color-mix(in srgb, var(--token-border-base) 72%, transparent);
     border-radius: 10px;
-    background: rgba(24, 24, 27, 0.72);
+    background: color-mix(in srgb, var(--token-bg-elevated) 72%, transparent);
     color: $lh-text-soft;
     display: inline-flex;
     align-items: center;
@@ -539,14 +539,14 @@
   }
 
   &MiniMap {
-    background: rgba(8, 12, 18, 0.9);
-    border: 1px solid rgba(63, 63, 70, 0.82);
+    background: color-mix(in srgb, var(--token-bg-app) 90%, transparent);
+    border: 1px solid color-mix(in srgb, var(--token-border-base) 82%, transparent);
     border-radius: 16px;
     overflow: hidden;
-    box-shadow: 0 18px 36px rgba(0, 0, 0, 0.28);
+    box-shadow: 0 18px 36px color-mix(in srgb, var(--token-bg-app) 28%, transparent);
 
     .react-flow__minimap-svg {
-      background: linear-gradient(180deg, rgba(10, 14, 19, 0.92), rgba(6, 10, 14, 0.98));
+      background: linear-gradient(180deg, color-mix(in srgb, var(--token-bg-app) 92%, transparent), color-mix(in srgb, var(--token-bg-app) 98%, transparent));
     }
   }
 }
@@ -554,11 +554,15 @@
 .linghuiPendingGroup {
   &Frame {
     position: absolute;
+    left: var(--linghui-pending-group-left, 0);
+    top: var(--linghui-pending-group-top, 0);
+    width: var(--linghui-pending-group-width, 0);
+    height: var(--linghui-pending-group-height, 0);
     z-index: 34;
-    border: 1px dashed rgba(96, 165, 250, 0.9);
+    border: 1px dashed color-mix(in srgb, var(--token-status-info) 90%, transparent);
     border-radius: 18px;
-    background: rgba(59, 130, 246, 0.08);
-    box-shadow: inset 0 0 0 1px rgba(147, 197, 253, 0.2);
+    background: color-mix(in srgb, var(--token-status-info) 8%, transparent);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--token-text-primary) 20%, transparent);
     pointer-events: none;
   }
 
@@ -568,9 +572,9 @@
     left: 12px;
     padding: 4px 10px;
     border-radius: $lh-radius-pill;
-    background: rgba(8, 47, 73, 0.94);
-    border: 1px solid rgba(56, 189, 248, 0.75);
-    color: #e0f2fe;
+    background: color-mix(in srgb, var(--token-bg-elevated) 94%, transparent);
+    border: 1px solid color-mix(in srgb, var(--token-status-info) 75%, transparent);
+    color: $lh-text-info;
     font-size: 11px;
     font-weight: 600;
     white-space: nowrap;
@@ -580,21 +584,23 @@
     @include lh-inline(8px, nowrap);
 
     position: absolute;
+    left: var(--linghui-pending-actions-left, 0);
+    top: var(--linghui-pending-actions-top, 0);
     z-index: 35;
     padding: 6px;
-    border: 1px solid rgba(63, 63, 70, 0.84);
+    border: 1px solid color-mix(in srgb, var(--token-border-base) 84%, transparent);
     border-radius: 14px;
-    background: rgba(11, 15, 21, 0.94);
-    box-shadow: 0 16px 30px rgba(0, 0, 0, 0.32);
+    background: color-mix(in srgb, var(--token-bg-surface) 94%, transparent);
+    box-shadow: 0 16px 30px color-mix(in srgb, var(--token-bg-app) 32%, transparent);
     backdrop-filter: blur(18px);
   }
 
   &Action {
     height: 32px;
     padding: 0 14px;
-    border: 1px solid rgba(82, 82, 91, 0.72);
+    border: 1px solid color-mix(in srgb, var(--token-border-base) 72%, transparent);
     border-radius: 10px;
-    background: rgba(24, 24, 27, 0.76);
+    background: color-mix(in srgb, var(--token-bg-elevated) 76%, transparent);
     color: $lh-text-strong;
     font-size: 12px;
     font-weight: 600;
@@ -605,28 +611,30 @@
 
     &:hover {
       transform: translateY(-1px);
-      border-color: rgba(96, 165, 250, 0.56);
+      border-color: color-mix(in srgb, var(--token-status-info) 56%, transparent);
     }
 
     &.isPrimary {
-      border-color: rgba(56, 189, 248, 0.7);
-      background: rgba(8, 47, 73, 0.94);
-      color: #e0f2fe;
+      border-color: color-mix(in srgb, var(--token-status-info) 70%, transparent);
+      background: color-mix(in srgb, var(--token-bg-elevated) 94%, transparent);
+      color: $lh-text-info;
     }
   }
 }
 
 .linghuiQuickCreate {
   position: absolute;
+  left: var(--linghui-overlay-left, 0);
+  top: var(--linghui-overlay-top, 0);
   z-index: 44;
   width: 304px;
   max-height: min(72vh, 420px);
   overflow: auto;
   padding: 12px;
-  border: 1px solid rgba(63, 63, 70, 0.84);
+  border: 1px solid color-mix(in srgb, var(--token-border-base) 84%, transparent);
   border-radius: 18px;
-  background: rgba(11, 15, 21, 0.96);
-  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.34);
+  background: color-mix(in srgb, var(--token-bg-surface) 96%, transparent);
+  box-shadow: 0 24px 48px color-mix(in srgb, var(--token-bg-app) 34%, transparent);
   backdrop-filter: blur(18px);
 
   &Header {
@@ -676,8 +684,8 @@
 
     &:hover {
       transform: translateY(-1px);
-      background: rgba(24, 24, 27, 0.82);
-      border-color: rgba(56, 189, 248, 0.36);
+      background: color-mix(in srgb, var(--token-bg-elevated) 82%, transparent);
+      border-color: color-mix(in srgb, var(--token-status-info) 36%, transparent);
     }
 
     &Body {
@@ -704,21 +712,31 @@
   }
 }
 
+.linghuiContextMenuDot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--linghui-accent, var(--token-accent-base));
+  flex: 0 0 9px;
+}
+
 .linghuiContextMenu {
   position: absolute;
+  left: var(--linghui-overlay-left, 0);
+  top: var(--linghui-overlay-top, 0);
   z-index: 45;
   width: 260px;
   max-height: min(68vh, 560px);
   overflow: auto;
   padding: 10px;
-  border: 1px solid rgba(63, 63, 70, 0.84);
+  border: 1px solid color-mix(in srgb, var(--token-border-base) 84%, transparent);
   border-radius: 16px;
-  background: rgba(11, 15, 21, 0.96);
-  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.34);
+  background: color-mix(in srgb, var(--token-bg-surface) 96%, transparent);
+  box-shadow: 0 24px 48px color-mix(in srgb, var(--token-bg-app) 34%, transparent);
   backdrop-filter: blur(18px);
 
   &Header {
-    color: #e4e4e7;
+    color: $lh-text-secondary;
     font-size: 11px;
     font-weight: 700;
     letter-spacing: 0.08em;
@@ -755,8 +773,8 @@
 
     &:hover {
       transform: translateY(-1px);
-      background: rgba(24, 24, 27, 0.82);
-      border-color: rgba(16, 185, 129, 0.4);
+      background: color-mix(in srgb, var(--token-bg-elevated) 82%, transparent);
+      border-color: color-mix(in srgb, var(--token-accent-base) 40%, transparent);
     }
 
     &.isDisabled {
@@ -785,7 +803,7 @@
   &Divider {
     height: 1px;
     margin: 10px 4px;
-    background: rgba(63, 63, 70, 0.72);
+    background: color-mix(in srgb, var(--token-border-base) 72%, transparent);
   }
 
   &Hint,
@@ -819,16 +837,20 @@
   }
 }
 
+.linghuiNodeEditorDropdownOverlay {
+  z-index: 1200;
+}
+
 .linghuiFloatingPanel {
   position: absolute;
   pointer-events: auto;
   z-index: 30;
   width: 320px;
   max-width: calc(100% - 24px);
-  border: 1px solid rgba(63, 63, 70, 0.78);
+  border: 1px solid color-mix(in srgb, var(--token-border-base) 78%, transparent);
   border-radius: 18px;
-  background: rgba(11, 15, 21, 0.88);
-  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.32);
+  background: color-mix(in srgb, var(--token-bg-surface) 88%, transparent);
+  box-shadow: 0 24px 48px color-mix(in srgb, var(--token-bg-app) 32%, transparent);
   backdrop-filter: blur(18px);
   overflow: hidden;
 
@@ -836,8 +858,8 @@
     @include lh-inline(12px, nowrap, flex-start, space-between);
 
     padding: 14px 16px;
-    border-bottom: 1px solid rgba(63, 63, 70, 0.58);
-    background: linear-gradient(180deg, rgba(22, 28, 36, 0.95), rgba(13, 17, 23, 0.92));
+    border-bottom: 1px solid color-mix(in srgb, var(--token-border-base) 58%, transparent);
+    background: linear-gradient(180deg, color-mix(in srgb, var(--token-bg-surface) 95%, transparent), color-mix(in srgb, var(--token-bg-surface) 92%, transparent));
   }
 
   &Body {
@@ -864,10 +886,10 @@
 }
 
 .linghuiFloatingToggle {
-  border: 1px solid rgba(82, 82, 91, 0.85);
+  border: 1px solid color-mix(in srgb, var(--token-border-base) 85%, transparent);
   border-radius: $lh-radius-pill;
-  background: rgba(24, 24, 27, 0.75);
-  color: #e4e4e7;
+  background: color-mix(in srgb, var(--token-bg-elevated) 75%, transparent);
+  color: $lh-text-secondary;
   font-size: 12px;
   padding: 4px 10px;
   transition:
@@ -875,7 +897,7 @@
     transform $lh-transition-base;
 
   &:hover {
-    border-color: rgba(16, 185, 129, 0.68);
+    border-color: color-mix(in srgb, var(--token-accent-base) 68%, transparent);
     transform: translateY(-1px);
   }
 }

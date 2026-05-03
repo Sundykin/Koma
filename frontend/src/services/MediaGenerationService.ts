@@ -1,13 +1,11 @@
 import type {
   AsyncTask,
   AsyncTaskTargetType,
-  AsyncTaskType,
   ITVRequest,
   MediaAssetSource,
   MediaKind,
   MediaOwnerRef,
   ProviderAssetInput,
-  ProviderTaskSnapshot,
   StoredMediaAsset,
   TTIRequest,
   TTSRequest,
@@ -18,18 +16,12 @@ import {
   isTextToVideoRequest,
 } from '../types';
 import { createLogger } from '../store/logger';
-import {
-  createTask,
-  markTaskCompleted,
-  markTaskFailed,
-  updateTask,
-  updateTaskProgress,
-} from '../store/taskQueueStore';
 import { loadSettings } from '../store/globalStore';
 import { resolveProviderAssetInput, resolveProviderAssetInputs } from './mediaAssetResolver';
 import { runWithConcurrency } from '../utils/concurrency';
 import { persistMediaAsset } from './mediaPersistenceService';
 import { bindOwnerRefMedia } from './mediaTaskBindingService';
+import { submitTask, waitForTaskCompletion } from './tasksIPC';
 import { getProjectITVProvider, getProjectTTIProvider, getProjectTTSProvider } from '../providers';
 import { taskHandlerRegistry } from './taskHandlerRegistry';
 import './taskHandlers'; // 副作用 import：注册内置 TTI/ITV/TTS 任务处理器
@@ -61,7 +53,6 @@ import {
   summarizeVideoRequestForLog,
   withVideoTrace,
 } from '../utils/videoGenerationTrace';
-import { DEFAULT_POLLING_CONFIG } from '../providers/polling';
 
 const logger = createLogger('MediaGeneration');
 
@@ -180,10 +171,6 @@ async function resolveProviderAndContext<T>(params: {
   return { provider, resolvedContext };
 }
 
-function inferTaskType(kind: MediaKind): AsyncTaskType {
-  return taskHandlerRegistry.findByKind(kind)?.type ?? 'tti';
-}
-
 function inferTargetType(ownerRef: MediaOwnerRef): AsyncTaskTargetType {
   switch (ownerRef.ownerType) {
     case 'character':
@@ -218,15 +205,6 @@ async function ensureProviderAssetInputs(
 ): Promise<ProviderAssetInput[]> {
   const resolved = await Promise.all(sources.map(ensureProviderAssetInput));
   return resolved.filter(Boolean) as ProviderAssetInput[];
-}
-
-function mapSnapshotToTaskStatus(
-  snapshot: ProviderTaskSnapshot<any>
-): { status: AsyncTask['status']; progress: number } {
-  if (snapshot.state === 'queued') return { status: 'pending', progress: snapshot.progress ?? 0 };
-  if (snapshot.state === 'running') return { status: 'processing', progress: snapshot.progress ?? 0 };
-  if (snapshot.state === 'succeeded') return { status: 'completed', progress: 100 };
-  return { status: 'failed', progress: snapshot.progress ?? 0 };
 }
 
 function mergeMediaMetadata(
@@ -707,15 +685,7 @@ export class MediaGenerationService {
       });
     }
 
-    const task = await this.createMediaTask(projectId, {
-      kind,
-      ownerRef,
-      remoteTaskId: started.taskId,
-      taskName: taskName || ((request.count ?? 1) > 1 ? '批量图片生成' : '图片生成'),
-      ...executionMetadata,
-    });
-    logger.info('TTI async task created', {
-      localTaskId: task.id,
+    logger.info('TTI async submit (main-driven polling)', {
       remoteTaskId: started.taskId,
       ownerRef,
       provider: provider.config?.provider,
@@ -723,25 +693,22 @@ export class MediaGenerationService {
       modelId: executionMetadata.modelId,
     });
 
-    const finalAsset = await this.pollAndFinalizeTask({
+    const finalAsset = await this.pollAndFinalizeViaMain({
       projectId,
       kind,
-      task,
-      getSnapshot: async (remoteTaskId) => {
-        if (!provider.getTaskSnapshot) {
-          throw new Error('TTI Provider 不支持任务查询');
-        }
-        return provider.getTaskSnapshot(remoteTaskId);
-      },
-      extractSource: (output: any) => output?.url || output?.path,
-      enrichAsset: (asset) => mergeMediaMetadata(asset, {
+      ownerRef,
+      taskName: taskName || ((request.count ?? 1) > 1 ? '批量图片生成' : '图片生成'),
+      remoteTaskId: started.taskId,
+      selection: ttiSelection,
+      ...executionMetadata,
+      assetMetadataPatch: {
         provider: provider.config?.provider,
         providerTaskId: started.taskId,
         channelId: executionMetadata.channelId,
         modelId: executionMetadata.modelId,
         capability: executionMetadata.capability,
-        width: optionWidth ?? asset.width,
-        height: optionHeight ?? asset.height,
+        ...(optionWidth !== undefined ? { width: optionWidth } : undefined),
+        ...(optionHeight !== undefined ? { height: optionHeight } : undefined),
         metadata: {
           ...executionMetadata,
           prompt: originalPrompt,
@@ -750,13 +717,12 @@ export class MediaGenerationService {
           ...(optionSeed !== undefined ? { seed: optionSeed } : undefined),
           ...((request.count ?? 1) > 1 ? { batchCount: request.count } : undefined),
         },
-      }),
-      providerTaskId: started.taskId,
-      destPath: asyncDestPath,
+      },
       bindOwner,
-      normalizeRemoteUrl,
-      ...executionMetadata,
     });
+
+    // asyncDestPath / normalizeRemoteUrl 已在 fulfiller 里固化处理 —— ITV 始终走 normalize；
+    // TTI 也始终 normalize（这是 generateImages 的默认行为，旧实现也走这个分支）
 
     return [finalAsset];
   }
@@ -983,51 +949,37 @@ export class MediaGenerationService {
       return finalAsset;
     }
 
-    const task = await this.createMediaTask(projectId, {
-      kind,
-      ownerRef,
-      remoteTaskId: started.taskId,
-      taskName: taskName || '视频生成',
-      ...executionMetadata,
-    });
-
-    logger.info('ITV async task created', {
+    logger.info('ITV async submit (main-driven polling)', {
       traceId: traceContext.traceId,
-      localTaskId: task.id,
       remoteTaskId: started.taskId,
       ownerRef,
       provider: provider.config?.provider,
     });
 
-    return this.pollAndFinalizeTask({
+    return this.pollAndFinalizeViaMain({
       projectId,
       kind,
-      task,
-      getSnapshot: async (remoteTaskId) => {
-        if (!provider.getTaskSnapshot) {
-          throw new Error('ITV Provider 不支持任务查询');
-        }
-        return provider.getTaskSnapshot(remoteTaskId, {
-          capability: request.capability,
-        });
-      },
-      extractSource: (output: any) => output?.source,
-      enrichAsset: (asset) => mergeMediaMetadata(asset, {
+      ownerRef,
+      taskName: taskName || '视频生成',
+      remoteTaskId: started.taskId,
+      selection: itvSelection,
+      ...executionMetadata,
+      assetMetadataPatch: {
         provider: provider.config?.provider,
         providerTaskId: started.taskId,
         channelId: executionMetadata.channelId,
         modelId: executionMetadata.modelId,
         capability: executionMetadata.capability,
-        durationMs: durationSecToMs(optionDuration) ?? asset.durationMs,
+        ...(durationSecToMs(optionDuration) !== undefined
+          ? { durationMs: durationSecToMs(optionDuration) }
+          : undefined),
         metadata: {
           ...executionMetadata,
           prompt: originalPrompt,
           ...(protocol ? { promptProtocol: protocol } : undefined),
           ...(compilationDebug ? { compiledPrompt, compilationDebug } : undefined),
         },
-      }),
-      providerTaskId: started.taskId,
-      ...executionMetadata,
+      },
     });
   }
 
@@ -1081,26 +1033,15 @@ export class MediaGenerationService {
       return finalAsset;
     }
 
-    const task = await this.createMediaTask(projectId, {
-      kind,
-      ownerRef,
-      remoteTaskId: started.taskId,
-      taskName: taskName || '语音合成',
-      ...executionMetadata,
-    });
-
-    return this.pollAndFinalizeTask({
+    return this.pollAndFinalizeViaMain({
       projectId,
       kind,
-      task,
-      getSnapshot: async (remoteTaskId) => {
-        if (!provider.getTaskSnapshot) {
-          throw new Error('TTS Provider 不支持任务查询');
-        }
-        return provider.getTaskSnapshot(remoteTaskId);
-      },
-      extractSource: (output: any) => output?.path,
-      enrichAsset: (asset) => mergeMediaMetadata(asset, {
+      ownerRef,
+      taskName: taskName || '语音合成',
+      remoteTaskId: started.taskId,
+      selection: ttsSelection,
+      ...executionMetadata,
+      assetMetadataPatch: {
         provider: provider.config?.provider,
         providerTaskId: started.taskId,
         channelId: executionMetadata.channelId,
@@ -1110,9 +1051,7 @@ export class MediaGenerationService {
           ...executionMetadata,
           voiceId: request.voiceId,
         },
-      }),
-      providerTaskId: started.taskId,
-      ...executionMetadata,
+      },
     });
   }
 
@@ -1122,10 +1061,15 @@ export class MediaGenerationService {
     ttiSelection?: string;
     itvSelection?: string;
     ttsSelection?: string;
+    /** @deprecated 进度现在通过 main 广播；UI 用 useTasks/useActiveTask 投影 */
     onProgress?: (task: AsyncTask, progress: number) => void;
   }): Promise<StoredMediaAsset | null> {
-    const { projectId, task, ttiSelection, itvSelection, ttsSelection, onProgress } = params;
+    const { projectId, task, ttiSelection, itvSelection, ttsSelection } = params;
     if (!task.remoteTaskId) return null;
+    if (!task.ownerRef) {
+      logger.warn('recoverTask: 任务缺少 ownerRef，跳过');
+      return null;
+    }
 
     const handler = taskHandlerRegistry.get(task.type);
     if (!handler) throw new Error(`未知任务类型: ${task.type}`);
@@ -1133,7 +1077,6 @@ export class MediaGenerationService {
     const kind = handler.kind;
     const taskCapability = resolveTaskCapability(task);
 
-    // 按 handler.kind 选择对应的 selection；为兼容历史调用约定，三个 selection 仍分别接收
     const selectionByKind: Record<MediaKind, string | undefined> = {
       image: ttiSelection,
       video: itvSelection,
@@ -1141,198 +1084,88 @@ export class MediaGenerationService {
     };
     const handlerSelection = resolveTaskSelectionKey(task, selectionByKind[kind]);
 
-    const getSnapshot = (_remoteTaskId: string): Promise<ProviderTaskSnapshot<any>> =>
-      handler.getSnapshot(task, { selection: handlerSelection, capability: taskCapability });
-
-    return this.pollAndFinalizeTask({
+    return this.pollAndFinalizeViaMain({
       projectId,
       kind,
-      task,
-      getSnapshot,
-      extractSource: (output: any) => handler.extractSource(output),
-      enrichAsset: (asset) => mergeMediaMetadata(asset, {
+      ownerRef: task.ownerRef,
+      taskName: task.targetName || `恢复任务 ${task.id}`,
+      remoteTaskId: task.remoteTaskId,
+      selection: handlerSelection,
+      channelId: task.channelId,
+      modelId: task.modelId,
+      capability: taskCapability,
+      assetMetadataPatch: {
         providerTaskId: task.remoteTaskId,
         channelId: task.channelId,
         modelId: task.modelId,
         capability: task.capability,
-      }),
-      providerTaskId: task.remoteTaskId,
-      channelId: task.channelId,
-      modelId: task.modelId,
-      capability: task.capability,
-      onProgress,
+      },
     });
   }
 
-  private async createMediaTask(
-    projectId: string,
-    params: {
-      kind: MediaKind;
-      ownerRef: MediaOwnerRef;
-      remoteTaskId: string;
-      taskName: string;
-      channelId?: string;
-      modelId?: string;
-      capability?: string;
-    }
-  ): Promise<AsyncTask> {
-    const { kind, ownerRef, remoteTaskId, taskName, channelId, modelId, capability } = params;
-    const taskType = inferTaskType(kind);
-    const targetType = inferTargetType(ownerRef);
-    const targetId = ownerRef.ownerId;
-
-    const task = await createTask(projectId, {
-      projectId,
-      type: taskType,
-      targetType,
-      targetId,
-      targetName: taskName,
-      remoteTaskId,
-      channelId,
-      modelId,
-      capability,
-      ownerRef,
-      status: 'processing',
-      progress: 0,
-      maxRetries: 3,
-    });
-
-    logger.info(`创建媒体任务: ${task.id}`, { kind, taskType, remoteTaskId });
-    return task;
-  }
-
-  private async pollAndFinalizeTask(params: {
+  /**
+   * 主进程主导的轮询：submitTask 进 main 队列；handler 通过 delegateToRenderer
+   * 反向调 renderer 的 provider.getTaskSnapshot 与 persistMediaAsset。
+   *
+   * 不再需要传 getSnapshot / extractSource / enrichAsset 闭包 ——
+   * 这些都在 fulfiller 里通过 taskHandlerRegistry 反查。caller 只传可序列化数据。
+   *
+   * 关窗口/切项目都不会让 polling 挂掉（main 状态权威）。
+   */
+  private async pollAndFinalizeViaMain(params: {
     projectId: string;
     kind: MediaKind;
-    task: AsyncTask;
-    getSnapshot: (remoteTaskId: string) => Promise<ProviderTaskSnapshot<any>>;
-    extractSource: (output: any) => string | undefined;
-    enrichAsset: (asset: StoredMediaAsset) => StoredMediaAsset;
-    providerTaskId?: string;
+    ownerRef: MediaOwnerRef;
+    taskName: string;
+    remoteTaskId: string;
+    selection?: string;
     channelId?: string;
     modelId?: string;
     capability?: string;
-    destPath?: string;
+    /** 业务侧 enrichAsset 固化为可序列化 metadata patch（数据，无闭包） */
+    assetMetadataPatch?: Partial<StoredMediaAsset>;
     bindOwner?: boolean;
-    normalizeRemoteUrl?: boolean;
-    onProgress?: (task: AsyncTask, progress: number) => void;
   }): Promise<StoredMediaAsset> {
-    const {
-      projectId,
-      kind,
-      task,
-      getSnapshot,
-      extractSource,
-      enrichAsset,
-      providerTaskId,
-      channelId,
-      modelId,
-      capability,
-      destPath,
-      bindOwner = true,
-      normalizeRemoteUrl = true,
-      onProgress,
-    } = params;
+    const handler = taskHandlerRegistry.findByKind(params.kind);
+    if (!handler) throw new Error(`未知 kind: ${params.kind}`);
+    const rendererHandlerType = handler.type as 'tti' | 'itv' | 'tts';
 
-    const pollIntervalMs = DEFAULT_POLLING_CONFIG.interval;
-    const maxPollMs = DEFAULT_POLLING_CONFIG.maxDuration;
-    const startTime = Date.now();
-
-    while (Date.now() - startTime < maxPollMs) {
-      const snapshot = await getSnapshot(task.remoteTaskId);
-      const mapped = mapSnapshotToTaskStatus(snapshot);
-
-      if (kind === 'image') {
-        logger.info('TTI task snapshot', {
-          localTaskId: task.id,
-          remoteTaskId: task.remoteTaskId,
-          state: snapshot.state,
-          progress: snapshot.progress,
-          outputSource: snapshot.output ? summarizeImageSource(extractSource(snapshot.output)) : undefined,
-          error: snapshot.error,
-        });
-      }
-
-      if (mapped.status === 'processing' || mapped.status === 'pending') {
-        if (typeof mapped.progress === 'number') {
-          await updateTaskProgress(projectId, task.id, mapped.progress);
-          onProgress?.(task, mapped.progress);
-        }
-      }
-
-      if (snapshot.state === 'failed') {
-        const error = snapshot.error || '生成失败';
-        await markTaskFailed(projectId, task.id, error);
-        throw new Error(error);
-      }
-
-      if (snapshot.state === 'succeeded') {
-        const source = snapshot.output ? extractSource(snapshot.output) : undefined;
-        if (!source) {
-          const error = '任务完成但未返回结果地址';
-          logger.error('媒体任务完成但缺少结果地址', {
-            localTaskId: task.id,
-            remoteTaskId: task.remoteTaskId,
-            kind,
-            output: snapshot.output ? sanitizeBodyForLog(snapshot.output as any) : undefined,
-          });
-          await markTaskFailed(projectId, task.id, error);
-          throw new Error(error);
-        }
-
-        logger.info('媒体任务结果落盘开始', {
-          localTaskId: task.id,
-          remoteTaskId: task.remoteTaskId,
-          kind,
-          source: kind === 'image' ? summarizeImageSource(source) : truncateString(source, 500),
-        });
-
-        const persisted = await persistMediaAsset({
-          projectId,
-          kind,
-          source,
-          destPath,
-          ownerRef: task.ownerRef,
-          providerTaskId: providerTaskId || task.remoteTaskId,
-          channelId,
-          modelId,
-          capability,
-          metadata: {
-            ...(channelId ? { channelId } : undefined),
-            ...(modelId ? { modelId } : undefined),
-            ...(capability ? { capability } : undefined),
-          },
-        });
-
-        const enriched = enrichAsset(persisted);
-        const finalAsset = kind === 'image' && normalizeRemoteUrl
-          ? await ensureRemoteUrlForImageAsset({ projectId, asset: enriched, policy: 'best-effort' })
-          : enriched;
-        if (kind === 'image') {
-          logger.info('TTI async finalized asset', {
-            localTaskId: task.id,
-            remoteTaskId: task.remoteTaskId,
-            persisted: summarizeImageAsset(persisted),
-            finalAsset: summarizeImageAsset(finalAsset),
-            normalizeRemoteUrl,
-          });
-        }
-        await markTaskCompleted(projectId, task.id, finalAsset);
-
-        if (bindOwner && task.ownerRef) {
-          await bindOwnerRefMedia(projectId, task.ownerRef, finalAsset);
-        }
-
-        return finalAsset;
-      }
-
-      await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
-    }
-
-    const error = '任务超时';
-    await markTaskFailed(projectId, task.id, error);
-    throw new Error(error);
+    const submitted = await submitTask({
+      type: rendererHandlerType,
+      scope: `project:${params.projectId}`,
+      targetKind: inferTargetType(params.ownerRef),
+      targetId: params.ownerRef.ownerId,
+      input: {
+        kind: params.kind,
+        remoteTaskId: params.remoteTaskId,
+        rendererHandlerType,
+        channelId: params.channelId,
+        modelId: params.modelId,
+        capability: params.capability,
+        selection: params.selection,
+        ownerRef: params.ownerRef,
+        projectId: params.projectId,
+        extra: {
+          assetMetadataPatch: params.assetMetadataPatch,
+          bindOwner: params.bindOwner ?? true,
+        },
+      },
+      initialPayload: {
+        // TaskStatusBar 直接读 payload.targetName，按 ManagerTask 形状对齐
+        targetName: params.taskName,
+        ownerRef: params.ownerRef,
+        remoteTaskId: params.remoteTaskId,
+        channelId: params.channelId,
+        modelId: params.modelId,
+        capability: params.capability,
+      },
+    });
+    const final = await waitForTaskCompletion(submitted.id);
+    const output = (final.payload as { output?: { asset?: StoredMediaAsset } } | undefined)?.output;
+    if (!output?.asset) throw new Error('任务完成但缺少结果资产');
+    return output.asset;
   }
+
 }
 
 export const mediaGenerationService = new MediaGenerationService();

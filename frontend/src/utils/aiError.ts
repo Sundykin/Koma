@@ -57,6 +57,17 @@ export function classifyAIError(error: unknown): AIErrorInfo {
     };
   }
 
+  // 上游瞬态错误：HTTP/2 stream reset、curl(92)、upstream_error、server_error 等
+  // 网关层已自动重试 2 次仍失败 → 通常是上游真实模型服务器抖动，建议用户稍后再试
+  if (/upstream_error|server_error|HTTP\/2 stream\s+\d+\s+was not closed cleanly|INTERNAL_ERROR|curl:\s*\(\d+\)/.test(rawMessage)) {
+    return {
+      kind: 'gateway_timeout',
+      rawMessage,
+      userMessage: '上游 AI 服务暂时不可用（已自动重试），请稍后再试或切换其它渠道。',
+      retryable: true,
+    };
+  }
+
   if (/网络|ECONN|ETIMEDOUT|UND_ERR_SOCKET/.test(rawMessage)) {
     return {
       kind: 'network',

@@ -4,6 +4,28 @@
 /* Script panel, editor fields, select overrides and button polish */
 
 .linghuiEditor {
+  &InlineHeader {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 8px;
+  }
+
+  &OutputText {
+    min-height: var(--linghui-output-min-height, 172px);
+    overflow: auto;
+    white-space: pre-wrap;
+    color: var(--token-text-secondary);
+  }
+
+  &SettingNumber {
+    width: 100%;
+  }
+
+  &PromptEditorHost {
+    position: relative;
+    cursor: text;
+  }
+
   &PromptHint {
     margin-top: 8px;
   }
@@ -98,7 +120,7 @@
   &Popover {
     textarea,
     input {
-      @include lh-input-shell(14px, $lh-bg-surface-soft, inset 0 0 0 1px rgba(148, 163, 184, 0.1));
+      @include lh-input-shell(14px, $lh-bg-surface-soft, inset 0 0 0 1px color-mix(in srgb, var(--token-text-tertiary) 10%, transparent));
 
       width: 100%;
       box-sizing: border-box;
@@ -119,25 +141,25 @@
 
       &:hover,
       &:focus {
-        background: rgba(255, 255, 255, 0.1) !important;
-        color: #ffffff !important;
+        background: color-mix(in srgb, var(--token-text-primary) 10%, transparent) !important;
+        color: var(--token-text-primary) !important;
       }
 
       &.ant-btn-primary {
-        background: rgba(16, 185, 129, 0.18);
+        background: color-mix(in srgb, var(--token-accent-base) 18%, transparent);
         color: $lh-text-success;
-        box-shadow: inset 0 0 0 1px rgba(52, 211, 153, 0.22);
+        box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--token-border-focus) 22%, transparent);
 
         &:hover,
         &:focus {
-          background: rgba(16, 185, 129, 0.24) !important;
+          background: color-mix(in srgb, var(--token-accent-base) 24%, transparent) !important;
         }
       }
 
       &.ant-btn-dangerous {
-        background: rgba(248, 113, 113, 0.12);
+        background: color-mix(in srgb, var(--token-status-error) 12%, transparent);
         color: $lh-text-danger;
-        box-shadow: inset 0 0 0 1px rgba(248, 113, 113, 0.14);
+        box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--token-status-error) 14%, transparent);
       }
     }
   }
@@ -160,7 +182,7 @@
 
     &Meta {
       span {
-        @include lh-chip(24px, 0 10px, rgba(30, 41, 59, 0.78), #cbd5e1, 11px, 700);
+        @include lh-chip(24px, 0 10px, color-mix(in srgb, var(--token-bg-hover) 78%, transparent), $lh-text-secondary, 11px, 700);
       }
     }
   }
@@ -174,7 +196,7 @@
 
     &Card {
       @include lh-stack(8px);
-      @include lh-plain-card(12px, rgba(255, 255, 255, 0.05));
+      @include lh-plain-card(12px, color-mix(in srgb, var(--token-text-primary) 5%, transparent));
 
       min-height: 132px;
       transition:
@@ -184,12 +206,12 @@
 
       &:hover {
         transform: translateY(-1px);
-        box-shadow: inset 0 0 0 1px rgba(167, 139, 250, 0.18);
+        box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--token-status-info) 18%, transparent);
       }
 
       &.isSelected {
-        background: rgba(88, 28, 135, 0.18);
-        box-shadow: inset 0 0 0 1px rgba(167, 139, 250, 0.28);
+        background: color-mix(in srgb, var(--token-status-info) 18%, transparent);
+        box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--token-status-info) 28%, transparent);
       }
 
       &Header {
@@ -199,7 +221,7 @@
 
     &Index,
     &Duration {
-      @include lh-text(#cbd5e1, 11px, 1.4, 700);
+      @include lh-text($lh-text-secondary, 11px, 1.4, 700);
     }
 
     &Duration {
@@ -212,7 +234,7 @@
       height: 96px;
       border-radius: 12px;
       overflow: hidden;
-      background: rgba(9, 13, 18, 0.82);
+      background: color-mix(in srgb, var(--token-bg-app) 82%, transparent);
 
       img {
         width: 100%;
@@ -226,7 +248,7 @@
     }
 
     &Description {
-      @include lh-text(#cbd5e1, 12px, 1.6);
+      @include lh-text($lh-text-secondary, 12px, 1.6);
     }
 
     &TableWrap {
@@ -257,7 +279,7 @@
         }
 
         tr.isSelected {
-          background: rgba(88, 28, 135, 0.18);
+          background: color-mix(in srgb, var(--token-status-info) 18%, transparent);
         }
       }
     }

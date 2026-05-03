@@ -5,6 +5,7 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSaveStatus } from '../../hooks/useTaskNotifications';
 import { saveProjectNow } from '../../store/autoSaveService';
+import styles from './SaveStatusIndicator.module.scss';
 
 interface SaveStatusIndicatorProps {
   projectId: string;
@@ -54,46 +55,33 @@ export const SaveStatusIndicator: React.FC<SaveStatusIndicatorProps> = ({
     }
   };
 
-  const getStatusColor = () => {
+  const getStatusClass = () => {
     switch (saveState.status) {
       case 'saved':
-        return 'var(--color-success, #4caf50)';
+        return styles.saved;
       case 'saving':
-        return 'var(--color-info, #2196f3)';
+        return styles.saving;
       case 'dirty':
-        return 'var(--color-warning, #ff9800)';
+        return styles.dirty;
       case 'error':
-        return 'var(--color-error, #f44336)';
+        return styles.error;
       default:
-        return 'inherit';
+        return '';
     }
-  };
-
-  const containerStyle: React.CSSProperties = {
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: '4px',
-    padding: '4px 8px',
-    fontSize: '12px',
-    color: getStatusColor(),
-    cursor: saveState.status === 'dirty' || saveState.status === 'error' ? 'pointer' : 'default',
-    borderRadius: '4px',
-    transition: 'background-color 0.2s',
-  };
-
-  const iconStyle: React.CSSProperties = {
-    fontSize: '14px',
-    fontWeight: 'bold',
   };
 
   return (
     <div
-      className={className}
-      style={containerStyle}
+      className={[
+        styles.container,
+        getStatusClass(),
+        saveState.status === 'dirty' || saveState.status === 'error' ? styles.clickable : '',
+        className,
+      ].filter(Boolean).join(' ')}
       onClick={handleClick}
       title={saveState.status === 'dirty' ? t('common.clickToSave') : getStatusText()}
     >
-      <span style={iconStyle}>{getStatusIcon()}</span>
+      <span className={styles.icon}>{getStatusIcon()}</span>
       <span>{getStatusText()}</span>
     </div>
   );

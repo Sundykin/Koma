@@ -6,6 +6,7 @@
 import type { Shot } from '../types';
 import { resolvePromptTemplate } from '../store/promptTemplates';
 import { TaskManager, Task } from './TaskManager';
+import { createTaskCancellationSignal } from './taskCancellationSignal';
 import { parseLLMJSONWithMeta } from '../utils/llmJsonParser';
 import { saveEpisodeShots } from '../store/projectStore';
 import { createLogger } from '../store/logger';
@@ -143,6 +144,11 @@ export class ShotAnalysisService {
     this.ctx = ctx;
   }
 
+  /** 让外部 fulfiller 在调用 runShotAnalysis 前注入 presetAssets */
+  setPresetAssets(presetAssets?: PresetAssets): void {
+    this.presetAssets = presetAssets || null;
+  }
+
   /**
    * 启动分镜生成任务
    */
@@ -172,14 +178,25 @@ export class ShotAnalysisService {
 
   /**
    * 执行分镜生成
+   * 公开后可被 main-side 'analysis:shot' handler 的 renderer fulfiller 直接调用，
+   * 复用其状态机与 cancel 信号订阅，不必再创建一个新的 Task。
    */
-  private async runShotAnalysis(
+  async runShotAnalysis(
     taskId: string,
     episodeId: string,
     script: string,
   ): Promise<void> {
     const traceId = `shot-analysis-${taskId}`;
+    const cancellation = createTaskCancellationSignal(taskId);
+    const checkCancel = () => {
+      if (cancellation.signal.aborted) {
+        throw cancellation.signal.reason instanceof Error
+          ? cancellation.signal.reason
+          : new Error('cancelled');
+      }
+    };
     try {
+      checkCancel();
       TaskManager.updateTask(taskId, { progress: 10 });
 
       const { characters, scenes, props } = this.ctx;
@@ -209,6 +226,7 @@ export class ShotAnalysisService {
 
       const parsedShotPayloads: any[] = [];
       for (const chunk of chunks) {
+        checkCancel();
         const progressBase = 20 + Math.floor((chunk.index / Math.max(chunks.length, 1)) * 55);
         TaskManager.updateTask(taskId, { progress: progressBase });
         const chunkShots = await this.generateShotPayloadsForChunk(traceId, chunk);
@@ -306,22 +324,28 @@ export class ShotAnalysisService {
         });
       }
 
+      checkCancel();
       TaskManager.updateTask(taskId, { progress: 85 });
 
       // 保存分镜到剧集
       await saveEpisodeShots(this.ctx.projectId, episodeId, shots);
 
+      if (cancellation.signal.aborted) return;
       TaskManager.updateTask(taskId, {
         status: 'completed',
         progress: 100,
         result: { shotsCount: shots.length },
       });
     } catch (error: unknown) {
+      // 已被 cancel：状态已是 cancelled，不要覆盖成 failed
+      if (cancellation.signal.aborted) return;
       logger.error('生成失败', error);
       TaskManager.updateTask(taskId, {
         status: 'failed',
         error: extractErrorMessage(error) || '生成失败',
       });
+    } finally {
+      cancellation.dispose();
     }
   }
 
@@ -455,7 +479,9 @@ export class ShotAnalysisService {
 }
 
 /**
- * 便捷函数：启动分镜生成
+ * @deprecated 现役 UI 已切到 services/analysisTaskClient.submitShotAnalysisTask
+ *   （走主进程 'shot-analysis' handler，含限流 + 取消 + 多窗口共享状态）。
+ *   保留此 renderer-driven 入口作为应急 fallback；新代码不要再调。
  */
 export async function startShotAnalysis(
   projectId: string,

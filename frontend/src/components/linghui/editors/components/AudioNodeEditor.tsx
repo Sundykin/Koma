@@ -296,7 +296,6 @@ export const AudioNodeEditor: React.FC<AudioNodeEditorProps> = ({
           onChange={value => updateProp('voiceId', value ?? '')}
           options={voiceOptions}
           popupMatchSelectWidth={false}
-          style={{ width: '100%' }}
           getPopupContainer={triggerNode => triggerNode.ownerDocument.body}
         />
       </div>
@@ -378,7 +377,6 @@ export const AudioNodeEditor: React.FC<AudioNodeEditorProps> = ({
             onChange={value => updateProp('prompt', value)}
             references={promptReferences}
             placeholder="输入要合成的旁白、对白或音频描述，输入 @ 引用上游产物"
-            darkTheme
             surfaceStyle="fusion"
             minHeight="96px"
             maxHeight="188px"
@@ -400,7 +398,7 @@ export const AudioNodeEditor: React.FC<AudioNodeEditorProps> = ({
               }}
               classNames={{ root: 'linghuiNodeEditorDropdownMenu' }}
               getPopupContainer={triggerNode => triggerNode.ownerDocument.body}
-              styles={{ root: { zIndex: 1200 } }}
+              overlayClassName="linghuiNodeEditorDropdownOverlay"
             >
               <button
                 type="button"

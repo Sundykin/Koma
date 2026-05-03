@@ -107,18 +107,18 @@ export const PluginManager: React.FC = () => {
       <div className="settings-manager-toolbar">
         <Input
           placeholder={t('plugin.searchPlaceholder')}
-          prefix={<SearchOutlined className="text-gray-400" />}
+          prefix={<SearchOutlined className="text-text-secondary" />}
           value={searchText}
           onChange={e => setSearchText(e.target.value)}
           size="small"
-          style={{ width: 220 }}
+          className="w-[220px]"
           allowClear
         />
         <Select
           value={categoryFilter}
           onChange={setCategoryFilter}
           size="small"
-          style={{ width: 136 }}
+          className="w-[136px]"
           options={[
             { value: 'all', label: t('plugin.categoryAll') },
             { value: 'global', label: t('plugin.categoryGlobal') },
@@ -155,9 +155,9 @@ export const PluginManager: React.FC = () => {
     <div className="max-w-md mx-auto py-4">
       <PluginImporter onImportSuccess={handleImportSuccess} />
 
-      <div className="mt-6 p-4 bg-gray-50 rounded-lg">
+      <div className="mt-6 p-4 bg-bg-app rounded-lg">
         <h4 className="font-medium mb-2">Plugin Development</h4>
-        <ul className="text-sm text-gray-500 space-y-1">
+        <ul className="text-sm text-text-tertiary space-y-1">
           <li>• Plugin must include <code>manifest.json</code></li>
           <li>• Global plugins need to export React component as default</li>
           <li>• Dev mode supports folder import for debugging</li>

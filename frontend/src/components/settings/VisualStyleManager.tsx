@@ -42,6 +42,7 @@ import {
 import { THEME_PRESETS } from '../../config/themePresets';
 import { ipc, ipcApiRoute } from '../../utils/ipcRenderer';
 import { toKomaLocalUrl } from '../../utils/urlUtils';
+import styles from './VisualStyleManager.module.scss';
 
 const { TextArea } = Input;
 const { Text, Paragraph } = Typography;
@@ -105,32 +106,19 @@ const StyleReferenceImageSlot: React.FC<StyleReferenceImageSlotProps> = ({
   }, [onUpload, preset.id]);
 
   return (
-    <div className="settings-style-image-slot" style={{ marginTop: 8 }}>
-      <div
-        style={{
-          width: '100%',
-          aspectRatio: '16 / 9',
-          background: 'rgba(255,255,255,0.04)',
-          border: '1px dashed rgba(255,255,255,0.18)',
-          borderRadius: 6,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          overflow: 'hidden',
-          position: 'relative',
-        }}
-      >
+    <div className={`settings-style-image-slot ${styles.styleImageSlot}`}>
+      <div className={styles.imageFrame}>
         {loading ? (
           <Spin size="small" />
         ) : resolved ? (
           <img
             src={resolved.url}
             alt={`${preset.name} 风格参考图`}
-            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+            className={styles.image}
             draggable={false}
           />
         ) : (
-          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+          <Typography.Text type="secondary" className={styles.emptyText}>
             未设置风格参考图
           </Typography.Text>
         )}
@@ -138,12 +126,7 @@ const StyleReferenceImageSlot: React.FC<StyleReferenceImageSlotProps> = ({
         {/* 操作按钮：上传 + 预览放大；都覆盖在参考图区域内 */}
         <Space
           size={6}
-          style={{
-            position: 'absolute',
-            right: 8,
-            bottom: 8,
-            zIndex: 2,
-          }}
+          className={styles.overlayActions}
         >
           <Tooltip title={resolved ? '替换风格参考图' : '上传风格参考图'}>
             <Upload
@@ -155,11 +138,7 @@ const StyleReferenceImageSlot: React.FC<StyleReferenceImageSlotProps> = ({
                 size="small"
                 shape="circle"
                 icon={<UploadOutlined />}
-                style={{
-                  background: 'rgba(0,0,0,0.55)',
-                  borderColor: 'rgba(255,255,255,0.25)',
-                  color: '#fff',
-                }}
+                className={styles.overlayButton}
               />
             </Upload>
           </Tooltip>
@@ -173,11 +152,7 @@ const StyleReferenceImageSlot: React.FC<StyleReferenceImageSlotProps> = ({
                 e.stopPropagation();
                 if (resolved) setPreviewVisible(true);
               }}
-              style={{
-                background: 'rgba(0,0,0,0.55)',
-                borderColor: 'rgba(255,255,255,0.25)',
-                color: resolved ? '#fff' : 'rgba(255,255,255,0.35)',
-              }}
+              className={`${styles.overlayButton} ${!resolved ? styles.overlayButtonDisabled : ''}`}
             />
           </Tooltip>
         </Space>
@@ -195,15 +170,7 @@ const StyleReferenceImageSlot: React.FC<StyleReferenceImageSlotProps> = ({
                 size="small"
                 shape="circle"
                 icon={<ReloadOutlined />}
-                style={{
-                  position: 'absolute',
-                  left: 8,
-                  top: 8,
-                  zIndex: 2,
-                  background: 'rgba(0,0,0,0.55)',
-                  borderColor: 'rgba(255,255,255,0.25)',
-                  color: '#fff',
-                }}
+                className={`${styles.overlayButton} ${styles.restoreButton}`}
               />
             </Popconfirm>
           </Tooltip>
@@ -215,7 +182,7 @@ const StyleReferenceImageSlot: React.FC<StyleReferenceImageSlotProps> = ({
         <AntImage
           src={resolved.url}
           alt={`${preset.name} 风格参考图`}
-          style={{ display: 'none' }}
+          className={styles.hiddenImage}
           preview={{
             visible: previewVisible,
             src: resolved.url,
@@ -397,7 +364,7 @@ export const VisualStyleManager: React.FC<VisualStyleManagerProps> = ({ onStyleC
 
   if (loading) {
     return (
-      <div style={{ textAlign: 'center', padding: 40 }}>
+      <div className={styles.loadingState}>
         <Spin size="large" />
       </div>
     );
@@ -409,13 +376,12 @@ export const VisualStyleManager: React.FC<VisualStyleManagerProps> = ({ onStyleC
       <Card
         title="自定义风格预设"
         size="small"
-        className="settings-config-card"
+        className={`settings-config-card ${styles.cardSpacing}`}
         extra={
           <Button type="primary" icon={<PlusOutlined />} onClick={() => openModal()}>
             添加风格
           </Button>
         }
-        style={{ marginBottom: 16 }}
       >
         {customPresets.length === 0 ? (
           <Empty
@@ -449,12 +415,12 @@ export const VisualStyleManager: React.FC<VisualStyleManagerProps> = ({ onStyleC
                       okText="删除"
                       cancelText="取消"
                     >
-                      <DeleteOutlined style={{ color: '#ff4d4f' }} />
+                      <DeleteOutlined className={styles.dangerIcon} />
                     </Popconfirm>,
                   ]}
                 >
                   <Card.Meta
-                    avatar={<BgColorsOutlined style={{ fontSize: 24, color: '#1890ff' }} />}
+                    avatar={<BgColorsOutlined className={styles.systemIcon} />}
                     title={preset.name}
                     description={
                       <Text type="secondary" ellipsis>
@@ -487,9 +453,9 @@ export const VisualStyleManager: React.FC<VisualStyleManagerProps> = ({ onStyleC
                 className="settings-config-card"
                 hoverable
               >
-                <div onClick={() => handlePreview(preset)} style={{ cursor: 'pointer' }}>
+                <div onClick={() => handlePreview(preset)} className={styles.clickablePreset}>
                   <Card.Meta
-                    avatar={<BgColorsOutlined style={{ fontSize: 20, color: '#52c41a' }} />}
+                    avatar={<BgColorsOutlined className={styles.builtinIcon} />}
                     title={
                       <Space>
                         {preset.name}
@@ -544,7 +510,7 @@ export const VisualStyleManager: React.FC<VisualStyleManagerProps> = ({ onStyleC
               <Form.Item
                 name="description"
                 label="风格描述"
-                style={{ marginBottom: 0 }}
+                className={styles.compactItem}
               >
                 <Input placeholder="简要描述这个风格的特点" />
               </Form.Item>
@@ -558,7 +524,7 @@ export const VisualStyleManager: React.FC<VisualStyleManagerProps> = ({ onStyleC
                 name="ttiStylePrefix"
                 label="图片生成提示词前缀"
                 tooltip="生成图片时会自动添加到提示词开头"
-                style={{ marginBottom: 0 }}
+                className={styles.compactItem}
               >
                 <TextArea
                   rows={3}
@@ -570,7 +536,7 @@ export const VisualStyleManager: React.FC<VisualStyleManagerProps> = ({ onStyleC
                 name="llmPromptSuffix"
                 label="LLM 风格后缀"
                 tooltip="生成剧本/描述时会添加到提示词中，引导 AI 使用这种风格"
-                style={{ marginBottom: 0 }}
+                className={styles.compactItem}
               >
                 <TextArea
                   rows={3}
@@ -593,21 +559,21 @@ export const VisualStyleManager: React.FC<VisualStyleManagerProps> = ({ onStyleC
       >
         {previewPreset && (
           <div className="settings-card-content">
-            <Paragraph style={{ marginBottom: 8 }}>
+            <Paragraph className={styles.previewParagraph}>
               <Text strong>描述：</Text>
               <Text>{previewPreset.description || '无描述'}</Text>
             </Paragraph>
-            <Paragraph style={{ marginBottom: 8 }}>
+            <Paragraph className={styles.previewParagraph}>
               <Text strong>图片生成提示词前缀：</Text>
               <br />
-              <Text code style={{ wordBreak: 'break-all' }}>
+              <Text code className={styles.breakCode}>
                 {previewPreset.ttiStylePrefix || '（无）'}
               </Text>
             </Paragraph>
-            <Paragraph style={{ marginBottom: 0 }}>
+            <Paragraph className={styles.previewParagraphLast}>
               <Text strong>LLM 风格后缀：</Text>
               <br />
-              <Text code style={{ wordBreak: 'break-all' }}>
+              <Text code className={styles.breakCode}>
                 {previewPreset.llmPromptSuffix || '（无）'}
               </Text>
             </Paragraph>

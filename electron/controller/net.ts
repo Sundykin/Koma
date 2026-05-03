@@ -110,6 +110,43 @@ function isRetryable(err: any): boolean {
   return /UND_ERR_CONNECT_TIMEOUT|ERR_CONNECTION_(?:TIMED_OUT|RESET|REFUSED)|timed out|ECONNRESET|ECONNREFUSED/i.test(message);
 }
 
+// 上游瞬态错误关键字：HTTP/2 stream reset / curl 92 / 上游 LLM 网关 5xx 包装、
+// rate limit、上游网关与真正模型服务之间的瞬时连接抖动等。命中即按"瞬态故障"重试。
+const UPSTREAM_TRANSIENT_PATTERNS: RegExp[] = [
+  /upstream_error/i,
+  /server_error/i,
+  /HTTP\/2 stream\s+\d+\s+was not closed cleanly/i,
+  /INTERNAL_ERROR/,
+  /Failed to perform/i,
+  /curl:\s*\(\d+\)/i,
+  /Bad Gateway/i,
+  /Service (?:Temporarily )?Unavailable/i,
+  /Gateway Timeout/i,
+  /rate.?limit/i,
+];
+
+/**
+ * 响应级重试判定：HTTP 5xx / 429 或响应体包含上游瞬态故障关键字 → 重试。
+ * POST /v1/images/edits、/v1/chat/completions 等"创建任务"端点在尚未真正提交给上游模型前的失败，
+ * 本身没有副作用，重试是安全的；上游已开始处理才失败的 5xx 重试也最多多生成一份图，可接受。
+ */
+function isRetryableResponse(status: number, bodyBytes: Uint8Array): boolean {
+  if (status === 429 || (status >= 500 && status < 600)) return true;
+  const text = decodeBodyPreview(bodyBytes, 1200);
+  return UPSTREAM_TRANSIENT_PATTERNS.some(re => re.test(text));
+}
+
+function decodeBodyPreview(bodyBytes: Uint8Array, maxBytes: number): string {
+  if (!bodyBytes || bodyBytes.length === 0) return '';
+  // best-effort：响应体很可能是 JSON 文本；非 UTF-8 字节不影响关键字判定（ascii 子集足够）
+  const slice = bodyBytes.length > maxBytes ? bodyBytes.subarray(0, maxBytes) : bodyBytes;
+  try {
+    return Buffer.from(slice).toString('utf-8');
+  } catch {
+    return '';
+  }
+}
+
 function getFetchTransport(): {
   transport: 'electron-net' | 'global-fetch';
   request: typeof fetch;
@@ -431,6 +468,8 @@ class NetController extends BaseController {
 
     const startedAt = Date.now();
     let lastError: any;
+    // 用于响应体级别重试时，给上层抛错时附带最后一次的状态/响应（万一所有重试都失败）
+    let lastResponse: { status: number; statusText: string; bodyBytes: Uint8Array; transport: string } | null = null;
 
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
       if (attempt > 0) {
@@ -458,6 +497,23 @@ class NetController extends BaseController {
         });
 
         const bodyBytes = await readBodyChunked(response);
+
+        // 响应体级别重试：HTTP 5xx 或 429 / 上游错误关键字 → 重试
+        // HTTP/2 stream reset / curl 92 / upstream_error / server_error 等瞬态故障，
+        // 中转服务通常包装成 5xx + JSON 错误体返回，本身没有副作用 → 重试是安全的。
+        const isRetryableResp = !response.ok && isRetryableResponse(response.status, bodyBytes);
+        if (isRetryableResp && attempt < MAX_RETRIES) {
+          const preview = decodeBodyPreview(bodyBytes, 240);
+          console.warn('[NetController] 上游瞬态错误，准备重试', {
+            traceId,
+            transport,
+            status: response.status,
+            attempt: attempt + 1,
+            preview,
+          });
+          lastResponse = { status: response.status, statusText: response.statusText, bodyBytes, transport };
+          continue; // 进入下一轮重试
+        }
 
         console.info('[NetController] IPC 网络请求完成', {
           traceId,
@@ -495,6 +551,23 @@ class NetController extends BaseController {
           break;
         }
       }
+    }
+
+    // 重试耗尽前最后保存的"瞬态错误响应"——还原给上层（透传上游 status + body）
+    if (lastResponse && !lastError) {
+      console.error('[NetController] IPC 网络请求耗尽响应级重试', {
+        traceId,
+        url: args.url,
+        transport: lastResponse.transport,
+        status: lastResponse.status,
+        durationMs: Date.now() - startedAt,
+      });
+      return {
+        ok: false,
+        status: lastResponse.status,
+        statusText: lastResponse.statusText,
+        body: Buffer.from(lastResponse.bodyBytes).toString('base64'),
+      };
     }
 
     // 所有重试耗尽，返回结构化错误

@@ -77,7 +77,7 @@ export const StepNavigator: React.FC<StepNavigatorProps> = ({
   };
 
   return (
-    <div className="w-full bg-zinc-900 border-b border-zinc-800 shadow-lg z-30">
+    <div className="w-full bg-bg-surface border-b border-border-subtle shadow-lg z-30">
       <div className="flex items-center w-full py-1.5 px-3 gap-3">
         {/* 左侧槽位：项目标识 */}
         {leftContent && (
@@ -94,6 +94,7 @@ export const StepNavigator: React.FC<StepNavigatorProps> = ({
             const clickable = isStepClickable(step.id, index);
             const isLocked = !clickable && !isActive;
             const Icon = step.icon;
+            const stepProgressWidth = isCompleted ? '100%' : '0%';
 
             const stepNode = (
               <div
@@ -105,10 +106,10 @@ export const StepNavigator: React.FC<StepNavigatorProps> = ({
                 <div
                   className={`w-7 h-7 rounded-full flex items-center justify-center border-2 transition-all duration-300 ${
                     isActive
-                      ? 'bg-emerald-600 border-emerald-500 text-white scale-105 ring-4 ring-emerald-500/20'
+                      ? 'bg-accent-hover border-accent text-on-accent scale-105 ring-4 ring-accent/20'
                       : isCompleted
-                      ? 'bg-zinc-900 border-emerald-600 text-emerald-500'
-                      : 'bg-zinc-950 border-zinc-700 text-zinc-600'
+                      ? 'bg-bg-surface border-accent text-accent'
+                      : 'bg-bg-app border-border text-text-muted'
                   }`}
                 >
                   {isCompleted && !isActive ? (
@@ -122,7 +123,9 @@ export const StepNavigator: React.FC<StepNavigatorProps> = ({
 
                 <span
                   className={`text-xs font-medium transition-colors duration-300 ${
-                    isActive ? 'text-white' : isCompleted ? 'text-emerald-500' : 'text-zinc-500'
+                    // 激活态 label 在页面背景（非 accent）上展示，不能用 onAccent；
+                    // 用 text-accent 突出当前步骤，与已完成步骤色一致但通过粗细 / 圆点强调
+                    isActive ? 'text-accent font-semibold' : isCompleted ? 'text-accent' : 'text-text-tertiary'
                   }`}
                 >
                   {t(step.labelKey)}
@@ -143,10 +146,10 @@ export const StepNavigator: React.FC<StepNavigatorProps> = ({
 
                 {/* 连接线 */}
                 {index < steps.length - 1 && (
-                  <div className="flex-1 h-[2px] mx-1.5 bg-zinc-800 relative rounded-full overflow-hidden min-w-[16px]">
+                  <div className="flex-1 h-[2px] mx-1.5 bg-bg-elevated relative rounded-full overflow-hidden min-w-[16px]">
                     <div
-                      className="absolute top-0 left-0 h-full bg-emerald-600 transition-all duration-500 ease-in-out"
-                      style={{ width: isStepCompleted(step.id, stepProgress, scriptText) ? '100%' : '0%' }}
+                      className="absolute top-0 left-0 h-full w-[var(--step-progress-width)] bg-accent-hover transition-all duration-500 ease-in-out"
+                      style={{ '--step-progress-width': stepProgressWidth } as React.CSSProperties}
                     />
                   </div>
                 )}

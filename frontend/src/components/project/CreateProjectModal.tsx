@@ -12,6 +12,7 @@ import {
   getAllThemePresets,
   type ThemePresetCatalogItem,
 } from '../../config/themePresets';
+import styles from './CreateProjectModal.module.scss';
 
 interface CreateProjectModalProps {
   isOpen: boolean;
@@ -97,7 +98,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ isOpen, 
         form={form}
         layout="vertical"
         initialValues={{ mode: 'drama', aspectRatio: '16:9' }}
-        style={{ marginTop: 16 }}
+        className={styles.form}
       >
         <Form.Item
           name="title"
@@ -109,29 +110,29 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ isOpen, 
         </Form.Item>
 
         <Form.Item name="mode" label={t('project.narrativeMode')}>
-          <Radio.Group buttonStyle="solid" style={{ width: '100%' }}>
-            <Space orientation="vertical" style={{ width: '100%' }} size="middle">
+          <Radio.Group buttonStyle="solid" className={styles.fullWidth}>
+            <Space orientation="vertical" className={styles.fullWidth} size="middle">
               <Radio.Button
                 value="drama"
-                style={{ width: '100%', height: 48, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                className={styles.modeButton}
               >
                 <Space>
                   <AppstoreOutlined />
-                  <span style={{ fontWeight: 'bold' }}>{t('project.dramaMode')}</span>
+                  <span className={styles.optionLabel}>{t('project.dramaMode')}</span>
                   <Tooltip title={t('project.dramaModeDesc')}>
-                    <QuestionCircleOutlined style={{ opacity: 0.6, fontSize: 12 }} />
+                    <QuestionCircleOutlined className={styles.helpIcon} />
                   </Tooltip>
                 </Space>
               </Radio.Button>
               <Radio.Button
                 value="narration"
-                style={{ width: '100%', height: 48, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                className={styles.modeButton}
               >
                 <Space>
                   <SoundOutlined />
-                  <span style={{ fontWeight: 'bold' }}>{t('project.narrationMode')}</span>
+                  <span className={styles.optionLabel}>{t('project.narrationMode')}</span>
                   <Tooltip title={t('project.narrationModeDesc')}>
-                    <QuestionCircleOutlined style={{ opacity: 0.6, fontSize: 12 }} />
+                    <QuestionCircleOutlined className={styles.helpIcon} />
                   </Tooltip>
                 </Space>
               </Radio.Button>
@@ -140,24 +141,24 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ isOpen, 
         </Form.Item>
 
         <Form.Item name="aspectRatio" label="画面比例">
-          <Radio.Group buttonStyle="solid" style={{ width: '100%' }}>
-            <Space style={{ width: '100%' }} size="middle">
+          <Radio.Group buttonStyle="solid" className={styles.fullWidth}>
+            <Space className={styles.fullWidth} size="middle">
               <Radio.Button
                 value="16:9"
-                style={{ flex: 1, height: 48, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                className={styles.aspectButton}
               >
                 <Space>
-                  <span style={{ display: 'inline-block', width: 24, height: 14, border: '2px solid currentColor', borderRadius: 2 }} />
-                  <span style={{ fontWeight: 'bold' }}>16:9 横屏</span>
+                  <span className={`${styles.aspectIcon} ${styles.aspectIconLandscape}`} />
+                  <span className={styles.optionLabel}>16:9 横屏</span>
                 </Space>
               </Radio.Button>
               <Radio.Button
                 value="9:16"
-                style={{ flex: 1, height: 48, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                className={styles.aspectButton}
               >
                 <Space>
-                  <span style={{ display: 'inline-block', width: 14, height: 24, border: '2px solid currentColor', borderRadius: 2 }} />
-                  <span style={{ fontWeight: 'bold' }}>9:16 竖屏</span>
+                  <span className={`${styles.aspectIcon} ${styles.aspectIconPortrait}`} />
+                  <span className={styles.optionLabel}>9:16 竖屏</span>
                 </Space>
               </Radio.Button>
             </Space>
@@ -171,27 +172,21 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ isOpen, 
               <Spin size="small" />
             </div>
           ) : (
-            <div className="grid grid-cols-4 gap-2">
+            <div className={styles.themeGrid}>
               {themePresets.map(theme => {
                 const isSelected = selectedTheme === theme.id;
                 return (
                   <div
                     key={theme.id}
-                    className={`
-                      relative p-2 rounded-lg cursor-pointer transition-all text-center
-                      ${isSelected
-                        ? 'bg-emerald-900/30 border-2 border-emerald-500'
-                        : 'bg-zinc-800 border-2 border-zinc-700 hover:border-zinc-500'
-                      }
-                    `}
+                    className={`${styles.themeCard} ${isSelected ? styles.themeCardSelected : ''}`}
                     onClick={() => setSelectedTheme(theme.id)}
                   >
                     {isSelected && (
-                      <div className="absolute top-1 right-1 w-4 h-4 bg-emerald-500 rounded-full flex items-center justify-center">
-                        <Check className="w-2.5 h-2.5 text-white" />
+                      <div className={styles.themeCheck}>
+                        <Check className={styles.themeCheckIcon} />
                       </div>
                     )}
-                    <div className="text-xs font-medium text-zinc-200">{theme.name}</div>
+                    <div className={styles.themeName}>{theme.name}</div>
                   </div>
                 );
               })}
@@ -199,7 +194,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ isOpen, 
           )}
 
           {selectedTheme && (
-            <div className="mt-2 text-xs text-zinc-500">
+            <div className={styles.themeDescription}>
               {themePresets.find(t => t.id === selectedTheme)?.description}
             </div>
           )}

@@ -7,6 +7,7 @@
 import type { Character, Scene, Prop, ProjectStyleSnapshot, LLMModelConfig } from '../types';
 import type { LLMProvider } from '../providers/llm/types';
 import { createLLMProvider } from '../providers';
+import { wrapTaskBackedLLM } from '../providers/llm/TaskBackedLLMProvider';
 import { getActiveLLMConfig, getChannelsByCategory } from '../store/globalStore';
 import { loadCharacters, loadScenes, loadProps } from '../store/projectStore';
 import { electronService } from './electronService';
@@ -100,13 +101,19 @@ export async function createCreationContext(
     throw new Error('未配置 LLM 模型，请先在设置中添加');
   }
 
-  const llmProvider = createLLMProvider({
+  const baseLLMProvider = createLLMProvider({
     provider: llmConfig.provider as any,
     profileId: llmConfig.profileId,
     hasStoredCredential: llmConfig.hasStoredCredential,
     apiKey: llmConfig.apiKey,
     baseUrl: llmConfig.baseUrl,
     modelName: llmConfig.modelName,
+  });
+  // 把 LLM 调用包成主进程任务：关窗口期间分析仍在跑、reopen 后能从 SQLite 取回结果。
+  // 流式调用透传原 provider；ScriptAnalysis/ShotAnalysis 当前都走 non-streaming，全部受益。
+  const llmProvider = wrapTaskBackedLLM(baseLLMProvider, {
+    scope: () => `project:${projectId}`,
+    taskName: (opts) => opts?.operation || opts?.source || 'LLM 调用',
   });
 
   const itvSelectionKey = serializeMediaSelection(projectMeta?.mediaSelections?.itv);

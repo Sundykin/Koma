@@ -1,5 +1,5 @@
 import React, { ReactNode } from 'react';
-import './StoryboardLayout.css';
+import './StoryboardLayout.scss';
 
 interface StoryboardLayoutProps {
   header?: ReactNode;

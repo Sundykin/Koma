@@ -417,7 +417,6 @@ export function VideoGeneratePanel({
           onChange={onPromptChange}
           references={promptReferences}
           placeholder="描述镜头动作、节奏和风格，输入 @ 引用上游产物"
-          darkTheme
           surfaceStyle="fusion"
           minHeight="112px"
           maxHeight="220px"

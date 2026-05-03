@@ -6,6 +6,7 @@
 import type { TTIModelConfig, ProviderStartResult, ProviderTaskSnapshot } from '../../types';
 import type { TTIProvider, TTIOptions, TTIRequest, ImageResult } from './types';
 import { safeFetch } from '../../utils/safeFetch';
+import { buildChannelAuthRequest } from '../channel/auth';
 import { createLogger } from '../../store/logger';
 import { parseDataUrl } from '../../utils/encoding';
 import { resolveTTISize } from './utils/ttiSize';
@@ -316,23 +317,20 @@ export class OpenAICompatibleTTIProvider implements TTIProvider {
   }
 
   private getHeaders(): Record<string, string> {
-    if (this.config.profileId) {
-      return {
-        'x-koma-channel-id': this.config.profileId,
-        'Content-Type': 'application/json',
-      };
-    }
-    return {
-      'Authorization': `Bearer ${this.config.apiKey || ''}`,
-      'Content-Type': 'application/json',
-    };
+    return buildChannelAuthRequest({
+      channelId: this.config.profileId,
+      apiKey: this.config.apiKey,
+      mode: 'bearer-header',
+      headers: { 'Content-Type': 'application/json' },
+    }).headers;
   }
 
   private getAuthOnlyHeaders(): Record<string, string> {
-    if (this.config.profileId) {
-      return { 'x-koma-channel-id': this.config.profileId };
-    }
-    return { 'Authorization': `Bearer ${this.config.apiKey || ''}` };
+    return buildChannelAuthRequest({
+      channelId: this.config.profileId,
+      apiKey: this.config.apiKey,
+      mode: 'bearer-header',
+    }).headers;
   }
 
   validate(): boolean {
@@ -419,15 +417,28 @@ export class OpenAICompatibleTTIProvider implements TTIProvider {
     form.append('n', String(n));
     if (size) form.append('size', size);
 
+    // 先收集有效 refs（解析字节），再按数量决定字段名 — 防止循环里失败导致字段错乱。
+    const validRefs: Array<{ bytes: Uint8Array; mimeType: string; index: number }> = [];
     for (let i = 0; i < references.length; i += 1) {
       const ref = references[i];
       if (!ref?.value) continue;
-
       const { bytes, mimeType } = await fetchReferenceBytes(ref);
-      // OpenAI gpt-image-1/2 多参考图字段名为 image[]（new-api 也接受）；单图时也可用 image[]，
-      // adaptor 会按数量自动归一为 image 或 image[]。
-      const filename = `image${i + 1}.${extFromMime(mimeType)}`;
-      form.append('image[]', new Blob([bytes], { type: mimeType }), filename);
+      if (bytes && bytes.length > 0) {
+        validRefs.push({ bytes, mimeType, index: i });
+      }
+    }
+    // 防御：多 ref 全部解析失败时给清晰错；不要发空 multipart 让上游报 "Field required: image[]"
+    if (validRefs.length === 0) {
+      throw new Error('所有参考图都未能解析为有效字节（请检查参考图来源是否可用）');
+    }
+
+    // 按 OpenAI 官方协议切换字段名：1 张 → `image`；多张 → `image[]`
+    // 之前统一用 `image[]` 依赖上游 adaptor 自动归一；新版 komaapi / new-api 在单图场景
+    // 报 "Field required: image[]" → 上游没正确归一。改成跟 OpenAI 官方 SDK 一致按数量切。
+    const imageFieldName = validRefs.length === 1 ? 'image' : 'image[]';
+    for (const item of validRefs) {
+      const filename = `image${item.index + 1}.${extFromMime(item.mimeType)}`;
+      form.append(imageFieldName, new Blob([item.bytes], { type: item.mimeType }), filename);
     }
 
     if (debugBody) {

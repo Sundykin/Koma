@@ -202,10 +202,10 @@ function createTooltipDOM(command: CameraCommand, _matchedText: string): { dom: 
     padding: 10px 14px;
     max-width: 280px;
     font-size: 13px;
-    background: #1f1f23;
+    background: var(--token-bg-elevated);
     border-radius: 8px;
-    box-shadow: 0 4px 16px rgba(0,0,0,0.4);
-    border: 1px solid ${isCamera ? 'rgba(147, 51, 234, 0.5)' : 'rgba(59, 130, 246, 0.5)'};
+    box-shadow: var(--token-shadow-md);
+    border: 1px solid ${isCamera ? 'color-mix(in srgb, var(--token-status-info) 55%, transparent)' : 'color-mix(in srgb, var(--token-accent-base) 55%, transparent)'};
   `;
 
   // 头部
@@ -224,21 +224,21 @@ function createTooltipDOM(command: CameraCommand, _matchedText: string): { dom: 
     border-radius: 4px;
     font-size: 11px;
     font-weight: 500;
-    background: ${isCamera ? 'rgba(147, 51, 234, 0.2)' : 'rgba(59, 130, 246, 0.2)'};
-    color: ${isCamera ? '#a78bfa' : '#60a5fa'};
+    background: ${isCamera ? 'color-mix(in srgb, var(--token-status-info) 18%, transparent)' : 'color-mix(in srgb, var(--token-accent-base) 18%, transparent)'};
+    color: ${isCamera ? 'var(--token-status-info)' : 'var(--token-accent-base)'};
   `;
 
   const name = document.createElement('span');
   name.textContent = command.nameZh;
   name.style.cssText = `
     font-weight: 600;
-    color: #e4e4e7;
+    color: var(--token-text-primary);
   `;
 
   const enName = document.createElement('span');
   enName.textContent = command.nameEn;
   enName.style.cssText = `
-    color: #71717a;
+    color: var(--token-text-tertiary);
     font-size: 12px;
     margin-left: auto;
   `;
@@ -252,7 +252,7 @@ function createTooltipDOM(command: CameraCommand, _matchedText: string): { dom: 
   const desc = document.createElement('div');
   desc.textContent = command.description;
   desc.style.cssText = `
-    color: #a1a1aa;
+    color: var(--token-text-secondary);
     font-size: 12px;
     line-height: 1.5;
   `;
@@ -332,14 +332,14 @@ export function createKeywordAtomicDelete() {
  */
 export const keywordHighlightTheme = EditorView.baseTheme({
   '.keyword-camera': {
-    backgroundColor: 'rgba(147, 51, 234, 0.2)',
-    color: '#a78bfa',
+    backgroundColor: 'color-mix(in srgb, var(--token-status-info) 18%, transparent)',
+    color: 'var(--token-status-info)',
     borderRadius: '3px',
     padding: '1px 3px',
   },
   '.keyword-shot-type': {
-    backgroundColor: 'rgba(59, 130, 246, 0.2)',
-    color: '#60a5fa',
+    backgroundColor: 'color-mix(in srgb, var(--token-accent-base) 18%, transparent)',
+    color: 'var(--token-accent-base)',
     borderRadius: '3px',
     padding: '1px 3px',
   },

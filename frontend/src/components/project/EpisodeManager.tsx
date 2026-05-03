@@ -22,11 +22,11 @@ export interface EpisodeManagerRef {
 }
 
 const statusConfig: Record<Episode['status'], { label: string; color: string }> = {
-  draft: { label: '草稿', color: 'bg-zinc-700 text-zinc-400' },
-  script: { label: '剧本', color: 'bg-blue-900/50 text-blue-400' },
-  storyboard: { label: '分镜', color: 'bg-purple-900/50 text-purple-400' },
-  generating: { label: '生成中', color: 'bg-orange-900/50 text-orange-400' },
-  completed: { label: '已完成', color: 'bg-emerald-900/50 text-emerald-400' },
+  draft: { label: '草稿', color: 'bg-bg-hover text-text-secondary' },
+  script: { label: '剧本', color: 'bg-status-info/15 text-status-info' },
+  storyboard: { label: '分镜', color: 'bg-accent/15 text-accent' },
+  generating: { label: '生成中', color: 'bg-status-warning/15 text-status-warning' },
+  completed: { label: '已完成', color: 'bg-status-success/15 text-status-success' },
 };
 
 export const EpisodeManager = forwardRef<EpisodeManagerRef, EpisodeManagerProps>(({
@@ -202,7 +202,7 @@ export const EpisodeManager = forwardRef<EpisodeManagerRef, EpisodeManagerProps>
         <div className="flex justify-end mb-2">
           <button
             onClick={() => setSplitDialogOpen(true)}
-            className="flex items-center gap-1.5 px-2.5 py-1 text-xs text-purple-400 hover:text-purple-300 bg-purple-900/20 hover:bg-purple-900/30 border border-purple-800/50 rounded-md transition-colors"
+            className="flex items-center gap-1.5 px-2.5 py-1 text-xs text-status-info hover:text-status-info bg-status-info/10 hover:bg-status-info/15 border border-status-info/30 rounded-md transition-colors"
           >
             <Zap className="w-3.5 h-3.5" />
             AI 分割
@@ -223,25 +223,25 @@ export const EpisodeManager = forwardRef<EpisodeManagerRef, EpisodeManagerProps>
               <div
                 key={episode.id}
                 onClick={() => onEpisodeSelect?.(episode)}
-                className={`group flex items-center justify-between h-[72px] px-4 cursor-pointer transition-colors border-b border-zinc-800/80 ${
+                className={`group flex items-center justify-between h-[72px] px-4 cursor-pointer transition-colors border-b border-border-subtle/80 ${
                   isSelected
-                    ? 'bg-emerald-500/10 border-l-[3px] border-l-emerald-500'
-                    : 'bg-zinc-900 hover:bg-zinc-800/50 border-l-[3px] border-l-transparent'
+                    ? 'bg-accent/10 border-l-[3px] border-l-accent'
+                    : 'bg-bg-surface hover:bg-bg-elevated/50 border-l-[3px] border-l-transparent'
                 }`}
               >
                 {/* Left: Drag + Info */}
                 <div className="flex items-center gap-3 flex-1 min-w-0">
-                  <GripVertical className="w-4 h-4 text-zinc-600 opacity-50 cursor-grab" />
+                  <GripVertical className="w-4 h-4 text-text-muted opacity-50 cursor-grab" />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
-                      <span className="text-sm font-medium text-zinc-200 truncate">
+                      <span className="text-sm font-medium text-text-primary truncate">
                         第 {episode.number} 集: {episode.title}
                       </span>
                       <span className={`text-[10px] px-1.5 py-0.5 rounded ${status.color}`}>
                         {status.label}
                       </span>
                     </div>
-                    <p className="text-xs text-zinc-500 truncate pr-4">
+                    <p className="text-xs text-text-tertiary truncate pr-4">
                       {episode.scriptText?.slice(0, 50) || '暂无剧本内容...'}
                     </p>
                   </div>
@@ -254,19 +254,19 @@ export const EpisodeManager = forwardRef<EpisodeManagerRef, EpisodeManagerProps>
                       e.stopPropagation();
                       onEpisodeSelect?.(episode);
                     }}
-                    className="p-1.5 text-emerald-400 hover:text-emerald-300 border border-emerald-500/50 hover:border-emerald-400 rounded-md transition-colors"
+                    className="p-1.5 text-accent hover:text-accent border border-accent/50 hover:border-accent rounded-md transition-colors"
                   >
                     <Play className="w-3.5 h-3.5" />
                   </button>
                   <button
                     onClick={(e) => handleEditClick(episode, e)}
-                    className="p-1.5 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-700 rounded-md transition-colors"
+                    className="p-1.5 text-text-secondary hover:text-text-primary hover:bg-bg-hover rounded-md transition-colors"
                   >
                     <Pencil className="w-3.5 h-3.5" />
                   </button>
                   <button
                     onClick={(e) => handleDeleteEpisode(episode, e)}
-                    className="p-1.5 text-red-400 hover:text-red-300 hover:bg-red-900/30 rounded-md transition-colors"
+                    className="p-1.5 text-status-error hover:text-status-error hover:bg-status-error/12 rounded-md transition-colors"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
@@ -283,8 +283,8 @@ export const EpisodeManager = forwardRef<EpisodeManagerRef, EpisodeManagerProps>
         disabled={adding}
         className={`flex items-center justify-center gap-2 h-12 border border-dashed rounded-lg text-sm transition-colors ${
           adding
-            ? 'border-zinc-700 text-zinc-600 cursor-not-allowed'
-            : 'border-zinc-700 hover:border-emerald-500/50 text-zinc-500 hover:text-emerald-400'
+            ? 'border-border text-text-muted cursor-not-allowed'
+            : 'border-border hover:border-accent/50 text-text-tertiary hover:text-accent'
         }`}
       >
         <Plus className={`w-4 h-4 ${adding ? 'animate-spin' : ''}`} />
@@ -329,7 +329,7 @@ export const EpisodeManager = forwardRef<EpisodeManagerRef, EpisodeManagerProps>
           >
             <Input placeholder="请输入剧集标题" />
           </Form.Item>
-          <div className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-xs text-zinc-400">
+          <div className="rounded-lg border border-border-subtle bg-bg-surface px-3 py-2 text-xs text-text-secondary">
             完整剧本内容仅在中间工作台编辑，这里只维护剧集标题等元数据。
           </div>
         </Form>
@@ -347,18 +347,18 @@ export const EpisodeManager = forwardRef<EpisodeManagerRef, EpisodeManagerProps>
         closable={!splitting}
         mask={{ closable: !splitting }}
       >
-        <p className="text-zinc-400 text-sm mb-4">
+        <p className="text-text-secondary text-sm mb-4">
           优先按原文已存在的分集标题拆分；若原文未分集，再按目标集数规划。现有剧集将被替换。
         </p>
         <div className="flex items-center gap-3">
-          <span className="text-sm text-zinc-300">分割成</span>
+          <span className="text-sm text-text-secondary">分割成</span>
           <InputNumber
             value={splitCount}
             onChange={(v) => setSplitCount(v || 1)}
             min={1}
             className="!w-20"
           />
-          <span className="text-sm text-zinc-300">集</span>
+          <span className="text-sm text-text-secondary">集</span>
         </div>
       </Modal>
     </div>

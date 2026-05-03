@@ -24,7 +24,7 @@ import {
   getPropPreviewImageSource,
   getScenePreviewImageSource,
 } from '../../utils/mediaSelectors';
-import './ImageCardGrid.css';
+import './ImageCardGrid.scss';
 
 const { Text } = Typography;
 
@@ -120,8 +120,7 @@ export const ImageCardGrid: React.FC<ImageCardGridProps> = ({
       key: `char-${asset.id}`,
       label: (
         <Space size={8}>
-          <img src={toDisplayUrl(source)} alt={asset.name}
-            style={{ width: 24, height: 24, objectFit: 'cover', borderRadius: 2 }} />
+          <img src={toDisplayUrl(source)} alt={asset.name} className="assetMenuThumb" />
           <span>{asset.name}</span>
         </Space>
       ),
@@ -139,8 +138,7 @@ export const ImageCardGrid: React.FC<ImageCardGridProps> = ({
       key: `scene-${asset.id}`,
       label: (
         <Space size={8}>
-          <img src={toDisplayUrl(source)} alt={asset.name}
-            style={{ width: 24, height: 24, objectFit: 'cover', borderRadius: 2 }} />
+          <img src={toDisplayUrl(source)} alt={asset.name} className="assetMenuThumb" />
           <span>{asset.name}</span>
         </Space>
       ),
@@ -158,8 +156,7 @@ export const ImageCardGrid: React.FC<ImageCardGridProps> = ({
       key: `prop-${asset.id}`,
       label: (
         <Space size={8}>
-          <img src={toDisplayUrl(source)} alt={asset.name}
-            style={{ width: 24, height: 24, objectFit: 'cover', borderRadius: 2 }} />
+          <img src={toDisplayUrl(source)} alt={asset.name} className="assetMenuThumb" />
           <span>{asset.name}</span>
         </Space>
       ),
@@ -253,7 +250,7 @@ export const ImageCardGrid: React.FC<ImageCardGridProps> = ({
         <Dropdown menu={{ items: buildAddMenu() }} trigger={['click']} disabled={disabled}>
           <div className="imageCard addCard">
             <PlusOutlined />
-            <Text type="secondary" style={{ fontSize: 10 }}>添加</Text>
+            <Text type="secondary" className="addCardText">添加</Text>
           </div>
         </Dropdown>
       </div>
@@ -280,9 +277,11 @@ export const ImageCardGrid: React.FC<ImageCardGridProps> = ({
           current: previewIndex,
         }}
       >
-        {images.map((img, idx) => (
-          <Image key={idx} src={toDisplayUrl(img)} style={{ display: 'none' }} />
-        ))}
+        <div className="hiddenPreviewImages">
+          {images.map((img, idx) => (
+            <Image key={idx} src={toDisplayUrl(img)} />
+          ))}
+        </div>
       </Image.PreviewGroup>
     </div>
   );

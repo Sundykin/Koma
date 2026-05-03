@@ -33,7 +33,7 @@ import type { ShotVersion } from '../../types';
 import { loadShotMeta, switchShotVersion, deleteShotVersion } from '../../store/projectStore';
 import { electronService } from '../../services/electronService';
 import { getMediaAssetDisplaySource } from '../../types';
-import './VideoVersionList.css';
+import './VideoVersionList.scss';
 
 const { Text } = Typography;
 
@@ -161,10 +161,10 @@ export const VideoVersionList: React.FC<VideoVersionListProps> = ({
         <div className="versionMenuItem">
           <Space>
             {v.version === localCurrentVersion && (
-              <CheckCircleFilled style={{ color: '#10b981' }} />
+              <CheckCircleFilled className="versionMenuCheck" />
             )}
             <span>v{v.version}</span>
-            <Text type="secondary" style={{ fontSize: 11 }}>
+            <Text type="secondary" className="versionTime">
               {formatTime(v.createdAt)}
             </Text>
           </Space>
@@ -233,12 +233,12 @@ export const VideoVersionList: React.FC<VideoVersionListProps> = ({
         >
           <div className="versionCompact">
             {versions.length > 0 ? (
-              <Tag color="green" style={{ margin: 0, cursor: 'pointer' }}>
-                v{localCurrentVersion} <DownOutlined style={{ fontSize: 10 }} />
+              <Tag className="versionCompactTag versionCompactTagCurrent">
+                v{localCurrentVersion} <DownOutlined className="versionCompactIcon" />
               </Tag>
             ) : (
-              <Tag style={{ margin: 0, cursor: 'pointer' }}>
-                无版本 <DownOutlined style={{ fontSize: 10 }} />
+              <Tag className="versionCompactTag">
+                无版本 <DownOutlined className="versionCompactIcon" />
               </Tag>
             )}
           </div>
@@ -257,7 +257,7 @@ export const VideoVersionList: React.FC<VideoVersionListProps> = ({
             src={previewUrl}
             controls
             autoPlay
-            style={{ width: '100%', maxHeight: '60vh' }}
+            className="videoVersionPreviewPlayer"
           />
         </Modal>
       </>
@@ -273,7 +273,7 @@ export const VideoVersionList: React.FC<VideoVersionListProps> = ({
         <>
           <div className="versionHeader">
             <HistoryOutlined />
-            <Text type="secondary" style={{ fontSize: 11 }}>
+            <Text type="secondary" className="versionTime">
               {versions.length} 个版本
             </Text>
           </div>
@@ -346,7 +346,7 @@ export const VideoVersionList: React.FC<VideoVersionListProps> = ({
           src={previewUrl}
           controls
           autoPlay
-          style={{ width: '100%', maxHeight: '60vh' }}
+          className="videoVersionPreviewPlayer"
         />
       </Modal>
     </div>

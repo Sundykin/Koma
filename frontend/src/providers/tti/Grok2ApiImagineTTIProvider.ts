@@ -10,6 +10,7 @@
 import type { TTIModelConfig, ProviderStartResult, ProviderTaskSnapshot } from '../../types';
 import type { TTIProvider, TTIRequest, ImageResult } from './types';
 import { safeFetch } from '../../utils/safeFetch';
+import { buildChannelAuthRequest } from '../channel/auth';
 import { createLogger } from '../../store/logger';
 import { electronService } from '../../services/electronService';
 import { base64ToBytes, parseDataUrl } from '../../utils/encoding';
@@ -290,21 +291,19 @@ export class Grok2ApiImagineTTIProvider implements TTIProvider {
     return hasCredentialRef && Boolean(this.config.baseUrl) && Boolean(String(this.config.modelName || '').trim());
   }
 
-  private getHeaders(): Record<string, string> {
-    // 优先走 channelId 代理（主进程解密注入 Authorization）；回退到明文 apiKey（历史路径）
-    if (this.config.profileId) {
-      return { 'x-koma-channel-id': this.config.profileId };
-    }
-    return {
-      Authorization: `Bearer ${this.config.apiKey || ''}`,
-    };
+  private getHeaders(extra?: Record<string, string>): Record<string, string> {
+    // 走统一抽象：profileId 存在 → x-koma-channel-id（主进程注入 Authorization）；
+    // 否则回退明文 Bearer。详见 providers/channel/auth.ts。
+    return buildChannelAuthRequest({
+      channelId: this.config.profileId,
+      apiKey: this.config.apiKey,
+      mode: 'bearer-header',
+      headers: extra,
+    }).headers;
   }
 
   private getJsonHeaders(): Record<string, string> {
-    return {
-      ...this.getHeaders(),
-      'Content-Type': 'application/json',
-    };
+    return this.getHeaders({ 'Content-Type': 'application/json' });
   }
 
   async testConnection(): Promise<boolean> {
@@ -462,6 +461,8 @@ export class Grok2ApiImagineTTIProvider implements TTIProvider {
     form.append('n', String(editCount));
     form.append('size', editSize);
 
+    // 先收集所有有效 refs（解析字节），再按数量决定字段名，避免循环里失败导致字段错乱。
+    const validRefs: Array<{ bytes: Uint8Array; mimeType: string; index: number }> = [];
     for (let i = 0; i < refs.length; i += 1) {
       const ref = refs[i];
       if (!ref?.value) continue;
@@ -491,11 +492,28 @@ export class Grok2ApiImagineTTIProvider implements TTIProvider {
         throw new Error(`不支持的参考图输入: ${ref.transport}:${ref.value}`);
       }
 
-      const filename = `image${i + 1}.${extFromMime(mimeType)}`;
-      // OpenAI gpt-image-1/2 多参考图字段名为 `image[]`（new-api / komaapi 都接受）；
-      // 与 OpenAICompatibleTTIProvider 对齐，避免 `Field required: image[]` 422。
-      // 风格锚定参考图被注入后，所有生图都会走带 references 的路径，单图也送 `image[]`。
-      form.append('image[]', new Blob([bytes], { type: mimeType }), filename);
+      if (bytes && bytes.length > 0) {
+        validRefs.push({ bytes, mimeType, index: i });
+      }
+    }
+
+    // 防御：到这里有 refsAll 但 validRefs 为空，意味着所有 ref 解析失败 / value 为空。
+    // 如果继续发空 multipart，上游会 422 'Field required: image[]'，错误信息让人无法定位。
+    // 直接抛清晰错，让上层修资产引用。
+    if (validRefs.length === 0) {
+      throw new Error('所有参考图都未能解析为有效字节（请检查参考图来源是否可用）');
+    }
+
+    // 按 OpenAI 官方协议切换字段名：
+    //  - 1 张参考图 → `image`（OpenAI 单文件标准字段）
+    //  - 多张 → `image[]`（OpenAI 多文件数组语法）
+    // 之前统一用 `image[]` 依赖上游 adaptor 自动归一为 image，
+    // 但 komaapi 当前版本在单图场景报 "Field required: image[]" —— 显然没正确归一。
+    // 改成按数量切，跟 OpenAI 官方 SDK / Node SDK 行为一致，最大兼容上游。
+    const imageFieldName = validRefs.length === 1 ? 'image' : 'image[]';
+    for (const item of validRefs) {
+      const filename = `image${item.index + 1}.${extFromMime(item.mimeType)}`;
+      form.append(imageFieldName, new Blob([item.bytes], { type: item.mimeType }), filename);
     }
 
     if (debugBody) {

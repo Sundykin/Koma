@@ -50,17 +50,6 @@ class MentionWidget extends WidgetType {
       transition: background-color 0.2s;
     `;
 
-    // 根据类型设置颜色
-    const colors: Record<MentionType, { bg: string; text: string }> = {
-      char: { bg: '#e3f2fd', text: '#1565c0' },
-      prop: { bg: '#fff3e0', text: '#e65100' },
-      scene: { bg: '#e8f5e9', text: '#2e7d32' },
-    };
-
-    const color = colors[this.mention.type];
-    span.style.backgroundColor = color.bg;
-    span.style.color = color.text;
-
     // 悬浮效果
     span.addEventListener('mouseenter', () => {
       span.style.filter = 'brightness(0.95)';
@@ -156,16 +145,16 @@ export const mentionTheme = EditorView.baseTheme({
     fontFamily: 'inherit',
   },
   '.mention-char': {
-    backgroundColor: '#e3f2fd',
-    color: '#1565c0',
+    backgroundColor: 'color-mix(in srgb, var(--token-status-info) 18%, transparent)',
+    color: 'var(--token-status-info)',
   },
   '.mention-prop': {
-    backgroundColor: '#fff3e0',
-    color: '#e65100',
+    backgroundColor: 'color-mix(in srgb, var(--token-status-warning) 18%, transparent)',
+    color: 'var(--token-status-warning)',
   },
   '.mention-scene': {
-    backgroundColor: '#e8f5e9',
-    color: '#2e7d32',
+    backgroundColor: 'color-mix(in srgb, var(--token-status-success) 18%, transparent)',
+    color: 'var(--token-status-success)',
   },
 });
 

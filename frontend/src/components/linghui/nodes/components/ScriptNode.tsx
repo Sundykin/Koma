@@ -1,4 +1,4 @@
-import React, { memo, useMemo } from 'react';
+import React, { memo, useMemo, type CSSProperties } from 'react';
 import { Handle, Position, type NodeProps } from '@xyflow/react';
 import type {
   LinghuiNodeData,
@@ -11,13 +11,14 @@ import { EditableCompactNodeLabel } from './EditableCompactNodeLabel';
 import { parseLinghuiScriptContent } from '../../editors/state/linghuiScriptNodeUtils';
 import { resolveLinghuiNodeViewMode } from '../../editors/state/linghuiNodeViewMode';
 import { resolveDefaultCompactNodeStyle } from '../state/linghuiNodeCardSizing';
+import { cssVars } from '../../../../theme/runtime';
 
 const STATUS_COLORS: Record<LinghuiRunStatus, string> = {
-  idle: '#64748b',
-  running: '#3b82f6',
-  succeeded: '#22c55e',
-  failed: '#ef4444',
-  stale: '#f97316',
+  idle: 'var(--token-text-muted)',
+  running: 'var(--token-status-info)',
+  succeeded: 'var(--token-status-success)',
+  failed: 'var(--token-status-error)',
+  stale: 'var(--token-status-warning)',
 };
 
 function resolveHandleTop(index: number, total: number): string {
@@ -29,9 +30,9 @@ function resolveHandleTop(index: number, total: number): string {
 function getHandleColor(dataType: LinghuiNodeData['inputs'][number]['dataType'], accent: string): string {
   switch (dataType) {
     case 'text':
-      return '#f59e0b';
+      return 'var(--token-status-warning)';
     case 'video':
-      return '#38bdf8';
+      return 'var(--token-status-info)';
     default:
       return accent;
   }
@@ -44,6 +45,12 @@ function ScriptNodeInner({ id, data, selected }: NodeProps) {
   const interactionHandlers = useLinghuiNodeInteraction(id);
   const status = runState?.status ?? 'idle';
   const statusColor = STATUS_COLORS[status] ?? STATUS_COLORS.idle;
+  const nodeStyle = cssVars({
+    ...resolveDefaultCompactNodeStyle({ thumbHeight: 214, minHeight: 368 }),
+    '--linghui-node-border': status !== 'idle' ? statusColor : (selected ? nodeData.accent : 'var(--token-border-base)'),
+    '--linghui-accent': nodeData.accent,
+    '--linghui-progress': `${runState?.progress ?? 0}%`,
+  });
 
   const fallbackShots = useMemo(() => (
     props.mode === 'manual' ? parseLinghuiScriptContent(String(props.content ?? '')).shots : []
@@ -64,10 +71,7 @@ function ScriptNodeInner({ id, data, selected }: NodeProps) {
     <div
       className={`linghuiCompactNode nopan ${selected ? 'isSelected' : ''} ${viewMode === 'collapsed' ? 'isCollapsed' : ''} ${isEditorVisible ? 'hasInlineEditor' : ''}`}
       data-view-mode={viewMode}
-      style={{
-        ...resolveDefaultCompactNodeStyle({ thumbHeight: 214, minHeight: 368 }),
-        borderColor: status !== 'idle' ? statusColor : (selected ? nodeData.accent : 'rgba(63, 63, 70, 0.7)'),
-      }}
+      style={nodeStyle}
       {...interactionHandlers}
     >
       {nodeData.inputs.map((slot, index) => (
@@ -77,7 +81,10 @@ function ScriptNodeInner({ id, data, selected }: NodeProps) {
           position={Position.Left}
           id={`input-${index}`}
           className="linghuiCompactHandle"
-          style={{ background: getHandleColor(slot.dataType, nodeData.accent), top: resolveHandleTop(index, nodeData.inputs.length) }}
+          style={{
+            '--linghui-handle-bg': getHandleColor(slot.dataType, nodeData.accent),
+            '--linghui-handle-top': resolveHandleTop(index, nodeData.inputs.length),
+          } as CSSProperties}
           isConnectable
         />
       ))}
@@ -89,19 +96,22 @@ function ScriptNodeInner({ id, data, selected }: NodeProps) {
           position={Position.Right}
           id={`output-${index}`}
           className="linghuiCompactHandle"
-          style={{ background: index === 0 ? '#f59e0b' : nodeData.accent, top: resolveHandleTop(index, nodeData.outputs.length) }}
+          style={{
+            '--linghui-handle-bg': index === 0 ? 'var(--token-status-warning)' : nodeData.accent,
+            '--linghui-handle-top': resolveHandleTop(index, nodeData.outputs.length),
+          } as CSSProperties}
         />
       ))}
 
       <div className="linghuiCompactThumb linghuiCompactScriptThumb">
         <div className="linghuiCompactScriptFrame">
-          <span style={{ background: `${nodeData.accent}cc` }} />
-          <span style={{ background: `${nodeData.accent}a6` }} />
-          <span style={{ background: `${nodeData.accent}80` }} />
+          <span className="linghuiCompactAccentLineStrong" />
+          <span className="linghuiCompactAccentLineMedium" />
+          <span className="linghuiCompactAccentLineSoft" />
         </div>
         <div className="linghuiCompactScriptGrid">
           {Array.from({ length: 4 }, (_, index) => (
-            <span key={index} style={{ borderColor: `${nodeData.accent}55` }} />
+            <span key={index} className="linghuiCompactAccentBorder" />
           ))}
         </div>
       </div>
@@ -127,7 +137,7 @@ function ScriptNodeInner({ id, data, selected }: NodeProps) {
         ) : null}
         {status === 'running' && (
           <div className="linghuiCompactProgress">
-            <div className="linghuiCompactProgressBar" style={{ width: `${runState?.progress ?? 0}%` }} />
+            <div className="linghuiCompactProgressBar" />
           </div>
         )}
       </div>

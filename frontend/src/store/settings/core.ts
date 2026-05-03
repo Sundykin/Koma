@@ -15,6 +15,7 @@ import { STORAGE_KEYS } from '../../constants/storageKeys';
 import { createLogger } from '../logger';
 import { encryptSettings, decryptSettings, initEncryption } from '../encryption';
 import * as channelService from '../../services/channelConfigService';
+import { DEFAULT_APP_THEME_ID, normalizeAppThemeId } from './uiTheme';
 
 const logger = createLogger('Settings');
 
@@ -26,10 +27,25 @@ export async function getGlobalPath(filename: string): Promise<string> {
 
 // 默认设置
 export const DEFAULT_SETTINGS: AppSettings = {
+  uiThemeId: DEFAULT_APP_THEME_ID,
   channelConfigs: [],
   mediaDefaults: {},
   promptTemplates: {},
 };
+
+type PersistedSettings = Partial<AppSettings> & {
+  themeId?: string;
+};
+
+function applyDefaultSettings(settings: PersistedSettings): AppSettings {
+  const { themeId: legacyThemeId, ...rest } = settings;
+
+  return {
+    ...DEFAULT_SETTINGS,
+    ...rest,
+    uiThemeId: normalizeAppThemeId(settings.uiThemeId ?? legacyThemeId),
+  };
+}
 
 // 生成唯一 ID
 export function generateId(): string {
@@ -100,7 +116,7 @@ export async function loadSettings(): Promise<AppSettings> {
       if (data) {
         let parsed = JSON.parse(data);
         parsed = migrateEncryptedData(parsed);
-        return { ...DEFAULT_SETTINGS, ...parsed };
+        return applyDefaultSettings(parsed);
       }
     } catch (err) {
       logger.error('loadSettings error', err);
@@ -120,7 +136,7 @@ export async function loadSettings(): Promise<AppSettings> {
       let parsed = JSON.parse(data);
       parsed = migrateEncryptedData(parsed);
       const decrypted = await decryptSettings(parsed);
-      base = { ...DEFAULT_SETTINGS, ...decrypted };
+      base = applyDefaultSettings(decrypted);
     }
   } catch (err) {
     logger.error('loadSettings error', err);

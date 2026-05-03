@@ -121,7 +121,7 @@ const ITV_DURATION_SPECS_BY_PROVIDER: Record<string, VideoDurationSpec> = {
  * modelId 前缀 → 时长 spec。匹配优先级高于 providerType（按数组顺序首匹配胜出，
  * 所以更具体的前缀必须放在前面）。
  *
- * Seedance 上游约束（SeedanceProvider.ts:172 normalizeDuration）：
+ * Seedance 上游约束（穗禾网关 normalizeDuration 行为）：
  *   - seedance-2.0-f / seedance-2.0-fast: 4-12s（Fast 档）
  *   - seedance-2.0-r / seedance-2.0:      4-15s（Pro/Regular 档）
  *

@@ -21,7 +21,7 @@ import {
 } from '../../store/projectStore';
 import { electronService } from '../../services/electronService';
 import { createLogger } from '../../store/logger';
-import { TaskManager } from '../../services/TaskManager';
+import { useTaskTransitions } from '../../hooks';
 import { getCharacterCostumePhotoSource } from '../../utils/mediaSelectors';
 
 const logger = createLogger('ProjectAssetOverview');
@@ -138,15 +138,14 @@ export const ProjectAssetOverview = forwardRef<ProjectAssetOverviewRef, ProjectA
 
   useImperativeHandle(ref, () => ({ refresh: loadAssets }), [loadAssets]);
 
-  useEffect(() => {
-    const unsubscribe = TaskManager.addListener((task) => {
-      if (task.projectId !== projectId) return;
-      if (task.type === 'script-analysis' && task.status === 'completed') {
-        loadAssets();
-      }
-    });
-    return () => unsubscribe();
-  }, [projectId, loadAssets]);
+  useTaskTransitions(
+    {
+      scope: `project:${projectId}`,
+      type: 'script-analysis',
+      to: ['completed'],
+    },
+    () => loadAssets()
+  );
 
   const setAssetDeleting = useCallback((assetKey: string, deleting: boolean) => {
     setDeletingAssetIds((prev) => {
@@ -254,7 +253,7 @@ export const ProjectAssetOverview = forwardRef<ProjectAssetOverviewRef, ProjectA
 
   const renderEpisodeRefs = (refs?: EpisodeRef[]) => {
     if (!refs || refs.length === 0) {
-      return <span className="text-[10px] px-1.5 py-0.5 bg-zinc-800 text-zinc-500 rounded">未使用</span>;
+      return <span className="text-[10px] px-1.5 py-0.5 bg-bg-elevated text-text-tertiary rounded">未使用</span>;
     }
     return (
       <div className="flex items-center gap-1 flex-wrap">
@@ -262,15 +261,15 @@ export const ProjectAssetOverview = forwardRef<ProjectAssetOverviewRef, ProjectA
           <Tooltip key={idx} title={ref.firstAppearance ? '首次出现' : '复用'}>
             <span className={`text-[10px] px-1.5 py-0.5 rounded ${
               ref.firstAppearance
-                ? 'bg-emerald-900/50 text-emerald-400'
-                : 'bg-blue-900/50 text-blue-400'
+                ? 'bg-status-success/15 text-status-success'
+                : 'bg-status-info/15 text-status-info'
             }`}>
               {ref.episodeName || `E${idx + 1}`}
             </span>
           </Tooltip>
         ))}
         {refs.length > 2 && (
-          <span className="text-[10px] px-1.5 py-0.5 bg-zinc-800 text-zinc-400 rounded">
+          <span className="text-[10px] px-1.5 py-0.5 bg-bg-elevated text-text-secondary rounded">
             +{refs.length - 2}
           </span>
         )}
@@ -291,23 +290,23 @@ export const ProjectAssetOverview = forwardRef<ProjectAssetOverviewRef, ProjectA
   return (
     <div className="h-full flex flex-col">
       {/* 统计栏 */}
-      <div className="px-4 py-3 border-b border-zinc-800/80">
+      <div className="px-4 py-3 border-b border-border-subtle/80">
         <div className="grid grid-cols-3 gap-2">
           <div className="text-center">
-            <div className="text-lg font-semibold text-zinc-200">{characters.length}</div>
-            <div className="text-[10px] text-zinc-500">角色</div>
+            <div className="text-lg font-semibold text-text-primary">{characters.length}</div>
+            <div className="text-[10px] text-text-tertiary">角色</div>
           </div>
           <div className="text-center">
-            <div className="text-lg font-semibold text-zinc-200">{scenes.length}</div>
-            <div className="text-[10px] text-zinc-500">场景</div>
+            <div className="text-lg font-semibold text-text-primary">{scenes.length}</div>
+            <div className="text-[10px] text-text-tertiary">场景</div>
           </div>
           <div className="text-center">
-            <div className="text-lg font-semibold text-zinc-200">{props.length}</div>
-            <div className="text-[10px] text-zinc-500">道具</div>
+            <div className="text-lg font-semibold text-text-primary">{props.length}</div>
+            <div className="text-[10px] text-text-tertiary">道具</div>
           </div>
         </div>
         {orphanedCount > 0 && (
-          <div className="mt-2 flex items-center justify-center gap-1 text-[10px] text-orange-400">
+          <div className="mt-2 flex items-center justify-center gap-1 text-[10px] text-status-warning">
             <Link className="w-3 h-3" />
             {orphanedCount} 个未使用
           </div>
@@ -339,7 +338,7 @@ export const ProjectAssetOverview = forwardRef<ProjectAssetOverviewRef, ProjectA
                       <div
                         key={char.id}
                         onClick={() => onAssetClick?.(char.id, 'character')}
-                        className="flex items-center gap-3 p-2 rounded-lg cursor-pointer hover:bg-zinc-800/50 transition-colors"
+                        className="flex items-center gap-3 p-2 rounded-lg cursor-pointer hover:bg-bg-elevated/50 transition-colors"
                       >
                         <Avatar
                           size={32}
@@ -349,12 +348,12 @@ export const ProjectAssetOverview = forwardRef<ProjectAssetOverviewRef, ProjectA
                             if (/^https?:\/\//i.test(source) || source.startsWith('data:')) return source;
                             return electronService.fs.toLocalUrl(source);
                           })()}
-                          className="bg-emerald-600 flex-shrink-0"
+                          className="bg-accent-hover flex-shrink-0"
                         >
                           {char.name.charAt(0)}
                         </Avatar>
                         <div className="flex-1 min-w-0">
-                          <div className="text-sm text-zinc-200 truncate">{char.name}</div>
+                          <div className="text-sm text-text-primary truncate">{char.name}</div>
                           {renderEpisodeRefs(char.episodeRefs)}
                         </div>
                         {renderDeleteButton('character', char)}
@@ -383,13 +382,13 @@ export const ProjectAssetOverview = forwardRef<ProjectAssetOverviewRef, ProjectA
                       <div
                         key={scene.id}
                         onClick={() => onAssetClick?.(scene.id, 'scene')}
-                        className="flex items-center gap-3 p-2 rounded-lg cursor-pointer hover:bg-zinc-800/50 transition-colors"
+                        className="flex items-center gap-3 p-2 rounded-lg cursor-pointer hover:bg-bg-elevated/50 transition-colors"
                       >
-                        <Avatar size={32} className="bg-purple-600 flex-shrink-0">
+                        <Avatar size={32} className="!bg-accent flex-shrink-0">
                           <MapPin className="w-4 h-4" />
                         </Avatar>
                         <div className="flex-1 min-w-0">
-                          <div className="text-sm text-zinc-200 truncate">{scene.name}</div>
+                          <div className="text-sm text-text-primary truncate">{scene.name}</div>
                           {renderEpisodeRefs(scene.episodeRefs)}
                         </div>
                         {renderDeleteButton('scene', scene)}
@@ -418,13 +417,13 @@ export const ProjectAssetOverview = forwardRef<ProjectAssetOverviewRef, ProjectA
                       <div
                         key={prop.id}
                         onClick={() => onAssetClick?.(prop.id, 'prop')}
-                        className="flex items-center gap-3 p-2 rounded-lg cursor-pointer hover:bg-zinc-800/50 transition-colors"
+                        className="flex items-center gap-3 p-2 rounded-lg cursor-pointer hover:bg-bg-elevated/50 transition-colors"
                       >
-                        <Avatar size={32} className="bg-amber-600 flex-shrink-0">
+                        <Avatar size={32} className="!bg-status-warning flex-shrink-0">
                           <Box className="w-4 h-4" />
                         </Avatar>
                         <div className="flex-1 min-w-0">
-                          <div className="text-sm text-zinc-200 truncate">{prop.name}</div>
+                          <div className="text-sm text-text-primary truncate">{prop.name}</div>
                           {renderEpisodeRefs(prop.episodeRefs)}
                         </div>
                         {renderDeleteButton('prop', prop)}

@@ -21,6 +21,16 @@ interface CreateNewNodeDataOptions {
   label?: string;
 }
 
+const LINGHUI_NODE_BACKGROUND = 'var(--token-bg-card)';
+const LINGHUI_NODE_COLORS = {
+  text: 'var(--token-status-warning)',
+  agent: 'var(--token-status-info)',
+  image: 'var(--token-status-success)',
+  video: 'var(--token-accent-base)',
+  audio: 'var(--token-status-warning)',
+  script: 'var(--token-accent-hover)',
+} as const;
+
 export const NODE_META: Record<LinghuiNodeType, LinghuiNodeMeta> = {
   'linghui/text': {
     type: 'linghui/text',
@@ -29,8 +39,8 @@ export const NODE_META: Record<LinghuiNodeType, LinghuiNodeMeta> = {
     catalogCategory: 'creation',
     catalogLabel: '文本节点',
     catalogDescription: '输入角色设定、剧情描述、镜头说明等文本内容',
-    accent: '#f59e0b',
-    background: '#0f1720',
+    accent: LINGHUI_NODE_COLORS.text,
+    background: LINGHUI_NODE_BACKGROUND,
   },
   'linghui/agent': {
     type: 'linghui/agent',
@@ -39,8 +49,8 @@ export const NODE_META: Record<LinghuiNodeType, LinghuiNodeMeta> = {
     catalogCategory: 'creation',
     catalogLabel: 'Agent 节点',
     catalogDescription: '消费上游文本与图片，调用工具并整理文本结论',
-    accent: '#60a5fa',
-    background: '#0f1720',
+    accent: LINGHUI_NODE_COLORS.agent,
+    background: LINGHUI_NODE_BACKGROUND,
   },
   'linghui/image': {
     type: 'linghui/image',
@@ -49,8 +59,8 @@ export const NODE_META: Record<LinghuiNodeType, LinghuiNodeMeta> = {
     catalogCategory: 'creation',
     catalogLabel: '图片节点',
     catalogDescription: '生成图片，支持单图、宫格、多参考',
-    accent: '#4ade80',
-    background: '#0f1720',
+    accent: LINGHUI_NODE_COLORS.image,
+    background: LINGHUI_NODE_BACKGROUND,
   },
   'linghui/video': {
     type: 'linghui/video',
@@ -59,8 +69,8 @@ export const NODE_META: Record<LinghuiNodeType, LinghuiNodeMeta> = {
     catalogCategory: 'creation',
     catalogLabel: '视频节点',
     catalogDescription: '生成视频，按模型能力切换不同视频模式',
-    accent: '#22c55e',
-    background: '#0f1720',
+    accent: LINGHUI_NODE_COLORS.video,
+    background: LINGHUI_NODE_BACKGROUND,
   },
   'linghui/audio': {
     type: 'linghui/audio',
@@ -69,8 +79,8 @@ export const NODE_META: Record<LinghuiNodeType, LinghuiNodeMeta> = {
     catalogCategory: 'creation',
     catalogLabel: '音频节点',
     catalogDescription: '上传音频或生成语音，输出音频产物',
-    accent: '#f97316',
-    background: '#0f1720',
+    accent: LINGHUI_NODE_COLORS.audio,
+    background: LINGHUI_NODE_BACKGROUND,
   },
   'linghui/script': {
     type: 'linghui/script',
@@ -79,8 +89,8 @@ export const NODE_META: Record<LinghuiNodeType, LinghuiNodeMeta> = {
     catalogCategory: 'storyboard',
     catalogLabel: '脚本节点',
     catalogDescription: '生成或整理剧情脚本，输出结构化分镜序列',
-    accent: '#a78bfa',
-    background: '#0f1720',
+    accent: LINGHUI_NODE_COLORS.script,
+    background: LINGHUI_NODE_BACKGROUND,
   },
 };
 
@@ -301,7 +311,7 @@ export function getLinghuiNodeMeta(type?: string | null): LinghuiNodeMeta | null
 }
 
 export function getLinghuiNodeAccent(type?: string | null): string {
-  return getLinghuiNodeMeta(type)?.accent ?? '#4ade80';
+  return getLinghuiNodeMeta(type)?.accent ?? 'var(--token-accent-base)';
 }
 
 export function createNewNodeData(type: LinghuiNodeType, options?: CreateNewNodeDataOptions): LinghuiNodeData {

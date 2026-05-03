@@ -30,6 +30,7 @@ import {
   getShotCurrentImageSource,
   getShotCurrentVideoSource,
 } from '../../utils/mediaSelectors';
+import styles from './SimpleEditor.module.scss';
 
 const logger = createLogger('SimpleEditor');
 
@@ -548,11 +549,11 @@ export const SimpleEditor: React.FC<SimpleEditorProps> = ({ shots = [], projectI
   }, [updateTracks]);
 
   return (
-    <div style={styles.container}>
+    <div className={styles.container}>
       {/* 上半部分：素材面板 + 播放器 + 属性面板 */}
-      <div style={styles.upper}>
+      <div className={styles.upper}>
         {/* 素材面板 */}
-        <div style={styles.assetPanel}>
+        <div className={styles.assetPanel}>
           <SimpleAssetPanel
             assets={assetItems}
             onDragStart={setDraggingAsset}
@@ -583,7 +584,7 @@ export const SimpleEditor: React.FC<SimpleEditorProps> = ({ shots = [], projectI
       </div>
 
       {/* 下半部分：时间线 */}
-      <div style={styles.lower}>
+      <div className={styles.lower}>
         <SimpleTimeline
           tracks={tracks}
           currentTime={currentTime}
@@ -629,35 +630,6 @@ export const SimpleEditor: React.FC<SimpleEditorProps> = ({ shots = [], projectI
       />
     </div>
   );
-};
-
-const styles: Record<string, React.CSSProperties> = {
-  container: {
-    display: 'flex',
-    flexDirection: 'column',
-    height: '100%',
-    minWidth: 800,
-    background: 'var(--bg-base, #0f0f0f)',
-  },
-  upper: {
-    flex: 1,
-    display: 'flex',
-    minHeight: 280,
-    borderBottom: '1px solid var(--border-default, #27272a)',
-    overflow: 'hidden',
-  },
-  assetPanel: {
-    width: 'clamp(200px, 18vw, 320px)',
-    minWidth: 200,
-    flexShrink: 0,
-    borderRight: '1px solid var(--border-default, #27272a)',
-    overflow: 'hidden',
-  },
-  lower: {
-    height: 'clamp(180px, 30vh, 400px)',
-    minHeight: 160,
-    flexShrink: 0,
-  },
 };
 
 export default SimpleEditor;

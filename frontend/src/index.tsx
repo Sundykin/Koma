@@ -1,11 +1,10 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { ConfigProvider } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
 import App from './App';
-import './index.css';
+import './index.scss';
 import './i18n'; // i18n 初始化
-import { antdTheme } from './theme';
+import { ThemeProvider } from './theme/runtime/ThemeProvider';
 import { initializeProviderPlugins } from './services/plugin/PluginInitializer';
 import { createLogger } from './store/logger';
 
@@ -40,8 +39,8 @@ if (!rootElement) {
 const root = ReactDOM.createRoot(rootElement);
 root.render(
   <React.StrictMode>
-    <ConfigProvider theme={antdTheme} locale={zhCN}>
+    <ThemeProvider locale={zhCN}>
       <App />
-    </ConfigProvider>
+    </ThemeProvider>
   </React.StrictMode>
 );

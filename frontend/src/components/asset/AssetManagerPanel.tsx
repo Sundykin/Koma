@@ -30,7 +30,7 @@ import {
   removeSceneEpisodeRef,
   removePropEpisodeRef,
 } from '../../store/projectStore';
-import { startShotAnalysis } from '../../services/ShotAnalysisService';
+import { submitShotAnalysisTask } from '../../services/analysisTaskClient';
 import { AssetListPanel, AssetType } from './AssetListPanel';
 import { CharacterDetailPanel } from './CharacterDetailPanel';
 import { SceneDetailPanel } from './SceneDetailPanel';
@@ -46,7 +46,7 @@ import {
 import type { EpisodeRefsKey } from './assetEpisodeRefs';
 import { parseMediaSelectionKey } from '../../providers/channel/resolver';
 import type { Project } from '../../types';
-import './AssetManager.css';
+import './AssetManager.scss';
 
 
 function upsertAssetById<T extends { id: string }>(items: T[], item: T): T[] {
@@ -451,16 +451,19 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
 
     setIsGeneratingShots(true);
     try {
-      await startShotAnalysis(
+      const { deduped } = await submitShotAnalysisTask({
         projectId,
         episodeId,
-        episodeName || `${t('editor.episode')} ${episodeId}`,
+        episodeName: episodeName || `${t('editor.episode')} ${episodeId}`,
         script,
         llmSelection,
-        undefined,
-        styleSnapshot
-      );
-      message.info(t('asset.aiShotStarted'));
+        styleSnapshot,
+      });
+      if (deduped) {
+        message.info('当前剧集已在后台生成中，请等待完成后再试。');
+      } else {
+        message.info(t('asset.aiShotStarted'));
+      }
       onNext();
     } catch (err: any) {
       message.error(err.message || t('asset.startShotFailed'));
@@ -471,7 +474,7 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
 
   if (loading) {
     return (
-      <div className="assetManagerPanel" style={{ justifyContent: 'center', alignItems: 'center' }}>
+      <div className="assetManagerPanel assetManagerPanelLoading">
         <Spin size="large" />
       </div>
     );

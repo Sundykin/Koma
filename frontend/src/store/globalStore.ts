@@ -14,6 +14,9 @@ export {
   generateId,
   getGlobalPath,
   DEFAULT_SETTINGS,
+  APP_THEME_OPTIONS,
+  DEFAULT_APP_THEME_ID,
+  normalizeAppThemeId,
   // 预设常量
   LLM_CHANNEL_PRESETS,
   TTI_PRESETS,

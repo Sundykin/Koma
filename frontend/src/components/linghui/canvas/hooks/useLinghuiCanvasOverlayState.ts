@@ -10,6 +10,7 @@ import {
   resolveCompatibleTargetHandleId,
 } from '../state/linghuiCanvasShared';
 import { useLinghuiCanvasStore } from '../state/linghuiCanvasStore';
+import type { CssVarStyle } from '../../../../theme/runtime';
 
 interface UseLinghuiCanvasOverlayStateParams {
   hostRef: RefObject<HTMLDivElement | null>;
@@ -91,11 +92,11 @@ export function useLinghuiCanvasOverlayState({
     const topLeft = reactFlow.flowToScreenPosition({ x: pendingGroupFrame.minX, y: pendingGroupFrame.minY });
     const bottomRight = reactFlow.flowToScreenPosition({ x: pendingGroupFrame.maxX, y: pendingGroupFrame.maxY });
     return {
-      left: topLeft.x - canvasRect.left,
-      top: topLeft.y - canvasRect.top,
-      width: Math.max(0, bottomRight.x - topLeft.x),
-      height: Math.max(0, bottomRight.y - topLeft.y),
-    };
+      '--linghui-pending-group-left': `${topLeft.x - canvasRect.left}px`,
+      '--linghui-pending-group-top': `${topLeft.y - canvasRect.top}px`,
+      '--linghui-pending-group-width': `${Math.max(0, bottomRight.x - topLeft.x)}px`,
+      '--linghui-pending-group-height': `${Math.max(0, bottomRight.y - topLeft.y)}px`,
+    } satisfies CssVarStyle;
   }, [canvasRect, pendingGroupFrame, reactFlow, viewport]);
 
   const pendingGroupCreatableIds = useMemo(() => {
@@ -119,7 +120,10 @@ export function useLinghuiCanvasOverlayState({
       ? rawTop
       : Math.max(12, Math.min(topRight.y - canvasRect.top + 12, maxTop));
 
-    return { left, top };
+    return {
+      '--linghui-pending-actions-left': `${left}px`,
+      '--linghui-pending-actions-top': `${top}px`,
+    } satisfies CssVarStyle;
   }, [canvasRect, pendingGroupFrame, reactFlow, viewport]);
 
   const closeContextMenu = useCallback(() => {

@@ -797,7 +797,6 @@ export async function executeImageNode(
       onProgress,
       placeholderTitle: node.title,
       placeholderSubtitle: prompt || '多角度图片占位预览',
-      accent: '#4ade80',
       signal,
     });
 
@@ -826,7 +825,6 @@ export async function executeImageNode(
         onProgress,
         placeholderTitle: node.title,
         placeholderSubtitle: prompt || '图片占位预览',
-        accent: '#4ade80',
         signal,
       },
     });
@@ -861,7 +859,6 @@ export async function executeImageNode(
     onProgress,
     placeholderTitle: node.title,
     placeholderSubtitle: prompt || '图片占位预览',
-    accent: '#4ade80',
     signal,
   });
 

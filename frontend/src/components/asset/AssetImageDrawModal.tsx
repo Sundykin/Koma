@@ -4,7 +4,7 @@ import { CheckCircleFilled, ReloadOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import type { MediaOwnerRef } from '../../types';
 import { electronService, fsRemove } from '../../services/electronService';
-import './AssetImageDrawModal.css';
+import './AssetImageDrawModal.scss';
 
 const { Text } = Typography;
 

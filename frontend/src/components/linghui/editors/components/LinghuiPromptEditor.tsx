@@ -25,6 +25,7 @@ import {
   parseLinghuiPromptReferences,
   type LinghuiPromptReferenceItem,
 } from '../state/linghuiPromptReferences';
+import { useTheme } from '../../../../theme/runtime';
 
 interface LinghuiPromptEditorProps {
   value: string;
@@ -37,7 +38,6 @@ interface LinghuiPromptEditorProps {
   darkTheme?: boolean;
   surfaceStyle?: 'default' | 'fusion';
   className?: string;
-  style?: React.CSSProperties;
 }
 
 interface LinghuiReferenceCompletion extends Completion {
@@ -62,15 +62,15 @@ function getReferenceKindLabel(kind: LinghuiPromptReferenceItem['kind']): string
 function getReferenceWidgetColor(kind: LinghuiPromptReferenceItem['kind']): { background: string; color: string } {
   switch (kind) {
     case 'image':
-      return { background: '#dcfce7', color: '#166534' };
+      return { background: 'color-mix(in srgb, var(--token-status-success) 18%, var(--token-bg-card))', color: 'var(--token-status-success)' };
     case 'video':
-      return { background: '#dbeafe', color: '#1d4ed8' };
+      return { background: 'color-mix(in srgb, var(--token-status-info) 18%, var(--token-bg-card))', color: 'var(--token-status-info)' };
     case 'audio':
-      return { background: '#fce7f3', color: '#be185d' };
+      return { background: 'color-mix(in srgb, var(--token-status-error) 12%, var(--token-bg-card))', color: 'var(--token-status-error)' };
     case 'text':
-      return { background: '#fef3c7', color: '#b45309' };
+      return { background: 'color-mix(in srgb, var(--token-status-warning) 18%, var(--token-bg-card))', color: 'var(--token-status-warning)' };
     default:
-      return { background: '#e4e4e7', color: '#3f3f46' };
+      return { background: 'var(--token-text-secondary)', color: 'var(--token-text-secondary)' };
   }
 }
 
@@ -125,12 +125,12 @@ function showReferencePreviewTooltip(anchor: HTMLElement, item: LinghuiPromptRef
     width: 220px;
     padding: 10px;
     border-radius: 14px;
-    background: rgba(3, 7, 18, 0.96);
-    border: 1px solid rgba(16, 185, 129, 0.35);
-    box-shadow: 0 20px 45px rgba(0, 0, 0, 0.42);
+    background: color-mix(in srgb, var(--token-bg-app) 96%, transparent);
+    border: 1px solid color-mix(in srgb, var(--token-accent-base) 35%, transparent);
+    box-shadow: 0 20px 45px color-mix(in srgb, var(--token-bg-app) 42%, transparent);
     backdrop-filter: blur(14px);
     pointer-events: none;
-    color: #e5e7eb;
+    color: var(--token-text-secondary);
   `;
 
   const image = document.createElement('img');
@@ -142,18 +142,18 @@ function showReferencePreviewTooltip(anchor: HTMLElement, item: LinghuiPromptRef
     height: 136px;
     object-fit: cover;
     border-radius: 10px;
-    background: rgba(15, 23, 42, 0.9);
+    background: color-mix(in srgb, var(--token-bg-card) 90%, transparent);
   `;
   tooltip.appendChild(image);
 
   const title = document.createElement('div');
   title.textContent = item.name || `${getReferenceKindLabel(item.kind)}参考`;
-  title.style.cssText = 'margin-top: 8px; font-size: 13px; font-weight: 700; color: #f8fafc;';
+  title.style.cssText = 'margin-top: 8px; font-size: 13px; font-weight: 700; color: var(--token-text-primary);';
   tooltip.appendChild(title);
 
   const description = document.createElement('div');
   description.textContent = item.description || `${getReferenceKindLabel(item.kind)}参考`;
-  description.style.cssText = 'margin-top: 4px; font-size: 12px; line-height: 1.5; color: #94a3b8;';
+  description.style.cssText = 'margin-top: 4px; font-size: 12px; line-height: 1.5; color: var(--token-text-tertiary);';
   tooltip.appendChild(description);
 
   document.body.appendChild(tooltip);
@@ -275,10 +275,10 @@ class LinghuiReferenceWidget extends WidgetType {
         padding: 2px 8px;
         min-height: 28px;
         border-radius: 999px;
-        background: rgba(15, 23, 42, 0.82);
-        color: #d1fae5;
-        border: 1px solid rgba(16, 185, 129, 0.24);
-        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+        background: color-mix(in srgb, var(--token-bg-card) 82%, transparent);
+        color: color-mix(in srgb, var(--token-accent-base) 24%, var(--token-text-primary));
+        border: 1px solid color-mix(in srgb, var(--token-accent-base) 24%, transparent);
+        box-shadow: inset 0 1px 0 color-mix(in srgb, var(--token-overlay-on-bg) 50%, transparent);
         vertical-align: middle;
       `;
 
@@ -289,7 +289,7 @@ class LinghuiReferenceWidget extends WidgetType {
         height: 22px;
         border-radius: 7px;
         overflow: hidden;
-        background: rgba(30, 41, 59, 0.92);
+        background: color-mix(in srgb, var(--token-bg-hover) 92%, transparent);
         flex: 0 0 22px;
       `;
 
@@ -310,8 +310,8 @@ class LinghuiReferenceWidget extends WidgetType {
           bottom: 1px;
           font-size: 9px;
           line-height: 1;
-          color: white;
-          text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+          color: var(--token-text-primary);
+          text-shadow: 0 1px 3px color-mix(in srgb, var(--token-bg-app) 50%, transparent);
         `;
         thumb.appendChild(badge);
       }
@@ -330,7 +330,7 @@ class LinghuiReferenceWidget extends WidgetType {
         font-size: 12px;
         font-weight: 600;
         line-height: 1.2;
-        color: #ecfdf5;
+        color: color-mix(in srgb, var(--token-accent-base) 12%, var(--token-text-primary));
       `;
       chip.appendChild(name);
 
@@ -366,7 +366,7 @@ class LinghuiReferenceWidget extends WidgetType {
       line-height: 1.2;
       background: ${colors.background};
       color: ${colors.color};
-      border: 1px solid rgba(15, 23, 42, 0.08);
+      border: 1px solid color-mix(in srgb, var(--token-border-base) 8%, transparent);
     `;
     return span;
   }
@@ -543,10 +543,10 @@ const autocompleteTheme = EditorView.theme({
     minWidth: '280px',
     maxWidth: '460px',
     zIndex: '99999 !important',
-    background: '#111827 !important',
-    border: '1px solid rgba(16, 185, 129, 0.7) !important',
+    background: 'var(--token-bg-surface) !important',
+    border: '1px solid color-mix(in srgb, var(--token-accent-base) 70%, transparent) !important',
     borderRadius: '10px',
-    boxShadow: '0 18px 40px rgba(0, 0, 0, 0.42)',
+    boxShadow: '0 18px 40px color-mix(in srgb, var(--token-bg-app) 42%, transparent)',
     overflow: 'hidden',
   },
   '.cm-tooltip-autocomplete ul': {
@@ -561,11 +561,11 @@ const autocompleteTheme = EditorView.theme({
     gap: '10px',
     minHeight: '50px',
     padding: '8px 12px !important',
-    color: '#e5e7eb !important',
+    color: 'var(--token-text-secondary) !important',
   },
   '.cm-tooltip-autocomplete li[aria-selected]': {
-    backgroundColor: '#10b981 !important',
-    color: '#ffffff !important',
+    backgroundColor: 'var(--token-accent-base) !important',
+    color: 'var(--token-text-primary) !important',
   },
   '.cm-completionLabel': {
     flex: '1',
@@ -580,26 +580,26 @@ const autocompleteTheme = EditorView.theme({
     whiteSpace: 'nowrap',
   },
   '.cm-completionDetail': {
-    color: '#9ca3af',
+    color: 'var(--token-text-muted)',
     marginLeft: 'auto',
     flex: '0 0 auto',
     alignSelf: 'center',
     fontSize: '11px',
     borderRadius: '999px',
     padding: '2px 8px',
-    background: 'rgba(255,255,255,0.06)',
+    background: 'color-mix(in srgb, var(--token-overlay-on-bg) 75%, transparent)',
   },
   '.cm-tooltip-autocomplete li[aria-selected] .cm-completionDetail': {
-    color: 'rgba(255, 255, 255, 0.82)',
-    background: 'rgba(255,255,255,0.18)',
+    color: 'var(--token-text-primary)',
+    background: 'color-mix(in srgb, var(--token-overlay-on-bg) 100%, transparent)',
   },
   '.cm-tooltip.cm-completionInfo': {
     zIndex: '100000 !important',
     padding: '0',
-    border: '1px solid rgba(16, 185, 129, 0.55)',
+    border: '1px solid color-mix(in srgb, var(--token-accent-base) 55%, transparent)',
     borderRadius: '14px',
-    background: 'rgba(3, 7, 18, 0.98)',
-    boxShadow: '0 24px 48px rgba(0, 0, 0, 0.42)',
+    background: 'color-mix(in srgb, var(--token-bg-app) 98%, transparent)',
+    boxShadow: '0 24px 48px color-mix(in srgb, var(--token-bg-app) 42%, transparent)',
     overflow: 'hidden',
   },
   '.linghuiCompletionLeading': {
@@ -613,12 +613,12 @@ const autocompleteTheme = EditorView.theme({
     height: '34px',
     borderRadius: '10px',
     overflow: 'hidden',
-    background: 'rgba(30, 41, 59, 0.88)',
-    border: '1px solid rgba(148, 163, 184, 0.22)',
+    background: 'color-mix(in srgb, var(--token-bg-hover) 88%, transparent)',
+    border: '1px solid color-mix(in srgb, var(--token-text-tertiary) 22%, transparent)',
     display: 'inline-flex',
     alignItems: 'center',
     justifyContent: 'center',
-    color: '#cbd5e1',
+    color: 'var(--token-text-secondary)',
     fontSize: '11px',
     fontWeight: '700',
   },
@@ -634,8 +634,8 @@ const autocompleteTheme = EditorView.theme({
     bottom: '2px',
     fontSize: '10px',
     lineHeight: '1',
-    color: '#ffffff',
-    textShadow: '0 1px 3px rgba(0,0,0,0.6)',
+    color: 'var(--token-text-primary)',
+    textShadow: '0 1px 3px color-mix(in srgb, var(--token-bg-app) 60%, transparent)',
   },
   '.linghuiCompletionKindBadge': {
     display: 'inline-flex',
@@ -645,16 +645,16 @@ const autocompleteTheme = EditorView.theme({
     height: '34px',
     padding: '0 8px',
     borderRadius: '10px',
-    background: 'rgba(15, 23, 42, 0.82)',
-    border: '1px solid rgba(148, 163, 184, 0.22)',
-    color: '#cbd5e1',
+    background: 'color-mix(in srgb, var(--token-bg-card) 82%, transparent)',
+    border: '1px solid color-mix(in srgb, var(--token-text-tertiary) 22%, transparent)',
+    color: 'var(--token-text-secondary)',
     fontSize: '11px',
     fontWeight: '700',
   },
   '.linghuiCompletionInfoCard': {
     width: '240px',
     padding: '10px',
-    color: '#e5e7eb',
+    color: 'var(--token-text-secondary)',
   },
   '.linghuiCompletionInfoImageWrap': {
     position: 'relative',
@@ -662,7 +662,7 @@ const autocompleteTheme = EditorView.theme({
     height: '144px',
     borderRadius: '10px',
     overflow: 'hidden',
-    background: 'rgba(15, 23, 42, 0.9)',
+    background: 'color-mix(in srgb, var(--token-bg-card) 90%, transparent)',
   },
   '.linghuiCompletionInfoImage': {
     display: 'block',
@@ -676,8 +676,8 @@ const autocompleteTheme = EditorView.theme({
     right: '8px',
     padding: '2px 6px',
     borderRadius: '999px',
-    background: 'rgba(15, 23, 42, 0.8)',
-    color: '#f8fafc',
+    background: 'color-mix(in srgb, var(--token-bg-card) 80%, transparent)',
+    color: 'var(--token-text-primary)',
     fontSize: '10px',
     fontWeight: '700',
     letterSpacing: '0.04em',
@@ -686,11 +686,11 @@ const autocompleteTheme = EditorView.theme({
     marginTop: '8px',
     fontSize: '13px',
     fontWeight: '700',
-    color: '#f8fafc',
+    color: 'var(--token-text-primary)',
   },
   '.linghuiCompletionInfoMeta': {
     marginTop: '4px',
-    color: '#6ee7b7',
+    color: 'color-mix(in srgb, var(--token-accent-base) 66%, var(--token-text-primary))',
     fontSize: '11px',
     fontWeight: '700',
     letterSpacing: '0.04em',
@@ -698,7 +698,7 @@ const autocompleteTheme = EditorView.theme({
   },
   '.linghuiCompletionInfoDescription': {
     marginTop: '6px',
-    color: '#94a3b8',
+    color: 'var(--token-text-tertiary)',
     fontSize: '12px',
     lineHeight: '1.5',
   },
@@ -712,11 +712,12 @@ export const LinghuiPromptEditor: React.FC<LinghuiPromptEditorProps> = ({
   readOnly = false,
   minHeight = '120px',
   maxHeight = '200px',
-  darkTheme = true,
+  darkTheme,
   surfaceStyle = 'default',
   className,
-  style,
 }) => {
+  const { theme } = useTheme();
+  const isDarkTheme = darkTheme ?? theme.meta.mode === 'dark';
   const containerRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<EditorView | null>(null);
   const extensionCompartmentRef = useRef(new Compartment());
@@ -759,10 +760,10 @@ export const LinghuiPromptEditor: React.FC<LinghuiPromptEditorProps> = ({
           lineHeight: '1.6',
           backgroundColor: isFusionSurface
             ? 'transparent'
-            : (darkTheme ? 'rgba(255, 255, 255, 0.03)' : 'rgba(255, 255, 255, 0.92)'),
-          boxShadow: darkTheme
-            ? 'inset 0 0 0 1px rgba(148, 163, 184, 0.10)'
-            : 'inset 0 0 0 1px rgba(148, 163, 184, 0.16)',
+            : (isDarkTheme ? 'color-mix(in srgb, var(--token-overlay-on-bg) 38%, transparent)' : 'color-mix(in srgb, var(--token-bg-card) 92%, transparent)'),
+          boxShadow: isDarkTheme
+            ? 'inset 0 0 0 1px color-mix(in srgb, var(--token-text-tertiary) 10%, transparent)'
+            : 'inset 0 0 0 1px color-mix(in srgb, var(--token-text-tertiary) 16%, transparent)',
         },
         '.cm-scroller': {
           overflow: 'auto',
@@ -771,29 +772,29 @@ export const LinghuiPromptEditor: React.FC<LinghuiPromptEditorProps> = ({
         },
         '.cm-content': {
           padding: '12px',
-          color: darkTheme ? '#e5e7eb' : '#111827',
-          caretColor: darkTheme ? '#34d399' : '#2563eb',
+          color: isDarkTheme ? 'var(--token-text-secondary)' : 'var(--token-text-primary)',
+          caretColor: isDarkTheme ? 'var(--token-border-focus)' : 'var(--token-status-info)',
         },
         '.cm-line': {
           padding: '2px 4px',
         },
         '&.cm-focused': {
           outline: 'none',
-          boxShadow: darkTheme
-            ? 'inset 0 0 0 1px rgba(52, 211, 153, 0.28), 0 0 0 3px rgba(16, 185, 129, 0.10)'
-            : 'inset 0 0 0 1px rgba(37, 99, 235, 0.24), 0 0 0 3px rgba(37, 99, 235, 0.10)',
+          boxShadow: isDarkTheme
+            ? 'inset 0 0 0 1px color-mix(in srgb, var(--token-border-focus) 28%, transparent), 0 0 0 3px color-mix(in srgb, var(--token-accent-base) 10%, transparent)'
+            : 'inset 0 0 0 1px color-mix(in srgb, var(--token-status-info) 24%, transparent), 0 0 0 3px color-mix(in srgb, var(--token-status-info) 10%, transparent)',
         },
         '.cm-activeLine': {
           backgroundColor: 'transparent',
         },
         '.cm-selectionBackground': {
-          backgroundColor: darkTheme ? 'rgba(16, 185, 129, 0.2) !important' : 'rgba(37, 99, 235, 0.18) !important',
+          backgroundColor: isDarkTheme ? 'color-mix(in srgb, var(--token-accent-base) 20%, transparent) !important' : 'color-mix(in srgb, var(--token-status-info) 18%, transparent) !important',
         },
         '&.cm-focused .cm-selectionBackground': {
-          backgroundColor: darkTheme ? 'rgba(16, 185, 129, 0.28) !important' : 'rgba(37, 99, 235, 0.24) !important',
+          backgroundColor: isDarkTheme ? 'color-mix(in srgb, var(--token-accent-base) 28%, transparent) !important' : 'color-mix(in srgb, var(--token-status-info) 24%, transparent) !important',
         },
         '.cm-cursor': {
-          borderLeftColor: darkTheme ? '#34d399' : '#2563eb',
+          borderLeftColor: isDarkTheme ? 'var(--token-border-focus)' : 'var(--token-status-info)',
         },
       }),
       EditorView.contentAttributes.of({
@@ -806,7 +807,7 @@ export const LinghuiPromptEditor: React.FC<LinghuiPromptEditorProps> = ({
     }
 
     return extensions;
-  }, [darkTheme, maxHeight, minHeight, placeholder, readOnly, surfaceStyle]);
+  }, [isDarkTheme, maxHeight, minHeight, placeholder, readOnly, surfaceStyle]);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -870,10 +871,10 @@ export const LinghuiPromptEditor: React.FC<LinghuiPromptEditorProps> = ({
   }, []);
 
   return (
-    <div className={className} style={style} data-surface-style={surfaceStyle}>
+    <div className={className} data-surface-style={surfaceStyle}>
       <div
         ref={containerRef}
-        style={{ position: 'relative', cursor: 'text' }}
+        className="linghuiPromptEditorHost"
         onClick={handleContainerClick}
       />
     </div>
@@ -887,7 +888,7 @@ if (typeof document !== 'undefined' && !document.getElementById(placeholderStyle
   style.textContent = `
     .cm-content[data-placeholder]:empty::before {
       content: attr(data-placeholder);
-      color: #6b7280;
+      color: var(--token-text-muted);
       pointer-events: none;
       position: absolute;
       white-space: pre-wrap;

@@ -26,13 +26,14 @@ const TAB_CONFIG: { id: FilterTab; label: string; icon: React.FC<{ className?: s
   { id: 'audio', label: '音频', icon: Music },
 ];
 
-// 来源标签颜色
+// 来源标签颜色：用 status 语义色族表达不同来源类型，跟随主题
+// shot=info(蓝)/character=accent/scene=success(绿)/prop=warning(橙)/upload=中性
 const SOURCE_COLORS: Record<AssetSource, string> = {
-  shot: 'bg-blue-500',
-  character: 'bg-purple-500',
-  scene: 'bg-green-500',
-  prop: 'bg-orange-500',
-  upload: 'bg-zinc-500',
+  shot: 'bg-status-info',
+  character: 'bg-accent',
+  scene: 'bg-status-success',
+  prop: 'bg-status-warning',
+  upload: 'bg-bg-hover',
 };
 
 const SOURCE_LABELS: Record<AssetSource, string> = {
@@ -84,16 +85,16 @@ const AssetCard: React.FC<{
 
   return (
     <div
-      className="group relative bg-zinc-800 rounded-lg overflow-hidden cursor-grab hover:ring-2 hover:ring-blue-500 transition-all"
+      className="group relative bg-bg-elevated rounded-lg overflow-hidden cursor-grab hover:ring-2 hover:ring-status-info transition-all"
       draggable
       onDragStart={handleDragStart}
       onDragEnd={onDragEnd}
     >
       {/* 缩略图区域 */}
-      <div className="aspect-video bg-zinc-900 relative">
+      <div className="aspect-video bg-bg-surface relative">
         {isAudio ? (
-          <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-green-900/50 to-green-700/30">
-            <Music className="w-8 h-8 text-green-400" />
+          <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-status-success/30 to-status-success/15">
+            <Music className="w-8 h-8 text-status-success" />
           </div>
         ) : (
           <img
@@ -124,18 +125,24 @@ const AssetCard: React.FC<{
 
       {/* 信息区域 */}
       <div className="p-2">
-        <p className="text-xs text-zinc-300 truncate" title={item.name}>
+        <p className="text-xs text-text-secondary truncate" title={item.name}>
           {item.name}
         </p>
         <div className="flex items-center gap-1 mt-1">
-          <span className={`text-[10px] px-1.5 py-0.5 rounded ${SOURCE_COLORS[item.source]} text-white`}>
+          <span className={`text-[10px] px-1.5 py-0.5 rounded ${SOURCE_COLORS[item.source]} ${
+            item.source === 'upload'
+              ? 'text-text-primary'   // upload 用中性 bg-bg-hover，配主文字
+              : item.source === 'character'
+                ? 'text-on-accent'    // character 用 bg-accent，配 onAccent
+                : 'text-on-status'    // 其它 (shot/scene/prop) 用 status 色，配 onStatus
+          }`}>
             {SOURCE_LABELS[item.source]}
           </span>
         </div>
       </div>
 
       {/* hover 蒙层 */}
-      <div className="absolute inset-0 bg-blue-500/0 group-hover:bg-blue-500/10 transition-colors pointer-events-none" />
+      <div className="absolute inset-0 bg-accent/0 group-hover:bg-accent/10 transition-colors pointer-events-none" />
     </div>
   );
 };
@@ -263,7 +270,7 @@ export const SimpleAssetPanel: React.FC<AssetPanelProps> = ({
 
   return (
     <div
-      className={`flex flex-col h-full bg-zinc-900 text-white ${isDragOver ? 'ring-2 ring-blue-500 ring-inset' : ''}`}
+      className={`flex flex-col h-full bg-bg-surface text-text-primary ${isDragOver ? 'ring-2 ring-status-info ring-inset' : ''}`}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
@@ -279,12 +286,12 @@ export const SimpleAssetPanel: React.FC<AssetPanelProps> = ({
       />
 
       {/* 头部 */}
-      <div className="p-3 border-b border-zinc-700">
+      <div className="p-3 border-b border-border">
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-sm font-medium">素材库</h3>
           <button
             onClick={handleUploadClick}
-            className="flex items-center gap-1 px-2 py-1 text-xs bg-blue-600 hover:bg-blue-500 rounded transition-colors"
+            className="flex items-center gap-1 px-2 py-1 text-xs bg-accent hover:bg-accent-hover text-on-accent rounded transition-colors"
           >
             <Upload className="w-3 h-3" />
             上传
@@ -293,32 +300,32 @@ export const SimpleAssetPanel: React.FC<AssetPanelProps> = ({
 
         {/* 搜索框 */}
         <div className="relative">
-          <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+          <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-4 h-4 text-text-tertiary" />
           <input
             type="text"
             placeholder="搜索素材..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-8 pr-3 py-1.5 text-xs bg-zinc-800 border border-zinc-700 rounded focus:outline-none focus:border-blue-500"
+            className="w-full pl-8 pr-3 py-1.5 text-xs bg-bg-elevated border border-border rounded focus:outline-none focus:border-status-info"
           />
         </div>
       </div>
 
       {/* 标签页 */}
-      <div className="flex border-b border-zinc-700">
+      <div className="flex border-b border-border">
         {TAB_CONFIG.map(({ id, label, icon: Icon }) => (
           <button
             key={id}
             onClick={() => setActiveTab(id)}
             className={`flex-1 flex items-center justify-center gap-1 py-2 text-xs transition-colors ${
               activeTab === id
-                ? 'text-blue-400 border-b-2 border-blue-400'
-                : 'text-zinc-400 hover:text-zinc-200'
+                ? 'text-status-info border-b-2 border-status-info'
+                : 'text-text-secondary hover:text-text-primary'
             }`}
           >
             <Icon className="w-3.5 h-3.5" />
             <span>{label}</span>
-            <span className="text-[10px] text-zinc-500">({counts[id]})</span>
+            <span className="text-[10px] text-text-tertiary">({counts[id]})</span>
           </button>
         ))}
       </div>
@@ -327,16 +334,16 @@ export const SimpleAssetPanel: React.FC<AssetPanelProps> = ({
       <div className="flex-1 overflow-y-auto p-2 relative">
         {/* 拖放遮罩 */}
         {isDragOver && (
-          <div className="absolute inset-0 bg-blue-500/20 flex items-center justify-center z-10 border-2 border-dashed border-blue-400 rounded m-2">
+          <div className="absolute inset-0 bg-status-info/20 flex items-center justify-center z-10 border-2 border-dashed border-status-info rounded m-2">
             <div className="text-center">
-              <Plus className="w-8 h-8 text-blue-400 mx-auto mb-2" />
-              <p className="text-sm text-blue-300">释放以上传文件</p>
+              <Plus className="w-8 h-8 text-status-info mx-auto mb-2" />
+              <p className="text-sm text-status-info">释放以上传文件</p>
             </div>
           </div>
         )}
 
         {filteredAssets.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-zinc-500">
+          <div className="flex flex-col items-center justify-center h-full text-text-tertiary">
             {assets.length === 0 ? (
               <>
                 <FolderOpen className="w-12 h-12 mb-2 opacity-50" />
@@ -350,7 +357,7 @@ export const SimpleAssetPanel: React.FC<AssetPanelProps> = ({
                 <p className="text-xs mt-1">尝试更换搜索关键词或分类</p>
                 <button
                   onClick={() => { setSearchQuery(''); setActiveTab('all'); }}
-                  className="mt-3 text-xs text-blue-400 hover:text-blue-300 underline"
+                  className="mt-3 text-xs text-status-info hover:text-status-info underline"
                 >
                   清除筛选
                 </button>

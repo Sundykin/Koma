@@ -349,7 +349,7 @@ export const TTSConfigManager: React.FC<TTSConfigManagerProps> = ({ onConfigChan
       </div>
 
       {loading ? (
-        <div style={{ textAlign: 'center', padding: 40 }}>
+        <div className="settings-loading-state">
           <Spin />
         </div>
       ) : configs.length === 0 ? (
@@ -374,11 +374,11 @@ export const TTSConfigManager: React.FC<TTSConfigManagerProps> = ({ onConfigChan
                   title={(
                     <Space>
                       {config.isDefault ? (
-                        <StarFilled style={{ color: '#faad14' }} />
+                        <StarFilled className="settings-default-star" />
                       ) : (
                         <Tooltip title={t('settings.setAsDefault')}>
                           <StarOutlined
-                            style={{ cursor: 'pointer', color: '#d9d9d9' }}
+                            className="settings-default-star-button"
                             onClick={() => handleSetDefault(config.channel.id, preferredModelId)}
                           />
                         </Tooltip>
@@ -504,7 +504,7 @@ export const TTSConfigManager: React.FC<TTSConfigManagerProps> = ({ onConfigChan
             <Form.Item
               label="模型列表"
               required
-              style={{ marginBottom: 0 }}
+              className="settings-form-item-flush"
             >
               <ChannelModelsEditor
                 fixedCapabilities={['speech.text-to-speech']}
@@ -547,12 +547,11 @@ export const TTSConfigManager: React.FC<TTSConfigManagerProps> = ({ onConfigChan
                 <Form.Item
                   name="apiKey"
                   label={t('settings.apiKey')}
-                  className="settings-grid-span-full"
+                  className="settings-grid-span-full settings-form-item-flush"
                   rules={[{
                     required: currentProviderType !== 'gpt-sovits' && currentProviderType !== 'edge-tts' && !editingHasStoredApiKey,
                     message: `${t('settings.pleaseEnter')} ${t('settings.apiKey')}`,
                   }]}
-                  style={{ marginBottom: 0 }}
                 >
                   <Input.Password placeholder={editingHasStoredApiKey ? t('settings.apiKeyStoredPlaceholder') : t('settings.enterApiKey')} />
                 </Form.Item>
@@ -560,7 +559,7 @@ export const TTSConfigManager: React.FC<TTSConfigManagerProps> = ({ onConfigChan
             </div>
 
             {currentProviderType === 'edge-tts' && (
-              <div className="settings-inline-note is-success" style={{ marginTop: 12 }}>
+              <div className="settings-inline-note is-success settings-inline-note-offset">
                 {t('settings.edgeTTSFree')}
               </div>
             )}

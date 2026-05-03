@@ -31,6 +31,8 @@ import {
   placeholder as cmPlaceholder,
 } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
+import styles from './ChatPromptEditor.module.scss';
+import { cssVars } from '../../theme/runtime';
 
 export interface ChatEditorRef {
   id: string;
@@ -78,29 +80,14 @@ class ReferenceChipWidget extends WidgetType {
 
   toDOM(): HTMLElement {
     const span = document.createElement('span');
-    span.className = 'cpe-ref-chip';
+    span.className = styles.refChip;
     span.dataset.refId = this.ref.id;
-    span.style.cssText = `
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      margin: 0 2px;
-      padding: 2px 8px 2px 2px;
-      vertical-align: middle;
-      border-radius: 999px;
-      background: rgba(6, 182, 212, 0.12);
-      border: 1px solid rgba(6, 182, 212, 0.4);
-      color: #67e8f9;
-      font-size: 12px;
-      line-height: 1.5;
-      cursor: default;
-    `;
 
     if (this.ref.source) {
       const img = document.createElement('img');
       img.src = this.ref.source;
       img.alt = this.ref.label;
-      img.style.cssText = 'width:20px;height:20px;border-radius:50%;object-fit:cover;flex:0 0 20px;';
+      img.className = styles.refChipImage;
       span.appendChild(img);
     }
 
@@ -112,14 +99,10 @@ class ReferenceChipWidget extends WidgetType {
       if (!this.ref.source) return;
       this.clearTooltip();
       const tip = document.createElement('div');
-      tip.style.cssText = `
-        position: fixed; z-index: 100002; pointer-events: none;
-        padding: 6px; border-radius: 8px; background: rgba(15,15,17,0.96);
-        border: 1px solid #3f3f46; box-shadow: 0 8px 24px rgba(0,0,0,0.4);
-      `;
+      tip.className = styles.refTooltip;
       const big = document.createElement('img');
       big.src = this.ref.source;
-      big.style.cssText = 'display:block;max-width:200px;max-height:200px;border-radius:6px;';
+      big.className = styles.refTooltipImage;
       tip.appendChild(big);
       document.body.appendChild(tip);
       this.tooltip = tip;
@@ -202,11 +185,11 @@ function makeAutocomplete(refs: ChatEditorRef[]) {
           apply: `@${ref.label} `,
           info: () => {
             const wrap = document.createElement('div');
-            wrap.style.cssText = 'padding:4px;display:flex;align-items:center;gap:8px;';
+            wrap.className = styles.completionInfo;
             if (ref.source) {
               const img = document.createElement('img');
               img.src = ref.source;
-              img.style.cssText = 'width:80px;height:80px;border-radius:6px;object-fit:cover;';
+              img.className = styles.completionInfoImage;
               wrap.appendChild(img);
             }
             const txt = document.createElement('span');
@@ -313,48 +296,48 @@ export const ChatPromptEditor = forwardRef<ChatPromptEditorRef, ChatPromptEditor
         EditorView.theme({
           '&': {
             fontSize: '15px',
-            color: '#fafafa',
+            color: 'var(--token-text-primary)',
             backgroundColor: 'transparent',
           },
           '.cm-content': {
             padding: '6px 0',
-            minHeight: `${minRows * 24}px`,
-            maxHeight: `${maxRows * 24}px`,
+            minHeight: 'var(--chat-prompt-editor-min-height)',
+            maxHeight: 'var(--chat-prompt-editor-max-height)',
             overflowY: 'auto',
-            caretColor: '#06b6d4',
+            caretColor: 'var(--token-status-info)',
             fontFamily: 'inherit',
           },
           '.cm-line': { padding: '0' },
           '&.cm-focused': { outline: 'none' },
-          '.cm-cursor': { borderLeftColor: '#06b6d4' },
+          '.cm-cursor': { borderLeftColor: 'var(--token-status-info)' },
           '.cm-tooltip.cm-tooltip-autocomplete': {
-            background: '#1c1c20',
-            border: '1px solid #3f3f46',
+            background: 'var(--token-bg-card)',
+            border: '1px solid var(--token-border-base)',
             borderRadius: '8px',
-            boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+            boxShadow: 'var(--token-shadow-md)',
             padding: '4px',
           },
           '.cm-tooltip-autocomplete > ul > li': {
             padding: '6px 10px',
             borderRadius: '4px',
-            color: '#d4d4d8',
+            color: 'var(--token-text-secondary)',
             fontSize: '13px',
           },
           '.cm-tooltip-autocomplete > ul > li[aria-selected]': {
-            background: 'rgba(6,182,212,0.18)',
-            color: '#fafafa',
+            background: 'color-mix(in srgb, var(--token-status-info) 18%, transparent)',
+            color: 'var(--token-text-primary)',
           },
           '.cm-completionDetail': {
-            color: '#71717a',
+            color: 'var(--token-text-tertiary)',
             fontSize: '11px',
             marginLeft: '8px',
             fontStyle: 'normal',
           },
           '.cm-tooltip.cm-completionInfo': {
-            background: '#1c1c20',
-            border: '1px solid #3f3f46',
+            background: 'var(--token-bg-card)',
+            border: '1px solid var(--token-border-base)',
             borderRadius: '8px',
-            color: '#fafafa',
+            color: 'var(--token-text-primary)',
           },
         }),
       ],
@@ -414,9 +397,12 @@ export const ChatPromptEditor = forwardRef<ChatPromptEditorRef, ChatPromptEditor
   return (
     <div
       ref={containerRef}
-      className="cpe-container"
+      className={styles.container}
       data-placeholder={placeholder}
-      style={{ flex: 1, minHeight: minRows * 24 }}
+      style={cssVars({
+        '--chat-prompt-editor-min-height': `${minRows * 24}px`,
+        '--chat-prompt-editor-max-height': `${maxRows * 24}px`,
+      })}
     />
   );
 });

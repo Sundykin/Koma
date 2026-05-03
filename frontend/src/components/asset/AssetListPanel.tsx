@@ -19,6 +19,7 @@ import {
   getPropPreviewImageSource,
   getScenePreviewImageSource,
 } from '../../utils/mediaSelectors';
+import styles from './AssetListPanel.module.scss';
 
 const { Text } = Typography;
 
@@ -346,7 +347,7 @@ export const AssetListPanel: React.FC<AssetListPanelProps> = ({
                           size={48}
                           src={imageSrc}
                           icon={!imageSrc ? meta.icon : undefined}
-                          style={{ background: '#18181b' }}
+                          className={styles.avatarPlaceholder}
                         />
                       </Space>
                     }
@@ -390,13 +391,13 @@ export const AssetListPanel: React.FC<AssetListPanelProps> = ({
     return (
       <div
         key={id}
-        className={`relative group cursor-pointer border border-zinc-800 rounded-lg overflow-hidden bg-zinc-900 transition-all hover:border-zinc-600 ${
-          isSelected ? 'ring-2 ring-emerald-500 border-transparent' : ''
+        className={`relative group cursor-pointer border border-border-subtle rounded-lg overflow-hidden bg-bg-surface transition-all hover:border-border ${
+          isSelected ? 'ring-2 ring-accent border-transparent' : ''
         }`}
         onClick={() => onSelect(selectedType, id)}
       >
         {/* 图片区域 - 16:9 比例 */}
-        <div className="aspect-video w-full bg-zinc-950 relative overflow-hidden">
+        <div className="aspect-video w-full bg-bg-app relative overflow-hidden">
           {imagePath ? (
             <img
               src={toVersionedImageUrl(imagePath, imageVersion)}
@@ -404,17 +405,17 @@ export const AssetListPanel: React.FC<AssetListPanelProps> = ({
               className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
             />
           ) : (
-            <div className="w-full h-full flex items-center justify-center text-zinc-700 bg-zinc-900">
-              {selectedType === 'character' && <UserOutlined style={{ fontSize: 24 }} />}
-              {selectedType === 'scene' && <EnvironmentOutlined style={{ fontSize: 24 }} />}
-              {selectedType === 'prop' && <InboxOutlined style={{ fontSize: 24 }} />}
+            <div className="w-full h-full flex items-center justify-center text-text-muted bg-bg-surface">
+              {selectedType === 'character' && <UserOutlined className={styles.emptyAssetIcon} />}
+              {selectedType === 'scene' && <EnvironmentOutlined className={styles.emptyAssetIcon} />}
+              {selectedType === 'prop' && <InboxOutlined className={styles.emptyAssetIcon} />}
             </div>
           )}
           
           {/* 绑定状态角标 */}
           {isBound && (
-            <div className="absolute top-1 right-1 bg-emerald-500/90 text-white rounded-full p-0.5 shadow-sm">
-              <CheckCircleOutlined style={{ fontSize: 12 }} />
+            <div className="absolute top-1 right-1 bg-accent/90 text-on-accent rounded-full p-0.5 shadow-sm">
+              <CheckCircleOutlined className={styles.boundIcon} />
             </div>
           )}
           
@@ -422,7 +423,7 @@ export const AssetListPanel: React.FC<AssetListPanelProps> = ({
           {extraInfo && (
             <div className="absolute bottom-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity">
               <Tooltip title={extraInfo}>
-                <InfoCircleOutlined className="text-zinc-300 bg-black/50 rounded-full p-1 text-xs" />
+                <InfoCircleOutlined className="text-text-secondary bg-black/50 rounded-full p-1 text-xs" />
               </Tooltip>
             </div>
           )}
@@ -431,12 +432,12 @@ export const AssetListPanel: React.FC<AssetListPanelProps> = ({
         {/* 信息区域 */}
         <div className="p-2">
           <div className="flex items-center justify-between gap-1">
-            <Text className="text-zinc-200 text-sm font-medium truncate flex-1" ellipsis={{ tooltip: name }}>
+            <Text className="text-text-primary text-sm font-medium truncate flex-1" ellipsis={{ tooltip: name }}>
               {name}
             </Text>
           </div>
           {subtitle && (
-            <Text className="text-zinc-500 text-xs block truncate mt-0.5">
+            <Text className="text-text-tertiary text-xs block truncate mt-0.5">
               {subtitle}
             </Text>
           )}
@@ -448,11 +449,11 @@ export const AssetListPanel: React.FC<AssetListPanelProps> = ({
   // 角色列表 - 网格布局
   const renderCharacters = () => (
     <div className="h-full flex flex-col">
-      <div className="p-2 border-b border-zinc-800 flex justify-between items-center bg-zinc-900/50">
-        <span className="text-xs text-zinc-500">{t('asset.totalCharacters', { count: characters.length })}</span>
+      <div className="p-2 border-b border-border-subtle flex justify-between items-center bg-bg-surface/50">
+        <span className="text-xs text-text-tertiary">{t('asset.totalCharacters', { count: characters.length })}</span>
         {renderHeaderActions('character', handleCreateCharacter)}
       </div>
-      <div className="flex-1 overflow-y-auto p-2 custom-scrollbar">
+      <div className={`flex-1 overflow-y-auto p-2 ${styles.scrollbar}`}>
         {characters.length > 0 ? (
           <div className="grid grid-cols-2 gap-2">
             {characters.map(char => renderAssetCard(
@@ -477,11 +478,11 @@ export const AssetListPanel: React.FC<AssetListPanelProps> = ({
   // 场景列表
   const renderScenes = () => (
     <div className="h-full flex flex-col">
-      <div className="p-2 border-b border-zinc-800 flex justify-between items-center bg-zinc-900/50">
-        <span className="text-xs text-zinc-500">{t('asset.totalScenes', { count: scenes.length })}</span>
+      <div className="p-2 border-b border-border-subtle flex justify-between items-center bg-bg-surface/50">
+        <span className="text-xs text-text-tertiary">{t('asset.totalScenes', { count: scenes.length })}</span>
         {renderHeaderActions('scene', handleCreateScene)}
       </div>
-      <div className="flex-1 overflow-y-auto p-2 custom-scrollbar">
+      <div className={`flex-1 overflow-y-auto p-2 ${styles.scrollbar}`}>
         {scenes.length > 0 ? (
           <div className="grid grid-cols-2 gap-2">
             {scenes.map(scene => renderAssetCard(
@@ -505,11 +506,11 @@ export const AssetListPanel: React.FC<AssetListPanelProps> = ({
   // 道具列表
   const renderProps = () => (
     <div className="h-full flex flex-col">
-      <div className="p-2 border-b border-zinc-800 flex justify-between items-center bg-zinc-900/50">
-        <span className="text-xs text-zinc-500">{t('asset.totalProps', { count: props.length })}</span>
+      <div className="p-2 border-b border-border-subtle flex justify-between items-center bg-bg-surface/50">
+        <span className="text-xs text-text-tertiary">{t('asset.totalProps', { count: props.length })}</span>
         {renderHeaderActions('prop', handleCreateProp)}
       </div>
-      <div className="flex-1 overflow-y-auto p-2 custom-scrollbar">
+      <div className={`flex-1 overflow-y-auto p-2 ${styles.scrollbar}`}>
         {props.length > 0 ? (
           <div className="grid grid-cols-2 gap-2">
             {props.map(prop => renderAssetCard(
@@ -549,7 +550,7 @@ export const AssetListPanel: React.FC<AssetListPanelProps> = ({
   ];
 
   return (
-    <div className="h-full flex flex-col bg-zinc-950">
+    <div className={styles.root}>
       <Tabs
         activeKey={selectedType}
         onChange={(key) => {
@@ -557,33 +558,10 @@ export const AssetListPanel: React.FC<AssetListPanelProps> = ({
         }}
         items={tabItems}
         size="small"
-        className="asset-panel-tabs h-full"
+        className={styles.tabs}
         type="card"
-        tabBarStyle={{ margin: 0, padding: '4px 4px 0', background: '#18181b', borderBottom: '1px solid #27272a' }}
       />
       {renderExistingAssetModal()}
-      <style>{`
-        .asset-panel-tabs .ant-tabs-content {
-          height: calc(100% - 38px);
-        }
-        .asset-panel-tabs .ant-tabs-tabpane {
-          height: 100%;
-        }
-        /* 自定义滚动条 */
-        .custom-scrollbar::-webkit-scrollbar {
-          width: 4px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-track {
-          background: transparent;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb {
-          background: #3f3f46;
-          border-radius: 2px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-          background: #52525b;
-        }
-      `}</style>
     </div>
   );
 };

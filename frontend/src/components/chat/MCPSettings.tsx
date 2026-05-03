@@ -27,7 +27,7 @@ import {
   ImportOutlined,
 } from '@ant-design/icons';
 import type { MCPServerConfig } from '../../types/mcp';
-import styles from './MCPSettings.module.css';
+import styles from './MCPSettings.module.scss';
 
 interface MCPSettingsProps {
   visible: boolean;
@@ -236,8 +236,8 @@ export const MCPSettings: React.FC<MCPSettingsProps> = ({
         }
         if (record.name in testResults) {
           return testResults[record.name]
-            ? <CheckCircleOutlined style={{ color: '#10b981' }} />
-            : <CloseCircleOutlined style={{ color: '#ef4444' }} />;
+            ? <CheckCircleOutlined className={styles.statusSuccess} />
+            : <CloseCircleOutlined className={styles.statusError} />;
         }
         return null;
       },

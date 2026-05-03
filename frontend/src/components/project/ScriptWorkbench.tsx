@@ -10,9 +10,11 @@ import { TweetScriptModal } from './TweetScriptModal';
 import { ScriptEditor } from '../../editor';
 import { saveEpisode, loadEpisodeAnalysis, saveEpisodeAnalysis } from '../../store/projectStore';
 import { generateRandomScript, polishScript } from '../../workflow/scriptGenerator';
-import { startBackgroundAnalysis } from '../../services/ScriptAnalysisService';
+import { submitScriptAnalysisTask } from '../../services/analysisTaskClient';
 import { TaskManager } from '../../services/TaskManager';
+import { useActiveTask } from '../../hooks';
 import type { Project, Episode, AppSettings } from '../../types';
+import { useTheme } from '../../theme/runtime';
 import { createLogger } from '../../store/logger';
 import { createAITraceId } from '../../utils/aiTrace';
 import { classifyAIError } from '../../utils/aiError';
@@ -30,7 +32,7 @@ interface ScriptWorkbenchProps {
 
 export interface ScriptWorkbenchRef {
   flushSave: () => Promise<Episode | null>;
-  /** 触发当前剧集的剧本解析（先 flushSave 再 startBackgroundAnalysis） */
+  /** 触发当前剧集的剧本解析（先 flushSave 再 submitScriptAnalysisTask） */
   analyze: () => Promise<void>;
 }
 
@@ -41,9 +43,12 @@ export const ScriptWorkbench = forwardRef<ScriptWorkbenchRef, ScriptWorkbenchPro
   onAnalyzingChange,
 }, ref) => {
   const { message } = App.useApp();
+  const { theme } = useTheme();
+  const isDarkTheme = theme.meta.mode === 'dark';
   const [localScript, setLocalScript] = useState(episode?.scriptText || '');
   const [isSaving, setIsSaving] = useState(false);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  // 点击到任务真正落库之间的短暂"提交中"窗口；任务创建后就由 activeAnalysisTask 接管
+  const [isSubmittingAnalysis, setIsSubmittingAnalysis] = useState(false);
   const [isPolishing, setIsPolishing] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [streamingMode, setStreamingMode] = useState<'generate' | 'polish' | null>(null);
@@ -59,31 +64,14 @@ export const ScriptWorkbench = forwardRef<ScriptWorkbenchRef, ScriptWorkbenchPro
     lastSavedRef.current = episode?.scriptText || '';
   }, [episode?.id]);
 
-  useEffect(() => {
-    if (!episode) {
-      setIsAnalyzing(false);
-      return;
-    }
-
-    const syncAnalyzingState = () => {
-      const running = TaskManager.getProjectTasks(project.id).some(task =>
-        task.type === 'script-analysis'
-        && task.targetId === episode.id
-        && (task.status === 'pending' || task.status === 'running' || task.status === 'processing')
-      );
-      setIsAnalyzing(running);
-    };
-
-    syncAnalyzingState();
-    const unsubscribe = TaskManager.addListener((task) => {
-      if (task.projectId !== project.id) return;
-      if (task.type !== 'script-analysis') return;
-      if (task.targetId !== episode.id) return;
-      syncAnalyzingState();
-    });
-
-    return () => unsubscribe();
-  }, [project.id, episode?.id]);
+  // 解析任务的 loading 来自任务表投影 —— 切走再回来无需重新同步
+  const activeAnalysisTask = useActiveTask({
+    scope: `project:${project.id}`,
+    type: 'script-analysis',
+    targetKind: 'episode',
+    targetId: episode?.id,
+  });
+  const isAnalyzing = isSubmittingAnalysis || !!activeAnalysisTask;
 
   useEffect(() => {
     if (!streamingPreviewRef.current) return;
@@ -275,7 +263,7 @@ export const ScriptWorkbench = forwardRef<ScriptWorkbenchRef, ScriptWorkbenchPro
       return;
     }
 
-    setIsAnalyzing(true);
+    setIsSubmittingAnalysis(true);
     try {
       await saveScript(localScript);
       const previousAnalysis = await loadEpisodeAnalysis(project.id, episode.id);
@@ -286,15 +274,15 @@ export const ScriptWorkbench = forwardRef<ScriptWorkbenchRef, ScriptWorkbenchPro
         }, { resetStages: true });
       }
       try {
-        const task = await startBackgroundAnalysis(
-          project.id,
-          episode.id,
-          episode.title || `第${episode.number}集`,
-          localScript,
-          serializeMediaSelection(project.mediaSelections?.llm),
-          project.styleSnapshot,
-        );
-        if (task.metadata?.deduped) {
+        const { deduped } = await submitScriptAnalysisTask({
+          projectId: project.id,
+          episodeId: episode.id,
+          episodeName: episode.title || `第${episode.number}集`,
+          script: localScript,
+          llmSelection: serializeMediaSelection(project.mediaSelections?.llm),
+          styleSnapshot: project.styleSnapshot,
+        });
+        if (deduped) {
           message.info('当前剧集已在后台解析中，请等待完成后再试。');
           return;
         }
@@ -309,7 +297,7 @@ export const ScriptWorkbench = forwardRef<ScriptWorkbenchRef, ScriptWorkbenchPro
       logger.error('解析失败', err);
       message.error(classifyAIError(err).userMessage);
     } finally {
-      setIsAnalyzing(false);
+      setIsSubmittingAnalysis(false);
     }
   }, [episode, localScript, project, message, saveScript]);
 
@@ -321,14 +309,14 @@ export const ScriptWorkbench = forwardRef<ScriptWorkbenchRef, ScriptWorkbenchPro
   // 空状态
   if (!episode) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center p-8 bg-zinc-950">
-        <div className="w-20 h-20 mb-6 rounded-2xl bg-zinc-800/80 flex items-center justify-center">
-          <Film className="w-10 h-10 text-zinc-600" />
+      <div className="flex-1 flex flex-col items-center justify-center p-8 bg-bg-app">
+        <div className="w-20 h-20 mb-6 rounded-2xl bg-bg-elevated/80 flex items-center justify-center">
+          <Film className="w-10 h-10 text-text-muted" />
         </div>
-        <h2 className="text-lg font-semibold text-zinc-200 mb-2">
+        <h2 className="text-lg font-semibold text-text-primary mb-2">
           选择剧集开始创作
         </h2>
-        <p className="text-sm text-zinc-500">
+        <p className="text-sm text-text-tertiary">
           从左侧选择一个剧集，或创建新剧集开始编写剧本
         </p>
       </div>
@@ -336,7 +324,7 @@ export const ScriptWorkbench = forwardRef<ScriptWorkbenchRef, ScriptWorkbenchPro
   }
 
   return (
-    <div className="flex-1 flex flex-col min-h-0 bg-zinc-950">
+    <div className="flex-1 flex flex-col min-h-0 bg-bg-app">
       {/* 工具栏 */}
       <InlineProjectToolbar
         episode={episode}
@@ -361,26 +349,26 @@ export const ScriptWorkbench = forwardRef<ScriptWorkbenchRef, ScriptWorkbenchPro
       {/* 剧本编辑器 */}
       <div className="flex-1 p-4 overflow-hidden">
         {streamingMode ? (
-          <div className="h-full flex flex-col overflow-hidden rounded-lg border border-emerald-500/20 bg-zinc-950">
-            <div className="flex items-center justify-between gap-4 border-b border-zinc-800 bg-zinc-900/80 px-4 py-3">
+          <div className="h-full flex flex-col overflow-hidden rounded-lg border border-accent/20 bg-bg-app">
+            <div className="flex items-center justify-between gap-4 border-b border-border-subtle bg-bg-surface/80 px-4 py-3">
               <div className="min-w-0">
-                <div className="flex items-center gap-2 text-sm font-medium text-zinc-200">
-                  <Loader2 className="h-4 w-4 animate-spin text-emerald-400" />
+                <div className="flex items-center gap-2 text-sm font-medium text-text-primary">
+                  <Loader2 className="h-4 w-4 animate-spin text-accent" />
                   <span>{streamingMode === 'generate' ? 'AI 正在生成剧本' : 'AI 正在润色剧本'}</span>
                 </div>
-                <p className="mt-1 text-xs text-zinc-500">
+                <p className="mt-1 text-xs text-text-tertiary">
                   {streamingMode === 'generate'
                     ? '内容会实时显示，完成后自动写入编辑器。'
                     : '润色结果会实时预览，完成后再覆盖当前剧本。'}
                 </p>
               </div>
-              <span className="shrink-0 text-xs text-zinc-500">{streamingPreview.length} 字符</span>
+              <span className="shrink-0 text-xs text-text-tertiary">{streamingPreview.length} 字符</span>
             </div>
             <div
               ref={streamingPreviewRef}
-              className="flex-1 overflow-auto bg-[#1a1a1a]"
+              className="flex-1 overflow-auto bg-bg-surface"
             >
-              <pre className="min-h-full whitespace-pre-wrap break-words px-4 py-3 font-sans text-[13px] leading-6 text-zinc-200">
+              <pre className="min-h-full whitespace-pre-wrap break-words px-4 py-3 font-sans text-[13px] leading-6 text-text-primary">
                 {streamingPreview || (streamingMode === 'generate'
                   ? '正在等待模型返回首段内容...'
                   : '正在等待模型返回润色结果...')}
@@ -395,15 +383,15 @@ export const ScriptWorkbench = forwardRef<ScriptWorkbenchRef, ScriptWorkbenchPro
             minHeight="100%"
             maxHeight="100%"
             showLineNumbers={true}
-            darkTheme={true}
+            darkTheme={isDarkTheme}
             enableCameraCommands={false}
-            style={{ height: '100%', flex: 1 }}
+            className="h-full flex-1"
           />
         )}
       </div>
 
       {/* 底部状态栏 */}
-      <div className="h-8 px-4 flex items-center justify-between text-xs text-zinc-500 border-t border-zinc-800 bg-zinc-900">
+      <div className="h-8 px-4 flex items-center justify-between text-xs text-text-tertiary border-t border-border-subtle bg-bg-surface">
         <span>
           第 {episode.number} 集: {episode.title}
         </span>

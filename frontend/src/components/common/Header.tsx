@@ -43,34 +43,34 @@ export const Header: React.FC<HeaderProps> = ({
   const { t } = useTranslation();
 
   return (
-    <header className="h-auto border-b border-zinc-800 flex flex-col bg-zinc-900/80 backdrop-blur-md shrink-0 z-30">
+    <header className="h-auto border-b border-border-subtle flex flex-col bg-bg-surface/80 backdrop-blur-md shrink-0 z-30">
       {/* 上层：导航与操作 */}
-      <div className="h-16 flex items-center justify-between px-6 border-b border-zinc-800/50">
-        <div className="flex items-center text-sm text-zinc-400">
-          <button onClick={() => onViewChange('projects')} className="hover:text-white transition-colors flex items-center">
+      <div className="h-16 flex items-center justify-between px-6 border-b border-border-subtle/50">
+        <div className="flex items-center text-sm text-text-secondary">
+          <button onClick={() => onViewChange('projects')} className="hover:text-text-primary transition-colors flex items-center">
             <Home className="w-4 h-4 mr-2" />
             <span className="hidden sm:inline">{t('common.home')}</span>
           </button>
           {/* 编辑视图面包屑：项目名 → 当前剧集（项目工作台已合并到编辑器第一步） */}
           {view === 'editor' && activeProject && (
             <>
-              <ChevronRight className="w-4 h-4 mx-2 text-zinc-600" />
-              <span className="text-white font-bold">{activeProject.title}</span>
+              <ChevronRight className="w-4 h-4 mx-2 text-text-muted" />
+              <span className="text-text-primary font-bold">{activeProject.title}</span>
               {activeEpisode && (
                 <>
-                  <ChevronRight className="w-4 h-4 mx-2 text-zinc-600" />
-                  <span className="text-zinc-300">{t('editor.episode')} {activeEpisode.number}</span>
+                  <ChevronRight className="w-4 h-4 mx-2 text-text-muted" />
+                  <span className="text-text-secondary">{t('editor.episode')} {activeEpisode.number}</span>
                 </>
               )}
               {activeProject.mode === 'narration' && (
-                <span className="ml-2 text-[10px] bg-blue-900/30 text-blue-300 border border-blue-800/50 px-1.5 py-0.5 rounded uppercase font-bold tracking-wide">{t('editor.narrationMode')}</span>
+                <span className="ml-2 text-[10px] bg-status-info/12 text-status-info border border-status-info/30 px-1.5 py-0.5 rounded uppercase font-bold tracking-wide">{t('editor.narrationMode')}</span>
               )}
             </>
           )}
           {view === 'settings' && (
             <>
               <ChevronRight className="w-4 h-4 mx-2" />
-              <span className="text-white">{t('settings.globalSettings')}</span>
+              <span className="text-text-primary">{t('settings.globalSettings')}</span>
             </>
           )}
         </div>
@@ -104,7 +104,6 @@ export const Header: React.FC<HeaderProps> = ({
                 <Button
                   type="primary"
                   onClick={() => onStepChangeWithMark(next.targetStepId as EditorStep)}
-                  className="bg-green-600 hover:bg-green-500 border-none"
                 >
                   {t(next.labelKey)}
                 </Button>

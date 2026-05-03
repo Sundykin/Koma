@@ -529,7 +529,7 @@ export const SceneDetailPanel: React.FC<SceneDetailPanelProps> = ({
         <div className="creatorSidebarHeader">
           <Space>
             <EnvironmentOutlined />
-            <Text strong style={{ fontSize: 16 }}>{editedScene.name}</Text>
+            <Text strong className="creatorSidebarTitle">{editedScene.name}</Text>
           </Space>
           <Space>
             <Tooltip title={t('common.save')}>
@@ -569,11 +569,11 @@ export const SceneDetailPanel: React.FC<SceneDetailPanelProps> = ({
                 <div className="creatorProgressHeader">
                   <Space>
                     <LoadingOutlined />
-                    <Text style={{ fontSize: 12 }}>{progressStep}</Text>
+                    <Text className="creatorProgressText">{progressStep}</Text>
                   </Space>
-                  <Text type="secondary" style={{ fontSize: 12 }}>{Math.round(progress)}%</Text>
+                  <Text type="secondary" className="creatorProgressText">{Math.round(progress)}%</Text>
                 </div>
-                <Progress percent={Math.round(progress)} strokeColor="#52c41a" size="small" showInfo={false} />
+                <Progress percent={Math.round(progress)} strokeColor="var(--token-status-success)" size="small" showInfo={false} />
               </div>
             )}
 
@@ -647,7 +647,7 @@ export const SceneDetailPanel: React.FC<SceneDetailPanelProps> = ({
               <img
                   src={toLocalUrl(getScenePreviewImageSource(editedScene))}
                   alt={t('asset.sceneImage')}
-                  style={{ cursor: 'pointer' }}
+                  className="creatorMediaPreview"
                   onDoubleClick={() => setPreviewImage(toLocalUrl(getScenePreviewImageSource(editedScene)))}
                 />
             ) : (
@@ -679,7 +679,6 @@ export const SceneDetailPanel: React.FC<SceneDetailPanelProps> = ({
         footer={null}
         centered
         width="auto"
-        styles={{ body: { padding: 0, background: 'transparent' } }}
         className="transparent-modal"
         closeIcon={null}
       >
@@ -687,7 +686,7 @@ export const SceneDetailPanel: React.FC<SceneDetailPanelProps> = ({
           <img
             src={previewImage}
             alt="Preview"
-            style={{ maxWidth: '95vw', maxHeight: '95vh', cursor: 'pointer' }}
+            className="transparentPreviewImage"
             onClick={() => setPreviewImage(null)}
           />
         )}

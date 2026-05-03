@@ -64,7 +64,7 @@ export const PluginImporter: React.FC<PluginImporterProps> = ({ onImportSuccess 
           content: (
             <ul className="list-disc pl-4">
               {result.errors.map((err: string, i: number) => (
-                <li key={i} className="text-red-500">{err}</li>
+                <li key={i} className="text-status-error">{err}</li>
               ))}
             </ul>
           ),
@@ -160,7 +160,7 @@ export const PluginImporter: React.FC<PluginImporterProps> = ({ onImportSuccess 
           content: (
             <ul className="list-disc pl-4">
               {validation.errors.map((err, i) => (
-                <li key={i} className="text-red-500">{err}</li>
+                <li key={i} className="text-status-error">{err}</li>
               ))}
             </ul>
           ),
@@ -191,12 +191,12 @@ export const PluginImporter: React.FC<PluginImporterProps> = ({ onImportSuccess 
 
   return (
     <div className="plugin-importer">
-      <Dragger {...uploadProps} className="!bg-gray-50 !border-dashed">
+      <Dragger {...uploadProps} className="!bg-bg-app !border-dashed">
         <p className="ant-upload-drag-icon">
           <InboxOutlined />
         </p>
         <p className="ant-upload-text">{t('plugin.dragOrClickToImport')}</p>
-        <p className="ant-upload-hint text-gray-400">
+        <p className="ant-upload-hint text-text-secondary">
           {t('plugin.supportZipFormat')}
         </p>
       </Dragger>

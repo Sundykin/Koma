@@ -6,6 +6,7 @@ import {
   ReactFlow,
 } from '@xyflow/react';
 import type { LinghuiCanvasMode, LinghuiNodeData } from '../../../../types/linghui';
+import { useTheme } from '../../../../theme/runtime';
 import { linghuiEdgeTypes } from './LinghuiEdge';
 import { linghuiNodeTypes } from '../../nodes';
 
@@ -63,6 +64,17 @@ export function LinghuiCanvasStage({
   onMoveEnd,
 }: LinghuiCanvasStageProps) {
   const useVisibleElementCulling = nodes.length + edges.length >= 120;
+  const { theme } = useTheme();
+  const isDarkTheme = theme.meta.mode === 'dark';
+  const majorGridColor = isDarkTheme
+    ? 'color-mix(in srgb, var(--token-text-tertiary) 48%, transparent)'
+    : theme.tokens.text.tertiary;
+  const minorGridColor = isDarkTheme
+    ? 'color-mix(in srgb, var(--token-text-tertiary) 24%, transparent)'
+    : theme.tokens.border.base;
+  const minimapMaskColor = isDarkTheme
+    ? 'color-mix(in srgb, var(--token-bg-app) 72%, transparent)'
+    : 'color-mix(in srgb, var(--token-bg-app) 72%, transparent)';
 
   return (
     <ReactFlow
@@ -109,7 +121,7 @@ export function LinghuiCanvasStage({
       nodeDragThreshold={8}
       onlyRenderVisibleElements={useVisibleElementCulling}
       proOptions={REACT_FLOW_PRO_OPTIONS}
-      colorMode="dark"
+      colorMode={theme.meta.mode}
       fitView
     >
       <Background
@@ -117,25 +129,25 @@ export function LinghuiCanvasStage({
         variant={BackgroundVariant.Dots}
         gap={96}
         size={3.8}
-        color="rgba(148,163,184,0.48)"
+        color={majorGridColor}
       />
       <Background
         id="linghui-grid-minor"
         variant={BackgroundVariant.Dots}
         gap={24}
         size={1.9}
-        color="rgba(148,163,184,0.24)"
+        color={minorGridColor}
       />
       <MiniMap
         className="linghuiCanvasMiniMap"
         pannable
         zoomable
-        maskColor="rgba(6, 10, 14, 0.72)"
+        maskColor={minimapMaskColor}
         nodeColor={node => {
           if (node.type === 'group') {
-            return String((node.data as { color?: string } | undefined)?.color ?? '#2563eb');
+            return String((node.data as { color?: string } | undefined)?.color ?? 'var(--token-status-info)');
           }
-          return String((node.data as unknown as LinghuiNodeData | undefined)?.accent ?? '#4ade80');
+          return String((node.data as unknown as LinghuiNodeData | undefined)?.accent ?? 'var(--token-accent-base)');
         }}
         nodeStrokeWidth={2}
       />

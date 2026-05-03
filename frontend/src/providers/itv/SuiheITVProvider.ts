@@ -21,8 +21,7 @@
  *
  * 当前阶段穗禾上游强制锁 480p，所以 size 始终送 480p 档位（按 aspectRatio 选 854x480 / 480x854）。
  *
- * 注意：与现有 SeedanceProvider（直连 toapis.com）不同，本 provider 走 komaapi.com 网关，
- * 不会复用 grok2api / Sora2 / Seedance 三个 runtime 的具体字段格式。新建独立类型避免混用。
+ * 注意：本 provider 走 komaapi.com 网关，独立类型避免与 grok2api 混用字段格式。
  */
 
 import type {
@@ -34,6 +33,7 @@ import type {
 import { createLogger } from '../../store/logger';
 import { sanitizeBodyForLog } from '../../utils/logFormatting';
 import { safeFetch } from '../../utils/safeFetch';
+import { buildChannelAuthRequest } from '../channel/auth';
 import {
   assertSupportedVideoCapabilities,
   type ITVProvider,
@@ -155,18 +155,20 @@ export class SuiheITVProvider implements ITVProvider {
   }
 
   private getHeaders(): Record<string, string> {
-    if (this.config.profileId) {
-      return { 'x-koma-channel-id': this.config.profileId, 'Content-Type': 'application/json' };
-    }
-    return {
-      Authorization: `Bearer ${this.config.apiKey || ''}`,
-      'Content-Type': 'application/json',
-    };
+    return buildChannelAuthRequest({
+      channelId: this.config.profileId,
+      apiKey: this.config.apiKey,
+      mode: 'bearer-header',
+      headers: { 'Content-Type': 'application/json' },
+    }).headers;
   }
 
   private getAuthOnlyHeaders(): Record<string, string> {
-    if (this.config.profileId) return { 'x-koma-channel-id': this.config.profileId };
-    return { Authorization: `Bearer ${this.config.apiKey || ''}` };
+    return buildChannelAuthRequest({
+      channelId: this.config.profileId,
+      apiKey: this.config.apiKey,
+      mode: 'bearer-header',
+    }).headers;
   }
 
   private getModelName(): string {

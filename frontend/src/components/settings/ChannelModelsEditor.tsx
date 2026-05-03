@@ -54,7 +54,7 @@ export const ChannelModelsEditor: React.FC<ChannelModelsEditorProps> = ({
 
     <Form.List name={name}>
       {(fields, { add, remove }) => (
-        <Space direction="vertical" style={{ width: '100%' }} size="small">
+        <Space direction="vertical" className="settings-full-width" size="small">
           {fields.map((field, index) => (
             <Card
               key={field.key}
@@ -87,7 +87,7 @@ export const ChannelModelsEditor: React.FC<ChannelModelsEditorProps> = ({
                     message: '请输入模型名称',
                     transform: normalizeString,
                   }]}
-                  style={{ marginBottom: 0 }}
+                  className="settings-form-item-flush"
                 >
                   <Input placeholder={modelNamePlaceholder} />
                 </Form.Item>
@@ -95,7 +95,7 @@ export const ChannelModelsEditor: React.FC<ChannelModelsEditorProps> = ({
                 <Form.Item
                   name={[field.name, 'label']}
                   label="展示名"
-                  style={{ marginBottom: 0 }}
+                  className="settings-form-item-flush"
                 >
                   <Input placeholder={labelPlaceholder} />
                 </Form.Item>
@@ -104,7 +104,6 @@ export const ChannelModelsEditor: React.FC<ChannelModelsEditorProps> = ({
                   <Form.Item
                     name={[field.name, 'capabilities']}
                     label="能力"
-                    className="full-span"
                     rules={[{
                       validator: async (_rule, value: unknown) => {
                         const array = Array.isArray(value) ? value : [];
@@ -113,7 +112,7 @@ export const ChannelModelsEditor: React.FC<ChannelModelsEditorProps> = ({
                         }
                       },
                     }]}
-                    style={{ marginBottom: 0 }}
+                    className="full-span settings-form-item-flush"
                   >
                     <Checkbox.Group
                       className="settings-model-capabilities"
@@ -126,7 +125,7 @@ export const ChannelModelsEditor: React.FC<ChannelModelsEditorProps> = ({
                 ) : fixedCapabilities?.length ? (
                   <div className="full-span">
                     <Typography.Text type="secondary">能力:</Typography.Text>
-                    <div style={{ marginTop: 6 }}>
+                    <div className="settings-tag-block">
                       <Space wrap size={[6, 6]}>
                         {fixedCapabilities.map((capability) => (
                           <Tag key={capability} color="cyan">{capability}</Tag>

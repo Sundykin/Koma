@@ -383,7 +383,7 @@ export async function generateCostumePhoto(
     );
 
     // 用 runWithTask 包"用户级"生成动作：同步 provider 也能在任务面板可见。
-    // 异步 provider 内部仍会 createMediaTask 并写入 taskQueueStore，由 polling 链路接管。
+    // 异步 provider 内部走 submitTask({type:'tti'/'itv'/...})，主进程 TaskRunner 主导轮询。
     const { result: asset } = await runWithTask({
       disabled: disableTask,
       projectId,

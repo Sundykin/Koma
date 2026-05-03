@@ -43,6 +43,7 @@ import {
 } from '../../types';
 import { ScriptEditor } from '../../editor';
 import type { MentionItem } from '../../editor';
+import { useTheme } from '../../theme/runtime';
 import { ImageCardGrid } from '../asset/ImageCardGrid';
 import { VideoCardGrid } from '../asset/VideoCardGrid';
 import { StagePlayer } from '../video/StagePlayer';
@@ -59,9 +60,15 @@ import {
   clampDurationToSpec,
   type VideoDurationSpec,
 } from '../../providers/itv/durationSpec';
-import './ShotCard.css';
+import './ShotCard.scss';
+import { cssVars } from '../../theme/runtime';
 
 const { TextArea } = Input;
+
+function toCssUrl(value?: string): string {
+  if (!value) return 'none';
+  return `url("${value.replaceAll('\\', '\\\\').replaceAll('"', '\\"')}")`;
+}
 
 /**
  * 判断 imageMode 是否为任一网格变体（grid / grid-9 / grid-4）。'grid' 是老数据值，
@@ -115,8 +122,7 @@ function ShotScriptInput({ shotId, value, onScriptChange }: ShotScriptInputProps
       onChange={handleScriptInputChange}
       onBlur={flushScriptDraft}
       placeholder="剧本内容..."
-      className="w-full h-full bg-transparent border-none resize-none text-xs focus:ring-0 placeholder-zinc-600"
-      style={{ minHeight: '100%', padding: '4px 6px' }}
+      className="shot-script-input w-full h-full bg-transparent border-none resize-none text-xs focus:ring-0 placeholder-text-muted"
     />
   );
 }
@@ -231,6 +237,8 @@ export const ShotCard: React.FC<ShotCardProps> = ({
   videoProgress,
 }) => {
   const { message } = App.useApp();
+  const { theme } = useTheme();
+  const isDarkTheme = theme.meta.mode === 'dark';
   const { t } = useTranslation();
   const [videoModalOpen, setVideoModalOpen] = useState(false);
   const [isSplittingGridImage, setIsSplittingGridImage] = useState(false);
@@ -595,14 +603,14 @@ export const ShotCard: React.FC<ShotCardProps> = ({
       className={`shot-card ${isSelected ? 'selected' : ''} ${shot.confirmed ? 'confirmed' : ''} ${isActive ? 'active' : ''}`}
       onClick={handleCardClick}
     >
-      <div className="flex items-stretch min-h-[130px] bg-zinc-950">
+      <div className="flex items-stretch min-h-[130px] bg-bg-app">
         {/* 左侧操作列 - 全部显示 */}
-        <div className={`${COL_ACTION_WIDTH} shrink-0 border-r border-zinc-800 flex flex-col items-center py-1.5 gap-0.5 bg-zinc-900/30`}>
+        <div className={`${COL_ACTION_WIDTH} shrink-0 border-r border-border-subtle flex flex-col items-center py-1.5 gap-0.5 bg-bg-surface/30`}>
           <Checkbox
             checked={isSelected}
             onChange={(e) => onSelectChange(shot.id, e.target.checked)}
           />
-          <span className="text-[11px] font-semibold text-zinc-400">#{index + 1}</span>
+          <span className="text-[11px] font-semibold text-text-secondary">#{index + 1}</span>
           {onDurationChange ? (
             <Tooltip title="分镜时长（秒）" placement="right">
               <div className="flex items-center gap-0.5">
@@ -616,8 +624,7 @@ export const ShotCard: React.FC<ShotCardProps> = ({
                     }}
                     onClick={(e) => e.stopPropagation()}
                     options={durationSpec.values.map((v) => ({ value: v, label: `${v}` }))}
-                    className="shot-duration-input"
-                    style={{ width: 56 }}
+                    className="shot-duration-input shot-duration-select"
                   />
                 ) : durationSpec?.kind === 'range' ? (
                   <InputNumber
@@ -651,7 +658,7 @@ export const ShotCard: React.FC<ShotCardProps> = ({
                     onClick={(e) => e.stopPropagation()}
                   />
                 )}
-                <span className="text-[9px] text-zinc-400 leading-none">s</span>
+                <span className="text-[9px] text-text-secondary leading-none">s</span>
               </div>
             </Tooltip>
           ) : (
@@ -691,7 +698,7 @@ export const ShotCard: React.FC<ShotCardProps> = ({
         </div>
 
         {/* 列1: 剧本 */}
-        <div className={`${SHOT_LAYOUT.colScript} border-r border-zinc-800 flex flex-col`}>
+        <div className={`${SHOT_LAYOUT.colScript} border-r border-border-subtle flex flex-col`}>
           <div className="flex-1 p-1">
             <ShotScriptInput
               shotId={shot.id}
@@ -702,7 +709,7 @@ export const ShotCard: React.FC<ShotCardProps> = ({
         </div>
 
         {/* 列2: 资产 */}
-        <div className={`${SHOT_LAYOUT.colAssets} border-r border-zinc-800 flex flex-col justify-center bg-zinc-900/10 p-1.5 gap-0.5 overflow-y-auto`}>
+        <div className={`${SHOT_LAYOUT.colAssets} border-r border-border-subtle flex flex-col justify-center bg-bg-surface/10 p-1.5 gap-0.5 overflow-y-auto`}>
           <AssetSelector
             type="character"
             selectedIds={shot.characters || []}
@@ -724,9 +731,9 @@ export const ShotCard: React.FC<ShotCardProps> = ({
         </div>
 
         {/* 列3: 图像设计 */}
-        <div className={`${SHOT_LAYOUT.colImageDesign} border-r border-zinc-800 flex flex-col`}>
-          <div className="flex items-center justify-between gap-2 border-b border-zinc-800 px-2 py-1">
-            <span className="text-[10px] text-zinc-400">图片模式</span>
+        <div className={`${SHOT_LAYOUT.colImageDesign} border-r border-border-subtle flex flex-col`}>
+          <div className="flex items-center justify-between gap-2 border-b border-border-subtle px-2 py-1">
+            <span className="text-[10px] text-text-secondary">图片模式</span>
             <Segmented
               size="small"
               // 老数据 'grid' 视作 'grid-9'，UI 上展示为九宫格
@@ -749,15 +756,14 @@ export const ShotCard: React.FC<ShotCardProps> = ({
               mentionItems={mentionItems}
               enableCameraCommands={true}
               showLineNumbers={false}
-              darkTheme={true}
-              style={{ height: '100%' }}
-              className="shot-prompt-editor"
+              darkTheme={isDarkTheme}
+              className="shot-prompt-editor shot-prompt-editor-fill"
             />
             {/* 右下角浮动区域：AI生成 + 参考图 */}
             <div className="absolute right-2 bottom-2 flex items-center gap-1.5">
               {/* AI生成按钮 - 蓝色文字无边框 */}
               <button
-                className="text-blue-400 hover:text-blue-300 text-[11px] font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                className="text-status-info hover:text-status-info text-[11px] font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                 onClick={handleImagePromptClick}
                 disabled={isGeneratingImagePrompt}
               >
@@ -768,7 +774,7 @@ export const ShotCard: React.FC<ShotCardProps> = ({
                 <div
                   key={idx}
                   className={`relative h-7 w-7 rounded overflow-hidden cursor-pointer border ${
-                    idx === (shot.media?.selectedReferenceIndex || 0) ? 'border-blue-500' : 'border-zinc-600'
+                    idx === (shot.media?.selectedReferenceIndex || 0) ? 'border-status-info' : 'border-border'
                   } shadow-lg`}
                   onClick={() => handleRefImageSelect(idx)}
                 >
@@ -778,7 +784,7 @@ export const ShotCard: React.FC<ShotCardProps> = ({
                     alt=""
                   />
                   <button
-                    className="absolute -top-0.5 -right-0.5 w-3 h-3 bg-red-500 text-white text-[7px] rounded-full flex items-center justify-center hover:bg-red-600"
+                    className="absolute -top-0.5 -right-0.5 w-3 h-3 bg-status-error text-on-status text-[7px] rounded-full flex items-center justify-center hover:bg-status-error"
                     onClick={(e) => { e.stopPropagation(); handleRefImageDelete(idx); }}
                   >
                     <CloseOutlined />
@@ -787,7 +793,7 @@ export const ShotCard: React.FC<ShotCardProps> = ({
               ))}
               {/* 添加参考图按钮 */}
               <Tooltip title="添加参考图" placement="top">
-                <label className="h-7 w-7 bg-zinc-800/90 border border-dashed border-zinc-600 rounded flex items-center justify-center cursor-pointer hover:border-zinc-500 hover:bg-zinc-700/90 text-zinc-400 shadow-lg">
+                <label className="h-7 w-7 bg-bg-elevated/90 border border-dashed border-border rounded flex items-center justify-center cursor-pointer hover:border-border hover:bg-bg-hover/90 text-text-secondary shadow-lg">
                   <PlusOutlined className="text-[11px]" />
                   <input type="file" accept="image/*" className="hidden" onChange={handleRefImageAdd} />
                 </label>
@@ -797,7 +803,7 @@ export const ShotCard: React.FC<ShotCardProps> = ({
         </div>
 
         {/* 列4: 图像结果 */}
-        <div className={`${SHOT_LAYOUT.colImageResult} border-r border-zinc-800 flex flex-col bg-zinc-900/20`}>
+        <div className={`${SHOT_LAYOUT.colImageResult} border-r border-border-subtle flex flex-col bg-bg-surface/20`}>
           <div className="flex-1 p-1 min-h-0 overflow-y-auto custom-scrollbar flex items-center justify-center relative">
             {imageSources.length === 0 && !isGeneratingImage ? (
               <Button
@@ -837,12 +843,12 @@ export const ShotCard: React.FC<ShotCardProps> = ({
         </div>
 
         {/* 列5: 视频设计 */}
-        <div className={`${SHOT_LAYOUT.colVideoDesign} border-r border-zinc-800 flex flex-col`}>
+        <div className={`${SHOT_LAYOUT.colVideoDesign} border-r border-border-subtle flex flex-col`}>
           {/* 视频模式切换：multi-ref 多参（带 @映射） / first-frame 首帧延展（以单图为锚）
               九宫格图片模式与"首帧延展"语义冲突（grid 是 9 帧时序，first-frame 是单图微动），
               此时锁定 multi-ref 并通过 tooltip 解释。 */}
-          <div className="flex items-center justify-between gap-2 border-b border-zinc-800 px-2 py-1">
-            <span className="text-[10px] text-zinc-400">视频模式</span>
+          <div className="flex items-center justify-between gap-2 border-b border-border-subtle px-2 py-1">
+            <span className="text-[10px] text-text-secondary">视频模式</span>
             <Tooltip
               title={isGridImageMode(shot.imageMode)
                 ? '网格图片模式下视频自动走"多参"——把网格当作 N 帧时序锚点（4 / 9 帧）；切回普通模式才能选"首帧"。'
@@ -871,14 +877,13 @@ export const ShotCard: React.FC<ShotCardProps> = ({
               mentionItems={mentionItems}
               enableCameraCommands={true}
               showLineNumbers={false}
-              darkTheme={true}
-              style={{ height: '100%' }}
-              className="shot-prompt-editor"
+              darkTheme={isDarkTheme}
+              className="shot-prompt-editor shot-prompt-editor-fill"
             />
             {/* 右下角浮动：AI生成按钮 */}
             <div className="absolute right-2 bottom-2">
               <button
-                className="text-blue-400 hover:text-blue-300 text-[11px] font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                className="text-status-info hover:text-status-info text-[11px] font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                 onClick={handleVideoPromptClick}
                 disabled={isGeneratingVideoPrompt}
               >
@@ -889,7 +894,7 @@ export const ShotCard: React.FC<ShotCardProps> = ({
         </div>
 
         {/* 列6: 视频结果 */}
-        <div className={`${SHOT_LAYOUT.colVideoResult} flex flex-col bg-zinc-900/20`}>
+        <div className={`${SHOT_LAYOUT.colVideoResult} flex flex-col bg-bg-surface/20`}>
           <div className="flex-1 p-1 min-h-0 overflow-y-auto custom-scrollbar flex items-center justify-center">
             {videos.length === 0 && !isGeneratingVideo ? (
               <div className="flex flex-col items-center gap-2">
@@ -908,7 +913,7 @@ export const ShotCard: React.FC<ShotCardProps> = ({
                   </span>
                 </Tooltip>
                 {videoCapabilityLabel && (
-                  <div className={`text-[10px] ${videoGenerateDisabledReason ? 'text-amber-400' : 'text-zinc-500'}`}>
+                  <div className={`text-[10px] ${videoGenerateDisabledReason ? 'text-status-warning' : 'text-text-tertiary'}`}>
                     {videoCapabilityLabel}
                   </div>
                 )}
@@ -954,15 +959,15 @@ export const ShotCard: React.FC<ShotCardProps> = ({
                 )}
                 {/* 进度覆盖层：仅在生成中显示，避免遮挡已存视频 */}
                 {isGeneratingVideo && videoProgress && (
-                  <div className="absolute inset-x-0 bottom-0 px-1.5 py-1 bg-zinc-950/80 backdrop-blur-sm flex flex-col gap-0.5 z-10">
+                  <div className="shot-video-progress-overlay">
                     <Progress
                       percent={Math.max(0, Math.min(100, videoProgress.progress))}
                       size="small"
                       showInfo={false}
-                      strokeColor="#10b981"
-                      trailColor="#3f3f46"
+                      strokeColor="var(--token-accent-base)"
+                      trailColor="var(--token-border-base)"
                     />
-                    <div className="flex items-center justify-between gap-1 text-[10px] text-zinc-300 leading-tight">
+                    <div className="shot-video-progress-meta">
                       <span className="truncate flex-1" title={videoProgress.step}>
                         {videoProgress.step || '处理中...'}
                       </span>
@@ -999,10 +1004,10 @@ export const ShotCard: React.FC<ShotCardProps> = ({
         closable={!isSplittingGridImage}
       >
         {!gridSplitAsset ? (
-          <div className="text-sm text-zinc-400">未找到要拆分的图片</div>
+          <div className="text-sm text-text-secondary">未找到要拆分的图片</div>
         ) : (
           <div className="flex flex-col gap-3">
-            <div className="text-[12px] text-zinc-400">
+            <div className="text-[12px] text-text-secondary">
               <div>将把所选图片平均切成 {gridCellCount} 张（{gridSize}×{gridSize}）。确认后才会真正落盘拆分。</div>
               {gridSplitPreviewMeta && (
                 <div className="mt-1">
@@ -1016,10 +1021,10 @@ export const ShotCard: React.FC<ShotCardProps> = ({
             <div className="flex flex-col md:flex-row gap-3">
               {/* 分割线预览 */}
               <div className="flex-1">
-                <div className="text-[12px] text-zinc-500 mb-1">分割线预览</div>
+                <div className="text-[12px] text-text-tertiary mb-1">分割线预览</div>
                 <div
-                  className="relative w-full rounded overflow-hidden bg-black border border-zinc-800"
-                  style={{ aspectRatio: gridSplitAspectStyle }}
+                  className="grid-split-frame relative w-full rounded overflow-hidden bg-black border border-border-subtle"
+                  style={cssVars({ '--grid-split-aspect-ratio': gridSplitAspectStyle })}
                 >
                   {gridSplitSrc && (
                     <img
@@ -1039,13 +1044,21 @@ export const ShotCard: React.FC<ShotCardProps> = ({
                     {Array.from({ length: gridSize - 1 }).map((_, i) => {
                       const pct = `${((i + 1) / gridSize) * 100}%`;
                       return (
-                        <div key={`v-${i}`} className="absolute top-0 bottom-0 w-px bg-white/70" style={{ left: pct }} />
+                        <div
+                          key={`v-${i}`}
+                          className="grid-split-line-v absolute top-0 bottom-0 w-px"
+                          style={cssVars({ '--grid-line-left': pct })}
+                        />
                       );
                     })}
                     {Array.from({ length: gridSize - 1 }).map((_, i) => {
                       const pct = `${((i + 1) / gridSize) * 100}%`;
                       return (
-                        <div key={`h-${i}`} className="absolute left-0 right-0 h-px bg-white/70" style={{ top: pct }} />
+                        <div
+                          key={`h-${i}`}
+                          className="grid-split-line-h absolute left-0 right-0 h-px"
+                          style={cssVars({ '--grid-line-top': pct })}
+                        />
                       );
                     })}
                   </div>
@@ -1054,10 +1067,10 @@ export const ShotCard: React.FC<ShotCardProps> = ({
 
               {/* 结果预览 — 用 inline gridTemplateColumns 避免 Tailwind purge 干掉动态类名 */}
               <div className="flex-1">
-                <div className="text-[12px] text-zinc-500 mb-1">生成结果预览</div>
+                <div className="text-[12px] text-text-tertiary mb-1">生成结果预览</div>
                 <div
-                  className="grid gap-2"
-                  style={{ gridTemplateColumns: `repeat(${gridSize}, minmax(0, 1fr))` }}
+                  className="grid-split-result-grid grid gap-2"
+                  style={cssVars({ '--grid-size': gridSize })}
                 >
                   {Array.from({ length: gridCellCount }).map((_, i) => {
                     const row = Math.floor(i / gridSize);
@@ -1071,16 +1084,15 @@ export const ShotCard: React.FC<ShotCardProps> = ({
                     return (
                       <div
                         key={i}
-                        className="relative rounded overflow-hidden border border-zinc-800 bg-black"
-                        style={{
-                          aspectRatio: gridSplitAspectStyle,
-                          backgroundImage: gridSplitSrc ? `url(${gridSplitSrc})` : undefined,
-                          backgroundSize: `${bgSizePct} ${bgSizePct}`,
-                          backgroundPosition: `${bgPosX} ${bgPosY}`,
-                          backgroundRepeat: 'no-repeat',
-                        }}
+                        className="grid-split-cell relative rounded overflow-hidden border border-border-subtle bg-black"
+                        style={cssVars({
+                          '--grid-split-aspect-ratio': gridSplitAspectStyle,
+                          '--grid-cell-bg-image': toCssUrl(gridSplitSrc),
+                          '--grid-cell-bg-size': `${bgSizePct} ${bgSizePct}`,
+                          '--grid-cell-bg-position': `${bgPosX} ${bgPosY}`,
+                        })}
                       >
-                        <div className="absolute left-1 top-1 text-[10px] text-white/80 bg-black/50 px-1 rounded">
+                        <div className="grid-split-cell-index absolute left-1 top-1 text-[10px] px-1 rounded">
                           {String(i + 1).padStart(2, '0')}
                         </div>
                       </div>

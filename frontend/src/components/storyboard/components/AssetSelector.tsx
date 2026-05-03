@@ -30,9 +30,9 @@ interface AssetSelectorProps {
 }
 
 const CONFIG: Record<AssetType, { label: string; icon: React.ReactNode; color: string }> = {
-  character: { label: '角色', icon: <UserOutlined />, color: 'text-blue-400' },
-  scene: { label: '场景', icon: <EnvironmentOutlined />, color: 'text-green-400' },
-  prop: { label: '道具', icon: <ToolOutlined />, color: 'text-orange-400' },
+  character: { label: '角色', icon: <UserOutlined />, color: 'text-status-info' },
+  scene: { label: '场景', icon: <EnvironmentOutlined />, color: 'text-status-success' },
+  prop: { label: '道具', icon: <ToolOutlined />, color: 'text-status-warning' },
 };
 
 export const AssetSelector: React.FC<AssetSelectorProps> = ({
@@ -65,7 +65,7 @@ export const AssetSelector: React.FC<AssetSelectorProps> = ({
   const content = (
     <div className="w-[280px] max-h-[300px] overflow-y-auto custom-scrollbar">
       {allAssets.length === 0 ? (
-        <div className="py-8 text-center text-zinc-500 text-xs">暂无{config.label}</div>
+        <div className="py-8 text-center text-text-tertiary text-xs">暂无{config.label}</div>
       ) : (
         <div className="grid grid-cols-3 gap-2 p-1">
           {allAssets.map(asset => (
@@ -73,21 +73,21 @@ export const AssetSelector: React.FC<AssetSelectorProps> = ({
               key={asset.id}
               className={`cursor-pointer rounded border p-1.5 transition-colors ${
                 selectedIds.includes(asset.id)
-                  ? 'border-blue-500 bg-blue-500/10'
-                  : 'border-zinc-700 hover:border-zinc-500'
+                  ? 'border-status-info bg-status-info/10'
+                  : 'border-border hover:border-border'
               }`}
               onClick={() => toggleSelection(asset.id)}
             >
-              <div className="aspect-square bg-zinc-800 rounded overflow-hidden mb-1">
+              <div className="aspect-square bg-bg-elevated rounded overflow-hidden mb-1">
                 {getAssetImage(asset) ? (
                   <img src={getAssetImage(asset)} className="w-full h-full object-cover" alt="" />
                 ) : (
-                  <div className="w-full h-full flex items-center justify-center text-zinc-600">
+                  <div className="w-full h-full flex items-center justify-center text-text-muted">
                     {config.icon}
                   </div>
                 )}
               </div>
-              <div className="text-[10px] truncate text-center text-zinc-300">{asset.name}</div>
+              <div className="text-[10px] truncate text-center text-text-secondary">{asset.name}</div>
             </div>
           ))}
         </div>
@@ -107,7 +107,7 @@ export const AssetSelector: React.FC<AssetSelectorProps> = ({
             title={
               <div className="text-center">
                 <div className="font-medium">{asset.name}</div>
-                <div className="text-[10px] text-zinc-400">点击取消选择</div>
+                <div className="text-[10px] text-text-secondary">点击取消选择</div>
               </div>
             }
             key={asset.id}
@@ -116,7 +116,7 @@ export const AssetSelector: React.FC<AssetSelectorProps> = ({
               size={28}
               src={getAssetImage(asset)}
               icon={!getAssetImage(asset) && config.icon}
-              className="border border-zinc-700 cursor-pointer hover:border-blue-400 hover:scale-110 transition-all"
+              className="border border-border cursor-pointer hover:border-status-info hover:scale-110 transition-all"
               onClick={() => toggleSelection(asset.id)}
             />
           </Tooltip>
@@ -129,8 +129,8 @@ export const AssetSelector: React.FC<AssetSelectorProps> = ({
           placement="bottomLeft"
           overlayClassName="asset-selector-popover"
         >
-          <div className="w-7 h-7 rounded-full border border-dashed border-zinc-600 flex items-center justify-center cursor-pointer hover:border-zinc-400 text-zinc-500 hover:text-zinc-300 transition-colors">
-            <PlusOutlined style={{ fontSize: 11 }} />
+          <div className="w-7 h-7 rounded-full border border-dashed border-border flex items-center justify-center cursor-pointer hover:border-border text-text-tertiary hover:text-text-secondary transition-colors">
+            <PlusOutlined className="text-[11px]" />
           </div>
         </Popover>
       </div>

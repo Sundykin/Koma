@@ -317,14 +317,15 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
       <div className="flex flex-col h-full">
         {/* 批量进度 */}
         {batchProgress && batchProgress.total > 0 && (
-          <div className="px-3 py-1.5 bg-zinc-900 border-b border-zinc-800">
+          <div className="px-3 py-1.5 bg-bg-surface border-b border-border-subtle">
             <Progress
               percent={Math.round((batchProgress.current / batchProgress.total) * 100)}
               size="small"
               status="active"
-              strokeColor="#10b981"
+              strokeColor="var(--token-accent-base)"
+              trailColor="var(--token-border-subtle)"
             />
-            <Text type="secondary" style={{ fontSize: 10 }}>
+            <Text type="secondary" className="batchProgressStep">
               {batchProgress.step || `${batchProgress.current}/${batchProgress.total}`}
             </Text>
           </div>
@@ -334,7 +335,7 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
         {shots.length === 0 ? (
           <div className="flex-1 flex flex-col items-center justify-center">
             <Text type="secondary">暂无分镜数据</Text>
-            <Button type="primary" icon={<PlusOutlined />} onClick={onAddShot} style={{ marginTop: 12 }}>
+            <Button type="primary" icon={<PlusOutlined />} onClick={onAddShot} className="emptyAddButton">
               添加分镜
             </Button>
           </div>
@@ -346,7 +347,8 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
               selectedCount={selectedCount}
               isAllSelected={isAllSelected}
               isIndeterminate={isIndeterminate}
-              generatingPrompts={generatingImagePrompts.size > 0 || generatingVideoPrompts.size > 0}
+              generatingImagePrompts={generatingImagePrompts.size > 0}
+              generatingVideoPrompts={generatingVideoPrompts.size > 0}
               generatingImages={generatingImages.size > 0}
               generatingVideos={generatingVideos.size > 0}
               onSelectAll={handleSelectAll}
@@ -369,7 +371,7 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
               computeItemKey={(_, shot) => shot.id}
               itemContent={renderShotRow}
               increaseViewportBy={400}
-              style={{ flex: 1 }}
+              className="virtuosoScroller"
             />
           </div>
         )}
