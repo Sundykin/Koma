@@ -34,6 +34,7 @@ import {
 } from './shotVideoPlan';
 import { compileShotVideoGenerationRequest } from './videoGenerationRequests';
 import { resolveConfiguredChannelModel } from '../providers/channel/resolver';
+import { getModelMaxReferenceImages } from '../providers/itv/modelCatalog';
 import type { StyleSnapshotLike } from '../utils/promptNormalize';
 import { normalizeVideoDurationSeconds } from '../utils/videoDuration';
 
@@ -147,12 +148,17 @@ export async function shotRenderWorkflow(
       ? resolveConfiguredChannelModel(settings, 'itv', mediaSelections?.itvSelection, initialVideoPlan.capability)
       : undefined;
     const selectedItvModelCapabilities = selectedItvContext?.model.capabilities;
+    const selectedItvModelMaxRefs = getModelMaxReferenceImages(
+      selectedItvContext?.model,
+      selectedItvContext?.channelConfig.providerType,
+    );
     const resolvedVideoPlan = collectShotVideoPlan({
       shot: normalizedShot,
       characters,
       scenes: projectScenes,
       props: projectProps,
       modelCapabilities: selectedItvModelCapabilities,
+      modelMaxRefs: selectedItvModelMaxRefs,
     });
     const capabilitySupport = settings
       ? resolveShotVideoCapabilitySupport({

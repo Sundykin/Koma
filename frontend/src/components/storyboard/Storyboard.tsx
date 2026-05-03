@@ -47,6 +47,7 @@ import {
   specToInputBounds,
   type VideoDurationSpec,
 } from '../../providers/itv/durationSpec';
+import { getModelMaxReferenceImages } from '../../providers/itv/modelCatalog';
 import './Storyboard.css';
 import './ShotListEditor.css';
 import { getMediaAssetDisplaySource } from '../../types';
@@ -252,6 +253,13 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     return ctx?.model.capabilities;
   }, [effectiveSettings, itvSelection]);
 
+  // 当前 ITV 模型的引用图配额上限；bundle builder 按此裁剪，避免 grok2 / seedance
+  // 上游 multipart 限额被触发。
+  const selectedItvModelMaxRefs = useMemo(() => {
+    const ctx = resolveConfiguredChannelModel(effectiveSettings, 'itv', itvSelection);
+    return getModelMaxReferenceImages(ctx?.model, ctx?.channelConfig.providerType);
+  }, [effectiveSettings, itvSelection]);
+
   // 当前 ITV 渠道的时长规格：决定分镜编辑控件是 Select（grok 枚举）还是 InputNumber（即梦范围）
   // 优先按 modelId 命中（Koma 内置即梦渠道复用 grok runtime 但模型是 seedance-*）
   const itvDurationSpec = useMemo(() => {
@@ -270,6 +278,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
         scenes,
         props,
         modelCapabilities: selectedItvModelCapabilities,
+        modelMaxRefs: selectedItvModelMaxRefs,
       });
       const support = resolveShotVideoCapabilitySupport({
         settings: effectiveSettings,
@@ -1214,10 +1223,45 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     await saveAllShots(updatedShots);
   }, [shots, saveAllShots, createNewShot]);
 
-  const handleShotImageModeChange = useCallback((shotId: string, mode: 'normal' | 'grid') => {
-    const updatedShots = shots.map(s =>
-      s.id === shotId ? { ...s, imageMode: mode } : s
-    );
+  const handleShotImageModeChange = useCallback((shotId: string, mode: 'normal' | 'grid-9' | 'grid-4') => {
+    const updatedShots = shots.map(s => {
+      if (s.id !== shotId) return s;
+      // 模式切换时，图片提示词模板（normal / grid-9 / grid-4）和 TTI 终稿模板都不一样，
+      // 视频提示词的 shotsSection 也按模式渲染不同骨架。继续使用旧的 prompt + 旧的 image
+      // 会导致 UI 显示前一模式的旧图、新生成走错模板。所以模式切换时必须：
+      //  - 清空 images / currentImageIndex（强制让用户重新生成）
+      //  - 清空 imagePrompt / videoPrompt（强制重新 AI 推理新模板的提示词）
+      // 老 'grid' 视作等同 'grid-9'，imageMode 一旦切到不同变体就触发清空。
+      const oldMode = s.imageMode === 'grid' ? 'grid-9' : (s.imageMode || 'normal');
+      const modeChanged = oldMode !== mode;
+
+      // 任一 grid 变体（grid-4 / grid-9）+ first-frame 都是非法组合（网格是 N 帧时序 vs
+      // 单图微动延展），切到 grid 时自动改回 multi-ref。
+      const isGridMode = mode === 'grid-9' || mode === 'grid-4';
+      const correctedVideoMode = (isGridMode && s.videoMode === 'first-frame')
+        ? 'multi-ref' as const
+        : s.videoMode;
+
+      if (!modeChanged) {
+        return { ...s, imageMode: mode, videoMode: correctedVideoMode };
+      }
+
+      return {
+        ...s,
+        imageMode: mode,
+        videoMode: correctedVideoMode,
+        // 清掉前一模式遗留的提示词产物，强制走新模板重推
+        imagePrompt: '',
+        videoPrompt: '',
+        // 清掉前一模式遗留的图片，避免 UI 继续显示老模式的图
+        media: {
+          ...(s.media || {}),
+          images: [],
+          currentImageIndex: 0,
+          gridImage: undefined,
+        },
+      };
+    });
     saveAllShots(updatedShots);
   }, [shots, saveAllShots]);
 

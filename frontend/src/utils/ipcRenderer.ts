@@ -36,6 +36,12 @@ export const ipcApiRoute = {
     getVersion: 'controller/app/getVersion',
     openExternal: 'controller/app/openExternal',
     showItemInFolder: 'controller/app/showItemInFolder',
+    getStyleReferenceImagePath: 'controller/app/getStyleReferenceImagePath',
+    getActiveStyleReferenceImagePath: 'controller/app/getActiveStyleReferenceImagePath',
+    saveStyleReferenceImage: 'controller/app/saveStyleReferenceImage',
+    clearStyleReferenceImage: 'controller/app/clearStyleReferenceImage',
+    saveProjectStyleReferenceImage: 'controller/app/saveProjectStyleReferenceImage',
+    clearProjectStyleReferenceImage: 'controller/app/clearProjectStyleReferenceImage',
   },
   // 窗口控制器
   window: {

@@ -57,21 +57,24 @@ function createShot(partial?: Partial<Shot>): Shot {
   };
 }
 
+// 测试 fixture 必须使用 *已注册的* providerType（resolveConfiguredChannelModel 会
+// 通过 getBuiltInChannelDefinition 在 ProviderRegistry 里查找；老的 'runway'/'vidu' 已下线）。
+// 现役 ITV provider：'grok2api-imagine-itv'（Grok 全能力）+ 'koma-suihe-itv'（即梦，仅图生视频）。
 function createSettings(channelId: string, modelId: string): AppSettings {
   return {
     channelConfigs: [
       {
-        id: 'runway-main',
-        name: 'Runway',
+        id: 'koma-suihe-main',
+        name: 'Koma 即梦（图生视频）',
         category: 'itv',
-        providerType: 'runway',
-        providerConfig: { apiKey: 'runway-key' },
-        defaultModelId: 'runway-model-a',
+        providerType: 'koma-suihe-itv',
+        providerConfig: { apiKey: 'suihe-key', baseUrl: 'https://komaapi.com' },
+        defaultModelId: 'seedance-i2v-only',
         models: [
           {
-            id: 'runway-model-a',
-            label: 'runway-a',
-            providerModelName: 'runway-a',
+            id: 'seedance-i2v-only',
+            label: 'Seedance Image-to-Video Only',
+            providerModelName: 'seedance-2.0-r',
             capabilities: ['video.image-to-video'],
           },
         ],
@@ -81,17 +84,17 @@ function createSettings(channelId: string, modelId: string): AppSettings {
         updatedAt: 1,
       },
       {
-        id: 'vidu-main',
-        name: 'Vidu',
+        id: 'grok-main',
+        name: 'Koma 官方 Grok',
         category: 'itv',
-        providerType: 'vidu',
-        providerConfig: { apiKey: 'vidu-key', baseUrl: 'https://vidu.example.com' },
-        defaultModelId: 'vidu-model-a',
+        providerType: 'grok2api-imagine-itv',
+        providerConfig: { apiKey: 'grok-key', baseUrl: 'https://komaapi.com' },
+        defaultModelId: 'grok-imagine-video',
         models: [
           {
-            id: 'vidu-model-a',
-            label: 'vidu-a',
-            providerModelName: 'vidu-a',
+            id: 'grok-imagine-video',
+            label: 'grok-imagine-video',
+            providerModelName: 'grok-imagine-video',
             capabilities: [
               'video.text-to-video',
               'video.image-to-video',
@@ -144,6 +147,10 @@ function createReferenceOnlySettings(): AppSettings {
   };
 }
 
+// "Seedance 系" 资产合并触发条件：providerType ∈ {seedance, koma-suihe-itv}。
+// 老 'seedance' 已下线，所以测试用现役的 'koma-suihe-itv'。
+// 注意：实测 koma-suihe 默认模型 capabilities 仅含 image-to-video，但这里为了覆盖
+// "无主图 + 模型支持参考生视频" 等场景，给一个全能力 seedance-r 模型。
 function createSeedanceSettings(): AppSettings {
   return {
     channelConfigs: [
@@ -151,20 +158,23 @@ function createSeedanceSettings(): AppSettings {
         id: 'seedance-main',
         name: 'Seedance',
         category: 'itv',
-        providerType: 'seedance',
-        providerConfig: { apiKey: 'seedance-key', baseUrl: 'https://toapis.example.com' },
-        defaultModelId: 'seedance-2.0',
+        providerType: 'koma-suihe-itv',
+        providerConfig: { apiKey: 'seedance-key', baseUrl: 'https://komaapi.com' },
+        defaultModelId: 'seedance-2.0-r-full',
         models: [
           {
-            id: 'seedance-2.0',
-            label: 'Seedance 2.0',
-            providerModelName: 'seedance-2.0',
+            id: 'seedance-2.0-r-full',
+            label: 'Seedance 2.0 Full',
+            providerModelName: 'seedance-2.0-r',
             capabilities: [
               'video.text-to-video',
               'video.image-to-video',
               'video.reference-to-video',
               'video.start-end-to-video',
             ],
+            // 测试场景需要 5 张引用图（shot-anchor + 3 资产 + 1 用户上传）；
+            // koma-suihe-itv 默认 maxReferenceImages=4 会截掉用户上传，所以这里调高到 6。
+            defaults: { maxReferenceImages: 6 },
           },
         ],
         enabled: true,
@@ -174,7 +184,7 @@ function createSeedanceSettings(): AppSettings {
       },
     ],
     mediaDefaults: {
-      itv: { channelId: 'seedance-main', modelId: 'seedance-2.0' },
+      itv: { channelId: 'seedance-main', modelId: 'seedance-2.0-r-full' },
     },
     promptTemplates: {},
   };
@@ -233,8 +243,8 @@ describe('shotRenderWorkflow video chain', () => {
       {
         projectId: 'project-1',
         shot,
-        settings: createSettings('vidu-main', 'vidu-model-a'),
-        mediaSelections: { itvSelection: 'vidu-main::vidu-model-a' },
+        settings: createSettings('grok-main', 'grok-imagine-video'),
+        mediaSelections: { itvSelection: 'grok-main::grok-imagine-video' },
         styleSnapshot: { ttiStylePrefix: '电影级风格' },
       },
       () => {},
@@ -255,7 +265,7 @@ describe('shotRenderWorkflow video chain', () => {
           referenceImages: expect.arrayContaining([referenceAsset]),
           options: expect.objectContaining({ duration: 6 }),
         }),
-        itvSelection: 'vidu-main::vidu-model-a',
+        itvSelection: 'grok-main::grok-imagine-video',
         allowCapabilityFallback: false,
       }),
     );
@@ -335,26 +345,31 @@ describe('shotRenderWorkflow video chain', () => {
           },
         }),
         settings: createSeedanceSettings(),
-        mediaSelections: { itvSelection: 'seedance-main::seedance-2.0' },
+        mediaSelections: { itvSelection: 'seedance-main::seedance-2.0-r-full' },
         styleSnapshot: { ttiStylePrefix: '电影级风格' },
       },
       () => {},
     );
 
     expect(result.success).toBe(true);
+    // 阶段 2 架构升级：模型支持 reference-to-video + 多参模式 + 有锚定图 →
+    // 走 reference-to-video（不是 image-to-video）。bundle 把所有视觉源（锚点 +
+    // 角色 + 场景 + 道具 + 用户上传）按位置编号串到 referenceImages 数组里，
+    // mergeSeedanceShotReferences 进一步把"selectedAssetsForCompilation"
+    // 里的角色/场景/道具去重合并到末尾。
     expect(mediaGenerationService.generateVideo).toHaveBeenCalledWith(
       expect.objectContaining({
         request: expect.objectContaining({
-          capability: 'video.image-to-video',
-          primaryImage: shotImage,
-          additionalReferences: [
+          capability: 'video.reference-to-video',
+          referenceImages: expect.arrayContaining([
+            shotImage,
             characterImage,
             sceneImage,
             propImage,
             manualReference,
-          ],
+          ]),
         }),
-        itvSelection: 'seedance-main::seedance-2.0',
+        itvSelection: 'seedance-main::seedance-2.0-r-full',
         allowCapabilityFallback: false,
       }),
     );
@@ -373,8 +388,8 @@ describe('shotRenderWorkflow video chain', () => {
       {
         projectId: 'project-1',
         shot: createShot(),
-        settings: createSettings('runway-main', 'runway-model-a'),
-        mediaSelections: { itvSelection: 'runway-main::runway-model-a' },
+        settings: createSettings('koma-suihe-main', 'seedance-i2v-only'),
+        mediaSelections: { itvSelection: 'koma-suihe-main::seedance-i2v-only' },
         styleSnapshot: { ttiStylePrefix: '电影级风格' },
       },
       () => {},
@@ -474,8 +489,8 @@ describe('shotRenderWorkflow video chain', () => {
         shot: createShot({
           props: ['prop-1'],
         }),
-        settings: createSettings('vidu-main', 'vidu-model-a'),
-        mediaSelections: { itvSelection: 'vidu-main::vidu-model-a' },
+        settings: createSettings('grok-main', 'grok-imagine-video'),
+        mediaSelections: { itvSelection: 'grok-main::grok-imagine-video' },
         styleSnapshot: { ttiStylePrefix: '电影级风格' },
       },
       () => {},

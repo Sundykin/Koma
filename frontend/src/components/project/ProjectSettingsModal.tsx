@@ -3,9 +3,14 @@
  * 整合项目基本信息（项目名 / 题材 / 画面比例 / 风格）+ 媒体模型配置（LLM/TTI/ITV/TTS）
  * 通过抽屉形式从右侧滑出，作为项目工作台的统一配置入口
  */
-import React, { useState, useEffect } from 'react';
-import { Drawer, Form, Input, Tabs, Select, Button, Space, Checkbox, Tooltip } from 'antd';
-import type { MediaModelSelection, Project } from '../../types';
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  Drawer, Form, Input, Tabs, Select, Button, Space, Checkbox, Tooltip,
+  Upload, Spin, Typography, Popconfirm, App as AntApp, Image as AntImage,
+} from 'antd';
+import type { UploadFile } from 'antd/es/upload/interface';
+import { UploadOutlined, EyeOutlined, ReloadOutlined } from '@ant-design/icons';
+import type { MediaModelSelection, Project, ProjectStyleSnapshot, StoredMediaAsset } from '../../types';
 import { ProjectMediaSelector } from './ProjectMediaSelector';
 import type { ProjectMediaCategoryKey, ProjectMediaRequirement } from './projectMediaSelectionState';
 import {
@@ -19,6 +24,180 @@ import {
   isAllowedDurationForSpec,
   type VideoDurationSpec,
 } from '../../providers/itv/durationSpec';
+import { ipc, ipcApiRoute } from '../../utils/ipcRenderer';
+import { toKomaLocalUrl } from '../../utils/urlUtils';
+
+// 项目级风格参考图上传：与全局栅格图同列表（svg 不能图生图）
+const SUPPORTED_PROJECT_STYLE_EXTS = new Set(['png', 'jpg', 'jpeg', 'webp']);
+const PROJECT_STYLE_ACCEPT = '.png,.jpg,.jpeg,.webp';
+
+function readFileAsBase64Pair(file: File): Promise<{ base64: string; ext: string }> {
+  return new Promise((resolve, reject) => {
+    const ext = (file.name.split('.').pop() || '').toLowerCase();
+    if (!SUPPORTED_PROJECT_STYLE_EXTS.has(ext)) {
+      reject(new Error(`不支持的图片格式: .${ext}（仅 png/jpg/webp）`));
+      return;
+    }
+    const reader = new FileReader();
+    reader.onerror = () => reject(reader.error || new Error('读取文件失败'));
+    reader.onload = () => {
+      const result = String(reader.result || '');
+      const idx = result.indexOf(',');
+      const base64 = idx >= 0 ? result.slice(idx + 1) : result;
+      resolve({ base64, ext: ext === 'jpeg' ? 'jpg' : ext });
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+interface ProjectStyleReferenceSlotProps {
+  /** 当前项目级覆盖图（来自 styleSnapshot.styleReferenceImage），优先级最高 */
+  override?: StoredMediaAsset;
+  /** 项目当前生效的预设默认图（项目无覆盖时显示这张做对照） */
+  presetFallbackUrl?: string;
+  busy: boolean;
+  onUpload: (file: File) => Promise<void> | void;
+  onClear: () => Promise<void> | void;
+}
+
+const ProjectStyleReferenceSlot: React.FC<ProjectStyleReferenceSlotProps> = ({
+  override,
+  presetFallbackUrl,
+  busy,
+  onUpload,
+  onClear,
+}) => {
+  const [previewVisible, setPreviewVisible] = useState(false);
+
+  const beforeUpload = useCallback((file: UploadFile) => {
+    void onUpload(file as unknown as File);
+    return false; // 阻止 antd 自动 POST
+  }, [onUpload]);
+
+  const overrideUrl = override?.localPath
+    ? toKomaLocalUrl(override.localPath)
+    : (override?.remoteUrl || undefined);
+  const displayUrl = overrideUrl || presetFallbackUrl;
+  const hasOverride = Boolean(overrideUrl);
+
+  return (
+    <div style={{ marginTop: 4 }}>
+      <div
+        style={{
+          width: '100%',
+          aspectRatio: '16 / 9',
+          background: 'rgba(255,255,255,0.04)',
+          border: hasOverride
+            ? '1px solid rgba(24,144,255,0.4)'
+            : '1px dashed rgba(255,255,255,0.18)',
+          borderRadius: 6,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          overflow: 'hidden',
+          position: 'relative',
+        }}
+      >
+        {busy ? (
+          <Spin size="small" />
+        ) : displayUrl ? (
+          <img
+            src={displayUrl}
+            alt="项目风格参考图"
+            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+            draggable={false}
+          />
+        ) : (
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+            未设置项目风格图（将沿用所选风格预设的默认图）
+          </Typography.Text>
+        )}
+
+        <Space size={6} style={{ position: 'absolute', right: 8, bottom: 8, zIndex: 2 }}>
+          <Tooltip title={hasOverride ? '替换项目风格参考图' : '上传项目风格参考图'}>
+            <Upload
+              beforeUpload={beforeUpload}
+              showUploadList={false}
+              accept={PROJECT_STYLE_ACCEPT}
+            >
+              <Button
+                size="small"
+                shape="circle"
+                icon={<UploadOutlined />}
+                style={{
+                  background: 'rgba(0,0,0,0.55)',
+                  borderColor: 'rgba(255,255,255,0.25)',
+                  color: '#fff',
+                }}
+              />
+            </Upload>
+          </Tooltip>
+          <Tooltip title="预览放大">
+            <Button
+              size="small"
+              shape="circle"
+              icon={<EyeOutlined />}
+              disabled={!displayUrl}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (displayUrl) setPreviewVisible(true);
+              }}
+              style={{
+                background: 'rgba(0,0,0,0.55)',
+                borderColor: 'rgba(255,255,255,0.25)',
+                color: displayUrl ? '#fff' : 'rgba(255,255,255,0.35)',
+              }}
+            />
+          </Tooltip>
+        </Space>
+
+        {hasOverride && (
+          <Tooltip title="清除项目风格图，回退到预设默认图">
+            <Popconfirm
+              title="清除项目级风格参考图？"
+              description="清除后将沿用项目所选风格预设的默认图。"
+              onConfirm={() => onClear()}
+              okText="清除"
+              cancelText="取消"
+            >
+              <Button
+                size="small"
+                shape="circle"
+                icon={<ReloadOutlined />}
+                style={{
+                  position: 'absolute',
+                  left: 8,
+                  top: 8,
+                  zIndex: 2,
+                  background: 'rgba(0,0,0,0.55)',
+                  borderColor: 'rgba(255,255,255,0.25)',
+                  color: '#fff',
+                }}
+              />
+            </Popconfirm>
+          </Tooltip>
+        )}
+      </div>
+
+      {displayUrl && (
+        <AntImage
+          src={displayUrl}
+          alt="项目风格参考图预览"
+          style={{ display: 'none' }}
+          preview={{
+            visible: previewVisible,
+            src: displayUrl,
+            onVisibleChange: setPreviewVisible,
+          }}
+        />
+      )}
+
+      <Typography.Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 6 }}>
+        项目级风格图优先级最高，仅本项目生效；未上传时使用所选风格预设的默认图。
+      </Typography.Text>
+    </div>
+  );
+};
 
 interface ProjectSettingsModalProps {
   project: Project | null;
@@ -42,12 +221,20 @@ export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({
   onGoToGlobalSettings,
   itvDurationSpec,
 }) => {
+  const { message } = AntApp.useApp();
   const [form] = Form.useForm();
   const [activeTab, setActiveTab] = useState('basic');
   const [mediaSelections, setMediaSelections] = useState<
     Partial<Record<'llm' | 'tti' | 'itv' | 'tts', MediaModelSelection>>
   >({});
   const [themePresets, setThemePresets] = useState<ThemePresetCatalogItem[]>([]);
+  // 项目级风格参考图：本地态用 StoredMediaAsset 表达，保存时塞回 styleSnapshot.styleReferenceImage
+  const [projectStyleImage, setProjectStyleImage] = useState<StoredMediaAsset | undefined>(undefined);
+  const [projectStyleBusy, setProjectStyleBusy] = useState(false);
+  // 当前所选风格预设的默认图（用于无覆盖时显示对照），随 stylePresetId 切换时重新解析
+  const [presetFallbackUrl, setPresetFallbackUrl] = useState<string | undefined>(undefined);
+  // 触发"重新解析预设默认图"，依赖 form 里 stylePresetId 的当前值
+  const [presetFallbackTick, setPresetFallbackTick] = useState(0);
 
   // 视频提示词档位勾选：默认全选；nullable 表示"未配置"（保存时也按全选写回）
   const [multiRefSelections, setMultiRefSelections] = useState<number[]>(
@@ -89,6 +276,9 @@ export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({
         stylePresetId: project.stylePresetId || project.styleSnapshot?.sourcePresetId || DEFAULT_THEME_PRESET_ID,
       });
       setMediaSelections(project.mediaSelections || {});
+      setProjectStyleImage(project.styleSnapshot?.styleReferenceImage);
+      // 触发预设默认图解析
+      setPresetFallbackTick(t => t + 1);
       // 视频提示词档位：取项目已配置；缺省 = 全选
       const cfg = (project as { videoPromptDurationSelections?: { multiRef?: number[]; firstFrame?: number[] } })
         .videoPromptDurationSelections;
@@ -105,11 +295,83 @@ export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({
     }
   }, [project, open, form]);
 
+  // 当 stylePresetId 切换或抽屉重开时，向主进程问"该 preset 当前生效的图是哪张"，
+  // 用作"未上传项目级覆盖时"的对照预览。
+  useEffect(() => {
+    if (!open) return;
+    const stylePresetId = form.getFieldValue('stylePresetId') as string | undefined;
+    if (!stylePresetId) {
+      setPresetFallbackUrl(undefined);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const preset = themePresets.find(p => p.id === stylePresetId);
+      const fallbackFilename = preset?.defaultStyleReferenceFile;
+      try {
+        const resp = await ipc.invoke(
+          ipcApiRoute.app.getActiveStyleReferenceImagePath,
+          { presetId: stylePresetId, fallbackFilename },
+        ) as { localPath: string | null } | null;
+        if (!cancelled) {
+          setPresetFallbackUrl(resp?.localPath ? toKomaLocalUrl(resp.localPath) : undefined);
+        }
+      } catch {
+        if (!cancelled) setPresetFallbackUrl(undefined);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [open, themePresets, presetFallbackTick, form]);
+
+  const handleProjectStyleUpload = useCallback(async (file: File) => {
+    if (!project) return;
+    setProjectStyleBusy(true);
+    try {
+      const { base64, ext } = await readFileAsBase64Pair(file);
+      const resp = await ipc.invoke(ipcApiRoute.app.saveProjectStyleReferenceImage, {
+        projectId: project.id,
+        dataBase64: base64,
+        ext,
+      }) as { localPath: string; mtimeMs: number };
+      const asset: StoredMediaAsset = {
+        kind: 'image',
+        localPath: resp.localPath,
+        createdAt: resp.mtimeMs || Date.now(),
+        metadata: { source: 'project-style-reference' },
+      };
+      setProjectStyleImage(asset);
+      message.success('项目风格参考图已更新（保存项目设置后生效）');
+    } catch (err: any) {
+      message.error(`上传失败: ${err?.message || err}`);
+    } finally {
+      setProjectStyleBusy(false);
+    }
+  }, [message, project]);
+
+  const handleProjectStyleClear = useCallback(async () => {
+    if (!project) return;
+    setProjectStyleBusy(true);
+    try {
+      await ipc.invoke(ipcApiRoute.app.clearProjectStyleReferenceImage, {
+        projectId: project.id,
+      });
+      setProjectStyleImage(undefined);
+      message.success('已清除项目风格图，回退到预设默认（保存项目设置后生效）');
+    } catch (err: any) {
+      message.error(`清除失败: ${err?.message || err}`);
+    } finally {
+      setProjectStyleBusy(false);
+    }
+  }, [message, project]);
+
   const handleSave = async () => {
     try {
       const values = await form.validateFields();
       const stylePresetId = values.stylePresetId || DEFAULT_THEME_PRESET_ID;
-      const styleSnapshot = await createProjectStyleSnapshot(stylePresetId);
+      const baseSnapshot = await createProjectStyleSnapshot(stylePresetId);
+      const styleSnapshot: ProjectStyleSnapshot = projectStyleImage
+        ? { ...baseSnapshot, styleReferenceImage: projectStyleImage }
+        : baseSnapshot;
       onSave({
         title: values.title,
         genre: values.genre,
@@ -168,6 +430,17 @@ export const ProjectSettingsModal: React.FC<ProjectSettingsModalProps> = ({
                 value: preset.id,
                 label: preset.name,
               }))}
+              onChange={() => setPresetFallbackTick(t => t + 1)}
+            />
+          </Form.Item>
+
+          <Form.Item label="项目风格参考图">
+            <ProjectStyleReferenceSlot
+              override={projectStyleImage}
+              presetFallbackUrl={presetFallbackUrl}
+              busy={projectStyleBusy}
+              onUpload={handleProjectStyleUpload}
+              onClear={handleProjectStyleClear}
             />
           </Form.Item>
         </Form>

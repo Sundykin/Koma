@@ -83,8 +83,14 @@ export async function shotImageWorkflow(params: {
   const stylePrefix = styleSnapshot?.ttiStylePrefix || project?.styleSnapshot?.ttiStylePrefix || getThemeStylePrefix(theme, stylePrompt);
 
   if (normalizedShot.imagePrompt) {
-    if (normalizedShot.imageMode === 'grid') {
-      const resolved = await resolvePromptTemplate('tti_grid_shot_image', {
+    const gridMode = normalizedShot.imageMode === 'grid-4'
+      ? 'grid-4'
+      : (normalizedShot.imageMode === 'grid' || normalizedShot.imageMode === 'grid-9')
+        ? 'grid-9'
+        : null;
+    if (gridMode) {
+      const gridTemplateKey = gridMode === 'grid-4' ? 'tti_grid_4_shot_image' : 'tti_grid_shot_image';
+      const resolved = await resolvePromptTemplate(gridTemplateKey, {
         stylePrefix: stylePrefix || '',
         shotDescription: normalizedShot.scriptContent || '',
         gridPrompt: normalizedShot.imagePrompt,

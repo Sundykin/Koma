@@ -67,7 +67,7 @@ export interface ShotListEditorProps {
   onAddShot: () => void;
   onInsertAbove: (shotId: string) => void;
   onInsertBelow: (shotId: string) => void;
-  onShotImageModeChange: (shotId: string, mode: 'normal' | 'grid') => void;
+  onShotImageModeChange: (shotId: string, mode: 'normal' | 'grid-9' | 'grid-4') => void;
   onShotVideoModeChange?: (shotId: string, mode: 'multi-ref' | 'first-frame') => void;
   onBulkVideoModeChange?: (mode: 'multi-ref' | 'first-frame') => void;
   /** 当前项目选择的 ITV 渠道时长规格，透传给 ShotCard 决定时长控件渲染方式 */

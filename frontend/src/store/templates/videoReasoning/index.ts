@@ -8,13 +8,19 @@
 import shotVideo6sMulti from './shot_video_6s_multi.md?raw';
 import shotVideo10sMulti from './shot_video_10s_multi.md?raw';
 import shotVideo15sMulti from './shot_video_15s_multi.md?raw';
+import shotVideo20sMulti from './shot_video_20s_multi.md?raw';
 import shotVideo6sFirstFrame from './shot_video_6s_firstframe.md?raw';
 import shotVideo10sFirstFrame from './shot_video_10s_firstframe.md?raw';
+import shotVideo16sFirstFrame from './shot_video_16s_firstframe.md?raw';
+import shotVideo20sFirstFrame from './shot_video_20s_firstframe.md?raw';
 
 export const VIDEO_REASONING_TEMPLATE_CONTENT = {
   shot_video_6s_multi: shotVideo6sMulti,
   shot_video_10s_multi: shotVideo10sMulti,
   shot_video_15s_multi: shotVideo15sMulti,
+  shot_video_20s_multi: shotVideo20sMulti,
   shot_video_6s_firstframe: shotVideo6sFirstFrame,
   shot_video_10s_firstframe: shotVideo10sFirstFrame,
+  shot_video_16s_firstframe: shotVideo16sFirstFrame,
+  shot_video_20s_firstframe: shotVideo20sFirstFrame,
 } as const;

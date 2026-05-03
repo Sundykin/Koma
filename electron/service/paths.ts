@@ -58,3 +58,8 @@ export function getFfmpegCacheDir(): string {
 export function getFfmpegBinDir(): string {
   return path.join(getBusinessRoot(), 'ffmpeg');
 }
+
+/** 风格参考图运行时目录（业务根下，便于 koma-local:// 协议直读） */
+export function getStyleReferencesDir(): string {
+  return path.join(getBusinessRoot(), 'style-references');
+}

@@ -31,6 +31,16 @@ import {
 import { compilePropPreviewVideoRequest } from './videoGenerationRequests';
 import type { StyleSnapshotLike } from '../utils/promptNormalize';
 import { normalizeVideoDurationSeconds } from '../utils/videoDuration';
+import {
+  appendStyleAnchorGuard,
+  resolveActiveStyleReferenceAsset,
+} from '../services/styleReferenceResolver';
+import type { ProjectStyleSnapshot } from '../types';
+import { runBatchWithConcurrency } from '../utils/batchRunner';
+
+const BATCH_CONCURRENCY = 3;
+const BATCH_MAX_RETRIES = 2;
+const BATCH_RETRY_BASE_DELAY_MS = 800;
 
 const logger = createLogger('ScenePropAsset');
 
@@ -144,7 +154,13 @@ export async function generateSceneImage(
       'tti_scene_preview',
       buildScenePreviewTemplateVariables(scene, stylePrefix || '')
     );
-    const prompt = appendCandidateVariationPrompt(resolvedPrompt.prompt, variationPrompt);
+    const basePrompt = appendCandidateVariationPrompt(resolvedPrompt.prompt, variationPrompt);
+    const styleAnchorAsset = await resolveActiveStyleReferenceAsset({
+      project: { styleSnapshot: (styleSnapshot || project?.styleSnapshot) as ProjectStyleSnapshot | undefined },
+      themeId: theme,
+    });
+    const prompt = appendStyleAnchorGuard(basePrompt, Boolean(styleAnchorAsset));
+    const references = styleAnchorAsset ? [styleAnchorAsset] : [];
 
     onProgress?.(10, '调用 TTI 服务...');
 
@@ -186,7 +202,7 @@ export async function generateSceneImage(
           },
           request: {
             prompt,
-            references: [],
+            references,
             options: {
               aspectRatio: finalAspectRatio,
               ...(seed !== undefined ? { seed } : undefined),
@@ -230,33 +246,60 @@ export async function generateAllSceneImages(
     type: 'asset-generation',
     metadata: { batchCount: scenes.length },
     execute: async (taskCtx) => {
+      const itemProgress = new Map<string, number>();
+      const updateOverall = (sceneName: string, stage: string) => {
+        let acc = 0;
+        scenes.forEach(s => { acc += itemProgress.get(s.id) ?? 0; });
+        const overall = acc / scenes.length;
+        onProgress?.(overall, `${sceneName}: ${stage}`);
+        taskCtx.progress(overall, `${sceneName}: ${stage}`);
+      };
+
+      const batchResults = await runBatchWithConcurrency<Scene, { success: boolean; path?: string; error?: string }>({
+        items: scenes,
+        concurrency: BATCH_CONCURRENCY,
+        maxRetries: BATCH_MAX_RETRIES,
+        retryBaseDelayMs: BATCH_RETRY_BASE_DELAY_MS,
+        onAttemptStart: (scene, _idx, attempt) => {
+          itemProgress.set(scene.id, 0);
+          updateOverall(scene.name, attempt > 1 ? `重试 ${attempt}` : '开始');
+        },
+        worker: async (scene) => {
+          const r = await generateSceneImage({
+            projectId,
+            scene,
+            aspectRatio,
+            theme,
+            stylePrompt,
+            project,
+            ttiSelection,
+            disableTask: true,
+            onProgress: (p, step) => {
+              itemProgress.set(scene.id, p);
+              updateOverall(scene.name, step);
+            },
+          });
+          if (!r.success) throw new Error(r.error || '生成失败');
+          return r;
+        },
+      });
+
       const out: Array<{ sceneId: string; success: boolean; path?: string; error?: string }> = [];
       let success = 0;
       let failed = 0;
-
-      for (let i = 0; i < scenes.length; i++) {
-        const scene = scenes[i];
-        const baseProgress = (i / scenes.length) * 100;
-
-        const r = await generateSceneImage({
-          projectId,
-          scene,
-          aspectRatio,
-          theme,
-          stylePrompt,
-          project,
-          ttiSelection,
-          disableTask: true, // 批量场景下子任务不再单独建 task，避免任务面板被刷屏
-          onProgress: (p, step) => {
-            const overall = baseProgress + (p / scenes.length);
-            onProgress?.(overall, `${scene.name}: ${step}`);
-            taskCtx.progress(overall, `${scene.name}: ${step}`);
-          },
-        });
-
-        out.push({ sceneId: scene.id, ...r });
-        if (r.success) success++; else failed++;
-      }
+      batchResults.forEach(({ item, result, error, attempts }) => {
+        const ok = Boolean(result?.success);
+        if (ok) {
+          success += 1;
+          out.push({ sceneId: item.id, success: true, path: result?.path });
+        } else {
+          failed += 1;
+          const errMsg = result?.error
+            || (error instanceof Error ? error.message : String(error || ''))
+            || `失败（已重试 ${attempts} 次）`;
+          out.push({ sceneId: item.id, success: false, error: errMsg });
+        }
+      });
       return { success, failed, results: out };
     },
   });
@@ -285,7 +328,13 @@ export async function generatePropImage(
       'tti_prop_reference',
       buildPropReferenceTemplateVariables(prop, stylePrefix || '')
     );
-    const prompt = appendCandidateVariationPrompt(resolvedPrompt.prompt, variationPrompt);
+    const basePrompt = appendCandidateVariationPrompt(resolvedPrompt.prompt, variationPrompt);
+    const styleAnchorAsset = await resolveActiveStyleReferenceAsset({
+      project: { styleSnapshot: (styleSnapshot || project?.styleSnapshot) as ProjectStyleSnapshot | undefined },
+      themeId: theme,
+    });
+    const prompt = appendStyleAnchorGuard(basePrompt, Boolean(styleAnchorAsset));
+    const references = styleAnchorAsset ? [styleAnchorAsset] : [];
 
     onProgress?.(10, '调用 TTI 服务...');
 
@@ -327,7 +376,7 @@ export async function generatePropImage(
           },
           request: {
             prompt,
-            references: [],
+            references,
             options: {
               aspectRatio: finalAspectRatio,
               ...(seed !== undefined ? { seed } : undefined),
@@ -371,33 +420,60 @@ export async function generateAllPropImages(
     type: 'asset-generation',
     metadata: { batchCount: props.length },
     execute: async (taskCtx) => {
+      const itemProgress = new Map<string, number>();
+      const updateOverall = (propName: string, stage: string) => {
+        let acc = 0;
+        props.forEach(p => { acc += itemProgress.get(p.id) ?? 0; });
+        const overall = acc / props.length;
+        onProgress?.(overall, `${propName}: ${stage}`);
+        taskCtx.progress(overall, `${propName}: ${stage}`);
+      };
+
+      const batchResults = await runBatchWithConcurrency<Prop, { success: boolean; path?: string; error?: string }>({
+        items: props,
+        concurrency: BATCH_CONCURRENCY,
+        maxRetries: BATCH_MAX_RETRIES,
+        retryBaseDelayMs: BATCH_RETRY_BASE_DELAY_MS,
+        onAttemptStart: (prop, _idx, attempt) => {
+          itemProgress.set(prop.id, 0);
+          updateOverall(prop.name, attempt > 1 ? `重试 ${attempt}` : '开始');
+        },
+        worker: async (prop) => {
+          const r = await generatePropImage({
+            projectId,
+            prop,
+            aspectRatio,
+            theme,
+            stylePrompt,
+            project,
+            ttiSelection,
+            disableTask: true,
+            onProgress: (p, step) => {
+              itemProgress.set(prop.id, p);
+              updateOverall(prop.name, step);
+            },
+          });
+          if (!r.success) throw new Error(r.error || '生成失败');
+          return r;
+        },
+      });
+
       const out: Array<{ propId: string; success: boolean; path?: string; error?: string }> = [];
       let success = 0;
       let failed = 0;
-
-      for (let i = 0; i < props.length; i++) {
-        const prop = props[i];
-        const baseProgress = (i / props.length) * 100;
-
-        const r = await generatePropImage({
-          projectId,
-          prop,
-          aspectRatio,
-          theme,
-          stylePrompt,
-          project,
-          ttiSelection,
-          disableTask: true, // 批量场景下子任务不单独建 task
-          onProgress: (p, step) => {
-            const overall = baseProgress + (p / props.length);
-            onProgress?.(overall, `${prop.name}: ${step}`);
-            taskCtx.progress(overall, `${prop.name}: ${step}`);
-          },
-        });
-
-        out.push({ propId: prop.id, ...r });
-        if (r.success) success++; else failed++;
-      }
+      batchResults.forEach(({ item, result, error, attempts }) => {
+        const ok = Boolean(result?.success);
+        if (ok) {
+          success += 1;
+          out.push({ propId: item.id, success: true, path: result?.path });
+        } else {
+          failed += 1;
+          const errMsg = result?.error
+            || (error instanceof Error ? error.message : String(error || ''))
+            || `失败（已重试 ${attempts} 次）`;
+          out.push({ propId: item.id, success: false, error: errMsg });
+        }
+      });
       return { success, failed, results: out };
     },
   });

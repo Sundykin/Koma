@@ -3,7 +3,7 @@
  * 独立于分镜拆解，支持单条和批量生成
  * v2: 支持 force 强制重新生成，分离 image/video 任务
  */
-import type { Shot, Character, Scene, ShotVideoMode } from '../types';
+import type { Prop, Shot, Character, Scene, ShotVideoMode } from '../types';
 import { resolvePromptTemplate } from '../store/promptTemplates';
 import type { PromptTemplateType } from '../store/promptTemplates';
 import { loadScenes, loadProps, updateShot, loadEpisodeShots } from '../store/projectStore';
@@ -13,6 +13,14 @@ import { runWithConcurrency } from '../utils/concurrency';
 import type { StyleSnapshotLike } from '../utils/promptNormalize';
 import { runWithTask } from './taskRunner';
 import type { TaskSubType } from './TaskManager';
+import { buildShotReferenceBundle } from './shotReference/builder';
+import {
+  renderGridSequenceNotice,
+  renderShotReferenceTable,
+  summarizeBundle,
+} from './shotReference/render';
+import { decideShotsMode, renderShotsSection } from './shotReference/shotsOutputFormat';
+import type { ShotReferenceBundle } from './shotReference/types';
 
 const logger = createLogger('ShotPrompt');
 
@@ -141,13 +149,55 @@ export class ShotPromptService {
       .map(p => `${p.name}: ${createMentionString('prop', p.id)}`)
       .join('\n');
 
+    // 阶段 3：统一引用集合。生图和生视频共用同一份 bundle，模板里的
+    // {{referenceTable}} / {{gridSequenceNotice}} / {{shotsSection}} 都从这里
+    // 渲染——保证 LLM 推理出来的 @图片N 跟下游 provider 请求的 references 数组
+    // 位置一一对应。
+    const referenceBundle = buildShotReferenceBundle({
+      shot,
+      characters: shotCharacters,
+      scenes: shotScenes,
+      props: shotProps,
+    });
+    const referenceTable = renderShotReferenceTable(referenceBundle);
+    const gridSequenceNotice = renderGridSequenceNotice(referenceBundle);
+
+    // 阶段 A：shots 段从硬骨架抽成 {{shotsSection}}。grid 模式渲染 N 镜头硬切骨架
+    // （grid-9 用 9，grid-4 用 4），normal 模式渲染 2-3 镜头硬切骨架。
+    // 直接从 shot.imageMode 派生 explicitCellCount（用户意图），独立于锚定图是否已生成。
+    // 这样用户切到 grid-4 但还没生成 3×3 / 2×2 图时，shotsSection 也能按 4 镜头渲染。
+    const explicitCellCount: 4 | 9 | undefined =
+      shot.imageMode === 'grid-4' ? 4
+      : (shot.imageMode === 'grid' || shot.imageMode === 'grid-9') ? 9
+      : undefined;
+    const shotsMode = decideShotsMode(referenceBundle, explicitCellCount);
+    const shotsSection = renderShotsSection({ mode: shotsMode, duration: shot.duration });
+
+    logger.info('分镜参考集合 bundle 已构建', {
+      shotId: shot.id,
+      summary: summarizeBundle(referenceBundle),
+      hasGridAnchor: referenceBundle.hasGridAnchor,
+      gridCellCount: referenceBundle.gridCellCount,
+      explicitCellCount,
+      shotImageMode: shot.imageMode,
+      shotsMode,
+    });
+
     // 按需并行生成
     const promises: Promise<string>[] = [];
     if (needImage) {
-      promises.push(this.generatePromptByType('image', shot, shotCharacters, shotScenes, shotProps as any, characterRefs, sceneRefs, propRefs, resolvedStylePrefix));
+      promises.push(this.generatePromptByType(
+        'image', shot, shotCharacters, shotScenes, shotProps,
+        characterRefs, sceneRefs, propRefs, resolvedStylePrefix,
+        referenceTable, gridSequenceNotice, shotsSection,
+      ));
     }
     if (needVideo) {
-      promises.push(this.generatePromptByType('video', shot, shotCharacters, shotScenes, shotProps as any, characterRefs, sceneRefs, propRefs, resolvedStylePrefix));
+      promises.push(this.generatePromptByType(
+        'video', shot, shotCharacters, shotScenes, shotProps,
+        characterRefs, sceneRefs, propRefs, resolvedStylePrefix,
+        referenceTable, gridSequenceNotice, shotsSection,
+      ));
     }
 
     const results = await Promise.all(promises);
@@ -171,15 +221,22 @@ export class ShotPromptService {
     shot: Shot,
     shotCharacters: Character[],
     shotScenes: Scene[],
-    shotProps: Array<{ id: string; name: string; prompt: string; sora2PropId?: string }>,
+    shotProps: Prop[],
     characterRefs: string,
     sceneRefs: string,
     propRefs: string,
-    stylePrefix: string
+    stylePrefix: string,
+    referenceTable: string,
+    gridSequenceNotice: string,
+    shotsSection: string,
   ): Promise<string> {
     // 视频路径：按 (duration, videoMode) 选择 5 个新模板之一，附带上下文衔接
     if (type === 'video') {
-      return this.generateVideoPrompt(shot, shotCharacters, shotScenes, shotProps, characterRefs, sceneRefs, propRefs, stylePrefix);
+      return this.generateVideoPrompt(
+        shot, shotCharacters, shotScenes, shotProps,
+        characterRefs, sceneRefs, propRefs, stylePrefix,
+        referenceTable, gridSequenceNotice, shotsSection,
+      );
     }
 
     // 图片路径：仍使用旧通用模板
@@ -197,6 +254,10 @@ export class ShotPromptService {
       sceneRefs: sceneRefs || '无场景引用',
       propRefs: propRefs || '无道具引用',
       cameraMovementHint: shot.cameraMovement || 'static',
+      // 阶段 3：让图片提示词模板里也能引用 references 索引表（默认未使用，模板按需渲染）
+      referenceTable,
+      gridSequenceNotice,
+      shotsSection,
     };
     const resolvedPrompt = await resolvePromptTemplate(templateKey, templateVariables);
     const prompt = resolvedPrompt.prompt;
@@ -226,11 +287,14 @@ export class ShotPromptService {
     shot: Shot,
     shotCharacters: Character[],
     shotScenes: Scene[],
-    shotProps: Array<{ id: string; name: string; prompt: string; sora2PropId?: string }>,
+    shotProps: Prop[],
     characterRefs: string,
     sceneRefs: string,
     propRefs: string,
     stylePrefix: string,
+    referenceTable: string,
+    gridSequenceNotice: string,
+    shotsSection: string,
   ): Promise<string> {
     const videoMode: ShotVideoMode = shot.videoMode || 'multi-ref';
     const projectSelections = this.ctx.videoPromptDurationSelections;
@@ -248,6 +312,11 @@ export class ShotPromptService {
       scenes: formatSceneMappingBaseline(shotScenes, videoMode),
       props: formatPropMappingBaseline(shotProps, videoMode),
       stylePrefix: stylePrefix || '',
+      // 阶段 3：references 索引表 + 九宫格时序约定（grid 模式才有内容，其它模式空串）
+      referenceTable,
+      gridSequenceNotice,
+      // 阶段 A：分镜镜头内容段（normal=2-3 镜头硬切，grid-9=9 帧时序，grid-4=4 帧时序）
+      shotsSection,
     };
 
     if (videoMode === 'multi-ref') {
@@ -312,8 +381,9 @@ export class ShotPromptService {
   }
 
   /**
-   * 九宫格模式：将单个分镜扩展为 9 个连续画面的 imagePrompt
-   * 使用 grid_shot_prompt_generation 模板
+   * 网格模式：将单个分镜扩展为 N 个连续画面的 imagePrompt。
+   *  - shot.imageMode === 'grid-4' → 走 grid_4_shot_prompt_generation（4 帧）
+   *  - shot.imageMode === 'grid' / 'grid-9' / 默认 → 走 grid_shot_prompt_generation（9 帧）
    */
   async generateGridShotPrompt(
     shot: Shot,
@@ -355,7 +425,10 @@ export class ShotPromptService {
       propRefs: propRefs || '无道具引用',
     };
 
-    const resolvedPrompt = await resolvePromptTemplate('grid_shot_prompt_generation', templateVariables);
+    const gridTemplateKey: PromptTemplateType = shot.imageMode === 'grid-4'
+      ? 'grid_4_shot_prompt_generation'
+      : 'grid_shot_prompt_generation';
+    const resolvedPrompt = await resolvePromptTemplate(gridTemplateKey, templateVariables);
 
     const resolvedSystemPrompt = await resolvePromptTemplate('shot_prompt_system', {});
 
@@ -414,7 +487,13 @@ export class ShotPromptService {
       return result;
     });
 
-    const settled = await runWithConcurrency(tasks, 3);
+    // 视频提示词推理需要把上一个分镜已生成的 videoPrompt 注入下一个分镜的 prev1Info（保证
+    // 空间编号、床位、人物站位等跨镜头一致）。loadAdjacentShots 是从 SQLite 读最新状态的，
+    // 因此只要前一个 generateAndSaveShotPrompt 的 updateShot 完成后再启动下一个，prev1
+    // 的 withPrompt 上下文就是真实的、刚生成的内容。
+    // → wantsVideo 时强制串行（concurrency=1）；纯图片批量保留 3 并发。
+    const concurrency = wantsVideo ? 1 : 3;
+    const settled = await runWithConcurrency(tasks, concurrency);
 
     return settled.map((r, i) =>
       r.status === 'fulfilled'
@@ -449,8 +528,9 @@ export class ShotPromptService {
       let imagePrompt: string;
       let videoPrompt: string;
 
+      const isGridMode = shot.imageMode === 'grid' || shot.imageMode === 'grid-9' || shot.imageMode === 'grid-4';
       const needsGridVideoPrompt = generateFlags?.video ?? !shot.videoPrompt?.trim();
-      if (shot.imageMode === 'grid' && needsGridVideoPrompt && !shot.imagePrompt?.trim()) {
+      if (isGridMode && needsGridVideoPrompt && !shot.imagePrompt?.trim()) {
         prerequisiteGridImagePrompt = await this.generateGridShotPrompt(shot, characters, stylePrefix, styleSnapshot);
         workingShot = {
           ...shot,
@@ -458,7 +538,7 @@ export class ShotPromptService {
         };
       }
 
-      if (shot.imageMode === 'grid' && (generateFlags?.image !== false)) {
+      if (isGridMode && (generateFlags?.image !== false)) {
         // 九宫格模式：imagePrompt 使用专用模板
         const needImage = options?.force || !shot.imagePrompt?.trim();
         imagePrompt = needImage
@@ -712,9 +792,12 @@ function pushUniqueDialogue(target: string[], text: string | undefined): void {
 function extractExplicitDialogueEvidence(
   scriptContent: string,
   characterNames: string[],
-): { spoken: string[]; voiceover: string[] } {
+): { spoken: string[]; voiceover: string[]; commentary: string[] } {
   const spoken: string[] = [];
   const voiceover: string[] = [];
+  // 第三方旁观者引语：社交评论 / 弹幕 / 字幕 / 新闻 / 短信 / 微博等。**绝对不是主角口播台词**，
+  // 单独收集后告诉 LLM 不要把它们当作角色开口内容。
+  const commentary: string[] = [];
   const lines = scriptContent
     .split(/\r?\n/)
     .map(line => line.trim())
@@ -725,12 +808,22 @@ function extractExplicitDialogueEvidence(
     .filter(Boolean)
     .sort((a, b) => b.length - a.length);
   const speakerPattern = sortedNames.length > 0
-    ? new RegExp(`^(?:${sortedNames.map(escapeRegex).join('|')})\\s*[：:]\\s*(.+)$`)
+    ? new RegExp(`^(?:${sortedNames.map(escapeRegex).join('|')})\\s*[\uff1a:]\\s*(.+)$`)
     : null;
-  const voiceoverPattern = /^(?:OS|OV|旁白|画外音|内心OS|内心独白|内心旁白)\s*[：:]\s*(.+)$/i;
-  const speechCuePattern = /(?:自言自语|喃喃|嘀咕|低声说|轻声说|沉声说|说道|说|问道|问|答道|答|喊道|喊|叫道|叫)\s*[：:,，]\s*(.+)$/;
+  const voiceoverPattern = /^(?:OS|OV|旁白|画外音|内心OS|内心独白|内心旁白)\s*[\uff1a:]\s*(.+)$/i;
+  // 第三方旁观者前缀：行首命中即为评论 / 弹幕 / 字幕等，跳过台词归类
+  const commentaryLinePattern = /^(?:网友评论|网友|评论区|评论|弹幕|留言|短评|跟帖|回帖|微博|朋友圈|微信群|微信|QQ群|社交媒体|社交平台|字幕|标题|片头|片尾|新闻|播报|广播|公告|通知|短信|消息|推送|系统提示|系统提示音|提示音|背景音|环境音)\s*[\uff1a:]\s*(.+)$/i;
+  const commentaryPrefixForQuote = /(?:网友评论|网友|评论区|评论|弹幕|留言|短评|跟帖|回帖|微博|朋友圈|微信群|微信|社交媒体|字幕|标题|片头|片尾|新闻|播报|广播|公告|通知|短信|消息|推送|系统提示|提示音|背景音|环境音)\s*[\uff1a:]?\s*$/;
+  const speechCuePattern = /(?:自言自语|喃喃|嘀咕|低声说|轻声说|沉声说|说道|说|问道|问|答道|答|喊道|喊|叫道|叫)\s*[\uff1a:,\uff0c]\s*(.+)$/;
 
   for (const line of lines) {
+    // 第三方评论 / 弹幕 / 字幕优先判定——命中后不再走台词归类
+    const commentaryMatch = line.match(commentaryLinePattern);
+    if (commentaryMatch) {
+      pushUniqueDialogue(commentary, commentaryMatch[1]);
+      continue;
+    }
+
     const voiceoverMatch = line.match(voiceoverPattern);
     if (voiceoverMatch) {
       pushUniqueDialogue(voiceover, voiceoverMatch[1]);
@@ -749,33 +842,43 @@ function extractExplicitDialogueEvidence(
     }
   }
 
-  for (const match of scriptContent.matchAll(/[“「『"]([^“”「」『"\r\n]{1,80})[”」』"]/g)) {
+  for (const match of scriptContent.matchAll(/[\u201c\u300c\u300e"]([^\u201c\u201d\u300c\u300d\u300e"\r\n]{1,80})[\u201d\u300d\u300f"]/g)) {
     const quoted = normalizeDialogueText(match[1] || '');
     if (!quoted) continue;
     const idx = match.index ?? 0;
-    const prefix = scriptContent.slice(Math.max(0, idx - 16), idx);
+    // 前缀范围扩大到 80 字符，覆盖"前文：网友评论：『xxx』"这种长前缀写法
+    const prefix = scriptContent.slice(Math.max(0, idx - 80), idx);
+    if (commentaryPrefixForQuote.test(prefix)) {
+      pushUniqueDialogue(commentary, quoted);
+      continue;
+    }
     if (/(?:OS|OV|旁白|画外音|内心OS|内心独白|内心旁白)/i.test(prefix)) {
       pushUniqueDialogue(voiceover, quoted);
-    } else {
-      pushUniqueDialogue(spoken, quoted);
+      continue;
     }
+    pushUniqueDialogue(spoken, quoted);
   }
 
-  return { spoken, voiceover };
+  return { spoken, voiceover, commentary };
 }
 
 export function buildDialogueGuardNote(scriptContent: string, characterNames: string[]): string {
-  const { spoken, voiceover } = extractExplicitDialogueEvidence(scriptContent, characterNames);
+  const { spoken, voiceover, commentary } = extractExplicitDialogueEvidence(scriptContent, characterNames);
   return [
-    '【口播台词判定（高优先级，覆盖模板里的“台词”占位习惯）】',
-    '只有输入文案原文明确出现口播证据时，才允许生成开口台词。口播证据仅包括：直接引语、角色名+冒号、或明确“说/问/喊/自言自语”等发声动作。',
-    '第三人称叙述、心理活动、认知句、环境说明、作者说明都不是口播台词，禁止改写成角色开口；尤其不要把“她/他/她的/他的/这不是她的卧室”这类叙述句改写成自言自语或对话。',
+    '【口播台词判定（高优先级，覆盖模板里的"台词"占位习惯）】',
+    '本分镜的音频内容必须严格分轨，不要混淆三类：',
+    '  · **DIALOGUE（人物开口台词）**：仅当原文明确出现"角色名:" / 直接引语 / "说/问/喊/自言自语"等发声动作时才能写。第三人称叙述、心理活动、认知句、环境说明、作者说明都不是口播；尤其不要把"她/他/她的/他的/这不是她的卧室"这类叙述句改写成自言自语或对话。',
+    '  · **VOICEOVER（OS/OV/旁白/画外音）**：仅当原文明确写"OS:""OV:""旁白:""内心独白:"等标记时才有；播报全程对应人物嘴巴必须完全闭合。',
+    '  · **COMMENTARY（社交评论 / 弹幕 / 字幕 / 新闻播报 / 短信 / 微博 / 朋友圈等第三方内容）**：**绝对不是主角口播台词**，**禁止改写为角色对白**，**也不属于 OS/OV**。如需在画面中呈现，只能用屏幕字幕 / 弹幕飘字 / 手机短信弹窗 等可视形式，并明确标注为"COMMENTARY (字幕)"——人物不发声、不张嘴、不读出来。',
     spoken.length > 0
-      ? `本分镜显式口播台词：\n${spoken.map(text => `- ${text}`).join('\n')}`
-      : '本分镜显式口播台词：无。若要表现人物认知/情绪，只能通过表情、视线、动作、停顿体现，不得补写台词。',
+      ? `本分镜显式口播台词（DIALOGUE）：\n${spoken.map(text => `- ${text}`).join('\n')}`
+      : '本分镜显式口播台词（DIALOGUE）：无。若要表现人物认知/情绪，只能通过表情、视线、动作、停顿体现，不得补写台词。',
     voiceover.length > 0
-      ? `本分镜显式 OS/OV / 旁白：\n${voiceover.map(text => `- ${text}`).join('\n')}`
-      : '本分镜显式 OS/OV / 旁白：无。',
+      ? `本分镜显式 OS/OV / 旁白（VOICEOVER，对应人物全程闭嘴）：\n${voiceover.map(text => `- ${text}`).join('\n')}`
+      : '本分镜显式 OS/OV / 旁白（VOICEOVER）：无。',
+    commentary.length > 0
+      ? `本分镜社交评论 / 弹幕 / 字幕 / 第三方文本（COMMENTARY，禁止作为人物开口台词，仅可作为画面字幕显示）：\n${commentary.map(text => `- ${text}`).join('\n')}`
+      : '本分镜无第三方评论 / 弹幕 / 字幕（COMMENTARY）。',
   ].join('\n');
 }
 

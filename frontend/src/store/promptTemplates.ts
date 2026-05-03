@@ -35,6 +35,7 @@ export type PromptTemplateType =
   | 'shot_video_16s_firstframe'    // 分镜视频提示词 · 首帧延展模式 · 16 秒
   | 'shot_video_20s_firstframe'    // 分镜视频提示词 · 首帧延展模式 · 20 秒
   | 'grid_shot_prompt_generation'  // 九宫格分镜提示词生成（将单个分镜扩展为9个连续画面）
+  | 'grid_4_shot_prompt_generation' // 四宫格分镜提示词生成（将单个分镜扩展为4个连续画面，更细粒度的镜头控制）
   | 'character_extraction'     // 角色提取
   | 'scene_extraction'         // 场景提取
   | 'prop_extraction'          // 道具提取
@@ -46,6 +47,7 @@ export type PromptTemplateType =
   | 'tti_prop_reference'       // 道具参考图
   | 'tti_shot_image'           // 分镜图片
   | 'tti_grid_shot_image'      // 九宫格分镜图片（3×3网格）
+  | 'tti_grid_4_shot_image'    // 四宫格分镜图片（2×2网格）
   // ITV 视频生成模板
   | 'itv_shot_video'           // 分镜视频
   | 'itv_character_motion'     // 角色动态视频
@@ -840,7 +842,13 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
     description: '为分镜生成静态图片提示词',
     template: `根据以下分镜信息生成一条静态分镜图片提示词。
 
-剧本内容：{{scriptContent}}
+{{referenceTable}}
+
+{{gridSequenceNotice}}
+
+## 输入
+
+剧本内容（唯一真理来源）：{{scriptContent}}
 出场角色：{{characters}}
 出现场景：{{scenes}}
 出场道具：{{props}}
@@ -848,27 +856,25 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
 风格前缀：{{stylePrefix}}
 推荐景别：{{shotTypeHint}}
 
-要求：
-1. 使用中文输出
-2. 为每个角色添加 @char_角色ID 引用格式（角色引用列表见下方）
-3. 为每个场景添加 @scene_场景ID 引用格式（场景引用列表见下方）
-4. 为每个道具添加 @prop_道具ID 引用格式（道具引用列表见下方）
-5. 只描述当前静止画面中可见的客观事实，不要复述剧情，不要描述人物内心，不要解释事件原因
-6. 画面内容必须聚焦于角色外观、服装、姿态、手部动作、道具状态、空间关系、构图和光线
-7. 优先使用推荐景别；如需微调，只能从以下景别关键字中选择：{{shotTypeOptions}}
-8. 把“情绪氛围”转成可见线索，如表情、肢体张力、天气、色调、明暗对比
-9. 输出一段连续中文提示词，不要分点，不要加前言
+## 核心规则
 
-可用角色引用：
-{{characterRefs}}
+1. **客观可见 only**：只描述静止画面中能”看见”的事实——人物外观 / 服装 / 姿态 / 手部动作 / 道具状态 / 空间关系 / 构图 / 光线。不复述剧情、不描述心理、不解释事件原因、不写旁白 / 解说 / 评价 / 总结句。
+2. **解剖学正确（Anatomically correct）**：人物**必须真实人体可执行**——五指、双眼、双耳、四肢、对称面部、合理关节。**禁止**：手指数量错误 / 多肢体 / 关节反向 / 头身比例失真 / 手部畸形 / 面部扭曲 / 透视畸变。姿势必须有明确重心（脚是否着地 / 手是否扶物 / 坐姿支撑点）。
+3. **第三方评论 / 字幕 / 弹幕**：剧本里如有”网友评论””弹幕””字幕””新闻播报””短信””微博”等内容，**绝对不能让人物开口念出**——只能作为画面字幕 / 弹幕 / 手机屏幕等**纯视觉显示**，并写明”字幕：『内容』””手机屏幕显示『内容』”等形式。
+4. **空间精度**：场景含多个同类物体时（多张床 / 多排桌 / 多扇门等），先在画面描述里点明本镜头人物所在的**具体编号**（如”床#1 靠窗下铺”），不允许”宿舍内一张床”这种模糊位置。
+5. **情绪可见化**：把”情绪氛围”转成可见线索——表情 / 肢体张力 / 视线方向 / 色调 / 明暗对比 / 天气。
+6. **景别**：优先用推荐景别；如需微调只能选 {{shotTypeOptions}} 内的关键字。
+7. **引用编码**：所有视觉描述必须用上方”视觉参考集合”的 \`@图片N\` 索引（N = references 位置 + 1）引用具体参考图。每个角色 / 场景 / 道具用 \`@char_ID\` / \`@scene_ID\` / \`@prop_ID\` mention（见下方列表）；同一元素每次出现都要重复标注。
+8. **跨镜头一致**：人物外观（穿着 / 发型 / 持物 / 体型）与项目角色基准库严格一致；同一场景内的家具 / 陈设 / 光照在不同分镜间保持稳定，不得引入新元素。
+9. **输出格式**：一段连续中文，不分点、不加前言、不解释。避免空洞形容词（”epic / cinematic / 美轮美奂 / 大气磅礴”）——用具体动词 / 名词 / 颜色 / 光位代替。
 
-可用场景引用：
-{{sceneRefs}}
+## 引用列表
 
-可用道具引用：
-{{propRefs}}
+- 可用角色：{{characterRefs}}
+- 可用场景：{{sceneRefs}}
+- 可用道具：{{propRefs}}
 
-输出格式：直接输出提示词，无需其他说明
+输出：直接输出提示词，不要任何说明。
 `,
     variables: [
       variable('scriptContent'),
@@ -882,6 +888,8 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
       variable('characterRefs'),
       variable('sceneRefs'),
       variable('propRefs'),
+      variable('referenceTable', { required: false }),
+      variable('gridSequenceNotice', { required: false }),
     ],
     isCustom: false,
   },
@@ -902,6 +910,9 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
       variable('prevShot2Info', { required: false }),
       variable('prevShot1Info', { required: false }),
       variable('nextShotInfo', { required: false }),
+      variable('referenceTable', { required: false }),
+      variable('gridSequenceNotice', { required: false }),
+      variable('shotsSection', { required: false }),
     ],
     isCustom: false,
   },
@@ -920,6 +931,9 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
       variable('prevShot2Info', { required: false }),
       variable('prevShot1Info', { required: false }),
       variable('nextShotInfo', { required: false }),
+      variable('referenceTable', { required: false }),
+      variable('gridSequenceNotice', { required: false }),
+      variable('shotsSection', { required: false }),
     ],
     isCustom: false,
   },
@@ -938,6 +952,9 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
       variable('prevShot2Info', { required: false }),
       variable('prevShot1Info', { required: false }),
       variable('nextShotInfo', { required: false }),
+      variable('referenceTable', { required: false }),
+      variable('gridSequenceNotice', { required: false }),
+      variable('shotsSection', { required: false }),
     ],
     isCustom: false,
   },
@@ -956,6 +973,9 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
       variable('prevShot2Info', { required: false }),
       variable('prevShot1Info', { required: false }),
       variable('nextShotInfo', { required: false }),
+      variable('referenceTable', { required: false }),
+      variable('gridSequenceNotice', { required: false }),
+      variable('shotsSection', { required: false }),
     ],
     isCustom: false,
   },
@@ -974,6 +994,8 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
       variable('scenes'),
       variable('prevShotInfo', { required: false }),
       variable('nextShotInfo', { required: false }),
+      variable('referenceTable', { required: false }),
+      variable('gridSequenceNotice', { required: false }),
     ],
     isCustom: false,
   },
@@ -990,6 +1012,8 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
       variable('scenes'),
       variable('prevShotInfo', { required: false }),
       variable('nextShotInfo', { required: false }),
+      variable('referenceTable', { required: false }),
+      variable('gridSequenceNotice', { required: false }),
     ],
     isCustom: false,
   },
@@ -1006,6 +1030,8 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
       variable('scenes'),
       variable('prevShotInfo', { required: false }),
       variable('nextShotInfo', { required: false }),
+      variable('referenceTable', { required: false }),
+      variable('gridSequenceNotice', { required: false }),
     ],
     isCustom: false,
   },
@@ -1022,6 +1048,8 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
       variable('scenes'),
       variable('prevShotInfo', { required: false }),
       variable('nextShotInfo', { required: false }),
+      variable('referenceTable', { required: false }),
+      variable('gridSequenceNotice', { required: false }),
     ],
     isCustom: false,
   },
@@ -1030,8 +1058,8 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
     id: 'grid_shot_prompt_generation',
     category: 'inference-image',
     name: '九宫格分镜提示词生成',
-    description: '将单个分镜扩展为9个连续画面的提示词',
-    template: `根据以下分镜信息，将该分镜的剧情内容扩展为一组具有清晰叙事推进关系的 3×3 九宫格分镜提示词文本，共 9 个连续镜头。
+    description: '将单个分镜的剧情拆成 9 个连续动作帧的提示词，形成单一动作链（不是 9 个独立画面）',
+    template: `根据以下分镜信息，把该分镜的剧情内容拆成 **9 个时间上连续的动作帧**，构成一条**单一动作链**——不是 9 个独立场景，不是同一情境的 9 个不同视角，而是 0 秒到结束 9 个连贯瞬间。
 
 剧本内容：{{scriptContent}}
 出场角色：{{characters}}
@@ -1040,16 +1068,30 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
 情绪氛围：{{emotion}}
 风格前缀：{{stylePrefix}}
 
-要求：
-1. 全部镜头发生在同一场景与同一时间轴内，九个画面之间必须存在明确的前后承接关系，形成连续的动作、视线或情绪推进，而不是彼此孤立的画面拼接
-2. 分镜采用电影镜头语言自由发挥：在整体叙事推进中自然涵盖远景、中景、近景与特写等不同景别，并根据剧情需要灵活使用正视、侧视、背视、过肩、内反打、轻微俯仰等视角变化
-3. 镜头景别与角度不与编号固定绑定，而是由剧情发展自动选择最合适的表现方式，使九个镜头整体读起来具备真实影视分镜的流动感
-4. 在全部九个分镜中，人物的外观、服装、体型比例、面部特征保持一致，整体色彩倾向与光照条件统一，仅允许人物动作、姿态以及镜头远近和角度发生变化
-5. 为每个角色添加 @char_角色ID 引用格式（角色引用列表见下方）
-6. 为每个场景添加 @scene_场景ID 引用格式（场景引用列表见下方）
-7. 为每个道具添加 @prop_道具ID 引用格式（道具引用列表见下方）
-8. 只描述客观可见事实（外观、动作、光线、环境），不要复述剧情，不要描述人物内心
-9. 把"情绪氛围"转成可见线索，如表情、肢体张力、天气、色调、明暗对比
+# 叙事弧硬约束（违反任一条都判废重写）
+1. **单一时间轴**：9 帧严格按时间顺序，镜头 01 = 起手（动作 0 秒），镜头 09 = 收束（动作结束）；中间 7 帧填补连续过渡，不得跳帧、不得倒序、不得重排。
+2. **单一场景 + 单一空间锚点**：9 帧必须在同一场景同一空间锚点（如：宿舍床#1 同一张床、教室同一个工位、走廊同一段位置），人物站位 / 朝向变化只允许小幅度。**禁止画面跳到不同场景或同一场景的远端**。
+3. **单一动作链**：把剧情 / 情绪 / 关系推进拆成一条连贯动作链，常见骨架：
+   - 起手帧（01）：当前状态 / 静态锚点（如躺着 / 坐着 / 站着 / 持物 / 视线落点）
+   - 触发帧（02-03）：第一个变化（如手部动作起势、视线开始移动、表情起变）
+   - 推进帧（04-05）：动作中段、视线已转移、情绪进入主峰
+   - 转折帧（06-07）：动作 / 情绪关键节奏切点，可能是反应、回应、新动作起手
+   - 收束帧（08-09）：动作完成、姿态归位、情绪余波；09 必须能作为下一分镜的起点（人物姿态 / 视线 / 持物 / 光影都稳定）
+4. **画面要素一致**：9 帧人物外观、服装、体型、面部特征、整体色调、光照、固定陈设、道具状态全程一致；**只允许人物动作 / 姿态 / 表情 / 镜头远近角度发生变化**。
+5. **景别变化服务叙事**：远 / 中 / 近 / 特写 不与编号绑定，按节奏切换（如 01 中景定场 → 04 近景捕捉手部细节 → 07 特写表情 → 09 中景收束），**禁止 9 帧用同一景别**也禁止"每帧都换景别"的碎切。
+6. **镜头机位 / 角度禁令**：除非剧情明示，禁止人物直面镜头；禁止 0° 纯正面机位；优先 30°-60° 侧拍 / 过肩 OTS。
+7. **严禁孤立画面拼接**：禁止把 9 帧写成"角色 A 的 9 张特写"、"场景的 9 个不同角度"、"同一姿势的 9 种细节"——这些都是错误用法。
+
+8. **解剖学正确（Anatomically correct）**：每帧人物动作必须**真实人体可执行**——五指、双眼、对称面部、合理关节、有明确重心 / 接触点。**禁止**：手指数量错误 / 多肢体 / 关节反向 / 头身比例失真 / 手穿过实体 / 同时执行两个相反动作 / 透视畸变。
+
+9. **第三方评论 / 字幕 / 弹幕禁入主角动作链**：剧本里若有"网友评论""弹幕""字幕"等内容，9 帧**绝不能拍成主角对镜头念出来**——只能在某帧画面里作为字幕 / 手机屏幕 / 弹幕等纯视觉元素呈现。
+
+# 文案精简规则
+1. 每帧描述 ≤ 80 字，整段总长度 ≤ 800 字。
+2. 只描述客观可见事实（人物外观 / 动作 / 表情 / 视线 / 持物 / 光线 / 环境），不复述剧情、不写心理活动、不解释事件原因、不加旁白 / 评价句。
+3. 把"情绪氛围"转成可见线索：表情、肢体张力、色调、明暗对比、肢体节奏。
+4. 为每个角色 / 场景 / 道具用对应 mention 引用（@char_ID / @scene_ID / @prop_ID，见下方列表）。
+5. 避免空洞形容词（"epic / cinematic / 美轮美奂"）——用具体动词 / 名词 / 颜色 / 光位代替。
 
 可用角色引用：
 {{characterRefs}}
@@ -1061,15 +1103,84 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
 {{propRefs}}
 
 输出格式（严格按此格式输出，不要有前言或解释）：
-镜头01：[描述]
-镜头02：[描述]
-镜头03：[描述]
-镜头04：[描述]
-镜头05：[描述]
-镜头06：[描述]
-镜头07：[描述]
-镜头08：[描述]
-镜头09：[描述]
+镜头01：[起手帧 / 静态锚点描述]
+镜头02：[第一个变化]
+镜头03：[变化推进]
+镜头04：[动作中段]
+镜头05：[情绪 / 动作主峰]
+镜头06：[节奏切点 / 反应起势]
+镜头07：[反应中段]
+镜头08：[收势铺垫]
+镜头09：[动作完成、归位、可作为下一分镜起点的稳定态]
+`,
+    variables: [
+      variable('scriptContent'),
+      variable('characters'),
+      variable('scenes'),
+      variable('props'),
+      variable('emotion'),
+      variable('stylePrefix'),
+      variable('characterRefs'),
+      variable('sceneRefs'),
+      variable('propRefs'),
+    ],
+    isCustom: false,
+  },
+
+  grid_4_shot_prompt_generation: {
+    id: 'grid_4_shot_prompt_generation',
+    category: 'inference-image',
+    name: '四宫格分镜提示词生成',
+    description: '将单个分镜的剧情拆成 4 个连续动作帧的提示词；适合"少切换、强稳定、节奏简洁"的镜头',
+    template: `根据以下分镜信息，把该分镜的剧情内容拆成 **4 个时间上连续的动作帧**，构成一条**单一动作链** — 不是 4 个独立场景，不是同一情境的 4 个不同视角，而是 0 秒到结束 4 个关键时序锚点。
+
+相比九宫格，四宫格只挑 4 个**最关键**的瞬间——起手 / 第一节奏切点 / 第二节奏切点 / 收束。**少切换、强稳定、节奏简洁**——适合人物对话、关键动作起承转合、情绪渐进等不需要碎切的镜头。
+
+剧本内容：{{scriptContent}}
+出场角色：{{characters}}
+出现场景：{{scenes}}
+出场道具：{{props}}
+情绪氛围：{{emotion}}
+风格前缀：{{stylePrefix}}
+
+# 叙事弧硬约束（违反任一条都判废重写）
+1. **单一时间轴**：4 帧严格按时间顺序，01 = 起手帧（动作 0 秒），04 = 收束帧（动作结束）；02/03 = 两个关键节奏切点。不得跳帧、不得倒序、不得重排。
+2. **单一场景 + 单一空间锚点**：4 帧必须在同一场景同一空间锚点；人物站位 / 朝向变化只允许小幅度。**禁止画面跳到不同场景**。
+3. **单一动作链**（起承转合骨架）：
+   - 镜头 01：起手帧 / 静态锚点（当前状态——躺着 / 坐着 / 站着 / 持物 / 视线落点）
+   - 镜头 02：第一节奏切点——动作起势、视线开始移动、表情起变
+   - 镜头 03：第二节奏切点——动作中段或情绪主峰、新动作起手
+   - 镜头 04：收束帧——动作完成、姿态归位、情绪余波；必须能作为下一分镜起点
+4. **画面要素一致**：4 帧人物外观、服装、体型、面部特征、整体色调、光照、固定陈设、道具状态全程一致；**只允许人物动作 / 姿态 / 表情 / 镜头远近角度发生变化**。
+5. **景别变化服务叙事**：远 / 中 / 近 / 特写 不与编号绑定，按节奏切换（如 01 中景定场 → 03 近景捕捉关键动作 → 04 中景收束）；4 帧不要用同一景别，也不要每帧都换。
+6. **机位 / 角度禁令**：除非剧情明示，禁止人物直面镜头；禁止 0° 纯正面；优先 30°-60° 侧拍 / 过肩 OTS。
+7. **严禁孤立画面拼接**：不写"4 张同一姿势的特写"、"场景的 4 个角度"、"角色的 4 个表情"——这些都是错误用法。
+
+8. **解剖学正确（Anatomically correct）**：每帧人物动作必须**真实人体可执行**——五指、双眼、对称面部、合理关节、有明确重心 / 接触点。**禁止**：手指数量错误 / 多肢体 / 关节反向 / 头身比例失真 / 手穿过实体 / 同时执行两个相反动作 / 透视畸变。
+
+9. **第三方评论 / 字幕 / 弹幕禁入主角动作链**：剧本里若有"网友评论""弹幕""字幕""新闻播报"等内容，4 帧**绝不能拍成主角对镜头念出来**——只能作为字幕 / 手机屏幕 / 弹幕等纯视觉元素呈现。
+
+# 文案精简规则
+1. 每帧描述 ≤ 100 字，整段总长度 ≤ 500 字。
+2. 只描述客观可见事实（人物外观 / 动作 / 表情 / 视线 / 持物 / 光线 / 环境），不复述剧情、不写心理活动、不加旁白 / 评价句。
+3. 把"情绪氛围"转成可见线索：表情、肢体张力、色调、明暗对比。
+4. 为每个角色 / 场景 / 道具用对应 mention 引用（@char_ID / @scene_ID / @prop_ID，见下方列表）。
+5. 避免空洞形容词——用具体动词 / 名词 / 颜色 / 光位代替。
+
+可用角色引用：
+{{characterRefs}}
+
+可用场景引用：
+{{sceneRefs}}
+
+可用道具引用：
+{{propRefs}}
+
+输出格式（严格按此格式输出，不要有前言或解释）：
+镜头01：[起手帧 / 静态锚点]
+镜头02：[第一节奏切点 / 动作起势]
+镜头03：[第二节奏切点 / 动作主峰]
+镜头04：[收束帧 / 可作为下一分镜起点的稳定态]
 `,
     variables: [
       variable('scriptContent'),
@@ -1469,7 +1580,7 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
     description: '生成角色三视图定妆照',
     // 把人物 demographic + appearance 前置，让 TTI 模型先锁定主体身份与可见特征，
     // 再施加技术约束（三视图布局、纯色背景、配光、跨视图一致性）。
-    template: '{{stylePrefix}}, character turnaround sheet of a {{demographic}}, {{appearance}}, full body standing reference, neutral A-pose, three poses in one image: front view | three-quarter side view | back view, identical character identity / face / hair / skin / clothing / accessories repeated across all three views, plain pure white seamless background, soft even studio lighting, no cast shadows on background, clear silhouette, all clothing layers visible, objective visible appearance only, no props, no environment, no narrative, no text, no extra characters',
+    template: '{{stylePrefix}}, character turnaround sheet of a {{demographic}}, {{appearance}}, full body standing reference, neutral A-pose, three poses in one image: front view | three-quarter side view | back view, identical character identity / face / hair / skin / clothing / accessories repeated across all three views, plain pure white seamless background, soft even studio lighting, no cast shadows on background, clear silhouette, all clothing layers visible, objective visible appearance only, no props, no environment, no narrative, no text, no extra characters, art style lock: match the project art style exactly (color palette, lighting, brush/line work, textures, atmosphere, rendering technique); do NOT drift toward photorealism / live-action / a different aesthetic; if a style anchor reference image is provided as references[0], inherit ONLY its art style and never copy its content',
     variables: [
       variable('stylePrefix'),
       variable('demographic', {
@@ -1500,7 +1611,7 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
     // - 室内必须给出全貌：corner vantage / two-point perspective + wide-angle 让两面墙 + 地面 + 天花板都进画面，
     //   连同所有门 / 窗 / 通道；任何被裁切的墙都会让视频模型在生视频时自由发挥，造成空间漂移。
     // - 外景给出 full establishing shot + 强透视线，建立纵深和清晰的可视边界。
-    template: '{{stylePrefix}}, environment concept art reference plate, no people, no character, no character action, full establishing shot, wide-angle lens, strong perspective drawing technique with clearly visible perspective lines (orthogonal lines / vanishing points), complete spatial layout fully revealed in frame, objective environmental details only, {{description}}, location: {{location}}, visible time cues: {{time}}, visible atmosphere cues: {{mood}}, for INTERIOR locations: corner vantage using two-point perspective from a slightly raised eye-level, at least two full adjacent walls visible together with the floor and the ceiling, all major openings (doors, windows, archways, corridors) included in frame, room footprint fully readable, no cropped walls, no missing ceiling, no missing floor; for EXTERIOR locations: wide establishing view with one-point or two-point perspective revealing the full ground plane, key façades and the surrounding spatial extent; sharp depth cues (foreground / midground / background), architectural and material details, accurate proportions, no off-screen guesswork, cinematic composition, 4k high detail',
+    template: '{{stylePrefix}}, environment concept art reference plate, no people, no character, no character action, full establishing shot, wide-angle lens, strong perspective drawing technique with clearly visible perspective lines (orthogonal lines / vanishing points), complete spatial layout fully revealed in frame, objective environmental details only, {{description}}, location: {{location}}, visible time cues: {{time}}, visible atmosphere cues: {{mood}}, for INTERIOR locations: corner vantage using two-point perspective from a slightly raised eye-level, at least two full adjacent walls visible together with the floor and the ceiling, all major openings (doors, windows, archways, corridors) included in frame, room footprint fully readable, no cropped walls, no missing ceiling, no missing floor; for EXTERIOR locations: wide establishing view with one-point or two-point perspective revealing the full ground plane, key façades and the surrounding spatial extent; sharp depth cues (foreground / midground / background), architectural and material details, accurate proportions, no off-screen guesswork, cinematic composition, 4k high detail, art style lock: match the project art style exactly (color palette, lighting, brush/line work, textures, atmosphere, rendering technique); do NOT drift toward photorealism / live-action / a different aesthetic; if a style anchor reference image is provided as references[0], inherit ONLY its art style and never copy its content',
     variables: [
       variable('stylePrefix'),
       variable('description', {
@@ -1522,7 +1633,7 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
     category: 'tti',
     name: '道具参考图',
     description: '生成道具参考图',
-    template: '{{stylePrefix}}, prop design sheet, no people, no hands, no character action, centered composition, plain background, studio lighting, objective product view only, {{type}}, {{description}}, clear material edges, surface texture details, clean presentation',
+    template: '{{stylePrefix}}, prop design sheet, no people, no hands, no character action, centered composition, plain background, studio lighting, objective product view only, {{type}}, {{description}}, clear material edges, surface texture details, clean presentation, art style lock: match the project art style exactly (color palette, lighting, brush/line work, textures, atmosphere, rendering technique); do NOT drift toward photorealism / live-action / a different aesthetic; if a style anchor reference image is provided as references[0], inherit ONLY its art style and never copy its content',
     variables: [
       variable('stylePrefix'),
       variable('description', {
@@ -1538,7 +1649,7 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
     category: 'tti',
     name: '分镜图片',
     description: '生成分镜预览图',
-    template: '{{stylePrefix}}, {{shotType}}, objective still frame, {{description}}, visible emotion cues: {{emotion}}, cinematic lighting, layered composition, detailed environment, high quality, 4k',
+    template: '{{stylePrefix}}, {{shotType}}, objective still frame, {{description}}, visible emotion cues: {{emotion}}, cinematic lighting, layered composition, detailed environment, high quality, 4k, art style lock: render in the SAME art style as the project character / scene / prop reference images already established (color palette, lighting, brush/line work, textures, atmosphere, rendering technique); do NOT drift toward photorealism / live-action / a different aesthetic, do NOT change the established art style of any character, scene or prop visible in the shot',
     variables: [
       variable('stylePrefix'),
       variable('description', {
@@ -1563,6 +1674,24 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
     name: '九宫格分镜图片',
     description: '生成 3×3 九宫格网格分镜图',
     template: `{{stylePrefix}}, 根据{{shotDescription}}, 生成一张具有凝聚力的 3×3 网格图像, 包含在同一环境中的 9 个不同摄像机镜头, 严格保持人物/物体、服装和光线的一致性, 每个网格画面的比例保持为{{aspectRatio}}, {{resolution}}分辨率, {{aspectRatio}}画幅。
+
+{{gridPrompt}}`,
+    variables: [
+      variable('stylePrefix'),
+      variable('shotDescription'),
+      variable('gridPrompt'),
+      variable('resolution'),
+      variable('aspectRatio'),
+    ],
+    isCustom: false,
+  },
+
+  tti_grid_4_shot_image: {
+    id: 'tti_grid_4_shot_image',
+    category: 'tti',
+    name: '四宫格分镜图片',
+    description: '生成 2×2 四宫格网格分镜图（更适合稳定镜头与少切换叙事）',
+    template: `{{stylePrefix}}, 根据{{shotDescription}}, 生成一张具有凝聚力的 2×2 网格图像, 包含在同一环境中的 4 个连续镜头, 严格保持人物/物体、服装和光线的一致性, 每个网格画面的比例保持为{{aspectRatio}}, {{resolution}}分辨率, {{aspectRatio}}画幅。
 
 {{gridPrompt}}`,
     variables: [

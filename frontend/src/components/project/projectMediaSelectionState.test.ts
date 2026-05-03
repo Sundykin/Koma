@@ -2,21 +2,25 @@ import { describe, expect, it } from 'vitest';
 import type { AppSettings } from '../../types';
 import { buildProjectMediaCategoryState, PROJECT_MEDIA_BASE_REQUIREMENTS } from './projectMediaSelectionState';
 
+// 使用现役 providerType（'koma-suihe-itv' / 'grok2api-imagine-itv' / 'gemini'）。
+// 旧的 'runway' / 'vidu' 已下线，这里映射：
+//  - runway 仅图生视频 → koma-suihe-itv (image-to-video only)
+//  - vidu 全能力 → grok2api-imagine-itv (text/image/ref/start-end-to-video)
 function createSettings(): AppSettings {
   return {
     channelConfigs: [
       {
-        id: 'runway-main',
-        name: 'Runway',
+        id: 'suihe-main',
+        name: 'Koma 即梦',
         category: 'itv',
-        providerType: 'runway',
-        providerConfig: { apiKey: 'runway-key' },
-        defaultModelId: 'runway-model-a',
+        providerType: 'koma-suihe-itv',
+        providerConfig: { apiKey: 'suihe-key', baseUrl: 'https://komaapi.com' },
+        defaultModelId: 'seedance-i2v-only',
         models: [
           {
-            id: 'runway-model-a',
-            label: 'runway-a',
-            providerModelName: 'runway-a',
+            id: 'seedance-i2v-only',
+            label: 'Seedance I2V',
+            providerModelName: 'seedance-2.0-r',
             capabilities: ['video.image-to-video'],
           },
         ],
@@ -26,17 +30,17 @@ function createSettings(): AppSettings {
         updatedAt: 1,
       },
       {
-        id: 'vidu-main',
-        name: 'Vidu',
+        id: 'grok-main',
+        name: 'Koma 官方 Grok',
         category: 'itv',
-        providerType: 'vidu',
-        providerConfig: { apiKey: 'vidu-key', baseUrl: 'https://vidu.example.com' },
-        defaultModelId: 'vidu-model-a',
+        providerType: 'grok2api-imagine-itv',
+        providerConfig: { apiKey: 'grok-key', baseUrl: 'https://komaapi.com' },
+        defaultModelId: 'grok-imagine-video',
         models: [
           {
-            id: 'vidu-model-a',
-            label: 'vidu-a',
-            providerModelName: 'vidu-a',
+            id: 'grok-imagine-video',
+            label: 'grok-imagine-video',
+            providerModelName: 'grok-imagine-video',
             capabilities: [
               'video.text-to-video',
               'video.image-to-video',
@@ -73,8 +77,8 @@ function createSettings(): AppSettings {
     ],
     mediaDefaults: {
       itv: {
-        channelId: 'runway-main',
-        modelId: 'runway-model-a',
+        channelId: 'suihe-main',
+        modelId: 'seedance-i2v-only',
       },
       llm: {
         channelId: 'gemini-main',
@@ -97,8 +101,8 @@ describe('projectMediaSelectionState', () => {
     });
 
     expect(state.options.length).toBeGreaterThan(0);
-    expect(state.options.every(option => option.channelId === 'vidu-main')).toBe(true);
-    expect(state.fallbackLabel).toBe('Vidu / vidu-a');
+    expect(state.options.every(option => option.channelId === 'grok-main')).toBe(true);
+    expect(state.fallbackLabel).toBe('Koma官方 Grok / grok-imagine-video');
     expect(state.usingFallback).toBe(true);
   });
 
@@ -107,8 +111,8 @@ describe('projectMediaSelectionState', () => {
       settings: createSettings(),
       category: 'itv',
       explicitSelection: {
-        channelId: 'runway-main',
-        modelId: 'runway-model-a',
+        channelId: 'suihe-main',
+        modelId: 'seedance-i2v-only',
       },
       requirement: {
         capability: 'video.reference-to-video',
@@ -119,7 +123,7 @@ describe('projectMediaSelectionState', () => {
     expect(state.explicitSupported).toBe(false);
     expect(state.usingFallback).toBe(true);
     expect(state.warning).toBe('当前项目选择的模型不支持参考生视频，已回退到全局默认');
-    expect(state.fallbackLabel).toBe('Vidu / vidu-a');
+    expect(state.fallbackLabel).toBe('Koma官方 Grok / grok-imagine-video');
   });
 
   it('基础项目能力要求会过滤到对应类别的真实模型', () => {

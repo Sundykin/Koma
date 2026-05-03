@@ -207,6 +207,61 @@ export function getITVModelDurations(model: ChannelModelDefinition | undefined |
 }
 
 /**
+ * 各 ITV / TTI providerType 的引用图数量上限（保守值）。多数 provider 的多
+ * 参考能力来自 multipart edit / chat-completions image_urls / inlineData，
+ * 实际上限受制于上游 multipart 大小、请求体积、模型本身参数。这里给一个不
+ * 触发上游 400 的安全值；模型若有特别声明可在 model.defaults.maxReferenceImages
+ * 里覆盖。
+ *
+ * 本表对 ITV / TTI / 老遗留 provider 都覆盖；位于 itv/modelCatalog.ts 是因为
+ * shotVideoPlan 主要消费方在 ITV 侧。
+ */
+const PROVIDER_DEFAULT_MAX_REFS: Record<string, number> = {
+  // ITV 内置（komaapi 网关）
+  'grok2api-imagine-itv': 4,
+  'koma-suihe-itv': 4,
+  // ITV 老遗留（仍可能在 SQLite 里）
+  'runway': 1,
+  'kling': 2,
+  'pika': 2,
+  'sora2': 1,
+  'vidu': 4,
+  'seedance': 4,
+  'comfyui-animatediff': 2,
+  'custom': 4,
+  // TTI 内置（与 ShotPromptService / shotImageWorkflow 共用同一上限）
+  'openai-compatible-tti': 6,
+  'grok2api-imagine-tti': 4,
+  'gemini-native-tti': 6,
+};
+
+const FALLBACK_MAX_REFS = 4;
+
+/**
+ * 读取模型的引用图数量上限。优先级：
+ *   model.defaults.maxReferenceImages（显式覆盖）
+ *   > PROVIDER_DEFAULT_MAX_REFS[providerType]（按 provider 兜底）
+ *   > FALLBACK_MAX_REFS（4）
+ *
+ * 调用方一般是 buildShotReferenceBundle / shotVideoPlan，传入当前选中的
+ * 渠道模型 + providerType（来自 ChannelDefinition.runtimeProviderType
+ * 或 ChannelConfig.providerType）。
+ */
+export function getModelMaxReferenceImages(
+  model: ChannelModelDefinition | undefined | null,
+  providerType?: string,
+): number {
+  const fromDefaults = (model?.defaults as { maxReferenceImages?: unknown } | undefined)?.maxReferenceImages;
+  if (typeof fromDefaults === 'number' && Number.isFinite(fromDefaults) && fromDefaults > 0) {
+    return Math.floor(fromDefaults);
+  }
+  if (providerType && providerType in PROVIDER_DEFAULT_MAX_REFS) {
+    return PROVIDER_DEFAULT_MAX_REFS[providerType];
+  }
+  return FALLBACK_MAX_REFS;
+}
+
+/**
  * 类似时长，从渠道模型读取支持的分辨率列表。
  */
 export function getITVModelResolutions(model: ChannelModelDefinition | undefined | null): string[] | undefined {
