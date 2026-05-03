@@ -60,11 +60,13 @@
 .userBubble .messageBody {
   background-color: var(--token-accent-base);
   border-color: var(--token-accent-hover);
-  color: var(--token-text-primary);
+  /* accent 实色背景上的对比文字色（亮主题下 text-primary 是接近黑色，
+     在深海军蓝底上不可读）。包括 user message 内的文本（普通 span）+ 任何 markdown 子节点。*/
+  color: var(--token-on-accent);
 }
 
 .userBubble .messageBody :global(.ds-markdown) {
-  color: var(--token-text-primary);
+  color: var(--token-on-accent);
   font-size: 13px;
   line-height: 1.55;
 }
@@ -511,12 +513,16 @@
   padding: 0;
   border: none;
   border-radius: 50%;
-  background: color-mix(in srgb, var(--token-bg-app) 85%, transparent);
-  color: var(--token-text-primary);
+  /* 半透明深色底 + 白图标——保证在任何用户图片背景上都可读、可点 */
+  background: rgba(0, 0, 0, 0.55);
+  color: #ffffff;
   cursor: pointer;
   font-size: 12px;
-  opacity: 0;
-  transition: opacity 0.15s;
+  /* 默认半显（让用户能看到按钮存在），hover 满显 + 提升 z-index 以避开
+     AntImage 内部的预览 mask（mask z-index 通常 1，删除按钮要在其上） */
+  opacity: 0.65;
+  z-index: 5;
+  transition: opacity 0.15s, background 0.15s, transform 0.15s;
 }
 
 .attachmentImageWrapper:hover .attachmentRemove,
@@ -525,7 +531,9 @@
 }
 
 .attachmentRemove:hover {
-  background: color-mix(in srgb, var(--token-status-error) 85%, transparent);
+  background: var(--token-status-error);
+  color: var(--token-on-status);
+  transform: scale(1.08);
 }
 
 .attachmentRemoveInline {
