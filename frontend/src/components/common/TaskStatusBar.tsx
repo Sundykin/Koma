@@ -3,7 +3,7 @@
  * 唯一入口在左侧 Sidebar 的"任务"按钮，通过 taskPanelStore 控制开关。
  * 没有顶部指示器（删了），所有交互都从 Sidebar 进。
  */
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Progress, Typography, Tag, Button, Empty, Tooltip, Drawer } from 'antd';
 import { ReloadOutlined, StopOutlined } from '@ant-design/icons';
 import { Loader2, CheckCircle2, XCircle, FileText, Video, Cpu, Box, Download, Trash2 } from 'lucide-react';
@@ -11,9 +11,11 @@ import { useTranslation } from 'react-i18next';
 import { TaskManager } from '../../services/TaskManager';
 import type { Task as ManagerTask } from '../../services/TaskManager';
 import { buildScriptAnalysisOverallProgress } from '../../services/scriptAnalysisProgress';
-import type { AsyncTask } from '../../types';
-import { listTasks as listAsyncTasks, deleteTask as deleteAsyncTask, clearCompletedTasks as clearCompletedAsyncTasks } from '../../store/taskQueueStore';
+import { deleteMediaTask, clearCompletedMediaTasks } from '../../services/mediaTaskClient';
 import { useTaskPanelStore } from '../../store/taskPanelStore';
+import { useTasks } from '../../hooks';
+import { cancelTaskRecord } from '../../services/tasksIPC';
+import type { TaskRecord } from '../../services/tasksIPC';
 
 const { Text } = Typography;
 
@@ -155,13 +157,13 @@ export const TaskStatusBar: React.FC<TaskStatusBarProps> = ({ projectId, onRetry
   const { t } = useTranslation();
   const CATEGORY_CONFIG = useCategoryConfig();
 
-  const [tasks, setTasks] = useState<StatusBarTask[]>([]);
   const drawerOpen = useTaskPanelStore(s => s.open);
   const setDrawerOpen = useTaskPanelStore(s => s.setOpen);
   const [activeTab, setActiveTab] = useState<FilterKey>('all');
   // 项目维度筛选：默认"当前项目"，可切到"全部"看跨项目（含灵绘 workspace 兜底）的任务
   const [projectFilter, setProjectFilter] = useState<'current' | 'all'>('current');
-  const activeTaskIdsRef = useRef('');
+  // 用于"刚删完立即从 UI 移除"的本地隐藏集合（避免等待广播来回的视觉抖动）
+  const [hiddenIds, setHiddenIds] = useState<Set<string>>(() => new Set());
 
   const getSubTypeLabel = (subType?: string): string => {
     const labels: Record<string, string> = {
@@ -188,131 +190,87 @@ export const TaskStatusBar: React.FC<TaskStatusBarProps> = ({ projectId, onRetry
     return task.type;
   };
 
-  useEffect(() => {
-    let disposed = false;
+  // 任务源已统一到 SQLite tasks 表；用 hooks 直接订阅
+  // current 项目过滤靠 scope；'all' 不传 scope 拿全部
+  const records = useTasks(
+    projectFilter === 'all' ? {} : { scope: `project:${projectId}` }
+  );
 
-    const mapManagerTask = (task: ManagerTask): StatusBarTask => ({
-      id: task.id,
-      projectId: task.projectId,
-      status: task.status,
-      progress: task.progress,
-      category: (task.category as StatusBarCategory | undefined),
-      subType: task.subType,
-      type: task.type,
-      targetType: task.targetType,
-      targetId: task.targetId,
-      targetName: task.targetName,
-      createdAt: task.createdAt,
-      updatedAt: task.updatedAt,
-      startedAt: task.startedAt,
-      completedAt: task.completedAt,
-      error: task.error,
-      recoverable: task.recoverable,
-      attempt: task.attempt,
-      maxRetries: task.maxRetries,
-      source: 'task-manager',
-      raw: task,
-    });
+  const tasks = useMemo<StatusBarTask[]>(() => {
+    const MEDIA_TYPES = new Set(['tti', 'itv', 'tts', 'character-extraction']);
 
-    const mapAsyncTask = (task: AsyncTask): StatusBarTask => ({
-      id: task.id,
-      projectId: task.projectId,
-      status: task.status,
-      progress: task.progress,
-      category: 'media',
-      subType: task.type,
-      type: `media:${task.type}`,
-      targetType: task.targetType,
-      targetId: task.targetId,
-      targetName: task.targetName,
-      createdAt: task.createdAt,
-      updatedAt: task.updatedAt,
-      startedAt: task.createdAt,
-      completedAt: (task.status === 'completed' || task.status === 'failed') ? task.updatedAt : undefined,
-      error: task.error,
-      source: 'task-queue',
-    });
+    const mapped: StatusBarTask[] = [];
+    for (const record of records) {
+      if (hiddenIds.has(record.id)) continue;
+      const payload = (record.payload || {}) as Record<string, unknown> & {
+        category?: string;
+        subType?: string;
+        type?: string;
+        targetType?: string;
+        targetId?: string;
+        targetName?: string;
+        startedAt?: number;
+        completedAt?: number;
+        error?: string;
+        recoverable?: boolean;
+        attempt?: number;
+        maxRetries?: number;
+      };
 
-    const loadTasks = async () => {
-      // 项目筛选：'current' 仅当前项目；'all' 跨项目（含 projectId=空 / 灵绘 workspace 兜底）
-      const managerTasks = (projectFilter === 'all'
-        ? TaskManager.getAllTasks()
-        : TaskManager.getProjectTasks(projectId)
-      ).map(mapManagerTask);
-      // taskQueueStore 的存储是按项目分文件，跨项目暂不聚合（只看当前项目的远端媒体任务）
-      const queueTasks = await listAsyncTasks(projectId)
-        .then(list => list
-          // Defensive: tasks.json is reserved for media tasks. If older builds wrote other task shapes,
-          // filter them out to avoid duplicate rendering and incorrect status labels.
-          .filter(t => ['tti', 'itv', 'tts', 'character-extraction'].includes((t as any).type))
-          .map(mapAsyncTask)
-        )
-        .catch(() => []);
+      const isMedia = MEDIA_TYPES.has(record.type);
+      const projectId = record.scope.startsWith('project:')
+        ? record.scope.slice('project:'.length)
+        : '';
 
-      // De-duplicate by id in case of cross-store collisions or corrupted persisted state.
-      const mergedById = new Map<string, StatusBarTask>();
-      for (const task of [...queueTasks, ...managerTasks]) {
-        const prev = mergedById.get(task.id);
-        if (!prev) {
-          mergedById.set(task.id, task);
-          continue;
-        }
-        // Keep the newer one.
-        mergedById.set(task.id, (task.updatedAt >= prev.updatedAt) ? task : prev);
+      if (isMedia) {
+        mapped.push({
+          id: record.id,
+          projectId,
+          status: record.status as StatusBarStatus,
+          progress: record.progress,
+          category: 'media',
+          subType: record.type,
+          type: `media:${record.type}`,
+          targetType: record.targetKind ?? undefined,
+          targetId: record.targetId ?? undefined,
+          targetName: payload.targetName,
+          createdAt: record.createdAt,
+          updatedAt: record.updatedAt,
+          startedAt: record.createdAt,
+          completedAt: record.completedAt ?? undefined,
+          error: record.error ?? undefined,
+          source: 'task-queue',
+        });
+      } else {
+        // payload 已经存了 ManagerTask 全字段；retry/cancel 回调要用，传过去
+        mapped.push({
+          id: record.id,
+          projectId,
+          status: record.status as StatusBarStatus,
+          progress: record.progress,
+          category: payload.category as StatusBarCategory | undefined,
+          subType: payload.subType,
+          type: record.type,
+          targetType: record.targetKind ?? payload.targetType,
+          targetId: record.targetId ?? payload.targetId,
+          targetName: payload.targetName,
+          createdAt: record.createdAt,
+          updatedAt: record.updatedAt,
+          startedAt: payload.startedAt,
+          completedAt: record.completedAt ?? payload.completedAt,
+          error: record.error ?? payload.error,
+          recoverable: payload.recoverable,
+          attempt: payload.attempt ?? record.attempt,
+          maxRetries: payload.maxRetries ?? record.maxRetries,
+          source: 'task-manager',
+          raw: payload as unknown as ManagerTask,
+        });
       }
-
-      const merged = Array.from(mergedById.values())
-        .sort((a, b) => b.updatedAt - a.updatedAt)
-        .slice(0, 20);
-
-      if (disposed) return;
-      setTasks(merged);
-
-      const activeTaskIds = merged
-        .filter(task => isRunning(task.status))
-        .map(task => task.id)
-        .sort()
-        .join('|');
-
-      if (!activeTaskIds) {
-        activeTaskIdsRef.current = '';
-        return;
-      }
-
-      if (activeTaskIds !== activeTaskIdsRef.current) {
-        activeTaskIdsRef.current = activeTaskIds;
-      }
-    };
-
-    loadTasks();
-
-    // 暴风通知合并：批量场景（如 9 张抽卡并发）下 listener 高频触发，
-    // 把短时间内的多次 loadTasks 合并成一次 trailing 调用，避免 IPC + setState 风暴卡前端
-    let scheduleHandle: number | null = null;
-    const scheduleLoadTasks = () => {
-      if (scheduleHandle != null) return;
-      scheduleHandle = (setTimeout(() => {
-        scheduleHandle = null;
-        if (!disposed) loadTasks();
-      }, 80) as unknown) as number;
-    };
-
-    const unsubscribe = TaskManager.addListener((task) => {
-      if (projectFilter === 'all' || task.projectId === projectId) {
-        scheduleLoadTasks();
-      }
-    });
-
-    // taskQueueStore 没有事件订阅，使用轻量轮询同步状态栏显示
-    const timer = setInterval(loadTasks, 2000);
-
-    return () => {
-      disposed = true;
-      unsubscribe();
-      clearInterval(timer);
-      if (scheduleHandle != null) clearTimeout(scheduleHandle);
-    };
-  }, [projectId, projectFilter]);
+    }
+    return mapped
+      .sort((a, b) => b.updatedAt - a.updatedAt)
+      .slice(0, 20);
+  }, [records, hiddenIds]);
 
   const { runningTasks, completedTasks, failedTasks, allFilteredTasks } = useMemo(() => {
     const running = tasks.filter(t => t.status === 'pending' || t.status === 'running' || t.status === 'processing');
@@ -477,14 +435,24 @@ export const TaskStatusBar: React.FC<TaskStatusBarProps> = ({ projectId, onRetry
                     onClick={(e) => { e.stopPropagation(); onRetry(task.raw!); }}
                   />
                 )}
-                {isRunning(task.status) && task.source === 'task-manager' && task.raw && onCancel && (
-                  <Button
-                    type="text"
-                    size="small"
-                    icon={<StopOutlined />}
-                    className="text-zinc-500 hover:text-red-400 shrink-0 !w-7 !h-7"
-                    onClick={(e) => { e.stopPropagation(); onCancel(task.raw!); }}
-                  />
+                {isRunning(task.status) && (
+                  <Tooltip title="取消任务">
+                    <Button
+                      type="text"
+                      size="small"
+                      icon={<StopOutlined />}
+                      className="text-zinc-500 hover:text-red-400 shrink-0 !w-7 !h-7"
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        // 优先走 IPC 主进程取消（能 abort main-side handler 与 renderer-side 业务订阅）
+                        await cancelTaskRecord(task.id, '用户取消').catch(() => undefined);
+                        // 业务侧可能还想做额外清理（比如 onCancel 回调里的本地 state），保留外部钩子
+                        if (task.source === 'task-manager' && task.raw && onCancel) {
+                          onCancel(task.raw);
+                        }
+                      }}
+                    />
+                  </Tooltip>
                 )}
                 {/* 单任务删除：仅完成 / 失败状态可删；运行中需先取消才能删 */}
                 {(task.status === 'completed' || task.status === 'failed') && (
@@ -499,10 +467,14 @@ export const TaskStatusBar: React.FC<TaskStatusBarProps> = ({ projectId, onRetry
                         if (task.source === 'task-manager') {
                           TaskManager.removeTask(task.id);
                         } else {
-                          await deleteAsyncTask(task.projectId, task.id);
+                          await deleteMediaTask(task.id);
                         }
-                        // 立刻从本地列表移除（监听器/轮询会同步，但提前移除避免视觉抖动）
-                        setTasks(prev => prev.filter(t => t.id !== task.id));
+                        // 立刻从 UI 隐藏（IPC 广播稍后会从 cache 真正移除该 record）
+                        setHiddenIds(prev => {
+                          const next = new Set(prev);
+                          next.add(task.id);
+                          return next;
+                        });
                       }}
                     />
                   </Tooltip>
@@ -594,9 +566,15 @@ export const TaskStatusBar: React.FC<TaskStatusBarProps> = ({ projectId, onRetry
                 icon={<Trash2 className="w-3.5 h-3.5" />}
                 onClick={async () => {
                   const removedManager = TaskManager.clearFinishedTasks(projectId);
-                  const removedAsync = await clearCompletedAsyncTasks(projectId).catch(() => 0);
-                  // 立刻从本地状态移除，让 UI 即时反馈
-                  setTasks(prev => prev.filter(t => t.status !== 'completed' && t.status !== 'failed'));
+                  const removedAsync = await clearCompletedMediaTasks(projectId).catch(() => 0);
+                  // 立刻把 finished 全部加入隐藏，等广播来回时缓存自然清掉
+                  setHiddenIds(prev => {
+                    const next = new Set(prev);
+                    for (const t of tasks) {
+                      if (t.status === 'completed' || t.status === 'failed') next.add(t.id);
+                    }
+                    return next;
+                  });
                   // 留个日志便于调试（不弹 toast 避免噪音）
                   if (removedManager + removedAsync > 0) {
                     // eslint-disable-next-line no-console

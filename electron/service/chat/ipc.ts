@@ -603,6 +603,13 @@ class ChatIpc {
 
     ipcMain.handle('chat:history:deleteSession', async (_event, args: { sessionId: string }) => {
       const ok = sqliteChatHistoryRepository.deleteSession(args.sessionId);
+      // 联动清理：与该会话相关的后台任务一并移除
+      try {
+        const { taskService } = await import('../tasks/TaskService');
+        taskService.removeByScope(`chat:${args.sessionId}`);
+      } catch (err) {
+        console.error('[ChatHistory] 清理会话相关任务失败', err);
+      }
       return { success: ok };
     });
 

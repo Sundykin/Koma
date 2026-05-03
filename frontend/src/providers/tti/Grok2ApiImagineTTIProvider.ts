@@ -10,6 +10,7 @@
 import type { TTIModelConfig, ProviderStartResult, ProviderTaskSnapshot } from '../../types';
 import type { TTIProvider, TTIRequest, ImageResult } from './types';
 import { safeFetch } from '../../utils/safeFetch';
+import { buildChannelAuthRequest } from '../channel/auth';
 import { createLogger } from '../../store/logger';
 import { electronService } from '../../services/electronService';
 import { base64ToBytes, parseDataUrl } from '../../utils/encoding';
@@ -290,21 +291,19 @@ export class Grok2ApiImagineTTIProvider implements TTIProvider {
     return hasCredentialRef && Boolean(this.config.baseUrl) && Boolean(String(this.config.modelName || '').trim());
   }
 
-  private getHeaders(): Record<string, string> {
-    // 优先走 channelId 代理（主进程解密注入 Authorization）；回退到明文 apiKey（历史路径）
-    if (this.config.profileId) {
-      return { 'x-koma-channel-id': this.config.profileId };
-    }
-    return {
-      Authorization: `Bearer ${this.config.apiKey || ''}`,
-    };
+  private getHeaders(extra?: Record<string, string>): Record<string, string> {
+    // 走统一抽象：profileId 存在 → x-koma-channel-id（主进程注入 Authorization）；
+    // 否则回退明文 Bearer。详见 providers/channel/auth.ts。
+    return buildChannelAuthRequest({
+      channelId: this.config.profileId,
+      apiKey: this.config.apiKey,
+      mode: 'bearer-header',
+      headers: extra,
+    }).headers;
   }
 
   private getJsonHeaders(): Record<string, string> {
-    return {
-      ...this.getHeaders(),
-      'Content-Type': 'application/json',
-    };
+    return this.getHeaders({ 'Content-Type': 'application/json' });
   }
 
   async testConnection(): Promise<boolean> {

@@ -3,7 +3,11 @@
  * 处理项目打开时的初始化和任务恢复
  */
 import type { AsyncTask } from '../types';
-import { deleteTask, getPendingTasks, markTaskFailed } from './taskQueueStore';
+import {
+  deleteMediaTask,
+  listPendingMediaTasks,
+  markMediaTaskFailed,
+} from '../services/mediaTaskClient';
 import { recoverPendingTasks } from './taskRecoveryService';
 import { initSaveHooks, setGetCurrentProjectId } from './autoSaveService';
 import { loadProject } from './projectStore';
@@ -49,7 +53,7 @@ function isRecoverableMediaTask(task: AsyncTask): boolean {
  * 检查项目内需要用户决策的未完成媒体任务。
  */
 export async function inspectPendingMediaTasks(projectId: string): Promise<AsyncTask[]> {
-  const pendingTasks = await getPendingTasks(projectId);
+  const pendingTasks = await listPendingMediaTasks(projectId);
   return pendingTasks.filter(isRecoverableMediaTask);
 }
 
@@ -64,7 +68,7 @@ export async function failPendingMediaTasks(
   let failedCount = 0;
 
   for (const task of tasks) {
-    const updated = await markTaskFailed(projectId, task.id, reason);
+    const updated = await markMediaTaskFailed(projectId, task.id, reason);
     if (updated) failedCount++;
   }
 
@@ -82,7 +86,7 @@ export async function deletePendingMediaTasks(
   let deletedCount = 0;
 
   for (const task of tasks) {
-    const deleted = await deleteTask(projectId, task.id);
+    const deleted = await deleteMediaTask(task.id);
     if (deleted) deletedCount++;
   }
 

@@ -12,6 +12,7 @@ import { saveEpisode, loadEpisodeAnalysis, saveEpisodeAnalysis } from '../../sto
 import { generateRandomScript, polishScript } from '../../workflow/scriptGenerator';
 import { startBackgroundAnalysis } from '../../services/ScriptAnalysisService';
 import { TaskManager } from '../../services/TaskManager';
+import { useActiveTask } from '../../hooks';
 import type { Project, Episode, AppSettings } from '../../types';
 import { createLogger } from '../../store/logger';
 import { createAITraceId } from '../../utils/aiTrace';
@@ -43,7 +44,8 @@ export const ScriptWorkbench = forwardRef<ScriptWorkbenchRef, ScriptWorkbenchPro
   const { message } = App.useApp();
   const [localScript, setLocalScript] = useState(episode?.scriptText || '');
   const [isSaving, setIsSaving] = useState(false);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  // 点击到任务真正落库之间的短暂"提交中"窗口；任务创建后就由 activeAnalysisTask 接管
+  const [isSubmittingAnalysis, setIsSubmittingAnalysis] = useState(false);
   const [isPolishing, setIsPolishing] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [streamingMode, setStreamingMode] = useState<'generate' | 'polish' | null>(null);
@@ -59,31 +61,14 @@ export const ScriptWorkbench = forwardRef<ScriptWorkbenchRef, ScriptWorkbenchPro
     lastSavedRef.current = episode?.scriptText || '';
   }, [episode?.id]);
 
-  useEffect(() => {
-    if (!episode) {
-      setIsAnalyzing(false);
-      return;
-    }
-
-    const syncAnalyzingState = () => {
-      const running = TaskManager.getProjectTasks(project.id).some(task =>
-        task.type === 'script-analysis'
-        && task.targetId === episode.id
-        && (task.status === 'pending' || task.status === 'running' || task.status === 'processing')
-      );
-      setIsAnalyzing(running);
-    };
-
-    syncAnalyzingState();
-    const unsubscribe = TaskManager.addListener((task) => {
-      if (task.projectId !== project.id) return;
-      if (task.type !== 'script-analysis') return;
-      if (task.targetId !== episode.id) return;
-      syncAnalyzingState();
-    });
-
-    return () => unsubscribe();
-  }, [project.id, episode?.id]);
+  // 解析任务的 loading 来自任务表投影 —— 切走再回来无需重新同步
+  const activeAnalysisTask = useActiveTask({
+    scope: `project:${project.id}`,
+    type: 'script-analysis',
+    targetKind: 'episode',
+    targetId: episode?.id,
+  });
+  const isAnalyzing = isSubmittingAnalysis || !!activeAnalysisTask;
 
   useEffect(() => {
     if (!streamingPreviewRef.current) return;
@@ -275,7 +260,7 @@ export const ScriptWorkbench = forwardRef<ScriptWorkbenchRef, ScriptWorkbenchPro
       return;
     }
 
-    setIsAnalyzing(true);
+    setIsSubmittingAnalysis(true);
     try {
       await saveScript(localScript);
       const previousAnalysis = await loadEpisodeAnalysis(project.id, episode.id);
@@ -309,7 +294,7 @@ export const ScriptWorkbench = forwardRef<ScriptWorkbenchRef, ScriptWorkbenchPro
       logger.error('解析失败', err);
       message.error(classifyAIError(err).userMessage);
     } finally {
-      setIsAnalyzing(false);
+      setIsSubmittingAnalysis(false);
     }
   }, [episode, localScript, project, message, saveScript]);
 

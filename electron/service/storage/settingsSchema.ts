@@ -12,9 +12,13 @@
  * v3 → v4:
  *   chat_messages 列名从 tool_calls_json 改为 extras_json（开发期重命名）
  *   该表无重要业务数据，直接 DROP+CREATE 重建（清空已有 chat_messages）
+ *
+ * v4 → v5:
+ *   新增 tasks 表：通用后台任务存储（取代项目目录下的 background-tasks.json / tasks.json）
+ *   scope 字段实现项目/对话/全局多源；payload_json 装载完整业务数据；冗余 columns 走索引
  */
 
-export const CURRENT_SETTINGS_SCHEMA_VERSION = 4;
+export const CURRENT_SETTINGS_SCHEMA_VERSION = 5;
 
 export const CREATE_SETTINGS_TABLES_SQL = `
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -83,6 +87,28 @@ CREATE TABLE IF NOT EXISTS chat_messages (
   extras_json   TEXT,
   created_at    INTEGER NOT NULL
 );
+
+-- 通用后台任务表：项目/对话/全局任务统一落库
+-- scope 形如 'project:<id>' | 'chat:<sessionId>' | 'global'
+-- payload_json：完整业务字段（兼容旧 Task / AsyncTask 形状），冗余列只为索引和过滤
+CREATE TABLE IF NOT EXISTS tasks (
+  id              TEXT PRIMARY KEY,
+  scope           TEXT NOT NULL,
+  type            TEXT NOT NULL,
+  target_kind     TEXT,
+  target_id       TEXT,
+  status          TEXT NOT NULL,
+  progress        REAL NOT NULL DEFAULT 0,
+  remote_task_id  TEXT,
+  attempt         INTEGER NOT NULL DEFAULT 0,
+  max_retries     INTEGER NOT NULL DEFAULT 3,
+  error           TEXT,
+  payload_json    TEXT NOT NULL,
+  created_at      INTEGER NOT NULL,
+  updated_at      INTEGER NOT NULL,
+  heartbeat_at    INTEGER,
+  completed_at    INTEGER
+);
 `;
 
 export const CREATE_SETTINGS_INDEXES_SQL = `
@@ -94,6 +120,14 @@ CREATE INDEX IF NOT EXISTS idx_chat_sessions_updated_at
   ON chat_sessions(updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_chat_messages_session_seq
   ON chat_messages(session_id, seq);
+CREATE INDEX IF NOT EXISTS idx_tasks_scope
+  ON tasks(scope);
+CREATE INDEX IF NOT EXISTS idx_tasks_scope_status
+  ON tasks(scope, status);
+CREATE INDEX IF NOT EXISTS idx_tasks_target
+  ON tasks(scope, target_kind, target_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_completed_at
+  ON tasks(status, completed_at);
 `;
 
 export interface SettingsMigration {
@@ -159,6 +193,33 @@ export const SETTINGS_MIGRATIONS: Record<number, SettingsMigration> = {
         created_at    INTEGER NOT NULL
       );
       CREATE INDEX IF NOT EXISTS idx_chat_messages_session_seq ON chat_messages(session_id, seq);
+    `,
+  },
+  5: {
+    description: 'v5: add tasks table for unified background task storage',
+    sql: `
+      CREATE TABLE IF NOT EXISTS tasks (
+        id              TEXT PRIMARY KEY,
+        scope           TEXT NOT NULL,
+        type            TEXT NOT NULL,
+        target_kind     TEXT,
+        target_id       TEXT,
+        status          TEXT NOT NULL,
+        progress        REAL NOT NULL DEFAULT 0,
+        remote_task_id  TEXT,
+        attempt         INTEGER NOT NULL DEFAULT 0,
+        max_retries     INTEGER NOT NULL DEFAULT 3,
+        error           TEXT,
+        payload_json    TEXT NOT NULL,
+        created_at      INTEGER NOT NULL,
+        updated_at      INTEGER NOT NULL,
+        heartbeat_at    INTEGER,
+        completed_at    INTEGER
+      );
+      CREATE INDEX IF NOT EXISTS idx_tasks_scope ON tasks(scope);
+      CREATE INDEX IF NOT EXISTS idx_tasks_scope_status ON tasks(scope, status);
+      CREATE INDEX IF NOT EXISTS idx_tasks_target ON tasks(scope, target_kind, target_id);
+      CREATE INDEX IF NOT EXISTS idx_tasks_completed_at ON tasks(status, completed_at);
     `,
   },
 };

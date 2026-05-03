@@ -25,6 +25,13 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   'channel:setDefault', 'channel:getDefault', 'channel:listDefaults', 'channel:deleteDefault',
   // 全局 KV
   'app-kv:get', 'app-kv:set', 'app-kv:delete',
+  // 通用任务系统 (settings.db)
+  'tasks:list', 'tasks:get', 'tasks:upsert', 'tasks:delete', 'tasks:cancel',
+  'tasks:submit',
+  'tasks:removeByScope', 'tasks:removeByTarget', 'tasks:gc',
+  'tasks:retention:get', 'tasks:retention:set',
+  'tasks:webContentsId',
+  'tasks:delegate:claim', 'tasks:delegate:reply',
   // 激活信息
   'activation:get-api-key',
   // controller/* 显式白名单
@@ -132,6 +139,8 @@ const ALLOWED_LISTEN_CHANNELS = new Set([
   'chat:tool:pending', 'chat:tool:approved', 'chat:tool:rejected',
   'llm:stream:chunk', 'llm:stream:done', 'llm:stream:error',
   'channel:changed',
+  'tasks:updated',
+  'tasks:delegate:request',
 ]);
 
 function validateInvokeChannel(channel: string): void {
@@ -480,6 +489,38 @@ contextBridge.exposeInMainWorld('electronAPI', {
       saveSession: (session: any, messages: any[]) =>
         invokeMain('chat:history:saveSession', { session, messages }),
       deleteSession: (sessionId: string) => invokeMain('chat:history:deleteSession', { sessionId }),
+    },
+  },
+  // 通用后台任务系统（settings.db / tasks 表）
+  tasks: {
+    list: (query?: any) => invokeMain('tasks:list', query ?? {}),
+    get: (id: string) => invokeMain('tasks:get', { id }),
+    upsert: (record: any) => invokeMain('tasks:upsert', record),
+    delete: (id: string) => invokeMain('tasks:delete', { id }),
+    cancel: (id: string, reason?: string) => invokeMain('tasks:cancel', { id, reason }),
+    submit: (input: any) => invokeMain('tasks:submit', input),
+    removeByScope: (scope: string) => invokeMain('tasks:removeByScope', { scope }),
+    removeByTarget: (scope: string, targetKind: string, targetId: string) =>
+      invokeMain('tasks:removeByTarget', { scope, targetKind, targetId }),
+    gc: () => invokeMain('tasks:gc', {}),
+    getRetention: () => invokeMain('tasks:retention:get', {}),
+    setRetention: (input: { retentionDays?: number; perScopeLimit?: number }) =>
+      invokeMain('tasks:retention:set', input),
+    /** 拿当前 renderer 的 webContents id，用于 tasks:updated 广播自写抑制 */
+    getWebContentsId: (): Promise<number> => invokeMain('tasks:webContentsId', {}),
+    onUpdated: (callback: (event: any, data: any) => void) => {
+      ipcRenderer.on('tasks:updated', callback);
+      return () => ipcRenderer.removeListener('tasks:updated', callback);
+    },
+    // ===== delegation：main → renderer 反向调用 =====
+    delegate: {
+      claim: (types: string[]) => invokeMain('tasks:delegate:claim', { types }),
+      reply: (requestId: string, payload: { result?: unknown; error?: string }) =>
+        invokeMain('tasks:delegate:reply', { requestId, ...payload }),
+      onRequest: (callback: (event: any, data: any) => void) => {
+        ipcRenderer.on('tasks:delegate:request', callback);
+        return () => ipcRenderer.removeListener('tasks:delegate:request', callback);
+      },
     },
   },
 });

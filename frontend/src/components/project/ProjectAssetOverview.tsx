@@ -21,7 +21,7 @@ import {
 } from '../../store/projectStore';
 import { electronService } from '../../services/electronService';
 import { createLogger } from '../../store/logger';
-import { TaskManager } from '../../services/TaskManager';
+import { useTaskTransitions } from '../../hooks';
 import { getCharacterCostumePhotoSource } from '../../utils/mediaSelectors';
 
 const logger = createLogger('ProjectAssetOverview');
@@ -138,15 +138,14 @@ export const ProjectAssetOverview = forwardRef<ProjectAssetOverviewRef, ProjectA
 
   useImperativeHandle(ref, () => ({ refresh: loadAssets }), [loadAssets]);
 
-  useEffect(() => {
-    const unsubscribe = TaskManager.addListener((task) => {
-      if (task.projectId !== projectId) return;
-      if (task.type === 'script-analysis' && task.status === 'completed') {
-        loadAssets();
-      }
-    });
-    return () => unsubscribe();
-  }, [projectId, loadAssets]);
+  useTaskTransitions(
+    {
+      scope: `project:${projectId}`,
+      type: 'script-analysis',
+      to: ['completed'],
+    },
+    () => loadAssets()
+  );
 
   const setAssetDeleting = useCallback((assetKey: string, deleting: boolean) => {
     setDeletingAssetIds((prev) => {

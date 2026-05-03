@@ -10,7 +10,10 @@ import { TaskStatusBar } from './components/common/TaskStatusBar';
 import { Sidebar } from './components/common/Sidebar';
 import type { AppView } from './components/common/Sidebar';
 import { useProjects } from './hooks/useProjects';
+import { useTaskTransitions } from './hooks';
 import { TaskManager } from './services/TaskManager';
+import { registerMediaPollFulfillers } from './services/mediaPollFulfillers';
+import { registerAnalysisFulfillers } from './services/analysisFulfillers';
 import {
   deletePendingMediaTasks,
   failPendingMediaTasks,
@@ -224,6 +227,14 @@ const AppContent: React.FC = () => {
     }
   }, [activationInputKey, message, reloadSettings, t]);
 
+  // 注册 main → renderer 反向调用的 fulfillers：
+  //   media:* 由 main 主导媒体轮询 → renderer 调原 provider + 落盘
+  //   analysis:* 由 main 主导父任务（限流 + 取消） → renderer 跑 LLM closures
+  useEffect(() => {
+    registerMediaPollFulfillers();
+    registerAnalysisFulfillers();
+  }, []);
+
   // 初始化 TaskManager，并同步当前项目上下文
   useEffect(() => {
     if (activeProject) {
@@ -320,18 +331,19 @@ const AppContent: React.FC = () => {
     return items;
   }, [analysisData?.characters, analysisData?.scenes, analysisData?.props]);
 
-  // 监听任务完成
-  useEffect(() => {
-    if (!activeProject) return;
-    const unsubscribe = TaskManager.addListener((task) => {
-      if (task.projectId !== activeProject.id) return;
-      if (task.type === 'script-analysis' && task.status === 'completed') {
-        message.success('剧本解析完成');
-        loadAnalysisData(activeProject.id);
-      }
-    });
-    return () => unsubscribe();
-  }, [activeProject?.id, message, loadAnalysisData]);
+  // 监听任务完成（edge-triggered 转换事件，避免 hydrate 时已 completed 的旧任务再次触发）
+  useTaskTransitions(
+    {
+      scope: activeProject ? `project:${activeProject.id}` : undefined,
+      type: 'script-analysis',
+      to: ['completed'],
+    },
+    () => {
+      if (!activeProject) return;
+      message.success('剧本解析完成');
+      loadAnalysisData(activeProject.id);
+    }
+  );
 
   // 进入编辑器视图时加载数据
   useEffect(() => {

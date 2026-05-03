@@ -155,21 +155,61 @@ describe('MediaGenerationService.generateVideo - ITV input policy matrix', () =>
     expect(out.kind).toBe('video');
   });
 
-  it('recoverTask 优先使用任务记录的渠道模型与能力恢复 ITV 任务', async () => {
-    const { getProjectITVProvider } = await import('../providers');
-
-    const getTaskSnapshot = vi.fn(async () => ({
-      state: 'succeeded',
-      output: { source: 'https://cdn.example.com/recovered.mp4' },
-    }));
-
-    (getProjectITVProvider as any).mockResolvedValue({
-      type: 'vidu',
-      config: { provider: 'vidu', apiKey: 'k', baseUrl: 'https://x' },
-      validate: () => true,
-      testConnection: async () => true,
-      getTaskSnapshot,
+  it('recoverTask 把任务记录的渠道模型与能力提交给主进程 handler', async () => {
+    // recoverTask 现在走 submitTask → main 主进程 → 委托回 renderer 拿 snapshot。
+    // 单测在 jsdom 里跑，主进程不存在；改为 mock 整套 tasks IPC，
+    // 验证 submitTask 入参把 selection / channelId / modelId / capability 传对了。
+    let submittedRecord: any = null;
+    const submitSpy = vi.fn(async (input: any) => {
+      submittedRecord = {
+        id: 'task-mock-1',
+        scope: input.scope,
+        type: input.type,
+        status: 'completed',
+        progress: 100,
+        targetKind: input.targetKind,
+        targetId: input.targetId,
+        payload: {
+          ...input.initialPayload,
+          input: input.input,
+          output: { asset: { kind: 'video', localPath: '/tmp/recovered.mp4', createdAt: 1 } },
+        },
+        createdAt: 1,
+        updatedAt: 1,
+      };
+      return submittedRecord;
     });
+    const getRecord = vi.fn(async (id: string) => {
+      if (submittedRecord?.id === id) return submittedRecord;
+      return null;
+    });
+    let updateListener: any = null;
+    (window as any).electronAPI = {
+      tasks: {
+        submit: submitSpy,
+        get: getRecord,
+        list: vi.fn(async () => []),
+        upsert: vi.fn(async () => null),
+        delete: vi.fn(async () => true),
+        cancel: vi.fn(async () => true),
+        removeByScope: vi.fn(async () => 0),
+        removeByTarget: vi.fn(async () => 0),
+        gc: vi.fn(async () => ({ purgedByAge: 0, purgedByLimit: 0 })),
+        getRetention: vi.fn(async () => ({ retentionDays: 7, perScopeLimit: 200 })),
+        setRetention: vi.fn(async () => ({ retentionDays: 7, perScopeLimit: 200 })),
+        getWebContentsId: vi.fn(async () => 1),
+        onUpdated: vi.fn((cb: any) => {
+          updateListener = cb;
+          // submit 已经是 completed；用 setTimeout 模拟 broadcast 触发 waitForTaskCompletion
+          setTimeout(() => {
+            if (updateListener && submittedRecord) {
+              updateListener({}, { record: submittedRecord, kind: 'upsert' });
+            }
+          }, 0);
+          return () => { updateListener = null; };
+        }),
+      },
+    };
 
     const { MediaGenerationService } = await import('./MediaGenerationService');
     const svc = new MediaGenerationService();
@@ -197,13 +237,23 @@ describe('MediaGenerationService.generateVideo - ITV input policy matrix', () =>
       itvSelection: 'runway-main::runway-model-a',
     });
 
-    expect(getProjectITVProvider).toHaveBeenCalledWith(
-      'vidu-main::vidu-model-a',
-      'video.reference-to-video',
-    );
-    expect(getTaskSnapshot).toHaveBeenCalledWith('remote-1', {
+    expect(submitSpy).toHaveBeenCalledTimes(1);
+    const submitArg = submitSpy.mock.calls[0][0];
+    expect(submitArg.type).toBe('itv');
+    expect(submitArg.scope).toBe('project:p1');
+    expect(submitArg.input).toMatchObject({
+      kind: 'video',
+      remoteTaskId: 'remote-1',
+      rendererHandlerType: 'itv',
+      channelId: 'vidu-main',
+      modelId: 'vidu-model-a',
       capability: 'video.reference-to-video',
+      // selection 由 resolveTaskSelectionKey(task, ttiSelection) 派生：
+      // task.channelId/modelId 拼出 'vidu-main::vidu-model-a' 优先于外部 itvSelection
+      selection: 'vidu-main::vidu-model-a',
     });
     expect(out?.kind).toBe('video');
+
+    delete (window as any).electronAPI;
   });
 });

@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { STORAGE_KEYS } from '../constants/storageKeys';
 import type { AsyncTask } from '../types';
 import {
   deletePendingMediaTasks,
@@ -8,14 +7,12 @@ import {
   onProjectOpen,
   USER_INTERRUPTED_REASON,
 } from './projectOpenService';
-import { listTasks, __resetTaskQueueCacheForTesting } from './taskQueueStore';
+import { listProjectMediaTasks } from '../services/mediaTaskClient';
 import { configureLogger } from './logger';
+import type { TaskRecord } from '../services/tasksIPC';
 
-const ROOT_PATH = '/tmp/koma-project-open-service-tests';
 const PROJECT_ID = 'project-1';
-const TASKS_PATH = `${ROOT_PATH}/projects/${PROJECT_ID}/tasks.json`;
-
-const files = new Map<string, string>();
+const SCOPE = `project:${PROJECT_ID}`;
 
 function buildTask(overrides: Partial<AsyncTask> & Pick<AsyncTask, 'id' | 'type' | 'status'>): AsyncTask {
   return {
@@ -36,64 +33,76 @@ function buildTask(overrides: Partial<AsyncTask> & Pick<AsyncTask, 'id' | 'type'
   };
 }
 
-function seedTasks(tasks: AsyncTask[]): void {
-  files.set(TASKS_PATH, JSON.stringify({ tasks, version: 1 }, null, 2));
-}
-
-function readPersistedTasks(): AsyncTask[] {
-  return JSON.parse(files.get(TASKS_PATH) || '{"tasks":[]}').tasks || [];
+function asyncTaskToRecord(task: AsyncTask): TaskRecord {
+  return {
+    id: task.id,
+    scope: SCOPE,
+    type: task.type,
+    status: task.status,
+    progress: task.progress,
+    targetKind: task.targetType,
+    targetId: task.targetId,
+    remoteTaskId: task.remoteTaskId ?? null,
+    attempt: task.retryCount,
+    maxRetries: task.maxRetries,
+    error: task.error ?? null,
+    payload: { ...(task as unknown as Record<string, unknown>) },
+    createdAt: task.createdAt,
+    updatedAt: task.updatedAt,
+    heartbeatAt: null,
+    completedAt: task.status === 'completed' || task.status === 'failed' ? task.updatedAt : null,
+  };
 }
 
 describe('projectOpenService pending media task handling', () => {
+  const store = new Map<string, TaskRecord>();
+
+  function seedTasks(tasks: AsyncTask[]): void {
+    store.clear();
+    for (const task of tasks) {
+      store.set(task.id, asyncTaskToRecord(task));
+    }
+  }
+
+  function readPersistedTasks(): AsyncTask[] {
+    return Array.from(store.values()).map(record => ({
+      ...(record.payload as AsyncTask),
+      status: record.status as AsyncTask['status'],
+      progress: record.progress,
+      error: record.error ?? undefined,
+      retryCount: record.attempt ?? 0,
+    } as AsyncTask));
+  }
+
   beforeEach(() => {
     configureLogger({ enableFile: false });
-    files.clear();
-    __resetTaskQueueCacheForTesting();
-    localStorage.clear();
-    localStorage.setItem(STORAGE_KEYS.STORAGE_CONFIG, JSON.stringify({
-      rootPath: ROOT_PATH,
-      version: 1,
-    }));
+    store.clear();
+    // 旧 cache 已不存在（taskQueueStore 已删除）
 
     (window as typeof window & { electronAPI?: unknown }).electronAPI = {
-      fs: {
-        exists: vi.fn(async (path: string) => files.has(path)),
-        readFile: vi.fn(async (path: string) => files.get(path) ?? ''),
-        readFileAsBase64: vi.fn(async () => ''),
-        writeFile: vi.fn(async (path: string, data: string) => {
-          files.set(path, data);
+      tasks: {
+        list: vi.fn(async (query?: { scope?: string; status?: string | string[]; type?: string }) => {
+          let list = Array.from(store.values());
+          if (query?.scope) list = list.filter(r => r.scope === query.scope);
+          if (query?.status) {
+            const statuses = Array.isArray(query.status) ? query.status : [query.status];
+            list = list.filter(r => statuses.includes(r.status));
+          }
+          if (query?.type) list = list.filter(r => r.type === query.type);
+          return list;
         }),
-        downloadFile: vi.fn(async () => ({ success: true, size: 0 })),
-        mkdir: vi.fn(async () => {}),
-        readdir: vi.fn(async () => []),
-        stat: vi.fn(async () => ({
-          size: 0,
-          isDirectory: false,
-          isFile: true,
-          createdAt: 0,
-          modifiedAt: 0,
-        })),
-        remove: vi.fn(async () => {}),
-        copy: vi.fn(async () => {}),
-      },
-      app: {
-        getPath: vi.fn(async () => '/tmp'),
-        getVersion: vi.fn(async () => '1.0.0'),
-      },
-      window: {
-        minimize: vi.fn(async () => {}),
-        maximize: vi.fn(async () => {}),
-        close: vi.fn(async () => {}),
-        isMaximized: vi.fn(async () => false),
-      },
-      dialog: {
-        openFile: vi.fn(async () => ({ canceled: true, filePaths: [] })),
-        openDirectory: vi.fn(async () => ({ canceled: true, filePaths: [] })),
-        saveFile: vi.fn(async () => ({ canceled: true, filePath: undefined })),
-      },
-      shell: {
-        openExternal: vi.fn(async () => {}),
-        showItemInFolder: vi.fn(async () => {}),
+        get: vi.fn(async (id: string) => store.get(id) ?? null),
+        upsert: vi.fn(async (record: TaskRecord) => {
+          store.set(record.id, record);
+          return record;
+        }),
+        delete: vi.fn(async (id: string) => store.delete(id)),
+        removeByScope: vi.fn(async () => 0),
+        removeByTarget: vi.fn(async () => 0),
+        gc: vi.fn(async () => ({ purgedByAge: 0, purgedByLimit: 0 })),
+        getRetention: vi.fn(async () => ({ retentionDays: 7, perScopeLimit: 200 })),
+        setRetention: vi.fn(async () => ({ retentionDays: 7, perScopeLimit: 200 })),
+        onUpdated: vi.fn(() => () => undefined),
       },
       project: {
         load: vi.fn(async () => ({ id: PROJECT_ID, mediaSelections: {} })),
@@ -103,7 +112,6 @@ describe('projectOpenService pending media task handling', () => {
 
   afterEach(() => {
     configureLogger({ enableFile: true });
-    localStorage.clear();
     delete (window as typeof window & { electronAPI?: unknown }).electronAPI;
   });
 
@@ -129,7 +137,8 @@ describe('projectOpenService pending media task handling', () => {
 
     await onProjectOpen(PROJECT_ID);
 
-    expect(readPersistedTasks().map(task => [task.id, task.status])).toEqual([
+    const persisted = readPersistedTasks().sort((a, b) => a.id.localeCompare(b.id));
+    expect(persisted.map(task => [task.id, task.status])).toEqual([
       ['pending-tti', 'pending'],
       ['processing-itv', 'processing'],
     ]);
@@ -147,7 +156,7 @@ describe('projectOpenService pending media task handling', () => {
 
     expect(failedCount).toBe(2);
 
-    const tasks = await listTasks(PROJECT_ID);
+    const tasks = await listProjectMediaTasks(PROJECT_ID);
     const failedById = new Map(tasks.map(task => [task.id, task]));
     expect(failedById.get('pending-tti')).toEqual(expect.objectContaining({
       status: 'failed',
@@ -173,6 +182,6 @@ describe('projectOpenService pending media task handling', () => {
     const deletedCount = await deletePendingMediaTasks(PROJECT_ID, pending);
 
     expect(deletedCount).toBe(2);
-    expect(readPersistedTasks().map(task => task.id)).toEqual(['completed-tts']);
+    expect(readPersistedTasks().map(task => task.id).sort()).toEqual(['completed-tts']);
   });
 });

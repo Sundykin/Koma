@@ -27,6 +27,7 @@ import { startShotAnalysis } from '../../services/ShotAnalysisService';
 import type { PresetAssets } from '../../services/ShotAnalysisService';
 import { generateShotPrompt, batchGenerateShotPrompts } from '../../services/ShotPromptService';
 import { TaskManager } from '../../services/TaskManager';
+import { useActiveTask, useTaskTransitions } from '../../hooks';
 import { ScriptEditor } from '../../editor';
 import type { MentionItem } from '../../editor';
 import { StoryboardStudio } from './StoryboardStudio';
@@ -140,7 +141,8 @@ export const Storyboard: React.FC<StoryboardProps> = ({
   const [renderingShots, setRenderingShots] = useState<Set<string>>(new Set());
   // 单镜头视频生成进度（按 shotId 聚合，避免多镜头并跑时进度被覆盖）
   const [shotVideoProgress, setShotVideoProgress] = useState<Map<string, { progress: number; step: string }>>(new Map());
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  // 点击到任务真正落库之间的短暂"提交中"窗口；任务创建后由 activeAnalysisTask 接管
+  const [isSubmittingAnalysis, setIsSubmittingAnalysis] = useState(false);
   const [batchProgress, setBatchProgress] = useState<{ current: number; total: number; step?: string } | undefined>();
   const queuedShotsSaveRef = useRef<{ projectId: string; episodeId: string; shots: Shot[] } | null>(null);
   const activeShotsSaveRef = useRef<Promise<void> | null>(null);
@@ -382,24 +384,39 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     loadData();
   }, [loadData]);
 
-  // 监听分析任务完成事件（媒体任务已收口到 taskQueueStore，不再走 TaskManager）
+  // 当前剧集的 shot-analysis 任务投影 — 切走再回来 loading 自动复原
+  const activeAnalysisTask = useActiveTask({
+    scope: `project:${projectId}`,
+    type: 'shot-analysis',
+    targetKind: 'episode',
+    targetId: episodeId,
+  });
+  const isAnalyzing = isSubmittingAnalysis || !!activeAnalysisTask;
+  // 任务被 useActiveTask 接管后清掉提交中标志（避免成功路径不归零）
   useEffect(() => {
-    const unsubscribe = TaskManager.addListener(async (task) => {
-      if (task.projectId !== projectId) return;
-      if (task.type === 'shot-analysis') {
-        if (task.status === 'completed') {
-          message.success(`AI 分镜生成完成，共 ${task.result?.shotsCount || 0} 个分镜`);
-          setIsAnalyzing(false);
-          loadData();
-        } else if (task.status === 'failed') {
-          logger.error('AI 分镜生成失败', task.error);
-          message.error('AI 分镜生成失败，请检查 LLM 配置后重试');
-          setIsAnalyzing(false);
-        }
+    if (activeAnalysisTask) setIsSubmittingAnalysis(false);
+  }, [activeAnalysisTask?.id]);
+
+  // 监听分析任务终态转换（edge-triggered 副作用）
+  useTaskTransitions(
+    {
+      scope: `project:${projectId}`,
+      type: 'shot-analysis',
+      targetKind: 'episode',
+      targetId: episodeId,
+      to: ['completed', 'failed'],
+    },
+    (event) => {
+      const payload = (event.record.payload || {}) as { result?: { shotsCount?: number } };
+      if (event.currStatus === 'completed') {
+        message.success(`AI 分镜生成完成，共 ${payload.result?.shotsCount || 0} 个分镜`);
+        loadData();
+      } else if (event.currStatus === 'failed') {
+        logger.error('AI 分镜生成失败', event.record.error);
+        message.error('AI 分镜生成失败，请检查 LLM 配置后重试');
       }
-    });
-    return () => unsubscribe();
-  }, [projectId, episodeId, loadData]);
+    }
+  );
 
   const flushQueuedShotSaves = useCallback((): Promise<void> => {
     if (activeShotsSaveRef.current) {
@@ -1310,7 +1327,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
   const handlePresetConfirm = useCallback(async (assets: PresetAssets) => {
     setPresetModalOpen(false);
     setPresetAssets(assets);
-    setIsAnalyzing(true);
+    setIsSubmittingAnalysis(true);
     try {
       await startShotAnalysis(
         projectId,
@@ -1325,7 +1342,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : String(err);
       message.error(errorMessage || '启动生成失败');
-      setIsAnalyzing(false);
+      setIsSubmittingAnalysis(false);
     }
   }, [projectId, episodeId, episodeName, script, llmSelection, message, styleSnapshot]);
 
@@ -1357,14 +1374,14 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       setPresetModalOpen(true);
     } else {
       // 无已绑定资产，直接生成
-      setIsAnalyzing(true);
+      setIsSubmittingAnalysis(true);
       try {
         await startShotAnalysis(projectId, episodeId, episodeName || `剧集 ${episodeId}`, script, llmSelection, undefined, styleSnapshot);
         message.info('AI 分镜生成任务已启动，可在状态栏查看进度');
       } catch (err: any) {
         logger.error('启动 AI 分镜生成失败', err);
         message.error(err.message || '启动生成失败');
-        setIsAnalyzing(false);
+        setIsSubmittingAnalysis(false);
       }
     }
   }, [projectId, episodeId, episodeName, script, llmSelection, characters, props, message, styleSnapshot]);

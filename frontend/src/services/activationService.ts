@@ -476,7 +476,7 @@ export const activationService = {
         enabled: true,
         source: 'builtin' as const,
       },
-      // 即梦视频（穗禾 seedance）：用独立的 SeedanceProvider runtime，不复用 grok2api。
+      // 即梦视频（穗禾 seedance）：用独立的 SuiheITVProvider runtime，不复用 grok2api。
       // 上游路径都是 OpenAI 兼容的 /v1/videos/generations，但 grok2api 内部
       // 会强制注入 grok-image-index 协议、特殊 ratio 处理等，与穗禾参数不兼容。
       // 参数参考 new-api/relay/channel/task/suihe/constants.go：
@@ -502,7 +502,7 @@ export const activationService = {
             id: 'seedance-2.0-r',
             label: 'Seedance 2.0',
             providerModelName: 'seedance-2.0-r',
-            // SeedanceProvider runtime 同时支持 reference-to-video（多参考），
+            // 穗禾 seedance 上游同时支持 reference-to-video（多参考），
             // 默认放出来与 grok 视频对齐，用户无需手动改 capability。
             capabilities: [
               'video.text-to-video' as ModelCapability,

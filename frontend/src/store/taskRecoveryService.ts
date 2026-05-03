@@ -4,7 +4,7 @@
  * OpenSpec: 恢复流程必须走统一 Provider task-snapshot 语义，并通过统一落盘与绑定路径回写。
  */
 import type { AsyncTask, StoredMediaAsset } from '../types';
-import { getPendingTasks } from './taskQueueStore';
+import { listPendingMediaTasks } from '../services/mediaTaskClient';
 import { createLogger } from './logger';
 import { mediaGenerationService } from '../services/MediaGenerationService';
 
@@ -31,7 +31,7 @@ export async function recoverPendingTasks(
     callbacks?: RecoveryCallbacks;
   }
 ): Promise<{ recovered: number; failed: number }> {
-  const pendingTasks = await getPendingTasks(projectId);
+  const pendingTasks = await listPendingMediaTasks(projectId);
 
   if (pendingTasks.length === 0) {
     logger.info('没有需要恢复的任务');

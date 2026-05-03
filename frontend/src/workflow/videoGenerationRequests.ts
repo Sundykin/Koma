@@ -16,7 +16,7 @@ import { createLogger } from '../store/logger';
 const logger = createLogger('VideoGenerationRequests');
 
 // 这一层只做最低限度的"非空整数"兜底；按 ITV 渠道枚举/范围吸附在 ShotAnalysisService / Storyboard
-// 创建/编辑路径上已完成；上游 provider（Grok2ApiImagineITVProvider / SeedanceProvider）也会再做一次
+// 创建/编辑路径上已完成；上游 provider（Grok2ApiImagineITVProvider / SuiheITVProvider）也会再做一次
 // 自己 spec 的 normalize。这里再走 grok 风格的 normalizeVideoDurationSeconds 会把 seedance 的 5/8
 // 强制吸到 6/10，是上一轮 "时长被 grok 枚举锁死" 的根因之一。
 function coerceRequestDurationSeconds(value: unknown): number {

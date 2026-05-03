@@ -560,6 +560,14 @@ export class ProjectService {
     // 数据库级联删除
     this.projectRepo.delete(projectId);
 
+    // 联动清理通用任务表（避免删除项目后 tasks 表中残留 'project:<id>' 行）
+    try {
+      const { taskService } = await import('./tasks/TaskService');
+      taskService.removeByScope(`project:${projectId}`);
+    } catch (err) {
+      console.error('清理项目相关任务失败:', err);
+    }
+
     // 删除文件目录
     const projectDir = path.join(this.storageRoot, 'projects', projectId);
     try {

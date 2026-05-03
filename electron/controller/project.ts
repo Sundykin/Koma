@@ -196,7 +196,12 @@ class ProjectController extends BaseController {
 
   async characterDelete(args: { id: string }): Promise<{ success: boolean }> {
     await ensureServicesReady();
+    const row = services.project.characterRepo.getById(args.id);
     services.project.characterRepo.delete(args.id);
+    if (row) {
+      const { taskService } = await import('../service/tasks/TaskService');
+      taskService.removeByTarget(`project:${row.project_id}`, 'character', args.id);
+    }
     return { success: true };
   }
 
@@ -226,7 +231,12 @@ class ProjectController extends BaseController {
 
   async sceneDelete(args: { id: string }): Promise<{ success: boolean }> {
     await ensureServicesReady();
+    const row = services.project.sceneRepo.getById(args.id);
     services.project.sceneRepo.delete(args.id);
+    if (row) {
+      const { taskService } = await import('../service/tasks/TaskService');
+      taskService.removeByTarget(`project:${row.project_id}`, 'scene', args.id);
+    }
     return { success: true };
   }
 
@@ -256,7 +266,12 @@ class ProjectController extends BaseController {
 
   async propDelete(args: { id: string }): Promise<{ success: boolean }> {
     await ensureServicesReady();
+    const row = services.project.propRepo.getById(args.id);
     services.project.propRepo.delete(args.id);
+    if (row) {
+      const { taskService } = await import('../service/tasks/TaskService');
+      taskService.removeByTarget(`project:${row.project_id}`, 'prop', args.id);
+    }
     return { success: true };
   }
 
@@ -286,7 +301,12 @@ class ProjectController extends BaseController {
 
   async shotDelete(args: { id: string }): Promise<{ success: boolean }> {
     await ensureServicesReady();
+    const row = services.project.shotRepo.getById(args.id);
     services.project.shotRepo.delete(args.id);
+    if (row) {
+      const { taskService } = await import('../service/tasks/TaskService');
+      taskService.removeByTarget(`project:${row.project_id}`, 'shot', args.id);
+    }
     return { success: true };
   }
 
@@ -379,7 +399,23 @@ class ProjectController extends BaseController {
 
   async episodeDelete(args: { id: string }): Promise<{ success: boolean }> {
     await ensureServicesReady();
-    return services.project.deleteEpisode(args.id);
+    // 删 episode 之前先收集 shot ids，删完再统一清任务记录（episode + shots）
+    const episode = services.project.episodeRepo.getById(args.id);
+    const shotIds = episode
+      ? services.project.shotRepo.listByEpisode(episode.project_id, args.id).map(s => s.id)
+      : [];
+
+    const result = services.project.deleteEpisode(args.id);
+
+    if (episode && result.success) {
+      const { taskService } = await import('../service/tasks/TaskService');
+      const scope = `project:${episode.project_id}`;
+      taskService.removeByTarget(scope, 'episode', args.id);
+      for (const shotId of shotIds) {
+        taskService.removeByTarget(scope, 'shot', shotId);
+      }
+    }
+    return result;
   }
 
   async bindOwnerRefMedia(args: { projectId: string; ownerRef: any; asset: any }): Promise<{ success: boolean }> {

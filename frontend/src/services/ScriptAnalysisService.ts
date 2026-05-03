@@ -9,6 +9,7 @@ import type { ResolvedPromptTemplate } from '../store/promptTemplates';
 import { logLLMCall } from '../store/aiCallLogger';
 import { createLogger } from '../store/logger';
 import { TaskManager, Task } from './TaskManager';
+import { createTaskCancellationSignal } from './taskCancellationSignal';
 import { parseLLMJSON } from '../utils/llmJsonParser';
 import { runWithConcurrency } from '../utils/concurrency';
 import { cleanText, splitVisualClauses, CHARACTER_STORY_TOKENS, sanitizeCharacterAppearance } from '../utils/textUtils';
@@ -699,6 +700,19 @@ export class BackgroundAnalysisService {
   }
 
   /**
+   * 把已存在的 task 绑定到本服务实例，使后续 runAnalysis 直接复用 —— 不再
+   * createTask 创新任务。给 main-side 'analysis:script' handler 的 renderer
+   * fulfiller 用。
+   */
+  bindTask(taskId: string): void {
+    const existing = TaskManager.getTask(taskId);
+    if (!existing) {
+      throw new Error(`bindTask: 找不到 taskId=${taskId}`);
+    }
+    this.task = existing;
+  }
+
+  /**
    * 启动后台解析任务
    */
   async startAnalysis(
@@ -793,7 +807,11 @@ export class BackgroundAnalysisService {
     } as any);
   }
 
-  private async runAnalysis(
+  /**
+   * 主流程：完整执行剧本解析。可被 analysis:script 的 renderer fulfiller 直接调用。
+   * 注意：调用方需先 set this.task（通过 startAnalysis）。
+   */
+  async runAnalysis(
     episodeId: string,
     episodeName: string,
     script: string,
@@ -803,6 +821,7 @@ export class BackgroundAnalysisService {
     if (!this.task) return;
 
     const taskId = this.task.id;
+    const cancellation = createTaskCancellationSignal(taskId);
 
     try {
       // 创建共享上下文
@@ -985,6 +1004,10 @@ export class BackgroundAnalysisService {
       }
 
       const stageResults = await Promise.all(stageTasks);
+
+      // 任务在阶段执行期间被 cancel：不写完成态（main 已经把状态改成 cancelled）
+      if (cancellation.signal.aborted) return;
+
       const errors = stageResults.filter(result => !result.success).map(result => result.error || `${result.stage} 提取失败`);
       if (errors.length > 0) {
         throw new Error(errors.join('；'));
@@ -1006,11 +1029,15 @@ export class BackgroundAnalysisService {
         },
       });
     } catch (error: unknown) {
+      // 已被 cancel：状态已是 cancelled，不要覆盖成 failed
+      if (cancellation.signal.aborted) return;
       const errorMessage = error instanceof Error ? error.message : String(error);
       TaskManager.updateTask(taskId, {
         status: 'failed',
         error: errorMessage || '解析失败',
       });
+    } finally {
+      cancellation.dispose();
     }
   }
 

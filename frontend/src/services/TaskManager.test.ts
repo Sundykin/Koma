@@ -1,104 +1,98 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { STORAGE_KEYS } from '../constants/storageKeys';
 import { TaskManager } from './TaskManager';
+import type { TaskRecord } from './tasksIPC';
 
-const ROOT_PATH = '/tmp/koma-task-manager-tests';
 const PROJECT_ID = 'project-1';
-const TASKS_PATH = `${ROOT_PATH}/projects/${PROJECT_ID}/background-tasks.json`;
+const SCOPE = `project:${PROJECT_ID}`;
+
+function makeRecord(partial: Partial<TaskRecord> & { id: string }): TaskRecord {
+  return {
+    id: partial.id,
+    scope: partial.scope ?? SCOPE,
+    type: partial.type ?? 'script-analysis',
+    status: partial.status ?? 'pending',
+    progress: partial.progress ?? 0,
+    targetKind: partial.targetKind ?? 'episode',
+    targetId: partial.targetId ?? 'episode-1',
+    remoteTaskId: partial.remoteTaskId ?? null,
+    attempt: partial.attempt ?? 0,
+    maxRetries: partial.maxRetries ?? 3,
+    error: partial.error ?? null,
+    payload: partial.payload ?? {
+      id: partial.id,
+      projectId: PROJECT_ID,
+      type: 'script-analysis',
+      category: 'script',
+      subType: 'script-analysis',
+      targetType: 'episode',
+      targetId: 'episode-1',
+      status: partial.status ?? 'pending',
+      progress: partial.progress ?? 0,
+      createdAt: 1,
+      updatedAt: 2,
+      lastHeartbeat: 2,
+    },
+    createdAt: partial.createdAt ?? 1,
+    updatedAt: partial.updatedAt ?? 2,
+    heartbeatAt: partial.heartbeatAt ?? null,
+    completedAt: partial.completedAt ?? null,
+  };
+}
 
 describe('TaskManager restart reconciliation', () => {
-  const files = new Map<string, string>();
+  const store = new Map<string, TaskRecord>();
+  let upsertSpy: ReturnType<typeof vi.fn>;
+  let listSpy: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
-    files.clear();
-    localStorage.clear();
-    localStorage.setItem(STORAGE_KEYS.STORAGE_CONFIG, JSON.stringify({
-      rootPath: ROOT_PATH,
-      version: 1,
-    }));
+    store.clear();
+    listSpy = vi.fn(async (query?: { scope?: string }) => {
+      const list = Array.from(store.values());
+      if (query?.scope) return list.filter(r => r.scope === query.scope);
+      return list;
+    });
+    upsertSpy = vi.fn(async (record: TaskRecord) => {
+      store.set(record.id, record);
+      return record;
+    });
 
     (window as typeof window & { electronAPI?: unknown }).electronAPI = {
-      fs: {
-        exists: vi.fn(async (path: string) => files.has(path)),
-        readFile: vi.fn(async (path: string) => files.get(path) ?? ''),
-        readFileAsBase64: vi.fn(async () => ''),
-        writeFile: vi.fn(async (path: string, data: string) => {
-          files.set(path, data);
-        }),
-        downloadFile: vi.fn(async () => ({ success: true, size: 0 })),
-        mkdir: vi.fn(async () => {}),
-        readdir: vi.fn(async () => []),
-        stat: vi.fn(async () => ({
-          size: 0,
-          isDirectory: false,
-          isFile: true,
-          createdAt: 0,
-          modifiedAt: 0,
-        })),
-        remove: vi.fn(async () => {}),
-        copy: vi.fn(async () => {}),
+      tasks: {
+        list: listSpy,
+        get: vi.fn(async (id: string) => store.get(id) ?? null),
+        upsert: upsertSpy,
+        delete: vi.fn(async (id: string) => store.delete(id)),
+        removeByScope: vi.fn(async () => 0),
+        removeByTarget: vi.fn(async () => 0),
+        gc: vi.fn(async () => ({ purgedByAge: 0, purgedByLimit: 0 })),
+        getRetention: vi.fn(async () => ({ retentionDays: 7, perScopeLimit: 200 })),
+        setRetention: vi.fn(async () => ({ retentionDays: 7, perScopeLimit: 200 })),
+        onUpdated: vi.fn(() => () => undefined),
       },
-      app: {
-        getPath: vi.fn(async () => '/tmp'),
-        getVersion: vi.fn(async () => '1.0.0'),
-      },
-      window: {
-        minimize: vi.fn(async () => {}),
-        maximize: vi.fn(async () => {}),
-        close: vi.fn(async () => {}),
-        isMaximized: vi.fn(async () => false),
-      },
-      dialog: {
-        openFile: vi.fn(async () => ({ canceled: true, filePaths: [] })),
-        openDirectory: vi.fn(async () => ({ canceled: true, filePaths: [] })),
-        saveFile: vi.fn(async () => ({ canceled: true, filePath: undefined })),
-      },
-      shell: {
-        openExternal: vi.fn(async () => {}),
-        showItemInFolder: vi.fn(async () => {}),
-      },
-      project: {},
     };
   });
 
   afterEach(() => {
     TaskManager.dispose();
-    localStorage.clear();
     delete (window as typeof window & { electronAPI?: unknown }).electronAPI;
   });
 
   it.each(['pending', 'running', 'processing'] as const)(
     'marks %s script-analysis tasks from a previous launch as failed on initialize',
     async (status) => {
-      files.set(TASKS_PATH, JSON.stringify({
-        tasks: [
-          {
-            id: `old-${status}`,
-            projectId: PROJECT_ID,
-            type: 'script-analysis',
-            category: 'script',
-            subType: 'script-analysis',
-            status,
-            progress: 17,
-            targetType: 'episode',
-            targetId: 'episode-1',
-            createdAt: 1,
-            updatedAt: 2,
-            lastHeartbeat: 2,
-          },
-        ],
-        updatedAt: 2,
-      }, null, 2));
+      store.set('old-' + status, makeRecord({ id: 'old-' + status, status }));
 
       await TaskManager.initialize(PROJECT_ID);
 
-      const task = TaskManager.getTask(`old-${status}`);
+      const task = TaskManager.getTask('old-' + status);
       expect(task?.status).toBe('failed');
       expect(task?.error).toBe('任务在软件重启后中断');
 
-      const persisted = JSON.parse(files.get(TASKS_PATH) || '{}');
-      expect(persisted.tasks?.[0]?.status).toBe('failed');
-      expect(persisted.tasks?.[0]?.error).toBe('任务在软件重启后中断');
+      // 持久化通过 IPC 上行
+      const persistedCalls = upsertSpy.mock.calls.map(c => c[0]) as TaskRecord[];
+      const last = persistedCalls.find(r => r.id === 'old-' + status);
+      expect(last?.status).toBe('failed');
+      expect(last?.error).toBe('任务在软件重启后中断');
     }
   );
 
@@ -114,27 +108,28 @@ describe('TaskManager restart reconciliation', () => {
     expect(sessionId).toBeTruthy();
     await new Promise(resolve => setTimeout(resolve, 0));
 
-    files.set(TASKS_PATH, JSON.stringify({
-      tasks: [
-        {
-          id: created.id,
-          projectId: PROJECT_ID,
-          sessionId,
-          type: 'script-analysis',
-          category: 'script',
-          subType: 'script-analysis',
-          status: 'running',
-          progress: 42,
-          targetType: 'episode',
-          targetId: 'episode-1',
-          targetName: '第 1 集',
-          createdAt: 1,
-          updatedAt: 2,
-          lastHeartbeat: 2,
-        },
-      ],
-      updatedAt: 2,
-    }, null, 2));
+    // 模拟一次 running 落盘
+    store.set(created.id, makeRecord({
+      id: created.id,
+      status: 'running',
+      progress: 42,
+      payload: {
+        id: created.id,
+        projectId: PROJECT_ID,
+        sessionId,
+        type: 'script-analysis',
+        category: 'script',
+        subType: 'script-analysis',
+        targetType: 'episode',
+        targetId: 'episode-1',
+        targetName: '第 1 集',
+        status: 'running',
+        progress: 42,
+        createdAt: 1,
+        updatedAt: 2,
+        lastHeartbeat: 2,
+      },
+    }));
 
     TaskManager.dispose();
 

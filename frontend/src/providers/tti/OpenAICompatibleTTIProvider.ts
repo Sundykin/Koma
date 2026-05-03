@@ -6,6 +6,7 @@
 import type { TTIModelConfig, ProviderStartResult, ProviderTaskSnapshot } from '../../types';
 import type { TTIProvider, TTIOptions, TTIRequest, ImageResult } from './types';
 import { safeFetch } from '../../utils/safeFetch';
+import { buildChannelAuthRequest } from '../channel/auth';
 import { createLogger } from '../../store/logger';
 import { parseDataUrl } from '../../utils/encoding';
 import { resolveTTISize } from './utils/ttiSize';
@@ -316,23 +317,20 @@ export class OpenAICompatibleTTIProvider implements TTIProvider {
   }
 
   private getHeaders(): Record<string, string> {
-    if (this.config.profileId) {
-      return {
-        'x-koma-channel-id': this.config.profileId,
-        'Content-Type': 'application/json',
-      };
-    }
-    return {
-      'Authorization': `Bearer ${this.config.apiKey || ''}`,
-      'Content-Type': 'application/json',
-    };
+    return buildChannelAuthRequest({
+      channelId: this.config.profileId,
+      apiKey: this.config.apiKey,
+      mode: 'bearer-header',
+      headers: { 'Content-Type': 'application/json' },
+    }).headers;
   }
 
   private getAuthOnlyHeaders(): Record<string, string> {
-    if (this.config.profileId) {
-      return { 'x-koma-channel-id': this.config.profileId };
-    }
-    return { 'Authorization': `Bearer ${this.config.apiKey || ''}` };
+    return buildChannelAuthRequest({
+      channelId: this.config.profileId,
+      apiKey: this.config.apiKey,
+      mode: 'bearer-header',
+    }).headers;
   }
 
   validate(): boolean {

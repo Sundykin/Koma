@@ -14,7 +14,7 @@ import {
   type EditorStepContext,
 } from '../../workflow/editorStepRegistry';
 import { loadEpisodeAnalysis } from '../../store/projectStore';
-import { TaskManager } from '../../services/TaskManager';
+import { useTaskTransitions } from '../../hooks';
 // 副作用 import：把各步骤 Component 注入到 registry
 import './steps';
 
@@ -87,21 +87,22 @@ export const EditorView: React.FC<EditorViewProps> = ({
         })
         .catch(() => {/* 加载失败时按未就绪处理 */});
     }
-    // 监听后台解析任务完成事件
-    const unsubscribe = TaskManager.addListener((task) => {
-      if (task.projectId !== activeProject.id) return;
-      if (task.type !== 'script-analysis') return;
-      if (task.targetId !== activeEpisode.id) return;
-      // 任务完成时标记就绪
-      if (task.status === 'completed') {
-        setScriptAnalysisReady(true);
-      }
-    });
     return () => {
       cancelled = true;
-      unsubscribe();
     };
   }, [activeProject.id, activeEpisode]);
+
+  // 后台解析任务完成 → 标 ready；走 edge-triggered 转换事件
+  useTaskTransitions(
+    {
+      scope: `project:${activeProject.id}`,
+      type: 'script-analysis',
+      targetKind: 'episode',
+      targetId: activeEpisode?.id,
+      to: ['completed'],
+    },
+    () => setScriptAnalysisReady(true)
+  );
 
   // 数据驱动："下一步"按钮从 editorStepRegistry.nextAction 派生
   const getActionButton = () => {
