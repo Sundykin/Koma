@@ -13,6 +13,7 @@ module.exports = [
       'src/**/*.test.{ts,tsx}',
       'src/**/*.spec.{ts,tsx}',
       'src/components/chat/ChatPromptEditor.tsx',
+      'src/hooks/useTasks.ts',
       'src/hooks/useChannelChangesVersion.ts',
       'src/providers/tti/GeminiNativeTTIProvider.ts',
       'src/services/simpleExportRenderer.ts',
