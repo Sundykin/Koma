@@ -492,7 +492,10 @@ export class Grok2ApiImagineTTIProvider implements TTIProvider {
       }
 
       const filename = `image${i + 1}.${extFromMime(mimeType)}`;
-      form.append('image', new Blob([bytes], { type: mimeType }), filename);
+      // OpenAI gpt-image-1/2 多参考图字段名为 `image[]`（new-api / komaapi 都接受）；
+      // 与 OpenAICompatibleTTIProvider 对齐，避免 `Field required: image[]` 422。
+      // 风格锚定参考图被注入后，所有生图都会走带 references 的路径，单图也送 `image[]`。
+      form.append('image[]', new Blob([bytes], { type: mimeType }), filename);
     }
 
     if (debugBody) {

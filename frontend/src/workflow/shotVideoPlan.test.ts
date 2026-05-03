@@ -38,21 +38,27 @@ function createShot(partial?: Partial<Shot>): Shot {
   };
 }
 
+// 测试 fixture 必须使用 *已注册的* providerType（resolveConfiguredChannelModel 会
+// 通过 getBuiltInChannelDefinition 在 ProviderRegistry 里查找 providerType；
+// 老的 'runway' / 'vidu' / 'kling' 在 channel 收敛后已下线，会让 resolver 返回 undefined）。
+// 这里用现役的 'koma-suihe-itv'（即梦，仅图生视频）+ 'grok2api-imagine-itv'（Grok，全能力）
+// 模拟"图生视频专用渠道"和"参考生视频可用渠道"两个真实组合。
 function createSettings(): AppSettings {
   return {
     channelConfigs: [
       {
-        id: 'runway-main',
-        name: 'Runway',
+        id: 'koma-suihe-main',
+        name: 'Koma 即梦（图生视频）',
         category: 'itv',
-        providerType: 'runway',
-        providerConfig: { apiKey: 'runway-key' },
-        defaultModelId: 'runway-model-a',
+        providerType: 'koma-suihe-itv',
+        providerConfig: { apiKey: 'suihe-key', baseUrl: 'https://komaapi.com' },
+        defaultModelId: 'seedance-i2v-only',
         models: [
           {
-            id: 'runway-model-a',
-            label: 'runway-a',
-            providerModelName: 'runway-a',
+            id: 'seedance-i2v-only',
+            label: 'Seedance Image-to-Video Only',
+            providerModelName: 'seedance-2.0-r',
+            // 故意只声明 image-to-video，模拟"不支持文生 / 不支持参考生"的渠道
             capabilities: ['video.image-to-video'],
           },
         ],
@@ -62,17 +68,17 @@ function createSettings(): AppSettings {
         updatedAt: 1,
       },
       {
-        id: 'vidu-main',
-        name: 'Vidu',
+        id: 'grok-main',
+        name: 'Koma 官方 Grok',
         category: 'itv',
-        providerType: 'vidu',
-        providerConfig: { apiKey: 'vidu-key', baseUrl: 'https://vidu.example.com' },
-        defaultModelId: 'vidu-model-a',
+        providerType: 'grok2api-imagine-itv',
+        providerConfig: { apiKey: 'grok-key', baseUrl: 'https://komaapi.com' },
+        defaultModelId: 'grok-imagine-video',
         models: [
           {
-            id: 'vidu-model-a',
-            label: 'vidu-a',
-            providerModelName: 'vidu-a',
+            id: 'grok-imagine-video',
+            label: 'grok-imagine-video',
+            providerModelName: 'grok-imagine-video',
             capabilities: [
               'video.text-to-video',
               'video.image-to-video',
@@ -89,8 +95,8 @@ function createSettings(): AppSettings {
     ],
     mediaDefaults: {
       itv: {
-        channelId: 'runway-main',
-        modelId: 'runway-model-a',
+        channelId: 'koma-suihe-main',
+        modelId: 'seedance-i2v-only',
       },
     },
     promptTemplates: {},
@@ -281,6 +287,138 @@ describe('shotVideoPlan', () => {
     expect(plan.capability).toBe('video.text-to-video');
   });
 
+  it('阶段 2：多参考模式 + 已生成图 + 模型支持参考生视频 → 走参考生视频，锚点+资产都进 references', () => {
+    const character: Character = {
+      id: 'char-1',
+      name: '角色A',
+      role: 'protagonist',
+      prompt: 'hero',
+      media: { costumePhoto: createImageAsset('https://cdn.example.com/char.png') },
+    };
+    const scene: Scene = {
+      id: 'scene-1',
+      name: '场景A',
+      prompt: 'dorm',
+      media: { previewImage: createImageAsset('https://cdn.example.com/scene.png') },
+    } as unknown as Scene;
+    const shot = createShot({
+      videoMode: 'multi-ref',
+      characters: ['char-1'],
+      scenes: ['scene-1'],
+      media: {
+        images: [createImageAsset('https://cdn.example.com/anchor.png')],
+        currentImageIndex: 0,
+      },
+    });
+
+    const plan = collectShotVideoPlan({
+      shot,
+      characters: [character],
+      scenes: [scene],
+      props: [],
+      modelCapabilities: ['video.image-to-video', 'video.reference-to-video'],
+    });
+
+    // 新行为：multi-ref + 模型支持 ref-to-video → reference-to-video
+    expect(plan.capability).toBe('video.reference-to-video');
+    expect(plan.bundle.hasShotImage).toBe(true);
+    expect(plan.bundle.hasGridAnchor).toBe(false);
+    // bundle 中应含 锚点 / 场景 / 角色 三项
+    expect(plan.bundle.items.map(i => i.kind)).toEqual(['shot-anchor', 'scene', 'character']);
+    // visualReferenceInputs = 全 bundle items 的 source（references[0..N]）
+    expect(plan.visualReferenceInputs).toHaveLength(3);
+    expect(plan.visualReferenceInputs[0]).toEqual(createImageAsset('https://cdn.example.com/anchor.png'));
+  });
+
+  it('阶段 2：首帧延展模式（first-frame）即使模型支持参考生视频也走图生视频，单图微动语义优先', () => {
+    const character: Character = {
+      id: 'char-1',
+      name: '角色A',
+      role: 'protagonist',
+      prompt: 'hero',
+      media: { costumePhoto: createImageAsset('https://cdn.example.com/char.png') },
+    };
+    const shot = createShot({
+      videoMode: 'first-frame',
+      characters: ['char-1'],
+      media: {
+        images: [createImageAsset('https://cdn.example.com/anchor.png')],
+        currentImageIndex: 0,
+      },
+    });
+
+    const plan = collectShotVideoPlan({
+      shot,
+      characters: [character],
+      scenes: [],
+      props: [],
+      modelCapabilities: ['video.image-to-video', 'video.reference-to-video'],
+    });
+
+    expect(plan.capability).toBe('video.image-to-video');
+    expect(plan.primaryImageInput).toEqual(createImageAsset('https://cdn.example.com/anchor.png'));
+    // 角色图也作 additional（modelCaps 已知）
+    expect(plan.additionalReferenceImages).toHaveLength(1);
+  });
+
+  it('阶段 2：多参考模式 + 已生成图 + 模型只支持图生视频 → 兼容降级，资产进 additional', () => {
+    const character: Character = {
+      id: 'char-1',
+      name: '角色A',
+      role: 'protagonist',
+      prompt: 'hero',
+      media: { costumePhoto: createImageAsset('https://cdn.example.com/char.png') },
+    };
+    const shot = createShot({
+      videoMode: 'multi-ref',
+      characters: ['char-1'],
+      media: {
+        images: [createImageAsset('https://cdn.example.com/anchor.png')],
+        currentImageIndex: 0,
+      },
+    });
+
+    const plan = collectShotVideoPlan({
+      shot,
+      characters: [character],
+      scenes: [],
+      props: [],
+      modelCapabilities: ['video.image-to-video'],
+    });
+
+    // 模型不支持 ref-to-video → 降级到 image-to-video
+    expect(plan.capability).toBe('video.image-to-video');
+    expect(plan.primaryImageInput).toEqual(createImageAsset('https://cdn.example.com/anchor.png'));
+    // 修复"角色图被悄悄丢"暗坑：modelCaps 已知时角色图作 additional
+    expect(plan.additionalReferenceImages).toEqual([
+      createImageAsset('https://cdn.example.com/char.png'),
+    ]);
+  });
+
+  it('阶段 2：grid 模式 + multi-ref + 模型支持参考生视频 → reference-to-video，bundle.hasGridAnchor=true', () => {
+    const shot = createShot({
+      imageMode: 'grid',
+      videoMode: 'multi-ref',
+      media: {
+        images: [createImageAsset('https://cdn.example.com/grid-3x3.png')],
+        currentImageIndex: 0,
+      },
+    });
+
+    const plan = collectShotVideoPlan({
+      shot,
+      characters: [],
+      scenes: [],
+      props: [],
+      modelCapabilities: ['video.reference-to-video', 'video.image-to-video'],
+    });
+
+    expect(plan.capability).toBe('video.reference-to-video');
+    expect(plan.bundle.hasGridAnchor).toBe(true);
+    expect(plan.bundle.items[0].kind).toBe('grid-anchor');
+    expect(plan.bundle.items[0].mentionToken).toBe('@grid_anchor');
+  });
+
   it('构建视频请求时会把任意时长归一到允许档位', () => {
     const plan = collectShotVideoPlan({
       shot: createShot(),
@@ -309,27 +447,30 @@ describe('shotVideoPlan', () => {
 
     const supported = resolveShotVideoCapabilitySupport({
       settings,
-      selectionKey: 'runway-main::runway-model-a',
+      selectionKey: 'koma-suihe-main::seedance-i2v-only',
       capability: 'video.image-to-video',
     });
     expect(supported.disabledReason).toBeUndefined();
     expect(supported.capability).toBe('video.image-to-video');
-    expect(supported.resolvedContext?.definition.id).toBe('runway');
-    expect(supported.effectiveSelectionKey).toBe('runway-main::runway-model-a');
+    expect(supported.resolvedContext?.definition.id).toBe('koma-suihe-itv');
+    expect(supported.effectiveSelectionKey).toBe('koma-suihe-main::seedance-i2v-only');
 
+    // 这个模型只声明了 image-to-video，请求 text-to-video 应被拒
     const unsupportedBySelection = resolveShotVideoCapabilitySupport({
-      selectionKey: 'runway-main::runway-model-a',
+      selectionKey: 'koma-suihe-main::seedance-i2v-only',
       settings,
       capability: 'video.text-to-video',
     });
     expect(unsupportedBySelection.disabledReason).toBe('当前选择的模型不支持文生视频，请切换模型');
 
+    // 把全能力渠道（grok-main）从 settings 里过滤掉，只剩 i2v-only 渠道；
+    // 此时项目里没有任何渠道支持 reference-to-video → 应报"当前没有配置支持..."
     const unsupportedEverywhere = resolveShotVideoCapabilitySupport({
       settings: {
         ...settings,
-        channelConfigs: settings.channelConfigs.filter(config => config.id === 'runway-main'),
+        channelConfigs: settings.channelConfigs.filter(config => config.id === 'koma-suihe-main'),
       },
-      selectionKey: 'runway-main::runway-model-a',
+      selectionKey: 'koma-suihe-main::seedance-i2v-only',
       capability: 'video.reference-to-video',
     });
     expect(unsupportedEverywhere.disabledReason).toBe('当前没有配置支持参考生视频的视频模型');
@@ -353,12 +494,12 @@ describe('shotVideoPlan', () => {
   it('能力支持时返回解析后的模型上下文', () => {
     const support = resolveShotVideoCapabilitySupport({
       settings: createSettings(),
-      selectionKey: 'vidu-main::vidu-model-a',
+      selectionKey: 'grok-main::grok-imagine-video',
       capability: 'video.reference-to-video',
     });
 
     expect(support.disabledReason).toBeUndefined();
-    expect(support.resolvedContext?.definition.id).toBe('vidu');
-    expect(support.resolvedContext?.model.id).toBe('vidu-model-a');
+    expect(support.resolvedContext?.definition.id).toBe('grok2api-imagine-itv');
+    expect(support.resolvedContext?.model.id).toBe('grok-imagine-video');
   });
 });

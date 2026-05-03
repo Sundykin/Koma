@@ -18,6 +18,17 @@ export interface ProjectStyleSnapshot {
   sourceType: StylePresetSourceType;
   sourcePresetId: string;
   createdAt: number;
+  /**
+   * 风格参考图（"画风锚"）。生成角色 / 场景 / 道具图时会作为 references[0] 注入，
+   * provider 走图生图分支，让模型严格继承画风（色调 / 笔触 / 光影 / 笔法 / 整体氛围），
+   * 不参考其中的人物 / 物体 / 服装 等具体内容（由 prompt 硬约束实现）。
+   *
+   * 优先级：
+   *   1. 项目级 styleSnapshot.styleReferenceImage（用户在项目设置上传/覆盖）
+   *   2. 全局风格预设默认图（从 ThemePreset.defaultStyleReferenceFile 推 userData 路径）
+   *   3. 都没有 → 不注入风格图，回退到纯 text-to-image
+   */
+  styleReferenceImage?: import('./media').StoredMediaAsset;
 }
 
 // 项目接口定义
@@ -96,6 +107,14 @@ export interface ThemePreset {
   ttiStylePrefix: string;   // TTI 提示词风格前缀
   llmPromptSuffix: string;  // LLM 提示词风格后缀
   previewImage?: string;    // 预览图
+  /**
+   * 默认风格参考图文件名（不带路径）。
+   * 内置图打包在 electron/resources/style-references/ 下，启动时拷贝到
+   * `${userData}/style-references/`；用户未上传项目级覆盖时，本字段决定从哪个
+   * 默认图作画风锚。
+   * 例：`'realistic.svg'` → 解析为 `${userData}/style-references/realistic.svg`
+   */
+  defaultStyleReferenceFile?: string;
 }
 
 // ========== 存储相关类型 ==========

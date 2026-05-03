@@ -38,6 +38,13 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   'controller/fs/stat', 'controller/fs/remove', 'controller/fs/copy',
   'controller/app/openExternal', 'controller/app/showItemInFolder',
   'controller/app/getPath', 'controller/app/getVersion',
+  // 风格参考图（"画风锚"）：全局上传/清除 + 项目级上传/清除 + 路径解析
+  'controller/app/getStyleReferenceImagePath',
+  'controller/app/getActiveStyleReferenceImagePath',
+  'controller/app/saveStyleReferenceImage',
+  'controller/app/clearStyleReferenceImage',
+  'controller/app/saveProjectStyleReferenceImage',
+  'controller/app/clearProjectStyleReferenceImage',
   'controller/project/setStorageRoot',
   'controller/project/list', 'controller/project/create',
   'controller/project/load', 'controller/project/loadFull',

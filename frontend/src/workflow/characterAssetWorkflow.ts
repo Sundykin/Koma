@@ -28,6 +28,11 @@ import { buildCharacterCostumeTemplateVariables } from './promptVariableBuilders
 import { compileCharacterPreviewVideoRequest } from './videoGenerationRequests';
 import type { StyleSnapshotLike } from '../utils/promptNormalize';
 import { normalizeVideoDurationSeconds } from '../utils/videoDuration';
+import {
+  appendStyleAnchorGuard,
+  resolveActiveStyleReferenceAsset,
+} from '../services/styleReferenceResolver';
+import type { ProjectStyleSnapshot } from '../types';
 
 const logger = createLogger('CharacterAsset');
 
@@ -342,10 +347,21 @@ export async function generateCostumePhoto(
       'tti_character_costume',
       buildCharacterCostumeTemplateVariables(character, stylePrefix || '')
     );
-    const prompt = faceReference
+    const basePrompt = faceReference
       ? appendSelectedFaceReferencePrompt(appendCandidateVariationPrompt(resolvedPrompt.prompt, variationPrompt))
       : appendCandidateVariationPrompt(resolvedPrompt.prompt, variationPrompt);
-    const references = faceReference ? [faceReference] : [];
+
+    // 风格锚定参考图（references[0]）：让模型严格继承画风但不继承内容。
+    // 项目级 styleSnapshot.styleReferenceImage 优先，回退到预设默认图。
+    const styleAnchorAsset = await resolveActiveStyleReferenceAsset({
+      project: { styleSnapshot: (styleSnapshot || project?.styleSnapshot) as ProjectStyleSnapshot | undefined },
+      themeId: theme,
+    });
+    const prompt = appendStyleAnchorGuard(basePrompt, Boolean(styleAnchorAsset));
+    const references = [
+      ...(styleAnchorAsset ? [styleAnchorAsset] : []),
+      ...(faceReference ? [faceReference] : []),
+    ];
 
     onProgress?.(10, '调用 TTI 服务...');
 
@@ -429,7 +445,13 @@ export async function generateCharacterFaceCandidate(
 
   try {
     const stylePrefix = await getResolvedTTIStylePrefix(styleSnapshot || project?.styleSnapshot, theme, stylePrompt);
-    const prompt = buildCharacterFaceCandidatePrompt(character, stylePrefix || '', variationPrompt);
+    const basePrompt = buildCharacterFaceCandidatePrompt(character, stylePrefix || '', variationPrompt);
+    const styleAnchorAsset = await resolveActiveStyleReferenceAsset({
+      project: { styleSnapshot: (styleSnapshot || project?.styleSnapshot) as ProjectStyleSnapshot | undefined },
+      themeId: theme,
+    });
+    const prompt = appendStyleAnchorGuard(basePrompt, Boolean(styleAnchorAsset));
+    const references = styleAnchorAsset ? [styleAnchorAsset] : [];
 
     onProgress?.(10, '调用 TTI 服务...');
 
@@ -469,7 +491,7 @@ export async function generateCharacterFaceCandidate(
           },
           request: {
             prompt,
-            references: [],
+            references,
             options: {
               aspectRatio: finalAspectRatio,
               ...(seed !== undefined ? { seed } : undefined),
@@ -530,12 +552,18 @@ export async function generateCharacterFaceCandidatesBatch(
 
   try {
     const stylePrefix = await getResolvedTTIStylePrefix(styleSnapshot || project?.styleSnapshot, theme, stylePrompt);
-    const prompt = buildCharacterFaceCandidatesBatchPrompt(
+    const basePrompt = buildCharacterFaceCandidatesBatchPrompt(
       character,
       stylePrefix || '',
       variations,
       resolvedBatchCount,
     );
+    const styleAnchorAsset = await resolveActiveStyleReferenceAsset({
+      project: { styleSnapshot: (styleSnapshot || project?.styleSnapshot) as ProjectStyleSnapshot | undefined },
+      themeId: theme,
+    });
+    const prompt = appendStyleAnchorGuard(basePrompt, Boolean(styleAnchorAsset));
+    const batchReferences = styleAnchorAsset ? [styleAnchorAsset] : [];
 
     onProgress?.(10, '调用 TTI 服务...');
 
@@ -576,7 +604,7 @@ export async function generateCharacterFaceCandidatesBatch(
           },
           request: {
             prompt,
-            references: [],
+            references: batchReferences,
             count: resolvedBatchCount,
             options: {
               aspectRatio: finalAspectRatio,

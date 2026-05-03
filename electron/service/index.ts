@@ -9,6 +9,7 @@ import { pluginService } from './plugin';
 import { chatService, ChatService } from './chat';
 import { linghuiService, LinghuiService } from './linghui';
 import { baseDB, settingsDB } from './storage';
+import { syncBuiltinStyleReferences } from './styleReferences';
 
 export const services = {
   project: projectService,
@@ -32,6 +33,8 @@ export async function initServices(): Promise<void> {
     services.linghui.init(services.project.getStorageRoot());
     await services.ffmpeg.init(path.join(services.project.getStorageRoot(), 'cache', 'ffmpeg'));
     await services.plugin.init();
+    // 内置风格参考图镜像到业务根，让 koma-local:// 协议可直读
+    await syncBuiltinStyleReferences();
     initialized = true;
   })();
 

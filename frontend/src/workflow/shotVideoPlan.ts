@@ -6,6 +6,7 @@ import type {
   Prop,
   Scene,
   Shot,
+  ShotVideoMode,
   StoredMediaAsset,
   VideoGenerationCapability,
 } from '../types';
@@ -21,6 +22,8 @@ import {
   type ResolvedChannelModelContext,
 } from '../providers/channel/resolver';
 import { buildShotAssetReferences } from './assetReferenceBuilder';
+import { buildShotReferenceBundle } from '../services/shotReference/builder';
+import type { ShotReferenceBundle, ShotReferenceItem } from '../services/shotReference/types';
 
 export const SHOT_VIDEO_CAPABILITY_LABELS: Record<VideoGenerationCapability, string> = {
   'video.text-to-video': '文生视频',
@@ -31,6 +34,13 @@ export const SHOT_VIDEO_CAPABILITY_LABELS: Record<VideoGenerationCapability, str
 
 export interface ShotVideoPlan {
   shot: Shot;
+  /**
+   * 阶段 2 引入的统一引用集合。生图和生视频共用同一份 bundle.items，下游严格
+   * 按 items 的位置顺序分配 references[0..N]。primaryImageInput / additional /
+   * visualReferenceInputs 是从 bundle 派生出来的视图——保留给老消费者使用，新
+   * 代码应优先消费 bundle。
+   */
+  bundle: ShotReferenceBundle;
   selectedImageAsset?: StoredMediaAsset;
   selectedImageSource?: string;
   primaryImageInput?: MediaAssetSource;
@@ -70,147 +80,186 @@ function getVisualReferenceSource(source?: MediaAssetSource): string | undefined
   return getMediaAssetDisplaySource(source)?.trim() || undefined;
 }
 
-function pushUniqueSource(
-  bucket: MediaAssetSource[],
-  dedupe: Set<string>,
-  source?: MediaAssetSource,
-  excludeKey?: string,
-) {
-  const normalized = getVisualReferenceSource(source);
-  if (!normalized || normalized === excludeKey || dedupe.has(normalized)) {
-    return;
-  }
-
-  dedupe.add(normalized);
-  bucket.push(source as MediaAssetSource);
-}
-
 export function collectShotVideoPlan(params: {
   shot: Shot;
   characters: Character[];
   scenes: Scene[];
   props: Prop[];
   /**
-   * 当前选中 ITV 模型的能力矩阵。传入后：若没有真主图（selectedImageAsset）
-   * 但模型支持 video.reference-to-video，则不再把首个参考图/视频缩略图
-   * 伪装成主图，而是直接走参考生视频。未传入时保持旧有的兼容降级路径。
+   * 当前选中 ITV 模型的能力矩阵。传入后：
+   *  - 模型支持 video.reference-to-video 且分镜处于 multi-ref 模式：把分镜锚点
+   *    图（grid-anchor / shot-anchor）和资产图全部作 references；
+   *  - 模型不支持时按 image-to-video 退化（锚点作 primary，资产/上传作 additional）。
+   *
+   * 未传入时按保守策略：仅当 shot 有锚点或用户上传时走 image-to-video，资产
+   * 视觉默认不进 additional——保持老调用路径在测试场景下的语义。
    */
   modelCapabilities?: ModelCapability[];
+  /** 模型可接受的最大引用图数量。不传时由 bundle builder 走 DEFAULT_MAX_REFS。 */
+  modelMaxRefs?: number;
 }): ShotVideoPlan {
   const normalizedShot = normalizeShotMediaState(params.shot);
   const selectedImageIndex = normalizedShot.media?.currentImageIndex ?? 0;
   const selectedImageAsset = normalizedShot.media?.images?.[selectedImageIndex];
   const selectedImageSource = getVisualReferenceSource(selectedImageAsset);
-  const selectedReferenceIndex = normalizedShot.media?.selectedReferenceIndex ?? 0;
-  const selectedReferenceAsset = normalizedShot.media?.references?.[selectedReferenceIndex];
-  const selectedReferenceSource = getVisualReferenceSource(selectedReferenceAsset);
-  const currentVideoIndex = normalizedShot.media?.currentVideoIndex ?? 0;
-  const currentVideoAsset = normalizedShot.media?.videos?.[currentVideoIndex];
-  const currentVideoPosterSource = getVisualReferenceSource(currentVideoAsset);
 
-  const {
-    compilationAssets,
-  } = buildShotAssetReferences(normalizedShot, params.characters, params.scenes, params.props);
+  // 一份 bundle 既给生图也给生视频；下游路由按 capability 分发到 primaryImage /
+  // additionalReferences / referenceImages。
+  const bundle = buildShotReferenceBundle({
+    shot: normalizedShot,
+    characters: params.characters,
+    scenes: params.scenes,
+    props: params.props,
+    options: { maxRefs: params.modelMaxRefs },
+  });
 
-  const modelSupportsReferenceToVideo = params.modelCapabilities
-    ? params.modelCapabilities.includes('video.reference-to-video')
-    : false;
-
-  // 仅当用户在「图像设计」列明确选中一张时才算真主图；参考图/视频缩略图/资产图不充当主图。
-  const realPrimaryImage = selectedImageAsset;
-  // 兼容降级：模型不支持参考生视频时，沿用老逻辑把首个可用参考图/视频缩略图当作主图。
-  // 资产图（角色/场景/道具）不走这条兜底——历史上它们只参与提示词编译，不直接充当主图。
-  const legacyFallbackPrimary = selectedReferenceAsset || currentVideoPosterSource;
-
-  // 从关联的角色/场景/道具里提取可作为视觉参考的源（costumePhoto / previewImage / 视频封面）。
-  // 历史默认：资产图仅参与提示词编译，不直接进视频请求。只有在「模型声明支持参考生视频」
-  // 时才升级为真正的视觉输入，避免对没有传入 modelCapabilities 的调用路径产生副作用。
-  const assetVisualSources: MediaAssetSource[] = [];
-  if (modelSupportsReferenceToVideo) {
-    for (const asset of compilationAssets) {
-      const rawSource = asset.source;
-      if (!rawSource) continue;
-      if (typeof rawSource === 'string') {
-        if (rawSource.trim()) assetVisualSources.push(rawSource);
-        continue;
-      }
-      // ProviderAssetInput 只在已提交过的 provider 请求上下文里出现，分镜
-      // 采集阶段不会塞这种类型；过滤掉以满足 MediaAssetSource 收窄。
-      if ('transport' in rawSource) continue;
-      if (getVisualReferenceSource(rawSource)) {
-        assetVisualSources.push(rawSource);
-      }
-    }
-  }
-
-  // 是否有任何可用视觉输入
-  const hasAnyVisualInput = Boolean(
-    selectedReferenceAsset
-    || currentVideoPosterSource
-    || (normalizedShot.media?.references?.length ?? 0) > 0
-    || (normalizedShot.media?.videos?.length ?? 0) > 0
-    || assetVisualSources.length > 0,
+  const { compilationAssets } = buildShotAssetReferences(
+    normalizedShot,
+    params.characters,
+    params.scenes,
+    params.props,
   );
 
-  let capability: VideoGenerationCapability;
-  let primaryImageInput: MediaAssetSource | undefined;
+  const knowsModelCaps = !!params.modelCapabilities;
+  const supportsRefToVideo = params.modelCapabilities?.includes('video.reference-to-video') ?? false;
+  const videoMode: ShotVideoMode = normalizedShot.videoMode ?? 'multi-ref';
 
-  if (realPrimaryImage) {
-    capability = 'video.image-to-video';
-    primaryImageInput = realPrimaryImage;
-  } else if (hasAnyVisualInput && modelSupportsReferenceToVideo) {
-    // 新规则：无真主图 + 模型支持参考生视频 → 走参考生视频，不强占主图位。
-    capability = 'video.reference-to-video';
-    primaryImageInput = undefined;
-  } else if (legacyFallbackPrimary) {
-    // 兼容老模型：只会图生不会参考生，仍把首个参考图当主图。
-    capability = 'video.image-to-video';
-    primaryImageInput = legacyFallbackPrimary;
-  } else {
-    capability = 'video.text-to-video';
-    primaryImageInput = undefined;
-  }
-
-  const primaryImageSource = getVisualReferenceSource(primaryImageInput);
-
-  const additionalReferenceImages: MediaAssetSource[] = [];
-  const dedupe = new Set<string>();
-
-  (normalizedShot.media?.references || []).forEach((reference, index) => {
-    if (index === selectedReferenceIndex && primaryImageSource === selectedReferenceSource) {
-      return;
-    }
-    pushUniqueSource(additionalReferenceImages, dedupe, reference, primaryImageSource);
+  const routed = routeBundleToCapability({
+    bundle,
+    supportsRefToVideo,
+    knowsModelCaps,
+    videoMode,
   });
-
-  (normalizedShot.media?.videos || []).forEach((video, index) => {
-    if (index === currentVideoIndex && primaryImageSource === currentVideoPosterSource) {
-      return;
-    }
-    pushUniqueSource(additionalReferenceImages, dedupe, getVideoThumbnailSource(video), primaryImageSource);
-  });
-
-  // 资产图（角色/场景/道具）：去重后追加，保证没有 shot.media 参考图时也能凑出 referenceImages。
-  for (const assetSource of assetVisualSources) {
-    pushUniqueSource(additionalReferenceImages, dedupe, assetSource, primaryImageSource);
-  }
-
-  const visualReferenceInputs: MediaAssetSource[] = primaryImageInput
-    ? [primaryImageInput, ...additionalReferenceImages]
-    : [...additionalReferenceImages];
 
   return {
     shot: normalizedShot,
+    bundle,
     selectedImageAsset,
     selectedImageSource,
-    primaryImageInput,
-    primaryImageSource,
-    visualReferenceInputs,
-    additionalReferenceImages,
+    primaryImageInput: routed.primaryImageInput,
+    primaryImageSource: getVisualReferenceSource(routed.primaryImageInput),
+    visualReferenceInputs: routed.visualReferenceInputs,
+    additionalReferenceImages: routed.additionalReferenceImages,
     selectedAssetsForCompilation: compilationAssets,
-    capability,
-    capabilityLabel: SHOT_VIDEO_CAPABILITY_LABELS[capability],
+    capability: routed.capability,
+    capabilityLabel: SHOT_VIDEO_CAPABILITY_LABELS[routed.capability],
   };
+}
+
+interface RoutedBundle {
+  capability: VideoGenerationCapability;
+  primaryImageInput?: MediaAssetSource;
+  additionalReferenceImages: MediaAssetSource[];
+  visualReferenceInputs: MediaAssetSource[];
+}
+
+/**
+ * 把 bundle 派生成 ITVRequest 各字段值。决策依据：
+ *  - bundle 是否含锚点（grid-anchor / shot-anchor）
+ *  - 当前模型是否支持 video.reference-to-video
+ *  - 是否知道模型能力（modelCapabilities 是否传入）
+ *  - 分镜的 videoMode（multi-ref / first-frame）
+ *
+ * 输出始终同步填三个字段（primaryImageInput / additionalReferenceImages /
+ * visualReferenceInputs），即使 capability 是 reference-to-video 也保留
+ * primaryImageInput——这样上层 capability 被 capabilitySupport 降级（例如
+ * 模型实际只支持 image-to-video）时，request 仍然能正确构造。
+ */
+function routeBundleToCapability(params: {
+  bundle: ShotReferenceBundle;
+  supportsRefToVideo: boolean;
+  knowsModelCaps: boolean;
+  videoMode: ShotVideoMode;
+}): RoutedBundle {
+  const { bundle, supportsRefToVideo, knowsModelCaps, videoMode } = params;
+  const items = bundle.items;
+  const allSources = items.map(item => item.source);
+
+  // 1) 有锚点（shot-anchor 或 grid-anchor）
+  if (bundle.hasShotImage) {
+    const anchorItem = items.find(isAnchorItem)!;
+    const otherItems = items.filter(item => item !== anchorItem);
+    const additional = pickAdditionalSources(otherItems, knowsModelCaps);
+
+    if (supportsRefToVideo && videoMode === 'multi-ref') {
+      // 新行为：multi-ref + 模型支持 ref-to-video → 锚点 + 资产 + 用户上传 全作 references
+      return {
+        capability: 'video.reference-to-video',
+        primaryImageInput: anchorItem.source,
+        additionalReferenceImages: additional,
+        visualReferenceInputs: allSources,
+      };
+    }
+
+    // 兼容：first-frame 或 模型不支持 ref-to-video → image-to-video
+    return {
+      capability: 'video.image-to-video',
+      primaryImageInput: anchorItem.source,
+      additionalReferenceImages: additional,
+      visualReferenceInputs: [anchorItem.source, ...additional],
+    };
+  }
+
+  // 2) 无锚点 + 模型支持 ref-to-video + bundle 非空 → 资产 / 用户上传 都作 references
+  if (supportsRefToVideo && items.length > 0) {
+    const fallbackPrimary = items[0].source; // 主要给降级分支留底
+    return {
+      capability: 'video.reference-to-video',
+      primaryImageInput: fallbackPrimary,
+      additionalReferenceImages: items.slice(1).map(item => item.source),
+      visualReferenceInputs: allSources,
+    };
+  }
+
+  // 3) 无锚点 + 不支持 ref-to-video + 有用户上传 → 用户上传作 primary（兼容老逻辑）
+  const userUploadIdx = items.findIndex(item => item.kind === 'user-upload');
+  if (userUploadIdx >= 0) {
+    const primary = items[userUploadIdx];
+    const otherItems = items.filter(item => item !== primary);
+    const additional = pickAdditionalSources(otherItems, knowsModelCaps);
+    return {
+      capability: 'video.image-to-video',
+      primaryImageInput: primary.source,
+      additionalReferenceImages: additional,
+      visualReferenceInputs: [primary.source, ...additional],
+    };
+  }
+
+  // 4) 无锚点 + 不支持 ref-to-video + 没用户上传 + 仅资产视觉 + modelCaps 已知
+  //    → 把首个资产视觉提为 primary
+  if (knowsModelCaps && items.length > 0) {
+    const primary = items[0];
+    const otherItems = items.slice(1);
+    return {
+      capability: 'video.image-to-video',
+      primaryImageInput: primary.source,
+      additionalReferenceImages: otherItems.map(item => item.source),
+      visualReferenceInputs: allSources,
+    };
+  }
+
+  // 5) 默认：text-to-video（modelCaps 未知 + 仅资产视觉时维持老语义，资产不进视频）
+  return {
+    capability: 'video.text-to-video',
+    additionalReferenceImages: [],
+    visualReferenceInputs: [],
+  };
+}
+
+function isAnchorItem(item: ShotReferenceItem): boolean {
+  return item.kind === 'shot-anchor' || item.kind === 'grid-anchor';
+}
+
+/**
+ * 从非锚点 items 里挑出可进 additionalReferences 的视觉源。
+ *  - modelCaps 已知：全部进（资产视觉 + 用户上传）—— 修复"角色图被悄悄丢"的暗坑
+ *  - modelCaps 未知：仅 user-upload，保留老调用路径的兼容语义
+ */
+function pickAdditionalSources(items: ShotReferenceItem[], knowsModelCaps: boolean): MediaAssetSource[] {
+  const filtered = knowsModelCaps
+    ? items
+    : items.filter(item => item.kind === 'user-upload');
+  return filtered.map(item => item.source);
 }
 
 export function buildShotVideoRequest(params: {

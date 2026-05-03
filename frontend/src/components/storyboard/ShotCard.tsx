@@ -63,6 +63,14 @@ import './ShotCard.css';
 
 const { TextArea } = Input;
 
+/**
+ * 判断 imageMode 是否为任一网格变体（grid / grid-9 / grid-4）。'grid' 是老数据值，
+ * 等价于 grid-9。
+ */
+function isGridImageMode(mode?: Shot['imageMode']): boolean {
+  return mode === 'grid' || mode === 'grid-9' || mode === 'grid-4';
+}
+
 interface ShotScriptInputProps {
   shotId: string;
   value?: string;
@@ -135,7 +143,7 @@ export interface ShotCardProps {
   onImagePromptChange: (shotId: string, imagePrompt: string) => void;
   onVideoPromptChange: (shotId: string, videoPrompt: string) => void;
   onDurationChange?: (shotId: string, duration: number) => void;
-  onImageModeChange: (shotId: string, mode: 'normal' | 'grid') => void;
+  onImageModeChange: (shotId: string, mode: 'normal' | 'grid-9' | 'grid-4') => void;
   onVideoModeChange?: (shotId: string, mode: 'multi-ref' | 'first-frame') => void;
   onCharactersChange: (shotId: string, characterIds: string[]) => void;
   onScenesChange?: (shotId: string, sceneIds: string[]) => void;
@@ -292,6 +300,12 @@ export const ShotCard: React.FC<ShotCardProps> = ({
     return images[gridSplitTargetIndex] || null;
   }, [images, gridSplitTargetIndex]);
 
+  // grid-4 → 2×2（4 子图）；其它 grid 变体（grid / grid-9）→ 3×3（9 子图）。
+  // 这一份 gridSize 同步驱动预览 modal 的分割线 / 网格 / 缩放计算 / 拆分调用，
+  // 保证 UI 选了四宫格时拆分一定按 2×2 走，不会再硬切成 9 张。
+  const gridSize: 2 | 3 = shot.imageMode === 'grid-4' ? 2 : 3;
+  const gridCellCount = gridSize * gridSize;
+
   const gridSplitAspectStyle = useMemo(() => {
     const w = gridSplitImageSize?.w || gridSplitAsset?.width || 0;
     const h = gridSplitImageSize?.h || gridSplitAsset?.height || 0;
@@ -308,17 +322,17 @@ export const ShotCard: React.FC<ShotCardProps> = ({
     const defaultCell = aspect === '16:9'
       ? { w: 1280, h: 720 }
       : { w: 720, h: 1280 };
-    const minW = defaultCell.w * 3;
-    const minH = defaultCell.h * 3;
+    const minW = defaultCell.w * gridSize;
+    const minH = defaultCell.h * gridSize;
     const scaleFactor = Math.max(minW / w, minH / h, 1);
     const scaledW = Math.round(w * scaleFactor);
     const scaledH = Math.round(h * scaleFactor);
-    const finalW = Math.ceil(scaledW / 3) * 3;
-    const finalH = Math.ceil(scaledH / 3) * 3;
+    const finalW = Math.ceil(scaledW / gridSize) * gridSize;
+    const finalH = Math.ceil(scaledH / gridSize) * gridSize;
     const padRight = finalW - scaledW;
     const padBottom = finalH - scaledH;
-    const cellW = Math.floor(finalW / 3);
-    const cellH = Math.floor(finalH / 3);
+    const cellW = Math.floor(finalW / gridSize);
+    const cellH = Math.floor(finalH / gridSize);
 
     return {
       aspect,
@@ -330,7 +344,7 @@ export const ShotCard: React.FC<ShotCardProps> = ({
       cellW,
       cellH,
     };
-  }, [gridSplitAsset, gridSplitImageSize]);
+  }, [gridSplitAsset, gridSplitImageSize, gridSize]);
 
   // 图片操作
   const handleImageSelect = (idx: number) => onImagesChange(shot.id, images, idx);
@@ -388,8 +402,8 @@ export const ShotCard: React.FC<ShotCardProps> = ({
       message.error('仅支持 Electron 环境');
       return;
     }
-    if (shot.imageMode !== 'grid') {
-      message.info('当前分镜不是九宫格模式');
+    if (!isGridImageMode(shot.imageMode)) {
+      message.info('当前分镜不是网格模式');
       return;
     }
     if (gridSplitTargetIndex == null) {
@@ -460,10 +474,11 @@ export const ShotCard: React.FC<ShotCardProps> = ({
         aspectRatio,
         format: 'png',
         sharpenAmount: 0.9,
+        gridSize,
       });
 
-      if (!Array.isArray(outputs) || outputs.length !== 9) {
-        throw new Error('九宫格拆分失败：输出数量不正确');
+      if (!Array.isArray(outputs) || outputs.length !== gridCellCount) {
+        throw new Error(`网格拆分失败：期望 ${gridCellCount} 张，实际 ${outputs?.length ?? 0} 张`);
       }
 
       const newAssets = outputs.map((p, i) => createStoredMediaAsset('image', {
@@ -476,13 +491,15 @@ export const ShotCard: React.FC<ShotCardProps> = ({
 
       const nextImages = [...baseImages, ...newAssets];
       onImagesChange(shot.id, nextImages, baseImages.length);
-      message.success('九宫格已拆分为 9 张图片');
+      const gridLabel = gridSize === 2 ? '四宫格' : '九宫格';
+      message.success(`${gridLabel}已拆分为 ${gridCellCount} 张图片`);
       setGridSplitModalOpen(false);
       setGridSplitTargetIndex(null);
       setGridSplitImageSize(null);
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : String(err);
-      message.error(errorMessage || '九宫格拆分失败');
+      const gridLabel = gridSize === 2 ? '四宫格' : '九宫格';
+      message.error(errorMessage || `${gridLabel}拆分失败`);
     } finally {
       setIsSplittingGridImage(false);
     }
@@ -712,11 +729,13 @@ export const ShotCard: React.FC<ShotCardProps> = ({
             <span className="text-[10px] text-zinc-400">图片模式</span>
             <Segmented
               size="small"
-              value={shot.imageMode || 'normal'}
-              onChange={(value) => onImageModeChange(shot.id, value as 'normal' | 'grid')}
+              // 老数据 'grid' 视作 'grid-9'，UI 上展示为九宫格
+              value={shot.imageMode === 'grid' ? 'grid-9' : (shot.imageMode || 'normal')}
+              onChange={(value) => onImageModeChange(shot.id, value as 'normal' | 'grid-9' | 'grid-4')}
               options={[
                 { value: 'normal', label: '普通' },
-                { value: 'grid', icon: <AppstoreOutlined />, label: '九宫格' },
+                { value: 'grid-4', icon: <AppstoreOutlined />, label: '四宫格' },
+                { value: 'grid-9', icon: <AppstoreOutlined />, label: '九宫格' },
               ]}
               className="text-[10px]"
             />
@@ -801,7 +820,7 @@ export const ShotCard: React.FC<ShotCardProps> = ({
                   onSelect={handleImageSelect}
                   onAdd={handleImageAdd}
                   onDelete={handleImageDelete}
-                  onSplitGrid={shot.imageMode === 'grid' && electronService.isElectron()
+                  onSplitGrid={isGridImageMode(shot.imageMode) && electronService.isElectron()
                     ? handleOpenGridSplitPreview
                     : undefined}
                   onGenerate={() => onGenerateImage(shot.id)}
@@ -819,20 +838,29 @@ export const ShotCard: React.FC<ShotCardProps> = ({
 
         {/* 列5: 视频设计 */}
         <div className={`${SHOT_LAYOUT.colVideoDesign} border-r border-zinc-800 flex flex-col`}>
-          {/* 视频模式切换：multi-ref 多参（带 @映射） / first-frame 首帧延展（以单图为锚） */}
+          {/* 视频模式切换：multi-ref 多参（带 @映射） / first-frame 首帧延展（以单图为锚）
+              九宫格图片模式与"首帧延展"语义冲突（grid 是 9 帧时序，first-frame 是单图微动），
+              此时锁定 multi-ref 并通过 tooltip 解释。 */}
           <div className="flex items-center justify-between gap-2 border-b border-zinc-800 px-2 py-1">
             <span className="text-[10px] text-zinc-400">视频模式</span>
-            <Segmented
-              size="small"
-              value={shot.videoMode || 'multi-ref'}
-              onChange={(value) => onVideoModeChange?.(shot.id, value as 'multi-ref' | 'first-frame')}
-              options={[
-                { value: 'multi-ref', label: '多参' },
-                { value: 'first-frame', label: '首帧' },
-              ]}
-              className="text-[10px]"
-              disabled={!onVideoModeChange}
-            />
+            <Tooltip
+              title={isGridImageMode(shot.imageMode)
+                ? '网格图片模式下视频自动走"多参"——把网格当作 N 帧时序锚点（4 / 9 帧）；切回普通模式才能选"首帧"。'
+                : ''}
+              placement="top"
+            >
+              <Segmented
+                size="small"
+                value={shot.videoMode || 'multi-ref'}
+                onChange={(value) => onVideoModeChange?.(shot.id, value as 'multi-ref' | 'first-frame')}
+                options={[
+                  { value: 'multi-ref', label: '多参' },
+                  { value: 'first-frame', label: '首帧', disabled: isGridImageMode(shot.imageMode) },
+                ]}
+                className="text-[10px]"
+                disabled={!onVideoModeChange}
+              />
+            </Tooltip>
           </div>
           {/* 提示词编辑器 + 浮动按钮 */}
           <div className="flex-1 p-1 min-h-0 relative">
@@ -950,9 +978,9 @@ export const ShotCard: React.FC<ShotCardProps> = ({
         </div>
       </div>
 
-      {/* 九宫格拆分预览 Modal */}
+      {/* 网格拆分预览 Modal — gridSize=2 走 2×2 / 4 张，gridSize=3 走 3×3 / 9 张 */}
       <Modal
-        title={`分镜 #${index + 1} - 九宫格拆分预览`}
+        title={`分镜 #${index + 1} - ${gridSize === 2 ? '四宫格' : '九宫格'}拆分预览`}
         open={gridSplitModalOpen}
         onCancel={handleCloseGridSplitPreview}
         onOk={handleConfirmGridSplit}
@@ -975,7 +1003,7 @@ export const ShotCard: React.FC<ShotCardProps> = ({
         ) : (
           <div className="flex flex-col gap-3">
             <div className="text-[12px] text-zinc-400">
-              <div>将把所选图片平均切成 9 张（3×3）。确认后才会真正落盘拆分。</div>
+              <div>将把所选图片平均切成 {gridCellCount} 张（{gridSize}×{gridSize}）。确认后才会真正落盘拆分。</div>
               {gridSplitPreviewMeta && (
                 <div className="mt-1">
                   预计输出单格分辨率约 {gridSplitPreviewMeta.cellW}×{gridSplitPreviewMeta.cellH}，
@@ -1006,27 +1034,40 @@ export const ShotCard: React.FC<ShotCardProps> = ({
                     />
                   )}
 
-                  {/* 3×3 分割线 */}
+                  {/* gridSize×gridSize 分割线（gridSize-1 条线，按等分位置） */}
                   <div className="absolute inset-0 pointer-events-none">
-                    {/* vertical lines */}
-                    <div className="absolute top-0 bottom-0 left-1/3 w-px bg-white/70" />
-                    <div className="absolute top-0 bottom-0 left-2/3 w-px bg-white/70" />
-                    {/* horizontal lines */}
-                    <div className="absolute left-0 right-0 top-1/3 h-px bg-white/70" />
-                    <div className="absolute left-0 right-0 top-2/3 h-px bg-white/70" />
+                    {Array.from({ length: gridSize - 1 }).map((_, i) => {
+                      const pct = `${((i + 1) / gridSize) * 100}%`;
+                      return (
+                        <div key={`v-${i}`} className="absolute top-0 bottom-0 w-px bg-white/70" style={{ left: pct }} />
+                      );
+                    })}
+                    {Array.from({ length: gridSize - 1 }).map((_, i) => {
+                      const pct = `${((i + 1) / gridSize) * 100}%`;
+                      return (
+                        <div key={`h-${i}`} className="absolute left-0 right-0 h-px bg-white/70" style={{ top: pct }} />
+                      );
+                    })}
                   </div>
                 </div>
               </div>
 
-              {/* 结果预览 */}
+              {/* 结果预览 — 用 inline gridTemplateColumns 避免 Tailwind purge 干掉动态类名 */}
               <div className="flex-1">
                 <div className="text-[12px] text-zinc-500 mb-1">生成结果预览</div>
-                <div className="grid grid-cols-3 gap-2">
-                  {Array.from({ length: 9 }).map((_, i) => {
-                    const row = Math.floor(i / 3);
-                    const col = i % 3;
-                    const bgPosX = `${col * 50}%`;
-                    const bgPosY = `${row * 50}%`;
+                <div
+                  className="grid gap-2"
+                  style={{ gridTemplateColumns: `repeat(${gridSize}, minmax(0, 1fr))` }}
+                >
+                  {Array.from({ length: gridCellCount }).map((_, i) => {
+                    const row = Math.floor(i / gridSize);
+                    const col = i % gridSize;
+                    // gridSize=2 时 backgroundSize 200% 200%，每格步进 100%；
+                    // gridSize=3 时 300% 300%，每格步进 50%。通用公式：步进 = 100/(gridSize-1)
+                    const stepPct = 100 / (gridSize - 1);
+                    const bgPosX = `${col * stepPct}%`;
+                    const bgPosY = `${row * stepPct}%`;
+                    const bgSizePct = `${gridSize * 100}%`;
                     return (
                       <div
                         key={i}
@@ -1034,7 +1075,7 @@ export const ShotCard: React.FC<ShotCardProps> = ({
                         style={{
                           aspectRatio: gridSplitAspectStyle,
                           backgroundImage: gridSplitSrc ? `url(${gridSplitSrc})` : undefined,
-                          backgroundSize: '300% 300%',
+                          backgroundSize: `${bgSizePct} ${bgSizePct}`,
                           backgroundPosition: `${bgPosX} ${bgPosY}`,
                           backgroundRepeat: 'no-repeat',
                         }}

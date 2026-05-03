@@ -110,7 +110,14 @@ export interface Shot {
   duration: number;      // 持续时长(秒)
   imagePrompt?: string;  // 图片生成提示词
   videoPrompt?: string;  // 视频生成提示词
-  imageMode?: 'normal' | 'grid'; // 图片生成模式：普通模式 | 九宫格模式（默认 normal）
+  /**
+   * 图片生成模式（默认 normal）：
+   *  - 'normal'   普通单图模式
+   *  - 'grid-9'   3×3 九宫格（9 帧时序）
+   *  - 'grid-4'   2×2 四宫格（4 帧时序，更细的镜头控制 / 更少切换）
+   *  - 'grid'     旧值，等价于 'grid-9'，仅向后兼容老数据
+   */
+  imageMode?: 'normal' | 'grid' | 'grid-9' | 'grid-4';
   videoMode?: ShotVideoMode; // 视频推理模式（默认 'multi-ref'）
   tweetCopy?: string;    // 分镜级推文文案（1-3 句解说台词，作为 TTS 旁白源）
   media?: ShotMediaState; // 结构化媒体槽位

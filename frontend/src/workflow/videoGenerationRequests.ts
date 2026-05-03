@@ -10,6 +10,10 @@ import {
   type ShotVideoPlan,
 } from './shotVideoPlan';
 import { DEFAULT_VIDEO_DURATION_SECONDS } from '../utils/videoDuration';
+import { compileShotPromptToBundle } from '../services/shotReference/compile';
+import { createLogger } from '../store/logger';
+
+const logger = createLogger('VideoGenerationRequests');
 
 // 这一层只做最低限度的"非空整数"兜底；按 ITV 渠道枚举/范围吸附在 ShotAnalysisService / Storyboard
 // 创建/编辑路径上已完成；上游 provider（Grok2ApiImagineITVProvider / SeedanceProvider）也会再做一次
@@ -138,18 +142,44 @@ export function compileShotVideoGenerationRequest(params: {
   capability?: VideoGenerationCapability;
   providerType?: string;
 }): CompiledVideoGenerationRequest {
+  // 阶段 4：bundle-aware 编译。把 prompt 中的 @shot_anchor / @grid_anchor /
+  // @char_xxx / @scene_xxx / @prop_xxx / @user_<idx> 全部翻译为 @图片N，N 严格
+  // 对应 plan.bundle.items 的位置。provider 拿到的 prompt 是位置编码，无需自己
+  // 解析 mention 协议；老协议的兼容编译（compileGrokITV）由下游 promptCompilation
+  // 字段保留给历史路径用。
+  const compiledPromptResult = compileShotPromptToBundle({
+    prompt: params.prompt,
+    bundle: params.plan.bundle,
+  });
+  const finalPrompt = compiledPromptResult.compiledPrompt;
+
+  if (compiledPromptResult.debug.unmappedTokens.length > 0
+    || compiledPromptResult.debug.overflowImageNumbers.length > 0) {
+    logger.warn('shot prompt 编译存在未匹配 / 越界 token', {
+      shotId: params.plan.shot.id,
+      capability: params.capability ?? params.plan.capability,
+      unmappedTokens: compiledPromptResult.debug.unmappedTokens,
+      overflowImageNumbers: compiledPromptResult.debug.overflowImageNumbers,
+      bundleSize: params.plan.bundle.items.length,
+    });
+  }
+
   const request = buildShotVideoRequest({
     plan: params.plan,
-    prompt: params.prompt,
+    prompt: finalPrompt,
     duration: coerceRequestDurationSeconds(params.duration),
     motionPrompt: params.motionPrompt,
     aspectRatio: params.aspectRatio,
     capability: params.capability,
   });
 
+  // Seedance 系 provider 把角色 / 场景 / 道具资产图按顺序并入 references 是固有特性。
+  // 老 'seedance' 已下线（channel 收敛），现役入口是 'koma-suihe-itv'（komaapi.com 网关
+  // 转发到穗禾 Seedance 上游），所以这两个 providerType 都要触发资产合并。
+  const isSeedanceFamily = params.providerType === 'seedance' || params.providerType === 'koma-suihe-itv';
   return {
-    prompt: params.prompt,
-    request: params.providerType === 'seedance'
+    prompt: finalPrompt,
+    request: isSeedanceFamily
       ? mergeSeedanceShotReferences(request, params.plan)
       : request,
     promptCompilation: {

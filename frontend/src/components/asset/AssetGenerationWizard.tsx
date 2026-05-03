@@ -40,6 +40,7 @@ import {
 } from '../../workflow/characterAssetWorkflow';
 import { generateSceneImage, generatePropImage, generatePropPreviewVideo } from '../../workflow/scenePropAssetWorkflow';
 import { runWithTask } from '../../services/taskRunner';
+import { runBatchWithConcurrency } from '../../utils/batchRunner';
 import {
   getCharacterCostumePhotoSource,
   getCharacterPreviewVideoSource,
@@ -375,6 +376,16 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
         : 'character';
 
     // 用 runWithTask 包"批量"操作，子 generateOneItem 传 disableTask=true 避免任务面板被 N 个独立任务刷屏
+    // 并发 + 自动重试：每 item 进度独立，整体进度按"已完成 + 进行中加权"汇总
+    const itemProgressMap = new Map<string, number>();
+    const updateOverallProgress = (taskProgress: (p: number, msg: string) => void, currentName: string, stage: string) => {
+      let acc = 0;
+      items.forEach(it => { acc += itemProgressMap.get(it.id) ?? 0; });
+      const overall = (acc / items.length);
+      setOverallProgress(overall);
+      taskProgress(overall, `${currentName}: ${stage}`);
+    };
+
     try {
       await runWithTask({
         projectId: project.id,
@@ -386,46 +397,72 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
         type: 'asset-generation',
         metadata: { batchCount: items.length, stepKey },
         execute: async (taskCtx) => {
-          for (let i = 0; i < items.length; i++) {
-            const item = items[i];
-            setCurrentItem(item.name);
-
-            setter(prev => prev.map(it =>
-              it.id === item.id ? { ...it, status: 'generating', progress: 0 } : it
-            ));
-
-            let result: { success: boolean; path?: string; error?: string };
-
-            try {
+          await runBatchWithConcurrency<ItemStatus, { success: boolean; path?: string; error?: string }>({
+            items,
+            concurrency: 3,
+            maxRetries: 2,
+            retryBaseDelayMs: 800,
+            onAttemptStart: (item, _idx, attempt) => {
+              setCurrentItem(item.name);
+              setter(prev => prev.map(it =>
+                it.id === item.id
+                  ? { ...it, status: 'generating', progress: 0, error: attempt > 1 ? `重试中（第 ${attempt} 次）` : undefined }
+                  : it
+              ));
+              itemProgressMap.set(item.id, 0);
+              updateOverallProgress(taskCtx.progress, item.name, attempt > 1 ? `重试 ${attempt}` : '开始');
+            },
+            onAttemptEnd: (item, _idx, _attempt, ok, error) => {
+              if (!ok) {
+                // 重试中临时进度回 0；最终失败由外层结果遍历落地
+                itemProgressMap.set(item.id, 0);
+                setter(prev => prev.map(it =>
+                  it.id === item.id ? { ...it, progress: 0, error: error instanceof Error ? error.message : String(error || '') } : it
+                ));
+                updateOverallProgress(taskCtx.progress, item.name, '重试中');
+              }
+            },
+            worker: async (item) => {
               const onProgress = (progress: number, step: string) => {
+                itemProgressMap.set(item.id, progress);
                 setter(prev => prev.map(it =>
                   it.id === item.id ? { ...it, progress } : it
                 ));
-                const overall = ((i + progress / 100) / items.length) * 100;
-                setOverallProgress(overall);
-                taskCtx.progress(overall, `${item.name}: ${step}`);
+                updateOverallProgress(taskCtx.progress, item.name, step);
               };
-
               // disableTask=true：批量场景不为每个 item 单独建 task
-              result = await generateOneItem(item, stepKey, setter, onProgress, true);
-            } catch (err: any) {
-              result = { success: false, error: err.message };
-            }
-
-            setter(prev => prev.map(it =>
-              it.id === item.id
-                ? {
-                    ...it,
-                    status: result.success ? 'completed' : 'failed',
-                    progress: result.success ? 100 : 0,
-                    error: result.error,
-                    imagePath: result.path || it.imagePath,
-                    // 同名文件被覆盖也要拉新内容，bump 缓存键
-                    imageCacheKey: result.success ? Date.now() : it.imageCacheKey,
-                  }
-                : it
-            ));
-          }
+              const r = await generateOneItem(item, stepKey, setter, onProgress, true);
+              if (!r.success) {
+                // 让 batchRunner 走 retry：抛出真实错误，shouldRetry 默认对瞬时错误重试
+                throw new Error(r.error || '生成失败');
+              }
+              return r;
+            },
+          }).then(results => {
+            // 结果落地：覆盖每个 item 的最终状态（成功 / 用尽重试后失败）
+            results.forEach(({ item, result, error, attempts }) => {
+              const ok = Boolean(result?.success);
+              itemProgressMap.set(item.id, ok ? 100 : 0);
+              setter(prev => prev.map(it =>
+                it.id === item.id
+                  ? {
+                      ...it,
+                      status: ok ? 'completed' : 'failed',
+                      progress: ok ? 100 : 0,
+                      error: ok
+                        ? undefined
+                        : (result?.error
+                            || (error instanceof Error ? error.message : String(error || ''))
+                            || `失败（已重试 ${attempts} 次）`),
+                      imagePath: result?.path || it.imagePath,
+                      // 同名文件被覆盖也要拉新内容，bump 缓存键
+                      imageCacheKey: ok ? Date.now() : it.imageCacheKey,
+                    }
+                  : it
+              ));
+            });
+            updateOverallProgress(taskCtx.progress, '完成', '所有任务结束');
+          });
         },
       });
     } catch (err: any) {
