@@ -91,7 +91,7 @@ export const ShotListHeader: React.FC<ShotListHeaderProps> = ({
   ];
 
   const videoMenuItems: MenuProps['items'] = [
-    { key: 'gen', label: t('storyboard.generateConfirmed'), onClick: onBatchVideos },
+    { key: 'gen', label: t('storyboard.generateEmpty'), onClick: onBatchVideos },
     { key: 'regen', label: t('storyboard.regenerateAll'), onClick: onBatchReVideos },
   ];
 

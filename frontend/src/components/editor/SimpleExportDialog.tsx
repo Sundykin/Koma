@@ -17,6 +17,26 @@ import { createLogger } from '../../store/logger';
 
 const logger = createLogger('SimpleExportDialog');
 
+/** 今天的日期，固定 YYYY-MM-DD 格式，避免 toLocaleDateString() 在中文 locale 输出 2026/5/3 这种含斜杠形式
+ *  导致后续 mkdir 把斜杠当成路径分隔符建出嵌套子目录。*/
+function todayStamp(): string {
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+/** 清洗草稿/项目名，防止用户输入或默认值包含 / \ : * ? " < > | 等路径非法字符
+ *  造成 createSubfolder 时 mkdir(recursive) 建出多层意外目录。
+ *  规则：把所有路径分隔符与 Windows 文件名禁用字符替换为连字符；折叠重复连字符；去掉首尾的 `.` 和空白。
+ *  保留普通空格（macOS / Windows 都允许带空格的目录名）。*/
+function sanitizeFolderName(raw: string): string {
+  const cleaned = (raw || '')
+    .replace(/[\\/:*?"<>|-]+/g, '-')
+    .replace(/-{2,}/g, '-')
+    .replace(/^[.\s-]+|[.\s-]+$/g, '');
+  return cleaned || `export_${Date.now()}`;
+}
+
 interface SimpleExportDialogProps {
   open: boolean;
   onClose: () => void;
@@ -87,7 +107,7 @@ export function SimpleExportDialog({ open, onClose, tracks, duration, canvasSize
       const defaultDraftFormat = draftExporters[0]?.format || 'jianying';
       draftForm.setFieldsValue({
         draftFormat: defaultDraftFormat,
-        projectName: `导出_${new Date().toLocaleDateString()}`,
+        projectName: `导出_${todayStamp()}`,
         draftOutputPath: '',
         copyMaterials: true,
         createSubfolder: false,
@@ -219,8 +239,11 @@ export function SimpleExportDialog({ open, onClose, tracks, duration, canvasSize
       setExporting(true);
 
       // 根据选项决定草稿目录路径
+      // createSubfolder=true 时**只新增一层**子目录；项目名先经 sanitizeFolderName 清洗，
+      // 防止用户输入或默认值里的 / \ : * ? 等字符被 mkdir(recursive) 当成路径分隔符建出多层嵌套。
+      const safeFolderName = sanitizeFolderName(values.projectName);
       const draftFolderPath = values.createSubfolder
-        ? `${values.draftOutputPath}/${values.projectName}`
+        ? `${values.draftOutputPath}/${safeFolderName}`
         : values.draftOutputPath;
       const options: DraftExportOptions = {
         outputPath: draftFolderPath,
@@ -249,35 +272,63 @@ export function SimpleExportDialog({ open, onClose, tracks, duration, canvasSize
 
           const materials = exportResult.draftContent.materials;
 
-          // 复制视频/图片素材
+          // 复制策略（解决"多片段同名 video.mp4 互相覆盖"问题）：
+          //  - 同一源文件（path 完全相同）→ 仅复制一次，所有引用该 path 的素材记录共享同一目标，
+          //    避免重复 IO；
+          //  - 不同源文件但 basename 相同（典型：每个分镜下都叫 video.mp4）→ 给后续命中
+          //    者拼上 material id 段（`name__<id8>.ext`），仍冲突再追加 -2 / -3，保证落盘
+          //    文件名唯一，避免互相覆盖导致草稿里多个时间线片段共用一份资源。
+          const sourceToDest = new Map<string, string>();
+          const takenDestNames = new Set<string>();
+
+          const allocateDestName = (srcPath: string, materialId: string, fallbackPrefix: string): string => {
+            const baseName = srcPath.split(/[/\\]/).pop() || `${fallbackPrefix}_${materialId}`;
+            if (!takenDestNames.has(baseName)) {
+              return baseName;
+            }
+            const dotIdx = baseName.lastIndexOf('.');
+            const stem = dotIdx > 0 ? baseName.slice(0, dotIdx) : baseName;
+            const ext = dotIdx > 0 ? baseName.slice(dotIdx) : '';
+            const idSlug = (materialId || '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 8) || String(takenDestNames.size + 1);
+            let candidate = `${stem}__${idSlug}${ext}`;
+            let n = 2;
+            while (takenDestNames.has(candidate)) {
+              candidate = `${stem}__${idSlug}-${n}${ext}`;
+              n += 1;
+            }
+            return candidate;
+          };
+
+          const copyOnce = async (srcPath: string, materialId: string, fallbackPrefix: string): Promise<string | null> => {
+            const cached = sourceToDest.get(srcPath);
+            if (cached) return cached;
+            try {
+              if (!(await fsExists(srcPath))) return null;
+              const destName = allocateDestName(srcPath, materialId, fallbackPrefix);
+              takenDestNames.add(destName);
+              const destPath = `${materialsDir}/${destName}`;
+              await fsCopy(srcPath, destPath);
+              sourceToDest.set(srcPath, destPath);
+              return destPath;
+            } catch (e) {
+              logger.warn(`复制素材失败: ${srcPath}`, e);
+              return null;
+            }
+          };
+
+          // 复制视频 / 图片素材（剪映 materials.videos 同时承载 video / photo 两类）
           for (const video of materials.videos || []) {
             if (video.path && !video.path.startsWith('http')) {
-              const fileName = video.path.split(/[/\\]/).pop() || `video_${video.id}`;
-              const newPath = `${materialsDir}/${fileName}`;
-              try {
-                if (await fsExists(video.path)) {
-                  await fsCopy(video.path, newPath);
-                  video.path = newPath;
-                }
-              } catch (e) {
-                logger.warn(`复制素材失败: ${video.path}`, e);
-              }
+              const dest = await copyOnce(video.path, video.id, 'video');
+              if (dest) video.path = dest;
             }
           }
 
           // 复制音频素材
           for (const audio of materials.audios || []) {
             if (audio.path && !audio.path.startsWith('http')) {
-              const fileName = audio.path.split(/[/\\]/).pop() || `audio_${audio.id}`;
-              const newPath = `${materialsDir}/${fileName}`;
-              try {
-                if (await fsExists(audio.path)) {
-                  await fsCopy(audio.path, newPath);
-                  audio.path = newPath;
-                }
-              } catch (e) {
-                logger.warn(`复制素材失败: ${audio.path}`, e);
-              }
+              const dest = await copyOnce(audio.path, audio.id, 'audio');
+              if (dest) audio.path = dest;
             }
           }
         }
@@ -538,7 +589,7 @@ export function SimpleExportDialog({ open, onClose, tracks, duration, canvasSize
               layout="vertical"
               initialValues={{
                 draftFormat: 'jianying',
-                projectName: `导出_${new Date().toLocaleDateString()}`,
+                projectName: `导出_${todayStamp()}`,
                 draftOutputPath: '',
                 copyMaterials: true,
                 createSubfolder: false,

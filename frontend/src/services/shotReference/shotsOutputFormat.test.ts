@@ -106,10 +106,13 @@ describe('renderShotsSection — grid-9', () => {
     expect(out).toContain('9 镜头总和精确 9 秒');
   });
 
-  it('首镜要求继承上单元锚定帧；末镜要求写下单元起点', () => {
+  it('首镜断言继承上方【上单元结尾锚定帧】；末镜断言收束至上方【本单元结尾锚定帧】（不重复描述内容）', () => {
     const out = renderShotsSection({ mode: 'grid-9', duration: 9 });
-    expect(out).toContain('与上单元结尾锚定帧的匹配关系');
-    expect(out).toContain('本单元结尾锚定帧');
+    expect(out).toContain('与上方【上单元结尾锚定帧】的衔接');
+    expect(out).toContain('与上方【本单元结尾锚定帧】的衔接');
+    // 防回归：确保不再以填空 / 详细描述形式重复声明锚定帧内容
+    expect(out).not.toContain('人数 / 站位 / 朝向 / 视线 / 持物 / 光线零偏差');
+    expect(out).not.toContain('人数 / 站位 / 朝向 / 视线 / 持物 / 光线 / 比例的稳定收束态');
   });
 });
 

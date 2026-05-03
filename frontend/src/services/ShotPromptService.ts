@@ -134,19 +134,19 @@ export class ShotPromptService {
     const shotScenes = (allScenes || []).filter(s => (shot.scenes || []).includes(s.id));
     const shotProps = (allProps || []).filter(p => (shot.props || []).includes(p.id));
 
-    // 构建角色引用列表
+    // 构建角色引用列表（统一 `@<id> <名称>` 顺序，与 mappingSchemaNote 输出约定一致）
     const characterRefs = shotCharacters
-      .map(c => `${c.name}: ${createMentionString('char', c.id)}`)
+      .map(c => `${createMentionString('char', c.id)} ${c.name}`)
       .join('\n');
 
     // 场景引用列表（场景不需要 Sora2 绑定）
     const sceneRefs = shotScenes
-      .map(s => `${s.name}: ${createMentionString('scene', s.id)}`)
+      .map(s => `${createMentionString('scene', s.id)} ${s.name}`)
       .join('\n');
 
     // 道具引用列表（道具可用 sora2PropId 或内部 ID）
     const propRefs = shotProps
-      .map(p => `${p.name}: ${createMentionString('prop', p.id)}`)
+      .map(p => `${createMentionString('prop', p.id)} ${p.name}`)
       .join('\n');
 
     // 阶段 3：统一引用集合。生图和生视频共用同一份 bundle，模板里的
@@ -189,14 +189,14 @@ export class ShotPromptService {
       promises.push(this.generatePromptByType(
         'image', shot, shotCharacters, shotScenes, shotProps,
         characterRefs, sceneRefs, propRefs, resolvedStylePrefix,
-        referenceTable, gridSequenceNotice, shotsSection,
+        referenceTable, gridSequenceNotice, shotsSection, referenceBundle,
       ));
     }
     if (needVideo) {
       promises.push(this.generatePromptByType(
         'video', shot, shotCharacters, shotScenes, shotProps,
         characterRefs, sceneRefs, propRefs, resolvedStylePrefix,
-        referenceTable, gridSequenceNotice, shotsSection,
+        referenceTable, gridSequenceNotice, shotsSection, referenceBundle,
       ));
     }
 
@@ -229,13 +229,13 @@ export class ShotPromptService {
     referenceTable: string,
     gridSequenceNotice: string,
     shotsSection: string,
+    referenceBundle: ShotReferenceBundle,
   ): Promise<string> {
     // 视频路径：按 (duration, videoMode) 选择 5 个新模板之一，附带上下文衔接
     if (type === 'video') {
       return this.generateVideoPrompt(
         shot, shotCharacters, shotScenes, shotProps,
-        characterRefs, sceneRefs, propRefs, stylePrefix,
-        referenceTable, gridSequenceNotice, shotsSection,
+        referenceTable, gridSequenceNotice, shotsSection, referenceBundle,
       );
     }
 
@@ -265,9 +265,17 @@ export class ShotPromptService {
     const resolvedSystemPrompt = await resolvePromptTemplate('shot_prompt_system', {});
     const systemPrompt = resolvedSystemPrompt.prompt;
 
+    // 图片提示词同样追加映射约定，确保 LLM 输出 `@<id> <名称>` 格式（与视频提示词一致）。
+    const mappingSchemaNote = buildMappingSchemaNote(
+      shotCharacters,
+      shotScenes,
+      shotProps,
+      referenceBundle,
+    );
+
     const result = await this.ctx.llmProvider.chat([
       { role: 'system', content: systemPrompt },
-      { role: 'user', content: prompt },
+      { role: 'user', content: `${prompt}\n\n${mappingSchemaNote}` },
     ]);
 
     // 清理结果
@@ -288,13 +296,10 @@ export class ShotPromptService {
     shotCharacters: Character[],
     shotScenes: Scene[],
     shotProps: Prop[],
-    characterRefs: string,
-    sceneRefs: string,
-    propRefs: string,
-    stylePrefix: string,
     referenceTable: string,
     gridSequenceNotice: string,
     shotsSection: string,
+    referenceBundle: ShotReferenceBundle,
   ): Promise<string> {
     const videoMode: ShotVideoMode = shot.videoMode || 'multi-ref';
     const projectSelections = this.ctx.videoPromptDurationSelections;
@@ -306,12 +311,13 @@ export class ShotPromptService {
     // 邻接分镜上下文：按需 load 同剧集的所有分镜，定位 prev2 / prev1 / next
     const adjacency = await this.loadAdjacentShots(shot);
 
+    // 视频推理模板（multi / firstframe）当前都不消费 {{stylePrefix}}——风格前缀仅由 TTI
+    // 终稿模板使用。这里若仍传 stylePrefix 会触发 PromptTemplate 的"未声明变量"告警。
     const templateVariables: Record<string, string> = {
       scriptContent: shot.scriptContent || '',
       characters: formatCharacterMappingBaseline(shotCharacters, videoMode),
       scenes: formatSceneMappingBaseline(shotScenes, videoMode),
       props: formatPropMappingBaseline(shotProps, videoMode),
-      stylePrefix: stylePrefix || '',
       // 阶段 3：references 索引表 + 九宫格时序约定（grid 模式才有内容，其它模式空串）
       referenceTable,
       gridSequenceNotice,
@@ -339,7 +345,13 @@ export class ShotPromptService {
     // 视频模板里举例用的 "@图片X" 系符号是占位约定；项目实际使用的 mention 协议是
     // @char_<id> / @scene_<id> / @prop_<id>。在 user 区追加一段映射约定，让 LLM 输出
     // 时直接使用项目协议形式，下游 mention 解析才能正确识别。
-    const mappingSchemaNote = buildMappingSchemaNote(characterRefs, sceneRefs, propRefs);
+    // 同时附带 referenceBundle，让映射约定能根据有图/无图模式注入 @图（锚点）的引用指引。
+    const mappingSchemaNote = buildMappingSchemaNote(
+      shotCharacters,
+      shotScenes,
+      shotProps,
+      referenceBundle,
+    );
     const dialogueGuardNote = buildDialogueGuardNote(
       shot.scriptContent || '',
       shotCharacters.map(character => character.name),
@@ -402,15 +414,15 @@ export class ShotPromptService {
     const shotScenes = (allScenes || []).filter(s => (shot.scenes || []).includes(s.id));
     const shotProps = (allProps || []).filter(p => (shot.props || []).includes(p.id));
 
-    // 构建引用列表
+    // 构建引用列表（统一 `@<id> <名称>` 顺序，与 mappingSchemaNote 输出约定一致）
     const characterRefs = shotCharacters
-      .map(c => `${c.name}: ${createMentionString('char', c.id)}`)
+      .map(c => `${createMentionString('char', c.id)} ${c.name}`)
       .join('\n');
     const sceneRefs = shotScenes
-      .map(s => `${s.name}: ${createMentionString('scene', s.id)}`)
+      .map(s => `${createMentionString('scene', s.id)} ${s.name}`)
       .join('\n');
     const propRefs = shotProps
-      .map(p => `${p.name}: ${createMentionString('prop', p.id)}`)
+      .map(p => `${createMentionString('prop', p.id)} ${p.name}`)
       .join('\n');
 
     const templateVariables: Record<string, string> = {
@@ -696,8 +708,8 @@ function selectVideoTemplateKey(
 /**
  * 把当前分镜的角色清单格式化为"映射基准库"内容。
  *
- * - multi-ref：每个角色一行 `<name>（映射符 @char_<id>）：<appearance>`，
- *   既给 LLM 完整外观，又给出项目实际使用的 mention 字符串
+ * - multi-ref：每个角色一行 `- @char_<id> <name>：<appearance>`，与 mappingSchemaNote
+ *   约定的 `@<id> <名称>` 输出格式保持一致，避免 LLM 在 baseline / 输出之间换格式
  * - first-frame：仅按角色名简短列表（首帧模板里没有 @ 映射段，无需输出占位）
  */
 function formatCharacterMappingBaseline(
@@ -712,7 +724,7 @@ function formatCharacterMappingBaseline(
     .map(c => {
       const mention = createMentionString('char', c.id);
       const appearance = (c.appearance || c.description || '').trim();
-      return `- ${c.name}（映射符 ${mention}）：${appearance || '（无外观描述）'}`;
+      return `- ${mention} ${c.name}：${appearance || '（无外观描述）'}`;
     })
     .join('\n');
 }
@@ -729,7 +741,7 @@ function formatSceneMappingBaseline(
     .map(s => {
       const mention = createMentionString('scene', s.id);
       const desc = (s.description || s.prompt || '').trim();
-      return `- ${s.name}（映射符 ${mention}）：${desc || '（无空间描述）'}`;
+      return `- ${mention} ${s.name}：${desc || '（无空间描述）'}`;
     })
     .join('\n');
 }
@@ -746,7 +758,7 @@ function formatPropMappingBaseline(
     .map(p => {
       const mention = createMentionString('prop', p.id);
       const desc = (p.prompt || '').trim();
-      return `- ${p.name}（映射符 ${mention}）：${desc || '（无外观描述）'}`;
+      return `- ${mention} ${p.name}：${desc || '（无外观描述）'}`;
     })
     .join('\n');
 }
@@ -884,24 +896,65 @@ export function buildDialogueGuardNote(scriptContent: string, characterNames: st
 
 /**
  * 视频推理模板示例使用 "@图片1 / @图片2" 等占位约定；项目实际使用 mention 协议
- * (@char_<id> / @scene_<id> / @prop_<id>)。本注释告诉 LLM 把模板里所有 "@图片N" 替换成
- * 实际给出的 mention 字符串，确保下游 mention 解析能识别。
+ * (@char_<id> / @scene_<id> / @prop_<id> / @shot_anchor / @grid_anchor)。本约定告诉 LLM：
+ *
+ * - 写正文时使用**语义前缀**：`@角色 <名称>` / `@场景 <名称>` / `@道具 <名称>` / `@图`，
+ *   而不是模板示例里的 `<名称> @图片N` 或 `@（角色场景道具）<名称>` 写法 —— 后者让模型混淆
+ *   "图片位置编号"和"语义对象"。
+ * - 每个语义前缀后必须**紧跟一次** mention 协议字符串（@char_<id> / @scene_<id> /
+ *   @prop_<id> / @shot_anchor / @grid_anchor）作为机器可读 ID，下游 compile 才能把它
+ *   翻译成 references 中对应的 @图片N 位置。
+ * - 有图模式（含 shot-anchor / grid-anchor）下额外强调：必须在每个镜头描述中至少出现
+ *   一次 `@图 @shot_anchor`（或 `@图 @grid_anchor`），把锚定图作为剧情连贯性基准。
  */
 function buildMappingSchemaNote(
-  characterRefs: string,
-  sceneRefs: string,
-  propRefs: string,
+  shotCharacters: Character[],
+  shotScenes: Scene[],
+  shotProps: Prop[],
+  referenceBundle: ShotReferenceBundle,
 ): string {
-  return [
-    '【映射符约定（覆盖模板示例中的 @图片X 写法）】',
-    '本任务的映射符使用项目 mention 协议：角色为 @char_<id>、场景为 @scene_<id>、道具为 @prop_<id>。',
-    '上文模板正文里所有形如 "@图片1 / @图片2 / @图片X" 的写法仅是文档示例占位；最终输出请直接使用下方实际给出的映射符全字符串，不要保留 "@图片N" 形式。',
-    '',
-    '本分镜的实际映射符：',
-    `角色：\n${characterRefs || '（无）'}`,
-    `场景：\n${sceneRefs || '（无）'}`,
-    `道具：\n${propRefs || '（无）'}`,
-  ].join('\n');
+  const anchorItem = referenceBundle.items.find(
+    item => item.kind === 'shot-anchor' || item.kind === 'grid-anchor',
+  );
+
+  const lines: string[] = [];
+  lines.push('【映射符约定（覆盖模板示例中的 "@图片X" 写法，最终输出必须遵守本节）】');
+  lines.push('');
+  lines.push('1) 正文里指代角色 / 场景 / 道具 / 锚定图时，**必须使用 `@<id> <名称>` 格式**——mention 协议字符串在前，空格分隔，再跟该对象的中文名称。示例：');
+  lines.push('   - 角色：`@char_<id> <角色名>`，例如 `@char_abc123 周明`');
+  lines.push('   - 场景：`@scene_<id> <场景名>`，例如 `@scene_xyz789 教室`');
+  lines.push('   - 道具：`@prop_<id> <道具名>`，例如 `@prop_def456 钥匙`');
+  if (anchorItem) {
+    lines.push(`   - 分镜锚定图：\`${anchorItem.mentionToken} ${anchorItem.label}\``);
+  }
+  lines.push('');
+  lines.push('2) **禁止**以下其它格式：`名称 @图片1`、`@图片2 名称`、`@角色 名称`、`@场景 名称`、`@道具 名称`、`@（角色场景道具）名称`，也禁止单独出现 `@图片N` 或单独出现中文名。模板正文里所有 `@图片N` 仅为示例占位，最终输出必须替换成 `@<id> <名称>` 形式。');
+  lines.push('');
+  lines.push('3) 同一对象**每次出现都必须重复**写完整的 `@<id> <名称>`：不允许写"如前所述"省略，不允许只写 `@<id>`，也不允许只写中文名。');
+  lines.push('');
+  if (anchorItem) {
+    lines.push(`4) **本分镜处于"有图模式"**：每个镜头描述至少出现一次 \`${anchorItem.mentionToken} ${anchorItem.label}\`，用作画面 / 姿态 / 空间 / 光影的锚定基准；若是九宫格 / 四宫格锚定，需说明本镜头对应锚定图中的哪个 cell。`);
+  } else {
+    lines.push('4) 本分镜处于"无图模式"（references 中没有分镜锚定图），不要使用 `@shot_anchor` / `@grid_anchor`，所有视觉锚点完全靠 `@char_<id>` / `@scene_<id>` / `@prop_<id>` 描述。');
+  }
+  lines.push('');
+  lines.push('本分镜可用映射符清单（**只能**使用这里列出的对象，禁止虚构或引用未列出的资产）：');
+  lines.push(formatMappingList('角色', shotCharacters.map(c => ({ name: c.name, mention: createMentionString('char', c.id) }))));
+  lines.push(formatMappingList('场景', shotScenes.map(s => ({ name: s.name, mention: createMentionString('scene', s.id) }))));
+  lines.push(formatMappingList('道具', shotProps.map(p => ({ name: p.name, mention: createMentionString('prop', p.id) }))));
+  if (anchorItem) {
+    lines.push(`- 分镜锚定图：\`${anchorItem.mentionToken} ${anchorItem.label}\``);
+  }
+  return lines.join('\n');
+}
+
+function formatMappingList(
+  label: string,
+  entries: Array<{ name: string; mention: string }>,
+): string {
+  if (entries.length === 0) return `- ${label}：（本分镜未绑定）`;
+  const items = entries.map(e => `\`${e.mention} ${e.name}\``).join('；');
+  return `- ${label}：${items}`;
 }
 
 /**

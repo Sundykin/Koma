@@ -97,7 +97,9 @@ function createInitialCanvasUiState(): LinghuiCanvasUiState {
     editorSelection: null,
     activeNodeTool: null,
     canvasRect: null,
-    canvasMode: 'mouse',
+    // 默认走 ComfyUI 风格：左键拖动平移、滚轮缩放，无需先按修饰键。
+    // 用户仍可通过 HUD 切到 'mouse'（Figma 风格：左键框选 + 中键/右键拖动平移）。
+    canvasMode: 'hand',
     pendingGroupFrame: null,
     gridSplitType: '2x2',
     gridSplitSelectedCells: [],

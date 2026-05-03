@@ -114,19 +114,19 @@ export const LinghuiCanvasHud: React.FC<LinghuiCanvasHudProps> = ({
       <div className="linghuiCanvasTools nopan nowheel">
         <button
           type="button"
-          className={`linghuiCanvasToolButton ${canvasMode === 'mouse' ? 'isActive' : ''}`}
-          onClick={() => onSetCanvasMode('mouse')}
-          title="鼠标模式：滚轮平移画布，双指捏合或工具按钮缩放"
+          className={`linghuiCanvasToolButton ${canvasMode === 'hand' ? 'isActive' : ''}`}
+          onClick={() => onSetCanvasMode('hand')}
+          title="手模式（ComfyUI 风格，默认）：左键拖动空白处平移画布；滚轮缩放；Shift+拖动框选"
         >
-          <MousePointer2 size={15} />
+          <Hand size={15} />
         </button>
         <button
           type="button"
-          className={`linghuiCanvasToolButton ${canvasMode === 'hand' ? 'isActive' : ''}`}
-          onClick={() => onSetCanvasMode('hand')}
-          title="手模式：拖动画布，滚轮缩放"
+          className={`linghuiCanvasToolButton ${canvasMode === 'mouse' ? 'isActive' : ''}`}
+          onClick={() => onSetCanvasMode('mouse')}
+          title="鼠标模式（Figma 风格）：左键框选；中键/右键拖动平移；滚轮缩放"
         >
-          <Hand size={15} />
+          <MousePointer2 size={15} />
         </button>
         <span className="linghuiCanvasToolDivider" />
         <button

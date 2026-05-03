@@ -1522,40 +1522,40 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     }
   }, [projectId, episodeId, shots, characters, scenes, ttiSelection, aspectRatio, styleSnapshot]);
 
-  // 批量渲染视频（已确认的）
+  // 批量渲染视频（生成空白项：仅渲染没有视频的分镜，与图片批量保持一致）
   const handleBatchRenderVideos = useCallback(async (targetShotIds?: string[]) => {
     const baseShots = targetShotIds
       ? shots.filter(s => targetShotIds.includes(s.id))
       : shots;
-    const confirmedToRender = baseShots.filter(s => s.confirmed);
-    if (confirmedToRender.length === 0) {
-      message.warning('请先确认要渲染的分镜');
+    const shotsWithoutVideo = baseShots.filter(s => (s.media?.videos?.length || 0) === 0);
+    if (shotsWithoutVideo.length === 0) {
+      message.info('所选分镜都已有视频');
       return;
     }
-    const unsupportedMessage = buildUnsupportedShotVideoMessage(confirmedToRender);
+    const unsupportedMessage = buildUnsupportedShotVideoMessage(shotsWithoutVideo);
     if (unsupportedMessage) {
       message.error(unsupportedMessage);
       return;
     }
-    const shotIds = confirmedToRender.map(s => s.id);
+    const shotIds = shotsWithoutVideo.map(s => s.id);
     setRenderingShots(new Set(shotIds));
-    setRenderProgress(0);
-    setRenderStep('准备批量渲染...');
+    setBatchProgress({ current: 0, total: shotIds.length, step: '准备批量渲染...' });
     try {
+      const indexMap = new Map(shotIds.map((id, idx) => [id, idx]));
       const { result } = await runWithTask({
         projectId,
         category: 'analysis',
         subType: 'shot-generation',
         targetType: 'episode',
         targetId: episodeId,
-        targetName: `批量视频渲染（${confirmedToRender.length} 个分镜）`,
+        targetName: `批量视频渲染（${shotsWithoutVideo.length} 个分镜）`,
         type: 'shot-generation',
-        metadata: { shotCount: confirmedToRender.length },
+        metadata: { shotCount: shotsWithoutVideo.length },
         execute: async (taskCtx) => batchRenderShots(
           {
             projectId,
             episodeId,
-            shots: confirmedToRender,
+            shots: shotsWithoutVideo,
             settings: effectiveSettings,
             aspectRatio,
             mediaSelections: {
@@ -1566,8 +1566,12 @@ export const Storyboard: React.FC<StoryboardProps> = ({
             styleSnapshot,
           },
           (overall, current) => {
-            setRenderProgress(overall);
-            setRenderStep(`${current.step || ''} (${current.shotId})`);
+            const idx = (indexMap.get(current.shotId) ?? 0) + 1;
+            setBatchProgress({
+              current: idx,
+              total: shotIds.length,
+              step: `分镜 ${current.shotId.slice(-6)}: ${current.step || ''}`,
+            });
             taskCtx.progress(overall, `${current.shotId.slice(-6)}: ${current.step || ''}`);
           }
         ),
@@ -1579,8 +1583,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       message.error(errorMessage || '批量渲染失败');
     } finally {
       setRenderingShots(new Set());
-      setRenderProgress(0);
-      setRenderStep('');
+      setBatchProgress(undefined);
     }
   }, [projectId, episodeId, shots, effectiveSettings, ttiSelection, itvSelection, ttsSelection, aspectRatio, styleSnapshot, buildUnsupportedShotVideoMessage, message, refreshShotsFromStore]);
 
@@ -1601,9 +1604,9 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     }
     const shotIds = shotsWithVideo.map(s => s.id);
     setRenderingShots(new Set(shotIds));
-    setRenderProgress(0);
-    setRenderStep('准备批量重新渲染...');
+    setBatchProgress({ current: 0, total: shotIds.length, step: '准备批量重新渲染...' });
     try {
+      const indexMap = new Map(shotIds.map((id, idx) => [id, idx]));
       const { result } = await runWithTask({
         projectId,
         category: 'analysis',
@@ -1628,8 +1631,12 @@ export const Storyboard: React.FC<StoryboardProps> = ({
             styleSnapshot,
           },
           (overall, current) => {
-            setRenderProgress(overall);
-            setRenderStep(`${current.step || ''} (${current.shotId})`);
+            const idx = (indexMap.get(current.shotId) ?? 0) + 1;
+            setBatchProgress({
+              current: idx,
+              total: shotIds.length,
+              step: `分镜 ${current.shotId.slice(-6)}: ${current.step || ''}`,
+            });
             taskCtx.progress(overall, `${current.shotId.slice(-6)}: ${current.step || ''}`);
           }
         ),
@@ -1641,8 +1648,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       message.error(errorMessage || '批量重新渲染失败');
     } finally {
       setRenderingShots(new Set());
-      setRenderProgress(0);
-      setRenderStep('');
+      setBatchProgress(undefined);
     }
   }, [projectId, episodeId, shots, effectiveSettings, ttiSelection, itvSelection, ttsSelection, aspectRatio, styleSnapshot, buildUnsupportedShotVideoMessage, message, refreshShotsFromStore]);
 
