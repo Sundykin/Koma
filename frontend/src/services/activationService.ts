@@ -502,9 +502,12 @@ export const activationService = {
             id: 'seedance-2.0-r',
             label: 'Seedance 2.0',
             providerModelName: 'seedance-2.0-r',
+            // SeedanceProvider runtime 同时支持 reference-to-video（多参考），
+            // 默认放出来与 grok 视频对齐，用户无需手动改 capability。
             capabilities: [
               'video.text-to-video' as ModelCapability,
               'video.image-to-video' as ModelCapability,
+              'video.reference-to-video' as ModelCapability,
             ],
           },
           {
@@ -514,6 +517,7 @@ export const activationService = {
             capabilities: [
               'video.text-to-video' as ModelCapability,
               'video.image-to-video' as ModelCapability,
+              'video.reference-to-video' as ModelCapability,
             ],
           },
         ],
@@ -592,9 +596,11 @@ export const activationService = {
           id: 'seedance-2.0-r',
           label: 'Seedance 2.0',
           providerModelName: 'seedance-2.0-r',
+          // 老用户激活时多参考能力默认未开，reconcile 时也补上。
           capabilities: [
             'video.text-to-video' as ModelCapability,
             'video.image-to-video' as ModelCapability,
+            'video.reference-to-video' as ModelCapability,
           ],
         },
         {
@@ -604,6 +610,7 @@ export const activationService = {
           capabilities: [
             'video.text-to-video' as ModelCapability,
             'video.image-to-video' as ModelCapability,
+            'video.reference-to-video' as ModelCapability,
           ],
         },
       ],
