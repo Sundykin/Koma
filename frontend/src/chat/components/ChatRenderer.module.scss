@@ -55,6 +55,11 @@
   font-size: 13px;
   line-height: 1.55;
   word-break: break-word;
+  /* 显式允许文本选择（兼容 Electron / 父元素任何 user-select 继承）。
+     之前用户气泡内 <span>{content}</span> 用户报告无法选中——保险起见全显式启用 */
+  -webkit-user-select: text;
+  user-select: text;
+  cursor: text;
 }
 
 .userBubble .messageBody {
@@ -365,6 +370,9 @@
   color: var(--token-text-primary);
   font-size: 13px;
   line-height: 1.55;
+  -webkit-user-select: text;
+  user-select: text;
+  cursor: text;
 }
 
 .thinkingIndicator {
