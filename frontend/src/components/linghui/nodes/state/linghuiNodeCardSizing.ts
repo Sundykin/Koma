@@ -1,5 +1,3 @@
-import type { CSSProperties } from 'react';
-
 type MediaCardOrientation = 'portrait' | 'landscape' | 'square';
 
 interface MediaCardPreset {
@@ -7,11 +5,7 @@ interface MediaCardPreset {
   height: number;
 }
 
-interface MediaCardStyle extends CSSProperties {
-  ['--linghui-node-width']?: string;
-  ['--linghui-thumb-height']?: string;
-  ['--linghui-node-min-height']?: string;
-}
+type MediaCardStyle = Record<`--${string}`, string>;
 
 const MEDIA_CARD_PRESETS: Record<MediaCardOrientation, MediaCardPreset> = {
   portrait: { width: 350, height: 627 },

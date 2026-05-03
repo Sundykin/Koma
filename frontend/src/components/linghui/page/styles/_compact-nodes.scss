@@ -30,14 +30,14 @@
 
   &[data-view-mode='collapsed']::after {
     content: '折叠';
-    background: rgba(51, 65, 85, 0.88);
-    color: #e2e8f0;
+    background: color-mix(in srgb, var(--token-bg-hover) 88%, transparent);
+    color: $lh-text-secondary;
   }
 
   &[data-view-mode='immersive']::after {
     content: '沉浸';
-    background: rgba(20, 83, 45, 0.88);
-    color: #dcfce7;
+    background: color-mix(in srgb, var(--token-status-success) 88%, transparent);
+    color: $lh-text-success;
   }
 }
 
@@ -48,9 +48,11 @@
     min-height: var(--linghui-node-min-height, auto);
     display: flex;
     flex-direction: column;
-    border: 1px solid rgba(15, 23, 42, 0.7);
+    border: 1px solid color-mix(in srgb, var(--token-bg-card) 70%, transparent);
+    border-color: var(--linghui-node-border, color-mix(in srgb, var(--token-bg-card) 70%, transparent));
     border-radius: 14px;
-    background: #0f1720;
+    background: var(--token-bg-card);
+    box-shadow: var(--linghui-node-shadow, none);
     overflow: visible;
     transition:
       box-shadow 220ms ease,
@@ -97,13 +99,15 @@
   }
 
   &Handle {
+    top: var(--linghui-handle-top, 50%) !important;
+    background: var(--linghui-handle-bg, var(--token-accent-base)) !important;
     width: 10px !important;
     height: 10px !important;
-    border: 2px solid #0f1720 !important;
+    border: 2px solid var(--token-bg-card) !important;
     border-radius: 50% !important;
     opacity: 1 !important;
     z-index: 4 !important;
-    box-shadow: 0 0 0 1px rgba(15, 23, 32, 0.24);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--token-bg-card) 24%, transparent);
   }
 
   &Thumb {
@@ -111,7 +115,7 @@
     width: 100%;
     height: var(--linghui-thumb-height, 208px);
     flex: 0 0 auto;
-    background: #111827;
+    background: var(--token-bg-surface);
     overflow: hidden;
     border-radius: 13px;
     isolation: isolate;
@@ -125,6 +129,42 @@
       object-fit: cover;
       display: block;
     }
+  }
+
+  &StatusShell {
+    border-color: var(--linghui-node-border, var(--token-border-base));
+  }
+
+  &StatusShadow {
+    box-shadow: var(--linghui-node-shadow, none);
+  }
+
+  &ProgressBar {
+    width: var(--linghui-progress, 0%);
+  }
+
+  &AccentFill {
+    background: var(--linghui-accent, var(--token-accent-base));
+  }
+
+  &AccentText {
+    color: var(--linghui-accent, var(--token-accent-base));
+  }
+
+  &AccentLineStrong {
+    background: color-mix(in srgb, var(--linghui-accent, var(--token-accent-base)) 80%, transparent);
+  }
+
+  &AccentLineMedium {
+    background: color-mix(in srgb, var(--linghui-accent, var(--token-accent-base)) 55%, transparent);
+  }
+
+  &AccentLineSoft {
+    background: color-mix(in srgb, var(--linghui-accent, var(--token-accent-base)) 35%, transparent);
+  }
+
+  &AccentBorder {
+    border-color: color-mix(in srgb, var(--linghui-accent, var(--token-accent-base)) 35%, transparent);
   }
 
   &ToolBar {
@@ -152,15 +192,15 @@
   }
 
   &ToolButton {
-    @include lh-chip(24px, 0 8px, rgba(8, 12, 18, 0.78), $lh-text-primary, 10px, 700);
+    @include lh-chip(24px, 0 8px, color-mix(in srgb, var(--token-bg-app) 78%, transparent), $lh-text-primary, 10px, 700);
 
-    border: 1px solid rgba(255, 255, 255, 0.12);
+    border: 1px solid color-mix(in srgb, var(--token-text-primary) 12%, transparent);
     backdrop-filter: blur(10px);
 
     &:hover {
       transform: translateY(-1px);
-      border-color: rgba(16, 185, 129, 0.52);
-      background: rgba(8, 12, 18, 0.92);
+      border-color: color-mix(in srgb, var(--token-accent-base) 52%, transparent);
+      background: color-mix(in srgb, var(--token-bg-app) 92%, transparent);
     }
   }
 
@@ -169,7 +209,7 @@
       position: relative;
       width: 100%;
       height: 100%;
-      background: #020617;
+      background: var(--token-bg-app);
       overflow: hidden;
       transform: translateZ(0);
       backface-visibility: hidden;
@@ -199,7 +239,7 @@
       width: 100%;
       height: 100%;
       display: block;
-      background: #020617;
+      background: var(--token-bg-app);
       opacity: 0;
       transform: translateZ(0);
       backface-visibility: hidden;
@@ -227,22 +267,22 @@
       align-items: center;
       justify-content: center;
       pointer-events: none;
-      background: linear-gradient(180deg, rgba(8, 12, 18, 0.08), rgba(8, 12, 18, 0.18));
+      background: linear-gradient(180deg, color-mix(in srgb, var(--token-bg-app) 8%, transparent), color-mix(in srgb, var(--token-bg-app) 18%, transparent));
 
       &.isPlaying {
-        background: linear-gradient(180deg, rgba(8, 12, 18, 0.03), rgba(8, 12, 18, 0.12));
+        background: linear-gradient(180deg, color-mix(in srgb, var(--token-bg-app) 3%, transparent), color-mix(in srgb, var(--token-bg-app) 12%, transparent));
       }
     }
 
     &Toggle {
       width: 44px;
       height: 44px;
-      border: 1px solid rgba(255, 255, 255, 0.18);
+      border: 1px solid color-mix(in srgb, var(--token-text-primary) 18%, transparent);
       border-radius: $lh-radius-pill;
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      background: rgba(9, 13, 18, 0.76);
+      background: color-mix(in srgb, var(--token-bg-app) 76%, transparent);
       color: $lh-text-primary;
       pointer-events: auto;
       backdrop-filter: blur(14px);
@@ -253,13 +293,13 @@
 
       &:hover {
         transform: translateY(-1px) scale(1.02);
-        border-color: rgba(56, 189, 248, 0.56);
-        background: rgba(9, 13, 18, 0.88);
+        border-color: color-mix(in srgb, var(--token-status-info) 56%, transparent);
+        background: color-mix(in srgb, var(--token-bg-app) 88%, transparent);
       }
 
       &.isPlaying {
-        background: rgba(15, 23, 42, 0.82);
-        border-color: rgba(148, 163, 184, 0.34);
+        background: color-mix(in srgb, var(--token-bg-card) 82%, transparent);
+        border-color: color-mix(in srgb, var(--token-text-tertiary) 34%, transparent);
       }
     }
 
@@ -267,7 +307,7 @@
       width: 28px;
       height: 28px;
       border-radius: 50%;
-      background: rgba(9, 13, 18, 0.72);
+      background: color-mix(in srgb, var(--token-bg-app) 72%, transparent);
       display: flex;
       align-items: center;
       justify-content: center;
@@ -275,11 +315,11 @@
     }
   }
 
-  &ThumbDeck {
-    position: relative;
-    width: 100%;
-    height: 100%;
-    z-index: 1;
+    &ThumbDeck {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      z-index: 1;
     transition: opacity 180ms ease;
 
     &.isSingle {
@@ -287,7 +327,7 @@
         inset: 0;
 
         &.isPrimary {
-          box-shadow: inset 0 0 0 2px rgba(74, 222, 128, 0.88);
+          box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--token-status-success) 88%, transparent);
         }
       }
     }
@@ -302,14 +342,14 @@
           rotate(calc(var(--layer-index, 0) * -0.7deg))
           scale(calc(1 - var(--layer-index, 0) * 0.035));
         box-shadow:
-          0 14px 24px rgba(2, 6, 23, 0.26),
-          0 2px 8px rgba(15, 23, 42, 0.18);
+          0 14px 24px color-mix(in srgb, var(--token-bg-app) 26%, transparent),
+          0 2px 8px color-mix(in srgb, var(--token-bg-card) 18%, transparent);
 
         &.isPrimary {
           z-index: 10;
           box-shadow:
-            inset 0 0 0 2px rgba(74, 222, 128, 0.88),
-            0 18px 30px rgba(2, 6, 23, 0.34);
+            inset 0 0 0 2px color-mix(in srgb, var(--token-status-success) 88%, transparent),
+            0 18px 30px color-mix(in srgb, var(--token-bg-app) 34%, transparent);
         }
 
         &:not(.isPrimary) {
@@ -318,11 +358,13 @@
       }
     }
 
-    &.isExpanded {
-      display: grid;
-      align-content: start;
-      justify-content: start;
-      gap: 12px;
+      &.isExpanded {
+        display: grid;
+        grid-template-columns: var(--linghui-expanded-grid-columns, 1fr);
+        grid-auto-rows: var(--linghui-expanded-grid-auto-rows, var(--linghui-base-thumb-height, 208px));
+        align-content: start;
+        justify-content: start;
+        gap: 12px;
       padding: 0;
 
       .linghuiCompactThumbLayer {
@@ -333,7 +375,7 @@
         height: var(--linghui-base-thumb-height, 208px);
         transform: none;
         filter: none;
-        box-shadow: 0 10px 22px rgba(2, 6, 23, 0.18);
+        box-shadow: 0 10px 22px color-mix(in srgb, var(--token-bg-app) 18%, transparent);
         transition:
           transform 180ms ease,
           box-shadow 180ms ease,
@@ -343,12 +385,12 @@
         animation-delay: calc(var(--layer-index, 0) * 36ms);
 
         &.isPrimary {
-          box-shadow: inset 0 0 0 2px rgba(74, 222, 128, 0.88);
+          box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--token-status-success) 88%, transparent);
 
           &:hover {
             box-shadow:
-              inset 0 0 0 2px rgba(74, 222, 128, 0.88),
-              0 16px 30px rgba(2, 6, 23, 0.28);
+              inset 0 0 0 2px color-mix(in srgb, var(--token-status-success) 88%, transparent),
+              0 16px 30px color-mix(in srgb, var(--token-bg-app) 28%, transparent);
           }
         }
 
@@ -356,8 +398,8 @@
           transform: scale(1.03);
           z-index: 2;
           box-shadow:
-            inset 0 0 0 1px rgba(255, 255, 255, 0.08),
-            0 16px 30px rgba(2, 6, 23, 0.28);
+            inset 0 0 0 1px color-mix(in srgb, var(--token-text-primary) 8%, transparent),
+            0 16px 30px color-mix(in srgb, var(--token-bg-app) 28%, transparent);
         }
       }
     }
@@ -368,8 +410,8 @@
     inset: 0;
     overflow: hidden;
     border-radius: 12px;
-    background: rgba(15, 23, 42, 0.9);
-    box-shadow: 0 8px 18px rgba(15, 23, 42, 0.18);
+    background: color-mix(in srgb, var(--token-bg-card) 90%, transparent);
+    box-shadow: 0 8px 18px color-mix(in srgb, var(--token-bg-card) 18%, transparent);
     transform-origin: center center;
     transition:
       transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1),
@@ -390,7 +432,7 @@
     justify-content: space-between;
     padding: 6px;
     background:
-      linear-gradient(180deg, rgba(8, 12, 18, 0.16), rgba(8, 12, 18, 0) 36%, rgba(8, 12, 18, 0.54));
+      linear-gradient(180deg, color-mix(in srgb, var(--token-bg-app) 16%, transparent), color-mix(in srgb, var(--token-bg-app) 0%, transparent) 36%, color-mix(in srgb, var(--token-bg-app) 54%, transparent));
     pointer-events: none;
   }
 
@@ -409,24 +451,24 @@
   }
 
   &ThumbPrimaryBadge {
-    @include lh-chip(22px, 0 8px, rgba(21, 128, 61, 0.82), #dcfce7, 10px, 700);
+    @include lh-chip(22px, 0 8px, color-mix(in srgb, var(--token-status-success) 82%, transparent), $lh-text-success, 10px, 700);
 
     justify-content: center;
     letter-spacing: 0.01em;
   }
 
   &ThumbActionButton {
-    @include lh-chip(22px, 0 8px, rgba(8, 12, 18, 0.76), $lh-text-primary, 10px, 700);
+    @include lh-chip(22px, 0 8px, color-mix(in srgb, var(--token-bg-app) 76%, transparent), $lh-text-primary, 10px, 700);
 
-    border: 1px solid rgba(255, 255, 255, 0.12);
+    border: 1px solid color-mix(in srgb, var(--token-text-primary) 12%, transparent);
     justify-content: center;
     gap: 4px;
     backdrop-filter: blur(10px);
 
     &:hover:not(:disabled) {
       transform: translateY(-1px);
-      border-color: rgba(74, 222, 128, 0.42);
-      background: rgba(8, 12, 18, 0.9);
+      border-color: color-mix(in srgb, var(--token-status-success) 42%, transparent);
+      background: color-mix(in srgb, var(--token-bg-app) 90%, transparent);
     }
 
     &:disabled {
@@ -454,7 +496,7 @@
     }
 
     .linghuiCompactLabel {
-      background: rgba(9, 13, 18, 0.68);
+      background: color-mix(in srgb, var(--token-bg-app) 68%, transparent);
       color: $lh-text-primary;
       font-size: 12px;
       font-weight: 700;
@@ -462,21 +504,21 @@
     }
 
     .linghuiCompactLabelInput {
-      border: 1px solid rgba(74, 222, 128, 0.7);
-      background: rgba(9, 13, 18, 0.82);
+      border: 1px solid color-mix(in srgb, var(--token-status-success) 70%, transparent);
+      background: color-mix(in srgb, var(--token-bg-app) 82%, transparent);
       font-size: 12px;
     }
   }
 
   &ThumbCount {
-    @include lh-chip(28px, 0 8px, rgba(9, 13, 18, 0.68), $lh-text-primary, 12px, 700);
+    @include lh-chip(28px, 0 8px, color-mix(in srgb, var(--token-bg-app) 68%, transparent), $lh-text-primary, 12px, 700);
 
     min-width: 28px;
     justify-content: center;
   }
 
-  &ThumbExpand {
-    @include lh-chip(28px, 0 12px, rgba(9, 13, 18, 0.68), $lh-text-primary, 12px, 700);
+    &ThumbExpand {
+      @include lh-chip(28px, 0 12px, color-mix(in srgb, var(--token-bg-app) 68%, transparent), $lh-text-primary, 12px, 700);
 
     position: absolute;
     right: 10px;
@@ -484,11 +526,15 @@
     z-index: 20;
     border: none;
 
-    &:hover {
-      transform: translateY(-1px);
-      background: rgba(9, 13, 18, 0.84);
+      &:hover {
+        transform: translateY(-1px);
+        background: color-mix(in srgb, var(--token-bg-app) 84%, transparent);
+      }
+
+      &.isHidden {
+        display: none;
+      }
     }
-  }
 
   &Grid {
     &PreviewSurface {
@@ -500,10 +546,14 @@
 
     &PreviewMedia {
       position: absolute;
+      left: var(--linghui-grid-frame-left, 0);
+      top: var(--linghui-grid-frame-top, 0);
+      width: var(--linghui-grid-frame-width, 100%);
+      height: var(--linghui-grid-frame-height, 100%);
       overflow: hidden;
       border-radius: 12px;
-      background: rgba(15, 23, 42, 0.92);
-      box-shadow: 0 10px 22px rgba(2, 6, 23, 0.18);
+      background: color-mix(in srgb, var(--token-bg-card) 92%, transparent);
+      box-shadow: 0 10px 22px color-mix(in srgb, var(--token-bg-app) 18%, transparent);
 
       img {
         width: 100%;
@@ -515,6 +565,10 @@
 
     &Overlay {
       position: absolute;
+      left: var(--linghui-grid-frame-left, 0);
+      top: var(--linghui-grid-frame-top, 0);
+      width: var(--linghui-grid-frame-width, 100%);
+      height: var(--linghui-grid-frame-height, 100%);
       z-index: 20;
       border-radius: 12px;
       overflow: hidden;
@@ -523,9 +577,10 @@
     &Line {
       position: absolute;
       pointer-events: none;
-      background: rgba(255, 255, 255, 0.28);
+      background: color-mix(in srgb, var(--token-text-primary) 28%, transparent);
 
       &.isVertical {
+        left: var(--linghui-grid-line-left, 0);
         top: 0;
         bottom: 0;
         width: 1px;
@@ -534,6 +589,7 @@
 
       &.isHorizontal {
         left: 0;
+        top: var(--linghui-grid-line-top, 0);
         right: 0;
         height: 1px;
         transform: translateY(-0.5px);
@@ -542,13 +598,17 @@
 
     &Cell {
       position: absolute;
+      left: var(--linghui-grid-cell-left, 0);
+      top: var(--linghui-grid-cell-top, 0);
+      width: var(--linghui-grid-cell-width, 100%);
+      height: var(--linghui-grid-cell-height, 100%);
       display: flex;
       align-items: center;
       justify-content: center;
       box-sizing: border-box;
       border: none;
       background: transparent;
-      color: rgba(255, 255, 255, 0.5);
+      color: color-mix(in srgb, var(--token-text-primary) 50%, transparent);
       font-size: 11px;
       font-weight: 700;
       transition:
@@ -558,13 +618,13 @@
       cursor: pointer;
 
       &:hover {
-        background: rgba(255, 255, 255, 0.1);
-        color: rgba(255, 255, 255, 0.8);
+        background: color-mix(in srgb, var(--token-text-primary) 10%, transparent);
+        color: color-mix(in srgb, var(--token-text-primary) 80%, transparent);
       }
 
       &.isSelected {
-        background: rgba(16, 185, 129, 0.32);
-        box-shadow: inset 0 0 0 2px rgba(16, 185, 129, 0.72);
+        background: color-mix(in srgb, var(--token-accent-base) 32%, transparent);
+        box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--token-accent-base) 72%, transparent);
         color: $lh-text-success;
       }
 
@@ -578,7 +638,7 @@
   &Progress {
     height: 3px;
     border-radius: $lh-radius-pill;
-    background: rgba(30, 41, 59, 0.7);
+    background: color-mix(in srgb, var(--token-bg-hover) 70%, transparent);
     overflow: hidden;
   }
 
@@ -611,15 +671,15 @@
   }
 
   &ThumbCaption {
-    @include lh-chip(28px, 0 12px, rgba(9, 13, 18, 0.68), #e2e8f0, 12px, 600);
+    @include lh-chip(28px, 0 12px, color-mix(in srgb, var(--token-bg-app) 68%, transparent), $lh-text-secondary, 12px, 600);
 
     gap: 6px;
     line-height: 1.35;
     backdrop-filter: blur(10px);
 
     &.isRunning {
-      background: rgba(29, 78, 216, 0.26);
-      color: #dbeafe;
+      background: color-mix(in srgb, var(--token-status-info) 26%, transparent);
+      color: $lh-text-info;
     }
   }
 
@@ -631,7 +691,7 @@
   &ScriptThumb,
   &AudioThumb {
     background:
-      linear-gradient(135deg, rgba(22, 28, 36, 0.94), rgba(15, 23, 42, 0.98));
+      linear-gradient(135deg, color-mix(in srgb, var(--token-bg-surface) 94%, transparent), color-mix(in srgb, var(--token-bg-card) 98%, transparent));
   }
 
   &TextThumb {
@@ -641,8 +701,8 @@
     justify-content: center;
     padding: 28px 24px;
     background:
-      radial-gradient(circle at 18% 18%, rgba(245, 158, 11, 0.16), transparent 42%),
-      linear-gradient(135deg, rgba(22, 28, 36, 0.94), rgba(15, 23, 42, 0.98));
+      radial-gradient(circle at 18% 18%, color-mix(in srgb, var(--token-status-warning) 16%, transparent), transparent 42%),
+      linear-gradient(135deg, color-mix(in srgb, var(--token-bg-surface) 94%, transparent), color-mix(in srgb, var(--token-bg-card) 98%, transparent));
   }
 
   &TextGlyph {
@@ -681,8 +741,8 @@
     justify-content: space-between;
     padding: 24px;
     background:
-      radial-gradient(circle at 18% 18%, rgba(167, 139, 250, 0.18), transparent 42%),
-      linear-gradient(135deg, rgba(22, 28, 36, 0.94), rgba(15, 23, 42, 0.98));
+      radial-gradient(circle at 18% 18%, color-mix(in srgb, var(--token-status-info) 18%, transparent), transparent 42%),
+      linear-gradient(135deg, color-mix(in srgb, var(--token-bg-surface) 94%, transparent), color-mix(in srgb, var(--token-bg-card) 98%, transparent));
   }
 
   &ScriptFrame {
@@ -716,8 +776,8 @@
       display: block;
       height: 54px;
       border-radius: 10px;
-      border: 1px solid rgba(167, 139, 250, 0.35);
-      background: rgba(15, 23, 42, 0.42);
+      border: 1px solid color-mix(in srgb, var(--token-status-info) 35%, transparent);
+      background: color-mix(in srgb, var(--token-bg-card) 42%, transparent);
     }
   }
 
@@ -726,8 +786,8 @@
     align-items: center;
     justify-content: center;
     background:
-      radial-gradient(circle at 20% 20%, rgba(249, 115, 22, 0.16), transparent 42%),
-      linear-gradient(135deg, rgba(22, 28, 36, 0.94), rgba(15, 23, 42, 0.98));
+      radial-gradient(circle at 20% 20%, color-mix(in srgb, var(--token-status-warning) 16%, transparent), transparent 42%),
+      linear-gradient(135deg, color-mix(in srgb, var(--token-bg-surface) 94%, transparent), color-mix(in srgb, var(--token-bg-card) 98%, transparent));
   }
 
   &AudioWave {
@@ -773,14 +833,14 @@
   &Label {
     @include lh-ellipsis;
 
-    color: #e4e4e7;
+    color: $lh-text-secondary;
     font-size: 14px;
     font-weight: 600;
     cursor: text;
   }
 
   &LabelInput {
-    @include lh-input-shell(8px, rgba(15, 23, 42, 0.92), inset 0 0 0 1px rgba(74, 222, 128, 0.55));
+    @include lh-input-shell(8px, color-mix(in srgb, var(--token-bg-card) 92%, transparent), inset 0 0 0 1px color-mix(in srgb, var(--token-status-success) 55%, transparent));
 
     width: 100%;
     min-width: 0;
@@ -798,7 +858,7 @@
   }
 
   &TextExcerpt {
-    color: #cbd5e1;
+    color: $lh-text-secondary;
     font-size: 12px;
     line-height: 1.5;
     display: -webkit-box;
@@ -809,7 +869,7 @@
 
   &ProgressBar {
     height: 100%;
-    background: linear-gradient(90deg, #38bdf8, #22c55e);
+    background: linear-gradient(90deg, color-mix(in srgb, var(--token-status-info) 72%, var(--token-text-primary)), var(--token-status-success));
     transition: width 300ms ease;
   }
 }

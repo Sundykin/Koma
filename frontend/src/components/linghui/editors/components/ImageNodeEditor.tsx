@@ -436,7 +436,6 @@ export const ImageNodeEditor: React.FC<ImageNodeEditorProps> = ({
           onChange={value => updateProp('prompt', value)}
           references={promptReferences}
           placeholder="输入 @ 引用上游产物"
-          darkTheme
           surfaceStyle="fusion"
           minHeight="72px"
           maxHeight="144px"

@@ -83,7 +83,10 @@ export const LinghuiCanvasContextMenu: React.FC<LinghuiCanvasContextMenuProps> =
   return (
     <div
       className="linghuiContextMenu nopan nowheel"
-      style={{ left: contextMenu.x, top: contextMenu.y }}
+      style={{
+        '--linghui-overlay-left': `${contextMenu.x}px`,
+        '--linghui-overlay-top': `${contextMenu.y}px`,
+      } as React.CSSProperties}
       onPointerDown={(event) => event.stopPropagation()}
     >
       {contextMenu.kind === 'node' && (
@@ -224,7 +227,10 @@ export const LinghuiCanvasContextMenu: React.FC<LinghuiCanvasContextMenuProps> =
                   className="linghuiContextMenuItem"
                   onClick={() => onAddNode(item.type)}
                 >
-                  <span className="linghuiContextMenuDot" style={{ background: item.accent }} />
+                  <span
+                    className="linghuiContextMenuDot"
+                    style={{ '--linghui-accent': item.accent } as React.CSSProperties}
+                  />
                   {item.label}
                 </button>
               ))}

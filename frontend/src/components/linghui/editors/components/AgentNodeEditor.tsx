@@ -136,7 +136,7 @@ export const AgentNodeEditor: React.FC<AgentNodeEditorProps> = ({
             max={24}
             value={maxIterations}
             onChange={value => updateProp('maxIterations', Math.max(1, Number(value ?? 1)))}
-            style={{ width: '100%' }}
+            className="linghuiEditorSettingNumber"
           />
         </div>
         <div className="linghuiEditorSettingsBlock">
@@ -175,7 +175,6 @@ export const AgentNodeEditor: React.FC<AgentNodeEditorProps> = ({
             String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())
             || String((option as { searchText?: string } | undefined)?.searchText ?? '').includes(input.toLowerCase())
           )}
-          style={{ width: '100%' }}
           getPopupContainer={triggerNode => triggerNode.ownerDocument.body}
         />
       </div>
@@ -197,7 +196,6 @@ export const AgentNodeEditor: React.FC<AgentNodeEditorProps> = ({
           onChange={value => updateProp('prompt', value)}
           references={promptReferences}
           placeholder="描述 Agent 目标、输出要求和可用上下文，输入 @ 引用上游产物"
-          darkTheme
           surfaceStyle="fusion"
           minHeight="124px"
           maxHeight="240px"
@@ -205,13 +203,13 @@ export const AgentNodeEditor: React.FC<AgentNodeEditorProps> = ({
       </div>
 
       <div className="linghuiEditorField">
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+        <div className="linghuiEditorInlineHeader">
           <span className="linghuiEditorSettingsLabel">实时输出</span>
           <span className="linghuiEditorSummaryPill">{outputText.length} 字</span>
         </div>
         <div
-          className="linghuiNodeTextarea"
-          style={{ minHeight: 172, overflow: 'auto', whiteSpace: 'pre-wrap', color: '#e4e4e7' }}
+          className="linghuiNodeTextarea linghuiEditorOutputText"
+          style={{ '--linghui-output-min-height': '172px' } as React.CSSProperties}
         >
           {outputText || (isStreaming ? '正在等待 Agent 返回首段内容...' : '执行后会在这里显示实时输出')}
         </div>
@@ -227,7 +225,7 @@ export const AgentNodeEditor: React.FC<AgentNodeEditorProps> = ({
           }}
           classNames={{ root: 'linghuiNodeEditorDropdownMenu' }}
           getPopupContainer={triggerNode => triggerNode.ownerDocument.body}
-          styles={{ root: { zIndex: 1200 } }}
+          overlayClassName="linghuiNodeEditorDropdownOverlay"
         >
           <button
             type="button"

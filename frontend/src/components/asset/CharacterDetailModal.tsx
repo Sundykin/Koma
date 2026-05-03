@@ -45,6 +45,7 @@ import {
   getCharacterCostumePhotoSource,
   getCharacterPreviewVideoSource,
 } from '../../utils/mediaSelectors';
+import styles from './DetailModal.module.scss';
 
 const { TextArea } = Input;
 const { Text } = Typography;
@@ -398,7 +399,7 @@ export const CharacterDetailModal: React.FC<CharacterDetailModalProps> = ({
         onCancel={onClose}
         width={900}
         footer={
-          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+          <div className={styles.footerActions}>
             <Popconfirm
               title="确定删除此角色？"
               description="删除后无法恢复"
@@ -422,31 +423,24 @@ export const CharacterDetailModal: React.FC<CharacterDetailModalProps> = ({
       >
         {/* 生成进度 */}
         {generating && (
-          <div style={{ marginBottom: 16 }}>
-            <Space style={{ marginBottom: 8 }}>
+          <div className={styles.progressBlock}>
+            <Space className={styles.progressLabel}>
               <Spin indicator={<LoadingOutlined spin />} size="small" />
               <Text>{progressStep}</Text>
             </Space>
-            <Progress percent={Math.round(progress)} strokeColor="#52c41a" />
+            <Progress percent={Math.round(progress)} strokeColor="var(--token-status-success)" />
           </div>
         )}
 
         <Row gutter={24}>
           {/* 左侧：定妆照（三视图） */}
           <Col span={10}>
-            <div style={{ marginBottom: 16 }}>
-              <Text strong style={{ display: 'block', marginBottom: 8 }}>定妆照（三视图）</Text>
+            <div className={styles.assetBlock}>
+              <Text strong className={styles.sectionTitle}>定妆照（三视图）</Text>
               <div
-                style={{
-                  aspectRatio: '3/2',
-                  background: '#1a1a1a',
-                  borderRadius: 8,
-                  overflow: 'hidden',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  cursor: getCharacterCostumePhotoSource(editedCharacter) ? 'pointer' : 'default',
-                }}
+                className={`${styles.mediaFrame} ${styles.costumeFrame} ${
+                  getCharacterCostumePhotoSource(editedCharacter) ? styles.clickable : ''
+                }`}
                 onClick={() => {
                   const costumePhotoSource = getCharacterCostumePhotoSource(editedCharacter);
                   if (costumePhotoSource) setPreviewImage(toLocalUrl(costumePhotoSource));
@@ -456,13 +450,13 @@ export const CharacterDetailModal: React.FC<CharacterDetailModalProps> = ({
                   <img
                     src={toLocalUrl(getCharacterCostumePhotoSource(editedCharacter))}
                     alt="定妆照"
-                    style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                    className={styles.media}
                   />
                 ) : (
                   <Text type="secondary">未生成（正面/侧面/背面）</Text>
                 )}
               </div>
-              <Space style={{ marginTop: 8, width: '100%' }} wrap>
+              <Space className={styles.mediaActions} wrap>
                 <Button
                   icon={generating === 'costume' ? <LoadingOutlined /> : <ThunderboltOutlined />}
                   onClick={handleGenerateCostume}
@@ -508,10 +502,7 @@ export const CharacterDetailModal: React.FC<CharacterDetailModalProps> = ({
                 <TextArea
                   rows={4}
                   placeholder="只描述角色可见外貌、服装、材质、配色、体态等客观视觉信息"
-                  style={{
-                    background: '#1a1a1a',
-                    borderColor: '#27272a',
-                  }}
+                  className={styles.themedTextArea}
                 />
               </Form.Item>
             </Form>
@@ -523,30 +514,21 @@ export const CharacterDetailModal: React.FC<CharacterDetailModalProps> = ({
         {/* 预览视频 & 角色提取 */}
         <Row gutter={24}>
           <Col span={12}>
-            <Text strong style={{ display: 'block', marginBottom: 8 }}>预览视频</Text>
+            <Text strong className={styles.sectionTitle}>预览视频</Text>
             <div
-              style={{
-                aspectRatio: '9/16',
-                maxHeight: 200,
-                background: '#1a1a1a',
-                borderRadius: 8,
-                overflow: 'hidden',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
+              className={`${styles.mediaFrame} ${styles.videoFrame} ${styles.portraitFrame}`}
             >
               {getCharacterPreviewVideoSource(editedCharacter) ? (
                 <video
                   src={toLocalUrl(getCharacterPreviewVideoSource(editedCharacter))}
                   controls
-                  style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                  className={styles.media}
                 />
               ) : (
                 <Text type="secondary">未生成</Text>
               )}
             </div>
-            <Space style={{ marginTop: 8 }}>
+            <Space className={styles.mediaActions}>
               <Button
                 icon={generating === 'video' ? <LoadingOutlined /> : <PlayCircleOutlined />}
                 onClick={handleGenerateVideo}
@@ -561,40 +543,33 @@ export const CharacterDetailModal: React.FC<CharacterDetailModalProps> = ({
           </Col>
 
           <Col span={12}>
-            <Text strong style={{ display: 'block', marginBottom: 8 }}>Sora2 角色绑定</Text>
-            <div
-              style={{
-                padding: 16,
-                background: '#1a1a1a',
-                borderRadius: 8,
-                minHeight: 100,
-              }}
-            >
+            <Text strong className={styles.sectionTitle}>Sora2 角色绑定</Text>
+            <div className={styles.bindingCard}>
               {editedCharacter.sora2CharacterId ? (
-                <div style={{ textAlign: 'center' }}>
-                  <CheckCircleOutlined style={{ fontSize: 24, color: '#52c41a', marginBottom: 8 }} />
+                <div className={styles.centered}>
+                  <CheckCircleOutlined className={styles.successIcon} />
                   <div><Text type="success">已绑定</Text></div>
-                  <Text type="secondary" style={{ fontSize: 10, wordBreak: 'break-all' }}>
+                  <Text type="secondary" className={styles.smallCode}>
                     {editedCharacter.sora2CharacterId}
                   </Text>
                 </div>
               ) : (
-                <div style={{ textAlign: 'center' }}>
-                  <LinkOutlined style={{ fontSize: 24, color: '#52525b', marginBottom: 8 }} />
+                <div className={styles.centered}>
+                  <LinkOutlined className={styles.mutedIcon} />
                   <div><Text type="secondary">未绑定</Text></div>
                 </div>
               )}
 
               {/* 提取时间范围设置 */}
-              <div style={{ marginTop: 12, padding: '8px 0', borderTop: '1px solid #27272a' }}>
-                <Text type="secondary" style={{ fontSize: 11, display: 'block', marginBottom: 8 }}>
+              <div className={styles.extractSettings}>
+                <Text type="secondary" className={styles.extractLabel}>
                   提取时间范围（秒）
                 </Text>
                 <Space size="small">
                   <Input
                     type="number"
                     size="small"
-                    style={{ width: 60 }}
+                    className={styles.timeInput}
                     min={0}
                     max={10}
                     step={0.5}
@@ -613,7 +588,7 @@ export const CharacterDetailModal: React.FC<CharacterDetailModalProps> = ({
                   <Input
                     type="number"
                     size="small"
-                    style={{ width: 60 }}
+                    className={styles.timeInput}
                     min={0}
                     max={10}
                     step={0.5}
@@ -632,20 +607,20 @@ export const CharacterDetailModal: React.FC<CharacterDetailModalProps> = ({
                       } : null);
                     }}
                   />
-                  <Text type="secondary" style={{ fontSize: 11 }}>最多3秒</Text>
+                  <Text type="secondary" className={styles.limitHint}>最多3秒</Text>
                 </Space>
               </div>
             </div>
             <Button
               block
-              style={{ marginTop: 8 }}
+              className={styles.extractButton}
               icon={generating === 'extract' ? <LoadingOutlined /> : <LinkOutlined />}
               onClick={handleExtractCharacter}
               disabled={generating !== null || !getCharacterPreviewVideoSource(editedCharacter)}
             >
               {editedCharacter.sora2CharacterId ? '重新提取' : '提取角色'}
             </Button>
-            <Text type="secondary" style={{ fontSize: 11, display: 'block', marginTop: 4 }}>
+            <Text type="secondary" className={styles.smallHint}>
               需要先生成预览视频才能提取
             </Text>
           </Col>
@@ -659,10 +634,10 @@ export const CharacterDetailModal: React.FC<CharacterDetailModalProps> = ({
         footer={null}
         centered
         width="auto"
-        styles={{ body: { padding: 0 } }}
+        className={styles.previewModal}
       >
         {previewImage && (
-          <img src={previewImage} alt="Preview" style={{ maxWidth: '90vw', maxHeight: '85vh' }} />
+          <img src={previewImage} alt="Preview" className={styles.previewImage} />
         )}
       </Modal>
     </>

@@ -322,9 +322,10 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
               percent={Math.round((batchProgress.current / batchProgress.total) * 100)}
               size="small"
               status="active"
-              strokeColor="#10b981"
+              strokeColor="var(--token-accent-base)"
+              trailColor="var(--token-border-subtle)"
             />
-            <Text type="secondary" style={{ fontSize: 10 }}>
+            <Text type="secondary" className="batchProgressStep">
               {batchProgress.step || `${batchProgress.current}/${batchProgress.total}`}
             </Text>
           </div>
@@ -334,7 +335,7 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
         {shots.length === 0 ? (
           <div className="flex-1 flex flex-col items-center justify-center">
             <Text type="secondary">暂无分镜数据</Text>
-            <Button type="primary" icon={<PlusOutlined />} onClick={onAddShot} style={{ marginTop: 12 }}>
+            <Button type="primary" icon={<PlusOutlined />} onClick={onAddShot} className="emptyAddButton">
               添加分镜
             </Button>
           </div>
@@ -369,7 +370,7 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
               computeItemKey={(_, shot) => shot.id}
               itemContent={renderShotRow}
               increaseViewportBy={400}
-              style={{ flex: 1 }}
+              className="virtuosoScroller"
             />
           </div>
         )}

@@ -130,7 +130,7 @@ export const AssetSelector: React.FC<AssetSelectorProps> = ({
           overlayClassName="asset-selector-popover"
         >
           <div className="w-7 h-7 rounded-full border border-dashed border-zinc-600 flex items-center justify-center cursor-pointer hover:border-zinc-400 text-zinc-500 hover:text-zinc-300 transition-colors">
-            <PlusOutlined style={{ fontSize: 11 }} />
+            <PlusOutlined className="text-[11px]" />
           </div>
         </Popover>
       </div>

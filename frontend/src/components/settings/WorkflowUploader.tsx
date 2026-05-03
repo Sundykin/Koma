@@ -236,7 +236,7 @@ export const WorkflowUploader: React.FC<WorkflowUploaderProps> = ({
       title: '说明',
       dataIndex: 'description',
       width: 200,
-      render: (text: string) => <span style={{ color: '#888', fontSize: 12 }}>{text}</span>,
+      render: (text: string) => <span className="settings-muted-table-text">{text}</span>,
     },
     {
       title: '映射到节点',
@@ -247,7 +247,7 @@ export const WorkflowUploader: React.FC<WorkflowUploaderProps> = ({
           onChange={(val) => handleMappingChange(key, val)}
           placeholder="选择节点输入"
           allowClear
-          style={{ width: '100%' }}
+          className="settings-full-width"
           options={getNodeOptions()}
           disabled={disabled || !workflow}
         />
@@ -258,9 +258,9 @@ export const WorkflowUploader: React.FC<WorkflowUploaderProps> = ({
       width: 60,
       render: (_: any, record: any) => (
         mapping[record.key] ? (
-          <CheckCircleOutlined style={{ color: '#52c41a' }} />
+          <CheckCircleOutlined className="settings-status-dot-success" />
         ) : (
-          <span style={{ color: '#d9d9d9' }}>—</span>
+          <span className="settings-status-dot-muted">—</span>
         )
       ),
     },
@@ -269,7 +269,7 @@ export const WorkflowUploader: React.FC<WorkflowUploaderProps> = ({
   return (
     <div>
       {/* 上传区域 */}
-      <div style={{ marginBottom: 16 }}>
+      <div className="settings-margin-bottom-md">
         <Space>
           <Upload
             accept=".json"
@@ -302,8 +302,8 @@ export const WorkflowUploader: React.FC<WorkflowUploaderProps> = ({
 
       {/* 节点映射配置 */}
       {workflow ? (
-        <Card size="small" title="节点映射配置" className="settings-config-card" style={{ marginTop: 14 }}>
-          <p className="settings-form-hint" style={{ marginBottom: 12 }}>
+        <Card size="small" title="节点映射配置" className="settings-config-card settings-margin-top-sm">
+          <p className="settings-form-hint settings-form-hint-offset">
             将系统输入映射到工作流中对应的节点参数，未映射的输入将使用工作流默认值。
           </p>
           <Table
@@ -318,7 +318,7 @@ export const WorkflowUploader: React.FC<WorkflowUploaderProps> = ({
         <Empty
           image={Empty.PRESENTED_IMAGE_SIMPLE}
           description="上传 ComfyUI 工作流 JSON 文件后可配置节点映射"
-          style={{ marginTop: 16 }}
+          className="settings-preview-empty"
         />
       )}
 
@@ -342,7 +342,7 @@ export const WorkflowUploader: React.FC<WorkflowUploaderProps> = ({
                 title: '输入',
                 dataIndex: 'inputs',
                 render: (inputs: Record<string, any>) => (
-                  <span style={{ fontSize: 12, color: '#888' }}>
+                  <span className="settings-muted-table-text">
                     {Object.keys(inputs).slice(0, 3).join(', ')}
                     {Object.keys(inputs).length > 3 && '...'}
                   </span>

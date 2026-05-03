@@ -160,7 +160,7 @@ export const ProviderPluginModal: React.FC<ProviderPluginModalProps> = ({
       styles={{ body: { maxHeight: '70vh', overflow: 'auto' } }}
     >
       {loading && (
-        <div style={{ textAlign: 'center', padding: 48 }}>
+        <div className="settings-loading-block">
           <Spin size="large" description={t('plugin.loadingPlugin')} />
         </div>
       )}

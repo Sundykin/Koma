@@ -29,6 +29,7 @@ import { generateShotPrompt, batchGenerateShotPrompts } from '../../services/Sho
 import { TaskManager } from '../../services/TaskManager';
 import { ScriptEditor } from '../../editor';
 import type { MentionItem } from '../../editor';
+import { useTheme } from '../../theme/runtime';
 import { StoryboardStudio } from './StoryboardStudio';
 import { ShotListEditor } from './ShotListEditor';
 import { ShotAssetPresetModal } from './ShotAssetPresetModal';
@@ -48,8 +49,8 @@ import {
   type VideoDurationSpec,
 } from '../../providers/itv/durationSpec';
 import { getModelMaxReferenceImages } from '../../providers/itv/modelCatalog';
-import './Storyboard.css';
-import './ShotListEditor.css';
+import './Storyboard.scss';
+import './ShotListEditor.scss';
 import { getMediaAssetDisplaySource } from '../../types';
 
 const logger = createLogger('Storyboard');
@@ -127,6 +128,8 @@ export const Storyboard: React.FC<StoryboardProps> = ({
   onConfirmedShotsToTimeline: _onConfirmedShotsToTimeline,
 }) => {
   const { message } = App.useApp();
+  const { theme } = useTheme();
+  const isDarkTheme = theme.meta.mode === 'dark';
   const [effectiveSettings, setEffectiveSettings] = useState<AppSettings>(settings);
   const [shots, setShots] = useState<Shot[]>([]);
   const [characters, setCharacters] = useState<Character[]>([]);
@@ -1656,7 +1659,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
 
   if (loading) {
     return (
-      <div className="storyboardContainer w-500" style={{ justifyContent: 'center', alignItems: 'center' }}>
+      <div className="storyboardContainer storyboardLoading w-500">
         <Spin size="large" description="加载分镜数据...">
         </Spin>
       </div>
@@ -1669,10 +1672,10 @@ export const Storyboard: React.FC<StoryboardProps> = ({
         <div className="storyboardEmpty">
           <Empty
             description={isAnalyzing ? "AI 正在生成分镜..." : "暂无分镜数据"}
-            style={{ margin: '100px auto' }}
+            className="storyboardEmptyContent"
           >
             {isAnalyzing ? (
-              <Spin indicator={<LoadingOutlined style={{ fontSize: 24 }} spin />} />
+              <Spin indicator={<LoadingOutlined className="storyboardLoadingIcon" spin />} />
             ) : (
               <Space direction="vertical" size="middle">
                 {script && episodeId && (
@@ -1689,7 +1692,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
                   手动添加分镜
                 </Button>
                 {!script && (
-                  <Text type="secondary" style={{ fontSize: 12 }}>
+                  <Text type="secondary" className="storyboardHint">
                     提示：需要先在剧本步骤输入内容才能使用 AI 生成
                   </Text>
                 )}
@@ -1788,12 +1791,12 @@ export const Storyboard: React.FC<StoryboardProps> = ({
               minHeight="120px"
               maxHeight="200px"
               showLineNumbers={false}
-              darkTheme={true}
+              darkTheme={isDarkTheme}
             />
           </Form.Item>
 
-          <Space size="large" style={{ width: '100%' }}>
-            <Form.Item label="景别" style={{ marginBottom: 0 }}>
+          <Space size="large" className="storyboardEditControls">
+            <Form.Item label="景别" className="storyboardCompactFormItem">
               <Segmented
                 options={SHOT_TYPE_OPTIONS}
                 value={editFormData.shotType || 'medium'}
@@ -1801,16 +1804,16 @@ export const Storyboard: React.FC<StoryboardProps> = ({
               />
             </Form.Item>
 
-            <Form.Item label="运镜" style={{ marginBottom: 0 }}>
+            <Form.Item label="运镜" className="storyboardCompactFormItem">
               <Select
                 options={CAMERA_OPTIONS}
                 value={editFormData.cameraMovement || 'static'}
                 onChange={(value) => setEditFormData(prev => ({ ...prev, cameraMovement: value }))}
-                style={{ width: 160 }}
+                className="storyboardCameraSelect"
               />
             </Form.Item>
 
-            <Form.Item label="时长（秒）" style={{ marginBottom: 0 }}>
+            <Form.Item label="时长（秒）" className="storyboardCompactFormItem">
               <Input
                 type="number"
                 min={specToInputBounds(itvDurationSpec).min}
@@ -1821,12 +1824,12 @@ export const Storyboard: React.FC<StoryboardProps> = ({
                   ...prev,
                   duration: clampDurationToSpec(e.target.value, itvDurationSpec),
                 }))}
-                style={{ width: 80 }}
+                className="storyboardDurationInput"
               />
             </Form.Item>
           </Space>
 
-          <Form.Item label="情绪氛围" style={{ marginTop: 16 }}>
+          <Form.Item label="情绪氛围" className="storyboardEmotionItem">
             <Input
               placeholder="如：紧张、欢快、悲伤..."
               value={editFormData.emotion || ''}

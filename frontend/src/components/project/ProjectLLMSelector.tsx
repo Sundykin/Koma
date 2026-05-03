@@ -9,6 +9,7 @@ import {
   listConfiguredModelSelectOptions,
   resolveConfiguredChannelModel,
 } from '../../providers/channel/resolver';
+import styles from './ProjectLLMSelector.module.scss';
 
 const { Text } = Typography;
 
@@ -102,9 +103,9 @@ export const ProjectLLMSelector: React.FC<ProjectLLMSelectorProps> = ({
 
   return (
     <div>
-      <Space orientation="vertical" style={{ width: '100%' }} size="small">
+      <Space orientation="vertical" className={styles.root} size="small">
         <Select
-          style={{ width: '100%' }}
+          className={styles.root}
           loading={loading}
           disabled={disabled || loading}
           value={currentSelection || '__default__'}
@@ -113,7 +114,7 @@ export const ProjectLLMSelector: React.FC<ProjectLLMSelectorProps> = ({
         >
           <Select.Option value="__default__">
             <Space>
-              <StarFilled style={{ color: '#faad14' }} />
+              <StarFilled className={styles.defaultIcon} />
               <span>使用全局默认</span>
             </Space>
           </Select.Option>
@@ -122,7 +123,7 @@ export const ProjectLLMSelector: React.FC<ProjectLLMSelectorProps> = ({
               <Space>
                 <RobotOutlined />
                 <span>{config.channelLabel} / {config.modelLabel}</span>
-                <Tag color="blue" style={{ fontSize: 10 }}>{getProviderLabel(config.channelName)}</Tag>
+                <Tag color="blue" className={styles.providerTag}>{getProviderLabel(config.channelName)}</Tag>
               </Space>
             </Select.Option>
           ))}
@@ -134,16 +135,16 @@ export const ProjectLLMSelector: React.FC<ProjectLLMSelectorProps> = ({
             message="配置已失效"
             description="项目关联的 LLM 配置已被删除，请重新选择"
             showIcon
-            style={{ marginTop: 8 }}
+            className={styles.deletedAlert}
           />
         )}
 
         {selectedConfig && !configDeleted && (
-          <div style={{ fontSize: 12, color: '#888', marginTop: 4 }}>
+          <div className={styles.selectedMeta}>
             <Space split="·">
               <Text type="secondary">模型: {selectedConfig.modelName}</Text>
               {selectedConfig.baseUrl && (
-                <Text type="secondary" style={{ maxWidth: 200 }} ellipsis>
+                <Text type="secondary" className={styles.baseUrl} ellipsis>
                   {selectedConfig.baseUrl.replace(/https?:\/\//, '')}
                 </Text>
               )}

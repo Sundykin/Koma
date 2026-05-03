@@ -11,6 +11,7 @@ import {
   LINGHUI_MULTI_ANGLE_DISTANCES,
   LINGHUI_MULTI_ANGLE_ELEVATIONS,
 } from '../../../../types/linghui';
+import { useTheme } from '../../../../theme/runtime';
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -51,6 +52,14 @@ const PREVIEW_FOV = 34;
 const PREVIEW_ASPECT = 1;
 const TARGET_POINT = new THREE.Vector3(0, 1, 0);
 const STAGE_CAMERA_POSITION = new THREE.Vector3(7.2, 4.8, 7.4);
+
+interface ThreePreviewColors {
+  accent: string;
+  base: string;
+  panel: string;
+  metal: string;
+  text: string;
+}
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
@@ -108,7 +117,7 @@ function buildLookQuaternion(position: THREE.Vector3): THREE.Quaternion {
 /*  ImagePlane                                                         */
 /* ------------------------------------------------------------------ */
 
-function ImagePlane({ url }: { url: string }) {
+function ImagePlane({ url, colors }: { url: string; colors: ThreePreviewColors }) {
   const texture = useLoader(THREE.TextureLoader, url);
   const aspect = useMemo(() => {
     if (!texture.image) return 1;
@@ -126,7 +135,7 @@ function ImagePlane({ url }: { url: string }) {
       </mesh>
       <mesh position={[0, -0.04, 0]}>
         <cylinderGeometry args={[0.95, 1.05, 0.08, 32]} />
-        <meshStandardMaterial color="#0f172a" metalness={0.15} roughness={0.78} />
+        <meshStandardMaterial color={colors.base} metalness={0.15} roughness={0.78} />
       </mesh>
     </group>
   );
@@ -136,16 +145,16 @@ function ImagePlane({ url }: { url: string }) {
 /*  PlaceholderPlane                                                   */
 /* ------------------------------------------------------------------ */
 
-function PlaceholderPlane() {
+function PlaceholderPlane({ colors }: { colors: ThreePreviewColors }) {
   return (
     <group>
       <mesh position={[0, 1.05, 0]}>
         <planeGeometry args={[2, 2]} />
-        <meshStandardMaterial color="#334155" side={THREE.DoubleSide} />
+        <meshStandardMaterial color={colors.panel} side={THREE.DoubleSide} />
       </mesh>
       <mesh position={[0, -0.04, 0]}>
         <cylinderGeometry args={[0.95, 1.05, 0.08, 32]} />
-        <meshStandardMaterial color="#0f172a" metalness={0.15} roughness={0.78} />
+        <meshStandardMaterial color={colors.base} metalness={0.15} roughness={0.78} />
       </mesh>
     </group>
   );
@@ -155,7 +164,7 @@ function PlaceholderPlane() {
 /*  ProjectionArea — camera preview rectangle without connector rails  */
 /* ------------------------------------------------------------------ */
 
-function ProjectionArea({ position }: { position: THREE.Vector3 }) {
+function ProjectionArea({ position, colors }: { position: THREE.Vector3; colors: ThreePreviewColors }) {
   const quaternion = useMemo(() => buildLookQuaternion(position), [position]);
   const forward = useMemo(() => TARGET_POINT.clone().sub(position).normalize(), [position]);
   const previewDistance = Math.max(position.distanceTo(TARGET_POINT) - 0.55, 0.92);
@@ -183,7 +192,7 @@ function ProjectionArea({ position }: { position: THREE.Vector3 }) {
     <group position={[frameCenter.x, frameCenter.y, frameCenter.z]} quaternion={quaternion}>
       <mesh>
         <planeGeometry args={[frameWidth, frameHeight]} />
-        <meshBasicMaterial color="#38bdf8" transparent opacity={0.08} side={THREE.DoubleSide} depthWrite={false} />
+        <meshBasicMaterial color={colors.accent} transparent opacity={0.08} side={THREE.DoubleSide} depthWrite={false} />
       </mesh>
       <lineSegments>
         <bufferGeometry>
@@ -194,7 +203,7 @@ function ProjectionArea({ position }: { position: THREE.Vector3 }) {
             itemSize={3}
           />
         </bufferGeometry>
-        <lineBasicMaterial color="#38bdf8" transparent opacity={0.8} />
+        <lineBasicMaterial color={colors.accent} transparent opacity={0.8} />
       </lineSegments>
     </group>
   );
@@ -208,37 +217,39 @@ function CameraRig({
   azimuth,
   elevation,
   distance,
+  colors,
 }: {
   azimuth: LinghuiMultiAngleAzimuth;
   elevation: LinghuiMultiAngleElevation;
   distance: LinghuiMultiAngleDistance;
+  colors: ThreePreviewColors;
 }) {
   const position = useMemo(() => toWorldPosition(azimuth, elevation, distance), [azimuth, elevation, distance]);
   const quaternion = useMemo(() => buildLookQuaternion(position), [position]);
 
   return (
     <group>
-      <ProjectionArea position={position} />
+      <ProjectionArea position={position} colors={colors} />
       <group position={[position.x, position.y, position.z]} quaternion={quaternion}>
         <mesh scale={1.06}>
           <sphereGeometry args={[0.42, 18, 18]} />
-          <meshBasicMaterial color="#38bdf8" transparent opacity={0.07} depthWrite={false} />
+          <meshBasicMaterial color={colors.accent} transparent opacity={0.07} depthWrite={false} />
         </mesh>
         <mesh position={[0, 0, 0.12]}>
           <boxGeometry args={[0.58, 0.34, 0.34]} />
-          <meshStandardMaterial color="#cbd5e1" metalness={0.7} roughness={0.22} />
+          <meshStandardMaterial color={colors.text} metalness={0.7} roughness={0.22} />
         </mesh>
         <mesh position={[0, 0, -0.22]} rotation={[Math.PI / 2, 0, 0]}>
           <cylinderGeometry args={[0.1, 0.14, 0.28, 18]} />
-          <meshStandardMaterial color="#0f172a" metalness={0.56} roughness={0.34} />
+          <meshStandardMaterial color={colors.base} metalness={0.56} roughness={0.34} />
         </mesh>
         <mesh position={[0, 0, -0.38]} rotation={[Math.PI / 2, 0, 0]}>
           <torusGeometry args={[0.11, 0.03, 10, 20]} />
-          <meshStandardMaterial color="#38bdf8" emissive="#38bdf8" emissiveIntensity={0.34} />
+          <meshStandardMaterial color={colors.accent} emissive={colors.accent} emissiveIntensity={0.34} />
         </mesh>
         <mesh position={[0, 0.23, 0.1]}>
           <boxGeometry args={[0.18, 0.12, 0.18]} />
-          <meshStandardMaterial color="#94a3b8" metalness={0.48} roughness={0.44} />
+          <meshStandardMaterial color={colors.metal} metalness={0.48} roughness={0.44} />
         </mesh>
       </group>
     </group>
@@ -265,7 +276,15 @@ function StageCamera() {
 /*  Scene                                                              */
 /* ------------------------------------------------------------------ */
 
-function Scene({ imageUrl, azimuth, elevation, distance, onAngleChange, onDistanceChange }: MultiAngle3DViewportProps) {
+function Scene({
+  imageUrl,
+  azimuth,
+  elevation,
+  distance,
+  onAngleChange,
+  onDistanceChange,
+  colors,
+}: MultiAngle3DViewportProps & { colors: ThreePreviewColors }) {
   return (
     <>
       <StageCamera />
@@ -274,9 +293,9 @@ function Scene({ imageUrl, azimuth, elevation, distance, onAngleChange, onDistan
       <directionalLight position={[-4, 5, -6]} intensity={0.45} />
       <spotLight position={[0, 8, 0]} intensity={0.4} angle={0.48} penumbra={0.8} />
 
-      {imageUrl ? <ImagePlane url={imageUrl} /> : <PlaceholderPlane />}
+      {imageUrl ? <ImagePlane url={imageUrl} colors={colors} /> : <PlaceholderPlane colors={colors} />}
 
-      <CameraRig azimuth={azimuth} elevation={elevation} distance={distance} />
+      <CameraRig azimuth={azimuth} elevation={elevation} distance={distance} colors={colors} />
     </>
   );
 }
@@ -298,6 +317,14 @@ export const LinghuiMultiAngle3DViewport: React.FC<MultiAngle3DViewportProps> = 
   const dragStateRef = useRef<StageDragState | null>(null);
   const wheelDeltaRef = useRef(0);
   const latestDistanceIndexRef = useRef(getDistanceIndex(distance));
+  const { theme } = useTheme();
+  const threeColors = useMemo<ThreePreviewColors>(() => ({
+    accent: theme.tokens.status.info,
+    base: theme.tokens.bg.app,
+    panel: theme.tokens.bg.hover,
+    metal: theme.tokens.text.tertiary,
+    text: theme.tokens.text.secondary,
+  }), [theme]);
 
   useEffect(() => {
     latestDistanceIndexRef.current = getDistanceIndex(distance);
@@ -416,7 +443,6 @@ export const LinghuiMultiAngle3DViewport: React.FC<MultiAngle3DViewportProps> = 
           far: 120,
         }}
         gl={{ antialias: true, alpha: true }}
-        style={{ background: '#0f172a' }}
       >
         <Scene
           {...sceneProps}
@@ -425,6 +451,7 @@ export const LinghuiMultiAngle3DViewport: React.FC<MultiAngle3DViewportProps> = 
           distance={distance}
           onAngleChange={onAngleChange}
           onDistanceChange={onDistanceChange}
+          colors={threeColors}
         />
       </Canvas>
     </div>

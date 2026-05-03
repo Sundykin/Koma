@@ -5,6 +5,7 @@
 import React from 'react';
 import { Button, Space, Spin, Typography } from 'antd';
 import { SaveOutlined, CloseOutlined } from '@ant-design/icons';
+import styles from './SharedConfigLayout.module.scss';
 
 const { Title, Text } = Typography;
 
@@ -21,7 +22,6 @@ interface SharedConfigLayoutProps {
   extra?: React.ReactNode;
   footerExtra?: React.ReactNode;
   className?: string;
-  style?: React.CSSProperties;
 }
 
 export const SharedConfigLayout: React.FC<SharedConfigLayoutProps> = ({
@@ -37,49 +37,23 @@ export const SharedConfigLayout: React.FC<SharedConfigLayoutProps> = ({
   extra,
   footerExtra,
   className,
-  style,
 }) => {
   return (
     <div
-      className={`sharedConfigLayout ${className || ''}`}
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        height: '100%',
-        background: '#18181b',
-        ...style,
-      }}
+      className={[styles.layout, 'sharedConfigLayout', className].filter(Boolean).join(' ')}
     >
       {/* Header */}
-      <div
-        style={{
-          padding: '16px 24px',
-          borderBottom: '1px solid #27272a',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'flex-start',
-          flexShrink: 0,
-        }}
-      >
+      <div className={styles.header}>
         <div>
           <Title
             level={4}
-            style={{
-              margin: 0,
-              color: '#fafafa',
-              fontWeight: 600,
-            }}
+            className={styles.title}
           >
             {title}
           </Title>
           {description && (
             <Text
-              style={{
-                color: '#71717a',
-                fontSize: 13,
-                marginTop: 4,
-                display: 'block',
-              }}
+              className={styles.description}
             >
               {description}
             </Text>
@@ -89,29 +63,13 @@ export const SharedConfigLayout: React.FC<SharedConfigLayoutProps> = ({
       </div>
 
       {/* Content */}
-      <div
-        style={{
-          flex: 1,
-          overflow: 'auto',
-          padding: '24px',
-        }}
-      >
+      <div className={styles.content}>
         <Spin spinning={loading}>{children}</Spin>
       </div>
 
       {/* Footer */}
       {showFooter && (onSave || onCancel) && (
-        <div
-          style={{
-            padding: '12px 24px',
-            borderTop: '1px solid #27272a',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            background: '#18181b',
-            flexShrink: 0,
-          }}
-        >
+        <div className={styles.footer}>
           <div>{footerExtra}</div>
           <Space className="btnGroupRight">
             {onCancel && (

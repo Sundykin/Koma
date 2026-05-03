@@ -255,14 +255,14 @@ export const ScriptNodeEditor: React.FC<ScriptNodeEditorProps> = ({
     if (!previewState.shots.length) {
       if (mode === 'generate' && previewState.formattedText.trim()) {
         return (
-          <div className="linghuiEditorField" style={{ marginBottom: 0 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+          <div className="linghuiEditorField linghuiEditorFieldNoBottomGap">
+            <div className="linghuiEditorInlineHeader">
               <span className="linghuiEditorSettingsLabel">{nodeRun?.status === 'running' ? '实时脚本输出' : '生成结果'}</span>
               <span className="linghuiEditorSummaryPill">{previewState.formattedText.trim().length} 字</span>
             </div>
             <div
-              className="linghuiNodeTextarea"
-              style={{ minHeight: immersive ? 420 : 260, overflow: 'auto', whiteSpace: 'pre-wrap', color: '#e4e4e7' }}
+              className="linghuiNodeTextarea linghuiEditorOutputText"
+              style={{ '--linghui-output-min-height': `${immersive ? 420 : 260}px` } as React.CSSProperties}
             >
               {previewState.formattedText}
             </div>
@@ -390,7 +390,7 @@ export const ScriptNodeEditor: React.FC<ScriptNodeEditorProps> = ({
               onChange={event => updateProp('content', event.target.value)}
               onMouseDown={event => event.stopPropagation()}
               onKeyDown={event => event.stopPropagation()}
-              style={{ minHeight: 220 }}
+              style={{ '--linghui-textarea-min-height': '220px' } as React.CSSProperties}
             />
           </div>
         ) : (
@@ -401,7 +401,6 @@ export const ScriptNodeEditor: React.FC<ScriptNodeEditorProps> = ({
                 onChange={value => updateProp('prompt', value)}
                 references={promptReferences}
                 placeholder="描述剧情推进、角色关系、镜头节奏和画面风格，输入 @ 引用上游产物"
-                darkTheme
                 surfaceStyle="fusion"
                 minHeight="120px"
                 maxHeight="220px"
@@ -421,7 +420,7 @@ export const ScriptNodeEditor: React.FC<ScriptNodeEditorProps> = ({
               }}
               classNames={{ root: 'linghuiNodeEditorDropdownMenu' }}
               getPopupContainer={triggerNode => triggerNode.ownerDocument.body}
-              styles={{ root: { zIndex: 1200 } }}
+              overlayClassName="linghuiNodeEditorDropdownOverlay"
             >
               <button
                 type="button"

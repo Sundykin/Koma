@@ -117,6 +117,7 @@ export type {
   ModelConfig,
   TTSConfig,
   ITVConfig,
+  AppThemeId,
   AppSettings,
 } from './types/provider-config';
 

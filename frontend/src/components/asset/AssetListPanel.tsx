@@ -19,6 +19,7 @@ import {
   getPropPreviewImageSource,
   getScenePreviewImageSource,
 } from '../../utils/mediaSelectors';
+import styles from './AssetListPanel.module.scss';
 
 const { Text } = Typography;
 
@@ -346,7 +347,7 @@ export const AssetListPanel: React.FC<AssetListPanelProps> = ({
                           size={48}
                           src={imageSrc}
                           icon={!imageSrc ? meta.icon : undefined}
-                          style={{ background: '#18181b' }}
+                          className={styles.avatarPlaceholder}
                         />
                       </Space>
                     }
@@ -405,16 +406,16 @@ export const AssetListPanel: React.FC<AssetListPanelProps> = ({
             />
           ) : (
             <div className="w-full h-full flex items-center justify-center text-zinc-700 bg-zinc-900">
-              {selectedType === 'character' && <UserOutlined style={{ fontSize: 24 }} />}
-              {selectedType === 'scene' && <EnvironmentOutlined style={{ fontSize: 24 }} />}
-              {selectedType === 'prop' && <InboxOutlined style={{ fontSize: 24 }} />}
+              {selectedType === 'character' && <UserOutlined className={styles.emptyAssetIcon} />}
+              {selectedType === 'scene' && <EnvironmentOutlined className={styles.emptyAssetIcon} />}
+              {selectedType === 'prop' && <InboxOutlined className={styles.emptyAssetIcon} />}
             </div>
           )}
           
           {/* 绑定状态角标 */}
           {isBound && (
             <div className="absolute top-1 right-1 bg-emerald-500/90 text-white rounded-full p-0.5 shadow-sm">
-              <CheckCircleOutlined style={{ fontSize: 12 }} />
+              <CheckCircleOutlined className={styles.boundIcon} />
             </div>
           )}
           
@@ -452,7 +453,7 @@ export const AssetListPanel: React.FC<AssetListPanelProps> = ({
         <span className="text-xs text-zinc-500">{t('asset.totalCharacters', { count: characters.length })}</span>
         {renderHeaderActions('character', handleCreateCharacter)}
       </div>
-      <div className="flex-1 overflow-y-auto p-2 custom-scrollbar">
+      <div className={`flex-1 overflow-y-auto p-2 ${styles.scrollbar}`}>
         {characters.length > 0 ? (
           <div className="grid grid-cols-2 gap-2">
             {characters.map(char => renderAssetCard(
@@ -481,7 +482,7 @@ export const AssetListPanel: React.FC<AssetListPanelProps> = ({
         <span className="text-xs text-zinc-500">{t('asset.totalScenes', { count: scenes.length })}</span>
         {renderHeaderActions('scene', handleCreateScene)}
       </div>
-      <div className="flex-1 overflow-y-auto p-2 custom-scrollbar">
+      <div className={`flex-1 overflow-y-auto p-2 ${styles.scrollbar}`}>
         {scenes.length > 0 ? (
           <div className="grid grid-cols-2 gap-2">
             {scenes.map(scene => renderAssetCard(
@@ -509,7 +510,7 @@ export const AssetListPanel: React.FC<AssetListPanelProps> = ({
         <span className="text-xs text-zinc-500">{t('asset.totalProps', { count: props.length })}</span>
         {renderHeaderActions('prop', handleCreateProp)}
       </div>
-      <div className="flex-1 overflow-y-auto p-2 custom-scrollbar">
+      <div className={`flex-1 overflow-y-auto p-2 ${styles.scrollbar}`}>
         {props.length > 0 ? (
           <div className="grid grid-cols-2 gap-2">
             {props.map(prop => renderAssetCard(
@@ -549,7 +550,7 @@ export const AssetListPanel: React.FC<AssetListPanelProps> = ({
   ];
 
   return (
-    <div className="h-full flex flex-col bg-zinc-950">
+    <div className={styles.root}>
       <Tabs
         activeKey={selectedType}
         onChange={(key) => {
@@ -557,33 +558,10 @@ export const AssetListPanel: React.FC<AssetListPanelProps> = ({
         }}
         items={tabItems}
         size="small"
-        className="asset-panel-tabs h-full"
+        className={styles.tabs}
         type="card"
-        tabBarStyle={{ margin: 0, padding: '4px 4px 0', background: '#18181b', borderBottom: '1px solid #27272a' }}
       />
       {renderExistingAssetModal()}
-      <style>{`
-        .asset-panel-tabs .ant-tabs-content {
-          height: calc(100% - 38px);
-        }
-        .asset-panel-tabs .ant-tabs-tabpane {
-          height: 100%;
-        }
-        /* 自定义滚动条 */
-        .custom-scrollbar::-webkit-scrollbar {
-          width: 4px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-track {
-          background: transparent;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb {
-          background: #3f3f46;
-          border-radius: 2px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-          background: #52525b;
-        }
-      `}</style>
     </div>
   );
 };

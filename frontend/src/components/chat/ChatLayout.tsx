@@ -4,7 +4,7 @@
  */
 import React, { useState, useEffect, useRef } from 'react';
 import { RobotOutlined } from '@ant-design/icons';
-import styles from './ChatLayout.module.css';
+import styles from './ChatLayout.module.scss';
 
 interface ChatLayoutProps {
   hasMessages: boolean;

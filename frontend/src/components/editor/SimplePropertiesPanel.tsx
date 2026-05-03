@@ -8,6 +8,7 @@ import {
 } from '../../types/editor';
 import { getAnimatedProperties, hasKeyframes, getKeyframeAtTime } from '../../engine/simpleKeyframe';
 import { Trash2, Type, Sparkles, Play, Volume2, Square } from 'lucide-react';
+import styles from './SimplePropertiesPanel.module.scss';
 
 // 预设滤镜列表
 const FILTER_PRESETS: { id: string; name: string; resourceId: string }[] = [
@@ -52,6 +53,9 @@ const FONT_FAMILIES = [
 
 // 预设字号
 const FONT_SIZES = [24, 32, 40, 48, 56, 64, 72, 96];
+const HEX_PREFIX = String.fromCharCode(35);
+const DEFAULT_FONT_COLOR = `${HEX_PREFIX}FFFFFF`;
+const DEFAULT_BACKGROUND_COLOR = `${HEX_PREFIX}000000`;
 
 interface PropertiesPanelProps {
   selectedClip: Clip | null;
@@ -110,7 +114,7 @@ export const SimplePropertiesPanel: React.FC<PropertiesPanelProps> = ({
 
   if (!selectedClip || !currentProps) {
     return (
-      <div className="w-72 bg-[#18181b] border-l border-[#27272a] p-6 flex flex-col items-center justify-center text-zinc-500">
+      <div className={`${styles.panel} w-72 p-6 flex flex-col items-center justify-center text-zinc-500`}>
         <div className="w-12 h-12 mb-4 opacity-20 border-2 border-current rounded" />
         <p className="text-sm">选择片段以编辑属性</p>
       </div>
@@ -244,8 +248,8 @@ export const SimplePropertiesPanel: React.FC<PropertiesPanelProps> = ({
   };
 
   return (
-    <div className="w-72 bg-[#18181b] border-l border-[#27272a] flex flex-col overflow-y-auto">
-      <div className="p-3 border-b border-[#27272a] flex justify-between items-center">
+    <div className={`${styles.panel} w-72 flex flex-col overflow-y-auto`}>
+      <div className={`${styles.header} p-3 flex justify-between items-center`}>
         <h3 className="font-semibold text-zinc-100 text-sm">属性</h3>
         <button
           onClick={onDeleteClip}
@@ -258,7 +262,7 @@ export const SimplePropertiesPanel: React.FC<PropertiesPanelProps> = ({
 
       {/* 字幕编辑区 */}
       {isTextClip && (
-        <div className="p-3 border-b border-[#27272a] space-y-3">
+        <div className={`${styles.section} p-3 space-y-3`}>
           <div className="flex items-center gap-2">
             <Type size={14} className="text-cyan-400" />
             <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-wider">字幕</h4>
@@ -272,7 +276,7 @@ export const SimplePropertiesPanel: React.FC<PropertiesPanelProps> = ({
               onChange={(e) => handleTextUpdate({ text: e.target.value, src: e.target.value })}
               placeholder="输入字幕内容..."
               rows={3}
-              className="w-full bg-[#27272a] border border-zinc-700 rounded px-2 py-1.5 text-xs focus:border-cyan-500 outline-none resize-none"
+              className={`${styles.field} w-full rounded px-2 py-1.5 text-xs outline-none resize-none`}
             />
           </div>
 
@@ -283,7 +287,7 @@ export const SimplePropertiesPanel: React.FC<PropertiesPanelProps> = ({
               <select
                 value={selectedClip.fontFamily || 'Arial, sans-serif'}
                 onChange={(e) => handleTextUpdate({ fontFamily: e.target.value })}
-                className="w-full bg-[#27272a] border border-zinc-700 rounded px-2 py-1 text-xs focus:border-cyan-500 outline-none"
+                className={`${styles.field} w-full rounded px-2 py-1 text-xs outline-none`}
               >
                 {FONT_FAMILIES.map(f => (
                   <option key={f.value} value={f.value}>{f.label}</option>
@@ -295,7 +299,7 @@ export const SimplePropertiesPanel: React.FC<PropertiesPanelProps> = ({
               <select
                 value={selectedClip.fontSize || 48}
                 onChange={(e) => handleTextUpdate({ fontSize: parseInt(e.target.value) })}
-                className="w-full bg-[#27272a] border border-zinc-700 rounded px-2 py-1 text-xs focus:border-cyan-500 outline-none"
+                className={`${styles.field} w-full rounded px-2 py-1 text-xs outline-none`}
               >
                 {FONT_SIZES.map(s => (
                   <option key={s} value={s}>{s}px</option>
@@ -311,15 +315,15 @@ export const SimplePropertiesPanel: React.FC<PropertiesPanelProps> = ({
               <div className="flex items-center gap-1">
                 <input
                   type="color"
-                  value={selectedClip.fontColor || '#FFFFFF'}
+                  value={selectedClip.fontColor || DEFAULT_FONT_COLOR}
                   onChange={(e) => handleTextUpdate({ fontColor: e.target.value })}
                   className="w-8 h-6 rounded cursor-pointer border-0"
                 />
                 <input
                   type="text"
-                  value={selectedClip.fontColor || '#FFFFFF'}
+                  value={selectedClip.fontColor || DEFAULT_FONT_COLOR}
                   onChange={(e) => handleTextUpdate({ fontColor: e.target.value })}
-                  className="flex-1 bg-[#27272a] border border-zinc-700 rounded px-2 py-1 text-xs focus:border-cyan-500 outline-none"
+                  className={`${styles.field} flex-1 rounded px-2 py-1 text-xs outline-none`}
                 />
               </div>
             </div>
@@ -328,7 +332,7 @@ export const SimplePropertiesPanel: React.FC<PropertiesPanelProps> = ({
               <div className="flex items-center gap-1">
                 <input
                   type="color"
-                  value={selectedClip.backgroundColor || '#000000'}
+                  value={selectedClip.backgroundColor || DEFAULT_BACKGROUND_COLOR}
                   onChange={(e) => handleTextUpdate({ backgroundColor: e.target.value })}
                   className="w-8 h-6 rounded cursor-pointer border-0"
                 />
@@ -387,7 +391,7 @@ export const SimplePropertiesPanel: React.FC<PropertiesPanelProps> = ({
 
       {/* 关键帧控制 */}
       {supportsKeyframes && (
-        <div className="p-3 border-b border-[#27272a] space-y-2">
+        <div className={`${styles.section} p-3 space-y-2`}>
           <div className="flex items-center justify-between">
             <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-wider">关键帧</h4>
             <span className="text-xs text-zinc-500">{clipLocalTime.toFixed(2)}s</span>
@@ -463,7 +467,7 @@ export const SimplePropertiesPanel: React.FC<PropertiesPanelProps> = ({
                 type="number"
                 value={Math.round(currentProps.x)}
                 onChange={(e) => handlePropertyChange('x', parseInt(e.target.value) || 0)}
-                className="w-full bg-[#27272a] border border-zinc-700 rounded px-2 py-1 text-xs focus:border-cyan-500 outline-none"
+                className={`${styles.field} w-full rounded px-2 py-1 text-xs outline-none`}
               />
             </div>
             <div className="space-y-1">
@@ -472,7 +476,7 @@ export const SimplePropertiesPanel: React.FC<PropertiesPanelProps> = ({
                 type="number"
                 value={Math.round(currentProps.y)}
                 onChange={(e) => handlePropertyChange('y', parseInt(e.target.value) || 0)}
-                className="w-full bg-[#27272a] border border-zinc-700 rounded px-2 py-1 text-xs focus:border-cyan-500 outline-none"
+                className={`${styles.field} w-full rounded px-2 py-1 text-xs outline-none`}
               />
             </div>
           </div>
@@ -494,7 +498,7 @@ export const SimplePropertiesPanel: React.FC<PropertiesPanelProps> = ({
         </div>
 
         {/* 不透明度 */}
-        <div className="space-y-3 pt-3 border-t border-[#27272a]">
+        <div className={`${styles.subsection} space-y-3 pt-3`}>
           <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-wider">混合</h4>
           <div className="space-y-1">
             <label className="text-xs text-zinc-400 flex justify-between">
@@ -514,7 +518,7 @@ export const SimplePropertiesPanel: React.FC<PropertiesPanelProps> = ({
 
         {/* 滤镜 - 仅视频/图片 */}
         {supportsKeyframes && (
-          <div className="space-y-3 pt-3 border-t border-[#27272a]">
+          <div className={`${styles.subsection} space-y-3 pt-3`}>
             <div className="flex items-center gap-2">
               <Sparkles size={14} className="text-purple-400" />
               <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-wider">滤镜</h4>
@@ -525,7 +529,7 @@ export const SimplePropertiesPanel: React.FC<PropertiesPanelProps> = ({
               <select
                 value={selectedClip.filter?.id || 'none'}
                 onChange={(e) => handleFilterChange(e.target.value)}
-                className="w-full bg-[#27272a] border border-zinc-700 rounded px-2 py-1 text-xs focus:border-purple-500 outline-none"
+                className={`${styles.field} ${styles.fieldPurple} w-full rounded px-2 py-1 text-xs outline-none`}
               >
                 {FILTER_PRESETS.map(f => (
                   <option key={f.id} value={f.id}>{f.name}</option>
@@ -554,7 +558,7 @@ export const SimplePropertiesPanel: React.FC<PropertiesPanelProps> = ({
 
         {/* 动画 - 视频/图片/文本 */}
         {supportsAnimation && (
-          <div className="space-y-3 pt-3 border-t border-[#27272a]">
+          <div className={`${styles.subsection} space-y-3 pt-3`}>
             <div className="flex items-center gap-2">
               <Play size={14} className="text-green-400" />
               <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-wider">动画</h4>
@@ -567,7 +571,7 @@ export const SimplePropertiesPanel: React.FC<PropertiesPanelProps> = ({
                 <select
                   value={selectedClip.animations?.find(a => a.type === 'in')?.effectId || 'none'}
                   onChange={(e) => handleAnimationChange('in', e.target.value)}
-                  className="flex-1 bg-[#27272a] border border-zinc-700 rounded px-2 py-1 text-xs focus:border-green-500 outline-none"
+                  className={`${styles.field} ${styles.fieldGreen} flex-1 rounded px-2 py-1 text-xs outline-none`}
                 >
                   <option value="none">无</option>
                   {ANIMATION_PRESETS.filter(a => a.type === 'in').map(a => (
@@ -582,7 +586,7 @@ export const SimplePropertiesPanel: React.FC<PropertiesPanelProps> = ({
                     min="0.1"
                     max="5"
                     step="0.1"
-                    className="w-16 bg-[#27272a] border border-zinc-700 rounded px-2 py-1 text-xs focus:border-green-500 outline-none"
+                    className={`${styles.field} ${styles.fieldGreen} w-16 rounded px-2 py-1 text-xs outline-none`}
                     title="时长(秒)"
                   />
                 )}
@@ -596,7 +600,7 @@ export const SimplePropertiesPanel: React.FC<PropertiesPanelProps> = ({
                 <select
                   value={selectedClip.animations?.find(a => a.type === 'out')?.effectId || 'none'}
                   onChange={(e) => handleAnimationChange('out', e.target.value)}
-                  className="flex-1 bg-[#27272a] border border-zinc-700 rounded px-2 py-1 text-xs focus:border-green-500 outline-none"
+                  className={`${styles.field} ${styles.fieldGreen} flex-1 rounded px-2 py-1 text-xs outline-none`}
                 >
                   <option value="none">无</option>
                   {ANIMATION_PRESETS.filter(a => a.type === 'out').map(a => (
@@ -611,7 +615,7 @@ export const SimplePropertiesPanel: React.FC<PropertiesPanelProps> = ({
                     min="0.1"
                     max="5"
                     step="0.1"
-                    className="w-16 bg-[#27272a] border border-zinc-700 rounded px-2 py-1 text-xs focus:border-green-500 outline-none"
+                    className={`${styles.field} ${styles.fieldGreen} w-16 rounded px-2 py-1 text-xs outline-none`}
                     title="时长(秒)"
                   />
                 )}
@@ -622,7 +626,7 @@ export const SimplePropertiesPanel: React.FC<PropertiesPanelProps> = ({
 
         {/* 音频淡入淡出 - 仅音频 */}
         {isAudioClip && (
-          <div className="space-y-3 pt-3 border-t border-[#27272a]">
+          <div className={`${styles.subsection} space-y-3 pt-3`}>
             <div className="flex items-center gap-2">
               <Volume2 size={14} className="text-orange-400" />
               <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-wider">音频效果</h4>
@@ -662,7 +666,7 @@ export const SimplePropertiesPanel: React.FC<PropertiesPanelProps> = ({
 
         {/* 蒙版 - 仅视频/图片 */}
         {supportsKeyframes && (
-          <div className="space-y-3 pt-3 border-t border-[#27272a]">
+          <div className={`${styles.subsection} space-y-3 pt-3`}>
             <div className="flex items-center gap-2">
               <Square size={14} className="text-blue-400" />
               <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-wider">蒙版</h4>
@@ -673,7 +677,7 @@ export const SimplePropertiesPanel: React.FC<PropertiesPanelProps> = ({
               <select
                 value={selectedClip.mask?.type || 'none'}
                 onChange={(e) => handleMaskTypeChange(e.target.value as MaskType | 'none')}
-                className="w-full bg-[#27272a] border border-zinc-700 rounded px-2 py-1 text-xs focus:border-blue-500 outline-none"
+                className={`${styles.field} ${styles.fieldBlue} w-full rounded px-2 py-1 text-xs outline-none`}
               >
                 <option value="none">无</option>
                 {MASK_TYPES.map(m => (
@@ -745,7 +749,7 @@ export const SimplePropertiesPanel: React.FC<PropertiesPanelProps> = ({
         )}
 
         {/* 信息 */}
-        <div className="pt-3 border-t border-[#27272a] text-xs text-zinc-500 space-y-1">
+        <div className={`${styles.subsection} pt-3 text-xs text-zinc-500 space-y-1`}>
           <p>素材: <span className="text-zinc-300 truncate block">{selectedClip.name}</span></p>
           <p>时长: <span className="text-zinc-300">{selectedClip.duration.toFixed(1)}s</span></p>
           <p>起始: <span className="text-zinc-300">{selectedClip.start.toFixed(1)}s</span></p>

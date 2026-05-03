@@ -14,6 +14,8 @@ import { checkExportCompatibility } from '../../services/draftExport/exportCapab
 import type { JianyingDraftContent, JianyingDraftMetaInfo } from '../../types/jianying';
 import { VIDEO_RESOLUTIONS } from '../../constants/dimensions';
 import { createLogger } from '../../store/logger';
+import styles from './SimpleExportDialog.module.scss';
+import { cssVars } from '../../theme/runtime';
 
 const logger = createLogger('SimpleExportDialog');
 
@@ -350,9 +352,9 @@ export function SimpleExportDialog({ open, onClose, tracks, duration, canvasSize
           content: (
             <div>
               <p>草稿已保存到: {draftFolderPath}</p>
-              {values.copyMaterials && <p style={{ color: '#52c41a' }}>素材已复制到草稿目录</p>}
+              {values.copyMaterials && <p className={styles.successText}>素材已复制到草稿目录</p>}
               {result.warnings && result.warnings.length > 0 && (
-                <div style={{ marginTop: 8, color: '#faad14' }}>
+                <div className={styles.warningBlock}>
                   <p>警告:</p>
                   <ul>
                     {result.warnings.map((w, i) => (
@@ -418,14 +420,14 @@ export function SimpleExportDialog({ open, onClose, tracks, duration, canvasSize
       closable={!exporting}
     >
       {exporting && progress ? (
-        <div style={styles.progressContainer}>
+        <div className={styles.progressContainer}>
           <Progress
             percent={Math.round(progress.progress)}
             status={progress.stage === 'error' ? 'exception' : 'active'}
           />
-          <p style={styles.progressMessage}>{progress.message}</p>
+          <p className={styles.progressMessage}>{progress.message}</p>
           {progress.stage === 'rendering' && (
-            <p style={styles.progressDetail}>
+            <p className={styles.progressDetail}>
               帧 {progress.currentFrame} / {progress.totalFrames}
               {progress.estimatedTimeRemaining !== undefined && (
                 <> · 剩余约 {Math.round(progress.estimatedTimeRemaining)}秒</>
@@ -435,7 +437,7 @@ export function SimpleExportDialog({ open, onClose, tracks, duration, canvasSize
           <Button
             danger
             onClick={handleCancel}
-            style={{ marginTop: 16 }}
+            className={styles.cancelButton}
           >
             取消导出
           </Button>
@@ -443,7 +445,7 @@ export function SimpleExportDialog({ open, onClose, tracks, duration, canvasSize
       ) : (
         <>
           {/* 导出类型选择 */}
-          <div style={styles.typeSelector}>
+          <div className={styles.typeSelector}>
             <Segmented
               value={exportType}
               onChange={(v) => setExportType(v as ExportType)}
@@ -456,7 +458,10 @@ export function SimpleExportDialog({ open, onClose, tracks, duration, canvasSize
           </div>
 
           {/* 视频导出表单 - 用 display 控制显示隐藏，保证表单字段始终注册 */}
-          <div style={{ display: exportType === 'video' ? 'block' : 'none' }}>
+          <div
+            className={styles.exportPane}
+            style={cssVars({ '--export-pane-display': exportType === 'video' ? 'block' : 'none' })}
+          >
             <Form
               form={videoForm}
               layout="vertical"
@@ -500,17 +505,17 @@ export function SimpleExportDialog({ open, onClose, tracks, duration, canvasSize
                   <InputNumber min={240} max={4320} step={2} suffix="px" />
                 </Form.Item>
                 <Form.Item name="fps" label="帧率" rules={[{ required: true }]}>
-                  <Select options={FPS_OPTIONS} style={{ width: 130 }} />
+                  <Select options={FPS_OPTIONS} className={styles.fpsSelect} />
                 </Form.Item>
               </Space>
 
               {/* 格式和质量 */}
-              <Space style={{ width: '100%' }}>
+              <Space className={styles.fullWidth}>
                 <Form.Item name="videoFormat" label="格式" rules={[{ required: true }]}>
-                  <Select options={VIDEO_FORMAT_OPTIONS} style={{ width: 150 }} />
+                  <Select options={VIDEO_FORMAT_OPTIONS} className={styles.formatSelect} />
                 </Form.Item>
                 <Form.Item name="quality" label="质量" rules={[{ required: true }]}>
-                  <Select options={QUALITY_OPTIONS} style={{ width: 200 }} />
+                  <Select options={QUALITY_OPTIONS} className={styles.qualitySelect} />
                 </Form.Item>
               </Space>
 
@@ -532,12 +537,12 @@ export function SimpleExportDialog({ open, onClose, tracks, duration, canvasSize
 
               {/* 输出路径 */}
               <Form.Item label="保存位置" required>
-                <Space.Compact style={{ width: '100%' }}>
+                <Space.Compact className={styles.fullWidth}>
                   <Input
                     placeholder="点击选择保存位置"
                     readOnly
                     value={videoOutputPath}
-                    style={{ flex: 1 }}
+                    className={styles.flexInput}
                   />
                   <Button
                     icon={<FolderOutlined />}
@@ -559,22 +564,22 @@ export function SimpleExportDialog({ open, onClose, tracks, duration, canvasSize
                   description={
                     <div>
                       <p>项目使用了以下仅剪映支持的特性：</p>
-                      <ul style={{ margin: '4px 0', paddingLeft: 20 }}>
+                      <ul className={styles.compatList}>
                         {compatibilityReport.featureDetails.map((detail) => (
                           <li key={detail.feature}>
                             {detail.name}（{detail.clipCount} 个片段）
                           </li>
                         ))}
                       </ul>
-                      <p style={{ marginTop: 8 }}>建议使用「草稿导出」以保留这些效果。</p>
+                      <p className={styles.compatHint}>建议使用「草稿导出」以保留这些效果。</p>
                     </div>
                   }
-                  style={{ marginBottom: 16 }}
+                  className={styles.compatAlert}
                 />
               )}
 
               {/* 视频信息 */}
-              <div style={styles.infoBox}>
+              <div className={styles.infoBox}>
                 <p>时长: {duration.toFixed(1)} 秒</p>
                 <p>轨道: {tracks.length} 个</p>
                 <p>预计帧数: {Math.ceil(duration * fpsValue)} 帧</p>
@@ -583,7 +588,10 @@ export function SimpleExportDialog({ open, onClose, tracks, duration, canvasSize
           </div>
 
           {/* 草稿导出表单 */}
-          <div style={{ display: exportType === 'draft' ? 'block' : 'none' }}>
+          <div
+            className={styles.exportPane}
+            style={cssVars({ '--export-pane-display': exportType === 'draft' ? 'block' : 'none' })}
+          >
             <Form
               form={draftForm}
               layout="vertical"
@@ -597,7 +605,7 @@ export function SimpleExportDialog({ open, onClose, tracks, duration, canvasSize
             >
               {/* 格式选择 */}
               <Form.Item name="draftFormat" label="导出格式" rules={[{ required: true }]}>
-                <Select style={{ width: '100%' }}>
+                <Select className={styles.fullWidth}>
                   {draftExporters.map((exp) => (
                     <Select.Option key={exp.format} value={exp.format}>
                       {exp.displayName}
@@ -617,12 +625,12 @@ export function SimpleExportDialog({ open, onClose, tracks, duration, canvasSize
 
               {/* 输出目录 */}
               <Form.Item label="保存目录" required>
-                <Space.Compact style={{ width: '100%' }}>
+                <Space.Compact className={styles.fullWidth}>
                   <Input
                     placeholder="点击选择保存目录"
                     readOnly
                     value={draftOutputPath}
-                    style={{ flex: 1 }}
+                    className={styles.flexInput}
                   />
                   <Button
                     icon={<FolderOutlined />}
@@ -645,11 +653,11 @@ export function SimpleExportDialog({ open, onClose, tracks, duration, canvasSize
               </Form.Item>
 
               {/* 项目信息 */}
-              <div style={styles.infoBox}>
+              <div className={styles.infoBox}>
                 <p>时长: {duration.toFixed(1)} 秒</p>
                 <p>轨道: {tracks.length} 个</p>
                 <p>画布尺寸: {canvasSize.width} × {canvasSize.height}</p>
-                <p style={{ color: '#faad14', marginTop: 8 }}>
+                <p className={styles.warningBlock}>
                   提示: 草稿导出后可在对应软件中打开并继续编辑
                 </p>
               </div>
@@ -657,7 +665,7 @@ export function SimpleExportDialog({ open, onClose, tracks, duration, canvasSize
           </div>
 
           {/* 导出按钮 */}
-          <div style={styles.footer}>
+          <div className={styles.footer}>
             <Space>
               <Button onClick={onClose}>取消</Button>
               <Button
@@ -675,36 +683,5 @@ export function SimpleExportDialog({ open, onClose, tracks, duration, canvasSize
     </Modal>
   );
 }
-
-const styles: Record<string, React.CSSProperties> = {
-  progressContainer: {
-    textAlign: 'center',
-    padding: 24,
-  },
-  progressMessage: {
-    marginTop: 12,
-    color: '#d4d4d8',
-  },
-  progressDetail: {
-    fontSize: 12,
-    color: '#71717a',
-  },
-  typeSelector: {
-    marginBottom: 20,
-  },
-  infoBox: {
-    background: '#27272a',
-    borderRadius: 8,
-    padding: '12px 16px',
-    marginBottom: 16,
-    fontSize: 12,
-    color: '#a1a1aa',
-  },
-  footer: {
-    display: 'flex',
-    justifyContent: 'flex-end',
-    marginTop: 16,
-  },
-};
 
 export default SimpleExportDialog;

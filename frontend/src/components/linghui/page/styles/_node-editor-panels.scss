@@ -11,7 +11,7 @@
     box-sizing: border-box;
     border: none;
     border-radius: $lh-radius-editor;
-    background: rgba(9, 13, 18, 0.84);
+    background: color-mix(in srgb, var(--token-bg-app) 84%, transparent);
     box-shadow: $lh-shadow-panel-large;
     backdrop-filter: blur(22px);
     overflow: visible;
@@ -139,7 +139,7 @@
     align-items: center;
     justify-content: center;
     color: $lh-text-muted;
-    background: rgba(30, 41, 59, 0.72);
+    background: color-mix(in srgb, var(--token-bg-hover) 72%, transparent);
     font-size: 10px;
     line-height: 1;
     cursor: help;
@@ -154,7 +154,7 @@
     padding: 6px 14px;
 
     &.isActive {
-      color: #f0fdf4;
+      color: var(--token-accent-base);
     }
   }
 
@@ -179,7 +179,7 @@
 
   &ToolPresetCard {
     @include lh-inline(12px, nowrap, flex-start, space-between);
-    @include lh-plain-card(12px, rgba(255, 255, 255, 0.05), 14px);
+    @include lh-plain-card(12px, color-mix(in srgb, var(--token-text-primary) 5%, transparent), 14px);
   }
 
   &ToolPresetBody {
@@ -205,11 +205,11 @@
   }
 
   &SummaryPill {
-    @include lh-chip(28px, 0 12px, rgba(255, 255, 255, 0.08), $lh-text-secondary, 12px, 600);
+    @include lh-chip(28px, 0 12px, color-mix(in srgb, var(--token-text-primary) 8%, transparent), $lh-text-secondary, 12px, 600);
 
     &.isMuted {
       color: $lh-text-muted;
-      background: rgba(148, 163, 184, 0.08);
+      background: color-mix(in srgb, var(--token-text-tertiary) 8%, transparent);
     }
   }
 
@@ -228,7 +228,7 @@
     aspect-ratio: 16 / 9;
     border-radius: 14px;
     overflow: hidden;
-    background: rgba(2, 6, 23, 0.9);
+    background: color-mix(in srgb, var(--token-bg-app) 90%, transparent);
 
     &.isStatic {
       display: flex;
@@ -248,7 +248,7 @@
 
       .xgplayer-controls {
         backdrop-filter: blur(12px);
-        background: linear-gradient(180deg, rgba(2, 6, 23, 0), rgba(2, 6, 23, 0.88));
+        background: linear-gradient(180deg, color-mix(in srgb, var(--token-bg-app) 0%, transparent), color-mix(in srgb, var(--token-bg-app) 88%, transparent));
       }
     }
   }
@@ -267,7 +267,7 @@
     height: 100%;
     align-items: center;
     justify-content: center;
-    color: #cbd5e1;
+    color: $lh-text-secondary;
     font-size: 13px;
     text-align: center;
     padding: 20px;
@@ -296,7 +296,7 @@
 
   &AssetCard {
     @include lh-inline(10px, nowrap);
-    @include lh-plain-card(8px 10px, rgba(255, 255, 255, 0.05), 12px);
+    @include lh-plain-card(8px 10px, color-mix(in srgb, var(--token-text-primary) 5%, transparent), 12px);
 
     min-width: 156px;
     max-width: 220px;
@@ -316,11 +316,11 @@
       align-items: center;
       justify-content: center;
       color: $lh-text-info;
-      background: rgba(30, 41, 59, 0.92);
+      background: color-mix(in srgb, var(--token-bg-hover) 92%, transparent);
 
       &.isAudio {
-        color: #fdba74;
-        background: rgba(124, 45, 18, 0.36);
+        color: $lh-text-warning;
+        background: color-mix(in srgb, var(--token-status-warning) 36%, transparent);
       }
 
       img {
@@ -337,8 +337,8 @@
       width: 16px;
       height: 16px;
       border-radius: $lh-radius-pill;
-      background: rgba(15, 23, 42, 0.88);
-      color: #ffffff;
+      background: color-mix(in srgb, var(--token-bg-card) 88%, transparent);
+      color: var(--token-text-primary);
       font-size: 10px;
       font-weight: 700;
       display: flex;
@@ -391,7 +391,7 @@
     padding: 0 4px;
     border-radius: $lh-radius-pill;
     background: $lh-accent-blue;
-    color: #ffffff;
+    color: var(--token-text-primary);
     font-size: 10px;
     font-weight: 700;
     display: flex;
@@ -403,8 +403,8 @@
       bottom: 4px;
       height: auto;
       min-height: 16px;
-      background: rgba(15, 23, 42, 0.9);
-      border: 1px solid rgba(148, 163, 184, 0.36);
+      background: color-mix(in srgb, var(--token-bg-card) 90%, transparent);
+      border: 1px solid color-mix(in srgb, var(--token-text-tertiary) 36%, transparent);
       color: $lh-text-secondary;
     }
   }

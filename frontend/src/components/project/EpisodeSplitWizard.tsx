@@ -23,6 +23,7 @@ import type { SplitAnalysis, SplitResult } from '../../services/EpisodeSplitServ
 import { createCreationContext } from '../../services/CreationContext';
 import { createEpisode, deleteEpisode, listEpisodes } from '../../store/projectStore';
 import { findRemovableDefaultEpisodeIds } from '../../store/project/episodePlaceholders';
+import styles from './EpisodeSplitWizard.module.scss';
 
 const { Text, Paragraph } = Typography;
 
@@ -171,7 +172,7 @@ export const EpisodeSplitWizard: React.FC<EpisodeSplitWizardProps> = ({
           { title: '预览' },
           { title: '创建' },
         ]}
-        style={{ marginBottom: 24 }}
+        className={styles.steps}
       />
 
       {/* 步骤1：配置 */}
@@ -183,7 +184,7 @@ export const EpisodeSplitWizard: React.FC<EpisodeSplitWizardProps> = ({
               value={targetCount}
               onChange={(v) => setTargetCount(v || 3)}
               min={1}
-              style={{ width: 120 }}
+              className={styles.targetCountInput}
             />
             <Text type="secondary" className="ml-3">
               原文已分集时优先按原文拆分，否则按目标集数规划
@@ -204,7 +205,7 @@ export const EpisodeSplitWizard: React.FC<EpisodeSplitWizardProps> = ({
             </Radio.Group>
           </div>
 
-          <div className="pt-4 border-t border-gray-200">
+          <div className={`pt-4 ${styles.configDivider}`}>
             <Text type="secondary">
               剧本长度: {script.length} 字符
             </Text>
@@ -236,24 +237,12 @@ export const EpisodeSplitWizard: React.FC<EpisodeSplitWizardProps> = ({
             </div>
           </div>
 
-          <Card size="small" style={{ background: '#111827', borderColor: '#303030' }}>
+          <Card size="small" className={styles.analysisCard}>
             <div className="flex items-center justify-between mb-2">
-              <Text strong style={{ color: '#e5e7eb' }}>实时分析输出</Text>
+              <Text strong className={styles.analysisTitle}>实时分析输出</Text>
               <Text type="secondary">{analysisPreview.length} 字符</Text>
             </div>
-            <pre
-              style={{
-                margin: 0,
-                maxHeight: 260,
-                overflow: 'auto',
-                whiteSpace: 'pre-wrap',
-                wordBreak: 'break-word',
-                color: '#d1d5db',
-                fontSize: 12,
-                lineHeight: 1.7,
-                fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
-              }}
-            >
+            <pre className={styles.analysisOutput}>
               {analysisPreview || '正在等待模型返回首段分析内容...'}
             </pre>
           </Card>
@@ -276,14 +265,14 @@ export const EpisodeSplitWizard: React.FC<EpisodeSplitWizardProps> = ({
             <Text strong>剧集预览 ({splitResults.length} 集)</Text>
           </div>
 
-          <Flex vertical gap={8} style={{ maxHeight: 300, overflow: 'auto', border: '1px solid #303030', borderRadius: 8 }}>
+          <Flex vertical gap={8} className={styles.previewList}>
             {splitResults.map((item, index) => (
-              <div key={index} style={{ padding: '12px 16px', borderBottom: '1px solid #303030', display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-                <div className="w-8 h-8 bg-green-100 text-green-600 rounded-full flex items-center justify-center font-bold" style={{ flexShrink: 0 }}>
+              <div key={index} className={styles.previewItem}>
+                <div className={styles.episodeIndex}>
                   {index + 1}
                 </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 500 }}>{item.title}</div>
+                <div className={styles.episodeMeta}>
+                  <div className={styles.episodeTitle}>{item.title}</div>
                   <Text type="secondary">{item.summary}</Text>
                   <br />
                   <Text type="secondary" className="text-xs">

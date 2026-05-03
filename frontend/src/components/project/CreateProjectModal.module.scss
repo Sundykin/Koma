@@ -1,0 +1,105 @@
+.form {
+  margin-top: var(--token-space-lg);
+}
+
+.fullWidth {
+  width: 100%;
+}
+
+.modeButton,
+.aspectButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 48px;
+}
+
+.modeButton {
+  width: 100%;
+}
+
+.aspectButton {
+  flex: 1;
+}
+
+.optionLabel {
+  font-weight: 700;
+}
+
+.helpIcon {
+  font-size: 12px;
+  opacity: 0.6;
+}
+
+.aspectIcon {
+  display: inline-block;
+  border: 2px solid currentColor;
+  border-radius: 2px;
+}
+
+.aspectIconLandscape {
+  width: 24px;
+  height: 14px;
+}
+
+.aspectIconPortrait {
+  width: 14px;
+  height: 24px;
+}
+
+.themeGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--token-space-sm);
+}
+
+.themeCard {
+  position: relative;
+  cursor: pointer;
+  border: 2px solid var(--token-border-base);
+  border-radius: var(--token-radius-base);
+  background: var(--token-bg-card);
+  padding: var(--token-space-sm);
+  text-align: center;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.themeCard:hover {
+  border-color: var(--token-text-muted);
+}
+
+.themeCardSelected {
+  border-color: var(--token-accent-base);
+  background: color-mix(in srgb, var(--token-accent-base) 24%, transparent);
+}
+
+.themeCheck {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  background: var(--token-accent-base);
+}
+
+.themeCheckIcon {
+  width: 10px;
+  height: 10px;
+  color: var(--token-bg-app);
+}
+
+.themeName {
+  color: var(--token-text-primary);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.themeDescription {
+  margin-top: var(--token-space-sm);
+  color: var(--token-text-muted);
+  font-size: 12px;
+}

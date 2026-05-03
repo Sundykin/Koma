@@ -26,6 +26,7 @@ import {
   parseLinghuiPromptReferences,
   type LinghuiPromptReferenceItem,
 } from '../../editors/state/linghuiPromptReferences';
+import { DEFAULT_THEME_ID, getThemeById } from '../../../../theme/themes';
 import {
   resolveLinghuiImageCollection,
   resolveLinghuiImageResultWithSelectedPrimary,
@@ -33,6 +34,14 @@ import {
 import { parseLinghuiScriptContent } from '../../editors/state/linghuiScriptNodeUtils';
 
 export const EXECUTION_PROJECT_ID = 'linghui';
+const placeholderThemeTokens = getThemeById(DEFAULT_THEME_ID).tokens;
+const PLACEHOLDER_COLORS = {
+  accent: placeholderThemeTokens.status.success,
+  backgroundStart: placeholderThemeTokens.bg.surface,
+  backgroundEnd: placeholderThemeTokens.bg.app,
+  title: placeholderThemeTokens.text.primary,
+  subtitle: placeholderThemeTokens.text.secondary,
+} as const;
 
 export class LinghuiExecutionCancelledError extends Error {
   constructor(message = '执行已取消') {
@@ -90,15 +99,15 @@ export function createPlaceholderImage(params: {
   accent?: string;
   background?: string;
 }): string {
-  const { title, subtitle, accent = '#4ade80', background = '#0b1220' } = params;
+  const { title, subtitle, accent = PLACEHOLDER_COLORS.accent, background = PLACEHOLDER_COLORS.backgroundStart } = params;
   const lines = [escapeSvgText(title), escapeSvgText(subtitle ?? '')].filter(Boolean);
-  const subtitleSvg = lines[1] ? `<text x="40" y="178" font-size="18" fill="#cbd5e1" opacity="0.9">${lines[1]}</text>` : '';
+  const subtitleSvg = lines[1] ? `<text x="40" y="178" font-size="18" fill="${PLACEHOLDER_COLORS.subtitle}" opacity="0.9">${lines[1]}</text>` : '';
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="960" height="640" viewBox="0 0 960 640">
-    <defs><linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="${background}" /><stop offset="100%" stop-color="#020617" /></linearGradient></defs>
+    <defs><linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="${background}" /><stop offset="100%" stop-color="${PLACEHOLDER_COLORS.backgroundEnd}" /></linearGradient></defs>
     <rect width="960" height="640" rx="36" fill="url(#bg)" />
     <circle cx="760" cy="120" r="150" fill="${accent}" opacity="0.18" />
     <rect x="40" y="40" width="880" height="560" rx="28" fill="none" stroke="${accent}" stroke-opacity="0.55" stroke-width="4" />
-    <text x="40" y="132" font-size="34" font-weight="700" fill="#f8fafc">${lines[0] ?? ''}</text>
+    <text x="40" y="132" font-size="34" font-weight="700" fill="${PLACEHOLDER_COLORS.title}">${lines[0] ?? ''}</text>
     ${subtitleSvg}
   </svg>`;
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;

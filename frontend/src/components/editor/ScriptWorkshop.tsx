@@ -33,6 +33,7 @@ import { electronService } from '../../services/electronService';
 import { ScriptEditor } from '../../editor';
 import type { MentionItem } from '../../editor';
 import { getScriptVersionsKey } from '../../constants/storageKeys';
+import styles from './ScriptWorkshop.module.scss';
 
 const { TextArea } = Input;
 const { Text } = Typography;
@@ -341,7 +342,7 @@ export const ScriptWorkshop: React.FC<ScriptWorkshopProps> = ({
           </Dropdown>
         </Space>
       }
-      style={{ height: '100%' }}
+      className={styles.rootCard}
       styles={{ body: { height: 'calc(100% - 57px)', padding: 0 } }}
     >
       <ScriptEditor
@@ -352,7 +353,7 @@ export const ScriptWorkshop: React.FC<ScriptWorkshopProps> = ({
         onMentionClick={onMentionClick}
         minHeight="100%"
         maxHeight="100%"
-        style={{ height: '100%' }}
+        className={styles.editorFill}
       />
 
       {/* 版本历史 Modal */}
@@ -365,17 +366,17 @@ export const ScriptWorkshop: React.FC<ScriptWorkshopProps> = ({
         mask={{ closable: false }}
       >
         {versions.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: 40, color: '#888' }}>
+          <div className={styles.emptyHistory}>
             暂无历史版本
           </div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 400, overflowY: 'auto' }}>
+          <div className={styles.versionList}>
             {versions.map((version) => (
               <Card key={version.id} size="small">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div className={styles.versionItem}>
                   <div>
-                    <div style={{ fontWeight: 500 }}>{new Date(version.timestamp).toLocaleString()}</div>
-                    <Text type="secondary" ellipsis style={{ maxWidth: 400 }}>
+                    <div className={styles.versionTime}>{new Date(version.timestamp).toLocaleString()}</div>
+                    <Text type="secondary" ellipsis className={styles.versionDescription}>
                       {version.description || version.content.slice(0, 100)}
                     </Text>
                   </div>
@@ -400,8 +401,8 @@ export const ScriptWorkshop: React.FC<ScriptWorkshopProps> = ({
         confirmLoading={generating}
         mask={{ closable: false }}
       >
-        <div style={{ marginBottom: 16 }}>
-          <div style={{ marginBottom: 8 }}>创意/灵感</div>
+        <div className={styles.formBlock}>
+          <div className={styles.formLabel}>创意/灵感</div>
           <TextArea
             value={idea}
             onChange={(e) => setIdea(e.target.value)}
@@ -411,21 +412,21 @@ export const ScriptWorkshop: React.FC<ScriptWorkshopProps> = ({
         </div>
         <Space size="large">
           <div>
-            <div style={{ marginBottom: 8 }}>风格</div>
+            <div className={styles.formLabel}>风格</div>
             <Input
               value={style}
               onChange={(e) => setStyle(e.target.value)}
               placeholder="治愈/搞笑/悬疑"
-              style={{ width: 120 }}
+              className={styles.styleInput}
             />
           </div>
           <div>
-            <div style={{ marginBottom: 8 }}>时长 (分钟)</div>
+            <div className={styles.formLabel}>时长 (分钟)</div>
             <Input
               value={duration}
               onChange={(e) => setDuration(e.target.value)}
               placeholder="3"
-              style={{ width: 80 }}
+              className={styles.durationInput}
             />
           </div>
         </Space>

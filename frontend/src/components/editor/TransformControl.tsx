@@ -3,6 +3,8 @@
  * 用于在预览区域选中素材后显示拖拽、缩放、旋转控制
  */
 import React, { useRef, useCallback, useEffect, useState } from 'react';
+import styles from './TransformControl.module.scss';
+import { cssVars } from '../../theme/runtime';
 
 interface TransformControlProps {
   // 素材在画布中的位置（相对于画布中心的偏移，画布坐标系）
@@ -171,30 +173,21 @@ export const TransformControl: React.FC<TransformControlProps> = ({
     };
   }, [isDragging, dragType]);
 
-  // 控制点样式
-  const handleStyle: React.CSSProperties = {
-    position: 'absolute',
-    width: handleSize,
-    height: handleSize,
-    backgroundColor: '#22d3ee',
-    border: '2px solid white',
-    borderRadius: '2px',
-    cursor: 'pointer',
-    zIndex: 10,
-  };
-
   return (
     <div
       ref={containerRef}
-      className="absolute pointer-events-none"
-      style={{
-        left: boxLeft,
-        top: boxTop,
-        width: baseWidth,
-        height: baseHeight,
-        transform: `rotate(${rotation}deg)`,
-        transformOrigin: 'center center',
-      }}
+      className={`${styles.root} absolute pointer-events-none`}
+      style={cssVars({
+        '--transform-left': `${boxLeft}px`,
+        '--transform-top': `${boxTop}px`,
+        '--transform-width': `${baseWidth}px`,
+        '--transform-height': `${baseHeight}px`,
+        '--transform-rotation': `${rotation}deg`,
+        '--transform-handle-size': `${handleSize}px`,
+        '--transform-handle-offset': `${-handleSize / 2}px`,
+        '--transform-rotate-offset': `${rotateHandleOffset}px`,
+        '--transform-rotate-top': `${-rotateHandleOffset - handleSize}px`,
+      })}
     >
       {/* 边框 */}
       <div
@@ -204,50 +197,33 @@ export const TransformControl: React.FC<TransformControlProps> = ({
 
       {/* 四角控制点 */}
       <div
-        style={{ ...handleStyle, left: -handleSize / 2, top: -handleSize / 2, cursor: 'nwse-resize' }}
-        className="pointer-events-auto"
+        className={`${styles.handle} ${styles.handleNw} pointer-events-auto`}
         onMouseDown={(e) => handleMouseDown(e, 'nw')}
       />
       <div
-        style={{ ...handleStyle, right: -handleSize / 2, top: -handleSize / 2, cursor: 'nesw-resize' }}
-        className="pointer-events-auto"
+        className={`${styles.handle} ${styles.handleNe} pointer-events-auto`}
         onMouseDown={(e) => handleMouseDown(e, 'ne')}
       />
       <div
-        style={{ ...handleStyle, left: -handleSize / 2, bottom: -handleSize / 2, cursor: 'nesw-resize' }}
-        className="pointer-events-auto"
+        className={`${styles.handle} ${styles.handleSw} pointer-events-auto`}
         onMouseDown={(e) => handleMouseDown(e, 'sw')}
       />
       <div
-        style={{ ...handleStyle, right: -handleSize / 2, bottom: -handleSize / 2, cursor: 'nwse-resize' }}
-        className="pointer-events-auto"
+        className={`${styles.handle} ${styles.handleSe} pointer-events-auto`}
         onMouseDown={(e) => handleMouseDown(e, 'se')}
       />
 
       {/* 旋转手柄 */}
       <div
-        className="absolute pointer-events-auto"
-        style={{
-          left: '50%',
-          top: -rotateHandleOffset - handleSize,
-          transform: 'translateX(-50%)',
-        }}
+        className={`${styles.rotateControl} absolute pointer-events-auto`}
       >
         {/* 连接线 */}
         <div
-          className="absolute left-1/2 -translate-x-1/2 bg-cyan-400"
-          style={{ width: 2, height: rotateHandleOffset, bottom: handleSize }}
+          className={`${styles.rotateStem} absolute left-1/2 -translate-x-1/2 bg-cyan-400`}
         />
         {/* 旋转手柄 */}
         <div
-          style={{
-            width: handleSize + 4,
-            height: handleSize + 4,
-            backgroundColor: '#22d3ee',
-            border: '2px solid white',
-            borderRadius: '50%',
-            cursor: 'grab',
-          }}
+          className={styles.rotateHandle}
           onMouseDown={(e) => handleMouseDown(e, 'rotate')}
         />
       </div>

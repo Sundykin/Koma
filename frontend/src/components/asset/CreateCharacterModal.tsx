@@ -7,6 +7,7 @@ import { UserAddOutlined } from '@ant-design/icons';
 import { v4 as uuidv4 } from 'uuid';
 import type { Character, CharacterGender } from '../../types';
 import { saveCharacters, loadCharacters } from '../../store/projectStore';
+import styles from './CreateCharacterModal.module.scss';
 
 const { TextArea } = Input;
 
@@ -82,7 +83,7 @@ export const CreateCharacterModal: React.FC<CreateCharacterModalProps> = ({
     <Modal
       title={
         <span>
-          <UserAddOutlined style={{ marginRight: 8 }} />
+          <UserAddOutlined className={styles.titleIcon} />
           新建角色
         </span>
       }
@@ -94,7 +95,7 @@ export const CreateCharacterModal: React.FC<CreateCharacterModalProps> = ({
       confirmLoading={loading}
       destroyOnHidden
     >
-      <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
+      <Form form={form} layout="vertical" className={styles.form}>
         <Form.Item
           name="name"
           label="角色名称"

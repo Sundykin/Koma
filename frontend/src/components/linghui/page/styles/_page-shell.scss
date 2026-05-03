@@ -8,8 +8,8 @@
   height: 100%;
   overflow: hidden;
   background:
-    radial-gradient(circle at top left, rgba(16, 185, 129, 0.08), transparent 28%),
-    radial-gradient(circle at bottom right, rgba(59, 130, 246, 0.08), transparent 22%),
+    radial-gradient(circle at top left, color-mix(in srgb, var(--token-accent-base) 8%, transparent), transparent 28%),
+    radial-gradient(circle at bottom right, color-mix(in srgb, var(--token-status-info) 8%, transparent), transparent 22%),
     $lh-bg-page;
 }
 
@@ -17,7 +17,7 @@
   @include lh-inline(16px, wrap, center, space-between);
 
   padding: 10px 12px;
-  border-bottom: 1px solid rgba(63, 63, 70, 0.9);
+  border-bottom: 1px solid color-mix(in srgb, var(--token-border-base) 90%, transparent);
   background: $lh-bg-surface-deep;
   backdrop-filter: blur(14px);
 
@@ -49,7 +49,7 @@
   &Modal {
     .ant-modal-content,
     .ant-modal-header {
-      background: linear-gradient(180deg, rgba(9, 13, 18, 0.98), rgba(13, 18, 26, 0.98));
+      background: linear-gradient(180deg, color-mix(in srgb, var(--token-bg-app) 98%, transparent), color-mix(in srgb, var(--token-bg-surface) 98%, transparent));
       color: $lh-text-primary;
     }
 
@@ -78,15 +78,15 @@
     @include lh-stack(6px);
 
     padding: 16px;
-    border: 1px solid rgba(59, 130, 246, 0.2);
+    border: 1px solid color-mix(in srgb, var(--token-status-info) 20%, transparent);
     border-radius: $lh-radius-panel;
     background:
-      radial-gradient(circle at top right, rgba(59, 130, 246, 0.16), transparent 34%),
-      rgba(15, 23, 42, 0.78);
+      radial-gradient(circle at top right, color-mix(in srgb, var(--token-status-info) 16%, transparent), transparent 34%),
+      color-mix(in srgb, var(--token-bg-card) 78%, transparent);
   }
 
   &Eyebrow {
-    color: #93c5fd;
+    color: $lh-text-info;
     font-size: 11px;
     font-weight: 700;
     letter-spacing: 0.08em;
@@ -98,7 +98,7 @@
   }
 
   &Description {
-    @include lh-text(#cbd5e1, 13px, 1.6);
+    @include lh-text($lh-text-secondary, 13px, 1.6);
   }
 
   &Grid {
@@ -161,7 +161,7 @@
 
     padding: 8px 10px;
     border-radius: 14px;
-    background: rgba(51, 65, 85, 0.48);
+    background: color-mix(in srgb, var(--token-bg-hover) 48%, transparent);
     color: $lh-text-secondary;
     font-size: 12px;
     font-weight: 700;
@@ -173,7 +173,7 @@
     }
 
     &.isBottleneck {
-      background: rgba(245, 158, 11, 0.16);
+      background: color-mix(in srgb, var(--token-status-warning) 16%, transparent);
       color: $lh-text-warning;
     }
   }

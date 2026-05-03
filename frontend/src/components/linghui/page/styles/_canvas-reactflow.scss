@@ -7,6 +7,12 @@
   --xy-background-color: transparent;
 
   .react-flow__edge-path {
+    stroke: var(--linghui-edge-stroke, var(--token-border-base));
+    stroke-width: var(--linghui-edge-stroke-width, 2);
+    stroke-dasharray: var(--linghui-edge-stroke-dasharray, none);
+    opacity: var(--linghui-edge-opacity, 0.72);
+    filter: var(--linghui-edge-filter, none);
+    cursor: pointer;
     transition: stroke 200ms ease, stroke-width 200ms ease;
   }
 
@@ -21,9 +27,12 @@
 
 .linghuiRFNode {
   position: relative;
+  background: var(--linghui-node-bg, var(--token-bg-surface));
+  border-color: var(--linghui-node-border, var(--token-border-base));
+  box-shadow: var(--linghui-node-shadow, none);
   min-width: 260px;
   max-width: 380px;
-  border: 2px solid rgba(63, 63, 70, 0.9);
+  border: 2px solid color-mix(in srgb, var(--token-border-base) 90%, transparent);
   border-radius: 18px;
   color: $lh-text-primary;
   font-size: 13px;
@@ -47,11 +56,12 @@
     @include lh-inline(10px, nowrap);
 
     padding: 12px 14px;
-    border-bottom: 1px solid rgba(63, 63, 70, 0.55);
-    background: linear-gradient(180deg, rgba(22, 28, 36, 0.95), rgba(13, 17, 23, 0.92));
+    border-bottom: 1px solid color-mix(in srgb, var(--token-border-base) 55%, transparent);
+    background: linear-gradient(180deg, color-mix(in srgb, var(--token-bg-surface) 95%, transparent), color-mix(in srgb, var(--token-bg-surface) 92%, transparent));
   }
 
   &Accent {
+    background: var(--linghui-accent, var(--token-accent-base));
     width: 6px;
     height: 24px;
     border-radius: $lh-radius-pill;
@@ -62,7 +72,7 @@
     flex: 1;
     font-weight: 700;
     font-size: 14px;
-    color: #fafafa;
+    color: $lh-text-primary;
   }
 
   &Body {
@@ -70,6 +80,18 @@
 
     padding: 10px 14px 14px;
   }
+}
+
+.linghuiRunProgressBar {
+  width: var(--linghui-progress, 0%);
+}
+
+.linghuiRFHandle {
+  top: var(--linghui-handle-top, 52px) !important;
+  width: 10px !important;
+  height: 10px !important;
+  border: 2px solid var(--token-bg-app) !important;
+  background: var(--linghui-handle-bg, var(--token-accent-base)) !important;
 }
 
 .linghuiRFSlot {
@@ -90,46 +112,46 @@
 .linghuiCanvasGroup {
   width: 100%;
   height: 100%;
-  border: 1px solid color-mix(in srgb, var(--linghui-group-color, #2563eb) 72%, white 10%);
+  border: 1px solid color-mix(in srgb, var(--linghui-group-color, var(--token-status-info)) 72%, var(--token-text-primary) 10%);
   border-radius: 20px;
   background:
-    linear-gradient(180deg, color-mix(in srgb, var(--linghui-group-color, #2563eb) 12%, transparent), rgba(9, 13, 18, 0.3)),
-    rgba(14, 18, 25, 0.28);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.03);
+    linear-gradient(180deg, color-mix(in srgb, var(--linghui-group-color, var(--token-status-info)) 12%, transparent), color-mix(in srgb, var(--token-bg-app) 30%, transparent)),
+    color-mix(in srgb, var(--token-bg-surface) 28%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--token-text-primary) 3%, transparent);
   overflow: hidden;
 
   &.isSelected {
     box-shadow:
-      0 0 0 1px color-mix(in srgb, var(--linghui-group-color, #2563eb) 50%, white 10%),
-      0 0 18px color-mix(in srgb, var(--linghui-group-color, #2563eb) 20%, transparent);
+      0 0 0 1px color-mix(in srgb, var(--linghui-group-color, var(--token-status-info)) 50%, var(--token-text-primary) 10%),
+      0 0 18px color-mix(in srgb, var(--linghui-group-color, var(--token-status-info)) 20%, transparent);
   }
 
   &.is-running {
-    border-color: rgba(59, 130, 246, 0.88);
+    border-color: color-mix(in srgb, var(--token-status-info) 88%, transparent);
     box-shadow:
-      inset 0 0 0 1px rgba(96, 165, 250, 0.28),
-      0 0 24px rgba(59, 130, 246, 0.14);
+      inset 0 0 0 1px color-mix(in srgb, var(--token-status-info) 28%, transparent),
+      0 0 24px color-mix(in srgb, var(--token-status-info) 14%, transparent);
   }
 
   &.is-failed {
-    border-color: rgba(248, 113, 113, 0.86);
+    border-color: color-mix(in srgb, var(--token-status-error) 86%, transparent);
     box-shadow:
-      inset 0 0 0 1px rgba(248, 113, 113, 0.18),
-      0 0 24px rgba(239, 68, 68, 0.16);
+      inset 0 0 0 1px color-mix(in srgb, var(--token-status-error) 18%, transparent),
+      0 0 24px color-mix(in srgb, var(--token-status-error) 16%, transparent);
   }
 
   &.is-stale {
-    border-color: rgba(251, 191, 36, 0.84);
+    border-color: color-mix(in srgb, var(--token-status-warning) 84%, transparent);
     box-shadow:
-      inset 0 0 0 1px rgba(251, 191, 36, 0.18),
-      0 0 24px rgba(245, 158, 11, 0.12);
+      inset 0 0 0 1px color-mix(in srgb, var(--token-status-warning) 18%, transparent),
+      0 0 24px color-mix(in srgb, var(--token-status-warning) 12%, transparent);
   }
 
   &.is-succeeded {
-    border-color: rgba(52, 211, 153, 0.82);
+    border-color: color-mix(in srgb, var(--token-border-focus) 82%, transparent);
     box-shadow:
-      inset 0 0 0 1px rgba(52, 211, 153, 0.18),
-      0 0 24px rgba(16, 185, 129, 0.12);
+      inset 0 0 0 1px color-mix(in srgb, var(--token-border-focus) 18%, transparent),
+      0 0 24px color-mix(in srgb, var(--token-accent-base) 12%, transparent);
   }
 
   &Header {
@@ -137,8 +159,8 @@
 
     height: 40px;
     padding: 0 12px;
-    background: linear-gradient(180deg, rgba(13, 17, 23, 0.96), rgba(13, 17, 23, 0.82));
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    background: linear-gradient(180deg, color-mix(in srgb, var(--token-bg-surface) 96%, transparent), color-mix(in srgb, var(--token-bg-surface) 82%, transparent));
+    border-bottom: 1px solid color-mix(in srgb, var(--token-text-primary) 5%, transparent);
   }
 
   &TitleButton {
@@ -159,39 +181,39 @@
   }
 
   &Status {
-    @include lh-chip(24px, 0 10px, rgba(63, 63, 70, 0.72), #e4e4e7, 11px, 700);
+    @include lh-chip(24px, 0 10px, color-mix(in srgb, var(--token-border-base) 72%, transparent), $lh-text-secondary, 11px, 700);
 
     flex: 0 0 auto;
     white-space: nowrap;
 
     &.is-running {
-      background: rgba(37, 99, 235, 0.18);
-      color: #bfdbfe;
+      background: color-mix(in srgb, var(--token-status-info) 18%, transparent);
+      color: $lh-text-info;
     }
 
     &.is-failed {
-      background: rgba(127, 29, 29, 0.5);
+      background: color-mix(in srgb, var(--token-status-error) 50%, transparent);
       color: $lh-text-danger;
     }
 
     &.is-stale {
-      background: rgba(120, 53, 15, 0.52);
+      background: color-mix(in srgb, var(--token-status-warning) 52%, transparent);
       color: $lh-text-warning;
     }
 
     &.is-succeeded {
-      background: rgba(6, 78, 59, 0.52);
-      color: #a7f3d0;
+      background: color-mix(in srgb, var(--token-status-success) 52%, transparent);
+      color: color-mix(in srgb, var(--token-status-success) 42%, var(--token-text-primary));
     }
 
     &.is-partial {
-      background: rgba(67, 56, 202, 0.3);
-      color: #c7d2fe;
+      background: color-mix(in srgb, var(--token-status-info) 30%, transparent);
+      color: color-mix(in srgb, var(--token-status-info) 34%, var(--token-text-primary));
     }
   }
 
   &Input {
-    @include lh-input-shell(10px, rgba(15, 23, 42, 0.92), inset 0 0 0 1px rgba(96, 165, 250, 0.7));
+    @include lh-input-shell(10px, color-mix(in srgb, var(--token-bg-card) 92%, transparent), inset 0 0 0 1px color-mix(in srgb, var(--token-status-info) 70%, transparent));
 
     width: min(220px, 100%);
     font-size: 13px;
@@ -201,13 +223,23 @@
   &ResizeHandle {
     width: 10px;
     height: 10px;
-    border: 1px solid rgba(255, 255, 255, 0.9);
-    background: color-mix(in srgb, var(--linghui-group-color, #2563eb) 80%, white 5%);
+    border: 1px solid color-mix(in srgb, var(--token-text-primary) 90%, transparent);
+    background: color-mix(in srgb, var(--linghui-group-color, var(--token-status-info)) 80%, var(--token-text-primary) 5%);
   }
 
   &ResizeLine {
-    border-color: color-mix(in srgb, var(--linghui-group-color, #2563eb) 75%, white 10%);
+    border-color: color-mix(in srgb, var(--linghui-group-color, var(--token-status-info)) 75%, var(--token-text-primary) 10%);
   }
+}
+
+.linghuiNodeEditorWidget {
+  .linghuiNodeTextarea {
+    min-height: var(--linghui-textarea-min-height, 84px);
+  }
+}
+
+.linghuiEditorFieldNoBottomGap {
+  padding-bottom: 0;
 }
 
 .linghuiCanvasEmpty {
@@ -218,7 +250,7 @@
   align-items: center;
   justify-content: center;
   pointer-events: none;
-  color: #e4e4e7;
+  color: $lh-text-secondary;
   text-align: center;
 
   &Title {
@@ -279,7 +311,7 @@
 
 .linghuiInspectorDivider {
   margin: 16px 0 6px;
-  border-top: 1px solid rgba(63, 63, 70, 0.6);
+  border-top: 1px solid color-mix(in srgb, var(--token-border-base) 60%, transparent);
 }
 
 .linghuiRun {
@@ -292,20 +324,20 @@
   }
 
   &Message {
-    color: #cbd5f5;
+    color: $lh-text-secondary;
     font-size: 12px;
   }
 
   &Progress {
     height: 6px;
     border-radius: $lh-radius-pill;
-    background: rgba(30, 41, 59, 0.7);
+    background: color-mix(in srgb, var(--token-bg-hover) 70%, transparent);
     margin-top: 8px;
     overflow: hidden;
 
     &Bar {
       height: 100%;
-      background: linear-gradient(90deg, #38bdf8, #22c55e);
+      background: linear-gradient(90deg, color-mix(in srgb, var(--token-status-info) 72%, var(--token-text-primary)), var(--token-status-success));
     }
   }
 }
@@ -315,8 +347,8 @@
     margin-top: 10px;
     padding: 12px;
     border-radius: 10px;
-    background: rgba(15, 23, 42, 0.7);
-    color: #e2e8f0;
+    background: color-mix(in srgb, var(--token-bg-card) 70%, transparent);
+    color: $lh-text-secondary;
     white-space: pre-wrap;
     font-size: 12px;
     line-height: 1.6;
@@ -326,7 +358,7 @@
     width: 100%;
     border-radius: 12px;
     margin-top: 10px;
-    border: 1px solid rgba(63, 63, 70, 0.6);
+    border: 1px solid color-mix(in srgb, var(--token-border-base) 60%, transparent);
   }
 
   &Grid {
@@ -342,8 +374,8 @@
     margin: 0;
     padding: 10px;
     border-radius: 12px;
-    background: rgba(15, 23, 42, 0.65);
-    border: 1px solid rgba(63, 63, 70, 0.5);
+    background: color-mix(in srgb, var(--token-bg-card) 65%, transparent);
+    border: 1px solid color-mix(in srgb, var(--token-border-base) 50%, transparent);
 
     img {
       width: 100%;
@@ -351,7 +383,7 @@
     }
 
     figcaption {
-      color: #cbd5f5;
+      color: $lh-text-secondary;
       font-size: 11px;
     }
   }
@@ -359,7 +391,7 @@
   &Placeholder {
     height: 120px;
     border-radius: 10px;
-    background: rgba(30, 41, 59, 0.5);
+    background: color-mix(in srgb, var(--token-bg-hover) 50%, transparent);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -380,7 +412,7 @@
 .linghuiEditorField {
   textarea,
   input {
-    @include lh-input-shell(14px, rgba(255, 255, 255, 0.04), inset 0 0 0 1px rgba(148, 163, 184, 0.1));
+    @include lh-input-shell(14px, color-mix(in srgb, var(--token-text-primary) 4%, transparent), inset 0 0 0 1px color-mix(in srgb, var(--token-text-tertiary) 10%, transparent));
 
     width: 100%;
     box-sizing: border-box;
@@ -400,8 +432,8 @@
     box-sizing: border-box;
     padding: 12px;
     border-radius: 14px;
-    background: linear-gradient(180deg, rgba(17, 24, 39, 0.96), rgba(8, 13, 19, 0.96));
-    border: 1px solid rgba(63, 63, 70, 0.55);
+    background: linear-gradient(180deg, color-mix(in srgb, var(--token-bg-surface) 96%, transparent), color-mix(in srgb, var(--token-bg-app) 96%, transparent));
+    border: 1px solid color-mix(in srgb, var(--token-border-base) 55%, transparent);
     color: $lh-text-primary;
   }
 
@@ -418,17 +450,24 @@
   }
 
   &WidgetHint {
-    color: #a5b4fc;
+    color: color-mix(in srgb, var(--token-status-info) 45%, var(--token-text-primary));
     font-size: 11px;
     line-height: 1.5;
   }
 
   &Textarea {
-    min-height: 84px;
+    min-height: var(--linghui-textarea-min-height, 84px);
+    color: var(--token-text-secondary);
+    overflow: auto;
+    white-space: pre-wrap;
     resize: none;
     padding: 10px 12px;
     font-size: 12px;
     line-height: 1.6;
+  }
+
+  &Textarea.linghuiEditorOutputText {
+    resize: none;
   }
 
   &Input {
@@ -444,9 +483,9 @@
     border-radius: 14px;
     overflow: hidden;
     background:
-      radial-gradient(circle at top, rgba(56, 189, 248, 0.16), transparent 40%),
-      rgba(15, 23, 42, 0.78);
-    border: 1px dashed rgba(125, 211, 252, 0.42);
+      radial-gradient(circle at top, color-mix(in srgb, var(--token-status-info) 16%, transparent), transparent 40%),
+      color-mix(in srgb, var(--token-bg-card) 78%, transparent);
+    border: 1px dashed color-mix(in srgb, var(--token-status-info) 42%, transparent);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -461,10 +500,10 @@
 
     &:hover,
     &.is-dragover {
-      border-color: rgba(125, 211, 252, 0.88);
+      border-color: color-mix(in srgb, var(--token-status-info) 88%, transparent);
       background:
-        radial-gradient(circle at top, rgba(56, 189, 248, 0.24), transparent 45%),
-        rgba(17, 24, 39, 0.92);
+        radial-gradient(circle at top, color-mix(in srgb, var(--token-status-info) 24%, transparent), transparent 45%),
+        color-mix(in srgb, var(--token-bg-surface) 92%, transparent);
       transform: translateY(-1px);
     }
 
@@ -489,13 +528,13 @@
     justify-content: center;
     min-height: 100px;
     text-align: center;
-    color: #cbd5e1;
+    color: $lh-text-secondary;
     font-size: 12px;
     line-height: 1.6;
     padding: 0 12px;
 
     &.is-error {
-      color: #fca5a5;
+      color: $lh-text-danger;
     }
   }
 
@@ -515,14 +554,14 @@
     max-height: 72px;
     object-fit: cover;
     border-radius: 8px;
-    border: 1px solid rgba(63, 63, 70, 0.5);
+    border: 1px solid color-mix(in srgb, var(--token-border-base) 50%, transparent);
   }
 
   &ThumbText {
     padding: 6px 8px;
     border-radius: 8px;
-    background: rgba(15, 23, 42, 0.7);
-    color: #cbd5e1;
+    background: color-mix(in srgb, var(--token-bg-card) 70%, transparent);
+    color: $lh-text-secondary;
     font-size: 11px;
     line-height: 1.5;
     max-height: 52px;
@@ -534,9 +573,9 @@
 
     padding: 8px 10px;
     border-radius: 10px;
-    background: rgba(124, 45, 18, 0.28);
-    border: 1px solid rgba(249, 115, 22, 0.3);
-    color: #fed7aa;
+    background: color-mix(in srgb, var(--token-status-warning) 28%, transparent);
+    border: 1px solid color-mix(in srgb, var(--token-status-warning) 30%, transparent);
+    color: $lh-text-warning;
     font-size: 11px;
     line-height: 1.4;
   }
@@ -557,8 +596,8 @@
     min-height: 88px;
     padding: 10px 12px;
     border-radius: 12px;
-    background: rgba(15, 23, 42, 0.8);
-    color: #e2e8f0;
+    background: color-mix(in srgb, var(--token-bg-card) 80%, transparent);
+    color: $lh-text-secondary;
     white-space: pre-wrap;
     font-size: 12px;
     line-height: 1.6;
@@ -575,7 +614,7 @@
   &PreviewAudioMeta {
     @include lh-inline(10px, nowrap, center, space-between);
 
-    color: #fdba74;
+    color: $lh-text-warning;
     font-size: 11px;
   }
 
@@ -591,8 +630,8 @@
     margin: 0;
     padding: 8px;
     border-radius: 12px;
-    background: rgba(15, 23, 42, 0.7);
-    border: 1px solid rgba(71, 85, 105, 0.45);
+    background: color-mix(in srgb, var(--token-bg-card) 70%, transparent);
+    border: 1px solid color-mix(in srgb, var(--token-border-base) 45%, transparent);
 
     img {
       width: 100%;
@@ -602,7 +641,7 @@
     }
 
     figcaption {
-      color: #cbd5e1;
+      color: $lh-text-secondary;
       font-size: 10px;
     }
   }
@@ -617,8 +656,8 @@
     gap: 8px;
     padding: 8px;
     border-radius: 12px;
-    background: rgba(15, 23, 42, 0.72);
-    border: 1px solid rgba(71, 85, 105, 0.4);
+    background: color-mix(in srgb, var(--token-bg-card) 72%, transparent);
+    border: 1px solid color-mix(in srgb, var(--token-border-base) 40%, transparent);
   }
 
   &StoryboardThumb {
@@ -626,7 +665,7 @@
     height: 52px;
     overflow: hidden;
     border-radius: 10px;
-    background: rgba(30, 41, 59, 0.8);
+    background: color-mix(in srgb, var(--token-bg-hover) 80%, transparent);
     color: $lh-text-muted;
     display: flex;
     align-items: center;
@@ -654,7 +693,7 @@
   }
 
   &StoryboardDetail {
-    color: #a5b4fc;
+    color: color-mix(in srgb, var(--token-status-info) 45%, var(--token-text-primary));
     font-size: 11px;
   }
 
@@ -669,28 +708,28 @@
     white-space: nowrap;
 
     &.is-idle {
-      background: rgba(71, 85, 105, 0.3);
-      color: #cbd5e1;
+      background: color-mix(in srgb, var(--token-border-base) 30%, transparent);
+      color: $lh-text-secondary;
     }
 
     &.is-running {
-      background: rgba(59, 130, 246, 0.16);
-      color: #93c5fd;
+      background: color-mix(in srgb, var(--token-status-info) 16%, transparent);
+      color: $lh-text-info;
     }
 
     &.is-success {
-      background: rgba(34, 197, 94, 0.16);
-      color: #86efac;
+      background: color-mix(in srgb, var(--token-status-success) 16%, transparent);
+      color: color-mix(in srgb, var(--token-status-success) 70%, var(--token-text-primary));
     }
 
     &.is-warning {
-      background: rgba(249, 115, 22, 0.16);
-      color: #fdba74;
+      background: color-mix(in srgb, var(--token-status-warning) 16%, transparent);
+      color: $lh-text-warning;
     }
 
     &.is-error {
-      background: rgba(239, 68, 68, 0.16);
-      color: #fca5a5;
+      background: color-mix(in srgb, var(--token-status-error) 16%, transparent);
+      color: $lh-text-danger;
     }
   }
 }
@@ -708,8 +747,8 @@
     gap: 12px;
     padding: 10px;
     border-radius: 12px;
-    background: rgba(15, 23, 42, 0.6);
-    border: 1px solid rgba(63, 63, 70, 0.55);
+    background: color-mix(in srgb, var(--token-bg-card) 60%, transparent);
+    border: 1px solid color-mix(in srgb, var(--token-border-base) 55%, transparent);
   }
 
   &Thumb {
@@ -730,7 +769,7 @@
   }
 
   &Desc {
-    color: #cbd5f5;
+    color: $lh-text-secondary;
     font-size: 12px;
     line-height: 1.5;
   }
@@ -747,9 +786,9 @@
     grid-template-columns: 80px minmax(0, 1fr);
     gap: 8px;
     font-size: 11px;
-    color: #cbd5f5;
+    color: $lh-text-secondary;
     padding: 6px 0;
-    border-bottom: 1px dashed rgba(63, 63, 70, 0.4);
+    border-bottom: 1px dashed color-mix(in srgb, var(--token-border-base) 40%, transparent);
 
     &:last-child {
       border-bottom: none;
@@ -757,15 +796,15 @@
   }
 
   &-info {
-    color: #cbd5f5;
+    color: $lh-text-secondary;
   }
 
   &-success {
-    color: #86efac;
+    color: color-mix(in srgb, var(--token-status-success) 70%, var(--token-text-primary));
   }
 
   &-error {
-    color: #fca5a5;
+    color: $lh-text-danger;
   }
 }
 
@@ -774,8 +813,8 @@
 
   grid-column: 1 / -1;
   padding: 10px 16px;
-  border-top: 1px solid rgba(63, 63, 70, 0.9);
-  background: rgba(8, 10, 15, 0.92);
+  border-top: 1px solid color-mix(in srgb, var(--token-border-base) 90%, transparent);
+  background: color-mix(in srgb, var(--token-bg-app) 92%, transparent);
   color: $lh-text-soft;
   font-size: 12px;
 }

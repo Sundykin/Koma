@@ -11,6 +11,7 @@ import { openFileDialog, fsCopy, fsMkdir, fsExists, electronService } from '../.
 import { getStorageConfig, initStorageConfig } from '../../store/storageConfig';
 import { createStoredMediaAsset } from '../../utils/mediaAssets';
 import { getScenePreviewImageSource } from '../../utils/mediaSelectors';
+import styles from './AssetEditor.module.scss';
 
 const { TextArea } = Input;
 const { Text } = Typography;
@@ -120,17 +121,10 @@ export const SceneAssetEditor: React.FC<SceneAssetEditorProps> = ({
   const toLocalUrl = (path?: string) => path ? electronService.fs.toLocalUrl(path) : '';
 
   return (
-    <div
-      style={{
-        padding: 12,
-        background: '#1a1a1a',
-        borderRadius: 8,
-        border: '1px solid #27272a',
-      }}
-    >
+    <div className={styles.editorCard}>
       {/* 头部：名称 + 操作按钮 */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-        <Text strong style={{ fontSize: 14 }}>{scene.name}</Text>
+      <div className={styles.editorHeader}>
+        <Text strong className={styles.editorTitle}>{scene.name}</Text>
         <Space size="small">
           <Button
             size="small"
@@ -148,30 +142,19 @@ export const SceneAssetEditor: React.FC<SceneAssetEditorProps> = ({
 
       {/* 进度条 */}
       {loading && (
-        <div style={{ marginBottom: 12 }}>
-          <Text type="secondary" style={{ fontSize: 12 }}>{progress.step}</Text>
-          <Progress percent={Math.round(progress.value)} size="small" strokeColor="#52c41a" />
+        <div className={styles.progressBlock}>
+          <Text type="secondary" className={styles.progressText}>{progress.step}</Text>
+          <Progress percent={Math.round(progress.value)} size="small" strokeColor="var(--token-status-success)" />
         </div>
       )}
 
       {/* 预览图 */}
-      <div
-        style={{
-          aspectRatio: '16/9',
-          background: '#09090b',
-          borderRadius: 6,
-          overflow: 'hidden',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          marginBottom: 12,
-        }}
-      >
+      <div className={`${styles.previewFrame} ${styles.scenePreviewFrame}`}>
         {getScenePreviewImageSource(scene) ? (
           <img
             src={toLocalUrl(getScenePreviewImageSource(scene))}
             alt={scene.name}
-            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+            className={styles.scenePreviewImage}
           />
         ) : (
           <Text type="secondary">未生成预览图</Text>
@@ -180,8 +163,8 @@ export const SceneAssetEditor: React.FC<SceneAssetEditorProps> = ({
 
       {/* 提示词编辑 */}
       <div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-          <Text type="secondary" style={{ fontSize: 11 }}>生成提示词</Text>
+        <div className={styles.promptHeader}>
+          <Text type="secondary" className={styles.promptLabel}>生成提示词</Text>
           <Button
             type="text"
             size="small"
@@ -197,14 +180,10 @@ export const SceneAssetEditor: React.FC<SceneAssetEditorProps> = ({
           rows={2}
           placeholder="描述场景..."
           disabled={!isEditing}
-          style={{
-            background: isEditing ? '#09090b' : '#141414',
-            borderColor: isEditing ? '#3f3f46' : '#27272a',
-            fontSize: 12,
-          }}
+          className={`${styles.promptInput} ${isEditing ? styles.promptInputEditing : ''}`}
         />
         {scene.prompt && (
-          <Text type="secondary" style={{ fontSize: 10, marginTop: 4, display: 'block' }}>
+          <Text type="secondary" className={styles.promptHint}>
             使用已保存提示词 · <a onClick={() => { setPromptDraft(autoPrompt); onUpdate({ prompt: autoPrompt }); }}>恢复自动模板</a>
           </Text>
         )}

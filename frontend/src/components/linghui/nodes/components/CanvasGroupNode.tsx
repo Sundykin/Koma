@@ -56,7 +56,7 @@ function CanvasGroupNodeInner({ id, data, selected }: NodeProps) {
   return (
     <div
       className={`linghuiCanvasGroup nopan ${selected ? 'isSelected' : ''} ${runSummary ? `is-${runSummary.status}` : ''}`}
-      style={{ ['--linghui-group-color' as string]: groupData.color ?? '#2563eb' }}
+      style={{ '--linghui-group-color': groupData.color ?? 'var(--token-status-info)' } as React.CSSProperties}
       onContextMenu={(event) => {
         event.preventDefault();
         event.stopPropagation();
@@ -67,7 +67,7 @@ function CanvasGroupNodeInner({ id, data, selected }: NodeProps) {
         isVisible={selected}
         minWidth={220}
         minHeight={140}
-        color={groupData.color ?? '#2563eb'}
+        color={groupData.color ?? 'var(--token-status-info)'}
         lineClassName="linghuiCanvasGroupResizeLine"
         handleClassName="linghuiCanvasGroupResizeHandle"
       />

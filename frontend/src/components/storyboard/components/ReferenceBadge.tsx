@@ -95,7 +95,7 @@ export const ReferenceBadge: React.FC<ReferenceBadgeProps> = ({
       overlayClassName="reference-badge-popover"
     >
       <div className="absolute top-2 right-2 z-10 cursor-pointer group">
-        <Badge count={count} size="small" offset={[-2, 2]} color={count > 0 ? '#3b82f6' : undefined}>
+        <Badge count={count} size="small" offset={[-2, 2]} color={count > 0 ? 'var(--token-status-info)' : undefined}>
           <div
             className={`h-6 px-2 rounded flex items-center gap-1.5 text-xs border transition-colors ${
               count > 0

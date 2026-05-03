@@ -15,6 +15,8 @@ import { createKeywordHighlightPlugin, createKeywordTooltip, createKeywordAtomic
 import type { MentionItem, MentionType } from './mentionTypes';
 import { normalizeMentionId } from './mentionTypes';
 
+import './ScriptEditor.scss';
+
 export interface ScriptEditorProps {
   value: string;
   onChange?: (value: string) => void;
@@ -32,7 +34,6 @@ export interface ScriptEditorProps {
   darkTheme?: boolean;
   // 样式
   className?: string;
-  style?: React.CSSProperties;
 }
 
 /**
@@ -51,11 +52,11 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
   showLineNumbers = true,
   darkTheme = false,
   className,
-  style,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const onChangeRef = useRef(onChange);
+  const rootClassName = ['scriptEditorHost', className].filter(Boolean).join(' ');
   // 用于动态更新 mention 相关扩展的 Compartment
   const mentionCompartmentRef = useRef(new Compartment());
   // 记录最后一次从编辑器输出的值，用于避免循环更新
@@ -142,12 +143,12 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
           height: minHeight,
           maxHeight,
           overflow: 'hidden',
-          border: darkTheme ? '1px solid #3f3f46' : '1px solid #ddd',
+          border: '1px solid var(--token-border-base)',
           borderRadius: '8px',
           fontFamily: 'system-ui, -apple-system, sans-serif',
           fontSize: '13px',
           lineHeight: '1.6',
-          backgroundColor: darkTheme ? '#1a1a1a' : '#fff',
+          backgroundColor: 'var(--token-bg-surface)',
         },
         '.cm-scroller': {
           overflow: 'auto',
@@ -156,23 +157,21 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
         },
         '.cm-content': {
           padding: '12px',
-          color: darkTheme ? '#e4e4e7' : '#333',
-          caretColor: darkTheme ? '#10b981' : '#1976d2',
+          color: 'var(--token-text-primary)',
+          caretColor: 'var(--token-accent-base)',
         },
         '.cm-line': {
           padding: '2px 4px',
         },
         '&.cm-focused': {
           outline: 'none',
-          borderColor: darkTheme ? '#10b981' : '#1976d2',
-          boxShadow: darkTheme
-            ? '0 0 0 2px rgba(16, 185, 129, 0.2)'
-            : '0 0 0 2px rgba(25, 118, 210, 0.2)',
+          borderColor: 'var(--token-border-focus)',
+          boxShadow: '0 0 0 2px color-mix(in srgb, var(--token-accent-base) 22%, transparent)',
         },
         '.cm-gutters': {
-          backgroundColor: darkTheme ? '#141414' : '#f5f5f5',
-          borderRight: darkTheme ? '1px solid #27272a' : '1px solid #ddd',
-          color: darkTheme ? '#52525b' : '#999',
+          backgroundColor: 'var(--token-bg-elevated)',
+          borderRight: '1px solid var(--token-border-subtle)',
+          color: 'var(--token-text-muted)',
         },
         '.cm-activeLineGutter': {
           backgroundColor: 'transparent',
@@ -181,13 +180,13 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
           backgroundColor: 'transparent',
         },
         '.cm-selectionBackground': {
-          backgroundColor: darkTheme ? 'rgba(16, 185, 129, 0.2) !important' : 'rgba(25, 118, 210, 0.2) !important',
+          backgroundColor: 'color-mix(in srgb, var(--token-accent-base) 20%, transparent) !important',
         },
         '&.cm-focused .cm-selectionBackground': {
-          backgroundColor: darkTheme ? 'rgba(16, 185, 129, 0.3) !important' : 'rgba(25, 118, 210, 0.3) !important',
+          backgroundColor: 'color-mix(in srgb, var(--token-accent-base) 30%, transparent) !important',
         },
         '.cm-cursor': {
-          borderLeftColor: darkTheme ? '#10b981' : '#1976d2',
+          borderLeftColor: 'var(--token-accent-base)',
         },
       }),
 
@@ -289,34 +288,27 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
     }
   }, []);
 
-  const containerStyle: React.CSSProperties = {
-    position: 'relative',
-    cursor: 'text',
-    ...style,
-  };
-
   return (
     <div
       ref={containerRef}
-      className={className}
-      style={containerStyle}
+      className={rootClassName}
       onClick={handleContainerClick}
     />
   );
 };
 
-// 添加占位符样式
-const placeholderStyle = document.createElement('style');
-placeholderStyle.textContent = `
+if (typeof document !== 'undefined' && !document.getElementById('script-editor-placeholder-style')) {
+  const placeholderStyle = document.createElement('style');
+  placeholderStyle.id = 'script-editor-placeholder-style';
+  placeholderStyle.textContent = `
 .cm-content[data-placeholder]:empty::before {
   content: attr(data-placeholder);
-  color: #71717a;
+  color: var(--token-text-muted);
   pointer-events: none;
   position: absolute;
   white-space: pre-wrap;
 }
 `;
-if (typeof document !== 'undefined') {
   document.head.appendChild(placeholderStyle);
 }
 
