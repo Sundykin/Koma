@@ -479,6 +479,30 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     }
   );
 
+  // 监听单 shot 提示词 / 媒体任务完成 → 从 DB 重新拉这个剧集的 shots
+  // 解决：用户在 await generateShotPrompt 期间切换页面，组件 unmount 后
+  // setShots 落空，回到分镜页时本地 shots 仍是旧数据；DB 已被 service.updateShot
+  // 写入新 prompt 但 UI 看不到。改成订阅任务终态转换 → 主动重载，确保
+  // 切换/不切换、单条/批量、单端/多窗口都一致。
+  const PROMPT_OR_MEDIA_SHOT_TYPES = useMemo(() => new Set([
+    'prompt-generation:image', 'prompt-generation:video',
+    'prompt-optimization:image', 'prompt-optimization:video',
+    'tti', 'itv',
+  ]), []);
+  useTaskTransitions(
+    {
+      scope: `project:${projectId}`,
+      to: ['completed'],
+    },
+    (event) => {
+      const t = event.record;
+      if (!PROMPT_OR_MEDIA_SHOT_TYPES.has(t.type)) return;
+      // shot 级 task 才需要刷新（episode-level batch 任务由内部回调即时更新单 shot）
+      if (t.targetKind !== 'shot' || !t.targetId) return;
+      void refreshShotsFromStore();
+    }
+  );
+
   const flushQueuedShotSaves = useCallback((): Promise<void> => {
     if (activeShotsSaveRef.current) {
       return activeShotsSaveRef.current;
