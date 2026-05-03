@@ -100,21 +100,16 @@ async function hydrateOnce(): Promise<void> {
   }
   hydratePromise = (async () => {
     try {
-      // 并行：拿自己 id（用于自写抑制） + 先订阅广播
+      // 拿自己 id 仅供调用方调试，不再用于"自写抑制"。
+      // 之前的自写抑制把"自己发起"的写入广播全过滤掉，但 tasksStore 的 cache
+      // 唯一更新路径就是这里的广播 —— 没有本地 mutator 先行写入，过滤掉=丢数据。
+      // 典型坑：runWithTask → TaskManager.createTask 通过 tasks:upsert 写入主进程，
+      // 主进程广播带 sourceWebContentsId=本 renderer，被自写抑制后 useTasks 永远
+      // 看不到这个任务（任务面板里"图像/视频提示词推理"消失就是这个原因）。
       const idPromise = getOwnWebContentsId().then(id => {
         ownWebContentsId = id;
       });
-      unsubscribeBroadcast = subscribeTaskUpdates((record, kind, sourceId) => {
-        // 自写抑制：本 renderer 自己发起的变更，本地 mutator 已经把 cache 更新过；
-        // 广播回响只会触发额外渲染。但首次拿不到 ownWebContentsId 时仍然应用，
-        // 避免空窗期数据丢失。
-        if (
-          ownWebContentsId !== null
-          && sourceId !== undefined
-          && sourceId === ownWebContentsId
-        ) {
-          return;
-        }
+      unsubscribeBroadcast = subscribeTaskUpdates((record, kind /*, sourceId */) => {
         if (kind === 'delete') applyDelete(record.id);
         else applyUpsert(record);
       });

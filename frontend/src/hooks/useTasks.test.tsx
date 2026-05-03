@@ -140,20 +140,20 @@ describe('useTasks hooks', () => {
     expect(result.current).toBeNull();
   });
 
-  it('suppresses self-originated broadcasts', async () => {
-    // 先触发 hydrate 让 ownWebContentsId = 42 缓存好
+  it('applies self-originated broadcasts to cache', async () => {
+    // 之前实现做了"自写抑制"，但 tasksStore 没有本地 mutator —— cache 唯一更新路径
+    // 就是这条广播。抑制掉=丢数据（runWithTask → TaskManager.createTask 写入永远
+    // 看不到）。所以自写也必须 apply，跟他写同等对待。
     const { result } = renderHook(() => useTasks({ scope: SCOPE }));
     await act(async () => {
       await new Promise(r => setTimeout(r, 0));
     });
 
-    // 自己发起的 upsert（sourceWebContentsId = 42）应该被抑制 —— 不进 cache
     await act(async () => {
       emit(record({ id: 'self', status: 'running' }), 'upsert', 42);
     });
-    expect(result.current.find(t => t.id === 'self')).toBeUndefined();
+    expect(result.current.find(t => t.id === 'self')?.status).toBe('running');
 
-    // 来自其它 webContents 的同 id 应该正常进 cache
     await act(async () => {
       emit(record({ id: 'self', status: 'running' }), 'upsert', 99);
     });
