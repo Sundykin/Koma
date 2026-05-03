@@ -198,10 +198,15 @@ export const TaskStatusBar: React.FC<TaskStatusBarProps> = ({ projectId, onRetry
 
   const tasks = useMemo<StatusBarTask[]>(() => {
     const MEDIA_TYPES = new Set(['tti', 'itv', 'tts', 'character-extraction']);
+    // 工具/管道类任务不在用户面板展示：每次 LLM 调用、未来可能的子级 IPC 任务等。
+    // 用户关心的是父级业务任务（剧本解析 / 分镜生成 / 媒体生成），它们已经汇总
+    // 了进度与阶段；llm:complete 这种"plumbing"在面板里只会刷屏盖过父任务。
+    const HIDDEN_TYPES = new Set(['llm:complete']);
 
     const mapped: StatusBarTask[] = [];
     for (const record of records) {
       if (hiddenIds.has(record.id)) continue;
+      if (HIDDEN_TYPES.has(record.type)) continue;
       const payload = (record.payload || {}) as Record<string, unknown> & {
         category?: string;
         subType?: string;
