@@ -21,7 +21,10 @@ interface ShotListHeaderProps {
   selectedCount: number;
   isAllSelected: boolean;
   isIndeterminate: boolean;
-  generatingPrompts: boolean;
+  /** 图像设计：批量生成/优化 prompt 的运行态 */
+  generatingImagePrompts: boolean;
+  /** 视频设计：批量生成/优化 prompt 的运行态 */
+  generatingVideoPrompts: boolean;
   generatingImages: boolean;
   generatingVideos: boolean;
   onSelectAll: (checked: boolean) => void;
@@ -43,7 +46,8 @@ export const ShotListHeader: React.FC<ShotListHeaderProps> = ({
   selectedCount,
   isAllSelected,
   isIndeterminate,
-  generatingPrompts,
+  generatingImagePrompts,
+  generatingVideoPrompts,
   generatingImages,
   generatingVideos,
   onSelectAll,
@@ -131,7 +135,7 @@ export const ShotListHeader: React.FC<ShotListHeaderProps> = ({
             size="small"
             className="h-5 px-1 text-[10px]"
             icon={<ThunderboltOutlined />}
-            loading={generatingPrompts}
+            loading={generatingImagePrompts}
           >
             AI{targetLabel} <DownOutlined className="text-[8px]" />
           </Button>
@@ -177,7 +181,7 @@ export const ShotListHeader: React.FC<ShotListHeaderProps> = ({
               size="small"
               className="h-5 px-1 text-[10px]"
               icon={<ThunderboltOutlined />}
-              loading={generatingPrompts}
+              loading={generatingVideoPrompts}
             >
               AI{targetLabel} <DownOutlined className="text-[8px]" />
             </Button>

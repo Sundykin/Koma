@@ -88,7 +88,7 @@ const SCRIPT_STAGE_LABELS: Record<ScriptStageKey, string> = {
 const useCategoryConfig = () => {
   const { t } = useTranslation();
   return {
-    prompt: { label: t('task.scriptAnalysis'), icon: <FileText className="w-3 h-3" />, color: 'purple' },
+    prompt: { label: '提示词', icon: <FileText className="w-3 h-3" />, color: 'purple' },
     media: { label: t('video.title'), icon: <Video className="w-3 h-3" />, color: 'blue' },
     analysis: { label: t('project.scriptAnalysis'), icon: <Cpu className="w-3 h-3" />, color: 'cyan' },
     asset: { label: t('asset.title'), icon: <Box className="w-3 h-3" />, color: 'orange' },
@@ -167,8 +167,9 @@ export const TaskStatusBar: React.FC<TaskStatusBarProps> = ({ projectId, onRetry
 
   const getSubTypeLabel = (subType?: string): string => {
     const labels: Record<string, string> = {
-      image: t('storyboard.generateImage'),
-      video: t('storyboard.generateVideo'),
+      // prompt 类目下的 image/video 表示提示词，不是媒体生成；明确区分避免与 tti/itv 混淆
+      image: '图片提示词',
+      video: '视频提示词',
       tti: t('settings.tti'),
       itv: t('settings.itv'),
       tts: t('settings.tts'),
@@ -177,8 +178,8 @@ export const TaskStatusBar: React.FC<TaskStatusBarProps> = ({ projectId, onRetry
       'script-analysis': t('task.scriptAnalysis'),
       'asset-generation': t('task.imageGeneration'),
       'character-extraction': t('asset.character'),
-      'prompt-generation': t('storyboard.imagePrompt'),
-      'prompt-optimization': t('storyboard.imagePrompt'),
+      'prompt-generation': '图+视频提示词',
+      'prompt-optimization': '提示词优化',
     };
     return labels[subType || ''] || subType || '';
   };
