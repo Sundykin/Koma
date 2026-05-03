@@ -38,7 +38,7 @@ export const NodeTextarea: React.FC<NodeTextareaProps> = ({
         placeholder={placeholder}
         value={value}
         onChange={handleChange}
-        style={{ minHeight: height }}
+        style={{ '--linghui-textarea-min-height': `${height}px` } as React.CSSProperties}
         onMouseDown={e => e.stopPropagation()}
         onKeyDown={e => e.stopPropagation()}
       />

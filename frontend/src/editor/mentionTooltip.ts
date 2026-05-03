@@ -58,9 +58,10 @@ function createTooltipDOM(item: MentionItem): { dom: HTMLElement } {
     padding: 12px;
     max-width: 300px;
     font-size: 14px;
-    background: white;
+    background: var(--token-bg-elevated);
+    color: var(--token-text-primary);
     border-radius: 8px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    box-shadow: var(--token-shadow-md);
   `;
 
   // 头部：类型标签 + 名称
@@ -114,7 +115,7 @@ function createTooltipDOM(item: MentionItem): { dom: HTMLElement } {
     const desc = document.createElement('div');
     desc.textContent = item.description;
     desc.style.cssText = `
-      color: #666;
+      color: var(--token-text-secondary);
       font-size: 13px;
       line-height: 1.4;
     `;
@@ -127,7 +128,7 @@ function createTooltipDOM(item: MentionItem): { dom: HTMLElement } {
   idText.style.cssText = `
     margin-top: 8px;
     font-size: 11px;
-    color: #999;
+    color: var(--token-text-muted);
     font-family: monospace;
   `;
   container.appendChild(idText);
@@ -151,13 +152,25 @@ function getTypeLabel(type: MentionType): string {
 function getTypeColor(type: MentionType): { bg: string; text: string } {
   switch (type) {
     case 'char':
-      return { bg: '#e3f2fd', text: '#1565c0' };
+      return {
+        bg: 'color-mix(in srgb, var(--token-status-info) 18%, transparent)',
+        text: 'var(--token-status-info)',
+      };
     case 'prop':
-      return { bg: '#fff3e0', text: '#e65100' };
+      return {
+        bg: 'color-mix(in srgb, var(--token-status-warning) 18%, transparent)',
+        text: 'var(--token-status-warning)',
+      };
     case 'scene':
-      return { bg: '#e8f5e9', text: '#2e7d32' };
+      return {
+        bg: 'color-mix(in srgb, var(--token-status-success) 18%, transparent)',
+        text: 'var(--token-status-success)',
+      };
     default:
-      return { bg: '#f5f5f5', text: '#666' };
+      return {
+        bg: 'var(--token-bg-hover)',
+        text: 'var(--token-text-secondary)',
+      };
   }
 }
 

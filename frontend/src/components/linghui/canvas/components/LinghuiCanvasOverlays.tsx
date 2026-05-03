@@ -13,6 +13,7 @@ import type {
   LinghuiStoryboardFrame,
 } from '../../../../types/linghui';
 import type { LinghuiCanvasMenuState, QuickCreateState } from '../state/linghuiCanvasShared';
+import type { CssVarStyle } from '../../../../theme/runtime';
 import { LinghuiCanvasPendingGroupOverlay } from './LinghuiCanvasPendingGroupOverlay';
 import { LinghuiCanvasQuickCreate } from './LinghuiCanvasQuickCreate';
 import { LinghuiCanvasContextMenu } from './LinghuiCanvasContextMenu';
@@ -49,8 +50,8 @@ export interface LinghuiCanvasOverlaysProps {
   gridSplitUpscaleFactor: 2 | 4;
   onSetGridSplitUpscaleFactor: (factor: 2 | 4) => void;
   onRevertGridSplit: () => void;
-  pendingGroupFrameStyle: { left: number; top: number; width: number; height: number } | null;
-  pendingGroupActionsStyle: { left: number; top: number } | null;
+  pendingGroupFrameStyle: CssVarStyle | null;
+  pendingGroupActionsStyle: CssVarStyle | null;
   pendingGroupCreatableIds: string[];
   onCreateGroup: (selectionIds?: string[]) => void;
   onDismissPendingGroup: () => void;

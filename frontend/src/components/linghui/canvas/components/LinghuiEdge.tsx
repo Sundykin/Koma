@@ -1,14 +1,14 @@
-import React, { memo } from 'react';
+import React, { memo, type CSSProperties } from 'react';
 import { BaseEdge, getBezierPath, type EdgeProps } from '@xyflow/react';
 import type { LinghuiRunStatus } from '../../../../types/linghui';
 import { useLinghuiExecutionTrace, useNodeRunState } from '../../nodes/state/LinghuiNodeRunsContext';
 
 const STATUS_COLORS: Record<LinghuiRunStatus, string> = {
-  idle: '#64748b',
-  running: '#3b82f6',
-  succeeded: '#22c55e',
-  failed: '#ef4444',
-  stale: '#f97316',
+  idle: 'var(--token-text-muted)',
+  running: 'var(--token-status-info)',
+  succeeded: 'var(--token-status-success)',
+  failed: 'var(--token-status-error)',
+  stale: 'var(--token-status-warning)',
 };
 
 function getLinkStatus(statuses: LinghuiRunStatus[]): LinghuiRunStatus {
@@ -42,6 +42,18 @@ function LinghuiEdgeInner({
   const traceStatus = executionTrace.edgeStatuses[id];
   const linkStatus = traceStatus ?? getLinkStatus([fromStatus, toStatus]);
   const color = STATUS_COLORS[linkStatus] ?? STATUS_COLORS.idle;
+  const edgeStyle = {
+    ...style,
+    '--linghui-edge-stroke': color,
+    '--linghui-edge-stroke-width': selected ? 4 : linkStatus === 'running' ? 3 : 2,
+    '--linghui-edge-stroke-dasharray': linkStatus === 'running' ? '8 6' : 'none',
+    '--linghui-edge-opacity': selected ? 1 : traceStatus ? 0.98 : 0.72,
+    '--linghui-edge-filter': selected
+      ? `drop-shadow(0 0 6px ${color})`
+      : traceStatus
+        ? `drop-shadow(0 0 4px ${color})`
+        : 'none',
+  } as CSSProperties;
 
   const [edgePath] = getBezierPath({
     sourceX,
@@ -58,20 +70,7 @@ function LinghuiEdgeInner({
       path={edgePath}
       markerEnd={markerEnd}
       interactionWidth={24}
-      style={{
-        ...style,
-        stroke: color,
-        strokeWidth: selected ? 4 : linkStatus === 'running' ? 3 : 2,
-        strokeDasharray: linkStatus === 'running' ? '8 6' : undefined,
-        opacity: selected ? 1 : traceStatus ? 0.98 : 0.72,
-        filter: selected
-          ? `drop-shadow(0 0 6px ${color})`
-          : traceStatus
-            ? `drop-shadow(0 0 4px ${color})`
-            : undefined,
-        cursor: 'pointer',
-        transition: 'stroke 200ms ease, stroke-width 200ms ease, opacity 200ms ease, filter 200ms ease',
-      }}
+      style={edgeStyle}
     />
   );
 }

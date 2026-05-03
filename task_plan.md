@@ -1,5 +1,65 @@
 # Task Plan
 
+## Session: 2026-05-03 Theme System Architecture
+
+### Goal
+- 在独立 `git worktree` `/Users/sunmeng/workspace/Koma-theme-worktree` 中改造主题架构，避免影响主目录正在进行的其它工作。
+- 按 `docs/THEME_SYSTEM_PLAN.md` 与 `docs/THEME_ARCHITECTURE.md` 先落地 M1：Theme token 分层、ThemeProvider、Tailwind 变量转发、设置页暗色双主题切换与持久化。
+- 使用团队模式：1 个前端架构师负责只读审查，3 个前端 worker 分别负责主题核心、入口/Tailwind、设置页持久化；主线负责集成与验证。
+
+### Scope
+- `frontend/src/theme/**`
+- `frontend/src/index.tsx`
+- `frontend/src/index.scss`
+- `frontend/src/store/settings/**`
+- `frontend/src/store/globalStore.ts`
+- `frontend/src/types/provider-config.ts`
+- `frontend/src/components/settings/**`
+- `frontend/src/components/asset/**` 样式入口
+- `frontend/src/components/chat/**` 与 `frontend/src/chat/components/**` 样式入口
+- `frontend/src/components/storyboard/**` 样式入口
+- 必要的 i18n / 文档 / 轻量测试
+
+### Phases
+| Phase | Status | Description |
+|------|--------|-------------|
+| 1. Worktree Setup | complete | 从当前 `feat/panel-restore2` HEAD 创建 `codex/theme-system-architecture` 工作树 |
+| 2. Architecture Recon | complete | 阅读主题、入口、Tailwind、设置存储、设置页结构，并收集团队建议 |
+| 3. Theme Core | complete | 实现 `SemanticTokens`、主题 registry、CSS vars 编译、Antd config、ThemeProvider hooks |
+| 4. Entry & CSS Vars | complete | 入口挂 ThemeProvider，`index.css` 改为 `--token-*` 与 Tailwind 转发 |
+| 5. Settings UI & Persistence | complete | `AppSettings.uiThemeId` 持久化，设置页增加 UI 主题选择 |
+| 6. Integration Validation | complete | 解决冲突，运行构建/测试/grep 自检，记录剩余未完成项 |
+| 7. Source CSS to SCSS | complete | 将源代码内自有 `*.css` / `*.module.css` 迁移为 `.scss` / `.module.scss`，并修正迁移文件里的 SCSS/CSS 语法、token/color-mix 消费和 imports |
+| 8. Light Business Theme | complete | 新增 `light-business` 主题并接入设置页切换、持久化、Antd defaultAlgorithm，清理 dark-only flag，主题纪律自检已通过 |
+| 9. Inline Style Discipline | complete | 普通 inline style 全面迁移为 SCSS/Tailwind/CSS 变量桥接；严格脚本覆盖 `style={{...}}` 与 `style={expr}` |
+| 10. High Contrast Theme | complete | 注册 `high-contrast` 主题，和其它预设共享同一 ThemeProvider/Settings 切换链路 |
+| 11. Theme Guardrails | complete | 增加 `check:style-discipline`、主题专用 ESLint、Stylelint 和 GitHub Actions workflow |
+| 12. Final Validation | complete | `npm run lint:theme`、`npm run build`、普通 CSS 清零 grep、浏览器挂载烟测均通过 |
+
+### Acceptance Criteria
+- 默认 `dark-emerald` 视觉与现有 token 值一致。
+- `dark-business` 可在设置页选择并即时生效。
+- `light-business` 可在设置页选择并即时生效。
+- 刷新后主题选择持久化。
+- Antd 主题配置由 active theme 生成，入口不再直接持有静态 `antdTheme`。
+- Tailwind 语义工具类继续可用，`@theme` 不再持有真实 hex。
+- 旧的 `tokens` / `antdTheme` import 尽量保持兼容，降低本轮改造半径。
+- 源码目录自有 `*.css` / `*.module.css` 为 0；仅保留第三方 CSS import 白名单。
+- 非 CSS 变量桥接的 inline style 为 0；`style={expr}` 也被自检脚本覆盖。
+- `darkTheme={true}` / `colorMode="dark"` 字面量为 0。
+- `business-hardcoded-colors` 为 0；业务 UI 硬编码颜色是 0 容忍，只保留文档化非 UI 例外。
+
+### Deferred
+- 受激活页限制，本轮浏览器烟测确认了应用挂载与根主题变量写入，但未能在真实 UI 中点击设置页完成 4 主题截图矩阵。
+- `npm run build` 仍有既有 Vite chunk/dynamic import warnings，以及 Sass 对 `@import "tailwindcss"` 的上游弃用提示；不影响本轮主题目标。
+
+### Error Log
+| Error | Attempt | Resolution |
+|------|---------|------------|
+| 全历史 fork agent 不允许指定 agent_type/model/reasoning | 1 | 改为非 fork agent 并显式传入工作目录 |
+| 严格 inline 检查暴露 `style={expr}` 漏洞 | 1 | 扩展 `check-style-discipline.ts`，表达式样式仅放行 `cssVars(...)` 产物和精确文档例外 |
+| `ScriptEditor` rootClassName 补丁误插到文件末尾 | 1 | 浏览器烟测发现 `className is not defined`，已移回组件作用域并复跑 lint/build/浏览器 |
+
 ## Session: 2026-04-04
 
 ### Goal

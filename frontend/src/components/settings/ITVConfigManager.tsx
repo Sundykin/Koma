@@ -477,7 +477,7 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
       </div>
 
       {loading ? (
-        <div style={{ textAlign: 'center', padding: 40 }}>
+        <div className="settings-loading-state">
           <Spin />
         </div>
       ) : configs.length === 0 && pluginChannels.length === 0 ? (
@@ -504,11 +504,11 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
                   title={(
                     <Space>
                       {config.isDefault ? (
-                        <StarFilled style={{ color: '#faad14' }} />
+                        <StarFilled className="settings-default-star" />
                       ) : (
                         <Tooltip title={t('settings.setAsDefault')}>
                           <StarOutlined
-                            style={{ cursor: 'pointer', color: '#d9d9d9' }}
+                            className="settings-default-star-button"
                             onClick={() => handleSetDefault(config.channel, preferredModelId)}
                           />
                         </Tooltip>
@@ -599,11 +599,11 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
                 title={(
                   <Space>
                     {settings?.mediaDefaults?.itv?.channelId === channel.id ? (
-                      <StarFilled style={{ color: '#faad14' }} />
+                      <StarFilled className="settings-default-star" />
                     ) : (
                       <Tooltip title={t('settings.setAsDefault')}>
                         <StarOutlined
-                          style={{ cursor: 'pointer', color: '#d9d9d9' }}
+                          className="settings-default-star-button"
                           onClick={() => handleSetPluginDefault(channel)}
                         />
                       </Tooltip>
@@ -697,7 +697,7 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
             <Form.Item
               label="模型列表"
               required
-              style={{ marginBottom: 0 }}
+              className="settings-form-item-flush"
             >
               <ChannelModelsEditor
                 capabilityOptions={[
@@ -770,7 +770,7 @@ export const ITVConfigManager: React.FC<ITVConfigManagerProps> = ({ onConfigChan
                 <InputNumber min={1} max={60} placeholder="5" />
               </Form.Item>
 
-              <Form.Item name="defaultResolution" label={t('settings.defaultResolution')} style={{ marginBottom: 0 }}>
+              <Form.Item name="defaultResolution" label={t('settings.defaultResolution')} className="settings-form-item-flush">
                 <Select placeholder={t('settings.selectSize')} allowClear>
                   <Select.Option value="360p">360p</Select.Option>
                   <Select.Option value="720p">720p</Select.Option>

@@ -22,9 +22,9 @@ interface PluginPermissionsProps {
 }
 
 const levelIcons = {
-  safe: <SafetyOutlined style={{ color: '#52c41a' }} />,
-  warning: <WarningOutlined style={{ color: '#faad14' }} />,
-  danger: <ExclamationCircleOutlined style={{ color: '#ff4d4f' }} />,
+  safe: <SafetyOutlined className="text-emerald-500" />,
+  warning: <WarningOutlined className="text-amber-400" />,
+  danger: <ExclamationCircleOutlined className="text-red-500" />,
 };
 
 const levelColors = {
@@ -103,9 +103,9 @@ export const PluginPermissions: React.FC<PluginPermissionsProps> = ({
       />
 
       {hasDangerScope && (
-        <div className="mt-4 p-3 bg-red-50 rounded border border-red-200">
+        <div className="mt-4 rounded border border-red-200 bg-red-50 p-3">
           <Space>
-            <ExclamationCircleOutlined style={{ color: '#ff4d4f' }} />
+            <ExclamationCircleOutlined className="text-red-500" />
             <Text type="danger">
               {t('plugin.dangerPermissionWarning')}
             </Text>

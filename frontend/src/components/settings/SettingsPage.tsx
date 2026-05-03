@@ -17,6 +17,7 @@ import {
   CodeOutlined,
   BlockOutlined,
   ApiOutlined,
+  SkinOutlined,
 } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import type { AppSettings } from '../../types';
@@ -34,6 +35,7 @@ import { VisualStyleManager } from './VisualStyleManager';
 import { PromptStudio } from './PromptStudio';
 import { PluginManager } from '../plugins';
 import { MCPConfigManager } from './MCPConfigManager';
+import { AppearanceThemeSettings } from './AppearanceThemeSettings';
 
 const { Text } = Typography;
 
@@ -64,6 +66,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
   const isClickScrolling = useRef(false);
 
   const sections: SectionDef[] = [
+    { key: 'appearance-theme', icon: <SkinOutlined />, label: '外观/主题', group: '外观' },
     { key: 'models-llm', icon: <ExperimentOutlined />, label: t('settings.llm'), group: t('settings.modelConfig') },
     { key: 'models-tti', icon: <PictureOutlined />, label: t('settings.tti'), group: t('settings.modelConfig') },
     { key: 'models-itv', icon: <VideoCameraOutlined />, label: t('settings.itv'), group: t('settings.modelConfig') },
@@ -235,6 +238,8 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
 
   const renderSectionContent = (key: string) => {
     switch (key) {
+      case 'appearance-theme':
+        return <AppearanceThemeSettings settings={settings} onSave={onSave} />;
       case 'models-llm':
         return <LLMConfigManager onConfigChange={handleConfigChange} />;
       case 'models-tti':
@@ -249,7 +254,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
         return <PromptStudio />;
       case 'system-storage':
         return (
-          <div className="settings-manager" style={{ maxWidth: 900 }}>
+          <div className="settings-manager settings-appearance-theme">
             <Card
               size="small"
               title={t('settings.storageOverview')}
@@ -259,7 +264,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                 <Statistic
                   title={t('settings.storageLocation')}
                   value={storagePath || '~/.koma'}
-                  valueStyle={{ fontSize: 16, fontFamily: 'monospace' }}
+                  className="settings-card-code settings-stat-value-lg"
                 />
                 <Statistic title={t('settings.usedSpace')} value={storageSize} />
               </div>
@@ -279,7 +284,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
                 </div>
                 <div className="settings-action-row">
                   <div className="settings-action-copy">
-                    <span className="settings-action-title" style={{ color: '#f87171' }}>
+                    <span className="settings-action-title is-muted-danger">
                       {t('common.clearCache')}
                     </span>
                     <span className="settings-action-desc">{t('settings.clearCacheDesc')}</span>

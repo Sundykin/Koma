@@ -124,17 +124,17 @@ const isRunning = (status: StatusBarStatus) => status === 'running' || status ==
 const getProgressStrokeColor = (status: StatusBarStatus) => {
   switch (status) {
     case 'failed':
-      return '#ef4444';
+      return 'var(--token-status-error)';
     case 'completed':
-      return '#22c55e';
+      return 'var(--token-status-success)';
     default:
-      return '#10b981';
+      return 'var(--token-accent-base)';
   }
 };
 
 const getTaskCardClassName = (status: StatusBarStatus, featured = false) => {
   const base = featured
-    ? 'rounded-xl border px-3 py-3 shadow-[0_0_0_1px_rgba(24,24,27,0.5)]'
+    ? 'rounded-xl border px-3 py-3 shadow-[0_0_0_1px_color-mix(in_srgb,var(--token-bg-surface)_50%,transparent)]'
     : 'rounded-xl border px-3 py-2.5 transition-colors';
 
   switch (status) {
@@ -497,7 +497,7 @@ export const TaskStatusBar: React.FC<TaskStatusBarProps> = ({ projectId, onRetry
                       showInfo={false}
                       className="flex-1"
                       strokeColor={getProgressStrokeColor(task.status)}
-                      trailColor="#3f3f46"
+                      trailColor="var(--token-border-base)"
                     />
                     <Text className="text-zinc-400 text-xs shrink-0 tabular-nums">{displayProgress}%</Text>
                   </div>
@@ -661,7 +661,7 @@ export const TaskStatusBar: React.FC<TaskStatusBarProps> = ({ projectId, onRetry
         </div>
 
         {/* 列表 */}
-        <div className="overflow-y-auto custom-scrollbar" style={{ maxHeight: 'calc(100vh - 260px)' }}>
+        <div className="max-h-[calc(100vh-260px)] overflow-y-auto custom-scrollbar">
           {visibleTasks.length > 0 ? (
             <div className="space-y-2">
               {visibleTasks.map((task) => renderTaskItem(task))}
@@ -669,8 +669,7 @@ export const TaskStatusBar: React.FC<TaskStatusBarProps> = ({ projectId, onRetry
           ) : (
             <Empty
               description={t('task.noTasks')}
-              className="py-5"
-              imageStyle={{ height: 40 }}
+              className="py-5 [&_.ant-empty-image]:h-10 [&_.ant-empty-image]:min-h-10"
             />
           )}
         </div>

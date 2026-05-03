@@ -37,7 +37,7 @@ import { HistorySidebar } from './HistorySidebar';
 import { MCPSettings } from './MCPSettings';
 import type { MCPServerConfig } from '../../chat/ipc';
 import { createLogger } from '../../store/logger';
-import styles from './ChatPage.module.css';
+import styles from './ChatPage.module.scss';
 import {
   buildLLMConfigFromContext,
   listConfiguredModelSelectOptions,
@@ -806,7 +806,7 @@ export const ChatPage: React.FC = () => {
   // 加载中显示
   if (!isConfigLoaded) {
     return (
-      <div className={styles.container} style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+      <div className={`${styles.container} ${styles.loadingContainer}`}>
         <Spin description={t('chat.loadingConfig')} />
       </div>
     );
@@ -823,7 +823,7 @@ export const ChatPage: React.FC = () => {
             onClick={() => setShowSidebar(!showSidebar)}
           />
         </Tooltip>
-        {!isReady && <Spin size="small" style={{ marginLeft: 8 }} />}
+        {!isReady && <Spin size="small" className={styles.readySpinner} />}
       </div>
       <div className={styles.toolbarRight}>
         <Tooltip title={t('chat.mcpConfig')}>

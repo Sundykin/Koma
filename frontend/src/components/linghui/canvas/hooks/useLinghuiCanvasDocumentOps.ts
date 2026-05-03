@@ -976,7 +976,7 @@ export function useLinghuiCanvasDocumentOps({
       id: groupId,
       type: 'group',
       position: { x: bounds.minX - padding, y: bounds.minY - padding - 20 },
-      data: { label: nextGroupLabel, color: '#2563eb' },
+      data: { label: nextGroupLabel, color: 'var(--token-status-info)' },
       selected: true,
       draggable: true,
       style: {

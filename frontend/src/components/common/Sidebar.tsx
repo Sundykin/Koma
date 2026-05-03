@@ -9,6 +9,7 @@ import { activationService, ActivationInfo, TokenUsageInfo } from '../../service
 import { electronService } from '../../services/electronService';
 import { useTaskPanelStore } from '../../store/taskPanelStore';
 import { AppLogo } from './AppLogo';
+import styles from './Sidebar.module.scss';
 
 const { Text } = Typography;
 
@@ -38,19 +39,12 @@ const NavItem: React.FC<NavItemProps> = ({ active, icon, label, onClick }) => (
   <Tooltip title={label} placement="right">
     <button
       onClick={onClick}
-      className={`relative w-full flex justify-center py-2.5 cursor-pointer transition-colors ${
-        active ? 'text-emerald-400' : 'text-zinc-500 hover:text-zinc-300'
-      }`}
+      className={[styles.navItem, active ? styles.navItemActive : ''].filter(Boolean).join(' ')}
     >
       {active && (
-        <div
-          className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 bg-emerald-500 rounded-r-md"
-          style={{ boxShadow: '0 0 12px rgba(16,185,129,0.5)' }}
-        />
+        <div className={styles.activeIndicator} />
       )}
-      <div className={`p-2.5 rounded-xl transition-all ${
-        active ? 'bg-emerald-400/10' : 'hover:bg-zinc-800'
-      }`}>
+      <div className={[styles.navIconShell, active ? styles.navIconShellActive : ''].filter(Boolean).join(' ')}>
         {icon}
       </div>
     </button>
@@ -202,14 +196,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
   };
 
   const popoverContent = (
-    <div style={{ width: 280 }} className="p-1">
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2">
-          <Text strong className="text-zinc-200">{t('activation.title')}</Text>
+    <div className={styles.activationPopoverContent}>
+      <div className={styles.activationHeader}>
+        <div className={styles.activationTitleRow}>
+          <Text strong className={styles.textStrong}>{t('activation.title')}</Text>
           <Button
             type="link"
             size="small"
-            className="px-0 h-auto text-zinc-500 hover:text-emerald-400 text-[11px]"
+            className={styles.activationLink}
             onClick={() => electronService.shell.openExternal('https://komaapi.com')}
           >
             {t('activation.openKomaApi')}
@@ -232,8 +226,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
             value={inputKey}
             onChange={e => setInputKey(e.target.value)}
             onPressEnter={handleActivate}
-            prefix={<KeyOutlined className="text-zinc-500" />}
-            className="bg-zinc-800 border-zinc-700 text-zinc-200"
+            prefix={<KeyOutlined className={styles.textMuted} />}
+            className={styles.activationInput}
           />
           <div className="flex gap-2">
             <Button
@@ -241,7 +235,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               block
               loading={verifying}
               onClick={handleActivate}
-              className="bg-emerald-600 hover:bg-emerald-500 border-none"
+              className={styles.activationPrimaryButton}
             >
               {verifying ? t('activation.activating') : t('activation.activate')}
             </Button>
@@ -254,15 +248,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
       ) : (
         <div className="space-y-3">
-          <div className="bg-zinc-900/50 p-3 rounded-lg border border-zinc-800 space-y-2.5">
+          <div className={styles.activationCard}>
             <div className="flex justify-between items-center">
               <Text type="secondary" className="text-xs">{t('settings.apiKey')}</Text>
-              <Text className="text-xs font-mono text-zinc-300">
+              <Text className={styles.activationKeyText}>
                 {activation.maskedKey}
               </Text>
             </div>
 
-            <Divider className="my-1 border-zinc-800/50" />
+            <Divider className={styles.activationDividerCompact} />
 
             <div className="flex justify-between items-center">
               <Text type="secondary" className="text-xs font-medium">{t('activation.balanceTitle')}</Text>
@@ -271,7 +265,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 size="small"
                 icon={<ReloadOutlined spin={refreshingBalance} />}
                 onClick={() => fetchBalance()}
-                className="text-zinc-500 hover:text-emerald-400 p-0 h-auto"
+                className={styles.activationIconButton}
               />
             </div>
 
@@ -279,21 +273,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <div className="space-y-2">
                 <div className="flex flex-col">
                   <Text type="secondary" className="text-[11px] mb-0.5">{t('activation.remainingQuota')}</Text>
-                  <Text className="text-lg font-bold text-emerald-400 leading-tight">
+                  <Text className={styles.activationQuota}>
                     {balanceInfo.unlimitedQuota ? t('activation.unlimitedQuota') : activationService.formatUsdQuota(balanceInfo.totalAvailable, balanceInfo.quotaPerUnit)}
                   </Text>
                 </div>
 
-                <div className="grid grid-cols-2 gap-2 pt-1 border-t border-zinc-800/50">
+                <div className={styles.activationQuotaGrid}>
                   <div className="flex flex-col">
                     <Text type="secondary" className="text-[10px]">{t('activation.usedQuota')}</Text>
-                    <Text className="text-[11px] text-zinc-400 font-medium">
+                    <Text className={styles.activationQuotaSubtle}>
                       {activationService.formatUsdQuota(balanceInfo.totalUsed, balanceInfo.quotaPerUnit)}
                     </Text>
                   </div>
                   <div className="flex flex-col items-end">
                     <Text type="secondary" className="text-[10px]">{t('activation.totalQuota')}</Text>
-                    <Text className="text-[11px] text-zinc-500 font-medium">
+                    <Text className={styles.activationQuotaMuted}>
                       {activationService.formatUsdQuota(balanceInfo.totalGranted, balanceInfo.quotaPerUnit)}
                     </Text>
                   </div>
@@ -301,7 +295,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
                 {lastBalanceRefresh && (
                   <div className="pt-1 text-right">
-                    <Text className="text-[10px] text-zinc-600">
+                    <Text className={styles.activationRefreshTime}>
                       {t('activation.lastBalanceRefresh')}: {new Date(lastBalanceRefresh).toLocaleTimeString()}
                     </Text>
                   </div>
@@ -337,7 +331,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </Button>
           </div>
 
-          <Divider className="my-2 border-zinc-800" />
+          <Divider className={styles.activationDivider} />
 
           <Button
             danger
@@ -390,7 +384,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   };
 
   return (
-    <div className="w-[var(--sidebar-width)] bg-zinc-950 border-r border-zinc-800 flex flex-col h-full z-40 shrink-0">
+    <div className={styles.sidebar}>
       {/* Logo 区域 */}
       <div className="h-14 w-full flex items-center justify-center">
         <AppLogo variant="sidebar" />
@@ -462,12 +456,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         >
           <Avatar
             size={36}
-            style={{
-              background: activation
-                ? 'linear-gradient(135deg, #10b981, #059669)'
-                : 'linear-gradient(135deg, #8b5cf6, #3b82f6)',
-              cursor: 'pointer',
-            }}
+            className={activation ? styles.avatarActive : styles.avatarInactive}
             icon={<UserOutlined />}
           />
         </Popover>

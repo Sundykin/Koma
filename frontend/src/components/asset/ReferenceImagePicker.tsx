@@ -22,7 +22,7 @@ import {
   getPropPreviewImageSource,
   getScenePreviewImageSource,
 } from '../../utils/mediaSelectors';
-import './ReferenceImagePicker.css';
+import './ReferenceImagePicker.scss';
 
 export interface ReferenceImagePickerProps {
   value?: string;  // 当前图片路径
@@ -53,13 +53,7 @@ export const ReferenceImagePicker: React.FC<ReferenceImagePickerProps> = ({
 
   const imageUrl = value ? electronService.fs.toLocalUrl(value) : undefined;
 
-  // 图片尺寸配置
-  const sizeConfig = {
-    small: { width: 60, height: 34 },
-    default: { width: 80, height: 45 },
-    large: { width: 120, height: 68 },
-  };
-  const { width, height } = sizeConfig[size];
+  const sizeClassName = `refImagePickerSize-${size}`;
 
   // 处理选择资产
   const handleSelectAsset = useCallback((type: 'character' | 'scene' | 'prop', assetId: string) => {
@@ -187,7 +181,7 @@ export const ReferenceImagePicker: React.FC<ReferenceImagePickerProps> = ({
                 <img
                   src={electronService.fs.toLocalUrl(source)}
                   alt={asset.name}
-                  style={{ width: 24, height: 24, objectFit: 'cover', borderRadius: 2 }}
+                  className="refImageMenuThumb"
                 />
               )}
               <span>{asset.name}</span>
@@ -219,7 +213,7 @@ export const ReferenceImagePicker: React.FC<ReferenceImagePickerProps> = ({
                 <img
                   src={electronService.fs.toLocalUrl(source)}
                   alt={asset.name}
-                  style={{ width: 24, height: 24, objectFit: 'cover', borderRadius: 2 }}
+                  className="refImageMenuThumb"
                 />
               )}
               <span>{asset.name}</span>
@@ -251,7 +245,7 @@ export const ReferenceImagePicker: React.FC<ReferenceImagePickerProps> = ({
                 <img
                   src={electronService.fs.toLocalUrl(source)}
                   alt={asset.name}
-                  style={{ width: 24, height: 24, objectFit: 'cover', borderRadius: 2 }}
+                  className="refImageMenuThumb"
                 />
               )}
               <span>{asset.name}</span>
@@ -276,8 +270,7 @@ export const ReferenceImagePicker: React.FC<ReferenceImagePickerProps> = ({
   return (
     <div
       ref={containerRef}
-      className={`refImagePicker ${isDragging ? 'dragging' : ''} ${disabled ? 'disabled' : ''}`}
-      style={{ width, height }}
+      className={`refImagePicker ${sizeClassName} ${isDragging ? 'dragging' : ''} ${disabled ? 'disabled' : ''}`}
       onDragEnter={handleDragEnter}
       onDragLeave={handleDragLeave}
       onDragOver={handleDragOver}
@@ -288,9 +281,7 @@ export const ReferenceImagePicker: React.FC<ReferenceImagePickerProps> = ({
           <Image
             src={imageUrl}
             alt="参考图"
-            width={width}
-            height={height}
-            style={{ objectFit: 'cover' }}
+            className="refImage"
             preview={{
               open: previewVisible,
               onOpenChange: setPreviewVisible,
@@ -345,12 +336,12 @@ export const ReferenceImagePicker: React.FC<ReferenceImagePickerProps> = ({
           <div className="refImageEmpty">
             {isDragging ? (
               <>
-                <UploadOutlined style={{ fontSize: 16 }} />
+                <UploadOutlined className="refImageUploadIcon" />
                 <span>放开上传</span>
               </>
             ) : (
               <>
-                <PlusOutlined style={{ fontSize: 14 }} />
+                <PlusOutlined className="refImageAddIcon" />
                 <span>{placeholder}</span>
               </>
             )}

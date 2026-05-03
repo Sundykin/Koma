@@ -14,7 +14,7 @@ import {
 import type { ShotVideo } from '../../types';
 import { electronService } from '../../services/electronService';
 import { ffmpegManager } from '../../services/ffmpegManager';
-import './VideoCardGrid.css';
+import './VideoCardGrid.scss';
 
 const { Text } = Typography;
 
@@ -165,7 +165,7 @@ export const VideoCardGrid: React.FC<VideoCardGridProps> = ({
         {videos.length === 0 && (
           <div className="videoCard empty">
             <VideoCameraOutlined />
-            <Text type="secondary" style={{ fontSize: 10 }}>无视频</Text>
+            <Text type="secondary" className="emptyVideoText">无视频</Text>
           </div>
         )}
       </div>
@@ -198,7 +198,7 @@ export const VideoCardGrid: React.FC<VideoCardGridProps> = ({
           src={previewUrl}
           controls
           autoPlay
-          style={{ width: '100%', maxHeight: '60vh' }}
+          className="videoPreviewPlayer"
         />
       </Modal>
     </div>

@@ -260,7 +260,7 @@ export const PromptStudio: React.FC = () => {
       {/* 左侧模板列表 */}
       <div className="prompt-studio-sidebar">
         <div className="prompt-studio-sidebar-header">
-          <Space.Compact style={{ width: '100%' }}>
+          <Space.Compact className="settings-full-width">
             <Input
               placeholder="搜索模板..."
               allowClear
@@ -405,9 +405,8 @@ export const PromptStudio: React.FC = () => {
                 <TextArea
                   value={editingContent}
                   onChange={handleContentChange}
-                  className="!bg-zinc-900 !text-zinc-200 !border-none"
                   autoSize={false}
-                  style={{ height: '100%' }}
+                  className="!bg-zinc-900 !text-zinc-200 !border-none settings-full-height"
                   spellCheck={false}
                 />
               </div>
@@ -527,4 +526,3 @@ export const PromptStudio: React.FC = () => {
     </div>
   );
 };
-

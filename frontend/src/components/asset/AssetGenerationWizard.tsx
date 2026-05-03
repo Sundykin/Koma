@@ -48,6 +48,7 @@ import {
   getPropPreviewVideoSource,
   getScenePreviewImageSource,
 } from '../../utils/mediaSelectors';
+import styles from './AssetGenerationWizard.module.scss';
 
 const { Text } = Typography;
 
@@ -589,20 +590,20 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
 
   // 渲染列表项
   const renderListItem = (item: ItemStatus, type: WizardStep) => {
-    const statusIcon = item.status === 'completed' ? <CheckCircleOutlined style={{ color: '#52c41a' }} /> :
-      item.status === 'failed' ? <CloseCircleOutlined style={{ color: '#ff4d4f' }} /> :
-      item.status === 'generating' ? <LoadingOutlined style={{ color: '#1890ff' }} /> :
+    const statusIcon = item.status === 'completed' ? <CheckCircleOutlined className={styles.statusSuccess} /> :
+      item.status === 'failed' ? <CloseCircleOutlined className={styles.statusError} /> :
+      item.status === 'generating' ? <LoadingOutlined className={styles.statusInfo} /> :
       null;
 
     return (
-      <div key={item.id} style={{ display: 'flex', alignItems: 'center', padding: '12px 0', borderBottom: '1px solid #303030' }}>
+      <div key={item.id} className={styles.listItem}>
         <Checkbox
           checked={item.selected}
           onChange={() => toggleSelect(type, item.id)}
           disabled={generating || item.status === 'generating'}
-          style={{ marginRight: 12 }}
+          className={styles.itemCheckbox}
         />
-        <div style={{ flex: 1, minWidth: 0 }}>
+        <div className={styles.itemContent}>
           <Space>
             {item.name}
             {statusIcon}
@@ -613,16 +614,16 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
           {item.error && <div><Text type="danger">{item.error}</Text></div>}
         </div>
         {item.imagePath && (
-          <div style={{ width: 60, height: 60, marginLeft: 12 }}>
+          <div className={styles.thumbnailFrame}>
             {type === 'videos' ? (
               <video
                 src={appendImageCacheBust(toLocalUrl(item.imagePath), item.imageCacheKey)}
-                style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 4 }}
+                className={styles.thumbnail}
               />
             ) : (
               <Image
                 src={appendImageCacheBust(toLocalUrl(item.imagePath), item.imageCacheKey)}
-                style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 4 }}
+                className={styles.thumbnail}
                 preview={{ mask: null }}
               />
             )}
@@ -634,7 +635,7 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
             icon={<ReloadOutlined />}
             onClick={() => retryItem(item)}
             disabled={generating}
-            style={{ marginLeft: 8 }}
+            className={styles.retryButton}
           >
             重试
           </Button>
@@ -654,7 +655,7 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
       closable={!generating}
     >
       {loading ? (
-        <div style={{ textAlign: 'center', padding: 40 }}>
+        <div className={styles.loadingState}>
           <Spin size="large" />
         </div>
       ) : (
@@ -662,12 +663,12 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
           <Steps
             current={currentStep}
             items={stepConfig.map(s => ({ title: s.title, icon: s.icon }))}
-            style={{ marginBottom: 24 }}
+            className={styles.steps}
           />
 
           {generating && (
-            <Card size="small" style={{ marginBottom: 16 }}>
-              <Space orientation="vertical" style={{ width: '100%' }}>
+            <Card size="small" className={styles.progressCard}>
+              <Space orientation="vertical" className={styles.fullWidth}>
                 <Text>正在生成: {currentItem}</Text>
                 <Progress percent={Math.round(overallProgress)} status="active" />
               </Space>
@@ -699,7 +700,7 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
                 </Button>
               </Space>
             }
-            styles={{ body: { maxHeight: 360, overflow: 'auto' } }}
+            classNames={{ body: styles.assetListBody }}
           >
             {currentList.length === 0 ? (
               <Result
@@ -714,7 +715,7 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
             )}
           </Card>
 
-          <div style={{ marginTop: 24, textAlign: 'right' }}>
+          <div className={styles.footerActions}>
             <Space>
               <Button onClick={onClose} disabled={generating}>
                 取消

@@ -14,6 +14,7 @@ import { submitScriptAnalysisTask } from '../../services/analysisTaskClient';
 import { TaskManager } from '../../services/TaskManager';
 import { useActiveTask } from '../../hooks';
 import type { Project, Episode, AppSettings } from '../../types';
+import { useTheme } from '../../theme/runtime';
 import { createLogger } from '../../store/logger';
 import { createAITraceId } from '../../utils/aiTrace';
 import { classifyAIError } from '../../utils/aiError';
@@ -42,6 +43,8 @@ export const ScriptWorkbench = forwardRef<ScriptWorkbenchRef, ScriptWorkbenchPro
   onAnalyzingChange,
 }, ref) => {
   const { message } = App.useApp();
+  const { theme } = useTheme();
+  const isDarkTheme = theme.meta.mode === 'dark';
   const [localScript, setLocalScript] = useState(episode?.scriptText || '');
   const [isSaving, setIsSaving] = useState(false);
   // 点击到任务真正落库之间的短暂"提交中"窗口；任务创建后就由 activeAnalysisTask 接管
@@ -363,7 +366,7 @@ export const ScriptWorkbench = forwardRef<ScriptWorkbenchRef, ScriptWorkbenchPro
             </div>
             <div
               ref={streamingPreviewRef}
-              className="flex-1 overflow-auto bg-[#1a1a1a]"
+              className="flex-1 overflow-auto bg-bg-surface"
             >
               <pre className="min-h-full whitespace-pre-wrap break-words px-4 py-3 font-sans text-[13px] leading-6 text-zinc-200">
                 {streamingPreview || (streamingMode === 'generate'
@@ -380,9 +383,9 @@ export const ScriptWorkbench = forwardRef<ScriptWorkbenchRef, ScriptWorkbenchPro
             minHeight="100%"
             maxHeight="100%"
             showLineNumbers={true}
-            darkTheme={true}
+            darkTheme={isDarkTheme}
             enableCameraCommands={false}
-            style={{ height: '100%', flex: 1 }}
+            className="h-full flex-1"
           />
         )}
       </div>

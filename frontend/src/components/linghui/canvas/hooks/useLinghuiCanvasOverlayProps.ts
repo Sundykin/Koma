@@ -23,6 +23,7 @@ import {
   createLinghuiWorkspaceAsset,
   getLinghuiWorkspaceDir,
 } from '../../../../store/linghuiStorage';
+import type { CssVarStyle } from '../../../../theme/runtime';
 import { getFileSystemPort, toFileSystemDisplayUrl } from '../../../../services/fileSystemPort';
 import { ffmpegManager } from '../../../../services/ffmpegManager';
 import { fromKomaLocalUrl } from '../../../../utils/urlUtils';
@@ -177,8 +178,8 @@ interface UseLinghuiCanvasOverlayPropsParams {
   setGridSplitSelectedCells: (cells: number[]) => void;
   gridSplitUpscaleFactor: 2 | 4;
   setGridSplitUpscaleFactor: (factor: 2 | 4) => void;
-  pendingGroupFrameStyle: { left: number; top: number; width: number; height: number } | null;
-  pendingGroupActionsStyle: { left: number; top: number } | null;
+  pendingGroupFrameStyle: CssVarStyle | null;
+  pendingGroupActionsStyle: CssVarStyle | null;
   pendingGroupCreatableIds: string[];
   createGroupFromSelection: (selectionIds?: string[]) => void;
   clearPendingGroupFrame: () => void;

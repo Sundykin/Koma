@@ -8,7 +8,7 @@ import type { ChatMessage, ToolCall, ImageContentPart, FileContentPart, VideoCon
 import { normalizeMessage } from '../utils/messageUtils';
 import { MediaResultBlock } from '../../components/chat/MediaResultBlock';
 import type { MediaResultMeta } from '../../components/chat/chatMediaGeneration';
-import styles from './ChatRenderer.module.css';
+import styles from './ChatRenderer.module.scss';
 
 const { Text } = Typography;
 

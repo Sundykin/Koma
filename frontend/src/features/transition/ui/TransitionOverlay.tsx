@@ -1,4 +1,5 @@
 import React, { useMemo } from 'react';
+import { cssVars } from '../../../theme/runtime';
 import type { Track, Transition } from '../../../types/editor';
 import type { ResolvedClipWindow } from '../core/types';
 import { MIN_VISIBLE_DURATION, DEFAULT_TRANSITION_DURATION, MAX_TRANSITION_DURATION } from '../core/constants';
@@ -10,6 +11,7 @@ import {
   getSortedTrackClips,
   normalizeTrackTransitions,
 } from '../core/transitionResolver';
+import styles from './TransitionOverlay.module.scss';
 
 interface TransitionOverlayProps {
   track: Track;
@@ -71,8 +73,8 @@ export const TransitionOverlay: React.FC<TransitionOverlayProps> = React.memo(({
         return (
           <div
             key={`transition-${fromClip.id}-${toClip.id}`}
-            className="absolute top-1 z-20 -translate-x-1/2"
-            style={{ left: cutPointTime * pixelsPerSecond }}
+            className={`${styles.cutPoint} absolute top-1 z-20 -translate-x-1/2`}
+            style={cssVars({ '--transition-cut-left': `${cutPointTime * pixelsPerSecond}px` })}
           >
             {transition ? (
               <div className="relative flex flex-col items-center gap-1">
@@ -80,12 +82,11 @@ export const TransitionOverlay: React.FC<TransitionOverlayProps> = React.memo(({
                   const transitionStartTime = toWindow?.resolvedStart ?? (cutPointTime - transition.duration);
                   return (
                     <div
-                      className="absolute top-0 h-full border-x border-cyan-400/40 bg-cyan-400/12 pointer-events-none"
-                      style={{
-                        left: (transitionStartTime - cutPointTime) * pixelsPerSecond,
-                        width: transition.duration * pixelsPerSecond,
-                        minWidth: 2,
-                      }}
+                      className={`${styles.region} absolute top-0 h-full border-x border-cyan-400/40 bg-cyan-400/12 pointer-events-none`}
+                      style={cssVars({
+                        '--transition-region-left': `${(transitionStartTime - cutPointTime) * pixelsPerSecond}px`,
+                        '--transition-region-width': `${transition.duration * pixelsPerSecond}px`,
+                      })}
                     />
                   );
                 })()}

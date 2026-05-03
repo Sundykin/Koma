@@ -16,6 +16,7 @@ import {
 import { PlusOutlined, LinkOutlined } from '@ant-design/icons';
 import type { Character, Scene, Prop } from '../../types';
 import type { MatchResult, AssetCandidate } from '../../services/AssetMatcher';
+import styles from './AssetMatchConfirm.module.scss';
 
 const { Text, Paragraph } = Typography;
 
@@ -125,28 +126,28 @@ export const AssetMatchConfirm: React.FC<AssetMatchConfirmProps> = ({
       ]}
     >
       {/* 统计信息 */}
-      <div className="mb-4 p-3 bg-gray-800 rounded-lg">
+      <div className={styles.stats}>
         <Space split={<Divider type="vertical" />}>
           <Text>共 {stats.total} 个资产</Text>
-          <Text type="success">
+          <Text className={styles.reuseText}>
             <LinkOutlined /> 复用 {stats.linked} 个
           </Text>
-          <Text type="warning">
+          <Text className={styles.createText}>
             <PlusOutlined /> 新建 {stats.created} 个
           </Text>
         </Space>
       </div>
 
       {/* 匹配列表 */}
-      <Flex vertical style={{ maxHeight: 400, overflow: 'auto', border: '1px solid #303030', borderRadius: 8 }}>
+      <Flex vertical className={styles.matchList}>
         {matches.map((match, idx) => {
           const key = `${idx}-${match.candidate.name}`;
           const decision = decisions[key];
           const potentialMatches = getPotentialMatches(match.candidate);
 
           return (
-            <div key={key} style={{ padding: '12px 16px', borderBottom: '1px solid #303030' }}>
-              <div className="flex items-center justify-between mb-2">
+            <div key={key} className={styles.matchItem}>
+              <div className={styles.matchHeader}>
                 <Space>
                   <Text strong>{match.candidate.name}</Text>
                   {match.candidate.type && (
@@ -154,7 +155,7 @@ export const AssetMatchConfirm: React.FC<AssetMatchConfirmProps> = ({
                   )}
                 </Space>
                 {match.type === 'existing' && (
-                  <Tag color={match.confidence >= 0.9 ? 'green' : 'orange'}>
+                  <Tag className={match.confidence >= 0.9 ? styles.confidenceHigh : styles.confidenceMedium}>
                     置信度 {Math.round(match.confidence * 100)}%
                   </Tag>
                 )}
@@ -164,7 +165,7 @@ export const AssetMatchConfirm: React.FC<AssetMatchConfirmProps> = ({
                 <Paragraph
                   ellipsis={{ rows: 1 }}
                   type="secondary"
-                  style={{ marginBottom: 8, fontSize: 12 }}
+                  className={styles.candidateDescription}
                 >
                   {match.candidate.description}
                 </Paragraph>
@@ -194,17 +195,16 @@ export const AssetMatchConfirm: React.FC<AssetMatchConfirmProps> = ({
 
               {/* 如果原本判断为新建，但用户可能想手动链接到其他资产 */}
               {match.type === 'new' && potentialMatches.length > 0 && (
-                <div className="mt-2">
-                  <Text type="secondary" className="text-xs">
+                <div className={styles.manualLinkBlock}>
+                  <Text type="secondary" className={styles.manualLinkLabel}>
                     或手动链接到：
                   </Text>
-                  <div className="flex flex-wrap gap-1 mt-1">
+                  <div className={styles.manualLinkTags}>
                     {potentialMatches.slice(0, 5).map(pm => (
                       <Tag
                         key={pm.id}
-                        className="cursor-pointer"
+                        className={`${styles.clickableTag} ${decision?.linkedAssetId === pm.id ? styles.linkedTag : ''}`}
                         onClick={() => handleDecisionChange(key, 'link', pm.id, match.candidate)}
-                        color={decision?.linkedAssetId === pm.id ? 'green' : 'default'}
                       >
                         {pm.name}
                       </Tag>

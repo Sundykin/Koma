@@ -1,8 +1,9 @@
 import React from 'react';
+import { cssVars, type CssVarStyle } from '../../../../theme/runtime';
 
 interface LinghuiCanvasPendingGroupOverlayProps {
-  frameStyle: React.CSSProperties | null;
-  actionsStyle: React.CSSProperties | null;
+  frameStyle: CssVarStyle | null;
+  actionsStyle: CssVarStyle | null;
   creatableIds: string[];
   onCreateGroup: (selectionIds: string[]) => void;
   onDismiss: () => void;
@@ -21,7 +22,7 @@ export const LinghuiCanvasPendingGroupOverlay: React.FC<LinghuiCanvasPendingGrou
     <>
       <div
         className="linghuiPendingGroupFrame"
-        style={frameStyle}
+        style={cssVars(frameStyle)}
       >
         <span className="linghuiPendingGroupBadge">
           选区待创建工作流块 · {creatableIds.length} 项
@@ -30,7 +31,7 @@ export const LinghuiCanvasPendingGroupOverlay: React.FC<LinghuiCanvasPendingGrou
       {actionsStyle && creatableIds.length > 0 && (
         <div
           className="linghuiPendingGroupActions nopan nowheel"
-          style={actionsStyle}
+          style={cssVars(actionsStyle)}
           onPointerDown={(event) => event.stopPropagation()}
         >
           <button

@@ -5,7 +5,7 @@
 import React from 'react';
 import { AssetManagerPanel } from './AssetManagerPanel';
 import type { Character, Scene, Prop, ProjectStyleSnapshot } from '../../types';
-import './AssetManager.css';
+import './AssetManager.scss';
 
 interface AssetManagerProps {
   projectId: string;

@@ -43,6 +43,7 @@ import {
 } from '../../types';
 import { ScriptEditor } from '../../editor';
 import type { MentionItem } from '../../editor';
+import { useTheme } from '../../theme/runtime';
 import { ImageCardGrid } from '../asset/ImageCardGrid';
 import { VideoCardGrid } from '../asset/VideoCardGrid';
 import { StagePlayer } from '../video/StagePlayer';
@@ -59,9 +60,15 @@ import {
   clampDurationToSpec,
   type VideoDurationSpec,
 } from '../../providers/itv/durationSpec';
-import './ShotCard.css';
+import './ShotCard.scss';
+import { cssVars } from '../../theme/runtime';
 
 const { TextArea } = Input;
+
+function toCssUrl(value?: string): string {
+  if (!value) return 'none';
+  return `url("${value.replaceAll('\\', '\\\\').replaceAll('"', '\\"')}")`;
+}
 
 /**
  * 判断 imageMode 是否为任一网格变体（grid / grid-9 / grid-4）。'grid' 是老数据值，
@@ -115,8 +122,7 @@ function ShotScriptInput({ shotId, value, onScriptChange }: ShotScriptInputProps
       onChange={handleScriptInputChange}
       onBlur={flushScriptDraft}
       placeholder="剧本内容..."
-      className="w-full h-full bg-transparent border-none resize-none text-xs focus:ring-0 placeholder-zinc-600"
-      style={{ minHeight: '100%', padding: '4px 6px' }}
+      className="shot-script-input w-full h-full bg-transparent border-none resize-none text-xs focus:ring-0 placeholder-zinc-600"
     />
   );
 }
@@ -231,6 +237,8 @@ export const ShotCard: React.FC<ShotCardProps> = ({
   videoProgress,
 }) => {
   const { message } = App.useApp();
+  const { theme } = useTheme();
+  const isDarkTheme = theme.meta.mode === 'dark';
   const { t } = useTranslation();
   const [videoModalOpen, setVideoModalOpen] = useState(false);
   const [isSplittingGridImage, setIsSplittingGridImage] = useState(false);
@@ -616,8 +624,7 @@ export const ShotCard: React.FC<ShotCardProps> = ({
                     }}
                     onClick={(e) => e.stopPropagation()}
                     options={durationSpec.values.map((v) => ({ value: v, label: `${v}` }))}
-                    className="shot-duration-input"
-                    style={{ width: 56 }}
+                    className="shot-duration-input shot-duration-select"
                   />
                 ) : durationSpec?.kind === 'range' ? (
                   <InputNumber
@@ -749,9 +756,8 @@ export const ShotCard: React.FC<ShotCardProps> = ({
               mentionItems={mentionItems}
               enableCameraCommands={true}
               showLineNumbers={false}
-              darkTheme={true}
-              style={{ height: '100%' }}
-              className="shot-prompt-editor"
+              darkTheme={isDarkTheme}
+              className="shot-prompt-editor shot-prompt-editor-fill"
             />
             {/* 右下角浮动区域：AI生成 + 参考图 */}
             <div className="absolute right-2 bottom-2 flex items-center gap-1.5">
@@ -871,9 +877,8 @@ export const ShotCard: React.FC<ShotCardProps> = ({
               mentionItems={mentionItems}
               enableCameraCommands={true}
               showLineNumbers={false}
-              darkTheme={true}
-              style={{ height: '100%' }}
-              className="shot-prompt-editor"
+              darkTheme={isDarkTheme}
+              className="shot-prompt-editor shot-prompt-editor-fill"
             />
             {/* 右下角浮动：AI生成按钮 */}
             <div className="absolute right-2 bottom-2">
@@ -954,15 +959,15 @@ export const ShotCard: React.FC<ShotCardProps> = ({
                 )}
                 {/* 进度覆盖层：仅在生成中显示，避免遮挡已存视频 */}
                 {isGeneratingVideo && videoProgress && (
-                  <div className="absolute inset-x-0 bottom-0 px-1.5 py-1 bg-zinc-950/80 backdrop-blur-sm flex flex-col gap-0.5 z-10">
+                  <div className="shot-video-progress-overlay">
                     <Progress
                       percent={Math.max(0, Math.min(100, videoProgress.progress))}
                       size="small"
                       showInfo={false}
-                      strokeColor="#10b981"
-                      trailColor="#3f3f46"
+                      strokeColor="var(--token-accent-base)"
+                      trailColor="var(--token-border-base)"
                     />
-                    <div className="flex items-center justify-between gap-1 text-[10px] text-zinc-300 leading-tight">
+                    <div className="shot-video-progress-meta">
                       <span className="truncate flex-1" title={videoProgress.step}>
                         {videoProgress.step || '处理中...'}
                       </span>
@@ -1018,8 +1023,8 @@ export const ShotCard: React.FC<ShotCardProps> = ({
               <div className="flex-1">
                 <div className="text-[12px] text-zinc-500 mb-1">分割线预览</div>
                 <div
-                  className="relative w-full rounded overflow-hidden bg-black border border-zinc-800"
-                  style={{ aspectRatio: gridSplitAspectStyle }}
+                  className="grid-split-frame relative w-full rounded overflow-hidden bg-black border border-zinc-800"
+                  style={cssVars({ '--grid-split-aspect-ratio': gridSplitAspectStyle })}
                 >
                   {gridSplitSrc && (
                     <img
@@ -1039,13 +1044,21 @@ export const ShotCard: React.FC<ShotCardProps> = ({
                     {Array.from({ length: gridSize - 1 }).map((_, i) => {
                       const pct = `${((i + 1) / gridSize) * 100}%`;
                       return (
-                        <div key={`v-${i}`} className="absolute top-0 bottom-0 w-px bg-white/70" style={{ left: pct }} />
+                        <div
+                          key={`v-${i}`}
+                          className="grid-split-line-v absolute top-0 bottom-0 w-px"
+                          style={cssVars({ '--grid-line-left': pct })}
+                        />
                       );
                     })}
                     {Array.from({ length: gridSize - 1 }).map((_, i) => {
                       const pct = `${((i + 1) / gridSize) * 100}%`;
                       return (
-                        <div key={`h-${i}`} className="absolute left-0 right-0 h-px bg-white/70" style={{ top: pct }} />
+                        <div
+                          key={`h-${i}`}
+                          className="grid-split-line-h absolute left-0 right-0 h-px"
+                          style={cssVars({ '--grid-line-top': pct })}
+                        />
                       );
                     })}
                   </div>
@@ -1056,8 +1069,8 @@ export const ShotCard: React.FC<ShotCardProps> = ({
               <div className="flex-1">
                 <div className="text-[12px] text-zinc-500 mb-1">生成结果预览</div>
                 <div
-                  className="grid gap-2"
-                  style={{ gridTemplateColumns: `repeat(${gridSize}, minmax(0, 1fr))` }}
+                  className="grid-split-result-grid grid gap-2"
+                  style={cssVars({ '--grid-size': gridSize })}
                 >
                   {Array.from({ length: gridCellCount }).map((_, i) => {
                     const row = Math.floor(i / gridSize);
@@ -1071,16 +1084,15 @@ export const ShotCard: React.FC<ShotCardProps> = ({
                     return (
                       <div
                         key={i}
-                        className="relative rounded overflow-hidden border border-zinc-800 bg-black"
-                        style={{
-                          aspectRatio: gridSplitAspectStyle,
-                          backgroundImage: gridSplitSrc ? `url(${gridSplitSrc})` : undefined,
-                          backgroundSize: `${bgSizePct} ${bgSizePct}`,
-                          backgroundPosition: `${bgPosX} ${bgPosY}`,
-                          backgroundRepeat: 'no-repeat',
-                        }}
+                        className="grid-split-cell relative rounded overflow-hidden border border-zinc-800 bg-black"
+                        style={cssVars({
+                          '--grid-split-aspect-ratio': gridSplitAspectStyle,
+                          '--grid-cell-bg-image': toCssUrl(gridSplitSrc),
+                          '--grid-cell-bg-size': `${bgSizePct} ${bgSizePct}`,
+                          '--grid-cell-bg-position': `${bgPosX} ${bgPosY}`,
+                        })}
                       >
-                        <div className="absolute left-1 top-1 text-[10px] text-white/80 bg-black/50 px-1 rounded">
+                        <div className="grid-split-cell-index absolute left-1 top-1 text-[10px] px-1 rounded">
                           {String(i + 1).padStart(2, '0')}
                         </div>
                       </div>

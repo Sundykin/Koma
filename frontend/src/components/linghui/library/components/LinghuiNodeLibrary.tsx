@@ -68,7 +68,7 @@ export const LinghuiNodeLibrary: React.FC<LinghuiNodeLibraryProps> = ({
                 >
                   <span
                     className="linghuiNodeAccent"
-                    style={{ background: item.accent }}
+                    style={{ '--linghui-accent': item.accent } as React.CSSProperties}
                   />
                   <span className="linghuiNodeContent">
                     <span className="linghuiNodeName">{item.label}</span>
@@ -85,4 +85,3 @@ export const LinghuiNodeLibrary: React.FC<LinghuiNodeLibraryProps> = ({
 };
 
 export default LinghuiNodeLibrary;
-

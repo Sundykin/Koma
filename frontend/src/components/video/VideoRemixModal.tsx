@@ -16,6 +16,7 @@ import {
   App,
 } from 'antd';
 import { VideoCameraOutlined } from '@ant-design/icons';
+import styles from './VideoRemixModal.module.scss';
 
 const { TextArea } = Input;
 const { Text } = Typography;
@@ -101,16 +102,16 @@ export const VideoRemixModal: React.FC<RemixModalProps> = ({
         description="混音可以对已生成的视频进行二次编辑，根据新的提示词生成变体视频。"
         type="info"
         showIcon
-        style={{ marginBottom: 16 }}
+        className={styles.intro}
       />
 
       {videoUrl && (
-        <div style={{ marginBottom: 16 }}>
+        <div className={styles.preview}>
           <Text type="secondary">原视频预览：</Text>
           <video
             src={videoUrl}
             controls
-            style={{ width: '100%', maxHeight: 200, marginTop: 8, borderRadius: 8 }}
+            className={styles.previewVideo}
           />
         </div>
       )}
@@ -137,13 +138,13 @@ export const VideoRemixModal: React.FC<RemixModalProps> = ({
           </Select>
         </Form.Item>
 
-        <Space size="large" style={{ width: '100%' }}>
-          <Form.Item name="duration" label="时长（秒）" style={{ marginBottom: 0 }}>
-            <InputNumber min={5} max={25} placeholder="默认保持原时长" style={{ width: 150 }} />
+        <Space size="large" className={styles.formRow}>
+          <Form.Item name="duration" label="时长（秒）" className={styles.compactItem}>
+            <InputNumber min={5} max={25} placeholder="默认保持原时长" className={styles.field} />
           </Form.Item>
 
-          <Form.Item name="aspectRatio" label="宽高比" style={{ marginBottom: 0 }}>
-            <Select placeholder="默认保持原比例" allowClear style={{ width: 150 }}>
+          <Form.Item name="aspectRatio" label="宽高比" className={styles.compactItem}>
+            <Select placeholder="默认保持原比例" allowClear className={styles.field}>
               <Select.Option value="16:9">16:9 横屏</Select.Option>
               <Select.Option value="9:16">9:16 竖屏</Select.Option>
               <Select.Option value="1:1">1:1 方形</Select.Option>
@@ -153,9 +154,14 @@ export const VideoRemixModal: React.FC<RemixModalProps> = ({
       </Form>
 
       {submitting && (
-        <div style={{ marginTop: 16 }}>
+        <div className={styles.progressBlock}>
           <Text type="secondary">正在处理混音任务...</Text>
-          <Progress percent={progress} status="active" />
+          <Progress
+            percent={progress}
+            status="active"
+            strokeColor="var(--token-accent-base)"
+            trailColor="var(--token-border-subtle)"
+          />
         </div>
       )}
     </Modal>

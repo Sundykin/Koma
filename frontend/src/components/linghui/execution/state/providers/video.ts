@@ -349,7 +349,7 @@ export async function generateVideoWithProvider(params: {
     || params.referenceImageSources?.[0];
   const placeholderPoster = previewSource
     ? toPreviewSource(previewSource)
-    : createPlaceholderImage({ title: '视频预览占位', subtitle: '未配置 ITV 服务', accent: '#22c55e' });
+    : createPlaceholderImage({ title: '视频预览占位', subtitle: '未配置 ITV 服务' });
 
   const settings = await resolveExecutionSettings(params.settingsSnapshot);
   const selectedContext = resolveConfiguredChannelModel(settings, 'itv', params.itvSelection);

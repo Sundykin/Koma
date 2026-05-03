@@ -376,7 +376,7 @@ export const LLMConfigManager: React.FC<LLMConfigManagerProps> = ({ onConfigChan
       </div>
 
       {loading ? (
-        <div style={{ textAlign: 'center', padding: 40 }}>
+        <div className="settings-loading-state">
           <Spin />
         </div>
       ) : configs.length === 0 ? (
@@ -403,11 +403,11 @@ export const LLMConfigManager: React.FC<LLMConfigManagerProps> = ({ onConfigChan
                   title={(
                     <Space>
                       {config.isDefault ? (
-                        <StarFilled style={{ color: '#faad14' }} />
+                        <StarFilled className="settings-default-star" />
                       ) : (
                         <Tooltip title="设为默认">
                           <StarOutlined
-                            style={{ cursor: 'pointer', color: '#d9d9d9' }}
+                            className="settings-default-star-button"
                             onClick={() => handleSetDefault(config.channel.id, preferredModelId)}
                           />
                         </Tooltip>
@@ -519,7 +519,7 @@ export const LLMConfigManager: React.FC<LLMConfigManagerProps> = ({ onConfigChan
             <Form.Item
               label="模型列表"
               required
-              style={{ marginBottom: 0 }}
+              className="settings-form-item-flush"
             >
               <ChannelModelsEditor
                 fixedCapabilities={['llm.chat']}
@@ -548,7 +548,7 @@ export const LLMConfigManager: React.FC<LLMConfigManagerProps> = ({ onConfigChan
                 label={(
                   <span>
                     API 地址
-                    {!currentIsOpenAICompatible && <span className="text-zinc-500 ml-2 text-xs">(可选，用于代理)</span>}
+                    {!currentIsOpenAICompatible && <span className="settings-title-optional">(可选，用于代理)</span>}
                   </span>
                 )}
                 rules={[{ required: currentIsOpenAICompatible && !isEditingActivationChannel, message: '请输入 API 地址' }]}
@@ -563,10 +563,9 @@ export const LLMConfigManager: React.FC<LLMConfigManagerProps> = ({ onConfigChan
               <Form.Item
                 name="apiKey"
                 label="API Key"
-                className="settings-grid-span-full"
+                className="settings-grid-span-full settings-form-item-flush"
                 required={!editingHasStoredApiKey && !isEditingActivationChannel}
                 rules={[{ required: !editingHasStoredApiKey && !isEditingActivationChannel, message: '请输入 API Key' }]}
-                style={{ marginBottom: 0 }}
               >
                 <Input.Password
                   prefix={<KeyOutlined />}

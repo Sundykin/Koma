@@ -1056,7 +1056,7 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
         <div className="creatorSidebarHeader">
           <Space>
             <UserOutlined />
-            <Text strong style={{ fontSize: 16 }}>{editedCharacter.name}</Text>
+            <Text strong className="creatorSidebarTitle">{editedCharacter.name}</Text>
           </Space>
           <Space>
             <Tooltip title={t('common.save')}>
@@ -1118,11 +1118,11 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
                 <div className="creatorProgressHeader">
                   <Space>
                     <LoadingOutlined />
-                    <Text style={{ fontSize: 12 }}>{progressStep}</Text>
+                    <Text className="creatorProgressText">{progressStep}</Text>
                   </Space>
-                  <Text type="secondary" style={{ fontSize: 12 }}>{Math.round(progress)}%</Text>
+                  <Text type="secondary" className="creatorProgressText">{Math.round(progress)}%</Text>
                 </div>
-                <Progress percent={Math.round(progress)} strokeColor="#52c41a" size="small" showInfo={false} />
+                <Progress percent={Math.round(progress)} strokeColor="var(--token-status-success)" size="small" showInfo={false} />
               </div>
             )}
 
@@ -1259,7 +1259,7 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
                 <img
                   src={costumePhotoDisplayUrl}
                   alt={t('asset.costumePhoto')}
-                  style={{ cursor: 'pointer' }}
+                  className="creatorMediaPreview"
                   onDoubleClick={() => setPreviewImage(costumePhotoDisplayUrl)}
                 />
               ) : (
@@ -1309,7 +1309,6 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
         footer={null}
         centered
         width="auto"
-        styles={{ body: { padding: 0, background: 'transparent' } }}
         className="transparent-modal"
         closeIcon={null}
       >
@@ -1317,7 +1316,7 @@ export const CharacterDetailPanel: React.FC<CharacterDetailPanelProps> = ({
           <img
             src={previewImage}
             alt="Preview"
-            style={{ maxWidth: '95vw', maxHeight: '95vh', cursor: 'pointer' }}
+            className="transparentPreviewImage"
             onClick={() => setPreviewImage(null)}
           />
         )}

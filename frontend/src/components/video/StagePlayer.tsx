@@ -9,6 +9,7 @@ import { electronService } from '../../services/electronService';
 import { Button, Empty, Typography } from 'antd';
 import { PlayCircleOutlined } from '@ant-design/icons';
 import { createLogger } from '../../store/logger';
+import styles from './StagePlayer.module.scss';
 
 const logger = createLogger('StagePlayer');
 
@@ -38,7 +39,6 @@ export interface StagePlayerProps {
   videoUrl?: string;
   poster?: string;
   className?: string;
-  style?: React.CSSProperties;
   onTimeUpdate?: (currentTime: number) => void;
   onEnded?: () => void;
   autoPlay?: boolean;
@@ -53,7 +53,6 @@ export const StagePlayer: React.FC<StagePlayerProps> = ({
   videoUrl,
   poster,
   className,
-  style,
   onTimeUpdate,
   onEnded,
   autoPlay = false,
@@ -189,22 +188,10 @@ export const StagePlayer: React.FC<StagePlayerProps> = ({
 
   return (
     <div
-      className={`stagePlayer ${className || ''}`}
-      style={{
-        position: 'relative',
-        width: '100%',
-        height: '100%',
-        background: '#09090b',
-        borderRadius: 8,
-        overflow: 'hidden',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        ...style,
-      }}
+      className={`${styles.root} stagePlayer ${className || ''}`}
     >
       {error ? (
-        <div style={{ textAlign: 'center', color: '#ef4444' }}>
+        <div className={styles.error}>
           <Text type="danger">{error}</Text>
         </div>
       ) : hasVideo ? (
@@ -221,27 +208,16 @@ export const StagePlayer: React.FC<StagePlayerProps> = ({
               onTimeUpdate={handleNativeTimeUpdate}
               onEnded={handleNativeEnded}
               onError={handleNativeError}
-              style={{
-                width: '100%',
-                height: '100%',
-                background: '#000',
-              }}
+              className={styles.nativeVideo}
             />
           ) : (
             <div
               ref={containerRef}
-              style={{ width: '100%', height: '100%' }}
+              className={styles.media}
             />
           )}
           {showStopButton ? (
-            <div
-              style={{
-                position: 'absolute',
-                right: 12,
-                top: 12,
-                zIndex: 2,
-              }}
-            >
+            <div className={styles.stopButton}>
               <Button size="small" onClick={handleStop}>
                 {stopButtonLabel}
               </Button>
@@ -250,11 +226,11 @@ export const StagePlayer: React.FC<StagePlayerProps> = ({
         </>
       ) : (
         <Empty
-          image={<PlayCircleOutlined style={{ fontSize: 48, color: '#3f3f46' }} />}
+          image={<PlayCircleOutlined className={styles.emptyIcon} />}
           description={
             emptyDescription || <Text type="secondary">选择分镜以预览视频</Text>
           }
-          style={{ margin: 0 }}
+          className={styles.empty}
         />
       )}
     </div>

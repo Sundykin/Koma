@@ -20,6 +20,7 @@ import {
   type ProjectMediaCategoryKey,
   type ProjectMediaRequirement,
 } from './projectMediaSelectionState';
+import styles from './ProjectMediaSelector.module.scss';
 
 type ProjectMediaSelections = Partial<Record<'llm' | 'tti' | 'itv' | 'tts', MediaModelSelection>>;
 
@@ -62,7 +63,7 @@ function categoryIcon(category: MediaCategory) {
 
 function renderOptionLabel(option: ReturnType<typeof buildProjectMediaCategoryState>['options'][number]) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+    <div className={styles.optionLabel}>
       <Space size={6} wrap>
         <span>{option.modelLabel}</span>
         <Tag color="blue">{option.channelLabel}</Tag>
@@ -162,9 +163,9 @@ export const ProjectMediaSelector: React.FC<ProjectMediaSelectorProps> = ({
 
     return (
       <div key={category}>
-        <div style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div className={styles.categoryHeader}>
           {categoryIcon(category)}
-          <span style={{ fontWeight: 500 }}>{categoryLabel(category)}</span>
+          <span className={styles.categoryTitle}>{categoryLabel(category)}</span>
           {state.requirement?.label && <Tag color="cyan">{state.requirement.label}</Tag>}
           {state.options.length === 0 && <Tag color="orange">未配置</Tag>}
           {state.usingFallback && state.fallbackLabel && <Tag color="gold">默认回退</Tag>}
@@ -175,7 +176,7 @@ export const ProjectMediaSelector: React.FC<ProjectMediaSelectorProps> = ({
           value={selectValue}
           placeholder={state.fallbackLabel ? `使用全局默认: ${state.fallbackLabel}` : '使用全局默认'}
           optionLabelProp="label"
-          style={{ width: '100%' }}
+          className={styles.select}
           loading={loading}
           disabled={state.options.length === 0}
           onChange={(value) => updateCategory(category, value)}
@@ -189,13 +190,13 @@ export const ProjectMediaSelector: React.FC<ProjectMediaSelectorProps> = ({
             return option ? renderOptionLabel(option) : value;
           }}
         />
-        <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <span style={{ fontSize: 12, color: '#888' }}>{fallbackText}</span>
+        <div className={styles.categoryMeta}>
+          <span className={styles.metaText}>{fallbackText}</span>
           {state.requirement?.description && (
-            <span style={{ fontSize: 12, color: '#888' }}>{state.requirement.description}</span>
+            <span className={styles.metaText}>{state.requirement.description}</span>
           )}
           {state.warning && (
-            <span style={{ fontSize: 12, color: '#d97706' }}>{state.warning}</span>
+            <span className={styles.warningText}>{state.warning}</span>
           )}
         </div>
       </div>
@@ -203,19 +204,19 @@ export const ProjectMediaSelector: React.FC<ProjectMediaSelectorProps> = ({
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+    <div className={styles.root}>
       {renderCategory('llm')}
       {renderCategory('tti')}
       {renderCategory('itv')}
       {renderCategory('tts')}
       {onGoToSettings && (
-        <div style={{ marginTop: 8 }}>
+        <div className={styles.settingsLinkRow}>
           <Tooltip title="在全局设置中管理渠道与默认模型">
             <Button
               type="link"
               icon={<SettingOutlined />}
               onClick={onGoToSettings}
-              style={{ padding: 0 }}
+              className={styles.linkButton}
             >
               前往全局设置
             </Button>

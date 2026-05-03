@@ -107,10 +107,10 @@ export const autocompleteTheme = EditorView.theme({
     minWidth: '220px',
     maxWidth: '400px',
     zIndex: '99999 !important',
-    background: '#1f1f23 !important',
-    border: '1px solid #10b981 !important',
+    background: 'var(--token-bg-elevated) !important',
+    border: '1px solid var(--token-border-focus) !important',
     borderRadius: '8px',
-    boxShadow: '0 8px 24px rgba(0, 0, 0, 0.6)',
+    boxShadow: 'var(--token-shadow-md)',
     overflow: 'hidden',
   },
   '.cm-tooltip-autocomplete ul': {
@@ -124,12 +124,12 @@ export const autocompleteTheme = EditorView.theme({
     display: 'flex',
     alignItems: 'center',
     gap: '8px',
-    color: '#e4e4e7 !important',
+    color: 'var(--token-text-primary) !important',
     cursor: 'pointer',
   },
   '.cm-tooltip-autocomplete li[aria-selected]': {
-    backgroundColor: '#10b981 !important',
-    color: '#fff !important',
+    backgroundColor: 'var(--token-accent-base) !important',
+    color: 'var(--token-bg-app) !important',
   },
   '.cm-completionLabel': {
     flex: '1',
@@ -137,11 +137,11 @@ export const autocompleteTheme = EditorView.theme({
   },
   '.cm-completionDetail': {
     fontSize: '0.85em',
-    color: '#a1a1aa',
+    color: 'var(--token-text-secondary)',
     marginLeft: 'auto',
   },
   '.cm-tooltip-autocomplete li[aria-selected] .cm-completionDetail': {
-    color: 'rgba(255, 255, 255, 0.8)',
+    color: 'color-mix(in srgb, var(--token-bg-app) 80%, transparent)',
   },
   '.cm-completionIcon': {
     opacity: '0.7',

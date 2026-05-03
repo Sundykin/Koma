@@ -46,7 +46,7 @@ import {
 import type { EpisodeRefsKey } from './assetEpisodeRefs';
 import { parseMediaSelectionKey } from '../../providers/channel/resolver';
 import type { Project } from '../../types';
-import './AssetManager.css';
+import './AssetManager.scss';
 
 
 function upsertAssetById<T extends { id: string }>(items: T[], item: T): T[] {
@@ -474,7 +474,7 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
 
   if (loading) {
     return (
-      <div className="assetManagerPanel" style={{ justifyContent: 'center', alignItems: 'center' }}>
+      <div className="assetManagerPanel assetManagerPanelLoading">
         <Spin size="large" />
       </div>
     );

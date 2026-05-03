@@ -170,17 +170,17 @@ export const MCPConfigManager: React.FC<MCPConfigManagerProps> = ({ onConfigChan
   // 获取状态图标
   const getStatusIcon = (status: MCPConnection['status'], name: string) => {
     if (connectingName === name) {
-      return <LoadingOutlined spin style={{ color: '#1890ff' }} />;
+      return <LoadingOutlined spin className="settings-status-info" />;
     }
     switch (status) {
       case 'connected':
-        return <CheckCircleOutlined style={{ color: '#52c41a' }} />;
+        return <CheckCircleOutlined className="settings-status-success" />;
       case 'connecting':
-        return <LoadingOutlined spin style={{ color: '#1890ff' }} />;
+        return <LoadingOutlined spin className="settings-status-info" />;
       case 'error':
-        return <CloseCircleOutlined style={{ color: '#ff4d4f' }} />;
+        return <CloseCircleOutlined className="settings-status-error" />;
       default:
-        return <CloseCircleOutlined style={{ color: '#999' }} />;
+        return <CloseCircleOutlined className="settings-status-muted" />;
     }
   };
 
@@ -196,7 +196,7 @@ export const MCPConfigManager: React.FC<MCPConfigManagerProps> = ({ onConfigChan
 
   if (loading) {
     return (
-      <div style={{ textAlign: 'center', padding: 48 }}>
+      <div className="settings-loading-state is-large">
         <Spin size="large" description="加载 MCP 服务器..." />
       </div>
     );
@@ -206,8 +206,8 @@ export const MCPConfigManager: React.FC<MCPConfigManagerProps> = ({ onConfigChan
     <div className="settings-manager">
       <div className="settings-manager-toolbar">
         <div>
-          <Typography.Title level={5} style={{ margin: 0, color: 'var(--color-text-primary)' }}>
-            <ApiOutlined style={{ marginRight: 8 }} />
+          <Typography.Title level={5} className="settings-title-row">
+            <ApiOutlined className="settings-title-icon" />
             MCP 服务器
           </Typography.Title>
           <Text type="secondary">管理 Model Context Protocol 服务器连接</Text>
@@ -297,23 +297,25 @@ export const MCPConfigManager: React.FC<MCPConfigManagerProps> = ({ onConfigChan
                       title="工具"
                       value={conn.tools?.length || 0}
                       prefix={<ToolOutlined />}
-                      valueStyle={{ fontSize: 18 }}
+                      className="settings-stat-value-lg"
                     />
                   </Col>
                   <Col span={12}>
                     <Statistic
                       title="状态"
                       value={getStatusText(conn.status)}
-                      valueStyle={{
-                        fontSize: 14,
-                        color: conn.status === 'connected' ? '#52c41a' :
-                               conn.status === 'error' ? '#ff4d4f' : '#999'
-                      }}
+                      className={
+                        conn.status === 'connected'
+                          ? 'settings-stat-status-connected'
+                          : conn.status === 'error'
+                            ? 'settings-stat-status-error'
+                            : 'settings-stat-status-muted'
+                      }
                     />
                   </Col>
                 </Row>
                 {conn.error && (
-                  <Paragraph type="danger" ellipsis style={{ marginTop: 10, marginBottom: 0 }}>
+                  <Paragraph type="danger" ellipsis className="settings-paragraph-compact">
                     {conn.error}
                   </Paragraph>
                 )}
@@ -352,7 +354,7 @@ export const MCPConfigManager: React.FC<MCPConfigManagerProps> = ({ onConfigChan
                 label="传输类型"
                 required
                 rules={[{ required: true }]}
-                style={{ marginBottom: 0 }}
+                className="settings-form-item-flush"
               >
                 <Select>
                   <Select.Option value="stdio">Stdio（本地进程）</Select.Option>
@@ -382,7 +384,7 @@ export const MCPConfigManager: React.FC<MCPConfigManagerProps> = ({ onConfigChan
                       >
                         <Input placeholder="例如：npx" />
                       </Form.Item>
-                      <Form.Item name="args" label="参数" style={{ marginBottom: 0 }}>
+                      <Form.Item name="args" label="参数" className="settings-form-item-flush">
                         <Input placeholder="例如：-y @anthropic/mcp-server-filesystem" />
                       </Form.Item>
                     </div>
@@ -393,10 +395,9 @@ export const MCPConfigManager: React.FC<MCPConfigManagerProps> = ({ onConfigChan
                     <Form.Item
                       name="url"
                       label="URL"
-                      className="settings-grid-span-full"
+                      className="settings-grid-span-full settings-form-item-flush"
                       required
                       rules={[{ required: true, message: '请输入 URL' }]}
-                      style={{ marginBottom: 0 }}
                     >
                       <Input placeholder="例如：http://localhost:3000/mcp" />
                     </Form.Item>
@@ -408,7 +409,7 @@ export const MCPConfigManager: React.FC<MCPConfigManagerProps> = ({ onConfigChan
 
           <div className="settings-form-section">
             <div className="settings-form-section-title">环境变量</div>
-            <Form.Item name="env" label="环境变量（JSON）" style={{ marginBottom: 0 }}>
+            <Form.Item name="env" label="环境变量（JSON）" className="settings-form-item-flush">
               <Input.TextArea
                 placeholder='{"API_KEY": "xxx"}'
                 autoSize={{ minRows: 3, maxRows: 6 }}

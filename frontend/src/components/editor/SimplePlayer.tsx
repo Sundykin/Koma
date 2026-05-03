@@ -12,6 +12,8 @@ import { Maximize2 } from 'lucide-react';
 import { getClipResolvedWindow } from '../../features/transition/core';
 import { ASPECT_RATIOS, getCanvasSize } from './aspectRatio';
 import type { AspectRatio } from './aspectRatio';
+import styles from './SimplePlayer.module.scss';
+import { cssVars } from '../../theme/runtime';
 
 interface PlayerProps {
   tracks: Track[];
@@ -321,10 +323,10 @@ export const SimplePlayer: React.FC<PlayerProps> = ({
   return (
     <div
       ref={containerRef}
-      className="flex-1 bg-[#09090b] flex flex-col relative overflow-hidden"
+      className={`${styles.root} flex-1 flex flex-col relative overflow-hidden`}
     >
       {/* 工具栏 */}
-      <div className="h-10 border-b border-[#27272a] flex items-center px-4 justify-between bg-[#18181b] flex-shrink-0">
+      <div className={`${styles.toolbar} h-10 flex items-center px-4 justify-between flex-shrink-0`}>
         <div className="flex items-center gap-2">
           <Maximize2 size={14} className="text-zinc-500" />
           {onAspectRatioChange ? (
@@ -350,17 +352,12 @@ export const SimplePlayer: React.FC<PlayerProps> = ({
       <div className="flex-1 flex items-center justify-center p-4 relative overflow-hidden">
         <div
           ref={previewRef}
-          className="relative bg-black shadow-2xl border border-[#27272a] overflow-hidden rounded-lg"
-          style={{
-            aspectRatio: `${canvasSize.width} / ${canvasSize.height}`,
-            maxWidth: '100%',
-            maxHeight: '100%',
-          }}
+          className={`${styles.preview} relative shadow-2xl overflow-hidden rounded-lg`}
+          style={cssVars({ '--preview-aspect-ratio': `${canvasSize.width} / ${canvasSize.height}` })}
         >
           <canvas
             ref={canvasRef}
-            className="w-full h-full object-contain"
-            style={{ imageRendering: 'auto' }}
+            className={`${styles.canvas} w-full h-full object-contain`}
           />
 
           {/* 变换控制框 - 使用插值后的属性 */}

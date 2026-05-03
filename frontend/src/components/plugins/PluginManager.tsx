@@ -111,14 +111,14 @@ export const PluginManager: React.FC = () => {
           value={searchText}
           onChange={e => setSearchText(e.target.value)}
           size="small"
-          style={{ width: 220 }}
+          className="w-[220px]"
           allowClear
         />
         <Select
           value={categoryFilter}
           onChange={setCategoryFilter}
           size="small"
-          style={{ width: 136 }}
+          className="w-[136px]"
           options={[
             { value: 'all', label: t('plugin.categoryAll') },
             { value: 'global', label: t('plugin.categoryGlobal') },

@@ -11,7 +11,7 @@ import {
   ExclamationCircleOutlined,
 } from '@ant-design/icons';
 import type { ToolCallState } from '../../types/mcp';
-import styles from './ToolApprovalCard.module.css';
+import styles from './ToolApprovalCard.module.scss';
 
 const { Text, Paragraph } = Typography;
 

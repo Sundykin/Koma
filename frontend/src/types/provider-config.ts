@@ -9,7 +9,10 @@
  * scripts/check-plugin-sdk-parity.cjs）。本文件只放"用户设置"层面的配置类型。
  */
 import type { ChannelConfig, MediaDefaults } from '../providers/channel/types';
+import type { ThemeId } from '../theme/types';
 import type { ThemePreset } from './project';
+
+export type AppThemeId = ThemeId;
 
 /**
  * Provider 类型标识。真源是 frontend/src/providers/{llm,tti,itv,tts}/index.ts 中
@@ -163,6 +166,7 @@ export interface ITVConfig {
 }
 
 export interface AppSettings {
+  uiThemeId?: AppThemeId;
   channelConfigs: ChannelConfig[];
   mediaDefaults?: MediaDefaults;
   promptTemplates?: Record<string, {

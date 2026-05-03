@@ -7,7 +7,7 @@ import {
   ReloadOutlined,
   PlusOutlined,
 } from '@ant-design/icons';
-import './StoryboardToolbar.css';
+import './StoryboardToolbar.scss';
 
 const { Text } = Typography;
 

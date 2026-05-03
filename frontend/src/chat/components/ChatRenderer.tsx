@@ -9,7 +9,7 @@ import { Markdown } from 'ds-markdown';
 import 'ds-markdown/style.css';
 import type { ChatMessage, ToolCall } from '../types';
 import { MessageBubble } from './MessageBubble';
-import styles from './ChatRenderer.module.css';
+import styles from './ChatRenderer.module.scss';
 
 export interface ChatRendererProps {
   messages: ChatMessage[];

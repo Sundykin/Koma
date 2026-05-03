@@ -94,6 +94,7 @@ export const StepNavigator: React.FC<StepNavigatorProps> = ({
             const clickable = isStepClickable(step.id, index);
             const isLocked = !clickable && !isActive;
             const Icon = step.icon;
+            const stepProgressWidth = isCompleted ? '100%' : '0%';
 
             const stepNode = (
               <div
@@ -145,8 +146,8 @@ export const StepNavigator: React.FC<StepNavigatorProps> = ({
                 {index < steps.length - 1 && (
                   <div className="flex-1 h-[2px] mx-1.5 bg-zinc-800 relative rounded-full overflow-hidden min-w-[16px]">
                     <div
-                      className="absolute top-0 left-0 h-full bg-emerald-600 transition-all duration-500 ease-in-out"
-                      style={{ width: isStepCompleted(step.id, stepProgress, scriptText) ? '100%' : '0%' }}
+                      className="absolute top-0 left-0 h-full w-[var(--step-progress-width)] bg-emerald-600 transition-all duration-500 ease-in-out"
+                      style={{ '--step-progress-width': stepProgressWidth } as React.CSSProperties}
                     />
                   </div>
                 )}

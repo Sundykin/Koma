@@ -37,6 +37,7 @@ import {
 } from '../state/linghuiPromptReferences';
 import { resolveLinghuiImagePrimaryForNode } from '../state/linghuiImageCollections';
 import { VIDEO_TOOL_PRESETS } from '../state/videoNodeEditorShared';
+import { cssVars } from '../../../../theme/runtime';
 
 interface LinghuiNodeEditorProps {
   nodeId: string;
@@ -409,21 +410,17 @@ export const LinghuiNodeEditor: React.FC<LinghuiNodeEditorProps> = ({
         : 248;
   const panelGap = nodeType === 'linghui/image' ? 0 : PANEL_GAP;
 
-  const toolbarStyle = useMemo<React.CSSProperties>(() => ({
-    left: '50%',
-    bottom: `calc(100% + ${(TOOLBAR_STANDOFF / safeZoom).toFixed(3)}px)`,
-    width: getViewportBoundWidth(toolbarWidth),
-    transform: `translateX(-50%) scale(${inverseZoom})`,
-    transformOrigin: 'bottom center',
+  const toolbarStyle = useMemo(() => cssVars({
+    '--linghui-node-editor-bottom': `calc(100% + ${(TOOLBAR_STANDOFF / safeZoom).toFixed(3)}px)`,
+    '--linghui-node-editor-width': getViewportBoundWidth(toolbarWidth),
+    '--linghui-node-editor-scale': inverseZoom.toFixed(4),
   }), [inverseZoom, safeZoom, toolbarWidth]);
 
-  const panelStyle = useMemo<React.CSSProperties>(() => ({
-    left: '50%',
-    top: `calc(100% + ${(panelGap / safeZoom).toFixed(3)}px)`,
-    width: getViewportBoundWidth(getPanelWidth(nodeType)),
-    maxHeight: getViewportBoundHeight(getPanelMaxHeight(nodeType)),
-    transform: `translateX(-50%) scale(${inverseZoom})`,
-    transformOrigin: 'top center',
+  const panelStyle = useMemo(() => cssVars({
+    '--linghui-node-editor-top': `calc(100% + ${(panelGap / safeZoom).toFixed(3)}px)`,
+    '--linghui-node-editor-width': getViewportBoundWidth(getPanelWidth(nodeType)),
+    '--linghui-node-editor-max-height': getViewportBoundHeight(getPanelMaxHeight(nodeType)),
+    '--linghui-node-editor-scale': inverseZoom.toFixed(4),
   }), [inverseZoom, nodeType, panelGap, safeZoom]);
 
   const handleClose = useCallback(() => {

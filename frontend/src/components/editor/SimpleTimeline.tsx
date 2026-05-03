@@ -22,6 +22,8 @@ import {
 } from 'lucide-react';
 import { Popconfirm } from 'antd';
 import { createLogger } from '../../store/logger';
+import styles from './SimpleTimeline.module.scss';
+import { cssVars } from '../../theme/runtime';
 
 const logger = createLogger('SimpleTimeline');
 
@@ -132,7 +134,11 @@ const Filmstrip: React.FC<{ clip: Clip; frames?: string[]; pixelsPerSecond: numb
       <div className="w-full h-full flex items-center overflow-hidden bg-green-900/40 pointer-events-none px-1">
         <div className="flex gap-0.5 h-1/2 w-full items-center">
           {Array.from({ length: Math.ceil(clip.duration * 5) }).map((_, i) => (
-            <div key={i} className="w-1 bg-green-400/50 rounded-full flex-shrink-0" style={{ height: `${20 + Math.random() * 80}%` }} />
+            <div
+              key={i}
+              className={`${styles.waveformBar} w-1 bg-green-400/50 rounded-full flex-shrink-0`}
+              style={cssVars({ '--waveform-height': `${20 + Math.random() * 80}%` })}
+            />
           ))}
         </div>
         <span className="absolute left-2 text-[10px] text-zinc-300 drop-shadow truncate">{clip.name}</span>
@@ -167,7 +173,11 @@ const Filmstrip: React.FC<{ clip: Clip; frames?: string[]; pixelsPerSecond: numb
         const frameSrc = hasFrames ? frames[frameIndex] : fallbackSrc;
 
         return (
-          <div key={i} className="flex-shrink-0 h-full border-r border-white/20 relative bg-zinc-800" style={{ width: frameWidth }}>
+          <div
+            key={i}
+            className={`${styles.filmFrame} flex-shrink-0 h-full border-r border-white/20 relative bg-zinc-800`}
+            style={cssVars({ '--film-frame-width': `${frameWidth}px` })}
+          >
             <img
               src={frameSrc}
               className="w-full h-full object-cover opacity-90 relative z-10"
@@ -743,7 +753,11 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
     const result = [];
     for (let i = 0; i < totalSeconds; i += markerInterval) {
       result.push(
-        <div key={i} className="absolute top-0 h-full flex flex-col justify-end pb-1 select-none pointer-events-none" style={{ left: i * pixelsPerSecond }}>
+        <div
+          key={i}
+          className={`${styles.marker} absolute top-0 h-full flex flex-col justify-end pb-1 select-none pointer-events-none`}
+          style={cssVars({ '--marker-left': `${i * pixelsPerSecond}px` })}
+        >
           <div className="h-3 border-l border-zinc-500" />
           <span className="text-[10px] text-zinc-500 pl-1 whitespace-nowrap">{formatTime(i)}</span>
         </div>
@@ -753,7 +767,11 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
         for (let j = 1; j < markerInterval && i + j < totalSeconds; j++) {
           if (j === markerInterval / 2) {
             result.push(
-              <div key={`${i}-${j}`} className="absolute top-0 h-full flex flex-col justify-end pb-1 select-none pointer-events-none" style={{ left: (i + j) * pixelsPerSecond }}>
+              <div
+                key={`${i}-${j}`}
+                className={`${styles.marker} absolute top-0 h-full flex flex-col justify-end pb-1 select-none pointer-events-none`}
+                style={cssVars({ '--marker-left': `${(i + j) * pixelsPerSecond}px` })}
+              >
                 <div className="h-2 border-l border-zinc-700" />
               </div>
             );
@@ -765,9 +783,9 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
   }, [totalSeconds, markerInterval, pixelsPerSecond]);
 
   return (
-    <div className="flex flex-col h-full bg-[#18181b] border-t border-[#27272a] select-none">
+    <div className={`${styles.root} flex flex-col h-full select-none`}>
       {/* 工具栏 */}
-      <div className="h-10 border-b border-[#27272a] flex items-center px-4 justify-between bg-[#18181b] flex-shrink-0 z-50 overflow-x-auto gap-2" style={{ minWidth: 0 }}>
+      <div className={`${styles.toolbar} h-10 flex items-center px-4 justify-between flex-shrink-0 z-50 overflow-x-auto gap-2`}>
         <div className="flex items-center gap-4">
           <button onClick={togglePlay} className="text-zinc-300 hover:text-white transition-colors">
             {isPlaying ? <Pause size={18} /> : <Play size={18} />}
@@ -890,25 +908,25 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
 
       {/* 滚动区域 */}
       <div
-        className="flex-1 overflow-auto bg-[#09090b] relative"
+        className={`${styles.scroller} flex-1 overflow-auto relative`}
         ref={containerRef}
         onDragOver={(e) => handleDragOver(e)}
         onDrop={(e) => handleDrop(e)}
       >
-        <div className="min-w-max pb-32" style={{ minWidth: totalWidth + HEADER_WIDTH }}>
+        <div className={`${styles.content} min-w-max pb-32`} style={cssVars({ '--timeline-min-width': `${totalWidth + HEADER_WIDTH}px` })}>
           {/* 时间标尺 */}
-          <div ref={rulerRef} className="sticky top-0 z-30 flex bg-[#0f0f10] border-b border-zinc-800" style={{ height: RULER_HEIGHT }}>
-            <div className="sticky left-0 w-[200px] flex-shrink-0 bg-[#18181b] border-r border-[#27272a] z-40" />
-            <div className="relative flex-1 h-full" style={{ width: totalWidth }}>
+          <div ref={rulerRef} className={`${styles.ruler} sticky top-0 z-30 flex`} style={cssVars({ '--ruler-height': `${RULER_HEIGHT}px` })}>
+            <div className={`${styles.trackHeaderSpacer} sticky left-0 w-[200px] flex-shrink-0 z-40`} />
+            <div className={`${styles.rulerTrack} relative flex-1 h-full`} style={cssVars({ '--timeline-track-width': `${totalWidth}px` })}>
               {markers}
               {/* 播放头手柄 */}
-              <div className="absolute top-0 z-50" style={{ left: currentTime * pixelsPerSecond }}>
+              <div className={`${styles.playheadHandlePosition} absolute top-0 z-50`} style={cssVars({ '--playhead-left': `${currentTime * pixelsPerSecond}px` })}>
                 <div
                   className={`absolute top-0 left-0 -translate-x-1/2 transition-transform ${isDraggingPlayhead ? 'scale-110 cursor-grabbing' : 'hover:scale-105 cursor-grab'}`}
                   onMouseDown={handlePlayheadMouseDown}
                 >
-                  <svg width="12" height="16" viewBox="0 0 12 16">
-                    <path d="M1 1C1 0.447715 1.44772 0 2 0H10C10.5523 0 11 0.447715 11 1V11.382C11 11.7607 10.786 12.107 10.4472 12.2764L6.44721 14.2764C6.16569 14.4172 5.83431 14.4172 5.55279 14.2764L1.55279 12.2764C1.214 12.107 1 11.7607 1 11.382V1Z" fill="#22d3ee" />
+                  <svg width="12" height="16" viewBox="0 0 12 16" className="text-cyan-400">
+                    <path d="M1 1C1 0.447715 1.44772 0 2 0H10C10.5523 0 11 0.447715 11 1V11.382C11 11.7607 10.786 12.107 10.4472 12.2764L6.44721 14.2764C6.16569 14.4172 5.83431 14.4172 5.55279 14.2764L1.55279 12.2764C1.214 12.107 1 11.7607 1 11.382V1Z" fill="currentColor" />
                   </svg>
                 </div>
               </div>
@@ -920,16 +938,16 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
             <div
               key={track.id}
               data-track-id={track.id}
-              className={`flex border-b border-[#27272a]/30 group/track relative transition-all ${
+              className={`${styles.trackRow} flex group/track relative transition-all ${
                 highlightedTrackId === track.id ? 'bg-cyan-500/20 ring-1 ring-cyan-500/50' : 'bg-zinc-900/20 hover:bg-zinc-900/40'
               } ${track.isMainTrack ? 'border-l-4 border-l-blue-500' : ''}`}
-              style={{ height: TRACK_HEIGHT }}
+              style={cssVars({ '--track-height': `${TRACK_HEIGHT}px` })}
               onDragOver={(e) => handleDragOver(e, track.id)}
               onDrop={(e) => handleDrop(e, track.id)}
             >
               {/* 轨道头部 */}
               <div
-                className="sticky left-0 w-[200px] flex-shrink-0 bg-[#18181b] border-r border-[#27272a] z-30 flex flex-col justify-center px-3"
+                className={`${styles.trackHeader} sticky left-0 w-[200px] flex-shrink-0 z-30 flex flex-col justify-center px-3`}
                 onContextMenu={(e) => handleTrackContextMenu(e, track)}
               >
                 <div className="flex items-center justify-between gap-1">
@@ -1011,7 +1029,7 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
               </div>
 
               {/* 轨道内容 */}
-              <div className="relative flex-1 h-full overflow-clip" style={{ width: totalWidth }}>
+              <div className={`${styles.trackLane} relative flex-1 h-full overflow-clip`} style={cssVars({ '--timeline-track-width': `${totalWidth}px` })}>
                 {(() => {
                   const resolvedTrack = resolvedTracksMap.get(track.id);
                   const clipWindows = new Map(
@@ -1045,12 +1063,15 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
                         key={clip.id}
                         onMouseDown={(e) => handleClipMouseDown(e, clip)}
                         onContextMenu={(e) => handleClipContextMenu(e, clip)}
-                        className={`absolute top-2 bottom-2 rounded-md overflow-hidden transition-shadow border shadow-sm group/clip select-none
+                        className={`${styles.clipBlock} absolute top-2 bottom-2 rounded-md overflow-hidden transition-shadow border shadow-sm group/clip select-none
                           ${selectedClipId === clip.id ? 'border-cyan-400 ring-2 ring-cyan-500/20 z-10' : 'border-transparent hover:border-zinc-500 z-0'}
                           ${dragState?.clipId === clip.id ? 'cursor-grabbing opacity-90 shadow-xl' : 'cursor-grab'}
                           ${dragState?.clipId === clip.id && dragState.hasCollision ? 'border-red-500 ring-2 ring-red-500/50' : ''}
                         `}
-                        style={{ left: clipLeft, width: clip.duration * pixelsPerSecond }}
+                        style={cssVars({
+                          '--clip-left': `${clipLeft}px`,
+                          '--clip-width': `${clip.duration * pixelsPerSecond}px`,
+                        })}
                       >
                         <Filmstrip clip={clip} frames={frameMap.get(clip.id)?.frames} pixelsPerSecond={pixelsPerSecond} />
 
@@ -1058,8 +1079,8 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
                         {clip.keyframes?.map(kf => (
                           <div
                             key={kf.id}
-                            className={`absolute top-1/2 -translate-x-1/2 -translate-y-1/2 w-3 h-3 cursor-pointer z-30 ${selectedKeyframeId === kf.id ? 'scale-125' : 'hover:scale-110'}`}
-                            style={{ left: kf.time * pixelsPerSecond }}
+                            className={`${styles.keyframeMarker} absolute top-1/2 -translate-x-1/2 -translate-y-1/2 w-3 h-3 cursor-pointer z-30 ${selectedKeyframeId === kf.id ? 'scale-125' : 'hover:scale-110'}`}
+                            style={cssVars({ '--keyframe-left': `${kf.time * pixelsPerSecond}px` })}
                             onClick={(e) => {
                               e.stopPropagation();
                               onSelectKeyframe?.(clip.id, kf.id);
@@ -1068,7 +1089,11 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
                             onContextMenu={(e) => handleKeyframeContextMenu(e, clip.id, kf)}
                           >
                             <svg viewBox="0 0 12 12" className="w-full h-full drop-shadow">
-                              <path d="M6 0L12 6L6 12L0 6Z" fill={selectedKeyframeId === kf.id ? '#22d3ee' : '#facc15'} stroke={selectedKeyframeId === kf.id ? '#0891b2' : '#ca8a04'} strokeWidth="1" />
+                              <path
+                                className={selectedKeyframeId === kf.id ? styles.selectedKeyframeIcon : styles.keyframeIcon}
+                                d="M6 0L12 6L6 12L0 6Z"
+                                strokeWidth="1"
+                              />
                             </svg>
                           </div>
                         ))}
@@ -1093,7 +1118,7 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
 
           {/* 新建轨道区域 */}
           <div className="flex h-24 group" onDragOver={(e) => handleDragOver(e)} onDrop={(e) => handleDrop(e)}>
-            <div className="sticky left-0 w-[200px] flex-shrink-0 bg-[#18181b] border-r border-[#27272a] z-20" />
+            <div className={`${styles.trackHeaderSpacer} sticky left-0 w-[200px] flex-shrink-0 z-20`} />
             <div className="flex-1 border-t-2 border-dashed border-zinc-800 m-2 rounded flex items-center justify-center text-zinc-700 transition-colors group-hover:border-zinc-600">
               拖入素材创建新轨道
             </div>
@@ -1104,38 +1129,31 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
       {/* 播放头竖线 */}
       {playheadX > 0 && playheadPositionRef.current.lineTop > 0 && (
         <div
-          className="fixed bg-cyan-400 pointer-events-none z-20"
-          style={{
-            left: playheadX,
-            top: playheadPositionRef.current.lineTop,
-            bottom: 0,
-            width: 1,
-            transform: 'translateX(-50%)',
-          }}
+          className={`${styles.playheadLine} fixed bg-cyan-400 pointer-events-none z-20`}
+          style={cssVars({
+            '--line-left': `${playheadX}px`,
+            '--line-top': `${playheadPositionRef.current.lineTop}px`,
+          })}
         />
       )}
 
       {/* 吸附对齐线 */}
       {snapLine && playheadPositionRef.current.lineTop > 0 && (
         <div
-          className="fixed pointer-events-none z-30"
-          style={{
-            left: playheadPositionRef.current.viewportX + snapLine.x - (containerRef.current?.scrollLeft || 0),
-            top: playheadPositionRef.current.lineTop,
-            bottom: 0,
-            width: 2,
-            transform: 'translateX(-50%)',
-            background: snapLine.type === 'playhead'
-              ? 'linear-gradient(to bottom, #22d3ee, #22d3ee 4px, transparent 4px, transparent 8px)'
-              : 'linear-gradient(to bottom, #a855f7, #a855f7 4px, transparent 4px, transparent 8px)',
-            backgroundSize: '2px 8px',
-          }}
+          className={`${styles.snapLine} ${snapLine.type === 'playhead' ? styles.snapLinePlayhead : styles.snapLineClip} fixed pointer-events-none z-30`}
+          style={cssVars({
+            '--line-left': `${playheadPositionRef.current.viewportX + snapLine.x - (containerRef.current?.scrollLeft || 0)}px`,
+            '--line-top': `${playheadPositionRef.current.lineTop}px`,
+          })}
         />
       )}
 
       {/* 素材拖拽预览 */}
       {draggingAsset && (
-        <div className="fixed pointer-events-none z-[9999] transform -translate-x-1/2 -translate-y-1/2" style={{ left: mousePos.x, top: mousePos.y }}>
+        <div
+          className={`${styles.dragPreview} fixed pointer-events-none z-[9999] transform -translate-x-1/2 -translate-y-1/2`}
+          style={cssVars({ '--preview-left': `${mousePos.x}px`, '--preview-top': `${mousePos.y}px` })}
+        >
           <div className="bg-cyan-500/90 text-white text-xs px-3 py-2 rounded-lg shadow-xl flex items-center gap-2 whitespace-nowrap">
             {(draggingAsset.type === MediaType.VIDEO || draggingAsset.type === MediaType.IMAGE) && <Film size={14} />}
             {draggingAsset.type === MediaType.AUDIO && <Music size={14} />}
@@ -1148,8 +1166,8 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
       {/* 右键菜单 */}
       {contextMenu && (
         <div
-          className="fixed z-[10000] bg-zinc-900 border border-zinc-700 rounded-lg shadow-2xl py-1 min-w-[160px]"
-          style={{ left: contextMenu.x, top: contextMenu.y }}
+          className={`${styles.contextMenu} fixed z-[10000] bg-zinc-900 border border-zinc-700 rounded-lg shadow-2xl py-1 min-w-[160px]`}
+          style={cssVars({ '--menu-left': `${contextMenu.x}px`, '--menu-top': `${contextMenu.y}px` })}
           onClick={(e) => e.stopPropagation()}
         >
           {contextMenu.type === 'clip' && (
@@ -1164,7 +1182,7 @@ export const SimpleTimeline: React.FC<TimelineProps> = ({
                   }}
                 >
                   <svg viewBox="0 0 12 12" className="w-3 h-3">
-                    <path d="M6 0L12 6L6 12L0 6Z" fill="#facc15" />
+                    <path d="M6 0L12 6L6 12L0 6Z" fill="currentColor" className="text-yellow-400" />
                   </svg>
                   添加关键帧
                 </button>

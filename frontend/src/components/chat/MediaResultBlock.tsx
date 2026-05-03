@@ -11,7 +11,7 @@ import { LoadingOutlined, EditOutlined, ReloadOutlined, DeleteOutlined, Download
 import type { ChatImageRef, MediaResultMeta } from './chatMediaGeneration';
 import { electronService } from '../../services/electronService';
 import { fromKomaLocalUrl } from '../../utils/urlUtils';
-import styles from './MediaResultBlock.module.css';
+import styles from './MediaResultBlock.module.scss';
 
 interface MediaResultBlockProps {
   meta: MediaResultMeta;
@@ -164,7 +164,7 @@ export const MediaResultBlock: React.FC<MediaResultBlockProps> = ({
       <div className={styles.body}>
         {meta.generating && (
           <div className={styles.placeholder}>
-            <Spin indicator={<LoadingOutlined style={{ fontSize: 28 }} spin />} />
+            <Spin indicator={<LoadingOutlined className={styles.loadingIcon} spin />} />
             <span>正在{MODE_LABEL[meta.mode]}...</span>
           </div>
         )}

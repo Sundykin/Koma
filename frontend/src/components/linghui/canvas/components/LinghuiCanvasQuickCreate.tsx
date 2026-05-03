@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { type CSSProperties } from 'react';
 import type { LinghuiNodeCatalogItem, LinghuiNodeType } from '../../../../types/linghui';
 import type { QuickCreateState } from '../state/linghuiCanvasShared';
 
@@ -18,7 +18,10 @@ export const LinghuiCanvasQuickCreate: React.FC<LinghuiCanvasQuickCreateProps> =
   return (
     <div
       className="linghuiQuickCreate nopan nowheel"
-      style={{ left: quickCreate.x, top: quickCreate.y }}
+      style={{
+        '--linghui-overlay-left': `${quickCreate.x}px`,
+        '--linghui-overlay-top': `${quickCreate.y}px`,
+      } as CSSProperties}
       onPointerDown={(event) => event.stopPropagation()}
     >
       <div className="linghuiQuickCreateHeader">快速创建</div>
@@ -44,7 +47,10 @@ export const LinghuiCanvasQuickCreate: React.FC<LinghuiCanvasQuickCreateProps> =
                   className="linghuiQuickCreateItem"
                   onClick={() => onAddNode(item.type)}
                 >
-                  <span className="linghuiContextMenuDot" style={{ background: item.accent }} />
+                  <span
+                    className="linghuiContextMenuDot"
+                    style={{ '--linghui-accent': item.accent } as CSSProperties}
+                  />
                   <span className="linghuiQuickCreateItemBody">
                     <span className="linghuiQuickCreateItemLabel">{item.label}</span>
                     <span className="linghuiQuickCreateItemDesc">{item.description}</span>

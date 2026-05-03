@@ -72,7 +72,7 @@ export interface Clip {
   text?: string;            // 字幕文本内容
   fontSize?: number;        // 字号 (默认 48)
   fontFamily?: string;      // 字体 (默认 'Arial')
-  fontColor?: string;       // 字体颜色 (默认 '#FFFFFF')
+  fontColor?: string;       // 字体颜色（默认白色）
   backgroundColor?: string; // 背景色 (可选)
   textPosition?: 'top' | 'center' | 'bottom'; // 预设位置
   textAlign?: 'left' | 'center' | 'right';    // 文本对齐

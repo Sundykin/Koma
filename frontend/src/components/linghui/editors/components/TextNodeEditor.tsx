@@ -142,15 +142,15 @@ export const TextNodeEditor: React.FC<TextNodeEditorProps> = ({
 
       {mode === 'manual' ? (
         <div className="linghuiEditorField">
-          <textarea
-            className="linghuiNodeTextarea"
-            placeholder="直接输入或粘贴角色设定、剧情描述、镜头要求等内容"
-            value={content}
-            onChange={event => updateProp('content', event.target.value)}
-            onMouseDown={event => event.stopPropagation()}
-            onKeyDown={event => event.stopPropagation()}
-            style={{ minHeight: 196 }}
-          />
+        <textarea
+          className="linghuiNodeTextarea"
+          placeholder="直接输入或粘贴角色设定、剧情描述、镜头要求等内容"
+          value={content}
+          onChange={event => updateProp('content', event.target.value)}
+          onMouseDown={event => event.stopPropagation()}
+          onKeyDown={event => event.stopPropagation()}
+          style={{ '--linghui-textarea-min-height': '196px' } as React.CSSProperties}
+        />
         </div>
       ) : (
         <>
@@ -160,7 +160,6 @@ export const TextNodeEditor: React.FC<TextNodeEditorProps> = ({
               onChange={value => updateProp('prompt', value)}
               references={promptReferences}
               placeholder="描述要生成什么文本，输入 @ 引用上游产物"
-              darkTheme
               surfaceStyle="fusion"
               minHeight="112px"
               maxHeight="220px"
@@ -168,13 +167,13 @@ export const TextNodeEditor: React.FC<TextNodeEditorProps> = ({
           </div>
 
           <div className="linghuiEditorField">
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+            <div className="linghuiEditorInlineHeader">
               <span className="linghuiEditorSettingsLabel">实时输出</span>
               <span className="linghuiEditorSummaryPill">{outputText.length} 字</span>
             </div>
             <div
-              className="linghuiNodeTextarea"
-              style={{ minHeight: 196, overflow: 'auto', whiteSpace: 'pre-wrap', color: '#e4e4e7' }}
+              className="linghuiNodeTextarea linghuiEditorOutputText"
+              style={{ '--linghui-output-min-height': '196px' } as React.CSSProperties}
             >
               {outputText || (isStreaming ? '正在等待模型返回首段内容...' : '运行后会在这里显示实时文本结果')}
             </div>
@@ -194,7 +193,7 @@ export const TextNodeEditor: React.FC<TextNodeEditorProps> = ({
               }}
               classNames={{ root: 'linghuiNodeEditorDropdownMenu' }}
               getPopupContainer={triggerNode => triggerNode.ownerDocument.body}
-              styles={{ root: { zIndex: 1200 } }}
+              overlayClassName="linghuiNodeEditorDropdownOverlay"
             >
               <button
                 type="button"

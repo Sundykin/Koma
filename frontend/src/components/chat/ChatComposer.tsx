@@ -62,11 +62,11 @@ const VIDEO_SUB_META: Record<VideoSubMode, { label: string; capability: string; 
   'first-last': { label: '首尾帧', capability: 'video.start-end-to-video', minImages: 2, maxImages: 2, allowImage: true },
   'multi-ref': { label: '多参考', capability: 'video.reference-to-video', minImages: 1, maxImages: 12, allowImage: true },
 };
-import styles from './ChatComposer.module.css';
+import styles from './ChatComposer.module.scss';
+import { cssVars } from '../../theme/runtime';
 
 const ACCEPTED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
-
 /** 兼容旧 import - 实际不再使用 */
 export interface AttachmentFile {
   id: string;
@@ -451,7 +451,7 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
         type="file"
         accept={ACCEPTED_IMAGE_TYPES.join(',')}
         multiple
-        style={{ display: 'none' }}
+        className={styles.fileInput}
         onChange={handleFileSelect}
       />
 
@@ -630,7 +630,7 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
         <Popover content={mentionPopoverContent} trigger="click" placement="topLeft" arrow={false}>
           <Tooltip title="引用已上传/历史生成的图">
             <button type="button" className={styles.chipIcon} disabled={disabled}>
-              <span style={{ fontSize: 16, fontWeight: 500 }}>@</span>
+              <span className={styles.mentionGlyph}>@</span>
             </button>
           </Tooltip>
         </Popover>
@@ -659,12 +659,20 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
   );
 };
 
-function ratioBoxStyle(ratio: string): React.CSSProperties {
+function ratioBoxStyle(ratio: string) {
   const [w, h] = ratio.split(':').map(Number);
   if (!w || !h) return {};
   const max = 18;
-  if (w >= h) return { width: max, height: (max * h) / w };
-  return { width: (max * w) / h, height: max };
+  if (w >= h) {
+    return cssVars({
+      '--ratio-box-width': `${max}px`,
+      '--ratio-box-height': `${(max * h) / w}px`,
+    });
+  }
+  return cssVars({
+    '--ratio-box-width': `${(max * w) / h}px`,
+    '--ratio-box-height': `${max}px`,
+  });
 }
 
 export default ChatComposer;

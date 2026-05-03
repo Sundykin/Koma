@@ -11,7 +11,7 @@ import {
   ToolOutlined,
 } from '@ant-design/icons';
 import type { ToolCallState, ToolCallStatus } from '../../types/mcp';
-import styles from './ToolCallItem.module.css';
+import styles from './ToolCallItem.module.scss';
 
 const { Text, Paragraph } = Typography;
 

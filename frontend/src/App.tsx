@@ -90,7 +90,7 @@ const LinghuiPage = lazy(() => import('./components/linghui').then(m => ({ defau
 
 // 加载中占位组件
 const ViewLoading: React.FC<{ tip?: string }> = ({ tip = '加载中...' }) => (
-  <div className="flex h-full items-center justify-center bg-zinc-950" style={{ whiteSpace: 'nowrap' }}>
+  <div className="flex h-full items-center justify-center whitespace-nowrap bg-zinc-950">
     <Spin size="large" description={tip}><div className="p-12" /></Spin>
   </div>
 );
@@ -736,7 +736,7 @@ const AppContent: React.FC = () => {
               className="fixed bottom-28 right-4 z-40 w-[22rem] max-w-[calc(100vw-2rem)] rounded-2xl border border-amber-400/20 bg-zinc-900/95 p-4 text-sm shadow-2xl shadow-black/30 backdrop-blur"
             >
               <div className="flex items-start gap-3">
-                <div className="mt-1 h-2 w-2 shrink-0 rounded-full bg-amber-300 shadow-[0_0_12px_rgba(252,211,77,0.55)]" />
+                <div className="mt-1 h-2 w-2 shrink-0 rounded-full bg-amber-300 shadow-[0_0_12px_color-mix(in_srgb,var(--token-status-warning)_55%,transparent)]" />
                 <div className="min-w-0 flex-1">
                   <div className="font-medium text-zinc-100">发现未完成任务</div>
                   <div className="mt-1.5 leading-5 text-zinc-300">
