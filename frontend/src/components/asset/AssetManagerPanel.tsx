@@ -30,7 +30,7 @@ import {
   removeSceneEpisodeRef,
   removePropEpisodeRef,
 } from '../../store/projectStore';
-import { startShotAnalysis } from '../../services/ShotAnalysisService';
+import { submitShotAnalysisTask } from '../../services/analysisTaskClient';
 import { AssetListPanel, AssetType } from './AssetListPanel';
 import { CharacterDetailPanel } from './CharacterDetailPanel';
 import { SceneDetailPanel } from './SceneDetailPanel';
@@ -451,16 +451,19 @@ export const AssetManagerPanel: React.FC<AssetManagerPanelProps> = ({
 
     setIsGeneratingShots(true);
     try {
-      await startShotAnalysis(
+      const { deduped } = await submitShotAnalysisTask({
         projectId,
         episodeId,
-        episodeName || `${t('editor.episode')} ${episodeId}`,
+        episodeName: episodeName || `${t('editor.episode')} ${episodeId}`,
         script,
         llmSelection,
-        undefined,
-        styleSnapshot
-      );
-      message.info(t('asset.aiShotStarted'));
+        styleSnapshot,
+      });
+      if (deduped) {
+        message.info('当前剧集已在后台生成中，请等待完成后再试。');
+      } else {
+        message.info(t('asset.aiShotStarted'));
+      }
       onNext();
     } catch (err: any) {
       message.error(err.message || t('asset.startShotFailed'));

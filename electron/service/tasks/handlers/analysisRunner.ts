@@ -44,8 +44,10 @@ export function registerAnalysisHandlers(): void {
   if (registered) return;
   registered = true;
 
+  // 注意：type 复用 service 历史已用的 'shot-analysis' / 'script-analysis'，
+  // 这样 dedup 检查（"是否已有同 episode 在跑"）对新旧两条提交路径生效。
   taskRunner.registerHandler({
-    type: 'analysis:shot',
+    type: 'shot-analysis',
     concurrency: 1,
     recoverable: false,
     async run(ctx) {
@@ -60,7 +62,7 @@ export function registerAnalysisHandlers(): void {
   });
 
   taskRunner.registerHandler({
-    type: 'analysis:script',
+    type: 'script-analysis',
     concurrency: 1,
     recoverable: false,
     async run(ctx) {

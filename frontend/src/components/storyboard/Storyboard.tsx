@@ -23,7 +23,7 @@ import { loadEpisodeShots, saveEpisodeShots, loadCharacters, loadScenes, loadPro
 import { generateShotImage, batchGenerateShotImages } from '../../services/ShotGenerationService';
 import { shotRenderWorkflow, batchRenderShots } from '../../workflow/shotRenderWorkflow';
 import { runWithTask } from '../../services/taskRunner';
-import { startShotAnalysis } from '../../services/ShotAnalysisService';
+import { submitShotAnalysisTask } from '../../services/analysisTaskClient';
 import type { PresetAssets } from '../../services/ShotAnalysisService';
 import { generateShotPrompt, batchGenerateShotPrompts } from '../../services/ShotPromptService';
 import { TaskManager } from '../../services/TaskManager';
@@ -1329,16 +1329,20 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     setPresetAssets(assets);
     setIsSubmittingAnalysis(true);
     try {
-      await startShotAnalysis(
+      const { deduped } = await submitShotAnalysisTask({
         projectId,
-        episodeId!,
-        episodeName || `剧集 ${episodeId}`,
-        script!,
+        episodeId: episodeId!,
+        episodeName: episodeName || `剧集 ${episodeId}`,
+        script: script!,
         llmSelection,
-        assets,  // 传递预选资产
-        styleSnapshot
-      );
-      message.info('AI 分镜生成任务已启动，可在状态栏查看进度');
+        presetAssets: assets,
+        styleSnapshot,
+      });
+      if (deduped) {
+        message.info('当前剧集已在后台生成中，请等待完成后再试。');
+      } else {
+        message.info('AI 分镜生成任务已启动，可在状态栏查看进度');
+      }
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : String(err);
       message.error(errorMessage || '启动生成失败');
@@ -1376,8 +1380,19 @@ export const Storyboard: React.FC<StoryboardProps> = ({
       // 无已绑定资产，直接生成
       setIsSubmittingAnalysis(true);
       try {
-        await startShotAnalysis(projectId, episodeId, episodeName || `剧集 ${episodeId}`, script, llmSelection, undefined, styleSnapshot);
-        message.info('AI 分镜生成任务已启动，可在状态栏查看进度');
+        const { deduped } = await submitShotAnalysisTask({
+          projectId,
+          episodeId,
+          episodeName: episodeName || `剧集 ${episodeId}`,
+          script,
+          llmSelection,
+          styleSnapshot,
+        });
+        if (deduped) {
+          message.info('当前剧集已在后台生成中，请等待完成后再试。');
+        } else {
+          message.info('AI 分镜生成任务已启动，可在状态栏查看进度');
+        }
       } catch (err: any) {
         logger.error('启动 AI 分镜生成失败', err);
         message.error(err.message || '启动生成失败');

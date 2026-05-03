@@ -1074,7 +1074,9 @@ export class BackgroundAnalysisService {
 }
 
 /**
- * 便捷函数：启动后台解析
+ * @deprecated 现役 UI 已切到 services/analysisTaskClient.submitScriptAnalysisTask
+ *   （走主进程 'script-analysis' handler，含限流 + 取消 + 多窗口共享状态）。
+ *   保留此 renderer-driven 入口作为应急 fallback；新代码不要再调。
  */
 export async function startBackgroundAnalysis(
   projectId: string,

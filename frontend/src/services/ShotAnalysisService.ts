@@ -479,7 +479,9 @@ export class ShotAnalysisService {
 }
 
 /**
- * 便捷函数：启动分镜生成
+ * @deprecated 现役 UI 已切到 services/analysisTaskClient.submitShotAnalysisTask
+ *   （走主进程 'shot-analysis' handler，含限流 + 取消 + 多窗口共享状态）。
+ *   保留此 renderer-driven 入口作为应急 fallback；新代码不要再调。
  */
 export async function startShotAnalysis(
   projectId: string,

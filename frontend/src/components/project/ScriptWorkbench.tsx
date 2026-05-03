@@ -10,7 +10,7 @@ import { TweetScriptModal } from './TweetScriptModal';
 import { ScriptEditor } from '../../editor';
 import { saveEpisode, loadEpisodeAnalysis, saveEpisodeAnalysis } from '../../store/projectStore';
 import { generateRandomScript, polishScript } from '../../workflow/scriptGenerator';
-import { startBackgroundAnalysis } from '../../services/ScriptAnalysisService';
+import { submitScriptAnalysisTask } from '../../services/analysisTaskClient';
 import { TaskManager } from '../../services/TaskManager';
 import { useActiveTask } from '../../hooks';
 import type { Project, Episode, AppSettings } from '../../types';
@@ -31,7 +31,7 @@ interface ScriptWorkbenchProps {
 
 export interface ScriptWorkbenchRef {
   flushSave: () => Promise<Episode | null>;
-  /** 触发当前剧集的剧本解析（先 flushSave 再 startBackgroundAnalysis） */
+  /** 触发当前剧集的剧本解析（先 flushSave 再 submitScriptAnalysisTask） */
   analyze: () => Promise<void>;
 }
 
@@ -271,15 +271,15 @@ export const ScriptWorkbench = forwardRef<ScriptWorkbenchRef, ScriptWorkbenchPro
         }, { resetStages: true });
       }
       try {
-        const task = await startBackgroundAnalysis(
-          project.id,
-          episode.id,
-          episode.title || `第${episode.number}集`,
-          localScript,
-          serializeMediaSelection(project.mediaSelections?.llm),
-          project.styleSnapshot,
-        );
-        if (task.metadata?.deduped) {
+        const { deduped } = await submitScriptAnalysisTask({
+          projectId: project.id,
+          episodeId: episode.id,
+          episodeName: episode.title || `第${episode.number}集`,
+          script: localScript,
+          llmSelection: serializeMediaSelection(project.mediaSelections?.llm),
+          styleSnapshot: project.styleSnapshot,
+        });
+        if (deduped) {
           message.info('当前剧集已在后台解析中，请等待完成后再试。');
           return;
         }
