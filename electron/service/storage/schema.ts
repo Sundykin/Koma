@@ -2,7 +2,7 @@
  * SQLite 数据库 Schema 定义
  */
 
-export const CURRENT_SCHEMA_VERSION = 4;
+export const CURRENT_SCHEMA_VERSION = 5;
 
 export const CREATE_TABLES_SQL = `
 -- 项目表
@@ -100,7 +100,7 @@ CREATE TABLE IF NOT EXISTS shots (
   meta_prompt TEXT,
   meta_seed INTEGER,
   meta_model TEXT,
-  script_content TEXT,
+  script_lines_json TEXT NOT NULL DEFAULT '[]',
   shot_type TEXT,
   camera_movement TEXT,
   duration REAL,
@@ -177,6 +177,7 @@ CREATE TABLE IF NOT EXISTS episodes (
   step_storyboard TEXT DEFAULT 'pending',
   step_video TEXT DEFAULT 'pending',
   has_analysis INTEGER DEFAULT 0,
+  script_ready INTEGER NOT NULL DEFAULT 0,
   analysis_json TEXT,
   metadata_json TEXT,
   created_at INTEGER NOT NULL,
@@ -1046,6 +1047,14 @@ CREATE INDEX IF NOT EXISTS idx_linghui_template_nodes_template ON linghui_workfl
 CREATE INDEX IF NOT EXISTS idx_linghui_template_edges_template ON linghui_workflow_template_edges(template_id, sort_order);
 CREATE INDEX IF NOT EXISTS idx_linghui_assets_workspace ON linghui_workspace_assets(workspace_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_linghui_history_workspace ON linghui_workspace_history_records(workspace_id, created_at DESC);
+`,
+  },
+  5: {
+    description: 'Replace shots.script_content with script_lines_json (one-line-per-block subtitles); add episodes.script_ready gate',
+    sql: `
+ALTER TABLE shots DROP COLUMN script_content;
+ALTER TABLE shots ADD COLUMN script_lines_json TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE episodes ADD COLUMN script_ready INTEGER NOT NULL DEFAULT 0;
 `,
   },
 };

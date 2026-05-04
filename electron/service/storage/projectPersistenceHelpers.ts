@@ -7,6 +7,7 @@ import type {
   Scene,
   Shot,
   ShotMeta,
+  ShotScriptLine,
   ShotVersion,
   StoredMediaAsset,
 } from '../../../frontend/src/types';
@@ -124,6 +125,39 @@ export interface TimelineClipAnimationRow {
   name?: string | null;
   duration: number;
   sort_order: number;
+}
+
+/**
+ * 解析 shots.script_lines_json 列。
+ * - 正常路径：解析 JSON 数组，过滤掉非法项，保证 id / text 都存在
+ * - 兜底：JSON 解析失败 / 数组为空时，按 description 文本按 \n 拆分作为字幕行
+ *   （应对历史数据 / dev 环境数据），每行生成新 id
+ */
+function parseScriptLines(raw: string | null | undefined, fallbackText?: string | null): ShotScriptLine[] {
+  if (raw && raw !== '[]') {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        const out: ShotScriptLine[] = [];
+        for (const item of parsed) {
+          if (!item || typeof item !== 'object') continue;
+          const id = typeof (item as Record<string, unknown>).id === 'string' ? (item as Record<string, string>).id : '';
+          const text = typeof (item as Record<string, unknown>).text === 'string' ? (item as Record<string, string>).text : '';
+          if (!text) continue;
+          out.push({ id: id || `line-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, text });
+        }
+        if (out.length > 0) return out;
+      }
+    } catch {
+      // 落到下面的 fallback 路径
+    }
+  }
+  const text = (fallbackText || '').trim();
+  if (!text) return [];
+  return text.split(/\r?\n/).map(line => line.trim()).filter(Boolean).map(line => ({
+    id: `line-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    text: line,
+  }));
 }
 
 function boolToInt(value?: boolean): number {
@@ -447,6 +481,7 @@ export function episodeToRow(episode: Episode, projectId: string): EpisodeRow {
     step_storyboard: episode.stepProgress?.storyboard ?? 'pending',
     step_video: episode.stepProgress?.video ?? 'pending',
     has_analysis: boolToInt(episode.hasAnalysis),
+    script_ready: boolToInt(episode.scriptReady),
     analysis_json: undefined,
     metadata_json: undefined,
     created_at: episode.createdAt,
@@ -468,22 +503,25 @@ export function episodeRowToEntity(row: EpisodeRow): Episode {
       video: row.step_video || 'pending',
     },
     hasAnalysis: intToBool(row.has_analysis),
+    scriptReady: intToBool(row.script_ready),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
 }
 
 export function shotToRow(shot: Shot, projectId: string, sortOrder: number, episodeId?: string): ShotRow {
+  const scriptLines = Array.isArray(shot.scriptLines) ? shot.scriptLines : [];
+  const description = scriptLines.map(line => line.text).join('\n');
   return {
     id: shot.id,
     project_id: projectId,
     episode_id: episodeId,
     shot_number: sortOrder,
-    description: shot.scriptContent,
+    description,
     meta_prompt: undefined,
     meta_seed: undefined,
     meta_model: undefined,
-    script_content: shot.scriptContent,
+    script_lines_json: JSON.stringify(scriptLines),
     shot_type: shot.shotType,
     camera_movement: shot.cameraMovement,
     duration: shot.duration,
@@ -530,7 +568,7 @@ export function shotRowToEntity(
 
   return {
     id: row.id,
-    scriptContent: row.script_content || row.description || '',
+    scriptLines: parseScriptLines(row.script_lines_json, row.description),
     shotType: (row.shot_type as Shot['shotType']) || 'medium',
     cameraMovement: (row.camera_movement as Shot['cameraMovement']) || 'static',
     duration: typeof row.duration === 'number' ? row.duration : 4,

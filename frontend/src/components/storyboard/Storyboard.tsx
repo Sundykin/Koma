@@ -52,7 +52,7 @@ import {
 import { getModelMaxReferenceImages } from '../../providers/itv/modelCatalog';
 import './Storyboard.scss';
 import './ShotListEditor.scss';
-import { getMediaAssetDisplaySource } from '../../types';
+import { getMediaAssetDisplaySource, scriptLinesFromText, getShotScriptText } from '../../types';
 
 const logger = createLogger('Storyboard');
 
@@ -86,7 +86,7 @@ function mergeShots(target: Shot, source: Shot, durationSpec: VideoDurationSpec)
   };
   return {
     ...target,
-    scriptContent: [target.scriptContent, source.scriptContent].filter(Boolean).join('\n'),
+    scriptLines: [...(target.scriptLines || []), ...(source.scriptLines || [])],
     imagePrompt: [target.imagePrompt, source.imagePrompt].filter(Boolean).join('\n\n'),
     duration: clampDurationToSpec(target.duration + source.duration, durationSpec),
     characters: [...new Set([...target.characters, ...source.characters])],
@@ -699,10 +699,11 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     }
   }, [projectId, episodeId, shots, shotVideoSupportMap, effectiveSettings, ttiSelection, itvSelection, ttsSelection, aspectRatio, styleSnapshot, message, refreshShotsFromStore]);
 
-  // 剧本内容变更
+  // 剧本内容变更（旧路径：textarea 整段输入）
+  // TODO[Phase3]: 块列表 UI 上线后，这条路径会被 ShotScriptLines 的 onChange 取代
   const handleScriptChange = useCallback((shotId: string, scriptContent: string) => {
     const updatedShots = shots.map(s =>
-      s.id === shotId ? { ...s, scriptContent } : s
+      s.id === shotId ? { ...s, scriptLines: scriptLinesFromText(scriptContent) } : s
     );
     saveAllShots(updatedShots);
   }, [shots, saveAllShots]);
@@ -1310,7 +1311,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
   // 创建新分镜
   const createNewShot = useCallback((): Shot => ({
     id: uuidv4(),
-    scriptContent: '',
+    scriptLines: [],
     shotType: 'medium',
     cameraMovement: 'static',
     duration: 10,
@@ -1490,7 +1491,9 @@ export const Storyboard: React.FC<StoryboardProps> = ({
   }, [projectId, episodeId, episodeName, script, llmSelection, characters, props, message, styleSnapshot]);
 
   const handleSaveEdit = useCallback(async () => {
-    if (!editFormData.scriptContent?.trim()) {
+    const editScriptText = (editFormData as Shot & { scriptText?: string }).scriptText
+      ?? getShotScriptText(editFormData as Shot);
+    if (!editScriptText.trim()) {
       message.warning('请输入剧本内容');
       return;
     }
@@ -1501,6 +1504,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     const updatedShot: Shot = {
       ...editingShot!,
       ...editFormData,
+      scriptLines: scriptLinesFromText(editScriptText),
       duration: clampDurationToSpec(editFormData.duration ?? editingShot?.duration, itvDurationSpec),
     } as Shot;
     const isNew = !shots.find(s => s.id === editingShot!.id);
@@ -1893,9 +1897,9 @@ export const Storyboard: React.FC<StoryboardProps> = ({
           <Form.Item label="剧本内容" required>
             <TextArea
               rows={3}
-              placeholder="对应剧本中的内容..."
-              value={editFormData.scriptContent || ''}
-              onChange={(e) => setEditFormData(prev => ({ ...prev, scriptContent: e.target.value }))}
+              placeholder="对应剧本中的内容（每行一句字幕，回车换行）"
+              value={getShotScriptText(editFormData as Shot)}
+              onChange={(e) => setEditFormData(prev => ({ ...prev, scriptLines: scriptLinesFromText(e.target.value) }))}
             />
           </Form.Item>
 

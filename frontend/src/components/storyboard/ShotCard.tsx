@@ -36,6 +36,7 @@ import {
   AppstoreOutlined,
 } from '@ant-design/icons';
 import type { Shot, Character, Scene, Prop, StoredMediaAsset } from '../../types';
+import { getShotScriptText } from '../../types';
 import {
   getMediaAssetDisplaySource,
   getMediaAssetEditingSource,
@@ -700,9 +701,10 @@ export const ShotCard: React.FC<ShotCardProps> = ({
         {/* 列1: 剧本 */}
         <div className={`${SHOT_LAYOUT.colScript} border-r border-border-subtle flex flex-col`}>
           <div className="flex-1 p-1">
+            {/* TODO[Phase3]: 替换成 ShotScriptLines 块列表（拖拽 + 行内编辑 + 跨分镜拖动） */}
             <ShotScriptInput
               shotId={shot.id}
-              value={shot.scriptContent}
+              value={getShotScriptText(shot)}
               onScriptChange={onScriptChange}
             />
           </div>

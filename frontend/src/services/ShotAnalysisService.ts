@@ -4,6 +4,7 @@
  * 独立于剧本解析，作为单独的步骤执行
  */
 import type { Shot } from '../types';
+import { scriptLinesFromText } from '../types';
 import { resolvePromptTemplate } from '../store/promptTemplates';
 import { TaskManager, Task } from './TaskManager';
 import { createTaskCancellationSignal } from './taskCancellationSignal';
@@ -48,7 +49,7 @@ function splitCoverageUnits(script: string): string[] {
     .filter(unit => unit.length >= 6);
 }
 
-export function buildShotCoverageReport(script: string, shots: Pick<Shot, 'scriptContent'>[]): {
+export function buildShotCoverageReport(script: string, shots: Pick<Shot, 'scriptLines'>[]): {
   totalUnits: number;
   coveredUnits: number;
   coverageRatio: number;
@@ -59,7 +60,9 @@ export function buildShotCoverageReport(script: string, shots: Pick<Shot, 'scrip
     return { totalUnits: 0, coveredUnits: 0, coverageRatio: 1, missingSamples: [] };
   }
 
-  const shotText = normalizeForCoverage(shots.map(shot => shot.scriptContent || '').join('\n'));
+  const shotText = normalizeForCoverage(
+    shots.map(shot => (shot.scriptLines || []).map(line => line.text).join('\n')).join('\n')
+  );
   const missing = units.filter(unit => !shotText.includes(unit));
   const coveredUnits = units.length - missing.length;
   return {
@@ -278,7 +281,7 @@ export class ShotAnalysisService {
       // 之前一律走 normalizeShotDuration（grok 枚举）会把 seedance 渠道的有效值 5 强制吸到 6
       const shots: Shot[] = parsedShotPayloads.map((s, index) => ({
         id: `shot_${Date.now()}_${index}`,
-        scriptContent: s.scriptContent || '',
+        scriptLines: scriptLinesFromText(s.scriptContent || ''),
         shotType: s.shotType || 'medium',
         cameraMovement: s.cameraMovement || 'static',
         duration: clampDurationToSpec(s.duration, this.ctx.itvDurationSpec),

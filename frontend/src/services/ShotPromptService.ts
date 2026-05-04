@@ -4,6 +4,7 @@
  * v2: 支持 force 强制重新生成，分离 image/video 任务
  */
 import type { Prop, Shot, Character, Scene, ShotVideoMode } from '../types';
+import { getShotScriptText } from '../types';
 import { resolvePromptTemplate } from '../store/promptTemplates';
 import type { PromptTemplateType } from '../store/promptTemplates';
 import { loadScenes, loadProps, updateShot, loadEpisodeShots } from '../store/projectStore';
@@ -242,7 +243,7 @@ export class ShotPromptService {
     // 图片路径：仍使用旧通用模板
     const templateKey: PromptTemplateType = 'shot_image_prompt_generation';
     const templateVariables: Record<string, string> = {
-      scriptContent: shot.scriptContent,
+      scriptContent: getShotScriptText(shot),
       characters: shotCharacters.map(c => c.name).join(', ') || '无',
       scenes: shotScenes.map(s => s.name).join(', ') || '无',
       props: shotProps.map(p => p.name).join(', ') || '无',
@@ -314,7 +315,7 @@ export class ShotPromptService {
     // 视频推理模板（multi / firstframe）当前都不消费 {{stylePrefix}}——风格前缀仅由 TTI
     // 终稿模板使用。这里若仍传 stylePrefix 会触发 PromptTemplate 的"未声明变量"告警。
     const templateVariables: Record<string, string> = {
-      scriptContent: shot.scriptContent || '',
+      scriptContent: getShotScriptText(shot) || '',
       characters: formatCharacterMappingBaseline(shotCharacters, videoMode),
       scenes: formatSceneMappingBaseline(shotScenes, videoMode),
       props: formatPropMappingBaseline(shotProps, videoMode),
@@ -353,7 +354,7 @@ export class ShotPromptService {
       referenceBundle,
     );
     const dialogueGuardNote = buildDialogueGuardNote(
-      shot.scriptContent || '',
+      getShotScriptText(shot) || '',
       shotCharacters.map(character => character.name),
     );
 
@@ -426,7 +427,7 @@ export class ShotPromptService {
       .join('\n');
 
     const templateVariables: Record<string, string> = {
-      scriptContent: shot.scriptContent,
+      scriptContent: getShotScriptText(shot),
       characters: shotCharacters.map(c => `${c.name}（${c.appearance || c.description || ''}）`).join('; ') || '无',
       scenes: shotScenes.map(s => s.name).join(', ') || '无',
       props: shotProps.map(p => p.name).join(', ') || '无',
@@ -775,7 +776,7 @@ function formatShotContextInfo(
 ): string {
   if (!shot) return '无';
   const lines: string[] = [];
-  const script = (shot.scriptContent || '').trim();
+  const script = (getShotScriptText(shot) || '').trim();
   lines.push(`剧情：${script || '（空）'}`);
   if (options.withPrompt) {
     const prompt = (shot.videoPrompt || '').trim();

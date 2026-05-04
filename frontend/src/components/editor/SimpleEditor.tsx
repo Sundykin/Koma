@@ -25,6 +25,7 @@ import {
 import { useTransitionHandlers } from '../../features/transition/editor';
 import { useDefaultTransition } from '../../features/transition/hooks/useDefaultTransition';
 import type { Shot } from '../../types';
+import { getShotScriptText } from '../../types';
 import { createLogger } from '../../store/logger';
 import {
   getShotCurrentImageSource,
@@ -68,7 +69,7 @@ function shotsToTracks(shots: Shot[]): Track[] {
         duration: shotDuration,
         offset: 0,
         sourceDuration: shotDuration, // 源素材时长
-        name: shot.scriptContent?.slice(0, 20) || `镜头 ${shot.id}`,
+        name: getShotScriptText(shot).slice(0, 20) || `镜头 ${shot.id}`,
         type: mediaType,
         src: mediaPath,
         x: 0, y: 0, scale: 1, rotation: 0, opacity: 1,

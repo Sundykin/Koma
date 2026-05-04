@@ -5,6 +5,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { AssetItem } from '../../types/editor';
 import type { Shot, Character, Scene, Prop } from '../../types';
+import { getShotScriptText } from '../../types';
 import { loadEpisodeShots, loadCharacters, loadScenes, loadProps } from '../../store/projectStore';
 import { createLogger } from '../../store/logger';
 import {
@@ -67,7 +68,7 @@ export function useAssets({ projectId, episodeId }: UseAssetsOptions): UseAssets
       shots.forEach((shot: Shot) => {
         const videoPath = getShotCurrentVideoSource(shot);
         const imagePath = getShotCurrentImageSource(shot);
-        const shotName = shot.scriptContent?.trim().slice(0, 24) || `分镜 ${shot.id.slice(0, 6)}`;
+        const shotName = getShotScriptText(shot).trim().slice(0, 24) || `分镜 ${shot.id.slice(0, 6)}`;
 
         // 视频
         if (videoPath) {
