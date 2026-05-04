@@ -663,8 +663,8 @@ export const ShotCard: React.FC<ShotCardProps> = ({
           </div>
         </div>
 
-        {/* 列2: 资产 */}
-        <div className={`${SHOT_LAYOUT.colAssets} border-r border-border-subtle flex flex-col justify-center bg-bg-surface/10 p-1.5 gap-0.5 overflow-y-auto`}>
+        {/* 列2: 资产（纵向条目布局：每个资产占一行；hover 弹详情；点击切换选中） */}
+        <div className={`${SHOT_LAYOUT.colAssets} border-r border-border-subtle flex flex-col bg-bg-surface/10 p-1 gap-1 overflow-y-auto`}>
           <AssetSelector
             type="character"
             selectedIds={shot.characters || []}

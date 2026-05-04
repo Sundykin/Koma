@@ -9,8 +9,10 @@ export const COL_ACTION_WIDTH = 'w-14'; // 56px 操作列
 
 // 内容区域列宽度 (使用 flex 比例避免横向滚动)
 export const SHOT_LAYOUT = {
-  colScript: 'flex-[15] min-w-[120px]',
-  colAssets: 'flex-[12] min-w-[100px]', // 资产列变窄
+  // 剧本列加宽：分镜里多行字幕块需要更舒服的横向空间
+  colScript: 'flex-[22] min-w-[180px]',
+  // 资产列收窄：改为纵向条目布局后视觉密度更高，无需大宽度
+  colAssets: 'flex-[8] min-w-[120px]',
   colImageDesign: 'flex-[20] min-w-[160px]',
   colImageResult: 'flex-[18] min-w-[140px]', // 图像生成变宽
   colVideoDesign: 'flex-[20] min-w-[160px]',

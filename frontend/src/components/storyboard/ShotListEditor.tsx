@@ -204,16 +204,20 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
   }, [hasSelected, selectedIds, onBatchDelete]);
 
   // 当外部切换 activeShotId 时，把对应行滚动到可视区域内
+  // 用 ref 缓存 shots 列表，避免把 shots 放进依赖数组——shots 的任何字段变化（如剧本字幕行编辑）
+  // 都会触发 effect 重跑，结果是用户每次输入都把视图自动滚动一次，体验非常不可控
+  const shotsForScrollRef = useRef(shots);
+  shotsForScrollRef.current = shots;
   useEffect(() => {
     if (!activeShotId) return;
-    const idx = shots.findIndex((s) => s.id === activeShotId);
+    const idx = shotsForScrollRef.current.findIndex((s) => s.id === activeShotId);
     if (idx < 0) return;
     virtuosoRef.current?.scrollIntoView({
       index: idx,
       align: 'center',
       behavior: 'smooth',
     });
-  }, [activeShotId, shots]);
+  }, [activeShotId]);
 
   const renderShotRow = useCallback(
     (index: number, shot: Shot) => (
