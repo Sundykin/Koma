@@ -1,17 +1,18 @@
 import React, { useEffect, useState } from 'react';
-import { Modal, Form, Input, Radio, Space, Spin, Tooltip } from 'antd';
+import { Modal, Form, Input, Spin, Segmented, Row, Col, Tooltip } from 'antd';
 import {
   SoundOutlined,
   AppstoreOutlined,
-  QuestionCircleOutlined,
 } from '@ant-design/icons';
-import { Check } from 'lucide-react';
+import { Check, FileText, Image as ImageIcon } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import {
   DEFAULT_THEME_PRESET_ID,
   getAllThemePresets,
   type ThemePresetCatalogItem,
 } from '../../config/themePresets';
+import { ipc, ipcApiRoute } from '../../utils/ipcRenderer';
+import { toKomaLocalUrl } from '../../utils/urlUtils';
 import styles from './CreateProjectModal.module.scss';
 
 interface CreateProjectModalProps {
@@ -22,6 +23,8 @@ interface CreateProjectModalProps {
     mode: 'drama' | 'narration';
     aspectRatio: '16:9' | '9:16';
     stylePresetId: string;
+    /** 可选：粘贴的剧本，提供则自动创建第 1 集并把这段文本写入 scriptText */
+    scriptText?: string;
   }) => void;
 }
 
@@ -31,6 +34,9 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ isOpen, 
   const [themePresets, setThemePresets] = useState<ThemePresetCatalogItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedTheme, setSelectedTheme] = useState<string>(DEFAULT_THEME_PRESET_ID);
+  /** 每个 preset 的本地预览图 URL（来自 koma-local:// scheme） */
+  const [themeImages, setThemeImages] = useState<Record<string, string | null>>({});
+  const [scriptText, setScriptText] = useState('');
 
   useEffect(() => {
     if (!isOpen) {
@@ -42,18 +48,29 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ isOpen, 
       setLoading(true);
       try {
         const presets = await getAllThemePresets();
-        if (cancelled) {
-          return;
-        }
+        if (cancelled) return;
 
         setThemePresets(presets);
         if (!presets.some((preset) => preset.id === selectedTheme)) {
           setSelectedTheme(presets[0]?.id || DEFAULT_THEME_PRESET_ID);
         }
+
+        // 拉取每个 preset 的当前生效风格图（与设置面板逻辑一致）
+        const imageEntries = await Promise.all(presets.map(async (preset) => {
+          try {
+            const resp = await ipc.invoke(
+              ipcApiRoute.app.getActiveStyleReferenceImagePath,
+              { presetId: preset.id, fallbackFilename: preset.defaultStyleReferenceFile },
+            ) as { localPath: string | null } | null;
+            return [preset.id, resp?.localPath ? toKomaLocalUrl(resp.localPath) : null] as const;
+          } catch {
+            return [preset.id, null] as const;
+          }
+        }));
+        if (cancelled) return;
+        setThemeImages(Object.fromEntries(imageEntries));
       } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
+        if (!cancelled) setLoading(false);
       }
     };
 
@@ -68,18 +85,23 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ isOpen, 
     try {
       const values = await form.validateFields();
       const fallbackThemeId = themePresets[0]?.id || DEFAULT_THEME_PRESET_ID;
+      const trimmedScript = scriptText.trim();
       onCreate({
         title: values.title,
         mode: values.mode || 'drama',
         aspectRatio: values.aspectRatio || '16:9',
         stylePresetId: selectedTheme || fallbackThemeId,
+        scriptText: trimmedScript || undefined,
       });
       form.resetFields();
+      setScriptText('');
       setSelectedTheme(fallbackThemeId);
     } catch {
       // 验证失败
     }
   };
+
+  const selectedPreset = themePresets.find(t => t.id === selectedTheme);
 
   return (
     <Modal
@@ -89,7 +111,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ isOpen, 
       onOk={handleCreate}
       okText={t('project.createNow')}
       cancelText={t('common.cancel')}
-      width={680}
+      width={760}
       centered
       mask={{ closable: false }}
       destroyOnHidden
@@ -109,64 +131,80 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ isOpen, 
           <Input placeholder={t('project.projectNamePlaceholder')} autoFocus />
         </Form.Item>
 
-        <Form.Item name="mode" label={t('project.narrativeMode')}>
-          <Radio.Group buttonStyle="solid" className={styles.fullWidth}>
-            <Space orientation="vertical" className={styles.fullWidth} size="middle">
-              <Radio.Button
-                value="drama"
-                className={styles.modeButton}
-              >
-                <Space>
-                  <AppstoreOutlined />
-                  <span className={styles.optionLabel}>{t('project.dramaMode')}</span>
-                  <Tooltip title={t('project.dramaModeDesc')}>
-                    <QuestionCircleOutlined className={styles.helpIcon} />
-                  </Tooltip>
-                </Space>
-              </Radio.Button>
-              <Radio.Button
-                value="narration"
-                className={styles.modeButton}
-              >
-                <Space>
-                  <SoundOutlined />
-                  <span className={styles.optionLabel}>{t('project.narrationMode')}</span>
-                  <Tooltip title={t('project.narrationModeDesc')}>
-                    <QuestionCircleOutlined className={styles.helpIcon} />
-                  </Tooltip>
-                </Space>
-              </Radio.Button>
-            </Space>
-          </Radio.Group>
-        </Form.Item>
+        {/* 叙事模式 + 画面比例：紧凑同行（Segmented，节省纵向篇幅） */}
+        <Row gutter={16}>
+          <Col span={12}>
+            <Form.Item name="mode" label={t('project.narrativeMode')}>
+              <Segmented
+                block
+                size="middle"
+                options={[
+                  {
+                    value: 'drama',
+                    label: (
+                      <Tooltip title={t('project.dramaModeDesc')} placement="bottom">
+                        <span className={styles.segLabel}>
+                          <AppstoreOutlined /> {t('project.dramaMode')}
+                        </span>
+                      </Tooltip>
+                    ),
+                  },
+                  {
+                    value: 'narration',
+                    label: (
+                      <Tooltip title={t('project.narrationModeDesc')} placement="bottom">
+                        <span className={styles.segLabel}>
+                          <SoundOutlined /> {t('project.narrationMode')}
+                        </span>
+                      </Tooltip>
+                    ),
+                  },
+                ]}
+              />
+            </Form.Item>
+          </Col>
+          <Col span={12}>
+            <Form.Item name="aspectRatio" label="画面比例">
+              <Segmented
+                block
+                size="middle"
+                options={[
+                  {
+                    value: '16:9',
+                    label: (
+                      <span className={styles.segLabel}>
+                        <span className={`${styles.aspectIcon} ${styles.aspectIconLandscape}`} />
+                        16:9 横屏
+                      </span>
+                    ),
+                  },
+                  {
+                    value: '9:16',
+                    label: (
+                      <span className={styles.segLabel}>
+                        <span className={`${styles.aspectIcon} ${styles.aspectIconPortrait}`} />
+                        9:16 竖屏
+                      </span>
+                    ),
+                  },
+                ]}
+              />
+            </Form.Item>
+          </Col>
+        </Row>
 
-        <Form.Item name="aspectRatio" label="画面比例">
-          <Radio.Group buttonStyle="solid" className={styles.fullWidth}>
-            <Space className={styles.fullWidth} size="middle">
-              <Radio.Button
-                value="16:9"
-                className={styles.aspectButton}
-              >
-                <Space>
-                  <span className={`${styles.aspectIcon} ${styles.aspectIconLandscape}`} />
-                  <span className={styles.optionLabel}>16:9 横屏</span>
-                </Space>
-              </Radio.Button>
-              <Radio.Button
-                value="9:16"
-                className={styles.aspectButton}
-              >
-                <Space>
-                  <span className={`${styles.aspectIcon} ${styles.aspectIconPortrait}`} />
-                  <span className={styles.optionLabel}>9:16 竖屏</span>
-                </Space>
-              </Radio.Button>
-            </Space>
-          </Radio.Group>
-        </Form.Item>
-
-        {/* 视觉风格选择 */}
-        <Form.Item label={t('project.visualStyle')}>
+        {/* 视觉风格：图卡 grid（与设置面板风格管理一致） */}
+        <Form.Item
+          label={(
+            <span className={styles.themeLabelRow}>
+              <span>{t('project.visualStyle')}</span>
+              {selectedPreset && (
+                <span className={styles.themeLabelDesc}>{selectedPreset.description}</span>
+              )}
+            </span>
+          )}
+          className={styles.themeFormItem}
+        >
           {loading ? (
             <div className="py-6 text-center">
               <Spin size="small" />
@@ -175,29 +213,52 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ isOpen, 
             <div className={styles.themeGrid}>
               {themePresets.map(theme => {
                 const isSelected = selectedTheme === theme.id;
+                const imageUrl = themeImages[theme.id];
                 return (
                   <div
                     key={theme.id}
                     className={`${styles.themeCard} ${isSelected ? styles.themeCardSelected : ''}`}
                     onClick={() => setSelectedTheme(theme.id)}
                   >
-                    {isSelected && (
-                      <div className={styles.themeCheck}>
-                        <Check className={styles.themeCheckIcon} />
-                      </div>
-                    )}
-                    <div className={styles.themeName}>{theme.name}</div>
+                    <div className={styles.themeImage}>
+                      {imageUrl ? (
+                        <img src={imageUrl} alt={theme.name} loading="lazy" />
+                      ) : (
+                        <div className={styles.themeImageEmpty}>
+                          <ImageIcon className="w-5 h-5 opacity-40" />
+                        </div>
+                      )}
+                      {isSelected && (
+                        <div className={styles.themeCheck}>
+                          <Check className={styles.themeCheckIcon} />
+                        </div>
+                      )}
+                    </div>
+                    <div className={styles.themeName} title={theme.name}>{theme.name}</div>
                   </div>
                 );
               })}
             </div>
           )}
+        </Form.Item>
 
-          {selectedTheme && (
-            <div className={styles.themeDescription}>
-              {themePresets.find(t => t.id === selectedTheme)?.description}
-            </div>
+        {/* 剧本导入（可选） */}
+        <Form.Item
+          label={(
+            <span className={styles.importLabelRow}>
+              <FileText className="w-3.5 h-3.5" />
+              <span>导入剧本</span>
+              <span className={styles.importLabelHint}>可选 · 提供后自动创建第 1 集</span>
+            </span>
           )}
+          className={styles.importFormItem}
+        >
+          <Input.TextArea
+            value={scriptText}
+            onChange={(e) => setScriptText(e.target.value)}
+            placeholder="将完整剧本（或字幕格式文本）粘贴在这里，留空则进入空白项目"
+            autoSize={{ minRows: 4, maxRows: 10 }}
+          />
         </Form.Item>
       </Form>
     </Modal>

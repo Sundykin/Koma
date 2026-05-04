@@ -22,7 +22,7 @@ import {
   setCurrentProject,
   USER_INTERRUPTED_REASON,
 } from './store/projectOpenService';
-import { loadCharacters, loadScenes, loadProps, loadShots, loadEpisode, loadEpisodeShots, saveEpisode } from './store/projectStore';
+import { loadCharacters, loadScenes, loadProps, loadShots, loadEpisode, loadEpisodeShots, saveEpisode, createEpisode } from './store/projectStore';
 import { Spin, App as AntApp, Button, Input, Typography } from 'antd';
 import { KeyOutlined } from '@ant-design/icons';
 import {
@@ -403,6 +403,7 @@ const AppContent: React.FC = () => {
     mode: 'drama' | 'narration';
     aspectRatio: '16:9' | '9:16';
     stylePresetId: string;
+    scriptText?: string;
   }) => {
     try {
       const created = await createProjectAPI({
@@ -423,15 +424,35 @@ const AppContent: React.FC = () => {
         theme: created.theme,
         stylePrompt: created.stylePrompt,
       };
+
+      // 用户在创建表单里粘贴了剧本 → 自动创建第 1 集，把剧本写入；
+      // 不传则保持原有行为：用户进入空项目自行新建剧集
+      let firstEpisode: Episode | null = null;
+      const scriptText = data.scriptText?.trim() || '';
+      if (scriptText) {
+        try {
+          firstEpisode = await createEpisode(created.id, {
+            number: 1,
+            title: '第 1 集',
+            scriptText,
+            status: 'script',
+          });
+        } catch (epErr: unknown) {
+          // 项目本身已建成功；剧集失败不阻塞用户进入编辑器（手动添加即可）
+          logger.error('导入剧本时创建第 1 集失败', epErr);
+          message.warning('已创建项目，但导入剧本失败，请手动添加剧集');
+        }
+      }
+
       setActiveProject(newProject);
-      setActiveEpisode(null);
+      setActiveEpisode(firstEpisode);
       setEditorStep('script');
       setStepProgress({ assets: 'pending', storyboard: 'pending', video: 'pending' });
       setView('editor');
-      setScriptText('');
+      setScriptText(firstEpisode?.scriptText || '');
       setAnalysisData(null);
       setIsCreateModalOpen(false);
-      message.success('项目创建成功');
+      message.success(firstEpisode ? '项目已创建，剧本已导入到第 1 集' : '项目创建成功');
     } catch (err: any) {
       message.error(err.message || '创建项目失败');
     }
