@@ -102,8 +102,19 @@ export const ShotListHeader: React.FC<ShotListHeaderProps> = ({
   const hasSelected = selectedCount > 0;
   const targetLabel = hasSelected ? `(${selectedCount})` : '';
 
-  // 把所有批量操作折叠成一个统一菜单（用户偏好：批量先折叠，后续再看）
-  const batchAllItems: MenuProps['items'] = [
+  // 把"高频"批量操作抽出来直接展示：批量出图 / 批量出视频；其余收进「更多 ▾」
+  // 高频按钮各自带 submenu：生成空缺 / 重新生成全部
+  const imageBatchItems: MenuProps['items'] = [
+    { key: 'image-gen', label: t('storyboard.generateEmpty'), onClick: onBatchImages },
+    { key: 'image-regen', label: t('storyboard.regenerateAll'), onClick: onBatchReImages },
+  ];
+  const videoBatchItems: MenuProps['items'] = [
+    { key: 'video-gen', label: t('storyboard.generateEmpty'), onClick: onBatchVideos },
+    { key: 'video-regen', label: t('storyboard.regenerateAll'), onClick: onBatchReVideos },
+  ];
+
+  // 「更多」收：图像提示词 / 视频提示词批量 + 视频模式切换
+  const moreBatchItems: MenuProps['items'] = [
     {
       key: 'image-prompt',
       label: '图像提示词',
@@ -114,30 +125,12 @@ export const ShotListHeader: React.FC<ShotListHeaderProps> = ({
       ],
     },
     {
-      key: 'image',
-      label: '图像生成',
-      type: 'group',
-      children: [
-        { key: 'image-gen', label: t('storyboard.generateEmpty'), onClick: onBatchImages },
-        { key: 'image-regen', label: t('storyboard.regenerateAll'), onClick: onBatchReImages },
-      ],
-    },
-    {
       key: 'video-prompt',
       label: '视频提示词',
       type: 'group',
       children: [
         { key: 'video-prompt-gen', label: t('storyboard.generateEmpty'), onClick: onBatchVideoPrompts },
         { key: 'video-prompt-regen', label: t('storyboard.regenerateAll'), onClick: onBatchReVideoPrompts },
-      ],
-    },
-    {
-      key: 'video',
-      label: '视频生成',
-      type: 'group',
-      children: [
-        { key: 'video-gen', label: t('storyboard.generateEmpty'), onClick: onBatchVideos },
-        { key: 'video-regen', label: t('storyboard.regenerateAll'), onClick: onBatchReVideos },
       ],
     },
     ...(onBulkVideoModeChange ? [{
@@ -150,8 +143,6 @@ export const ShotListHeader: React.FC<ShotListHeaderProps> = ({
       ],
     }] : []),
   ];
-
-  const anyBatchRunning = generatingImagePrompts || generatingVideoPrompts || generatingImages || generatingVideos;
 
   return (
     <div className="sticky top-0 z-20 flex items-stretch bg-bg-surface border-b border-border w-full">
@@ -179,19 +170,41 @@ export const ShotListHeader: React.FC<ShotListHeaderProps> = ({
       {/* 资产 */}
       <div className={`${SHOT_LAYOUT.colAssets} ${cellClass}`}>{t('storyboard.assets')}</div>
 
-      {/* 媒体（图像设计 / 图像结果 / 视频设计 / 视频结果 已合并到 2×2 grid）+ 折叠批量菜单 + 添加分镜 */}
+      {/* 媒体列：高频批量按钮（批量出图 / 批量出视频）直接展示 + 其余收进「更多 ▾」 */}
       <div className={`${SHOT_LAYOUT.colMedia} ${cellClass} border-r-0 justify-between`}>
         <span>媒体（图像 · 视频）</span>
         <div className="flex items-center gap-0.5">
-          <Dropdown menu={{ items: batchAllItems }} trigger={['click']} placement="bottomRight">
+          <Dropdown menu={{ items: imageBatchItems }} trigger={['click']} placement="bottomRight">
+            <Button
+              type="text"
+              size="small"
+              className="h-5 px-1.5 text-[11px]"
+              icon={<PictureOutlined />}
+              loading={generatingImages}
+            >
+              批量出图{targetLabel} <DownOutlined className="text-[8px]" />
+            </Button>
+          </Dropdown>
+          <Dropdown menu={{ items: videoBatchItems }} trigger={['click']} placement="bottomRight">
+            <Button
+              type="text"
+              size="small"
+              className="h-5 px-1.5 text-[11px]"
+              icon={<VideoCameraOutlined />}
+              loading={generatingVideos}
+            >
+              批量出视频{targetLabel} <DownOutlined className="text-[8px]" />
+            </Button>
+          </Dropdown>
+          <Dropdown menu={{ items: moreBatchItems }} trigger={['click']} placement="bottomRight">
             <Button
               type="text"
               size="small"
               className="h-5 px-1.5 text-[11px]"
               icon={<ThunderboltOutlined />}
-              loading={anyBatchRunning}
+              loading={generatingImagePrompts || generatingVideoPrompts}
             >
-              批量{targetLabel} <DownOutlined className="text-[8px]" />
+              更多 <DownOutlined className="text-[8px]" />
             </Button>
           </Dropdown>
           <Tooltip title={t('storyboard.addShot')}>

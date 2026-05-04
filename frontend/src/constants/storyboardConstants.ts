@@ -13,12 +13,12 @@ export const COL_ACTION_WIDTH = 'w-16'; // 64px 操作列
 // 收成 1 个 colMedia，内部用 CSS 2×2 grid 渲染。释放出的横向空间分配给 colAssets，
 // 同时分镜行高度提到 480px 让媒体单格有合理空间。
 export const SHOT_LAYOUT = {
-  // 剧本列：字幕块列表
-  colScript: 'flex-[20] min-w-[180px]',
+  // 剧本列：字幕块列表（媒体列扩张后稍收窄）
+  colScript: 'flex-[18] min-w-[170px]',
   // 资产列：纵向角色 / 场景 / 道具 三段
   colAssets: 'flex-[14] min-w-[180px]',
   // 媒体列：内部 2×2 grid（图像设计 / 图像结果 / 视频设计 / 视频结果）
-  colMedia: 'flex-[36] min-w-[420px]',
+  colMedia: 'flex-[38] min-w-[440px]',
 };
 
 export const ASSET_TYPES = {

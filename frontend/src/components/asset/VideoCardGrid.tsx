@@ -140,10 +140,13 @@ export const VideoCardGrid: React.FC<VideoCardGridProps> = ({
     onDelete(index);
   }, [onDelete]);
 
-  const hasVideos = videos.length > 0;
-
   // ===== compact 模式：2×2 固定槽位 =====
+  // 父级（ShotCard）负责渲染 generate 按钮，footer 只剩翻页指示器
+  // 空数组不再渲染 2×2 占位
   if (compact) {
+    if (videos.length === 0) {
+      return <div className="videoCardGrid compact compactEmpty" />;
+    }
     const pageStart = currentPage * COMPACT_PAGE_SIZE;
     const pageItems = Array.from({ length: COMPACT_PAGE_SIZE }, (_, i) => videos[pageStart + i]);
     const pageThumbs = Array.from({ length: COMPACT_PAGE_SIZE }, (_, i) => thumbnailSources[pageStart + i]);
@@ -200,37 +203,19 @@ export const VideoCardGrid: React.FC<VideoCardGridProps> = ({
           })}
         </div>
 
-        <div className="compactFooter">
-          <div className="compactPager">
-            {totalPages > 1 && (
-              <>
-                <Button type="text" size="small" icon={<LeftOutlined />} className="pagerBtn"
-                  disabled={currentPage === 0}
-                  onClick={() => setCurrentPage(p => Math.max(0, p - 1))} />
-                <span className="pagerText">{currentPage + 1}/{totalPages}</span>
-                <Button type="text" size="small" icon={<RightOutlined />} className="pagerBtn"
-                  disabled={currentPage >= totalPages - 1}
-                  onClick={() => setCurrentPage(p => Math.min(totalPages - 1, p + 1))} />
-              </>
-            )}
+        {totalPages > 1 && (
+          <div className="compactFooter">
+            <div className="compactPager">
+              <Button type="text" size="small" icon={<LeftOutlined />} className="pagerBtn"
+                disabled={currentPage === 0}
+                onClick={() => setCurrentPage(p => Math.max(0, p - 1))} />
+              <span className="pagerText">{currentPage + 1}/{totalPages}</span>
+              <Button type="text" size="small" icon={<RightOutlined />} className="pagerBtn"
+                disabled={currentPage >= totalPages - 1}
+                onClick={() => setCurrentPage(p => Math.min(totalPages - 1, p + 1))} />
+            </div>
           </div>
-          <div className="compactActions">
-            {onGenerate && (
-              <Tooltip title={generateDisabledReason || ''}>
-                <Button
-                  type="text"
-                  size="small"
-                  icon={isGenerating ? <LoadingOutlined /> : <VideoCameraOutlined />}
-                  onClick={onGenerate}
-                  disabled={isGenerating || disabled || Boolean(generateDisabledReason)}
-                  className="actionBtn primary"
-                >
-                  {isGenerating ? '生成中...' : (hasVideos ? '再生成一版' : 'AI生成视频')}
-                </Button>
-              </Tooltip>
-            )}
-          </div>
-        </div>
+        )}
 
         {/* 视频播放弹窗 */}
         <Modal

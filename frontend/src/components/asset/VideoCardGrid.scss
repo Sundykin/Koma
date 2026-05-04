@@ -132,6 +132,10 @@
   padding: 2px;
 }
 
+.videoCardGrid.compactEmpty {
+  height: 100%;
+}
+
 .videoCardGrid.compact .compactGrid2x2 {
   flex: 1;
   min-height: 0;
