@@ -437,27 +437,39 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
                 // 让 batchRunner 走 retry：抛出真实错误，shouldRetry 默认对瞬时错误重试
                 throw new Error(r.error || '生成失败');
               }
-              return r;
-            },
-          }).then(results => {
-            // 结果落地：覆盖每个 item 的最终状态（成功 / 用尽重试后失败）
-            results.forEach(({ item, result, error, attempts }) => {
-              const ok = Boolean(result?.success);
-              itemProgressMap.set(item.id, ok ? 100 : 0);
+              // ✅ 单 item 成功后立刻翻 completed，不再等整批结束
+              // 否则即便 item.progress 已经 100%，UI 也会一直显示 "generating" 直到所有项跑完
+              itemProgressMap.set(item.id, 100);
               setter(prev => prev.map(it =>
                 it.id === item.id
                   ? {
                       ...it,
-                      status: ok ? 'completed' : 'failed',
-                      progress: ok ? 100 : 0,
-                      error: ok
-                        ? undefined
-                        : (result?.error
-                            || (error instanceof Error ? error.message : String(error || ''))
-                            || `失败（已重试 ${attempts} 次）`),
-                      imagePath: result?.path || it.imagePath,
-                      // 同名文件被覆盖也要拉新内容，bump 缓存键
-                      imageCacheKey: ok ? Date.now() : it.imageCacheKey,
+                      status: 'completed',
+                      progress: 100,
+                      error: undefined,
+                      imagePath: r.path || it.imagePath,
+                      imageCacheKey: Date.now(),
+                    }
+                  : it
+              ));
+              updateOverallProgress(taskCtx.progress, item.name, '完成');
+              return r;
+            },
+          }).then(results => {
+            // 收尾兜底：worker 已经把成功项写成 completed；这里只处理"用尽重试后仍失败"的项
+            results.forEach(({ item, result, error, attempts }) => {
+              const ok = Boolean(result?.success);
+              if (ok) return; // 成功的已在 worker 里就地落地
+              itemProgressMap.set(item.id, 0);
+              setter(prev => prev.map(it =>
+                it.id === item.id
+                  ? {
+                      ...it,
+                      status: 'failed',
+                      progress: 0,
+                      error: result?.error
+                        || (error instanceof Error ? error.message : String(error || ''))
+                        || `失败（已重试 ${attempts} 次）`,
                     }
                   : it
               ));
@@ -646,13 +658,15 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
 
   return (
     <Modal
-      title="资产生成向导"
+      title={generating ? '资产生成向导（任务后台运行中）' : '资产生成向导'}
       open={open}
-      onCancel={() => !generating && onClose()}
+      onCancel={onClose}
       width={720}
       footer={null}
-      mask={{ closable: !generating }}
-      closable={!generating}
+      // 资产生成已经走 runWithTask 任务化，关闭向导不会取消后台任务，可在状态栏查看进度
+      // 之前 closable 锁死要求用户必须等所有项跑完才能关，体验差
+      mask={{ closable: true }}
+      closable
     >
       {loading ? (
         <div className={styles.loadingState}>
@@ -717,8 +731,9 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
 
           <div className={styles.footerActions}>
             <Space>
-              <Button onClick={onClose} disabled={generating}>
-                取消
+              {/* 生成中允许关闭窗口：runWithTask 已任务化，关掉向导后台继续跑，可在任务面板看进度 */}
+              <Button onClick={onClose}>
+                {generating ? '关闭（后台继续）' : '取消'}
               </Button>
               {currentStep > 0 && (
                 <Button onClick={() => setCurrentStep(currentStep - 1)} disabled={generating}>
