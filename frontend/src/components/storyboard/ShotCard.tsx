@@ -15,7 +15,6 @@ import {
   Modal,
   Progress,
   Select,
-  Spin,
   Segmented,
   App,
 } from 'antd';
@@ -29,8 +28,6 @@ import {
   ArrowUpOutlined,
   ArrowDownOutlined,
   PlayCircleFilled,
-  PictureOutlined,
-  VideoCameraOutlined,
   CloseOutlined,
   PlusOutlined,
   AppstoreOutlined,
@@ -537,7 +534,8 @@ export const ShotCard: React.FC<ShotCardProps> = ({
   };
 
   // 统一按钮样式
-  const actionBtnClass = "w-6 h-6 p-0 text-[11px]";
+  // 行高 480px 后操作列纵向空间充裕：按钮加大到 28×28，icon 12px，间距更舒服
+  const actionBtnClass = "!w-7 !h-7 !p-0 !text-[12px]";
 
   const getDisplaySrc = useCallback((asset?: StoredMediaAsset | null): string => {
     const source = asset ? getMediaAssetDisplaySource(asset) : undefined;
@@ -558,15 +556,16 @@ export const ShotCard: React.FC<ShotCardProps> = ({
       className={`shot-card ${isSelected ? 'selected' : ''} ${shot.confirmed ? 'confirmed' : ''} ${isActive ? 'active' : ''}`}
       onClick={handleCardClick}
     >
-      {/* 分镜行固定高度：360px 给资产分类至少 3 行可见空间；所有列内部滚动 */}
-      <div className="flex items-stretch h-[360px] bg-bg-app">
-        {/* 左侧操作列 - 全部显示 */}
-        <div className={`${COL_ACTION_WIDTH} shrink-0 border-r border-border-subtle flex flex-col items-center py-1.5 gap-0.5 bg-bg-surface/30`}>
+      {/* 分镜行固定高度：480px ——
+          媒体列改 2×2 grid 后每格 ~240px 高度，资产 3 段每段 ~150px 容纳标题 + 4-5 行条目 */}
+      <div className="flex items-stretch h-[480px] bg-bg-app">
+        {/* 左侧操作列 - 全部显示（行高变 480 后给更舒服的间距 + 大一号按钮） */}
+        <div className={`${COL_ACTION_WIDTH} shrink-0 border-r border-border-subtle flex flex-col items-center py-2 gap-1 bg-bg-surface/30`}>
           <Checkbox
             checked={isSelected}
             onChange={(e) => onSelectChange(shot.id, e.target.checked)}
           />
-          <span className="text-[11px] font-semibold text-text-secondary">#{index + 1}</span>
+          <span className="text-[12px] font-semibold text-text-primary tracking-tight">#{index + 1}</span>
           {onDurationChange ? (
             <Tooltip title="分镜时长（秒）" placement="right">
               <div className="flex items-center gap-0.5">
@@ -621,8 +620,8 @@ export const ShotCard: React.FC<ShotCardProps> = ({
             <Tag className="m-0 text-[9px] px-1" color="blue">{shot.duration}s</Tag>
           )}
 
-          {/* 操作按钮 - 直接显示 */}
-          <div className="flex flex-col gap-0.5 mt-1">
+          {/* 操作按钮 - 直接显示（gap 加大、与 #N / 时长视觉区隔） */}
+          <div className="flex flex-col gap-1 mt-1.5">
             <Tooltip title={shot.confirmed ? '取消确认' : '确认'} placement="right">
               <Button
                 size="small"
@@ -694,8 +693,11 @@ export const ShotCard: React.FC<ShotCardProps> = ({
           </div>
         </div>
 
-        {/* 列3: 图像设计 */}
-        <div className={`${SHOT_LAYOUT.colImageDesign} border-r border-border-subtle flex flex-col`}>
+        {/* 列3: 媒体（2×2 grid：图像设计 / 图像结果 / 视频设计 / 视频结果） */}
+        <div className={`${SHOT_LAYOUT.colMedia} flex flex-col min-h-0`}>
+        <div className="flex-1 min-h-0 grid grid-cols-2 grid-rows-2">
+        {/* 单元 1：图像设计 */}
+        <div className="border-r border-b border-border-subtle flex flex-col min-h-0">
           <div className="flex items-center justify-between gap-2 border-b border-border-subtle px-2 py-1">
             <span className="text-[10px] text-text-secondary">图片模式</span>
             <Segmented
@@ -766,48 +768,31 @@ export const ShotCard: React.FC<ShotCardProps> = ({
           </div>
         </div>
 
-        {/* 列4: 图像结果 */}
-        <div className={`${SHOT_LAYOUT.colImageResult} border-r border-border-subtle flex flex-col bg-bg-surface/20`}>
-          <div className="flex-1 p-1 min-h-0 overflow-y-auto custom-scrollbar flex items-center justify-center relative">
-            {imageSources.length === 0 && !isGeneratingImage ? (
-              <Button
-                type="primary"
-                size="small"
-                className="h-7 px-3 text-[11px]"
-                onClick={() => onGenerateImage(shot.id)}
-                disabled={!hasImagePrompt}
-                icon={<PictureOutlined />}
-              >
-                生成图像
-              </Button>
-            ) : isGeneratingImage && imageSources.length === 0 ? (
-              <Spin size="small" />
-            ) : (
-              <div className="w-full h-full">
-                <ImageCardGrid
-                  images={imageSources}
-                  selectedIndex={shot.media?.currentImageIndex || 0}
-                  onSelect={handleImageSelect}
-                  onAdd={handleImageAdd}
-                  onDelete={handleImageDelete}
-                  onSplitGrid={isGridImageMode(shot.imageMode) && electronService.isElectron()
-                    ? handleOpenGridSplitPreview
-                    : undefined}
-                  onGenerate={() => onGenerateImage(shot.id)}
-                  isGenerating={isGeneratingImage}
-                  disabled={!hasImagePrompt}
-                  characters={characters}
-                  scenes={scenes}
-                  props={props}
-                  compact
-                />
-              </div>
-            )}
+        {/* 单元 2：图像结果（始终走 ImageCardGrid，多版本 + 翻页 + 再生成一版统一在 footer） */}
+        <div className="border-b border-border-subtle flex flex-col bg-bg-surface/20 min-h-0">
+          <div className="flex-1 p-1 min-h-0 relative">
+            <ImageCardGrid
+              images={imageSources}
+              selectedIndex={shot.media?.currentImageIndex || 0}
+              onSelect={handleImageSelect}
+              onAdd={handleImageAdd}
+              onDelete={handleImageDelete}
+              onSplitGrid={isGridImageMode(shot.imageMode) && electronService.isElectron()
+                ? handleOpenGridSplitPreview
+                : undefined}
+              onGenerate={() => onGenerateImage(shot.id)}
+              isGenerating={isGeneratingImage}
+              disabled={!hasImagePrompt}
+              characters={characters}
+              scenes={scenes}
+              props={props}
+              compact
+            />
           </div>
         </div>
 
-        {/* 列5: 视频设计 */}
-        <div className={`${SHOT_LAYOUT.colVideoDesign} border-r border-border-subtle flex flex-col`}>
+        {/* 单元 3：视频设计 */}
+        <div className="border-r border-border-subtle flex flex-col min-h-0">
           {/* 视频模式切换：multi-ref 多参（带 @映射） / first-frame 首帧延展（以单图为锚）
               九宫格图片模式与"首帧延展"语义冲突（grid 是 9 帧时序，first-frame 是单图微动），
               此时锁定 multi-ref 并通过 tooltip 解释。 */}
@@ -857,94 +842,69 @@ export const ShotCard: React.FC<ShotCardProps> = ({
           </div>
         </div>
 
-        {/* 列6: 视频结果 */}
-        <div className={`${SHOT_LAYOUT.colVideoResult} flex flex-col bg-bg-surface/20`}>
-          <div className="flex-1 p-1 min-h-0 overflow-y-auto custom-scrollbar flex items-center justify-center">
-            {videos.length === 0 && !isGeneratingVideo ? (
-              <div className="flex flex-col items-center gap-2">
-                <Tooltip title={videoGenerateDisabledReason || (videoCapabilityLabel ? `当前将生成${videoCapabilityLabel}` : '生成视频')}>
-                  <span>
-                    <Button
-                      type="primary"
-                      size="small"
-                      className="h-7 px-3 text-[11px]"
-                      onClick={() => onGenerateVideo(shot.id)}
-                      disabled={Boolean(videoGenerateDisabledReason)}
-                      icon={<VideoCameraOutlined />}
-                    >
-                      生成视频
-                    </Button>
-                  </span>
-                </Tooltip>
-                {videoCapabilityLabel && (
-                  <div className={`text-[10px] ${videoGenerateDisabledReason ? 'text-status-warning' : 'text-text-tertiary'}`}>
-                    {videoCapabilityLabel}
-                  </div>
-                )}
-                {currentVideo && (
-                  <Button type="text" size="small" className="h-5 w-5 p-0" icon={<PlayCircleFilled />} onClick={() => setVideoModalOpen(true)} />
-                )}
-              </div>
-            ) : (
-              <div className="w-full h-full relative">
-                <VideoCardGrid
-                  videos={videos.map(a => ({
-                    path: getMediaAssetDisplaySource(a) || '',
-                    url: a.remoteUrl,
-                    thumbnailPath: typeof a.metadata?.thumbnailPath === 'string'
-                      ? a.metadata.thumbnailPath
-                      : undefined,
-                    prompt: typeof a.metadata?.prompt === 'string'
-                      ? a.metadata.prompt
-                      : undefined,
-                    seed: typeof a.metadata?.seed === 'number'
-                      ? a.metadata.seed
-                      : undefined,
-                    model: typeof a.metadata?.model === 'string'
-                      ? a.metadata.model
-                      : undefined,
-                    createdAt: a.createdAt,
-                  }))}
-                  selectedIndex={shot.media?.currentVideoIndex || 0}
-                  onSelect={handleVideoSelect}
-                  onDelete={handleVideoDelete}
-                  isGenerating={isGeneratingVideo}
-                  disabled={Boolean(videoGenerateDisabledReason)}
-                  compact
+        {/* 单元 4：视频结果（始终走 VideoCardGrid，多版本 + 翻页 + 再生成一版统一在 footer） */}
+        <div className="flex flex-col bg-bg-surface/20 min-h-0">
+          <div className="flex-1 p-1 min-h-0 relative">
+            <VideoCardGrid
+              videos={videos.map(a => ({
+                path: getMediaAssetDisplaySource(a) || '',
+                url: a.remoteUrl,
+                thumbnailPath: typeof a.metadata?.thumbnailPath === 'string'
+                  ? a.metadata.thumbnailPath
+                  : undefined,
+                prompt: typeof a.metadata?.prompt === 'string'
+                  ? a.metadata.prompt
+                  : undefined,
+                seed: typeof a.metadata?.seed === 'number'
+                  ? a.metadata.seed
+                  : undefined,
+                model: typeof a.metadata?.model === 'string'
+                  ? a.metadata.model
+                  : undefined,
+                createdAt: a.createdAt,
+              }))}
+              selectedIndex={shot.media?.currentVideoIndex || 0}
+              onSelect={handleVideoSelect}
+              onDelete={handleVideoDelete}
+              onGenerate={() => onGenerateVideo(shot.id)}
+              isGenerating={isGeneratingVideo}
+              disabled={Boolean(videoGenerateDisabledReason)}
+              generateDisabledReason={videoGenerateDisabledReason}
+              compact
+            />
+            {currentVideo && (
+              <Button
+                type="text"
+                size="small"
+                className="absolute top-1 right-1 h-5 w-5 p-0 z-10"
+                icon={<PlayCircleFilled />}
+                onClick={() => setVideoModalOpen(true)}
+              />
+            )}
+            {/* 进度覆盖层：仅在生成中显示，避免遮挡已存视频 */}
+            {isGeneratingVideo && videoProgress && (
+              <div className="shot-video-progress-overlay">
+                <Progress
+                  percent={Math.max(0, Math.min(100, videoProgress.progress))}
+                  size="small"
+                  showInfo={false}
+                  strokeColor="var(--token-accent-base)"
+                  trailColor="var(--token-border-base)"
                 />
-                {currentVideo && (
-                  <Button
-                    type="text"
-                    size="small"
-                    className="absolute top-0 right-0 h-5 w-5 p-0"
-                    icon={<PlayCircleFilled />}
-                    onClick={() => setVideoModalOpen(true)}
-                  />
-                )}
-                {/* 进度覆盖层：仅在生成中显示，避免遮挡已存视频 */}
-                {isGeneratingVideo && videoProgress && (
-                  <div className="shot-video-progress-overlay">
-                    <Progress
-                      percent={Math.max(0, Math.min(100, videoProgress.progress))}
-                      size="small"
-                      showInfo={false}
-                      strokeColor="var(--token-accent-base)"
-                      trailColor="var(--token-border-base)"
-                    />
-                    <div className="shot-video-progress-meta">
-                      <span className="truncate flex-1" title={videoProgress.step}>
-                        {videoProgress.step || '处理中...'}
-                      </span>
-                      <span className="tabular-nums shrink-0">
-                        {Math.round(videoProgress.progress)}%
-                      </span>
-                    </div>
-                  </div>
-                )}
+                <div className="shot-video-progress-meta">
+                  <span className="truncate flex-1" title={videoProgress.step}>
+                    {videoProgress.step || '处理中...'}
+                  </span>
+                  <span className="tabular-nums shrink-0">
+                    {Math.round(videoProgress.progress)}%
+                  </span>
+                </div>
               </div>
             )}
           </div>
         </div>
+        </div>{/* /grid 2x2 */}
+        </div>{/* /colMedia */}
       </div>
 
       {/* 网格拆分预览 Modal — gridSize=2 走 2×2 / 4 张，gridSize=3 走 3×3 / 9 张 */}

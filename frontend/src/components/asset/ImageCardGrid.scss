@@ -107,31 +107,161 @@
   height: 22px;
 }
 
-.imageCardGrid.compact .imageCard .cardOverlay {
-  opacity: 0.95;
+/* ========== compact 模式：2×2 固定槽位 ========== */
+
+.imageCardGrid.compact {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  gap: 4px;
+  padding: 2px;
+}
+
+.compactGrid2x2 {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  gap: 4px;
+}
+
+.compactGrid2x2 .slot,
+.compactGrid2x2 .slotEmpty {
+  position: relative;
+  border-radius: 4px;
+  overflow: hidden;
+  min-height: 0;  /* 允许 grid item 在固定行高下不撑爆 */
+}
+
+.compactGrid2x2 .slot {
+  cursor: pointer;
+  background: var(--token-bg-card);
+  border: 2px solid transparent;
+  transition: border-color 0.18s ease;
+}
+
+.compactGrid2x2 .slot:hover {
+  border-color: var(--token-border-base);
+}
+
+.compactGrid2x2 .slot.selected {
+  border-color: var(--token-accent-base);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--token-accent-base) 36%, transparent);
+}
+
+.compactGrid2x2 .slot img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.compactGrid2x2 .slot .selectedIcon {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  color: var(--token-accent-base);
+  font-size: 14px;
+  background: color-mix(in srgb, var(--token-bg-app) 60%, transparent);
+  border-radius: 50%;
+}
+
+.compactGrid2x2 .slot .slotIndexBadge {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  font-size: 10px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--token-bg-app) 60%, transparent);
+  color: var(--token-text-secondary);
+  font-family: ui-monospace, monospace;
+  pointer-events: none;
+}
+
+.compactGrid2x2 .slot .slotOverlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
   align-items: flex-end;
   justify-content: flex-end;
-  padding: 2px;
+  gap: 2px;
+  padding: 4px;
+  opacity: 0;
+  transition: opacity 0.18s ease;
   background: linear-gradient(
     to top,
-    color-mix(in srgb, var(--token-bg-app) 58%, transparent),
-    color-mix(in srgb, var(--token-bg-app) 8%, transparent) 55%,
+    color-mix(in srgb, var(--token-bg-app) 60%, transparent),
+    color-mix(in srgb, var(--token-bg-app) 8%, transparent) 50%,
     transparent
   );
   pointer-events: none;
 }
 
-.imageCardGrid.compact .imageCard .cardOverlay .overlayBtn {
+.compactGrid2x2 .slot:hover .slotOverlay {
+  opacity: 1;
+}
+
+.compactGrid2x2 .slot .slotOverlay .overlayBtn {
   pointer-events: auto;
   width: 22px;
   height: 22px;
   min-width: 22px;
-  background: color-mix(in srgb, var(--token-bg-app) 46%, transparent);
+  background: color-mix(in srgb, var(--token-bg-app) 50%, transparent);
 }
 
-.imageCardGrid.compact .imageCard:hover .cardOverlay .overlayBtn,
-.imageCardGrid.compact .imageCard .cardOverlay .overlayBtn:focus-visible {
-  background: color-mix(in srgb, var(--token-bg-app) 68%, transparent);
+.compactGrid2x2 .slotEmpty {
+  border: 1px dashed var(--token-border-subtle);
+  background: color-mix(in srgb, var(--token-bg-elevated) 36%, transparent);
+}
+
+.compactFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  padding: 0 2px;
+  height: 24px;
+  flex-shrink: 0;
+}
+
+.compactPager {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  color: var(--token-text-tertiary);
+}
+
+.compactPager .pagerBtn {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  font-size: 10px;
+}
+
+.compactPager .pagerText {
+  font-size: 11px;
+  font-family: ui-monospace, monospace;
+  min-width: 28px;
+  text-align: center;
+}
+
+.compactActions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.compactActions .actionBtn {
+  height: 22px;
+  padding: 0 6px;
+  font-size: 11px;
+}
+
+.compactActions .actionBtn.primary {
+  color: var(--token-status-info);
+  font-weight: 500;
 }
 
 .hiddenPreviewImages {

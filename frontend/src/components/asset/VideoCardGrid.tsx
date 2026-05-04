@@ -1,8 +1,12 @@
 /**
  * 多视频卡片网格组件
- * 支持多版本视频选择、播放、删除
+ *
+ * - 默认（!compact）：flex-wrap 缩略图列表
+ * - compact 模式：2×2 固定槽位，每槽 1/4 区域；空槽保持位置；超过 4 版本翻页；
+ *   footer 提供「再生成一版」+ 翻页控件
+ *   多版本数据模型已支持（StoredMediaAsset[] + currentVideoIndex）
  */
-import React, { useState, useCallback, useEffect, useMemo } from 'react';
+import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { Button, Modal, Tooltip, Typography, Popconfirm } from 'antd';
 import {
   PlayCircleOutlined,
@@ -10,6 +14,8 @@ import {
   DeleteOutlined,
   VideoCameraOutlined,
   LoadingOutlined,
+  LeftOutlined,
+  RightOutlined,
 } from '@ant-design/icons';
 import type { ShotVideo } from '../../types';
 import { electronService } from '../../services/electronService';
@@ -17,6 +23,7 @@ import { ffmpegManager } from '../../services/ffmpegManager';
 import './VideoCardGrid.scss';
 
 const { Text } = Typography;
+const COMPACT_PAGE_SIZE = 4;
 
 export interface VideoCardGridProps {
   videos: ShotVideo[];
@@ -26,7 +33,9 @@ export interface VideoCardGridProps {
   onGenerate?: () => void;
   isGenerating?: boolean;
   disabled?: boolean;
-  compact?: boolean;  // 紧凑模式，用于分镜卡片
+  /** 生成按钮 disabled 时的解释（tooltip 显示） */
+  generateDisabledReason?: string;
+  compact?: boolean;
 }
 
 export const VideoCardGrid: React.FC<VideoCardGridProps> = ({
@@ -37,10 +46,34 @@ export const VideoCardGrid: React.FC<VideoCardGridProps> = ({
   onGenerate,
   isGenerating = false,
   disabled = false,
+  generateDisabledReason,
+  compact = false,
 }) => {
   const [previewVisible, setPreviewVisible] = useState(false);
   const [previewUrl, setPreviewUrl] = useState('');
   const [generatedThumbnails, setGeneratedThumbnails] = useState<Record<string, string>>({});
+
+  // ===== compact 模式翻页状态 =====
+  const totalPages = Math.max(1, Math.ceil(videos.length / COMPACT_PAGE_SIZE));
+  const [currentPage, setCurrentPage] = useState(() => Math.floor((selectedIndex || 0) / COMPACT_PAGE_SIZE));
+  useEffect(() => {
+    if (!compact) return;
+    const target = Math.floor((selectedIndex || 0) / COMPACT_PAGE_SIZE);
+    if (target !== currentPage) setCurrentPage(target);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedIndex, compact]);
+  const prevVideosLenRef = useRef(videos.length);
+  useEffect(() => {
+    if (!compact) return;
+    if (videos.length > prevVideosLenRef.current) {
+      const lastPage = Math.max(0, Math.ceil(videos.length / COMPACT_PAGE_SIZE) - 1);
+      setCurrentPage(lastPage);
+    }
+    prevVideosLenRef.current = videos.length;
+  }, [videos.length, compact]);
+  useEffect(() => {
+    if (currentPage >= totalPages) setCurrentPage(Math.max(0, totalPages - 1));
+  }, [currentPage, totalPages]);
 
   const getVideoKey = useCallback((video: ShotVideo) => {
     const base = `${video.path}|${video.createdAt}|${video.url || ''}`;
@@ -54,7 +87,6 @@ export const VideoCardGrid: React.FC<VideoCardGridProps> = ({
 
   useEffect(() => {
     let cancelled = false;
-
     const loadPosterFrames = async () => {
       const missingVideos = videos.filter(video => !video.thumbnailPath && video.path);
       if (missingVideos.length === 0) return;
@@ -70,7 +102,6 @@ export const VideoCardGrid: React.FC<VideoCardGridProps> = ({
       }));
 
       if (cancelled) return;
-
       setGeneratedThumbnails(prev => {
         const merged = { ...prev };
         nextEntries.forEach((entry) => {
@@ -109,11 +140,120 @@ export const VideoCardGrid: React.FC<VideoCardGridProps> = ({
     onDelete(index);
   }, [onDelete]);
 
-  const _formatTime = (timestamp: number) => {
-    const date = new Date(timestamp);
-    return `${date.getMonth() + 1}/${date.getDate()}`;
-  };
+  const hasVideos = videos.length > 0;
 
+  // ===== compact 模式：2×2 固定槽位 =====
+  if (compact) {
+    const pageStart = currentPage * COMPACT_PAGE_SIZE;
+    const pageItems = Array.from({ length: COMPACT_PAGE_SIZE }, (_, i) => videos[pageStart + i]);
+    const pageThumbs = Array.from({ length: COMPACT_PAGE_SIZE }, (_, i) => thumbnailSources[pageStart + i]);
+
+    return (
+      <div className="videoCardGrid compact">
+        <div className="compactGrid2x2">
+          {pageItems.map((video, i) => {
+            const globalIdx = pageStart + i;
+            if (!video) {
+              return <div key={`empty-${i}`} className="slotEmpty" aria-label="空版本槽位" />;
+            }
+            const isSelected = globalIdx === selectedIndex;
+            const thumb = pageThumbs[i];
+            return (
+              <div
+                key={`slot-${globalIdx}`}
+                className={`slot ${isSelected ? 'selected' : ''}`}
+                onClick={() => onSelect(globalIdx)}
+                title={`版本 ${globalIdx + 1}${isSelected ? '（当前）' : ''}`}
+              >
+                {thumb ? (
+                  <img src={thumb} alt={`v${globalIdx + 1}`} />
+                ) : (
+                  <div className="videoPlaceholder">
+                    <VideoCameraOutlined />
+                  </div>
+                )}
+                {isSelected && <CheckCircleFilled className="selectedIcon" />}
+                <div className="slotIndexBadge">v{globalIdx + 1}</div>
+                <div className="slotOverlay">
+                  <Tooltip title="播放">
+                    <Button type="text" size="small" icon={<PlayCircleOutlined />} onClick={(e) => handlePlay(video, e)} className="overlayBtn" />
+                  </Tooltip>
+                  <Popconfirm
+                    title="确定删除此版本？"
+                    onConfirm={(e) => handleDelete(globalIdx, e as any)}
+                    onCancel={(e) => e?.stopPropagation()}
+                  >
+                    <Tooltip title="删除">
+                      <Button
+                        type="text"
+                        size="small"
+                        danger
+                        icon={<DeleteOutlined />}
+                        onClick={(e) => e.stopPropagation()}
+                        className="overlayBtn"
+                      />
+                    </Tooltip>
+                  </Popconfirm>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="compactFooter">
+          <div className="compactPager">
+            {totalPages > 1 && (
+              <>
+                <Button type="text" size="small" icon={<LeftOutlined />} className="pagerBtn"
+                  disabled={currentPage === 0}
+                  onClick={() => setCurrentPage(p => Math.max(0, p - 1))} />
+                <span className="pagerText">{currentPage + 1}/{totalPages}</span>
+                <Button type="text" size="small" icon={<RightOutlined />} className="pagerBtn"
+                  disabled={currentPage >= totalPages - 1}
+                  onClick={() => setCurrentPage(p => Math.min(totalPages - 1, p + 1))} />
+              </>
+            )}
+          </div>
+          <div className="compactActions">
+            {onGenerate && (
+              <Tooltip title={generateDisabledReason || ''}>
+                <Button
+                  type="text"
+                  size="small"
+                  icon={isGenerating ? <LoadingOutlined /> : <VideoCameraOutlined />}
+                  onClick={onGenerate}
+                  disabled={isGenerating || disabled || Boolean(generateDisabledReason)}
+                  className="actionBtn primary"
+                >
+                  {isGenerating ? '生成中...' : (hasVideos ? '再生成一版' : 'AI生成视频')}
+                </Button>
+              </Tooltip>
+            )}
+          </div>
+        </div>
+
+        {/* 视频播放弹窗 */}
+        <Modal
+          title="视频预览"
+          open={previewVisible}
+          onCancel={() => setPreviewVisible(false)}
+          footer={null}
+          width={720}
+          centered
+          destroyOnHidden
+        >
+          <video
+            src={previewUrl}
+            controls
+            autoPlay
+            className="videoPreviewPlayer"
+          />
+        </Modal>
+      </div>
+    );
+  }
+
+  // ===== 默认模式：原有 flex-wrap =====
   return (
     <div className="videoCardGrid">
       <div className="videoCards">
@@ -134,13 +274,7 @@ export const VideoCardGrid: React.FC<VideoCardGridProps> = ({
             {idx === selectedIndex && <CheckCircleFilled className="selectedIcon" />}
             <div className="cardOverlay">
               <Tooltip title="播放">
-                <Button
-                  type="text"
-                  size="small"
-                  icon={<PlayCircleOutlined />}
-                  onClick={(e) => handlePlay(video, e)}
-                  className="overlayBtn"
-                />
+                <Button type="text" size="small" icon={<PlayCircleOutlined />} onClick={(e) => handlePlay(video, e)} className="overlayBtn" />
               </Tooltip>
               <Popconfirm
                 title="确定删除此版本？"
@@ -170,7 +304,6 @@ export const VideoCardGrid: React.FC<VideoCardGridProps> = ({
         )}
       </div>
 
-      {/* AI 生成按钮 */}
       {onGenerate && (
         <Button
           type="text"
@@ -184,7 +317,6 @@ export const VideoCardGrid: React.FC<VideoCardGridProps> = ({
         </Button>
       )}
 
-      {/* 视频播放弹窗 */}
       <Modal
         title="视频预览"
         open={previewVisible}
