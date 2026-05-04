@@ -912,6 +912,7 @@ export const ShotCard: React.FC<ShotCardProps> = ({
             </div>
           </div>
         </div>
+      </div>{/* /flex items-stretch h-[480px] */}
 
       {/* 网格拆分预览 Modal — gridSize=2 走 2×2 / 4 张，gridSize=3 走 3×3 / 9 张 */}
       <Modal
