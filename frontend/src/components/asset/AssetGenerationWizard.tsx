@@ -41,6 +41,7 @@ import {
 import { generateSceneImage, generatePropImage, generatePropPreviewVideo } from '../../workflow/scenePropAssetWorkflow';
 import { runWithTask } from '../../services/taskRunner';
 import { runBatchWithConcurrency } from '../../utils/batchRunner';
+import { useTasks } from '../../hooks';
 import {
   getCharacterCostumePhotoSource,
   getCharacterPreviewVideoSource,
@@ -76,6 +77,29 @@ interface ItemStatus {
    */
   imageCacheKey?: number;
   sourceType?: 'character' | 'prop'; // 视频步骤区分角色/道具
+}
+
+/** 写入任务 metadata 的精简结构（不含 selected / sourceType 等仅 UI 关心字段） */
+interface ItemMetadataState {
+  status: ItemStatus['status'];
+  progress: number;
+  error?: string;
+  imagePath?: string;
+  imageCacheKey?: number;
+}
+
+function itemsToMetadata(items: ItemStatus[]): Record<string, ItemMetadataState> {
+  const map: Record<string, ItemMetadataState> = {};
+  for (const it of items) {
+    map[it.id] = {
+      status: it.status,
+      progress: it.progress,
+      error: it.error,
+      imagePath: it.imagePath,
+      imageCacheKey: it.imageCacheKey,
+    };
+  }
+  return map;
 }
 
 /** 把 cacheKey 拼到 koma-local URL 末尾。protocol.handle 仅消费 pathname，query 字符串安全忽略。*/
@@ -192,6 +216,73 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
 
     loadData();
   }, [open, project, message]);
+
+  // ============ 任务-UI 双向绑定 ============
+  // 关闭向导后任务在后台继续跑；重新打开时从任务表恢复 UI 状态。
+  // 订阅当前项目所有 active 资产生成任务（type='asset-generation'），从 metadata.items 还原各 item 状态。
+  const activeAssetTasks = useTasks({
+    scope: project ? `project:${project.id}` : '__none__',
+    type: 'asset-generation',
+    activeOnly: true,
+  });
+
+  useEffect(() => {
+    if (!open || loading) return;
+
+    // 没有 active 任务 → 确保 generating=false（任务可能在向导外完成 / 被取消）
+    if (activeAssetTasks.length === 0) {
+      setGenerating(false);
+      setCurrentItem('');
+      return;
+    }
+
+    // 有 active 任务：把任务表的 metadata.items 合并到本地 state
+    setGenerating(true);
+    let aggregateProgress = 0;
+    let lastMessage = '';
+
+    activeAssetTasks.forEach(task => {
+      const meta = (task.metadata as { stepKey?: WizardStep; items?: Record<string, ItemMetadataState>; lastMessage?: string }) || {};
+      const stepKey = meta.stepKey;
+      const itemStates = meta.items || {};
+      if (!stepKey) return;
+
+      const setter =
+        stepKey === 'characters' ? setCharacters
+        : stepKey === 'scenes' ? setScenes
+        : stepKey === 'props' ? setProps
+        : setVideoItems;
+
+      setter(prev => prev.map(it => {
+        const remote = itemStates[it.id];
+        if (!remote) return it;
+        // 仅当 remote 状态比本地新（更进度 / 不同 status）时合并
+        if (
+          remote.status === it.status
+          && remote.progress === it.progress
+          && remote.error === it.error
+          && remote.imagePath === it.imagePath
+          && remote.imageCacheKey === it.imageCacheKey
+        ) {
+          return it;
+        }
+        return {
+          ...it,
+          status: remote.status,
+          progress: remote.progress,
+          error: remote.error,
+          imagePath: remote.imagePath ?? it.imagePath,
+          imageCacheKey: remote.imageCacheKey ?? it.imageCacheKey,
+        };
+      }));
+
+      aggregateProgress = Math.max(aggregateProgress, task.progress ?? 0);
+      lastMessage = (meta.lastMessage as string) || lastMessage;
+    });
+
+    setOverallProgress(aggregateProgress);
+    if (lastMessage) setCurrentItem(lastMessage);
+  }, [open, loading, activeAssetTasks]);
 
   // 切换选中状态
   const toggleSelect = useCallback((type: WizardStep, id: string) => {
@@ -396,7 +487,9 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
         targetId: items[0].id,
         targetName: `批量${stepLabel}（${items.length} 个）`,
         type: 'asset-generation',
-        metadata: { batchCount: items.length, stepKey },
+        // 把 stepKey + 所有 item 初始状态写进 metadata，
+        // 让向导关闭再打开时能从任务表恢复 UI（关闭窗口后任务后台继续跑）
+        metadata: { batchCount: items.length, stepKey, items: itemsToMetadata(items) },
         execute: async (taskCtx) => {
           await runBatchWithConcurrency<ItemStatus, { success: boolean; path?: string; error?: string }>({
             items,
@@ -405,74 +498,90 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
             retryBaseDelayMs: 800,
             onAttemptStart: (item, _idx, attempt) => {
               setCurrentItem(item.name);
-              setter(prev => prev.map(it =>
-                it.id === item.id
-                  ? { ...it, status: 'generating', progress: 0, error: attempt > 1 ? `重试中（第 ${attempt} 次）` : undefined }
-                  : it
-              ));
+              setter(prev => {
+                const next = prev.map(it =>
+                  it.id === item.id
+                    ? { ...it, status: 'generating' as const, progress: 0, error: attempt > 1 ? `重试中（第 ${attempt} 次）` : undefined }
+                    : it
+                );
+                taskCtx.setMetadata({ items: itemsToMetadata(next) });
+                return next;
+              });
               itemProgressMap.set(item.id, 0);
               updateOverallProgress(taskCtx.progress, item.name, attempt > 1 ? `重试 ${attempt}` : '开始');
             },
             onAttemptEnd: (item, _idx, _attempt, ok, error) => {
               if (!ok) {
-                // 重试中临时进度回 0；最终失败由外层结果遍历落地
                 itemProgressMap.set(item.id, 0);
-                setter(prev => prev.map(it =>
-                  it.id === item.id ? { ...it, progress: 0, error: error instanceof Error ? error.message : String(error || '') } : it
-                ));
+                setter(prev => {
+                  const next = prev.map(it =>
+                    it.id === item.id ? { ...it, progress: 0, error: error instanceof Error ? error.message : String(error || '') } : it
+                  );
+                  taskCtx.setMetadata({ items: itemsToMetadata(next) });
+                  return next;
+                });
                 updateOverallProgress(taskCtx.progress, item.name, '重试中');
               }
             },
             worker: async (item) => {
               const onProgress = (progress: number, step: string) => {
                 itemProgressMap.set(item.id, progress);
-                setter(prev => prev.map(it =>
-                  it.id === item.id ? { ...it, progress } : it
-                ));
+                setter(prev => {
+                  const next = prev.map(it =>
+                    it.id === item.id ? { ...it, progress } : it
+                  );
+                  taskCtx.setMetadata({ items: itemsToMetadata(next) });
+                  return next;
+                });
                 updateOverallProgress(taskCtx.progress, item.name, step);
               };
-              // disableTask=true：批量场景不为每个 item 单独建 task
               const r = await generateOneItem(item, stepKey, setter, onProgress, true);
               if (!r.success) {
-                // 让 batchRunner 走 retry：抛出真实错误，shouldRetry 默认对瞬时错误重试
                 throw new Error(r.error || '生成失败');
               }
               // ✅ 单 item 成功后立刻翻 completed，不再等整批结束
-              // 否则即便 item.progress 已经 100%，UI 也会一直显示 "generating" 直到所有项跑完
               itemProgressMap.set(item.id, 100);
-              setter(prev => prev.map(it =>
-                it.id === item.id
-                  ? {
-                      ...it,
-                      status: 'completed',
-                      progress: 100,
-                      error: undefined,
-                      imagePath: r.path || it.imagePath,
-                      imageCacheKey: Date.now(),
-                    }
-                  : it
-              ));
+              setter(prev => {
+                const next = prev.map(it =>
+                  it.id === item.id
+                    ? {
+                        ...it,
+                        status: 'completed' as const,
+                        progress: 100,
+                        error: undefined,
+                        imagePath: r.path || it.imagePath,
+                        imageCacheKey: Date.now(),
+                      }
+                    : it
+                );
+                taskCtx.setMetadata({ items: itemsToMetadata(next) });
+                return next;
+              });
               updateOverallProgress(taskCtx.progress, item.name, '完成');
               return r;
             },
           }).then(results => {
-            // 收尾兜底：worker 已经把成功项写成 completed；这里只处理"用尽重试后仍失败"的项
+            // 收尾兜底：处理"用尽重试后仍失败"的项
             results.forEach(({ item, result, error, attempts }) => {
               const ok = Boolean(result?.success);
-              if (ok) return; // 成功的已在 worker 里就地落地
+              if (ok) return;
               itemProgressMap.set(item.id, 0);
-              setter(prev => prev.map(it =>
-                it.id === item.id
-                  ? {
-                      ...it,
-                      status: 'failed',
-                      progress: 0,
-                      error: result?.error
-                        || (error instanceof Error ? error.message : String(error || ''))
-                        || `失败（已重试 ${attempts} 次）`,
-                    }
-                  : it
-              ));
+              setter(prev => {
+                const next = prev.map(it =>
+                  it.id === item.id
+                    ? {
+                        ...it,
+                        status: 'failed' as const,
+                        progress: 0,
+                        error: result?.error
+                          || (error instanceof Error ? error.message : String(error || ''))
+                          || `失败（已重试 ${attempts} 次）`,
+                      }
+                    : it
+                );
+                taskCtx.setMetadata({ items: itemsToMetadata(next) });
+                return next;
+              });
             });
             updateOverallProgress(taskCtx.progress, '完成', '所有任务结束');
           });
