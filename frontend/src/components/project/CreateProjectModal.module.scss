@@ -140,9 +140,18 @@
 }
 
 .importLabelRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.importLabelLeft {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  flex: 1;
+  min-width: 0;
 }
 
 .importLabelHint {
@@ -150,4 +159,17 @@
   font-size: 11px;
   font-weight: normal;
   margin-left: 4px;
+}
+
+.importBadge {
+  margin-top: 6px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--token-status-success) 12%, transparent);
+  color: var(--token-status-success);
+  font-size: 11px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid color-mix(in srgb, var(--token-status-success) 30%, transparent);
 }
