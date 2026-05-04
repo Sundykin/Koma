@@ -6,8 +6,9 @@
  * 的"下一步"按钮承担同样职责）。
  */
 import React from 'react';
-import { Button, Tooltip } from 'antd';
-import { ThunderboltOutlined, HighlightOutlined, LoadingOutlined, SaveOutlined } from '@ant-design/icons';
+import { Button, Tooltip, Dropdown } from 'antd';
+import type { MenuProps } from 'antd';
+import { ThunderboltOutlined, HighlightOutlined, LoadingOutlined, SaveOutlined, DownOutlined } from '@ant-design/icons';
 import { Check, Loader2, MessageSquareQuote, AlertTriangle, BadgeCheck } from 'lucide-react';
 import type { Episode } from '../../types';
 
@@ -75,44 +76,56 @@ export const InlineProjectToolbar: React.FC<InlineProjectToolbarProps> = ({
             {isPolishing ? '润色中...' : 'AI 润色'}
           </Button>
         </Tooltip>
-        <Tooltip
-          title={
-            !episode
-              ? '请先选择剧集'
-              : !hasScript
-                ? '请先输入剧本内容'
-                : isTweetGenerating
-                  ? '正在改写为推文文案...'
-                  : 'AI 改写为推文文案（直接覆盖当前剧本编辑器，完成后自动标记为字幕格式）'
-          }
-        >
-          <Button
-            type="text"
-            size="small"
-            icon={isTweetGenerating ? <LoadingOutlined spin /> : <MessageSquareQuote className="w-4 h-4" />}
-            onClick={onTweetCopy}
-            disabled={!episode || !hasScript || anyBusy}
-            className="text-text-secondary hover:text-status-warning"
+        {/* 推文化（二合一）—— 主按钮 AI 改写；右侧 ▼ 下拉里有"直接标记为字幕格式"快速绕过
+            两者最终都会把 scriptReady 置为 true，区别只是要不要调 AI 改写 */}
+        <div className="flex items-center">
+          <Tooltip
+            title={
+              !episode
+                ? '请先选择剧集'
+                : !hasScript
+                  ? '请先输入剧本内容'
+                  : isTweetGenerating
+                    ? '正在改写为推文文案...'
+                    : scriptReady
+                      ? 'AI 重新推文化（覆盖剧本编辑器内容）'
+                      : 'AI 改写为推文文案（覆盖剧本编辑器内容，完成后自动标记为字幕格式）'
+            }
           >
-            {isTweetGenerating ? '改写中...' : '推文文案'}
-          </Button>
-        </Tooltip>
-
-        {/* A 项绕过入口：手写或导入的字幕格式，无需走推文化也能直接标记 */}
-        {!scriptReady && (
-          <Tooltip title={!hasScript ? '请先输入剧本内容' : '剧本已是字幕格式（每行一句字幕）— 标记为已推文化以解锁解析与下一步'}>
             <Button
               type="text"
               size="small"
-              icon={<BadgeCheck className="w-4 h-4" />}
-              onClick={onMarkScriptReady}
+              icon={isTweetGenerating ? <LoadingOutlined spin /> : <MessageSquareQuote className="w-4 h-4" />}
+              onClick={onTweetCopy}
               disabled={!episode || !hasScript || anyBusy}
-              className="text-text-secondary hover:text-accent"
+              className="text-text-secondary hover:text-status-warning !pr-1"
             >
-              标记为字幕格式
+              {isTweetGenerating ? '改写中...' : (scriptReady ? '重新推文化' : '推文化')}
             </Button>
           </Tooltip>
-        )}
+          <Dropdown
+            menu={{
+              items: [
+                {
+                  key: 'mark',
+                  icon: <BadgeCheck className="w-3.5 h-3.5" />,
+                  label: scriptReady ? '已标记为字幕格式' : '直接标记为字幕格式（不调 AI）',
+                  disabled: !episode || !hasScript || anyBusy || scriptReady,
+                  onClick: () => onMarkScriptReady?.(),
+                },
+              ] satisfies MenuProps['items'],
+            }}
+            trigger={['click']}
+          >
+            <Button
+              type="text"
+              size="small"
+              icon={<DownOutlined className="text-[9px]" />}
+              disabled={!episode || !hasScript || anyBusy}
+              className="text-text-secondary hover:text-status-warning !w-5 !p-0 !pl-0.5"
+            />
+          </Dropdown>
+        </div>
       </div>
 
       {/* Right: 推文化状态徽章 + 保存状态 + 保存按钮 */}
