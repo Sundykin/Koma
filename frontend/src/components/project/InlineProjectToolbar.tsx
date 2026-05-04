@@ -8,7 +8,7 @@
 import React from 'react';
 import { Button, Tooltip } from 'antd';
 import { ThunderboltOutlined, HighlightOutlined, LoadingOutlined, SaveOutlined } from '@ant-design/icons';
-import { Check, Loader2, MessageSquareQuote } from 'lucide-react';
+import { Check, Loader2, MessageSquareQuote, AlertTriangle, BadgeCheck } from 'lucide-react';
 import type { Episode } from '../../types';
 
 interface InlineProjectToolbarProps {
@@ -18,10 +18,14 @@ interface InlineProjectToolbarProps {
   isGenerating?: boolean;
   isPolishing?: boolean;
   isTweetGenerating?: boolean;
+  /** 剧本是否已"推文化"（字幕行格式确认） */
+  scriptReady?: boolean;
   onSave: () => void;
   onPolish: () => void;
   onRandomGenerate: () => void;
   onTweetCopy: () => void;
+  /** A 项绕过入口：手动标记剧本已为字幕格式（直接导入字幕文件等场景） */
+  onMarkScriptReady?: () => void;
 }
 
 export const InlineProjectToolbar: React.FC<InlineProjectToolbarProps> = ({
@@ -31,10 +35,12 @@ export const InlineProjectToolbar: React.FC<InlineProjectToolbarProps> = ({
   isGenerating = false,
   isPolishing = false,
   isTweetGenerating = false,
+  scriptReady = false,
   onSave,
   onPolish,
   onRandomGenerate,
   onTweetCopy,
+  onMarkScriptReady,
 }) => {
   const anyBusy = isGenerating || isPolishing || isTweetGenerating;
 
@@ -77,7 +83,7 @@ export const InlineProjectToolbar: React.FC<InlineProjectToolbarProps> = ({
                 ? '请先输入剧本内容'
                 : isTweetGenerating
                   ? '正在改写为推文文案...'
-                  : 'AI 改写为推文文案（直接覆盖当前剧本编辑器）'
+                  : 'AI 改写为推文文案（直接覆盖当前剧本编辑器，完成后自动标记为字幕格式）'
           }
         >
           <Button
@@ -91,10 +97,44 @@ export const InlineProjectToolbar: React.FC<InlineProjectToolbarProps> = ({
             {isTweetGenerating ? '改写中...' : '推文文案'}
           </Button>
         </Tooltip>
+
+        {/* A 项绕过入口：手写或导入的字幕格式，无需走推文化也能直接标记 */}
+        {!scriptReady && (
+          <Tooltip title={!hasScript ? '请先输入剧本内容' : '剧本已是字幕格式（每行一句字幕）— 标记为已推文化以解锁解析与下一步'}>
+            <Button
+              type="text"
+              size="small"
+              icon={<BadgeCheck className="w-4 h-4" />}
+              onClick={onMarkScriptReady}
+              disabled={!episode || !hasScript || anyBusy}
+              className="text-text-secondary hover:text-accent"
+            >
+              标记为字幕格式
+            </Button>
+          </Tooltip>
+        )}
       </div>
 
-      {/* Right: 保存状态与按钮 */}
+      {/* Right: 推文化状态徽章 + 保存状态 + 保存按钮 */}
       <div className="flex items-center gap-3">
+        {/* 推文化状态徽章：解析剧本与下一步按钮共同的门控可视化 */}
+        {episode && hasScript && (
+          <Tooltip
+            title={scriptReady
+              ? '剧本已确认为字幕行格式，可解析、可进入下一步'
+              : '剧本未推文化（字幕行格式）— 点击"推文文案"或"标记为字幕格式"才能解析与下一步'}
+          >
+            <div className={`flex items-center gap-1 text-xs px-2 py-0.5 rounded ${
+              scriptReady
+                ? 'text-accent bg-accent/10 border border-accent/30'
+                : 'text-status-warning bg-status-warning/10 border border-status-warning/30'
+            }`}>
+              {scriptReady ? <BadgeCheck className="w-3 h-3" /> : <AlertTriangle className="w-3 h-3" />}
+              <span>{scriptReady ? '已推文化' : '未推文化'}</span>
+            </div>
+          </Tooltip>
+        )}
+
         <div className="flex items-center gap-1.5 text-xs">
           {isSaving ? (
             <>

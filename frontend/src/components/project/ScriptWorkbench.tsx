@@ -79,19 +79,22 @@ export const ScriptWorkbench = forwardRef<ScriptWorkbenchRef, ScriptWorkbenchPro
     streamingPreviewRef.current.scrollTop = streamingPreviewRef.current.scrollHeight;
   }, [streamingPreview]);
 
-  // 自动保存 (防抖 2s)
-  const saveScript = useCallback(async (text: string): Promise<Episode | null> => {
+  // 自动保存 (防抖 2s) — 可选 patch 字段（如 scriptReady）一起入库
+  const saveScript = useCallback(async (
+    text: string,
+    extra?: Partial<Pick<Episode, 'scriptReady'>>,
+  ): Promise<Episode | null> => {
     if (!episode) return null;
-    if (text === lastSavedRef.current) {
+    if (text === lastSavedRef.current && !extra) {
       return { ...episode, scriptText: text };
     }
 
     setIsSaving(true);
     try {
-      const updated = await saveEpisode(project.id, episode.id, { scriptText: text });
+      const updated = await saveEpisode(project.id, episode.id, { scriptText: text, ...(extra || {}) });
       lastSavedRef.current = text;
       onScriptChange(text);
-      return updated || { ...episode, scriptText: text };
+      return updated || { ...episode, scriptText: text, ...(extra || {}) };
     } catch (err: unknown) {
       logger.error('自动保存失败', err);
       return null;
@@ -137,10 +140,34 @@ export const ScriptWorkbench = forwardRef<ScriptWorkbenchRef, ScriptWorkbenchPro
     }
 
     // 设置新的定时器，保存成功后 saveScript 内部会回调 onScriptChange
+    // TODO[B]: 用户手编辑剧本时是否要自动重置 scriptReady = false（剧本被改动 → 需要重新确认）
+    //   先暂不实现；如需要议论后再开。当前策略是"一旦确认即保持"，用户主动通过推文文案 / 标记按钮触发置位
     saveTimeoutRef.current = setTimeout(() => {
       saveScript(text);
     }, 2000);
   }, [saveScript]);
+
+  /**
+   * A 项：手动「标记为字幕格式」绕过入口
+   * - 用户可能直接导入了字幕文件，或自己手写了字幕行格式的剧本，没经过推文文案按钮
+   * - 提供一个独立按钮，让 scriptReady 直接置 true，解锁解析与下一步
+   */
+  const handleMarkScriptReady = useCallback(async () => {
+    if (!episode) {
+      message.warning('请先选择剧集');
+      return;
+    }
+    if (!localScript.trim()) {
+      message.warning('剧本为空，无需标记');
+      return;
+    }
+    const result = await saveScript(localScript, { scriptReady: true });
+    if (result) {
+      message.success('已标记为字幕格式，可以进入解析步骤');
+    } else {
+      message.error('标记失败，请重试');
+    }
+  }, [episode, localScript, saveScript, message]);
 
   // 用 ref 追踪最新状态，供组件卸载时使用
   const localScriptRef = useRef(localScript);
@@ -274,8 +301,9 @@ export const ScriptWorkbench = forwardRef<ScriptWorkbenchRef, ScriptWorkbenchPro
       );
       setStreamingPreview(result);
       setLocalScript(result);
-      await saveScript(result);
-      message.success('推文文案已生成并写入剧本');
+      // 推文化完成 → 同时置 scriptReady = true 解锁解析与下一步
+      await saveScript(result, { scriptReady: true });
+      message.success('推文文案已生成并写入剧本，可以进入解析步骤');
     } catch (err: unknown) {
       logger.error('推文文案生成失败', err);
       message.error(classifyAIError(err).userMessage);
@@ -373,10 +401,12 @@ export const ScriptWorkbench = forwardRef<ScriptWorkbenchRef, ScriptWorkbenchPro
         isGenerating={isGenerating}
         isPolishing={isPolishing}
         isTweetGenerating={isTweetGenerating}
+        scriptReady={!!episode.scriptReady}
         onSave={handleManualSave}
         onPolish={handlePolish}
         onRandomGenerate={handleRandomGenerate}
         onTweetCopy={handleTweetCopy}
+        onMarkScriptReady={handleMarkScriptReady}
       />
 
       {/* 剧本编辑器 */}

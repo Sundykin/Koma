@@ -215,9 +215,11 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
                 ? '请先选择剧集'
                 : !(selectedEpisode.scriptText && selectedEpisode.scriptText.trim())
                   ? '当前剧集还没有剧本内容'
-                  : isAnalyzing
-                    ? '正在解析中...'
-                    : '解析当前剧集，提取角色 / 场景 / 道具'}
+                  : !selectedEpisode.scriptReady
+                    ? '剧本还未推文化（字幕行格式）— 请先点击"推文文案"，或工具栏"标记为字幕格式"绕过'
+                    : isAnalyzing
+                      ? '正在解析中...'
+                      : '解析当前剧集，提取角色 / 场景 / 道具'}
             >
               <Button
                 type="primary"
@@ -228,6 +230,7 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
                 disabled={
                   !selectedEpisode
                   || !(selectedEpisode.scriptText && selectedEpisode.scriptText.trim())
+                  || !selectedEpisode.scriptReady
                   || isAnalyzing
                 }
                 className="bg-accent-hover hover:!bg-accent border-none"
