@@ -6,17 +6,13 @@
  *   超过 4 张走翻页（footer 「‹ 1/N ›」），顺带 footer 提供「再生成一版」+ 「添加 ▾」
  *   多版本数据模型已支持（StoredMediaAsset[] + currentImageIndex）
  */
-import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { Button, Dropdown, Image, Tooltip, Space, Typography, App } from 'antd';
-import type { MenuProps } from 'antd';
+import React, { useEffect, useRef, useState } from 'react';
+import { Button, Dropdown, Image, Tooltip, Typography, App } from 'antd';
 import {
   PlusOutlined,
   CheckCircleFilled,
   DeleteOutlined,
   EyeOutlined,
-  UploadOutlined,
-  UserOutlined,
-  EnvironmentOutlined,
   AppstoreOutlined,
   ThunderboltOutlined,
   LoadingOutlined,
@@ -25,11 +21,7 @@ import {
 } from '@ant-design/icons';
 import type { Character, Scene, Prop } from '../../types';
 import { electronService } from '../../services/electronService';
-import {
-  getCharacterCostumePhotoSource,
-  getPropPreviewImageSource,
-  getScenePreviewImageSource,
-} from '../../utils/mediaSelectors';
+import { buildImageAddMenu } from './imageAddMenu';
 import './ImageCardGrid.scss';
 
 const { Text } = Typography;
@@ -103,101 +95,14 @@ export const ImageCardGrid: React.FC<ImageCardGridProps> = ({
     if (currentPage >= totalPages) setCurrentPage(Math.max(0, totalPages - 1));
   }, [currentPage, totalPages]);
 
-  // 本地上传
-  const handleLocalUpload = useCallback(async () => {
-    try {
-      const result = await electronService.dialog.openFile({
-        filters: [{ name: '图片', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'] }],
-        multiple: false,
-      });
-      if (!result.canceled && result.filePaths.length > 0) {
-        onAdd(result.filePaths[0]);
-      }
-    } catch {
-      message.error('选择文件失败');
-    }
-  }, [onAdd, message]);
-
-  // 从资产选择（优先使用远程URL）
-  const handleSelectAsset = useCallback((type: 'character' | 'scene' | 'prop', assetId: string) => {
-    let imageUrl: string | undefined;
-    if (type === 'character') {
-      const char = characters.find(c => c.id === assetId);
-      imageUrl = getCharacterCostumePhotoSource(char);
-    } else if (type === 'scene') {
-      const scene = scenes.find(s => s.id === assetId);
-      imageUrl = getScenePreviewImageSource(scene);
-    } else {
-      const prop = propsList.find(p => p.id === assetId);
-      imageUrl = getPropPreviewImageSource(prop);
-    }
-    if (imageUrl) {
-      onAdd(imageUrl);
-    } else {
-      message.warning('该资产没有图片');
-    }
-  }, [characters, scenes, propsList, onAdd, message]);
-
-  // 构建添加菜单
-  const buildAddMenu = (): MenuProps['items'] => {
-    const items: MenuProps['items'] = [
-      { key: 'upload', icon: <UploadOutlined />, label: '本地上传', onClick: handleLocalUpload },
-      { type: 'divider' },
-    ];
-
-    const charItems = characters
-      .map(c => ({ asset: c, source: getCharacterCostumePhotoSource(c) }))
-      .filter((entry): entry is { asset: Character; source: string } => Boolean(entry.source))
-      .map(({ asset, source }) => ({
-      key: `char-${asset.id}`,
-      label: (
-        <Space size={8}>
-          <img src={toDisplayUrl(source)} alt={asset.name} className="assetMenuThumb" />
-          <span>{asset.name}</span>
-        </Space>
-      ),
-      onClick: () => handleSelectAsset('character', asset.id),
-    }));
-    if (charItems.length > 0) {
-      items.push({ key: 'characters', icon: <UserOutlined />, label: '角色', children: charItems });
-    }
-
-    const sceneItems = scenes
-      .map(s => ({ asset: s, source: getScenePreviewImageSource(s) }))
-      .filter((entry): entry is { asset: Scene; source: string } => Boolean(entry.source))
-      .map(({ asset, source }) => ({
-      key: `scene-${asset.id}`,
-      label: (
-        <Space size={8}>
-          <img src={toDisplayUrl(source)} alt={asset.name} className="assetMenuThumb" />
-          <span>{asset.name}</span>
-        </Space>
-      ),
-      onClick: () => handleSelectAsset('scene', asset.id),
-    }));
-    if (sceneItems.length > 0) {
-      items.push({ key: 'scenes', icon: <EnvironmentOutlined />, label: '场景', children: sceneItems });
-    }
-
-    const propItems = propsList
-      .map(p => ({ asset: p, source: getPropPreviewImageSource(p) }))
-      .filter((entry): entry is { asset: Prop; source: string } => Boolean(entry.source))
-      .map(({ asset, source }) => ({
-      key: `prop-${asset.id}`,
-      label: (
-        <Space size={8}>
-          <img src={toDisplayUrl(source)} alt={asset.name} className="assetMenuThumb" />
-          <span>{asset.name}</span>
-        </Space>
-      ),
-      onClick: () => handleSelectAsset('prop', asset.id),
-    }));
-    if (propItems.length > 0) {
-      items.push({ key: 'props', icon: <AppstoreOutlined />, label: '道具', children: propItems });
-    }
-
-    return items;
-  };
+  // 添加菜单 = 共享构造器（本地上传 + 角色 / 场景 / 道具子菜单）
+  const addMenuItems = buildImageAddMenu({
+    onAdd,
+    characters,
+    scenes,
+    props: propsList,
+    message,
+  });
 
   const handlePreview = (index: number) => {
     setPreviewIndex(index);
@@ -224,7 +129,12 @@ export const ImageCardGrid: React.FC<ImageCardGridProps> = ({
   const generatingLabel = hasImages ? '生成中...' : '生成中';
 
   // ===== compact 模式：2×2 固定槽位 grid =====
+  // 父级（ShotCard）负责渲染 add/generate 按钮，所以 footer 只剩翻页指示器
+  // 空数组不再渲染 2×2 占位，直接空白（避免视觉噪声）
   if (compact) {
+    if (images.length === 0) {
+      return <div className="imageCardGrid compact compactEmpty" />;
+    }
     const pageStart = currentPage * COMPACT_PAGE_SIZE;
     const pageItems = Array.from({ length: COMPACT_PAGE_SIZE }, (_, i) => images[pageStart + i]);
 
@@ -266,48 +176,29 @@ export const ImageCardGrid: React.FC<ImageCardGridProps> = ({
           })}
         </div>
 
-        <div className="compactFooter">
-          <div className="compactPager">
-            {totalPages > 1 && (
-              <>
-                <Button
-                  type="text"
-                  size="small"
-                  icon={<LeftOutlined />}
-                  className="pagerBtn"
-                  disabled={currentPage === 0}
-                  onClick={() => setCurrentPage(p => Math.max(0, p - 1))}
-                />
-                <span className="pagerText">{currentPage + 1}/{totalPages}</span>
-                <Button
-                  type="text"
-                  size="small"
-                  icon={<RightOutlined />}
-                  className="pagerBtn"
-                  disabled={currentPage >= totalPages - 1}
-                  onClick={() => setCurrentPage(p => Math.min(totalPages - 1, p + 1))}
-                />
-              </>
-            )}
-          </div>
-          <div className="compactActions">
-            <Dropdown menu={{ items: buildAddMenu() }} trigger={['click']} disabled={disabled}>
-              <Button type="text" size="small" className="actionBtn" icon={<PlusOutlined />}>添加</Button>
-            </Dropdown>
-            {onGenerate && (
+        {totalPages > 1 && (
+          <div className="compactFooter">
+            <div className="compactPager">
               <Button
                 type="text"
                 size="small"
-                icon={isGenerating ? <LoadingOutlined /> : <ThunderboltOutlined />}
-                onClick={onGenerate}
-                disabled={isGenerating || disabled}
-                className="actionBtn primary"
-              >
-                {isGenerating ? generatingLabel : generateLabel}
-              </Button>
-            )}
+                icon={<LeftOutlined />}
+                className="pagerBtn"
+                disabled={currentPage === 0}
+                onClick={() => setCurrentPage(p => Math.max(0, p - 1))}
+              />
+              <span className="pagerText">{currentPage + 1}/{totalPages}</span>
+              <Button
+                type="text"
+                size="small"
+                icon={<RightOutlined />}
+                className="pagerBtn"
+                disabled={currentPage >= totalPages - 1}
+                onClick={() => setCurrentPage(p => Math.min(totalPages - 1, p + 1))}
+              />
+            </div>
           </div>
-        </div>
+        )}
 
         {/* 预览组（隐藏 trigger，靠双击/按钮唤起） */}
         <Image.PreviewGroup
@@ -375,7 +266,7 @@ export const ImageCardGrid: React.FC<ImageCardGridProps> = ({
           </div>
         ))}
 
-        <Dropdown menu={{ items: buildAddMenu() }} trigger={['click']} disabled={disabled}>
+        <Dropdown menu={{ items: addMenuItems }} trigger={['click']} disabled={disabled}>
           <div className="imageCard addCard">
             <PlusOutlined />
             <Text type="secondary" className="addCardText">添加</Text>

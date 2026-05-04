@@ -16,6 +16,7 @@ import {
   Progress,
   Select,
   Segmented,
+  Dropdown,
   App,
 } from 'antd';
 import {
@@ -31,6 +32,7 @@ import {
   CloseOutlined,
   PlusOutlined,
   AppstoreOutlined,
+  DownOutlined,
 } from '@ant-design/icons';
 import type { Shot, ShotScriptLine, Character, Scene, Prop, StoredMediaAsset } from '../../types';
 import { ShotScriptLines } from './ShotScriptLines';
@@ -43,6 +45,7 @@ import { ScriptEditor } from '../../editor';
 import type { MentionItem } from '../../editor';
 import { useTheme } from '../../theme/runtime';
 import { ImageCardGrid } from '../asset/ImageCardGrid';
+import { buildImageAddMenu } from '../asset/imageAddMenu';
 import { VideoCardGrid } from '../asset/VideoCardGrid';
 import { StagePlayer } from '../video/StagePlayer';
 import { electronService, fsRemove } from '../../services/electronService';
@@ -140,7 +143,7 @@ export interface ShotCardProps {
   videoProgress?: { progress: number; step: string };
 }
 
-export const ShotCard: React.FC<ShotCardProps> = ({
+const ShotCardImpl: React.FC<ShotCardProps> = ({
   projectId,
   shot,
   index,
@@ -693,219 +696,223 @@ export const ShotCard: React.FC<ShotCardProps> = ({
           </div>
         </div>
 
-        {/* 列3: 媒体（2×2 grid：图像设计 / 图像结果 / 视频设计 / 视频结果） */}
+        {/* 列3: 媒体（垂直 2 行 — 图像 / 视频；每行 = 统一 header + 下方 2 列 prompt | result） */}
         <div className={`${SHOT_LAYOUT.colMedia} flex flex-col min-h-0`}>
-        <div className="flex-1 min-h-0 grid grid-cols-2 grid-rows-2">
-        {/* 单元 1：图像设计 */}
-        <div className="border-r border-b border-border-subtle flex flex-col min-h-0">
-          <div className="flex items-center justify-between gap-2 border-b border-border-subtle px-2 py-1">
-            <span className="text-[10px] text-text-secondary">图片模式</span>
-            <Segmented
-              size="small"
-              // 老数据 'grid' 视作 'grid-9'，UI 上展示为九宫格
-              value={shot.imageMode === 'grid' ? 'grid-9' : (shot.imageMode || 'normal')}
-              onChange={(value) => onImageModeChange(shot.id, value as 'normal' | 'grid-9' | 'grid-4')}
-              options={[
-                { value: 'normal', label: '普通' },
-                { value: 'grid-4', icon: <AppstoreOutlined />, label: '四宫格' },
-                { value: 'grid-9', icon: <AppstoreOutlined />, label: '九宫格' },
-              ]}
-              className="text-[10px]"
-            />
-          </div>
-          {/* 提示词编辑器 + 浮动按钮 */}
-          <div className="flex-1 p-1 min-h-0 relative">
-            <ScriptEditor
-              value={shot.imagePrompt || ''}
-              onChange={(value) => onImagePromptChange(shot.id, value)}
-              placeholder="画面描述提示词..."
-              mentionItems={mentionItems}
-              enableCameraCommands={true}
-              showLineNumbers={false}
-              darkTheme={isDarkTheme}
-              className="shot-prompt-editor shot-prompt-editor-fill"
-            />
-            {/* 右下角浮动区域：AI生成 + 参考图 */}
-            <div className="absolute right-2 bottom-2 flex items-center gap-1.5">
-              {/* AI生成按钮 - 蓝色文字无边框 */}
-              <button
-                className="text-status-info hover:text-status-info text-[11px] font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-                onClick={handleImagePromptClick}
-                disabled={isGeneratingImagePrompt}
-              >
-                {isGeneratingImagePrompt ? '生成中...' : (hasImagePrompt ? '优化' : 'AI生成')}
-              </button>
-              {/* 参考图 */}
-              {referenceImages.map((img, idx) => (
-                <div
-                  key={idx}
-                  className={`relative h-7 w-7 rounded overflow-hidden cursor-pointer border ${
-                    idx === (shot.media?.selectedReferenceIndex || 0) ? 'border-status-info' : 'border-border'
-                  } shadow-lg`}
-                  onClick={() => handleRefImageSelect(idx)}
-                >
-                  <img
-                    src={getDisplaySrc(img)}
-                    className="w-full h-full object-cover"
-                    alt=""
-                  />
-                  <button
-                    className="absolute -top-0.5 -right-0.5 w-3 h-3 bg-status-error text-on-status text-[7px] rounded-full flex items-center justify-center hover:bg-status-error"
-                    onClick={(e) => { e.stopPropagation(); handleRefImageDelete(idx); }}
-                  >
-                    <CloseOutlined />
-                  </button>
-                </div>
-              ))}
-              {/* 添加参考图按钮 */}
-              <Tooltip title="添加参考图" placement="top">
-                <label className="h-7 w-7 bg-bg-elevated/90 border border-dashed border-border rounded flex items-center justify-center cursor-pointer hover:border-border hover:bg-bg-hover/90 text-text-secondary shadow-lg">
-                  <PlusOutlined className="text-[11px]" />
-                  <input type="file" accept="image/*" className="hidden" onChange={handleRefImageAdd} />
-                </label>
-              </Tooltip>
-            </div>
-          </div>
-        </div>
-
-        {/* 单元 2：图像结果（始终走 ImageCardGrid，多版本 + 翻页 + 再生成一版统一在 footer） */}
-        <div className="border-b border-border-subtle flex flex-col bg-bg-surface/20 min-h-0">
-          <div className="flex-1 p-1 min-h-0 relative">
-            <ImageCardGrid
-              images={imageSources}
-              selectedIndex={shot.media?.currentImageIndex || 0}
-              onSelect={handleImageSelect}
-              onAdd={handleImageAdd}
-              onDelete={handleImageDelete}
-              onSplitGrid={isGridImageMode(shot.imageMode) && electronService.isElectron()
-                ? handleOpenGridSplitPreview
-                : undefined}
-              onGenerate={() => onGenerateImage(shot.id)}
-              isGenerating={isGeneratingImage}
-              disabled={!hasImagePrompt}
-              characters={characters}
-              scenes={scenes}
-              props={props}
-              compact
-            />
-          </div>
-        </div>
-
-        {/* 单元 3：视频设计 */}
-        <div className="border-r border-border-subtle flex flex-col min-h-0">
-          {/* 视频模式切换：multi-ref 多参（带 @映射） / first-frame 首帧延展（以单图为锚）
-              九宫格图片模式与"首帧延展"语义冲突（grid 是 9 帧时序，first-frame 是单图微动），
-              此时锁定 multi-ref 并通过 tooltip 解释。 */}
-          <div className="flex items-center justify-between gap-2 border-b border-border-subtle px-2 py-1">
-            <span className="text-[10px] text-text-secondary">视频模式</span>
-            <Tooltip
-              title={isGridImageMode(shot.imageMode)
-                ? '网格图片模式下视频自动走"多参"——把网格当作 N 帧时序锚点（4 / 9 帧）；切回普通模式才能选"首帧"。'
-                : ''}
-              placement="top"
-            >
-              <Segmented
-                size="small"
-                value={shot.videoMode || 'multi-ref'}
-                onChange={(value) => onVideoModeChange?.(shot.id, value as 'multi-ref' | 'first-frame')}
-                options={[
-                  { value: 'multi-ref', label: '多参' },
-                  { value: 'first-frame', label: '首帧', disabled: isGridImageMode(shot.imageMode) },
-                ]}
-                className="text-[10px]"
-                disabled={!onVideoModeChange}
-              />
-            </Tooltip>
-          </div>
-          {/* 提示词编辑器 + 浮动按钮 */}
-          <div className="flex-1 p-1 min-h-0 relative">
-            <ScriptEditor
-              value={shot.videoPrompt || ''}
-              onChange={(value) => onVideoPromptChange(shot.id, value)}
-              placeholder="运动/转场描述..."
-              mentionItems={mentionItems}
-              enableCameraCommands={true}
-              showLineNumbers={false}
-              darkTheme={isDarkTheme}
-              className="shot-prompt-editor shot-prompt-editor-fill"
-            />
-            {/* 右下角浮动：AI生成按钮 */}
-            <div className="absolute right-2 bottom-2">
-              <button
-                className="text-status-info hover:text-status-info text-[11px] font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-                onClick={handleVideoPromptClick}
-                disabled={isGeneratingVideoPrompt}
-              >
-                {isGeneratingVideoPrompt ? '生成中...' : (hasVideoPrompt ? '优化' : 'AI生成')}
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* 单元 4：视频结果（始终走 VideoCardGrid，多版本 + 翻页 + 再生成一版统一在 footer） */}
-        <div className="flex flex-col bg-bg-surface/20 min-h-0">
-          <div className="flex-1 p-1 min-h-0 relative">
-            <VideoCardGrid
-              videos={videos.map(a => ({
-                path: getMediaAssetDisplaySource(a) || '',
-                url: a.remoteUrl,
-                thumbnailPath: typeof a.metadata?.thumbnailPath === 'string'
-                  ? a.metadata.thumbnailPath
-                  : undefined,
-                prompt: typeof a.metadata?.prompt === 'string'
-                  ? a.metadata.prompt
-                  : undefined,
-                seed: typeof a.metadata?.seed === 'number'
-                  ? a.metadata.seed
-                  : undefined,
-                model: typeof a.metadata?.model === 'string'
-                  ? a.metadata.model
-                  : undefined,
-                createdAt: a.createdAt,
-              }))}
-              selectedIndex={shot.media?.currentVideoIndex || 0}
-              onSelect={handleVideoSelect}
-              onDelete={handleVideoDelete}
-              onGenerate={() => onGenerateVideo(shot.id)}
-              isGenerating={isGeneratingVideo}
-              disabled={Boolean(videoGenerateDisabledReason)}
-              generateDisabledReason={videoGenerateDisabledReason}
-              compact
-            />
-            {currentVideo && (
-              <Button
-                type="text"
-                size="small"
-                className="absolute top-1 right-1 h-5 w-5 p-0 z-10"
-                icon={<PlayCircleFilled />}
-                onClick={() => setVideoModalOpen(true)}
-              />
-            )}
-            {/* 进度覆盖层：仅在生成中显示，避免遮挡已存视频 */}
-            {isGeneratingVideo && videoProgress && (
-              <div className="shot-video-progress-overlay">
-                <Progress
-                  percent={Math.max(0, Math.min(100, videoProgress.progress))}
+          {/* === 图像行 === */}
+          <div className="flex-1 flex flex-col min-h-0 border-b border-border-subtle">
+            {/* 统一 header：模式 + 操作按钮跨左右两列同一行 */}
+            <div className="flex items-center justify-between gap-2 px-2 py-1 bg-bg-surface/30">
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] text-text-secondary">图片模式</span>
+                <Segmented
                   size="small"
-                  showInfo={false}
-                  strokeColor="var(--token-accent-base)"
-                  trailColor="var(--token-border-base)"
+                  value={shot.imageMode === 'grid' ? 'grid-9' : (shot.imageMode || 'normal')}
+                  onChange={(value) => onImageModeChange(shot.id, value as 'normal' | 'grid-9' | 'grid-4')}
+                  options={[
+                    { value: 'normal', label: '普通' },
+                    { value: 'grid-4', label: '四宫格' },
+                    { value: 'grid-9', label: '九宫格' },
+                  ]}
+                  className="shot-mode-seg"
                 />
-                <div className="shot-video-progress-meta">
-                  <span className="truncate flex-1" title={videoProgress.step}>
-                    {videoProgress.step || '处理中...'}
-                  </span>
-                  <span className="tabular-nums shrink-0">
-                    {Math.round(videoProgress.progress)}%
-                  </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  className="text-status-info hover:opacity-80 text-[11px] font-medium cursor-pointer transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
+                  onClick={handleImagePromptClick}
+                  disabled={isGeneratingImagePrompt}
+                  title={hasImagePrompt ? '优化提示词' : 'AI 生成提示词'}
+                >
+                  {isGeneratingImagePrompt ? '生成中...' : (hasImagePrompt ? '优化提示词' : 'AI生成提示词')}
+                </button>
+                <Dropdown
+                  menu={{ items: buildImageAddMenu({ onAdd: handleImageAdd, characters, scenes, props, message }) }}
+                  trigger={['click']}
+                >
+                  <button className="text-text-secondary hover:text-text-primary text-[11px] flex items-center gap-0.5 cursor-pointer transition-colors">
+                    添加 <DownOutlined className="text-[8px]" />
+                  </button>
+                </Dropdown>
+                <button
+                  className="text-status-info hover:opacity-80 text-[11px] font-medium cursor-pointer transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
+                  onClick={() => onGenerateImage(shot.id)}
+                  disabled={isGeneratingImage || !hasImagePrompt}
+                  title={!hasImagePrompt ? '先编写提示词再生成图片' : (imageSources.length ? '追加新版本' : '生成首版图片')}
+                >
+                  {isGeneratingImage ? '生成中...' : (imageSources.length ? '再生成一版' : 'AI生成图')}
+                </button>
+              </div>
+            </div>
+            {/* 下方 2 列：prompt | result，中间 border 收薄不再造成割裂 */}
+            <div className="flex-1 flex min-h-0">
+              <div className="flex-1 min-w-0 p-1 relative">
+                <ScriptEditor
+                  value={shot.imagePrompt || ''}
+                  onChange={(value) => onImagePromptChange(shot.id, value)}
+                  placeholder="画面描述提示词..."
+                  mentionItems={mentionItems}
+                  enableCameraCommands={true}
+                  showLineNumbers={false}
+                  darkTheme={isDarkTheme}
+                  className="shot-prompt-editor shot-prompt-editor-fill"
+                />
+                {/* 参考图浮在右下角（AI 生成相关按钮已上提到 header） */}
+                <div className="absolute right-2 bottom-2 flex items-center gap-1.5">
+                  {referenceImages.map((img, idx) => (
+                    <div
+                      key={idx}
+                      className={`relative h-7 w-7 rounded overflow-hidden cursor-pointer border ${
+                        idx === (shot.media?.selectedReferenceIndex || 0) ? 'border-status-info' : 'border-border'
+                      } shadow-lg`}
+                      onClick={() => handleRefImageSelect(idx)}
+                    >
+                      <img src={getDisplaySrc(img)} className="w-full h-full object-cover" alt="" />
+                      <button
+                        className="absolute -top-0.5 -right-0.5 w-3 h-3 bg-status-error text-on-status text-[7px] rounded-full flex items-center justify-center hover:bg-status-error"
+                        onClick={(e) => { e.stopPropagation(); handleRefImageDelete(idx); }}
+                      >
+                        <CloseOutlined />
+                      </button>
+                    </div>
+                  ))}
+                  <Tooltip title="添加参考图" placement="top">
+                    <label className="h-7 w-7 bg-bg-elevated/90 border border-dashed border-border rounded flex items-center justify-center cursor-pointer hover:border-border hover:bg-bg-hover/90 text-text-secondary shadow-lg">
+                      <PlusOutlined className="text-[11px]" />
+                      <input type="file" accept="image/*" className="hidden" onChange={handleRefImageAdd} />
+                    </label>
+                  </Tooltip>
                 </div>
               </div>
-            )}
+              {/* result：去掉边框 + 浅淡背景做轻微区隔，不再形成强割裂 */}
+              <div className="flex-1 min-w-0 p-1 bg-bg-surface/15 relative">
+                <ImageCardGrid
+                  images={imageSources}
+                  selectedIndex={shot.media?.currentImageIndex || 0}
+                  onSelect={handleImageSelect}
+                  onAdd={handleImageAdd}
+                  onDelete={handleImageDelete}
+                  onSplitGrid={isGridImageMode(shot.imageMode) && electronService.isElectron()
+                    ? handleOpenGridSplitPreview
+                    : undefined}
+                  isGenerating={isGeneratingImage}
+                  disabled={!hasImagePrompt}
+                  characters={characters}
+                  scenes={scenes}
+                  props={props}
+                  compact
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* === 视频行 === */}
+          <div className="flex-1 flex flex-col min-h-0">
+            <div className="flex items-center justify-between gap-2 px-2 py-1 bg-bg-surface/30">
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] text-text-secondary">视频模式</span>
+                <Tooltip
+                  title={isGridImageMode(shot.imageMode)
+                    ? '网格图片模式下视频自动走"多参"——把网格当作 N 帧时序锚点（4 / 9 帧）；切回普通模式才能选"首帧"。'
+                    : ''}
+                  placement="top"
+                >
+                  <Segmented
+                    size="small"
+                    value={shot.videoMode || 'multi-ref'}
+                    onChange={(value) => onVideoModeChange?.(shot.id, value as 'multi-ref' | 'first-frame')}
+                    options={[
+                      { value: 'multi-ref', label: '多参' },
+                      { value: 'first-frame', label: '首帧', disabled: isGridImageMode(shot.imageMode) },
+                    ]}
+                    className="shot-mode-seg"
+                    disabled={!onVideoModeChange}
+                  />
+                </Tooltip>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  className="text-status-info hover:opacity-80 text-[11px] font-medium cursor-pointer transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
+                  onClick={handleVideoPromptClick}
+                  disabled={isGeneratingVideoPrompt}
+                  title={hasVideoPrompt ? '优化提示词' : 'AI 生成提示词'}
+                >
+                  {isGeneratingVideoPrompt ? '生成中...' : (hasVideoPrompt ? '优化提示词' : 'AI生成提示词')}
+                </button>
+                <Tooltip title={videoGenerateDisabledReason || (videoCapabilityLabel ? `当前将生成${videoCapabilityLabel}` : '')}>
+                  <button
+                    className="text-status-info hover:opacity-80 text-[11px] font-medium cursor-pointer transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
+                    onClick={() => onGenerateVideo(shot.id)}
+                    disabled={isGeneratingVideo || Boolean(videoGenerateDisabledReason)}
+                  >
+                    {isGeneratingVideo ? '生成中...' : (videos.length ? '再生成一版' : 'AI生成视频')}
+                  </button>
+                </Tooltip>
+              </div>
+            </div>
+            <div className="flex-1 flex min-h-0">
+              <div className="flex-1 min-w-0 p-1 relative">
+                <ScriptEditor
+                  value={shot.videoPrompt || ''}
+                  onChange={(value) => onVideoPromptChange(shot.id, value)}
+                  placeholder="运动/转场描述..."
+                  mentionItems={mentionItems}
+                  enableCameraCommands={true}
+                  showLineNumbers={false}
+                  darkTheme={isDarkTheme}
+                  className="shot-prompt-editor shot-prompt-editor-fill"
+                />
+              </div>
+              <div className="flex-1 min-w-0 p-1 bg-bg-surface/15 relative">
+                <VideoCardGrid
+                  videos={videos.map(a => ({
+                    path: getMediaAssetDisplaySource(a) || '',
+                    url: a.remoteUrl,
+                    thumbnailPath: typeof a.metadata?.thumbnailPath === 'string' ? a.metadata.thumbnailPath : undefined,
+                    prompt: typeof a.metadata?.prompt === 'string' ? a.metadata.prompt : undefined,
+                    seed: typeof a.metadata?.seed === 'number' ? a.metadata.seed : undefined,
+                    model: typeof a.metadata?.model === 'string' ? a.metadata.model : undefined,
+                    createdAt: a.createdAt,
+                  }))}
+                  selectedIndex={shot.media?.currentVideoIndex || 0}
+                  onSelect={handleVideoSelect}
+                  onDelete={handleVideoDelete}
+                  isGenerating={isGeneratingVideo}
+                  disabled={Boolean(videoGenerateDisabledReason)}
+                  compact
+                />
+                {currentVideo && (
+                  <Button
+                    type="text"
+                    size="small"
+                    className="absolute top-1 right-1 h-5 w-5 p-0 z-10"
+                    icon={<PlayCircleFilled />}
+                    onClick={() => setVideoModalOpen(true)}
+                  />
+                )}
+                {isGeneratingVideo && videoProgress && (
+                  <div className="shot-video-progress-overlay">
+                    <Progress
+                      percent={Math.max(0, Math.min(100, videoProgress.progress))}
+                      size="small"
+                      showInfo={false}
+                      strokeColor="var(--token-accent-base)"
+                      trailColor="var(--token-border-base)"
+                    />
+                    <div className="shot-video-progress-meta">
+                      <span className="truncate flex-1" title={videoProgress.step}>
+                        {videoProgress.step || '处理中...'}
+                      </span>
+                      <span className="tabular-nums shrink-0">
+                        {Math.round(videoProgress.progress)}%
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         </div>
-        </div>{/* /grid 2x2 */}
-        </div>{/* /colMedia */}
-      </div>
+      </div>{/* /flex items-stretch h-[480px] */}
 
       {/* 网格拆分预览 Modal — gridSize=2 走 2×2 / 4 张，gridSize=3 走 3×3 / 9 张 */}
       <Modal
@@ -1050,3 +1057,10 @@ export const ShotCard: React.FC<ShotCardProps> = ({
     </div>
   );
 };
+
+/** 用 React.memo 减少虚拟滚动场景下的无关重渲染：
+ *  父组件（ShotListEditor / Storyboard）每次 selectedIds / generatingXxx Set 变化都会重建
+ *  renderShotRow 的闭包，但只有"真正状态变化的那一镜"应当重渲染。memo 走默认浅比较即可——
+ *  ShotCardProps 里的回调来自父级 useCallback，引用稳定；其余 prop 只有真正变化时引用才换新。 */
+export const ShotCard = React.memo(ShotCardImpl);
+ShotCard.displayName = 'ShotCard';

@@ -87,34 +87,30 @@ export const VideoCardGrid: React.FC<VideoCardGridProps> = ({
 
   useEffect(() => {
     let cancelled = false;
-    const loadPosterFrames = async () => {
+    // 性能：快速滚动场景下虚拟滚动会瞬时挂卸大量 VideoCardGrid，
+    // 如果立刻并发抽帧 ffmpeg 队列会被洗刷，反而加剧卡顿。
+    // 改成 220ms debounce + 串行抽帧——挂载不到 220ms 就被卸载（如快速滚过）→ 完全不触发 ffmpeg。
+    const timer = setTimeout(async () => {
       const missingVideos = videos.filter(video => !video.thumbnailPath && video.path);
-      if (missingVideos.length === 0) return;
+      if (missingVideos.length === 0 || cancelled) return;
 
-      const nextEntries = await Promise.all(missingVideos.map(async (video) => {
+      // 串行执行避免单帧 mount 时一次性扔出 N 个 ffmpeg 任务
+      for (const video of missingVideos) {
+        if (cancelled) return;
         try {
           const framePath = await ffmpegManager.getPosterFrame(video.path, getVideoKey(video), 320);
-          if (!framePath) return null;
-          return [getVideoKey(video), electronService.fs.toLocalUrl(framePath)] as const;
+          if (cancelled || !framePath) continue;
+          const url = electronService.fs.toLocalUrl(framePath);
+          setGeneratedThumbnails(prev => ({ ...prev, [getVideoKey(video)]: url }));
         } catch {
-          return null;
+          // 单条抽帧失败继续下一条，不阻断整个队列
         }
-      }));
+      }
+    }, 220);
 
-      if (cancelled) return;
-      setGeneratedThumbnails(prev => {
-        const merged = { ...prev };
-        nextEntries.forEach((entry) => {
-          if (!entry) return;
-          merged[entry[0]] = entry[1];
-        });
-        return merged;
-      });
-    };
-
-    loadPosterFrames();
     return () => {
       cancelled = true;
+      clearTimeout(timer);
     };
   }, [videos, getVideoKey]);
 
@@ -140,10 +136,13 @@ export const VideoCardGrid: React.FC<VideoCardGridProps> = ({
     onDelete(index);
   }, [onDelete]);
 
-  const hasVideos = videos.length > 0;
-
   // ===== compact 模式：2×2 固定槽位 =====
+  // 父级（ShotCard）负责渲染 generate 按钮，footer 只剩翻页指示器
+  // 空数组不再渲染 2×2 占位
   if (compact) {
+    if (videos.length === 0) {
+      return <div className="videoCardGrid compact compactEmpty" />;
+    }
     const pageStart = currentPage * COMPACT_PAGE_SIZE;
     const pageItems = Array.from({ length: COMPACT_PAGE_SIZE }, (_, i) => videos[pageStart + i]);
     const pageThumbs = Array.from({ length: COMPACT_PAGE_SIZE }, (_, i) => thumbnailSources[pageStart + i]);
@@ -200,37 +199,19 @@ export const VideoCardGrid: React.FC<VideoCardGridProps> = ({
           })}
         </div>
 
-        <div className="compactFooter">
-          <div className="compactPager">
-            {totalPages > 1 && (
-              <>
-                <Button type="text" size="small" icon={<LeftOutlined />} className="pagerBtn"
-                  disabled={currentPage === 0}
-                  onClick={() => setCurrentPage(p => Math.max(0, p - 1))} />
-                <span className="pagerText">{currentPage + 1}/{totalPages}</span>
-                <Button type="text" size="small" icon={<RightOutlined />} className="pagerBtn"
-                  disabled={currentPage >= totalPages - 1}
-                  onClick={() => setCurrentPage(p => Math.min(totalPages - 1, p + 1))} />
-              </>
-            )}
+        {totalPages > 1 && (
+          <div className="compactFooter">
+            <div className="compactPager">
+              <Button type="text" size="small" icon={<LeftOutlined />} className="pagerBtn"
+                disabled={currentPage === 0}
+                onClick={() => setCurrentPage(p => Math.max(0, p - 1))} />
+              <span className="pagerText">{currentPage + 1}/{totalPages}</span>
+              <Button type="text" size="small" icon={<RightOutlined />} className="pagerBtn"
+                disabled={currentPage >= totalPages - 1}
+                onClick={() => setCurrentPage(p => Math.min(totalPages - 1, p + 1))} />
+            </div>
           </div>
-          <div className="compactActions">
-            {onGenerate && (
-              <Tooltip title={generateDisabledReason || ''}>
-                <Button
-                  type="text"
-                  size="small"
-                  icon={isGenerating ? <LoadingOutlined /> : <VideoCameraOutlined />}
-                  onClick={onGenerate}
-                  disabled={isGenerating || disabled || Boolean(generateDisabledReason)}
-                  className="actionBtn primary"
-                >
-                  {isGenerating ? '生成中...' : (hasVideos ? '再生成一版' : 'AI生成视频')}
-                </Button>
-              </Tooltip>
-            )}
-          </div>
-        </div>
+        )}
 
         {/* 视频播放弹窗 */}
         <Modal
