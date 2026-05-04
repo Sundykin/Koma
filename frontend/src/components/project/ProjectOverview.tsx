@@ -176,6 +176,11 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
             episode={selectedEpisode}
             onScriptChange={handleScriptChange}
             onAnalyzingChange={setIsAnalyzing}
+            onEpisodeUpdate={(updates) => {
+              // 把 ScriptWorkbench 内部刚写回 DB 的字段（如 scriptReady）合并到本地剧集状态，
+              // 解析按钮 disabled 守门 / 状态徽章 / 下游派生才能立刻生效
+              setSelectedEpisode(prev => prev ? { ...prev, ...updates } : prev);
+            }}
           />
         </div>
 
