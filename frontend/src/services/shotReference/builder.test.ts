@@ -14,7 +14,7 @@ function asset(remoteUrl: string, metadata?: Record<string, unknown>): StoredMed
 function shotOf(partial: Partial<Shot>): Shot {
   return {
     id: 'shot-1',
-    scriptContent: '宿舍里周明躺在床上看手机',
+    scriptLines: [{ id: 'l1', text: '宿舍里周明躺在床上看手机' }],
     shotType: 'medium',
     cameraMovement: 'static',
     duration: 6,

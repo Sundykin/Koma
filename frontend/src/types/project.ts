@@ -68,6 +68,15 @@ export interface Episode {
   scriptText?: string;      // 本集剧本
   status: 'draft' | 'script' | 'storyboard' | 'generating' | 'completed';
   stepProgress?: EpisodeStepProgress;  // 各步骤完成状态
+  /**
+   * 剧本是否已"推文化"（字幕行格式确认）。
+   * 仅当 true 时才允许触发解析剧本与进入下一步。
+   * 触发置 true 的入口：
+   *  1) 点击「推文文案」按钮、流式改写完成后
+   *  2) 点击工具栏「标记为字幕格式」按钮（用于直接导入字幕文件等手写场景的绕过入口）
+   * 用户手编辑剧本时是否重置此标志，先暂不处理（TODO 后议）
+   */
+  scriptReady?: boolean;
   createdAt: number;
   updatedAt: number;
   // 剧集解析数据引用（实际数据存储在 episodes/{id}/analysis.json）
@@ -84,9 +93,6 @@ export interface EpisodeAnalysis {
   completedStages?: Array<'characters' | 'scenes' | 'props' | 'shots' | 'tweet'>;
   // 剧集特有的分镜
   shots: Shot[];
-  // 剧集级推文文案：基于 scriptText 提炼出的连续推文旁白脚本，
-  // 后续可分发到每个 Shot.tweetCopy 作为分镜级解说台词的来源
-  tweetScript?: string;
   createdAt: number;
   updatedAt: number;
 }

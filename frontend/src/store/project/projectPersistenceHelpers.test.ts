@@ -105,7 +105,7 @@ describe('projectPersistenceHelpers', () => {
   it('maps shots and versions through normalized media entry records', () => {
     const shotRow = shotToRow({
       id: 'shot-1',
-      scriptContent: '主角靠墙喘息',
+      scriptLines: [{ id: 'l1', text: '主角靠墙喘息' }],
       shotType: 'medium',
       cameraMovement: 'static',
       duration: 4,
@@ -145,7 +145,7 @@ describe('projectPersistenceHelpers', () => {
 
     expect(shot).toEqual(expect.objectContaining({
       id: 'shot-1',
-      scriptContent: '主角靠墙喘息',
+      scriptLines: [expect.objectContaining({ text: '主角靠墙喘息' })],
       characters: ['char-1'],
       scenes: ['scene-1'],
       props: ['prop-1'],
@@ -246,7 +246,7 @@ describe('projectPersistenceHelpers', () => {
       'episode-1',
       [{
         id: 'shot-1',
-        scriptContent: '镜头一',
+        scriptLines: [{ id: 'l1', text: '镜头一' }],
         shotType: 'medium',
         cameraMovement: 'static',
         duration: 4,

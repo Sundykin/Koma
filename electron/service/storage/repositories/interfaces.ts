@@ -98,7 +98,7 @@ export interface ShotRow {
   meta_prompt?: string;
   meta_seed?: number;
   meta_model?: string;
-  script_content?: string;
+  script_lines_json: string;
   shot_type?: 'close-up' | 'medium' | 'wide' | 'extreme-wide';
   camera_movement?: 'static' | 'pan' | 'zoom-in' | 'tracking' | 'handheld';
   duration?: number;
@@ -172,6 +172,8 @@ export interface EpisodeRow {
   step_storyboard?: 'pending' | 'completed';
   step_video?: 'pending' | 'completed';
   has_analysis?: number;
+  /** 推文化 / 字幕格式确认门控（1 = 已确认，可解析；0 = 未确认）*/
+  script_ready?: number;
   analysis_json?: string;
   metadata_json?: string;
   created_at: number;

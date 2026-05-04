@@ -137,6 +137,7 @@ import type {
   Scene,
   Shot,
 } from '../types';
+import { getShotScriptText, scriptLinesFromText } from '../types';
 import {
   getCharacterCostumePhotoSource,
   getShotCurrentImageSource,
@@ -192,7 +193,7 @@ export function exportToManjuDSL(
     const videoSource = getShotCurrentVideoSource(s);
     return {
       id: s.id,
-      scriptContent: s.scriptContent,
+      scriptContent: getShotScriptText(s),
       shotType: s.shotType,
       cameraMovement: s.cameraMovement,
       duration: s.duration,
@@ -293,7 +294,7 @@ export function importFromManjuDSL(manju: ManjuProject): ImportedProjectData {
   // 转换分镜
   const shots: Shot[] = manju.shots.map((s) => ({
     id: s.id,
-    scriptContent: s.scriptContent,
+    scriptLines: scriptLinesFromText(s.scriptContent),
     shotType: s.shotType,
     cameraMovement: s.cameraMovement,
     duration: s.duration,

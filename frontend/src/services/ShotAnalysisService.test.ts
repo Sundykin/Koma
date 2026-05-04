@@ -37,12 +37,12 @@ describe('normalizeShotDuration', () => {
 });
 
 describe('buildShotCoverageReport', () => {
-  it('reports full coverage when shot scriptContent preserves all script units', () => {
+  it('reports full coverage when shot scriptLines preserve all script units', () => {
     const report = buildShotCoverageReport(
       '沈鹿睁开眼。她看向窗帘缝隙。灰尘在光里浮动。',
       [
-        { scriptContent: '沈鹿睁开眼。她看向窗帘缝隙。' },
-        { scriptContent: '灰尘在光里浮动。' },
+        { scriptLines: [{ id: 'a', text: '沈鹿睁开眼。她看向窗帘缝隙。' }] },
+        { scriptLines: [{ id: 'b', text: '灰尘在光里浮动。' }] },
       ],
     );
 
@@ -53,7 +53,7 @@ describe('buildShotCoverageReport', () => {
   it('samples missing script units when LLM drops middle details', () => {
     const report = buildShotCoverageReport(
       '沈鹿睁开眼。她看向窗帘缝隙。灰尘在光里浮动。',
-      [{ scriptContent: '沈鹿睁开眼。' }],
+      [{ scriptLines: [{ id: 'a', text: '沈鹿睁开眼。' }] }],
     );
 
     expect(report.coverageRatio).toBeLessThan(1);

@@ -24,7 +24,7 @@ function createImageAsset(remoteUrl: string): StoredMediaAsset {
 function createShot(partial?: Partial<Shot>): Shot {
   return {
     id: 'shot-1',
-    scriptContent: '镜头描述',
+    scriptLines: [{ id: 'l1', text: '镜头描述' }],
     shotType: 'medium',
     cameraMovement: 'static',
     duration: 4,

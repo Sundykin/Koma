@@ -778,9 +778,15 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
   shot_breakdown: {
     id: 'shot_breakdown',
     category: 'analysis',
-    name: '分镜拆解',
-    description: '将剧本拆解为分镜结构（不含提示词）',
-    template: `你是一位专业的分镜师。请将以下剧本拆解为分镜列表。
+    name: '分镜拆解（行号切分模式）',
+    description: '把已经"推文化"的字幕行剧本切分到分镜，不改写原文，仅输出每镜归属的行号区间',
+    template: `你是一位专业的分镜师。下面给你一段已经"推文化"为字幕行格式的剧本，每行已加好编号。
+你的任务是把**连续的若干行**划归到一个分镜，输出每个分镜归属的"行号列表"。
+
+【最重要硬约束】
+1. **禁止改写、合并、压缩、概括、补充任何字幕行原文**。每一行都必须原样保留在某个分镜里。
+2. **禁止跨行重组词序、禁止把相隔的行强行合到一个分镜**。划归到同一分镜的行必须是**连续行号**（如 [3, 4, 5]），不能跳号（如 [3, 5, 7] 是非法）。
+3. **必须按字幕行号顺序、连续、不重不漏地覆盖全部行**。所有分镜的 scriptLineIndices 拼起来应等于 [1, 2, 3, ..., N]，N 是字幕总行数。
 
 【时长要求】
 每个镜头的 duration {{durationConstraint}}；无法判断时填写 {{durationDefault}}。
@@ -792,29 +798,28 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
 已知场景：{{scenes}}
 已知道具：{{props}}
 
-【重要】characters、scenes、props 字段必须使用上方"已知角色/场景/道具"列表中的原始名称，不要自行编造或修改名称。如果剧本中出现了不在列表中的角色/场景/道具，则不填入对应字段。
+【重要】characters、scenes、props 字段必须使用上方"已知角色/场景/道具"列表中的原始名称，不要自行编造或修改名称。如果某分镜涉及的元素不在列表中，则不填入对应字段。
 
-剧本：
+【字幕行剧本（逐行编号）】
 {{script}}
 
-【拆解原则】
-1. 必须按剧本原文顺序从头到尾覆盖，不得跳过中间段落，不得只抽取“大事件”。
-2. 每个原文句子/动作/环境变化/视线变化/停顿/台词都必须归入某个分镜的 scriptContent；不要把细节当成可省略的摘要素材。
-3. scriptContent 必须优先复制原文连续片段，禁止改写成概括句；禁止把相距较远的原文段落揉成一个镜头。
-4. 出现新动作、新视线目标、新道具状态、新空间、新说话人、情绪转折或时间推进时，优先拆成新分镜；宁可多分镜，也不要丢细节。
-5. 输出前自检：所有 shot.scriptContent 按顺序拼接后，应覆盖原剧本主干直到末尾。
+【切分原则】
+1. 按字幕行号从 1 开始顺序，把连续若干行划归一个分镜，不许跳号。
+2. 出现下列任一信号时倾向"开新镜头"：新动作 / 新视线目标 / 新道具状态 / 新空间 / 新说话人 / 情绪转折 / 时间推进。
+3. 单镜分配的行数原则上 1–6 行；行数受 duration 约束（每行约 1.5–3 秒，按 duration 折算合理行数）。
+4. 不许出现空分镜（scriptLineIndices 为空）。
+5. 自检：把所有分镜的 scriptLineIndices 按顺序拼起来 = [1, 2, ..., N]，无遗漏、无重复、无乱序。
 
-请以 JSON 格式输出分镜列表：
-
+【输出 JSON】
 \`\`\`json
 {
   "shots": [
     {
-      "scriptContent": "对应的剧本原文片段",
+      "scriptLineIndices": [1, 2, 3],
       "shotType": "close-up/medium/wide/extreme-wide",
       "cameraMovement": "static/pan/zoom-in/tracking/handheld",
-      "duration": 10,
-      "dialogue": "角色名（情绪）：“台词内容”",
+      "duration": 6,
+      "dialogue": "角色名（情绪）：「台词内容」",
       "characters": ["已知角色名称"],
       "emotion": "情绪标签",
       "props": ["已知道具名称"],
@@ -823,6 +828,10 @@ const DEFAULT_TEMPLATES: Record<PromptTemplateType, PromptTemplate> = {
   ]
 }
 \`\`\`
+
+字段说明：
+- \`scriptLineIndices\`：1-based 字幕行号数组，必须连续（如 [3,4,5]），代表本分镜归属哪些行；下游会用这些索引从原剧本切片，不会读取其它字段去重建文本
+- 其它字段（shotType / cameraMovement / duration / dialogue / characters / scenes / props / emotion）描述本分镜的镜头语言与元素归属
 `,
     variables: [
       variable('script'),

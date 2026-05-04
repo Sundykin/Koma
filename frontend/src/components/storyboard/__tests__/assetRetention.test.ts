@@ -20,7 +20,7 @@ import type { Shot, Character, Scene, Prop, EpisodeAnalysis } from '../../../typ
 function createShot(overrides: Partial<Shot> = {}): Shot {
   return {
     id: 'shot-001',
-    scriptContent: '小明走进森林',
+    scriptLines: [{ id: 'l1', text: '小明走进森林' }],
     shotType: 'medium',
     cameraMovement: 'static',
     duration: 3,

@@ -4,6 +4,7 @@
  * 独立于剧本解析，作为单独的步骤执行
  */
 import type { Shot } from '../types';
+import { createScriptLine } from '../types';
 import { resolvePromptTemplate } from '../store/promptTemplates';
 import { TaskManager, Task } from './TaskManager';
 import { createTaskCancellationSignal } from './taskCancellationSignal';
@@ -48,7 +49,7 @@ function splitCoverageUnits(script: string): string[] {
     .filter(unit => unit.length >= 6);
 }
 
-export function buildShotCoverageReport(script: string, shots: Pick<Shot, 'scriptContent'>[]): {
+export function buildShotCoverageReport(script: string, shots: Pick<Shot, 'scriptLines'>[]): {
   totalUnits: number;
   coveredUnits: number;
   coverageRatio: number;
@@ -59,7 +60,9 @@ export function buildShotCoverageReport(script: string, shots: Pick<Shot, 'scrip
     return { totalUnits: 0, coveredUnits: 0, coverageRatio: 1, missingSamples: [] };
   }
 
-  const shotText = normalizeForCoverage(shots.map(shot => shot.scriptContent || '').join('\n'));
+  const shotText = normalizeForCoverage(
+    shots.map(shot => (shot.scriptLines || []).map(line => line.text).join('\n')).join('\n')
+  );
   const missing = units.filter(unit => !shotText.includes(unit));
   const coveredUnits = units.length - missing.length;
   return {
@@ -278,7 +281,7 @@ export class ShotAnalysisService {
       // 之前一律走 normalizeShotDuration（grok 枚举）会把 seedance 渠道的有效值 5 强制吸到 6
       const shots: Shot[] = parsedShotPayloads.map((s, index) => ({
         id: `shot_${Date.now()}_${index}`,
-        scriptContent: s.scriptContent || '',
+        scriptLines: ((s.__resolvedLines as string[] | undefined) || []).map(text => createScriptLine(text)),
         shotType: s.shotType || 'medium',
         cameraMovement: s.cameraMovement || 'static',
         duration: clampDurationToSpec(s.duration, this.ctx.itvDurationSpec),
@@ -305,7 +308,7 @@ export class ShotAnalysisService {
           .filter((id: string | undefined): id is string => id !== undefined),
         confirmed: false,
         episodeId,
-      }));
+      })).filter(shot => shot.scriptLines.length > 0); // Phase 2 方案 A：彻底丢弃空分镜
 
       const coverage = buildShotCoverageReport(script, shots);
       logger.info('分镜覆盖率检查', {
@@ -358,13 +361,19 @@ export class ShotAnalysisService {
     const durationDefault = String(durationSpec.default);
     const { characters, scenes, props } = this.ctx;
     const chunkLabel = chunk.total > 1 ? `（第 ${chunk.index + 1}/${chunk.total} 段）` : '';
+
+    // Phase 2 方案 A：把 chunk 文本预先拆成"字幕行 + 行号"形式喂给 LLM；
+    // LLM 只输出 scriptLineIndices（局部 1-based），下游用这些索引从 chunkLines 切片，
+    // 文本绝不经 LLM 改写。
+    const chunkLines = chunk.text.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+    const numberedScript = chunkLines.map((line, idx) => `[${idx + 1}] ${line}`).join('\n');
     const scriptForPrompt = chunk.total > 1
       ? [
         `【当前拆解范围${chunkLabel}】`,
-        '只拆解下面这一段文本；不要补写其他分段内容。当前段内必须从头到尾完整覆盖，不得丢细节。',
-        chunk.text,
+        '只拆解下面这一段字幕行；不要补写其他分段内容。本段内必须连续不重不漏覆盖到末行。',
+        numberedScript,
       ].join('\n')
-      : chunk.text;
+      : numberedScript;
 
     const resolvedPrompt = await resolvePromptTemplate('shot_breakdown', {
       script: scriptForPrompt,
@@ -456,7 +465,49 @@ export class ShotAnalysisService {
           responseTail: result.slice(-300),
         });
       }
-      return Array.isArray(parsed.shots) ? parsed.shots : [];
+      const rawShots = Array.isArray(parsed.shots) ? parsed.shots : [];
+
+      // Phase 2 方案 A：把 LLM 的 scriptLineIndices（1-based 局部行号）翻译成原文字幕行
+      // 全程只做"切片 + 去重 + 越界过滤"，不做任何文本改写
+      const usedIndices = new Set<number>();
+      const resolvedShots = rawShots.map((s) => {
+        const indicesRaw = Array.isArray(s.scriptLineIndices) ? s.scriptLineIndices : [];
+        const lines: string[] = [];
+        for (const idx of indicesRaw) {
+          if (typeof idx !== 'number' || !Number.isInteger(idx)) continue;
+          if (idx < 1 || idx > chunkLines.length) continue;
+          if (usedIndices.has(idx)) continue;
+          usedIndices.add(idx);
+          lines.push(chunkLines[idx - 1]);
+        }
+        return { ...s, __resolvedLines: lines };
+      });
+
+      // 兜底：未被任何分镜认领的字幕行追加到末镜，避免丢字
+      const missingIndices: number[] = [];
+      for (let i = 1; i <= chunkLines.length; i += 1) {
+        if (!usedIndices.has(i)) missingIndices.push(i);
+      }
+      if (missingIndices.length && resolvedShots.length) {
+        const lastShot = resolvedShots[resolvedShots.length - 1];
+        for (const i of missingIndices) lastShot.__resolvedLines.push(chunkLines[i - 1]);
+        logger.warn('LLM 未覆盖全部字幕行，已追加到末镜', {
+          traceId: chunkTraceId,
+          parentTraceId: traceId,
+          missingCount: missingIndices.length,
+          missingPreview: missingIndices.slice(0, 5).map(i => chunkLines[i - 1]).join(' / '),
+        });
+      } else if (missingIndices.length && !resolvedShots.length) {
+        // 极端情况：LLM 一镜都没切；造一个兜底镜把整段塞进去
+        logger.warn('LLM 未输出任何分镜，构造兜底单镜承载全部字幕行', {
+          traceId: chunkTraceId,
+          parentTraceId: traceId,
+          lineCount: chunkLines.length,
+        });
+        resolvedShots.push({ __resolvedLines: [...chunkLines] });
+      }
+
+      return resolvedShots;
     } catch (parseErr) {
       const errMsg = parseErr instanceof Error ? parseErr.message : String(parseErr);
       logger.error('分镜 JSON 解析失败', { traceId: chunkTraceId, parentTraceId: traceId, error: errMsg, responseLength: result.length });

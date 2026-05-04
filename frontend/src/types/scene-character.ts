@@ -101,10 +101,21 @@ export interface ShotVideo {
 // - first-frame：首帧延展模式，以单图为锚做微动延展，提示词不出现 @ 映射
 export type ShotVideoMode = 'multi-ref' | 'first-frame';
 
+/**
+ * 分镜内的字幕行块。
+ * 剧本步骤推文文案化后，剧本被切分成"一行一句字幕"格式；分镜步骤把这些行
+ * 按归属切片到每个分镜，每行成为一个独立可编辑、可拖拽（支持跨分镜）的块。
+ * scriptLines 是分镜内"剧本"的唯一来源，下游 image / video prompt 推理用 join('\n') 还原文本。
+ */
+export interface ShotScriptLine {
+  id: string;
+  text: string;
+}
+
 // 分镜/镜头接口定义
 export interface Shot {
   id: string;
-  scriptContent: string; // 对应的剧本原文
+  scriptLines: ShotScriptLine[]; // 字幕行块列表（取代旧 scriptContent + tweetCopy）
   shotType: 'close-up' | 'medium' | 'wide' | 'extreme-wide'; // 特写 | 中景 | 全景 | 大全景
   cameraMovement: 'static' | 'pan' | 'zoom-in' | 'tracking' | 'handheld'; // 固定 | 摇镜 | 推镜 | 跟随 | 手持
   duration: number;      // 持续时长(秒)
@@ -119,7 +130,6 @@ export interface Shot {
    */
   imageMode?: 'normal' | 'grid' | 'grid-9' | 'grid-4';
   videoMode?: ShotVideoMode; // 视频推理模式（默认 'multi-ref'）
-  tweetCopy?: string;    // 分镜级推文文案（1-3 句解说台词，作为 TTS 旁白源）
   media?: ShotMediaState; // 结构化媒体槽位
   // 关联资产
   characters: string[];  // 涉及的角色ID

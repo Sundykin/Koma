@@ -29,12 +29,12 @@ export class SqliteShotRepository implements IShotRepository {
   create(data: ShotRow): void {
     this.db.prepare(`
       INSERT INTO shots (id, project_id, episode_id, shot_number, description,
-        meta_prompt, meta_seed, meta_model, script_content, shot_type, camera_movement, duration,
+        meta_prompt, meta_seed, meta_model, script_lines_json, shot_type, camera_movement, duration,
         image_prompt, video_prompt, image_mode, dialogue, emotion, confirmed, seed,
         selected_reference_index, current_image_index, current_video_index,
         current_version, sort_order, metadata_json, created_at, updated_at)
       VALUES (@id, @project_id, @episode_id, @shot_number, @description,
-        @meta_prompt, @meta_seed, @meta_model, @script_content, @shot_type, @camera_movement, @duration,
+        @meta_prompt, @meta_seed, @meta_model, @script_lines_json, @shot_type, @camera_movement, @duration,
         @image_prompt, @video_prompt, @image_mode, @dialogue, @emotion, @confirmed, @seed,
         @selected_reference_index, @current_image_index, @current_video_index,
         @current_version, @sort_order, @metadata_json, @created_at, @updated_at)
@@ -47,7 +47,7 @@ export class SqliteShotRepository implements IShotRepository {
       meta_prompt: data.meta_prompt ?? null,
       meta_seed: data.meta_seed ?? null,
       meta_model: data.meta_model ?? null,
-      script_content: data.script_content ?? null,
+      script_lines_json: data.script_lines_json ?? '[]',
       shot_type: data.shot_type ?? null,
       camera_movement: data.camera_movement ?? null,
       duration: data.duration ?? null,

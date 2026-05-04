@@ -4,6 +4,7 @@
  * 分镜生成由 ShotAnalysisService 单独处理
  */
 import type { Character, Scene, Prop, Shot, ScriptAnalysisResult } from '../types';
+import { scriptLinesFromText } from '../types';
 import { resolvePromptTemplate } from '../store/promptTemplates';
 import type { ResolvedPromptTemplate } from '../store/promptTemplates';
 import { logLLMCall } from '../store/aiCallLogger';
@@ -633,7 +634,7 @@ export class ScriptAnalysisService {
 
       const shots: Shot[] = parsed.shots.map((s, index) => ({
         id: `shot_${Date.now()}_${index}`,
-        scriptContent: s.scriptContent,
+        scriptLines: scriptLinesFromText(s.scriptContent || ''),
         shotType: s.shotType || 'medium',
         cameraMovement: s.cameraMovement || 'static',
         duration: normalizeVideoDurationSeconds(s.duration),
@@ -900,7 +901,7 @@ export class BackgroundAnalysisService {
           episodeName,
           episodeScript: script,
         },
-        tweetScript: existingAnalysis?.tweetScript,
+        // tweetScript 字段已废弃（剧本本身就是字幕格式）；如需注入，调用方自行 setTweetScript
       });
 
       syncTaskProgress();

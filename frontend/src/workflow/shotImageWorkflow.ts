@@ -4,7 +4,7 @@
  * OpenSpec: 统一通过 MediaGenerationService 编排 start/snapshot、落盘与回写。
  */
 import type { Character, Scene, Shot, StoredMediaAsset } from '../types';
-import { getMediaAssetDisplaySource } from '../types';
+import { getMediaAssetDisplaySource, getShotScriptText } from '../types';
 import { loadProps } from '../store/projectStore';
 import { resolvePromptTemplate } from '../store/promptTemplates';
 import { getThemeStylePrefix } from '../config/themePresets';
@@ -92,7 +92,7 @@ export async function shotImageWorkflow(params: {
       const gridTemplateKey = gridMode === 'grid-4' ? 'tti_grid_4_shot_image' : 'tti_grid_shot_image';
       const resolved = await resolvePromptTemplate(gridTemplateKey, {
         stylePrefix: stylePrefix || '',
-        shotDescription: normalizedShot.scriptContent || '',
+        shotDescription: getShotScriptText(normalizedShot),
         gridPrompt: normalizedShot.imagePrompt,
         resolution: '8K',
         aspectRatio: finalAspectRatio,

@@ -120,7 +120,7 @@ export async function distributeTweetToShots(
   const shotsList = shots
     .map((shot, idx) => {
       const order = idx + 1;
-      const content = (shot.scriptContent || '').replace(/\s+/g, ' ').trim() || '（空）';
+      const content = (shot.scriptLines || []).map(l => l.text).join(' ').replace(/\s+/g, ' ').trim() || '（空）';
       const duration = typeof shot.duration === 'number' && shot.duration > 0 ? shot.duration : 6;
       return `#${order} ${content} (${duration}s)`;
     })

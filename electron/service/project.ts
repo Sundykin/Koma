@@ -910,7 +910,7 @@ export class ProjectService {
           meta_prompt: meta.prompt || '',
           meta_seed: meta.seed ?? null,
           meta_model: meta.model || '',
-          script_content: '',
+          script_lines_json: '[]',
           current_version: meta.currentVersion ?? 0,
           sort_order: 0,
           metadata_json: undefined,

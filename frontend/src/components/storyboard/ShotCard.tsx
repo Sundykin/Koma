@@ -35,7 +35,8 @@ import {
   PlusOutlined,
   AppstoreOutlined,
 } from '@ant-design/icons';
-import type { Shot, Character, Scene, Prop, StoredMediaAsset } from '../../types';
+import type { Shot, ShotScriptLine, Character, Scene, Prop, StoredMediaAsset } from '../../types';
+import { ShotScriptLines } from './ShotScriptLines';
 import {
   getMediaAssetDisplaySource,
   getMediaAssetEditingSource,
@@ -78,54 +79,7 @@ function isGridImageMode(mode?: Shot['imageMode']): boolean {
   return mode === 'grid' || mode === 'grid-9' || mode === 'grid-4';
 }
 
-interface ShotScriptInputProps {
-  shotId: string;
-  value?: string;
-  onScriptChange: (shotId: string, script: string) => void;
-}
-
-function ShotScriptInput({ shotId, value, onScriptChange }: ShotScriptInputProps) {
-  const [scriptDraft, setScriptDraft] = useState(value || '');
-  const scriptDraftRef = useRef(scriptDraft);
-  const scriptDirtyRef = useRef(false);
-
-  useEffect(() => {
-    scriptDraftRef.current = scriptDraft;
-  }, [scriptDraft]);
-
-  useEffect(() => {
-    const externalScript = value || '';
-    if (!scriptDirtyRef.current) {
-      setScriptDraft(externalScript);
-      scriptDraftRef.current = externalScript;
-    }
-  }, [value]);
-
-  const flushScriptDraft = useCallback(() => {
-    const latestDraft = scriptDraftRef.current;
-    if (latestDraft !== (value || '')) {
-      onScriptChange(shotId, latestDraft);
-    }
-    scriptDirtyRef.current = false;
-  }, [onScriptChange, shotId, value]);
-
-  const handleScriptInputChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const nextValue = e.target.value;
-    setScriptDraft(nextValue);
-    scriptDraftRef.current = nextValue;
-    scriptDirtyRef.current = nextValue !== (value || '');
-  }, [value]);
-
-  return (
-    <TextArea
-      value={scriptDraft}
-      onChange={handleScriptInputChange}
-      onBlur={flushScriptDraft}
-      placeholder="剧本内容..."
-      className="shot-script-input w-full h-full bg-transparent border-none resize-none text-xs focus:ring-0 placeholder-text-muted"
-    />
-  );
-}
+// Phase 3: 旧 ShotScriptInput textarea 已被 ShotScriptLines 块列表组件取代
 
 export interface ShotCardProps {
   projectId: string;
@@ -145,7 +99,8 @@ export interface ShotCardProps {
   isGeneratingVideo: boolean;
   onSelectChange: (shotId: string, selected: boolean) => void;
   onActivate?: (shotId: string | null) => void;
-  onScriptChange: (shotId: string, script: string) => void;
+  /** 单分镜内字幕行变更（编辑 / 添加 / 删除 / 同分镜内排序 / 任意位置插入） */
+  onScriptLinesChange: (shotId: string, lines: ShotScriptLine[]) => void;
   onImagePromptChange: (shotId: string, imagePrompt: string) => void;
   onVideoPromptChange: (shotId: string, videoPrompt: string) => void;
   onDurationChange?: (shotId: string, duration: number) => void;
@@ -205,7 +160,7 @@ export const ShotCard: React.FC<ShotCardProps> = ({
   isGeneratingVideo,
   onSelectChange,
   onActivate,
-  onScriptChange,
+  onScriptLinesChange,
   onImagePromptChange,
   onVideoPromptChange,
   onDurationChange,
@@ -603,7 +558,8 @@ export const ShotCard: React.FC<ShotCardProps> = ({
       className={`shot-card ${isSelected ? 'selected' : ''} ${shot.confirmed ? 'confirmed' : ''} ${isActive ? 'active' : ''}`}
       onClick={handleCardClick}
     >
-      <div className="flex items-stretch min-h-[130px] bg-bg-app">
+      {/* 分镜行固定高度：360px 给资产分类至少 3 行可见空间；所有列内部滚动 */}
+      <div className="flex items-stretch h-[360px] bg-bg-app">
         {/* 左侧操作列 - 全部显示 */}
         <div className={`${COL_ACTION_WIDTH} shrink-0 border-r border-border-subtle flex flex-col items-center py-1.5 gap-0.5 bg-bg-surface/30`}>
           <Checkbox
@@ -697,37 +653,45 @@ export const ShotCard: React.FC<ShotCardProps> = ({
           </div>
         </div>
 
-        {/* 列1: 剧本 */}
-        <div className={`${SHOT_LAYOUT.colScript} border-r border-border-subtle flex flex-col`}>
-          <div className="flex-1 p-1">
-            <ShotScriptInput
+        {/* 列1: 剧本（min-h-0 让 ShotScriptLines 内部滚动条生效，行多了不撑高分镜） */}
+        <div className={`${SHOT_LAYOUT.colScript} border-r border-border-subtle flex flex-col min-h-0`}>
+          <div className="flex-1 min-h-0 p-1">
+            <ShotScriptLines
               shotId={shot.id}
-              value={shot.scriptContent}
-              onScriptChange={onScriptChange}
+              lines={shot.scriptLines || []}
+              onLinesChange={onScriptLinesChange}
             />
           </div>
         </div>
 
-        {/* 列2: 资产 */}
-        <div className={`${SHOT_LAYOUT.colAssets} border-r border-border-subtle flex flex-col justify-center bg-bg-surface/10 p-1.5 gap-0.5 overflow-y-auto`}>
-          <AssetSelector
-            type="character"
-            selectedIds={shot.characters || []}
-            allAssets={characters}
-            onChange={(ids) => onCharactersChange(shot.id, ids)}
-          />
-          <AssetSelector
-            type="scene"
-            selectedIds={shot.scenes || []}
-            allAssets={scenes}
-            onChange={(ids) => onScenesChange?.(shot.id, ids)}
-          />
-          <AssetSelector
-            type="prop"
-            selectedIds={shot.props || []}
-            allAssets={props}
-            onChange={(ids) => onPropsChange?.(shot.id, ids)}
-          />
+        {/* 列2: 资产（角色 / 场景 / 道具 三段等高）
+            - 父容器 flex-col + min-h-0：把分镜行的 360px 等分给三段，每段 ~110px 容纳标题 + 至少 3 行条目
+            - 每段 flex-1 min-h-0：AssetSelector 内部自己处理"标题固定 + 条目滚动" */}
+        <div className={`${SHOT_LAYOUT.colAssets} border-r border-border-subtle flex flex-col bg-bg-surface/10 p-1 gap-1 min-h-0`}>
+          <div className="flex-1 min-h-0">
+            <AssetSelector
+              type="character"
+              selectedIds={shot.characters || []}
+              allAssets={characters}
+              onChange={(ids) => onCharactersChange(shot.id, ids)}
+            />
+          </div>
+          <div className="flex-1 min-h-0">
+            <AssetSelector
+              type="scene"
+              selectedIds={shot.scenes || []}
+              allAssets={scenes}
+              onChange={(ids) => onScenesChange?.(shot.id, ids)}
+            />
+          </div>
+          <div className="flex-1 min-h-0">
+            <AssetSelector
+              type="prop"
+              selectedIds={shot.props || []}
+              allAssets={props}
+              onChange={(ids) => onPropsChange?.(shot.id, ids)}
+            />
+          </div>
         </div>
 
         {/* 列3: 图像设计 */}

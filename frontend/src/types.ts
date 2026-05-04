@@ -85,11 +85,19 @@ export type {
   Prop,
   ShotVideo,
   Shot,
+  ShotScriptLine,
   ShotVideoMode,
   ScriptAnalysisResult,
   ShotVersion,
   ShotMeta,
 } from './types/scene-character';
+export {
+  makeScriptLineId,
+  scriptLinesFromText,
+  scriptLinesToText,
+  getShotScriptText,
+  createScriptLine,
+} from './types/shot-script';
 
 export type {
   AsyncTaskType,
