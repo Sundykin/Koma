@@ -1,4 +1,6 @@
-@import "tailwindcss";
+/* 用 url() 包裹让 Sass 把它当纯 CSS @import 透传给 PostCSS（@tailwindcss/postcss）处理，
+   规避 Sass @import 弃用告警（Dart Sass 3 会移除）*/
+@import url("tailwindcss");
 
 /* ========================================
    Design System: Cinematic Studio Theme
