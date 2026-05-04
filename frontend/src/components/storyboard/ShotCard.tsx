@@ -143,7 +143,7 @@ export interface ShotCardProps {
   videoProgress?: { progress: number; step: string };
 }
 
-export const ShotCard: React.FC<ShotCardProps> = ({
+const ShotCardImpl: React.FC<ShotCardProps> = ({
   projectId,
   shot,
   index,
@@ -710,15 +710,15 @@ export const ShotCard: React.FC<ShotCardProps> = ({
                   onChange={(value) => onImageModeChange(shot.id, value as 'normal' | 'grid-9' | 'grid-4')}
                   options={[
                     { value: 'normal', label: '普通' },
-                    { value: 'grid-4', icon: <AppstoreOutlined />, label: '四宫格' },
-                    { value: 'grid-9', icon: <AppstoreOutlined />, label: '九宫格' },
+                    { value: 'grid-4', label: '四宫格' },
+                    { value: 'grid-9', label: '九宫格' },
                   ]}
-                  className="text-[10px]"
+                  className="shot-mode-seg"
                 />
               </div>
               <div className="flex items-center gap-2">
                 <button
-                  className="text-status-info hover:text-status-info text-[11px] font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="text-status-info hover:opacity-80 text-[11px] font-medium cursor-pointer transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
                   onClick={handleImagePromptClick}
                   disabled={isGeneratingImagePrompt}
                   title={hasImagePrompt ? '优化提示词' : 'AI 生成提示词'}
@@ -729,12 +729,12 @@ export const ShotCard: React.FC<ShotCardProps> = ({
                   menu={{ items: buildImageAddMenu({ onAdd: handleImageAdd, characters, scenes, props, message }) }}
                   trigger={['click']}
                 >
-                  <button className="text-text-secondary hover:text-text-primary text-[11px] flex items-center gap-0.5">
+                  <button className="text-text-secondary hover:text-text-primary text-[11px] flex items-center gap-0.5 cursor-pointer transition-colors">
                     添加 <DownOutlined className="text-[8px]" />
                   </button>
                 </Dropdown>
                 <button
-                  className="text-status-info hover:text-status-info text-[11px] font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="text-status-info hover:opacity-80 text-[11px] font-medium cursor-pointer transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
                   onClick={() => onGenerateImage(shot.id)}
                   disabled={isGeneratingImage || !hasImagePrompt}
                   title={!hasImagePrompt ? '先编写提示词再生成图片' : (imageSources.length ? '追加新版本' : '生成首版图片')}
@@ -824,14 +824,14 @@ export const ShotCard: React.FC<ShotCardProps> = ({
                       { value: 'multi-ref', label: '多参' },
                       { value: 'first-frame', label: '首帧', disabled: isGridImageMode(shot.imageMode) },
                     ]}
-                    className="text-[10px]"
+                    className="shot-mode-seg"
                     disabled={!onVideoModeChange}
                   />
                 </Tooltip>
               </div>
               <div className="flex items-center gap-2">
                 <button
-                  className="text-status-info hover:text-status-info text-[11px] font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="text-status-info hover:opacity-80 text-[11px] font-medium cursor-pointer transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
                   onClick={handleVideoPromptClick}
                   disabled={isGeneratingVideoPrompt}
                   title={hasVideoPrompt ? '优化提示词' : 'AI 生成提示词'}
@@ -840,7 +840,7 @@ export const ShotCard: React.FC<ShotCardProps> = ({
                 </button>
                 <Tooltip title={videoGenerateDisabledReason || (videoCapabilityLabel ? `当前将生成${videoCapabilityLabel}` : '')}>
                   <button
-                    className="text-status-info hover:text-status-info text-[11px] font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="text-status-info hover:opacity-80 text-[11px] font-medium cursor-pointer transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
                     onClick={() => onGenerateVideo(shot.id)}
                     disabled={isGeneratingVideo || Boolean(videoGenerateDisabledReason)}
                   >
@@ -1057,3 +1057,10 @@ export const ShotCard: React.FC<ShotCardProps> = ({
     </div>
   );
 };
+
+/** 用 React.memo 减少虚拟滚动场景下的无关重渲染：
+ *  父组件（ShotListEditor / Storyboard）每次 selectedIds / generatingXxx Set 变化都会重建
+ *  renderShotRow 的闭包，但只有"真正状态变化的那一镜"应当重渲染。memo 走默认浅比较即可——
+ *  ShotCardProps 里的回调来自父级 useCallback，引用稳定；其余 prop 只有真正变化时引用才换新。 */
+export const ShotCard = React.memo(ShotCardImpl);
+ShotCard.displayName = 'ShotCard';

@@ -368,13 +368,18 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
               onAddShot={onAddShot}
               onBatchDelete={handleBatchDelete}
             />
-            {/* 虚拟滚动：变高行由 react-virtuoso 自动测量 */}
+            {/* 虚拟滚动：行固定 480px 高度，精确估算 + 大缓冲区减少快速滚动时白屏
+                - increaseViewportBy: 上下各预渲染 1200px（约 2.5 行），平滑滚动不卡
+                - defaultItemHeight: 480 与 ShotCard 的 h-[480px] 对齐，让 Virtuoso 不再频繁动态测量
+                - overscan: 多缓冲一行减少快速拖动条时的"白屏未渲染" */}
             <Virtuoso
               ref={virtuosoRef}
               data={shots}
               computeItemKey={(_, shot) => shot.id}
               itemContent={renderShotRow}
-              increaseViewportBy={400}
+              increaseViewportBy={{ top: 1200, bottom: 1200 }}
+              overscan={{ main: 480, reverse: 480 }}
+              defaultItemHeight={480}
               className="virtuosoScroller"
             />
           </div>

@@ -10,6 +10,40 @@
   overflow: hidden;
 }
 
+/* 媒体行 header 内的 Segmented：缩小到与文本按钮等高 + 平滑滑块动画 */
+.shot-mode-seg {
+  font-size: 10px !important;
+}
+
+.shot-mode-seg.ant-segmented {
+  padding: 1px !important;
+  background: var(--token-bg-elevated);
+}
+
+.shot-mode-seg.ant-segmented .ant-segmented-item {
+  min-height: 18px;
+  padding: 0 6px;
+  font-size: 10px;
+  line-height: 18px;
+  transition: color 0.18s ease;
+  cursor: pointer;
+}
+
+.shot-mode-seg.ant-segmented .ant-segmented-item-label {
+  min-height: 18px;
+  line-height: 18px;
+  padding: 0;
+}
+
+/* 滑块动画：覆盖默认 transition 让切换更柔顺 */
+.shot-mode-seg.ant-segmented .ant-segmented-thumb,
+.shot-mode-seg.ant-segmented .ant-segmented-item-selected {
+  transition:
+    transform 0.22s cubic-bezier(0.4, 0, 0.2, 1),
+    background-color 0.22s ease,
+    color 0.18s ease;
+}
+
 .shot-card:hover {
   background: var(--token-bg-elevated);
   border-color: var(--token-border-base);
