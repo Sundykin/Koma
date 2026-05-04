@@ -18,8 +18,8 @@ import {
   LoadingOutlined,
   RobotOutlined,
 } from '@ant-design/icons';
-import type { Shot, Character, Scene, Prop, AppSettings, StoredMediaAsset, ProjectStyleSnapshot } from '../../types';
-import { loadEpisodeShots, saveEpisodeShots, loadCharacters, loadScenes, loadProps, loadEpisodeAnalysis } from '../../store/projectStore';
+import type { Shot, ShotScriptLine, Character, Scene, Prop, AppSettings, StoredMediaAsset, ProjectStyleSnapshot } from '../../types';
+import { loadEpisodeShots, saveEpisodeShots, saveEpisode, loadCharacters, loadScenes, loadProps, loadEpisodeAnalysis } from '../../store/projectStore';
 import { generateShotImage, batchGenerateShotImages } from '../../services/ShotGenerationService';
 import { shotRenderWorkflow, batchRenderShots } from '../../workflow/shotRenderWorkflow';
 import { runWithTask } from '../../services/taskRunner';
@@ -33,6 +33,14 @@ import type { MentionItem } from '../../editor';
 import { useTheme } from '../../theme/runtime';
 import { StoryboardStudio } from './StoryboardStudio';
 import { ShotListEditor } from './ShotListEditor';
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core';
 import { ShotAssetPresetModal } from './ShotAssetPresetModal';
 import { useShotAssetSync } from '../../hooks/useShotAssetSync';
 import { createLogger } from '../../store/logger';
@@ -516,6 +524,11 @@ export const Storyboard: React.FC<StoryboardProps> = ({
         const snapshot = queuedShotsSaveRef.current;
         queuedShotsSaveRef.current = null;
         await saveEpisodeShots(snapshot.projectId, snapshot.episodeId, snapshot.shots);
+        // D 项：分镜任何变更都把 episode.scriptText 重新拼回（保证剧本编辑器与分镜一致）
+        const rebuiltScriptText = snapshot.shots
+          .flatMap(s => (s.scriptLines || []).map(l => l.text))
+          .join('\n');
+        await saveEpisode(snapshot.projectId, snapshot.episodeId, { scriptText: rebuiltScriptText });
       }
     })();
 
@@ -699,13 +712,71 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     }
   }, [projectId, episodeId, shots, shotVideoSupportMap, effectiveSettings, ttiSelection, itvSelection, ttsSelection, aspectRatio, styleSnapshot, message, refreshShotsFromStore]);
 
-  // 剧本内容变更（旧路径：textarea 整段输入）
-  // TODO[Phase3]: 块列表 UI 上线后，这条路径会被 ShotScriptLines 的 onChange 取代
-  const handleScriptChange = useCallback((shotId: string, scriptContent: string) => {
+  // 单分镜内字幕行变更（编辑 / 添加 / 删除 / 同分镜内排序 / 任意位置插入）
+  const handleScriptLinesChange = useCallback((shotId: string, lines: ShotScriptLine[]) => {
     const updatedShots = shots.map(s =>
-      s.id === shotId ? { ...s, scriptLines: scriptLinesFromText(scriptContent) } : s
+      s.id === shotId ? { ...s, scriptLines: lines } : s
     );
     saveAllShots(updatedShots);
+  }, [shots, saveAllShots]);
+
+  // dnd-kit 传感器：用 PointerSensor + 5px 激活距离，避免误触发
+  const dndSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+  );
+
+  /**
+   * 字幕行块拖拽落点处理（同分镜 + 跨分镜）。
+   * 拖拽源 / 落点 id 编码为 `${shotId}::${lineId}`；解析归属后做相应数组操作：
+   * - 同分镜：本镜 scriptLines 内重新排序
+   * - 跨分镜：从源镜 scriptLines 删除该行，插入到目标镜对应位置
+   */
+  const handleScriptLineDragEnd = useCallback((event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over) return;
+    const activeKey = String(active.id);
+    const overKey = String(over.id);
+    if (activeKey === overKey) return;
+    const [srcShotId, srcLineId] = activeKey.split('::');
+    const [dstShotId, dstLineId] = overKey.split('::');
+    if (!srcShotId || !srcLineId || !dstShotId || !dstLineId) return;
+
+    if (srcShotId === dstShotId) {
+      // 同分镜：移动 srcLineId 到 dstLineId 位置
+      const next = shots.map(shot => {
+        if (shot.id !== srcShotId) return shot;
+        const fromIdx = (shot.scriptLines || []).findIndex(l => l.id === srcLineId);
+        const toIdx = (shot.scriptLines || []).findIndex(l => l.id === dstLineId);
+        if (fromIdx < 0 || toIdx < 0 || fromIdx === toIdx) return shot;
+        const list = [...(shot.scriptLines || [])];
+        const [moved] = list.splice(fromIdx, 1);
+        list.splice(toIdx, 0, moved);
+        return { ...shot, scriptLines: list };
+      });
+      saveAllShots(next);
+      return;
+    }
+
+    // 跨分镜：从源镜删除，插到目标镜的目标位置
+    const src = shots.find(s => s.id === srcShotId);
+    const dst = shots.find(s => s.id === dstShotId);
+    if (!src || !dst) return;
+    const movedLine = (src.scriptLines || []).find(l => l.id === srcLineId);
+    if (!movedLine) return;
+    const newSrcLines = (src.scriptLines || []).filter(l => l.id !== srcLineId);
+    const dstInsertIdx = (dst.scriptLines || []).findIndex(l => l.id === dstLineId);
+    const dstLines = [...(dst.scriptLines || [])];
+    if (dstInsertIdx < 0) {
+      dstLines.push(movedLine);
+    } else {
+      dstLines.splice(dstInsertIdx, 0, movedLine);
+    }
+    const next = shots.map(shot => {
+      if (shot.id === srcShotId) return { ...shot, scriptLines: newSrcLines };
+      if (shot.id === dstShotId) return { ...shot, scriptLines: dstLines };
+      return shot;
+    });
+    saveAllShots(next);
   }, [shots, saveAllShots]);
 
   // 分镜时长变更
@@ -1491,8 +1562,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
   }, [projectId, episodeId, episodeName, script, llmSelection, characters, props, message, styleSnapshot]);
 
   const handleSaveEdit = useCallback(async () => {
-    const editScriptText = (editFormData as Shot & { scriptText?: string }).scriptText
-      ?? getShotScriptText(editFormData as Shot);
+    const editScriptText = getShotScriptText(editFormData as Shot);
     if (!editScriptText.trim()) {
       message.warning('请输入剧本内容');
       return;
@@ -1823,6 +1893,11 @@ export const Storyboard: React.FC<StoryboardProps> = ({
         </div>
       ) : (
         <StoryboardStudio>
+          <DndContext
+            sensors={dndSensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleScriptLineDragEnd}
+          >
           <ShotListEditor
             projectId={projectId}
             shots={shots}
@@ -1838,7 +1913,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
             batchProgress={batchProgress}
             activeShotId={activeShotId}
             onActiveShotChange={setActiveShotId}
-            onScriptChange={handleScriptChange}
+            onScriptLinesChange={handleScriptLinesChange}
             onImagePromptChange={handleImagePromptChange}
             onVideoPromptChange={handleVideoPromptChange}
             onDurationChange={handleDurationChange}
@@ -1880,6 +1955,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
             onBulkVideoModeChange={handleBulkVideoModeChange}
             durationSpec={itvDurationSpec}
           />
+          </DndContext>
         </StoryboardStudio>
       )}
 

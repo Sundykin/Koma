@@ -1,4 +1,5 @@
 import type { Character, Prop, Scene, Shot } from '../types';
+import { getShotScriptText } from '../types';
 import { DEFAULT_VIDEO_DURATION_SECONDS } from '../utils/videoDuration';
 
 // shot.duration 在创建 / 编辑 / AI 生成时已按当前 ITV 渠道 spec 吸附（见 Storyboard / ShotAnalysisService）。
@@ -303,7 +304,7 @@ function summarizeProps(propIds: string[] | undefined, props: Prop[]): string {
 }
 
 function getShotVisibleAction(shot: Shot): string {
-  return cleanText(stripDialogueAndNarrativeNoise(shot.scriptContent));
+  return cleanText(stripDialogueAndNarrativeNoise(getShotScriptText(shot)));
 }
 
 function buildMotionTimeline(durationSeconds: number, action: string, cameraMovement: string): string {

@@ -9,7 +9,7 @@ import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso';
 import { StoryboardLayout } from './StoryboardLayout';
 import { ShotListHeader } from './ShotListHeader';
 import type { MentionItem } from '../../editor';
-import type { Shot, Character, Scene, Prop, StoredMediaAsset } from '../../types';
+import type { Shot, ShotScriptLine, Character, Scene, Prop, StoredMediaAsset } from '../../types';
 import { ShotCard } from './ShotCard';
 
 const { Text } = Typography;
@@ -29,7 +29,7 @@ export interface ShotListEditorProps {
   batchProgress?: { current: number; total: number; step?: string };
   activeShotId?: string | null;
   onActiveShotChange?: (shotId: string | null) => void;
-  onScriptChange: (shotId: string, script: string) => void;
+  onScriptLinesChange: (shotId: string, lines: ShotScriptLine[]) => void;
   onImagePromptChange: (shotId: string, imagePrompt: string) => void;
   onVideoPromptChange: (shotId: string, videoPrompt: string) => void;
   onDurationChange?: (shotId: string, duration: number) => void;
@@ -90,7 +90,7 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
   batchProgress,
   activeShotId,
   onActiveShotChange,
-  onScriptChange,
+  onScriptLinesChange,
   onImagePromptChange,
   onVideoPromptChange,
   onDurationChange,
@@ -234,7 +234,7 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
         isGeneratingVideo={generatingVideos.has(shot.id)}
         onSelectChange={handleSelectChange}
         onActivate={onActiveShotChange}
-        onScriptChange={onScriptChange}
+        onScriptLinesChange={onScriptLinesChange}
         onImagePromptChange={onImagePromptChange}
         onVideoPromptChange={onVideoPromptChange}
         onDurationChange={onDurationChange}
@@ -281,7 +281,7 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
       generatingVideos,
       handleSelectChange,
       onActiveShotChange,
-      onScriptChange,
+      onScriptLinesChange,
       onImagePromptChange,
       onVideoPromptChange,
       onDurationChange,
