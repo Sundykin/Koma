@@ -17,6 +17,7 @@ interface InlineProjectToolbarProps {
   isSaving: boolean;
   isGenerating?: boolean;
   isPolishing?: boolean;
+  isTweetGenerating?: boolean;
   onSave: () => void;
   onPolish: () => void;
   onRandomGenerate: () => void;
@@ -29,12 +30,13 @@ export const InlineProjectToolbar: React.FC<InlineProjectToolbarProps> = ({
   isSaving,
   isGenerating = false,
   isPolishing = false,
+  isTweetGenerating = false,
   onSave,
   onPolish,
   onRandomGenerate,
   onTweetCopy,
 }) => {
-  const anyBusy = isGenerating || isPolishing;
+  const anyBusy = isGenerating || isPolishing || isTweetGenerating;
 
   return (
     <div className="h-12 px-4 flex items-center justify-between border-b border-border-subtle bg-bg-surface/50">
@@ -67,16 +69,26 @@ export const InlineProjectToolbar: React.FC<InlineProjectToolbarProps> = ({
             {isPolishing ? '润色中...' : 'AI 润色'}
           </Button>
         </Tooltip>
-        <Tooltip title={!episode ? "请先选择剧集" : "查看 / 生成推文文案，可分发到分镜"}>
+        <Tooltip
+          title={
+            !episode
+              ? '请先选择剧集'
+              : !hasScript
+                ? '请先输入剧本内容'
+                : isTweetGenerating
+                  ? '正在改写为推文文案...'
+                  : 'AI 改写为推文文案（直接覆盖当前剧本编辑器）'
+          }
+        >
           <Button
             type="text"
             size="small"
-            icon={<MessageSquareQuote className="w-4 h-4" />}
+            icon={isTweetGenerating ? <LoadingOutlined spin /> : <MessageSquareQuote className="w-4 h-4" />}
             onClick={onTweetCopy}
-            disabled={!episode || anyBusy}
+            disabled={!episode || !hasScript || anyBusy}
             className="text-text-secondary hover:text-status-warning"
           >
-            推文文案
+            {isTweetGenerating ? '改写中...' : '推文文案'}
           </Button>
         </Tooltip>
       </div>
