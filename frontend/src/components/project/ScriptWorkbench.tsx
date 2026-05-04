@@ -29,6 +29,12 @@ interface ScriptWorkbenchProps {
   onScriptChange: (text: string) => void;
   /** 解析状态变更上报；外部据此控制"解析剧本"按钮的 loading 态 */
   onAnalyzingChange?: (isAnalyzing: boolean) => void;
+  /**
+   * 当 scriptReady 等剧集字段被工具栏内的动作（如"标记为字幕格式" / 推文化完成）
+   * 写回 DB 时回调，把字段 patch 同步给上层 selectedEpisode；
+   * 否则父组件持有的剧集状态是过时的，解析按钮 disabled 与状态徽章不会刷新。
+   */
+  onEpisodeUpdate?: (updates: Partial<Episode>) => void;
 }
 
 export interface ScriptWorkbenchRef {
@@ -42,6 +48,7 @@ export const ScriptWorkbench = forwardRef<ScriptWorkbenchRef, ScriptWorkbenchPro
   episode,
   onScriptChange,
   onAnalyzingChange,
+  onEpisodeUpdate,
 }, ref) => {
   const { message } = App.useApp();
   const { theme } = useTheme();
@@ -94,6 +101,11 @@ export const ScriptWorkbench = forwardRef<ScriptWorkbenchRef, ScriptWorkbenchPro
       const updated = await saveEpisode(project.id, episode.id, { scriptText: text, ...(extra || {}) });
       lastSavedRef.current = text;
       onScriptChange(text);
+      // 把 extra 字段（scriptReady 等）同步给上层 selectedEpisode，
+      // 否则解析按钮 disabled 守门和状态徽章不会刷新
+      if (extra && Object.keys(extra).length > 0) {
+        onEpisodeUpdate?.(extra);
+      }
       return updated || { ...episode, scriptText: text, ...(extra || {}) };
     } catch (err: unknown) {
       logger.error('自动保存失败', err);
@@ -101,7 +113,7 @@ export const ScriptWorkbench = forwardRef<ScriptWorkbenchRef, ScriptWorkbenchPro
     } finally {
       setIsSaving(false);
     }
-  }, [episode, project.id, onScriptChange]);
+  }, [episode, project.id, onScriptChange, onEpisodeUpdate]);
 
   const flushSave = useCallback(async (): Promise<Episode | null> => {
     if (saveTimeoutRef.current) {
