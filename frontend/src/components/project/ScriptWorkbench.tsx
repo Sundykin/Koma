@@ -6,11 +6,12 @@ import React, { useState, useEffect, useCallback, useRef, forwardRef, useImperat
 import { App } from 'antd';
 import { Film, Loader2 } from 'lucide-react';
 import { InlineProjectToolbar } from './InlineProjectToolbar';
-import { TweetScriptModal } from './TweetScriptModal';
 import { ScriptEditor } from '../../editor';
 import { saveEpisode, loadEpisodeAnalysis, saveEpisodeAnalysis } from '../../store/projectStore';
 import { generateRandomScript, polishScript } from '../../workflow/scriptGenerator';
 import { submitScriptAnalysisTask } from '../../services/analysisTaskClient';
+import { generateTweetScript } from '../../services/TweetCopyService';
+import { createCreationContext } from '../../services/CreationContext';
 import { TaskManager } from '../../services/TaskManager';
 import { useActiveTask } from '../../hooks';
 import type { Project, Episode, AppSettings } from '../../types';
@@ -51,9 +52,9 @@ export const ScriptWorkbench = forwardRef<ScriptWorkbenchRef, ScriptWorkbenchPro
   const [isSubmittingAnalysis, setIsSubmittingAnalysis] = useState(false);
   const [isPolishing, setIsPolishing] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [streamingMode, setStreamingMode] = useState<'generate' | 'polish' | null>(null);
+  const [isTweetGenerating, setIsTweetGenerating] = useState(false);
+  const [streamingMode, setStreamingMode] = useState<'generate' | 'polish' | 'tweet' | null>(null);
   const [streamingPreview, setStreamingPreview] = useState('');
-  const [tweetModalOpen, setTweetModalOpen] = useState(false);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastSavedRef = useRef(episode?.scriptText || '');
   const streamingPreviewRef = useRef<HTMLDivElement | null>(null);
@@ -246,6 +247,45 @@ export const ScriptWorkbench = forwardRef<ScriptWorkbenchRef, ScriptWorkbenchPro
     }
   };
 
+  // 推文文案：流式直接覆盖当前剧本编辑器（不弹窗）
+  const handleTweetCopy = async () => {
+    if (!episode) {
+      message.warning('请先选择剧集');
+      return;
+    }
+    if (!localScript.trim()) {
+      message.warning('请先输入剧本内容');
+      return;
+    }
+    setIsTweetGenerating(true);
+    setStreamingMode('tweet');
+    setStreamingPreview('');
+    try {
+      const ctx = await createCreationContext(project.id, episode.id, {
+        styleSnapshot: project.styleSnapshot,
+      });
+      const result = await generateTweetScript(
+        ctx,
+        localScript,
+        () => {},
+        (_delta, accumulated) => {
+          setStreamingPreview(accumulated);
+        },
+      );
+      setStreamingPreview(result);
+      setLocalScript(result);
+      await saveScript(result);
+      message.success('推文文案已生成并写入剧本');
+    } catch (err: unknown) {
+      logger.error('推文文案生成失败', err);
+      message.error(classifyAIError(err).userMessage);
+    } finally {
+      setIsTweetGenerating(false);
+      setStreamingMode(null);
+      setStreamingPreview('');
+    }
+  };
+
   // 解析剧本
   const handleAnalyze = useCallback(async () => {
     if (!episode || !localScript.trim()) {
@@ -332,18 +372,11 @@ export const ScriptWorkbench = forwardRef<ScriptWorkbenchRef, ScriptWorkbenchPro
         isSaving={isSaving}
         isGenerating={isGenerating}
         isPolishing={isPolishing}
+        isTweetGenerating={isTweetGenerating}
         onSave={handleManualSave}
         onPolish={handlePolish}
         onRandomGenerate={handleRandomGenerate}
-        onTweetCopy={() => setTweetModalOpen(true)}
-      />
-
-      <TweetScriptModal
-        open={tweetModalOpen}
-        project={project}
-        episode={episode}
-        scriptText={localScript}
-        onClose={() => setTweetModalOpen(false)}
+        onTweetCopy={handleTweetCopy}
       />
 
       {/* 剧本编辑器 */}
@@ -354,12 +387,20 @@ export const ScriptWorkbench = forwardRef<ScriptWorkbenchRef, ScriptWorkbenchPro
               <div className="min-w-0">
                 <div className="flex items-center gap-2 text-sm font-medium text-text-primary">
                   <Loader2 className="h-4 w-4 animate-spin text-accent" />
-                  <span>{streamingMode === 'generate' ? 'AI 正在生成剧本' : 'AI 正在润色剧本'}</span>
+                  <span>
+                    {streamingMode === 'generate'
+                      ? 'AI 正在生成剧本'
+                      : streamingMode === 'polish'
+                        ? 'AI 正在润色剧本'
+                        : 'AI 正在改写为推文文案'}
+                  </span>
                 </div>
                 <p className="mt-1 text-xs text-text-tertiary">
                   {streamingMode === 'generate'
                     ? '内容会实时显示，完成后自动写入编辑器。'
-                    : '润色结果会实时预览，完成后再覆盖当前剧本。'}
+                    : streamingMode === 'polish'
+                      ? '润色结果会实时预览，完成后再覆盖当前剧本。'
+                      : '推文文案会实时预览，完成后会覆盖当前剧本编辑器内容并自动保存。'}
                 </p>
               </div>
               <span className="shrink-0 text-xs text-text-tertiary">{streamingPreview.length} 字符</span>

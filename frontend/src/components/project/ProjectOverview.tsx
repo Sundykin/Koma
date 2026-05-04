@@ -113,11 +113,17 @@ export const ProjectOverview: React.FC<ProjectOverviewProps> = ({
     setSelectedEpisode(episodes.length > 0 ? episodes[0] : null);
   }, []);
 
-  // 监听上层"导入剧本"按钮触发的信号；初始 0 → 0 不触发，仅自增触发
+  // 监听上层"导入剧本"按钮触发的信号；只在严格"自增"时才触发打开。
+  // 用 ref 记录上一次值（初始挂载时 prev = current）—— 这样即便用户切到下个 step
+  // 再切回，ProjectOverview 重新挂载、上层 signal 仍是非零值时，初次 effect
+  // 也不会把它误当成"刚刚自增"而错误打开导入弹窗。
+  const prevImportSignalRef = useRef<number>(openImportSignal ?? 0);
   useEffect(() => {
-    if (openImportSignal && openImportSignal > 0) {
+    const current = openImportSignal ?? 0;
+    if (current > prevImportSignalRef.current) {
       setScriptImportVisible(true);
     }
+    prevImportSignalRef.current = current;
   }, [openImportSignal]);
 
   return (

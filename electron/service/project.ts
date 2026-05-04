@@ -356,10 +356,19 @@ export class ProjectService {
     db.prepare(`DELETE FROM ${table} WHERE shot_id = ?`).run(shotId);
     if (!entityIds?.length) return;
     const key = table === 'shot_characters' ? 'character_id' : table === 'shot_scenes' ? 'scene_id' : 'prop_id';
+    const seen = new Set<string>();
+    const uniqueIds: string[] = [];
+    for (const id of entityIds) {
+      if (typeof id !== 'string' || !id) continue;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      uniqueIds.push(id);
+    }
+    if (!uniqueIds.length) return;
     const insert = db.prepare(
       `INSERT INTO ${table} (shot_id, ${key}, sort_order) VALUES (@shot_id, @entity_id, @sort_order)`
     );
-    entityIds.forEach((entityId, index) => {
+    uniqueIds.forEach((entityId, index) => {
       insert.run({ shot_id: shotId, entity_id: entityId, sort_order: index });
     });
   }
