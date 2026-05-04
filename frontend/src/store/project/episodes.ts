@@ -40,6 +40,7 @@ export async function createEpisode(
     step_storyboard: newEpisode.stepProgress?.storyboard || 'pending',
     step_video: newEpisode.stepProgress?.video || 'pending',
     has_analysis: newEpisode.hasAnalysis ? 1 : 0,
+    script_ready: newEpisode.scriptReady ? 1 : 0,
     created_at: now,
     updated_at: now,
   });
@@ -75,6 +76,7 @@ export async function loadEpisode(
         video: row.step_video || 'pending',
       },
       hasAnalysis: Boolean(row.has_analysis),
+      scriptReady: Boolean(row.script_ready),
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     };
@@ -108,6 +110,7 @@ export async function saveEpisode(
     step_storyboard: updatedEpisode.stepProgress?.storyboard || 'pending',
     step_video: updatedEpisode.stepProgress?.video || 'pending',
     has_analysis: updatedEpisode.hasAnalysis ? 1 : 0,
+    script_ready: updatedEpisode.scriptReady ? 1 : 0,
     updated_at: Date.now(),
   });
 
