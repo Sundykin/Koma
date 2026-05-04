@@ -17,10 +17,10 @@ export class SqliteEpisodeRepository implements IEpisodeRepository {
   create(data: EpisodeRow): void {
     this.db.prepare(`
       INSERT INTO episodes (id, project_id, episode_number, title, script_text,
-        status, step_assets, step_storyboard, step_video, has_analysis,
+        status, step_assets, step_storyboard, step_video, has_analysis, script_ready,
         analysis_json, metadata_json, created_at, updated_at)
       VALUES (@id, @project_id, @episode_number, @title, @script_text,
-        @status, @step_assets, @step_storyboard, @step_video, @has_analysis,
+        @status, @step_assets, @step_storyboard, @step_video, @has_analysis, @script_ready,
         @analysis_json, @metadata_json, @created_at, @updated_at)
     `).run({
       id: data.id,
@@ -33,6 +33,7 @@ export class SqliteEpisodeRepository implements IEpisodeRepository {
       step_storyboard: data.step_storyboard ?? 'pending',
       step_video: data.step_video ?? 'pending',
       has_analysis: data.has_analysis ?? 0,
+      script_ready: data.script_ready ?? 0,
       analysis_json: data.analysis_json ?? null,
       metadata_json: data.metadata_json ?? null,
       created_at: data.created_at,
