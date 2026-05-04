@@ -4,19 +4,21 @@
  * 左侧操作列固定宽度，内容区域使用 flex 分配
  */
 
-// 左侧固定列宽度 (加宽以容纳全部操作按钮)
-export const COL_ACTION_WIDTH = 'w-14'; // 56px 操作列
+// 左侧操作列宽度 — 纵向空间够大后稍加宽，按钮 / #N / 时长有舒服的间隔
+export const COL_ACTION_WIDTH = 'w-16'; // 64px 操作列
 
 // 内容区域列宽度 (使用 flex 比例避免横向滚动)
+//
+// Phase: 把原来 4 个独立的媒体列 (图像设计 / 图像结果 / 视频设计 / 视频结果)
+// 收成 1 个 colMedia，内部用 CSS 2×2 grid 渲染。释放出的横向空间分配给 colAssets，
+// 同时分镜行高度提到 480px 让媒体单格有合理空间。
 export const SHOT_LAYOUT = {
-  // 剧本列加宽：分镜里多行字幕块需要更舒服的横向空间
-  colScript: 'flex-[22] min-w-[180px]',
-  // 资产列收窄：改为纵向条目布局后视觉密度更高，无需大宽度
-  colAssets: 'flex-[8] min-w-[120px]',
-  colImageDesign: 'flex-[20] min-w-[160px]',
-  colImageResult: 'flex-[18] min-w-[140px]', // 图像生成变宽
-  colVideoDesign: 'flex-[20] min-w-[160px]',
-  colVideoResult: 'flex-[15] min-w-[120px]',
+  // 剧本列：字幕块列表
+  colScript: 'flex-[20] min-w-[180px]',
+  // 资产列：纵向角色 / 场景 / 道具 三段
+  colAssets: 'flex-[14] min-w-[180px]',
+  // 媒体列：内部 2×2 grid（图像设计 / 图像结果 / 视频设计 / 视频结果）
+  colMedia: 'flex-[36] min-w-[420px]',
 };
 
 export const ASSET_TYPES = {

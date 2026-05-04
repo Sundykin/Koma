@@ -102,10 +102,61 @@ export const ShotListHeader: React.FC<ShotListHeaderProps> = ({
   const hasSelected = selectedCount > 0;
   const targetLabel = hasSelected ? `(${selectedCount})` : '';
 
+  // 把所有批量操作折叠成一个统一菜单（用户偏好：批量先折叠，后续再看）
+  const batchAllItems: MenuProps['items'] = [
+    {
+      key: 'image-prompt',
+      label: '图像提示词',
+      type: 'group',
+      children: [
+        { key: 'image-prompt-gen', label: t('storyboard.generateEmpty'), onClick: onBatchPrompts },
+        { key: 'image-prompt-regen', label: t('storyboard.regenerateAll'), onClick: onBatchRePrompts },
+      ],
+    },
+    {
+      key: 'image',
+      label: '图像生成',
+      type: 'group',
+      children: [
+        { key: 'image-gen', label: t('storyboard.generateEmpty'), onClick: onBatchImages },
+        { key: 'image-regen', label: t('storyboard.regenerateAll'), onClick: onBatchReImages },
+      ],
+    },
+    {
+      key: 'video-prompt',
+      label: '视频提示词',
+      type: 'group',
+      children: [
+        { key: 'video-prompt-gen', label: t('storyboard.generateEmpty'), onClick: onBatchVideoPrompts },
+        { key: 'video-prompt-regen', label: t('storyboard.regenerateAll'), onClick: onBatchReVideoPrompts },
+      ],
+    },
+    {
+      key: 'video',
+      label: '视频生成',
+      type: 'group',
+      children: [
+        { key: 'video-gen', label: t('storyboard.generateEmpty'), onClick: onBatchVideos },
+        { key: 'video-regen', label: t('storyboard.regenerateAll'), onClick: onBatchReVideos },
+      ],
+    },
+    ...(onBulkVideoModeChange ? [{
+      key: 'video-mode',
+      label: '视频模式切换',
+      type: 'group' as const,
+      children: [
+        { key: 'mode-multi', label: '全部切到 · 多参模式', onClick: () => onBulkVideoModeChange('multi-ref') },
+        { key: 'mode-first', label: '全部切到 · 首帧模式', onClick: () => onBulkVideoModeChange('first-frame') },
+      ],
+    }] : []),
+  ];
+
+  const anyBatchRunning = generatingImagePrompts || generatingVideoPrompts || generatingImages || generatingVideos;
+
   return (
     <div className="sticky top-0 z-20 flex items-stretch bg-bg-surface border-b border-border w-full">
-      {/* 操作列 - 全选 + 批量删除 */}
-      <div className={`${COL_ACTION_WIDTH} shrink-0 border-r border-border-subtle flex flex-col items-center justify-center gap-0.5 py-1`}>
+      {/* 操作列：全选 + 批量删除（hasSelected 时才显示）— 横向更紧凑、视觉锚定在一起 */}
+      <div className={`${COL_ACTION_WIDTH} shrink-0 border-r border-border-subtle flex items-center justify-center gap-1.5 py-1.5`}>
         <Tooltip title={isAllSelected ? t('storyboard.deselectAll') : `${t('storyboard.selectAll')} (${totalCount})`}>
           <Checkbox
             checked={isAllSelected}
@@ -115,7 +166,9 @@ export const ShotListHeader: React.FC<ShotListHeaderProps> = ({
         </Tooltip>
         {hasSelected && (
           <Popconfirm title={`${t('storyboard.deleteSelected')} ${selectedCount} ${t('storyboard.selectedCount')}?`} onConfirm={onBatchDelete} placement="right">
-            <Button type="text" danger size="small" className="w-5 h-5 p-0" icon={<DeleteOutlined className="text-[10px]" />} />
+            <Tooltip title={t('storyboard.deleteSelected')}>
+              <Button type="text" danger size="small" className="!w-5 !h-5 !p-0" icon={<DeleteOutlined className="text-[11px]" />} />
+            </Tooltip>
           </Popconfirm>
         )}
       </div>
@@ -126,89 +179,26 @@ export const ShotListHeader: React.FC<ShotListHeaderProps> = ({
       {/* 资产 */}
       <div className={`${SHOT_LAYOUT.colAssets} ${cellClass}`}>{t('storyboard.assets')}</div>
 
-      {/* 图像设计 + 批量生成 */}
-      <div className={`${SHOT_LAYOUT.colImageDesign} ${cellClass} justify-between`}>
-        <span>{t('storyboard.imageDesign')}</span>
-        <Dropdown menu={{ items: imagePromptMenuItems }} trigger={['click']}>
-          <Button
-            type="text"
-            size="small"
-            className="h-5 px-1 text-[10px]"
-            icon={<ThunderboltOutlined />}
-            loading={generatingImagePrompts}
-          >
-            AI{targetLabel} <DownOutlined className="text-[8px]" />
-          </Button>
-        </Dropdown>
-      </div>
-
-      {/* 图像结果 + 批量生成 */}
-      <div className={`${SHOT_LAYOUT.colImageResult} ${cellClass} justify-between`}>
-        <span>{t('storyboard.image')}</span>
-        <Dropdown menu={{ items: imageMenuItems }} trigger={['click']}>
-          <Button
-            type="text"
-            size="small"
-            className="h-5 px-1 text-[10px]"
-            icon={<PictureOutlined />}
-            loading={generatingImages}
-          >
-            {targetLabel} <DownOutlined className="text-[8px]" />
-          </Button>
-        </Dropdown>
-      </div>
-
-      {/* 视频设计 + 批量生成 + 视频模式批量切换 */}
-      <div className={`${SHOT_LAYOUT.colVideoDesign} ${cellClass} justify-between`}>
-        <span>{t('storyboard.videoDesign')}</span>
+      {/* 媒体（图像设计 / 图像结果 / 视频设计 / 视频结果 已合并到 2×2 grid）+ 折叠批量菜单 + 添加分镜 */}
+      <div className={`${SHOT_LAYOUT.colMedia} ${cellClass} border-r-0 justify-between`}>
+        <span>媒体（图像 · 视频）</span>
         <div className="flex items-center gap-0.5">
-          {onBulkVideoModeChange && (
-            <Tooltip title="批量切换全部分镜的视频推理模式">
-              <Dropdown menu={{ items: videoModeMenuItems }} trigger={['click']}>
-                <Button
-                  type="text"
-                  size="small"
-                  className="h-5 px-1 text-[10px]"
-                >
-                  模式 <DownOutlined className="text-[8px]" />
-                </Button>
-              </Dropdown>
-            </Tooltip>
-          )}
-          <Dropdown menu={{ items: videoPromptMenuItems }} trigger={['click']}>
+          <Dropdown menu={{ items: batchAllItems }} trigger={['click']} placement="bottomRight">
             <Button
               type="text"
               size="small"
-              className="h-5 px-1 text-[10px]"
+              className="h-5 px-1.5 text-[11px]"
               icon={<ThunderboltOutlined />}
-              loading={generatingVideoPrompts}
+              loading={anyBatchRunning}
             >
-              AI{targetLabel} <DownOutlined className="text-[8px]" />
-            </Button>
-          </Dropdown>
-        </div>
-      </div>
-
-      {/* 视频结果 + 批量生成 + 添加按钮 */}
-      <div className={`${SHOT_LAYOUT.colVideoResult} ${cellClass} border-r-0 justify-between`}>
-        <span>{t('storyboard.video')}</span>
-        <div className="flex items-center gap-0.5">
-          <Dropdown menu={{ items: videoMenuItems }} trigger={['click']}>
-            <Button
-              type="text"
-              size="small"
-              className="h-5 px-1 text-[10px]"
-              icon={<VideoCameraOutlined />}
-              loading={generatingVideos}
-            >
-              {targetLabel} <DownOutlined className="text-[8px]" />
+              批量{targetLabel} <DownOutlined className="text-[8px]" />
             </Button>
           </Dropdown>
           <Tooltip title={t('storyboard.addShot')}>
             <Button
               type="text"
               size="small"
-              className="h-5 w-5 p-0"
+              className="!w-5 !h-5 !p-0"
               icon={<PlusOutlined />}
               onClick={onAddShot}
             />

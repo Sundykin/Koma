@@ -537,7 +537,8 @@ export const ShotCard: React.FC<ShotCardProps> = ({
   };
 
   // 统一按钮样式
-  const actionBtnClass = "w-6 h-6 p-0 text-[11px]";
+  // 行高 480px 后操作列纵向空间充裕：按钮加大到 28×28，icon 12px，间距更舒服
+  const actionBtnClass = "!w-7 !h-7 !p-0 !text-[12px]";
 
   const getDisplaySrc = useCallback((asset?: StoredMediaAsset | null): string => {
     const source = asset ? getMediaAssetDisplaySource(asset) : undefined;
@@ -558,15 +559,16 @@ export const ShotCard: React.FC<ShotCardProps> = ({
       className={`shot-card ${isSelected ? 'selected' : ''} ${shot.confirmed ? 'confirmed' : ''} ${isActive ? 'active' : ''}`}
       onClick={handleCardClick}
     >
-      {/* 分镜行固定高度：360px 给资产分类至少 3 行可见空间；所有列内部滚动 */}
-      <div className="flex items-stretch h-[360px] bg-bg-app">
-        {/* 左侧操作列 - 全部显示 */}
-        <div className={`${COL_ACTION_WIDTH} shrink-0 border-r border-border-subtle flex flex-col items-center py-1.5 gap-0.5 bg-bg-surface/30`}>
+      {/* 分镜行固定高度：480px ——
+          媒体列改 2×2 grid 后每格 ~240px 高度，资产 3 段每段 ~150px 容纳标题 + 4-5 行条目 */}
+      <div className="flex items-stretch h-[480px] bg-bg-app">
+        {/* 左侧操作列 - 全部显示（行高变 480 后给更舒服的间距 + 大一号按钮） */}
+        <div className={`${COL_ACTION_WIDTH} shrink-0 border-r border-border-subtle flex flex-col items-center py-2 gap-1 bg-bg-surface/30`}>
           <Checkbox
             checked={isSelected}
             onChange={(e) => onSelectChange(shot.id, e.target.checked)}
           />
-          <span className="text-[11px] font-semibold text-text-secondary">#{index + 1}</span>
+          <span className="text-[12px] font-semibold text-text-primary tracking-tight">#{index + 1}</span>
           {onDurationChange ? (
             <Tooltip title="分镜时长（秒）" placement="right">
               <div className="flex items-center gap-0.5">
@@ -621,8 +623,8 @@ export const ShotCard: React.FC<ShotCardProps> = ({
             <Tag className="m-0 text-[9px] px-1" color="blue">{shot.duration}s</Tag>
           )}
 
-          {/* 操作按钮 - 直接显示 */}
-          <div className="flex flex-col gap-0.5 mt-1">
+          {/* 操作按钮 - 直接显示（gap 加大、与 #N / 时长视觉区隔） */}
+          <div className="flex flex-col gap-1 mt-1.5">
             <Tooltip title={shot.confirmed ? '取消确认' : '确认'} placement="right">
               <Button
                 size="small"
@@ -694,8 +696,11 @@ export const ShotCard: React.FC<ShotCardProps> = ({
           </div>
         </div>
 
-        {/* 列3: 图像设计 */}
-        <div className={`${SHOT_LAYOUT.colImageDesign} border-r border-border-subtle flex flex-col`}>
+        {/* 列3: 媒体（2×2 grid：图像设计 / 图像结果 / 视频设计 / 视频结果） */}
+        <div className={`${SHOT_LAYOUT.colMedia} flex flex-col min-h-0`}>
+        <div className="flex-1 min-h-0 grid grid-cols-2 grid-rows-2">
+        {/* 单元 1：图像设计 */}
+        <div className="border-r border-b border-border-subtle flex flex-col min-h-0">
           <div className="flex items-center justify-between gap-2 border-b border-border-subtle px-2 py-1">
             <span className="text-[10px] text-text-secondary">图片模式</span>
             <Segmented
@@ -766,8 +771,8 @@ export const ShotCard: React.FC<ShotCardProps> = ({
           </div>
         </div>
 
-        {/* 列4: 图像结果 */}
-        <div className={`${SHOT_LAYOUT.colImageResult} border-r border-border-subtle flex flex-col bg-bg-surface/20`}>
+        {/* 单元 2：图像结果 */}
+        <div className="border-b border-border-subtle flex flex-col bg-bg-surface/20 min-h-0">
           <div className="flex-1 p-1 min-h-0 overflow-y-auto custom-scrollbar flex items-center justify-center relative">
             {imageSources.length === 0 && !isGeneratingImage ? (
               <Button
@@ -806,8 +811,8 @@ export const ShotCard: React.FC<ShotCardProps> = ({
           </div>
         </div>
 
-        {/* 列5: 视频设计 */}
-        <div className={`${SHOT_LAYOUT.colVideoDesign} border-r border-border-subtle flex flex-col`}>
+        {/* 单元 3：视频设计 */}
+        <div className="border-r border-border-subtle flex flex-col min-h-0">
           {/* 视频模式切换：multi-ref 多参（带 @映射） / first-frame 首帧延展（以单图为锚）
               九宫格图片模式与"首帧延展"语义冲突（grid 是 9 帧时序，first-frame 是单图微动），
               此时锁定 multi-ref 并通过 tooltip 解释。 */}
@@ -857,8 +862,8 @@ export const ShotCard: React.FC<ShotCardProps> = ({
           </div>
         </div>
 
-        {/* 列6: 视频结果 */}
-        <div className={`${SHOT_LAYOUT.colVideoResult} flex flex-col bg-bg-surface/20`}>
+        {/* 单元 4：视频结果 */}
+        <div className="flex flex-col bg-bg-surface/20 min-h-0">
           <div className="flex-1 p-1 min-h-0 overflow-y-auto custom-scrollbar flex items-center justify-center">
             {videos.length === 0 && !isGeneratingVideo ? (
               <div className="flex flex-col items-center gap-2">
@@ -945,6 +950,8 @@ export const ShotCard: React.FC<ShotCardProps> = ({
             )}
           </div>
         </div>
+        </div>{/* /grid 2x2 */}
+        </div>{/* /colMedia */}
       </div>
 
       {/* 网格拆分预览 Modal — gridSize=2 走 2×2 / 4 张，gridSize=3 走 3×3 / 9 张 */}
