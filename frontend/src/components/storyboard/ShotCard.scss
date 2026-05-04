@@ -8,6 +8,14 @@
   flex-direction: column;
   transition: all 0.2s ease;
   overflow: hidden;
+
+  /* 性能：让浏览器把每个分镜视为独立渲染单元，
+     滚动时只重绘进入/离开视口的卡片，不会因一个 cell 改动牵连整列重排重绘。
+     contain: layout (子树布局独立) + paint (子树绘制独立) + style (样式作用域)
+     content-visibility: auto 进一步让离屏卡片跳过绘制（只占位） */
+  contain: layout paint style;
+  content-visibility: auto;
+  contain-intrinsic-size: 480px; /* 与固定行高对齐，避免 content-visibility:auto 计算占位时跳动 */
 }
 
 /* 媒体行 header 内的 Segmented：缩小到与文本按钮等高 + 平滑滑块动画 */

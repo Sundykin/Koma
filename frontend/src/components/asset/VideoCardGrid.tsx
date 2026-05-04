@@ -87,34 +87,30 @@ export const VideoCardGrid: React.FC<VideoCardGridProps> = ({
 
   useEffect(() => {
     let cancelled = false;
-    const loadPosterFrames = async () => {
+    // 性能：快速滚动场景下虚拟滚动会瞬时挂卸大量 VideoCardGrid，
+    // 如果立刻并发抽帧 ffmpeg 队列会被洗刷，反而加剧卡顿。
+    // 改成 220ms debounce + 串行抽帧——挂载不到 220ms 就被卸载（如快速滚过）→ 完全不触发 ffmpeg。
+    const timer = setTimeout(async () => {
       const missingVideos = videos.filter(video => !video.thumbnailPath && video.path);
-      if (missingVideos.length === 0) return;
+      if (missingVideos.length === 0 || cancelled) return;
 
-      const nextEntries = await Promise.all(missingVideos.map(async (video) => {
+      // 串行执行避免单帧 mount 时一次性扔出 N 个 ffmpeg 任务
+      for (const video of missingVideos) {
+        if (cancelled) return;
         try {
           const framePath = await ffmpegManager.getPosterFrame(video.path, getVideoKey(video), 320);
-          if (!framePath) return null;
-          return [getVideoKey(video), electronService.fs.toLocalUrl(framePath)] as const;
+          if (cancelled || !framePath) continue;
+          const url = electronService.fs.toLocalUrl(framePath);
+          setGeneratedThumbnails(prev => ({ ...prev, [getVideoKey(video)]: url }));
         } catch {
-          return null;
+          // 单条抽帧失败继续下一条，不阻断整个队列
         }
-      }));
+      }
+    }, 220);
 
-      if (cancelled) return;
-      setGeneratedThumbnails(prev => {
-        const merged = { ...prev };
-        nextEntries.forEach((entry) => {
-          if (!entry) return;
-          merged[entry[0]] = entry[1];
-        });
-        return merged;
-      });
-    };
-
-    loadPosterFrames();
     return () => {
       cancelled = true;
+      clearTimeout(timer);
     };
   }, [videos, getVideoKey]);
 

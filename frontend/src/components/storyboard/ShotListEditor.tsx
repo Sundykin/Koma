@@ -368,18 +368,23 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
               onAddShot={onAddShot}
               onBatchDelete={handleBatchDelete}
             />
-            {/* 虚拟滚动：行固定 480px 高度，精确估算 + 大缓冲区减少快速滚动时白屏
-                - increaseViewportBy: 上下各预渲染 1200px（约 2.5 行），平滑滚动不卡
-                - defaultItemHeight: 480 与 ShotCard 的 h-[480px] 对齐，让 Virtuoso 不再频繁动态测量
-                - overscan: 多缓冲一行减少快速拖动条时的"白屏未渲染" */}
+            {/* 虚拟滚动：行固定 480px 高度。激进预渲染策略让"快速拖滚动条"不再白屏。
+                经验数：每个 ShotCard 含 2 个 CodeMirror + 多 grid，单镜挂载成本约 30-50ms；
+                想要平滑滚动，必须让"目标位置已挂载"——把缓冲区提到目标视区前后各 ~6 行。
+                - increaseViewportBy: 上下各预渲染 2880px（= 6 行 × 480px）
+                - overscan: 在 increaseViewportBy 之外再多挂 1440px (= 3 行) 做"已渲染但短暂离屏"
+                  缓冲——快速滚动时 Virtuoso 不会立即卸载它们，避免来回滚动反复 mount/unmount
+                - defaultItemHeight: 480 与 ShotCard 的 h-[480px] 对齐，省去动态测量
+                - initialItemCount: 首屏立即渲染 6 行，避免空白闪烁 */}
             <Virtuoso
               ref={virtuosoRef}
               data={shots}
               computeItemKey={(_, shot) => shot.id}
               itemContent={renderShotRow}
-              increaseViewportBy={{ top: 1200, bottom: 1200 }}
-              overscan={{ main: 480, reverse: 480 }}
+              increaseViewportBy={{ top: 2880, bottom: 2880 }}
+              overscan={{ main: 1440, reverse: 1440 }}
               defaultItemHeight={480}
+              initialItemCount={Math.min(6, shots.length)}
               className="virtuosoScroller"
             />
           </div>
