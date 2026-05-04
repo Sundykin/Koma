@@ -558,7 +558,8 @@ export const ShotCard: React.FC<ShotCardProps> = ({
       className={`shot-card ${isSelected ? 'selected' : ''} ${shot.confirmed ? 'confirmed' : ''} ${isActive ? 'active' : ''}`}
       onClick={handleCardClick}
     >
-      <div className="flex items-stretch min-h-[130px] bg-bg-app">
+      {/* 分镜行固定高度：360px 给资产分类至少 3 行可见空间；所有列内部滚动 */}
+      <div className="flex items-stretch h-[360px] bg-bg-app">
         {/* 左侧操作列 - 全部显示 */}
         <div className={`${COL_ACTION_WIDTH} shrink-0 border-r border-border-subtle flex flex-col items-center py-1.5 gap-0.5 bg-bg-surface/30`}>
           <Checkbox
@@ -652,9 +653,9 @@ export const ShotCard: React.FC<ShotCardProps> = ({
           </div>
         </div>
 
-        {/* 列1: 剧本 */}
-        <div className={`${SHOT_LAYOUT.colScript} border-r border-border-subtle flex flex-col`}>
-          <div className="flex-1 p-1">
+        {/* 列1: 剧本（min-h-0 让 ShotScriptLines 内部滚动条生效，行多了不撑高分镜） */}
+        <div className={`${SHOT_LAYOUT.colScript} border-r border-border-subtle flex flex-col min-h-0`}>
+          <div className="flex-1 min-h-0 p-1">
             <ShotScriptLines
               shotId={shot.id}
               lines={shot.scriptLines || []}
@@ -663,26 +664,34 @@ export const ShotCard: React.FC<ShotCardProps> = ({
           </div>
         </div>
 
-        {/* 列2: 资产（纵向条目布局：每个资产占一行；hover 弹详情；点击切换选中） */}
-        <div className={`${SHOT_LAYOUT.colAssets} border-r border-border-subtle flex flex-col bg-bg-surface/10 p-1 gap-1 overflow-y-auto`}>
-          <AssetSelector
-            type="character"
-            selectedIds={shot.characters || []}
-            allAssets={characters}
-            onChange={(ids) => onCharactersChange(shot.id, ids)}
-          />
-          <AssetSelector
-            type="scene"
-            selectedIds={shot.scenes || []}
-            allAssets={scenes}
-            onChange={(ids) => onScenesChange?.(shot.id, ids)}
-          />
-          <AssetSelector
-            type="prop"
-            selectedIds={shot.props || []}
-            allAssets={props}
-            onChange={(ids) => onPropsChange?.(shot.id, ids)}
-          />
+        {/* 列2: 资产（角色 / 场景 / 道具 三段等高）
+            - 父容器 flex-col + min-h-0：把分镜行的 360px 等分给三段，每段 ~110px 容纳标题 + 至少 3 行条目
+            - 每段 flex-1 min-h-0：AssetSelector 内部自己处理"标题固定 + 条目滚动" */}
+        <div className={`${SHOT_LAYOUT.colAssets} border-r border-border-subtle flex flex-col bg-bg-surface/10 p-1 gap-1 min-h-0`}>
+          <div className="flex-1 min-h-0">
+            <AssetSelector
+              type="character"
+              selectedIds={shot.characters || []}
+              allAssets={characters}
+              onChange={(ids) => onCharactersChange(shot.id, ids)}
+            />
+          </div>
+          <div className="flex-1 min-h-0">
+            <AssetSelector
+              type="scene"
+              selectedIds={shot.scenes || []}
+              allAssets={scenes}
+              onChange={(ids) => onScenesChange?.(shot.id, ids)}
+            />
+          </div>
+          <div className="flex-1 min-h-0">
+            <AssetSelector
+              type="prop"
+              selectedIds={shot.props || []}
+              allAssets={props}
+              onChange={(ids) => onPropsChange?.(shot.id, ids)}
+            />
+          </div>
         </div>
 
         {/* 列3: 图像设计 */}

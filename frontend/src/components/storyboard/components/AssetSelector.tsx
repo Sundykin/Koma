@@ -120,63 +120,77 @@ export const AssetSelector: React.FC<AssetSelectorProps> = ({
     }
   };
 
+  const selectedCount = selectedIds.filter(id => allAssets.some(a => a.id === id)).length;
+
   return (
-    <div className="flex flex-col gap-1 py-1">
-      {/* 分类标题 */}
-      <div className={`text-[10px] ${config.color} flex items-center gap-1 opacity-70 px-0.5`}>
-        {config.icon}
-        <span>{config.label}</span>
-        <span className="text-text-muted">· {allAssets.length}</span>
+    <div className="flex flex-col h-full">
+      {/* 分类标题：固定不滚动（不在 overflow 容器内）— 始终可见 */}
+      <div className={`shrink-0 text-[11px] ${config.color} flex items-center gap-1 px-1 py-0.5 border-b border-border-subtle/50 bg-bg-surface/40`}>
+        <span className="text-[12px]">{config.icon}</span>
+        <span className="font-medium">{config.label}</span>
+        <span className="text-text-muted text-[10px]">· {allAssets.length}</span>
+        {selectedCount > 0 && (
+          <span className={`ml-auto text-[10px] px-1 rounded bg-${config.typeColor}/15 ${config.color}`}>
+            已选 {selectedCount}
+          </span>
+        )}
       </div>
 
-      {allAssets.length === 0 ? (
-        <div className="text-[10px] text-text-muted px-1 py-0.5">暂无{config.label}</div>
-      ) : (
-        <div className="flex flex-col gap-0.5">
-          {allAssets.map(asset => {
-            const selected = selectedIds.includes(asset.id);
-            const img = getAssetImage(asset);
-            return (
-              <Popover
-                key={asset.id}
-                content={<AssetDetailContent asset={asset} type={type} />}
-                trigger="hover"
-                mouseEnterDelay={0.3}
-                placement="left"
-                overlayClassName="asset-detail-popover"
-              >
-                <div
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => toggleSelection(asset.id)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault();
-                      toggleSelection(asset.id);
-                    }
-                  }}
-                  className={`flex items-center gap-1.5 px-1 py-0.5 rounded border transition-colors cursor-pointer text-xs select-none ${
-                    selected
-                      ? `${config.selectedRing} ${config.selectedBg} text-text-primary`
-                      : 'border-transparent hover:border-border-subtle hover:bg-bg-hover/30 text-text-secondary'
-                  }`}
+      {/* 条目区：内部滚动；条目本身高度提升 + hover/选中反馈更明显 */}
+      <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar px-1 py-1">
+        {allAssets.length === 0 ? (
+          <div className="text-[10px] text-text-muted px-1 py-1">暂无{config.label}</div>
+        ) : (
+          <div className="flex flex-col gap-0.5">
+            {allAssets.map(asset => {
+              const selected = selectedIds.includes(asset.id);
+              const img = getAssetImage(asset);
+              return (
+                <Popover
+                  key={asset.id}
+                  content={<AssetDetailContent asset={asset} type={type} />}
+                  trigger="hover"
+                  mouseEnterDelay={0.4}
+                  placement="left"
+                  overlayClassName="asset-detail-popover"
                 >
-                  <Avatar
-                    size={20}
-                    shape="square"
-                    src={img}
-                    icon={!img && config.icon}
-                    className="flex-shrink-0 !rounded"
-                  />
-                  <span className="truncate flex-1 min-w-0" title={asset.name}>
-                    {asset.name}
-                  </span>
-                </div>
-              </Popover>
-            );
-          })}
-        </div>
-      )}
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => toggleSelection(asset.id)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        toggleSelection(asset.id);
+                      }
+                    }}
+                    className={`flex items-center gap-2 h-7 px-1.5 rounded border transition-colors cursor-pointer text-xs select-none ${
+                      selected
+                        ? `${config.selectedRing} ${config.selectedBg} text-text-primary font-medium`
+                        : 'border-transparent hover:border-border-subtle hover:bg-bg-hover/40 text-text-secondary'
+                    }`}
+                    title={selected ? `已选中 · 再次点击取消（${asset.name}）` : `点击选中（${asset.name}）`}
+                  >
+                    <Avatar
+                      size={22}
+                      shape="square"
+                      src={img}
+                      icon={!img && config.icon}
+                      className="flex-shrink-0 !rounded"
+                    />
+                    <span className="truncate flex-1 min-w-0">
+                      {asset.name}
+                    </span>
+                    {selected && (
+                      <span className={`shrink-0 text-[10px] ${config.color}`}>✓</span>
+                    )}
+                  </div>
+                </Popover>
+              );
+            })}
+          </div>
+        )}
+      </div>
     </div>
   );
 };
