@@ -15,7 +15,6 @@ import {
   Modal,
   Progress,
   Select,
-  Spin,
   Segmented,
   App,
 } from 'antd';
@@ -29,8 +28,6 @@ import {
   ArrowUpOutlined,
   ArrowDownOutlined,
   PlayCircleFilled,
-  PictureOutlined,
-  VideoCameraOutlined,
   CloseOutlined,
   PlusOutlined,
   AppstoreOutlined,
@@ -771,43 +768,26 @@ export const ShotCard: React.FC<ShotCardProps> = ({
           </div>
         </div>
 
-        {/* 单元 2：图像结果 */}
+        {/* 单元 2：图像结果（始终走 ImageCardGrid，多版本 + 翻页 + 再生成一版统一在 footer） */}
         <div className="border-b border-border-subtle flex flex-col bg-bg-surface/20 min-h-0">
-          <div className="flex-1 p-1 min-h-0 overflow-y-auto custom-scrollbar flex items-center justify-center relative">
-            {imageSources.length === 0 && !isGeneratingImage ? (
-              <Button
-                type="primary"
-                size="small"
-                className="h-7 px-3 text-[11px]"
-                onClick={() => onGenerateImage(shot.id)}
-                disabled={!hasImagePrompt}
-                icon={<PictureOutlined />}
-              >
-                生成图像
-              </Button>
-            ) : isGeneratingImage && imageSources.length === 0 ? (
-              <Spin size="small" />
-            ) : (
-              <div className="w-full h-full">
-                <ImageCardGrid
-                  images={imageSources}
-                  selectedIndex={shot.media?.currentImageIndex || 0}
-                  onSelect={handleImageSelect}
-                  onAdd={handleImageAdd}
-                  onDelete={handleImageDelete}
-                  onSplitGrid={isGridImageMode(shot.imageMode) && electronService.isElectron()
-                    ? handleOpenGridSplitPreview
-                    : undefined}
-                  onGenerate={() => onGenerateImage(shot.id)}
-                  isGenerating={isGeneratingImage}
-                  disabled={!hasImagePrompt}
-                  characters={characters}
-                  scenes={scenes}
-                  props={props}
-                  compact
-                />
-              </div>
-            )}
+          <div className="flex-1 p-1 min-h-0 relative">
+            <ImageCardGrid
+              images={imageSources}
+              selectedIndex={shot.media?.currentImageIndex || 0}
+              onSelect={handleImageSelect}
+              onAdd={handleImageAdd}
+              onDelete={handleImageDelete}
+              onSplitGrid={isGridImageMode(shot.imageMode) && electronService.isElectron()
+                ? handleOpenGridSplitPreview
+                : undefined}
+              onGenerate={() => onGenerateImage(shot.id)}
+              isGenerating={isGeneratingImage}
+              disabled={!hasImagePrompt}
+              characters={characters}
+              scenes={scenes}
+              props={props}
+              compact
+            />
           </div>
         </div>
 
@@ -862,90 +842,63 @@ export const ShotCard: React.FC<ShotCardProps> = ({
           </div>
         </div>
 
-        {/* 单元 4：视频结果 */}
+        {/* 单元 4：视频结果（始终走 VideoCardGrid，多版本 + 翻页 + 再生成一版统一在 footer） */}
         <div className="flex flex-col bg-bg-surface/20 min-h-0">
-          <div className="flex-1 p-1 min-h-0 overflow-y-auto custom-scrollbar flex items-center justify-center">
-            {videos.length === 0 && !isGeneratingVideo ? (
-              <div className="flex flex-col items-center gap-2">
-                <Tooltip title={videoGenerateDisabledReason || (videoCapabilityLabel ? `当前将生成${videoCapabilityLabel}` : '生成视频')}>
-                  <span>
-                    <Button
-                      type="primary"
-                      size="small"
-                      className="h-7 px-3 text-[11px]"
-                      onClick={() => onGenerateVideo(shot.id)}
-                      disabled={Boolean(videoGenerateDisabledReason)}
-                      icon={<VideoCameraOutlined />}
-                    >
-                      生成视频
-                    </Button>
-                  </span>
-                </Tooltip>
-                {videoCapabilityLabel && (
-                  <div className={`text-[10px] ${videoGenerateDisabledReason ? 'text-status-warning' : 'text-text-tertiary'}`}>
-                    {videoCapabilityLabel}
-                  </div>
-                )}
-                {currentVideo && (
-                  <Button type="text" size="small" className="h-5 w-5 p-0" icon={<PlayCircleFilled />} onClick={() => setVideoModalOpen(true)} />
-                )}
-              </div>
-            ) : (
-              <div className="w-full h-full relative">
-                <VideoCardGrid
-                  videos={videos.map(a => ({
-                    path: getMediaAssetDisplaySource(a) || '',
-                    url: a.remoteUrl,
-                    thumbnailPath: typeof a.metadata?.thumbnailPath === 'string'
-                      ? a.metadata.thumbnailPath
-                      : undefined,
-                    prompt: typeof a.metadata?.prompt === 'string'
-                      ? a.metadata.prompt
-                      : undefined,
-                    seed: typeof a.metadata?.seed === 'number'
-                      ? a.metadata.seed
-                      : undefined,
-                    model: typeof a.metadata?.model === 'string'
-                      ? a.metadata.model
-                      : undefined,
-                    createdAt: a.createdAt,
-                  }))}
-                  selectedIndex={shot.media?.currentVideoIndex || 0}
-                  onSelect={handleVideoSelect}
-                  onDelete={handleVideoDelete}
-                  isGenerating={isGeneratingVideo}
-                  disabled={Boolean(videoGenerateDisabledReason)}
-                  compact
+          <div className="flex-1 p-1 min-h-0 relative">
+            <VideoCardGrid
+              videos={videos.map(a => ({
+                path: getMediaAssetDisplaySource(a) || '',
+                url: a.remoteUrl,
+                thumbnailPath: typeof a.metadata?.thumbnailPath === 'string'
+                  ? a.metadata.thumbnailPath
+                  : undefined,
+                prompt: typeof a.metadata?.prompt === 'string'
+                  ? a.metadata.prompt
+                  : undefined,
+                seed: typeof a.metadata?.seed === 'number'
+                  ? a.metadata.seed
+                  : undefined,
+                model: typeof a.metadata?.model === 'string'
+                  ? a.metadata.model
+                  : undefined,
+                createdAt: a.createdAt,
+              }))}
+              selectedIndex={shot.media?.currentVideoIndex || 0}
+              onSelect={handleVideoSelect}
+              onDelete={handleVideoDelete}
+              onGenerate={() => onGenerateVideo(shot.id)}
+              isGenerating={isGeneratingVideo}
+              disabled={Boolean(videoGenerateDisabledReason)}
+              generateDisabledReason={videoGenerateDisabledReason}
+              compact
+            />
+            {currentVideo && (
+              <Button
+                type="text"
+                size="small"
+                className="absolute top-1 right-1 h-5 w-5 p-0 z-10"
+                icon={<PlayCircleFilled />}
+                onClick={() => setVideoModalOpen(true)}
+              />
+            )}
+            {/* 进度覆盖层：仅在生成中显示，避免遮挡已存视频 */}
+            {isGeneratingVideo && videoProgress && (
+              <div className="shot-video-progress-overlay">
+                <Progress
+                  percent={Math.max(0, Math.min(100, videoProgress.progress))}
+                  size="small"
+                  showInfo={false}
+                  strokeColor="var(--token-accent-base)"
+                  trailColor="var(--token-border-base)"
                 />
-                {currentVideo && (
-                  <Button
-                    type="text"
-                    size="small"
-                    className="absolute top-0 right-0 h-5 w-5 p-0"
-                    icon={<PlayCircleFilled />}
-                    onClick={() => setVideoModalOpen(true)}
-                  />
-                )}
-                {/* 进度覆盖层：仅在生成中显示，避免遮挡已存视频 */}
-                {isGeneratingVideo && videoProgress && (
-                  <div className="shot-video-progress-overlay">
-                    <Progress
-                      percent={Math.max(0, Math.min(100, videoProgress.progress))}
-                      size="small"
-                      showInfo={false}
-                      strokeColor="var(--token-accent-base)"
-                      trailColor="var(--token-border-base)"
-                    />
-                    <div className="shot-video-progress-meta">
-                      <span className="truncate flex-1" title={videoProgress.step}>
-                        {videoProgress.step || '处理中...'}
-                      </span>
-                      <span className="tabular-nums shrink-0">
-                        {Math.round(videoProgress.progress)}%
-                      </span>
-                    </div>
-                  </div>
-                )}
+                <div className="shot-video-progress-meta">
+                  <span className="truncate flex-1" title={videoProgress.step}>
+                    {videoProgress.step || '处理中...'}
+                  </span>
+                  <span className="tabular-nums shrink-0">
+                    {Math.round(videoProgress.progress)}%
+                  </span>
+                </div>
               </div>
             )}
           </div>
