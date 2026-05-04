@@ -1,10 +1,10 @@
-import React, { useEffect, useState } from 'react';
-import { Modal, Form, Input, Spin, Segmented, Row, Col, Tooltip } from 'antd';
+import React, { useEffect, useRef, useState } from 'react';
+import { Modal, Form, Input, Spin, Segmented, Row, Col, Tooltip, Button, App } from 'antd';
 import {
   SoundOutlined,
   AppstoreOutlined,
 } from '@ant-design/icons';
-import { Check, FileText, Image as ImageIcon } from 'lucide-react';
+import { Check, FileText, Image as ImageIcon, Upload } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import {
   DEFAULT_THEME_PRESET_ID,
@@ -13,7 +13,16 @@ import {
 } from '../../config/themePresets';
 import { ipc, ipcApiRoute } from '../../utils/ipcRenderer';
 import { toKomaLocalUrl } from '../../utils/urlUtils';
+import { parseScriptFile, SCRIPT_FILE_ACCEPT } from '../../utils/scriptFileParser';
 import styles from './CreateProjectModal.module.scss';
+
+const FORMAT_LABELS: Record<string, string> = {
+  srt: 'SubRip 字幕',
+  vtt: 'WebVTT 字幕',
+  lrc: 'LRC 歌词',
+  ass: 'ASS/SSA 字幕',
+  plain: '纯文本',
+};
 
 interface CreateProjectModalProps {
   isOpen: boolean;
@@ -30,6 +39,7 @@ interface CreateProjectModalProps {
 
 export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ isOpen, onClose, onCreate }) => {
   const { t } = useTranslation();
+  const { message } = App.useApp();
   const [form] = Form.useForm();
   const [themePresets, setThemePresets] = useState<ThemePresetCatalogItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -37,6 +47,8 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ isOpen, 
   /** 每个 preset 的本地预览图 URL（来自 koma-local:// scheme） */
   const [themeImages, setThemeImages] = useState<Record<string, string | null>>({});
   const [scriptText, setScriptText] = useState('');
+  const [importInfo, setImportInfo] = useState<{ filename: string; format: string; lineCount: number } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (!isOpen) {
@@ -95,9 +107,41 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ isOpen, 
       });
       form.resetFields();
       setScriptText('');
+      setImportInfo(null);
       setSelectedTheme(fallbackThemeId);
     } catch {
       // 验证失败
+    }
+  };
+
+  // 文件导入：选文件 → 按格式解析 → 把纯文本灌到 textarea，user 可以再编辑
+  const handleFilePick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (e.target) e.target.value = ''; // 复位以便相同文件再次选择
+    if (!file) return;
+    const MAX_SIZE = 5 * 1024 * 1024; // 5 MB 上限，剧本/字幕文件足够
+    if (file.size > MAX_SIZE) {
+      message.error('文件过大（最大 5 MB），请分段后再导入');
+      return;
+    }
+    try {
+      const parsed = await parseScriptFile(file);
+      if (!parsed.text.trim()) {
+        message.warning('文件解析为空，请检查内容');
+        return;
+      }
+      setScriptText(parsed.text);
+      setImportInfo({ filename: file.name, format: parsed.format, lineCount: parsed.lineCount });
+      message.success(
+        `已导入 ${FORMAT_LABELS[parsed.format] || '文件'}（${parsed.lineCount} 行）`,
+      );
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      message.error(`文件解析失败：${msg}`);
     }
   };
 
@@ -242,23 +286,49 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ isOpen, 
           )}
         </Form.Item>
 
-        {/* 剧本导入（可选） */}
+        {/* 剧本导入（可选）：支持粘贴文本 + 选文件解析 */}
         <Form.Item
           label={(
-            <span className={styles.importLabelRow}>
-              <FileText className="w-3.5 h-3.5" />
-              <span>导入剧本</span>
-              <span className={styles.importLabelHint}>可选 · 提供后自动创建第 1 集</span>
-            </span>
+            <div className={styles.importLabelRow}>
+              <span className={styles.importLabelLeft}>
+                <FileText className="w-3.5 h-3.5" />
+                <span>导入剧本</span>
+                <span className={styles.importLabelHint}>可选 · 提供后自动创建第 1 集</span>
+              </span>
+              <Tooltip title="支持 .srt / .vtt / .lrc / .ass / .ssa 字幕文件，及 .txt / .md 纯文本">
+                <Button
+                  size="small"
+                  icon={<Upload className="w-3.5 h-3.5" />}
+                  onClick={handleFilePick}
+                >
+                  从文件导入
+                </Button>
+              </Tooltip>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept={SCRIPT_FILE_ACCEPT}
+                style={{ display: 'none' }}
+                onChange={handleFileChange}
+              />
+            </div>
           )}
           className={styles.importFormItem}
         >
           <Input.TextArea
             value={scriptText}
-            onChange={(e) => setScriptText(e.target.value)}
-            placeholder="将完整剧本（或字幕格式文本）粘贴在这里，留空则进入空白项目"
+            onChange={(e) => {
+              setScriptText(e.target.value);
+              if (importInfo) setImportInfo(null);
+            }}
+            placeholder="将完整剧本粘贴在这里，或点击右上「从文件导入」（支持 .srt / .vtt / .lrc / .ass / .txt / .md）；留空则进入空白项目"
             autoSize={{ minRows: 4, maxRows: 10 }}
           />
+          {importInfo && (
+            <div className={styles.importBadge}>
+              已导入 {FORMAT_LABELS[importInfo.format] || '文件'}「{importInfo.filename}」· {importInfo.lineCount} 行
+            </div>
+          )}
         </Form.Item>
       </Form>
     </Modal>
