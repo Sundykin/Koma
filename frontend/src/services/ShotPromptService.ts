@@ -357,10 +357,21 @@ export class ShotPromptService {
       getShotScriptText(shot) || '',
       shotCharacters.map(character => character.name),
     );
+    // 空间锚定约束：
+    //  · 有 imagePrompt（锚定图 / 宫格）→ 图就是空间真相，让 LLM 不要写方位词
+    //  · 无 imagePrompt（多参考模式）→ 由 @scene / @char / @prop 引用图组合构成画面，
+    //    把场景描述作为空间基线，禁止 AI 凭空编造空间关系
+    // 两种情况下，只要 shot 引用了 @scene，都把场景描述继承进来作为空间真相
+    const spatialAnchorDirective = buildSpatialAnchorDirective(shot, shotScenes);
 
     const result = await this.ctx.llmProvider.chat([
       { role: 'system', content: systemPrompt },
-      { role: 'user', content: `${userPrompt}\n\n${dialogueGuardNote}\n\n${mappingSchemaNote}` },
+      {
+        role: 'user',
+        content: [userPrompt, dialogueGuardNote, mappingSchemaNote, spatialAnchorDirective]
+          .filter(Boolean)
+          .join('\n\n'),
+      },
     ]);
 
     return sanitizeVideoPromptResult(result);
@@ -873,6 +884,89 @@ function extractExplicitDialogueEvidence(
   }
 
   return { spoken, voiceover, commentary };
+}
+
+/**
+ * 视频提示词的"空间锚定约束"：根据本分镜是否有锚定图（imagePrompt）+ 是否 @了场景，
+ * 输出对应的空间真相提示，统一抑制 LLM 凭空编造空间方位。
+ *
+ * 三个分支：
+ * 1) 有 imagePrompt（锚定图 / 宫格）：图本身是空间真相 → 严格禁止写方位词，
+ *    让 LLM 把视频提示词收敛到动作 / 运镜 / 节奏 / 情绪 / 时间推进。
+ * 2) 无 imagePrompt 但 @了场景（多参考模式）：画面由 @scene / @char / @prop
+ *    引用图组合构成 → 把场景描述作为空间基线，禁止编造场景描述以外的空间关系。
+ * 3) 无 imagePrompt 也没场景：返回空串（无可锚定的空间信息，让模型自由发挥）。
+ *
+ * 只要 shot 关联了 @scene，无论是否有 imagePrompt，都会把场景描述继承进来作为
+ * 辅助空间锚点 —— 防止 AI 在场景图细节之外猜测房间布局 / 家具位置 / 距离关系。
+ */
+function buildSpatialAnchorDirective(
+  shot: Shot,
+  shotScenes: Scene[],
+): string {
+  const hasImagePrompt = !!(shot.imagePrompt || '').trim();
+  const hasScenes = shotScenes.length > 0;
+  if (!hasImagePrompt && !hasScenes) return '';
+
+  const isGridMode = shot.imageMode === 'grid'
+    || shot.imageMode === 'grid-9'
+    || shot.imageMode === 'grid-4';
+
+  const lines: string[] = [];
+
+  if (hasImagePrompt) {
+    lines.push('【图像锚定约束（本分镜已有图像提示词 / 生成图，视频模型会直接读图作参考）】');
+    lines.push('');
+    lines.push('**第一原则**：图像提示词所建立的人物**姿态 / 动作 / 持物 / 视线方向 / 互动关系**就是画面真相，视频提示词每一镜的**起始状态必须严格继承**，禁止改写或颠覆。最常见且必须避免的冲突示例：');
+    lines.push('  · 图说"坐在床沿"，视频写成"站立"——禁止；');
+    lines.push('  · 图说"端着水杯递出"，视频写成"双手放下 / 空手"——禁止；');
+    lines.push('  · 图说"两人面对面对峙"，视频写成"并排坐"或"背对"——禁止；');
+    lines.push('  · 图说"右手抬起推拒"，视频写成"双手插兜 / 双手交叉"——禁止；');
+    lines.push('  · 改写图已确立的视线方向、持物方式、肢体朝向——禁止。');
+    lines.push('');
+    lines.push('**屏幕方位词**（画面左 / 右 / 中央 / 前景 / 背景 / 几何坐标 / 座位编号）由生图与机位决定，视频提示词**不要重复描述**——但**允许直接引用图像提示词里已经出现的姿态词**（例如"坐在床沿""端着水杯""位于其对侧"），因为那是图的真相，不是文本凭空编造。');
+    lines.push('');
+    lines.push('视频提示词应在"图像提示词建立的姿态"基础上，描述**动作如何展开**：');
+    lines.push('  · 起始姿态（取自图像提示词对应镜头）→ 动作过程（运动、视线、表情、手势变化）→ 收束姿态（接续图像提示词或本单元末态）；');
+    lines.push('  · 镜头语言：推 / 拉 / 摇 / 移 / 切 / 跟随 / 景别变化 / 焦距变化；');
+    lines.push('  · 时间推进与节奏；');
+    lines.push('  · 情绪 / 表情 / 视线变化；');
+    lines.push('  · 不要凭空发明图里不存在的人物 / 道具 / 空间关系（例如图里没桌子，就不要写"绕到桌后"）。');
+    if (isGridMode) {
+      lines.push('');
+      lines.push('**宫格模式（关键）**：图像提示词已按 cell 分别写好每一格的画面（cell 1 = 镜头 01、cell 2 = 镜头 02、cell 3 = 镜头 03、cell 4 = 镜头 04 ……）。视频提示词的**镜头 N 起始姿态 = 图像提示词镜头 N 的姿态描述**，必须严格对应：');
+      lines.push('  · 不得在 cell 之间互换姿态（例如把镜头 01 的"坐"挪到镜头 03）；');
+      lines.push('  · 不得引入图像提示词没规定过的中间状态；');
+      lines.push('  · cell 之间的过渡只能靠运镜（推 / 拉 / 摇 / 切）与时间推进。');
+    }
+    lines.push('');
+    lines.push('**本分镜的图像提示词原文（请对照阅读，将其作为每一镜起始姿态的真相依据；不要复述图里的"画面左 / 右"等屏幕方位词）：**');
+    lines.push('```');
+    lines.push((shot.imagePrompt || '').trim());
+    lines.push('```');
+  } else {
+    // 多参考模式：没有锚定图，画面由 @scene / @char / @prop 引用图组合构成
+    lines.push('【空间锚定约束（多参考模式：本分镜无锚定图，画面由 @scene / @char / @prop 引用图组合构成）】');
+    lines.push('');
+    lines.push('视频模型会综合各 mention 引用图组装画面，文本 LLM **不要凭空猜测空间关系**。具体来说：');
+    lines.push('  · 角色 / 道具的位置参照只能基于下方"场景空间基线"里**已经出现的区域 / 标志物 / 距离**；场景基线之外的空间关系**禁止编造**（房间布局、家具具体位置、相对距离都由场景图承担）；');
+    lines.push('  · **不要写**屏幕方位词（画面左 / 右 / 中央 / 前景 / 背景），屏幕构图由镜头语言和景别决定，不属于文本约束范围；');
+    lines.push('  · 重点写：谁在做什么动作 / 与谁产生什么交互 / 镜头如何运动 / 时间如何推进；位置交给场景图、人物图与镜头语言共同决定。');
+  }
+
+  if (hasScenes) {
+    lines.push('');
+    lines.push(hasImagePrompt
+      ? '**场景空间基线（继承自 @scene，作为对生成图的语义辅助；以图为准，下方文字仅用于理解场景类型，不要复述）：**'
+      : '**场景空间基线（继承自 @scene，本分镜的空间真相；只能引用此处出现过的区域 / 标志物作为站位参照，禁止编造）：**');
+    for (const scene of shotScenes) {
+      const mention = createMentionString('scene', scene.id);
+      const desc = (scene.description || scene.prompt || '').trim();
+      lines.push(`  - ${mention} ${scene.name}：${desc || '（无空间描述，此场景无法提供空间锚点）'}`);
+    }
+  }
+
+  return lines.join('\n');
 }
 
 export function buildDialogueGuardNote(scriptContent: string, characterNames: string[]): string {

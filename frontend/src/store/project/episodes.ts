@@ -159,6 +159,7 @@ export async function listEpisodes(projectId: string): Promise<Episode[]> {
           video: row.step_video || 'pending',
         },
         hasAnalysis: Boolean(row.has_analysis),
+        scriptReady: Boolean(row.script_ready),
         createdAt: row.created_at,
         updatedAt: row.updated_at,
       };

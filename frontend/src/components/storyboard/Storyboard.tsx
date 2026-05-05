@@ -19,7 +19,7 @@ import {
   RobotOutlined,
 } from '@ant-design/icons';
 import type { Shot, ShotScriptLine, Character, Scene, Prop, AppSettings, StoredMediaAsset, ProjectStyleSnapshot } from '../../types';
-import { loadEpisodeShots, saveEpisodeShots, saveEpisode, loadCharacters, loadScenes, loadProps, loadEpisodeAnalysis } from '../../store/projectStore';
+import { loadEpisodeShots, saveEpisodeShots, loadCharacters, loadScenes, loadProps, loadEpisodeAnalysis } from '../../store/projectStore';
 import { generateShotImage, batchGenerateShotImages } from '../../services/ShotGenerationService';
 import { shotRenderWorkflow, batchRenderShots } from '../../workflow/shotRenderWorkflow';
 import { runWithTask } from '../../services/taskRunner';
@@ -524,11 +524,10 @@ export const Storyboard: React.FC<StoryboardProps> = ({
         const snapshot = queuedShotsSaveRef.current;
         queuedShotsSaveRef.current = null;
         await saveEpisodeShots(snapshot.projectId, snapshot.episodeId, snapshot.shots);
-        // D 项：分镜任何变更都把 episode.scriptText 重新拼回（保证剧本编辑器与分镜一致）
-        const rebuiltScriptText = snapshot.shots
-          .flatMap(s => (s.scriptLines || []).map(l => l.text))
-          .join('\n');
-        await saveEpisode(snapshot.projectId, snapshot.episodeId, { scriptText: rebuiltScriptText });
+        // 注：原本这里有「分镜变更 → 回写 episode.scriptText」逻辑（D 项 / commit 436a85b），
+        // 但会带来副作用：清空全部分镜时剧本也被清空、用户回到剧本步看不到原文了。
+        // 已移除——剧本（episode.scriptText）和分镜各自独立持久化，互不影响。
+        // 这意味着在分镜内编辑/拖动字幕行不会反向同步到剧本步；如需保持一致用户须重新推文化。
       }
     })();
 
