@@ -244,6 +244,12 @@ export async function uploadBytesToImageHostingWithRetry(
             attempt,
             result,
           });
+          // 后端 Provider 在主进程里没注册（仅前端入口的插件） — controller/plugin/callProvider
+          // 现在会把异常转成 {success:false, error:'... Provider "xyz" not found'}，这里需要从
+          // error 字符串里识别该信号并跳出重试，回退到前端 Provider
+          if (errMsg.includes('Provider "') && errMsg.includes('not found')) {
+            throw new BackendProviderMissingError(errMsg);
+          }
           throw new Error(errMsg);
         },
         {

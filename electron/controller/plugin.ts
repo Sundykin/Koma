@@ -127,6 +127,14 @@ const pluginController = {
    * 说明：
    * - 主要用于 image-hosting 这类需要 FormData/Buffer 的能力，前端沙箱 fetch/IPC 传输可能不支持
    * - 由 PluginBridge 负责查找 provider 定义并调用实例方法
+   *
+   * **重要 — 错误处理**：
+   * ee-core 的 IpcServer.register 会用 try/catch 包裹 ipcMain.handle，捕获后**只写
+   * coreLogger 不 rethrow**（ee-core 源码 socket/ipcServer.js 第 65-74 行）。
+   * 直接 throw 的话，前端 invoke 返回 undefined，错误信息全部丢失。
+   * 这里**统一把所有 throw 转成 image-hosting 调用方期望的 `{success:false, error}`
+   * 形状**，确保前端拿到真实错误（适用于 image-hosting 路径；其它 kind 调用方目前
+   * 也都能容忍 `{success, error}` 形状或会先校验 success 字段）。
    */
   async callProvider(
     { kind, type, method, args }: { kind: 'tti' | 'itv' | 'tts' | 'llm' | 'image-hosting'; type: string; method: string; args: unknown[] },
@@ -134,16 +142,26 @@ const pluginController = {
   ) {
     await ensureServicesReady();
     try {
-      return await pluginBridge.callProvider(kind, type, method, args);
+      const result = await pluginBridge.callProvider(kind, type, method, args);
+      // Provider 方法有时返回 undefined（不该但要兜底） — 同样转成结构化错误而不是把
+      // undefined 透回前端
+      if (result === undefined || result === null) {
+        const msg = `Provider 方法 "${type}.${method}" 返回了 ${result === null ? 'null' : 'undefined'}`;
+        console.error('[PluginController] callProvider returned empty', { kind, type, method });
+        return { success: false, error: msg };
+      }
+      return result;
     } catch (err: any) {
+      const errorMsg = err?.message || String(err) || '未知后端错误';
       console.error('[PluginController] callProvider failed', {
         kind,
         type,
         method,
-        error: err?.message || String(err),
+        error: errorMsg,
         stack: err?.stack,
       });
-      throw err;
+      // 把抛出的异常转成结构化 result，绕开 ee-core 的吞错行为
+      return { success: false, error: `[${type}.${method}] ${errorMsg}` };
     }
   },
 
