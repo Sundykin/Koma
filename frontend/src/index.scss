@@ -188,6 +188,51 @@ body {
 }
 
 /* ========================================
+   Antd Drawer / Modal 关闭按钮命中区域放大
+   ========================================
+   原生 ant-drawer-close 实际可点区只有 22×22px，又靠右边缘很难点中。
+   改成：32×32 命中区，hover 高亮 + 微缩放反馈，icon 加大到 16px。
+*/
+.ant-drawer-close,
+.ant-modal-close {
+  width: 32px !important;
+  height: 32px !important;
+  min-width: 32px;
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  font-size: 16px;
+  transition: background-color 0.16s ease, color 0.16s ease, transform 0.12s ease;
+}
+
+.ant-drawer-close:hover,
+.ant-modal-close:hover {
+  background: var(--token-bg-hover) !important;
+  color: var(--token-text-primary) !important;
+}
+
+.ant-drawer-close:active,
+.ant-modal-close:active {
+  transform: scale(0.92);
+}
+
+/* close icon 自身放大 */
+.ant-drawer-close .anticon,
+.ant-modal-close .anticon,
+.ant-drawer-close-x,
+.ant-modal-close-x {
+  font-size: 16px !important;
+  line-height: 1 !important;
+}
+
+/* Drawer header padding 微调，给放大后的 close 按钮留呼吸空间 */
+.ant-drawer-header {
+  padding-block: 12px !important;
+}
+
+/* ========================================
    Antd 深色主题覆盖
    ======================================== */
 
