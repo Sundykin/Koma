@@ -31,12 +31,12 @@ export class SqliteShotRepository implements IShotRepository {
       INSERT INTO shots (id, project_id, episode_id, shot_number, description,
         meta_prompt, meta_seed, meta_model, script_lines_json, shot_type, camera_movement, duration,
         image_prompt, video_prompt, image_mode, dialogue, emotion, confirmed, seed,
-        selected_reference_index, current_image_index, current_video_index,
+        selected_reference_index, current_image_index, current_video_index, current_audio_index,
         current_version, sort_order, metadata_json, created_at, updated_at)
       VALUES (@id, @project_id, @episode_id, @shot_number, @description,
         @meta_prompt, @meta_seed, @meta_model, @script_lines_json, @shot_type, @camera_movement, @duration,
         @image_prompt, @video_prompt, @image_mode, @dialogue, @emotion, @confirmed, @seed,
-        @selected_reference_index, @current_image_index, @current_video_index,
+        @selected_reference_index, @current_image_index, @current_video_index, @current_audio_index,
         @current_version, @sort_order, @metadata_json, @created_at, @updated_at)
     `).run({
       id: data.id,
@@ -61,6 +61,7 @@ export class SqliteShotRepository implements IShotRepository {
       selected_reference_index: data.selected_reference_index ?? null,
       current_image_index: data.current_image_index ?? null,
       current_video_index: data.current_video_index ?? null,
+      current_audio_index: data.current_audio_index ?? null,
       current_version: data.current_version ?? 0,
       sort_order: data.sort_order ?? 0,
       metadata_json: data.metadata_json ?? null,

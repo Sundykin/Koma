@@ -30,6 +30,8 @@ import { createLogger } from '../../store/logger';
 import {
   getShotCurrentImageSource,
   getShotCurrentVideoSource,
+  getShotCurrentAudioAsset,
+  getShotCurrentAudioSource,
 } from '../../utils/mediaSelectors';
 import styles from './SimpleEditor.module.scss';
 
@@ -46,6 +48,14 @@ interface SimpleEditorProps {
 import { generateId } from '../../utils/generateId';
 
 // Shot 转换为 Tracks
+//
+// 时间线为空时由 SimpleEditor 调用，把每个 shot 的"当前选中版本"自动落到 3 条轨道：
+//   video-main：getShotCurrentVideoSource → 没有则降级 image
+//   audio-main：getShotCurrentAudioAsset / Source（配音 wav / mp3）
+//   text-main：shot.dialogue
+//
+// 三条轨道时间轴对齐 currentTime（按 shot.duration 累加），保证视频 / 音频 / 字幕同步起点。
+// 音频 clip 时长优先用 asset.durationMs（实际 TTS 输出长度），缺失时回退 shot.duration。
 function shotsToTracks(shots: Shot[]): Track[] {
   const videoTrack: Track = { id: 'video-main', type: 'video', clips: [], order: 0, isMainTrack: true };
   const audioTrack: Track = { id: 'audio-main', type: 'audio', clips: [], order: -1 };
@@ -72,6 +82,30 @@ function shotsToTracks(shots: Shot[]): Track[] {
         name: getShotScriptText(shot).slice(0, 20) || `镜头 ${shot.id}`,
         type: mediaType,
         src: mediaPath,
+        x: 0, y: 0, scale: 1, rotation: 0, opacity: 1,
+      });
+    }
+
+    // 配音：从选中的音频版本生成 audio clip。durationMs 优先（TTS 真实长度），
+    // 没拿到时按 shot.duration 兜底（与视频同窗口）。clip.start 与视频对齐，
+    // 后续用户可在剪辑里手动微调（移轨 / 切片 / 增减前后留白）。
+    const audioAsset = getShotCurrentAudioAsset(shot);
+    const audioPath = getShotCurrentAudioSource(shot);
+    if (audioPath) {
+      const audioDurationSec = audioAsset?.durationMs && audioAsset.durationMs > 0
+        ? audioAsset.durationMs / 1000
+        : shotDuration;
+      audioTrack.clips.push({
+        id: `audio-clip-${shot.id}`,
+        assetId: `audio-asset-${shot.id}`,
+        trackId: audioTrack.id,
+        start: currentTime,
+        duration: audioDurationSec,
+        offset: 0,
+        sourceDuration: audioDurationSec,
+        name: `${(getShotScriptText(shot).slice(0, 16) || shot.id)} - 配音`,
+        type: MediaType.AUDIO,
+        src: audioPath,
         x: 0, y: 0, scale: 1, rotation: 0, opacity: 1,
       });
     }
@@ -247,13 +281,17 @@ export const SimpleEditor: React.FC<SimpleEditorProps> = ({ shots = [], projectI
       setHasBlockingTimelineError(false);
       try {
         const savedData = await loadEpisodeTimeline(projectId, episodeId);
-        if (savedData && savedData.tracks && savedData.tracks.length > 0) {
-          setTracks(normalizeTimelineTracks(savedData.tracks));
-          timelineCreatedAtRef.current = savedData.createdAt || Date.now();
+        const savedTracks = savedData?.tracks || [];
+        // "时间线非空" = 至少存在一个 clip。仅有空 track 骨架（用户全删了）也视为空，
+        // 让"从分镜入剪辑→已选版本自动落轨"在重进时仍然生效。
+        const savedHasClips = savedTracks.some((t) => Array.isArray(t.clips) && t.clips.length > 0);
+        if (savedHasClips) {
+          setTracks(normalizeTimelineTracks(savedTracks));
+          timelineCreatedAtRef.current = savedData!.createdAt || Date.now();
         } else if (shots.length > 0) {
-          // 没有已保存的数据，使用 shots 初始化
+          // 没保存过 OR 保存过但已被清空 → 从 shots 选中版本初始化（视频 / 音频 / 字幕全落轨）
           setTracks(normalizeTimelineTracks(shotsToTracks(shots)));
-          timelineCreatedAtRef.current = Date.now();
+          timelineCreatedAtRef.current = savedData?.createdAt || Date.now();
         }
       } catch (err) {
         logger.error('加载时间线失败', err);

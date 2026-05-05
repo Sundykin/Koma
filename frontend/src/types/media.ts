@@ -117,10 +117,12 @@ export interface ShotMediaState {
   references?: StoredMediaAsset[];
   images?: StoredMediaAsset[];
   videos?: StoredMediaAsset[];
+  audios?: StoredMediaAsset[]; // 配音输出（多次生成保留历史，currentAudioIndex 指向当前选中）
   gridImage?: StoredMediaAsset; // 九宫格模式生成的 3×3 网格图
   selectedReferenceIndex?: number;
   currentImageIndex?: number;
   currentVideoIndex?: number;
+  currentAudioIndex?: number;
 }
 
 export interface ShotVersionMediaState {

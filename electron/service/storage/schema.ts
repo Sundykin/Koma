@@ -2,7 +2,7 @@
  * SQLite 数据库 Schema 定义
  */
 
-export const CURRENT_SCHEMA_VERSION = 5;
+export const CURRENT_SCHEMA_VERSION = 7;
 
 export const CREATE_TABLES_SQL = `
 -- 项目表
@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS projects (
   style_preset_id TEXT,
   style_snapshot_json TEXT,
   media_selections_json TEXT,
+  metadata_json TEXT,
   aspect_ratio TEXT DEFAULT '16:9',
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL
@@ -114,6 +115,7 @@ CREATE TABLE IF NOT EXISTS shots (
   selected_reference_index INTEGER,
   current_image_index INTEGER,
   current_video_index INTEGER,
+  current_audio_index INTEGER,
   current_version INTEGER DEFAULT 0,
   sort_order INTEGER DEFAULT 0,
   metadata_json TEXT,
@@ -334,7 +336,7 @@ CREATE TABLE IF NOT EXISTS shot_props (
 CREATE TABLE IF NOT EXISTS shot_media_entries (
   id TEXT PRIMARY KEY,
   shot_id TEXT NOT NULL REFERENCES shots(id) ON DELETE CASCADE,
-  slot TEXT NOT NULL CHECK(slot IN ('reference','image','video')),
+  slot TEXT NOT NULL CHECK(slot IN ('reference','image','video','audio')),
   local_path TEXT,
   remote_url TEXT,
   mime_type TEXT,
@@ -1055,6 +1057,49 @@ CREATE INDEX IF NOT EXISTS idx_linghui_history_workspace ON linghui_workspace_hi
 ALTER TABLE shots DROP COLUMN script_content;
 ALTER TABLE shots ADD COLUMN script_lines_json TEXT NOT NULL DEFAULT '[]';
 ALTER TABLE episodes ADD COLUMN script_ready INTEGER NOT NULL DEFAULT 0;
+`,
+  },
+  6: {
+    description: 'Allow audio slot in shot_media_entries (TTS 配音 持久化); add shots.current_audio_index',
+    sql: `
+-- SQLite 不支持 ALTER 既有 CHECK 约束，必须 rename + recreate + copy 数据。
+-- 旧表 slot CHECK ('reference','image','video') → 新表加 'audio'。
+ALTER TABLE shot_media_entries RENAME TO shot_media_entries_legacy;
+CREATE TABLE shot_media_entries (
+  id TEXT PRIMARY KEY,
+  shot_id TEXT NOT NULL REFERENCES shots(id) ON DELETE CASCADE,
+  slot TEXT NOT NULL CHECK(slot IN ('reference','image','video','audio')),
+  local_path TEXT,
+  remote_url TEXT,
+  mime_type TEXT,
+  width INTEGER,
+  height INTEGER,
+  duration_ms INTEGER,
+  fps REAL,
+  provider TEXT,
+  provider_task_id TEXT,
+  channel_id TEXT,
+  model_id TEXT,
+  capability TEXT,
+  thumbnail_path TEXT,
+  prompt_text TEXT,
+  seed INTEGER,
+  model_name TEXT,
+  aspect_ratio TEXT,
+  created_at INTEGER NOT NULL,
+  sort_order INTEGER DEFAULT 0
+);
+INSERT INTO shot_media_entries SELECT * FROM shot_media_entries_legacy;
+DROP TABLE shot_media_entries_legacy;
+CREATE INDEX IF NOT EXISTS idx_shot_media_entries_shot ON shot_media_entries(shot_id, slot, sort_order);
+
+ALTER TABLE shots ADD COLUMN current_audio_index INTEGER;
+`,
+  },
+  7: {
+    description: 'Add projects.metadata_json column for project-level extras (ttsVoiceId, ttsSpeed, videoPromptDurationSelections)',
+    sql: `
+ALTER TABLE projects ADD COLUMN metadata_json TEXT;
 `,
   },
 };

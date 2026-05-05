@@ -19,6 +19,7 @@ export interface ProjectRow {
   style_preset_id?: string;
   style_snapshot_json?: string;
   media_selections_json?: string;
+  metadata_json?: string;
   aspect_ratio?: string;
   episodes?: number; // 计算字段
   created_at: number;
@@ -112,6 +113,7 @@ export interface ShotRow {
   selected_reference_index?: number;
   current_image_index?: number;
   current_video_index?: number;
+  current_audio_index?: number;
   current_version: number;
   sort_order: number;
   metadata_json?: string;

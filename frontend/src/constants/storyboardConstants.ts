@@ -4,8 +4,9 @@
  * 左侧操作列固定宽度，内容区域使用 flex 分配
  */
 
-// 左侧操作列宽度 — 纵向空间够大后稍加宽，按钮 / #N / 时长有舒服的间隔
-export const COL_ACTION_WIDTH = 'w-16'; // 64px 操作列
+// 左侧操作列宽度 — 头部需要同时容纳 全选 checkbox + 批量删除按钮，原 64px 在
+// hasSelected 时会变形（按钮被挤出去）。提到 80px 给两个元素留够呼吸空间。
+export const COL_ACTION_WIDTH = 'w-20'; // 80px 操作列
 
 // 内容区域列宽度 (使用 flex 比例避免横向滚动)
 //

@@ -18,6 +18,8 @@ export const StoryboardStep: React.FC<{ ctx: EditorStepContext }> = ({ ctx }) =>
         ttiSelection={ctx.ttiSelection}
         itvSelection={ctx.itvSelection}
         ttsSelection={ctx.ttsSelection}
+        ttsVoiceId={ctx.activeProject.ttsVoiceId}
+        ttsSpeed={ctx.activeProject.ttsSpeed}
         settings={ctx.appSettings}
         styleSnapshot={ctx.styleSnapshot}
         mentionItems={ctx.mentionItems}

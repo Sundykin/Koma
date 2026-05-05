@@ -45,6 +45,10 @@ export interface Project {
   aspectRatio?: '16:9' | '9:16'; // 项目画面比例（创建时确定，不可更改）
   stylePresetId?: string;   // 选中的全局风格 ID
   styleSnapshot?: ProjectStyleSnapshot; // 项目风格快照
+  /** 项目级 TTS 音色（覆盖 channel.defaultVoice，留空时走 channel 默认） */
+  ttsVoiceId?: string;
+  /** 项目级 TTS 语速倍数（OpenAI 兼容 speed 字段，默认 1.2） */
+  ttsSpeed?: number;
   // @deprecated 遗留字段，仅保留给未改造调用点过渡
   theme?: string;
   // @deprecated 遗留字段，仅保留给未改造调用点过渡
@@ -152,6 +156,13 @@ export interface ProjectMeta {
     multiRef?: number[];
     firstFrame?: number[];
   };
+  /**
+   * 项目级 TTS 偏好（生成配音时使用，覆盖 channel.defaultVoice）：
+   *  - voiceId: Koma TTS 内置音色 id（如 'cherry'）。空时走 channel 默认。
+   *  - speed: 语速倍数（OpenAI 兼容字段 speed，0.25-4.0）。默认 1.2。
+   */
+  ttsVoiceId?: string;
+  ttsSpeed?: number;
   // @deprecated 遗留字段，仅保留给未改造调用点过渡
   theme?: string;
   // @deprecated 遗留字段，仅保留给未改造调用点过渡

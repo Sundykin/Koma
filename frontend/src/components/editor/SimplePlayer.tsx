@@ -210,10 +210,11 @@ export const SimplePlayer: React.FC<PlayerProps> = ({
 
     // 设置轨道到渲染器
     rendererRef.current.setTracks(tracks);
-    // 设置轨道到音频控制器（用于静音等功能）
+    // 设置轨道到音频控制器：内部会 diff 已加载 clip 与新 tracks，自动 removeClip 掉
+    // 已从 timeline 移除的音频条（修"删除后还在播"的 bug）。
     audioRef.current.setTracks(tracks);
 
-    // 加载音频片段
+    // 加载音频片段（loadClip 内部 has() 判重，重复调用是 no-op）
     tracks.forEach(track => {
       track.clips.forEach(clip => {
         if (clip.type === MediaType.AUDIO) {

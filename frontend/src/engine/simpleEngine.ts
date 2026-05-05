@@ -559,6 +559,24 @@ export class SimpleAudioController {
         this.mutedTracks.add(track.id);
       }
     });
+    // 卸载已经从 timeline 删掉的音频 clip —— 修"删除后还在播"的 bug。
+    // 视频走 shareVideoElement 路径由 VideoRenderer 主导，不在这里 diff（避免与共享元素冲突）。
+    const expectedAudioIds = new Set<string>();
+    this.tracks.forEach((track) => {
+      track.clips.forEach((clip) => {
+        if (clip.type === MediaType.AUDIO) expectedAudioIds.add(clip.id);
+      });
+    });
+    Array.from(this.mediaMap.entries()).forEach(([clipId, instance]) => {
+      if (instance.type === 'audio' && !expectedAudioIds.has(clipId)) {
+        if (!instance.isShared) {
+          instance.element.pause();
+          instance.element.src = '';
+        }
+        this.mediaMap.delete(clipId);
+        this.mutedClips.delete(clipId);
+      }
+    });
   }
 
   // 接收共享的视频元素（由 VideoRenderer 调用）
@@ -789,6 +807,18 @@ export class SimpleAudioController {
       this.mediaMap.delete(clipId);
       this.mutedClips.delete(clipId);
     }
+  }
+
+  /**
+   * 列出当前已加载的指定类型 clip id —— 用于上层 diff 出"已从 timeline 删除但仍在 mediaMap
+   * 里的孤儿实例"，循环 removeClip 卸载（修"删除音频 clip 后仍在播放"的 bug）。
+   */
+  listLoadedClipIds(type?: 'audio' | 'video'): string[] {
+    const ids: string[] = [];
+    this.mediaMap.forEach((instance, clipId) => {
+      if (!type || instance.type === type) ids.push(clipId);
+    });
+    return ids;
   }
 
   destroy(): void {

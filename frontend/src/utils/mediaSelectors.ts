@@ -54,6 +54,10 @@ export function getShotVideoAssets(shot?: Shot): StoredMediaAsset[] {
   return shot?.media?.videos || [];
 }
 
+export function getShotAudioAssets(shot?: Shot): StoredMediaAsset[] {
+  return shot?.media?.audios || [];
+}
+
 export function getShotCurrentImageAsset(shot?: Shot): StoredMediaAsset | undefined {
   const images = getShotImageAssets(shot);
   const index = shot?.media?.currentImageIndex ?? 0;
@@ -66,12 +70,23 @@ export function getShotCurrentVideoAsset(shot?: Shot): StoredMediaAsset | undefi
   return videos[index];
 }
 
+export function getShotCurrentAudioAsset(shot?: Shot): StoredMediaAsset | undefined {
+  const audios = getShotAudioAssets(shot);
+  if (!audios.length) return undefined;
+  const idx = shot?.media?.currentAudioIndex ?? audios.length - 1;
+  return audios[idx] || audios[audios.length - 1];
+}
+
 export function getShotCurrentImageSource(shot?: Shot): string | undefined {
   return getMediaAssetDisplaySource(getShotCurrentImageAsset(shot));
 }
 
 export function getShotCurrentVideoSource(shot?: Shot): string | undefined {
   return getMediaAssetDisplaySource(getShotCurrentVideoAsset(shot));
+}
+
+export function getShotCurrentAudioSource(shot?: Shot): string | undefined {
+  return getMediaAssetDisplaySource(getShotCurrentAudioAsset(shot));
 }
 
 export function getShotVersionImageSource(version?: ShotVersion): string | undefined {

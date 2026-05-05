@@ -6,6 +6,7 @@ import * as path from 'path';
 import { app, shell } from 'electron';
 import { BaseController } from './base';
 import { getBusinessRoot, getStyleReferencesDir } from '../service/paths';
+import { resolveKomaTTSVoiceSamplePath } from '../service/ttsVoiceSamples';
 
 const ALLOWED_PATH_NAMES = new Set([
   'home', 'appData', 'userData', 'temp', 'desktop',
@@ -45,6 +46,18 @@ class AppController extends BaseController {
    * 命中时返回 `{ localPath }`，找不到时返回 `{ localPath: null }` 让前端回退。
    * 拒绝任何带 `..` / 路径分隔符的非法 filename，防止越界读取。
    */
+  /**
+   * 解析 Koma 内置 TTS 音色试听样本（wav）的本地绝对路径。
+   * 入参 sampleFile 是 KomaTTSVoiceMeta.sampleFile，形如 `01_通用中英文/Cherry-芊悦.wav`。
+   * 文件不存在 / 资源目录未定位时返回 `{ localPath: null }`，前端隐藏试听按钮即可。
+   */
+  getKomaTTSVoiceSamplePath(args: { sampleFile: string }) {
+    const sampleFile = String(args?.sampleFile || '').trim();
+    if (!sampleFile) return { localPath: null };
+    const absPath = resolveKomaTTSVoiceSamplePath(sampleFile);
+    return { localPath: absPath || null };
+  }
+
   getStyleReferenceImagePath(args: { filename: string }) {
     const filename = String(args?.filename || '').trim();
     if (!isSafeFilename(filename)) {

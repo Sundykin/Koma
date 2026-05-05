@@ -66,6 +66,15 @@ const ITV_PROVIDER_FIELD_DEFAULTS: Record<string, Record<string, unknown>> = {
     defaultDuration: 5,
     defaultResolution: '1280x720',
   },
+  // Koma 官方 ITV 渠道：默认开启 Koma 协议（grok-image-index）。
+  // 实际 Provider 构造函数已兜底默认这个值，但 UI 表单不显式 setFieldsValue 的话
+  // Select 会显示"不启用（默认）"，让用户误以为没开。这里把默认值显式落到表单初始值。
+  'koma-suihe-itv': {
+    promptProtocol: 'grok-image-index',
+  },
+  'grok2api-imagine-itv': {
+    promptProtocol: 'grok-image-index',
+  },
 };
 
 function cloneDefaults(value: unknown): Record<string, unknown> | undefined {

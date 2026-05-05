@@ -54,12 +54,14 @@ export interface ShotListEditorProps {
   onGenerateVideo: (shotId: string) => void;
   onBatchGenerateVideos: (shotIds?: string[]) => void;
   onBatchReGenerateVideos: (shotIds?: string[]) => void;
+  onGenerateAudio?: (shotId: string) => void;
+  onBatchGenerateAudios?: (shotIds?: string[]) => void;
+  onBatchReGenerateAudios?: (shotIds?: string[]) => void;
+  generatingAudios?: boolean;
   getVideoCapabilityLabel?: (shotId: string) => string | undefined;
   getVideoGenerateDisabledReason?: (shotId: string) => string | undefined;
-  onToggleConfirm: (shot: Shot) => void;
   onDelete: (shotId: string) => void;
   onBatchDelete: (shotIds: string[]) => void;
-  onBatchConfirm: (shotIds: string[], confirm: boolean) => void;
   onMergeUp: (shotId: string) => void;
   onMergeDown: (shotId: string) => void;
   onMoveUp: (shotId: string) => void;
@@ -70,6 +72,7 @@ export interface ShotListEditorProps {
   onShotImageModeChange: (shotId: string, mode: 'normal' | 'grid-9' | 'grid-4') => void;
   onShotVideoModeChange?: (shotId: string, mode: 'multi-ref' | 'first-frame') => void;
   onBulkVideoModeChange?: (mode: 'multi-ref' | 'first-frame') => void;
+  onBulkImageModeChange?: (mode: 'normal' | 'grid-4' | 'grid-9') => void;
   /** 当前项目选择的 ITV 渠道时长规格，透传给 ShotCard 决定时长控件渲染方式 */
   durationSpec?: import('../../providers/itv/durationSpec').VideoDurationSpec;
   /** 单镜头视频生成进度（按 shotId 聚合），透传给 ShotCard 渲染百分比与阶段文本 */
@@ -114,12 +117,14 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
   onGenerateVideo,
   onBatchGenerateVideos,
   onBatchReGenerateVideos,
+  onGenerateAudio,
+  onBatchGenerateAudios,
+  onBatchReGenerateAudios,
+  generatingAudios = false,
   getVideoCapabilityLabel,
   getVideoGenerateDisabledReason,
-  onToggleConfirm,
   onDelete,
   onBatchDelete,
-  onBatchConfirm: _onBatchConfirm,
   onMergeUp,
   onMergeDown,
   onMoveUp,
@@ -130,6 +135,7 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
   onShotImageModeChange,
   onShotVideoModeChange,
   onBulkVideoModeChange,
+  onBulkImageModeChange,
   durationSpec,
   videoProgressMap,
 }) => {
@@ -187,6 +193,14 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
   const handleBatchReVideos = useCallback(() => {
     onBatchReGenerateVideos(hasSelected ? Array.from(selectedIds) : undefined);
   }, [hasSelected, selectedIds, onBatchReGenerateVideos]);
+
+  const handleBatchAudios = useCallback(() => {
+    onBatchGenerateAudios?.(hasSelected ? Array.from(selectedIds) : undefined);
+  }, [hasSelected, selectedIds, onBatchGenerateAudios]);
+
+  const handleBatchReAudios = useCallback(() => {
+    onBatchReGenerateAudios?.(hasSelected ? Array.from(selectedIds) : undefined);
+  }, [hasSelected, selectedIds, onBatchReGenerateAudios]);
 
   const handleBatchVideoPrompts = useCallback(() => {
     onBatchGenerateVideoPrompts(hasSelected ? Array.from(selectedIds) : undefined);
@@ -256,9 +270,9 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
         onOptimizeVideoPrompt={onOptimizeVideoPrompt}
         onGenerateImage={onGenerateImage}
         onGenerateVideo={onGenerateVideo}
+        onGenerateAudio={onGenerateAudio}
         videoCapabilityLabel={getVideoCapabilityLabel?.(shot.id)}
         videoGenerateDisabledReason={getVideoGenerateDisabledReason?.(shot.id)}
-        onToggleConfirm={onToggleConfirm}
         onDelete={onDelete}
         onMergeUp={onMergeUp}
         onMergeDown={onMergeDown}
@@ -303,9 +317,9 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
       onOptimizeVideoPrompt,
       onGenerateImage,
       onGenerateVideo,
+      onGenerateAudio,
       getVideoCapabilityLabel,
       getVideoGenerateDisabledReason,
-      onToggleConfirm,
       onDelete,
       onMergeUp,
       onMergeDown,
@@ -355,6 +369,7 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
               generatingVideoPrompts={generatingVideoPrompts.size > 0}
               generatingImages={generatingImages.size > 0}
               generatingVideos={generatingVideos.size > 0}
+              generatingAudios={generatingAudios}
               onSelectAll={handleSelectAll}
               onBatchPrompts={handleBatchPrompts}
               onBatchRePrompts={handleBatchRePrompts}
@@ -364,7 +379,10 @@ export const ShotListEditor: React.FC<ShotListEditorProps> = ({
               onBatchReVideos={handleBatchReVideos}
               onBatchVideoPrompts={handleBatchVideoPrompts}
               onBatchReVideoPrompts={handleBatchReVideoPrompts}
+              onBatchAudios={onBatchGenerateAudios ? handleBatchAudios : undefined}
+              onBatchReAudios={onBatchReGenerateAudios ? handleBatchReAudios : undefined}
               onBulkVideoModeChange={onBulkVideoModeChange}
+              onBulkImageModeChange={onBulkImageModeChange}
               onAddShot={onAddShot}
               onBatchDelete={handleBatchDelete}
             />
