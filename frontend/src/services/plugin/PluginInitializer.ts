@@ -40,21 +40,18 @@ export async function initializePlugin(plugin: InstalledPlugin): Promise<boolean
         logger.info('初始化插件: backend activate', { pluginId: plugin.id });
         const result = await electronService.ipc.invoke('controller/plugin/activate', { manifest: plugin });
         if (!result?.success) {
-          logger.warn(`后端激活失败: ${plugin.id}`, result?.error);
-          // provider 类型后端激活失败不阻止前端加载（例如 backend bundle 格式不兼容）
-          if (plugin.category !== 'provider') {
-            return false;
-          }
-        }
-      } catch (err: unknown) {
-        // 对 provider 插件：后端激活失败不应该阻止前端注册 Provider
-        // 否则会出现“渠道已存在但 Provider 未就绪”的死状态。
-        logger.warn(`后端激活异常: ${plugin.id}`, {
-          error: err instanceof Error ? err.message : String(err),
-        });
-        if (plugin.category !== 'provider') {
+          logger.error(`后端激活失败: ${plugin.id}`, result?.error);
+          // 历史上 provider 类型后端激活失败时仍继续注册前端 Provider —— 但这会导致
+          // "渲染端 Provider 已注册但实际跑不通"的半残状态（典型表现：图床插件后端
+          // 没起来但前端注册了，调用时撞 komaapi.com 的 CORS 报 "Failed to fetch"）。
+          // 现在统一：**只要 manifest 声明了 backend 入口且激活失败，就放弃整个插件**，
+          // 让 channel 直接走"未就绪"分支，错误信息更聚焦。
           return false;
         }
+      } catch (err: unknown) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        logger.error(`后端激活异常: ${plugin.id}`, { error: errMsg });
+        return false;
       }
     }
 
