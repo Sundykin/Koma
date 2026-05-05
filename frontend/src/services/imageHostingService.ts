@@ -265,17 +265,24 @@ export async function uploadBytesToImageHostingWithRetry(
       );
     } catch (err: unknown) {
       if (err instanceof BackendProviderMissingError) {
-        logger.warn('图床后端 Provider 不存在，回退到前端 Provider', {
+        // 主进程图床 Provider 没注册（通常意味着插件后端激活失败）。
+        // **不要**回退到前端 fetch —— komaapi.com 没给渲染端 origin 开 CORS，
+        // 渲染端 fetch 必定 "Failed to fetch"，错误信息更迷惑。
+        // 直接报清晰错误，让用户去查后端激活日志（[PluginInitializer] 后端激活失败 ...）。
+        logger.error('图床后端 Provider 未在主进程注册（插件后端可能激活失败）', {
           providerType: channel.providerType,
+          pluginId: channel.pluginId,
         });
-        // 继续走前端 Provider 路径
-      } else {
-        const msg = err instanceof Error ? err.message : String(err);
         return {
           success: false,
-          error: `上传失败，已重试 ${maxRetries} 次: ${msg || '未知错误'}`,
+          error: `图床后端 Provider 未注册（${channel.providerType}）。该插件的后端模块未成功激活，请查看主进程日志或重启应用；前端 fetch 受 CORS 限制无法兜底，必须走后端通道。`,
         };
       }
+      const msg = err instanceof Error ? err.message : String(err);
+      return {
+        success: false,
+        error: `上传失败，已重试 ${maxRetries} 次: ${msg || '未知错误'}`,
+      };
     }
   }
 

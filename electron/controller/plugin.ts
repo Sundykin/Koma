@@ -68,10 +68,34 @@ const pluginController = {
 
   /**
    * 激活插件
+   *
+   * **重要 — 错误处理**：ee-core 的 ipcServer.js 在 ipcMain.handle 里吞错（catch
+   * 后只 coreLogger.error 不 rethrow）。`pluginService.loadAndActivate` 自身已经把
+   * loadPlugin/activatePlugin 的异常转成 `{success, error}`，但如果 `ensureServicesReady`
+   * 或 IPC 路由层抛出（罕见但会发生），ee-core 会吞掉错误返回 undefined，渲染端只能
+   * 看到 `result?.success` 为 falsy 但拿不到 error 信息。这里加一层 try/catch 兜底，
+   * 把所有 throw 转成结构化 result。
    */
   async activate({ manifest }: { manifest: any }, _event?: IpcMainInvokeEvent) {
-    await ensureServicesReady();
-    return pluginService.loadAndActivate(manifest);
+    try {
+      await ensureServicesReady();
+      const result = await pluginService.loadAndActivate(manifest);
+      if (!result?.success) {
+        console.error('[PluginController] activate failed', {
+          pluginId: manifest?.id,
+          error: result?.error,
+        });
+      }
+      return result ?? { success: false, error: 'loadAndActivate 返回 undefined' };
+    } catch (err: any) {
+      const errorMsg = err?.message || String(err) || '未知激活错误';
+      console.error('[PluginController] activate threw', {
+        pluginId: manifest?.id,
+        error: errorMsg,
+        stack: err?.stack,
+      });
+      return { success: false, error: `[plugin/activate] ${errorMsg}` };
+    }
   },
 
   /**
