@@ -2,7 +2,7 @@
  * 资产生成向导
  * 分步引导生成项目所有资产：角色 → 场景 → 道具 → 预览视频
  */
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Modal,
   Steps,
@@ -41,7 +41,6 @@ import {
 import { generateSceneImage, generatePropImage, generatePropPreviewVideo } from '../../workflow/scenePropAssetWorkflow';
 import { runWithTask } from '../../services/taskRunner';
 import { runBatchWithConcurrency } from '../../utils/batchRunner';
-import { useTasks } from '../../hooks';
 import {
   getCharacterCostumePhotoSource,
   getCharacterPreviewVideoSource,
@@ -79,29 +78,6 @@ interface ItemStatus {
   sourceType?: 'character' | 'prop'; // 视频步骤区分角色/道具
 }
 
-/** 写入任务 metadata 的精简结构（不含 selected / sourceType 等仅 UI 关心字段） */
-interface ItemMetadataState {
-  status: ItemStatus['status'];
-  progress: number;
-  error?: string;
-  imagePath?: string;
-  imageCacheKey?: number;
-}
-
-function itemsToMetadata(items: ItemStatus[]): Record<string, ItemMetadataState> {
-  const map: Record<string, ItemMetadataState> = {};
-  for (const it of items) {
-    map[it.id] = {
-      status: it.status,
-      progress: it.progress,
-      error: it.error,
-      imagePath: it.imagePath,
-      imageCacheKey: it.imageCacheKey,
-    };
-  }
-  return map;
-}
-
 /** 把 cacheKey 拼到 koma-local URL 末尾。protocol.handle 仅消费 pathname，query 字符串安全忽略。*/
 function appendImageCacheBust(url: string, key?: number): string {
   if (!url || !key) return url;
@@ -125,27 +101,17 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
   const { message } = App.useApp();
   const [currentStep, setCurrentStep] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [generating, setGenerating] = useState(false);
+  const [overallProgress, setOverallProgress] = useState(0);
+  const [currentItem, setCurrentItem] = useState('');
 
-  // ============ 方案 C：单源（任务 metadata） ============
-  // 状态分层：
-  //  · DB 基线：从角色/场景/道具表加载的初始 items（pending/completed by image existence）
-  //  · 用户勾选：本地 Set，独立于持久化（关闭重开会重置——勾选属于 UI 一次性意图）
-  //  · 运行时态：完全从 useTasks 派生 — task.metadata.items 是唯一真相源
-  //  · 派生：useMemo(baseline + selected + activeTask.metadata.items) → 渲染用 ItemStatus[]
-  // worker 只写 metadata，不再 setter 本地 state；UI 自动跟着 useTasks 重渲。
+  // 各步骤数据
+  const [characters, setCharacters] = useState<ItemStatus[]>([]);
+  const [scenes, setScenes] = useState<ItemStatus[]>([]);
+  const [props, setProps] = useState<ItemStatus[]>([]);
+  const [videoItems, setVideoItems] = useState<ItemStatus[]>([]);
 
-  // DB 基线（loadData 写入；不含 generating/progress 等运行时字段）
-  const [baselineCharacters, setBaselineCharacters] = useState<ItemStatus[]>([]);
-  const [baselineScenes, setBaselineScenes] = useState<ItemStatus[]>([]);
-  const [baselineProps, setBaselineProps] = useState<ItemStatus[]>([]);
-  const [baselineVideos, setBaselineVideos] = useState<ItemStatus[]>([]);
-  // 用户勾选（独立于 baseline 的 selected 字段；初次 loadData 时按"DB 没图就默认勾选"初始化）
-  const [selectedCharIds, setSelectedCharIds] = useState<Set<string>>(new Set());
-  const [selectedSceneIds, setSelectedSceneIds] = useState<Set<string>>(new Set());
-  const [selectedPropIds, setSelectedPropIds] = useState<Set<string>>(new Set());
-  const [selectedVideoIds, setSelectedVideoIds] = useState<Set<string>>(new Set());
-
-  // 加载项目资产数据 → DB 基线（不含运行时态）。运行时态来自任务 metadata，自动合并到 derive。
+  // 加载项目资产数据
   useEffect(() => {
     if (!open || !project) return;
 
@@ -158,71 +124,65 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
           loadProps(project.id),
         ]);
 
+        // 每次打开向导时打一个共享时间戳作为 cacheKey 起点，让上次抽卡之后磁盘被覆盖的同路径图能重新拉取
         const reopenCacheKey = Date.now();
 
-        const charsItems: ItemStatus[] = chars.map(c => ({
+        setCharacters(chars.map(c => ({
           id: c.id,
           name: c.name,
-          selected: false, // selected 由 selectedCharIds Set 维护
+          selected: !getCharacterCostumePhotoSource(c),
           status: getCharacterCostumePhotoSource(c) ? 'completed' : 'pending',
           progress: getCharacterCostumePhotoSource(c) ? 100 : 0,
           imagePath: getCharacterCostumePhotoSource(c),
           imageCacheKey: reopenCacheKey,
-        }));
-        const scnsItems: ItemStatus[] = scns.map(s => ({
+        })));
+
+        setScenes(scns.map(s => ({
           id: s.id,
           name: s.name,
-          selected: false,
+          selected: !getScenePreviewImageSource(s),
           status: getScenePreviewImageSource(s) ? 'completed' : 'pending',
           progress: getScenePreviewImageSource(s) ? 100 : 0,
           imagePath: getScenePreviewImageSource(s),
           imageCacheKey: reopenCacheKey,
-        }));
-        const prpsItems: ItemStatus[] = prps.map(p => ({
+        })));
+
+        setProps(prps.map(p => ({
           id: p.id,
           name: p.name,
-          selected: false,
+          selected: !getPropPreviewImageSource(p),
           status: getPropPreviewImageSource(p) ? 'completed' : 'pending',
           progress: getPropPreviewImageSource(p) ? 100 : 0,
           imagePath: getPropPreviewImageSource(p),
           imageCacheKey: reopenCacheKey,
-        }));
+        })));
+
+        // 视频步骤：有定妆照的角色 + 有参考图的道具
         const charVideos: ItemStatus[] = chars
           .filter(c => getCharacterCostumePhotoSource(c))
           .map(c => ({
-            id: c.id,
-            name: `[角色] ${c.name}`,
-            selected: false,
-            status: getCharacterPreviewVideoSource(c) ? 'completed' : 'pending',
-            progress: getCharacterPreviewVideoSource(c) ? 100 : 0,
-            imagePath: getCharacterPreviewVideoSource(c),
-            imageCacheKey: reopenCacheKey,
-            sourceType: 'character' as const,
-          }));
+          id: c.id,
+          name: `[角色] ${c.name}`,
+          selected: !getCharacterPreviewVideoSource(c),
+          status: getCharacterPreviewVideoSource(c) ? 'completed' : 'pending',
+          progress: getCharacterPreviewVideoSource(c) ? 100 : 0,
+          imagePath: getCharacterPreviewVideoSource(c),
+          imageCacheKey: reopenCacheKey,
+          sourceType: 'character' as const,
+        }));
         const propVideos: ItemStatus[] = prps
           .filter(p => getPropPreviewImageSource(p))
           .map(p => ({
-            id: p.id,
-            name: `[道具] ${p.name}`,
-            selected: false,
-            status: getPropPreviewVideoSource(p) ? 'completed' : 'pending',
-            progress: getPropPreviewVideoSource(p) ? 100 : 0,
-            imagePath: getPropPreviewVideoSource(p),
-            imageCacheKey: reopenCacheKey,
-            sourceType: 'prop' as const,
-          }));
-
-        setBaselineCharacters(charsItems);
-        setBaselineScenes(scnsItems);
-        setBaselineProps(prpsItems);
-        setBaselineVideos([...charVideos, ...propVideos]);
-
-        // 仅当本次是首屏（selected Set 为空）才默认勾选"DB 没图的项"；
-        // 否则保留用户已有的勾选选择
-        setSelectedCharIds(prev => prev.size > 0 ? prev : new Set(charsItems.filter(it => it.status === 'pending').map(it => it.id)));
-        setSelectedSceneIds(prev => prev.size > 0 ? prev : new Set(scnsItems.filter(it => it.status === 'pending').map(it => it.id)));
-        setSelectedPropIds(prev => prev.size > 0 ? prev : new Set(prpsItems.filter(it => it.status === 'pending').map(it => it.id)));
-        setSelectedVideoIds(prev => prev.size > 0 ? prev : new Set([...charVideos, ...propVideos].filter(it => it.status === 'pending').map(it => it.id)));
+          id: p.id,
+          name: `[道具] ${p.name}`,
+          selected: !getPropPreviewVideoSource(p),
+          status: getPropPreviewVideoSource(p) ? 'completed' : 'pending',
+          progress: getPropPreviewVideoSource(p) ? 100 : 0,
+          imagePath: getPropPreviewVideoSource(p),
+          imageCacheKey: reopenCacheKey,
+          sourceType: 'prop' as const,
+        }));
+        setVideoItems([...charVideos, ...propVideos]);
       } catch (err: any) {
         message.error(`加载数据失败: ${err.message}`);
       } finally {
@@ -233,105 +193,51 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
     loadData();
   }, [open, project, message]);
 
-  // ============ 任务订阅 + 运行时态派生 ============
-  // 订阅当前项目所有 asset-generation 任务（含已完成的，让 UI 短暂显示完成态）
-  const allAssetTasks = useTasks({
-    scope: project ? `project:${project.id}` : '__none__',
-    type: 'asset-generation',
-  });
-
-  // 找当前 step 对应的"最新一条带 stepKey 的任务"（活跃优先，没有则用最近完成的）
-  const taskForStep = useMemo(() => {
-    const stepKey = stepConfig[currentStep]?.key as WizardStep | undefined;
-    if (!stepKey) return null;
-    const matching = allAssetTasks.filter(t => (t.metadata as any)?.stepKey === stepKey);
-    if (matching.length === 0) return null;
-    // 优先活跃任务；没活跃则最近完成的（按 createdAt 倒序）
-    const active = matching.find(t => t.status === 'running' || t.status === 'pending' || t.status === 'processing');
-    return active || matching[0];
-  }, [allAssetTasks, currentStep]);
-
-  // 通用派生器：baseline + selected Set + active task metadata.items → 渲染用 ItemStatus[]
-  const deriveItems = useCallback(
-    (baseline: ItemStatus[], selectedIds: Set<string>, stepKey: WizardStep): ItemStatus[] => {
-      // 仅消费"匹配本 step 的"任务 metadata
-      const matching = allAssetTasks.find(t => (t.metadata as any)?.stepKey === stepKey
-        && (t.status === 'running' || t.status === 'pending' || t.status === 'processing'));
-      const itemStates = (matching?.metadata as { items?: Record<string, ItemMetadataState> } | undefined)?.items || {};
-      return baseline.map(it => {
-        const remote = itemStates[it.id];
-        if (remote) {
-          return {
-            ...it,
-            selected: selectedIds.has(it.id),
-            status: remote.status,
-            progress: remote.progress,
-            error: remote.error,
-            imagePath: remote.imagePath ?? it.imagePath,
-            imageCacheKey: remote.imageCacheKey ?? it.imageCacheKey,
-          };
-        }
-        return { ...it, selected: selectedIds.has(it.id) };
-      });
-    },
-    [allAssetTasks],
-  );
-
-  const characters = useMemo(() => deriveItems(baselineCharacters, selectedCharIds, 'characters'), [baselineCharacters, selectedCharIds, deriveItems]);
-  const scenes = useMemo(() => deriveItems(baselineScenes, selectedSceneIds, 'scenes'), [baselineScenes, selectedSceneIds, deriveItems]);
-  const props = useMemo(() => deriveItems(baselineProps, selectedPropIds, 'props'), [baselineProps, selectedPropIds, deriveItems]);
-  const videoItems = useMemo(() => deriveItems(baselineVideos, selectedVideoIds, 'videos'), [baselineVideos, selectedVideoIds, deriveItems]);
-
-  // generating / overallProgress / currentItem 也派生自 taskForStep
-  const generating = !!taskForStep && (taskForStep.status === 'running' || taskForStep.status === 'pending' || taskForStep.status === 'processing');
-  const overallProgress = taskForStep?.progress ?? 0;
-  const currentItem = ((taskForStep?.metadata as { lastMessage?: string } | undefined)?.lastMessage) || '';
-
-  // 切换选中状态：Set 的 toggle
-  const toggleSetMember = (set: Set<string>, id: string): Set<string> => {
-    const next = new Set(set);
-    if (next.has(id)) next.delete(id);
-    else next.add(id);
-    return next;
-  };
+  // 切换选中状态
   const toggleSelect = useCallback((type: WizardStep, id: string) => {
+    const updateList = (list: ItemStatus[], setter: React.Dispatch<React.SetStateAction<ItemStatus[]>>) => {
+      setter(list.map(item =>
+        item.id === id ? { ...item, selected: !item.selected } : item
+      ));
+    };
+
     switch (type) {
       case 'characters':
-        setSelectedCharIds(prev => toggleSetMember(prev, id));
+        updateList(characters, setCharacters);
         break;
       case 'scenes':
-        setSelectedSceneIds(prev => toggleSetMember(prev, id));
+        updateList(scenes, setScenes);
         break;
       case 'props':
-        setSelectedPropIds(prev => toggleSetMember(prev, id));
+        updateList(props, setProps);
         break;
       case 'videos':
-        setSelectedVideoIds(prev => toggleSetMember(prev, id));
+        updateList(videoItems, setVideoItems);
         break;
     }
-  }, []);
+  }, [characters, scenes, props, videoItems]);
 
   // 全选/取消全选
   const toggleSelectAll = useCallback((type: WizardStep, selected: boolean) => {
-    const apply = (
-      baseline: ItemStatus[],
-      setter: React.Dispatch<React.SetStateAction<Set<string>>>,
-    ) => setter(selected ? new Set(baseline.map(it => it.id)) : new Set());
+    const updateList = (list: ItemStatus[], setter: React.Dispatch<React.SetStateAction<ItemStatus[]>>) => {
+      setter(list.map(item => ({ ...item, selected })));
+    };
+
     switch (type) {
       case 'characters':
-        apply(baselineCharacters, setSelectedCharIds);
+        updateList(characters, setCharacters);
         break;
       case 'scenes':
-        apply(baselineScenes, setSelectedSceneIds);
+        updateList(scenes, setScenes);
         break;
       case 'props':
-        apply(baselineProps, setSelectedPropIds);
+        updateList(props, setProps);
         break;
       case 'videos':
-        apply(baselineVideos, setSelectedVideoIds);
+        updateList(videoItems, setVideoItems);
         break;
     }
-  }, [baselineCharacters, baselineScenes, baselineProps, baselineVideos]);
+  }, [characters, scenes, props, videoItems]);
 
   // 生成单个资产
   const generateOneItem = async (
@@ -422,66 +328,47 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
     }
   };
 
-  /**
-   * 100ms 节流写 metadata。worker 内部维护 latestItems Map，所有进度更新都先合并到 Map，
-   * 然后 setMetadata 节流刷盘——避免高频 IPC 写。强制 flush 用于关键节点（开始 / 完成 / 失败）。
-   */
-  const buildThrottledMetadataWriter = (
-    taskCtx: { setMetadata: (patch: Record<string, unknown>) => void; progress: (p: number, msg: string) => void },
-    initialItems: Map<string, ItemMetadataState>,
-  ) => {
-    const latestItems = initialItems;
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    let lastMessage = '';
-
-    const flush = () => {
-      if (timer) {
-        clearTimeout(timer);
-        timer = null;
-      }
-      taskCtx.setMetadata({
-        items: Object.fromEntries(latestItems),
-        lastMessage,
-      });
-    };
-    const schedule = () => {
-      if (timer) return;
-      timer = setTimeout(flush, 100);
-    };
-
-    return {
-      patch: (id: string, partial: Partial<ItemMetadataState>) => {
-        const existing = latestItems.get(id) || { status: 'pending', progress: 0 };
-        latestItems.set(id, { ...existing, ...partial });
-        schedule();
-      },
-      setLastMessage: (msg: string) => {
-        lastMessage = msg;
-        schedule();
-      },
-      flushNow: flush,
-    };
+  // 获取当前步骤的 setter
+  const getStepSetter = (stepKey: WizardStep): React.Dispatch<React.SetStateAction<ItemStatus[]>> => {
+    switch (stepKey) {
+      case 'characters': return setCharacters;
+      case 'scenes': return setScenes;
+      case 'props': return setProps;
+      case 'videos': return setVideoItems;
+      default: return setCharacters;
+    }
   };
 
   // 开始生成当前步骤
-  // 方案 C：worker 只写任务 metadata；UI 通过 useTasks 派生自动刷新
   const startGeneration = async () => {
+    setGenerating(true);
+    setOverallProgress(0);
+
     const stepKey = stepConfig[currentStep].key as WizardStep;
+    const setter = getStepSetter(stepKey);
+    let items: ItemStatus[] = [];
 
-    // 选中的 item id 集合
-    const selectedSet = stepKey === 'characters' ? selectedCharIds
-      : stepKey === 'scenes' ? selectedSceneIds
-      : stepKey === 'props' ? selectedPropIds
-      : selectedVideoIds;
+    switch (stepKey) {
+      case 'characters':
+        items = characters.filter(c => c.selected);
+        break;
+      case 'scenes':
+        items = scenes.filter(s => s.selected);
+        break;
+      case 'props':
+        items = props.filter(p => p.selected);
+        break;
+      case 'videos':
+        items = videoItems.filter(c => c.selected);
+        break;
+    }
 
-    const baseline = stepKey === 'characters' ? baselineCharacters
-      : stepKey === 'scenes' ? baselineScenes
-      : stepKey === 'props' ? baselineProps
-      : baselineVideos;
+    if (items.length === 0) {
+      setGenerating(false);
+      return;
+    }
 
-    const items = baseline.filter(it => selectedSet.has(it.id));
-    if (items.length === 0) return;
-
+    // 批量任务名（用于任务面板）
     const stepLabel = stepConfig[currentStep].title || stepKey;
     const targetType: 'character' | 'scene' | 'prop' = stepKey === 'scenes'
       ? 'scene'
@@ -489,16 +376,16 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
         ? 'prop'
         : 'character';
 
-    // 初始 metadata.items：所有项 status='generating' progress=0
-    const initialItems = new Map<string, ItemMetadataState>();
-    for (const it of items) {
-      initialItems.set(it.id, {
-        status: 'pending',
-        progress: 0,
-        imagePath: it.imagePath,
-        imageCacheKey: it.imageCacheKey,
-      });
-    }
+    // 用 runWithTask 包"批量"操作，子 generateOneItem 传 disableTask=true 避免任务面板被 N 个独立任务刷屏
+    // 并发 + 自动重试：每 item 进度独立，整体进度按"已完成 + 进行中加权"汇总
+    const itemProgressMap = new Map<string, number>();
+    const updateOverallProgress = (taskProgress: (p: number, msg: string) => void, currentName: string, stage: string) => {
+      let acc = 0;
+      items.forEach(it => { acc += itemProgressMap.get(it.id) ?? 0; });
+      const overall = (acc / items.length);
+      setOverallProgress(overall);
+      taskProgress(overall, `${currentName}: ${stage}`);
+    };
 
     try {
       await runWithTask({
@@ -509,188 +396,130 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
         targetId: items[0].id,
         targetName: `批量${stepLabel}（${items.length} 个）`,
         type: 'asset-generation',
-        metadata: { batchCount: items.length, stepKey, items: Object.fromEntries(initialItems) },
+        metadata: { batchCount: items.length, stepKey },
         execute: async (taskCtx) => {
-          const writer = buildThrottledMetadataWriter(taskCtx, initialItems);
-
-          const updateOverallProgress = (currentName: string, stage: string) => {
-            let acc = 0;
-            for (const it of items) acc += initialItems.get(it.id)?.progress ?? 0;
-            const overall = acc / items.length;
-            taskCtx.progress(overall, `${currentName}: ${stage}`);
-          };
-
           await runBatchWithConcurrency<ItemStatus, { success: boolean; path?: string; error?: string }>({
             items,
             concurrency: 3,
             maxRetries: 2,
             retryBaseDelayMs: 800,
             onAttemptStart: (item, _idx, attempt) => {
-              writer.patch(item.id, {
-                status: 'generating',
-                progress: 0,
-                error: attempt > 1 ? `重试中（第 ${attempt} 次）` : undefined,
-              });
-              writer.setLastMessage(item.name);
-              updateOverallProgress(item.name, attempt > 1 ? `重试 ${attempt}` : '开始');
+              setCurrentItem(item.name);
+              setter(prev => prev.map(it =>
+                it.id === item.id
+                  ? { ...it, status: 'generating', progress: 0, error: attempt > 1 ? `重试中（第 ${attempt} 次）` : undefined }
+                  : it
+              ));
+              itemProgressMap.set(item.id, 0);
+              updateOverallProgress(taskCtx.progress, item.name, attempt > 1 ? `重试 ${attempt}` : '开始');
             },
             onAttemptEnd: (item, _idx, _attempt, ok, error) => {
               if (!ok) {
-                writer.patch(item.id, {
-                  progress: 0,
-                  error: error instanceof Error ? error.message : String(error || ''),
-                });
-                updateOverallProgress(item.name, '重试中');
+                // 重试中临时进度回 0；最终失败由外层结果遍历落地
+                itemProgressMap.set(item.id, 0);
+                setter(prev => prev.map(it =>
+                  it.id === item.id ? { ...it, progress: 0, error: error instanceof Error ? error.message : String(error || '') } : it
+                ));
+                updateOverallProgress(taskCtx.progress, item.name, '重试中');
               }
             },
             worker: async (item) => {
               const onProgress = (progress: number, step: string) => {
-                writer.patch(item.id, { progress });
-                writer.setLastMessage(`${item.name}: ${step}`);
-                updateOverallProgress(item.name, step);
+                itemProgressMap.set(item.id, progress);
+                setter(prev => prev.map(it =>
+                  it.id === item.id ? { ...it, progress } : it
+                ));
+                updateOverallProgress(taskCtx.progress, item.name, step);
               };
-              // disableTask=true：不为单 item 创建独立 task，只把进度写到父任务 metadata
-              const r = await generateOneItem(item, stepKey, () => {}, onProgress, true);
+              // disableTask=true：批量场景不为每个 item 单独建 task
+              const r = await generateOneItem(item, stepKey, setter, onProgress, true);
               if (!r.success) {
+                // 让 batchRunner 走 retry：抛出真实错误，shouldRetry 默认对瞬时错误重试
                 throw new Error(r.error || '生成失败');
               }
-              writer.patch(item.id, {
-                status: 'completed',
-                progress: 100,
-                error: undefined,
-                imagePath: r.path || item.imagePath,
-                imageCacheKey: Date.now(),
-              });
-              updateOverallProgress(item.name, '完成');
               return r;
             },
           }).then(results => {
-            // 失败兜底：把"用尽重试后仍失败"的项落 metadata
+            // 结果落地：覆盖每个 item 的最终状态（成功 / 用尽重试后失败）
             results.forEach(({ item, result, error, attempts }) => {
               const ok = Boolean(result?.success);
-              if (ok) return;
-              writer.patch(item.id, {
-                status: 'failed',
-                progress: 0,
-                error: result?.error
-                  || (error instanceof Error ? error.message : String(error || ''))
-                  || `失败（已重试 ${attempts} 次）`,
-              });
+              itemProgressMap.set(item.id, ok ? 100 : 0);
+              setter(prev => prev.map(it =>
+                it.id === item.id
+                  ? {
+                      ...it,
+                      status: ok ? 'completed' : 'failed',
+                      progress: ok ? 100 : 0,
+                      error: ok
+                        ? undefined
+                        : (result?.error
+                            || (error instanceof Error ? error.message : String(error || ''))
+                            || `失败（已重试 ${attempts} 次）`),
+                      imagePath: result?.path || it.imagePath,
+                      // 同名文件被覆盖也要拉新内容，bump 缓存键
+                      imageCacheKey: ok ? Date.now() : it.imageCacheKey,
+                    }
+                  : it
+              ));
             });
-            writer.setLastMessage('所有任务结束');
-            writer.flushNow(); // 关键节点强制 flush 不留尾巴
+            updateOverallProgress(taskCtx.progress, '完成', '所有任务结束');
           });
         },
       });
     } catch (err: any) {
+      // 单 item 失败已记录在 setter 状态里；这里捕获是为了防止整个批量崩
       message.error(`批量生成异常: ${err.message || err}`);
     }
 
-    // 任务终态后 generating / overallProgress 自动通过 derive 归位
-    // baseline 在下次 loadData 时刷新；这里做一次软刷新拉最新 DB 图
-    try {
-      const [chars, scns, prps] = await Promise.all([
-        loadCharacters(project.id),
-        loadScenes(project.id),
-        loadProps(project.id),
-      ]);
-      const reopenCacheKey = Date.now();
-      if (stepKey === 'characters') {
-        setBaselineCharacters(chars.map(c => ({
-          id: c.id, name: c.name, selected: false,
-          status: getCharacterCostumePhotoSource(c) ? 'completed' : 'pending',
-          progress: getCharacterCostumePhotoSource(c) ? 100 : 0,
-          imagePath: getCharacterCostumePhotoSource(c),
-          imageCacheKey: reopenCacheKey,
-        })));
-      } else if (stepKey === 'scenes') {
-        setBaselineScenes(scns.map(s => ({
-          id: s.id, name: s.name, selected: false,
-          status: getScenePreviewImageSource(s) ? 'completed' : 'pending',
-          progress: getScenePreviewImageSource(s) ? 100 : 0,
-          imagePath: getScenePreviewImageSource(s),
-          imageCacheKey: reopenCacheKey,
-        })));
-      } else if (stepKey === 'props') {
-        setBaselineProps(prps.map(p => ({
-          id: p.id, name: p.name, selected: false,
-          status: getPropPreviewImageSource(p) ? 'completed' : 'pending',
-          progress: getPropPreviewImageSource(p) ? 100 : 0,
-          imagePath: getPropPreviewImageSource(p),
-          imageCacheKey: reopenCacheKey,
-        })));
-      }
-    } catch {
-      // 软刷新失败不影响主流程
-    }
+    setGenerating(false);
+    setCurrentItem('');
+    setOverallProgress(100);
     message.success(`${stepConfig[currentStep].title}生成完成`);
   };
 
-  // 重试单个失败项 — 复用同样的"包一个 1-item 批"模式，让 UI 通过 useTasks 派生看到进度
+  // 重试单个失败项
   const retryItem = async (item: ItemStatus) => {
     const stepKey = stepConfig[currentStep].key as WizardStep;
-    const stepLabel = stepConfig[currentStep].title || stepKey;
-    const targetType: 'character' | 'scene' | 'prop' = stepKey === 'scenes'
-      ? 'scene'
-      : stepKey === 'props'
-        ? 'prop'
-        : 'character';
+    const setter = getStepSetter(stepKey);
 
-    const initialItems = new Map<string, ItemMetadataState>([
-      [item.id, { status: 'pending', progress: 0, imagePath: item.imagePath, imageCacheKey: item.imageCacheKey }],
-    ]);
+    setGenerating(true);
+    setCurrentItem(item.name);
+    setOverallProgress(0);
 
-    let result: { success: boolean; path?: string; error?: string } = { success: false };
+    setter(prev => prev.map(it =>
+      it.id === item.id ? { ...it, status: 'generating', progress: 0, error: undefined } : it
+    ));
+
+    let result: { success: boolean; path?: string; error?: string };
     try {
-      await runWithTask({
-        projectId: project.id,
-        category: 'asset',
-        subType: 'asset-generation',
-        targetType,
-        targetId: item.id,
-        targetName: `重试 ${stepLabel} · ${item.name}`,
-        type: 'asset-generation',
-        metadata: { batchCount: 1, stepKey, items: Object.fromEntries(initialItems), retry: true },
-        execute: async (taskCtx) => {
-          const writer = buildThrottledMetadataWriter(taskCtx, initialItems);
-          writer.patch(item.id, { status: 'generating', progress: 0, error: undefined });
-          writer.setLastMessage(item.name);
-          taskCtx.progress(0, item.name);
+      const onProgress = (progress: number, _step: string) => {
+        setter(prev => prev.map(it =>
+          it.id === item.id ? { ...it, progress } : it
+        ));
+        setOverallProgress(progress);
+      };
 
-          try {
-            const onProgress = (progress: number, step: string) => {
-              writer.patch(item.id, { progress });
-              writer.setLastMessage(`${item.name}: ${step}`);
-              taskCtx.progress(progress, `${item.name}: ${step}`);
-            };
-            result = await generateOneItem(item, stepKey, () => {}, onProgress, true);
-          } catch (err: any) {
-            result = { success: false, error: err?.message || String(err) };
-          }
-
-          if (result.success) {
-            writer.patch(item.id, {
-              status: 'completed',
-              progress: 100,
-              error: undefined,
-              imagePath: result.path || item.imagePath,
-              imageCacheKey: Date.now(),
-            });
-          } else {
-            writer.patch(item.id, {
-              status: 'failed',
-              progress: 0,
-              error: result.error,
-            });
-          }
-          writer.flushNow();
-        },
-      });
+      result = await generateOneItem(item, stepKey, setter, onProgress);
     } catch (err: any) {
-      message.error(`重试失败: ${err.message || err}`);
-      return;
+      result = { success: false, error: err.message };
     }
 
+    setter(prev => prev.map(it =>
+      it.id === item.id
+        ? {
+            ...it,
+            status: result.success ? 'completed' : 'failed',
+            progress: result.success ? 100 : 0,
+            error: result.error,
+            imagePath: result.path || it.imagePath,
+            imageCacheKey: result.success ? Date.now() : it.imageCacheKey,
+          }
+        : it
+    ));
+
+    setGenerating(false);
+    setCurrentItem('');
+    setOverallProgress(100);
     if (result.success) {
       message.success(`${item.name} 生成完成`);
     }
@@ -707,39 +536,35 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
           loadCharacters(project.id),
           loadProps(project.id),
         ]);
-        const reopenCacheKey = Date.now();
         const charVideos: ItemStatus[] = chars
           .filter(c => getCharacterCostumePhotoSource(c))
           .map(c => ({
-            id: c.id,
-            name: `[角色] ${c.name}`,
-            selected: false,
-            status: getCharacterPreviewVideoSource(c) ? 'completed' : 'pending',
-            progress: getCharacterPreviewVideoSource(c) ? 100 : 0,
-            imagePath: getCharacterPreviewVideoSource(c),
-            imageCacheKey: reopenCacheKey,
-            sourceType: 'character' as const,
-          }));
+          id: c.id,
+          name: `[角色] ${c.name}`,
+          selected: !getCharacterPreviewVideoSource(c),
+          status: getCharacterPreviewVideoSource(c) ? 'completed' : 'pending',
+          progress: getCharacterPreviewVideoSource(c) ? 100 : 0,
+          imagePath: getCharacterPreviewVideoSource(c),
+          sourceType: 'character' as const,
+        }));
         const propVideos: ItemStatus[] = prps
           .filter(p => getPropPreviewImageSource(p))
           .map(p => ({
-            id: p.id,
-            name: `[道具] ${p.name}`,
-            selected: false,
-            status: getPropPreviewVideoSource(p) ? 'completed' : 'pending',
-            progress: getPropPreviewVideoSource(p) ? 100 : 0,
-            imagePath: getPropPreviewVideoSource(p),
-            imageCacheKey: reopenCacheKey,
-            sourceType: 'prop' as const,
-          }));
-        const all = [...charVideos, ...propVideos];
-        setBaselineVideos(all);
-        // 默认勾选未生成预览视频的项
-        setSelectedVideoIds(new Set(all.filter(it => it.status === 'pending').map(it => it.id)));
+          id: p.id,
+          name: `[道具] ${p.name}`,
+          selected: !getPropPreviewVideoSource(p),
+          status: getPropPreviewVideoSource(p) ? 'completed' : 'pending',
+          progress: getPropPreviewVideoSource(p) ? 100 : 0,
+          imagePath: getPropPreviewVideoSource(p),
+          sourceType: 'prop' as const,
+        }));
+        setVideoItems([...charVideos, ...propVideos]);
       }
 
       setCurrentStep(nextStep);
+      setOverallProgress(0);
     } else {
+      // 完成
       onComplete?.();
       onClose();
     }
@@ -821,15 +646,13 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
 
   return (
     <Modal
-      title={generating ? '资产生成向导（任务后台运行中）' : '资产生成向导'}
+      title="资产生成向导"
       open={open}
-      onCancel={onClose}
+      onCancel={() => !generating && onClose()}
       width={720}
       footer={null}
-      // 资产生成已经走 runWithTask 任务化，关闭向导不会取消后台任务，可在状态栏查看进度
-      // 之前 closable 锁死要求用户必须等所有项跑完才能关，体验差
-      mask={{ closable: true }}
-      closable
+      mask={{ closable: !generating }}
+      closable={!generating}
     >
       {loading ? (
         <div className={styles.loadingState}>
@@ -894,9 +717,8 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
 
           <div className={styles.footerActions}>
             <Space>
-              {/* 生成中允许关闭窗口：runWithTask 已任务化，关掉向导后台继续跑，可在任务面板看进度 */}
-              <Button onClick={onClose}>
-                {generating ? '关闭（后台继续）' : '取消'}
+              <Button onClick={onClose} disabled={generating}>
+                取消
               </Button>
               {currentStep > 0 && (
                 <Button onClick={() => setCurrentStep(currentStep - 1)} disabled={generating}>
