@@ -21,6 +21,7 @@ import {
   subscribeTaskUpdates,
   type TaskRecord,
 } from './tasksIPC';
+import { applyLocalUpsert } from '../store/tasksStore';
 
 const logger = createLogger('TaskManager');
 
@@ -430,8 +431,14 @@ class TaskManagerClass {
 
   private async persist(task: Task): Promise<void> {
     if (!electronService.isElectron() || !isTasksIpcAvailable()) return;
+    const record = taskToRecord(task);
+    // 同步把记录推到 tasksStore 缓存：useTasks/useActiveTask 立刻看到本机的写入，
+    // 不必等 main 进程 broadcast 回来（消除 ~50-200ms IPC 延迟）。
+    // 主进程广播回来后会再次 applyUpsert，但数据相同 → snapshot 相同引用变化但数据无变化，
+    // useSyncExternalStore 会触发一次额外渲染但不影响正确性。
+    applyLocalUpsert(record);
     try {
-      await upsertTaskRecord(taskToRecord(task));
+      await upsertTaskRecord(record);
     } catch (err) {
       logger.error('Failed to persist task via IPC', err);
     }
