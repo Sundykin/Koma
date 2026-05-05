@@ -142,44 +142,71 @@ export class FFmpegService {
   }
 
   /**
-   * 检测 FFmpeg 可执行文件路径
+   * 检测 FFmpeg 可执行文件路径。
+   *
+   * **打包打开 asarUnpack**：cmd/builder*.json 里 `asarUnpack: ["resources/ffmpeg/**"]`
+   * 把 ffmpeg / ffprobe 二进制解到 `app.asar.unpacked/resources/ffmpeg/...`，否则二进制在
+   * asar 里不可 spawn。Electron 透明处理 asar.unpacked 重定向，所以下面的
+   * `app.getAppPath() + 'resources/ffmpeg/...'` 路径在打包后会被 Electron 自动
+   * resolve 到 unpacked 目录。
+   *
+   * 平台 / 架构布局（resources/ffmpeg/ 目录下实际文件）：
+   *   ffmpeg.exe                                    Windows x64
+   *   ffmpeg                                        macOS x64（M1/M2 走 Rosetta）
+   *   ffprobe/win32/x64/ffprobe.exe                 Windows x64
+   *   ffprobe/win32/ia32/ffprobe.exe                Windows ia32
+   *   ffprobe/darwin/x64/ffprobe                    macOS x64
+   *   ffprobe/darwin/arm64/ffprobe                  macOS arm64
    */
   private async detectFFmpegPath(name: 'ffmpeg' | 'ffprobe'): Promise<string> {
-    const isWin = process.platform === 'win32';
-    const isX64 = process.arch === 'x64';
+    const platform = process.platform;
+    const arch = process.arch;
+    const isWin = platform === 'win32';
     const ext = isWin ? '.exe' : '';
-    let execName = name + ext;
-    // 候选路径列表
-    const candidates: string[] = [
-      // 1. 应用内置路径
+    const execName = name + ext;
+
+    // 优先级 1：固定文件名（ffmpeg 直接落 resources/ffmpeg/，没有平台子目录）
+    const directPaths: string[] = [
       path.join(app.getAppPath(), 'resources', 'ffmpeg', execName),
-      path.join(app.getAppPath(), '..', 'ffmpeg', execName),
-      // 2. 业务根目录
       path.join(getFfmpegBinDir(), execName),
-      // 3. 系统路径（通过 which/where 查找）
     ];
-    if (name === 'ffprobe' && !isX64) {
-      candidates.push(path.join(app.getAppPath(), 'resources', 'ffmpeg', name, 'win32', 'ia32', execName))
-    } else {
-      candidates.push(path.join(app.getAppPath(), 'resources', 'ffmpeg', name, 'win32', 'x64', execName));
+
+    // 优先级 2：ffprobe 按 platform/arch 命中正确子目录
+    const archPaths: string[] = [];
+    if (name === 'ffprobe') {
+      if (platform === 'darwin') {
+        archPaths.push(path.join(app.getAppPath(), 'resources', 'ffmpeg', 'ffprobe', 'darwin', arch, execName));
+        // arm64 缺失时回退 x64（Rosetta 翻译）
+        if (arch === 'arm64') {
+          archPaths.push(path.join(app.getAppPath(), 'resources', 'ffmpeg', 'ffprobe', 'darwin', 'x64', execName));
+        }
+      } else if (platform === 'win32') {
+        if (arch === 'x64' || arch === 'arm64') {
+          archPaths.push(path.join(app.getAppPath(), 'resources', 'ffmpeg', 'ffprobe', 'win32', 'x64', execName));
+        }
+        // ia32 / arm64 兜底（Win 仿真层会处理）
+        archPaths.push(path.join(app.getAppPath(), 'resources', 'ffmpeg', 'ffprobe', 'win32', 'ia32', execName));
+      }
     }
 
-    // 检查候选路径
+    const candidates = [...directPaths, ...archPaths];
+
+    // 检查候选路径（X_OK 在 win32 上等同存在性检查，没有真正的可执行位概念）
     for (const p of candidates) {
       try {
-        await fs.promises.access(p, fs.constants.X_OK);
+        await fs.promises.access(p, isWin ? fs.constants.F_OK : fs.constants.X_OK);
         return p;
       } catch {
         // 继续检查下一个
       }
     }
 
-    // 尝试从系统 PATH 查找
+    // 兜底：系统 PATH
     try {
       const result = await this.execCommand(isWin ? 'where' : 'which', [execName]);
       const systemPath = result.trim().split('\n')[0];
       if (systemPath) {
-        await fs.promises.access(systemPath, fs.constants.X_OK);
+        await fs.promises.access(systemPath, isWin ? fs.constants.F_OK : fs.constants.X_OK);
         return systemPath;
       }
     } catch {
