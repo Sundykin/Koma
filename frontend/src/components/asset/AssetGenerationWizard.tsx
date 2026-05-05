@@ -136,6 +136,9 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
   const [videoItems, setVideoItems] = useState<ItemStatus[]>([]);
 
   // 加载项目资产数据
+  // 合并策略：如果旧的 items state 里已有同 id 的运行时数据（generating/completed/failed/有 progress 等），
+  // 关闭重开时不能用 DB 静态结果（pending/completed）覆盖运行时进度；只更新元数据（name 等），
+  // 保留 status/progress/error/imagePath/imageCacheKey/selected 不动
   useEffect(() => {
     if (!open || !project) return;
 
@@ -148,40 +151,81 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
           loadProps(project.id),
         ]);
 
-        // 每次打开向导时打一个共享时间戳作为 cacheKey 起点，让上次抽卡之后磁盘被覆盖的同路径图能重新拉取
         const reopenCacheKey = Date.now();
 
-        setCharacters(chars.map(c => ({
-          id: c.id,
-          name: c.name,
-          selected: !getCharacterCostumePhotoSource(c),
-          status: getCharacterCostumePhotoSource(c) ? 'completed' : 'pending',
-          progress: getCharacterCostumePhotoSource(c) ? 100 : 0,
-          imagePath: getCharacterCostumePhotoSource(c),
-          imageCacheKey: reopenCacheKey,
-        })));
+        // 合并器：DB 项 + 旧 state 同 id 项 → 优先保留旧 state 的运行时字段
+        const mergeItem = (
+          fresh: ItemStatus,
+          existing: ItemStatus | undefined,
+        ): ItemStatus => {
+          if (!existing) return fresh;
+          // 只继承"运行时态" — DB 那侧没有 generating / 进度 / 错误这些信号
+          // 但如果 fresh 显示已 completed（DB 有图）而 existing 还是 pending → 用 fresh
+          const isFreshCompleted = fresh.status === 'completed';
+          const isExistingRuntime = existing.status === 'generating' || existing.status === 'failed' || (existing.progress > 0 && existing.progress < 100);
+          if (isExistingRuntime || (existing.status === 'completed' && !isFreshCompleted)) {
+            return {
+              ...fresh,
+              status: existing.status,
+              progress: existing.progress,
+              error: existing.error,
+              imagePath: existing.imagePath ?? fresh.imagePath,
+              imageCacheKey: existing.imageCacheKey ?? fresh.imageCacheKey,
+              selected: existing.selected,
+            };
+          }
+          return { ...fresh, selected: existing.selected };
+        };
 
-        setScenes(scns.map(s => ({
-          id: s.id,
-          name: s.name,
-          selected: !getScenePreviewImageSource(s),
-          status: getScenePreviewImageSource(s) ? 'completed' : 'pending',
-          progress: getScenePreviewImageSource(s) ? 100 : 0,
-          imagePath: getScenePreviewImageSource(s),
-          imageCacheKey: reopenCacheKey,
-        })));
+        setCharacters(prev => {
+          const prevById = new Map(prev.map(it => [it.id, it]));
+          return chars.map(c => mergeItem(
+            {
+              id: c.id,
+              name: c.name,
+              selected: !getCharacterCostumePhotoSource(c),
+              status: getCharacterCostumePhotoSource(c) ? 'completed' : 'pending',
+              progress: getCharacterCostumePhotoSource(c) ? 100 : 0,
+              imagePath: getCharacterCostumePhotoSource(c),
+              imageCacheKey: reopenCacheKey,
+            },
+            prevById.get(c.id),
+          ));
+        });
 
-        setProps(prps.map(p => ({
-          id: p.id,
-          name: p.name,
-          selected: !getPropPreviewImageSource(p),
-          status: getPropPreviewImageSource(p) ? 'completed' : 'pending',
-          progress: getPropPreviewImageSource(p) ? 100 : 0,
-          imagePath: getPropPreviewImageSource(p),
-          imageCacheKey: reopenCacheKey,
-        })));
+        setScenes(prev => {
+          const prevById = new Map(prev.map(it => [it.id, it]));
+          return scns.map(s => mergeItem(
+            {
+              id: s.id,
+              name: s.name,
+              selected: !getScenePreviewImageSource(s),
+              status: getScenePreviewImageSource(s) ? 'completed' : 'pending',
+              progress: getScenePreviewImageSource(s) ? 100 : 0,
+              imagePath: getScenePreviewImageSource(s),
+              imageCacheKey: reopenCacheKey,
+            },
+            prevById.get(s.id),
+          ));
+        });
 
-        // 视频步骤：有定妆照的角色 + 有参考图的道具
+        setProps(prev => {
+          const prevById = new Map(prev.map(it => [it.id, it]));
+          return prps.map(p => mergeItem(
+            {
+              id: p.id,
+              name: p.name,
+              selected: !getPropPreviewImageSource(p),
+              status: getPropPreviewImageSource(p) ? 'completed' : 'pending',
+              progress: getPropPreviewImageSource(p) ? 100 : 0,
+              imagePath: getPropPreviewImageSource(p),
+              imageCacheKey: reopenCacheKey,
+            },
+            prevById.get(p.id),
+          ));
+        });
+
+        // 视频步骤同理
         const charVideos: ItemStatus[] = chars
           .filter(c => getCharacterCostumePhotoSource(c))
           .map(c => ({
@@ -206,7 +250,10 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
           imageCacheKey: reopenCacheKey,
           sourceType: 'prop' as const,
         }));
-        setVideoItems([...charVideos, ...propVideos]);
+        setVideoItems(prev => {
+          const prevById = new Map(prev.map(it => [it.id, it]));
+          return [...charVideos, ...propVideos].map(fresh => mergeItem(fresh, prevById.get(fresh.id)));
+        });
       } catch (err: any) {
         message.error(`加载数据失败: ${err.message}`);
       } finally {
