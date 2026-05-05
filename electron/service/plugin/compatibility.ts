@@ -39,8 +39,21 @@ let cachedSdkVersion: string | null = null;
 let cachedAppVersion: string | null = null;
 
 /**
- * 读取打包后 SDK package.json 中的版本，作为运行时 SDK 版本基线。
- * 失败时回退到 '0.0.0'，让所有 sdkVersion 校验都给出明确兼容性提示。
+ * 内置兜底 SDK 版本：与 packages/plugin-sdk/package.json 同步维护。
+ *
+ * **必须手动同步**：每次升级 packages/plugin-sdk/package.json 的 version 时，
+ * 一并把这里的常量改成同样的值。
+ *
+ * 为什么需要兜底常量：
+ * - cmd/builder*.json 的 files 模式里 `!packages/` 把整个 packages/ 目录排除在 asar 之外
+ * - 打包后 packages/plugin-sdk/package.json 不存在 → fs.existsSync 全部失败
+ * - 之前会回退到 '0.0.0' 让所有声明 sdkVersion 的插件都触发 sdk_major_mismatch 致死
+ * - dev 模式下文件读取仍然优先（方便实时改 SDK 版本测试）
+ */
+const RUNTIME_SDK_VERSION_BAKED = '1.1.0';
+
+/**
+ * 读取运行时 SDK 版本：dev 优先文件读取（便于热改 SDK），prod 兜底常量。
  */
 export function getRuntimeSdkVersion(): string {
   if (cachedSdkVersion) return cachedSdkVersion;
@@ -61,7 +74,8 @@ export function getRuntimeSdkVersion(): string {
       // continue
     }
   }
-  cachedSdkVersion = '0.0.0';
+  // packages/ 在打包配置里被 !packages/ 排掉了，这里用编译时常量兜底
+  cachedSdkVersion = RUNTIME_SDK_VERSION_BAKED;
   return cachedSdkVersion;
 }
 
