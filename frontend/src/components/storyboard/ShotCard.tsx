@@ -11,27 +11,26 @@ import {
   Button,
   Popconfirm,
   Input,
-  InputNumber,
   Modal,
   Progress,
-  Select,
   Segmented,
   Dropdown,
   App,
 } from 'antd';
 import {
   DeleteOutlined,
-  CheckCircleFilled,
-  CheckCircleOutlined,
   InsertRowAboveOutlined,
   InsertRowBelowOutlined,
   MergeCellsOutlined,
   ArrowUpOutlined,
   ArrowDownOutlined,
   PlayCircleFilled,
+  PlayCircleOutlined,
+  PauseCircleOutlined,
   CloseOutlined,
   PlusOutlined,
   AppstoreOutlined,
+  AudioOutlined,
   DownOutlined,
 } from '@ant-design/icons';
 import type { Shot, ShotScriptLine, Character, Scene, Prop, StoredMediaAsset } from '../../types';
@@ -56,11 +55,8 @@ import { getProjectPath } from '../../store/projectStore';
 import { SHOT_LAYOUT, COL_ACTION_WIDTH } from '../../constants/storyboardConstants';
 import { AssetSelector } from './components/AssetSelector';
 import { createStoredMediaAsset } from '../../utils/mediaAssets';
-import { ALLOWED_VIDEO_DURATIONS, normalizeVideoDurationSeconds } from '../../utils/videoDuration';
-import {
-  clampDurationToSpec,
-  type VideoDurationSpec,
-} from '../../providers/itv/durationSpec';
+import { type VideoDurationSpec } from '../../providers/itv/durationSpec';
+import { ShotDurationControl } from './ShotDurationControl';
 import './ShotCard.scss';
 import { cssVars } from '../../theme/runtime';
 
@@ -119,9 +115,10 @@ export interface ShotCardProps {
   onOptimizeVideoPrompt: (shotId: string, currentPrompt: string) => void;
   onGenerateImage: (shotId: string) => void;
   onGenerateVideo: (shotId: string) => void;
+  /** 单分镜配音 — 调用 TTS 渠道，结果落入 shot.media.audios */
+  onGenerateAudio?: (shotId: string) => void;
   videoCapabilityLabel?: string;
   videoGenerateDisabledReason?: string;
-  onToggleConfirm: (shot: Shot) => void;
   onDelete: (shotId: string) => void;
   onMergeUp: (shotId: string) => void;
   onMergeDown: (shotId: string) => void;
@@ -178,9 +175,9 @@ const ShotCardImpl: React.FC<ShotCardProps> = ({
   onOptimizeVideoPrompt,
   onGenerateImage,
   onGenerateVideo,
+  onGenerateAudio,
   videoCapabilityLabel,
   videoGenerateDisabledReason,
-  onToggleConfirm,
   onDelete,
   onMergeUp,
   onMergeDown: _onMergeDown,
@@ -200,6 +197,9 @@ const ShotCardImpl: React.FC<ShotCardProps> = ({
   const [gridSplitModalOpen, setGridSplitModalOpen] = useState(false);
   const [gridSplitTargetIndex, setGridSplitTargetIndex] = useState<number | null>(null);
   const [gridSplitImageSize, setGridSplitImageSize] = useState<{ w: number; h: number } | null>(null);
+  // 配音预览：HTMLAudioElement 持有播放状态，UI 用 isPlayingAudio 同步按钮 icon
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [isPlayingAudio, setIsPlayingAudio] = useState(false);
 
   // 使用 useMemo 缓存计算值，避免不必要的重渲染
   const hasImagePrompt = useMemo(
@@ -257,6 +257,16 @@ const ShotCardImpl: React.FC<ShotCardProps> = ({
     if (!images.length) return null;
     return images[shot.media?.currentImageIndex || 0];
   }, [images, shot.media?.currentImageIndex]);
+
+  /** 当前选中的配音资产（默认指向最新一条）。
+      currentAudioSrc / handleToggleAudio / useEffect 因为依赖 getDisplaySrc
+      （声明在更下方），都挪到 getDisplaySrc 之后避免 TDZ。 */
+  const currentAudio = useMemo(() => {
+    const audios = shot.media?.audios;
+    if (!audios?.length) return null;
+    const idx = shot.media?.currentAudioIndex ?? audios.length - 1;
+    return audios[idx] || audios[audios.length - 1];
+  }, [shot.media?.audios, shot.media?.currentAudioIndex]);
 
   const gridSplitAsset = useMemo(() => {
     if (gridSplitTargetIndex == null) return null;
@@ -554,6 +564,39 @@ const ShotCardImpl: React.FC<ShotCardProps> = ({
 
   const gridSplitSrc = gridSplitAsset ? getDisplaySrc(gridSplitAsset) : '';
 
+  // 配音预览（依赖 getDisplaySrc / currentAudio，必须放在它们之后避免 TDZ）
+  const currentAudioSrc = useMemo(
+    () => (currentAudio ? getDisplaySrc(currentAudio) : ''),
+    [currentAudio, getDisplaySrc],
+  );
+
+  // 切换配音：没在播 → 从头播；正在播 → 暂停
+  const handleToggleAudio = useCallback(() => {
+    const el = audioRef.current;
+    if (!el) return;
+    if (el.paused || el.ended) {
+      el.currentTime = 0;
+      const playPromise = el.play();
+      if (playPromise && typeof playPromise.catch === 'function') {
+        playPromise.catch(() => setIsPlayingAudio(false));
+      }
+      setIsPlayingAudio(true);
+    } else {
+      el.pause();
+      setIsPlayingAudio(false);
+    }
+  }, []);
+
+  // 音频换源（重新生成）→ 立即停老的、reload 新的
+  useEffect(() => {
+    const el = audioRef.current;
+    if (!el) return;
+    el.pause();
+    el.currentTime = 0;
+    setIsPlayingAudio(false);
+    if (currentAudioSrc) el.load();
+  }, [currentAudioSrc]);
+
   return (
     <div
       className={`shot-card ${isSelected ? 'selected' : ''} ${shot.confirmed ? 'confirmed' : ''} ${isActive ? 'active' : ''}`}
@@ -570,70 +613,17 @@ const ShotCardImpl: React.FC<ShotCardProps> = ({
           />
           <span className="text-[12px] font-semibold text-text-primary tracking-tight">#{index + 1}</span>
           {onDurationChange ? (
-            <Tooltip title="分镜时长（秒）" placement="right">
-              <div className="flex items-center gap-0.5">
-                {durationSpec?.kind === 'enum' ? (
-                  <Select
-                    size="small"
-                    value={shot.duration}
-                    onChange={(value) => {
-                      const next = clampDurationToSpec(value, durationSpec);
-                      if (next !== shot.duration) onDurationChange(shot.id, next);
-                    }}
-                    onClick={(e) => e.stopPropagation()}
-                    options={durationSpec.values.map((v) => ({ value: v, label: `${v}` }))}
-                    className="shot-duration-input shot-duration-select"
-                  />
-                ) : durationSpec?.kind === 'range' ? (
-                  <InputNumber
-                    size="small"
-                    min={durationSpec.min}
-                    max={durationSpec.max}
-                    step={durationSpec.step}
-                    controls={false}
-                    value={shot.duration}
-                    onChange={(value) => {
-                      const next = clampDurationToSpec(value, durationSpec);
-                      if (next !== shot.duration) onDurationChange(shot.id, next);
-                    }}
-                    className="shot-duration-input"
-                    onClick={(e) => e.stopPropagation()}
-                  />
-                ) : (
-                  // 兜底：未传 spec 时沿用历史枚举（向后兼容）
-                  <InputNumber
-                    size="small"
-                    min={ALLOWED_VIDEO_DURATIONS[0]}
-                    max={ALLOWED_VIDEO_DURATIONS[ALLOWED_VIDEO_DURATIONS.length - 1]}
-                    step={1}
-                    controls={false}
-                    value={shot.duration}
-                    onChange={(value) => {
-                      const next = normalizeVideoDurationSeconds(value, shot.duration);
-                      if (next !== shot.duration) onDurationChange(shot.id, next);
-                    }}
-                    className="shot-duration-input"
-                    onClick={(e) => e.stopPropagation()}
-                  />
-                )}
-                <span className="text-[9px] text-text-secondary leading-none">s</span>
-              </div>
-            </Tooltip>
+            <ShotDurationControl
+              value={shot.duration}
+              onChange={(next) => onDurationChange(shot.id, next)}
+              durationSpec={durationSpec}
+            />
           ) : (
             <Tag className="m-0 text-[9px] px-1" color="blue">{shot.duration}s</Tag>
           )}
 
           {/* 操作按钮 - 直接显示（gap 加大、与 #N / 时长视觉区隔） */}
           <div className="flex flex-col gap-1 mt-1.5">
-            <Tooltip title={shot.confirmed ? '取消确认' : '确认'} placement="right">
-              <Button
-                size="small"
-                type={shot.confirmed ? 'primary' : 'text'}
-                className={actionBtnClass}
-                icon={shot.confirmed ? <CheckCircleFilled /> : <CheckCircleOutlined />}
-                onClick={() => onToggleConfirm(shot)}
-              />
-            </Tooltip>
             <Tooltip title="上移" placement="right">
               <Button size="small" type="text" className={actionBtnClass} icon={<ArrowUpOutlined />} disabled={isFirst} onClick={() => onMoveUp(shot.id)} />
             </Tooltip>
@@ -649,9 +639,44 @@ const ShotCardImpl: React.FC<ShotCardProps> = ({
             <Tooltip title="向上合并" placement="right">
               <Button size="small" type="text" className={actionBtnClass} icon={<MergeCellsOutlined />} disabled={isFirst} onClick={() => onMergeUp(shot.id)} />
             </Tooltip>
+            {onGenerateAudio && (
+              <Tooltip title={currentAudio ? '重新生成配音 (TTS)' : '生成配音 (TTS)'} placement="right">
+                <Button
+                  size="small"
+                  type="text"
+                  className={actionBtnClass}
+                  icon={<AudioOutlined />}
+                  onClick={() => onGenerateAudio(shot.id)}
+                />
+              </Tooltip>
+            )}
+            {currentAudio && (
+              <Tooltip title={isPlayingAudio ? '暂停试听' : '试听配音'} placement="right">
+                <Button
+                  size="small"
+                  type="text"
+                  className={actionBtnClass}
+                  icon={isPlayingAudio ? <PauseCircleOutlined /> : <PlayCircleOutlined />}
+                  onClick={handleToggleAudio}
+                />
+              </Tooltip>
+            )}
             <Popconfirm title="确定删除？" onConfirm={() => onDelete(shot.id)} placement="right">
               <Button size="small" type="text" danger className={actionBtnClass} icon={<DeleteOutlined />} />
             </Popconfirm>
+            {/* 隐藏的 audio 元素 — 持久化播放状态，由上方 ▶️ 按钮控制 */}
+            {currentAudioSrc && (
+              <audio
+                ref={audioRef}
+                src={currentAudioSrc}
+                preload="none"
+                onPlay={() => setIsPlayingAudio(true)}
+                onPause={() => setIsPlayingAudio(false)}
+                onEnded={() => setIsPlayingAudio(false)}
+                onError={() => setIsPlayingAudio(false)}
+                style={{ display: 'none' }}
+              />
+            )}
           </div>
         </div>
 

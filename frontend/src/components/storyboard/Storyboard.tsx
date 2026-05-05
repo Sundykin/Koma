@@ -21,6 +21,8 @@ import {
 import type { Shot, ShotScriptLine, Character, Scene, Prop, AppSettings, StoredMediaAsset, ProjectStyleSnapshot } from '../../types';
 import { loadEpisodeShots, saveEpisodeShots, loadCharacters, loadScenes, loadProps, loadEpisodeAnalysis } from '../../store/projectStore';
 import { generateShotImage, batchGenerateShotImages } from '../../services/ShotGenerationService';
+import { mediaGenerationService } from '../../services/MediaGenerationService';
+import { runWithConcurrency } from '../../utils/concurrency';
 import { shotRenderWorkflow, batchRenderShots } from '../../workflow/shotRenderWorkflow';
 import { runWithTask } from '../../services/taskRunner';
 import { submitShotAnalysisTask } from '../../services/analysisTaskClient';
@@ -115,6 +117,10 @@ interface StoryboardProps {
   ttiSelection?: string;
   itvSelection?: string;
   ttsSelection?: string;
+  /** 项目级 TTS 音色（覆盖 channel.defaultVoice，留空走 channel 默认） */
+  ttsVoiceId?: string;
+  /** 项目级 TTS 语速倍数（默认 1.2） */
+  ttsSpeed?: number;
   settings: AppSettings;
   styleSnapshot?: ProjectStyleSnapshot;
   mentionItems?: MentionItem[];
@@ -131,6 +137,8 @@ export const Storyboard: React.FC<StoryboardProps> = ({
   ttiSelection,
   itvSelection,
   ttsSelection,
+  ttsVoiceId,
+  ttsSpeed,
   settings,
   styleSnapshot,
   mentionItems = [],
@@ -571,13 +579,6 @@ export const Storyboard: React.FC<StoryboardProps> = ({
 
   // ============ 回调函数 ============
 
-  const handleToggleConfirm = useCallback(async (shot: Shot) => {
-    const updatedShots = shots.map(s =>
-      s.id === shot.id ? { ...s, confirmed: !s.confirmed } : s
-    );
-    await saveAllShots(updatedShots);
-  }, [shots, saveAllShots]);
-
   const handleDeleteShot = useCallback(async (shotId: string) => {
     const updatedShots = shots.filter(s => s.id !== shotId);
     await saveAllShots(updatedShots);
@@ -589,15 +590,6 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     const updatedShots = shots.filter(s => !shotIds.includes(s.id));
     await saveAllShots(updatedShots);
     message.success(`已删除 ${shotIds.length} 个分镜`);
-  }, [shots, saveAllShots]);
-
-  // 批量确认/取消确认
-  const handleBatchConfirm = useCallback(async (shotIds: string[], confirm: boolean) => {
-    const updatedShots = shots.map(s =>
-      shotIds.includes(s.id) ? { ...s, confirmed: confirm } : s
-    );
-    await saveAllShots(updatedShots);
-    message.success(confirm ? `已确认 ${shotIds.length} 个分镜` : `已取消确认 ${shotIds.length} 个分镜`);
   }, [shots, saveAllShots]);
 
   const handleGenerateShotImage = useCallback(async (shotId: string) => {
@@ -1455,6 +1447,230 @@ export const Storyboard: React.FC<StoryboardProps> = ({
     saveAllShots(updatedShots);
   }, [shots, saveAllShots]);
 
+  /**
+   * 批量切换：把当前剧集所有分镜的 imageMode 改为同一值（普通 / 四宫格 / 九宫格）。
+   *
+   * 行为必须与单镜 handleShotImageModeChange 完全一致 —— 模式切换会换模板，旧的
+   * imagePrompt / videoPrompt / images 都得清掉重推，否则 UI 还在显示旧模式的图、
+   * 新生成又走错模板。同时 grid + first-frame 是非法组合,要顺手把 videoMode 修回
+   * multi-ref。这里逐镜应用单镜的同套规则。
+   */
+  const handleBulkImageModeChange = useCallback((mode: 'normal' | 'grid-4' | 'grid-9') => {
+    if (!shots.length) return;
+    const updatedShots = shots.map(s => {
+      const oldMode = s.imageMode === 'grid' ? 'grid-9' : (s.imageMode || 'normal');
+      const modeChanged = oldMode !== mode;
+
+      const isGridMode = mode === 'grid-9' || mode === 'grid-4';
+      const correctedVideoMode = (isGridMode && s.videoMode === 'first-frame')
+        ? 'multi-ref' as const
+        : s.videoMode;
+
+      if (!modeChanged) {
+        return { ...s, imageMode: mode, videoMode: correctedVideoMode };
+      }
+
+      return {
+        ...s,
+        imageMode: mode,
+        videoMode: correctedVideoMode,
+        imagePrompt: '',
+        videoPrompt: '',
+        media: {
+          ...(s.media || {}),
+          images: [],
+          currentImageIndex: 0,
+          gridImage: undefined,
+        },
+      };
+    });
+    saveAllShots(updatedShots);
+  }, [shots, saveAllShots]);
+
+  /**
+   * 单镜配音：调用 MediaGenerationService.generateAudio
+   *
+   * 文本来源优先级：shot.dialogue → 否则 join scriptLines（与 prompt 推理同源）。
+   * Voice 来源：当前 ttsSelection 渠道的 defaultVoice（在 channel.providerConfig 里），
+   * 走 MediaGenerationService 内部 resolveProviderAndContext，不需要这里手动指定。
+   */
+  const handleGenerateShotAudio = useCallback(async (shotId: string) => {
+    if (!episodeId) {
+      message.warning('未选择剧集');
+      return;
+    }
+    const shot = shots.find(s => s.id === shotId);
+    if (!shot) return;
+
+    const text = (shot.dialogue || '').trim() || getShotScriptText(shot).trim();
+    if (!text) {
+      message.warning('该分镜没有可配音的台词或字幕文本');
+      return;
+    }
+
+    try {
+      // 包到 runWithTask：让任务面板能看到这条配音任务（pending → running → completed）。
+      // taskName 透到任务记录的 targetName，UI 直接展示中文。
+      const { result: asset } = await runWithTask({
+        projectId,
+        category: 'asset',
+        subType: 'audio',
+        targetType: 'shot',
+        targetId: shotId,
+        targetName: `分镜 #${shotId.slice(-6)} 配音`,
+        type: 'audio-generation',
+        execute: async (taskCtx) => {
+          taskCtx.progress(15, '调用 TTS...');
+          const a = await mediaGenerationService.generateAudio({
+            projectId,
+            ownerRef: { projectId, ownerType: 'shot', ownerId: shotId, episodeId, slot: 'audio' },
+            // voiceId 来自项目级偏好；空时让 Provider 用 channel 的 defaultVoice（如 cherry）
+            // speed 默认 1.2 倍速（业务约定，与 ProjectSettingsModal 默认值对齐）
+            request: {
+              text,
+              voiceId: ttsVoiceId || '',
+              options: { rate: typeof ttsSpeed === 'number' ? ttsSpeed : 1.2 },
+            },
+            ttsSelection,
+            taskName: `分镜 #${shotId.slice(-6)} 配音`,
+          });
+          taskCtx.progress(100, '完成');
+          return a;
+        },
+      });
+      message.success('分镜配音生成完成');
+      setShots(prev => prev.map(s => {
+        if (s.id !== shotId) return s;
+        const existing = s.media?.audios || [];
+        return {
+          ...s,
+          media: {
+            ...(s.media || {}),
+            audios: [...existing, asset],
+            currentAudioIndex: existing.length,
+          },
+        };
+      }));
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      message.error(errorMessage || '配音失败');
+    }
+  }, [projectId, episodeId, shots, ttsSelection, ttsVoiceId, ttsSpeed, message]);
+
+  /**
+   * 批量配音：跳过已有配音的分镜（force=false）/ 强制重生成（force=true）。
+   * concurrency=2 控制 TTS 并发，避免上游 429。
+   */
+  const handleBatchAudios = useCallback(async (force: boolean = false, targetShotIds?: string[]) => {
+    if (!episodeId) {
+      message.warning('未选择剧集');
+      return;
+    }
+    const baseShots = targetShotIds
+      ? shots.filter(s => targetShotIds.includes(s.id))
+      : shots;
+    const candidates = baseShots.filter((s) => {
+      const text = (s.dialogue || '').trim() || getShotScriptText(s).trim();
+      if (!text) return false;
+      const hasAudio = (s.media?.audios?.length || 0) > 0;
+      return force ? hasAudio || !hasAudio : !hasAudio;
+    });
+    if (candidates.length === 0) {
+      message.info(force ? '所选分镜都没有可配音的台词' : '所选分镜要么没台词，要么都已有配音');
+      return;
+    }
+
+    setBatchProgress({ current: 0, total: candidates.length, step: '准备配音...' });
+
+    // 批量任务也包到 runWithTask（target=episode），任务面板能看到一条总进度条。
+    // 每个分镜的单条配音也会单独出一条任务（generateAudio 内部走 generateAudio
+    // 的轨道，不走 runWithTask；批量这层只统计聚合进度）。
+    try {
+      const { result: results } = await runWithTask({
+        projectId,
+        category: 'asset',
+        subType: 'audio',
+        targetType: 'episode',
+        targetId: episodeId,
+        targetName: `批量配音（${candidates.length} 个分镜）`,
+        type: 'audio-generation',
+        metadata: { shotCount: candidates.length, force },
+        execute: async (taskCtx) => {
+          let done = 0;
+          const inner = candidates.map((shot) => async () => {
+            const text = (shot.dialogue || '').trim() || getShotScriptText(shot).trim();
+            try {
+              const asset = await mediaGenerationService.generateAudio({
+                projectId,
+                ownerRef: { projectId, ownerType: 'shot', ownerId: shot.id, episodeId, slot: 'audio' },
+                request: {
+                  text,
+                  voiceId: ttsVoiceId || '',
+                  options: { rate: typeof ttsSpeed === 'number' ? ttsSpeed : 1.2 },
+                },
+                ttsSelection,
+                taskName: `分镜 #${shot.id.slice(-6)} 配音`,
+              });
+              return { shotId: shot.id, asset, success: true as const };
+            } catch (err: unknown) {
+              return {
+                shotId: shot.id,
+                success: false as const,
+                error: err instanceof Error ? err.message : String(err),
+              };
+            } finally {
+              done += 1;
+              const percent = Math.round((done / candidates.length) * 100);
+              setBatchProgress({ current: done, total: candidates.length, step: `分镜 ${shot.id.slice(-6)}` });
+              taskCtx.progress(percent, `${done}/${candidates.length} 完成`);
+            }
+          });
+          const settled = await runWithConcurrency(inner, 2);
+          return settled.map((r) =>
+            r.status === 'fulfilled'
+              ? r.value
+              : { shotId: '', success: false as const, error: String(r.reason) },
+          );
+        },
+      });
+      // 回写 UI shots state（避免依赖 TaskManager 监听）
+      setShots(prev => prev.map(s => {
+        const hit = results.find(r => r.success && r.shotId === s.id);
+        if (!hit?.success || !('asset' in hit)) return s;
+        const existing = s.media?.audios || [];
+        return {
+          ...s,
+          media: {
+            ...(s.media || {}),
+            audios: [...existing, hit.asset],
+            currentAudioIndex: existing.length,
+          },
+        };
+      }));
+      const successCount = results.filter(r => r.success).length;
+      const failed = results.filter(r => !r.success);
+      if (failed.length === 0) {
+        message.success(`批量配音完成：成功 ${successCount}/${results.length}`);
+      } else {
+        message.warning(`批量配音完成：成功 ${successCount}/${results.length}，失败 ${failed.length}`);
+      }
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      message.error(errorMessage || '批量配音失败');
+    } finally {
+      setBatchProgress(undefined);
+    }
+  }, [projectId, episodeId, shots, ttsSelection, ttsVoiceId, ttsSpeed, message]);
+
+  const handleBatchGenerateAudios = useCallback(
+    (targetShotIds?: string[]) => handleBatchAudios(false, targetShotIds),
+    [handleBatchAudios],
+  );
+  const handleBatchReGenerateAudios = useCallback(
+    (targetShotIds?: string[]) => handleBatchAudios(true, targetShotIds),
+    [handleBatchAudios],
+  );
+
   // 在指定位置上方插入
   const handleInsertAbove = useCallback(async (shotId: string) => {
     const index = shots.findIndex(s => s.id === shotId);
@@ -1936,12 +2152,13 @@ export const Storyboard: React.FC<StoryboardProps> = ({
             onGenerateVideo={handleRenderShotVideo}
             onBatchGenerateVideos={handleBatchRenderVideos}
             onBatchReGenerateVideos={handleBatchReGenerateVideos}
+            onGenerateAudio={handleGenerateShotAudio}
+            onBatchGenerateAudios={handleBatchGenerateAudios}
+            onBatchReGenerateAudios={handleBatchReGenerateAudios}
             getVideoCapabilityLabel={(shotId) => shotVideoSupportMap.get(shotId)?.capabilityLabel}
             getVideoGenerateDisabledReason={(shotId) => shotVideoSupportMap.get(shotId)?.disabledReason}
-            onToggleConfirm={handleToggleConfirm}
             onDelete={handleDeleteShot}
             onBatchDelete={handleBatchDelete}
-            onBatchConfirm={handleBatchConfirm}
             onMergeUp={handleMergeUp}
             onMergeDown={handleMergeDown}
             onMoveUp={handleMoveUp}
@@ -1952,6 +2169,7 @@ export const Storyboard: React.FC<StoryboardProps> = ({
             onShotImageModeChange={handleShotImageModeChange}
             onShotVideoModeChange={handleShotVideoModeChange}
             onBulkVideoModeChange={handleBulkVideoModeChange}
+            onBulkImageModeChange={handleBulkImageModeChange}
             durationSpec={itvDurationSpec}
           />
           </DndContext>

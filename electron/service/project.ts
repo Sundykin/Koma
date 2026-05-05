@@ -90,6 +90,10 @@ export interface ProjectMeta {
   theme?: string;
   stylePrompt?: string;
   aspectRatio?: '16:9' | '9:16';
+  // 项目级 extras（落 projects.metadata_json，统一打包）。前后端类型保持一致。
+  ttsVoiceId?: string;
+  ttsSpeed?: number;
+  videoPromptDurationSelections?: { multiRef?: number[]; firstFrame?: number[] };
 }
 
 export interface ProjectsIndex {
@@ -104,7 +108,22 @@ export interface ExportOptions {
 
 // ========== Row ↔ Meta 转换 ==========
 
+/**
+ * 项目元数据里那些不适合开列的小字段（ttsVoiceId / ttsSpeed / videoPromptDurationSelections）
+ * 统一打包到 projects.metadata_json TEXT 列。新增小字段时改这里 + ProjectMeta 类型即可。
+ */
+function buildMetaJsonPayload(meta: Partial<ProjectMeta>): Record<string, unknown> | undefined {
+  const payload: Record<string, unknown> = {};
+  if (meta.ttsVoiceId !== undefined) payload.ttsVoiceId = meta.ttsVoiceId;
+  if (meta.ttsSpeed !== undefined) payload.ttsSpeed = meta.ttsSpeed;
+  if (meta.videoPromptDurationSelections !== undefined) {
+    payload.videoPromptDurationSelections = meta.videoPromptDurationSelections;
+  }
+  return Object.keys(payload).length ? payload : undefined;
+}
+
 function rowToMeta(row: ProjectRow): ProjectMeta {
+  const extras = row.metadata_json ? safeParseJson(row.metadata_json) : null;
   return {
     id: row.id,
     title: row.title,
@@ -121,10 +140,18 @@ function rowToMeta(row: ProjectRow): ProjectMeta {
     theme: row.theme ?? undefined,
     stylePrompt: row.style_prompt ?? undefined,
     aspectRatio: (row.aspect_ratio as ProjectMeta['aspectRatio']) ?? '16:9',
+    ttsVoiceId: typeof extras?.ttsVoiceId === 'string' ? extras.ttsVoiceId : undefined,
+    ttsSpeed: typeof extras?.ttsSpeed === 'number' ? extras.ttsSpeed : undefined,
+    videoPromptDurationSelections: extras?.videoPromptDurationSelections as ProjectMeta['videoPromptDurationSelections'],
   };
 }
 
+function safeParseJson(raw: string): Record<string, any> | null {
+  try { return JSON.parse(raw); } catch { return null; }
+}
+
 function metaToRow(meta: ProjectMeta): Omit<ProjectRow, 'episodes'> {
+  const metaJson = buildMetaJsonPayload(meta);
   return {
     id: meta.id,
     title: meta.title,
@@ -137,6 +164,7 @@ function metaToRow(meta: ProjectMeta): Omit<ProjectRow, 'episodes'> {
     style_preset_id: meta.stylePresetId,
     style_snapshot_json: meta.styleSnapshot ? JSON.stringify(meta.styleSnapshot) : undefined,
     media_selections_json: meta.mediaSelections ? JSON.stringify(meta.mediaSelections) : undefined,
+    metadata_json: metaJson ? JSON.stringify(metaJson) : undefined,
     aspect_ratio: meta.aspectRatio ?? '16:9',
     created_at: meta.createdAt,
     updated_at: meta.updatedAt,
@@ -156,6 +184,15 @@ function metaToUpdateRow(updates: Partial<ProjectMeta>): Partial<ProjectRow> {
   if (updates.styleSnapshot !== undefined) row.style_snapshot_json = JSON.stringify(updates.styleSnapshot);
   if (updates.mediaSelections !== undefined) row.media_selections_json = JSON.stringify(updates.mediaSelections);
   if (updates.aspectRatio !== undefined) row.aspect_ratio = updates.aspectRatio;
+  // metadata_json 字段：任一项目级 extra 改了，就把整体重新打包写入（保持单字段更新语义）
+  if (
+    updates.ttsVoiceId !== undefined
+    || updates.ttsSpeed !== undefined
+    || updates.videoPromptDurationSelections !== undefined
+  ) {
+    const payload = buildMetaJsonPayload(updates);
+    row.metadata_json = payload ? JSON.stringify(payload) : null as any;
+  }
   row.updated_at = Date.now();
   return row;
 }
@@ -406,6 +443,9 @@ export class ProjectService {
     (shot.media?.videos || []).forEach((asset: any, index: number) => {
       entries.push(storedMediaAssetToShotEntry(shotId, 'video', asset, index));
     });
+    (shot.media?.audios || []).forEach((asset: any, index: number) => {
+      entries.push(storedMediaAssetToShotEntry(shotId, 'audio', asset, index));
+    });
     if (!entries.length) return;
     const insert = db.prepare(`
       INSERT INTO shot_media_entries (
@@ -635,7 +675,7 @@ export class ProjectService {
   private bindShotAssetCollection(
     projectId: string,
     ownerRef: MediaOwnerRef,
-    slot: 'referenceImage' | 'image' | 'video',
+    slot: 'referenceImage' | 'image' | 'video' | 'audio',
     asset: StoredMediaAsset,
   ): void {
     const shots = ownerRef.episodeId
@@ -666,7 +706,7 @@ export class ProjectService {
           currentImageIndex: next.length - 1,
         },
       };
-    } else {
+    } else if (slot === 'video') {
       const next = appendUniqueStoredAsset(media.videos, asset);
       shots[index] = {
         ...shot,
@@ -674,6 +714,17 @@ export class ProjectService {
           ...media,
           videos: next,
           currentVideoIndex: next.length - 1,
+        },
+      };
+    } else {
+      // audio：与 images / videos 同模式 —— 多次生成保留历史，currentAudioIndex 指向最新
+      const next = appendUniqueStoredAsset(media.audios, asset);
+      shots[index] = {
+        ...shot,
+        media: {
+          ...media,
+          audios: next,
+          currentAudioIndex: next.length - 1,
         },
       };
     }
@@ -713,15 +764,24 @@ export class ProjectService {
     projectId: string,
     ownerRef: MediaOwnerRef,
     asset: StoredMediaAsset,
-  ): { success: boolean } {
+  ): { success: boolean; error?: string } {
+    return this.bindOwnerRefMediaImpl(projectId, ownerRef, asset);
+  }
+
+  private bindOwnerRefMediaImpl(
+    projectId: string,
+    ownerRef: MediaOwnerRef,
+    asset: StoredMediaAsset,
+  ): { success: boolean; error?: string } {
     if (!ownerRef || ownerRef.projectId !== projectId) {
-      return { success: false };
+      return { success: false, error: 'ownerRef projectId mismatch' };
     }
     const slot = normalizeOwnerSlot(ownerRef.slot);
     if (!slot) {
-      return { success: false };
+      return { success: false, error: `unknown slot "${String(ownerRef.slot)}"` };
     }
 
+    try {
     if (ownerRef.ownerType === 'character') {
       if (slot !== 'costumePhoto' && slot !== 'previewVideo') {
         return { success: false };
@@ -758,7 +818,7 @@ export class ProjectService {
       }
       this.propRepo.update(ownerRef.ownerId, updates as any);
     } else if (ownerRef.ownerType === 'shot') {
-      if (slot !== 'referenceImage' && slot !== 'image' && slot !== 'video') {
+      if (slot !== 'referenceImage' && slot !== 'image' && slot !== 'video' && slot !== 'audio') {
         return { success: false };
       }
       baseDB.transaction(() => {
@@ -779,11 +839,20 @@ export class ProjectService {
         }
       });
     } else {
-      return { success: false };
+      return { success: false, error: `unsupported owner ${ownerRef.ownerType}/${slot}` };
     }
 
     this.rewriteTimelineSources(projectId, asset.remoteUrl, asset.localPath);
     return { success: true };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      // 把 SQLite 约束 / 迁移未跑等错误显式带回前端，避免 ee-core 吞掉异常后
+      // 渲染端只能看到"媒体生成完成但回写失败"这种无信息提示。
+      console.error('[ProjectService] bindOwnerRefMedia threw', {
+        projectId, ownerRef, error: msg, stack: err instanceof Error ? err.stack : undefined,
+      });
+      return { success: false, error: msg };
+    }
   }
 
   // ========== 批量实体操作（Electron 作为唯一业务真值） ==========

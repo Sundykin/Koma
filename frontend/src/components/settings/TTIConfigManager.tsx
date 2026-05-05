@@ -53,6 +53,7 @@ import {
   listBuiltInChannelOptions,
 } from './channelManagerShared';
 import { useMediaConfigManager } from './useMediaConfigManager';
+import { getSuggestedTTIFieldDefaults } from './ttiProviderSuggestions';
 import {
   isKomaActivationManagedChannel,
   withKomaActivationChannelMarker,
@@ -198,6 +199,7 @@ export const TTIConfigManager: React.FC<TTIConfigManagerProps> = ({ onConfigChan
       form.setFieldsValue({
         providerType: firstDefinition?.id,
         ...getChannelDefaults(firstDefinition),
+        ...getSuggestedTTIFieldDefaults(firstDefinition?.id),
         models: [{
           id: modelId,
           providerModelName: '',
@@ -236,6 +238,7 @@ export const TTIConfigManager: React.FC<TTIConfigManagerProps> = ({ onConfigChan
       providerType,
       name: previousName || definition.name,
       ...getChannelDefaults(definition),
+      ...getSuggestedTTIFieldDefaults(providerType),
     });
     setWorkflowData({});
     form.setFieldsValue({

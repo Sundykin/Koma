@@ -37,6 +37,7 @@ export const ipcApiRoute = {
     openExternal: 'controller/app/openExternal',
     showItemInFolder: 'controller/app/showItemInFolder',
     getStyleReferenceImagePath: 'controller/app/getStyleReferenceImagePath',
+    getKomaTTSVoiceSamplePath: 'controller/app/getKomaTTSVoiceSamplePath',
     getActiveStyleReferenceImagePath: 'controller/app/getActiveStyleReferenceImagePath',
     saveStyleReferenceImage: 'controller/app/saveStyleReferenceImage',
     clearStyleReferenceImage: 'controller/app/clearStyleReferenceImage',

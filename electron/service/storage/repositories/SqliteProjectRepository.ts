@@ -22,9 +22,9 @@ export class SqliteProjectRepository implements IProjectRepository {
   create(data: Omit<ProjectRow, 'episodes'>): void {
     this.db.prepare(`
       INSERT INTO projects (id, title, genre, mode, status, thumbnail, theme, style_prompt,
-        style_preset_id, style_snapshot_json, media_selections_json, aspect_ratio, created_at, updated_at)
+        style_preset_id, style_snapshot_json, media_selections_json, metadata_json, aspect_ratio, created_at, updated_at)
       VALUES (@id, @title, @genre, @mode, @status, @thumbnail, @theme, @style_prompt,
-        @style_preset_id, @style_snapshot_json, @media_selections_json, @aspect_ratio, @created_at, @updated_at)
+        @style_preset_id, @style_snapshot_json, @media_selections_json, @metadata_json, @aspect_ratio, @created_at, @updated_at)
     `).run({
       id: data.id,
       title: data.title,
@@ -37,6 +37,7 @@ export class SqliteProjectRepository implements IProjectRepository {
       style_preset_id: data.style_preset_id ?? null,
       style_snapshot_json: data.style_snapshot_json ?? null,
       media_selections_json: data.media_selections_json ?? null,
+      metadata_json: data.metadata_json ?? null,
       aspect_ratio: data.aspect_ratio ?? '16:9',
       created_at: data.created_at,
       updated_at: data.updated_at,

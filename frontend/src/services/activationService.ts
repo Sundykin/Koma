@@ -493,6 +493,10 @@ export const activationService = {
         providerConfig: withKomaActivationChannelMarker({
           baseUrl: 'https://komaapi.com',
           apiKey,
+          // 与 Koma 官方-Grok 渠道对齐：默认开启 Koma 协议，把 @char/@scene/@prop
+          // 编译为 @Image N。SuiheITVProvider 构造函数会兜底默认这个值，但显式
+          // 写到 providerConfig 让 UI 里能看到"Koma 协议"被选中而不是"不启用"。
+          promptProtocol: 'grok-image-index',
           defaultDuration: 5,
           defaultResolution: '480p',
         }),
@@ -523,6 +527,31 @@ export const activationService = {
         ],
         enabled: true,
         // 不抢占 itv 默认渠道；保持 grok 为默认，用户可在设置里切换。
+        source: 'builtin' as const,
+      },
+      // Koma 官方 TTS（qwen-tts，OpenAI 兼容 /v1/audio/speech）。内置音色 cherry / 芊悦。
+      // 走 komaapi.com 网关，激活 Key 直接复用。
+      {
+        id: KOMAAPI_ACTIVATION_CHANNEL_IDS.tts,
+        category: 'tts' as const,
+        providerType: 'koma-tts',
+        name: 'Koma 官方 TTS',
+        providerConfig: withKomaActivationChannelMarker({
+          baseUrl: 'https://komaapi.com',
+          apiKey,
+          model: 'qwen-tts',
+          defaultVoice: 'cherry',
+        }),
+        defaultModelId: 'qwen-tts',
+        models: [
+          {
+            id: 'qwen-tts',
+            label: 'Qwen TTS',
+            providerModelName: 'qwen-tts',
+            capabilities: ['speech.text-to-speech' as ModelCapability],
+          },
+        ],
+        enabled: true,
         source: 'builtin' as const,
       },
     ];
@@ -587,6 +616,8 @@ export const activationService = {
       providerConfig: withKomaActivationChannelMarker({
         baseUrl: 'https://komaapi.com',
         // apiKey 由后端从 sourceChannelIds 解密继承
+        // 默认开启 Koma 协议（与首次激活保持一致），UI 上显式显示而不是 placeholder
+        promptProtocol: 'grok-image-index',
         defaultDuration: 5,
         defaultResolution: '480p',
       }),
@@ -618,9 +649,36 @@ export const activationService = {
       source: 'builtin',
     };
 
+    // Koma 官方 TTS（qwen-tts）：v1 激活流程没建过 tts 管理渠道，老用户重启时
+    // 走 reconcile 兜底补齐。这里同样不带 apiKey（后端从 sourceChannelIds 解密继承）。
+    const ttsCfg: Parameters<typeof channelConfigService.reconcileActivationChannels>[0][number] = {
+      id: KOMAAPI_ACTIVATION_CHANNEL_IDS.tts,
+      category: 'tts',
+      providerType: 'koma-tts',
+      name: 'Koma 官方 TTS',
+      providerConfig: withKomaActivationChannelMarker({
+        baseUrl: 'https://komaapi.com',
+        // apiKey 由后端从 sourceChannelIds 解密继承
+        model: 'qwen-tts',
+        defaultVoice: 'cherry',
+      }),
+      defaultModelId: 'qwen-tts',
+      models: [
+        {
+          id: 'qwen-tts',
+          label: 'Qwen TTS',
+          providerModelName: 'qwen-tts',
+          capabilities: ['speech.text-to-speech' as ModelCapability],
+        },
+      ],
+      enabled: true,
+      source: 'builtin',
+    };
+
     // 期望管理渠道清单：[(id, expected providerType, 期望完整配置)]
     const expected = [
       { id: itvJimengCfg.id!, providerType: itvJimengCfg.providerType, cfg: itvJimengCfg },
+      { id: ttsCfg.id!, providerType: ttsCfg.providerType, cfg: ttsCfg },
       // 其它管理渠道（llm/tti/itv）原 ensureDefaultModelChannels 已建出，
       // 这里也可以加进来作为额外保护（落入 update 路径），但目前没有 providerType 漂移问题，先不加。
     ];
@@ -635,7 +693,8 @@ export const activationService = {
       }),
     );
 
-    // 计算需要 reconcile 的 cfg：缺失 OR providerType 不匹配
+    // 计算需要 reconcile 的 cfg：缺失 OR providerType 不匹配 OR 期望 model 的
+    // capabilities 漂移（老 build 写的是 ['tts']，新 build 期望 ['speech.text-to-speech']）。
     const reconcileConfigs: Parameters<typeof channelConfigService.reconcileActivationChannels>[0] = [];
     for (const entry of expected) {
       const existing = channelMap.get(entry.id);
@@ -646,6 +705,21 @@ export const activationService = {
       if (existing.providerType !== entry.providerType) {
         console.info(
           `[activation] managed channel ${entry.id} providerType drift detected: ${existing.providerType} → ${entry.providerType}, fixing`,
+        );
+        reconcileConfigs.push(entry.cfg);
+        continue;
+      }
+      // 检查每个期望 model 在 existing 里有对应 id 且 capabilities 完全包含期望集合
+      const existingModels = Array.isArray(existing.models) ? existing.models : [];
+      const capabilityDrift = entry.cfg.models?.some((expectedModel) => {
+        const existingModel = existingModels.find((m: any) => m.id === expectedModel.id);
+        if (!existingModel) return true;
+        const existingCaps = new Set(Array.isArray(existingModel.capabilities) ? existingModel.capabilities : []);
+        return (expectedModel.capabilities || []).some((cap) => !existingCaps.has(cap));
+      });
+      if (capabilityDrift) {
+        console.info(
+          `[activation] managed channel ${entry.id} model capability drift detected, fixing`,
         );
         reconcileConfigs.push(entry.cfg);
       }

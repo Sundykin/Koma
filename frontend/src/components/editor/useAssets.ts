@@ -15,6 +15,8 @@ import {
   getScenePreviewImageSource,
   getShotCurrentImageSource,
   getShotCurrentVideoSource,
+  getShotCurrentAudioAsset,
+  getShotCurrentAudioSource,
 } from '../../utils/mediaSelectors';
 
 const logger = createLogger('useAssets');
@@ -68,6 +70,8 @@ export function useAssets({ projectId, episodeId }: UseAssetsOptions): UseAssets
       shots.forEach((shot: Shot) => {
         const videoPath = getShotCurrentVideoSource(shot);
         const imagePath = getShotCurrentImageSource(shot);
+        const audioAsset = getShotCurrentAudioAsset(shot);
+        const audioPath = getShotCurrentAudioSource(shot);
         const shotName = getShotScriptText(shot).trim().slice(0, 24) || `分镜 ${shot.id.slice(0, 6)}`;
 
         // 视频
@@ -92,6 +96,21 @@ export function useAssets({ projectId, episodeId }: UseAssetsOptions): UseAssets
             src: imagePath,
             thumbnailSrc: imagePath,
             duration: DEFAULT_IMAGE_DURATION,
+            source: 'shot',
+            metadata: { shotId: shot.id },
+          });
+        }
+        // 配音（独立条目，与 video / image 并列；time line 可拖到音频轨）
+        if (audioPath) {
+          const audioDurationSec = audioAsset?.durationMs
+            ? Math.max(1, audioAsset.durationMs / 1000)
+            : (shot.duration || DEFAULT_VIDEO_DURATION);
+          aggregated.push({
+            id: `shot-audio-${shot.id}`,
+            name: `${shotName} - 配音`,
+            type: 'audio',
+            src: audioPath,
+            duration: audioDurationSec,
             source: 'shot',
             metadata: { shotId: shot.id },
           });

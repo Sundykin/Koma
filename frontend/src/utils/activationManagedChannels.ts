@@ -9,6 +9,8 @@ export const KOMAAPI_ACTIVATION_CHANNEL_IDS = {
   // 即梦视频（穗禾上游 seedance）：与 grok 视频共用 OpenAI /v1/videos 协议，
   // 通过 model 字段在 new-api 端分流到不同上游渠道。
   itvJimeng: 'komaapi-default-itv-jimeng',
+  // Koma 官方 TTS（qwen-tts 模型，OpenAI 兼容 /v1/audio/speech）
+  tts: 'komaapi-default-tts',
 } as const;
 
 type ActivationProviderConfig = Record<string, unknown> | null | undefined;

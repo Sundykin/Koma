@@ -51,7 +51,7 @@ export interface ShotRelationRow {
 export interface ShotMediaEntryRow {
   id: string;
   shot_id: string;
-  slot: 'reference' | 'image' | 'video';
+  slot: 'reference' | 'image' | 'video' | 'audio';
   local_path?: string | null;
   remote_url?: string | null;
   mime_type?: string | null;
@@ -535,6 +535,7 @@ export function shotToRow(shot: Shot, projectId: string, sortOrder: number, epis
     selected_reference_index: shot.media?.selectedReferenceIndex,
     current_image_index: shot.media?.currentImageIndex,
     current_video_index: shot.media?.currentVideoIndex,
+    current_audio_index: shot.media?.currentAudioIndex,
     current_version: shot.currentVersion ?? 0,
     sort_order: sortOrder,
     metadata_json: undefined,
@@ -565,6 +566,10 @@ export function shotRowToEntity(
     .filter(entry => entry.slot === 'video')
     .sort((a, b) => a.sort_order - b.sort_order)
     .map(entry => entryRowToStoredMediaAsset(entry, 'video'));
+  const audios = (mediaEntries || [])
+    .filter(entry => entry.slot === 'audio')
+    .sort((a, b) => a.sort_order - b.sort_order)
+    .map(entry => entryRowToStoredMediaAsset(entry, 'audio'));
 
   return {
     id: row.id,
@@ -583,14 +588,16 @@ export function shotRowToEntity(
     characters: orderedIds(characterRelations),
     scenes: orderedIds(sceneRelations),
     props: orderedIds(propRelations),
-    media: refs.length || images.length || videos.length
+    media: refs.length || images.length || videos.length || audios.length
       ? {
           references: refs.length ? refs : undefined,
           images: images.length ? images : undefined,
           videos: videos.length ? videos : undefined,
+          audios: audios.length ? audios : undefined,
           selectedReferenceIndex: row.selected_reference_index ?? undefined,
           currentImageIndex: row.current_image_index ?? undefined,
           currentVideoIndex: row.current_video_index ?? undefined,
+          currentAudioIndex: row.current_audio_index ?? undefined,
         }
       : undefined,
   };

@@ -7,6 +7,14 @@ export { EdgeTTSProvider } from './EdgeTTSProvider';
 export { OpenAITTSProvider } from './OpenAITTSProvider';
 export { FishAudioProvider } from './FishAudioProvider';
 export { GPTSoVITSProvider } from './GPTSoVITSProvider';
+export { KomaTTSProvider, KOMA_TTS_VOICES } from './KomaTTSProvider';
+export {
+  KOMA_TTS_VOICE_CATEGORY_LABEL,
+  KOMA_TTS_DEFAULT_VOICE_ID,
+  findKomaTTSVoice,
+  type KomaTTSVoiceMeta,
+  type KomaTTSVoiceCategory,
+} from './komaTTSVoices';
 export { TTSService, ttsService } from './TTSService';
 export type { DialogueSegment, SynthesizedDialogue } from './TTSService';
 
@@ -16,6 +24,7 @@ import { EdgeTTSProvider } from './EdgeTTSProvider';
 import { OpenAITTSProvider } from './OpenAITTSProvider';
 import { FishAudioProvider } from './FishAudioProvider';
 import { GPTSoVITSProvider } from './GPTSoVITSProvider';
+import { KomaTTSProvider, KOMA_TTS_VOICES } from './KomaTTSProvider';
 import type { ProviderDefinition } from '../registry.types';
 import { MEDIA_PROVIDER_CONTRACT_VERSION } from '../registry.types';
 import { ttsRegistry } from '../registry';
@@ -57,6 +66,22 @@ const gptSovitsSchema = {
     defaultVoice: { title: '默认参考音频路径', type: 'string' },
     defaultSpeed: { title: '语速', type: 'number', default: 1.0 },
   },
+};
+
+const komaTTSSchema = {
+  type: 'object',
+  properties: {
+    apiKey: { title: 'API Key', type: 'string', format: 'password' },
+    baseUrl: { title: 'API URL', type: 'string', default: 'https://komaapi.com' },
+    model: { title: '模型', type: 'string', default: 'qwen-tts' },
+    defaultVoice: {
+      title: '默认音色',
+      type: 'string',
+      enum: KOMA_TTS_VOICES.map((v) => v.id),
+      default: KOMA_TTS_VOICES[0]?.id ?? 'cherry',
+    },
+  },
+  required: ['apiKey'],
 };
 
 // 注册内置 TTS Provider
@@ -108,6 +133,18 @@ function registerBuiltinTTSProviders() {
       configSchema: gptSovitsSchema,
       presetBaseUrl: 'http://127.0.0.1:9880',
       auth: { apiKey: 'none', baseUrl: 'required' },
+    },
+    {
+      type: 'koma-tts',
+      kind: 'tts',
+      name: 'Koma 官方 TTS',
+      description: 'Koma 官方语音合成（komaapi.com 网关 / OpenAI 兼容协议 / qwen-tts）',
+      factory: (config) => new KomaTTSProvider(config as TTSConfig),
+      contractVersion: MEDIA_PROVIDER_CONTRACT_VERSION,
+      capabilities: ['tts'],
+      configSchema: komaTTSSchema,
+      presetBaseUrl: 'https://komaapi.com',
+      auth: { apiKey: 'required', baseUrl: 'optional' },
     },
   ];
 

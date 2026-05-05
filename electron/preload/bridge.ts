@@ -47,6 +47,7 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   'controller/app/getPath', 'controller/app/getVersion',
   // 风格参考图（"画风锚"）：全局上传/清除 + 项目级上传/清除 + 路径解析
   'controller/app/getStyleReferenceImagePath',
+  'controller/app/getKomaTTSVoiceSamplePath',
   'controller/app/getActiveStyleReferenceImagePath',
   'controller/app/saveStyleReferenceImage',
   'controller/app/clearStyleReferenceImage',

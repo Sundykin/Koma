@@ -29,7 +29,7 @@ const logger = createLogger('TaskManager');
 export type TaskCategory = 'prompt' | 'analysis' | 'asset' | 'script' | 'export' | 'linghui';
 
 export type TaskSubType =
-  | 'image' | 'video'
+  | 'image' | 'video' | 'audio'
   | 'shot-analysis' | 'shot-generation'
   | 'script-analysis'
   | 'asset-generation' | 'character-extraction'
@@ -40,6 +40,7 @@ export type TaskSubType =
 export type TaskType = 'script-analysis' | 'asset-generation' | 'shot-generation' | 'shot-analysis'
   | 'prompt-generation:image' | 'prompt-generation:video'
   | 'prompt-optimization:image' | 'prompt-optimization:video'
+  | 'audio-generation'
   | 'linghui-execution';
 
 export type TaskStatus = 'pending' | 'running' | 'processing' | 'completed' | 'failed';
@@ -111,6 +112,7 @@ function mapLegacyTaskType(type: TaskType): { category: TaskCategory; subType: T
     'prompt-generation:video': { category: 'prompt', subType: 'video' },
     'prompt-optimization:image': { category: 'prompt', subType: 'prompt-optimization' },
     'prompt-optimization:video': { category: 'prompt', subType: 'prompt-optimization' },
+    'audio-generation': { category: 'asset', subType: 'audio' },
   };
   return mapping[type] || { category: 'analysis', subType: 'shot-analysis' };
 }

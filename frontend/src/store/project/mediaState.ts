@@ -83,6 +83,9 @@ export function normalizeShotMediaState(shot: Shot): Shot {
   const legacyGridImage = compactAsset(shot.media?.gridImage);
   const images = mergeLegacyGridImage(compactAssets(shot.media?.images), legacyGridImage);
   const videos = compactAssets(shot.media?.videos);
+  // 修 bug: 这里之前漏处理 audios → saveEpisodeShots → normalize 把内存里的配音
+  // 给抹掉了 → DB 覆盖 → 切回分镜后语音消失，最终剪辑也读不到音频资源。
+  const audios = compactAssets(shot.media?.audios);
 
   const selectedReferenceIndex = clampIndex(
     shot.media?.selectedReferenceIndex,
@@ -96,15 +99,21 @@ export function normalizeShotMediaState(shot: Shot): Shot {
     shot.media?.currentVideoIndex,
     videos?.length || 0
   );
+  const currentAudioIndex = clampIndex(
+    shot.media?.currentAudioIndex,
+    audios?.length || 0
+  );
 
-  const media = (references || images || videos)
+  const media = (references || images || videos || audios)
     ? {
       references,
       images,
       videos,
+      audios,
       selectedReferenceIndex,
       currentImageIndex,
       currentVideoIndex,
+      currentAudioIndex,
     }
     : undefined;
 
