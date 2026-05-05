@@ -2,7 +2,7 @@
  * 资产生成向导
  * 分步引导生成项目所有资产：角色 → 场景 → 道具 → 预览视频
  */
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Modal,
   Steps,
@@ -226,8 +226,16 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
     activeOnly: true,
   });
 
+  // 关键：startGeneration 期间 worker 是 state 的"写者"。setMetadata → 任务表 → useTasks → 这个 effect
+  // 是异步的回流路径，metadata 可能滞后 200ms+。如果不阻断这条回流，本地刚写 progress=50，下一刻 stale
+  // metadata 0% 又把它覆盖回去——导致用户看到的是"进度永远 0%"。
+  // 用 ref 标记"本地 worker 正在驱动状态"，期间 effect 不再回写本地 state；worker 结束后再让 effect 接管。
+  const localWorkerActiveRef = useRef(false);
+
   useEffect(() => {
     if (!open || loading) return;
+    // worker 在跑 → 本地 state 是真相源，跳过远端 metadata 回写
+    if (localWorkerActiveRef.current) return;
 
     // 没有 active 任务 → 确保 generating=false（任务可能在向导外完成 / 被取消）
     if (activeAssetTasks.length === 0) {
@@ -478,6 +486,10 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
       taskProgress(overall, `${currentName}: ${stage}`);
     };
 
+    // 标记"本地 worker 正在驱动 state"——activeAssetTasks 订阅 effect 在此期间不再回写本地 state，
+    // 否则 setMetadata → IPC 异步路径上 stale metadata 会覆盖 worker 刚写的 fresh progress
+    localWorkerActiveRef.current = true;
+
     try {
       await runWithTask({
         projectId: project.id,
@@ -590,6 +602,9 @@ export const AssetGenerationWizard: React.FC<AssetGenerationWizardProps> = ({
     } catch (err: any) {
       // 单 item 失败已记录在 setter 状态里；这里捕获是为了防止整个批量崩
       message.error(`批量生成异常: ${err.message || err}`);
+    } finally {
+      // worker 收尾，把状态写权交回 activeAssetTasks effect（任务此时通常已 completed → effect 会 setGenerating(false)）
+      localWorkerActiveRef.current = false;
     }
 
     setGenerating(false);
