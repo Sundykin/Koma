@@ -481,7 +481,7 @@ export const activationService = {
       // 会强制注入 grok-image-index 协议、特殊 ratio 处理等，与穗禾参数不兼容。
       // 参数参考 new-api/relay/channel/task/suihe/constants.go：
       //   - 上游当前阶段强制锁定 480p（suiheLockedResolution）
-      //   - 时长 seedance-2.0-r: 4-15s, seedance-2.0-f: 4-12s（缺省 5s）
+      //   - 时长 seedance-2.0-r / seedance-2.0-f: 4-15s（缺省 5s）
       // baseUrl 走 komaapi.com（new-api 网关），通过 model 字段路由到穗禾上游渠道。
       // 注：上游模型名为 `seedance-2.0-r` / `seedance-2.0-f`，UI label 仍展示
       //     "Seedance 2.0" / "Seedance 2.0 Fast" 两个友好名。

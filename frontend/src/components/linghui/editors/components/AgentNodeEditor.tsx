@@ -14,6 +14,7 @@ import { listConfiguredModelSelectOptions } from '../../../../providers/channel/
 import { useLinghuiNodeMutation } from '../../nodes/state/LinghuiNodeRunsContext';
 import { LinghuiPromptEditor } from './LinghuiPromptEditor';
 import type { LinghuiPromptReferenceItem } from '../state/linghuiPromptReferences';
+import { useLinghuiActionLock } from '../hooks/useLinghuiActionLock';
 
 interface ProviderOption {
   value: string;
@@ -55,6 +56,11 @@ export const AgentNodeEditor: React.FC<AgentNodeEditorProps> = ({
   const [toolsLoading, setToolsLoading] = useState(false);
   const outputText = String(getLinghuiResultText(nodeRun?.result) ?? '').trim();
   const isStreaming = nodeRun?.status === 'running';
+  const { locked: isRunActionLocked, runWithActionLock } = useLinghuiActionLock(isStreaming);
+
+  const handleRun = useCallback(() => {
+    runWithActionLock(onRun);
+  }, [onRun, runWithActionLock]);
 
   useEffect(() => {
     loadSettings().then(settings => {
@@ -258,7 +264,9 @@ export const AgentNodeEditor: React.FC<AgentNodeEditorProps> = ({
           <Button
             type="primary"
             icon={<ArrowUp size={14} />}
-            onClick={onRun}
+            onClick={handleRun}
+            disabled={isRunActionLocked || isStreaming}
+            loading={isStreaming}
           >
             执行
           </Button>

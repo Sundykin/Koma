@@ -16,6 +16,7 @@ import { useLinghuiNodeMutation } from '../../nodes/state/LinghuiNodeRunsContext
 import { LinghuiPromptEditor } from './LinghuiPromptEditor';
 import type { LinghuiPromptReferenceItem } from '../state/linghuiPromptReferences';
 import { parseLinghuiScriptContent } from '../state/linghuiScriptNodeUtils';
+import { useLinghuiActionLock } from '../hooks/useLinghuiActionLock';
 
 interface ProviderOption {
   value: string;
@@ -143,6 +144,10 @@ export const ScriptNodeEditor: React.FC<ScriptNodeEditorProps> = ({
   const [providers, setProviders] = useState<ProviderOption[]>([]);
   const [selectedShotIds, setSelectedShotIds] = useState<string[]>([]);
   const [immersiveOpen, setImmersiveOpen] = useState(false);
+  const isScriptGenerating = nodeRun?.status === 'running' && mode === 'generate';
+  const { locked: isRunActionLocked, runWithActionLock } = useLinghuiActionLock(isScriptGenerating);
+  const { locked: isGenerateImagesLocked, runWithActionLock: runGenerateImagesWithLock } = useLinghuiActionLock();
+  const { locked: isGenerateVideosLocked, runWithActionLock: runGenerateVideosWithLock } = useLinghuiActionLock();
 
   useEffect(() => {
     loadSettings().then(settings => {
@@ -195,6 +200,18 @@ export const ScriptNodeEditor: React.FC<ScriptNodeEditorProps> = ({
       properties: { ...prev.properties, [key]: value },
     }));
   }, [nodeId, updateNodeData]);
+
+  const handleRun = useCallback(() => {
+    runWithActionLock(onRun);
+  }, [onRun, runWithActionLock]);
+
+  const handleGenerateImages = useCallback((shots: LinghuiStoryboardFrame[]) => {
+    runGenerateImagesWithLock(() => onGenerateImages(shots));
+  }, [onGenerateImages, runGenerateImagesWithLock]);
+
+  const handleGenerateVideos = useCallback((shots: LinghuiStoryboardFrame[]) => {
+    runGenerateVideosWithLock(() => onGenerateVideos(shots));
+  }, [onGenerateVideos, runGenerateVideosWithLock]);
 
   const handleToggleShot = useCallback((shotId: string, checked: boolean) => {
     setSelectedShotIds(prev => {
@@ -324,16 +341,16 @@ export const ScriptNodeEditor: React.FC<ScriptNodeEditorProps> = ({
               size="small"
               type="primary"
               icon={<ImageIcon size={14} />}
-              disabled={!selectedCount}
-              onClick={() => onGenerateImages(selectedShots)}
+              disabled={!selectedCount || isGenerateImagesLocked}
+              onClick={() => handleGenerateImages(selectedShots)}
             >
               生成分镜图
             </Button>
             <Button
               size="small"
               icon={<Video size={14} />}
-              disabled={!selectedCount}
-              onClick={() => onGenerateVideos(selectedShots)}
+              disabled={!selectedCount || isGenerateVideosLocked}
+              onClick={() => handleGenerateVideos(selectedShots)}
             >
               生成视频流程
             </Button>
@@ -453,7 +470,9 @@ export const ScriptNodeEditor: React.FC<ScriptNodeEditorProps> = ({
               <Button
                 type="primary"
                 icon={<ArrowUp size={14} />}
-                onClick={onRun}
+                onClick={handleRun}
+                disabled={isRunActionLocked || isScriptGenerating}
+                loading={isScriptGenerating}
               >
                 生成
               </Button>

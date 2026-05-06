@@ -29,6 +29,19 @@
 - 所有节点端口已经收敛到 `LinghuiNodeHandle` 和 `.linghuiNodeMagnetHandle`；旧的 `.linghuiCompactHandle` / `.linghuiRFHandle` 保留为 Sass 兼容别名，但不再维护独立尺寸/边框规则，避免输入点、输出点手感分裂。
 - 灵绘视频节点漏接了项目已有的 `VideoDurationSpec`：聊天/分镜已经按当前 ITV selection 处理 enum/range，灵绘仍固定展示 5/10/15/30 slider 并把 `props.duration` 原样传执行。
 - `durationSpec.ts` 中 Koma 官方即梦已能按 `seedance-2.0` / `seedance-2.0-fast` modelId 解析 4-15 / 4-12 秒范围；Grok provider 的注释写上游枚举是 6/12/16/20，但旧兜底仍包含历史 10 秒，需要避免灵绘 UI 和执行继续暴露 10。
+- 画布 HUD 自动展示执行日志会带来两个问题：用户不知道如何关闭，并且日志会和一键执行/状态控件抢画布空间。更合理的模型是把日志作为左侧菜单里的可选面板，默认不打扰画布操作。
+- 左侧浮层需要互斥：项目列表、资源/工作流/历史抽屉、执行日志同时打开会叠层遮挡画布；打开其中一个时应主动收起其它浮层。
+- `LinghuiPropertiesPanel` 里仍有一个未挂载的旧执行日志展示组件；当前实际画布入口已经不使用它，本轮不删除未挂载组件以避免扩大影响面。
+- 同一页面内的重复执行已有 `executionAbortControllerRef` 拦截，但页面刷新/状态恢复后，单个节点的 `running` 状态不包含可恢复的远端 taskId；如果用户再次触发执行，旧实现会覆盖 running state 并再次调用 provider `start()`。
+- 防重复提交最稳的第一层应放在工作流执行目标计算后：只要本次目标链路所需节点里存在仍在默认轮询窗口内更新过的 `running` 节点，就阻止新提交并聚焦该节点。这样视频、生图、音频、文本等节点统一受保护。
+- 旧 running 状态不能永久挡住用户：默认轮询窗口是 10 分钟，本轮加 1 分钟宽限；超过这个窗口的运行态被视为过期，可重新执行。
+- 仅依赖 `nodeRun` / executionQueue 的运行态禁用仍有点击竞态：连续双击可能在 React 状态刷新前连续触发 `onRun`。节点编辑器提交按钮需要首击即时锁，和执行链路级 duplicate guard 形成两层保护。
+- 生图/生视频是最高风险入口，但文本、音频、Agent、脚本生成和脚本派生出的分镜图/视频流程也会提交任务或批量创建后续节点，应该共享同一套短冷却锁，而不是各自写 ad hoc 防抖。
+- Electron 官方提供 `app.setAppLogsPath()` / `app.getPath('logs')` 和 `webContents` 的 `console-message` 事件；比纯 renderer 劫持 `console` 更适合做桌面应用日志收集的底层入口。
+- 当前前端已有 `frontend/src/store/logger.ts`，但旧实现通过通用 fs IPC 读取完整日志文件再重写追加，既低效也扩大了 renderer 文件写权限；应改为主进程专用 diagnostics IPC。
+- 日志目录必须跟随用户可设置的 `storageRoot`，不能固定 Electron `userData`。本轮把 `diagnosticsService` 初始化到 `${storageRoot}/logs`，并在 `project.setStorageRoot` 时同步 `app.setAppLogsPath`。
+- IPC 安全边界采用显式白名单：renderer 只能调用 `controller/diagnostics/appendRendererLog`、`listLogs`、`clearRendererLogs`、`exportLogs`，不能指定任意写入路径或任意打包目录。
+- 导出 zip 由主进程扫描固定日志根生成，包含 `manifest.json`、renderer/console/main/Electron 日志；单文件大小和递归深度都受限，避免把用户目录任意内容打进诊断包。
 
 ## 2026-05-03 Theme System Architecture
 

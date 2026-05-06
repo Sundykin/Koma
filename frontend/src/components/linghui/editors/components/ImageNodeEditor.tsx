@@ -28,6 +28,7 @@ import type { LinghuiPromptReferenceItem } from '../state/linghuiPromptReference
 import { LinghuiPromptEditor } from './LinghuiPromptEditor';
 import { LinghuiMultiAngleModal } from './LinghuiMultiAngleModal';
 import { useLinghuiNodeEditorApi, useLinghuiNodeMutation } from '../../nodes/state/LinghuiNodeRunsContext';
+import { useLinghuiActionLock } from '../hooks/useLinghuiActionLock';
 import {
   createLinghuiImageAssetItemFromSource,
   createLinghuiImageImportProperties,
@@ -132,6 +133,7 @@ export const ImageNodeEditor: React.FC<ImageNodeEditorProps> = ({
   const isNodeQueuedByExecutionQueue = Boolean(isExecutionQueueActive && executionQueue?.queuedNodeIds.includes(nodeId));
   const isNodeRunningByExecutionQueue = Boolean(isExecutionQueueActive && executionQueue?.runningNodeIds.includes(nodeId));
   const isImageGenerating = nodeRun?.status === 'running' || isNodeRunningByExecutionQueue || isNodeQueuedByExecutionQueue;
+  const { locked: isRunActionLocked, runWithActionLock } = useLinghuiActionLock(isImageGenerating);
   const generateProgressText = nodeRun?.status === 'running'
     && typeof nodeRun.progress === 'number'
     && Number.isFinite(nodeRun.progress)
@@ -158,6 +160,10 @@ export const ImageNodeEditor: React.FC<ImageNodeEditorProps> = ({
 
   const [providers, setProviders] = useState<ProviderOption[]>([]);
   const [multiAngleProviders, setMultiAngleProviders] = useState<ProviderOption[]>([]);
+
+  const handleRun = useCallback(() => {
+    runWithActionLock(onRun);
+  }, [onRun, runWithActionLock]);
 
   useEffect(() => {
     loadSettings().then(settings => {
@@ -535,8 +541,8 @@ export const ImageNodeEditor: React.FC<ImageNodeEditorProps> = ({
           <Button
             type="primary"
             icon={<ArrowUp size={14} />}
-            onClick={onRun}
-            disabled={isImageGenerating}
+            onClick={handleRun}
+            disabled={isImageGenerating || isRunActionLocked}
             loading={isImageGenerating}
           >
             {generateButtonText}

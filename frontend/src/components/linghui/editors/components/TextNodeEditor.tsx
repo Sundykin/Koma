@@ -14,6 +14,7 @@ import { listConfiguredModelSelectOptions } from '../../../../providers/channel/
 import { useLinghuiNodeMutation } from '../../nodes/state/LinghuiNodeRunsContext';
 import { LinghuiPromptEditor } from './LinghuiPromptEditor';
 import type { LinghuiPromptReferenceItem } from '../state/linghuiPromptReferences';
+import { useLinghuiActionLock } from '../hooks/useLinghuiActionLock';
 
 interface ProviderOption {
   value: string;
@@ -77,6 +78,11 @@ export const TextNodeEditor: React.FC<TextNodeEditorProps> = ({
   const contentSummary = content.trim() ? `${content.trim().length} 字` : '手动文本';
   const outputText = String(getLinghuiResultText(nodeRun?.result) ?? '').trim();
   const isStreaming = nodeRun?.status === 'running' && mode === 'generate';
+  const { locked: isRunActionLocked, runWithActionLock } = useLinghuiActionLock(isStreaming);
+
+  const handleRun = useCallback(() => {
+    runWithActionLock(onRun);
+  }, [onRun, runWithActionLock]);
 
   const providerMenuItems = useMemo<MenuProps['items']>(() => (
     providers.map(provider => ({
@@ -230,7 +236,9 @@ export const TextNodeEditor: React.FC<TextNodeEditorProps> = ({
           <Button
             type="primary"
             icon={<ArrowUp size={14} />}
-            onClick={onRun}
+            onClick={handleRun}
+            disabled={isRunActionLocked || isStreaming}
+            loading={isStreaming}
           >
             {mode === 'generate' ? '生成' : '应用'}
           </Button>

@@ -379,7 +379,7 @@ export interface LinghuiNodeRunState {
 
 export interface LinghuiExecutionLogEntry {
   id: string;
-  level: 'info' | 'success' | 'error';
+  level: 'info' | 'success' | 'warn' | 'error';
   message: string;
   nodeId?: string;
   createdAt: number;

@@ -67,6 +67,44 @@ function createTextNode(params: {
   };
 }
 
+function createVideoNode(params: {
+  id: string;
+  label: string;
+  prompt: string;
+  x: number;
+  y?: number;
+}): LinghuiExecutionContext['nodes'][number] {
+  return {
+    id: params.id,
+    type: 'linghui-video',
+    position: { x: params.x, y: params.y ?? 0 },
+    data: {
+      linghuiType: 'linghui/video',
+      label: params.label,
+      accent: '#22c55e',
+      background: '#0f1720',
+      properties: {
+        prompt: params.prompt,
+        itvSelection: 'channel-itv::model-itv',
+        source: '',
+        posterSource: '',
+        videoCapability: 'video.text-to-video',
+        aspectRatio: '16:9',
+        resolution: '720p',
+        duration: 6,
+      },
+      inputs: [
+        { name: '参考', dataType: 'image' },
+        { name: '文本', dataType: 'text' },
+        { name: '音频', dataType: 'audio' },
+        { name: '视频', dataType: 'video' },
+      ],
+      outputs: [{ name: 'video', dataType: 'video' }],
+      active: false,
+    },
+  };
+}
+
 describe('executeLinghuiWorkflow', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -715,5 +753,113 @@ describe('executeLinghuiWorkflow', () => {
     expect(result.runs['text-node-a']?.message).toBe('执行已取消');
     expect(result.runs['text-node-b']?.message).toBe('执行已取消');
     expect(vi.mocked(executionProviders.generateTextWithProvider)).toHaveBeenCalledTimes(2);
+  });
+
+  it('目标链路已有运行中视频节点时不会重复提交 provider', async () => {
+    const {
+      detectLinghuiRunningNodeBlocks,
+      executeLinghuiWorkflow,
+    } = await import('../state/linghuiExecutionWorkflow');
+    const executionProviders = await import('../state/linghuiExecutionProviders');
+
+    const context: LinghuiExecutionContext = {
+      nodes: [
+        createVideoNode({
+          id: 'video-node',
+          label: '视频节点',
+          prompt: '一只猫在窗边伸懒腰',
+          x: 0,
+        }),
+      ],
+      edges: [],
+      nodeOutputs: {},
+    };
+    const previousRuns = {
+      'video-node': {
+        status: 'running' as const,
+        progress: 42,
+        message: '生成中',
+        startedAt: Date.now() - 20_000,
+        updatedAt: Date.now() - 1_000,
+      },
+    };
+
+    const blocks = detectLinghuiRunningNodeBlocks({
+      context,
+      targetNodeIds: ['video-node'],
+      previousRuns,
+      resolveTargetsOnly: true,
+    });
+
+    expect(blocks).toEqual([
+      expect.objectContaining({
+        nodeId: 'video-node',
+        label: '视频节点',
+        progress: 42,
+      }),
+    ]);
+
+    await expect(executeLinghuiWorkflow({
+      context,
+      targetNodeIds: ['video-node'],
+      previousRuns,
+      resolveTargetsOnly: true,
+    })).rejects.toThrow('「视频节点」仍在执行中');
+
+    expect(executionProviders.generateVideoWithProvider).not.toHaveBeenCalled();
+  });
+
+  it('过期的运行中状态不会永久阻止重新执行', async () => {
+    const {
+      detectLinghuiRunningNodeBlocks,
+      executeLinghuiWorkflow,
+    } = await import('../state/linghuiExecutionWorkflow');
+    const executionProviders = await import('../state/linghuiExecutionProviders');
+    const now = Date.now();
+
+    vi.mocked(executionProviders.generateVideoWithProvider).mockResolvedValue({
+      kind: 'video',
+      source: 'https://cdn.example.com/fresh.mp4',
+    } as any);
+
+    const context: LinghuiExecutionContext = {
+      nodes: [
+        createVideoNode({
+          id: 'video-node',
+          label: '视频节点',
+          prompt: '一只猫在窗边伸懒腰',
+          x: 0,
+        }),
+      ],
+      edges: [],
+      nodeOutputs: {},
+    };
+    const previousRuns = {
+      'video-node': {
+        status: 'running' as const,
+        progress: 42,
+        message: '生成中',
+        startedAt: now - 720_000,
+        updatedAt: now - 720_000,
+      },
+    };
+
+    expect(detectLinghuiRunningNodeBlocks({
+      context,
+      targetNodeIds: ['video-node'],
+      previousRuns,
+      resolveTargetsOnly: true,
+      now,
+    })).toEqual([]);
+
+    const result = await executeLinghuiWorkflow({
+      context,
+      targetNodeIds: ['video-node'],
+      previousRuns,
+      resolveTargetsOnly: true,
+    });
+
+    expect(executionProviders.generateVideoWithProvider).toHaveBeenCalledTimes(1);
+    expect(result.runs['video-node']?.status).toBe('succeeded');
   });
 });

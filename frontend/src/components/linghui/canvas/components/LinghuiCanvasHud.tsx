@@ -1,8 +1,7 @@
 import React from 'react';
-import { Focus, Hand, ListChecks, MousePointer2, Play, PlayCircle, ZoomIn, ZoomOut } from 'lucide-react';
+import { Focus, Hand, MousePointer2, Play, PlayCircle, ZoomIn, ZoomOut } from 'lucide-react';
 import type {
   LinghuiCanvasMode,
-  LinghuiExecutionLogEntry,
   LinghuiExecutionQueueState,
 } from '../../../../types/linghui';
 
@@ -25,8 +24,6 @@ interface LinghuiCanvasHudProps {
   onCancelRun?: () => void;
   onRunAll?: () => void;
   onRunSelection?: () => void;
-  executionLogs?: LinghuiExecutionLogEntry[];
-  onFocusLogNode?: (nodeId: string) => void;
   onSetCanvasMode: (mode: LinghuiCanvasMode) => void;
   onZoomOut: () => void;
   onFocusContent: () => void;
@@ -46,8 +43,6 @@ export const LinghuiCanvasHud: React.FC<LinghuiCanvasHudProps> = ({
   onCancelRun,
   onRunAll,
   onRunSelection,
-  executionLogs = [],
-  onFocusLogNode,
   onSetCanvasMode,
   onZoomOut,
   onFocusContent,
@@ -63,8 +58,6 @@ export const LinghuiCanvasHud: React.FC<LinghuiCanvasHudProps> = ({
       : hasAttention
         ? '需要处理'
         : '画布就绪';
-  const recentLogs = executionLogs.slice(-5).reverse();
-  const shouldShowLogs = hasQueue || runSummary.failed > 0 || recentLogs.some(entry => entry.level === 'error');
 
   return (
     <>
@@ -147,35 +140,6 @@ export const LinghuiCanvasHud: React.FC<LinghuiCanvasHudProps> = ({
           >
             {isCanceling ? '取消中' : '取消执行'}
           </button>
-        )}
-        {shouldShowLogs && recentLogs.length > 0 && (
-          <div className="linghuiCanvasRunLog">
-            <div className="linghuiCanvasRunLogHeader">
-              <ListChecks size={13} />
-              <span>执行日志</span>
-            </div>
-            <div className="linghuiCanvasRunLogList">
-              {recentLogs.map(entry => (
-                <button
-                  key={entry.id}
-                  type="button"
-                  className={`linghuiCanvasRunLogItem is-${entry.level} ${entry.nodeId ? 'isFocusable' : ''}`}
-                  onClick={() => {
-                    if (entry.nodeId) {
-                      onFocusLogNode?.(entry.nodeId);
-                    }
-                  }}
-                  disabled={!entry.nodeId}
-                  title={entry.nodeId ? '定位相关节点' : entry.message}
-                >
-                  <span className="linghuiCanvasRunLogTime">
-                    {new Date(entry.createdAt).toLocaleTimeString()}
-                  </span>
-                  <span className="linghuiCanvasRunLogMessage">{entry.message}</span>
-                </button>
-              ))}
-            </div>
-          </div>
         )}
       </div>
 

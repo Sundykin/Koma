@@ -151,14 +151,24 @@ describe('getDurationSpecForITVSelection', () => {
     }
   });
 
-  it('seedance-2.0-fast 单独 spec（4-12，更具体的前缀优先）', () => {
+  it('seedance-2.0-f / fast spec 保持 4-15', () => {
     const spec = getDurationSpecForITVSelection(
-      'ch-seedance::seedance-2.0-fast',
+      'ch-seedance::seedance-2.0-f',
       channels,
     );
     expect(spec.kind).toBe('range');
     if (spec.kind === 'range') {
-      expect(spec.max).toBe(12);
+      expect(spec.min).toBe(4);
+      expect(spec.max).toBe(15);
+    }
+
+    const legacyFastSpec = getDurationSpecForITVSelection(
+      'ch-seedance::seedance-2.0-fast',
+      channels,
+    );
+    expect(legacyFastSpec.kind).toBe('range');
+    if (legacyFastSpec.kind === 'range') {
+      expect(legacyFastSpec.max).toBe(15);
     }
   });
 

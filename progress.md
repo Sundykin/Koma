@@ -163,6 +163,120 @@
   - `frontend/src/components/linghui/execution/state/providers/video.ts`
   - 相关 tests
 
+### Phase 8: Execution Log Sidebar Panel
+- **Status:** complete
+- Actions taken:
+  - 根据用户反馈确认执行日志的主要问题是“画布 HUD 自动出现且无法关闭”，而不是日志内容本身。
+  - 从 `LinghuiCanvasHud`、`LinghuiCanvas` 和 `LinghuiCanvasProps` 移除 `executionLogs` / `onFocusLogNode` 传递，删除旧的底部 `linghuiCanvasRunLog` 自动浮层。
+  - 在左侧浮动菜单新增“执行日志”入口，错误日志数量以 badge 显示；打开后展示最近 24 条日志、总记录数和最近更新时间。
+  - 新日志面板支持手动关闭与展开/收起；带 `nodeId` 的日志项仍可点击定位相关节点。
+  - 项目列表、执行日志和素材/工作流/历史抽屉做互斥打开，避免多个浮层叠在画布左侧。
+  - 将日志级别图标映射提到组件外，减少左侧 rail memo 的无意义刷新。
+- Validation:
+  - `npm run test -- --run src/providers/itv/durationSpec.test.ts src/components/linghui/editors/tests/VideoNodeEditor.test.tsx src/components/linghui/execution/tests/linghuiExecutionProviders.test.ts src/providers/itv/Grok2ApiImagineITVProvider.test.ts src/providers/itv/modelCatalog.test.ts`：5 files / 57 tests passed。
+  - `npm run build`：passed；仅保留既有 Vite dynamic import/chunk size warnings。
+  - `git diff --check`：passed。
+  - `rg` 确认旧 HUD 日志入口/样式引用已移除：`executionLogs=`、`onFocusLogNode=`、`linghuiCanvasRunLog`、`LinghuiCanvasRunLog` 均无命中。
+- Files created/modified:
+  - `frontend/src/components/linghui/canvas/components/LinghuiCanvas.tsx`
+  - `frontend/src/components/linghui/canvas/components/LinghuiCanvasHud.tsx`
+  - `frontend/src/components/linghui/canvas/state/linghuiCanvasTypes.ts`
+  - `frontend/src/components/linghui/page/components/LinghuiPage.tsx`
+  - `frontend/src/components/linghui/page/styles/_canvas-overlays.scss`
+  - `task_plan.md`
+  - `findings.md`
+  - `progress.md`
+
+### Phase 9: Duplicate Submission Guard
+- **Status:** complete
+- Actions taken:
+  - 审计确认：同一页面内重复点击会被 `executionAbortControllerRef` 拦截；但刷新/恢复后如果节点仍是 `running`，旧逻辑会重新进入 `executeNode` 并再次调用视频/生图 provider `start()`。
+  - 在 `linghuiExecutionWorkflow.ts` 新增 `detectLinghuiRunningNodeBlocks`，按目标节点和依赖链计算本次执行会覆盖的节点，并识别仍在有效轮询窗口内的 `running` 节点。
+  - `executeLinghuiWorkflow` 增加兜底保护：目标链路里有运行中节点时直接抛错，不再进入 `executeNode`，从根上避免重复提交 provider。
+  - `LinghuiPage` 在生成执行计划与正式运行前都做相同检测；检测到运行中节点时 toast 提示、聚焦该节点，并写入 warn 级执行日志。
+  - 为旧异常状态保留逃生口：默认轮询窗口 10 分钟 + 1 分钟宽限后，过期 `running` 状态不再阻止重新触发。
+  - 扩展 `LinghuiExecutionLogEntry.level` 支持 `warn`，复用执行日志面板的黄色告警样式。
+- Validation:
+  - `npm run test -- --run src/components/linghui/execution/tests/linghuiExecutionWorkflow.test.ts src/components/linghui/execution/tests/linghuiExecutionProviders.test.ts src/components/linghui/editors/tests/VideoNodeEditor.test.tsx src/components/linghui/editors/tests/ImageNodeEditor.test.tsx src/providers/itv/durationSpec.test.ts src/providers/itv/Grok2ApiImagineITVProvider.test.ts src/providers/itv/modelCatalog.test.ts`：7 files / 69 tests passed。
+  - `npm run build`：passed；仅保留既有 Vite dynamic import/chunk size warnings。
+  - `git diff --check`：passed。
+- Files created/modified:
+  - `frontend/src/components/linghui/execution/state/linghuiExecutionWorkflow.ts`
+  - `frontend/src/components/linghui/execution/state/linghuiExecution.ts`
+  - `frontend/src/components/linghui/execution/tests/linghuiExecutionWorkflow.test.ts`
+  - `frontend/src/components/linghui/page/components/LinghuiPage.tsx`
+  - `frontend/src/types/linghui.ts`
+  - `task_plan.md`
+  - `findings.md`
+  - `progress.md`
+
+### Phase 10: Diagnostics Log Export
+- **Status:** complete
+- Actions taken:
+  - 参考 Electron 官方日志路径和 `webContents.console-message` 机制，确认本轮不采用纯前端劫持 `console` 作为唯一方案，而是主进程集中落盘 + renderer 专用 IPC 追加。
+  - 新增 `electron/service/diagnostics.ts` 和 `electron/controller/diagnostics.ts`，提供前端日志追加、日志列表、清理前端日志、导出诊断 zip 四个固定能力。
+  - `electron/main.ts` 启动阶段设置默认 logs path；`services.diagnostics` 初始化到当前 `storageRoot/logs`；`controller/project.setStorageRoot` 切换目录时同步 diagnostics、Linghui 和 ffmpeg 根路径。
+  - `electron/preload/bridge.ts` 增加 `controller/diagnostics/*` 白名单和 `electronAPI.diagnostics`，不暴露通用文件写入/任意目录打包能力。
+  - `electron/preload/lifecycle.ts` 监听 renderer `console-message` 并写到 `logs/console/koma-console-YYYY-MM-DD.log`，项目内 `createLogger` 写到 `logs/renderer/koma-renderer-YYYY-MM-DD.log`。
+
+### Phase 11: Editor Action Click Guard
+- **Status:** complete
+- Actions taken:
+  - 新增 `useLinghuiActionLock`，在提交动作第一次点击时立即短暂锁定，防止 React 运行态刷新前的连续双击穿透。
+  - 图片节点生成按钮接入首击锁；全景节点复用图片编辑器，因此同步受保护。
+  - 视频节点生成按钮保留运行中 loading/禁用逻辑，并额外从父层传入即时锁状态。
+  - 文本、音频、Agent、脚本生成按钮接入同一套锁；音频/文本/Agent/脚本运行中也会显示 loading 并禁用。
+  - 脚本节点的“生成分镜图 / 生成视频流程”批量按钮接入独立锁，避免双击创建重复后续生成节点。
+  - 多角度相机弹窗“创建并生图”接入锁，避免重复创建多角度生成任务。
+- Validation:
+  - `npm --prefix frontend run test -- --run src/components/linghui/editors/tests/ImageNodeEditor.test.tsx src/components/linghui/editors/tests/VideoNodeEditor.test.tsx`：2 files / 13 tests passed。
+  - `npm --prefix frontend run build`：passed；仅保留既有 Vite dynamic import/chunk size warnings。
+  - `git diff --check`：passed。
+- Files created/modified:
+  - `frontend/src/components/linghui/editors/hooks/useLinghuiActionLock.ts` (created)
+  - `frontend/src/components/linghui/editors/components/ImageNodeEditor.tsx`
+  - `frontend/src/components/linghui/editors/components/VideoNodeEditor.tsx`
+  - `frontend/src/components/linghui/editors/components/VideoNodeEditorPanels.tsx`
+  - `frontend/src/components/linghui/editors/components/TextNodeEditor.tsx`
+  - `frontend/src/components/linghui/editors/components/AudioNodeEditor.tsx`
+  - `frontend/src/components/linghui/editors/components/AgentNodeEditor.tsx`
+  - `frontend/src/components/linghui/editors/components/ScriptNodeEditor.tsx`
+  - `frontend/src/components/linghui/editors/components/LinghuiMultiAngleModal.tsx`
+  - `frontend/src/components/linghui/editors/tests/ImageNodeEditor.test.tsx`
+  - `frontend/src/components/linghui/editors/tests/VideoNodeEditor.test.tsx`
+  - `task_plan.md`
+  - `findings.md`
+  - `progress.md`
+  - 重写 `frontend/src/store/logger.ts` 文件落盘路径，移除“读整文件再重写追加”的旧逻辑，改为调用 `electronService.diagnostics.appendRendererLog`，保留控制台输出。
+  - 设置页新增“日志/诊断”入口和 `LogDiagnosticsSettings`，支持查看日志数量/大小、打开日志目录、刷新、清理前端日志和导出 zip。
+  - 为 `electronService` 增加 diagnostics 类型封装与基础测试。
+- Validation:
+  - `npm run verify:ipc-whitelist` passed：controllers 10 files / methods 151 / whitelist 151。
+  - `npm --prefix frontend run test -- --run src/services/electronService.test.ts src/store/projectOpenService.test.ts`：2 files / 8 tests passed。
+  - `npm --prefix frontend run test -- --run src/components/linghui/execution/tests/linghuiExecutionWorkflow.test.ts src/components/linghui/editors/tests/VideoNodeEditor.test.tsx src/providers/itv/durationSpec.test.ts`：3 files / 41 tests passed。
+  - `npm run build-electron` passed。
+  - `npm --prefix frontend run build` passed；仅保留既有 Vite dynamic import/chunk size warnings。
+  - `git diff --check` passed。
+- Files created/modified:
+  - `electron/service/diagnostics.ts`
+  - `electron/controller/diagnostics.ts`
+  - `electron/service/index.ts`
+  - `electron/service/paths.ts`
+  - `electron/controller/project.ts`
+  - `electron/main.ts`
+  - `electron/preload/bridge.ts`
+  - `electron/preload/lifecycle.ts`
+  - `frontend/src/services/electronService.ts`
+  - `frontend/src/services/electronService.test.ts`
+  - `frontend/src/store/logger.ts`
+  - `frontend/src/components/settings/LogDiagnosticsSettings.tsx`
+  - `frontend/src/components/settings/SettingsPage.tsx`
+  - `frontend/src/components/settings/index.ts`
+  - `frontend/src/index.scss`
+  - `task_plan.md`
+  - `findings.md`
+  - `progress.md`
+
 ## Session: 2026-05-03 Theme System Architecture
 
 ### Phase 1: Worktree Setup

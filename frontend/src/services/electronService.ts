@@ -57,6 +57,14 @@ interface ElectronAPI {
     getPath: (name: string) => Promise<string | { path: string }>;
     getVersion: () => Promise<string | { version: string }>;
   };
+  diagnostics?: {
+    appendRendererLog: (payload: DiagnosticsRendererLogPayload) => Promise<{ success: boolean }>;
+    listLogs: () => Promise<DiagnosticsLogSummary>;
+    getUsage: () => Promise<DiagnosticsUsageSummary>;
+    clearLogs: () => Promise<{ success: boolean; removed: number }>;
+    clearRendererLogs: () => Promise<{ success: boolean; removed: number }>;
+    exportLogs: (destPath: string) => Promise<DiagnosticsExportResult>;
+  };
   project: {
     list: () => Promise<ProjectMeta[]>;
     create: (meta: ProjectMeta) => Promise<ProjectMeta>;
@@ -168,6 +176,47 @@ interface FileStat {
 interface ExportOptions {
   excludeCache?: boolean;
   excludeTemp?: boolean;
+}
+
+export type DiagnosticsLogLevel = 'debug' | 'info' | 'warn' | 'error';
+
+export interface DiagnosticsRendererLogPayload {
+  level: DiagnosticsLogLevel;
+  category: string;
+  message: string;
+  data?: unknown;
+  timestamp?: string;
+  source?: 'logger' | 'console' | 'error';
+}
+
+export interface DiagnosticsLogFileInfo {
+  name: string;
+  relativePath: string;
+  size: number;
+  modifiedAt: number;
+  kind: 'renderer' | 'main' | 'electron' | 'other';
+}
+
+export interface DiagnosticsLogSummary {
+  storageRoot: string;
+  logsDir: string;
+  electronLogsDir: string;
+  files: DiagnosticsLogFileInfo[];
+  totalSize: number;
+}
+
+export interface DiagnosticsUsageSummary {
+  storageRoot: string;
+  logsDir: string;
+  totalSize: number;
+  fileCount: number;
+}
+
+export interface DiagnosticsExportResult {
+  success: boolean;
+  path: string;
+  fileCount: number;
+  totalSize: number;
 }
 
 // 检测是否在 Electron 环境中
@@ -504,6 +553,68 @@ export const appGetVersion = async (): Promise<string> => {
       : (result as string);
   }
   return '0.0.0';
+};
+
+// ========== 诊断日志 ==========
+
+export const diagnosticsAppendRendererLog = async (
+  payload: DiagnosticsRendererLogPayload
+): Promise<void> => {
+  const api = getElectronAPI();
+  if (!api?.diagnostics) return;
+  await api.diagnostics.appendRendererLog(payload);
+};
+
+export const diagnosticsListLogs = async (): Promise<DiagnosticsLogSummary> => {
+  const api = getElectronAPI();
+  if (api?.diagnostics) {
+    return await api.diagnostics.listLogs();
+  }
+  return {
+    storageRoot: '',
+    logsDir: '',
+    electronLogsDir: '',
+    files: [],
+    totalSize: 0,
+  };
+};
+
+export const diagnosticsGetUsage = async (): Promise<DiagnosticsUsageSummary> => {
+  const api = getElectronAPI();
+  if (api?.diagnostics?.getUsage) {
+    return await api.diagnostics.getUsage();
+  }
+  const summary = await diagnosticsListLogs();
+  return {
+    storageRoot: summary.storageRoot,
+    logsDir: summary.logsDir,
+    totalSize: summary.totalSize,
+    fileCount: summary.files.length,
+  };
+};
+
+export const diagnosticsClearLogs = async (): Promise<{ success: boolean; removed: number }> => {
+  const api = getElectronAPI();
+  if (api?.diagnostics?.clearLogs) {
+    return await api.diagnostics.clearLogs();
+  }
+  return { success: false, removed: 0 };
+};
+
+export const diagnosticsClearRendererLogs = async (): Promise<{ success: boolean; removed: number }> => {
+  const api = getElectronAPI();
+  if (api?.diagnostics) {
+    return await api.diagnostics.clearRendererLogs();
+  }
+  return { success: false, removed: 0 };
+};
+
+export const diagnosticsExportLogs = async (destPath: string): Promise<DiagnosticsExportResult> => {
+  const api = getElectronAPI();
+  if (api?.diagnostics) {
+    return await api.diagnostics.exportLogs(destPath);
+  }
+  throw new Error('Diagnostics export not available in browser');
 };
 
 // 获取存储根路径（业务根：~/.koma/storage —— 与 userData 子目录隔离）
@@ -951,6 +1062,14 @@ export const electronService = {
   app: {
     getPath: appGetPath,
     getVersion: appGetVersion,
+  },
+  diagnostics: {
+    appendRendererLog: diagnosticsAppendRendererLog,
+    listLogs: diagnosticsListLogs,
+    getUsage: diagnosticsGetUsage,
+    clearLogs: diagnosticsClearLogs,
+    clearRendererLogs: diagnosticsClearRendererLogs,
+    exportLogs: diagnosticsExportLogs,
   },
   getStoragePath,
   getMachineId,

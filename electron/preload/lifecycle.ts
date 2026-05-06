@@ -8,7 +8,7 @@ import {
 import { eventBus, Preload } from 'ee-core/app/events';
 import { createMainWindow, getMainWindow, loadServer, restoreMainWindow } from 'ee-core/electron/window';
 import { logger } from 'ee-core/log';
-import { closeServices } from '../service';
+import { closeServices, diagnosticsService } from '../service';
 
 const isMac = process.platform === 'darwin';
 const APP_DISPLAY_NAME = 'Koma Studio';
@@ -73,6 +73,29 @@ function hideMacWindowControls(): void {
   win.setWindowButtonVisibility(false);
 }
 
+function attachRendererConsoleLogging(): void {
+  const win = getMainWindow();
+  if (!win || win.isDestroyed()) return;
+
+  win.webContents.on('console-message', (eventOrDetails, level, message, lineNumber, sourceId) => {
+    const details =
+      typeof message === 'string'
+        ? { level, message, lineNumber, sourceId }
+        : eventOrDetails && 'message' in eventOrDetails
+          ? eventOrDetails
+          : {};
+
+    diagnosticsService.appendConsoleMessage({
+      level: details.level,
+      message: details.message,
+      lineNumber: details.lineNumber,
+      sourceId: details.sourceId,
+    }).catch((err) => {
+      logger.warn('[diagnostics] renderer console logging failed', err);
+    });
+  });
+}
+
 export class Lifecycle {
   ready(): void {
     logger.info('[lifecycle] ready');
@@ -108,6 +131,7 @@ export class Lifecycle {
     configureAboutPanel();
     configureApplicationMenu();
     hideMacWindowControls();
+    attachRendererConsoleLogging();
 
     win.webContents.on('before-input-event', (_event: ElectronEvent, input: Input) => {
       if (

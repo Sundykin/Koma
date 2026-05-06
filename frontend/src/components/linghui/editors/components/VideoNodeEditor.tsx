@@ -26,6 +26,7 @@ import {
 } from '../../../../providers/itv/durationSpec';
 import type { LinghuiPromptReferenceItem } from '../state/linghuiPromptReferences';
 import { useLinghuiNodeEditorApi, useLinghuiNodeMutation } from '../../nodes/state/LinghuiNodeRunsContext';
+import { useLinghuiActionLock } from '../hooks/useLinghuiActionLock';
 import {
   VideoGeneratePanel,
   VideoPassThroughPanel,
@@ -94,6 +95,7 @@ export const VideoNodeEditor: React.FC<VideoNodeEditorProps> = ({
   const isNodeQueuedByExecutionQueue = Boolean(isExecutionQueueActive && executionQueue?.queuedNodeIds.includes(nodeId));
   const isNodeRunningByExecutionQueue = Boolean(isExecutionQueueActive && executionQueue?.runningNodeIds.includes(nodeId));
   const isVideoGenerating = nodeRun?.status === 'running' || isNodeRunningByExecutionQueue || isNodeQueuedByExecutionQueue;
+  const { locked: isRunActionLocked, runWithActionLock } = useLinghuiActionLock(isVideoGenerating);
   const generateProgressText = nodeRun?.status === 'running'
     && typeof nodeRun.progress === 'number'
     && Number.isFinite(nodeRun.progress)
@@ -340,8 +342,8 @@ export const VideoNodeEditor: React.FC<VideoNodeEditorProps> = ({
     if (isVideoGenerating) {
       return;
     }
-    onRun();
-  }, [isVideoGenerating, onRun]);
+    runWithActionLock(onRun);
+  }, [isVideoGenerating, onRun, runWithActionLock]);
 
   const activeToolPresets = activeTool
     ? VIDEO_TOOL_PRESETS[activeTool].buildPresets({
@@ -404,6 +406,7 @@ export const VideoNodeEditor: React.FC<VideoNodeEditorProps> = ({
           durationSpec={activeDurationSpec}
           hasCurrentVideo={hasCurrentVideo}
           isGenerating={isVideoGenerating}
+          isRunActionLocked={isRunActionLocked}
           generateButtonText={generateButtonText}
           onDownloadCurrentVideo={handleDownloadCurrentVideo}
           onUpdateProvider={handleProviderChange}

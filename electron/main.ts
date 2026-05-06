@@ -3,6 +3,7 @@ import { ElectronEgg } from 'ee-core';
 import { join } from 'node:path';
 import { Lifecycle } from './preload/lifecycle';
 import { preload } from './preload';
+import { getBusinessLogsDir } from './service/paths';
 
 const APP_DISPLAY_NAME = 'Koma Studio';
 const ELECTRON_REMOTE_DEBUGGING_PORT = process.env.KOMA_ELECTRON_REMOTE_DEBUGGING_PORT || '9333';
@@ -14,6 +15,7 @@ electronApp.setName(APP_DISPLAY_NAME);
 //   （Cookies、Local Storage、Cache、SingletonLock 等都进子目录，
 //    避免污染业务存储根，扫描业务根的代码不会再撞到这些框架文件）
 electronApp.setPath('userData', join(electronApp.getPath('home'), '.koma', '_userData'));
+electronApp.setAppLogsPath(getBusinessLogsDir());
 
 // 自定义协议 koma-local:// 必须在 app.ready 之前注册为 privileged，
 // 否则 Chromium 在 renderer 端会拒绝 <img>/<video>/fetch 加载（DOM 里能看到正确的 src，

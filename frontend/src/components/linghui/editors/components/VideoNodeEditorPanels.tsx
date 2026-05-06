@@ -257,6 +257,7 @@ interface VideoGeneratePanelProps {
   durationSpec: VideoDurationSpec;
   hasCurrentVideo: boolean;
   isGenerating: boolean;
+  isRunActionLocked: boolean;
   generateButtonText: string;
   onDownloadCurrentVideo: () => void;
   onUpdateProvider: (value: string) => void;
@@ -285,6 +286,7 @@ export function VideoGeneratePanel({
   durationSpec,
   hasCurrentVideo,
   isGenerating,
+  isRunActionLocked,
   generateButtonText,
   onDownloadCurrentVideo,
   onUpdateProvider,
@@ -515,7 +517,7 @@ export function VideoGeneratePanel({
             icon={isGenerating ? undefined : <ArrowUp size={14} />}
             onClick={onRun}
             loading={isGenerating}
-            disabled={isGenerating}
+            disabled={isGenerating || isRunActionLocked}
           >
             {generateButtonText}
           </Button>

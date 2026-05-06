@@ -17,6 +17,7 @@ import { createLinghuiWorkspaceAsset, importLinghuiWorkspaceAsset } from '../../
 import { useLinghuiNodeMutation } from '../../nodes/state/LinghuiNodeRunsContext';
 import { LinghuiPromptEditor } from './LinghuiPromptEditor';
 import type { LinghuiPromptReferenceItem } from '../state/linghuiPromptReferences';
+import { useLinghuiActionLock } from '../hooks/useLinghuiActionLock';
 
 function getPreviewSource(source?: string): string {
   return toFileSystemDisplayUrl(source) || '';
@@ -76,6 +77,12 @@ export const AudioNodeEditor: React.FC<AudioNodeEditorProps> = ({
   const generatedAudioLabel = String(generatedAudio?.label ?? nodeData.label ?? '音频结果').trim();
   const generatedAudioDuration = generatedAudio?.durationSec;
   const canReuseGeneratedAudio = !source && Boolean(generatedAudio?.source);
+  const isAudioGenerating = nodeRun?.status === 'running';
+  const { locked: isRunActionLocked, runWithActionLock } = useLinghuiActionLock(isAudioGenerating);
+
+  const handleRun = useCallback(() => {
+    runWithActionLock(onRun);
+  }, [onRun, runWithActionLock]);
 
   useEffect(() => {
     loadSettings().then(settings => {
@@ -459,7 +466,9 @@ export const AudioNodeEditor: React.FC<AudioNodeEditorProps> = ({
             <Button
               type="primary"
               icon={<ArrowUp size={14} />}
-              onClick={onRun}
+              onClick={handleRun}
+              disabled={isRunActionLocked || isAudioGenerating}
+              loading={isAudioGenerating}
             >
               生成
             </Button>

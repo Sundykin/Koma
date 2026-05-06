@@ -7,6 +7,7 @@ import type {
   LinghuiRFEdgeSnapshot,
   LinghuiRFNodeSnapshot,
 } from '../../../../types/linghui';
+import { DEFAULT_POLLING_CONFIG } from '../../../../providers/polling';
 import { executeNode } from './linghuiExecutionNodeExecutors';
 import {
   buildTopologicalLayers,
@@ -58,6 +59,19 @@ export interface ExecuteLinghuiWorkflowResult {
   queue: LinghuiExecutionQueueState;
 }
 
+export interface LinghuiRunningNodeBlock {
+  nodeId: string;
+  label: string;
+  status: LinghuiNodeRunState['status'];
+  progress?: number;
+  message?: string;
+  startedAt?: number;
+  updatedAt?: number;
+}
+
+const RUNNING_NODE_STALE_GRACE_MS = 60_000;
+const RUNNING_NODE_BLOCK_WINDOW_MS = DEFAULT_POLLING_CONFIG.maxDuration + RUNNING_NODE_STALE_GRACE_MS;
+
 function seedNodeOutputsFromRuns(
   previousRuns: Record<string, LinghuiNodeRunState>,
 ): Record<string, LinghuiNodeResult> {
@@ -70,6 +84,56 @@ function seedNodeOutputsFromRuns(
   }
 
   return outputs;
+}
+
+function resolveRunningNodeBlocks(
+  orderedNodes: LinghuiRFNodeSnapshot[],
+  previousRuns: Record<string, LinghuiNodeRunState>,
+  now = Date.now(),
+): LinghuiRunningNodeBlock[] {
+  return orderedNodes.flatMap(node => {
+    const runState = previousRuns[node.id];
+    if (runState?.status !== 'running') {
+      return [];
+    }
+    const lastActiveAt = Number(runState.updatedAt ?? runState.startedAt ?? 0);
+    if (
+      Number.isFinite(lastActiveAt) &&
+      lastActiveAt > 0 &&
+      now - lastActiveAt > RUNNING_NODE_BLOCK_WINDOW_MS
+    ) {
+      return [];
+    }
+
+    return [{
+      nodeId: node.id,
+      label: String(node.data.label || node.id),
+      status: runState.status,
+      progress: runState.progress,
+      message: runState.message,
+      startedAt: runState.startedAt,
+      updatedAt: runState.updatedAt,
+    }];
+  });
+}
+
+export function detectLinghuiRunningNodeBlocks(params: {
+  context: LinghuiExecutionContext;
+  targetNodeIds?: string[];
+  previousRuns?: Record<string, LinghuiNodeRunState>;
+  resolveTargetsOnly?: boolean;
+  now?: number;
+}): LinghuiRunningNodeBlock[] {
+  const normalizedTargetIds = params.targetNodeIds?.length
+    ? [...new Set(params.targetNodeIds)]
+    : params.context.nodes.map(node => node.id);
+  const requiredNodeIds = new Set(
+    params.resolveTargetsOnly
+      ? normalizedTargetIds
+      : collectRequiredNodeIds(params.context.edges, normalizedTargetIds),
+  );
+  const executionLayers = buildTopologicalLayers(params.context.nodes, params.context.edges, requiredNodeIds);
+  return resolveRunningNodeBlocks(executionLayers.flat(), params.previousRuns ?? {}, params.now);
 }
 
 export async function executeLinghuiWorkflow(options: ExecuteLinghuiWorkflowOptions): Promise<ExecuteLinghuiWorkflowResult> {
@@ -94,6 +158,15 @@ export async function executeLinghuiWorkflow(options: ExecuteLinghuiWorkflowOpti
   const executionLayers = buildTopologicalLayers(context.nodes, context.edges, requiredNodeIds);
   const orderedNodes = executionLayers.flat();
   const nextRuns: Record<string, LinghuiNodeRunState> = { ...previousRuns };
+  const runningNodeBlocks = resolveRunningNodeBlocks(orderedNodes, previousRuns);
+  if (runningNodeBlocks.length > 0) {
+    const firstRunning = runningNodeBlocks[0];
+    throw new Error(
+      runningNodeBlocks.length === 1
+        ? `「${firstRunning.label}」仍在执行中，请等待当前轮询完成或先取消执行`
+        : `${runningNodeBlocks.length} 个节点仍在执行中，请等待当前轮询完成或先取消执行`,
+    );
+  }
   let queueState: LinghuiExecutionQueueState = {
     status: orderedNodes.length > 0 ? 'running' : 'completed',
     total: orderedNodes.length,

@@ -18,6 +18,7 @@ import {
   BlockOutlined,
   ApiOutlined,
   SkinOutlined,
+  FileTextOutlined,
 } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import type { AppSettings } from '../../types';
@@ -36,6 +37,7 @@ import { PromptStudio } from './PromptStudio';
 import { PluginManager } from '../plugins';
 import { MCPConfigManager } from './MCPConfigManager';
 import { AppearanceThemeSettings } from './AppearanceThemeSettings';
+import { LogDiagnosticsSettings } from './LogDiagnosticsSettings';
 
 const { Text } = Typography;
 
@@ -74,6 +76,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
     { key: 'workflow-visual', icon: <BgColorsOutlined />, label: t('settings.visualStyle'), group: t('settings.workflow') },
     { key: 'workflow-prompts', icon: <CodeOutlined />, label: t('settings.promptTemplate'), group: t('settings.workflow') },
     { key: 'system-storage', icon: <FolderOutlined />, label: t('settings.storageAndCache'), group: t('settings.system') },
+    { key: 'system-logs', icon: <FileTextOutlined />, label: '日志/诊断', group: t('settings.system') },
     { key: 'system-plugins', icon: <BlockOutlined />, label: t('settings.pluginManage'), group: t('settings.system') },
     { key: 'system-mcp', icon: <ApiOutlined />, label: t('settings.mcpTools'), group: t('settings.system') },
   ];
@@ -302,6 +305,8 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
             </Card>
           </div>
         );
+      case 'system-logs':
+        return <LogDiagnosticsSettings />;
       case 'system-plugins':
         return <PluginManager />;
       case 'system-mcp':

@@ -17,7 +17,7 @@
  *
  * 模型：
  *   - seedance-2.0       duration 4-15 s
- *   - seedance-2.0-fast  duration 4-12 s
+ *   - seedance-2.0-fast  duration 4-15 s
  *
  * 当前阶段穗禾上游强制锁 480p，所以 size 始终送 480p 档位（按 aspectRatio 选 854x480 / 480x854）。
  *
@@ -77,7 +77,7 @@ interface SuiheTaskResponse extends SuiheCreateResponse {
 
 const MODEL_DURATION_MAX: Record<string, number> = {
   'seedance-2.0': 15,
-  'seedance-2.0-fast': 12,
+  'seedance-2.0-fast': 15,
 };
 
 function joinUrl(base: string, path: string): string {
